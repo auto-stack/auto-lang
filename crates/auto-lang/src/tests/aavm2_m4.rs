@@ -410,6 +410,7 @@ fn test_aavm2_m4_use_corpus() {
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_dir())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| n != "errors").unwrap_or(true))
         .collect();
     cases.sort();
     assert!(!cases.is_empty(), "no corpus_use cases");
@@ -441,6 +442,34 @@ fn test_aavm2_m4_use_corpus() {
         );
     }
     eprintln!("M4 use corpus: multi-file bytecode identical");
+}
+
+
+/// 诊断用:corpus_use 各例的 Rust 参考侧规范化反汇编(写入
+/// target/aavm2_use_disasm.txt,避免 nocapture 吞输出)。
+#[test]
+fn test_aavm2_m4_use_rust_disasm_print() {
+    let dir = corpus_use_dir();
+    let mut cases: Vec<_> = std::fs::read_dir(&dir)
+        .expect("corpus_use dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| n != "errors").unwrap_or(true))
+        .collect();
+    cases.sort();
+    let nl = 10u8 as char;
+    let mut out = String::new();
+    for case in &cases {
+        match compile_and_link_multi(case) {
+            Ok((code, strings)) => {
+                out.push_str(&format!("=== {} ==={nl}{}", case.display(), normalized_dump(&code, &strings)));
+            }
+            Err(e) => out.push_str(&format!("=== {} === ERR {}{nl}", case.display(), e)),
+        }
+    }
+    let diag = std::env::temp_dir().join("aavm2_use_disasm.txt");
+    std::fs::write(&diag, out).expect("write diag");
 }
 
 /// 诊断用:打印 Rust 参考侧对语料的规范化反汇编(--nocapture)。

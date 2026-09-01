@@ -104,6 +104,82 @@ type CG {
     // scope_saves=各层入口 max_idx(弹出恢复)
     hi_idx int
     scope_saves List<int>
+    // W3(Plan 511):use 记录(mod 名/逗号 items/通配);mod_name=本编译
+    // 单元的模块名(""=主模块——全局键裸名,否则 mod. 前缀);defers=跨模块
+    // 调用延迟解析(ins 指针+符号);mod_bases=链接后各 dep 模块起始
+    // ins 下标(ev_run_files 初始化序用)
+    uses List<CGUse>
+    mod_name str
+    defers List<CGDefer>
+    mod_bases List<int>
+    // W3:fn→模块名平行表(链接期符号定址用;单文件路径恒空)
+    fn_mods List<str>
+}
+
+// W3:use 语句记录(kind:auto|rs|py|c)
+type CGUse {
+    kind str
+    module str
+    items str
+    wildcard int
+}
+
+// W3:跨模块调用延迟解析条目(链接期定址)
+type CGDefer {
+    ins_idx int
+    symbol str
+}
+
+// W3:名字是否在 use items(逗号连接串)中
+fn cg_items_has(items str, name str) bool {
+    var i = 0
+    var start = 0
+    var n = items.len()
+    while i <= n {
+        var at_end = i == n
+        var is_sep = false
+        if !at_end {
+            if items.char_at(i) == ',' {
+                is_sep = true
+            }
+        }
+        if at_end || is_sep {
+            if items.slice(start, i) == name {
+                return true
+            }
+            start = i + 1
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// W3:裸名 → 导入符号(遍历 uses:定向 items 命中或通配;返回 "mod.name",
+// 未命中返回 "")
+fn cg_import_symbol(c CG, name str) str {
+    var i = 0
+    while i < c.uses.len() {
+        var u = c.uses.get(i)
+        if u.kind == "auto" {
+            if u.wildcard == 1 || cg_items_has(u.items, name) {
+                return u.module + "." + name
+            }
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// W3:名字是否为已 use 的模块名(限定调用 db.fn 判定)
+fn cg_is_module(c CG, name str) bool {
+    var i = 0
+    while i < c.uses.len() {
+        if c.uses.get(i).module == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
 }
 
 // W2:全局初始化重放条目(name + init 表达式 token 闭区间)
@@ -111,6 +187,15 @@ type CGInit {
     name str
     from int
     to int
+}
+
+// W3:全局键限名(模块编译单元内 mod. 前缀;主模块裸名——镜像宿主
+// current_module/qualified_global_name)
+fn cg_gkey(c CG, name str) str {
+    if c.mod_name == "" {
+        return name
+    }
+    return c.mod_name + "." + name
 }
 
 // W2:名字是否已入全局集
@@ -202,7 +287,11 @@ fn cg_new() CG {
     var gv_l List<str> = List.new()
     var gi_l List<CGInit> = List.new()
     var saves_l List<int> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l)
+    var uses_l List<CGUse> = List.new()
+    var defers_l List<CGDefer> = List.new()
+    var bases_l List<int> = List.new()
+    var fmods_l List<str> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l, uses_l, "", defers_l, bases_l, fmods_l)
 }
 
 // P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
@@ -934,10 +1023,26 @@ fn cg_expr(mut c CG, mut p P, min int) {
             c.inst_ty = name
             return
         }
-        if name == "print" && p_kind(p) == TokenKind.LParen {
+        // W3:模块限定调用 db.fn(...)(db 为已 use 模块名;镜像宿主
+        // auto_modules + mod.fn reloc 符号——链接期定址;调用后可接
+        // 后缀/中缀,故 call_done 包裹而非 return)
+        var call_done = false
+        if p_kind(p) == TokenKind.Dot && (p_peek(p, 1) == TokenKind.Ident || is_soft_ident_kind(p_peek(p, 1))) && p_peek(p, 2) == TokenKind.LParen && cg_is_module(c, name) {
+            p_next(p)
+            var qfn = p_text(p)
+            p_next(p)
+            // 接收者占位:宿主 Ident 模块兜底推 const.i32 0(Plan 437
+            // 注记的已知占位泄漏——镜像;帧 bp 锚定下无害)
+            emit(c, OpCode.ConstI32, "0", 0)
+            cg_call_args(c, p)
+            var qdi = emit(c, OpCode.Call, "", -1)
+            c.defers.push(CGDefer(qdi, name + "." + qfn))
+            call_done = true
+        }
+        if !call_done && name == "print" && p_kind(p) == TokenKind.LParen {
             cg_call_args(c, p)
             emit(c, OpCode.CallNat, "nat#10", 10)
-        } else if p_kind(p) == TokenKind.LParen {
+        } else if !call_done && p_kind(p) == TokenKind.LParen {
             var fe = -1
             var fi = 0
             while fi < c.fns.len() {
@@ -947,17 +1052,27 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 fi = fi + 1
             }
             if fe < 0 {
-                cg_err(c, "unknown fn: " + name)
-                return
+                // W3:导入名(use mod: item / 通配)→ 延迟调用,链接期定址
+                // (无 return:调用结果可接后缀/中缀,如 get_base() * 2)
+                var isym = cg_import_symbol(c, name)
+                if isym != "" {
+                    cg_call_args(c, p)
+                    var idi = emit(c, OpCode.Call, "", -1)
+                    c.defers.push(CGDefer(idi, isym))
+                } else {
+                    cg_err(c, "unknown fn: " + name)
+                    return
+                }
+            } else {
+                cg_call_args(c, p)
+                emit(c, OpCode.Call, "", fe)
             }
-            cg_call_args(c, p)
-            emit(c, OpCode.Call, "", fe)
-        } else {
+        } else if !call_done {
             var idx = cg_lookup(c, name)
             if idx < 0 {
-                // W2:全局读(镜像宿主读链 局部>全局 优先序)
-                if cg_is_global(c, name) {
-                    var gidx = cg_pool_add(c, name)
+                // W2:全局读(镜像宿主读链 局部>全局 优先序;W3 模块限名)
+                if cg_is_global(c, cg_gkey(c, name)) {
+                    var gidx = cg_pool_add(c, cg_gkey(c, name))
                     emit(c, OpCode.LoadGlobal, gidx.str(), gidx)
                     c.arr_flag = 0
                 } else {
@@ -1262,6 +1377,74 @@ fn cg_is_arm_body(mut c CG, mut p P) {
 
 // 单模式比较发射:load t;<pattern 表达式>;eq —— 标量枚举判别值直接
 // const.i32,字面量按各自形态
+// W3(Plan 511)use 语句消费+记录(词法形态镜像 parser.at parse_use;
+// use.rs/py 的域外报错归模块解析器 cg_resolve——此处仅消费)
+fn cg_use(mut c CG, mut p P) {
+    p_next(p)
+    if p_kind(p) == TokenKind.Dot {
+        var lang = p_peek_text(p, 1)
+        p_next(p)
+        p_next(p)
+        var path = p_text(p)
+        p_next(p)
+        while p_kind(p) == TokenKind.Colon && p_peek(p, 1) == TokenKind.Colon {
+            p_next(p)
+            p_next(p)
+            path = path + "." + p_text(p)
+            p_next(p)
+        }
+        var kind = "rs"
+        if lang == "py" {
+            kind = "py"
+        } else if lang == "c" {
+            kind = "c"
+        }
+        c.uses.push(CGUse(kind, path, "", 0))
+        return
+    }
+    if !is_name_kind(p_kind(p)) {
+        cg_err(c, "expected module name after use")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    while p_kind(p) == TokenKind.Dot {
+        p_next(p)
+        if !is_name_kind(p_kind(p)) {
+            cg_err(c, "expected path segment after dot")
+            return
+        }
+        name = name + "." + p_text(p)
+        p_next(p)
+    }
+    var items = ""
+    var wildcard = 0
+    if p_kind(p) == TokenKind.Colon {
+        p_next(p)
+        if p_kind(p) == TokenKind.Star {
+            p_next(p)
+            wildcard = 1
+        } else {
+            if !is_name_kind(p_kind(p)) {
+                cg_err(c, "expected identifier or *")
+                return
+            }
+            items = p_text(p)
+            p_next(p)
+            while p_kind(p) == TokenKind.Comma {
+                p_next(p)
+                if !is_name_kind(p_kind(p)) {
+                    cg_err(c, "expected identifier")
+                    return
+                }
+                items = items + "," + p_text(p)
+                p_next(p)
+            }
+        }
+    }
+    c.uses.push(CGUse("auto", name, items, wildcard))
+}
+
 // ── W1 struct 声明注册(Plan 511:镜像宿主 Stmt::TypeDecl 的
 // register_type——零字节码,字段名表入 c.tys)─────────────────
 
@@ -1551,6 +1734,20 @@ fn cg_stmt(mut c CG, mut p P) {
         cg_type_decl(c, p)
         return
     }
+    if k == TokenKind.Use {
+        cg_use(c, p)
+        return
+    }
+    if k == TokenKind.Ident && p_text(p) == "pub" {
+        // W3:pub 前缀跳过(D3:VM 链路无导出过滤)
+        p_next(p)
+        if p_kind(p) == TokenKind.Fn {
+            cg_fn(c, p)
+        } else {
+            cg_stmt(c, p)
+        }
+        return
+    }
     if k == TokenKind.Break || k == TokenKind.Continue {
         p_next(p)
         cg_loop_jump(c, k)
@@ -1573,31 +1770,36 @@ fn cg_stmt(mut c CG, mut p P) {
         }
         var is_arr = 0
         // W2(Plan 511):全局路径(镜像宿主 Plan 317/322——顶层 var/const
-        // 注册进 global_vars 且无 scope 守卫:fn 体内同名声明也走全局)
+        // 注册进 global_vars 且无 scope 守卫:fn 体内同名声明也走全局;
+        // W3:模块编译单元内键带 mod. 前缀 cg_gkey)
+        var gk = cg_gkey(c, name)
         if (k == TokenKind.Var || k == TokenKind.Const) && c.depth == 1 {
-            if !cg_is_global(c, name) {
-                c.global_vars.push(name)
+            if !cg_is_global(c, gk) {
+                c.global_vars.push(gk)
             }
         }
         if p_kind(p) == TokenKind.Asn {
             p_next(p)
-            if cg_is_global(c, name) {
-                // init token 区间登记(fn main 体首重放用;首次声明记)
+            if cg_is_global(c, gk) {
+                // init token 区间登记(fn main 体首重放用;首次声明记;
+                // W3:仅主模块重放——dep 模块经模块初始化序执行 init)
                 var from2 = p.pos
                 cg_expr(c, p, 0)
                 var to2 = p.pos
-                var seen2 = false
-                var si2 = 0
-                while si2 < c.global_inits.len() {
-                    if c.global_inits.get(si2).name == name {
-                        seen2 = true
+                if c.mod_name == "" {
+                    var seen2 = false
+                    var si2 = 0
+                    while si2 < c.global_inits.len() {
+                        if c.global_inits.get(si2).name == gk {
+                            seen2 = true
+                        }
+                        si2 = si2 + 1
                     }
-                    si2 = si2 + 1
+                    if !seen2 {
+                        c.global_inits.push(CGInit(gk, from2, to2))
+                    }
                 }
-                if !seen2 {
-                    c.global_inits.push(CGInit(name, from2, to2))
-                }
-                var gidx2 = cg_pool_add(c, name)
+                var gidx2 = cg_pool_add(c, gk)
                 emit(c, OpCode.StoreGlobal, gidx2.str(), gidx2)
                 return
             }
@@ -1781,12 +1983,12 @@ fn cg_stmt(mut c CG, mut p P) {
         var nk = p_peek(p, 1)
         if cg_is_assign_op(p_op(nk)) {
             // W2:全局写优先于局部查找(镜像宿主 6189-6192 的 check-BEFORE)
-            if cg_is_global(c, name) {
+            if cg_is_global(c, cg_gkey(c, name)) {
                 p_next(p)
                 var gopk = p_kind(p)
                 p_next(p)
                 if gopk != TokenKind.Asn {
-                    var gg = cg_pool_add(c, name)
+                    var gg = cg_pool_add(c, cg_gkey(c, name))
                     emit(c, OpCode.LoadGlobal, gg.str(), gg)
                 }
                 cg_expr(c, p, 0)
@@ -1795,7 +1997,7 @@ fn cg_stmt(mut c CG, mut p P) {
                     emit(c, gmn, "", 0)
                 }
                 emit(c, OpCode.Dup, "", 0)
-                var gidx3 = cg_pool_add(c, name)
+                var gidx3 = cg_pool_add(c, cg_gkey(c, name))
                 emit(c, OpCode.StoreGlobal, gidx3.str(), gidx3)
                 emit(c, OpCode.Pop, "", 0)
                 return
@@ -1822,7 +2024,15 @@ fn cg_stmt(mut c CG, mut p P) {
             return
         }
     }
+    // W3:表达式语句——用户 fn 调用语句尾补 pop 弃值(镜像宿主
+    // Stmt::Expr 的非 void 结果丢弃;call.nat print 为 void 无 pop)
+    var before_len = c.ins.len()
     cg_expr(c, p, 0)
+    if c.err == "" && c.depth > 1 && c.ins.len() > before_len {
+        if c.ins.get(c.ins.len() - 1).op == OpCode.Call {
+            emit(c, OpCode.Pop, "", 0)
+        }
+    }
 }
 
 // 语句序列步行:.line(语句首 token 行,经 cg_line 同线去重)→ cg_stmt → eos
@@ -2091,7 +2301,7 @@ fn cg_fn(mut c CG, mut p P) {
     // W2:fn main 体首重放全局初始化(镜像宿主 codegen 1339-1348——入口
     // 直接 spawn main 跳过 wrapper 顶层,故在 main 体首按声明序重放
     // init token 区间;语料约定 fn main 声明于顶层 var 之后)
-    if name == "main" && c.global_inits.len() > 0 {
+    if name == "main" && c.mod_name == "" && c.global_inits.len() > 0 {
         var gi = 0
         while gi < c.global_inits.len() && c.err == "" {
             var ent = c.global_inits.get(gi)
@@ -2175,6 +2385,11 @@ fn cg_serialize(mut c CG) str {
                 ops = f"0x${hex4(offs.get(fe.ins))}"
             } else if ins.op == OpCode.LoadStr {
                 ops = "\"" + c.pool.get(ins.n) + "\""
+            } else if ins.op == OpCode.LoadGlobal || ins.op == OpCode.StoreGlobal {
+                // W3:链接后 ins.n 为合并池索引(s 为模块本地旧值,弃用)
+                ops = ins.n.str()
+            } else if ins.op == OpCode.GetField {
+                ops = "field[" + ins.n.str() + "]"
             }
             if out != "" {
                 out = out + "\n"
@@ -2186,22 +2401,210 @@ fn cg_serialize(mut c CG) str {
     return out
 }
 
+// ── W3(Plan 511):use 模块化——解析器/多编译单元/链接器 ────────
+
+// 模块记录(name=use 路径,source=文件文本)
+type CGMod {
+    name str
+    source str
+}
+
+// 路径目录部分(最后 / 或 \ 之前;无分隔符返回 "")
+fn cg_dir_of(path str) str {
+    var i = 0
+    var last = -1
+    while i < path.len() {
+        var ch = path.char_at(i)
+        if ch == 47 || ch == 92 {
+            last = i
+        }
+        i = i + 1
+    }
+    if last < 0 {
+        return ""
+    }
+    return path.slice(0, last)
+}
+
+// use 语句轻扫(复用 cg_use 的消费逻辑,记录进临时 CG 的 uses)
+fn cg_use_scan(source str) List<CGUse> {
+    var out List<CGUse> = List.new()
+    var toks = tokenize(source)
+    var p = parse_new(toks)
+    var scratch = cg_new()
+    skip_empty_lines(p)
+    while p.err == "" && p_kind(p) != TokenKind.EOF {
+        if p_kind(p) == TokenKind.Use {
+            cg_use(scratch, p)
+        } else if p_kind(p) == TokenKind.Ident && p_text(p) == "pub" {
+            p_next(p)
+        } else {
+            // 越过其余语句:保守步进到行尾
+            while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.Newline && p_kind(p) != TokenKind.Semi {
+                p_next(p)
+            }
+        }
+        if p.err == "" {
+            var k2 = p_kind(p)
+            while k2 == TokenKind.Newline || k2 == TokenKind.Semi || k2 == TokenKind.Comma {
+                p_next(p)
+                k2 = p_kind(p)
+            }
+        }
+    }
+    var i = 0
+    while i < scratch.uses.len() {
+        out.push(scratch.uses.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+// 模块路径 . → /(slice 拼接——char_at 为码点整数值)
+fn cg_mod_fs_path(module str) str {
+    var out = ""
+    var start = 0
+    var i = 0
+    while i < module.len() {
+        if module.char_at(i) == 46 {
+            out = out + module.slice(start, i) + "/"
+            start = i + 1
+        }
+        i = i + 1
+    }
+    return out + module.slice(start, module.len())
+}
+
+// 递归解析:file 的 use 依赖先行入列(DFS 后序 = deps 先于依赖者;
+// 环静默跳过 D2;按名去重)。返回错误文本(""=成功,宿主文本为规范)。
+fn cg_resolve_into(file str, mut mods List<CGMod>, mut loading List<str>, mut done List<str>) str {
+    var src = File.read_text(file)
+    if src == "" {
+        return "Module not found: " + file + " (module_path=" + file + ", parent_dirs=[])"
+    }
+    var uses = cg_use_scan(src)
+    var dir = cg_dir_of(file)
+    var i = 0
+    while i < uses.len() {
+        var u = uses.get(i)
+        if u.kind == "rs" {
+            var crate = u.module
+            var dot = crate.char_at(0)
+            var di = 0
+            while di < crate.len() {
+                if crate.char_at(di) == 46 {
+                    crate = crate.slice(0, di)
+                    di = crate.len()
+                }
+                di = di + 1
+            }
+            return "Crate '" + crate + "' not declared. Add `dep " + crate + "` before `use.rs`."
+        }
+        if u.kind == "py" {
+            return "Python FFI not enabled. Rebuild with `--features python` to use `use.py`."
+        }
+        if u.kind == "c" {
+            return "Expected <lib> or \"lib\", got Ident"
+        }
+        // auto 模块
+        var m = u.module
+        var already = false
+        var j = 0
+        while j < done.len() {
+            if done.get(j) == m {
+                already = true
+            }
+            j = j + 1
+        }
+        var in_stack = false
+        var j2 = 0
+        while j2 < loading.len() {
+            if loading.get(j2) == m {
+                in_stack = true
+            }
+            j2 = j2 + 1
+        }
+        if !already && !in_stack {
+            var mfile = dir + "/" + cg_mod_fs_path(m) + ".at"
+            var msrc = File.read_text(mfile)
+            if msrc == "" {
+                return "Module not found: " + m + " (module_path=" + cg_mod_fs_path(m) + ", parent_dirs=[])"
+            }
+            loading.push(m)
+            var rerr = cg_resolve_into(mfile, mods, loading, done)
+            if rerr != "" {
+                return rerr
+            }
+            var li = 0
+            while li < loading.len() {
+                if loading.get(li) == m {
+                    loading.set(li, "")
+                }
+                li = li + 1
+            }
+            mods.push(CGMod(m, msrc))
+            done.push(m)
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// 入口:main_path → 有序模块列(deps DFS 后序 + main 末位)。错误文本直返
+fn cg_resolve(main_path str) AutoResult2 {
+    var mods List<CGMod> = List.new()
+    var loading List<str> = List.new()
+    var done List<str> = List.new()
+    var err = cg_resolve_into(main_path, mods, loading, done)
+    if err != "" {
+        return AutoResult2(mods, err)
+    }
+    var main_src = File.read_text(main_path)
+    mods.push(CGMod("", main_src))
+    return AutoResult2(mods, "")
+}
+
+// 多值返回载体(mods + err)
+type AutoResult2 {
+    mods List<CGMod>
+    err str
+}
+
 // ── 编译入口(S5 engine 复用;返回 CG 结构) ────────────────────
 
 fn cg_compile(source str) CG {
+    // W3:主模块经 cg_compile_mod(mod_name="" → wrapper 形态)
+    return cg_compile_mod(source, "")
+}
+
+// W3:多编译单元入口。主模块(mod_name=""):wrapper 形态(既有口径);
+// dep 模块(mod_name≠""):裸形态——Type/Use 消费、顶层 var/const 走
+// 限名全局、fn 直接发射(各自 jmp-over),尾 HALT,无 wrapper(镜像
+// 宿主 compile_module_to_bytecode;语料声明序=Type→Store→Fn 单趟步行)
+fn cg_compile_mod(source str, mod_name str) CG {
     var toks = tokenize(source)
     var p = parse_new(toks)
     var c = cg_new()
-    emit(c, OpCode.FnProlog, "args=0, locals=16", 16)
-    emit(c, OpCode.Reserve, "16", 16)
+    c.mod_name = mod_name
+    if mod_name == "" {
+        emit(c, OpCode.FnProlog, "args=0, locals=16", 16)
+        emit(c, OpCode.Reserve, "16", 16)
+    }
     skip_empty_lines(p)
-    while c.err == "" && p_kind(p) != TokenKind.EOF {
+    while c.err == "" && p.err == "" && p_kind(p) != TokenKind.EOF {
         if p_kind(p) == TokenKind.Fn {
             cg_fn(c, p)
+        } else if p_kind(p) == TokenKind.Ident && p_text(p) == "pub" {
+            p_next(p)
+            if p_kind(p) == TokenKind.Fn {
+                cg_fn(c, p)
+            } else {
+                cg_stmt(c, p)
+            }
         } else {
-            // 顶层非 fn 语句:wrapper 内步行(镜像 Rust compile_and_link
-            // 的 other_stmts 路径);该路径不发 .line(Rust 直接
-            // compile_stmt,无 fn 体的行号发射)
+            // 顶层非 fn 语句:主模块 wrapper 内步行(镜像 Rust
+            // compile_and_link 的 other_stmts 路径);该路径不发 .line;
+            // dep 模块顶层语句同口径(005 实测:模块 init store 无 .line)
             cg_stmt(c, p)
         }
         if c.err == "" {
@@ -2212,6 +2615,153 @@ fn cg_compile(source str) CG {
         emit(c, OpCode.Halt, "", 0)
     }
     return c
+}
+
+// W3:符号定址(bare 首到首胜 + mod.fn 限定;host loader 264-312 镜像)
+fn cg_link_symbol(c CG, symbol str) int {
+    var i = 0
+    while i < c.fns.len() {
+        if c.fns.get(i).name == symbol {
+            return i
+        }
+        i = i + 1
+    }
+    // 限定:前缀逐模块试(模块名可含点,tools.helper.fn)
+    var mi2 = 0
+    while mi2 < c.fn_mods.len() {
+        var m = c.fn_mods.get(mi2)
+        if m != "" && symbol.len() > m.len() + 1 {
+            var head = symbol.slice(0, m.len())
+            var tail = symbol.slice(m.len() + 1, symbol.len())
+            var sep = symbol.char_at(m.len())
+            if head == m && sep == 46 && c.fns.get(mi2).name == tail {
+                return mi2
+            }
+        }
+        mi2 = mi2 + 1
+    }
+    // 兜底:剥前缀裸名(host loader strip-prefix fallback)
+    var li2 = 0
+    while li2 < c.fns.len() {
+        if c.fns.get(li2).name == symbol {
+            return li2
+        }
+        li2 = li2 + 1
+    }
+    return -1
+}
+
+// W3:链接器——cgs(deps DFS 后序 + main 末位)→ 合并 CG:
+// 指令平移(jmp 目标 +base / Call fn 索引 +fnbase / 池操作数 remap 去重
+// 并池)、fns/fn_mods 合并、defers 定址(mod_bases 记 dep 起始)。
+// 返回 CG.err 非空即链接失败(宿主文本)
+fn cg_link_modules(mut cgs List<CG>) CG {
+    var m = cg_new()
+    var fn_base = 0
+    var mi = 0
+    while mi < cgs.len() {
+        var mc = cgs.get(mi)
+        var ins_base = m.ins.len()
+        if mi < cgs.len() - 1 {
+            m.mod_bases.push(ins_base)
+        }
+        // 池去重合并 + remap 表
+        var remap List<int> = List.new()
+        var pi = 0
+        while pi < mc.pool.len() {
+            var ps = mc.pool.get(pi)
+            var found = -1
+            var pj = 0
+            while pj < m.pool.len() {
+                if m.pool.get(pj) == ps {
+                    found = pj
+                }
+                pj = pj + 1
+            }
+            if found < 0 {
+                m.pool.push(ps)
+                found = m.pool.len() - 1
+            }
+            remap.push(found)
+            pi = pi + 1
+        }
+        // 指令迁移
+        var ii = 0
+        while ii < mc.ins.len() {
+            var ins = mc.ins.get(ii)
+            if ins.op == OpCode.Jmp || ins.op == OpCode.JmpZ || ins.op == OpCode.JmpNz {
+                ins.n = ins.n + ins_base
+            } else if ins.op == OpCode.Call && ins.n >= 0 {
+                ins.n = ins.n + fn_base
+            } else if ins.op == OpCode.LoadStr || ins.op == OpCode.GetField || ins.op == OpCode.LoadGlobal || ins.op == OpCode.StoreGlobal {
+                if ins.n >= 0 && ins.n < remap.len() {
+                    ins.n = remap.get(ins.n)
+                }
+            }
+            m.ins.push(ins)
+            ii = ii + 1
+        }
+        // fns + fn_mods
+        var fi = 0
+        while fi < mc.fns.len() {
+            var fe = mc.fns.get(fi)
+            m.fns.push(FnEntry(fe.name, fe.ins + ins_base))
+            m.fn_mods.push(mc.mod_name)
+            fi = fi + 1
+        }
+        // defers(绝对化 ins 指针)
+        var di = 0
+        while di < mc.defers.len() {
+            var d = mc.defers.get(di)
+            m.defers.push(CGDefer(d.ins_idx + ins_base, d.symbol))
+            di = di + 1
+        }
+        fn_base = fn_base + mc.fns.len()
+        if mc.err != "" && m.err == "" {
+            m.err = mc.err
+        }
+        mi = mi + 1
+    }
+    // defer 定址
+    var ri = 0
+    while ri < m.defers.len() {
+        var d2 = m.defers.get(ri)
+        var target = cg_link_symbol(m, d2.symbol)
+        if target < 0 {
+            m.err = "Undefined symbol: " + d2.symbol + " in module <main>"
+            return m
+        }
+        m.ins.get(d2.ins_idx).n = target
+        ri = ri + 1
+    }
+    return m
+}
+
+// W3 多文件编译主入口:main_path → 合并 CG(err 语义同 cg_compile)
+fn cg_compile_files(main_path str) CG {
+    var res = cg_resolve(main_path)
+    if res.err != "" {
+        var e = cg_new()
+        e.err = res.err
+        return e
+    }
+    var cgs List<CG> = List.new()
+    var i = 0
+    while i < res.mods.len() {
+        var mod = res.mods.get(i)
+        cgs.push(cg_compile_mod(mod.source, mod.name))
+        i = i + 1
+    }
+    return cg_link_modules(cgs)
+}
+
+// W3 M4 多文件闸门入口
+fn codegen_dump_files(main_path str) str {
+    var c = cg_compile_files(main_path)
+    if c.err != "" {
+        return c.err
+    }
+    return cg_serialize(c)
 }
 
 // M4 闸门入口

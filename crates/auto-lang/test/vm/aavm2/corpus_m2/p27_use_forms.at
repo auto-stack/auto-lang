@@ -1,0 +1,7 @@
+use db
+use db: create, remove
+use db: *
+use tools.helper
+use db: create
+use.rs foo::Bar
+use.py baz

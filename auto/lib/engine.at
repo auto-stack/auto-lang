@@ -268,6 +268,57 @@ fn ev_run_t(source str, trace int) str {
         }
         fi = fi + 1
     }
+    var gnames List<str> = List.new()
+    var gvals List<Val> = List.new()
+    return ev_exec(c, entry, trace, gnames, gvals)
+}
+
+// W3(Plan 511)多文件执行入口:resolve_uses→多编译单元→链接→初始化序
+// (dep 模块链接序逐个执行至各自 HALT,全局区共享)→main 入口。
+// 模块解析/编译错误文本直返(宿主为规范)
+fn ev_run_files(main_path str) str {
+    var c = cg_compile_files(main_path)
+    if c.err != "" {
+        return c.err
+    }
+    var gnames List<str> = List.new()
+    var gvals List<Val> = List.new()
+    var out = ""
+    var bi = 0
+    while bi < c.mod_bases.len() {
+        var chunk = ev_exec(c, c.mod_bases.get(bi), 0, gnames, gvals)
+        if chunk != "" {
+            if out != "" {
+                out = out + "
+"
+            }
+            out = out + chunk
+        }
+        bi = bi + 1
+    }
+    // main 入口(镜像 lib.rs 1222:main/test 导出,否则主模块起点)
+    var entry = 0
+    var fi2 = 0
+    while fi2 < c.fns.len() {
+        if c.fns.get(fi2).name == "main" {
+            entry = c.fns.get(fi2).ins
+        }
+        fi2 = fi2 + 1
+    }
+    var main_out = ev_exec(c, entry, 0, gnames, gvals)
+    if main_out != "" {
+        if out != "" {
+            out = out + "
+"
+        }
+        out = out + main_out
+    }
+    return out
+}
+
+// 执行核心(自 ev_run_t 抽出:单文件/多模块 init 共用;全局区以
+// gnames/gvals 传入共享——VM List 引用语义写回)
+fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>) str {
     var stack List<Val> = List.new()
     var arena List<List<Val>> = List.new()
     var sp = 0
@@ -280,11 +331,6 @@ fn ev_run_t(source str, trace int) str {
     var cur_args = 0
     var args_stack List<int> = List.new()
     var args_depth = 0
-    // W2(Plan 511):全局区(名字-值并行线性表,镜像宿主 vm.globals
-    // 名字键语义,LOAD 未命中缺省 0)+ 迭代器游标表(arena 槽位并行,
-    // call.nat 112 = auto.iterator.next 用)
-    var gnames List<str> = List.new()
-    var gvals List<Val> = List.new()
     var running = true
     while running {
         var ins = c.ins.get(ip)
