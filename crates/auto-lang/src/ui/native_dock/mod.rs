@@ -485,6 +485,27 @@ impl DragWatch {
     }
 }
 
+/// Plan 505 A 族（债 486 性能行）：事件泵排空拾取——一拍内把通道待发
+/// 事件全部取空（drain-while-empty），批次内手势边界（MoveSizeStart/End）
+/// 稳定分区前置（终态同拍即判），LOCATIONCHANGE 噪声殿后保持原相对序。
+/// 单发 16ms 轮询（≈62 事件/s）下系统级噪声可把松手→落位拖到秒级；
+/// 成批上行后终态延迟上限收敛到一拍。`recv` 为 `try_recv` 闭包
+/// （`None` = 通道空），纯逻辑全平台单测。
+pub fn drain_slot_events(mut recv: impl FnMut() -> Option<NativeSlotEvent>) -> Vec<NativeSlotEvent> {
+    let mut batch = Vec::new();
+    while let Some(evt) = recv() {
+        batch.push(evt);
+    }
+    // 稳定分区：START/End 保持相对序前置（sort_by_key 稳定排序），其余
+    // （噪声 LOCATIONCHANGE、Minimize、Destroy）殿后。他窗并发拖拽时前置
+    // 的新 START 覆盖在途会话与 start() 既有"新起点覆盖"语义一致。
+    batch.sort_by_key(|e| !matches!(
+        e.kind,
+        NativeSlotEventKind::MoveSizeStart | NativeSlotEventKind::MoveSizeEnd
+    ));
+    batch
+}
+
 /// 落点计算：指针所在 free-cell（含多命中取首序）；无包含时取中心距最近者；
 /// 空表 → None。free-cell 矩形为屏幕物理坐标（宿主经 [`CoordMapper`] 换算）。
 pub fn landing_slot(pointer: (i32, i32), free_cells: &[Rect]) -> Option<Rect> {
@@ -853,6 +874,94 @@ mod tests {
             w.sample((700, 210), desktop, &cells, 60),
             DragSample::Overlay(Some(Rect::new(600, 100, 500, 300)))
         );
+    }
+
+    // ---- Plan 505 A 族：事件泵排空拾取（drain-while-empty + 手势边界优先） ----
+
+    /// 债 486 性能行：注入 100 条 LOCATIONCHANGE 噪声 + START/END → 一拍
+    /// 排空全部 102 条，且 START/END 稳定分区前置（同拍终态即判），噪声
+    /// 保持原相对序殿后（单发 16ms 轮询下同样队列要 ~1.6s 才能送完）。
+    #[test]
+    fn slot_pump_drains_noise_batch_and_prioritizes_gesture_markers() {
+        let mut queued: std::collections::VecDeque<NativeSlotEvent> = Default::default();
+        for i in 0..100 {
+            queued.push_back(NativeSlotEvent {
+                hwnd: NativeHwnd(i),
+                kind: NativeSlotEventKind::LocationChange,
+            });
+        }
+        // 终态标记排在噪声流末尾（真实序：松手 END 落在拖动噪声之后）。
+        queued.push_back(NativeSlotEvent {
+            hwnd: NativeHwnd(0x77),
+            kind: NativeSlotEventKind::MoveSizeStart,
+        });
+        queued.push_back(NativeSlotEvent {
+            hwnd: NativeHwnd(0x77),
+            kind: NativeSlotEventKind::MoveSizeEnd,
+        });
+        let batch = drain_slot_events(|| queued.pop_front());
+        assert_eq!(batch.len(), 102, "一拍排空（drain-while-empty）");
+        assert_eq!(batch[0].kind, NativeSlotEventKind::MoveSizeStart);
+        assert_eq!(batch[1].kind, NativeSlotEventKind::MoveSizeEnd);
+        // 噪声殿后保持相对序（hwnd 递增可证稳定分区）。
+        assert!(
+            batch[2..]
+                .iter()
+                .all(|e| e.kind == NativeSlotEventKind::LocationChange)
+        );
+        assert_eq!(batch[2].hwnd, NativeHwnd(0));
+        assert_eq!(batch[batch.len() - 1].hwnd, NativeHwnd(99));
+    }
+
+    /// 空通道 → 空批（泵层据此走 16ms 睡眠空拍）。
+    #[test]
+    fn slot_pump_empty_channel_yields_empty_batch() {
+        assert!(drain_slot_events(|| None).is_empty());
+    }
+
+    /// S2 快甩（P488-D3 同族）：START→END 毫秒间隔、零中间采样——同批
+    /// 送达时终态直接按 END 时指针判定（不滞留 Over 态），会话即收即复位；
+    /// 残余噪声 LOC 在会话复位后被 watched_hwnd 过滤弃置。
+    #[test]
+    fn dragwatch_fast_flick_same_batch_end_judged_immediately() {
+        let (desktop, _cells) = desktop_fixture();
+        let mut queued: std::collections::VecDeque<NativeSlotEvent> = Default::default();
+        queued.push_back(NativeSlotEvent {
+            hwnd: NativeHwnd(0x99),
+            kind: NativeSlotEventKind::MoveSizeStart,
+        });
+        queued.push_back(NativeSlotEvent {
+            hwnd: NativeHwnd(0x01),
+            kind: NativeSlotEventKind::LocationChange,
+        });
+        queued.push_back(NativeSlotEvent {
+            hwnd: NativeHwnd(0x99),
+            kind: NativeSlotEventKind::MoveSizeEnd,
+        });
+        let batch = drain_slot_events(|| queued.pop_front());
+        // 泵优先序 = [START, END, LOC]；驱动侧按序消费（drive_drag_watch 同型）。
+        let mut watch = DragWatch::new();
+        let mut outcome = None;
+        for evt in &batch {
+            match evt.kind {
+                NativeSlotEventKind::MoveSizeStart => watch.start(evt.hwnd),
+                NativeSlotEventKind::MoveSizeEnd => {
+                    outcome = watch.end((300, 200), desktop);
+                }
+                // 会话复位后 watched_hwnd=None → 他窗噪声即弃
+                NativeSlotEventKind::LocationChange => {
+                    if watch.watched_hwnd() == Some(evt.hwnd) {
+                        let _ = watch.sample((300, 200), desktop, &[], 0);
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(
+            outcome,
+            Some(DragWatchOutcome::DockCandidate(NativeHwnd(0x99)))
+        );
+        assert!(!watch.is_watching(), "快甩终态即判后会话复位（无滞留）");
     }
 
     #[test]

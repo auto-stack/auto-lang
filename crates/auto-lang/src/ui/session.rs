@@ -233,6 +233,10 @@ pub struct DesktopState {
     /// Plan 504：fit 测量单轮自重试计数（`__fit_measured` 未找到测量锚点
     /// 时重新发起；达上限放弃本轮，下个触发点清零重新武装）。
     pub fit_measure_retries: Cell<u32>,
+    /// Plan 505 D（债 P488-D4）：on_dnd_finished 交付锚——拖出发起方
+    /// AppId（App handler dispatch 环后按拖出会话代号变化置位；DndFinished
+    /// 消费即取走）。None = 回退完成时焦点（v1 语义）。
+    pub dnd_initiator: Option<crate::ui::session::AppId>,
     /// Plan 479 T2：通知历史（S6 聚合面；MRU 序 front=最新，容量
     /// [`NOTES_CAP`] FIFO）。写入唯一入口 = renderer `push_notification`
     /// （双面一体：入史 + toast + 未读）。
@@ -336,6 +340,7 @@ impl DesktopState {
             toast_next_id: Cell::new(1),
             fit_measure_in_flight: Cell::new(false),
             fit_measure_retries: Cell::new(0),
+            dnd_initiator: None,
             notifications: RefCell::new(Vec::new()),
             notes_next_id: Cell::new(1),
             notes_unread: Cell::new(0),
@@ -1421,6 +1426,11 @@ pub struct DesktopSession {
     /// 的 child 侧协议状态）。None = 非像素臂进程（既有路径零开销）。
     #[cfg(feature = "ui-iced")]
     pub pixels: Option<crate::ui::desktop_protocol::pixels::PixelsChild>,
+    /// Plan 505 B5（债 P480-R1）：broker 监听管道名（停机唤醒探测连接的
+    /// 目标——serve_once 阻塞在管道 accept，一记"连上即关"使其返回见
+    /// 旗标退出）。
+    #[cfg(feature = "ui-iced")]
+    pub(crate) broker_pipe: Option<String>,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -1454,10 +1464,11 @@ pub enum DesktopEvent {
     /// 经 `__desktop_cmd` `summon\tlauncher` 转发）。464 前无消费者——
     /// update 臂静默；464 在 overlay 槽挂 launcher 并消费本事件。
     SummonLauncher,
-    /// Plan 473 T6：原生窗口槽位的 WinEventHook 事件（hwnd 反查槽位在
-    /// update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
-    /// Destroy → B7 槽位回收）。
-    NativeSlotHwnd(isize, crate::ui::native_dock::NativeSlotEventKind),
+    /// Plan 473 T6 / 505 A 族：原生窗口槽位的 WinEventHook 事件批（hwnd
+    /// 反查槽位在 update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
+    /// Destroy → B7 槽位回收）。505 起一拍 drain-while-empty 成批上行，
+    /// START/END 批内优先（[`crate::ui::native_dock::drain_slot_events`]）。
+    NativeSlotEvents(Vec<crate::ui::native_dock::NativeSlotEvent>),
     /// Plan 486：拖入手势高亮（DragWatch 光标采样产出；`Some`=候选槽位
     /// 屏幕物理矩形，`None`=清除）。正常流由 update 侧直写会话字段；本
     /// 消息面供 E2E/headless 直注验证 overlay 渲染。
@@ -1500,9 +1511,13 @@ pub fn desktop_service_tick(ms: u64) -> iced::Subscription<DesktopMessage> {
 }
 
 /// Plan 473 T6：原生窗口槽位事件泵——首帧惰性启动 WinEventHook 钩子线程
-/// （OUTOFCONTEXT），mpsc 短轮询（16ms，事件低频）收到事件后转为
-/// [`DesktopEvent::NativeSlotHwnd`]。流因钩子退出而终止时，下一轮订阅
+/// （OUTOFCONTEXT），mpsc 短轮询（16ms 空拍）收到事件后转为
+/// [`DesktopEvent::NativeSlotEvents`]。流因钩子退出而终止时，下一轮订阅
 /// diff 按恒等 recipe 重新拉起（自愈）。
+/// Plan 505 A 族（债 486 性能行）：每拍 drain-while-empty——通道一次排空
+/// 成批上行（START/END 批内优先），系统级 LOCATIONCHANGE 噪声不再把
+/// MOVESIZESTART/END 按条排队吃 16ms 轮询节拍（原单发 ≈62 事件/s，
+/// 松手→dock 落位可滞秒级）。
 #[cfg(windows)]
 pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
     use crate::ui::native_dock::win32::{spawn_event_hook, NativeSlotEventHook};
@@ -1540,22 +1555,32 @@ pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
                             }
                         };
                     };
-                    // std 通道 + 短轮询（事件低频；不阻塞执行器工作线程）。
-                    // 空拍以 Some(None) 表示、流级 filter_map 剔除（直接 yield
-                    // None = 流终止，AppTickRecipe 459 同款教训）。
-                    match rx.try_recv() {
-                        Ok(evt) => Some((
-                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotHwnd(
-                                evt.hwnd.0,
-                                evt.kind,
-                            ))),
-                            Some((hook, rx)),
-                        )),
-                        Err(std::sync::mpsc::TryRecvError::Empty) => {
-                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-                            Some((None, Some((hook, rx))))
+                    // std 通道 + 短轮询：空拍睡 16ms（不阻塞执行器工作线程），
+                    // 非空拍一次排空成批上行。空拍以 Some(None) 表示、流级
+                    // filter_map 剔除（直接 yield None = 流终止，AppTickRecipe
+                    // 459 同款教训）。钩子退出（Disconnected）：尾批照发，
+                    // 随后流终止 → 重订阅自愈（473 原语义保持）。
+                    let mut disconnected = false;
+                    let batch = crate::ui::native_dock::drain_slot_events(|| match rx.try_recv() {
+                        Ok(evt) => Some(evt),
+                        Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            disconnected = true;
+                            None
                         }
-                        Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+                    });
+                    let next = (!disconnected).then_some((hook, rx));
+                    if batch.is_empty() {
+                        if disconnected {
+                            return None;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                        Some((None, next))
+                    } else {
+                        Some((
+                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotEvents(batch))),
+                            next,
+                        ))
                     }
                 },
             )
@@ -1570,6 +1595,37 @@ pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
 #[cfg(not(windows))]
 pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
     iced::Subscription::none()
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Plan 505 C：实机验收通道注入（进程级队列——MCP `autoui_desktop` 工具
+// 产、iced 更新环 ServiceTick 节拍消费。绕开 OS 注入/CUA 像素身份守卫
+// （P487-1/P496-1/P501-2 阻断族统一解），走与真实按钮同一消费臂；
+// AUTOUI_ACCEPTANCE=1 门在工具侧，生产缺省零面）。
+// ─────────────────────────────────────────────────────────────────────────
+
+/// 验收注入项。
+#[derive(Debug, Clone)]
+pub enum DesktopInject {
+    /// DesktopBus 动词记录（如 "open_settings" / "layout\tgrid"）——并入
+    /// shell `__desktop_cmd`，经 `drain_and_execute_desktop_commands` 同臂
+    /// 消费（真实 shell 按钮的同一执行路径）。
+    Bus(String),
+    /// 特权 App handler 直呼（shell/settings/notification/launcher 的
+    /// onclick 同名 handler——比动词更贴按钮的一步）。
+    Handler { app: &'static str, handler: String, arg: Option<String> },
+}
+
+static DESKTOP_INJECT_QUEUE: Mutex<Vec<DesktopInject>> = Mutex::new(Vec::new());
+
+/// 工具侧入队（AUTOUI_ACCEPTANCE 门在 [`crate::ui::mcp_server`] 工具侧）。
+pub fn desktop_inject_push(item: DesktopInject) {
+    DESKTOP_INJECT_QUEUE.lock().unwrap().push(item);
+}
+
+/// 更新环排空（一次取尽）。
+pub fn desktop_inject_take() -> Vec<DesktopInject> {
+    std::mem::take(&mut *DESKTOP_INJECT_QUEUE.lock().unwrap())
 }
 
 impl AppSession {
@@ -1600,6 +1656,7 @@ impl DesktopSession {
             broker_stop: None,
             #[cfg(feature = "ui-iced")]
             pixels: None,
+            broker_pipe: None,
         }
     }
 
@@ -1964,6 +2021,7 @@ fn spawn_outproc_child(
         let mut broker = Broker::on_pipe(pipe_name.to_string());
         let pending = Arc::clone(&self.broker_pending);
         self.broker_stop = Some(Arc::clone(&stop));
+        self.broker_pipe = Some(pipe_name.to_string());
         std::thread::Builder::new()
             .name("autodesk-broker-serve".into())
             .spawn(move || {
@@ -1981,6 +2039,26 @@ fn spawn_outproc_child(
                 }
             })
             .expect("spawn broker serve thread");
+    }
+
+    /// Plan 505 B5（债 P480-R1 清偿）：broker serve 线程显式停机——置位
+    /// 停止旗标 + 一记探测连接（连上即关）唤醒阻塞在管道 accept 的
+    /// serve_once（broker.rs 测试同款停机序）。桌面退出路径（Esc /
+    /// exit 命令 / 全窗关闭 daemon 语义）统一调用；幂等（二次调用无旗标
+    /// 即无操作）。serve 线程 v1"进程级常驻"语义就此收敛为随桌面停机。
+    #[cfg(feature = "ui-iced")]
+    pub fn shutdown_broker(&mut self) {
+        use std::sync::atomic::Ordering;
+        let Some(stop) = self.broker_stop.take() else {
+            return;
+        };
+        let pipe = self.broker_pipe.take();
+        stop.store(true, Ordering::Relaxed);
+        if let Some(pipe) = pipe.as_deref() {
+            // 唤醒：连上即关的探测连接（500ms 超时兜底——serve 线程可能
+            // 恰在两次 serve_once 间隙，连接失败无碍旗标退出）。
+            let _ = crate::ui::desktop_protocol::transport::connect(pipe, 500);
+        }
     }
 
     /// Plan 480 S3/S4：孵化落地（属主线程；desktop 模式由 ServiceTick 帧泵
@@ -3226,6 +3304,30 @@ mod tests {
     fn insert_app(ds: &mut DesktopSession, name: &str) -> AppId {
         let comp = DynamicComponent::new(&make_test_widget(name)).unwrap();
         ds.allocate_app(comp)
+    }
+
+    /// Plan 505 B5（债 P480-R1）：shutdown_broker 显式停机——停止旗标
+    /// 置位 + 探测连接唤醒 serve 线程（唤醒序语义由 broker.rs
+    /// `enable_broker_incubates_into_real_session` 停机段背书）+ 留存
+    /// 清空 + 幂等（二次调用无旗标即无操作）。
+    #[test]
+    fn shutdown_broker_sets_flag_and_is_idempotent() {
+        use std::sync::atomic::Ordering;
+        let mut ds = DesktopSession::__test_session();
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        ds.enable_broker("autoui-505-shutdown-test-pipe", Arc::clone(&stop));
+        assert!(ds.broker_stop.is_some(), "旗标留存");
+        assert_eq!(ds.broker_pipe.as_deref(), Some("autoui-505-shutdown-test-pipe"));
+        ds.shutdown_broker();
+        assert!(stop.load(Ordering::Relaxed), "停止旗标置位");
+        assert!(ds.broker_stop.is_none() && ds.broker_pipe.is_none(), "留存清空");
+        // 幂等：无旗标即无操作，不 panic。
+        ds.shutdown_broker();
+        // serve 线程随旗标退出（探测连接唤醒；≤1s 判定，防环境抖动挂死）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while stop.load(Ordering::Relaxed) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 
     #[test]

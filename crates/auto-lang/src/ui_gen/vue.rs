@@ -5497,6 +5497,43 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                             attrs.push(attr);
                             continue;
                         }
+                        // Plan 499 M2: mouse-area onmousemove → 内联箭头换算逻辑
+                        // 坐标(引擎层=生成端完成屏幕→逻辑换算,与 iced PointerArea
+                        // 同一坐标语义;coords "WxH" 声明逻辑幅面,缺省 = raw px)。
+                        // 必须先于循环变量自动传参臂(该臂会给 handler 追加 (b))。
+                        if (tag == "mouse-area" || tag == "mouse_area")
+                            && Self::split_event_key(event).0 == "onmousemove"
+                        {
+                            let call = self.handler_to_function_call_with_params(
+                                &aura_event.handler,
+                                &aura_event.params,
+                            );
+                            self.used_handlers
+                                .insert(self.handler_to_function_call(&aura_event.handler));
+                            let extent = props.get("coords").and_then(|v| match v {
+                                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                    s.split_once(['x', 'X']).and_then(|(w, h)| {
+                                        match (w.trim().parse::<f32>(), h.trim().parse::<f32>()) {
+                                            (Ok(w), Ok(h)) if w > 0.0 && h > 0.0 => {
+                                                Some((w, h))
+                                            }
+                                            _ => None,
+                                        }
+                                    })
+                                }
+                                _ => None,
+                            });
+                            let arrow = match extent {
+                                Some((w, h)) => format!(
+                                    "e => {}(e.offsetX / e.currentTarget.clientWidth * {}, \
+                                     e.offsetY / e.currentTarget.clientHeight * {})",
+                                    call, w, h
+                                ),
+                                None => format!("e => {}(e.offsetX, e.offsetY)", call),
+                            };
+                            attrs.push(format!("@mousemove=\"{}\"", arrow));
+                            continue;
+                        }
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         // Track used handler (without params for matching)
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
@@ -12370,8 +12407,32 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // official 包 Auto 组件承接(known_sub_widgets 折叠),原生 tag
             // 不再走 shadcn 发射。
             _ => {
-                // Default handling for other components - extract class/style
+                // Default handling for other components - extract class/style.
                 self.push_style_class(&mut attrs, props);
+                // Plan 505 B3（债 P497-2）：无专用臂的注册组件（wm 族
+                // window_thumbnail/virtual_window 等）props 透传——原 v1
+                // 只透 class，wid/win/fallback_icon 静默丢弃；Vue 侧
+                // defineProps 契约（如 VirtualWindow.vue 的 win）由此
+                // 喂到。与子组件通用臂同款：排序迭代 + 绑定表达式；
+                // class/style 已由上面消费，跳过不双发。
+                {
+                    let mut sorted_bind: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                    sorted_bind.sort_by(|a, b| a.0.cmp(b.0));
+                    for (key, value) in sorted_bind {
+                        if matches!(key.as_str(), "class" | "style" | "style_obj") {
+                            continue;
+                        }
+                        let value_str = match value {
+                            AuraPropValue::Expr(expr) => self.bound_value_or_warn(
+                                expr,
+                                &format!("component prop `{}`", key),
+                                "null",
+                            ),
+                            AuraPropValue::StyleBinding(_) => continue,
+                        };
+                        attrs.push(format!(":{}=\"{}\"", key, value_str));
+                    }
+                }
             }
         }
 
@@ -18826,6 +18887,41 @@ widget Menu {
         assert!(sfc.contains("@mouseup=\"Up\""), "@mouseup emitted:\n{}", sfc);
         assert!(sfc.contains("@wheel=\"Wheel\""), "@wheel emitted:\n{}", sfc);
         assert!(sfc.contains("@contextmenu=\"Ctx\""), "@contextmenu emitted:\n{}", sfc);
+    }
+
+    /// Plan 499 M2: mouse-area onmousemove + coords → 内联箭头换算逻辑坐标
+    /// (生成端=引擎层完成屏幕→逻辑换算;与 iced PointerArea 同一坐标语义)。
+    /// 缺省 coords → raw px 形态。
+    #[test]
+    fn test_mouse_area_onmousemove_logical_coords() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Chart {
+    msg Msg { PointerMove, RawMove }
+    model { var x int = 0 }
+    view {
+        col {
+            mouse-area (coords: "560x300", onmousemove: .PointerMove) {}
+            mouse-area (onmousemove: .RawMove) {}
+        }
+    }
+    on {
+        .PointerMove -> { .x = 1 }
+        .RawMove -> { .x = 2 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(
+                "@mousemove=\"e => PointerMove(e.offsetX / e.currentTarget.clientWidth * 560, e.offsetY / e.currentTarget.clientHeight * 300)\""
+            ),
+            "coords 换算箭头必须发射:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@mousemove=\"e => RawMove(e.offsetX, e.offsetY)\""),
+            "raw px 形态必须发射:\n{}",
+            sfc
+        );
     }
 
     // ====================================================================

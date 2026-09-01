@@ -6,6 +6,9 @@
 mod layout_collector;
 // Plan 422: 锚定弹层原语(iced overlay wrapper,Tooltip 同型)。
 pub mod popover;
+// Plan 499 M2: 指针移动限频 widget(mouse-area onmousemove 臂承载,
+// 坐标换算 + ≤30Hz 限频 + 量化去重)。
+pub mod pointer_area;
 pub mod renderer;
 // Plan 497 T2: 每窗口真缩略快照核心(裁剪式整窗快照,T1 定案)。
 pub mod snapshot;

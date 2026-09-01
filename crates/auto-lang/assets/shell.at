@@ -5,7 +5,7 @@
 //
 // 双向接缝（463 T1 §2/§3 定案；Plan 472 T3 formalize 为投影协议 v1，
 // Plan 478 T3 升版 v1.1，Plan 479 T4 升版 v1.2，Plan 486 升版 v1.3，
-// Plan 487 M4 升版 v1.4——合同
+// Plan 487 M4 升版 v1.4，Plan 505 B2 升版 v1.5——合同
 // schema/projection-protocol-v1.md——字段表/指纹门控/动词词表）：
 //   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录
 //       "verb\targ"，多条以 "\n" 连接。词表：launch/close/focus/layout/
@@ -19,9 +19,12 @@
 //   入：`__wm_wins`（宿主注入 {wid,title,focused,workspace,app,icon} Obj
 //       数组，跨分区全集，dock 运行窗列表源；v1.3 native 槽位条目为五字段
 //       {wid:"N<slot>",title,native,icon,focused}——workspace/app 不适用
-//       省略，native=="1" 分支走 title 文本按钮 + native 动词）
+//       省略，native=="1" 分支走 title 文本按钮 + native 动词；v1.5 增
+//       `pager` 旗标 "1"/""——本窗属其分区缩略前 4，native/mru 条目恒空串）
 //       `__wm_workspaces`（{id,name,current,label} Obj 数组，分区切换条
-//       源；label = 1 基人读标签，v1.1——当前分区高亮消费 current）
+//       源；label = 1 基人读标签，v1.1——当前分区高亮消费 current；v1.5
+//       增 `more` 溢出标签 "+N"（分区窗数 >4 时，缺省空串）——pager
+//       截断消费（505 B2/债 P497-1））
 //       `__wm_mru`（v1.1：当前分区 MRU 序 Obj 数组；switcher 专用合同面，
 //       dock 不消费）
 //       `__wm_running`（",id1,id2," 运行中 app 集合派生串，pinned 运行
@@ -66,6 +69,10 @@ widget Desktop {
         var __dock_pinned = []
         var __dock_position str = "bottom"
         var __dock_enabled str = "1"
+        // Plan 505 B1：任务栏边线类（宿主投影——top→border-b / bottom→
+        // border-t；容器/注册件的 if 样式表达式在实机装配层不稳，边线类
+        // 改数据驱动拼接（"grid grid-cols-" + n 先例形态））。
+        var __dock_border str = "border-t"
         // Plan 497 G1：dock 时钟（HH:MM 本地）。宿主 ServiceTick 帧泵注入
         // （分钟变化才写——稳态零重建）；本地 tick 非驱动事实投影，不进
         // 指纹门控组（协议字段表外注记，零协议改动）。
@@ -78,174 +85,184 @@ widget Desktop {
 
     view {
         col {
-            style: "w-full h-full"
-            // dock 位置数据级可配（top/bottom）：col 内以 if 分支换序承载。
-            // v1 已知瑕疵：任务栏标记在两分支各一份（DSL 无局部模板复用；
-            // M2 pack 化时收敛）。
-            if .__dock_position == "top" {
-                if .__dock_enabled == "1" {
-                    taskbar {
-                        style: "h-14 w-full flex items-center gap-2 px-2 bg-card border-b"
+            // Plan 505 B1（债 P487-3 清偿）：任务栏单份承载——原 top/bottom 双
+            // 分支 ~150 行重复收敛为参数化单份：位置由容器 flex-col-reverse
+            // 数据级翻转承载（子序 [taskbar, spacer] 反转即 [spacer,
+            // taskbar]——iced 臂 col_reverse 412 已有；Vue 轨同 class 原生），
+            // 任务栏边线随位置 border-b/border-t。
+            style: if .__dock_position == "top" {
+                "w-full h-full"
+            } else {
+                "w-full h-full flex-col-reverse"
+            }
+            if .__dock_enabled == "1" {
+                taskbar {
+                    style: "h-14 w-full flex items-center gap-2 px-2 bg-card " + .__dock_border
 
-                        // Plan 503：launcher 召唤钮随图标格加大并 rounded-xl。
-                        button "⊞" {
-                            onclick: .SummonLauncher
-                            style: "h-10 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
-                        }
-                        // Plan 503：dock 图标格 48px rounded-xl(stella 签名),
-                        // 运行指示改 4px accent 圆点(替换 "●" text hack)。
-                        for p in .__dock_pinned {
-                            row {
-                                style: "items-center gap-1"
-                                button (icon: p.icon) {
-                                    onclick: .ActivateApp(p.id)
-                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
-                                }
-                                if .__wm_running.contains("," + p.id + ",") {
-                                    div { style: "h-1 w-1 rounded-full bg-primary" }
-                                }
+                    // Plan 503：launcher 召唤钮随图标格加大并 rounded-xl。
+                    button "⊞" {
+                        onclick: .SummonLauncher
+                        style: "h-10 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
+                    }
+                    // Plan 503：dock 图标格 48px rounded-xl(stella 签名),
+                    // 运行指示改 4px accent 圆点(替换 "●" text hack)。
+                    for p in .__dock_pinned {
+                        row {
+                            style: "items-center gap-1"
+                            button (icon: p.icon) {
+                                onclick: .ActivateApp(p.id)
+                                style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
+                            }
+                            if .__wm_running.contains("," + p.id + ",") {
+                                div { style: "h-1 w-1 rounded-full bg-primary" }
                             }
                         }
-                        for w in .__wm_wins {
-                            row {
-                                style: "items-center gap-1"
-                                // v1.3：native 条目（native=="1"）——title 文本
-                                // 按钮（无注册表图标，title 即身份）+ native 动词；
-                                // App 条目走既有图标按钮路径。
-                                if w.native == "1" {
-                                    button (text: w.title) {
-                                        onclick: .NativeFocus(w.wid)
-                                        style: "h-9 max-w-32 truncate px-2 text-xs"
-                                    }
-                                    button "×" {
-                                        onclick: .NativeClose(w.wid)
-                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
-                                    }
-                                } else {
-                                    // Plan 503：激活窗 2px accent 竖条 + 图标格
-                                    // accent-light 底(stella 激活态范式)。
-                                    if w.focused == "1" {
-                                        div { style: "w-0.5 h-5 rounded-full bg-primary" }
-                                    }
-                                    // Plan 497 G5：条目 hover 预览（422 popover
-                                    // 先例，widget 锚=条目按钮；内容=真缩略，
-                                    // miss 由渲染臂 fallback icon 兜底）。
-                                    mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
-                                        popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
-                                            if w.focused == "1" {
-                                                button (icon: w.icon) {
-                                                    onclick: .WinFocus(w.wid)
-                                                    style: "h-12 w-12 px-0 text-base rounded-xl bg-primary/15"
-                                                }
-                                            } else {
-                                                button (icon: w.icon) {
-                                                    onclick: .WinFocus(w.wid)
-                                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
-                                                }
-                                            }
-                                            window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
-                                        }
-                                    }
-                                    button "×" {
-                                        onclick: .WinClose(w.wid)
-                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
-                                    }
+                    }
+                    for w in .__wm_wins {
+                        row {
+                            style: "items-center gap-1"
+                            // v1.3：native 条目（native=="1"）——title 文本
+                            // 按钮（无注册表图标，title 即身份）+ native 动词；
+                            // App 条目走既有图标按钮路径。
+                            if w.native == "1" {
+                                button (text: w.title) {
+                                    onclick: .NativeFocus(w.wid)
+                                    style: "h-9 max-w-32 truncate px-2 text-xs"
                                 }
-                            }
-                        }
-                        spacer {
-                            style: "flex-1 h-8"
-                        }
-                        for ws in .__wm_workspaces {
-                            row {
-                                style: "items-center gap-0"
-                                // Plan 497 G5：分区 hover 预览（该区窗口缩略
-                                // 网格——v1 全量显示，无 ≤4 截断：.at 无过滤后
-                                // 截断原语，宿主派生会引入新投影字段违反协议
-                                // 零改动；密度待实机复核，见 plan 待澄清）。
-                                mouse-area (onmouseenter: .HoverWs(ws.id), onmouseleave: .HoverWsEnd) {
-                                    popover (open: .ws_hover == ws.id, placement: "top", ondismiss: .HoverWsEnd, class: "p-2 border rounded bg-card") {
-                                        if ws.current == "1" {
-                                            button (text: ws.label) {
-                                                onclick: .SetWorkspace(ws.id)
-                                                style: "h-8 w-8 px-0 text-xs bg-primary text-primary-foreground rounded-md"
+                                button "×" {
+                                    onclick: .NativeClose(w.wid)
+                                    style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                }
+                            } else {
+                                // Plan 503：激活窗 2px accent 竖条 + 图标格
+                                // accent-light 底(stella 激活态范式)。
+                                if w.focused == "1" {
+                                    div { style: "w-0.5 h-5 rounded-full bg-primary" }
+                                }
+                                // Plan 497 G5：条目 hover 预览（422 popover
+                                // 先例，widget 锚=条目按钮；内容=真缩略，
+                                // miss 由渲染臂 fallback icon 兜底）。
+                                mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
+                                    popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
+                                        if w.focused == "1" {
+                                            button (icon: w.icon) {
+                                                onclick: .WinFocus(w.wid)
+                                                style: "h-12 w-12 px-0 text-base rounded-xl bg-primary/15"
                                             }
                                         } else {
-                                            button (text: ws.label) {
-                                                onclick: .SetWorkspace(ws.id)
-                                                style: "h-8 w-8 px-0 text-xs text-muted-foreground"
+                                            button (icon: w.icon) {
+                                                onclick: .WinFocus(w.wid)
+                                                style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
                                             }
                                         }
-                                        col {
-                                            style: "gap-1"
-                                            for w in .__wm_wins {
-                                                if w.workspace == ws.id {
-                                                    row {
-                                                        style: "items-center gap-1"
-                                                        window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-28 h-16 rounded border" }
-                                                        text w.title { style: "text-xs text-muted-foreground max-w-24 truncate" }
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
                                     }
                                 }
                                 button "×" {
-                                    onclick: .WorkspaceClose(ws.id)
-                                    style: "h-8 w-5 px-0 text-xs text-muted-foreground"
+                                    onclick: .WinClose(w.wid)
+                                    style: "h-8 w-6 px-0 text-xs text-muted-foreground"
                                 }
                             }
                         }
-                        button "+" {
-                            onclick: .WorkspaceAdd
-                            style: "h-8 w-8 px-0 text-xs"
-                        }
-                        button "⇥" {
-                            onclick: .WorkspaceNext
-                            style: "h-8 w-8 px-0 text-xs"
-                        }
-                        button "▦" {
-                            onclick: .LayoutGrid
-                            style: "h-8 w-10 px-0 text-xs"
-                        }
-                        button "▤" {
-                            onclick: .LayoutStack
-                            style: "h-8 w-10 px-0 text-xs"
-                        }
-                        button "▢" {
-                            onclick: .LayoutFree
-                            style: "h-8 w-10 px-0 text-xs"
-                        }
-                        // Plan 479 T4：通知中心铃铛 + 未读 badge（v1.2；
-                        // 开关走 notes_toggle 总线动词，清除钮在面板内）。
+                    }
+                    spacer {
+                        style: "flex-1 h-8"
+                    }
+                    for ws in .__wm_workspaces {
                         row {
                             style: "items-center gap-0"
-                            button (icon: "bell") {
-                                onclick: .NotificationToggle
-                                style: "h-9 w-9 px-0 text-sm"
-                            }
-                            if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
-                                text .__wm_notes_unread {
-                                    style: "text-xs text-error font-semibold"
+                            // Plan 497 G5 / 505 B2（债 P497-1 清偿）：
+                            // 分区 hover 预览缩略 ≤4 截断 + "+N"——.at 无
+                            // 过滤后截断原语（for+if 无局部计数器），per-win
+                            // `pager` 旗标（每区前 4）与 `ws.more` 溢出标签由
+                            // 宿主派生（协议 v1.5，__wm_running 先例）。
+                            mouse-area (onmouseenter: .HoverWs(ws.id), onmouseleave: .HoverWsEnd) {
+                                popover (open: .ws_hover == ws.id, placement: "top", ondismiss: .HoverWsEnd, class: "p-2 border rounded bg-card") {
+                                    if ws.current == "1" {
+                                        button (text: ws.label) {
+                                            onclick: .SetWorkspace(ws.id)
+                                            style: "h-8 w-8 px-0 text-xs bg-primary text-primary-foreground rounded-md"
+                                        }
+                                    } else {
+                                        button (text: ws.label) {
+                                            onclick: .SetWorkspace(ws.id)
+                                            style: "h-8 w-8 px-0 text-xs text-muted-foreground"
+                                        }
+                                    }
+                                    col {
+                                        style: "gap-1"
+                                        for w in .__wm_wins {
+                                            if w.workspace == ws.id && w.pager == "1" {
+                                                row {
+                                                    style: "items-center gap-1"
+                                                    window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-28 h-16 rounded border" }
+                                                    text w.title { style: "text-xs text-muted-foreground max-w-24 truncate" }
+                                                }
+                                            }
+                                        }
+                                        if ws.more != "" {
+                                            text ws.more {
+                                                style: "text-xs text-muted-foreground"
+                                            }
+                                        }
+                                    }
                                 }
                             }
+                            button "×" {
+                                onclick: .WorkspaceClose(ws.id)
+                                style: "h-8 w-5 px-0 text-xs text-muted-foreground"
+                            }
                         }
-                        // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
-                        // 宿主臂二态翻转——面板可见再点即关）。
-                        button (icon: "settings") {
-                            onclick: .OpenSettingsPanel
+                    }
+                    button "+" {
+                        onclick: .WorkspaceAdd
+                        style: "h-8 w-8 px-0 text-xs"
+                    }
+                    button "⇥" {
+                        onclick: .WorkspaceNext
+                        style: "h-8 w-8 px-0 text-xs"
+                    }
+                    button "▦" {
+                        onclick: .LayoutGrid
+                        style: "h-8 w-10 px-0 text-xs"
+                    }
+                    button "▤" {
+                        onclick: .LayoutStack
+                        style: "h-8 w-10 px-0 text-xs"
+                    }
+                    button "▢" {
+                        onclick: .LayoutFree
+                        style: "h-8 w-10 px-0 text-xs"
+                    }
+                    // Plan 479 T4：通知中心铃铛 + 未读 badge（v1.2；
+                    // 开关走 notes_toggle 总线动词，清除钮在面板内）。
+                    row {
+                        style: "items-center gap-0"
+                        button (icon: "bell") {
+                            onclick: .NotificationToggle
                             style: "h-9 w-9 px-0 text-sm"
                         }
-                        // Plan 497 G2：托盘组右置尾部——[状态图标挂载点容器]
-                        // [时钟]。挂载点 v1 为空 row（app 图标注册 API 为
-                        // 非目标；容器先行占位，后续状态图标挂此）；
-                        // 铃铛（479）与齿轮（487）即组内既有成员。
-                        row {
-                            style: "items-center gap-0"
+                        if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
+                            text .__wm_notes_unread {
+                                style: "text-xs text-error font-semibold"
+                            }
                         }
-                        text .__wm_clock {
-                            style: "text-xs text-muted-foreground px-2 tabular-nums"
-                        }
+                    }
+                    // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
+                    // 宿主臂二态翻转——面板可见再点即关）。
+                    button (icon: "settings") {
+                        onclick: .OpenSettingsPanel
+                        style: "h-9 w-9 px-0 text-sm"
+                    }
+                    // Plan 497 G2：托盘组右置尾部——[状态图标挂载点容器]
+                    // [时钟]。挂载点 v1 为空 row（app 图标注册 API 为
+                    // 非目标；容器先行占位，后续状态图标挂此）；
+                    // 铃铛（479）与齿轮（487）即组内既有成员。
+                    row {
+                        style: "items-center gap-0"
+                    }
+                    text .__wm_clock {
+                        style: "text-xs text-muted-foreground px-2 tabular-nums"
                     }
                 }
             }
@@ -253,169 +270,6 @@ widget Desktop {
             // 纵向撑开须显式 h-full —— 463 T5 实测修正）。
             spacer {
                 style: "w-full h-full"
-            }
-            if .__dock_position != "top" {
-                if .__dock_enabled == "1" {
-                    taskbar {
-                        style: "h-14 w-full flex items-center gap-2 px-2 bg-card border-t"
-
-                        // Plan 503：launcher 召唤钮随图标格加大并 rounded-xl。
-                        button "⊞" {
-                            onclick: .SummonLauncher
-                            style: "h-10 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
-                        }
-                        // Plan 503：dock 图标格 48px rounded-xl(stella 签名),
-                        // 运行指示改 4px accent 圆点(替换 "●" text hack)。
-                        for p in .__dock_pinned {
-                            row {
-                                style: "items-center gap-1"
-                                button (icon: p.icon) {
-                                    onclick: .ActivateApp(p.id)
-                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
-                                }
-                                if .__wm_running.contains("," + p.id + ",") {
-                                    div { style: "h-1 w-1 rounded-full bg-primary" }
-                                }
-                            }
-                        }
-                        for w in .__wm_wins {
-                            row {
-                                style: "items-center gap-1"
-                                // v1.3：native 条目（native=="1"）——title 文本
-                                // 按钮（无注册表图标，title 即身份）+ native 动词；
-                                // App 条目走既有图标按钮路径。
-                                if w.native == "1" {
-                                    button (text: w.title) {
-                                        onclick: .NativeFocus(w.wid)
-                                        style: "h-9 max-w-32 truncate px-2 text-xs"
-                                    }
-                                    button "×" {
-                                        onclick: .NativeClose(w.wid)
-                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
-                                    }
-                                } else {
-                                    // Plan 503：激活窗 2px accent 竖条 + 图标格
-                                    // accent-light 底(stella 激活态范式)。
-                                    if w.focused == "1" {
-                                        div { style: "w-0.5 h-5 rounded-full bg-primary" }
-                                    }
-                                    // Plan 497 G5：条目 hover 预览（422 popover
-                                    // 先例，widget 锚=条目按钮；内容=真缩略，
-                                    // miss 由渲染臂 fallback icon 兜底）。
-                                    mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
-                                        popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
-                                            if w.focused == "1" {
-                                                button (icon: w.icon) {
-                                                    onclick: .WinFocus(w.wid)
-                                                    style: "h-12 w-12 px-0 text-base rounded-xl bg-primary/15"
-                                                }
-                                            } else {
-                                                button (icon: w.icon) {
-                                                    onclick: .WinFocus(w.wid)
-                                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
-                                                }
-                                            }
-                                            window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
-                                        }
-                                    }
-                                    button "×" {
-                                        onclick: .WinClose(w.wid)
-                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
-                                    }
-                                }
-                            }
-                        }
-                        spacer {
-                            style: "flex-1 h-8"
-                        }
-                        for ws in .__wm_workspaces {
-                            row {
-                                style: "items-center gap-0"
-                                // Plan 497 G5：分区 hover 预览（该区窗口缩略
-                                // 网格——v1 全量显示，无 ≤4 截断：.at 无过滤后
-                                // 截断原语，宿主派生会引入新投影字段违反协议
-                                // 零改动；密度待实机复核，见 plan 待澄清）。
-                                mouse-area (onmouseenter: .HoverWs(ws.id), onmouseleave: .HoverWsEnd) {
-                                    popover (open: .ws_hover == ws.id, placement: "top", ondismiss: .HoverWsEnd, class: "p-2 border rounded bg-card") {
-                                        if ws.current == "1" {
-                                            button (text: ws.label) {
-                                                onclick: .SetWorkspace(ws.id)
-                                                style: "h-8 w-8 px-0 text-xs bg-primary text-primary-foreground rounded-md"
-                                            }
-                                        } else {
-                                            button (text: ws.label) {
-                                                onclick: .SetWorkspace(ws.id)
-                                                style: "h-8 w-8 px-0 text-xs text-muted-foreground"
-                                            }
-                                        }
-                                        col {
-                                            style: "gap-1"
-                                            for w in .__wm_wins {
-                                                if w.workspace == ws.id {
-                                                    row {
-                                                        style: "items-center gap-1"
-                                                        window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-28 h-16 rounded border" }
-                                                        text w.title { style: "text-xs text-muted-foreground max-w-24 truncate" }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                button "×" {
-                                    onclick: .WorkspaceClose(ws.id)
-                                    style: "h-8 w-5 px-0 text-xs text-muted-foreground"
-                                }
-                            }
-                        }
-                        button "+" {
-                            onclick: .WorkspaceAdd
-                            style: "h-8 w-8 px-0 text-xs"
-                        }
-                        button "▦" {
-                            onclick: .LayoutGrid
-                            style: "h-8 w-10 px-0 text-xs"
-                        }
-                        button "▤" {
-                            onclick: .LayoutStack
-                            style: "h-8 w-10 px-0 text-xs"
-                        }
-                        button "▢" {
-                            onclick: .LayoutFree
-                            style: "h-8 w-10 px-0 text-xs"
-                        }
-                        // Plan 479 T4：通知中心铃铛 + 未读 badge（v1.2；
-                        // 开关走 notes_toggle 总线动词，清除钮在面板内）。
-                        row {
-                            style: "items-center gap-0"
-                            button (icon: "bell") {
-                                onclick: .NotificationToggle
-                                style: "h-9 w-9 px-0 text-sm"
-                            }
-                            if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
-                                text .__wm_notes_unread {
-                                    style: "text-xs text-error font-semibold"
-                                }
-                            }
-                        }
-                        // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
-                        // 宿主臂二态翻转——面板可见再点即关）。
-                        button (icon: "settings") {
-                            onclick: .OpenSettingsPanel
-                            style: "h-9 w-9 px-0 text-sm"
-                        }
-                        // Plan 497 G2：托盘组右置尾部——[状态图标挂载点容器]
-                        // [时钟]。挂载点 v1 为空 row（app 图标注册 API 为
-                        // 非目标；容器先行占位，后续状态图标挂此）；
-                        // 铃铛（479）与齿轮（487）即组内既有成员。
-                        row {
-                            style: "items-center gap-0"
-                        }
-                        text .__wm_clock {
-                            style: "text-xs text-muted-foreground px-2 tabular-nums"
-                        }
-                    }
-                }
             }
         }
     }
@@ -429,6 +283,7 @@ widget Desktop {
             var pos str = storage.get("shell.dock.position")
             if pos == "top" {
                 .__dock_position = "top"
+                .__dock_border = "border-b"
             }
             var en str = storage.get("shell.dock.enabled")
             if en == "false" {

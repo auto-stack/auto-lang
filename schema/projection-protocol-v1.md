@@ -1,7 +1,7 @@
-# AutoShell 状态投影协议 v1.4（S2 接缝合同）
+# AutoShell 状态投影协议 v1.5（S2 接缝合同）
 
-> **版本**：v1.4（2026-08-30，Plan 487 M4 落码；486 先合占 v1.3，487 按
-> 并行协调叠 v1.4——v1/v1.1/v1.2/v1.3 见 §6
+> **版本**：v1.5（2026-08-31，Plan 505 B2 落码；pager 派生面（≤4 截断 + "+N"）。
+> v1.4（2026-08-30，Plan 487 M4；486 先合占 v1.3，487 按并行协调叠 v1.4）——v1/v1.1/v1.2/v1.3/v1.4 见 §6
 > 变更记录）。双端同
 > 版本：vm 端（auto-lang `ui/iced/renderer.rs::sync_shell_windows`，本版实现
 > 方）与 vue 端（465/shell-track 后续，按本文档实现同版本对拍）。
@@ -22,9 +22,9 @@
 
 | 字段 | 类型 | 语义 | 权属 | 引入 |
 |---|---|---|---|---|
-| `__wm_wins` | Obj 数组 `{wid:str, title:str, focused:str, workspace:str, app:str, icon:str, native:str}` | **全部**虚拟窗（跨 workspace 全集，dock 运行指示消费；可见性由宿主绘制层自过滤）。`focused` = `"1"/""`；`workspace` = 分区下标串；`app` = 注册表 id（boot 窗缺省 `""`）；`icon` = lucide 名（注册表实时查 → 缺省 `"app-window"`）。**v1.3 native 槽位条目**：Docked 原生窗口追加在尾部，字段集 `{wid, title, focused, native, icon}`（workspace/app 不适用省略）——`wid` = `"N<slot_id>"` **独立编码空间**（`N` 前缀 + 十进制槽位 id，与 App wid 的纯数字空间隔离；shell 侧零解析成本区分两类条目）；`native` = `"1"`（App 条目恒空串，分支判据统一）；`focused` 恒空（native 焦点域在 OS 层，WM 不代管）；`icon` 占位 `"app-window"`（HICON 提取为增强候选） | 宿主写 | v1（native 条目/`native` 字段：v1.3） |
+| `__wm_wins` | Obj 数组 `{wid:str, title:str, focused:str, workspace:str, app:str, icon:str, native:str, pager:str}` | **全部**虚拟窗（跨 workspace 全集，dock 运行指示消费；可见性由宿主绘制层自过滤）。`focused` = `"1"/""`；`workspace` = 分区下标串；`app` = 注册表 id（boot 窗缺省 `""`）；`icon` = lucide 名（注册表实时查 → 缺省 `"app-window"`）。**v1.3 native 槽位条目**：Docked 原生窗口追加在尾部，字段集 `{wid, title, focused, native, icon}`（workspace/app 不适用省略）——`wid` = `"N<slot_id>"` **独立编码空间**（`N` 前缀 + 十进制槽位 id，与 App wid 的纯数字空间隔离；shell 侧零解析成本区分两类条目）；`native` = `"1"`（App 条目恒空串，分支判据统一）；`focused` 恒空（native 焦点域在 OS 层，WM 不代管）；`icon` 占位 `"app-window"`（HICON 提取为增强候选）。**v1.5 `pager` 旗标**：`"1"` = 本窗属其分区 z_order 前 4（pager 缩略网格≤4 截断消费；溢出窗⊕空串，与 `ws.more` 标签配套——.at 无过滤后截断原语，宿主派生保持 I9；mru/native 条目恒空串） | 宿主写 | v1（native 条目/`native` 字段：v1.3；pager：v1.5） |
 | `__wm_meta` | str `"layout\tfocused_wid"` | 布局名（free/grid/master-stack）+ 焦点窗 wid（无焦点空串） | 宿主写 | v1 |
-| `__wm_workspaces` | Obj 数组 `{id:str, name:str, current:str, label:str}` | 分区清单；`id` = 下标串；`name` = pack 默认 "Desktop N"（M4 settings 可覆盖）；`current` = `"1"/""`；`label` = 1 基人读标签（= id+1 十进制串；**宿主投影**，避开 .at 字符串算术——pager 按钮文本消费） | 宿主写 | v1（label：v1.1） |
+| `__wm_workspaces` | Obj 数组 `{id:str, name:str, current:str, label:str, more:str}` | 分区清单；`id` = 下标串；`name` = pack 默认 "Desktop N"（M4 settings 可覆盖）；`current` = `"1"/""`；`label` = 1 基人读标签（= id+1 十进制串；**宿主投影**，避开 .at 字符串算术——pager 按钮文本消费）；**v1.5 `more`**：溢出标签 `"+N"`（分区窗数 >4 时；无溢出/空分区空串——pager 网格≤4 截断配套消费） | 宿主写 | v1（label：v1.1；more：v1.5） |
 | `__wm_mru` | Obj 数组（条目同 `__wm_wins` 六字段） | **当前分区**的窗口按 MRU 序（front = 最近聚焦；退役 Ctrl+Tab 焦点环语义延续——焦点环不跨分区，472 定案）。switcher overlay 专用消费面，dock 消费不受影响。switcher **handler** 侧消费走宿主召唤时的伴随平行字符串列表（`mru_wids`/`mru_titles`/`mru_icons` + `call_handler("RebuildMru")` 建 handler 自有 rows，B12 规避——464 launcher `apps_*`/`ranked` 同型；`__wm_mru` 本体保持合同面对拍形态） | 宿主写 | v1.1 |
 | `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（pinned 运行指示的 view 条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实源；T4 增补） | 宿主写 | v1 |
 | `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影） | 宿主写 | v1.2 |
@@ -115,6 +115,23 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.5（2026-08-31，Plan 505 B2）
+
+- **pager 派生面（≤4 截断 + "+N"，债 P497-1 清偿）**：
+  `__wm_wins` 条目增 `pager` 旗标（"1"/""，本窗属其分区
+  z_order 前 4；mru/native 条目恒空串）+ `__wm_workspaces`
+  条目增 `more` 溢出标签（"+N"/空串）。根因：.at 无
+  "过滤后截断"原语（for+if 无局部计数器、数组无
+  take/slice），派生保持宿主侧 I9 单一事实源（`__wm_running`
+  先例）。
+- **指纹不扩段**：旗标/标签均为既有指纹 win 段的纯函数
+  （逐窗 workspace 已入段）——无需新段。
+- **向后兼容声明**：纯增量字段——既有消费者零破坏
+  （pager 网格消费面由全量改为≤4 截断，为本意
+  修复；他窗 for 循环字段读不受影响）。vue 端（未实现）
+  以本版为对拍基线；文件名不变，双端同步对拍在 vue
+  端落地时执行（§5）。
 
 ### v1.4 内字段扩展（2026-08-31，Plan 497 S3——不升版本段）
 

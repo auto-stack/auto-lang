@@ -221,6 +221,10 @@ fn osconfig_full_chain_launch_modules_and_persist() {
             code: code.clone(),
             source_path: Some(source_path.clone()),
             title: Some("系统设置".to_string()),
+            // Plan 504 新增字段（os-config 无 pac 语境：无配置层、非 fit；
+            // 504 漏改本集成测试——tf 档不含 tests/ 目标，505 顺带修复）。
+            name: None,
+            fit: false,
             daemon: daemon_decl.clone(),
             back_root: Some(back_root.clone()),
         })

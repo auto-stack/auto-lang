@@ -15,6 +15,7 @@
 | [a2ui-composer-analysis](a2ui-composer-analysis.md) | 25* | Google A2UI 技术分析与实现映射（研究输入） | — |
 | [desktop-protocol-v1](desktop-protocol-v1.md) | — | 桌面协议 v1：进程外 App 五通道（孵化/帧/输入/控制/观测）规范 | 386（Stage 2 落地） |
 | [diagram-components](diagram-components.md) | — | Diagram 组件家族与 DSL 设计（Mermaid/D2 对标；统一 498/499 交互与 canvas 模型） | 设计先行（建议拆 plan，§8） |
+| [canvas-pointer-events](canvas-pointer-events.md) | — | Canvas 交互 v2：通用指针事件原语（mousemove 限频流/坐标语义/P-list 协议草案/扇区-边命中同源/axisPointer/动画双轨） | 499 |
 | [025-gap-enumeration](025-gap-enumeration.md) | 16a | 025 示例差距枚举（历史记录） | 345 |
 
 > \* 原 `25-a2ui-composer-analysis.md`。另注意：`docs/design/25-autoshell-dsl-unified-shell.md`
