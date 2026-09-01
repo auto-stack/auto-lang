@@ -94,6 +94,11 @@ harness compile_and_link 的 partition 既有行为)。
 005e  get.field field[0]    ; 0x2D,操作数 = u32 字段名字符串池索引
 ```
 
+**链式读(W1 实测修正)**:`o.first.v` 的第二跳(receiver 已是表达式、
+无 var_types)走 **`get.generic.field field=0` + 3 幽灵 nop**——非按名
+get.field(b36 真机反汇编定案);aavm 以 dot_seq 链深判定镜像(首跳
+get.field,后续跳 generic field=0)。
+
 字段写 `p.x = 11`(注意:**走 set.generic.field,不是 LOAD_STR+set.field**——
 写路径按 `var_types[p] is Type::GenericInstance` 分派,而 `let p = Node{...}`
 形态恒记为 GenericInstance(codegen.rs:12919),故构造字面量绑定的变量写字段
