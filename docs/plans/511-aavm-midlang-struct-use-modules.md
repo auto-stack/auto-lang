@@ -1,15 +1,20 @@
 ---
 plan_id: PLAN-511
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-midlang-struct-use-modules
 author: [zhaopuming]
 created_at: 2026-09-01
 updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
+supersedes_spec_components:
+  - "docs/specs/aavm/project.md: 修改——模块清单 codegen/engine 行 511 增量（struct 四层/全局变量/for-in 双通道/use 多编译单元+链接器/ev_run_files）、新闸门四件（use 多文件 M4/M5+错误通道+自证）、能力矩阵中阶行 ✅ + 延后清单（OOP/闭包/嵌套 fn/泛型/May/生成器）"
+  - "docs/specs/aavm/design/divergences.md: 修改——新增「511 W1（struct 类型四层收编）」与「511 W3（use 模块化）」两节：D-AA2R-struct（ignored 腿 30/37 基线+7 件预存转译债）、D-mirror、D-soft-ident、D-stdlib-shadow、D-module-shape"
+  - "docs/specs/overview.md: 修改——aavm 行 plans 序列扩至 429–434/447/495/511，注记 struct/全局/补缺/use 模块化"
+new_spec_components:
+  - "docs/specs/aavm/design/midlang-w0-archaeology.md: 新增——W0 四路源码考古定案（struct=NEW_INSTANCE 族+链式 get.generic.field 实测修正、全局变量读写不对称+fn main 体首重放、for-in 三隐藏槽+迭代器协议 CALL_NAT 112 零迭代、字符串码点下标、D1 下标/字段复合赋值宿主同文本拒绝、use 四形态+D2 环静默跳过+D3 pub 不过滤+错误文本表、D5 L3 聚合方案）+ §5/§7 执行期回写"
+touched_goals:                 # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-017: 自举：用 Auto 写 Auto 编译器（aavm）——中阶语言能力落地：struct 定义/构造/字段读写、全局变量、for-in 数组、字符串下标、一元负、use 多文件模块化（多编译单元+链接器+初始化序），M1–M5 五闸+多文件双闸+错误通道全绿；L3 Auto 侧单测 13 件成建制（auto test 直跑）"
 
 affects: [aavm]
 current_step: 22
@@ -447,6 +452,46 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
     对代码、遗漏/延后扫描、spec-impact 元数据填写。
 
 ## 复审记录
+
+**复审人**：ZCode（/auto-plan:review 独立复审）
+**复审时间**：2026-09-01
+**复审基线**：worktree `.worktrees/plan-511-dev` @ 9e217f812（= b08f354c7 + 复审修补提交，见发现①）；
+折叠点①②③及 W1/W2/W3 语料已随 fold 在 master（3ca0fdb2a）。
+
+### 验收标准逐条重验（verify, don't trust——全部本机重跑）
+
+| # | 判据 | 结论 | 证据（本机实测） |
+|---|---|---|---|
+| 1 | tv-aavm2 全绿 + vm-files-ci 绿 | **pass（带披露豁免）** | 默认档 `-- test_aavm2`：**16 passed / 0 failed / 3 ignored**（3 ignored=AA2R ignored 腿×2+002 金样探针）。`--include-ignored` 下 AA2R 腿 30/37，7 件失败逐一核对=KNOWN-DEBT P511-1 登记的原列表（b13/b14×2/b19/b27/b29/b30），根因实证：b13 源文件头确有 CJK 注释（Unknown token 根因）、b27 源确为 `a.len()` 数组接收者跟踪债——均预存非 511 引入（pre-511 该腿整体转译不可构建，30/37 为改善，无绿→红破腿）。闸门口径收窄（计划 L1 定义含 --include-ignored）已登记于 P511-2，复审裁定：**接受豁免**——AA2R 扩面沿待澄清①缺省（暂缓+divergence），债有主、非静默。vm-files-ci 为 push 后 GitHub Actions 门禁，本环境（gitee 远端、无 gh）不可观测，依赖折叠点执行期簿记（步骤 7/12/19），合并后由 push 验证——登记为观察项 |
+| 2 | TDD 过程证据（三波红先行+harness 自证留档） | **pass** | 红先行提交逐一核对：W1 fdf466c22（M2 p25 PARSE-ERROR/M3 t08/M4-M5 b34 红清单入提交文）、W2 9cd32793a（b38/b40/b42/b43 红清单）、W3 2d2dd2f50（自证绿+Undefined symbol 红清单）；`test_aavm2_m4_use_harness_selfcheck`（43 件单文件与 S4 管线逐字符一致）在 16 件绿清单中实跑通过 |
+| 3 | ev_run_files 多模块程序 | **pass** | `test_aavm2_m4_use_corpus`/`m5_use_corpus`/`m5_use_errors` 全绿；错误通道 harness 实读（aavm2_m5.rs）：宿主 `run_with_capture_and_path` 错误文本 vs aavm `ev_run_files` stdout 双侧 `assert_eq`；宿主三件错误文本镜像落点核对 codegen.at:2489/2536（Module not found）、:2506（Crate not declared）、:2509（Python FFI）；六用例（定向/全限定/非pub/D2 合法环/传递依赖+初始化序/通配）全过 |
+| 4 | 99_unit Auto 侧单测成建制 | **pass** | worktree 构建的 `auto test -d crates/auto-lang/test/vm/aavm2/99_unit`：**13 passed / 0 failed**；`gen-aavm2-unit.py --check` → "up to date" |
+| 5 | 五方矩阵稳定集不破腿+新语料矩阵腿显式处置 | **pass** | 稳定集 b01–b33 的 ①②（宿主/aavm run）④⑤（双侧 disasm）腿=corpus M4/M5 闸绿；③ AA2R 腿 30/37 如 #1（预存债实证）；新语料处置=D-AA2R-struct（30/37+7 件债）divergence 登记 ✓ |
+| 6 | W0 落盘+实现与规格一致抽查+回写 | **pass** | midlang-w0-archaeology.md 存在；抽查：D2 环=loading 栈命中静默跳过（codegen.at:2486–2539）与 W0 §6 定案一致；错误文本三件与规格一致；divergences.md「511 W1」「511 W3」两节在；project.md/overview.md 回写 diff 实核（模块清单 511 行/新闸门四件/能力矩阵+延后清单/overview aavm 行） |
+| 7 | cargo tf 全量绿+零新增警告+无调试打印 | **pass** | **cargo tf 3345/3345 passed**（96 skipped，26.2s summary 实跑）；警告数 159 = master 基线 159，**零新增**；511 全量 diff（auto/lib+src）grep TODO/FIXME/dbg!/eprintln = **0 命中** |
+| 8 | 延后项显式登记 | **pass** | OOP/闭包/嵌套 fn/泛型/May/生成器→计划 Out-of-Scope+project.md 延后清单 ✓；AA2R 扩面→待澄清①+P511-1 ✓；b41→D1+P511-3（L3 两件承载，99_unit 内实跑绿）✓；占位泄漏镜像→P511-4（Plan 437 已知泄漏镜像，宿主清偿需同步）✓；VBool 债 P474 预存未扩面 ✓ |
+
+### 遗漏/延后/workaround 扫描发现
+
+1. **发现（已当场修复）**：步骤 21 提交 fc303dae7 声称含 auto/lib/README.md 回写，实际未入提交
+   （工作区遗留未提交修改）。复审以 fixup 提交 9e217f812 补入（内容与步骤 21 声称一致）。
+2. **发现（已当场修复）**：worktree 工作区存在 100 个未提交的文件删除（test/comptime、
+   test/generic、test/param_passing、test/ui/plan051*、scratch/* 等——HEAD 与 master 均有此
+   些文件，判定为 worktree 重同步事故）。已从 HEAD 恢复后跑闸（否则 cargo tv 目录扫描会静默
+   漏件、门禁数字虚高）。非计划行为，无代码影响。
+3. **披露债（裁定接受）**：P511-2 闸门口径收窄（--include-ignored → 非 ignored 16/16 + tf）。
+   AA2R 腿 pre-511 完全不可构建 → 511 修复至 30/37，属净改善；扩面沿待澄清①缺省暂缓且
+   divergence 有登记。**不构成静默缩水**。
+4. **workaround 扫描**：D3 pub 不过滤/D2 环静默跳过/const.i32 0 接收者占位均为「宿主为规范」
+   镜像（各已入 divergence 或 KNOWN-DEBT），非绕行 hack；步骤 13 S4 wrapper 的 Run-mode
+   .line 分歧在计划文本留档。未发现未登记的 scope 收缩或 hack。
+
+### 复审裁定
+
+**8/8 验收通过（#1 带披露豁免，已在 P511-2 留账）**，无未登记遗漏/延后/workaround。
+status: execution_done → **reviewed**。spec-impact 元数据已按实际 diff 填写（见 frontmatter）。
+**准予进入 /auto-plan:merge**（merge 时注意：vm-files-ci 观察项随 push 验证；worktree 内
+docs/plans/511 旧拷贝与本文件无冲突——分支在 master..HEAD 范围未触碰该文件）。
 
 ## 待澄清事项
 
