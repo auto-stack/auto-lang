@@ -22,54 +22,61 @@ var nextid int = 4
 
 /// Return all todos
 pub fn all_todos() []Todo {
-    return todos.to_array()
+    return todos
 }
 
 /// Create a new todo, returns the created todo
 pub fn create_todo(text str) Todo {
-    var todo = Todo { id: nextid, text: text, done: false }
-    todos.push(todo)
+    let todo = Todo { id: nextid, text: text, done: false }
     nextid = nextid + 1
+    todos.push(todo)
     return todo
 }
 
 /// Update a todo's text and done status, returns the updated todo
 pub fn update_todo(id int, text str, done bool) ?Todo {
-    var i int = 0
-    for i < todos.len() {
-        if todos[i].id == id {
-            todos[i].text = text
-            todos[i].done = done
-            return todos[i]
+    var new_todos List<Todo> = List<Todo>.new([])
+    var found ?Todo = None
+    for todo in todos {
+        if todo.id == id {
+            let updated = Todo {
+                id: todo.id,
+                text: text,
+                done: done,
+            }
+            new_todos.push(updated)
+            found = Some(updated)
+        } else {
+            new_todos.push(todo)
         }
-        i = i + 1
     }
-    return None
+    todos = new_todos
+    return found
 }
 
 /// Delete a todo by id, returns true if deleted
 pub fn delete_todo(id int) bool {
-    var i int = 0
-    for i < todos.len() {
-        if todos[i].id == id {
-            todos.remove(i)
-            return true
+    var new_todos List<Todo> = List<Todo>.new([])
+    var found bool = false
+    for todo in todos {
+        if todo.id != id {
+            new_todos.push(todo)
+        } else {
+            found = true
         }
-        i = i + 1
     }
-    return false
+    todos = new_todos
+    return found
 }
 
 /// Remove all completed todos, returns true
-pub fn remove_completed() bool {
-    var i int = todos.len() - 1
-    for i >= 0 {
-        if i < todos.len() {
-            if todos[i].done {
-                todos.remove(i)
-            }
+pub fn remove_completed(done bool) bool {
+    var new_todos List<Todo> = List<Todo>.new([])
+    for todo in todos {
+        if !todo.done {
+            new_todos.push(todo)
         }
-        i = i - 1
     }
+    todos = new_todos
     return true
 }

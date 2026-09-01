@@ -1,18 +1,24 @@
 ---
 plan_id: PLAN-512
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: examples-desktop-batch-2
 author: [zhaopuming]
 created_at: 2026-08-31
-updated_at: 2026-08-31
+updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: fit 窗口语义段落——「首帧一次性测量」升级为「内容尺寸变化→重测→窗口双向跟随（滞回 8px）」；standalone ServiceTick 订阅条件、scrollable 量测法、用户锁定语义三点机制事实回写"
+new_spec_components:
+  - "fit 动态重测机制（P504-2 清偿）：dispatch 漏斗 fit_dirty 打标 → ServiceTick 节拍重测（standalone 订阅补齐）→ decide_fit_resize 滞回决策 → 双路径跟随（OS 窗 iced resize / desktop vwin rect）；fit_aware_root 锚点外套 scrollable 取内容自然尺寸（破活树窗口钳制）"
+  - "批二迁移 20 例：fit 线 4 例（001/004/005/016）拆居中外壳实测留痕 + title-only 线 16 例补 title；探针资产 011/005 tests/test_512_fit_remeasure.py"
+touched_goals:
+  - "GOAL-010: 示例应用轨道——批二 20 例桌面化（fit 4 + title 16）兑现"
+  - "GOAL-009: 虚拟桌面与桌面 Shell——fit 窗口语义补全（动态重测 + 用户锁定）"
+  - "GOAL-007: AutoUI 跨端视觉一致——批一回归双端全绿；w-[28rem] rem 任意值 iced 端不支持实证，改 Tailwind 刻度双端兼容"
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -121,6 +127,38 @@ fit 线 ≈ 001/004/005/007/013/015/016/042，title-only 线 ≈ 006/014/017–0
   同型核查法）+ pac.at `window: "fit"` + 收缩实测留痕（尺寸数字+截图）；
   016-calendar 额外跑"切月 → 窗口增高跟随"断言（G1 双实证之一）。
 
+
+### 判定表（T3 产出，2026-09-01 逐例扫描成文）
+
+| 示例 | 内容形态 | 外壳现状 | 归线 | 验证口径 |
+|---|---|---|---|---|
+| 001-helloworld | fixed | `center` 居中外壳 | **fit** | 收缩实测 |
+| 004-profile-card | fixed | `center` + max-w-sm 卡 | **fit** | 收缩实测 |
+| 005-login | fixed（校验错误行小幅动态增行） | `center` + max-w-md 卡 | **fit** | 收缩实测 + 校验错误增/缩跟随（G1 实证之二，见下） |
+| 016-calendar | fixed（切月恒 42 格，**高度不变**） | `center` + max-w-md 卡 | **fit** | 收缩实测 |
+| 006-hero-section | fill（min-h-screen 渐变） | 满屏壳 | title-only | title 显示断言 |
+| 007-stats-board | fill | min-h-screen | title-only | 同上 |
+| 013-todo | 列表无限增长（fit 会随列表撑窗，禁 fit） | min-h-screen + max-w-xl 卡 | title-only | 同上 |
+| 014-weather | 名义 fixed 实际充满（内卡自带 min-h-screen） | `center` 壳 + 内卡满屏 | title-only（fit 需先拆内卡，留账） | 同上 |
+| 015-notes | fill（编辑器 h-screen） | h-screen + flex-1 | title-only | 同上 |
+| 017-chat | fill | h-screen + flex-1 | title-only | 同上 |
+| 018-book-reader | fill（路由） | min-h-screen + outlet | title-only | 同上 |
+| 019-video-app | fill | h-screen | title-only | 同上 |
+| 020-music-player | 内容 intrinsic 但壳 h-screen | h-screen | title-only（拆壳留账） | 同上 |
+| 021-blog-viewer | fill（list/detail 不撑窗） | h-screen + flex-1 | title-only | 同上 |
+| 022-kanban | fill | min-h-screen | title-only | 同上 |
+| 023-realworld | fill（7 路由 SPA） | min-h-screen | title-only | 同上 |
+| 024-charts | fill | min-h-screen | title-only | 同上 |
+| 025-dashboard | fill | min-h-screen | title-only | 同上 |
+| 028-launcher | fill（overlay 召唤槽，禁 fit） | h-full scrim | title-only | 同上 |
+| 042-two-inputs-child | fixed（最小复现件，保持纯粹） | 无外壳 | title-only | 同上 |
+
+**G1 实证之二改案（判定表驱动）**：起草时拟以"016 切月增高"为动态重测
+第二实证；逐例扫描证伪——`build_month_grid`（calendar_util.at:84-117）恒补
+齐 42 格（6 行），切月**不产生高度变化**。改以 **005-login 校验错误行**（
+`if .email_error != ""` 条件增行/回缩）为第二实证：属 fit 线成员，增/缩
+双向可验。016 只做静态 fit 收缩实测。
+
 ## 测试设计
 
 1. **T1 机制单测**：重测决策（阈值滞回/帧合并/用户锁定标志）纯函数单测。
@@ -145,27 +183,61 @@ fit 线 ≈ 001/004/005/007/013/015/016/042，title-only 线 ≈ 006/014/017–0
 1. **机制——重测决策纯逻辑**：`crates/auto-lang/src/ui/iced/renderer.rs`
    fit 测量区抽"重测决策"纯函数（阈值/帧合并/用户锁定）+ T1 单测。
    验证：`cargo t fit_remeasure`（或并入既有套件名）。
+   [✅ 已完成] `decide_fit_resize` 纯函数 + FIT_REMEASURE_THRESHOLD=8px（renderer.rs fit 区）；T1 `decide_fit_resize_threshold_lock_clamp`（锁定/滞回/双向/clamp 五断言）绿；ui-iced 档 fit 10/10。
 2. **机制——双路径接线**：虚拟窗矩形更新（`session.rs` 504 同区）+
    独立窗 iced resize + 用户 resize 锁定标志。
    验证：`cargo t ui && cargo t session`。
+   [✅ 已完成] WindowEntry/VWinState 增 fit_enabled/fit_user_locked/fit_dirty（Cell）+ fit_last_applied；SessionViewMut/Ref 下穿 12 处；view 层 fit 窗常驻 Shrink+锚点；dispatch_app 打标漏斗 + has_fit_remeasure_pending/mark_fit_dirty helpers；standalone 锁定走 __window_resized ±2px 回波豁免、desktop 走 WmState::apply_cursor Resize 臂。session 88/88、ui 1680/1680 绿。
 3. **机制实证**：011 Scientific / 016 切月前后窗口尺寸断言（T2）。
    验证：desktop_mcp/MCP 快照断言绿 + 截图留痕。
+   [✅ 已完成] `examples/ui/011-calculator/tests/test_512_fit_remeasure.py`（win32 EnumWindows 物理尺寸探针）PASS：基线 397x428 → Scientific 397x472（**+44px**，起草 +50px 假设实证下修，探针阈值定为 >24px=3×滞回）→ Basic 回缩 397x428（±16 内）。**实证改案两处**（均先证伪后修）：① standalone 模式 ServiceTick 订阅原仅 desktop 门控（renderer.rs:13228 族）且宿主窗句柄恒 None——订阅门控扩为「desktop 或 standalone 有 fit 脏标」，测量目标 standalone 取待测窗自身 id；② 活树布局受当前窗口钳制，增长方向量不到（首测成功仅因默认窗大于内容）——`fit_aware_root` 锚点外套 vertical scrollable（内部无限高约束排版），锚点量到真实自然尺寸，宽度方向 v1 仍受视口钳制（登记待澄清）。插桩三处（AUTO_FIT_TRACE）实证后已拆净。
 4. **判定表**：20 示例扫描成表回写本计划（T3）。
    验证：四列表成文。
+   [✅ 已完成] 逐例扫描成文（见「详细设计」判定表节）：fit 线 4 例（001/004/005/016），title-only 线 16 例；**G1 实证之二改案**——016 切月恒 42 格高度不变（扫描证伪），改 005-login 校验错误行增/缩双向为第二实证。
 5. **title-only 线**：按表批量补 `title:` + 装载断言。
    验证：grep 20 示例 pac.at title 齐 + 断言绿。
+   [✅ 已完成] 16 例 pac.at 补 title（006/007/013/014/015/017/018/019/020/021/022/023/024/025/028/042，插入位置 icon: 后）；`cargo t pac` 81/81 绿。连带修两处过期测试期望：app_registry `launch_three_real_apps_via_registry_resolver` 的 "todo"→"Todo"；coverage `scan_inventory_matches_source_shape` 去 center/max-w-md、改 w-112。
 6. **fit 线迁移**：按表逐个拆外壳 + `window: "fit"` + 收缩实测留痕。
    验证：逐示例尺寸数字+截图（506 形态）。
+   [✅ 已完成] 4 例（001/004/005/016）center 外壳退役 → 根 col Shrink；卡片宽固定化（004 w-96、005/016 w-112——**实证发现 `w-[28rem]` rem 任意值 iced 端不支持**（213px 塌缩），Tailwind 刻度 112×4px=448px 双端兼容）。实测（VM 物理尺寸+截图留痕 src/front/tests/screenshots/512_*_fit.png）：001 213x236、004 445x451、005 573x535、016 541x441，截图渲染完好无塌缩。**005 重测实证（第二实证腿）** `tests/test_512_fit_remeasure.py` PASS：空表单 Sign In → 两条校验错误行 → 573x535→574（+39px）→ 键入两输入框错误清除 → 回缩 573x535（±16 内）。
 7. **P506-1 核对 + 批一回归**：UAF 修复状态查证留痕；504/506 示例脚本
    全绿（T5）。
    验证：既有示例验证脚本 + 核对注记。
+   [✅ 已完成] **P506-1 核对**：511 已归档（a28b51ffd 合入），归档文无 Reveal UAF 修复；038 desktop_mcp.py 复现仍在——首点格子 Reveal 即 VM 进程死（RC canary UAF），12 passed / 1 failed（预期 FAIL）/ 2 skipped（506 防御路径），债务保留待专项。**批一回归**：003 VM（fit 收缩断言 + vnode/aura 双 scheme 修脚本后 decimal 键入 161.67 ✓）+ Vue 截图、008/009/010 VM+Vue 全绿、011 VM + Vue + desktop_mcp 17/17 全绿。附带修：`test_converter_mcp.py` 快照 id 正则 aura_ 单 scheme → (aura|vnode)_ 双 scheme（预存时序脆弱性，首帧快慢决定快照路径）。
 8. **收尾**：P504-2 回写清偿；spec 沉淀归 merge；健康检查；状态翻
    execution_done。
    验证：`cargo check -p auto-lang && cargo t ui`。
+   [✅ 已完成] P504-2 KNOWN-DEBT 标已清偿（含两处实证改案指针）；新增 P512-1（宽度方向视口钳制）/P512-2（锁定后余量视觉语义）/P512-3（p508_g2_outproc_arm 并发偶红注记）三条登记。终态门禁：`cargo check` 干净（警告 159=master 基线零新增）、`cargo t ui` 1680/1680、`cargo t session` 88/88、`cargo t pac` 81/81（S5 时）、fit 16/16；终态二进制（拆插桩后重建）双探针复验 PASS。
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+（verify, don't trust——逐条对照实际代码/diff 重验）
+
+1. **清单审计**：
+   - G1 动态重测：011 探针（+44px 增高/回缩基线）+ 005 探针（+39px/回缩）
+     双实证 PASS，均含截图留痕；探针阈值 >24px=3×滞回有实测依据（非拍头）。
+     016 切月改案 005 有判定表节证伪记录（calendar_util.at:84-117 恒 42 格）。✓
+   - G2 title-only 16 例：grep 核实 16 例 pac.at 均有 title（006/007/013/
+     014/015/017/018/019/020/021/022/023/024/025/028/042）；`cargo t pac`
+     81/81。✓
+   - G3 fit 线 4 例：001 213x236 / 004 445x451 / 005 573x535 / 016 541x441
+     实测数字 + 截图（512_*_fit.png）在案；004/016 截图人工检视渲染完好。✓
+   - G4 判定表：20 例四列表成文（详细设计节）。✓
+   - G5：P504-2 清偿回写 ✓；P506-1 核对留痕（511 归档未修，038 复现仍在，
+     交互腿按 506 防御降级，债务保留）。✓
+2. **遗漏/延后/Workaround 扫描**：两处实证改案（ServiceTick standalone
+   订阅断链补齐；scrollable 量测法破窗口钳制）均非 workaround——为机制
+   正确性修复，留痕步骤 3。新增限制（宽度方向钳制、锁定后余量语义）已
+   登记 P512-1/P512-2 而非沉默。探针 +50px→+24px 阈值修正有实测数据
+   支撑（非放松过关）。003 脚本双 scheme 修复属预存脆弱性顺带清偿
+   （diff 内注释在案）。
+3. **健康检查**：三处 AUTO_FIT_TRACE 临时插桩已拆净（grep 零命中）；
+   编译警告 159=master 基线零新增；门禁全绿（ui 1680/session 88/pac 81/
+   fit 16）；p508_g2_outproc_arm 并发偶红单跑即绿，登记 P512-3。
+4. **spec-impact 元数据**：supersedes/new/touched_goals 三节已填（见
+   frontmatter），merge 时按 §4 沉淀。
+
+复审结论：**通过**（8/8 步骤完成，五目标全达，两处改案+三条债务全留痕）。
 
 ## 待澄清事项
 

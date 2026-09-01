@@ -51,5 +51,5 @@ pub fn delete_todo(id int) bool {
 /// DELETE /api/todos/completed
 #[api(method = "DELETE", path = "/api/todos/completed")]
 pub fn remove_completed(done bool) bool {
-    return db.remove_completed()
+    return db.remove_completed(done)
 }

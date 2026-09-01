@@ -117,6 +117,10 @@ pub struct IcedStyle {
     /// truncate / whitespace-nowrap:单行渲染(iced Wrapping::None),
     /// renderer 侧配合 clip 容器实现 CSS truncate 语义。
     pub wrap_none: bool,
+    /// line-through: 文本删除线
+    pub line_through: bool,
+    /// underline: 文本下划线
+    pub underline: bool,
 
     // Effects (L3)
     pub shadow: bool,
@@ -313,6 +317,8 @@ impl IcedStyle {
             font_family: None,
             text_align: None,
             wrap_none: false,
+            line_through: false,
+            underline: false,
             // L3
             shadow: false,
             shadow_size: None,
@@ -375,11 +381,11 @@ impl IcedStyle {
         //     (auto-os-config System Overview 六卡片全灭的根因)。纵向主轴
         //     场景由 renderer Row/Column 分派点的轴向预修正接管(Column 分支
         //     把 Flex1/FlexAuto/Grow 转写为显式 Height(Full)),此处不再猜测。
+        let is_scroll_overflow = matches!(iced_style.overflow_x, Some(IcedOverflow::Auto | IcedOverflow::Scroll))
+            || matches!(iced_style.overflow_y, Some(IcedOverflow::Auto | IcedOverflow::Scroll));
         if iced_style.width == Some(IcedSize::Full)
             && iced_style.height.is_none()
-            && (iced_style.overflow_x.is_some()
-                || iced_style.overflow_y.is_some()
-                || iced_style.min_height == Some(0.0))
+            && (is_scroll_overflow || iced_style.min_height == Some(0.0))
         {
             iced_style.height = Some(IcedSize::Full);
         }
@@ -732,6 +738,16 @@ impl IcedStyle {
             }
             StyleClass::TextRight => {
                 self.text_align = Some(IcedTextAlign::Right);
+            }
+            StyleClass::LineThrough => {
+                self.line_through = true;
+            }
+            StyleClass::Underline => {
+                self.underline = true;
+            }
+            StyleClass::NoUnderline => {
+                self.line_through = false;
+                self.underline = false;
             }
 
             // ========== Effects (L3) ==========

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-502
-status: reviewed               # drafting → executing → execution_done → reviewed → archived (2026-09-01 复审通过)
+status: archived                # drafting → executing → execution_done → reviewed → archived (2026-09-01 复审通过)
 feature_name: diagram Phase 1——flow-diagram v1(分层布局 + SVG 渲染 + hover 交互)
 author: [zcode]
 created_at: 2026-08-31
@@ -199,3 +199,20 @@ total_steps: 7
    fallback 首页(导航点击可达)。与 502 无关,建议另立债务条目;
 10. **P320 双卡 Init 序非树序**(M3/M6):同名组件双实例共享根状态,页面
     双卡末写者不确定——e2e 以单实例 fixture 断言;页面双卡演示口径注记。
+
+## spec-sync 回写记录（merge,2026-09-01）
+
+- 账本:`.autoos/specs.json` 六段 upsert P502-1..6(reports/goals/architecture/
+  designs/tests/reviews,幂等 id,file 指本归档路径);
+- module:`docs/specs/auto-lang/ui/overview.md` 组件线补 diagram 家族开篇现状;
+  `plans.md` 追加 502 行;`design/diagram-components.md` 新建(new_spec_components:
+  flow-diagram v1 契约——数据轨 props/Sugiyama-lite/svg text 标签机制/hover 交互/
+  显式非目标);
+- supersedes:`design/chart-components.md` svg `<text>` 不支持约束注记解除
+  (引擎面 svg text 直通已落地,chart 页自身未动,y 刻度标签维持 DSL text 列);
+- 全局:`docs/specs/goals.md` GOAL-007 补 502 引用;`scripts/spec-index.py` 再生;
+- 折入:master 合并 plan-502-dev(M1-M6+复审基线同步 7 commits;主检出本地
+  未提交 WIP〔renderer.rs/class.rs/iced_adapter.rs〕与本计划无关未触碰);
+  scratch/p502 执行期探针移主检出 scratch/ 存档。
+
+> 注:本仓 merge 走手工回退(后端 8080 不可用),按 README §4 扩展程序执行。

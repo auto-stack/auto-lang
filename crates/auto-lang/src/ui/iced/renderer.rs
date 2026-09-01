@@ -1981,29 +1981,33 @@ fn apply_side_borders<M: Clone + Debug + 'static>(
     if !(is.border_bottom || is.border_top || is.border_left || is.border_right) {
         return el;
     }
-    let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+    let border_col = is.border_color.unwrap_or_else(|| {
+        let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+        iced::Color::from_rgb8(r, g, b)
+    });
+    let border_w = is.border_width.unwrap_or(1.0);
     let line_style = move |_: &_| iced::widget::container::Style {
-        background: Some(iced::Background::Color(iced::Color::from_rgb8(r, g, b))),
+        background: Some(iced::Background::Color(border_col)),
         ..Default::default()
     };
-    let hline = || -> iced::Element<'static, M> {
+    let hline = move || -> iced::Element<'static, M> {
         iced::widget::container(
             iced::widget::Space::new()
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fixed(0.0)),
         )
         .width(iced::Length::Fill)
-        .height(iced::Length::Fixed(1.0))
+        .height(iced::Length::Fixed(border_w))
         .style(line_style)
         .into()
     };
-    let vline = || -> iced::Element<'static, M> {
+    let vline = move || -> iced::Element<'static, M> {
         iced::widget::container(
             iced::widget::Space::new()
                 .width(iced::Length::Fixed(0.0))
                 .height(iced::Length::Fill),
         )
-        .width(iced::Length::Fixed(1.0))
+        .width(iced::Length::Fixed(border_w))
         .height(iced::Length::Fill)
         .style(line_style)
         .into()
@@ -2779,6 +2783,66 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     } else {
                         el
                     }
+                } else if style.as_ref().map_or(false, |s| {
+                    let is = IcedStyle::from_style(s);
+                    is.line_through || is.underline
+                }) {
+                    let iced_style = IcedStyle::from_style(style.as_ref().unwrap());
+                    let mut span = iced::widget::text::Span::new(content);
+                    if iced_style.line_through {
+                        span = span.strikethrough(true);
+                    }
+                    if iced_style.underline {
+                        span = span.underline(true);
+                    }
+                    if let Some(fs) = effective_font_size(&iced_style) {
+                        span = span.size(fs);
+                    }
+                    if let Some(color) = iced_style.text_color {
+                        span = span.color(color);
+                    } else if let Some((r, g, b)) = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                        &crate::ui::style::Color::OnBackground,
+                    ) {
+                        span = span.color(iced::Color::from_rgb8(r, g, b));
+                    }
+                    if let Some(ref weight) = iced_style.font_weight {
+                        span = span.font(font_weight_to_iced(weight));
+                    }
+                    if let Some(ref family) = iced_style.font_family {
+                        let fam = match family.as_str() {
+                            "serif" => iced::font::Family::Serif,
+                            "mono" => iced::font::Family::Monospace,
+                            _ => iced::font::Family::SansSerif,
+                        };
+                        let weight = iced_style.font_weight.as_ref().map(font_weight_to_iced).unwrap_or(iced::Font::DEFAULT);
+                        span = span.font(iced::Font {
+                            family: fam,
+                            weight: weight.weight,
+                            stretch: weight.stretch,
+                            style: weight.style,
+                        });
+                    }
+                    let mut rich = iced::widget::text::Rich::<(), M>::with_spans(vec![span]);
+                    if let Some(ref w) = iced_style.width {
+                        rich = rich.width(iced_length(w));
+                    }
+                    if let Some(ref align) = iced_style.text_align {
+                        use crate::ui::style::iced_adapter::IcedTextAlign;
+                        if iced_style.width.is_none() {
+                            rich = rich.width(iced::Length::Fill);
+                        }
+                        match align {
+                            IcedTextAlign::Center => {
+                                rich = rich.align_x(iced::alignment::Horizontal::Center);
+                            }
+                            IcedTextAlign::Right => {
+                                rich = rich.align_x(iced::alignment::Horizontal::Right);
+                            }
+                            IcedTextAlign::Left => {}
+                        }
+                    }
+                    let el: iced::Element<'static, M> = rich.into();
+                    wrap_with_margin(el, &iced_style)
                 } else {
                 let mut text_widget = text(content);
 
@@ -3034,11 +3098,39 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         col = col.push(tw);
                     }
                     col.into()
-                } else {
-                    let mut text_widget = text(label.clone());
+                } else if let Some(ref is) = iced_style {
                     let default_size = font_size_to_f32(&IcedFontSize::Sm);
                     let default_weight = font_weight_to_iced(&IcedFontWeight::Medium);
-                    if let Some(ref is) = iced_style {
+                    if is.line_through || is.underline {
+                        let mut span = iced::widget::text::Span::new(label.clone());
+                        if is.line_through {
+                            span = span.strikethrough(true);
+                        }
+                        if is.underline {
+                            span = span.underline(true);
+                        }
+                        span = span.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
+                        if let Some(color) = is.text_color {
+                            span = span.color(color);
+                        }
+                        span = span.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
+                        let mut rich = iced::widget::text::Rich::<(), M>::with_spans(vec![span]);
+                        if let Some(ref align) = is.text_align {
+                            let _ = align;
+                            rich = rich.width(iced::Length::Fill);
+                            match align {
+                                crate::ui::style::iced_adapter::IcedTextAlign::Center => {
+                                    rich = rich.align_x(iced::alignment::Horizontal::Center);
+                                }
+                                crate::ui::style::iced_adapter::IcedTextAlign::Right => {
+                                    rich = rich.align_x(iced::alignment::Horizontal::Right);
+                                }
+                                crate::ui::style::iced_adapter::IcedTextAlign::Left => {}
+                            }
+                        }
+                        rich.into()
+                    } else {
+                        let mut text_widget = text(label.clone());
                         text_widget = text_widget.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
                         if let Some(color) = is.text_color {
                             text_widget = text_widget.color(color);
@@ -3062,7 +3154,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 crate::ui::style::iced_adapter::IcedTextAlign::Left => {}
                             }
                         }
+                        text_widget.into()
                     }
+                } else {
+                    let text_widget = text(label.clone())
+                        .size(font_size_to_f32(&IcedFontSize::Sm))
+                        .font(font_weight_to_iced(&IcedFontWeight::Medium));
                     text_widget.into()
                 };
 
@@ -3473,7 +3570,66 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
-                let checkbox_widget = checkbox(is_checked);
+                let iced_style = style.as_ref().map(IcedStyle::from_style);
+
+                let cb_size = iced_style.as_ref().and_then(|is| {
+                    match (&is.width, &is.height) {
+                        (Some(IcedSize::Fixed(w)), Some(IcedSize::Fixed(h))) => Some(w.min(*h)),
+                        (Some(IcedSize::Fixed(w)), None) => Some(*w),
+                        (None, Some(IcedSize::Fixed(h))) => Some(*h),
+                        _ => None,
+                    }
+                }).unwrap_or(20.0);
+
+                let primary_color = iced_style.as_ref()
+                    .and_then(|is| is.text_color)
+                    .unwrap_or(iced::Color::from_rgb8(59, 130, 246)); // blue-500 or text-{color}
+                let border_radius = iced_style.as_ref()
+                    .map(|is| is.effective_border_radius())
+                    .unwrap_or(4.0.into());
+                let custom_border_color = iced_style.as_ref().and_then(|is| is.border_color);
+
+                let mut checkbox_widget = checkbox(is_checked).size(cb_size);
+
+                checkbox_widget = checkbox_widget.style(move |_theme, status| {
+                    let is_checked = match status {
+                        iced::widget::checkbox::Status::Active { is_checked }
+                        | iced::widget::checkbox::Status::Hovered { is_checked }
+                        | iced::widget::checkbox::Status::Disabled { is_checked } => is_checked,
+                    };
+                    let is_hovered = matches!(status, iced::widget::checkbox::Status::Hovered { .. });
+
+                    let border_color = if is_checked {
+                        primary_color
+                    } else if is_hovered {
+                        custom_border_color.unwrap_or(iced::Color::from_rgb8(156, 163, 175)) // gray-400
+                    } else {
+                        custom_border_color.unwrap_or(iced::Color::from_rgb8(209, 213, 219)) // gray-300
+                    };
+
+                    let background = if is_checked {
+                        iced::Background::Color(primary_color)
+                    } else {
+                        iced::Background::Color(iced::Color::TRANSPARENT)
+                    };
+
+                    let icon_color = if is_checked {
+                        iced::Color::WHITE
+                    } else {
+                        iced::Color::TRANSPARENT
+                    };
+
+                    iced::widget::checkbox::Style {
+                        background,
+                        icon_color,
+                        border: iced::Border {
+                            color: border_color,
+                            width: 1.5,
+                            radius: border_radius,
+                        },
+                        text_color: None,
+                    }
+                });
 
                 // Plan 309 续篇 II: drop the handler in inspect-capture mode so
                 // the checkbox is non-interactive (wrap_debug mouse_area picks).
@@ -3486,33 +3642,45 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                 // Apply text style to label
                 let mut label_widget = text(label.clone());
-                if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    if let Some(fs) = effective_font_size(&iced_style) {
+                if let Some(ref is) = iced_style {
+                    if let Some(fs) = effective_font_size(is) {
                         label_widget = label_widget.size(fs);
                     }
-                    if let Some(color) = iced_style.text_color {
+                    if let Some(color) = is.text_color {
                         label_widget = label_widget.color(color);
                     }
                 }
 
-                let mut row_widget = row![checkbox_with_handler, label_widget].spacing(4);
-
-                // Apply width/height from style to the checkbox row
-                if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    if let Some(ref w) = iced_style.width {
-                        row_widget = row_widget.width(iced_length(w));
+                let el: iced::Element<'static, M> = if label.is_empty() {
+                    let mut cont = container(checkbox_with_handler)
+                        .align_x(iced::alignment::Horizontal::Center)
+                        .align_y(iced::alignment::Vertical::Center);
+                    if let Some(ref is) = iced_style {
+                        if let Some(ref w) = is.width {
+                            cont = cont.width(iced_length(w));
+                        }
+                        if let Some(ref h) = is.height {
+                            cont = cont.height(iced_length(h));
+                        }
                     }
-                    if let Some(ref h) = iced_style.height {
-                        row_widget = row_widget.height(iced_length(h));
+                    cont.into()
+                } else {
+                    let mut row_widget = row![checkbox_with_handler, label_widget]
+                        .align_y(iced::alignment::Vertical::Center)
+                        .spacing(4);
+                    if let Some(ref is) = iced_style {
+                        if let Some(ref w) = is.width {
+                            row_widget = row_widget.width(iced_length(w));
+                        }
+                        if let Some(ref h) = is.height {
+                            row_widget = row_widget.height(iced_length(h));
+                        }
                     }
-                }
+                    row_widget.into()
+                };
 
-                let el: iced::Element<'static, M> = row_widget.into();
-                if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    wrap_with_margin(el, &iced_style)
+                if let Some(ref is) = iced_style {
+                    wrap_with_margin(el, is)
                 } else {
                     el
                 }

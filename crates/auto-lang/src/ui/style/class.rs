@@ -360,6 +360,15 @@ pub enum StyleClass {
     /// Text alignment: text-right (L2)
     TextRight,
 
+    /// Text decoration: line-through (strikethrough)
+    LineThrough,
+
+    /// Text decoration: underline
+    Underline,
+
+    /// Text decoration: no-underline
+    NoUnderline,
+
     // ========== Effects (L3 Advanced) ==========
     /// Shadow: shadow (default) - L3
     Shadow,
@@ -944,6 +953,17 @@ impl StyleClass {
         }
         if class == "break-words" {
             return Ok(StyleClass::BreakWords);
+        }
+
+        // ========== Text Decoration ==========
+        if class == "line-through" {
+            return Ok(StyleClass::LineThrough);
+        }
+        if class == "underline" {
+            return Ok(StyleClass::Underline);
+        }
+        if class == "no-underline" {
+            return Ok(StyleClass::NoUnderline);
         }
 
         // ========== Interaction ==========
@@ -1814,6 +1834,13 @@ mod tests {
         assert_eq!(StyleClass::parse_single("text-center"), Ok(StyleClass::TextCenter));
         assert_eq!(StyleClass::parse_single("text-left"), Ok(StyleClass::TextLeft));
         assert_eq!(StyleClass::parse_single("text-right"), Ok(StyleClass::TextRight));
+    }
+
+    #[test]
+    fn test_parse_text_decoration() {
+        assert_eq!(StyleClass::parse_single("line-through"), Ok(StyleClass::LineThrough));
+        assert_eq!(StyleClass::parse_single("underline"), Ok(StyleClass::Underline));
+        assert_eq!(StyleClass::parse_single("no-underline"), Ok(StyleClass::NoUnderline));
     }
 
     #[test]

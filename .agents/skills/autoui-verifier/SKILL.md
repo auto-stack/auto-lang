@@ -129,6 +129,13 @@ client.screenshot("converter_vm_decimal")
    - [ ] **暗色模式反转设计 (Dark Theme Primary Inversion)**: shadcn-vue 在暗色模式下默认 Button 为**浅色高光胶囊（白/浅灰底 `bg-primary` + 黑/深灰字 `text-primary-foreground`）**。核查 VM 端是否误渲染成了蓝紫底白字或硬编码纯白前景色！
    - [ ] **悬停反馈 (Hover State Feedback)**: 悬停时按钮是否具备透明度/亮度微调（如 `hover:bg-primary/90`）？VM 端是否在 `Hovered` 状态下具备对应变化？
    - [ ] **文字规格与圆角**: 按钮文字字号是否对齐 `14px`（Sm）、字重 `500`（Medium），内边距 (`px-4 py-2`) 与圆角 (`rounded-md` 6px) 是否一致？
+7. **表单控件指示器与微形态 (Form Indicators & Checkbox/Radio Styling)**:
+   - [ ] **指示器尺寸与比例**: Checkbox/Radio 是否遵循 `w-*` / `h-*` 样式类缩放（如 `w-10 h-12` 宽大选择框 vs `w-4 h-4` 紧凑选择框），而非固定在 16px 默认尺寸？
+   - [ ] **未选中与选中态底色/边框**: 未选中态是否为干净的透明/白底配细灰边（`border-gray-300`），选中态是否为鲜明主题色填充 + 清晰白色对勾/圆点？切忌在浅色卡片上误渲染为深色实心块！
+   - [ ] **指示器形状**: 是否根据 `rounded-full` 渲染为圆形复选框，或根据 `rounded` 渲染为标准圆角方框？
+8. **文本修饰线与条件状态 (Text Decorations & Conditional Styles)**:
+   - [ ] **删除线与下划线 (Line-Through & Underline)**: 已完成待办项、已核销金额等带 `line-through` 的文本是否正确绘制水平穿透线？带 `underline` 的超链接/强调文本是否正确绘制底线？
+   - [ ] **可点击文本组件的修饰继承**: 当 `text` 绑定了 `onclick`（在 AST/AURA 中转为 `Button`）时，其内部文本标签是否依然完整继承并渲染了 `line-through`、字号和颜色？
 
 ---
 
@@ -150,6 +157,12 @@ client.screenshot("converter_vm_decimal")
    - Row 内多个文本之间的间隙统一使用水平外边距（如 `mr-1` 或 `ml-1`），避免 HTML 尾部空白字符被浏览器渲染引擎折叠。
 5. **控件外边距包装 (Margin Wrapping)**:
    - 所有基础控件（`Input`, `Textarea`, `Checkbox`, `Button`, `Text`）在 `IntoIcedElement` 与 `render_dynamic_view` 中转换为 `iced::Element` 时，必须显式调用 `wrap_with_margin(el, &iced_style)`，确保 `mt-*` / `mb-*` / `ml-*` / `mr-*` 不被静默丢失。
+6. **单侧边框颜色继承 (Side Border Color)**:
+   - `border-t` / `border-b` / `border-l` / `border-r` 必须优先消费 `is.border_color`（如 `border-gray-200`），无显式颜色时才回退至主题默认 `resolve_border_rgb()`，避免在浅色卡片上误渲染为突兀深黑线。
+7. **`overflow-hidden` 与高度推断解耦 (Overflow Clipping vs Height Inference)**:
+   - `overflow-hidden` 在 CSS 中仅表示内容溢出裁剪与圆角遮罩，绝不可被误推断为 `height: Fill`；仅 `overflow-y-auto` / `scroll` 具备纵向填充意图，避免造成卡片高度被撑满整屏。
+8. **单体表单控件的箱内居中 (Standalone Form Control Centering)**:
+   - 无 label 的独立 `checkbox` / `radio` 在声明了 `w-*` / `h-*`（如 `w-10 h-12`）时，必须包裹在 `align_x(Center)` 与 `align_y(Center)` 容器中，确保在行高内垂直与水平居中。
 
 ---
 
