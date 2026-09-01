@@ -773,7 +773,22 @@ fn expr_atom(mut p P) E {
     if k == TokenKind.Ident {
         var n = p_text(p)
         p_next(p)
+        // W1 构造字面量:已注册类型名紧随 {(镜像宿主 atom 的
+        // accepts_as_type_construction——scope 命中类型才拦截);
+        // 否则回落原标识符路径({ 留给语句层,行为不变)
+        if p_kind(p) == TokenKind.LBrace && p_decl_lookup(p, n) != "" {
+            return ctor_node(p, n)
+        }
         return E("name", n, n, "", "(name " + n + ")", p_lookup(p, n))
+    }
+    if is_soft_ident_kind(k) {
+        // soft-ident(Plan 356 镜像):表达式位按标识符消费
+        var n2 = p_text(p)
+        p_next(p)
+        if p_kind(p) == TokenKind.LBrace && p_decl_lookup(p, n2) != "" {
+            return ctor_node(p, n2)
+        }
+        return E("name", n2, n2, "", "(name " + n2 + ")", p_lookup(p, n2))
     }
     if k == TokenKind.Nil {
         p_next(p)
@@ -925,6 +940,47 @@ fn parse_object(mut p P) E {
     }
     p_expect(p, TokenKind.RBrace)
     return E("object", "", "", "", dump + ")", "")
+}
+
+// W1 构造字面量 X { a: e1, b: e2 }:宿主 Expr::Node 形态,Pair 落 node 的
+// body 段(parse_node_body → Stmt::Expr(Pair)),Display 对齐 ast/node.rs:
+// (node (name X) (body (pair (name a) e1) (pair (name b) e2)))
+// 键限 NamedKey(宿主 parse_braced_struct_args 只转 NamedKey→Pair);
+// ity 空 = Unknown(镜像宿主 infer Node→Unknown)
+fn ctor_node(mut p P, name str) E {
+    p_expect(p, TokenKind.LBrace)
+    skip_empty_lines(p)
+    var body = "(body"
+    var n = 0
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+        var k = p_kind(p)
+        if k != TokenKind.Ident && k != TokenKind.Type && k != TokenKind.Tag && k != TokenKind.Task {
+            p_err(p, "expected field name in struct ctor, got ")
+            return bad_e()
+        }
+        var key = "(name " + p_text(p) + ")"
+        p_next(p)
+        p_expect(p, TokenKind.Colon)
+        var val = expr_pratt(p, 0)
+        body = f"${body} (pair ${key} ${val.dump})"
+        n = n + 1
+        // sep_obj:逗号/换行
+        var sk = p_kind(p)
+        if sk == TokenKind.Comma || sk == TokenKind.Newline {
+            p_next(p)
+            skip_empty_lines(p)
+        } else if sk != TokenKind.RBrace {
+            p_err(p, "expected pair separator, got ")
+        }
+    }
+    p_expect(p, TokenKind.RBrace)
+    var dump = f"(node (name ${name})"
+    if n > 0 {
+        dump = f"${dump} ${body}))"
+    } else {
+        dump = f"${dump})"
+    }
+    return E("node", name, name, body, dump, "")
 }
 
 fn join_dump_list(parts List<str>, sep str) str {
@@ -1499,6 +1555,15 @@ fn is_name_kind(k TokenKind) bool {
     is k {
         TokenKind.EOF | TokenKind.RBrace | TokenKind.Newline | TokenKind.Semi | TokenKind.Comma | TokenKind.Colon | TokenKind.Asn | TokenKind.LParen | TokenKind.LBrace | TokenKind.LSquare | TokenKind.RParen | TokenKind.RSquare | TokenKind.Arrow | TokenKind.Dot | TokenKind.Lt | TokenKind.Gt -> false
         else -> true
+    }
+}
+
+// 宿主 soft-ident 面(parser.rs:663 Plan 356):词法保留但表达式位合法
+// 作标识符的关键字(`o.tag` 的点右值位等);aavm 镜像同名集合
+fn is_soft_ident_kind(k TokenKind) bool {
+    is k {
+        TokenKind.Tag | TokenKind.Type | TokenKind.Union | TokenKind.Spec | TokenKind.Super | TokenKind.Has | TokenKind.Copy | TokenKind.Move | TokenKind.Take | TokenKind.Hold | TokenKind.Alias | TokenKind.Ext | TokenKind.Impl | TokenKind.Mod | TokenKind.Enum -> true
+        else -> false
     }
 }
 
