@@ -1,0 +1,15 @@
+// Plan 514 W1-2 探针 m09：用户方法名命中内建名（洞 B 复现件）
+// VM 侧绿件（VM 按类型方法表解析 `set`）。
+// a2r 侧在 W1-4 修复前为红：trans/rust.rs "set" => Some("insert") 无接收者
+// 类型检查，`h.set(42)` 被误发射为 `h.insert(...)`（method-emission-spec §3 洞 B）。
+type Holder {
+    v int
+    fn set(n int) { self.v = n }
+    fn get() int { return .v }
+    static fn new(v int) Holder { return Holder(v) }
+}
+fn main() {
+    var h = Holder.new(1)
+    h.set(42)
+    print(f"set_get=${h.get()}")
+}

@@ -1,0 +1,13 @@
+// Plan 514 W1-2 探针 m02：方法内调方法（.helper() 简写接收者 + 嵌套两层）
+type Calc {
+    base int
+    fn helper(n int) int { return .base + n }
+    fn call_helper() int { return .helper(3) }
+    fn chain_local() int { return .helper(.helper(1)) }
+    static fn new(v int) Calc { return Calc(v) }
+}
+fn main() {
+    let c = Calc.new(10)
+    print(f"call_helper=${c.call_helper()}")
+    print(f"nested=${c.chain_local()}")
+}

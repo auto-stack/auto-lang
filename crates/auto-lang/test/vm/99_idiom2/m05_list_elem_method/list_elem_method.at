@@ -1,0 +1,18 @@
+// Plan 514 W1-2 探针 m05：List<T> 元素方法调用（for-in 位 + 索引位）
+type Item {
+    v int
+    fn get() int { return .v }
+    static fn new(v int) Item { return Item(v) }
+}
+fn total(items List(Item)) int {
+    var t = 0
+    for it in items {
+        t = t + it.get()
+    }
+    return t
+}
+fn main() {
+    let xs = [Item.new(1), Item.new(2), Item.new(3)]
+    print(f"total=${total(xs)}")
+    print(f"idx1=${xs[1].get()}")
+}

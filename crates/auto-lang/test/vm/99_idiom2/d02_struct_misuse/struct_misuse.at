@@ -1,0 +1,15 @@
+// Plan 514 W1-2 探针 d02：447-① 债复现件——`struct` 误用须报错（守卫件）
+// `struct` 非 Auto 关键字（具名结构声明实为 `type`）。当前报误导性
+// E0201 "Variable 'Val' is not defined"；W1-4 修复后应改报 `struct` 位语法错。
+// 本件以 .expected.error 守卫"必须报错"（修复前后均红即报错，错误类别
+// 由 W1-4 以 CLI 转录验证）。
+fn make() {
+    struct Val {
+        x int
+    }
+    return Val { x: 2 }
+}
+fn main() {
+    let v = make()
+    print(v.x)
+}

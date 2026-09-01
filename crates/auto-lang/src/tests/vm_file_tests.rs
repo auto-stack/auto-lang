@@ -1219,3 +1219,22 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_99_idiom_probe_p13a_struct_field_enum() { test_vm("99_idiom_probe/p13a_struct_field_enum").unwrap(); }
 #[test] fn test_99_idiom_probe_p13b_struct_literal_field() { test_vm("99_idiom_probe/p13b_struct_literal_field").unwrap(); }
 #[test] fn test_99_idiom_probe_p13c_struct_literal_literal_payload() { test_vm("99_idiom_probe/p13c_struct_literal_literal_payload").unwrap(); }
+
+// === 99_idiom2 (Plan 514 W1-2: type 方法族探针常驻回归) ===
+// m 系绿件：字段读写/&mut、方法内调方法、static 链、位置构造、List 元素方法、
+// 方法值、ext、.field/self.x 双形态、内建名遮蔽（VM 侧解析用户方法表）。
+// d 系债务复现件：d01 plain 嵌套 fn（已绿，守卫）；d01b 捕获位静默失效
+// （#[ignore] 至 W1-4：嵌套 fn 引用外层局部应报错而非静默 0）；
+// d02 struct 误用守卫（.expected.error：修复前后都必须报错，错误类别 W1-4 验证）。
+#[test] fn test_99_idiom2_m01_field_rw() { test_vm("99_idiom2/m01_field_rw").unwrap(); }
+#[test] fn test_99_idiom2_m02_method_calls_method() { test_vm("99_idiom2/m02_method_calls_method").unwrap(); }
+#[test] fn test_99_idiom2_m03_static_new_chain() { test_vm("99_idiom2/m03_static_new_chain").unwrap(); }
+#[test] fn test_99_idiom2_m04_positional_ctor() { test_vm("99_idiom2/m04_positional_ctor").unwrap(); }
+#[test] fn test_99_idiom2_m05_list_elem_method() { test_vm("99_idiom2/m05_list_elem_method").unwrap(); }
+#[test] fn test_99_idiom2_m06_method_value() { test_vm("99_idiom2/m06_method_value").unwrap(); }
+#[test] fn test_99_idiom2_m07_ext_method() { test_vm("99_idiom2/m07_ext_method").unwrap(); }
+#[test] fn test_99_idiom2_m08_receiver_forms() { test_vm("99_idiom2/m08_receiver_forms").unwrap(); }
+#[test] fn test_99_idiom2_m09_method_name_set() { test_vm("99_idiom2/m09_method_name_set").unwrap(); }
+#[test] fn test_99_idiom2_d01_nested_fn_void() { test_vm("99_idiom2/d01_nested_fn_void").unwrap(); }
+#[test] #[ignore] fn test_99_idiom2_d01b_nested_fn_capture() { test_vm("99_idiom2/d01b_nested_fn_capture").unwrap(); }
+#[test] fn test_99_idiom2_d02_struct_misuse() { test_vm("99_idiom2/d02_struct_misuse").unwrap(); }

@@ -1,0 +1,22 @@
+// Plan 514 W1-2 探针 m01：方法读字段 / 写字段（&mut 判定）
+// VM 侧绿件；a2r 侧字段写方法须发 &mut self（见 method-emission-spec.md §1）
+type Counter {
+    value int
+    fn get() int { return .value }
+    fn inc() int {
+        .value = .value + 1
+        return .value
+    }
+    fn set_to(n int) {
+        .value = n
+    }
+    static fn new(v int) Counter { return Counter(v) }
+}
+fn main() {
+    var c = Counter.new(10)
+    print(f"get=${c.get()}")
+    print(f"inc=${c.inc()}")
+    print(f"inc=${c.inc()}")
+    c.set_to(99)
+    print(f"after set_to=${c.get()}")
+}

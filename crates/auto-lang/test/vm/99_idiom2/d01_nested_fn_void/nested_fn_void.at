@@ -1,0 +1,11 @@
+// Plan 514 W1-2 探针 d01：447-① 债复现件——嵌套 void fn 静默失效
+// 期望（正确语义）：inner() 输出 "hi from inner"。
+// 当前 VM 基线（2026-09-01）：仅输出 "after"，inner() 静默无输出无报错 → 红。
+// W1-4 修复后转绿；接线暂 #[ignore]。
+fn main() {
+    fn inner() {
+        print("hi from inner")
+    }
+    inner()
+    print("after")
+}

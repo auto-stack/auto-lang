@@ -1,0 +1,13 @@
+// Plan 514 W1-2 探针 m03：static 构造 + 方法链
+type Step {
+    v int
+    fn add(n int) Step { return Step.new(.v + n) }
+    fn get() int { return .v }
+    static fn new(v int) Step { return Step(v) }
+}
+fn main() {
+    print(f"chain=${Step.new(1).add(2).add(3).get()}")
+    let s = Step.new(5)
+    print(f"two=${s.add(10).get()}")
+    print(f"orig=${s.get()}")
+}

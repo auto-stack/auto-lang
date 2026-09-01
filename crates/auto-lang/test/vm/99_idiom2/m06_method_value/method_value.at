@@ -1,0 +1,16 @@
+// Plan 514 W1-2 探针 m06：方法值传参 / 返回（实例作实参、方法果作返回、方法内方法值）
+// 注：类型名避开 Box（VM 保留名，BoxExpr 特殊路径）
+type Cube {
+    v int
+    fn get() int { return .v }
+    fn twice() int { return .get() * 2 }
+    static fn new(v int) Cube { return Cube(v) }
+}
+fn apply(b Cube) int { return b.get() }
+fn make(v int) Cube { return Cube.new(v) }
+fn main() {
+    print(f"apply=${apply(Cube.new(7))}")
+    print(f"make_get=${make(8).get()}")
+    let b = Cube.new(6)
+    print(f"twice=${b.twice()}")
+}

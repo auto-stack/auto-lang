@@ -1,0 +1,9 @@
+// Plan 514 W1-2 探针 d01b：447-① 债捕获位复现件——嵌套 fn 引用外层局部变量静默得 0
+// 期望（修复后）：明确报错（具名 fn 非闭包，按 Rust 嵌套 fn 语义外层名不可捕获）。
+// 当前基线（2026-09-01）：静默打印 5（base 解析为 0）→ 红（.expected.error 不满足）。
+// W1-4 修复后转绿；接线暂 #[ignore]。
+fn main() {
+    let base = 10
+    fn grab(n int) int { return base + n }
+    print(grab(5))
+}

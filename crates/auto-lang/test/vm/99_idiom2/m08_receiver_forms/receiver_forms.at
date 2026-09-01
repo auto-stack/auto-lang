@@ -1,0 +1,20 @@
+// Plan 514 W1-2 探针 m08：.field 简写与 self.x 双形态（读位 + 写位交叉）
+type Mixed {
+    a int
+    b int
+    fn short_sum() int { return .a + .b }
+    fn self_sum() int { return self.a + self.b }
+    fn mixed_set(n int) { self.a = n }
+    fn short_set(n int) { .b = n }
+    static fn new(a int, b int) Mixed { return Mixed(a, b) }
+}
+fn main() {
+    let m = Mixed.new(1, 2)
+    print(f"short=${m.short_sum()}")
+    print(f"self=${m.self_sum()}")
+    var n = Mixed.new(10, 20)
+    n.mixed_set(100)
+    n.short_set(200)
+    print(f"after=${n.short_sum()}")
+    print(f"after_self=${n.self_sum()}")
+}

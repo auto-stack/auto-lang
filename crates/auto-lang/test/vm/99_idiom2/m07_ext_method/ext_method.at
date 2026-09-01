@@ -1,0 +1,20 @@
+// Plan 514 W1-2 探针 m07：ext 扩展方法（读字段 + ext 内字段写）
+type Num {
+    v int
+    fn get() int { return .v }
+    static fn new(v int) Num { return Num(v) }
+}
+ext Num {
+    fn double() int { return .v * 2 }
+    fn bump() {
+        .v = .v + 1
+    }
+}
+fn main() {
+    let n = Num.new(21)
+    print(f"get=${n.get()}")
+    print(f"double=${n.double()}")
+    var m = Num.new(5)
+    m.bump()
+    print(f"bumped=${m.get()}")
+}

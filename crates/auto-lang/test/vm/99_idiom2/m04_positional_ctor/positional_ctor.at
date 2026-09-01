@@ -1,0 +1,19 @@
+// Plan 514 W1-2 探针 m04：Counter(v) 位置构造（static 体内 + 普通函数位）
+type Point {
+    x int
+    y int
+    fn sum() int { return .x + .y }
+    static fn origin() Point { return Point(0, 0) }
+    static fn make(a int, b int) Point { return Point(a, b) }
+}
+fn build(v int) Point {
+    return Point(v, v * 2)
+}
+fn main() {
+    let p = build(3)
+    print(f"build=${p.sum()}")
+    let o = Point.origin()
+    print(f"origin=${o.sum()}")
+    let q = Point.make(4, 5)
+    print(f"make=${q.sum()}")
+}

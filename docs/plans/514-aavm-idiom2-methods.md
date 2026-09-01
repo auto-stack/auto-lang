@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-514
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-idiom2-methods
 author: [zhaopuming]
 created_at: 2026-09-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 0
+current_step: 2
 total_steps: 22
 ---
 
@@ -281,13 +281,12 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### W0 基线与规格（master）
 
-1. [ ] 基线留档（本计划 §基线表已实测）+ 矩阵②腿修复方案定案（import
-   注入 vs std 直映，主 a2r 独立二进制模式行为考古）；宿主方法发射规格
-   考古落盘：13-methods.at 全形态 transpile 存档（构造器/简写/&mut 判定/
-   static Type:: 路径）、主 a2r File::read_text 洞定位。
-   验证：`docs/specs/aavm/design/` 规格章 + 考古样例贴证。
-2. [ ] 99_idiom2 探针族先行落盘（红/绿证 + 447-旁支两债复现件）；进
-   vm_file_tests 显式 fn。验证：VM 侧跑出预期红清单（或绿+洞登记）。
+1. [✅ 已完成] 规格章落盘 `docs/specs/aavm/design/method-emission-spec.md`：live 对齐表（17 形态，13-methods+arch1/2/11 实测）、P511-5 定案 std 直映（三方语义一致+merge 零依赖）、洞 B（`set`→`insert` 遮蔽，Plan 393 E1 先例）、债①②精确复现（arch7/arch10）。2026-09-01。
+2. [✅ 已完成] 99_idiom2 12 件落盘（m01–m09 绿件 + d01 plain 嵌套 fn 绿守卫 +
+   d01b 捕获位复现件 #[ignore] 红 + d02 struct 误用 .expected.error 守卫）；
+   vm_file_tests 接线 12 fn；实跑 11 过/1 ignore。考古修正：债① plain 形态现已
+   可工作，真实静默失效在**捕获位**（嵌套 fn 引用外层局部 → 静默 0）；m06 避
+   VM 保留名 Box。2026-09-01。
 
 ### W1 宿主两侧加固（worktree）
 
