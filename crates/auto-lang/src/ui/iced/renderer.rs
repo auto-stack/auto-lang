@@ -3014,7 +3014,29 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let end = label.find('\u{EE02}').unwrap_or(label.len());
                     let icon_name = &label[3..end.min(label.len())];
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
-                    if let Some(svg_str) = lucide_svg_doc(icon_name) {
+                    // Plan 515 D1：hicon:<slot> = native 真图标（raster——
+                    // 486 占位清偿；14px 与邻位 lucide 图标同档）。
+                    if let Some(icon) = crate::ui::iced::native_icon::parse_field(icon_name) {
+                        let handle = iced::widget::image::Handle::from_rgba(
+                            icon.w, icon.h, icon.rgba,
+                        );
+                        let icon_el = iced::widget::image(handle)
+                            .width(iced::Length::Fixed(14.0))
+                            .height(iced::Length::Fixed(14.0));
+                        if text_label.is_empty() {
+                            icon_el.into()
+                        } else {
+                            let mut tw = text(text_label.to_string());
+                            if let Some(ref is) = iced_style {
+                                if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
+                                if let Some(c) = is.text_color { tw = tw.color(c); }
+                            }
+                            iced::widget::row!(icon_el, tw)
+                                .spacing(6)
+                                .align_y(iced::alignment::Vertical::Center)
+                                .into()
+                        }
+                    } else if let Some(svg_str) = lucide_svg_doc(icon_name) {
                         // Plan 409 §10 续: PUA icon(button label 内嵌的 nav-link
                         // 图标)与文字同色 —— button 的 text_color,无则 OnBackground
                         // (renderer §3.4,避免 resvg 把 currentColor 画成黑色)。
@@ -4219,6 +4241,23 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Image { src, style } => {
+                // Plan 515 D1：hicon:<slot> = native 真图标 raster
+                //（window_thumbnail 的 fallback_icon / image 直挂两消费面）。
+                if let Some(icon) = crate::ui::iced::native_icon::parse_field(&src) {
+                    let handle =
+                        iced::widget::image::Handle::from_rgba(icon.w, icon.h, icon.rgba);
+                    let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                    let mut img = iced::widget::image(handle);
+                    if let Some(ref is) = is {
+                        if let Some(ref w) = is.width {
+                            img = img.width(iced_length(w));
+                        }
+                        if let Some(ref h) = is.height {
+                            img = img.height(iced_length(h));
+                        }
+                    }
+                    return img.into();
+                }
                 // Plan 408: lucide: icon prefix → render bundled SVG glyph.
                 if src.starts_with("lucide:") {
                     let icon_name = &src[7..];
@@ -9606,12 +9645,17 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         if slot.state != crate::ui::native_dock::SlotState::Docked {
             continue;
         }
+        // Plan 515 D1：HICON 真图标（486 占位清偿）——幂等提取入缓存，
+        // icon 字段有真图标时 = "hicon:<slot>"（渲染臂换 image）。
+        crate::ui::iced::native_icon::ensure(id.0, slot.hwnd);
         wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
             ("wid", auto_val::Value::Str(format!("N{}", id.0).into())),
             ("title", auto_val::Value::Str(slot.title_cache.clone().into())),
             ("focused", auto_val::Value::Str(String::new().into())),
             ("native", auto_val::Value::Str("1".into())),
-            ("icon", auto_val::Value::Str("app-window".into())),
+            ("icon", auto_val::Value::Str(
+                crate::ui::iced::native_icon::icon_field(id.0).into(),
+            )),
             // v1.5：native 无分区归属，pager 恒空串（判据统一不缺字段）。
             ("pager", auto_val::Value::Str(String::new().into())),
         ])));
