@@ -1,0 +1,5 @@
+var base int = 10
+
+pub fn get_base() int {
+    return base
+}

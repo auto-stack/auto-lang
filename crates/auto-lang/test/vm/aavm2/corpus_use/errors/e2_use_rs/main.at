@@ -1,0 +1,5 @@
+use.rs foo::Bar
+
+fn main() {
+    print(1)
+}

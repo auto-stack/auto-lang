@@ -1,0 +1,5 @@
+use nosuchmod
+
+fn main() {
+    print(1)
+}

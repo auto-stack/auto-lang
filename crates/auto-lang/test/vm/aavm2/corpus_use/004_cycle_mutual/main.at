@@ -1,0 +1,7 @@
+use a: even
+use b: odd
+
+fn main() {
+    print(even(10))
+    print(odd(9))
+}

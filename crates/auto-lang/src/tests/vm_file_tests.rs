@@ -782,10 +782,24 @@ fn build_aavm_rust_bin() -> PathBuf {
         lib_dir.to_str().expect("utf8 path")).expect("a2r merge transpile auto/lib");
 
     // 内容寻址缓存:同产物不重复 cargo build
+    // Plan 511 W3 前导 shim:aavm lib 的 File.read_text(W3 模块解析原语)
+    // 在 a2r 转译侧无原生映射——bin 层提供同名直通实现(leg 语料不触达,
+    // 仅为可编译;divergence 登记 D-AA2R-struct 条目内)
+    let prelude = r#"
+#[allow(dead_code)]
+pub struct File;
+#[allow(dead_code)]
+impl File {
+    pub fn read_text(p: impl AsRef<std::path::Path>) -> String {
+        std::fs::read_to_string(p).unwrap_or_default()
+    }
+}
+"#;
     let hash = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         merged.hash(&mut h);
+        prelude.hash(&mut h);
         format!("{:016x}", h.finish())
     };
     let proj = std::env::temp_dir().join(format!("aavm2-bin-{}", hash));
@@ -813,6 +827,7 @@ fn main() {
 }
 "#;
     let mut full = merged.clone();
+    full.extend_from_slice(prelude.as_bytes());
     full.extend_from_slice(harness.as_bytes());
     std::fs::write(src_dir.join("main.rs"), &full).unwrap();
 

@@ -1567,6 +1567,90 @@ fn is_soft_ident_kind(k TokenKind) bool {
     }
 }
 
+// W3(Plan 511)use 语句:四形态 Display 对齐 ast/use_.rs——
+// `use db` → (use (module_path db));`use db: a, b` → +(items a,b);
+// `use db: *` → +(wildcard);点路径 tools.helper 原样;异构 use.rs/py →
+// (use (kind rust|py) (path foo.Bar))。注:Auto use 的 {} 花括号形态经
+// `::` 不可达(宿主 :: 双冒号被 items-colon 消费后报错,W0 实测),
+// parse_use_items 的 LBrace 臂仅服务 use.rs 路径形态。
+fn parse_use(mut p P) str {
+    p_next(p)
+    // 异构形态:use.rs / use.py(use 已消费,cur 为 Dot)
+    if p_kind(p) == TokenKind.Dot {
+        var lang = p_peek_text(p, 1)
+        p_next(p)
+        p_next(p)
+        if lang != "rs" && lang != "py" && lang != "c" {
+            p_err(p, "expected language after use., got ")
+            return ""
+        }
+        var kind = "rust"
+        if lang == "py" {
+            kind = "py"
+        } else if lang == "c" {
+            kind = "c"
+        }
+        // 路径段::: 分隔(词法为两个 Colon),Display 以 . 连接
+        var path = p_text(p)
+        p_next(p)
+        while p_kind(p) == TokenKind.Colon && p_peek(p, 1) == TokenKind.Colon {
+            p_next(p)
+            p_next(p)
+            path = path + "." + p_text(p)
+            p_next(p)
+        }
+        return "(use (kind " + kind + ") (path " + path + "))"
+    }
+    if !is_name_kind(p_kind(p)) {
+        p_err(p, "expected module name after use, got ")
+        return ""
+    }
+    var name = p_text(p)
+    p_next(p)
+    while p_kind(p) == TokenKind.Dot {
+        p_next(p)
+        if !is_name_kind(p_kind(p)) {
+            p_err(p, "expected path segment after dot, got ")
+            return ""
+        }
+        name = name + "." + p_text(p)
+        p_next(p)
+    }
+    var items = ""
+    var wildcard = false
+    if p_kind(p) == TokenKind.Colon {
+        p_next(p)
+        if p_kind(p) == TokenKind.Star {
+            p_next(p)
+            wildcard = true
+        } else {
+            if !is_name_kind(p_kind(p)) {
+                p_err(p, "expected identifier or *, got ")
+                return ""
+            }
+            items = p_text(p)
+            p_next(p)
+            while p_kind(p) == TokenKind.Comma {
+                p_next(p)
+                if !is_name_kind(p_kind(p)) {
+                    p_err(p, "expected identifier, got ")
+                    return ""
+                }
+                items = items + "," + p_text(p)
+                p_next(p)
+            }
+        }
+    }
+    var out = "(use (module_path " + name + ")"
+    if items != "" {
+        out = out + " (items " + items + ")"
+    }
+    if wildcard {
+        out = out + " (wildcard)"
+    }
+    return out + ")"
+}
+
 // type 声明(Plan 434:AA2R 转译 lib 自身需要)。Display 对齐 ast/types.rs
 // 的 TypeDecl:仅 members 路径;泛型参数/别名/is/as/has/方法体/字段默认值
 // 遇之报 v2 unsupported(lib 未用,golden 02 组部分留后续)
@@ -1976,7 +2060,7 @@ fn parse_is(mut p P) str {
 
 fn is_unsupported_stmt_kind(k TokenKind) bool {
     is k {
-        TokenKind.Use | TokenKind.Spec | TokenKind.Tag | TokenKind.Union | TokenKind.Ext | TokenKind.Impl | TokenKind.Task | TokenKind.On | TokenKind.Dep | TokenKind.Hash | TokenKind.HashIf | TokenKind.HashFor | TokenKind.HashIs | TokenKind.HashBrace | TokenKind.HashIdent | TokenKind.Try | TokenKind.Yield | TokenKind.Reply | TokenKind.View -> true
+        TokenKind.Spec | TokenKind.Tag | TokenKind.Union | TokenKind.Ext | TokenKind.Impl | TokenKind.Task | TokenKind.On | TokenKind.Dep | TokenKind.Hash | TokenKind.HashIf | TokenKind.HashFor | TokenKind.HashIs | TokenKind.HashBrace | TokenKind.HashIdent | TokenKind.Try | TokenKind.Yield | TokenKind.Reply | TokenKind.View -> true
         else -> false
     }
 }
@@ -2033,13 +2117,18 @@ fn parse_stmt(mut p P) str {
     if k == TokenKind.LBrace {
         return parse_body(p)
     }
+    if k == TokenKind.Use {
+        return parse_use(p)
+    }
     if is_unsupported_stmt_kind(k) {
         p_err(p, "v2 unsupported: " + kind_name(k) + " ")
         return ""
     }
     if k == TokenKind.Ident && p_text(p) == "pub" {
-        p_err(p, "v2 unsupported: pub ")
-        return ""
+        // W3:pub 前缀——跳过后递归(pub fn/let/var;D3:VM 链路无过滤,
+        // dump 不承载 pub 位)
+        p_next(p)
+        return parse_stmt(p)
     }
     var e = expr_pratt(p, 0)
     return e.dump

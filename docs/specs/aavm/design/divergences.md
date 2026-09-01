@@ -440,3 +440,23 @@ H2);FStrPart 直通发射的三缺口实证见 D40 续。
 - **D-soft-ident(W1 新还原面)**:aavm expr_atom 增 soft-ident 兜底
   (Plan 356 镜像,Tag/Type/Enum 等 15 kind 表达式位作标识符)——非分叉,
   补齐宿主已有行为;`o.tag` 类字段名语料因之可用。
+
+## 511 W3(use 模块化,2026-09-01)
+
+- **D-AA2R-struct 追记(ignored 腿状态)**:W3 修复了 W2 遗留的转译可构建性
+  (File.read_text bin 层 shim 前导/嵌套 c 借用拆分/loading 免清除/括号化 ||
+  入 && 链的优先级塌缩——a2r 转译不保括号,两处 .at 条件重构规避;后者
+  含既有 str_either 条件的同款潜在错误修复)。AA2R compile_corpus 腿现为
+  30/37,余 7 件(b13/b14×2/b19/b27/b29/b30)为**预存转译债**——CJK 注释
+  词法(char_at 码点 vs 转译字节序)与 arr_flag 接收者跟踪,均非 511 引入;
+  登记入 KNOWN-DEBT,随 AA2R 批(待澄清①)处置。
+- **D-stdlib-shadow(W3 实测)**:同目录模块名与 stdlib/auto 同名时被 stdlib
+  遮蔽(四级搜索 stdlib 先于 source_dirs)——corpus_use/003 的 math 模块
+  实证(改名 calc 规避);语料命名避开 stdlib 名单。
+- **D-module-shape(W3 实测定案)**:dep 模块裸形态(Type/Use 消费+顶层
+  var/const 限名全局+fn 各自 jmp-over+尾 HALT,无 wrapper,init 语句无
+  .line);主模块 wrapper 形态;链接序 DFS 后序(deeps 先);初始化序 dep
+  链接序逐模块至各自 HALT 再 main 入口;跨模块调用 = 延迟符号(bare 首到
+  +mod.fn+strip 兜底);限定调用 db.fn 发射 const.i32 0 接收者占位
+  (宿主 Ident 模块兜底,Plan 437 注记的占位泄漏镜像);语句级用户 fn
+  调用在 fn 体内尾随 pop(wrapper 顶层不发)。

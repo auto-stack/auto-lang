@@ -1,0 +1,5 @@
+use db
+
+fn main() {
+    print(db.add(2, 3))
+}
