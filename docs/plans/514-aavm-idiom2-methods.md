@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 9
+current_step: 11
 total_steps: 22
 ---
 
@@ -331,9 +331,21 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
    直通（避开数组索引臂）+构造器（ar_call_tail 既有位置构造展开复用）。
    验证：corpus_a2r 全绿（g01–g15 逐字符对拍主 a2r）+g09–g15 主 a2r 产物
    rustc --emit=metadata 零错+标准门禁 16 绿+99_unit 13 绿。2026-09-01。
-10. [ ] P511-1 双根因修复（CJK 注释词法 + arr_flag 接收者跟踪）。
-    验证：`--include-ignored` 37/37 绿。
-11. [ ] AA2R 腿去 ignore + CI 口径更新 + 折叠点②（矩阵+CI 绿合入）。
+10. [✅ 已完成] P511-1 双根因清偿——根因①：lexer.at tokenize 主循环加
+    cur_char 哨兵（VM 侧 len/char_at 同为码点自洽；转译侧 len()=字节>
+    码点，主循环越过真实末尾产 Unknown——b13/b14/b19）；根因②（真因与
+    登记不同）：主 a2r 通用 Bina 臂缺优先级括号——`(a||b)&&c` 发射为
+    `a||b&&c` 语义反转，codegen.at 全局注册条件误命中→var 走全局路径→
+    arr_flag 链塌缩（b27/b29/b30）；补 auto_op_prec 表（镜像 a2r.at
+    infix_l）+lhs/rhs 括号判定。⑤腿追加：a2r.at slice 臂对齐主 a2r
+    chars().take(b).skip(a) 码点形（字节切片 CJK 内 panic）。验证：
+    test_aavm2_compile_corpus 37/37 绿；--include-ignored 19/19 绿。
+    2026-09-01。
+11. [✅ 已完成] test_aavm2_compile_corpus 去 ignore 入常规门禁（标准
+    `-- test_aavm2` 17 过/2 ignore[按需 rustc 探针]）；vm-files-ci 第一层
+    去 --include-ignored（P511-2 口径收窄清偿）；折叠点②：矩阵五腿
+    46/46 全绿（matrix_run4 留档）+cargo tf 3350 绿→master 合入
+    515370ae4，worktree 回同步。2026-09-01。
 
 ### W3 lib 方法化 γ4（worktree 续；每文件一提交全绿才进）
 
