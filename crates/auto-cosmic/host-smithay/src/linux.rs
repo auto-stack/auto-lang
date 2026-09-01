@@ -56,7 +56,11 @@ pub fn run_host(frame_png: Option<&Path>, max_frames: Option<u64>) -> Result<(),
     };
     eprintln!(
         "[auto-smithay-host] stage-1 texture {}",
-        if texture.is_some() { "loaded" } else { "absent (clear-color form)" }
+        if texture.is_some() {
+            "loaded"
+        } else {
+            "absent (clear-color form)"
+        }
     );
 
     let mut close = false;
@@ -74,10 +78,10 @@ pub fn run_host(frame_png: Option<&Path>, max_frames: Option<u64>) -> Result<(),
 
         let size = backend.window_size();
         let damage = [Rectangle::from_size(size)];
-        let (renderer, mut fb) =
-            backend.bind().map_err(|e| format!("bind: {e:?}"))?;
-        let mut frame =
-            renderer.render(&mut fb, size, Transform::Normal).map_err(|e| format!("render: {e:?}"))?;
+        let (renderer, mut fb) = backend.bind().map_err(|e| format!("bind: {e:?}"))?;
+        let mut frame = renderer
+            .render(&mut fb, size, Transform::Normal)
+            .map_err(|e| format!("render: {e:?}"))?;
         match &texture {
             Some(buffer) => {
                 // 全屏铺放（Stage 1 不做缩放保真：纹理元素按窗口尺寸拉伸，
@@ -103,11 +107,7 @@ pub fn run_host(frame_png: Option<&Path>, max_frames: Option<u64>) -> Result<(),
             }
             None => {
                 frame
-                    .draw_solid(
-                        Rectangle::from_size(size),
-                        &damage,
-                        Color32F::from(CLEAR),
-                    )
+                    .draw_solid(Rectangle::from_size(size), &damage, Color32F::from(CLEAR))
                     .map_err(|e| format!("clear draw: {e:?}"))?;
             }
         }
