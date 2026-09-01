@@ -127,6 +127,13 @@
   `p508_ts_crosscheck_golden_bytes` ↔ TS `fixtures.golden.ts` 双侧钉
   同一批字节（计划②：手工镜像 + golden 兜底）。demo 页
   `examples/remote/viewer/`（vite）为验收载体。
+- **vue 桌面远程窗（Plan 516）**：渲染器包经 `auto-man` wm_assets 编译期
+  拷贝进 vue 虚拟桌面宿主（`src/wm/remote-renderer/`），远程 App 作为
+  `kind:"remote"` 虚拟窗进 WM。**尺寸协商注记（v1）**：远程会话的
+  `Welcome.rect`（远端逻辑尺寸）为 canvas 位图源空间，vue 虚拟窗 rect
+  只决定 CSS 呈现——**v1 以 vue 侧为源不回传 resize**（远端不跟随 vue
+  窗缩放；Hello 的 wh 仅建连初值）。后续若要远端跟随（512 fit 动态重测
+  的远端联动语义），需 Hello 重订阅/尺寸上行变体——协议号位预留，未占。
 
 **RenderQueue 线终态小结**：六阶段收线——协议五通道（386 S1）→ 真两
 进程（386 S8+）→ 真桌面壳多 App 驻留（480）→ 并行渲染二态载荷（500）
