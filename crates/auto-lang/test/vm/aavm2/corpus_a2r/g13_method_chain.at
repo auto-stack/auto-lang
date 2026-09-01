@@ -1,0 +1,10 @@
+// Plan 514 W2 g13: 方法链（返回实例的方法串联 + static 构造链）
+type Step13 {
+    v int
+    fn add(n int) Step13 { return Step13.new(.v + n) }
+    fn get() int { return .v }
+    static fn new(v int) Step13 { return Step13(v) }
+}
+fn main() {
+    print(Step13.new(1).add(2).add(3).get())
+}

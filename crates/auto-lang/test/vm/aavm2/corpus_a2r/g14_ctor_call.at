@@ -1,0 +1,16 @@
+// Plan 514 W2 g14: Counter(v) 位置构造（static 体内 + fn 返回位 + let 位）
+type Point14 {
+    x int
+    y int
+    fn sum() int { return .x + .y }
+    static fn make(a int, b int) Point14 { return Point14(a, b) }
+}
+fn build14(v int) Point14 {
+    return Point14(v, v * 2)
+}
+fn main() {
+    let p = build14(3)
+    print(p.sum())
+    let q = Point14.make(4, 5)
+    print(q.sum())
+}

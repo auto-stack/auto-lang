@@ -1,0 +1,19 @@
+// Plan 514 W2 g12: 字段写方法（&mut self 判定）
+type Counter12 {
+    value int
+    fn get() int { return .value }
+    fn inc() int {
+        .value = .value + 1
+        return .value
+    }
+    fn set_to(n int) {
+        self.value = n
+    }
+    static fn new(v int) Counter12 { return Counter12(v) }
+}
+fn main() {
+    var c = Counter12.new(10)
+    print(c.inc())
+    c.set_to(99)
+    print(c.get())
+}

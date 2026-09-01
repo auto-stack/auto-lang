@@ -847,8 +847,10 @@ fn main() {
 /// Plan 433 B2: corpus 执行层语料上 ②(AAVM-Rust) vs ①(Rust 参考)
 /// 行为对齐。语料 = corpus_m4 全量(= 99_bootstrap 038-052 回收 +
 /// 数组四件套,M4/M5 双绿集)。#[ignore]]:需 cargo 工具链,按需跑:
-/// cargo test -p auto-lang --lib --features test-vm-files -- test_aavm2_compile_corpus -- --ignored
-#[test] #[ignore]
+/// Plan 514 W2（P511-1/2 清偿）：corpus 37/37 全绿（CJK 注释词法哨兵 +
+/// 主 a2r 二元优先级括号双根因修复），去 ignore 纳入常规门禁——
+/// `-- test_aavm2` 默认即覆盖本腿。
+#[test]
 fn test_aavm2_compile_corpus() {
     let exe = build_aavm_rust_bin();
     let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
