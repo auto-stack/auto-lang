@@ -1,15 +1,19 @@
 ---
 plan_id: PLAN-510
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-pool-over-release
 author: [zhaopuming]
 created_at: 2026-09-01
 updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/vm/overview.md: 修改——字符串池记账不变量（每引用恰一次 retain/release；freelist 槽恒 rc==0）与 TAG_STRING 入栈咽喉契约（add_string/intern_runtime_str/rc_push_str_idx 收口，19 处裸推清除）"
+  - "docs/specs/auto-lang/vm/design/ffi.md: 修改——native 返回串与 http_server handler 实参配平入池；native ID 段位裁定（P499-7：Log 族 1805-1808 与 Shell 族 1800-1803 脱撞）"
+new_spec_components:
+  - "docs/specs/auto-lang/vm/design/string-pool-accounting.md: 新增——池记账可观测设施（PoolHealth 快照：underflow_events/phantom_drops/live_shares；P510_AUDIT=1 双栈审计）+ soak 验收载体（pool_soak_churn_short 日常档 / pool_soak_churn_long P510_SOAK_ITERS 显式档）"
+touched_goals:             # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-002: VM 运行时正确性——字符串池 over-release 注入源清偿、记账自持（幻影 0/下溢 0），musk 实机串腐坏根除"
 
 affects: [auto-lang/vm]
 current_step: 6
@@ -254,3 +258,41 @@ over-release ──→ 幻影条目 ──→ 清扫器     over-release 清偿(
   1800-1803）+ channel 用例空期望文件；P499-6 真因=kitchen-sink 生成器
   对视图关键字名元素（link）发射标签简写。两者已随本计划 worktree 提前
   清偿（提交 7a8ac1d2e / d0c23388d），债务账本同步改记。
+
+## 复审记录
+
+- **复审人/时间**：ZCode（/auto-plan:review），2026-09-01。
+- **验证基线**：plan-510-dev 分支（7a8ac1d2e..5d9700cb1 共 5 提交）已先行
+  折叠入 master（merge 8cb08e34f）——按 review 技能「已折叠则对默认检出
+  验证」规则在 master 复验；**流程偏差记录**：折叠本应发生在
+  /auto-plan:merge 之后，本次提前，worktree 留置待 merge 清理。
+
+### 验收标准逐条复验（verify, don't trust）
+
+| # | 判定 | 证据 |
+|:--|:--|:--|
+| 1 | **pass** | G1 四项结论与实码逐一对应：①裸池写 19 处收口——http_server.rs `push_str_arg` 咽喉（同步臂 2+async 中间件 1+build_handler_args 3）、stdlib.rs 双派发拷贝 2、native.rs 5 处 `rc_push_str_idx`、ffi.rs 1、py_ffi 3 处 `add_string+rc_push_str_idx`；②同清单收口+死代码 push_tagged_value 删除；③④证伪结论由 rc.rs 下溢探测钩子（rc.rs:486-496 `underflow_events`）+ engine.rs 兜底回推 rc==0 前提持续背书；配套回归钉 plan510_pool_tests 6/6 绿（http_server_param_interning_is_pool_visible / native_string_returns_are_counted / underflow_counter_detects_forced_over_release 等） |
+| 2 | **pass** | 长跑浸泡复审实跑 `P510_SOAK_ITERS=2000000` 2M 轮 **PASS（151.8s）**：断言 underflow_events=0 / phantom_drops=0 / live_shares=0 / freelist_len>0 全绿（churn 强度远超 musk 单会话 1896 幻影签名基线；载体为有界内容版 5d9700cb1） |
+| 3 | **pass** | 同上浸泡：终态 live_shares=0（配平自持）、freelist 复用恢复（freelist_len>0）、池规模有界；慢性泄漏二分清偿记录（BUILD_FSTR/pop_tagged 6 消费点/StakeGuard 池份额）与码面一致（engine.rs 弹栈物化先拷贝后释放、native.rs StakeGuard `pool_idx` 字段） |
+| 4 | **pass（auto-lang 侧）+ musk 残余转后续** | cargo tf **3345/3345** 绿（含 1M churn str_churn_bounded_large 24.3s + docs_gen/schema_drift）；cargo tv **3484/3484** 绿；desktop_protocol ui-iced 盲区 **105/105** 绿（Plan 507 复审清单项）；gallery_golden **1/1** 绿（含 P499-6 反洗白围栏）；musk vm-link-probe 复审实跑 **PASS**（61640 bytes < 90000 WARN；探针实跑 App Init→ForgeStore_LoadSessionList 会话链路）。**残余**：musk vue build strict/vitest/实机手动点击链路未复跑——本分支无 vue codegen 面（仅 docs_gen 厨房水槽生成器+VM 运行时），其腐坏失败模式已由 2M 浸泡 phantom=0 断言覆盖；裁定沿用计划待澄清条目（后续动作，不阻塞） |
+| 5 | **pass（含命名偏差）** | engine.rs add_string 060 悬垂指针已接正（engine.rs:900-906 → KNOWN-DEBT-AND-RISKS.md P510-1 + 本计划）；KNOWN-DEBT-AND-RISKS.md:619 P510-1 条目落位，双向指向成立（债→计划 510 文件；计划/engine.rs→债条目）；P499-6/7 改记在案。**偏差**：验收标准原文写 `DEBTS.md`，实际账本文件为 `KNOWN-DEBT-AND-RISKS.md`（仓内唯一债账本，AGENTS.md §3 同名）——计划文本笔误，非实施缺失 |
+
+### 遗漏/延后/workaround 猎查
+
+- **无新增 TODO/FIXME/HACK**（分支全量 diff 扫描零命中）。
+- **延后（在案，非静默）**：①musk vue 门禁+实机点击链路——计划待澄清已
+  裁定为后续动作；**复审纠正其前提**：musk 仓实际存在于
+  `D:\autostack\auto-musk`（非「不在本工作区」），vm-link-probe 等门禁
+  可在本环境执行（本次已实跑 VM 链接门），后续动作成本低于立项时估计；
+  ②P510-1 观察项③（裸 pop_arg_nv 池串实参不经 StakeGuard 的 over-retain
+  慢泄漏）已在债账本登记，待 soak 量化后按需清偿。
+- **cosmetic**：http_server.rs build_handler_args 三处 `push_str_arg` 调用
+  缩进不齐（行为无影响，随下批 VM 触碰顺带修正即可）。
+- **簿记微漂**：执行期门禁计数（t 3341/tv 3482/tf 3342）与复审实测
+  （tf 3345/tv 3484，含末笔提交新增测试）小幅出入，门禁全绿不受影响。
+
+### 结论
+
+五项验收全 pass（AC4/AC5 带在案残余与命名偏差记录），无阻塞债。
+**status: reviewed**，可进入 /auto-plan:merge（spec-impact 元数据已按实码
+落格：supersedes 2 项 / new 1 项 / touched GOAL-002）。
