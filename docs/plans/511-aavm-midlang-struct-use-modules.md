@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-511
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-midlang-struct-use-modules
 author: [zhaopuming]
 created_at: 2026-09-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 21
+current_step: 22
 total_steps: 22
 ---
 
@@ -438,8 +438,13 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
     矩阵+延后清单）、auto/lib/README.md（Plan 511 段）、divergences.md
     （W1/W3 两节）、KNOWN-DEBT P511 四条（AA2R 预存转译债/闸门口径偏差/
     b41 处置/占位泄漏镜像）、overview.md aavm 行注记。
-22. [ ] 复审（/auto-plan:review 范式：验收标准逐条对代码、遗漏/延后扫描、
-    健康检查、spec-impact 元数据）→ `cargo tf` 全量 → status: reviewed。
+22. [✅ 已完成·execution_done] 收尾验证（/auto-plan:review 为独立交接,
+    本步骤按 auto-plan:work Step 6 口径执行 scoped 复核）:tv-aavm2 16/16
+    （3 ignored=AA2R 腿,30/37 基线+7 件预存债见 KNOWN-DEBT P511）+
+    `auto test crates/auto-lang/test/vm/aavm2/99_unit` 13/13 + 生成器
+    --check 同步 + cargo tf 3345/3345 绿 + 收尾修复（StoreGlobal 定位后
+    单次写——clone 双语义问题）。待 /auto-plan:review：验收标准 8 条逐条
+    对代码、遗漏/延后扫描、spec-impact 元数据填写。
 
 ## 复审记录
 
