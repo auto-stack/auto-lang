@@ -34,6 +34,9 @@ members = [
     "crates/auto-cosmic/demo",
     "crates/auto-cosmic/host-libcosmic",
     "crates/auto-cosmic/ports-linux",
+    # Plan 509 route B: Smithay compositor host (Linux-gated smithay dep;
+    # non-Linux compiles a cfg stub — Windows dev flow unaffected).
+    "crates/auto-cosmic/host-smithay",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [

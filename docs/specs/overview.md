@@ -52,7 +52,7 @@
 | 资源 | 职责 | 状态 |
 |---|---|---|
 | [parity/](parity/project.md) | 独立 workspace：三后端行为一致性验证（30+ 库语料） | active |
-| [auto-cosmic](auto-cosmic/project.md) | COSMIC 桌面复刻实验（4 子 crate，Linux 向，无消费者） | experimental |
+| [auto-cosmic](auto-cosmic/project.md) | COSMIC 桌面复刻实验（4 子 crate，Linux 向）+ **Smithay 合成宿主线**（509 起：host-smithay crate，smithay 0.7.0 路线 B——桌面协议宿主消费帧，宿主无 iced；骨架+shell 首帧已落地） | active（509 线内） |
 | examples/ | 51 项示例（ui 应用轨道 0xx 系列/godot/http/charts gallery…） | active |
 | schema/ | `aura.at`——AURA 内置组件唯一声明源（Plan 435） | active |
 | test/ tests/ | 特性 fixture 与语言级 e2e .at 套件 | active |
