@@ -1963,14 +1963,15 @@ fn spawn_outproc_child(
         let spec = resolver(name).ok_or_else(|| format!("app not found: {name}"))?;
         self.ensure_daemon_if_declared(&spec);
         let (child_name, app_root) = Self::outproc_child_identity(&spec, name);
+        // broker 管道：会话登记值（505）> 缺省常量——自定义管道桌面同链。
+        let broker_pipe = self
+            .broker_pipe
+            .clone()
+            .unwrap_or_else(|| crate::ui::desktop_protocol::broker::BROKER_PIPE.to_string());
         let child = match self.desktop.outproc_spawner.clone() {
             Some(spawn) => spawn(&child_name).map_err(|e| format!("spawn outproc child: {e}"))?,
-            None => Self::spawn_outproc_child(
-                &child_name,
-                app_root.as_deref(),
-                crate::ui::desktop_protocol::broker::BROKER_PIPE,
-            )
-            .map_err(|e| format!("spawn outproc child: {e}"))?,
+            None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
+                .map_err(|e| format!("spawn outproc child: {e}"))?,
         };
         self.desktop.outproc_children.push(child);
         // 等受理（子进程 spawn + connect，冷启可达数秒）→ attach 到 Active
