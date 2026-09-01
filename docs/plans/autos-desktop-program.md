@@ -19,7 +19,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 > 多窗口 + panic 隔离）。2026-08-28 立项 M2–M4 计划族（Design 24：
 > `docs/design/autoui/desktop-shell-and-launcher.md`）——462/463/464/465；
 > **462 已完成**（单 OS 窗口多虚拟窗口 + WM 最小集，实机验收 + 3222 测试全绿），
-> 463/464/465 未开工。
+> ~~463/464/465 未开工~~ → 463/464/465 均已交付并归档（2026-09-01 Plan 513 回写）。
 
 **编号解析规则**：本表是"里程碑 ↔ 实际计划号"的**唯一事实源**。Design 23 与
 各计划正文中的 453–457 字样均为**提案编号**，一律经本表解析为实际编号。
@@ -34,11 +34,11 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 459 DesktopSession 多窗口化 | M1 收口 | iced daemon 迁移；AppId 递增分配与打标；双 AppSession 双窗口 demo；panic 隔离验证 | ✅ 完成 2026-08-28（C0–C4 + 实机验收，已归档） | 453 ✅ |
 | 462（原提案 454）VirtualWindow + WM | M2 | 路线 A：`virtual_window` 注册 widget、chrome、事件/焦点分区、桌面宿主入口、R4 接缝 v1（`462-virtual-window-wm.md`） | ✅ 完成 2026-08-28（实机双窗 demo 全交互 + `cargo t` 3222 绿 + I2 五套 desktop_mcp 全绿；IME 两项残留转 463） | 459 ✅ |
 | 463（原提案 455）桌面 shell | M3 | 全屏 borderless、shell pack+任务栏、layout 三模式+snap、`desktop.*` 命令接缝、workspace 驱动模型、桌面热键、pac.at 注册表（`463-desktop-shell-auto-arrange.md`；Design 25 §3/§4.1/§6 对齐） | ✅ 完成 2026-08-28（复审通过 + 合入归档 + specs 沉淀 P463-1..4） | 462 ✅ |
-| 464 Launcher App（吸收 441） | M3 组成 | `examples/ui/028-launcher`：palette+网格双形态、模糊搜索、键盘流、真注册表+`LaunchApp`（`464-launcher-app.md`） | 已立项 2026-08-28，未开工（M1 子阶段可先行） | 462+463 |
-| 465（原提案 456）Vue 虚拟桌面 | M4 | DOM 嵌入 + 多挂载宿主（`createApp`/虚拟窗）+ registry 构建期生成 + tauri 全屏壳 + E1/E2 接缝语义（`465-vue-virtual-desktop.md`） | 已立项 2026-08-28，未开工 | 462 契约（与 463/464 并行） |
-| 472 shell-track M1 | M3+ | **AutoShell 地基**：状态投影协议 v1（`__wm_*` 族 schema 化）+ workspace 驱动模型补课（463 §3.6 未实施）+ dock 升级（图标/pinned/配置）（`472-shell-track-m1-projection-dock.md`） | ✅ execution_done 2026-08-29（T1–T6 全落；cargo t 3234/3234 绿；协议合同 schema/projection-protocol-v1.md；复审以 /auto-plan:review 承载） | 463 ✅ + 464 ✅ |
-| shell-track M2（478） | M3+ | **switcher overlay + workspace pager**：Ctrl+Tab 召唤 MRU 面板（464 overlay 同型第二槽）+ dock 升格 pager（1 基标签/当前高亮/增删分区）+ send_to 跨区发送 + 协议 v1.1（`478-shell-track-m2-switcher-pager.md`） | 🔄 execution_done 2026-08-29（T1–T7 全落；cargo t 3236/3236 + ui-iced 档 3879/3879 绿；I2 五套 desktop_mcp 14/11/11/19/26 与 472 基线同数；T6 键流实机项注入通道受阻按 472 先例 headless 指针成文；复审以 /auto-plan:review 承载；缩略挂 386、shell IME 挂 457 不变） | 472 ✅ + 464 ✅ |
-| shell-track M3（479） | M3+ | **通知中心（S6）+ desktop.notify 动词**：463 瞬时 toast 升格「浮现+历史聚合」双面——dock 铃铛+未读 badge + 第三枚 overlay 槽面板（逐条 ×/全部清除/Esc）+ notify 出向动词 + storage 定长槽持久化 + 协议 v1.2（`479-shell-track-m3-notification-center.md`） | 🔄 execution_done 2026-08-29（T1–T7 全落；cargo t 3253/3253 + ui-iced 档 3912/3913 绿——唯一失败 `vm_code_editor_natives_end_to_end` 为 master 既有（Plan 474 并行会话同款，本仓 master 检出复现，与本计划零交集）；I2 五套 14/11/11/19/26 与 472 基线同数；T6 铃铛渲染/落盘/boot 恢复实机 PASS（机会性实机流量铁证），面板交互项按 472/478 先例 headless 指针成文；复审以 /auto-plan:review 承载；勿扰/设置挂 M4、OS 桥挂 457/386 不变） | 478 ✅ + 472 ✅ |
+| 464 Launcher App（吸收 441） | M3 组成 | `examples/ui/028-launcher`：palette+网格双形态、模糊搜索、键盘流、真注册表+`LaunchApp`（`464-launcher-app.md`） | 📦 已归档——✅ 已交付（2026-08-29 收口并 specs 沉淀；吸收 441；原格"未开工"为立项时残留，2026-09-01 Plan 513 回写） | 462+463 |
+| 465（原提案 456）Vue 虚拟桌面 | M4 | DOM 嵌入 + 多挂载宿主（`createApp`/虚拟窗）+ registry 构建期生成 + tauri 全屏壳 + E1/E2 接缝语义（`465-vue-virtual-desktop.md`） | 📦 已归档——✅ 已交付（2026-08-29 收口并 specs 沉淀；原格"未开工"为立项时残留，2026-09-01 Plan 513 回写） | 462 契约（与 463/464 并行） |
+| 472 shell-track M1 | M3+ | **AutoShell 地基**：状态投影协议 v1（`__wm_*` 族 schema 化）+ workspace 驱动模型补课（463 §3.6 未实施）+ dock 升级（图标/pinned/配置）（`472-shell-track-m1-projection-dock.md`） | 📦 已归档——✅ execution_done 2026-08-29（T1–T6 全落；cargo t 3234/3234 绿；协议合同 schema/projection-protocol-v1.md；复审以 /auto-plan:review 承载） | 463 ✅ + 464 ✅ |
+| shell-track M2（478） | M3+ | **switcher overlay + workspace pager**：Ctrl+Tab 召唤 MRU 面板（464 overlay 同型第二槽）+ dock 升格 pager（1 基标签/当前高亮/增删分区）+ send_to 跨区发送 + 协议 v1.1（`478-shell-track-m2-switcher-pager.md`） | 📦 已归档——🔄 execution_done 2026-08-29（T1–T7 全落；cargo t 3236/3236 + ui-iced 档 3879/3879 绿；I2 五套 desktop_mcp 14/11/11/19/26 与 472 基线同数；T6 键流实机项注入通道受阻按 472 先例 headless 指针成文；复审以 /auto-plan:review 承载；缩略挂 386、shell IME 挂 457 不变） | 472 ✅ + 464 ✅ |
+| shell-track M3（479） | M3+ | **通知中心（S6）+ desktop.notify 动词**：463 瞬时 toast 升格「浮现+历史聚合」双面——dock 铃铛+未读 badge + 第三枚 overlay 槽面板（逐条 ×/全部清除/Esc）+ notify 出向动词 + storage 定长槽持久化 + 协议 v1.2（`479-shell-track-m3-notification-center.md`） | 📦 已归档——🔄 execution_done 2026-08-29（T1–T7 全落；cargo t 3253/3253 + ui-iced 档 3912/3913 绿——唯一失败 `vm_code_editor_natives_end_to_end` 为 master 既有（Plan 474 并行会话同款，本仓 master 检出复现，与本计划零交集）；I2 五套 14/11/11/19/26 与 472 基线同数；T6 铃铛渲染/落盘/boot 恢复实机 PASS（机会性实机流量铁证），面板交互项按 472/478 先例 headless 指针成文；复审以 /auto-plan:review 承载；勿扰/设置挂 M4、OS 桥挂 457/386 不变） | 478 ✅ + 472 ✅ |
 | **509**（原提案 457）Smithay 宿主 Stage 1 | M5 | Linux 原生合成器宿主，复用桌面 shell——路线评估定案（auto-cosmic 复活/libcosmic/Smithay+桌面协议宿主三路线）+ 最小骨架 + shell 首帧 + I1 零分叉核对（`509-smithay-host-stage1.md`） | 📋 已立项 drafting 2026-08-31；启动条件②（评估）由本计划 T1 兑现；**硬前置 = Linux 验证环境**；开工建议 507 合入后 | 462+463 ✅ |
 | 386（**已复活**） | M6 | 路线 B：桌面协议五通道 + 双模 exe + 形态迁移，Stage 1-3 重构见 386 文件 §0 | 🔄 复活 2026-08-28（Stage 1 即刻可开工，前置仅 462✅+蓝图；Stage 2 待 463/464，Stage 3 含内存实测验收） | Stage1: 462✅；Stage2: +463/464 |
 

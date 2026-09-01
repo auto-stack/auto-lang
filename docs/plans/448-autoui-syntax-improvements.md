@@ -1,7 +1,8 @@
 # Plan 448: AutoUI 语法改进——msg 声明去名 + 事件内联 lambda 简写（滚动收集）
 
-> **状态**: 🟢 A/B2/B1 已实施待合并（worktree plan-448-autoui-syntax，2026-08-25；
-> C/D/… 继续按示例走查追加）
+> **状态**: 🟢 A/B1/B2 已合并 master（merge `7f4ed335c`；2026-09-01 Plan 513 C 组
+> 刷新——原"待合并（worktree plan-448-autoui-syntax，2026-08-25）"已过时）；
+> C/D/… 继续按示例走查追加
 > **来源**: examples/ui/002-counter/src/front/app.at 示例走查（文件注释区的"简写版"）
 > **基线**: master bcb6e139b（实施于 9e330123f 分叉的 worktree）
 > **性质**: **滚动收集计划**——逐个 UI 示例走查，收集 AutoUI 语法改进需求追加为
