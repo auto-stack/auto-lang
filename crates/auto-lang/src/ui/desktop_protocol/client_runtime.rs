@@ -2439,6 +2439,11 @@ mod tests {
                     "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}\n",
                     x, y, size, line_height, color.r, color.g, color.b, color.a, text
                 )),
+                DrawOp::Scissor { rect } => out.push_str(&format!(
+                    "scissor {:.1},{:.1} {:.1}x{:.1}\n",
+                    rect.x, rect.y, rect.w, rect.h
+                )),
+                DrawOp::ScissorPop => out.push_str("scissor-pop\n"),
             }
         }
         out

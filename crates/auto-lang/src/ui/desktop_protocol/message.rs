@@ -78,6 +78,14 @@ pub enum DrawOp {
     Quad { rect: WRect, color: Rgba8 },
     /// 单行文本 run（左上角定位；shaping 留宿主——413 §7 约束同款）。
     Text { x: f32, y: f32, size: f32, line_height: f32, color: Rgba8, text: String },
+    /// 压栈裁剪矩形（Plan 515 G1，tag 3 追加式）：宿主坐标空间，与当前
+    /// 有效裁剪**取交集**后生效，作用于后续所有 op 直至配对 pop。栈语义
+    /// 深度：线格式不设上限，v1 投影器产出 ≤2 层（嵌套 scrollable），
+    /// 消费端须支持 ≥2 层（协议文档 §1.5）。编码端保证 push/pop 配对；
+    /// 栅格端空栈 pop = no-op（解码端逐 op 无状态，不追踪栈）。
+    Scissor { rect: WRect },
+    /// 出栈最近一次 `Scissor`（tag 4 追加式）。
+    ScissorPop,
 }
 
 impl DrawList {
@@ -107,6 +115,13 @@ impl DrawList {
                     color.encode(out);
                     put_string(out, text);
                 }
+                DrawOp::Scissor { rect } => {
+                    put_u8(out, 3);
+                    rect.encode(out);
+                }
+                DrawOp::ScissorPop => {
+                    put_u8(out, 4);
+                }
             }
         }
     }
@@ -135,6 +150,11 @@ impl DrawList {
                     let text = r.string()?;
                     ops.push(DrawOp::Text { x, y, size, line_height, color, text });
                 }
+                3 => {
+                    let rect = WRect::decode(r)?;
+                    ops.push(DrawOp::Scissor { rect });
+                }
+                4 => ops.push(DrawOp::ScissorPop),
                 tag => return Err(CodecError::UnknownTag(tag)),
             }
         }
@@ -1368,6 +1388,50 @@ mod tests {
                 0, 0, 0, 0, 0, 0, 0, 1
             ]
         );
+    }
+
+    /// Plan 515 G1 —— scissor 裁剪算子（tag 3/4 追加式）：栈语义
+    /// push/pop round-trip + DrawList 直编 golden 字节锚点。
+    #[test]
+    fn scissor_ops_round_trip_and_golden() {
+        // round trip：push → 内容 op → pop 完整帧（溢出内容在宿主被裁）。
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid: 3,
+            frame_id: 21,
+            slot: 0,
+            damage: None,
+            revision: 21,
+            payload: DrawList {
+                clear: Some(Rgba8::new(24, 24, 28, 255)),
+                ops: vec![
+                    DrawOp::Scissor { rect: WRect::new(8.0, 8.0, 200.0, 160.0) },
+                    DrawOp::Quad {
+                        rect: WRect::new(0.0, 0.0, 400.0, 400.0),
+                        color: Rgba8::new(255, 0, 0, 255),
+                    },
+                    DrawOp::ScissorPop,
+                ],
+            },
+        }));
+
+        // golden：DrawList 直编字节（tag 3 = push + 4×f32；tag 4 = pop 单字节）。
+        let list = DrawList {
+            clear: None,
+            ops: vec![
+                DrawOp::Scissor { rect: WRect::new(1.0, 2.0, 3.0, 4.0) },
+                DrawOp::ScissorPop,
+            ],
+        };
+        let mut buf = Vec::new();
+        list.encode(&mut buf);
+        let mut expect: Vec<u8> = vec![1, 0, 2, 0, 0, 0]; // kind=1, clear=None, ops=2
+        expect.push(3); // Scissor push tag
+        expect.extend_from_slice(&1.0f32.to_le_bytes());
+        expect.extend_from_slice(&2.0f32.to_le_bytes());
+        expect.extend_from_slice(&3.0f32.to_le_bytes());
+        expect.extend_from_slice(&4.0f32.to_le_bytes());
+        expect.push(4); // ScissorPop tag
+        assert_eq!(buf, expect, "scissor 线格式冻结锚点");
     }
 
     #[test]

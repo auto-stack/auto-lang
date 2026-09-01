@@ -46,34 +46,73 @@ impl iced::widget::canvas::Program<DesktopMessage> for DrawListPainter {
                 to_color(clear),
             );
         }
-        for op in &self.list.ops {
-            match op {
-                DrawOp::Quad { rect, color } => {
-                    // widget 本地坐标 → canvas 原点平移（越界面出 canvas
-                    // 自动裁剪）。
-                    let at = iced::Point::new(rect.x, rect.y);
-                    frame.fill_rectangle(
-                        at,
-                        iced::Size::new(rect.w, rect.h),
-                        to_color(*color),
-                    );
-                }
-                DrawOp::Text { x, y, size, line_height, color, text } => {
-                    frame.fill_text(Text {
-                        content: text.clone(),
-                        position: iced::Point::new(*x, *y),
-                        color: to_color(*color),
-                        size: (*size).into(),
-                        line_height: iced::widget::text::LineHeight::Absolute(
-                            (*line_height).into(),
-                        ),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
+        paint_ops(&mut frame, &self.list.ops);
         let _ = Path::new(|_| {});
         vec![frame.into_geometry()]
+    }
+}
+
+/// Plan 515 G1 —— scissor 栈栅格化：`Scissor` 起一段 `with_clip`（匹配
+/// pop 之间的 op 裁剪到矩形内；嵌套 push 自然取交——draft/paste 的组合
+/// 裁剪语义）。空栈 pop / 未闭合 push（编码端违约）宽容不炸：pop =
+/// no-op，未闭合 = 裁到序列尾。
+fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
+    use iced::widget::canvas::Text;
+    let mut i = 0;
+    while i < ops.len() {
+        match &ops[i] {
+            DrawOp::Scissor { rect } => {
+                // 深度扫描找配对 pop（含嵌套层）。
+                let mut depth = 1usize;
+                let mut end = ops.len();
+                for (j, op) in ops.iter().enumerate().take(ops.len()).skip(i + 1) {
+                    match op {
+                        DrawOp::Scissor { .. } => depth += 1,
+                        DrawOp::ScissorPop => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = j;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let region = iced::Rectangle::new(
+                    iced::Point::new(rect.x, rect.y),
+                    iced::Size::new(rect.w.max(0.0), rect.h.max(0.0)),
+                );
+                frame.with_clip(region, |f| paint_ops(f, &ops[i + 1..end]));
+                // 跳过配对 pop（未闭合时 end = ops.len()，循环自然收）。
+                i = end + 1;
+            }
+            // 本层游离 pop（编码端违约）= no-op。
+            DrawOp::ScissorPop => i += 1,
+            DrawOp::Quad { rect, color } => {
+                // widget 本地坐标 → canvas 原点平移（越界面出 canvas
+                // 自动裁剪）。
+                let at = iced::Point::new(rect.x, rect.y);
+                frame.fill_rectangle(
+                    at,
+                    iced::Size::new(rect.w, rect.h),
+                    to_color(*color),
+                );
+                i += 1;
+            }
+            DrawOp::Text { x, y, size, line_height, color, text } => {
+                frame.fill_text(Text {
+                    content: text.clone(),
+                    position: iced::Point::new(*x, *y),
+                    color: to_color(*color),
+                    size: (*size).into(),
+                    line_height: iced::widget::text::LineHeight::Absolute(
+                        (*line_height).into(),
+                    ),
+                    ..Default::default()
+                });
+                i += 1;
+            }
+        }
     }
 }
 
