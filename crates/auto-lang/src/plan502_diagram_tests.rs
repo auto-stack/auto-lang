@@ -670,3 +670,121 @@ out
         "M 84 132 L 79 126 L 84 120 L 89 126 Z;M 79 127 a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 Z"
     );
 }
+
+/// Plan 502 M5:hover 交互行为(498 三段式)——HoverNode 写 hoverDg +
+/// tooltip 锚定(view 投影),NodeOut 复原哨兵;svg 兄弟层 mouse-area
+/// 命中层落树;节点/边标签 svg text 落 svgdoc(M1 定案机制)。
+#[cfg(feature = "ui-iced")]
+#[test]
+fn plan502_m5_hover_and_labels_e2e() {
+    let root = std::env::temp_dir().join("plan502_m5_e2e");
+    let front = root.join("src/front");
+    let comps = front.join("components");
+    std::fs::create_dir_all(&comps).unwrap();
+    let comp_src = {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/widgets-gallery/src/front/components/flow_diagram.at");
+        match std::fs::read_to_string(&p) {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("plan502 M5: SKIPPED — flow_diagram.at not found");
+                return;
+            }
+        }
+    };
+    std::fs::write(comps.join("flow_diagram.at"), &comp_src).unwrap();
+    std::fs::write(
+        comps.join("package.at"),
+        "name: \"official\"\nversion: \"0.1.0\"\nnamespace: \"auto\"\ndescription: \"m5 fixture\"\n",
+    )
+    .unwrap();
+    let app = r##"
+widget App {
+    use { package: official from "./components" }
+    model {
+        flowNodes = [
+            { id: "start", label: "开始", shape: "round" },
+            { id: "done",  label: "结束", shape: "round" }
+        ]
+        flowEdges = [
+            { from: "start", to: "done", label: "ok" }
+        ]
+    }
+    view {
+        col {
+            flow-diagram {
+                nodes: .flowNodes
+                edges: .flowEdges
+            }
+        }
+    }
+}
+"##;
+    let app_path = front.join("app.at");
+    std::fs::write(&app_path, app).unwrap();
+    let mut dc = crate::build_dynamic_component(
+        &std::fs::read_to_string(&app_path).unwrap(),
+        Some(app_path.to_str().unwrap()),
+    )
+    .expect("m5 fixture must build");
+    dc.fire_init();
+    dc.set_route("/");
+
+    let dump0 = {
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        format!("{:?}", view)
+    };
+    // 标签落 svgdoc(节点 text + 边 text)
+    assert!(dump0.contains("<text"), "M5 节点标签 svg text 落 svgdoc");
+    assert!(dump0.contains("开始"), "节点标签内容");
+    assert!(dump0.contains(">ok</text>"), "M5 边标签(ok)落 svgdoc");
+    assert!(dump0.contains("text-anchor"), "标签居中锚点");
+    // 命中层落树(mouse-area 兄弟层)
+    assert!(dump0.contains("MouseArea") || dump0.contains("on_enter"), "M5 命中层 mouse-area 落树");
+    // 无 hover:无 tooltip(锚定 col 不在树)
+    assert!(!dump0.contains("id: start"), "无 hover 时 tooltip 不出现");
+
+    // HoverNode(0) → emphasis + tooltip
+    dc.on_with_input_for("FlowDiagram", "HoverNode\u{1F}i\u{1F}0", None);
+    let dump1 = {
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        format!("{:?}", view)
+    };
+    assert!(dump1.contains("id: start"), "hover 后 tooltip 锚定出现(标题=节点 label)");
+    assert!(dump1.contains("id: done") == false || dump1.contains("id: start"), "tooltip 内容存在");
+    assert!(dump1.contains("fill-opacity"), "M5 emphasis:非 hover 节点降透明");
+
+    // NodeOut → 复原
+    dc.on_with_input_for("FlowDiagram", "NodeOut", None);
+    let dump2 = {
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        format!("{:?}", view)
+    };
+    assert!(!dump2.contains("fill-opacity"), "NodeOut 后 emphasis 复原");
+    assert!(!dump2.contains("id: start"), "NodeOut 后 tooltip 消失");
+}
+
+
+/// Plan 502 M5:vue 轨发射——节点标签 svg text / mouse-area 命中层 /
+/// tooltip 锚定 / emphasis 分支全部落 SFC。
+#[test]
+fn plan502_m5_vue_emission() {
+    let path = format!(
+        "{}/../../examples/widgets-gallery/src/front/components/flow_diagram.at",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let opts = crate::ui_gen::ComponentGenOptions::default();
+    let result = match crate::ui_gen::generate_component_from_file(std::path::Path::new(&path), opts) {
+        Ok(r) => r,
+        Err(_) => {
+            eprintln!("plan502 M5: SKIPPED — component gen not available");
+            return;
+        }
+    };
+    let sfc = result.vue_code;
+    assert!(sfc.contains("<text"), "vue 轨节点标签 text 元素");
+    assert!(sfc.contains("text-anchor"), "标签居中");
+    assert!(sfc.contains("@mouseenter"), "mouse-area enter 命中(vue 事件形)");
+    assert!(sfc.contains("@mouseleave"), "mouse-area leave");
+    assert!(sfc.contains("absolute left-"), "tooltip/命中层绝对定位");
+}

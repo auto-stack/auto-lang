@@ -8,7 +8,7 @@ front/components/command.at	4778	b79d10b155c422b6
 front/components/copy_button.at	2640	cccf52d84f3e1abe
 front/components/datepicker.at	3459	9a790c6c3f89284b
 front/components/donut_chart.at	11506	1a19bba82654993a
-front/components/flow_diagram.at	11239	1594f9fa4d46e8c7
+front/components/flow_diagram.at	14121	b1908daf17f2d9ba
 front/components/line_chart.at	22464	bfc4601d1fa7c3e6
 front/components/toggle.at	1706	c66ffd55db9868db
 front/components/togglegroup.at	2860	4d73cd43839fa840
@@ -81,4 +81,4 @@ front/pages/toast.at	38090	ad1a266786606ee0
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	10782	e9ea18d974dd5af5
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1523509	06689003040d8b12
+TOTAL	1526391	c63f24b94f8fa5c2
