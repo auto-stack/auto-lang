@@ -611,6 +611,20 @@ fn layout_node(
                 _ if is_text_tag(&tag_lc) || tag_lc == "a" => {
                     layout_text(ctx, props, children, x, y, avail_w, &style, tag_lc == "a")
                 }
+                // Plan 507 T5 —— grid（cols 等宽网格）与 card 族（card =
+                // 表面缺省档容器；title/description/content/header/footer/
+                // action = 普通块流容器，shadcn 字号/间距档不载——保真边界
+                // 随注）。
+                "grid" => layout_grid(ctx, props, children, x, y, avail_w, &style),
+                "card" => layout_container(
+                    ctx,
+                    children,
+                    x,
+                    y,
+                    avail_w,
+                    &card_surface(style),
+                    Dir::Vertical,
+                ),
                 // 容器标签（col/row/center/hstack/vstack 及未知容器——
                 // coverage 表外标签不会到这：装载期探测已降级）。
                 _ => {
@@ -619,43 +633,7 @@ fn layout_node(
                     } else {
                         Dir::Vertical
                     };
-                    let pad = (
-                        style.pad_left(),
-                        style.pad_top(),
-                        style.pad_right(),
-                        style.pad_bottom(),
-                    );
-                    let mut inner_w = avail_w;
-                    if let Some(fw) = style.fixed_w() {
-                        inner_w = (fw - pad.0 - pad.2).max(0.0);
-                    }
-                    if let Some(max_w) = style.box_layout.max_width {
-                        inner_w = inner_w.min((max_w - pad.0 - pad.2).max(0.0));
-                    }
-                    let laid = layout_block(
-                        ctx,
-                        children,
-                        x + pad.0,
-                        y + pad.1,
-                        inner_w.max(0.0),
-                        dir,
-                        &style,
-                    );
-                    let outer_w = match style.fixed_w() {
-                        Some(fw) => fw,
-                        None => (laid.size.0 + pad.0 + pad.2).max(0.0),
-                    };
-                    let outer_h = match style.fixed_h() {
-                        Some(fh) => fh,
-                        None => laid.size.1 + pad.1 + pad.3,
-                    };
-                    if let Some(bg) = style.bg {
-                        push_quad(ctx, WRect::new(x, y, outer_w, outer_h), bg);
-                    }
-                    if let Some(border) = style.border {
-                        push_border(ctx, WRect::new(x, y, outer_w, outer_h), border);
-                    }
-                    LaidBlock { size: (outer_w, outer_h) }
+                    layout_container(ctx, children, x, y, avail_w, &style, dir)
                 }
             }
         }
@@ -807,6 +785,157 @@ fn dim_if(disabled: bool, color: Rgba8) -> Rgba8 {
     } else {
         color
     }
+}
+
+// Plan 507 T5 —— Tier1 layout/复合容器。
+/// card 表面底色（未声明样式时的缺省观感——shadcn card 的深色档近似）。
+const CARD_BG: Rgba8 = Rgba8::new(32, 32, 40, 255);
+/// card 缺省内边距。
+const CARD_PAD: f32 = 16.0;
+/// grid 缺省列数（真源 011/016 均显式 `cols:`；缺省 2 档——保真边界随注）。
+const GRID_COLS: usize = 2;
+
+/// grid：cols 列等宽网格（`cols`/`columns` prop；row-major 行序——真源
+/// 011 计算器/016 日历形态）。格子宽 = (内容宽 - gap×(cols-1))/cols，
+/// 行高 = 行内最大值；bg 底色经重排置于子级之下（行内节点少，幂等重排
+/// 与 row 居中同档先例）。
+fn layout_grid(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let cols = prop_f64(ctx.comp, props, "cols")
+        .or_else(|| prop_f64(ctx.comp, props, "columns"))
+        .unwrap_or(GRID_COLS as f64)
+        .max(1.0) as usize;
+    // 真源（011/016）走 `gap:` prop；style gap- 类为回退档。
+    let gap = prop_f64(ctx.comp, props, "gap").map(|g| g as f32).unwrap_or_else(|| style.gap());
+    let mut visible: Vec<&AuraNode> = Vec::with_capacity(children.len());
+    flatten_visible(ctx.comp, children, &mut visible);
+    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
+    let cell_w = if visible.is_empty() {
+        0.0
+    } else {
+        // 最后一行不满 cols 时 gap 按满行扣（简化：等宽格子不随行缩短）。
+        ((inner_w - gap * (cols.saturating_sub(1)) as f32) / cols as f32).max(0.0)
+    };
+    let place_rows = |ctx: &mut ProjectCtx<'_>| -> (f32, f32) {
+        let mut row_y = 0.0f32;
+        for (ri, row) in visible.chunks(cols).enumerate() {
+            if ri > 0 {
+                row_y += gap;
+            }
+            let mut row_h = 0.0f32;
+            for (ci, node) in row.iter().enumerate() {
+                // 等宽格：格 x = 列号 × (格宽 + gap)——与内容宽度无关。
+                let cell_x = ci as f32 * (cell_w + gap);
+                let laid = layout_node(ctx, node, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
+                row_h = row_h.max(laid.size.1);
+            }
+            row_y += row_h;
+        }
+        (cell_w * cols as f32 + gap * (cols - 1) as f32, row_y)
+    };
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let (content_w, content_h) = place_rows(ctx);
+    let outer_w = match style.fixed_w() {
+        Some(fw) => fw,
+        None => content_w + pad.0 + pad.2,
+    };
+    let outer_h = match style.fixed_h() {
+        Some(fh) => fh,
+        None => content_h + pad.1 + pad.3,
+    };
+    if style.bg.is_some() {
+        // 底色置于子级之下：撤首轮产物后重排。
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        push_quad(ctx, WRect::new(x, y, outer_w, outer_h), style.bg.unwrap());
+        place_rows(ctx);
+    }
+    if let Some(border) = style.border {
+        push_border(ctx, WRect::new(x, y, outer_w, outer_h), border);
+    }
+    LaidBlock { size: (outer_w, outer_h) }
+}
+
+/// 通用块流容器（col/row/center/card 族/语义容器共用——500 catch-all 臂
+/// 的具名化，Plan 507 T5）。
+fn layout_container(
+    ctx: &mut ProjectCtx<'_>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+    dir: Dir,
+) -> LaidBlock {
+    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    let mut inner_w = avail_w;
+    if let Some(fw) = style.fixed_w() {
+        inner_w = (fw - pad.0 - pad.2).max(0.0);
+    }
+    if let Some(max_w) = style.box_layout.max_width {
+        inner_w = inner_w.min((max_w - pad.0 - pad.2).max(0.0));
+    }
+    // Plan 507 T5 z 序修正：容器底色必须先于子级绘制（500 期 bg 排在
+    // 子级之后——broker_surface 顺序栅格化会盖住子级；003 卡片实机
+    // 表现 = 空底板。修正 = 首轮量尺寸 → 撤产物 → bg → 重排子级 →
+    // border。幂等重排先例：row 主轴居中/grid 底色。
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let laid = layout_block(ctx, children, x + pad.0, y + pad.1, inner_w.max(0.0), dir, style);
+    let outer_w = match style.fixed_w() {
+        Some(fw) => fw,
+        None => (laid.size.0 + pad.0 + pad.2).max(0.0),
+    };
+    let outer_h = match style.fixed_h() {
+        Some(fh) => fh,
+        None => laid.size.1 + pad.1 + pad.3,
+    };
+    if style.bg.is_some() || style.border.is_some() {
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        if let Some(bg) = style.bg {
+            push_quad(ctx, WRect::new(x, y, outer_w, outer_h), bg);
+        }
+        layout_block(ctx, children, x + pad.0, y + pad.1, inner_w.max(0.0), dir, style);
+        if let Some(border) = style.border {
+            push_border(ctx, WRect::new(x, y, outer_w, outer_h), border);
+        }
+    }
+    LaidBlock { size: (outer_w, outer_h) }
+}
+
+/// card 表面缺省档：无 bg/border/padding 声明时补 shadcn card 近似
+/// （底色 + 边线 + 16 内边距；显式 style 全覆盖）。
+fn card_surface(mut style: NodeStyle) -> NodeStyle {
+    if style.bg.is_none() {
+        style.bg = Some(CARD_BG);
+    }
+    if style.border.is_none() {
+        style.border = Some(DIVIDER_BG);
+    }
+    let b = &mut style.box_layout;
+    if b.padding_left.is_none() {
+        b.padding_left = Some(CARD_PAD);
+    }
+    if b.padding_right.is_none() {
+        b.padding_right = Some(CARD_PAD);
+    }
+    if b.padding_top.is_none() {
+        b.padding_top = Some(CARD_PAD);
+    }
+    if b.padding_bottom.is_none() {
+        b.padding_bottom = Some(CARD_PAD);
+    }
+    style
 }
 
 fn layout_input(
@@ -2776,6 +2905,135 @@ mod tests {
         assert_eq!(p.read_state("note").unwrap(), auto_val::Value::str("hi"), "输入闭环");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["hi"], "值显示");
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T5 —— grid/card 族 + 容器 z 序修正回归。
+    // -----------------------------------------------------------------------
+
+    /// 容器 z 序（500 逃逸修正回归）：bg Quad 必须先于子级 Text。
+    #[test]
+    fn t5_container_bg_below_children() {
+        let (_, frame) = project(
+            "widget Z {
+    view {
+        col {
+            text \"under?\"
+            style: \"p-2 bg-slate-800\"
+        }
+    }
+}
+",
+        );
+        let bg_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Quad { .. }))
+            .expect("bg Quad");
+        let text_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Text { text, .. } if text == "under?"))
+            .expect("子级 Text");
+        assert!(bg_idx < text_idx, "bg({bg_idx}) 应先于 text({text_idx}): {:?}", frame.ops);
+    }
+
+    /// grid：cols 等宽网格——3 列 6 格 = 2 行；格子宽 = (内容宽 - 2×gap)/3；
+    /// 二行 y 下移；行内 x 递增。
+    #[test]
+    fn t5_grid_equal_cells_and_rows() {
+        let (p, frame) = project(
+            "widget G {
+    view {
+        grid (cols: 3.0, gap: 4.0) {
+            grid-item { text \"a\" }
+            grid-item { text \"b\" }
+            grid-item { text \"c\" }
+            grid-item { text \"d\" }
+            grid-item { text \"e\" }
+            grid-item { text \"f\" }
+            style: \"w-96\"
+        }
+    }
+}
+",
+        );
+        let _ = p;
+        let texts: Vec<(f32, f32, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, y, text, .. } => Some((*x, *y, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.len(), 6, "{texts:?}");
+        let find = |t: &str| texts.iter().find(|(_, _, s)| *s == t).copied().expect(t);
+        let (ax, ay, _) = find("a");
+        let (bx, _, _) = find("b");
+        let (cx, _, _) = find("c");
+        let (dx, dy, _) = find("d");
+        // w-96=384：格子宽 = (384 - 2*4)/3 = 125.33；行内 x 步进 = 格宽+gap。
+        let cell = (384.0 - 2.0 * 4.0) / 3.0;
+        assert!((bx - ax - (cell + 4.0)).abs() < 1.0, "x 步进 = 格宽+gap: {ax} -> {bx}");
+        assert!((cx - bx - (cell + 4.0)).abs() < 1.0, "第三列: {bx} -> {cx}");
+        assert!(dy > ay + 5.0, "第二行下移: {ay} -> {dy}");
+        assert!((dx - ax).abs() < 0.5, "第二行首列对齐: {ax} vs {dx}");
+    }
+
+    /// card：表面缺省档（CARD_BG + 边线 + 16 内边距）+ 子级可见；
+    /// 显式 style 覆盖缺省。
+    #[test]
+    fn t5_card_surface_defaults() {
+        let (_, frame) = project(
+            "widget K {
+    view {
+        card {
+            cardheader { cardtitle { text \"Title\" } }
+            cardcontent { text \"Body\" }
+        }
+    }
+}
+",
+        );
+        let quads = quads_of(&frame);
+        // card 底 + 4 边框线。
+        assert_eq!(quads.len(), 5, "缺省表面: {quads:?}");
+        assert_eq!(quads[0].1, CARD_BG, "缺省底色");
+        let (r, _) = quads[0];
+        assert!((r.w - 16.0 * 2.0 - 0.0).abs() < 60.0, "卡片宽 = 内容+2×16: {r:?}");
+        // z 序：底色最先。
+        let bg_idx = frame.ops.iter().position(|op| matches!(op, DrawOp::Quad { .. })).unwrap();
+        let text_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Text { text, .. } if text == "Title"))
+            .unwrap();
+        assert!(bg_idx < text_idx, "底色先于子级");
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"Title") && texts.contains(&"Body"), "{texts:?}");
+    }
+
+    /// grid/card 族 auto 探测放行（coverage 声明面；kebab 折叠键同归）。
+    #[test]
+    fn t5_grid_card_family_auto_eligible() {
+        let coverage = crate::ui::desktop_protocol::coverage::Coverage::target_set();
+        let src = r#"widget GC {
+    view {
+        card {
+            card-header { card-title { text "T" } }
+            grid (cols: 2.0) {
+                grid-item { text "1" }
+                grid-item { text "2" }
+            }
+        }
+    }
+}
+"#;
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let scan = crate::ui::desktop_protocol::coverage::scan_view(component.view_template());
+        let verdict = crate::ui::desktop_protocol::coverage::judge(&scan, &coverage);
+        assert!(verdict.is_covered(), "grid/card 族应 Covered: {verdict:?}");
     }
 
     /// form 族 auto 探测放行（coverage 声明面）。

@@ -106,6 +106,10 @@ impl Coverage {
             // Plan 507 T3 —— Tier1 布局容器（catch-all 容器臂本就渲染，
             // 此处登记 = auto 探测放行）。
             "container", "scroll",
+            // Plan 507 T5 —— grid（cols 等宽网格臂）+ card 族（表面缺省
+            // 档容器；kebab/underscore 折叠键同归）。
+            "grid", "griditem", "card", "cardaction", "cardcontent",
+            "carddescription", "cardfooter", "cardheader", "cardtitle",
         ]
         .into_iter()
         .map(String::from)
