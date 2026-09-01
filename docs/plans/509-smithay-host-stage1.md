@@ -191,9 +191,16 @@ Linux 图形验证环境（WSL2+Wayland / 物理 Linux / CI Linux runner 之一�
 
 ## 待澄清事项
 
-- **① Linux 验证环境（硬前置）**：WSL2（Wayland 合成可行性随内核/WSLg
-  版本）vs 物理 Linux vs CI Linux runner——执行前由用户指定；环境记录
-  为 Stage 2+ 基线。**无 Linux 环境则本计划不可开工**。
+- **① Linux 验证环境（硬前置）——2026-08-31 用户裁定：WSL2**：Stage 1 以
+  WSLg + Smithay **winit/nested 后端**为验证路径（Smithay 开发期标准形态；
+  DRM/udev 直连会话不适用于 WSL，留 Stage 2+ 或物理机场景）；GPU 经 wgpu
+  可能落软件渲染（llvmpipe/D3D12 转 Vulkan 视环境），首帧验收可接受。
+  **执行形态裁定：无需在 WSL 内开 agent**——Windows 侧施工会话经
+  `wsl.exe` 驱动构建/运行（worktree 纪律不变，代码编辑留在 Windows 侧）；
+  `CARGO_TARGET_DIR` 重定向至 WSL ext4 防 `/mnt/d` 慢 IO；WSLg 窗口直接
+  呈现于 Windows 桌面，截图验证照常。T2 环境就绪含 WSL 内 rustup/
+  libwayland-dev/libxkbcommon 等系依赖安装。备选（真在 WSL 内开 agent +
+  worktree 建于 ext4）可行但非必要，仅当 Windows 侧驱动遇阻时启用。
 - **② 大依赖门槛**：smithay/libcosmic 为重量级新三方——评估报告的依赖
   清单**入 lock 前经用户确认**（对齐仓库对重大依赖的谨慎惯例）。
 - **③ 路线倾向声明**：B（Smithay+桌面协议宿主）因 500 资产复用最大化而
