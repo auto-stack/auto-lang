@@ -838,11 +838,20 @@ fn test_aavm2_compile_corpus() {
     let exe = build_aavm_rust_bin();
     let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/vm/aavm2/corpus_m4");
+    // Plan 511 待澄清①缺省处置:struct/use 新语料不入 AA2R 矩阵腿
+    // (AA2R 服务自举回路语料,struct/use 非必需;a2r.at 发射面暂缓,
+    // divergence 登记见 docs/specs/aavm/design/divergences.md)。
+    // 语料前缀 b34+ 为 W1(struct)及后续波次新件,按前缀跳过。
+    let a2r_skip_prefixes = ["b34", "b35", "b36", "b37", "b38", "b39", "b40", "b41", "b42", "b43"];
     let mut entries: Vec<_> = std::fs::read_dir(&corpus)
         .expect("corpus_m4 dir")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "at").unwrap_or(false))
+        .filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            !a2r_skip_prefixes.iter().any(|pre| name.starts_with(pre))
+        })
         .collect();
     entries.sort();
     assert!(!entries.is_empty());

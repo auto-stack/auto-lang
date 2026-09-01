@@ -210,6 +210,28 @@ fn ev_arr_write(mut arena List<List<Val>>, ai int, idx int, val Val) {
     arena.set(ai, l2)
 }
 
+// W1(Plan 511):字段名在类型声明序中的下标(-1=无该类型/字段)。
+// get.field/set.field 按名定位用(镜像宿主 GenericInstanceData 的
+// field_names.position)
+fn ev_field_idx(c CG, tname str, fname str) int {
+    var ti = 0
+    while ti < c.tys.len() {
+        if c.tys.get(ti).name == tname {
+            var fl = c.tys.get(ti).fields
+            var j = 0
+            while j < fl.len() {
+                if fl.get(j) == fname {
+                    return j
+                }
+                j = j + 1
+            }
+            return -1
+        }
+        ti = ti + 1
+    }
+    return -1
+}
+
 // 数组/字符串长度动态分派(镜像 ARRAY_LEN 两分支)
 fn ev_len(mut arena List<List<Val>>, v Val) int {
     is v {
@@ -381,6 +403,94 @@ fn ev_run_t(source str, trace int) str {
             }
             var fl10 List<Val> = arena.get(slot10)
             sp = ev_push(stack, sp, fl10.get(ins.n))
+        }
+        OpCode.SetGenericField -> {
+            // W1(Plan 511):栈 [value, instance_id](镜像宿主 6324-6352);
+            // 弹实例→弹值→按声明序下标写 arena 槽(后 3 条 nop 直通)
+            var v12 = stack.get(sp - 1)
+            sp = sp - 1
+            var slot12 = -1
+            is v12 {
+                Val.VInst(s12, nm12) -> {
+                    slot12 = s12
+                }
+                else -> {
+                }
+            }
+            var val12 = stack.get(sp - 1)
+            sp = sp - 1
+            if slot12 < 0 {
+                out = "RUNTIME-ERROR:set.generic.field on non-instance"
+                running = false
+            } else {
+                var fl12 List<Val> = arena.get(slot12)
+                fl12.set(ins.n, val12)
+                arena.set(slot12, fl12)
+            }
+        }
+        OpCode.GetField -> {
+            // W1:弹实例,按字段名(ins.n=名字池索引)在实例类型声明序中
+            // 定位下标取值(镜像宿主 engine 5236 的 field_names.position)
+            var v13 = stack.get(sp - 1)
+            sp = sp - 1
+            var slot13 = -1
+            var tname13 = ""
+            is v13 {
+                Val.VInst(s13, nm13) -> {
+                    slot13 = s13
+                    tname13 = nm13
+                }
+                else -> {
+                }
+            }
+            if slot13 < 0 {
+                out = "RUNTIME-ERROR:get.field on non-instance"
+                running = false
+            } else {
+                var fname13 = c.pool.get(ins.n)
+                var fi13 = ev_field_idx(c, tname13, fname13)
+                if fi13 < 0 {
+                    out = "RUNTIME-ERROR:no field " + fname13 + " in " + tname13
+                    running = false
+                } else {
+                    var fl13 List<Val> = arena.get(slot13)
+                    sp = ev_push(stack, sp, fl13.get(fi13))
+                }
+            }
+        }
+        OpCode.SetField -> {
+            // W1:栈 [value, object_id, field_name](名字经 load.str 压栈,
+            // 镜像宿主 4925-4947 弹序:名→实例→值)
+            var vname14 = ev_str(stack.get(sp - 1))
+            sp = sp - 1
+            var v14 = stack.get(sp - 1)
+            sp = sp - 1
+            var slot14 = -1
+            var tname14 = ""
+            is v14 {
+                Val.VInst(s14, nm14) -> {
+                    slot14 = s14
+                    tname14 = nm14
+                }
+                else -> {
+                }
+            }
+            var val14 = stack.get(sp - 1)
+            sp = sp - 1
+            if slot14 < 0 {
+                out = "RUNTIME-ERROR:set.field on non-instance"
+                running = false
+            } else {
+                var fi14 = ev_field_idx(c, tname14, vname14)
+                if fi14 < 0 {
+                    out = "RUNTIME-ERROR:no field " + vname14 + " in " + tname14
+                    running = false
+                } else {
+                    var fl14 List<Val> = arena.get(slot14)
+                    fl14.set(fi14, val14)
+                    arena.set(slot14, fl14)
+                }
+            }
         }
         OpCode.BuildFstr -> {
             // 447-③ 11.2a:弹 ins.n 段(栈顶为末段,镜像宿主逆序弹),

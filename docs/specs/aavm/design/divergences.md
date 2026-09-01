@@ -423,3 +423,20 @@ H2);FStrPart 直通发射的三缺口实证见 D40 续。
 | 文件 | divergence 处数 |
 |---|---|
 | (全库前瞻) | 26 类 + D41 + D40续;风格类终态:D11b/D14/D28(op载体)/D34 已还原,D23/D27/D28余项/D25/D29-D33/D35/D36 保留有因 |
+
+## 511 W1(struct 类型四层收编,2026-09-01)
+
+- **D-AA2R-struct(矩阵腿暂缓)**:Plan 511 待澄清①缺省处置——struct/use
+  新语料(corpus_m4 b34–b43 前缀)不入 AA2R 矩阵腿(test_aavm2_compile_corpus
+  增前缀 skip 清单);AA2R 服务自举回路语料,struct/use 非其必需,发射面
+  扩展随下批评估。M2–M5 四闸仍全量对拍(新语料自动进闸)。
+- **D-mirror(W1 三处实测修正考古推断)**:非分叉,注记实现与
+  midlang-w0-archaeology.md §6 一致——①构造字面量 dump 的 Pair 落 node 的
+  **body 段**(非 args 段,宿主 parse_node_body 实测);②字段写对构造字面量
+  源变量走 **set.generic.field**(var_types=GenericInstance 分派,实测),
+  LOAD_STR+set.field 为注解/调用源/嵌套路径;③链式字段读第二跳起走
+  **get.generic.field field=0 + 幽灵 nop**(宿主 untyped fallback 实测,
+  非按名 get.field)。三处以真机反汇编为准已镜像,规格文档同步修正。
+- **D-soft-ident(W1 新还原面)**:aavm expr_atom 增 soft-ident 兜底
+  (Plan 356 镜像,Tag/Type/Enum 等 15 kind 表达式位作标识符)——非分叉,
+  补齐宿主已有行为;`o.tag` 类字段名语料因之可用。

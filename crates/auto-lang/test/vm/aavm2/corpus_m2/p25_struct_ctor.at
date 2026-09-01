@@ -1,0 +1,10 @@
+type Point {
+    x int
+    y int
+}
+
+let a = Point { x: 10, y: 20 }
+let b = Point { x: 1 + 2, y: a.x }
+let c = a.x
+let d = a.x + b.y
+let e = Point { x: c, y: d }

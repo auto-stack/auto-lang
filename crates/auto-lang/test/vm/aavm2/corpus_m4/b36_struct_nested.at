@@ -1,0 +1,16 @@
+type Inner {
+    v int
+}
+
+type Outer {
+    first Inner
+    tag str
+}
+
+fn main() {
+    let o = Outer { first: Inner { v: 1 }, tag: "t" }
+    print(o.first.v)
+    o.first.v = o.first.v + 5
+    print(o.first.v)
+    print(o.tag)
+}

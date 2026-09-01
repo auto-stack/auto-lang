@@ -1,0 +1,16 @@
+type Point {
+    x int
+    y int
+}
+
+fn mk(x int, y int) Point {
+    return Point { x: x, y: y }
+}
+
+fn main() {
+    let p = Point { x: 10, y: 20 }
+    p.x = 11
+    print(p.x + p.y)
+    let q = mk(1, 2)
+    print(q.y)
+}
