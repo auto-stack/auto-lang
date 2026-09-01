@@ -8800,18 +8800,26 @@ pub fn pop_arg_nv(task: &mut AutoTask) -> auto_val::NanoValue {
 
 /// Plan 419: shim 参数的 stake 守卫 —— Drop 时释放(覆盖早退 return;
 /// 读取对象必须发生在释放之前,故不在 pop 点释放)。id < HEAP_ID_BASE
-/// 时 Drop 为 no-op(迭代器/闭包/任务 id 安全)。
+/// 时堆侧 Drop 为 no-op(迭代器/闭包/任务 id 安全)。
+/// Plan 510 G3:池串实参同守卫——此前只释放堆引用,池份额(pop_arg_nv
+/// 弹出的 TAG_STRING)从不配平,每个池串实参泄漏 1 份(soak 实测
+/// print(acc) 残 1)。Drop 时点在内容读取之后,安全。
 pub struct StakeGuard<'a> {
     vm: &'a AutoVM,
     id: u64,
+    pool_idx: Option<u32>,
 }
 
 impl<'a> StakeGuard<'a> {
     pub fn new(vm: &'a AutoVM, id: u64) -> Self {
-        Self { vm, id }
+        Self { vm, id, pool_idx: None }
     }
     pub fn nv(vm: &'a AutoVM, nv: auto_val::NanoValue) -> Self {
-        Self { vm, id: crate::vm::rc::heap_ref_id(nv).unwrap_or(0) }
+        Self {
+            vm,
+            id: crate::vm::rc::heap_ref_id(nv).unwrap_or(0),
+            pool_idx: crate::vm::rc::pool_idx_nv(nv),
+        }
     }
 }
 
@@ -8819,6 +8827,9 @@ impl Drop for StakeGuard<'_> {
     fn drop(&mut self) {
         if self.id >= crate::vm::rc::HEAP_ID_BASE {
             self.vm.rc_release_id(self.id);
+        }
+        if let Some(idx) = self.pool_idx {
+            self.vm.pool_release(idx as usize);
         }
     }
 }

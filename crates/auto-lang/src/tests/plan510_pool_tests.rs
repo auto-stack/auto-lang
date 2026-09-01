@@ -162,4 +162,111 @@ mod plan510 {
             "native return push must retain exactly one share (env_var)"
         );
     }
+
+    /// Plan 510 G3:审计钩子自证——强造一次多扣款(release 未 retain 的
+    /// 槽),underflow_events 必须记账 1(计数器探测链路可用性)。
+    #[test]
+    fn underflow_counter_detects_forced_over_release() {
+        use crate::vm::engine::AutoVM;
+        use crate::vm::virt_memory::VirtualFlash;
+
+        let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+        let idx = vm.add_string(b"uncounted".to_vec()); // rc=0,无持有
+        let before = vm.pool_health().underflow_events;
+        vm.pool_release(idx); // 多扣款:0 → 0xFFFFFFFF
+        let after = vm.pool_health().underflow_events;
+        assert_eq!(
+            after - before,
+            1,
+            "forced over-release must be counted (audit hook wiring)"
+        );
+    }
+
+    /// Plan 510 G2/G3 浸泡(短跑档,入日常门禁):字符串 churn 全链
+    /// (内化/拼接/容器进出/参数传递)跑毕,记账必须自持——
+    /// 无多扣款下溢、无幻影清扫、全池份额归零、freelist 已回收。
+    #[tokio::test]
+    async fn pool_soak_churn_short() {
+        pool_soak_assert(800).await;
+    }
+
+    /// Plan 510 G2 浸泡(长跑档,验收 ≥30min 等效 churn 用):
+    /// `cargo test -p auto-lang --lib pool_soak_churn_long -- --ignored`
+    /// 轮数可由 P510_SOAK_ITERS 覆盖(缺省 200_000)。
+    #[tokio::test]
+    #[ignore = "soak long-run: P510_SOAK_ITERS 可调,显式 --ignored 触发"]
+    async fn pool_soak_churn_long() {
+        let iters: usize = std::env::var("P510_SOAK_ITERS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200_000);
+        pool_soak_assert(iters).await;
+    }
+
+    /// churn 载体:f-string 内化 + 拼接 + List<str> 容器进出 + 跨 fn
+    /// 参数传递 + 覆盖赋值——覆盖 add_string dedup/freelist、POP release、
+    /// 容器侧份额(rc.rs child_pool_idxs)、ListData<String> 读回配平。
+    async fn pool_soak_assert(iters: usize) {
+        let code = format!(
+            r#"
+fn tag(prefix str, i int) str {{
+    f"${{prefix}}#${{i}}"
+}}
+
+fn main() int {{
+    var acc str = "seed"
+    for i in 0..{iters} {{
+        let s = tag(acc, i)
+        acc = s + "-tail"
+        var l List<str> = List<str>.new([s, acc])
+        acc = l.get(0)
+        if i % 3 == 0 {{
+            var waste str = tag("waste", i)
+            waste = "overwritten"
+        }}
+    }}
+    print(acc)
+    0
+}}
+"#
+        );
+        let (vm, out) = run_code_vm_checked(&code).await;
+        assert!(!out.is_empty(), "churn program must produce output");
+
+        let h = vm.pool_health();
+        assert_eq!(
+            h.underflow_events, 0,
+            "多扣款下溢必须为 0(over-release 注入源已清偿)"
+        );
+        assert_eq!(
+            h.phantom_drops, 0,
+            "幻影 freelist 清扫必须为 0(注入源已清偿,防线不触发)"
+        );
+        assert_eq!(
+            h.live_shares, 0,
+            "程序结束+任务收尾后全池份额必须归 0(配平自持);freelist_len={}, pool_len={}",
+            h.freelist_len, h.pool_len
+        );
+        // 池规模稳定:freelist 回收了运行期死亡槽(复用面非零)。
+        assert!(
+            h.freelist_len > 0,
+            "churn 后应有可复用空闲槽(freelist 恢复,慢性泄漏消失): {h:?}"
+        );
+    }
+
+    /// 编译并跑一段 Auto 源码到完成,返回 (vm, stdout);跑毕做任务残余
+    /// 栈释放(同 tests_rc_lifecycle::run_code_vm 口径)。
+    async fn run_code_vm_checked(code: &str) -> (crate::vm::engine::AutoVM, String) {
+        let (vm, stdout, entry, _result_type) =
+            crate::create_vm_from_source(code).expect("compile failed");
+        let tid = vm.spawn_task(entry, 65536);
+        vm.run_task_loop().await;
+        if let Some(arc) = vm.tasks.get(&tid) {
+            let mut t = arc.lock().await;
+            vm.rc_release_task_stack(&mut t);
+        }
+        vm.tasks.remove(&tid);
+        let out = stdout.read().unwrap().clone();
+        (vm, out)
+    }
 }

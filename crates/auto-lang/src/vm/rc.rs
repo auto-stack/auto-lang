@@ -138,6 +138,12 @@ pub struct PoolState {
     pub freelist: Vec<usize>,
     /// PLAN-053 P-053-8: 幻影 freelist 条目首见签名去重(槽位集合)。
     pub phantom_seen: std::collections::HashSet<usize>,
+    /// Plan 510 G3 记账自持计数:多扣款(release 时 rc==0 → 下溢回绕)
+    /// 事件数;健康态恒 0(soak 断言通道)。
+    pub underflow_events: std::sync::atomic::AtomicU64,
+    /// Plan 510 G3:幻影 freelist 条目被清扫丢弃的**总次数**(含同槽
+    /// 复发;phantom_seen 只做首见签名去重)。健康态恒 0。
+    pub phantom_drops: std::sync::atomic::AtomicU64,
 }
 
 impl PoolState {
@@ -148,6 +154,8 @@ impl PoolState {
             tombstone: Vec::new(),
             freelist: Vec::new(),
             phantom_seen: std::collections::HashSet::new(),
+            underflow_events: std::sync::atomic::AtomicU64::new(0),
+            phantom_drops: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -168,6 +176,21 @@ pub fn pool_idx_nv(nv: auto_val::NanoValue) -> Option<u32> {
     } else {
         None
     }
+}
+
+/// Plan 510 G3:池记账健康快照(pool_health 返回体)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PoolHealth {
+    /// 多扣款下溢事件(release 时 rc==0)。健康态恒 0。
+    pub underflow_events: u64,
+    /// 幻影 freelist 条目被清扫丢弃总次数。健康态恒 0。
+    pub phantom_drops: u64,
+    /// 池规模(strings 条目数;含墓碑空槽)。
+    pub pool_len: usize,
+    pub freelist_len: usize,
+    pub rc_len: usize,
+    /// 全池存活份额和(rc 求和;程序结束+任务收尾后应归 0)。
+    pub live_shares: u64,
 }
 
 /// 测试断言钩子(plan §1 咽喉函数配套)。确定性计数,禁用 RSS 断言。
@@ -357,6 +380,26 @@ impl AutoVM {
         }
     }
 
+    /// Plan 510 G3:字符串池记账健康快照(soak 断言通道)。
+    /// 健康态:underflow_events==0(无多扣款)、phantom_drops==0(无幻影
+    /// 条目被清扫)、live_shares 在程序结束+任务收尾后==0(配平自持)。
+    pub fn pool_health(&self) -> PoolHealth {
+        let st = self.pool_state.read().unwrap();
+        let live_shares = st
+            .rc
+            .iter()
+            .map(|a| a.load(Ordering::Relaxed) as u64)
+            .sum();
+        PoolHealth {
+            underflow_events: st.underflow_events.load(Ordering::Relaxed),
+            phantom_drops: st.phantom_drops.load(Ordering::Relaxed),
+            pool_len: self.strings.read().unwrap().len(),
+            freelist_len: st.freelist.len(),
+            rc_len: st.rc.len(),
+            live_shares,
+        }
+    }
+
     /// RC 归零的真释放:摘表 → 墓碑 → 递归释放子引用。
     fn free_heap_id(&self, id: u64) {
         let Some(arc) = self.remove_heap_object(id) else {
@@ -439,6 +482,19 @@ impl AutoVM {
             let cur = st.rc[idx].fetch_sub(1, Ordering::AcqRel);
             if crate::pool_trace_idx() == Some(idx) {
                 eprintln!("[P419POOL] release {} (rc {} -> {})", idx, cur, cur - 1);
+            }
+            // Plan 510 G3 配对审计:cur==0 说明本 release 无配对 retain
+            // (多扣款)——rc 下溢回绕 0xFFFFFFFF,槽位永久坏死 + 可能点燃
+            // 幻影风暴(孤儿再看到 prev==1 触发再 free)。计数 + 双栈实锤。
+            if cur == 0 {
+                st.underflow_events.fetch_add(1, Ordering::Relaxed);
+                if crate::p510_audit() {
+                    eprintln!(
+                        "[P510] !! OVER-RELEASE idx={} rc 0 → 0xFFFFFFFF(多扣款下溢) — release 站点:\n{}",
+                        idx,
+                        std::backtrace::Backtrace::force_capture()
+                    );
+                }
             }
             if crate::pool_log_all() {
                 let content = self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default();

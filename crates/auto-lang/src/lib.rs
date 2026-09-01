@@ -227,6 +227,15 @@ pub fn pool_log_seq() -> u64 {
     SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Plan 510 G3:over-release 审计门(P510_AUDIT=1)——首次多扣款
+/// (release 时 rc==0)打印双栈,把"哪条路径多扣"从推断变实锤。
+pub fn p510_audit() -> bool {
+    static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENV.get_or_init(|| {
+        std::env::var("P510_AUDIT").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+    })
+}
+
 /// Debug logging macro - only prints when VM debug mode is enabled
 macro_rules! vm_debug {
     ($($arg:tt)*) => {
