@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 11
+current_step: 12
 total_steps: 22
 ---
 
@@ -383,7 +383,9 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
    读局部>全局/写全局>局部不对称 + fn main 体首 init token 区间重放 +
    引擎名字键全局区（未命中缺省 0）。验证：b42/b43 绿——五闸 M1–M5 齐绿
    （36s 单跑全过）。
-12. [ ] 折叠点②：divergence 登记 + CI 绿 + master 合入（W2 同款提交格式）。
+12. [✅ 已完成] 折叠点②：divergence 已随 W1 折叠登记（skip 清单覆盖 b34–b43
+   前缀,无需新增）+ pre-fold 门禁 cargo tf 3338/3338 绿（tv 两件 master 预存
+   同折叠①结论）+ master 合入 + worktree 重同步。
 
 ### W3 use 模块化（worktree 续；测试架构先于实现）
 
