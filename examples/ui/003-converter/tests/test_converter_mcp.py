@@ -4,6 +4,7 @@ import time
 import os
 import re
 import socket
+import struct
 import requests
 
 def pick_free_port(start=9247):
@@ -124,6 +125,27 @@ def main():
         print("\n--- Capturing Initial Screenshot (VM) ---")
         ss1 = client.screenshot(name="converter_vm_initial", baseline=True)
         print(ss1)
+
+        # Plan 506: window:"fit" — the independent VM window must shrink to
+        # content size (far below the 1293x836 default). The screenshot PNG's
+        # pixel size IS the window size (iced window capture).
+        def png_size(path):
+            with open(path, "rb") as fh:
+                head = fh.read(26)
+            w, h = struct.unpack(">II", head[16:24])
+            return w, h
+
+        shot_path = os.path.join(CONVERTER_PROJECT, "src", "front", "tests", "screenshots", "converter_vm_initial.png")
+        if os.path.isfile(shot_path):
+            w, h = png_size(shot_path)
+            print(f"--- Fit window size: {w}x{h} ---")
+            if w >= 900 or h >= 900:
+                print(f"FAIL: fit window not shrunk ({w}x{h} vs default 1293x836)")
+                sys.exit(1)
+            print("OK: fit window shrunk to content size (Plan 506)")
+        else:
+            print("FAIL: initial screenshot not found for fit assertion")
+            sys.exit(1)
 
         # Find input element IDs from snapshot
         inputs_matched = re.findall(r'input\s+#(aura_\d+)', snap)

@@ -13,36 +13,36 @@ widget App {
         var interval int = 10
     }
 
+    // Plan 506: 外壳改"内容即页面"（拆 center 包裹 + 删 min-h-screen 居中
+    // 外壳，循 011 样板），配合 pac `window: "fit"` 窗口随内容收缩。
     view {
-        center {
+        col {
             col {
-                col {
-                    text .time_display {
-                        style: "text-7xl font-mono font-bold text-gray-900 tracking-wider"
-                    }
-                    text .ms_display {
-                        style: "text-3xl font-mono text-gray-400"
-                    }
-                    style: "items-center gap-1 py-12"
+                text .time_display {
+                    style: "text-7xl font-mono font-bold text-gray-900 tracking-wider"
                 }
-                row {
-                    if .running == "true" {
-                        button "Stop" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
-                        button "Lap" { onclick: .Lap, style: "px-10 py-4 bg-gray-200 text-gray-700 rounded-full text-lg font-semibold" }
-                    } else {
-                        button "Start" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
-                    }
-                    style: "gap-4 items-center"
+                text .ms_display {
+                    style: "text-3xl font-mono text-gray-400"
                 }
-                col {
-                    text "Laps" { style: "text-sm font-semibold text-gray-400 uppercase" }
-                    text .lap1 { style: "text-gray-700 font-mono py-2" }
-                    text .lap2 { style: "text-gray-700 font-mono py-2" }
-                    text .lap3 { style: "text-gray-700 font-mono py-2" }
-                    style: "w-full max-w-xs mt-8 gap-2 items-center"
-                }
-                style: "w-full max-w-md p-8 bg-white min-h-screen items-center"
+                style: "items-center gap-1 py-12"
             }
+            row {
+                if .running == "true" {
+                    button "Stop" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
+                    button "Lap" { onclick: .Lap, style: "px-10 py-4 bg-gray-200 text-gray-700 rounded-full text-lg font-semibold" }
+                } else {
+                    button "Start" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
+                }
+                style: "gap-4 items-center"
+            }
+            col {
+                text "Laps" { style: "text-sm font-semibold text-gray-400 uppercase" }
+                text .lap1 { style: "text-gray-700 font-mono py-2" }
+                text .lap2 { style: "text-gray-700 font-mono py-2" }
+                text .lap3 { style: "text-gray-700 font-mono py-2" }
+                style: "w-full max-w-xs mt-8 gap-2 items-center"
+            }
+            style: "max-w-md p-8 bg-white items-center"
         }
     }
 

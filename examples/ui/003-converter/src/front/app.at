@@ -4,44 +4,44 @@ widget App {
         var fahrenheit double = 32.0
     }
 
+    // Plan 506: 外壳改"内容即页面"（无 center 包裹，循 011 样板），配合
+    // pac `window: "fit"` 窗口随内容收缩。
     view {
-        center {
-            col {
-                style: "w-full max-w-md p-8 bg-card border rounded-2xl shadow-sm mx-4"
+        col {
+            style: "max-w-md p-8 bg-card border rounded-2xl shadow-sm mx-4"
 
-                text "Temperature Converter" {
-                    style: "text-2xl font-bold text-primary text-center mb-6"
-                }
+            text "Temperature Converter" {
+                style: "text-2xl font-bold text-primary text-center mb-6"
+            }
 
-                row {
-                    style: "gap-4"
+            row {
+                style: "gap-4"
 
-                    col {
-                        style: "flex-1 gap-1.5"
-                        text "Celsius (°C)" {
-                            style: "text-sm font-medium text-muted-foreground"
-                        }
-                        input (value: .celsius) {
-                            oninput: () => {.fahrenheit = math.round((.celsius * 9.0 / 5.0 + 32.0) * 100.0) / 100.0}
-                            placeholder: "0"
-                        }
+                col {
+                    style: "flex-1 gap-1.5"
+                    text "Celsius (°C)" {
+                        style: "text-sm font-medium text-muted-foreground"
                     }
-
-                    col {
-                        style: "flex-1 gap-1.5"
-                        text "Fahrenheit (°F)" {
-                            style: "text-sm font-medium text-muted-foreground"
-                        }
-                        input (value: .fahrenheit) {
-                            oninput: () => {.celsius = math.round((.fahrenheit - 32.0) * 5.0 / 9.0 * 100.0) / 100.0}
-                            placeholder: "32"
-                        }
+                    input (value: .celsius) {
+                        oninput: () => {.fahrenheit = math.round((.celsius * 9.0 / 5.0 + 32.0) * 100.0) / 100.0}
+                        placeholder: "0"
                     }
                 }
 
-                text "°F = °C × 9/5 + 32" {
-                    style: "text-xs text-muted-foreground text-center mt-6"
+                col {
+                    style: "flex-1 gap-1.5"
+                    text "Fahrenheit (°F)" {
+                        style: "text-sm font-medium text-muted-foreground"
+                    }
+                    input (value: .fahrenheit) {
+                        oninput: () => {.celsius = math.round((.fahrenheit - 32.0) * 5.0 / 9.0 * 100.0) / 100.0}
+                        placeholder: "32"
+                    }
                 }
+            }
+
+            text "°F = °C × 9/5 + 32" {
+                style: "text-xs text-muted-foreground text-center mt-6"
             }
         }
     }
