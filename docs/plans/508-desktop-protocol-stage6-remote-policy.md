@@ -1,15 +1,19 @@
 ---
 plan_id: PLAN-508
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-protocol-stage6-remote-policy
 author: [zhaopuming]
 created_at: 2026-08-31
 updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——桌面协议 Stage 6 现状增写：shell.apps.process_model 进程模型配置位（缺省 inproc 零变化，outproc=broker 孵化隔离选项，G2 实测裁定维持缺省）+ WsTransport 第五实现（WS Binary=codec 信封，tokio-tungstenite 0.30 no-default-features）+ 127.0.0.1:17800 远程镜像会话（token 升级期 query 校验，缺省不监听）"
+  - "docs/design/autoui/desktop-protocol-v1.md: 修改——v1.4：§1.4 Stage 6 增量 + RenderQueue 线终态小结 + 偏差表④（REMOTE_WS_PORT=17800、token 走 query 校验）+ Stage 6 验证节"
+new_spec_components:
+  - "packages/drawlist-renderer/: 新增——TS/Canvas2D DrawList 渲染器包（codec/messages/render/connect 四模块；Hello/Welcome/FrameReady/HitTable(tag9)/InputMsg 编解码；重连 ReconnectPolicy 对齐；Rust↔TS golden 双侧对拍防漂移）"
+touched_goals:             # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-009: 虚拟桌面与桌面 Shell——RenderQueue/分离渲染线收官（Stage 1–6）：默认进程模型实测裁定（维持 inproc 缺省、outproc 留隔离选项）+ 浏览器远程渲染 002-counter 点击闭环（WS command 流端到端消费）"
 
 affects: [auto-lang/ui]
 current_step: 9
@@ -247,7 +251,45 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+- **复审人**：ZCode（/auto-plan:review），2026-09-01。基线：worktree
+  `.worktrees/plan-508-dev` 与 master 同步于阶段2折叠 `3ca0fdb2a`
+  （阶段1=`4510f3de2`），全部验证在该树上复跑，**信任代码不信任勾选**。
+- **验收逐条复验（5/5 pass）**：
+  1. **G6 端到端 + G2 裁定**：T4 Playwright e2e **复审实跑 PASS**
+     （`node e2e/p508-remote-e2e.mjs` exit 0：宿主 harness 真 auto.exe
+     outproc 002-counter → WS → vite → Chromium，welcome+首帧
+     `["Counter: 0","-","Reset","+"]` → 点击 "+" → clicks=1 →
+     `["Counter: 1",…]` 闭环，截图重留痕）；G2 裁定文档在库
+     `docs/plans/reports/508-process-model-verdict.md`。
+  2. **T1–T3 + 缺省 inproc 零变化回归**：全量门禁
+     `cargo tf --features ui-iced` **复审实跑 4363/4363 绿
+     （103 skipped，exit 0**，含 T1 WS transport 四条 + T2 会话集成 +
+     ui 全家=缺省行为回归面；4343→4363 系 510/511 折叠后正常浮动）；
+     T3 `pnpm test`（drawlist-renderer）**复审实跑 20/20 绿**。
+  3. **协议演进纪律**：`PROTOCOL_VERSION` 仍 1
+     （`desktop_protocol/mod.rs:63`）；阶段2折叠 diff 对
+     message.rs/transport.rs **零删除行**（HitTable tag9 纯追加 +
+     `ws` 模块纯新增），既有 pipe/loopback 实现零改动。
+  4. **文档与告警**：设计文档 v1.4（§1.4 + RenderQueue 线终态小结 +
+     偏差表④ `:17800` + Stage 6 验证节）在库；新增代码零警告——
+     stage3.rs 的 snake_case 告警经 blame 系 **Plan 480**（`8f14f1d3ef`
+     内存采样 FFI）存量，非本期引入。
+  5. **新依赖**：Cargo.toml 仅增 `tokio-tungstenite 0.30` 一行
+     （no-default-features + connect,handshake，仅宿主 WS 侧），
+     待澄清①理由注记在案。
+- **遗漏/延后/workaround 扫描**：新文件零 TODO/FIXME/HACK；非目标四项
+  （vue remote_window 深度集成 / TLS 跨网 / 默认翻转执行 / 移动端）均为
+  计划明示边界，非静默降级；待澄清②（InputMsg TS 代码生成留后续计划）
+  系计划内执行期裁定且 golden 双侧对拍兜底——记为已批裁定，不阻塞。
+- **待澄清⑥裁定**：**已偿清，不再新增 KNOWN-DEBT 条目**——Plan 505 已
+  顺带修复（master `029a5f7ea`），复审实测
+  `cargo check -p auto-lang --features ui-iced --test
+  osconfig_integration` 编译零错；`KNOWN-DEBT-AND-RISKS.md` P499-5
+  条目已标「已偿还」。执行期通报与现状不符，以代码为准。
+- **琐碎偏差**：待澄清①行文称并存存量 tungstenite 为 0.24，
+  Cargo.lock 实为 0.29.0——版本号笔误，不影响「仅增一依赖」裁定。
+- **结论**：5/5 验收 pass，无未批延后、无阻塞债——`status: reviewed`，
+  交接 `/auto-plan:merge`（worktree 与分支保留，终态折叠/清理归 merge）。
 
 ## 待澄清事项
 
@@ -263,6 +305,9 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
   osconfig_integration.rs:220` 在 `--features ui-iced` 编译下缺
   LaunchSpec `fit`/`name` 字段（Plan 504 引入时遗留，非本计划改动；
   日常门禁不含该测试目标故未拦截）。候选入 KNOWN-DEBT（复审时定）。
+  **[复审裁定 2026-09-01]** 已偿清不入债：Plan 505 顺带修复
+  （master `029a5f7ea`），复审实测该测试目标 ui-iced 编译零错，
+  KNOWN-DEBT P499-5 已标「已偿还」。
 - **① 新依赖**：`tokio-tungstenite` 为 RenderQueue 线首个新三方——理由
   （手写 WS 帧协议的工程量/风险不划算）已记；若复审不接受，退路 = 纯
   std 的最小 WS 服务端（HTTP 升级 + 帧解析，仅 server 侧子集）。
