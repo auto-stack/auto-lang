@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-506
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: examples-desktop-batch-1
 author: [kimi-code]
 created_at: 2026-09-01
