@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 6
+current_step: 7
 total_steps: 22
 ---
 
@@ -351,8 +351,12 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
    三条分派（VInst 复用既有 arena 载体；ev_field_idx 按名定位；print 形态
    对齐经语料红线规避 print(struct)）。验证：tv-aavm2 M5 绿——W1 五闸
    M1–M5 齐绿（32s 单跑全过）。
-7. [ ] 折叠点①：AA2R 矩阵腿决策执行（待澄清①）+ divergence 登记 +
-   vm-files-ci 绿 + master 合入（`feat(aavm): Plan 511 W1 struct 类型四层收编 (Plan 511)`）。
+7. [✅ 已完成] 折叠点①：AA2R 腿 skip 清单落地（b34–b43 前缀，待澄清①缺省）+
+   divergences.md 登记（D-AA2R-struct/D-mirror/D-soft-ident）+ W0 规格实测修正回写
+   （body 段/链式读/soft-ident 三处）+ pre-fold 门禁：cargo tf 3338/3338 绿、
+   cargo tv 3475/3477（cb_asynchronous_channel/cb_devtools_log_error 两件经
+   master 实跑确认为预存,非 W1 回归）+ master 合入 6094d554f + worktree 重同步
+   后五闸复绿。
 
 ### W2 中阶补缺（worktree 续）
 
