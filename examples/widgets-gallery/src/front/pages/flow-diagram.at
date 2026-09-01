@@ -31,6 +31,14 @@ widget FlowDiagramPage {
             h1 "FlowDiagram"
             text "diagram 家族首个组件——流程图(架构图/C4/拓扑同构表达)。分层布局与几何全部在 FlowDiagram 组件内用 Auto 完成(Sugiyama-lite:rank/order/coord);渲染端走 SVG 直通,标签 = svg text 直通(随 viewBox 缩放)。数据轨 props:nodes/edges record 列表 + direction。"
 
+            h2 "Direction: lr"
+            preview-card (id: "flow-diagram-lr") {
+                flow-diagram (direction: "lr") {
+                    nodes: .flowNodes
+                    edges: .flowEdges
+                }
+            }
+
             h2 "Basic (direction: td)"
             preview-card (id: "flow-diagram-basic") {
                 flow-diagram {

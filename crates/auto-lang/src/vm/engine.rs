@@ -4875,8 +4875,12 @@ impl AutoVM {
                         if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
-                    // Pop value (bottom of stack)
-                    let value = task.ram.pop_i32();
+                    // Pop value (bottom of stack) — tagged form. Plan 502 M3:
+                    // 此前 pop_i32 + Value::Int 丢弃 float/bool/str 元素标签,
+                    // float 位模式被当整数存入(f"84.0" 写入读回 1118306300
+                    // 实锤)——与 SET_FIELD 的 decode_tagged_nv 同型修复。
+                    let value_nv = task.ram.pop_nv();
+                    let value = self.decode_tagged_nv(value_nv);
                     let mut old_elem_ref: Option<u64> = None;
 
                     // Get array from heap_objects (Plan 390 §15 H3b: arrays are
@@ -4891,10 +4895,7 @@ impl AutoVM {
                                     auto_val::Value::VmRef(r) => Some(r.id as u64),
                                     _ => None,
                                 };
-                                // Update element value
-                                // Convert i32 value to appropriate Value type
-                                // For now, store as Int (we can enhance this later with type tracking)
-                                list.elems[index] = auto_val::Value::Int(value);
+                                list.elems[index] = value;
                             } else {
                                 // Plan 118: Return error for out-of-bounds assignment
                                 return Err(VMError::RuntimeError(format!(
@@ -5622,8 +5623,18 @@ impl AutoVM {
 
                 // Plan 117: Type coercion for mixed arithmetic
                 OpCode::I32_TO_F32 => {
-                    let val = task.ram.pop_i32();
-                    task.ram.push_f32(val as f32);
+                    // Plan 502 M3: tag 驱动——值已是 float-tag(如泛型 List
+                    // 元素经 GET_ELEM 的运行时 float)时直接透传。此前
+                    // pop_i32 无视标签把 f32 位模式当整数做数值转换
+                    // (`var x float = list[i]` 的 168.0 写入读回 ~1.12e9,
+                    // diagram 布局坐标整体位漂移的根因)。
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_f32(nv) {
+                        task.ram.push_nv(nv);
+                    } else {
+                        let val = auto_val::decode_i32(nv);
+                        task.ram.push_f32(val as f32);
+                    }
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::I64_TO_F64 => {
