@@ -50,6 +50,8 @@ pub mod message;
 #[cfg(feature = "ui-iced")]
 pub mod pixels;
 #[cfg(feature = "ui-iced")]
+pub mod remote;
+#[cfg(feature = "ui-iced")]
 pub mod shm;
 #[cfg(feature = "ui-iced")]
 pub mod stage3;

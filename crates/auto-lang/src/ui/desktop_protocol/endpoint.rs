@@ -531,6 +531,14 @@ impl HostEndpoint {
             }
             // 握手确认（app 的 Ready）：Active 后的例行收尾，无动作。
             (HostState::Active, ProtocolMsg::Handshake(HandshakeMsg::Ready)) => Ok(vec![]),
+            // Plan 508：HitTable 为宿主→远程镜像端变体，宿主端点不产不出、
+            // 收到按未知方向拒绝（pipe/loopback 会话不经过此路径）。
+            (_, ProtocolMsg::Frame(super::message::FrameMsg::HitTable { .. })) => {
+                Err(ProtocolError::WrongState {
+                    state: "host-endpoint",
+                    msg: "Frame::HitTable",
+                })
+            }
             (HostState::Active, ProtocolMsg::Control(ControlMsg::ExitRequest { wid })) => {
                 self.state = HostState::Listening;
                 self.app_id = None;
@@ -641,6 +649,7 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             super::message::FrameMsg::CacheControl { .. } => "Frame::CacheControl",
             super::message::FrameMsg::FrameReadyShared { .. } => "Frame::FrameReadyShared",
             super::message::FrameMsg::FrameReadyPixels { .. } => "Frame::FrameReadyPixels",
+            super::message::FrameMsg::HitTable { .. } => "Frame::HitTable",
         },
         ProtocolMsg::Input(_) => "Input",
         ProtocolMsg::Control(m) => match m {

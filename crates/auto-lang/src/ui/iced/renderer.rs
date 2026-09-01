@@ -8968,6 +8968,13 @@ fn load_process_model() -> crate::ui::session::ProcessModel {
     )
 }
 
+/// Plan 508 G4：远程 WS token 读入（storage `shell.remote.token`；空值/
+/// 缺席 = None 不监听——缺省拒绝，远程面零暴露）。
+fn load_remote_token() -> Option<String> {
+    crate::vm::ffi::stdlib::storage_host_read("shell.remote.token")
+        .filter(|t| !t.trim().is_empty())
+}
+
 /// Plan 472 T5：dock pinned 表（storage `shell.dock.pinned` 逗号分隔；
 /// 缺席回退 DesktopState pack 默认）。boot 期读一次。
 fn load_dock_pinned() -> Option<Vec<String>> {
@@ -9868,6 +9875,14 @@ fn compare_pngs(
                     // `shell.apps.process_model`；缺省 inproc = 现状零变化）。
                     // outproc = launch 走 broker 孵化链（G2 对比实测的开关）。
                     session.desktop.process_model = load_process_model();
+                    // Plan 508 G4：远程 WS 面（storage `shell.remote.token`
+                    // 有值才监听 :17800——回环 + token，缺省拒绝=零远程面）。
+                    if let Some(token) = load_remote_token() {
+                        session.enable_remote_ws(
+                            &token,
+                            crate::ui::desktop_protocol::remote::REMOTE_WS_PORT,
+                        );
+                    }
                 }
                 // Plan 472 T5：{id,icon} 解析注入 shell（apps_dir 缺席也注入
                 // ——pinned 常驻，图标回退 "app-window"）。
@@ -12051,6 +12066,12 @@ fn compare_pngs(
                             state.attach_pending_incubations(5000);
                         }
                         state.pump_broker_clients();
+                        // Plan 508 G4：远程 WS 镜像泵（帧源=上方合成产物；
+                        // 无监听/无在册镜像两调用皆空转）。
+                        if state.pending_remote_connections() > 0 {
+                            state.attach_pending_remotes();
+                        }
+                        state.pump_remote_mirrors();
                         // Plan 505 C：验收通道注入排空（≤400ms 节拍达；
                         // Bus 记录随后并入下方 drain 同臂执行）。
                         apply_desktop_injects(state);

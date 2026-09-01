@@ -343,7 +343,24 @@ pub enum FrameMsg {
         /// 像素格式（v1 仅 Rgba8）。
         format: PixelFormat,
     },
+    /// host→远程端点。交互区表（Plan 508 远程线；D3 表的过线形态）——
+    /// 订阅兑现时下发一次：远程端本地命中判定（光标/点击寻址）用；
+    /// 权威命中仍在 app 侧（坐标直传）。追加式变体：旧端不产不出。
+    HitTable { wid: u64, hits: Vec<HitRegion> },
 }
+
+/// 交互区表条目（`HitTable` 载荷）：矩形 + 种类 + 动作串。
+#[derive(Debug, Clone, PartialEq)]
+pub struct HitRegion {
+    pub rect: WRect,
+    /// 1 = 按钮（action = handler 名）；2 = 输入框（action = 绑定字段）。
+    pub kind: u8,
+    pub action: String,
+}
+
+/// [`HitRegion::kind`] 常量。
+pub const HIT_KIND_BUTTON: u8 = 1;
+pub const HIT_KIND_INPUT: u8 = 2;
 
 impl FrameMsg {
     const BUFFER_ALLOC: u8 = 1;
@@ -354,6 +371,7 @@ impl FrameMsg {
     const CACHE_CONTROL: u8 = 6;
     const FRAME_READY_SHARED: u8 = 7;
     const FRAME_READY_PIXELS: u8 = 8;
+    const HIT_TABLE: u8 = 9;
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
@@ -443,6 +461,16 @@ impl FrameMsg {
                 put_u32(out, *stride);
                 put_u8(out, format.as_u8());
             }
+            Self::HitTable { wid, hits } => {
+                put_u8(out, Self::HIT_TABLE);
+                put_u64(out, *wid);
+                put_u32(out, hits.len() as u32);
+                for hit in hits {
+                    hit.rect.encode(out);
+                    put_u8(out, hit.kind);
+                    put_string(out, &hit.action);
+                }
+            }
         }
     }
 
@@ -507,6 +535,18 @@ impl FrameMsg {
                 let stride = r.u32()?;
                 let format = PixelFormat::from_u8(r.u8()?)?;
                 Self::FrameReadyPixels { wid, frame_id, slot, damage, revision, w, h, stride, format }
+            }
+            Self::HIT_TABLE => {
+                let wid = r.u64()?;
+                let n = r.u32()? as usize;
+                let mut hits = Vec::with_capacity(n.min(1024));
+                for _ in 0..n {
+                    let rect = WRect::decode(r)?;
+                    let kind = r.u8()?;
+                    let action = r.string()?;
+                    hits.push(HitRegion { rect, kind, action });
+                }
+                Self::HitTable { wid, hits }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
