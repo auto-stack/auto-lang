@@ -609,7 +609,7 @@ fn layout_node(
                 "divider" | "separator" => layout_divider(ctx, props, x, y, avail_w, &style),
                 "spacer" => layout_spacer(&style),
                 _ if is_text_tag(&tag_lc) || tag_lc == "a" => {
-                    layout_text(ctx, props, children, x, y, avail_w, &style, tag_lc == "a")
+                    layout_text(ctx, props, children, x, y, avail_w, &style, tag_lc == "a", &tag_lc)
                 }
                 // Plan 507 T5 —— grid（cols 等宽网格）与 card 族（card =
                 // 表面缺省档容器；title/description/content/header/footer/
@@ -1469,27 +1469,68 @@ fn layout_text(
     avail_w: f32,
     style: &NodeStyle,
     link: bool,
+    tag: &str,
 ) -> LaidBlock {
+    // Plan 507 T6：typography 族缺省档（显式 style 优先）。
+    let profile = typography_profile(tag);
     let text = element_text(ctx.comp, props, children);
-    let size = style.font_size.unwrap_or(TEXT_SIZE);
+    let size = style.font_size.or(profile.size).unwrap_or(TEXT_SIZE);
     let line_h = size * LINE_H_FACTOR;
     if text.is_empty() {
         return LaidBlock { size: (0.0, 0.0) };
     }
-    let w = measure_text(&text, size).min(avail_w.max(0.0));
-    let color = style.fg.unwrap_or(if link {
+    let default_fg = if link {
         // a：accent 前景（可链接观感；下划线 DrawOp 不载——保真边界）。
         resolve_color("blue-500").unwrap_or(TEXT_FG)
+    } else if profile.quote {
+        PLACEHOLDER_FG
     } else {
         TEXT_FG
-    });
+    };
+    let color = style.fg.unwrap_or(default_fg);
+    // 引用条：左侧 2px accent + 文本右移（bg Quad 先于文本——z 序口径）。
+    let (tx0, bar_w) = if profile.quote { (x + 12.0, 2.0) } else { (x, 0.0) };
+    if profile.quote {
+        push_quad(ctx, WRect::new(x, y, bar_w, line_h), BUTTON_BG);
+    }
+    // 代码盒/预格式：底盒 + 换行保留（pre 系列多行；行宽 = 最长行）。
+    if profile.code_box {
+        let lines: Vec<&str> = text.split('\n').collect();
+        let max_w = lines
+            .iter()
+            .map(|l| measure_text(l, size))
+            .fold(0.0f32, f32::max)
+            .min(avail_w.max(0.0));
+        let box_w = (max_w + INPUT_PAD * 2.0).min(avail_w.max(0.0));
+        let box_h = line_h * lines.len() as f32 + INPUT_PAD * 2.0;
+        push_quad(ctx, WRect::new(x, y, box_w, box_h), style.bg.unwrap_or(INPUT_BG));
+        for (i, line) in lines.iter().enumerate() {
+            if line.is_empty() {
+                continue;
+            }
+            ctx.ops.push(DrawOp::Text {
+                x: x + INPUT_PAD,
+                y: y + INPUT_PAD + line_h * i as f32,
+                size,
+                line_height: line_h,
+                color,
+                text: line.to_string(),
+            });
+        }
+        return LaidBlock { size: (box_w, box_h) };
+    }
+    let w = measure_text(&text, size).min((avail_w - bar_w - (tx0 - x)).max(0.0));
     let tx = if style.text_center {
         x + (avail_w - w) / 2.0
     } else {
-        x
+        tx0
     };
+    // bold 档（b/strong/heading + font-bold 类）：DrawOp 无字重字段，
+    // v1 不产生视觉差分——保真边界同 500 的 font_bold 解析不渲染
+    //（宿主字体注册（FontBlob 通道）后按字重档渲染）。
+    let _ = (profile.bold, style.font_bold);
     ctx.ops.push(DrawOp::Text { x: tx, y, size, line_height: line_h, color, text });
-    LaidBlock { size: (w, line_h) }
+    LaidBlock { size: (w + (tx0 - x), line_h) }
 }
 
 /// value 绑定表达式 → 字段名（`.email` / `email` / `.self.x`）。
@@ -1527,12 +1568,44 @@ fn element_text(
 }
 
 /// 文本承载标签（内容走 `text` prop；与 parser `get_primary_prop` 的
-/// text 档同集的常用子集；入参已折叠键）。
+/// text 档同集的常用子集 + Plan 507 T6 typography 族；入参已折叠键）。
 fn is_text_tag(tag: &str) -> bool {
     matches!(
         tag,
         "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "label"
+            | "b" | "em" | "i" | "strong" | "small" | "code" | "pre" | "blockquote"
+            | "quote" | "heading" | "codeblock" | "codepane" | "figcaption"
     )
+}
+
+/// Plan 507 T6 —— typography 族缺省档（显式 style 声明优先）：
+/// bold/字号/块盒/引用条；italic 与等宽字体 DrawOp 不载（保真边界：
+/// em/i 按常规体渲染，code 系列常规体 + 底盒）。
+struct TypographyProfile {
+    size: Option<f32>,
+    bold: bool,
+    /// 代码块/预格式：底盒 + 保留换行。
+    code_box: bool,
+    /// 引用：左侧 accent 条 + 缩进 + 静音前景。
+    quote: bool,
+}
+
+fn typography_profile(tag: &str) -> TypographyProfile {
+    match tag {
+        "b" | "strong" => TypographyProfile { size: None, bold: true, code_box: false, quote: false },
+        "small" | "figcaption" => {
+            TypographyProfile { size: Some(12.0), bold: false, code_box: false, quote: false }
+        }
+        "heading" => TypographyProfile { size: Some(24.0), bold: true, code_box: false, quote: false },
+        "code" => TypographyProfile { size: Some(14.0), bold: false, code_box: false, quote: false },
+        "pre" | "codeblock" | "codepane" => {
+            TypographyProfile { size: Some(14.0), bold: false, code_box: true, quote: false }
+        }
+        "blockquote" | "quote" => {
+            TypographyProfile { size: None, bold: false, code_box: false, quote: true }
+        }
+        _ => TypographyProfile { size: None, bold: false, code_box: false, quote: false },
+    }
 }
 
 /// 折叠键（剥 `-`/`_` + 小写）——coverage `normalize_kind` 同源；本文件
@@ -3034,6 +3107,116 @@ mod tests {
         let scan = crate::ui::desktop_protocol::coverage::scan_view(component.view_template());
         let verdict = crate::ui::desktop_protocol::coverage::judge(&scan, &coverage);
         assert!(verdict.is_covered(), "grid/card 族应 Covered: {verdict:?}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T6 —— Tier2 typography + 语义容器。
+    // -----------------------------------------------------------------------
+
+    /// typography 族缺省档：b/strong（bold 边界注记）、small 12px、
+    /// heading 24px、code 盒、引用条。
+    #[test]
+    fn t6_typography_profiles() {
+        let (_, frame) = project(
+            "widget T {
+    view {
+        col {
+            b \"bold!\"
+            small \"tiny\"
+            heading \"Big\"
+            code \"x = 1\"
+            blockquote \"said\"
+        }
+    }
+}
+",
+        );
+        let texts: Vec<(f32, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { size, text, .. } => Some((*size, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        let find = |t: &str| texts.iter().find(|(_, s)| *s == t).copied().expect(t);
+        assert_eq!(find("bold!").0, 16.0, "b 缺省正文字号（bold 差分 v1 不载）");
+        assert_eq!(find("tiny").0, 12.0, "small 档");
+        assert_eq!(find("Big").0, 24.0, "heading 档");
+        assert_eq!(find("x = 1").0, 14.0, "code 档");
+        // 引用：accent 条 Quad 先于文本 + 静音前景。
+        let quote_text_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Text { text, .. } if text == "said"))
+            .expect("引用文本");
+        let bar_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Quad { rect, .. } if rect.w == 2.0))
+            .expect("引用条");
+        assert!(bar_idx < quote_text_idx, "引用条先于文本（z 序）");
+        if let DrawOp::Text { color, .. } = &frame.ops[quote_text_idx] {
+            assert_eq!(*color, PLACEHOLDER_FG, "引用静音前景");
+        }
+    }
+
+    /// pre/codeblock：底盒 + 换行保留（多行 = 多 Text op）。
+    #[test]
+    fn t6_pre_codebox_multiline() {
+        let (_, frame) = project(
+            "widget P {
+    view {
+        pre \"line1\nline2\"
+    }
+}
+",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "底盒");
+        let (box_r, box_c) = quads[0];
+        assert_eq!(box_c, INPUT_BG, "缺省底盒色");
+        let lines: Vec<&str> = texts_of(&frame);
+        assert_eq!(lines, vec!["line1", "line2"], "两行文本");
+        assert!(
+            (box_r.h - (2.0 * 14.0 * LINE_H_FACTOR + INPUT_PAD * 2.0)).abs() < 0.5,
+            "盒高 = 2 行 + padding: {:?}",
+            box_r
+        );
+    }
+
+    /// 语义容器：块流纵排渲染 + auto 放行（header/main/nav/li 等）。
+    #[test]
+    fn t6_semantic_containers_block_flow() {
+        let coverage = crate::ui::desktop_protocol::coverage::Coverage::target_set();
+        let src = r#"widget S {
+    view {
+        main {
+            header { text "H" }
+            nav { text "N" }
+            article {
+                section { text "S1" }
+                ul { li { text "i1" } li { text "i2" } }
+                figure { text "F" }
+            }
+            aside { text "A" }
+            footer { text "Fo" }
+            details { summary { text "Su" } }
+            dl { dt { text "t" } dd { text "d" } }
+        }
+    }
+}
+"#;
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let scan = crate::ui::desktop_protocol::coverage::scan_view(component.view_template());
+        let verdict = crate::ui::desktop_protocol::coverage::judge(&scan, &coverage);
+        assert!(verdict.is_covered(), "语义容器应 Covered: {verdict:?}");
+        let mut p = AppProjector::new(component, 480.0, 640.0);
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        for expect in ["H", "N", "S1", "i1", "i2", "F", "A", "Fo", "Su", "t", "d"] {
+            assert!(texts.contains(&expect), "缺 {expect}: {texts:?}");
+        }
     }
 
     /// form 族 auto 探测放行（coverage 声明面）。

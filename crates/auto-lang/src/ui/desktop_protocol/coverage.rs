@@ -25,7 +25,11 @@ pub fn normalize_kind(tag: &str) -> String {
         .collect::<String>()
         .to_ascii_lowercase();
     match t.as_str() {
-        "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "label" => {
+        "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "label"
+        // Plan 507 T6 —— typography 族（文本承载；投影器按 tag 缺省档
+        // 分风格——归一仅覆盖判定用）。
+        | "b" | "em" | "i" | "strong" | "small" | "code" | "pre" | "blockquote"
+        | "quote" | "heading" | "codeblock" | "codepane" | "figcaption" => {
             "text".to_string()
         }
         _ => t,
@@ -64,7 +68,7 @@ impl Coverage {
         .map(String::from)
         .collect();
         let props: BTreeMap<String, BTreeSet<String>> = [
-            ("text", vec!["text", "label", "style", "selectable"]),
+            ("text", vec!["text", "label", "style", "selectable", "class"]),
             ("button", vec!["text", "label", "style", "disabled"]),
             ("input", vec!["value", "placeholder", "type", "style", "disabled"]),
             ("image", vec!["src", "style", "alt"]),
@@ -110,6 +114,10 @@ impl Coverage {
             // 档容器；kebab/underscore 折叠键同归）。
             "grid", "griditem", "card", "cardaction", "cardcontent",
             "carddescription", "cardfooter", "cardheader", "cardtitle",
+            // Plan 507 T6 —— 语义容器（块流纵排；列表标记不载——保真
+            // 边界随注）。
+            "article", "aside", "footer", "header", "main", "nav", "section",
+            "figure", "details", "summary", "ul", "ol", "li", "dl", "dt", "dd",
         ]
         .into_iter()
         .map(String::from)
