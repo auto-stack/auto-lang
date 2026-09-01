@@ -90,11 +90,50 @@ type CG {
     // Plan 495: 镜像宿主 emit_source_line 的 current_source_line ——
     // 相邻同线 .line 去重状态(0=未发过)
     cur_line int
+    // W1(Plan 511):struct 类型注册表(name→声明序字段名;镜像宿主
+    // generic_registry 的 field_names/field_index 面);inst_ty=构造字面量
+    // 绑定的类型名(str_flag/arr_flag 同款单值回传,let 绑定用)
+    tys List<CGType>
+    inst_ty str
 }
 
 type CGEnum {
     key str
     val int
+}
+
+type CGType {
+    name str
+    fields List<str>
+}
+
+// W1:按类型名查注册表下标(-1=未注册)
+fn cg_tys_lookup(c CG, name str) int {
+    var i = 0
+    while i < c.tys.len() {
+        if c.tys.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+// W1:字段在类型声明序中的下标(-1=无该字段)
+fn cg_field_idx(c CG, tyname str, field str) int {
+    var ti = cg_tys_lookup(c, tyname)
+    if ti < 0 {
+        return -1
+    }
+    var fl = c.tys.get(ti).fields
+    var j = 0
+    while j < fl.len() {
+        if fl.get(j) == field {
+            return j
+        }
+        j = j + 1
+    }
+    return -1
 }
 
 fn cg_const_lookup(c CG, key str) int {
@@ -131,7 +170,8 @@ fn cg_new() CG {
     var brk_l List<List<int>> = List.new()
     var cont_l List<List<int>> = List.new()
     var ctg_l List<int> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0)
+    var tys_l List<CGType> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "")
 }
 
 // P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
@@ -254,6 +294,9 @@ enum OpCode {
     Halt
     Nop
     Blank
+    GetField
+    SetField
+    SetGenericField
 }
 
 // 助记符文本(M4 dump 序列化的唯一口径;447-③C1:载体 str → OpCode)
@@ -308,6 +351,9 @@ fn op_name(op OpCode) str {
         OpCode.BuildFstr -> "build.fstr"
         OpCode.Halt -> "halt"
         OpCode.Nop -> "nop"
+        OpCode.GetField -> "get.field"
+        OpCode.SetField -> "set.field"
+        OpCode.SetGenericField -> "set.generic.field"
         else -> ""
     }
 }
@@ -327,6 +373,11 @@ fn i_size(op OpCode) int {
         OpCode.LoadLocal | OpCode.StoreLocal -> 2
         OpCode.CreateArr -> 2
         OpCode.GetGenericField -> 2
+        // W1:get.field 真宽 u32(5);set.generic.field 同 get.generic.field
+        // 的 u8 读宽形态(2+幽灵 nop);set.field 无操作数(1)
+        OpCode.GetField -> 5
+        OpCode.SetField -> 1
+        OpCode.SetGenericField -> 2
         else -> 1
     }
 }
@@ -551,6 +602,13 @@ fn cg_pool_add(mut c CG, s str) int {
     return c.pool.len() - 1
 }
 
+// W1:名字池非去重追加(get.field 操作数专用——镜像宿主 5842-5848 的
+// 直接 strings.push,不去重;load.str/set.field 路径仍走 cg_pool_add)
+fn cg_pool_push(mut c CG, s str) int {
+    c.pool.push(s)
+    return c.pool.len() - 1
+}
+
 // ── 表达式发射 ────────────────────────────────────────────────
 
 fn cg_binop_mnem(k Op) OpCode {
@@ -720,9 +778,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
         return
     }
     var k = p_kind(p)
-    // 每次表达式求值从干净 flag 起;原子按需置位(str/arr)
+    // 每次表达式求值从干净 flag 起;原子按需置位(str/arr/inst_ty)
     c.str_flag = 0
     c.arr_flag = 0
+    c.inst_ty = ""
     if k == TokenKind.Not {
         p_next(p)
         cg_expr(c, p, 28)
@@ -803,6 +862,13 @@ fn cg_expr(mut c CG, mut p P, min int) {
             }
         } else {
         p_next(p)
+        // W1 构造字面量:已注册类型紧随 { → NEW_INSTANCE 族发射;
+        // inst_ty 回传类型名(let 绑定记 var_types 用)
+        if p_kind(p) == TokenKind.LBrace && cg_tys_lookup(c, name) >= 0 {
+            cg_ctor_emit(c, p, name)
+            c.inst_ty = name
+            return
+        }
         if name == "print" && p_kind(p) == TokenKind.LParen {
             cg_call_args(c, p)
             emit(c, OpCode.CallNat, "nat#10", 0)
@@ -877,6 +943,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
         c.str_flag = 0
         c.arr_flag = 0
     }
+    // W1:点访问链深(0=原子直连首跳 → get.field;>0 链式后续跳 →
+    // get.generic.field field=0 幽灵 nop 形态)
+    var dot_seq = 0
     while c.err == "" {
         var opk = p_kind(p)
         // P2:循环顶 token 分派 is 化(11 种界符臂内 break;镜像 Rust
@@ -889,10 +958,46 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 if opk == TokenKind.Dot && t_is_type_prop(p) {
                     break
                 }
+                // W1 字段读:Dot+名(非 .type/非方法调用)→ 接收者已在
+                // 栈,get.field field[N](名字池非去重追加——镜像宿主
+                // 5842-5848 直接 push;读路径不分 var_types 形态,
+                // 宿主非泛型与 fallback 同一发射);字段访问消费完直接
+                // 回循环顶,不走通用中缀
+                var dot_done = false
                 if opk == TokenKind.Dot {
-                    cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
-                    break
+                    var fk2 = p_peek(p, 1)
+                    if fk2 == TokenKind.Ident || is_soft_ident_kind(fk2) {
+                        if p_peek(p, 2) == TokenKind.LParen {
+                            cg_err(c, "unsupported method call: ." + p_peek_text(p, 1))
+                            break
+                        }
+                        var fname2 = p_peek_text(p, 1)
+                        p_next(p)
+                        p_next(p)
+                        if dot_seq == 0 {
+                            // 首跳(原子直连,宿主 Ident 接收者 var_types 命中/
+                            // User 型):get.field field[N](名字池非去重追加)
+                            var fidx4 = cg_pool_push(c, fname2)
+                            emit(c, OpCode.GetField, "field[" + fidx4.str() + "]", fidx4)
+                        } else {
+                            // 链式后续跳(接收者已是表达式,宿主 untyped
+                            // fallback):get.generic.field field=0 + 3 幽灵 nop
+                            emit(c, OpCode.GetGenericField, "field=0", 0)
+                            emit(c, OpCode.Nop, "", 0)
+                            emit(c, OpCode.Nop, "", 0)
+                            emit(c, OpCode.Nop, "", 0)
+                        }
+                        dot_seq = dot_seq + 1
+                        c.str_flag = 0
+                        c.arr_flag = 0
+                        c.inst_ty = ""
+                        dot_done = true
+                    } else {
+                        cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
+                        break
+                    }
                 }
+                if !dot_done {
                 if !is_op_kind(opk) {
                     cg_err(c, "expected infix op, got " + kind_name(opk))
                     break
@@ -923,6 +1028,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 c.arr_flag = 0
                 if mn != OpCode.Blank {
                     emit(c, mn, "", 0)
+                }
                 }
             }
         }
@@ -1065,6 +1171,110 @@ fn cg_is_arm_body(mut c CG, mut p P) {
         return
     }
     cg_expr(c, p, 0)
+}
+
+// 单模式比较发射:load t;<pattern 表达式>;eq —— 标量枚举判别值直接
+// const.i32,字面量按各自形态
+// ── W1 struct 声明注册(Plan 511:镜像宿主 Stmt::TypeDecl 的
+// register_type——零字节码,字段名表入 c.tys)─────────────────
+
+fn cg_type_decl(mut c CG, mut p P) {
+    p_next(p)
+    if !is_name_kind(p_kind(p)) {
+        cg_err(c, "expected type name")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    // 裁剪面同 parser.at parse_type_decl(v2 unsupported 族)
+    if p_kind(p) == TokenKind.Lt {
+        cg_err(c, "v2 unsupported: type generic params")
+        return
+    }
+    if p_kind(p) == TokenKind.Asn {
+        cg_err(c, "v2 unsupported: type alias")
+        return
+    }
+    if p_kind(p) == TokenKind.Is {
+        cg_err(c, "v2 unsupported: type inheritance")
+        return
+    }
+    if p_kind(p) == TokenKind.As {
+        cg_err(c, "v2 unsupported: type as")
+        return
+    }
+    if p_kind(p) == TokenKind.Has {
+        cg_err(c, "v2 unsupported: type has")
+        return
+    }
+    p_expect(p, TokenKind.LBrace)
+    skip_empty_lines(p)
+    var fields List<str> = List.new()
+    while c.err == "" && p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+        if p_kind(p) == TokenKind.Fn || p_kind(p) == TokenKind.Static {
+            cg_err(c, "v2 unsupported: method in type")
+            return
+        }
+        if p_kind(p) == TokenKind.Hash {
+            cg_err(c, "v2 unsupported: member attr")
+            return
+        }
+        if !is_name_kind(p_kind(p)) {
+            cg_err(c, "expected member name")
+            return
+        }
+        var fname = p_text(p)
+        p_next(p)
+        if p_kind(p) == TokenKind.Colon {
+            p_next(p)
+        }
+        parse_type(p)
+        if p_kind(p) == TokenKind.Asn {
+            cg_err(c, "v2 unsupported: member default value")
+            return
+        }
+        fields.push(fname)
+        // 成员间空行:静默跳过
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    p_expect(p, TokenKind.RBrace)
+    c.tys.push(CGType(name, fields))
+}
+
+// W1 构造字面量发射 X { a: e1, b: e2 }:( 已在 cur 由调用方判别;
+// 镜像宿主 NEW_INSTANCE 族 5270-5319:字段值按字面量序 → const.i32
+// 名长 → new.instance → const.i32 字段数 → construct.instance)
+fn cg_ctor_emit(mut c CG, mut p P, name str) {
+    p_expect(p, TokenKind.LBrace)
+    skip_empty_lines(p)
+    var n = 0
+    while c.err == "" && p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+        var k = p_kind(p)
+        if k != TokenKind.Ident && !is_soft_ident_kind(k) {
+            cg_err(c, "expected field name in struct ctor")
+            return
+        }
+        p_next(p)
+        p_expect(p, TokenKind.Colon)
+        cg_expr(c, p, 0)
+        n = n + 1
+        var sk = p_kind(p)
+        if sk == TokenKind.Comma || sk == TokenKind.Newline {
+            p_next(p)
+            skip_empty_lines(p)
+        } else if sk != TokenKind.RBrace {
+            cg_err(c, "expected pair separator")
+        }
+    }
+    p_expect(p, TokenKind.RBrace)
+    var nm = name.len()
+    emit(c, OpCode.ConstI32, nm.str(), nm)
+    emit(c, OpCode.NewInstance, "\"" + name + "\"", 0)
+    emit(c, OpCode.ConstI32, n.str(), n)
+    emit(c, OpCode.ConstructInstance, "", 0)
+    c.arr_flag = 0
+    c.str_flag = 0
 }
 
 // 单模式比较发射:load t;<pattern 表达式>;eq —— 标量枚举判别值直接
@@ -1250,6 +1460,10 @@ fn cg_stmt(mut c CG, mut p P) {
         cg_enum_decl(c, p)
         return
     }
+    if k == TokenKind.Type {
+        cg_type_decl(c, p)
+        return
+    }
     if k == TokenKind.Break || k == TokenKind.Continue {
         p_next(p)
         cg_loop_jump(c, k)
@@ -1277,6 +1491,12 @@ fn cg_stmt(mut c CG, mut p P) {
             is_arr = c.arr_flag
             if c.str_flag == 1 {
                 vty = "str"
+            }
+            // W1:构造字面量绑定记类型名(镜像宿主 var_types=GenericInstance
+            // 的可观察面——写字段走 set.generic.field;注解/调用源不记,
+            // 写走 load.str+set.field,与宿主 User 路径一致)
+            if c.inst_ty != "" {
+                vty = c.inst_ty
             }
         }
         var idx = cg_add_var(c, name, is_arr, vty)
@@ -1360,6 +1580,81 @@ fn cg_stmt(mut c CG, mut p P) {
             return
         }
         p.pos = start
+    }
+    // W1 字段赋值 x.f = rhs / x.a.b = rhs:两段游标快照(镜像 a[idx]= 模式)
+    // —— 先前瞻扫字段链至 Asn,先发 rhs 再回头发对象/字段
+    if k == TokenKind.Ident && p_peek(p, 1) == TokenKind.Dot {
+        var recv2 = p_text(p)
+        var ridx2 = cg_lookup(c, recv2)
+        if ridx2 < 0 {
+            cg_err(c, "unknown ident: " + recv2)
+            return
+        }
+        var start3 = p.pos
+        // 前瞻:Ident (Dot 名)+ Asn;名后不是 Dot/Asn 即非本形态
+        var scan3 = start3 + 1
+        var fields3 List<str> = List.new()
+        var shape_ok = true
+        while shape_ok && p.toks.get(scan3).kind == TokenKind.Dot {
+            var fk3 = p.toks.get(scan3 + 1).kind
+            if fk3 != TokenKind.Ident && !is_soft_ident_kind(fk3) {
+                shape_ok = false
+                break
+            }
+            fields3.push(p.toks.get(scan3 + 1).text)
+            scan3 = scan3 + 2
+            var after3 = p.toks.get(scan3).kind
+            if after3 == TokenKind.Dot {
+                // 链继续
+            } else if after3 == TokenKind.Asn {
+                break
+            } else if cg_is_assign_op(p_op(after3)) {
+                // 复合赋值:镜像宿主非 Ident LHS 的拒绝文本(D1 同族)
+                cg_err(c, "Compound assignment requires a variable on left side")
+                return
+            } else {
+                shape_ok = false
+            }
+        }
+        if shape_ok && p.toks.get(scan3).kind == TokenKind.Asn {
+            // 发射:rhs 先行
+            p.pos = scan3 + 1
+            skip_empty_lines(p)
+            cg_expr(c, p, 0)
+            var end_pos3 = p.pos
+            var recv_ty = cg_var_ty(c, recv2)
+            if fields3.len() == 1 && cg_tys_lookup(c, recv_ty) >= 0 {
+                // 构造字面量源变量(宿主 GenericInstance 路径):
+                // value,instance_id → set.generic.field <u32 字段下标>
+                // (+3 幽灵 nop,镜像宿主 disasm u8 读宽形态)
+                var fidx3 = cg_field_idx(c, recv_ty, fields3.get(0))
+                if fidx3 < 0 {
+                    cg_err(c, "unknown field: " + recv_ty + "." + fields3.get(0))
+                    return
+                }
+                cg_emit_load(c, ridx2)
+                emit(c, OpCode.SetGenericField, "field=" + fidx3.str(), fidx3)
+                emit(c, OpCode.Nop, "", 0)
+                emit(c, OpCode.Nop, "", 0)
+                emit(c, OpCode.Nop, "", 0)
+            } else {
+                // 嵌套/非构造源(宿主 User/fallback 路径):value → 对象
+                // 表达式 → load.str 字段名(栈顶)→ set.field
+                cg_emit_load(c, ridx2)
+                var fi3 = 0
+                while fi3 < fields3.len() - 1 {
+                    var mid3 = cg_pool_push(c, fields3.get(fi3))
+                    emit(c, OpCode.GetField, "field[" + mid3.str() + "]", mid3)
+                    fi3 = fi3 + 1
+                }
+                var last3 = cg_pool_add(c, fields3.get(fields3.len() - 1))
+                emit(c, OpCode.LoadStr, "", last3)
+                emit(c, OpCode.SetField, "", 0)
+            }
+            p.pos = end_pos3
+            return
+        }
+        p.pos = start3
     }
     // 表达式语句:赋值特判
     if k == TokenKind.Ident {
