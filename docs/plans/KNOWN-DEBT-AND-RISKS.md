@@ -518,7 +518,7 @@
   步骤 3：standalone ServiceTick 订阅断链补齐；活树布局受当前窗口钳制
   → 锚点外套 scrollable 量真实自然尺寸（宽度方向仍受视口钳制，见
   P512-1）。
-- **P504-3 desktop 真实 launch 实况 e2e 未通（合成输入打不进 winit）**：
+- **P504-3 desktop 真实 launch 实况 e2e 未通（合成输入打不进 winit）——✅ 已清偿（Plan 515 G4 C3，2026-09-01）**：505 验收通道 p515 场景=DesktopBus launch 记录 → 011-calculator 真启动，实跑 PASS 截图留痕（docs/plans/reports/assets/505/p515/——窗口置顶+任务栏高亮）；旧障碍经通道 MCP 注入臂绕过（原描未通原因：
   desktop fit/seeding 覆盖到 session 级单测 + standalone 实机；ui_desktop
   宿主可起、MCP 截图可见桌面，但 SendInput 键鼠（即便 AttachThreadInput
   置前后）打不进 winit 窗口，launcher 召唤/桌面图标双击均无响应；MCP
@@ -529,7 +529,7 @@
   直开 app 路径不经过 pac 解析，故无 fit、无 os-config 播种。属既有架构
   边界而非缺陷；若将来要求 boot 直开也享受 fit/os-config，需在 boot
   路径引入 pac 语境（另行计划）。
-- **P500-1 T3 `auto_exe()` 优先取现存二进制，陈旧产物伪装成回归**：
+- **P500-1 T3 `auto_exe()` 优先取现存二进制，陈旧产物伪装成回归——✅ 已清偿（Plan 515 G4 C2，2026-09-01）**：e2e_exe 共用体 mtime 对账 crates/ 树最新源文件，陈旧 eprintln 警告不阻断（防"回归"误读）+ `AUTO_FRESH_EXE=1` 强制重建；stage3/remote 两处委托 + 三态单测。原描：
   `t3_independent_pixels_and_dual_mode` 经 `auto_exe()` 拉起真
   `target/debug/auto.exe`，命中现存文件即用、不校验新鲜度——P500 折回
   master 首跑即中：该二进制系 Plan 504 会话所建（不含 500 代码），旧版
@@ -546,7 +546,7 @@
   无虚拟窗 Minimize/Maximize 动词（仅 native 槽位有 NativeSlotMin/Close），
   red=Close 是唯一有动词的灯。偿还路径：WM 增 min/max 动词 + 布局态
   （maximized 标志现以「窗矩形 ≥98% 桌面」几何判定近似），另行计划。
-- **P503-2 vue 轨桌面无图片壁纸层**：VM 轨壁纸 scrim（renderer.rs
+- **P503-2 vue 轨桌面无图片壁纸层——✅ 已清偿（Plan 515 G3，2026-09-01）**：assets/wm/Wallpaper.vue 三档组件（图片 bg-cover + scrim `bg-background/10 dark:bg-background/35` 与 VM 对齐 / #hex 纯色 / 空不渲染）+ host App.vue 生成期配置注入（storage 同键 `shell.desktop.wallpaper`；vue 无 storage 桥=降级判定，运行期改动经下次生成生效；token 级对齐钉于单测，视觉截图对拍挂验收通道）。原描：VM 轨壁纸 scrim（renderer.rs
   `desktop_wallpaper_scrim`，图片壁纸上叠 bg-background 10%/35%）在
   vue 轨无锚点——desktop host 桌面区为纯色 bg-background，无壁纸图层。
   归 P2（token 体系化/壁纸 parity 决策）一并评估 vue 壁纸层。
@@ -637,9 +637,12 @@
   docs/plans/060(闭包语法,主题不符)已接正至本条目。
 
 - **P507-1 queue 臂投影保真边界集(登记在案,非静默)**:scroll 无裁剪
-  (DrawOp v1 无 scissor——溢出内容不剪,宿主 Stage 5+ 裁剪算子后收口);
-  typography bold/italic 不产生视觉差分(无字重/斜体通道,同 500
-  font_bold 解析不渲染先例);ul/ol li 列表标记不载;grid 缺省列数 2 且
+  (DrawOp v1 无 scissor)——**✅ 已清偿(Plan 515 G1,2026-09-01)**:
+  DrawOp Scissor/ScissorPop(tag 3/4 追加式)+ 投影器 scroll 裁剪栈 +
+  宿主 with_clip + TS 渲染器 save/clip/restore + e2e(p515-scroll-overflow
+  构造示例,嵌套 2 层);typography bold/italic——**✅ 已清偿(Plan 515
+  G2)**:DrawOp TextStyled(tag 5:weight/italic)+ 宿主 iced Font 差分 +
+  TS font 前缀 + 金样差分行;余项仍在账:ul/ol li 列表标记不载;grid 缺省列数 2 且
   末行 gap 按满行扣;竖向 divider 无交叉轴可用高度(无 h- 声明取 24 近似);
   icon/avatar/image 为占位 Quad(位图与字形归宿主栅格化)。均在
   element_coverage.rs reason 串/代码注释随注——升格时机:DrawOp v2
@@ -651,7 +654,7 @@
   两版本均绿;nextest 每测试独立进程=日常档天然隔离)。偿还:demo 测试改
   相对断言(取孵化返回 wid 而非硬编码 1)。
 
-- **P507-3 覆盖率数字默认档不可见**:nextest 隐藏通过测试的 stdout,
+- **P507-3 覆盖率数字默认档不可见——✅ 已清偿（Plan 515 G4 C1，2026-09-01）**:fence 测试写 `target/queue-coverage.json` 侧信道 + `cargo run --bin queue-coverage` 随时直读(open 项逐条)。原描:nextest 隐藏通过测试的 stdout,
   `[queue-coverage]` 行需 `--success-output immediate`(命令已档
   .cargo/config.toml 注释)。可选偿还:element_counts 挂 bin 或写
   状态文件。
@@ -727,3 +730,35 @@
 
 1. **P502-1(master 既有,非本计划引入)`plan055_strip_html_tests::strips_tags_and_decodes_entities` ui-iced 档红**:`strip_html_tags("<span>@x</span> 你好")` 产出双空格(`" @x  你好"`),期望单空格(aura_view_builder.rs:11263 断言)。本机 master(eda3a5a5e)同红复证——musk PLAN-055 批(c964ffa81)引入面;`cargo tf` 无 ui-iced 不触发,唯日常档 `cargo t` 可见。偿还:strip_html_tags 标签/实体后空白规范化(或按语义修正期望),归 musk 批主理方裁定。
 2. **P502 执行期发现#9 处置核验**:kitchen-sink `@autodown/engine` scaffold 依赖缺失担忧经复审核验**已上游愈合**(P499-6 d0c23388d kitchen-sink 再生成,import 不复存在)——不入债。
+
+### P515（2026-09-01，Plan 515 桌面 DEBT 批处理二期——清偿/判定/D 族收拢登记）
+
+- **清偿五项**：P507-1（scissor + typography 两子项，见上条内联 ✅）、
+  P503-2（vue 壁纸层）、P507-3（覆盖率可见）、P500-1（auto_exe 陈旧
+  防护）、P504-3（真 launch e2e 通道留痕）。
+- **D 族判定收拢**（六项散落增强逐项定案，判定表见
+  docs/plans/515-desktop-debt-batch-2.md 详细设计 §5）：
+  - **纳入已执行**：D1 HICON 真图标（473/486 两度延期）——提取链
+    （WM_GETICON 哨兵容错 + GCLP 兜底 + CopyImage 回退）+ native_icon
+    缓存 + `hicon:<slot>` 渲染方案串；真窗口 e2e 绿。
+  - **显式不做（理由成文）**：D3 外来虚拟文件拉流（低频边缘场景 +
+    跨进程文件流协议/生命周期复杂度高）、D4 真延迟回调（合成 tick 已
+    满足动画；定时器线程+跨线程回调安全复杂度/收益不成比例）。
+  - **挂起（触发条件明确）**：D2 窗口选择器面板（触发=真机使用反馈
+    出现多窗口切换需求）；D5 native DWM 缩略（触发=494 真洞翻默认后
+    缩略保真反馈）；D6 vue 真缩略 web 路径（触发=vue 远程形态落地）。
+    挂起项非永久悬置——触发即重开。
+- **顺带修复（本计划施工中发现）**：layout_block 垂直块高度 500 期
+  bug（误取 cross_max=最大子宽，多层嵌套容器高度消费一直拿宽度值；
+  parity 金样 2 份几何修正=card 紧包内容/重叠消除）；geometry scratch
+  类名 `\0` 转义 bug（非 NUL 终止，RegisterClassW 靠未定义读界）；
+  drawlist-renderer package.json 漏提交（508 期 manifest 不在库，
+  vitest 验证命令不可复现已补齐）。
+- **新观察（pre-existing，非本计划引入，供复审/后续定界）**：
+  ①`style_migration_probe` 基线即红（token `underline` 上游已能解析
+  但 449 迁移表标注 gap——测试自述"更新 MIGRATION.md 支持度列并翻
+  ok"）；②`d8_toggle_dark_mode` 基线即红（断言 initial dark_mode
+  =false 但读回 true——疑全局主题态测试间泄漏或 458 线回归）；③
+  `plan055_strip_html_tests::strips_tags_and_decodes_entities` 基线即
+  红（双空格 vs 单空格，strip_html 段落归并口径）。三处均经干净基线
+  复跑证实（git stash 后同败），域属 449/370/055，未在本计划处理。
