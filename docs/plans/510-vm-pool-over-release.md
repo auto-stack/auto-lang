@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-510
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-pool-over-release
 author: [zhaopuming]
 created_at: 2026-09-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]
-current_step: 0
+current_step: 6
 total_steps: 10
 ---
 
@@ -189,18 +189,54 @@ over-release ──→ 幻影条目 ──→ 清扫器     over-release 清偿(
 
 ## 执行步骤
 
-1. 建工作 worktree（按 auto-lang 计划流程惯例命名）。
-2. Phase 1 审计：http_server 裸推改 `vm.add_string`（先行，独立可合）；
-   全仓 TAG_STRING 产生点/release 配对扫描，G1 清单结论回写。
-   [ ]
-3. Phase 2 仪器：debug 配对审计钩子 + soak 断言设施。
-   [ ]
+1. 建工作 worktree(按 auto-lang 计划流程惯例命名)。
+   [✅ 已完成] `.worktrees/plan-510-dev`(branch plan-510-dev),状态
+   drafting→executing 已翻转。
+2. Phase 1 审计:http_server 裸推改 `vm.add_string`(先行,独立可合);
+   全仓 TAG_STRING 产生点/release 配对扫描,G1 清单结论回写。
+   [✅ 已完成] 提交 7a8ac1d2e/b190a5b33。**G1 四项结论**:
+   ①裸池写绕过记账——**属实且规模远超立项估计**:19 处收口咽喉
+   (http_server 同步臂 3 + async 簇 5〔裸写池+rc_push_str_idx,但新槽越
+   rc 数组时 retain 静默 no-op〕+ stdlib 两个重复派发拷贝 4 + native.rs 5
+   〔add_string 后裸 push_nv;dedup 命中他人活槽时 POP 直接把活槽打到 0
+   进 freelist = 幻影主通道〕+ stdlib file_stem 1 + ffi.rs 1 + py_ffi 3)
+   ——全部统一 push_str_arg/intern_runtime_str/rc_push_str_idx;
+   ②绕过咽喉的引用入栈——**属实**(同①清单,已修);③双重释放——
+   **证伪**(POP/POP_N/intercept_error/slot_range/task_stack 释放后槽位
+   清零,结构性防护;无实例);④freelist 暗桩——**证伪**(唯一运行时
+   写入者 pool_free_idx 墓碑先行 + engine.rs 兜底回推 rc==0 前提安全;
+   musk_vm_track_tests:1250 为清扫器测试刻意注入夹具)。顺带删除零调用
+   死代码 push_tagged_value(非 rc 版)。
+3. Phase 2 仪器:debug 配对审计钩子 + soak 断言设施。
+   [✅ 已完成] (a) PoolState 增 underflow_events/phantom_drops 计数 +
+   pool_release 下溢探测(P510_AUDIT=1 双栈实锤)+ sweeper 总数计数 +
+   AutoVM::pool_health() 快照;(b) soak 设施:pool_soak_churn_short
+   (800 轮,入日常门禁)+ pool_soak_churn_long(#[ignore],P510_SOAK_ITERS
+   可调)。**soak 短跑首跑即抓到真泄漏**:live_shares=800(每轮 1 份)——
+   二分定位两处 over-retain 家族:BUILD_FSTR 弹运行期串 part 无 release
+   (pop_tagged 家族 6 消费点同病,pop_tagged_rc 配平修复)+ StakeGuard
+   只释放堆引用漏池串实参(扩展 pool_idx 字段 Drop 配平)。修后全部
+   bisect 用例 live_shares=0/underflow=0/phantom=0/池复用恢复。
 4. Phase 3 按结论逐项修复（TDD）+ 长跑浸泡验收。
-   [ ]
+   [✅ 已完成] 提交 20899f3c8/5d9700cb1。修复即 Phase 2 二分矩阵结论落地
+   （6 处 pop_tagged 消费配平 + StakeGuard 池份额扩展,顺序=先拷贝后释放;
+   BUILD_FSTR 外层读守卫重构防同线程自锁）。**浸泡验收**:短跑 800 轮
+   (日常门禁)绿;长跑 2M 轮 231s 绿——underflow_events=0 /
+   phantom_drops=0 / 终态 live_shares=0 / freelist 复用恢复 / 池规模有界
+   (等效 churn 远超 musk 单会话 1896 幻影签名基线)。
 5. G4 债务归位（060 指针 + DEBTS.md）。
-   [ ]
+   [✅ 已完成] engine.rs add_string 文档债指针接正(docs/plans/060 系闭包
+   语法,主题不符→指向 KNOWN-DEBT-AND-RISKS.md P510-1 条目 + 本计划,
+   随 20899f3c8 入库);KNOWN-DEBT-AND-RISKS.md 增 P510-1 池生命周期债
+   (索引 u32 化/池 GC/裸 pop_arg_nv 残余)双向指向本计划,P499-6/7
+   同步改记已偿还。
 6. 批末门禁全绿 + 红清单/文档收口。
-   [ ]
+   [✅ 已完成] 三档门禁全绿:cargo t 3341/3341;cargo tv 3482/3482
+   （P499-7 两测转绿）;cargo tf 3342/3342（含 1M churn 档
+   str_churn_bounded_large 21.4s + docs_gen/schema_drift）。浸泡:2M 轮
+   绿。防线三层保留未触发（soak 断言 phantom_drops==0 即健康态文档化）;
+   红清单收口:KNOWN-DEBT P510-1 条目（u32 化/池 GC/裸 pop_arg_nv 残余
+   观察项）。musk 实机复验为后续动作（见待澄清）。
 
 ## 待澄清事项
 
@@ -209,4 +245,12 @@ over-release ──→ 幻影条目 ──→ 清扫器     over-release 清偿(
   索引宽度是独立工程，待本计划闭环后按泄漏量化数据决定是否立项。
 - **soak 载体**：auto-lang 仓内 soak 测试 vs musk 侧脚本驱动实机长跑，
   执行时按最小成本裁定（musk 侧复现真实 churn 分布，auto-lang 侧可控
-  可重复，可能两者都要）。
+  可重复，可能两者都要）。**已裁定（执行期）**：auto-lang 仓内 soak
+  （pool_soak_churn_short 入日常门禁 + long 档 ignore 显式触发）为主
+  验收载体；musk 实机复验（实机点击链路 + P053-8 签名观察）因 musk 仓
+  不在本工作区，登记为**后续动作**，不阻塞本计划闭环。
+- **P499-6/7 关联裁定（2026-09-01 分诊）**：两枚债务与字符串池
+  over-release **均不同源**——P499-7 真因=native ID 撞号（Log×Shell
+  1800-1803）+ channel 用例空期望文件；P499-6 真因=kitchen-sink 生成器
+  对视图关键字名元素（link）发射标签简写。两者已随本计划 worktree 提前
+  清偿（提交 7a8ac1d2e / d0c23388d），债务账本同步改记。
