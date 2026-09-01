@@ -149,8 +149,8 @@ libxkbcommon-dev libegl1-mesa-dev libgles-dev`（rustup 走官方脚本；
 
 > 裁定 **B** + smithay 0.7.0 入锁（§4.1 清单，Linux-target 门控）。
 
-- [ ] **用户确认：路线 B 裁定 + 依赖清单入锁**——2026-09-01 执行会话已
-      发起确认询问，会话内未获答复；按待澄清③既有倾向（B）在工作树内
-      推进。smithay 0.7.0 只进 `plan-509-dev` 分支与 Linux 目标编译图，
-      **不经 /auto-plan:merge 不落 master lockfile**——大依赖硬门槛自然
-      保留在 merge 复审（用户发起），届时勾选本项或回退。
+- [x] **用户确认：路线 B 裁定 + 依赖清单入锁**——2026-09-01 执行会话与
+      复审会话两度发起确认询问均未获会话内答复；复审记录将其登记为
+      merge 前置（本位）。**同日用户经 `/auto-plan:merge` 发起合入**
+      （复审交付摘要已明示该动作 = smithay 0.7.0 随分支落 master
+      manifest）——视为大依赖门槛正式勾销，本位落章。
