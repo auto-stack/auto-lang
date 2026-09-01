@@ -88,8 +88,12 @@
 | lib/lexer.at | tokenize + dump;434 增 f-string/三引号(D38c) | 432 完结(M1)+434 |
 | lib/parser.at | parse_dump S-expr 直出;434 增泛型实例/type-decl/enum-decl(D38a/b) | 432 完结(M2)+434 |
 | lib/typeinfo.at | typecheck_dump(.type 推断层) | 432 完结(M3) |
-| lib/codegen.at | cg_compile 字节码(I{op,s,n} 载体) | 432 完结(M4) |
-| lib/engine.at | ev_run 栈式 VM(Val 判别结构/数组 arena) | 432 完结(M5) |
+| lib/codegen.at | cg_compile 字节码(I{op,s,n} 载体);511 增 struct 四件/
+  全局变量/for-in 双通道/use 多编译单元+链接器(池合并+符号定址) | 432 完结(M4)
+  +447+**511(Plan 511:struct/全局/补缺/use 模块化)** |
+| lib/engine.at | ev_run 栈式 VM(Val 判别结构/数组 arena);511 增
+  get/set.field 分派/全局区/迭代器零迭代/ev_run_files(初始化序) | 432 完结(M5)
+  +447+**511(ev_exec 抽核+多文件)** |
 | lib/a2r.at | AA2R:主 a2r 核心子集的 Auto 版(Plan 434) | 434(见其文件头 Snapshot) |
 | pac.at | 包定义(`auto build` 转译入口) | experimental |
 
