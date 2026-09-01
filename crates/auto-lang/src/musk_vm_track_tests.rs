@@ -1039,10 +1039,97 @@ mod musk_vm_track_p054_t1_title_content_subtree {
         .expect("component")
     }
 
+    /// PLAN-054 T2 (R2)：内容子树按钮 icon 子组件——R2 全集逐图标回归锁。
+    /// 09-01 对拍 A2/A10 现场声明的丢失集（Plus/Trash2/Send/Folder/
+    /// ChevronDown/Settings）+ 对照组（Search/Info）。P-051 P2-①（模块级
+    /// use.web 注册）+ P-053-6（registry 守卫）修复后桥路已通，本测锁死
+    /// "button 内容子树 + title" 形态下每个图标都以 lucide:{kebab} 进视图。
+    #[test]
+    fn icon_component_child_renders_in_button_content_subtree() {
+        crate::ui::aura_view_builder::register_imported_components(vec![
+            "Plus".to_string(),
+            "Trash2".to_string(),
+            "Search".to_string(),
+            "Info".to_string(),
+            "Send".to_string(),
+            "Folder".to_string(),
+            "ChevronDown".to_string(),
+            "Settings".to_string(),
+        ]);
+        // (组件名, 期望 kebab glyph)——R2 丢失集在前，对照组在后。
+        let cases: &[(&str, &str)] = &[
+            ("Plus", "lucide:plus"),
+            ("Trash2", "lucide:trash-2"),
+            ("Send", "lucide:send"),
+            ("Folder", "lucide:folder"),
+            ("ChevronDown", "lucide:chevron-down"),
+            ("Settings", "lucide:settings"),
+            ("Search", "lucide:search"),
+            ("Info", "lucide:info"),
+        ];
+        for (tag, want) in cases {
+            let src = format!(
+                "widget Root54i {{\n    view {{\n        button {{\n            title: \"t-{tag}\"\n            {tag} {{ size: 14 }}\n        }}\n    }}\n}}\n"
+            );
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = Parser::from(src.as_str()).with_session(session);
+            let ast = parser.parse().unwrap_or_else(|e| panic!("{tag}: parse {e}"));
+            let decls: Vec<crate::ast::WidgetDecl> = ast
+                .stmts
+                .iter()
+                .filter_map(|st| match st {
+                    crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                    _ => None,
+                })
+                .collect();
+            let root_widget =
+                crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+            let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+                &decls[0],
+                &decls[1..],
+                &root_widget,
+                crate::ui::widget_registry::WidgetRegistry::new(),
+                vec![],
+                &std::collections::HashMap::new(),
+                false,
+            )
+            .expect("component");
+            let (view, _, _) = comp.view_with_debug_gated(false);
+            fn first_image(
+                view: &View<crate::ui::interpreter::DynamicMessage>,
+                img: &mut Option<String>,
+            ) {
+                if img.is_some() {
+                    return;
+                }
+                match view {
+                    View::Image { src, .. } => *img = Some(src.clone()),
+                    View::Button { content: Some(c), .. } => first_image(c, img),
+                    View::Row { children, .. } | View::Column { children, .. } => {
+                        for c in children {
+                            first_image(c, img);
+                        }
+                    }
+                    View::Container { child, .. } => first_image(child, img),
+                    _ => {}
+                }
+            }
+            let mut got = None;
+            first_image(&view, &mut got);
+            assert_eq!(
+                got.as_deref(),
+                Some(*want),
+                "{tag} 必须以 {want} 渲染进 button 内容子树"
+            );
+        }
+        crate::ui::aura_view_builder::clear_imported_components();
+    }
+
     /// title 仍以 EE03 尾段进 Button.label（renderer tooltip 通道不回退），
     /// 但任何 View::Text 的可见内容不得携带 EE03（PUA 字形不落文本流）。
     #[test]
     fn title_ee03_stays_out_of_visible_text_stream() {
+        crate::ui::aura_view_builder::clear_imported_components();
         let comp = build_root();
         let (view, _, _) = comp.view_with_debug_gated(false);
         // 递归收集 (Button labels, Text contents)。
@@ -1367,5 +1454,68 @@ mod musk_vm_track_p053_8_phantom_freelist {
         // 同字节内化仍命中存活槽。
         let again = vm.add_string("你好".as_bytes().to_vec());
         assert_eq!(again, live);
+    }
+}
+
+
+/// PLAN-054 手动探针（#[ignore]，需 MUSK_APP_PATH 指向真实 musk app.at）：
+/// 走生产管线 build_dynamic_component（与 auto run --render=vm 同装载路径，
+/// 含 register_imported_components 三路注册）渲染一帧，倒出全部 Image src
+/// 与 Text 内容——裁定图标丢失发生在注册面/视图面/渲染面哪一层。
+/// 运行：MUSK_APP_PATH=D:/autostack/auto-musk/src/front/app.at \
+///   cargo nextest run -p auto-lang --lib --features ui-iced musk_runtime_icon -- --ignored --nocapture
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_runtime_probe {
+    #[test]
+    #[ignore = "requires MUSK_APP_PATH pointing at real musk checkout"]
+    fn musk_runtime_icon_and_text_dump() {
+        let app = std::path::PathBuf::from(
+            std::env::var("MUSK_APP_PATH").expect("MUSK_APP_PATH required"),
+        );
+        let code = std::fs::read_to_string(&app).expect("read app.at");
+        let mut dc = crate::build_dynamic_component(&code, Some(app.to_str().unwrap()))
+            .expect("production loader build");
+        // 过 auth guard（app.at: authenticated => token != None computed）。
+        let fields: Vec<String> = dc.state_fields().iter().map(|f| format!("{:?}", f)).collect();
+        eprintln!("[P054-probe] state fields: {:?}", fields);
+        let authed = dc.write_state("token", auto_val::Value::Str("probe-token".into()));
+        authed.expect("write token");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        fn walk(
+            view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            imgs: &mut Vec<String>,
+            texts: &mut Vec<String>,
+            depth: usize,
+        ) {
+            use crate::ui::view::View;
+            if depth > 40 {
+                return;
+            }
+            match view {
+                View::Image { src, .. } => imgs.push(src.clone()),
+                View::Text { content, .. } => texts.push(content.clone()),
+                View::Button { label, content, .. } => {
+                    texts.push(format!("[btn label={:?}]", label));
+                    if let Some(c) = content {
+                        walk(c, imgs, texts, depth + 1);
+                    }
+                }
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        walk(c, imgs, texts, depth + 1);
+                    }
+                }
+                View::Container { child, .. } => walk(child, imgs, texts, depth + 1),
+                _ => {}
+            }
+        }
+        let mut imgs = Vec::new();
+        let mut texts = Vec::new();
+        walk(&view, &mut imgs, &mut texts, 0);
+        eprintln!("[P054-probe] image srcs ({}): {:?}", imgs.len(), imgs);
+        eprintln!("[P054-probe] texts ({}):", texts.len());
+        for t in &texts {
+            eprintln!("  text: {:?}", t);
+        }
     }
 }
