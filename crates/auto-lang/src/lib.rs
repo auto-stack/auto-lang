@@ -6232,6 +6232,11 @@ mod plan503_tests;
 #[path = "tests/plan510_pool_tests.rs"]
 mod plan510_pool_tests;
 
+// P499-6 清偿:widgets-gallery 全页可编译冒烟(lib 级,入日常门禁)。
+#[cfg(test)]
+#[path = "tests/gallery_pages_compile_tests.rs"]
+mod gallery_pages_compile_tests;
+
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]
 mod plan492_m2_tests;
