@@ -317,6 +317,16 @@ pub struct DesktopState {
     /// Plan 501：外部后端 cdylib 句柄（launch 声明 back.project 的 App 时
     /// 装载；驻会话——丢弃即卸载致 vtable 悬垂，见 backend_abi 文档）。
     pub back_keepalive: Option<crate::vm::backend_abi::LoadedBackend>,
+    /// Plan 508 G1：App 进程模型（boot 期读 `shell.apps.process_model`，
+    /// 缺省 inproc）。outproc 时 launch_app 走 broker 孵化链。
+    pub process_model: ProcessModel,
+    /// Plan 508 G1：outproc 子进程 spawn 钩子（None = 生产形态 re-exec
+    /// `auto run --autodesk-incubate`；单测注入 re-exec 测试体）。
+    pub outproc_spawner:
+        Option<Arc<dyn Fn(&str) -> std::io::Result<std::process::Child> + Send + Sync>>,
+    /// Plan 508 G1：outproc 子进程句柄驻留（测试收尾 kill 用；宿主退出后
+    /// 子进程经重连预算自然退出——显式生命周期管理非 v1 面）。
+    pub outproc_children: Vec<std::process::Child>,
 }
 
 impl DesktopState {
@@ -357,6 +367,9 @@ impl DesktopState {
             osconfig_status: crate::ui::osconfig_daemon::DaemonStatus::default(),
             osconfig_daemon_probe: None,
             back_keepalive: None,
+            process_model: ProcessModel::default(),
+            outproc_spawner: None,
+            outproc_children: Vec::new(),
         }
     }
 
@@ -1273,6 +1286,29 @@ fn load_back_cdylib(
     )
 }
 
+/// Plan 508 G1：App 进程模型配置位（storage `shell.apps.process_model`）——
+/// `inproc` = 进程内直挂（缺省，现状零变化）；`outproc` = broker 孵化
+/// （子进程 + RenderQueue 帧通道：隔离 + 统一路径 + 独立内存账）。
+/// boot 读入一次；shell 特权面（dock/switcher/settings/desktop 本体）
+/// boot 直装载不经 launch，恒 inproc。I3 纪律：App 装载管线两形态同链，
+/// 差异仅在进程归属与帧通道。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ProcessModel {
+    #[default]
+    Inproc,
+    Outproc,
+}
+
+impl ProcessModel {
+    /// storage 原值解析（缺席/坏值回退 Inproc——坏配置不炸桌面，472 同型）。
+    pub fn from_storage(raw: Option<&str>) -> Self {
+        match raw.map(str::trim) {
+            Some("outproc") => Self::Outproc,
+            _ => Self::Inproc,
+        }
+    }
+}
+
 /// LaunchApp 的启动材料（单测内联注入；生产侧由 T7 注册表解析供给）。
 pub struct LaunchSpec {
     /// .at 源码（`auto run` 同管线编译装载）。
@@ -1750,37 +1786,77 @@ impl DesktopSession {
     }
 
 
+/// Plan 508 G1：outproc 子进程寻源身份——source_path（注册表条目
+/// `<root>/<dir>/src/front/app.at`）剥三层得 App 目录名、四层得装载根。
+/// 主根 id==目录名；外部根（os-config/auto）id≠目录名——目录名 +
+/// resolver 目录名兜底（renderer 装配处）保两形态同源。无 source_path
+/// （内联 spec）→ launch 名透传 + None（子进程缺省根 examples/ui）。
+fn outproc_child_identity(
+    spec: &LaunchSpec,
+    launch_name: &str,
+) -> (String, Option<std::path::PathBuf>) {
+    let Some(dir) = spec
+        .source_path
+        .as_deref()
+        .and_then(|p| std::path::Path::new(p).ancestors().nth(3))
+    else {
+        return (launch_name.to_string(), None);
+    };
+    let Some(dir_name) = dir.file_name() else {
+        return (launch_name.to_string(), None);
+    };
+    (
+        dir_name.to_string_lossy().to_string(),
+        dir.parent().map(|root| root.to_path_buf()),
+    )
+}
+
+/// Plan 508 G1：生产 outproc spawner——re-exec 本体（宿主即 `auto`
+/// 二进制；`run --autodesk-incubate --app386=<dir>` = 双模入口 ②，
+/// broker 管道显式传参与桌面 boot 同源）+ 装载根 env（AUTO_386_APP_ROOT；
+/// cmd_autodesk 缺省 ./examples/ui 同主根）。NEXTEST_* 剥除防测试
+/// 上下文串染（spawn_t3_child 同款）。
+fn spawn_outproc_child(
+    child_name: &str,
+    app_root: Option<&std::path::Path>,
+    broker_pipe: &str,
+) -> std::io::Result<std::process::Child> {
+    let exe = std::env::current_exe()?;
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.args([
+        "run",
+        "--autodesk-incubate",
+        &format!("--app386={child_name}"),
+        &format!("--autodesk-broker={broker_pipe}"),
+    ]);
+    if let Some(root) = app_root {
+        cmd.env("AUTO_386_APP_ROOT", root);
+    }
+    for (key, _) in std::env::vars() {
+        if key.starts_with("NEXTEST_") {
+            cmd.env_remove(&key);
+        }
+    }
+    cmd.spawn()
+}
+
 /// Plan 463 T4：LaunchApp 执行体（T1 报告 §5）—— 注册表解析 →
     /// `build_dynamic_component` 编译装载 → `allocate_app` → 新虚拟窗
     /// （free 模式级联初位；非 free 随即整场重排）→ 聚焦。失败返回
     /// Err（调用方转 toast，不阻断桌面）。
     pub fn launch_app(&mut self, name: &str) -> Result<Wid, String> {
+        // Plan 508 G1：outproc 配置位 → broker 孵化链（spawn 子进程 +
+        // RenderQueue 帧通道；宿主侧装载仍走同一 resolver——I3 同链）。
+        if self.desktop.process_model == ProcessModel::Outproc {
+            return self.launch_app_outproc(name);
+        }
         let resolver = self
             .desktop
             .app_resolver
             .clone()
             .ok_or_else(|| "app registry unavailable".to_string())?;
         let spec = resolver(name).ok_or_else(|| format!("app not found: {name}"))?;
-        // Plan 501：daemon 依赖 App（pac `daemon: autoos`）——编译装载（Init
-        // 链打 daemon）前确保 os-config daemon 就绪（检活/spawn/就绪轮询）
-        // 并注入 AUTOOS_DAEMON env（进程级——VM Env.get 即进程 env，os-config
-        // api.at 既有约定）。Offline 不阻断 launch：App 自带 daemon_view
-        // 连接测试 UX（G1 不重复造）；原因记 osconfig_status 供徽标。
-        if spec.daemon.as_deref() == Some("autoos") {
-            let status = match &self.desktop.osconfig_daemon_probe {
-                Some(probe) => probe(),
-                None => crate::ui::osconfig_daemon::ensure_ready(
-                    &crate::ui::osconfig_daemon::default_daemon_url(),
-                ),
-            };
-            if let crate::ui::osconfig_daemon::DaemonStatus::Running(url) = &status {
-                for (key, value) in crate::ui::osconfig_daemon::env_for(url) {
-                    // 单键短值写，UI 线程唯一写点（stdlib Env.set 同约定）。
-                    std::env::set_var(&key, &value);
-                }
-            }
-            self.desktop.osconfig_status = status;
-        }
+        self.ensure_daemon_if_declared(&spec);
         // Plan 501：外部后端根（pac `back: { project }`）——`back.*` 模块
         // 链接式契约的解析根 + cdylib 桩桥装载（os-config 形态：本地
         // src/back/api.at 残缺、后端 api.at 为桩——#[api] 真身在 cdylib，
@@ -1840,6 +1916,92 @@ impl DesktopSession {
         }
         if layout != LayoutMode::Free {
             self.wm_set_layout(layout);
+        }
+        Ok(wid)
+    }
+
+    /// Plan 501：daemon 依赖 App（pac `daemon: autoos`）的宿主侧就绪序
+    /// （launch 两形态共用——env 进程级，outproc 子进程 spawn 继承）——
+    /// 检活/spawn/就绪轮询 + AUTOOS_DAEMON env 注入；Offline 不阻断
+    /// launch，原因记 osconfig_status 供徽标。
+    fn ensure_daemon_if_declared(&mut self, spec: &LaunchSpec) {
+        if spec.daemon.as_deref() != Some("autoos") {
+            return;
+        }
+        let status = match &self.desktop.osconfig_daemon_probe {
+            Some(probe) => probe(),
+            None => crate::ui::osconfig_daemon::ensure_ready(
+                &crate::ui::osconfig_daemon::default_daemon_url(),
+            ),
+        };
+        if let crate::ui::osconfig_daemon::DaemonStatus::Running(url) = &status {
+            for (key, value) in crate::ui::osconfig_daemon::env_for(url) {
+                // 单键短值写，UI 线程唯一写点（stdlib Env.set 同约定）。
+                std::env::set_var(&key, &value);
+            }
+        }
+        self.desktop.osconfig_status = status;
+    }
+
+    /// Plan 508 G1：outproc 孵化臂——注册表校验（错误语义与 inproc 臂
+    /// 一致 → toast）→ daemon 就绪序（同链）→ spawn 子进程（生产 =
+    /// re-exec `auto run --autodesk-incubate`，测试注入 spawner）→
+    /// broker serve 线程受理排队 → 同步泵 attach 到 Active → 落地 Wid
+    /// 认领（registry_id 回填 launch 名，dock 投影同源）。
+    ///
+    /// v1 边界：子进程按 App 目录名寻源（`--app386=<dirname>` +
+    /// `AUTO_386_APP_ROOT`），外部根 id≠目录名由 resolver 目录名兜底
+    /// （renderer 装配处）；back.project（cdylib 宿主装载）App 的
+    /// outproc 形态不支持（G2 批次无此类）；窗落位沿用 broker attach
+    /// 缺省（16,16/480×320），不随 inproc 级联——裁定期已知差异。
+    fn launch_app_outproc(&mut self, name: &str) -> Result<Wid, String> {
+        let resolver = self
+            .desktop
+            .app_resolver
+            .clone()
+            .ok_or_else(|| "app registry unavailable".to_string())?;
+        let spec = resolver(name).ok_or_else(|| format!("app not found: {name}"))?;
+        self.ensure_daemon_if_declared(&spec);
+        let (child_name, app_root) = Self::outproc_child_identity(&spec, name);
+        // broker 管道：会话登记值（505）> 缺省常量——自定义管道桌面同链。
+        let broker_pipe = self
+            .broker_pipe
+            .clone()
+            .unwrap_or_else(|| crate::ui::desktop_protocol::broker::BROKER_PIPE.to_string());
+        let child = match self.desktop.outproc_spawner.clone() {
+            Some(spawn) => spawn(&child_name).map_err(|e| format!("spawn outproc child: {e}"))?,
+            None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
+                .map_err(|e| format!("spawn outproc child: {e}"))?,
+        };
+        self.desktop.outproc_children.push(child);
+        // 等受理（子进程 spawn + connect，冷启可达数秒）→ attach 到 Active
+        //（预算与 ServiceTick 臂同参 5000ms）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while self.pending_incubations() == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        self.attach_pending_incubations(5000);
+        // 落地认领：child 以目录名握手——找该名下未认领窗（无 registry_id，
+        // 多次启动同 App 不误领旧窗）。
+        let wid = self
+            .broker_clients
+            .values()
+            .find(|c| {
+                c.app_name.as_deref() == Some(child_name.as_str())
+                    && c.wid.is_some_and(|w| {
+                        self.host
+                            .as_ref()
+                            .and_then(|h| h.wm.wins.get(&w))
+                            .and_then(|v| v.registry_id.as_ref())
+                            .is_none()
+                    })
+            })
+            .and_then(|c| c.wid)
+            .ok_or_else(|| format!("outproc incubation `{name}` failed to land (budget)"))?;
+        if let Some(host) = self.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid) {
+                v.registry_id = Some(name.to_string());
+            }
         }
         Ok(wid)
     }
@@ -3712,6 +3874,114 @@ mod tests {
             auto_val::Value::str("scientific")
         );
         std::fs::remove_dir_all(&cfg_dir).ok();
+    }
+
+    // ---- Plan 508 G1：进程模型配置位（outproc 孵化分支）----
+
+    /// outproc 臂 e2e 用的计数器源（按钮 + 文本，002-counter 同族口径）。
+    const P508_PROBE_AT: &str = "widget P508Probe {\n    model { var count int = 0 }\n    view {\n        row {\n            button \"-\" { onclick: () => {.count -= 1} }\n            button \"+\" { onclick: () => {.count += 1} }\n        }\n        text \"probe: ${.count}\"\n    }\n}\n";
+
+    /// re-exec 子进程识别 env（broker 管道 + App 名）。
+    const P508_CHILD_BROKER_ENV: &str = "AUTO_508_BROKER";
+    const P508_CHILD_APP_ENV: &str = "AUTO_508_APP";
+
+    /// Plan 508 G1：storage 原值解析（缺席/坏值回退 inproc，472 同型）。
+    #[test]
+    fn process_model_storage_parse() {
+        assert_eq!(ProcessModel::from_storage(None), ProcessModel::Inproc);
+        assert_eq!(ProcessModel::from_storage(Some("inproc")), ProcessModel::Inproc);
+        assert_eq!(ProcessModel::from_storage(Some("outproc")), ProcessModel::Outproc);
+        assert_eq!(ProcessModel::from_storage(Some("  outproc ")), ProcessModel::Outproc);
+        assert_eq!(ProcessModel::from_storage(Some("bogus")), ProcessModel::Inproc);
+    }
+
+    /// Plan 508 G1：outproc 臂子进程体（re-exec）——env 注入时走 broker
+    /// 孵化 + client 主循环（生产同链：`auto run --autodesk-incubate`）；
+    /// 直接跑套件（无 env）跳过。
+    #[test]
+    fn launch_outproc_child_body() {
+        let Ok(broker_pipe) = std::env::var(P508_CHILD_BROKER_ENV) else {
+            return;
+        };
+        let app_name = std::env::var(P508_CHILD_APP_ENV).expect("app env");
+        use crate::ui::desktop_protocol::client_runtime::{
+            self, AppProjector, ClientConfig, ReconnectPolicy,
+        };
+        let (per_app_pipe, end) = crate::ui::desktop_protocol::broker::request_incubation(
+            &broker_pipe,
+            &app_name,
+            10_000,
+        )
+        .expect("incubate");
+        let component = crate::build_dynamic_component(P508_PROBE_AT, None).expect("child build");
+        let config =
+            ClientConfig { app_name: app_name.clone(), title: app_name, width: 480.0, height: 320.0 };
+        let reconnect =
+            ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
+        let projector = AppProjector::new(component, 480.0, 320.0);
+        let _ = client_runtime::run_client(end, projector, config, Some(reconnect));
+    }
+
+    /// Plan 508 G1：outproc 配置位 → launch_app 走 broker 孵化链落地
+    /// （re-exec 真子进程 + 真协议泵，同步泵到 Active 返回落地 Wid）。
+    #[test]
+    fn launch_app_outproc_lands_window() {
+        let broker_pipe = format!("autodesk-broker-508-{}", std::process::id());
+        let mut ds = t4_session_with_resolver();
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "probe").then(|| LaunchSpec {
+                code: P508_PROBE_AT.to_string(),
+                source_path: None,
+                title: Some("Probe App".to_string()),
+                name: None,
+                fit: false,
+                daemon: None,
+                back_root: None,
+            })
+        }));
+        ds.desktop.process_model = ProcessModel::Outproc;
+        // spawn 钩子注入：re-exec 测试体（生产 = spawn_outproc_child）。
+        let pipe_for_spawn = broker_pipe.clone();
+        ds.desktop.outproc_spawner = Some(std::sync::Arc::new(move |_name| {
+            let exe = std::env::current_exe().expect("current_exe");
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.args(["launch_outproc_child_body", "--test-threads", "1", "--nocapture"])
+                .env(P508_CHILD_BROKER_ENV, &pipe_for_spawn)
+                .env(P508_CHILD_APP_ENV, "probe")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::inherit());
+            for (k, _) in std::env::vars() {
+                if k.starts_with("NEXTEST_") {
+                    cmd.env_remove(&k);
+                }
+            }
+            cmd.spawn()
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        ds.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        let wid = ds.launch_app("probe").expect("outproc launch 落地");
+
+        // 落地断言：虚拟窗在册、client 驻留、registry_id 回填（dock 投影口径）。
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.wins.contains_key(&wid), "outproc 落地窗在册");
+        assert_eq!(
+            host.wm.wins[&wid].registry_id.as_deref(),
+            Some("probe"),
+            "registry_id 回填 = launch 名"
+        );
+        assert!(
+            ds.broker_clients.values().any(|c| c.app_name.as_deref() == Some("probe")),
+            "broker_clients 驻留 probe"
+        );
+
+        // 收尾：kill 子进程 + 停 broker serve 线程（probe 连接唤醒退出）。
+        for mut child in ds.desktop.outproc_children.drain(..) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = crate::ui::desktop_protocol::transport::connect(&broker_pipe, 500);
     }
 
     /// Plan 504：Opened 幂等覆盖不得抹掉 boot 臂置位的 fit_pending

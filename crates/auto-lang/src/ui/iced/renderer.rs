@@ -8895,6 +8895,14 @@ fn load_native_hole_mode() -> bool {
     crate::vm::ffi::stdlib::storage_host_read("shell.native.hole").as_deref() == Some("true")
 }
 
+/// Plan 508 G1：App 进程模型读入（storage `shell.apps.process_model`，
+/// "outproc" 开进程外孵化；缺席/坏值 = inproc——坏配置不炸桌面，472 同型）。
+fn load_process_model() -> crate::ui::session::ProcessModel {
+    crate::ui::session::ProcessModel::from_storage(
+        crate::vm::ffi::stdlib::storage_host_read("shell.apps.process_model").as_deref(),
+    )
+}
+
 /// Plan 472 T5：dock pinned 表（storage `shell.dock.pinned` 逗号分隔；
 /// 缺席回退 DesktopState pack 默认）。boot 期读一次。
 fn load_dock_pinned() -> Option<Vec<String>> {
@@ -9740,20 +9748,34 @@ fn compare_pngs(
                     let resolver_entries = entries.clone();
                     session.desktop.app_resolver =
                         Some(std::sync::Arc::new(move |name: &str| {
-                            resolver_entries.iter().find(|e| e.id == name).and_then(|e| {
-                                let code = std::fs::read_to_string(&e.entry).ok()?;
-                                // Plan 501：外部后端根（注册表扫描期已解析为
-                                // 绝对路径；坏路径 launch 臂 is_dir 兜底跳过）。
-                                Some(crate::ui::session::LaunchSpec {
-                                    code,
-                                    source_path: Some(e.entry.to_string_lossy().to_string()),
-                                    title: Some(e.title.clone()),
-                                    name: e.name.clone(),
-                                    daemon: e.daemon.clone(),
-                                    back_root: e.back_root.clone(),
-                                    fit: e.fit,
+                            resolver_entries.iter()
+                                .find(|e| e.id == name)
+                                // Plan 508 G1：目录名兜底——outproc 子进程按
+                                // App 目录名握手（--app386=<dirname>），外部根
+                                // 条目 id≠目录名（如 os-config/auto）。
+                                .or_else(|| {
+                                    resolver_entries.iter().find(|e| {
+                                        std::path::Path::new(&e.entry)
+                                            .ancestors()
+                                            .nth(3)
+                                            .and_then(|d| d.file_name())
+                                            .is_some_and(|n| n == name)
+                                    })
                                 })
-                            })
+                                .and_then(|e| {
+                                    let code = std::fs::read_to_string(&e.entry).ok()?;
+                                    // Plan 501：外部后端根（注册表扫描期已解析为
+                                    // 绝对路径；坏路径 launch 臂 is_dir 兜底跳过）。
+                                    Some(crate::ui::session::LaunchSpec {
+                                        code,
+                                        source_path: Some(e.entry.to_string_lossy().to_string()),
+                                        title: Some(e.title.clone()),
+                                        name: e.name.clone(),
+                                        daemon: e.daemon.clone(),
+                                        back_root: e.back_root.clone(),
+                                        fit: e.fit,
+                                    })
+                                })
                         }));
                     // Plan 464 T4：launcher 入口 + 注册表快照（召唤注入用）。
                     // 入口匹配：id "launcher" 或 "-launcher" 结尾（441 预订
@@ -9777,6 +9799,10 @@ fn compare_pngs(
                     for (k, v) in load_hotkey_overrides() {
                         session.desktop.hotkeys.apply_override(&k, &v);
                     }
+                    // Plan 508 G1：App 进程模型配置位（storage
+                    // `shell.apps.process_model`；缺省 inproc = 现状零变化）。
+                    // outproc = launch 走 broker 孵化链（G2 对比实测的开关）。
+                    session.desktop.process_model = load_process_model();
                 }
                 // Plan 472 T5：{id,icon} 解析注入 shell（apps_dir 缺席也注入
                 // ——pinned 常驻，图标回退 "app-window"）。
