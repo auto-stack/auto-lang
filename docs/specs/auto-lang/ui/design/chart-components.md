@@ -109,8 +109,10 @@ colors 不足时复用末色（`ci >= ccount → ccount - 1`）。
   写悬停态字段——高亮系列线宽 2→3+opacity 1、其余 downplay 0.25（area fill 三态
   0.45/0.25/0.08）；line 高亮系列浮现**转折点圆圈**（r=3,坐标 Init 预计算槽位
   pts0..3）。bar 命中竖带 `.Hover(i)` 顺带分组态：该组柱描边 1.5、其余组
-  fill-opacity 0.3。donut 图例行/扇区 `.Hover(i)`：该扇区沿中角**外移 12px**
-  （Init 预计算平移路径 d/e 双形态,弧径不变）+ 白描边 2px。
+  fill-opacity 0.3（bar 维持竖带命中,499 未动）。donut 扇区 emphasis 沿中角
+  **外移 12px**（Init 预计算平移路径 d/e 双形态,弧径不变）+ 白描边 2px——
+  命中入口 499 v2 改单全图 mouse-area 极坐标直接命中（图例行 hover 双入口保留;
+  path 级 onmouseenter 为 VM 轨死事件,已退役）。
 - **legend 点击显隐**：图例 mouse-area `onclick: .Toggle(k)` 翻 vis 族布尔——隐藏
   系列几何与 emphasis 全跳过（隐藏优先于悬停）,图例项落 opacity-40（可再点复原）。
 - **悬停态字段命名纪律**：图族专属 hovLn/hovAr/hovBr/hovDn + visLn/visAr/visBr/
@@ -118,9 +120,41 @@ colors 不足时复用末色（`ci >= ccount → ccount - 1`）。
   恒假（引擎缺陷 P498-1）;同名字段在 VM 单态架构下跨组件串扰,图族更名解耦
   （P498-2,同族多实例仍联动,vue 轨无此现象）。
 - **mouse-area 事件面**（M0 引擎臂,schema 双源已登记）：onmouseenter/onmouseleave/
-  ondblclick（496）/onclick（498 → iced on_press / vue @click）。
+  ondblclick（496）/onclick（498 → iced on_press / vue @click）/onmousemove+coords
+  （499 v2 → iced PointerArea 限频流 / vue @mousemove 内联换算,见下节）。
 - **双端表现差异**：vue 走 CSS transition 淡入（组件 style 块 path transition
   0.15s）,VM 直接切换——状态与几何完全同源,仅增强动画差异。
+
+
+### 交互 v2——指针移动流（plan-499 落地）
+
+- **通用指针原语**：`mouse-area (coords: "560x300", onmousemove: .PointerMove)`——
+  事件实参 = **组件局部逻辑坐标**（viewBox 系,`(x: float, y: float)` 经
+  pipe-payload 管道）;屏幕→逻辑换算在引擎层完成（组件代码不感知屏幕）：
+  VM 臂 = PointerArea 自定义 widget 在事件现场以 bounds 归一 × extent（iced
+  on_move 闭包拿不到 bounds,必须 widget 持有）;vue 臂 = 生成端内联
+  `e.offsetX / e.currentTarget.clientWidth * W`。coords 缺省 = bounds 局部
+  物理 px（raw 模式）。
+- **限频语义（跨轨契约=逻辑坐标一致,节律不承诺一致）**：VM 臂 33ms 时间闸
+  （≤30Hz）+ 0.5px 量化去重（静止单发）——mousemove 高频流不冲击 RenderQueue;
+  vue 臂 DOM 原生事件不经 RenderQueue,不限频。
+- **line axisPointer**：N 竖带命中退役 → 单全图 mouse-area（absolute inset-0
+  随容器缩放）+ 索引吸附最近数据点（`fi=(x-40)/510*(n-1)+0.5 → .to_int()`）;
+  十字线 = svg 内动态 path（竖线 `M ${cx} 20 V 260` 吸附 / 水平线跟随 y 钳
+  20..260,虚线 3 3）;tooltip 跟随 `left-[${cx-80}]` 钳 40..400。
+- **donut 扇区直接命中（svgdoc 静态限制解除）**：全图单 mouse-area + 组件内
+  极坐标测试（环带 `3844 ≤ dx²+dy² ≤ 10000` + atan2 归一〔+π/2 起〕落累进角
+  区间,endsDn/cntDn Init 预落）→ 复用 emphasis 外移。扇区命中与 diagram 边
+  命中同源（"逻辑坐标 + 代码几何测试"同一能力,渲染后端解耦）。
+- **动画双轨**：VM `timer { AnimTick (every_ms: 33, when: .anim) }` 数值插值
+  （opacity 0→100 四拍到顶停摆;入场边沿启动防闪/移动中不重置/离场复位）;
+  vue `transition-opacity duration-150` CSS 类。**vue tooltip 动态类必须走
+  class 通道**（`class: f"…"` → `:class`）——style f-string 走 `:style` CSS
+  声明通道,类串会被静默丢弃。
+- **已知边界（P499-1..4 均挂账）**：timer when 门在 handler 体内（调度器恒
+  30Hz 空转心跳）;donut tooltip 角落锚定不跟随（max-w-md 缩放对位风险）;
+  实机帧率数字未量化（autoui MCP 无 mousemove 注入,限频以单元级证据背书）;
+  路线 B（两进程）widget 树输入注入不在本期（输入通道 PointerMoved 已备）。
 
 ### 类型扩展（旧 gallery 形状对拍所必需）
 

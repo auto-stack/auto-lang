@@ -557,3 +557,51 @@
   解耦四族；**同族多实例仍共享**（两个 line-chart 实例联动），vue 轨实例
   隔离无此现象——跨轨行为差异。偿还路径：子组件状态按实例隔离
   （prepare_child_render_state / on_with_input_for 的 state 路由，架构级）。
+
+### P499（2026-09-01，Plan 499 chart v2 canvas 交互 M5 收尾登记）
+
+- **P499-1 timer `when:` 门在调度器层未生效（恒 30Hz 空转心跳）**：
+  `timer { AnimTick (every_ms: 33, when: .anim) }` 的 when 门在两轨均
+  落在 handler 体内（vue 生成端闭包 `if (anim.value){…}` 内嵌；VM 轨
+  [UI_EVENT] 日志实证无悬停时 AnimLnTick/AnimDnTick 持续派发）——
+  setInterval/调度器无条件起拍,handler 早退。功能正确但每图族常驻
+  ~30Hz 空事件(全 gallery 合计可观数量)。偿还路径:timer 调度器在
+  派发前求值 when(状态变化时启停 interval),或 handler 空转计数熔断。
+- **P499-2 donut tooltip 角落锚定不跟随(max-w-md 缩放对位风险)**：donut
+  tooltip 维持 `absolute top-[20px] right-[20px]` 角落锚定(M4 决议)——
+  line 的跟随定位(cx-80 钳制)不适用于 donut 的 max-w-md 随宽缩放(逻辑
+  px 定位与渲染 px 有缩放差,面向 px 定位有对位风险)。同源遗留:svgdoc
+  每次指针移动整串 path/d 重解析(vm dump 链路,由 M2 限频 33ms+量化
+  0.5px 去重背书)。偿还路径:跟随定位走百分比/容器相对单位 + svgdoc
+  增量更新通道。
+- **P499-3 实机帧率基线对照未量化(验收 #2 以单元级限频证据背书)**：
+  持续 mousemove 流「无帧率塌陷」以 M2 PointerArea 限频单测(125Hz 流
+  →25Hz 发布/静止单发/量化去重)+vue 臂不经 RenderQueue 的架构事实背书;
+  实机 fps 数字未采(VM 轨无 mousemove 注入工具,autoui MCP 仅
+  press/type/keyboard)。偿还路径:MCP 增 autoui_mouse_move 注入 + 帧率
+  探针(与 P499-1 空转心跳一并量测)。
+- **P499-4 路线 B(两进程)widget 树输入注入**:设计文档 §8 已定界——
+  输入通道 PointerMoved 已备、消费方仅编辑器 FrameSource,widget 树
+  级输入注入不在本计划。归 diagram 边命中/节点拖拽后续计划。
+- **P499-5(移入,非本计划引入)LaunchSpec osconfig_integration 潜伏
+  E0063**:master 侧 Plan 504 为 LaunchSpec 增 name/fit 字段时只修了
+  stage3.rs,`tests/osconfig_integration.rs:220` app_resolver 初始化器
+  仍缺两字段——`cargo test -p auto-lang --features ui-iced`(非 --lib)
+  编译即红(master 与 499 worktree 同现,499 M5 复验时发现)。日常
+  `cargo t` 走 --lib/nextest 滤镜未触发。偿还:补 `name:None,fit:false`
+  两行(master 侧一行修复)。**已偿还**:master 029a5f7ea
+  (P505 S3-S4 顺带修,tf 档不含 tests/ 目标漏网同因)。
+- **P499-6(移入,非本计划引入)widgets-gallery kitchen-sink.at 解析
+  错阻断 vue serve**:497 提交的 `pages/kitchen-sink.at`(offset 7158
+  "Expected term, got RBrace" ×20)在当前解析器下编译失败→该页 SFC
+  不生成→router 引用悬空→**widgets-gallery vue 模式整站 500**(499 M5
+  实机验证时发现,charts-gallery 不受影响)。cargo t/docs_gen 不覆盖
+  每页可解析性。偿还:修 kitchen-sink.at 语法 + 例行「全页可编译」
+  冒烟(widgets-gallery serve 冒烟或 parse-all 测试)。
+
+- **P499-7(移入,非本计划引入)cookbook `cb_asynchronous_channel` tv 档失败**:
+  review 门禁 `cargo tv` 1421/1422——`tests/cookbook_vm_tests::cb_asynchronous_channel`
+  在 **master 默认检出同现**(499 worktree 仅改 CALL_SPEC 浮点接收者前缀,
+  与异步通道无关)。`cargo tf`(无 test-vm-files 特性)不含此测,故日常门禁
+  未遮蔽。偿还:定位 channel 收发时序回归(疑似近期 VM 调度改动),修后
+  补 tv 档到日常门禁的讨论。

@@ -28,6 +28,12 @@ VM 轨子组件 Init 渲染期补发（props 播种→Init→build，vue onMount
 bar 分组描边/donut 扇区中角外移）+ legend onclick 点击显隐（mouse-area on_click 引擎臂，
 iced on_press/vue @click）；悬停态字段图族专属（hovLn/hovAr/hovBr/hovDn 无悬停哨兵 9——
 负数字面量 view 比较缺陷 P498-1 与 VM 单态串扰 P498-2 均已挂账）。
+**交互 v2——指针移动流（plan-499 落地）**：mouse-area `onmousemove`+`coords:"WxH"` 通用
+指针原语（事件携带 viewBox 逻辑坐标,引擎层完成屏幕→逻辑换算;VM 臂 PointerArea 自定义
+widget 33ms 时间闸+0.5px 量化限频,vue 臂 DOM 原生不限频）;line axisPointer 十字线索引
+吸附+tooltip 跟随,donut 极坐标扇区直接命中（svgdoc 静态限制经代码命中解除）,hover
+动画双轨（timer 数值插值/CSS transition 类）;统一原语设计与 P-list 图元协议草案见
+[design/autoui/canvas-pointer-events.md](../../../design/autoui/canvas-pointer-events.md)。
 
 **导航组件线（plan-482 落地）**：nav-item/nav-group/nav(search:) 组件族——
 class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGroup 镜像，
