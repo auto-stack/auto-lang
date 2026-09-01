@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 12
+current_step: 13
 total_steps: 22
 ---
 
@@ -389,10 +389,18 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
 
 ### W3 use 模块化（worktree 续；测试架构先于实现）
 
-13. [ ] **W3 测试架构先行**：`corpus_use/` 目录协议落地（首批用例双份期望
-    生成）；m4/m5 harness 多文件变体（Rust 侧镜像 resolve_uses+Linker）；
-    错误用例通道（.expected.error 等价物）——harness 用"双侧宿主路径"对照
-    自证绿。验证：harness 自证跑绿 + aavm 侧红清单。
+13. [✅ 已完成] **W3 测试架构先行**：corpus_use 六用例（001 定向导入/
+    002 全限定 db.fn()/003 非 pub 可见性 D3/004 D2 合法环 A↔B 互递归/
+    005 传递依赖+初始化序/006 通配）+ errors 三件（e1 未声明模块/e2 use.rs
+    /e3 use.py）落盘;M4 多文件腿 compile_and_link_multi（session.resolve_
+    uses+S4 wrapper 约定+池合并镜像+Linker）——**自证绿**：43 件单文件
+    corpus 与 S4 compile_and_link 逐字符一致（execute 路径逐顶层语句发
+    .line 的 Run-mode 分歧经自证发现并绕开,S4 口径为 aavm 镜像基准）;
+    M5 多文件腿 run_with_capture_and_path live oracle + 错误通道（两侧
+    错误文本一致判据）;lib.rs remap 四项自 execute 函数体内上提模块级
+    pub(crate)（纯代码搬移,五闸回归绿）。aavm 侧红清单:M4/M5/错误通道
+    三件均 Undefined symbol: codegen_dump_files / ev_run_files。宿主侧
+    9 用例全部可编译/可执行/可报错。
 14. [ ] `auto/lib/parser.at`：use 语句四形态解析 + 异构导入拒绝；
     corpus_m2 扩展（含错误形态件）。验证：tv-aavm2 M2 绿。
 15. [ ] 模块解析器：`mod.at` 读取（auto.file.read_text）+ 传递依赖 + 环检测
