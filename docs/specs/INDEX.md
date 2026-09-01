@@ -363,7 +363,7 @@
 
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
-| auto-cosmic | experimental | 4 | [auto-cosmic/project.md](auto-cosmic/project.md) |
+| auto-cosmic | active（509 | 5 | [auto-cosmic/project.md](auto-cosmic/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 
@@ -371,7 +371,8 @@
 |---|---|---|
 | ports | 系统端口接口（通知/电源等）+ mock 实现 | active |
 | demo | 时钟 + 电池小程序（验收样例） | active |
-| host-libcosmic | VTree→libcosmic Element 真实 lowering（Linux）/ Windows headless 回退 | partial（lowering TODO，见债务簿 365 条目） |
+| host-libcosmic | VTree→libcosmic Element 真实 lowering（Linux）/ Windows headless 回退 | partial（lowering TODO，见债务簿 365 条目；509 裁定后为观察态——libcosmic 发 crates.io 版 + iced 0.14 rebase 再重估） |
 | ports-linux | zbus/UPower/D-Bus 真实适配 | partial（通知 D-Bus push 集成 TODO） |
+| host-smithay | Smithay 0.7 合成宿主（winit/nested 开发形态；Linux-target 门控 smithay 依赖，Windows stub）——bind→render→Frame 纹理合成循环，`--frame` PNG 纹理 + `--frames` 帧预算取证 | active（509 Stage 1：骨架 + WSLg/Xvfb 实跑 + shell 首帧像素证据；live attach = Stage 2，见债务簿 509 条目） |
 
 </details>
