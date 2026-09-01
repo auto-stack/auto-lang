@@ -34,6 +34,15 @@ widget 33ms 时间闸+0.5px 量化限频,vue 臂 DOM 原生不限频）;line axi
 吸附+tooltip 跟随,donut 极坐标扇区直接命中（svgdoc 静态限制经代码命中解除）,hover
 动画双轨（timer 数值插值/CSS transition 类）;统一原语设计与 P-list 图元协议草案见
 [design/autoui/canvas-pointer-events.md](../../../design/autoui/canvas-pointer-events.md)。
+**diagram 家族开篇（plan-502 落地）**：flow-diagram v1（widgets-gallery Diagrams 分组
+/flow-diagram 页）——数据轨 props `nodes`/`edges`/`direction`（td/lr 经转置）+
+**Sugiyama-lite 分层布局纯 Auto**（DFS 回边剥离开环→最长路径分层→barycenter 双向
+2 轮降交叉→层内等距/父居中）+ v1 SVG 渲染（484 charts 同通路）+ **svg `text` 直通
+标签**（M1 对照定案胜出:vue 轨 in_svg_subtree 上下文分流/vm 轨 svgdoc text 序列化臂,
+resvg 原生栅格化——svg 无 text 约束自此解除）+ hover emphasis/锚定 tooltip（498
+三段式,哨兵 999）+ 边路由 bbox 交点直线 + head/tail 字形（arrow/diamond/circle）+
+line dash/thick。契约见 [design/diagram-components.md](design/diagram-components.md)；
+group 平铺/focus 模型归 Phase 2a，DSL 静态糖归 Phase 3。
 
 **导航组件线（plan-482 落地）**：nav-item/nav-group/nav(search:) 组件族——
 class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGroup 镜像，

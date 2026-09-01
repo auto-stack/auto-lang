@@ -74,7 +74,10 @@ colors 不足时复用末色（`ci >= ccount → ccount - 1`）。
   y 像素映射 `y = 260 - v/top × 240`。
 - **退化域**：data 为空列表或 vmax==0 时 `top=4, step=1`（刻度 0..4），网格照发，
   绘图区空白不报错。单点数据正常出刻度（域按该点值）。
-- **发射形态**：y 刻度标签 = DSL `text` 列（svg `<text>` 不支持，约束不变），
+- **发射形态**：y 刻度标签 = DSL `text` 列（svg `<text>` 不支持，约束不变——
+  **plan-502 M1 注记（2026-09-01）**：svg `text` 直通已随 diagram 家族双端落地
+  （`in_svg_subtree` 分流 + svgdoc text 臂），引擎面约束解除；chart 页自身未动，
+  y 刻度标签维持 DSL `text` 列形态，后续 chart 若迁移另立计划），
   左侧 w-10 列组件内置发射；网格线 = svg `path`（水平线，色 #e2e8f0）；
   x 轴标签 = `index` 字段值等距抽样 ≤8 个，DSL `text` 行置于图下。
 - `axis: "none"` 时组件不发射刻度/网格/标签（024-charts 自管刻度的旧形态出口）。
