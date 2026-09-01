@@ -2903,11 +2903,12 @@ impl AutoVM {
                     {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_string(nv) {
-                            // String .len() fallback — get string bytes length
-                            let str_idx = auto_val::decode_string(nv) as usize;
+                            // String .len() fallback — JS .length 语义 = 字符数
+                            // （PLAN-055：此前按字节计，for-in over str 对 CJK
+                            // 逐字节迭代 ×3 且 GET_ELEM 索引越界——迭代面失真）。
                             let len = self.strings.read().unwrap()
-                                .get(str_idx)
-                                .map(|b| b.len() as i32)
+                                .get(auto_val::decode_string(nv) as usize)
+                                .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
                                 .unwrap_or(0);
                             task.ram.push_i32(len);
                         } else if auto_val::is_i32(nv) || auto_val::is_object(nv) {
@@ -5154,14 +5155,24 @@ impl AutoVM {
                     };
                     drop(strings); // Release lock before potentially writing below
 
-                    // Get object from registry
-                    // Plan 375: Node resolution — mold templates read node
-                    // fields like `app.id` / `dep.at`. Nodes set `id`/`name`/`at`
-                    // etc. as props (see Target::to_node), so resolve via props
-                    // and fall back to the struct-level id/name. Plan 390 §15
-                    // H3a: nodes now live in heap_objects, handled in the heap
-                    // branch below (downcast Node) — priority preserved.
-                    if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
+                    // PLAN-055: TAG_STRING 接收者——JS 语义 `.length` = 字符数
+                    // （与 web a2ts `text.length` 同值）。此前 Str 接收者落
+                    // "non-i32 obj_id" 噪音臂 push 0——musk estimateTokens 的
+                    // `text.length - cjk` 恒负零系，全部思考块显示 "1 tokens"
+                    // （P055 探针实测 est(17 chars) = Int(1)；agentAvatarData
+                    // 的 hash 循环同根失效）。
+                    if auto_val::is_string(receiver_nv) {
+                        if field_name == "length" {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let n = self.strings.read().unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
+                                .unwrap_or(0);
+                            task.ram.push_i32(n);
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
                         // Heap objects (4M+): Node (H3a), ObjectData (H3b),
                         // GenericInstanceData, RustStdlibObject.
                         let heap_obj = heap_ref.read().unwrap();
@@ -6370,10 +6381,13 @@ impl AutoVM {
                                 { task.ram.pop_nv(); task.ram.push_nv(if result { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
                             }
                             "len" => {
+                                // PLAN-055: JS .length 语义 = 字符数（web a2ts
+                                // `text.length` 同值）。此前按字节计——CJK 3×
+                                // 膨胀，musk estimateTokens 的 nonCjk 基数失真。
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
                                 let len = self.strings.read().unwrap()
                                     .get(str_idx)
-                                    .map(|b| String::from_utf8_lossy(b).len() as i32)
+                                    .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
                                     .unwrap_or(0);
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
                             }
@@ -7183,6 +7197,22 @@ impl AutoVM {
                                 )));
                             }
                         }
+                    } else if auto_val::is_i32(receiver_nv)
+                        && matches!(method_name.as_str(), "char_code_at" | "charCodeAt")
+                        && !self
+                            .heap_objects
+                            .contains_key(&(auto_val::decode_i32(receiver_nv).max(0) as u64))
+                    {
+                        // PLAN-055: Char（码点）接收者恒等臂——for-in over str 经
+                        // GET_ELEM 逐字符产出 i32 码点，`c.char_code_at(0)` 语义
+                        // 等价单字符字符串的 charCodeAt（web a2ts 同值）= 恒等。
+                        // 此前落 "no function for type '<invalid_i32:N>'" Err，
+                        // musk estimateTokens 的 cjk 判定恒 0（思考块 "1 tokens"
+                        // 根因之二，P055 探针实锤）。heap 命中者优先按对象走原链。
+                        for _ in 0..=arg_count {
+                            task.ram.pop_nv();
+                        }
+                        task.ram.push_nv(receiver_nv);
                     } else {
                         return Err(VMError::RuntimeError(
                             format!("CALL_SPEC: no function '{}' for type '{}'", func_name, type_name)

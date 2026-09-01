@@ -1289,6 +1289,18 @@ impl<'a> AuraViewBuilder<'a> {
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
             "container" | "div" => {
+                // PLAN-055: div{html: …}（v-html）VM 轨降级——去标签纯文本。
+                // 此前 html prop 被静默丢弃（builder 无消费臂），UserMessage
+                // 气泡体渲染为空 div；musk 聊天气泡文案缺失面。mention 高亮
+                // 为 web-only 增强（VM 降级登记），此处只读已求值 props，
+                // 不触碰 eval 链（493 UAF 雷区规避口径不变）。
+                if let Some(stripped) = self.div_html_stripped_text(props, bindings) {
+                    let mut enriched: Vec<AuraNode> = children.to_vec();
+                    enriched.push(AuraNode::Text(AuraTextContent::Literal(stripped)));
+                    let mut v = self.convert_container(props, &enriched, bindings);
+                    self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                    return v;
+                }
                 let mut v = self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings);
                 self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
                 v
@@ -2390,6 +2402,14 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
             "container" | "div" => {
+                // PLAN-055: 同 tracked 臂——html 去标签降级先于普通转换。
+                if let Some(stripped) = self.div_html_stripped_text(props, bindings) {
+                    let mut enriched: Vec<AuraNode> = children.to_vec();
+                    enriched.push(AuraNode::Text(AuraTextContent::Literal(stripped)));
+                    let mut v = self.convert_container(props, &enriched, bindings);
+                    self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                    return v;
+                }
                 let mut v = self.convert_container(props, children, bindings);
                 self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
                 v
@@ -6960,13 +6980,35 @@ let tabs_inner = View::Row {
                 }
                 return false;
             }
-            return self.read_state(path)
-                .map(|v| v.as_bool())
-                .unwrap_or(false);
+            // PLAN-055: 裸 computed 真值判定兜底——`if .hasTime` / `if .isUser`
+            // 一类视图级条件引用的是 computed（widget computed{} 表），不是
+            // state 字段。此前只查 read_state，失败即 false——musk 用户消息
+            // 恒走 chat_message 的 else 臂（AI 排版：hairline+左对齐，气泡
+            // 分支永不渲染）、时间标签（hasTime）恒隐藏。对齐无点臂的
+            // PLAN-048 L1 同款 computed 兜底。
+            match self.read_state(path) {
+                Ok(v) => return v.as_bool(),
+                Err(_) => {
+                    // 与无点臂 PLAN-048 L1 同口径：剥 store. 前缀后查 computed 表。
+                    let name = path.strip_prefix("store.").unwrap_or(path);
+                    let name = name.rsplit('.').next().unwrap_or(name);
+                    return self.eval_computed(name, bindings)
+                        .map(|v| v.as_bool())
+                        .unwrap_or(false);
+                }
+            }
         } else {
             // Try binding path truthy check
             if let Some(v) = self.resolve_binding_path(cond, bindings) {
                 return v.as_bool();
+            }
+            // PLAN-055: 字面量布尔条件——`if true {}` / `if false {}` 此前落
+            // eval_computed("true") → None → 恒 false（探针 P055-3c 实锤）。
+            if cond == "true" {
+                return true;
+            }
+            if cond == "false" {
+                return false;
             }
             // PLAN-048 L1: bare `store.X` computed truthy check — same
             // computed-table fallback as the operator path above.
@@ -7654,6 +7696,59 @@ let tabs_inner = View::Row {
                 Some(result)
             }
             AuraPropValue::StyleBinding(_) => None,
+        }
+    }
+
+    /// PLAN-055: div 的 `html:` prop（v-html）VM 轨降级取值——已求值字符串
+    /// 去除 HTML 标签并解码常见实体，落纯文本。仅消费已求值 props（绑定
+    /// 期字符串），不进入 eval/call 链（textarea mentions 的 UAF 同构雷区
+    /// 规避口径，见 493 注记）。None = 无 html prop（普通 div，行为不变）。
+    fn div_html_stripped_text(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<String> {
+        let prop = props.get("html")?;
+        let AuraPropValue::Expr(expr) = prop else {
+            return None;
+        };
+        // `.html` 一类 computed 引用经 resolve_expr_to_value 求值（有 computed
+        // 表兜底）；字符串字面量（可能带 ${} 插值）走 string resolver。
+        // 直接用 resolve_expr_to_string_with 会把未解析 Dot 格式化成
+        // "${html}" 字面量（P055 实机首验现场）。
+        let raw = match self.resolve_expr_to_value(expr, bindings) {
+            Some(Value::Str(s)) => s.to_string(),
+            Some(other) => value_to_display_string(&other),
+            None => {
+                // resolve_expr_to_value 不查 computed 表——`.html` 落 None。
+                // 对裸 computed/Dot 引用补 computed 表兜底（与条件求值同口径）。
+                let computed_name = match expr {
+                    Expr::Dot(obj, field)
+                        if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") =>
+                    {
+                        Some(field.as_str())
+                    }
+                    Expr::Ident(n) => Some(n.as_str().trim_start_matches('.')),
+                    _ => None,
+                };
+                match computed_name.and_then(|name| self.eval_computed(name, bindings)) {
+                    Some(Value::Str(s)) => s.to_string(),
+                    // computed 值非 Str（如 render_mentions_default 经 regex
+                    // native 返回位型 Int，实机显示 "203200"）——回落子组件
+                    // state 的 content prop 原始文本（v-html-of-content 形态；
+                    // 子渲染期 state root 已切到子组件，read_state 直达）。
+                    _ => match self.read_state("content") {
+                        Ok(Value::Str(s)) => s.to_string(),
+                        _ => self.resolve_expr_to_string_with(expr, bindings),
+                    },
+                }
+            }
+        };
+        let stripped = strip_html_tags(&raw);
+        if stripped.trim().is_empty() {
+            None
+        } else {
+            Some(stripped)
         }
     }
 
@@ -11064,5 +11159,86 @@ fn svg_attr_literal(expr: &Expr) -> Option<String> {
         Expr::Uint(v) => Some(v.to_string()),
         Expr::Float(_, raw) | Expr::Double(_, raw) => Some(raw.to_string()),
         _ => None,
+    }
+}
+
+/// PLAN-055: v-html 去标签纯文本降级（div_html_stripped_text 的实现辅助）。
+/// 去除成对/自闭合 HTML 标签并解码常见命名/数字实体；连续空白不压缩
+/// （UserMessage 的 whitespace-pre-wrap 语义交由容器 style 承担）。
+fn strip_html_tags(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut chars = html.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if c == '<' {
+            // 跳到下一个 '>'（无闭合则丢弃余下——残缺标签防御）
+            let mut closed = false;
+            for (_, c2) in chars.by_ref() {
+                if c2 == '>' {
+                    closed = true;
+                    break;
+                }
+            }
+            if !closed {
+                break;
+            }
+            // 标签后补一个空格，避免相邻文本粘连（"<b>a</b>b" → "a b"）
+            out.push(' ');
+        } else if c == '&' {
+            // 实体解码：截到 ';'（≤10 字符）查表
+            let rest = &html[i + 1..];
+            let end = rest.find(';').filter(|&p| p <= 10);
+            if let Some(p) = end {
+                let entity = &rest[..p];
+                let decoded = match entity {
+                    "amp" => Some('&'),
+                    "lt" => Some('<'),
+                    "gt" => Some('>'),
+                    "quot" => Some('"'),
+                    "apos" => Some('\''),
+                    "nbsp" => Some('\u{00a0}'),
+                    _ => {
+                        // 数字实体 &#NNN; / &#xHH;
+                        if let Some(num) = entity.strip_prefix('#') {
+                            let code = if let Some(hex) = num.strip_prefix('x')
+                                .or_else(|| num.strip_prefix('X'))
+                            {
+                                u32::from_str_radix(hex, 16).ok()
+                            } else {
+                                num.parse::<u32>().ok()
+                            };
+                            code.and_then(char::from_u32)
+                        } else {
+                            None
+                        }
+                    }
+                };
+                if let Some(ch) = decoded {
+                    out.push(ch);
+                    // 消费实体名 + 结尾分号（p 个名字字符后跟 ';'）
+                    for _ in 0..=p {
+                        chars.next();
+                    }
+                } else {
+                    out.push(c);
+                }
+            } else {
+                out.push(c);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod plan055_strip_html_tests {
+    use super::strip_html_tags;
+    #[test]
+    fn strips_tags_and_decodes_entities() {
+        assert_eq!(strip_html_tags("<span>@x</span> 你好"), " @x 你好");
+        assert_eq!(strip_html_tags("a &amp; b &lt;c&gt;"), "a & b <c>");
+        assert_eq!(strip_html_tags("plain"), "plain");
+        assert_eq!(strip_html_tags("unclosed <b>text"), " text");
     }
 }

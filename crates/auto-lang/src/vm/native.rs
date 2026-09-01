@@ -5317,9 +5317,13 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }
         }
         // Normal string path
+        // PLAN-055: JS .length 语义 = 字符数（web a2ts `text.length` 同值）。
+        // 此前 bytes.len() 按 UTF-8 字节计——CJK ×3 膨胀，musk estimateTokens
+        // 的 nonCjk 基数失真（思考块 "1 tokens" 根因链一环，P055-M 实测）。
         let str_idx = auto_val::decode_string(nv);
         if let Some(bytes) = vm.get_string(str_idx) {
-            task.ram.push_i32(bytes.len() as i32);
+            let char_count = String::from_utf8_lossy(&bytes).chars().count() as i32;
+            task.ram.push_i32(char_count);
         } else {
             task.ram.push_i32(0);
         }
