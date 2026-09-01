@@ -7263,17 +7263,19 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
             var gname2 = c.pool.get(ins.n)
             var gval2 = stack.get(sp - 1)
             sp = sp - 1
-            var gfound = false
+            // 先定位后单次写(名字键唯一;循环内不移动——a2r 借用检查友好)
+            var gpos = -1
             var qi2 = 0
             while qi2 < gnames.len() {
                 if gnames.get(qi2) == gname2 {
-                    var gv2c = gval2.clone()
-                    gvals.set(qi2, gv2c)
-                    gfound = true
+                    gpos = qi2
+                    qi2 = gnames.len()
                 }
                 qi2 = qi2 + 1
             }
-            if !gfound {
+            if gpos >= 0 {
+                gvals.set(gpos, gval2)
+            } else {
                 gnames.push(gname2)
                 gvals.push(gval2)
             }
