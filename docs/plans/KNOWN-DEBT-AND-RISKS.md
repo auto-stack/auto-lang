@@ -592,19 +592,39 @@
   两行(master 侧一行修复)。**已偿还**:master 029a5f7ea
   (P505 S3-S4 顺带修,tf 档不含 tests/ 目标漏网同因)。
 - **P499-6(移入,非本计划引入)widgets-gallery kitchen-sink.at 解析
-  错阻断 vue serve**:497 提交的 `pages/kitchen-sink.at`(offset 7158
-  "Expected term, got RBrace" ×20)在当前解析器下编译失败→该页 SFC
-  不生成→router 引用悬空→**widgets-gallery vue 模式整站 500**(499 M5
-  实机验证时发现,charts-gallery 不受影响)。cargo t/docs_gen 不覆盖
-  每页可解析性。偿还:修 kitchen-sink.at 语法 + 例行「全页可编译」
-  冒烟(widgets-gallery serve 冒烟或 parse-all 测试)。
+  错阻断 vue serve**——**已偿还**(2026-09-01,Plan 510 worktree 提交
+  d0c23388d):真因=生成器对**视图关键字名元素**(link,Plan 105
+  parse_view_link 独占)发射标签简写 `link "sample" {}`(解析错级联
+  20×"Expected term, got RBrace"@EOF);gallery_golden 的
+  Err 臂把生成错误串哈希进基线「洗白」(kitchen-sink 条目 2.5KB 错误串
+  vs 正常页 10-67KB 真 SFC)是漏网机制。修复=生成器对 link/tag/use
+  (schema∩all_keywords 实测三撞)禁发简写 + kitchen-sink 再生成 +
+  golden 重采样并**拒绝 !!GENERATION ERROR!! 样本入库** +
+  gallery_pages_compile_tests(lib 级全页可编译冒烟,补上 cargo t/tf
+  不跑 tests/ 集成目标的门禁盲区)。
 
-- **P499-7(移入,非本计划引入)cookbook `cb_asynchronous_channel` tv 档失败**:
-  review 门禁 `cargo tv` 1421/1422——`tests/cookbook_vm_tests::cb_asynchronous_channel`
-  在 **master 默认检出同现**(499 worktree 仅改 CALL_SPEC 浮点接收者前缀,
-  与异步通道无关)。`cargo tf`(无 test-vm-files 特性)不含此测,故日常门禁
-  未遮蔽。偿还:定位 channel 收发时序回归(疑似近期 VM 调度改动),修后
-  补 tv 档到日常门禁的讨论。
+- **P499-7(移入,非本计划引入)cookbook `cb_asynchronous_channel` tv 档
+  失败**——**已偿还**(2026-09-01,Plan 510 worktree 提交 7a8ac1d2e):
+  与「channel 收发时序」无关,双因:①native_catalog 把 Log 族登记
+  1800-1803,与 Shell 族(NATIVE_SHELL_SYSTEM..EXIT,Plan 011,engine.rs
+  显式注册后覆盖 inventory 同槽绑定)撞号——`#error(...)` 经 CALL_NAT
+  1803 派发到 shim_shell_exit → ExitRequested(-1)(cb_devtools_log_error
+  同病);②`asynchronous/channel/expected.out` 自诞生(66f6e78b6)即
+  0 字节(生成期空输出被原样提交,VM 实际输出正确——债务原记载
+  「输出空 vs 期望两行」左右读反)。修复=Log 四名移段 1805-1808 +
+  expected 补齐 + plan510 双回归钉(行为/数据级)。**遗留讨论**:tv 档
+  (test-vm-files)与 tests/ 集成目标均不在 cargo t/tf 运行集,盲区
+  归 P499-5/P495-1 同族,是否扩日常门禁另行立项。
+
+- **P510-1 字符串池生命周期债(索引 u32 化/池 GC/arg 侧残余)**:
+  over-release 注入源已由 Plan 510 清偿(19 处无计数引用收口 +
+  BUILD_FSTR/TYPE_TO_* 消费配平 + StakeGuard 池份额扩展;详见
+  docs/plans/510-vm-pool-over-release.md)。仍在账:①池索引 u16 截断
+  (natives get_string(u16) 上限 65535)——dedup 缓解,根治=索引
+  u32 化;②池无 GC(freelist 复用已恢复,但峰值=并发不同串数);
+  ③native 弹池串实参**不经 StakeGuard** 的裸 pop_arg_nv 路径仍漏
+  配平(over-retain 慢泄漏,soak 量化后按需清偿)。旧引擎债指针
+  docs/plans/060(闭包语法,主题不符)已接正至本条目。
 
 - **P507-1 queue 臂投影保真边界集(登记在案,非静默)**:scroll 无裁剪
   (DrawOp v1 无 scissor——溢出内容不剪,宿主 Stage 5+ 裁剪算子后收口);
@@ -625,3 +645,24 @@
   `[queue-coverage]` 行需 `--success-output immediate`(命令已档
   .cargo/config.toml 注释)。可选偿还:element_counts 挂 bin 或写
   状态文件。
+
+- **P506-1(pre-existing,非本计划引入)038-minesweeper Reveal 触发 VM
+  RC use-after-free**:首点格子即崩——`[RC canary] use-after-free: heap
+  object ... was freed`(crates/auto-lang/src/vm/rc.rs:530,plan-453 T6
+  边界捕获),app update/view 双 panic 后 MCP 连接断。主 checkout 与
+  506 worktree 同现(与 fit/header 改动无关);触发面=store Reveal 的
+  struct 字面量整板重建(`.board[idx] = { x: old.x, ... }`,Plan 511
+  NEW_INSTANCE 构造字面量路径,疑 511 回归,待 511 复审验证)。影响:
+  038 desktop_mcp.py T3-T6 被挡(506 已加防御:记 FAIL 不死锁 +
+  flow skip);fit 桌面化验证由独立 probe 补证(647x878 vs 默认
+  1293x836)。偿还:VM 侧修 UAF(likely rc.rs 池生命周期/构造字面量
+  over-release 家族,与 P510-1 相邻),修后 038 套件应回全绿。
+
+- **P506-2(pre-existing,非本计划引入)MCP rendered-vtree 快照无事件
+  注记**:`autoui_snapshot`(styled_vtree 通路)不输出 `onclick:` 行
+  (computed events 仅 F12 通路填充)——038 旧定位法
+  (find_all_elements_by_event / `"onclick: .X" in snap`)在 master 已
+  失效(T1 结构断言 0 命中)。506 已将 038 改 label 定位法
+  (`button #id "label"`)修复一处;其余示例脚本若依赖事件行定位将踩
+  同坑。偿还:styled_vtree 快照补 events 元数据(或 MCP 侧文档标注
+  事件注记仅 F12)。
