@@ -327,6 +327,12 @@ pub struct DesktopState {
     /// Plan 508 G1：outproc 子进程句柄驻留（测试收尾 kill 用；宿主退出后
     /// 子进程经重连预算自然退出——显式生命周期管理非 v1 面）。
     pub outproc_children: Vec<std::process::Child>,
+    /// Plan 508 G4：远程 WS 监听（boot 读 `shell.remote.token` 有值才开；
+    /// None = 无远程面——缺省拒绝）。受理队列由 ServiceTick 泵消费。
+    pub remote_listener: Option<crate::ui::desktop_protocol::transport::ws::WsListener>,
+    /// Plan 508 G4：远程镜像会话在册表（Welcome/HitTable/帧推送 + 输入
+    /// 路由，见 desktop_protocol::remote）。
+    pub remote_mirrors: Vec<crate::ui::desktop_protocol::remote::RemoteMirror>,
 }
 
 impl DesktopState {
@@ -370,6 +376,8 @@ impl DesktopState {
             process_model: ProcessModel::default(),
             outproc_spawner: None,
             outproc_children: Vec::new(),
+            remote_listener: None,
+            remote_mirrors: Vec::new(),
         }
     }
 
@@ -1811,9 +1819,37 @@ fn outproc_child_identity(
     )
 }
 
-/// Plan 508 G1：生产 outproc spawner——re-exec 本体（宿主即 `auto`
-/// 二进制；`run --autodesk-incubate --app386=<dir>` = 双模入口 ②，
-/// broker 管道显式传参与桌面 boot 同源）+ 装载根 env（AUTO_386_APP_ROOT；
+/// Plan 508 G1：outproc 子进程本体定位——宿主即 `auto` 二进制
+/// （`auto run --desktop`）时用 current_exe；其他宿主（ui_desktop 验收/
+/// 实机宿主）取同目录的 auto 兄弟二进制（target/{debug,release}/ 共存
+/// 形态）。找不到 → Err（launch 臂转 toast，桌面不炸）。
+fn outproc_auto_binary() -> std::io::Result<std::path::PathBuf> {
+    let exe = std::env::current_exe()?;
+    let is_auto = exe.file_name().is_some_and(|n| n == "auto" || n == "auto.exe");
+    if is_auto {
+        return Ok(exe);
+    }
+    // 同目录向上至多三级探测（target/debug/examples/x.exe → target/debug/
+    // 的 auto；target/debug/auto.exe 自命中在首行短路）。
+    let name = if cfg!(windows) { "auto.exe" } else { "auto" };
+    let mut dir = exe.parent();
+    for _ in 0..3 {
+        let Some(d) = dir else { break };
+        let candidate = d.join(name);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+        dir = d.parent();
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("outproc child binary `{name}` not found beside host {}", exe.display()),
+    ))
+}
+
+/// Plan 508 G1：生产 outproc spawner——re-exec auto 本体
+/// （`run --autodesk-incubate --app386=<dir>` = 双模入口 ②，broker 管道
+/// 显式传参与桌面 boot 同源）+ 装载根 env（AUTO_386_APP_ROOT；
 /// cmd_autodesk 缺省 ./examples/ui 同主根）。NEXTEST_* 剥除防测试
 /// 上下文串染（spawn_t3_child 同款）。
 fn spawn_outproc_child(
@@ -1821,7 +1857,7 @@ fn spawn_outproc_child(
     app_root: Option<&std::path::Path>,
     broker_pipe: &str,
 ) -> std::io::Result<std::process::Child> {
-    let exe = std::env::current_exe()?;
+    let exe = Self::outproc_auto_binary()?;
     let mut cmd = std::process::Command::new(&exe);
     cmd.args([
         "run",
@@ -1848,8 +1884,10 @@ fn spawn_outproc_child(
         // Plan 508 G1：outproc 配置位 → broker 孵化链（spawn 子进程 +
         // RenderQueue 帧通道；宿主侧装载仍走同一 resolver——I3 同链）。
         if self.desktop.process_model == ProcessModel::Outproc {
+            eprintln!("[session] launch_app(outproc) {name}");
             return self.launch_app_outproc(name);
         }
+        eprintln!("[session] launch_app(inproc) {name}");
         let resolver = self
             .desktop
             .app_resolver

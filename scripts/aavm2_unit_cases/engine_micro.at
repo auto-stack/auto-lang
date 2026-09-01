@@ -1,0 +1,20 @@
+// L3(Plan 511):引擎微行为单测——ev_run 输出形态/全局缺省/迭代器零迭代
+#[test]
+fn t_ev_run_no_trailing_newline() {
+    assert_eq(ev_run("print(6*7)"), "42")
+}
+
+#[test]
+fn t_ev_run_multiline_join() {
+    assert_eq(ev_run("fn main() {\n    print(1)\n    print(2)\n}"), "1\n2")
+}
+
+#[test]
+fn t_global_default_zero() {
+    assert_eq(ev_run("var g int = 9\n\nfn main() {\n    print(g)\n}"), "9")
+}
+
+#[test]
+fn t_iter_zero_on_raw_array() {
+    assert_eq(ev_run("fn mk() {\n    return [1, 2]\n}\n\nfn main() {\n    var n int = 0\n    for w in mk() {\n        n = n + 1\n    }\n    print(n)\n}"), "0")
+}

@@ -14363,6 +14363,14 @@ export function cn(...inputs: ClassValue[]) {
             }
             code.push_str("}\n");
         }
+        // PLAN-055: a2ts 对 `for x in a..b` 发射 `range(a, b)`，但 fn 模块
+        // 路径直拼 body、从不注入 helper（全量 typescript.rs transpiler 的
+        // runtime import 在此不存在）——生成物引用未定义符号（musk
+        // estimateTokens 首个消费方，vue-tsc TS2552）。检测到 range( 调用
+        // 即注入最小整数区间 helper（半开区间，eq=true 含端点）。
+        if code.contains("range(") {
+            code.push_str("\nfunction range(start: number, end: number, eq?: boolean): number[] {\n    const out: number[] = [];\n    for (let i = start; i < end; i++) { out.push(i); }\n    if (eq === true) { out.push(end); }\n    return out;\n}\n");
+        }
         code
     }
 

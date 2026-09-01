@@ -106,7 +106,7 @@ widget KitchenSinkPage {
 
             h2 "link"
             row (style: "gap-2 flex-wrap items-center") {
-                link "sample" {}
+                link (text: "sample", href: "sample") {}
                 link (href: "sample") {}
             }
 

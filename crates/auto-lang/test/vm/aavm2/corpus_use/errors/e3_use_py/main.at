@@ -1,0 +1,5 @@
+use.py foo
+
+fn main() {
+    print(1)
+}

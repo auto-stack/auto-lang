@@ -2097,3 +2097,631 @@ mod musk_vm_track_p054_t5_date_probe {
         }
     }
 }
+
+/// PLAN-055 勘察探针（#[ignore]）：复刻 musk chat_message/chats_view 层级，
+/// dump 动态管线产出的 View 树 + 每节点样式类——定位用户气泡 self-end/
+/// bg-primary 丢失、会话卡 bg-primary/10、canvas gap-6 的断层在哪一层。
+/// 运行：cargo nextest run -p auto-lang --lib --features ui-iced p055_dump -- --ignored --nocapture
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p055_dump {
+    #[test]
+    #[ignore = "manual probe"]
+    fn p055_chat_hierarchy_style_dump() {
+        use crate::parser::Parser;
+        use crate::ui::view::View;
+        let src = concat!(
+            "widget P55Root {\n",
+            "    computed {\n",
+            "        rowClass => \"flex flex-col gap-[3px] self-end items-end\"\n",
+            "        headerClass => \"flex items-center gap-2 px-1 justify-end\"\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            key: \"m1\"\n",
+            "            row { style: \"flex gap-1 mb-[2px]\" }\n",
+            "            col {\n",
+            "                class: .rowClass\n",
+            "                row {\n",
+            "                    style: .headerClass\n",
+            "                    text \"You\" { style: \"text-[13.6px] font-semibold text-primary\" }\n",
+            "                }\n",
+            "                col {\n",
+            "                    style: \"msg-bubble-user px-[14px] py-[10px] rounded-xl text-[15px] bg-primary text-primary-foreground\"\n",
+            "                    P55User(content: \"你好\")\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "widget P55User(content: str) {\n",
+            "    view {\n",
+            "        text .content\n",
+            "    }\n",
+            "}\n",
+        );
+        crate::ui::aura_view_builder::register_imported_components(vec!["P55User".to_string()]);
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0], &decls[1..], &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![], &std::collections::HashMap::new(), false,
+        )
+        .expect("component");
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn style_summary(style: &Option<crate::ui::style::Style>) -> String {
+            match style {
+                None => "None".into(),
+                Some(s) => {
+                    let names: Vec<String> = s.classes.iter().map(|c| format!("{:?}", c).split('(').next().unwrap_or("").to_string()).collect();
+                    format!("{:?}", names)
+                }
+            }
+        }
+        fn walk(view: &View<crate::ui::interpreter::DynamicMessage>, depth: usize) {
+            let ind = "  ".repeat(depth);
+            match view {
+                View::Column { children, style, .. } => {
+                    eprintln!("{}Column style={}", ind, style_summary(style));
+                    for c in children { walk(c, depth + 1); }
+                }
+                View::Row { children, style, .. } => {
+                    eprintln!("{}Row style={}", ind, style_summary(style));
+                    for c in children { walk(c, depth + 1); }
+                }
+                View::Button { label, style, content, .. } => {
+                    eprintln!("{}Button label={:?} style={}", ind, label, style_summary(style));
+                    if let Some(c) = content { walk(c, depth + 1); }
+                }
+                View::Text { content, style, .. } => {
+                    eprintln!("{}Text {:?} style={}", ind, content, style_summary(style));
+                }
+                View::Container { child, style, .. } => {
+                    eprintln!("{}Container style={}", ind, style_summary(style));
+                    walk(child, depth + 1);
+                }
+                _other => eprintln!("{}other", ind),
+            }
+        }
+        walk(&view, 0);
+        crate::ui::aura_view_builder::clear_imported_components();
+    }
+}
+
+/// PLAN-055 勘察探针②：if 分支内 div{html:} 是否触发 else 兜底（musk
+/// 用户消息进 AI 分支的根因裁定）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p055_dump2 {
+    use super::musk_vm_track_p054_t3_none_return::build_bridge;
+
+    #[test]
+    #[ignore = "manual probe"]
+    fn p055_html_branch_fallback() {
+        use crate::parser::Parser;
+        use crate::ui::view::View;
+        let src = concat!(
+            "widget P55BRoot {
+",
+            "    computed {
+",
+            "        isUser => true
+",
+            "    }
+",
+            "    view {
+",
+            "        col {
+",
+            "            if .isUser {
+",
+            "                col {
+",
+            "                    style: \"bg-primary px-[14px] self-end\"
+",
+            "                    div {
+",
+            "                        html: \"<span>@x</span> 你好\"
+",
+            "                        style: \"text-primary-foreground\"
+",
+            "                    }
+",
+            "                }
+",
+            "            } else {
+",
+            "                col {
+",
+            "                    style: \"border-t border-b\"
+",
+            "                    text \"ELSE-BRANCH\"
+",
+            "                }
+",
+            "            }
+",
+            "        }
+",
+            "    }
+",
+            "}
+",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0], &decls[1..], &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![], &std::collections::HashMap::new(), false,
+        )
+        .expect("component");
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn walk(view: &View<crate::ui::interpreter::DynamicMessage>, depth: usize) {
+            let ind = "  ".repeat(depth);
+            match view {
+                View::Column { children, style, .. } => {
+                    let n = style.as_ref().map(|s| s.classes.len()).unwrap_or(0);
+                    eprintln!("{}Column classes={}", ind, n);
+                    for c in children { walk(c, depth + 1); }
+                }
+                View::Row { children, .. } => {
+                    eprintln!("{}Row", ind);
+                    for c in children { walk(c, depth + 1); }
+                }
+                View::Text { content, .. } => eprintln!("{}Text {:?}", ind, content),
+                _other => eprintln!("{}other", ind),
+            }
+        }
+        walk(&view, 0);
+    }
+
+    /// Math/算术微探针：定位 est 恒 1 的剩余环节。
+    #[test]
+    #[ignore = "manual probe"]
+    fn p055_math_micro() {
+        let src = concat!(
+            "widget P55MathRoot {
+",
+            "    view {
+",
+            "        text \"x\"
+",
+            "    }
+",
+            "}
+",
+            "fn f_max() int {
+",
+            "    return Math.max(1, 15)
+",
+            "}
+",
+            "fn f_round() int {
+",
+            "    return Math.round(4.25)
+",
+            "}
+",
+            "fn f_intfloat() float {
+",
+            "    let cjk = 17
+",
+            "    return cjk * 0.9
+",
+            "}
+",
+            "fn f_sum() float {
+",
+            "    let cjk = 17
+",
+            "    let non = 0
+",
+            "    return cjk * 0.9 + non * 0.25
+",
+            "}
+",
+            "fn f_full() int {
+",
+            "    let cjk = 17
+",
+            "    let non = 0
+",
+            "    return Math.max(1, Math.round(cjk * 0.9 + non * 0.25))
+",
+            "}
+",
+        );
+        let bridge = build_bridge(src);
+        for name in ["f_max", "f_round", "f_intfloat", "f_sum", "f_full"] {
+            match bridge.call_vm_fn(name, &[]) {
+                Ok(v) => eprintln!("[P055-Math] {} = {:?}", name, v),
+                Err(e) => eprintln!("[P055-Math] {} ERR: {:?}", name, e),
+            }
+        }
+    }
+
+    /// estimateTokens v3 预验：纯整数定点（绕开 VM float 管线）。
+    #[test]
+    fn p055_est_v3() {
+        let src = concat!(
+            "widget P55Est3Root {
+",
+            "    view {
+",
+            "        text \"x\"
+",
+            "    }
+",
+            "}
+",
+            "fn est3(text str) int {
+",
+            "    if text == None { return 0 }
+",
+            "    if text == \"\" { return 0 }
+",
+            "    var total = 0
+",
+            "    for c in text {
+",
+            "        total = total + 1
+",
+            "    }
+",
+            "    var cjk = 0
+",
+            "    for i in 0..total {
+",
+            "        let code = text.char_code_at(i)
+",
+            "        if (code >= 19968 && code <= 40959) || (code >= 12352 && code <= 12543) || (code >= 44032 && code <= 55215) {
+",
+            "            cjk = cjk + 1
+",
+            "        }
+",
+            "    }
+",
+            "    let nonCjk = total - cjk
+",
+            "    let scaled = cjk * 9000 + nonCjk * 2500
+",
+            "    return Math.max(1, (scaled + 5000) / 10000)
+",
+            "}
+",
+        );
+        let bridge = build_bridge(src);
+        // 回归锁：musk estimateTokens 整数定点形态——双轨同值
+        // （Vue: round(cjk*0.9 + non*0.25)）。
+        let get = |sample: &str| {
+            bridge.call_vm_fn("est3", &[auto_val::Value::str(sample)]).ok()
+        };
+        assert_eq!(get("用户打招呼，询问有什么可以帮忙的。"), Some(auto_val::Value::Int(14)));
+        assert_eq!(get("abcdefgh"), Some(auto_val::Value::Int(2)));
+        assert_eq!(get("hi 你好"), Some(auto_val::Value::Int(3)));
+    }
+
+    /// estimateTokens 重写形态预验：range 循环 + 索引式 char_code_at。
+    #[test]
+    #[ignore = "manual probe"]
+    fn p055_est_v2() {
+        let src = concat!(
+            "widget P55Est2Root {
+",
+            "    view {
+",
+            "        text \"x\"
+",
+            "    }
+",
+            "}
+",
+            "fn est2(text str) int {
+",
+            "    if text == None { return 0 }
+",
+            "    if text == \"\" { return 0 }
+",
+            "    var total = 0
+",
+            "    for c in text {
+",
+            "        total = total + 1
+",
+            "    }
+",
+            "    var cjk = 0
+",
+            "    for i in 0..total {
+",
+            "        let code = text.char_code_at(i)
+",
+            "        if (code >= 19968 && code <= 40959) || (code >= 12352 && code <= 12543) || (code >= 44032 && code <= 55215) {
+",
+            "            cjk = cjk + 1
+",
+            "        }
+",
+            "    }
+",
+            "    let nonCjk = total - cjk
+",
+            "    return Math.max(1, Math.round(cjk * 0.9 + nonCjk * 0.25))
+",
+            "}
+",
+        );
+        let bridge = build_bridge(src);
+        for (label, sample) in [("cjk17", "用户打招呼，询问有什么可以帮忙的。"), ("ascii8", "abcdefgh"), ("mixed", "hi 你好")] {
+            match bridge.call_vm_fn("est2", &[auto_val::Value::str(sample)]) {
+                Ok(v) => eprintln!("[P055-E2] {} = {:?}", label, v),
+                Err(e) => eprintln!("[P055-E2] {} ERR: {:?}", label, e),
+            }
+        }
+    }
+
+    /// 微探针：.length / for-in 迭代数 / char_code_at 逐项核验。
+    #[test]
+    fn p055_str_micro() {
+        let src = concat!(
+            "widget P55MicroRoot {
+",
+            "    view {
+",
+            "        text \"x\"
+",
+            "    }
+",
+            "}
+",
+            "fn len_of(text str) int {
+",
+            "    return text.length
+",
+            "}
+",
+            "fn iter_count(text str) int {
+",
+            "    var n = 0
+",
+            "    for c in text {
+",
+            "        n = n + 1
+",
+            "    }
+",
+            "    return n
+",
+            "}
+",
+            "fn code_of_first(text str) int {
+",
+            "    for c in text {
+",
+            "        return c.char_code_at(0)
+",
+            "    }
+",
+            "    return -1
+",
+            "}
+",
+            "fn code_via_index(text str) int {
+",
+            "    return text.char_code_at(0)
+",
+            "}
+",
+        );
+        let bridge = build_bridge(src);
+        let sample = "用户打招呼，询问有什么可以帮忙的。";
+        // 回归锁：.length = 字符数（JS 语义）、for-in 计数、索引式 char_code_at。
+        let get = |name: &str| {
+            bridge.call_vm_fn(name, &[auto_val::Value::str(sample)]).ok()
+        };
+        assert_eq!(get("len_of"), Some(auto_val::Value::Int(17)), ".length 必须为字符数");
+        assert_eq!(get("iter_count"), Some(auto_val::Value::Int(17)), "for-in over str 必须逐字符迭代");
+        assert_eq!(get("code_via_index"), Some(auto_val::Value::Int(0x7528)), "str.char_code_at 索引式");
+    }
+
+    /// estimateTokens 同款 for-in over str 在 VM 的行为（Vue=5 vs VM=1 根因）。
+    #[test]
+    #[ignore = "manual probe"]
+    fn p055_str_iteration_est() {
+        let src = concat!(
+            "widget P55EstRoot {
+",
+            "    view {
+",
+            "        text \"x\"
+",
+            "    }
+",
+            "}
+",
+            "fn est(text str) int {
+",
+            "    if text == None { return 0 }
+",
+            "    if text == \"\" { return 0 }
+",
+            "    var cjk = 0
+",
+            "    for c in text {
+",
+            "        let code = c.char_code_at(0)
+",
+            "        if (code >= 19968 && code <= 40959) || (code >= 12352 && code <= 12543) {
+",
+            "            cjk = cjk + 1
+",
+            "        }
+",
+            "    }
+",
+            "    let nonCjk = text.length - cjk
+",
+            "    return Math.max(1, Math.round(cjk * 0.9 + nonCjk * 0.25))
+",
+            "}
+",
+        );
+        let bridge = build_bridge(src);
+        let sample = "用户打招呼，询问有什么可以帮忙的。";
+        match bridge.call_vm_fn("est", &[auto_val::Value::str(sample)]) {
+            Ok(v) => eprintln!("[P055-2] est({} chars) = {:?}", sample.chars().count(), v),
+            Err(e) => eprintln!("[P055-2] est ERR: {:?}", e),
+        }
+    }
+}
+
+/// PLAN-055 勘察探针③：if 分支兜底 bisect——条件求值 vs 分支体失败。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p055_dump3 {
+    use crate::parser::Parser;
+    use crate::ui::view::View;
+
+    fn render(src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0], &decls[1..], &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![], &std::collections::HashMap::new(), false,
+        )
+        .expect("component");
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn walk(view: &View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+            match view {
+                View::Text { content, .. } => out.push(format!("T({})", content)),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children { walk(c, out); }
+                }
+                _ => out.push("?".into()),
+            }
+        }
+        let mut out = Vec::new();
+        walk(&view, &mut out);
+        out.join(",")
+    }
+
+    #[test]
+    fn p055_if_bisect() {
+        // 回归锁：裸 computed 条件真值判定（此前恒假 → musk 用户消息
+        // 恒走 chat_message else 臂、hasTime 恒隐藏）。
+        let ra = render("widget P55A {
+    computed {
+        isUser => true
+    }
+    view {
+        col {
+            if .isUser {
+                text \"IF\"
+            } else {
+                text \"ELSE\"
+            }
+        }
+    }
+}
+");
+        assert_eq!(ra, "T(IF)", "裸 computed 真值必须取 then 臂");
+        // (b) computed true 条件 + div{html:} 混合分支体
+        eprintln!("[P055-3b] {}",
+            render("widget P55B {
+    computed {
+        isUser => true
+    }
+    view {
+        col {
+            if .isUser {
+                div {
+                    html: \"<b>x</b> 你好\"
+                }
+                text \"IF\"
+            } else {
+                text \"ELSE\"
+            }
+        }
+    }
+}
+"));
+        // (c) 字面量 true 条件
+        eprintln!("[P055-3c] {}",
+            render("widget P55C {
+    view {
+        col {
+            if true {
+                text \"IF\"
+            } else {
+                text \"ELSE\"
+            }
+        }
+    }
+}
+"));
+        // (d) 无 else 臂（if 独立）
+        eprintln!("[P055-3d] {}",
+            render("widget P55D {
+    view {
+        col {
+            if true {
+                text \"IF-NOELSE\"
+            }
+            text \"TAIL\"
+        }
+    }
+}
+"));
+        // (e) musk 同款条件形态 .role == "user"
+        eprintln!("[P055-3e] {}",
+            render("widget P55E {
+    model {
+        var role str = \"user\"
+    }
+    computed {
+        isUser => .role == \"user\"
+    }
+    view {
+        col {
+            if .isUser {
+                text \"IF\"
+            } else {
+                text \"ELSE\"
+            }
+        }
+    }
+}
+"));
+    }
+}

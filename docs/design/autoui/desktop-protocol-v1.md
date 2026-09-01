@@ -17,6 +17,7 @@
 | v1.1 | 2026-08-29 | 真两进程增量：命名管道传输 / 共享内存帧缓冲 / broker + 入口裁决 / L2 detach-attach（`PROTOCOL_VERSION` 仍为 1——全部为追加式演进，见 §1 纪律） | Plan 386 S8–S12 |
 | v1.2 | 2026-08-29 | 真桌面壳增量：通用 client 运行时 / broker 桌面接入 + 多 App 驻留宿主 / 多 App 压测与内存实测 / 弹性重连 / L1 换窗 / L3 v2a 快照迁移（`StateSnapshot` tag 11 追加；`PROTOCOL_VERSION` 仍为 1） | Plan 480 S1–S10 |
 | v1.3 | 2026-08-31 | RenderQueue 并行渲染模式——帧载荷二态化（Commands \| Pixels）+ 三态渲染开关（auto/queue/independent）+ `AppProjector` 覆盖爬坡 + 宿主两态合成 + 三臂 parity 纪律（见 §1.3；T1 定案 D1–D4 + 497 快照结论复核） | Plan 500（Stage 4） |
+| v1.4 | 2026-09-01 | Stage 6 收官：默认策略裁定（`shell.apps.process_model` 配置位；实测维持 inproc 缺省、outproc 为隔离选项，见 §1.4）+ 远程 command 流消费（WS transport 第五实现 + 镜像会话 + `HitTable` tag 9 追加 + `packages/drawlist-renderer` TS/Canvas2D + 浏览器点击闭环；`PROTOCOL_VERSION` 仍 1） | Plan 508（Stage 6） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -91,8 +92,50 @@
 **pixels 格式定案**：v1 仅 RGBA8 **straight（非预乘）**、`stride = w×4`、`format` 字段仅 1=RGBA8（扩展位）。宿主经 `image::Handle::from_rgba` 上传（497 快照同通道口径："预乘与否同截图原样——`from_rgba` 直接受纳"）；预乘换算在 iced 渲染器内部与 494 预乘 alpha swapchain 衔接，协议层不感知。
 
 **分期**：Stage 4（本增量：二态载荷+开关+001–005 子集端到端+parity 首条）
-→ Stage 5（覆盖爬坡全 widget 族 + IME 光标下发，parity 门禁进日常档）→ Stage 6（默认
-策略 + web/远程端消费同一 command 流）。
+→ Stage 5（覆盖爬坡全 widget 族 + IME 光标下发，parity 门禁进日常档；✅ 已落地
+69/388 Tier1+2，Plan 507）→ Stage 6（默认策略 + web/远程端消费同一 command 流；
+✅ 已落地，见 §1.4，Plan 508）。
+
+## 1.4 v1.4 增量（Stage 6 默认策略裁定 + 远程 command 流，Plan 508）
+
+- **进程模型配置位**：storage `shell.apps.process_model`（缺省 `inproc`
+  = 现状零变化；`outproc` = `launch_app` 走 broker 孵化链——spawn 真
+  `auto run --autodesk-incubate` 子进程 + 同步泵 attach + registry_id
+  回填；resolver 目录名兜底保外部根两形态同源）。
+- **默认策略裁定**（G2 实测，报告
+  `docs/plans/reports/508-process-model-verdict.md`）：**维持 inproc
+  缺省，outproc 为显式隔离选项**——系统总边际 0.86 vs 7.64 MiB/App
+  （真 auto.exe 生产口径 6.48）、启动 2–17ms vs 25–250ms、交互引擎核心
+  0.07ms vs 端到端 1.54ms（差值 ≈1.47ms 协议税，绝对值在流畅带内不构成
+  否决）；翻转三闸 T-覆盖（507 合入后复测）/T-稳定性/T-远程。
+- **WS transport**（transport.rs `ws` 模块）：tokio-tungstenite（本线
+  唯一新三方依赖——手写 WS 帧协议得不偿失，计划待澄清①）；**一条 WS
+  Binary 消息 = 一个 codec 信封**（消息边界原生，无二次分帧——信封
+  不变纪律）；token = HTTP 升级期 query 校验（浏览器 WebSocket API 不
+  可设自定义头），401 终态拒收。
+- **远程会话接纳**（`remote.rs` 镜像泵）：宿主 WS 监听 `127.0.0.1:17800`
+  （storage `shell.remote.token` 有值才监听——缺省拒绝 = 零远程面）；
+  远程端 Hello 订阅 → Welcome + `HitTable`（FrameMsg tag 9 追加式变体
+  ——D3 交互区表的过线形态，宿主孪生投影器同源布局）+ composed DrawList
+  变化推送（FrameReady payload 内联，v1.0 纯管道帧形态）；输入
+  InputMsg 坐标直传路由（与 `broker_pointer_down` 同一收尾，权威命中
+  在 app 侧）。镜像 ≠ 端点状态机——pipe/loopback 会话零改动。
+- **web 渲染器**：`packages/drawlist-renderer/`（TS/Canvas2D：信封/消息
+  codec 镜像 + `renderFrame`（Quad=fillRect、Text=fillText——D1-A 定案
+  web 同义实现，零 glyph 协议工作）+ `hitTest` + `connect`（重连
+  ReconnectPolicy 对齐））；codec 对拍 = Rust
+  `p508_ts_crosscheck_golden_bytes` ↔ TS `fixtures.golden.ts` 双侧钉
+  同一批字节（计划②：手工镜像 + golden 兜底）。demo 页
+  `examples/remote/viewer/`（vite）为验收载体。
+
+**RenderQueue 线终态小结**：六阶段收线——协议五通道（386 S1）→ 真两
+进程（386 S8+）→ 真桌面壳多 App 驻留（480）→ 并行渲染二态载荷（500）
+→ 全 widget 覆盖爬坡 + parity 日常门禁（507）→ 默认策略裁定 + 远程
+command 流消费（508）。终态形态：**桌面默认进程内直挂（实测裁定），
+RenderQueue 为统一帧词汇**——queue 臂 DrawList（Stage 5 覆盖集）同时
+喂宿主虚拟窗与远程镜像端（WS/浏览器），outproc 为隔离/远程形态的
+App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口纪律
+验证有效）。
 
 ## 2. Wire Format（信封）
 
@@ -183,8 +226,19 @@ Host : Listening --Hello(版本校验)--> (ResolveAndAttach) --activate()--> Act
 3. 单客户端 v1：`HostEndpoint` 一次只持一个客户端；多 App 并发复用同一
    协议归 Stage 3（多 App + 形态迁移）——v1.2 已兑现（`BrokerClient`
    驻留多 client 宿主；`HostEndpoint` 单例本身不动，多 App = 每连接一份）。
+4. **远程 WS 端口 `:17800`**（Stage 6，Plan 508）：回环 v1——`remote::REMOTE_WS_PORT`
+   常量；token 走 URL query 而非自定义头（浏览器 WebSocket API 限制，
+   计划待澄清③边界的落地形态）。跨网/TLS/鉴权另立计划。
 
 ## 7. 验证（Stage 1 + Stage 2 + Stage 3 增量）
+
+- **Stage 6（v1.4，Plan 508）**：WS transport 单测四条（round-trip/
+  golden bytes/EOF/token 拒收）；远程会话 T2 集成（outproc 孵化 → WS
+  三件套 → 点击 → Counter:1 闭环，headless）；TS 渲染器 vitest 20/20
+  （Rust↔TS 对拍锚点三件双侧钉）；Playwright 端到端（真 auto.exe 宿主
+  → Chromium 首帧 Counter:0 → 点击 "+" → Counter:1，截图留痕
+  `docs/plans/reports/assets/508/`）；G2 对比实测两臂 × 两轮（内存差
+  <1%）。
 
 - **Stage 3（v1.2，Plan 480，56 测试 ×2 连跑全绿）**：投影快照/命中派发
   （prop + FStr 插值）、真实 `auto` 二进制双进程 smoke、`enable_broker`

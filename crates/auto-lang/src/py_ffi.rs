@@ -181,13 +181,10 @@ impl PyFfiBridge {
                         let val: String = py_result.extract().map_err(|e| {
                             VMError::FFI(format!("Python return not string: {}", e))
                         })?;
-                        if let Ok(mut strings) = vm.strings.write() {
-                            let idx = strings.len() as u32;
-                            strings.push(val.into_bytes());
-                            task.ram.push_str_idx(idx);
-                        } else {
-                            task.ram.push_i32(0);
-                        }
+                        // Plan 510 G1-2: 走 add_string + 配平入栈
+                        // (裸推无 dedup 无 rc,消费侧 POP 即多扣)。
+                        let idx = vm.add_string(val.into_bytes());
+                        vm.rc_push_str_idx(task, idx);
                     }
                     PyType::None => {
                         task.ram.push_i32(0);
@@ -673,21 +670,11 @@ fn py_auto_marshal_return(
         } else {
             format!("{}", f)
         };
-        if let Ok(mut strings) = vm.strings.write() {
-            let idx = strings.len() as u32;
-            strings.push(s.into_bytes());
-            task.ram.push_str_idx(idx);
-        } else {
-            task.ram.push_i32(0);
-        }
+        let idx = vm.add_string(s.into_bytes());
+        vm.rc_push_str_idx(task, idx);
     } else if let Ok(s) = py_val.extract::<String>() {
-        if let Ok(mut strings) = vm.strings.write() {
-            let idx = strings.len() as u32;
-            strings.push(s.into_bytes());
-            task.ram.push_str_idx(idx);
-        } else {
-            task.ram.push_i32(0);
-        }
+        let idx = vm.add_string(s.into_bytes());
+        vm.rc_push_str_idx(task, idx);
     } else if py_val.is_none() {
         task.ram.push_i32(0);
     } else if py_val.is_instance_of::<PyDict>() {

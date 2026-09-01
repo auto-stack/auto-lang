@@ -1,0 +1,7 @@
+use base: get_base
+
+var doubled int = get_base() * 2
+
+pub fn get_doubled() int {
+    return doubled
+}

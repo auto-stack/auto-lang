@@ -234,8 +234,17 @@ pub fn generate_kitchen_sink() -> String {
     for e in &elems {
         at.push_str(&format!("\n            h2 \"{}\"\n", e.canonical));
         at.push_str("            row (style: \"gap-2 flex-wrap items-center\") {\n");
-        // 默认形态(裸标签或 text 简写)
-        if e.props.iter().any(|pr| pr.0 == "text") {
+        // 默认形态(裸标签或 text 简写)。P499-6:视图关键字名元素
+        // (link/tag/use——`link` 被 parse_view_link 独占,Plan 105)不可
+        // 发射标签简写 `name "text" {}`(解析错级联 20×"Expected term,
+        // got RBrace" → serve 跳页 → router 悬空 500);link 用其关键字
+        // 形状 (text:,href:) 显式发射,其余关键字名退回裸形态。
+        const VIEW_KEYWORD_ELEMENTS: &[&str] = &["link", "tag", "use"];
+        if e.canonical == "link" {
+            at.push_str("                link (text: \"sample\", href: \"sample\") {}\n");
+        } else if VIEW_KEYWORD_ELEMENTS.contains(&e.canonical.as_str()) {
+            at.push_str(&format!("                {} {{}}\n", e.canonical));
+        } else if e.props.iter().any(|pr| pr.0 == "text") {
             at.push_str(&format!("                {} \"sample\" {{}}\n", e.canonical));
         } else {
             at.push_str(&format!("                {} {{}}\n", e.canonical));

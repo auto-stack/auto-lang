@@ -1,0 +1,6 @@
+use db: add, greet
+
+fn main() {
+    greet("w")
+    print(add(1, 2))
+}

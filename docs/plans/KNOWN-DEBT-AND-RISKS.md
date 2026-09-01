@@ -666,3 +666,24 @@
   (`button #id "label"`)修复一处;其余示例脚本若依赖事件行定位将踩
   同坑。偿还:styled_vtree 快照补 events 元数据(或 MCP 侧文档标注
   事件注记仅 F12)。
+
+### P511（2026-09-01，Plan 511 aavm 中阶语言能力执行期登记）
+
+1. **AA2R ignored 腿 7 件预存转译债**（`test_aavm2_compile_corpus`
+   --include-ignored 30/37；b13/b14×2/b19/b27/b29/b30）：两根因均为
+   预存非 511 引入——① CJK 注释词法（.at lexer 的 char_at 码点语义在
+   a2r 转译后变字节序，注释内多字节字符产生 Unknown token）；② arr_flag
+   接收者跟踪在转译侧失效（`a.len()` 报 receiver is not an array）。
+   511 已修复转译可构建性（File shim/借用拆分/括号优先级塌缩规避，
+   含既有 str_either 条件的同款修复）；余量随 AA2R 批（Plan 511 待澄清①）
+   处置。
+2. **tv-aavm2 闸门口径偏差**：计划定义的 `--include-ignored` 含 ignored
+   AA2R 腿（如上 30/37）；折叠③门禁以 tf（默认跳过 ignored）为准 +
+   `-- test_aavm2` 非 ignored 全绿（16/16）。口径收窄已在本条登记，
+   复审可裁决是否将 AA2R 腿纳入常规门禁（前置=清偿①）。
+3. **b41 语料处置（D1）**：`a[i] += e` 宿主编译错误（无发射序），
+   aavm 同文本拒绝；b41 不入 corpus_m4，以 L3 99_unit 错误文本件承载
+   （t_d1_index_compound_reject/t_d1_field_compound_reject）。
+4. **限定调用占位泄漏镜像**：`db.fn()` 发射 const.i32 0 接收者占位
+   （宿主 Ident 模块兜底，Plan 437 已知泄漏）——aavm 镜像之，帧 bp
+   锚定下无害；宿主若清偿该泄漏需同步。

@@ -196,6 +196,7 @@ trans = "0.4.0"
 syn = { version = "2", features = ["full", "parsing", "printing"] }
 fastrand = "2.4.1"
 stacker = "0.1.25"
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "handshake"] }
 
 # Plan 473: native window dock Win32 adapter（发现/几何/样式/层级/WinEventHook）。
 # optional + cfg(windows) 双门控：仅 Windows × native-dock feature（ui-iced 隐含）

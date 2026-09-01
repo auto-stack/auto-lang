@@ -1,0 +1,5 @@
+use db: *
+
+fn main() {
+    print(add(4, 5))
+}
