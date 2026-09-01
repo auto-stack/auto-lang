@@ -1,4 +1,5 @@
 # Plan 420: auto-edit 多 tab 工作区(关闭/打开/脏标记/拖拽)
+> 📦 **终态（2026-09-01，Plan 513 B 组处置）**：P1–P3 已合并（`78aae68bb`）；P4 拖拽排序 + 挂账 #3/#4 已转账 KNOWN-DEBT **P513-3**——归档（头部"C 类留档不归档"结论由本转账取代）。
 
 > **状态**: 🟡 P1-P3 已实施并**合并 master**（`78aae68bb`，2026-08-26 finish-plan 复审确认；后续 `d12b94683` 补修 420 物化字面量 × 419 RC 根引用缺口；矩阵 40/40；041 app.at 数组态 tabs 在位 `for i, t in .store.tabs`）；P4 拖拽排序延后（纯 app 层可执行），§6 挂账 #3（ActNew 偶发 InvalidOpCode 待复现）/#4（.tabs[i].dirty bool 读回乱码）为可执行修复项——**C 类留档不归档**
 > **来源**: Plan 414 §6(tab 关闭按钮、`+` 打开、拖拽排序、脏标记"为后续")/ 418 §7(dialog/fs natives 已落地,ActOpen/ActSave 因阻塞对话框无法自动化)

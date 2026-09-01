@@ -1,6 +1,6 @@
 # Plan 401: AutoUI 示例升级 — 018-027 从单文件玩具到完整 App
 
-> **状态（2026-08-20 核查）**: 🟡 进行中。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018/022（Plan 404）/023（Plan 405）已完成；011 已拆 Plan 403。待办：019/020/021/024/025（024 gallery 已由 [Plan 409](409-widgets-gallery.md) 以 `examples/widgets-gallery/` 形态完成，见总表注）。
+> **状态（2026-08-20 核查）**: 🟡 进行中。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018/022（Plan 404）/023（Plan 405）已完成；011 已拆 Plan 403。待办刷新（2026-09-01 Plan 513 C 组）：019/020/021 **⏸ 待裁定**（目录分轨后是否仍以 App 轨立项待裁）；025 维持已清理终态、不再排队；024 gallery 已由 [Plan 409](409-widgets-gallery.md) 以 `examples/widgets-gallery/` 形态完成，见总表注。
 > **分支**: 各示例独立分支 `plan401/0NN-xxx`（018 已合并 master）。
 > **动机**: 计划 399 §后续第 166 行"继续升级 018-027 为正规 App"。调研结论：016-027 全部是单文件静态玩具（无后端、散装变量、no-op handler），与 015-notes / 017-chat（完整 App + 后端 + playwright）差一个量级。本计划逐个把它们升级为对标生产级应用的完整示例。
 > **与 Plan 399 的关系**: 399 是 codegen 基建（SSE 多事件 / a2r 根治 / 混合状态硬检查）；本计划是**纯示例升级**，不引入新 codegen 基建（升级过程中发现的 codegen bug 单独修复并在此记录）。
@@ -99,11 +99,11 @@ examples/ui/018-book-reader/
 | 011-calculator | 整数四则 | 🔀 已拆出 | Plan 403 | grid 重构 + MCP + 多模式 |
 | 022-kanban | 已升级 | ✅ 完成 | 本纲领 §022（提交历史） | CRUD + 列移动 + HTML5 拖拽，6/6 全绿；修 row/col 属性穿透 bug |
 | 023-realworld | 已升级 | ✅ 完成(阶段1+2) | [Plan 405](405-023-realworld.md) | 完整 Conduit(认证+CRUD+评论+关注+收藏+资料)，14/14 全绿；vue 原型 |
-| 019-video-app | 135 行单文件 | ⬜ 待办 | — | 中 |
-| 020-music-player | 115 行单文件 | ⬜ 待办 | — | 中 |
-| 021-blog-viewer | 89 行单文件 | ⬜ 待办 | — | 中 |
+| 019-video-app | 135 行单文件 | ⏸ 待裁定（2026-09-01） | — | 中 |
+| 020-music-player | 115 行单文件 | ⏸ 待裁定（2026-09-01） | — | 中 |
+| 021-blog-viewer | 89 行单文件 | ⏸ 待裁定（2026-09-01） | — | 中 |
 | 024-widget-gallery | 283 行展示型 | 🗑 已清理 | [Plan 409](409-widgets-gallery.md) | gallery 已落地为 `examples/widgets-gallery/`（62 页三模式一致性）；旧 `examples/ui/024-*` 目录（含单数拼写的空壳）已于 2026-08-23 删除，唯一入口为 `examples/widgets-gallery/` |
-| 025-notes-extended | 6 文件无后端 | 🗑 已清理 | — | 015 的前端丰富度临时 fork，store+路由概念已被 015-notes 吸收（Plan 354 §7）；目录于 2026-08-23 删除（SPEC 留存于 git 历史） |
+| 025-notes-extended | 6 文件无后端 | 🗑 已清理（终态） | — | 015 的前端丰富度临时 fork，store+路由概念已被 015-notes 吸收（Plan 354 §7）；目录于 2026-08-23 删除（SPEC 留存于 git 历史）；2026-09-01 Plan 513 裁定维持终态、不再排队 |
 | 026-keyboard-mouse-events | 121 行能力展示 | 📦 已迁出 | — | 非 App 性质（能力 demo）；2026-08-23 迁至 `examples/capability-tests/` |
 | 027-native-css | 79 行能力展示 | 📦 已迁出 | — | 非 App 性质（能力 demo）；同批迁出 |
 

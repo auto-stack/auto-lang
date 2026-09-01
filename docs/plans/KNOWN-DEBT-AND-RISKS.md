@@ -613,8 +613,8 @@
   gallery_pages_compile_tests(lib 级全页可编译冒烟,补上 cargo t/tf
   不跑 tests/ 集成目标的门禁盲区)。
 
-- **P499-7(移入,非本计划引入)cookbook `cb_asynchronous_channel` tv 档
-  失败**——**已偿还**(2026-09-01,Plan 510 worktree 提交 7a8ac1d2e):
+- ~~**P499-7(移入,非本计划引入)cookbook `cb_asynchronous_channel` tv 档
+  失败**~~——**已核销 ✅ 划线**(2026-09-01,Plan 513 债务簿核销;偿还于同日,Plan 510 worktree 提交 7a8ac1d2e):
   与「channel 收发时序」无关,双因:①native_catalog 把 Log 族登记
   1800-1803,与 Shell 族(NATIVE_SHELL_SYSTEM..EXIT,Plan 011,engine.rs
   显式注册后覆盖 inventory 同槽绑定)撞号——`#error(...)` 经 CALL_NAT
@@ -727,3 +727,38 @@
 
 1. **P502-1(master 既有,非本计划引入)`plan055_strip_html_tests::strips_tags_and_decodes_entities` ui-iced 档红**:`strip_html_tags("<span>@x</span> 你好")` 产出双空格(`" @x  你好"`),期望单空格(aura_view_builder.rs:11263 断言)。本机 master(eda3a5a5e)同红复证——musk PLAN-055 批(c964ffa81)引入面;`cargo tf` 无 ui-iced 不触发,唯日常档 `cargo t` 可见。偿还:strip_html_tags 标签/实体后空白规范化(或按语义修正期望),归 musk 批主理方裁定。
 2. **P502 执行期发现#9 处置核验**:kitchen-sink `@autodown/engine` scaffold 依赖缺失担忧经复审核验**已上游愈合**(P499-6 d0c23388d kitchen-sink 再生成,import 不复存在)——不入债。
+
+### P513(2026-09-01,Plan 513 整合清理批——归档计划残留转账登记)
+
+> 来源:407/412/420 三家归档时残留显式转账(G2 零静默);处置详情见
+> `archive/407-minesweeper-rust-backend.md`/`archive/412-layout-gallery.md`/
+> `archive/420-auto-edit-tabs-workspace.md` 头部终态注记。
+
+1. **P513-1(转自 Plan 407)扫雷 rust 后端两项残留**:R7 动态窗口
+   resize(difficulty 切换→窗口尺寸——ui_gen/rust.rs 零 resize 逻辑,生成
+   main.rs 固定 `window_width: 370, window_height: 506`)+ Phase 4 三后端
+   对比验证与 015/011 回归(无执行记录)。两项均可执行、无阻塞。
+   P1–P3 大部已交付(merge `f863be5e`)。| `ui_gen/rust.rs` + `examples/ui/038-minesweeper` + archive/407 状态行
+2. **P513-2(转自 Plan 412)layout gallery §10.4 视觉通道未闭环**:结构通道
+   已绿(`4bfd6d27`/`6ee1a5e1`/`f51c8882`/`ccf9ac0e9`——12 layout 页全落地
+   +rederive_layout 全路径+grid_row_placements 分配器);视觉+交互验证未
+   执行——全页双端并排截图与像素测量(≤1px)、scroll/Overlay 交互抽验,
+   §9.2/§9.3 验收标准未闭环(归桌面会话/autoui-verifier 轨道)。| archive/412 §10.4
+3. **P513-3(转自 Plan 420)auto-edit 三项残留**:P4 tab 拖拽排序(纯 app 层
+   可执行);挂账 #3 ActNew 偶发 InvalidOpCode(待复现);挂账 #4
+   `.tabs[i].dirty` bool 读回乱码。P1–P3 已合并 master(`78aae68bb`)。
+   | `examples/ui/041-auto-edit` + archive/420 §6
+
+---
+
+> **债务批二期候选清单指引（2026-09-01，Plan 513 文末）**：
+> ① 桌面线开放工作项清偿 = **Plan 515**（desktop-debt-batch-2，2026-09-01
+> 已立项；与 513 的账目域/清偿域划界见其变更摘要）；
+> ② 语言/VM/测试红族等其余 ~25 条"值得近期做"清偿候选（P506-1 UAF、
+> P499-1 timer 空转、测试红族 444×3/P487-2/P495-1/P496-2/P504-1/P507-2/
+> P502-1 等）不在 513/515 两批范围，待另立批次（无既设计划）；
+> ③ Plan 442 观察期 2026-09-03 到期——到期且无回滚由后续会话顺手归档
+> （442 尾注在案，2026-09-01 执行日未到期故未归档）；
+> ④ `scratch/schema_drift_audit.py` 为 schema_drift 门禁脚本唯一副本（门禁
+> 引入 `78a9f138c`，检查已闭合在 cargo t 内）——是否 promote 至 `scripts/`
+> 正式化**候裁定**（Plan 513 待澄清②，复审落格；默认不动）。

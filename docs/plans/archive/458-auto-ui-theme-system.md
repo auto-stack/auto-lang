@@ -1,4 +1,5 @@
 # Plan 458: AutoUI 主题体系 —— Theme + Accent 默认值统一、CLI/pac.at 正式入口、006 主题敏感示例
+> 📦 **终态（2026-09-01，Plan 513 A 组处置）**：T1–T5+复审俱在（merge `9a5c93d91`），头部 Status: Planned 为过时残留——已交付漏归档，随整合清理批补归。
 
 **Status**: Planned
 **Scope**: `crates/auto-man/src/pac.rs`, `crates/auto/src/main.rs`, `crates/auto/src/cmd_vue.rs`, `crates/auto-man/src/vue.rs`, `crates/auto-man/src/rust_ui.rs`, `crates/auto-lang/src/ui/style/theme.rs`, `crates/auto-lang/src/ui/iced/renderer.rs`, `crates/auto-lang/src/ui_gen/vue.rs`, `examples/ui/006-hero-section`, `examples/ui/README.md`

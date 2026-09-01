@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-453
-status: drafting
+status: archived               # 2026-09-01 Plan 513 撞号修复处置：superseded by 514，未执行即归档
 feature_name: W5 ext/impl 能力与 lib 方法化
 author: [zhaopuming]
 created_at: 2026-08-27T00:00:00+08:00
-updated_at: 2026-08-27T00:00:00+08:00
+updated_at: 2026-09-01
 
 supersedes_spec_components: []
 new_spec_components: []
@@ -15,6 +15,15 @@ total_steps: 26
 ---
 
 # [PLAN-453] W5: ext/impl 能力与 lib 方法化
+
+> 📦 **终态（2026-09-01，Plan 513 撞号修复处置）**：本草案与已归档桌面计划
+> `archive/453-multi-app-session-runtime.md` 撞号。其范围已被 **Plan 514**
+> （aavm-idiom2-methods，2026-09-01 立项）吸收——AA2R 方法/ext 发射 = 本计划
+> Phase E → 514 W2；lib 方法化 = Phase F → 514 W3（映射细则细化为"自有类型
+> 方法进 `type` 体、跨类型扩展用 `ext`"）；VM 侧 ext/方法路径 Plan 432/447
+> 系已具备（vm/codegen.rs:2402 Stmt::Ext + type 体内方法同路径，故 Phase
+> B/C/D 的 VM 侧工作已不存在）。**superseded by 514**，未执行即归档；本文件
+> Phase A 考古结论（dump 形态/self 词法定性）可供 514 复用。
 
 ## 变更摘要
 

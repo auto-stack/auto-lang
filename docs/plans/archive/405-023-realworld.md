@@ -1,8 +1,10 @@
 # Plan 405: 023-realworld 升级 — 完整 Conduit spec（分两阶段：vue 原型 → auto 复刻）
 
+> 📦 **终态（2026-09-01，Plan 513 A 组处置）**：主体 + B1 真 token 认证均交付——已交付漏归档，随整合清理批补归。
+
 > **纲领**: 遵循 [Plan 401](401-autoui-examples-upgrade.md) 硬指标 + 技术约定。本计划是 401 进度总表里 023-realworld 的子计划。
 > **技能**: 使用 `auto-ui-creator` 技能（`D:/autostack/skills/auto-ui-creator/`，含 25 条 Gotcha + Vue→AutoUI 映射 + 模板 + Toy→Real 重构模式 R1-R4）。
-> **状态（2026-08-20 核查）**: 🟡 主体完成。阶段 1（认证+feed+详情，8/8）+ 阶段 2（CRUD+评论+关注+收藏+资料，**14/14 全绿**——T9/T10 编辑器遗留已由 plan401/023-editor-fix 修复：store 字段名与 api 函数同名 + 同 widget 多路由重名）。完整 Conduit 写操作端到端可用。**待补（未做且未移交任何计划）**：真正的 token 认证——`current_user()` 仍返回空 User 桩（db.at:56-59），端点无鉴权；store struct 字面量初始值 null 已记入 401 技术约定留后续。VM 多 store 链接 bug **已由 Plan 370 修复**（handler_codegen.rs:1340-1372 per-store 分桶），023 VM 可启动（e3e81bce/3894e611 在 master）。
+> **状态（2026-08-20 核查）**: 🟡 主体完成。阶段 1（认证+feed+详情，8/8）+ 阶段 2（CRUD+评论+关注+收藏+资料，**14/14 全绿**——T9/T10 编辑器遗留已由 plan401/023-editor-fix 修复：store 字段名与 api 函数同名 + 同 widget 多路由重名）。完整 Conduit 写操作端到端可用。**待补 → ✅ 已回填（2026-09-01，Plan 513）**：真正的 token 认证（B1）已交付——`7f2faaa26` 密码校验/唯一令牌/Bearer 解析/作者归属（http_server.rs +179 行、api.at/db.at 鉴权路径），merge `621c8f2e1`；store struct 字面量初始值 null 已记入 401 技术约定留后续。VM 多 store 链接 bug **已由 Plan 370 修复**（handler_codegen.rs:1340-1372 per-store 分桶），023 VM 可启动（e3e81bce/3894e611 在 master）。
 > **分支/worktree**: 阶段1 `plan401/023-realworld`（已合并）；阶段2 `plan401/023-stage2`（已合并）；编辑器修复 `plan401/023-editor-fix`（已合并）
 > **动机**: 023 现为 227 行单文件玩具（散装 art1_title/art2_author、current_view 字符串切视图、无后端、无交互）。升级为对标 RealWorld (Conduit) 完整 spec 的真实 App。
 > **参考**: RealWorld 官方 spec（19 端点 + 数据模型 + 7 页面 + JWT 认证，`Authorization: Token <jwt>` 前缀是 `Token` 非 `Bearer`）。

@@ -1,6 +1,6 @@
 # Plan 242: a2r Feature Gap Tracker
 
-> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。#2 ✅ 已修（2026-08-22 Plan 415-A：Map 类型+对象字面量 → HashMap::from，golden 006_map_literal）；确认未做：#10 Redis/SQLite / #15 GPUI / #17 dep cc+memmap2；#16 自举 Phase 2/E ✅ 已由 Plan 433 收口（AAVM v2 六层管线经 Rust 版 a2r 转译为纯 Rust，四向矩阵全绿；Auto 版转译器本体 → 434）；#8 的 8a 根因 ✅ 已修（2026-08-20 audit-A6，`plan-fix/242-closure-infer` 合并 `c2bd1d0c`：infer_type_from_expr 补 `Expr::Closure` → `Type::Fn`，golden 004_closure_infer）。本追踪文档持续维护，不归档。
+> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。#2 ✅ 已修（2026-08-22 Plan 415-A：Map 类型+对象字面量 → HashMap::from，golden 006_map_literal）；确认未做：#10 Redis/SQLite / #15 GPUI / #17 dep cc+memmap2；#16 自举 Phase 2/E ✅ 已由 Plan 433 收口（AAVM v2 六层管线经 Rust 版 a2r 转译为纯 Rust，四向矩阵全绿；Auto 版转译器本体 → 434）；#8 的 8a 根因 ✅ 已修（2026-08-20 audit-A6，`plan-fix/242-closure-infer` 合并 `c2bd1d0c`：infer_type_from_expr 补 `Expr::Closure` → `Type::Fn`，golden 004_closure_infer）。本追踪文档持续维护，不归档。**2026-09-01（Plan 513 C 组）**：#10/#15/#16/#17 表行已补 Plan 415 拆粒度指针（415-D 已由 433 收口）。
 
 ## Background
 
@@ -25,14 +25,14 @@ This tracker serves as a **living document** that inventories all outstanding a2
 | 7 | `String` vs `&str` distinction | 🔧 Partial | 159 | ⭐⭐⭐⭐ Mid-High | — | Type system or transpiler heuristic enhancements | — |
 | 8 | Complex closure type inference | 🔧 Partial | 159 | ⭐⭐⭐⭐ Mid-High | — | 8a ✅：infer_type_from_expr 补 Expr::Closure → Fn（audit-A6 c2bd1d0c）；剩余：无显式类型参数回推 + lib 基线回归 | 2026-08-20 |
 | 9 | Platform-specific files (`.rs.at`, `#[rs]`) | 🔧 Partial | 083 | ⭐⭐⭐⭐ High | — | Compiler file-loading pipeline refinements | — |
-| 10 | a2rs backend stdlib (Redis/SQLite) | 🔧 Partial | 119 | ⭐⭐⭐⭐ High | — | Plan 121 async system maturity; 6 cookbook DB stubs handed off from Plan 240 Phase 10 | — |
+| 10 | a2rs backend stdlib (Redis/SQLite) | 🔧 Partial | 119 / **415-B** | ⭐⭐⭐⭐ High | — | Plan 121 async system maturity; 6 cookbook DB stubs handed off from Plan 240 Phase 10 | — |
 | 11 | Ownership and borrowing model (beyond `Rc<T>`/`clone()`) | ⚠️ Workaround | — | ⭐⭐⭐⭐⭐ Very High | — | Precise ownership analysis in transpiler | — |
 | 12 | a2rs async model (blocking → tokio) | 🔧 Partial | 119 / 355 | ⭐⭐⭐⭐⭐ Very High | — | a2r 发射侧 ✅（Plan 355：.await + async fn + `#[tokio::main]` rust.rs:10456/10466）；VM 内嵌 tokio 的 13 cookbook stub 仍阻塞（属 VM 侧，非 a2r） | — |
 | 13 | Core a2r completeness / a2c parity | 🔧 Partial | 007 / 067 | ⭐⭐⭐⭐⭐ Very High | — | Many edge cases across expr/stmt/types | — |
 | 14 | Rust Cookbook systematic test suite | ✅ Done | 240 | ⭐⭐⭐⭐⭐ Very High | — | Core suite complete (163 .at, 124/124 a2r pass); DB/async/cc stubs handed to #10/#12/#17 | 2026-07-14 |
-| 15 | a2r UI generator (GPUI/ICED) | ⏳ Planned | 180 | ⭐⭐⭐⭐⭐ Extreme | — | AURA → GPUI mapping layer; auto-ui integration | — |
-| 16 | Self-hosting a2r transpiler (in Auto) | 🔧 Partial | 229 / 237 | ⭐⭐⭐⭐⭐ Maximum | — | Generics, pattern matching, trait system completion | — |
-| 17 | Build-time codegen (`dep cc`) + `memmap2` FFI | ⏳ Planned | — | ⭐⭐⭐⭐ High | — | build-time codegen + memmap2 FFI bridge; 4 cookbook stubs handed off from Plan 240 Phase 13 | — |
+| 15 | a2r UI generator (GPUI/ICED) | ⏳ Planned | 180 / **415-C** | ⭐⭐⭐⭐⭐ Extreme | — | AURA → GPUI mapping layer; auto-ui integration | — |
+| 16 | Self-hosting a2r transpiler (in Auto) | 🔧 Partial | 229 / 237 / **415-D** | ⭐⭐⭐⭐⭐ Maximum | — | Generics, pattern matching, trait system completion | — |
+| 17 | Build-time codegen (`dep cc`) + `memmap2` FFI | ⏳ Planned | **415-E** | ⭐⭐⭐⭐ High | — | build-time codegen + memmap2 FFI bridge; 4 cookbook stubs handed off from Plan 240 Phase 13 | — |
 
 **Legend**
 - ⏳ Planned = Not yet started

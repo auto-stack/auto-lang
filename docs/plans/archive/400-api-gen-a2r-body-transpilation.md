@@ -1,4 +1,5 @@
 # Plan 400: auto-man 后端 handler 生成走 a2r 转译核心（兑现 399 路线A）
+> 📦 **终态（2026-09-01，Plan 513 B 组处置）**：Phase 1+2 已交付（`d26429433` + thin-delegation 补全 `a9c64fad`）；Phase 3/4 **superseded by Plan 442**（VM serve 路线取代 auto-musk 端到端验收路线）——归档。
 
 > **状态**：🟡 进行中（2026-08-20 核查更新——原"草案待评审"已过时）。**Phase 1+2 已完成并合并 master**（commit d2642943：`is_thin_delegation`/`try_transpile_body`/`AUTO_A2R_BODY` 分支 api_gen.rs:1117/1133/1463-1487 + `transpile_body_stmts` rust.rs:544 + 单测；另有 7e504846 ChatMessage 内置 widget）。**未做**：Phase 3（多 `back/*.at` + `extern fn` 语言扩展）、Phase 4（auto-musk 全栈端到端验收）。~~已知缺口：`is_thin_delegation` 只 match If/For~~ → ✅ 2026-08-20 audit-A2 修正（`plan-fix/400-thin-delegation` 合并 `a9c64fad`）：补 `Stmt::Is`/`Stmt::Try`/嵌套 `Block` 递归臂（注：while 脱糖为 For 原已覆盖、Auto 无 match 语句），测试 ×4。
 > **前置**：[Plan 399](399-autoui-examples-sse-crud-extension.md)（已核心完成）。399 §4 明确把 `ApiEndpoint.body` 标为「路线A 预留，生产代码无读取者」；本计划就是兑现路线A。

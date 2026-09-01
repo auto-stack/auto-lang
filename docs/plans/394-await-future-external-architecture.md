@@ -2,7 +2,7 @@
 plan: 394
 title: await-future-external-architecture
 affects: [auto-lang/vm/engine, auto-lang/vm/task, auto-lang/vm/codegen]
-status: draft # draft | in-progress | complete
+status: draft # draft | in-progress | complete —— parked 设计储备（未实施；旧式 frontmatter 未入 auto-plan 状态机。2026-09-01 Plan 513 注记）
 ---
 
 # Plan 394: AWAIT_FUTURE 通用 future 架构 —— 外部异步源挂起/恢复（Plan 344 正统延续）
