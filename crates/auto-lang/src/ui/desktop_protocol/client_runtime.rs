@@ -211,6 +211,8 @@ struct NodeStyle {
     /// 字号档（text-xs/sm/.../4xl → px）。
     font_size: Option<f32>,
     font_bold: bool,
+    /// 斜体档（`italic` 类——Plan 515 G2 差分通道）。
+    font_italic: bool,
     /// 子项居中（items-center/justify-center/mx-auto/text-center）。
     center_children: bool,
     /// 文本水平居中（text-center）。
@@ -256,6 +258,9 @@ impl NodeStyle {
                 "font-bold" | "font-semibold" | "font-extrabold" | "font-medium"
             ) {
                 s.font_bold = true;
+            } else if token == "italic" {
+                // Plan 515 G2：italic 类 → 斜体差分通道。
+                s.font_italic = true;
             } else if matches!(
                 token,
                 "items-center" | "justify-center" | "mx-auto" | "text-center"
@@ -1623,11 +1628,25 @@ fn layout_text(
     } else {
         tx0
     };
-    // bold 档（b/strong/heading + font-bold 类）：DrawOp 无字重字段，
-    // v1 不产生视觉差分——保真边界同 500 的 font_bold 解析不渲染
-    //（宿主字体注册（FontBlob 通道）后按字重档渲染）。
-    let _ = (profile.bold, style.font_bold);
-    ctx.ops.push(DrawOp::Text { x: tx, y, size, line_height: line_h, color, text });
+    // Plan 515 G2 —— 字重/斜体差分通道：bold 档（b/strong/heading +
+    // font-bold 类）产 TextStyled weight=700；italic（em/i + italic 类）
+    // 产 italic=true；常规档仍产 Text（既有线格式/旧远程端零扰动）。
+    let bold = profile.bold || style.font_bold;
+    let italic = profile.italic || style.font_italic;
+    if bold || italic {
+        ctx.ops.push(DrawOp::TextStyled {
+            x: tx,
+            y,
+            size,
+            line_height: line_h,
+            color,
+            weight: if bold { 700 } else { 400 },
+            italic,
+            text,
+        });
+    } else {
+        ctx.ops.push(DrawOp::Text { x: tx, y, size, line_height: line_h, color, text });
+    }
     LaidBlock { size: (w + (tx0 - x), line_h) }
 }
 
@@ -1682,6 +1701,8 @@ fn is_text_tag(tag: &str) -> bool {
 struct TypographyProfile {
     size: Option<f32>,
     bold: bool,
+    /// 斜体（em/i——Plan 515 G2 差分通道）。
+    italic: bool,
     /// 代码块/预格式：底盒 + 保留换行。
     code_box: bool,
     /// 引用：左侧 accent 条 + 缩进 + 静音前景。
@@ -1690,19 +1711,62 @@ struct TypographyProfile {
 
 fn typography_profile(tag: &str) -> TypographyProfile {
     match tag {
-        "b" | "strong" => TypographyProfile { size: None, bold: true, code_box: false, quote: false },
-        "small" | "figcaption" => {
-            TypographyProfile { size: Some(12.0), bold: false, code_box: false, quote: false }
-        }
-        "heading" => TypographyProfile { size: Some(24.0), bold: true, code_box: false, quote: false },
-        "code" => TypographyProfile { size: Some(14.0), bold: false, code_box: false, quote: false },
-        "pre" | "codeblock" | "codepane" => {
-            TypographyProfile { size: Some(14.0), bold: false, code_box: true, quote: false }
-        }
-        "blockquote" | "quote" => {
-            TypographyProfile { size: None, bold: false, code_box: false, quote: true }
-        }
-        _ => TypographyProfile { size: None, bold: false, code_box: false, quote: false },
+        "b" | "strong" => TypographyProfile {
+            size: None,
+            bold: true,
+            italic: false,
+            code_box: false,
+            quote: false,
+        },
+        "em" | "i" => TypographyProfile {
+            size: None,
+            bold: false,
+            italic: true,
+            code_box: false,
+            quote: false,
+        },
+        "small" | "figcaption" => TypographyProfile {
+            size: Some(12.0),
+            bold: false,
+            italic: false,
+            code_box: false,
+            quote: false,
+        },
+        "heading" => TypographyProfile {
+            size: Some(24.0),
+            bold: true,
+            italic: false,
+            code_box: false,
+            quote: false,
+        },
+        "code" => TypographyProfile {
+            size: Some(14.0),
+            bold: false,
+            italic: false,
+            code_box: false,
+            quote: false,
+        },
+        "pre" | "codeblock" | "codepane" => TypographyProfile {
+            size: Some(14.0),
+            bold: false,
+            italic: false,
+            code_box: true,
+            quote: false,
+        },
+        "blockquote" | "quote" => TypographyProfile {
+            size: None,
+            bold: false,
+            italic: false,
+            code_box: false,
+            quote: true,
+        },
+        _ => TypographyProfile {
+            size: None,
+            bold: false,
+            italic: false,
+            code_box: false,
+            quote: false,
+        },
     }
 }
 
@@ -2322,7 +2386,9 @@ mod tests {
             .ops
             .iter()
             .filter_map(|op| match op {
-                DrawOp::Text { text, .. } => Some(text.as_str()),
+                DrawOp::Text { text, .. } | DrawOp::TextStyled { text, .. } => {
+                    Some(text.as_str())
+                }
                 _ => None,
             })
             .collect()
@@ -2334,10 +2400,11 @@ mod tests {
         let mut p = projector_of_example("001-helloworld");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["Hello, World!"]);
+        // Plan 515 G2：font-bold → TextStyled 差分（text-4xl 36px 档不变）。
         assert!(
             frame.ops.iter().any(|op| matches!(op,
-                DrawOp::Text { size, .. } if (*size - 36.0).abs() < 0.01)),
-            "text-4xl → 36px 档"
+                DrawOp::TextStyled { size, weight: 700, .. } if (*size - 36.0).abs() < 0.01)),
+            "text-4xl 36px + font-bold 700 差分"
         );
     }
 
@@ -2528,6 +2595,12 @@ mod tests {
                     "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}\n",
                     x, y, size, line_height, color.r, color.g, color.b, color.a, text
                 )),
+                DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                    out.push_str(&format!(
+                        "text-styled {:.1},{:.1} size={:.1} lh={:.1} w={} it={} {},{},{},{} {:?}\n",
+                        x, y, size, line_height, weight, italic, color.r, color.g, color.b, color.a, text
+                    ))
+                }
                 DrawOp::Scissor { rect } => out.push_str(&format!(
                     "scissor {:.1},{:.1} {:.1}x{:.1}\n",
                     rect.x, rect.y, rect.w, rect.h
@@ -3098,6 +3171,43 @@ mod tests {
         let _ = frame;
     }
 
+    /// Plan 515 G2 —— typography 差分：b/strong/heading/font-bold →
+    /// TextStyled weight=700；em/i/italic 类 → italic=true；常规文本仍产
+    /// Text（零扰动）。
+    #[test]
+    fn t6_typography_differential_channel() {
+        let (_, frame) = project(
+            "widget T {\n    view {\n        b \"bold\"\n        em \"emph\"\n        i \"ital\"\n        text \"plain\"\n        text (style: \"font-bold italic\") \"both\"\n    }\n}\n",
+        );
+        let styled: Vec<(u16, bool, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::TextStyled { weight, italic, text, .. } => Some((*weight, *italic, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            styled,
+            vec![(700, false, "bold"), (400, true, "emph"), (400, true, "ital"), (700, true, "both")],
+            "差分四条: {styled:?}"
+        );
+        // 常规文本零扰动（仍产 Text）。
+        assert!(
+            frame.ops.iter().any(|op| matches!(op,
+                DrawOp::Text { text, .. } if text == "plain")),
+            "常规文本仍产 Text: {:?}",
+            frame.ops
+        );
+        // heading 标签 = bold 缺省档。
+        let (_, frame2) = project("widget H {\n    view { heading \"big\" }\n}\n");
+        assert!(
+            frame2.ops.iter().any(|op| matches!(op,
+                DrawOp::TextStyled { weight: 700, text, .. } if text == "big")),
+            "heading bold 档"
+        );
+    }
+
     /// container/scroll：块流容器渲染（bg + padding 内子级）——catch-all
     /// 容器臂 + coverage 登记（auto 放行）。
     #[test]
@@ -3406,8 +3516,8 @@ mod tests {
     // Plan 507 T6 —— Tier2 typography + 语义容器。
     // -----------------------------------------------------------------------
 
-    /// typography 族缺省档：b/strong（bold 边界注记）、small 12px、
-    /// heading 24px、code 盒、引用条。
+    /// typography 族缺省档：b/strong（Plan 515 G2 起差分 = TextStyled 700）、
+    /// small 12px、heading 24px、code 盒、引用条。
     #[test]
     fn t6_typography_profiles() {
         let (_, frame) = project(
@@ -3424,19 +3534,34 @@ mod tests {
 }
 ",
         );
+        // 文本尺寸（Text 与 TextStyled 合并口径——Plan 515 G2 差分后 bold
+        // 档走 TextStyled）。
         let texts: Vec<(f32, &str)> = frame
             .ops
             .iter()
             .filter_map(|op| match op {
-                DrawOp::Text { size, text, .. } => Some((*size, text.as_str())),
+                DrawOp::Text { size, text, .. } | DrawOp::TextStyled { size, text, .. } => {
+                    Some((*size, text.as_str()))
+                }
                 _ => None,
             })
             .collect();
         let find = |t: &str| texts.iter().find(|(_, s)| *s == t).copied().expect(t);
-        assert_eq!(find("bold!").0, 16.0, "b 缺省正文字号（bold 差分 v1 不载）");
+        assert_eq!(find("bold!").0, 16.0, "b 缺省正文字号");
         assert_eq!(find("tiny").0, 12.0, "small 档");
         assert_eq!(find("Big").0, 24.0, "heading 档");
         assert_eq!(find("x = 1").0, 14.0, "code 档");
+        // Plan 515 G2：b/heading 差分可见（TextStyled 700）。
+        assert!(matches!(
+            frame.ops.iter().find(|op| matches!(op,
+                DrawOp::TextStyled { text, .. } if text == "bold!")),
+            Some(DrawOp::TextStyled { weight: 700, italic: false, .. })
+        ), "b bold 差分");
+        assert!(matches!(
+            frame.ops.iter().find(|op| matches!(op,
+                DrawOp::TextStyled { text, .. } if text == "Big")),
+            Some(DrawOp::TextStyled { weight: 700, .. })
+        ), "heading bold 差分");
         // 引用：accent 条 Quad 先于文本 + 静音前景。
         let quote_text_idx = frame
             .ops

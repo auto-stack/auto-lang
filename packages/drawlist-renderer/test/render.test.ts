@@ -126,6 +126,25 @@ describe('renderFrame（Canvas2D）', () => {
   it('rgbaToCss 透明度换算', () => {
     expect(rgbaToCss({ r: 0, g: 0, b: 0, a: 128 })).toBe('rgba(0, 0, 0, 0.502)');
   });
+
+  it('textStyled 字重/斜体差分 font 串（Plan 515 G2）', () => {
+    const styled: DrawList = {
+      clear: null,
+      ops: [
+        { kind: 'textStyled', x: 1, y: 2, size: 16, lineHeight: 21.6, color: { r: 255, g: 255, b: 255, a: 255 }, weight: 700, italic: false, text: 'b' },
+        { kind: 'textStyled', x: 1, y: 30, size: 14, lineHeight: 18.9, color: { r: 255, g: 255, b: 255, a: 255 }, weight: 400, italic: true, text: 'i' },
+        { kind: 'textStyled', x: 1, y: 60, size: 14, lineHeight: 18.9, color: { r: 255, g: 255, b: 255, a: 255 }, weight: 400, italic: false, text: 'plain-eq' },
+      ],
+    };
+    const { ctx, calls } = mockCtx();
+    renderFrame(ctx, styled);
+    const fonts = calls.filter((c) => c.op === 'font').map((c) => c.value);
+    expect(fonts).toEqual([
+      '700 16px system-ui, sans-serif',
+      'italic 14px system-ui, sans-serif',
+      '14px system-ui, sans-serif',
+    ]);
+  });
 });
 
 describe('hitTest（表驱动）', () => {

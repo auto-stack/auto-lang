@@ -1,2 +1,2 @@
 clear 24,24,28,255
-text 10.0,10.0 size=36.0 lh=48.6 147,148,245,255 "Hello, World!"
+text-styled 10.0,10.0 size=36.0 lh=48.6 w=700 it=false 147,148,245,255 "Hello, World!"

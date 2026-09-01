@@ -20,6 +20,21 @@ fn to_color(c: Rgba8) -> iced::Color {
     iced::Color::from_rgba8(c.r, c.g, c.b, c.a as f32 / 255.0)
 }
 
+/// CSS 字重刻度（100..900）→ iced `Weight` 档（Plan 515 G2）。
+fn css_weight_to_iced(w: u16) -> iced::font::Weight {
+    match w {
+        100 => iced::font::Weight::Thin,
+        200 => iced::font::Weight::ExtraLight,
+        300 => iced::font::Weight::Light,
+        500 => iced::font::Weight::Medium,
+        600 => iced::font::Weight::Semibold,
+        700 => iced::font::Weight::Bold,
+        800 => iced::font::Weight::ExtraBold,
+        900 => iced::font::Weight::Black,
+        _ => iced::font::Weight::Normal,
+    }
+}
+
 /// DrawList → canvas 绘制程序（queue 臂栅格化：宿主 GPU 抗锯齿）。
 struct DrawListPainter {
     list: DrawList,
@@ -108,6 +123,30 @@ fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
                     line_height: iced::widget::text::LineHeight::Absolute(
                         (*line_height).into(),
                     ),
+                    ..Default::default()
+                });
+                i += 1;
+            }
+            // Plan 515 G2 —— typography 差分：weight/style 映射 iced Font
+            //（宿主字体栈按 face 选择——cosmic-text 家族回退取最接近档）。
+            DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                frame.fill_text(Text {
+                    content: text.clone(),
+                    position: iced::Point::new(*x, *y),
+                    color: to_color(*color),
+                    size: (*size).into(),
+                    line_height: iced::widget::text::LineHeight::Absolute(
+                        (*line_height).into(),
+                    ),
+                    font: iced::Font {
+                        weight: css_weight_to_iced(*weight),
+                        style: if *italic {
+                            iced::font::Style::Italic
+                        } else {
+                            iced::font::Style::Normal
+                        },
+                        ..Default::default()
+                    },
                     ..Default::default()
                 });
                 i += 1;

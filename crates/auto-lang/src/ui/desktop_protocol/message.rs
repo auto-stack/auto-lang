@@ -78,6 +78,20 @@ pub enum DrawOp {
     Quad { rect: WRect, color: Rgba8 },
     /// 单行文本 run（左上角定位；shaping 留宿主——413 §7 约束同款）。
     Text { x: f32, y: f32, size: f32, line_height: f32, color: Rgba8, text: String },
+    /// 带字重/斜体的文本 run（Plan 515 G2，tag 5 追加式；既有 `Text`
+    /// 线格式冻结不动——weight = 400 且非斜体时投影器仍产 `Text`，旧端
+    /// 远程消费面零破坏）。`weight` = CSS 字重刻度 u16（400 normal /
+    /// 700 bold），`italic` = bool。
+    TextStyled {
+        x: f32,
+        y: f32,
+        size: f32,
+        line_height: f32,
+        color: Rgba8,
+        weight: u16,
+        italic: bool,
+        text: String,
+    },
     /// 压栈裁剪矩形（Plan 515 G1，tag 3 追加式）：宿主坐标空间，与当前
     /// 有效裁剪**取交集**后生效，作用于后续所有 op 直至配对 pop。栈语义
     /// 深度：线格式不设上限，v1 投影器产出 ≤2 层（嵌套 scrollable），
@@ -115,6 +129,17 @@ impl DrawList {
                     color.encode(out);
                     put_string(out, text);
                 }
+                DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                    put_u8(out, 5);
+                    put_f32(out, *x);
+                    put_f32(out, *y);
+                    put_f32(out, *size);
+                    put_f32(out, *line_height);
+                    color.encode(out);
+                    put_u16(out, *weight);
+                    put_bool(out, *italic);
+                    put_string(out, text);
+                }
                 DrawOp::Scissor { rect } => {
                     put_u8(out, 3);
                     rect.encode(out);
@@ -149,6 +174,17 @@ impl DrawList {
                     let color = Rgba8::decode(r)?;
                     let text = r.string()?;
                     ops.push(DrawOp::Text { x, y, size, line_height, color, text });
+                }
+                5 => {
+                    let x = r.f32()?;
+                    let y = r.f32()?;
+                    let size = r.f32()?;
+                    let line_height = r.f32()?;
+                    let color = Rgba8::decode(r)?;
+                    let weight = r.u16()?;
+                    let italic = r.bool()?;
+                    let text = r.string()?;
+                    ops.push(DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text });
                 }
                 3 => {
                     let rect = WRect::decode(r)?;
@@ -1432,6 +1468,73 @@ mod tests {
         expect.extend_from_slice(&4.0f32.to_le_bytes());
         expect.push(4); // ScissorPop tag
         assert_eq!(buf, expect, "scissor 线格式冻结锚点");
+    }
+
+    /// Plan 515 G2 —— typography 差分通道（tag 5 追加式）：TextStyled
+    /// round-trip + golden 字节锚点（weight u16 CSS 刻度 + italic bool）。
+    #[test]
+    fn text_styled_round_trip_and_golden() {
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid: 3,
+            frame_id: 22,
+            slot: 0,
+            damage: None,
+            revision: 22,
+            payload: DrawList {
+                clear: None,
+                ops: vec![
+                    DrawOp::TextStyled {
+                        x: 10.0,
+                        y: 20.0,
+                        size: 16.0,
+                        line_height: 21.6,
+                        color: Rgba8::new(220, 220, 220, 255),
+                        weight: 700,
+                        italic: false,
+                        text: "bold text".into(),
+                    },
+                    DrawOp::TextStyled {
+                        x: 10.0,
+                        y: 42.0,
+                        size: 14.0,
+                        line_height: 18.9,
+                        color: Rgba8::new(200, 200, 200, 255),
+                        weight: 400,
+                        italic: true,
+                        text: "italic text".into(),
+                    },
+                ],
+            },
+        }));
+
+        // golden：DrawList 直编（tag 5 + x/y/size/lh + rgba + weight u16 +
+        // italic bool + str）。
+        let list = DrawList {
+            clear: None,
+            ops: vec![DrawOp::TextStyled {
+                x: 1.0,
+                y: 2.0,
+                size: 3.0,
+                line_height: 4.0,
+                color: Rgba8::new(5, 6, 7, 8),
+                weight: 700,
+                italic: true,
+                text: "hi".into(),
+            }],
+        };
+        let mut buf = Vec::new();
+        list.encode(&mut buf);
+        let mut expect: Vec<u8> = vec![1, 0, 1, 0, 0, 0, 5]; // kind, clear, len, tag
+        expect.extend_from_slice(&1.0f32.to_le_bytes());
+        expect.extend_from_slice(&2.0f32.to_le_bytes());
+        expect.extend_from_slice(&3.0f32.to_le_bytes());
+        expect.extend_from_slice(&4.0f32.to_le_bytes());
+        expect.extend_from_slice(&[5, 6, 7, 8]); // color
+        expect.extend_from_slice(&700u16.to_le_bytes()); // weight
+        expect.push(1); // italic
+        expect.extend_from_slice(&2u32.to_le_bytes()); // str len
+        expect.extend_from_slice(b"hi");
+        assert_eq!(buf, expect, "TextStyled 线格式冻结锚点");
     }
 
     #[test]

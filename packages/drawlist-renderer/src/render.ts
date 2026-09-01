@@ -39,6 +39,14 @@ export function renderFrame(ctx: CanvasRenderingContext2D, frame: DrawList): voi
         ctx.restore();
         clipDepth--;
       }
+    } else if (op.kind === 'textStyled') {
+      // Plan 515 G2 —— 字重/斜体差分（Canvas2D font 简写前缀）。
+      ctx.fillStyle = rgbaToCss(op.color);
+      const style = op.italic ? 'italic ' : '';
+      const weight = op.weight !== 400 ? `${op.weight} ` : '';
+      ctx.font = `${style}${weight}${op.size}px system-ui, sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.fillText(op.text, op.x, op.y);
     } else {
       ctx.fillStyle = rgbaToCss(op.color);
       ctx.font = `${op.size}px system-ui, sans-serif`;

@@ -385,7 +385,8 @@ mod tests {
                 list.ops
                     .iter()
                     .filter_map(|op| match op {
-                        crate::ui::desktop_protocol::message::DrawOp::Text { text, .. } => {
+                        crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
+                        | crate::ui::desktop_protocol::message::DrawOp::TextStyled { text, .. } => {
                             Some(text.clone())
                         }
                         _ => None,
@@ -762,6 +763,7 @@ mod tests {
                         && c.composed().is_some_and(|l| {
                             l.ops.iter().any(|op| matches!(op,
                                 crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
+                                | crate::ui::desktop_protocol::message::DrawOp::TextStyled { text, .. }
                                     if text == "Hello, World!"))
                         })
                 })
