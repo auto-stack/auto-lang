@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 7
+current_step: 8
 total_steps: 22
 ---
 
@@ -360,7 +360,13 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
 
 ### W2 中阶补缺（worktree 续）
 
-8. [ ] **W2 语料先行（红）**：b38–b43 corpus 落盘，tv 转红清单记证据。
+8. [✅ 已完成] **W2 语料先行（红）**：b38_for_in_arr（数组变量/字面量/返回数组
+   调用三通道）/b39_str_index/b40_neg/b42_globals/b43_global_shadow 落盘；b41 按
+   D1 不入 corpus（改 L3 错误文本件）。M4 红清单：b38 `for: expected range op`、
+   b40 `unsupported expr atom: LParen`（-(x+y) 括号形态暴露真缺口）、b39/b42/b43
+   文本差异（b42/b43 见 aavm 把顶层 var 当 wrapper 局部 store.loc——store.global
+   缺失；b39 差异待实现时定源）。宿主侧全可编译；b43 宿主语义实证：fn 内
+   `let g = 5` 写全局（输出 5/5）。
 9. [ ] `auto/lib/codegen.at`+`engine.at`：for-in 数组/表达式迭代（发射序按
    规格；顺收 447 收账缺口①——List 型 fn 参数 `.len()` 接收者跟踪，便宜则
    一并修）。验证：b38 + tv-aavm2 绿。
