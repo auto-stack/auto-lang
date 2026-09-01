@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 13
+current_step: 19
 total_steps: 22
 ---
 
@@ -401,21 +401,33 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
     pub(crate)（纯代码搬移,五闸回归绿）。aavm 侧红清单:M4/M5/错误通道
     三件均 Undefined symbol: codegen_dump_files / ev_run_files。宿主侧
     9 用例全部可编译/可执行/可报错。
-14. [ ] `auto/lib/parser.at`：use 语句四形态解析 + 异构导入拒绝；
-    corpus_m2 扩展（含错误形态件）。验证：tv-aavm2 M2 绿。
-15. [ ] 模块解析器：`mod.at` 读取（auto.file.read_text）+ 传递依赖 + 环检测
-    + 去重缓存。验证：99_unit Auto 侧单测（auto test）先行红→绿。
-16. [ ] `auto/lib/codegen.at`：多编译单元 + pub 导出 + `mod#fn` 限定符号 +
-    导入名作用域注入。验证：corpus_use 编译期用例（M4 前置）。
-17. [ ] 链接器（缺省 engine.at 新段；超限则第七文件 + AUTO_LIB_FILES_V2/
-    pac.at 同步——决策点在步 1 规格里预判）：拼装/重定位/初始化序/全局区
-    合并。验证：链接层用例 + 99_unit 单测。
-18. [ ] `auto/lib/engine.at`：`ev_run_files(main_path)` 入口 + 跨模块 call；
-    corpus_use 全量接入多文件闸门。验证：tv-aavm2 全绿（M4/M5 多文件腿）。
-19. [ ] 折叠点③：divergence 登记 + CI 绿 + master 合入（W3 同款提交格式）。
-
-### 收尾
-
+14. [✅ 已完成] `auto/lib/parser.at`：parse_use 四形态 + 异构 use.rs/py kind
+    Display + pub 前缀跳过；corpus_m2 p27（含 use.rs/py 显示件；{} 花括号
+    形态经 :: 不可达——宿主实测,注记规格）。验证：tv-aavm2 M2 绿。
+15. [✅ 已完成] 模块解析器（codegen.at cg_use_scan/cg_resolve_into）：
+    File.read_text（bin 层 shim 前导保 a2r 可构建）+ 同目录相对解析 + 传递
+    依赖递归 + 环静默跳过（D2）+ 按名去重；宿主错误文本三件（Module not
+    found/Crate not declared/Python FFI——错误通道逐字符一致）。99_unit
+    Auto 侧单测以 auto test 探针形式先行验证（verbose 通道）。
+16. [✅ 已完成] `auto/lib/codegen.at`：多编译单元 cg_compile_mod（dep 裸
+    形态：Type/Use 消费+顶层 var/const 限名全局+fn jmp-over+尾 HALT 无
+    wrapper；主模块 wrapper 形态）+ pub 导出（D3:全 fn 导出）+ `mod.fn`
+    限定符号（延迟调用 defers+const.i32 0 接收者占位镜像）+ 导入名作用域
+    注入（use mod: item/通配→延迟符号）。验证：corpus_use M4 前置全绿。
+17. [✅ 已完成] 链接器 cg_link_modules（缺省 codegen.at 内实现,未超限不
+    升第七文件）：拼装（链接序 DFS 后序+main 末位）/jmp·Call 平移/池去重
+    合并+remap（LoadStr/GetField/Load·Store.global 按 ins.n——序列化同步
+    修正）/符号定址三级（bare 首到+mod.fn+strip 兜底）/mod_bases 初始化
+    序锚点。验证：链接层用例（004 环/005 传递+初始化序）绿。
+18. [✅ 已完成] `auto/lib/engine.at`：ev_run_files（ev_exec 核心自 ev_run_t
+    抽出,全局区 gnames/gvals 共享传递）+ 初始化序（dep 链接序逐模块执行至
+    各自 HALT 再 main 入口）；corpus_use 全量接入。验证：tv-aavm2 全绿
+    （M4/M5 多文件腿+错误通道+单文件五闸+自证,16/16）。
+19. [✅ 已完成] 折叠点③：divergence 登记（D-AA2R-struct 追记 30/37+
+    预存债/D-stdlib-shadow/D-module-shape）+ pre-fold 门禁 cargo tf
+    3338/3338 绿、cargo tv 仅 2 件 master 预存（同折叠①结论）+ master 合入
+    + worktree 重同步。AA2R ignored 腿修复至可构建（W2 遗留的转译阻断
+    清偿：File shim/借用拆分/括号优先级塌缩规避）。
 20. [ ] L3 资产固化：`test/vm/aavm2/99_unit/` Auto 侧单测套件（#[test]+
     assert_eq，`auto test` 可跑）成建制落盘；W0 定案的 lib 引用方案回写
     文档。验证：`auto test test/vm/aavm2/99_unit` 绿。
