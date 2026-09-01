@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-508
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-protocol-stage6-remote-policy
 author: [zhaopuming]
 created_at: 2026-08-31
-updated_at: 2026-08-31
+updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 2
 total_steps: 9
 ---
 
@@ -170,9 +170,22 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
 1. **进程模型配置位**：`crates/auto-lang/src/ui/session.rs` boot 读
    `shell.apps.process_model` + 孵化分支（outproc→broker 链）+ 单测。
    验证：`cargo t session`。
+   [✅ 已完成] commit a84dee048（worktree）：ProcessModel 枚举+from_storage、
+   DesktopState.process_model/outproc_spawner/outproc_children、launch_app
+   outproc 臂（re-exec spawn→broker 受理→同步泵 attach→registry_id 回填）、
+   renderer boot 读键+resolver 目录名兜底；`cargo t session --features
+   ui-iced` 83/83 绿（含 process_model_storage_parse /
+   launch_app_outproc_lands_window 真子进程孵化落地 0.13s /
+   launch_outproc_child_body）。
 2. **对比实测与裁定**：跑两形态三指标批次 →
    `docs/plans/reports/508-process-model-verdict.md` 成文。
    验证：报告含数据表+裁定。
+   [✅ 已完成] worktree commits 5be10ddf8/b28e57be9(合并 master 同步)/
+   裁定报告落库：harness p508_g2_inproc_arm/p508_g2_outproc_arm（两轮
+   复跑内存差 <1%）；裁定=维持 inproc 缺省、outproc 保留隔离选项；
+   总边际 0.86 vs 7.64MiB/App、启动 2–17ms vs 25–250ms、交互 0.07 vs
+   1.54ms；009 未覆盖降级像素臂 +210MiB（507 前置实证）；翻转三闸
+   T-覆盖/T-稳定性/T-远程。
 3. **WS transport**：`crates/auto-lang/src/ui/desktop_protocol/transport.rs`
    增 WsTransport（tokio-tungstenite dep 入 `crates/auto-lang/Cargo.toml`）
    + T1 单测。
