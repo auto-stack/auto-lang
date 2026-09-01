@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-513
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态 2026-09-01）
 feature_name: repo-integration-cleanup
 author: [zhaopuming]
 created_at: 2026-09-01
