@@ -1876,3 +1876,129 @@ mod musk_vm_track_p054_t3_if_fallback {
         );
     }
 }
+
+/// PLAN-054 T4 (A9) 勘察：会话卡片样式链解析产物。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t4_style_probe {
+    #[test]
+    #[ignore = "manual probe"]
+    fn session_card_style_parse_dump() {
+        let selected = crate::ui::style::Style::parse(
+            "session-item relative h-auto w-full flex flex-col items-start justify-start gap-0.5 text-left py-2.5 px-3 mb-1.5 rounded-lg border border-primary/25 bg-primary/10 text-primary",
+        );
+        let unselected = crate::ui::style::Style::parse(
+            "session-item relative h-auto w-full flex flex-col items-start justify-start gap-0.5 text-left py-2.5 px-3 mb-1.5 rounded-lg border border-transparent bg-card hover:border-border hover:bg-accent text-foreground",
+        );
+        for (name, s) in [("selected", selected), ("unselected", unselected)] {
+            let Ok(s) = s else { eprintln!("[P054-T4] {name}: PARSE FAIL"); continue };
+            let is = crate::ui::style::iced_adapter::IcedStyle::from_style(&s);
+            eprintln!("[P054-T4] {name}: border={} width={:?} color={:?} bg={:?}",
+                is.border, is.border_width, is.border_color, is.background_color);
+        }
+    }
+}
+
+/// PLAN-054 T4 (A6/A9/A11) 回归锁：会话卡片/消息行样式链。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t4_styles {
+    use crate::ui::style::{Style, StyleClass};
+    use crate::ui::style::iced_adapter::IcedStyle;
+
+    /// A9 锁①：border-primary/25 带解析（选中卡片淡描边）。
+    /// 09-01 对拍"border alpha 未支持/描边过重"在当前 master 不成立,
+    /// 此测钉死解析面(alpha 0.25 语义色)。
+    #[test]
+    fn border_primary_25_parses_with_alpha() {
+        let s = Style::parse("border border-primary/25").expect("parse");
+        let is = IcedStyle::from_style(&s);
+        assert!(is.border, "border 宽度类必须在");
+        let c = is.border_color.expect("border color");
+        assert!((c.a - 0.25).abs() < 0.02, "alpha 必须为 25%, got {:?}", c);
+    }
+
+    /// A9 锁②：bg-card 语义解析 = musk dark --card(222.2 47% 10%) =
+    /// rgb(13,21,38)（Plan 448 对齐,两轨一致）。"未选中色块"为旧观察。
+    #[test]
+    fn bg_card_matches_musk_dark_token() {
+        let s = Style::parse("bg-card").expect("parse");
+        let is = IcedStyle::from_style(&s);
+        let c = is.background_color.expect("bg");
+        assert_eq!((c.r * 255.0).round() as u8, 13, "r");
+        assert_eq!((c.g * 255.0).round() as u8, 21, "g");
+        assert_eq!((c.b * 255.0).round() as u8, 38, "b");
+    }
+
+    /// A11：图标组件 class prop 下传——ml-auto 贴行右端 + muted 着色,
+    /// size 像素保持。
+    #[test]
+    fn icon_component_class_prop_carries_ml_auto_and_tint() {
+        use crate::parser::Parser;
+        use crate::ui::view::View;
+        let src = concat!(
+            "widget Root54t4 {\n",
+            "    view {\n",
+            "        row {\n",
+            "            style: \"flex items-center gap-1 w-full\"\n",
+            "            text \"N 条\"\n",
+            "            Info { size: 11, class: \"text-muted-foreground shrink-0 ml-auto\" }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        crate::ui::aura_view_builder::register_imported_components(vec!["Info".to_string()]);
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0], &decls[1..], &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![], &std::collections::HashMap::new(), false,
+        )
+        .expect("component");
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn find_image(view: &View<crate::ui::interpreter::DynamicMessage>) -> Option<&crate::ui::style::Style> {
+            match view {
+                View::Image { style, .. } => style.as_ref(),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    children.iter().find_map(find_image)
+                }
+                View::Container { child, .. } => find_image(child),
+                _ => None,
+            }
+        }
+        let img_style = find_image(&view).expect("icon image");
+        let is = IcedStyle::from_style(img_style);
+        assert!(is.margin_left_auto, "ml-auto 必须进图标样式(A11 此前整串丢弃)");
+        assert!(is.text_color.is_some(), "text-muted-foreground 着色必须在");
+        assert!(
+            img_style.classes.iter().any(|c| matches!(c,
+                StyleClass::Width(crate::ui::style::SizeValue::Pixels(px)) if *px == 11.0)),
+            "size 像素必须保持"
+        );
+        crate::ui::aura_view_builder::clear_imported_components();
+    }
+
+    /// A6：self-end / items-end 进 IcedStyle（渲染层列臂消费）。
+    #[test]
+    fn message_row_self_end_items_end_reach_iced_style() {
+        let s = Style::parse("flex flex-col gap-[3px] max-w-[85%] self-end items-end").expect("parse");
+        let is = IcedStyle::from_style(&s);
+        assert!(
+            matches!(is.align_self, Some(crate::ui::style::iced_adapter::IcedAlign::End)),
+            "self-end 必须进 align_self(此前仅降级告警)"
+        );
+        assert!(
+            matches!(is.align_items, Some(crate::ui::style::iced_adapter::IcedAlign::End)),
+            "items-end 必须进 align_items"
+        );
+    }
+}

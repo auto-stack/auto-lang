@@ -2188,6 +2188,9 @@ impl<'a> AuraViewBuilder<'a> {
     /// PLAN-050 T7 (C5): 图标组件 → View::Image{lucide:kebab}。size prop
     /// （lucide 惯例,px）映射 Width/Height 固定像素;renderer 端 glyph 缺失
     /// 时空占位（与既有 unknown-icon 行为一致）。
+    /// PLAN-054 T4 (A11): `class` prop 下传——musk 会话卡 "N 条" 行
+    /// `Info { size: 11, class: "text-muted-foreground shrink-0 ml-auto" }`
+    /// 的 ml-auto/着色此前整串丢弃,图标紧跟文本而非贴行右端。
     fn convert_icon_component(
         &self,
         tag: &str,
@@ -2195,11 +2198,17 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let size = self.extract_u16(props, "size").unwrap_or(16) as f32;
+        let mut classes = vec![
+            StyleClass::Width(SizeValue::Pixels(size)),
+            StyleClass::Height(SizeValue::Pixels(size)),
+        ];
+        if let Some(user_class) = self.extract_string_with(props, "class", bindings) {
+            if let Ok(user) = Style::parse(&user_class) {
+                classes.extend(user.classes);
+            }
+        }
         let style = Style {
-            classes: vec![
-                StyleClass::Width(SizeValue::Pixels(size)),
-                StyleClass::Height(SizeValue::Pixels(size)),
-            ],
+            classes,
             hover_classes: Vec::new(),
         };
         View::Image {
