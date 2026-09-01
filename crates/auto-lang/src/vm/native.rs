@@ -2163,18 +2163,6 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Get element at index.
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
-/// Push a tagged value from ListData<i32> back onto the stack.
-/// Negative values are string tags that must use push_str_idx
-/// to preserve the TAG_STRING type tag in the NanoValue encoding.
-fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
-    if val < 0 {
-        let str_idx = (-(val) - 1) as u32;
-        ram.push_nv(auto_val::encode_string(str_idx));
-    } else {
-        ram.push_i32(val);
-    }
-}
-
 /// Plan 432 D26 修复:ListData<i32> 元素的容器侧引用记账。
 /// 编码契约(nano_value.rs encode_string 注释):字符串以负哨兵 -(idx+1)
 /// 落在 i32 空间(decode_i32(encode_string(idx)) 即该负值);≥HEAP_ID_BASE
@@ -7446,11 +7434,9 @@ pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     drop(guard);
     let bytes = result.into_bytes();
     let idx = vm.add_string(bytes);
-    {
-        let nv = auto_val::encode_string(idx as u32);
-        task.ram.push_nv(nv);
-        task.ram.push_nv(auto_val::encode_null());
-    }
+    // Plan 510 G1-2: 返回串入栈配平(+1;消费侧 POP 即 -1)。
+    vm.rc_push_str_idx(task, idx);
+    task.ram.push_nv(auto_val::encode_null());
     Ok(())
 }
 
@@ -7530,7 +7516,7 @@ pub fn shim_url_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         };
         let encoded = urlencoding::encode(&s).to_string();
         let idx = vm.add_string(encoded.into_bytes());
-        task.ram.push_nv(auto_val::encode_string(idx as u32));
+        vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
     }
     Ok(())
 }
@@ -7564,7 +7550,7 @@ pub fn shim_url_encode_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
             .collect::<Vec<_>>()
             .join("/");
         let idx = vm.add_string(encoded.into_bytes());
-        task.ram.push_nv(auto_val::encode_string(idx as u32));
+        vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
     }
     Ok(())
 }
@@ -7591,7 +7577,7 @@ pub fn shim_localstorage_get_item(task: &mut AutoTask, vm: &AutoVM) -> Result<()
         match crate::vm::ffi::stdlib::storage_raw_get(&key) {
             Some(v) => {
                 let idx = vm.add_string(v.into_bytes());
-                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
             }
             None => {
                 // Same encoding the None literal compiles to (PUSH_NIL).
@@ -7669,7 +7655,7 @@ pub fn shim_env_var(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         match std::env::var(&key) {
             Ok(v) => {
                 let idx = vm.add_string(v.into_bytes());
-                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
             }
             Err(_) => {
                 task.ram.push_nv(auto_val::encode_null());

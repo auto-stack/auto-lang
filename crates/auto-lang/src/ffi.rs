@@ -1022,8 +1022,9 @@ impl RustType {
                     }
                 };
                 // 2026-08-22(池去重):直推绕过 dedup,改为 add_string。
+                // Plan 510 G1-2: 入栈配平(此前缺 retain,消费侧 POP 即多扣)。
                 let idx = vm.add_string(s.into_bytes());
-                task.ram.push_str_idx(idx as u32);
+                vm.rc_push_str_idx(task, idx);
             }
             RustType::Pointer | RustType::PointerMut | RustType::Callback => {
                 task.ram.push_i64(raw as i64);
