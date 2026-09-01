@@ -1236,5 +1236,5 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_99_idiom2_m08_receiver_forms() { test_vm("99_idiom2/m08_receiver_forms").unwrap(); }
 #[test] fn test_99_idiom2_m09_method_name_set() { test_vm("99_idiom2/m09_method_name_set").unwrap(); }
 #[test] fn test_99_idiom2_d01_nested_fn_void() { test_vm("99_idiom2/d01_nested_fn_void").unwrap(); }
-#[test] #[ignore] fn test_99_idiom2_d01b_nested_fn_capture() { test_vm("99_idiom2/d01b_nested_fn_capture").unwrap(); }
+#[test] fn test_99_idiom2_d01b_nested_fn_capture() { test_vm("99_idiom2/d01b_nested_fn_capture").unwrap(); }
 #[test] fn test_99_idiom2_d02_struct_misuse() { test_vm("99_idiom2/d02_struct_misuse").unwrap(); }

@@ -5881,6 +5881,44 @@ impl RustTrans {
             if let Some((obj, method_name)) = maybe_module_method {
                 if let Expr::Ident(module) = obj {
                     match module.as_str() {
+                        // File module (Plan 514 W1 / P511-5): `File.*` is the
+                        // canonical VM name family (auto.file.*) — map it to
+                        // INLINE std calls instead of a2r_std, because the
+                        // merge-mode output (parity matrix leg ② compiles the
+                        // merged lib standalone with zero deps) cannot link
+                        // a2r_std. Error convention matches the VM shim
+                        // (ffi/stdlib.rs shim_file_*: read error → empty
+                        // string, write → 0/-1, exists → bool).
+                        "File" => match method_name.as_str() {
+                            "read_text" | "read_to_string" => {
+                                write!(out, "std::fs::read_to_string(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ").unwrap_or_default()")?;
+                                return Ok(());
+                            }
+                            "write_text" | "write" => {
+                                write!(out, "if std::fs::write(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    write!(out, "&")?;
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ").is_ok() {{ 0 }} else {{ -1 }}")?;
+                                return Ok(());
+                            }
+                            "exists" => {
+                                write!(out, "std::fs::metadata(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ").is_ok()")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
                         "String" => {
                             // Plan 019 Phase 1: String.fromCharCode(n) → a
                             // one-char String from the code point (report B8).
@@ -5971,7 +6009,28 @@ impl RustTrans {
                     // non-trivial Rust output (not just a name remap).
                     match method_name.as_str() {
                         "set" => {
-                            // Map.set(key, val) -> HashMap::insert(key, val)
+                            // Plan 514 W1 (洞 B): Map.set(key, val) ->
+                            // HashMap::insert(key, val) — but only for
+                            // non-user-type receivers. A type method named
+                            // `set` (99_idiom2/m09 Holder.set) must pass
+                            // through unchanged (Plan 393 E1 append guard).
+                            let lhs_is_struct = if let Expr::Ident(name) = lhs.as_ref() {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty,
+                                        Type::User(_) | Type::Tag(_) | Type::Enum(_)
+                                        | Type::GenericInstance(_)))
+                                    .unwrap_or(false)
+                            } else { false };
+                            if lhs_is_struct {
+                                self.expr(lhs, out)?;
+                                write!(out, ".set(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    self.arg(arg, out)?;
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             self.expr(lhs, out)?;
                             write!(out, ".insert(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
@@ -6812,7 +6871,16 @@ impl RustTrans {
                         Expr::Ident(name) if matches!(name.as_str(),
                             "env" | "json" | "Json" | "fs" | "file" | "http" | "io"
                             | "shell" | "regex" | "math" | "str" | "time" | "process"));
-                    if receiver_is_stdlib_module {
+                    // Plan 514 W1 (洞 B): 同理跳过用户类型接收者——类型自有
+                    // 方法名 `set`(99_idiom2/m09 Holder.set)须直通,不得重映射
+                    // 为 HashMap::insert(Plan 393 E1 append 守卫同型)。
+                    let receiver_is_user_type = matches!(object.as_ref(),
+                        Expr::Ident(name) if self.local_var_types.get(name.as_str())
+                            .map(|ty| matches!(ty,
+                                Type::User(_) | Type::Tag(_) | Type::Enum(_)
+                                | Type::GenericInstance(_)))
+                            .unwrap_or(false));
+                    if receiver_is_stdlib_module || receiver_is_user_type {
                         // fall through to the stdlib (module, method) routing.
                     } else {
                     // Map.set(key, val) -> HashMap::insert(key, val)
@@ -7540,7 +7608,20 @@ impl RustTrans {
                 "to_array" => Some("clone"),
                 "retain" => Some("retain"),
                 // HashMap methods
-                "set" => Some("insert"),
+                // Plan 514 W1 (洞 B, P511-5 探针暴露): only remap set → insert
+                // when the receiver is NOT a known user-type instance — a type
+                // method named `set` (99_idiom2/m09 `Holder.set`) must pass
+                // through unchanged. Mirror of the Plan 393 E1 `append` guard.
+                "set" => {
+                                        let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty,
+                                Type::User(_) | Type::Tag(_) | Type::Enum(_)
+                                | Type::GenericInstance(_)))
+                            .unwrap_or(false)
+                    } else { false };
+                    if !lhs_is_struct { Some("insert") } else { None }
+                }
                 // Plan 384 A9: keep `.delete()` as-is (see note at the other
                 // match site) — axum Router `.delete()` must not become remove.
                 "delete" => Some("delete"),
@@ -8844,7 +8925,10 @@ impl RustTrans {
                     .unwrap_or(false)
                 && if let Arg::Pos(Expr::Ident(name)) = arg {
                     self.local_var_types.get(name)
-                        .map(|ty| matches!(ty, Type::List(_)))
+                        // Plan 514 W1 (m05): 数组字面量绑定是 Type::Array,
+                        // Rust 侧同为 owned Vec<T>——按值传入 List 参数同样
+                        // move,复用即 E0382;与 List 同列。
+                        .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
                         .unwrap_or(false)
                 } else { false };
             // Plan 016 Phase 4: a field-read (`s.marks`, `node.attrs`, `a.sel`)
@@ -12144,18 +12228,60 @@ impl RustTrans {
         out: &mut Vec<(AutoStr, Type)>,
     ) {
         use crate::ast::Stmt;
+        /// Plan 514 W1: minimal User 占位类型(名字即类型;按名查询注册表生效)。
+        fn placeholder_user_type(name: AutoStr) -> Type {
+            Type::User(TypeDecl {
+                consts: Vec::new(),
+                name,
+                kind: crate::ast::TypeDeclKind::UserType,
+                parent: None,
+                has: Vec::new(),
+                specs: Vec::new(),
+                spec_impls: Vec::new(),
+                generic_params: Vec::new(),
+                members: Vec::new(),
+                delegations: Vec::new(),
+                methods: Vec::new(),
+                attrs: Vec::new(),
+                impl_attrs: Vec::new(),
+                doc: None,
+                is_pub: false,
+            })
+        }
         fn visit(stmts: &[Stmt], ret_types: &HashMap<AutoStr, Type>, out: &mut Vec<(AutoStr, Type)>) {
             for stmt in stmts {
                 match stmt {
                     Stmt::Store(store) => {
                         if matches!(store.ty, Type::Unknown) {
                             if let Expr::Call(call) = &store.expr {
-                                if let Expr::Ident(fname) = call.name.as_ref() {
-                                    if let Some(ret) = ret_types.get(fname.as_str()) {
-                                        if !matches!(ret, Type::Unknown | Type::Void) {
-                                            out.push((store.name.clone(), ret.clone()));
+                                match call.name.as_ref() {
+                                    Expr::Ident(fname) => {
+                                        if let Some(ret) = ret_types.get(fname.as_str()) {
+                                            if !matches!(ret, Type::Unknown | Type::Void) {
+                                                out.push((store.name.clone(), ret.clone()));
+                                            }
                                         }
                                     }
+                                    // Plan 514 W1 (洞 B 配套): static 构造
+                                    // `Type.new(...)` 的返回类型 = 该类型自身
+                                    // ——此前不记录,导致 `var h = Holder.new(1)`
+                                    // 的 h 类型缺失,`h.set(...)` 被内建
+                                    // set→insert 遮蔽(m09 洞)。Dot 与 Bina-Dot
+                                    // 两种调用名形态都认。
+                                    Expr::Dot(obj, m) if m.as_str() == "new" => {
+                                        if let Expr::Ident(tname) = obj.as_ref() {
+                                            out.push((store.name.clone(), placeholder_user_type(tname.clone())));
+                                        }
+                                    }
+                                    Expr::Bina(obj, Op::Dot, m) => {
+                                        let is_new = matches!(m.as_ref(), Expr::Ident(id) if id.as_str() == "new");
+                                        if is_new {
+                                            if let Expr::Ident(tname) = obj.as_ref() {
+                                                out.push((store.name.clone(), placeholder_user_type(tname.clone())));
+                                            }
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                         }

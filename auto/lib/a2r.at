@@ -142,6 +142,21 @@ fn ar_err(mut a Ar, msg str) {
     }
 }
 
+// Plan 514 W1(P511-5 伴生):Rust 关键字转义,镜像主 a2r rust_ident
+// (trans/rust.rs RUST_KEYWORDS 表;self/super/crate 不入——它们是路径段,
+// Self 大写作类型名也不转)。soft-ident 词法保留字在表达式位作标识符时,
+// 命中 Rust 关键字者发 r#name(如 codegen.at 的 `var mod`→`r#mod`)。
+fn ar_rust_ident(name str) str {
+    is name {
+        "match" | "type" | "async" | "fn" | "let" | "if" | "else" | "for"
+        | "while" | "loop" | "return" | "break" | "continue" | "struct" | "enum"
+        | "trait" | "impl" | "pub" | "mut" | "ref" | "move"
+        | "mod" | "use" | "where" | "as" | "in" | "static" | "const"
+        | "unsafe" | "extern" | "dyn" -> f"r#${name}"
+        else -> name
+    }
+}
+
 // ── 输出缓冲(D39:List<str> 片段 + 末尾 join) ─────────────────
 
 fn ar_emit(mut a Ar, s str) {
@@ -1004,9 +1019,16 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         cur = ar_array_literal(a, p)
         a.ty = "array"
         }
-        TokenKind.Ident -> {
+        TokenKind.Ident | TokenKind.Tag | TokenKind.Type | TokenKind.Union | TokenKind.Spec | TokenKind.Super | TokenKind.Has | TokenKind.Copy | TokenKind.Move | TokenKind.Take | TokenKind.Hold | TokenKind.Alias | TokenKind.Ext | TokenKind.Impl | TokenKind.Mod | TokenKind.Enum -> {
+        // Plan 514 W1(P511-5 伴生):soft-ident 面(is_soft_ident_kind 全集)
+        // 在原子位作标识符——镜像宿主 parser.rs cur_is_soft_ident(:9157)与
+        // 主 a2r 的 r# 转义;Mod 仅单词形态("mod")走标识符,% 符号形态仍报错。
         var name = p_text(p)
-        cur = name
+        if k == TokenKind.Mod && name != "mod" {
+            ar_err(a, "unsupported expr atom: " + kind_name(k))
+            return ""
+        }
+        cur = ar_rust_ident(name)
         p_next(p)
         a.ty = ar_vty(a, name)
         if a.ty == "str" {
@@ -1436,6 +1458,48 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
     if args.len() > 1 {
         a1 = args.get(1)
     }
+    // Plan 514 W1(P511-5 伴生⑤腿):File.* 模块族 std 直映——镜像主 a2r
+    // maybe_module_method 的 "File" 臂(merge 产物零 a2r_std 依赖;错误
+    // 约定同 VM shim:读失败→空串/写→0|-1/存在→bool)。
+    if recv == "File" {
+        if word == "read_text" || word == "read_to_string" {
+            a.infer = 0
+            a.ty = "str"
+            a.strk = 3
+            a.lenflag = 0
+            var ra = a0
+            if e_is_simple_ident(ra) == 1 {
+                ra = "&" + ra
+            }
+            return "std::fs::read_to_string(" + ra + ").unwrap_or_default()"
+        }
+        if word == "write_text" || word == "write" {
+            a.infer = 0
+            a.ty = "int"
+            a.strk = 0
+            a.lenflag = 0
+            var wa0 = a0
+            var wa1 = a1
+            if e_is_simple_ident(wa0) == 1 {
+                wa0 = "&" + wa0
+            }
+            if e_is_simple_ident(wa1) == 1 {
+                wa1 = "&" + wa1
+            }
+            return "if std::fs::write(" + wa0 + ", " + wa1 + ").is_ok() { 0 } else { -1 }"
+        }
+        if word == "exists" {
+            a.infer = 0
+            a.ty = "bool"
+            a.strk = 0
+            a.lenflag = 0
+            var ea = a0
+            if e_is_simple_ident(ea) == 1 {
+                ea = "&" + ea
+            }
+            return "std::fs::metadata(" + ea + ").is_ok()"
+        }
+    }
     // A1:方法名词法分派 is 化(对齐 Rust 377 处 match name.as_str();
     // 复合条件臂 new&&List/set&&ctx 的 word 不与模式臂重叠,落 else)
     is word {
@@ -1523,6 +1587,10 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
                 v = args.get(args.len() - 1)
             }
             if ar_is_str_ty(elem) && (a.last_strk == 1 || a.last_strk == 2) {
+                v = f"${v}.to_string()"
+            } else if ar_is_str_ty(elem) && a.last_strk == 3 && e_is_simple_ident(v) == 1 {
+                // Plan 514 W1(⑤腿 E0382):owned str 标识 push 后复用会被
+                // move——借用式克隆 .to_string()(镜像主 a2r push(gk.to_string()))
                 v = f"${v}.to_string()"
             }
             return recv + ".push(" + v + ")"
@@ -1766,8 +1834,11 @@ fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm
         if ar_enum_find(a, ty) >= 0 && e_is_simple_ident(text) == 1 {
             return text + ".clone()"
         }
-        // last-use:实参标识在本 fn 后续仍被引用 → 克隆(值语义 move 保持)
-        if e_is_simple_ident(text) == 1 && ar_lu_after(a, text, arg_pos) == true {
+        // Plan 514 W1(⑤腿 E0382 循环携带复用):按值非 Copy 参数位的裸
+        // Ident 实参一律克隆——镜像主 a2r fn_struct_param_indices 规则
+        // (trans/rust.rs :12667 !is_copy_type,不做 last-use 收窄;循环体
+        // 内"条件位在前、实参在后"的复用形态 ar_lu_after 看不见)。
+        if e_is_simple_ident(text) == 1 {
             return text + ".clone()"
         }
         // Plan 447 部分②:枚举变体字面量实参(::路径且非构造调用形)
@@ -2425,7 +2496,7 @@ fn ar_store(mut a Ar, mut p P, kw TokenKind) {
     if kw == TokenKind.Var {
         kw_txt = "let mut"
     }
-    var line = f"${kw_txt} ${name}"
+    var line = f"${kw_txt} ${ar_rust_ident(name)}"
     if anno != "" {
         line = f"${line}: ${anno}"
     }
