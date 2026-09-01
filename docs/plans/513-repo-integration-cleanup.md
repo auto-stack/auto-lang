@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-513
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: repo-integration-cleanup
 author: [zhaopuming]
 created_at: 2026-09-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -171,29 +171,106 @@ archive 文件名 / 代码现状）。处置总表：
 1. **A 组直接归档**：462/416/458/441/405（先回填 B1 状态行）/
    plans-status-audit-2026-08.md/plans-360-369-status-summary.md 七件
    `git mv` + 终态注记。验证：T1 对应段。
+   [✅ 已完成] 七件已 git mv archive/ 并各补终态注记；405 B1 状态行已回填
+   （7f2faaa26/merge 621c8f2e1 实证后写入）；T1 对应段零命中（余 400/407/
+   412/420/455 为步骤 2 目标）。commit: 见 plan-513-dev 分支 W1 提交。
 2. **B 组转账归档**：KNOWN-DEBT 先登记 P513-1/2/3，再 407/412/420/400/455
    五件归档（400/455 头部补 superseded 注记）。验证：T1+T2。
+   [✅ 已完成] KNOWN-DEBT 新增 "### P513" 节登记 P513-1/2/3；五件 git mv
+   archive/（400 superseded by 442、455 superseded by 506/512+autoui-verifier
+   注记落格）；T1 零命中 + T2 grep -c = 3 全绿。
 3. **08-20 审计归档 + 修链**：归档 plans-status-audit-2026-08-20.md；修
    docs/specs/overview.md:103、docs/design/00-intro.md:170、
    docs/handoff-2026-08-22.md:10 三处指向（改指本计划的审计结论段或
    archive 路径）。验证：T6。
+   [✅ 已完成] 08-20 审计 git mv archive/ + 终态注记（接任者=Plan 513）；三处
+   活链接改指 archive 路径并注明接任审计；T6 绿 + 全库 grep 零旧路径残留。
 4. **C 组活件刷新**：242/415/448/401/394 状态段刷新；autos-desktop-program.md
    台账五行回写；442 条件步骤（到期则归档）。验证：T5。
+   [✅ 已完成] 242 表行补 415-B/C/D/E 指针；415 状态行刷新+A 段勾销（D 段
+   原有 ✅ 保留）；448 待合并→已合并 7f4ed335c；401 019/020/021→⏸ 待裁定+
+   025 终态裁定；394 frontmatter parked 注记；autos 台账五行标已归档（+头部
+   "463/464/465 未开工"划线修正）；442 未到期（09-01<09-03）→ 保持现状+
+   尾注。T5 七项 grep 全绿。
 5. **撞号修复**：`bash scripts/new-plan.sh w5-ext-impl-lib-methods` 取 514，
    内容迁移 + 删旧 453-w5 文件。验证：T3。
+   [✅ 已完成·处置变更] 起草后并行会话已取走 514（aavm-idiom2-methods，
+   2026-09-01，其 W2/W3 波次实质吸收 453-w5 Phase E/F 范围；VM 侧
+   ext/方法路径已存在）——改号保留将造成两份活计划重复同一工作（违 G1），
+   故改按 B 组模式处置：453-w5 **superseded by 514** + 未执行即归档
+   （git mv archive/，frontmatter 翻 archived + 终态注记含范围映射）。
+   T3：活目录 `453-` 零命中；`514-aavm-idiom2-methods.md` 存在且覆盖
+   W5 范围。另发现 archive 尚有第三个撞号件
+   `453-autoui-input-margin-...`（本已归档，无需处置）。
+   .next-id 未消耗（517 保持）。
 6. **scratch/ 卫生回收**：按 E 表逐行执行（worktree-cleanup 补丁先核对再
    定 git rm 或转 P513-4）；`.worktrees/host.pid` 删除；auto/ 两探针删除。
    验证：T4 体积段。
+   [✅ 已完成] 未跟踪删除（master 检出物理删）：p502/m1probe+m2probe、
+   p499/、p498/、stella 两脚本+shots/、p507-merge/、p502_merge_upsert.py、
+   auto/ 两探针、host.pid（pid 39019 无进程复证）——scratch/ 132M→6.3M
+   **回收 ~126M**（p502 22 张 PNG 保留）。已跟踪 git rm（worktree）：
+   worktree-cleanup-2026-08-23（三打捞补丁全验证落 master：pub mod fold/
+   backend_abi/config.toml 新值→**无需 P513-4**）+spike-465+code-editor-spike
+   +ime-spike；drift_*+schema_drift_audit.py 保留。执行中新见
+   p509_merge_upsert.py（并行 509 会话资产，不在 E 表，未动）。
 7. **spec-lint 断链修复 + 债务簿收尾**：diagram-components.md 层级修正；
    P499-7 划线核销；KNOWN-DEBT 文末加债务批二期指引行。验证：T4 lint 段。
+   [✅ 已完成] diagram-components.md:4 `../../../`→`../../../../`；P499-7
+   标签划线+"已核销 ✅"（偿还证据 7a8ac1d2e 原文保留）；文末指引三条
+   （桌面线=Plan 515 已立项/语言红族 ~25 条待另立批/442 09-03 到期触发）。
+   `python scripts/spec-lint.py` = **0 errors 0 warnings 0 infos**。
 8. **收尾**：门禁复核（Category A：零 crates diff 断言 + 全部 T 复跑）；
    spec 沉淀归 merge；状态翻 execution_done → review。
+   [✅ 已完成] T1（活目录十前缀零命中 + 14 件归档注记全在）、T2（=3）、
+   T3（453 零命中 + 514 存在覆盖 W5）、T4（132M→6.3M 回收 ~126M +
+   host.pid 无 + spec-lint 0/0/0）、T5（七文件刷新 grep 全中）、T6（三链
+   指向 archive）全绿。零 crates 断言：`git diff 77393d70b..HEAD -- crates/`
+   为空（分叉点度量——执行期间 master 被并行 509 合入推进，host-smithay
+   crates 为其所加非本计划所删；同文件改动与 509 无同行冲突，折叠可自动
+   合并）。worktree 全部已提交；master 并行资产（514/515 在途修改、
+   p509_merge_upsert.py）原样未动。
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**2026-09-01 独立复审**（zcode 手动执行 auto-plan-review 范式——技能符号
+链接悬空不可调起，按 AGENTS.md §3 强制独立复审门禁 + work 技能的 review
+交接规范代跑；全程 verify, don't trust，全部重新取证）
+
+- **门禁复跑**：T1（活目录十前缀 0 命中 + 14 件归档注记 0 缺件）/ T2（=3）/
+  T3（453 活 0、514 在且覆盖 W5）/ T4（scratch 6.3M、host.pid 无、spec-lint
+  **0 errors 0 warnings 0 infos**）/ T5 / T6（三链=3）全绿；worktree 0 未提交
+  变更；零 crates（`git diff 77393d70b..HEAD -- crates/` 为空）。
+- **diff 全量审计**：变更面 = 9 文件修改 + 14 件归档重命名（相似度 R091-R099）
+  + 18 个 scratch 删除，与 A-F 六线一一对应，**零范围外文件**。
+- **引证复核**：14 个被引 commit 哈希逐一 `git cat-file` 在库；416 F5 残留确在
+  KNOWN-DEBT **L98**（与计划引证逐行吻合）；405 B1 回填与 `7f2faaa26` 实际
+  stat（http_server.rs +179 + api.at/db.at 鉴权路径）一致。
+- **E 表逐行复核**：12 行全数执行；auto-down 活链未动；drift 门禁五件保留；
+  三打捞补丁落地证据独立复核（`pub mod fold`/`backend_abi`/config.toml 新值）。
+- **遗漏/偏差登记**：① 步骤 5 处置变更（superseded by 514 而非改号）已登
+  待澄清⑤待用户追认——复审认可其理由（避免与 514 重复立项，违 G1）；②
+  待澄清② schema_drift promote 已落 KNOWN-DEBT 指引④持久化；③ 待澄清③
+  前提部分失效（015-notes 已随 `1f7313e93` 提交；且 515 号已被债务批二期
+  占用，原"补 515 簿记"建议应指向新号 517+）；④ p502 保留 PNG 实为 22 张
+  （计划称 23，审计计数差异，无实质影响）；⑤ archive 另有第三撞号件
+  `453-autoui-input-margin-...`（本已归档，无需处置）。
+- **健康检查**：无遗留调试/临时文件；归档件头部注记格式抽查正常；master
+  并行资产（514/515 在途修改、plan-514/515-dev worktree）原样未动。
+- **spec-impact**：`supersedes_spec_components`/`new_spec_components`/
+  `touched_goals` 均 `[]`（纯簿记批；overview.md 仅审计指针行更新，非组件
+  变更——merge 时 specs 台账无需 upsert 组件，仅做计划归档簿记）。
+
+**结论：复审通过**（Category A 纪律全程零 cargo）。状态翻 `reviewed`，
+待 `/auto-plan:merge` 折叠。
 
 ## 待澄清事项
+
+- **⑤ 撞号修复处置变更（2026-09-01 执行注，待用户追认）**：步骤 5 原文
+  "取 514 号重命名"，但起草后并行会话已取走 514 且其 W2（AA2R W5 方法
+  发射）/W3（lib 方法化 γ4）波次实质吸收了 453-w5 的 Phase E/F；执行改
+  为 superseded by 514 + 归档（理由与映射详见步骤 5 的 ✅ 证据）。若用户
+  仍希望 453-w5 草案以新号（现应为 517+）独立保留，可从 archive 恢复。
 
 - **① 442 观察期**：执行日若未到 2026-09-03，442 保持现状（留尾注）；
   到期后谁触发归档——本计划执行中到期则顺手，否则留 KNOWN-DEBT 指引行。
