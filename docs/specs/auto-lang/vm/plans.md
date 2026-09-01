@@ -103,3 +103,4 @@ plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移
 | 466 | test-speedup | ✅ | plans/ | sccache/cargo t ≤30s/全量门禁收敛 review；账本 P466-1..7 |
 | 474 | vm-json-float-dot-read-fix | ✅ | archive/474-vm-json-float-dot-read-fix.md | CALL_SPEC 数学分发 nanbox 化石根除（一元 i32 位读/二元参数序倒置，plan011④）；三层回归载具 vm_json_float_read_tests；账本 P474-1..7 |
 | 504 | calculator-fit-window-osconfig-stdlib（VM 侧） | ✅ | archive/ | stdlib 静态分发：Math.pow/Str.is_digit Rust shim（native_registry 自动扫描）+ 056/057 文件测试；fit 窗口 renderer/session 双路径（VM 独立窗首帧 shrink 测量 resize） |
+| 510 | vm-pool-over-release | ✅ | archive/510-vm-pool-over-release.md | 字符串池 over-release 注入源清偿：19 处无计数池引用收口 add_string/intern_runtime_str/rc_push_str_idx 咽喉 + over-retain 家族（BUILD_FSTR/pop_tagged/StakeGuard）配平；PoolHealth 快照（underflow/phantom/live_shares）+ soak 双档门禁；P499-6/7 顺产清偿（Log ID 移段/kitchen-sink 关键字名）；账本 P510-1..6 |
