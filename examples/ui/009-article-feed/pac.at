@@ -2,6 +2,7 @@ name: "article-feed"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+title: "Article Feed"
 theme: "dark"
 accent: "indigo"
 

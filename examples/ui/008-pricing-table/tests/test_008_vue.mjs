@@ -46,47 +46,33 @@ async function main() {
   console.log(`[*] Navigating to ${url}...`);
   await page.goto(url, { waitUntil: 'networkidle' });
 
+  let failures = 0;
+  const check = (name, ok) => {
+    if (ok) { console.log(`[+] OK: ${name}`); }
+    else { failures++; console.log(`[-] FAIL: ${name}`); }
+  };
+
   // 1. Initial Dark
   console.log('[*] Capturing 008_vue_dark_initial...');
   await page.screenshot({ path: path.join(outDir, '008_vue_dark_initial.png'), fullPage: true });
 
-  // 2. Open Settings
-  console.log('[*] Clicking Settings button...');
+  // Plan 506: in-app title bar / Settings removed (ExampleHeader retired —
+  // title/theme/accent moved to pac.at + os-config, host chrome carries them).
   const settingsBtn = await page.$('button:has-text("Settings")');
-  if (settingsBtn) {
-    await settingsBtn.click();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: path.join(outDir, '008_vue_settings_open.png'), fullPage: true });
+  check('no in-app Settings header (Plan 506)', settingsBtn === null);
 
-    // 3. Coral Accent
-    console.log('[*] Clicking Coral accent button...');
-    const accentBtns = await page.$$('.z-50 button[class*="rounded-full"], button.rounded-full');
-    if (accentBtns.length >= 2) {
-      await accentBtns[1].click();
-      await page.waitForTimeout(500);
-      await page.screenshot({ path: path.join(outDir, '008_vue_coral_accent.png'), fullPage: true });
-    }
+  // Content sanity: pricing cards still render.
+  const plansHeading = await page.$('text=Pricing Plans');
+  check('content marker present: Pricing Plans', plansHeading !== null);
+  const buyBtn = await page.$('button:has-text("Buy Now")');
+  check('content marker present: Buy Now', buyBtn !== null);
 
-    // 4. Light Mode
-    console.log('[*] Clicking Light mode button...');
-    const lightBtn = await page.$('button:has-text("Light")');
-    if (lightBtn) {
-      await lightBtn.click();
-      await page.waitForTimeout(500);
-      await page.screenshot({ path: path.join(outDir, '008_vue_light_mode.png'), fullPage: true });
-    }
-
-    // 5. Dark Mode
-    console.log('[*] Clicking Dark mode button...');
-    const darkBtn = await page.$('button:has-text("Dark")');
-    if (darkBtn) {
-      await darkBtn.click();
-      await page.waitForTimeout(500);
-      await page.screenshot({ path: path.join(outDir, '008_vue_back_to_dark.png'), fullPage: true });
-    }
+  if (failures > 0) {
+    console.error(`[-] ${failures} assertion(s) failed`);
+    await browser.close();
+    process.exit(1);
   }
-
-  console.log('[+] All Vue screenshots captured successfully!');
+  console.log('[+] All Vue assertions passed!');
   await browser.close();
 }
 

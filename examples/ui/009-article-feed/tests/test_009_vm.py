@@ -93,62 +93,29 @@ def main():
         print("[+] VM Ready! Capturing Initial Dark screenshot...")
         client.screenshot("009_vm_dark_initial")
 
-        # 1. Find Settings button
+        # Plan 506: in-app title bar / Settings removed (ExampleHeader retired —
+        # title/theme/accent moved to pac.at + os-config, host chrome carries them).
+        failures = []
         snap = client.snapshot()
-        print("[*] Snapshot:")
-        print(snap)
-        settings_id = find_id_by_text(snap, "⚙ Settings")
-        print(f"[*] Settings button ID: {settings_id}")
-        if settings_id:
-            client.press(settings_id)
-            time.sleep(0.5)
-            print("[+] Settings opened. Capturing Settings Open screenshot...")
-            client.screenshot("009_vm_settings_open")
+        if "Settings" in snap or "ExampleHeader" in snap:
+            failures.append("in-app header/settings still present in snapshot")
+            print("[-] FAIL: snapshot still contains Settings/ExampleHeader")
+        else:
+            print("[+] OK: no in-app Settings header (Plan 506)")
 
-            snap2 = client.snapshot()
-            print("[*] Settings open snapshot:")
-            print(snap2)
+        # Content sanity: article cards still render (header removal must not
+        # have gutted the page).
+        for marker in ("Blog Posts", "Read more"):
+            if marker not in snap:
+                failures.append(f"content marker missing: {marker}")
+                print(f"[-] FAIL: content marker missing: {marker}")
+            else:
+                print(f"[+] OK: content marker present: {marker}")
 
-            # 2. Click Coral Accent (2nd accent button)
-            # Find the ghost button lines in snapshot
-            coral_id = find_id_by_text(snap2, "coral")
-            if not coral_id:
-                # Find all buttons in snap2
-                button_ids = []
-                for line in snap2.splitlines():
-                    if "button #" in line:
-                        for p in line.split():
-                            if p.startswith("#"):
-                                button_ids.append(p.rstrip(":,{"))
-                print(f"[*] Found buttons: {button_ids}")
-                # Button list typically: [Settings, Light, Dark, indigo, coral, ocean, sage, amber, ReadMore1, ReadMore2, ReadMore3]
-                # If 11 buttons, button_ids[4] is coral!
-                if len(button_ids) >= 5:
-                    coral_id = button_ids[4] # coral
-            if coral_id:
-                print(f"[*] Clicking coral accent ({coral_id})...")
-                client.press(coral_id)
-                time.sleep(0.5)
-                client.screenshot("009_vm_coral_accent")
-
-            # 3. Click Light Mode button
-            light_id = find_id_by_text(snap2, "Light")
-            if light_id:
-                print(f"[*] Clicking Light mode ({light_id})...")
-                client.press(light_id)
-                time.sleep(0.5)
-                client.screenshot("009_vm_light_mode")
-
-            # 4. Click Dark Mode button
-            snap3 = client.snapshot()
-            dark_id = find_id_by_text(snap3, "Dark")
-            if dark_id:
-                print(f"[*] Clicking Dark mode ({dark_id})...")
-                client.press(dark_id)
-                time.sleep(0.5)
-                client.screenshot("009_vm_back_to_dark")
-
-        print("[+] All VM screenshots captured successfully!")
+        if failures:
+            print(f"[-] {len(failures)} assertion(s) failed: {failures}", file=sys.stderr)
+            sys.exit(1)
+        print("[+] All VM assertions passed!")
 
     finally:
         print("[*] Terminating VM process...")

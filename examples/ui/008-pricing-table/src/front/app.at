@@ -1,8 +1,6 @@
-use common.header: ExampleHeader
-
 // app.at — Pricing Table.
-// Features top title bar with Settings dropdown panel (Theme: Light/Dark + Accent: 5 colors).
-// Reuses ExampleHeader from common package.
+// Plan 506: in-app title bar / Settings panel removed (ExampleHeader retired)
+// — title/theme/accent live in pac.at + os-config, host chrome carries them.
 // Default theme: Dark mode.
 widget App {
     msg {
@@ -13,7 +11,7 @@ widget App {
 
     model {
         var dark_mode bool = true
-        var accent_color str = "indigo"
+        var accent_color str = "indigo"   // declared for os-config/env seeding (Plan 504 idiom)
 
         // Single Developer
         var plan1_name str = "Single Developer"
@@ -46,9 +44,6 @@ widget App {
 
     view {
         col {
-            // Reusable Top Title Bar & Settings from common package
-            ExampleHeader(icon: "💳", title: "Pricing Table", badge: "008")
-
             // ── Main Pricing Content ──
             col {
                 // Section Header: Title uses Theme Accent Color

@@ -101,8 +101,17 @@ def main():
         print("[+] VM Ready! Capturing Initial Dark screenshot...")
         client.screenshot("010_vm_dark_initial")
 
-        # 1. Inspect tree & inputs
+        # Plan 506: in-app title bar / Settings removed (ExampleHeader retired —
+        # title/theme/accent moved to pac.at + os-config, host chrome carries them).
+        failures = []
         snap = client.snapshot()
+        if "Settings" in snap or "ExampleHeader" in snap:
+            failures.append("in-app header/settings still present in snapshot")
+            print("[-] FAIL: snapshot still contains Settings/ExampleHeader")
+        else:
+            print("[+] OK: no in-app Settings header (Plan 506)")
+
+        # 1. Inspect tree & inputs
         print("[*] Initial Snapshot:\n" + snap)
 
         # 2. Type into Name, Email, Message
@@ -126,6 +135,9 @@ def main():
             time.sleep(0.3)
             print("[+] Captured typed screenshot...")
             client.screenshot("010_vm_typed")
+        else:
+            failures.append(f"expected 3 inputs, found {len(input_ids)}")
+            print(f"[-] FAIL: expected 3 inputs, found {len(input_ids)}")
 
         # 3. Click "Send Message" button
         snap_typed = client.snapshot()
@@ -137,56 +149,16 @@ def main():
             print("[+] Captured submitted screenshot...")
             client.screenshot("010_vm_submitted")
 
-        # 4. Find Settings button
-        snap_sub = client.snapshot()
-        settings_id = find_id_by_text(snap_sub, "⚙ Settings")
-        print(f"[*] Settings button ID: {settings_id}")
-        if settings_id:
-            client.press(settings_id)
-            time.sleep(0.5)
-            print("[+] Settings opened. Capturing Settings Open screenshot...")
-            client.screenshot("010_vm_settings_open")
-
-            snap2 = client.snapshot()
-            print("[*] Settings open snapshot:\n" + snap2)
-
-            # 5. Click Coral Accent
-            coral_id = find_id_by_text(snap2, "coral")
-            if not coral_id:
-                button_ids = []
-                for line in snap2.splitlines():
-                    if "button #" in line:
-                        for p in line.split():
-                            if p.startswith("#"):
-                                button_ids.append(p.rstrip(":,{"))
-                # Settings, Light, Dark, indigo, coral (idx 4)
-                if len(button_ids) >= 5:
-                    coral_id = button_ids[4]
-            if coral_id:
-                print(f"[*] Clicking coral accent ({coral_id})...")
-                res = client.press(coral_id)
-                print(f"[+] Press coral result: {res}")
-                time.sleep(0.5)
-                snap_coral = client.snapshot()
-                print(f"[*] Snapshot after coral press:\n{snap_coral}")
-                client.screenshot("010_vm_coral_accent")
-
-            # 6. Click Light Mode button
-            light_id = find_id_by_text(snap2, "Light")
-            if light_id:
-                print(f"[*] Clicking Light mode ({light_id})...")
-                client.press(light_id)
-                time.sleep(0.5)
-                client.screenshot("010_vm_light_mode")
-
-            # 7. Click Dark Mode button
-            snap3 = client.snapshot()
-            dark_id = find_id_by_text(snap3, "Dark")
-            if dark_id:
-                print(f"[*] Clicking Dark mode ({dark_id})...")
-                client.press(dark_id)
-                time.sleep(0.5)
-                client.screenshot("010_vm_back_to_dark")
+            # Submitted confirmation state must flip.
+            snap_sub = client.snapshot()
+            if "Message sent" in snap_sub or "Thank you" in snap_sub:
+                print("[+] OK: submitted confirmation visible")
+            else:
+                failures.append("submitted confirmation not visible after Send Message")
+                print("[-] FAIL: submitted confirmation not visible")
+        else:
+            failures.append("Send Message button not found")
+            print("[-] FAIL: Send Message button not found")
 
         # Copy baseline screenshots to local out_dir
         tests_screenshots_dir = os.path.join(app_dir, "tests/screenshots")
@@ -195,7 +167,10 @@ def main():
                 if f.startswith("010_vm_") and f.endswith(".png"):
                     shutil.copy2(os.path.join(tests_screenshots_dir, f), os.path.join(out_dir, f))
 
-        print("[+] All VM screenshots captured successfully!")
+        if failures:
+            print(f"[-] {len(failures)} assertion(s) failed: {failures}", file=sys.stderr)
+            sys.exit(1)
+        print("[+] All VM assertions passed!")
 
     finally:
         print("[*] Terminating VM process...")
