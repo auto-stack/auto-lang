@@ -1,4 +1,5 @@
 # Plan 416: LSP/VSCode Phase 5-6 收尾（243 TS 迁移 + semantic tokens + CI）
+> 📦 **终态（2026-09-01，Plan 513 A 组处置）**：Phase 5-A..6-C 全交付（merge `7727c6571`/`6cf5d15e6`），唯一残留 F5 已在 KNOWN-DEBT 登记——已交付漏归档，随整合清理批补归。
 
 > **状态**: 📋 已立项待实施（2026-08-22,源自审计 §5.2 B7 拆粒度;暂缓原因"需 VSCode 侧联调"仍成立——本计划明确联调环节的最低配置）
 > **来源**: Plan 243 Phase 1-4 已 ✅(references/rename/code_action/signature_help/inlay_hint 真实实现,71acecc4);本计划只做 Phase 5/6 剩余
