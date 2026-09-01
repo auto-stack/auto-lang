@@ -2,6 +2,7 @@ name: "hero-section"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+title: "Hero Section"
 // Plan 458: 启动默认主题与主题主色(优先级:CLI --theme/--accent > 这里 > 内置 dark/indigo)。
 // 应用内右上角 Theme Settings 面板可在运行中覆盖。
 theme: "dark"

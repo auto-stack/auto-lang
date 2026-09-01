@@ -2,3 +2,6 @@ name: "profile-card"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+title: "Profile Card"
+# Plan 512: 窗口随内容自然尺寸收缩（fit 线，批二）。
+window: "fit"

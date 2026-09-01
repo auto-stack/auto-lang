@@ -9,7 +9,7 @@ widget App {
     }
 
     view {
-        center {
+        col {
             col {
                 h2 "Sign In" {
                     style: "text-3xl font-extrabold text-gray-900"
@@ -67,8 +67,13 @@ widget App {
                     style: "justify-center items-center mt-4"
                 }
 
-                style: "bg-white rounded-xl shadow-lg border border-gray-200 p-8 max-w-md mx-auto w-full"
+                style: "bg-white rounded-xl shadow-lg border border-gray-200 p-8 w-112"
             }
+            // Plan 512: fit 迁移——center 居中外壳退役，根 col Shrink 包裹；
+            // 卡片固定宽 w-112=448px（原 max-w-md+w-full 满窗语义在 Shrink
+            // 根下会塌缩；w-[28rem] rem 任意值 iced 端不支持，用 Tailwind
+            // 刻度 112×4px）。
+            style: "p-6 items-center"
         }
     }
 

@@ -431,8 +431,9 @@ mod tests {
     #[test]
     fn scan_inventory_matches_source_shape() {
         let scan = scan_example("005-login");
-        // 标签全集（h2 归一 text；布局容器 center/col/row + 构造 if 同列）。
-        for tag in ["text", "button", "input", "a", "center", "col", "row", "if"] {
+        // 标签全集（h2 归一 text；布局容器 col/row + 构造 if 同列）。
+        // Plan 512 S6：fit 迁移拆掉 center 居中外壳（根 col Shrink 包裹）。
+        for tag in ["text", "button", "input", "a", "col", "row", "if"] {
             assert!(scan.tags.contains(tag), "005 应含 {tag}: {:?}", scan.tags);
         }
         // 事件：button.onclick + input.oninput（零参 msg 路径）。
@@ -440,8 +441,10 @@ mod tests {
         assert!(scan.tag_events.contains("input.oninput"));
         assert!(scan.param_handlers.is_empty(), "005 无带参 handler");
         // 样式类抽样（仅来自 style prop——位置参数文本不入样式清单）。
+        // Plan 512 S6：卡片宽 max-w-md+w-full → 固定 w-112（Shrink 根
+        // 下 w-full 塌缩；rem 任意值 iced 端不支持，用 Tailwind 刻度）。
         assert!(scan.style_tokens.contains("w-full"));
-        assert!(scan.style_tokens.contains("max-w-md"));
+        assert!(scan.style_tokens.contains("w-112"));
         assert!(
             !scan.style_tokens.contains("Sign") && !scan.style_tokens.contains("In"),
             "非 style prop 的字符串不入样式清单: {:?}",

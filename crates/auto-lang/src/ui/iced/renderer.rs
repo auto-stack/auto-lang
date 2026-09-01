@@ -8825,6 +8825,37 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
 /// 保留，下个触发点重新武装；常态 1-2 帧内命中）。
 const FIT_MEASURE_MAX_RETRIES: u32 = 10;
 
+/// Plan 512：fit 动态重测滞回阈值（px）——|Δw|、|Δh| 均 ≤ 此值忽略，
+/// 防输入态抖动触发 resize 循环（待澄清⑤：T1 定稿初值 8，实证微调再改）。
+const FIT_REMEASURE_THRESHOLD: f32 = 8.0;
+
+/// Plan 512：fit 重测尺寸决策（纯函数，T1 单测靶）。
+///
+/// - 用户手动 resize 锁定的窗口 → `None`（v1 一次性锁定，待澄清③）；
+/// - 双轴差值均 ≤ 滞回阈值 → `None`；
+/// - 否则 `Some(测量值 clamp ≥200)`——增大与缩小双向跟随（如 011
+///   Scientific ↔ Basic 切换）。
+///
+/// 帧合并不由本函数承担：单程闸 `fit_measure_in_flight` + ServiceTick
+/// 节拍保证测量总在帧边界后对最新布局树取末值。
+fn decide_fit_resize(
+    current: (f32, f32),
+    measured: (f32, f32),
+    user_locked: bool,
+) -> Option<iced::Size<f32>> {
+    if user_locked {
+        return None;
+    }
+    let w = measured.0.max(200.0);
+    let h = measured.1.max(200.0);
+    if (w - current.0).abs() <= FIT_REMEASURE_THRESHOLD
+        && (h - current.1).abs() <= FIT_REMEASURE_THRESHOLD
+    {
+        return None;
+    }
+    Some(iced::Size::new(w, h))
+}
+
 /// Plan 504：发起一次 fit 内容测量。LayoutCollector 操作布全窗口树
 /// （daemon 下 Action::Widget 遍历所有界面），回执 `__fit_measured`
 /// 路由到 `win` 所在 DM::Window 臂。
@@ -8875,7 +8906,10 @@ fn apply_fit_measured(
         if let Some(os_win) = os_win {
             let entry = &state.windows[&os_win];
             entry.fit_pending.set(false);
+            entry.fit_dirty.set(false);
             *entry.window_size.borrow_mut() = content;
+            // Plan 512：程序化 resize 记录应用值（OS 回波豁免用）。
+            *entry.fit_last_applied.borrow_mut() = Some(content);
             task = iced::window::resize(os_win, content);
             done = true;
         } else if let Some(host) = state.host.as_ref() {
@@ -8902,8 +8936,65 @@ fn apply_fit_measured(
                     r.y = r.y.max(usable.y).min(usable.y + usable.height - h);
                 }
                 v.fit_pending.set(false);
+                v.fit_dirty.set(false);
                 *v.window_size.borrow_mut() = content;
                 done = true;
+            }
+        }
+        // Plan 512：动态重测臂——首测已完成的 fit 窗按滞回决策双向跟随
+        // 内容尺寸（用户手动 resize 锁定的窗由 decide_fit_resize 判 Skip）。
+        let measured_wh = (*w, *h);
+        if !done {
+            let os_re = state
+                .windows
+                .iter()
+                .find(|(_, e)| {
+                    e.app == app_id && e.fit_enabled.get() && !e.fit_pending.get() && e.fit_dirty.get()
+                })
+                .map(|(id, _)| *id);
+            if let Some(os_win) = os_re {
+                let entry = &state.windows[&os_win];
+                entry.fit_dirty.set(false);
+                let cur = *entry.window_size.borrow();
+                if let Some(size) = decide_fit_resize(
+                    (cur.width, cur.height),
+                    measured_wh,
+                    entry.fit_user_locked.get(),
+                ) {
+                    *entry.window_size.borrow_mut() = size;
+                    *entry.fit_last_applied.borrow_mut() = Some(size);
+                    task = iced::window::resize(os_win, size);
+                    done = true;
+                }
+            } else if let Some(host) = state.host.as_ref() {
+                if let Some((_, v)) = host.wm.wins.iter().find(|(_, v)| {
+                    v.app == app_id && v.fit_enabled.get() && !v.fit_pending.get() && v.fit_dirty.get()
+                }) {
+                    v.fit_dirty.set(false);
+                    let cur = *v.window_size.borrow();
+                    if let Some(content2) = decide_fit_resize(
+                        (cur.width, cur.height),
+                        measured_wh,
+                        v.fit_user_locked.get(),
+                    ) {
+                        use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+                        let usable = crate::ui::layout::usable_rect(
+                            state.host_viewport(),
+                            state.desktop.dock_edges,
+                        );
+                        let w = (content2.width + 2.0 * BORDER).min(usable.width);
+                        let h = (content2.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
+                        {
+                            let mut r = v.rect.borrow_mut();
+                            r.width = w;
+                            r.height = h;
+                            r.x = r.x.max(usable.x).min(usable.x + usable.width - w);
+                            r.y = r.y.max(usable.y).min(usable.y + usable.height - h);
+                        }
+                        *v.window_size.borrow_mut() = content2;
+                        done = true;
+                    }
+                }
             }
         }
         if done {
@@ -9933,9 +10024,11 @@ fn compare_pngs(
                     // Plan 504：pac `window: "fit"` —— 标记待测量；主触发是
                     // 首个 __window_resized（初始 Resized 到达即界面已建，
                     // 测量锚点必在树中），见 DM::Window 臂。
+                    // Plan 512：同步置 fit_enabled 持久标记（动态重测识别用）。
                     if startup_window_fit() {
                         if let Some(entry) = session.windows.get_mut(&win_id) {
                             entry.fit_pending.set(true);
+                            entry.fit_enabled.set(true);
                         }
                     }
                     open_tasks.push(open_task);
@@ -11974,7 +12067,20 @@ fn compare_pngs(
                 }
                 update_inner(state, app_id, m)
             })) {
-                Ok(task) => task.map(move |m| DM::App(app_id, m)),
+                Ok(task) => {
+                    // Plan 512：fit 动态重测——app view 重建（update 置位
+                    // view_dirty）落到其 fit 窗条目打标；ServiceTick 节拍
+                    // 消费发起测量，测量时对最新布局树取末值（帧合并）。
+                    if state
+                        .apps
+                        .get(&app_id)
+                        .map(|a| *a.state.view_dirty.borrow())
+                        .unwrap_or(false)
+                    {
+                        state.mark_fit_dirty(app_id);
+                    }
+                    task.map(move |m| DM::App(app_id, m))
+                }
                 Err(payload) => {
                     eprintln!(
                         "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
@@ -12045,10 +12151,28 @@ fn compare_pngs(
                         // Plan 504：fit 虚拟窗触发——节拍上若有待测量窗且
                         // 单程闸空闲，发起内容测量（宿主树恒在；vwin 首帧
                         // 渲染后锚点即在，回执 __fit_measured 收缩矩形）。
-                        if state.has_fit_pending()
+                        // Plan 512：动态重测并入同闸——fit_dirty（view 重建
+                        // 打标）同样驱动一次测量，回执按滞回决策跟随。
+                        if (state.has_fit_pending() || state.has_fit_remeasure_pending())
                             && !state.desktop.fit_measure_in_flight.get()
                         {
-                            if let Some(hw) = state.host.as_ref().map(|h| h.window) {
+                            // Plan 512：standalone 无宿主窗——测量目标取待测
+                            // fit 窗自身（锚点在该窗树中；desktop 恒为宿主窗，
+                            // vwin 锚点在宿主树）。
+                            let fit_target = state
+                                .host
+                                .as_ref()
+                                .map(|h| h.window)
+                                .or_else(|| {
+                                    state
+                                        .windows
+                                        .iter()
+                                        .find(|(_, e)| {
+                                            e.fit_pending.get() || e.fit_dirty.get()
+                                        })
+                                        .map(|(id, _)| *id)
+                                });
+                            if let Some(hw) = fit_target {
                                 state.desktop.fit_measure_in_flight.set(true);
                                 state.desktop.fit_measure_retries.set(0);
                                 return fit_measure_task(hw);
@@ -12563,8 +12687,9 @@ fn compare_pngs(
                 // Plan 504：fit 主触发——__window_resized（含开窗后的初始
                 // Resized 事件）到达即该窗界面已建，测量锚点必在树中。
                 // 不消费事件：测量任务与常管 resize 处理并联下发。
+                // Plan 512：动态重测（fit_dirty）同闸并入。
                 let mut fit_task = if m.event == "__window_resized"
-                    && state.has_fit_pending()
+                    && (state.has_fit_pending() || state.has_fit_remeasure_pending())
                     && !state.desktop.fit_measure_in_flight.replace(true)
                 {
                     state.desktop.fit_measure_retries.set(0);
@@ -12572,6 +12697,32 @@ fn compare_pngs(
                 } else {
                     None
                 };
+                // Plan 512：fit 用户锁定（独立模式）——程序化 resize 的 OS
+                // 回波按 fit_last_applied 豁免（±2px 容 DPI 取整）；其余
+                // 到达尺寸视为用户手动 resize，一次性锁定不再跟随。
+                if !state.is_desktop() && m.event == "__window_resized" {
+                    if let Some(entry) = state.windows.get(&win) {
+                        if entry.fit_enabled.get() && !entry.fit_pending.get() {
+                            if let Some((ws, hs)) =
+                                m.input_value.as_deref().and_then(|v| v.split_once('x'))
+                            {
+                                let w: f32 = ws.parse().unwrap_or(0.0);
+                                let h: f32 = hs.parse().unwrap_or(0.0);
+                                let mut last = entry.fit_last_applied.borrow_mut();
+                                if let Some(applied) = *last {
+                                    *last = None;
+                                    if (w - applied.width).abs() > 2.0
+                                        || (h - applied.height).abs() > 2.0
+                                    {
+                                        entry.fit_user_locked.set(true);
+                                    }
+                                } else {
+                                    entry.fit_user_locked.set(true);
+                                }
+                            }
+                        }
+                    }
+                }
                 // Plan 462 desktop：宿主窗 resize → 全体虚拟窗口 window_size
                 // 同步（独立模式走原 per-window 拆借路径，行为不变）。
                 if state.is_desktop() && m.event == "__window_resized" {
@@ -13078,8 +13229,15 @@ fn compare_pngs(
                 }
                 // Plan 462：desktop 模式帧泵（空闲时也要有机会消费 view 侧
                 // 投递的 MCP 截图请求；AUTOUI_MCP_DISABLE=1 一并关闭）。
-                if state.is_desktop()
-                    && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
+                // Plan 512：standalone fit 窗动态重测复用同节拍——脏标只在
+                // view 重建后打（dispatch_app），订阅在下轮 diff 即拉起；
+                // 测量回执消费脏标后订阅自动回落（稳态零成本）。MCP 开关
+                // 不管控此路（fit 是窗口语义而非验收通道）。
+                let fit_remeasure_tick =
+                    !state.is_desktop() && state.has_fit_remeasure_pending();
+                if fit_remeasure_tick
+                    || (state.is_desktop()
+                        && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1"))
                 {
                     subs.push(crate::ui::session::desktop_service_tick(400));
                 }
@@ -13511,7 +13669,9 @@ fn dynamic_view(
     // Stack 设宽高)。显式 Fill×Fill:主内容恢复整窗排版,toast 层九宫格
     // 锚点以整窗为参照。
     // Plan 504：fit 待测量期间整链 Shrink —— Fill 会把测量钉回窗口尺寸。
-    let fit_pending = state.fit_pending.get();
+    // Plan 512：fit 窗常驻 Shrink + 测量锚点（fit_enabled）——动态重测
+    // 才能量到内容自然尺寸（首测后回 Fill 会把重测钉回窗口尺寸）。
+    let fit_pending = state.fit_pending.get() || state.fit_enabled.get();
     let stack = iced::widget::Stack::new()
         .push(rendered)
         .push(toast_el);
@@ -13651,19 +13811,31 @@ fn dynamic_view(
 /// Plan 504：App 窗口根容器。常态 Fill×Fill；`fit_pending`（pac.at
 /// `window: "fit"`，见 [`startup_window_fit`] / `LaunchSpec.fit`）期间
 /// Shrink×Shrink 并挂 `aura_fit_root_<appid>` Id —— LayoutCollector 首帧
-/// 经此锚点量出内容自然尺寸，`__fit_measured` 路由据此收缩窗口后清除标记
-/// （后续帧回本函数 Fill 臂）。
+/// 经此锚点量出内容自然尺寸，`__fit_measured` 路由据此收缩窗口。
+/// Plan 512：fit 窗**常驻** Shrink + 锚点（fit_pending || fit_enabled）——
+/// 首测后回 Fill 会把动态重测钉回窗口尺寸；用户锁定放大窗时内容左上角
+/// 对齐、余量露窗口底色（v1 语义，待澄清③重解锁为增强候选）。
+/// Plan 512 S3 实证修正：锚点外套一层 vertical scrollable —— 活树布局受
+/// 当前窗口钳制（内容自然高超出窗口即被裁到窗口高，增长方向永远量不到）；
+/// scrollable 内部以无限高约束排版内容，锚点（挂在内容侧）由此量到真实
+/// 自然尺寸。副作用：内容超出窗口的瞬态（重测 lag / 用户锁定缩小窗）出
+/// 滚动条而非裁剪，语义可接受。宽度方向受滚动视口钳制（v1 仅高度方向
+/// 可增长量测，见 plan 512 待澄清）。
 fn fit_aware_root(
     content: iced::Element<'static, IcedMessage>,
     app_id: crate::ui::session::AppId,
-    fit_pending: bool,
+    fit_active: bool,
 ) -> iced::Element<'static, IcedMessage> {
-    if fit_pending {
-        container(content)
-            .width(iced::Length::Shrink)
-            .height(iced::Length::Shrink)
-            .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0)))
-            .into()
+    if fit_active {
+        iced::widget::scrollable(
+            container(content)
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Shrink)
+                .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
+        )
+        .width(iced::Length::Shrink)
+        .height(iced::Length::Shrink)
+        .into()
     } else {
         container(content)
             .width(iced::Length::Fill)
@@ -18185,6 +18357,110 @@ mod tests {
         assert!(ds.has_fit_pending(), "锚点缺席保留 fit_pending");
         assert_eq!(ds.desktop.fit_measure_retries.get(), 1);
         assert!(ds.desktop.fit_measure_in_flight.get(), "自重试重新置在飞");
+    }
+
+    /// Plan 512 T1：`decide_fit_resize` 纯逻辑——锁定/滞回/双向跟随/clamp。
+    #[test]
+    fn decide_fit_resize_threshold_lock_clamp() {
+        // 用户锁定：任意差值都跳过。
+        assert!(decide_fit_resize((384.0, 392.0), (384.0, 600.0), true).is_none());
+        // 滞回：双轴差均 ≤8px 跳过（含仅单轴小差）。
+        assert!(decide_fit_resize((384.0, 392.0), (392.0, 400.0), false).is_none());
+        assert!(decide_fit_resize((384.0, 392.0), (391.9, 392.0), false).is_none());
+        // 增大跟随：单轴超阈即触发。
+        assert_eq!(
+            decide_fit_resize((384.0, 392.0), (384.0, 600.0), false),
+            Some(iced::Size::new(384.0, 600.0))
+        );
+        // 缩小跟随：Scientific → Basic 回缩。
+        assert_eq!(
+            decide_fit_resize((384.0, 600.0), (384.0, 392.0), false),
+            Some(iced::Size::new(384.0, 392.0))
+        );
+        // clamp：测量值小于 200 下限。
+        assert_eq!(
+            decide_fit_resize((384.0, 392.0), (50.0, 100.0), false),
+            Some(iced::Size::new(200.0, 200.0))
+        );
+    }
+
+    /// Plan 512 T2：动态重测臂（desktop）——首测已完成的 fit 窗内容增高
+    /// 超阈 → 虚拟窗矩形跟随（chrome 外沿同 504 公式），fit_dirty 消费清除。
+    #[test]
+    fn apply_fit_measured_remeasure_follows_content_growth() {
+        let mut ds = t3_session_with_shell();
+        let wid = t3_add_win(&mut ds, "FitRe");
+        let app = ds.host.as_ref().unwrap().wm.wins[&wid].app;
+        {
+            // 模拟首测已完成态：fit_pending=false、内容尺寸已回填。
+            let v = ds.host.as_mut().unwrap().wm.wins.get_mut(&wid).unwrap();
+            v.fit_enabled.set(true);
+            *v.window_size.borrow_mut() = iced::Size::new(384.0, 392.0);
+            v.fit_dirty.set(true);
+        }
+        let hw = ds.host.as_ref().unwrap().window;
+        let payload = format!("{{\"aura_fit_root_{}\": [0.0, 0.0, 384.0, 600.0]}}", app.0);
+        let _ = apply_fit_measured(&mut ds, hw, Some(&payload));
+        let host = ds.host.as_ref().unwrap();
+        let v = &host.wm.wins[&wid];
+        use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+        assert_eq!(v.rect.borrow().height, 600.0 + TITLEBAR_H + 2.0 * BORDER, "矩形跟随内容增高");
+        assert_eq!(*v.window_size.borrow(), iced::Size::new(384.0, 600.0));
+        assert!(!v.fit_dirty.get(), "回执消费 fit_dirty");
+    }
+
+    /// Plan 512 T2：用户手动 resize 锁定的 fit 窗——重测跳过（矩形不变），
+    /// fit_dirty 仍被消费（不积压）。
+    #[test]
+    fn apply_fit_measured_remeasure_skips_when_user_locked() {
+        let mut ds = t3_session_with_shell();
+        let wid = t3_add_win(&mut ds, "FitLock");
+        let app = ds.host.as_ref().unwrap().wm.wins[&wid].app;
+        let (orig_w, orig_h);
+        {
+            let v = ds.host.as_mut().unwrap().wm.wins.get_mut(&wid).unwrap();
+            v.fit_enabled.set(true);
+            v.fit_user_locked.set(true);
+            *v.window_size.borrow_mut() = iced::Size::new(384.0, 392.0);
+            v.fit_dirty.set(true);
+            let r = v.rect.borrow();
+            orig_w = r.width;
+            orig_h = r.height;
+        }
+        let hw = ds.host.as_ref().unwrap().window;
+        let payload = format!("{{\"aura_fit_root_{}\": [0.0, 0.0, 384.0, 600.0]}}", app.0);
+        let _ = apply_fit_measured(&mut ds, hw, Some(&payload));
+        let host = ds.host.as_ref().unwrap();
+        let v = &host.wm.wins[&wid];
+        let r = v.rect.borrow();
+        assert_eq!((r.width, r.height), (orig_w, orig_h), "锁定窗矩形不变");
+        assert!(!v.fit_dirty.get(), "锁定窗 fit_dirty 仍被消费");
+    }
+
+    /// Plan 512 T2：动态重测臂（独立模式）——OS 窗 window_size 跟随并记录
+    /// fit_last_applied（OS 回波豁免凭据）。
+    #[test]
+    fn apply_fit_measured_remeasure_standalone_records_applied() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        let comp = crate::build_dynamic_component(T3_WIN_AT, None).unwrap();
+        let app = ds.allocate_app(comp);
+        let win = iced::window::Id::unique();
+        ds.register_window(win, app, iced::Size::new(384.0, 392.0));
+        {
+            let entry = ds.windows.get_mut(&win).unwrap();
+            entry.fit_enabled.set(true);
+            entry.fit_dirty.set(true);
+        }
+        let payload = format!("{{\"aura_fit_root_{}\": [0.0, 0.0, 384.0, 600.0]}}", app.0);
+        let _ = apply_fit_measured(&mut ds, win, Some(&payload));
+        let entry = &ds.windows[&win];
+        assert_eq!(*entry.window_size.borrow(), iced::Size::new(384.0, 600.0));
+        assert_eq!(
+            *entry.fit_last_applied.borrow(),
+            Some(iced::Size::new(384.0, 600.0)),
+            "程序化 resize 记录应用值"
+        );
+        assert!(!entry.fit_dirty.get());
     }
 
     /// PLAN-493 T4: mention 段 kind 流通——parse_span_kind 认 "mention"，

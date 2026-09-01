@@ -3,5 +3,6 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 icon: "notebook"
+title: "Notes"
 api: "rust"
 npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/editor", "@autodown/core:link:D:/autostack/auto-down/autodown/packages/core"]
