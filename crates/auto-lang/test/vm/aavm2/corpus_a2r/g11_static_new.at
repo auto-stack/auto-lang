@@ -1,0 +1,11 @@
+// Plan 514 W2 g11: static fn new + Type.new() 调用路径（Type::new 发射）
+type Step11 {
+    v int
+    fn get() int { return .v }
+    static fn new(v int) Step11 { return Step11(v) }
+}
+fn main() {
+    let s = Step11.new(5)
+    print(s.get())
+    print(Step11.new(2).get())
+}

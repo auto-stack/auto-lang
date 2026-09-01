@@ -1,0 +1,12 @@
+// Plan 514 W2 g09: ext 扩展方法基础形态（type + ext 双块合并 impl）
+type Num9 {
+    v int
+    static fn new(v int) Num9 { return Num9(v) }
+}
+ext Num9 {
+    fn double() int { return .v * 2 }
+}
+fn main() {
+    let n = Num9.new(21)
+    print(n.double())
+}

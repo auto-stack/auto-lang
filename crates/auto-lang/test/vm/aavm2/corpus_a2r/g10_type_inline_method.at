@@ -1,0 +1,11 @@
+// Plan 514 W2 g10: type 体内方法（读字段 + 方法内调方法）
+type Calc10 {
+    base int
+    fn helper(n int) int { return .base + n }
+    fn call_helper() int { return .helper(3) }
+    static fn new(v int) Calc10 { return Calc10(v) }
+}
+fn main() {
+    let c = Calc10.new(10)
+    print(c.call_helper())
+}
