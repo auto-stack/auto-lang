@@ -8079,6 +8079,17 @@ impl Codegen {
                     // is dropped before the import_scope branch tries to lock again.
                     // A temporary guard in an `else if let` condition lives until the
                     // end of the entire if-else chain, causing deadlock.
+                    // PLAN-054 T5 (A7): 宿主对象 Date 直桥 dispatch 3000——
+                    // `Date.now`/`Date.format` 是语言级宿主对象调用,不在
+                    // use.rust/py/import 链上;此前落 extern stub 返 Nil
+                    // (musk 消息时间标签缺失现场,KNOWN-DEBT 051 上游债)。
+                    // 尾段统一注入 type/method 串(Plan 192/240 同款),宿主臂
+                    // stdlib ("Date","now"/"format") 消费。
+                    else if name.contains('.')
+                        && name.split('.').next() == Some("Date")
+                    {
+                        Some(NATIVE_RUST_STDLIB_DISPATCH)
+                    }
                     else {
                         let natives_id = {
                             let mut reg = BIGVM_NATIVES.lock().unwrap();

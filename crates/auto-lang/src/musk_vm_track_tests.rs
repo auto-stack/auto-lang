@@ -2002,3 +2002,98 @@ mod musk_vm_track_p054_t4_styles {
         );
     }
 }
+
+/// PLAN-054 T5 (A7)：Date.format 宿主桥端到端——musk forge_helpers.at 的
+/// msgTimeLabel 同款形态（epoch 秒 ×1000 → "HH:mm:ss"），此前 Date.format
+/// 未桥接返回垃圾（时间标签缺失现场）。宿主臂收口 KNOWN-DEBT 051。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t5_date_format {
+    use super::musk_vm_track_p054_t3_none_return::build_bridge;
+
+    #[test]
+    fn date_format_bridge_yields_hhmmss_label() {
+        let src = concat!(
+            "widget Root54d {\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "fn msg_time_label(createdAt int) str {\n",
+            "    if createdAt == 0 { return \"\" }\n",
+            "    return Date.format(createdAt * 1000, \"HH:mm:ss\")\n",
+            "}\n",
+        );
+        let bridge = build_bridge(src);
+        // 固定历元（本地时区只影响时分秒数值,不影响形态）。
+        let out = bridge
+            .call_vm_fn("msg_time_label", &[auto_val::Value::Int(86401)])
+            .expect("call msg_time_label");
+        eprintln!("[P054-T5] msg_time_label(86401) = {:?}", out);
+        let s = match &out {
+            auto_val::Value::Str(s) => s.to_string(),
+            auto_val::Value::String(s) => s.to_string(),
+            other => panic!("必须返回字符串, got {:?}", other),
+        };
+        assert_eq!(
+            s.split(':').count(),
+            3,
+            "HH:MM:SS 形态(两个冒号三段数字), got {:?}",
+            s
+        );
+        for part in s.split(':') {
+            assert!(
+                !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()),
+                "时间段必须是数字, got {:?}",
+                s
+            );
+        }
+        // 零契约：0 → 空串（web 轨同款守卫）。
+        let zero = bridge
+            .call_vm_fn("msg_time_label", &[auto_val::Value::Int(0)])
+            .expect("call zero");
+        assert_eq!(zero, auto_val::Value::Str("".into()), "createdAt=0 必须空串");
+    }
+}
+
+/// T5 勘察：Date.now 同形态对照。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t5_date_probe {
+    use super::musk_vm_track_p054_t3_none_return::build_bridge;
+
+    #[test]
+    #[ignore = "manual probe"]
+    fn date_now_routing_probe() {
+        let src = concat!(
+            "widget Root54p {\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "fn now_ms() int {\n",
+            "    return Date.now()\n",
+            "}\n",
+            "fn fmt(ms int) str {\n",
+            "    return Date.format(ms, \"HH:mm:ss\")\n",
+            "}\n",
+            "fn fmt_now() str {\n",
+            "    return Date.format(Date.now(), \"HH:mm:ss\")\n",
+            "}\n",
+        );
+        let bridge = build_bridge(src);
+        for (name, f) in [("now_ms", 0), ("fmt", 1), ("fmt_now", 2)] {
+            let _ = f;
+            match bridge.call_vm_fn(name, &[]) {
+                Ok(v) => eprintln!("[P054-T5P] {} = {:?}", name, v),
+                Err(e) => eprintln!("[P054-T5P] {} ERR: {:?}", name, e),
+            }
+        }
+        match bridge.call_vm_fn("fmt", &[auto_val::Value::Int(86401000)]) {
+            Ok(v) => eprintln!("[P054-T5P] fmt(86401000) = {:?}", v),
+            Err(e) => eprintln!("[P054-T5P] fmt ERR: {:?}", e),
+        }
+    }
+}
