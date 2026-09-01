@@ -190,8 +190,18 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
    增 WsTransport（tokio-tungstenite dep 入 `crates/auto-lang/Cargo.toml`）
    + T1 单测。
    验证：`cargo t desktop_protocol --features ui-iced`。
+   [✅ 已完成] worktree commit：transport.rs `ws` 模块（WsListener/
+   WsEnd 泛型 split 读写半/客户端 connect；WS Binary 消息体=codec 信封
+   原样；token=升级期 query 校验 401 终态拒收）；新依赖 tokio-tungstenite
+   0.30（仅宿主 WS 侧，no-default-features + connect,handshake）；T1 四条
+   绿（round-trip/golden bytes/EOF/token 拒收）。
 4. **远程会话接纳**：`:17800` 监听 + token 校验 + 会话泵复用 + T2 集成。
    验证：`cargo t desktop_protocol --features ui-iced`。
+   [✅ 已完成] worktree commit：remote.rs 镜像泵（Hello 订阅→Welcome+
+   HitTable[FrameMsg 追加 tag9]+帧推送；输入路由与 broker_pointer_down
+   同收尾）+ boot 读 `shell.remote.token`（缺省不监听）+ ServiceTick 接线；
+   T2 绿（re-exec 子进程孵化→WS 三件套→点击→Counter:1 闭环，184ms）；
+   `cargo t desktop_protocol --features ui-iced` **110/110 绿**。
 5. **渲染器包骨架**：`packages/drawlist-renderer/`（renderFrame/hitTest/
    connect/InputMsg 编码）+ T3 单测。
    验证：`pnpm -C packages/drawlist-renderer test`（或既有前端测试入口）。
