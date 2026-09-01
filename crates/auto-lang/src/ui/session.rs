@@ -327,6 +327,12 @@ pub struct DesktopState {
     /// Plan 508 G1：outproc 子进程句柄驻留（测试收尾 kill 用；宿主退出后
     /// 子进程经重连预算自然退出——显式生命周期管理非 v1 面）。
     pub outproc_children: Vec<std::process::Child>,
+    /// Plan 508 G4：远程 WS 监听（boot 读 `shell.remote.token` 有值才开；
+    /// None = 无远程面——缺省拒绝）。受理队列由 ServiceTick 泵消费。
+    pub remote_listener: Option<crate::ui::desktop_protocol::transport::ws::WsListener>,
+    /// Plan 508 G4：远程镜像会话在册表（Welcome/HitTable/帧推送 + 输入
+    /// 路由，见 desktop_protocol::remote）。
+    pub remote_mirrors: Vec<crate::ui::desktop_protocol::remote::RemoteMirror>,
 }
 
 impl DesktopState {
@@ -370,6 +376,8 @@ impl DesktopState {
             process_model: ProcessModel::default(),
             outproc_spawner: None,
             outproc_children: Vec::new(),
+            remote_listener: None,
+            remote_mirrors: Vec::new(),
         }
     }
 

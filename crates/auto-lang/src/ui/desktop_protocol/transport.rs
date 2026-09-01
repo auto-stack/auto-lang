@@ -615,6 +615,11 @@ pub mod ws {
             self.port
         }
 
+        /// 已受理待消费连接数（宿主泵节流位）。
+        pub fn accepted_len(&self) -> usize {
+            self.accepted.lock().unwrap().len()
+        }
+
         /// 客户端 URL（token query 直拼——测试/宿主提示共用）。
         pub fn url(&self, token: &str) -> String {
             format!("ws://127.0.0.1:{}/?token={token}", self.port)
