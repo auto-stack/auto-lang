@@ -1,0 +1,18 @@
+var g int = 10
+
+fn set_via_let() int {
+    let g = 5
+    return g
+}
+
+fn read_global() int {
+    return g
+}
+
+fn main() {
+    print(set_via_let())
+    print(g)
+    print(read_global())
+    g = g + 1
+    print(g)
+}
