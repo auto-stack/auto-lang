@@ -12,7 +12,7 @@ store NotesStore {
         var sort_mode str = "updated"
         var search str = ""
         var loading bool = false
-        var dark_mode bool = false
+        var dark_mode bool = true
 
         // Phase D: folder/tag navigation state.
         // active_folder: "all" = no filter, "pinned"/"recent" = shortcut,

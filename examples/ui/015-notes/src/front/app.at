@@ -11,11 +11,15 @@ widget App {
               DeleteActive, ToggleDarkMode, TagsChanged,
               SelectAll, SelectPinned, SelectRecent, SelectTag(str), ClearTag }
 
-    model { var search str = "" }
+    model {
+        var search str = ""
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+    }
 
     view {
         col {
-            style: "w-full h-screen flex-col bg-muted/30 p-3 gap-3"
+            style: "w-full h-screen flex-col bg-background p-3 gap-3"
 
             // header (卡片化)
             row {
@@ -41,7 +45,7 @@ widget App {
                     active_id: .store.active_id
                 )
                 col {
-                    style: "flex-1 min-h-0"
+                    style: "flex-1 h-full min-h-0"
                     if .store.notes.len() > 0 {
                         EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin, on_tags_changed: .TagsChanged)
                     } else {

@@ -23,7 +23,12 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
         SelectAll, SelectPinned, SelectRecent,
         SelectTag(str), SelectNote(int),
         NewNote, NewNoteInFolder(str),
-        ToggleDarkMode, SetAccent(str), SearchChanged(str)
+        ToggleDarkMode, SetAccent(str), SearchChanged(str),
+        ToggleSettings
+    }
+
+    model {
+        var show_settings bool = false
     }
 
     view {
@@ -36,15 +41,15 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                 style: "gap-1 m-3 mb-2 p-1 bg-muted rounded-lg"
                 button "All" {
                     onclick: .SelectAll
-                    style: if .active_folder == "all" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-card text-card-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors" }
+                    style: if .store.active_folder == "all" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors" }
                 }
                 button "Pinned" {
                     onclick: .SelectPinned
-                    style: if .active_folder == "pinned" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-card text-card-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors" }
+                    style: if .store.active_folder == "pinned" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors" }
                 }
                 button "Recent" {
                     onclick: .SelectRecent
-                    style: if .active_folder == "recent" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-card text-card-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors" }
+                    style: if .store.active_folder == "recent" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors" }
                 }
             }
 
@@ -65,7 +70,7 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                     }
                 }
 
-                if .active_folder == "all" {
+                if .store.active_folder == "all" {
                     nav-group (label: "Notes") {
                         for i, note in .store.notes {
                             if note.folder == "" {
@@ -99,7 +104,7 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                             }
                         }
                     }
-                } else if .active_folder == "pinned" {
+                } else if .store.active_folder == "pinned" {
                     nav-group (label: "Pinned") {
                         for i, note in .store.notes {
                             if note.pinned {
@@ -111,7 +116,7 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                             }
                         }
                     }
-                } else if .active_folder == "recent" {
+                } else if .store.active_folder == "recent" {
                     nav-group (label: "Recent") {
                         for i, note in .store.notes {
                             if .store.active_tag == "" {
@@ -124,21 +129,68 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                 }
             }
 
-            // Footer: Theme picker + Dark Mode toggle
-            separator { style: "border-t border-border" }
-            row {
-                style: "items-center gap-2 m-3 mb-1"
-                text "Theme" { style: "text-xs text-muted-foreground font-medium mr-1" }
-                button "" { onclick: .SetAccent("indigo"), style: if .store.accent_color == "indigo" { "w-5 h-5 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
-                button "" { onclick: .SetAccent("coral"), style: if .store.accent_color == "coral" { "w-5 h-5 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
-                button "" { onclick: .SetAccent("ocean"), style: if .store.accent_color == "ocean" { "w-5 h-5 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 rounded-full bg-blue-500 hover:scale-110 transition-transform" } }
-                button "" { onclick: .SetAccent("sage"), style: if .store.accent_color == "sage" { "w-5 h-5 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
-                button "" { onclick: .SetAccent("amber"), style: if .store.accent_color == "amber" { "w-5 h-5 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
+            // Settings popup / panel when toggled
+            if .show_settings {
+                col {
+                    style: "m-3 p-3 bg-card border border-border rounded-xl gap-3 shadow-lg"
+                    row {
+                        style: "items-center justify-between"
+                        text "Settings" { style: "text-xs font-semibold text-foreground uppercase tracking-wider" }
+                        button "✕" {
+                            onclick: .ToggleSettings
+                            style: "text-xs text-muted-foreground hover:text-foreground w-5 h-5 flex items-center justify-center rounded bg-transparent transition-colors"
+                        }
+                    }
+                    col {
+                        style: "gap-1.5"
+                        text "Theme" { style: "text-xs text-muted-foreground font-medium" }
+                        row {
+                            style: "gap-1.5"
+                            if .store.dark_mode {
+                                button "🌙 Dark" {
+                                    onclick: .ToggleDarkMode
+                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                }
+                                button "☀ Light" {
+                                    onclick: .ToggleDarkMode
+                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent bg-transparent border border-border transition-colors"
+                                }
+                            } else {
+                                button "🌙 Dark" {
+                                    onclick: .ToggleDarkMode
+                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent bg-transparent border border-border transition-colors"
+                                }
+                                button "☀ Light" {
+                                    onclick: .ToggleDarkMode
+                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                }
+                            }
+                        }
+                    }
+                    col {
+                        style: "gap-1.5"
+                        text "Accent Color" { style: "text-xs text-muted-foreground font-medium" }
+                        row {
+                            style: "items-center gap-2 py-0.5"
+                            button "" { onclick: .SetAccent("indigo"), style: if .store.accent_color == "indigo" { "w-5 h-5 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("coral"), style: if .store.accent_color == "coral" { "w-5 h-5 p-0 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("ocean"), style: if .store.accent_color == "ocean" { "w-5 h-5 p-0 rounded-full bg-sky-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-sky-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("sage"), style: if .store.accent_color == "sage" { "w-5 h-5 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("amber"), style: if .store.accent_color == "amber" { "w-5 h-5 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
+                        }
+                    }
+                }
             }
-            if .store.dark_mode {
-                button "☀ Light" { onclick: .ToggleDarkMode, style: "mx-3 mb-3 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-accent transition-colors" }
-            } else {
-                button "🌙 Dark" { onclick: .ToggleDarkMode, style: "mx-3 mb-3 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-accent transition-colors" }
+
+            // Footer: Settings button + version
+            separator (orientation: "horizontal") { style: "w-full" }
+            row {
+                style: "items-center justify-between p-3"
+                button "⚙ Settings" {
+                    onclick: .ToggleSettings
+                    style: if .show_settings { "px-2.5 py-1.5 text-xs font-medium rounded-lg bg-accent text-primary transition-colors" } else { "px-2.5 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground bg-transparent transition-colors" }
+                }
+                text "v1.0" { style: "text-xs text-muted-foreground/60 mr-1" }
             }
         }
     }
@@ -153,9 +205,7 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
         .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
         .ToggleDarkMode -> { store.ToggleDarkMode() }
         .SetAccent(name) -> { store.SetAccent(name) }
-        // Plan 482: nav(search:) integrated row wires the previously dead
-        // input to the store (search filtering itself remains a store-side
-        // follow-up, unchanged from before).
         .SearchChanged(q) -> { store.Search(q) }
+        .ToggleSettings -> { .show_settings = !.show_settings }
     }
 }
