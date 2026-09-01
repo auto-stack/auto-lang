@@ -1756,16 +1756,22 @@ fn outproc_child_identity(
 
 /// Plan 508 G1：生产 outproc spawner——re-exec 本体（宿主即 `auto`
 /// 二进制；`run --autodesk-incubate --app386=<dir>` = 双模入口 ②，
-/// broker 管道缺省 BROKER_PIPE 与桌面 boot 同参）+ 装载根 env
-/// （AUTO_386_APP_ROOT；cmd_autodesk 缺省 ./examples/ui 同主根）。
-/// NEXTEST_* 剥除防测试上下文串染（spawn_t3_child 同款）。
+/// broker 管道显式传参与桌面 boot 同源）+ 装载根 env（AUTO_386_APP_ROOT；
+/// cmd_autodesk 缺省 ./examples/ui 同主根）。NEXTEST_* 剥除防测试
+/// 上下文串染（spawn_t3_child 同款）。
 fn spawn_outproc_child(
     child_name: &str,
     app_root: Option<&std::path::Path>,
+    broker_pipe: &str,
 ) -> std::io::Result<std::process::Child> {
     let exe = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(&exe);
-    cmd.args(["run", "--autodesk-incubate", &format!("--app386={child_name}")]);
+    cmd.args([
+        "run",
+        "--autodesk-incubate",
+        &format!("--app386={child_name}"),
+        &format!("--autodesk-broker={broker_pipe}"),
+    ]);
     if let Some(root) = app_root {
         cmd.env("AUTO_386_APP_ROOT", root);
     }
@@ -1902,8 +1908,12 @@ fn spawn_outproc_child(
         let (child_name, app_root) = Self::outproc_child_identity(&spec, name);
         let child = match self.desktop.outproc_spawner.clone() {
             Some(spawn) => spawn(&child_name).map_err(|e| format!("spawn outproc child: {e}"))?,
-            None => Self::spawn_outproc_child(&child_name, app_root.as_deref())
-                .map_err(|e| format!("spawn outproc child: {e}"))?,
+            None => Self::spawn_outproc_child(
+                &child_name,
+                app_root.as_deref(),
+                crate::ui::desktop_protocol::broker::BROKER_PIPE,
+            )
+            .map_err(|e| format!("spawn outproc child: {e}"))?,
         };
         self.desktop.outproc_children.push(child);
         // 等受理（子进程 spawn + connect，冷启可达数秒）→ attach 到 Active

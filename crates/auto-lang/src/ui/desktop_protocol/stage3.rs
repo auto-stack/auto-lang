@@ -1489,4 +1489,375 @@ mod tests {
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = transport::connect(&broker_pipe, 500);
     }
+
+    // -----------------------------------------------------------------------
+    // Plan 508 G2 —— 进程模型对比实测（inproc vs outproc 两臂，各自独立
+    // 测试进程跑，报告 `docs/plans/reports/508-process-model-verdict.md`
+    // 汇总）。批次 001–005 + 009-article-feed（中型示例）；阶段 N=1/3/5
+    // 增量（+009 探针）；三指标：冷启动到首帧 / 稳态内存（Private 口径，
+    // 480 方法）/ 交互往返延迟（点击→帧更新）。
+    // -----------------------------------------------------------------------
+
+    /// G2 批次（前 5 = 阶段阶梯；009 = 中型示例探针）。
+    const G2_APPS: [&str; 6] = [
+        "001-helloworld",
+        "002-counter",
+        "003-converter",
+        "004-profile-card",
+        "005-login",
+        "009-article-feed",
+    ];
+
+    /// 002-counter 孪生投影器（命中坐标 + inproc 交互探针引擎）。
+    fn g2_counter_twin() -> crate::ui::desktop_protocol::client_runtime::AppProjector {
+        use crate::ui::desktop_protocol::endpoint::FrameSource;
+        let src = example_source("002-counter");
+        let comp = crate::build_dynamic_component(&src, None).expect("twin build");
+        let mut p =
+            crate::ui::desktop_protocol::client_runtime::AppProjector::new(comp, 480.0, 900.0);
+        p.render_frame();
+        p
+    }
+
+    /// 002 "+" 命中区（行序 - Reset + → 第 3 个按钮，T3 同源）。
+    fn g2_plus_hit() -> ((f32, f32), String) {
+        let twin = g2_counter_twin();
+        let (r, kind) = twin
+            .hit_regions()
+            .into_iter()
+            .filter(|(_, k)| k.starts_with("button:"))
+            .nth(2)
+            .expect("002 '+' 命中区");
+        let handler = kind.strip_prefix("button:").expect("button kind").to_string();
+        ((r.x + r.w / 2.0, r.y + r.h / 2.0), handler)
+    }
+
+    /// 样本统计行（median / p95，毫秒）。
+    fn g2_stats_line(label: &str, mut samples: Vec<f64>) {
+        samples.sort_by(|a, b| a.total_cmp(b));
+        let n = samples.len();
+        let median = samples[n / 2];
+        let p95 = samples[n - 1 - n / 20];
+        println!("AUTO508-INTERACT {label} n={n} median={median:.3}ms p95={p95:.3}ms");
+    }
+
+    /// 两臂共用的注册表（example 源装载；source_path = 绝对入口路径，
+    /// outproc 子进程身份推导与生产同链）。
+    fn g2_install_resolver(session: &mut DesktopSession) {
+        let entries: Vec<(String, String, String)> = G2_APPS
+            .iter()
+            .map(|name| {
+                let src = example_source(name);
+                let path = concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../examples/ui/P/src/front/app.at"
+                )
+                .replace('P', name);
+                (name.to_string(), src, path)
+            })
+            .collect();
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            entries.iter().find(|(n, _, _)| n == name).map(|(n, src, path)| LaunchSpec {
+                code: src.clone(),
+                source_path: Some(path.clone()),
+                title: Some(n.clone()),
+                name: None,
+                daemon: None,
+                back_root: None,
+                fit: false,
+            })
+        }));
+    }
+
+    /// G2 inproc 臂：launch_app 同步时长（compile+mount+win；首帧 = 返回后
+    /// 下一渲染节拍 ~16ms，口径注记见报告）+ 宿主 Private 阶梯采样 +
+    /// 交互探针（孪生引擎：on_with_input + render_frame = child 点击链
+    /// 减 IPC，两臂同引擎差值 = 进程/协议开销）。
+    #[test]
+    fn p508_g2_inproc_arm() {
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        g2_install_resolver(&mut session);
+        let base = sample_process_memory(std::process::id()).expect("windows 采样");
+        println!(
+            "AUTO508-INPROC-MEM stage=base private={}B ws={}B",
+            base.private_bytes, base.working_set
+        );
+        // 阶段 N=1/3/5 增量 launch（批内顺序），逐 App 计时。
+        let mut launched = 0usize;
+        for want in [1usize, 3, 5] {
+            for name in G2_APPS.iter().take(want).skip(launched) {
+                let t0 = std::time::Instant::now();
+                session.launch_app(name).expect("inproc launch");
+                println!(
+                    "AUTO508-INPROC-LAUNCH app={name} stage=N{want} ms={:.1}",
+                    t0.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+            launched = want;
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let s = sample_process_memory(std::process::id()).expect("windows 采样");
+            println!(
+                "AUTO508-INPROC-MEM stage=N{want} private={}B ({:.1}MiB) ws={}B",
+                s.private_bytes,
+                s.private_bytes as f64 / 1048576.0,
+                s.working_set
+            );
+        }
+        // 009 中型示例探针（N=5 之上 +1）。
+        let t0 = std::time::Instant::now();
+        session.launch_app("009-article-feed").expect("inproc launch 009");
+        println!(
+            "AUTO508-INPROC-LAUNCH app=009-article-feed stage=probe ms={:.1}",
+            t0.elapsed().as_secs_f64() * 1000.0
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let s = sample_process_memory(std::process::id()).expect("windows 采样");
+        println!(
+            "AUTO508-INPROC-MEM stage=probe private={}B ({:.1}MiB) ws={}B",
+            s.private_bytes,
+            s.private_bytes as f64 / 1048576.0,
+            s.working_set
+        );
+        // 交互探针：孪生引擎（预热 5 + 采样 20）。
+        let ((_hx, _hy), handler) = g2_plus_hit();
+        let mut twin = g2_counter_twin();
+        use crate::ui::desktop_protocol::endpoint::FrameSource;
+        for _ in 0..5 {
+            twin.component_mut().on_with_input(&handler, None);
+            twin.render_frame();
+        }
+        let mut samples = Vec::new();
+        for _ in 0..20 {
+            let t0 = std::time::Instant::now();
+            twin.component_mut().on_with_input(&handler, None);
+            twin.render_frame();
+            samples.push(t0.elapsed().as_secs_f64() * 1000.0);
+        }
+        g2_stats_line("inproc", samples);
+    }
+
+    /// G2 outproc 臂：真实 `auto` 二进制生产链（`run --autodesk-incubate`，
+    /// G1 落的 launch_app outproc 分支）——spawn→attach Active（launch_app
+    /// 返回）→首帧 composed 时机；宿主 + 子进程 Private 阶梯采样；交互
+    /// 端到端（broker_pointer_down → 帧文本变化，自旋泵）。
+    #[test]
+    fn p508_g2_outproc_arm() {
+        use crate::ui::session::ProcessModel;
+        let broker_pipe = format!("autodesk-broker-508g2-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        g2_install_resolver(&mut session);
+        // 生产 spawner 的测试镜像：exe = 真 auto 二进制（与 spawn_outproc_child
+        // 唯一差异 = broker 管道名测试隔离）。
+        let exe = auto_exe();
+        let app_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/ui");
+        let pipe_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.args([
+                "run",
+                "--autodesk-incubate",
+                &format!("--app386={child_name}"),
+                &format!("--autodesk-broker={pipe_for_spawn}"),
+            ])
+            .env("AUTO_386_APP_ROOT", &app_root)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit());
+            for (k, _) in std::env::vars() {
+                if k.starts_with("NEXTEST_") {
+                    cmd.env_remove(&k);
+                }
+            }
+            cmd.spawn()
+        }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+        let base = sample_process_memory(std::process::id()).expect("windows 采样");
+        println!(
+            "AUTO508-OUTPROC-MEM stage=base host_private={}B host_ws={}B",
+            base.private_bytes, base.working_set
+        );
+
+        let launched_of = |session: &DesktopSession, wid: Wid| {
+            session
+                .broker_clients
+                .values()
+                .any(|c| c.wid == Some(wid))
+        };
+        let mut launched = 0usize;
+        for want in [1usize, 3, 5] {
+            for name in G2_APPS.iter().take(want).skip(launched) {
+                let t0 = std::time::Instant::now();
+                let wid = session.launch_app(name).expect("outproc launch");
+                let attach_ms = t0.elapsed().as_secs_f64() * 1000.0;
+                // 首帧：Active 后 pump 到 composed DrawList 到达。
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                loop {
+                    session.pump_broker_clients();
+                    let got = launched_of(&session, wid)
+                        && session
+                            .broker_clients
+                            .values()
+                            .find(|c| c.wid == Some(wid))
+                            .and_then(|c| c.composed())
+                            .is_some_and(|l| !l.ops.is_empty());
+                    if got || std::time::Instant::now() > deadline {
+                        break;
+                    }
+                    std::thread::yield_now();
+                }
+                println!(
+                    "AUTO508-OUTPROC-LAUNCH app={name} stage=N{want} attach_ms={attach_ms:.1} firstframe_ms={:.1}",
+                    t0.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+            launched = want;
+            // 窗口铺开（交互命中寻址）。
+            let wids: Vec<Wid> =
+                session.broker_clients.values().filter_map(|c| c.wid).collect();
+            for (i, wid) in wids.into_iter().enumerate() {
+                place_window(&mut session, wid, i);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            session.pump_broker_clients();
+            let host = sample_process_memory(std::process::id()).expect("windows 采样");
+            let kids =
+                sample_children_total(&session.desktop.outproc_children).expect("windows 采样");
+            println!(
+                "AUTO508-OUTPROC-MEM stage=N{want} children={} host_private={}B ({:.1}MiB) children_private={}B ({:.1}MiB) children_ws={}B ({:.1}MiB)",
+                session.desktop.outproc_children.len(),
+                host.private_bytes,
+                host.private_bytes as f64 / 1048576.0,
+                kids.private_bytes,
+                kids.private_bytes as f64 / 1048576.0,
+                kids.working_set,
+                kids.working_set as f64 / 1048576.0
+            );
+        }
+        // 009 中型示例探针。
+        {
+            let t0 = std::time::Instant::now();
+            let wid = session.launch_app("009-article-feed").expect("outproc launch 009");
+            let attach_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let got = launched_of(&session, wid)
+                    && session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.wid == Some(wid))
+                        .and_then(|c| c.composed())
+                        .is_some_and(|l| !l.ops.is_empty());
+                if got || std::time::Instant::now() > deadline {
+                    break;
+                }
+                std::thread::yield_now();
+            }
+            println!(
+                "AUTO508-OUTPROC-LAUNCH app=009-article-feed stage=probe attach_ms={attach_ms:.1} firstframe_ms={:.1}",
+                t0.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        session.pump_broker_clients();
+        {
+            let host = sample_process_memory(std::process::id()).expect("windows 采样");
+            let kids =
+                sample_children_total(&session.desktop.outproc_children).expect("windows 采样");
+            println!(
+                "AUTO508-OUTPROC-MEM stage=probe children={} host_private={}B ({:.1}MiB) children_private={}B ({:.1}MiB) children_ws={}B ({:.1}MiB)",
+                session.desktop.outproc_children.len(),
+                host.private_bytes,
+                host.private_bytes as f64 / 1048576.0,
+                kids.private_bytes,
+                kids.private_bytes as f64 / 1048576.0,
+                kids.working_set,
+                kids.working_set as f64 / 1048576.0
+            );
+        }
+        // 交互端到端探针：002 "+" → "Counter: k"（自旋泵，预热 3 + 采样 20）。
+        {
+            let ((hx, hy), _) = g2_plus_hit();
+            let origin = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("002-counter"))
+                .and_then(|c| c.wid)
+                .and_then(|wid| {
+                    session.host.as_ref().and_then(|hh| hh.wm.wins.get(&wid)).map(|v| {
+                        let r = *v.rect.borrow();
+                        (r.x, r.y)
+                    })
+                })
+                .expect("002 窗原点");
+            let mut samples = Vec::new();
+            for k in 0..23 {
+                let t0 = std::time::Instant::now();
+                assert!(
+                    session.broker_pointer_down(origin.0 + hx, origin.1 + hy, MouseButton::Left),
+                    "002 点击路由"
+                );
+                let want = format!("Counter: {}", k + 1);
+                let hit = |session: &DesktopSession| {
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some("002-counter"))
+                        .and_then(|c| c.composed())
+                        .is_some_and(|list| {
+                            list.ops.iter().any(|op| matches!(op,
+                                DrawOp::Text { text, .. } if *text == want))
+                        })
+                };
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                loop {
+                    session.pump_broker_clients();
+                    if hit(&session) {
+                        break;
+                    }
+                    assert!(std::time::Instant::now() < deadline, "点击 {k} 帧超时");
+                    std::thread::yield_now();
+                }
+                if k >= 3 {
+                    samples.push(t0.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+            g2_stats_line("outproc", samples);
+        }
+        // 收尾：Close 全部 → child 退出；残留 kill 兜底。
+        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
+            session
+                .broker_clients
+                .values_mut()
+                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+                .collect();
+        for (pipe, close) in closes {
+            if let Some(close) = close {
+                if let Some(c) = session.broker_clients.get_mut(&pipe) {
+                    let _ = c.end.send(&close);
+                }
+            }
+        }
+        for _ in 0..200 {
+            session.pump_broker_clients();
+            if session.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
 }
