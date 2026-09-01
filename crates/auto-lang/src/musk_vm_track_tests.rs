@@ -988,6 +988,109 @@ mod musk_vm_track_p053_b4_title_tooltip {
 }
 
 
+/// PLAN-054 T1 (R1): EE03 title 标记不得落可见文本流——内容子树按钮的
+/// leading Text 泄漏。现场（musk chats_view.at A1/A2）：`button { title: …
+/// span { text .s.name } }`——子文本是 child node 而非 text prop，
+/// extract_children_text 落 None → label_from_prop=true，而 EE03 后缀先行
+/// 拼进 label → leading Text("EE03+title") 常显（卡片首行 "Y<id>"、
+/// "Y新建会话"、"Y设置" 的根因）。修复后：内容子树用干净 label，
+/// EE03 只留在 Button.label 走 renderer tooltip 通道。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t1_title_content_subtree {
+    use crate::parser::Parser;
+    use crate::ui::view::View;
+
+    fn build_root() -> crate::ui::dynamic::DynamicComponent {
+        let src = concat!(
+            "widget Root54t {\n",
+            "    view {\n",
+            "        col {\n",
+            "            button {\n",
+            "                title: \"sess-054-id\"\n",
+            "                span {\n",
+            "                    text \"你好\"\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component")
+    }
+
+    /// title 仍以 EE03 尾段进 Button.label（renderer tooltip 通道不回退），
+    /// 但任何 View::Text 的可见内容不得携带 EE03（PUA 字形不落文本流）。
+    #[test]
+    fn title_ee03_stays_out_of_visible_text_stream() {
+        let comp = build_root();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        // 递归收集 (Button labels, Text contents)。
+        fn walk(
+            view: &View<crate::ui::interpreter::DynamicMessage>,
+            labels: &mut Vec<String>,
+            texts: &mut Vec<String>,
+        ) {
+            match view {
+                View::Button { label, content, .. } => {
+                    labels.push(label.clone());
+                    if let Some(c) = content {
+                        walk(c, labels, texts);
+                    }
+                }
+                View::Text { content, .. } => texts.push(content.clone()),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        walk(c, labels, texts);
+                    }
+                }
+                View::Container { child, .. } => walk(child, labels, texts),
+                _ => {}
+            }
+        }
+        let mut labels = Vec::new();
+        let mut texts = Vec::new();
+        walk(&view, &mut labels, &mut texts);
+        eprintln!("[P054-T1] button labels: {:?}, text contents: {:?}", labels, texts);
+        assert!(
+            labels.iter().any(|l| l.ends_with(&format!("\u{EE03}sess-054-id"))),
+            "Button.label 必须保留 EE03+title 尾段(tooltip 通道), got: {:?}",
+            labels
+        );
+        assert!(
+            texts.iter().all(|t| !t.contains('\u{EE03}')),
+            "可见文本流不得携带 EE03 PUA 标记, got: {:?}",
+            texts
+        );
+        assert!(
+            texts.iter().any(|t| t == "你好"),
+            "span 子节点文本必须照常渲染, got: {:?}",
+            texts
+        );
+    }
+}
+
+
 /// P-053-8: 二级导航点击会话实参漂移——UI 事件层携带正确 id
 /// （encode `Pick\u{1f}s\u{1f}<id>`），handler 体内参数却读到会话名
 /// （"你好"）。实机日志（plan053-batch4-vm.log）：

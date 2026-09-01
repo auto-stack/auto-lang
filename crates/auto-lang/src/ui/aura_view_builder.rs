@@ -5340,12 +5340,10 @@ let tabs_inner = View::Row {
         // EE03,普通 button 的 title 被静默丢弃。统一接线后 renderer Button 臂
         // 剥离 EE03 尾段并把按钮包进 iced tooltip(300ms 延迟防误触)。
         // binding-aware:musk 会话列表 `title: .s.id` 按循环变量逐项求值。
+        // PLAN-054 T1: EE03 后缀推迟到构造 View::Button 时才拼入 label——
+        // 内容子树的 leading Text 必须用干净 label,否则 EE03 PUA 字形落
+        // 可见文本流(A1 卡片 "Y<id>" / A2 "Y新建会话" 常显的根因)。
         let pua_title = self.extract_string_with(props, "title", bindings).unwrap_or_default();
-        let label = if pua_title.is_empty() {
-            label
-        } else {
-            format!("{}\u{EE03}{}", label, pua_title)
-        };
 
         // `variant` selects a base style preset (Tailwind classes); the user's
         // class/style augments it. "text"/absent = chromeless (renders as text
@@ -5582,7 +5580,13 @@ let tabs_inner = View::Row {
 
         View::Button {
             disabled,
-            label,
+            // PLAN-054 T1: EE03 title 尾段在此统一拼入(renderer/snapshot 按
+            // EE03 拆分);label 本体保持干净,内容子树 leading Text 不受污染。
+            label: if pua_title.is_empty() {
+                label
+            } else {
+                format!("{}\u{EE03}{}", label, pua_title)
+            },
             onclick,
             style,
             on_right_click,
