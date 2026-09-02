@@ -1,0 +1,48 @@
+// api.at — 019-video-app backend API.
+// Video library CRUD + category filter + tab sort + search + view & like counters.
+// All endpoints delegate to db.at (Plan 399 Route B pattern).
+
+pub type Video = {
+    id: int
+    title: str
+    author: str
+    category: str
+    duration: str
+    views: int
+    likes: int
+    desc: str
+    followed: bool
+    cover_color: str
+}
+
+use db
+
+/// GET /api/videos — list videos with category, tab, and search query filters.
+#[api(method = "GET", path = "/api/videos")]
+pub fn list_videos(category str, tab str, q str) []Video {
+    return db.filter_videos(category, tab, q)
+}
+
+/// GET /api/videos/:id — get a single video by id.
+#[api(method = "GET", path = "/api/videos/:id")]
+pub fn get_video(id int) ?Video {
+    return db.find_video(id)
+}
+
+/// POST /api/videos/:id/view — increment video views count.
+#[api(method = "POST", path = "/api/videos/:id/view")]
+pub fn add_view(id int) int {
+    return db.add_view(id)
+}
+
+/// POST /api/videos/:id/like — toggle or increment video likes count.
+#[api(method = "POST", path = "/api/videos/:id/like")]
+pub fn toggle_like(id int) int {
+    return db.toggle_like(id)
+}
+
+/// GET /api/categories — list all video categories.
+#[api(method = "GET", path = "/api/categories")]
+pub fn categories() []str {
+    return db.all_categories()
+}
