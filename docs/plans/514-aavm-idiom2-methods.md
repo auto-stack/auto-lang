@@ -349,18 +349,59 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### W3 lib 方法化 γ4（worktree 续；每文件一提交全绿才进）
 
-12. [◐ 阻塞-已回退] token.at 映射表裁定：无状态类型/纯表函数
+12. [✅ 已完成] token.at 映射表裁定：无状态类型/纯表函数
     （keyword_kind/kind_name）→ 按 γ4 缺省**保留自由函数**（零转换）；
-    塔顶样板验证移至首个真实状态类型 P。P 方法化试点实施：14 方法入
-    type 体（p_err→fail 避字段撞名）+全库 ~1400 调用点翻转；99_unit
-    13 绿但 corpus 转译路径红——**宿主 VM 可达闭包内方法解析洞**
-    （详见待澄清⑥），按"行为不变硬闸：红即回退"回退 lib 至 W2 态并
-    复验 corpus g 全绿；翻转脚本存档 scratch/p514_p_methodize.py。
-    W3-13..16 与 W4-17（C3 依赖方法体）连带顺延，待⑥裁定。
-13. [ ] lexer.at 转换。验证：同上。
-14. [ ] typeinfo.at + parser.at 转换。验证：同上。
-15. [ ] codegen.at + engine.at 转换。验证：同上。
-16. [ ] a2r.at 自身转换（塔顶终局）+ 折叠点③（矩阵①–⑤全绿合入）。
+    塔顶样板验证移至首个真实状态类型 P。**P 方法化落地（2026-09-02，
+    commit 8aef313ca）**：14 方法入 type 体（p_err→fail 避字段撞名）+
+    全库调用点翻转；语句位前导点仅块首豁免（W3-1 清偿后非块首句首
+    `.method()` 仍硬语法错——skip_empty_lines 一处 self.next()）。W3-2
+    补丁续修实际清偿量远超登记的"仅剩 decl_lookup 位"：主 a2r 8 处
+    （存档补丁 a–d + e 真因=未注解局部注册 Type::Unknown 而非缺失 +
+    字面量 .as_str() 误加 E0658 + 用户方法返回类型 qualified 键推断
+    （"P.text"，含 merge 流程 global_fn_ret_types 补扫 TypeDecl/Ext）+
+    expr_mutates_self 裸 self 漏判 + 跨方法 &mut 传递闭包
+    compute_type_mut_methods + 两实参环 infer 兜底）+ AA2R 镜像 3 组
+    （ar_method_call 方法表实参强转/返回类型、ar_scan_method_writes
+    变异调用扫描 ar_call_rooted_self、ar_fixpoint_mutates 传递闭包）。
+    验证全绿：cc 编译红逐位清零（主 a2r merge 产物 rustc 零错）+
+    corpus g01–g16 逐字符 + aavm2 17/2 + include-ignored 19/19 +
+    99_unit 13 + **⑤腿 AA2R 转译方法化 lib → rustc 零错（塔顶样板
+    验证通过）** + 矩阵五腿 46/46（matrix_w3_12.log 留档 scratch/p514/）。
+    2026-09-02。
+13. [✅ 已完成] lexer.at 转换=**零转换裁定**（无状态类型：纯字符谓词
+    is_digit/is_alpha/... 与 (source,start)→Tok 扫描器族；γ4 缺省保留
+    自由函数，镜像 token.at 步骤 12 先例）。验证：W3-12 提交态闸门
+    全绿即覆盖（文件未动）。2026-09-02。
+14. [✅ 已完成] typeinfo.at + parser.at 转换（commit 9d2b96cf1）：
+    parser.at 的 P 已于步骤 12 完成，语法产生式族按步骤 12 裁定保留
+    自由函数；typeinfo.at t_* 族是 (P+累加器) 行走器（非纯 P 操作）
+    保留自由函数；纯 P 操作 p_text_at/p_peek_text（typeinfo/codegen
+    跨文件逐字节重复）合并入 type P 作 peek_text(n) 方法（codegen 侧
+    副本随 W3-15 清）。验证：cc 零红 + corpus g01–g16 逐字符 +
+    include-ignored 19/19 + 99_unit 13 + 矩阵五腿 46/46
+    （matrix_w3_14.log；首跑⑤腿构建环境性 flake，复跑+独立复现双绿）。
+    2026-09-02。
+15. [✅ 已完成] codegen.at + engine.at 转换（commit 0e4d10df9）：CG
+    c-only 操作族 28 方法入 type 体（cg_err→fail、cg_new→static new；
+    产生式族与纯表函数保留自由函数）+ 全库翻转；engine.at ev_field_idx
+    并入 CG.field_idx（其余 ev_* 无状态类型，零转换）。主 a2r 配套：
+    方法环补 `.str()` 按接收者类型发射臂 + 后处理
+    fix_str_to_string_assignments 改按函数作用域（原全文件 &str 名字池
+    让短名撞跨函数局部误加 .to_string()）；AA2R 镜像：静态方法臂按
+    方法表解析返回类型（`var m = CG.new()` 此前恒 Unknown）。corpus
+    g17 探针常驻。验证：cc 零红 + corpus g01–g17 逐字符 +
+    include-ignored 19/19 + 99_unit 13 + ⑤腿零红 + 矩阵 46/46
+    （matrix_w3_15.log）。2026-09-02。
+16. [✅ 已完成] a2r.at 自身转换（塔顶终局，commit aaa6778b5）：Ar
+    自有操作族 23 方法入 type 体（ar_err→fail、ar_new→static new；
+    产生式/预扫带 p 族保留自由函数）+全库翻转。主 a2r 配套
+    （expr_mutates_self 索引位赋值+.set 变异名）+ AA2R 镜像
+    （ar_scan_method_writes 方括号回跳+set、ar_scan_mutations 方法表
+    mutates 查表+prescan 参数临时作用域）。**塔顶终局验证**：方法化的
+    AA2R 自己转译自己（⑤腿 aa2r_transpile_merge 全 lib）→ rustc 零错。
+    折叠点③：corpus g01–g17 逐字符 + include-ignored 19/19 + 99_unit
+    13 + 矩阵五腿 46/46（matrix_w3_16.log）+ cargo tf 3350/3350 →
+    合入 master。2026-09-02。
 
 ### W4 447 尾巴（worktree 续）
 
@@ -401,7 +442,9 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ## 待澄清事项
 
-6. **W3 P 方法化阻塞（已结案定性，DEBT 登记 P514-W3-1/2，W3 顺延）**：
+6. **~~W3 P 方法化阻塞~~ ✅ 已结案清偿（2026-09-02，W3-1 语义裁定+W3-2
+   补丁续修双落地，commit 8aef313ca；P 方法化全绿详见步骤 12 证据）**。
+   原始定性存档：
    调研收官推翻"宿主 VM 可达闭包洞"初判——真实根因两条：①宿主流式链糖
    与方法体语句位前导点冲突（parser.rs parse_body_inner :6846 句首 `.`
    合并；修复=lib 约定：语句位用显式 self.，已验证绿）；②主 a2r 方法体
