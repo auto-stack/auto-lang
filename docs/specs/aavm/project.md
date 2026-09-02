@@ -84,3 +84,29 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
   AA2R 扩展 W1-W6 + lib 改写点位与波次建议);立项(三份合并为一,顺序推进):
   [Plan 447](../../plans/archive/447-aavm-prerequisites.md)(aavm-prerequisites:
   ① 宿主加固 → ② aavm 新语法能力 → ③ lib 风格升级)。
+
+## 后续计划队列（2026-09-02 存档,517 收口后领取起草）
+
+> 双目标口径:**目标 1 = VM 模式跑通**(ev_run/ev_run_files,✅ 初步实现);
+> **目标 2 = a2r 模式跑通**(lib 经 a2r 转译为 Rust 后行为与 AutoVM 一致)。
+> 目标 2 现状勘误:非零——434 已收口自举闭环,旧子集(b01–b33)经
+> `test_aavm2_compile_corpus`(主 a2r 转译版二进制,514 W2 起常规门禁
+> 37/37)与矩阵②⑤腿(46/46)常态化验证;真缺口=511 中阶语料按待澄清①
+> 缺省跳过(b34–b43/corpus_use 前缀 skip)、`auto build`(pac)产品路径
+> 与 CLI 入口的 a2r 模式未验。
+
+1. **a2r 模式中阶覆盖收口(目标 2)**——小计划:摘除 compile corpus 的
+   b34+/corpus_use 跳过前缀实测主 a2r 转译版二进制(lib 转译后自带
+   struct/use 编译逻辑,预判多绿;File shim 已为 std 直通真实现仅未触达);
+   红项根因修复(a2r.at 发射面/转译侧语义);`auto build`(pac)产品冒烟
+   常态化;517 CLI 入口的 a2r 模式验证(依赖 517 落地)。
+2. **OOP 批(目标 1 续阶)**——aavm 目标语言的方法/impl(`type T { fn }`/
+   `ext T`)编译执行、is-struct 模式匹配、跨模块类型共享(pub type)、
+   闭包与嵌套 fn、泛型(List\<T\> 实例化——通往塔顶必经)、May/生成器;
+   搭车清偿 P474-旁支 VBool parity(Val 载体扩展同批)。触发:517 复审时
+   按本页能力矩阵起草(范围依赖 514/517 终态)。
+3. **远期(缓议,AAVM 跑通后再立项)**——自举塔顶:aavm 编译 lib 自身
+   (VM 自举);Auto 版转译器家族扩展:a2r 已有(AA2R/a2r.at,434 核心子集),
+   剩余=其他语言目标(a2ts/a2js/a2py…)的 Auto 版。缓议理由:在 Auto 写
+   工具链能重建自身之前,新转译器仍由 Rust 宿主编译,自举边际价值低;
+   与 GOAL-003(Auto as Rust script layer)合流点在塔顶。
