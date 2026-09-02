@@ -10079,6 +10079,26 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     None => {}
                 }
 
+                // placeholder → placeholder="..."（字面）/ :placeholder（绑定）
+                // —— plan 040 契约扩展（AutoDownEditor 空态提示文案）。
+                match props.get("placeholder") {
+                    Some(AuraPropValue::Expr(expr)) => {
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":placeholder=\"{}\"", js_expr)),
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("autodown_editor `placeholder`: {}; prop not emitted", e),
+                            ),
+                        }
+                    }
+                    Some(value) => {
+                        let placeholder = self.extract_string_value(value).unwrap_or("");
+                        attrs.push(format!("placeholder=\"{}\"", placeholder));
+                    }
+                    None => {}
+                }
+
                 // can_edit → :canEdit (bool). Defaults to true when omitted so
                 // the editor is interactive by default.
                 attrs.push(self.bool_prop_binding(props, "can_edit", "canEdit", true));
@@ -10092,31 +10112,87 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // are attached by the generic event loop at the end of this fn.
             }
 
-            // === Markdown (Plan 022 Phase 7c — fixes plan 022 §10) ===
-            // Streaming markdown renderer (markstream-vue). Maps the AURA
-            // `content` prop to <MarkdownRender :content="..."> (bound) or
-            // <MarkdownRender content="..."> (literal string). Mirrors the
-            // autodown_editor content handling above.
-            "markdown" => {
+            // === AutoDown 只读渲染（Plan 040 主名翻转）===
+            // StreamingRenderer（@autodown/engine）——MarkdownRender 的超集
+            // （内部组合 MarkdownRender 渲染段落），换绑不丢能力（plan 022
+            // §10 的 MarkdownRender 直绑路径退役）。content → :source（绑定）
+            // / source（字面）。streaming 族 props 进契约（plan 040）：
+            // 显式 streaming 优先；否则 final 反相发射为 :streaming="!final"；
+            // placeholder_block_id / placeholder_height / scroll_sync snake→
+            // kebab 映射。VM 臂忽略并登记豁免（PLAN-042/043）。
+            "autodown" | "markdown" | "markdown_editor" => {
                 match props.get("content") {
                     Some(AuraPropValue::Expr(expr)) => {
                         match self.expr_to_vue_bound_value(expr) {
-                            Ok(js_expr) => attrs.push(format!(":content=\"{}\"", js_expr)),
+                            Ok(js_expr) => attrs.push(format!(":source=\"{}\"", js_expr)),
                             // Plan 012 P0#13 follow-up: was silently skipped.
                             Err(e) => self.warn(
                                 "R013",
                                 crate::ui_gen::validators::Severity::Warning,
-                                format!("markdown `content`: {}; prop not emitted", e),
+                                format!("autodown `content`: {}; prop not emitted", e),
                             ),
                         }
                     }
                     Some(value) => {
-                        // Literal string markdown source.
+                        // Literal string source.
                         let content = self.extract_string_value(value).unwrap_or("");
-                        attrs.push(format!("content=\"{}\"", content));
+                        attrs.push(format!("source=\"{}\"", content));
                     }
                     None => {}
                 }
+                // streaming：显式 prop 优先；否则 final 反相（streaming = !final）。
+                if props.contains_key("streaming") {
+                    attrs.push(self.bool_prop_binding(props, "streaming", "streaming", false));
+                } else if let Some(value) = props.get("final") {
+                    match value {
+                        AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => {
+                            attrs.push(format!(":streaming=\"{}\"", !b));
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                            attrs.push(format!(":streaming=\"{}\"", s != "true"));
+                        }
+                        AuraPropValue::Expr(expr) => match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => {
+                                attrs.push(format!(":streaming=\"!({})\"", js_expr));
+                            }
+                            Err(_) => {
+                                attrs.push(":streaming=\"false\"".to_string());
+                            }
+                        },
+                        _ => attrs.push(":streaming=\"false\"".to_string()),
+                    }
+                }
+                // placeholder_block_id → :placeholder-block-id（VM v1 忽略）。
+                match props.get("placeholder_block_id") {
+                    Some(AuraPropValue::Expr(expr)) => {
+                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":placeholder-block-id=\"{}\"", js_expr));
+                        }
+                    }
+                    Some(value) => {
+                        if let Some(s) = self.extract_string_value(value) {
+                            attrs.push(format!("placeholder-block-id=\"{}\"", s));
+                        }
+                    }
+                    None => {}
+                }
+                // placeholder_height → :placeholder-height（数字/绑定；VM v1 忽略）。
+                match props.get("placeholder_height") {
+                    Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => {
+                        attrs.push(format!(":placeholder-height=\"{}\"", n));
+                    }
+                    Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) => {
+                        attrs.push(format!(":placeholder-height=\"{}\"", f));
+                    }
+                    Some(AuraPropValue::Expr(expr)) => {
+                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":placeholder-height=\"{}\"", js_expr));
+                        }
+                    }
+                    _ => {}
+                }
+                // scroll_sync → :scroll-sync（默认 true；VM v1 忽略）。
+                attrs.push(self.bool_prop_binding(props, "scroll_sync", "scrollSync", true));
                 // style/class (wrapper sizing).
                 self.push_style_class(&mut attrs, props);
             }
@@ -16795,6 +16871,62 @@ widget NoteEditor {
             "named import from @autodown/editor:\n{}",
             sfc
         );
+    }
+
+    /// Plan 040: autodown 只读臂 streaming 族 props 发射 + editor placeholder。
+    /// - 显式 streaming 优先，final 反相发射为 :streaming="!final"；
+    /// - placeholder_block_id/placeholder_height snake→kebab 绑定；
+    /// - scroll_sync 缺省 true；编辑臂 placeholder 字面发射。
+    #[test]
+    fn test_autodown_streaming_props_and_editor_placeholder() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget DocStream {
+    model {
+        var body str = ""
+        var pid str = "ghost"
+        var ph f64 = 96.0
+        var done bool = false
+    }
+    view {
+        col {
+            autodown {
+                content: .body
+                streaming: .done
+                placeholder_block_id: .pid
+                placeholder_height: .ph
+            }
+            autodown {
+                content: .body
+                final: false
+            }
+            autodown_editor {
+                content: .body
+                placeholder: "Start typing..."
+            }
+        }
+    }
+}
+"#);
+        // 显式 streaming 绑定优先。
+        assert!(sfc.contains(":streaming=\"done\""), "explicit streaming:\n{}", sfc);
+        assert!(sfc.contains(":placeholder-block-id=\"pid\""), "block id:\n{}", sfc);
+        assert!(sfc.contains(":placeholder-height=\"ph\""), "height:\n{}", sfc);
+        assert!(sfc.contains(":scroll-sync=\"true\""), "scroll sync default:\n{}", sfc);
+        // final: false → :streaming="true"（反相）。
+        assert!(sfc.contains(":streaming=\"true\""), "final inversion:\n{}", sfc);
+        // 编辑臂 placeholder：解析器字符串字面量走绑定分支（:placeholder=
+        // "'...'"，与 content 字面同约定）。
+        assert!(sfc.contains(":placeholder=\"'Start typing...'\""), "editor placeholder:\n{}", sfc);
+        // 换绑超集组件（legacy markdown 别名路径由 002 golden 锁定）。
+        // 多组件共用 import 源时合并为一条 import 语句。
+        assert!(
+            sfc.contains("StreamingRenderer } from '@autodown/engine'")
+                || sfc.contains("import { StreamingRenderer } from '@autodown/engine'"),
+            "import:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("<StreamingRenderer"), "component tag:\n{}", sfc);
+        assert!(!sfc.contains("MarkdownRender"), "MarkdownRender fully rebound:\n{}", sfc);
     }
 
     #[test]

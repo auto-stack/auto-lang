@@ -838,11 +838,16 @@ impl WidgetRegistry {
         // Plan 019 Phase 4: vue 后端重定向 @autodown/engine/MarkdownRender
         // （vue 映射声明在 schema/aura.at，P4-4 单源；替换 musk-022 时代
         // markstream-vue 平台挂载路径，存量消费方迁移归 020 musk re-vendor）。
-        let mut markdown = WidgetSpec::new("Markdown", WidgetCategory::Display)
-            .with_alias("markdown");
-        markdown.primary_prop = Some("content".to_string());
-        markdown.has_children = false;
-        self.register(markdown);
+        // Plan 040: spec 主名随 tag 主名翻转 Markdown→Autodown（AutoDown
+        // 统一命名，裁定③）；markdown/markdown_editor 降 legacy 别名——
+        // schema overlay 把 vue 映射（StreamingRenderer@autodown/engine，
+        // 超集组件裁定②）+ npm 从 aura.at 灌入，此处只登记 spec 面。
+        let mut autodown = WidgetSpec::new("Autodown", WidgetCategory::Display)
+            .with_alias("markdown")
+            .with_alias("markdown_editor");
+        autodown.primary_prop = Some("content".to_string());
+        autodown.has_children = false;
+        self.register(autodown);
 
         // Mermaid — mermaid diagram renderer. Renders mermaid diagram source
         // (e.g. `graph TD; A-->B`) into SVG. Primary prop `source`.
@@ -2229,6 +2234,33 @@ mod tests {
         let jet = spec.backends.get("jet").expect("jet backend");
         assert_eq!(jet.component, "OutlinedTextField");
         assert_eq!(jet.import.as_deref(), Some("androidx.compose.material3.OutlinedTextField"));
+    }
+
+    /// Plan 040 T5: autodown 条目（主名翻转 + StreamingRenderer 换绑）。
+    /// vue 映射来自 schema/aura.at overlay（P4-4 单源）——spec 面（主名/
+    /// 别名/primary_prop）在此断言，vue 臂（StreamingRenderer@engine）随
+    /// overlay 落库一并锁。
+    #[test]
+    fn test_autodown_entry_streaming_rebind() {
+        let registry = WidgetRegistry::with_defaults();
+        let spec = registry.get("autodown").expect("autodown registered under flipped primary name");
+        assert_eq!(spec.name, "Autodown");
+        assert_eq!(spec.primary_prop.as_deref(), Some("content"));
+        // legacy 别名同折叠解析到同一 spec。
+        assert!(registry.get("markdown").is_some(), "legacy alias markdown resolves");
+        assert!(registry.get("markdown_editor").is_some(), "legacy alias markdown_editor resolves");
+        // vue 臂经 schema overlay 换绑 StreamingRenderer（超集组件）。
+        let vue = spec.backends.get("vue").expect("vue backend via schema overlay");
+        assert_eq!(vue.component, "StreamingRenderer");
+        assert_eq!(vue.import.as_deref(), Some("@autodown/engine"));
+        // npm 从 aura.at vue 行 carried——loader 按首个 @ 切分（scope 包
+        // 先天切在 scope 杠上，("","autodown/engine@^0.4.0")，既有怪癖非
+        // 本计划引入，此处锁现状防回退）。
+        assert_eq!(
+            vue.npm_package.as_ref().map(|(p, v)| (p.as_str(), v.as_str())),
+            Some(("", "autodown/engine@^0.4.0")),
+            "npm package carried from aura.at vue line (first-@ split quirk)"
+        );
     }
 
     #[test]
