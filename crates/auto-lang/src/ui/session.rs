@@ -2559,7 +2559,15 @@ fn spawn_outproc_child(
     }
 
     /// 459 §2.3：递增分配新 AppId 并登记 App（boot 期调用，一 App 一窗）。
-    pub fn allocate_app(&mut self, component: DynamicComponent) -> AppId {
+    pub fn allocate_app(&mut self, mut component: DynamicComponent) -> AppId {
+        // Plan 518 G1：desktop 宿主下,新挂载 App 的已声明 dark_mode 同步
+        // 宿主当前主题——dynamic_view 每帧读该变量回写全局,app 自带默认值
+        //（如 011-calculator 的 dark）会把 Appearance 切过的主题翻回。
+        // standalone 不同步:458 env 播种(--theme)是彼模式的主题真源。
+        if self.host.is_some() && component.read_state("dark_mode").is_ok() {
+            let dark = crate::ui::style::theme::dark_mode();
+            let _ = component.write_state("dark_mode", auto_val::Value::Bool(dark));
+        }
         self.next_app += 1;
         let id = AppId(self.next_app);
         self.apps.insert(id, AppSession::new(id, component));

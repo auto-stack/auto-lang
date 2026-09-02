@@ -10311,11 +10311,21 @@ fn compare_pngs(
                 inject_desktop_surface(&mut session);
                 // Plan 518 G1：boot 主题读回（storage `shell.appearance.theme`
                 // 覆盖 thread-local 默认——settings.at Appearance 切换的持久
-                // 端；仅设全局,已声明 dark_mode 的 App 变量由 458 播种链管）。
+                // 端,后于 458 env 播种 = 存储键优先于 CLI 初值）。已声明
+                // dark_mode 的 App 变量须同步——dynamic_view 每帧读该变量
+                // 回写全局（如 011-calculator）,不同步则首帧被翻回。
                 if let Some(t) =
                     crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme")
                 {
-                    crate::ui::style::iced_adapter::set_dark_mode(t.trim() != "light");
+                    let dark = t.trim() != "light";
+                    crate::ui::style::iced_adapter::set_dark_mode(dark);
+                    for app in session.apps.values_mut() {
+                        if app.component.read_state("dark_mode").is_ok() {
+                            let _ = app
+                                .component
+                                .write_state("dark_mode", auto_val::Value::Bool(dark));
+                        }
+                    }
                 }
                 // Plan 480 S3：真桌面壳孵化通道——broker 常驻受理 spawn 孵化
                 // （`auto --autodesk-incubate` 经 `request_incubation` 连入，
