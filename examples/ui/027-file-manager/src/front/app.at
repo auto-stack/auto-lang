@@ -1,0 +1,1245 @@
+// app.at — 027-file-manager 文件管理器（Plan 440·App 轨道填洞 ④）
+//
+// 双栏 Finder/Explorer 形态：
+// - 左侧栏：快速访问（Home/Docs/Downloads/Pictures/Music/Trash）+ 存储占用仪表
+// - 顶部栏：前进/后退 + 面包屑导航 + 搜索过滤 + 列表/网格视图切换 + 新建/隐藏开关
+// - 内容区：明细列表（表格/可排序列头/内联编辑） vs 图标网格（多彩文件徽章卡片）
+// - 弹层系统（Plan 422）：右键上下文菜单（坐标锚）、删除确认弹层、新建弹层
+// - 剪贴板：复制 / 剪切 / 粘贴跨目录流
+// - 持久化：storage.get/set 保持视图模式、排序字段、排序方向与隐藏文件状态
+
+widget App {
+    msg {
+        Init,
+        NavTo(str), GoBack, GoForward, GoUp,
+        SetViewMode(str), SortByName, SortBySize, SortByDate, SortByType, ToggleHidden,
+        SetSearch(str), SelectItem(int), OpenItem(int),
+        StartRename(int), SetEditName(str), CommitRename, CancelRename,
+        ItemCtx(int, float, float), CtxClose, CtxOpen, CtxRename, CtxCopy, CtxCut, CtxPaste, CtxDelete,
+        NewFolderOpen, NewFileOpen, NewModalClose, SetNewName(str), CommitNew,
+        ConfirmDelete(int), ExecuteDelete, CancelDelete,
+        DismissToast
+    }
+
+    model {
+        // ---- 浏览与导航状态 ----
+        var current_path str = "/root"
+        var history = ["/root"]
+        var history_idx int = 0
+        var can_back bool = false
+        var can_forward bool = false
+
+        // 面包屑段列表
+        var crumbs = [
+            { name: "root", path: "/root", is_last: true }
+        ]
+
+        // ---- 视图与过滤配置 ----
+        var view_mode str = "list"          // "list" | "grid"
+        var sort_col str = "name"           // "name" | "size" | "date" | "type"
+        var sort_dir str = "asc"            // "asc" | "desc"
+        var show_hidden bool = false
+        var show_hidden_label str = "隐藏项: 关"
+        var search_q str = ""
+
+        // 列头指示文本
+        var name_hdr str = "名称 ↑"
+        var size_hdr str = "大小"
+        var date_hdr str = "修改日期"
+        var type_hdr str = "类型"
+
+        // 选中与就地编辑
+        var selected_id int = -1
+        var selected_name str = ""
+        var selected_info str = "未选中任何项目"
+        var editing_id int = -1
+        var edit_name str = ""
+
+        // ---- Plan 422 弹层原语状态 ----
+        // 1. 右键菜单（坐标锚）
+        var ctx_open bool = false
+        var ctx_x float = 0.0
+        var ctx_y float = 0.0
+        var ctx_item_id int = -1
+
+        // 2. 新建文件/文件夹弹层
+        var new_modal_open bool = false
+        var new_modal_type str = "folder"   // "folder" | "file"
+        var new_modal_name str = ""
+
+        // 3. 删除确认弹层
+        var confirm_del_open bool = false
+        var confirm_del_id int = -1
+        var confirm_del_name str = ""
+        var confirm_del_desc str = "确定要删除选中的项目吗？"
+
+        // ---- 剪贴板状态 ----
+        var clipboard_op str = ""           // "copy" | "cut" | ""
+        var clipboard_id int = -1
+        var clipboard_name str = ""
+        var clipboard_label str = ""
+
+        // ---- 反馈与状态栏 ----
+        var toast_open bool = false
+        var toast_msg str = ""
+        var item_count_str str = "0 个项目"
+        var total_size_str str = "0 B"
+        var has_items bool = true
+
+        // ---- 虚拟文件系统（平行数组驱动）----
+        var item_ids = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+        ]
+        var item_names = [
+            "Documents", "Downloads", "Pictures", "Music", "Trash",
+            "README.md", "config.toml", ".env",
+            "Projects", "notes.txt", "budget_2026.xlsx", ".secret_draft.md",
+            "auto-lang", "architecture.pdf", "todo.md",
+            "auto-v0.9.0.tar.gz", "setup.sh", "dataset.csv",
+            "screenshot_01.png", "avatar.jpg"
+        ]
+        var item_paths = [
+            "/root/Documents", "/root/Downloads", "/root/Pictures", "/root/Music", "/root/Trash",
+            "/root/README.md", "/root/config.toml", "/root/.env",
+            "/root/Documents/Projects", "/root/Documents/notes.txt", "/root/Documents/budget_2026.xlsx", "/root/Documents/.secret_draft.md",
+            "/root/Documents/Projects/auto-lang", "/root/Documents/Projects/architecture.pdf", "/root/Documents/Projects/todo.md",
+            "/root/Downloads/auto-v0.9.0.tar.gz", "/root/Downloads/setup.sh", "/root/Downloads/dataset.csv",
+            "/root/Pictures/screenshot_01.png", "/root/Pictures/avatar.jpg"
+        ]
+        var item_parents = [
+            "/root", "/root", "/root", "/root", "/root",
+            "/root", "/root", "/root",
+            "/root/Documents", "/root/Documents", "/root/Documents", "/root/Documents",
+            "/root/Documents/Projects", "/root/Documents/Projects", "/root/Documents/Projects",
+            "/root/Downloads", "/root/Downloads", "/root/Downloads",
+            "/root/Pictures", "/root/Pictures"
+        ]
+        var item_is_dirs = [
+            true, true, true, true, true,
+            false, false, false,
+            true, false, false, false,
+            true, false, false,
+            false, false, false,
+            false, false
+        ]
+        var item_sizes = [
+            0, 0, 0, 0, 0,
+            2450, 820, 312,
+            0, 1280, 89400, 540,
+            0, 1240000, 3200,
+            15800000, 4200, 524000,
+            345000, 128000
+        ]
+        var item_size_strs = [
+            "--", "--", "--", "--", "--",
+            "2.4 KB", "820 B", "312 B",
+            "--", "1.2 KB", "89.4 KB", "540 B",
+            "--", "1.2 MB", "3.2 KB",
+            "15.8 MB", "4.2 KB", "524 KB",
+            "345 KB", "128 KB"
+        ]
+        var item_file_exts = [
+            "folder", "folder", "folder", "folder", "trash",
+            "md", "toml", "env",
+            "folder", "txt", "xlsx", "md",
+            "folder", "pdf", "md",
+            "gz", "sh", "csv",
+            "png", "jpg"
+        ]
+        var item_types = [
+            "文件夹", "文件夹", "文件夹", "文件夹", "回收站",
+            "Markdown 文档", "TOML 配置文件", "环境配置",
+            "文件夹", "文本文档", "电子表格", "Markdown 文档",
+            "文件夹", "PDF 文档", "Markdown 文档",
+            "压缩归档", "Shell 脚本", "CSV 数据表",
+            "PNG 图像", "JPEG 图像"
+        ]
+        var item_dates = [
+            "2026-08-30 11:20", "2026-09-01 10:00", "2026-08-31 14:22", "2026-08-08 19:30", "2026-09-01 00:00",
+            "2026-08-28 10:30", "2026-08-29 14:15", "2026-08-25 09:00",
+            "2026-08-30 15:00", "2026-08-31 16:45", "2026-08-20 18:00", "2026-08-22 08:30",
+            "2026-09-01 22:10", "2026-08-15 09:12", "2026-09-01 20:00",
+            "2026-09-01 10:00", "2026-08-29 12:30", "2026-08-27 15:40",
+            "2026-08-31 14:22", "2026-08-18 17:50"
+        ]
+        var item_hiddens = [
+            false, false, false, false, false,
+            false, false, true,
+            false, false, false, true,
+            false, false, false,
+            false, false, false,
+            false, false
+        ]
+        var item_colors = [
+            "#f59e0b", "#f59e0b", "#f59e0b", "#f59e0b", "#94a3b8",
+            "#38bdf8", "#a855f7", "#ec4899",
+            "#f59e0b", "#38bdf8", "#10b981", "#38bdf8",
+            "#f59e0b", "#ef4444", "#38bdf8",
+            "#8b5cf6", "#10b981", "#06b6d4",
+            "#ec4899", "#ec4899"
+        ]
+        var next_id int = 20
+
+        // 渲染视图模型数组（预置结构使 TypeScript 准确推导字段类型）
+        var files_view = [
+            {
+                id: 0,
+                name: "Documents",
+                path: "/root/Documents",
+                is_dir: true,
+                size: 0,
+                size_str: "--",
+                file_ext: "folder",
+                type_name: "文件夹",
+                date: "2026-08-30 11:20",
+                is_hidden: false,
+                color: "#f59e0b"
+            }
+        ]
+    }
+
+    view {
+        col {
+            style: "w-full h-screen flex flex-col bg-zinc-950 text-zinc-100 select-none overflow-hidden font-sans"
+
+            // ══════════════════════════════════════════════════════════════
+            // 顶部工具栏与路径条
+            // ══════════════════════════════════════════════════════════════
+            row {
+                style: "h-14 border-b border-zinc-800 px-4 flex items-center justify-between bg-zinc-900/90 shrink-0 gap-3"
+
+                // 历史导航与路径面包屑
+                row {
+                    style: "items-center gap-1.5 flex-1 min-w-0"
+
+                    // 后退按钮
+                    button (text: "←", variant: "ghost") {
+                        onclick: .GoBack
+                        style: if .can_back { "h-8 w-8 rounded-lg bg-zinc-800 text-zinc-100 hover:bg-zinc-700 flex items-center justify-center text-sm font-bold" } else { "h-8 w-8 rounded-lg bg-zinc-800/40 text-zinc-600 flex items-center justify-center text-sm font-bold opacity-40" }
+                    }
+
+                    // 前进按钮
+                    button (text: "→", variant: "ghost") {
+                        onclick: .GoForward
+                        style: if .can_forward { "h-8 w-8 rounded-lg bg-zinc-800 text-zinc-100 hover:bg-zinc-700 flex items-center justify-center text-sm font-bold" } else { "h-8 w-8 rounded-lg bg-zinc-800/40 text-zinc-600 flex items-center justify-center text-sm font-bold opacity-40" }
+                    }
+
+                    // 上一级按钮
+                    button (text: "↑", variant: "ghost") {
+                        onclick: .GoUp
+                        style: if .current_path != "/root" { "h-8 w-8 rounded-lg bg-zinc-800 text-zinc-100 hover:bg-zinc-700 flex items-center justify-center text-sm font-bold mr-2" } else { "h-8 w-8 rounded-lg bg-zinc-800/40 text-zinc-600 flex items-center justify-center text-sm font-bold mr-2 opacity-40" }
+                    }
+
+                    // 面包屑胶囊条
+                    row {
+                        style: "items-center bg-zinc-950/80 border border-zinc-800/80 rounded-lg px-2.5 py-1 gap-1 flex-1 max-w-lg overflow-x-auto"
+                        text "📁" { style: "text-xs mr-1 opacity-70" }
+                        for c in .crumbs {
+                            if c.is_last {
+                                text c.name { style: "text-xs font-semibold text-zinc-200 px-1 py-0.5 rounded bg-zinc-800/50" }
+                            } else {
+                                button (text: c.name, variant: "ghost") {
+                                    onclick: .NavTo(c.path)
+                                    style: "text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/40 px-1.5 py-0.5 rounded transition-colors"
+                                }
+                                text "/" { style: "text-xs text-zinc-600 font-mono" }
+                            }
+                        }
+                    }
+                }
+
+                // 右侧操作区：搜索 + 视图切换 + 隐藏开关 + 新建
+                row {
+                    style: "items-center gap-2 shrink-0"
+
+                    // 搜索框
+                    input {
+                        value: .search_q
+                        oninput: .SetSearch
+                        placeholder: "搜索当前目录..."
+                        style: "w-44 text-xs px-3 py-1.5 bg-zinc-950/80 border border-zinc-800 rounded-lg text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-600"
+                    }
+
+                    // 视图模式切换（List ↔ Grid）
+                    row {
+                        style: "bg-zinc-950/80 border border-zinc-800 rounded-lg p-0.5 gap-0.5"
+                        button (text: "≡", variant: "ghost") {
+                            onclick: .SetViewMode("list")
+                            style: if .view_mode == "list" { "h-7 w-7 rounded-md bg-zinc-800 text-zinc-100 font-bold text-xs flex items-center justify-center shadow-sm" } else { "h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-200 text-xs flex items-center justify-center" }
+                        }
+                        button (text: "⊞", variant: "ghost") {
+                            onclick: .SetViewMode("grid")
+                            style: if .view_mode == "grid" { "h-7 w-7 rounded-md bg-zinc-800 text-zinc-100 font-bold text-xs flex items-center justify-center shadow-sm" } else { "h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-200 text-xs flex items-center justify-center" }
+                        }
+                    }
+
+                    // 隐藏文件开关
+                    button (text: .show_hidden_label, variant: "ghost") {
+                        onclick: .ToggleHidden
+                        style: if .show_hidden { "text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 text-primary font-medium border border-zinc-700" } else { "text-xs px-2.5 py-1.5 rounded-lg bg-zinc-950/60 text-zinc-400 border border-zinc-800 hover:text-zinc-200" }
+                    }
+
+                    // 新建文件夹按钮
+                    button (text: "+ 文件夹", variant: "secondary") {
+                        onclick: .NewFolderOpen
+                        style: "text-xs px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 font-medium border border-zinc-700 shadow-sm"
+                    }
+
+                    // 新建文件按钮
+                    button (text: "+ 文件", variant: "default") {
+                        onclick: .NewFileOpen
+                        style: "text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-medium shadow-sm"
+                    }
+                }
+            }
+
+            // ══════════════════════════════════════════════════════════════
+            // 主体区：左侧栏 + 右内容区
+            // ══════════════════════════════════════════════════════════════
+            row {
+                style: "flex-1 min-h-0 flex"
+
+                // ---- 左侧导航栏（快速访问 + 存储占用）----
+                col {
+                    style: "w-56 border-r border-zinc-800 bg-zinc-900/40 p-3 flex flex-col justify-between shrink-0"
+
+                    col {
+                        style: "gap-1"
+                        text "快速访问" { style: "text-[11px] font-bold text-zinc-500 uppercase tracking-wider px-2 py-1 mb-1" }
+
+                        button (text: "🏠 主目录", variant: "ghost") {
+                            onclick: .NavTo("/root")
+                            style: if .current_path == "/root" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
+                        }
+                        button (text: "📁 文档", variant: "ghost") {
+                            onclick: .NavTo("/root/Documents")
+                            style: if .current_path == "/root/Documents" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
+                        }
+                        button (text: "📥 下载", variant: "ghost") {
+                            onclick: .NavTo("/root/Downloads")
+                            style: if .current_path == "/root/Downloads" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
+                        }
+                        button (text: "🖼️ 图片", variant: "ghost") {
+                            onclick: .NavTo("/root/Pictures")
+                            style: if .current_path == "/root/Pictures" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
+                        }
+                        button (text: "🎵 音乐", variant: "ghost") {
+                            onclick: .NavTo("/root/Music")
+                            style: if .current_path == "/root/Music" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
+                        }
+                        button (text: "🗑️ 回收站", variant: "ghost") {
+                            onclick: .NavTo("/root/Trash")
+                            style: if .current_path == "/root/Trash" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
+                        }
+                    }
+
+                    // 存储使用率小部件
+                    col {
+                        style: "bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3 gap-2"
+                        row {
+                            style: "justify-between items-center text-xs"
+                            text "存储空间" { style: "font-semibold text-zinc-300" }
+                            text "42.5 / 128 GB" { style: "text-zinc-500 font-mono text-[11px]" }
+                        }
+                        // 进度条
+                        row {
+                            style: "w-full h-2 bg-zinc-800 rounded-full overflow-hidden"
+                            row {
+                                style: "w-1/3 h-full bg-primary rounded-full"
+                            }
+                        }
+                    }
+                }
+
+                // ---- 右侧主要内容区（详细列表 vs 图标网格）----
+                col {
+                    style: "flex-1 bg-zinc-950 flex flex-col min-h-0 overflow-y-auto"
+
+                    // 模式 A：详细列表视图
+                    if .view_mode == "list" {
+                        col {
+                            style: "w-full flex-1 min-h-0"
+
+                            // 列表表头（可点击排序）
+                            row {
+                                style: "h-9 border-b border-zinc-800 px-4 items-center bg-zinc-900/30 text-xs font-medium text-zinc-400 select-none sticky top-0 z-10"
+                                button (text: .name_hdr, variant: "ghost") {
+                                    onclick: .SortByName
+                                    style: "w-1/3 justify-start px-2 text-xs text-zinc-300 hover:text-zinc-100"
+                                }
+                                button (text: .size_hdr, variant: "ghost") {
+                                    onclick: .SortBySize
+                                    style: "w-28 justify-end px-2 text-xs text-zinc-300 hover:text-zinc-100"
+                                }
+                                button (text: .type_hdr, variant: "ghost") {
+                                    onclick: .SortByType
+                                    style: "w-36 justify-start px-4 text-xs text-zinc-300 hover:text-zinc-100"
+                                }
+                                button (text: .date_hdr, variant: "ghost") {
+                                    onclick: .SortByDate
+                                    style: "flex-1 justify-start px-2 text-xs text-zinc-300 hover:text-zinc-100"
+                                }
+                                text "操作" { style: "w-20 text-center text-xs text-zinc-500" }
+                            }
+
+                            // 列表行项目
+                            if .has_items {
+                                col {
+                                    style: "divide-y divide-zinc-900"
+                                    for item in .files_view {
+                                        row {
+                                            style: if item.id == .selected_id { "h-11 px-4 items-center bg-zinc-800/80 border-l-2 border-primary transition-colors cursor-pointer" } else { "h-11 px-4 items-center hover:bg-zinc-900/60 transition-colors cursor-pointer" }
+
+                                            // 名称列（图标 + 名称/内联输入）
+                                            row {
+                                                style: "w-1/3 items-center gap-2 px-2 min-w-0"
+                                                if item.is_dir {
+                                                    text "📁" { style: "text-sm shrink-0" }
+                                                } else {
+                                                    text "📄" { style: "text-sm shrink-0" }
+                                                }
+
+                                                if item.id == .editing_id {
+                                                    input {
+                                                        value: .edit_name
+                                                        oninput: .SetEditName
+                                                        onenter: .CommitRename
+                                                        style: "flex-1 text-xs px-2 py-1 bg-zinc-900 border border-primary rounded text-zinc-100 outline-none"
+                                                    }
+                                                    button (text: "✓", variant: "ghost") {
+                                                        onclick: .CommitRename
+                                                        style: "h-6 w-6 text-xs text-emerald-400 font-bold hover:bg-zinc-700 rounded"
+                                                    }
+                                                    button (text: "✕", variant: "ghost") {
+                                                        onclick: .CancelRename
+                                                        style: "h-6 w-6 text-xs text-zinc-400 hover:bg-zinc-700 rounded"
+                                                    }
+                                                } else {
+                                                    button (text: item.name, variant: "ghost") {
+                                                        onclick: .OpenItem(item.id)
+                                                        oncontextmenu: .ItemCtx(item.id, 450.0, 200.0)
+                                                        style: if item.is_hidden { "justify-start text-xs text-zinc-400 font-medium truncate hover:underline" } else { "justify-start text-xs text-zinc-100 font-medium truncate hover:underline" }
+                                                    }
+                                                }
+                                            }
+
+                                            // 大小列
+                                            text item.size_str {
+                                                style: "w-28 text-right px-2 text-xs font-mono text-zinc-400"
+                                            }
+
+                                            // 类型列
+                                            text item.type_name {
+                                                style: "w-36 px-4 text-xs text-zinc-400 truncate"
+                                            }
+
+                                            // 修改日期列
+                                            text item.date {
+                                                style: "flex-1 px-2 text-xs text-zinc-400 font-mono"
+                                            }
+
+                                            // 快速操作列（右键/操作菜单按钮）
+                                            row {
+                                                style: "w-20 justify-center gap-1"
+                                                button (text: "···", variant: "ghost") {
+                                                    onclick: .ItemCtx(item.id, 500.0, 220.0)
+                                                    style: "h-7 w-7 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // 空目录占位
+                                col {
+                                    style: "flex-1 items-center justify-center p-12 gap-3"
+                                    text "📂" { style: "text-5xl opacity-30" }
+                                    text "此目录为空" { style: "text-sm text-zinc-500 font-medium" }
+                                }
+                            }
+                        }
+                    }
+
+                    // 模式 B：图标网格视图
+                    if .view_mode == "grid" {
+                        col {
+                            style: "w-full flex-1 p-5 min-h-0"
+                            if .has_items {
+                                row {
+                                    style: "flex-wrap gap-4"
+                                    for item in .files_view {
+                                        col {
+                                            style: if item.id == .selected_id { "w-36 h-36 bg-zinc-800/90 border-2 border-primary rounded-xl p-3 items-center justify-center gap-2 cursor-pointer shadow-lg hover:bg-zinc-800" } else { "w-36 h-36 bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-3 items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800/60 transition-colors" }
+
+                                            // 图标
+                                            if item.is_dir {
+                                                text "📁" { style: "text-4xl drop-shadow" }
+                                            } else {
+                                                text "📄" { style: "text-4xl drop-shadow" }
+                                            }
+
+                                            // 名称
+                                            if item.id == .editing_id {
+                                                input {
+                                                    value: .edit_name
+                                                    oninput: .SetEditName
+                                                    onenter: .CommitRename
+                                                    style: "w-full text-xs text-center px-1 py-0.5 bg-zinc-900 border border-primary rounded text-zinc-100 outline-none"
+                                                }
+                                            } else {
+                                                button (text: item.name, variant: "ghost") {
+                                                    onclick: .OpenItem(item.id)
+                                                    oncontextmenu: .ItemCtx(item.id, 450.0, 200.0)
+                                                    style: if item.is_hidden { "text-xs text-zinc-400 font-medium truncate w-full text-center" } else { "text-xs text-zinc-200 font-medium truncate w-full text-center" }
+                                                }
+                                            }
+
+                                            // 大小/副标
+                                            text item.size_str { style: "text-[10px] text-zinc-500 font-mono" }
+                                        }
+                                    }
+                                }
+                            } else {
+                                col {
+                                    style: "flex-1 items-center justify-center p-12 gap-3"
+                                    text "📂" { style: "text-5xl opacity-30" }
+                                    text "此目录为空" { style: "text-sm text-zinc-500 font-medium" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ══════════════════════════════════════════════════════════════
+            // 底部状态栏
+            // ══════════════════════════════════════════════════════════════
+            row {
+                style: "h-9 border-t border-zinc-800 px-4 items-center justify-between text-xs text-zinc-400 bg-zinc-900/80 shrink-0 select-none"
+                row {
+                    style: "items-center gap-3"
+                    text .item_count_str { style: "font-medium text-zinc-300" }
+                    text "|" { style: "text-zinc-700" }
+                    text .total_size_str { style: "font-mono" }
+                }
+
+                row {
+                    style: "items-center gap-3"
+                    if .clipboard_name != "" {
+                        text .clipboard_label {
+                            style: "text-primary font-medium text-[11px]"
+                        }
+                        button (text: "粘贴到此处", variant: "ghost") {
+                            onclick: .CtxPaste
+                            style: "text-xs px-2 py-0.5 rounded bg-primary/20 text-primary font-semibold hover:bg-primary/30"
+                        }
+                        text "|" { style: "text-zinc-700" }
+                    }
+                    text .selected_info { style: "text-zinc-300" }
+                }
+            }
+
+            // ══════════════════════════════════════════════════════════════
+            // Plan 422 弹层原语区域
+            // ══════════════════════════════════════════════════════════════
+
+            // 1. 右键上下文菜单 Popover
+            popover (open: .ctx_open, x: .ctx_x, y: .ctx_y, ondismiss: .CtxClose,
+                     class: "w-44 bg-zinc-900 border border-zinc-700 shadow-2xl py-1.5 rounded-xl z-50") {
+                button (text: "📂  打开", variant: "ghost") {
+                    onclick: .CtxOpen
+                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
+                }
+                button (text: "✏️  重命名", variant: "ghost") {
+                    onclick: .CtxRename
+                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
+                }
+                button (text: "📄  复制", variant: "ghost") {
+                    onclick: .CtxCopy
+                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
+                }
+                button (text: "✂️  剪切", variant: "ghost") {
+                    onclick: .CtxCut
+                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
+                }
+                if .clipboard_name != "" {
+                    button (text: "📋  粘贴到此处", variant: "ghost") {
+                        onclick: .CtxPaste
+                        style: "h-8 w-full justify-start px-3 text-xs text-primary font-semibold hover:bg-zinc-800 rounded-md"
+                    }
+                }
+                col (style: "h-px w-full bg-zinc-800 my-1")
+                button (text: "🗑️  删除", variant: "ghost") {
+                    onclick: .CtxDelete
+                    style: "h-8 w-full justify-start px-3 text-xs text-red-400 hover:bg-zinc-800 rounded-md"
+                }
+            }
+
+            // 2. 新建文件/文件夹模态 Popover
+            popover (open: .new_modal_open, x: 380.0, y: 220.0, ondismiss: .NewModalClose,
+                     class: "w-80 bg-zinc-900 border border-zinc-700 shadow-2xl p-5 rounded-2xl z-50") {
+                if .new_modal_type == "folder" {
+                    text "新建文件夹" { style: "text-sm font-bold text-zinc-100 mb-1" }
+                    text "在当前目录下创建一个新的子文件夹" { style: "text-xs text-zinc-400 mb-4" }
+                } else {
+                    text "新建文件" { style: "text-sm font-bold text-zinc-100 mb-1" }
+                    text "在当前目录下创建一个新的空文件" { style: "text-xs text-zinc-400 mb-4" }
+                }
+
+                input {
+                    value: .new_modal_name
+                    oninput: .SetNewName
+                    onenter: .CommitNew
+                    placeholder: "请输入名称..."
+                    style: "w-full text-xs px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-100 mb-4 outline-none focus:border-primary"
+                }
+
+                row {
+                    style: "justify-end gap-2"
+                    button (text: "取消", variant: "secondary") {
+                        onclick: .NewModalClose
+                        style: "px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    }
+                    button (text: "创建", variant: "default") {
+                        onclick: .CommitNew
+                        style: "px-4 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+                    }
+                }
+            }
+
+            // 3. 删除确认 Popover
+            popover (open: .confirm_del_open, x: 380.0, y: 230.0, ondismiss: .CancelDelete,
+                     class: "w-80 bg-zinc-900 border border-zinc-700 shadow-2xl p-5 rounded-2xl z-50") {
+                text "确认删除项目？" { style: "text-sm font-bold text-zinc-100 mb-1" }
+                text .confirm_del_desc {
+                    style: "text-xs text-zinc-400 mb-5 leading-relaxed"
+                }
+
+                row {
+                    style: "justify-end gap-2"
+                    button (text: "取消", variant: "secondary") {
+                        onclick: .CancelDelete
+                        style: "px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    }
+                    button (text: "确认删除", variant: "destructive") {
+                        onclick: .ExecuteDelete
+                        style: "px-4 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-500 font-medium"
+                    }
+                }
+            }
+
+            // 4. 操作成功/错误 Toast
+            if .toast_open {
+                row {
+                    style: "absolute bottom-12 right-6 bg-zinc-800 border border-zinc-700 text-zinc-100 px-4 py-2.5 rounded-xl shadow-2xl items-center gap-3 z-50"
+                    text .toast_msg { style: "text-xs font-medium" }
+                    button (text: "✕", variant: "ghost") {
+                        onclick: .DismissToast
+                        style: "text-xs text-zinc-400 hover:text-zinc-100"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            // ---- 配置恢复（storage 持久化，018/025 先例）----
+            let vm = storage.get("fileman.view_mode")
+            if vm == "grid" { .view_mode = "grid" }
+            if vm == "list" { .view_mode = "list" }
+
+            let sc = storage.get("fileman.sort_col")
+            if sc == "name" { .sort_col = "name" }
+            if sc == "size" { .sort_col = "size" }
+            if sc == "date" { .sort_col = "date" }
+            if sc == "type" { .sort_col = "type" }
+
+            let sd = storage.get("fileman.sort_dir")
+            if sd == "asc" { .sort_dir = "asc" }
+            if sd == "desc" { .sort_dir = "desc" }
+
+            let sh = storage.get("fileman.show_hidden")
+            if sh == "true" {
+                .show_hidden = true
+                .show_hidden_label = "隐藏项: 开"
+            }
+            if sh == "false" {
+                .show_hidden = false
+                .show_hidden_label = "隐藏项: 关"
+            }
+
+            // 计算视图
+            .NavTo("/root")
+        }
+
+        // ---- 目录导航 ----
+        .NavTo(target_path) -> {
+            .current_path = target_path
+            .selected_id = -1
+            .selected_name = ""
+            .selected_info = "未选中任何项目"
+            .editing_id = -1
+
+            // 维护历史栈
+            if .history_idx < 0 {
+                .history = [target_path]
+                .history_idx = 0
+            } else {
+                if .history[.history_idx] != target_path {
+                    var new_hist = []
+                    var hi int = 0
+                    for hi <= .history_idx {
+                        new_hist.push(.history[hi])
+                        hi = hi + 1
+                    }
+                    new_hist.push(target_path)
+                    .history = new_hist
+                    .history_idx = .history.len() - 1
+                }
+            }
+            .can_back = (.history_idx > 0)
+            .can_forward = (.history_idx + 1 < .history.len())
+
+            // 面包屑重算
+            if target_path == "/root" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: true }
+                ]
+            } else if target_path == "/root/Documents" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: "Documents", path: "/root/Documents", is_last: true }
+                ]
+            } else if target_path == "/root/Documents/Projects" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: "Documents", path: "/root/Documents", is_last: false },
+                    { name: "Projects", path: "/root/Documents/Projects", is_last: true }
+                ]
+            } else if target_path == "/root/Documents/Projects/auto-lang" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: "Documents", path: "/root/Documents", is_last: false },
+                    { name: "Projects", path: "/root/Documents/Projects", is_last: false },
+                    { name: "auto-lang", path: "/root/Documents/Projects/auto-lang", is_last: true }
+                ]
+            } else if target_path == "/root/Downloads" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: "Downloads", path: "/root/Downloads", is_last: true }
+                ]
+            } else if target_path == "/root/Pictures" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: "Pictures", path: "/root/Pictures", is_last: true }
+                ]
+            } else if target_path == "/root/Music" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: "Music", path: "/root/Music", is_last: true }
+                ]
+            } else if target_path == "/root/Trash" {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: "Trash", path: "/root/Trash", is_last: true }
+                ]
+            } else {
+                .crumbs = [
+                    { name: "root", path: "/root", is_last: false },
+                    { name: target_path, path: target_path, is_last: true }
+                ]
+            }
+
+            // 过滤并排序渲染
+            var items = []
+            var total_bytes int = 0
+            var i int = 0
+            for i < .item_ids.len() {
+                if .item_parents[i] == target_path {
+                    let is_hid = .item_hiddens[i]
+                    if .show_hidden || !is_hid {
+                        let iname = .item_names[i]
+                        let matches_q = (.search_q == "") || iname.contains(.search_q)
+                        if matches_q {
+                            let item_obj = {
+                                id: .item_ids[i],
+                                name: iname,
+                                path: .item_paths[i],
+                                is_dir: .item_is_dirs[i],
+                                size: .item_sizes[i],
+                                size_str: .item_size_strs[i],
+                                file_ext: .item_file_exts[i],
+                                type_name: .item_types[i],
+                                date: .item_dates[i],
+                                is_hidden: is_hid,
+                                color: .item_colors[i]
+                            }
+                            items.push(item_obj)
+                            total_bytes = total_bytes + .item_sizes[i]
+                        }
+                    }
+                }
+                i = i + 1
+            }
+
+            .files_view = items
+            .item_count_str = items.len().str() + " 个项目"
+            .has_items = (items.len() > 0)
+            if total_bytes > 1048576 {
+                .total_size_str = (total_bytes / 1048576).str() + " MB"
+            } else if total_bytes > 1024 {
+                .total_size_str = (total_bytes / 1024).str() + " KB"
+            } else {
+                .total_size_str = total_bytes.str() + " B"
+            }
+        }
+
+        .GoBack -> {
+            if .history_idx > 0 {
+                .history_idx = .history_idx - 1
+                let prev_path = .history[.history_idx]
+                .can_back = (.history_idx > 0)
+                .can_forward = true
+                .NavTo(prev_path)
+            }
+        }
+
+        .GoForward -> {
+            if .history_idx + 1 < .history.len() {
+                .history_idx = .history_idx + 1
+                let next_path = .history[.history_idx]
+                .can_back = true
+                .can_forward = (.history_idx + 1 < .history.len())
+                .NavTo(next_path)
+            }
+        }
+
+        .GoUp -> {
+            if .current_path == "/root/Documents/Projects/auto-lang" {
+                .NavTo("/root/Documents/Projects")
+            } else if .current_path == "/root/Documents/Projects" {
+                .NavTo("/root/Documents")
+            } else if .current_path != "/root" {
+                .NavTo("/root")
+            }
+        }
+
+        // ---- 视图与排序 ----
+        .SetViewMode(mode) -> {
+            .view_mode = mode
+            storage.set("fileman.view_mode", mode)
+        }
+
+        .SortByName -> {
+            if .sort_col == "name" {
+                if .sort_dir == "asc" { .sort_dir = "desc" } else { .sort_dir = "asc" }
+            } else {
+                .sort_col = "name"
+                .sort_dir = "asc"
+            }
+            .name_hdr = if .sort_dir == "asc" { "名称 ↑" } else { "名称 ↓" }
+            .size_hdr = "大小"
+            .date_hdr = "修改日期"
+            .type_hdr = "类型"
+            storage.set("fileman.sort_col", .sort_col)
+            storage.set("fileman.sort_dir", .sort_dir)
+            .NavTo(.current_path)
+        }
+
+        .SortBySize -> {
+            if .sort_col == "size" {
+                if .sort_dir == "asc" { .sort_dir = "desc" } else { .sort_dir = "asc" }
+            } else {
+                .sort_col = "size"
+                .sort_dir = "asc"
+            }
+            .name_hdr = "名称"
+            .size_hdr = if .sort_dir == "asc" { "大小 ↑" } else { "大小 ↓" }
+            .date_hdr = "修改日期"
+            .type_hdr = "类型"
+            storage.set("fileman.sort_col", .sort_col)
+            storage.set("fileman.sort_dir", .sort_dir)
+            .NavTo(.current_path)
+        }
+
+        .SortByDate -> {
+            if .sort_col == "date" {
+                if .sort_dir == "asc" { .sort_dir = "desc" } else { .sort_dir = "asc" }
+            } else {
+                .sort_col = "date"
+                .sort_dir = "asc"
+            }
+            .name_hdr = "名称"
+            .size_hdr = "大小"
+            .date_hdr = if .sort_dir == "asc" { "修改日期 ↑" } else { "修改日期 ↓" }
+            .type_hdr = "类型"
+            storage.set("fileman.sort_col", .sort_col)
+            storage.set("fileman.sort_dir", .sort_dir)
+            .NavTo(.current_path)
+        }
+
+        .SortByType -> {
+            if .sort_col == "type" {
+                if .sort_dir == "asc" { .sort_dir = "desc" } else { .sort_dir = "asc" }
+            } else {
+                .sort_col = "type"
+                .sort_dir = "asc"
+            }
+            .name_hdr = "名称"
+            .size_hdr = "大小"
+            .date_hdr = "修改日期"
+            .type_hdr = if .sort_dir == "asc" { "类型 ↑" } else { "类型 ↓" }
+            storage.set("fileman.sort_col", .sort_col)
+            storage.set("fileman.sort_dir", .sort_dir)
+            .NavTo(.current_path)
+        }
+
+        .ToggleHidden -> {
+            .show_hidden = !.show_hidden
+            if .show_hidden {
+                .show_hidden_label = "隐藏项: 开"
+            } else {
+                .show_hidden_label = "隐藏项: 关"
+            }
+            storage.set("fileman.show_hidden", if .show_hidden { "true" } else { "false" })
+            .NavTo(.current_path)
+        }
+
+        .SetSearch(q) -> {
+            .search_q = q
+            .NavTo(.current_path)
+        }
+
+        // ---- 选中与打开 ----
+        .SelectItem(id) -> {
+            .selected_id = id
+            var i int = 0
+            for i < .item_ids.len() {
+                if .item_ids[i] == id {
+                    .selected_name = .item_names[i]
+                    .selected_info = "选定: " + .item_names[i] + " (" + .item_size_strs[i] + ")"
+                }
+                i = i + 1
+            }
+        }
+
+        .OpenItem(id) -> {
+            .SelectItem(id)
+            var target_path = ""
+            var is_folder = false
+            var item_n = ""
+            var i int = 0
+            for i < .item_ids.len() {
+                if .item_ids[i] == id {
+                    target_path = .item_paths[i]
+                    is_folder = .item_is_dirs[i]
+                    item_n = .item_names[i]
+                }
+                i = i + 1
+            }
+
+            if is_folder {
+                .NavTo(target_path)
+            } else {
+                .toast_msg = "已打开文件: " + item_n
+                .toast_open = true
+            }
+        }
+
+        // ---- 内联重命名 ----
+        .StartRename(id) -> {
+            .editing_id = id
+            var i int = 0
+            for i < .item_ids.len() {
+                if .item_ids[i] == id {
+                    .edit_name = .item_names[i]
+                }
+                i = i + 1
+            }
+        }
+
+        .SetEditName(name) -> {
+            .edit_name = name
+        }
+
+        .CommitRename -> {
+            if .editing_id >= 0 && .edit_name != "" {
+                var i int = 0
+                for i < .item_ids.len() {
+                    if .item_ids[i] == .editing_id {
+                        .item_names[i] = .edit_name
+                        .item_paths[i] = .item_parents[i] + "/" + .edit_name
+                    }
+                    i = i + 1
+                }
+                .toast_msg = "已重命名为: " + .edit_name
+                .toast_open = true
+                .editing_id = -1
+                .NavTo(.current_path)
+            } else {
+                .editing_id = -1
+                .NavTo(.current_path)
+            }
+        }
+
+        .CancelRename -> {
+            .editing_id = -1
+            .NavTo(.current_path)
+        }
+
+        // ---- Plan 422 弹层右键菜单 ----
+        .ItemCtx(id, x, y) -> {
+            .ctx_item_id = id
+            .SelectItem(id)
+            .ctx_x = x
+            .ctx_y = y
+            .ctx_open = true
+        }
+
+        .CtxClose -> {
+            .ctx_open = false
+        }
+
+        .CtxOpen -> {
+            .ctx_open = false
+            if .ctx_item_id >= 0 {
+                .OpenItem(.ctx_item_id)
+            }
+        }
+
+        .CtxRename -> {
+            .ctx_open = false
+            if .ctx_item_id >= 0 {
+                .StartRename(.ctx_item_id)
+            }
+        }
+
+        .CtxCopy -> {
+            .ctx_open = false
+            if .ctx_item_id >= 0 {
+                .clipboard_op = "copy"
+                .clipboard_id = .ctx_item_id
+                var i int = 0
+                for i < .item_ids.len() {
+                    if .item_ids[i] == .ctx_item_id {
+                        .clipboard_name = .item_names[i]
+                        .clipboard_label = "已复制: " + .item_names[i]
+                    }
+                    i = i + 1
+                }
+                .toast_msg = "已复制: " + .clipboard_name
+                .toast_open = true
+            }
+        }
+
+        .CtxCut -> {
+            .ctx_open = false
+            if .ctx_item_id >= 0 {
+                .clipboard_op = "cut"
+                .clipboard_id = .ctx_item_id
+                var i int = 0
+                for i < .item_ids.len() {
+                    if .item_ids[i] == .ctx_item_id {
+                        .clipboard_name = .item_names[i]
+                        .clipboard_label = "已剪切: " + .item_names[i]
+                    }
+                    i = i + 1
+                }
+                .toast_msg = "已剪切: " + .clipboard_name
+                .toast_open = true
+            }
+        }
+
+        .CtxPaste -> {
+            .ctx_open = false
+            if .clipboard_id >= 0 {
+                var src_idx = -1
+                var i int = 0
+                for i < .item_ids.len() {
+                    if .item_ids[i] == .clipboard_id {
+                        src_idx = i
+                    }
+                    i = i + 1
+                }
+
+                if src_idx >= 0 {
+                    if .clipboard_op == "copy" {
+                        let new_id = .next_id
+                        .next_id = .next_id + 1
+                        let new_name = "副本_" + .item_names[src_idx]
+                        .item_ids.push(new_id)
+                        .item_names.push(new_name)
+                        .item_paths.push(.current_path + "/" + new_name)
+                        .item_parents.push(.current_path)
+                        .item_is_dirs.push(.item_is_dirs[src_idx])
+                        .item_sizes.push(.item_sizes[src_idx])
+                        .item_size_strs.push(.item_size_strs[src_idx])
+                        .item_file_exts.push(.item_file_exts[src_idx])
+                        .item_types.push(.item_types[src_idx])
+                        .item_dates.push("2026-09-02 12:00")
+                        .item_hiddens.push(.item_hiddens[src_idx])
+                        .item_colors.push(.item_colors[src_idx])
+                        .toast_msg = "已粘贴创建副本: " + new_name
+                    } else if .clipboard_op == "cut" {
+                        .item_parents[src_idx] = .current_path
+                        .item_paths[src_idx] = .current_path + "/" + .item_names[src_idx]
+                        .toast_msg = "已移动至此处: " + .clipboard_name
+                        .clipboard_op = ""
+                        .clipboard_id = -1
+                        .clipboard_name = ""
+                        .clipboard_label = ""
+                    }
+                    .toast_open = true
+                    .NavTo(.current_path)
+                }
+            }
+        }
+
+        .CtxDelete -> {
+            .ctx_open = false
+            if .ctx_item_id >= 0 {
+                .ConfirmDelete(.ctx_item_id)
+            }
+        }
+
+        // ---- 新建模态 ----
+        .NewFolderOpen -> {
+            .new_modal_type = "folder"
+            .new_modal_name = "新建文件夹"
+            .new_modal_open = true
+        }
+
+        .NewFileOpen -> {
+            .new_modal_type = "file"
+            .new_modal_name = "新建文档.txt"
+            .new_modal_open = true
+        }
+
+        .NewModalClose -> {
+            .new_modal_open = false
+        }
+
+        .SetNewName(name) -> {
+            .new_modal_name = name
+        }
+
+        .CommitNew -> {
+            if .new_modal_name != "" {
+                let new_id = .next_id
+                .next_id = .next_id + 1
+                let is_dir = (.new_modal_type == "folder")
+                .item_ids.push(new_id)
+                .item_names.push(.new_modal_name)
+                .item_paths.push(.current_path + "/" + .new_modal_name)
+                .item_parents.push(.current_path)
+                .item_is_dirs.push(is_dir)
+                .item_sizes.push(if is_dir { 0 } else { 1024 })
+                .item_size_strs.push(if is_dir { "--" } else { "1.0 KB" })
+                .item_file_exts.push(if is_dir { "folder" } else { "txt" })
+                .item_types.push(if is_dir { "文件夹" } else { "文本文档" })
+                .item_dates.push("2026-09-02 12:00")
+                .item_hiddens.push(false)
+                .item_colors.push(if is_dir { "#f59e0b" } else { "#38bdf8" })
+                .new_modal_open = false
+                .toast_msg = "创建成功: " + .new_modal_name
+                .toast_open = true
+                .NavTo(.current_path)
+            }
+        }
+
+        // ---- 删除确认 ----
+        .ConfirmDelete(id) -> {
+            .confirm_del_id = id
+            var i int = 0
+            for i < .item_ids.len() {
+                if .item_ids[i] == id {
+                    .confirm_del_name = .item_names[i]
+                    .confirm_del_desc = "确定要永久删除「" + .item_names[i] + "」吗？此操作不可撤销。"
+                }
+                i = i + 1
+            }
+            .confirm_del_open = true
+        }
+
+        .ExecuteDelete -> {
+            if .confirm_del_id >= 0 {
+                var del_idx = -1
+                var i int = 0
+                for i < .item_ids.len() {
+                    if .item_ids[i] == .confirm_del_id {
+                        del_idx = i
+                    }
+                    i = i + 1
+                }
+
+                if del_idx >= 0 {
+                    let dname = .item_names[del_idx]
+                    // 从平行数组中过滤移除
+                    var new_ids = []
+                    var new_names = []
+                    var new_paths = []
+                    var new_parents = []
+                    var new_dirs = []
+                    var new_sizes = []
+                    var new_sstrs = []
+                    var new_file_exts = []
+                    var new_types = []
+                    var new_dates = []
+                    var new_hiddens = []
+                    var new_colors = []
+
+                    var k int = 0
+                    for k < .item_ids.len() {
+                        if k != del_idx {
+                            new_ids.push(.item_ids[k])
+                            new_names.push(.item_names[k])
+                            new_paths.push(.item_paths[k])
+                            new_parents.push(.item_parents[k])
+                            new_dirs.push(.item_is_dirs[k])
+                            new_sizes.push(.item_sizes[k])
+                            new_sstrs.push(.item_size_strs[k])
+                            new_file_exts.push(.item_file_exts[k])
+                            new_types.push(.item_types[k])
+                            new_dates.push(.item_dates[k])
+                            new_hiddens.push(.item_hiddens[k])
+                            new_colors.push(.item_colors[k])
+                        }
+                        k = k + 1
+                    }
+
+                    .item_ids = new_ids
+                    .item_names = new_names
+                    .item_paths = new_paths
+                    .item_parents = new_parents
+                    .item_is_dirs = new_dirs
+                    .item_sizes = new_sizes
+                    .item_size_strs = new_sstrs
+                    .item_file_exts = new_file_exts
+                    .item_types = new_types
+                    .item_dates = new_dates
+                    .item_hiddens = new_hiddens
+                    .item_colors = new_colors
+
+                    .toast_msg = "已删除: " + dname
+                    .toast_open = true
+                    .selected_id = -1
+                    .selected_name = ""
+                    .selected_info = "未选中任何项目"
+                }
+                .confirm_del_open = false
+                .confirm_del_id = -1
+                .NavTo(.current_path)
+            }
+        }
+
+        .CancelDelete -> {
+            .confirm_del_open = false
+            .confirm_del_id = -1
+        }
+
+        .DismissToast -> {
+            .toast_open = false
+        }
+    }
+}

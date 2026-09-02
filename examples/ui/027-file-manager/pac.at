@@ -1,0 +1,16 @@
+// pac.at - File Manager 文件管理器（App 轨道填洞 ④·Plan 440）
+//
+// 双栏 Finder/Explorer 形态：左目录快捷栏/存储指示 + 右内容区（列表/网格切换）。
+// 面包屑路径条 + 前进/后退 + 排序 + 隐藏项过滤 + 右键菜单（Plan 422 弹层原语）
+// + 内联重命名 + 新建文件/目录 + 删除确认 + 复制/剪切/粘贴剪贴板。
+
+name: "file-manager"
+version: "0.1.0"
+description: "File Manager - Dual-pane file browser & manager (vue/vm)"
+
+scene: "ui"
+render: "vue"
+front_port: 4027
+icon: "folder"
+title: "File Manager"
+category: "system"
