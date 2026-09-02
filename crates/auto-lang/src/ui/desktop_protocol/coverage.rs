@@ -134,6 +134,11 @@ impl Coverage {
             "items-", "justify-", "overflow-", "mx-auto",
             "text-", "font-", "leading-", "underline",
             "bg-", "border", "rounded", "shadow", "from-", "to-",
+            // Plan 518 G8：backdrop-* 毛玻璃词汇声明冻结——共享 parser 已
+            // 识别（StyleClass::BackdropBlur/Saturate）,queue 臂不触发
+            // "未知类 → 整 widget not-yet"误判（BoxLayout 提取天然跳过
+            // 装饰字段）。渲染端 no-op 挂 RenderQueue（planned-debt）。
+            "backdrop-",
             "hover:",
         ]
         .into_iter()
@@ -503,6 +508,8 @@ mod tests {
     }
 
     /// 未支持样式类 → 显式缺项（style 子集外不静默丢弃）。
+    /// Plan 518 G8 翻转：backdrop-* 毛玻璃词汇已声明冻结（共享 parser
+    /// 识别 + 前缀放行,渲染 no-op）——原"滤镜类不在 v1 子集"断言换向。
     #[test]
     fn unsupported_style_token_listed() {
         let coverage = Coverage::target_set();
@@ -511,7 +518,51 @@ mod tests {
         assert!(coverage.style_token_supported("hover:bg-blue-600"));
         assert!(coverage.style_token_supported("bg-gradient-to-r"));
         assert!(!coverage.style_token_supported("animate-pulse"), "动画类不在 v1 子集");
-        assert!(!coverage.style_token_supported("backdrop-blur"), "滤镜类不在 v1 子集");
+        assert!(coverage.style_token_supported("backdrop-blur-xl"), "Plan 518 声明冻结");
+        assert!(coverage.style_token_supported("backdrop-saturate-[1.6]"));
+    }
+
+    /// Plan 518 G8 三臂核对（queue 臂）：玻璃样式串装载判定 Covered
+    /// （不触发"未知类 → 整 widget not-yet"）+ 共享 parser 识别 +
+    /// BoxLayout 提取跳过装饰字段（布局属性零污染）。
+    #[test]
+    fn backdrop_glass_style_queue_arm_not_rejected() {
+        use super::ViewScan;
+        // ① 共享 parser 识别（vue 直通外的两渲染臂共同词汇）。
+        let s = crate::ui::style::Style::parse(
+            "backdrop-blur-xl backdrop-saturate-[1.6] bg-white/10 border rounded-xl",
+        )
+        .expect("玻璃样式串可解析");
+        assert!(
+            s.classes.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::BackdropBlur(24.0)
+            )),
+            "blur-xl → 24px"
+        );
+        assert!(
+            s.classes.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::BackdropSaturate(1.6)
+            )),
+            "saturate-[1.6] → 1.6"
+        );
+        // ② BoxLayout 提取跳过装饰字段（无布局属性写入）。
+        let layout = crate::ui::style::BoxLayout::from_classes(&s.classes);
+        assert!(layout.width.is_none() && layout.height.is_none() && layout.gap.is_none());
+        // ③ 装载判定:玻璃样式 token 全放行 → Covered（无误判缺项）。
+        let mut scan = ViewScan::default();
+        scan.tags.insert("col".into());
+        scan.style_tokens.insert("backdrop-blur-xl".into());
+        scan.style_tokens.insert("backdrop-saturate-[1.6]".into());
+        scan.style_tokens.insert("bg-white/10".into());
+        scan.style_tokens.insert("border".into());
+        scan.style_tokens.insert("rounded-xl".into());
+        assert_eq!(
+            judge(&scan, &Coverage::target_set()),
+            Verdict::Covered,
+            "queue 臂玻璃样式不触发 not-yet"
+        );
     }
 
     /// 空视图（纯文本节点）与空扫描 → Covered。
