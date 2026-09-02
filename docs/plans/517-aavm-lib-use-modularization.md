@@ -185,6 +185,13 @@ divergences.md（use 发射形态注记）；project.md / auto/lib/README
 
 ## 测试设计（TDD：保护网 + 红先行）
 
+> **同步规约对齐注记（2026-09-02 规约/格式裁定后补）**：①g16 落当前
+> corpus_a2r 平铺 live 对拍形态——三件套金样/四路统一 runner/bless 基建
+> 归队列①批量迁移建立，本计划不单建（避免 scope 膨胀）；②use 语料的
+> a2r 运行闸（compile corpus 覆盖 corpus_use）为 511 既有欠账、归队列①
+> 清偿，本计划不双计——但 **lib 自身 use 化的运行闸在本计划范围内**
+> （双轨剥离 + 矩阵②⑤腿即是对转译版 lib 的运行验证）。
+
 ### 保护网（全程不得破绿）
 
 514 W2 后的完整闸面：tv 标准门禁（含 compile 腿 37/37）/ 99_idiom_probe

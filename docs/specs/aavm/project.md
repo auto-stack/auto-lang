@@ -172,8 +172,10 @@ runner 层,以 manifest 解决。markdown 单文件(ast.rs markdown_tests
 2. **OOP 批(目标 1 续阶)**——aavm 目标语言的方法/impl(`type T { fn }`/
    `ext T`)编译执行、is-struct 模式匹配、跨模块类型共享(pub type)、
    闭包与嵌套 fn、泛型(List\<T\> 实例化——通往塔顶必经)、May/生成器;
-   搭车清偿 P474-旁支 VBool parity(Val 载体扩展同批)。触发:517 复审时
-   按本页能力矩阵起草(范围依赖 514/517 终态)。
+   搭车清偿 P474-旁支 VBool parity(Val 载体扩展同批)。**验收口径(2026-09-02
+   升级)=同步规约三面闸,新语件直接落 per-case dir 三件套金样格式,
+   四路统一 runner 判定**——511 式"待澄清缺省暂缓"逃生舱关闭。触发:
+   517 复审时按本页能力矩阵起草(范围依赖 514/517 终态)。
 3. **远期(缓议,AAVM 跑通后再立项)**——自举塔顶:aavm 编译 lib 自身
    (VM 自举);Auto 版转译器家族扩展:a2r 已有(AA2R/a2r.at,434 核心子集),
    剩余=其他语言目标(a2ts/a2js/a2py…)的 Auto 版。缓议理由:在 Auto 写
