@@ -1738,13 +1738,13 @@ mod tests {
 
     #[test]
     fn test_semantic_color_with_alpha_is_dark_aware() {
-        // Plan 409 §10 回归:bg-background/95 在深色主题下应是 shadcn --background
-        // (Plan 448 对齐批: hsl 222.2 47.4% 7% = (9,14,26),原 gray-900 近似已换)
-        // + alpha≈242,而非 to_rgb8() 拍平出的白色 (255,255,255)。
+        // Plan 409 §10 回归:bg-background/95 在深色主题下应是语义 Background
+        // (Plan 448 对齐批: hsl 222.2 47.4% 7%;Plan 518 stella 重校:
+        // dark #141a29 = (20,26,41)),+ alpha≈242,而非 to_rgb8() 拍平出的白色。
         crate::ui::style::iced_adapter::set_dark_mode(true);
         match StyleClass::parse_single("bg-background/95") {
             Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {
-                assert_eq!((r, g, b), (9, 14, 26), "深色主题下 background 应为 shadcn --background,而非白色");
+                assert_eq!((r, g, b), (20, 26, 41), "深色主题下 background 应为语义 Background(stella #141a29),而非白色");
                 assert_eq!(a, 242, "95% alpha → 242");
             }
             other => panic!("期望 BackgroundColor(Rgba),得到 {:?}", other),

@@ -4854,10 +4854,11 @@ fn extract_initials(src: &str) -> String {
 fn shadcn_theme(dark: bool) -> iced::Theme {
     let (background, text) = if dark {
         // --background: hsl(222.2 47.4% 7%) / --foreground: hsl(210 40% 98%)
-        (iced::Color::from_rgb8(9, 14, 26), iced::Color::from_rgb8(248, 250, 252))
+        // (Plan 518 stella 重校:dark #141a29 精修蓝黑)
+        (iced::Color::from_rgb8(20, 26, 41), iced::Color::from_rgb8(248, 250, 252))
     } else {
-        // --background: hsl(0 0% 100%) / --foreground: hsl(222.2 84% 4.9%)
-        (iced::Color::from_rgb8(255, 255, 255), iced::Color::from_rgb8(2, 8, 23))
+        // light 暖纸系 #f5f1e8 / 墨色 #2a2723(Plan 518 stella 对齐)
+        (iced::Color::from_rgb8(245, 241, 232), iced::Color::from_rgb8(42, 39, 35))
     };
     // Plan 458: primary follows the accent preset thread-local (default
     // indigo) instead of hardcoded indigo-500, so `auto run --accent` /
@@ -9481,7 +9482,7 @@ fn desktop_wallpaper_element<M: 'static>(path: &str) -> iced::Element<'static, M
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
             .style(move |_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb8(9, 14, 26))),
+                background: Some(iced::Background::Color(iced::Color::from_rgb8(20, 26, 41))),
                 ..Default::default()
             })
             .into(),
@@ -9497,7 +9498,7 @@ fn desktop_wallpaper_scrim<M: 'static>() -> iced::Element<'static, M> {
     let pct: u32 = if dark { 35 } else { 10 };
     let (r, g, b) =
         crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Background)
-            .unwrap_or((9, 14, 26));
+            .unwrap_or((20, 26, 41));
     let alpha = (pct * 255 / 100) as f32 / 255.0;
     iced::widget::container(iced::widget::Space::new())
         .width(iced::Length::Fill)

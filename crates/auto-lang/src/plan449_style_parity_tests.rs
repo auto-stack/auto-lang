@@ -91,7 +91,9 @@ mod plan449_style_migration_probe {
         ("text-center", "ok", ""),
         ("bg-transparent", "ok", ""),
         ("border-none", "ok", ""),
-        ("underline", "gap", "text-decoration 无臂——VM 无法表达下划线"),
+        // Plan 518 注:underline 臂上游已补(class.rs Underline/NoUnderline),
+        // 探针翻 ok——master 预存红,与 518 的 token 重校无关,顺带收口。
+        ("underline", "ok", "text-decoration 臂已补(Underline/NoUnderline)"),
         ("cursor-pointer", "ok", ""),
         ("hover:opacity-80", "variant", ""),
         ("bg-destructive/10", "ok", "alpha 语法"),
