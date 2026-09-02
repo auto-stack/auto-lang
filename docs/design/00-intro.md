@@ -37,7 +37,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 ---
 
-## 分类总览（114 篇）
+## 分类总览（115 篇）
 
 | 分区 | 数量 | 内容 |
 |---|---|---|
@@ -46,7 +46,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blocks/`（4） |
 | 四、流程与体系（根级，无编号） | 2 | AutoPlan 账本（现行）、Plan+Spec v1（已取代） |
 | 五、战略路线图 `strategy/` | 4 | Rust 脚本层 / 消费者 parity / Python parity / Rust 库复刻 |
-| 六、专题诊断（根级） | 3 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题） |
+| 六、专题诊断（根级） | 4 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题）、[管道算子 `|>`](pipe-operator.md)（讨论稿，Plan 514 衍生） |
 | 七、附录 `forge/` | 5 | AutoForge（已迁 auto-os 生态） |
 | 八、历史素材 `raw/` | 67 | 早期原始设计草稿（只读参考） |
 | 在途 | 1 | `25-autoshell-dsl-unified-shell.md`（待归位 autoui/） |
