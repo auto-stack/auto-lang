@@ -173,6 +173,10 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
         Color::Surface => {
             if is_dark { Some((13, 21, 38)) } else { Some((249, 249, 249)) }
         }
+        // --muted: 217.2 32.6% 17.5% (dark: slate-800 rgb(30, 41, 59)) / 210 40% 96.1% (light: slate-100 rgb(241, 245, 249))
+        Color::Muted => {
+            if is_dark { Some((30, 41, 59)) } else { Some((241, 245, 249)) }
+        }
         Color::Error => Some((239, 68, 68)),
         Color::Warning => Some((234, 179, 8)),
         Color::Success => Some((34, 197, 94)),

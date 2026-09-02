@@ -71,7 +71,12 @@ async function main() {
   page.on('console', msg => console.log('[PAGE CONSOLE]', msg.type(), msg.text()));
   page.on('pageerror', err => console.error('[PAGE ERROR]', err));
   console.log(`[*] Navigating to ${url}...`);
-  await page.goto(url, { waitUntil: 'networkidle' });
+  try {
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 4000 });
+  } catch (_) {
+    // Persistent streams (SSE / WebSocket) prevent networkidle; domcontentloaded is sufficient.
+    console.log('[*] networkidle timed out (likely SSE/Stream), proceeding with domcontentloaded...');
+  }
 
   if (actions && Array.isArray(actions)) {
     console.log(`[*] Executing ${actions.length} interaction actions...`);

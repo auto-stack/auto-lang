@@ -10,6 +10,7 @@ pub enum Color {
     Secondary,
     Background,
     Surface,
+    Muted,
     Error,
     Warning,
     Success,
@@ -107,8 +108,8 @@ impl Color {
             // Plan 409 §10 续 13: card/surface/popover 用稍亮的 Surface(gray-800),
             // 与页面背景(gray-900)拉开色差(对齐 shadcn dark token)。
             "card" | "surface" | "popover" => Ok(Color::Surface),
-            // "muted" → slightly darker surface
-            "muted" => Ok(Color::Surface),
+            // "muted" → distinct muted surface (dark: slate-800 rgb(30, 41, 59), light: slate-100 rgb(241, 245, 249))
+            "muted" => Ok(Color::Muted),
             "muted-foreground" => Ok(Color::OnSurface),
             // "accent" → interactive highlight surface
             "accent" => Ok(Color::Secondary),
@@ -204,6 +205,7 @@ impl Color {
             Color::Secondary => (139, 92, 246),      // violet-500
             Color::Background => (255, 255, 255),    // white
             Color::Surface => (249, 250, 251),       // gray-50
+            Color::Muted => (241, 245, 249),         // slate-100 (light)
             Color::Error => (239, 68, 68),           // red-500
             Color::Warning => (234, 179, 8),         // yellow-500
             Color::Success => (34, 197, 94),         // green-500

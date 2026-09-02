@@ -2932,14 +2932,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         || iced_style.padding_bottom.is_some()
                         || iced_style.padding_left.is_some()
                         || iced_style.padding_right.is_some()
+                        || iced_style.max_width.is_some()
+                        || iced_style.max_height.is_some()
                         || iced_style.shadow;
 
                     if has_box_style {
                         let pad = iced_padding_from_is(&iced_style, 0);
                         let cs = build_container_style(&iced_style);
-                        let cont = iced::widget::container(text_widget)
+                        let mut cont = iced::widget::container(text_widget)
                             .padding(pad)
                             .style(move |_| cs);
+                        if let Some(mw) = iced_style.max_width {
+                            cont = cont.max_width(mw);
+                        }
+                        if let Some(mh) = iced_style.max_height {
+                            cont = cont.max_height(mh);
+                        }
                         cont.into()
                     } else {
                         text_widget.into()

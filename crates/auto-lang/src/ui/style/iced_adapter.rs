@@ -1111,7 +1111,7 @@ pub fn convert_color(color: &Color) -> iced::Color {
             iced::Color::from_rgba(r, g, b, a)
         }
         // Plan 370 D-GAP-2/D-GAP-5: semantic colors use dark-mode + accent-aware RGB
-        Color::Primary | Color::Secondary | Color::Background | Color::Surface
+        Color::Primary | Color::Secondary | Color::Background | Color::Surface | Color::Muted
         | Color::Error | Color::Warning | Color::Success | Color::Info
         | Color::OnPrimary | Color::OnSecondary | Color::OnBackground | Color::OnSurface | Color::OnDestructive
         | Color::Border => {
@@ -1203,5 +1203,19 @@ mod tests {
         assert_eq!(white.r, 1.0);
         assert_eq!(white.g, 1.0);
         assert_eq!(white.b, 1.0);
+    }
+
+    #[test]
+    fn test_chat_bubble_style() {
+        set_dark_mode(true);
+        let style_str = "text-sm bg-muted text-foreground px-4 py-2 rounded-2xl rounded-bl-sm max-w-md";
+        let style = Style::parse(style_str).expect("should parse chat bubble style");
+        let iced_style = IcedStyle::from_style(&style);
+        assert!(iced_style.background_color.is_some(), "background_color must be Some");
+        let bg = iced_style.background_color.unwrap();
+        println!("bg-muted in dark mode: {:?}", bg);
+        assert_eq!(iced_style.padding_x, Some(16.0));
+        assert_eq!(iced_style.padding_y, Some(8.0));
+        assert_eq!(iced_style.max_width, Some(448.0));
     }
 }
