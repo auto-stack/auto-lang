@@ -210,28 +210,6 @@ fn ev_arr_write(mut arena List<List<Val>>, ai int, idx int, val Val) {
     arena.set(ai, l2)
 }
 
-// W1(Plan 511):字段名在类型声明序中的下标(-1=无该类型/字段)。
-// get.field/set.field 按名定位用(镜像宿主 GenericInstanceData 的
-// field_names.position)
-fn ev_field_idx(c CG, tname str, fname str) int {
-    var ti = 0
-    while ti < c.tys.len() {
-        if c.tys.get(ti).name == tname {
-            var fl = c.tys.get(ti).fields
-            var j = 0
-            while j < fl.len() {
-                if fl.get(j) == fname {
-                    return j
-                }
-                j = j + 1
-            }
-            return -1
-        }
-        ti = ti + 1
-    }
-    return -1
-}
-
 // 数组/字符串长度动态分派(镜像 ARRAY_LEN 两分支)
 fn ev_len(mut arena List<List<Val>>, v Val) int {
     is v {
@@ -499,7 +477,7 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
                 running = false
             } else {
                 var fname13 = c.pool.get(ins.n)
-                var fi13 = ev_field_idx(c, tname13, fname13)
+                var fi13 = c.field_idx(tname13, fname13)
                 if fi13 < 0 {
                     out = "RUNTIME-ERROR:no field " + fname13 + " in " + tname13
                     running = false
@@ -532,7 +510,7 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
                 out = "RUNTIME-ERROR:set.field on non-instance"
                 running = false
             } else {
-                var fi14 = ev_field_idx(c, tname14, vname14)
+                var fi14 = c.field_idx(tname14, vname14)
                 if fi14 < 0 {
                     out = "RUNTIME-ERROR:no field " + vname14 + " in " + tname14
                     running = false

@@ -72,24 +72,156 @@ type P {
     globals List<Binding>
     depth int
     decls List<Binding>
+
+    // ── Plan 514 W3(γ4 试点):P 游标自有操作族入 type 体 ──
+    // 映射:原自由函数 p_kind/p_text/.../pop_scope;`err` 字段与
+    // p_err 撞名 → 方法名 fail;语法产生式(parse_*)与纯表函数
+    // (is_comment_kind/p_op/...)保留自由函数(待澄清①缺省)。
+
+    fn kind() TokenKind {
+        if .pos >= .toks.len() {
+            return TokenKind.EOF
+        }
+        return .toks.get(.pos).kind
+    }
+
+    fn text() str {
+        if .pos >= .toks.len() {
+            return ""
+        }
+        return .toks.get(.pos).text
+    }
+
+    fn line() int {
+        if .pos >= .toks.len() {
+            return 0
+        }
+        return .toks.get(.pos).line
+    }
+
+    // 原始前瞻(不跳注释;与基线 lexer.pushback 前瞻同构,corpus 括号内无注释)
+    fn peek(n int) TokenKind {
+        var i = .pos + n
+        if i >= .toks.len() {
+            return TokenKind.EOF
+        }
+        return .toks.get(i).kind
+    }
+
+    // 前瞻文本(n 相对位,越界回 "")——typeinfo/codegen 原重复自由函数
+    // p_text_at/p_peek_text 合并入体(γ4:纯 P 操作;P514 W3-14)
+    fn peek_text(n int) str {
+        var i = .pos + n
+        if i >= .toks.len() {
+            return ""
+        }
+        return .toks.get(i).text
+    }
+
+    // Parser::next 直译:前进一 token 并跳过注释 token
+    fn next() {
+        .pos = .pos + 1
+        var scanning = true
+        for scanning {
+            if .pos >= .toks.len() {
+                scanning = false
+            } else if is_comment_kind(.toks.get(.pos).kind) {
+                .pos = .pos + 1
+            } else {
+                scanning = false
+            }
+        }
+    }
+
+    fn fail(msg str) {
+        if .err == "" {
+            .err = "PARSE-ERROR:" + .line().str() + ":" + msg + " <" + kind_name(.kind()) + ">"
+        }
+    }
+
+    fn expect(k TokenKind) {
+        if .err != "" {
+            return
+        }
+        if .kind() == k {
+            .next()
+        } else {
+            .fail("expected " + kind_name(k) + ", got ")
+        }
+    }
+
+    fn skip_empty_lines() int {
+        var count = 0
+        while .kind() == TokenKind.Newline {
+            count = count + 1
+            self.next()
+        }
+        return count
+    }
+
+    fn push_scope() {
+        var sc List<Binding> = List.new()
+        .scopes.push(sc)
+        .depth = .depth + 1
+    }
+
+    fn pop_scope() {
+        .depth = .depth - 1
+    }
+
+    fn bind(name str, ty str) {
+        if .depth > 0 {
+            // 提升+写回:VM 引用语义下 set 写回同一引用(无操作);
+            // a2r 值语义下写回修改后的副本(VM/a2r 可观察状态一致)
+            var sc = .scopes.get(.depth - 1)
+            sc.push(Binding(name, ty))
+            .scopes.set(.depth - 1, sc)
+        } else {
+            .globals.push(Binding(name, ty))
+        }
+    }
+
+    fn lookup(name str) str {
+        var s = .depth - 1
+        while s >= 0 {
+            var scope List<Binding> = .scopes.get(s)
+            var i = scope.len() - 1
+            while i >= 0 {
+                if scope.get(i).name == name {
+                    return scope.get(i).ty
+                }
+                i = i - 1
+            }
+            s = s - 1
+        }
+        var gi = 0
+        while gi < .globals.len() {
+            if .globals.get(gi).name == name {
+                return .globals.get(gi).ty
+            }
+            gi = gi + 1
+        }
+        return ""
+    }
+
+    // 类型/枚举注册表查询(D38b):name → 声明期 Display 快照
+    fn decl_lookup(name str) str {
+        var i = 0
+        while i < .decls.len() {
+            if .decls.get(i).name == name {
+                return .decls.get(i).ty
+            }
+            i = i + 1
+        }
+        return ""
+    }
+
+    fn decl_register(name str, display str) {
+        .decls.push(Binding(name, display))
+    }
 }
 
 // 类型/枚举注册表查询(D38b):name → 声明期 Display 快照
-fn p_decl_lookup(p P, name str) str {
-    var i = 0
-    while i < p.decls.len() {
-        if p.decls.get(i).name == name {
-            return p.decls.get(i).ty
-        }
-        i = i + 1
-    }
-    return ""
-}
-
-fn p_decl_register(mut p P, name str, display str) {
-    p.decls.push(Binding(name, display))
-}
-
 // 表达式结果:dump=S-expr;word=标识符词/方法词/运算符 kind;name=name 的
 // 文本或 int/uint 值串或 str/bool 原文(pair key 用);args=call 的
 // "(args ...)" 段;ity=构造期推断类型(Display 串,""=Unknown)
@@ -124,36 +256,7 @@ fn parse_new(toks List<Token>) P {
 // 447-③9.2:Token.kind 载体已枚举化;p_kind 暂以 kind_name 维持 str 边界
 // (P1 步翻转返回 TokenKind 并参数化全部比较位)
 // 447-③P1:kind 载体枚举化,返回 TokenKind(错误消息经 kind_name)
-fn p_kind(p P) TokenKind {
-    if p.pos >= p.toks.len() {
-        return TokenKind.EOF
-    }
-    return p.toks.get(p.pos).kind
-}
-
-fn p_text(p P) str {
-    if p.pos >= p.toks.len() {
-        return ""
-    }
-    return p.toks.get(p.pos).text
-}
-
-fn p_line(p P) int {
-    if p.pos >= p.toks.len() {
-        return 0
-    }
-    return p.toks.get(p.pos).line
-}
-
 // 原始前瞻(不跳注释;与基线 lexer.pushback 前瞻同构,corpus 括号内无注释)
-fn p_peek(p P, n int) TokenKind {
-    var i = p.pos + n
-    if i >= p.toks.len() {
-        return TokenKind.EOF
-    }
-    return p.toks.get(i).kind
-}
-
 fn is_comment_kind(k TokenKind) bool {
     is k {
         TokenKind.DocComment | TokenKind.CommentLine | TokenKind.CommentStart | TokenKind.CommentContent | TokenKind.CommentEnd -> true
@@ -162,92 +265,7 @@ fn is_comment_kind(k TokenKind) bool {
 }
 
 // Parser::next 直译:前进一 token 并跳过注释 token
-fn p_next(mut p P) {
-    p.pos = p.pos + 1
-    var scanning = true
-    for scanning {
-        if p.pos >= p.toks.len() {
-            scanning = false
-        } else if is_comment_kind(p.toks.get(p.pos).kind) {
-            p.pos = p.pos + 1
-        } else {
-            scanning = false
-        }
-    }
-}
-
-fn p_err(mut p P, msg str) {
-    if p.err == "" {
-        p.err = "PARSE-ERROR:" + p_line(p).str() + ":" + msg + " <" + kind_name(p_kind(p)) + ">"
-    }
-}
-
-fn p_expect(mut p P, k TokenKind) {
-    if p.err != "" {
-        return
-    }
-    if p_kind(p) == k {
-        p_next(p)
-    } else {
-        p_err(p, "expected " + kind_name(k) + ", got ")
-    }
-}
-
-fn skip_empty_lines(mut p P) int {
-    var count = 0
-    while p_kind(p) == TokenKind.Newline {
-        count = count + 1
-        p_next(p)
-    }
-    return count
-}
-
 // ── 作用域(仅服务 let 无注解时的内联推断,D23) ─────────────────
-
-fn push_scope(mut p P) {
-    var sc List<Binding> = List.new()
-    p.scopes.push(sc)
-    p.depth = p.depth + 1
-}
-
-fn pop_scope(mut p P) {
-    p.depth = p.depth - 1
-}
-
-fn p_bind(mut p P, name str, ty str) {
-    if p.depth > 0 {
-        // 提升+写回:VM 引用语义下 set 写回同一引用(无操作);
-        // a2r 值语义下写回修改后的副本(VM/a2r 可观察状态一致)
-        var sc = p.scopes.get(p.depth - 1)
-        sc.push(Binding(name, ty))
-        p.scopes.set(p.depth - 1, sc)
-    } else {
-        p.globals.push(Binding(name, ty))
-    }
-}
-
-fn p_lookup(p P, name str) str {
-    var s = p.depth - 1
-    while s >= 0 {
-        var scope List<Binding> = p.scopes.get(s)
-        var i = scope.len() - 1
-        while i >= 0 {
-            if scope.get(i).name == name {
-                return scope.get(i).ty
-            }
-            i = i - 1
-        }
-        s = s - 1
-    }
-    var g = p.globals.len() - 1
-    while g >= 0 {
-        if p.globals.get(g).name == name {
-            return p.globals.get(g).ty
-        }
-        g = g - 1
-    }
-    return ""
-}
 
 // ── 数字/浮点值显示(D24) ─────────────────────────────────────
 
@@ -351,7 +369,7 @@ fn builtin_type(name str) str {
 }
 
 fn is_type_name(mut p P) bool {
-    var k = p_kind(p)
+    var k = p.kind()
     is k {
         TokenKind.Ident | TokenKind.Question | TokenKind.Not | TokenKind.Tilde | TokenKind.LSquare | TokenKind.Star | TokenKind.At | TokenKind.Fn | TokenKind.Link | TokenKind.Type -> true
         else -> false
@@ -364,76 +382,76 @@ fn parse_type(mut p P) str {
         return ""
     }
     var ty = parse_type_base(p)
-    while p_kind(p) == TokenKind.Question {
-        p_next(p)
+    while p.kind() == TokenKind.Question {
+        p.next()
         ty = f"?${ty}"
     }
     return ty
 }
 
 fn parse_type_base(mut p P) str {
-    var k = p_kind(p)
+    var k = p.kind()
     if k == TokenKind.Question {
-        p_next(p)
+        p.next()
         return "?" + parse_type(p)
     }
     if k == TokenKind.Not {
-        p_next(p)
+        p.next()
         if is_type_name(p) {
             return "!" + parse_type(p)
         }
         return "!void"
     }
     if k == TokenKind.Star {
-        p_next(p)
+        p.next()
         return "*" + parse_type(p)
     }
     if k == TokenKind.Ident {
-        var name = p_text(p)
+        var name = p.text()
         var b = builtin_type(name)
         if b == "" {
             // 用户类型(D38b):注册表内联整个声明快照(对齐 Rust
             // Type::User(TypeDecl) 的 Display——已声明 → 完整 decl,
             // 前向引用/未注册 → 空声明 "(type-decl (name X))")
-            var snap = p_decl_lookup(p, name)
+            var snap = p.decl_lookup(name)
             if snap != "" {
                 b = snap
             } else {
                 b = f"(type-decl (name ${name}))"
             }
         }
-        p_next(p)
+        p.next()
         // 泛型实例(Plan 434:AA2R 需解析 lib 自身的 List<T>/Map<K, V>):
         // 基名取裸名(List/Map → Type::List/Map Display 内联参数;未注册
         // 基名 → GenericInstance——Display 亦为裸名,参数侧的 unique_name
         // 差异见 D38a 备注);多参 ", " 连接
-        if p_kind(p) == TokenKind.Lt {
-            p_next(p)
-            skip_empty_lines(p)
+        if p.kind() == TokenKind.Lt {
+            p.next()
+            p.skip_empty_lines()
             var args = ""
             var first = true
-            while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.Gt {
+            while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.Gt {
                 var at = parse_type(p)
-                skip_empty_lines(p)
+                p.skip_empty_lines()
                 if !first {
                     args = f"${args}, "
                 }
                 args = args + at
                 first = false
-                if p_kind(p) == TokenKind.Comma {
-                    p_next(p)
-                    skip_empty_lines(p)
-                } else if p_kind(p) != TokenKind.Gt {
-                    p_err(p, "expected ',' or '>' in generic args ")
+                if p.kind() == TokenKind.Comma {
+                    p.next()
+                    p.skip_empty_lines()
+                } else if p.kind() != TokenKind.Gt {
+                    p.fail("expected ',' or '>' in generic args ")
                     return ""
                 }
             }
-            p_expect(p, TokenKind.Gt)
+            p.expect(TokenKind.Gt)
             return name + "<" + args + ">"
         }
         return b
     }
-    p_err(p, "expected type, got ")
+    p.fail("expected type, got ")
     return ""
 }
 
@@ -633,10 +651,10 @@ fn bad_e() E {
 // 序列,dump 对齐 (fstr <part>...):文本段 (str "...")/$Ident (name x)/
 // ${expr} 子解析直通 dump)。$Ident 的 .field 链为 D40 校准子集外。
 fn fstr_expr(mut p P) E {
-    p_next(p)
-    var content = p_text(p)
-    p_next(p)
-    p_next(p)
+    p.next()
+    var content = p.text()
+    p.next()
+    p.next()
     if p.err != "" {
         return bad_e()
     }
@@ -665,7 +683,7 @@ fn fstr_expr(mut p P) E {
                     j = j + 1
                 }
                 if depth != 0 {
-                    p_err(p, "fstr: unterminated interpolation ")
+                    p.fail("fstr: unterminated interpolation ")
                     return bad_e()
                 }
                 var inner = content.slice(i + 2, j - 1)
@@ -673,7 +691,7 @@ fn fstr_expr(mut p P) E {
                 var subp = parse_new(subtoks)
                 var sub = expr_pratt(subp, 0)
                 if subp.err != "" {
-                    p_err(p, "fstr: bad interpolation ")
+                    p.fail("fstr: bad interpolation ")
                     return bad_e()
                 }
                 parts = f"${parts} ${sub.dump}"
@@ -693,7 +711,7 @@ fn fstr_expr(mut p P) E {
                 }
                 var nm = content.slice(i + 1, j2)
                 if nm == "" {
-                    p_err(p, "fstr: empty interpolation ")
+                    p.fail("fstr: empty interpolation ")
                     return bad_e()
                 }
                 parts = f"${parts} (name ${nm})"
@@ -714,144 +732,144 @@ fn expr_atom(mut p P) E {
     if p.err != "" {
         return bad_e()
     }
-    var k = p_kind(p)
+    var k = p.kind()
     if k == TokenKind.LParen {
         // group() 直译
-        p_next(p)
+        p.next()
         var inner = expr_pratt(p, 0)
-        p_expect(p, TokenKind.RParen)
+        p.expect(TokenKind.RParen)
         return inner
     }
     if k == TokenKind.Int {
-        var v = int_val(p_text(p)).str()
-        p_next(p)
+        var v = int_val(p.text()).str()
+        p.next()
         return E("int", "", v, "", "(int " + v + ")", "int")
     }
     if k == TokenKind.Uint {
-        var v2 = int_val(p_text(p)).str()
-        p_next(p)
+        var v2 = int_val(p.text()).str()
+        p.next()
         return E("uint", "", v2, "", "(uint " + v2 + ")", "uint")
     }
     if k == TokenKind.I8 {
-        var v3 = int_val(p_text(p)).str()
-        p_next(p)
+        var v3 = int_val(p.text()).str()
+        p.next()
         return E("i8", "", v3, "", "(i8 " + v3 + ")", "int")
     }
     if k == TokenKind.U8 {
-        var v4 = int_val(p_text(p)).str()
-        p_next(p)
+        var v4 = int_val(p.text()).str()
+        p.next()
         return E("u8", "", v4, "", "(u8 " + v4 + ")", "int")
     }
     if k == TokenKind.Float {
-        var f1 = float_display(p_text(p))
-        p_next(p)
+        var f1 = float_display(p.text())
+        p.next()
         return E("float", "", "", "", "(float " + f1 + ")", "float")
     }
     if k == TokenKind.Double {
-        var f2 = float_display(p_text(p))
-        p_next(p)
+        var f2 = float_display(p.text())
+        p.next()
         return E("double", "", "", "", "(double " + f2 + ")", "double")
     }
     if k == TokenKind.True {
-        p_next(p)
+        p.next()
         return E("bool", "", "true", "", "(true)", "bool")
     }
     if k == TokenKind.False {
-        p_next(p)
+        p.next()
         return E("bool", "", "false", "", "(false)", "bool")
     }
     if k == TokenKind.Char {
-        var c = p_text(p)
-        p_next(p)
+        var c = p.text()
+        p.next()
         return E("char", "", c, "", "(char '" + c + "')", "char")
     }
     if k == TokenKind.Str {
-        var s = p_text(p)
-        p_next(p)
+        var s = p.text()
+        p.next()
         return E("str", "", s, "", "(str \"" + s + "\")", "str")
     }
     if k == TokenKind.Ident {
-        var n = p_text(p)
-        p_next(p)
+        var n = p.text()
+        p.next()
         // W1 构造字面量:已注册类型名紧随 {(镜像宿主 atom 的
         // accepts_as_type_construction——scope 命中类型才拦截);
         // 否则回落原标识符路径({ 留给语句层,行为不变)
-        if p_kind(p) == TokenKind.LBrace && p_decl_lookup(p, n) != "" {
+        if p.kind() == TokenKind.LBrace && p.decl_lookup(n) != "" {
             return ctor_node(p, n)
         }
-        return E("name", n, n, "", "(name " + n + ")", p_lookup(p, n))
+        return E("name", n, n, "", "(name " + n + ")", p.lookup(n))
     }
     if is_soft_ident_kind(k) {
         // soft-ident(Plan 356 镜像):表达式位按标识符消费
-        var n2 = p_text(p)
-        p_next(p)
-        if p_kind(p) == TokenKind.LBrace && p_decl_lookup(p, n2) != "" {
+        var n2 = p.text()
+        p.next()
+        if p.kind() == TokenKind.LBrace && p.decl_lookup(n2) != "" {
             return ctor_node(p, n2)
         }
-        return E("name", n2, n2, "", "(name " + n2 + ")", p_lookup(p, n2))
+        return E("name", n2, n2, "", "(name " + n2 + ")", p.lookup(n2))
     }
     if k == TokenKind.Nil {
-        p_next(p)
+        p.next()
         return E("nil", "", "", "", "(nil)", "")
     }
     if k == TokenKind.Null {
-        p_next(p)
+        p.next()
         return E("null", "", "", "", "(null)", "")
     }
     if k == TokenKind.Is {
         // 表达式位 is(Plan 447 部分②):参考 Expr::Is 的 Display 只出目标
         // "(is-expr target)",分支解析后弃置(quirk 照抄,D18)
-        p_next(p)
+        p.next()
         var t = expr_pratt(p, 0)
-        p_expect(p, TokenKind.LBrace)
-        skip_empty_lines(p)
-        while p.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
+        p.expect(TokenKind.LBrace)
+        p.skip_empty_lines()
+        while p.err == "" && p.kind() != TokenKind.RBrace && p.kind() != TokenKind.EOF {
             var discard = parse_is_branch(p)
-            if p_kind(p) == TokenKind.Comma {
-                p_next(p)
-                skip_empty_lines(p)
+            if p.kind() == TokenKind.Comma {
+                p.next()
+                p.skip_empty_lines()
             }
         }
-        p_expect(p, TokenKind.RBrace)
+        p.expect(TokenKind.RBrace)
         return E("other", "", "", "", "(is-expr " + t.dump + ")", "")
     }
-    p_err(p, "expected term, got ")
+    p.fail("expected term, got ")
     return bad_e()
 }
 
 // args() 直译:Pos/Name 显示相同(D22 备注),统一按 Display 输出
 fn parse_args(mut p P) str {
-    p_expect(p, TokenKind.LParen)
-    skip_empty_lines(p)
+    p.expect(TokenKind.LParen)
+    p.skip_empty_lines()
     var out = "(args"
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RParen {
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RParen {
         var a = expr_pratt(p, 0)
         if a.kind == "pair" {
-            p_err(p, "v2 unsupported: named call arg ")
+            p.fail("v2 unsupported: named call arg ")
             return ""
         }
         out = f"${out} ${a.dump}"
         // sep_args
-        var k = p_kind(p)
+        var k = p.kind()
         if k == TokenKind.Comma || k == TokenKind.Newline {
-            p_next(p)
-            skip_empty_lines(p)
+            p.next()
+            p.skip_empty_lines()
         } else if k != TokenKind.RParen {
-            p_err(p, "expected argument separator, got ")
+            p.fail("expected argument separator, got ")
             return ""
         }
     }
-    p_expect(p, TokenKind.RParen)
+    p.expect(TokenKind.RParen)
     return out + ")"
 }
 
 // array() 直译(fmt_array:空数组 "(array )")
 fn parse_array(mut p P) E {
-    p_expect(p, TokenKind.LSquare)
-    skip_empty_lines(p)
+    p.expect(TokenKind.LSquare)
+    p.skip_empty_lines()
     var elems List<str> = List.new()
     var first_ity = ""
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RSquare {
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RSquare {
         var e = expr_pratt(p, 0)
         if elems.len() == 0 {
             first_ity = e.ity
@@ -859,15 +877,15 @@ fn parse_array(mut p P) E {
         elems.push(e.dump)
         // sep_array
         var has_sep = false
-        while p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
+        while p.kind() == TokenKind.Comma || p.kind() == TokenKind.Newline {
             has_sep = true
-            p_next(p)
+            p.next()
         }
-        if p_kind(p) != TokenKind.RSquare && !has_sep {
-            p_err(p, "expected array separator, got ")
+        if p.kind() != TokenKind.RSquare && !has_sep {
+            p.fail("expected array separator, got ")
         }
     }
-    p_expect(p, TokenKind.RSquare)
+    p.expect(TokenKind.RSquare)
     var dump = "(array "
     var i = 0
     while i < elems.len() {
@@ -886,59 +904,59 @@ fn parse_array(mut p P) E {
 
 // key() 直译:返回 key 的 Display 形式
 fn parse_key(mut p P) str {
-    var k = p_kind(p)
+    var k = p.kind()
     if k == TokenKind.Ident || k == TokenKind.Type || k == TokenKind.Tag || k == TokenKind.Task {
-        var n = p_text(p)
-        p_next(p)
+        var n = p.text()
+        p.next()
         return "(name " + n + ")"
     }
     if k == TokenKind.Int {
-        var v = int_val(p_text(p)).str()
-        p_next(p)
+        var v = int_val(p.text()).str()
+        p.next()
         return v
     }
     if k == TokenKind.True {
-        p_next(p)
+        p.next()
         return "true"
     }
     if k == TokenKind.False {
-        p_next(p)
+        p.next()
         return "false"
     }
     if k == TokenKind.Str {
-        var s = p_text(p)
-        p_next(p)
+        var s = p.text()
+        p.next()
         return "\"" + s + "\""
     }
-    p_err(p, "expected key, got ")
+    p.fail("expected key, got ")
     return ""
 }
 
 // object() 直译
 fn parse_object(mut p P) E {
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
     var dump = "(object "
     var i = 0
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         if i > 0 {
             dump = f"${dump} "
         }
         var key = parse_key(p)
-        p_expect(p, TokenKind.Colon)
+        p.expect(TokenKind.Colon)
         var val = expr_pratt(p, 0)
         dump = f"${dump}(pair ${key} ${val.dump})"
         i = i + 1
         // sep_obj
-        var k = p_kind(p)
+        var k = p.kind()
         if k == TokenKind.Comma || k == TokenKind.Newline {
-            p_next(p)
-            skip_empty_lines(p)
+            p.next()
+            p.skip_empty_lines()
         } else if k != TokenKind.RBrace {
-            p_err(p, "expected pair separator, got ")
+            p.fail("expected pair separator, got ")
         }
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
     return E("object", "", "", "", dump + ")", "")
 }
 
@@ -948,32 +966,32 @@ fn parse_object(mut p P) E {
 // 键限 NamedKey(宿主 parse_braced_struct_args 只转 NamedKey→Pair);
 // ity 空 = Unknown(镜像宿主 infer Node→Unknown)
 fn ctor_node(mut p P, name str) E {
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
     var body = "(body"
     var n = 0
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
-        var k = p_kind(p)
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+        var k = p.kind()
         if k != TokenKind.Ident && k != TokenKind.Type && k != TokenKind.Tag && k != TokenKind.Task {
-            p_err(p, "expected field name in struct ctor, got ")
+            p.fail("expected field name in struct ctor, got ")
             return bad_e()
         }
-        var key = "(name " + p_text(p) + ")"
-        p_next(p)
-        p_expect(p, TokenKind.Colon)
+        var key = "(name " + p.text() + ")"
+        p.next()
+        p.expect(TokenKind.Colon)
         var val = expr_pratt(p, 0)
         body = f"${body} (pair ${key} ${val.dump})"
         n = n + 1
         // sep_obj:逗号/换行
-        var sk = p_kind(p)
+        var sk = p.kind()
         if sk == TokenKind.Comma || sk == TokenKind.Newline {
-            p_next(p)
-            skip_empty_lines(p)
+            p.next()
+            p.skip_empty_lines()
         } else if sk != TokenKind.RBrace {
-            p_err(p, "expected pair separator, got ")
+            p.fail("expected pair separator, got ")
         }
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
     var dump = f"(node (name ${name})"
     if n > 0 {
         dump = f"${dump} ${body}))"
@@ -1002,28 +1020,28 @@ fn tuple_rest(mut p P, first E) E {
     var itys List<str> = List.new()
     dumps.push(first.dump)
     itys.push(first.ity)
-    while p_kind(p) == TokenKind.Comma {
-        p_next(p)
+    while p.kind() == TokenKind.Comma {
+        p.next()
         var e = expr_pratt(p, 0)
         dumps.push(e.dump)
         itys.push(e.ity)
     }
-    p_expect(p, TokenKind.RParen)
+    p.expect(TokenKind.RParen)
     return E("tuple", "", "", "", "(tuple " + join_dump_list(dumps, " ") + ")", "(" + join_dump_list(itys, ", ") + ")")
 }
 
 // LParen 前缀的 group/tuple/closure 判定(expr_pratt_inner LParen 臂直译)
 fn paren_prefix(mut p P) E {
-    var k1 = p_peek(p, 1)
+    var k1 = p.peek(1)
     if k1 == TokenKind.RParen {
-        var k2 = p_peek(p, 2)
+        var k2 = p.peek(2)
         if k2 == TokenKind.DoubleArrow {
-            p_err(p, "v2 unsupported: zero-param closure ")
+            p.fail("v2 unsupported: zero-param closure ")
             return bad_e()
         }
         // () 单元 → 空元组(fmt_tuple 空形态)
-        p_next(p)
-        p_next(p)
+        p.next()
+        p.next()
         return E("tuple", "", "", "", "(tuple )", "()")
     }
     if k1 == TokenKind.Ident {
@@ -1053,28 +1071,28 @@ fn paren_prefix(mut p P) E {
             i = i + 1
         }
         if found_arrow {
-            p_err(p, "v2 unsupported: multi-param closure ")
+            p.fail("v2 unsupported: multi-param closure ")
             return bad_e()
         }
         if found_comma {
             // 元组:消费 (,首元素后按逗号续
-            p_next(p)
+            p.next()
             var first = expr_pratt(p, 0)
             return tuple_rest(p, first)
         }
         // 普通 group
-        p_next(p)
+        p.next()
         var inner = expr_pratt(p, 0)
-        p_expect(p, TokenKind.RParen)
+        p.expect(TokenKind.RParen)
         return inner
     }
     // 非标识符起始:group 或元组
-    p_next(p)
+    p.next()
     var first2 = expr_pratt(p, 0)
-    if p_kind(p) == TokenKind.Comma {
+    if p.kind() == TokenKind.Comma {
         return tuple_rest(p, first2)
     }
-    p_expect(p, TokenKind.RParen)
+    p.expect(TokenKind.RParen)
     return first2
 }
 
@@ -1083,7 +1101,7 @@ fn expr_pratt(mut p P, min int) E {
     if p.err != "" {
         return bad_e()
     }
-    var k = p_kind(p)
+    var k = p.kind()
     var lhs = bad_e()
     // A2:主分派 is 化(镜像 Rust expr_pratt 的 match kind 链)
     is k {
@@ -1094,7 +1112,7 @@ fn expr_pratt(mut p P, min int) E {
         }
         TokenKind.Add | TokenKind.Sub | TokenKind.Not | TokenKind.Star -> {
             var pow = prefix_power(p_op(k))
-            p_next(p)
+            p.next()
             var operand = expr_pratt(p, pow)
             var ity = ""
             if k == TokenKind.Not {
@@ -1129,13 +1147,13 @@ fn expr_with_left(mut p P, lhs E, min int) E {
         return lhs
     }
     // 单参闭包 x => e:Missing
-    if lhs.kind == "name" && p_kind(p) == TokenKind.DoubleArrow {
-        p_err(p, "v2 unsupported: single-param closure ")
+    if lhs.kind == "name" && p.kind() == TokenKind.DoubleArrow {
+        p.fail("v2 unsupported: single-param closure ")
         return lhs
     }
     var cur = lhs
     while p.err == "" {
-        var k = p_kind(p)
+        var k = p.kind()
         // P2:循环顶 token 分派(镜像 Rust parser.rs:2425 的 match kind:
         // 11 种界符 break;其余走算符链)
         is k {
@@ -1144,7 +1162,7 @@ fn expr_with_left(mut p P, lhs E, min int) E {
             }
             else -> {
                 if !is_op_kind(k) {
-                    p_err(p, "expected infix operator, got ")
+                    p.fail("expected infix operator, got ")
                     break
                 }
                 var op = p_op(k)
@@ -1155,9 +1173,9 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                     }
                     if op == Op.LSquare {
                         // 下标(切片形态 Missing)
-                        p_next(p)
+                        p.next()
                         var idx = expr_pratt(p, 18)
-                        p_expect(p, TokenKind.RSquare)
+                        p.expect(TokenKind.RSquare)
                         cur = E("index", "", "", "", "(index " + cur.dump + " " + idx.dump + ")", "")
                     } else if op == Op.LParen {
                         // 调用:fmt_call —— args 非空才带 args 段;调用 ity=Unknown
@@ -1173,7 +1191,7 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                         cur = E("call", word, cur.dump, args, d + ")", "")
                     } else if op == Op.Colon {
                         // pair:key 由 lhs 形态决定;直接返回(不回循环)
-                        p_next(p)
+                        p.next()
                         var key = ""
                         if cur.kind == "name" {
                             key = f"(name ${cur.word})"
@@ -1182,14 +1200,14 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                         } else if cur.kind == "str" {
                             key = "\"" + cur.name + "\""
                         } else {
-                            p_err(p, "invalid pair key ")
+                            p.fail("invalid pair key ")
                             break
                         }
                         var val = expr_pratt(p, 0)
                         return E("pair", "", "", "", "(pair " + key + " " + val.dump + ")", "")
                     } else {
                         // Not 后缀(collect!):Missing
-                        p_err(p, "v2 unsupported: postfix bang ")
+                        p.fail("v2 unsupported: postfix bang ")
                         break
                     }
                 } else {
@@ -1197,10 +1215,10 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                     if l == 0 || l < min {
                         break
                     }
-                    p_next(p)
+                    p.next()
                     // || / && 换行续接
                     if op == Op.Or || op == Op.And {
-                        skip_empty_lines(p)
+                        p.skip_empty_lines()
                     }
                     var rhs = expr_pratt(p, infix_r(op))
                     if op == Op.Range {
@@ -1220,7 +1238,7 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                             }
                             cur = E("call", rhs.word, "(dot " + cur.dump + "." + rhs.word + ")", rhs.args, d2 + ")", "")
                         } else {
-                            p_err(p, "invalid field name after dot ")
+                            p.fail("invalid field name after dot ")
                             break
                         }
                     } else if op == Op.QuestionQuestion {
@@ -1251,43 +1269,43 @@ fn store_kw_name(kw TokenKind) str {
 }
 
 fn parse_store(mut p P, kw TokenKind) str {
-    p_next(p)
+    p.next()
     // 元组解构 let (a, b) = expr:基础实现
-    if p_kind(p) == TokenKind.LParen {
-        p_next(p)
+    if p.kind() == TokenKind.LParen {
+        p.next()
         var names = ""
-        if p_kind(p) != TokenKind.RParen {
-            names = p_text(p)
-            p_next(p)
-            while p_kind(p) == TokenKind.Comma {
-                p_next(p)
-                names = f"${names} ${p_text(p)}"
-                p_next(p)
+        if p.kind() != TokenKind.RParen {
+            names = p.text()
+            p.next()
+            while p.kind() == TokenKind.Comma {
+                p.next()
+                names = f"${names} ${p.text()}"
+                p.next()
             }
         }
-        p_expect(p, TokenKind.RParen)
-        p_expect(p, TokenKind.Asn)
+        p.expect(TokenKind.RParen)
+        p.expect(TokenKind.Asn)
         var de = expr_pratt(p, 0)
         return "(destr (" + names + ") " + de.dump + ")"
     }
-    var name = p_text(p)
-    p_next(p)
+    var name = p.text()
+    p.next()
     var ty = ""
     if is_type_name(p) {
         ty = parse_type(p)
     }
     var init = E("nil", "", "", "", "(nil)", "")
-    if p_kind(p) == TokenKind.Asn {
-        p_next(p)
+    if p.kind() == TokenKind.Asn {
+        p.next()
         init = expr_pratt(p, 0)
         if ty == "" {
             ty = init.ity
         }
     } else if ty == "" {
-        p_err(p, "store must have type annotation or initializer: " + name)
+        p.fail("store must have type annotation or initializer: " + name)
         return ""
     }
-    p_bind(p, name, ty)
+    p.bind(name, ty)
     if kw == TokenKind.Var {
         return "(var (name " + name + ") " + init.dump + ")"
     }
@@ -1300,44 +1318,44 @@ fn parse_store(mut p P, kw TokenKind) str {
 fn parse_fn_params(mut p P) str {
     var out = ""
     var count = 0
-    skip_empty_lines(p)
+    p.skip_empty_lines()
     var running = true
     while running && p.err == "" {
         var mode = "view"
-        var k = p_kind(p)
+        var k = p.kind()
         if k == TokenKind.View {
-            p_next(p)
+            p.next()
         } else if k == TokenKind.Mut {
             mode = "mut"
-            p_next(p)
+            p.next()
         } else if k == TokenKind.Move {
             mode = "move"
-            p_next(p)
+            p.next()
         } else if k == TokenKind.Take {
             mode = "move"
-            p_next(p)
+            p.next()
         } else if k == TokenKind.Copy {
             mode = "move"
-            p_next(p)
+            p.next()
         }
-        if p_kind(p) != TokenKind.Ident {
+        if p.kind() != TokenKind.Ident {
             if mode != "view" {
-                p_err(p, "expected parameter name after mode ")
+                p.fail("expected parameter name after mode ")
             }
             running = false
         } else {
-            var pname = p_text(p)
-            p_next(p)
+            var pname = p.text()
+            p.next()
             var ty = "int"
-            if p_kind(p) == TokenKind.Colon {
-                p_next(p)
+            if p.kind() == TokenKind.Colon {
+                p.next()
             }
             if is_type_name(p) {
                 ty = parse_type(p)
             }
             var pdump = f"(param (name ${pname}) (type ${ty}) (mode ${mode})"
-            if p_kind(p) == TokenKind.Asn {
-                p_next(p)
+            if p.kind() == TokenKind.Asn {
+                p.next()
                 var def = expr_pratt(p, 0)
                 pdump = f"${pdump} (default ${def.dump})"
             }
@@ -1347,9 +1365,9 @@ fn parse_fn_params(mut p P) str {
             }
             out = out + pdump
             count = count + 1
-            p_bind(p, pname, ty)
-            if p_kind(p) == TokenKind.Comma {
-                p_next(p)
+            p.bind(pname, ty)
+            if p.kind() == TokenKind.Comma {
+                p.next()
             } else {
                 running = false
             }
@@ -1359,43 +1377,43 @@ fn parse_fn_params(mut p P) str {
 }
 
 fn parse_fn(mut p P) str {
-    p_next(p)
-    if p_kind(p) == TokenKind.Dot {
-        p_err(p, "v2 unsupported: fn.c/fn.vm ")
+    p.next()
+    if p.kind() == TokenKind.Dot {
+        p.fail("v2 unsupported: fn.c/fn.vm ")
         return ""
     }
-    if !is_name_kind(p_kind(p)) {
-        p_err(p, "expected fn name, got ")
+    if !is_name_kind(p.kind()) {
+        p.fail("expected fn name, got ")
         return ""
     }
-    var name = p_text(p)
-    p_next(p)
-    if p_kind(p) == TokenKind.Dot {
-        p_err(p, "v2 unsupported: dotted fn name ")
+    var name = p.text()
+    p.next()
+    if p.kind() == TokenKind.Dot {
+        p.fail("v2 unsupported: dotted fn name ")
         return ""
     }
-    if p_kind(p) == TokenKind.Lt {
-        p_err(p, "v2 unsupported: fn generic params ")
+    if p.kind() == TokenKind.Lt {
+        p.fail("v2 unsupported: fn generic params ")
         return ""
     }
-    push_scope(p)
-    p_expect(p, TokenKind.LParen)
+    p.push_scope()
+    p.expect(TokenKind.LParen)
     var params = parse_fn_params(p)
-    p_expect(p, TokenKind.RParen)
+    p.expect(TokenKind.RParen)
     var ret = ""
-    if p_kind(p) == TokenKind.Arrow {
-        p_next(p)
+    if p.kind() == TokenKind.Arrow {
+        p.next()
         ret = parse_type(p)
-        skip_empty_lines(p)
+        p.skip_empty_lines()
     } else if is_type_name(p) {
         ret = parse_type(p)
-        skip_empty_lines(p)
-    } else if p_kind(p) == TokenKind.LBrace || p_kind(p) == TokenKind.Semi {
+        p.skip_empty_lines()
+    } else if p.kind() == TokenKind.LBrace || p.kind() == TokenKind.Semi {
         ret = "void"
     }
     var body = "(body )"
-    if p_kind(p) == TokenKind.Semi {
-        p_next(p)
+    if p.kind() == TokenKind.Semi {
+        p.next()
     } else {
         body = parse_body(p)
     }
@@ -1406,26 +1424,26 @@ fn parse_fn(mut p P) str {
     if ret != "" {
         out = f"${out} (ret ${ret})"
     }
-    pop_scope(p)
+    p.pop_scope()
     return out + " " + body + ")"
 }
 
 fn if_contents(mut p P) str {
-    p_next(p)
-    if p_kind(p) == TokenKind.Let {
-        p_err(p, "v2 unsupported: if-let ")
+    p.next()
+    if p.kind() == TokenKind.Let {
+        p.fail("v2 unsupported: if-let ")
         return ""
     }
     var out = "(if "
     var cond = expr_pratt(p, 0)
     var body = parse_body(p)
     out = f"${out}(branch ${cond.dump} ${body})"
-    while p_kind(p) == TokenKind.Else {
-        p_next(p)
-        if p_kind(p) == TokenKind.If {
-            p_next(p)
-            if p_kind(p) == TokenKind.Let {
-                p_err(p, "v2 unsupported: else-if-let ")
+    while p.kind() == TokenKind.Else {
+        p.next()
+        if p.kind() == TokenKind.If {
+            p.next()
+            if p.kind() == TokenKind.Let {
+                p.fail("v2 unsupported: else-if-let ")
                 return ""
             }
             var c2 = expr_pratt(p, 0)
@@ -1441,71 +1459,71 @@ fn if_contents(mut p P) str {
 }
 
 fn parse_for(mut p P) str {
-    p_next(p)
-    if p_kind(p) == TokenKind.LBrace {
+    p.next()
+    if p.kind() == TokenKind.LBrace {
         var b0 = parse_body(p)
         return "(for (ever) (nil) " + b0 + ")"
     }
-    if p_kind(p) == TokenKind.Let || p_kind(p) == TokenKind.Var {
+    if p.kind() == TokenKind.Let || p.kind() == TokenKind.Var {
         // for let x = 0; cond { }:init 不入 For Display
         parse_store(p, TokenKind.Let)
-        p_expect(p, TokenKind.Semi)
+        p.expect(TokenKind.Semi)
         var c0 = expr_pratt(p, 0)
         var b1 = parse_body(p)
         return "(for (cond) " + c0.dump + " " + b1 + ")"
     }
-    if p_kind(p) == TokenKind.Mut {
-        p_err(p, "'mut' is not supported as a storage modifier ")
+    if p.kind() == TokenKind.Mut {
+        p.fail("'mut' is not supported as a storage modifier ")
         return ""
     }
-    if p_kind(p) == TokenKind.LParen {
+    if p.kind() == TokenKind.LParen {
         // 解构 for (k, v) in expr:基础实现
-        p_next(p)
-        var kn = p_text(p)
-        p_next(p)
-        p_expect(p, TokenKind.Comma)
-        var vn = p_text(p)
-        p_next(p)
-        p_expect(p, TokenKind.RParen)
-        p_expect(p, TokenKind.In)
-        push_scope(p)
-        p_bind(p, kn, "int")
-        p_bind(p, vn, "int")
+        p.next()
+        var kn = p.text()
+        p.next()
+        p.expect(TokenKind.Comma)
+        var vn = p.text()
+        p.next()
+        p.expect(TokenKind.RParen)
+        p.expect(TokenKind.In)
+        p.push_scope()
+        p.bind(kn, "int")
+        p.bind(vn, "int")
         var r1 = expr_pratt(p, 0)
         var b2 = parse_body(p)
-        pop_scope(p)
+        p.pop_scope()
         return "(for ((name " + kn + ") (name " + vn + ")) " + r1.dump + " " + b2 + ")"
     }
-    if p_kind(p) == TokenKind.Ident {
-        var name = p_text(p)
-        p_next(p)
-        if p_kind(p) == TokenKind.In {
-            p_next(p)
-            push_scope(p)
-            p_bind(p, name, "int")
+    if p.kind() == TokenKind.Ident {
+        var name = p.text()
+        p.next()
+        if p.kind() == TokenKind.In {
+            p.next()
+            p.push_scope()
+            p.bind(name, "int")
             var range = expr_pratt(p, 0)
             var body = parse_body(p)
-            pop_scope(p)
+            p.pop_scope()
             return "(for (name " + name + ") " + range.dump + " " + body + ")"
         }
-        if p_kind(p) == TokenKind.Comma {
-            p_next(p)
-            var name2 = p_text(p)
-            p_next(p)
-            p_expect(p, TokenKind.In)
-            push_scope(p)
-            p_bind(p, name2, "int")
+        if p.kind() == TokenKind.Comma {
+            p.next()
+            var name2 = p.text()
+            p.next()
+            p.expect(TokenKind.In)
+            p.push_scope()
+            p.bind(name2, "int")
             var range2 = expr_pratt(p, 0)
             var body2 = parse_body(p)
-            pop_scope(p)
+            p.pop_scope()
             return "(for ((name " + name + ") (name " + name2 + ")) " + range2.dump + " " + body2 + ")"
         }
-        if p_kind(p) == TokenKind.LParen {
+        if p.kind() == TokenKind.LParen {
             // for call(args) { } 条件循环
             var args = parse_args(p)
             var calle = E("call", name, "(name " + name + ")", args, "(call (name " + name + ") " + args + ")", "")
-            if p_kind(p) == TokenKind.Question {
-                p_err(p, "v2 unsupported: for-iterator call ")
+            if p.kind() == TokenKind.Question {
+                p.fail("v2 unsupported: for-iterator call ")
                 return ""
             }
             var cond = expr_with_left(p, calle, 0)
@@ -1513,7 +1531,7 @@ fn parse_for(mut p P) str {
             return "(for (cond) " + cond.dump + " " + b3 + ")"
         }
         // for i < max { } / 一般条件式:以 Ident 为 lhs 续解析
-        var idente = E("name", name, name, "", "(name " + name + ")", p_lookup(p, name))
+        var idente = E("name", name, name, "", "(name " + name + ")", p.lookup(name))
         var cond2 = expr_with_left(p, idente, 0)
         var b4 = parse_body(p)
         return "(for (cond) " + cond2.dump + " " + b4 + ")"
@@ -1524,24 +1542,24 @@ fn parse_for(mut p P) str {
 }
 
 fn parse_while(mut p P) str {
-    p_next(p)
+    p.next()
     var had_paren = false
-    if p_kind(p) == TokenKind.LParen {
-        p_next(p)
+    if p.kind() == TokenKind.LParen {
+        p.next()
         had_paren = true
     }
-    skip_empty_lines(p)
+    p.skip_empty_lines()
     var cond = expr_pratt(p, 0)
     if had_paren {
-        p_expect(p, TokenKind.RParen)
+        p.expect(TokenKind.RParen)
     }
     var body = parse_body(p)
     return "(for (cond) " + cond.dump + " " + body + ")"
 }
 
 fn parse_return(mut p P) str {
-    p_next(p)
-    var k = p_kind(p)
+    p.next()
+    var k = p.kind()
     if k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.RBrace || k == TokenKind.EOF {
         return "(return (nil))"
     }
@@ -1574,14 +1592,14 @@ fn is_soft_ident_kind(k TokenKind) bool {
 // `::` 不可达(宿主 :: 双冒号被 items-colon 消费后报错,W0 实测),
 // parse_use_items 的 LBrace 臂仅服务 use.rs 路径形态。
 fn parse_use(mut p P) str {
-    p_next(p)
+    p.next()
     // 异构形态:use.rs / use.py(use 已消费,cur 为 Dot)
-    if p_kind(p) == TokenKind.Dot {
-        var lang = p_peek_text(p, 1)
-        p_next(p)
-        p_next(p)
+    if p.kind() == TokenKind.Dot {
+        var lang = p.peek_text(1)
+        p.next()
+        p.next()
         if lang != "rs" && lang != "py" && lang != "c" {
-            p_err(p, "expected language after use., got ")
+            p.fail("expected language after use., got ")
             return ""
         }
         var kind = "rust"
@@ -1591,53 +1609,53 @@ fn parse_use(mut p P) str {
             kind = "c"
         }
         // 路径段::: 分隔(词法为两个 Colon),Display 以 . 连接
-        var path = p_text(p)
-        p_next(p)
-        while p_kind(p) == TokenKind.Colon && p_peek(p, 1) == TokenKind.Colon {
-            p_next(p)
-            p_next(p)
-            path = path + "." + p_text(p)
-            p_next(p)
+        var path = p.text()
+        p.next()
+        while p.kind() == TokenKind.Colon && p.peek(1) == TokenKind.Colon {
+            p.next()
+            p.next()
+            path = path + "." + p.text()
+            p.next()
         }
         return "(use (kind " + kind + ") (path " + path + "))"
     }
-    if !is_name_kind(p_kind(p)) {
-        p_err(p, "expected module name after use, got ")
+    if !is_name_kind(p.kind()) {
+        p.fail("expected module name after use, got ")
         return ""
     }
-    var name = p_text(p)
-    p_next(p)
-    while p_kind(p) == TokenKind.Dot {
-        p_next(p)
-        if !is_name_kind(p_kind(p)) {
-            p_err(p, "expected path segment after dot, got ")
+    var name = p.text()
+    p.next()
+    while p.kind() == TokenKind.Dot {
+        p.next()
+        if !is_name_kind(p.kind()) {
+            p.fail("expected path segment after dot, got ")
             return ""
         }
-        name = name + "." + p_text(p)
-        p_next(p)
+        name = name + "." + p.text()
+        p.next()
     }
     var items = ""
     var wildcard = false
-    if p_kind(p) == TokenKind.Colon {
-        p_next(p)
-        if p_kind(p) == TokenKind.Star {
-            p_next(p)
+    if p.kind() == TokenKind.Colon {
+        p.next()
+        if p.kind() == TokenKind.Star {
+            p.next()
             wildcard = true
         } else {
-            if !is_name_kind(p_kind(p)) {
-                p_err(p, "expected identifier or *, got ")
+            if !is_name_kind(p.kind()) {
+                p.fail("expected identifier or *, got ")
                 return ""
             }
-            items = p_text(p)
-            p_next(p)
-            while p_kind(p) == TokenKind.Comma {
-                p_next(p)
-                if !is_name_kind(p_kind(p)) {
-                    p_err(p, "expected identifier, got ")
+            items = p.text()
+            p.next()
+            while p.kind() == TokenKind.Comma {
+                p.next()
+                if !is_name_kind(p.kind()) {
+                    p.fail("expected identifier, got ")
                     return ""
                 }
-                items = items + "," + p_text(p)
-                p_next(p)
+                items = items + "," + p.text()
+                p.next()
             }
         }
     }
@@ -1655,57 +1673,57 @@ fn parse_use(mut p P) str {
 // 的 TypeDecl:仅 members 路径;泛型参数/别名/is/as/has/方法体/字段默认值
 // 遇之报 v2 unsupported(lib 未用,golden 02 组部分留后续)
 fn parse_type_decl(mut p P) str {
-    p_next(p)
-    if !is_name_kind(p_kind(p)) {
-        p_err(p, "expected type name, got ")
+    p.next()
+    if !is_name_kind(p.kind()) {
+        p.fail("expected type name, got ")
         return ""
     }
-    var name = p_text(p)
-    p_next(p)
-    if p_kind(p) == TokenKind.Lt {
-        p_err(p, "v2 unsupported: type generic params ")
+    var name = p.text()
+    p.next()
+    if p.kind() == TokenKind.Lt {
+        p.fail("v2 unsupported: type generic params ")
         return ""
     }
-    if p_kind(p) == TokenKind.Asn {
-        p_err(p, "v2 unsupported: type alias ")
+    if p.kind() == TokenKind.Asn {
+        p.fail("v2 unsupported: type alias ")
         return ""
     }
-    if p_kind(p) == TokenKind.Is {
-        p_err(p, "v2 unsupported: type inheritance ")
+    if p.kind() == TokenKind.Is {
+        p.fail("v2 unsupported: type inheritance ")
         return ""
     }
-    if p_kind(p) == TokenKind.As {
-        p_err(p, "v2 unsupported: type as ")
+    if p.kind() == TokenKind.As {
+        p.fail("v2 unsupported: type as ")
         return ""
     }
-    if p_kind(p) == TokenKind.Has {
-        p_err(p, "v2 unsupported: type has ")
+    if p.kind() == TokenKind.Has {
+        p.fail("v2 unsupported: type has ")
         return ""
     }
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
     var members = ""
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
-        if p_kind(p) == TokenKind.Fn || p_kind(p) == TokenKind.Static {
-            p_err(p, "v2 unsupported: method in type ")
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+        if p.kind() == TokenKind.Fn || p.kind() == TokenKind.Static {
+            p.fail("v2 unsupported: method in type ")
             return ""
         }
-        if p_kind(p) == TokenKind.Hash {
-            p_err(p, "v2 unsupported: member attr ")
+        if p.kind() == TokenKind.Hash {
+            p.fail("v2 unsupported: member attr ")
             return ""
         }
-        if !is_name_kind(p_kind(p)) {
-            p_err(p, "expected member name, got ")
+        if !is_name_kind(p.kind()) {
+            p.fail("expected member name, got ")
             return ""
         }
-        var fname = p_text(p)
-        p_next(p)
-        if p_kind(p) == TokenKind.Colon {
-            p_next(p)
+        var fname = p.text()
+        p.next()
+        if p.kind() == TokenKind.Colon {
+            p.next()
         }
         var fty = parse_type(p)
-        if p_kind(p) == TokenKind.Asn {
-            p_err(p, "v2 unsupported: member default value ")
+        if p.kind() == TokenKind.Asn {
+            p.fail("v2 unsupported: member default value ")
             return ""
         }
         if members != "" {
@@ -1714,15 +1732,15 @@ fn parse_type_decl(mut p P) str {
         members = f"${members}(member (name ${fname}) (type ${fty}))"
         // 成员间空行:Display 无 nl 载体,基线亦忽略——静默跳过
         expect_eos(p)
-        skip_empty_lines(p)
+        p.skip_empty_lines()
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
     var out = f"(type-decl (name ${name})"
     if members != "" {
         out = f"${out} (members ${members})"
     }
     out = f"${out})"
-    p_decl_register(p, name, out)
+    p.decl_register(name, out)
     return out
 }
 
@@ -1730,89 +1748,89 @@ fn parse_type_decl(mut p P) str {
 // (enum (name X) (item (name A) (value 0)) ...);首项 value 0、显式 = N 后
 // last_val=N+1(基线 gap-fill);payload/方法/变体属性遇之报 unsupported
 fn parse_enum_decl(mut p P) str {
-    p_next(p)
-    if !is_name_kind(p_kind(p)) {
-        p_err(p, "expected enum name, got ")
+    p.next()
+    if !is_name_kind(p.kind()) {
+        p.fail("expected enum name, got ")
         return ""
     }
-    var name = p_text(p)
-    p_next(p)
-    if p_kind(p) == TokenKind.Lt {
-        p_err(p, "v2 unsupported: enum generic params ")
+    var name = p.text()
+    p.next()
+    if p.kind() == TokenKind.Lt {
+        p.fail("v2 unsupported: enum generic params ")
         return ""
     }
-    if p_kind(p) == TokenKind.Ident || p_kind(p) == TokenKind.Type {
-        p_err(p, "v2 unsupported: enum repr type ")
+    if p.kind() == TokenKind.Ident || p.kind() == TokenKind.Type {
+        p.fail("v2 unsupported: enum repr type ")
         return ""
     }
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
     var out = f"(enum (name ${name}) "
     var next_val = 0
     var first = true
     var any_payload = false
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
-        if p_kind(p) == TokenKind.Fn || p_kind(p) == TokenKind.Static {
-            p_err(p, "v2 unsupported: method in enum ")
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+        if p.kind() == TokenKind.Fn || p.kind() == TokenKind.Static {
+            p.fail("v2 unsupported: method in enum ")
             return ""
         }
-        if p_kind(p) == TokenKind.Hash {
-            p_err(p, "v2 unsupported: enum variant attr ")
+        if p.kind() == TokenKind.Hash {
+            p.fail("v2 unsupported: enum variant attr ")
             return ""
         }
-        if !is_name_kind(p_kind(p)) {
-            p_err(p, "expected variant name, got ")
+        if !is_name_kind(p.kind()) {
+            p.fail("expected variant name, got ")
             return ""
         }
-        var vname = p_text(p)
-        p_next(p)
+        var vname = p.text()
+        p.next()
         // Plan 447 部分②:载荷变体 Name(T1, T2)/Name{ f T, ... }。Display 与
         // 单元变体同形(载荷类型不入 dump,value 恒 0 不参与自增);载荷类型
         // 按 Enum.Variant.slot 登记进 decls,供 is 臂绑定推断用
         var has_payload = false
-        if p_kind(p) == TokenKind.LParen {
-            p_next(p)
-            skip_empty_lines(p)
-            if p_kind(p) != TokenKind.RParen {
+        if p.kind() == TokenKind.LParen {
+            p.next()
+            p.skip_empty_lines()
+            if p.kind() != TokenKind.RParen {
                 var more_payload = true
                 var slot = 0
                 while more_payload {
                     var pt = parse_type(p)
-                    p_decl_register(p, name + "." + vname + "." + slot.str(), pt)
+                    p.decl_register(name + "." + vname + "." + slot.str(), pt)
                     slot = slot + 1
-                    if p_kind(p) == TokenKind.Comma {
-                        p_next(p)
-                        skip_empty_lines(p)
+                    if p.kind() == TokenKind.Comma {
+                        p.next()
+                        p.skip_empty_lines()
                     } else {
                         more_payload = false
                     }
                 }
             }
-            p_expect(p, TokenKind.RParen)
+            p.expect(TokenKind.RParen)
             has_payload = true
-        } else if p_kind(p) == TokenKind.LBrace {
-            p_next(p)
-            skip_empty_lines(p)
+        } else if p.kind() == TokenKind.LBrace {
+            p.next()
+            p.skip_empty_lines()
             var slot2 = 0
-            while p.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
-                if !is_name_kind(p_kind(p)) {
-                    p_err(p, "expected variant field name, got ")
+            while p.err == "" && p.kind() != TokenKind.RBrace && p.kind() != TokenKind.EOF {
+                if !is_name_kind(p.kind()) {
+                    p.fail("expected variant field name, got ")
                     return ""
                 }
-                p_next(p)
-                if p_kind(p) == TokenKind.Colon {
-                    p_next(p)
+                p.next()
+                if p.kind() == TokenKind.Colon {
+                    p.next()
                 }
                 var ft = parse_type(p)
-                p_decl_register(p, name + "." + vname + "." + slot2.str(), ft)
+                p.decl_register(name + "." + vname + "." + slot2.str(), ft)
                 slot2 = slot2 + 1
-                if p_kind(p) == TokenKind.Comma {
-                    p_next(p)
-                    skip_empty_lines(p)
+                if p.kind() == TokenKind.Comma {
+                    p.next()
+                    p.skip_empty_lines()
                 }
-                skip_empty_lines(p)
+                p.skip_empty_lines()
             }
-            p_expect(p, TokenKind.RBrace)
+            p.expect(TokenKind.RBrace)
             has_payload = true
         }
         any_payload = any_payload || has_payload
@@ -1820,14 +1838,14 @@ fn parse_enum_decl(mut p P) str {
         if has_payload {
             val = 0
         }
-        if p_kind(p) == TokenKind.Asn {
-            p_next(p)
-            if p_kind(p) != TokenKind.Int {
-                p_err(p, "v2 unsupported: enum value ")
+        if p.kind() == TokenKind.Asn {
+            p.next()
+            if p.kind() != TokenKind.Int {
+                p.fail("v2 unsupported: enum value ")
                 return ""
             }
-            val = int_val(p_text(p))
-            p_next(p)
+            val = int_val(p.text())
+            p.next()
         }
         // 载荷变体不推进自增基准(参考实证:Val{VI(int) VS(str) VN} 三项全 0)
         if !has_payload {
@@ -1840,13 +1858,13 @@ fn parse_enum_decl(mut p P) str {
         first = false
         // 变体间空行同成员:静默跳过
         expect_eos(p)
-        skip_empty_lines(p)
+        p.skip_empty_lines()
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
     // 注册策略(镜像参考注册面):载荷枚举 → 参数位内联完整 enum 快照;
     // 纯标量枚举 → 不注册,参数位落 (type-decl (name X)) 兜底
     if any_payload {
-        p_decl_register(p, name, out + ")")
+        p.decl_register(name, out + ")")
     }
     return out + ")"
 }
@@ -1857,18 +1875,18 @@ fn parse_enum_decl(mut p P) str {
 // parse_expr_or_body 直译:{...} → parse_body;return/break/continue 单语句;
 // 其余单表达式 → "(body e)"
 fn parse_expr_or_body(mut p P) str {
-    if p_kind(p) == TokenKind.LBrace {
+    if p.kind() == TokenKind.LBrace {
         return parse_body(p)
     }
-    if p_kind(p) == TokenKind.Return {
+    if p.kind() == TokenKind.Return {
         return "(body " + parse_return(p) + ")"
     }
-    if p_kind(p) == TokenKind.Break {
-        p_next(p)
+    if p.kind() == TokenKind.Break {
+        p.next()
         return "(body (break))"
     }
-    if p_kind(p) == TokenKind.Continue {
-        p_next(p)
+    if p.kind() == TokenKind.Continue {
+        p.next()
         return "(body (continue))"
     }
     var e = expr_pratt(p, 0)
@@ -1896,7 +1914,7 @@ fn split_commas(s str) List<str> {
 // SomeKW,宿主同走 Call 路径)交给表达式机。E 复用约定:kind="tag-cover"
 // 时 name=枚举名、word=变体名、args=绑定逗号串
 fn is_pattern(mut p P) E {
-    var k = p_kind(p)
+    var k = p.kind()
     if k == TokenKind.Ident {
         // 仅当 Ident 后随 Dot 才按点路径拦截(裸名/调用形留给表达式机)
         var nxt = TokenKind.EOF
@@ -1905,42 +1923,42 @@ fn is_pattern(mut p P) E {
         }
         if nxt == TokenKind.Dot {
             var segs List<str> = List.new()
-            segs.push(p_text(p))
-            p_next(p)
-            while p.err == "" && p_kind(p) == TokenKind.Dot {
-                p_next(p)
-                if !is_name_kind(p_kind(p)) {
-                    p_err(p, "expected variant name after '.', got ")
+            segs.push(p.text())
+            p.next()
+            while p.err == "" && p.kind() == TokenKind.Dot {
+                p.next()
+                if !is_name_kind(p.kind()) {
+                    p.fail("expected variant name after '.', got ")
                     return bad_e()
                 }
-                segs.push(p_text(p))
-                p_next(p)
+                segs.push(p.text())
+                p.next()
             }
             // 3 段路径剥模块前缀(镜像参考 Call 转换:kind 取倒数第二段)
             var ek = segs.get(segs.len() - 2)
             var tg = segs.get(segs.len() - 1)
             var bind_list List<str> = List.new()
-            if p_kind(p) == TokenKind.LParen {
-                p_next(p)
-                skip_empty_lines(p)
-                if p_kind(p) != TokenKind.RParen {
+            if p.kind() == TokenKind.LParen {
+                p.next()
+                p.skip_empty_lines()
+                if p.kind() != TokenKind.RParen {
                     var more_bind = true
                     while more_bind {
-                        if !is_name_kind(p_kind(p)) {
-                            p_err(p, "expected pattern binding, got ")
+                        if !is_name_kind(p.kind()) {
+                            p.fail("expected pattern binding, got ")
                             return bad_e()
                         }
-                        bind_list.push(p_text(p))
-                        p_next(p)
-                        if p_kind(p) == TokenKind.Comma {
-                            p_next(p)
-                            skip_empty_lines(p)
+                        bind_list.push(p.text())
+                        p.next()
+                        if p.kind() == TokenKind.Comma {
+                            p.next()
+                            p.skip_empty_lines()
                         } else {
                             more_bind = false
                         }
                     }
                 }
-                p_expect(p, TokenKind.RParen)
+                p.expect(TokenKind.RParen)
             } else {
                 // 无括号单元变体 → bindings ["_"](参考 TagCover 约定)
                 bind_list.push("_")
@@ -1968,33 +1986,33 @@ fn is_pattern(mut p P) E {
 // Eq → "(eq p1 [| p2]... body)";首模式 tag-cover 的载荷绑定入臂体作用域
 // (载荷类型查 Enum.Variant.slot 登记)
 fn parse_is_branch(mut p P) str {
-    var k = p_kind(p)
+    var k = p.kind()
     if k == TokenKind.If {
-        p_next(p)
+        p.next()
         var c = expr_pratt(p, 0)
-        p_expect(p, TokenKind.Arrow)
+        p.expect(TokenKind.Arrow)
         var b = parse_expr_or_body(p)
-        skip_empty_lines(p)
+        p.skip_empty_lines()
         return "(if " + c.dump + " " + b + ")"
     }
     if k == TokenKind.Else {
-        p_next(p)
-        p_expect(p, TokenKind.Arrow)
+        p.next()
+        p.expect(TokenKind.Arrow)
         var b2 = parse_expr_or_body(p)
-        skip_empty_lines(p)
+        p.skip_empty_lines()
         return "(else " + b2 + ")"
     }
     var pat = is_pattern(p)
     var extra List<str> = List.new()
-    while p.err == "" && p_kind(p) == TokenKind.VBar {
-        p_next(p)
-        skip_empty_lines(p)
+    while p.err == "" && p.kind() == TokenKind.VBar {
+        p.next()
+        p.skip_empty_lines()
         var np = is_pattern(p)
         extra.push(np.dump)
-        skip_empty_lines(p)
+        p.skip_empty_lines()
     }
-    p_expect(p, TokenKind.Arrow)
-    skip_empty_lines(p)
+    p.expect(TokenKind.Arrow)
+    p.skip_empty_lines()
     var body = ""
     var scoped = false
     if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
@@ -2008,13 +2026,13 @@ fn parse_is_branch(mut p P) str {
             i = i + 1
         }
         if real {
-            push_scope(p)
+            p.push_scope()
             scoped = true
             var i2 = 0
             while i2 < binds.len() {
                 if binds.get(i2) != "_" {
-                    var slot_ty = p_decl_lookup(p, pat.name + "." + pat.word + "." + i2.str())
-                    p_bind(p, binds.get(i2), slot_ty)
+                    var slot_ty = p.decl_lookup(pat.name + "." + pat.word + "." + i2.str())
+                    p.bind(binds.get(i2), slot_ty)
                 }
                 i2 = i2 + 1
             }
@@ -2022,7 +2040,7 @@ fn parse_is_branch(mut p P) str {
     }
     body = parse_expr_or_body(p)
     if scoped {
-        pop_scope(p)
+        p.pop_scope()
     }
     var out = f"(eq ${pat.dump} "
     var j = 0
@@ -2030,31 +2048,31 @@ fn parse_is_branch(mut p P) str {
         out = f"${out}| ${extra.get(j)} "
         j = j + 1
     }
-    skip_empty_lines(p)
+    p.skip_empty_lines()
     return out + body + ")"
 }
 
 // parse_is 直译:语句位 "(is target br1 br2...)";臂间可选逗号
 fn parse_is(mut p P) str {
-    p_next(p)
+    p.next()
     var t = expr_pratt(p, 0)
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
     var branches = ""
     var first = true
-    while p.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
+    while p.err == "" && p.kind() != TokenKind.RBrace && p.kind() != TokenKind.EOF {
         var b = parse_is_branch(p)
         if !first {
             branches = f"${branches} "
         }
         branches = branches + b
         first = false
-        if p_kind(p) == TokenKind.Comma {
-            p_next(p)
-            skip_empty_lines(p)
+        if p.kind() == TokenKind.Comma {
+            p.next()
+            p.skip_empty_lines()
         }
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
     return "(is " + t.dump + " " + branches + ")"
 }
 
@@ -2069,12 +2087,12 @@ fn parse_stmt(mut p P) str {
     if p.err != "" {
         return ""
     }
-    var k = p_kind(p)
+    var k = p.kind()
     if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared {
         return parse_store(p, k)
     }
     if k == TokenKind.Mut {
-        p_err(p, "'mut' is not supported as a storage modifier ")
+        p.fail("'mut' is not supported as a storage modifier ")
         return ""
     }
     if k == TokenKind.Type {
@@ -2099,16 +2117,16 @@ fn parse_stmt(mut p P) str {
         return parse_while(p)
     }
     if k == TokenKind.Loop {
-        p_next(p)
+        p.next()
         var b = parse_body(p)
         return "(for (ever) (nil) " + b + ")"
     }
     if k == TokenKind.Break {
-        p_next(p)
+        p.next()
         return "(break)"
     }
     if k == TokenKind.Continue {
-        p_next(p)
+        p.next()
         return "(continue)"
     }
     if k == TokenKind.Return {
@@ -2121,13 +2139,13 @@ fn parse_stmt(mut p P) str {
         return parse_use(p)
     }
     if is_unsupported_stmt_kind(k) {
-        p_err(p, "v2 unsupported: " + kind_name(k) + " ")
+        p.fail("v2 unsupported: " + kind_name(k) + " ")
         return ""
     }
-    if k == TokenKind.Ident && p_text(p) == "pub" {
+    if k == TokenKind.Ident && p.text() == "pub" {
         // W3:pub 前缀——跳过后递归(pub fn/let/var;D3:VM 链路无过滤,
         // dump 不承载 pub 位)
-        p_next(p)
+        p.next()
         return parse_stmt(p)
     }
     var e = expr_pratt(p, 0)
@@ -2136,14 +2154,14 @@ fn parse_stmt(mut p P) str {
 
 // parse_body_inner 直译(方法链合并 Missing;空 body → "(body )")
 fn parse_body(mut p P) str {
-    p_expect(p, TokenKind.LBrace)
-    push_scope(p)
+    p.expect(TokenKind.LBrace)
+    p.push_scope()
     var stmts List<str> = List.new()
-    var nl = skip_empty_lines(p)
+    var nl = p.skip_empty_lines()
     if nl > 1 {
         stmts.push("(nl*" + (nl - 1).str() + ")")
     }
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         var s = parse_stmt(p)
         stmts.push(s)
         var n = expect_eos(p)
@@ -2151,8 +2169,8 @@ fn parse_body(mut p P) str {
             stmts.push("(nl*" + (n - 1).str() + ")")
         }
     }
-    p_expect(p, TokenKind.RBrace)
-    pop_scope(p)
+    p.expect(TokenKind.RBrace)
+    p.pop_scope()
     return "(body " + join_dump_list(stmts, " ") + ")"
 }
 
@@ -2160,18 +2178,18 @@ fn parse_body(mut p P) str {
 fn expect_eos(mut p P) int {
     var count = 0
     var has_sep = false
-    while p_kind(p) == TokenKind.Semi || p_kind(p) == TokenKind.Newline || p_kind(p) == TokenKind.Comma {
+    while p.kind() == TokenKind.Semi || p.kind() == TokenKind.Newline || p.kind() == TokenKind.Comma {
         has_sep = true
-        if p_kind(p) == TokenKind.Newline {
+        if p.kind() == TokenKind.Newline {
             count = count + 1
         }
-        p_next(p)
+        p.next()
     }
-    if p_kind(p) == TokenKind.EOF || p_kind(p) == TokenKind.RBrace {
+    if p.kind() == TokenKind.EOF || p.kind() == TokenKind.RBrace {
         return count
     }
     if !has_sep {
-        p_err(p, "expected end of statement, got ")
+        p.fail("expected end of statement, got ")
         return 0
     }
     return count
@@ -2180,8 +2198,8 @@ fn expect_eos(mut p P) int {
 // parse_impl 直译(#section/convert_last_block Missing;空 code → "(code )")
 fn parse_program(mut p P) str {
     var stmts List<str> = List.new()
-    skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != TokenKind.EOF {
+    p.skip_empty_lines()
+    while p.err == "" && p.kind() != TokenKind.EOF {
         var s = parse_stmt(p)
         stmts.push(s)
         var n = expect_eos(p)

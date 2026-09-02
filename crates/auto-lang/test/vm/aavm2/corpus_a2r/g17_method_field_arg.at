@@ -1,0 +1,16 @@
+// Plan 514 W3-15: 方法实参位的 str 形态——方法环实参强转对拍
+// (str 字段读取/str 局部/拼接;List.get 元素字段形态走 ⑤腿 rustc 门,
+//  两侧注解分歧不入 g 系列)
+type Holder17 {
+    name str
+    fn show(text str) str { return text }
+    static fn new(name str) Holder17 { return Holder17(name) }
+}
+fn main() {
+    var h = Holder17.new("lib")
+    var r1 = h.show(h.name)
+    var local = "x"
+    var r2 = h.show(local)
+    var r3 = h.show("lit" + local)
+    print(r1 + r2 + r3)
+}
