@@ -1,0 +1,4 @@
+name: "settings"
+version: "0.1.0"
+namespace: "auto"
+description: "AutoUI standard Theme and Accent Settings Popover component"

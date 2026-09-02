@@ -1,135 +1,745 @@
+// app.at — 019-video-app Bilibili/YouTube-style video browser.
+// Dual-backend parity: Vue mode (`auto run`) & VM mode (`auto run -r vm`).
+// Default: Dark Mode with bottom-left Settings panel (Plan 360 / 015-notes style).
+
+use settings: SettingsPopover
+
 widget App {
-    msg { TabChanged, CategoryChanged }
+    msg {
+        Init,
+        SearchChanged,
+        SelectChip(str),
+        SelectNav(str),
+        ToggleSettings,
+        SetTheme(str),
+        SetAccent(str)
+    }
 
     model {
+        var dark_mode bool = true
+        var accent_color str = "coral"
+        var show_settings bool = false
+        var active_chip str = "All"
+        var active_nav str = "recommend"
+        var search str = ""
+
+        // Category chips
         var chip1 str = "All"
         var chip2 str = "Gaming"
         var chip3 str = "Music"
         var chip4 str = "Tech"
         var chip5 str = "Food"
-        var vid1_title str = "Amazing Sunset Timelapse"
+        var chip6 str = "Anime"
+        var chip7 str = "Coding"
+
+        // Video items
+        var vid1_title str = "Amazing Sunset Timelapse in 4K"
         var vid1_author str = "NatureCam"
         var vid1_views str = "1.2M views"
-        var vid2_title str = "Learn Rust in 10 Minutes"
+        var vid1_time str = "12:34"
+        var vid1_tag str = "Nature"
+
+        var vid2_title str = "Learn Rust & AutoLang in 10 Minutes"
         var vid2_author str = "CodeMaster"
         var vid2_views str = "856K views"
-        var vid3_title str = "Street Food Tour Tokyo"
+        var vid2_time str = "10:15"
+        var vid2_tag str = "Tech"
+
+        var vid3_title str = "Tokyo Street Food Night Tour"
         var vid3_author str = "FoodieTravel"
         var vid3_views str = "2.1M views"
-        var vid4_title str = "Piano Cover - Moonlight"
+        var vid3_time str = "18:42"
+        var vid3_tag str = "Food"
+
+        var vid4_title str = "Piano Cover — Moonlight Sonata"
         var vid4_author str = "MusicLover"
         var vid4_views str = "430K views"
-        var vid5_title str = "Building a PC 2026"
+        var vid4_time str = "05:20"
+        var vid4_tag str = "Music"
+
+        var vid5_title str = "Ultimate Water-Cooled PC Build 2026"
         var vid5_author str = "TechGuru"
         var vid5_views str = "1.5M views"
-        var vid6_title str = "Epic Mountain Biking"
+        var vid5_time str = "24:08"
+        var vid5_tag str = "Gaming"
+
+        var vid6_title str = "Epic Downhill Mountain Biking RedBull"
         var vid6_author str = "ExtremeSports"
         var vid6_views str = "3.2M views"
+        var vid6_time str = "14:55"
+        var vid6_tag str = "Sports"
     }
 
     view {
-        col {
-            row {
-                text "VideoApp" { style: "text-xl font-bold text-pink-500 px-4" }
-                input { placeholder: "Search videos...", style: "flex-1 px-4 py-2 border rounded-full text-sm mx-4" }
-                text "User" { style: "text-sm text-gray-600 px-4" }
-                style: "w-full items-center py-3 border-b"
+        row {
+            style: if .dark_mode {
+                "w-full h-screen bg-zinc-950 text-zinc-100 overflow-hidden"
+            } else {
+                "w-full h-screen bg-gray-50 text-gray-900 overflow-hidden"
             }
-            row {
-                text .chip1 { style: "px-4 py-1 text-sm bg-pink-500 text-white rounded-full" }
-                text .chip2 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                text .chip3 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                text .chip4 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                text .chip5 { style: "px-4 py-1 text-sm bg-gray-100 text-gray-700 rounded-full" }
-                style: "w-full gap-2 px-4 py-3 overflow-x-auto"
+
+            // ── Left Sidebar Navigation ──
+            col {
+                style: if .dark_mode {
+                    "w-64 h-full bg-zinc-900 border-r border-zinc-800 flex-shrink-0 justify-between relative"
+                } else {
+                    "w-64 h-full bg-white border-r border-gray-200 flex-shrink-0 justify-between relative"
+                }
+
+                // Top: Brand Logo & Nav links
+                col {
+                    style: "p-4 gap-4"
+
+                    // Logo
+                    row {
+                        style: "items-center gap-2.5 px-2 py-1"
+                        text "📺" { style: "text-2xl" }
+                        text "VideoApp" {
+                            style: "text-xl font-extrabold text-primary tracking-tight"
+                        }
+                    }
+
+                    // Nav List
+                    col {
+                        style: "gap-1 mt-2"
+
+                        button "🏠  Recommend" {
+                            onclick: .SelectNav("recommend")
+                            style: if .active_nav == "recommend" {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-zinc-800 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-primary/10 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 bg-transparent text-left cursor-pointer transition-colors"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-transparent text-left cursor-pointer transition-colors"
+                                }
+                            }
+                        }
+
+                        button "🔥  Trending" {
+                            onclick: .SelectNav("trending")
+                            style: if .active_nav == "trending" {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-zinc-800 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-primary/10 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 bg-transparent text-left cursor-pointer transition-colors"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-transparent text-left cursor-pointer transition-colors"
+                                }
+                            }
+                        }
+
+                        button "⭐  Subscriptions" {
+                            onclick: .SelectNav("subs")
+                            style: if .active_nav == "subs" {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-zinc-800 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-primary/10 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 bg-transparent text-left cursor-pointer transition-colors"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-transparent text-left cursor-pointer transition-colors"
+                                }
+                            }
+                        }
+
+                        button "📁  Library" {
+                            onclick: .SelectNav("library")
+                            style: if .active_nav == "library" {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-zinc-800 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-primary/10 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 bg-transparent text-left cursor-pointer transition-colors"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-transparent text-left cursor-pointer transition-colors"
+                                }
+                            }
+                        }
+
+                        button "🕒  History" {
+                            onclick: .SelectNav("history")
+                            style: if .active_nav == "history" {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-zinc-800 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-semibold rounded-xl bg-primary/10 text-primary text-left cursor-pointer transition-colors shadow-sm"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 bg-transparent text-left cursor-pointer transition-colors"
+                                } else {
+                                    "w-full px-3 py-2.5 text-sm font-medium rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-transparent text-left cursor-pointer transition-colors"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Bottom: Settings Popup + Footer
+                col {
+                    style: "p-3 gap-2 border-t border-border"
+
+                    // Settings popup (shared SettingsPopover component)
+                    SettingsPopover(
+                        open: .show_settings,
+                        dark_mode: .dark_mode,
+                        accent_color: .accent_color,
+                        on_close: .ToggleSettings,
+                        on_set_theme: .SetTheme,
+                        on_set_accent: .SetAccent
+                    )
+
+                    // Settings trigger row at bottom-left
+                    row {
+                        style: "items-center justify-between"
+                        button "⚙ Settings" {
+                            onclick: .ToggleSettings
+                            style: if .show_settings {
+                                if .dark_mode {
+                                    "px-3 py-2 text-xs font-semibold rounded-xl bg-zinc-800 text-primary transition-colors cursor-pointer"
+                                } else {
+                                    "px-3 py-2 text-xs font-semibold rounded-xl bg-primary/10 text-primary transition-colors cursor-pointer"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "px-3 py-2 text-xs font-medium rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 bg-transparent transition-colors cursor-pointer"
+                                } else {
+                                    "px-3 py-2 text-xs font-medium rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-transparent transition-colors cursor-pointer"
+                                }
+                            }
+                        }
+                        text "v1.0" {
+                            style: if .dark_mode {
+                                "text-xs text-zinc-500 mr-2"
+                            } else {
+                                "text-xs text-gray-400 mr-2"
+                            }
+                        }
+                    }
+                }
             }
-            tabs {
-                tab "Recommend" { }
-                tab "Trending" { }
-                tab "Following" { }
-                style: "px-4"
+
+            // ── Main Content Area ──
+            col {
+                style: "flex-1 w-full h-full overflow-y-auto flex-col"
+
+                // Top Header: Search Bar + User
+                row {
+                    style: if .dark_mode {
+                        "w-full items-center justify-between px-6 py-3.5 border-b border-zinc-800 bg-zinc-900/60 backdrop-blur shrink-0"
+                    } else {
+                        "w-full items-center justify-between px-6 py-3.5 border-b border-gray-200 bg-white/80 backdrop-blur shrink-0"
+                    }
+
+                    // Search input container
+                    row {
+                        style: if .dark_mode {
+                            "flex-1 max-w-xl items-center px-4 py-2 bg-zinc-800/80 border border-zinc-700 rounded-full gap-2 focus-within:border-primary transition-colors"
+                        } else {
+                            "flex-1 max-w-xl items-center px-4 py-2 bg-gray-100 border border-gray-200 rounded-full gap-2 focus-within:border-primary transition-colors"
+                        }
+                        text "🔍" { style: "text-xs opacity-60" }
+                        input {
+                            value: .search
+                            placeholder: "Search videos, creators, music..."
+                            style: if .dark_mode {
+                                "flex-1 bg-transparent text-sm text-zinc-100 outline-none border-none placeholder:text-zinc-500"
+                            } else {
+                                "flex-1 bg-transparent text-sm text-gray-900 outline-none border-none placeholder:text-gray-400"
+                            }
+                        }
+                    }
+
+                    // Right header: upload + notification + user avatar
+                    row {
+                        style: "items-center gap-4"
+                        text "➕" {
+                            style: if .dark_mode {
+                                "text-sm text-zinc-400 hover:text-zinc-100 cursor-pointer"
+                            } else {
+                                "text-sm text-gray-500 hover:text-gray-900 cursor-pointer"
+                            }
+                        }
+                        text "🔔" {
+                            style: if .dark_mode {
+                                "text-sm text-zinc-400 hover:text-zinc-100 cursor-pointer"
+                            } else {
+                                "text-sm text-gray-500 hover:text-gray-900 cursor-pointer"
+                            }
+                        }
+                        row {
+                            style: if .dark_mode {
+                                "items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 cursor-pointer"
+                            } else {
+                                "items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 border border-gray-200 cursor-pointer"
+                            }
+                            text "👤" { style: "text-sm" }
+                            text "User" {
+                                style: if .dark_mode {
+                                    "text-xs font-medium text-zinc-200"
+                                } else {
+                                    "text-xs font-medium text-gray-700"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Category Chips Row
+                row {
+                    style: if .dark_mode {
+                        "w-full gap-2 px-6 py-3 border-b border-zinc-800/80 items-center overflow-x-auto shrink-0"
+                    } else {
+                        "w-full gap-2 px-6 py-3 border-b border-gray-200/80 items-center overflow-x-auto shrink-0"
+                    }
+
+                    button .chip1 {
+                        onclick: .SelectChip("All")
+                        style: if .active_chip == "All" {
+                            "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
+                        } else {
+                            if .dark_mode {
+                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            } else {
+                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            }
+                        }
+                    }
+
+                    button .chip2 {
+                        onclick: .SelectChip("Gaming")
+                        style: if .active_chip == "Gaming" {
+                            "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
+                        } else {
+                            if .dark_mode {
+                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            } else {
+                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            }
+                        }
+                    }
+
+                    button .chip3 {
+                        onclick: .SelectChip("Music")
+                        style: if .active_chip == "Music" {
+                            "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
+                        } else {
+                            if .dark_mode {
+                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            } else {
+                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            }
+                        }
+                    }
+
+                    button .chip4 {
+                        onclick: .SelectChip("Tech")
+                        style: if .active_chip == "Tech" {
+                            "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
+                        } else {
+                            if .dark_mode {
+                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            } else {
+                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            }
+                        }
+                    }
+
+                    button .chip5 {
+                        onclick: .SelectChip("Food")
+                        style: if .active_chip == "Food" {
+                            "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
+                        } else {
+                            if .dark_mode {
+                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            } else {
+                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            }
+                        }
+                    }
+
+                    button .chip6 {
+                        onclick: .SelectChip("Anime")
+                        style: if .active_chip == "Anime" {
+                            "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
+                        } else {
+                            if .dark_mode {
+                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            } else {
+                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            }
+                        }
+                    }
+
+                    button .chip7 {
+                        onclick: .SelectChip("Coding")
+                        style: if .active_chip == "Coding" {
+                            "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
+                        } else {
+                            if .dark_mode {
+                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            } else {
+                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            }
+                        }
+                    }
+                }
+
+                // Video Grid (2 rows x 3 columns)
+                col {
+                    style: "w-full p-6 gap-6 flex-1"
+
+                    // Row 1
+                    row {
+                        style: "w-full gap-5"
+
+                        // Card 1: Sunset
+                        col {
+                            style: if .dark_mode {
+                                "flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-colors shadow-md group cursor-pointer"
+                            } else {
+                                "flex-1 bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors shadow-sm group cursor-pointer"
+                            }
+
+                            // Thumbnail preview box
+                            col {
+                                style: "w-full h-44 bg-gradient-to-br from-amber-600 to-rose-700 items-center justify-center p-3 relative rounded-t-2xl"
+                                text "🌅" { style: "text-4xl opacity-80" }
+                                row {
+                                    style: "absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded-md"
+                                    text .vid1_time { style: "text-[11px] font-medium text-white" }
+                                }
+                                row {
+                                    style: "absolute top-2 left-2 bg-black/40 backdrop-blur px-2 py-0.5 rounded-md"
+                                    text .vid1_tag { style: "text-[10px] font-semibold text-white uppercase tracking-wider" }
+                                }
+                            }
+
+                            // Info block
+                            col {
+                                style: "p-3.5 gap-1.5"
+                                text .vid1_title {
+                                    style: if .dark_mode {
+                                        "text-sm font-bold text-zinc-100 leading-snug"
+                                    } else {
+                                        "text-sm font-bold text-gray-900 leading-snug"
+                                    }
+                                }
+                                row {
+                                    style: "items-center gap-1.5"
+                                    text .vid1_author {
+                                        style: if .dark_mode {
+                                            "text-xs font-medium text-zinc-400"
+                                        } else {
+                                            "text-xs font-medium text-gray-600"
+                                        }
+                                    }
+                                    text "•" { style: "text-xs text-zinc-500" }
+                                    text .vid1_views {
+                                        style: if .dark_mode {
+                                            "text-xs text-zinc-500"
+                                        } else {
+                                            "text-xs text-gray-400"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Card 2: Rust
+                        col {
+                            style: if .dark_mode {
+                                "flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-colors shadow-md group cursor-pointer"
+                            } else {
+                                "flex-1 bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors shadow-sm group cursor-pointer"
+                            }
+
+                            col {
+                                style: "w-full h-44 bg-gradient-to-br from-indigo-700 to-purple-800 items-center justify-center p-3 relative rounded-t-2xl"
+                                text "🦀" { style: "text-4xl opacity-80" }
+                                row {
+                                    style: "absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded-md"
+                                    text .vid2_time { style: "text-[11px] font-medium text-white" }
+                                }
+                                row {
+                                    style: "absolute top-2 left-2 bg-black/40 backdrop-blur px-2 py-0.5 rounded-md"
+                                    text .vid2_tag { style: "text-[10px] font-semibold text-white uppercase tracking-wider" }
+                                }
+                            }
+
+                            col {
+                                style: "p-3.5 gap-1.5"
+                                text .vid2_title {
+                                    style: if .dark_mode {
+                                        "text-sm font-bold text-zinc-100 leading-snug"
+                                    } else {
+                                        "text-sm font-bold text-gray-900 leading-snug"
+                                    }
+                                }
+                                row {
+                                    style: "items-center gap-1.5"
+                                    text .vid2_author {
+                                        style: if .dark_mode {
+                                            "text-xs font-medium text-zinc-400"
+                                        } else {
+                                            "text-xs font-medium text-gray-600"
+                                        }
+                                    }
+                                    text "•" { style: "text-xs text-zinc-500" }
+                                    text .vid2_views {
+                                        style: if .dark_mode {
+                                            "text-xs text-zinc-500"
+                                        } else {
+                                            "text-xs text-gray-400"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Card 3: Food
+                        col {
+                            style: if .dark_mode {
+                                "flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-colors shadow-md group cursor-pointer"
+                            } else {
+                                "flex-1 bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors shadow-sm group cursor-pointer"
+                            }
+
+                            col {
+                                style: "w-full h-44 bg-gradient-to-br from-rose-600 to-orange-600 items-center justify-center p-3 relative rounded-t-2xl"
+                                text "🍜" { style: "text-4xl opacity-80" }
+                                row {
+                                    style: "absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded-md"
+                                    text .vid3_time { style: "text-[11px] font-medium text-white" }
+                                }
+                                row {
+                                    style: "absolute top-2 left-2 bg-black/40 backdrop-blur px-2 py-0.5 rounded-md"
+                                    text .vid3_tag { style: "text-[10px] font-semibold text-white uppercase tracking-wider" }
+                                }
+                            }
+
+                            col {
+                                style: "p-3.5 gap-1.5"
+                                text .vid3_title {
+                                    style: if .dark_mode {
+                                        "text-sm font-bold text-zinc-100 leading-snug"
+                                    } else {
+                                        "text-sm font-bold text-gray-900 leading-snug"
+                                    }
+                                }
+                                row {
+                                    style: "items-center gap-1.5"
+                                    text .vid3_author {
+                                        style: if .dark_mode {
+                                            "text-xs font-medium text-zinc-400"
+                                        } else {
+                                            "text-xs font-medium text-gray-600"
+                                        }
+                                    }
+                                    text "•" { style: "text-xs text-zinc-500" }
+                                    text .vid3_views {
+                                        style: if .dark_mode {
+                                            "text-xs text-zinc-500"
+                                        } else {
+                                            "text-xs text-gray-400"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Row 2
+                    row {
+                        style: "w-full gap-5"
+
+                        // Card 4: Piano
+                        col {
+                            style: if .dark_mode {
+                                "flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-colors shadow-md group cursor-pointer"
+                            } else {
+                                "flex-1 bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors shadow-sm group cursor-pointer"
+                            }
+
+                            col {
+                                style: "w-full h-44 bg-gradient-to-br from-sky-700 to-indigo-900 items-center justify-center p-3 relative rounded-t-2xl"
+                                text "🎹" { style: "text-4xl opacity-80" }
+                                row {
+                                    style: "absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded-md"
+                                    text .vid4_time { style: "text-[11px] font-medium text-white" }
+                                }
+                                row {
+                                    style: "absolute top-2 left-2 bg-black/40 backdrop-blur px-2 py-0.5 rounded-md"
+                                    text .vid4_tag { style: "text-[10px] font-semibold text-white uppercase tracking-wider" }
+                                }
+                            }
+
+                            col {
+                                style: "p-3.5 gap-1.5"
+                                text .vid4_title {
+                                    style: if .dark_mode {
+                                        "text-sm font-bold text-zinc-100 leading-snug"
+                                    } else {
+                                        "text-sm font-bold text-gray-900 leading-snug"
+                                    }
+                                }
+                                row {
+                                    style: "items-center gap-1.5"
+                                    text .vid4_author {
+                                        style: if .dark_mode {
+                                            "text-xs font-medium text-zinc-400"
+                                        } else {
+                                            "text-xs font-medium text-gray-600"
+                                        }
+                                    }
+                                    text "•" { style: "text-xs text-zinc-500" }
+                                    text .vid4_views {
+                                        style: if .dark_mode {
+                                            "text-xs text-zinc-500"
+                                        } else {
+                                            "text-xs text-gray-400"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Card 5: PC Build
+                        col {
+                            style: if .dark_mode {
+                                "flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-colors shadow-md group cursor-pointer"
+                            } else {
+                                "flex-1 bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors shadow-sm group cursor-pointer"
+                            }
+
+                            col {
+                                style: "w-full h-44 bg-gradient-to-br from-emerald-700 to-teal-900 items-center justify-center p-3 relative rounded-t-2xl"
+                                text "💻" { style: "text-4xl opacity-80" }
+                                row {
+                                    style: "absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded-md"
+                                    text .vid5_time { style: "text-[11px] font-medium text-white" }
+                                }
+                                row {
+                                    style: "absolute top-2 left-2 bg-black/40 backdrop-blur px-2 py-0.5 rounded-md"
+                                    text .vid5_tag { style: "text-[10px] font-semibold text-white uppercase tracking-wider" }
+                                }
+                            }
+
+                            col {
+                                style: "p-3.5 gap-1.5"
+                                text .vid5_title {
+                                    style: if .dark_mode {
+                                        "text-sm font-bold text-zinc-100 leading-snug"
+                                    } else {
+                                        "text-sm font-bold text-gray-900 leading-snug"
+                                    }
+                                }
+                                row {
+                                    style: "items-center gap-1.5"
+                                    text .vid5_author {
+                                        style: if .dark_mode {
+                                            "text-xs font-medium text-zinc-400"
+                                        } else {
+                                            "text-xs font-medium text-gray-600"
+                                        }
+                                    }
+                                    text "•" { style: "text-xs text-zinc-500" }
+                                    text .vid5_views {
+                                        style: if .dark_mode {
+                                            "text-xs text-zinc-500"
+                                        } else {
+                                            "text-xs text-gray-400"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Card 6: Mountain Biking
+                        col {
+                            style: if .dark_mode {
+                                "flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-colors shadow-md group cursor-pointer"
+                            } else {
+                                "flex-1 bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors shadow-sm group cursor-pointer"
+                            }
+
+                            col {
+                                style: "w-full h-44 bg-gradient-to-br from-violet-700 to-pink-800 items-center justify-center p-3 relative rounded-t-2xl"
+                                text "🚵" { style: "text-4xl opacity-80" }
+                                row {
+                                    style: "absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded-md"
+                                    text .vid6_time { style: "text-[11px] font-medium text-white" }
+                                }
+                                row {
+                                    style: "absolute top-2 left-2 bg-black/40 backdrop-blur px-2 py-0.5 rounded-md"
+                                    text .vid6_tag { style: "text-[10px] font-semibold text-white uppercase tracking-wider" }
+                                }
+                            }
+
+                            col {
+                                style: "p-3.5 gap-1.5"
+                                text .vid6_title {
+                                    style: if .dark_mode {
+                                        "text-sm font-bold text-zinc-100 leading-snug"
+                                    } else {
+                                        "text-sm font-bold text-gray-900 leading-snug"
+                                    }
+                                }
+                                row {
+                                    style: "items-center gap-1.5"
+                                    text .vid6_author {
+                                        style: if .dark_mode {
+                                            "text-xs font-medium text-zinc-400"
+                                        } else {
+                                            "text-xs font-medium text-gray-600"
+                                        }
+                                    }
+                                    text "•" { style: "text-xs text-zinc-500" }
+                                    text .vid6_views {
+                                        style: if .dark_mode {
+                                            "text-xs text-zinc-500"
+                                        } else {
+                                            "text-xs text-gray-400"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            grid {
-                grid-item {
-                    col {
-                        row {
-                            text "12:34" { style: "text-xs text-white bg-black bg-opacity-70 px-1 rounded" }
-                            style: "absolute bottom-2 right-2"
-                        }
-                        text .vid1_title { style: "text-sm font-medium text-gray-800 mt-2" }
-                        row {
-                            text .vid1_author { style: "text-xs text-gray-500" }
-                            text .vid1_views { style: "text-xs text-gray-400" }
-                            style: "gap-2"
-                        }
-                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
-                    }
-                }
-                grid-item {
-                    col {
-                        text .vid2_title { style: "text-sm font-medium text-gray-800 mt-2" }
-                        row {
-                            text .vid2_author { style: "text-xs text-gray-500" }
-                            text .vid2_views { style: "text-xs text-gray-400" }
-                            style: "gap-2"
-                        }
-                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
-                    }
-                }
-                grid-item {
-                    col {
-                        text .vid3_title { style: "text-sm font-medium text-gray-800 mt-2" }
-                        row {
-                            text .vid3_author { style: "text-xs text-gray-500" }
-                            text .vid3_views { style: "text-xs text-gray-400" }
-                            style: "gap-2"
-                        }
-                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
-                    }
-                }
-                grid-item {
-                    col {
-                        text .vid4_title { style: "text-sm font-medium text-gray-800 mt-2" }
-                        row {
-                            text .vid4_author { style: "text-xs text-gray-500" }
-                            text .vid4_views { style: "text-xs text-gray-400" }
-                            style: "gap-2"
-                        }
-                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
-                    }
-                }
-                grid-item {
-                    col {
-                        text .vid5_title { style: "text-sm font-medium text-gray-800 mt-2" }
-                        row {
-                            text .vid5_author { style: "text-xs text-gray-500" }
-                            text .vid5_views { style: "text-xs text-gray-400" }
-                            style: "gap-2"
-                        }
-                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
-                    }
-                }
-                grid-item {
-                    col {
-                        text .vid6_title { style: "text-sm font-medium text-gray-800 mt-2" }
-                        row {
-                            text .vid6_author { style: "text-xs text-gray-500" }
-                            text .vid6_views { style: "text-xs text-gray-400" }
-                            style: "gap-2"
-                        }
-                        style: "bg-gray-100 rounded-xl overflow-hidden p-2"
-                    }
-                }
-                cols: 3
-                gap: 4
-                style: "w-full p-4"
-            }
-            style: "w-full h-screen bg-white"
         }
     }
 
     on {
-        .TabChanged -> { }
-        .CategoryChanged -> { .chip1 = .chip1 }
+        .Init -> { }
+        .SearchChanged -> { .search = .search }
+        .SelectChip(c) -> { .active_chip = c }
+        .SelectNav(n) -> { .active_nav = n }
+        .ToggleSettings -> { .show_settings = !.show_settings }
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(a) -> { .accent_color = a }
     }
 }

@@ -1,0 +1,68 @@
+// settings_popover.at — Shared Settings Popover component
+// Controls Theme (Light / Dark) and Accent Color (5-color palette).
+
+widget SettingsPopover(open: bool, dark_mode: bool, accent_color: str) {
+    msg {
+        Close,
+        ToggleDarkMode,
+        SetTheme(str),
+        SetAccent(str),
+    }
+
+    view {
+        if .open {
+            col {
+                style: "mt-4 p-3.5 bg-card border border-border rounded-xl gap-3 shadow-lg w-64"
+                row {
+                    style: "items-center justify-between"
+                    text "Settings" { style: "text-xs font-semibold text-foreground uppercase tracking-wider" }
+                    button "✕" {
+                        onclick: .Close
+                        variant: "ghost"
+                        style: "text-xs text-muted-foreground hover:text-foreground w-5 h-5 flex items-center justify-center rounded bg-transparent transition-colors"
+                    }
+                }
+                col {
+                    style: "gap-1.5"
+                    text "Theme" { style: "text-xs text-muted-foreground font-medium" }
+                    row {
+                        style: "gap-2"
+                        if .dark_mode {
+                            button "🌙 Dark" {
+                                onclick: .SetTheme("dark")
+                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                            }
+                            button "☀ Light" {
+                                onclick: .SetTheme("light")
+                                variant: "ghost"
+                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                            }
+                        } else {
+                            button "🌙 Dark" {
+                                onclick: .SetTheme("dark")
+                                variant: "ghost"
+                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                            }
+                            button "☀ Light" {
+                                onclick: .SetTheme("light")
+                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                            }
+                        }
+                    }
+                }
+                col {
+                    style: "gap-1.5"
+                    text "Accent Color" { style: "text-xs text-muted-foreground font-medium" }
+                    row {
+                        style: "items-center gap-3 py-1"
+                        button "" { onclick: .SetAccent("indigo"), style: if .accent_color == "indigo" { "w-6 h-6 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
+                        button "" { onclick: .SetAccent("coral"), style: if .accent_color == "coral" { "w-6 h-6 p-0 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
+                        button "" { onclick: .SetAccent("ocean"), style: if .accent_color == "ocean" { "w-6 h-6 p-0 rounded-full bg-sky-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-sky-500 hover:scale-110 transition-transform" } }
+                        button "" { onclick: .SetAccent("sage"), style: if .accent_color == "sage" { "w-6 h-6 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
+                        button "" { onclick: .SetAccent("amber"), style: if .accent_color == "amber" { "w-6 h-6 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
+                    }
+                }
+            }
+        }
+    }
+}

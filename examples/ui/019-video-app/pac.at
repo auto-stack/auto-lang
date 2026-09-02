@@ -3,3 +3,9 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Video App"
+theme: "dark"
+accent: "coral"
+
+dep settings {
+    path: "../common/settings"
+}
