@@ -2926,18 +2926,28 @@ impl AuraSchema {
 
         // === Plan 019 Phase 4: AutoDown 文档组件（props 声明落定，替代
         // 既有 "props TBD" 回退）。vue 后端消费 @autodown/engine
-        // （MarkdownRender / AutoDownEditor）；VM/iced 侧见
+        // （StreamingRenderer / AutoDownEditor）；VM/iced 侧见
         // ui/autodown_render（只读轨）与 ui/autodown_editor（编辑壳）。
-        elements.insert("markdown", ElementDef {
-            tag: "markdown",
+        // Plan 040: tag 主名翻转 markdown→autodown（AutoDown 统一命名，
+        // 用户裁定③）；markdown/markdown_editor 降为 legacy 别名
+        // （aura.at aliases 承载，存量 .at 不破）。换绑 StreamingRenderer
+        // （MarkdownRender 的超集，内部组合其渲染段落）+ 4 新 props
+        // （streaming/placeholder_block_id/placeholder_height/scroll_sync，
+        // vue 臂发射、VM v1 忽略并登记豁免 PLAN-042/043）。
+        elements.insert("autodown", ElementDef {
+            tag: "autodown",
             category: ElementCategory::Content,
             props: vec![
-                PropDef { name: "content", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Markdown source (literal or state-bound)" },
-                PropDef { name: "final", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("true"), description: "Streaming marker: false = still receiving chunks (dangling-marker stripping)" },
+                PropDef { name: "content", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "AutoDown source (literal or state-bound)" },
+                PropDef { name: "final", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("true"), description: "Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — an explicit streaming prop wins when both are set" },
+                PropDef { name: "streaming", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040)" },
+                PropDef { name: "placeholder_block_id", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043)" },
+                PropDef { name: "placeholder_height", type_: PropType::Union(vec![PropType::Float, PropType::StateRef]), required: false, default: None, description: "Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043)" },
+                PropDef { name: "scroll_sync", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("true"), description: "Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042)" },
                 PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
-            description: "AutoDown document renderer (read-only; @autodown/engine MarkdownRender on vue, autodown-core parse_blocks on VM)",
+            description: "AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→autodown; @autodown/engine StreamingRenderer on vue — superset composing MarkdownRender, autodown-core parse_blocks on VM)",
         });
 
         elements.insert("autodown_editor", ElementDef {
@@ -2946,6 +2956,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "key", type_: PropType::String, required: false, default: None, description: "Stable state-storage identity (VM editor shell registry key)" },
                 PropDef { name: "content", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Bound markdown document body" },
+                PropDef { name: "placeholder", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Empty-state hint text (plan 040; VM v1 ignores)" },
                 PropDef { name: "final", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("true"), description: "Streaming marker (editor treats document as final)" },
                 PropDef { name: "can_edit", type_: PropType::Bool, required: false, default: Some("true"), description: "Whether the editor is interactive (vue arm: canEdit)" },
                 PropDef { name: "show_actions", type_: PropType::Bool, required: false, default: Some("true"), description: "Show editor action bar (vue arm: showActions)" },

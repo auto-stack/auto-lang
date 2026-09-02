@@ -30,6 +30,7 @@ pub fn render_document<M: Clone + std::fmt::Debug>(src: &str, is_final: bool) ->
         spacing: 8,
         padding: 0,
         style: None,
+        onclick: None,
     }
 }
 
@@ -49,6 +50,7 @@ fn styled_text<M: Clone + std::fmt::Debug>(content: String, class: &str) -> View
     View::Text {
         content,
         style: Style::parse(class).ok(),
+        selectable: false,
     }
 }
 
@@ -62,6 +64,7 @@ fn span_class(span: &InlineSpan) -> String {
             Mark::Em => cls.push_str(" italic"),
             Mark::Code => cls.push_str(" font-mono text-sm bg-muted rounded px-1"),
             Mark::Del => cls.push_str(" line-through"),
+            Mark::Underline => cls.push_str(" underline"),
             Mark::Link | Mark::Image => cls.push_str(" text-primary underline"),
         }
     }
@@ -88,12 +91,14 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
                 .map(|s| View::Text {
                     content: s.text.clone(),
                     style: Style::parse(&span_class(s)).ok(),
+                    selectable: false,
                 })
                 .collect();
             match parts.len() {
                 0 => View::Text {
                     content: String::new(),
                     style: None,
+                    selectable: false,
                 },
                 1 => parts.into_iter().next().unwrap(),
                 _ => View::Row {
@@ -101,6 +106,7 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
                     spacing: 0,
                     padding: 0,
                     style: None,
+                    onclick: None,
                 },
             }
         })
@@ -113,6 +119,7 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
         spacing: 2,
         padding: 0,
         style: None,
+        onclick: None,
     }
 }
 
@@ -146,6 +153,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                 center_x: false,
                 center_y: false,
                 style: Style::parse("px-4 py-2 border-b bg-zinc-800 text-zinc-400").ok(),
+                onclick: None,
             };
             let lang_class = if !lang.is_empty() && !lang.contains(char::is_whitespace) {
                 format!(" lang-{lang}")
@@ -155,6 +163,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
             let code_text = View::Text {
                 content: spansText(b.inlines.clone()),
                 style: Style::parse(&format!("font-mono text-sm text-zinc-50 whitespace-pre-wrap{lang_class}")).ok(),
+                selectable: false,
             };
             let code_area = View::Container {
                 child: Box::new(code_text),
@@ -164,6 +173,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                 center_x: false,
                 center_y: false,
                 style: Style::parse("p-4").ok(),
+                onclick: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -171,6 +181,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                     spacing: 0,
                     padding: 0,
                     style: None,
+                    onclick: None,
                 }),
                 padding: 0,
                 width: None,
@@ -178,6 +189,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                 center_x: false,
                 center_y: false,
                 style: Style::parse("rounded-lg border bg-zinc-950 overflow-hidden w-full").ok(),
+                onclick: None,
             }
         }
         BlockType::Blockquote => {
@@ -190,6 +202,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                     spacing: 4,
                     padding: 0,
                     style: None,
+                    onclick: None,
                 }
             };
             View::Container {
@@ -200,6 +213,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                 center_x: false,
                 center_y: false,
                 style: Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").ok(),
+                onclick: None,
             }
         }
         BlockType::ListBlock => {
@@ -221,11 +235,13 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                             spacing: 2,
                             padding: 0,
                             style: None,
+                            onclick: None,
                         },
                     ],
                     spacing: 2,
                     padding: 0,
                     style: None,
+                    onclick: None,
                 });
             }
             View::Column {
@@ -233,6 +249,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
                 spacing: 2,
                 padding: 0,
                 style: None,
+                onclick: None,
             }
         }
         BlockType::Table => {
@@ -263,6 +280,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
             child: Box::new(View::Text {
                 content: String::new(),
                 style: None,
+                selectable: false,
             }),
             padding: 0,
             width: None,
@@ -270,6 +288,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
             center_x: false,
             center_y: false,
             style: Style::parse("border-t w-full my-2").ok(),
+            onclick: None,
         },
         // Paragraph / TableRow / TableCell（顶层不会出现）/ 未知：段落降级
         _ => render_inlines(&b.inlines),
@@ -295,7 +314,7 @@ mod tests {
         };
         assert_eq!(children.len(), 2);
         match &children[0] {
-            View::Text { content, style } => {
+            View::Text { content, style, .. } => {
                 assert_eq!(content, "标题");
                 let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);

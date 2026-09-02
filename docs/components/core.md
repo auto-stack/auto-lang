@@ -33,6 +33,26 @@ _props 待声明_
 
 ---
 
+### `autodown`
+
+`builtin_widget` · `autodown` · web: `component` · iced: `unknown` · category: `content`
+
+AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→autodown; @autodown/engine StreamingRenderer on vue — superset composing MarkdownRender, autodown-core parse_blocks on VM)
+
+别名:`markdown` `markdown_editor`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `content` | `union: string|state_ref` | — | AutoDown source (literal or state-bound) |
+| `final` | `union: bool|state_ref` | true | Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — emitted as :streaming=!final; an explicit streaming prop wins when both are set |
+| `streaming` | `union: bool|state_ref` | false | Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040 契约扩展) |
+| `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043) |
+| `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043) |
+| `scroll_sync` | `union: bool|state_ref` | true | Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `autodown_editor`
 
 `builtin_widget` · `autodown_editor` · web: `component` · iced: `unknown` · category: `form`
@@ -45,6 +65,7 @@ AutoDown block editor (plan 019 Phase 3 shell; @autodown/engine AutoDownEditor o
 |------|------|---------|-------------|
 | `key` | `string` | — | Stable state-storage identity (VM editor shell registry key) |
 | `content` | `union: string|state_ref` | — | Bound markdown document body |
+| `placeholder` | `union: string|state_ref` | — | Empty-state hint text (plan 040; VM v1 ignores) |
 | `final` | `union: bool|state_ref` | true | Streaming marker (editor treats document as final) |
 | `can_edit` | `bool` | true | Whether the editor is interactive (vue arm: canEdit) |
 | `show_actions` | `bool` | true | Show editor action bar (vue arm: showActions) |
@@ -502,22 +523,6 @@ P1 extracted from production tables; props TBD
 别名:`Main`
 
 _props 待声明_
-
----
-
-### `markdown`
-
-`builtin_widget` · `markdown` · web: `component` · iced: `unknown` · category: `content`
-
-AutoDown document renderer (read-only; @autodown/engine MarkdownRender on vue, autodown-core parse_blocks on VM)
-
-别名:`autodown` `markdown_editor`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `content` | `union: string|state_ref` | — | Markdown source (literal or state-bound) |
-| `final` | `union: bool|state_ref` | true | Streaming marker: false = still receiving chunks (dangling-marker stripping) |
-| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
