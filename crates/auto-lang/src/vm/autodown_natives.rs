@@ -258,6 +258,7 @@ fn parse_json(doc: &str) -> Result<J, String> {
             Mark::Link => "Link",
             Mark::Image => "Image",
             Mark::Del => "Del",
+            Mark::Underline => "Underline",
         }
     }
 
@@ -269,6 +270,7 @@ fn parse_json(doc: &str) -> Result<J, String> {
             "Link" => Mark::Link,
             "Image" => Mark::Image,
             "Del" => Mark::Del,
+            "Underline" => Mark::Underline,
             _ => return None,
         })
     }
