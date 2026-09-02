@@ -102,8 +102,12 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
 > 程序——三面闸同绿才算能力落地:
 
 1. **VM 闸**(目标 1):corpus 进 M2–M5,VM 模式与宿主对拍一致;
-2. **AA2R 发射闸**:corpus_a2r 增同能力件,`ar_run` 产物与主 a2r
-   `transpile_rust` live 逐字符一致 + rustc 实编译零错;
+2. **AA2R 发射闸**:corpus_a2r 增同能力件,**VM 内解释执行 a2r.at**
+   (`ar_run`)产物与主 a2r `transpile_rust` live 逐字符一致 + rustc
+   实编译零错——每能力必跑的主判据;**转译版 a2r.at**(self-bin:AA2R
+   转译自身→Rust 二进制,434 自举证据形态)归矩阵⑤腿节拍复核(折叠点/
+   复审跑,非每能力必跑)——两形态实证会分叉(P511-1 两根因/slice 边界
+   panic 均为"VM 绿、转译红"),不可只留其一;
 3. **a2r 运行闸**(目标 2):compile corpus(主 a2r 转译版二进制跑语料)
    无跳过前缀覆盖该能力件。
 
