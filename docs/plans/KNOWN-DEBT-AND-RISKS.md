@@ -833,7 +833,12 @@
   **均不是 vm 虚拟桌面**（vm 桌面唯一入口 = `cargo run -p auto-lang
   --features ui-iced --example ui_desktop`）。用户因此入口混淆曾长时间
   误判"视觉刷新无变化"。修复方向：`--desktop`+vm 渲染组合显式报错指路
-  ui_desktop，或 auto run 增 vm 桌面宿主路由。附：实机核查同时证实
+  ui_desktop，或 auto run 增 vm 桌面宿主路由。**二次实锤（同日）**：
+  `cargo run … | head -30` 管道在编译中途截断 cargo（head 吃满 30 行
+  warning 即退），构建未完成，随后直跑 `ui_desktop.exe` 仍是 08-31 陈旧件
+  （mtime 铁证；注册表 36 条 vs 新构建 37 条亦为版本指纹）——用户当场
+  识破"窗口变回 503 前旧 chrome（右侧单 ×）"。P500-1 的 mtime 防护若在，
+  两次事故都能拦下。附：实机核查同时证实
   503 七项样式在新构建中确有渲染（圆角图标格/窗口细边框/主题协调），
   但 4px 运行圆点/细竖条常规尺度不可感知、dock 图标 glyph 占位色块质感
   （HICON 债族表现）、默认无图片壁纸、阴影弱——"观感未变"主因回到
