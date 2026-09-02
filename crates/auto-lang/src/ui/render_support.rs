@@ -190,10 +190,13 @@ fn get_support_details(tag: &str) -> TagSupport {
         ),
         // Plan 019 批次七: feature "autodown" 下经 autodown-core crate 真渲染
         // (parse_blocks -> panel tree -> View);无 feature 时维持 D-GAP-3 textarea 降级。
+        // Plan 040: 契约扩展 props（streaming/placeholder_block_id/
+        // placeholder_height/scroll_sync/placeholder）VM v1 读取后忽略——
+        // streaming 恒按 final、ghost/scroll_sync 未实现（PLAN-042/043 补）。
         "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" | "markdown" => {
             TagSupport::partial(
                 &["content", "final"],
-                "true rendering via autodown-core parse_blocks under feature `autodown` (plan 019); textarea degradation otherwise (D-GAP-3)",
+                "true rendering via autodown-core parse_blocks under feature `autodown` (plan 019); textarea degradation otherwise (D-GAP-3); plan 040 streaming-family props parsed but ignored on VM v1 (PLAN-042/043)",
             )
         }
         "square" => TagSupport::full(),
