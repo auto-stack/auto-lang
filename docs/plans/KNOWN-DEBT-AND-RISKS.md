@@ -140,7 +140,7 @@
 | 447-① | VM is 值语义 let 绑定位返回 0 | `let r = is x {...}` 绑定位返回 0（函数尾位值语义正常）；最小复现 `fn main() { let r = is "test" { "test" -> "pass" else -> "fail" } print(r) }` 输出 0。部分② Phase 4 语料设计需覆盖该形态。 | `vm/codegen.rs` Expr::Is 值位（2026-08-25 探针整备时发现） |
 | ~~447-①~~ | ~~VM 函数内嵌套 fn 静默失效~~ ✅ 已清偿(2026-09-01, Plan 514 W1 步骤4) | 真实静默失效在**捕获位**（嵌套 fn 引用外层局部→静默 0）；改报 E0201（infer context fn_scope_idxs 边界栈+no-capture 查找+check_symbol Bina 臂），d01b 转绿解除 ignore。已知限：嵌套 fn 引用全局运行期静默 0=预存 VM 行为，master 同态非回归。 | `parser.rs`（Plan 514 步骤 4 证据） |
 | ~~447-①~~ | ~~`struct` 非关键字误用报 E0201~~ ✅ 已清偿(2026-09-01, Plan 514 W1 步骤4) | 改报 E0007 语法错（parse_stmt_inner 顶部拦截+check_symbol Ident 臂，裸/带名形态覆盖），d02 守卫绿。 | `parser.rs`（Plan 514 步骤 4 证据） |
-| 444 | master 3 个红 a2r golden | plan-444 改 `write_is_arm_body` 后 `02_types_004_pointer`/`12_specs_007_box_fn`/`19_ownership_003_loopvar_owned_field` 在纯 master（d86615620 detached worktree 实证）失败，plan-447 合并前已存在，非 447 引入。plan-444 收账。 | `trans/rust.rs` write_is_arm_body + `test/a2r/` 对应组 |
+| 444 | master 预存红 a2r golden（514 复审实测 28 件） | `cargo tt`（test-trans）长期不在折叠门禁（tf 不含该 feature）。514 复审对照基线 87dda951b 实测：基线即 28 件红（444 期登记 3 件后经 447/511 各发射批累积扩大，无人重跑 tt）；514 净引入 0（`.field` 读位误发 `.field()` 缺陷被 514 方法族修复顺带根治，2 个陈旧 golden 已重生成 ff86babf4）。偿还：一次性 golden 重生成批（对照 live 输出逐件人工核验）。 | `trans/rust.rs` + `test/a2r/` 陈旧 golden 组 |
 | 447-① | 全量并行下偶发测试 | `benchmark_downcast_performance`/`cookbook_vm_tests::cb_file_read_lines` 在全量并行负载下偶发失败（单跑均通过，性能阈值/文件 IO 受负载影响），非回归。 | `perf_benchmark_tests.rs` / `cookbook_vm_tests.rs` |
 | 418 | 工具栏图标偶发变暗 | 观察项：最终构建 3 实例采样亮度一致（231/114）不复现，疑锁屏期 DWM 降级帧假象——复现再查，不主动处理。 | `041 toolbar svg 渲染` |
 | 418 | VM int 推断显示坑 | `File.write_text` 返回值在 handler 内 let 绑定后 `.str()` 显示类型区间（"0-2147483647"）而非字节数——041 ActSave 曾绕过（改语句调用丢弃返回值）；根因（int 字面量区间推断/str 化路径）未查，§7.4 声称"另立债务"但一直未登记，2026-08-23 finish-plan 复审补登。 | `041 src/front/app.at` ActSave + VM 推断路径 |
@@ -716,6 +716,12 @@
    语句位 self. 约定需补入脚本）。W3 重启清单：套 patch→补 e) →复跑本条
    五级联验证序列（cc 编译红逐位消）→W3-12 塔顶样板验证即通。
 
+4. **P514-R1（复审登记，2026-09-02）`var list = List.new()` 两侧注解
+   分歧**：主 a2r 发射 `let mut list = Vec::new();`（无注解+`.get(0)`），
+   AA2R 发射 `let mut list: Vec<String> = Vec::new();`（注解+索引形）——
+   预存文本形状分歧（非本计划引入，g17 探针实证后收窄为对齐子集规避）；
+   语义侧由⑤腿 rustc 门覆盖（双方产物均编译）。处置随 P514-20 ②③ 同批
+   （dump 判据层文本对齐另立计划时一并）。
 3. **P514-20 Phase 11 收账余项三项（2026-09-02，Plan 514 步骤 20 显式
    登记处置；447 归档 447-aavm-prerequisites.md §10.4 原文在案）**：
    ②AA2R 单语句块臂不内联（主 a2r write_match_arm_body 内联）——语料
