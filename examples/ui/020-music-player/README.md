@@ -1,84 +1,78 @@
-# 020-music-player — Spotify-Style Mini Player
+# 020-music-player — AutoUI Music & Video Player
 
-A music player with album art, track info, playback controls, a progress bar, and an "Up Next" playlist.
+A modern, full-featured music & video player with dual-backend AutoUI support (Vue mode and VM/Iced mode).
 
-## Concepts
+## Features
 
-- **Album art display** — gradient placeholder `bg-gradient-to-br from-purple-400 to-indigo-600` acting as album cover
-- **Playback controls** — prev/play-pause/next buttons with `PlayPause` / `NextTrack` / `PrevTrack` messages
-- **Progress bar with scrubbing** — `progress { value: .progress_val, max: 100 }` bound to model
-- **Playlist list** — "Up Next" section with track name and artist rows
-- **Toggle state** — `is_playing` toggles between "Playing" and "Paused" text
+- **8-track playlist** — Classical masterpieces with title, artist, tag, icon, duration, and like counts
+- **Video/Album Stage** — Full-width cover art card with HD/Lossless badge overlay and genre tag
+- **Playback controls** — Prev / Play-Pause / Next with Shuffle and Repeat (All / One / Off) modes
+- **Progress bar with seek** — `progress { value: .progress_val, max: 100 }` with +10s seek step button
+- **Like system** — Heart toggle with live like count update
+- **Up Next queue** — Scrollable playlist; clicking any track row instantly switches and auto-plays
+- **Dark / Light theme** — Full dark/light mode toggle with distinct color palettes for all elements
+- **5 accent colors** — Indigo / Coral / Ocean / Sage / Amber with live color swatch picker
+- **Settings panel** — Expandable in-page Settings popover (017-chat style) in the bottom-right corner
 
-## Source
+## Running
 
-See `src/front/app.at`:
+```bash
+# Vue dev server (browser)
+cd examples/ui/020-music-player
+auto run
+
+# VM / Iced native window
+auto run -r vm
+```
+
+## Architecture
 
 ```auto
 widget App {
-    msg { PlayPause, NextTrack, PrevTrack, SeekChanged }
+    msg {
+        PlayPause, NextTrack, PrevTrack,
+        SelectTrack1..SelectTrack8,
+        ToggleShuffle, CycleRepeat,
+        ToggleLike, SeekStep,
+        ToggleSettings, ToggleDarkMode,
+        SetTheme(str), SetAccent(str)
+    }
 
     model {
-        var is_playing str = "Playing"
-        var track_title str = "Moonlight Sonata"
-        var track_artist str = "Beethoven"
-        var current_time str = "2:15"
-        var total_time str = "5:30"
-        var progress_val int = 41
-        var track1 str = "Moonlight Sonata"
-        var artist1 str = "Beethoven"
-        // ... 5 tracks
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        var show_settings bool = false
+        var is_playing bool = true
+        var current_index int = 1
+        var progress_val int = 42
+        // ... 8 track data fields + current track state
     }
 
     view {
-        col {
-            col {
-                row {
-                    col { class: "w-64 h-64 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-2xl" }
-                }
-                text .track_title { class: "text-2xl font-bold mt-8" }
-                text .track_artist { class: "text-sm text-gray-500" }
-            }
-            col {
-                progress { value: .progress_val, max: 100 }
-                row { text .current_time; text .total_time }
-            }
-            row {
-                button "Prev" { onclick: .PrevTrack }
-                button .is_playing { onclick: .PlayPause, class: "w-14 h-14 bg-purple-500 rounded-full" }
-                button "Next" { onclick: .NextTrack }
-            }
-            col {
-                text "Up Next"
-                row { text .track1 { class: "text-purple-700" }; text .artist1 }
-                // ... playlist rows
-            }
-        }
+        // Two-column layout:
+        // Left (560px): Stage card + track metadata + controls + progress
+        // Right (flex): Scrollable playlist queue + bottom Settings panel
     }
 
-    on {
-        .PlayPause -> {
-            if .is_playing == "Playing" { .is_playing = "Paused" } else { .is_playing = "Playing" }
-        }
-        .NextTrack -> { .track_title = .track2; .track_artist = .artist2 }
-    }
+    on { /* ... handlers for all messages */ }
 }
 ```
 
-## How to Run
-
-```bash
-cd examples/ui/020-music-player
-auto gen              # Generate code for all backends (vue, jet, ark, rust)
-auto run              # Run dev server
-```
+## Generated Backends
 
 After `auto gen`, generated projects appear in:
-- `gen/vue/` — Vue 3 + shadcn-vue
-- `gen/jet/` — Jetpack Compose (Kotlin)
-- `gen/ark/` — ArkTS (HarmonyOS)
-- `gen/rust/` — Rust GPUI
+- `gen/vue/` — Vue 3 + Tailwind CSS
+- `gen/rust/` — Rust + Iced (via VM backend)
+
+## Testing
+
+```bash
+# VM MCP automated test (requires auto run -r vm)
+python tests/test_020_vm.py
+```
+
+The MCP test exercises: Settings toggle, Dark→Light→Dark theme, Play/Pause, Next track, Playlist track select, Like toggle.
 
 ## Inspiration
 
-Spotify, Apple Music.
+Spotify, Apple Music, YouTube Music.

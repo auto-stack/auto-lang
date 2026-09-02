@@ -1,115 +1,1168 @@
+// app.at — 020-music-player Modern Video & Music Player.
+// Dual-backend parity: Vue mode (`auto run`) & VM mode (`auto run -r vm`).
+// Default: Dark Mode with bottom-left Settings panel (015-notes / 017-chat style).
+
 widget App {
-    msg { PlayPause, NextTrack, PrevTrack, SeekChanged }
+    msg {
+        Init,
+        PlayPause,
+        NextTrack,
+        PrevTrack,
+        SelectTrack1,
+        SelectTrack2,
+        SelectTrack3,
+        SelectTrack4,
+        SelectTrack5,
+        SelectTrack6,
+        SelectTrack7,
+        SelectTrack8,
+        ToggleShuffle,
+        CycleRepeat,
+        ToggleLike,
+        SeekStep,
+        ToggleSettings,
+        ToggleDarkMode,
+        SetTheme(str),
+        SetAccent(str)
+    }
 
     model {
-        var is_playing str = "Playing"
-        var track_title str = "Moonlight Sonata"
-        var track_artist str = "Beethoven"
-        var album_art str = "Classical Favorites"
-        var current_time str = "2:15"
-        var total_time str = "5:30"
-        var progress_val int = 41
-        var track1 str = "Moonlight Sonata"
-        var artist1 str = "Beethoven"
-        var track2 str = "Four Seasons - Spring"
-        var artist2 str = "Vivaldi"
-        var track3 str = "Clair de Lune"
-        var artist3 str = "Debussy"
-        var track4 str = "Nocturne Op. 9"
-        var artist4 str = "Chopin"
-        var track5 str = "Canon in D"
-        var artist5 str = "Pachelbel"
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        var show_settings bool = false
+        var is_playing bool = true
+        var current_index int = 1
+        var progress_val int = 42
+        var current_time str = "02:18"
+        var total_time str = "05:30"
+        var repeat_mode str = "all"
+        var shuffle bool = false
+        var liked bool = false
+
+        // Current playing track details
+        var current_title str = "Moonlight Sonata - 3rd Movement"
+        var current_artist str = "Ludwig van Beethoven"
+        var current_album str = "Classical Masterpieces (1801)"
+        var current_tag str = "Piano & Strings"
+        var current_likes_text str = "1,420 likes"
+        var current_duration str = "05:30"
+        var current_icon str = "🎹"
+
+        // 8 Track Playlist
+        var t1_title str = "Moonlight Sonata - 3rd Movement"
+        var t1_artist str = "Ludwig van Beethoven"
+        var t1_duration str = "05:30"
+        var t1_tag str = "Piano"
+        var t1_icon str = "🎹"
+        var t1_likes str = "1,420 likes"
+
+        var t2_title str = "Four Seasons — Spring (Allegro)"
+        var t2_artist str = "Antonio Vivaldi"
+        var t2_duration str = "03:40"
+        var t2_tag str = "Violin"
+        var t2_icon str = "🎻"
+        var t2_likes str = "2,180 likes"
+
+        var t3_title str = "Clair de Lune (Suite Bergamasque)"
+        var t3_artist str = "Claude Debussy"
+        var t3_duration str = "04:55"
+        var t3_tag str = "Ambient"
+        var t3_icon str = "🌙"
+        var t3_likes str = "3,840 likes"
+
+        var t4_title str = "Nocturne in E-flat major, Op. 9"
+        var t4_artist str = "Frédéric Chopin"
+        var t4_duration str = "04:32"
+        var t4_tag str = "Romantic"
+        var t4_icon str = "🎼"
+        var t4_likes str = "1,950 likes"
+
+        var t5_title str = "Canon in D Major"
+        var t5_artist str = "Johann Pachelbel"
+        var t5_duration str = "05:12"
+        var t5_tag str = "Baroque"
+        var t5_icon str = "✨"
+        var t5_likes str = "4,200 likes"
+
+        var t6_title str = "Air on the G String (Suite No. 3)"
+        var t6_artist str = "Johann Sebastian Bach"
+        var t6_duration str = "04:10"
+        var t6_tag str = "Orchestra"
+        var t6_icon str = "🎷"
+        var t6_likes str = "1,630 likes"
+
+        var t7_title str = "Symphony No. 40 in G minor"
+        var t7_artist str = "Wolfgang Amadeus Mozart"
+        var t7_duration str = "06:15"
+        var t7_tag str = "Symphony"
+        var t7_icon str = "🎺"
+        var t7_likes str = "2,890 likes"
+
+        var t8_title str = "Swan Lake Suite — Scene"
+        var t8_artist str = "Pyotr Ilyich Tchaikovsky"
+        var t8_duration str = "03:25"
+        var t8_tag str = "Ballet"
+        var t8_icon str = "🦢"
+        var t8_likes str = "3,100 likes"
     }
 
     view {
-        col {
+        row {
+            style: if .dark_mode {
+                "w-full h-screen bg-zinc-950 text-zinc-100 overflow-hidden"
+            } else {
+                "w-full h-screen bg-slate-50 text-slate-900 overflow-hidden"
+            }
+
+            // ── Left Column: Main Player Stage & Controls ──
             col {
-                row {
-                    button "Back" { style: "text-sm text-gray-600" }
-                    text "Now Playing" { style: "text-sm font-medium text-gray-800 flex-1 text-center" }
-                    button "Menu" { style: "text-sm text-gray-600" }
-                    style: "w-full items-center px-4 py-2"
+                style: if .dark_mode {
+                    "w-[560px] h-full bg-zinc-900 border-r border-zinc-800 p-6 flex-col justify-between flex-shrink-0 relative overflow-y-auto"
+                } else {
+                    "w-[560px] h-full bg-white border-r border-slate-200 p-6 flex-col justify-between flex-shrink-0 relative overflow-y-auto"
                 }
+
+                // Top Bar: Brand + Tag + Status
                 col {
+                    style: "w-full gap-4"
+
                     row {
-                        col {
-                            style: "w-64 h-64 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-2xl shadow-xl"
+                        style: "w-full items-center justify-between"
+                        row {
+                            style: "items-center gap-2"
+                            text "🎵" { style: "text-2xl" }
+                            text "AutoPlayer" {
+                                style: if .accent_color == "indigo" {
+                                    "text-xl font-extrabold text-indigo-500 tracking-tight"
+                                } else if .accent_color == "coral" {
+                                    "text-xl font-extrabold text-rose-500 tracking-tight"
+                                } else if .accent_color == "ocean" {
+                                    "text-xl font-extrabold text-sky-500 tracking-tight"
+                                } else if .accent_color == "sage" {
+                                    "text-xl font-extrabold text-emerald-500 tracking-tight"
+                                } else {
+                                    "text-xl font-extrabold text-amber-500 tracking-tight"
+                                }
+                            }
                         }
-                        style: "justify-center"
+
+                        row {
+                            style: if .dark_mode {
+                                "items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700"
+                            } else {
+                                "items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200"
+                            }
+                            text "●" {
+                                style: if .is_playing {
+                                    "text-xs text-emerald-400 animate-pulse"
+                                } else {
+                                    "text-xs text-zinc-400"
+                                }
+                            }
+                            if .is_playing {
+                                text "NOW PLAYING" {
+                                    style: if .dark_mode {
+                                        "text-[10px] font-bold text-zinc-300 tracking-wider"
+                                    } else {
+                                        "text-[10px] font-bold text-slate-600 tracking-wider"
+                                    }
+                                }
+                            } else {
+                                text "PAUSED" {
+                                    style: if .dark_mode {
+                                        "text-[10px] font-bold text-zinc-300 tracking-wider"
+                                    } else {
+                                        "text-[10px] font-bold text-slate-600 tracking-wider"
+                                    }
+                                }
+                            }
+                        }
                     }
-                    text .track_title { style: "text-2xl font-bold text-gray-800 mt-8 text-center" }
-                    text .track_artist { style: "text-sm text-gray-500 text-center" }
-                    text .album_art { style: "text-xs text-gray-400 text-center" }
-                    style: "items-center px-8 pt-4"
-                }
-                col {
+
+                    // Main Video / Cover Art Stage Card
+                    col {
+                        style: if .dark_mode {
+                            "w-full h-72 rounded-3xl p-6 relative overflow-hidden bg-gradient-to-br from-indigo-950 via-purple-900 to-zinc-900 border border-zinc-800 shadow-2xl items-center justify-center group"
+                        } else {
+                            "w-full h-72 rounded-3xl p-6 relative overflow-hidden bg-gradient-to-br from-indigo-100 via-purple-100 to-slate-100 border border-slate-200 shadow-xl items-center justify-center group"
+                        }
+
+                        // Top Badges Overlay
+                        row {
+                            style: "w-full justify-between items-center absolute top-4 px-6 z-10"
+                            row {
+                                style: "items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur"
+                                text "🏷" { style: "text-xs" }
+                                text .current_tag { style: "text-xs font-semibold text-white tracking-wide" }
+                            }
+                            row {
+                                style: "items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur"
+                                text "⏱" { style: "text-xs" }
+                                text .current_duration { style: "text-xs font-semibold text-white tracking-wide" }
+                            }
+                        }
+
+                        // Center Icon / Visualizer
+                        col {
+                            style: "items-center justify-center gap-2"
+                            text .current_icon { style: "text-6xl drop-shadow-lg" }
+                            if .is_playing {
+                                text "Playing Hi-Fi Audio" {
+                                    style: if .dark_mode {
+                                        "text-xs font-medium text-zinc-300/80"
+                                    } else {
+                                        "text-xs font-medium text-slate-600"
+                                    }
+                                }
+                            } else {
+                                text "Playback Paused" {
+                                    style: if .dark_mode {
+                                        "text-xs font-medium text-zinc-300/80"
+                                    } else {
+                                        "text-xs font-medium text-slate-600"
+                                    }
+                                }
+                            }
+                        }
+
+                        // Bottom Track Title Overlay inside Stage
+                        row {
+                            style: "w-full justify-between items-center absolute bottom-4 px-6 z-10"
+                            col {
+                                text .current_album { style: "text-[11px] font-medium text-white/70" }
+                            }
+                            row {
+                                style: "items-center gap-1 bg-black/40 px-2 py-0.5 rounded-md backdrop-blur"
+                                text "HD" { style: "text-[10px] font-extrabold text-emerald-400 tracking-wider" }
+                                text "Lossless" { style: "text-[10px] font-medium text-white/80" }
+                            }
+                        }
+                    }
+
+                    // Track Metadata & Like Bar
                     row {
-                        text .current_time { style: "text-xs text-gray-400" }
-                        text .total_time { style: "text-xs text-gray-400" }
-                        style: "w-full justify-between px-4"
+                        style: "w-full items-center justify-between pt-1"
+                        col {
+                            style: "gap-1 flex-1 pr-4"
+                            text .current_title {
+                                style: if .dark_mode {
+                                    "text-lg font-bold text-zinc-100 leading-tight"
+                                } else {
+                                    "text-lg font-bold text-slate-900 leading-tight"
+                                }
+                            }
+                            row {
+                                style: "items-center gap-2"
+                                text .current_artist {
+                                    style: if .dark_mode {
+                                        "text-sm font-medium text-zinc-400"
+                                    } else {
+                                        "text-sm font-medium text-slate-500"
+                                    }
+                                }
+                                text "•" { style: "text-xs text-zinc-500" }
+                                text .current_likes_text {
+                                    style: if .dark_mode {
+                                        "text-xs text-zinc-500"
+                                    } else {
+                                        "text-xs text-slate-400"
+                                    }
+                                }
+                            }
+                        }
+
+                        // Like Heart Button
+                        if .liked {
+                            button "❤️ Liked" {
+                                onclick: .ToggleLike
+                                style: if .dark_mode {
+                                    "px-3.5 py-1.5 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 cursor-pointer shadow-sm transition-all"
+                                } else {
+                                    "px-3.5 py-1.5 text-xs font-semibold rounded-full bg-rose-50 text-rose-600 border border-rose-200 cursor-pointer shadow-sm transition-all"
+                                }
+                            }
+                        } else {
+                            button "🤍 Like" {
+                                onclick: .ToggleLike
+                                style: if .dark_mode {
+                                    "px-3.5 py-1.5 text-xs font-medium rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 cursor-pointer transition-all"
+                                } else {
+                                    "px-3.5 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 cursor-pointer transition-all"
+                                }
+                            }
+                        }
                     }
-                    progress { value: .progress_val, max: 100, style: "w-full px-4" }
-                    style: "px-4"
                 }
-                row {
-                    button "Shuffle" { style: "text-gray-400" }
-                    button "Prev" { onclick: .PrevTrack, style: "text-gray-700 text-xl" }
-                    button .is_playing { onclick: .PlayPause, style: "w-14 h-14 bg-purple-500 text-white rounded-full flex items-center justify-center text-2xl" }
-                    button "Next" { onclick: .NextTrack, style: "text-gray-700 text-xl" }
-                    button "Repeat" { style: "text-gray-400" }
-                    style: "w-full items-center justify-center gap-8 py-4"
+
+                // Bottom Controls & Progress
+                col {
+                    style: "w-full gap-4 pt-4"
+
+                    // Progress Bar & Time Stamps
+                    col {
+                        style: "w-full gap-1.5"
+                        progress {
+                            value: .progress_val
+                            max: 100
+                            style: "w-full cursor-pointer h-2"
+                        }
+                        row {
+                            style: "w-full justify-between items-center"
+                            text .current_time {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 tabular-nums"
+                                } else {
+                                    "text-xs font-semibold text-slate-500 tabular-nums"
+                                }
+                            }
+                            button "Seek +10s" {
+                                onclick: .SeekStep
+                                style: if .dark_mode {
+                                    "text-[10px] font-medium text-zinc-400 hover:text-zinc-200 bg-transparent px-2 py-0.5 rounded hover:bg-zinc-800 transition-colors cursor-pointer"
+                                } else {
+                                    "text-[10px] font-medium text-slate-500 hover:text-slate-800 bg-transparent px-2 py-0.5 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                                }
+                            }
+                            text .total_time {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 tabular-nums"
+                                } else {
+                                    "text-xs font-semibold text-slate-500 tabular-nums"
+                                }
+                            }
+                        }
+                    }
+
+                    // Playback Controls Row
+                    row {
+                        style: "w-full items-center justify-between px-4 py-2"
+
+                        // Shuffle Button
+                        if .shuffle {
+                            button "🔀 On" {
+                                onclick: .ToggleShuffle
+                                style: if .dark_mode {
+                                    "px-3 py-1.5 text-xs font-bold rounded-xl bg-zinc-800 text-indigo-400 border border-indigo-500/40 cursor-pointer transition-all"
+                                } else {
+                                    "px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200 cursor-pointer transition-all"
+                                }
+                            }
+                        } else {
+                            button "🔀 Off" {
+                                onclick: .ToggleShuffle
+                                style: if .dark_mode {
+                                    "px-3 py-1.5 text-xs font-medium rounded-xl text-zinc-400 hover:text-zinc-100 bg-transparent hover:bg-zinc-800 cursor-pointer transition-all"
+                                } else {
+                                    "px-3 py-1.5 text-xs font-medium rounded-xl text-slate-500 hover:text-slate-800 bg-transparent hover:bg-slate-100 cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Prev Button
+                        button "⏮ Prev" {
+                            onclick: .PrevTrack
+                            style: if .dark_mode {
+                                "px-4 py-2 text-sm font-semibold rounded-xl text-zinc-200 hover:text-white bg-zinc-800 hover:bg-zinc-700 cursor-pointer transition-all shadow-sm"
+                            } else {
+                                "px-4 py-2 text-sm font-semibold rounded-xl text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 cursor-pointer transition-all shadow-sm"
+                            }
+                        }
+
+                        // Main Play / Pause Button
+                        if .is_playing {
+                            button "⏸ Pause" {
+                                onclick: .PlayPause
+                                style: if .accent_color == "indigo" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-indigo-500 hover:bg-indigo-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else if .accent_color == "coral" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-rose-500 hover:bg-rose-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else if .accent_color == "ocean" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-sky-500 hover:bg-sky-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else if .accent_color == "sage" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-amber-500 hover:bg-amber-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                }
+                            }
+                        } else {
+                            button "▶ Play" {
+                                onclick: .PlayPause
+                                style: if .accent_color == "indigo" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-indigo-500 hover:bg-indigo-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else if .accent_color == "coral" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-rose-500 hover:bg-rose-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else if .accent_color == "ocean" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-sky-500 hover:bg-sky-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else if .accent_color == "sage" {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                } else {
+                                    "px-6 py-3.5 text-sm font-extrabold rounded-full bg-amber-500 hover:bg-amber-600 text-white cursor-pointer shadow-lg hover:scale-105 transition-all"
+                                }
+                            }
+                        }
+
+                        // Next Button
+                        button "Next ⏭" {
+                            onclick: .NextTrack
+                            style: if .dark_mode {
+                                "px-4 py-2 text-sm font-semibold rounded-xl text-zinc-200 hover:text-white bg-zinc-800 hover:bg-zinc-700 cursor-pointer transition-all shadow-sm"
+                            } else {
+                                "px-4 py-2 text-sm font-semibold rounded-xl text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 cursor-pointer transition-all shadow-sm"
+                            }
+                        }
+
+                        // Repeat Button
+                        if .repeat_mode == "all" {
+                            button "🔁 All" {
+                                onclick: .CycleRepeat
+                                style: if .dark_mode {
+                                    "px-3 py-1.5 text-xs font-bold rounded-xl bg-zinc-800 text-indigo-400 border border-indigo-500/40 cursor-pointer transition-all"
+                                } else {
+                                    "px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200 cursor-pointer transition-all"
+                                }
+                            }
+                        } else if .repeat_mode == "one" {
+                            button "🔂 One" {
+                                onclick: .CycleRepeat
+                                style: if .dark_mode {
+                                    "px-3 py-1.5 text-xs font-bold rounded-xl bg-zinc-800 text-indigo-400 border border-indigo-500/40 cursor-pointer transition-all"
+                                } else {
+                                    "px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200 cursor-pointer transition-all"
+                                }
+                            }
+                        } else {
+                            button "➡ Off" {
+                                onclick: .CycleRepeat
+                                style: if .dark_mode {
+                                    "px-3 py-1.5 text-xs font-medium rounded-xl text-zinc-400 hover:text-zinc-100 bg-transparent hover:bg-zinc-800 cursor-pointer transition-all"
+                                } else {
+                                    "px-3 py-1.5 text-xs font-medium rounded-xl text-slate-500 hover:text-slate-800 bg-transparent hover:bg-slate-100 cursor-pointer transition-all"
+                                }
+                            }
+                        }
+                    }
                 }
-                style: "flex-1"
             }
+
+            // ── Right Column: Up Next Playlist & Settings ──
             col {
-                text "Up Next" { style: "text-sm font-semibold text-gray-600 px-4 py-2 border-t" }
-                row {
-                    text .track1 { style: "text-sm font-medium text-purple-700" }
-                    text .artist1 { style: "text-xs text-gray-400 ml-auto" }
-                    style: "w-full items-center px-4 py-2 bg-purple-50"
+                style: "flex-1 h-full p-6 flex-col justify-between overflow-hidden"
+
+                // Playlist Container
+                col {
+                    style: "flex-1 w-full flex-col min-h-0"
+
+                    // Header Row
+                    row {
+                        style: if .dark_mode {
+                            "w-full items-center justify-between pb-3 border-b border-zinc-800 shrink-0"
+                        } else {
+                            "w-full items-center justify-between pb-3 border-b border-slate-200 shrink-0"
+                        }
+                        row {
+                            style: "items-center gap-2"
+                            text "📋" { style: "text-base" }
+                            text "Up Next Queue" {
+                                style: if .dark_mode {
+                                    "text-sm font-bold text-zinc-100 uppercase tracking-wider"
+                                } else {
+                                    "text-sm font-bold text-slate-900 uppercase tracking-wider"
+                                }
+                            }
+                            text "(8 tracks)" {
+                                style: if .dark_mode {
+                                    "text-xs text-zinc-500"
+                                } else {
+                                    "text-xs text-slate-400"
+                                }
+                            }
+                        }
+
+                        text "Click row to play" {
+                            style: if .dark_mode {
+                                "text-xs font-medium text-zinc-500"
+                            } else {
+                                "text-xs font-medium text-slate-400"
+                            }
+                        }
+                    }
+
+                    // Playlist items scrollable list
+                    col {
+                        style: "w-full flex-1 gap-2 pt-3 overflow-y-auto"
+
+                        // Track 1
+                        button .t1_title {
+                            onclick: .SelectTrack1
+                            style: if .current_index == 1 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Track 2
+                        button .t2_title {
+                            onclick: .SelectTrack2
+                            style: if .current_index == 2 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Track 3
+                        button .t3_title {
+                            onclick: .SelectTrack3
+                            style: if .current_index == 3 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Track 4
+                        button .t4_title {
+                            onclick: .SelectTrack4
+                            style: if .current_index == 4 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Track 5
+                        button .t5_title {
+                            onclick: .SelectTrack5
+                            style: if .current_index == 5 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Track 6
+                        button .t6_title {
+                            onclick: .SelectTrack6
+                            style: if .current_index == 6 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Track 7
+                        button .t7_title {
+                            onclick: .SelectTrack7
+                            style: if .current_index == 7 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+
+                        // Track 8
+                        button .t8_title {
+                            onclick: .SelectTrack8
+                            style: if .current_index == 8 {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-800/90 border border-indigo-500/50 text-left cursor-pointer transition-all shadow-md"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-indigo-50/80 border border-indigo-300 text-left cursor-pointer transition-all shadow-md"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "w-full p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 text-left cursor-pointer transition-all"
+                                } else {
+                                    "w-full p-3 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-left cursor-pointer transition-all"
+                                }
+                            }
+                        }
+                    }
                 }
-                row {
-                    text .track2 { style: "text-sm text-gray-700" }
-                    text .artist2 { style: "text-xs text-gray-400 ml-auto" }
-                    style: "w-full items-center px-4 py-2"
+
+                // Bottom Section: Settings Popover + Trigger Row
+                col {
+                    style: "w-full pt-3 shrink-0 gap-2"
+
+                    // Expandable Settings Popover Panel
+                    if .show_settings {
+                        col {
+                            style: if .dark_mode {
+                                "w-full p-4 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl gap-3"
+                            } else {
+                                "w-full p-4 rounded-2xl bg-white border border-slate-200 shadow-xl gap-3"
+                            }
+
+                            // Settings Header
+                            row {
+                                style: "w-full items-center justify-between"
+                                row {
+                                    style: "items-center gap-1.5"
+                                    text "⚙" { style: "text-sm" }
+                                    text "Settings" {
+                                        style: if .dark_mode {
+                                            "text-xs font-bold text-zinc-100 uppercase tracking-wider"
+                                        } else {
+                                            "text-xs font-bold text-slate-900 uppercase tracking-wider"
+                                        }
+                                    }
+                                }
+                                button "✕" {
+                                    onclick: .ToggleSettings
+                                    style: if .dark_mode {
+                                        "text-xs text-zinc-400 hover:text-zinc-100 w-5 h-5 flex items-center justify-center rounded bg-transparent hover:bg-zinc-800 transition-colors cursor-pointer"
+                                    } else {
+                                        "text-xs text-slate-400 hover:text-slate-900 w-5 h-5 flex items-center justify-center rounded bg-transparent hover:bg-slate-100 transition-colors cursor-pointer"
+                                    }
+                                }
+                            }
+
+                            // Theme Selector
+                            col {
+                                style: "gap-1"
+                                text "Theme" {
+                                    style: if .dark_mode {
+                                        "text-[11px] font-medium text-zinc-400"
+                                    } else {
+                                        "text-[11px] font-medium text-slate-500"
+                                    }
+                                }
+                                row {
+                                    style: "gap-1.5"
+                                    if .dark_mode {
+                                        button "🌙 Dark" {
+                                            onclick: .ToggleDarkMode
+                                            style: if .accent_color == "indigo" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-indigo-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else if .accent_color == "coral" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-rose-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else if .accent_color == "ocean" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-sky-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else if .accent_color == "sage" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-amber-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            }
+                                        }
+                                        button "☀ Light" {
+                                            onclick: .ToggleDarkMode
+                                            style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-zinc-400 hover:text-zinc-100 bg-transparent border border-zinc-700 transition-colors cursor-pointer"
+                                        }
+                                    } else {
+                                        button "🌙 Dark" {
+                                            onclick: .ToggleDarkMode
+                                            style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-slate-500 hover:text-slate-900 bg-transparent border border-slate-300 transition-colors cursor-pointer"
+                                        }
+                                        button "☀ Light" {
+                                            onclick: .ToggleDarkMode
+                                            style: if .accent_color == "indigo" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-indigo-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else if .accent_color == "coral" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-rose-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else if .accent_color == "ocean" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-sky-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else if .accent_color == "sage" {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            } else {
+                                                "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-amber-500 text-white shadow-sm transition-colors cursor-pointer"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Accent Color Palette
+                            col {
+                                style: "gap-1"
+                                text "Accent Color" {
+                                    style: if .dark_mode {
+                                        "text-[11px] font-medium text-zinc-400"
+                                    } else {
+                                        "text-[11px] font-medium text-slate-500"
+                                    }
+                                }
+                                row {
+                                    style: "items-center gap-2 py-0.5"
+                                    button "" {
+                                        onclick: .SetAccent("indigo")
+                                        style: if .accent_color == "indigo" {
+                                            "w-5 h-5 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-indigo-500 cursor-pointer shadow-sm"
+                                        } else {
+                                            "w-5 h-5 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform cursor-pointer"
+                                        }
+                                    }
+                                    button "" {
+                                        onclick: .SetAccent("coral")
+                                        style: if .accent_color == "coral" {
+                                            "w-5 h-5 p-0 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-rose-500 cursor-pointer shadow-sm"
+                                        } else {
+                                            "w-5 h-5 p-0 rounded-full bg-rose-500 hover:scale-110 transition-transform cursor-pointer"
+                                        }
+                                    }
+                                    button "" {
+                                        onclick: .SetAccent("ocean")
+                                        style: if .accent_color == "ocean" {
+                                            "w-5 h-5 p-0 rounded-full bg-sky-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-sky-500 cursor-pointer shadow-sm"
+                                        } else {
+                                            "w-5 h-5 p-0 rounded-full bg-sky-500 hover:scale-110 transition-transform cursor-pointer"
+                                        }
+                                    }
+                                    button "" {
+                                        onclick: .SetAccent("sage")
+                                        style: if .accent_color == "sage" {
+                                            "w-5 h-5 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-emerald-500 cursor-pointer shadow-sm"
+                                        } else {
+                                            "w-5 h-5 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform cursor-pointer"
+                                        }
+                                    }
+                                    button "" {
+                                        onclick: .SetAccent("amber")
+                                        style: if .accent_color == "amber" {
+                                            "w-5 h-5 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-amber-500 cursor-pointer shadow-sm"
+                                        } else {
+                                            "w-5 h-5 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform cursor-pointer"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Settings Button Trigger Row
+                    row {
+                        style: if .dark_mode {
+                            "w-full items-center justify-between pt-2 border-t border-zinc-800"
+                        } else {
+                            "w-full items-center justify-between pt-2 border-t border-slate-200"
+                        }
+
+                        button "⚙ Settings" {
+                            onclick: .ToggleSettings
+                            style: if .show_settings {
+                                if .dark_mode {
+                                    "px-3 py-1.5 text-xs font-semibold rounded-xl bg-zinc-800 text-indigo-400 transition-colors cursor-pointer"
+                                } else {
+                                    "px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-50 text-indigo-600 transition-colors cursor-pointer"
+                                }
+                            } else {
+                                if .dark_mode {
+                                    "px-3 py-1.5 text-xs font-medium rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 bg-transparent transition-colors cursor-pointer"
+                                } else {
+                                    "px-3 py-1.5 text-xs font-medium rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 bg-transparent transition-colors cursor-pointer"
+                                }
+                            }
+                        }
+
+                        text "v1.0 AutoUI" {
+                            style: if .dark_mode {
+                                "text-xs text-zinc-500"
+                            } else {
+                                "text-xs text-slate-400"
+                            }
+                        }
+                    }
                 }
-                row {
-                    text .track3 { style: "text-sm text-gray-700" }
-                    text .artist3 { style: "text-xs text-gray-400 ml-auto" }
-                    style: "w-full items-center px-4 py-2"
-                }
-                row {
-                    text .track4 { style: "text-sm text-gray-700" }
-                    text .artist4 { style: "text-xs text-gray-400 ml-auto" }
-                    style: "w-full items-center px-4 py-2"
-                }
-                row {
-                    text .track5 { style: "text-sm text-gray-700" }
-                    text .artist5 { style: "text-xs text-gray-400 ml-auto" }
-                    style: "w-full items-center px-4 py-2"
-                }
-                style: "w-full border-t border-gray-100"
             }
-            style: "w-full h-screen bg-white"
         }
     }
 
     on {
+        .Init -> {
+            .current_title = .t1_title
+            .current_artist = .t1_artist
+            .current_duration = .t1_duration
+            .current_tag = .t1_tag
+            .current_icon = .t1_icon
+            .current_likes_text = .t1_likes
+        }
         .PlayPause -> {
-            if .is_playing == "Playing" { .is_playing = "Paused" } else { .is_playing = "Playing" }
+            .is_playing = !.is_playing
         }
         .NextTrack -> {
-            .track_title = .track2
-            .track_artist = .artist2
-            .current_time = "0:00"
-            .progress_val = 0
+            if .current_index == 1 {
+                .current_index = 2
+                .current_title = .t2_title
+                .current_artist = .t2_artist
+                .current_duration = .t2_duration
+                .current_tag = .t2_tag
+                .current_icon = .t2_icon
+                .current_likes_text = .t2_likes
+                .current_time = "00:00"
+                .total_time = .t2_duration
+                .progress_val = 0
+            } else if .current_index == 2 {
+                .current_index = 3
+                .current_title = .t3_title
+                .current_artist = .t3_artist
+                .current_duration = .t3_duration
+                .current_tag = .t3_tag
+                .current_icon = .t3_icon
+                .current_likes_text = .t3_likes
+                .current_time = "00:00"
+                .total_time = .t3_duration
+                .progress_val = 0
+            } else if .current_index == 3 {
+                .current_index = 4
+                .current_title = .t4_title
+                .current_artist = .t4_artist
+                .current_duration = .t4_duration
+                .current_tag = .t4_tag
+                .current_icon = .t4_icon
+                .current_likes_text = .t4_likes
+                .current_time = "00:00"
+                .total_time = .t4_duration
+                .progress_val = 0
+            } else if .current_index == 4 {
+                .current_index = 5
+                .current_title = .t5_title
+                .current_artist = .t5_artist
+                .current_duration = .t5_duration
+                .current_tag = .t5_tag
+                .current_icon = .t5_icon
+                .current_likes_text = .t5_likes
+                .current_time = "00:00"
+                .total_time = .t5_duration
+                .progress_val = 0
+            } else if .current_index == 5 {
+                .current_index = 6
+                .current_title = .t6_title
+                .current_artist = .t6_artist
+                .current_duration = .t6_duration
+                .current_tag = .t6_tag
+                .current_icon = .t6_icon
+                .current_likes_text = .t6_likes
+                .current_time = "00:00"
+                .total_time = .t6_duration
+                .progress_val = 0
+            } else if .current_index == 6 {
+                .current_index = 7
+                .current_title = .t7_title
+                .current_artist = .t7_artist
+                .current_duration = .t7_duration
+                .current_tag = .t7_tag
+                .current_icon = .t7_icon
+                .current_likes_text = .t7_likes
+                .current_time = "00:00"
+                .total_time = .t7_duration
+                .progress_val = 0
+            } else if .current_index == 7 {
+                .current_index = 8
+                .current_title = .t8_title
+                .current_artist = .t8_artist
+                .current_duration = .t8_duration
+                .current_tag = .t8_tag
+                .current_icon = .t8_icon
+                .current_likes_text = .t8_likes
+                .current_time = "00:00"
+                .total_time = .t8_duration
+                .progress_val = 0
+            } else {
+                .current_index = 1
+                .current_title = .t1_title
+                .current_artist = .t1_artist
+                .current_duration = .t1_duration
+                .current_tag = .t1_tag
+                .current_icon = .t1_icon
+                .current_likes_text = .t1_likes
+                .current_time = "00:00"
+                .total_time = .t1_duration
+                .progress_val = 0
+            }
         }
         .PrevTrack -> {
-            .track_title = .track5
-            .track_artist = .artist5
-            .current_time = "0:00"
-            .progress_val = 0
+            if .current_index == 1 {
+                .current_index = 8
+                .current_title = .t8_title
+                .current_artist = .t8_artist
+                .current_duration = .t8_duration
+                .current_tag = .t8_tag
+                .current_icon = .t8_icon
+                .current_likes_text = .t8_likes
+                .current_time = "00:00"
+                .total_time = .t8_duration
+                .progress_val = 0
+            } else if .current_index == 2 {
+                .current_index = 1
+                .current_title = .t1_title
+                .current_artist = .t1_artist
+                .current_duration = .t1_duration
+                .current_tag = .t1_tag
+                .current_icon = .t1_icon
+                .current_likes_text = .t1_likes
+                .current_time = "00:00"
+                .total_time = .t1_duration
+                .progress_val = 0
+            } else if .current_index == 3 {
+                .current_index = 2
+                .current_title = .t2_title
+                .current_artist = .t2_artist
+                .current_duration = .t2_duration
+                .current_tag = .t2_tag
+                .current_icon = .t2_icon
+                .current_likes_text = .t2_likes
+                .current_time = "00:00"
+                .total_time = .t2_duration
+                .progress_val = 0
+            } else if .current_index == 4 {
+                .current_index = 3
+                .current_title = .t3_title
+                .current_artist = .t3_artist
+                .current_duration = .t3_duration
+                .current_tag = .t3_tag
+                .current_icon = .t3_icon
+                .current_likes_text = .t3_likes
+                .current_time = "00:00"
+                .total_time = .t3_duration
+                .progress_val = 0
+            } else if .current_index == 5 {
+                .current_index = 4
+                .current_title = .t4_title
+                .current_artist = .t4_artist
+                .current_duration = .t4_duration
+                .current_tag = .t4_tag
+                .current_icon = .t4_icon
+                .current_likes_text = .t4_likes
+                .current_time = "00:00"
+                .total_time = .t5_duration
+                .progress_val = 0
+            } else if .current_index == 6 {
+                .current_index = 5
+                .current_title = .t5_title
+                .current_artist = .t5_artist
+                .current_duration = .t5_duration
+                .current_tag = .t5_tag
+                .current_icon = .t5_icon
+                .current_likes_text = .t5_likes
+                .current_time = "00:00"
+                .total_time = .t5_duration
+                .progress_val = 0
+            } else if .current_index == 7 {
+                .current_index = 6
+                .current_title = .t6_title
+                .current_artist = .t6_artist
+                .current_duration = .t6_duration
+                .current_tag = .t6_tag
+                .current_icon = .t6_icon
+                .current_likes_text = .t6_likes
+                .current_time = "00:00"
+                .total_time = .t6_duration
+                .progress_val = 0
+            } else {
+                .current_index = 7
+                .current_title = .t7_title
+                .current_artist = .t7_artist
+                .current_duration = .t7_duration
+                .current_tag = .t7_tag
+                .current_icon = .t7_icon
+                .current_likes_text = .t7_likes
+                .current_time = "00:00"
+                .total_time = .t7_duration
+                .progress_val = 0
+            }
         }
-        .SeekChanged -> { .progress_val = .progress_val }
+        .SelectTrack1 -> {
+            .current_index = 1
+            .current_title = .t1_title
+            .current_artist = .t1_artist
+            .current_duration = .t1_duration
+            .current_tag = .t1_tag
+            .current_icon = .t1_icon
+            .current_likes_text = .t1_likes
+            .total_time = .t1_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .SelectTrack2 -> {
+            .current_index = 2
+            .current_title = .t2_title
+            .current_artist = .t2_artist
+            .current_duration = .t2_duration
+            .current_tag = .t2_tag
+            .current_icon = .t2_icon
+            .current_likes_text = .t2_likes
+            .total_time = .t2_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .SelectTrack3 -> {
+            .current_index = 3
+            .current_title = .t3_title
+            .current_artist = .t3_artist
+            .current_duration = .t3_duration
+            .current_tag = .t3_tag
+            .current_icon = .t3_icon
+            .current_likes_text = .t3_likes
+            .total_time = .t3_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .SelectTrack4 -> {
+            .current_index = 4
+            .current_title = .t4_title
+            .current_artist = .t4_artist
+            .current_duration = .t4_duration
+            .current_tag = .t4_tag
+            .current_icon = .t4_icon
+            .current_likes_text = .t4_likes
+            .total_time = .t4_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .SelectTrack5 -> {
+            .current_index = 5
+            .current_title = .t5_title
+            .current_artist = .t5_artist
+            .current_duration = .t5_duration
+            .current_tag = .t5_tag
+            .current_icon = .t5_icon
+            .current_likes_text = .t5_likes
+            .total_time = .t5_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .SelectTrack6 -> {
+            .current_index = 6
+            .current_title = .t6_title
+            .current_artist = .t6_artist
+            .current_duration = .t6_duration
+            .current_tag = .t6_tag
+            .current_icon = .t6_icon
+            .current_likes_text = .t6_likes
+            .total_time = .t6_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .SelectTrack7 -> {
+            .current_index = 7
+            .current_title = .t7_title
+            .current_artist = .t7_artist
+            .current_duration = .t7_duration
+            .current_tag = .t7_tag
+            .current_icon = .t7_icon
+            .current_likes_text = .t7_likes
+            .total_time = .t7_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .SelectTrack8 -> {
+            .current_index = 8
+            .current_title = .t8_title
+            .current_artist = .t8_artist
+            .current_duration = .t8_duration
+            .current_tag = .t8_tag
+            .current_icon = .t8_icon
+            .current_likes_text = .t8_likes
+            .total_time = .t8_duration
+            .current_time = "00:00"
+            .progress_val = 0
+            .is_playing = true
+        }
+        .ToggleShuffle -> {
+            .shuffle = !.shuffle
+        }
+        .CycleRepeat -> {
+            if .repeat_mode == "all" {
+                .repeat_mode = "one"
+            } else if .repeat_mode == "one" {
+                .repeat_mode = "off"
+            } else {
+                .repeat_mode = "all"
+            }
+        }
+        .ToggleLike -> {
+            .liked = !.liked
+            if .liked {
+                .current_likes_text = "1,421 likes"
+            } else {
+                .current_likes_text = "1,420 likes"
+            }
+        }
+        .SeekStep -> {
+            if .progress_val < 90 {
+                .progress_val = .progress_val + 10
+            } else {
+                .progress_val = 0
+            }
+        }
+        .ToggleSettings -> {
+            .show_settings = !.show_settings
+        }
+        .ToggleDarkMode -> {
+            .dark_mode = !.dark_mode
+        }
+        .SetTheme(t) -> {
+            if t == "dark" {
+                .dark_mode = true
+            } else {
+                .dark_mode = false
+            }
+        }
+        .SetAccent(a) -> {
+            .accent_color = a
+        }
     }
 }
