@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-516
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-desktop-remote-window
 author: [zhaopuming]
 created_at: 2026-09-01
