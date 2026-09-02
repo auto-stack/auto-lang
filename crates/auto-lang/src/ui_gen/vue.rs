@@ -14023,13 +14023,19 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// on-block entry (0-param synthesized stubs) only take the text via an
     /// explicit single-identifier binding.
     fn input_text_handler_wants_text_arg(&self, aura_event: &AuraEvent) -> bool {
+        // PLAN-055 T9(⑥): 实参为 `$event` 字面时同样按文本通道包
+        // ($event.target as HTMLInputElement).value——此前 `$` 不属 bare 字符集，
+        // `oninput: .OnSearchInput($event)` 生成 `@input="OnSearchInput($event)"`
+        // 把原生 Event 传给 (val: string) 形参，与 v-model 竞争把 Event 写进
+        // 绑定字段（musk 搜索框失效现场）。
+        let param_is_text_channel = |p: &str| {
+            let t = p.trim();
+            t == "$event" || t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        };
         let bare_or_simple = aura_event.params.is_empty()
             || (aura_event.params.len() == 1
                 && !aura_event.params[0].trim().is_empty()
-                && aura_event.params[0]
-                    .trim()
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_'));
+                && param_is_text_channel(&aura_event.params[0]));
         if !bare_or_simple {
             return false;
         }

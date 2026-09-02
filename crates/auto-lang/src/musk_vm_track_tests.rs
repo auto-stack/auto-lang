@@ -2726,3 +2726,277 @@ mod musk_vm_track_p055_dump3 {
 "));
     }
 }
+
+/// PLAN-055 T8(⑥)：input 通道 `$event` 实参的运行期文本替换回归。
+/// 链路：convert_input 冻结字面 "$event" 实参 → encode_payload 随事件串携带
+/// → render_dynamic_view Input 臂 on_input 携 input_value:Some(text) →
+/// on_with_input_for 的 U2 替换（dynamic.rs Plan 446 批五）把 "$event" 前缀
+/// 实参换成输入文本。此前诊断（2026-09-01 musk 搜索框失效）怀疑 VM 侧断链；
+/// 复测现行 master：动态路径链路完整——本用例固化该行为防回退。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p055_input_event_text {
+    #[test]
+    fn input_event_arg_replaced_with_typed_text() {
+        let src = concat!(
+            "widget QSearch {\n",
+            "    model {\n",
+            "        var q str = \"\"\n",
+            "    }\n",
+            "    msg Msg { SetQ(str) }\n",
+            "    on {\n",
+            "        .SetQ(v) -> {\n",
+            "            .q = v\n",
+            "        }\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            input {\n",
+            "                placeholder: \"搜索消息…\"\n",
+            "                oninput: .SetQ($event)\n",
+            "            }\n",
+            "            text .q\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut dc = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = dc.view_with_debug_gated(false);
+        // 派发形态与实机一致：事件串携带 payload 编码的字面 "$event" 实参
+        // （event_to_message_with 冻结 + encode_payload 嵌入），input_value 为
+        // 用户键入文本。
+        dc.on_with_input_for("QSearch", "SetQ\u{1F}s\u{1F}$event", Some("你好".to_string()));
+        assert_eq!(
+            match dc.read_state("q").expect("q readable") {
+                auto_val::Value::Str(s) => s.as_str().to_string(),
+                v => format!("{:?}", v),
+            },
+            "你好",
+            "input 通道 $event 实参应被替换为输入文本（musk 搜索框 VM 侧链路）"
+        );
+    }
+}
+
+/// PLAN-055 T12（④）：pre/code 转换臂——此前落 unknown fallback 成
+/// style:None 的 Column（类串整体丢弃）。现进容器臂：think 展开区类串
+/// （py-[9px]/px-[12px]/my-0/border-t/max-h-[240px]）应完整解析进 View 样式。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p055_pre_code_arm {
+    use crate::parser::Parser;
+    use crate::ui::view::View;
+
+    fn build_view(src: &str) -> View<crate::ui::interpreter::DynamicMessage> {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let (v, _, _) = comp.view_with_debug_gated(false);
+        v
+    }
+
+    /// 容器视图递归找首个带样式容器（pre 的转换产物：单子容器臂产
+    /// View::Container，多子时为 Column——两形态都收）。
+    fn first_styled_container<'a>(
+        v: &'a View<crate::ui::interpreter::DynamicMessage>,
+    ) -> Option<&'a View<crate::ui::interpreter::DynamicMessage>> {
+        match v {
+            View::Container { style, .. } if style.is_some() => Some(v),
+            View::Column { style, .. } if style.is_some() => Some(v),
+            View::Row { children, .. } | View::Column { children, .. } => {
+                children.iter().find_map(first_styled_container)
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn pre_class_string_parses_padding_border_and_max_h() {
+        let v = build_view(concat!(
+            "widget PreProbe {\n",
+            "    view {\n",
+            "        pre {\n",
+            "            style: \"think-content my-0 py-[9px] px-[12px] text-[13.5px] max-h-[240px] border-t border-border\"\n",
+            "            text \"思考内容\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ));
+        let col = first_styled_container(&v).expect("pre 应转换为带样式的容器（此前 fallback 丢类串）");
+        let style = match col {
+            View::Container { style, .. } | View::Column { style, .. } => {
+                style.as_ref().expect("style 必须在")
+            }
+            _ => unreachable!(),
+        };
+        use crate::ui::style::StyleClass;
+        use crate::ui::style::iced_adapter::IcedStyle;
+        // 类串解析面：border-top 类 + padding/max-h 适配值三键齐备。
+        assert!(
+            style.classes.iter().any(|c| matches!(c, StyleClass::BorderTop)),
+            "border-t 应解析，got {:?}",
+            style.classes
+        );
+        let is = IcedStyle::from_style(style);
+        assert!(
+            is.padding_y.unwrap_or(0.0) >= 8.0 && is.padding_x.unwrap_or(0.0) >= 10.0,
+            "py-[9px]/px-[12px] 应进 padding，got y={:?} x={:?}",
+            is.padding_y,
+            is.padding_x
+        );
+        assert!(
+            is.max_height.unwrap_or(0.0) >= 200.0,
+            "max-h-[240px] 应解析，got {:?}",
+            is.max_height
+        );
+    }
+}
+
+/// PLAN-055 ①/T14：一级导航 active 布尔表达式求值——musk app.at 声明
+/// `active: .current_view == "chats"`，断链嫌疑在 extract_bool_expr →
+/// resolve_expr_to_value 的 Eq 臂（state 字段 vs 字面量）。active=true 必须
+/// 把 nav_contract::ITEM_ACTIVE（bg-primary/10 text-primary font-medium）
+/// 拼进按钮类串。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p055_nav_active {
+    use crate::parser::Parser;
+    use crate::ui::view::View;
+
+    fn build_nav(src: &str) -> View<crate::ui::interpreter::DynamicMessage> {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let (v, _, _) = comp.view_with_debug_gated(false);
+        v
+    }
+
+    fn nav_src(view_value: &str) -> String {
+        format!(
+            concat!(
+                "widget NavProbe {{\n",
+                "    model {{\n",
+                "        var current_view str = \"{v}\"\n",
+                "    }}\n",
+                "    view {{\n",
+                "        col {{\n",
+                // musk app.at 实际形态：括号属性式（Plan 482 nav-item 接线现场）。
+                "            nav-item (label: \"会话\", icon: \"message-circle\", active: .current_view == \"chats\")\n",
+                "        }}\n",
+                "    }}\n",
+                "}}\n",
+            ),
+            v = view_value
+        )
+    }
+
+    /// 找 nav-item 产物按钮的样式类串文本。
+    fn nav_button_classes(
+        v: &View<crate::ui::interpreter::DynamicMessage>,
+    ) -> Option<String> {
+        match v {
+            View::Button { style, .. } => style.as_ref().map(|s| {
+                s.classes
+                    .iter()
+                    .map(|c| format!("{:?}", c))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            }),
+            View::Row { children, .. } | View::Column { children, .. } => {
+                children.iter().find_map(nav_button_classes)
+            }
+            View::Container { child, .. } => nav_button_classes(child),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn nav_active_eq_expr_yields_item_active_classes() {
+        // current_view == "chats" → active=true → ITEM_ACTIVE（BgPrimary 透明度
+        // 0.1 + TextPrimary 语义色）必须出现在按钮类集。
+        let v = build_nav(&nav_src("chats"));
+        let classes = nav_button_classes(&v).expect("nav-item 按钮样式");
+        eprintln!("[T14-DBG] active classes = {}", classes);
+        // ITEM_ACTIVE = bg-primary/10 text-primary font-medium——适配层的
+        // Debug 形态：BackgroundColor(Rgba … a≈0.1×255) + TextColor(Primary)
+        // + FontMedium。
+        assert!(
+            classes.contains("BackgroundColor"),
+            "active 时 bg-primary/10 应在，got {}",
+            classes
+        );
+        assert!(
+            classes.contains("TextColor(Primary)"),
+            "active 时 text-primary 应在，got {}",
+            classes
+        );
+        assert!(classes.contains("FontMedium"), "font-medium 应在，got {}", classes);
+    }
+
+    #[test]
+    fn nav_inactive_eq_expr_omits_item_active() {
+        // current_view == "plans" → active=false → 无 ITEM_ACTIVE。
+        let v = build_nav(&nav_src("plans"));
+        let classes = nav_button_classes(&v).expect("nav-item 按钮样式");
+        assert!(
+            !classes.contains("BackgroundColor"),
+            "inactive 时 bg-primary 不应在，got {}",
+            classes
+        );
+    }
+}

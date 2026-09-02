@@ -1295,7 +1295,13 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
-            "container" | "div" => {
+            // PLAN-055 ④/T12: pre/code 进容器转换臂（带样式）——此前落
+            // unknown fallback 成 style:None 的 Column，类串整体丢弃
+            // （musk think 展开区/specs fixture-code 的 padding/border-t/
+            // max-h 全失）。容器臂的 Style::parse 覆盖 py-[Npx]/px-[Npx]/
+            // border-t/max-h-[Npx]；VM 无滚动，max-h 尽力 clip（滚动残项
+            // 留档 KD 行 86 ⑤）。
+            "container" | "div" | "pre" | "code" => {
                 // PLAN-055: div{html: …}（v-html）VM 轨降级——去标签纯文本。
                 // 此前 html prop 被静默丢弃（builder 无消费臂），UserMessage
                 // 气泡体渲染为空 div；musk 聊天气泡文案缺失面。mention 高亮
@@ -2432,7 +2438,8 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
-            "container" | "div" => {
+            // PLAN-055 ④/T12: pre/code 进容器转换臂（tracked 臂镜像，D-GAP 规则）。
+            "container" | "div" | "pre" | "code" => {
                 // PLAN-055: 同 tracked 臂——html 去标签降级先于普通转换。
                 if let Some(stripped) = self.div_html_stripped_text(props, bindings) {
                     let mut enriched: Vec<AuraNode> = children.to_vec();
