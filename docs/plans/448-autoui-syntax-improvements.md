@@ -121,7 +121,7 @@ gallery_golden 1、ui_snapshots 3、auto-man 229 绿。
 | E | str 充当 bool/状态机（根因：watch 无 immediate 的规避 + 作者惯性） | 📋 观察（§6） |
 | F | 手工展开的标量列表族（能力已存在，纯语料迁移） | 📋 观察（§6） |
 | G | registry 组件输入协议与裸 value 语义不一致 | 📋 观察（§6） |
-| H | computed 块体/派生态短板——已裁决分 H1/H2/H3 三阶段（H3 独立立项） | 🟡 H1/H2 实施中（§7） |
+| H | computed 块体/派生态短板——H1/H2 已实施（H3 helper fn 进 SFC 独立立项） | ✅ H1/H2 已实施（§7） |
 | I | grid `cols:`/`gap:` 动态值——038 三份 48 行棋盘块的存在原因 | 📋 已登记（§8） |
 
 条目 A/B 相互独立可分别实施；B 实施后简单 widget 可完全不写 msg/on
@@ -588,6 +588,34 @@ widget App {
 - **边界**：尾语句非表达式（if/let 收尾）时两侧维持 undefined/None
   （文档化语义，与 `transpile_body_as_return` 一致）；computed 内
   API 调用（018 实际形态）本就不适合 computed（异步），不在范围。
+
+### H.4 实施收口（2026-09-02，worktree @ 486a60c6d）
+
+- **H1（Vue）**：`expr_to_js` Block 臂换 `transpile_body_as_return`（尾
+  表达式语句 → `return e;`；显式尾 return 渲染不变）；`expr_to_ts_type`
+  补 Block 臂（委托尾表达式，消 `<any>`）；**store 路径不动**（Plan 367
+  P2-2 的显式 return 约定，契约相反）。
+- **H2（VM）**：`synthesize_computed_fns` 合成
+  `fn __computed_<W>_<p>(__state <W>_State)`（handler 同机制：state 接收
+  参 + `rewrite_state_refs_stmts_with_locals` + 尾表达式转
+  `Stmt::Return`），接入 `synthesize_widget_module` 与
+  `synthesize_from_decl` 双路径；`VmBridge::call_computed_fn`（state 经
+  `rc_push_id`，结果解码/retain 从 `call_vm_fn` 尾部抽
+  `decode_task_result_nv`/`retain_heap_result` 共享，P-053-6/P-051-C3
+  语义原样）；`eval_computed` Block 分支走调用（fn 缺失回落 None 保持
+  旧降级），表达式 computed 维持内联求值器。
+- **测试**：vue 单测（return 尾 / `computed<number>` / 显式 return 不变）
+  + VM 单测（真实链路：可调用 / 语句语义 7 / 翻转 21 / 表达式不受扰）；
+  e2e 双端——VM 模式 `d:7→9→11` 随 bump 重求值，Vue 构建
+  `computed<number>` + `return` 产物绿。
+- **回归**：默认 lib 3345 绿 0 失败；ui-iced flaky 簇与 master 重合
+  （worktree 多 desktop_injects＝C 轮已证 master 孤立同挂；master 侧
+  3 个 daemon flaky 本轮未触发）；gallery_golden 绿；
+  vue_capabilities 77+5 同 master；docs_gen 4 绿。
+- **边界补充**：computed 块内 store 方法调用的消歧重写未接（handler 的
+  store 重写机制未纳入 computed 合成——表达式 computed 同边界）；子
+  widget 块体 computed 的 state 接收参固定为根状态（与 handler 路由
+  同口径）。
 
 ### H.3 方向草图（原登记，保留对照）
 
