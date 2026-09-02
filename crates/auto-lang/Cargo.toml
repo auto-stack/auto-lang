@@ -209,6 +209,8 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 windows = { version = "0.58", optional = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
+    # Plan 515 D1：HICON 真图标提取（GetIconInfo + GetDIBits 位图 → RGBA）。
+    "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Accessibility",
     "Win32_UI_HiDpi",

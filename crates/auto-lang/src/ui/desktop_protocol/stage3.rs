@@ -293,7 +293,7 @@ mod tests {
     const T3_H: f32 = 900.0;
 
     /// 001–005 示例名（与 examples/ui 目录一致）。
-    const T3_EXAMPLES: [&str; 6] = [
+    const T3_EXAMPLES: [&str; 7] = [
         "001-helloworld",
         "002-counter",
         "003-converter",
@@ -301,6 +301,8 @@ mod tests {
         "005-login",
         // Plan 507 T10：Tier1+Tier2 构造覆盖示例（实机 queue 模式语料）。
         "p507-tier-coverage",
+        // Plan 515 G1：scrollable 溢出裁剪构造示例（scissor 栈 e2e 语料）。
+        "p515-scroll-overflow",
     ];
 
     fn example_source(dir: &str) -> String {
@@ -385,7 +387,8 @@ mod tests {
                 list.ops
                     .iter()
                     .filter_map(|op| match op {
-                        crate::ui::desktop_protocol::message::DrawOp::Text { text, .. } => {
+                        crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
+                        | crate::ui::desktop_protocol::message::DrawOp::TextStyled { text, .. } => {
                             Some(text.clone())
                         }
                         _ => None,
@@ -517,6 +520,64 @@ mod tests {
                 .any(|t| t == "Jane Cooper")),
             "004 帧文本到位"
         );
+
+        // Plan 515 G1：scroll 溢出 → scissor 栈帧到位（端到端视觉断言：
+        // 双视口矩形 + 栈平衡（嵌套 ≤2 层）+ 溢出内容仍在 ops——裁剪是
+        // 宿主栅格职责，投影器不删内容）+ 视口外按钮命中区被过滤。
+        assert!(
+            wait_frames(&mut session, |s| {
+                s.broker_clients.values().any(|c| {
+                    c.app_name.as_deref() == Some("p515-scroll-overflow")
+                        && c.composed().is_some_and(|l| {
+                            let mut depth = 0i32;
+                            let mut max_depth = 0i32;
+                            let mut saw_outer = false;
+                            let mut saw_inner = false;
+                            for op in &l.ops {
+                                match op {
+                                    crate::ui::desktop_protocol::message::DrawOp::Scissor { rect } => {
+                                        depth += 1;
+                                        max_depth = max_depth.max(depth);
+                                        if (rect.h - 128.0).abs() < 0.5 {
+                                            saw_outer = true;
+                                        }
+                                        if (rect.h - 40.0).abs() < 0.5 {
+                                            saw_inner = true;
+                                        }
+                                    }
+                                    crate::ui::desktop_protocol::message::DrawOp::ScissorPop => {
+                                        depth -= 1;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            depth == 0
+                                && max_depth == 2
+                                && saw_outer
+                                && saw_inner
+                                && composed_texts(s, "p515-scroll-overflow")
+                                    .iter()
+                                    .any(|t| t == "inner-4")
+                                && composed_texts(s, "p515-scroll-overflow")
+                                    .iter()
+                                    .any(|t| t == "line-5")
+                        })
+                })
+            }),
+            "p515 scissor 栈帧到位（双视口 + 嵌套 2 层 + 溢出内容保留）"
+        );
+        // 视口外按钮（"In"，外层折叠线下）命中区被过滤；视口外置的
+        // "Out" 保留——孪生投影器同源布局判定。
+        {
+            let p515_twins = twins
+                .iter()
+                .find(|(n, _)| n == "p515-scroll-overflow")
+                .map(|(_, p)| p.hit_regions());
+            let hits = p515_twins.expect("p515 孪生").len();
+            // col p-2 内容 = "Out" 按钮 1 个可点命中区（"In" 在 128px
+            // 折叠线外被视口过滤；输入类无）。
+            assert_eq!(hits, 1, "视口外按钮命中区过滤，仅 Out 可点");
+        }
 
         // 002：点击 "+" → Counter: 1。
         {
@@ -679,20 +740,9 @@ mod tests {
     /// 测试 harness 线程必炸）→ 用生产二进制做 child（兼得三态 spawn 参数
     /// 全真链路）。
     fn auto_exe() -> std::path::PathBuf {
-        let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-        for profile in ["debug", "release"] {
-            let p = target.join(profile).join("auto.exe");
-            if p.exists() {
-                return p;
-            }
-        }
-        let status = std::process::Command::new("cargo")
-            .args(["build", "-p", "auto", "--bin", "auto"])
-            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-            .status()
-            .expect("spawn cargo build -p auto");
-        assert!(status.success(), "cargo build -p auto 失败");
-        target.join("debug").join("auto.exe")
+        // Plan 515 G4 C2：陈旧防护（P500-1——mtime 对账 + AUTO_FRESH_EXE=1
+        // 强制重建）。
+        crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard()
     }
 
     /// T3 主体二：independent 像素帧合成 + **双模并存**（同宿主一 queue
@@ -762,6 +812,7 @@ mod tests {
                         && c.composed().is_some_and(|l| {
                             l.ops.iter().any(|op| matches!(op,
                                 crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
+                                | crate::ui::desktop_protocol::message::DrawOp::TextStyled { text, .. }
                                     if text == "Hello, World!"))
                         })
                 })

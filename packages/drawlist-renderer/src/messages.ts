@@ -25,7 +25,14 @@ export interface DrawList {
 
 export type DrawOp =
   | { kind: 'quad'; rect: WRect; color: Rgba8 }
-  | { kind: 'text'; x: number; y: number; size: number; lineHeight: number; color: Rgba8; text: string };
+  | { kind: 'text'; x: number; y: number; size: number; lineHeight: number; color: Rgba8; text: string }
+  // Plan 515 G2 —— typography 差分（Rust tag 5 镜像）：weight = CSS 刻度
+  // （400 normal / 700 bold），italic = bool。
+  | { kind: 'textStyled'; x: number; y: number; size: number; lineHeight: number; color: Rgba8; weight: number; italic: boolean; text: string }
+  // Plan 515 G1 —— scissor 裁剪栈（Rust tag 3/4 镜像）：push 与当前有效
+  // 裁剪取交，作用于后续 op 直至配对 pop。
+  | { kind: 'scissor'; rect: WRect }
+  | { kind: 'scissorPop' };
 
 export interface HitRegion {
   rect: WRect;
@@ -137,6 +144,20 @@ function readDrawList(r: Reader): DrawList {
       const color = readColor(r);
       const text = r.string();
       ops.push({ kind: 'text', x, y, size, lineHeight, color, text });
+    } else if (tag === 5) {
+      const x = r.f32();
+      const y = r.f32();
+      const size = r.f32();
+      const lineHeight = r.f32();
+      const color = readColor(r);
+      const weight = r.u16();
+      const italic = r.bool();
+      const text = r.string();
+      ops.push({ kind: 'textStyled', x, y, size, lineHeight, color, weight, italic, text });
+    } else if (tag === 3) {
+      ops.push({ kind: 'scissor', rect: readRect(r) });
+    } else if (tag === 4) {
+      ops.push({ kind: 'scissorPop' });
     } else {
       throw new CodecError(`unknown drawop tag ${tag}`);
     }

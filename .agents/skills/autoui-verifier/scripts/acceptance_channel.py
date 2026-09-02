@@ -11,6 +11,7 @@ Scenarios:
   p487   P487-1: gear open panel + dock position hot-switch + Esc self-hide
   p496   P496-1: wallpaper writer (settings SaveWallpaper) + desktop icons
   p501   P501-2: gear → settings → system section → open os-config (launch arm)
+  p515   P504-3: real-launch e2e — DesktopBus launch record → 011-calculator
 
 Usage:
     python acceptance_channel.py --scenario drill [--out-dir <dir>]
@@ -189,6 +190,14 @@ def run_scenario(name: str, out_dir: str):
             s.handler("settings", "OpenSystemSettings")
             s.settle(4)
             shots.append(s.shot("p501-02-osconfig-launched"))
+        elif name == "p515":
+            # Plan 515 G4 C3 (P504-3): real-launch e2e — DesktopBus `launch`
+            # record (same drain/execute arm as real shell.at writes; the
+            # synthetic-input-cannot-reach-winit blocker bypassed by the
+            # channel's MCP injection arm, per 505 acceptance-channel report).
+            s.bus("launch\u001f011-calculator")
+            s.settle(8)
+            shots.append(s.shot("p515-01-calculator-launched"))
         else:
             raise SystemExit(f"unknown scenario: {name}")
         print(f"[{name}] PASS — {len(shots)} shot(s):")
@@ -202,7 +211,7 @@ def run_scenario(name: str, out_dir: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True,
-                    choices=["drill", "p487", "p496", "p501"])
+                    choices=["drill", "p487", "p496", "p501", "p515"])
     ap.add_argument("--out-dir", default=None)
     args = ap.parse_args()
     if not os.path.isfile(DESKTOP_EXE):

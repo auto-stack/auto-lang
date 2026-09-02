@@ -483,6 +483,70 @@ mod ts_fixtures {
             0x6e, 0x74, 0x65, 0x72, 0x3a, 0x20, 0x30,
         ];
         assert_eq!(frame.encode(), expect_frame, "TS 对拍锚点 FrameReady");
+
+        // Plan 515 G1 —— scissor 栈帧对拍锚点（TS fixtures.golden.ts
+        // SCISSOR_FRAME_HEX 同批字节）：push(8,8,120,60) → Quad(0,0,400,400)
+        // → pop。
+        let scissor_frame = ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid: 1,
+            frame_id: 2,
+            slot: 0,
+            damage: None,
+            revision: 2,
+            payload: crate::ui::desktop_protocol::message::DrawList {
+                clear: Some(Rgba8 { r: 9, g: 14, b: 26, a: 255 }),
+                ops: vec![
+                    DrawOp::Scissor { rect: WRect { x: 8.0, y: 8.0, w: 120.0, h: 60.0 } },
+                    DrawOp::Quad {
+                        rect: WRect { x: 0.0, y: 0.0, w: 400.0, h: 400.0 },
+                        color: Rgba8 { r: 59, g: 130, b: 246, a: 255 },
+                    },
+                    DrawOp::ScissorPop,
+                ],
+            },
+        });
+        let expect_scissor: Vec<u8> = vec![
+            0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x02, 0x00, 0x4c, 0x00, 0x00, 0x00, 0x04, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x09,
+            0x0e, 0x1a, 0xff, 0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00,
+            0x00, 0x41, 0x00, 0x00, 0xf0, 0x42, 0x00, 0x00, 0x70, 0x42, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc8, 0x43, 0x00, 0x00, 0xc8, 0x43, 0x3b,
+            0x82, 0xf6, 0xff, 0x04
+        ];
+        assert_eq!(scissor_frame.encode(), expect_scissor, "TS 对拍锚点 scissor 帧");
+
+        // Plan 515 G2 —— typography 差分对拍锚点（TS fixtures.golden.ts
+        // STYLED_FRAME_HEX 同批字节）：TextStyled weight=700。
+        let styled_frame = ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid: 3,
+            frame_id: 22,
+            slot: 0,
+            damage: None,
+            revision: 22,
+            payload: crate::ui::desktop_protocol::message::DrawList {
+                clear: None,
+                ops: vec![DrawOp::TextStyled {
+                    x: 10.0,
+                    y: 20.0,
+                    size: 16.0,
+                    line_height: 21.6,
+                    color: Rgba8 { r: 220, g: 220, b: 220, a: 255 },
+                    weight: 700,
+                    italic: false,
+                    text: "Bold".into(),
+                }],
+            },
+        });
+let expect_styled: Vec<u8> = vec![
+            0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x02, 0x00, 0x41, 0x00, 0x00, 0x00, 0x04, 0x03,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x20, 0x41, 0x00, 0x00, 0xa0, 0x41, 0x00, 0x00,
+            0x80, 0x41, 0xcd, 0xcc, 0xac, 0x41, 0xdc, 0xdc, 0xdc, 0xff, 0xbc, 0x02, 0x00, 0x04,
+            0x00, 0x00, 0x00, 0x42, 0x6f, 0x6c, 0x64
+        ];
+        assert_eq!(styled_frame.encode(), expect_styled, "TS 对拍锚点 TextStyled 帧");
     }
 }
 
@@ -501,20 +565,8 @@ mod host_body {
 
     /// 真 `auto` 二进制定位（stage3 同款：debug > release，缺则增量构建）。
     fn auto_exe() -> std::path::PathBuf {
-        let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-        for profile in ["debug", "release"] {
-            let p = target.join(profile).join("auto.exe");
-            if p.exists() {
-                return p;
-            }
-        }
-        let status = std::process::Command::new("cargo")
-            .args(["build", "-p", "auto", "--bin", "auto"])
-            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-            .status()
-            .expect("spawn cargo build -p auto");
-        assert!(status.success(), "cargo build -p auto 失败");
-        target.join("debug").join("auto.exe")
+        // Plan 515 G4 C2：陈旧防护（stage3 同款共用体）。
+        crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard()
     }
 
     /// Plan 508 T4/T6 宿主 harness：outproc 孵化示例批（真 auto.exe

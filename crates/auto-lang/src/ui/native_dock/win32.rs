@@ -576,6 +576,147 @@ pub fn covers_rect(target: NativeHwnd, reference: NativeHwnd) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Plan 515 D1 —— HICON 真图标提取（native 槽位条目的真窗口图标）
+// ---------------------------------------------------------------------------
+
+/// native 窗口图标 → RGBA（top-down，straight alpha）。
+///
+/// 三级回退：`WM_GETICON(ICON_SMALL2)` → `WM_GETICON(ICON_SMALL)` →
+/// `GetClassLongPtrW(GCLP_HICON)`；`GetIconInfo` 取彩色位图 → `GetDIBits`
+/// 32bpp top-down → BGRA→RGBA。486 期 `app-window` 占位的清偿（473 两度
+/// 延期项）。失败（无图标/无彩色位图/DC 失败）→ None（调用方回退占位）。
+pub fn window_icon_rgba(target: NativeHwnd) -> Option<(Vec<u8>, u32, u32)> {
+    use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassLongPtrW, GetIconInfo, SendMessageTimeoutW, GCLP_HICON, HICON, ICONINFO,
+        ICON_SMALL, ICON_SMALL2, SMTO_ABORTIFHUNG, WM_GETICON,
+    };
+    unsafe {
+        let hwnd = HWND(target.0 as *mut core::ffi::c_void);
+        // SMTO_ABORTIFHUNG：无响应目标 100ms 内让行（挂死窗口不拖慢投影）。
+        let query_icon = |msg: WPARAM| -> isize {
+            let mut result = 0usize;
+            let lr = SendMessageTimeoutW(
+                hwnd,
+                WM_GETICON,
+                msg,
+                LPARAM(0),
+                SMTO_ABORTIFHUNG,
+                100,
+                Some(&mut result as *mut usize),
+            );
+            lr.0 as isize
+        };
+        // 候选序列：WM_GETICON 档可能返回哨兵小值（DefWindowProc 的
+        // "类图标缺省"标记，非真柄）——首个 GetIconInfo 可解者胜，
+        // GCLP_HICON 类图标兜底（scratch/部分老应用仅有类图标）。
+        let mut candidates: [isize; 3] = [
+            query_icon(WPARAM(ICON_SMALL2 as usize)),
+            query_icon(WPARAM(ICON_SMALL as usize)),
+            GetClassLongPtrW(hwnd, GCLP_HICON) as isize,
+        ];
+        candidates.sort_unstable_by(|a, b| b.cmp(a)); // 真柄（大值）优先
+        // 屏幕 DC：GetDIBits 只借 DC 做颜色空间转换，不需要选中位图。
+        let hdc = GetDC(None);
+        let mut out = None;
+        for c in candidates {
+            if c <= 0 {
+                continue;
+            }
+            if let Some(rgba) = dib_icon_to_rgba(HICON(c as *mut core::ffi::c_void), &hdc) {
+                out = Some(rgba);
+                break;
+            }
+        }
+        let _ = ReleaseDC(None, hdc);
+        out
+    }
+}
+
+/// `GetIconInfo` → 彩色位图 → `GetDIBits` 32bpp top-down → BGRA→RGBA
+/// （纯位图机械，独立于句柄来源；mask-only 单色图标不支持 → None）。
+unsafe fn dib_icon_to_rgba(
+    icon: windows::Win32::UI::WindowsAndMessaging::HICON,
+    hdc: &windows::Win32::Graphics::Gdi::HDC,
+) -> Option<(Vec<u8>, u32, u32)> {
+    use windows::Win32::Graphics::Gdi::{
+        DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CopyImage, DestroyIcon, GetIconInfo, HICON, ICONINFO, IMAGE_FLAGS, IMAGE_ICON,
+    };
+    let mut info = ICONINFO::default();
+    let mut gi = GetIconInfo(icon, &mut info);
+    let mut copied: Option<HICON> = None;
+    if gi.is_err() {
+        // 共享图标 cookie（LoadIconW 标准图标的小值句柄——真窗口亦可能
+        // 返回）GetIconInfo 不可解：CopyImage 克隆真句柄重试。
+        let Ok(copy) = CopyImage(windows::Win32::Foundation::HANDLE(icon.0), IMAGE_ICON, 0, 0, IMAGE_FLAGS(0)) else {
+            return None;
+        };
+        let copy_icon = HICON(copy.0);
+        gi = GetIconInfo(copy_icon, &mut info);
+        copied = Some(copy_icon);
+    }
+    if gi.is_err() {
+        if let Some(c) = copied {
+            unsafe { let _ = DestroyIcon(c); }
+        }
+        return None;
+    }
+    // 位图句柄所有权转移给本地守卫（成功/失败路径都 DeleteObject）。
+    struct BmpGuard(windows::Win32::Graphics::Gdi::HBITMAP);
+    impl Drop for BmpGuard {
+        fn drop(&mut self) {
+            unsafe { let _ = DeleteObject(self.0); }
+        }
+    }
+    let color = BmpGuard(info.hbmColor);
+    let _mask = BmpGuard(info.hbmMask);
+    if color.0 .0.is_null() {
+        return None; // mask-only 单色图标（罕见）v1 不支持
+    }
+    let mut bm = BITMAP::default();
+    let got = GetObjectW(
+        color.0,
+        std::mem::size_of::<BITMAP>() as i32,
+        Some(&mut bm as *mut BITMAP as *mut core::ffi::c_void),
+    );
+    if got == 0 {
+        return None;
+    }
+    let (w, h) = (bm.bmWidth as u32, bm.bmHeight as u32);
+    if w == 0 || h == 0 || w > 512 || h > 512 {
+        return None; // 异常尺寸防御（图标域 16–256；>512 视为脏数据）
+    }
+    let mut bmi = BITMAPINFO::default();
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    bmi.bmiHeader.biWidth = w as i32;
+    bmi.bmiHeader.biHeight = -(h as i32); // 负高 = top-down（免手工翻行）
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = 0; // BI_RGB
+    let mut buf = vec![0u8; (w * h * 4) as usize];
+    let lines = GetDIBits(
+        *hdc,
+        color.0,
+        0,
+        h,
+        Some(buf.as_mut_ptr() as *mut core::ffi::c_void),
+        &mut bmi,
+        DIB_RGB_COLORS,
+    );
+    if lines != h as i32 {
+        return None;
+    }
+    // BGRA → RGBA（就地字节交换）。
+    for px in buf.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    Some((buf, w, h))
+}
+
+// ---------------------------------------------------------------------------
 // events：WinEventHook 事件层（专用钩子线程 OUTOFCONTEXT → mpsc）
 // ---------------------------------------------------------------------------
 
@@ -1080,8 +1221,9 @@ pub mod test_support {
         SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, PeekMessageW,
-        RegisterClassW, SetWindowPos, TranslateMessage, HWND_TOPMOST, WINDOW_EX_STYLE, MSG,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, LoadIconW,
+        PeekMessageW, RegisterClassW, SetWindowPos, TranslateMessage, HWND_TOPMOST,
+        IDI_APPLICATION, WINDOW_EX_STYLE, MSG,
         PM_REMOVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WNDCLASSW,
         WS_OVERLAPPEDWINDOW, WS_VISIBLE,
     };
@@ -1123,7 +1265,12 @@ pub mod test_support {
                 lpszClassName: PCWSTR(class_name().as_ptr()),
                 ..Default::default()
             };
-            assert_ne!(RegisterClassW(&wc), 0, "RegisterClassW failed");
+            let atom = RegisterClassW(&wc);
+            assert_ne!(
+                atom, 0,
+                "RegisterClassW failed: {:?}",
+                windows::Win32::Foundation::GetLastError()
+            );
         });
         let mut title_w: Vec<u16> = title.encode_utf16().collect();
         title_w.push(0);
@@ -1215,7 +1362,7 @@ mod native_dock_geometry {
 
     fn class_name() -> &'static [u16] {
         static NAME: OnceLock<Vec<u16>> = OnceLock::new();
-        NAME.get_or_init(|| "auto_lang_native_dock_scratch\0".encode_utf16().collect())
+        NAME.get_or_init(|| "auto_lang_native_dock_scratch ".encode_utf16().collect())
     }
 
     /// 0.58 的 `DefWindowProcW` 是 Rust-abi 安全包装，不能直接作 WNDPROC；
@@ -1240,9 +1387,19 @@ mod native_dock_geometry {
                 lpfnWndProc: Some(scratch_wndproc),
                 hInstance: HINSTANCE(hmodule.0),
                 lpszClassName: PCWSTR(class_name().as_ptr()),
+                // Plan 515 D1：挂私有真图标（.ico 合成文件 + LoadImageW
+                // ——与生产应用同链；32bpp BGRA blue-500 实色像素断言用。
+                // CreateBitmap DDB 位图经 GetDIBits 不保真内容/alpha，故
+                // 走真 .ico 装载）。
+                hIcon: load_blue_test_icon(),
                 ..Default::default()
             };
-            assert_ne!(RegisterClassW(&wc), 0, "RegisterClassW failed");
+            let atom = RegisterClassW(&wc);
+            assert_ne!(
+                atom, 0,
+                "RegisterClassW failed: {:?}",
+                windows::Win32::Foundation::GetLastError()
+            );
         });
     }
 
@@ -1591,6 +1748,65 @@ mod native_dock_geometry {
 // T3：WinEventHook 事件层测试——映射表纯单测 + 本进程 scratch 窗口真实收事件
 // ---------------------------------------------------------------------------
 
+/// Plan 515 D1：合成 32×32 32bpp blue-500 实心 .ico（ICONDIR + 双倍高
+/// BITMAPINFOHEADER + bottom-up BGRA XOR + AND 掩码），落临时文件后
+/// `LoadImageW(LR_LOADFROMFILE)` 装载为真 HICON。
+fn load_blue_test_icon() -> windows::Win32::UI::WindowsAndMessaging::HICON {
+    use std::io::Write;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        LoadImageW, IMAGE_ICON, LR_DEFAULTSIZE, LR_LOADFROMFILE,
+    };
+    let (w, h) = (32u32, 32u32);
+    let xor = (w * h * 4) as u32;
+    let mask = w * 4; // 1bpp 行对齐 = w/8 → 4B/行
+    let mut ico: Vec<u8> = Vec::with_capacity(22 + 40 + xor as usize + mask as usize);
+    ico.extend_from_slice(&[0, 0]); // reserved
+    ico.extend_from_slice(&[1, 0]); // type = icon
+    ico.extend_from_slice(&[1, 0]); // count
+    ico.extend_from_slice(&[32, 32, 0, 0]); // w h colors rsv
+    ico.extend_from_slice(&[1, 0]); // planes
+    ico.extend_from_slice(&[32, 0]); // bpp
+    ico.extend_from_slice(&(40 + xor + mask).to_le_bytes()); // bytes in rsrc
+    ico.extend_from_slice(&22u32.to_le_bytes()); // offset
+    ico.extend_from_slice(&40u32.to_le_bytes()); // biSize
+    ico.extend_from_slice(&32i32.to_le_bytes()); // biWidth
+    ico.extend_from_slice(&64i32.to_le_bytes()); // biHeight ×2（XOR+AND）
+    ico.extend_from_slice(&[1, 0]); // planes
+    ico.extend_from_slice(&[32, 0]); // bitcount
+    ico.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
+    ico.extend_from_slice(&(xor + mask).to_le_bytes());
+    ico.extend_from_slice(&[0u8; 16]); // 分辨率/色数零
+    for _ in 0..w * h {
+        ico.extend_from_slice(&[0xF6, 0x82, 0x3B, 0xFF]); // BGRA blue-500
+    }
+    ico.extend_from_slice(&vec![0u8; mask as usize]); // AND 全 0 = 不透明
+    // 唯一文件名（并行测试各写各的——共享路径会互锁 create）。
+    static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "auto_scratch_test_icon_{}_{}.ico",
+        std::process::id(),
+        n
+    ));
+    let mut f = std::fs::File::create(&path).expect("create ico");
+    f.write_all(&ico).expect("write ico");
+    drop(f);
+    let mut wide: Vec<u16> = path.as_os_str().to_string_lossy().encode_utf16().collect();
+    wide.push(0);
+    unsafe {
+        LoadImageW(
+            None,
+            windows::core::PCWSTR(wide.as_ptr()),
+            IMAGE_ICON,
+            32,
+            32,
+            LR_LOADFROMFILE | LR_DEFAULTSIZE,
+        )
+        .map(|h| windows::Win32::UI::WindowsAndMessaging::HICON(h.0))
+        .unwrap_or_default()
+    }
+}
+
 #[cfg(all(test, windows, feature = "test-native-dock"))]
 mod native_dock_events {
     use super::*;
@@ -1741,6 +1957,24 @@ mod native_dock_events {
         assert!(
             wait_for(&rx, h, NativeSlotEventKind::MoveSizeStart),
             "3s 内未收到 MOVESIZESTART（scratch 窗）"
+        );
+    }
+
+    /// Plan 515 D1：HICON 提取真窗口演练——scratch 窗带系统类图标
+    ///（CreateWindowW 类图标链），提取应出 32bpp RGBA 且尺寸在图标域。
+    #[test]
+    fn window_icon_rgba_extracts_scratch_window_icon() {
+        let s = scratch("icon-extract");
+        // 本测试段的 Scratch 包 HWND（0.58 指针形态）→ NativeHwnd isize 存储。
+        let (rgba, w, h) = window_icon_rgba(NativeHwnd(s.0 .0 as isize))
+            .expect("scratch 窗应带类图标（GCLP_HICON 回退档）");
+        assert_eq!(rgba.len(), (w * h * 4) as usize, "32bpp 尺寸自洽");
+        assert!(w > 0 && h > 0 && w <= 512 && h <= 512, "图标域: {w}x{h}");
+        // 像素内容证据：blue-500（RGB 0x3B82F6）特征——GDI DDB 位图
+        // 不保真 alpha（真 .ico 才有），故验色不验 alpha。
+        assert!(
+            rgba.chunks_exact(4).any(|px| px[0] == 0x3B && px[1] == 0x82 && px[2] == 0xF6),
+            "提取像素含 blue-500 特征（内容非空壳）"
         );
     }
 }

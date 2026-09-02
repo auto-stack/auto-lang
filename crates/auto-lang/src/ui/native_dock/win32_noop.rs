@@ -112,3 +112,8 @@ pub fn cursor_pos() -> Option<(i32, i32)> {
 pub fn focus_window(_target: NativeHwnd) -> bool {
     false
 }
+
+/// Plan 515 D1：no-op 平台恒无真图标（调用方回退 `app-window` 占位）。
+pub fn window_icon_rgba(_target: NativeHwnd) -> Option<(Vec<u8>, u32, u32)> {
+    None
+}

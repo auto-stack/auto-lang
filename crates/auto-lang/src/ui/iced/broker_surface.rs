@@ -20,6 +20,21 @@ fn to_color(c: Rgba8) -> iced::Color {
     iced::Color::from_rgba8(c.r, c.g, c.b, c.a as f32 / 255.0)
 }
 
+/// CSS 字重刻度（100..900）→ iced `Weight` 档（Plan 515 G2）。
+fn css_weight_to_iced(w: u16) -> iced::font::Weight {
+    match w {
+        100 => iced::font::Weight::Thin,
+        200 => iced::font::Weight::ExtraLight,
+        300 => iced::font::Weight::Light,
+        500 => iced::font::Weight::Medium,
+        600 => iced::font::Weight::Semibold,
+        700 => iced::font::Weight::Bold,
+        800 => iced::font::Weight::ExtraBold,
+        900 => iced::font::Weight::Black,
+        _ => iced::font::Weight::Normal,
+    }
+}
+
 /// DrawList → canvas 绘制程序（queue 臂栅格化：宿主 GPU 抗锯齿）。
 struct DrawListPainter {
     list: DrawList,
@@ -46,34 +61,97 @@ impl iced::widget::canvas::Program<DesktopMessage> for DrawListPainter {
                 to_color(clear),
             );
         }
-        for op in &self.list.ops {
-            match op {
-                DrawOp::Quad { rect, color } => {
-                    // widget 本地坐标 → canvas 原点平移（越界面出 canvas
-                    // 自动裁剪）。
-                    let at = iced::Point::new(rect.x, rect.y);
-                    frame.fill_rectangle(
-                        at,
-                        iced::Size::new(rect.w, rect.h),
-                        to_color(*color),
-                    );
-                }
-                DrawOp::Text { x, y, size, line_height, color, text } => {
-                    frame.fill_text(Text {
-                        content: text.clone(),
-                        position: iced::Point::new(*x, *y),
-                        color: to_color(*color),
-                        size: (*size).into(),
-                        line_height: iced::widget::text::LineHeight::Absolute(
-                            (*line_height).into(),
-                        ),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
+        paint_ops(&mut frame, &self.list.ops);
         let _ = Path::new(|_| {});
         vec![frame.into_geometry()]
+    }
+}
+
+/// Plan 515 G1 —— scissor 栈栅格化：`Scissor` 起一段 `with_clip`（匹配
+/// pop 之间的 op 裁剪到矩形内；嵌套 push 自然取交——draft/paste 的组合
+/// 裁剪语义）。空栈 pop / 未闭合 push（编码端违约）宽容不炸：pop =
+/// no-op，未闭合 = 裁到序列尾。
+fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
+    use iced::widget::canvas::Text;
+    let mut i = 0;
+    while i < ops.len() {
+        match &ops[i] {
+            DrawOp::Scissor { rect } => {
+                // 深度扫描找配对 pop（含嵌套层）。
+                let mut depth = 1usize;
+                let mut end = ops.len();
+                for (j, op) in ops.iter().enumerate().take(ops.len()).skip(i + 1) {
+                    match op {
+                        DrawOp::Scissor { .. } => depth += 1,
+                        DrawOp::ScissorPop => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = j;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let region = iced::Rectangle::new(
+                    iced::Point::new(rect.x, rect.y),
+                    iced::Size::new(rect.w.max(0.0), rect.h.max(0.0)),
+                );
+                frame.with_clip(region, |f| paint_ops(f, &ops[i + 1..end]));
+                // 跳过配对 pop（未闭合时 end = ops.len()，循环自然收）。
+                i = end + 1;
+            }
+            // 本层游离 pop（编码端违约）= no-op。
+            DrawOp::ScissorPop => i += 1,
+            DrawOp::Quad { rect, color } => {
+                // widget 本地坐标 → canvas 原点平移（越界面出 canvas
+                // 自动裁剪）。
+                let at = iced::Point::new(rect.x, rect.y);
+                frame.fill_rectangle(
+                    at,
+                    iced::Size::new(rect.w, rect.h),
+                    to_color(*color),
+                );
+                i += 1;
+            }
+            DrawOp::Text { x, y, size, line_height, color, text } => {
+                frame.fill_text(Text {
+                    content: text.clone(),
+                    position: iced::Point::new(*x, *y),
+                    color: to_color(*color),
+                    size: (*size).into(),
+                    line_height: iced::widget::text::LineHeight::Absolute(
+                        (*line_height).into(),
+                    ),
+                    ..Default::default()
+                });
+                i += 1;
+            }
+            // Plan 515 G2 —— typography 差分：weight/style 映射 iced Font
+            //（宿主字体栈按 face 选择——cosmic-text 家族回退取最接近档）。
+            DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                frame.fill_text(Text {
+                    content: text.clone(),
+                    position: iced::Point::new(*x, *y),
+                    color: to_color(*color),
+                    size: (*size).into(),
+                    line_height: iced::widget::text::LineHeight::Absolute(
+                        (*line_height).into(),
+                    ),
+                    font: iced::Font {
+                        weight: css_weight_to_iced(*weight),
+                        style: if *italic {
+                            iced::font::Style::Italic
+                        } else {
+                            iced::font::Style::Normal
+                        },
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+                i += 1;
+            }
+        }
     }
 }
 

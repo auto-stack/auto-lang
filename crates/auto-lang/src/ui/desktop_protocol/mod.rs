@@ -71,3 +71,119 @@ pub use message::{
     ControlMsg, DrawList, DrawOp, FontBlob, FrameMsg, HandshakeMsg, InputMsg, ObserveMsg,
     ProtocolMsg, Rgba8, WRect,
 };
+
+/// Plan 515 G4 C 族（P500-1）—— e2e 用真 `auto` 二进制的陈旧防护。
+/// `auto_exe()` 优先取现存二进制，陈旧产物会伪装成回归：mtime 对账
+/// `crates/` 树最新源文件，陈旧则 eprintln 警告（默认不阻断——警告即
+/// 留痕，"回归"结论前先看陈旧位）；`AUTO_FRESH_EXE=1` 强制重建。
+#[cfg(all(test, feature = "ui-iced"))]
+pub(crate) mod e2e_exe {
+    use std::path::{Path, PathBuf};
+
+    /// `crates/` 树下最新 `.rs` 的 (mtime, 路径)（跳过 target/node_modules）。
+    fn newest_source(root: &Path) -> Option<(std::time::SystemTime, PathBuf)> {
+        fn walk(dir: &Path, best: &mut Option<(std::time::SystemTime, PathBuf)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if p.is_dir() {
+                    if name == "target" || name == "node_modules" {
+                        continue;
+                    }
+                    walk(&p, best);
+                } else if name.ends_with(".rs") {
+                    if let Ok(meta) = e.metadata() {
+                        if let Ok(m) = meta.modified() {
+                            if best.as_ref().is_none_or(|(bm, _)| m > *bm) {
+                                *best = Some((m, p.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut best = None;
+        walk(root, &mut best);
+        best
+    }
+
+    /// 陈旧判定（纯函数，单测面）：exe mtime < newest 源 mtime → Some(最新源路径)。
+    pub fn stale_against(exe: &Path, src_root: &Path) -> Option<PathBuf> {
+        let exe_m = exe.metadata().ok()?.modified().ok()?;
+        let (src_m, src_p) = newest_source(src_root)?;
+        (exe_m < src_m).then_some(src_p)
+    }
+
+    /// 定位 + 陈旧防护（stage3/remote 两处 `auto_exe()` 共用体）。
+    pub fn locate_with_stale_guard() -> PathBuf {
+        let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
+        let build = || {
+            let status = std::process::Command::new("cargo")
+                .args(["build", "-p", "auto", "--bin", "auto"])
+                .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+                .status()
+                .expect("spawn cargo build -p auto");
+            assert!(status.success(), "cargo build -p auto 失败");
+            target.join("debug").join("auto.exe")
+        };
+        // AUTO_FRESH_EXE=1：无条件重建（e2e 结论前的确定性档）。
+        if std::env::var("AUTO_FRESH_EXE").as_deref() == Ok("1") {
+            eprintln!("[auto_exe] AUTO_FRESH_EXE=1 → 强制重建");
+            return build();
+        }
+        for profile in ["debug", "release"] {
+            let p = target.join(profile).join("auto.exe");
+            if p.exists() {
+                let src_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+                if let Some(newer) = stale_against(&p, &src_root.join("crates")) {
+                    eprintln!(
+                        "[auto_exe] 警告: {} 陈旧于最新源码（{}）——先重建再下\"回归\"结论；AUTO_FRESH_EXE=1 强制重建",
+                        p.display(),
+                        newer.display()
+                    );
+                }
+                return p;
+            }
+        }
+        build()
+    }
+}
+
+#[cfg(all(test, feature = "ui-iced"))]
+mod e2e_exe_tests {
+    use super::e2e_exe::stale_against;
+
+    /// Plan 515 G4 C2 单测：陈旧/新鲜两档判定（临时树手写 mtime）。
+    #[test]
+    fn stale_guard_detects_newer_source() {
+        let dir = std::env::temp_dir().join(format!("auto-exe-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("crates")).expect("mkdir");
+        let exe = dir.join("auto.exe");
+        let src = dir.join("crates").join("lib.rs");
+        std::fs::write(&exe, b"exe").expect("exe");
+        std::fs::write(&src, b"src").expect("src");
+        // 同拍写盘（mtime 粒度）：exe 触回一次使其确定更旧。
+        let older = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let _ = std::fs::File::options().write(true).open(&exe).and_then(|f| {
+            f.set_modified(older)
+        });
+        assert!(
+            stale_against(&exe, &dir.join("crates")).is_some(),
+            "源码新于 exe → 陈旧检出"
+        );
+        // 源码更旧 → None。
+        let _ = std::fs::File::options().write(true).open(&src).and_then(|f| {
+            f.set_modified(older - std::time::Duration::from_secs(3600))
+        });
+        assert!(
+            stale_against(&exe, &dir.join("crates")).is_none(),
+            "源码旧于 exe → 不陈旧"
+        );
+        // exe 不存在 → None（调用方走构建臂）。
+        std::fs::remove_file(&exe).expect("rm");
+        assert!(stale_against(&exe, &dir.join("crates")).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

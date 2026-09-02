@@ -32,6 +32,21 @@ function mockCtx(width = 480, height = 320) {
     fillText(text: string, x: number, y: number) {
       calls.push({ op: 'fillText', text, x, y });
     },
+    save() {
+      calls.push({ op: 'save' });
+    },
+    restore() {
+      calls.push({ op: 'restore' });
+    },
+    beginPath() {
+      calls.push({ op: 'beginPath' });
+    },
+    rect(x: number, y: number, w: number, h: number) {
+      calls.push({ op: 'rect', x, y, w, h });
+    },
+    clip() {
+      calls.push({ op: 'clip' });
+    },
   } as unknown as CanvasRenderingContext2D;
   return { ctx, calls };
 }
@@ -74,8 +89,61 @@ describe('renderFrame（Canvas2D）', () => {
     expect(calls).toEqual([]);
   });
 
+  it('scissor 栈：save/clip 包裹 + pop restore + 未闭合帧尾补 restore（Plan 515 G1）', () => {
+    // push → quad → pop → 后续 quad 不再裁。
+    const balanced: DrawList = {
+      clear: null,
+      ops: [
+        { kind: 'scissor', rect: { x: 8, y: 8, w: 120, h: 60 } },
+        { kind: 'quad', rect: { x: 0, y: 0, w: 400, h: 400 }, color: { r: 59, g: 130, b: 246, a: 255 } },
+        { kind: 'scissorPop' },
+        { kind: 'quad', rect: { x: 1, y: 1, w: 2, h: 2 }, color: { r: 9, g: 14, b: 26, a: 255 } },
+      ],
+    };
+    const { ctx, calls } = mockCtx();
+    renderFrame(ctx, balanced);
+    expect(calls.map((c) => c.op)).toEqual([
+      'save', 'beginPath', 'rect', 'clip',
+      'fillStyle', 'fillRect',
+      'restore',
+      'fillStyle', 'fillRect',
+    ]);
+
+    // 未闭合 push：帧尾补 restore（状态不泄漏）；空栈 pop = no-op。
+    const unclosed: DrawList = {
+      clear: null,
+      ops: [
+        { kind: 'scissorPop' }, // 空栈 pop
+        { kind: 'scissor', rect: { x: 0, y: 0, w: 10, h: 10 } },
+        { kind: 'scissor', rect: { x: 0, y: 0, w: 5, h: 5 } }, // 嵌套
+      ],
+    };
+    const { ctx: ctx2, calls: calls2 } = mockCtx();
+    renderFrame(ctx2, unclosed);
+    expect(calls2.filter((c) => c.op === 'restore')).toHaveLength(2);
+  });
+
   it('rgbaToCss 透明度换算', () => {
     expect(rgbaToCss({ r: 0, g: 0, b: 0, a: 128 })).toBe('rgba(0, 0, 0, 0.502)');
+  });
+
+  it('textStyled 字重/斜体差分 font 串（Plan 515 G2）', () => {
+    const styled: DrawList = {
+      clear: null,
+      ops: [
+        { kind: 'textStyled', x: 1, y: 2, size: 16, lineHeight: 21.6, color: { r: 255, g: 255, b: 255, a: 255 }, weight: 700, italic: false, text: 'b' },
+        { kind: 'textStyled', x: 1, y: 30, size: 14, lineHeight: 18.9, color: { r: 255, g: 255, b: 255, a: 255 }, weight: 400, italic: true, text: 'i' },
+        { kind: 'textStyled', x: 1, y: 60, size: 14, lineHeight: 18.9, color: { r: 255, g: 255, b: 255, a: 255 }, weight: 400, italic: false, text: 'plain-eq' },
+      ],
+    };
+    const { ctx, calls } = mockCtx();
+    renderFrame(ctx, styled);
+    const fonts = calls.filter((c) => c.op === 'font').map((c) => c.value);
+    expect(fonts).toEqual([
+      '700 16px system-ui, sans-serif',
+      'italic 14px system-ui, sans-serif',
+      '14px system-ui, sans-serif',
+    ]);
   });
 });
 

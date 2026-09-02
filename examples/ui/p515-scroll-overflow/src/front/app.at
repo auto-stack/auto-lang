@@ -1,0 +1,39 @@
+// p515-scroll-overflow — PLAN-515 G1 构造覆盖示例：scrollable 溢出裁剪
+// （Scissor 算子）的实机 queue 模式语料。外层 scroll h-32（128px 视口，
+// 8 行内容静态溢出）+ 内层 scroll h-10（40px 视口，嵌套二层——协议
+// §1.5 栈深度定案的 v1 产出上限）+ 视口内外双按钮（命中区视口过滤的
+// e2e 锚点：视口外按钮不可点）。
+
+widget App {
+    model { var n int = 0 }
+
+    msg B { Bump }
+
+    on { .Bump -> { .n += 1 } }
+
+    view {
+        col (style: "gap-2 p-2") {
+            b "scissor e2e"
+            scroll (style: "h-32") {
+                col (style: "gap-1") {
+                    text "line-1"
+                    text "line-2"
+                    text "line-3"
+                    text "line-4"
+                    scroll (style: "h-10") {
+                        col (style: "gap-1") {
+                            text "inner-1"
+                            text "inner-2"
+                            text "inner-3"
+                            text "inner-4"
+                        }
+                    }
+                    text "line-5"
+                    button "In" { onclick: .Bump }
+                }
+            }
+            text `bumps: ${.n}`
+            button "Out" { onclick: .Bump }
+        }
+    }
+}

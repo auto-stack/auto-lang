@@ -137,6 +137,23 @@ RenderQueue 为统一帧词汇**——queue 臂 DrawList（Stage 5 覆盖集）�
 App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口纪律
 验证有效）。
 
+## 1.5 v1.5 增量（queue 臂保真收口——scissor 裁剪算子 + typography 差分，Plan 515）
+
+- **scissor 裁剪算子**（G1）：`DrawOp::Scissor{rect}`（tag 3 追加式）=
+  压栈裁剪矩形（宿主坐标空间，与当前有效裁剪**取交集**）；`DrawOp::ScissorPop`
+  （tag 4）= 出栈。投影器 scrollable 臂在内容溢出时产 push/pop 对——
+  溢出内容宿主侧正确裁剪（507-1 收口）。**栈深度定案**（计划待澄清①）：
+  线格式不设上限（ops 序列天然任意深），v1 投影器产出 ≤2 层（嵌套
+  scrollable 实测两层层级够用），消费端（宿主栅格化 / TS 渲染器）实现
+  为无界栈、须支持 ≥2 层。配对纪律：编码端保证 push/pop 平衡；栅格端
+  宽容——空栈 pop = no-op、未闭合 push 裁到序列尾；解码端逐 op 无状态。
+- **typography 差分通道**（G2）：`DrawOp::TextStyled{x,y,size,line_height,
+  color,weight,italic,text}`（tag 5 追加式）——`weight` = CSS 字重刻度
+  u16（400 = normal / 700 = bold），`italic` = bool。既有 `Text`（tag 2）
+  线格式冻结不动；投影器在 weight = 400 且非斜体时仍产 `Text`（旧端
+  远程消费面零破坏），bold/italic 档产 `TextStyled`。宿主 `fill_text` /
+  TS `fillText` 按 weight/italic 产视觉差分（507-1 typography 收口）。
+
 ## 2. Wire Format（信封）
 
 小端。头部 12 字节定长：
