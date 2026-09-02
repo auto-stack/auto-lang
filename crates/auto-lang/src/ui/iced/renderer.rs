@@ -7967,6 +7967,15 @@ fn toggle_settings(
     // storage 直写，本注入只在召唤时点）。
     let wallpaper = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
         .unwrap_or_default();
+    // Plan 518 G1/G6：Appearance 分区快照——主题键（缺席 = dark 默认）与
+    // 透明度档位（缺席 = off）。
+    let theme = crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme")
+        .filter(|t| t == "light")
+        .map(|_| "light")
+        .unwrap_or("dark");
+    let transparency = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency")
+        .filter(|t| t == "low" || t == "high")
+        .unwrap_or_else(|| "off".to_string());
     let pinned: Vec<auto_val::Value> = state
         .desktop
         .dock_pinned
@@ -7992,6 +8001,13 @@ fn toggle_settings(
         let _ = app
             .component
             .write_state("cfg_wallpaper", auto_val::Value::str(wallpaper));
+        let _ = app
+            .component
+            .write_state("cfg_theme", auto_val::Value::str(theme));
+        let _ = app.component.write_state(
+            "cfg_transparency",
+            auto_val::Value::str(transparency),
+        );
         let _ = app.component.write_state(
             "osconfig_state",
             auto_val::Value::str(osc_state),
@@ -8262,9 +8278,34 @@ fn execute_desktop_commands(
             // + storage 写回；执行体见下）。
             DC::SetDockPosition(top) => execute_set_dock_position(state, top),
             DC::SetDockEnabled(on) => execute_set_dock_enabled(state, on),
+            // Plan 518 G1：主题热切换（Appearance 分区 Dark Mode 钮）。
+            DC::SetTheme(dark) => execute_set_theme(state, dark),
         }
     }
     (false, tasks)
+}
+
+/// Plan 518 G1：`set_theme` 执行臂——set_dark_mode 即时生效（语义 token
+/// + 窗口调色板同源跟帧）+ storage `shell.appearance.theme` 持久化（boot
+/// 读回）+ 已声明 dark_mode 的 App 状态变量同步（458 语义：运行时变量
+/// 每帧回写全局,不同步则被旧值翻回）+ 全 App view_dirty（构建期解析的
+/// 颜色需重建换色）。
+fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool) {
+    crate::ui::style::iced_adapter::set_dark_mode(dark);
+    crate::vm::ffi::stdlib::storage_host_publish(
+        "shell.appearance.theme",
+        if dark { "dark" } else { "light" }.to_string(),
+    );
+    // Plan 497 G3 同款：全场快照随撤（窗口缩略按旧主题渲染）。
+    crate::ui::iced::snapshot::invalidate_all();
+    for app in state.apps.values_mut() {
+        if app.component.read_state("dark_mode").is_ok() {
+            let _ = app
+                .component
+                .write_state("dark_mode", auto_val::Value::Bool(dark));
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
 }
 
 /// Plan 473 T5 / 486：下一个原生槽位的级联占位（桌面逻辑域）。dock 执行臂
@@ -10268,6 +10309,14 @@ fn compare_pngs(
                 // （487 pinned 同语义）。
                 session.desktop.desktop_wallpaper = load_desktop_wallpaper();
                 inject_desktop_surface(&mut session);
+                // Plan 518 G1：boot 主题读回（storage `shell.appearance.theme`
+                // 覆盖 thread-local 默认——settings.at Appearance 切换的持久
+                // 端；仅设全局,已声明 dark_mode 的 App 变量由 458 播种链管）。
+                if let Some(t) =
+                    crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme")
+                {
+                    crate::ui::style::iced_adapter::set_dark_mode(t.trim() != "light");
+                }
                 // Plan 480 S3：真桌面壳孵化通道——broker 常驻受理 spawn 孵化
                 // （`auto --autodesk-incubate` 经 `request_incubation` 连入，
                 // ServiceTick 帧泵周期 attach 落 462 会话）。
@@ -20965,6 +21014,97 @@ mod tests {
                 }
             }
         }
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Plan 518 G1/G6 T2：Appearance 分区增量——主题切换（PickTheme →
+    /// set_theme 动词 → SetTheme 执行臂 set_dark_mode + storage
+    /// shell.appearance.theme 持久化）+ 透明度三档（PickTransparency →
+    /// storage 直写 → load_transparency_alpha 即时取值）+ 召唤快照注入
+    /// （cfg_theme/cfg_transparency）。
+    #[test]
+    fn settings_appearance_theme_and_transparency_sections() {
+        let path = t2_isolate_storage("518-appearance");
+        // 预置 light 主题 + 无透明度键：召唤快照应注入 light / off。
+        crate::vm::ffi::stdlib::storage_host_publish("shell.appearance.theme", "light".into());
+        let mut ds = t3_session_with_shell();
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_theme") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "light", "召唤注入主题快照")
+                }
+                other => panic!("cfg_theme 读回异常: {other:?}"),
+            }
+            match app.component.read_state("cfg_transparency") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "off", "透明度键缺席注入 off")
+                }
+                other => panic!("cfg_transparency 读回异常: {other:?}"),
+            }
+        }
+        // Nav 外观分区 + PickTheme(dark)：面板态翻转 + set_theme 记录 →
+        // 执行臂落 set_dark_mode(true) + storage 写回 dark。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Nav", &[auto_val::Value::str("appearance")])
+            .expect("Nav handler");
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickTheme", &[auto_val::Value::str("dark")])
+            .expect("PickTheme handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_theme") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "dark", "PickTheme 面板态翻转")
+                }
+                other => panic!("cfg_theme 读回异常: {other:?}"),
+            }
+        }
+        // 排空面板上行总线（drain_app_desktop_commands 同型：直接排空并执行）。
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                crate::ui::session::DesktopCommand::SetTheme(true)
+            )),
+            "PickTheme 上行 set_theme dark,得到 {cmds:?}"
+        );
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert!(
+            crate::ui::style::iced_adapter::dark_mode(),
+            "SetTheme 执行臂 set_dark_mode(true)"
+        );
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme").as_deref(),
+            Some("dark"),
+            "set_theme 持久化 shell.appearance.theme"
+        );
+        // PickTransparency(high)：storage 直写 + load_transparency_alpha 即时 0.62。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickTransparency", &[auto_val::Value::str("high")])
+            .expect("PickTransparency handler");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency").as_deref(),
+            Some("high"),
+            "PickTransparency 直写透明度键"
+        );
+        assert_eq!(
+            crate::ui::iced::virtual_window::load_transparency_alpha(),
+            0.62,
+            "虚拟窗底色 alpha 即时取值 high 档"
+        );
 
         let _ = std::fs::remove_file(&path);
     }

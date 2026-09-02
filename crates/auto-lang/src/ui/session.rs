@@ -1044,6 +1044,10 @@ pub enum DesktopCommand {
     SetDockPosition(bool),
     /// Plan 487 M4：dock 启用开关热切换（false = 零预留；执行臂同上）。
     SetDockEnabled(bool),
+    /// Plan 518 G1：主题热切换（settings.at Appearance 分区；true = dark）。
+    /// 执行臂 set_dark_mode 即时生效 + storage `shell.appearance.theme`
+    /// 持久化 + 全 App 视图标脏（语义 token 构建期解析，需重建换色）。
+    SetTheme(bool),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1161,6 +1165,14 @@ impl DesktopCommand {
             DesktopCommand::SetDockEnabled(on) => {
                 format!("set_dock_enabled{}{}", Self::FIELD_SEP, if *on { 1 } else { 0 })
             }
+            // Plan 518 G1：主题动词（值域 dark/light，窄值跳过同 set_dock_*）。
+            DesktopCommand::SetTheme(dark) => {
+                format!(
+                    "set_theme{}{}",
+                    Self::FIELD_SEP,
+                    if *dark { "dark" } else { "light" }
+                )
+            }
         }
     }
 
@@ -1257,6 +1269,12 @@ impl DesktopCommand {
                     "set_dock_enabled" => match arg {
                         "1" => Some(DesktopCommand::SetDockEnabled(true)),
                         "0" => Some(DesktopCommand::SetDockEnabled(false)),
+                        _ => None,
+                    },
+                    // Plan 518 G1：主题动词（dark/light 窄值域）。
+                    "set_theme" => match arg {
+                        "dark" => Some(DesktopCommand::SetTheme(true)),
+                        "light" => Some(DesktopCommand::SetTheme(false)),
                         _ => None,
                     },
                     _ => None,
