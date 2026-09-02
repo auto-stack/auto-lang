@@ -1807,6 +1807,48 @@ mod tests {
         (decls, root_widget, registry)
     }
 
+    /// Plan 448 C: bare `value:` two-way binding on the VM path. The parser
+    /// mints an empty `__bind_oninput_<n>` event binding; input_state_map
+    /// keys it to the bound field and on_with_input writes the typed text
+    /// BEFORE dispatch, so typing persists with no msg/on boilerplate.
+    #[test]
+    fn plan448_bare_value_input_vm_writeback() {
+        let src = concat!(
+            "widget App {\n",
+            "    model { var email str = \"\" }\n",
+            "    view { col { input { value: .email, placeholder: \"you@example.com\" } } }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &[],
+            &root_widget,
+            registry,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+
+        // The minted auto-sync event registered and mapped to the field.
+        let map = comp.input_state_map();
+        assert!(
+            map.iter().any(|(ev, field)| ev.starts_with("__bind_App_oninput_") && field == "email"),
+            "auto-sync mint must map to the bound field, got: {:?}",
+            map
+        );
+
+        // Dispatch the typed text the way the iced runtime does: the empty
+        // handler runs (no-op) and the pre-dispatch writeback lands.
+        comp.on_with_input("__bind_App_oninput_1", Some("a@b.c".to_string()));
+        assert_eq!(
+            comp.bridge.read_state("email").unwrap().as_str(),
+            "a@b.c",
+            "typed text must persist into state"
+        );
+    }
+
     /// PLAN-051 T3 (C2 ②体内式): 017-chat 契约——子 handler 体内
     /// `on_send(.draft)` 此前被 strip_callback_calls 静默剥除（D-GAP-4），
     /// App.SendMessage 永不触发。期望：DoSend 派发后宿主收到**快照实参**

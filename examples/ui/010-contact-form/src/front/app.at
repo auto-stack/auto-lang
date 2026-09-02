@@ -3,12 +3,7 @@
 // retired) — title/theme/accent live in pac.at + os-config, host chrome carries them.
 // Default theme: Dark mode.
 widget App {
-    msg {
-        NameChanged,
-        EmailChanged,
-        MessageChanged,
-        Submit
-    }
+    msg { Submit }
 
     model {
         var dark_mode bool = true
@@ -195,7 +190,7 @@ widget App {
                                         "text-xs font-semibold text-gray-700 uppercase tracking-wide"
                                     }
                                 }
-                                input { placeholder: "Your name", value: .name, oninput: .NameChanged }
+                                input { placeholder: "Your name", value: .name }
                                 style: "gap-1.5 w-full"
                             }
                             col {
@@ -206,7 +201,7 @@ widget App {
                                         "text-xs font-semibold text-gray-700 uppercase tracking-wide"
                                     }
                                 }
-                                input { placeholder: "you@example.com", value: .email, oninput: .EmailChanged }
+                                input { placeholder: "you@example.com", value: .email }
                                 style: "gap-1.5 w-full"
                             }
                             col {
@@ -217,7 +212,7 @@ widget App {
                                         "text-xs font-semibold text-gray-700 uppercase tracking-wide"
                                     }
                                 }
-                                textarea { placeholder: "How can we help?", value: .message, oninput: .MessageChanged }
+                                textarea { placeholder: "How can we help?", value: .message }
                                 style: "gap-1.5 w-full"
                             }
                             if .submitted {
@@ -264,15 +259,6 @@ widget App {
     }
 
     on {
-        .NameChanged -> {
-            .name = .name
-        }
-        .EmailChanged -> {
-            .email = .email
-        }
-        .MessageChanged -> {
-            .message = .message
-        }
         .Submit -> {
             .submitted = true
         }
