@@ -108,6 +108,16 @@ type P {
         return .toks.get(i).kind
     }
 
+    // 前瞻文本(n 相对位,越界回 "")——typeinfo/codegen 原重复自由函数
+    // p_text_at/p_peek_text 合并入体(γ4:纯 P 操作;P514 W3-14)
+    fn peek_text(n int) str {
+        var i = .pos + n
+        if i >= .toks.len() {
+            return ""
+        }
+        return .toks.get(i).text
+    }
+
     // Parser::next 直译:前进一 token 并跳过注释 token
     fn next() {
         .pos = .pos + 1
@@ -1585,7 +1595,7 @@ fn parse_use(mut p P) str {
     p.next()
     // 异构形态:use.rs / use.py(use 已消费,cur 为 Dot)
     if p.kind() == TokenKind.Dot {
-        var lang = p_peek_text(p, 1)
+        var lang = p.peek_text(1)
         p.next()
         p.next()
         if lang != "rs" && lang != "py" && lang != "c" {

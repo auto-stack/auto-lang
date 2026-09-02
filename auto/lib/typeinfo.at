@@ -139,7 +139,7 @@ fn t_is_type_prop(p P) bool {
     if nk == TokenKind.Type {
         return true
     }
-    return nk == TokenKind.Ident && p_text_at(p, 1) == "type"
+    return nk == TokenKind.Ident && p.peek_text(1) == "type"
 }
 
 fn t_try_print_query(mut p P, mut out List<str>, mut fns List<TFnSig>) int {
@@ -177,14 +177,6 @@ fn t_try_print_query(mut p P, mut out List<str>, mut fns List<TFnSig>) int {
 }
 
 // 前瞻读取 pos+n 处 token 文本(不推进)
-fn p_text_at(p P, n int) str {
-    var i = p.pos + n
-    if i >= p.toks.len() {
-        return ""
-    }
-    return p.toks.get(i).text
-}
-
 // 语句分派:fn → 注册;let/var → 推断绑定;print 查询;其余表达式消费。
 // ── is 语句走查(Plan 447 部分② Phase 5)───────────────────────
 // 臂体走查 + 载荷绑定按 Enum.Variant.slot 入局部作用域(镜像宿主 infer
