@@ -48,6 +48,26 @@ element aside {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element autodown {
+    tag: "autodown"
+    category: "content"
+    tier: "builtin_widget"
+    aliases: ["markdown", "markdown_editor"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "StreamingRenderer", import: "@autodown/engine", npm: "@autodown/engine@^0.4.0" }
+    props: [
+        { name: "content", type: "union:string,state_ref", description: "AutoDown source (literal or state-bound)" }
+        { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — emitted as :streaming=!final; an explicit streaming prop wins when both are set" }
+        { name: "streaming", type: "union:bool,state_ref", default: "false", description: "Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040 契约扩展)" }
+        { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043)" }
+        { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043)" }
+        { name: "scroll_sync", type: "union:bool,state_ref", default: "true", description: "Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→autodown; @autodown/engine StreamingRenderer on vue — superset composing MarkdownRender, autodown-core parse_blocks on VM)"
+}
+
 element autodown_editor {
     tag: "autodown_editor"
     category: "form"
@@ -58,6 +78,7 @@ element autodown_editor {
     props: [
         { name: "key", type: "string", description: "Stable state-storage identity (VM editor shell registry key)" }
         { name: "content", type: "union:string,state_ref", description: "Bound markdown document body" }
+        { name: "placeholder", type: "union:string,state_ref", description: "Empty-state hint text (plan 040; VM v1 ignores)" }
         { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker (editor treats document as final)" }
         { name: "can_edit", type: "bool", default: "true", description: "Whether the editor is interactive (vue arm: canEdit)" }
         { name: "show_actions", type: "bool", default: "true", description: "Show editor action bar (vue arm: showActions)" }
@@ -484,22 +505,6 @@ element main {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element markdown {
-    tag: "markdown"
-    category: "content"
-    tier: "builtin_widget"
-    aliases: ["autodown", "markdown_editor"]
-    backends: { web: "component", iced: "unknown", gpui: "unknown" }
-    vue: { component: "MarkdownRender", import: "@autodown/engine", npm: "@autodown/engine@^0.4.0" }
-    props: [
-        { name: "content", type: "union:string,state_ref", description: "Markdown source (literal or state-bound)" }
-        { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker: false = still receiving chunks (dangling-marker stripping)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "AutoDown document renderer (read-only; @autodown/engine MarkdownRender on vue, autodown-core parse_blocks on VM)"
 }
 
 element menubar {

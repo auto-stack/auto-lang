@@ -314,7 +314,7 @@ mod tests {
         };
         assert_eq!(children.len(), 2);
         match &children[0] {
-            View::Text { content, style } => {
+            View::Text { content, style, .. } => {
                 assert_eq!(content, "标题");
                 let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);

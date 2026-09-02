@@ -131,7 +131,6 @@ render_not_in_rs	accordion-trigger
 render_not_in_rs	article
 render_not_in_rs	aside
 render_not_in_rs	audio
-render_not_in_rs	autodown
 render_not_in_rs	autodowneditor
 render_not_in_rs	avatar
 render_not_in_rs	btn
@@ -166,6 +165,7 @@ render_not_in_rs	img
 render_not_in_rs	list-item
 render_not_in_rs	loading
 render_not_in_rs	main
+render_not_in_rs	markdown
 render_not_in_rs	markdown_editor
 render_not_in_rs	media
 render_not_in_rs	modal
@@ -216,7 +216,6 @@ render_not_in_vb	canvas
 render_not_in_vb	card
 render_not_in_vb	category-section
 render_not_in_vb	category_section
-render_not_in_vb	chart
 render_not_in_vb	chip
 render_not_in_vb	code
 render_not_in_vb	code-block
@@ -481,7 +480,6 @@ rs_not_in_vb	carddescription
 rs_not_in_vb	cardfooter
 rs_not_in_vb	cardheader
 rs_not_in_vb	cardtitle
-rs_not_in_vb	chart
 rs_not_in_vb	code
 rs_not_in_vb	codeblock
 rs_not_in_vb	codepane
@@ -632,7 +630,6 @@ rs_not_in_vb	toggle_group
 rs_not_in_vb	toggle_group_item
 rs_not_in_vb	ul
 vb0_not_in_vb1	menubar
-vb0_not_in_vb1	popover
 vb0_not_in_vb1	toolbar
 vb1_not_in_vb0	Select
 vb1_not_in_vb0	select
@@ -659,7 +656,6 @@ vb_not_in_rs	Slot
 vb_not_in_rs	a
 vb_not_in_rs	article
 vb_not_in_rs	aside
-vb_not_in_rs	autodown
 vb_not_in_rs	autodowneditor
 vb_not_in_rs	avatar
 vb_not_in_rs	b
@@ -684,6 +680,7 @@ vb_not_in_rs	hr
 vb_not_in_rs	i
 vb_not_in_rs	img
 vb_not_in_rs	main
+vb_not_in_rs	markdown
 vb_not_in_rs	markdown_editor
 vb_not_in_rs	nav
 vb_not_in_rs	nav_group
