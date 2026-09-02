@@ -650,6 +650,14 @@ pub struct VueGenerator {
     bind_key_bindings: Vec<(String, String)>,
     /// Module-level plain functions attached to the widget file (e.g. `fn eval_expr(...)`).
     pub module_fns: Vec<crate::aura::AuraModuleFn>,
+    /// Plan 522: `use` 导入模块的 fn 池 —— 模块内全部模块级 fn(含未被
+    /// use items 列出的兄弟 fn;依赖闭包按裸名拉取要用全量池)。由 api.rs
+    /// 的 `collect_use_module_fns` 产出(与 vm 侧全模块加载对齐)。
+    pub use_module_fns: Vec<crate::aura::AuraModuleFn>,
+    /// Plan 522: `use module: a, b` items 显式导入的裸名集合 —— widget
+    /// computed/handler 体引用的合法入口门(与 vm import_aliases 同口径;
+    /// 池内闭包拉取不受此门限)。
+    pub use_imported_names: std::collections::HashSet<String>,
 }
 
 /// A Vue component declared in a widget-level `use { component: ... }` block.
@@ -811,12 +819,27 @@ impl VueGenerator {
             setup_ref_fields: std::collections::HashMap::new(),
             current_setup_stmts: None,
             module_fns: Vec::new(),
+            use_module_fns: Vec::new(),
+            use_imported_names: std::collections::HashSet::new(),
         }
     }
 
     /// Attach module-level plain functions from the source file
     pub fn with_module_fns(mut self, module_fns: Vec<crate::aura::AuraModuleFn>) -> Self {
         self.module_fns = module_fns;
+        self
+    }
+
+    /// Plan 522: attach the use-imported module fn pool + the bare names the
+    /// widget file explicitly imports (`use module: a, b` items). Fns referenced
+    /// from computed/handler bodies are transpiled into the SFC script tail.
+    pub fn with_use_module_fns(
+        mut self,
+        fns: Vec<crate::aura::AuraModuleFn>,
+        imported_names: Vec<String>,
+    ) -> Self {
+        self.use_module_fns = fns;
+        self.use_imported_names = imported_names.into_iter().collect();
         self
     }
 
@@ -3518,6 +3541,11 @@ impl VueGenerator {
             }
         }
 
+        // Plan 522: use 导入的模块级 helper fn —— 按需(computed/handler 体
+        // 引用)转译进 SFC script 尾部。function 声明有提升,上方 computed
+        // 段的裸名调用点可解析,调用点零改写。
+        self.emit_use_module_fns(widget, &mut script);
+
         // Generate lifecycle hooks from widget.lifecycle
         // .Init → onMounted
         if let Some(init) = widget.lifecycle.iter().find(|l| l.name == "Init") {
@@ -4007,6 +4035,88 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             .with_typed_ints(self.int_names.iter().cloned().collect())
             .with_facade_names(self.facade_local_names())
             .with_facade_ref_fields(self.facade_ref_fields_map())
+    }
+
+    /// Plan 522: 把 computed/handler 体引用的 use 导入 helper fn 转译为 TS
+    /// 函数发射进 SFC script 尾部(复用 module_fns 的发射形态)。要点:
+    /// - 入口门控:widget 体引用的裸名必须 ∈ use items 导入名集合(与 vm
+    ///   import_aliases 同口径 —— 未导入的池内 fn 不拉);
+    /// - 依赖闭包:被拉 fn 体内引用的池内其他 fn 一并拉入,迭代到不动点
+    ///   (对应 vm 侧全模块加载:build_month_grid → weekday_of 兄弟解析);
+    /// - 去重:同名只发一份(池序稳定输出)。
+    fn emit_use_module_fns(&self, widget: &AuraWidget, script: &mut String) {
+        use std::collections::{HashMap, HashSet};
+
+        if self.use_module_fns.is_empty() {
+            return;
+        }
+        // 1. widget 体引用的裸名(computed 表达式 + handler 体)。
+        let mut referenced: HashSet<String> = HashSet::new();
+        for c in &widget.computed {
+            collect_called_bare_names_expr(&c.expr, &mut referenced);
+        }
+        for payload in widget.handlers.values() {
+            if let LogicPayload::AstStmts(stmts) = payload {
+                collect_called_bare_names_stmts(stmts, &mut referenced);
+            }
+        }
+        // 2. 入口门控 + 闭包拉取(池内按名,迭代到不动点)。
+        let mut pool_position: HashMap<&str, usize> = HashMap::new();
+        for (i, mfn) in self.use_module_fns.iter().enumerate() {
+            pool_position.entry(mfn.name.as_str()).or_insert(i);
+        }
+        let mut pulled_idx: Vec<usize> = Vec::new();
+        let mut pulled_names: HashSet<String> = HashSet::new();
+        let mut frontier: Vec<String> = referenced
+            .into_iter()
+            .filter(|n| self.use_imported_names.contains(n.as_str()))
+            .collect();
+        while let Some(name) = frontier.pop() {
+            if !pulled_names.insert(name.clone()) {
+                continue;
+            }
+            let Some(&idx) = pool_position.get(name.as_str()) else {
+                continue;
+            };
+            pulled_idx.push(idx);
+            // 闭包:被拉 fn 体内引用的池内 fn 入队(池内解析,不受导入门限)。
+            let mut called: HashSet<String> = HashSet::new();
+            collect_called_bare_names_stmts(&self.use_module_fns[idx].body, &mut called);
+            for dep in called {
+                if !pulled_names.contains(&dep) && pool_position.contains_key(dep.as_str()) {
+                    frontier.push(dep);
+                }
+            }
+        }
+        if pulled_idx.is_empty() {
+            return;
+        }
+        pulled_idx.sort_unstable();
+        pulled_idx.dedup();
+        // 3. 发射(script 尾部;function 声明提升保证上方调用点可解析)。
+        let ctx = self.handler_ts_ctx();
+        for idx in pulled_idx {
+            let mfn = &self.use_module_fns[idx];
+            let param_list = mfn
+                .params
+                .iter()
+                .map(|p| format!("{}: any", p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ret_anno = if mfn.ret_ts.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", mfn.ret_ts)
+            };
+            script.push_str(&format!(
+                "function {}({}){} {{\n",
+                mfn.name, param_list, ret_anno
+            ));
+            let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
+            let indented = Self::indent_body(&body, "  ");
+            script.push_str(&indented);
+            script.push_str("\n}\n\n");
+        }
     }
 
     fn generate_handler_body(&self, payload: &LogicPayload) -> GenResult<String> {
@@ -24446,6 +24556,248 @@ widget TestGap {
         assert!(sfc.contains("<div class=\"flex flex-col gap-1\">"), "SFC should contain <div class=\"flex flex-col gap-1\">, got:\n{}", sfc);
         assert!(!sfc.contains("gap-4"), "SFC should NOT contain gap-4, got:\n{}", sfc);
     }
+
+    // ====================================================================
+    // Plan 522 — use 导入的模块级 helper fn 按需发射进消费方 SFC。
+    // 池 + 导入名集合由 api.rs 的 collect_use_module_fns 从真实模块文件
+    // 产出；单测用模块源串直接构造同样的池（Parser → extract_module_fn），
+    // 与 gen_sfc_from_widget_src 一样走真实解析路径。
+    // ====================================================================
+
+    /// Plan 522: widget 源 + 模块源 + 显式导入的裸名集合 → SFC。
+    fn gen_sfc_with_use_fns(
+        widget_src: &str,
+        module_src: &str,
+        imported: &[&str],
+    ) -> String {
+        gen_sfc_with_use_fns_and_warnings(widget_src, module_src, imported).0
+    }
+
+    fn gen_sfc_with_use_fns_and_warnings(
+        widget_src: &str,
+        module_src: &str,
+        imported: &[&str],
+    ) -> (String, Vec<crate::ui_gen::validators::ValidationWarning>) {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(widget_src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+
+        let mut mparser =
+            crate::parser::Parser::from(module_src).with_session(crate::session::CompilerSession::ui());
+        let mast = mparser.parse().expect("module source must parse");
+        let pool: Vec<crate::aura::AuraModuleFn> = mast
+            .stmts
+            .iter()
+            .filter_map(|s| {
+                if let crate::ast::Stmt::Fn(f) = s {
+                    crate::aura::extract_module_fn(f)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut gen = VueGenerator::new().with_use_module_fns(
+            pool,
+            imported.iter().map(|s| s.to_string()).collect(),
+        );
+        let sfc = gen.generate(&widget).expect("generate SFC");
+        (sfc, gen.last_validation_warnings.clone())
+    }
+
+    #[test]
+    fn test_plan522_use_fn_called_in_expr_computed_is_emitted() {
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget Doublers {
+    model { var n int = 3 }
+    computed { twice => double(.n) }
+    view { col { text `d: ${.twice}` } }
+}
+"#,
+            r#"
+pub fn double(x int) int {
+    return x * 2
+}
+"#,
+            &["double"],
+        );
+        assert!(
+            sfc.contains("function double(x: any): number {"),
+            "helper fn transpiled into SFC script:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("double(n.value)"),
+            "call site in computed keeps bare name (zero rewriting):\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_unreferenced_is_not_emitted() {
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget Pick {
+    model { var n int = 3 }
+    computed { twice => double(.n) }
+    view { col { text `d: ${.twice}` } }
+}
+"#,
+            r#"
+pub fn double(x int) int {
+    return x * 2
+}
+
+pub fn unused_helper(x int) int {
+    return x + 100
+}
+"#,
+            &["double", "unused_helper"],
+        );
+        assert!(
+            sfc.contains("function double(x: any): number {"),
+            "referenced helper emitted:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("unused_helper"),
+            "unreferenced helper must NOT be emitted (on-demand pull):\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_closure_deps_pulled_to_fixpoint() {
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget Grid {
+    model { var n int = 3 }
+    computed { labeled => label_it(square(.n)) }
+    view { col { text `d: ${.labeled}` } }
+}
+"#,
+            r#"
+pub fn square(x int) int {
+    return triple(x) + x
+}
+
+pub fn triple(x int) int {
+    return x * 3
+}
+
+pub fn label_it(x int) str {
+    return "v=" + x.to_string()
+}
+
+pub fn unrelated(x int) int {
+    return x
+}
+"#,
+            &["square", "label_it", "triple", "unrelated"],
+        );
+        assert!(sfc.contains("function square(x: any): number {"), "entry fn emitted:\n{}", sfc);
+        assert!(sfc.contains("function triple(x: any): number {"), "intra-module closure dep emitted (square -> triple):\n{}", sfc);
+        assert!(sfc.contains("function label_it(x: any): string {"), "second entry fn emitted:\n{}", sfc);
+        assert!(!sfc.contains("unrelated"), "non-referenced pool fn not emitted:\n{}", sfc);
+    }
+
+    #[test]
+    fn test_plan522_use_fn_block_body_computed_calls_helper() {
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget Blocky {
+    model { var n int = 3 }
+    computed {
+        twice => {
+            let base = double(.n)
+            return base + 1
+        }
+    }
+    view { col { text `d: ${.twice}` } }
+}
+"#,
+            r#"
+pub fn double(x int) int {
+    return x * 2
+}
+"#,
+            &["double"],
+        );
+        assert!(
+            sfc.contains("function double(x: any): number {"),
+            "block-body computed referencing helper pulls it in:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("double(n.value)"),
+            "call site in block body unchanged:\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_called_in_handler_body_is_emitted() {
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget HandlerCaller {
+    msg Msg { Go }
+    model { var n int = 3 }
+    view { col { button "go" (onclick: .Go) } }
+    on {
+        .Go -> { .n = double(.n) }
+    }
+}
+"#,
+            r#"
+pub fn double(x int) int {
+    return x * 2
+}
+"#,
+            &["double"],
+        );
+        assert!(
+            sfc.contains("function double(x: any): number {"),
+            "handler-body call pulls helper fn in:\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_not_imported_is_not_pulled() {
+        // `name_it` lives in the pool but is not in any `use module: ...`
+        // items list — widget-body bare calls to it must NOT pull it in
+        // (mirrors vm import_aliases: only imported items resolve bare).
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget Gated {
+    model { var n int = 3 }
+    computed { twice => name_it(.n) }
+    view { col { text `d: ${.twice}` } }
+}
+"#,
+            r#"
+pub fn name_it(x int) str {
+    return "v"
+}
+"#,
+            &["something_else"],
+        );
+        assert!(
+            !sfc.contains("function name_it"),
+            "pool fn outside the imported-name gate must not be emitted:\n{}",
+            sfc
+        );
+    }
 }
 
 /// PLAN-048 (auto-musk A 线): 跨 store facade 变量名——`ForgeStore` →
@@ -24456,5 +24808,162 @@ fn facade_var_for(dep: &str) -> String {
     match c.next() {
         Some(f) => format!("{}{}Store", f.to_lowercase().collect::<String>(), c.as_str()),
         None => format!("{}Store", stem),
+    }
+}
+
+// ============================================================================
+// Plan 522 — use 导入 helper fn 的引用收集(裸名调用点扫描)
+// ============================================================================
+
+/// 收集表达式中所有裸名调用的被调名(`foo(...)` 的 `foo`;含嵌套实参内
+/// 的调用)。方法调用(`obj.foo(...)`)不计 —— helper fn 只以裸名形态被
+/// widget 体引用。覆盖 handler/fn 体可能出现的复合表达式形态;未列变体
+/// 走 `_ => {}`(与 ts_adapter 既有 walker 的口径一致)。
+pub(crate) fn collect_called_bare_names_expr(
+    expr: &crate::ast::Expr,
+    out: &mut std::collections::HashSet<String>,
+) {
+    use crate::ast::Expr;
+    match expr {
+        Expr::Call(call) => {
+            if let crate::ast::Expr::Ident(name) | crate::ast::Expr::GenName(name) =
+                call.name.as_ref()
+            {
+                out.insert(name.to_string());
+            }
+            for arg in &call.args.args {
+                collect_called_bare_names_expr(&arg.get_expr(), out);
+            }
+        }
+        Expr::View(e)
+        | Expr::Mut(e)
+        | Expr::Move(e)
+        | Expr::Take(e)
+        | Expr::Unary(_, e)
+        | Expr::ErrorPropagate(e)
+        | Expr::Some(e)
+        | Expr::Ok(e)
+        | Expr::Err(e)
+        | Expr::BoxExpr(e)
+        | Expr::ArcExpr(e)
+        | Expr::Await { expr: e }
+        | Expr::Go { expr: e } => {
+            collect_called_bare_names_expr(e, out);
+        }
+        Expr::NullCoalesce(l, r) => {
+            collect_called_bare_names_expr(l, out);
+            collect_called_bare_names_expr(r, out);
+        }
+        Expr::Bina(l, _, r) => {
+            collect_called_bare_names_expr(l, out);
+            collect_called_bare_names_expr(r, out);
+        }
+        Expr::Dot(obj, _) => collect_called_bare_names_expr(obj, out),
+        Expr::Range(r) => {
+            collect_called_bare_names_expr(&r.start, out);
+            collect_called_bare_names_expr(&r.end, out);
+        }
+        Expr::Array(items) => {
+            for e in items {
+                collect_called_bare_names_expr(e, out);
+            }
+        }
+        Expr::Pair(p) => collect_called_bare_names_expr(&p.value, out),
+        Expr::Object(pairs) => {
+            for p in pairs {
+                collect_called_bare_names_expr(&p.value, out);
+            }
+        }
+        Expr::Block(body) => collect_called_bare_names_stmts(&body.stmts, out),
+        Expr::Index(a, i) => {
+            collect_called_bare_names_expr(a, out);
+            collect_called_bare_names_expr(i, out);
+        }
+        Expr::Lambda(f) => collect_called_bare_names_stmts(&f.body.stmts, out),
+        Expr::Closure(c) => collect_called_bare_names_expr(&c.body, out),
+        Expr::FStr(fstr) => {
+            for part in &fstr.parts {
+                collect_called_bare_names_expr(part, out);
+            }
+        }
+        Expr::If(if_expr) => collect_if_called_names(if_expr, out),
+        Expr::Cast { expr: e, .. } | Expr::To { expr: e, .. } => {
+            collect_called_bare_names_expr(e, out)
+        }
+        Expr::TupleDestruct { expr: e, .. } => collect_called_bare_names_expr(e, out),
+        Expr::NavCall { path, params } => {
+            collect_called_bare_names_expr(path, out);
+            for p in params {
+                collect_called_bare_names_expr(&p.value, out);
+            }
+        }
+        Expr::AsyncBlock { body, .. } => collect_called_bare_names_stmts(&body.stmts, out),
+        _ => {}
+    }
+}
+
+fn collect_if_called_names(
+    if_expr: &crate::ast::If,
+    out: &mut std::collections::HashSet<String>,
+) {
+    for branch in &if_expr.branches {
+        collect_called_bare_names_expr(&branch.cond, out);
+        collect_called_bare_names_stmts(&branch.body.stmts, out);
+    }
+    if let Some(else_body) = &if_expr.else_ {
+        collect_called_bare_names_stmts(&else_body.stmts, out);
+    }
+}
+
+/// 语句序列的裸名调用收集(handler 体 / helper fn 体共用)。
+pub(crate) fn collect_called_bare_names_stmts(
+    stmts: &[crate::ast::Stmt],
+    out: &mut std::collections::HashSet<String>,
+) {
+    use crate::ast::Stmt;
+    for stmt in stmts {
+        match stmt {
+            Stmt::Expr(e) => collect_called_bare_names_expr(e, out),
+            Stmt::If(if_expr) => collect_if_called_names(if_expr, out),
+            Stmt::For(f) => {
+                collect_called_bare_names_expr(&f.range, out);
+                if let Some(init) = &f.init {
+                    collect_called_bare_names_stmts(std::slice::from_ref(init), out);
+                }
+                collect_called_bare_names_stmts(&f.body.stmts, out);
+            }
+            Stmt::Try(t) => {
+                collect_called_bare_names_stmts(&t.body.stmts, out);
+                collect_called_bare_names_stmts(&t.catch_body.stmts, out);
+                if let Some(fb) = &t.finally_body {
+                    collect_called_bare_names_stmts(&fb.stmts, out);
+                }
+            }
+            Stmt::Is(is) => {
+                collect_called_bare_names_expr(&is.target, out);
+                for branch in &is.branches {
+                    match branch {
+                        crate::ast::IsBranch::EqBranch(patterns, body) => {
+                            for p in patterns {
+                                collect_called_bare_names_expr(p, out);
+                            }
+                            collect_called_bare_names_stmts(&body.stmts, out);
+                        }
+                        crate::ast::IsBranch::IfBranch(cond, body) => {
+                            collect_called_bare_names_expr(cond, out);
+                            collect_called_bare_names_stmts(&body.stmts, out);
+                        }
+                        crate::ast::IsBranch::ElseBranch(body) => {
+                            collect_called_bare_names_stmts(&body.stmts, out);
+                        }
+                    }
+                }
+            }
+            Stmt::Store(s) => collect_called_bare_names_expr(&s.expr, out),
+            Stmt::Block(b) => collect_called_bare_names_stmts(&b.stmts, out),
+            Stmt::Return(e) | Stmt::Reply(e) => collect_called_bare_names_expr(e, out),
+            Stmt::Fn(f) => collect_called_bare_names_stmts(&f.body.stmts, out),
+            _ => {}
+        }
     }
 }

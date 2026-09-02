@@ -411,6 +411,60 @@ fn collect_use_module_actions(
     None
 }
 
+/// Plan 522: collect the module-level plain-fn pool from `use`-imported
+/// modules + the bare names the items lists import. Mirrors the vm loader's
+/// full-module load: ALL fns of each resolved module enter the pool (an
+/// imported fn's intra-module callees — e.g. build_month_grid → weekday_of —
+/// resolve via the vue-side closure pull), while the items list gates which
+/// names widget bodies may call bare (import_aliases parity). Module
+/// resolution mirrors the vm loader; unreadable/unparseable modules are
+/// skipped with a log line (never fatal — same policy as
+/// collect_use_module_actions).
+fn collect_use_module_fns(
+    at_path: &std::path::Path,
+    code: &str,
+) -> (Vec<crate::aura::AuraModuleFn>, Vec<String>) {
+    let mut fns: Vec<crate::aura::AuraModuleFn> = Vec::new();
+    let mut imported_names: Vec<String> = Vec::new();
+    let base_dir = at_path.parent().unwrap_or(std::path::Path::new("."));
+    for use_stmt in crate::use_scanner::scan_use_statements(code) {
+        if use_stmt.is_c_import
+            || use_stmt.is_rust_import
+            || use_stmt.is_python_import
+        {
+            continue;
+        }
+        imported_names.extend(use_stmt.items.iter().cloned());
+        let module_path = match crate::resolve_use_module(base_dir, &use_stmt) {
+            crate::UseModuleResolution::Module(p) => p,
+            _ => continue,
+        };
+        let Ok(module_code) = std::fs::read_to_string(&module_path) else {
+            continue;
+        };
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(module_code.as_str()).with_session(session);
+        let Ok(mod_ast) = parser.parse() else {
+            eprintln!(
+                "[codegen] use-fn module {} failed to parse — skipped",
+                module_path.display()
+            );
+            continue;
+        };
+        for stmt in &mod_ast.stmts {
+            if let crate::ast::Stmt::Fn(fn_decl) = stmt {
+                if let Some(mfn) = crate::aura::extract_module_fn(fn_decl) {
+                    // 跨模块同名去重:use 顺序先到先得。
+                    if !fns.iter().any(|f| f.name == mfn.name) {
+                        fns.push(mfn);
+                    }
+                }
+            }
+        }
+    }
+    (fns, imported_names)
+}
+
 pub fn generate_component_from_file(
     at_path: &std::path::Path,
     opts: ComponentGenOptions,
@@ -479,6 +533,9 @@ pub fn generate_component_from_file(
             }
         })
         .collect();
+    // Plan 522: use 导入模块的 fn 池 + 显式导入裸名 —— vue 生成器按需把
+    // computed/handler 体引用的 helper fn 转译进消费方 SFC。
+    let (use_module_fns, use_imported_names) = collect_use_module_fns(at_path, &code);
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
             let mut store = extract_store_from_decl(store_decl)
@@ -745,6 +802,7 @@ pub fn generate_component_from_file(
                 .with_store_deps(store_deps.clone())
                 .with_store_import_prefix(store_import_prefix.clone())
                 .with_module_fns(module_fns.clone())
+                .with_use_module_fns(use_module_fns.clone(), use_imported_names.clone())
                 .with_sub_widgets(all_sub_widgets.clone())
                 .with_sub_widget_models(sub_widget_models.clone())
                 .with_sub_widget_msgs(sub_widget_msgs.clone());
@@ -782,6 +840,7 @@ pub fn generate_component_from_file(
             .with_store_deps(store_deps.clone())
             .with_store_import_prefix(store_import_prefix.clone())
             .with_module_fns(module_fns.clone())
+            .with_use_module_fns(use_module_fns.clone(), use_imported_names.clone())
             .with_sub_widgets(all_sub_widgets.clone())
             .with_sub_widget_models(sub_widget_models.clone())
             .with_sub_widget_msgs(sub_widget_msgs.clone())
@@ -1767,5 +1826,60 @@ widget App {
             "shadcn off must preserve classes:\n{}",
             result.vue_code
         );
+    }
+
+    /// Plan 522 end-to-end: `use util: helper` 模块解析 → fn 池收集 →
+    /// computed/handler 引用按需转译进 SFC(真实文件系统路径,覆盖
+    /// collect_use_module_fns 的 resolve_use_module + 解析 + 池构建)。
+    #[test]
+    fn test_plan522_use_module_fn_collected_from_filesystem() {
+        let tmp = std::env::temp_dir().join("plan522_use_fn_pool");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(
+            tmp.join("util.at"),
+            concat!(
+                "pub fn double(x int) int {\n",
+                "    return x * 2\n",
+                "}\n",
+                "\n",
+                "pub fn quadruple(x int) int {\n",
+                "    return double(double(x))\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("app.at"),
+            concat!(
+                "use util: quadruple\n",
+                "\n",
+                "widget QuadApp {\n",
+                "    model { var n int = 3 }\n",
+                "    computed { q => quadruple(.n) }\n",
+                "    view { col { text `q: ${.q}` } }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
+        let result = super::generate_component_from_file(
+            &tmp.join("app.at"),
+            crate::ui_gen::ComponentGenOptions::default(),
+        )
+        .expect("generate with use-imported fn pool");
+        let sfc = &result.vue_code;
+        assert!(
+            sfc.contains("function quadruple(x: any): number {"),
+            "imported helper transpiled into SFC:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function double(x: any): number {"),
+            "intra-module closure dep pulled (quadruple -> double):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("quadruple(n.value)"),
+            "computed call site keeps bare name:\n{sfc}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
