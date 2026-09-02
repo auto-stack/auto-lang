@@ -1,15 +1,28 @@
 # Plan 448: AutoUI 语法改进——msg 声明去名 + 事件内联 lambda 简写（滚动收集）
 
-> **状态**: 🟢 A/B1/B2 已合并 master（merge `7f4ed335c`；2026-09-01 Plan 513 C 组
-> 刷新——原"待合并（worktree plan-448-autoui-syntax，2026-08-25）"已过时）；
-> C/D/… 继续按示例走查追加
+> **状态**: 🟢 A/B1/B2 已合并 master（merge `7f4ed335c`）；**C 已实施待合并**
+> （worktree plan-448-autoui-syntax @ `ff3bfef3c`，2026-09-02）；D 已登记未实施；
+> E/F/G 走查观察在案（见 §6）；C/D/… 继续按示例走查追加
 > **来源**: examples/ui/002-counter/src/front/app.at 示例走查（文件注释区的"简写版"）
 > **基线**: master bcb6e139b（实施于 9e330123f 分叉的 worktree）
 > **性质**: **滚动收集计划**——逐个 UI 示例走查，收集 AutoUI 语法改进需求追加为
 > 需求 C/D/…；每条独立实施、独立验证、独立勾销，不必一次做完。
 
-## 验证结果（2026-08-25，worktree plan-448）
+## 验证结果（2026-09-02，worktree plan-448 @ ff3bfef3c，条目 C）
 
+- 新增测试四路 + e2e 双实证全绿（明细见 §3.3）：parser 铸名单测、vue 折叠
+  纯净断言、rust 枚举/注入断言、vm 写回链路；MCP e2e 005（写回+副作用）
+  与 010（纯裸 value）。
+- 全量：默认 lib 3342 绿 0 失败；ui-iced lib 4374 绿（17 失败 = master
+  预存/flaky 逐名重合：strips_tags、counter_loopback、renderer desktop
+  簇、d8_toggle_dark_mode、style_migration_probe、p054 icon flaky）；
+  gallery_golden 绿（Vue 产物逐字节不变）；vue_capabilities 77+5 同 master；
+  docs_gen 4 绿；test-trans 失败集与 master 逐名对照重合（a2r 预存簇 +
+  ring_caps 双侧孤立绿 flaky）。
+- 示例构建：005/010 `auto build`（Vue）全绿；013/017 失败与 master
+  同签名（预存）；459 `--example ui_dual_app`（ui-iced）编译绿。
+
+## 验证结果（2026-08-25，worktree plan-448）
 - A（commit 5e43662bf）：`cargo test -p auto-lang --lib` 3181 绿；
   vue_capabilities 72 / docs_gen 4 / gallery_golden 1（基线重生成）/
   ui_snapshots 3（路径归一化后重生成）/ schema_drift 1 / component_registry 7 绿；
@@ -87,10 +100,13 @@ gallery_golden 1、ui_snapshots 3、auto-man 229 绿。
 |---|---|---|
 | A | `msg Msg {…}` 去掉无用的名字 → `msg {…}` | ✅ 已实施 |
 | B | `onclick: () => {…}` 内联 lambda 简写（含 B2：VM 路径复合赋值修复） | ✅ 已实施 |
-| C+ | 后续从其他示例收集（占位） | — |
+| C | 裸 `value: .field` 两向绑定——输入框免 msg/on 三件套 | ✅ 已实施（本节 2026-09-02） |
+| D | style 组合能力——`style: "基座" + if/拼接` 落 `:class` 而非 `:style` | 📋 已登记（§5） |
+| E/F/G | 走查观察（str 充当 bool / FAQ 手工展开 / registry 组件协议） | 📋 观察（§6） |
 
 条目 A/B 相互独立可分别实施；B 实施后简单 widget 可完全不写 msg/on
-（002-counter 目标形态即如此）。
+（002-counter 目标形态即如此）；C 实施后表单输入框亦可完全不写
+msg/on（005-login 等目标形态即如此）。
 
 ### 实施补遗（与原方案的差异）
 
@@ -290,7 +306,139 @@ widget App {
 
 ---
 
-## §3 后续条目（占位）
+## §3 需求 C：裸 `value:` 两向绑定（输入框免 msg/on 三件套）✅ 已实施
 
-后续按示例走查追加需求 C/D/…，格式沿用 §1/§2（动机与证据 → 方案 → 测试 →
-边界 → 风险），并在 §0 总览表登记。
+### C.1 动机与证据（2026-09-02 第二轮走查）
+
+第二轮按示例走查（003/005/010/011/012/013/015/017/022/0459）发现**最大存量
+样板**：每个表单输入框需要三件套——msg 变体 + `oninput: .XChanged` 绑定 +
+`.XChanged -> { .x = .x }` handler。全仓同名自赋 `.x = .x` 共 8 处
+（005×2、010×3、013×1、017×1、459×1，另 015 一处走 registry 协议），
+连带 9 个 msg 变体与 9 个视图绑定。
+
+关键机制事实（走查确证）：
+
+- **`.x = .x` 是空转仪式**：VM/iced 路径 `input_state_map` 在 handler 运行
+  **前**写回（`ui/dynamic.rs` `on_with_input_for`）；原生 Rust 路径
+  `input_fields` 注入 `self.field = last_input_text()`（`ui_gen/rust.rs`
+  `scan_input_fields`）；Vue 路径 v-model 折叠。三路的 `.x = .x` 均为 no-op。
+- **裸 `value:` 只有 Vue 双向**：vue.rs 在无 handler 时也折 v-model
+  （PLAN-037 T5）；但 iced 的 `on_change` 仅在存在 handler 时接线——裸
+  `value:` 在 VM 模式打字**永不落盘**。这是真实能力缺口，非纯样板问题。
+
+### C.2 方案（实施于 parser 铸名层，与 B 同点）
+
+1. **Parser 新 pass `mint_bare_input_sync`**（`mint_inline_event_handlers`
+   内、inline 铸名之后）：`input`/`textarea` Element 且 `value:` 为直连
+   state 字段（`Dot(Ident("self"|"."), field)` 或裸 `Ident`，镜像 rust.rs
+   `is_direct_self` 规则）且无 oninput/onchange/input/change 事件时，
+   铸 `oninput: .__bind_<Widget>_oninput_<n>`（空体）+ msg 变体 + on-handler。
+2. **`__bind_` 前缀**（区别于用户内联 lambda 的 `__evt_`）标记自动同步铸名；
+   **织入 widget 名**防 registry 级 `input_state_map`（仅按 handler 名索引）
+   跨兄弟子组件同名冲撞——否则两个子组件各铸 `__bind_oninput_1`，
+   first-wins 会让第二个绑定静默失效。
+3. **Vue 四点抑制**（v-model 已实现同步语义，铸名是纯噪音）：
+   `@input` attr 两处发射点（含 Plan 399 Phase 12 的 side-effect 分支）、
+   空函数（原会发 `// TODO` 桩）、defineEmits 条目（含 `has_emit` 置位
+   条件化）、尾部 emit 过滤。抑制后 Vue 产物与旧裸 value 形态**逐字节同**
+   （gallery_golden 基线零变化实证）。
+4. **语料迁移**：005/010/013/017/459 删三件套（8 处自赋 + 9 变体 + 9 绑定）；
+   005 的清错副作用（`if .email != "" { .email_error = "" }`）以 B 的内联
+   lambda 保留；**015 不迁**（搜索走 registry `nav` 组件的
+   search_value/onsearch 协议 + payload 消费 store.Search，非本样板）；
+   015-settings 类多级点（`.store.me.image`）天然不铸（单向维持）。
+
+### C.3 测试（四路 + e2e 双实证）
+
+- parser 单测 `test_bare_value_input_mints_oninput_sync`：铸名/守卫
+  （显式 oninput 抑制、多级点不铸、无 value 不铸）/空体 handler/变体登记。
+- vue 单测 `test_bare_value_input_folds_to_vmodel_without_mint_noise`：
+  v-model 折叠 + `__bind_`/`@input`/`defineEmits`/`TODO` 四零断言 +
+  显式路径回归（@input 保留）。
+- rust 单测 `test_bare_value_input_rust_codegen`：枚举变体 + match 臂 +
+  `last_input_text()` 注入。
+- vm 单测 `plan448_bare_value_input_vm_writeback`：真实 parse→decl→
+  DynamicComponent 链，input_state_map 映射 + `on_with_input` 落盘。
+- **MCP e2e**（`auto run -r vm`）：005 输入邮箱→Sign In→仅密码错误出现
+  （写回 + 内联副作用双证）；010 纯裸 value 输入 "Zed"→快照 `value: "Zed"`
+  （handler 显示 `.App.__bind_oninput_1`）。
+- 全量回归：默认 lib 3342 绿；ui-iced lib 4374 绿（17 失败与 master
+  预存/flaky 集完全重合）；gallery_golden/ui_snapshots 基线不变；
+  vue_capabilities 77+5（同 master 预存）；docs_gen 4 绿；test-trans
+  失败集与 master 逐名对照重合（a2r 预存簇）。
+
+### C.4 边界与不做
+
+- 只覆盖 Element 形态 `input`/`textarea`；registry 组件（ComboboxInput/
+  FormControl 等）不铸——它们有自己的 value/change 协议。
+- view-fn 片段内的裸 value 输入不铸（沿 B 的 v1 边界，`__evtf_` 同理）。
+- 多级点 value（`.store.me.image`）保持单向（写回三路都只认直连字段）。
+- checkbox/select/slider 等其他表单控件的 `checked:`/值协议不在本轮
+  （未走查到样板痛点，待后续示例收集）。
+- 与 B 的 `__evt_oninput_N` 一样，同 widget 内联 lambda 铸名跨兄弟子组件
+  仍有理论冲撞面（registry 索引机制限制）——本轮只对新铸名织入 widget 名
+  消解，`__evt_` 族维持现状（记入 C.5）。
+
+### C.5 遗留与风险
+
+- `__evt_*`（B 族铸名）未织 widget 名——registry `input_state_map` 若被
+  两个兄弟子组件的同名内联 lambda 触发同题；低概率（用户显式命名惯例
+  分散），留待实际案例再修。
+- 迁移后 013/017 的 vue-tsc 构建失败为 master 预存（错误签名逐条对照
+  相同），非本条引入；013 的 store TS2345 与 017 的 timer/回调类型错
+  属既有债务（另案）。
+
+---
+
+## §4/§5 需求 D：style 组合能力（已登记未实施）
+
+### D.1 动机与证据
+
+- `style: if .dark_mode { "A" } else { "B" }` 全仓 **143 处 / 13 文件**
+  （006/008/009/010/011/013/015/018/024×4）；010 单文件即数十处，且 A/B
+  两串 class 90% 相同（仅 zinc/gray 色板差异）——基座重复噪音巨大。
+- 拼接形态 `"基座" + if {…} else {…}` **今天可编译**（语法层通过、
+  vue-tsc/vite 绿），但 Plan 043 H5 的分类把"非字面量且非 if"的表达式
+  一律发 `:style`（内联 CSS 语义）——对 Tailwind class 串是错目标，
+  浏览器按无效 CSS 丢弃，样式全失效（2026-09-02 scratch 实证）。
+- `class:` prop 已有数组去重合并（Plan 012 P0#13）与 `style: { class: cond }`
+  条件类绑定（Vue 消费）两个局部机制，但无"多段拼接落 class"的通用形态。
+
+### D.2 方案草图（候选，未裁定）
+
+- (a) **分类细化**：vue.rs `push_style_class` 对"字符串字面量/if 表达式
+  之 `+` 拼接"识别为 class 族（操作数递归判定），发
+  `:class="'a' + (c ? 'b' : 'c')"`；风险是与真内联 CSS 拼接（`"color: rgb(" + …`）
+  的判别需启发式。
+- (b) **数组形态** `style: ["基座", if … {…} else {…}]`：aura extract 层
+  折叠为空格拼接表达式，再走 if 分类——显式无歧义，但引入新语法面。
+- (c) 语义色令牌迁移（010 改用 text-foreground/bg-card 族）：治本但是
+  语料迁移工程（Plan 512/515 语义色线已铺），非语法条目。
+- **裁定建议**：(b) 显式优于 (a) 启发式；实施时机待走查到第三轮示例批。
+
+### D.3 测试（预置）
+
+- vue：数组/拼接形态落 `:class` 且各段进产物；真内联 CSS 拼接仍落 `:style`。
+- iced/VM：style prop 求值路径对拼接表达式产 class 串（renderer 侧确认）。
+- 迁移冒烟：010 单文件减重（143 处中占比最大）。
+
+---
+
+## §6 走查观察（未立项，防止丢失）
+
+- **E：str 充当 bool**——012-stopwatch `var running str = "false"` +
+  `if .running == "true"`（4 处）；非语法缺口（bool 可用），疑为作者惯性
+  或历史规避；若走查再现可作"布尔卫生"语料条目。
+- **F：列表手工展开**——010 FAQ 五问以 `faq1_q..faq5_a` 十个标量 var 展开
+  （应 `list` + `for`）；语料质量问题非语法缺口，随下一次 010 触碰顺手修。
+- **G：registry 组件的输入协议**——015 `nav(search: true, search_value:,
+  onsearch:)`、042 `oninput: ."update:modelValue"`（带引号自定义事件名）：
+  registry 组件的两向协议与裸 value 语义不一致，若后续示例走查高频遇到，
+  可立"registry 组件统一 bind 协议"条目。
+
+---
+
+## §7 后续条目
+
+继续按示例走查追加需求 E/F/G/…（观察项见 §6），格式沿用 §1/§2
+（动机与证据 → 方案 → 测试 → 边界 → 风险），并在 §0 总览表登记。
