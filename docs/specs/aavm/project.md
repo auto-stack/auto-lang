@@ -95,11 +95,33 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
 > 缺省跳过(b34–b43/corpus_use 前缀 skip)、`auto build`(pac)产品路径
 > 与 CLI 入口的 a2r 模式未验。
 
-1. **a2r 模式中阶覆盖收口(目标 2)**——小计划:摘除 compile corpus 的
-   b34+/corpus_use 跳过前缀实测主 a2r 转译版二进制(lib 转译后自带
-   struct/use 编译逻辑,预判多绿;File shim 已为 std 直通真实现仅未触达);
-   红项根因修复(a2r.at 发射面/转译侧语义);`auto build`(pac)产品冒烟
-   常态化;517 CLI 入口的 a2r 模式验证(依赖 517 落地)。
+## 能力同步规约(2026-09-02 起,常设判据)
+
+> **aavm ↔ AA2R 能力同步**:每当 aavm 目标语言新增能力 X(语料进
+> corpus_m*/corpus_use),同步要求 AA2R(a2r.at)能**发射**含 X 语法的
+> 程序——三面闸同绿才算能力落地:
+
+1. **VM 闸**(目标 1):corpus 进 M2–M5,VM 模式与宿主对拍一致;
+2. **AA2R 发射闸**:corpus_a2r 增同能力件,`ar_run` 产物与主 a2r
+   `transpile_rust` live 逐字符一致 + rustc 实编译零错;
+3. **a2r 运行闸**(目标 2):compile corpus(主 a2r 转译版二进制跑语料)
+   无跳过前缀覆盖该能力件。
+
+> 任何一面临时跳过=显式债:divergence 登记 + 进队列计划,**禁止无登记
+> 缺省暂缓**(511 待澄清①的处置方式自此作废)。主 a2r(Rust 写)是
+> 发射 oracle,不在同步义务内;AA2R 的同步面=aavm 目标语言子集。
+
+## 后续计划队列(2026-09-02 存档,517 收口后领取起草)
+
+1. **a2r 模式中阶覆盖收口(目标 2 + 同步规约清欠)**——小计划:
+   ①AA2R 发射面补全:struct 声明/构造/字段读写(b34–b37 对应发射件
+   g17+)、for-in 数组/字符串下标/一元负/全局变量(b38–b43 对应件),
+   live 对拍主 a2r + rustc;②摘除 compile corpus 的 b34+/corpus_use
+   跳过前缀,实测主 a2r 转译版二进制(lib 转译后自带 struct/use 编译
+   逻辑,预判多绿;File shim 已为 std 直通真实现仅未触达),红项根因
+   修复;③`auto build`(pac)产品冒烟常态化;④517 CLI 入口的 a2r 模式
+   验证(依赖 517 落地);⑤清偿 D-AA2R-struct divergence 登记与
+   511 待澄清①遗留口径。
 2. **OOP 批(目标 1 续阶)**——aavm 目标语言的方法/impl(`type T { fn }`/
    `ext T`)编译执行、is-struct 模式匹配、跨模块类型共享(pub type)、
    闭包与嵌套 fn、泛型(List\<T\> 实例化——通往塔顶必经)、May/生成器;
