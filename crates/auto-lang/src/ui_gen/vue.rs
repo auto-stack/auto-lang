@@ -4043,7 +4043,12 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     ///   import_aliases 同口径 —— 未导入的池内 fn 不拉);
     /// - 依赖闭包:被拉 fn 体内引用的池内其他 fn 一并拉入,迭代到不动点
     ///   (对应 vm 侧全模块加载:build_month_grid → weekday_of 兄弟解析);
-    /// - 去重:同名只发一份(池序稳定输出)。
+    /// - 去重:同名只发一份(池序稳定输出);
+    /// - ext_imports 同名优先(手写逃逸口赢,静默跳过);
+    /// - 命名冲突(state/computed/props/handler/facade/同文件 module fn)
+    ///   → R013 警告 + 跳过发射(提示 ext_imports 兜底);
+    /// - 转译边界:模式匹配/借用语义 fn 体不保证转译 → R013 警告 + 跳过
+    ///   (回退现状,不阻塞生成)。
     fn emit_use_module_fns(&self, widget: &AuraWidget, script: &mut String) {
         use std::collections::{HashMap, HashSet};
 
@@ -4093,10 +4098,51 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         }
         pulled_idx.sort_unstable();
         pulled_idx.dedup();
-        // 3. 发射(script 尾部;function 声明提升保证上方调用点可解析)。
+        // 3. 发射前过滤:ext_imports 同名静默跳过;转译边界/命名冲突 →
+        //    R013 警告 + 跳过(v1 回退现状,不阻塞生成)。
+        let mut ext_bound: HashSet<&str> = HashSet::new();
+        for (symbols, _, _) in &self.ext_import_lines {
+            for s in symbols {
+                ext_bound.insert(s.as_str());
+            }
+        }
+        let mut conflict_names: HashSet<&str> = HashSet::new();
+        conflict_names.extend(self.state_names.iter().map(String::as_str));
+        conflict_names.extend(self.computed_names.iter().map(String::as_str));
+        conflict_names.extend(self.prop_names.iter().map(String::as_str));
+        conflict_names.extend(self.used_handlers.iter().map(String::as_str));
+        let facade_locals = self.facade_local_names();
+        conflict_names.extend(facade_locals.iter().map(String::as_str));
+        conflict_names.extend(self.module_fns.iter().map(|f| f.name.as_str()));
         let ctx = self.handler_ts_ctx();
         for idx in pulled_idx {
             let mfn = &self.use_module_fns[idx];
+            // ext_imports(手写 TS 逃逸口)已绑定同名符号 → 手写优先,不发射。
+            if ext_bound.contains(mfn.name.as_str()) {
+                continue;
+            }
+            if let Some(reason) = use_fn_body_unsupported(&mfn.body) {
+                self.warn(
+                    "R013",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!(
+                        "use-imported fn `{}` not emitted into the SFC: {} — falls back to no emission (ext_imports hand-written TS is the escape hatch)",
+                        mfn.name, reason
+                    ),
+                );
+                continue;
+            }
+            if conflict_names.contains(mfn.name.as_str()) {
+                self.warn(
+                    "R013",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!(
+                        "use-imported fn `{}` collides with an existing script symbol (state/computed/prop/handler/module fn) — skipped emission; rename it or bind a hand-written version via ext_imports",
+                        mfn.name
+                    ),
+                );
+                continue;
+            }
             let param_list = mfn
                 .params
                 .iter()
@@ -24798,6 +24844,155 @@ pub fn name_it(x int) str {
             sfc
         );
     }
+
+    #[test]
+    fn test_plan522_use_fn_dedup_across_computed_and_handler() {
+        // Same helper referenced from BOTH a computed and a handler — the
+        // pulled set is name-keyed, so the SFC must contain exactly one
+        // function declaration.
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget Dedup {
+    msg Msg { Go }
+    model { var n int = 3 }
+    computed { twice => double(.n) }
+    view { col { button "go" (onclick: .Go) } }
+    on {
+        .Go -> { .n = double(.n) }
+    }
+}
+"#,
+            r#"
+pub fn double(x int) int {
+    return x * 2
+}
+"#,
+            &["double"],
+        );
+        let count = sfc.matches("function double(").count();
+        assert_eq!(
+            count, 1,
+            "helper referenced from computed AND handler emits exactly once:\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_suppressed_by_ext_import_same_name() {
+        // ext_imports (Plan 051 hand-written TS escape hatch) already binds
+        // the same symbol — hand-written wins, the pooled fn is NOT emitted.
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget ExtWins {
+    use { fn: double from "./double.ts" }
+    model { var n int = 3 }
+    computed { twice => double(.n) }
+    view { col { text `d: ${.twice}` } }
+}
+"#,
+            r#"
+pub fn double(x int) int {
+    return x * 2
+}
+"#,
+            &["double"],
+        );
+        assert!(
+            sfc.contains("import { double } from '@/ext/double'"),
+            "ext import line still emitted:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("function double("),
+            "ext_imports-declared symbol suppresses pooled fn emission:\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_name_conflict_with_state_warns_and_skips() {
+        // Helper shares its name with a state var — emitting the function
+        // declaration would collide in JS scope. v1: R013 warning + skip
+        // emission (ext_imports is the escape hatch).
+        let (sfc, warnings) = gen_sfc_with_use_fns_and_warnings(
+            r#"
+widget Clashing {
+    msg Msg { Go }
+    model { var double int = 1 }
+    computed { twice => double(.n) }
+    view { col { button "go" (onclick: .Go) } }
+    on {
+        .Go -> { .double = 2 }
+    }
+}
+"#,
+            r#"
+pub fn double(x int) int {
+    return x * 2
+}
+"#,
+            &["double"],
+        );
+        assert!(
+            !sfc.contains("function double("),
+            "name-conflicting helper must not be emitted:\n{}",
+            sfc
+        );
+        let r013 = warnings_for_rule(&warnings, "R013");
+        assert!(
+            r013.iter().any(|w| w.message.contains("double")),
+            "name conflict must raise an R013 warning naming the fn:\n{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_pattern_match_body_warns_and_skips() {
+        // v1 transpile boundary: pattern-matching fn bodies (`is` statements)
+        // are not guaranteed to transpile — R013 warning + no emission
+        // (fallback to the pre-Plan-522 behavior), never blocking generation.
+        let (sfc, warnings) = gen_sfc_with_use_fns_and_warnings(
+            r#"
+widget Patterny {
+    model { var n int = 3 }
+    computed {
+        label => classify(.n)
+        twice => double(.n)
+    }
+    view { col { text `d: ${.label}` } }
+}
+"#,
+            r#"
+pub fn classify(x int) str {
+    is x {
+        0 -> { return "zero" }
+        else -> { return "many" }
+    }
+    return "?"
+}
+
+pub fn double(x int) int {
+    return x * 2
+}
+"#,
+            &["classify", "double"],
+        );
+        assert!(
+            !sfc.contains("function classify("),
+            "pattern-matching helper must not be emitted:\n{}",
+            sfc
+        );
+        let r013 = warnings_for_rule(&warnings, "R013");
+        assert!(
+            r013.iter().any(|w| w.message.contains("classify")),
+            "unsupported transpile shape must raise an R013 warning naming the fn:\n{warnings:?}"
+        );
+        // Other, supported helpers are unaffected.
+        assert!(
+            sfc.contains("function double(x: any): number {"),
+            "supported sibling helper still emitted:\n{}",
+            sfc
+        );
+    }
 }
 
 /// PLAN-048 (auto-musk A 线): 跨 store facade 变量名——`ForgeStore` →
@@ -24966,4 +25161,108 @@ pub(crate) fn collect_called_bare_names_stmts(
             _ => {}
         }
     }
+}
+
+/// Plan 522 v1 转译边界预扫描:fn 体含模式匹配(`is`/cover 族)或借用/堆
+/// 语义表达式时不发射(R013 警告 + 回退现状)。返回命中的原因描述。
+/// 纯算术/字符串/列表 fn 不触发 —— 这正是 v1 保证支持的形态。
+fn use_fn_body_unsupported(stmts: &[crate::ast::Stmt]) -> Option<&'static str> {
+    use crate::ast::{Expr, Stmt};
+
+    fn expr_unsupported(expr: &Expr) -> Option<&'static str> {
+        match expr {
+            Expr::Cover(_) | Expr::Uncover(_) => Some("cover pattern matching"),
+            Expr::OptionPattern(_)
+            | Expr::ResultPattern(_)
+            | Expr::OptionUncover(_)
+            | Expr::ResultUncover(_)
+            | Expr::StructPattern(_) => Some("pattern matching"),
+            Expr::View(_) | Expr::Mut(_) | Expr::Move(_) | Expr::Take(_) | Expr::Hold(_) => {
+                Some("borrow/ownership semantics")
+            }
+            Expr::Call(call) => expr_unsupported(&call.name).or_else(|| {
+                call.args.args.iter().find_map(|a| expr_unsupported(&a.get_expr()))
+            }),
+            Expr::Bina(l, _, r) => expr_unsupported(l).or_else(|| expr_unsupported(r)),
+            Expr::Unary(_, e) => expr_unsupported(e),
+            _ => None,
+        }
+    }
+
+    fn stmts_unsupported(stmts: &[Stmt]) -> Option<&'static str> {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Is(_) => return Some("pattern matching (`is`)"),
+                Stmt::Expr(e) => {
+                    if let Some(r) = expr_unsupported(e) {
+                        return Some(r);
+                    }
+                }
+                Stmt::If(i) => {
+                    for b in &i.branches {
+                        if let Some(r) = expr_unsupported(&b.cond) {
+                            return Some(r);
+                        }
+                        if let Some(r) = stmts_unsupported(&b.body.stmts) {
+                            return Some(r);
+                        }
+                    }
+                    if let Some(else_body) = &i.else_ {
+                        if let Some(r) = stmts_unsupported(&else_body.stmts) {
+                            return Some(r);
+                        }
+                    }
+                }
+                Stmt::For(f) => {
+                    if let Some(r) = expr_unsupported(&f.range) {
+                        return Some(r);
+                    }
+                    if let Some(init) = &f.init {
+                        if let Some(r) = stmts_unsupported(std::slice::from_ref(init)) {
+                            return Some(r);
+                        }
+                    }
+                    if let Some(r) = stmts_unsupported(&f.body.stmts) {
+                        return Some(r);
+                    }
+                }
+                Stmt::Try(t) => {
+                    for body in [
+                        &t.body,
+                        &t.catch_body,
+                        t.finally_body.as_ref().unwrap_or(&t.body),
+                    ] {
+                        // finally 为 None 时重复查 body 无害(单调判定)。
+                        if let Some(r) = stmts_unsupported(&body.stmts) {
+                            return Some(r);
+                        }
+                    }
+                }
+                Stmt::Store(s) => {
+                    if let Some(r) = expr_unsupported(&s.expr) {
+                        return Some(r);
+                    }
+                }
+                Stmt::Block(b) => {
+                    if let Some(r) = stmts_unsupported(&b.stmts) {
+                        return Some(r);
+                    }
+                }
+                Stmt::Return(e) | Stmt::Reply(e) => {
+                    if let Some(r) = expr_unsupported(e) {
+                        return Some(r);
+                    }
+                }
+                Stmt::Fn(f) => {
+                    if let Some(r) = stmts_unsupported(&f.body.stmts) {
+                        return Some(r);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    stmts_unsupported(stmts)
 }
