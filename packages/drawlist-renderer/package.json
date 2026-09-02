@@ -1,0 +1,18 @@
+{
+  "name": "@auto/drawlist-renderer",
+  "version": "0.1.0",
+  "description": "Plan 508 远程渲染器（DrawList → Canvas2D）——codec/messages/render/connect，Rust↔TS golden 对拍防漂移。任意 web 宿主可消费（vue 桌面 remote_window 消费本包）。",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.5"
+  }
+}

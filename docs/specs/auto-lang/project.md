@@ -51,7 +51,7 @@ graph LR
 | [vm](vm/) | AutoVM：abt/codegen/engine/debugger/ffi/generic | partial |
 | [trans](trans/) | 转译后端：C/Rust/JavaScript/TypeScript/Python/GDScript/r2a | partial |
 | [runtime](runtime/) | runtime/scope/session、libs/ 内建标准库绑定、ffi | partial |
-| [ui](ui/) | aura/、ui/（iced/gpui/headless 渲染 + code_editor/autodown 内建 + style 主题）、桌面运行时（session/wm/VirtualWindow）、ui_gen/（vue 主力/rust/ts/widget 契约/block）、a2ui/ | active（桌面线主战场） |
+| [ui](ui/) | aura/、ui/（iced/gpui/headless 渲染 + code_editor/autodown 内建 + style 主题）、桌面运行时（session/wm/VirtualWindow）、ui_gen/（vue 主力/rust/ts/widget 契约/block）、a2ui/ | active（桌面线主战场；Plan 515：desktop_protocol DrawOp v1.5——Scissor 裁剪栈+TextStyled 字重/斜体差分（追加式 tag 3/4/5，TS 渲染器同步）、queue 臂投影保真（scroll 裁剪/typography 差分/layout_block 垂直高度修正）、native HICON 真图标链（win32 提取+native_icon 缓存）、e2e_exe 陈旧防护+queue-coverage 覆盖率 bin） |
 | [mcp](mcp/) | MCP server 集成 | partial |
 
 > 模块层文档为 Phase 0 骨架（overview 占位），内容将在 Phase 1 从

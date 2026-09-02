@@ -1,0 +1,19 @@
+{
+  "name": "@auto/remote-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Plan 508 远程渲染 demo 页（连宿主 WS → Canvas2D → InputMsg 回发）；Plan 516 e2e 基建所在。",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@auto/drawlist-renderer": "file:../../../packages/drawlist-renderer"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.0.9"
+  }
+}

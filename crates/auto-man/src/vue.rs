@@ -3510,8 +3510,20 @@ export default router
 
         merge_host_npm_deps(&self.output_dir, &npm_merge)?;
 
-        fs::write(src_dir.join("apps-registry.ts"), generate_apps_registry(&registry_rows))
-            .map_err(|e| format!("Failed to write apps-registry.ts: {}", e))?;
+        // Plan 516: 远程 App 条目（<apps_dir>/remote-apps.json；缺省空表）。
+        let remote_rows = read_remote_apps(&apps_dir);
+        if !remote_rows.is_empty() {
+            println!(
+                "  {} Remote apps: {} (from remote-apps.json)",
+                "✓".bright_green(),
+                remote_rows.len()
+            );
+        }
+        fs::write(
+            src_dir.join("apps-registry.ts"),
+            generate_apps_registry(&registry_rows, &remote_rows),
+        )
+        .map_err(|e| format!("Failed to write apps-registry.ts: {}", e))?;
         // Plan 515 G3：壁纸配置注入——VM 轨同键 `shell.desktop.wallpaper`
         //（iced/renderer.rs load_desktop_wallpaper 同源 storage）；vue 侧
         // 无 storage 桥，生成期注入（运行期改动经下次生成生效）。
@@ -4731,6 +4743,68 @@ fn desktop_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
     .into())
 }
 
+/// Plan 516 G4: `remote-apps.json` 条目（声明式远程窗配置）。
+#[derive(serde::Deserialize)]
+struct RemoteAppsFileEntry {
+    id: String,
+    url: String,
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    app: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    icon: Option<String>,
+}
+
+/// 读 `<apps_dir>/remote-apps.json` → (id, url[+token], appId, title) 行。
+/// 缺文件/解析失败 → 空表 + 警告（远程配置不阻断桌面启动，G4 降级语义）。
+fn read_remote_apps(apps_dir: &Path) -> Vec<(String, String, String, String)> {
+    let path = apps_dir.join("remote-apps.json");
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    match serde_json::from_str::<Vec<RemoteAppsFileEntry>>(&raw) {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|e| {
+                let app = e.app.clone().unwrap_or_else(|| e.id.clone());
+                let title = e.title.clone().unwrap_or_else(|| app.clone());
+                let url = merge_token(e.url.clone(), e.token.as_deref());
+                (e.id, url, app, title)
+            })
+            .collect(),
+        Err(err) => {
+            println!(
+                "  {} remote-apps.json parse failed (remote apps disabled): {}",
+                "⚠".bright_yellow(),
+                err
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// token 并入 url query（已含 token= 则原样；最小百分号编码保留字）。
+fn merge_token(mut url: String, token: Option<&str>) -> String {
+    let Some(t) = token else { return url };
+    if url.contains("token=") || t.is_empty() {
+        return url;
+    }
+    url.push(if url.contains('?') { '&' } else { '?' });
+    url.push_str("token=");
+    for b in t.bytes() {
+        match b {
+            b'&' | b'=' | b'?' | b'#' | b' ' | b'"' | b'<' | b'>' => {
+                url.push_str(&format!("%{:02X}", b));
+            }
+            _ => url.push(b as char),
+        }
+    }
+    url
+}
+
 /// Plan 465 T3: merge cross-app npm deps (pac `deps:` of scanned apps)
 /// into the host package.json — idempotent; runs before the install step
 /// of the same run.
@@ -4763,13 +4837,29 @@ fn merge_host_npm_deps(output_dir: &Path, deps: &[(String, String)]) -> AutoResu
 /// Build-time app registry: static `import()` path map — every path is a
 /// string literal so vite's import analysis can pre-bundle the chunks
 /// (runtime-joined paths are not supported).
-fn generate_apps_registry(entries: &[(String, String, String, String)]) -> String {
+///
+/// Plan 516: 追加 REMOTE_APPS——`<apps_dir>/remote-apps.json` 声明的远程
+/// 条目（id/url/app/title/icon；token 并入 url）。无配置 = 空表（桌面
+/// 行为零变化，G4 回归门）。
+fn generate_apps_registry(
+    entries: &[(String, String, String, String)],
+    remote_entries: &[(String, String, String, String)],
+) -> String {
     let mut rows = String::new();
     for (id, title, icon, category) in entries {
         // {:?} produces a quoted, escaped TS-compatible string literal.
         rows.push_str(&format!(
-            "  {{ id: {:?}, title: {:?}, icon: {:?}, category: {:?}, load: () => import({:?}) }},\n",
+            "  {{ id: {:?}, title: {:?}, icon: {:?}, category: {:?}, load: () => import({:?}) }},
+",
             id, title, icon, category, format!("./apps/{}/App.vue", id)
+        ));
+    }
+    let mut remote_rows = String::new();
+    for (id, url, app, title) in remote_entries {
+        remote_rows.push_str(&format!(
+            "  {{ id: {:?}, url: {:?}, appId: {:?}, title: {:?} }},
+",
+            id, url, app, title
         ));
     }
     format!(
@@ -4788,6 +4878,17 @@ export interface AppEntry {{
 export const APPS: AppEntry[] = [
 {rows}]
 
+// Plan 516: 远程 App 条目（<apps_dir>/remote-apps.json；缺省空表）。
+export interface RemoteAppEntry {{
+  id: string
+  url: string
+  appId: string
+  title: string
+}}
+
+export const REMOTE_APPS: RemoteAppEntry[] = [
+{remote_rows}]
+
 export function findApp(id: string): AppEntry | undefined {{
   return APPS.find((a) => a.id === id)
 }}
@@ -4802,12 +4903,15 @@ export function findApp(id: string): AppEntry | undefined {{
 /// Plan 515 G3：`wallpaper` = storage `shell.desktop.wallpaper` 当前值
 /// （配置注入——vue 侧无 storage 桥，503-2 降级判定；图片/纯色/空三档
 /// 见 Wallpaper.vue），注入为生成期常量。
+///
+/// Plan 516: 客户区分流——kind:"remote" 窗渲染 RemoteWindow 叶（canvas +
+/// 会话状态面）；boot 消费 REMOTE_APPS（配置）+ URL 注入（e2e 动态端口）。
 fn generate_host_app_vue(wallpaper: &str) -> String {
     r#"<script setup lang="ts">
 // Plan 465: desktop host shell (auto-generated; rewritten on every
 // `--desktop` run). WmStore z-stack + taskbar + launcher overlay slot.
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { APPS, findApp } from './apps-registry'
+import { APPS, REMOTE_APPS, findApp } from './apps-registry'
 import {
   wm,
   launchWindow,
@@ -4815,10 +4919,12 @@ import {
   setViewport,
   attachClient,
 } from './wm/store'
+import { bootRemoteApps } from './wm/remote'
 import { installDesktopKeyboard } from './wm/keyboard'
 import Taskbar from './wm/Taskbar.vue'
 import VirtualWindow from './wm/VirtualWindow.vue'
 import Wallpaper from './wm/Wallpaper.vue'
+import RemoteWindow from './wm/RemoteWindow.vue'
 
 // Plan 515 G3：壁纸配置注入（VM 轨同键 shell.desktop.wallpaper；运行期
 // 改动经下次生成生效——vue 无 storage 桥的差异注记）。
@@ -4852,7 +4958,31 @@ function launchFirst(): void {
 }
 
 function setClient(w: (typeof wm.wins)[number], el: unknown): void {
-  attachClient(w, el)
+  // Plan 516: RemoteWindow 组件 ref 传组件实例——容器取 $el（Tab 篱笆
+  // 沿用 store.container；远程窗 comp=null，attachClient 天然跳过挂载）。
+  const dom =
+    el && typeof el === 'object' && '$el' in (el as Record<string, unknown>)
+      ? ((el as Record<string, unknown>).$el as HTMLElement)
+      : el
+  attachClient(w, dom)
+}
+
+// Plan 516 G4: URL 注入（?remote=<ws-url>&app=<appId>&title=&rbudget=）——
+// e2e 动态端口的会话参数化通道；v1 单条（多窗走 remote-apps.json 配置）。
+function remoteAppsFromUrl(): Array<{ id: string; url: string; appId: string; title: string; reconnectBudgetMs?: number }> {
+  const p = new URLSearchParams(location.search)
+  const url = p.get('remote')
+  if (!url) return []
+  const app = p.get('app') ?? '002-counter'
+  return [
+    {
+      id: p.get('rid') ?? 'url',
+      url,
+      appId: app,
+      title: p.get('title') ?? app,
+      reconnectBudgetMs: p.get('rbudget') ? Number(p.get('rbudget')) : undefined,
+    },
+  ]
 }
 
 function toggleOverlay(): void {
@@ -4869,6 +4999,9 @@ watch(overlayOpen, (open) => {
 onMounted(() => {
   setViewport(window.innerWidth, window.innerHeight)
   installDesktopKeyboard({ summonLauncher: toggleOverlay })
+  // Plan 516 G4: boot 建连（配置 + URL 注入）。建连失败在 openRemoteWindow
+  // 内降级为 dead 状态面——不阻断桌面启动。
+  bootRemoteApps([...REMOTE_APPS, ...remoteAppsFromUrl()])
 })
 </script>
 
@@ -4879,7 +5012,8 @@ onMounted(() => {
       <Wallpaper :value="WALLPAPER" />
       <VirtualWindow v-for="w in wm.wins" :key="w.wid" :win="w">
         <template v-if="!w.crashed">
-          <div :ref="(el) => setClient(w, el)" class="w-full h-full" />
+          <RemoteWindow v-if="w.kind === 'remote'" :win="w" :ref="(el) => setClient(w, el)" />
+          <div v-else :ref="(el) => setClient(w, el)" class="w-full h-full" />
         </template>
         <div v-else class="w-full h-full flex items-center justify-center bg-background">
           <p class="text-sm text-muted-foreground">[AutoUI 会话] 视图构建异常（plan-453 边界兜底）</p>
@@ -5019,7 +5153,7 @@ render: \"vm\"
                 )
             })
             .collect();
-        let ts = generate_apps_registry(&rows);
+        let ts = generate_apps_registry(&rows, &[]);
         assert!(ts.contains("\"001-alpha\""), "registry maps the vue app:
 {ts}");
         assert!(
@@ -5029,6 +5163,61 @@ render: \"vm\"
         );
         assert!(!ts.contains("002-beta"), "vm-declared app excluded:
 {ts}");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Plan 516 G4: 无 remote-apps.json → REMOTE_APPS 空表（无配置零行为
+    /// 变化的生成侧门禁）；配置存在 → 条目烘焙 + token 并入 + 缺省回填。
+    #[test]
+    fn remote_apps_registry_config() {
+        // 无配置：空表断言。
+        let ts = generate_apps_registry(&[], &[]);
+        assert!(
+            ts.contains("export const REMOTE_APPS: RemoteAppEntry[] = [
+]"),
+            "no-config REMOTE_APPS must be empty:
+{ts}"
+        );
+
+        // 配置装载：token 并入 url、app/title 缺省回填、坏配置降级空表。
+        let tmp = std::env::temp_dir().join(format!("auto516-reg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(
+            tmp.join("remote-apps.json"),
+            r#"[
+  { "id": "counter", "url": "ws://127.0.0.1:17800", "token": "demo-token", "app": "002-counter", "title": "Counter (remote)" },
+  { "id": "notes", "url": "ws://127.0.0.1:17800/?token=inline" }
+]"#,
+        )
+        .unwrap();
+        let rows = read_remote_apps(&tmp);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(
+            rows[0],
+            (
+                "counter".to_string(),
+                "ws://127.0.0.1:17800?token=demo-token".to_string(),
+                "002-counter".to_string(),
+                "Counter (remote)".to_string(),
+            )
+        );
+        // app/title 缺省回填 id；url 已含 token 不重复并入。
+        assert_eq!(rows[1].2, "notes");
+        assert_eq!(rows[1].3, "notes");
+        assert_eq!(rows[1].1, "ws://127.0.0.1:17800/?token=inline");
+
+        // 坏 JSON → 空表（不 panic）。
+        std::fs::write(tmp.join("remote-apps.json"), "{ not json").unwrap();
+        assert!(read_remote_apps(&tmp).is_empty());
+
+        let ts = generate_apps_registry(&[], &rows);
+        assert!(
+            ts.contains("url: \"ws://127.0.0.1:17800?token=demo-token\""),
+            "token merged into url:
+{ts}"
+        );
+        assert!(ts.contains("appId: \"002-counter\""), "{ts}");
         std::fs::remove_dir_all(&tmp).ok();
     }
 
