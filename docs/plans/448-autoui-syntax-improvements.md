@@ -565,7 +565,7 @@ widget App {
 
 ---
 
-## §8 需求 I：grid `cols:`/`gap:` 动态值（已登记未实施，2026-09-02 三轮走查收集）
+## §8 需求 I：grid `cols:`/`gap:` 动态值 ✅ 已实施（2026-09-02，worktree @ 4c23f5902）
 
 ### I.1 动机与证据
 
@@ -580,25 +580,52 @@ widget App {
 - 025/0507 等用 `grid (cols: 3.0, …)` 字面量正常——缺口只在"列数随
   state 变化"场景（响应式表格/棋盘/看板）。
 
-### I.2 方案草图（未裁定）
+### I.2 方案（实施收口）
 
-- (a) **Vue 侧**：cols 为非字面量表达式时改发内联样式
-  `:style="'grid-template-columns: repeat(' + cols_expr + ', minmax(0,1fr))'"`
-  ——绕开 Tailwind JIT 对动态类名的扫描限制（动态 `grid-cols-N` 类名
-  不会被 JIT 收录，静默失效）。
-- (b) **VM 侧**：`AbstractView::Grid` 构建处（aura_view_builder grid 臂）
-  对非字面量 cols 走 `resolve_expr_to_value` 每次重建求值（绑定随
-  state 变更触发重建，与 style prop 同周期）。
-- (c) **语料**：038 三块合一块 `cols: .store.cols`（store 按难度档给
-  9/16/30），净删 ~96 行。
-- 裁定注意：`gap:` 同型（像素语义，两侧同样仅字面量）；cols 求值失败
-  的兜底（clamp 到 [1, u16::MAX]？发 1？）需定。
+1. **VM 侧**：新增 `eval_u16_prop` 助手，接入 `convert_grid` 与
+   `convert_grid_tracked_ctx` 双胞胎的提取链（literal `extract_u16` →
+   "columns" 别名 → **表达式求值**）；非字面量表达式经
+   `resolve_expr_to_value` 重建期求值（state 变更触发重建，与 style prop
+   同周期）；求值失败/越界落调用方默认（cols 1 / gap 0），**不钳垃圾**。
+2. **Vue 侧**：`generate_shadcn_attrs` 的 `"grid"` 臂（真实构建路径——
+   首验发现 plain 生成器不走此臂，见 I.4）——字面量保静态类零回归；
+   动态 cols 发内联
+   `:style="'grid-template-columns: repeat(' + (expr) + ', minmax(0, 1fr))'"`
+   （动态 Tailwind 类名不被 JIT 收录故走内联样式，与 `grid-cols-N`
+   展开式逐字等价）；gap 同型发 `'gap: ' + (expr) + 'px'`；已有
+   `:style` 属性防御性合并。
+3. **语料**：038-minesweeper 三份棋盘块合一（`cols: .store.cols`——
+   store 本就随难度维护 `cols` 态），净删 ~96 行；原仓内注释记载的
+   双后端字面量限制随迁移失效，替换为动态 cols 说明注记。
 
-### I.3 测试（预置）
+### I.3 测试
 
-- vue：动态 cols 产 `:style` repeat 形态；字面量 cols 仍产静态类（零回归）。
-- VM：cols 随 state 翻转重建（038 三档切换快照列数断言）。
-- e2e：038 迁移后三档棋盘渲染等价（MCP snapshot 按钮计数）。
+- vue 单测 `test_grid_dynamic_cols_gap_inline_style`（shadcn 生成器）：
+  字面量保 `grid-cols-7` 静态类；动态发 repeat + px 双内联断言。
+- VM 单测 `plan448_grid_dynamic_cols_resolution`（convert_grid 直测）：
+  动态随状态 3→16（038 难度切换形态）/字面量 7 不变/不可解析表达式
+  落 1 列兜底。
+- **e2e**：038 VM 模式（MCP snapshot）难度切换 9→16→30 列，
+  棋盘格数 81/256/480 逐档断言。
+- 038 Vue regen：产物为单 grid + 内联 repeat 绑定；vue-tsc 错误签名
+  与 master **逐条相同**（store 文件预存簇 4 错零新增）。
+
+### I.4 边界与不做
+
+- **plain 生成器路径不覆盖**：`VueGenerator::new()`（非 shadcn）的 grid
+  走 extract_classes + 通用透传——`cols` 落成死属性 `:cols="7"`（预存
+  行为，字面量时代即如此，本条不扩大战场；真实 `auto build` 走 shadcn
+  路径已覆盖）。
+- `columns` 别名的动态求值未接（罕见形态，literal 别名保留）。
+- 求值失败的兜底裁定为**落默认**（cols 1/gap 0）而非 clamp——错误可
+  观察（棋盘塌成单列）优于静默钳出错误列数。
+
+### I.5 遗留与风险
+
+- 动态 cols 的求值每重建一次发生（无缓存）——038 形态（81-480 cell
+  重建）实测无感知开销；更大的 board 若出现性能问题再议 memo。
+- vue-tsc 对 `store.cols` 的 `number | undefined` 报错属 store composable
+  预存簇（038 master 同错），与本条无关。
 
 ---
 
