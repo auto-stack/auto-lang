@@ -29,29 +29,29 @@ widget settings {
                         style: "gap-2"
                         button {
                             onclick: .SetFont("small")
-                            style: if .font_size == "small" {
-                                "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs"
+                            style: ["px-4 py-2 rounded-lg text-xs", if .font_size == "small" {
+                                "bg-primary text-primary-foreground"
                             } else {
-                                "px-4 py-2 border border-border rounded-lg text-xs text-foreground hover:bg-accent"
-                            }
+                                "border border-border text-foreground hover:bg-accent"
+                            }]
                             text "A  Small" {}
                         }
                         button {
                             onclick: .SetFont("medium")
-                            style: if .font_size == "medium" {
-                                "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+                            style: ["px-4 py-2 rounded-lg text-sm", if .font_size == "medium" {
+                                "bg-primary text-primary-foreground"
                             } else {
-                                "px-4 py-2 border border-border rounded-lg text-sm text-foreground hover:bg-accent"
-                            }
+                                "border border-border text-foreground hover:bg-accent"
+                            }]
                             text "A  Medium" {}
                         }
                         button {
                             onclick: .SetFont("large")
-                            style: if .font_size == "large" {
-                                "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-base"
+                            style: ["px-4 py-2 rounded-lg text-base", if .font_size == "large" {
+                                "bg-primary text-primary-foreground"
                             } else {
-                                "px-4 py-2 border border-border rounded-lg text-base text-foreground hover:bg-accent"
-                            }
+                                "border border-border text-foreground hover:bg-accent"
+                            }]
                             text "A  Large" {}
                         }
                     }

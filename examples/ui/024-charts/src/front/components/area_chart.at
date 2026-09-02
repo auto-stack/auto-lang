@@ -420,7 +420,7 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 row (style: "justify-end gap-4 pb-2") {
                     if .legendText0 != "" {
                         mouse-area (onmouseenter: .HoverSeries(0), onmouseleave: .SeriesOut, onclick: .Toggle(0)) {
-                            row (style: if .visAr0 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                            row (style: ["items-center gap-1", if .visAr0 { "" } else { "opacity-40" }]) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor0) {}
                                 }
@@ -430,7 +430,7 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     }
                     if .legendText1 != "" {
                         mouse-area (onmouseenter: .HoverSeries(1), onmouseleave: .SeriesOut, onclick: .Toggle(1)) {
-                            row (style: if .visAr1 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                            row (style: ["items-center gap-1", if .visAr1 { "" } else { "opacity-40" }]) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor1) {}
                                 }
@@ -440,7 +440,7 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     }
                     if .legendText2 != "" {
                         mouse-area (onmouseenter: .HoverSeries(2), onmouseleave: .SeriesOut, onclick: .Toggle(2)) {
-                            row (style: if .visAr2 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                            row (style: ["items-center gap-1", if .visAr2 { "" } else { "opacity-40" }]) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor2) {}
                                 }
@@ -450,7 +450,7 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     }
                     if .legendText3 != "" {
                         mouse-area (onmouseenter: .HoverSeries(3), onmouseleave: .SeriesOut, onclick: .Toggle(3)) {
-                            row (style: if .visAr3 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                            row (style: ["items-center gap-1", if .visAr3 { "" } else { "opacity-40" }]) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor3) {}
                                 }
