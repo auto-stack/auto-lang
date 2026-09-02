@@ -42,100 +42,100 @@ type TFnSig {
 // fn 声明走查:镜像 parse_fn 的签名词法流(name/泛型拒绝/params 绑定/ret),
 // 但不构造 dump。体内语句交回 t_stmt_walk。
 fn t_fn_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
-    p_next(p)
-    if p_kind(p) == TokenKind.Dot || p_kind(p) == TokenKind.Lt {
-        p_err(p, "typeinfo: unsupported fn form ")
+    p.next()
+    if p.kind() == TokenKind.Dot || p.kind() == TokenKind.Lt {
+        p.fail("typeinfo: unsupported fn form ")
         return
     }
-    if p_kind(p) != TokenKind.Ident {
-        p_err(p, "typeinfo: expected fn name ")
+    if p.kind() != TokenKind.Ident {
+        p.fail("typeinfo: expected fn name ")
         return
     }
-    var name = p_text(p)
-    p_next(p)
-    push_scope(p)
-    p_expect(p, TokenKind.LParen)
+    var name = p.text()
+    p.next()
+    p.push_scope()
+    p.expect(TokenKind.LParen)
     // 参数:镜像 parse_fn_params 的词法流(mode 词/name/:类型/默认值),绑定入作用域
-    skip_empty_lines(p)
+    p.skip_empty_lines()
     var running = true
     while running && p.err == "" {
-        var k = p_kind(p)
+        var k = p.kind()
         if k == TokenKind.View || k == TokenKind.Mut || k == TokenKind.Move || k == TokenKind.Take || k == TokenKind.Copy {
-            p_next(p)
+            p.next()
         }
-        if p_kind(p) != TokenKind.Ident {
+        if p.kind() != TokenKind.Ident {
             running = false
         } else {
-            var pname = p_text(p)
-            p_next(p)
+            var pname = p.text()
+            p.next()
             var ty = "int"
-            if p_kind(p) == TokenKind.Colon {
-                p_next(p)
+            if p.kind() == TokenKind.Colon {
+                p.next()
             }
             if is_type_name(p) {
                 ty = parse_type(p)
             }
-            if p_kind(p) == TokenKind.Asn {
-                p_next(p)
+            if p.kind() == TokenKind.Asn {
+                p.next()
                 expr_pratt(p, 0)
             }
-            p_bind(p, pname, ty)
-            if p_kind(p) == TokenKind.Comma {
-                p_next(p)
+            p.bind(pname, ty)
+            if p.kind() == TokenKind.Comma {
+                p.next()
             } else {
                 running = false
             }
         }
     }
-    p_expect(p, TokenKind.RParen)
+    p.expect(TokenKind.RParen)
     var ret = ""
-    if p_kind(p) == TokenKind.Arrow {
-        p_next(p)
+    if p.kind() == TokenKind.Arrow {
+        p.next()
         ret = parse_type(p)
-        skip_empty_lines(p)
+        p.skip_empty_lines()
     } else if is_type_name(p) {
         ret = parse_type(p)
-        skip_empty_lines(p)
-    } else if p_kind(p) == TokenKind.LBrace || p_kind(p) == TokenKind.Semi {
+        p.skip_empty_lines()
+    } else if p.kind() == TokenKind.LBrace || p.kind() == TokenKind.Semi {
         ret = "void"
     }
     fns.push(TFnSig(name, ret))
-    if p_kind(p) == TokenKind.Semi {
-        p_next(p)
-        pop_scope(p)
+    if p.kind() == TokenKind.Semi {
+        p.next()
+        p.pop_scope()
         return
     }
     t_body_walk(p, fns, out)
-    pop_scope(p)
+    p.pop_scope()
 }
 
 // fn 体:期望 LBrace,扁平遍历至配对 RBrace(嵌套块按平衡跳过,Missing:
 // 块级作用域)。
 fn t_body_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         t_stmt_walk(p, fns, out)
         if p.err == "" {
             // expect_eos 直译(Semi/Newline/Comma 分隔;不产 nl 行)
             var has_sep = false
-            while p_kind(p) == TokenKind.Semi || p_kind(p) == TokenKind.Newline || p_kind(p) == TokenKind.Comma {
+            while p.kind() == TokenKind.Semi || p.kind() == TokenKind.Newline || p.kind() == TokenKind.Comma {
                 has_sep = true
-                p_next(p)
+                p.next()
             }
-            if p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace && !has_sep {
-                p_err(p, "typeinfo: expected end of statement ")
+            if p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace && !has_sep {
+                p.fail("typeinfo: expected end of statement ")
             }
         }
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
 }
 
 // print(EXPR.type) 查询收集:识别 print 调用且实参以 .type 收尾。
 // 返回 1 = 已处理(含非查询的普通 print:求值后跳过)。
 // pos+1 处是否 .type 属性词("type" 是关键字,lex 为 Type;亦容 Ident)
 fn t_is_type_prop(p P) bool {
-    var nk = p_peek(p, 1)
+    var nk = p.peek(1)
     if nk == TokenKind.Type {
         return true
     }
@@ -143,36 +143,36 @@ fn t_is_type_prop(p P) bool {
 }
 
 fn t_try_print_query(mut p P, mut out List<str>, mut fns List<TFnSig>) int {
-    if p_kind(p) != TokenKind.Ident || p_text(p) != "print" {
+    if p.kind() != TokenKind.Ident || p.text() != "print" {
         return 0
     }
-    if p_peek(p, 1) != TokenKind.LParen {
+    if p.peek(1) != TokenKind.LParen {
         return 0
     }
-    p_next(p)
-    p_next(p)
-    skip_empty_lines(p)
+    p.next()
+    p.next()
+    p.skip_empty_lines()
     // 解析实参表达式;若随后是 .type 则收集该表达式的推断型
     var ty = t_infer_expr(p, 0, fns)
-    if p_kind(p) == TokenKind.Dot && t_is_type_prop(p) {
-        p_next(p)
-        p_next(p)
+    if p.kind() == TokenKind.Dot && t_is_type_prop(p) {
+        p.next()
+        p.next()
         if ty == "" {
             ty = "unknown"
         }
         out.push(ty)
     }
     // 其余实参按分隔符消费至 RParen
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RParen {
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RParen {
         t_infer_expr(p, 0, fns)
-        if p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
-            p_next(p)
-            skip_empty_lines(p)
-        } else if p_kind(p) != TokenKind.RParen {
-            p_err(p, "typeinfo: expected argument separator ")
+        if p.kind() == TokenKind.Comma || p.kind() == TokenKind.Newline {
+            p.next()
+            p.skip_empty_lines()
+        } else if p.kind() != TokenKind.RParen {
+            p.fail("typeinfo: expected argument separator ")
         }
     }
-    p_expect(p, TokenKind.RParen)
+    p.expect(TokenKind.RParen)
     return 1
 }
 
@@ -192,75 +192,75 @@ fn p_text_at(p P, n int) str {
 
 // 臂体:{...} 块逐语句;return/break/continue 单语句;其余单表达式语句
 fn t_walk_is_arm_body(mut p P, mut fns List<TFnSig>, mut out List<str>) {
-    if p_kind(p) == TokenKind.LBrace {
+    if p.kind() == TokenKind.LBrace {
         t_body_walk(p, fns, out)
         return
     }
-    if p_kind(p) == TokenKind.Return {
-        p_next(p)
-        var k = p_kind(p)
+    if p.kind() == TokenKind.Return {
+        p.next()
+        var k = p.kind()
         if k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.RBrace || k == TokenKind.EOF {
             return
         }
         t_infer_expr(p, 0, fns)
         return
     }
-    if p_kind(p) == TokenKind.Break || p_kind(p) == TokenKind.Continue {
-        p_next(p)
+    if p.kind() == TokenKind.Break || p.kind() == TokenKind.Continue {
+        p.next()
         return
     }
     t_stmt_walk(p, fns, out)
 }
 
 fn t_is_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
-    p_next(p)
+    p.next()
     t_infer_expr(p, 0, fns)
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
-        if p_kind(p) == TokenKind.If {
-            p_next(p)
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
+    while p.err == "" && p.kind() != TokenKind.RBrace && p.kind() != TokenKind.EOF {
+        if p.kind() == TokenKind.If {
+            p.next()
             t_infer_expr(p, 0, fns)
-            p_expect(p, TokenKind.Arrow)
+            p.expect(TokenKind.Arrow)
             t_walk_is_arm_body(p, fns, out)
-        } else if p_kind(p) == TokenKind.Else {
-            p_next(p)
-            p_expect(p, TokenKind.Arrow)
+        } else if p.kind() == TokenKind.Else {
+            p.next()
+            p.expect(TokenKind.Arrow)
             t_walk_is_arm_body(p, fns, out)
         } else {
-            push_scope(p)
+            p.push_scope()
             // 模式复用 parser.at 的 is_pattern(游标推进 + tag-cover 绑定
             // 信息:name=枚举名/word=变体名/args=绑定逗号串)
             var pat = is_pattern(p)
-            while p.err == "" && p_kind(p) == TokenKind.VBar {
-                p_next(p)
-                skip_empty_lines(p)
+            while p.err == "" && p.kind() == TokenKind.VBar {
+                p.next()
+                p.skip_empty_lines()
                 is_pattern(p)
-                skip_empty_lines(p)
+                p.skip_empty_lines()
             }
-            p_expect(p, TokenKind.Arrow)
-            skip_empty_lines(p)
+            p.expect(TokenKind.Arrow)
+            p.skip_empty_lines()
             if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
                 var binds = split_commas(pat.args)
                 var i = 0
                 while i < binds.len() {
                     if binds.get(i) != "_" {
-                        var slot_ty = p_decl_lookup(p, pat.name + "." + pat.word + "." + i.str())
-                        p_bind(p, binds.get(i), slot_ty)
+                        var slot_ty = p.decl_lookup(pat.name + "." + pat.word + "." + i.str())
+                        p.bind(binds.get(i), slot_ty)
                     }
                     i = i + 1
                 }
             }
             t_walk_is_arm_body(p, fns, out)
-            pop_scope(p)
+            p.pop_scope()
         }
-        if p_kind(p) == TokenKind.Comma {
-            p_next(p)
-            skip_empty_lines(p)
+        if p.kind() == TokenKind.Comma {
+            p.next()
+            p.skip_empty_lines()
         }
-        skip_empty_lines(p)
+        p.skip_empty_lines()
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
 }
 
 fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
@@ -270,7 +270,7 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     if t_try_print_query(p, out, fns) == 1 {
         return
     }
-    var k = p_kind(p)
+    var k = p.kind()
     if k == TokenKind.Fn {
         t_fn_walk(p, fns, out)
         return
@@ -293,25 +293,25 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
         return
     }
     if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared {
-        p_next(p)
-        if p_kind(p) != TokenKind.Ident {
-            p_err(p, "typeinfo: expected store name ")
+        p.next()
+        if p.kind() != TokenKind.Ident {
+            p.fail("typeinfo: expected store name ")
             return
         }
-        var name = p_text(p)
-        p_next(p)
+        var name = p.text()
+        p.next()
         var ty = ""
         if is_type_name(p) {
             ty = parse_type(p)
         }
-        if p_kind(p) == TokenKind.Asn {
-            p_next(p)
+        if p.kind() == TokenKind.Asn {
+            p.next()
             var ity = t_infer_expr(p, 0, fns)
             if ty == "" {
                 ty = ity
             }
         }
-        p_bind(p, name, ty)
+        p.bind(name, ty)
         return
     }
     // 其余语句:按表达式消费(if/for/while 等控制流的条件部分会被消费,
@@ -385,13 +385,13 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
     if p.err != "" {
         return ""
     }
-    var k = p_kind(p)
+    var k = p.kind()
     var lhs = ""
     // A2:主分派 is 化(前缀/元组/数组/原子;镜像 Rust expr_pratt)
     is k {
         TokenKind.Add | TokenKind.Sub | TokenKind.Not | TokenKind.Star -> {
             var pow = prefix_power(p_op(k))
-            p_next(p)
+            p.next()
             var operand = t_infer_expr(p, pow, fns)
             if k == TokenKind.Not {
                 lhs = "bool"
@@ -400,18 +400,18 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
             }
         }
         TokenKind.LParen -> {
-        p_next(p)
+        p.next()
         // 元组判定简化:组内逗号即元组(连接型),否则 group 透传
         lhs = t_infer_expr(p, 0, fns)
         var parts List<str> = List.new()
         var lh2 = f"${lhs}"
         parts.push(lh2)
-        while p_kind(p) == TokenKind.Comma {
-            p_next(p)
+        while p.kind() == TokenKind.Comma {
+            p.next()
             var e = t_infer_expr(p, 0, fns)
             parts.push(e)
         }
-        p_expect(p, TokenKind.RParen)
+        p.expect(TokenKind.RParen)
         if parts.len() > 1 {
             lhs = t_join_types(parts)
         }
@@ -419,32 +419,32 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         TokenKind.FStrStart -> {
             // 447-③ 11.2a:f-string 类型恒 str(镜像宿主 ObjectType::String)
             lhs = "str"
-            p_next(p)
-            p_next(p)
-            p_next(p)
+            p.next()
+            p.next()
+            p.next()
         }
         TokenKind.LSquare -> {
         // 数组字面量:元素型取首元素,Display 同 Rust Array
-        p_next(p)
-        skip_empty_lines(p)
+        p.next()
+        p.skip_empty_lines()
         var first = ""
         var n = 0
-        while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RSquare {
+        while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RSquare {
             var e = t_infer_expr(p, 0, fns)
             if n == 0 {
                 first = e
             }
             n = n + 1
             var has_sep = false
-            while p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
+            while p.kind() == TokenKind.Comma || p.kind() == TokenKind.Newline {
                 has_sep = true
-                p_next(p)
+                p.next()
             }
-            if p_kind(p) != TokenKind.RSquare && !has_sep {
-                p_err(p, "typeinfo: expected array separator ")
+            if p.kind() != TokenKind.RSquare && !has_sep {
+                p.fail("typeinfo: expected array separator ")
             }
         }
-        p_expect(p, TokenKind.RSquare)
+        p.expect(TokenKind.RSquare)
         if n > 0 {
             lhs = f"(array-type (elem ${first}) (len ${n.str()}))"
         }
@@ -454,39 +454,39 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         var lit = t_literal_type(k)
         if lit != "" {
             lhs = lit
-            p_next(p)
+            p.next()
         } else if k == TokenKind.Ident {
-            var name = p_text(p)
-            p_next(p)
+            var name = p.text()
+            p.next()
             // W1 构造字面量:已注册类型紧随 { → 消费 pairs,推断=类型名
             // (镜像宿主可观察行为:var_types 记 base 名,`.type` 链可用)
-            if p_kind(p) == TokenKind.LBrace && p_decl_lookup(p, name) != "" {
+            if p.kind() == TokenKind.LBrace && p.decl_lookup(name) != "" {
                 t_ctor_consume(p, fns)
                 lhs = name
             } else {
-            lhs = p_lookup(p, name)
+            lhs = p.lookup(name)
             // 调用后缀:注册表查返回类型
-            if p_kind(p) == TokenKind.LParen {
+            if p.kind() == TokenKind.LParen {
                 lhs = t_fn_ret(fns, name)
                 parse_args(p)
             }
             // 下标后缀:数组元素型
-            if p_kind(p) == TokenKind.LSquare {
-                p_next(p)
+            if p.kind() == TokenKind.LSquare {
+                p.next()
                 t_infer_expr(p, 0, fns)
-                p_expect(p, TokenKind.RSquare)
+                p.expect(TokenKind.RSquare)
                 lhs = t_array_elem(lhs)
             }
             }
         } else {
-            p_err(p, "typeinfo: expected expression, got ")
+            p.fail("typeinfo: expected expression, got ")
             return ""
         }
         }
     }
     // ── 中缀循环 ──
     while p.err == "" {
-        var opk = p_kind(p)
+        var opk = p.kind()
         // P2:循环顶 token 分派 is 化(11 种界符臂内 break;镜像 Rust
         // parser.rs:2425 的 match kind)
         is opk {
@@ -500,16 +500,16 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
                     break
                 }
                 if !is_op_kind(opk) {
-                    p_err(p, "typeinfo: expected infix operator, got ")
+                    p.fail("typeinfo: expected infix operator, got ")
                     break
                 }
                 var l = infix_l(p_op(opk))
                 if l == 0 || l < min {
                     break
                 }
-                p_next(p)
+                p.next()
                 if opk == TokenKind.Or || opk == TokenKind.And {
-                    skip_empty_lines(p)
+                    p.skip_empty_lines()
                 }
                 // W1 字段访问推断:Dot+名(soft-ident 含)且 lhs 型为已注册
                 // 用户类型(裸名或完整 type-decl dump)→ 按字段名查型;
@@ -517,11 +517,11 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
                 // 方法推断面);非名右值落回通用中缀
                 var dot_field_done = false
                 if opk == TokenKind.Dot {
-                    var fk = p_kind(p)
+                    var fk = p.kind()
                     if fk == TokenKind.Ident || is_soft_ident_kind(fk) {
-                        var fld = p_text(p)
-                        p_next(p)
-                        if p_kind(p) == TokenKind.LParen {
+                        var fld = p.text()
+                        p.next()
+                        if p.kind() == TokenKind.LParen {
                             parse_args(p)
                             lhs = ""
                         } else {
@@ -529,7 +529,7 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
                             if lhs.len() >= 11 && lhs.slice(0, 11) == "(type-decl " {
                                 dump = lhs
                             } else {
-                                dump = p_decl_lookup(p, lhs)
+                                dump = p.decl_lookup(lhs)
                             }
                             lhs = t_field_ty(dump, fld)
                         }
@@ -549,26 +549,26 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
 // W1 构造字面量消费:X { a: e1, b: e2 } —— 值表达式逐个推断(结果弃置,
 // 查询语境不会出现在构造位),键限名字 token;sep 逗号/换行
 fn t_ctor_consume(mut p P, mut fns List<TFnSig>) {
-    p_expect(p, TokenKind.LBrace)
-    skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
-        var k = p_kind(p)
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+        var k = p.kind()
         if k != TokenKind.Ident && !is_soft_ident_kind(k) {
-            p_err(p, "typeinfo: expected field name in struct ctor, got ")
+            p.fail("typeinfo: expected field name in struct ctor, got ")
             return
         }
-        p_next(p)
-        p_expect(p, TokenKind.Colon)
+        p.next()
+        p.expect(TokenKind.Colon)
         t_infer_expr(p, 0, fns)
-        var sk = p_kind(p)
+        var sk = p.kind()
         if sk == TokenKind.Comma || sk == TokenKind.Newline {
-            p_next(p)
-            skip_empty_lines(p)
+            p.next()
+            p.skip_empty_lines()
         } else if sk != TokenKind.RBrace {
-            p_err(p, "typeinfo: expected pair separator, got ")
+            p.fail("typeinfo: expected pair separator, got ")
         }
     }
-    p_expect(p, TokenKind.RBrace)
+    p.expect(TokenKind.RBrace)
 }
 
 // W1 字段型提取:从注册的 type-decl dump 里按字段名取 "(type T)" 的 T
@@ -634,17 +634,17 @@ fn typecheck_dump(source str) str {
     var p = parse_new(toks)
     var fns List<TFnSig> = List.new()
     var out List<str> = List.new()
-    skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != TokenKind.EOF {
+    p.skip_empty_lines()
+    while p.err == "" && p.kind() != TokenKind.EOF {
         t_stmt_walk(p, fns, out)
         if p.err == "" {
             var has_sep = false
-            while p_kind(p) == TokenKind.Semi || p_kind(p) == TokenKind.Newline || p_kind(p) == TokenKind.Comma {
+            while p.kind() == TokenKind.Semi || p.kind() == TokenKind.Newline || p.kind() == TokenKind.Comma {
                 has_sep = true
-                p_next(p)
+                p.next()
             }
-            if p_kind(p) != TokenKind.EOF && !has_sep {
-                p_err(p, "typeinfo: expected end of statement ")
+            if p.kind() != TokenKind.EOF && !has_sep {
+                p.fail("typeinfo: expected end of statement ")
             }
         }
     }

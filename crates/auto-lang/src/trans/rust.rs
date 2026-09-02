@@ -253,6 +253,10 @@ pub struct RustTrans {
     // Track which function params are str (&str) type for auto-borrow at call sites
     // fn_name -> vec of booleans (true = param is str/&str, needs & at call site)
     fn_str_param_indices: HashMap<AutoStr, Vec<bool>>,
+    /// Plan 514 W3: 当前正在发射的 type/ext 的传递性可变方法名集合
+    /// (直接字段写/已知 Rust 变异方法为种子,经 self 接收者调用闭包)。
+    /// fn_decl 的接收者 &mut 判定据此跨方法传递(expect→next 族)。
+    current_type_mut_methods: Option<std::collections::HashSet<AutoStr>>,
 
     // Track current function's return type for string coercion
     current_fn_ret_type: Option<Type>,
@@ -448,6 +452,7 @@ impl RustTrans {
             glob_imported_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
+            current_type_mut_methods: None,
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
@@ -534,6 +539,7 @@ impl RustTrans {
             glob_imported_modules: HashSet::new(),
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
+            current_type_mut_methods: None,
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
@@ -7672,6 +7678,27 @@ impl RustTrans {
             };
 
             if let Some(rust_name) = rust_method {
+                // Plan 514 W3:List/Vec 接收者的 .get(i) → 索引形
+                // `recv[(i) as usize]`(Vec::get 返 Option<&T>,直接字段访问
+                // E0609;lib 方法体 `.toks.get(.pos).kind` 位)。
+                if rust_name == "get" && call.args.args.len() == 1 {
+                    let recv_is_list2 = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
+                            .unwrap_or(false)
+                    } else if let Expr::Dot(base, _) = object.as_ref() {
+                        matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self")
+                    } else { false };
+                    if recv_is_list2 {
+                        self.expr(object, out)?;
+                        write!(out, "[(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
+                        write!(out, ") as usize]")?;
+                        return Ok(());
+                    }
+                }
                 // Plan 379: parenthesize unary-deref receivers too —
                 // `(*x).clone()` would otherwise emit `*x.clone()` which Rust
                 // parses as `*(x.clone())` (wrong precedence).
@@ -7713,6 +7740,19 @@ impl RustTrans {
                     // String keys. Borrow only OWNED-String args (local vars /
                     // field access). Skip: str params (already &str in Rust →
                     // &&str would be wrong), and Int args (Vec::get takes usize).
+                    // Plan 514 W3: List/Array 接收者（Vec::get(usize)）不做
+                    // 借用——`.toks.get(.pos)` 此前经 Expr::Dot 臂误发
+                    // `.get(&self.pos)`（E0277，lib 方法体字段位实参）。
+                    let recv_is_list = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
+                            .unwrap_or(false)
+                    } else if let Expr::Dot(base, _) = object.as_ref() {
+                        // `self.toks.get(.pos)` 形：self 基链的字段位实参
+                        // 按值传(lib 方法体索引位);Map 键位取值经具名局部走
+                        // 上面的 Ident 分支。
+                        matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self")
+                    } else { false };
                     for (i, arg) in call.args.args.iter().enumerate() {
                         let is_owned_string_arg = if let Arg::Pos(e) = arg {
                             match e {
@@ -7745,15 +7785,24 @@ impl RustTrans {
                                             .unwrap_or(true)
                                 }
                                 // Field access (cfg.default_provider) — a String
-                                // field; borrow it.
-                                Expr::Dot(_, _) => true,
+                                // field; borrow it (Map receivers only —
+                                // Plan 514 W3 List/Vec receivers take usize).
+                                Expr::Dot(_, _) => !recv_is_list,
                                 _ => false,
                             }
                         } else { false };
                         if is_owned_string_arg {
                             write!(out, "&")?;
                         }
-                        self.arg(arg, out)?;
+                        // Plan 514 W3: List/Vec 接收者首参是 usize 位——
+                        // i64 实参(含 self 字段位)内联 as usize 转换。
+                        if recv_is_list && i == 0 {
+                            write!(out, "(")?;
+                            self.arg(arg, out)?;
+                            write!(out, ") as usize")?;
+                        } else {
+                            self.arg(arg, out)?;
+                        }
                         if i < call.args.args.len() - 1 {
                             write!(out, ", ")?;
                         }
@@ -8385,16 +8434,42 @@ impl RustTrans {
                         // are skipped regardless of the flag.
                         let arg_is_str_like = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                             || self.is_str_slice_var(arg)
+                            // Plan 514 W3:字符串拼接(Bina+Add → 发射 format!
+                            // 返 String)入 str 参数位需 .as_str()(lib 方法体
+                            // `self.fail(".." + x)` 实证)
+                            || matches!(expr, Expr::Bina(_, auto_val::Op::Add, _))
+                            // Plan 514 W3:str 载荷复合表达式(List<str> 的
+                            // get/index、str 返回的用户方法调用——`p.bind(
+                            // binds.get(i2), ...)` 族)经 infer 解析。
+                            || matches!(self.infer_type_from_expr(expr),
+                                Type::StrOwned | Type::StrSlice
+                                    | Type::StrFixed(_) | Type::CStrLit)
                             || if let Expr::Ident(name) = expr {
-                                self.local_var_types.get(name).map(|ty| matches!(
-                                    ty,
-                                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
-                                )).unwrap_or(false)
+                                // Plan 514 W3:类型未知的局部(lib 的
+                                // `var name = p.text()` 族——未注解 var 经
+                                // 类型推断注册为 Type::Unknown)按 owned
+                                // String 处理——非 str 参数(那些已是
+                                // &str)即 as_str。
+                                if matches!(
+                                    self.local_var_types.get(name),
+                                    None | Some(Type::Unknown)
+                                ) && !self.current_fn_str_params.contains(name) {
+                                    true
+                                } else {
+                                    self.local_var_types.get(name).map(|ty| matches!(
+                                        ty,
+                                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
+                                    )).unwrap_or(false)
+                                }
                             } else {
                                 false
                             };
                         if is_str_param
                             && arg_is_str_like
+                            // Plan 514 W3:字符串字面量本身就是 &str——
+                            // 追加 .as_str() 触发 E0658(str_as_str 未稳定);
+                            // 自由函数环 is_string_literal_arg 同款排除。
+                            && !matches!(expr, Expr::Str(_) | Expr::CStr(_))
                             && !matches!(expr, Expr::Int(_) | Expr::Float(_, _))
                             && !Self::is_int_var(arg, &self.local_var_types)
                         {
@@ -8402,9 +8477,14 @@ impl RustTrans {
                             // is already &str (StrSlice) — adding .as_str() on a &str
                             // triggers E0658 (unstable str_as_str feature).
                             let arg_already_str_slice = if let Expr::Ident(name) = expr {
+                                // Plan 514 W3:仅 str 参数(current_fn_str_params)
+                                // 真是 &str;StrSlice 注册的局部来自 str 返回值
+                                // 调用(lib `var name = p.text()` 族)在 Rust 侧
+                                // 是 String——需要 .as_str(),不得跳过。
                                 self.local_var_types.get(name)
                                     .map(|ty| matches!(ty, Type::StrSlice))
                                     .unwrap_or(false)
+                                    && self.current_fn_str_params.contains(name)
                             } else { false };
                             if !arg_already_str_slice {
                                 write!(out, ".as_str()")?;
@@ -9218,7 +9298,15 @@ impl RustTrans {
                     // an owned String — a &str param still needs the borrow.
                     // Plan 019 Phase 1: `.slice(...)` also renders as an owned
                     // String (byte-range .to_string() or chars().collect()).
+                    // Plan 514 W3: str 返回的用户方法(方法化 lib 的
+                    // `int_val(p.text())` 族)渲染同为 owned String——经
+                    // infer(Fix C 的 qualified 键)解析声明返回。
                     matches!(m.as_str(), "str" | "to_string" | "slice")
+                        || matches!(arg,
+                            Arg::Pos(e) if matches!(
+                                self.infer_type_from_expr(e),
+                                Type::StrOwned | Type::StrSlice
+                                    | Type::StrFixed(_) | Type::CStrLit))
                 } else {
                     false
                 }
@@ -9825,6 +9913,32 @@ impl RustTrans {
                                         return Type::StrOwned;
                                     }
                                     _ => {}
+                                }
+                            }
+                            // Plan 514 W3: 用户方法(`p.text()` 族)——接收者
+                            // 类型已知时经 fn_ret_types 的 "Type.method"
+                            // qualified 键解析声明返回(裸方法名兜底),镜像
+                            // Ident 调用臂。方法化 lib 的 `var x = p.text()`
+                            // 局部此前推断为 Unknown,赋值借用/实参强转/
+                            // string_like 判定全套哑火(E0382/E0308/E0658)。
+                            let type_name = if let Expr::Ident(n) = obj.as_ref() {
+                                match self.local_var_types.get(n) {
+                                    Some(Type::User(td)) => Some(td.name.to_string()),
+                                    Some(Type::Enum(d)) => Some(d.borrow().name.to_string()),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            };
+                            let ret = type_name
+                                .and_then(|t| {
+                                    let key: AutoStr = format!("{}.{}", t, method).into();
+                                    self.fn_ret_types.get(&key).cloned()
+                                })
+                                .or_else(|| self.fn_ret_types.get(method).cloned());
+                            if let Some(ret) = ret {
+                                if !matches!(ret, Type::Unknown | Type::Void) {
+                                    return ret;
                                 }
                             }
                         }
@@ -12461,6 +12575,34 @@ impl RustTrans {
         for param in &fn_decl.params {
             self.local_var_types.insert(param.name.clone(), param.ty.clone());
         }
+        // Plan 514 W3:方法体注册 `self` 的宿主类型(占位 User)——
+        // 使 str 参数 as_str 强转/struct 守卫等按接收者类型的机制对
+        // `self.method(...)`/`self.field` 统一生效(lib 方法体实测:
+        // `self.fail(format!...)` 此前缺 as_str → E0308)。
+        if fn_decl.parent.is_some() && !fn_decl.is_static {
+            if let Some(parent) = &fn_decl.parent {
+                self.local_var_types.insert(
+                    "self".into(),
+                    Type::User(crate::ast::TypeDecl {
+                        consts: Vec::new(),
+                        name: parent.clone(),
+                        kind: crate::ast::TypeDeclKind::UserType,
+                        parent: None,
+                        has: Vec::new(),
+                        specs: Vec::new(),
+                        spec_impls: Vec::new(),
+                        generic_params: Vec::new(),
+                        members: Vec::new(),
+                        delegations: Vec::new(),
+                        methods: Vec::new(),
+                        attrs: Vec::new(),
+                        impl_attrs: Vec::new(),
+                        doc: None,
+                        is_pub: false,
+                    }),
+                );
+            }
+        }
         // Plan 399 Phase 11.5: scan the fn body for `let` bindings that are
         // later mutated (push/insert/extend/assign) — those need `let mut`.
         self.mutated_let_bindings.clear();
@@ -12661,7 +12803,14 @@ impl RustTrans {
             // Plan 163: &mut self for mut methods
             // Plan 373: also auto-detect self-mutation (self.field = ... or
             // self.field.push/insert/...) when source doesn't explicitly say mut fn.
-            let needs_mut = fn_decl.is_mut || Self::method_mutates_self(&fn_decl.body.stmts);
+            let needs_mut = fn_decl.is_mut
+                || Self::method_mutates_self(&fn_decl.body.stmts)
+                // Plan 514 W3: 跨方法 &mut 传递——体内调用同类型可变方法
+                // (经发射前预计算的传递闭包)。
+                || self
+                    .current_type_mut_methods
+                    .as_ref()
+                    .map_or(false, |s| s.contains(fn_decl.name.as_str()));
             // Plan 016 Phase A A4: builder pattern detection. A `mut fn` that
             // returns the enclosing type and ends with `return self` is a
             // consuming-self builder (rust-ref style: `fn(self) -> Self`).
@@ -15351,10 +15500,13 @@ impl RustTrans {
                 sink.body.write(b";\n")?;
             }
 
+            // Plan 514 W3: 预计算传递性可变方法集,供 fn_decl 接收者判定。
+            self.current_type_mut_methods = Some(Self::compute_type_mut_methods(&own_methods));
             for method in &own_methods {
                 self.fn_decl(method, sink)?;
                 sink.body.write(b"\n")?;
             }
+            self.current_type_mut_methods = None;
 
             self.dedent();
             self.print_indent(&mut sink.body)?;
@@ -16285,10 +16437,14 @@ impl RustTrans {
         }
 
         // Generate methods
+        // Plan 514 W3: ext 方法同款传递性可变方法集预计算。
+        let ext_methods: Vec<&Fn> = ext.methods.iter().collect();
+        self.current_type_mut_methods = Some(Self::compute_type_mut_methods(&ext_methods));
         for method in &ext.methods {
             self.fn_decl(method, sink)?;
             sink.body.write(b"\n")?;
         }
+        self.current_type_mut_methods = None;
 
         self.dedent();
         self.print_indent(&mut sink.body)?;
@@ -16905,7 +17061,13 @@ impl RustTrans {
                     let mut_methods = ["push", "pop", "insert", "remove", "clear", "next",
                         "extend", "truncate", "retain", "sort", "sort_by", "reverse",
                         "dedup", "swap", "splice", "drain", "append", "resize"];
-                    if mut_methods.contains(&method.as_str()) && Self::is_self_dot(obj) {
+                    // Plan 514 W3: 裸 `self.method()`(obj 即 Ident self)与
+                    // 字段中介形 `self.field.method()` 同列——此前只匹配后者,
+                    // 方法体内 `.next()`/`self.next()` 语句漏判 → 接收者误发
+                    // &self(E0596)。
+                    let obj_is_self = Self::is_self_dot(obj)
+                        || matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "self");
+                    if mut_methods.contains(&method.as_str()) && obj_is_self {
                         return true;
                     }
                     // Also check nested: self.inner.push(...)
@@ -16921,6 +17083,117 @@ impl RustTrans {
             }
             _ => false,
         }
+    }
+
+    /// Plan 514 W3: 表达式内是否存在对 targets 集合中方法的 self 接收者调用
+    /// (`.m(...)`/`self.m(...)`——前导点解析为 Dot(Ident(\"self\"), m))。
+    fn expr_calls_self_method(expr: &Expr, targets: &std::collections::HashSet<AutoStr>) -> bool {
+        match expr {
+            Expr::Call(call) => {
+                if let Expr::Dot(obj, m) = call.name.as_ref() {
+                    if targets.contains(m.as_str())
+                        && matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "self")
+                    {
+                        return true;
+                    }
+                    if Self::expr_calls_self_method(obj, targets) {
+                        return true;
+                    }
+                }
+                call.args.args.iter().any(|a| matches!(a,
+                    Arg::Pos(e) if Self::expr_calls_self_method(e, targets)))
+            }
+            Expr::Dot(o, _) => Self::expr_calls_self_method(o, targets),
+            Expr::Bina(a, _, b) | Expr::Index(a, b) | Expr::NullCoalesce(a, b) => {
+                Self::expr_calls_self_method(a, targets)
+                    || Self::expr_calls_self_method(b, targets)
+            }
+            Expr::Unary(_, e)
+            | Expr::ErrorPropagate(e)
+            | Expr::Some(e)
+            | Expr::Ok(e)
+            | Expr::Err(e)
+            | Expr::BoxExpr(e)
+            | Expr::ArcExpr(e) => Self::expr_calls_self_method(e, targets),
+            Expr::Array(items) | Expr::Tuple(items) => items
+                .iter()
+                .any(|e| Self::expr_calls_self_method(e, targets)),
+            Expr::Object(pairs) => pairs
+                .iter()
+                .any(|pr| Self::expr_calls_self_method(&pr.value, targets)),
+            _ => false,
+        }
+    }
+
+    /// Plan 514 W3: 语句体内是否存在对 targets 中方法的 self 接收者调用。
+    fn body_calls_self_method(stmts: &[Stmt], targets: &std::collections::HashSet<AutoStr>) -> bool {
+        for stmt in stmts {
+            let hit = match stmt {
+                Stmt::Expr(e) => Self::expr_calls_self_method(e, targets),
+                Stmt::Store(st) => Self::expr_calls_self_method(&st.expr, targets),
+                Stmt::Return(e) => Self::expr_calls_self_method(e, targets),
+                Stmt::If(i) => {
+                    i.branches.iter().any(|b| {
+                        Self::expr_calls_self_method(&b.cond, targets)
+                            || Self::body_calls_self_method(&b.body.stmts, targets)
+                    }) || i.else_.as_ref().map_or(false, |e| {
+                        Self::body_calls_self_method(&e.stmts, targets)
+                    })
+                }
+                Stmt::For(f) => {
+                    Self::expr_calls_self_method(&f.range, targets)
+                        || Self::body_calls_self_method(&f.body.stmts, targets)
+                }
+                Stmt::Block(b) => Self::body_calls_self_method(&b.stmts, targets),
+                Stmt::Is(is) => is.branches.iter().any(|b| {
+                    let body = match b {
+                        crate::ast::IsBranch::EqBranch(_, bd) => bd,
+                        crate::ast::IsBranch::IfBranch(_, bd) => bd,
+                        crate::ast::IsBranch::ElseBranch(bd) => bd,
+                    };
+                    Self::body_calls_self_method(&body.stmts, targets)
+                }),
+                Stmt::Try(t) => {
+                    Self::body_calls_self_method(&t.body.stmts, targets)
+                        || Self::body_calls_self_method(&t.catch_body.stmts, targets)
+                        || t.finally_body.as_ref().map_or(false, |f| {
+                            Self::body_calls_self_method(&f.stmts, targets)
+                        })
+                }
+                _ => false,
+            };
+            if hit {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Plan 514 W3: type/ext 方法集的传递性可变方法名——直接判定(is_mut/
+    /// method_mutates_self)为种子,经 self 接收者调用闭包扩张(方法体内
+    /// 只调 `.fail(...)` 等用户可变方法的方法,接收者同样需要 &mut)。
+    fn compute_type_mut_methods(methods: &[&Fn]) -> std::collections::HashSet<AutoStr> {
+        let mut set: std::collections::HashSet<AutoStr> = methods
+            .iter()
+            .filter(|m| m.is_mut || Self::method_mutates_self(&m.body.stmts))
+            .map(|m| m.name.clone())
+            .collect();
+        loop {
+            let mut grew = false;
+            for m in methods {
+                if set.contains(m.name.as_str()) {
+                    continue;
+                }
+                if Self::body_calls_self_method(&m.body.stmts, &set) {
+                    set.insert(m.name.clone());
+                    grew = true;
+                }
+            }
+            if !grew {
+                break;
+            }
+        }
+        set
     }
 
     /// Incremental transpilation (Phase 066)
@@ -21786,12 +22059,33 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     let mut global_fn_ret_types: std::collections::HashMap<AutoStr, Type> = std::collections::HashMap::new();
     for (_module, ast) in &parsed_modules {
         for stmt in &ast.stmts {
-            if let Stmt::Fn(f) = stmt {
-                global_fn_ret_types.insert(f.name.clone(), f.ret.clone());
-                if let Some(parent) = &f.parent {
-                    let qualified: AutoStr = format!("{}.{}", parent, f.name).into();
-                    global_fn_ret_types.insert(qualified, f.ret.clone());
+            match stmt {
+                Stmt::Fn(f) => {
+                    global_fn_ret_types.insert(f.name.clone(), f.ret.clone());
+                    if let Some(parent) = &f.parent {
+                        let qualified: AutoStr = format!("{}.{}", parent, f.name).into();
+                        global_fn_ret_types.insert(qualified, f.ret.clone());
+                    }
                 }
+                // Plan 514 W3: type 体内方法/ext 方法同列——跨模块 infer
+                // (`p.text()` 的 "P.text" qualified 键)此前只对声明模块
+                // 可见(单文件 trans 预扫),方法化 lib 跨文件调用点的
+                // 返回类型推断/赋值借用/实参强转全部哑火。
+                Stmt::TypeDecl(td) => {
+                    for m in &td.methods {
+                        global_fn_ret_types.insert(m.name.clone(), m.ret.clone());
+                        let qualified: AutoStr = format!("{}.{}", td.name, m.name).into();
+                        global_fn_ret_types.insert(qualified, m.ret.clone());
+                    }
+                }
+                Stmt::Ext(ext) => {
+                    for m in &ext.methods {
+                        global_fn_ret_types.insert(m.name.clone(), m.ret.clone());
+                        let qualified: AutoStr = format!("{}.{}", ext.target, m.name).into();
+                        global_fn_ret_types.insert(qualified, m.ret.clone());
+                    }
+                }
+                _ => {}
             }
         }
     }
