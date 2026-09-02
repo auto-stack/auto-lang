@@ -1,102 +1,198 @@
-use calendar_util: build_month_grid, month_name, add_months_year, add_months_month
+use calendar_store: CalendarStore
 
 widget App {
-    msg { PrevMonth, NextMonth, Today, SelectDay(str) }
+    msg {
+        PrevMonth,
+        NextMonth,
+        Today,
+        SelectDay(str),
+        ToggleSettings,
+        ToggleDarkMode,
+        SetTheme(str),
+        SetAccent(str),
+    }
 
     model {
-        var year int = 2026
-        var month int = 6
-        var month_label str = ""
-        var today str = ""
-        var selected_date str = ""
-        var days = []
+        var dark_mode bool = false
+        var accent_color str = "indigo"
     }
 
     view {
         col {
+            style: "min-h-screen bg-muted/30 p-4 items-center justify-center"
             col {
+                style: "w-[448px] p-6 bg-card border border-border rounded-2xl shadow-lg"
+
+                // Header (Nav + Title)
                 row {
-                    button "<" { onclick: .PrevMonth, style: "w-10 h-10 rounded-full hover:bg-gray-100 text-gray-600 font-bold" }
+                    style: "w-full items-center justify-between"
+                    button "<" {
+                        onclick: .PrevMonth
+                        variant: "ghost"
+                        style: "w-10 h-10 rounded-full hover:bg-accent text-foreground font-bold"
+                    }
                     col {
-                        text .month_label { style: "text-2xl font-bold text-gray-800" }
-                        text f"${.year}" { style: "text-sm text-gray-500" }
                         style: "items-center"
+                        text .store.month_label { style: "text-2xl font-bold text-foreground" }
+                        text f"${.store.year}" { style: "text-sm text-muted-foreground" }
                     }
                     row {
-                        button "Today" { onclick: .Today, style: "px-3 h-10 rounded-full hover:bg-gray-100 text-gray-600 text-sm font-semibold" }
-                        button ">" { onclick: .NextMonth, style: "w-10 h-10 rounded-full hover:bg-gray-100 text-gray-600 font-bold" }
                         style: "gap-2 items-center"
-                    }
-                    style: "w-full items-center justify-between"
-                }
-                grid {
-                    grid-item { text "Su" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text "Mo" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text "Tu" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text "We" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text "Th" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text "Fr" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    grid-item { text "Sa" { style: "text-xs font-semibold text-gray-400 text-center py-2" } }
-                    cols: 7
-                    gap: 0
-                    style: "w-full"
-                }
-                grid {
-                    for cell in .days {
-                        grid-item {
-                            button cell.label { variant: "text", onclick: .SelectDay(cell.date), class: cell.style }
+                        button "Today" {
+                            onclick: .Today
+                            variant: "ghost"
+                            style: "px-3 h-10 rounded-full hover:bg-accent text-foreground text-sm font-semibold"
+                        }
+                        button ">" {
+                            onclick: .NextMonth
+                            variant: "ghost"
+                            style: "w-10 h-10 rounded-full hover:bg-accent text-foreground font-bold"
                         }
                     }
+                }
+
+                // Weekday headers
+                grid {
                     cols: 7
                     gap: 0
-                    style: "w-full mt-1"
+                    style: "w-full mt-4"
+                    grid-item { text "Su" { style: "text-xs font-semibold text-muted-foreground text-center py-2" } }
+                    grid-item { text "Mo" { style: "text-xs font-semibold text-muted-foreground text-center py-2" } }
+                    grid-item { text "Tu" { style: "text-xs font-semibold text-muted-foreground text-center py-2" } }
+                    grid-item { text "We" { style: "text-xs font-semibold text-muted-foreground text-center py-2" } }
+                    grid-item { text "Th" { style: "text-xs font-semibold text-muted-foreground text-center py-2" } }
+                    grid-item { text "Fr" { style: "text-xs font-semibold text-muted-foreground text-center py-2" } }
+                    grid-item { text "Sa" { style: "text-xs font-semibold text-muted-foreground text-center py-2" } }
                 }
-                style: "w-112 p-6 bg-white rounded-2xl shadow-lg"
+
+                // Days Grid
+                grid {
+                    cols: 7
+                    gap: 0
+                    style: "w-full mt-2"
+                    for cell in .store.days {
+                        grid-item {
+                            button cell.label { variant: "text", onclick: .SelectDay(cell.date), class: cell.cell_class }
+                        }
+                    }
+                }
+
+                // Settings popup (015-notes style)
+                if .store.show_settings {
+                    col {
+                        style: "mt-4 p-3.5 bg-card border border-border rounded-xl gap-3 shadow-lg"
+                        row {
+                            style: "items-center justify-between"
+                            text "Settings" { style: "text-xs font-semibold text-foreground uppercase tracking-wider" }
+                            button "✕" {
+                                onclick: .ToggleSettings
+                                variant: "ghost"
+                                style: "text-xs text-muted-foreground hover:text-foreground w-5 h-5 flex items-center justify-center rounded bg-transparent transition-colors"
+                            }
+                        }
+                        col {
+                            style: "gap-1.5"
+                            text "Theme" { style: "text-xs text-muted-foreground font-medium" }
+                            row {
+                                style: "gap-2"
+                                if .store.dark_mode {
+                                    button "🌙 Dark" {
+                                        onclick: .SetTheme("dark")
+                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                    }
+                                    button "☀ Light" {
+                                        onclick: .SetTheme("light")
+                                        variant: "ghost"
+                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                                    }
+                                } else {
+                                    button "🌙 Dark" {
+                                        onclick: .SetTheme("dark")
+                                        variant: "ghost"
+                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                                    }
+                                    button "☀ Light" {
+                                        onclick: .SetTheme("light")
+                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                    }
+                                }
+                            }
+                        }
+                        col {
+                            style: "gap-1.5"
+                            text "Accent Color" { style: "text-xs text-muted-foreground font-medium" }
+                            row {
+                                style: "items-center gap-3 py-1"
+                                button "" { onclick: .SetAccent("indigo"), style: if .store.accent_color == "indigo" { "w-6 h-6 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
+                                button "" { onclick: .SetAccent("coral"), style: if .store.accent_color == "coral" { "w-6 h-6 p-0 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
+                                button "" { onclick: .SetAccent("ocean"), style: if .store.accent_color == "ocean" { "w-6 h-6 p-0 rounded-full bg-sky-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-sky-500 hover:scale-110 transition-transform" } }
+                                button "" { onclick: .SetAccent("sage"), style: if .store.accent_color == "sage" { "w-6 h-6 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
+                                button "" { onclick: .SetAccent("amber"), style: if .store.accent_color == "amber" { "w-6 h-6 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
+                            }
+                        }
+                    }
+                }
+
+                // Footer: Settings button in bottom-left + selected date display
+                row {
+                    style: "w-full items-center justify-between mt-4 pt-3 border-t border-border"
+                    button "⚙ Settings" {
+                        onclick: .ToggleSettings
+                        variant: "ghost"
+                        style: if .store.show_settings {
+                            "px-2.5 py-1.5 text-xs font-medium rounded-lg bg-accent text-primary transition-colors"
+                        } else {
+                            "px-2.5 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground bg-transparent transition-colors"
+                        }
+                    }
+                    text f"Selected: ${.store.selected_date}" {
+                        style: "text-xs text-muted-foreground"
+                    }
+                }
             }
-            // Plan 512: fit 迁移——center 居中外壳退役，根 col Shrink 包裹；
-            // 卡片固定宽 w-112=448px（原 w-full+max-w-md 在 Shrink 根下会
-            // 塌缩；w-[28rem] rem 任意值 iced 端不支持，用 Tailwind 刻度）。
-            style: "p-4 items-center"
         }
     }
 
     on {
         .Init -> {
-            .year = 2026
-            .month = 6
-            .month_label = month_name(.month)
-            .today = "2026-06-17"
-            .selected_date = "2026-06-17"
-            .days = build_month_grid(.year, .month, .today, .selected_date)
+            store.Init()
+            .dark_mode = .store.dark_mode
+            .accent_color = .store.accent_color
         }
 
         .PrevMonth -> {
-            .year = add_months_year(.year, .month, -1)
-            .month = add_months_month(.year, .month, -1)
-            .month_label = month_name(.month)
-            .days = build_month_grid(.year, .month, .today, .selected_date)
+            store.PrevMonth()
         }
 
         .NextMonth -> {
-            .year = add_months_year(.year, .month, 1)
-            .month = add_months_month(.year, .month, 1)
-            .month_label = month_name(.month)
-            .days = build_month_grid(.year, .month, .today, .selected_date)
+            store.NextMonth()
         }
 
         .Today -> {
-            let n = DateTime.now()
-            .today = n.format("%Y-%m-%d")
-            .year = n.year()
-            .month = n.month()
-            .month_label = month_name(.month)
-            .selected_date = .today
-            .days = build_month_grid(.year, .month, .today, .selected_date)
+            store.Today()
         }
 
         .SelectDay(date) -> {
-            .selected_date = date
-            .days = build_month_grid(.year, .month, .today, .selected_date)
+            store.SelectDay(date)
+        }
+
+        .ToggleSettings -> {
+            store.ToggleSettings()
+        }
+
+        .ToggleDarkMode -> {
+            store.ToggleDarkMode()
+            .dark_mode = .store.dark_mode
+        }
+
+        .SetTheme(t) -> {
+            store.SetTheme(t)
+            .dark_mode = .store.dark_mode
+        }
+
+        .SetAccent(name) -> {
+            store.SetAccent(name)
+            .accent_color = .store.accent_color
         }
     }
 }

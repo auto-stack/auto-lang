@@ -3969,7 +3969,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     .clone()
                     .unwrap_or_else(|| "dark_mode".to_string());
                 script.push_str(&format!(
-                    "// Plan 458: keep the accent and html dark class in sync across theme flips.\nwatch({}, (v) => {{\n  document.documentElement.classList.toggle('dark', v)\n  applyAccent(accent_color.value, v)\n}})\n",
+                    "// Plan 458: keep the accent and html dark class in sync across theme flips.\nwatch({}, (v) => {{\n  document.documentElement.classList.toggle('dark', v)\n  applyAccent(accent_color.value, v)\n}}, {{ immediate: true }})\n",
                     dark_var
                 ));
             }
@@ -12767,6 +12767,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
 
     fn push_style_class(&self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>) {
         if let Some(value) = self.get_style_class(props) {
+            let is_explicit_class = props.contains_key("class") && !props.contains_key("style");
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
                     attrs.push(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)));
@@ -12816,15 +12817,16 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                                 }
                             }
                         }
-                    } else if Self::is_class_safe_concat(other_expr) {
+                    } else if Self::is_class_safe_concat(other_expr) || is_explicit_class {
                         // Plan 448 D: literal/conditional-only concat is a
                         // class string by structure — :class, not :style.
+                        // When explicitly passed via `class:`, always emit :class.
                         match self.expr_to_vue_bound_value(other_expr) {
                             Ok(expr_str) => attrs.push(format!(":class=\"{}\"", expr_str)),
                             Err(e) => self.warn(
                                 "R011",
                                 crate::ui_gen::validators::Severity::Warning,
-                                format!("class concat could not be rendered and was dropped: {}", e),
+                                format!("class expression could not be rendered and was dropped: {}", e),
                             ),
                         }
                     } else {

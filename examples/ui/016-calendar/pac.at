@@ -3,5 +3,6 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Calendar"
-# Plan 512: 窗口随内容自然尺寸收缩（fit 线，批二）。
+theme: "dark"
+accent: "ocean"
 window: "fit"

@@ -1,0 +1,179 @@
+store CalendarStore {
+    model {
+        var year int = 2026
+        var month int = 6
+        var month_label str = "June"
+        var today str = "2026-06-17"
+        var selected_date str = "2026-06-17"
+        var days = []
+        var dark_mode bool = false
+        var accent_color str = "indigo"
+        var show_settings bool = false
+    }
+
+    msg {
+        Init,
+        PrevMonth,
+        NextMonth,
+        Today,
+        SelectDay(str),
+        ToggleDarkMode,
+        SetTheme(str),
+        SetAccent(str),
+        ToggleSettings,
+        Rebuild,
+    }
+
+    on {
+        .Init -> {
+            .year = 2026
+            .month = 6
+            .today = "2026-06-17"
+            .selected_date = "2026-06-17"
+            .dark_mode = false
+            .accent_color = "indigo"
+            self.Rebuild()
+        }
+
+        .PrevMonth -> {
+            var total = .year * 12 + (.month - 1) - 1
+            .year = total / 12
+            .month = total % 12 + 1
+            self.Rebuild()
+        }
+
+        .NextMonth -> {
+            var total = .year * 12 + (.month - 1) + 1
+            .year = total / 12
+            .month = total % 12 + 1
+            self.Rebuild()
+        }
+
+        .Today -> {
+            .year = 2026
+            .month = 6
+            .selected_date = .today
+            self.Rebuild()
+        }
+
+        .SelectDay(date) -> {
+            .selected_date = date
+            self.Rebuild()
+        }
+
+        .ToggleDarkMode -> {
+            .dark_mode = !.dark_mode
+            self.Rebuild()
+        }
+
+        .SetTheme(t) -> {
+            if t == "dark" {
+                .dark_mode = true
+            }
+            if t == "light" {
+                .dark_mode = false
+            }
+            self.Rebuild()
+        }
+
+        .SetAccent(name) -> {
+            .accent_color = name
+            self.Rebuild()
+        }
+
+        .ToggleSettings -> {
+            .show_settings = !.show_settings
+        }
+
+        .Rebuild -> {
+            let names [12]str = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+            .month_label = names[.month - 1]
+
+            let dim [12]int = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+            var cur_dim = dim[.month - 1]
+            if .month == 2 && ((.year % 4 == 0 && .year % 100 != 0) || .year % 400 == 0) {
+                cur_dim = 29
+            }
+
+            let t [12]int = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+            var y = .year
+            if .month < 3 {
+                y = y - 1
+            }
+            var offset = (y + y / 4 - y / 100 + y / 400 + t[.month - 1] + 1) % 7
+
+            var prev_total = .year * 12 + (.month - 1) - 1
+            var prev_y = prev_total / 12
+            var prev_m = prev_total % 12 + 1
+            var prev_dim = dim[prev_m - 1]
+            if prev_m == 2 && ((prev_y % 4 == 0 && prev_y % 100 != 0) || prev_y % 400 == 0) {
+                prev_dim = 29
+            }
+
+            .days = []
+            var i = 0
+            for i < offset {
+                var d = prev_dim - offset + 1 + i
+                var ms = prev_m.to_string()
+                if prev_m < 10 {
+                    ms = "0" + ms
+                }
+                var ds = d.to_string()
+                if d < 10 {
+                    ds = "0" + ds
+                }
+                var date_str = prev_y.to_string() + "-" + ms + "-" + ds
+                var style_str = "w-10 h-10 flex items-center justify-center text-sm font-normal text-muted-foreground/40 rounded-full"
+                if date_str == .selected_date {
+                    style_str = "w-10 h-10 flex items-center justify-center text-sm font-bold bg-primary text-primary-foreground rounded-full shadow-sm"
+                }
+                .days.push({ label: d.to_string(), date: date_str, is_other_month: true, cell_class: style_str })
+                i = i + 1
+            }
+
+            var day = 1
+            for day <= cur_dim {
+                var ms = .month.to_string()
+                if .month < 10 {
+                    ms = "0" + ms
+                }
+                var ds = day.to_string()
+                if day < 10 {
+                    ds = "0" + ds
+                }
+                var date_str = .year.to_string() + "-" + ms + "-" + ds
+                var style_str = "w-10 h-10 flex items-center justify-center text-sm font-medium text-foreground hover:bg-accent rounded-full transition-colors"
+                if date_str == .today {
+                    style_str = "w-10 h-10 flex items-center justify-center text-sm font-semibold bg-primary/15 text-primary rounded-full"
+                }
+                if date_str == .selected_date {
+                    style_str = "w-10 h-10 flex items-center justify-center text-sm font-bold bg-primary text-primary-foreground rounded-full shadow-sm"
+                }
+                .days.push({ label: day.to_string(), date: date_str, is_other_month: false, cell_class: style_str })
+                day = day + 1
+            }
+
+            var next_total = .year * 12 + (.month - 1) + 1
+            var next_y = next_total / 12
+            var next_m = next_total % 12 + 1
+            var nday = 1
+            for .days.len() < 42 {
+                var ms = next_m.to_string()
+                if next_m < 10 {
+                    ms = "0" + ms
+                }
+                var ds = nday.to_string()
+                if nday < 10 {
+                    ds = "0" + ds
+                }
+                var date_str = next_y.to_string() + "-" + ms + "-" + ds
+                var style_str = "w-10 h-10 flex items-center justify-center text-sm font-normal text-muted-foreground/40 rounded-full"
+                if date_str == .selected_date {
+                    style_str = "w-10 h-10 flex items-center justify-center text-sm font-bold bg-primary text-primary-foreground rounded-full shadow-sm"
+                }
+                .days.push({ label: nday.to_string(), date: date_str, is_other_month: true, cell_class: style_str })
+                nday = nday + 1
+            }
+        }
+    }
+}
