@@ -1448,6 +1448,14 @@ pub const INTER_FONT_REGULAR: &[u8] = include_bytes!("assets/Inter-Regular.ttf")
 pub const INTER_FONT_MEDIUM: &[u8] = include_bytes!("assets/Inter-Medium.ttf");
 pub const INTER_FONT_SEMIBOLD: &[u8] = include_bytes!("assets/Inter-SemiBold.ttf");
 
+/// Plan 518：随包内嵌默认壁纸(脚本自制,免授权——生成器 scratch/p518)。
+/// `builtin:` 虚拟方案经 load_image_bytes 消费;ricepaper = 默认
+/// (stella 权威图同款暖米宣纸底),inkwash = 宣纸+水墨远山可选项
+/// (设置壁纸栏键入 `builtin:inkwash`)。深浅主题共用浅色——stella dark
+/// 实证壁纸与主题解耦。
+pub const WALLPAPER_RICEPAPER: &[u8] = include_bytes!("assets/wallpaper-ricepaper.jpg");
+pub const WALLPAPER_INKWASH: &[u8] = include_bytes!("assets/wallpaper-inkwash.jpg");
+
 /// Inter family 引用 —— application 的 `.default_font` 与带字重文本共用。
 pub const INTER_FONT: iced::Font = iced::Font {
     family: iced::font::Family::Name("Inter"),
@@ -4538,7 +4546,14 @@ fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
     }
 
     // Fetch and cache
-    let result = if url.starts_with("http://") || url.starts_with("https://") {
+    let result = if let Some(name) = url.strip_prefix("builtin:") {
+        // Plan 518：内嵌壁纸虚拟方案(builtin:ricepaper / builtin:inkwash)。
+        match name {
+            "ricepaper" => Some(WALLPAPER_RICEPAPER.to_vec()),
+            "inkwash" => Some(WALLPAPER_INKWASH.to_vec()),
+            _ => None,
+        }
+    } else if url.starts_with("http://") || url.starts_with("https://") {
         reqwest::blocking::get(url).ok()?.bytes().ok().map(|b| b.to_vec())
     } else {
         // Try loading from local file path
@@ -9381,7 +9396,8 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
 }
 
 /// Plan 496 M5：boot 壁纸解析（storage `shell.desktop.wallpaper`——
-/// #hex 色值直传；图片路径验存在；缺席/空/坏值回退
+/// #hex 色值直传；`builtin:` 内嵌资产方案直传（Plan 518）；图片路径验
+/// 存在；缺席/空/坏值回退
 /// [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]）。
 fn load_desktop_wallpaper() -> String {
     use crate::ui::session::DESKTOP_WALLPAPER_DEFAULT;
@@ -9389,7 +9405,11 @@ fn load_desktop_wallpaper() -> String {
         return DESKTOP_WALLPAPER_DEFAULT.to_string();
     };
     let v = raw.trim().to_string();
-    if v.is_empty() || (!v.starts_with('#') && !std::path::Path::new(&v).is_file()) {
+    if v.is_empty()
+        || (!v.starts_with('#')
+            && !v.starts_with("builtin:")
+            && !std::path::Path::new(&v).is_file())
+    {
         DESKTOP_WALLPAPER_DEFAULT.to_string()
     } else {
         v
@@ -21249,6 +21269,23 @@ mod tests {
             tmp.to_string_lossy(),
             "存在路径保留"
         );
+        // Plan 518：builtin: 内嵌资产方案——默认值即 builtin:ricepaper
+        //(壁纸资产化,深浅主题共用浅色),用户显式键入亦为合法值直传。
+        assert_eq!(
+            crate::ui::session::DESKTOP_WALLPAPER_DEFAULT,
+            "builtin:ricepaper",
+            "518 默认壁纸 = 内嵌宣纸资产"
+        );
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.wallpaper",
+            "builtin:inkwash".into(),
+        );
+        assert_eq!(load_desktop_wallpaper(), "builtin:inkwash", "builtin 直传");
+        // 内嵌资产可解码:load_image_bytes 返回 JPEG 字节(FF D8 魔数)。
+        let bytes = load_image_bytes("builtin:ricepaper").expect("内嵌壁纸字节");
+        assert_eq!(&bytes[0..2], &[0xFF, 0xD8], "JPEG 魔数");
+        assert!(bytes.len() > 100_000, "整图非截断");
+        assert!(load_image_bytes("builtin:no-such").is_none(), "未知 builtin 项");
         // 图标/排除键逗号解析（空段剔除）。
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.icons", " a , b,,c ".into());
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", " b ".into());

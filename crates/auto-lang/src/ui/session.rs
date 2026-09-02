@@ -1396,9 +1396,11 @@ pub struct ShellFields {
     pub fit_enabled: Cell<bool>,
 }
 
-/// Plan 496 M5：桌面本体 pack 默认壁纸色（theme Background dark 的
-/// rgb(9,14,26)——壁纸键缺席/坏值的回退底色；renderer 壁纸解析同源）。
-pub const DESKTOP_WALLPAPER_DEFAULT: &str = "#090e1a";
+/// Plan 496 M5：桌面本体 pack 默认壁纸;Plan 518:默认资产化——
+/// 内嵌宣纸壁纸(stella 权威图同款暖米底,实测基色 ≈ #EDE7DB),经
+/// renderer `builtin:` 方案消费(壁纸键缺席/坏值的回退;深浅主题共用
+/// 浅色——stella dark 实证壁纸与主题解耦)。
+pub const DESKTOP_WALLPAPER_DEFAULT: &str = "builtin:ricepaper";
 
 /// desktop 模式宿主上下文：唯一 OS 窗口 + WM 状态（R2 单 OS 窗口拓扑）。
 pub struct HostCtx {
