@@ -138,8 +138,8 @@
 | ~~418~~ | ~~menubar 估位偏移~~ ✅ 已退役(2026-08-27 复核归档批) | Plan 422 P2 menubar Popover 迁移已落地(估位/2000px catch 删除,矩阵 29/29);原条目即预期"422 落地后退役",现随 414/422 归档批执行。 | `renderer.rs menubar 面板合成`(已删) |
 | 445 | 几何重算三份内联 | Init/.Tick/.Reset 三处 ~90 行同式几何重算（模块级 fn 不进 vue SFC 的 §0.6.E-3 约束所迫）；435 组件化收口后应收敛为单一渲染函数来源。 | `examples/ui/024-charts/src/front/app.at` |
 | 447-① | VM is 值语义 let 绑定位返回 0 | `let r = is x {...}` 绑定位返回 0（函数尾位值语义正常）；最小复现 `fn main() { let r = is "test" { "test" -> "pass" else -> "fail" } print(r) }` 输出 0。部分② Phase 4 语料设计需覆盖该形态。 | `vm/codegen.rs` Expr::Is 值位（2026-08-25 探针整备时发现） |
-| 447-① | VM 函数内嵌套 fn 静默失效 | `fn main() { fn inner() {...} inner() }` 调用无输出无报错（top-level fn 正常）；99_idiom_probe 探针一律顶层 fn 规避。 | `parser.rs`/`vm/codegen.rs` 嵌套 fn 路径 |
-| 447-① | `struct` 非关键字误用报 E0201 | 源码写 `struct Frame {...}`（Auto 具名结构体声明实为 `type`）被当表达式解析，报 "Variable 'Val' is not defined" 名字解析错而非语法错，误导排查方向。 | `parser.rs check_symbol` |
+| ~~447-①~~ | ~~VM 函数内嵌套 fn 静默失效~~ ✅ 已清偿(2026-09-01, Plan 514 W1 步骤4) | 真实静默失效在**捕获位**（嵌套 fn 引用外层局部→静默 0）；改报 E0201（infer context fn_scope_idxs 边界栈+no-capture 查找+check_symbol Bina 臂），d01b 转绿解除 ignore。已知限：嵌套 fn 引用全局运行期静默 0=预存 VM 行为，master 同态非回归。 | `parser.rs`（Plan 514 步骤 4 证据） |
+| ~~447-①~~ | ~~`struct` 非关键字误用报 E0201~~ ✅ 已清偿(2026-09-01, Plan 514 W1 步骤4) | 改报 E0007 语法错（parse_stmt_inner 顶部拦截+check_symbol Ident 臂，裸/带名形态覆盖），d02 守卫绿。 | `parser.rs`（Plan 514 步骤 4 证据） |
 | 444 | master 3 个红 a2r golden | plan-444 改 `write_is_arm_body` 后 `02_types_004_pointer`/`12_specs_007_box_fn`/`19_ownership_003_loopvar_owned_field` 在纯 master（d86615620 detached worktree 实证）失败，plan-447 合并前已存在，非 447 引入。plan-444 收账。 | `trans/rust.rs` write_is_arm_body + `test/a2r/` 对应组 |
 | 447-① | 全量并行下偶发测试 | `benchmark_downcast_performance`/`cookbook_vm_tests::cb_file_read_lines` 在全量并行负载下偶发失败（单跑均通过，性能阈值/文件 IO 受负载影响），非回归。 | `perf_benchmark_tests.rs` / `cookbook_vm_tests.rs` |
 | 418 | 工具栏图标偶发变暗 | 观察项：最终构建 3 实例采样亮度一致（231/114）不复现，疑锁屏期 DWM 降级帧假象——复现再查，不主动处理。 | `041 toolbar svg 渲染` |
@@ -696,7 +696,15 @@
    （零宿主改动）**：方法体内语句位方法调用用显式 `self.`；表达式位/赋值位
    前导点保留（链糖各守卫已豁免，m 探针族全绿实证）。已验证：type P 方法体
    3 处改 self. 后 99_unit 13 绿+corpus g 逐字符绿。
-2. **P514-W3-2 主 a2r 方法体习语实参发射缺口级联（5+ 处，patch 存档未竟）**：
+2. **~~P514-W3-2 主 a2r 方法体习语实参发射缺口级联~~ ✅ 已清偿
+   （2026-09-02，Plan 514 W3-2 补丁续修，commit 8aef313ca）**：实际
+   清偿量远超登记——主 a2r 8 处（存档补丁 a–d + e 真因=未注解局部注册
+   Type::Unknown 而非缺失 + 字面量 .as_str() 误加 E0658 + 用户方法返回
+   类型 qualified 键推断（含 merge 跨模块注入）+ 裸 self 变异判定 + 跨方法
+   &mut 传递闭包 + 两实参环 infer 兜底）+ AA2R 镜像 3 组（ar_method_call
+   方法表实参强转/返回类型、ar_scan_method_writes 变异调用扫描、
+   ar_fixpoint_mutates 传递闭包）。五级联验证全绿（cc 编译红逐位清零/
+   corpus 逐字符/19+13/⑤腿/矩阵 46/46）。原始定性存档：
    ②腿（主 a2r merge）编译 lib 方法体暴露连续缺口，逐条修复至 rustc 仅剩
    1 处：a) Vec 接收者 `.get()` 借用臂误命中字段实参（→索引形+as usize）；
    b) `self` 未注册宿主类型（方法体发射补 User 占位注册）；c) str 参位拼接
@@ -708,33 +716,35 @@
    语句位 self. 约定需补入脚本）。W3 重启清单：套 patch→补 e) →复跑本条
    五级联验证序列（cc 编译红逐位消）→W3-12 塔顶样板验证即通。
 
+3. **P514-20 Phase 11 收账余项三项（2026-09-02，Plan 514 步骤 20 显式
+   登记处置；447 归档 447-aavm-prerequisites.md §10.4 原文在案）**：
+   ②AA2R 单语句块臂不内联（主 a2r write_match_arm_body 内联）——语料
+   无该形态暴露，对齐属 dump 判据层重构（与 D23/D27 同则另立计划）；
+   ③List 实参克隆 parity（主 a2r is_owned_list_arg 无条件 clone vs
+   AA2R last-use）——矩阵行为一致（46/46），文本形状差异随②同批处置；
+   ④臂值位赋值表达式 aavm cg 不支持——写法规范（值位须纯表达式）保留，
+   b32/g06 以绕开形态落盘。
+
 ### P511（2026-09-01，Plan 511 aavm 中阶语言能力执行期登记）
 
-1. **AA2R ignored 腿 7 件预存转译债**（`test_aavm2_compile_corpus`
-   --include-ignored 30/37；b13/b14×2/b19/b27/b29/b30）：两根因均为
-   预存非 511 引入——① CJK 注释词法（.at lexer 的 char_at 码点语义在
-   a2r 转译后变字节序，注释内多字节字符产生 Unknown token）；② arr_flag
-   接收者跟踪在转译侧失效（`a.len()` 报 receiver is not an array）。
-   511 已修复转译可构建性（File shim/借用拆分/括号优先级塌缩规避，
-   含既有 str_either 条件的同款修复）；余量随 AA2R 批（Plan 511 待澄清①）
-   处置。
-2. **tv-aavm2 闸门口径偏差**：计划定义的 `--include-ignored` 含 ignored
-   AA2R 腿（如上 30/37）；折叠③门禁以 tf（默认跳过 ignored）为准 +
-   `-- test_aavm2` 非 ignored 全绿（16/16）。口径收窄已在本条登记，
-   复审可裁决是否将 AA2R 腿纳入常规门禁（前置=清偿①）。
+1. **~~AA2R ignored 腿 7 件预存转译债~~ ✅ 已清偿（2026-09-01，Plan 514
+   W2 步骤 10）**：双根因修复——① lexer.at tokenize 主循环加 cur_char
+   哨兵（码点自洽）；② 真因为主 a2r 通用 Bina 臂缺优先级括号（补
+   auto_op_prec 表）。`test_aavm2_compile_corpus` 37/37 绿，
+   --include-ignored 19/19 绿（原登记的 arr_flag 根因②定性有误，实为
+   Bina 括号塌缩级联）。
+2. **~~tv-aavm2 闸门口径偏差~~ ✅ 已清偿（2026-09-01，Plan 514 W2
+   步骤 11）**：test_aavm2_compile_corpus 去 ignore 入常规门禁；
+   vm-files-ci 第一层去 --include-ignored（口径收窄落地）。
 3. **b41 语料处置（D1）**：`a[i] += e` 宿主编译错误（无发射序），
    aavm 同文本拒绝；b41 不入 corpus_m4，以 L3 99_unit 错误文本件承载
    （t_d1_index_compound_reject/t_d1_field_compound_reject）。
 4. **限定调用占位泄漏镜像**：`db.fn()` 发射 const.i32 0 接收者占位
    （宿主 Ident 模块兜底，Plan 437 已知泄漏）——aavm 镜像之，帧 bp
    锚定下无害；宿主若清偿该泄漏需同步。
-5. **P511-5（2026-09-01 基线复跑发现，非 511 复审判据覆盖面）五方矩阵②腿
-   编译期红**：parity 矩阵将 auto/lib 经主 a2r 转译为独立 Rust 二进制
-   （aavm2_bin）再跑——511 W3 给 lib 增的 `File::read_text`（模块文件
-   读取）在转译产物中缺 `File` 导入/shim 映射，rustc E0433 ×3，矩阵全程
-   无法运行。511 折叠点③验收以 corpus M4/M5 闸替代①②④⑤腿（归档验收#5
-   有载），独立二进制构建路径漏检。清偿归风格二期 W1（主 a2r 加固批）：
-   修复后矩阵须全程保持绿（W3 lib 方法化的行为不变判据依赖它）。
+5. **~~P511-5 五方矩阵②腿编译期红~~ ✅ 已清偿（2026-09-01，Plan 514 W1
+   步骤 3）**：主 a2r maybe_module_method 加 "File" 臂（std 直映）；
+   修复后矩阵全程绿并作为 W3 行为不变判据贯穿（折叠点②③④各留档）。
 
 ### P512（2026-09-01，Plan 512 fit 动态重测 + 批二迁移执行期登记）
 

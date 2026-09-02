@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-514
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-idiom2-methods
 author: [zhaopuming]
 created_at: 2026-09-01
-updated_at: 2026-09-01
+updated_at: 2026-09-02
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 23
+current_step: 24
 total_steps: 25
 ---
 
@@ -405,13 +405,28 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### W4 447 尾巴（worktree 续）
 
-17. [ ] C3：cg_expr/cg_stmt p_kind 链 is 化（方法体内顺路）。
-    验证：tv-aavm2 绿 + 矩阵绿。
-18. [ ] t_array_elem Type 载荷化（D23/D27）。验证：tv-aavm2 绿。
-19. [ ] 11.2b f-string 批量改写重试（D40 前置清偿；卡则按待澄清②登记
-    回退）。验证：矩阵 ③④⑤ 绿（行为不变）。
-20. [ ] Phase 11 收账余项核对处置（447 归档清单②③④逐项）。
-    验证：逐项证据或显式登记。
+17. [✅ 已完成] C3：cg_expr/cg_stmt p_kind 链 is 化（worktree commit）：
+    cg_expr 梯子→is 11 臂+else（原子）；cg_stmt 简单 kind 臂→is 12 臂，
+    复合条件（pub/下标赋值/字段赋值）与表达式语句尾入 else。验证：cc
+    零红 + corpus g01–g17 逐字符 + include-ignored 19/19 + 99_unit 13 +
+    ⑤腿零红 + 矩阵 46/46（matrix_w4_17.log）。2026-09-02。
+18. [✅ 已处置-显式登记] t_array_elem Type 载荷化：按 divergences.md
+    447-③ 时点既定裁定**保留**——Type Display 文本与 "(array-type ...)"
+    形状是 M2/M3 dump 口径的组成部分，载荷化将漂移判据 golden；与 D20
+    （E 载体）同一原则，判据层重构另立计划时一并处理（引用
+    divergences.md §D23/D27 条目原文）。tv-aavm2 现行绿即验证。
+19. [✅ 已处置-按待澄清②缺省登记回退] 11.2b f-string 批量改写重试：
+    D40 三缺口（FStrPart 直通发射）仍在册（divergences.md D40 续），
+    前置清偿超限；按待澄清②缺省登记回退，不阻塞。矩阵现行 46/46 绿
+    （行为不变判据现行成立）。
+20. [✅ 已处置-逐项显式登记] Phase 11 收账余项（447 归档登记原文
+    447-aavm-prerequisites.md §10.4）：②AA2R 单语句块臂不内联（主 a2r
+    write_match_arm_body 内联）——语料无该形态暴露，对齐属 dump 判据
+    层重构（与 D23/D27 同则另立）；③List 实参克隆 parity（主 a2r
+    is_owned_list_arg 无条件 clone vs AA2R last-use）——b27+ 修复后矩阵
+    46/46 行为一致，文本形状差异随 ② 同批处置；④臂值位赋值表达式
+    aavm cg 不支持——写法规范（值位须纯表达式）保留，b32/g06 以绕开
+    形态落盘。三项 KNOWN-DEBT 登记 P514-20。
 
 ### W5 管道算子（2026-09-02 用户裁定新增；设计稿 docs/design/pipe-operator.md，讨论稿已定稿口径：首版方法形+字段投影形，函数形二期）
 
@@ -432,9 +447,11 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### 收尾
 
-24. [ ] 文档回写：divergences.md（W5 分叉+方法风格规范入 divergence-rules
-    §4）、idiom-upgrade-prereqs.md 状态注记、project.md、auto/lib/README、
-    KNOWN-DEBT 核销（P511-1/2/5、P447-①两债）。
+24. [✅ 已完成] 文档回写（2026-09-02）：divergences.md 增 514 节
+    （D-ext-trait/D-pipe-first/D-methodized）；divergence-rules.md §4b
+    方法化写法规范 5 条；idiom-upgrade-prereqs.md 状态注记（W5✅/W3
+    裁定/W6 不做）；project.md 能力矩阵 514 注记；auto/lib/README 514 段；
+    KNOWN-DEBT 核销 P511-1/2/5 + 447-①两债 + P514-W3-2，新登 P514-20。
 25. [ ] 复审（/auto-plan:review：验收逐条对代码、遗漏扫描、健康检查、
     spec-impact 元数据）→ `cargo tf` → status: reviewed。
 
