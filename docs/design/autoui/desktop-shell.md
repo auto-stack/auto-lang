@@ -1,4 +1,10 @@
-# 25 - AutoShell：桌面 Shell 的 AutoUI 统一层（DSL 声明的 shell 工程）
+# 25 - Desktop Shell：桌面 Shell 的 AutoUI 统一层（DSL 声明的 shell 工程）
+
+> **曾用名**：AutoShell（2026-09-02 更名）——避免与 **auto-shell**（Auto 语言
+> 终端脚本工具，独立仓 `D:/autostack/auto-shell`，类 bash）重名混淆；本篇
+> 的 "shell" 一律指**桌面 shell**（GNOME Shell 同义的桌面 UI 层），非终端。
+> 历史文献（归档计划 472/478/479 等）中的 "shell-track/AutoShell" 字样指
+> 本篇，不回改。
 
 > **状态**：正式（2026-08-28）
 > **来源**：架构讨论——虚拟桌面除了作为 App 容器，本身还有一整套**基础控件与表面**：

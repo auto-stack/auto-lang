@@ -1,7 +1,7 @@
 # AutoUI 桌面协议 v1（Desktop Protocol v1）
 
 > **版本**：v1（2026-08-29 定稿，Plan 386 Stage 1）。
-> **施工图**：[autoshell](../../25-autoshell-dsl-unified-shell.md) §7/§7.1
+> **施工图**：[desktop-shell](desktop-shell.md) §7/§7.1（曾用名 AutoShell/25-autoshell-dsl-unified-shell）
 > （五通道表）；**单源实现**：
 > `crates/auto-lang/src/ui/desktop_protocol/`（feature `ui-iced`）。
 > **定位**：进程外 App（路线 B）与桌面（compositor 角色）之间的接缝协议，
@@ -232,7 +232,7 @@ Host : Listening --Hello(版本校验)--> (ResolveAndAttach) --activate()--> Act
 | `ReclaimWindow` → 进程内移除 | 进程退出 → 回收虚拟窗（462 Close 语义） | 窗随 App 消亡 |
 | `ObserveMsg` 收件箱 | desktop_mcp per-app 端口代理 | 观测通道可代理 |
 
-窗口形态迁移 L1/L3（autoshell §7.1）：v1.2 已落地（L1 = 宿主侧 WM 登记翻转
+窗口形态迁移 L1/L3（desktop-shell §7.1）：v1.2 已落地（L1 = 宿主侧 WM 登记翻转
 `detach_surface_to_os_window`/`attach_surface_back`；L3 v2a = `StateSnapshot`
 快照注入恢复）。像素级投影保真与 live-iced 渲染器换接仍归后续（投影器 v1
 以 text/button + 线性堆叠为界）。

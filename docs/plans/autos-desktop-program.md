@@ -45,7 +45,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 **编号映射（2026-08-28 立项）**：M2→**462**、M3→**463**、M4→**465**（原提案
 454/455/456，正文历史提案号不回改）；新增 **464**（launcher，吸收 Plan 441，
 其 palette 原语化降为 464 可选任务、vm 焦点原语改由 462 承载）。
-2026-08-28 增补：**shell-track** 立项（`docs/design/25-autoshell-dsl-unified-shell.md`
+2026-08-28 增补：**shell-track** 立项（`docs/design/25 曾用名（现 autoui/desktop-shell.md）`
 ——shell 表面统一为 AutoUI DSL：投影协议 + dock/switcher/pager/通知/settings/
 桌面本体，I7–I9），立项时分配实际编号；463 同步转正 workspace 驱动模型与
 `desktop.*` builtin 命令接缝（Design 25 §3/§6）。

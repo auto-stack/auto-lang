@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 **封存号说明**：17–19、21–26 已被历史文档用过并随 Plan 468 归位（对应关系见各子目录），
 **不再复用**——历史文献中的"Design NN"靠各文档头部的归位注记溯源。
-例外：`25-autoshell-dsl-unified-shell.md` 为在途文档（并行会话活跃编辑），稳定后归位
+注：`autoui/desktop-shell.md`（Design 25，曾用名 AutoShell/25-autoshell-dsl-unified-shell）已归位转正式
 `autoui/`，届时 25 号一并封存。
 
 ---
@@ -49,7 +49,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 六、专题诊断（根级） | 4 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题）、[管道算子 `|>`](pipe-operator.md)（讨论稿，Plan 514 衍生） |
 | 七、附录 `forge/` | 5 | AutoForge（已迁 auto-os 生态） |
 | 八、历史素材 `raw/` | 67 | 早期原始设计草稿（只读参考） |
-| 在途 | 1 | `25-autoshell-dsl-unified-shell.md`（待归位 autoui/） |
+| 0 | —（原在途 `25-autoshell-dsl-unified-shell.md` 已归位为 `autoui/desktop-shell.md`） |
 
 对账公式：1(本索引) + 18(00–16、20 章号) + 1(25 在途) + 10(autoui 含 README) + 4(blocks)
 + 2(流程) + 4(strategy) + 3(诊断) + 5(forge) + 67(raw) = **114**。
@@ -165,7 +165,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 - **新开发者**：01（管线）→ 10（语法）→ 感兴趣领域的章节。
 - **贡献 AutoUI/桌面**：16（战略）→ 20（架构）→ [autoui/](autoui/README.md) 各专题
-  （虚拟桌面线：virtual-desktop → desktop-shell-and-launcher → 25-autoshell 在途）。
+  （虚拟桌面线：virtual-desktop → desktop-shell-and-launcher → desktop-shell[25]）。
 - **查现状/关键代码入口**：去 [docs/specs/](../specs/overview.md)（本目录存意图，specs 存现状）。
 - **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/513-repo-integration-cleanup.md) 接任）。
 - **新增设计文档**：按"归位规则"节先定性再落位，写完在本索引登记。

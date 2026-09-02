@@ -18,6 +18,5 @@
 | [canvas-pointer-events](canvas-pointer-events.md) | — | Canvas 交互 v2：通用指针事件原语（mousemove 限频流/坐标语义/P-list 协议草案/扇区-边命中同源/axisPointer/动画双轨） | 499 |
 | [025-gap-enumeration](025-gap-enumeration.md) | 16a | 025 示例差距枚举（历史记录） | 345 |
 
-> \* 原 `25-a2ui-composer-analysis.md`。另注意：`docs/design/25-autoshell-dsl-unified-shell.md`
-> 为在途文档（并行会话活跃编辑中），稳定后将归位本目录（autoshell-dsl-unified-shell.md），
+> \* 原 `25-a2ui-composer-analysis.md`。注：该文档已归位本目录为 `desktop-shell.md`（Design 25，曾用名 AutoShell），
 > 届时 25 号一并封存。
