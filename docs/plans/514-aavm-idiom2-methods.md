@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 11
+current_step: 23
 total_steps: 25
 ---
 
@@ -374,15 +374,20 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### W5 管道算子（2026-09-02 用户裁定新增；设计稿 docs/design/pipe-operator.md，讨论稿已定稿口径：首版方法形+字段投影形，函数形二期）
 
-21. [ ] 宿主侧：词法新增两字符 token `|>`（VBar+Gt 贪婪，镜像 ??/.? 先例）；
-   parser 专用臂脱糖 `expr |> .m(args)` → `expr.m(args)`、`expr |> .f` →
-   `expr.f`（优先级：赋值之上、比较之下；左结合；行首形态=显式续行）；
-   链糖移除报错文案更新指向 `|>`。验证：最小探针 VM 单行/多行/链/投影四形态。
-22. [ ] lib 镜像：token.at 枚举+kind_name、lexer.at 符号臂（'|'+peek '>'）、
-   a2r.at ar_expr_tail 脱糖臂；corpus_a2r 新件 g16_pipe_basic。验证：
-   corpus_a2r g 系（含 g16）逐字符全绿。
-23. [ ] 探针与折叠：99_idiom2 增 m10_pipe 常驻（VM 侧）；aavm2 标准门禁+
-   cargo tf 全绿；矩阵五腿复跑 46/46（lib 变更后必跑）；折叠点④合入 master。
+21. [✅ 已完成] 宿主侧：token.rs/lexer.rs 新增 PipeGt 两字符 token（贪婪，
+   镜像 ?? 先例）；expr_pratt_with_left_inner 循环顶专用臂脱糖（方法形
+   `lhs.m(args)`/字段投影形 `lhs.f`；PREC_PIPE=infix_prec(2)；换行后行首
+   `|>` 显式续行——save/restore 越行探测，命中才吞换行，空行计数无损）；
+   链糖报错文案更新指向 `|>`。验证：pipe1 探针 VM 四形态（同链 3/同线
+   管道 3/多行管道 18/投影 18）+主 a2r 转译与链式产物逐字符一致。
+22. [✅ 已完成] lib 镜像：token.at 枚举+kind_name("PipeGt")、lexer.at
+   '|'+peek '>' 符号臂、a2r.at ar_expr_tail 换行探测+脱糖臂（复用
+   ar_method_call 类型/实参全套机制）；corpus_a2r 新件 g16_pipe_basic
+   （四形态）。验证：corpus_a2r g01–g16 逐字符全绿。
+23. [✅ 已完成] 99_idiom2 增 m10_pipe 常驻（13 绿）；aavm2 标准门禁 17/2、
+   99_unit 13、cargo tf 3350/0、矩阵五腿复跑 46/46（matrix_w5 留档）→
+   折叠点④合入 master。设计稿未决项按定稿口径落实：方法形+投影形入，
+   函数形二期、is-臂内不支持。2026-09-02。
 
 ### 收尾
 
