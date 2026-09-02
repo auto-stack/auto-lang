@@ -1,0 +1,13 @@
+// pac.at - Database Studio SQLite 可视化客户端（App 轨道填洞 ③·Plan 439）
+//
+// 对象树导航 + DataTable 深水区（分页/排序/搜索/类型徽章/万行窗口化）
+// + 表结构（Schema/DDL）+ SQL 控制台（执行/耗时统计/错误反馈）+ 事务修改。
+
+name: "database"
+version: "0.1.0"
+description: "SQLite visual database studio - Object Tree, Paginated DataTable, SQL Console, Schema Inspector (vue/vm)"
+
+scene: "ui"
+render: "vue"
+title: "Database Studio"
+front_port: 4026
