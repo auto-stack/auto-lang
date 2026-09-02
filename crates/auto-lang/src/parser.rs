@@ -12558,6 +12558,7 @@ impl<'a> Parser<'a> {
         let mut counter = 0u32;
         let mut minted: Vec<(String, Vec<Stmt>)> = Vec::new();
         Self::mint_view_inline(&mut view.root, &mut counter, &mut minted)?;
+        Self::mint_bare_input_sync(&decl.name, &mut view.root, &mut counter, &mut minted)?;
         if minted.is_empty() {
             return Ok(());
         }
@@ -12665,6 +12666,103 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Plan 448 C: bare `value:` two-way binding. An `input`/`textarea`
+    /// Element whose `value:` targets a direct state field and that wires no
+    /// oninput/onchange event gets an empty-body minted `oninput` handler
+    /// (`.__evt_oninput_<n>`), so typed text reaches state on every backend:
+    /// Vue folds value+@input into v-model, the iced/VM runtime writes the
+    /// bound field via input_state_map before dispatching, and generated
+    /// Rust injects via input_fields. Without it, a bare `value:` input only
+    /// round-trips on Vue — iced wires on_change solely when a handler
+    /// exists, so edits never persist. Multi-level dots (`.store.me.image`)
+    /// stay one-way: every writeback path targets direct state fields only.
+    /// Registry Component nodes are out (they carry their own value/change
+    /// protocols); view-fn fragments keep the B v1 boundary (no minting).
+    fn mint_bare_input_sync(
+        widget_name: &str,
+        node: &mut ViewNode,
+        counter: &mut u32,
+        minted: &mut Vec<(String, Vec<Stmt>)>,
+    ) -> AutoResult<()> {
+        match node {
+            ViewNode::Element { tag, props, events, children, .. } => {
+                if matches!(tag.as_str(), "input" | "textarea")
+                    && Self::direct_state_value_field(props).is_some()
+                    && !events.iter().any(|ev| {
+                        let base = ev.name.split('.').next().unwrap_or("");
+                        matches!(base, "oninput" | "onchange" | "input" | "change")
+                    })
+                {
+                    *counter += 1;
+                    // `__bind_` (not `__evt_`) marks an auto-sync mint: the
+                    // body is empty by construction and Vue realizes the
+                    // sync via its v-model fold, so downstream consumers can
+                    // suppress the redundant empty handler wholesale. The
+                    // widget name is woven in because the registry-wide
+                    // input_state_map is keyed by handler name alone — two
+                    // sibling children each minting `__bind_oninput_1` would
+                    // collide and the second binding would silently no-op.
+                    let owner: String = widget_name
+                        .chars()
+                        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                        .collect();
+                    let pattern = format!(".__bind_{}_oninput_{}", owner, counter);
+                    events.push(ViewEvent {
+                        name: "oninput".to_string(),
+                        handler: pattern.clone(),
+                        params: Vec::new(),
+                        inline: None,
+                    });
+                    minted.push((pattern, Vec::new()));
+                }
+                for c in children.iter_mut() {
+                    Self::mint_bare_input_sync(widget_name, c, counter, minted)?;
+                }
+            }
+            ViewNode::ForLoop { body, .. } => {
+                for c in body.iter_mut() {
+                    Self::mint_bare_input_sync(widget_name, c, counter, minted)?;
+                }
+            }
+            ViewNode::Conditional { then_body, else_body, .. } => {
+                for c in then_body.iter_mut() {
+                    Self::mint_bare_input_sync(widget_name, c, counter, minted)?;
+                }
+                if let Some(else_nodes) = else_body {
+                    for c in else_nodes.iter_mut() {
+                        Self::mint_bare_input_sync(widget_name, c, counter, minted)?;
+                    }
+                }
+            }
+            ViewNode::Link { children, .. } => {
+                for c in children.iter_mut() {
+                    Self::mint_bare_input_sync(widget_name, c, counter, minted)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// The state field a `value:` prop targets, when it is a direct state
+    /// reference — `.field` (parsed as `Dot(Ident("self"), field)`) or the
+    /// legacy bare `field` form. Multi-level dots and non-expr values return
+    /// None (mirrors the `is_direct_self` rule of ui_gen/rust.rs's
+    /// scan_input_fields and dynamic.rs's scan_node_for_inputs).
+    fn direct_state_value_field(props: &[ViewProp]) -> Option<String> {
+        let prop = props.iter().find(|p| p.name.as_str() == "value")?;
+        match &prop.value {
+            ViewPropValue::Expr(Expr::Ident(name)) => Some(name.to_string()),
+            ViewPropValue::Expr(Expr::Dot(obj, field)) => match obj.as_ref() {
+                Expr::Ident(base) if base.as_str() == "self" || base.as_str() == "." => {
+                    Some(field.to_string())
+                }
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     /// Parse a widget-level external import block (Vue backend escape hatch):
@@ -18261,6 +18359,86 @@ exe hello {
             w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
         assert!(variants.contains(&"__evt_onclick_1"));
         assert!(variants.contains(&"__evt_onclick_2"));
+    }
+
+    #[test]
+    fn test_bare_value_input_mints_oninput_sync() {
+        // Plan 448 C: `input { value: .x }` with no oninput/onchange mints an
+        // empty-body `.__evt_oninput_<n>` binding (event + on-handler + msg
+        // variant), so the typed text reaches state on every backend. Guards:
+        // an explicit oninput/onchange/onenter and a multi-level dot value
+        // (`.store.me.image`) suppress minting.
+        let code = concat!(
+            "widget App {\n",
+            "    model { var email str = \"\" }\n",
+            "    view {\n",
+            "        col {\n",
+            "            input { value: .email, placeholder: \"you@example.com\" }\n",
+            "            input (value: .email, oninput: .Changed)\n",
+            "            textarea { value: .email }\n",
+            "            input { value: .store.me.email }\n",
+            "            input { placeholder: \"no value\" }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("bare value input must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+
+        #[derive(PartialEq, Debug)]
+        struct Ev<'a> {
+            tag: &'a str,
+            name: &'a str,
+            handler: &'a str,
+            stmts: usize,
+        }
+        fn walk<'a>(node: &'a ViewNode, out: &mut Vec<Ev<'a>>) {
+            match node {
+                ViewNode::Element { tag, events, children, .. } => {
+                    for e in events {
+                        out.push(Ev { tag, name: &e.name, handler: &e.handler, stmts: e.inline.as_ref().map_or(0, |b| b.len()) });
+                    }
+                    for c in children { walk(c, out); }
+                }
+                ViewNode::ForLoop { body, .. } => {
+                    for c in body { walk(c, out); }
+                }
+                ViewNode::Conditional { then_body, else_body, .. } => {
+                    for c in then_body { walk(c, out); }
+                    if let Some(els) = else_body {
+                        for c in els { walk(c, out); }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut evs = Vec::new();
+        if let Some(v) = &w.view { walk(&v.root, &mut evs); }
+
+        assert_eq!(evs.len(), 3, "only bare direct-state inputs/textarea mint");
+        assert_eq!(evs[0], Ev { tag: "input", name: "oninput", handler: ".__bind_App_oninput_1", stmts: 0 });
+        assert_eq!(evs[1], Ev { tag: "input", name: "oninput", handler: ".Changed", stmts: 0 },
+            "explicit oninput suppresses minting");
+        assert_eq!(evs[2], Ev { tag: "textarea", name: "oninput", handler: ".__bind_App_oninput_2", stmts: 0 },
+            "textarea mints too; counter is view-order deterministic");
+
+        // The minted handler is an empty-body on-handler + msg variant, so the
+        // decl-based VM synthesis (VmBridge::new_from_decls) sees it and the
+        // input_state_map writeback keys on its name.
+        let on = w.on.as_ref().expect("on block injected");
+        let minted = on.handlers.iter().find(|h| h.pattern == ".__bind_App_oninput_1")
+            .expect("minted on-handler");
+        assert!(minted.body.stmts.is_empty(), "empty body — writeback happens pre-dispatch");
+        assert!(minted.params.is_empty(), "no phantom arg (audit B12(b))");
+        let variants: Vec<&str> =
+            w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
+        assert!(variants.contains(&"__bind_App_oninput_1"));
+        assert!(variants.contains(&"__bind_App_oninput_2"));
     }
 
     #[test]

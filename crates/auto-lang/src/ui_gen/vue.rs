@@ -2135,14 +2135,18 @@ impl VueGenerator {
         // (not in state_names → no .value suffix; not in prop_names → no props. prefix).
 
         // Activate emit generation for sub-widgets that have messages
-        if !widget.messages.is_empty() {
-            self.has_emit = true;
-            for msg in &widget.messages {
-                for variant in &msg.variants {
-                    self.emit_events.push(variant.name.clone());
-                    if variant.quoted {
-                        self.quoted_events.insert(variant.name.clone());
-                    }
+        for msg in &widget.messages {
+            for variant in &msg.variants {
+                // Plan 448 C: auto-sync mint variants never fire from a Vue
+                // template (v-model carries the sync) — keep them out so the
+                // defineEmits block disappears entirely.
+                if variant.name.as_str().starts_with("__bind_") {
+                    continue;
+                }
+                self.has_emit = true;
+                self.emit_events.push(variant.name.clone());
+                if variant.quoted {
+                    self.quoted_events.insert(variant.name.clone());
                 }
             }
         }
@@ -2935,6 +2939,12 @@ impl VueGenerator {
 
             script.push_str("const emit = defineEmits<{\n");
             for event in &self.emit_events {
+                // Plan 448 C: auto-sync mint events never fire from the
+                // template (their @input attr is suppressed; v-model carries
+                // the sync) — declaring them is dead surface.
+                if event.starts_with("__bind_") {
+                    continue;
+                }
                 // Plan 367 P1-4: only declare events for handlers that are
                 // actually used in the template. Unused handlers don't get
                 // function definitions, so declaring their emit types is noise.
@@ -3136,7 +3146,11 @@ impl VueGenerator {
             // Plan 448 B1: inline-lambda handlers (`onclick: () => { … }`)
             // are widget-internal sugar — no parent can listen for the
             // synthetic `__evt_*` event, so never append the trailing emit.
-            let emit_name = emit_name.filter(|e| !e.as_str().starts_with("__evt_"));
+            // Plan 448 C: `__bind_*` auto-sync mints likewise (and their
+            // handler fn is not emitted at all).
+            let emit_name = emit_name.filter(|e| {
+                !e.as_str().starts_with("__evt_") && !e.as_str().starts_with("__bind_")
+            });
             // Plan musk-022 callback-relay fix: rewrite any `props.on_xxx(args)`
             // calls in the body to `emit('<Pascal>', args)` for real callback
             // props. The parent binds `@Pascal` (never `:on_xxx`), so the raw
@@ -3310,6 +3324,12 @@ impl VueGenerator {
         // logic in the extensions (demo CustomScrollbar, jade panels).
         let mut generated_handlers: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (handler_name, handler_body, is_async) in &self.handlers {
+            // Plan 448 C: auto-sync mints (`__bind_oninput_<n>`) are empty by
+            // construction — Vue realizes the sync via the v-model fold, so
+            // emitting a TODO stub for them is pure noise.
+            if handler_name.starts_with("__bind_") {
+                continue;
+            }
             generated_handlers.insert(handler_name.clone());
 
             // Build params: check for loop-param handlers first, then user-defined params
@@ -5497,9 +5517,14 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                             } else {
                                 self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params)
                             };
-                            let handler_name = self.handler_to_function_call(&aura_event.handler);
-                            self.used_handlers.insert(handler_name);
-                            attrs.push(format!("@input=\"{}\"", handler_fn));
+                            // Plan 448 C: auto-sync mints have no side effects —
+                            // v-model alone carries the sync, and registering
+                            // the name would emit a stub fn + dead emits entry.
+                            if !aura_event.handler.trim_start_matches('.').starts_with("__bind_") {
+                                let handler_name = self.handler_to_function_call(&aura_event.handler);
+                                self.used_handlers.insert(handler_name);
+                                attrs.push(format!("@input=\"{}\"", handler_fn));
+                            }
                             continue;
                         }
                         let vue_event = if html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
@@ -5603,8 +5628,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         {
                             handler_fn = format!("{}(($event.target as HTMLInputElement).value)", self.handler_to_function_call(&aura_event.handler));
                         }
-                        self.used_handlers.insert(handler_name);
-                        attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+                        // Plan 448 C: an auto-sync mint on input/textarea is
+                        // realized by the v-model fold below — emitting the
+                        // @input attr for the empty handler would only add a
+                        // no-op listener and force a stub function.
+                        let is_auto_sync_mint = matches!(html_tag.as_str(), "input" | "textarea")
+                            && matches!(event.as_str(), "oninput" | "input" | "onInput" | "onchange" | "change")
+                            && aura_event.handler.trim_start_matches('.').starts_with("__bind_");
+                        if !is_auto_sync_mint {
+                            self.used_handlers.insert(handler_name);
+                            attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+                        }
                     }
 
                     // PLAN-037 T5: native input/textarea with a state-slot
@@ -18340,6 +18374,38 @@ widget Rows {
             wrapper,
             keylines
         );
+    }
+
+    #[test]
+    fn test_bare_value_input_folds_to_vmodel_without_mint_noise() {
+        // Plan 448 C: a bare `value: .x` input (no oninput) mints an empty
+        // `__bind_oninput_<n>` auto-sync handler for the iced/VM and native
+        // Rust paths. On Vue the v-model fold already realizes the sync, so
+        // the mint must leave NO trace: no @input attr, no stub function,
+        // no defineEmits entry, no trailing emit.
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var value str = "" }
+    view { col { input { placeholder: "search", value: .value } } }
+}
+"#);
+        assert!(sfc.contains("v-model=\"value\""), "bare value folds to v-model:\n{}", sfc);
+        assert!(!sfc.contains("__bind_"), "auto-sync mint must be invisible on Vue:\n{}", sfc);
+        assert!(!sfc.contains("@input"), "no redundant input listener:\n{}", sfc);
+        assert!(!sfc.contains("defineEmits"), "nothing to emit:\n{}", sfc);
+        assert!(!sfc.contains("TODO"), "no empty stub fn:\n{}", sfc);
+
+        // Explicit oninput keeps its handler attr (and still v-model folds).
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    msg { Changed }
+    model { var value str = "" }
+    view { col { input { value: .value, oninput: .Changed } } }
+    on { .Changed -> { .value = .value } }
+}
+"#);
+        assert!(sfc.contains("v-model=\"value\""), "explicit path still folds:\n{}", sfc);
+        assert!(sfc.contains("@input=\"Changed\""), "explicit handler attr kept:\n{}", sfc);
     }
 
         fn gen_sfc_from_widget_src(src: &str) -> String {

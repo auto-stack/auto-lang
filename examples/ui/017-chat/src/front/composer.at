@@ -1,8 +1,9 @@
 // composer.at — input bar. DoSend msg avoids name collision with on_send
 // callback (U21: on_send -> "Send" would collide with a Send variant).
-// Plan 399 §6: InputChanged also fires on_typing so App can signal typing.
+// Plan 448 C: 输入同步由裸 `value: .draft` 两向绑定承担（自动铸名）；
+// on_typing 副作用经内联 lambda（Plan 448 B）触发。
 widget Composer(on_send: msg, on_typing: msg) {
-    msg { DoSend, InputChanged }
+    msg { DoSend }
     model { var draft str = "" }
     view {
         row {
@@ -10,7 +11,7 @@ widget Composer(on_send: msg, on_typing: msg) {
             input {
                 placeholder: "Type a message..."
                 value: .draft
-                oninput: .InputChanged
+                oninput: () => { on_typing("You") }
                 onenter: .DoSend
                 style: "flex-1 px-4 py-2 bg-background border border-border rounded-full text-sm text-foreground outline-none focus:border-primary transition-colors"
             }
@@ -21,10 +22,6 @@ widget Composer(on_send: msg, on_typing: msg) {
         }
     }
     on {
-        .InputChanged -> {
-            .draft = .draft
-            on_typing("You")
-        }
         .DoSend -> {
             if .draft.trim() != "" {
                 on_send(.draft)

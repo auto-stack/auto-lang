@@ -7,7 +7,7 @@
 //      持续可交互（T5 隔离验证，探针在 renderer update/view 外壳）。
 widget DualApp {
     msg {
-        Increment, Decrement, Reset, NoteChanged, PanicProbe
+        Increment, Decrement, Reset, PanicProbe
     }
 
     model {
@@ -37,7 +37,6 @@ widget DualApp {
 
                 input {
                     value: .note
-                    oninput: .NoteChanged
                     placeholder: "在此输入 —— 两窗口互不可见"
                 }
 
@@ -67,10 +66,6 @@ widget DualApp {
         .Reset -> {
             .count = 0
             print("[reset] count=0")
-        }
-
-        .NoteChanged -> {
-            .note = .note
         }
 
         .PanicProbe -> {

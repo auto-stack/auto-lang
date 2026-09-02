@@ -5714,6 +5714,54 @@ widget Counter {
         assert!(code.contains("self.count += 1"), "lambda body:\n{}", code);
     }
 
+    /// Plan 448 C: bare `value:` input through the real pipeline. The minted
+    /// `__bind_*` variant must reach the enum AND the input_fields injection
+    /// (`self.email = last_input_text`) — without the variant the match arm
+    /// is silently skipped and typing never persists.
+    #[test]
+    fn test_bare_value_input_rust_codegen() {
+        let src = r#"
+widget LoginForm {
+    model { var email str = "" }
+    view {
+        input { value: .email, placeholder: "you@example.com" }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("__bind_LoginForm_oninput_1,"),
+            "auto-sync variant in the enum:\n{}",
+            code
+        );
+        assert!(
+            code.contains("__bind_LoginForm_oninput_1 => {"),
+            "match arm for the auto-sync variant:\n{}",
+            code
+        );
+        assert!(
+            code.contains("last_input_text()"),
+            "input_fields injection reads the typed text:\n{}",
+            code
+        );
+        assert!(
+            code.contains("self.email"),
+            "input_fields injection writes the bound field:\n{}",
+            code
+        );
+    }
+
     /// Plan 413 Phase 3: code_editor codegen — builder chain shape, payload
     /// default for String variants, input_fields + code_editor_sources
     /// registration (handler must read code_editor_text("key")).

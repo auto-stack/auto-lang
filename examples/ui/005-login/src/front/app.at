@@ -1,5 +1,5 @@
 widget App {
-    msg { EmailChanged, PasswordChanged, Submit }
+    msg { Submit }
 
     model {
         var email str = ""
@@ -24,7 +24,7 @@ widget App {
                         style: "text-sm font-medium text-gray-700 mt-6"
                     }
                     input (value: .email) {
-                        oninput: .EmailChanged
+                        oninput: () => { if .email != "" { .email_error = "" } }
                         placeholder: "you@example.com"
                         style: "w-full px-3 py-2 border rounded-lg mt-2 text-gray-900"
                     }
@@ -40,7 +40,7 @@ widget App {
                         style: "text-sm font-medium text-gray-700 mt-6"
                     }
                     input (value: .password) {
-                        oninput: .PasswordChanged
+                        oninput: () => { if .password != "" { .password_error = "" } }
                         placeholder: "Enter your password"
                         type: "password"
                         style: "w-full px-3 py-2 border rounded-lg mt-2 text-gray-900"
@@ -78,18 +78,6 @@ widget App {
     }
 
     on {
-        .EmailChanged -> {
-            .email = .email
-            if .email != "" {
-                .email_error = ""
-            }
-        }
-        .PasswordChanged -> {
-            .password = .password
-            if .password != "" {
-                .password_error = ""
-            }
-        }
         .Submit -> {
             if .email == "" {
                 .email_error = "Email is required"

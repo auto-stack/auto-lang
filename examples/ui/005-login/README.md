@@ -4,7 +4,8 @@ A complete login form with email and password fields, conditional error display,
 
 ## Concepts
 
-- **Input widget** — `input` with `value`, `oninput`, `placeholder`, and `type` properties for form fields
+- **Input widget** — `input` with `value`, `placeholder`, and `type` properties for form fields
+- **Two-way binding** — a bare `value: .field` input syncs typed text into state on every backend (Plan 448 C); side effects go inline (`oninput: () => {…}`, Plan 448 B)
 - **Conditional rendering** — `if` blocks show/hide error messages based on model state
 - **Button widget** — `button` with `onclick` event for form submission
 - **Form pattern** — Grouping labeled inputs, error messages, and a submit button in a card layout
@@ -15,7 +16,7 @@ See `front/app.at`:
 
 ```auto
 widget App {
-    msg { EmailChanged, PasswordChanged, Submit }
+    msg { Submit }
 
     model {
         var email str = ""
@@ -35,7 +36,7 @@ widget App {
                 text "Email"
                 class: "text-sm font-medium text-gray-700 mb-1"
                 input (value: .email) {
-                    oninput: .EmailChanged
+                    oninput: () => { if .email != "" { .email_error = "" } }
                     placeholder: "you@example.com"
                     class: "w-full px-3 py-2 border rounded-lg"
                 }
@@ -50,7 +51,7 @@ widget App {
                 text "Password"
                 class: "text-sm font-medium text-gray-700 mb-1"
                 input (value: .password) {
-                    oninput: .PasswordChanged
+                    oninput: () => { if .password != "" { .password_error = "" } }
                     placeholder: "Enter your password"
                     type: "password"
                     class: "w-full px-3 py-2 border rounded-lg"
@@ -81,12 +82,6 @@ widget App {
     }
 
     on {
-        .EmailChanged -> {
-            .email = .email
-        }
-        .PasswordChanged -> {
-            .password = .password
-        }
         .Submit -> {
             .email_error = ""
         }

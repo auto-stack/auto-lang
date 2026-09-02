@@ -4,7 +4,7 @@ A contact form with name, email, and message inputs plus a submit button that sh
 
 ## Concepts
 
-- Input widget with two-way binding
+- Input widget with two-way binding — a bare `value: .field` syncs typed text into state on every backend (Plan 448 C), no msg/on boilerplate
 - Textarea widget for multi-line input
 - Button with onclick handler
 - Conditional success message
@@ -15,7 +15,7 @@ See `front/app.at`:
 
 ```auto
 widget App {
-    msg { NameChanged, EmailChanged, MessageChanged, Submit }
+    msg { Submit }
 
     model {
         var name str = ""
@@ -28,9 +28,9 @@ widget App {
         col {
             text "Contact Us"
             text "We'd love to hear from you. Send us a message and we'll respond as soon as possible."
-            input { placeholder: "Your Name", value: .name, oninput: .NameChanged }
-            input { placeholder: "Your Email", value: .email, oninput: .EmailChanged }
-            textarea { placeholder: "Your Message", value: .message, oninput: .MessageChanged }
+            input { placeholder: "Your Name", value: .name }
+            input { placeholder: "Your Email", value: .email }
+            textarea { placeholder: "Your Message", value: .message }
             button "Send Message" { onclick: .Submit }
             if .submitted {
                 text "Thank you! We'll be in touch."
@@ -40,15 +40,6 @@ widget App {
     }
 
     on {
-        .NameChanged -> {
-            .name = .name
-        }
-        .EmailChanged -> {
-            .email = .email
-        }
-        .MessageChanged -> {
-            .message = .message
-        }
         .Submit -> {
             .submitted = true
         }
@@ -72,7 +63,7 @@ After `auto gen`, generated projects appear in:
 
 ## Concepts Taught
 
-- Input widget: `input` with `placeholder`, `value`, and `oninput` for two-way binding
+- Input widget: `input` with `placeholder` and `value` — the bare `value:` binding is two-way
 - Textarea widget: `textarea` for multi-line text input
 - Button with `onclick` bound to the `Submit` message
 - Conditional rendering: `if .submitted` shows a success message after submit
