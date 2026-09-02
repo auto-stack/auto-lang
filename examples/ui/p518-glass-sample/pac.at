@@ -1,0 +1,8 @@
+// p518-glass-sample — PLAN-518 G8 毛玻璃声明冻结样张。
+// 三臂语义验证语料：vue 臂类串直通（Tailwind JIT content 直扫生成
+// backdrop-filter）出真毛玻璃；VM/iced 臂装饰性降级 no-op（不报错不
+// not-yet）；queue 臂共享 parser 已识别（Coverage 前缀放行,装载 Covered）。
+name: "p518-glass-sample"
+version: "1.0.0"
+scene: "ui"
+render: "vue"

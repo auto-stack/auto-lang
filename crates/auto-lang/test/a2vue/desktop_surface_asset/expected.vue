@@ -82,7 +82,7 @@ onMounted(() => {
       <div class="grid grid-cols-8 gap-2 w-full">
         <div @dblclick="ActivateApp(e.id)" v-for="e in __desktop_icons" :key="(((e as any)?.id ?? e))">
           <div class="flex flex-col w-20 h-20 items-center justify-center gap-1">
-            <Button class="h-10 w-10 px-0 text-2xl" @contextmenu.prevent="IconMenu(e.id)" :key="'Button-4-' + (((e as any)?.id ?? e))" />
+            <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" @contextmenu.prevent="IconMenu(e.id)" :key="'Button-4-' + (((e as any)?.id ?? e))" />
             <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
           </div>
         </div>

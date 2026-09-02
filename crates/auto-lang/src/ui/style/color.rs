@@ -200,22 +200,24 @@ impl Color {
             Color::Emerald(s) => tailwind_emerald(*s),
             Color::Amber(s) => tailwind_amber(*s),
             Color::Sky(s) => tailwind_sky(*s),
-            // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB
-            Color::Primary => (99, 102, 241),       // indigo-500
-            Color::Secondary => (139, 92, 246),      // violet-500
-            Color::Background => (255, 255, 255),    // white
-            Color::Surface => (249, 250, 251),       // gray-50
-            Color::Muted => (241, 245, 249),         // slate-100 (light)
-            Color::Error => (239, 68, 68),           // red-500
-            Color::Warning => (234, 179, 8),         // yellow-500
-            Color::Success => (34, 197, 94),         // green-500
-            Color::Info => (59, 130, 246),           // blue-500
-            Color::OnPrimary => (248, 250, 252),   // light primary foreground in light mode
-            Color::OnSecondary => (15, 23, 42),    // dark secondary foreground in light mode
-            Color::OnDestructive => (248, 250, 252), // white text on destructive red
-            Color::OnBackground => (17, 24, 39),     // near-black
-            Color::Border => (224, 224, 224),        // #e0e0e0 (light)
-            Color::OnSurface => (107, 114, 128),     // gray-500
+        // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB.
+        // (Plan 518 注:此表仅为 resolve_semantic_rgb 未覆盖路径的 light 回退,
+        // 主题真源在 theme.rs;light 值随 stella 暖纸系同步。)
+        Color::Primary => (99, 102, 241),       // indigo-500
+        Color::Secondary => (139, 92, 246),      // violet-500
+        Color::Background => (245, 241, 232),    // 暖纸 #f5f1e8(Plan 518)
+        Color::Surface => (251, 248, 242),       // #fbf8f2(Plan 518)
+        Color::Muted => (240, 235, 226),         // 暖 muted #f0ebe2(Plan 518)
+        Color::Error => (239, 68, 68),           // red-500
+        Color::Warning => (234, 179, 8),         // yellow-500
+        Color::Success => (34, 197, 94),         // green-500
+        Color::Info => (59, 130, 246),           // blue-500
+        Color::OnPrimary => (248, 250, 252),   // light primary foreground in light mode
+        Color::OnSecondary => (42, 39, 35),    // 墨色暖黑 #2a2723(Plan 518)
+        Color::OnDestructive => (248, 250, 252), // white text on destructive red
+        Color::OnBackground => (42, 39, 35),     // 墨色 #2a2723(Plan 518)
+        Color::Border => (227, 221, 209),        // 暖灰 #e3ddd1(Plan 518)
+        Color::OnSurface => (125, 119, 109),     // 暖次级 #7d776d(Plan 518)
             _ => (128, 128, 128),
         }
     }

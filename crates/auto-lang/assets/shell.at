@@ -104,17 +104,18 @@ widget Desktop {
                         onclick: .SummonLauncher
                         style: "h-10 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
                     }
-                    // Plan 503：dock 图标格 48px rounded-xl(stella 签名),
-                    // 运行指示改 4px accent 圆点(替换 "●" text hack)。
+                    // Plan 503：dock 图标格 48px rounded-xl(stella 签名)。
+                    // Plan 518 G3：格常驻透明(hover 才出格,rounded-xl 保留),
+                    // 运行指示改贴底宽条(原侧位 4px 圆点可感知性弱,形态实机定)。
                     for p in .__dock_pinned {
-                        row {
-                            style: "items-center gap-1"
+                        col {
+                            style: "items-center"
                             button (icon: p.icon) {
                                 onclick: .ActivateApp(p.id)
                                 style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
                             }
                             if .__wm_running.contains("," + p.id + ",") {
-                                div { style: "h-1 w-1 rounded-full bg-primary" }
+                                div { style: "h-1 w-6 rounded-full bg-primary mt-0.5" }
                             }
                         }
                     }
@@ -134,8 +135,9 @@ widget Desktop {
                                     style: "h-8 w-6 px-0 text-xs text-muted-foreground"
                                 }
                             } else {
-                                // Plan 503：激活窗 2px accent 竖条 + 图标格
-                                // accent-light 底(stella 激活态范式)。
+                                // Plan 503：激活窗 2px accent 竖条(stella 激活态
+                                // 范式)。Plan 518 G3：格底常驻 accent(bg-primary/15)
+                                // 撤除——格 hover 才出底,accent 只留激活竖条。
                                 if w.focused == "1" {
                                     div { style: "w-0.5 h-5 rounded-full bg-primary" }
                                 }
@@ -144,16 +146,9 @@ widget Desktop {
                                 // miss 由渲染臂 fallback icon 兜底）。
                                 mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
                                     popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
-                                        if w.focused == "1" {
-                                            button (icon: w.icon) {
-                                                onclick: .WinFocus(w.wid)
-                                                style: "h-12 w-12 px-0 text-base rounded-xl bg-primary/15"
-                                            }
-                                        } else {
-                                            button (icon: w.icon) {
-                                                onclick: .WinFocus(w.wid)
-                                                style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
-                                            }
+                                        button (icon: w.icon) {
+                                            onclick: .WinFocus(w.wid)
+                                            style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
                                         }
                                         window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
                                     }

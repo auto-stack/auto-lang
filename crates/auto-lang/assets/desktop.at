@@ -74,6 +74,9 @@ widget DesktopSurface {
             // pinned 条目自带注册表 icon 优先）。双击 = mouse-area
             // ondblclick（484 mouse-area + iced on_double_click）；右键 =
             // button oncontextmenu（402 先例）。
+            // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
+            // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
+            // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
             grid (cols: 8, gap: 8) {
                 style: "w-full"
                 for e in .__desktop_icons {
@@ -82,7 +85,7 @@ widget DesktopSurface {
                             style: "w-20 h-20 items-center justify-center gap-1"
                             button (icon: e.icon) {
                                 oncontextmenu.prevent: .IconMenu(e.id)
-                                style: "h-10 w-10 px-0 text-2xl"
+                                style: "h-10 w-10 px-0 text-xl text-white rounded-xl bg-[" + e.color + "]"
                             }
                             text e.label {
                                 style: "text-xs text-foreground truncate w-full text-center"

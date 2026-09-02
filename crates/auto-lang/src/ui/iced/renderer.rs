@@ -1448,6 +1448,14 @@ pub const INTER_FONT_REGULAR: &[u8] = include_bytes!("assets/Inter-Regular.ttf")
 pub const INTER_FONT_MEDIUM: &[u8] = include_bytes!("assets/Inter-Medium.ttf");
 pub const INTER_FONT_SEMIBOLD: &[u8] = include_bytes!("assets/Inter-SemiBold.ttf");
 
+/// Plan 518：随包内嵌默认壁纸(脚本自制,免授权——生成器 scratch/p518)。
+/// `builtin:` 虚拟方案经 load_image_bytes 消费;ricepaper = 默认
+/// (stella 权威图同款暖米宣纸底),inkwash = 宣纸+水墨远山可选项
+/// (设置壁纸栏键入 `builtin:inkwash`)。深浅主题共用浅色——stella dark
+/// 实证壁纸与主题解耦。
+pub const WALLPAPER_RICEPAPER: &[u8] = include_bytes!("assets/wallpaper-ricepaper.jpg");
+pub const WALLPAPER_INKWASH: &[u8] = include_bytes!("assets/wallpaper-inkwash.jpg");
+
 /// Inter family 引用 —— application 的 `.default_font` 与带字重文本共用。
 pub const INTER_FONT: iced::Font = iced::Font {
     family: iced::font::Family::Name("Inter"),
@@ -4272,7 +4280,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                     let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                     let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
-                    if let Some(svg_str) = lucide_svg_doc(icon_name) {
+                    // Plan 518 G4②:大尺寸细线——固定宽或高 ≥48px 的独立图标
+                    // 用 stroke-width 1.5（stella 线性观感）;PUA 按钮内嵌路径
+                    // 尺寸随字号（<48px）保持默认 2。
+                    let large = [&w, &h].into_iter().flatten().any(|len| {
+                        matches!(len, iced::Length::Fixed(v) if *v >= 48.0)
+                    });
+                    let sw = if large { 1.5 } else { 2.0 };
+                    if let Some(svg_str) = lucide_svg_doc_with(icon_name, sw) {
                         // Plan 409 §10 组 C → 2026-08-21 方案 A(ash-gui hover):
                         // 画时着色 —— svg::Style.color 由 iced 光栅化器把不透明
                         // 像素的 RGB 整体替换(按 (handle,size,color) 缓存,引擎
@@ -4538,7 +4553,14 @@ fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
     }
 
     // Fetch and cache
-    let result = if url.starts_with("http://") || url.starts_with("https://") {
+    let result = if let Some(name) = url.strip_prefix("builtin:") {
+        // Plan 518：内嵌壁纸虚拟方案(builtin:ricepaper / builtin:inkwash)。
+        match name {
+            "ricepaper" => Some(WALLPAPER_RICEPAPER.to_vec()),
+            "inkwash" => Some(WALLPAPER_INKWASH.to_vec()),
+            _ => None,
+        }
+    } else if url.starts_with("http://") || url.starts_with("https://") {
         reqwest::blocking::get(url).ok()?.bytes().ok().map(|b| b.to_vec())
     } else {
         // Try loading from local file path
@@ -4691,10 +4713,16 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
 /// resvg refuses to parse them, so every `lucide:` icon rendered EMPTY
 /// (pre-existing gap hit by the nav search icon; also affects the PUA
 /// button-icon path). Wrap into a full stroke-based document here.
+/// Plan 518 G4②: stroke-width 参数化——默认 2（lucide 标准）,大尺寸
+/// （渲染 ≥48px）用 1.5 细线对齐 stella 线性观感。
 fn lucide_svg_doc(name: &str) -> Option<String> {
+    lucide_svg_doc_with(name, 2.0)
+}
+
+fn lucide_svg_doc_with(name: &str, stroke_width: f32) -> Option<String> {
     let frag = lucide_svg(name)?;
     Some(format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{frag}</svg>"
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"{stroke_width}\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{frag}</svg>"
     ))
 }
 
@@ -4854,10 +4882,11 @@ fn extract_initials(src: &str) -> String {
 fn shadcn_theme(dark: bool) -> iced::Theme {
     let (background, text) = if dark {
         // --background: hsl(222.2 47.4% 7%) / --foreground: hsl(210 40% 98%)
-        (iced::Color::from_rgb8(9, 14, 26), iced::Color::from_rgb8(248, 250, 252))
+        // (Plan 518 stella 重校:dark #141a29 精修蓝黑)
+        (iced::Color::from_rgb8(20, 26, 41), iced::Color::from_rgb8(248, 250, 252))
     } else {
-        // --background: hsl(0 0% 100%) / --foreground: hsl(222.2 84% 4.9%)
-        (iced::Color::from_rgb8(255, 255, 255), iced::Color::from_rgb8(2, 8, 23))
+        // light 暖纸系 #f5f1e8 / 墨色 #2a2723(Plan 518 stella 对齐)
+        (iced::Color::from_rgb8(245, 241, 232), iced::Color::from_rgb8(42, 39, 35))
     };
     // Plan 458: primary follows the accent preset thread-local (default
     // indigo) instead of hardcoded indigo-500, so `auto run --accent` /
@@ -7938,6 +7967,15 @@ fn toggle_settings(
     // storage 直写，本注入只在召唤时点）。
     let wallpaper = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
         .unwrap_or_default();
+    // Plan 518 G1/G6：Appearance 分区快照——主题键（缺席 = dark 默认）与
+    // 透明度档位（缺席 = off）。
+    let theme = crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme")
+        .filter(|t| t == "light")
+        .map(|_| "light")
+        .unwrap_or("dark");
+    let transparency = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency")
+        .filter(|t| t == "low" || t == "high")
+        .unwrap_or_else(|| "off".to_string());
     let pinned: Vec<auto_val::Value> = state
         .desktop
         .dock_pinned
@@ -7963,6 +8001,13 @@ fn toggle_settings(
         let _ = app
             .component
             .write_state("cfg_wallpaper", auto_val::Value::str(wallpaper));
+        let _ = app
+            .component
+            .write_state("cfg_theme", auto_val::Value::str(theme));
+        let _ = app.component.write_state(
+            "cfg_transparency",
+            auto_val::Value::str(transparency),
+        );
         let _ = app.component.write_state(
             "osconfig_state",
             auto_val::Value::str(osc_state),
@@ -8233,9 +8278,34 @@ fn execute_desktop_commands(
             // + storage 写回；执行体见下）。
             DC::SetDockPosition(top) => execute_set_dock_position(state, top),
             DC::SetDockEnabled(on) => execute_set_dock_enabled(state, on),
+            // Plan 518 G1：主题热切换（Appearance 分区 Dark Mode 钮）。
+            DC::SetTheme(dark) => execute_set_theme(state, dark),
         }
     }
     (false, tasks)
+}
+
+/// Plan 518 G1：`set_theme` 执行臂——set_dark_mode 即时生效（语义 token
+/// + 窗口调色板同源跟帧）+ storage `shell.appearance.theme` 持久化（boot
+/// 读回）+ 已声明 dark_mode 的 App 状态变量同步（458 语义：运行时变量
+/// 每帧回写全局,不同步则被旧值翻回）+ 全 App view_dirty（构建期解析的
+/// 颜色需重建换色）。
+fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool) {
+    crate::ui::style::iced_adapter::set_dark_mode(dark);
+    crate::vm::ffi::stdlib::storage_host_publish(
+        "shell.appearance.theme",
+        if dark { "dark" } else { "light" }.to_string(),
+    );
+    // Plan 497 G3 同款：全场快照随撤（窗口缩略按旧主题渲染）。
+    crate::ui::iced::snapshot::invalidate_all();
+    for app in state.apps.values_mut() {
+        if app.component.read_state("dark_mode").is_ok() {
+            let _ = app
+                .component
+                .write_state("dark_mode", auto_val::Value::Bool(dark));
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
 }
 
 /// Plan 473 T5 / 486：下一个原生槽位的级联占位（桌面逻辑域）。dock 执行臂
@@ -9380,7 +9450,8 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
 }
 
 /// Plan 496 M5：boot 壁纸解析（storage `shell.desktop.wallpaper`——
-/// #hex 色值直传；图片路径验存在；缺席/空/坏值回退
+/// #hex 色值直传；`builtin:` 内嵌资产方案直传（Plan 518）；图片路径验
+/// 存在；缺席/空/坏值回退
 /// [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]）。
 fn load_desktop_wallpaper() -> String {
     use crate::ui::session::DESKTOP_WALLPAPER_DEFAULT;
@@ -9388,7 +9459,11 @@ fn load_desktop_wallpaper() -> String {
         return DESKTOP_WALLPAPER_DEFAULT.to_string();
     };
     let v = raw.trim().to_string();
-    if v.is_empty() || (!v.starts_with('#') && !std::path::Path::new(&v).is_file()) {
+    if v.is_empty()
+        || (!v.starts_with('#')
+            && !v.starts_with("builtin:")
+            && !std::path::Path::new(&v).is_file())
+    {
         DESKTOP_WALLPAPER_DEFAULT.to_string()
     } else {
         v
@@ -9411,7 +9486,8 @@ fn load_desktop_id_list(key: &str) -> Vec<String> {
 
 /// Plan 496 M5：桌面本体投影注入——pinned ∪ 自定义条目合并去重
 /// （pinned 先列，custom 重叠去重接排；hidden 两者通用排除），条目
-/// {id,icon,label,src}（icon/label 注册表解析，缺省回退 app-window/id）；
+/// {id,icon,label,src,color}（icon/label 注册表解析，缺省回退 app-window/id；
+/// color = per-app 徽标底色,Plan 518 G4③ 按名哈希分配）；
 /// `__desktop_bg`（#hex → "bg-[#hex]" 根 bg 实铺片段；图片路径 → ""，由
 /// 宿主壁纸图层铺底——DSL 无重叠布局）+ `__desktop_hidden`（移除臂
 /// `shell.desktop.hidden` 续写底稿）。boot 期 inject_dock_pinned 邻位。
@@ -9441,11 +9517,13 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
             let label = reg
                 .map(|e| e.title.clone())
                 .unwrap_or_else(|| id.clone());
+            let color = crate::ui::app_registry::badge_color_for(&id);
             auto_val::Value::Obj(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str(id.into())),
                 ("icon", auto_val::Value::Str(icon.into())),
                 ("label", auto_val::Value::Str(label.into())),
                 ("src", auto_val::Value::Str(src.into())),
+                ("color", auto_val::Value::Str(color.into())),
             ]))
         })
         .collect();
@@ -9481,7 +9559,7 @@ fn desktop_wallpaper_element<M: 'static>(path: &str) -> iced::Element<'static, M
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
             .style(move |_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb8(9, 14, 26))),
+                background: Some(iced::Background::Color(iced::Color::from_rgb8(20, 26, 41))),
                 ..Default::default()
             })
             .into(),
@@ -9497,7 +9575,7 @@ fn desktop_wallpaper_scrim<M: 'static>() -> iced::Element<'static, M> {
     let pct: u32 = if dark { 35 } else { 10 };
     let (r, g, b) =
         crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Background)
-            .unwrap_or((9, 14, 26));
+            .unwrap_or((20, 26, 41));
     let alpha = (pct * 255 / 100) as f32 / 255.0;
     iced::widget::container(iced::widget::Space::new())
         .width(iced::Length::Fill)
@@ -10231,6 +10309,24 @@ fn compare_pngs(
                 // （487 pinned 同语义）。
                 session.desktop.desktop_wallpaper = load_desktop_wallpaper();
                 inject_desktop_surface(&mut session);
+                // Plan 518 G1：boot 主题读回（storage `shell.appearance.theme`
+                // 覆盖 thread-local 默认——settings.at Appearance 切换的持久
+                // 端,后于 458 env 播种 = 存储键优先于 CLI 初值）。已声明
+                // dark_mode 的 App 变量须同步——dynamic_view 每帧读该变量
+                // 回写全局（如 011-calculator）,不同步则首帧被翻回。
+                if let Some(t) =
+                    crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme")
+                {
+                    let dark = t.trim() != "light";
+                    crate::ui::style::iced_adapter::set_dark_mode(dark);
+                    for app in session.apps.values_mut() {
+                        if app.component.read_state("dark_mode").is_ok() {
+                            let _ = app
+                                .component
+                                .write_state("dark_mode", auto_val::Value::Bool(dark));
+                        }
+                    }
+                }
                 // Plan 480 S3：真桌面壳孵化通道——broker 常驻受理 spawn 孵化
                 // （`auto --autodesk-incubate` 经 `request_incubation` 连入，
                 // ServiceTick 帧泵周期 attach 落 462 会话）。
@@ -20936,6 +21032,97 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Plan 518 G1/G6 T2：Appearance 分区增量——主题切换（PickTheme →
+    /// set_theme 动词 → SetTheme 执行臂 set_dark_mode + storage
+    /// shell.appearance.theme 持久化）+ 透明度三档（PickTransparency →
+    /// storage 直写 → load_transparency_alpha 即时取值）+ 召唤快照注入
+    /// （cfg_theme/cfg_transparency）。
+    #[test]
+    fn settings_appearance_theme_and_transparency_sections() {
+        let path = t2_isolate_storage("518-appearance");
+        // 预置 light 主题 + 无透明度键：召唤快照应注入 light / off。
+        crate::vm::ffi::stdlib::storage_host_publish("shell.appearance.theme", "light".into());
+        let mut ds = t3_session_with_shell();
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_theme") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "light", "召唤注入主题快照")
+                }
+                other => panic!("cfg_theme 读回异常: {other:?}"),
+            }
+            match app.component.read_state("cfg_transparency") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "off", "透明度键缺席注入 off")
+                }
+                other => panic!("cfg_transparency 读回异常: {other:?}"),
+            }
+        }
+        // Nav 外观分区 + PickTheme(dark)：面板态翻转 + set_theme 记录 →
+        // 执行臂落 set_dark_mode(true) + storage 写回 dark。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Nav", &[auto_val::Value::str("appearance")])
+            .expect("Nav handler");
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickTheme", &[auto_val::Value::str("dark")])
+            .expect("PickTheme handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_theme") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "dark", "PickTheme 面板态翻转")
+                }
+                other => panic!("cfg_theme 读回异常: {other:?}"),
+            }
+        }
+        // 排空面板上行总线（drain_app_desktop_commands 同型：直接排空并执行）。
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                crate::ui::session::DesktopCommand::SetTheme(true)
+            )),
+            "PickTheme 上行 set_theme dark,得到 {cmds:?}"
+        );
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert!(
+            crate::ui::style::iced_adapter::dark_mode(),
+            "SetTheme 执行臂 set_dark_mode(true)"
+        );
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme").as_deref(),
+            Some("dark"),
+            "set_theme 持久化 shell.appearance.theme"
+        );
+        // PickTransparency(high)：storage 直写 + load_transparency_alpha 即时 0.62。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickTransparency", &[auto_val::Value::str("high")])
+            .expect("PickTransparency handler");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency").as_deref(),
+            Some("high"),
+            "PickTransparency 直写透明度键"
+        );
+        assert_eq!(
+            crate::ui::iced::virtual_window::load_transparency_alpha(),
+            0.62,
+            "虚拟窗底色 alpha 即时取值 high 档"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Plan 487 M4 步骤4：设置面板召唤无头——OpenSettings 懒挂载 + 配置
     /// 快照注入（cfg_* 键推导 / pinned 平行列表 / about 常量）+ 二态翻转
     /// （再召唤自隐）+ Esc 自隐。齿轮→open_settings 记录接线在步骤7 测。
@@ -21219,6 +21406,112 @@ mod tests {
         }
     }
 
+    /// Plan 518 G4④：图标命名覆盖表——shell 面 .at 资产的字面 icon 名
+    /// （`icon: "x"` 按钮形态 + `icon (name: "x")` 独立组件形态）+ 核心清单
+    /// （pac 注册表 icon 值 + 缺省回退）逐名命中 lucide_svg。未命中即
+    /// 渲染空图标（"占位色块"根因之一），此表为契约：新 icon 名先补
+    /// lucide 臂再消费。
+    #[test]
+    fn lucide_icon_coverage_manifest_all_hit() {
+        // ① .at 资产字面量扫描（五份内嵌资产,含 shell/desktop/switcher/
+        // settings/notification_center——独立 icon 组件臂的字面 name 同扫）。
+        let assets = [
+            ("shell.at", crate::ui::shell::SHELL_AT),
+            ("desktop.at", crate::ui::shell::DESKTOP_AT),
+            ("switcher.at", crate::ui::shell::SWITCHER_AT),
+            ("settings.at", crate::ui::shell::SETTINGS_AT),
+            ("notification_center.at", crate::ui::shell::NOTIFICATION_CENTER_AT),
+        ];
+        let mut names: Vec<(String, String)> = Vec::new();
+        for (file, src) in assets {
+            for line in src.lines() {
+                let line = line.trim();
+                for pat in ["icon: \"", "name: \""] {
+                    if let Some(pos) = line.find(pat) {
+                        let rest = &line[pos + pat.len()..];
+                        if let Some(end) = rest.find('"') {
+                            names.push((file.to_string(), rest[..end].to_string()));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!names.is_empty(), "资产扫描应至少命中 bell/settings 等字面名");
+        // ② 核心清单:pac 注册表 icon 值 + registry 缺省回退（扫描 examples
+        // 目录可用时动态并入,缺席时清单兜底——命中表不因布局漂移空转）。
+        let mut manifest: Vec<String> = [
+            "app-window", // registry 缺省回退
+            "calculator", "bomb", "list-checks", "notebook", // dock 默认 pinned
+            "folder", "search", // 027-file-manager / 028-launcher pac
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        if let Ok(entries) = std::fs::read_dir("../../examples/ui") {
+            for e in entries.flatten() {
+                let pac = e.path().join("pac.at");
+                if let Ok(content) = std::fs::read_to_string(&pac) {
+                    for line in content.lines() {
+                        let line = line.trim();
+                        if let Some(pos) = line.find("icon: \"") {
+                            let rest = &line[pos + 7..];
+                            if let Some(end) = rest.find('"') {
+                                manifest.push(format!(
+                                    "{}:{}",
+                                    e.file_name().to_string_lossy(),
+                                    &rest[..end]
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // ③ 逐名命中断言（源标注进 panic 信息,补名直达）。
+        let mut misses: Vec<String> = Vec::new();
+        for (file, name) in &names {
+            if lucide_svg(name).is_none() {
+                misses.push(format!("{file}:{name}"));
+            }
+        }
+        for entry in &manifest {
+            let name = entry.rsplit(':').next().unwrap_or(entry);
+            if lucide_svg(name).is_none() {
+                misses.push(format!("manifest:{entry}"));
+            }
+        }
+        assert!(
+            misses.is_empty(),
+            "lucide 命中表缺口（补 lucide_svg 臂或改名）: {misses:?}"
+        );
+        // ④ G4② stroke-width 参数化冒烟:默认 2.0 / 大尺寸 1.5 文档生成。
+        let doc_default = lucide_svg_doc("bell").expect("bell doc");
+        assert!(doc_default.contains("stroke-width=\"2\""));
+        let doc_thin = lucide_svg_doc_with("bell", 1.5).expect("bell thin doc");
+        assert!(doc_thin.contains("stroke-width=\"1.5\""));
+        // ⑤ G4③ 徽标色:哈希稳定 + 8 色板内 + 白字可读（WCAG 相对亮度
+        // 线性化,≥4.5:1 AA 界）。
+        let c1 = crate::ui::app_registry::badge_color_for("011-calculator");
+        assert_eq!(c1, crate::ui::app_registry::badge_color_for("011-calculator"));
+        assert!(c1.starts_with('#') && c1.len() == 7);
+        let lin = |v: u8| {
+            let c = v as f64 / 255.0;
+            if c <= 0.039_28 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        };
+        for id in ["011-calculator", "013-todo", "015-notes", "019-video-app", "x"] {
+            let hex = crate::ui::app_registry::badge_color_for(id);
+            let r = u8::from_str_radix(&hex[1..3], 16).unwrap();
+            let g = u8::from_str_radix(&hex[3..5], 16).unwrap();
+            let b = u8::from_str_radix(&hex[5..7], 16).unwrap();
+            let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+            let contrast = 1.05 / (lum + 0.05);
+            assert!(
+                contrast >= 4.5,
+                "徽标色 {hex} 白 glyph 对比 {contrast:.2}:1 不足 AA"
+            );
+        }
+    }
+
     /// T2a：壁纸解析 + 图标/排除键 storage 往返——#hex 直传、坏路径回退
     /// 默认色、存在路径保留；逗号键解析（shell.dock.pinned 同形）。
     #[test]
@@ -21252,6 +21545,23 @@ mod tests {
             tmp.to_string_lossy(),
             "存在路径保留"
         );
+        // Plan 518：builtin: 内嵌资产方案——默认值即 builtin:ricepaper
+        //(壁纸资产化,深浅主题共用浅色),用户显式键入亦为合法值直传。
+        assert_eq!(
+            crate::ui::session::DESKTOP_WALLPAPER_DEFAULT,
+            "builtin:ricepaper",
+            "518 默认壁纸 = 内嵌宣纸资产"
+        );
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.wallpaper",
+            "builtin:inkwash".into(),
+        );
+        assert_eq!(load_desktop_wallpaper(), "builtin:inkwash", "builtin 直传");
+        // 内嵌资产可解码:load_image_bytes 返回 JPEG 字节(FF D8 魔数)。
+        let bytes = load_image_bytes("builtin:ricepaper").expect("内嵌壁纸字节");
+        assert_eq!(&bytes[0..2], &[0xFF, 0xD8], "JPEG 魔数");
+        assert!(bytes.len() > 100_000, "整图非截断");
+        assert!(load_image_bytes("builtin:no-such").is_none(), "未知 builtin 项");
         // 图标/排除键逗号解析（空段剔除）。
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.icons", " a , b,,c ".into());
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", " b ".into());

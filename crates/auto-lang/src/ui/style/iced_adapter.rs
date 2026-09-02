@@ -1069,6 +1069,14 @@ impl IcedStyle {
             StyleClass::AccentColor(_) => {
                 // Iced checkbox accent color not directly controllable
             }
+
+            // ========== Plan 518 — Backdrop（声明冻结,渲染分期）==========
+            // consumed by future RenderQueue lowering; renderers ignore
+            // today（hover_classes 先例同款注释）。iced 0.14 无 backdrop
+            // primitive/pass 口（已验源码）——视觉 no-op 为既定降级语义,
+            // 不报错不 not-yet（装饰性降级非错绘）;真 backdrop 渲染挂
+            // RenderQueue 宿主栅格化（KNOWN-DEBT planned-debt）。
+            StyleClass::BackdropBlur(_) | StyleClass::BackdropSaturate(_) => {}
         }
     }
 

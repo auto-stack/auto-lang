@@ -1,0 +1,45 @@
+// p518-glass-sample — PLAN-518 G8 毛玻璃样张（stella 卡片直译：
+// backdrop-blur-xl backdrop-saturate-[1.6] bg-white/10 border）。
+// 底层彩色渐变条让玻璃效果可见；上层玻璃卡按 stella 配方声明。
+// 三臂语义：vue 真毛玻璃 / iced·gpui·headless 视觉 no-op /
+// queue 装载不触发 not-yet（词汇冻结的纪律理由）。
+
+widget App {
+    model {
+        var count int = 0
+    }
+
+    msg M {
+        Inc
+    }
+
+    on {
+        .Inc -> { .count = .count + 1 }
+    }
+
+    view {
+        col {
+            style: "w-full h-full bg-gradient-to-br from-sky-400 via-violet-400 to-rose-300 p-10 gap-4"
+
+            // 玻璃卡（stella 配方直译）
+            col {
+                style: "backdrop-blur-xl backdrop-saturate-[1.6] bg-white/10 border rounded-2xl p-6 gap-2"
+                text "毛玻璃样张" { style: "text-2xl font-semibold text-white" }
+                text "backdrop-blur-xl backdrop-saturate-[1.6] bg-white/10 border" {
+                    style: "text-xs text-white/80"
+                }
+                button (text: "点击 +1") {
+                    onclick: .Inc
+                    style: "h-9 px-4 text-sm text-white bg-white/20 border rounded-lg hover:bg-white/30"
+                }
+                text "${.count}" { style: "text-lg text-white" }
+            }
+
+            // 对照组：同布局无玻璃（三臂降级时与玻璃卡视觉一致性的基线）
+            col {
+                style: "border rounded-2xl p-6 gap-2"
+                text "对照组（无 backdrop）" { style: "text-sm text-white/70" }
+            }
+        }
+    }
+}
