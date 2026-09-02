@@ -155,6 +155,13 @@ pub struct VmBridge {
 fn nv_to_pub_value(nv: auto_val::NanoValue) -> Value {
     if auto_val::is_i32(nv) {
         Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_f64(nv) {
+        // Plan 522 T4: f64 返回值此前落入末位 i32 解码 → Int(0) 桥面丢失
+        // (call_vm_fn 的 float helper 返回值全 0;引擎内部 decode_tagged_nv
+        // 一直正确,仅桥返回路径缺浮点臂)。
+        Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        Value::Float(auto_val::decode_f32(nv) as f64)
     } else if auto_val::is_list(nv) {
         Value::Int(auto_val::decode_list(nv) as i32)
     } else if auto_val::is_object(nv) {
@@ -2805,6 +2812,48 @@ widget OpProbeOrig {
             .call_vm_fn("month_name", &[Value::Int(5)])
             .expect("month_name after roll");
         assert_eq!(may, Value::str("May"));
+    }
+
+    /// Plan 522 T4: 024-charts 的 donut 组件经 `use chart_geom: dc, ds`
+    /// 导入几何 helper(components/ 包通道)。VM 装载对包组件文件自身的
+    /// use 依赖做收集 + 裸名别名(与根文件 use 同规则)——dc/ds 在 VM 内
+    /// 可按裸名调用即证明该链路(437 §0.6.E-3 绕过点回正的 VM 半边)。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn test_plan522_024_chart_geom_helpers_in_vm() {
+        let dc = match crate::plan370_test_support::build_example_component("024-charts") {
+            Some(dc) => dc,
+            None => {
+                eprintln!("skipping 024 e2e (example sources unreadable)");
+                return;
+            }
+        };
+        let raw = dc
+            .bridge()
+            .call_vm_fn("dc", &[Value::Double(0.0)])
+            .expect("dc via bare alias (package component use dep)");
+        let cos0 = match raw {
+            Value::Float(f) | Value::Double(f) => f,
+            Value::Int(i) => i as f64,
+            other => panic!("dc(0.0) should be numeric, got {other:?}"),
+        };
+        assert!(
+            (cos0 - 1.0).abs() < 1e-9,
+            "dc(0.0) == 1.0, got {cos0:?} (raw {raw:?})"
+        );
+        let raw_sin = dc
+            .bridge()
+            .call_vm_fn("ds", &[Value::Double(1.0)])
+            .expect("ds via bare alias");
+        let sin1 = match raw_sin {
+            Value::Float(f) | Value::Double(f) => f,
+            Value::Int(i) => i as f64,
+            other => panic!("ds(1.0) should be numeric, got {other:?}"),
+        };
+        assert!(
+            (sin1 - 0.8414709848078965).abs() < 1e-9,
+            "ds(1.0) == sin(1), got {sin1:?} (raw {raw_sin:?})"
+        );
     }
 
     /// Audit B12(b) reproducer: a store handler that (1) calls an imported fn

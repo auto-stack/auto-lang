@@ -3675,15 +3675,52 @@ fn build_dynamic_component_inner(
                     base_dir.join("pages").join(&dir),
                 ];
                 let first = pkg_reg.load_package(&candidates[0], base_dir);
-                let loaded = match first {
-                    Ok(p) => Ok(p),
-                    Err(_) => pkg_reg.load_package(&candidates[1], base_dir),
+                let (loaded, loaded_dir) = match first {
+                    Ok(p) => (Ok(p), Some(candidates[0].clone())),
+                    Err(_) => match pkg_reg.load_package(&candidates[1], base_dir) {
+                        Ok(p) => (Ok(p), Some(candidates[1].clone())),
+                        Err(e) => (Err(e), None),
+                    },
                 };
                 match loaded {
                     Ok(pkg) => {
                         for (d, aw) in &pkg.full_widgets {
                             child_decls.push(d.clone());
                             registry.register(aw.clone());
+                        }
+                        // Plan 522:包组件文件自身的 `use` 依赖也入编译单元。
+                        // 此前仅根文件 use 链被收集——包组件 handler 引用的
+                        // helper 模块(如 donut 的 chart_geom dc/ds)在 VM 侧
+                        // 无定义;import_aliases 同步补齐(裸名 → 模块限定名,
+                        // 与根文件 use 同规则)。
+                        if let Some(pkg_dir) = loaded_dir {
+                            if let Ok(entries) = std::fs::read_dir(&pkg_dir) {
+                                for entry in entries.flatten() {
+                                    let p = entry.path();
+                                    if !p.extension().map(|e| e == "at").unwrap_or(false) {
+                                        continue;
+                                    }
+                                    crate::collect_module_imports(
+                                        &p,
+                                        &mut visited,
+                                        &mut import_stmts,
+                                        &mut seen_symbols,
+                                        &mut import_session,
+                                        None,
+                                    );
+                                    if let Ok(code) = std::fs::read_to_string(&p) {
+                                        for us in crate::use_scanner::scan_use_statements(&code) {
+                                            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+                                            for item in &us.items {
+                                                import_aliases.insert(
+                                                    item.clone(),
+                                                    format!("{}.{}", qualifier, item),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     Err(e) => {

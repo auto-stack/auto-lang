@@ -2449,13 +2449,22 @@ export default router
                         }
                         match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
                             Ok((_vue_code, widgets, _stores)) => {
+                                // Plan 522: components/ 通道此前用裸 VueGenerator
+                                // 重生成,丢掉了 generate_component_from_file 收集的
+                                // use 导入 fn 池(donut 的 dc/ds 类 helper 会 TS2304)。
+                                // 重新收集并挂回 —— 与主通道同一收集器。
+                                let comp_code = fs::read_to_string(&path).unwrap_or_default();
+                                let (use_fns, imported_names) =
+                                    auto_lang::ui_gen::api::collect_use_module_fns(&path, &comp_code);
                                 for widget in &widgets {
                                     let gen = if shadcn {
                                         VueGenerator::new_shadcn()
                                     } else {
                                         VueGenerator::new()
                                     };
-                                    let mut gen = gen.with_default_classes(default_classes);
+                                    let mut gen = gen
+                                        .with_default_classes(default_classes)
+                                        .with_use_module_fns(use_fns.clone(), imported_names.clone());
                                     match gen.generate(widget) {
                                         Ok(widget_code) => {
                                             let stem = path.file_stem()

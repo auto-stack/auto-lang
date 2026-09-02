@@ -420,7 +420,11 @@ fn collect_use_module_actions(
 /// resolution mirrors the vm loader; unreadable/unparseable modules are
 /// skipped with a log line (never fatal — same policy as
 /// collect_use_module_actions).
-fn collect_use_module_fns(
+///
+/// Public for secondary generation passes (auto-man's components/ channel
+/// regenerates widget SFCs with a bare VueGenerator and must re-attach the
+/// pool).
+pub fn collect_use_module_fns(
     at_path: &std::path::Path,
     code: &str,
 ) -> (Vec<crate::aura::AuraModuleFn>, Vec<String>) {
@@ -1881,5 +1885,42 @@ widget App {
             "computed call site keeps bare name:\n{sfc}"
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Plan 522 T4 语料回归锁:024-charts 的 donut 组件(components/ 包通道)
+    /// 经 `use chart_geom: dc, ds` 导入几何 helper,Init 体内调用 → SFC 含
+    /// 转译 fn + 调用点零改写(437 §0.6.E-3 被迫直调 math.cos 的绕过点回正)。
+    /// `.Init` 走 lifecycle(→ onMounted)而非 handlers 表,锁定引用收集对
+    /// lifecycle 体的覆盖。
+    #[test]
+    fn test_plan522_024_donut_helpers_emitted() {
+        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/ui/024-charts/src/front/components");
+        let Ok(result) = super::generate_component_from_file(
+            &front.join("donut_chart.at"),
+            crate::ui_gen::ComponentGenOptions::default(),
+        ) else {
+            eprintln!("024 donut corpus unreadable — skip");
+            return;
+        };
+        let sfc = &result.vue_code;
+        assert!(
+            sfc.contains("function dc(a: any): number {"),
+            "dc helper must be transpiled into the donut SFC:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function ds(a: any): number {"),
+            "ds helper must be transpiled into the donut SFC:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("return Math.cos(a);"),
+            "dc body keeps the math primitive mapping:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("dc(a0)"),
+            "call sites in the Init lifecycle keep the bare name:\n{sfc}"
+        );
     }
 }

@@ -4055,13 +4055,21 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         if self.use_module_fns.is_empty() {
             return;
         }
-        // 1. widget 体引用的裸名(computed 表达式 + handler 体)。
+        // 1. widget 体引用的裸名(computed 表达式 + handler 体 + lifecycle 体)。
+        //    `.Init` 等 lifecycle 提取进 onMounted/onUnmounted(非 handlers
+        //    表)——其体内的 helper 调用同样需要拉取(Plan 522 T4 donut 实证:
+        //    dc/ds 在 .Init 里,漏扫则 TS2304)。
         let mut referenced: HashSet<String> = HashSet::new();
         for c in &widget.computed {
             collect_called_bare_names_expr(&c.expr, &mut referenced);
         }
         for payload in widget.handlers.values() {
             if let LogicPayload::AstStmts(stmts) = payload {
+                collect_called_bare_names_stmts(stmts, &mut referenced);
+            }
+        }
+        for l in &widget.lifecycle {
+            if let LogicPayload::AstStmts(stmts) = &l.payload {
                 collect_called_bare_names_stmts(stmts, &mut referenced);
             }
         }

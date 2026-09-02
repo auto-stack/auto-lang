@@ -21,6 +21,8 @@
 // # Usage
 // donut-chart (data: .traffic, index: "l", field: "v") {}
 
+use chart_geom: dc, ds
+
 widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
     msg { Init, Hover(int), Toggle(int), PointerMove(float, float), PointerOut, AnimDnTick }
 
@@ -97,10 +99,10 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 if span > 3.141592653589793 {
                     laf = 1
                 }
-                var c0 float = math.cos(a0)
-                var s0 float = math.sin(a0)
-                var c1 float = math.cos(a1)
-                var s1 float = math.sin(a1)
+                var c0 float = dc(a0)
+                var s0 float = ds(a0)
+                var c1 float = dc(a1)
+                var s1 float = ds(a1)
                 var x0 float = cx + rOut * c0
                 var y0 float = cy + rOut * s0
                 var x1 float = cx + rOut * c1
@@ -112,8 +114,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 var dstr = f"M${x0} ${y0} A100 100 0 ${laf} 1 ${x1} ${y1} L${u1} ${v1} A62 62 0 ${laf} 0 ${u0} ${v0} Z"
                 // 498 M3:emphasis 外移路径——中角方向 12px 平移六个锦点(弧径不变)
                 var mid float = (a0 + a1) / 2.0
-                var ox float = math.cos(mid) * 12.0
-                var oy float = math.sin(mid) * 12.0
+                var ox float = dc(mid) * 12.0
+                var oy float = ds(mid) * 12.0
                 var estr = f"M${x0 + ox} ${y0 + oy} A100 100 0 ${laf} 1 ${x1 + ox} ${y1 + oy} L${u1 + ox} ${v1 + oy} A62 62 0 ${laf} 0 ${u0 + ox} ${v0 + oy} Z"
                 var ci int = k
                 if ci >= ccount {
@@ -360,3 +362,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
         }
     }
 }
+
+// Plan 522: dc/ds helper 形态恢复(437 §0.6.E-3 绕过点回正)。
+
+// Plan 522 T4: helper 形态已恢复,见 chart_geom.at。

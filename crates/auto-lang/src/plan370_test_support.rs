@@ -192,6 +192,73 @@ pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicCompone
         }
     }
 
+    // 2b. Plan 435 P8-6 mirror + Plan 522: `use { package: x from "dir" }`
+    // widget-level ext imports — load the package's widgets as children AND
+    // collect each package file's own `use` deps (chart_geom-class helper
+    // modules) into the import set with bare-name aliases, mirroring
+    // build_dynamic_component_inner's package branch.
+    {
+        let mut pkg_reg = crate::ui_gen::widget::ComponentRegistry::new();
+        let mut seen_dirs: HashSet<PathBuf> = HashSet::new();
+        for imp in &widget.ext_imports {
+            if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Package) {
+                continue;
+            }
+            let dir = PathBuf::from(imp.path.as_str());
+            if !seen_dirs.insert(dir.clone()) {
+                continue;
+            }
+            let candidates = [
+                base_dir.join(&dir),
+                base_dir.join("pages").join(&dir),
+            ];
+            let first = pkg_reg.load_package(&candidates[0], &base_dir);
+            let (loaded, loaded_dir) = match first {
+                Ok(p) => (Ok(p), Some(candidates[0].clone())),
+                Err(_) => match pkg_reg.load_package(&candidates[1], &base_dir) {
+                    Ok(p) => (Ok(p), Some(candidates[1].clone())),
+                    Err(e) => (Err(e), None),
+                },
+            };
+            if let Ok(pkg) = loaded {
+                for (d, aw) in &pkg.full_widgets {
+                    child_decls.push(d.clone());
+                    registry.register(aw.clone());
+                }
+                if let Some(pkg_dir) = loaded_dir {
+                    if let Ok(entries) = fs::read_dir(&pkg_dir) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            if !p.extension().map(|e| e == "at").unwrap_or(false) {
+                                continue;
+                            }
+                            crate::collect_module_imports(
+                                &p,
+                                &mut visited,
+                                &mut import_stmts,
+                                &mut seen_symbols,
+                                &mut import_session,
+                                None,
+                            );
+                            if let Ok(code) = fs::read_to_string(&p) {
+                                for us in scan_use_statements(&code) {
+                                    let qualifier =
+                                        us.module.split('.').last().unwrap_or(&us.module);
+                                    for item in &us.items {
+                                        import_aliases.insert(
+                                            item.clone(),
+                                            format!("{}.{}", qualifier, item),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 3. Stores declared in the root AST → fake child widget decls (D-GAP-4)
     let mut store_as_child_decls = Vec::new();
     let mut root_store_names = HashSet::new();
