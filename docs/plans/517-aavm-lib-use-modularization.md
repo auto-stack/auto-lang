@@ -33,11 +33,13 @@ D5 翻案（用户裁定）：511 W0 的"聚合定案"非终局——lib 应当�
 - **W3 CLI 入口**：生成 `auto/aavm.at`，`auto run auto/aavm.at <目标.at>`
   即得单文件启动入口（此前不存在的缺口）。
 
-**与 Plan 514 的关系**：514 正在执行（W2 方法发射已折叠 master，W3 方法化
-挂起于 P514-W3-1/2 重启清单）。use 模块化与方法化是**正交轴**：本计划
-不被 P514-W3 债阻塞（那些是方法体发射/书写约定问题）；本计划只动 lib
-文件头部（use 行/pub 标记）与 `p_peek_text` 一处纯函数迁移。先后协调见
-待澄清①（缺省：本计划先行，514-W3 重启在模块化后的 lib 上执行）。
+**与 Plan 514 的关系（顺序已裁定：514 先行做完，517 随后开工）**：use
+模块化与方法化是正交轴，先后皆可执行；用户裁定 514（W3 方法化重启 +
+W4/W5 收口）先收口，本计划在**方法化后的 lib** 上执行。三个连带：
+① pub 导出面会因方法随类型归属而缩表（方法不再是模块级符号）——映射图
+需在 514 完成态重跑定稿；② `p_peek_text` 环边可能已被方法化自然消除
+（若转为 P 类型方法即随 parser.at 归位）——步骤 4 改核验优先；
+③ a2r.at 行号锚点为 514-W3 前快照，开工时重定位。
 
 全程 TDD：既有闸门为保护网（红=行为变化=回退），新能力语料红先行。
 
@@ -124,7 +126,7 @@ rustc 实编译        →      parity ②⑤腿)            →   折叠点
 | 主 a2r 对 lib 内 use 的转译形态未实证（矩阵②腿） | W0 考古先行（探针：lib 形态 use 经主 a2r 转译 rustc）；有洞先修主 a2r（447 先例） |
 | use 发射产物与 pac `auto build` 拼装不匹配 | W1 以"产物可被 auto build 直接使用"为验收一部分 |
 | 模块初始化序改变行为（宿主模块顶层执行序） | lib 文件顶层无副作用语句（纯声明），W0 核实；双轨剥离构造性等价兜底 |
-| 与 514-W3 重启撞车（同文件双 worktree） | 待澄清①协调；缺省本计划先行，514 重启清单在模块化后 lib 上执行 |
+| 与 514 撞车（同文件双 worktree） | 已裁定顺序：514 先收口，517 开工前置 = 514 status: reviewed/archived |
 | session 可达性：`auto run` 入口 use auto.lib.* 解析 | 17_modules 样式（auto/ stdlib 根）已实证；W0 探针复验 |
 
 ## 详细设计
@@ -159,6 +161,8 @@ rustc 实编译        →      parity ②⑤腿)            →   折叠点
    - a2r.at：use token/lexer/parser/typeinfo；pub `ar_run`。
    定向 vs 通配缺省定向（待澄清②）；dump 族入口
    （`lex_dump`/`parse_dump`/`typecheck_dump`/`codegen_dump`）一并 pub。
+   **pub 清单以步骤 1 在 514 完成态重跑的映射图为准**——方法化后方法
+   随类型归属，模块级符号面缩表（下表为方法化前基线，仅示意文件职责）。
 3. **双轨剥离兼容**：`gen-aavm2-unit.py` 增剥离逻辑 + `--check` 同步
    校验；M1–M5 harness（`AUTO_LIB_FILES_V2` 拼接位）与 parity ②⑤腿
    转译输入同步剥离。验证含**拼接产物与改造前逐字节等价抽验**。
@@ -225,10 +229,13 @@ divergences.md（use 发射形态注记）；project.md / auto/lib/README
 
 ### W0 考古与探针（master）
 
-1. [ ] 主 a2r use 转译形态考古定案（lib 形态 use 探针经主 a2r → rustc
-   零错；发射形态记录）；`auto run` 对 `use auto.lib.*` 的 session
-   可达性探针（17_modules 同款）；lib 文件顶层无副作用语句核实。
-   验证：探针件 + 形态记录入 lib-modularization-map.md 执行注记。
+1. [ ] 基线复测刷新（514 完成态：门禁/矩阵/tf/99_unit 数字重跑留档）+
+   **映射图在方法化后 lib 上重跑定稿**（`aavm_lib_xref.py` 需升级支持
+   type 体方法提取——方法名随类型归属解析依赖边；pub 表按"方法随类型"
+   原则缩表）；主 a2r use 转译形态考古定案（lib 形态 use 探针经主 a2r →
+   rustc 零错；发射形态记录）；`auto run` 对 `use auto.lib.*` 的 session
+   可达性探针（17_modules 同款）；lib 文件顶层无副作用语句核实（方法化
+   后复核）。验证：探针件 + 形态记录入 lib-modularization-map.md 执行注记。
 2. [ ] corpus_a2r `g16_use_stmt` 语料先行落盘（红）。验证：AA2R 侧红证。
 
 ### W1 AA2R use 发射（worktree）
@@ -239,8 +246,10 @@ divergences.md（use 发射形态注记）；project.md / auto/lib/README
 
 ### W2 lib use 模块化（worktree 续）
 
-4. [ ] 破环：`p_peek_text` codegen.at:355 → parser.at 迁移。
-    验证：`python scripts/aavm_lib_xref.py` 零反向边 + tv-aavm2 绿。
+4. [ ] 破环核验：先重跑 `python scripts/aavm_lib_xref.py`——若 514
+    方法化已将 `p_peek_text` 转为 P 类型方法（随 parser.at 归位）则环边
+    自然消失仅留档；仍为 codegen.at 模块级符号则执行迁移。
+    验证：零反向边 + tv-aavm2 绿。
 5. [ ] token.at + lexer.at use+pub。验证：tv-aavm2 + 99_unit 绿。
 6. [ ] parser.at + typeinfo.at use+pub。验证：同上。
 7. [ ] codegen.at + engine.at + a2r.at use+pub。验证：同上。
@@ -267,10 +276,9 @@ divergences.md（use 发射形态注记）；project.md / auto/lib/README
 
 ## 待澄清事项
 
-1. **与 Plan 514 W3 重启的先后**（阻塞开工协调，不阻塞本计划设计）：
-   缺省本计划先行（use 模块化不被 P514-W3 债阻塞；514 重启清单的翻转
-   脚本 `scratch/p514_p_methodize.py` 在模块化后 lib 上执行，兼容性届时
-   核）；若 514 执行会话已先行重启 W3，则本计划顺延其折叠。
+1. ~~与 Plan 514 W3 重启的先后~~ **已结案（2026-09-02 用户裁定）**：514
+   先行做完（含 W3 方法化重启与 W4/W5 收口），517 随后开工；开工前置 =
+   514 status: reviewed/archived。方法化翻转脚本不再与本计划交叉。
 2. **定向 vs 通配**（阻塞步骤 5–7）：缺省定向清单（38 符号冗长但显式，
    一对一风格延续）；parser 大面可在执行期按可读性翻转为
    `use auto.lib.parser: *`。
