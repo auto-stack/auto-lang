@@ -492,12 +492,16 @@ widget App {
   watch 门控规避（"vue.rs 生成 watch(running) 无 immediate，需要一次
   变更才启动定时器"）；其余为作者惯性。若立项，方向是 watch immediate
   语义 + 语料 bool 卫生，非新语法。
-- **F：手工展开的标量列表族（升级：能力已存在，纯语料迁移）**——010
-  faq1-5（10 var）、012 lap1-3、016 星期头 7 行、019 chip1-5 +
-  vid1-6（24 var）、020 track1-5/artist1-5（10 var）、021 blog1-3
-  （15 var）、024 visBr0-3/legendColor0-3（编号族）。**025 反证能力在**：
-  `procs = [{…}]` 内联数组字面量 + `for` 完全可用——F 是历史语料债，
-  非语法缺口；随下次触碰各示例顺手迁移（连带清死 msg/handler）。
+- **F：手工展开的标量列表族（升级：能力已存在，纯语料迁移；收尾轮
+  2026-09-02 推进）**——✅ 010 faq 十标量 → `faqs` 列表 + `for i, f`
+  （尾项 border 经 `i < .faqs.len() - 1` 嵌套 if，Vue 构建绿）；
+  ✅ 016 星期头 7 行 → `weekday_labels` 数组 + `for`（随并行 2a6c7dcc6
+  示例批入库；其 TS2322 `variant:"text"` 系并行浅色线引入的预存错，
+  stash 对照实证与本迁移无关）。**不迁**：012 lap1-3——滚动窗位移语义
+  （`.lap3=.lap2; .lap2=.lap1`）三标量比列表下标写更清晰，迁了反而劣化。
+  **待合流后迁**：019（24 var）/020（10 var）/021（15 var）——正被并行
+  519-521 升级中；024 visBr0-3/legend 编号族随 522 的 024 语料轮处理。
+  025 反证能力在：`procs = [{…}]` + `for` 完全可用——F 是历史语料债。
 - **G：registry 组件的输入协议**——015 `nav(search: true,
   search_value:, onsearch:)`、042 `oninput: ."update:modelValue"`：
   registry 组件两向协议与裸 value 语义不一致，高频再现时可立
@@ -510,10 +514,10 @@ widget App {
 ### 三轮走查补充（2026-09-02，028 之后批次：038/041-044/p 系列）
 
 - **C 迁移补遗清单**（条目 C 落地后仍存的三件套/空体残例，均小件）：
-  - 043-clipboard-bridge `.DraftChanged -> { }`——空体三件套，**非测试
-    载体，可干净迁移**（裸 `value: .draft`）。
-  - p507 `oninput: .Rename`（三件套）+ 同文件裸 `textarea (value: .name)`
-    （C 后已自动双向）——tier-coverage 载体，迁移无风险。
+  - ✅ 043-clipboard-bridge `.DraftChanged -> { }`——已迁（2026-09-02 收尾
+    轮：裸 `value: .draft`，VM e2e 实证打字落盘）。
+  - ✅ p507 `oninput: .Rename`（三件套）——已迁（同轮；`msg T` 命名形态
+    按 A.4 窗口政策保留）。
   - 042-two-inputs-child `.UserChanged/.PassChanged`——注释标明为
     Plan 483 musk 缺陷**镜像载体**（v-model 语义 marker），迁移前需
     裁定是否保留原形态。

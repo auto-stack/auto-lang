@@ -14,17 +14,15 @@ widget App {
         var message str = ""
         var submitted bool = false
 
-        // FAQ data
-        var faq1_q str = "What are your business hours?"
-        var faq1_a str = "Our support team is available Monday through Friday, 9am to 6pm EST. For urgent matters outside these hours, please email urgent@company.com."
-        var faq2_q str = "How long does it take to get a response?"
-        var faq2_a str = "Our team typically responds to all inquiries within 24 hours during business days."
-        var faq3_q str = "Do you offer phone support?"
-        var faq3_a str = "Phone support is available for Enterprise plan subscribers. Free and Starter plans receive email and community support."
-        var faq4_q str = "Can I schedule a demo?"
-        var faq4_a str = "Yes! Contact our sales team using the form and select demo request to schedule a live 30-minute walkthrough."
-        var faq5_q str = "What information should I include in my message?"
-        var faq5_a str = "Please provide your project context, current stack, expected timeline, and any specific requirements or questions."
+        // FAQ data (Plan 448 F: list-of-structs + for, replacing the ten
+        // hand-unrolled faq1_q..faq5_a scalars; last item drops the border).
+        var faqs = [
+            { q: "What are your business hours?", a: "Our support team is available Monday through Friday, 9am to 6pm EST. For urgent matters outside these hours, please email urgent@company.com." },
+            { q: "How long does it take to get a response?", a: "Our team typically responds to all inquiries within 24 hours during business days." },
+            { q: "Do you offer phone support?", a: "Phone support is available for Enterprise plan subscribers. Free and Starter plans receive email and community support." },
+            { q: "Can I schedule a demo?", a: "Yes! Contact our sales team using the form and select demo request to schedule a live 30-minute walkthrough." },
+            { q: "What information should I include in my message?", a: "Please provide your project context, current stack, expected timeline, and any specific requirements or questions." }
+        ]
     }
 
     view {
@@ -62,106 +60,32 @@ widget App {
                             }
                         }
                         col {
-                            col {
-                                span .faq1_q {
-                                    style: if .dark_mode {
-                                        "font-semibold text-zinc-200 text-sm"
+                            for i, f in .faqs {
+                                col {
+                                    span f.q {
+                                        style: if .dark_mode {
+                                            "font-semibold text-zinc-200 text-sm"
+                                        } else {
+                                            "font-semibold text-gray-900 text-sm"
+                                        }
+                                    }
+                                    span f.a {
+                                        style: if .dark_mode {
+                                            "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                        } else {
+                                            "text-sm text-gray-600 mt-1 leading-relaxed"
+                                        }
+                                    }
+                                    style: if i < .faqs.len() - 1 {
+                                        if .dark_mode {
+                                            "py-3 border-b border-zinc-800"
+                                        } else {
+                                            "py-3 border-b border-gray-200"
+                                        }
                                     } else {
-                                        "font-semibold text-gray-900 text-sm"
+                                        "py-3"
                                     }
                                 }
-                                span .faq1_a {
-                                    style: if .dark_mode {
-                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
-                                    } else {
-                                        "text-sm text-gray-600 mt-1 leading-relaxed"
-                                    }
-                                }
-                                style: if .dark_mode {
-                                    "py-3 border-b border-zinc-800"
-                                } else {
-                                    "py-3 border-b border-gray-200"
-                                }
-                            }
-                            col {
-                                span .faq2_q {
-                                    style: if .dark_mode {
-                                        "font-semibold text-zinc-200 text-sm"
-                                    } else {
-                                        "font-semibold text-gray-900 text-sm"
-                                    }
-                                }
-                                span .faq2_a {
-                                    style: if .dark_mode {
-                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
-                                    } else {
-                                        "text-sm text-gray-600 mt-1 leading-relaxed"
-                                    }
-                                }
-                                style: if .dark_mode {
-                                    "py-3 border-b border-zinc-800"
-                                } else {
-                                    "py-3 border-b border-gray-200"
-                                }
-                            }
-                            col {
-                                span .faq3_q {
-                                    style: if .dark_mode {
-                                        "font-semibold text-zinc-200 text-sm"
-                                    } else {
-                                        "font-semibold text-gray-900 text-sm"
-                                    }
-                                }
-                                span .faq3_a {
-                                    style: if .dark_mode {
-                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
-                                    } else {
-                                        "text-sm text-gray-600 mt-1 leading-relaxed"
-                                    }
-                                }
-                                style: if .dark_mode {
-                                    "py-3 border-b border-zinc-800"
-                                } else {
-                                    "py-3 border-b border-gray-200"
-                                }
-                            }
-                            col {
-                                span .faq4_q {
-                                    style: if .dark_mode {
-                                        "font-semibold text-zinc-200 text-sm"
-                                    } else {
-                                        "font-semibold text-gray-900 text-sm"
-                                    }
-                                }
-                                span .faq4_a {
-                                    style: if .dark_mode {
-                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
-                                    } else {
-                                        "text-sm text-gray-600 mt-1 leading-relaxed"
-                                    }
-                                }
-                                style: if .dark_mode {
-                                    "py-3 border-b border-zinc-800"
-                                } else {
-                                    "py-3 border-b border-gray-200"
-                                }
-                            }
-                            col {
-                                span .faq5_q {
-                                    style: if .dark_mode {
-                                        "font-semibold text-zinc-200 text-sm"
-                                    } else {
-                                        "font-semibold text-gray-900 text-sm"
-                                    }
-                                }
-                                span .faq5_a {
-                                    style: if .dark_mode {
-                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
-                                    } else {
-                                        "text-sm text-gray-600 mt-1 leading-relaxed"
-                                    }
-                                }
-                                style: "py-3"
                             }
                             style: "w-full"
                         }
