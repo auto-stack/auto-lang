@@ -1008,13 +1008,16 @@ fn cg_expr(mut c CG, mut p P, min int) {
     c.str_flag = 0
     c.arr_flag = 0
     c.inst_ty = ""
-    if k == TokenKind.Not {
+    // C3(Plan 447):p_kind 链 is 化——镜像宿主 match 臂形
+    is k {
+        TokenKind.Not -> {
         p.next()
         cg_expr(c, p, 28)
         c.emit(OpCode.Not, "", 0)
         c.str_flag = 0
         c.arr_flag = 0
-    } else if k == TokenKind.Sub || k == TokenKind.Add {
+        }
+        TokenKind.Sub | TokenKind.Add -> {
         // 一元符号:operand 后发 neg(镜像 Rust 6414;一元 + 为 no-op)
         p.next()
         cg_expr(c, p, 28)
@@ -1023,32 +1026,39 @@ fn cg_expr(mut c CG, mut p P, min int) {
         }
         c.str_flag = 0
         c.arr_flag = 0
-    } else if k == TokenKind.FStrStart {
+        }
+        TokenKind.FStrStart -> {
         cg_fstr(c, p)
-    } else if k == TokenKind.Int {
+        }
+        TokenKind.Int -> {
         var t = p.text()
         p.next()
         var cv = int_val(t).str()
         c.emit(OpCode.ConstI32, cv, int_val(t))
-    } else if k == TokenKind.Str {
+        }
+        TokenKind.Str -> {
         var s = p.text()
         p.next()
         var idx = c.pool_add(s)
         c.emit(OpCode.LoadStr, "", idx)
         c.str_flag = 1
-    } else if k == TokenKind.True {
+        }
+        TokenKind.True -> {
         p.next()
         c.emit(OpCode.PushBool, "true", 0)
-    } else if k == TokenKind.False {
+        }
+        TokenKind.False -> {
         p.next()
         c.emit(OpCode.PushBool, "false", 0)
-    } else if k == TokenKind.Char {
+        }
+        TokenKind.Char -> {
         // Plan 447 部分②:字符字面量 → const.i32 码点(镜像宿主 Char 编译)
         var t = p.text()
         p.next()
         var cp = t.char_at(0)
         c.emit(OpCode.ConstI32, cp.str(), cp)
-    } else if k == TokenKind.Ident {
+        }
+        TokenKind.Ident -> {
         var name = p.text()
         // Plan 447 部分②:枚举路径前瞻判定(不消费)——注册命中才拦截,
         // 否则落回原标识符路径(方法调用 a.len() 等不受影响)。
@@ -1165,12 +1175,14 @@ fn cg_expr(mut c CG, mut p P, min int) {
             }
         }
         }
-    } else if k == TokenKind.LParen {
+        }
+        TokenKind.LParen -> {
         // W2:括号 group 透明(镜像宿主 group();-(x+y) 形态经此)
         p.next()
         cg_expr(c, p, 0)
         p.expect(TokenKind.RParen)
-    } else if k == TokenKind.LSquare {
+        }
+        TokenKind.LSquare -> {
         // 数组字面量:elems 依次入栈,create.arr count=N(Rust 4865)
         p.next()
         p.skip_empty_lines()
@@ -1188,9 +1200,11 @@ fn cg_expr(mut c CG, mut p P, min int) {
         p.expect(TokenKind.RSquare)
         c.emit(OpCode.CreateArr, "count=" + n.str(), n)
         c.arr_flag = 1
-    } else {
+        }
+        else -> {
         c.fail("unsupported expr atom: " + kind_name(k))
         return
+        }
     }
     // 后缀链:下标读(get.elem);.len()(仅数组接收者,镜像 Rust 7177 闸)
     // W2:str_flag 保留——宿主字符串性穿透下标(b39:s[i]+s[j] 发 str.cat)
@@ -1802,38 +1816,18 @@ fn cg_stmt(mut c CG, mut p P) {
         return
     }
     var k = p.kind()
-    if k == TokenKind.Enum {
-        cg_enum_decl(c, p)
-        return
-    }
-    if k == TokenKind.Type {
-        cg_type_decl(c, p)
-        return
-    }
-    if k == TokenKind.Use {
-        cg_use(c, p)
-        return
-    }
-    if k == TokenKind.Ident && p.text() == "pub" {
-        // W3:pub 前缀跳过(D3:VM 链路无导出过滤)
-        p.next()
-        if p.kind() == TokenKind.Fn {
-            cg_fn(c, p)
-        } else {
-            cg_stmt(c, p)
+    // C3(Plan 447):p_kind 链 is 化——简单 kind 臂镜像宿主 match 形;
+    // 复合条件(pub 前缀/下标赋值/字段赋值)与表达式语句尾走 else。
+    is k {
+        TokenKind.Enum -> cg_enum_decl(c, p)
+        TokenKind.Type -> cg_type_decl(c, p)
+        TokenKind.Use -> cg_use(c, p)
+        TokenKind.Break | TokenKind.Continue -> {
+            p.next()
+            c.loop_jump(k)
         }
-        return
-    }
-    if k == TokenKind.Break || k == TokenKind.Continue {
-        p.next()
-        c.loop_jump(k)
-        return
-    }
-    if k == TokenKind.Is {
-        cg_is(c, p)
-        return
-    }
-    if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared {
+        TokenKind.Is -> cg_is(c, p)
+        TokenKind.Let | TokenKind.Var | TokenKind.Const | TokenKind.Shared -> {
         p.next()
         var name = p.text()
         p.next()
@@ -1893,9 +1887,8 @@ fn cg_stmt(mut c CG, mut p P) {
         }
         var idx = c.add_var(name, is_arr, vty)
         c.emit_store(idx)
-        return
-    }
-    if k == TokenKind.Return {
+        }
+        TokenKind.Return -> {
         p.next()
         var kk = p.kind()
         if kk == TokenKind.Newline || kk == TokenKind.Semi || kk == TokenKind.RBrace || kk == TokenKind.EOF {
@@ -1906,22 +1899,20 @@ fn cg_stmt(mut c CG, mut p P) {
         var na = c.n_args
         var rs2 = f"n_args=${na.str()}"
         c.emit(OpCode.Ret, rs2, na)
-        return
-    }
-    if k == TokenKind.If {
-        cg_if(c, p)
-        return
-    }
-    if k == TokenKind.While {
-        cg_while(c, p)
-        return
-    }
-    if k == TokenKind.For {
-        cg_for(c, p)
-        return
-    }
-    if k == TokenKind.Fn {
-        c.fail("nested fn unsupported")
+        }
+        TokenKind.If -> cg_if(c, p)
+        TokenKind.While -> cg_while(c, p)
+        TokenKind.For -> cg_for(c, p)
+        TokenKind.Fn -> c.fail("nested fn unsupported")
+        else -> {
+    if k == TokenKind.Ident && p.text() == "pub" {
+        // W3:pub 前缀跳过(D3:VM 链路无导出过滤)
+        p.next()
+        if p.kind() == TokenKind.Fn {
+            cg_fn(c, p)
+        } else {
+            cg_stmt(c, p)
+        }
         return
     }
     // 下标赋值 a[idx] = rhs:Rust 发射序为 rhs→arr→idx→set.elem
@@ -2111,9 +2102,10 @@ fn cg_stmt(mut c CG, mut p P) {
             c.emit(OpCode.Pop, "", 0)
         }
     }
+        }
+    }
 }
 
-// 语句序列步行:.line(语句首 token 行,经 cg_line 同线去重)→ cg_stmt → eos
 fn cg_stmts(mut c CG, mut p P) {
     while c.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         c.line(p.line())
