@@ -3,9 +3,8 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Video App"
+api: "rust"
+front_port: 3019
+back_port: 8319
 theme: "dark"
-accent: "coral"
-
-dep settings {
-    path: "../common/settings"
-}
+accent: "pink"

@@ -1,0 +1,67 @@
+// video_store.at — VideoApp shared store (k1 pattern).
+// Holds video list, category/tab/search state, loading state,
+// and dual-backend theme states (dark_mode & accent_color).
+
+use back.api: list_videos, categories, Video
+
+store VideoStore {
+    model {
+        var videos []Video = []
+        var all_categories []str = []
+        var active_category str = "All"
+        var active_tab str = "recommend"
+        var query str = ""
+        var loading bool = false
+        var dark_mode bool = true
+        var accent_color str = "pink"
+        var show_settings bool = false
+    }
+
+    msg {
+        Init,
+        SetCategory(str),
+        SetTab(str),
+        SetQuery(str),
+        ToggleDarkMode,
+        SetAccent(str),
+        ToggleSettings,
+        CloseSettings,
+    }
+
+    on {
+        .Init -> {
+            .loading = true
+            .all_categories = categories()
+            let filter_cat = if .active_category == "All" { "" } else { .active_category }
+            .videos = list_videos(filter_cat, .active_tab, .query)
+            .loading = false
+        }
+        .SetCategory(c str) -> {
+            .active_category = c
+            let filter_cat = if c == "All" { "" } else { c }
+            .videos = list_videos(filter_cat, .active_tab, .query)
+        }
+        .SetTab(t str) -> {
+            .active_tab = t
+            let filter_cat = if .active_category == "All" { "" } else { .active_category }
+            .videos = list_videos(filter_cat, t, .query)
+        }
+        .SetQuery(q str) -> {
+            .query = q
+            let filter_cat = if .active_category == "All" { "" } else { .active_category }
+            .videos = list_videos(filter_cat, .active_tab, q)
+        }
+        .ToggleDarkMode -> {
+            .dark_mode = !.dark_mode
+        }
+        .SetAccent(a str) -> {
+            .accent_color = a
+        }
+        .ToggleSettings -> {
+            .show_settings = !.show_settings
+        }
+        .CloseSettings -> {
+            .show_settings = false
+        }
+    }
+}
