@@ -5,14 +5,20 @@
 // "Today" is obtained from the existing #[vm] DateTime primitives
 // (now / year / month / format), which are VM-only today; mapping them in
 // a2r + a2vue is the Phase 1 follow-up noted in the plan.
+//
+// Plan 522: this module's fns are now ALSO consumed by the Vue SFC — the
+// vue generator transpiles the referenced helpers into App.vue's script
+// (use calendar_util: build_month_grid, month_name in app.at), so the
+// computed-derived grid works on both backends from the same source.
 
 use datetime
 
 // NOTE on cell representation: cells are plain Obj literals
-//   { label: <day-num str>, date: <YYYY-MM-DD>, is_other_month: <bool> }
+//   { label: <day-num str>, date: <YYYY-MM-DD>, is_other_month: <bool>,
+//     cell_class: <tailwind str> }
 // NOT a `type` record. The VM view-builder's field-access resolvers
 // (resolve_binding_path / resolve_expr_to_value) only handle Value::Obj,
-// so `cell.label` / `cell.date` / `cell.is_other_month` resolve correctly
+// so `cell.label` / `cell.date` / `cell.cell_class` resolve correctly
 // only when cells are Objs. (Plan 323 Phase 2 — see app.at.)
 
 
@@ -77,10 +83,10 @@ pub fn add_months_month(year int, month int, n int) int {
 }
 
 /// Build the 42-cell (6-week) grid for a month as Obj literals.
-/// `today` / `selected` are "YYYY-MM-DD" strings (carried for a future
-/// today/selected highlight; the current view uses label + is_other_month).
+/// `today` / `selected` are "YYYY-MM-DD" strings used for the
+/// today/selected highlight classes (cell_class).
 ///
-/// Each cell Obj: { label: <day-num str>, date: <YYYY-MM-DD>, is_other_month: <bool> }
+/// Each cell Obj: { label: <day-num str>, date: <YYYY-MM-DD>, is_other_month: <bool>, cell_class: <tailwind str> }
 pub fn build_month_grid(year int, month int, today str, selected str) {
     // Plain `[]` + `.push()` (015-notes pattern, proven in VM widget handlers).
     // Not `List.new` (needs `use list`) and not `.to_array()` (cells is already
@@ -98,7 +104,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     for i < offset {
         let d = prev_dim - offset + 1 + i
         let ds = format_date(prev_year, prev_month, d)
-        cells.push({ label: d.to_string(), date: ds, is_other_month: true, style: day_style(ds == today, ds == selected, true) })
+        cells.push({ label: d.to_string(), date: ds, is_other_month: true, cell_class: day_style(ds == today, ds == selected, true) })
         i = i + 1
     }
 
@@ -106,7 +112,7 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     var day = 1
     for day <= dim {
         let ds = format_date(year, month, day)
-        cells.push({ label: day.to_string(), date: ds, is_other_month: false, style: day_style(ds == today, ds == selected, false) })
+        cells.push({ label: day.to_string(), date: ds, is_other_month: false, cell_class: day_style(ds == today, ds == selected, false) })
         day = day + 1
     }
 
@@ -116,26 +122,26 @@ pub fn build_month_grid(year int, month int, today str, selected str) {
     var nday = 1
     for cells.len() < 42 {
         let ds = format_date(next_year, next_month, nday)
-        cells.push({ label: nday.to_string(), date: ds, is_other_month: true, style: day_style(ds == today, ds == selected, true) })
+        cells.push({ label: nday.to_string(), date: ds, is_other_month: true, cell_class: day_style(ds == today, ds == selected, true) })
         nday = nday + 1
     }
 
     return cells
 }
 
-/// Tailwind class string for a day cell given its flags.
-/// (Reserved for the today/selected-highlight follow-up — currently the view
-/// uses static per-branch classes because extract_style does not yet thread
-/// loop bindings. Plan 323 Phase 2.)
+/// Tailwind class string for a day cell given its flags (Plan 522: aligned
+/// with the 016 design tokens the store-side .Rebuild used to inline —
+/// selected > other-month > today > default, current-month cells only ever
+/// consider today/selected).
 pub fn day_style(is_today bool, is_selected bool, is_other_month bool) str {
     if is_selected {
-        return "text-sm text-center py-2 w-full bg-blue-500 text-white rounded-full font-bold"
-    }
-    if is_today {
-        return "text-sm text-center py-2 w-full bg-blue-100 text-blue-700 rounded-full font-semibold"
+        return "w-10 h-10 flex items-center justify-center text-sm font-bold bg-primary text-primary-foreground rounded-full shadow-sm"
     }
     if is_other_month {
-        return "text-sm text-center py-2 w-full text-gray-300"
+        return "w-10 h-10 flex items-center justify-center text-sm font-normal text-muted-foreground/40 rounded-full"
     }
-    return "text-sm text-center py-2 w-full text-gray-700 hover:bg-gray-100 rounded"
+    if is_today {
+        return "w-10 h-10 flex items-center justify-center text-sm font-semibold bg-primary/15 text-primary rounded-full"
+    }
+    return "w-10 h-10 flex items-center justify-center text-sm font-medium text-foreground hover:bg-accent rounded-full transition-colors"
 }

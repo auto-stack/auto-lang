@@ -4158,7 +4158,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 "function {}({}){} {{\n",
                 mfn.name, param_list, ret_anno
             ));
-            let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
+            // Auto fn 体尾表达式即返回值(VM 侧语义)——用 Plan 448 H1 的
+            // return 化转译,裸表达式体(`(a && b) || c`)不会发射成无返回
+            // 语句(否则 Vue 运行时拿到 undefined,闰年判断这类谓词失效)。
+            let body = crate::ui_gen::ts_adapter::transpile_body_as_return(&mfn.body, &ctx);
             let indented = Self::indent_body(&body, "  ");
             script.push_str(&indented);
             script.push_str("\n}\n\n");
@@ -24942,6 +24945,72 @@ pub fn double(x int) int {
         assert!(
             r013.iter().any(|w| w.message.contains("double")),
             "name conflict must raise an R013 warning naming the fn:\n{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn test_plan522_use_fn_trailing_expr_body_emits_return() {
+        // Auto fn 体的尾表达式即返回值(VM 语义)——发射的 TS 必须带上
+        // `return`,否则 Vue 运行时拿到 undefined(谓词恒 falsy)。
+        let sfc = gen_sfc_with_use_fns(
+            r#"
+widget Evenness {
+    model { var n int = 4 }
+    computed { ok => is_even(.n) }
+    view { col { text `e: ${.ok}` } }
+}
+"#,
+            r#"
+pub fn is_even(x int) bool {
+    x % 2 == 0
+}
+"#,
+            &["is_even"],
+        );
+        assert!(
+            sfc.contains("return x %2 == 0;"),
+            "trailing-expression fn body must emit `return`:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 522 语料回归锁:016-calendar 真实源(含 use calendar_util 导入
+    /// + computed 调用)经生产管线生成 —— helper fn 闭包全量转译进 SFC。
+    #[test]
+    fn test_plan522_016_corpus_helpers_emitted() {
+        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/ui/016-calendar/src/front");
+        let Ok(result) = crate::ui_gen::api::generate_component_from_file(
+            &front.join("app.at"),
+            crate::ui_gen::ComponentGenOptions::default(),
+        ) else {
+            eprintln!("016 corpus unreadable — skip");
+            return;
+        };
+        let sfc = &result.vue_code;
+        // 入口 fn(month_name/build_month_grid)与闭包依赖(day_style 等)都发射。
+        for fn_name in [
+            "month_name",
+            "build_month_grid",
+            "day_style",
+            "weekday_of",
+            "format_date",
+        ] {
+            assert!(
+                sfc.contains(&format!("function {fn_name}(")),
+                "helper `{fn_name}` must be transpiled into the 016 SFC:\n{sfc}"
+            );
+        }
+        // computed 调用点零改写(裸名 + store facade 解析)。
+        assert!(
+            sfc.contains("const month_label = computed<any>(() => month_name(store.month))"),
+            "month_label computed keeps the bare-name call:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("build_month_grid(store.year, store.month, store.today, store.selected_date)"),
+            "days computed keeps the bare-name call:\n{sfc}"
         );
     }
 
