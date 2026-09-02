@@ -13,7 +13,7 @@ touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
 current_step: 11
-total_steps: 22
+total_steps: 25
 ---
 
 # [PLAN-514] aavm 风格二期：AA2R 方法发射（W5）+ 宿主加固 + lib 方法化（γ4）
@@ -372,12 +372,24 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 20. [ ] Phase 11 收账余项核对处置（447 归档清单②③④逐项）。
     验证：逐项证据或显式登记。
 
+### W5 管道算子（2026-09-02 用户裁定新增；设计稿 docs/design/pipe-operator.md，讨论稿已定稿口径：首版方法形+字段投影形，函数形二期）
+
+21. [ ] 宿主侧：词法新增两字符 token `|>`（VBar+Gt 贪婪，镜像 ??/.? 先例）；
+   parser 专用臂脱糖 `expr |> .m(args)` → `expr.m(args)`、`expr |> .f` →
+   `expr.f`（优先级：赋值之上、比较之下；左结合；行首形态=显式续行）；
+   链糖移除报错文案更新指向 `|>`。验证：最小探针 VM 单行/多行/链/投影四形态。
+22. [ ] lib 镜像：token.at 枚举+kind_name、lexer.at 符号臂（'|'+peek '>'）、
+   a2r.at ar_expr_tail 脱糖臂；corpus_a2r 新件 g16_pipe_basic。验证：
+   corpus_a2r g 系（含 g16）逐字符全绿。
+23. [ ] 探针与折叠：99_idiom2 增 m10_pipe 常驻（VM 侧）；aavm2 标准门禁+
+   cargo tf 全绿；矩阵五腿复跑 46/46（lib 变更后必跑）；折叠点④合入 master。
+
 ### 收尾
 
-21. [ ] 文档回写：divergences.md（W5 分叉+方法风格规范入 divergence-rules
+24. [ ] 文档回写：divergences.md（W5 分叉+方法风格规范入 divergence-rules
     §4）、idiom-upgrade-prereqs.md 状态注记、project.md、auto/lib/README、
     KNOWN-DEBT 核销（P511-1/2/5、P447-①两债）。
-22. [ ] 复审（/auto-plan:review：验收逐条对代码、遗漏扫描、健康检查、
+25. [ ] 复审（/auto-plan:review：验收逐条对代码、遗漏扫描、健康检查、
     spec-impact 元数据）→ `cargo tf` → status: reviewed。
 
 ## 复审记录
