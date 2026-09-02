@@ -155,6 +155,13 @@ pub struct VmBridge {
 fn nv_to_pub_value(nv: auto_val::NanoValue) -> Value {
     if auto_val::is_i32(nv) {
         Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_f64(nv) {
+        // Plan 522 T4: f64 返回值此前落入末位 i32 解码 → Int(0) 桥面丢失
+        // (call_vm_fn 的 float helper 返回值全 0;引擎内部 decode_tagged_nv
+        // 一直正确,仅桥返回路径缺浮点臂)。
+        Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        Value::Float(auto_val::decode_f32(nv) as f64)
     } else if auto_val::is_list(nv) {
         Value::Int(auto_val::decode_list(nv) as i32)
     } else if auto_val::is_object(nv) {
@@ -2698,116 +2705,155 @@ widget OpProbeOrig {
         }
     }
 
-    /// Plan 323 (Option B) full-pipeline proof against the REAL 016-calendar
-    /// source: parse app.at + calendar_util.at → collect imported `Fn`s →
-    /// `VmBridge::new_with_imports` → `call_handler("Init")` → the imported
-    /// `build_month_grid` (loops, arrays, Obj literals, cross-fn CALL) executes
-    /// and `.days` ends up as a 42-cell grid. This is the exact bug Option B
-    /// fixes: before it, imported-module functions never entered the VM and the
-    /// grid rendered empty.
+    /// Plan 323 (Option B) → Plan 522 evolution: 016-calendar now derives its
+    /// grid as WIDGET computed (`days => build_month_grid(...)`,
+    /// `month_label => month_name(...)`) calling `use calendar_util:` fns;
+    /// the store's ×4 .Rebuild recalc chain is deleted. Full-pipeline proof
+    /// against the REAL sources through the production dynamic path (stores
+    /// merged, module imports + aliases loaded, Init fired): the imported
+    /// helpers execute in the VM (bare alias resolves), and month navigation
+    /// mutates store state with no rebuild handler (computed re-derives).
+    /// View-layer rendering of the computed grid is covered by the live
+    /// `auto run -r vm` MCP snapshot check (AuraSnapshotBuilder is
+    /// state-only and cannot see computed).
+    /// Supersedes the pre-store-refactor harness that built a bare bridge
+    /// from the widget alone — its Init handler calls `store.Init()`, which
+    /// cannot compile without store context (064115a76 shape).
+    #[cfg(feature = "ui-interpreter")]
     #[test]
-    fn test_calendar_init_builds_42_cells() {
-        use crate::ast::Stmt;
-        use crate::parser::Parser;
-        use crate::session::CompilerSession;
-
-        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("examples/ui/016-calendar/src/front");
-        let app_src = match std::fs::read_to_string(front.join("app.at")) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("skipping calendar e2e (app.at unreadable): {}", e);
+    fn test_calendar_computed_grid_via_use_fns() {
+        let mut dc = match crate::plan370_test_support::build_example_component("016-calendar") {
+            Some(dc) => dc,
+            None => {
+                eprintln!("skipping calendar e2e (example sources unreadable)");
                 return;
             }
         };
-        let util_src = std::fs::read_to_string(front.join("calendar_util.at"))
-            .expect("calendar_util.at must exist in-repo");
 
-        // 1. Parse app.at → first AuraWidget.
-        let session = CompilerSession::ui();
-        let mut parser = Parser::from(app_src.as_str()).with_session(session);
-        let app_ast = parser.parse().expect("app.at should parse");
-        let widget = app_ast
-            .stmts
-            .iter()
-            .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => {
-                    crate::aura::extract_widget_from_decl(d).ok()
-                }
-                _ => None,
-            })
-            .expect("app.at must declare a widget");
+        // Store fields merged into root state after Init (D-GAP-4).
+        for required in ["year", "month", "today", "selected_date"] {
+            assert!(
+                dc.bridge().read_state(required).is_ok(),
+                "store field '{required}' missing from root state"
+            );
+        }
 
-        // 2. Parse calendar_util.at → collect all Fn/TypeDecl/EnumDecl/Ext
-        //    (wildcard: build_month_grid + its pure-Auto callees).
-        let util_session = CompilerSession::ui();
-        let mut util_parser =
-            Parser::from(util_src.as_str()).with_session(util_session);
-        let util_ast = util_parser.parse().expect("calendar_util.at should parse");
-        let import_stmts: Vec<Stmt> = util_ast
-            .stmts
-            .iter()
-            .filter(|s| {
-                matches!(
-                    s,
-                    Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)
-                )
-            })
-            .cloned()
-            .collect();
-        assert!(
-            import_stmts
-                .iter()
-                .any(|s| matches!(s, Stmt::Fn(f) if f.name.as_str() == "build_month_grid")),
-            "build_month_grid must be among the imports"
+        // Imported helpers execute via their bare import aliases (the same
+        // resolution the computed evaluator uses — PLAN-051 C3).
+        let june = dc
+            .bridge()
+            .call_vm_fn("month_name", &[Value::Int(6)])
+            .expect("month_name via bare alias");
+        assert_eq!(june, Value::str("June"));
+
+        let cells = dc
+            .bridge()
+            .call_vm_fn(
+                "build_month_grid",
+                &[Value::Int(2026), Value::Int(6), Value::str("2026-06-17"), Value::str("2026-06-17")],
+            )
+            .expect("build_month_grid via bare alias");
+        let days: Vec<Value> = match &cells {
+            Value::Array(arr) => arr.values.clone(),
+            Value::Int(id) => dc.bridge().index_list_all(*id as usize),
+            Value::VmRef(r) => dc.bridge().index_list_all(r.id),
+            other => panic!("grid should be an array, got {other:?}"),
+        };
+        assert_eq!(days.len(), 42, "grid is 42 cells (6 weeks)");
+
+        // June 2026: the 1st is a Monday → Sunday-first grid starts with the
+        // May-31 tail, then June 1..30, then July 1..11.
+        let cell_str = |i: usize| -> String {
+            let obj = dc.bridge().materialize_obj_ref(&days[i]);
+            match obj {
+                Value::Obj(o) => o.get_str("label").unwrap_or_default().to_string(),
+                other => format!("{other:?}"),
+            }
+        };
+        assert_eq!(cell_str(0), "31", "cell 0 is the May-31 tail");
+        assert_eq!(cell_str(1), "1", "cell 1 is June 1");
+        assert_eq!(cell_str(30), "30", "cell 30 is June 30");
+        assert_eq!(cell_str(31), "1", "cell 31 is the July-1 filler");
+        // The per-cell Tailwind class (day_style) materialized correctly:
+        // cells[17] = June 17 is BOTH today and selected (both seeds are
+        // "2026-06-17") → selected wins by precedence.
+        match dc.bridge().materialize_obj_ref(&days[17]) {
+            Value::Obj(o) => {
+                let class = o.get_str("cell_class").expect("cell_class on today cell");
+                assert!(
+                    class.contains("bg-primary text-primary-foreground"),
+                    "selected cell highlight expected (selected > today), got '{class}'"
+                );
+            }
+            other => panic!("cell 17 should materialize to Obj, got {other:?}"),
+        }
+        // A plain current-month cell (June 2) keeps the default class.
+        match dc.bridge().materialize_obj_ref(&days[2]) {
+            Value::Obj(o) => {
+                let class = o.get_str("cell_class").expect("cell_class on plain cell");
+                assert!(
+                    class.contains("hover:bg-accent"),
+                    "plain cell default class expected, got '{class}'"
+                );
+            }
+            other => panic!("cell 2 should materialize to Obj, got {other:?}"),
+        }
+
+        // Behavior: one PrevMonth dispatch rolls the store month with no
+        // rebuild handler (the recalc chain is gone — computed re-derives).
+        dc.on_with_input("PrevMonth", None);
+        assert_eq!(
+            dc.bridge().read_state("month").unwrap(),
+            Value::Int(5),
+            "PrevMonth must roll 2026-06 → 2026-05"
         );
+        let may = dc
+            .bridge()
+            .call_vm_fn("month_name", &[Value::Int(5)])
+            .expect("month_name after roll");
+        assert_eq!(may, Value::str("May"));
+    }
 
-        // 3. Build the bridge + fire Init.
-        let mut bridge =
-            VmBridge::new_with_imports(&widget, import_stmts).expect("bridge builds");
-        assert!(bridge.has_handler("Init"), "Init handler must be synthesized");
-
-        bridge
-            .call_handler("Init", &[])
-            .expect("Init handler should execute");
-
-        // 4. `.days` must now hold 42 cells (6 weeks), not be empty.
-        let days = bridge
-            .read_state_as_vec("days")
-            .expect(".days should be an array after Init");
-        assert_eq!(days.len(), 42, "build_month_grid must produce 42 cells");
-
-        // Each cell is an Obj literal { label, date, is_other_month }.
-        for (i, cell) in days.iter().enumerate() {
-            match cell {
-                // Plan 420:对象字面量物化为 GenericInstanceData(VmRef)。
-                Value::Obj(_) | Value::Int(_) | Value::VmRef(_) => {}
-                other => panic!("cell {} is not an object: {:?}", i, other),
+    /// Plan 522 T4: 024-charts 的 donut 组件经 `use chart_geom: dc, ds`
+    /// 导入几何 helper(components/ 包通道)。VM 装载对包组件文件自身的
+    /// use 依赖做收集 + 裸名别名(与根文件 use 同规则)——dc/ds 在 VM 内
+    /// 可按裸名调用即证明该链路(437 §0.6.E-3 绕过点回正的 VM 半边)。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn test_plan522_024_chart_geom_helpers_in_vm() {
+        let dc = match crate::plan370_test_support::build_example_component("024-charts") {
+            Some(dc) => dc,
+            None => {
+                eprintln!("skipping 024 e2e (example sources unreadable)");
+                return;
             }
-        }
-
-        // Cells are heap ObjectData refs (Value::Int(obj_id)); the view builder
-        // materializes them via materialize_obj_ref. Verify that deref yields a
-        // Value::Obj whose "label" field is a non-empty string, so `cell.label`
-        // renders the day number instead of an empty cell.
-        let first = bridge.materialize_obj_ref(&days[0]);
-        match first {
-            Value::Obj(obj) => {
-                let label = obj.get_str("label").expect("cell.label must resolve");
-                assert!(!label.is_empty(), "cell.label should be a day number");
-                // The cell carries a computed `style` (day_style output); confirm
-                // it materialized as a non-empty string so `class: cell.style`
-                // applies the per-cell highlight.
-                let style = obj.get_str("style").expect("cell.style must resolve");
-                assert!(!style.is_empty(), "cell.style should be a Tailwind class string");
-            }
-            other => panic!(
-                "materialize_obj_ref(cell) should yield Value::Obj, got {:?}",
-                other
-            ),
-        }
+        };
+        let raw = dc
+            .bridge()
+            .call_vm_fn("dc", &[Value::Double(0.0)])
+            .expect("dc via bare alias (package component use dep)");
+        let cos0 = match raw {
+            Value::Float(f) | Value::Double(f) => f,
+            Value::Int(i) => i as f64,
+            other => panic!("dc(0.0) should be numeric, got {other:?}"),
+        };
+        assert!(
+            (cos0 - 1.0).abs() < 1e-9,
+            "dc(0.0) == 1.0, got {cos0:?} (raw {raw:?})"
+        );
+        let raw_sin = dc
+            .bridge()
+            .call_vm_fn("ds", &[Value::Double(1.0)])
+            .expect("ds via bare alias");
+        let sin1 = match raw_sin {
+            Value::Float(f) | Value::Double(f) => f,
+            Value::Int(i) => i as f64,
+            other => panic!("ds(1.0) should be numeric, got {other:?}"),
+        };
+        assert!(
+            (sin1 - 0.8414709848078965).abs() < 1e-9,
+            "ds(1.0) == sin(1), got {sin1:?} (raw {raw_sin:?})"
+        );
     }
 
     /// Audit B12(b) reproducer: a store handler that (1) calls an imported fn
@@ -2931,48 +2977,35 @@ widget Store {
     }
 
     /// Repro for the SelectDay panic (bp - actual_offset overflow on param
-    /// access). Mirrors the real click dispatch: Init, then SelectDay with a
-    /// date-string payload.
+    /// access). Mirrors the real click dispatch: build via the production
+    /// path (stores merged — the bare-bridge form predates the store
+    /// refactor and no longer compiles Init), then dispatch SelectDay with a
+    /// date-string payload. Plan 522: `.days` left state for a widget
+    /// computed, so the assertion set is the store fields the handler writes.
+    #[cfg(feature = "ui-interpreter")]
     #[test]
     fn repro_selectday_panic() {
-        use crate::ast::Stmt;
-        use crate::parser::Parser;
-        use crate::session::CompilerSession;
-
-        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("examples/ui/016-calendar/src/front");
-        let app_src = std::fs::read_to_string(front.join("app.at")).unwrap();
-        let cal_path = crate::resolve_module_path(&front, "calendar_util").unwrap();
-        let mut visited = std::collections::HashSet::new();
-        let mut seen = std::collections::HashSet::new();
-        let mut imports: Vec<crate::ast::Stmt> = Vec::new();
-        let mut compile_session = crate::compile::CompileSession::new();
-        crate::collect_module_imports(&cal_path, &mut visited, &mut imports, &mut seen, &mut compile_session, None);
-
-        let session = CompilerSession::ui();
-        let mut parser = Parser::from(app_src.as_str()).with_session(session);
-        let ast = parser.parse().unwrap();
-        let widget = ast
-            .stmts
-            .iter()
-            .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => {
-                    crate::aura::extract_widget_from_decl(d).ok()
-                }
-                _ => None,
-            })
-            .unwrap();
-
-        let mut bridge = VmBridge::new_with_imports(&widget, imports).unwrap();
-        bridge.call_handler("Init", &[]).unwrap();
+        let mut dc = match crate::plan370_test_support::build_example_component("016-calendar") {
+            Some(dc) => dc,
+            None => {
+                eprintln!("skipping calendar e2e (example sources unreadable)");
+                return;
+            }
+        };
         // This is what a day-cell click dispatches:
-        bridge
-            .call_handler("SelectDay", &[Value::str("2026-06-17")])
+        dc.bridge_mut()
+            .call_handler("SelectDay", &[Value::str("2026-06-25")])
             .expect("SelectDay should run without panicking");
-        let days = bridge.read_state_as_vec("days").unwrap();
-        assert_eq!(days.len(), 42);
+        assert_eq!(
+            dc.bridge().read_state("selected_date").unwrap(),
+            Value::str("2026-06-25"),
+            "SelectDay must write the payload through to the store field"
+        );
+        assert_eq!(
+            dc.bridge().read_state("month").unwrap(),
+            Value::Int(6),
+            "SelectDay must not roll the month"
+        );
     }
 
     /// receives the value dispatched via call_handler's args — both int and
@@ -3173,27 +3206,32 @@ widget Store {
             );
         }
 
-        // And driving Init from app.at's widget with these imports yields 42 cells.
-        let session = CompilerSession::ui();
-        let mut parser = Parser::from(app_src.as_str()).with_session(session);
-        let app_ast = parser.parse().expect("app.at should parse");
-        let widget = app_ast
-            .stmts
-            .iter()
-            .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => {
-                    crate::aura::extract_widget_from_decl(d).ok()
-                }
-                _ => None,
-            })
-            .expect("app.at must declare a widget");
-
-        let mut bridge = VmBridge::new_with_imports(&widget, import_stmts).expect("bridge builds");
-        bridge.call_handler("Init", &[]).expect("Init runs");
-        let days = bridge
-            .read_state_as_vec("days")
-            .expect(".days is an array after Init");
-        assert_eq!(days.len(), 42);
+        // And the production path (stores + imports + aliases, Plan 522 shape)
+        // drives the imported helpers end to end — see
+        // test_calendar_computed_grid_via_use_fns for the full grid assertions
+        // (42 cells / navigation); here just prove the component builds and
+        // the module-qualified fn executes.
+        let dc = match crate::plan370_test_support::build_example_component("016-calendar") {
+            Some(dc) => dc,
+            None => {
+                eprintln!("skipping (016 sources unreadable)");
+                return;
+            }
+        };
+        let cells = dc
+            .bridge()
+            .call_vm_fn(
+                "build_month_grid",
+                &[Value::Int(2026), Value::Int(6), Value::str("2026-06-17"), Value::str("2026-06-17")],
+            )
+            .expect("build_month_grid executes via the production import chain");
+        let count = match &cells {
+            Value::Array(arr) => arr.values.len(),
+            Value::Int(id) => dc.bridge().index_list_all(*id as usize).len(),
+            Value::VmRef(r) => dc.bridge().index_list_all(r.id).len(),
+            other => panic!("grid should be an array, got {other:?}"),
+        };
+        assert_eq!(count, 42);
 
         // Silence unused warning for scan_use_statements when the body returns early.
         let _ = scan_use_statements;

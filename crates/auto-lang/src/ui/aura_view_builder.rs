@@ -685,6 +685,29 @@ impl<'a> AuraViewBuilder<'a> {
                 // For simple state fields, use read_state/read_state_as_vec.
                 let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
                 let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+                // elems → loop children(堆引用与 computed 回退两路共用;语义
+                // 与下方 Ok(Value::Array) 主路径一致:matches_search 过滤 +
+                // 循环变量/index 绑定 + 空/单/多子聚合)。
+                let render_for_children = |elems: Vec<Value>| -> View<DynamicMessage> {
+                    let children: Vec<View<DynamicMessage>> = elems.iter().enumerate()
+                        .filter_map(|(i, item)| {
+                            // Apply search filter if 'search' state exists and is non-empty
+                            if !self.matches_search(item) { return None; }
+                            let mut loop_bindings = bindings.clone();
+                            loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
+                            if let Some(idx_var) = index {
+                                loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                            }
+                            let views: Vec<View<DynamicMessage>> = body.iter()
+                                .map(|n| self.convert_node_with(n, &loop_bindings))
+                                .collect();
+                            if views.is_empty() { None }
+                            else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
+                            else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }) }
+                        })
+                        .collect();
+                    View::Column { children, spacing: 0, padding: 0, style: None, onclick: None }
+                };
                 let array: auto_val::Array = if has_inner_dot {
                     match self.resolve_iterable(iterable, bindings) {
                         Some(elems) => auto_val::Array::from(elems),
@@ -712,34 +735,23 @@ impl<'a> AuraViewBuilder<'a> {
                         // Try read_state_as_vec for Value::Int(array_id) refs
                         match self.read_state_as_vec(state_name) {
                             Ok(vec) => {
-                                // Re-wrap as Array for consistent iteration
-                                let owned: Vec<Value> = vec;
-                                let arr = auto_val::Array::from(owned);
-                                // Need to re-iterate — fall through to filter_map below
-                                let children: Vec<View<DynamicMessage>> = arr.iter().enumerate()
-                                    .filter_map(|(i, item)| {
-                                        // Apply search filter if 'search' state exists and is non-empty
-                                        if !self.matches_search(item) { return None; }
-                                        let mut loop_bindings = bindings.clone();
-                                        loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
-                                        if let Some(idx_var) = index {
-                                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
-                                        }
-                                        let views: Vec<View<DynamicMessage>> = body.iter()
-                                            .map(|n| self.convert_node_with(n, &loop_bindings))
-                                            .collect();
-                                        if views.is_empty() { None }
-                                        else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
-                                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }) }
-                                    })
-                                    .collect();
-                                return View::Column { children, spacing: 0, padding: 0, style: None, onclick: None };
+                                return render_for_children(vec);
                             }
                             Err(_) => return View::Empty,
                         }
                     }
                     Err(_) => {
-                        return View::Empty;
+                        // PLAN-051 C3 对齐(本臂此前漏齐):state 读 miss →
+                        // computed 求值回退。tracked for 路径(下方 ~963)早有
+                        // 该回退,本 convert 路径没有 —— `for cell in .days`
+                        // 以 computed 为 for 源(Plan 522 016 迁移)在此渲染整空。
+                        match self
+                            .eval_computed(state_name, bindings)
+                            .and_then(|v| self.value_to_iter_vec(&v))
+                        {
+                            Some(vec) => return render_for_children(vec),
+                            None => return View::Empty,
+                        }
                     }
                 }
                 }
@@ -1704,13 +1716,14 @@ impl<'a> AuraViewBuilder<'a> {
                             _ => continue,
                         }
                     } else {
-                    // Use read_state_as_vec so heap-array refs (Value::Int(array_id),
+                    // Use resolve_iterable so heap-array refs (Value::Int(array_id),
                     // the form `var x = []; x.push(...)` produces — e.g. .days) are
-                    // iterated, not just inline Value::Array. Otherwise the grid's
-                    // `for cell in .days` renders empty even though state is populated.
-                    match self.read_state_as_vec(state_name) {
-                        Ok(v) => v,
-                        _ => continue,
+                    // iterated AND state misses fall back to computed evaluation
+                    // (PLAN-051 C3; Plan 522 016 迁移的 `for cell in .days` 以
+                    // computed 为源)。Otherwise the grid's for renders empty.
+                    match self.resolve_iterable(iterable, bindings) {
+                        Some(v) => v,
+                        None => continue,
                     }
                     };
                     let body_len = body.len();
@@ -4281,13 +4294,12 @@ let tabs_inner = View::Row {
                 _ => return Vec::new(),
             }
         } else {
-        match self.read_state(state_name) {
-            Ok(Value::Array(arr)) => arr,
-            Ok(_) => match self.read_state_as_vec(state_name) {
-                Ok(vec) => auto_val::Array::from(vec),
-                Err(_) => return Vec::new(),
-            },
-            Err(_) => return Vec::new(),
+        // PLAN-051 C3 对齐:state 读 miss → computed 求值回退(resolve_iterable
+        // 内置;grid/row 展开路径此前漏齐 —— `for cell in .days` 这类 computed
+        // for 源在 grid/row 内展开成 0 cell,Plan 522 016 迁移实证)。
+        match self.resolve_iterable(iterable, bindings) {
+            Some(elems) => auto_val::Array::from(elems),
+            None => return Vec::new(),
         }
         };
         array

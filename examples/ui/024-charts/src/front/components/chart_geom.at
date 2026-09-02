@@ -1,0 +1,12 @@
+// components/chart_geom.at — Plan 522: 437 §0.6.E-3 绕过点回正。
+// donut 的 dc/ds 几何 helper 原为页面级模块 fn,因"模块 fn 不发射进
+// vue SFC"(vue-tsc TS2304)被迫改 math.cos/sin 直调。Plan 522 的
+// use 导入 fn 按需转译进消费方 SFC 后恢复 helper 形态;VM 侧经
+// import_aliases 同名解析,双端同源。
+pub fn dc(a float) float {
+    math.cos(a)
+}
+
+pub fn ds(a float) float {
+    math.sin(a)
+}
