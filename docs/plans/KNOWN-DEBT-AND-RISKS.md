@@ -819,6 +819,22 @@
   宿主（生成项目）无 in-repo 视觉证据通道与测试装配（505 验收通道仅
   覆盖 iced 轨）。触发=vue 桌面宿主证据通道落地（与 D6 vue 远程形态
   同源），届时补双轨壁纸截图对拍。
+
+### 调度会话（2026-09-02，vm 桌面实机核查发现）
+
+- **P517-1 `auto run --desktop` 对 vm 渲染静默无效（CLI UX 缺陷）**：
+  `--desktop` 仅置 `AUTO_DESKTOP=1`（crates/auto/src/main.rs:1023），唯一
+  消费方是 auto-man vue 生成（Plan 465 脚手架宿主）；`-r vm` 组合下该
+  flag 被静默忽略——仓库根跑则报"No pac.at"，app 目录跑则开单 app 窗口，
+  **均不是 vm 虚拟桌面**（vm 桌面唯一入口 = `cargo run -p auto-lang
+  --features ui-iced --example ui_desktop`）。用户因此入口混淆曾长时间
+  误判"视觉刷新无变化"。修复方向：`--desktop`+vm 渲染组合显式报错指路
+  ui_desktop，或 auto run 增 vm 桌面宿主路由。附：实机核查同时证实
+  503 七项样式在新构建中确有渲染（圆角图标格/窗口细边框/主题协调），
+  但 4px 运行圆点/细竖条常规尺度不可感知、dock 图标 glyph 占位色块质感
+  （HICON 债族表现）、默认无图片壁纸、阴影弱——"观感未变"主因回到
+  503 的设计层裁剪（无 blur/无动效/token 级范围），视觉二期（P2/P3）
+  立项依据。
 - **新观察（pre-existing，非本计划引入，供复审/后续定界）**：
   ①`style_migration_probe` 基线即红（token `underline` 上游已能解析
   但 449 迁移表标注 gap——测试自述"更新 MIGRATION.md 支持度列并翻
