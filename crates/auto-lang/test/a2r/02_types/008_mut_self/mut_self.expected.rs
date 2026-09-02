@@ -10,10 +10,10 @@ impl Counter {
         return Counter { count: 0 };
     }
     fn increment(&mut self) {
-        self.count() = self.count() + 1;
+        self.count = self.count + 1;
     }
     fn get_count(&self) -> i64 {
-        return self.count();
+        return self.count;
     }
 }
 

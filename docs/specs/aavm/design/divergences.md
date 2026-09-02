@@ -460,3 +460,17 @@ H2);FStrPart 直通发射的三缺口实证见 D40 续。
   +mod.fn+strip 兜底);限定调用 db.fn 发射 const.i32 0 接收者占位
   (宿主 Ident 模块兜底,Plan 437 注记的占位泄漏镜像);语句级用户 fn
   调用在 fn 体内尾随 pop(wrapper 顶层不发)。
+
+## 514（W2/W3/W5，2026-09-02）
+
+- **D-ext-trait（AA2R 发射面不做）**：`ext T for Trait`（trait 实现）、
+  泛型 ext（`impl<T>`）、关联 const、注解宏位（#[zbus] 族）——AA2R 发射
+  明确不做（lib 无此形态；宿主有而 aavm 语料层不覆盖）。与 D-W6（闭包/
+  迭代器链还原）同属"用到才扩"边界。
+- **D-pipe-first（|> 管道算子首版口径）**：`x |> .m(args)` 方法形 +
+  `x |> .f` 字段投影形入（W5）；**函数形（`x |> f`）二期、is 臂内不支持**
+  ——登记为语言能力分期，设计稿 docs/design/pipe-operator.md。
+- **D-methodized（lib 方法化 γ4 状态）**：六文件裁定完成——P（14 方法）/
+  CG（28 方法）/Ar（23 方法）入 type 体；lexer/typeinfo/engine 按无状态
+  类型裁定零转换或合并（peek_text/field_idx 去重）；产生式与纯表函数保留
+  自由函数。方法风格规范入 divergence-rules.md §4b。
