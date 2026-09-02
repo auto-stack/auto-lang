@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 2
+current_step: 3
 total_steps: 14
 ---
 
@@ -267,9 +267,23 @@ divergences.md（use 发射形态注记）；project.md / auto/lib/README
 
 ### W1 AA2R use 发射（worktree）
 
-3. [ ] `auto/lib/a2r.at`：ar_run Use 分支 + 预扫对齐（发射形态按步骤 1
-   定案）。验证：g16 live 逐字符绿 + rustc 零错 + `auto build` 可用 +
-   折叠点①合入。
+3. [✅ 已完成]（2026-09-02，worktree 5d3c42919+21f1e3d89，折叠点①已合入
+   master）`auto/lib/a2r.at`：ar_run 顶层 Use 分支（decls 源序/pub 透传）+
+   `ar_use`（发射形态按步骤 1 定案镜像：auto.→crate::+rest / a2r_std 名
+   映射+std_used / items {a,b} / 通配 * / bare；`::{..}` 组形态与 use.rs
+   族 fail 拒绝入 v2 子集规范）+ Ar 增 `imports` 导入名集 + 点路径 X.Y 的
+   X 命中导入名 → X::Y（空集短路防热路径）+ use 行免声明间空行（Ext 同款
+   continue）。**判据证据**：①g18 live 逐字符绿（AA2R 侧由
+   `unsupported expr atom: Use` 红转绿）；②rustc 零错=组合编译检查
+   （wrapper 脚手架 `pub mod lib { pub mod token { include! }}` +
+   include! 产物逐字不改 → rustc 通过 → 运行输出 `Int` 与 VM 侧一致，
+   回链闭环；真实模块拼装组合归 W2 双轨验证）；③全量 `--include-ignored`
+   19/0/0（compile 腿含=主 a2r 转译新 a2r.at 构建运行绿）+ 99_unit 13/13
+   + ③腿等价程序直跑绿；④**矩阵⑤腿塔顶环境敏感死亡——master 基线双
+   形态实证非本改动引入**（rc=1 无输出/900s+ 超时；447 期同族），按
+   P517-1 以替代证据链放行折叠①，矩阵全绿补验挂账折叠点②/复审；
+   `auto build` 可用性（lib 现无 use 语句，无破坏面）随 W2 双轨/产品
+   冒烟一并验证。
 
 ### W2 lib use 模块化（worktree 续）
 
