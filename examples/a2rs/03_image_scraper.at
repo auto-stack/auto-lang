@@ -223,10 +223,7 @@ fn download_image(url str, output_dir str) bool {
     print(f"\n  Downloading: ${url}")
     
     // Make request
-    let res = http.request("GET", url)
-        .header("User-Agent", "AutoLang-ImageScraper/1.0")
-        .timeout(REQUEST_TIMEOUT)
-        .send()
+    let res = http.request("GET", url).header("User-Agent", "AutoLang-ImageScraper/1.0").timeout(REQUEST_TIMEOUT).send()
     
     if res == nil {
         print("    ✗ Request failed")

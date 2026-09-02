@@ -90,11 +90,7 @@ mod plan446_batch2_http {
         let src = format!(
             "use auto.http\n\
              fn main() {{\n\
-             \x20   let built = http.request(\"POST\", \"http://127.0.0.1:{port_post}/submit\")\n\
-             \x20       .header(\"Content-Type\", \"application/json\")\n\
-             \x20       .body(\"{{}}\")\n\
-             \x20       .timeout(5000)\n\
-             \x20       .send()\n\
+             \x20   let built = http.request(\"POST\", \"http://127.0.0.1:{port_post}/submit\").header(\"Content-Type\", \"application/json\").body(\"{{}}\").timeout(5000).send()\n\
              \x20   print(built.status().to_string())\n\
              \x20   let res = http.get(\"http://127.0.0.1:{port_body}/probe\")\n\
              \x20   print(res.status().to_string())\n\

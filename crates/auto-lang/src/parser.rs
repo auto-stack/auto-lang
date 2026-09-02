@@ -6749,27 +6749,6 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    /// Replace `Expr::Ident("self")` inside `expr` with `replacement`.
-    /// Used for method chaining: `.method()` parsed as `self.method()` → `prev_expr.method()`.
-    fn replace_self_with(expr: &mut Expr, replacement: &Expr) {
-        match expr {
-            Expr::Dot(obj, _) => {
-                if matches!(obj.as_ref(), Expr::Ident(name) if name == "self") {
-                    *obj = Box::new(replacement.clone());
-                } else {
-                    Self::replace_self_with(obj, replacement);
-                }
-            }
-            Expr::Call(call) => {
-                Self::replace_self_with(&mut call.name, replacement);
-            }
-            Expr::ErrorPropagate(inner) => {
-                Self::replace_self_with(inner, replacement);
-            }
-            _ => {}
-        }
-    }
-
     pub fn skip_empty_lines(&mut self) -> usize {
         let mut count = 0;
         while self.is_kind(TokenKind::Newline) {
@@ -6915,45 +6894,31 @@ impl<'a> Parser<'a> {
                                 chain_target_idx = None;
                             }
 
-                            if let Some(target_idx) = chain_target_idx {
-                                // Get the base expression from the target stmt
-                                let base_expr = match &stmts[target_idx] {
-                                    Stmt::Expr(e) => e.clone(),
-                                    Stmt::Store(s) => s.expr.clone(),
-                                    _ => unreachable!(),
+                            if chain_target_idx.is_some() {
+                                // Plan 514（用户裁定 2026-09-02）：取消流式链糖的
+                                // 换行续接——句首 `.method()` 语句不再自动合并进
+                                // 上一条语句。该糖与方法体内隐式 self 的句首点
+                                // 存在静默歧义（`(i = 1).next()` 形态实测），旧
+                                // 形态直接报错，等待显式管道算子（|> 设计中）。
+                                // 同一行的 `.b().c()` 链不受影响；方法体内首条
+                                // 语句的句首点仍为隐式 self。
+                                let message = "换行后的句首 `.method()` 不再自动续接上一条语句（流式链糖已移除）[non-recoverable]: 请将调用链写在同一行，或拆成中间变量绑定（多行管道算子设计中）"
+                                    .to_string();
+                                let err: crate::error::AutoError = SyntaxError::Generic {
+                                    message,
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into();
+                                // 已入错误表 + cur=EOF 强停:高层(type/fn 体)恢复
+                                // 循环不再级联次生错误(镜像 error-limit 中止形)
+                                self.errors.push(err.clone());
+                                self.cur = Token {
+                                    kind: TokenKind::EOF,
+                                    pos: crate::token::Pos { line: 0, at: 0, pos: 0, len: 0 },
+                                    text: "".into(),
                                 };
-
-                                // Collect all self-dot stmts from target_idx+1 to end
-                                // and chain them onto base_expr.
-                                // Plan 043 cat-3 Guard 2: STOP at the first non-self-dot-call
-                                // statement (e.g. a dot-prefix assignment `.field = expr`,
-                                // which is Expr::Bina, not a method call). Those are
-                                // independent statements and must not be pulled into the chain.
-                                let mut chained = base_expr;
-                                let chain_count = stmts_len - target_idx - 1;
-                                for _ in 0..chain_count {
-                                    let is_chainable_stmt = matches!(
-                                        stmts.last(),
-                                        Some(Stmt::Expr(e)) if is_dot_self_call(e)
-                                    );
-                                    if !is_chainable_stmt {
-                                        break;
-                                    }
-                                    if let Some(Stmt::Expr(dot_expr)) = stmts.pop() {
-                                        source_lines.pop();
-                                        stmt_starts_with_dot.pop();
-                                        let mut replaced = dot_expr;
-                                        Self::replace_self_with(&mut replaced, &chained);
-                                        chained = replaced;
-                                    }
-                                }
-
-                                // Update the target stmt with the chained expression
-                                match &mut stmts[target_idx] {
-                                    Stmt::Expr(e) => *e = chained,
-                                    Stmt::Store(s) => s.expr = chained,
-                                    _ => {}
-                                }
+                                self.exit_scope();
+                                return Err(err);
                             }
                         }
                     }
@@ -19288,8 +19253,15 @@ widget Counter {
         }
         // dot-prefix assign + action call → 2 separate stmts (was 1: merged).
         assert_eq!(fn_body_stmt_count("fn f() {\n    .cwd = result.cwd\n    .RefreshGit()\n}\n"), 2);
-        // legitimate method chain → 1 stmt (regression guard).
-        assert_eq!(fn_body_stmt_count("fn f() {\n    let x = A.new()\n    .b()\n    .c()\n}\n"), 1);
+        // Plan 514（2026-09-02 用户裁定）：换行流式链已移除——旧链形态
+        // （let x = A.new() 换行 .b() 换行 .c()）现在直接报语法错
+        // （多行管道算子设计中）；同一行的链不受影响。
+        {
+            let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+            let mut parser = Parser::from("fn f() {\n    let x = A.new()\n    .b()\n    .c()\n}\n").with_session(session);
+            let err = parser.parse().expect_err("legacy newline chain must error");
+            assert!(err.to_string().contains("不再自动续接"), "got: {}", err);
+        }
         // api-call assign + action → 2 separate stmts.
         assert_eq!(fn_body_stmt_count("fn f() {\n    .x = history()\n    .RefreshGit()\n}\n"), 2);
         // let + dot assigns (no action) → 3 stmts.

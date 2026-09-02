@@ -32,10 +32,7 @@ type Builder {
 }
 
 fn main() {
-    let result = Builder.new()
-        .with_name("config")
-        .with_value(42)
-        .activate()
-        .build()
+    let b = Builder.new().with_name("config").with_value(42)
+    let result = b.activate().build()
     print(result)
 }

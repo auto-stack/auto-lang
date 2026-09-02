@@ -35,12 +35,8 @@ fn main() {
         features: ["fast", "safe", "simple"]
     })
     
-    let res2 = http.request("POST", "https://httpbin.org/post")
-        .header("Content-Type", "application/json")
-        .header("User-Agent", USER_AGENT)
-        .body(payload)
-        .timeout(5000)  // 5 second timeout
-        .send()
+    let req2 = http.request("POST", "https://httpbin.org/post").header("Content-Type", "application/json").header("User-Agent", USER_AGENT)
+    let res2 = req2.body(payload).timeout(5000).send()  // timeout: 5s
     
     if res2 != nil {
         print(f"Status: ${res2.status()}")
