@@ -680,6 +680,30 @@
   同坑。偿还:styled_vtree 快照补 events 元数据(或 MCP 侧文档标注
   事件注记仅 F12)。
 
+### P514（2026-09-02，Plan 514 W3 lib 方法化（γ4）执行期登记）
+
+1. **P514-W3-1 宿主流式链糖与方法体语句位前导点冲突（根因已定性，非 VM 洞）**：
+   P 方法化 lib 转译路径的挂起/CALL_SPEC 'Token.next' 崩溃根因是宿主 parser
+   的**流式链糖**（parser.rs parse_body_inner ~:6846：块体内句首 `.` 语句合并
+   进前一语句——musk 流式链设计）——方法体内**语句位**的 `.method()`（如
+   skip_empty_lines 的 `count = count + 1` 后跟 `.next()`）被链成
+   `(count+1).next()`，写丢失→死循环/错型分发。最小对：pairC（`i=i+1` 后
+   `.bump()` 挂起）vs pairD（显式 `self.bump()` 正常）。**修复=lib 书写约定
+   （零宿主改动）**：方法体内语句位方法调用用显式 `self.`；表达式位/赋值位
+   前导点保留（链糖各守卫已豁免，m 探针族全绿实证）。已验证：type P 方法体
+   3 处改 self. 后 99_unit 13 绿+corpus g 逐字符绿。
+2. **P514-W3-2 主 a2r 方法体习语实参发射缺口级联（5+ 处，patch 存档未竟）**：
+   ②腿（主 a2r merge）编译 lib 方法体暴露连续缺口，逐条修复至 rustc 仅剩
+   1 处：a) Vec 接收者 `.get()` 借用臂误命中字段实参（→索引形+as usize）；
+   b) `self` 未注册宿主类型（方法体发射补 User 占位注册）；c) str 参位拼接
+   Bina（→format! String）缺 .as_str()；d) Plan 376 StrSlice 误否决（仅
+   str 参数应豁免）；e) 未完：`p.decl_lookup(name)` 位——另一条实参发射环
+   （method_spec_flags 环，:8788+）未覆盖同款 str 强转。补丁（158 行，含
+   a–d 全部修复）存档 `scratch/p514_w3_maina2r_methodfixes.patch`；翻转
+   脚本存档 `scratch/p514_p_methodize.py`（类型体方法+全库 regex 翻转+
+   语句位 self. 约定需补入脚本）。W3 重启清单：套 patch→补 e) →复跑本条
+   五级联验证序列（cc 编译红逐位消）→W3-12 塔顶样板验证即通。
+
 ### P511（2026-09-01，Plan 511 aavm 中阶语言能力执行期登记）
 
 1. **AA2R ignored 腿 7 件预存转译债**（`test_aavm2_compile_corpus`

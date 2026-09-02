@@ -1,0 +1,158 @@
+diff --git a/crates/auto-lang/src/trans/rust.rs b/crates/auto-lang/src/trans/rust.rs
+index 3e94ab7a4..dc415de28 100644
+--- a/crates/auto-lang/src/trans/rust.rs
++++ b/crates/auto-lang/src/trans/rust.rs
+@@ -7672,6 +7672,27 @@ impl RustTrans {
+             };
+ 
+             if let Some(rust_name) = rust_method {
++                // Plan 514 W3:List/Vec 接收者的 .get(i) → 索引形
++                // `recv[(i) as usize]`(Vec::get 返 Option<&T>,直接字段访问
++                // E0609;lib 方法体 `.toks.get(.pos).kind` 位)。
++                if rust_name == "get" && call.args.args.len() == 1 {
++                    let recv_is_list2 = if let Expr::Ident(name) = object.as_ref() {
++                        self.local_var_types.get(name)
++                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
++                            .unwrap_or(false)
++                    } else if let Expr::Dot(base, _) = object.as_ref() {
++                        matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self")
++                    } else { false };
++                    if recv_is_list2 {
++                        self.expr(object, out)?;
++                        write!(out, "[(")?;
++                        if let Some(Arg::Pos(a)) = call.args.args.first() {
++                            self.expr(a, out)?;
++                        }
++                        write!(out, ") as usize]")?;
++                        return Ok(());
++                    }
++                }
+                 // Plan 379: parenthesize unary-deref receivers too —
+                 // `(*x).clone()` would otherwise emit `*x.clone()` which Rust
+                 // parses as `*(x.clone())` (wrong precedence).
+@@ -7713,6 +7734,19 @@ impl RustTrans {
+                     // String keys. Borrow only OWNED-String args (local vars /
+                     // field access). Skip: str params (already &str in Rust →
+                     // &&str would be wrong), and Int args (Vec::get takes usize).
++                    // Plan 514 W3: List/Array 接收者（Vec::get(usize)）不做
++                    // 借用——`.toks.get(.pos)` 此前经 Expr::Dot 臂误发
++                    // `.get(&self.pos)`（E0277，lib 方法体字段位实参）。
++                    let recv_is_list = if let Expr::Ident(name) = object.as_ref() {
++                        self.local_var_types.get(name)
++                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
++                            .unwrap_or(false)
++                    } else if let Expr::Dot(base, _) = object.as_ref() {
++                        // `self.toks.get(.pos)` 形：self 基链的字段位实参
++                        // 按值传(lib 方法体索引位);Map 键位取值经具名局部走
++                        // 上面的 Ident 分支。
++                        matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self")
++                    } else { false };
+                     for (i, arg) in call.args.args.iter().enumerate() {
+                         let is_owned_string_arg = if let Arg::Pos(e) = arg {
+                             match e {
+@@ -7745,15 +7779,24 @@ impl RustTrans {
+                                             .unwrap_or(true)
+                                 }
+                                 // Field access (cfg.default_provider) — a String
+-                                // field; borrow it.
+-                                Expr::Dot(_, _) => true,
++                                // field; borrow it (Map receivers only —
++                                // Plan 514 W3 List/Vec receivers take usize).
++                                Expr::Dot(_, _) => !recv_is_list,
+                                 _ => false,
+                             }
+                         } else { false };
+                         if is_owned_string_arg {
+                             write!(out, "&")?;
+                         }
+-                        self.arg(arg, out)?;
++                        // Plan 514 W3: List/Vec 接收者首参是 usize 位——
++                        // i64 实参(含 self 字段位)内联 as usize 转换。
++                        if recv_is_list && i == 0 {
++                            write!(out, "(")?;
++                            self.arg(arg, out)?;
++                            write!(out, ") as usize")?;
++                        } else {
++                            self.arg(arg, out)?;
++                        }
+                         if i < call.args.args.len() - 1 {
+                             write!(out, ", ")?;
+                         }
+@@ -8385,11 +8428,23 @@ impl RustTrans {
+                         // are skipped regardless of the flag.
+                         let arg_is_str_like = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                             || self.is_str_slice_var(arg)
++                            // Plan 514 W3:字符串拼接(Bina+Add → 发射 format!
++                            // 返 String)入 str 参数位需 .as_str()(lib 方法体
++                            // `self.fail(".." + x)` 实证)
++                            || matches!(expr, Expr::Bina(_, auto_val::Op::Add, _))
+                             || if let Expr::Ident(name) = expr {
+-                                self.local_var_types.get(name).map(|ty| matches!(
+-                                    ty,
+-                                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
+-                                )).unwrap_or(false)
++                                // Plan 514 W3:类型未知的局部(lib 的
++                                // `var name = p.text()` 族)按 owned String
++                                // 处理——非 str 参数(那些已是 &str)即 as_str。
++                                if self.local_var_types.get(name).is_none()
++                                    && !self.current_fn_str_params.contains(name) {
++                                    true
++                                } else {
++                                    self.local_var_types.get(name).map(|ty| matches!(
++                                        ty,
++                                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
++                                    )).unwrap_or(false)
++                                }
+                             } else {
+                                 false
+                             };
+@@ -8402,9 +8457,14 @@ impl RustTrans {
+                             // is already &str (StrSlice) — adding .as_str() on a &str
+                             // triggers E0658 (unstable str_as_str feature).
+                             let arg_already_str_slice = if let Expr::Ident(name) = expr {
++                                // Plan 514 W3:仅 str 参数(current_fn_str_params)
++                                // 真是 &str;StrSlice 注册的局部来自 str 返回值
++                                // 调用(lib `var name = p.text()` 族)在 Rust 侧
++                                // 是 String——需要 .as_str(),不得跳过。
+                                 self.local_var_types.get(name)
+                                     .map(|ty| matches!(ty, Type::StrSlice))
+                                     .unwrap_or(false)
++                                    && self.current_fn_str_params.contains(name)
+                             } else { false };
+                             if !arg_already_str_slice {
+                                 write!(out, ".as_str()")?;
+@@ -12461,6 +12521,34 @@ impl RustTrans {
+         for param in &fn_decl.params {
+             self.local_var_types.insert(param.name.clone(), param.ty.clone());
+         }
++        // Plan 514 W3:方法体注册 `self` 的宿主类型(占位 User)——
++        // 使 str 参数 as_str 强转/struct 守卫等按接收者类型的机制对
++        // `self.method(...)`/`self.field` 统一生效(lib 方法体实测:
++        // `self.fail(format!...)` 此前缺 as_str → E0308)。
++        if fn_decl.parent.is_some() && !fn_decl.is_static {
++            if let Some(parent) = &fn_decl.parent {
++                self.local_var_types.insert(
++                    "self".into(),
++                    Type::User(crate::ast::TypeDecl {
++                        consts: Vec::new(),
++                        name: parent.clone(),
++                        kind: crate::ast::TypeDeclKind::UserType,
++                        parent: None,
++                        has: Vec::new(),
++                        specs: Vec::new(),
++                        spec_impls: Vec::new(),
++                        generic_params: Vec::new(),
++                        members: Vec::new(),
++                        delegations: Vec::new(),
++                        methods: Vec::new(),
++                        attrs: Vec::new(),
++                        impl_attrs: Vec::new(),
++                        doc: None,
++                        is_pub: false,
++                    }),
++                );
++            }
++        }
+         // Plan 399 Phase 11.5: scan the fn body for `let` bindings that are
+         // later mutated (push/insert/extend/assign) — those need `let mut`.
+         self.mutated_let_bindings.clear();

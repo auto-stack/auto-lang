@@ -384,21 +384,16 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ## 待澄清事项
 
-6. **W3 P 方法化触发宿主 VM 可达闭包内的方法解析洞（已按硬闸回退，待
-   插修复波裁定）**：P 的 14 个游标方法（kind/text/line/peek/next[fail 避
-   err 字段撞名]/expect/skip_empty_lines/push_scope/pop_scope/bind/lookup/
-   decl_lookup/decl_register）入 type 体 + 全库 ~1400 调用点翻转后——
-   最小探针（mth1–mth7 含真实 type P 全方法体）全部通过，但 lib 全量
-   transpile 路径（ar_run/aa2r_transpile_merge）在 main 调 ar_run 时于
-   **编译期**报 `CALL_SPEC: no function 'Token.next' for type 'Token'`
-   （ip 恒 0x02a6/.line→P.push_scope 体；main 直调 tokenize/parse_new/
-   p.push_scope 等则全绿=bis9/bis10 差异；错误在 ar_run 可达编译闭包内、
-   某接收者被推断为 Token 的 .next() 解析）。宿主 vm/codegen.rs 的
-   方法调用类型推断按调用可达性惰性编译的路径待考古；W3 后续文件
-   （CG/Ar）大概率同踩。按计划风险表"大洞→插修复波、W3 顺延"缺省
-   处置：lib 已回退至 W2 折叠②状态（corpus g 全绿复验），映射表与
-   翻转脚本存档（/tmp/p514/p_methodize.py 思路：类型体方法+regex 翻转），
-   待用户裁定：插宿主修复波（建议）或降级 W3 范围。
+6. **W3 P 方法化阻塞（已结案定性，DEBT 登记 P514-W3-1/2，W3 顺延）**：
+   调研收官推翻"宿主 VM 可达闭包洞"初判——真实根因两条：①宿主流式链糖
+   与方法体语句位前导点冲突（parser.rs parse_body_inner :6846 句首 `.`
+   合并；修复=lib 约定：语句位用显式 self.，已验证绿）；②主 a2r 方法体
+   习语实参发射缺口 5+ 处级联（Vec.get 借用/usize/Option 字段/self 类型
+   注册/str 参 as_str×2，修至仅剩 decl_lookup 位=另一实参环）。按"超出
+   小修量级"裁定：lib+rust.rs 回退至 W2 折叠态（corpus 37/37+g 逐字符+
+   99_unit 全绿复验）；补丁 scratch/p514_w3_maina2r_methodfixes.patch、
+   翻转脚本 scratch/p514_p_methodize.py 存档；重启清单见
+   KNOWN-DEBT P514-2。
 1. **方法化映射细则**（阻塞 W3 各步骤展开，不阻塞 W1/W2）：状态类型方法
    进 `type` 体 vs `ext` 的边界（缺省：自有类型一体、跨类型扩展 ext）；
    转换覆盖率目标（缺省：不设 100%，以"一对一 Rust 对译可读性"为准，
