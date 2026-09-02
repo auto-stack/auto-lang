@@ -315,11 +315,7 @@ fn handle_toggle_todo(req Request) Response {
 
 /// Create a JSON response with proper headers
 fn json_response(status int, data any) Response {
-    http.response()
-        .status(status)
-        .header("Content-Type", "application/json")
-        .header("Access-Control-Allow-Origin", "*")
-        .text(json.encode(data))
+    return http.response().status(status).header("Content-Type", "application/json").header("Access-Control-Allow-Origin", "*").text(json.encode(data))
 }
 
 // Cleanup on exit (if possible)

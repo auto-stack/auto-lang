@@ -6,11 +6,11 @@ use.rs chrono::Local
 use.rs env_logger::Builder
 
 fn main() {
-    Builder.new()
-        .format((buf, record) => {
-            buf.writeln(f"[${Local.now().format("%Y-%m-%d %H:%M:%S")}] ${record.level()} - ${record.args()}")
-        })
-        .init()
+    var builder = Builder.new()
+    builder.format((buf, record) => {
+        buf.writeln(f"[${Local.now().format("%Y-%m-%d %H:%M:%S")}] ${record.level()} - ${record.args()}")
+    })
+    builder.init()
     info("application started")
     info("with timestamp logging")
     assert(true)
