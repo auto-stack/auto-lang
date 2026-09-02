@@ -2725,3 +2725,73 @@ mod musk_vm_track_p055_dump3 {
 "));
     }
 }
+
+/// PLAN-055 T8(⑥)：input 通道 `$event` 实参的运行期文本替换回归。
+/// 链路：convert_input 冻结字面 "$event" 实参 → encode_payload 随事件串携带
+/// → render_dynamic_view Input 臂 on_input 携 input_value:Some(text) →
+/// on_with_input_for 的 U2 替换（dynamic.rs Plan 446 批五）把 "$event" 前缀
+/// 实参换成输入文本。此前诊断（2026-09-01 musk 搜索框失效）怀疑 VM 侧断链；
+/// 复测现行 master：动态路径链路完整——本用例固化该行为防回退。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p055_input_event_text {
+    #[test]
+    fn input_event_arg_replaced_with_typed_text() {
+        let src = concat!(
+            "widget QSearch {\n",
+            "    model {\n",
+            "        var q str = \"\"\n",
+            "    }\n",
+            "    msg Msg { SetQ(str) }\n",
+            "    on {\n",
+            "        .SetQ(v) -> {\n",
+            "            .q = v\n",
+            "        }\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            input {\n",
+            "                placeholder: \"搜索消息…\"\n",
+            "                oninput: .SetQ($event)\n",
+            "            }\n",
+            "            text .q\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut dc = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = dc.view_with_debug_gated(false);
+        // 派发形态与实机一致：事件串携带 payload 编码的字面 "$event" 实参
+        // （event_to_message_with 冻结 + encode_payload 嵌入），input_value 为
+        // 用户键入文本。
+        dc.on_with_input_for("QSearch", "SetQ\u{1F}s\u{1F}$event", Some("你好".to_string()));
+        assert_eq!(
+            match dc.read_state("q").expect("q readable") {
+                auto_val::Value::Str(s) => s.as_str().to_string(),
+                v => format!("{:?}", v),
+            },
+            "你好",
+            "input 通道 $event 实参应被替换为输入文本（musk 搜索框 VM 侧链路）"
+        );
+    }
+}
