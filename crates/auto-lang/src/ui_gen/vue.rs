@@ -9525,6 +9525,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         // attribute + a `const menuEl = ref<HTMLElement | null>(null)` in
         // <script setup> (from self.template_refs). Handled generically so
         // every shadcn-mapped element supports it without per-arm changes.
+        // Plan 040: when the tag maps to a registry vue component (e.g.
+        // autodown_editor/autodown → engine components), the ref captures a
+        // component instance — type it `ref<any>` (same contract as ext
+        // components; the child's defineExpose surface is unknown here).
         if let Some(value) = props.get("ref") {
             let ref_name = match value {
                 AuraPropValue::Expr(crate::ast::Expr::Str(name)) => name.to_string(),
@@ -9534,6 +9538,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             if !ref_name.is_empty() {
                 if !self.template_refs.contains(&ref_name) {
                     self.template_refs.push(ref_name.clone());
+                }
+                if self.shadcn_component_name(tag).is_some() {
+                    self.component_ref_names.insert(ref_name.clone());
                 }
                 attrs.push(format!("ref=\"{}\"", ref_name));
             }
