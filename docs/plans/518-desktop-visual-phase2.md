@@ -130,10 +130,22 @@ app 内部排版密度（458/示例线）。
   rounded-xl 保留）；运行指示改"贴底宽条"形态（可感知性实测）；
 - accent 只留激活竖条/指示。
 
-### 4. 图标覆盖核验（G4）
+### 4. 图标覆盖核验与大型图标规格（G4）
 
-- 扫描 shell.at/registry 的 icon 名 → `lucide_svg_doc` 命中表；未命中
-  逐一补名或登记；容器样式去底（随 §3）。
+- 调研结论（2026-09-01）：lucide 管线已支持**画时染色**（`lucide_svg_doc`
+  生成 `stroke=currentColor`，渲染臂按 text_color/OnBackground/hover:text-*
+  注入 `svg::Style.color`——主题切换自动换色）；"色块感"根因 = 容器 accent
+  底而非图标缺失。本期四件事：
+  1. **独立 `icon` 组件臂核验**：aura.at icon element 标 `iced:"unknown"`——
+     已验证的染色路径是按钮 label 内嵌（PUA 标记）路径；dock/桌面用独立
+     形态，缺臂则补（染色语义与内嵌路径一致）；
+  2. **stroke-width 参数**：`lucide_svg_doc` 支持描边宽度（默认 2，大尺寸
+     48–64px 用 1.5 细线，对齐 stella 线性观感）；
+  3. **per-app 容器色**：registry/pac.at 增 accent 色配置（或按名哈希从
+     主题色板分配）——dock/launcher 格 = 该色圆角底 + 白色 glyph（stella
+     dock 徽标同款；单色 lucide 的"带颜色"正解是容器底色，非多彩 SVG）；
+  4. **命名覆盖表**：shell.at/registry icon 名 → `lucide_svg_doc` 命中
+     全绿（未命中补名或登记）。
 
 ### 5. 窗口 chrome（virtual_window.rs）
 
