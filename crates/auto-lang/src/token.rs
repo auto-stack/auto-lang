@@ -60,6 +60,7 @@ pub enum TokenKind {
     RangeEq,          // ..=
     Colon,            // :
     VBar,             // |
+    PipeGt,           // |>  (Plan 514 W5 管道算子)
     Amp,              // &
     CommentLine,      // //
     CommentContent,   // any text in comment

@@ -2412,6 +2412,63 @@ impl<'a> Parser<'a> {
         }
 
         loop {
+            // Plan 514 W5: 换行后行首 `|>` = 显式续行。越过换行探测 PipeGt
+            // （save/restore 不误伤空行计数：命中时这些换行是续行分隔而非
+            // 段落边界；未命中则完整回退照常 break）。门控与管道臂一致。
+            if self.is_kind(TokenKind::Newline) {
+                const PREC_PIPE_PEEK: InfixPrec = infix_prec(2);
+                if PREC_PIPE_PEEK.l >= min_power {
+                    let saved_lexer = self.lexer.save_state();
+                    let saved_cur = self.cur.clone();
+                    let saved_prev = self.prev.clone();
+                    while self.is_kind(TokenKind::Newline) {
+                        self.next();
+                    }
+                    if self.is_kind(TokenKind::PipeGt) {
+                        continue; // 交给下面的管道臂
+                    }
+                    self.lexer.restore_state(saved_lexer);
+                    self.cur = saved_cur;
+                    self.prev = saved_prev;
+                }
+            }
+            // Plan 514 W5: 管道算子 `|>`（docs/design/pipe-operator.md）。
+            // 脱糖层位在 parser：`expr |> .m(args)` → `expr.m(args)`、
+            // `expr |> .f` → `expr.f`（字段投影形）；左结合；优先级在
+            // 赋值之上、比较之下（PREC_PIPE=infix_prec(2)）。行首形态即
+            // 显式续行（替代已移除的换行流式链糖）。AST 零新节点——
+            // VM/主 a2r 走既有方法调用路径。
+            if self.is_kind(TokenKind::PipeGt) {
+                const PREC_PIPE: InfixPrec = infix_prec(2);
+                if PREC_PIPE.l >= min_power {
+                    self.next(); // consume '|>'
+                    if !self.is_kind(TokenKind::Dot) {
+                        return Err(SyntaxError::Generic {
+                            message: "expected `.method(...)` or `.field` after `|>`".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                    self.next(); // consume '.'
+                    let name = self.parse_name()?;
+                    if self.is_kind(TokenKind::LParen) {
+                        // 方法形：`|> .m(args)` → lhs.m(args)
+                        let args = self.args()?;
+                        lhs = Expr::Call(crate::ast::Call {
+                            name: Box::new(Expr::Dot(Box::new(lhs), name)),
+                            args,
+                            ret: crate::ast::Type::Unknown,
+                            type_args: Vec::new(),
+                            generic_args: Vec::new(),
+                            pos: Some(self.prev.pos),
+                        });
+                    } else {
+                        // 字段投影形：`|> .f` → lhs.f
+                        lhs = Expr::Dot(Box::new(lhs), name);
+                    }
+                    continue;
+                }
+            }
             // Plan 391 D4: path separator `::` in expressions (e.g. `env::var("X").ok()`).
             // Previously `env::var` parsed as a single Ident, then `.ok()` couldn't
             // chain onto the `env::var(...)` call (RHS method chain on a path-call
@@ -6902,7 +6959,7 @@ impl<'a> Parser<'a> {
                                 // 形态直接报错，等待显式管道算子（|> 设计中）。
                                 // 同一行的 `.b().c()` 链不受影响；方法体内首条
                                 // 语句的句首点仍为隐式 self。
-                                let message = "换行后的句首 `.method()` 不再自动续接上一条语句（流式链糖已移除）[non-recoverable]: 请将调用链写在同一行，或拆成中间变量绑定（多行管道算子设计中）"
+                                let message = "换行后的句首 `.method()` 不再自动续接上一条语句（流式链糖已移除）[non-recoverable]: 请将调用链写在同一行、拆成中间变量绑定，或用管道算子 `|>` 显式续行（如 `x |> .method()`）"
                                     .to_string();
                                 let err: crate::error::AutoError = SyntaxError::Generic {
                                     message,

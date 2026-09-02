@@ -1,0 +1,15 @@
+// Plan 514 W5 探针 m10：管道算子 |> 四形态（VM 侧；AA2R 侧由 corpus g16 覆盖）
+type Pipe10 {
+    v int
+    fn add(n int) Pipe10 { return Pipe10.new(.v + n) }
+    fn get() int { return .v }
+    static fn new(v int) Pipe10 { return Pipe10(v) }
+}
+fn main() {
+    print(Pipe10.new(1) |> .add(2) |> .get())
+    var x = Pipe10.new(5)
+    |> .add(3)
+    |> .add(10)
+    print(x.get())
+    print(x |> .v)
+}
