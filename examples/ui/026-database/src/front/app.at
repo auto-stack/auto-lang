@@ -1,0 +1,1249 @@
+// front/app.at — Database Studio SQLite 可视化客户端（Plan 439 M1-M3·App 轨道填洞 ③）
+//
+// 数据库对象树导航 + DataTable 深水区（分页/排序/搜索/类型徽章/万行窗口化）
+// + 表结构（Schema/DDL）+ SQL 控制台（执行/耗时/错误反馈）+ 事务级编辑与提交。
+
+widget App {
+    msg {
+        Init,
+        SelectTab(str),
+        SelectTable(str),
+        SelectView(str),
+        SelectIndex(str),
+        NextPage,
+        PrevPage,
+        FirstPage,
+        LastPage,
+        SetPageSize10,
+        SetPageSize25,
+        SetPageSize50,
+        SortCol(str),
+        SearchChanged(str),
+        TreeFilterChanged(str),
+        SetSql(str),
+        RunSql,
+        ClearSql,
+        PresetSqlCustomers,
+        PresetSqlProducts,
+        PresetSqlOrders,
+        PresetSqlError,
+        ToggleNewRowModal,
+        InputNameChanged(str),
+        InputContactChanged(str),
+        InputCityChanged(str),
+        InputCountryChanged(str),
+        SaveNewRow,
+        DeleteRow(int),
+        CommitTx,
+        RollbackTx,
+        ResetDb
+    }
+
+    model {
+        // ---- 视图与导航状态 ----
+        activeTab str = "data"          // "data" | "schema" | "console"
+        activeTable str = "customers"   // 当前选中的表名
+        activeType str = "table"        // "table" | "view" | "index"
+        treeFilter str = ""             // 对象树过滤文本
+
+        // ---- 分页与排序状态 ----
+        page int = 1
+        pageSize int = 10
+        totalPages int = 1
+        totalRows int = 91
+        filteredCount int = 91
+        showingText str = "Showing 1 - 10 of 91 rows"
+        searchKw str = ""
+        sortCol str = "id"
+        sortDir str = "asc"
+
+        // 列头排序指示
+        hId str = "ID ↑"
+        hCol1 str = "Company Name"
+        hCol2 str = "Contact Name"
+        hCol3 str = "City"
+        hCol4 str = "Country"
+        hCol5 str = "Phone"
+
+        // ---- 表结构与 DDL 元数据 ----
+        schemaColumns = []
+        schemaIndexes = []
+        schemaDdl str = ""
+        tableStatsText str = "Table: customers · 6 Columns · 91 Records · ~14 KB"
+
+        // ---- 活跃展示的数据切片 ----
+        activeRows = []
+
+        // ---- 事务与脏数据状态 ----
+        dirtyCount int = 0
+        showNewRowModal bool = false
+        newName str = ""
+        newContact str = ""
+        newCity str = ""
+        newCountry str = ""
+        txStatusMsg str = ""
+
+        // ---- SQL 控制台状态 ----
+        sqlInput str = "SELECT * FROM customers LIMIT 20;"
+        sqlStatus str = "idle"          // "idle" | "success" | "error"
+        sqlDurationMs int = 0
+        sqlErrorMsg str = ""
+        sqlResultCount int = 0
+        sqlResultCols = []
+        sqlResultRows = []
+
+        // ---- 原始数据库表数据 ----
+        customers = [
+            { id: 1, col1: "Alfreds Futterkiste", col2: "Maria Anders", col3: "Berlin", col4: "Germany", col5: "030-0074321" },
+            { id: 2, col1: "Ana Trujillo Emparedados", col2: "Ana Trujillo", col3: "México D.F.", col4: "Mexico", col5: "(5) 555-4729" },
+            { id: 3, col1: "Antonio Moreno Taquería", col2: "Antonio Moreno", col3: "México D.F.", col4: "Mexico", col5: "(5) 555-3932" },
+            { id: 4, col1: "Around the Horn", col2: "Thomas Hardy", col3: "London", col4: "UK", col5: "(171) 555-7788" },
+            { id: 5, col1: "Berglunds snabbköp", col2: "Christina Berglund", col3: "Luleå", col4: "Sweden", col5: "0921-12 34 65" },
+            { id: 6, col1: "Blauer See Delikatessen", col2: "Hanna Moos", col3: "Mannheim", col4: "Germany", col5: "0621-08460" },
+            { id: 7, col1: "Blondel père et fils", col2: "Frédérique Citeaux", col3: "Strasbourg", col4: "France", col5: "88.60.15.31" },
+            { id: 8, col1: "Bólido Comidas preparadas", col2: "Martín Sommer", col3: "Madrid", col4: "Spain", col5: "(91) 555 22 82" },
+            { id: 9, col1: "Bon app'", col2: "Laurence Lebihan", col3: "Marseille", col4: "France", col5: "91.24.45.40" },
+            { id: 10, col1: "Bottom-Dollar Markets", col2: "Elizabeth Lincoln", col3: "Tsawwassen", col4: "Canada", col5: "(604) 555-4729" },
+            { id: 11, col1: "B's Beverages", col2: "Victoria Ashworth", col3: "London", col4: "UK", col5: "(171) 555-1212" },
+            { id: 12, col1: "Cactus Comidas para llevar", col2: "Patricio Simpson", col3: "Buenos Aires", col4: "Argentina", col5: "(1) 135-5555" },
+            { id: 13, col1: "Centro comercial Moctezuma", col2: "Francisco Chang", col3: "México D.F.", col4: "Mexico", col5: "(5) 555-3392" },
+            { id: 14, col1: "Chop-suey Chinese", col2: "Yang Wang", col3: "Bern", col4: "Switzerland", col5: "0452-076545" },
+            { id: 15, col1: "Comércio Mineiro", col2: "Pedro Afonso", col3: "Sao Paulo", col4: "Brazil", col5: "(11) 555-7647" }
+        ]
+
+        products = [
+            { id: 1, col1: "Chai Tea", col2: "Beverages", col3: "$18.00", col4: "39 in stock", col5: "Active" },
+            { id: 2, col1: "Chang Beer", col2: "Beverages", col3: "$19.00", col4: "17 in stock", col5: "Active" },
+            { id: 3, col1: "Aniseed Syrup", col2: "Condiments", col3: "$10.00", col4: "13 in stock", col5: "Active" },
+            { id: 4, col1: "Chef Anton's Cajun Seasoning", col2: "Condiments", col3: "$22.00", col4: "53 in stock", col5: "Active" },
+            { id: 5, col1: "Chef Anton's Gumbo Mix", col2: "Condiments", col3: "$21.35", col4: "0 in stock", col5: "Discontinued" },
+            { id: 6, col1: "Grandma's Boysenberry Spread", col2: "Condiments", col3: "$25.00", col4: "120 in stock", col5: "Active" },
+            { id: 7, col1: "Uncle Bob's Organic Dried Pears", col2: "Produce", col3: "$30.00", col4: "15 in stock", col5: "Active" },
+            { id: 8, col1: "Northwoods Cranberry Sauce", col2: "Condiments", col3: "$40.00", col4: "6 in stock", col5: "Active" },
+            { id: 9, col1: "Mishi Kobe Niku", col2: "Meat/Poultry", col3: "$97.00", col4: "29 in stock", col5: "Active" },
+            { id: 10, col1: "Ikura Salmon Caviar", col2: "Seafood", col3: "$31.00", col4: "31 in stock", col5: "Active" },
+            { id: 11, col1: "Queso Cabrales", col2: "Dairy Products", col3: "$21.00", col4: "22 in stock", col5: "Active" },
+            { id: 12, col1: "Queso Manchego La Pastora", col2: "Dairy Products", col3: "$38.00", col4: "86 in stock", col5: "Active" }
+        ]
+
+        orders = [
+            { id: 10248, col1: "VINET", col2: "1996-07-04", col3: "France", col4: "$32.38", col5: "Shipped" },
+            { id: 10249, col1: "TOMSP", col2: "1996-07-05", col3: "Germany", col4: "$11.61", col5: "Shipped" },
+            { id: 10250, col1: "HANAR", col2: "1996-07-08", col3: "Brazil", col4: "$65.83", col5: "Shipped" },
+            { id: 10251, col1: "VICTE", col2: "1996-07-08", col3: "France", col4: "$41.34", col5: "Shipped" },
+            { id: 10252, col1: "SUPRD", col2: "1996-07-09", col3: "Belgium", col4: "$51.30", col5: "Shipped" },
+            { id: 10253, col1: "HANAR", col2: "1996-07-10", col3: "Brazil", col4: "$58.17", col5: "Delivered" },
+            { id: 10254, col1: "CHOPS", col2: "1996-07-11", col3: "Switzerland", col4: "$22.98", col5: "Shipped" },
+            { id: 10255, col1: "RICSU", col2: "1996-07-12", col3: "Switzerland", col4: "$148.33", col5: "Delivered" },
+            { id: 10256, col1: "WELLI", col2: "1996-07-15", col3: "Brazil", col4: "$13.97", col5: "Processing" },
+            { id: 10257, col1: "HILAA", col2: "1996-07-16", col3: "Venezuela", col4: "$81.91", col5: "Processing" }
+        ]
+
+        categories = [
+            { id: 1, col1: "Beverages", col2: "Soft drinks, coffees, teas, beers, and ales", col3: "12 items", col4: "Active", col5: "None" },
+            { id: 2, col1: "Condiments", col2: "Sweet and savory sauces, relishes, spreads, seasonings", col3: "12 items", col4: "Active", col5: "None" },
+            { id: 3, col1: "Confections", col2: "Desserts, candies, and sweet breads", col3: "13 items", col4: "Active", col5: "None" },
+            { id: 4, col1: "Dairy Products", col2: "Cheeses and butter", col3: "10 items", col4: "Active", col5: "None" },
+            { id: 5, col1: "Grains/Cereals", col2: "Breads, crackers, pasta, and cereal", col3: "7 items", col4: "Active", col5: "None" },
+            { id: 6, col1: "Meat/Poultry", col2: "Prepared meats", col3: "6 items", col4: "Active", col5: "None" },
+            { id: 7, col1: "Produce", col2: "Dried fruit and bean curd", col3: "5 items", col4: "Active", col5: "None" },
+            { id: 8, col1: "Seafood", col2: "Seaweed and fish", col3: "12 items", col4: "Active", col5: "None" }
+        ]
+
+        employees = [
+            { id: 1, col1: "Nancy", col2: "Davolio", col3: "Sales Representative", col4: "Sales", col5: "x5467" },
+            { id: 2, col1: "Andrew", col2: "Fuller", col3: "Vice President, Sales", col4: "Executive", col5: "x3457" },
+            { id: 3, col1: "Janet", col2: "Leverling", col3: "Sales Representative", col4: "Sales", col5: "x3355" },
+            { id: 4, col1: "Margaret", col2: "Peacock", col3: "Sales Representative", col4: "Sales", col5: "x5176" },
+            { id: 5, col1: "Steven", col2: "Buchanan", col3: "Sales Manager", col4: "Sales", col5: "x3453" },
+            { id: 6, col1: "Michael", col2: "Suyama", col3: "Sales Representative", col4: "Sales", col5: "x428" }
+        ]
+
+        audit_logs = [
+            { id: 1001, col1: "2026-09-02 10:14:02", col2: "LOGIN_SUCCESS", col3: "admin", col4: "192.168.1.102", col5: "200 OK" },
+            { id: 1002, col1: "2026-09-02 10:15:23", col2: "SELECT_QUERY", col3: "admin", col4: "192.168.1.102", col5: "200 OK" },
+            { id: 1003, col1: "2026-09-02 10:16:45", col2: "UPDATE_ROW", col3: "operator", col4: "192.168.1.105", col5: "200 OK" },
+            { id: 1004, col1: "2026-09-02 10:18:11", col2: "INSERT_ROW", col3: "operator", col4: "192.168.1.105", col5: "201 Created" },
+            { id: 1005, col1: "2026-09-02 10:20:00", col2: "CHECKPOINT", col3: "system", col4: "127.0.0.1", col5: "200 OK" },
+            { id: 1006, col1: "2026-09-02 10:22:15", col2: "VACUUM_ANALYZE", col3: "system", col4: "127.0.0.1", col5: "200 OK" },
+            { id: 1007, col1: "2026-09-02 10:25:30", col2: "SCHEMA_INSPECT", col3: "analyst", col4: "192.168.1.110", col5: "200 OK" },
+            { id: 1008, col1: "2026-09-02 10:28:44", col2: "EXPLAIN_QUERY", col3: "analyst", col4: "192.168.1.110", col5: "200 OK" },
+            { id: 1009, col1: "2026-09-02 10:30:12", col2: "BACKUP_START", col3: "cron", col4: "127.0.0.1", col5: "200 OK" },
+            { id: 1010, col1: "2026-09-02 10:32:59", col2: "BACKUP_DONE", col3: "cron", col4: "127.0.0.1", col5: "200 OK" },
+            { id: 1011, col1: "2026-09-02 10:35:10", col2: "HEALTH_CHECK", col3: "monitor", col4: "127.0.0.1", col5: "200 OK" },
+            { id: 1012, col1: "2026-09-02 10:38:22", col2: "SELECT_QUERY", col3: "guest", col4: "192.168.1.140", col5: "200 OK" }
+        ]
+    }
+
+    on {
+        .Init -> {
+            // 初始化表头与元数据
+            .hId = "ID ↑"
+            .hCol1 = "Company Name"
+            .hCol2 = "Contact Name"
+            .hCol3 = "City"
+            .hCol4 = "Country"
+            .hCol5 = "Phone"
+
+            .schemaColumns = [
+                { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "PK" },
+                { cid: 1, name: "company_name", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                { cid: 2, name: "contact_name", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                { cid: 3, name: "city", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                { cid: 4, name: "country", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                { cid: 5, name: "phone", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" }
+            ]
+            .schemaIndexes = [
+                { name: "pk_customers", cols: "id", unique: "UNIQUE (PRIMARY KEY)" },
+                { name: "idx_customers_country", cols: "country", unique: "INDEX" }
+            ]
+            .schemaDdl = "CREATE TABLE customers (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  company_name TEXT NOT NULL,\n  contact_name TEXT,\n  city TEXT,\n  country TEXT,\n  phone TEXT\n);"
+            .tableStatsText = "Table: customers · 6 Columns · 15 Records in RAM (91 in DB) · ~14 KB"
+
+            // 载入初始数据行切片
+            var sl = []
+            var i = 0
+            for r in .customers {
+                if i < .pageSize {
+                    sl.push(r)
+                }
+                i = i + 1
+            }
+            .activeRows = sl
+            .totalRows = .customers.len()
+            .filteredCount = .customers.len()
+            .totalPages = 2
+            .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+        }
+
+        .SelectTab(tab) -> {
+            .activeTab = tab
+        }
+
+        .SelectTable(tbl) -> {
+            .activeTable = tbl
+            .activeType = "table"
+            .page = 1
+            .searchKw = ""
+            .sortCol = "id"
+            .sortDir = "asc"
+
+            if tbl == "customers" {
+                .hId = "ID ↑"
+                .hCol1 = "Company Name"
+                .hCol2 = "Contact Name"
+                .hCol3 = "City"
+                .hCol4 = "Country"
+                .hCol5 = "Phone"
+                .totalRows = .customers.len()
+                .filteredCount = .customers.len()
+                .schemaColumns = [
+                    { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "PK" },
+                    { cid: 1, name: "company_name", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 2, name: "contact_name", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                    { cid: 3, name: "city", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                    { cid: 4, name: "country", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                    { cid: 5, name: "phone", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" }
+                ]
+                .schemaIndexes = [
+                    { name: "pk_customers", cols: "id", unique: "UNIQUE (PRIMARY KEY)" },
+                    { name: "idx_customers_country", cols: "country", unique: "INDEX" }
+                ]
+                .schemaDdl = "CREATE TABLE customers (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  company_name TEXT NOT NULL,\n  contact_name TEXT,\n  city TEXT,\n  country TEXT,\n  phone TEXT\n);"
+                .tableStatsText = "Table: customers · 6 Columns · 15 Records in RAM · ~14 KB"
+                var sl = []
+                var i = 0
+                for r in .customers {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+                .activeRows = sl
+                .totalPages = 2
+                .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+            }
+
+            if tbl == "products" {
+                .hId = "ID ↑"
+                .hCol1 = "Product Name"
+                .hCol2 = "Category"
+                .hCol3 = "Unit Price"
+                .hCol4 = "Stock Level"
+                .hCol5 = "Status"
+                .totalRows = .products.len()
+                .filteredCount = .products.len()
+                .schemaColumns = [
+                    { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "PK" },
+                    { cid: 1, name: "product_name", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 2, name: "category", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 3, name: "unit_price", type: "REAL", notnull: "YES", dflt: "0.0", pk: "-" },
+                    { cid: 4, name: "units_in_stock", type: "INTEGER", notnull: "YES", dflt: "0", pk: "-" },
+                    { cid: 5, name: "status", type: "TEXT", notnull: "YES", dflt: "'Active'", pk: "-" }
+                ]
+                .schemaIndexes = [
+                    { name: "pk_products", cols: "id", unique: "UNIQUE (PRIMARY KEY)" },
+                    { name: "idx_products_category", cols: "category", unique: "INDEX" }
+                ]
+                .schemaDdl = "CREATE TABLE products (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  product_name TEXT NOT NULL,\n  category TEXT NOT NULL,\n  unit_price REAL NOT NULL DEFAULT 0.0,\n  units_in_stock INTEGER NOT NULL DEFAULT 0,\n  status TEXT NOT NULL DEFAULT 'Active'\n);"
+                .tableStatsText = "Table: products · 6 Columns · 12 Records in RAM · ~18 KB"
+                var sl = []
+                var i = 0
+                for r in .products {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+                .activeRows = sl
+                .totalPages = 2
+                .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+            }
+
+            if tbl == "orders" {
+                .hId = "Order ID ↑"
+                .hCol1 = "Customer"
+                .hCol2 = "Order Date"
+                .hCol3 = "Ship Country"
+                .hCol4 = "Freight"
+                .hCol5 = "Status"
+                .totalRows = .orders.len()
+                .filteredCount = .orders.len()
+                .schemaColumns = [
+                    { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "PK" },
+                    { cid: 1, name: "customer_id", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 2, name: "order_date", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 3, name: "ship_country", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                    { cid: 4, name: "freight", type: "REAL", notnull: "NO", dflt: "0.0", pk: "-" },
+                    { cid: 5, name: "status", type: "TEXT", notnull: "YES", dflt: "'Pending'", pk: "-" }
+                ]
+                .schemaIndexes = [
+                    { name: "pk_orders", cols: "id", unique: "UNIQUE (PRIMARY KEY)" },
+                    { name: "idx_orders_customer", cols: "customer_id", unique: "INDEX" }
+                ]
+                .schemaDdl = "CREATE TABLE orders (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  customer_id TEXT NOT NULL,\n  order_date TEXT NOT NULL,\n  ship_country TEXT,\n  freight REAL DEFAULT 0.0,\n  status TEXT NOT NULL\n);"
+                .tableStatsText = "Table: orders · 6 Columns · 10 Records in RAM · ~12 KB"
+                var sl = []
+                var i = 0
+                for r in .orders {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+                .activeRows = sl
+                .totalPages = 1
+                .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+            }
+
+            if tbl == "categories" {
+                .hId = "ID ↑"
+                .hCol1 = "Category Name"
+                .hCol2 = "Description"
+                .hCol3 = "Total Products"
+                .hCol4 = "Status"
+                .hCol5 = "Extra"
+                .totalRows = .categories.len()
+                .filteredCount = .categories.len()
+                .schemaColumns = [
+                    { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "PK" },
+                    { cid: 1, name: "name", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 2, name: "description", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" }
+                ]
+                .schemaIndexes = [
+                    { name: "pk_categories", cols: "id", unique: "UNIQUE (PRIMARY KEY)" }
+                ]
+                .schemaDdl = "CREATE TABLE categories (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  description TEXT\n);"
+                .tableStatsText = "Table: categories · 3 Columns · 8 Records in RAM · ~6 KB"
+                var sl = []
+                for r in .categories { sl.push(r) }
+                .activeRows = sl
+                .totalPages = 1
+                .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+            }
+
+            if tbl == "employees" {
+                .hId = "ID ↑"
+                .hCol1 = "First Name"
+                .hCol2 = "Last Name"
+                .hCol3 = "Title"
+                .hCol4 = "Department"
+                .hCol5 = "Extension"
+                .totalRows = .employees.len()
+                .filteredCount = .employees.len()
+                .schemaColumns = [
+                    { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "PK" },
+                    { cid: 1, name: "first_name", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 2, name: "last_name", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 3, name: "title", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                    { cid: 4, name: "department", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" }
+                ]
+                .schemaIndexes = [
+                    { name: "pk_employees", cols: "id", unique: "UNIQUE (PRIMARY KEY)" }
+                ]
+                .schemaDdl = "CREATE TABLE employees (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  first_name TEXT NOT NULL,\n  last_name TEXT NOT NULL,\n  title TEXT,\n  department TEXT\n);"
+                .tableStatsText = "Table: employees · 5 Columns · 6 Records in RAM · ~8 KB"
+                var sl = []
+                for r in .employees { sl.push(r) }
+                .activeRows = sl
+                .totalPages = 1
+                .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+            }
+
+            if tbl == "audit_logs" {
+                .hId = "Log ID ↑"
+                .hCol1 = "Timestamp"
+                .hCol2 = "Action"
+                .hCol3 = "User"
+                .hCol4 = "Client IP"
+                .hCol5 = "Result Code"
+                .totalRows = .audit_logs.len()
+                .filteredCount = .audit_logs.len()
+                .schemaColumns = [
+                    { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "PK" },
+                    { cid: 1, name: "timestamp", type: "TEXT", notnull: "YES", dflt: "CURRENT_TIMESTAMP", pk: "-" },
+                    { cid: 2, name: "action", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 3, name: "user", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                    { cid: 4, name: "ip_address", type: "TEXT", notnull: "NO", dflt: "NULL", pk: "-" },
+                    { cid: 5, name: "status", type: "TEXT", notnull: "YES", dflt: "'200 OK'", pk: "-" }
+                ]
+                .schemaIndexes = [
+                    { name: "pk_audit_logs", cols: "id", unique: "UNIQUE (PRIMARY KEY)" },
+                    { name: "idx_audit_logs_user", cols: "user", unique: "INDEX" }
+                ]
+                .schemaDdl = "CREATE TABLE audit_logs (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  action TEXT NOT NULL,\n  user TEXT NOT NULL,\n  ip_address TEXT,\n  status TEXT NOT NULL\n);"
+                .tableStatsText = "Table: audit_logs · 6 Columns · 12 Records in RAM (10,000 in DB) · ~1.2 MB"
+                var sl = []
+                var i = 0
+                for r in .audit_logs {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+                .activeRows = sl
+                .totalPages = 2
+                .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+            }
+        }
+
+        .SelectView(viewName) -> {
+            .activeTable = viewName
+            .activeType = "view"
+            .page = 1
+            .searchKw = ""
+            .hId = "View ID"
+            .hCol1 = "Summary Field 1"
+            .hCol2 = "Summary Field 2"
+            .hCol3 = "Aggregate Total"
+            .hCol4 = "Status"
+            .hCol5 = "Tag"
+            .tableStatsText = f"View: ${viewName} · Read-Only View Definition"
+            .schemaDdl = f"CREATE VIEW ${viewName} AS\n  SELECT o.id, c.company_name, o.order_date, SUM(od.unit_price * od.quantity) AS total\n  FROM orders o\n  JOIN customers c ON o.customer_id = c.id\n  GROUP BY o.id;"
+            .schemaColumns = [
+                { cid: 0, name: "id", type: "INTEGER", notnull: "YES", dflt: "NULL", pk: "-" },
+                { cid: 1, name: "company_name", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                { cid: 2, name: "order_date", type: "TEXT", notnull: "YES", dflt: "NULL", pk: "-" },
+                { cid: 3, name: "total", type: "REAL", notnull: "YES", dflt: "0.0", pk: "-" }
+            ]
+            .schemaIndexes = []
+            var sl = []
+            var i = 0
+            for r in .orders {
+                if i < .pageSize { sl.push(r) }
+                i = i + 1
+            }
+            .activeRows = sl
+            .totalRows = .orders.len()
+            .filteredCount = .orders.len()
+            .totalPages = 1
+            .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+        }
+
+        .SelectIndex(idxName) -> {
+            .activeTable = idxName
+            .activeType = "index"
+            .activeTab = "schema"
+            .tableStatsText = f"Index: ${idxName} · B-Tree Index"
+            .schemaDdl = f"CREATE INDEX ${idxName} ON orders (customer_id);"
+        }
+
+        .NextPage -> {
+            if .page < .totalPages {
+                .page = .page + 1
+                var start = (.page - 1) * .pageSize
+                var end = start + .pageSize
+                var sl = []
+                var i = 0
+                if .activeTable == "customers" {
+                    for r in .customers {
+                        if i >= start && i < end { sl.push(r) }
+                        i = i + 1
+                    }
+                }
+                if .activeTable == "products" {
+                    for r in .products {
+                        if i >= start && i < end { sl.push(r) }
+                        i = i + 1
+                    }
+                }
+                if .activeTable == "audit_logs" {
+                    for r in .audit_logs {
+                        if i >= start && i < end { sl.push(r) }
+                        i = i + 1
+                    }
+                }
+                .activeRows = sl
+                var start1 = start + 1
+                var end1 = start + sl.len()
+                .showingText = f"Showing ${start1} - ${end1} of ${.totalRows} rows"
+            }
+        }
+
+        .PrevPage -> {
+            if .page > 1 {
+                .page = .page - 1
+                var start = (.page - 1) * .pageSize
+                var end = start + .pageSize
+                var sl = []
+                var i = 0
+                if .activeTable == "customers" {
+                    for r in .customers {
+                        if i >= start && i < end { sl.push(r) }
+                        i = i + 1
+                    }
+                }
+                if .activeTable == "products" {
+                    for r in .products {
+                        if i >= start && i < end { sl.push(r) }
+                        i = i + 1
+                    }
+                }
+                if .activeTable == "audit_logs" {
+                    for r in .audit_logs {
+                        if i >= start && i < end { sl.push(r) }
+                        i = i + 1
+                    }
+                }
+                .activeRows = sl
+                var start1 = start + 1
+                var end1 = start + sl.len()
+                .showingText = f"Showing ${start1} - ${end1} of ${.totalRows} rows"
+            }
+        }
+
+        .FirstPage -> {
+            .page = 1
+            var sl = []
+            var i = 0
+            if .activeTable == "customers" {
+                for r in .customers {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+            }
+            if .activeTable == "products" {
+                for r in .products {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+            }
+            if .activeTable == "audit_logs" {
+                for r in .audit_logs {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+            }
+            .activeRows = sl
+            .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+        }
+
+        .LastPage -> {
+            .page = .totalPages
+            var start = (.page - 1) * .pageSize
+            var sl = []
+            var i = 0
+            if .activeTable == "customers" {
+                for r in .customers {
+                    if i >= start { sl.push(r) }
+                    i = i + 1
+                }
+            }
+            if .activeTable == "products" {
+                for r in .products {
+                    if i >= start { sl.push(r) }
+                    i = i + 1
+                }
+            }
+            if .activeTable == "audit_logs" {
+                for r in .audit_logs {
+                    if i >= start { sl.push(r) }
+                    i = i + 1
+                }
+            }
+            .activeRows = sl
+            var start1 = start + 1
+            var end1 = start + sl.len()
+            .showingText = f"Showing ${start1} - ${end1} of ${.totalRows} rows"
+        }
+
+        .SetPageSize10 -> {
+            .pageSize = 10
+            .page = 1
+            .totalPages = 2
+            var sl = []
+            var i = 0
+            for r in .customers {
+                if i < 10 { sl.push(r) }
+                i = i + 1
+            }
+            .activeRows = sl
+            .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+        }
+
+        .SetPageSize25 -> {
+            .pageSize = 25
+            .page = 1
+            .totalPages = 1
+            var sl = []
+            if .activeTable == "customers" {
+                for r in .customers { sl.push(r) }
+            } else {
+                for r in .products { sl.push(r) }
+            }
+            .activeRows = sl
+            .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+        }
+
+        .SetPageSize50 -> {
+            .pageSize = 50
+            .page = 1
+            .totalPages = 1
+            var sl = []
+            if .activeTable == "customers" {
+                for r in .customers { sl.push(r) }
+            } else {
+                for r in .products { sl.push(r) }
+            }
+            .activeRows = sl
+            .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+        }
+
+        .SortCol(col) -> {
+            if .sortCol == col {
+                if .sortDir == "asc" {
+                    .sortDir = "desc"
+                } else {
+                    .sortDir = "asc"
+                }
+            } else {
+                .sortCol = col
+                .sortDir = "asc"
+            }
+
+            // 更新指示箭头
+            if col == "id" {
+                if .sortDir == "asc" { .hId = "ID ↑" } else { .hId = "ID ↓" }
+            }
+            if col == "col1" {
+                if .sortDir == "asc" { .hCol1 = "Company Name ↑" } else { .hCol1 = "Company Name ↓" }
+            }
+
+            // 倒序重排当前切片（模拟排序）
+            var rev = []
+            var n = .activeRows.len()
+            var k = n - 1
+            while k >= 0 {
+                var j = 0
+                for r in .activeRows {
+                    if j == k {
+                        rev.push(r)
+                    }
+                    j = j + 1
+                }
+                k = k - 1
+            }
+            .activeRows = rev
+        }
+
+        .SearchChanged(kw) -> {
+            .searchKw = kw
+            if kw == "" {
+                var sl = []
+                var i = 0
+                for r in .customers {
+                    if i < .pageSize { sl.push(r) }
+                    i = i + 1
+                }
+                .activeRows = sl
+                .filteredCount = .customers.len()
+                .showingText = f"Showing 1 - ${sl.len()} of ${.totalRows} rows"
+            } else {
+                var filtered = []
+                for r in .customers {
+                    if r.col1.contains(kw) || r.col2.contains(kw) || r.col3.contains(kw) || r.col4.contains(kw) {
+                        filtered.push(r)
+                    }
+                }
+                .activeRows = filtered
+                .filteredCount = filtered.len()
+                .showingText = f"Filtered: ${filtered.len()} matches of ${.totalRows} rows"
+            }
+        }
+
+        .TreeFilterChanged(kw) -> {
+            .treeFilter = kw
+        }
+
+        .SetSql(query) -> {
+            .sqlInput = query
+        }
+
+        .RunSql -> {
+            if .sqlInput.contains("non_existing") || .sqlInput.contains("syntax_error") {
+                .sqlStatus = "error"
+                .sqlDurationMs = 0
+                .sqlErrorMsg = "SQLite Error [1]: no such table: non_existing_table (near 'non_existing_table')"
+                .sqlResultCols = []
+                .sqlResultRows = []
+                .sqlResultCount = 0
+            } else {
+                .sqlStatus = "success"
+                .sqlDurationMs = 2
+                .sqlErrorMsg = ""
+                if .sqlInput.contains("products") {
+                    .sqlResultCols = ["id", "product_name", "category", "unit_price", "units_in_stock"]
+                    var res = []
+                    for p in .products {
+                        res.push({ col0: f"${p.id}", col1: p.col1, col2: p.col2, col3: p.col3, col4: p.col4 })
+                    }
+                    .sqlResultRows = res
+                    .sqlResultCount = res.len()
+                } else if .sqlInput.contains("orders") {
+                    .sqlResultCols = ["id", "customer_id", "order_date", "ship_country", "status"]
+                    var res = []
+                    for o in .orders {
+                        res.push({ col0: f"${o.id}", col1: o.col1, col2: o.col2, col3: o.col3, col4: o.col5 })
+                    }
+                    .sqlResultRows = res
+                    .sqlResultCount = res.len()
+                } else {
+                    .sqlResultCols = ["id", "company_name", "contact_name", "city", "country"]
+                    var res = []
+                    for c in .customers {
+                        res.push({ col0: f"${c.id}", col1: c.col1, col2: c.col2, col3: c.col3, col4: c.col4 })
+                    }
+                    .sqlResultRows = res
+                    .sqlResultCount = res.len()
+                }
+            }
+        }
+
+        .ClearSql -> {
+            .sqlInput = ""
+            .sqlStatus = "idle"
+            .sqlErrorMsg = ""
+            .sqlResultCols = []
+            .sqlResultRows = []
+        }
+
+        .PresetSqlCustomers -> {
+            .sqlInput = "SELECT * FROM customers LIMIT 20;"
+            .sqlStatus = "idle"
+        }
+
+        .PresetSqlProducts -> {
+            .sqlInput = "SELECT id, product_name, category, unit_price FROM products WHERE unit_price > 20;"
+            .sqlStatus = "idle"
+        }
+
+        .PresetSqlOrders -> {
+            .sqlInput = "SELECT id, customer_id, order_date, status FROM orders ORDER BY id DESC;"
+            .sqlStatus = "idle"
+        }
+
+        .PresetSqlError -> {
+            .sqlInput = "SELECT * FROM non_existing_table WHERE id = 999;"
+            .sqlStatus = "idle"
+        }
+
+        .ToggleNewRowModal -> {
+            .showNewRowModal = !.showNewRowModal
+            .newName = ""
+            .newContact = ""
+            .newCity = ""
+            .newCountry = ""
+        }
+
+        .InputNameChanged(v) -> { .newName = v }
+        .InputContactChanged(v) -> { .newContact = v }
+        .InputCityChanged(v) -> { .newCity = v }
+        .InputCountryChanged(v) -> { .newCountry = v }
+
+        .SaveNewRow -> {
+            var newId = .customers.len() + 1
+            var r = { id: newId, col1: .newName, col2: .newContact, col3: .newCity, col4: .newCountry, col5: "N/A" }
+            .customers.push(r)
+            .activeRows.push(r)
+            .dirtyCount = .dirtyCount + 1
+            .showNewRowModal = false
+            .totalRows = .customers.len()
+            .txStatusMsg = f"1 row staged for insert (Uncommitted: ${.dirtyCount})"
+        }
+
+        .DeleteRow(idx) -> {
+            var remaining = []
+            var j = 0
+            for r in .activeRows {
+                if j != idx {
+                    remaining.push(r)
+                }
+                j = j + 1
+            }
+            .customers = remaining
+            .activeRows = remaining
+            .dirtyCount = .dirtyCount + 1
+            .totalRows = remaining.len()
+            .txStatusMsg = f"Row deleted (Uncommitted: ${.dirtyCount})"
+        }
+
+        .CommitTx -> {
+            .dirtyCount = 0
+            .txStatusMsg = "✓ Transaction COMMITTED: changes persisted to SQLite engine."
+        }
+
+        .RollbackTx -> {
+            .dirtyCount = 0
+            .txStatusMsg = "↺ Transaction ROLLED BACK: all uncommitted changes discarded."
+        }
+
+        .ResetDb -> {
+            .dirtyCount = 0
+            .txStatusMsg = "Database reset to initial demo snapshot."
+        }
+    }
+
+    view {
+        col (style: "min-h-screen bg-background text-foreground flex flex-col") {
+            // ---- 顶栏 Header ----
+            row (style: "items-center justify-between px-6 py-3 border-b bg-card") {
+                row (style: "items-center gap-3") {
+                    span (style: "w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center font-bold text-base") {
+                        text "🗄" {}
+                    }
+                    col (style: "gap-0.5") {
+                        row (style: "items-center gap-2") {
+                            h1 "Database Studio" { style: "text-lg font-bold tracking-tight" }
+                            badge (text: "SQLite 3.45", variant: "secondary") {}
+                        }
+                        text "northwind.db · In-Memory Studio (Plan 439)" { style: "text-xs text-muted-foreground" }
+                    }
+                }
+                row (style: "items-center gap-4") {
+                    row (style: "items-center gap-2 text-xs text-muted-foreground") {
+                        span (style: "w-2 h-2 rounded-full bg-green-500") {}
+                        text "7 Tables · 2 Views · 3 Indexes · 10,240 Rows" {}
+                    }
+                    if .dirtyCount > 0 {
+                        row (style: "items-center gap-2") {
+                            badge (text: f"${.dirtyCount} Uncommitted", variant: "default") {}
+                            button "✓ Commit" {
+                                onclick: .CommitTx,
+                                style: "px-2.5 py-1 text-xs rounded bg-green-600 hover:bg-green-700 text-white font-medium"
+                            }
+                            button "↺ Rollback" {
+                                onclick: .RollbackTx,
+                                style: "px-2.5 py-1 text-xs rounded border border-border bg-background hover:bg-accent text-foreground"
+                            }
+                        }
+                    }
+                    button "↺ Reset DB" {
+                        onclick: .ResetDb,
+                        style: "px-2.5 py-1 text-xs rounded border border-border bg-background hover:bg-accent text-muted-foreground"
+                    }
+                }
+            }
+
+            // ---- 主工作区（两栏布局：左侧树导航 + 右侧内容） ----
+            row (style: "flex-1 min-h-0") {
+                // ---- 左侧对象树导航 ----
+                col (style: "w-64 border-r bg-card/50 flex flex-col shrink-0") {
+                    // 树搜索框
+                    col (style: "p-3 border-b") {
+                        input {
+                            placeholder: "Filter database objects...",
+                            value: .treeFilter,
+                            oninput: .TreeFilterChanged,
+                            style: "w-full px-2.5 py-1.5 text-xs rounded-md border bg-background focus:ring-1 focus:ring-primary outline-none"
+                        }
+                    }
+
+                    // 导航树
+                    col (style: "flex-1 overflow-y-auto p-2 gap-3 text-xs") {
+                        // Tables 分组
+                        col (style: "gap-1") {
+                            row (style: "items-center justify-between px-2 py-1 text-muted-foreground font-semibold uppercase tracking-wider text-[10px]") {
+                                text "Tables" {}
+                                text "7" { style: "px-1.5 py-0.5 rounded bg-muted text-[10px]" }
+                            }
+                            button "📄 customers (91)" {
+                                onclick: () => { .SelectTable("customers") },
+                                style: if .activeTable == "customers" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
+                            }
+                            button "📄 products (77)" {
+                                onclick: () => { .SelectTable("products") },
+                                style: if .activeTable == "products" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
+                            }
+                            button "📄 orders (830)" {
+                                onclick: () => { .SelectTable("orders") },
+                                style: if .activeTable == "orders" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
+                            }
+                            button "📄 categories (8)" {
+                                onclick: () => { .SelectTable("categories") },
+                                style: if .activeTable == "categories" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
+                            }
+                            button "📄 employees (9)" {
+                                onclick: () => { .SelectTable("employees") },
+                                style: if .activeTable == "employees" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
+                            }
+                            button "📄 audit_logs (10k)" {
+                                onclick: () => { .SelectTable("audit_logs") },
+                                style: if .activeTable == "audit_logs" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
+                            }
+                        }
+
+                        // Views 分组
+                        col (style: "gap-1") {
+                            row (style: "items-center justify-between px-2 py-1 text-muted-foreground font-semibold uppercase tracking-wider text-[10px]") {
+                                text "Views" {}
+                                text "2" { style: "px-1.5 py-0.5 rounded bg-muted text-[10px]" }
+                            }
+                            button "👁 order_summary" {
+                                onclick: () => { .SelectView("order_summary") },
+                                style: if .activeTable == "order_summary" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
+                            }
+                            button "👁 product_catalog" {
+                                onclick: () => { .SelectView("product_catalog") },
+                                style: if .activeTable == "product_catalog" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
+                            }
+                        }
+
+                        // Indexes 分组
+                        col (style: "gap-1") {
+                            row (style: "items-center justify-between px-2 py-1 text-muted-foreground font-semibold uppercase tracking-wider text-[10px]") {
+                                text "Indexes" {}
+                                text "3" { style: "px-1.5 py-0.5 rounded bg-muted text-[10px]" }
+                            }
+                            button "⚡ idx_orders_customer" {
+                                onclick: () => { .SelectIndex("idx_orders_customer") },
+                                style: if .activeTable == "idx_orders_customer" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
+                            }
+                            button "⚡ idx_products_category" {
+                                onclick: () => { .SelectIndex("idx_products_category") },
+                                style: if .activeTable == "idx_products_category" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
+                            }
+                        }
+
+                        // SQL Console 入口
+                        col (style: "mt-2 pt-2 border-t") {
+                            button "💻 SQL Console" {
+                                onclick: () => { .SelectTab("console") },
+                                style: if .activeTab == "console" { "w-full text-left px-3 py-2 rounded-md bg-primary text-primary-foreground font-semibold flex items-center gap-2" } else { "w-full text-left px-3 py-2 rounded-md border hover:bg-accent text-foreground font-medium flex items-center gap-2" }
+                            }
+                        }
+                    }
+                }
+
+                // ---- 右侧主内容区 ----
+                col (style: "flex-1 flex flex-col min-w-0 bg-background") {
+                    // Tab 切换条
+                    row (style: "items-center justify-between px-6 pt-3 border-b bg-card/30") {
+                        row (style: "gap-2") {
+                            button "📊 Data Browse" {
+                                onclick: () => { .SelectTab("data") },
+                                style: if .activeTab == "data" { "px-4 py-2 text-sm font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-4 py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent" }
+                            }
+                            button "📐 Table Schema / DDL" {
+                                onclick: () => { .SelectTab("schema") },
+                                style: if .activeTab == "schema" { "px-4 py-2 text-sm font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-4 py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent" }
+                            }
+                            button "💻 SQL Console" {
+                                onclick: () => { .SelectTab("console") },
+                                style: if .activeTab == "console" { "px-4 py-2 text-sm font-semibold border-b-2 border-primary text-primary bg-transparent" } else { "px-4 py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent" }
+                            }
+                        }
+                        text .tableStatsText { style: "text-xs text-muted-foreground pb-2" }
+                    }
+
+                    // 事务状态提示条
+                    if .txStatusMsg != "" {
+                        row (style: "items-center justify-between px-6 py-2 bg-muted/60 text-xs border-b") {
+                            text .txStatusMsg { style: "font-medium" }
+                        }
+                    }
+
+                    // === Tab 1: Data Browse 数据浏览 ===
+                    if .activeTab == "data" {
+                        col (style: "flex-1 p-6 gap-4 flex flex-col min-h-0") {
+                            // 工具栏：搜索 + 操作按钮 + 分页
+                            row (style: "items-center justify-between gap-4") {
+                                row (style: "items-center gap-2 flex-1") {
+                                    input {
+                                        placeholder: f"Filter records in ${.activeTable}...",
+                                        value: .searchKw,
+                                        oninput: .SearchChanged,
+                                        style: "w-64 px-3 py-1.5 text-xs rounded-md border bg-background focus:ring-1 focus:ring-primary outline-none"
+                                    }
+                                    button "+ Add Row" {
+                                        onclick: .ToggleNewRowModal,
+                                        style: "px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90"
+                                    }
+                                }
+
+                                // 分页控制条
+                                row (style: "items-center gap-2") {
+                                    text .showingText { style: "text-xs text-muted-foreground mr-2" }
+                                    button "|<<" {
+                                        onclick: .FirstPage,
+                                        style: "px-2 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
+                                    }
+                                    button "<" {
+                                        onclick: .PrevPage,
+                                        style: "px-2.5 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
+                                    }
+                                    text f"Page ${.page} / ${.totalPages}" { style: "text-xs font-semibold px-1" }
+                                    button ">" {
+                                        onclick: .NextPage,
+                                        style: "px-2.5 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
+                                    }
+                                    button ">>|" {
+                                        onclick: .LastPage,
+                                        style: "px-2 py-1 text-xs rounded border bg-card hover:bg-accent text-foreground disabled:opacity-50"
+                                    }
+                                    row (style: "items-center gap-1 ml-2 text-xs text-muted-foreground") {
+                                        text "Size:" {}
+                                        button "10" { onclick: .SetPageSize10, style: if .pageSize == 10 { "px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold" } else { "px-1.5 py-0.5 rounded border" } }
+                                        button "25" { onclick: .SetPageSize25, style: if .pageSize == 25 { "px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold" } else { "px-1.5 py-0.5 rounded border" } }
+                                        button "50" { onclick: .SetPageSize50, style: if .pageSize == 50 { "px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold" } else { "px-1.5 py-0.5 rounded border" } }
+                                    }
+                                }
+                            }
+
+                            // 新增行内联面板
+                            if .showNewRowModal {
+                                col (style: "p-4 border rounded-lg bg-card gap-3") {
+                                    row (style: "items-center justify-between") {
+                                        text "Add New Record" { style: "text-sm font-semibold" }
+                                        button "✕ Cancel" { onclick: .ToggleNewRowModal, style: "text-xs text-muted-foreground hover:text-foreground" }
+                                    }
+                                    row (style: "gap-3 items-center") {
+                                        input { placeholder: "Company / Name", value: .newName, oninput: .InputNameChanged, style: "flex-1 px-3 py-1.5 text-xs rounded border bg-background" }
+                                        input { placeholder: "Contact / Category", value: .newContact, oninput: .InputContactChanged, style: "flex-1 px-3 py-1.5 text-xs rounded border bg-background" }
+                                        input { placeholder: "City / Stock", value: .newCity, oninput: .InputCityChanged, style: "flex-1 px-3 py-1.5 text-xs rounded border bg-background" }
+                                        input { placeholder: "Country / Price", value: .newCountry, oninput: .InputCountryChanged, style: "flex-1 px-3 py-1.5 text-xs rounded border bg-background" }
+                                        button "Save Record" { onclick: .SaveNewRow, style: "px-4 py-1.5 text-xs rounded bg-green-600 text-white font-medium hover:bg-green-700" }
+                                    }
+                                }
+                            }
+
+                            // DataTable 表格区
+                            col (style: "flex-1 border rounded-lg overflow-hidden bg-card") {
+                                table {
+                                    table-header {
+                                        table-row {
+                                            table-head (onclick: () => { .SortCol("id") }, text: .hId, style: "cursor-pointer select-none font-semibold w-24") {}
+                                            table-head (onclick: () => { .SortCol("col1") }, text: .hCol1, style: "cursor-pointer select-none font-semibold min-w-[180px]") {}
+                                            table-head (text: .hCol2, style: "font-semibold min-w-[150px]") {}
+                                            table-head (text: .hCol3, style: "font-semibold min-w-[120px]") {}
+                                            table-head (text: .hCol4, style: "font-semibold min-w-[120px]") {}
+                                            table-head (text: .hCol5, style: "font-semibold min-w-[120px]") {}
+                                            table-head (text: "Actions", style: "w-20 text-right") {}
+                                        }
+                                    }
+                                    table-body {
+                                        for i, r in .activeRows {
+                                            table-row (key: i) {
+                                                table-cell (text: f"${r.id}", style: "font-mono font-medium text-xs") {}
+                                                table-cell (text: r.col1, style: "font-medium text-xs") {}
+                                                table-cell (text: r.col2, style: "text-xs") {}
+                                                table-cell (text: r.col3, style: "text-xs") {}
+                                                table-cell (text: r.col4, style: "text-xs") {}
+                                                table-cell {
+                                                    if r.col5 == "Active" || r.col5 == "Shipped" || r.col5 == "200 OK" {
+                                                        badge (text: r.col5, variant: "default") {}
+                                                    } else if r.col5 == "Discontinued" || r.col5 == "Processing" {
+                                                        badge (text: r.col5, variant: "secondary") {}
+                                                    } else {
+                                                        text r.col5 { style: "text-xs text-muted-foreground" }
+                                                    }
+                                                }
+                                                table-cell (style: "text-right") {
+                                                    button "🗑" {
+                                                        onclick: () => { .DeleteRow(i) },
+                                                        style: "px-2 py-0.5 text-xs text-red-500 hover:bg-red-500/10 rounded"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // === Tab 2: Table Schema / DDL 表结构检视 ===
+                    if .activeTab == "schema" {
+                        col (style: "flex-1 p-6 gap-6 overflow-y-auto") {
+                            // 列结构表
+                            col (style: "gap-2") {
+                                row (style: "items-center justify-between") {
+                                    text "Column Definitions" { style: "text-sm font-semibold" }
+                                    badge (text: f"${.schemaColumns.len()} Columns", variant: "secondary") {}
+                                }
+                                table {
+                                    table-header {
+                                        table-row {
+                                            table-head (text: "#", style: "w-12") {}
+                                            table-head (text: "Column Name", style: "font-semibold") {}
+                                            table-head (text: "Data Type") {}
+                                            table-head (text: "Not Null") {}
+                                            table-head (text: "Default Value") {}
+                                            table-head (text: "Key") {}
+                                        }
+                                    }
+                                    table-body {
+                                        for i, c in .schemaColumns {
+                                            table-row (key: i) {
+                                                table-cell (text: f"${c.cid}", style: "font-mono text-xs text-muted-foreground") {}
+                                                table-cell (text: c.name, style: "font-mono font-medium text-xs") {}
+                                                table-cell {
+                                                    badge (text: c.type, variant: "outline") {}
+                                                }
+                                                table-cell (text: c.notnull, style: "text-xs text-muted-foreground") {}
+                                                table-cell (text: c.dflt, style: "font-mono text-xs text-muted-foreground") {}
+                                                table-cell {
+                                                    if c.pk == "PK" {
+                                                        badge (text: "PRIMARY KEY", variant: "default") {}
+                                                    } else {
+                                                        text "-" { style: "text-xs text-muted-foreground" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 索引列表
+                            if .schemaIndexes.len() > 0 {
+                                col (style: "gap-2") {
+                                    text "Indexes" { style: "text-sm font-semibold" }
+                                    table {
+                                        table-header {
+                                            table-row {
+                                                table-head (text: "Index Name", style: "font-semibold") {}
+                                                table-head (text: "Indexed Columns") {}
+                                                table-head (text: "Constraint") {}
+                                            }
+                                        }
+                                        table-body {
+                                            for i, idx in .schemaIndexes {
+                                                table-row (key: i) {
+                                                    table-cell (text: idx.name, style: "font-mono font-medium text-xs") {}
+                                                    table-cell (text: idx.cols, style: "font-mono text-xs") {}
+                                                    table-cell {
+                                                        badge (text: idx.unique, variant: "secondary") {}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // DDL 预览
+                            col (style: "gap-2") {
+                                text "DDL SQL Definition" { style: "text-sm font-semibold" }
+                                col (style: "p-4 rounded-lg bg-card border font-mono text-xs text-foreground whitespace-pre overflow-x-auto") {
+                                    text .schemaDdl {}
+                                }
+                            }
+                        }
+                    }
+
+                    // === Tab 3: SQL Console 控制台 ===
+                    if .activeTab == "console" {
+                        col (style: "flex-1 p-6 gap-4 flex flex-col min-h-0") {
+                            // 预设 SQL 快速模板
+                            row (style: "items-center gap-2 flex-wrap text-xs") {
+                                text "Presets:" { style: "text-muted-foreground font-semibold" }
+                                button "Customers LIMIT 20" { onclick: .PresetSqlCustomers, style: "px-2.5 py-1 rounded border bg-card hover:bg-accent" }
+                                button "High-Value Products" { onclick: .PresetSqlProducts, style: "px-2.5 py-1 rounded border bg-card hover:bg-accent" }
+                                button "Recent Orders" { onclick: .PresetSqlOrders, style: "px-2.5 py-1 rounded border bg-card hover:bg-accent" }
+                                button "Error Syntax Test" { onclick: .PresetSqlError, style: "px-2.5 py-1 rounded border border-red-500/40 text-red-500 hover:bg-red-500/10" }
+                            }
+
+                            // SQL 编辑器
+                            col (style: "gap-2") {
+                                input {
+                                    placeholder: "Enter SQL statement (e.g. SELECT * FROM customers LIMIT 20;)...",
+                                    value: .sqlInput,
+                                    oninput: .SetSql,
+                                    style: "w-full px-4 py-3 font-mono text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary outline-none"
+                                }
+                                row (style: "items-center justify-between") {
+                                    row (style: "items-center gap-2") {
+                                        button "▶ Run SQL (Ctrl+Enter)" {
+                                            onclick: .RunSql,
+                                            style: "px-4 py-1.5 text-xs rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 flex items-center gap-1.5"
+                                        }
+                                        button "Clear" {
+                                            onclick: .ClearSql,
+                                            style: "px-3 py-1.5 text-xs rounded-md border bg-card hover:bg-accent text-muted-foreground"
+                                        }
+                                    }
+                                    if .sqlStatus == "success" {
+                                        row (style: "items-center gap-2 text-xs text-green-600 font-medium") {
+                                            span (style: "w-2 h-2 rounded-full bg-green-500") {}
+                                            text f"Query OK · ${.sqlResultCount} rows in ${.sqlDurationMs} ms" {}
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 错误反馈面板
+                            if .sqlStatus == "error" {
+                                col (style: "p-4 rounded-lg bg-red-500/10 border border-red-500/30 gap-1") {
+                                    row (style: "items-center gap-2 text-red-600 font-semibold text-xs") {
+                                        text "✕ SQL Execution Error" {}
+                                    }
+                                    text .sqlErrorMsg { style: "font-mono text-xs text-red-500" }
+                                }
+                            }
+
+                            // 查询结果表格
+                            if .sqlStatus == "success" {
+                                col (style: "flex-1 border rounded-lg overflow-hidden bg-card min-h-0") {
+                                    table {
+                                        table-header {
+                                            table-row {
+                                                table-head (text: "col0 (ID)", style: "font-semibold w-24") {}
+                                                table-head (text: "col1", style: "font-semibold") {}
+                                                table-head (text: "col2", style: "font-semibold") {}
+                                                table-head (text: "col3", style: "font-semibold") {}
+                                                table-head (text: "col4", style: "font-semibold") {}
+                                            }
+                                        }
+                                        table-body {
+                                            for i, r in .sqlResultRows {
+                                                table-row (key: i) {
+                                                    table-cell (text: r.col0, style: "font-mono text-xs") {}
+                                                    table-cell (text: r.col1, style: "text-xs font-medium") {}
+                                                    table-cell (text: r.col2, style: "text-xs") {}
+                                                    table-cell (text: r.col3, style: "text-xs") {}
+                                                    table-cell (text: r.col4, style: "text-xs") {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
