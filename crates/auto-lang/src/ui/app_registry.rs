@@ -121,6 +121,30 @@ fn entry_for_dir(dir: &Path, id: String, opts: &ScanOptions) -> Option<AppRegist
     })
 }
 
+/// Plan 518 G4③：per-app 徽标底色——按 id 哈希从 8 色柔和板分配（零配置
+/// 面,全 app 即时生效;pac `color:` 显式配置留作后续扩展位）。深浅主题
+/// 共用（身份色非主题色）;全板 WCAG 相对亮度 ≤0.18,白 glyph 对比
+/// ≥4.5:1（AA,见 lucide_icon_coverage 测试）。消费面:desktop.at 图标格
+/// 数据驱动 `bg-[色] + text-white`（dock 保持 stella 单色形态——权威图
+/// 实测无彩色容器）。
+pub fn badge_color_for(id: &str) -> &'static str {
+    const PALETTE: [&str; 8] = [
+        "#A05544", // 陶土
+        "#8F6A2E", // 琥珀
+        "#5F7D62", // 鼠尾草
+        "#4E7799", // 天蓝
+        "#71659B", // 薰衣草
+        "#447F78", // 青
+        "#99604F", // 黏土
+        "#5B6B85", // 蓝灰
+    ];
+    let mut h: u32 = 5381;
+    for b in id.bytes() {
+        h = h.wrapping_mul(33).wrapping_add(b as u32);
+    }
+    PALETTE[(h as usize) % PALETTE.len()]
+}
+
 /// Plan 501：pac `back: { project: "…" }` 单行嵌套声明解析（平铺
 /// `parse_pac_fields` 不覆盖嵌套形态——`back` 键值会被截成 `{ project`）。
 /// 形态容错：`back : { project : "../x" }`（空格任意、引号成对剥）。

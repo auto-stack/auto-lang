@@ -4280,7 +4280,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                     let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                     let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
-                    if let Some(svg_str) = lucide_svg_doc(icon_name) {
+                    // Plan 518 G4②:大尺寸细线——固定宽或高 ≥48px 的独立图标
+                    // 用 stroke-width 1.5（stella 线性观感）;PUA 按钮内嵌路径
+                    // 尺寸随字号（<48px）保持默认 2。
+                    let large = [&w, &h].into_iter().flatten().any(|len| {
+                        matches!(len, iced::Length::Fixed(v) if *v >= 48.0)
+                    });
+                    let sw = if large { 1.5 } else { 2.0 };
+                    if let Some(svg_str) = lucide_svg_doc_with(icon_name, sw) {
                         // Plan 409 §10 组 C → 2026-08-21 方案 A(ash-gui hover):
                         // 画时着色 —— svg::Style.color 由 iced 光栅化器把不透明
                         // 像素的 RGB 整体替换(按 (handle,size,color) 缓存,引擎
@@ -4706,10 +4713,16 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
 /// resvg refuses to parse them, so every `lucide:` icon rendered EMPTY
 /// (pre-existing gap hit by the nav search icon; also affects the PUA
 /// button-icon path). Wrap into a full stroke-based document here.
+/// Plan 518 G4②: stroke-width 参数化——默认 2（lucide 标准）,大尺寸
+/// （渲染 ≥48px）用 1.5 细线对齐 stella 线性观感。
 fn lucide_svg_doc(name: &str) -> Option<String> {
+    lucide_svg_doc_with(name, 2.0)
+}
+
+fn lucide_svg_doc_with(name: &str, stroke_width: f32) -> Option<String> {
     let frag = lucide_svg(name)?;
     Some(format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{frag}</svg>"
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"{stroke_width}\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{frag}</svg>"
     ))
 }
 
@@ -9432,7 +9445,8 @@ fn load_desktop_id_list(key: &str) -> Vec<String> {
 
 /// Plan 496 M5：桌面本体投影注入——pinned ∪ 自定义条目合并去重
 /// （pinned 先列，custom 重叠去重接排；hidden 两者通用排除），条目
-/// {id,icon,label,src}（icon/label 注册表解析，缺省回退 app-window/id）；
+/// {id,icon,label,src,color}（icon/label 注册表解析，缺省回退 app-window/id；
+/// color = per-app 徽标底色,Plan 518 G4③ 按名哈希分配）；
 /// `__desktop_bg`（#hex → "bg-[#hex]" 根 bg 实铺片段；图片路径 → ""，由
 /// 宿主壁纸图层铺底——DSL 无重叠布局）+ `__desktop_hidden`（移除臂
 /// `shell.desktop.hidden` 续写底稿）。boot 期 inject_dock_pinned 邻位。
@@ -9462,11 +9476,13 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
             let label = reg
                 .map(|e| e.title.clone())
                 .unwrap_or_else(|| id.clone());
+            let color = crate::ui::app_registry::badge_color_for(&id);
             auto_val::Value::Obj(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str(id.into())),
                 ("icon", auto_val::Value::Str(icon.into())),
                 ("label", auto_val::Value::Str(label.into())),
                 ("src", auto_val::Value::Str(src.into())),
+                ("color", auto_val::Value::Str(color.into())),
             ]))
         })
         .collect();
@@ -21233,6 +21249,112 @@ mod tests {
         match v {
             auto_val::Value::Obj(o) => o,
             other => panic!("条目应为 Obj: {other:?}"),
+        }
+    }
+
+    /// Plan 518 G4④：图标命名覆盖表——shell 面 .at 资产的字面 icon 名
+    /// （`icon: "x"` 按钮形态 + `icon (name: "x")` 独立组件形态）+ 核心清单
+    /// （pac 注册表 icon 值 + 缺省回退）逐名命中 lucide_svg。未命中即
+    /// 渲染空图标（"占位色块"根因之一），此表为契约：新 icon 名先补
+    /// lucide 臂再消费。
+    #[test]
+    fn lucide_icon_coverage_manifest_all_hit() {
+        // ① .at 资产字面量扫描（五份内嵌资产,含 shell/desktop/switcher/
+        // settings/notification_center——独立 icon 组件臂的字面 name 同扫）。
+        let assets = [
+            ("shell.at", crate::ui::shell::SHELL_AT),
+            ("desktop.at", crate::ui::shell::DESKTOP_AT),
+            ("switcher.at", crate::ui::shell::SWITCHER_AT),
+            ("settings.at", crate::ui::shell::SETTINGS_AT),
+            ("notification_center.at", crate::ui::shell::NOTIFICATION_CENTER_AT),
+        ];
+        let mut names: Vec<(String, String)> = Vec::new();
+        for (file, src) in assets {
+            for line in src.lines() {
+                let line = line.trim();
+                for pat in ["icon: \"", "name: \""] {
+                    if let Some(pos) = line.find(pat) {
+                        let rest = &line[pos + pat.len()..];
+                        if let Some(end) = rest.find('"') {
+                            names.push((file.to_string(), rest[..end].to_string()));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!names.is_empty(), "资产扫描应至少命中 bell/settings 等字面名");
+        // ② 核心清单:pac 注册表 icon 值 + registry 缺省回退（扫描 examples
+        // 目录可用时动态并入,缺席时清单兜底——命中表不因布局漂移空转）。
+        let mut manifest: Vec<String> = [
+            "app-window", // registry 缺省回退
+            "calculator", "bomb", "list-checks", "notebook", // dock 默认 pinned
+            "folder", "search", // 027-file-manager / 028-launcher pac
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        if let Ok(entries) = std::fs::read_dir("../../examples/ui") {
+            for e in entries.flatten() {
+                let pac = e.path().join("pac.at");
+                if let Ok(content) = std::fs::read_to_string(&pac) {
+                    for line in content.lines() {
+                        let line = line.trim();
+                        if let Some(pos) = line.find("icon: \"") {
+                            let rest = &line[pos + 7..];
+                            if let Some(end) = rest.find('"') {
+                                manifest.push(format!(
+                                    "{}:{}",
+                                    e.file_name().to_string_lossy(),
+                                    &rest[..end]
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // ③ 逐名命中断言（源标注进 panic 信息,补名直达）。
+        let mut misses: Vec<String> = Vec::new();
+        for (file, name) in &names {
+            if lucide_svg(name).is_none() {
+                misses.push(format!("{file}:{name}"));
+            }
+        }
+        for entry in &manifest {
+            let name = entry.rsplit(':').next().unwrap_or(entry);
+            if lucide_svg(name).is_none() {
+                misses.push(format!("manifest:{entry}"));
+            }
+        }
+        assert!(
+            misses.is_empty(),
+            "lucide 命中表缺口（补 lucide_svg 臂或改名）: {misses:?}"
+        );
+        // ④ G4② stroke-width 参数化冒烟:默认 2.0 / 大尺寸 1.5 文档生成。
+        let doc_default = lucide_svg_doc("bell").expect("bell doc");
+        assert!(doc_default.contains("stroke-width=\"2\""));
+        let doc_thin = lucide_svg_doc_with("bell", 1.5).expect("bell thin doc");
+        assert!(doc_thin.contains("stroke-width=\"1.5\""));
+        // ⑤ G4③ 徽标色:哈希稳定 + 8 色板内 + 白字可读（WCAG 相对亮度
+        // 线性化,≥4.5:1 AA 界）。
+        let c1 = crate::ui::app_registry::badge_color_for("011-calculator");
+        assert_eq!(c1, crate::ui::app_registry::badge_color_for("011-calculator"));
+        assert!(c1.starts_with('#') && c1.len() == 7);
+        let lin = |v: u8| {
+            let c = v as f64 / 255.0;
+            if c <= 0.039_28 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        };
+        for id in ["011-calculator", "013-todo", "015-notes", "019-video-app", "x"] {
+            let hex = crate::ui::app_registry::badge_color_for(id);
+            let r = u8::from_str_radix(&hex[1..3], 16).unwrap();
+            let g = u8::from_str_radix(&hex[3..5], 16).unwrap();
+            let b = u8::from_str_radix(&hex[5..7], 16).unwrap();
+            let lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+            let contrast = 1.05 / (lum + 0.05);
+            assert!(
+                contrast >= 4.5,
+                "徽标色 {hex} 白 glyph 对比 {contrast:.2}:1 不足 AA"
+            );
         }
     }
 
