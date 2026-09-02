@@ -7,8 +7,12 @@
 //   I7：几何是驱动事实，settings 只是 UI）+ pinned 编辑（storage 键
 //   shell.dock.pinned 直写，boot 生效）。
 //   通知：持久化开关（shell.notes.enabled storage 直写，479 持久化链门控）。
-//   外观（496 M5）：壁纸输入（shell.desktop.wallpaper storage 直写——路径
-//   | #hex；boot 解析回退链见 renderer load_desktop_wallpaper，重启生效）。
+//   外观（496 M5 + 518）：壁纸输入（shell.desktop.wallpaper storage 直写
+//   ——路径 | #hex | builtin: 资产方案；boot 解析回退链见 renderer
+//   load_desktop_wallpaper，重启生效）+ 深色模式（set_theme 驱动动词即时
+//   生效 + shell.appearance.theme 持久化,518 G1）+ 透明度三档
+//   （shell.desktop.transparency storage 直写,虚拟窗底色每帧读即时生效,
+//   518 G6）。
 //   系统（501）：「系统设置（全部模块）」入口——desktop.launch("os-config")
 //   拉起外部仓 os-config App（daemon 检活/spawn/env 注入在宿主 launch 臂）；
 //   offline 徽标态（daemon 起不来入口置灰 + 提示，点击重试——launch 每次
@@ -39,6 +43,7 @@ widget Settings {
         DraftPinned(str), AddPinned, RemovePinned(int),
         PickNotes(str),
         DraftWallpaper(str), SaveWallpaper,
+        PickTheme(str), PickTransparency(str),
         OpenSystemSettings
     }
 
@@ -69,6 +74,11 @@ widget Settings {
         var cfg_wallpaper str = ""  // 宿主召唤注入当前键值快照
         var wallpaper_draft str = "" // 壁纸输入草稿（路径 | #hex）
         var wallpaper_saved str = "0"
+        // ---- Appearance 增量（Plan 518 G1/G6）：主题与透明度快照（宿主
+        //      召唤注入;主题切换 = set_theme 驱动动词即时生效,透明度 =
+        //      storage 直写虚拟窗每帧读即时生效）----
+        var cfg_theme str = "dark"          // dark | light
+        var cfg_transparency str = "off"    // off | low | high
 
         // ---- 系统分区（501）：os-config daemon 状态快照（宿主召唤注入；
         //      unknown = 未检活——面板不预探，首次 launch 才有真值）----
@@ -292,33 +302,114 @@ widget Settings {
                                     }
                                 } else {
                                     if .section == "appearance" {
-                                        // ---- 外观分区（496 M5）：壁纸路径/色值
-                                        //     storage 直写——boot 解析（#hex 直传/
-                                        //     路径验在/坏值回退默认色），重启生效 ----
+                                        // ---- Appearance 分区（496 M5 壁纸 +
+                                        //     518 G1 主题切换 + G6 透明度三档）----
                                         col {
-                                            style: "gap-2 p-3 bg-gray-750 rounded-lg"
-                                            text "壁纸" { style: "text-gray-200 text-sm font-medium" }
-                                            text "图片路径或 #hex 色值（如 #243b55），重启后生效" { style: "text-gray-500 text-xs" }
-                                            row {
-                                                style: "items-center gap-2"
-                                                input {
-                                                    value: .wallpaper_draft
-                                                    oninput: .DraftWallpaper
-                                                    placeholder: "D:\\wallpaper.png 或 #243b55"
-                                                    style: "flex-1 text-sm text-white bg-gray-900"
-                                                }
-                                                button "保存" {
-                                                    onclick: .SaveWallpaper
-                                                    style: "h-8 px-3 text-xs"
+                                            style: "gap-3"
+
+                                            // 主题卡（Plan 518 G1：set_theme
+                                            // 驱动动词——set_dock_position 同型,
+                                            // 宿主臂 set_dark_mode 即时生效 +
+                                            // shell.appearance.theme 持久化）。
+                                            col {
+                                                style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                                text "深色模式" { style: "text-gray-200 text-sm font-medium" }
+                                                text "浅色 = 暖纸主题（stella 对齐），立即生效" { style: "text-gray-500 text-xs" }
+                                                row {
+                                                    style: "gap-2"
+                                                    if .cfg_theme == "dark" {
+                                                        button "深色" {
+                                                            style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                        }
+                                                    } else {
+                                                        button "深色" {
+                                                            onclick: .PickTheme("dark")
+                                                            style: "h-8 px-3 text-xs text-gray-400"
+                                                        }
+                                                    }
+                                                    if .cfg_theme == "light" {
+                                                        button "浅色" {
+                                                            style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                        }
+                                                    } else {
+                                                        button "浅色" {
+                                                            onclick: .PickTheme("light")
+                                                            style: "h-8 px-3 text-xs text-gray-400"
+                                                        }
+                                                    }
                                                 }
                                             }
-                                            if .wallpaper_saved == "1" {
-                                                text "已保存，重启后生效" { style: "text-success text-xs" }
-                                            } else {
+
+                                            // 透明度卡（Plan 518 G6：storage 直写
+                                            // shell.desktop.transparency,虚拟窗
+                                            // 底色 alpha 每帧读即时生效）。
+                                            col {
+                                                style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                                text "透明度" { style: "text-gray-200 text-sm font-medium" }
+                                                text "窗口底色透出壁纸（关/低/高），立即生效" { style: "text-gray-500 text-xs" }
+                                                row {
+                                                    style: "gap-2"
+                                                    if .cfg_transparency == "off" {
+                                                        button "关" {
+                                                            style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                        }
+                                                    } else {
+                                                        button "关" {
+                                                            onclick: .PickTransparency("off")
+                                                            style: "h-8 px-3 text-xs text-gray-400"
+                                                        }
+                                                    }
+                                                    if .cfg_transparency == "low" {
+                                                        button "低" {
+                                                            style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                        }
+                                                    } else {
+                                                        button "低" {
+                                                            onclick: .PickTransparency("low")
+                                                            style: "h-8 px-3 text-xs text-gray-400"
+                                                        }
+                                                    }
+                                                    if .cfg_transparency == "high" {
+                                                        button "高" {
+                                                            style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                        }
+                                                    } else {
+                                                        button "高" {
+                                                            onclick: .PickTransparency("high")
+                                                            style: "h-8 px-3 text-xs text-gray-400"
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 壁纸卡（496 M5）：路径/色值 storage
+                                            // 直写——boot 解析（#hex 直传/路径验在/
+                                            // 坏值回退默认色），重启生效。
+                                            col {
+                                                style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                                text "壁纸" { style: "text-gray-200 text-sm font-medium" }
+                                                text "图片路径或 #hex 色值（如 #243b55）；内置宣纸/水墨可填 builtin:ricepaper / builtin:inkwash，重启后生效" { style: "text-gray-500 text-xs" }
                                                 row {
                                                     style: "items-center gap-2"
-                                                    text "当前：" { style: "text-gray-500 text-xs" }
-                                                    text .cfg_wallpaper { style: "text-gray-300 text-xs" }
+                                                    input {
+                                                        value: .wallpaper_draft
+                                                        oninput: .DraftWallpaper
+                                                        placeholder: "D:\\wallpaper.png 或 #243b55"
+                                                        style: "flex-1 text-sm text-white bg-gray-900"
+                                                    }
+                                                    button "保存" {
+                                                        onclick: .SaveWallpaper
+                                                        style: "h-8 px-3 text-xs"
+                                                    }
+                                                }
+                                                if .wallpaper_saved == "1" {
+                                                    text "已保存，重启后生效" { style: "text-success text-xs" }
+                                                } else {
+                                                    row {
+                                                        style: "items-center gap-2"
+                                                        text "当前：" { style: "text-gray-500 text-xs" }
+                                                        text .cfg_wallpaper { style: "text-gray-300 text-xs" }
+                                                    }
                                                 }
                                             }
                                         }
@@ -480,6 +571,31 @@ widget Settings {
                 .wallpaper_draft = ""
                 .wallpaper_saved = "1"
             }
+        }
+
+        // ---- Appearance 增量（Plan 518 G1/G6）：主题 = set_theme 驱动动词
+        //（宿主臂 set_dark_mode 即时生效 + shell.appearance.theme 持久化）;
+        // 透明度 = storage 直写（虚拟窗底色每帧读,即时生效）----
+        .PickTheme(v) -> {
+            if v == "light" {
+                .cfg_theme = "light"
+            } else {
+                .cfg_theme = "dark"
+            }
+            .__desktop_cmd = "set_theme\t" + .cfg_theme
+        }
+
+        .PickTransparency(v) -> {
+            if v == "low" {
+                .cfg_transparency = "low"
+            } else {
+                if v == "high" {
+                    .cfg_transparency = "high"
+                } else {
+                    .cfg_transparency = "off"
+                }
+            }
+            storage.set("shell.desktop.transparency", .cfg_transparency)
         }
 
         // ---- pinned 编辑 → storage 键直写（boot 生效；逗号拼接 = 宿主

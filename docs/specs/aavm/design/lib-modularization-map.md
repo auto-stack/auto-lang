@@ -100,3 +100,40 @@ auto/aavm.at         生成的 CLI 入口：聚合 lib 前置剥离版 或
 
 lib 由此成为 aavm 自身 `use` 能力的第一个真实多模块程序（自举本味），
 `auto run auto/aavm.at <目标.at>` 即上一问缺的"单文件启动入口"。
+
+---
+
+## 执行注记（Plan 517 W0，2026-09-02，514 终态方法化 lib 上重跑定稿）
+
+1. **依赖树定稿（DAG 零反向边）**：`token ← lexer ← parser ← typeinfo ←
+   codegen ← engine` + `a2r → {token, lexer, parser, typeinfo}` 不变；
+   **原唯一环边 `p_peek_text` 已被 514 W3-15 方法化自然消除**（并入
+   `P.peek_text`，副本同步清除）——517 步骤 4 破环 = 自然消除，仅留档。
+2. **方法化产物**：type 体方法 66（P 15 / CG 28 / Ar 23；engine/typeinfo/
+   lexer/token 未转换——产生式与纯表函数保留自由函数）；跨类型重名方法
+   7 个（line/fail ×P+CG+Ar、push_scope/pop_scope/lookup ×P+CG、
+   new/emit ×CG+Ar）——方法随类型归属，模块级 pub 不为方法单列。
+   注意 codegen/a2r 方法体为**平齐缩进风格**（签名 4 空格、体 4 空格、
+   闭括号列 0），parser 为常规缩进——分析工具需括号深度追踪。
+3. **pub 面缩表（方法化后实测）**：token 3 / lexer 2 / **parser 25**（原
+   38，P 族 13 方法随类型）/ typeinfo 1 / **codegen 5**（`CG`/`OpCode`/
+   `cg_compile`/`cg_compile_files`/`op_name`）/ engine+a2r 入口 pub
+   （`ev_run`/`ev_run_files`/`ar_run`）。
+4. **考古三定案**：①主 a2r use 发射形态 = `use crate::lib::token::
+   {kind_name, TokenKind};`（crate 路径限定导入；单片段不可独立 rustc 属
+   预期，全链验证归 W1/W2 闸门）；②`auto.exe <file>` 直跑模式 session
+   可达性 ✅（探针 `use auto.lib.token: kind_name, TokenKind` 经 VM 直跑
+   输出 `Int`——`auto run` 子命令需 pac.at，直跑入口为顶层 `[FILE]` 形态，
+   即 `auto aavm.at` 字面形态）；③lib 七文件顶层全部纯声明 ✅（列 0
+   口径；engine.at:271/290 两处为多行字符串续行误报）。
+5. **基线（2026-09-02，master 21b65e1f9+）**：tv `--include-ignored`
+   **19/0/0 全绿**（compile 腿含）；99_unit 13/13；tf 引用 514 复审
+   3355（折叠点复跑）。
+6. **基线过程发现的坑（登记）**：parity ②腿经 `--auto-binary ../target/
+   debug/auto.exe trans --merge` 构建转译二进制——master 该二进制为
+   14:01 构建（早于 514 合并 17:23，缺 W3-2/15/16 主 a2r 方法发射修复）
+   且被运行中进程锁定，致矩阵②腿 561 编译错（vm_file_tests 进程内
+   路径不受影响故 compile 腿绿）。处置：独立 `target-p517` 重建后复跑；
+   **教训：矩阵运行前置 = 重建 auto.exe**（或 parity 增二进制新鲜度校验，
+   债候选）。corpus_a2r 现已至 g17（514 W3 增），use 发射件顺延为
+   **g18_use_stmt**。

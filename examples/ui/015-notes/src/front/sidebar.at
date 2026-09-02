@@ -5,6 +5,7 @@
 // hover/active states (replaces hand-rolled button + if-style-string items).
 
 use notes_store: NotesStore
+use settings: SettingsPopover
 
 // Plan 482: nav-item based note entry — hover/active styling comes from the
 // nav contract; desc renders the timestamp as the second line.
@@ -130,57 +131,14 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
             }
 
             // Settings popup / panel when toggled
-            if .show_settings {
-                col {
-                    style: "m-3 p-3 bg-card border border-border rounded-xl gap-3 shadow-lg"
-                    row {
-                        style: "items-center justify-between"
-                        text "Settings" { style: "text-xs font-semibold text-foreground uppercase tracking-wider" }
-                        button "✕" {
-                            onclick: .ToggleSettings
-                            style: "text-xs text-muted-foreground hover:text-foreground w-5 h-5 flex items-center justify-center rounded bg-transparent transition-colors"
-                        }
-                    }
-                    col {
-                        style: "gap-1.5"
-                        text "Theme" { style: "text-xs text-muted-foreground font-medium" }
-                        row {
-                            style: "gap-1.5"
-                            if .store.dark_mode {
-                                button "🌙 Dark" {
-                                    onclick: .ToggleDarkMode
-                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
-                                }
-                                button "☀ Light" {
-                                    onclick: .ToggleDarkMode
-                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent bg-transparent border border-border transition-colors"
-                                }
-                            } else {
-                                button "🌙 Dark" {
-                                    onclick: .ToggleDarkMode
-                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent bg-transparent border border-border transition-colors"
-                                }
-                                button "☀ Light" {
-                                    onclick: .ToggleDarkMode
-                                    style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
-                                }
-                            }
-                        }
-                    }
-                    col {
-                        style: "gap-1.5"
-                        text "Accent Color" { style: "text-xs text-muted-foreground font-medium" }
-                        row {
-                            style: "items-center gap-2 py-0.5"
-                            button "" { onclick: .SetAccent("indigo"), style: if .store.accent_color == "indigo" { "w-5 h-5 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("coral"), style: if .store.accent_color == "coral" { "w-5 h-5 p-0 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("ocean"), style: if .store.accent_color == "ocean" { "w-5 h-5 p-0 rounded-full bg-sky-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-sky-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("sage"), style: if .store.accent_color == "sage" { "w-5 h-5 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("amber"), style: if .store.accent_color == "amber" { "w-5 h-5 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-5 h-5 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
-                        }
-                    }
-                }
-            }
+            SettingsPopover(
+                open: .show_settings,
+                dark_mode: .store.dark_mode,
+                accent_color: .store.accent_color,
+                on_close: .ToggleSettings,
+                on_toggle_dark_mode: .ToggleDarkMode,
+                on_set_accent: .SetAccent
+            )
 
             // Footer: Settings button + version
             separator (orientation: "horizontal") { style: "w-full" }

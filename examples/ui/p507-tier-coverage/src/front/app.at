@@ -13,7 +13,6 @@ widget App {
 
     msg T {
         ToggleOk
-        Rename
     }
 
     on {
@@ -24,7 +23,6 @@ widget App {
                 .ok = true
             }
         }
-        .Rename -> { }
     }
 
     view {
@@ -51,7 +49,7 @@ widget App {
                         } else {
                             text "feat: OFF"
                         }
-                        input (value: .name, placeholder: "name") { oninput: .Rename }
+                        input (value: .name, placeholder: "name")
                         textarea (value: .name, rows: 2.0) {}
                         button "Apply" { onclick: .ToggleOk }
                     }

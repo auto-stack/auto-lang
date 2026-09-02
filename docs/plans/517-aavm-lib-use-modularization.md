@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-517
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-lib-use-modularization
 author: [zhaopuming]
 created_at: 2026-09-02
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 0
+current_step: 2
 total_steps: 14
 ---
 
@@ -236,14 +236,34 @@ divergences.md（use 发射形态注记）；project.md / auto/lib/README
 
 ### W0 考古与探针（master）
 
-1. [ ] 基线复测刷新（514 完成态：门禁/矩阵/tf/99_unit 数字重跑留档）+
+1. [✅ 已完成]（2026-09-02，master 21b65e1f9+31908ff53）基线：tv
+   `--include-ignored` **19/0/0 全绿**（compile 腿含）/ 99_unit **13/13** /
+   **矩阵 46/46 全绿**（fresh 二进制复跑）/ tf 引用 514 复审 3355（折叠点复跑）。
+   映射图重跑定稿：xref 升级括号深度追踪（66 方法全捕 P15/CG28/Ar23；
+   codegen/a2r 方法体平齐缩进风格注记）+ 重名方法类型限定解析 → **DAG 零
+   反向边，p_peek_text 环已被 514 W3-15 方法化自然消除**（步骤 4=留档）；
+   pub 面缩表 parser 38→25 / codegen 6→5。考古三定案：主 a2r use 发射 =
+   `use crate::lib::token::{..};`（crate 路径限定）；`auto.exe <file>` 直跑
+   session 可达 ✅（探针输出 Int；`auto run` 需 pac，直跑=顶层 [FILE] 形态）；
+   lib 顶层纯声明 ✅。**坑登记**：parity ②腿经 `--auto-binary` 调
+   target/debug/auto.exe `trans --merge`——master 二进制 14:01 构建早于 514
+   合并（17:23）且被进程锁定 → 矩阵②腿 561 编译错假象；处置=独立
+   target-p517 重建后 46/46；教训=**矩阵运行前置必须重建 auto.exe**（债
+   候选：parity 二进制新鲜度校验）。详见 lib-modularization-map.md 执行注记。
+   基线复测刷新（514 完成态：门禁/矩阵/tf/99_unit 数字重跑留档）+
    **映射图在方法化后 lib 上重跑定稿**（`aavm_lib_xref.py` 需升级支持
    type 体方法提取——方法名随类型归属解析依赖边；pub 表按"方法随类型"
    原则缩表）；主 a2r use 转译形态考古定案（lib 形态 use 探针经主 a2r →
    rustc 零错；发射形态记录）；`auto run` 对 `use auto.lib.*` 的 session
    可达性探针（17_modules 同款）；lib 文件顶层无副作用语句核实（方法化
    后复核）。验证：探针件 + 形态记录入 lib-modularization-map.md 执行注记。
-2. [ ] corpus_a2r `g16_use_stmt` 语料先行落盘（红）。验证：AA2R 侧红证。
+2. [✅ 已完成]（2026-09-02）语料先行落盘（红）：**g18_use_stmt**（编号
+   g16→g18 顺延，g16/g17 已被 514 W3 占用——设计偏差注记）。红证：主 a2r
+   侧产出 `use crate::lib::token::{kind_name, TokenKind};`（闸门语境模块
+   解析实证可用）vs AA2R 侧 `A2R-ERROR:unsupported expr atom: Use`。
+   **归属偏差修正**：红件落 worktree plan-517-dev 分支（5d3c42919）而非
+   master——W0 步骤 2 原设计落 master 会让门禁破绿，语料红件一律随实现
+   分支走（流程修正，后续波次沿用）。验证：AA2R 侧红证 ✅（上）。
 
 ### W1 AA2R use 发射（worktree）
 

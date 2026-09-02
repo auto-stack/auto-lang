@@ -7,6 +7,8 @@
 // 页面配色用 `style: if` 条件分支,保证任意主题下文字/底色成对出现、可读。
 // pac.at 里 `theme: "dark"` / `accent: "indigo"` 声明的是启动默认值(也可用
 // `auto run --theme light --accent ocean` 从 CLI 覆盖)。
+use settings: SettingsPopover
+
 widget App {
     msg { GetStarted, ToggleSettings, SetTheme(str), SetAccent(str) }
 
@@ -31,42 +33,14 @@ widget App {
                         }
                     }
                 }
-                if .settings_open {
-                    col {
-                        // ── Theme 节 ──
-                        text "Theme" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
-                        row {
-                            style: "gap-2 mt-2"
-                            button "Light" {
-                                onclick: .SetTheme("light")
-                                style: if .dark_mode {
-                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-gray-800 text-gray-200 border border-gray-600 hover:bg-gray-700 transition-colors"
-                                } else {
-                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground font-semibold"
-                                }
-                            }
-                            button "Dark" {
-                                onclick: .SetTheme("dark")
-                                style: if .dark_mode {
-                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground font-semibold"
-                                } else {
-                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
-                                }
-                            }
-                        }
-                        // ── Accent 节(5 色板,选中态加 ring)──
-                        text "Accent" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-4" }
-                        row {
-                            style: "gap-3 mt-2"
-                            button "" { onclick: .SetAccent("indigo"), style: if .accent_color == "indigo" { "w-6 h-6 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("coral"), style: if .accent_color == "coral" { "w-6 h-6 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("ocean"), style: if .accent_color == "ocean" { "w-6 h-6 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-blue-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("sage"), style: if .accent_color == "sage" { "w-6 h-6 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
-                            button "" { onclick: .SetAccent("amber"), style: if .accent_color == "amber" { "w-6 h-6 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
-                        }
-                        style: "w-56 mr-4 p-4 rounded-xl bg-card text-card-foreground border border-border shadow-lg"
-                    }
-                }
+                SettingsPopover(
+                    open: .settings_open,
+                    dark_mode: .dark_mode,
+                    accent_color: .accent_color,
+                    on_close: .ToggleSettings,
+                    on_set_theme: .SetTheme,
+                    on_set_accent: .SetAccent
+                )
                 style: "w-full items-end"
             }
             // ── 主区:Hero 内容(主题条件配色;CTA 随 accent 走)──

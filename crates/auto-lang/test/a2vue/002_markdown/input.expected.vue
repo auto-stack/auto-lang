@@ -1,7 +1,7 @@
 <!-- DocView component - Auto-generated from Auto language -->
 <script setup lang="ts">
 import { ref } from 'vue'
-import { MarkdownRender } from '@autodown/engine'
+import { StreamingRenderer } from '@autodown/engine'
 
 
 const body = ref<string>('')
@@ -11,7 +11,7 @@ const body = ref<string>('')
 
 <template>
     <div class="flex flex-col doc-wrap">
-      <MarkdownRender :content="body" class="doc-content" :key="'MarkdownRender-1'" />
+      <StreamingRenderer :source="body" :scroll-sync="true" class="doc-content" :key="'StreamingRenderer-1'" />
     </div>
 
 </template>

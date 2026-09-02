@@ -1076,7 +1076,11 @@ widget App {
         let out = generated.expect("widget");
         assert!(out.contains("ref=\"triggerEl\""), "sfc:\n{out}");
         assert!(out.contains("ref=\"menuEl\""), "sfc:\n{out}");
-        assert!(out.contains("const triggerEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
+        // Plan 040: refs on real vue components (button → <Button>) are
+        // typed `ref<any>` (component instance — defineExpose surface
+        // unknown to the parent); native-tag pseudo-mappings (col → div)
+        // stay HTMLElement.
+        assert!(out.contains("const triggerEl = ref<any>(null)"), "sfc:\n{out}");
         assert!(out.contains("const menuEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
         assert!(out.contains("triggerEl.value!.getBoundingClientRect()"), "sfc:\n{out}");
     }

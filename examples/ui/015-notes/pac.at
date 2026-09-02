@@ -7,4 +7,8 @@ title: "Notes"
 theme: "dark"
 accent: "indigo"
 api: "rust"
-npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/editor", "@autodown/core:link:D:/autostack/auto-down/autodown/packages/core"]
+npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/editor", "@autodown/core:link:D:/autostack/auto-down/autodown/packages/core", "@autodown/engine:link:D:/autostack/auto-down/autodown/packages/engine"]
+
+dep settings {
+    path: "../common/settings"
+}

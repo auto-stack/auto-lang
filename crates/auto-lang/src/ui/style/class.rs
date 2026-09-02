@@ -625,6 +625,18 @@ pub enum StyleClass {
     /// style adapter treats it as inert; the iced renderer reads it to
     /// pick the syntect grammar for read-only code highlighting.
     CodeLang(String),
+
+    /// Plan 518 G8：backdrop-filter: blur(Npx)（声明冻结,渲染分期）——
+    /// 值为像素半径（Tailwind 刻度 sm=4/默认 8/md=12/lg=16/xl=24/
+    /// 2xl=40/3xl=64 + [Npx] 任意值）。vue 臂类串直通出真毛玻璃;
+    /// iced/gpui/headless 渲染端视觉 no-op（装饰性降级非错绘——真
+    /// backdrop 渲染挂 RenderQueue 宿主栅格化,KNOWN-DEBT planned-debt）。
+    BackdropBlur(f32),
+
+    /// Plan 518 G8：backdrop-filter: saturate(N)（声明冻结）——值为倍率
+    /// （刻度 50/100/150/200 → 0.5/1.0/1.5/2.0 + [N] 任意值,stella 配方
+    /// [1.6]）。三臂语义同 BackdropBlur。
+    BackdropSaturate(f32),
 }
 
 impl StyleClass {
@@ -1326,6 +1338,45 @@ impl StyleClass {
             return Ok(StyleClass::Opacity(value));
         }
 
+        // Plan 518 G8：backdrop-* 毛玻璃词汇（声明冻结,渲染分期）。最小集
+        // = blur 刻度/[Npx] + saturate 刻度/[N];其余 backdrop 系列
+        // （brightness/contrast/invert/grayscale …）刻意不收——落入未知类
+        // 静默跳过,防词汇膨胀。注意 arbitrary 提取后 class 带 trailing '-'
+        //（backdrop-blur-[24px] → class="backdrop-blur-", arbitrary="24px"）。
+        if class == "backdrop-blur" {
+            return Ok(StyleClass::BackdropBlur(8.0));
+        }
+        if let Some(rest) = class.strip_prefix("backdrop-blur-") {
+            let px = match rest {
+                "" => parse_pixel_arbitrary(arbitrary_value),
+                "sm" => Some(4.0),
+                "md" => Some(12.0),
+                "lg" => Some(16.0),
+                "xl" => Some(24.0),
+                "2xl" => Some(40.0),
+                "3xl" => Some(64.0),
+                _ => None,
+            };
+            if let Some(px) = px {
+                return Ok(StyleClass::BackdropBlur(px));
+            }
+            return Err(format!("Unknown backdrop-blur scale: {rest}"));
+        }
+        if let Some(rest) = class.strip_prefix("backdrop-saturate-") {
+            let mult = match rest {
+                "" => arbitrary_value.and_then(|av| av.parse::<f32>().ok()),
+                "50" => Some(0.5),
+                "100" => Some(1.0),
+                "150" => Some(1.5),
+                "200" => Some(2.0),
+                _ => None,
+            };
+            if let Some(mult) = mult {
+                return Ok(StyleClass::BackdropSaturate(mult));
+            }
+            return Err(format!("Unknown backdrop-saturate scale: {rest}"));
+        }
+
         // ========== Position (L3) ==========
 
         // Parse position
@@ -1738,13 +1789,13 @@ mod tests {
 
     #[test]
     fn test_semantic_color_with_alpha_is_dark_aware() {
-        // Plan 409 §10 回归:bg-background/95 在深色主题下应是 shadcn --background
-        // (Plan 448 对齐批: hsl 222.2 47.4% 7% = (9,14,26),原 gray-900 近似已换)
-        // + alpha≈242,而非 to_rgb8() 拍平出的白色 (255,255,255)。
+        // Plan 409 §10 回归:bg-background/95 在深色主题下应是语义 Background
+        // (Plan 448 对齐批: hsl 222.2 47.4% 7%;Plan 518 stella 重校:
+        // dark #141a29 = (20,26,41)),+ alpha≈242,而非 to_rgb8() 拍平出的白色。
         crate::ui::style::iced_adapter::set_dark_mode(true);
         match StyleClass::parse_single("bg-background/95") {
             Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {
-                assert_eq!((r, g, b), (9, 14, 26), "深色主题下 background 应为 shadcn --background,而非白色");
+                assert_eq!((r, g, b), (20, 26, 41), "深色主题下 background 应为语义 Background(stella #141a29),而非白色");
                 assert_eq!(a, 242, "95% alpha → 242");
             }
             other => panic!("期望 BackgroundColor(Rgba),得到 {:?}", other),
@@ -1908,6 +1959,78 @@ mod tests {
         assert_eq!(StyleClass::parse_single("opacity-0"), Ok(StyleClass::Opacity(0)));
         assert_eq!(StyleClass::parse_single("opacity-50"), Ok(StyleClass::Opacity(50)));
         assert_eq!(StyleClass::parse_single("opacity-100"), Ok(StyleClass::Opacity(100)));
+    }
+
+    /// Plan 518 G8 T5：backdrop-\* 毛玻璃词汇（声明冻结）——blur 刻度
+    /// （sm=4/默认 8/md=12/lg=16/xl=24/2xl=40/3xl=64px）+ [Npx] 任意值;
+    /// saturate 刻度（50/100/150/200 → 0.5/1.0/1.5/2.0 倍）+ [N] 任意值。
+    /// 刻意不收 brightness/contrast/invert 等其余 backdrop 系列（Err →
+    /// Style::parse 静默跳过,防词汇膨胀）。
+    #[test]
+    fn test_parse_backdrop_vocabulary() {
+        // blur 刻度 + 裸词 + 任意值。
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur"),
+            Ok(StyleClass::BackdropBlur(8.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur-sm"),
+            Ok(StyleClass::BackdropBlur(4.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur-md"),
+            Ok(StyleClass::BackdropBlur(12.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur-lg"),
+            Ok(StyleClass::BackdropBlur(16.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur-xl"),
+            Ok(StyleClass::BackdropBlur(24.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur-2xl"),
+            Ok(StyleClass::BackdropBlur(40.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur-3xl"),
+            Ok(StyleClass::BackdropBlur(64.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-blur-[24px]"),
+            Ok(StyleClass::BackdropBlur(24.0))
+        );
+        // saturate 刻度（倍率）+ 任意值（stella 配方 [1.6]）。
+        assert_eq!(
+            StyleClass::parse_single("backdrop-saturate-50"),
+            Ok(StyleClass::BackdropSaturate(0.5))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-saturate-100"),
+            Ok(StyleClass::BackdropSaturate(1.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-saturate-150"),
+            Ok(StyleClass::BackdropSaturate(1.5))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-saturate-200"),
+            Ok(StyleClass::BackdropSaturate(2.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("backdrop-saturate-[1.6]"),
+            Ok(StyleClass::BackdropSaturate(1.6))
+        );
+        // 不收系列与坏值：Err = Style::parse 静默跳过（vue 臂类串直通不受影响）。
+        assert!(StyleClass::parse_single("backdrop-brightness-50").is_err());
+        assert!(StyleClass::parse_single("backdrop-contrast-100").is_err());
+        assert!(StyleClass::parse_single("backdrop-invert").is_err());
+        assert!(StyleClass::parse_single("backdrop-grayscale").is_err());
+        assert!(StyleClass::parse_single("backdrop-blur-9").is_err(), "未定义刻度不收");
+        assert!(StyleClass::parse_single("backdrop-saturate-75").is_err(), "未定义刻度不收");
+        assert!(StyleClass::parse_single("backdrop-blur-[2rem]").is_err(), "非 px 单位不收");
+        assert!(StyleClass::parse_single("backdrop-blur-[abc]").is_err());
     }
 
     #[test]

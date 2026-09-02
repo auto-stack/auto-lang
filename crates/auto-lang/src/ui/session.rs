@@ -1044,6 +1044,10 @@ pub enum DesktopCommand {
     SetDockPosition(bool),
     /// Plan 487 M4：dock 启用开关热切换（false = 零预留；执行臂同上）。
     SetDockEnabled(bool),
+    /// Plan 518 G1：主题热切换（settings.at Appearance 分区；true = dark）。
+    /// 执行臂 set_dark_mode 即时生效 + storage `shell.appearance.theme`
+    /// 持久化 + 全 App 视图标脏（语义 token 构建期解析，需重建换色）。
+    SetTheme(bool),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1161,6 +1165,14 @@ impl DesktopCommand {
             DesktopCommand::SetDockEnabled(on) => {
                 format!("set_dock_enabled{}{}", Self::FIELD_SEP, if *on { 1 } else { 0 })
             }
+            // Plan 518 G1：主题动词（值域 dark/light，窄值跳过同 set_dock_*）。
+            DesktopCommand::SetTheme(dark) => {
+                format!(
+                    "set_theme{}{}",
+                    Self::FIELD_SEP,
+                    if *dark { "dark" } else { "light" }
+                )
+            }
         }
     }
 
@@ -1257,6 +1269,12 @@ impl DesktopCommand {
                     "set_dock_enabled" => match arg {
                         "1" => Some(DesktopCommand::SetDockEnabled(true)),
                         "0" => Some(DesktopCommand::SetDockEnabled(false)),
+                        _ => None,
+                    },
+                    // Plan 518 G1：主题动词（dark/light 窄值域）。
+                    "set_theme" => match arg {
+                        "dark" => Some(DesktopCommand::SetTheme(true)),
+                        "light" => Some(DesktopCommand::SetTheme(false)),
                         _ => None,
                     },
                     _ => None,
@@ -1396,9 +1414,11 @@ pub struct ShellFields {
     pub fit_enabled: Cell<bool>,
 }
 
-/// Plan 496 M5：桌面本体 pack 默认壁纸色（theme Background dark 的
-/// rgb(9,14,26)——壁纸键缺席/坏值的回退底色；renderer 壁纸解析同源）。
-pub const DESKTOP_WALLPAPER_DEFAULT: &str = "#090e1a";
+/// Plan 496 M5：桌面本体 pack 默认壁纸;Plan 518:默认资产化——
+/// 内嵌宣纸壁纸(stella 权威图同款暖米底,实测基色 ≈ #EDE7DB),经
+/// renderer `builtin:` 方案消费(壁纸键缺席/坏值的回退;深浅主题共用
+/// 浅色——stella dark 实证壁纸与主题解耦)。
+pub const DESKTOP_WALLPAPER_DEFAULT: &str = "builtin:ricepaper";
 
 /// desktop 模式宿主上下文：唯一 OS 窗口 + WM 状态（R2 单 OS 窗口拓扑）。
 pub struct HostCtx {
@@ -2539,7 +2559,15 @@ fn spawn_outproc_child(
     }
 
     /// 459 §2.3：递增分配新 AppId 并登记 App（boot 期调用，一 App 一窗）。
-    pub fn allocate_app(&mut self, component: DynamicComponent) -> AppId {
+    pub fn allocate_app(&mut self, mut component: DynamicComponent) -> AppId {
+        // Plan 518 G1：desktop 宿主下,新挂载 App 的已声明 dark_mode 同步
+        // 宿主当前主题——dynamic_view 每帧读该变量回写全局,app 自带默认值
+        //（如 011-calculator 的 dark）会把 Appearance 切过的主题翻回。
+        // standalone 不同步:458 env 播种(--theme)是彼模式的主题真源。
+        if self.host.is_some() && component.read_state("dark_mode").is_ok() {
+            let dark = crate::ui::style::theme::dark_mode();
+            let _ = component.write_state("dark_mode", auto_val::Value::Bool(dark));
+        }
         self.next_app += 1;
         let id = AppId(self.next_app);
         self.apps.insert(id, AppSession::new(id, component));

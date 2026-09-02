@@ -7,9 +7,9 @@ pub struct Counter {
 
 impl Counter {
     pub fn increment(&mut self) {
-        self.count() = self.count() + 1;
+        self.count = self.count + 1;
     }
     pub fn get(&self) -> i64 {
-        return self.count();
+        return self.count;
     }
 }

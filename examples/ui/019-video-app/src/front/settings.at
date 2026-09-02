@@ -1,0 +1,147 @@
+// settings.at — Settings popup panel component.
+// Supports dual-backend Dark/Light mode toggle and 5-color accent palette.
+
+widget SettingsPanel(dark_mode: bool, accent_color: str, on_close: msg, on_toggle_dark: msg, on_set_pink: msg, on_set_indigo: msg, on_set_ocean: msg, on_set_sage: msg, on_set_amber: msg) {
+    msg {
+        Close,
+        ToggleDark,
+        SetPink,
+        SetIndigo,
+        SetOcean,
+        SetSage,
+        SetAmber
+    }
+
+    view {
+        col {
+            style: if .dark_mode {
+                "p-4 bg-zinc-900 border border-zinc-800 rounded-2xl gap-3.5 shadow-2xl w-72"
+            } else {
+                "p-4 bg-white border border-gray-200 rounded-2xl gap-3.5 shadow-2xl w-72"
+            }
+
+            // Header
+            row {
+                style: "items-center justify-between"
+                row {
+                    style: "items-center gap-1.5"
+                    text "⚙" { style: "text-sm" }
+                    text "Settings" {
+                        style: if .dark_mode {
+                            "text-xs font-bold text-zinc-100 uppercase tracking-wider"
+                        } else {
+                            "text-xs font-bold text-gray-900 uppercase tracking-wider"
+                        }
+                    }
+                }
+                button "✕" {
+                    onclick: .Close
+                    style: if .dark_mode {
+                        "text-xs text-zinc-400 hover:text-zinc-100 w-6 h-6 flex items-center justify-center rounded-lg bg-transparent hover:bg-zinc-800 transition-colors cursor-pointer"
+                    } else {
+                        "text-xs text-gray-400 hover:text-gray-900 w-6 h-6 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors cursor-pointer"
+                    }
+                }
+            }
+
+            // Theme section
+            col {
+                style: "gap-1.5"
+                text "Theme" {
+                    style: if .dark_mode {
+                        "text-xs font-medium text-zinc-400"
+                    } else {
+                        "text-xs font-medium text-gray-500"
+                    }
+                }
+                row {
+                    style: "gap-1.5 p-0.5 bg-muted/40 rounded-lg"
+                    if .dark_mode {
+                        button "🌙 Dark" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                        }
+                        button "☀ Light" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md text-zinc-400 hover:text-zinc-100 bg-transparent transition-colors cursor-pointer"
+                        }
+                    } else {
+                        button "🌙 Dark" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md text-gray-500 hover:text-gray-900 bg-transparent transition-colors cursor-pointer"
+                        }
+                        button "☀ Light" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                        }
+                    }
+                }
+            }
+
+            // Accent color section
+            col {
+                style: "gap-1.5"
+                text "Accent Color" {
+                    style: if .dark_mode {
+                        "text-xs font-medium text-zinc-400"
+                    } else {
+                        "text-xs font-medium text-gray-500"
+                    }
+                }
+                row {
+                    style: "items-center gap-2.5 py-1"
+                    button "" {
+                        onclick: .SetPink
+                        style: if .accent_color == "pink" {
+                            "w-6 h-6 p-0 rounded-full bg-pink-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-pink-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-pink-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetIndigo
+                        style: if .accent_color == "indigo" {
+                            "w-6 h-6 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-indigo-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetOcean
+                        style: if .accent_color == "ocean" {
+                            "w-6 h-6 p-0 rounded-full bg-sky-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-sky-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-sky-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetSage
+                        style: if .accent_color == "sage" {
+                            "w-6 h-6 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-emerald-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetAmber
+                        style: if .accent_color == "amber" {
+                            "w-6 h-6 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-amber-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Close -> { on_close() }
+        .ToggleDark -> { on_toggle_dark() }
+        .SetPink -> { on_set_pink() }
+        .SetIndigo -> { on_set_indigo() }
+        .SetOcean -> { on_set_ocean() }
+        .SetSage -> { on_set_sage() }
+        .SetAmber -> { on_set_amber() }
+    }
+}

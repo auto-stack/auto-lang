@@ -1,6 +1,6 @@
 # Plan 401: AutoUI 示例升级 — 018-027 从单文件玩具到完整 App
 
-> **状态（2026-08-20 核查）**: 🟡 进行中。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018/022（Plan 404）/023（Plan 405）已完成；011 已拆 Plan 403。待办刷新（2026-09-01 Plan 513 C 组）：019/020/021 **⏸ 待裁定**（目录分轨后是否仍以 App 轨立项待裁）；025 维持已清理终态、不再排队；024 gallery 已由 [Plan 409](409-widgets-gallery.md) 以 `examples/widgets-gallery/` 形态完成，见总表注。
+> **状态（2026-08-20 核查）**: 🟡 进行中。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018/022（Plan 404）/023（Plan 405）已完成；011 已拆 Plan 403。待办刷新（2026-09-01 Plan 513 C 组；2026-09-02 二次裁定）：019/020/021 已全部裁定**维持 App 轨立项**，分别拆出 [Plan 519](519-019-video-app.md)（019-video-app）、[Plan 520](520-020-music-player.md)（020-music-player）与 [Plan 521](521-021-blog-viewer.md)（021-blog-viewer）——纲领范围内再无待裁定项；025 维持已清理终态、不再排队；024 gallery 已由 [Plan 409](409-widgets-gallery.md) 以 `examples/widgets-gallery/` 形态完成，见总表注。
 > **分支**: 各示例独立分支 `plan401/0NN-xxx`（018 已合并 master）。
 > **动机**: 计划 399 §后续第 166 行"继续升级 018-027 为正规 App"。调研结论：016-027 全部是单文件静态玩具（无后端、散装变量、no-op handler），与 015-notes / 017-chat（完整 App + 后端 + playwright）差一个量级。本计划逐个把它们升级为对标生产级应用的完整示例。
 > **与 Plan 399 的关系**: 399 是 codegen 基建（SSE 多事件 / a2r 根治 / 混合状态硬检查）；本计划是**纯示例升级**，不引入新 codegen 基建（升级过程中发现的 codegen bug 单独修复并在此记录）。
@@ -99,9 +99,9 @@ examples/ui/018-book-reader/
 | 011-calculator | 整数四则 | 🔀 已拆出 | Plan 403 | grid 重构 + MCP + 多模式 |
 | 022-kanban | 已升级 | ✅ 完成 | 本纲领 §022（提交历史） | CRUD + 列移动 + HTML5 拖拽，6/6 全绿；修 row/col 属性穿透 bug |
 | 023-realworld | 已升级 | ✅ 完成(阶段1+2) | [Plan 405](405-023-realworld.md) | 完整 Conduit(认证+CRUD+评论+关注+收藏+资料)，14/14 全绿；vue 原型 |
-| 019-video-app | 135 行单文件 | ⏸ 待裁定（2026-09-01） | — | 中 |
-| 020-music-player | 115 行单文件 | ⏸ 待裁定（2026-09-01） | — | 中 |
-| 021-blog-viewer | 89 行单文件 | ⏸ 待裁定（2026-09-01） | — | 中 |
+| 019-video-app | 已升级 | ✅ 完成 | [Plan 519](archive/519-019-video-app.md) | 双端(Vue+VM) + 5色主题 + 路由(/, /watch/:id) + Rust后端 + Playwright 10/10 + VM smoke |
+| 020-music-player | 115 行单文件 | 📋 已立项（2026-09-02 裁定） | [Plan 520](520-020-music-player.md) | 中 |
+| 021-blog-viewer | 89 行单文件 | 📋 已立项（2026-09-02 裁定） | [Plan 521](521-021-blog-viewer.md) | 中 |
 | 024-widget-gallery | 283 行展示型 | 🗑 已清理 | [Plan 409](409-widgets-gallery.md) | gallery 已落地为 `examples/widgets-gallery/`（62 页三模式一致性）；旧 `examples/ui/024-*` 目录（含单数拼写的空壳）已于 2026-08-23 删除，唯一入口为 `examples/widgets-gallery/` |
 | 025-notes-extended | 6 文件无后端 | 🗑 已清理（终态） | — | 015 的前端丰富度临时 fork，store+路由概念已被 015-notes 吸收（Plan 354 §7）；目录于 2026-08-23 删除（SPEC 留存于 git 历史）；2026-09-01 Plan 513 裁定维持终态、不再排队 |
 | 026-keyboard-mouse-events | 121 行能力展示 | 📦 已迁出 | — | 非 App 性质（能力 demo）；2026-08-23 迁至 `examples/capability-tests/` |
@@ -109,7 +109,7 @@ examples/ui/018-book-reader/
 
 > **2026-08-23 目录分轨**：`examples/ui/` 现在只放 App 性质示例（含 038-minesweeper、041-auto-edit）。021-block-static + 026–040 的 16 个能力样板（撞号的 038-vshow 也在其中）整体迁至 `examples/capability-tests/`（见其 README 的 Feature fixtures 区段）；特性获得可覆盖的内联测试后按 README 约定退役。
 
-**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1+2）→ 024（✅ 经 409，旧目录已清理）→ 019/020/021（中等）。（025 已删除，不再排队）
+**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1+2）→ 024（✅ 经 409，旧目录已清理）→ 019（✅ Plan 519）→ 020（📋 Plan 520）→ 021（📋 Plan 521）。（025 已删除，不再排队）
 
 ---
 
@@ -124,3 +124,4 @@ examples/ui/018-book-reader/
 | `plan401/023-realworld` | 023 阶段1：Conduit 认证+feed+详情 + vue 原型 + 修 3 个 a2r codegen bug + playwright 8/8 | 023 |
 | `plan401/023-stage2` | 023 阶段2：Conduit 写操作(CRUD+评论+关注+收藏+资料) + 2 codegen 修复 + playwright 12/14 | 023 |
 | `plan401/023-editor-fix` | 023 编辑器修复(store 字段同名 + 重名路由) → playwright 14/14 全绿 | 023 |
+| `plan-519-dev` | 019 视频播放器升级：双端(Vue+VM) + 5色主题/暗色 + 强类型Rust后端 + Playwright 10/10 + VM smoke | 019 |

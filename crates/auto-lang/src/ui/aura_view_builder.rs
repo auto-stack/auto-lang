@@ -27,6 +27,13 @@
 //! - State binding resolution from VmBridge
 //! - String interpolation for `${.field}` patterns
 //! - Event handler → DynamicMessage mapping
+//!
+//! ## Plan 040 VM v1 豁免登记（autodown 契约扩展）
+//!
+//! `autodown` 只读臂与 `autodown_editor` 编辑臂读取 streaming/
+//! placeholder_block_id/placeholder_height/scroll_sync/placeholder 后忽略：
+//! **VM v1 豁免——streaming 恒按 final、ghost 占位块与 scroll_sync 未实现**，
+//! 滚动同步归 PLAN-042、ghost 占位归 PLAN-043 补齐（vue 臂全量发射）。
 
 use std::collections::HashMap;
 
@@ -1395,6 +1402,9 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| aura_events_get_base(events, "change"))
                         .map(|event| self.event_to_message(&event.handler));
                     let style = self.extract_style_with(props, bindings);
+                    // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
+                    // 无空态概念，读取后忽略。
+                    let _ = props.get("placeholder");
                     return View::AutodownEditor { key, value, is_final, on_change, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
@@ -1421,6 +1431,13 @@ impl<'a> AuraViewBuilder<'a> {
                         })
                         .flatten()
                         .unwrap_or(true);
+                    // Plan 040 契约扩展——VM v1 豁免：streaming 恒按 final、
+                    // ghost 占位块（placeholder_*）与 scroll_sync 未实现，
+                    // 读取后忽略；PLAN-042（滚动同步）/043（ghost）补。
+                    let _ = props.get("streaming");
+                    let _ = props.get("placeholder_block_id");
+                    let _ = props.get("placeholder_height");
+                    let _ = props.get("scroll_sync");
                     return crate::ui::autodown_render::render_document(&content, is_final);
                 }
                 #[cfg(not(feature = "autodown"))]
@@ -2386,6 +2403,9 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| aura_events_get_base(events, "change"))
                         .map(|event| self.event_to_message(&event.handler));
                     let style = self.extract_style_with(props, bindings);
+                    // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
+                    // 无空态概念，读取后忽略。
+                    let _ = props.get("placeholder");
                     return View::AutodownEditor { key, value, is_final, on_change, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
@@ -2412,6 +2432,13 @@ impl<'a> AuraViewBuilder<'a> {
                         })
                         .flatten()
                         .unwrap_or(true);
+                    // Plan 040 契约扩展——VM v1 豁免：streaming 恒按 final、
+                    // ghost 占位块（placeholder_*）与 scroll_sync 未实现，
+                    // 读取后忽略；PLAN-042（滚动同步）/043（ghost）补。
+                    let _ = props.get("streaming");
+                    let _ = props.get("placeholder_block_id");
+                    let _ = props.get("placeholder_height");
+                    let _ = props.get("scroll_sync");
                     return crate::ui::autodown_render::render_document(&content, is_final);
                 }
                 #[cfg(not(feature = "autodown"))]
@@ -8831,12 +8858,18 @@ mod tests {
 
         let node = AuraNode::element("autodown")
             .with_prop("content", Expr::Str("# 标题\n\n段落 **粗**\n".into()))
-            .with_prop("final", Expr::Bool(true));
+            .with_prop("final", Expr::Bool(true))
+            // Plan 040 契约扩展 props：VM v1 读取后忽略（豁免在案），不破
+            // 真渲染路径、不影响 final 语义。
+            .with_prop("streaming", Expr::Bool(true))
+            .with_prop("placeholder_block_id", Expr::Str("ghost".into()))
+            .with_prop("placeholder_height", Expr::Float(96.0, "96".into()))
+            .with_prop("scroll_sync", Expr::Bool(true));
         match builder.build(&node) {
             View::Column { children, .. } => {
                 assert_eq!(children.len(), 2);
                 match &children[0] {
-                    View::Text { content, style } => {
+                    View::Text { content, style, .. } => {
                         assert_eq!(content, "标题");
                         let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
                         assert_eq!(style.as_ref().unwrap().classes, expected.classes);
@@ -8874,6 +8907,8 @@ mod tests {
             .with_prop("key", Expr::Str("doc-ed".into()))
             .with_prop("content", Expr::Str("# 编辑\nn".into()))
             .with_prop("final", Expr::Bool(true))
+            // Plan 040: placeholder 读取后忽略（VM v1 编辑壳无空态概念）。
+            .with_prop("placeholder", Expr::Str("Start typing...".into()))
             .with_event("oninput", ".DocEdit");
         match builder.build(&node) {
             View::AutodownEditor { key, value, is_final, on_change, .. } => {

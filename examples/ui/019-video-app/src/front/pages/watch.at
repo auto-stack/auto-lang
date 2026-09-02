@@ -1,0 +1,227 @@
+// watch.at — VideoApp Watch / Detail page ("/watch/:id" route).
+// Large video player preview, title, author, views, like counter, and related videos list.
+
+use store: VideoStore
+use back.api: get_video, add_view, toggle_like, list_videos, Video
+
+widget watch {
+    msg {
+        Init,
+        GoHome,
+        ToggleLike,
+        OpenRelated(int),
+    }
+
+    model {
+        var video_id int = 0
+        var video ?Video = None
+        var related []Video = []
+        var loaded bool = false
+    }
+
+    view {
+        col {
+            style: "w-full flex-1 p-6 md:p-8 gap-6 max-w-7xl mx-auto"
+
+            // ── Back Button ──
+            button "← Back to Home" {
+                onclick: .GoHome
+                style: "inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit cursor-pointer"
+            }
+
+            if .loaded {
+                if .video == None {
+                    col {
+                        style: "w-full items-center justify-center py-24 gap-3 text-muted-foreground"
+                        text "🎬" { style: "text-5xl opacity-40" }
+                        text "Video not found" { style: "font-semibold text-foreground text-base" }
+                        button "Return to Home" {
+                            onclick: .GoHome
+                            style: "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium mt-2 cursor-pointer"
+                        }
+                    }
+                } else {
+                    row {
+                        style: "gap-8 flex-col lg:flex-row w-full items-start"
+
+                        // ── Main Video Player & Details (Left / Center) ──
+                        col {
+                            style: "flex-1 w-full gap-5"
+
+                            // Player screen
+                            col {
+                                style: "w-full h-72 md:h-96 rounded-2xl bg-gradient-to-br " + .video.cover_color + " items-center justify-center relative overflow-hidden shadow-xl"
+                                text "▶" { style: "text-6xl text-white/90 drop-shadow-md cursor-pointer hover:scale-110 transition-transform" }
+
+                                // Bottom player control bar overlay
+                                row {
+                                    style: "absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 items-center justify-between"
+                                    row {
+                                        style: "items-center gap-3 text-white text-sm"
+                                        text "▶" { style: "cursor-pointer" }
+                                        text f"00:00 / ${.video.duration}" { style: "text-xs opacity-80" }
+                                    }
+                                    row {
+                                        style: "items-center gap-3 text-white text-xs"
+                                        text "HD" { style: "px-1.5 py-0.5 bg-white/20 rounded text-[10px] font-bold" }
+                                        text "⛶" { style: "text-sm cursor-pointer" }
+                                    }
+                                }
+
+                                row {
+                                    style: "absolute top-3 left-3 bg-black/40 backdrop-blur px-2.5 py-1 rounded-md"
+                                    text .video.category { style: "text-xs font-semibold text-white uppercase tracking-wider" }
+                                }
+                            }
+
+                            // Title & metadata
+                            col {
+                                style: "gap-3"
+                                h1 .video.title {
+                                    style: "text-xl md:text-2xl font-extrabold text-foreground leading-snug"
+                                }
+
+                                row {
+                                    style: "items-center justify-between flex-wrap gap-4 pt-1 border-b border-border/60 pb-4"
+
+                                    // Author info
+                                    row {
+                                        style: "items-center gap-3"
+                                        row {
+                                            style: "w-10 h-10 rounded-full bg-primary/20 items-center justify-center border border-primary/30"
+                                            text "👤" { style: "text-base" }
+                                        }
+                                        col {
+                                            text .video.author { style: "font-bold text-sm text-foreground" }
+                                            text "128K subscribers" { style: "text-xs text-muted-foreground" }
+                                        }
+                                        button "Subscribe" {
+                                            style: "ml-3 px-4 py-1.5 bg-primary text-primary-foreground rounded-full text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
+                                        }
+                                    }
+
+                                    // Action buttons (Like / Share)
+                                    row {
+                                        style: "items-center gap-2.5"
+                                        button f"❤️ ${.video.likes}" {
+                                            onclick: .ToggleLike
+                                            style: "inline-flex items-center gap-1.5 px-4 py-2 bg-muted hover:bg-accent text-foreground rounded-full text-xs font-semibold transition-colors cursor-pointer"
+                                        }
+                                        button "🔗 Share" {
+                                            style: "inline-flex items-center gap-1.5 px-4 py-2 bg-muted hover:bg-accent text-foreground rounded-full text-xs font-semibold transition-colors cursor-pointer"
+                                        }
+                                        row {
+                                            style: "px-3 py-1.5 text-xs text-muted-foreground"
+                                            text f"${.video.views} views" {}
+                                        }
+                                    }
+                                }
+
+                                // Video Description Card
+                                col {
+                                    style: if .store.dark_mode {
+                                        "p-4 rounded-xl bg-zinc-900 border border-zinc-800 gap-2 text-sm text-zinc-300"
+                                    } else {
+                                        "p-4 rounded-xl bg-gray-100 border border-gray-200 gap-2 text-sm text-gray-700"
+                                    }
+                                    text "About this video" { style: "text-xs font-bold text-foreground uppercase tracking-wider" }
+                                    text .video.desc { style: "leading-relaxed" }
+                                }
+                            }
+                        }
+
+                        // ── Related Recommendations (Right Sidebar) ──
+                        col {
+                            style: "w-full lg:w-80 gap-4 flex-shrink-0"
+                            text "Related Videos" { style: "text-base font-bold text-foreground" }
+
+                            if .related.len() == 0 {
+                                col {
+                                    style: "p-6 rounded-xl bg-card border border-border items-center justify-center text-muted-foreground text-xs"
+                                    text "No related videos in this category" {}
+                                }
+                            } else {
+                                col {
+                                    style: "gap-3"
+                                    for rel in .related {
+                                        row {
+                                            onclick: .OpenRelated(rel.id)
+                                            style: if .store.dark_mode {
+                                                "gap-3 p-2 rounded-xl bg-zinc-900/80 border border-zinc-800/80 hover:border-zinc-700 transition-colors cursor-pointer group"
+                                            } else {
+                                                "gap-3 p-2 rounded-xl bg-white border border-gray-200/80 hover:border-gray-300 transition-colors cursor-pointer group"
+                                            }
+
+                                            // Mini thumbnail
+                                            col {
+                                                style: "w-28 h-18 rounded-lg bg-gradient-to-br " + rel.cover_color + " items-center justify-center flex-shrink-0 relative overflow-hidden"
+                                                text "▶" { style: "text-lg text-white/80 group-hover:scale-110 transition-transform" }
+                                                row {
+                                                    style: "absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.2 rounded"
+                                                    text rel.duration { style: "text-[9px] font-medium text-white" }
+                                                }
+                                            }
+
+                                            // Mini info
+                                            col {
+                                                style: "flex-1 justify-center gap-1 min-w-0"
+                                                text rel.title { style: "text-xs font-bold text-foreground line-clamp-2 leading-tight" }
+                                                text rel.author { style: "text-[11px] text-muted-foreground truncate" }
+                                                row {
+                                                    style: "items-center gap-1.5 text-[10px] text-muted-foreground"
+                                                    text f"${rel.views} views" {}
+                                                    text "•" {}
+                                                    text f"❤️ ${rel.likes}" {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .video_id = router.param("id")
+            add_view(.video_id)
+            .video = get_video(.video_id)
+            if .video != None {
+                let rel = list_videos(.video.category, "recommend", "")
+                var filtered []Video = []
+                for v in rel {
+                    if v.id != .video_id {
+                        filtered.push(v)
+                    }
+                }
+                .related = filtered
+            }
+            .loaded = true
+        }
+        .GoHome -> { router.push("/") }
+        .ToggleLike -> {
+            toggle_like(.video_id)
+            .video = get_video(.video_id)
+        }
+        .OpenRelated(id int) -> {
+            router.push("/watch/" + id.to_string())
+            .video_id = id
+            add_view(id)
+            .video = get_video(id)
+            if .video != None {
+                let rel = list_videos(.video.category, "recommend", "")
+                var filtered []Video = []
+                for v in rel {
+                    if v.id != id {
+                        filtered.push(v)
+                    }
+                }
+                .related = filtered
+            }
+        }
+    }
+}

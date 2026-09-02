@@ -63,6 +63,14 @@ class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGro
 launcher 品牌色图标底块；引擎补齐 style 串循环成员插值 `${member.field}` 双端。
 详见 [design/desktop-shell.md](design/desktop-shell.md)。
 
+**桌面视觉二期（plan-518 落地）**：stella 对齐收口——双主题 token 全组（light 暖纸/
+dark 精修蓝黑,可切换：set_theme 热切换动词+shell.appearance.theme 持久化+boot 读回）、
+内嵌宣纸壁纸（builtin:ricepaper/inkwash,深浅主题共用浅色=壁纸主题解耦）、dock 去常驻
+accent 底+贴底宽条运行指示、per-app 徽标色图标格（badge_color_for 8 色板）、窗口标题
+居中+阴影双主题+透明度三档（shell.desktop.transparency）、settings Appearance 分区、
+backdrop 毛玻璃词汇声明冻结（三臂：vue 直通/渲染 no-op/queue 放行;真模糊挂 RenderQueue
+planned-debt）。T3 双主题对表逐通道像素断言过权威图（reports/518-t3-visual-parity.md）。
+
 **桌面线（452→459→462→463→465 落地，464 未开工，386 暂缓）**：
 452 翻转"Windows 非 compositor"裁定并验证 IME/焦点分区可行 → 459 iced daemon 多 OS 窗口 +
 会话化（453 的 DesktopSession/AppSession 拆分）→ **462 路线 A 地基**：VirtualWindow widget

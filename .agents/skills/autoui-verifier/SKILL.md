@@ -136,6 +136,8 @@ client.screenshot("converter_vm_decimal")
 8. **文本修饰线与条件状态 (Text Decorations & Conditional Styles)**:
    - [ ] **删除线与下划线 (Line-Through & Underline)**: 已完成待办项、已核销金额等带 `line-through` 的文本是否正确绘制水平穿透线？带 `underline` 的超链接/强调文本是否正确绘制底线？
    - [ ] **可点击文本组件的修饰继承**: 当 `text` 绑定了 `onclick`（在 AST/AURA 中转为 `Button`）时，其内部文本标签是否依然完整继承并渲染了 `line-through`、字号和颜色？
+9. **毛玻璃 backdrop-\*（已知分歧白名单,Plan 518 G8）**:
+   - `backdrop-blur-*` / `backdrop-saturate-*` 词汇已声明冻结（共享 parser 识别）,但 **VM/iced 臂视觉 no-op 为既定降级语义**（装饰性降级非错绘,不报错不 not-yet）——双端对拍中含玻璃样式的卡面（如 `examples/ui/p518-glass-sample`）**vue 出真毛玻璃、VM 无模糊属预期分歧,不计为回归**;真 backdrop 渲染挂 RenderQueue（KNOWN-DEBT P518 planned-debt,翻转时移除本条）。玻璃配方另两腿（`bg-white/10` 半透明底 + border）双端均应正常渲染。
 
 ---
 

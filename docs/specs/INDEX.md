@@ -12,7 +12,7 @@
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
 | a2r-std | active | 5 | [a2r-std/project.md](a2r-std/project.md) |
 | stdlib | active | 8 | [stdlib/project.md](stdlib/project.md) |
-| aavm | experimental | 8 | [aavm/project.md](aavm/project.md) |
+| aavm | experimental | 11 | [aavm/project.md](aavm/project.md) |
 
 <details><summary>auto-lang 模块明细</summary>
 
@@ -86,16 +86,24 @@
 |---|---|---|
 | lib/token.at | TokenKind 139 变体 + keyword_kind/kind_name | 432 完结(M1) |
 | lib/lexer.at | tokenize + dump;434 增 f-string/三引号(D38c) | 432 完结(M1)+434 |
-| lib/parser.at | parse_dump S-expr 直出;434 增泛型实例/type-decl/enum-decl(D38a/b) | 432 完结(M2)+434 |
+| lib/parser.at | parse_dump S-expr 直出;434 增泛型实例/type-decl/enum-decl
+  (D38a/b);514 P 状态类型 14 方法入 type 体(γ4) | 432 完结(M2)+434
+  +**514(W3 方法化)** |
 | lib/typeinfo.at | typecheck_dump(.type 推断层) | 432 完结(M3) |
 | lib/codegen.at | cg_compile 字节码(I{op,s,n} 载体);511 增 struct 四件/
-  全局变量/for-in 双通道/use 多编译单元+链接器(池合并+符号定址) | 432 完结(M4)
-  +447+**511(Plan 511:struct/全局/补缺/use 模块化)** |
+  全局变量/for-in 双通道/use 多编译单元+链接器(池合并+符号定址);514
+  CG 28 方法入 type 体+cg_expr/cg_stmt p_kind 链 is 化(C3) | 432 完结(M4)
+  +447+511+**514(W3 方法化/W4 C3)** |
 | lib/engine.at | ev_run 栈式 VM(Val 判别结构/数组 arena);511 增
   get/set.field 分派/全局区/迭代器零迭代/ev_run_files(初始化序) | 432 完结(M5)
   +447+**511(ev_exec 抽核+多文件)** |
-| lib/a2r.at | AA2R:主 a2r 核心子集的 Auto 版(Plan 434) | 434(见其文件头 Snapshot) |
+| lib/a2r.at | AA2R:主 a2r 核心子集的 Auto 版(Plan 434);514 增方法族
+  发射(type 体方法/ext/static new/接收者合成/ | > 脱糖)+自身方法化(Ar
+  23 方法,塔顶:自己转译自己 rustc 零错) |
 | pac.at | 包定义(`auto build` 转译入口) | experimental |
+| 组件＼形态 | VM 内解释执行 | 转译成 Rust 后执行 |
+| **aavm**(编译运行目标程序) | M5 闸门(corpus 经 ev_run)/矩阵③腿 | compile corpus 闸门(主 a2r 转译整 lib 二进制)/矩阵②腿 |
+| **a2r.at**(转译目标程序) | corpus_a2r 闸门(VM 内 ar_run) | 矩阵⑤腿(AA2R self-bin:**含自身**的七文件 lib 自译→二进制,434 自举证据形态) |
 
 </details>
 

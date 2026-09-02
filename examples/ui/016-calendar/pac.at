@@ -3,6 +3,10 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Calendar"
-theme: "dark"
-accent: "ocean"
+theme: "light"
+accent: "indigo"
 window: "fit"
+
+dep settings {
+    path: "../common/settings"
+}

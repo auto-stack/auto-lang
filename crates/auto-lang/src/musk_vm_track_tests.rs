@@ -1917,15 +1917,16 @@ mod musk_vm_track_p054_t4_styles {
     }
 
     /// A9 锁②：bg-card 语义解析 = musk dark --card(222.2 47% 10%) =
-    /// rgb(13,21,38)（Plan 448 对齐,两轨一致）。"未选中色块"为旧观察。
+    /// rgb(13,21,38)（Plan 448 对齐,两轨一致）。
+    /// Plan 518 stella 重校:dark Surface 翻精修蓝黑 #1a2235 = (26,34,53)。
     #[test]
     fn bg_card_matches_musk_dark_token() {
         let s = Style::parse("bg-card").expect("parse");
         let is = IcedStyle::from_style(&s);
         let c = is.background_color.expect("bg");
-        assert_eq!((c.r * 255.0).round() as u8, 13, "r");
-        assert_eq!((c.g * 255.0).round() as u8, 21, "g");
-        assert_eq!((c.b * 255.0).round() as u8, 38, "b");
+        assert_eq!((c.r * 255.0).round() as u8, 26, "r");
+        assert_eq!((c.g * 255.0).round() as u8, 34, "g");
+        assert_eq!((c.b * 255.0).round() as u8, 53, "b");
     }
 
     /// A11：图标组件 class prop 下传——ml-auto 贴行右端 + muted 着色,

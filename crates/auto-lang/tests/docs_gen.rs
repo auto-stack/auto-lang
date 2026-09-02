@@ -107,7 +107,10 @@ const DOC_EXCLUDE: &[&str] = &[
 const DOC_TODO_BASELINE: &[&str] = &[
     "autodowneditor", "box", "chart", "chatmessage",
     "chip", "container", "date", "datetime", "datetimeinput", "divider",
-    "griditem", "icon", "image", "img", "list", "markdown",
+    "griditem", "icon", "image", "img", "list",
+    // plan 040 主名翻转 markdown→autodown（同一条文档债随元素改名；
+    // 实装文档在 auto-down 仓 demo/auto/README.md）。
+    "autodown",
     "mermaid", "modal", "navmenu", "radioitem", "range", "spacer", "square",
     "stack", "svg", "swiper", "tag", "toolbar", "listitem",
     "navdestination",

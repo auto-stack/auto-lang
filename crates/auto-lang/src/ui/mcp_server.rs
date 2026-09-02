@@ -2317,6 +2317,12 @@ fn extract_action_from_view(
         View::CodeEditor { on_change, .. } if action_name == "type" => {
             on_change.as_ref().and_then(|m| extract_dyn_msg(m))
         }
+        // Plan 040 T11: autodown doc editor accepts type_text/clear — same
+        // value-diff flow as code editor (content state round-trips into the
+        // block editor buffer via autodown_editor_sync).
+        View::AutodownEditor { on_change, .. } if action_name == "type" => {
+            on_change.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
         // submit → on_submit(Enter 键)。ash-gui M1:命令输入栏回车执行。
         // Plan 053 M4: textarea 也有 on_submit(onenter → OnEnter)。
         View::Input { on_submit, .. } | View::Textarea { on_submit, .. }

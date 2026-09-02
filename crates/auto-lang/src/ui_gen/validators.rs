@@ -893,7 +893,9 @@ impl SchemaResolveScope {
 }
 
 /// 通用 prop(任何元素都可挂,不参与"未声明 prop"判定)。
-const UNIVERSAL_PROPS: &[&str] = &["class", "style", "id", "key", "if", "for"];
+/// Plan 040: `ref`(模板引用,生成器在 emit 前剥离)同 class/style/id/key
+/// 一样是 DSL 级通用属性,不属于组件 prop 契约。
+const UNIVERSAL_PROPS: &[&str] = &["class", "style", "id", "key", "if", "for", "ref"];
 
 /// Plan 435 P2:用 schema/aura.at 校验 widget 的 view 树。
 /// - 未知 tag(schema 未声明、非本地 widget/子件/ext 组件)→ Warning + 拼写建议

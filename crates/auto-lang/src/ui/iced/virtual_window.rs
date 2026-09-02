@@ -43,6 +43,25 @@ fn token(c: crate::ui::style::Color) -> Color {
         .unwrap_or(Color::from_rgb8(0x1E, 0x1E, 0x24))
 }
 
+/// Plan 518 G6：Transparency 三档 → 虚拟窗底色 alpha（off=0.95 / low=0.80 /
+/// high=0.62，初值实机可调）。决策纯函数；storage 键
+/// `shell.desktop.transparency` 缺席/坏值 = off。仅底色——chrome 圆点/
+/// 描边/文字不透明保可用性（计划条款）；每帧读键 = 设置面板写后下一帧
+/// 即时生效（壁纸键先例为 boot 读，此处面板同屏切换要求即时）。
+pub(crate) fn transparency_alpha_for(level: &str) -> f32 {
+    match level.trim() {
+        "low" => 0.80,
+        "high" => 0.62,
+        _ => 0.95,
+    }
+}
+
+pub(crate) fn load_transparency_alpha() -> f32 {
+    crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency")
+        .map(|v| transparency_alpha_for(&v))
+        .unwrap_or(0.95)
+}
+
 /// 桌面根：背景层 + 虚拟窗口 z-stack（back → front，调用方保证顺序）。
 pub fn desktop_root(
     layers: Vec<Element<'_, DesktopMessage>>,
@@ -112,6 +131,9 @@ pub fn virtual_window_element<'a>(
     ]
     .spacing(8.0);
 
+    // Plan 518 G5：标题窗口级居中（stella 形态）——三列 row：左圆点组 /
+    // 中标题 Fill 居中 / 右等宽配重（3×12px 圆点 + 2×8 间距 + 12 左垫 =
+    // 64px）。整条 mouse_area 拖拽把手语义不变（配重列仍在其内）。
     let titlebar = mouse_area(
         row![
             container(lights).padding(Padding {
@@ -123,13 +145,9 @@ pub fn virtual_window_element<'a>(
             container(text(vwin.title.clone()).size(12))
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .center_y(Length::Fill)
-                .padding(Padding {
-                    top: 0.0,
-                    right: 0.0,
-                    bottom: 0.0,
-                    left: 12.0,
-                }),
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
+            container(text("")).width(Length::Fixed(64.0)),
         ]
         .width(Length::Fill)
         .height(Length::Fixed(TITLEBAR_H)),
@@ -137,14 +155,18 @@ pub fn virtual_window_element<'a>(
     .on_press(DesktopMessage::Wm(WmCommand::StartDrag { wid }));
 
     // --- 客户区（点击聚焦 + 阻断穿透；App 组件优先捕获不受影响）---
+    // Plan 518 G6：底色乘 Transparency 档位 alpha（内容文字照常绘制其上）。
+    let t_alpha = load_transparency_alpha();
+    let mut client_bg = token(crate::ui::style::Color::Background);
+    client_bg.a = t_alpha;
     let client_area = container(
         mouse_area(container(client).width(Length::Fill).height(Length::Fill))
             .on_press(DesktopMessage::Wm(WmCommand::Focus(wid))),
     )
     .width(Length::Fill)
     .height(Length::Fill)
-    .style(|_t| Style {
-        background: Some(token(crate::ui::style::Color::Background).into()),
+    .style(move |_t| Style {
+        background: Some(client_bg.into()),
         ..Default::default()
     });
 
@@ -156,23 +178,28 @@ pub fn virtual_window_element<'a>(
     // Plan 503 M5：focused 描边 2px accent → 1px accent/60；柔影
     // (0,8)/32px——light 12% / dark 40%，focused 加深；窗矩形 ≈ 全桌面
     // （≥98%）视作最大化——去圆角去影（贴边平铺）。
+    // Plan 518 G5 重校：柔影 (0,10)/40——dark 40–52%（聚焦区间上限即
+    // 0.52）、light 12–18%（聚焦 0.18,原 0.20 收敛对齐 stella 轻影）。
     let accent = token(crate::ui::style::Color::Primary);
     let desktop_size = *vwin.window_size.borrow();
     let maximized =
         rect.width >= desktop_size.width * 0.98 && rect.height >= desktop_size.height * 0.98;
     let dark = crate::ui::style::theme::dark_mode();
-    let (base_alpha, focus_boost): (f32, f32) = if dark { (0.40, 0.12) } else { (0.12, 0.08) };
+    let (base_alpha, focus_boost): (f32, f32) = if dark { (0.40, 0.12) } else { (0.12, 0.06) };
     let shadow_alpha = if focused {
         (base_alpha + focus_boost).min(0.7)
     } else {
         base_alpha
     };
+    // Plan 518 G6：窗体底色（Surface，标题栏带）同乘档位 alpha。
+    let mut win_surface = token(crate::ui::style::Color::Surface);
+    win_surface.a = t_alpha;
     let win_box = container(body)
         .width(Length::Fill)
         .height(Length::Fill)
         .clip(true)
         .style(move |_t| Style {
-            background: Some(token(crate::ui::style::Color::Surface).into()),
+            background: Some(win_surface.into()),
             border: Border {
                 color: if focused {
                     Color::from_rgba(accent.r, accent.g, accent.b, 0.6)
@@ -187,8 +214,8 @@ pub fn virtual_window_element<'a>(
             } else {
                 Shadow {
                     color: Color::from_rgba(0.0, 0.0, 0.0, shadow_alpha),
-                    offset: Vector::new(0.0, 8.0),
-                    blur_radius: 32.0,
+                    offset: Vector::new(0.0, 10.0),
+                    blur_radius: 40.0,
                 }
             },
             ..Default::default()
@@ -342,4 +369,24 @@ pub fn native_drag_over_element<'a>(rect: iced::Rectangle) -> Element<'a, Deskto
         .align_x(Alignment::Start)
         .align_y(Alignment::Start)
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Plan 518 G6 T1 决策单测:三档 alpha 映射 + 缺席/坏值回退 off。
+    /// 初值 off=0.95 / low=0.80 / high=0.62（实机调参时同步本表）。
+    #[test]
+    fn transparency_levels_map_to_alpha() {
+        assert_eq!(transparency_alpha_for("off"), 0.95);
+        assert_eq!(transparency_alpha_for("low"), 0.80);
+        assert_eq!(transparency_alpha_for("high"), 0.62);
+        // 容错:空/未知/带空白 → off。
+        assert_eq!(transparency_alpha_for(""), 0.95);
+        assert_eq!(transparency_alpha_for("bogus"), 0.95);
+        assert_eq!(transparency_alpha_for(" low "), 0.80, "首尾空白容忍");
+        // 键缺席 = off（load 路径)。
+        assert_eq!(load_transparency_alpha(), 0.95);
+    }
 }

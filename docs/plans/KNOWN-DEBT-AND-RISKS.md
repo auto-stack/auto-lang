@@ -60,6 +60,8 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 518 | planned-debt: backdrop 真模糊渲染挂 RenderQueue | `backdrop-blur-*`/`backdrop-saturate-*` 毛玻璃词汇已声明冻结（共享 parser `StyleClass::BackdropBlur/Saturate`,Plan 518 G8）,但 iced/gpui/headless 三渲染臂为视觉 no-op（装饰性降级非错绘,不报错不 not-yet）——真 backdrop-filter 渲染推迟 **RenderQueue 宿主栅格化**:窗口根容器 → 宿主 WM 窗口级 glass 属性（queue/pixels 双臂通吃）;应用内面板 → `DrawOp::BeginBackdrop/EndBackdrop` 追加式 tag 对（线格式零变更）。已验 iced 0.14 源码:无 backdrop primitive、无 pass 干预口;`window::screenshot` 为整场景重渲+阻塞读回+上一帧玻璃反馈污染,只适合快照;fork iced_wgpu 可真解（screenshot 代码即施工图）但 RenderQueue 在途,裁定不投。vue 臂类串直通（Tailwind JIT content 直扫,零登记即生效）出真毛玻璃——样张 `examples/ui/p518-glass-sample`（stella 配方直译,VM 降级为既定语义）;parity 双端对拍中玻璃卡为已知分歧（VM 降级,RenderQueue 期翻转）。glass 配方另两腿已就绪:半透明底 `bg-white/10`（parse_color_with_alpha 既有）+ border 既有。 | `crates/auto-lang/src/ui/style/class.rs` BackdropBlur/Saturate + iced/gpui no-op 臂注释;`docs/plans/518-desktop-visual-phase2.md` §8 |
+| 518 | 架构缝: os-config 逐 app 主题 × shell 全局主题共享 dark_mode thread-local | 全局 `DARK_MODE` thread-local 是 process-wide 单例:dynamic_view 每帧读各 App 的 `dark_mode` 声明变量回写全局——504 的逐 app 用户配置（如 `~/.config/autoos/apps/calculator/config.at` theme=dark,osconfig seed 在 allocate_app 同步**之后**合法覆盖）会把 **shell chrome 一并翻深**（浅色桌面开 calculator 实测:titlebar/dock 变深,而 calculator 自身视图浅——构建时序交错成混色窗）。518 缓解:boot 读回+allocate_app(desktop 宿主门控)同步已声明变量;根治 = per-app color context（渲染时按 App 路由各自主题,而非全局单值）,与 RenderQueue 色彩上下文重构一并。 | `ui/iced/renderer.rs` dynamic_view dark_mode 同步 + `ui/session.rs` allocate_app Plan 518 注;`docs/plans/reports/518-t3-visual-parity.md` 注记④ |
 | 470 | use.rust deprecation 周期 | `use.rs` 为现行拼写（Plan 470），`use.rust` 仍解析但发 W0005。移除触发条件：外部仓（auto-musk/auto-ai/book 等 ~78 .at）随工具链升级完成迁移 + 一个发布周期零存量后，独立 plan 删 parser/scanner 分支改报错。本仓正式树 .at 已全部归零（2026-08-30 parser.at 注释亦迁；豁免仅剩 `docs/plans/reports/` 历史报告、docs/plans 与 specs plans.md/retrospective 历史页）。 | `docs/plans/470-use-rs-alias.md` D5 |
 | 470 | auto/lib/parser.at 快照漂移 | AAVM v2 parser 同步快照（Plan 432，baseline b3bd64f5）钉在旧版 parser.rs，use 解析整体在 Missing 清单（无 use.rs/use.rust 分发代码，唯一命中为注释，已随 Plan 470 改为 use.rs 表述 2026-08-30）；快照随 parser.rs 演进的重新同步义务不变，归 Plan 432 同步链（M2 闸门本被字符串池 RC 回归阻断）。 | `auto/lib/parser.at` 头注 + Plan 432 |
 | 478 | 实机键流补采 | switcher 键盘流/pager 点击/send_to 的 OS 键注实机截图缺采（前台竞争 frontmost_pid_mismatch，472 同款先例）；逻辑 headless 全链覆盖（19 新测试含宿主臂 toast 门）。补采：前台空闲跑 `examples/ui/028-launcher/tests/test_478_t6.py`。 | `reports/478-t6-live-acceptance.md` + `reports/478-t1-blueprint.md` §8 R1 |
@@ -140,7 +142,7 @@
 | 447-① | VM is 值语义 let 绑定位返回 0 | `let r = is x {...}` 绑定位返回 0（函数尾位值语义正常）；最小复现 `fn main() { let r = is "test" { "test" -> "pass" else -> "fail" } print(r) }` 输出 0。部分② Phase 4 语料设计需覆盖该形态。 | `vm/codegen.rs` Expr::Is 值位（2026-08-25 探针整备时发现） |
 | ~~447-①~~ | ~~VM 函数内嵌套 fn 静默失效~~ ✅ 已清偿(2026-09-01, Plan 514 W1 步骤4) | 真实静默失效在**捕获位**（嵌套 fn 引用外层局部→静默 0）；改报 E0201（infer context fn_scope_idxs 边界栈+no-capture 查找+check_symbol Bina 臂），d01b 转绿解除 ignore。已知限：嵌套 fn 引用全局运行期静默 0=预存 VM 行为，master 同态非回归。 | `parser.rs`（Plan 514 步骤 4 证据） |
 | ~~447-①~~ | ~~`struct` 非关键字误用报 E0201~~ ✅ 已清偿(2026-09-01, Plan 514 W1 步骤4) | 改报 E0007 语法错（parse_stmt_inner 顶部拦截+check_symbol Ident 臂，裸/带名形态覆盖），d02 守卫绿。 | `parser.rs`（Plan 514 步骤 4 证据） |
-| 444 | master 3 个红 a2r golden | plan-444 改 `write_is_arm_body` 后 `02_types_004_pointer`/`12_specs_007_box_fn`/`19_ownership_003_loopvar_owned_field` 在纯 master（d86615620 detached worktree 实证）失败，plan-447 合并前已存在，非 447 引入。plan-444 收账。 | `trans/rust.rs` write_is_arm_body + `test/a2r/` 对应组 |
+| 444 | master 预存红 a2r golden（514 复审实测 28 件） | `cargo tt`（test-trans）长期不在折叠门禁（tf 不含该 feature）。514 复审对照基线 87dda951b 实测：基线即 28 件红（444 期登记 3 件后经 447/511 各发射批累积扩大，无人重跑 tt）；514 净引入 0（`.field` 读位误发 `.field()` 缺陷被 514 方法族修复顺带根治，2 个陈旧 golden 已重生成 ff86babf4）。偿还：一次性 golden 重生成批（对照 live 输出逐件人工核验）。 | `trans/rust.rs` + `test/a2r/` 陈旧 golden 组 |
 | 447-① | 全量并行下偶发测试 | `benchmark_downcast_performance`/`cookbook_vm_tests::cb_file_read_lines` 在全量并行负载下偶发失败（单跑均通过，性能阈值/文件 IO 受负载影响），非回归。 | `perf_benchmark_tests.rs` / `cookbook_vm_tests.rs` |
 | 418 | 工具栏图标偶发变暗 | 观察项：最终构建 3 实例采样亮度一致（231/114）不复现，疑锁屏期 DWM 降级帧假象——复现再查，不主动处理。 | `041 toolbar svg 渲染` |
 | 418 | VM int 推断显示坑 | `File.write_text` 返回值在 handler 内 let 绑定后 `.str()` 显示类型区间（"0-2147483647"）而非字节数——041 ActSave 曾绕过（改语句调用丢弃返回值）；根因（int 字面量区间推断/str 化路径）未查，§7.4 声称"另立债务"但一直未登记，2026-08-23 finish-plan 复审补登。 | `041 src/front/app.at` ActSave + VM 推断路径 |
@@ -716,6 +718,12 @@
    语句位 self. 约定需补入脚本）。W3 重启清单：套 patch→补 e) →复跑本条
    五级联验证序列（cc 编译红逐位消）→W3-12 塔顶样板验证即通。
 
+4. **P514-R1（复审登记，2026-09-02）`var list = List.new()` 两侧注解
+   分歧**：主 a2r 发射 `let mut list = Vec::new();`（无注解+`.get(0)`），
+   AA2R 发射 `let mut list: Vec<String> = Vec::new();`（注解+索引形）——
+   预存文本形状分歧（非本计划引入，g17 探针实证后收窄为对齐子集规避）；
+   语义侧由⑤腿 rustc 门覆盖（双方产物均编译）。处置随 P514-20 ②③ 同批
+   （dump 判据层文本对齐另立计划时一并）。
 3. **P514-20 Phase 11 收账余项三项（2026-09-02，Plan 514 步骤 20 显式
    登记处置；447 归档 447-aavm-prerequisites.md §10.4 原文在案）**：
    ②AA2R 单语句块臂不内联（主 a2r write_match_arm_body 内联）——语料

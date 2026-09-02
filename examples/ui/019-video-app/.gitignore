@@ -1,0 +1,17 @@
+# Override parent .gitignore so handmade files commit.
+!vue/
+
+# And allow the playwright test manifest
+!tests/package.json
+
+# Generated / runtime artifacts (still ignored).
+gen/
+.auto/
+dist/
+build/
+examples/
+.am/
+tests/node_modules/
+tests/test-results/
+tests/playwright-report/
+src/front/tests/screenshots/

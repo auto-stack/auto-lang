@@ -10,7 +10,6 @@
 
 widget App {
     msg Msg {
-        DraftChanged,
         TextGet,
         TextSet,
         FilesGet,
@@ -54,7 +53,6 @@ widget App {
                     style: "gap-2"
                     input {
                         value: .draft
-                        oninput: .DraftChanged
                         placeholder: "要写出到的文本"
                         style: "flex-1 px-2.5 py-2 border border-border rounded-md bg-background text-foreground text-sm"
                     }
@@ -154,7 +152,6 @@ widget App {
     }
 
     on {
-        .DraftChanged -> { }
 
         // ── 文本族（对照 418） ──
         .TextGet -> {

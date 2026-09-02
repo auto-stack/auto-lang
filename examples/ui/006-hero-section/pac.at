@@ -7,3 +7,7 @@ title: "Hero Section"
 // 应用内右上角 Theme Settings 面板可在运行中覆盖。
 theme: "dark"
 accent: "indigo"
+
+dep settings {
+    path: "../common/settings"
+}

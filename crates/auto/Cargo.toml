@@ -20,7 +20,10 @@ colored = { workspace = true }
 notify = { workspace = true }
 
 [features]
-default = ["ui-iced", "python"]
+# Plan 040 裁定①: autodown 提为 default——auto-down 是旗舰消费方（path 依赖
+# 恒在本机检出），任意 `cargo build -p auto` 产出即含真渲染，`auto run -r vm`
+# 不再静默降级 textarea。
+default = ["ui-iced", "python", "autodown"]
 ui-iced = ["auto-lang/ui-iced"]
 python = ["auto-lang/python"]
 with-file-history = ["auto-lang/with-file-history"]

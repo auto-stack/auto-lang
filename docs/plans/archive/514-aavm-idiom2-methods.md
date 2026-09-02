@@ -1,15 +1,22 @@
 ---
 plan_id: PLAN-514
-status: execution_done               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-idiom2-methods
 author: [zhaopuming]
 created_at: 2026-09-01
 updated_at: 2026-09-02
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
+supersedes_spec_components:
+  - "docs/specs/aavm/design/divergences.md: 增 514 节（D-ext-trait/D-pipe-first/D-methodized）"
+  - "docs/specs/aavm/design/divergence-rules.md: §4b 方法化写法规范（第 10-14 条）"
+  - "docs/specs/aavm/design/idiom-upgrade-prereqs.md: W5/W3/W6 状态注记"
+  - "docs/specs/aavm/project.md: lib 六文件 514 能力注记"
+  - "auto/lib/README.md: 514 段（方法化 γ4/管道/塔顶）"
+  - ".github/workflows/vm-files-ci.yml: 第一层去 --include-ignored（P511-2 口径收窄）"
+new_spec_components:
+  - "docs/specs/aavm/design/method-emission-spec.md: 新增（W0 步骤 1，方法发射 live 对齐基准）"
+touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）——塔顶方法化自举达成
 
 affects: [aavm]
 current_step: 24
@@ -456,6 +463,46 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
     spec-impact 元数据）→ `cargo tf` → status: reviewed。
 
 ## 复审记录
+
+**复审人**：zhaopuming（AI 代理，/auto-plan:review）**时间**：2026-09-02
+**worktree**：.worktrees/plan-514-dev（提交链 8aef313ca→ff86babf4，master 侧
+簿记 33421e8c8/a8e7744fb）
+
+### 验收逐条（verify, don't trust——全部在 worktree 重跑或对照实物）
+
+| # | 判定 | 证据 |
+|---|---|---|
+| 1 | ✅ PASS | tv 3513/3513（含 test_aavm2_a2r_is_corpus g01–g17 逐字符）；cc=主 a2r merge 产物 rustc 零错（仅 E0601）；⑤腿 AA2R 产物 rustc 零红（corpus_a2r 17 件+全 lib 双侧） |
+| 2 | ✅ PASS | include-ignored 19/19（tv 全档）；vm-files-ci.yml:48-51 无 --include-ignored；"37/37"为计划时点口径，现行 corpus 增至 17 件仍全绿 |
+| 3 | ✅ PASS | 五份留档 scratch/p514/matrix_w3_12/14/15/16+w4_17.log 各 46/46（含一次环境性 flake 的复跑双证） |
+| 4 | ✅ PASS | 六文件裁定实物核验（P14+CG28+Ar23 方法在 type 体；lexer 零转换；peek_text/field_idx 合并）；塔顶=⑤腿 aa2r_transpile_merge 全 lib（含方法化 a2r.at 自身）产物 rustc 零错，复现脚本+矩阵双证 |
+| 5 | ✅ PASS | C3 完成（W4-17 矩阵留档）；W4-18 引用 D23/D27 既定保留裁定（divergences.md 原文在案）；W4-19 按待澄清②缺省登记；W4-20 三项登记 P514-20；447-①两债核销（E0207→语法错/E0007 证据步骤 4） |
+| 6 | ✅ PASS | 99_idiom2 13 件+13 测试 fn 实物核验（test/vm/99_idiom2/）；divergences 514 节/§4b/prereqs/project/README 落盘（a783b0fb9） |
+| 7 | ✅ PASS | 复审重跑 cargo tf 3355/3355+96 skip；cargo check 警告 160 条全部预存文件（trans/rust.rs 零警告定位）；延后项全部显式登记（P514-20/P514-R1/D40 续） |
+
+### 全量门禁（review gate 独跑）
+
+- `cargo tf`：3355 passed / 0 failed / 96 skipped ✅
+- `cargo tv`：3513 passed / 0 failed ✅
+- `cargo tt`：28 failed——**对照基线 87dda951b（独立 worktree 实测）基线即
+  同 28 件**（444 期 golden 债族，KNOWN-DEBT 444 条目已更新实测现状）；
+  514 净引入 **0**（唯一 2 件新 mismatch 实为 514 顺带根治 `.field` 读位
+  误发 `.field()` 缺陷、golden 为缺陷期非法 Rust 捕获，已重生成 ff86babf4
+  并复验 28=28）。
+
+### 遗漏/延后/workaround 扫描
+
+- 遗漏：无（1–24 步证据链逐条可溯；翻转脚本/矩阵留档/塔顶产物齐全）。
+- 延后：W4-18/19/20 全部走计划预设"显式登记"路径（待澄清①②缺省），
+  非静默；W6 不做（待澄清⑤缺省）。
+- Workaround：g17 探针收窄为对齐子集（`var list = List.new()` 两侧注解
+  预存分歧 → 登记为 P514-R1，语义侧⑤腿 rustc 门覆盖）；方法体非块首
+  语句位 self. 约定入 divergence-rules §4b 规范化。
+- 复审新发现并已处置：tt 陈旧 golden 族（444 条目更新+2 件重生成）。
+
+### 结论
+
+**PASS**——`status: reviewed`。ready for /auto-plan:merge。
 
 ## 待澄清事项
 

@@ -80,3 +80,25 @@
 
 五个字段全部必填;Coverage 用"已移植/基线总量"计数;tag 重锚定时
 Baseline 行更新并重跑对照。
+
+### 4b. 方法化写法规范（plan-514 W2/W3 起，γ4 适用）
+
+> 依据 plan-514 W3 六文件裁定（2026-09-02）+ W2 方法发射批。lib 从此
+> 允许并鼓励 type 体方法写法，边界逐条强制：
+
+10. **状态类型自有操作进 `type` 体**：游标/发射器状态（P/CG/Ar 族）的
+    c-only 操作函数入 type 体作方法（`fn cg_emit(c, idx)` → `c.emit(idx)`）；
+    产生式（带 p 游标的 parse_*/cg_*/ar_* 步行族）与纯表函数
+    （keyword_kind/op_name/i_size 族）**保留自由函数**——映射以"一对一
+    Rust 对译可读性"为准，不设 100% 消灭。
+11. **方法名与字段撞名改写**：`p_err→fail`（P/CG/Ar 均有 err 字段）同款
+    规则；构造 `cg_new()→static fn new()`（`Type.new(x)` 双侧发射
+    `Type::new(x)`）。
+12. **方法体内前导点**：块首语句豁免；**非块首语句位的 `.method()` 必须
+    显式 `self.`**（流式链糖已移除，P514-W3-1；换行句首点报语法错）；
+    表达式位/赋值位前导点（`.field`/`.method(args)` 读位）自由。
+13. **跨方法 &mut 传递**：方法体内调用同类型可变方法（expect→next 族）
+    接收者自动 &mut（主 a2r compute_type_mut_methods 传递闭包 + AA2R
+    ar_fixpoint_mutates 镜像）——书写无需标注，行为两侧一致。
+14. **多行管道用 `|>`**：`x |> .m() |> .f`（方法形+字段投影形）；
+    函数形二期、is 臂内不支持（D-pipe-first 登记 divergences.md）。

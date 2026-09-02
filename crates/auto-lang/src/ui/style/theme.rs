@@ -159,23 +159,28 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
             Some(hsl_to_rgb(h, s, l_adjusted))
         }
         Color::Secondary => {
-            if is_dark { Some((30, 41, 59)) } else { Some((241, 245, 249)) }
+            if is_dark { Some((30, 41, 59)) } else { Some((240, 235, 226)) }
         }
         // Plan 448 对齐批:暗色语义色从 Tailwind gray 系改为生成端 shadcn
         // 令牌(index.css .dark)的精确 HSL 换算值 —— 此前 VM 用 gray-900/800
         // 近似,与 vue 产物的蓝灰调(明暗关系相反:vue 卡片亮于页面)不一致。
         // --background: 222.2 47.4% 7% / --card: 222.2 47.4% 10%
+        // Plan 518(2026-09-02): stella 双主题重校——dark 深蓝黑面板系
+        // #141a29/--card #1a2235(原 448 shadcn 换算值微调偏蓝黑);
+        // light 从纯白/冷灰翻暖纸系(Background #f5f1e8 暖纸 / Surface
+        // #fbf8f2 卡片微浮),对齐权威参照 AUTHORITATIVE.png 暖纸桌面。
         Color::Background => {
-            if is_dark { Some((9, 14, 26)) } else { Some((255, 255, 255)) }
+            if is_dark { Some((20, 26, 41)) } else { Some((245, 241, 232)) }
         }
         // --card: 222.2 47.4% 10%(亮于 --background,与 vue 暗色卡片浮起方向一致)
         // light 对齐 auto-os-config 基准 #f9f9f9(Win11 风格,2026-08-29 对拍)。
         Color::Surface => {
-            if is_dark { Some((13, 21, 38)) } else { Some((249, 249, 249)) }
+            if is_dark { Some((26, 34, 53)) } else { Some((251, 248, 242)) }
         }
         // --muted: 217.2 32.6% 17.5% (dark: slate-800 rgb(30, 41, 59)) / 210 40% 96.1% (light: slate-100 rgb(241, 245, 249))
+        // Plan 518 light 随暖纸系翻暖(#f0ebe2)。
         Color::Muted => {
-            if is_dark { Some((30, 41, 59)) } else { Some((241, 245, 249)) }
+            if is_dark { Some((30, 41, 59)) } else { Some((240, 235, 226)) }
         }
         Color::Error => Some((239, 68, 68)),
         Color::Warning => Some((234, 179, 8)),
@@ -188,21 +193,24 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
             if is_dark { Some((15, 23, 42)) } else { Some((248, 250, 252)) }
         }
         Color::OnSecondary => {
-            if is_dark { Some((248, 250, 252)) } else { Some((15, 23, 42)) }
+            if is_dark { Some((248, 250, 252)) } else { Some((42, 39, 35)) }
         }
         Color::OnDestructive => Some((248, 250, 252)),
         // --foreground: 210 40% 98%
         // light 对齐 auto-os-config 基准 #1a1a1a / #616161(中灰次级文本)。
+        // Plan 518: light 随暖纸系翻墨色暖黑 #2a2723 / 暖次级 #7d776d
+        // (stella 暖纸前景,对表 AUTHORITATIVE.png)。
         Color::OnBackground => {
-            if is_dark { Some((248, 250, 252)) } else { Some((26, 26, 26)) }
+            if is_dark { Some((248, 250, 252)) } else { Some((42, 39, 35)) }
         }
         // --muted-foreground: 215.4 16.3% 65.1%
         Color::OnSurface => {
-            if is_dark { Some((151, 163, 181)) } else { Some((97, 97, 97)) }
+            if is_dark { Some((151, 163, 181)) } else { Some((125, 119, 109)) }
         }
         // --border 语义(light #e0e0e0 基准 / dark 对齐 resolve_border_rgb)
+        // Plan 518: light 暖灰 #e3ddd1 / dark 蓝黑系低对比 #283146。
         Color::Border => {
-            if is_dark { Some((39, 39, 42)) } else { Some((224, 224, 224)) }
+            if is_dark { Some((40, 49, 70)) } else { Some((227, 221, 209)) }
         }
         _ => None,
     }
@@ -211,7 +219,61 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
 /// Plan 411 P2-A④: vue `border-border` 语义色(shadcn --border 变量)——
 /// light `hsl(240 5.9% 90%)` ≈ zinc-200,dark `hsl(240 3.7% 15.9%)` ≈ zinc-800。
 /// 表格行分隔线等单侧描边使用。
+/// Plan 518: 随 stella 双主题翻暖灰 light #e3ddd1 / 蓝黑 dark #283146
+/// (与 `Color::Border` 保持一致,见 border_resolver_consistent_with_border_token)。
 pub fn resolve_border_rgb() -> (u8, u8, u8) {
     let is_dark = DARK_MODE.with(|d| d.get());
-    if is_dark { (0x27, 0x27, 0x2a) } else { (0xe4, 0xe4, 0xe7) }
+    if is_dark { (40, 49, 70) } else { (227, 221, 209) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rgb(color: Color) -> (u8, u8, u8) {
+        resolve_semantic_rgb(&color).expect("semantic color must resolve")
+    }
+
+    /// Plan 518 T1: 双主题语义值表——light 暖纸 / dark 精修蓝黑(stella 对齐)。
+    #[test]
+    fn stella_light_palette() {
+        set_dark_mode(false);
+        assert_eq!(rgb(Color::Background), (245, 241, 232)); // #f5f1e8 暖纸
+        assert_eq!(rgb(Color::Surface), (251, 248, 242)); // #fbf8f2 卡片微浮
+        assert_eq!(rgb(Color::OnBackground), (42, 39, 35)); // 墨色 #2a2723
+        assert_eq!(rgb(Color::Border), (227, 221, 209)); // 暖灰 #e3ddd1
+        assert_eq!(rgb(Color::Muted), (240, 235, 226)); // 暖 muted #f0ebe2
+        assert_eq!(rgb(Color::OnSurface), (125, 119, 109)); // 暖次级文本 #7d776d
+        assert_eq!(resolve_border_rgb(), (227, 221, 209));
+    }
+
+    #[test]
+    fn stella_dark_palette() {
+        set_dark_mode(true);
+        assert_eq!(rgb(Color::Background), (20, 26, 41)); // #141a29 深蓝黑
+        assert_eq!(rgb(Color::Surface), (26, 34, 53)); // #1a2235 面板
+        assert_eq!(rgb(Color::Border), (40, 49, 70)); // 低对比 #283146
+        assert_eq!(resolve_border_rgb(), (40, 49, 70));
+    }
+
+    /// 待澄清②裁定:stella 玫瑰粉 = 既有 coral 预设(503 已校准 light
+    /// hsl(4,43%,59%) ≈ #c4706a,权威图实测 #C96B62),不新增 rose 预设。
+    #[test]
+    fn coral_matches_stella_rose_accent() {
+        set_dark_mode(false);
+        set_accent_name("coral");
+        assert_eq!(rgb(Color::Primary), (195, 111, 105)); // hsl(4,43%,59%) 截断值
+        set_dark_mode(true);
+        assert_eq!(rgb(Color::Primary), (209, 146, 141)); // dark L+10 → 69%
+        set_accent_name("indigo"); // 还原默认,防污染其他用例
+    }
+
+    #[test]
+    fn border_resolver_consistent_with_border_token() {
+        for dark in [false, true] {
+            set_dark_mode(dark);
+            assert_eq!(resolve_border_rgb(), rgb(Color::Border));
+        }
+        set_dark_mode(true); // 还原默认
+    }
 }

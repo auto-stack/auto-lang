@@ -7,7 +7,7 @@ use editor: EditorPanel
 use back.api: delete_note, list_notes
 
 widget App {
-    msg { Init, NewNote, NewNoteInFolder(str), SelectNote(int), SearchChanged, TogglePin(int),
+    msg { Init, NewNote, NewNoteInFolder(str), SelectNote(int), SearchChanged, TogglePin,
               DeleteActive, ToggleDarkMode, TagsChanged,
               SelectAll, SelectPinned, SelectRecent, SelectTag(str), ClearTag }
 

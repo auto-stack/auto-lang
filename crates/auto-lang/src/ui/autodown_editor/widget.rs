@@ -339,6 +339,15 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     to_color(run.color),
                 );
             }
+            if run.underline {
+                let approx_w = run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
+                let base_y = run.y + run.size * 0.88;
+                fill_quad(
+                    renderer,
+                    Rectangle::new(Point::new(bounds.x + run.x, bounds.y + base_y), Size::new(approx_w, 1.2)),
+                    to_color(run.color),
+                );
+            }
         }
 
         if let Some((rect, color)) = list.focus_frame {

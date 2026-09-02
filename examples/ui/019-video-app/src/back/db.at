@@ -1,0 +1,280 @@
+// db.at — 019-video-app in-memory database service.
+// Seeds 12 videos across 5 categories with varying views, likes, and tags.
+
+use api: Video
+
+// ═══════════════════════════════════════════════════════════
+// In-memory storage & Seed Data
+// ═══════════════════════════════════════════════════════════
+
+var videos List<Video> = List<Video>.new([
+    Video {
+        id: 1,
+        title: "Learn Rust & AutoLang in 10 Minutes",
+        author: "CodeMaster",
+        category: "Tech",
+        duration: "10:15",
+        views: 856000,
+        likes: 42000,
+        desc: "A fast-paced introduction to Rust systems programming and AutoLang fullstack UI application development.",
+        followed: true,
+        cover_color: "from-indigo-700 to-purple-800",
+    },
+    Video {
+        id: 2,
+        title: "Ultimate Water-Cooled PC Build 2026",
+        author: "TechGuru",
+        category: "Gaming",
+        duration: "24:08",
+        views: 1500000,
+        likes: 87000,
+        desc: "Step-by-step custom water cooling loop build in a transparent dual-chamber chassis.",
+        followed: false,
+        cover_color: "from-emerald-700 to-teal-900",
+    },
+    Video {
+        id: 3,
+        title: "Tokyo Street Food Night Tour",
+        author: "FoodieTravel",
+        category: "Food",
+        duration: "18:42",
+        views: 2100000,
+        likes: 98000,
+        desc: "Exploring Shinjuku and Shibuya alleyways for the best yakitori, ramen, and matcha desserts.",
+        followed: true,
+        cover_color: "from-rose-600 to-orange-600",
+    },
+    Video {
+        id: 4,
+        title: "Amazing Sunset Timelapse in 4K",
+        author: "NatureCam",
+        category: "Travel",
+        duration: "12:34",
+        views: 1200000,
+        likes: 54000,
+        desc: "High altitude cinematic 4K drone timelapse over the Swiss Alps at golden hour.",
+        followed: false,
+        cover_color: "from-amber-600 to-rose-700",
+    },
+    Video {
+        id: 5,
+        title: "Piano Cover — Moonlight Sonata",
+        author: "MusicLover",
+        category: "Music",
+        duration: "05:20",
+        views: 430000,
+        likes: 31000,
+        desc: "Beethoven Moonlight Sonata 3rd Movement performed on a Steinway D grand piano.",
+        followed: true,
+        cover_color: "from-sky-700 to-indigo-900",
+    },
+    Video {
+        id: 6,
+        title: "Epic Downhill Mountain Biking RedBull",
+        author: "ExtremeSports",
+        category: "Gaming",
+        duration: "14:55",
+        views: 3200000,
+        likes: 145000,
+        desc: "Raw POV action down Utah cliffs in the annual RedBull Rampage championship.",
+        followed: false,
+        cover_color: "from-violet-700 to-pink-800",
+    },
+    Video {
+        id: 7,
+        title: "Building Microservices with Axum & Tokio",
+        author: "CodeMaster",
+        category: "Tech",
+        duration: "32:10",
+        views: 640000,
+        likes: 38000,
+        desc: "Architecture patterns for high-throughput microservices using asynchronous Rust.",
+        followed: true,
+        cover_color: "from-blue-600 to-cyan-600",
+    },
+    Video {
+        id: 8,
+        title: "Cozy Lo-Fi Beats for Coding & Relaxing",
+        author: "MusicLover",
+        category: "Music",
+        duration: "45:00",
+        views: 2800000,
+        likes: 120000,
+        desc: "Relaxing chillhop and lo-fi hip hop rhythms to focus, study, or write clean code.",
+        followed: true,
+        cover_color: "from-fuchsia-600 to-pink-600",
+    },
+    Video {
+        id: 9,
+        title: "Authentic Neapolitan Pizza from Scratch",
+        author: "FoodieTravel",
+        category: "Food",
+        duration: "15:20",
+        views: 950000,
+        likes: 61000,
+        desc: "72-hour cold fermented sourdough pizza baked in a 900F outdoor wood-fired oven.",
+        followed: true,
+        cover_color: "from-yellow-600 to-amber-700",
+    },
+    Video {
+        id: 10,
+        title: "Cyberpunk 2077 Max Settings RTX 5090",
+        author: "TechGuru",
+        category: "Gaming",
+        duration: "20:15",
+        views: 1800000,
+        likes: 91000,
+        desc: "Full path tracing gameplay benchmark at 4K 120FPS with DLSS 4 frame generation.",
+        followed: false,
+        cover_color: "from-teal-600 to-emerald-700",
+    },
+    Video {
+        id: 11,
+        title: "Iceland Northern Lights Aurora Expedition",
+        author: "NatureCam",
+        category: "Travel",
+        duration: "16:40",
+        views: 1100000,
+        likes: 72000,
+        desc: "Chasing green and violet solar auroras across glaciers and black sand beaches.",
+        followed: false,
+        cover_color: "from-purple-600 to-indigo-700",
+    },
+    Video {
+        id: 12,
+        title: "Modern AI Compiler Architecture Explained",
+        author: "CodeMaster",
+        category: "Tech",
+        duration: "28:50",
+        views: 520000,
+        likes: 29000,
+        desc: "Deep dive into AST transformations, bytecode generation, and VM JIT runtimes.",
+        followed: true,
+        cover_color: "from-red-600 to-rose-700",
+    },
+])
+
+// ═══════════════════════════════════════════════════════════
+// Video operations
+// ═══════════════════════════════════════════════════════════
+
+pub fn all_categories() []str {
+    return ["Gaming", "Music", "Tech", "Food", "Travel"]
+}
+
+pub fn all_videos() []Video {
+    return videos
+}
+
+pub fn find_video(id int) ?Video {
+    for v in videos {
+        if v.id == id {
+            return Some(v)
+        }
+    }
+    return None
+}
+
+pub fn add_view(id int) int {
+    var new_videos List<Video> = List<Video>.new([])
+    var new_views int = 0
+    for v in videos {
+        if v.id == id {
+            let updated = Video {
+                id: v.id,
+                title: v.title,
+                author: v.author,
+                category: v.category,
+                duration: v.duration,
+                views: v.views + 1,
+                likes: v.likes,
+                desc: v.desc,
+                followed: v.followed,
+                cover_color: v.cover_color,
+            }
+            new_views = updated.views
+            new_videos.push(updated)
+        } else {
+            new_videos.push(v)
+        }
+    }
+    videos = new_videos
+    return new_views
+}
+
+pub fn toggle_like(id int) int {
+    var new_videos List<Video> = List<Video>.new([])
+    var new_likes int = 0
+    for v in videos {
+        if v.id == id {
+            let updated = Video {
+                id: v.id,
+                title: v.title,
+                author: v.author,
+                category: v.category,
+                duration: v.duration,
+                views: v.views,
+                likes: v.likes + 1,
+                desc: v.desc,
+                followed: v.followed,
+                cover_color: v.cover_color,
+            }
+            new_likes = updated.likes
+            new_videos.push(updated)
+        } else {
+            new_videos.push(v)
+        }
+    }
+    videos = new_videos
+    return new_likes
+}
+
+pub fn filter_videos(category str, tab str, q str) []Video {
+    var filtered List<Video> = List<Video>.new([])
+    for v in videos {
+        var ok bool = true
+        if category != "" && category != "All" {
+            if v.category != category {
+                ok = false
+            }
+        }
+        if tab == "following" {
+            if !v.followed {
+                ok = false
+            }
+        }
+        if q != "" {
+            if !v.title.contains(q) && !v.author.contains(q) {
+                ok = false
+            }
+        }
+        if ok {
+            filtered.push(v)
+        }
+    }
+
+    if tab == "trending" {
+        var n int = filtered.len()
+        var i int = 0
+        loop {
+            if i >= n {
+                break
+            }
+            var j int = i + 1
+            loop {
+                if j >= n {
+                    break
+                }
+                if filtered[j].views > filtered[i].views {
+                    let temp = filtered[i]
+                    filtered[i] = filtered[j]
+                    filtered[j] = temp
+                }
+                j = j + 1
+            }
+            i = i + 1
+        }
+    }
+
+    return filtered
+}

@@ -502,6 +502,11 @@ impl GpuiStyle {
                 self.row_start = Some(*start);
             }
 
+            // Plan 518 G8：backdrop 毛玻璃词汇——声明冻结,渲染分期。
+            // consumed by future RenderQueue lowering; renderers ignore
+            // today（iced 臂同款注释）。装饰性降级非错绘,不报错不 not-yet。
+            StyleClass::BackdropBlur(_) | StyleClass::BackdropSaturate(_) => {}
+
             // Plan 365 W1 follow-up: StyleClass variants not yet implemented in
             // the GPUI adapter (per-side margins, border styles, transforms,
             // etc.). Silently ignore for now — the gpui backend renders a

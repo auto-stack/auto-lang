@@ -76,6 +76,7 @@ struct SpanStyle {
     code: bool,
     del: bool,
     link: bool,
+    underline: bool,
 }
 
 impl SpanStyle {
@@ -118,6 +119,7 @@ fn flatten_inlines(inlines: &[InlineSpan]) -> (String, Vec<MarkInterval>) {
                 Mark::Code => style.code = true,
                 Mark::Del => style.del = true,
                 Mark::Link | Mark::Image => style.link = true,
+                Mark::Underline => style.underline = true,
             }
         }
         let lo = text.len();
@@ -271,6 +273,7 @@ pub struct DocRun {
     pub italic: bool,
     pub mono: bool,
     pub strike: bool,
+    pub underline: bool,
 }
 
 /// 一帧文档绘制指令（后端中立；iced adapter 下沉为 quads/texts）。
@@ -1087,6 +1090,7 @@ fn push_styled_pieces(
             italic: st.em,
             mono: mono_all || st.code,
             strike: st.del,
+            underline: st.underline,
         });
     }
 }
