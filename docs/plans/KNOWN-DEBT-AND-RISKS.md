@@ -826,7 +826,7 @@
 
 ### 调度会话（2026-09-02，vm 桌面实机核查发现）
 
-- **P517-1 `auto run --desktop` 对 vm 渲染静默无效（CLI UX 缺陷）**：
+- **SCHED-1 `auto run --desktop` 对 vm 渲染静默无效（CLI UX 缺陷）**：
   `--desktop` 仅置 `AUTO_DESKTOP=1`（crates/auto/src/main.rs:1023），唯一
   消费方是 auto-man vue 生成（Plan 465 脚手架宿主）；`-r vm` 组合下该
   flag 被静默忽略——仓库根跑则报"No pac.at"，app 目录跑则开单 app 窗口，
