@@ -6413,6 +6413,28 @@ let tabs_inner = View::Row {
                 .map(|part| self.resolve_expr_to_string_with(part, bindings))
                 .collect::<Vec<_>>()
                 .join(""),
+            // Plan 448 D: `style: ["a", if … {…} else {…}]` — array-of-class-
+            // parts prop. Join each resolved part with a single space,
+            // skipping empties (a conditional part may yield ""), so
+            // "items-center gap-1" + optional "opacity-40" never double-
+            // spaces. Elements resolve through the full chain (Str/If/
+            // Ident/Dot refs all supported — the array form is explicitly
+            // class semantics by construction).
+            Expr::Array(elems) => elems
+                .iter()
+                .map(|e| self.resolve_expr_to_string_with(e, bindings))
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" "),
+            // Plan 448 D: manual string concat in prop position
+            // (`style: "base" + if … {…} else {…}`). Previously fell to the
+            // empty-string fallback — a concat style silently vanished on
+            // the VM path.
+            Expr::Bina(l, Op::Add, r) => format!(
+                "{}{}",
+                self.resolve_expr_to_string_with(l, bindings),
+                self.resolve_expr_to_string_with(r, bindings)
+            ),
             _ => String::new(),
         }
     }
@@ -8343,6 +8365,99 @@ mod tests {
             exposes: Vec::new(),
             setup: None,
         }
+    }
+
+    /// Plan 448 D: `style: [...]` array-of-class-parts and manual string
+    /// concat resolve through the VM string resolver — parts join with a
+    /// single space (empty parts skipped), the conditional part follows the
+    /// state, and `"base" + if …` no longer falls to the empty-string
+    /// fallback.
+    #[test]
+    fn plan448_style_array_and_concat_resolution() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "widget App {\n",
+            "    model { var on bool = true }\n",
+            "    view {\n",
+            "        col {\n",
+            "            row (style: [\"items-center gap-1\", if .on { \"\" } else { \"opacity-40\" }]) { text \"a\" {} }\n",
+            "            row (style: [\"gap-2\", \"p-4\"]) { text \"b\" {} }\n",
+            "            row (style: \"base\" + if .on { \" on-cls\" } else { \" off-cls\" }) { text \"c\" {} }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        // Collect the three row style exprs in view order.
+        fn collect_rows(node: &AuraNode, out: &mut Vec<crate::ast::Expr>) {
+            match node {
+                AuraNode::Element { tag, props, children, .. } => {
+                    if tag == "row" {
+                        if let Some(crate::aura::AuraPropValue::Expr(e)) = props.get("style") {
+                            out.push(e.clone());
+                        }
+                    }
+                    for c in children { collect_rows(c, out); }
+                }
+                AuraNode::ForLoop { body, .. } => {
+                    for c in body { collect_rows(c, out); }
+                }
+                AuraNode::Conditional { then_body, else_body, .. } => {
+                    for c in then_body { collect_rows(c, out); }
+                    if let Some(els) = else_body {
+                        for c in els { collect_rows(c, out); }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut rows = Vec::new();
+        collect_rows(&widget.view_tree, &mut rows);
+        assert_eq!(rows.len(), 3, "three styled rows");
+
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        // on = true (initial): conditional part empty → skipped; concat picks
+        // the then-branch.
+        assert_eq!(
+            builder.resolve_expr_to_string_with(&rows[0], &Bindings::new()),
+            "items-center gap-1",
+            "array join skips the empty conditional part"
+        );
+        assert_eq!(
+            builder.resolve_expr_to_string_with(&rows[1], &Bindings::new()),
+            "gap-2 p-4",
+            "literal-only array joins"
+        );
+        assert_eq!(
+            builder.resolve_expr_to_string_with(&rows[2], &Bindings::new()),
+            "base on-cls",
+            "manual concat resolves (was empty-string fallback)"
+        );
+
+        // Flip state: conditional part appears; concat picks else-branch.
+        let mut bridge_mut = VmBridge::new(&widget).unwrap();
+        bridge_mut.write_state("on", auto_val::Value::Bool(false)).unwrap();
+        let builder2 = AuraViewBuilder::new(&bridge_mut, "App");
+        assert_eq!(
+            builder2.resolve_expr_to_string_with(&rows[0], &Bindings::new()),
+            "items-center gap-1 opacity-40",
+            "array join follows state"
+        );
+        assert_eq!(
+            builder2.resolve_expr_to_string_with(&rows[2], &Bindings::new()),
+            "base off-cls",
+            "concat follows state"
+        );
     }
 
     #[test]

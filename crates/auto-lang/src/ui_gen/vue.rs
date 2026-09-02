@@ -7493,6 +7493,33 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     // nested ternaries (if_expr_to_style_ternary).
                     dynamic_class = Some(self.if_expr_to_style_ternary(if_stmt));
                 }
+                // Plan 448 D: `style: ["base", if … {…} else {…}, …]` —
+                // array-of-class-parts. The array form is EXPLICITLY class
+                // semantics (unlike a bare concat, which may be an inline
+                // CSS declaration string), so every element binds into one
+                // :class join: literals quoted, conditionals as ternaries,
+                // state refs as bound values; empty parts filtered at
+                // runtime so optional classes never double-space.
+                AuraPropValue::Expr(crate::ast::Expr::Array(elems)) => {
+                    let parts: Vec<String> = elems
+                        .iter()
+                        .map(|e| self.style_array_part_js(e))
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap_or_default();
+                    if parts.is_empty() {
+                        self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            "style: array with no renderable parts; binding not emitted".to_string(),
+                        );
+                    } else {
+                        let joined = format!("[{}].filter(Boolean).join(' ')", parts.join(", "));
+                        dynamic_class = Some(match dynamic_class {
+                            Some(prev) => format!("({}) + ' ' + {}", prev, joined),
+                            None => joined,
+                        });
+                    }
+                }
                 AuraPropValue::Expr(other_expr) => {
                     // Plan 043 H5 / Plan 408 P12 §10.1: a dynamic style
                     // expression that is neither a string literal nor a
@@ -7502,18 +7529,40 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     // old `__style__` marker (which shared the class channel
                     // and leaked when dynamic class coexisted) is gone —
                     // style now has its own return slot.
-                    match self.expr_to_vue_bound_value(other_expr) {
-                        Ok(expr_str) => {
-                            dynamic_style = Some(expr_str);
+                    //
+                    // Plan 448 D carve-out: a concat whose operands are all
+                    // string literals / string-conditionals is class-safe by
+                    // structure (`style: "base" + if … {…} else {…}`) —
+                    // route it to :class, not :style (a Tailwind class string
+                    // in :style is silently discarded as invalid CSS).
+                    if Self::is_class_safe_concat(other_expr) {
+                        match self.expr_to_vue_bound_value(other_expr) {
+                            Ok(expr_str) => {
+                                dynamic_class = Some(match dynamic_class {
+                                    Some(prev) => format!("({}) + ' ' + ({})", prev, expr_str),
+                                    None => expr_str,
+                                });
+                            }
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("style: class concat: {}; binding not emitted", e),
+                            ),
                         }
-                        // Plan 012 P0#13 follow-up: used to be silently
-                        // dropped (the Err branch was unreachable while the
-                        // catch-all returned Ok("null")); warn R013.
-                        Err(e) => self.warn(
-                            "R013",
-                            crate::ui_gen::validators::Severity::Warning,
-                            format!("style: dynamic expression: {}; binding not emitted", e),
-                        ),
+                    } else {
+                        match self.expr_to_vue_bound_value(other_expr) {
+                            Ok(expr_str) => {
+                                dynamic_style = Some(expr_str);
+                            }
+                            // Plan 012 P0#13 follow-up: used to be silently
+                            // dropped (the Err branch was unreachable while the
+                            // catch-all returned Ok("null")); warn R013.
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("style: dynamic expression: {}; binding not emitted", e),
+                            ),
+                        }
                     }
                 }
                 _ => {}
@@ -12668,11 +12717,80 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// Plan 043 M5 #5: the plain-element path (extract_classes) already did
     /// both; the shadcn path only handled the static string, silently
     /// dropping conditional styles on registry widgets like `text` → span.
+    /// Plan 448 D: structural class-safety of a manual string concat used as
+    /// a style value. `Str` literals, string-valued `if` chains, and `+`
+    /// concatenations thereof are class-safe (every operand resolves to
+    /// Tailwind class fragments). Anything else — state refs, method calls,
+    /// numeric exprs — keeps the Plan 043 H5 inline-CSS reading (`:style`),
+    /// because `"color: rgb(" + r + …` is indistinguishable from a class
+    /// concat once refs are allowed. Use the array form
+    /// `style: ["base", .dynClass]` for dynamic parts.
+    fn is_class_safe_concat(expr: &crate::ast::Expr) -> bool {
+        match expr {
+            crate::ast::Expr::Str(_) => true,
+            crate::ast::Expr::If(if_stmt) => {
+                let branch_safe = |b: &crate::ast::Branch| {
+                    b.body.stmts.iter().all(|st| match st {
+                        crate::ast::Stmt::Expr(e) => Self::is_class_safe_concat(e),
+                        _ => false,
+                    })
+                };
+                if_stmt.branches.iter().all(branch_safe)
+                    && if_stmt
+                        .else_
+                        .as_ref()
+                        .map(|b| {
+                            b.stmts.iter().all(|st| match st {
+                                crate::ast::Stmt::Expr(e) => Self::is_class_safe_concat(e),
+                                _ => false,
+                            })
+                        })
+                        .unwrap_or(true)
+            }
+            crate::ast::Expr::Bina(l, auto_val::Op::Add, r) => {
+                Self::is_class_safe_concat(l) && Self::is_class_safe_concat(r)
+            }
+            _ => false,
+        }
+    }
+
+    /// Translate one element of a `style: [...]` array into its JS fragment
+    /// (quoted literal / style ternary / bound value). Shared by the
+    /// plain-element and shadcn paths.
+    fn style_array_part_js(&self, e: &crate::ast::Expr) -> crate::ui_gen::GenResult<String> {
+        match e {
+            crate::ast::Expr::Str(s) => Ok(format!("'{}'", Self::escape_js_string(s.as_str()))),
+            crate::ast::Expr::If(if_stmt) => Ok(self.if_expr_to_style_ternary(if_stmt)),
+            other => self.expr_to_vue_bound_value(other),
+        }
+    }
+
     fn push_style_class(&self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>) {
         if let Some(value) = self.get_style_class(props) {
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
                     attrs.push(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)));
+                }
+                // Plan 448 D: array-of-class-parts → :class join (same
+                // semantics as the plain-element path).
+                AuraPropValue::Expr(crate::ast::Expr::Array(elems)) => {
+                    let parts: Vec<String> = elems
+                        .iter()
+                        .map(|e| self.style_array_part_js(e))
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap_or_default();
+                    if !parts.is_empty() {
+                        attrs.push(format!(
+                            ":class=\"[{}].filter(Boolean).join(' ')\"",
+                            parts.join(", ")
+                        ));
+                    } else {
+                        self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            "style: array with no renderable parts; binding not emitted".to_string(),
+                        );
+                    }
                 }
                 AuraPropValue::Expr(other_expr) => {
                     // Plan 043 H5: a dynamic style expression that is neither a
@@ -12697,6 +12815,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                                     attrs.push(format!("class=\"{}\"", s));
                                 }
                             }
+                        }
+                    } else if Self::is_class_safe_concat(other_expr) {
+                        // Plan 448 D: literal/conditional-only concat is a
+                        // class string by structure — :class, not :style.
+                        match self.expr_to_vue_bound_value(other_expr) {
+                            Ok(expr_str) => attrs.push(format!(":class=\"{}\"", expr_str)),
+                            Err(e) => self.warn(
+                                "R011",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("class concat could not be rendered and was dropped: {}", e),
+                            ),
                         }
                     } else {
                         match self.expr_to_vue_bound_value(other_expr) {
@@ -12985,10 +13114,40 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             AuraPropValue::Expr(Expr::If(if_stmt)) => {
                 Some(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)))
             }
-            AuraPropValue::Expr(other) => match self.expr_to_vue_bound_value(other) {
-                Ok(s) if s != "null" => Some(format!(":style=\"{}\"", s)),
-                _ => None,
-            },
+            // Plan 448 D: array-of-class-parts joins into ONE :class — the
+            // array form is explicitly class semantics, refs included
+            // (same reasoning as Plan 458 above).
+            AuraPropValue::Expr(Expr::Array(elems)) => {
+                let parts: Vec<String> = elems
+                    .iter()
+                    .map(|e| self.style_array_part_js(e))
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap_or_default();
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(format!(
+                        ":class=\"[{}].filter(Boolean).join(' ')\"",
+                        parts.join(", ")
+                    ))
+                }
+            }
+            AuraPropValue::Expr(other) => {
+                // Plan 448 D: literal/conditional-only concat is a class
+                // string by structure → :class (same reasoning as the
+                // plain-element path).
+                if Self::is_class_safe_concat(other) {
+                    return self
+                        .expr_to_vue_bound_value(other)
+                        .ok()
+                        .filter(|s| s != "null")
+                        .map(|s| format!(":class=\"{}\"", s));
+                }
+                match self.expr_to_vue_bound_value(other) {
+                    Ok(s) if s != "null" => Some(format!(":style=\"{}\"", s)),
+                    _ => None,
+                }
+            }
             _ => None,
         }
     }
@@ -18406,6 +18565,71 @@ widget App {
 "#);
         assert!(sfc.contains("v-model=\"value\""), "explicit path still folds:\n{}", sfc);
         assert!(sfc.contains("@input=\"Changed\""), "explicit handler attr kept:\n{}", sfc);
+    }
+
+    #[test]
+    fn test_style_array_and_class_safe_concat() {
+        // Plan 448 D: `style: ["base", if … {…} else {…}, .ref]` is array-of-
+        // class-parts — every element joins into ONE :class binding (literals
+        // quoted, conditionals as ternaries, refs as bound values; empty
+        // parts filtered). A manual concat of literals/conditionals is
+        // class-safe by structure → :class. A concat carrying refs keeps the
+        // Plan 043 H5 inline-CSS reading → :style.
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var dark bool = true, cls str = "extra", red str = "34" }
+    view {
+        col {
+            text "a" { style: ["items-center gap-1", if .dark { " border-zinc-800" } else { " border-gray-200" }] }
+            text "b" { style: "py-3 border-b" + if .dark { " z-800" } else { " g-200" } }
+            text "c" { style: ["base", .cls] }
+            text "d" { style: "color: rgb(" + .red + ")" }
+            row (style: ["row-base", if .dark { "" } else { "opacity-40" }]) { text "e" {} }
+        }
+    }
+}
+"#);
+        // Array form: joined :class with filter(Boolean).
+        assert!(
+            sfc.contains(".filter(Boolean).join(' ')"),
+            "array style must join into one :class:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("'items-center gap-1'"),
+            "literal array part quoted:\n{}",
+            sfc
+        );
+        // Layout primitive (row, paren form) joins the same way.
+        assert!(
+            sfc.contains("'row-base'"),
+            "row paren-form array part joins:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.matches(".filter(Boolean).join(' ')").count() >= 2,
+            "both plain-element and layout paths join:\n{}",
+            sfc
+        );
+        // Ref part inside the array joins too (array is explicitly class
+        // semantics — refs allowed).
+        assert!(
+            sfc.contains("'base', cls"),
+            "state ref part inside array join:\n{}",
+            sfc
+        );
+        // Class-safe manual concat → :class (never :style).
+        assert!(
+            sfc.contains(":class=\"'py-3 border-b' +"),
+            "class-safe concat routes to :class:\n{}",
+            sfc
+        );
+        // CSS concat with a ref operand stays :style (H5 semantics).
+        assert!(
+            sfc.contains(":style=\"'color: rgb(' +"),
+            "ref-carrying concat stays :style:\n{}",
+            sfc
+        );
     }
 
         fn gen_sfc_from_widget_src(src: &str) -> String {
