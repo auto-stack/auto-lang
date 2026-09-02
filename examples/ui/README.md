@@ -92,7 +92,7 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 | 024 | charts | 图表工坊（四类图 + 系列开关 + 流式 + Reset 双模式；Y 轴刻度/图例） | 4024 | ✅ [Plan 445](../../docs/plans/archive/445-024-charts.md)（vue+vm 双轨全链路，desktop_mcp 19/19） |
 | 025 | dashboard | 系统监视器（KPI 卡 + 三实时面积曲线 + 可排序进程表 + 配置持久化；mock 随机游走，API 形状见 SPEC） | 4025 | ✅ [Plan 438](../../docs/plans/archive/438-025-dashboard.md)（M1 vue 实机 6/6 + M1-fix 双生成器缺口根治 + M2 vm desktop_mcp 26/26） |
 | 026 | database | SQLite 可视化客户端 | 4026/8026 | 📋 [Plan 439](../../docs/plans/439-026-database.md) 立项中 |
-| 027 | file-manager | 文件管理器 | 4027/8027 | 📋 [Plan 440](../../docs/plans/440-027-file-manager.md) 立项中 |
+| 027 | file-manager | 文件管理器（双栏布局 + 目录面包屑 + 列表/网格双视图 + 排序搜索 + Plan 422 popover 右键/新建/删除确认 + 剪贴板 + 配置持久化） | 4027 | ✅ [Plan 440](../../docs/plans/archive/440-027-file-manager.md)（vue 实机 build 0 错误 + vm desktop_mcp 49/49） |
 | 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |
 | 038 | minesweeper | 经典扫雷（双后端） | 4038 | 🎯 严肃应用，持续扩展 |
 | 041 | auto-edit | 文本编辑器 | 4041 | 🎯 严肃应用，持续扩展 |
