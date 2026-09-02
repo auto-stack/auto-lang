@@ -60,6 +60,9 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 448 | 边界: `__evt_*` 铸名跨兄弟冲撞面 | 内联 lambda 铸名 `__evt_<event>_<n>` 按每 widget 计数,而 registry 级 `input_state_map` 仅按 handler 名索引(first-wins)——两个兄弟子组件各铸同名 `__evt_oninput_1` 时第二个绑定静默失效。C 轮新铸名 `__bind_<W>_<n>` 已织入 widget 名规避,B 族 `__evt_*` 维持现状(用户显式命名惯例分散,低概率);实际案例出现时把 B 族铸名同样织入 widget 名即可。 | Plan 448 §3 C.5;`parser.rs` mint_events_inline + `ui/dynamic.rs` extract_input_state_map_with_registry |
+| 448 | 边界: plain 生成器 grid cols 死属性 | `VueGenerator::new()`(非 shadcn)路径的 grid 元素走 extract_classes+通用透传,`cols` 落成无意义 `:cols="N"` HTML 属性(字面量时代即如此,448-I 未扩战);真实 `auto build` 走 shadcn 路径已支持动态/字面量 cols。plain 路径若被启用需补 grid 臂。 | Plan 448 §8 I.4;`ui_gen/vue.rs` push_passthrough_attrs |
+| 448 | 边界: computed 块内 store 方法调用未接消歧 | H2 的 `__computed_<W>_<p>` 合成复用 handler 的 state-ref 重写,但未纳入 store 多仓消歧重写(handler 的 store 重写机制独立)——computed 块体调用 `store.Xxx()` 在多 store 场景可能错路由;表达式 computed 同边界(内联求值器同样无消歧)。单 store 项目无感。 | Plan 448 §7 H.4 边界补充;`ui/handler_codegen.rs` synthesize_computed_fns |
 | 518 | planned-debt: backdrop 真模糊渲染挂 RenderQueue | `backdrop-blur-*`/`backdrop-saturate-*` 毛玻璃词汇已声明冻结（共享 parser `StyleClass::BackdropBlur/Saturate`,Plan 518 G8）,但 iced/gpui/headless 三渲染臂为视觉 no-op（装饰性降级非错绘,不报错不 not-yet）——真 backdrop-filter 渲染推迟 **RenderQueue 宿主栅格化**:窗口根容器 → 宿主 WM 窗口级 glass 属性（queue/pixels 双臂通吃）;应用内面板 → `DrawOp::BeginBackdrop/EndBackdrop` 追加式 tag 对（线格式零变更）。已验 iced 0.14 源码:无 backdrop primitive、无 pass 干预口;`window::screenshot` 为整场景重渲+阻塞读回+上一帧玻璃反馈污染,只适合快照;fork iced_wgpu 可真解（screenshot 代码即施工图）但 RenderQueue 在途,裁定不投。vue 臂类串直通（Tailwind JIT content 直扫,零登记即生效）出真毛玻璃——样张 `examples/ui/p518-glass-sample`（stella 配方直译,VM 降级为既定语义）;parity 双端对拍中玻璃卡为已知分歧（VM 降级,RenderQueue 期翻转）。glass 配方另两腿已就绪:半透明底 `bg-white/10`（parse_color_with_alpha 既有）+ border 既有。 | `crates/auto-lang/src/ui/style/class.rs` BackdropBlur/Saturate + iced/gpui no-op 臂注释;`docs/plans/518-desktop-visual-phase2.md` §8 |
 | 518 | 架构缝: os-config 逐 app 主题 × shell 全局主题共享 dark_mode thread-local | 全局 `DARK_MODE` thread-local 是 process-wide 单例:dynamic_view 每帧读各 App 的 `dark_mode` 声明变量回写全局——504 的逐 app 用户配置（如 `~/.config/autoos/apps/calculator/config.at` theme=dark,osconfig seed 在 allocate_app 同步**之后**合法覆盖）会把 **shell chrome 一并翻深**（浅色桌面开 calculator 实测:titlebar/dock 变深,而 calculator 自身视图浅——构建时序交错成混色窗）。518 缓解:boot 读回+allocate_app(desktop 宿主门控)同步已声明变量;根治 = per-app color context（渲染时按 App 路由各自主题,而非全局单值）,与 RenderQueue 色彩上下文重构一并。 | `ui/iced/renderer.rs` dynamic_view dark_mode 同步 + `ui/session.rs` allocate_app Plan 518 注;`docs/plans/reports/518-t3-visual-parity.md` 注记④ |
 | 470 | use.rust deprecation 周期 | `use.rs` 为现行拼写（Plan 470），`use.rust` 仍解析但发 W0005。移除触发条件：外部仓（auto-musk/auto-ai/book 等 ~78 .at）随工具链升级完成迁移 + 一个发布周期零存量后，独立 plan 删 parser/scanner 分支改报错。本仓正式树 .at 已全部归零（2026-08-30 parser.at 注释亦迁；豁免仅剩 `docs/plans/reports/` 历史报告、docs/plans 与 specs plans.md/retrospective 历史页）。 | `docs/plans/470-use-rs-alias.md` D5 |
@@ -888,3 +891,41 @@
   `plan055_strip_html_tests::strips_tags_and_decodes_entities` 基线即
   红（双空格 vs 单空格，strip_html 段落归并口径）。三处均经干净基线
   复跑证实（git stash 后同败），域属 449/370/055，未在本计划处理。
+
+### P522（2026-09-02，Plan 522 helper-fn-into-vue-sfc 复审登记）
+
+- **P522-1 同文件 module_fns / store composable 路径尾表达式体丢 return**：
+  Plan 522 给 use 导入 fn 发射路径换用 `transpile_body_as_return`（尾
+  表达式即返回值，修 `is_leap` 类谓词在 Vue 运行时返回 undefined），
+  但**同文件** module_fns 发射（vue.rs module_fns 块）与 store
+  composable 的 module_fns 发射（generate_store_composable*）仍用
+  `transpile_handler_body`——同形态 fn 在两条路径语义不一致，裸表达式
+  体的同文件 helper 在 Vue 侧仍会静默返回 undefined。偿还路径：两处
+  同步换 `transpile_body_as_return` + 回归 goldens（发射文本变化面）。
+  引用：`ui_gen/vue.rs` module_fns 发射块与 `generate_store_composable_full`；
+  对照 `emit_use_module_fns`（已修路径）。
+- **P522-2 auto-man components/ 通道 module_fns 未挂**：components/ 包
+  通道（auto-man vue.rs ~2450）重生成 SFC 时已挂 use-fn 池（Plan 522
+  T4），但同文件 module_fns 仍未挂——组件文件内的同文件顶层 fn 在该
+  通道依旧丢失（主通道 generate_component_from_file 路径正常）。
+  偿还路径：with_module_fns 同步挂入。引用：`auto-man/src/vue.rs`
+  components_pkg_dir 通道。
+- **P522-3 024 图表族 50 个既有 vue-tsc 错误（非本计划引入）**：024
+  gen 工程 `pnpm run build` 报 50 错（四图表组件：withDefaults 推断
+  TS2322 ×4、`__timer_*` 隐式 any、`e.currentTarget` 可能 null ×N），
+  全部为 Plan 522 之前形态；dc/ds 迁移零新增错（复审逐条甄别证实）。
+  437 记录的"dist 正常系陈旧产物"与此互证——024 vue 构建从未干净过。
+  偿还路径：图表组件生成面专项（props 推断/timer 类型/currentTarget
+  断言三类）。引用：`examples/ui/024-charts/gen/front/vue`（再生即现）。
+- **P522-4 纯 fn 模块在 components/ 通道每轮告警噪音**：`chart_geom.at`
+  类纯 helper 模块（无 widget/store 声明）在 `auto run` 的 components
+  通道每轮报"Failed to compile … No widget or store declarations"
+  （Warning 级、不阻塞、产物正确）。actions-only 模块在 front/ 通道有
+  优雅跳过先例，components/ 通道未对齐。偿还路径：通道内对无声明文件
+  静默跳过（镜像 actions-only 分派）。引用：`auto-man/src/vue.rs`
+  compile_at_to_vue Err 臂。
+- **基线红测试交叉引用**：`d8_toggle_dark_mode` / `strips_tags` /
+  `style_migration_probe` 三处基线即红已由前计划登记（见本节之前
+  "新观察"条目）；Plan 522 复审实证 d8/strips 在 master e6885460b 仍
+  红（style_migration_probe 已由 Plan 518 496032e21 修复，522 merge
+  后转绿）。

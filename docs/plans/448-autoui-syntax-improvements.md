@@ -1,13 +1,46 @@
+---
+plan_id: PLAN-448
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
+feature_name: autoui-syntax-improvements（AutoUI 语法改进滚动收集）
+author: [zhaopuming]
+created_at: 2026-08-25
+updated_at: 2026-09-02
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components: []
+new_spec_components:
+  - "auto-lang/ui: 语法六件——msg 去名(`msg {…}`)、事件内联 lambda(`onclick: () => {…}`)、裸 `value:` 两向绑定(`__bind_<W>_<n>` 铸名,输入框免 msg/on 三件套)、style 数组形态(`[\"基座\", if…]`)与 class-safe 拼接、grid `cols:`/`gap:` 动态值(VM 重建期求值+Vue 内联 repeat)、computed 块体(Vue 尾 return+类型推断 / VM `__computed_<W>_<p>` 隐藏函数)"
+touched_goals:
+  - "GOAL-007: C/D/I/H 四条均双端同语义落地（Vue 与 VM/iced）"
+  - "GOAL-008: 声明式 UI 表达力升级——六件语法,handler/样板大幅减负"
+  - "GOAL-010: 示例语料迁移 005/010/013/016/017/018/024/038/043/459/p507"
+
+affects: [auto-lang/ui]
+current_step: 6
+total_steps: 6
+---
+
 # Plan 448: AutoUI 语法改进——msg 声明去名 + 事件内联 lambda 简写（滚动收集）
 
-> **状态**: 🟢 A/B1/B2 已合并 master（merge `7f4ed335c`）；C 已合并 master
-> （merge `f5ad59bae`）；D 已合并 master（merge `89aa2aa31`）；
-> **I 已登记未实施**（2026-09-02 三轮走查 028 后批次：038/041-044/p 系列，
-> 见 §8 + §6 三轮补充）；C/D/… 继续按示例走查追加
+> **状态**: 🏁 **终态·已复审（2026-09-02 /auto-plan:review 通过）**——七实施条目
+> 全部合并 master：A/B（merge `7f4ed335c`）、C（`f5ad59bae`）、D（`89aa2aa31`）、
+> I（`1f258732b`）、H1/H2（`ec9c16fcd`）、收尾轮 C 补遗+F（`21b65e1f9`）。
+> 遗留归属：H3/024 编号族 → Plan 522（执行中）；F 剩余 019/020/021 →
+> 待 519-521 合流后随 401 纲领；E/G 维持观察项。滚动使命完成
+> （examples/ui 三轮全量走查），待 /auto-plan:merge 沉淀归档。
 > **来源**: examples/ui/002-counter/src/front/app.at 示例走查（文件注释区的"简写版"）
 > **基线**: master bcb6e139b（实施于 9e330123f 分叉的 worktree）
 > **性质**: **滚动收集计划**——逐个 UI 示例走查，收集 AutoUI 语法改进需求追加为
 > 需求 C/D/…；每条独立实施、独立验证、独立勾销，不必一次做完。
+
+## 终局验证（2026-09-02，/auto-plan:review 门禁，主 checkout 合并态）
+
+- **cargo tf 全量门禁**：3358 跑 3357 绿 / 1 红——唯一失败 `schema_drift_fence`
+  为"漂移已消除请裁剪 baseline"（并行会话修复 `code`/`pre` 元素漂移致基线
+  陈旧）；448 全程未触 schema/元素表，非本计划回归。
+- **七条目测试实证**：12/12 绿（A `test_msg_decl_unnamed_and_legacy_name`、
+  B `test_event_inline_lambda_parses`、C×4、D×2、I×2、H1/H2×2）。
+- 逐轮验证记录见下方各节（每轮含 master 基线对照与 e2e 实证）。
 
 ## 验证结果（2026-09-02 二轮，worktree plan-448 @ 278ea1cc3，条目 D + 016-028 走查）
 
@@ -705,3 +738,32 @@ widget App {
 
 继续按示例走查追加需求 J/K/…（观察项见 §6，H 见 §7，I 见 §8），格式沿用
 §1/§2（动机与证据 → 方案 → 测试 → 边界 → 风险），并在 §0 总览表登记。
+
+## 复审记录
+
+- **复审人/时间**：/auto-plan:review（本会话），2026-09-02；worktree 已随各轮
+  合并清理，对照主 checkout 合并态复核。
+- **门禁**：cargo tf 3357/3358（唯一红 = schema_drift 基线陈旧，并行线所致，
+  与 448 无涉——448 未触 schema/元素表）；七条目测试 12/12 绿。
+- **逐条验收（全部 PASS）**：
+  | 条目 | 证据 |
+  |---|---|
+  | A msg 去名 | 单测 PASS；175 处语料迁移随 7f4ed335c 合并 |
+  | B 内联 lambda（含 B2 VM 复合赋值） | 单测+vm_bridge 组绿；002-counter 目标形态；MCP e2e count 0→3→2（B 轮） |
+  | C 裸 value 两向 | 四路单测（parser/vue/rust/vm）+ MCP e2e 双实证（005 邮箱落盘/010 'Zed' 落盘）；043/p507 补遗迁移 VM e2e（21b65e1f9） |
+  | D style 组合 | 双端单测；018×3+024×16 迁移产物 `:class` join 形态，TS 签名与 master 逐条同 |
+  | I grid 动态 cols/gap | 双端单测（含失败兜底）；038 e2e 三档 81/256/480 格 |
+  | H1/H2 computed 块体 | 双端单测（7→21 随状态）+ e2e d:7→9→11 + Vue `computed<number>` 产物构建绿 |
+- **遗漏/延后/workaround 扫描**（均经对话明示批准，无静默缓期）：
+  F 剩余 019/020/021 待 519-521 合流；024 编号族与 H3 划归 Plan 522（已立项
+  执行中）；E/G 从未立为任务（观察项随归档可查）；012 laps 裁定不迁（滚动窗
+  三标量更清晰）；042/p493/p051 测试载具按政策不动；四轮合并 diff 审计无
+  调试残留/新增 TODO/未批准的范围收缩。
+- **边界债**（→ KNOWN-DEBT P448-1..3）：`__evt_*` 铸名跨兄弟子组件同名冲撞面；
+  plain 生成器 grid cols 死属性透传（预存）；computed 块内 store 方法调用未接
+  消歧重写。
+- **异常记录**：状态行曾被并行文档批回退至陈旧文本（"I 已登记未实施"），本
+  复审刷新为终态；016 app.at 曾因脚本事故截断，经与 HEAD 逐行核对后零损失
+  恢复（过程见会话记录，无数据丢失）。
+- **结论**：验收全过、无阻断债 → `status: reviewed`，交 /auto-plan:merge。
+
