@@ -112,6 +112,9 @@ pub fn virtual_window_element<'a>(
     ]
     .spacing(8.0);
 
+    // Plan 518 G5：标题窗口级居中（stella 形态）——三列 row：左圆点组 /
+    // 中标题 Fill 居中 / 右等宽配重（3×12px 圆点 + 2×8 间距 + 12 左垫 =
+    // 64px）。整条 mouse_area 拖拽把手语义不变（配重列仍在其内）。
     let titlebar = mouse_area(
         row![
             container(lights).padding(Padding {
@@ -123,13 +126,9 @@ pub fn virtual_window_element<'a>(
             container(text(vwin.title.clone()).size(12))
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .center_y(Length::Fill)
-                .padding(Padding {
-                    top: 0.0,
-                    right: 0.0,
-                    bottom: 0.0,
-                    left: 12.0,
-                }),
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
+            container(text("")).width(Length::Fixed(64.0)),
         ]
         .width(Length::Fill)
         .height(Length::Fixed(TITLEBAR_H)),
@@ -156,12 +155,14 @@ pub fn virtual_window_element<'a>(
     // Plan 503 M5：focused 描边 2px accent → 1px accent/60；柔影
     // (0,8)/32px——light 12% / dark 40%，focused 加深；窗矩形 ≈ 全桌面
     // （≥98%）视作最大化——去圆角去影（贴边平铺）。
+    // Plan 518 G5 重校：柔影 (0,10)/40——dark 40–52%（聚焦区间上限即
+    // 0.52）、light 12–18%（聚焦 0.18,原 0.20 收敛对齐 stella 轻影）。
     let accent = token(crate::ui::style::Color::Primary);
     let desktop_size = *vwin.window_size.borrow();
     let maximized =
         rect.width >= desktop_size.width * 0.98 && rect.height >= desktop_size.height * 0.98;
     let dark = crate::ui::style::theme::dark_mode();
-    let (base_alpha, focus_boost): (f32, f32) = if dark { (0.40, 0.12) } else { (0.12, 0.08) };
+    let (base_alpha, focus_boost): (f32, f32) = if dark { (0.40, 0.12) } else { (0.12, 0.06) };
     let shadow_alpha = if focused {
         (base_alpha + focus_boost).min(0.7)
     } else {
@@ -187,8 +188,8 @@ pub fn virtual_window_element<'a>(
             } else {
                 Shadow {
                     color: Color::from_rgba(0.0, 0.0, 0.0, shadow_alpha),
-                    offset: Vector::new(0.0, 8.0),
-                    blur_radius: 32.0,
+                    offset: Vector::new(0.0, 10.0),
+                    blur_radius: 40.0,
                 }
             },
             ..Default::default()
