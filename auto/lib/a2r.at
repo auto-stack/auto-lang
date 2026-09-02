@@ -134,6 +134,9 @@ type Ar {
     arg_lenflags List<int>
     // Plan 447 部分② H5:当前 fn 内 is 次数 ≥2 的标识符 scrutinee 名单
     multi_is List<str>
+    // Plan 517 W1:use 语句定向导入名集(items;发射期先于 mains 体,
+    // 点路径 X.Y 的 X 命中 → X::Y 镜像主 a2r 导入类型路径形态)
+    imports List<str>
 
     // ── Plan 514 W3-16(γ4 塔顶):Ar 自有操作族入 type 体 ──
     // 映射:ar_* a-only 工具族(产生式 ar_expr/stmt/emit_*/
@@ -153,7 +156,8 @@ type Ar {
     var lun List<str> = List.new()
     var lui List<int> = List.new()
     var mis List<str> = List.new()
-    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis)
+    var imps List<str> = List.new()
+    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis, imps)
 }
 
     fn fail(msg str) {
@@ -268,20 +272,33 @@ type Ar {
 }
 
     fn enum_has_variant(name str, variant str) bool {
-    var ei = self.enum_find(name)
-    if ei < 0 {
+        var ei = self.enum_find(name)
+        if ei < 0 {
+            return false
+        }
+        var vs = self.ens.get(ei).variants
+        var i = 0
+        while i < vs.len() {
+            if vs.get(i) == variant {
+                return true
+            }
+            i = i + 1
+        }
         return false
     }
-    var vs = self.ens.get(ei).variants
-    var i = 0
-    while i < vs.len() {
-        if vs.get(i) == variant {
-            return true
+
+    // Plan 517 W1:use 定向导入名命中(点路径 X.Y 的 X 为导入符号 →
+    // 镜像主 a2r 导入类型路径 X::Y;导入 fn 名不会被点访问)
+    fn imports_has(name str) bool {
+        var i = 0
+        while i < self.imports.len() {
+            if self.imports.get(i) == name {
+                return true
+            }
+            i = i + 1
         }
-        i = i + 1
+        return false
     }
-    return false
-}
 
     // ── 作用域变量栈(D25:depth 计数,只增不减) ───────────────────
 
@@ -1618,7 +1635,9 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                     ended_field = 0
                     can_call = 0
                 } else {
-                    if a.enum_has_variant(cur, word) {
+                    if a.enum_has_variant(cur, word) || (a.imports.len() > 0 && a.imports_has(cur)) {
+                        // Plan 517 W1:本文件枚举命中或 use 导入名命中 →
+                        // X::Y(镜像主 a2r 导入类型路径形态)
                         cur = f"${cur}::${word}"
                         cur_ty = ""
                         cur_infer = 0
@@ -3742,6 +3761,121 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
     a.cur_fn = ""
 }
 
+// ── use 语句发射(Plan 517 W1)──────────────────────────────
+// 镜像主 a2r use_stmt 单文件子集(trans/rust.rs:14413):路径段 join "::";
+// 首段 auto 且多段 → crate::+rest(rest 命中 a2r_std 模块名 → a2r_std::
+// <rest> 并置 std_used);裸单段 stdlib 名同上映射;其余 crate::<full>。
+// items → ::{a, b};通配 → ::*;bare → 无后缀。仅顶层(体内 use 走
+// unsupported);`::{a,b}` 花括号组形态与 use.rs/use.py/use.c 异构族不入
+// v2 子集(遇之 fail;divergence 规则 §4 写法规范)。
+
+fn ar_is_std_mod(name str) bool {
+    is name {
+        "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
+        | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
+        | "char" | "conv" | "io" | "log" | "path" | "net"
+        | "process" | "sys" | "sse" | "may" -> true
+        else -> false
+    }
+}
+
+fn ar_use(mut a Ar, mut p P, pubkw str) {
+    p.next()
+    if !is_name_kind(p.kind()) {
+        a.fail("use: expected module path ")
+        return
+    }
+    var segs List<str> = List.new()
+    segs.push(p.text())
+    p.next()
+    while p.kind() == TokenKind.Dot {
+        p.next()
+        if !is_name_kind(p.kind()) {
+            a.fail("use: expected path segment after . ")
+            return
+        }
+        segs.push(p.text())
+        p.next()
+    }
+    var wildcard = 0
+    var items List<str> = List.new()
+    if p.kind() == TokenKind.Colon {
+        p.next()
+        if p.kind() == TokenKind.LBrace {
+            a.fail("use: v2 unsupported grouped {..} form ")
+            return
+        }
+        if p.kind() == TokenKind.Star {
+            wildcard = 1
+            p.next()
+        } else {
+            if !is_name_kind(p.kind()) {
+                a.fail("use: expected item or * after : ")
+                return
+            }
+            items.push(p.text())
+            p.next()
+            while p.kind() == TokenKind.Comma {
+                p.next()
+                if !is_name_kind(p.kind()) {
+                    a.fail("use: expected item after , ")
+                    return
+                }
+                items.push(p.text())
+                p.next()
+            }
+        }
+    }
+    // 定向导入名入集(点路径 X::Y 镜像用;发射序=decls 先于 mains 体,
+    // use 须置文件头——v2 写法规范);通配导入名不可知,不入集
+    var ii0 = 0
+    while ii0 < items.len() {
+        a.imports.push(items.get(ii0))
+        ii0 = ii0 + 1
+    }
+    var full = segs.get(0)
+    var si = 1
+    while si < segs.len() {
+        full = full + "::" + segs.get(si)
+        si = si + 1
+    }
+    var rust_path = ""
+    if segs.get(0) == "auto" && segs.len() > 1 {
+        var rest = segs.get(1)
+        var ri = 2
+        while ri < segs.len() {
+            rest = rest + "::" + segs.get(ri)
+            ri = ri + 1
+        }
+        if ar_is_std_mod(rest) {
+            rust_path = "a2r_std::" + rest
+            a.std_used = 1
+        } else {
+            rust_path = "crate::" + rest
+        }
+    } else if segs.len() == 1 && ar_is_std_mod(segs.get(0)) {
+        rust_path = "a2r_std::" + segs.get(0)
+        a.std_used = 1
+    } else {
+        rust_path = "crate::" + full
+    }
+    var line = pubkw + "use " + rust_path
+    if wildcard == 1 {
+        line = line + "::*;"
+    } else if items.len() > 0 {
+        var joined = items.get(0)
+        var ii = 1
+        while ii < items.len() {
+            joined = joined + ", " + items.get(ii)
+            ii = ii + 1
+        }
+        line = line + "::{" + joined + "};"
+    } else {
+        line = line + ";"
+    }
+    a.emit(line)
+}
+
 // ── 顶层发射(预扫描后) ──────────────────────────────────────
 
 fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains List<int>) {
@@ -3807,6 +3941,15 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
             continue
         } else if k == TokenKind.Enum {
             ar_emit_enum2(a, p, pubkw)
+        } else if k == TokenKind.Use {
+            // Plan 517 W1:use 行不贡献声明间分隔空行(镜像主 a2r 语流序,
+            // g18 探针实证 use 与后续声明紧邻)——Ext 同款 continue 免 blank
+            ar_use(a, p, pubkw)
+            if a.err != "" || p.err != "" {
+                return
+            }
+            i = i + 1
+            continue
         }
         if a.err != "" || p.err != "" {
             return
@@ -3884,6 +4027,11 @@ fn ar_run(source str, merge int) str {
             var start3 = p.pos
             ar_prescan_enum(a, p)
             decls.push(start3)
+            pubfs.push(pubf)
+        } else if k == TokenKind.Use {
+            // Plan 517 W1:use 语句——位置入 decls 按源序发射(顶 pub 透传),
+            // 解析/发射在 ar_use(镜像主 a2r use_stmt 单文件子集)
+            decls.push(p.pos)
             pubfs.push(pubf)
         } else if is_unsupported_stmt_kind(k) {
             p.fail("v2 unsupported: " + kind_name(k) + " ")
