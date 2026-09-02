@@ -17085,8 +17085,15 @@ impl RustTrans {
             // self.field = value  (Op::Asn, AddEq, SubEq, etc.)
             Expr::Bina(lhs, op, _) => {
                 if matches!(op, auto_val::Op::Asn | auto_val::Op::AddEq | auto_val::Op::SubEq | auto_val::Op::MulEq | auto_val::Op::DivEq | auto_val::Op::ModEq) {
+                    // Plan 514 W3-16: 索引位赋值 self.scopes[i] = v 的根
+                    // 也是 self——Index 基座为 self 点链同列(vpush 实证)。
                     if Self::is_self_dot(lhs) {
                         return true;
+                    }
+                    if let Expr::Index(base, _) = lhs.as_ref() {
+                        if Self::is_self_dot(base) {
+                            return true;
+                        }
                     }
                 }
                 false
@@ -17096,7 +17103,10 @@ impl RustTrans {
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
                     let mut_methods = ["push", "pop", "insert", "remove", "clear", "next",
                         "extend", "truncate", "retain", "sort", "sort_by", "reverse",
-                        "dedup", "swap", "splice", "drain", "append", "resize"];
+                        "dedup", "swap", "splice", "drain", "append", "resize",
+                        // Plan 514 W3-16: .set(i, v) 在发射期转索引赋值——
+                        // 同为接收者变异(vpush 的 self.scopes.set 实证)。
+                        "set"];
                     // Plan 514 W3: 裸 `self.method()`(obj 即 Ident self)与
                     // 字段中介形 `self.field.method()` 同列——此前只匹配后者,
                     // 方法体内 `.next()`/`self.next()` 语句漏判 → 接收者误发

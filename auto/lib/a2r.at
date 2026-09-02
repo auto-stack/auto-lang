@@ -134,9 +134,13 @@ type Ar {
     arg_lenflags List<int>
     // Plan 447 部分② H5:当前 fn 内 is 次数 ≥2 的标识符 scrutinee 名单
     multi_is List<str>
-}
 
-fn ar_new() Ar {
+    // ── Plan 514 W3-16(γ4 塔顶):Ar 自有操作族入 type 体 ──
+    // 映射:ar_* a-only 工具族(产生式 ar_expr/stmt/emit_*/
+    // prescan_* 等带 p 的保留自由函数);ar_err→fail(避 err
+    // 字段撞名);ar_new→static new。
+
+    static fn new() Ar {
     var out List<str> = List.new()
     var fns List<ArFn> = List.new()
     var tys List<ArTy> = List.new()
@@ -152,10 +156,273 @@ fn ar_new() Ar {
     return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis)
 }
 
-fn ar_err(mut a Ar, msg str) {
-    if a.err == "" {
-        a.err = "A2R-ERROR:" + msg
+    fn fail(msg str) {
+    if self.err == "" {
+        self.err = "A2R-ERROR:" + msg
     }
+}
+
+    // ── 输出缓冲(D39:List<str> 片段 + 末尾 join) ─────────────────
+
+    fn emit(s str) {
+    self.out.push(s)
+}
+
+    fn indent_str() str {
+    var out = ""
+    var i = 0
+    while i < self.indent {
+        out = f"${out}    "
+        i = i + 1
+    }
+    return out
+}
+
+    fn line(s str) {
+    self.out.push(self.indent_str() + s)
+}
+
+    fn blank() {
+    self.out.push("")
+}
+
+    fn result() str {
+    var out = ""
+    var i = 0
+    while i < self.out.len() {
+        if i > 0 {
+            out = out + "\n"
+        }
+        out = out + self.out.get(i)
+        i = i + 1
+    }
+    return out + "\n"
+}
+
+    // ── 符号表查询 ────────────────────────────────────────────────
+
+    fn fn_find(name str) int {
+    var i = 0
+    while i < self.fns.len() {
+        if self.fns.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+    fn ty_find(name str) int {
+    var i = 0
+    while i < self.tys.len() {
+        if self.tys.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+    // Plan 514 W3:类型方法表查询(tyname 类型下名为 word 的方法;未注册 -1)。
+    fn method_find(tyname str, word str) int {
+    var ti = self.ty_find(tyname)
+    if ti < 0 {
+        return -1
+    }
+    var ms = self.tys.get(ti).methods
+    var i = 0
+    while i < ms.len() {
+        if ms.get(i).name == word {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+    fn enum_find(name str) int {
+    var i = 0
+    while i < self.ens.len() {
+        if self.ens.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+    fn field_ty(ty_name str, field str) str {
+    var ti = self.ty_find(ty_name)
+    if ti < 0 {
+        return ""
+    }
+    var fields = self.tys.get(ti).fields
+    var i = 0
+    while i < fields.len() {
+        if fields.get(i).name == field {
+            return fields.get(i).ty
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+    fn enum_has_variant(name str, variant str) bool {
+    var ei = self.enum_find(name)
+    if ei < 0 {
+        return false
+    }
+    var vs = self.ens.get(ei).variants
+    var i = 0
+    while i < vs.len() {
+        if vs.get(i) == variant {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+    // ── 作用域变量栈(D25:depth 计数,只增不减) ───────────────────
+
+    fn vpush(name str, ty str, mode str, param int) {
+    var sc = self.scopes.get(self.depth - 1)
+    sc.push(ArVar(name, ty, mode, param))
+    self.scopes.set(self.depth - 1, sc)
+}
+
+    fn vscope() {
+    var sc List<ArVar> = List.new()
+    self.scopes.push(sc)
+    self.depth = self.depth + 1
+}
+
+    fn vunscope() {
+    // D38d:清空弃用槽位——depth 计数模式下陈旧条目会跨 fn 遮蔽同名绑定
+    var fresh List<ArVar> = List.new()
+    self.scopes.set(self.depth - 1, fresh)
+    self.depth = self.depth - 1
+}
+
+    fn vty(name str) str {
+    var s = self.depth - 1
+    while s >= 0 {
+        var sc = self.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).ty
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return ""
+}
+
+    fn vparam(name str) int {
+    var s = self.depth - 1
+    while s >= 0 {
+        var sc = self.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).param
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return 0
+}
+
+    // 当前 fn 的 mut 参数(调用点 &mut *x 再借用判定,D33)
+    fn is_cur_mut_param(name str) bool {
+    var fi = self.fn_find(self.cur_fn)
+    if fi < 0 {
+        return false
+    }
+    var f = self.fns.get(fi)
+    var ps = f.params
+    var i = 0
+    while i < ps.len() {
+        if ps.get(i).name == name && ps.get(i).mode == "mut" {
+            return true
+        }
+        i = i + 1
+    }
+    // Plan 447 ③-前置(⑤列基线修复):逃逸分析提升的参数(ar_prescan_fn
+    // 的 mut_params——未声明 mut 但体内被突变)在 Rust 签名同是 &mut;
+    // 调用点同样需要 &mut *x 再借用,否则 E0596(ar_is_pattern_text 的
+    // self.fail(...) 实证)。
+    var pj = 0
+    while pj < f.mut_params.len() {
+        if f.mut_params.get(pj) == name {
+            return true
+        }
+        pj = pj + 1
+    }
+    return false
+}
+
+    // last-use:绑定在本 fn 内的最后引用 token 位(> 当前位 → 后续仍用)
+    fn lu_record(name str, idx int) {
+    var i = 0
+    while i < self.lu_names.len() {
+        if self.lu_names.get(i) == name {
+            self.lu_idx.set(i, idx)
+            return
+        }
+        i = i + 1
+    }
+    self.lu_names.push(name)
+    self.lu_idx.push(idx)
+}
+
+    fn lu_after(name str, idx int) bool {
+    var i = 0
+    while i < self.lu_names.len() {
+        if self.lu_names.get(i) == name {
+            if self.lu_idx.get(i) > idx {
+                return true
+            }
+            return false
+        }
+        i = i + 1
+    }
+    return false
+}
+
+    fn is_mutated(name str) bool {
+    var i = 0
+    while i < self.mutated.len() {
+        if self.mutated.get(i) == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+    // ── 声明发射 ──────────────────────────────────────────────────
+
+    fn struct_derive(ti int) str {
+    var fields = self.tys.get(ti).fields
+    var full = 1
+    var i = 0
+    while i < fields.len() {
+        var t = fields.get(i).ty
+        if ar_is_float_ty(t) || ar_base_ty(t) == "List" || ar_base_ty(t) == "Map" {
+            full = 0
+        }
+        i = i + 1
+    }
+    if full == 1 {
+        return "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+    }
+    return "#[derive(Clone, Debug, PartialEq)]"
+}
+
 }
 
 // Plan 514 W1(P511-5 伴生):Rust 关键字转义,镜像主 a2r rust_ident
@@ -171,43 +438,6 @@ fn ar_rust_ident(name str) str {
         | "unsafe" | "extern" | "dyn" -> f"r#${name}"
         else -> name
     }
-}
-
-// ── 输出缓冲(D39:List<str> 片段 + 末尾 join) ─────────────────
-
-fn ar_emit(mut a Ar, s str) {
-    a.out.push(s)
-}
-
-fn ar_indent_str(a Ar) str {
-    var out = ""
-    var i = 0
-    while i < a.indent {
-        out = f"${out}    "
-        i = i + 1
-    }
-    return out
-}
-
-fn ar_line(mut a Ar, s str) {
-    a.out.push(ar_indent_str(a) + s)
-}
-
-fn ar_blank(mut a Ar) {
-    a.out.push("")
-}
-
-fn ar_result(a Ar) str {
-    var out = ""
-    var i = 0
-    while i < a.out.len() {
-        if i > 0 {
-            out = out + "\n"
-        }
-        out = out + a.out.get(i)
-        i = i + 1
-    }
-    return out + "\n"
 }
 
 // ── 字符串转义(Auto 解码文本 → Rust 字面量) ──────────────────
@@ -304,211 +534,6 @@ fn ar_param_ty(t str) str {
         return "&str"
     }
     return ar_rust_ty(t)
-}
-
-// ── 符号表查询 ────────────────────────────────────────────────
-
-fn ar_fn_find(a Ar, name str) int {
-    var i = 0
-    while i < a.fns.len() {
-        if a.fns.get(i).name == name {
-            return i
-        }
-        i = i + 1
-    }
-    return -1
-}
-
-fn ar_ty_find(a Ar, name str) int {
-    var i = 0
-    while i < a.tys.len() {
-        if a.tys.get(i).name == name {
-            return i
-        }
-        i = i + 1
-    }
-    return -1
-}
-
-// Plan 514 W3:类型方法表查询(tyname 类型下名为 word 的方法;未注册 -1)。
-fn ar_method_find(a Ar, tyname str, word str) int {
-    var ti = ar_ty_find(a, tyname)
-    if ti < 0 {
-        return -1
-    }
-    var ms = a.tys.get(ti).methods
-    var i = 0
-    while i < ms.len() {
-        if ms.get(i).name == word {
-            return i
-        }
-        i = i + 1
-    }
-    return -1
-}
-
-fn ar_enum_find(a Ar, name str) int {
-    var i = 0
-    while i < a.ens.len() {
-        if a.ens.get(i).name == name {
-            return i
-        }
-        i = i + 1
-    }
-    return -1
-}
-
-fn ar_field_ty(a Ar, ty_name str, field str) str {
-    var ti = ar_ty_find(a, ty_name)
-    if ti < 0 {
-        return ""
-    }
-    var fields = a.tys.get(ti).fields
-    var i = 0
-    while i < fields.len() {
-        if fields.get(i).name == field {
-            return fields.get(i).ty
-        }
-        i = i + 1
-    }
-    return ""
-}
-
-fn ar_enum_has_variant(a Ar, name str, variant str) bool {
-    var ei = ar_enum_find(a, name)
-    if ei < 0 {
-        return false
-    }
-    var vs = a.ens.get(ei).variants
-    var i = 0
-    while i < vs.len() {
-        if vs.get(i) == variant {
-            return true
-        }
-        i = i + 1
-    }
-    return false
-}
-
-// ── 作用域变量栈(D25:depth 计数,只增不减) ───────────────────
-
-fn ar_vpush(mut a Ar, name str, ty str, mode str, param int) {
-    var sc = a.scopes.get(a.depth - 1)
-    sc.push(ArVar(name, ty, mode, param))
-    a.scopes.set(a.depth - 1, sc)
-}
-
-fn ar_vscope(mut a Ar) {
-    var sc List<ArVar> = List.new()
-    a.scopes.push(sc)
-    a.depth = a.depth + 1
-}
-
-fn ar_vunscope(mut a Ar) {
-    // D38d:清空弃用槽位——depth 计数模式下陈旧条目会跨 fn 遮蔽同名绑定
-    var fresh List<ArVar> = List.new()
-    a.scopes.set(a.depth - 1, fresh)
-    a.depth = a.depth - 1
-}
-
-fn ar_vty(a Ar, name str) str {
-    var s = a.depth - 1
-    while s >= 0 {
-        var sc = a.scopes.get(s)
-        var i = sc.len() - 1
-        while i >= 0 {
-            if sc.get(i).name == name {
-                return sc.get(i).ty
-            }
-            i = i - 1
-        }
-        s = s - 1
-    }
-    return ""
-}
-
-fn ar_vparam(a Ar, name str) int {
-    var s = a.depth - 1
-    while s >= 0 {
-        var sc = a.scopes.get(s)
-        var i = sc.len() - 1
-        while i >= 0 {
-            if sc.get(i).name == name {
-                return sc.get(i).param
-            }
-            i = i - 1
-        }
-        s = s - 1
-    }
-    return 0
-}
-
-// 当前 fn 的 mut 参数(调用点 &mut *x 再借用判定,D33)
-fn ar_is_cur_mut_param(a Ar, name str) bool {
-    var fi = ar_fn_find(a, a.cur_fn)
-    if fi < 0 {
-        return false
-    }
-    var f = a.fns.get(fi)
-    var ps = f.params
-    var i = 0
-    while i < ps.len() {
-        if ps.get(i).name == name && ps.get(i).mode == "mut" {
-            return true
-        }
-        i = i + 1
-    }
-    // Plan 447 ③-前置(⑤列基线修复):逃逸分析提升的参数(ar_prescan_fn
-    // 的 mut_params——未声明 mut 但体内被突变)在 Rust 签名同是 &mut;
-    // 调用点同样需要 &mut *x 再借用,否则 E0596(ar_is_pattern_text 的
-    // ar_err(a, ...) 实证)。
-    var pj = 0
-    while pj < f.mut_params.len() {
-        if f.mut_params.get(pj) == name {
-            return true
-        }
-        pj = pj + 1
-    }
-    return false
-}
-
-// last-use:绑定在本 fn 内的最后引用 token 位(> 当前位 → 后续仍用)
-fn ar_lu_record(mut a Ar, name str, idx int) {
-    var i = 0
-    while i < a.lu_names.len() {
-        if a.lu_names.get(i) == name {
-            a.lu_idx.set(i, idx)
-            return
-        }
-        i = i + 1
-    }
-    a.lu_names.push(name)
-    a.lu_idx.push(idx)
-}
-
-fn ar_lu_after(a Ar, name str, idx int) bool {
-    var i = 0
-    while i < a.lu_names.len() {
-        if a.lu_names.get(i) == name {
-            if a.lu_idx.get(i) > idx {
-                return true
-            }
-            return false
-        }
-        i = i + 1
-    }
-    return false
-}
-
-fn ar_is_mutated(a Ar, name str) bool {
-    var i = 0
-    while i < a.mutated.len() {
-        if a.mutated.get(i) == name {
-            return true
-        }
-        i = i + 1
-    }
-    return false
 }
 
 // ── 裸名类型解析(预扫描/签名用;D39:不经 D38b 内联 Display) ──
@@ -677,7 +702,17 @@ fn ar_prescan_fn(mut a Ar, mut p P) {
     if p.kind() == TokenKind.LBrace {
         var save = p.pos
         var saved_mut List<str> = List.new()
+        // Plan 514 W3-16:参数先行入临时作用域——scan 的用户方法 mutates
+        // 查表需要 vty(`a.fail(...)` 族的 view 参数提升);扫后即退层。
+        a.vscope()
+        var ppi = 0
+        while ppi < ps.len() {
+            var pp2 = ps.get(ppi)
+            a.vpush(pp2.name, pp2.ty, pp2.mode, 1)
+            ppi = ppi + 1
+        }
         ar_scan_mutations(a, p)
+        a.vunscope()
         var pi = 0
         while pi < ps.len() {
             var pname2 = ps.get(pi).name
@@ -722,9 +757,28 @@ fn ar_scan_method_writes(mut p P) int {
             }
         } else if tk == TokenKind.Asn || tk == TokenKind.AddEq || tk == TokenKind.SubEq || tk == TokenKind.MulEq || tk == TokenKind.DivEq || tk == TokenKind.ModEq {
             // 前一 token 是 Ident 且再前一 token 是 Dot → `.x =` / `self.x =`
-            if i >= 2 {
-                var t1 = p.toks.get(i - 1).kind
-                var t2 = p.toks.get(i - 2).kind
+            // Plan 514 W3-16: 索引位赋值 `.xs[i] = v` / `self.xs[i] = v` 的
+            // 根同样是 self——先回跳平衡的 [ ] 对再查 Dot-Ident(vpush 实证)。
+            var ai = i
+            var guard = 0
+            while ai >= 2 && p.toks.get(ai - 1).kind == TokenKind.RSquare && guard < 32 {
+                var bdepth = 1
+                var aj = ai - 2
+                while aj >= 0 && bdepth > 0 {
+                    var ak = p.toks.get(aj).kind
+                    if ak == TokenKind.RSquare {
+                        bdepth = bdepth + 1
+                    } else if ak == TokenKind.LSquare {
+                        bdepth = bdepth - 1
+                    }
+                    aj = aj - 1
+                }
+                ai = aj + 1
+                guard = guard + 1
+            }
+            if ai >= 2 {
+                var t1 = p.toks.get(ai - 1).kind
+                var t2 = p.toks.get(ai - 2).kind
                 // Dot, Ident(x), Asn 同时覆盖 `.x =` 与 `self.x =`
                 if t1 == TokenKind.Ident && t2 == TokenKind.Dot {
                     writes = 1
@@ -737,7 +791,7 @@ fn ar_scan_method_writes(mut p P) int {
             // 接收者 E0596;镜像主 a2r expr_mutates_self 方法名表)。
             if ar_call_rooted_self(p, i) == 1 {
                 var mname = p.toks.get(i - 1).text
-                if mname == "push" || mname == "pop" || mname == "insert" || mname == "remove" || mname == "clear" || mname == "next" || mname == "extend" || mname == "truncate" || mname == "retain" || mname == "sort" || mname == "sort_by" || mname == "reverse" || mname == "dedup" || mname == "swap" || mname == "splice" || mname == "drain" || mname == "append" || mname == "resize" {
+                if mname == "push" || mname == "pop" || mname == "insert" || mname == "remove" || mname == "clear" || mname == "next" || mname == "extend" || mname == "truncate" || mname == "retain" || mname == "sort" || mname == "sort_by" || mname == "reverse" || mname == "dedup" || mname == "swap" || mname == "splice" || mname == "drain" || mname == "append" || mname == "resize" || mname == "set" {
                     writes = 1
                 }
             }
@@ -1036,7 +1090,7 @@ fn ar_prescan_ext(mut a Ar, mut p P) {
     }
     var tname = p.text()
     p.next()
-    var ti = ar_ty_find(a, tname)
+    var ti = a.ty_find(tname)
     if ti < 0 {
         p.fail("ext target type not found: " + tname)
         return
@@ -1191,7 +1245,7 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                         wi = wi + 1
                     }
                     if wi > ws {
-                        ar_lu_record(a, txt.slice(ws, wi), p.pos)
+                        a.lu_record(txt.slice(ws, wi), p.pos)
                         ti = wi
                         continue
                     }
@@ -1205,7 +1259,7 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                 p.next()
             } else {
             var name = p.text()
-            ar_lu_record(a, name, p.pos)
+            a.lu_record(name, p.pos)
             if ar_is_asn_kind(p.peek(1)) {
                 a.mutated.push(name)
                 p.next()
@@ -1226,6 +1280,22 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                         if ar_is_mutating_method(mname) {
                             mut_found = true
                         }
+                        // Plan 514 W3-16:用户方法(方法表 mutates 位)同列
+                        // ——`a.fail(...)` 族此前只认内建名单,view 参数漏
+                        // 提升 E0596(⑤腿 ar_is_pattern_text 实证)。
+                        var vty2 = a.vty(name)
+                        if vty2 != "" {
+                            var bt2 = ar_base_ty(vty2)
+                            var umi3 = a.method_find(bt2, mname)
+                            if umi3 >= 0 {
+                                var mti3 = a.ty_find(bt2)
+                                if mti3 >= 0 {
+                                    if a.tys.get(mti3).methods.get(umi3).mutates == 1 {
+                                        mut_found = true
+                                    }
+                                }
+                            }
+                        }
                         scanning = false
                     } else {
                         scanning = false
@@ -1236,14 +1306,14 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                 }
                 p.next()
             } else if p.peek(1) == TokenKind.LParen {
-                var fi = ar_fn_find(a, name)
+                var fi = a.fn_find(name)
                 p.next()
                 p.next()
                 var argi = 0
                 p.skip_empty_lines()
                 while p.err == "" && p.kind() != TokenKind.RParen && p.kind() != TokenKind.EOF {
                     if p.kind() == TokenKind.Ident {
-                        ar_lu_record(a, p.text(), p.pos)
+                        a.lu_record(p.text(), p.pos)
                         if fi >= 0 {
                             var ps = a.fns.get(fi).params
                             if argi < ps.len() && ps.get(argi).mode != "view" {
@@ -1384,21 +1454,21 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         // 仅方法体合法(self 由 ar_emit_method2 入作用域)。
         p.next()
         if !is_name_kind(p.kind()) {
-            ar_err(a, "invalid field after dot")
+            a.fail("invalid field after dot")
             return ""
         }
         var wname = p.text()
         p.next()
         if p.kind() == TokenKind.LParen {
-            var self_ty2 = ar_vty(a, "self")
+            var self_ty2 = a.vty("self")
             cur = ar_method_call(a, p, "self", self_ty2, wname)
             a.prec = 100
             a.can_call = 0
         } else {
             cur = "self." + wname
-            var selfty = ar_vty(a, "self")
+            var selfty = a.vty("self")
             if selfty != "" {
-                a.ty = ar_field_ty(a, ar_base_ty(selfty), wname)
+                a.ty = a.field_ty(ar_base_ty(selfty), wname)
             } else {
                 a.ty = ""
             }
@@ -1419,14 +1489,14 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         // 主 a2r 的 r# 转义;Mod 仅单词形态("mod")走标识符,% 符号形态仍报错。
         var name = p.text()
         if k == TokenKind.Mod && name != "mod" {
-            ar_err(a, "unsupported expr atom: " + kind_name(k))
+            a.fail("unsupported expr atom: " + kind_name(k))
             return ""
         }
         cur = ar_rust_ident(name)
         p.next()
-        a.ty = ar_vty(a, name)
+        a.ty = a.vty(name)
         if a.ty == "str" {
-            if ar_vparam(a, name) == 1 {
+            if a.vparam(name) == 1 {
                 a.strk = 2
             } else {
                 a.strk = 3
@@ -1435,10 +1505,10 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         if a.ty == "" {
             a.infer = 0
         }
-        if ar_is_cur_mut_param(a, name) {
+        if a.is_cur_mut_param(name) {
             a.atom_mut = 1
         }
-        if ar_vparam(a, name) == 1 {
+        if a.vparam(name) == 1 {
             a.atom_param = 1
         } else {
             a.atom_param = 0
@@ -1446,7 +1516,7 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         a.can_call = 1
         }
         else -> {
-            ar_err(a, "unsupported expr atom: " + kind_name(k))
+            a.fail("unsupported expr atom: " + kind_name(k))
             return ""
         }
     }
@@ -1497,7 +1567,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             else -> {
             if opk == TokenKind.LParen {
                 if can_call != 1 {
-                    ar_err(a, "unexpected call target")
+                    a.fail("unexpected call target")
                     break
                 }
                 cur = ar_call_tail(a, p, cur)
@@ -1516,7 +1586,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 }
                 p.next()
                 if !is_name_kind(p.kind()) && p.kind() != TokenKind.Int && p.kind() != TokenKind.Uint {
-                    ar_err(a, "invalid field after dot")
+                    a.fail("invalid field after dot")
                     break
                 }
                 var word = p.text()
@@ -1548,14 +1618,14 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                     ended_field = 0
                     can_call = 0
                 } else {
-                    if ar_enum_has_variant(a, cur, word) {
+                    if a.enum_has_variant(cur, word) {
                         cur = f"${cur}::${word}"
                         cur_ty = ""
                         cur_infer = 0
                     } else {
                         cur = f"${cur}.${word}"
                         if cur_ty != "" {
-                            cur_ty = ar_field_ty(a, ar_base_ty(cur_ty), word)
+                            cur_ty = a.field_ty(ar_base_ty(cur_ty), word)
                         }
                         if cur_ty == "str" {
                             cur_strk = 3
@@ -1599,12 +1669,12 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 }
                 p.next()
                 if p.kind() != TokenKind.Dot {
-                    ar_err(a, "expected `.method(...)` or `.field` after `|>`")
+                    a.fail("expected `.method(...)` or `.field` after `|>`")
                     break
                 }
                 p.next()
                 if !is_name_kind(p.kind()) {
-                    ar_err(a, "invalid name after pipe dot")
+                    a.fail("invalid name after pipe dot")
                     break
                 }
                 var pw = p.text()
@@ -1621,7 +1691,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 } else {
                     cur = f"${cur}.${pw}"
                     if cur_ty != "" {
-                        cur_ty = ar_field_ty(a, ar_base_ty(cur_ty), pw)
+                        cur_ty = a.field_ty(ar_base_ty(cur_ty), pw)
                     }
                     if cur_ty == "str" {
                         cur_strk = 3
@@ -1638,7 +1708,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             }
             if is_post == 0 {
             if !is_op_kind(opk) {
-                ar_err(a, "expected infix op, got " + kind_name(opk))
+                a.fail("expected infix op, got " + kind_name(opk))
                 break
             }
             var l = infix_l(p_op(opk))
@@ -1671,7 +1741,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             } else if ar_is_asn_kind(opk) {
                 if rhs_ty == "str" && (rhs_strk == 1 || rhs_strk == 2) {
                     rhs = f"${rhs}.to_string()"
-                } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && ar_lu_after(a, rhs, rhs_pos) == true {
+                } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && a.lu_after(rhs, rhs_pos) == true {
                     rhs = f"${rhs}.clone()"
                 } else if rhs_ty == "str" && a.ended_field == 1 {
                     rhs = f"${rhs}.clone()"
@@ -1760,7 +1830,7 @@ fn ar_fstr_parse(mut a Ar, mut p P) {
                 var save_infer = a.infer
                 var seg = ar_expr(a, segp, 0)
                 if seg == "" || segp.err != "" {
-                    ar_err(a, "fstr interp: " + e)
+                    a.fail("fstr interp: " + e)
                     return
                 }
                 a.ty = save_ty
@@ -1912,10 +1982,10 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
     // Plan 514 W3:用户方法(recv_ty 方法表命中)按方法表参数类型强转
     // 实参(镜像主 a2r method_str_flags/param_types 路径)。内建臂
     // 消费同批 args——方法名遮蔽内建属既有限定,lib/corpus 无此形态。
-    var um = ar_method_find(a, recv_ty, word)
+    var um = a.method_find(recv_ty, word)
     var args List<str> = List.new()
     if um >= 0 {
-        var uti = ar_ty_find(a, recv_ty)
+        var uti = a.ty_find(recv_ty)
         var umeth = a.tys.get(uti).methods.get(um)
         args = ar_call_args_text_m(a, p, umeth)
     } else {
@@ -2088,7 +2158,7 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
             }
             // Plan 514 W2:静态方法调用 Type.new(x) → Type::new(x)
             // (接收者是已知 type 名即按类型路径发射;镜像主 a2r Type:: 路径)
-            if ar_ty_find(a, recv) >= 0 {
+            if a.ty_find(recv) >= 0 {
                 a.infer = 0
                 a.ty = ""
                 a.strk = 0
@@ -2097,9 +2167,9 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
                 // CG.new()` 此前恒 Unknown,字段链/get 元素/方法实参强转
                 // 全失型(镜像主 a2r scan_call_init_bindings 的 Dot-new 臂;
                 // ⑤腿 m.link_symbol(d2.symbol) 实证)。
-                var smi = ar_method_find(a, recv, word)
+                var smi = a.method_find(recv, word)
                 if smi >= 0 {
-                    var smret = a.tys.get(ar_ty_find(a, recv)).methods.get(smi).ret
+                    var smret = a.tys.get(a.ty_find(recv)).methods.get(smi).ret
                     if smret != "void" {
                         a.ty = smret
                     }
@@ -2128,7 +2198,7 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
             // `var name = p.text()` 局部失型 → 赋值借用/实参强转哑火
             // (E0382/E0308;镜像主 a2r infer 的 qualified 键解析)。
             if um >= 0 {
-                var uti2 = ar_ty_find(a, recv_ty)
+                var uti2 = a.ty_find(recv_ty)
                 var um2 = a.tys.get(uti2).methods.get(um)
                 a.ty = um2.ret
                 if a.ty == "void" {
@@ -2225,7 +2295,7 @@ fn ar_text_ends_paren(t str) int {
 // 枚举载荷变体构造:Enum.Variant(args) → "Enum::Variant(args)";
 // 非构造形态(未注册枚举/变体无载荷)返回 "" 且不消费
 fn ar_enum_try_ctor(mut a Ar, mut p P, enum_name str, word str) str {
-    var eci = ar_enum_find(a, enum_name)
+    var eci = a.enum_find(enum_name)
     if eci < 0 {
         return ""
     }
@@ -2253,7 +2323,7 @@ fn ar_enum_try_ctor(mut a Ar, mut p P, enum_name str, word str) str {
         if ar_pay_slot(payfull, aj) == "String" {
             if ar_text_is_str_lit(av) == 1 {
                 av = f"${av}.to_string()"
-            } else if e_is_simple_ident(av) == 1 && ar_vparam(a, av) == 1 && ar_vty(a, av) == "str" {
+            } else if e_is_simple_ident(av) == 1 && a.vparam(av) == 1 && a.vty(av) == "str" {
                 av = f"${av}.to_string()"
             }
         }
@@ -2275,7 +2345,7 @@ fn ar_call_args_text(mut a Ar, mut p P, fn_name str) List<str> {
     var out List<str> = List.new()
     var fi = -1
     if fn_name != "" {
-        fi = ar_fn_find(a, fn_name)
+        fi = a.fn_find(fn_name)
     }
     p.expect(TokenKind.LParen)
     p.skip_empty_lines()
@@ -2316,7 +2386,7 @@ fn ar_call_args_text(mut a Ar, mut p P, fn_name str) List<str> {
             p.next()
             p.skip_empty_lines()
         } else if p.kind() != TokenKind.RParen {
-            ar_err(a, "expected arg separator ")
+            a.fail("expected arg separator ")
             break
         }
     }
@@ -2353,7 +2423,7 @@ fn ar_call_args_text_m(mut a Ar, mut p P, m ArMethod) List<str> {
             p.next()
             p.skip_empty_lines()
         } else if p.kind() != TokenKind.RParen {
-            ar_err(a, "expected arg separator ")
+            a.fail("expected arg separator ")
             break
         }
     }
@@ -2388,7 +2458,7 @@ fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm
         // 447-③ E2:枚举类型标识符实参 → 无条件克隆(镜像主 a2r
         // struct_flags 非 Copy 参数位 Ident 克隆,不按 last-use 收窄;
         // g05 多载荷实证)
-        if ar_enum_find(a, ty) >= 0 && e_is_simple_ident(text) == 1 {
+        if a.enum_find(ty) >= 0 && e_is_simple_ident(text) == 1 {
             return text + ".clone()"
         }
         // Plan 514 W1(⑤腿 E0382 循环携带复用):按值非 Copy 参数位的裸
@@ -2430,7 +2500,7 @@ fn ar_call_tail(mut a Ar, mut p P, callee str) str {
     if callee == "print" {
         return ar_print_tail(a, p)
     }
-    var ti = ar_ty_find(a, callee)
+    var ti = a.ty_find(callee)
     if ti >= 0 {
         var args = ar_call_args_text(a, p, "")
         var fields = a.tys.get(ti).fields
@@ -2467,7 +2537,7 @@ fn ar_call_tail(mut a Ar, mut p P, callee str) str {
         return "a2r_std::math::" + callee + "(" + join_args(margs) + ")"
     }
     var args2 = ar_call_args_text(a, p, callee)
-    var fi = ar_fn_find(a, callee)
+    var fi = a.fn_find(callee)
     a.infer = 0
     a.ty = ""
     var ret_strk = 0
@@ -2528,7 +2598,7 @@ fn ar_print_tail(mut a Ar, mut p P) str {
             p.next()
             p.skip_empty_lines()
         } else if p.kind() != TokenKind.RParen {
-            ar_err(a, "expected arg separator in print ")
+            a.fail("expected arg separator in print ")
             break
         }
     }
@@ -2581,7 +2651,7 @@ fn ar_stmts(mut a Ar, mut p P) {
         if n > 1 {
             var b = 0
             while b < n - 1 {
-                ar_blank(a)
+                a.blank()
                 b = b + 1
             }
         }
@@ -2692,7 +2762,7 @@ fn ar_is_has_str_pattern(mut p P) int {
 fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
     if pat.kind == "tag-cover" {
         // 载荷变体 → Variant(binds);单元/标量变体 → 裸 Variant 路径
-        var ei = ar_enum_find(a, pat.name)
+        var ei = a.enum_find(pat.name)
         var has_pay = 0
         if ei >= 0 {
             var evis = a.ens.get(ei).variants
@@ -2729,7 +2799,7 @@ fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
     if pat.kind == "name" && pat.name == "_" {
         return "_"
     }
-    ar_err(a, "unsupported is pattern: " + pat.kind)
+    a.fail("unsupported is pattern: " + pat.kind)
     return ""
 }
 
@@ -2746,7 +2816,7 @@ fn ar_pay_auto_ty(rust_ty str) str {
 // is 臂体按 fn 返回型的 str 字面量收敛(尾值位;"none" → "none".to_string())
 fn ar_is_body_coerce(a Ar, body str) str {
     if a.strk == 1 {
-        var fi = ar_fn_find(a, a.cur_fn)
+        var fi = a.fn_find(a.cur_fn)
         if fi >= 0 && ar_is_str_ty(a.fns.get(fi).ret) {
             return body + ".to_string()"
         }
@@ -2754,8 +2824,8 @@ fn ar_is_body_coerce(a Ar, body str) str {
     // 镜像主 a2r expr_needs_string_coercion 的 Ident 分支:裸标识符为
     // str 参数时值是 &str(strk 只标记字面量,此位不置位),String 返回
     // 型下须补 .to_string()(t_unify "" -> b 形,E0308)
-    if e_is_simple_ident(body) == 1 && ar_vparam(a, body) == 1 && ar_vty(a, body) == "str" {
-        var fi2 = ar_fn_find(a, a.cur_fn)
+    if e_is_simple_ident(body) == 1 && a.vparam(body) == 1 && a.vty(body) == "str" {
+        var fi2 = a.fn_find(a.cur_fn)
         if fi2 >= 0 && ar_is_str_ty(a.fns.get(fi2).ret) {
             return body + ".to_string()"
         }
@@ -2771,23 +2841,23 @@ fn ar_is_arm_body(mut a Ar, mut p P, head str, tail_is int) {
         p.skip_empty_lines()
         if p.kind() == TokenKind.RBrace {
             p.next()
-            ar_line(a, head + " => {},")
+            a.line(head + " => {},")
             return
         }
-        ar_line(a, head + " => {")
+        a.line(head + " => {")
         a.indent = a.indent + 1
         ar_stmts(a, p)
         p.expect(TokenKind.RBrace)
         p.skip_empty_lines()
         a.indent = a.indent - 1
-        ar_line(a, "},")
+        a.line("},")
         return
     }
     var body = ar_expr(a, p, 0)
     if tail_is == 1 {
         body = ar_is_body_coerce(a, body)
     }
-    ar_line(a, head + " => " + body + ",")
+    a.line(head + " => " + body + ",")
 }
 
 // is 语句发射:match <scrut> { 模式臂..., };(语句位;尾值位无分号)
@@ -2796,7 +2866,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
     var scrut = ar_expr(a, p, 0)
     // 447-③前置:scrutinee 为 int 型标识符时字符模式发码点(ar_is_pattern_text)
     var scrut_int = 0
-    if e_is_simple_ident(scrut) == 1 && ar_vty(a, scrut) == "int" {
+    if e_is_simple_ident(scrut) == 1 && a.vty(scrut) == "int" {
         scrut_int = 1
     }
     // str 模式前瞻须在越过 { 之前(游标正落在 LBrace 上)
@@ -2810,7 +2880,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
     // &str,加 .as_str() 是 E0658(str_as_str),跳过(镜像主 a2r 守卫)
     if has_str_pat == 1 {
         var scrut_is_str_param = 0
-        if e_is_simple_ident(scrut) == 1 && ar_vparam(a, scrut) == 1 && ar_vty(a, scrut) == "str" {
+        if e_is_simple_ident(scrut) == 1 && a.vparam(scrut) == 1 && a.vty(scrut) == "str" {
             scrut_is_str_param = 1
         }
         if scrut_is_str_param == 0 {
@@ -2819,7 +2889,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
     }
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
-    ar_line(a, "match " + scrut + " {")
+    a.line("match " + scrut + " {")
     a.indent = a.indent + 1
     while a.err == "" && p.err == "" && p.kind() != TokenKind.RBrace && p.kind() != TokenKind.EOF {
         var k = p.kind()
@@ -2849,7 +2919,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
             p.skip_empty_lines()
             // 载荷绑定登记(镜像 H6:按枚举载荷表入作用域)
             if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
-                var ei = ar_enum_find(a, pat.name)
+                var ei = a.enum_find(pat.name)
                 var vidx = -1
                 if ei >= 0 {
                     var evis = a.ens.get(ei).variants
@@ -2867,7 +2937,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
                     while bi < binds.len() {
                         if binds.get(bi) != "_" {
                             var slot_rust = ar_pay_first(a.ens.get(ei).pays.get(vidx))
-                            ar_vpush(a, binds.get(bi), ar_pay_auto_ty(slot_rust), "view", 0)
+                            a.vpush(binds.get(bi), ar_pay_auto_ty(slot_rust), "view", 0)
                         }
                         bi = bi + 1
                     }
@@ -2884,9 +2954,9 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
     p.expect(TokenKind.RBrace)
     a.indent = a.indent - 1
     if tail_is == 1 {
-        ar_line(a, "}")
+        a.line("}")
     } else {
-        ar_line(a, "};")
+        a.line("};")
     }
 }
 
@@ -2928,19 +2998,19 @@ fn ar_stmt(mut a Ar, mut p P) {
     }
     if k == TokenKind.Loop {
         p.next()
-        ar_line(a, "loop {")
+        a.line("loop {")
         ar_block_body(a, p)
-        ar_line(a, "}")
+        a.line("}")
         return
     }
     if k == TokenKind.Break {
         p.next()
-        ar_line(a, "break;")
+        a.line("break;")
         return
     }
     if k == TokenKind.Continue {
         p.next()
-        ar_line(a, "continue;")
+        a.line("continue;")
         return
     }
     if k == TokenKind.Return {
@@ -2948,13 +3018,13 @@ fn ar_stmt(mut a Ar, mut p P) {
         return
     }
     if k == TokenKind.LBrace {
-        ar_line(a, "{")
+        a.line("{")
         ar_block_body(a, p)
-        ar_line(a, "}")
+        a.line("}")
         return
     }
     if k == TokenKind.Fn || k == TokenKind.Type || k == TokenKind.Enum || is_unsupported_stmt_kind(k) {
-        ar_err(a, "v2 unsupported stmt in body: " + kind_name(k))
+        a.fail("v2 unsupported stmt in body: " + kind_name(k))
         return
     }
     // 表达式语句
@@ -2969,20 +3039,20 @@ fn ar_stmt(mut a Ar, mut p P) {
         if a.ty == "str" && (a.strk == 1 || a.strk == 2) {
             e = f"${e}.to_string()"
         }
-        ar_line(a, e)
+        a.line(e)
     } else {
-        ar_line(a, e + ";")
+        a.line(e + ";")
     }
 }
 
 fn ar_store(mut a Ar, mut p P, kw TokenKind) {
     p.next()
     if p.kind() == TokenKind.LParen {
-        ar_err(a, "v2 unsupported: destructure store ")
+        a.fail("v2 unsupported: destructure store ")
         return
     }
     if !is_name_kind(p.kind()) {
-        ar_err(a, "expected store name ")
+        a.fail("expected store name ")
         return
     }
     var name = p.text()
@@ -3015,14 +3085,14 @@ fn ar_store(mut a Ar, mut p P, kw TokenKind) {
             return
         }
     } else if src_ty == "" {
-        ar_err(a, "store must have type or init: " + name)
+        a.fail("store must have type or init: " + name)
         return
     }
     var bind_ty = src_ty
     if bind_ty == "" {
         bind_ty = init_ty
     }
-    ar_vpush(a, name, bind_ty, "view", 0)
+    a.vpush(name, bind_ty, "view", 0)
     var anno = ""
     if src_ty != "" {
         anno = ar_rust_ty(src_ty)
@@ -3041,9 +3111,9 @@ fn ar_store(mut a Ar, mut p P, kw TokenKind) {
         } else if a.ended_field == 1 && init_ty == "str" {
             // 纯字段读(非 Copy:str)→ .clone()(owned 局部与引用参数同型)
             init = f"${init}.clone()"
-        } else if init_ty == "str" && e_is_simple_ident(init) == 1 && has_init == 1 && ar_lu_after(a, init, init_pos) == true {
+        } else if init_ty == "str" && e_is_simple_ident(init) == 1 && has_init == 1 && a.lu_after(init, init_pos) == true {
             init = f"${init}.clone()"
-        } else if ar_enum_find(a, init_ty) >= 0 && e_is_simple_ident(init) == 1 && ar_lu_after(a, init, init_pos) == true {
+        } else if a.enum_find(init_ty) >= 0 && e_is_simple_ident(init) == 1 && a.lu_after(init, init_pos) == true {
             // 447-③ E2:枚举 ident 赋给新绑定,源在后续复用 → 克隆(非
             // Copy 移动;镜像主 a2r inst9c 形)
             init = f"${init}.clone()"
@@ -3060,13 +3130,13 @@ fn ar_store(mut a Ar, mut p P, kw TokenKind) {
     if has_init == 1 {
         line = f"${line} = ${init}"
     }
-    ar_line(a, line + ";")
+    a.line(line + ";")
 }
 
 fn ar_if(mut a Ar, mut p P) {
     p.next()
     var cond = ar_expr(a, p, 0)
-    ar_line(a, "if " + cond + " {")
+    a.line("if " + cond + " {")
     ar_branch_body(a, p)
     var done = false
     var had_else = 0
@@ -3076,10 +3146,10 @@ fn ar_if(mut a Ar, mut p P) {
             if p.kind() == TokenKind.If {
                 p.next()
                 var c2 = ar_expr(a, p, 0)
-                ar_line(a, "} else if " + c2 + " {")
+                a.line("} else if " + c2 + " {")
                 ar_branch_body(a, p)
             } else {
-                ar_line(a, "} else {")
+                a.line("} else {")
                 ar_branch_body(a, p)
                 had_else = 1
                 done = true
@@ -3088,11 +3158,11 @@ fn ar_if(mut a Ar, mut p P) {
             done = true
         }
     }
-    ar_line(a, "}")
+    a.line("}")
     // 主 a2r 形状:else 收尾 "}\n" + 容器级分隔 "\n" → 空行;
     // if 分支体内(经 ar_branch_body)容器不再叠加 → 无空行
     if had_else == 1 && a.in_branch == 0 {
-        ar_blank(a)
+        a.blank()
     }
 }
 
@@ -3121,44 +3191,44 @@ fn ar_branch_body(mut a Ar, mut p P) {
 fn ar_block_body(mut a Ar, mut p P) {
     p.expect(TokenKind.LBrace)
     a.indent = a.indent + 1
-    ar_vscope(a)
+    a.vscope()
     p.skip_empty_lines()
     ar_stmts(a, p)
     p.expect(TokenKind.RBrace)
-    ar_vunscope(a)
+    a.vunscope()
     a.indent = a.indent - 1
 }
 
 fn ar_while(mut a Ar, mut p P) {
     p.next()
     var cond = ar_expr(a, p, 0)
-    ar_line(a, "while " + cond + " {")
+    a.line("while " + cond + " {")
     ar_block_body(a, p)
-    ar_line(a, "}")
+    a.line("}")
 }
 
 fn ar_for(mut a Ar, mut p P) {
     p.next()
     if p.kind() == TokenKind.LBrace {
-        ar_line(a, "loop {")
+        a.line("loop {")
         ar_block_body(a, p)
-        ar_line(a, "}")
+        a.line("}")
         return
     }
     if p.kind() == TokenKind.Let || p.kind() == TokenKind.Var {
         ar_store(a, p, TokenKind.Let)
         p.expect(TokenKind.Semi)
         var c0 = ar_expr(a, p, 0)
-        ar_line(a, "while " + c0 + " {")
+        a.line("while " + c0 + " {")
         ar_block_body(a, p)
-        ar_line(a, "}")
+        a.line("}")
         return
     }
     if p.kind() == TokenKind.Ident && p.peek(1) == TokenKind.In {
         var name = p.text()
         p.next()
         p.next()
-        ar_vscope(a)
+        a.vscope()
         var it = ar_expr(a, p, 18)
         var it_prec = a.prec
         if p.kind() == TokenKind.Range || p.kind() == TokenKind.RangeEq {
@@ -3167,27 +3237,27 @@ fn ar_for(mut a Ar, mut p P) {
             var end = ar_expr(a, p, 0)
             var end_prec = a.prec
             var iter_txt = ar_paren_if(it, it_prec, 17) + op + ar_paren_if(end, end_prec, 18)
-            ar_line(a, "for " + name + " in " + iter_txt + " {")
+            a.line("for " + name + " in " + iter_txt + " {")
         } else {
-            ar_line(a, "for " + name + " in &" + it + " {")
+            a.line("for " + name + " in &" + it + " {")
         }
-        ar_vpush(a, name, "", "view", 0)
+        a.vpush(name, "", "view", 0)
         ar_block_body(a, p)
-        ar_vunscope(a)
-        ar_line(a, "}")
+        a.vunscope()
+        a.line("}")
         return
     }
     var c1 = ar_expr(a, p, 0)
-    ar_line(a, "while " + c1 + " {")
+    a.line("while " + c1 + " {")
     ar_block_body(a, p)
-    ar_line(a, "}")
+    a.line("}")
 }
 
 fn ar_return(mut a Ar, mut p P) {
     p.next()
     var k = p.kind()
     if k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.RBrace || k == TokenKind.EOF {
-        ar_line(a, "return;")
+        a.line("return;")
         return
     }
     var e = ar_expr(a, p, 0)
@@ -3222,26 +3292,7 @@ fn ar_return(mut a Ar, mut p P) {
             e = f"(${e})"
         }
     }
-    ar_line(a, "return " + e + ";")
-}
-
-// ── 声明发射 ──────────────────────────────────────────────────
-
-fn ar_struct_derive(a Ar, ti int) str {
-    var fields = a.tys.get(ti).fields
-    var full = 1
-    var i = 0
-    while i < fields.len() {
-        var t = fields.get(i).ty
-        if ar_is_float_ty(t) || ar_base_ty(t) == "List" || ar_base_ty(t) == "Map" {
-            full = 0
-        }
-        i = i + 1
-    }
-    if full == 1 {
-        return "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]"
-    }
-    return "#[derive(Clone, Debug, PartialEq)]"
+    a.line("return " + e + ";")
 }
 
 // 跳过源 type/enum 声明残余(发射查表完成,游标只需越过声明)
@@ -3264,27 +3315,27 @@ fn ar_emit_type2(mut a Ar, mut p P, pubkw str) {
     p.next()
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
-    var ti = ar_ty_find(a, name)
+    var ti = a.ty_find(name)
     // Plan 514 W3:发射前跑 &mut 传递闭包(体内调用同类型可变方法的
     // 方法提升为 mutates;ext 方法在预扫期已并入同一方法表)。
     ar_fixpoint_mutates(a, p, ti)
-    var derive_txt = ar_struct_derive(a, ti)
-    ar_line(a, derive_txt)
-    ar_line(a, pubkw + "struct " + name + " {")
+    var derive_txt = a.struct_derive(ti)
+    a.line(derive_txt)
+    a.line(pubkw + "struct " + name + " {")
     a.indent = a.indent + 1
     var fields = a.tys.get(ti).fields
     var i = 0
     while i < fields.len() {
         var f = fields.get(i)
         if a.merge == 0 {
-            ar_line(a, "pub " + f.name + ": " + ar_rust_ty(f.ty) + ",")
+            a.line("pub " + f.name + ": " + ar_rust_ty(f.ty) + ",")
         } else {
-            ar_line(a, f.name + ": " + ar_rust_ty(f.ty) + ",")
+            a.line(f.name + ": " + ar_rust_ty(f.ty) + ",")
         }
         i = i + 1
     }
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     var methods = a.tys.get(ti).methods
     if methods.len() == 0 {
         ar_skip_decl(p)
@@ -3293,8 +3344,8 @@ fn ar_emit_type2(mut a Ar, mut p P, pubkw str) {
     // Plan 514 W2:方法族发射——struct 与 impl 分离(镜像主 a2r);
     // 体内方法按体序内联发射,ext 方法(方法表尾部)按预扫记录位跳转发射,
     // 全部并入同一 impl 块(主 a2r 合并形,13-methods 实测)。
-    ar_blank(a)
-    ar_line(a, "impl " + name + " {")
+    a.blank()
+    a.line("impl " + name + " {")
     a.indent = a.indent + 1
     var body_count = 0
     var save_pos = p.pos
@@ -3337,7 +3388,7 @@ fn ar_emit_type2(mut a Ar, mut p P, pubkw str) {
     p.pos = save_pos
     ar_skip_decl(p)
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
 }
 
 // Plan 514 W2:方法发射(p 位于 fn/static 关键字)——镜像 ar_emit_fn2 的
@@ -3390,16 +3441,16 @@ fn ar_emit_method2(mut a Ar, mut p P, m ArMethod, tyname str) {
     if ret != "" {
         sig = f"${sig} -> ${ret}"
     }
-    ar_line(a, sig + " {")
+    a.line(sig + " {")
     a.indent = a.indent + 1
-    ar_vscope(a)
+    a.vscope()
     if m.is_static == 0 {
-        ar_vpush(a, "self", tyname, "view", 0)
+        a.vpush("self", tyname, "view", 0)
     }
     var j = 0
     while j < m.params.len() {
         var prm2 = m.params.get(j)
-        ar_vpush(a, prm2.name, prm2.ty, prm2.mode, 1)
+        a.vpush(prm2.name, prm2.ty, prm2.mode, 1)
         j = j + 1
     }
     ar_skip_signature(p)
@@ -3421,9 +3472,9 @@ fn ar_emit_method2(mut a Ar, mut p P, m ArMethod, tyname str) {
         a.tail_no_semi = 0
         p.expect(TokenKind.RBrace)
     }
-    ar_vunscope(a)
+    a.vunscope()
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     a.cur_fn = ""
 }
 
@@ -3467,7 +3518,7 @@ fn ar_emit_enum2(mut a Ar, mut p P, pubkw str) {
     p.next()
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
-    var ei = ar_enum_find(a, name)
+    var ei = a.enum_find(name)
     var vs = a.ens.get(ei).variants
     // Plan 447 部分② W3:载荷枚举走独立形态——变体按载荷发射
     // (Name(i64),/Name,)、derive 三分派(浮点载荷去 Eq/Ord)、不带
@@ -3487,76 +3538,76 @@ fn ar_emit_enum2(mut a Ar, mut p P, pubkw str) {
     }
     if has_payload == 1 {
         if has_float == 1 {
-            ar_line(a, "#[derive(Clone, Debug, PartialEq)]")
+            a.line("#[derive(Clone, Debug, PartialEq)]")
         } else {
-            ar_line(a, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")
+            a.line("#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")
         }
-        ar_line(a, pubkw + "enum " + name + " {")
+        a.line(pubkw + "enum " + name + " {")
         a.indent = a.indent + 1
         var qi = 0
         while qi < vs.len() {
             if pays.get(qi) != "" {
-                ar_line(a, vs.get(qi) + "(" + pays.get(qi) + "),")
+                a.line(vs.get(qi) + "(" + pays.get(qi) + "),")
             } else {
-                ar_line(a, vs.get(qi) + ",")
+                a.line(vs.get(qi) + ",")
             }
             qi = qi + 1
         }
         a.indent = a.indent - 1
-        ar_line(a, "}")
-        ar_blank(a)
+        a.line("}")
+        a.blank()
         ar_skip_decl(p)
         return
     }
     // 447-③P1: all-unit variants → derive Copy (enum passed by value and then reused: op_display(op) then binop_result(op) is E0382;
     // mirror main a2r's rule of the same period)
-    ar_line(a, "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]")
-    ar_line(a, pubkw + "enum " + name + " {")
+    a.line("#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]")
+    a.line(pubkw + "enum " + name + " {")
     a.indent = a.indent + 1
     var i = 0
     while i < vs.len() {
-        ar_line(a, vs.get(i) + " = " + i.str() + ",")
+        a.line(vs.get(i) + " = " + i.str() + ",")
         i = i + 1
     }
     a.indent = a.indent - 1
-    ar_line(a, "}")
-    ar_blank(a)
-    ar_line(a, "impl std::fmt::Display for " + name + " {")
+    a.line("}")
+    a.blank()
+    a.line("impl std::fmt::Display for " + name + " {")
     a.indent = a.indent + 1
-    ar_line(a, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {")
+    a.line("fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {")
     a.indent = a.indent + 1
-    ar_line(a, "match self {")
+    a.line("match self {")
     a.indent = a.indent + 1
     var j = 0
     while j < vs.len() {
-        ar_line(a, name + "::" + vs.get(j) + " => write!(f, \"" + vs.get(j) + "\"),")
+        a.line(name + "::" + vs.get(j) + " => write!(f, \"" + vs.get(j) + "\"),")
         j = j + 1
     }
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     a.indent = a.indent - 1
-    ar_line(a, "}")
-    ar_line(a, "impl " + name + " {")
+    a.line("}")
+    a.line("impl " + name + " {")
     a.indent = a.indent + 1
-    ar_line(a, "pub fn from_id(id: &str) -> Self {")
+    a.line("pub fn from_id(id: &str) -> Self {")
     a.indent = a.indent + 1
-    ar_line(a, "match id {")
+    a.line("match id {")
     a.indent = a.indent + 1
     var m = 0
     while m < vs.len() {
         var v = vs.get(m)
-        ar_line(a, "\"" + v + "\" | \"" + ar_lowercase(v) + "\" => " + name + "::" + v + ",")
+        a.line("\"" + v + "\" | \"" + ar_lowercase(v) + "\" => " + name + "::" + v + ",")
         m = m + 1
     }
-    ar_line(a, "_ => " + name + "::" + vs.get(0))
+    a.line("_ => " + name + "::" + vs.get(0))
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     ar_skip_decl(p)
 }
 
@@ -3622,7 +3673,7 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
     p.next()
     var name = p.text()
     p.next()
-    var fi = ar_fn_find(a, name)
+    var fi = a.fn_find(name)
     var f = a.fns.get(fi)
     a.cur_fn = name
     var empty List<str> = List.new()
@@ -3656,13 +3707,13 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
     if ret != "" {
         sig = f"${sig} -> ${ret}"
     }
-    ar_line(a, pubkw + sig + " {")
+    a.line(pubkw + sig + " {")
     a.indent = a.indent + 1
-    ar_vscope(a)
+    a.vscope()
     var j = 0
     while j < f.params.len() {
         var prm2 = f.params.get(j)
-        ar_vpush(a, prm2.name, prm2.ty, prm2.mode, 1)
+        a.vpush(prm2.name, prm2.ty, prm2.mode, 1)
         j = j + 1
     }
     ar_skip_signature(p)
@@ -3685,9 +3736,9 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
         a.tail_no_semi = 0
         p.expect(TokenKind.RBrace)
     }
-    ar_vunscope(a)
+    a.vunscope()
     a.indent = a.indent - 1
-    ar_line(a, "}")
+    a.line("}")
     a.cur_fn = ""
 }
 
@@ -3695,13 +3746,13 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
 
 fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains List<int>) {
     if a.merge == 1 {
-        ar_emit(a, "#![allow(overflowing_literals)]")
-        ar_emit(a, "// Auto-generated by a2r transpiler")
-        ar_emit(a, "#![allow(dead_code, unreachable_code, unused_imports, unused_mut, unused_parens, unused_assignments, unused_variables)]")
-        ar_blank(a)
+        a.emit("#![allow(overflowing_literals)]")
+        a.emit("// Auto-generated by a2r transpiler")
+        a.emit("#![allow(dead_code, unreachable_code, unused_imports, unused_mut, unused_parens, unused_assignments, unused_variables)]")
+        a.blank()
     } else {
-        ar_emit(a, "// Auto-generated by a2r transpiler")
-        ar_blank(a)
+        a.emit("// Auto-generated by a2r transpiler")
+        a.blank()
     }
     var i = 0
     while i < decls.len() {
@@ -3735,7 +3786,7 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
             }
             var d = docs.len() - 1
             while d >= 0 {
-                ar_line(a, "/// " + docs.get(d))
+                a.line("/// " + docs.get(d))
                 d = d - 1
             }
             ar_emit_fn2(a, p, pubkw)
@@ -3761,14 +3812,14 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
             return
         }
         if i + 1 < decls.len() || mains.len() > 0 {
-            ar_blank(a)
+            a.blank()
         }
         i = i + 1
     }
     if mains.len() > 0 {
-        ar_line(a, "fn main() {")
+        a.line("fn main() {")
         a.indent = a.indent + 1
-        ar_vscope(a)
+        a.vscope()
         var m = 0
         while m < mains.len() {
             p.pos = mains.get(m)
@@ -3780,15 +3831,15 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
             if n > 1 && m + 1 < mains.len() {
                 var b = 0
                 while b < n - 1 {
-                    ar_blank(a)
+                    a.blank()
                     b = b + 1
                 }
             }
             m = m + 1
         }
-        ar_vunscope(a)
+        a.vunscope()
         a.indent = a.indent - 1
-        ar_line(a, "}")
+        a.line("}")
     }
 }
 
@@ -3797,7 +3848,7 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
 fn ar_run(source str, merge int) str {
     var toks = tokenize(source)
     var p = parse_new(toks)
-    var a = ar_new()
+    var a = Ar.new()
     a.merge = merge
     var decls List<int> = List.new()
     var pubfs List<int> = List.new()
@@ -3873,7 +3924,7 @@ fn ar_run(source str, merge int) str {
         }
         a.out = new_out
     }
-    return ar_result(a)
+    return a.result()
 }
 
 // 单文件转译(golden 口径:header + decls + 合成 main)
