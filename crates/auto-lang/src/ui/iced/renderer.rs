@@ -17937,7 +17937,11 @@ fn extract_handler_from_view<M: Clone + Debug>(
         (AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_cursor, .. }, "cursor") => on_cursor.clone(),
-        (AbstractView::AutodownEditor { on_change, .. }, "edit") => on_change.clone(),
+        // Plan 040 T11: type_text/clear parity with code editor (MCP typing;
+        // "edit" stays the real-widget signal action).
+        (AbstractView::AutodownEditor { on_change, .. }, "edit" | "type_text" | "clear") => {
+            on_change.clone()
+        }
         (AbstractView::CodeEditor { on_context_menu, .. }, "context_menu") => {
             on_context_menu.clone()
         }
