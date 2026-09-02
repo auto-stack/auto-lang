@@ -127,6 +127,13 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
 > 深度差=谁执笔转译(主 a2r vs AA2R 自身);更深一步"aavm 编译含自身的
 > lib"= VM 侧自举塔顶,见队列③缓议项。
 
+**单用例全闭环(理想判据,队列①落统一 runner)**:同一 .at 用例四途径
+两族产物三重对拍——①path1/path3(执行输出)互拍且等于 oracle(参考实现/
+golden);②path2/path4(Rust 译文)互拍且等于主 a2r;③**译文回链**:
+path2 译文经 rustc 编译并**运行**,其输出再与 path1/3 对拍(回链现仅
+探针冒烟覆盖且只验编译零错,系统化运行比对是缺口)。日常 CI 维持现有
+分闸快跑;统一四路 runner 用于新能力验收与折叠点全量判据。
+
 ## 后续计划队列(2026-09-02 存档,517 收口后领取起草)
 
 1. **a2r 模式中阶覆盖收口(目标 2 + 同步规约清欠)**——小计划:
@@ -137,7 +144,11 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
    逻辑,预判多绿;File shim 已为 std 直通真实现仅未触达),红项根因
    修复;③`auto build`(pac)产品冒烟常态化;④517 CLI 入口的 a2r 模式
    验证(依赖 517 落地);⑤清偿 D-AA2R-struct divergence 登记与
-   511 待澄清①遗留口径。
+   511 待澄清①遗留口径;⑥**四路统一 runner**(单用例四途径一致判定):
+   一个 .at 用例 → path1(ev_run)/path3(转译版 aavm 二进制)执行输出
+   互拍+对 oracle,path2(ar_run)/path4(self-bin)译文互拍+对主 a2r,
+   **译文回链** rustc 编译并运行比对输出(系统化补缺);转译二进制走
+   内容寻址缓存不重复构建;产出逐用例判定表。
 2. **OOP 批(目标 1 续阶)**——aavm 目标语言的方法/impl(`type T { fn }`/
    `ext T`)编译执行、is-struct 模式匹配、跨模块类型共享(pub type)、
    闭包与嵌套 fn、泛型(List\<T\> 实例化——通往塔顶必经)、May/生成器;
