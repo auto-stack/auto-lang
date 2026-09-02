@@ -1,12 +1,28 @@
 # Plan 448: AutoUI 语法改进——msg 声明去名 + 事件内联 lambda 简写（滚动收集）
 
-> **状态**: 🟢 A/B1/B2 已合并 master（merge `7f4ed335c`）；**C 已实施待合并**
-> （worktree plan-448-autoui-syntax @ `ff3bfef3c`，2026-09-02）；D 已登记未实施；
-> E/F/G 走查观察在案（见 §6）；C/D/… 继续按示例走查追加
+> **状态**: 🟢 A/B1/B2 已合并 master（merge `7f4ed335c`）；C 已合并 master
+> （merge `f5ad59bae`）；**D 已实施待合并**（worktree plan-448-autoui-syntax
+> @ `278ea1cc3`，2026-09-02，含 016-028 批次走查：H 登记/F 升级/E 根因）；
+> C/D/… 继续按示例走查追加
 > **来源**: examples/ui/002-counter/src/front/app.at 示例走查（文件注释区的"简写版"）
 > **基线**: master bcb6e139b（实施于 9e330123f 分叉的 worktree）
 > **性质**: **滚动收集计划**——逐个 UI 示例走查，收集 AutoUI 语法改进需求追加为
 > 需求 C/D/…；每条独立实施、独立验证、独立勾销，不必一次做完。
+
+## 验证结果（2026-09-02 二轮，worktree plan-448 @ 278ea1cc3，条目 D + 016-028 走查）
+
+- 新增测试：vue `test_style_array_and_class_safe_concat`（数组 join 双
+  形态/class-safe 拼接/ref 拼接保 :style）+ VM `plan448_style_array_
+  and_concat_resolution`（真实链路 join/空段跳过/状态翻转/拼接修复）。
+- 全量：默认 lib 3343 绿 0 失败；ui-iced lib 失败 17 = master 预存
+  flaky 簇（renderer desktop/osconfig daemon/session——master 孤立跑
+  反挂更多 6>2，环境敏感非本改动）；gallery_golden 绿；vue_capabilities
+  77+5 同 master；docs_gen 4 绿。
+- 示例：024 regen `:class` join 形态 + vue-tsc 错误签名与 master 逐条
+  相同；018 解析/抽取过（S002 预存校验拦截，master 同错）。
+- 走查覆盖：016/018（app+5 页）/019/020/021/022/023（6 页）/024/025/028
+  ——H 登记（computed 短板三源证据）、F 升级（025 反证能力在）、E 根因
+  （025 watch 规避注记）、016 msg-Init 观察入 §6。
 
 ## 验证结果（2026-09-02，worktree plan-448 @ ff3bfef3c，条目 C）
 
@@ -100,9 +116,12 @@ gallery_golden 1、ui_snapshots 3、auto-man 229 绿。
 |---|---|---|
 | A | `msg Msg {…}` 去掉无用的名字 → `msg {…}` | ✅ 已实施 |
 | B | `onclick: () => {…}` 内联 lambda 简写（含 B2：VM 路径复合赋值修复） | ✅ 已实施 |
-| C | 裸 `value: .field` 两向绑定——输入框免 msg/on 三件套 | ✅ 已实施（本节 2026-09-02） |
-| D | style 组合能力——`style: "基座" + if/拼接` 落 `:class` 而非 `:style` | 📋 已登记（§5） |
-| E/F/G | 走查观察（str 充当 bool / FAQ 手工展开 / registry 组件协议） | 📋 观察（§6） |
+| C | 裸 `value: .field` 两向绑定——输入框免 msg/on 三件套 | ✅ 已实施（已合并） |
+| D | style 组合能力——`style: ["基座", if … {…} else {…}]` 数组形态 + class-safe 拼接 | ✅ 已实施（本节 2026-09-02） |
+| E | str 充当 bool/状态机（根因：watch 无 immediate 的规避 + 作者惯性） | 📋 观察（§6） |
+| F | 手工展开的标量列表族（能力已存在，纯语料迁移） | 📋 观察（§6） |
+| G | registry 组件输入协议与裸 value 语义不一致 | 📋 观察（§6） |
+| H | computed 块体/派生态短板——handler 内重复重算的根因 | 📋 已登记（§7） |
 
 条目 A/B 相互独立可分别实施；B 实施后简单 widget 可完全不写 msg/on
 （002-counter 目标形态即如此）；C 实施后表单输入框亦可完全不写
@@ -390,55 +409,141 @@ widget App {
 
 ---
 
-## §4/§5 需求 D：style 组合能力（已登记未实施）
+## §4/§5 需求 D：style 组合能力 ✅ 已实施（2026-09-02，worktree @ 278ea1cc3）
 
 ### D.1 动机与证据
 
 - `style: if .dark_mode { "A" } else { "B" }` 全仓 **143 处 / 13 文件**
-  （006/008/009/010/011/013/015/018/024×4）；010 单文件即数十处，且 A/B
-  两串 class 90% 相同（仅 zinc/gray 色板差异）——基座重复噪音巨大。
-- 拼接形态 `"基座" + if {…} else {…}` **今天可编译**（语法层通过、
-  vue-tsc/vite 绿），但 Plan 043 H5 的分类把"非字面量且非 if"的表达式
-  一律发 `:style`（内联 CSS 语义）——对 Tailwind class 串是错目标，
-  浏览器按无效 CSS 丢弃，样式全失效（2026-09-02 scratch 实证）。
-- `class:` prop 已有数组去重合并（Plan 012 P0#13）与 `style: { class: cond }`
-  条件类绑定（Vue 消费）两个局部机制，但无"多段拼接落 class"的通用形态。
+  （006/008/009/010/011/013/015/018/024×4）；016-028 批次走查补充两类极证：
+  - 018-settings 三对字号按钮——每对 A/B 仅差 2 个类
+    （`bg-primary text-primary-foreground` vs `border … hover:bg-accent`），
+    基座 `px-4 py-2 rounded-lg text-*` 完全重复；
+  - 024-charts 四组件 ×4 图例行——基座全同，仅差 `opacity-40` 一个类。
+- 拼接形态 `"基座" + if {…} else {…}` 语法层可编译，但两处断链：
+  Vue 侧 Plan 043 H5 分类把非字面量/非 if 表达式一律发 `:style`（内联
+  CSS 语义——Tailwind 类串被浏览器当无效 CSS 丢弃）；VM 侧
+  `resolve_expr_to_string_with` 无 `Bina` 臂——一律空串兜底，拼接 style
+  在 iced 轨**静默消失**（均 2026-09-02 scratch 实证）。
 
-### D.2 方案草图（候选，未裁定）
+### D.2 方案（裁定 (b) 数组形态为主语法 + (a) 结构判定为辅）
 
-- (a) **分类细化**：vue.rs `push_style_class` 对"字符串字面量/if 表达式
-  之 `+` 拼接"识别为 class 族（操作数递归判定），发
-  `:class="'a' + (c ? 'b' : 'c')"`；风险是与真内联 CSS 拼接（`"color: rgb(" + …`）
-  的判别需启发式。
-- (b) **数组形态** `style: ["基座", if … {…} else {…}]`：aura extract 层
-  折叠为空格拼接表达式，再走 if 分类——显式无歧义，但引入新语法面。
-- (c) 语义色令牌迁移（010 改用 text-foreground/bg-card 族）：治本但是
-  语料迁移工程（Plan 512/515 语义色线已铺），非语法条目。
-- **裁定建议**：(b) 显式优于 (a) 启发式；实施时机待走查到第三轮示例批。
+1. **主语法 `style: [部分, …]`**（数组=显式类段列表，无歧义）：
+   - VM 求值器（`ui/aura_view_builder.rs` `resolve_expr_to_string_with`）
+     增 `Expr::Array` 臂：各段递归求值后**单空格 join，空段跳过**（条件段
+     可能为 ""，`["gap-1", if .v { "" } else { "opacity-40" }]` 不产生
+     双空格）；元素支持 Str/If/Ident/Dot 引用（数组形态即类语义，引用
+     放行——016 `class: cell.style` 同诉求）。
+   - Vue **三发射点**各增 Array 臂，统一产
+     `:class="['字面量', (三元), 绑定].filter(Boolean).join(' ')"`：
+     `extract_classes`（普通元素）、`push_style_class`（shadcn/registry
+     路径）、`layout_dynamic_style_attr`（布局原语 row/col——Plan 458 的
+     If→:class 同型扩展；第三点为首验现场：024 图例行走此路径，前两点
+     覆盖不到）。
+2. **辅助：class-safe 结构判定**——手工拼接 `"基座" + if {…} else {…}`
+   在两发射点经 `is_class_safe_concat`（Str/Str-if 之 `+` 递归闭包）判
+   定后也落 `:class`；**含引用的拼接维持 H5 的 `:style`**（`"color: rgb("
+   + r` 与 `"a" + .cls` 结构不可分，引用段请用数组形态）。VM 侧 `Bina(Add)`
+   臂顺带修复（字符串拼接求值，非仅类用途）。
+3. **语料迁移**（19 处）：018-settings 3 对（基座提取进数组首段）+
+   024-charts 四组件 16 处（`["items-center gap-N", if .vis { "" } else
+   { "opacity-40" }]`）。010 的数十处**不迁**——其 A/B 两串多处不同，
+   属语义色令牌迁移范畴（512/515 线），数组形态无收益。
 
-### D.3 测试（预置）
+### D.3 测试
 
-- vue：数组/拼接形态落 `:class` 且各段进产物；真内联 CSS 拼接仍落 `:style`。
-- iced/VM：style prop 求值路径对拼接表达式产 class 串（renderer 侧确认）。
-- 迁移冒烟：010 单文件减重（143 处中占比最大）。
+- vue 单测 `test_style_array_and_class_safe_concat`：数组 join（含
+  text/row 圆括号两形态与布局路径双命中）、字面量段引号、引用段进
+  join、class-safe 拼接→`:class`、ref 拼接保 `:style`（H5 语义不回归）。
+- VM 单测 `plan448_style_array_and_concat_resolution`：真实
+  parse→extract→VmBridge→AuraViewBuilder 链，三行断言——数组空段跳过、
+  字面量数组 join、拼接随状态翻转（on/off 两态）。
+- 024 regen：产物 `:class="[…].filter(Boolean).join(' ')"` 形态；vue-tsc
+  错误签名与 master **逐条相同**（50 错同分布，预存簇零新增）。
+- 018 regen：被预存 S002（theme-toggle 未知元素，master 同错）挡在
+  生成后校验——解析/抽取已过（校验为后置），形态由单测同款源覆盖。
+
+### D.4 边界与不做
+
+- `class:` prop 的数组形态未做（v1 只 style；Vue 原生 `:class="[…]"`
+  可直通，VM 侧引用走既有机制）。
+- 原生 Rust（a2r）路径 style 仅认字面量——If 形态今天同样不支持，
+  数组继承该预存边界。
+- ark/jet/kotlin 次要后端：style 以字符串消费，数组形态经各自 expr
+  求值器——未加臂，等同 If 形态的现状边界（未回归验证）。
+- view-fn 片段内的数组 style 未单独验证（沿 B/C 的 v1 片段边界）。
+
+### D.5 遗留与风险
+
+- 手工拼接 + 引用的类语义仍不可表达（结构不可分）——文档口径：引用段
+  用数组形态；`is_class_safe_concat` 的判定窄（Str/If 闭包），误伤面
+  为零但覆盖面有限。
+- 024 图例在 VM 快照/vtree 不打印 class 字段（打印策略），VM 侧正确性
+  由求值器单测锁定；如需 e2e 视觉级验证待快照通道补 class 输出。
 
 ---
 
-## §6 走查观察（未立项，防止丢失）
+## §6 走查观察（未立项，防止丢失；2026-09-02 第二轮走查更新）
 
-- **E：str 充当 bool**——012-stopwatch `var running str = "false"` +
-  `if .running == "true"`（4 处）；非语法缺口（bool 可用），疑为作者惯性
-  或历史规避；若走查再现可作"布尔卫生"语料条目。
-- **F：列表手工展开**——010 FAQ 五问以 `faq1_q..faq5_a` 十个标量 var 展开
-  （应 `list` + `for`）；语料质量问题非语法缺口，随下一次 010 触碰顺手修。
-- **G：registry 组件的输入协议**——015 `nav(search: true, search_value:,
-  onsearch:)`、042 `oninput: ."update:modelValue"`（带引号自定义事件名）：
-  registry 组件的两向协议与裸 value 语义不一致，若后续示例走查高频遇到，
-  可立"registry 组件统一 bind 协议"条目。
+- **E：str 充当 bool/状态机**——012 `running str="false"`、020
+  `is_playing str="Playing"`、021 `view_mode str="list"`、019 死
+  `CategoryChanged -> { .chip1 = .chip1 }`、020 死 `SeekChanged ->
+  { .progress_val = .progress_val }`。**根因半明**：025 注记证实其一为
+  watch 门控规避（"vue.rs 生成 watch(running) 无 immediate，需要一次
+  变更才启动定时器"）；其余为作者惯性。若立项，方向是 watch immediate
+  语义 + 语料 bool 卫生，非新语法。
+- **F：手工展开的标量列表族（升级：能力已存在，纯语料迁移）**——010
+  faq1-5（10 var）、012 lap1-3、016 星期头 7 行、019 chip1-5 +
+  vid1-6（24 var）、020 track1-5/artist1-5（10 var）、021 blog1-3
+  （15 var）、024 visBr0-3/legendColor0-3（编号族）。**025 反证能力在**：
+  `procs = [{…}]` 内联数组字面量 + `for` 完全可用——F 是历史语料债，
+  非语法缺口；随下次触碰各示例顺手迁移（连带清死 msg/handler）。
+- **G：registry 组件的输入协议**——015 `nav(search: true,
+  search_value:, onsearch:)`、042 `oninput: ."update:modelValue"`：
+  registry 组件两向协议与裸 value 语义不一致，高频再现时可立
+  "registry 组件统一 bind 协议"条目。
+- **016 msg 缺 Init**——`msg { PrevMonth, … }` 而 on 块有 `.Init`：
+  VM/Vue 路径无碍（handler 按名合成），原生 Rust 路径枚举外 handler
+  静默跳臂（rust.rs 既有约束）；可选"on-handler 无 msg 变体编译期
+  警告"lint 条目，与 013（msg 有 Init）形态不一，属语料卫生。
 
 ---
 
-## §7 后续条目
+## §7 需求 H：computed 块体/派生态短板（已登记未实施，2026-09-02 走查收集）
 
-继续按示例走查追加需求 E/F/G/…（观察项见 §6），格式沿用 §1/§2
+### H.1 动机与证据（016-028 批次）
+
+- **016-calendar**：PrevMonth/NextMonth/Today/SelectDay 四个 handler 各自
+  重复 `.month_label = month_name(.month); .days = build_month_grid(.year,
+  .month, .today, .selected_date)` 重算链——`days`/`month_label` 事实上是
+  `.year/.month/.today/.selected_date` 的派生态。
+- **025-dashboard 注记自认**："几何/排序为 handler 内联重算（模块级 fn
+  不进 vue SFC，437 §0.6.E-3），与 024-charts 同款已知重复模式"——
+  `cpuLine/cpuArea/…` 六个几何串在每个数据 handler 里重算。
+- **018 双页 NOTE 自认**："the vue codegen does not emit a `return` for a
+  block-bodied computed, so it would yield undefined"——作者被迫把查找
+  结果存 model 字段而非 computed。**待验证**：vue.rs:8260 的 Plan 043
+  M5 #2 声称发 `{ stmts; return tail; }`（复用 transpile_handler_body），
+  与 018 注记矛盾——实施时先裁决注释与实现孰新。
+
+### H.2 方向草图（未裁定）
+
+- (a) computed 多语句体 return 语义修复（若 018 注记仍真）+ 依赖追踪
+  （Vue computed 天然响应式；VM 侧需脏标记或每次重求值）。
+- (b) 模块级 helper fn 进 vue SFC（437 §0.6.E-3 的债）——治 025 的
+  复制粘贴重算。
+- (c) `watch … immediate` 语义（顺带治 E 的 025 规避）。
+- 与 store 模式（013/015/018 的 use xxx_store）的关系需先裁定：派生态
+  归 computed 还是归 store 方法。
+
+### H.3 测试（预置）
+
+- vue：块体 computed 产出非 undefined；016 形态（多依赖派生）改写后
+  四 handler 缩为单赋值。
+- VM：computed 随依赖变更重求值（快照断言 days/month_label）。
+
+---
+
+## §8 后续条目
+
+继续按示例走查追加需求 I/J/…（观察项见 §6，H 见 §7），格式沿用 §1/§2
 （动机与证据 → 方案 → 测试 → 边界 → 风险），并在 §0 总览表登记。
