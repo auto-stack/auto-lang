@@ -6455,6 +6455,17 @@ let tabs_inner = View::Row {
             if let Some(c) = computed_list.iter().find(|c| c.name == name) {
                 // 防 computed 递归引用自身(bindings 里已有同名则跳过)
                 if !bindings.contains_key(name) {
+                    // Plan 448 H2: block-bodied computeds execute as hidden
+                    // VM fns (`__computed_<Widget>_<Prop>`, synthesized with
+                    // the handlers) — statement semantics the inline
+                    // expression resolver cannot provide. A missing fn (older
+                    // construction path) degrades to None, the old behavior.
+                    if let Expr::Block(_) = &c.expr {
+                        return self
+                            .bridge
+                            .call_computed_fn(&self.widget_name, name)
+                            .ok();
+                    }
                     return self.resolve_expr_to_value(&c.expr, bindings);
                 }
             }
@@ -8397,6 +8408,74 @@ mod tests {
             exposes: Vec::new(),
             setup: None,
         }
+    }
+
+    /// Plan 448 H2: block-bodied computed executes as a hidden VM fn.
+    /// Previously `resolve_expr_to_value` had no Block arm — every block
+    /// computed evaluated to None (rendered empty). The real chain
+    /// (parse → extract → VmBridge synthesis → builder) must synthesize
+    /// `__computed_<W>_<p>`, execute it with statement semantics (let
+    /// scoping, tail-return), and re-evaluate on state change. Expression
+    /// computeds stay on the inline resolver.
+    #[test]
+    fn plan448_h2_block_computed_executes_as_vm_fn() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "widget App {\n",
+            "    model {\n",
+            "        var w int = 3\n",
+            "        var label str = \"n\"\n",
+            "    }\n",
+            "    computed {\n",
+            "        doubled => {\n",
+            "            let base = .w * 2\n",
+            "            base + 1\n",
+            "        }\n",
+            "        labeled => .label + \"!\"\n",
+            "    }\n",
+            "    view { col { text `d: ${.doubled}` } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        // Hidden fn synthesized and exported (invocable through the public
+        // bridge API).
+        let bridge = VmBridge::new(&widget).unwrap();
+        assert_eq!(
+            bridge.call_computed_fn("App", "doubled").unwrap(),
+            Value::Int(7),
+            "block computed compiles to an invocable hidden VM fn"
+        );
+
+        // Statement semantics + tail return; re-evaluates on state change.
+        let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&widget.computed);
+        assert_eq!(
+            builder.eval_computed("doubled", &Bindings::new()),
+            Some(Value::Int(7)),
+            "let base = 3*2; base + 1"
+        );
+        let mut bridge2 = VmBridge::new(&widget).unwrap();
+        bridge2.write_state("w", auto_val::Value::Int(10)).unwrap();
+        let builder2 = AuraViewBuilder::new(&bridge2, "App").with_computed(&widget.computed);
+        assert_eq!(
+            builder2.eval_computed("doubled", &Bindings::new()),
+            Some(Value::Int(21)),
+            "computed re-evaluates against updated state"
+        );
+
+        // Expression computeds keep the inline resolver path.
+        assert_eq!(
+            builder.eval_computed("labeled", &Bindings::new()),
+            Some(Value::Str("n!".into())),
+            "expression computed unchanged"
+        );
     }
 
     /// Plan 448 I: grid `cols:` dynamic values. A non-literal expression

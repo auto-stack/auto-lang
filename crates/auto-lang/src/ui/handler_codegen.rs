@@ -732,6 +732,63 @@ pub fn namespaced_handler_fn_name(widget_name: &str, pattern: &str) -> String {
     format!("handler_{}_{}", widget_name, bare)
 }
 
+/// Plan 448 H2: hidden fn name for a block-bodied computed:
+/// `__computed_<WidgetName>_<PropName>`. The `__` prefix keeps it out of the
+/// msg-variant namespace; the widget name namespaces across sibling widgets
+/// (same convention as handler naming).
+pub fn computed_fn_name(widget_name: &str, computed_name: &str) -> String {
+    format!("__computed_{}_{}", widget_name, computed_name)
+}
+
+/// Plan 448 H2: synthesize one hidden fn per BLOCK-bodied computed:
+/// `fn __computed_<W>_<p>(__state <W>_State) { stmts…; return tail }`.
+/// Statement bodies need real execution semantics (let scoping, sequencing)
+/// that the inline expression resolver cannot provide — so they compile as
+/// VM functions, mirroring handler synthesis (state receiver param + state
+/// ref rewriting). The trailing expression statement becomes `Stmt::Return`
+/// (same tail rule as the Vue path's `transpile_body_as_return`); a block
+/// already ending in an explicit `return` is left unchanged. Expression-form
+/// computeds stay on the inline resolver — nothing is synthesized for them.
+fn synthesize_computed_fns(
+    widget_name: &str,
+    state_type: &TypeDecl,
+    state_fields: &HashSet<String>,
+    computeds: &[(String, crate::ast::Expr)],
+) -> Vec<Stmt> {
+    let mut out = Vec::new();
+    for (name, expr) in computeds {
+        let crate::ast::Expr::Block(body) = expr else {
+            continue;
+        };
+        let mut stmts = body.stmts.clone();
+        let mut locals = HashSet::new();
+        rewrite_state_refs_stmts_with_locals(&mut stmts, state_fields, &mut locals);
+        // Tail expression → return (explicit trailing Return renders unchanged).
+        if let Some(crate::ast::Stmt::Expr(tail)) = stmts.last().cloned() {
+            let n = stmts.len();
+            stmts[n - 1] = crate::ast::Stmt::Return(Box::new(tail));
+        }
+        let fn_body = Body {
+            stmts,
+            has_new_line: false,
+            source_lines: Vec::new(),
+        };
+        out.push(Stmt::Fn(Fn::new(
+            FnKind::Function,
+            Name::from(computed_fn_name(widget_name, name).as_str()),
+            None,
+            vec![Param::new(
+                Name::from(STATE_PARAM),
+                Type::User(state_type.clone()),
+                None,
+            )],
+            fn_body,
+            Type::Unknown,
+        )));
+    }
+    out
+}
+
 /// Plan 320: state type name per widget: `<WidgetName>_State`.
 pub fn state_type_name(widget_name: &str) -> String {
     format!("{}_State", widget_name)
@@ -1104,6 +1161,19 @@ pub fn synthesize_widget_module(
         // State type declaration.
         if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(w_state_type.clone())) {
             log::warn!("handler_codegen: {} state type failed: {}", w.name, e);
+        }
+
+        // Plan 448 H2: block-bodied computeds compile as hidden fns so the
+        // builder can execute them with real statement semantics.
+        let w_computeds: Vec<(String, crate::ast::Expr)> = w
+            .computed
+            .iter()
+            .map(|c| (c.name.clone(), c.expr.clone()))
+            .collect();
+        for cfn in synthesize_computed_fns(&w.name, &w_state_type, &w_state_fields, &w_computeds) {
+            if let Err(e) = codegen.compile_stmt(&cfn) {
+                record_synth_failure(format!("{}.computed: {}", w.name, e));
+            }
         }
 
         // Handlers + lifecycle (sorted for deterministic layout).
@@ -1723,6 +1793,22 @@ pub fn synthesize_from_decl(
 
         if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(d_state_type.clone())) {
             log::warn!("handler_codegen: {} state type failed: {}", d.name, e);
+        }
+
+        // Plan 448 H2 (decl twin): block-bodied computeds as hidden fns.
+        let d_computeds: Vec<(String, crate::ast::Expr)> = d
+            .computed
+            .iter()
+            .flat_map(|cb| {
+                cb.properties
+                    .iter()
+                    .map(|p| (p.name.to_string(), p.expr.clone()))
+            })
+            .collect();
+        for cfn in synthesize_computed_fns(&d.name.to_string(), &d_state_type, &d_state_fields, &d_computeds) {
+            if let Err(e) = codegen.compile_stmt(&cfn) {
+                record_synth_failure(format!("{}.computed: {}", d.name, e));
+            }
         }
 
         let mut d_handlers: Vec<(String, Vec<Stmt>)> = Vec::new();
