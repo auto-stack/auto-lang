@@ -36,9 +36,12 @@
 | S7 | 系统 settings | auto-os-config 的 UI 面 | store/config 桥（auto-musk store facade 已并） | 无 |
 | S8 | 输入法候选 UI | shell 级 IME 界面 | 平台 IME（Windows TSF）/浏览器 IME | **大**：shell IME UI 属 457（Linux 合成器）长线，近期只做 452 两项残留修复 |
 | S9 | 桌面本体 | 壁纸/桌面快捷方式/**虚拟文件夹** | fs/storage + **桌面层 z 槽**（驱动小特性） | 无 |
+| S10 | Dashboard（桌面小组件面板） | 各 App 的 **mini 模式界面**网格直显（时钟卡/日历卡/音乐迷你播放器…）；可配置纳入哪些 App、各占多少网格空间 | **App 声明式 mini 视图**（`view mini`，语言小扩展）+ 同会话第二渲染面 + 桌面层 z 槽 + storage 配置 | 无（v1） |
 
 分类结论：**S1–S7、S9 是纯 AutoUI 工程**（widget + store + DesktopBus）；
 只有 S3 的缩略与 S8 的 IME UI 触及驱动/平台深水区，需挂条件后置。
+S10 的 mini 视图语法是语言小扩展、第二渲染面是会话/渲染层中等增量——
+设计见 §4.2（2026-09-01 记录，立项排期在视觉二期[518]合入后）。
 
 ## 3. 架构：内核/用户态分界（vm 驱动与 shell 的关系）
 
@@ -115,6 +118,53 @@ icons / folders / statusbar / dock / launcher / notice / switcher … }`——�
 （I4）+ 同一 DesktopBus 协议"，不来自新语法；语法扩展留有明确触发条件，
 属于可逆决策。
 
+### 4.2 S10 Dashboard 与 App mini 视图（2026-09-01 设计记录，未立项）
+
+> 来源：stella 对比轮（视觉二期 518 期间）用户提出桌面小组件面板需求并
+> 裁定独立计划。本节记录 UI/UX 与实现设计，立项（排期：518 合入后）时
+> 以本节为设计依据。
+
+**核心决策——mini 界面从哪来：App 声明式 mini 视图（`view mini`），否决
+两个替代方案。**
+
+- ~~缩放方案~~（497 缩略图式整窗缩到 1/4）：最省事但字不可读，恰是 mini
+  模式要避免的；
+- ~~shell 重画方案~~（每 App 在投影里再暴露一遍状态、shell 重画 widget）：
+  双份维护、违反"App 拥有自己的 UI"所有权；
+- ✅ **App 在 .at 里声明第二个命名视图**（`view mini { … }`，与主 view 同源
+  同 store）：音乐 mini = 封面+播放键、chat mini = 未读数+末条、日历 mini =
+  当月网格——作者自己决定 mini 态露什么。语言小扩展（多命名 view）。
+
+**职责切分（沿 §3 驱动=内核 / shell=用户态 分界）：**
+
+- **App**：声明 `view mini`（可选）；
+- **宿主（驱动）**：读配置 → 桌面层 z 槽（496 同层，壁纸之上/窗口之下）
+  把各 mini 视图合成进网格。每个 tile = 一个无 chrome 迷你 VirtualWindow
+  （**同一 AppSession 的第二渲染面**——453 (AppId,·) 扇出 + 462 虚拟窗
+  合成为现成地基）；
+- **配置**：storage `shell.dashboard.widgets`（有序 `{app,w,h}` 列表）；
+  v1 配置 UI 在 487 settings 的 Dashboard 分区（每 App 开关 + S/M/L 三档
+  尺寸 = 网格 1×1/2×1/2×2）；拖拽排布 v2；
+- **网格**：shell 层布局（AutoUI grid element + span），**不动** WM 的
+  Free/Grid/MasterStack（那是窗口管理，这是桌面装饰层）。
+
+**兜底三级**（任何 App 都能进 dashboard，体验平滑）：有 `view mini` → 活
+tile；未声明但在跑 → 图标卡（图标+标题+关键状态，点击打开）；未运行 →
+启动快捷卡。
+
+**分期裁定：**
+
+- **v1 = 可瞥视 + 点击打开**：tile 不承载交互（点击 = 聚焦/打开完整窗），
+  焦点模型零改动；仅运行中 App 可上 dashboard（tile = 既有会话第二视图，
+  零新生命周期概念）；
+- **v1.5 = tile 内交互**（音乐播放键）：事件路由给 tile surface 打标记，
+  MCP/焦点模型随扩；
+- **v2 = 无窗运行**（点 tile 自动后台拉起 App 只渲染 mini）——引入"无窗
+  运行"新生命周期形态，需单独设计。
+
+**新机制仅两块**（本计划的工作量本体）：`view mini` 语法 + 同会话第二
+渲染面；其余全为复用（z 槽/扇出/设置面板/投影兜底/497 缩略兜底）。
+
 ## 5. 与 vue 版的结合机制
 
 - **同一份 shell .at** → a2vue 产 SFC 组件；vue 宿主（465）像挂普通 App 一样
@@ -157,6 +207,8 @@ shell-track（立项时分配计划号，提案依赖 463/464）
       472/478 注入通道先例 headless 指针成文，铃铛渲染/落盘/boot 恢复实机 PASS）
   M4 系统 settings（S7，接 auto-os-config）
   M5 桌面本体（S9：壁纸/图标/虚拟文件夹）
+  S10 Dashboard（桌面小组件面板，§4.2）——立项排期：视觉二期[518]合入后
+      （观感依赖主题/图标资产定稿）
   ⏸ 缩略管理（S3 真缩略）→ 挂 386 复活（离屏快照=路线 B lite；v1 图标占位）
   ⏸ shell IME UI（S8）→ 挂 457（Linux 合成器）；近期仅 452 两项 IME 残留（463 前置）
 ```
