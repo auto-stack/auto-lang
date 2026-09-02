@@ -1,0 +1,8 @@
+// Plan 517 W1:use 语句发射(红先行件)——定向导入 + 调用导入符号。
+// 判据:主 a2r transpile_rust 与 AA2R ar_run 逐字符一致(镜像 crate 路径
+// 限定导入形态,见 lib-modularization-map.md 执行注记 4①)。
+use auto.lib.token: kind_name, TokenKind
+
+fn main() {
+    print(kind_name(TokenKind.Int))
+}
