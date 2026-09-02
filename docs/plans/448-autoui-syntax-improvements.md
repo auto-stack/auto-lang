@@ -1,9 +1,9 @@
 # Plan 448: AutoUI 语法改进——msg 声明去名 + 事件内联 lambda 简写（滚动收集）
 
 > **状态**: 🟢 A/B1/B2 已合并 master（merge `7f4ed335c`）；C 已合并 master
-> （merge `f5ad59bae`）；**D 已实施待合并**（worktree plan-448-autoui-syntax
-> @ `278ea1cc3`，2026-09-02，含 016-028 批次走查：H 登记/F 升级/E 根因）；
-> C/D/… 继续按示例走查追加
+> （merge `f5ad59bae`）；D 已合并 master（merge `89aa2aa31`）；
+> **I 已登记未实施**（2026-09-02 三轮走查 028 后批次：038/041-044/p 系列，
+> 见 §8 + §6 三轮补充）；C/D/… 继续按示例走查追加
 > **来源**: examples/ui/002-counter/src/front/app.at 示例走查（文件注释区的"简写版"）
 > **基线**: master bcb6e139b（实施于 9e330123f 分叉的 worktree）
 > **性质**: **滚动收集计划**——逐个 UI 示例走查，收集 AutoUI 语法改进需求追加为
@@ -122,6 +122,7 @@ gallery_golden 1、ui_snapshots 3、auto-man 229 绿。
 | F | 手工展开的标量列表族（能力已存在，纯语料迁移） | 📋 观察（§6） |
 | G | registry 组件输入协议与裸 value 语义不一致 | 📋 观察（§6） |
 | H | computed 块体/派生态短板——handler 内重复重算的根因 | 📋 已登记（§7） |
+| I | grid `cols:`/`gap:` 动态值——038 三份 48 行棋盘块的存在原因 | 📋 已登记（§8） |
 
 条目 A/B 相互独立可分别实施；B 实施后简单 widget 可完全不写 msg/on
 （002-counter 目标形态即如此）；C 实施后表单输入框亦可完全不写
@@ -506,6 +507,27 @@ widget App {
   静默跳臂（rust.rs 既有约束）；可选"on-handler 无 msg 变体编译期
   警告"lint 条目，与 013（msg 有 Init）形态不一，属语料卫生。
 
+### 三轮走查补充（2026-09-02，028 之后批次：038/041-044/p 系列）
+
+- **C 迁移补遗清单**（条目 C 落地后仍存的三件套/空体残例，均小件）：
+  - 043-clipboard-bridge `.DraftChanged -> { }`——空体三件套，**非测试
+    载体，可干净迁移**（裸 `value: .draft`）。
+  - p507 `oninput: .Rename`（三件套）+ 同文件裸 `textarea (value: .name)`
+    （C 后已自动双向）——tier-coverage 载体，迁移无风险。
+  - 042-two-inputs-child `.UserChanged/.PassChanged`——注释标明为
+    Plan 483 musk 缺陷**镜像载体**（v-model 语义 marker），迁移前需
+    裁定是否保留原形态。
+  - p493 `oninput: .Dummy`（空体三件套）、p051 `oninput: .SetB($event)`
+    （payload 形态）——PLAN-493/051 复验器具，形状即测试对象，**不动**。
+- **legacy `msg Msg {`/`msg B {` 命名形态**残存于 042/043/p493/p515——
+  A 兼容窗口内的语料卫生（关闭窗口时统一迁移，见 §1 A.4）。
+- **041 头注自认 vm 组件边界三缺口**（Plan 449 调查结论，README「vm
+  组件边界」）：vm 下组件子树对快照不可见、回调 props 使组件整体退化、
+  view fn 片段的参数化条件不求值——VM 能力债非语法项，高频受阻时另立
+  （与 G 的 registry 协议条目可能合流）。
+- **038 `oncontextmenu.prevent: .Flag(...)`**——事件修饰符 + payload
+  实参组合在两后端工作正常（走查确认，非缺口）。
+
 ---
 
 ## §7 需求 H：computed 块体/派生态短板（已登记未实施，2026-09-02 走查收集）
@@ -543,7 +565,44 @@ widget App {
 
 ---
 
-## §8 后续条目
+## §8 需求 I：grid `cols:`/`gap:` 动态值（已登记未实施，2026-09-02 三轮走查收集）
 
-继续按示例走查追加需求 I/J/…（观察项见 §6，H 见 §7），格式沿用 §1/§2
-（动机与证据 → 方案 → 测试 → 边界 → 风险），并在 §0 总览表登记。
+### I.1 动机与证据
+
+- **038-minesweeper 整个棋盘块 ×3 份**（各约 48 行，beginner/intermediate/
+  expert 三档），唯一差异是 `cols: 9/16/30`——仓内注释自证根因：
+  "vue codegen 的 cols 只接受字面量（→ grid-cols-N Tailwind class）；
+  VM 的 extract_u16 也只接受字面量（→ View::Grid{cols}）"。
+- 限制点核实（2026-09-02）：vue.rs `"grid"` 臂走 `extract_int_value`
+  （仅 `Expr::Int`）产 `grid-cols-N` 静态类；VM `extract_u16`（仅
+  `Expr::Int`）产 `View::Grid { cols }`——动态表达式两侧都静默丢弃
+  （cols 缺省）。
+- 025/0507 等用 `grid (cols: 3.0, …)` 字面量正常——缺口只在"列数随
+  state 变化"场景（响应式表格/棋盘/看板）。
+
+### I.2 方案草图（未裁定）
+
+- (a) **Vue 侧**：cols 为非字面量表达式时改发内联样式
+  `:style="'grid-template-columns: repeat(' + cols_expr + ', minmax(0,1fr))'"`
+  ——绕开 Tailwind JIT 对动态类名的扫描限制（动态 `grid-cols-N` 类名
+  不会被 JIT 收录，静默失效）。
+- (b) **VM 侧**：`AbstractView::Grid` 构建处（aura_view_builder grid 臂）
+  对非字面量 cols 走 `resolve_expr_to_value` 每次重建求值（绑定随
+  state 变更触发重建，与 style prop 同周期）。
+- (c) **语料**：038 三块合一块 `cols: .store.cols`（store 按难度档给
+  9/16/30），净删 ~96 行。
+- 裁定注意：`gap:` 同型（像素语义，两侧同样仅字面量）；cols 求值失败
+  的兜底（clamp 到 [1, u16::MAX]？发 1？）需定。
+
+### I.3 测试（预置）
+
+- vue：动态 cols 产 `:style` repeat 形态；字面量 cols 仍产静态类（零回归）。
+- VM：cols 随 state 翻转重建（038 三档切换快照列数断言）。
+- e2e：038 迁移后三档棋盘渲染等价（MCP snapshot 按钮计数）。
+
+---
+
+## §9 后续条目
+
+继续按示例走查追加需求 J/K/…（观察项见 §6，H 见 §7，I 见 §8），格式沿用
+§1/§2（动机与证据 → 方案 → 测试 → 边界 → 风险），并在 §0 总览表登记。
