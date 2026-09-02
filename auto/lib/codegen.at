@@ -114,6 +114,474 @@ type CG {
     mod_bases List<int>
     // W3:fn→模块名平行表(链接期符号定址用;单文件路径恒空)
     fn_mods List<str>
+
+    // ── Plan 514 W3-15(γ4):CG 自有操作族入 type 体 ──
+    // 映射:cg_* c-only 操作族(产生式 cg_expr/stmt/if/while/fn 族
+    // 与纯表函数 op_name/i_size/... 保留自由函数);cg_err→fail
+    // (避 err 字段撞名);cg_new→static new。
+
+    static fn new() CG {
+    var scs List<List<CGVar>> = List.new()
+    var base List<CGVar> = List.new()
+    scs.push(base)
+    var ins_l List<I> = List.new()
+    var pool List<str> = List.new()
+    var fns List<FnEntry> = List.new()
+    var consts_l List<CGEnum> = List.new()
+    var ctors_l List<CGEnum> = List.new()
+    var brk_l List<List<int>> = List.new()
+    var cont_l List<List<int>> = List.new()
+    var ctg_l List<int> = List.new()
+    var tys_l List<CGType> = List.new()
+    var gv_l List<str> = List.new()
+    var gi_l List<CGInit> = List.new()
+    var saves_l List<int> = List.new()
+    var uses_l List<CGUse> = List.new()
+    var defers_l List<CGDefer> = List.new()
+    var bases_l List<int> = List.new()
+    var fmods_l List<str> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l, uses_l, "", defers_l, bases_l, fmods_l)
+}
+
+    // W3:裸名 → 导入符号(遍历 uses:定向 items 命中或通配;返回 "mod.name",
+    // 未命中返回 "")
+    fn import_symbol(name str) str {
+    var i = 0
+    while i < self.uses.len() {
+        var u = self.uses.get(i)
+        if u.kind == "auto" {
+            if u.wildcard == 1 || cg_items_has(u.items, name) {
+                return u.module + "." + name
+            }
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+    // W3:名字是否为已 use 的模块名(限定调用 db.fn 判定)
+    fn is_module(name str) bool {
+    var i = 0
+    while i < self.uses.len() {
+        if self.uses.get(i).module == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+    // W3:全局键限名(模块编译单元内 mod. 前缀;主模块裸名——镜像宿主
+    // current_module/qualified_global_name)
+    fn gkey(name str) str {
+    if self.mod_name == "" {
+        return name
+    }
+    return self.mod_name + "." + name
+}
+
+    // W2:名字是否已入全局集
+    fn is_global(name str) bool {
+    var i = 0
+    while i < self.global_vars.len() {
+        if self.global_vars.get(i) == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+    // W1:按类型名查注册表下标(-1=未注册)
+    fn tys_lookup(name str) int {
+    var i = 0
+    while i < self.tys.len() {
+        if self.tys.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+    // W1:字段在类型声明序中的下标(-1=无该字段)
+    fn field_idx(tyname str, field str) int {
+    var ti = self.tys_lookup(tyname)
+    if ti < 0 {
+        return -1
+    }
+    var fl = self.tys.get(ti).fields
+    var j = 0
+    while j < fl.len() {
+        if fl.get(j) == field {
+            return j
+        }
+        j = j + 1
+    }
+    return -1
+}
+
+    fn const_lookup(key str) int {
+    var i = 0
+    while i < self.consts.len() {
+        if self.consts.get(i).key == key {
+            return self.consts.get(i).val
+        }
+        i = i + 1
+    }
+    return -999999
+}
+
+    fn ctor_lookup(key str) int {
+    var i = 0
+    while i < self.ctors.len() {
+        if self.ctors.get(i).key == key {
+            return self.ctors.get(i).val
+        }
+        i = i + 1
+    }
+    return -999999
+}
+
+    // W3:符号定址(bare 首到首胜 + mod.fn 限定;host loader 264-312 镜像)
+    fn link_symbol(symbol str) int {
+    var i = 0
+    while i < self.fns.len() {
+        if self.fns.get(i).name == symbol {
+            return i
+        }
+        i = i + 1
+    }
+    // 限定:前缀逐模块试(模块名可含点,tools.helper.fn)
+    var mi2 = 0
+    while mi2 < self.fn_mods.len() {
+        var m = self.fn_mods.get(mi2)
+        if m != "" && symbol.len() > m.len() + 1 {
+            var head = symbol.slice(0, m.len())
+            var tail = symbol.slice(m.len() + 1, symbol.len())
+            var sep = symbol.char_at(m.len())
+            if head == m && sep == 46 && self.fns.get(mi2).name == tail {
+                return mi2
+            }
+        }
+        mi2 = mi2 + 1
+    }
+    // 兜底:剥前缀裸名(host loader strip-prefix fallback)
+    var li2 = 0
+    while li2 < self.fns.len() {
+        if self.fns.get(li2).name == symbol {
+            return li2
+        }
+        li2 = li2 + 1
+    }
+    return -1
+}
+
+    // P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
+    // 与 a2r 值语义两可;镜像 ev_arr_write 写回注释)
+    fn loop_enter(cont_target int) {
+    var bl List<int> = List.new()
+    self.brk_js.push(bl)
+    var cl List<int> = List.new()
+    self.cont_js.push(cl)
+    self.cont_tg.push(cont_target)
+    self.loop_depth = self.loop_depth + 1
+}
+
+    // P2:出循环层——continue 占位 → 本层落点;break 占位 → 循环后
+    fn loop_exit(brk_target int) {
+    var d = self.loop_depth - 1
+    if d < 0 {
+        self.fail("loop exit without enter")
+        return
+    }
+    var cj = self.cont_js.get(d)
+    var j = 0
+    while j < cj.len() {
+        self.ins.get(cj.get(j)).n = self.cont_tg.get(d)
+        j = j + 1
+    }
+    var bj = self.brk_js.get(d)
+    var b = 0
+    while b < bj.len() {
+        self.ins.get(bj.get(b)).n = brk_target
+        b = b + 1
+    }
+    self.loop_depth = d
+}
+
+    // P2:break/continue 语句发射(占位 Jmp 入本层帧;层外报错)
+    fn loop_jump(k TokenKind) {
+    if self.loop_depth == 0 {
+        self.fail("break/continue outside loop")
+        return
+    }
+    var j = self.emit(OpCode.Jmp, "", -1)
+    if k == TokenKind.Continue {
+        var fr = self.cont_js.get(self.loop_depth - 1)
+        fr.push(j)
+        self.cont_js.set(self.loop_depth - 1, fr)
+    } else {
+        var fr2 = self.brk_js.get(self.loop_depth - 1)
+        fr2.push(j)
+        self.brk_js.set(self.loop_depth - 1, fr2)
+    }
+}
+
+    fn fail(msg str) {
+    if self.err == "" {
+        self.err = "CODEGEN-ERROR:" + msg
+    }
+}
+
+    // 发射一条指令,返回其指令索引
+    fn emit(op OpCode, s str, n int) int {
+    self.ins.push(I(op, s, n))
+    return self.ins.len() - 1
+}
+
+    // Plan 495: 镜像宿主 emit_source_line —— line>0 且异于当前已发行才发
+    // SOURCE_LINE(相邻同线去重,与宿主 current_source_line 同款状态机)
+    fn line(ln int) {
+    if ln > 0 && ln != self.cur_line {
+        self.cur_line = ln
+        self.emit(OpCode.Line, ln.str(), 0)
+    }
+}
+
+    // ── 作用域(depth 计数;深度≥3 弹出时发槽释放组) ───────────────
+
+    fn push_scope() {
+    // W2:记录本层入口 max_idx(弹出恢复——宿主 pop_scope 释放槽位,
+    // 姊妹作用域复用槽号;b38 三循环实证)
+    if self.scope_saves.len() < self.depth + 1 {
+        self.scope_saves.push(self.max_idx)
+    } else {
+        self.scope_saves.set(self.depth, self.max_idx)
+    }
+    // Plan 447 部分②修复:多 fn 复用槽位时必须换新空表——旧实现无条件
+    // push,第二個 fn 按深度取到前一 fn 的残留作用域(其体内变量泄漏进
+    // 后续 fn 的释放组/查找域;is 的 _is_target 首次暴露)。表长仍只增
+    // 不减(D25 写法保持)
+    if self.depth == self.scopes.len() {
+        var sc List<CGVar> = List.new()
+        self.scopes.push(sc)
+    } else {
+        var fresh List<CGVar> = List.new()
+        self.scopes.set(self.depth, fresh)
+    }
+    self.depth = self.depth + 1
+}
+
+    // 弹出作用域:depth>2 时对栈顶域的槽按升序发 push.nil+store
+    fn pop_scope() {
+    if self.depth > 1 {
+        if self.depth > 2 {
+            var sc = self.scopes.get(self.depth - 1)
+            var slots = cg_sort_ints_of_vars(sc)
+            var m = 0
+            while m < slots.len() {
+                self.emit(OpCode.PushNil, "", 0)
+                self.emit_store(slots.get(m))
+                m = m + 1
+            }
+        }
+        self.depth = self.depth - 1
+        // W2:恢复槽位分配游标(本层槽号可复用;hi_idx 高水位不受影响)
+        if self.scope_saves.len() >= self.depth + 1 {
+            self.max_idx = self.scope_saves.get(self.depth)
+        }
+    }
+}
+
+    // W2:静默弹出(无释放组)——Call 迭代器协议通道专用:宿主 2747-2829
+    // 的 _iterator/循环变量不入释放组(实测 b38:循环尾无 push.nil+store)
+    fn pop_scope_silent() {
+    if self.depth > 1 {
+        self.depth = self.depth - 1
+        if self.scope_saves.len() >= self.depth + 1 {
+            self.max_idx = self.scope_saves.get(self.depth)
+        }
+    }
+}
+
+    fn add_var(name str, arr int, ty str) int {
+    var next = self.max_idx + 1
+    self.max_idx = next
+    if next > self.hi_idx {
+        self.hi_idx = next
+    }
+    // 提升+写回(VM 引用语义同写回;a2r 值语义写回修改副本)
+    var sc = self.scopes.get(self.depth - 1)
+    // Plan 447 部分②:同名重登记按名覆盖(镜像宿主 add_var 的 HashMap
+    // 按名 insert——旧槽从表中消失:不再释放也不被查找;多次 is 的
+    // _is_target 首次暴露该差异)。max_idx 单调计数 = 宿主高水位
+    var replaced = false
+    var ri = 0
+    while ri < sc.len() {
+        if sc.get(ri).name == name {
+            sc.set(ri, CGVar(name, next, arr, ty))
+            replaced = true
+        }
+        ri = ri + 1
+    }
+    if !replaced {
+        sc.push(CGVar(name, next, arr, ty))
+    }
+    self.scopes.set(self.depth - 1, sc)
+    return next
+}
+
+    // 按 idx 反查变量的数组性(.len() 接收者判定)
+    fn var_arr(idx int) int {
+    var s = self.depth - 1
+    while s >= 0 {
+        var sc = self.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).idx == idx {
+                return sc.get(i).arr
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return 0
+}
+
+    // 按名查变量类型(11.2a:build.fstr 段 tag;""=int/未知,宿主默认同)
+    fn var_ty(name str) str {
+    var s = self.depth - 1
+    while s >= 0 {
+        var sc = self.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).ty
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return ""
+}
+
+    fn lookup(name str) int {
+    var s = self.depth - 1
+    while s >= 0 {
+        var sc = self.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).idx
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return -1
+}
+
+    // ── 寻址发射(param:0x80+rel;局部 rel 0/1 → loc.0/loc.1,否则 local N) ──
+
+    fn emit_store(idx int) {
+    if idx < self.n_args {
+        var sv = (128 + idx).str()
+        self.emit(OpCode.StoreLocal, sv, 128 + idx)
+        return
+    }
+    var rel = idx - self.n_args
+    if rel == 0 {
+        self.emit(OpCode.StoreLoc0, "0", 0)
+    } else if rel == 1 {
+        self.emit(OpCode.StoreLoc1, "1", 1)
+    } else {
+        var sv2 = rel.str()
+        self.emit(OpCode.StoreLocal, sv2, rel)
+    }
+}
+
+    fn emit_load(idx int) {
+    if idx < self.n_args {
+        var lv = (128 + idx).str()
+        self.emit(OpCode.LoadLocal, lv, 128 + idx)
+        return
+    }
+    var rel = idx - self.n_args
+    if rel == 0 {
+        self.emit(OpCode.LoadLoc0, "0", 0)
+    } else if rel == 1 {
+        self.emit(OpCode.LoadLoc1, "1", 1)
+    } else if rel == 2 {
+        self.emit(OpCode.LoadLoc2, "2", 2)
+    } else {
+        var lv2 = rel.str()
+        self.emit(OpCode.LoadLocal, lv2, rel)
+    }
+}
+
+    // ── 字符串池(内容寻址去重) ────────────────────────────────────
+
+    fn pool_add(s str) int {
+    var i = 0
+    while i < self.pool.len() {
+        if self.pool.get(i) == s {
+            return i
+        }
+        i = i + 1
+    }
+    self.pool.push(s)
+    return self.pool.len() - 1
+}
+
+    // W1:名字池非去重追加(get.field 操作数专用——镜像宿主 5842-5848 的
+    // 直接 strings.push,不去重;load.str/set.field 路径仍走 cg_pool_add)
+    fn pool_push(s str) int {
+    self.pool.push(s)
+    return self.pool.len() - 1
+}
+
+    fn serialize() str {
+    var offs List<int> = List.new()
+    var acc = 0
+    var i = 0
+    while i < self.ins.len() {
+        offs.push(acc)
+        var ii = self.ins.get(i)
+        if ii.op != OpCode.Blank {
+            acc = acc + i_size_named(ii.op, ii.s, ii.n)
+        }
+        i = i + 1
+    }
+    var out = ""
+    var j = 0
+    while j < self.ins.len() {
+        var ins = self.ins.get(j)
+        if ins.op != OpCode.Blank {
+            var ops = ins.s
+            if ins.op == OpCode.Jmp || ins.op == OpCode.JmpZ || ins.op == OpCode.JmpNz {
+                ops = f"-> 0x${hex4(offs.get(ins.n))}"
+            } else if ins.op == OpCode.Call {
+                var fe = self.fns.get(ins.n)
+                ops = f"0x${hex4(offs.get(fe.ins))}"
+            } else if ins.op == OpCode.LoadStr {
+                ops = "\"" + self.pool.get(ins.n) + "\""
+            } else if ins.op == OpCode.LoadGlobal || ins.op == OpCode.StoreGlobal {
+                // W3:链接后 ins.n 为合并池索引(s 为模块本地旧值,弃用)
+                ops = ins.n.str()
+            } else if ins.op == OpCode.GetField {
+                ops = "field[" + ins.n.str() + "]"
+            }
+            if out != "" {
+                out = out + "\n"
+            }
+            out = f"${out}${hex4(offs.get(j))}  ${op_name(ins.op)} ${ops}"
+        }
+        j = j + 1
+    }
+    return out
+}
+
 }
 
 // W3:use 语句记录(kind:auto|rs|py|c)
@@ -154,60 +622,11 @@ fn cg_items_has(items str, name str) bool {
     return false
 }
 
-// W3:裸名 → 导入符号(遍历 uses:定向 items 命中或通配;返回 "mod.name",
-// 未命中返回 "")
-fn cg_import_symbol(c CG, name str) str {
-    var i = 0
-    while i < c.uses.len() {
-        var u = c.uses.get(i)
-        if u.kind == "auto" {
-            if u.wildcard == 1 || cg_items_has(u.items, name) {
-                return u.module + "." + name
-            }
-        }
-        i = i + 1
-    }
-    return ""
-}
-
-// W3:名字是否为已 use 的模块名(限定调用 db.fn 判定)
-fn cg_is_module(c CG, name str) bool {
-    var i = 0
-    while i < c.uses.len() {
-        if c.uses.get(i).module == name {
-            return true
-        }
-        i = i + 1
-    }
-    return false
-}
-
 // W2:全局初始化重放条目(name + init 表达式 token 闭区间)
 type CGInit {
     name str
     from int
     to int
-}
-
-// W3:全局键限名(模块编译单元内 mod. 前缀;主模块裸名——镜像宿主
-// current_module/qualified_global_name)
-fn cg_gkey(c CG, name str) str {
-    if c.mod_name == "" {
-        return name
-    }
-    return c.mod_name + "." + name
-}
-
-// W2:名字是否已入全局集
-fn cg_is_global(c CG, name str) bool {
-    var i = 0
-    while i < c.global_vars.len() {
-        if c.global_vars.get(i) == name {
-            return true
-        }
-        i = i + 1
-    }
-    return false
 }
 
 type CGEnum {
@@ -218,146 +637,6 @@ type CGEnum {
 type CGType {
     name str
     fields List<str>
-}
-
-// W1:按类型名查注册表下标(-1=未注册)
-fn cg_tys_lookup(c CG, name str) int {
-    var i = 0
-    while i < c.tys.len() {
-        if c.tys.get(i).name == name {
-            return i
-        }
-        i = i + 1
-    }
-    return -1
-}
-
-// W1:字段在类型声明序中的下标(-1=无该字段)
-fn cg_field_idx(c CG, tyname str, field str) int {
-    var ti = cg_tys_lookup(c, tyname)
-    if ti < 0 {
-        return -1
-    }
-    var fl = c.tys.get(ti).fields
-    var j = 0
-    while j < fl.len() {
-        if fl.get(j) == field {
-            return j
-        }
-        j = j + 1
-    }
-    return -1
-}
-
-fn cg_const_lookup(c CG, key str) int {
-    var i = 0
-    while i < c.consts.len() {
-        if c.consts.get(i).key == key {
-            return c.consts.get(i).val
-        }
-        i = i + 1
-    }
-    return -999999
-}
-
-fn cg_ctor_lookup(c CG, key str) int {
-    var i = 0
-    while i < c.ctors.len() {
-        if c.ctors.get(i).key == key {
-            return c.ctors.get(i).val
-        }
-        i = i + 1
-    }
-    return -999999
-}
-
-fn cg_new() CG {
-    var scs List<List<CGVar>> = List.new()
-    var base List<CGVar> = List.new()
-    scs.push(base)
-    var ins_l List<I> = List.new()
-    var pool List<str> = List.new()
-    var fns List<FnEntry> = List.new()
-    var consts_l List<CGEnum> = List.new()
-    var ctors_l List<CGEnum> = List.new()
-    var brk_l List<List<int>> = List.new()
-    var cont_l List<List<int>> = List.new()
-    var ctg_l List<int> = List.new()
-    var tys_l List<CGType> = List.new()
-    var gv_l List<str> = List.new()
-    var gi_l List<CGInit> = List.new()
-    var saves_l List<int> = List.new()
-    var uses_l List<CGUse> = List.new()
-    var defers_l List<CGDefer> = List.new()
-    var bases_l List<int> = List.new()
-    var fmods_l List<str> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l, uses_l, "", defers_l, bases_l, fmods_l)
-}
-
-// P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
-// 与 a2r 值语义两可;镜像 ev_arr_write 写回注释)
-fn cg_loop_enter(mut c CG, cont_target int) {
-    var bl List<int> = List.new()
-    c.brk_js.push(bl)
-    var cl List<int> = List.new()
-    c.cont_js.push(cl)
-    c.cont_tg.push(cont_target)
-    c.loop_depth = c.loop_depth + 1
-}
-
-// P2:出循环层——continue 占位 → 本层落点;break 占位 → 循环后
-fn cg_loop_exit(mut c CG, brk_target int) {
-    var d = c.loop_depth - 1
-    if d < 0 {
-        cg_err(c, "loop exit without enter")
-        return
-    }
-    var cj = c.cont_js.get(d)
-    var j = 0
-    while j < cj.len() {
-        c.ins.get(cj.get(j)).n = c.cont_tg.get(d)
-        j = j + 1
-    }
-    var bj = c.brk_js.get(d)
-    var b = 0
-    while b < bj.len() {
-        c.ins.get(bj.get(b)).n = brk_target
-        b = b + 1
-    }
-    c.loop_depth = d
-}
-
-// P2:break/continue 语句发射(占位 Jmp 入本层帧;层外报错)
-fn cg_loop_jump(mut c CG, k TokenKind) {
-    if c.loop_depth == 0 {
-        cg_err(c, "break/continue outside loop")
-        return
-    }
-    var j = emit(c, OpCode.Jmp, "", -1)
-    if k == TokenKind.Continue {
-        var fr = c.cont_js.get(c.loop_depth - 1)
-        fr.push(j)
-        c.cont_js.set(c.loop_depth - 1, fr)
-    } else {
-        var fr2 = c.brk_js.get(c.loop_depth - 1)
-        fr2.push(j)
-        c.brk_js.set(c.loop_depth - 1, fr2)
-    }
-}
-
-fn cg_err(mut c CG, msg str) {
-    if c.err == "" {
-        c.err = "CODEGEN-ERROR:" + msg
-    }
-}
-
-// 前瞻 token 文本(原始,不跳注释;corpus 括号内无注释)
-fn p_peek_text(p P, n int) str {
-    var i = p.pos + n
-    if i >= p.toks.len() {
-        return ""
-    }
-    return p.toks.get(i).text
 }
 
 // 指令字节宽度(与 Rust opcode 编码一致;S4 子集)。new.instance/
@@ -532,77 +811,6 @@ fn i_size_named(op OpCode, s str, n int) int {
     return i_size(op)
 }
 
-// 发射一条指令,返回其指令索引
-fn emit(mut c CG, op OpCode, s str, n int) int {
-    c.ins.push(I(op, s, n))
-    return c.ins.len() - 1
-}
-
-// Plan 495: 镜像宿主 emit_source_line —— line>0 且异于当前已发行才发
-// SOURCE_LINE(相邻同线去重,与宿主 current_source_line 同款状态机)
-fn cg_line(mut c CG, ln int) {
-    if ln > 0 && ln != c.cur_line {
-        c.cur_line = ln
-        emit(c, OpCode.Line, ln.str(), 0)
-    }
-}
-
-// ── 作用域(depth 计数;深度≥3 弹出时发槽释放组) ───────────────
-
-fn cg_push_scope(mut c CG) {
-    // W2:记录本层入口 max_idx(弹出恢复——宿主 pop_scope 释放槽位,
-    // 姊妹作用域复用槽号;b38 三循环实证)
-    if c.scope_saves.len() < c.depth + 1 {
-        c.scope_saves.push(c.max_idx)
-    } else {
-        c.scope_saves.set(c.depth, c.max_idx)
-    }
-    // Plan 447 部分②修复:多 fn 复用槽位时必须换新空表——旧实现无条件
-    // push,第二個 fn 按深度取到前一 fn 的残留作用域(其体内变量泄漏进
-    // 后续 fn 的释放组/查找域;is 的 _is_target 首次暴露)。表长仍只增
-    // 不减(D25 写法保持)
-    if c.depth == c.scopes.len() {
-        var sc List<CGVar> = List.new()
-        c.scopes.push(sc)
-    } else {
-        var fresh List<CGVar> = List.new()
-        c.scopes.set(c.depth, fresh)
-    }
-    c.depth = c.depth + 1
-}
-
-// 弹出作用域:depth>2 时对栈顶域的槽按升序发 push.nil+store
-fn cg_pop_scope(mut c CG) {
-    if c.depth > 1 {
-        if c.depth > 2 {
-            var sc = c.scopes.get(c.depth - 1)
-            var slots = cg_sort_ints_of_vars(sc)
-            var m = 0
-            while m < slots.len() {
-                emit(c, OpCode.PushNil, "", 0)
-                cg_emit_store(c, slots.get(m))
-                m = m + 1
-            }
-        }
-        c.depth = c.depth - 1
-        // W2:恢复槽位分配游标(本层槽号可复用;hi_idx 高水位不受影响)
-        if c.scope_saves.len() >= c.depth + 1 {
-            c.max_idx = c.scope_saves.get(c.depth)
-        }
-    }
-}
-
-// W2:静默弹出(无释放组)——Call 迭代器协议通道专用:宿主 2747-2829
-// 的 _iterator/循环变量不入释放组(实测 b38:循环尾无 push.nil+store)
-fn cg_pop_scope_silent(mut c CG) {
-    if c.depth > 1 {
-        c.depth = c.depth - 1
-        if c.scope_saves.len() >= c.depth + 1 {
-            c.max_idx = c.scope_saves.get(c.depth)
-        }
-    }
-}
-
 // 域内变量 idx 升序收集
 fn cg_sort_ints_of_vars(sc List<CGVar>) List<int> {
     var out List<int> = List.new()
@@ -625,142 +833,6 @@ fn cg_sort_ints_of_vars(sc List<CGVar>) List<int> {
         a = a + 1
     }
     return out
-}
-
-fn cg_add_var(mut c CG, name str, arr int, ty str) int {
-    var next = c.max_idx + 1
-    c.max_idx = next
-    if next > c.hi_idx {
-        c.hi_idx = next
-    }
-    // 提升+写回(VM 引用语义同写回;a2r 值语义写回修改副本)
-    var sc = c.scopes.get(c.depth - 1)
-    // Plan 447 部分②:同名重登记按名覆盖(镜像宿主 add_var 的 HashMap
-    // 按名 insert——旧槽从表中消失:不再释放也不被查找;多次 is 的
-    // _is_target 首次暴露该差异)。max_idx 单调计数 = 宿主高水位
-    var replaced = false
-    var ri = 0
-    while ri < sc.len() {
-        if sc.get(ri).name == name {
-            sc.set(ri, CGVar(name, next, arr, ty))
-            replaced = true
-        }
-        ri = ri + 1
-    }
-    if !replaced {
-        sc.push(CGVar(name, next, arr, ty))
-    }
-    c.scopes.set(c.depth - 1, sc)
-    return next
-}
-
-// 按 idx 反查变量的数组性(.len() 接收者判定)
-fn cg_var_arr(mut c CG, idx int) int {
-    var s = c.depth - 1
-    while s >= 0 {
-        var sc = c.scopes.get(s)
-        var i = sc.len() - 1
-        while i >= 0 {
-            if sc.get(i).idx == idx {
-                return sc.get(i).arr
-            }
-            i = i - 1
-        }
-        s = s - 1
-    }
-    return 0
-}
-
-// 按名查变量类型(11.2a:build.fstr 段 tag;""=int/未知,宿主默认同)
-fn cg_var_ty(mut c CG, name str) str {
-    var s = c.depth - 1
-    while s >= 0 {
-        var sc = c.scopes.get(s)
-        var i = sc.len() - 1
-        while i >= 0 {
-            if sc.get(i).name == name {
-                return sc.get(i).ty
-            }
-            i = i - 1
-        }
-        s = s - 1
-    }
-    return ""
-}
-
-fn cg_lookup(mut c CG, name str) int {
-    var s = c.depth - 1
-    while s >= 0 {
-        var sc = c.scopes.get(s)
-        var i = sc.len() - 1
-        while i >= 0 {
-            if sc.get(i).name == name {
-                return sc.get(i).idx
-            }
-            i = i - 1
-        }
-        s = s - 1
-    }
-    return -1
-}
-
-// ── 寻址发射(param:0x80+rel;局部 rel 0/1 → loc.0/loc.1,否则 local N) ──
-
-fn cg_emit_store(mut c CG, idx int) {
-    if idx < c.n_args {
-        var sv = (128 + idx).str()
-        emit(c, OpCode.StoreLocal, sv, 128 + idx)
-        return
-    }
-    var rel = idx - c.n_args
-    if rel == 0 {
-        emit(c, OpCode.StoreLoc0, "0", 0)
-    } else if rel == 1 {
-        emit(c, OpCode.StoreLoc1, "1", 1)
-    } else {
-        var sv2 = rel.str()
-        emit(c, OpCode.StoreLocal, sv2, rel)
-    }
-}
-
-fn cg_emit_load(mut c CG, idx int) {
-    if idx < c.n_args {
-        var lv = (128 + idx).str()
-        emit(c, OpCode.LoadLocal, lv, 128 + idx)
-        return
-    }
-    var rel = idx - c.n_args
-    if rel == 0 {
-        emit(c, OpCode.LoadLoc0, "0", 0)
-    } else if rel == 1 {
-        emit(c, OpCode.LoadLoc1, "1", 1)
-    } else if rel == 2 {
-        emit(c, OpCode.LoadLoc2, "2", 2)
-    } else {
-        var lv2 = rel.str()
-        emit(c, OpCode.LoadLocal, lv2, rel)
-    }
-}
-
-// ── 字符串池(内容寻址去重) ────────────────────────────────────
-
-fn cg_pool_add(mut c CG, s str) int {
-    var i = 0
-    while i < c.pool.len() {
-        if c.pool.get(i) == s {
-            return i
-        }
-        i = i + 1
-    }
-    c.pool.push(s)
-    return c.pool.len() - 1
-}
-
-// W1:名字池非去重追加(get.field 操作数专用——镜像宿主 5842-5848 的
-// 直接 strings.push,不去重;load.str/set.field 路径仍走 cg_pool_add)
-fn cg_pool_push(mut c CG, s str) int {
-    c.pool.push(s)
-    return c.pool.len() - 1
 }
 
 // ── 表达式发射 ────────────────────────────────────────────────
@@ -834,8 +906,8 @@ fn cg_fstr(mut c CG, mut p P) {
         var ch = content.char_at(i)
         if ch == 36 {
             if lit != "" {
-                var pi = cg_pool_add(c, lit)
-                emit(c, OpCode.LoadStr, "", pi)
+                var pi = c.pool_add(lit)
+                c.emit(OpCode.LoadStr, "", pi)
                 tags = f"${tags}1"
                 n_parts = n_parts + 1
                 lit = ""
@@ -853,7 +925,7 @@ fn cg_fstr(mut c CG, mut p P) {
                     j = j + 1
                 }
                 if depth != 0 {
-                    cg_err(c, "fstr: unterminated interpolation ")
+                    c.fail("fstr: unterminated interpolation ")
                     return
                 }
                 var inner = content.slice(i + 2, j - 1)
@@ -866,7 +938,7 @@ fn cg_fstr(mut c CG, mut p P) {
                 var tg = 0
                 if subp.pos < subtoks.len() {
                     var ftk = subtoks.get(0)
-                    if ftk.kind == TokenKind.Ident && cg_var_ty(c, ftk.text) == "str" {
+                    if ftk.kind == TokenKind.Ident && c.var_ty(ftk.text) == "str" {
                         tg = 1
                     }
                 }
@@ -886,14 +958,14 @@ fn cg_fstr(mut c CG, mut p P) {
                     }
                 }
                 var nm = content.slice(i + 1, j2)
-                var vi = cg_lookup(c, nm)
+                var vi = c.lookup(nm)
                 if vi < 0 {
-                    cg_err(c, "fstr: unknown ident $" + nm)
+                    c.fail("fstr: unknown ident $" + nm)
                     return
                 }
-                cg_emit_load(c, vi)
+                c.emit_load(vi)
                 var tg2 = 0
-                if cg_var_ty(c, nm) == "str" {
+                if c.var_ty(nm) == "str" {
                     tg2 = 1
                 }
                 tags = tags + tg2.str()
@@ -906,8 +978,8 @@ fn cg_fstr(mut c CG, mut p P) {
         }
     }
     if lit != "" {
-        var pi2 = cg_pool_add(c, lit)
-        emit(c, OpCode.LoadStr, "", pi2)
+        var pi2 = c.pool_add(lit)
+        c.emit(OpCode.LoadStr, "", pi2)
         tags = f"${tags}1"
         n_parts = n_parts + 1
     }
@@ -922,7 +994,7 @@ fn cg_fstr(mut c CG, mut p P) {
         t3 = t3 + 1
     }
     txt = f"${txt}]"
-    emit(c, OpCode.BuildFstr, txt, n_parts)
+    c.emit(OpCode.BuildFstr, txt, n_parts)
     c.str_flag = 1
     c.arr_flag = 0
 }
@@ -939,7 +1011,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
     if k == TokenKind.Not {
         p.next()
         cg_expr(c, p, 28)
-        emit(c, OpCode.Not, "", 0)
+        c.emit(OpCode.Not, "", 0)
         c.str_flag = 0
         c.arr_flag = 0
     } else if k == TokenKind.Sub || k == TokenKind.Add {
@@ -947,7 +1019,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
         p.next()
         cg_expr(c, p, 28)
         if k == TokenKind.Sub {
-            emit(c, OpCode.Neg, "", 0)
+            c.emit(OpCode.Neg, "", 0)
         }
         c.str_flag = 0
         c.arr_flag = 0
@@ -957,25 +1029,25 @@ fn cg_expr(mut c CG, mut p P, min int) {
         var t = p.text()
         p.next()
         var cv = int_val(t).str()
-        emit(c, OpCode.ConstI32, cv, int_val(t))
+        c.emit(OpCode.ConstI32, cv, int_val(t))
     } else if k == TokenKind.Str {
         var s = p.text()
         p.next()
-        var idx = cg_pool_add(c, s)
-        emit(c, OpCode.LoadStr, "", idx)
+        var idx = c.pool_add(s)
+        c.emit(OpCode.LoadStr, "", idx)
         c.str_flag = 1
     } else if k == TokenKind.True {
         p.next()
-        emit(c, OpCode.PushBool, "true", 0)
+        c.emit(OpCode.PushBool, "true", 0)
     } else if k == TokenKind.False {
         p.next()
-        emit(c, OpCode.PushBool, "false", 0)
+        c.emit(OpCode.PushBool, "false", 0)
     } else if k == TokenKind.Char {
         // Plan 447 部分②:字符字面量 → const.i32 码点(镜像宿主 Char 编译)
         var t = p.text()
         p.next()
         var cp = t.char_at(0)
-        emit(c, OpCode.ConstI32, cp.str(), cp)
+        c.emit(OpCode.ConstI32, cp.str(), cp)
     } else if k == TokenKind.Ident {
         var name = p.text()
         // Plan 447 部分②:枚举路径前瞻判定(不消费)——注册命中才拦截,
@@ -986,9 +1058,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
         var is_enum_path = false
         var variant = ""
         if p.peek(1) == TokenKind.Dot {
-            var seg = p_peek_text(p, 2)
+            var seg = p.peek_text(2)
             var dk = f"${name}.${seg}"
-            if cg_const_lookup(c, dk) != -999999 || cg_ctor_lookup(c, dk) >= 0 {
+            if c.const_lookup(dk) != -999999 || c.ctor_lookup(dk) >= 0 {
                 is_enum_path = true
                 variant = seg
             }
@@ -999,26 +1071,26 @@ fn cg_expr(mut c CG, mut p P, min int) {
             p.next()
             var key = f"${name}.${variant}"
             if p.kind() == TokenKind.LParen {
-                var fc = cg_ctor_lookup(c, key)
+                var fc = c.ctor_lookup(key)
                 if fc < 0 {
-                    cg_err(c, "unknown enum ctor: " + key)
+                    c.fail("unknown enum ctor: " + key)
                     return
                 }
                 cg_call_args(c, p)
                 var nm = key.len()
-                emit(c, OpCode.ConstI32, nm.str(), nm)
-                emit(c, OpCode.NewInstance, "\"" + key + "\"", 0)
-                emit(c, OpCode.ConstI32, fc.str(), fc)
-                emit(c, OpCode.ConstructInstance, "", 0)
+                c.emit(OpCode.ConstI32, nm.str(), nm)
+                c.emit(OpCode.NewInstance, "\"" + key + "\"", 0)
+                c.emit(OpCode.ConstI32, fc.str(), fc)
+                c.emit(OpCode.ConstructInstance, "", 0)
             } else {
-                var dv = cg_const_lookup(c, key)
-                emit(c, OpCode.ConstI32, dv.str(), dv)
+                var dv = c.const_lookup(key)
+                c.emit(OpCode.ConstI32, dv.str(), dv)
             }
         } else {
         p.next()
         // W1 构造字面量:已注册类型紧随 { → NEW_INSTANCE 族发射;
         // inst_ty 回传类型名(let 绑定记 var_types 用)
-        if p.kind() == TokenKind.LBrace && cg_tys_lookup(c, name) >= 0 {
+        if p.kind() == TokenKind.LBrace && c.tys_lookup(name) >= 0 {
             cg_ctor_emit(c, p, name)
             c.inst_ty = name
             return
@@ -1029,21 +1101,21 @@ fn cg_expr(mut c CG, mut p P, min int) {
         var call_done = false
         // 注:括号化 || 不入 && 链(a2r 转译不保括号优先级——提中间变量)
         var qk_name = p.peek(1) == TokenKind.Ident || is_soft_ident_kind(p.peek(1))
-        if p.kind() == TokenKind.Dot && qk_name && p.peek(2) == TokenKind.LParen && cg_is_module(c, name) {
+        if p.kind() == TokenKind.Dot && qk_name && p.peek(2) == TokenKind.LParen && c.is_module(name) {
             p.next()
             var qfn = p.text()
             p.next()
             // 接收者占位:宿主 Ident 模块兜底推 const.i32 0(Plan 437
             // 注记的已知占位泄漏——镜像;帧 bp 锚定下无害)
-            emit(c, OpCode.ConstI32, "0", 0)
+            c.emit(OpCode.ConstI32, "0", 0)
             cg_call_args(c, p)
-            var qdi = emit(c, OpCode.Call, "", -1)
+            var qdi = c.emit(OpCode.Call, "", -1)
             c.defers.push(CGDefer(qdi, name + "." + qfn))
             call_done = true
         }
         if !call_done && name == "print" && p.kind() == TokenKind.LParen {
             cg_call_args(c, p)
-            emit(c, OpCode.CallNat, "nat#10", 10)
+            c.emit(OpCode.CallNat, "nat#10", 10)
         } else if !call_done && p.kind() == TokenKind.LParen {
             var fe = -1
             var fi = 0
@@ -1056,38 +1128,38 @@ fn cg_expr(mut c CG, mut p P, min int) {
             if fe < 0 {
                 // W3:导入名(use mod: item / 通配)→ 延迟调用,链接期定址
                 // (无 return:调用结果可接后缀/中缀,如 get_base() * 2)
-                var isym = cg_import_symbol(c, name)
+                var isym = c.import_symbol(name)
                 if isym != "" {
                     cg_call_args(c, p)
-                    var idi = emit(c, OpCode.Call, "", -1)
+                    var idi = c.emit(OpCode.Call, "", -1)
                     c.defers.push(CGDefer(idi, isym))
                 } else {
-                    cg_err(c, "unknown fn: " + name)
+                    c.fail("unknown fn: " + name)
                     return
                 }
             } else {
                 cg_call_args(c, p)
-                emit(c, OpCode.Call, "", fe)
+                c.emit(OpCode.Call, "", fe)
             }
         } else if !call_done {
-            var idx = cg_lookup(c, name)
+            var idx = c.lookup(name)
             if idx < 0 {
                 // W2:全局读(镜像宿主读链 局部>全局 优先序;W3 模块限名)
-                if cg_is_global(c, cg_gkey(c, name)) {
-                    var gkr = cg_gkey(c, name)
-                    var gidx = cg_pool_add(c, gkr)
-                    emit(c, OpCode.LoadGlobal, gidx.str(), gidx)
+                if c.is_global(c.gkey(name)) {
+                    var gkr = c.gkey(name)
+                    var gidx = c.pool_add(gkr)
+                    c.emit(OpCode.LoadGlobal, gidx.str(), gidx)
                     c.arr_flag = 0
                 } else {
-                    cg_err(c, "unknown ident: " + name)
+                    c.fail("unknown ident: " + name)
                     return
                 }
             } else {
-                cg_emit_load(c, idx)
-                c.arr_flag = cg_var_arr(c, idx)
+                c.emit_load(idx)
+                c.arr_flag = c.var_arr(idx)
                 // W2:str 型变量加载置 str_flag(镜像宿主 var_types 的
                 // String 性——s[i]+s[j] 发 str.cat;b39 实证)
-                if cg_var_ty(c, name) == "str" {
+                if c.var_ty(name) == "str" {
                     c.str_flag = 1
                 }
             }
@@ -1114,10 +1186,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
             }
         }
         p.expect(TokenKind.RSquare)
-        emit(c, OpCode.CreateArr, "count=" + n.str(), n)
+        c.emit(OpCode.CreateArr, "count=" + n.str(), n)
         c.arr_flag = 1
     } else {
-        cg_err(c, "unsupported expr atom: " + kind_name(k))
+        c.fail("unsupported expr atom: " + kind_name(k))
         return
     }
     // 后缀链:下标读(get.elem);.len()(仅数组接收者,镜像 Rust 7177 闸)
@@ -1132,19 +1204,19 @@ fn cg_expr(mut c CG, mut p P, min int) {
         c.str_flag = save_str
         p.skip_empty_lines()
         p.expect(TokenKind.RSquare)
-        emit(c, OpCode.GetElem, "", 0)
+        c.emit(OpCode.GetElem, "", 0)
         c.arr_flag = 0
     }
-    if c.err == "" && p.kind() == TokenKind.Dot && p_peek_text(p, 1) == "len" && p.peek(2) == TokenKind.LParen && p.peek(3) == TokenKind.RParen {
+    if c.err == "" && p.kind() == TokenKind.Dot && p.peek_text(1) == "len" && p.peek(2) == TokenKind.LParen && p.peek(3) == TokenKind.RParen {
         if c.arr_flag != 1 {
-            cg_err(c, ".len() receiver is not an array")
+            c.fail(".len() receiver is not an array")
             return
         }
         p.next()
         p.next()
         p.next()
         p.next()
-        emit(c, OpCode.ArrLen, "", 0)
+        c.emit(OpCode.ArrLen, "", 0)
         c.str_flag = 0
         c.arr_flag = 0
     }
@@ -1173,24 +1245,24 @@ fn cg_expr(mut c CG, mut p P, min int) {
                     var fk2 = p.peek(1)
                     if fk2 == TokenKind.Ident || is_soft_ident_kind(fk2) {
                         if p.peek(2) == TokenKind.LParen {
-                            cg_err(c, "unsupported method call: ." + p_peek_text(p, 1))
+                            c.fail("unsupported method call: ." + p.peek_text(1))
                             break
                         }
-                        var fname2 = p_peek_text(p, 1)
+                        var fname2 = p.peek_text(1)
                         p.next()
                         p.next()
                         if dot_seq == 0 {
                             // 首跳(原子直连,宿主 Ident 接收者 var_types 命中/
                             // User 型):get.field field[N](名字池非去重追加)
-                            var fidx4 = cg_pool_push(c, fname2)
-                            emit(c, OpCode.GetField, "field[" + fidx4.str() + "]", fidx4)
+                            var fidx4 = c.pool_push(fname2)
+                            c.emit(OpCode.GetField, "field[" + fidx4.str() + "]", fidx4)
                         } else {
                             // 链式后续跳(接收者已是表达式,宿主 untyped
                             // fallback):get.generic.field field=0 + 3 幽灵 nop
-                            emit(c, OpCode.GetGenericField, "field=0", 0)
-                            emit(c, OpCode.Nop, "", 0)
-                            emit(c, OpCode.Nop, "", 0)
-                            emit(c, OpCode.Nop, "", 0)
+                            c.emit(OpCode.GetGenericField, "field=0", 0)
+                            c.emit(OpCode.Nop, "", 0)
+                            c.emit(OpCode.Nop, "", 0)
+                            c.emit(OpCode.Nop, "", 0)
                         }
                         dot_seq = dot_seq + 1
                         c.str_flag = 0
@@ -1198,13 +1270,13 @@ fn cg_expr(mut c CG, mut p P, min int) {
                         c.inst_ty = ""
                         dot_done = true
                     } else {
-                        cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
+                        c.fail("unsupported dot access: ." + p.peek_text(1))
                         break
                     }
                 }
                 if !dot_done {
                 if !is_op_kind(opk) {
-                    cg_err(c, "expected infix op, got " + kind_name(opk))
+                    c.fail("expected infix op, got " + kind_name(opk))
                     break
                 }
                 var l = infix_l(p_op(opk))
@@ -1212,7 +1284,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
                     break
                 }
                 if cg_is_assign_op(p_op(opk)) {
-                    cg_err(c, "nested assignment unsupported")
+                    c.fail("nested assignment unsupported")
                     break
                 }
                 p.next()
@@ -1233,7 +1305,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 }
                 c.arr_flag = 0
                 if mn != OpCode.Blank {
-                    emit(c, mn, "", 0)
+                    c.emit(mn, "", 0)
                 }
                 }
             }
@@ -1264,7 +1336,7 @@ fn cg_call_args(mut c CG, mut p P) {
 fn cg_enum_decl(mut c CG, mut p P) {
     p.next()
     if !is_name_kind(p.kind()) {
-        cg_err(c, "expected enum name")
+        c.fail("expected enum name")
         return
     }
     var name = p.text()
@@ -1275,7 +1347,7 @@ fn cg_enum_decl(mut c CG, mut p P) {
     var idx = 0
     while c.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         if !is_name_kind(p.kind()) {
-            cg_err(c, "expected variant name")
+            c.fail("expected variant name")
             return
         }
         var vname = p.text()
@@ -1307,7 +1379,7 @@ fn cg_enum_decl(mut c CG, mut p P) {
             has_payload = true
             while c.err == "" && p.kind() != TokenKind.RBrace && p.kind() != TokenKind.EOF {
                 if !is_name_kind(p.kind()) {
-                    cg_err(c, "expected variant field name")
+                    c.fail("expected variant field name")
                     return
                 }
                 p.next()
@@ -1333,7 +1405,7 @@ fn cg_enum_decl(mut c CG, mut p P) {
         if p.kind() == TokenKind.Asn {
             p.next()
             if p.kind() != TokenKind.Int {
-                cg_err(c, "unsupported enum value")
+                c.fail("unsupported enum value")
                 return
             }
             val = int_val(p.text())
@@ -1367,7 +1439,7 @@ fn cg_is_arm_body(mut c CG, mut p P) {
     }
     // Plan 495: 非块体 arm 体镜像宿主 parse_expr_or_body 的 stmt_line——
     // arm 体首 token 行经 cg_line 发射(块体由 cg_stmts 按体内语句发)
-    cg_line(c, p.line())
+    c.line(p.line())
     if p.kind() == TokenKind.Return {
         cg_stmt(c, p)
         return
@@ -1386,7 +1458,7 @@ fn cg_is_arm_body(mut c CG, mut p P) {
 fn cg_use(mut c CG, mut p P) {
     p.next()
     if p.kind() == TokenKind.Dot {
-        var lang = p_peek_text(p, 1)
+        var lang = p.peek_text(1)
         p.next()
         p.next()
         var path = p.text()
@@ -1407,7 +1479,7 @@ fn cg_use(mut c CG, mut p P) {
         return
     }
     if !is_name_kind(p.kind()) {
-        cg_err(c, "expected module name after use")
+        c.fail("expected module name after use")
         return
     }
     var name = p.text()
@@ -1415,7 +1487,7 @@ fn cg_use(mut c CG, mut p P) {
     while p.kind() == TokenKind.Dot {
         p.next()
         if !is_name_kind(p.kind()) {
-            cg_err(c, "expected path segment after dot")
+            c.fail("expected path segment after dot")
             return
         }
         name = name + "." + p.text()
@@ -1430,7 +1502,7 @@ fn cg_use(mut c CG, mut p P) {
             wildcard = 1
         } else {
             if !is_name_kind(p.kind()) {
-                cg_err(c, "expected identifier or *")
+                c.fail("expected identifier or *")
                 return
             }
             items = p.text()
@@ -1438,7 +1510,7 @@ fn cg_use(mut c CG, mut p P) {
             while p.kind() == TokenKind.Comma {
                 p.next()
                 if !is_name_kind(p.kind()) {
-                    cg_err(c, "expected identifier")
+                    c.fail("expected identifier")
                     return
                 }
                 items = items + "," + p.text()
@@ -1455,30 +1527,30 @@ fn cg_use(mut c CG, mut p P) {
 fn cg_type_decl(mut c CG, mut p P) {
     p.next()
     if !is_name_kind(p.kind()) {
-        cg_err(c, "expected type name")
+        c.fail("expected type name")
         return
     }
     var name = p.text()
     p.next()
     // 裁剪面同 parser.at parse_type_decl(v2 unsupported 族)
     if p.kind() == TokenKind.Lt {
-        cg_err(c, "v2 unsupported: type generic params")
+        c.fail("v2 unsupported: type generic params")
         return
     }
     if p.kind() == TokenKind.Asn {
-        cg_err(c, "v2 unsupported: type alias")
+        c.fail("v2 unsupported: type alias")
         return
     }
     if p.kind() == TokenKind.Is {
-        cg_err(c, "v2 unsupported: type inheritance")
+        c.fail("v2 unsupported: type inheritance")
         return
     }
     if p.kind() == TokenKind.As {
-        cg_err(c, "v2 unsupported: type as")
+        c.fail("v2 unsupported: type as")
         return
     }
     if p.kind() == TokenKind.Has {
-        cg_err(c, "v2 unsupported: type has")
+        c.fail("v2 unsupported: type has")
         return
     }
     p.expect(TokenKind.LBrace)
@@ -1486,15 +1558,15 @@ fn cg_type_decl(mut c CG, mut p P) {
     var fields List<str> = List.new()
     while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         if p.kind() == TokenKind.Fn || p.kind() == TokenKind.Static {
-            cg_err(c, "v2 unsupported: method in type")
+            c.fail("v2 unsupported: method in type")
             return
         }
         if p.kind() == TokenKind.Hash {
-            cg_err(c, "v2 unsupported: member attr")
+            c.fail("v2 unsupported: member attr")
             return
         }
         if !is_name_kind(p.kind()) {
-            cg_err(c, "expected member name")
+            c.fail("expected member name")
             return
         }
         var fname = p.text()
@@ -1504,7 +1576,7 @@ fn cg_type_decl(mut c CG, mut p P) {
         }
         parse_type(p)
         if p.kind() == TokenKind.Asn {
-            cg_err(c, "v2 unsupported: member default value")
+            c.fail("v2 unsupported: member default value")
             return
         }
         fields.push(fname)
@@ -1526,7 +1598,7 @@ fn cg_ctor_emit(mut c CG, mut p P, name str) {
     while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         var k = p.kind()
         if k != TokenKind.Ident && !is_soft_ident_kind(k) {
-            cg_err(c, "expected field name in struct ctor")
+            c.fail("expected field name in struct ctor")
             return
         }
         p.next()
@@ -1538,15 +1610,15 @@ fn cg_ctor_emit(mut c CG, mut p P, name str) {
             p.next()
             p.skip_empty_lines()
         } else if sk != TokenKind.RBrace {
-            cg_err(c, "expected pair separator")
+            c.fail("expected pair separator")
         }
     }
     p.expect(TokenKind.RBrace)
     var nm = name.len()
-    emit(c, OpCode.ConstI32, nm.str(), nm)
-    emit(c, OpCode.NewInstance, "\"" + name + "\"", 0)
-    emit(c, OpCode.ConstI32, n.str(), n)
-    emit(c, OpCode.ConstructInstance, "", 0)
+    c.emit(OpCode.ConstI32, nm.str(), nm)
+    c.emit(OpCode.NewInstance, "\"" + name + "\"", 0)
+    c.emit(OpCode.ConstI32, n.str(), n)
+    c.emit(OpCode.ConstructInstance, "", 0)
     c.arr_flag = 0
     c.str_flag = 0
 }
@@ -1555,22 +1627,22 @@ fn cg_ctor_emit(mut c CG, mut p P, name str) {
 // const.i32,字面量按各自形态
 fn cg_is_pattern_expr(mut c CG, pat E) {
     if pat.kind == "tag-cover" {
-        var dv = cg_const_lookup(c, pat.name + "." + pat.word)
+        var dv = c.const_lookup(pat.name + "." + pat.word)
         if dv == -999999 {
-            cg_err(c, "unknown enum variant: " + pat.name + "." + pat.word)
+            c.fail("unknown enum variant: " + pat.name + "." + pat.word)
             return
         }
-        emit(c, OpCode.ConstI32, dv.str(), dv)
+        c.emit(OpCode.ConstI32, dv.str(), dv)
     } else if pat.kind == "str" {
-        var idx = cg_pool_add(c, pat.name)
-        emit(c, OpCode.LoadStr, "", idx)
+        var idx = c.pool_add(pat.name)
+        c.emit(OpCode.LoadStr, "", idx)
     } else if pat.kind == "char" {
         var cp = pat.name.char_at(0)
-        emit(c, OpCode.ConstI32, cp.str(), cp)
+        c.emit(OpCode.ConstI32, cp.str(), cp)
     } else if pat.kind == "int" {
-        emit(c, OpCode.ConstI32, pat.name, int_val(pat.name))
+        c.emit(OpCode.ConstI32, pat.name, int_val(pat.name))
     } else {
-        cg_err(c, "unsupported is pattern: " + pat.kind)
+        c.fail("unsupported is pattern: " + pat.kind)
     }
 }
 
@@ -1582,8 +1654,8 @@ fn cg_is_pattern_expr(mut c CG, pat E) {
 fn cg_is(mut c CG, mut p P) {
     p.next()
     cg_expr(c, p, 0)
-    var t = cg_add_var(c, "_is_target", 0, "")
-    cg_emit_store(c, t)
+    var t = c.add_var("_is_target", 0, "")
+    c.emit_store(t)
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
     var end_jmps List<int> = List.new()
@@ -1592,10 +1664,10 @@ fn cg_is(mut c CG, mut p P) {
         if k == TokenKind.If {
             p.next()
             cg_expr(c, p, 0)
-            var jz = emit(c, OpCode.JmpZ, "", -1)
+            var jz = c.emit(OpCode.JmpZ, "", -1)
             p.expect(TokenKind.Arrow)
             cg_is_arm_body(c, p)
-            var je = emit(c, OpCode.Jmp, "", -1)
+            var je = c.emit(OpCode.Jmp, "", -1)
             end_jmps.push(je)
             c.ins.get(jz).n = c.ins.len()
         } else if k == TokenKind.Else {
@@ -1603,7 +1675,7 @@ fn cg_is(mut c CG, mut p P) {
             p.expect(TokenKind.Arrow)
             cg_is_arm_body(c, p)
             // 宿主 Else 臂体后同样发 jmp→end(end 即紧邻指令,无害跳转)
-            var jej = emit(c, OpCode.Jmp, "", -1)
+            var jej = c.emit(OpCode.Jmp, "", -1)
             end_jmps.push(jej)
         } else {
             var pat = is_pattern(p)
@@ -1619,7 +1691,7 @@ fn cg_is(mut c CG, mut p P) {
             p.skip_empty_lines()
             var fc = -1
             if pat.kind == "tag-cover" {
-                fc = cg_ctor_lookup(c, pat.name + "." + pat.word)
+                fc = c.ctor_lookup(pat.name + "." + pat.word)
             }
             var has_real_bind = false
             if fc >= 0 && pat.args != "" && pat.args != "_" {
@@ -1635,25 +1707,25 @@ fn cg_is(mut c CG, mut p P) {
             if fc >= 0 && has_real_bind {
                 // ① 载荷 + 绑定
                 var key = f"${pat.name}.${pat.word}"
-                cg_emit_load(c, t)
-                emit(c, OpCode.IsVariant, "\"" + key + "\"", 0)
-                var jz2 = emit(c, OpCode.JmpZ, "", -1)
+                c.emit_load(t)
+                c.emit(OpCode.IsVariant, "\"" + key + "\"", 0)
+                var jz2 = c.emit(OpCode.JmpZ, "", -1)
                 var binds2 = split_commas(pat.args)
                 var si = 0
                 while si < binds2.len() {
                     if binds2.get(si) != "_" {
-                        cg_emit_load(c, t)
-                        emit(c, OpCode.GetGenericField, "field=" + si.str(), si)
-                        emit(c, OpCode.Nop, "", 0)
-                        emit(c, OpCode.Nop, "", 0)
-                        emit(c, OpCode.Nop, "", 0)
-                        var bidx = cg_add_var(c, binds2.get(si), 0, "")
-                        cg_emit_store(c, bidx)
+                        c.emit_load(t)
+                        c.emit(OpCode.GetGenericField, "field=" + si.str(), si)
+                        c.emit(OpCode.Nop, "", 0)
+                        c.emit(OpCode.Nop, "", 0)
+                        c.emit(OpCode.Nop, "", 0)
+                        var bidx = c.add_var(binds2.get(si), 0, "")
+                        c.emit_store(bidx)
                     }
                     si = si + 1
                 }
                 cg_is_arm_body(c, p)
-                var je2 = emit(c, OpCode.Jmp, "", -1)
+                var je2 = c.emit(OpCode.Jmp, "", -1)
                 end_jmps.push(je2)
                 c.ins.get(jz2).n = c.ins.len()
             } else {
@@ -1661,38 +1733,38 @@ fn cg_is(mut c CG, mut p P) {
                 if fc >= 0 {
                     // ② 载荷无实绑定:is.variant 后走共享尾
                     var key2 = f"${pat.name}.${pat.word}"
-                    cg_emit_load(c, t)
-                    emit(c, OpCode.IsVariant, "\"" + key2 + "\"", 0)
+                    c.emit_load(t)
+                    c.emit(OpCode.IsVariant, "\"" + key2 + "\"", 0)
                 } else if extras.len() == 0 {
                     // ③a 单模式:load t;pat;eq
-                    cg_emit_load(c, t)
+                    c.emit_load(t)
                     cg_is_pattern_expr(c, pat)
-                    emit(c, OpCode.Eq, "", 0)
+                    c.emit(OpCode.Eq, "", 0)
                 } else {
                     // ③b or 链:逐模式 eq + jmp.nz 匹配标号;全落空 jmp next
                     var nz_jmps List<int> = List.new()
-                    cg_emit_load(c, t)
+                    c.emit_load(t)
                     cg_is_pattern_expr(c, pat)
-                    emit(c, OpCode.Eq, "", 0)
-                    var nz = emit(c, OpCode.JmpNz, "", -1)
+                    c.emit(OpCode.Eq, "", 0)
+                    var nz = c.emit(OpCode.JmpNz, "", -1)
                     nz_jmps.push(nz)
                     var ei = 0
                     while ei < extras.len() {
-                        cg_emit_load(c, t)
+                        c.emit_load(t)
                         cg_is_pattern_expr(c, extras.get(ei))
-                        emit(c, OpCode.Eq, "", 0)
-                        var nz2 = emit(c, OpCode.JmpNz, "", -1)
+                        c.emit(OpCode.Eq, "", 0)
+                        var nz2 = c.emit(OpCode.JmpNz, "", -1)
                         nz_jmps.push(nz2)
                         ei = ei + 1
                     }
-                    var jmp_next = emit(c, OpCode.Jmp, "", -1)
+                    var jmp_next = c.emit(OpCode.Jmp, "", -1)
                     var mi = 0
                     while mi < nz_jmps.len() {
                         c.ins.get(nz_jmps.get(mi)).n = c.ins.len()
                         mi = mi + 1
                     }
                     cg_is_arm_body(c, p)
-                    var je3 = emit(c, OpCode.Jmp, "", -1)
+                    var je3 = c.emit(OpCode.Jmp, "", -1)
                     end_jmps.push(je3)
                     c.ins.get(jmp_next).n = c.ins.len()
                     p.skip_empty_lines()
@@ -1704,9 +1776,9 @@ fn cg_is(mut c CG, mut p P) {
                     continue
                 }
                 // 共享尾:jmp.z next;体;jmp end;patch next
-                shared_jz = emit(c, OpCode.JmpZ, "", -1)
+                shared_jz = c.emit(OpCode.JmpZ, "", -1)
                 cg_is_arm_body(c, p)
-                var je4 = emit(c, OpCode.Jmp, "", -1)
+                var je4 = c.emit(OpCode.Jmp, "", -1)
                 end_jmps.push(je4)
                 c.ins.get(shared_jz).n = c.ins.len()
             }
@@ -1754,7 +1826,7 @@ fn cg_stmt(mut c CG, mut p P) {
     }
     if k == TokenKind.Break || k == TokenKind.Continue {
         p.next()
-        cg_loop_jump(c, k)
+        c.loop_jump(k)
         return
     }
     if k == TokenKind.Is {
@@ -1776,15 +1848,15 @@ fn cg_stmt(mut c CG, mut p P) {
         // W2(Plan 511):全局路径(镜像宿主 Plan 317/322——顶层 var/const
         // 注册进 global_vars 且无 scope 守卫:fn 体内同名声明也走全局;
         // W3:模块编译单元内键带 mod. 前缀 cg_gkey)
-        var gk = cg_gkey(c, name)
+        var gk = c.gkey(name)
         if (k == TokenKind.Var || k == TokenKind.Const) && c.depth == 1 {
-            if !cg_is_global(c, gk) {
+            if !c.is_global(gk) {
                 c.global_vars.push(gk)
             }
         }
         if p.kind() == TokenKind.Asn {
             p.next()
-            if cg_is_global(c, gk) {
+            if c.is_global(gk) {
                 // init token 区间登记(fn main 体首重放用;首次声明记;
                 // W3:仅主模块重放——dep 模块经模块初始化序执行 init)
                 var from2 = p.pos
@@ -1803,8 +1875,8 @@ fn cg_stmt(mut c CG, mut p P) {
                         c.global_inits.push(CGInit(gk, from2, to2))
                     }
                 }
-                var gidx2 = cg_pool_add(c, gk)
-                emit(c, OpCode.StoreGlobal, gidx2.str(), gidx2)
+                var gidx2 = c.pool_add(gk)
+                c.emit(OpCode.StoreGlobal, gidx2.str(), gidx2)
                 return
             }
             cg_expr(c, p, 0)
@@ -1819,21 +1891,21 @@ fn cg_stmt(mut c CG, mut p P) {
                 vty = c.inst_ty
             }
         }
-        var idx = cg_add_var(c, name, is_arr, vty)
-        cg_emit_store(c, idx)
+        var idx = c.add_var(name, is_arr, vty)
+        c.emit_store(idx)
         return
     }
     if k == TokenKind.Return {
         p.next()
         var kk = p.kind()
         if kk == TokenKind.Newline || kk == TokenKind.Semi || kk == TokenKind.RBrace || kk == TokenKind.EOF {
-            emit(c, OpCode.PushNil, "", 0)
+            c.emit(OpCode.PushNil, "", 0)
         } else {
             cg_expr(c, p, 0)
         }
         var na = c.n_args
         var rs2 = f"n_args=${na.str()}"
-        emit(c, OpCode.Ret, rs2, na)
+        c.emit(OpCode.Ret, rs2, na)
         return
     }
     if k == TokenKind.If {
@@ -1849,7 +1921,7 @@ fn cg_stmt(mut c CG, mut p P) {
         return
     }
     if k == TokenKind.Fn {
-        cg_err(c, "nested fn unsupported")
+        c.fail("nested fn unsupported")
         return
     }
     // 下标赋值 a[idx] = rhs:Rust 发射序为 rhs→arr→idx→set.elem
@@ -1857,9 +1929,9 @@ fn cg_stmt(mut c CG, mut p P) {
     // 快照两段解析——先越前扫到匹配 ] 后的 Asn,先发 rhs 再回头发 arr/idx
     if k == TokenKind.Ident && p.peek(1) == TokenKind.LSquare {
         var arr_name = p.text()
-        var aidx = cg_lookup(c, arr_name)
+        var aidx = c.lookup(arr_name)
         if aidx < 0 {
-            cg_err(c, "unknown ident: " + arr_name)
+            c.fail("unknown ident: " + arr_name)
             return
         }
         var start = p.pos
@@ -1884,7 +1956,7 @@ fn cg_stmt(mut c CG, mut p P) {
         }
         if ok && scan < p.toks.len() && p.toks.get(scan).kind != TokenKind.Asn && cg_is_assign_op(p_op(p.toks.get(scan).kind)) {
             // W2/D1(Plan 511):宿主对非 Ident LHS 复合赋值的拒绝文本同款
-            cg_err(c, "Compound assignment requires a variable on left side")
+            c.fail("Compound assignment requires a variable on left side")
             return
         }
         if ok && scan < p.toks.len() && p.toks.get(scan).kind == TokenKind.Asn {
@@ -1892,7 +1964,7 @@ fn cg_stmt(mut c CG, mut p P) {
             p.skip_empty_lines()
             cg_expr(c, p, 0)
             var end_pos = p.pos
-            cg_emit_load(c, aidx)
+            c.emit_load(aidx)
             p.pos = start
             p.next()
             p.next()
@@ -1900,7 +1972,7 @@ fn cg_stmt(mut c CG, mut p P) {
             cg_expr(c, p, 0)
             p.skip_empty_lines()
             p.expect(TokenKind.RSquare)
-            emit(c, OpCode.SetElem, "", 0)
+            c.emit(OpCode.SetElem, "", 0)
             p.pos = end_pos
             return
         }
@@ -1910,9 +1982,9 @@ fn cg_stmt(mut c CG, mut p P) {
     // —— 先前瞻扫字段链至 Asn,先发 rhs 再回头发对象/字段
     if k == TokenKind.Ident && p.peek(1) == TokenKind.Dot {
         var recv2 = p.text()
-        var ridx2 = cg_lookup(c, recv2)
+        var ridx2 = c.lookup(recv2)
         if ridx2 < 0 {
-            cg_err(c, "unknown ident: " + recv2)
+            c.fail("unknown ident: " + recv2)
             return
         }
         var start3 = p.pos
@@ -1935,7 +2007,7 @@ fn cg_stmt(mut c CG, mut p P) {
                 break
             } else if cg_is_assign_op(p_op(after3)) {
                 // 复合赋值:镜像宿主非 Ident LHS 的拒绝文本(D1 同族)
-                cg_err(c, "Compound assignment requires a variable on left side")
+                c.fail("Compound assignment requires a variable on left side")
                 return
             } else {
                 shape_ok = false
@@ -1947,34 +2019,34 @@ fn cg_stmt(mut c CG, mut p P) {
             p.skip_empty_lines()
             cg_expr(c, p, 0)
             var end_pos3 = p.pos
-            var recv_ty = cg_var_ty(c, recv2)
-            if fields3.len() == 1 && cg_tys_lookup(c, recv_ty) >= 0 {
+            var recv_ty = c.var_ty(recv2)
+            if fields3.len() == 1 && c.tys_lookup(recv_ty) >= 0 {
                 // 构造字面量源变量(宿主 GenericInstance 路径):
                 // value,instance_id → set.generic.field <u32 字段下标>
                 // (+3 幽灵 nop,镜像宿主 disasm u8 读宽形态)
-                var fidx3 = cg_field_idx(c, recv_ty, fields3.get(0))
+                var fidx3 = c.field_idx(recv_ty, fields3.get(0))
                 if fidx3 < 0 {
-                    cg_err(c, "unknown field: " + recv_ty + "." + fields3.get(0))
+                    c.fail("unknown field: " + recv_ty + "." + fields3.get(0))
                     return
                 }
-                cg_emit_load(c, ridx2)
-                emit(c, OpCode.SetGenericField, "field=" + fidx3.str(), fidx3)
-                emit(c, OpCode.Nop, "", 0)
-                emit(c, OpCode.Nop, "", 0)
-                emit(c, OpCode.Nop, "", 0)
+                c.emit_load(ridx2)
+                c.emit(OpCode.SetGenericField, "field=" + fidx3.str(), fidx3)
+                c.emit(OpCode.Nop, "", 0)
+                c.emit(OpCode.Nop, "", 0)
+                c.emit(OpCode.Nop, "", 0)
             } else {
                 // 嵌套/非构造源(宿主 User/fallback 路径):value → 对象
                 // 表达式 → load.str 字段名(栈顶)→ set.field
-                cg_emit_load(c, ridx2)
+                c.emit_load(ridx2)
                 var fi3 = 0
                 while fi3 < fields3.len() - 1 {
-                    var mid3 = cg_pool_push(c, fields3.get(fi3))
-                    emit(c, OpCode.GetField, "field[" + mid3.str() + "]", mid3)
+                    var mid3 = c.pool_push(fields3.get(fi3))
+                    c.emit(OpCode.GetField, "field[" + mid3.str() + "]", mid3)
                     fi3 = fi3 + 1
                 }
-                var last3 = cg_pool_add(c, fields3.get(fields3.len() - 1))
-                emit(c, OpCode.LoadStr, "", last3)
-                emit(c, OpCode.SetField, "", 0)
+                var last3 = c.pool_add(fields3.get(fields3.len() - 1))
+                c.emit(OpCode.LoadStr, "", last3)
+                c.emit(OpCode.SetField, "", 0)
             }
             p.pos = end_pos3
             return
@@ -1987,46 +2059,46 @@ fn cg_stmt(mut c CG, mut p P) {
         var nk = p.peek(1)
         if cg_is_assign_op(p_op(nk)) {
             // W2:全局写优先于局部查找(镜像宿主 6189-6192 的 check-BEFORE)
-            if cg_is_global(c, cg_gkey(c, name)) {
+            if c.is_global(c.gkey(name)) {
                 p.next()
                 var gopk = p.kind()
                 p.next()
                 if gopk != TokenKind.Asn {
-                    var gka = cg_gkey(c, name)
-                    var gg = cg_pool_add(c, gka)
-                    emit(c, OpCode.LoadGlobal, gg.str(), gg)
+                    var gka = c.gkey(name)
+                    var gg = c.pool_add(gka)
+                    c.emit(OpCode.LoadGlobal, gg.str(), gg)
                 }
                 cg_expr(c, p, 0)
                 var gmn = cg_binop_mnem(p_op(gopk))
                 if gmn != OpCode.Blank {
-                    emit(c, gmn, "", 0)
+                    c.emit(gmn, "", 0)
                 }
-                emit(c, OpCode.Dup, "", 0)
-                var gkb = cg_gkey(c, name)
-                var gidx3 = cg_pool_add(c, gkb)
-                emit(c, OpCode.StoreGlobal, gidx3.str(), gidx3)
-                emit(c, OpCode.Pop, "", 0)
+                c.emit(OpCode.Dup, "", 0)
+                var gkb = c.gkey(name)
+                var gidx3 = c.pool_add(gkb)
+                c.emit(OpCode.StoreGlobal, gidx3.str(), gidx3)
+                c.emit(OpCode.Pop, "", 0)
                 return
             }
-            var idx = cg_lookup(c, name)
+            var idx = c.lookup(name)
             if idx < 0 {
-                cg_err(c, "unknown ident: " + name)
+                c.fail("unknown ident: " + name)
                 return
             }
             p.next()
             var opk = p.kind()
             p.next()
             if opk != TokenKind.Asn {
-                cg_emit_load(c, idx)
+                c.emit_load(idx)
             }
             cg_expr(c, p, 0)
             var mn = cg_binop_mnem(p_op(opk))
             if mn != OpCode.Blank {
-                emit(c, mn, "", 0)
+                c.emit(mn, "", 0)
             }
-            emit(c, OpCode.Dup, "", 0)
-            cg_emit_store(c, idx)
-            emit(c, OpCode.Pop, "", 0)
+            c.emit(OpCode.Dup, "", 0)
+            c.emit_store(idx)
+            c.emit(OpCode.Pop, "", 0)
             return
         }
     }
@@ -2036,7 +2108,7 @@ fn cg_stmt(mut c CG, mut p P) {
     cg_expr(c, p, 0)
     if c.err == "" && c.depth > 1 && c.ins.len() > before_len {
         if c.ins.get(c.ins.len() - 1).op == OpCode.Call {
-            emit(c, OpCode.Pop, "", 0)
+            c.emit(OpCode.Pop, "", 0)
         }
     }
 }
@@ -2044,7 +2116,7 @@ fn cg_stmt(mut c CG, mut p P) {
 // 语句序列步行:.line(语句首 token 行,经 cg_line 同线去重)→ cg_stmt → eos
 fn cg_stmts(mut c CG, mut p P) {
     while c.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
-        cg_line(c, p.line())
+        c.line(p.line())
         cg_stmt(c, p)
         if c.err == "" {
             cg_eos(c, p)
@@ -2060,10 +2132,10 @@ fn cg_if(mut c CG, mut p P) {
     while more {
         p.next()
         cg_expr(c, p, 0)
-        var jz = emit(c, OpCode.JmpZ, "", -1)
+        var jz = c.emit(OpCode.JmpZ, "", -1)
         jzs.push(jz)
         cg_body_inline(c, p)
-        var je = emit(c, OpCode.Jmp, "", -1)
+        var je = c.emit(OpCode.Jmp, "", -1)
         jends.push(je)
         if p.kind() == TokenKind.Else {
             p.next()
@@ -2107,7 +2179,7 @@ fn cg_eos(mut c CG, mut p P) {
         p.next()
     }
     if p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace && !has_sep {
-        cg_err(c, "expected eos, got " + kind_name(p.kind()))
+        c.fail("expected eos, got " + kind_name(p.kind()))
     }
 }
 
@@ -2116,18 +2188,18 @@ fn cg_while(mut c CG, mut p P) {
     p.next()
     var top = c.ins.len()
     cg_expr(c, p, 0)
-    var jz = emit(c, OpCode.JmpZ, "", -1)
+    var jz = c.emit(OpCode.JmpZ, "", -1)
     // P2:continue 落点 = 条件顶(while 语义:重判条件);体作用域与
     // for 同构(体内变量每迭代释放,cg_pop_scope depth>2 发释放组)
-    cg_push_scope(c)
-    cg_loop_enter(c, top)
+    c.push_scope()
+    c.loop_enter(top)
     cg_body_inline(c, p)
     // 宿主布局:体 → 体内变量释放组 → 回跳;break 越过释放组直达 end
-    cg_pop_scope(c)
-    emit(c, OpCode.Jmp, "", top)
+    c.pop_scope()
+    c.emit(OpCode.Jmp, "", top)
     var end = c.ins.len()
     c.ins.get(jz).n = end
-    cg_loop_exit(c, end)
+    c.loop_exit(end)
 }
 
 // for-in-range:start;store var;top:load var;end;lt;jmp.z end;
@@ -2135,13 +2207,13 @@ fn cg_while(mut c CG, mut p P) {
 fn cg_for(mut c CG, mut p P) {
     p.next()
     if p.kind() != TokenKind.Ident {
-        cg_err(c, "for: expected ident")
+        c.fail("for: expected ident")
         return
     }
     var name = p.text()
     p.next()
     if p.kind() != TokenKind.In {
-        cg_err(c, "for: expected in")
+        c.fail("for: expected in")
         return
     }
     p.next()
@@ -2150,28 +2222,28 @@ fn cg_for(mut c CG, mut p P) {
     if p.kind() == TokenKind.Ident && p.peek(1) == TokenKind.LParen {
         // —— Call 迭代器协议 ——
         cg_expr(c, p, 0)
-        var it_idx = cg_add_var(c, "_iterator", 0, "")
-        cg_emit_store(c, it_idx)
-        var it_v = cg_add_var(c, name, 0, "")
+        var it_idx = c.add_var("_iterator", 0, "")
+        c.emit_store(it_idx)
+        var it_v = c.add_var(name, 0, "")
         var it_top = c.ins.len()
-        cg_emit_load(c, it_idx)
-        emit(c, OpCode.CallNat, "nat#112", 112)
-        emit(c, OpCode.Dup, "", 0)
-        emit(c, OpCode.ConstI32, "-1", -1)
-        emit(c, OpCode.Eq, "", 0)
-        var it_jnz = emit(c, OpCode.JmpNz, "", -1)
-        cg_emit_store(c, it_v)
-        cg_loop_enter(c, 0)
+        c.emit_load(it_idx)
+        c.emit(OpCode.CallNat, "nat#112", 112)
+        c.emit(OpCode.Dup, "", 0)
+        c.emit(OpCode.ConstI32, "-1", -1)
+        c.emit(OpCode.Eq, "", 0)
+        var it_jnz = c.emit(OpCode.JmpNz, "", -1)
+        c.emit_store(it_v)
+        c.loop_enter(0)
         cg_body_inline(c, p)
         // continue 也回循环顶(重新 next),无增量段(宿主同款)
         c.cont_tg.set(c.loop_depth - 1, it_top)
-        emit(c, OpCode.Jmp, "", it_top)
+        c.emit(OpCode.Jmp, "", it_top)
         var it_end = c.ins.len()
         c.ins.get(it_jnz).n = it_end
-        cg_loop_exit(c, it_end)
+        c.loop_exit(it_end)
         return
     }
-    cg_push_scope(c)
+    c.push_scope()
     // start 以 min=18 界定(不吞 .. 的中缀绑定);显式吃 Range/RangeEq 再取 end
     cg_expr(c, p, 18)
     if p.kind() == TokenKind.Range || p.kind() == TokenKind.RangeEq {
@@ -2180,59 +2252,59 @@ fn cg_for(mut c CG, mut p P) {
         // —— 数组/表达式通道(Plan 511 W2)——
         // <对象> 求值一次;dup/arr.len 缓存;const.0 计数器;三隐藏槽
         // (_counter/_array_len/_array_ref)+ 循环变量;continue 落点=增量段
-        emit(c, OpCode.Dup, "", 0)
-        emit(c, OpCode.ArrLen, "", 0)
-        emit(c, OpCode.Const0, "", 0)
-        var cnt = cg_add_var(c, "_counter", 0, "")
-        cg_emit_store(c, cnt)
-        var aln = cg_add_var(c, "_array_len", 0, "")
-        cg_emit_store(c, aln)
-        var aref = cg_add_var(c, "_array_ref", 0, "")
-        cg_emit_store(c, aref)
-        var av = cg_add_var(c, name, 0, "")
+        c.emit(OpCode.Dup, "", 0)
+        c.emit(OpCode.ArrLen, "", 0)
+        c.emit(OpCode.Const0, "", 0)
+        var cnt = c.add_var("_counter", 0, "")
+        c.emit_store(cnt)
+        var aln = c.add_var("_array_len", 0, "")
+        c.emit_store(aln)
+        var aref = c.add_var("_array_ref", 0, "")
+        c.emit_store(aref)
+        var av = c.add_var(name, 0, "")
         var atop = c.ins.len()
-        cg_emit_load(c, cnt)
-        cg_emit_load(c, aln)
-        emit(c, OpCode.Lt, "", 0)
-        var ajz = emit(c, OpCode.JmpZ, "", -1)
-        cg_emit_load(c, aref)
-        cg_emit_load(c, cnt)
-        emit(c, OpCode.GetElem, "", 0)
-        cg_emit_store(c, av)
-        cg_loop_enter(c, 0)
+        c.emit_load(cnt)
+        c.emit_load(aln)
+        c.emit(OpCode.Lt, "", 0)
+        var ajz = c.emit(OpCode.JmpZ, "", -1)
+        c.emit_load(aref)
+        c.emit_load(cnt)
+        c.emit(OpCode.GetElem, "", 0)
+        c.emit_store(av)
+        c.loop_enter(0)
         cg_body_inline(c, p)
         c.cont_tg.set(c.loop_depth - 1, c.ins.len())
-        cg_emit_load(c, cnt)
-        emit(c, OpCode.ConstI32, "1", 1)
-        emit(c, OpCode.Add, "", 0)
-        cg_emit_store(c, cnt)
-        emit(c, OpCode.Jmp, "", atop)
+        c.emit_load(cnt)
+        c.emit(OpCode.ConstI32, "1", 1)
+        c.emit(OpCode.Add, "", 0)
+        c.emit_store(cnt)
+        c.emit(OpCode.Jmp, "", atop)
         var aend = c.ins.len()
         c.ins.get(ajz).n = aend
-        cg_loop_exit(c, aend)
-        cg_pop_scope(c)
+        c.loop_exit(aend)
+        c.pop_scope()
         return
     }
-    var idx = cg_add_var(c, name, 0, "")
-    cg_emit_store(c, idx)
+    var idx = c.add_var(name, 0, "")
+    c.emit_store(idx)
     var top = c.ins.len()
-    cg_emit_load(c, idx)
+    c.emit_load(idx)
     cg_expr(c, p, 0)
-    emit(c, OpCode.Lt, "", 0)
-    var jz = emit(c, OpCode.JmpZ, "", -1)
+    c.emit(OpCode.Lt, "", 0)
+    var jz = c.emit(OpCode.JmpZ, "", -1)
     // P2:continue 落点 = 步进位(循环变量自增;宿主 range-for 同口径)
-    cg_loop_enter(c, 0)
+    c.loop_enter(0)
     cg_body_inline(c, p)
     c.cont_tg.set(c.loop_depth - 1, c.ins.len())
-    cg_emit_load(c, idx)
-    emit(c, OpCode.ConstI32, "1", 1)
-    emit(c, OpCode.Add, "", 0)
-    cg_emit_store(c, idx)
-    emit(c, OpCode.Jmp, "", top)
+    c.emit_load(idx)
+    c.emit(OpCode.ConstI32, "1", 1)
+    c.emit(OpCode.Add, "", 0)
+    c.emit_store(idx)
+    c.emit(OpCode.Jmp, "", top)
     var end = c.ins.len()
     c.ins.get(jz).n = end
-    cg_loop_exit(c, end)
-    cg_pop_scope(c)
+    c.loop_exit(end)
+    c.pop_scope()
 }
 
 // ── fn 编译 ──────────────────────────────────────────────────
@@ -2240,12 +2312,12 @@ fn cg_for(mut c CG, mut p P) {
 fn cg_fn(mut c CG, mut p P) {
     p.next()
     if p.kind() != TokenKind.Ident {
-        cg_err(c, "fn: expected name")
+        c.fail("fn: expected name")
         return
     }
     var name = p.text()
     p.next()
-    var jover = emit(c, OpCode.Jmp, "", -1)
+    var jover = c.emit(OpCode.Jmp, "", -1)
     var entry = c.ins.len()
     c.fns.push(FnEntry(name, entry))
     var saved_args = c.n_args
@@ -2253,9 +2325,9 @@ fn cg_fn(mut c CG, mut p P) {
     c.max_idx = -1
     var saved_hi = c.hi_idx
     c.hi_idx = -1
-    cg_push_scope(c)
-    var prolog = emit(c, OpCode.FnProlog, "", 0)
-    var reserve = emit(c, OpCode.Reserve, "", 0)
+    c.push_scope()
+    var prolog = c.emit(OpCode.FnProlog, "", 0)
+    var reserve = c.emit(OpCode.Reserve, "", 0)
     var n_args = 0
     p.expect(TokenKind.LParen)
     p.skip_empty_lines()
@@ -2285,7 +2357,7 @@ fn cg_fn(mut c CG, mut p P) {
                 p.next()
                 expr_pratt(p, 0)
             }
-            cg_add_var(c, pname, parr, "")
+            c.add_var(pname, parr, "")
             n_args = n_args + 1
             if p.kind() == TokenKind.Comma {
                 p.next()
@@ -2315,21 +2387,21 @@ fn cg_fn(mut c CG, mut p P) {
             p.pos = ent.from
             cg_expr(c, p, 0)
             p.pos = saved_pos
-            var rgidx = cg_pool_add(c, ent.name)
-            emit(c, OpCode.StoreGlobal, rgidx.str(), rgidx)
+            var rgidx = c.pool_add(ent.name)
+            c.emit(OpCode.StoreGlobal, rgidx.str(), rgidx)
             gi = gi + 1
         }
     }
     // 体块(Stmt::Block:推作用域;语句 .line 由 cg_stmts 发)
-    cg_push_scope(c)
+    c.push_scope()
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
     cg_stmts(c, p)
     p.expect(TokenKind.RBrace)
-    cg_pop_scope(c)
+    c.pop_scope()
     // epilogue RET
     var rs = f"n_args=${n_args.str()}"
-    emit(c, OpCode.Ret, rs, n_args)
+    c.emit(OpCode.Ret, rs, n_args)
     // 回填 prolog/reserve(Rust:n_locals = max_locals - n_args)
     var n_locals = 0
     if c.hi_idx >= n_args {
@@ -2344,7 +2416,7 @@ fn cg_fn(mut c CG, mut p P) {
         c.ins.get(reserve).op = OpCode.Blank
     }
     c.ins.get(jover).n = c.ins.len()
-    cg_pop_scope(c)
+    c.pop_scope()
     c.n_args = saved_args
     c.max_idx = saved_max
     c.hi_idx = saved_hi
@@ -2362,47 +2434,6 @@ fn hex4(n int) str {
         out = digits.slice(d, d + 1) + out
         v = v / 16
         k = k + 1
-    }
-    return out
-}
-
-fn cg_serialize(mut c CG) str {
-    var offs List<int> = List.new()
-    var acc = 0
-    var i = 0
-    while i < c.ins.len() {
-        offs.push(acc)
-        var ii = c.ins.get(i)
-        if ii.op != OpCode.Blank {
-            acc = acc + i_size_named(ii.op, ii.s, ii.n)
-        }
-        i = i + 1
-    }
-    var out = ""
-    var j = 0
-    while j < c.ins.len() {
-        var ins = c.ins.get(j)
-        if ins.op != OpCode.Blank {
-            var ops = ins.s
-            if ins.op == OpCode.Jmp || ins.op == OpCode.JmpZ || ins.op == OpCode.JmpNz {
-                ops = f"-> 0x${hex4(offs.get(ins.n))}"
-            } else if ins.op == OpCode.Call {
-                var fe = c.fns.get(ins.n)
-                ops = f"0x${hex4(offs.get(fe.ins))}"
-            } else if ins.op == OpCode.LoadStr {
-                ops = "\"" + c.pool.get(ins.n) + "\""
-            } else if ins.op == OpCode.LoadGlobal || ins.op == OpCode.StoreGlobal {
-                // W3:链接后 ins.n 为合并池索引(s 为模块本地旧值,弃用)
-                ops = ins.n.str()
-            } else if ins.op == OpCode.GetField {
-                ops = "field[" + ins.n.str() + "]"
-            }
-            if out != "" {
-                out = out + "\n"
-            }
-            out = f"${out}${hex4(offs.get(j))}  ${op_name(ins.op)} ${ops}"
-        }
-        j = j + 1
     }
     return out
 }
@@ -2437,7 +2468,7 @@ fn cg_use_scan(source str) List<CGUse> {
     var out List<CGUse> = List.new()
     var toks = tokenize(source)
     var p = parse_new(toks)
-    var scratch = cg_new()
+    var scratch = CG.new()
     p.skip_empty_lines()
     while p.err == "" && p.kind() != TokenKind.EOF {
         if p.kind() == TokenKind.Use {
@@ -2583,11 +2614,11 @@ fn cg_compile(source str) CG {
 fn cg_compile_mod(source str, mod_name str) CG {
     var toks = tokenize(source)
     var p = parse_new(toks)
-    var c = cg_new()
+    var c = CG.new()
     c.mod_name = mod_name
     if mod_name == "" {
-        emit(c, OpCode.FnProlog, "args=0, locals=16", 16)
-        emit(c, OpCode.Reserve, "16", 16)
+        c.emit(OpCode.FnProlog, "args=0, locals=16", 16)
+        c.emit(OpCode.Reserve, "16", 16)
     }
     p.skip_empty_lines()
     while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF {
@@ -2611,43 +2642,9 @@ fn cg_compile_mod(source str, mod_name str) CG {
         }
     }
     if c.err == "" {
-        emit(c, OpCode.Halt, "", 0)
+        c.emit(OpCode.Halt, "", 0)
     }
     return c
-}
-
-// W3:符号定址(bare 首到首胜 + mod.fn 限定;host loader 264-312 镜像)
-fn cg_link_symbol(c CG, symbol str) int {
-    var i = 0
-    while i < c.fns.len() {
-        if c.fns.get(i).name == symbol {
-            return i
-        }
-        i = i + 1
-    }
-    // 限定:前缀逐模块试(模块名可含点,tools.helper.fn)
-    var mi2 = 0
-    while mi2 < c.fn_mods.len() {
-        var m = c.fn_mods.get(mi2)
-        if m != "" && symbol.len() > m.len() + 1 {
-            var head = symbol.slice(0, m.len())
-            var tail = symbol.slice(m.len() + 1, symbol.len())
-            var sep = symbol.char_at(m.len())
-            if head == m && sep == 46 && c.fns.get(mi2).name == tail {
-                return mi2
-            }
-        }
-        mi2 = mi2 + 1
-    }
-    // 兜底:剥前缀裸名(host loader strip-prefix fallback)
-    var li2 = 0
-    while li2 < c.fns.len() {
-        if c.fns.get(li2).name == symbol {
-            return li2
-        }
-        li2 = li2 + 1
-    }
-    return -1
 }
 
 // W3:链接器——cgs(deps DFS 后序 + main 末位)→ 合并 CG:
@@ -2655,7 +2652,7 @@ fn cg_link_symbol(c CG, symbol str) int {
 // 并池)、fns/fn_mods 合并、defers 定址(mod_bases 记 dep 起始)。
 // 返回 CG.err 非空即链接失败(宿主文本)
 fn cg_link_modules(mut cgs List<CG>) CG {
-    var m = cg_new()
+    var m = CG.new()
     var fn_base = 0
     var mi = 0
     while mi < cgs.len() {
@@ -2726,7 +2723,7 @@ fn cg_link_modules(mut cgs List<CG>) CG {
     var ri = 0
     while ri < m.defers.len() {
         var d2 = m.defers.get(ri)
-        var target = cg_link_symbol(m, d2.symbol)
+        var target = m.link_symbol(d2.symbol)
         if target < 0 {
             m.err = "Undefined symbol: " + d2.symbol + " in module <main>"
             return m
@@ -2741,7 +2738,7 @@ fn cg_link_modules(mut cgs List<CG>) CG {
 fn cg_compile_files(main_path str) CG {
     var res = cg_resolve(main_path)
     if res.err != "" {
-        var e = cg_new()
+        var e = CG.new()
         e.err = res.err
         return e
     }
@@ -2761,7 +2758,7 @@ fn codegen_dump_files(main_path str) str {
     if c.err != "" {
         return c.err
     }
-    return cg_serialize(c)
+    return c.serialize()
 }
 
 // M4 闸门入口
@@ -2770,5 +2767,5 @@ fn codegen_dump(source str) str {
     if c.err != "" {
         return c.err
     }
-    return cg_serialize(c)
+    return c.serialize()
 }

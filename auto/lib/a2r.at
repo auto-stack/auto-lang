@@ -2093,6 +2093,20 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
                 a.ty = ""
                 a.strk = 0
                 a.lenflag = 0
+                // Plan 514 W3-15:静态方法返回类型按方法表解析——`var m =
+                // CG.new()` 此前恒 Unknown,字段链/get 元素/方法实参强转
+                // 全失型(镜像主 a2r scan_call_init_bindings 的 Dot-new 臂;
+                // ⑤腿 m.link_symbol(d2.symbol) 实证)。
+                var smi = ar_method_find(a, recv, word)
+                if smi >= 0 {
+                    var smret = a.tys.get(ar_ty_find(a, recv)).methods.get(smi).ret
+                    if smret != "void" {
+                        a.ty = smret
+                    }
+                    if ar_is_str_ty(a.ty) {
+                        a.strk = 3
+                    }
+                }
                 return recv + "::" + word + "(" + join_args(args) + ")"
             }
             if word == "set" && a.stmt_ctx == 1 {

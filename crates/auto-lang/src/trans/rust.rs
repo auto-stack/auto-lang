@@ -8349,6 +8349,56 @@ impl RustTrans {
                                 }
                             }
                         }
+                        // Plan 514 W3-15: is_str_param 上提(原在发射后计算,
+                        // `.str()` 分支需要先行判定)+已 stringify 旗标。
+                        let is_str_param = if obj_is_type_chain {
+                            method_str_flags.as_ref()
+                                .and_then(|f| f.get(i))
+                                .copied()
+                                .unwrap_or(false)
+                        } else {
+                            method_str_flags.as_ref()
+                                .and_then(|f| f.get(i))
+                                .copied()
+                                .unwrap_or(false)
+                            || method_str_flags.as_ref()
+                                .and_then(|f| f.get(i + 1))
+                                .copied()
+                                .unwrap_or(false)
+                        };
+                        let mut m_str_stringified_here = false;
+                        // Plan 514 W3-15: Auto 通用 `.str()` 入 &str 方法参数位
+                        // ——按接收者类型发射(镜像自由函数环 447-③前置同款
+                        // 臂):str 系直借 .as_str(),数值/未知走 format!。
+                        // 方法环此前缺此臂,方法化 lib 的 `c.emit(op, n.str(),
+                        // n)` 族裸发 to_string() → E0308。
+                        if is_str_param
+                            && matches!(expr, Expr::Call(c2)
+                                if matches!(c2.name.as_ref(), Expr::Dot(_, m2) if m2.as_str() == "str")
+                                    && c2.args.args.is_empty())
+                        {
+                            if let Expr::Call(c2) = expr {
+                                if let Expr::Dot(recv2, _) = c2.name.as_ref() {
+                                    let recv_ty = self.infer_type_from_expr(recv2);
+                                    let borrow_direct = matches!(recv_ty,
+                                        Type::StrOwned | Type::StrSlice
+                                        | Type::StrFixed(_) | Type::CStrLit);
+                                    let recv_parens = matches!(recv2.as_ref(),
+                                        Expr::Bina(_, op3, _) if !matches!(op3, Op::Dot));
+                                    if borrow_direct {
+                                        if recv_parens { write!(out, "(")?; }
+                                        self.expr(recv2, out)?;
+                                        if recv_parens { write!(out, ")")?; }
+                                        write!(out, ".as_str()")?;
+                                    } else {
+                                        write!(out, "format!(\"{{}}\", ")?;
+                                        self.expr(recv2, out)?;
+                                        write!(out, ").as_str()")?;
+                                    }
+                                    m_str_stringified_here = true;
+                                }
+                            }
+                        }
                         // Plan 390 §11 Phase E (D-A2): wrap spec-param args in
                         // Box::new. A spec-bound ident (already Box<dyn Trait>,
                         // e.g. from `Some(prof)`) is cloned to stay usable; any
@@ -8369,7 +8419,8 @@ impl RustTrans {
                             && self.receiver_elem_is_json_value(object)
                         {
                             self.emit_json_macro(expr, out)?;
-                        } else {
+                        } else if !m_str_stringified_here {
+                            // Plan 514 W3-15: `.str()` 分支已完整发射本实参。
                             self.expr(expr, out)?;
                         }
                         if is_method_spec_param {
@@ -8409,23 +8460,7 @@ impl RustTrans {
                             }
                         }
                         // Auto-borrow: add .as_str() when passing String to &str method param
-                        // For module calls (obj_is_type_chain), flags[i] directly maps to arg[i].
-                        // For object method calls, try flags[i+1] since flags may include self.
-                        let is_str_param = if obj_is_type_chain {
-                            method_str_flags.as_ref()
-                                .and_then(|f| f.get(i))
-                                .copied()
-                                .unwrap_or(false)
-                        } else {
-                            method_str_flags.as_ref()
-                                .and_then(|f| f.get(i))
-                                .copied()
-                                .unwrap_or(false)
-                            || method_str_flags.as_ref()
-                                .and_then(|f| f.get(i + 1))
-                                .copied()
-                                .unwrap_or(false)
-                        };
+                        // (is_str_param 已在循环体首上提——Plan 514 W3-15)
                         // Plan 371 (defect C): the i+1 lookahead above reads the
                         // NEXT param's flag, which wrongly flags enum/struct args
                         // as str params. Guard: only auto-borrow when the arg is
@@ -8466,6 +8501,7 @@ impl RustTrans {
                             };
                         if is_str_param
                             && arg_is_str_like
+                            && !m_str_stringified_here
                             // Plan 514 W3:字符串字面量本身就是 &str——
                             // 追加 .as_str() 触发 E0658(str_as_str 未稳定);
                             // 自由函数环 is_string_literal_arg 同款排除。
@@ -19393,20 +19429,24 @@ impl RustTrans {
         let lines: Vec<&str> = content.lines().collect();
         let mut result = String::with_capacity(content.len());
 
-        // Find &str function parameters (from fn signatures)
+        // Plan 514 W3-15: &str 参数按**当前函数**作用域收集——原全文件
+        // 名字池让跨函数同名局部误伤(短名单 d/e/g/... 撞 loop_exit 的
+        // i64 局部 d,`self.loop_depth = d;` 被追加 .to_string() E0308)。
+        // 发射产物签名单行,行进时遇 fn 头行重置即可。
+        let sig_re = cached_regex(r#"fn \w+\([^)]*\)"#).unwrap();
+        let param_re = cached_regex(r#"fn \w+\([^)]*(\w+):\s*&str"#).unwrap();
         let mut str_params = std::collections::HashSet::new();
-        if let Some(re) = cached_regex(r#"fn \w+\([^)]*(\w+):\s*&str"#) {
-            for line in &lines {
-                for caps in re.captures_iter(line) {
+
+        for line in &lines {
+            let mut new_line = line.to_string();
+            if sig_re.is_match(line) {
+                str_params.clear();
+                for caps in param_re.captures_iter(line) {
                     if let Some(m) = caps.get(1) {
                         str_params.insert(m.as_str().to_string());
                     }
                 }
             }
-        }
-
-        for line in &lines {
-            let mut new_line = line.to_string();
 
             // Pattern: .push(param) where param is &str → .push(param.to_string())
             for param in &str_params {
