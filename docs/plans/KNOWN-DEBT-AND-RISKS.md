@@ -754,6 +754,12 @@
   类名 `\0` 转义 bug（非 NUL 终止，RegisterClassW 靠未定义读界）；
   drawlist-renderer package.json 漏提交（508 期 manifest 不在库，
   vitest 验证命令不可复现已补齐）。
+- **P515-R1 vue 壁纸层渲染级对拍缺位（复审登记）**：515 交付的壁纸层
+  验证止于 token/markup 级（scrim 双段类名与 VM pct 常量同源钉 + 三档/
+  层序/转义单测）；渲染级截图对拍与 vitest 组件测未做——根因=vue 桌面
+  宿主（生成项目）无 in-repo 视觉证据通道与测试装配（505 验收通道仅
+  覆盖 iced 轨）。触发=vue 桌面宿主证据通道落地（与 D6 vue 远程形态
+  同源），届时补双轨壁纸截图对拍。
 - **新观察（pre-existing，非本计划引入，供复审/后续定界）**：
   ①`style_migration_probe` 基线即红（token `underline` 上游已能解析
   但 449 迁移表标注 gap——测试自述"更新 MIGRATION.md 支持度列并翻
