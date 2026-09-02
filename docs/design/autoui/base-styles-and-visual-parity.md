@@ -74,6 +74,45 @@ When no custom `style` or `class` is specified in AutoUI source files, form elem
 
 ---
 
+## 4.5 Markdown Renderer Internal Block Rhythm（markdown 块间节奏，2026-09-02 新增）
+
+> 来源：auto-musk PLAN-056 T6（Block 全家福演示实机对拍）。`.at` 视图无法表达
+> 第三方/内置 markdown 渲染器的内部 DOM，故本节为**默认样式规约**：Vue 侧已在
+> musk `inject_styles.web-only.ts` 实现，VM 侧 markdown 渲染器按本节对齐。
+
+**规约**：markdown 渲染输出的相邻顶层块之间保持 `0.75rem`（12px）垂直间距。
+
+- Vue 实现锚点：`.streaming-document .markdown-renderer > .node-slot + .node-slot { margin-top: 0.75rem }`
+  （`@autodown/vue` 0.2.0 快照缺 markstream 的 slot 间距段，且宿主 tailwind preflight
+  清零元素默认 margin，必须显式补齐；上游自带的相邻 slot 内容边缘剥边规则
+  `:first-child{margin-top:0!important}` / `:last-child{margin-bottom:0!important}`
+  继续防止双倍间距）。
+- VM 实现方向：markdown 渲染器逐块排版时，块与块之间留 12px 垂直间距（首块前/
+  末块后不加），等价 Visual Parity。
+- 段内行距不受影响：`p` 内部行距 `leading-7`、段落自身 `margin: .5rem 0`（vendor
+  自带）维持现状。
+
+## 4.6 Markdown Renderer Dark Theme Color Mapping（markdown 暗色主题，2026-09-02 登记）
+
+> 来源：auto-musk PLAN-054 B1 + PLAN-056（`.dark` 对拍现场）。vendor style.css
+> 硬编码浅色 token，暗色主题下必须改挂主题变量。
+
+**规约**（`.dark` 域内）：
+
+| 元素 | 颜色 |
+| :--- | :--- |
+| 正文 / 标题 h1-h3 / 表格单元格 td,th / 代码块内文字 / details summary | 主题 `--foreground` |
+| 表格表头 th、代码块 pre 背景 | 主题 `--muted`（约 50% 透明度叠加） |
+| 行内 code 背景 | `--muted / 0.5`，边框 `--border` |
+| blockquote 边框 | `--border`，文字 `--foreground` |
+| admonition | 保色相、明度降至暗底可读 |
+
+Vue 实现锚点：musk `inject_styles.web-only.ts` `.dark .streaming-document …` 规则组
+（vendor scoped data-attr 特异性打平，靠注入顺序取胜）。VM 实现：按同一映射挂
+VM 主题 token。
+
+---
+
 ## 5. Multi-Backend Implementation Architecture
 
 ### 5.1 Vue / Web Implementation
