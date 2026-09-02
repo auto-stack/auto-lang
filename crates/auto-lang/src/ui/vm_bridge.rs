@@ -1130,7 +1130,22 @@ impl VmBridge {
         // Value::Int(idx)（低层裸约定），computed/prop 位置的字符串返回值
         // （musk msgTimeLabel/render_mentions_default/html 转义链）落到
         // builder 后被当作整数显示/判空，正文整体丢失。
-        let out = if auto_val::is_string(nv) {
+        let out = self.decode_task_result_nv(nv);
+        // PLAN-051 C3: 返回值为堆引用(ListData/VmRef)时 retain——RET 弹栈
+        // 即释放引用,Rust 侧持有的裸 id 会被 RC 回收成悬挂(实机:chatSearchFilter
+        // 返回的列表在 for 回退解引用前对象已消失→rows=0)。v1 暂不配对释放
+        // (computed 每帧新建列表,语义属上游 per-frame 生命周期,债登记 T11)。
+        self.retain_heap_result(&out);
+        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+            eprintln!("[VM-CALLFN] {} args={:?} -> {:?}", fn_name, args, out);
+        }
+        Ok(out)
+    }
+
+    /// Decode a popped return NV into a Rust Value with the P-053-6 string
+    /// fix (string returns must not degrade to pool-index Ints).
+    fn decode_task_result_nv(&self, nv: auto_val::NanoValue) -> Value {
+        if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv) as u32;
             match self.vm.get_string(idx) {
                 Some(bytes) => Value::Str(String::from_utf8_lossy(&bytes).into()),
@@ -1138,19 +1153,38 @@ impl VmBridge {
             }
         } else {
             nv_to_pub_value(nv)
-        };
-        // PLAN-051 C3: 返回值为堆引用(ListData/VmRef)时 retain——RET 弹栈
-        // 即释放引用,Rust 侧持有的裸 id 会被 RC 回收成悬挂(实机:chatSearchFilter
-        // 返回的列表在 for 回退解引用前对象已消失→rows=0)。v1 暂不配对释放
-        // (computed 每帧新建列表,语义属上游 per-frame 生命周期,债登记 T11)。
-        match &out {
+        }
+    }
+
+    /// PLAN-051 C3: retain heap-referenced results (RET pops the caller's
+    /// stake; an unretained id would be RC-freed into a dangling ref).
+    fn retain_heap_result(&self, out: &Value) {
+        match out {
             Value::Int(id) if *id >= 4_000_000 => { self.vm.rc_retain_id(*id as u64); }
             Value::VmRef(r) => { self.vm.rc_retain_id(r.id as u64); }
             _ => {}
         }
-        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
-            eprintln!("[VM-CALLFN] {} args={:?} -> {:?}", fn_name, args, out);
+    }
+
+    /// Plan 448 H2: execute a block-bodied computed's hidden fn
+    /// (`__computed_<Widget>_<Prop>`) against the ROOT state object — the
+    /// same receiver convention handler dispatch uses. The fn is synthesized
+    /// alongside handlers in `synthesize_widget_module` /
+    /// `synthesize_from_decl`; statement semantics (let scoping, sequencing)
+    /// come from the VM itself.
+    pub fn call_computed_fn(&self, widget_name: &str, computed_name: &str) -> Result<Value> {
+        let fn_name = crate::ui::handler_codegen::computed_fn_name(widget_name, computed_name);
+        if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
+            return Err(VmBridgeError::HandlerNotFound(fn_name));
         }
+        let mut task = AutoTask::new(0, 4096, 0);
+        self.vm.rc_push_id(&mut task, self.state_obj_id()); // Plan 419
+        self.vm
+            .call_fn_by_name(&mut task, &fn_name, 1)
+            .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
+        let nv = task.ram.pop_nv();
+        let out = self.decode_task_result_nv(nv);
+        self.retain_heap_result(&out);
         Ok(out)
     }
 

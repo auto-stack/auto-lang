@@ -7652,6 +7652,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             | Expr::Float(_, _) | Expr::Double(_, _) => "number".to_string(),
             Expr::Bool(_) => "boolean".to_string(),
             Expr::Str(_) | Expr::CStr(_) => "string".to_string(),
+            // Plan 448 H1: a block-bodied computed's type is its trailing
+            // expression's type (the value `transpile_body_as_return`
+            // returns) — previously every block computed fell to `<any>`.
+            Expr::Block(body) => match body.stmts.last() {
+                Some(crate::ast::Stmt::Expr(tail)) => self.expr_to_ts_type(tail),
+                _ => "any".to_string(),
+            },
             Expr::Ident(name) => {
                 let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
                 // Prefer declared prop/state types over name heuristics.
@@ -8311,6 +8318,12 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // so we emit `{ stmts; return tail; }` to produce a valid statement
             // arrow-body. Reuse the handler-body transpiler (same state/prop
             // rewriting rules) so the body sees `state.value` etc.
+            // Plan 448 H1: the tail-return half was aspirational until now —
+            // transpile_handler_body rendered the trailing expression as a
+            // bare statement (computed yielded undefined; 018-book-reader's
+            // NOTE was right). transpile_body_as_return (Plan 043 H1) turns
+            // the trailing expression statement into `return e;`; a block
+            // that already ends in an explicit `return` renders unchanged.
             Expr::Block(body) => {
                 let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
                     .with_props(self.prop_names.iter().cloned().collect())
@@ -8324,7 +8337,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     .with_typed_ints(self.int_names.iter().cloned().collect())
                     .with_facade_names(self.facade_local_names())
                     .with_facade_ref_fields(self.facade_ref_fields_map());
-                let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
+                let body_js = crate::ui_gen::ts_adapter::transpile_body_as_return(&body.stmts, &ctx);
                 self.drain_ctx_warnings(&ctx);
                 Ok(format!("{{ {} }}", body_js.trim()))
             }
@@ -18135,6 +18148,46 @@ widget Icon(language: str) {
         assert!(
             sfc.contains("const full = computed<string>(() => 'data:' + props.language)"),
             "string concat must infer string:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 448 H1: a block-bodied computed returns its trailing expression
+    /// (`transpile_body_as_return`), infers the tail's TS type, and keeps an
+    /// explicit trailing `return` unchanged. Previously the block rendered
+    /// via transpile_handler_body — the tail was a bare statement, so every
+    /// block computed yielded `undefined` with `computed<any>` (the
+    /// 018-book-reader NOTE).
+    #[test]
+    fn test_computed_block_body_returns_tail() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var w int = 3 }
+    computed {
+        doubled => {
+            let base = .w * 2
+            base + 1
+        }
+        labeled => {
+            return "v=" + .doubled
+        }
+    }
+    view { col { text `d: ${.doubled}` } }
+}
+"#);
+        assert!(
+            sfc.contains("return base + 1;"),
+            "trailing expression becomes the return value:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("computed<number>"),
+            "block type inferred from the tail expression (was <any>):\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("return 'v=' +"),
+            "explicit trailing return renders unchanged:\n{}",
             sfc
         );
     }
