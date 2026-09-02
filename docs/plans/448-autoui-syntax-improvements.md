@@ -121,7 +121,7 @@ gallery_golden 1、ui_snapshots 3、auto-man 229 绿。
 | E | str 充当 bool/状态机（根因：watch 无 immediate 的规避 + 作者惯性） | 📋 观察（§6） |
 | F | 手工展开的标量列表族（能力已存在，纯语料迁移） | 📋 观察（§6） |
 | G | registry 组件输入协议与裸 value 语义不一致 | 📋 观察（§6） |
-| H | computed 块体/派生态短板——handler 内重复重算的根因 | 📋 已登记（§7） |
+| H | computed 块体/派生态短板——已裁决分 H1/H2/H3 三阶段（H3 独立立项） | 🟡 H1/H2 实施中（§7） |
 | I | grid `cols:`/`gap:` 动态值——038 三份 48 行棋盘块的存在原因 | 📋 已登记（§8） |
 
 条目 A/B 相互独立可分别实施；B 实施后简单 widget 可完全不写 msg/on
@@ -547,13 +547,53 @@ widget App {
   M5 #2 声称发 `{ stmts; return tail; }`（复用 transpile_handler_body），
   与 018 注记矛盾——实施时先裁决注释与实现孰新。
 
-### H.2 方向草图（未裁定）
+### H.2 裁决记录（2026-09-02 探针实证）+ 分阶段方案
 
-- (a) computed 多语句体 return 语义修复（若 018 注记仍真）+ 依赖追踪
-  （Vue computed 天然响应式；VM 侧需脏标记或每次重求值）。
-- (b) 模块级 helper fn 进 vue SFC（437 §0.6.E-3 的债）——治 025 的
-  复制粘贴重算。
-- (c) `watch … immediate` 语义（顺带治 E 的 025 规避）。
+**裁决结论：018 注记正确，M5#2 注释与实现脱节；两侧各断一处且修法不同。**
+
+- **Vue 侧（一行修）**：`expr_to_js` 的 `Expr::Block` 臂注释声称产物
+  `{ stmts; return tail; }`，但调用的是 `transpile_handler_body`（原样
+  渲染语句，**从不生成 return**）；真正实现"尾表达式语句转
+  `return e;`"的 `transpile_body_as_return`（Plan 043 H1 为 IIFE 建）
+  在同文件从未被用上。探针实证（`doubled => { let base = .w * 2;
+  base + 1 }`）产物为 `computed<any>(() => { let base…; base + 1; })`
+  ——尾语句是裸表达式，**恒 undefined**。次要发现：块体形态类型推断
+  落 `computed<any>`（`expr_to_ts_type` 无 Block 臂）。
+- **VM 侧（中等工程）**：`eval_computed → resolve_expr_to_value` 的
+  匹配**没有 `Expr::Block` 臂**——探针实证块体 computed 求值直接
+  `None`（渲染为空）。不能照抄一行修：VM 求值器是纯表达式求值器，
+  块体的 `let` 作用域/语句序列需要真执行语义。
+- **第三条腿（修好块体也解锁不了 016/025）**：016 的
+  `days = build_month_grid(…)` 是**单表达式** computed（今天语法就支持），
+  真实障碍是 437 §0.6.E-3——模块级 helper fn 不进生成的 vue SFC，
+  computed 内调用在 Vue 侧无函数可调。
+
+**Phase 切分：**
+
+- **H1（Vue 块体，小）**：Block 臂换 `transpile_body_as_return`（其
+  边界语义现成：尾语句非表达式时维持 undefined，有文档）；
+  `expr_to_ts_type` 补 Block 臂（委托尾表达式推断，消除 `<any>`）；
+  vue 单测断言 `return` 与类型。018 两条 NOTE 形态即可改写验证。
+- **H2（VM 块体，中）**：复用 handler 编译机制——为块体 computed
+  合成 `fn __computed_<Widget>_<name>(__state AppState)`（体=块语句 +
+  `rewrite_state_refs` + 尾表达式语句转 `Stmt::Return`），随
+  `synthesize_widget_module`（及 decl 孪生路径）进同一 VM 模块；
+  `VmBridge::call_computed_fn`（state 经 `rc_push_id` 压栈，结果解码
+  复用 `call_vm_fn` 尾部的字符串解码 + 堆引用 retain 语义）；
+  `eval_computed` 的 Block 分支走该调用（fn 缺失时回落 None 保持
+  旧降级）。单测：parse→bridge→eval 真链路 + 状态翻转重求值。
+- **H3（helper fn 进 SFC，大——独立立项，不入 448）**：016/025 的
+  重算消除依赖此件；涉及 use 导入 fn 的提取/发射策略与
+  PLAN-051 C3 的 VM 侧 fn 别名机制对齐，建议另开计划。
+- **边界**：尾语句非表达式（if/let 收尾）时两侧维持 undefined/None
+  （文档化语义，与 `transpile_body_as_return` 一致）；computed 内
+  API 调用（018 实际形态）本就不适合 computed（异步），不在范围。
+
+### H.3 方向草图（原登记，保留对照）
+
+- (a) computed 多语句体 return 语义修复 —— 已裁决并入 H1/H2。
+- (b) 模块级 helper fn 进 vue SFC（437 §0.6.E-3 的债）—— H3。
+- (c) `watch … immediate` 语义（顺带治 E 的 025 规避）——未裁决，仍留。
 - 与 store 模式（013/015/018 的 use xxx_store）的关系需先裁定：派生态
   归 computed 还是归 store 方法。
 
