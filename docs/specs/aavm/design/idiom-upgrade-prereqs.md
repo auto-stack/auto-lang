@@ -244,3 +244,15 @@ Plan 447(aavm-prerequisites;三份合并为一,顺序推进):
   差异台账(§5 的展开版);
 - 相关既有文档:`divergences.md`(26 类登记)、`divergence-rules.md`(§4 编码规范)、
   `docs/plans/242-a2r-feature-gap-tracker.md`、`KNOWN-DEBT-AND-RISKS.md:112-113`。
+
+## 状态注记（Plan 514，2026-09-02）
+
+- **W5（方法族发射）✅ 完成**：主 a2r ext_decl/fn_decl 方法族 + AA2R
+  ar_prescan_type/ar_emit_method2 双侧落地；lib 方法化 γ4 全量收编
+  （P/CG/Ar 65 方法入 type 体，见 divergences.md D-methodized 与
+  divergence-rules.md §4b）；塔顶验证=方法化 AA2R 自己转译自己
+  rustc 零错（447 系列 G2 自举演示的方法化版）。
+- **W3（流式链糖）裁定**：换行流式链糖**移除**（P514-W3-1，用户裁定
+  2026-09-02）——句首 `.method()` 语句不再自动合并，改报语法错；
+  多行链用管道算子 `|>`（W5 管道批同期落地）。
+- **W6（闭包/迭代器链）**：确认不做（divergence 登记，同 D-ext-trait）。
