@@ -34,6 +34,8 @@ members = [
     "plan-051-dev-back",
     "plan-052-dev-back",
     "plan-053-dev-back",
+    "plan-055-dev-back",
+    "plan-056-dev-back",
     "poc-hello-back",
     "pricing-table",
     "profile-card",

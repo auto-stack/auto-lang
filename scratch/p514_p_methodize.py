@@ -94,7 +94,7 @@ new_type = """type P {
         var count = 0
         while .kind() == TokenKind.Newline {
             count = count + 1
-            .next()
+            self.next()
         }
         return count
     }

@@ -1,18 +1,17 @@
 ---
 plan_id: PLAN-522
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: helper-fn-into-vue-sfc（模块级 helper fn 进 vue SFC）
 author: [zhaopuming]
 created_at: 2026-09-02
 updated_at: 2026-09-02
 
-# /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+# /auto-plan:review 结束时填写：supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui_gen]   # vue 生成器 + 可能的 use_scanner 消费接线
-current_step: 0
+current_step: 4
 total_steps: 6
 ---
 
@@ -127,13 +126,58 @@ widget 生成期收集 computed/handler 体引用的 use 导入符号
 
 1. T1：符号收集 + fn 拉取闭包（vue.rs + use_scanner 接线）→ 单测：
    被引 fn 发射/未引不发射/闭包双发。
+   [✅ 已完成] worktree 提交 41e0039c7：VueGenerator 增 use_module_fns 池 +
+   use_imported_names 导入门；collect_called_bare_names_* walker；
+   入口门控+闭包不动点+script 尾部发射；api.rs collect_use_module_fns
+   文件系统集成（auto run 管线两处 gen 构造接线）。7 测试绿（含真实
+   文件系统端到端），vue 模块 267 测试回归零失败。
 2. T2：TS 发射 + 去重/ext_imports 优先级/转译失败回退 → 单测三态。
+   [✅ 已完成] ext_imports 同名静默抑制（手写优先）；命名冲突 R013 警告+
+   跳过；use_fn_body_unsupported 预扫描（is/cover 模式匹配+借用语义 →
+   R013+回退现状）；去重锁定。11 plan522 测试 + vue 模块 271 回归全绿。
+   worktree 提交见 plan-522-dev 分支。
 3. T3：016 语料迁移（computed 化）+ 双端对拍（Vue 构建 + VM MCP
    snapshot 三档棋盘 81/256/480 与 month_label）。
+   [✅ 已完成] month_label/days 改 widget computed（use calendar_util 导入，
+   调用点零改写）；store 删 .Rebuild 重算链；day_style 对齐 016 cell_class；
+   顺手修既有 vue-tsc TS2322（variant text→ghost）；发射改
+   transpile_body_as_return（尾表达式 return 化，修 is_leap 谓词类）；
+   aura_view_builder 三处 for 解析补 PLAN-051 C3 computed 回退
+   （convert_node_with/for_loop_iterations/tracked grid）；vm_bridge 三个
+   016 耦合测试重写为生产路径（修复 store 重构以来三个既有红）。
+   双端对拍：VM MCP 14/14 + Vue Playwright 10/10（June/July/May 三种
+   形态月份棋盘 + Today/翻月行为一致），vue-tsc 零错 + vite build 通过。
+   注：「三档棋盘 81/256/480」字面数值未在仓内找到出处，按三种不同
+   形态月份（不同 offset/月长）+ 行为一致性执行，见待澄清事项。
 4. T4：（尽力）024 donut helper 恢复或边界记录。
+   [✅ 已完成（超出尽力项：完整恢复）] chart_geom.at 模块 + donut Init 的
+   dc/ds helper 形态回正（437 §0.6.E-3 绕过点）。配套接线：引用收集补
+   lifecycle 体（.Init→onMounted 漏扫）；collect_use_module_fns 转 pub +
+   auto-man components/ 通道挂回池；VM 装载收集包组件文件 use 依赖+别名
+   （lib.rs 与 plan370_test_support 镜像同步）；nv_to_pub_value 补 f32/f64
+   解码臂。验证：Vue vue-tsc 零新增错（024 图表族 50 个既有错不在本计划
+   范围）；VM dc(0)=1/ds(1)=sin(1) 单测锁 + 渲染与 master 基线一致。
 5. T5：全量回归（默认 lib/ui-iced/gallery_golden/vue_capabilities/
    docs_gen）+ master 基线对照。
+   [✅ 已完成] worktree re-sync 到最新 master（e6885460b，Plan 518/519
+   并行成果并入，零冲突）。全量日常档（lib + ui-iced + schema_drift +
+   docs_gen + component_registry）4426/4428 绿；gallery_golden 1/1 绿；
+   vue 模块全绿（含于全量）。2 失败均为 master 既有（当前 master
+   e6885460b 实证复现）：plan370 d8_toggle_dark_mode（015 暗色初值）、
+   plan055 strips_tags（双空格）——零新增失败。执行期基线甄别记录：
+   style_migration_probe 在本 worktree 基线（508cedcf5）为预存红，
+   master 侧 Plan 518（496032e21）已修，merge 后转绿。
+   遗留债候选（供 /auto-plan:review 遗留扫描复核）：① 同文件
+   module_fns 发射与 store composable 路径仍用 transpile_handler_body
+   （尾表达式体丢 return——本计划仅修 use-fn 路径）；② 024 图表族
+   50 个既有 vue-tsc 错误（props 推断/timer any/currentTarget，非本
+   计划范围）；③ auto-man components/ 通道已挂 use-fn 池但同文件
+   module_fns 仍未挂；④ 两个 master 既有红测试（d8/strips_tags）。
 6. T6：复审（验收清单逐条 + 遗留扫描 + spec-impact 元数据）。
+   [➡️ 移交 /auto-plan:review] 按 auto-plan 四技能范式，独立复审是
+   execution_done 之后的独立技能会话（verify-don't-trust：执行者自审
+   违背独立门禁目的）。验收标准 1-3 的证据链与遗留债候选已随 T3/T4/T5
+   落档，供复审会话逐条核验。
 
 ## 风险
 
@@ -147,5 +191,13 @@ widget 生成期收集 computed/handler 体引用的 use 导入符号
   冲突即警告跳发（ext_imports 手写口兜底）。
 - **产物膨胀**：按需拉取（未引用不发射）控制面；同一 fn 被 ≥2 SFC
   引用时产物重复——阈值触发再演进方向 B（共享 utils 文件）。
+
+## 待澄清事项
+
+- T3 验证口径「三档棋盘 81/256/480」的字面数值在仓内（016 README/437 归档/
+  verifier 技能）均未找到出处。执行按精神等价落实：三种不同形态月份
+  （June 2026 offset=1 月长 30 / July offset=3 月长 31 / May）的 42 格棋盘
+  派生值双端对拍 + Today/翻月行为一致性。若 81/256/480 另有所指
+  （如特定年份月份探针或快照节点数基线），请指出后可补跑对应探针。
 
 ## 复审记录
