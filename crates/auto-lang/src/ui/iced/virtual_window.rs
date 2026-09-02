@@ -43,6 +43,25 @@ fn token(c: crate::ui::style::Color) -> Color {
         .unwrap_or(Color::from_rgb8(0x1E, 0x1E, 0x24))
 }
 
+/// Plan 518 G6：Transparency 三档 → 虚拟窗底色 alpha（off=0.95 / low=0.80 /
+/// high=0.62，初值实机可调）。决策纯函数；storage 键
+/// `shell.desktop.transparency` 缺席/坏值 = off。仅底色——chrome 圆点/
+/// 描边/文字不透明保可用性（计划条款）；每帧读键 = 设置面板写后下一帧
+/// 即时生效（壁纸键先例为 boot 读，此处面板同屏切换要求即时）。
+pub(crate) fn transparency_alpha_for(level: &str) -> f32 {
+    match level.trim() {
+        "low" => 0.80,
+        "high" => 0.62,
+        _ => 0.95,
+    }
+}
+
+pub(crate) fn load_transparency_alpha() -> f32 {
+    crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency")
+        .map(|v| transparency_alpha_for(&v))
+        .unwrap_or(0.95)
+}
+
 /// 桌面根：背景层 + 虚拟窗口 z-stack（back → front，调用方保证顺序）。
 pub fn desktop_root(
     layers: Vec<Element<'_, DesktopMessage>>,
@@ -136,14 +155,18 @@ pub fn virtual_window_element<'a>(
     .on_press(DesktopMessage::Wm(WmCommand::StartDrag { wid }));
 
     // --- 客户区（点击聚焦 + 阻断穿透；App 组件优先捕获不受影响）---
+    // Plan 518 G6：底色乘 Transparency 档位 alpha（内容文字照常绘制其上）。
+    let t_alpha = load_transparency_alpha();
+    let mut client_bg = token(crate::ui::style::Color::Background);
+    client_bg.a = t_alpha;
     let client_area = container(
         mouse_area(container(client).width(Length::Fill).height(Length::Fill))
             .on_press(DesktopMessage::Wm(WmCommand::Focus(wid))),
     )
     .width(Length::Fill)
     .height(Length::Fill)
-    .style(|_t| Style {
-        background: Some(token(crate::ui::style::Color::Background).into()),
+    .style(move |_t| Style {
+        background: Some(client_bg.into()),
         ..Default::default()
     });
 
@@ -168,12 +191,15 @@ pub fn virtual_window_element<'a>(
     } else {
         base_alpha
     };
+    // Plan 518 G6：窗体底色（Surface，标题栏带）同乘档位 alpha。
+    let mut win_surface = token(crate::ui::style::Color::Surface);
+    win_surface.a = t_alpha;
     let win_box = container(body)
         .width(Length::Fill)
         .height(Length::Fill)
         .clip(true)
         .style(move |_t| Style {
-            background: Some(token(crate::ui::style::Color::Surface).into()),
+            background: Some(win_surface.into()),
             border: Border {
                 color: if focused {
                     Color::from_rgba(accent.r, accent.g, accent.b, 0.6)
@@ -343,4 +369,24 @@ pub fn native_drag_over_element<'a>(rect: iced::Rectangle) -> Element<'a, Deskto
         .align_x(Alignment::Start)
         .align_y(Alignment::Start)
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Plan 518 G6 T1 决策单测:三档 alpha 映射 + 缺席/坏值回退 off。
+    /// 初值 off=0.95 / low=0.80 / high=0.62（实机调参时同步本表）。
+    #[test]
+    fn transparency_levels_map_to_alpha() {
+        assert_eq!(transparency_alpha_for("off"), 0.95);
+        assert_eq!(transparency_alpha_for("low"), 0.80);
+        assert_eq!(transparency_alpha_for("high"), 0.62);
+        // 容错:空/未知/带空白 → off。
+        assert_eq!(transparency_alpha_for(""), 0.95);
+        assert_eq!(transparency_alpha_for("bogus"), 0.95);
+        assert_eq!(transparency_alpha_for(" low "), 0.80, "首尾空白容忍");
+        // 键缺席 = off（load 路径)。
+        assert_eq!(load_transparency_alpha(), 0.95);
+    }
 }
