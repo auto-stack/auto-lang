@@ -1,0 +1,16 @@
+// Plan 514 W5: 管道算子 |> 基础形态（方法形/字段投影形/多行续行/同链对照）
+type Step16 {
+    v int
+    fn add(n int) Step16 { return Step16.new(.v + n) }
+    fn get() int { return .v }
+    static fn new(v int) Step16 { return Step16(v) }
+}
+fn main() {
+    print(Step16.new(1).add(2).add(3).get())
+    print(Step16.new(1) |> .add(2) |> .add(3) |> .get())
+    var x = Step16.new(5)
+    |> .add(3)
+    |> .add(10)
+    print(x.get())
+    print(x |> .v)
+}

@@ -610,6 +610,11 @@ fn tokenize(source str) List<Token> {
                     toks.push(Token(TokenKind.And, "&&", line, at, 2))
                     p = p + 2
                     at = at + 2
+                } else if c == '|' && cur_char(source, p + 1) == '>' {
+                    // Plan 514 W5: 管道算子 |>（贪婪两字符，镜像宿主 lexer）
+                    toks.push(Token(TokenKind.PipeGt, "|>", line, at, 2))
+                    p = p + 2
+                    at = at + 2
                 } else if c == '|' {
                     toks.push(Token(TokenKind.VBar, "|", line, at, 1))
                     p = p + 1

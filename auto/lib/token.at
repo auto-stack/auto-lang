@@ -51,6 +51,7 @@ enum TokenKind {
     RangeEq
     Colon
     VBar
+    PipeGt
     Amp
     CommentLine
     CommentContent
@@ -261,6 +262,7 @@ fn kind_name(k TokenKind) str {
         TokenKind.RangeEq -> "RangeEq"
         TokenKind.Colon -> "Colon"
         TokenKind.VBar -> "VBar"
+        TokenKind.PipeGt -> "PipeGt"
         TokenKind.Amp -> "Amp"
         TokenKind.CommentLine -> "CommentLine"
         TokenKind.CommentContent -> "CommentContent"

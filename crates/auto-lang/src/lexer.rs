@@ -1355,6 +1355,11 @@ impl<'a> Lexer<'a> {
                         self.chars.next(); // consume second '|'
                         return Ok(Token::new(TokenKind::Or, self.pos(2), "||".into()));
                     }
+                    // Plan 514 W5: `|>` 管道算子（贪婪两字符，镜像 ??/.? 先例）
+                    if self.peek('>') {
+                        self.chars.next(); // consume '>'
+                        return Ok(Token::new(TokenKind::PipeGt, self.pos(2), "|>".into()));
+                    }
                     return Ok(Token::new(TokenKind::VBar, self.pos(1), "|".into()));
                 }
                 '&' => {

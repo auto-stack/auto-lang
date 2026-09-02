@@ -1240,3 +1240,4 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_99_idiom2_d01_nested_fn_void() { test_vm("99_idiom2/d01_nested_fn_void").unwrap(); }
 #[test] fn test_99_idiom2_d01b_nested_fn_capture() { test_vm("99_idiom2/d01b_nested_fn_capture").unwrap(); }
 #[test] fn test_99_idiom2_d02_struct_misuse() { test_vm("99_idiom2/d02_struct_misuse").unwrap(); }
+#[test] fn test_99_idiom2_m10_pipe() { test_vm("99_idiom2/m10_pipe").unwrap(); }

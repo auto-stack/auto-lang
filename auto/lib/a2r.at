@@ -1324,6 +1324,26 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
     while a.err == "" && p.err == "" {
         var opk = p_kind(p)
         var is_post = 0
+        // Plan 514 W5:换行后行首 `|>` = 显式续行(镜像宿主 parser 的
+        // save/restore 探测;命中才吞换行——续行分隔非段落边界,格式无损)
+        if opk == TokenKind.Newline {
+            var pq = 1
+            var pscan = true
+            while pscan {
+                var pk2 = p_peek(p, pq)
+                if pk2 == TokenKind.Newline {
+                    pq = pq + 1
+                } else {
+                    pscan = false
+                    if pk2 == TokenKind.PipeGt && 2 >= min {
+                        while p_kind(p) == TokenKind.Newline {
+                            p_next(p)
+                        }
+                        opk = p_kind(p)
+                    }
+                }
+            }
+        }
         // P2:循环顶 token 分派 is 化(12 种界符臂内 break,含 Colon;
         // 镜像 Rust parser.rs:2425 的 match kind)
         is opk {
@@ -1423,6 +1443,52 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 cur_len = 0
                 cur_infer = 0
                 ended_field = 0
+                can_call = 0
+                is_post = 1
+            }
+            // Plan 514 W5:管道算子脱糖(镜像宿主 parser 专用臂)——
+            // cur |> .m(args) → cur.m(args);cur |> .f → cur.f(字段投影);
+            // 优先级 2(赋值之上比较之下),门控不足则 break。
+            if opk == TokenKind.PipeGt {
+                if 2 < min {
+                    break
+                }
+                p_next(p)
+                if p_kind(p) != TokenKind.Dot {
+                    ar_err(a, "expected `.method(...)` or `.field` after `|>`")
+                    break
+                }
+                p_next(p)
+                if !is_name_kind(p_kind(p)) {
+                    ar_err(a, "invalid name after pipe dot")
+                    break
+                }
+                var pw = p_text(p)
+                p_next(p)
+                if cur_prec < 90 {
+                    cur = f"(${cur})"
+                }
+                if p_kind(p) == TokenKind.LParen {
+                    cur = ar_method_call(a, p, cur, cur_ty, pw)
+                    cur_ty = a.ty
+                    cur_strk = a.strk
+                    cur_len = a.lenflag
+                    cur_infer = a.infer
+                } else {
+                    cur = f"${cur}.${pw}"
+                    if cur_ty != "" {
+                        cur_ty = ar_field_ty(a, ar_base_ty(cur_ty), pw)
+                    }
+                    if cur_ty == "str" {
+                        cur_strk = 3
+                    } else {
+                        cur_strk = 0
+                    }
+                    cur_infer = 0
+                    cur_len = 0
+                    ended_field = 1
+                }
+                cur_prec = 100
                 can_call = 0
                 is_post = 1
             }
