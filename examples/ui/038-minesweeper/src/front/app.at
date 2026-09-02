@@ -65,58 +65,24 @@ widget App {
                 }
 
                 // —— 棋盘网格 ——
-                // 用条件 grid(每档固定字面量 cols),因为两个后端都不支持动态 cols:
-                //   vue codegen 的 cols 只接受字面量(→ grid-cols-N Tailwind class)
-                //   VM 的 extract_u16 也只接受字面量(→ View::Grid{cols})
-                // 且 VM 原生渲染器不解析 CSS grid-template-columns,必须用 grid 元素。
+                // Plan 448 I: cols 接受动态表达式(store.cols 随难度档 9/16/30),
+                // 单块替换原先三份固定字面量条件块。vue 侧发内联
+                // grid-template-columns repeat 样式(动态 Tailwind 类名不被
+                // JIT 收录);VM 侧重建期求值(→ View::Grid{cols})。
                 div {
-                    if .store.difficulty == "beginner" {
-                        grid {
-                            for cell in .store.board {
-                                button {
-                                    text cell.display {
-                                        style: cell.number_class
-                                    }
-                                    onclick: .Reveal(cell.x, cell.y),
-                                    oncontextmenu.prevent: .Flag(cell.x, cell.y),
-                                    class: cell.cell_class
+                    grid {
+                        for cell in .store.board {
+                            button {
+                                text cell.display {
+                                    style: cell.number_class
                                 }
+                                onclick: .Reveal(cell.x, cell.y),
+                                oncontextmenu.prevent: .Flag(cell.x, cell.y),
+                                class: cell.cell_class
                             }
-                            cols: 9
-                            gap: 0
                         }
-                    }
-                    if .store.difficulty == "intermediate" {
-                        grid {
-                            for cell in .store.board {
-                                button {
-                                    text cell.display {
-                                        style: cell.number_class
-                                    }
-                                    onclick: .Reveal(cell.x, cell.y),
-                                    oncontextmenu.prevent: .Flag(cell.x, cell.y),
-                                    class: cell.cell_class
-                                }
-                            }
-                            cols: 16
-                            gap: 0
-                        }
-                    }
-                    if .store.difficulty == "expert" {
-                        grid {
-                            for cell in .store.board {
-                                button {
-                                    text cell.display {
-                                        style: cell.number_class
-                                    }
-                                    onclick: .Reveal(cell.x, cell.y),
-                                    oncontextmenu.prevent: .Flag(cell.x, cell.y),
-                                    class: cell.cell_class
-                                }
-                            }
-                            cols: 30
-                            gap: 0
-                        }
+                        cols: .store.cols
+                        gap: 0
                     }
                     style: "items-center"
                 }

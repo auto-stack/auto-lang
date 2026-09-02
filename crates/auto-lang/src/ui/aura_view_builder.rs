@@ -1624,9 +1624,13 @@ impl<'a> AuraViewBuilder<'a> {
         let cols = self
             .extract_u16(props, "cols")
             .or_else(|| self.extract_u16(props, "columns"))
+            .or_else(|| self.eval_u16_prop(props, "cols", bindings))
             .map(|c| (c as usize).max(1))
             .unwrap_or(1);
-        let gap = self.extract_u16(props, "gap").unwrap_or(0);
+        let gap = self
+            .extract_u16(props, "gap")
+            .or_else(|| self.eval_u16_prop(props, "gap", bindings))
+            .unwrap_or(0);
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         // Plan 412 F1/F5: 语义 grid 元素的 class 里出现 grid-cols-N / gap-N 时
@@ -4299,9 +4303,13 @@ let tabs_inner = View::Row {
         let cols = self
             .extract_u16(props, "cols")
             .or_else(|| self.extract_u16(props, "columns"))
+            .or_else(|| self.eval_u16_prop(props, "cols", bindings))
             .map(|c| (c as usize).max(1))
             .unwrap_or(1);
-        let gap = self.extract_u16(props, "gap").unwrap_or(0);
+        let gap = self
+            .extract_u16(props, "gap")
+            .or_else(|| self.eval_u16_prop(props, "gap", bindings))
+            .unwrap_or(0);
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         // Plan 412 F1/F5: class 里的 grid-cols-N / gap-N 优先于 prop(同 tracked 版)。
@@ -7825,6 +7833,30 @@ let tabs_inner = View::Row {
         }
     }
 
+    /// Plan 448 I: dynamic grid `cols:`/`gap:` — a non-literal expression
+    /// evaluates per view rebuild (state changes re-run the build, the same
+    /// cycle style props ride). Literals stay on `extract_u16` (no eval
+    /// churn); eval failure or out-of-range falls through to the caller's
+    /// default (cols 1 / gap 0) instead of clamping garbage.
+    fn eval_u16_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> Option<u16> {
+        let AuraPropValue::Expr(expr) = props.get(key)? else {
+            return None;
+        };
+        match expr {
+            Expr::Int(_) | Expr::Float(..) | Expr::Double(..) => None,
+            other => match self.resolve_expr_to_value(other, bindings) {
+                Some(Value::Int(i)) if i >= 0 && i <= u16::MAX as i32 => Some(i as u16),
+                Some(Value::Float(f)) if f >= 0.0 && f <= u16::MAX as f64 => Some(f as u16),
+                _ => None,
+            },
+        }
+    }
+
     /// Extract a bool property from AuraNode props.
     fn extract_bool(
         &self,
@@ -8364,6 +8396,79 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
+        }
+    }
+
+    /// Plan 448 I: grid `cols:` dynamic values. A non-literal expression
+    /// evaluates per rebuild through the state resolver (the same cycle
+    /// style props ride); literals keep the zero-eval `extract_u16` path;
+    /// an unresolvable expression falls to the 1-column default instead of
+    /// clamping garbage.
+    #[test]
+    fn plan448_grid_dynamic_cols_resolution() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "widget App {\n",
+            "    model { var n int = 3 }\n",
+            "    view { col { text \"x\" {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let children = vec![AuraNode::Text(AuraTextContent::Literal("x".into()))];
+        let dyn_cols = crate::ast::Expr::Dot(
+            Box::new(crate::ast::Expr::Ident("self".into())),
+            "n".into(),
+        );
+
+        let mut props: HashMap<String, AuraPropValue> = HashMap::new();
+        props.insert(
+            "cols".to_string(),
+            AuraPropValue::Expr(dyn_cols.clone()),
+        );
+
+        // Dynamic: initial state n = 3.
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        match builder.convert_grid(&props, &children, &Bindings::new()) {
+            View::Grid { cols, .. } => assert_eq!(cols, 3, "dynamic cols from state"),
+            other => panic!("expected Grid, got {other:?}"),
+        }
+
+        // Dynamic: flipped state n = 16 (038 difficulty switch shape).
+        let mut bridge2 = VmBridge::new(&widget).unwrap();
+        bridge2.write_state("n", auto_val::Value::Int(16)).unwrap();
+        let builder2 = AuraViewBuilder::new(&bridge2, "App");
+        match builder2.convert_grid(&props, &children, &Bindings::new()) {
+            View::Grid { cols, .. } => assert_eq!(cols, 16, "dynamic cols follows state"),
+            other => panic!("expected Grid, got {other:?}"),
+        }
+
+        // Literal path unchanged.
+        props.insert(
+            "cols".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(7)),
+        );
+        match builder2.convert_grid(&props, &children, &Bindings::new()) {
+            View::Grid { cols, .. } => assert_eq!(cols, 7, "literal cols"),
+            other => panic!("expected Grid, got {other:?}"),
+        }
+
+        // Unresolvable expression → 1-column default (no clamp of garbage).
+        props.insert(
+            "cols".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("missing_field".into())),
+        );
+        match builder2.convert_grid(&props, &children, &Bindings::new()) {
+            View::Grid { cols, .. } => assert_eq!(cols, 1, "eval failure defaults to 1"),
+            other => panic!("expected Grid, got {other:?}"),
         }
     }
 

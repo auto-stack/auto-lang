@@ -9857,21 +9857,38 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
 
             "grid" => {
                 let mut classes = vec!["grid".to_string()];
+                // Plan 448 I: dynamic cols/gap expressions bind the
+                // equivalent inline styles. A dynamic Tailwind class name
+                // (`grid-cols-${n}`) is invisible to JIT scanning and
+                // silently does nothing — this literal-only support is what
+                // forced 038-minesweeper's three per-difficulty grid blocks.
+                let mut inline_style_parts: Vec<String> = Vec::new();
                 // cols prop → grid-template-columns
                 if let Some(value) = props.get("cols") {
                     if let Some(n) = self.extract_int_value(value) {
                         classes.push(format!("grid-cols-{}", n));
+                    } else if let AuraPropValue::Expr(expr) = value {
+                        if let Ok(js) = self.expr_to_vue_bound_value(expr) {
+                            inline_style_parts.push(format!(
+                                "'grid-template-columns: repeat(' + ({js}) + ', minmax(0, 1fr))'"
+                            ));
+                        }
                     }
                 }
                 // gap prop — Plan 412 F5: grid 的 gap prop 语义是像素(与 VM 的
                 // convert_grid 一致;row/col 的 gap prop 是 Tailwind 单位、str 传入)。
-                // px/4 整除 → gap-N 单位类,否则 gap-[Npx] arbitrary。
+                // px/4 整除 → gap-N 单位类,否则 gap-[Npx] arbitrary;
+                // 表达式 → 动态内联 gap 样式(Plan 448 I)。
                 if let Some(value) = props.get("gap") {
                     if let Some(n) = self.extract_int_value(value) {
                         if n >= 0 && n % 4 == 0 {
                             classes.push(format!("gap-{}", n / 4));
                         } else {
                             classes.push(format!("gap-[{}px]", n));
+                        }
+                    } else if let AuraPropValue::Expr(expr) = value {
+                        if let Ok(js) = self.expr_to_vue_bound_value(expr) {
+                            inline_style_parts.push(format!("'gap: ' + ({js}) + 'px'"));
                         }
                     } else {
                         classes.push("gap-4".to_string());
@@ -9886,6 +9903,21 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
+                if !inline_style_parts.is_empty() {
+                    // Merge into an existing :style if one is present (the
+                    // grid arm itself emits none today; defensive only).
+                    let joined = inline_style_parts.join(" + '; ' + ");
+                    if let Some(pos) = attrs.iter().position(|a| a.starts_with(":style=\"")) {
+                        let old = attrs[pos].clone();
+                        let inner = old
+                            .strip_prefix(":style=\"")
+                            .and_then(|s| s.strip_suffix('"'))
+                            .unwrap_or("");
+                        attrs[pos] = format!(":style=\"({inner}) + '; ' + ({joined})\"");
+                    } else {
+                        attrs.push(format!(":style=\"{joined}\""));
+                    }
+                }
             }
 
             // === Plan 412 §4.3: square 占位块 ===
@@ -18567,6 +18599,51 @@ widget App {
 "#);
         assert!(sfc.contains("v-model=\"value\""), "explicit path still folds:\n{}", sfc);
         assert!(sfc.contains("@input=\"Changed\""), "explicit handler attr kept:\n{}", sfc);
+    }
+
+    #[test]
+    fn test_grid_dynamic_cols_gap_inline_style() {
+        // Plan 448 I: literal cols/gap keep their static Tailwind classes;
+        // dynamic expressions bind the equivalent inline styles instead —
+        // a dynamic `grid-cols-${n}` class would be invisible to Tailwind
+        // JIT scanning.
+        // The real app path (`auto build` → shadcn generator) owns the grid
+        // arm; the plain generator passes cols through as a dead attr
+        // (pre-existing, see §I 边界).
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    model {
+        var cols int = 3
+        var gap int = 2
+    }
+    view {
+        col {
+            grid { grid-item { text "a" {} } cols: 7, gap: 0 }
+            grid { grid-item { text "b" {} } cols: .cols, gap: .gap }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("grid-cols-7"),
+            "literal cols keep the static class:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("grid-cols-{{"),
+            "no dynamic Tailwind class template:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("'grid-template-columns: repeat(' + (cols) + ', minmax(0, 1fr))'"),
+            "dynamic cols binds inline repeat style:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("'gap: ' + (gap) + 'px'"),
+            "dynamic gap binds inline px style:\n{}",
+            sfc
+        );
     }
 
     #[test]
