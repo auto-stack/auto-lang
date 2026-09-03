@@ -105,9 +105,29 @@ widget DesktopSurface {
                     mouse-area (ondblclick: .ActivateApp(e.id)) {
                         col {
                             style: "w-20 h-20 items-center justify-center gap-1"
-                            button (icon: e.icon) {
-                                oncontextmenu.prevent: .IconMenu(e.id)
-                                style: "h-10 w-10 px-0 text-xl text-white rounded-xl bg-[" + e.color + "]"
+                            // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标本体，
+                            // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
+                            // 图标挤下且样式不符）。
+                            popover (open: .menu_id == e.id, placement: "bottom-start", ondismiss: .MenuClose, class: "p-1 border rounded bg-card") {
+                                button (icon: e.icon) {
+                                    oncontextmenu.prevent: .IconMenu(e.id)
+                                    style: "h-10 w-10 px-0 text-xl text-white rounded-xl bg-[" + e.color + "]"
+                                }
+                                col {
+                                    style: "w-44 gap-1"
+                                    button "打开" {
+                                        onclick: .MenuOpen
+                                        style: "w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10"
+                                    }
+                                    button "从桌面移除" {
+                                        onclick: .MenuRemove
+                                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
+                                    }
+                                    button "更换壁纸…" {
+                                        onclick: .MenuWallpaper
+                                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
+                                    }
+                                }
                             }
                             text e.label {
                                 style: "text-xs text-foreground truncate w-full text-center"

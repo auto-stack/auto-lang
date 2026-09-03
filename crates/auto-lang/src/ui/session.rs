@@ -610,6 +610,9 @@ pub struct WmState {
     /// 语义见方法注——press→release 之间重排 z_order 会经 Stack 按位
     /// diff 弄丢 button 的 is_pressed 态（跨窗首击吞按钮）。
     pending_raise: Option<Wid>,
+    /// PLAN-526 T33：布局预设历史快照——Free（手动排布）迁入预设布局时
+    /// 采集当前分区窗口矩形；同一预设 icon 再按一次即恢复（回手动态）。
+    layout_snapshot: Option<Vec<(Wid, iced::Rectangle)>>,
 }
 
 impl WmState {
@@ -634,6 +637,7 @@ impl WmState {
             native_slot_local_rects: BTreeMap::new(),
             pending_native_geometry: Vec::new(),
             pending_raise: None,
+            layout_snapshot: None,
         }
     }
 
@@ -1143,6 +1147,9 @@ pub enum DesktopCommand {
     CloseWindow(Wid),
     FocusWindow(Wid),
     SetLayout(LayoutMode),
+    /// PLAN-526 T33：预设布局切换键（shell 重排 icon）——同预设再按 =
+    /// 恢复应用前的手动排布快照（与裸 SetLayout 的"重排"语义区分）。
+    TogglePresetLayout(LayoutMode),
     /// Plan 464 T4：launcher 召唤（shell ⊞ 按钮 `summon\tlauncher` 记录；
     /// Ctrl+Space 热键走 DM::Desktop(SummonLauncher) 事件，同落 summon 执行体）。
     SummonLauncher,
@@ -1266,6 +1273,9 @@ impl DesktopCommand {
             DesktopCommand::SetLayout(mode) => {
                 format!("layout{}{}", Self::FIELD_SEP, mode.as_str())
             }
+            DesktopCommand::TogglePresetLayout(mode) => {
+                format!("layout_toggle{}{}", Self::FIELD_SEP, mode.as_str())
+            }
             DesktopCommand::SummonLauncher => {
                 format!("summon{}launcher", Self::FIELD_SEP)
             }
@@ -1388,6 +1398,10 @@ impl DesktopCommand {
                     "close" => arg.parse::<u64>().ok().map(|w| DesktopCommand::CloseWindow(Wid(w))),
                     "focus" => arg.parse::<u64>().ok().map(|w| DesktopCommand::FocusWindow(Wid(w))),
                     "layout" => Some(DesktopCommand::SetLayout(LayoutMode::from_name(arg))),
+                    // PLAN-526 T33：预设 icon 切换键（同预设再按 = 回手动快照）。
+                    "layout_toggle" => {
+                        Some(DesktopCommand::TogglePresetLayout(LayoutMode::from_name(arg)))
+                    }
                     "summon" => Some(DesktopCommand::SummonLauncher),
                     "workspace" => arg.parse::<usize>().ok().map(DesktopCommand::SetWorkspace),
                     "activate" if !arg.is_empty() => {
@@ -2758,14 +2772,54 @@ fn spawn_outproc_child(
     /// Plan 463 T4：布局切换 —— 存储模式并把 layout() 结果写回当前分区的
     /// 全部虚拟窗（几何批量写点唯一性：rect 只经 `apply_layout`/WM 交互改）。
     /// free 模式为恒等写回（用户位置即真值）。
+    /// PLAN-526 T33：Free → 预设迁移时采集当前分区窗口矩形快照（供
+    /// `wm_restore_layout_snapshot` 回手）。同预设"再按一次回手动态"由
+    /// shell 发 `layout_toggle`（TogglePresetLayout 执行臂）显式区分——
+    /// 裸 SetLayout 的重排语义（native slot min-size 扩张等内部路径）
+    /// 不受影响。
     pub fn wm_set_layout(&mut self, mode: LayoutMode) {
         let viewport = self.host_viewport();
         let edges = self.desktop.dock_edges;
         let Some(host) = self.host.as_mut() else {
             return;
         };
+        if mode != LayoutMode::Free && host.wm.layout == LayoutMode::Free {
+            let ws = host.wm.current_workspace;
+            host.wm.layout_snapshot = Some(
+                host.wm
+                    .wins
+                    .iter()
+                    .filter(|(_, v)| v.workspace == ws)
+                    .map(|(wid, v)| (*wid, *v.rect.borrow()))
+                    .collect(),
+            );
+        }
         host.wm.layout = mode;
         crate::ui::layout::apply_layout(&mut host.wm, viewport, edges);
+    }
+
+    /// PLAN-526 T33：当前布局模式读取（shell 预设切换判定用）。
+    pub fn wm_layout_mode(&self) -> LayoutMode {
+        self.host
+            .as_ref()
+            .map(|h| h.wm.layout)
+            .unwrap_or(LayoutMode::Free)
+    }
+
+    /// PLAN-526 T33：恢复 Free 前的手动排布快照（同预设 icon 再按一次）。
+    /// 快照缺失 = 无手动态可回（no-op，保持当前预设）。
+    pub fn wm_restore_layout_snapshot(&mut self) {
+        let Some(host) = self.host.as_mut() else {
+            return;
+        };
+        if let Some(snapshot) = host.wm.layout_snapshot.take() {
+            host.wm.layout = LayoutMode::Free;
+            for (wid, rect) in snapshot {
+                if let Some(v) = host.wm.wins.get(&wid) {
+                    *v.rect.borrow_mut() = rect;
+                }
+            }
+        }
     }
 
     /// 测试专用：无 App 的空会话（路由表 / 桌面状态单测用）。

@@ -114,6 +114,9 @@ pub fn desktop_root(
 /// 包围容器提亮，圆角小块——用户截图3 VSCode 形态，非全条填充）。
 /// PLAN-526 T22：命中盒 30×24 → 24×24 正方形（用户反馈长方形盒让
 /// 三键横向松散；等宽=等高后三键紧拢，glyph 13/10/13 均可容纳）。
+/// PLAN-526 T28：button 显式 `.padding(0)`——T22 只收了内容盒，iced
+/// button 主题默认 padding（水平更宽）仍让 hover 提亮盒呈宽体长方
+/// （用户七轮截图实录）；padding=0 后 hover 盒=内容盒=24×24 正方形。
 fn title_button(glyph: &'static str, size: f32, msg: DesktopMessage) -> Element<'static, DesktopMessage> {
     let fg = token(crate::ui::style::Color::OnSurface);
     let hover_tint = if crate::ui::style::theme::dark_mode() { 1.0 } else { 0.0 };
@@ -124,6 +127,7 @@ fn title_button(glyph: &'static str, size: f32, msg: DesktopMessage) -> Element<
             .align_x(Alignment::Center)
             .align_y(Alignment::Center),
     )
+    .padding(0.0)
     .style(move |_t, status| {
         let alpha = match status {
             iced::widget::button::Status::Hovered => 0.10,
