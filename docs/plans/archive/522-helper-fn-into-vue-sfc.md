@@ -1,14 +1,19 @@
 ---
 plan_id: PLAN-522
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: helper-fn-into-vue-sfc（模块级 helper fn 进 vue SFC）
 author: [zhaopuming]
 created_at: 2026-09-02
 updated_at: 2026-09-02
 
-# /auto-plan:review 结束时填写：supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+# /auto-plan:review 结束时填写：
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——vue 档 codegen 能力面增 use 导入 helper fn 按需转译进消费方 SFC（437 §0.6.E-3 缺口关闭）；VM 档 for 解析三处补齐 PLAN-051 C3 computed 回退"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/design/vue-use-fn-emission.md: 新增——use 导入 fn 发射机制设计（api.rs 池收集/入口门控 import_aliases 同口径/闭包不动点/ext_imports 与命名冲突三态闸/转译边界 R013 回退/组件通道与 VM 包装载接线）"
+touched_goals:
+  - "GOAL-007: helper fn 双端语义同源——Vue 侧按需发射对齐 VM 侧全模块加载+import_aliases（016/024 双端对拍实证）"
+  - "GOAL-010: 016-calendar computed 化迁移（×4 重算链消除）+ 024-charts donut helper 形态恢复"
 
 affects: [auto-lang/ui_gen]   # vue 生成器 + 可能的 use_scanner 消费接线
 current_step: 4
@@ -201,3 +206,63 @@ widget 生成期收集 computed/handler 体引用的 use 导入符号
   （如特定年份月份探针或快照节点数基线），请指出后可补跑对应探针。
 
 ## 复审记录
+
+**复审**：ZCode（/auto-plan:review 会话），2026-09-02。复验全部在
+`.worktrees/plan-522-dev`（已 re-sync master e6885460b）内重跑；不信
+执行期勾选，逐条重证。
+
+### 验收标准逐条判定
+
+1. **016 computed 化 + 双端一致 — PASS**
+   - 语料形态（代码复核）：app.at:2 `use calendar_util: build_month_grid,
+     month_name` + :27 computed 块；calendar_store.at 的 month_label/days
+     状态与 .Rebuild handler 已删（四 handler 重算行零残留）。
+   - Vue 构建：重新生成 + `pnpm run build`（vue-tsc && vite build）零错
+     （`✓ built in 1.74s`）。
+   - VM 行为：MCP 驱动复跑 `scratch/p522_verify_vm.py` **14/14**（June
+     初始 42 格 + May-31 尾/July-11 填充、> 到 July（June-28 尾）、<< 到
+     May、Today 回 June + selected 复位）。
+   - Vue 行为：Playwright 复跑 `scratch/p522_verify_vue.mjs` **10/10**
+     （同源派生值双端逐项一致）。
+   - 「三档棋盘 81/256/480」字面数值仓内无出处（待澄清事项①），按三种
+     形态月份+行为一致执行——口径偏差已明示，判定不受阻。
+2. **单测全绿 + 零新增失败 — PASS**
+   - plan522 套件 15/15（vue 单测 11 + api 3 + vm_bridge 2 语料锁）复跑绿。
+   - 复审全量门禁（本计划触碰 VM 文件 → tf+tv）：
+     `cargo tf` **3372/3372**、`cargo tv` **3530/3530**、
+     `desktop_protocol --features ui-iced` **120/120**，全部 EXIT 0。
+   - 日常档（ui-iced）4426/4428：2 失败（d8_toggle_dark_mode /
+     strips_tags）经 master e6885460b 直接复跑证实为基线即红（前计划已
+     登记债），非本计划引入——零新增失败成立。
+3. **（尽力）024 donut 恢复 — PASS（超出尽力项：完整恢复）**
+   - chart_geom.at + donut dc/ds helper 形态回正；两把单测锁复跑绿
+     （api：dc/ds 发射 + `return Math.cos(a);` + 调用点零改写；
+     vm_bridge：VM 内 dc(0)=1.0 / ds(1)=sin(1) 经裸名别名）。
+   - Vue vue-tsc 零新增错（Donut 9 错全为既有形态，逐条甄别；其余 41 错
+     在未触碰的 Area/Bar/Line）；VM 渲染快照与 stash 对照的 master 形态
+     一致（非回归）。
+
+### 遗漏 / 延后 / workaround 扫描
+
+- 计划 6 步全部有对应 diff（12 文件 +1467/−328），无整步丢失；无子项
+  静默缩面。
+- 无未批准延后：T4 本为尽力项且实际完成而非推迟；T6 复审按范式在本
+  会话执行。
+- diff 内零调试残留（eprintln 均为测试优雅跳过消息，符合仓内模式）；
+  触碰文件零新增编译警告；cargo check 0 错。
+- 债候选 4 项 + 交叉引用 1 项已登记 `KNOWN-DEBT-AND-RISKS.md` P522-1..4：
+  ①同文件 module_fns/store composable 路径仍用 transpile_handler_body
+  （尾表达式丢 return，与 use-fn 路径语义不一致）；②auto-man components/
+  通道 module_fns 未挂；③024 图表族 50 个既有 vue-tsc 错；④纯 fn 模块在
+  components/ 通道的告警噪音。均为既有/旁支形态，非本计划验收阻塞项。
+
+### 计划-代码偏差记录
+
+- 执行 T3 发现发射必须 return 化（尾表达式体）与 VM computed-for 三处
+  回退缺口，均超出计划原文但属验收 1 的必要路径，已随 T3/T4 提交并在
+  计划文件留痕。
+- frontmatter 元数据注释行曾在执行期被挤压合并（本次复审修复结构）。
+
+### 路由
+
+全部验收通过、无阻塞债 → `status: reviewed`。

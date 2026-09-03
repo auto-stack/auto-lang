@@ -1,6 +1,35 @@
+---
+plan_id: PLAN-442
+status: archived             # drafting → executing → execution_done → reviewed → archived（2026-09-03 复审通过；同日用户裁定 P442-4 回归本计划修复完毕，§8.7 在案，复审复验通过）
+feature_name: 跨平台合龙（musk 五域端口接线 + VM 渲染能力补缺 + 后端 AutoVM 激活）
+author: [zhaopuming]
+created_at: 2026-08-23
+updated_at: 2026-09-03
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui: VM 装载旧语义取代——musk KNOWN-DEBT 028 ③ 的 store facade 缺口（Undefined variable: store）与 TS ext 显式 link 错误，由 A2 resolve_use_module（legacy `use store: X` 命名约定 + 有界目录扫描定位 StoreDecl）与 A3 ui/ext_stubs.rs（`.at` ext 源经 X.at→X.vm.at→X.web.at adapter 链装载、TS/npm 符号按调用点元数精确平台桩、AUTO_VM_EXT_STUBS=0 严格硬错）取代"
+new_spec_components:
+  - "auto-lang/vm: musk 后端 VM 直跑桥——C2 serve 适配层（vm/ffi/axum_adapter.rs：Router/MethodRouter 堆对象、{x}→:x 模板、__axum:N 即时安装、State/Json/Query/Path/Header 提取器编组、闭包 func_addr 反演 PARAM_SIGS）+ extern 响应构造器与 SSE 形态（vm/ffi/musk_response_ctor.rs：ok/err/json/text 响应族 + sse_named_event/Sse/KeepAlive + sse_frame_from_nv event:/data: 帧格式化）+ host_bridge 转发（has_host_call/try_host_forward + push_value_from_json 对 CALL_NAT 死区的 RC retain 补偿）+ rust 形态桥三件套（env.var Option 坍缩 / .ok() 恒等直通 / 用户类型 clone 透明直通）+ parser/装载四批修复（Rust 类型相容臂、args 位置链式 Bug A、format! 宏形态、未知枚举变体 is→IS_VARIANT、连续 # 注释 run 容错）"
+  - "auto-lang/ui: VM 渲染五能力——store facade（A2）、ext adapter 链装载（A3）、svg 节点（A4：vue 轨 tag 直通 + 字面量属性静态发射；VM 轨 svgdoc 文档经 View::Image{src:\"svgdoc:…\"} + 单色 currentColor 画时着色）、调度原语（A5：sched.set_timeout/clear_timeout 闭包/事件名双形态 + AutoVM timers 注册表 + iced __timer_tick 16ms 门控订阅）、只读高亮（A6：highlight_segments syntect 共享单例 + StyleClass::CodeLang）+ web 平台全局桥（localStorage→会话 KV / encodeURIComponent）"
+  - "auto-man: vue 依赖按使用发射（P0-1：VueDependencyUsage 标记检测驱动 OPTIONAL_DEPS 按组发射 + CodeEditor 壳 usage 感知 + package_json_deps_drifted 双向漂移检测）+ setSearchQuery 修复（P0-2）"
+touched_goals:
+  - "GOAL-003: Auto 作 Rust 脚本层——musk 后端 32 模块 .at VM 直跑 31/32 clean（第 32=extern_sigs 旁车设计不计），axum/tokio/serde 族符号 VM 桥收口，serve/HTTP/SSE 全链 AutoVM 可运行"
+  - "GOAL-007: AutoUI 跨端——store facade/ext 链/svg/sched/highlight 五能力 VM 轨落地，musk 前端 53 文件 VM link 全清（probe 双模式绿）"
+
+affects: [auto-lang/vm, auto-lang/ui, auto-man]
+current_step: 17
+total_steps: 17
+---
+
 # Plan 442: 跨平台合龙——musk 五域端口接线 + VM 渲染能力补缺 + 后端 AutoVM 激活
 
-> **状态**: 🟡 执行中——Phase C 收尾中（2026-08-23 立项；Phase 0（P0-1/P0-2
+> **状态**: 🔵 **已复审（2026-09-03 /auto-plan:review 通过 → 待 /auto-plan:merge）**——验收
+> 1–4 全部复验通过（验收 3 于观察期到期日当日实跑 `PARITY_TARGET=vm` parity 6/6 绿含
+> SSE 流对照；041 已归档解挂在案）；C3 观察期 2026-09-03 期满无回滚，时间门随本复审
+> 通过。**同日用户裁定：复审新发现的 e2e 双层撞号（P442-4）回归本计划修复——已修复
+> 并复验（§8.7，worktree 提交 87eb8a730 待折叠），status 复位 reviewed。**
+> （2026-08-23 立项；Phase 0（P0-1/P0-2
 > ✅✅）+ Phase A（A1–A6 全 ✅）+ Phase B（B 配合+B1–B5 VM 轨全 ✅，rust/a2r
 > 轨依 §6.1 裁定递延）已落地。**Phase C：C1 语料面全清**——后端 auto-src
 > 32 文件 **31/32 VM-clean**（第 32 = extern_sigs 旁车设计不计，五批修复
@@ -638,3 +667,114 @@ blocked 记录：objective 卡在同一架构性阻塞，已连续 7 轮确认�
 > **尾注（2026-09-01，Plan 513 C 组）**：观察期至 **2026-09-03** 到期。截至本注
 > 无回滚证据；执行日未到期故本计划保持现状不归档——到期后若仍无回滚，由后续
 > 会话顺手触发归档（Plan 513 待澄清①，KNOWN-DEBT 已留指引行）。
+
+## 8. 复审记录（/auto-plan:review，2026-09-03）
+
+**复审者**：ZCode 会话（auto-lang 主检出；worktree plan-442 已折叠，按技能规则在
+默认检出核验）。**方法论**：verify, don't trust——验收逐条当日重放，测试当日实跑。
+
+### 8.1 验收标准逐条判定
+
+| # | 验收 | 判定 | 当日证据 |
+|---|---|---|---|
+| 1 | musk 前端双目标全绿 + 五域端口非 web adapter（或显式降级） | **PASS**（rust 轨经 §6.1 裁定递延，见 P442-1） | VM 轨五域：platform.vm.at/composables.vm.at 落地 + icons/renderer/upload 显式降级在案（B4 记录：三域 VM 轨均 `use.web component` 视图层引用、无 handler 符号面、严格模式 link 零需求）；musk 会话 B5 复核记录在案（vue 轨 `auto build` 含 vite 绿 + headless 探针宽松/严格双模式全绿）；**当日实跑** `plan442_musk_probe::musk_full_front_end_links` PASS（当前 master + 当前 musk 语料） |
+| 2 | VM 渲染对 musk 30 widget 源零 Undefined variable | **PASS** | A2/A3 机制回归（store_facade ×3 / ext_link ×3 / webcompat ×2 / sched ×3 / parser_regress ×2）当日 `cargo t plan442` **17/17 绿**；musk 全量前端语料 probe 当日 PASS（同上）；能力缺口登记面（svg partial 等）见 P442-2 |
+| 3 | `musk serve` VM 后端通过既有 HTTP/SSE 契约测试（对照 hw） | **PASS** | musk PLAN-044 T5/T6 归档记录在案（`PARITY_TARGET=vm cargo test -p musk --test parity_relay_api` 全绿、连跑 3 次稳定）；**观察期到期日（2026-09-03）当日实跑同命令：6 passed / 0 failed**（含 `relay_stateless_vm_vs_hw`、`run_stream_sse_vm_vs_hw` SSE 流对照、`relay_sse_endpoints_return_event_stream`；1 ignored 为 ~60s 编译的手动门），musk 主检出经 path 依赖直连本仓当前 master——即今日代码实测 |
+| 4 | musk PLAN-041 解挂条件达成 | **PASS** | musk 041 已归档（终态），"2026-08-27 解挂启动"记录在案；其 Phase 5（T17-T22）于 09bf2d1 收口后经复审归档 |
+
+### 8.2 全量门禁与测试证据
+
+- **`cargo tf`（复审唯一全量闸口）**：3372 跑 **3371 绿 / 1 红**——唯一红 =
+  `schema_drift::schema_drift_fence`，报文"漂移已消除,请裁剪 baseline:
+  rs_not_in_vb code/pre"＝**基线陈旧家务红**，与 Plan 448 复审（2026-09-02）记录的
+  同款基线红一致（并行线修复落地后基线未裁剪）；442 未动四表，非 442 回归。
+- **e2e 家族（`test-http-e2e` 特性档，即 `cargo th` 语义）**：复审首跑 3 红
+  （sse_named_event_frames / b1_realworld_token_auth / a_redirect_302），深挖后
+  定性为**双层根因**（§8.7 修复记录，归因修正：首判"PLAN-053/510 合并后回归"
+  系误诊——fbcc925b8 孤立连跑 3 绿实证与池整改无关）：
+  ① **测试端口撞号 ×3**（18744 sse_named×b6_multipart、18745 musk_response×
+  b1_token_auth、18736 redirect×notes_crud）——nextest 每测试一进程并行时输家
+  进程静默连到赢家服务器（无路由→连接被丢→空 body 假红），串行跑从不暴露；
+  ② **native catalog ID 撞号（真产品缺陷，2026-08-27 起）**——PLAN-044 把
+  `musk_extern_dispatch` 登到 3129 与本计划先落的 `value_get_bool` 撞号，
+  id→shim 后写覆盖先注册，CALL_NAT 3129 恒派发 dispatch shim，
+  `e2e_value_accessors`（C2 ③ path-b 回归）在净树上 500 红了一周（th 手动档
+  不在 t/tf 日常门禁，故漏网；复审当日主检出的"绿"系并行会话脏工作区所致）。
+  两层均已修复（87eb8a730），修复后 e2e 家族 25/25 ×2 稳定全绿。
+- 442 直接回归族：plan442 ×17、catalog_integrity ×2、e2e 家族中
+  `e2e_musk_response_constructors` / `e2e_value_accessors` /
+  `e2e_host_forward_app_config_daemon` / `e2e_host_forward_relay_runs` /
+  `e2e_sse_chain` 当日均绿。
+
+### 8.3 遗漏 / 延后 / Workaround 扫描
+
+- **遗漏：无**。P0-1/P0-2 的 musk 侧复核记录在案；P0-1 观察项 b)（gallery toast.at
+  `position:'center'` 类型错）已由 Plan 437 附带修复实证（源码 `top-center` + 注释
+  在案）；观察项 a)（shadcn CLI 注入 `@lucide/vue` 零引用）为工具链痕迹，计划内
+  已注明可接受。产物核验：axum_adapter.rs / musk_response_ctor.rs / ext_stubs.rs /
+  7 个 plan442 测试文件 / 4 组语料全部在 master。
+- **延后：均经裁定，非静默**。① rust/a2r adapter 轨（§6.1 裁定，P442-1）；② AAVM
+  v2 无 HTTP native（§2 登记，需时另行立项）；③ 数据层 Auto 化按域退役（musk
+  PLAN-044 Phase 3 分期，musk 侧台账）；④ sched 的 rs.at shim（P442-1 同源）。
+- **Workaround：均登记在案**。extern_sigs 旁车空体签名（第 32 模块设计使然）；
+  AUTO_VM_EXT_STUBS 平台桩默认宽松 + 严格开关；musk 认证头注入缺口（musk 侧
+  KNOWN-DEBT 442-B）。
+
+### 8.4 观察期（C3）到期裁定
+
+采用 musk 041 复审同款先例（时间门不构成回退 /auto-plan:work 的理由）：C3 双后端
+并行观察期 **2026-09-03（本复审当日）期满**；观察窗内 pac.at 无回滚提交（git log
+核查），头注已按 C3 要求改为已激活记录（"后端形态(PLAN-044,2026-08-27)…PARITY_
+TARGET=vm parity 对照绿"）；到期日 parity 实跑绿（§8.1 #3）。**时间门通过。**
+
+### 8.5 债务登记（已落 KNOWN-DEBT-AND-RISKS.md P442 小节）
+
+P442-1 rust 轨 adapter 递延（§6.1 裁定）· P442-2 svg 能力 partial · P442-3
+marshalling 语义债（PathBuf `.starts_with`/HashMap str 键往返，疑似已被
+PLAN-053/510 顺带修复待复验）· **P442-4 e2e 双层撞号（复审新发现，已随本计划
+修复，见 §8.7；残余 = th 档不进日常门禁的覆盖缺口）** · **P442-5（§8.7 衍生）
+native ID 通用撞号检测在别名设计下不可行——需注册侧运行时唯一性方案**。
+
+### 8.6 结论
+
+四条验收全部复验通过（当日实跑证据），无未批准递延，无静默遗漏；全量门禁唯一红
+为登记在案的基线陈旧（非 442）。**status → reviewed**，就绪 `/auto-plan:merge`
+（merge 前提"观察期 2026-09-03 期满无 P0"已随本复审满足）。
+
+### 8.7 P442-4 修复记录（2026-09-03，用户裁定回归本计划执行；worktree
+plan-442-dev 分支 plan-442-dev-p442-4，提交 87eb8a730）
+
+**根因双层**（复审 §8.2 首判"池整改合并后回归"系误诊，修正过程留档）：
+1. **测试端口撞号 ×3**：`e2e_sse_named_event_frames`（442 C2 ②，08-25 落地时
+   复用了 346 B6 已占的 18744）、`e2e_musk_response_constructors`（C2 ① ×346
+   B1 的 18745）、`e2e_a_redirect_302_with_location`（×326 notes_crud 的
+   18736）。nextest 每测试一进程并行 → 输家绑定失败/赢家吞连接 → 无路由静默
+   丢弃 → 空 body 假红；串行（libtest/--test-threads=1）从不暴露——442 执行期
+   全串行跑，故落地时未见。诊断关键：并行批跑红名单恰好 = 三个撞号端口的
+   输家；fbcc925b8 孤立连跑 3 绿排除产品回归。
+2. **native catalog ID 撞号（真产品缺陷）**：PLAN-044（08-27 合入）将
+   `musk_extern_dispatch` 登记到 3129，与本计划 500173bcf（08-25）先落的
+   `value_get_bool` 撞号。`NATIVE_ID_MAP`（name→ID）两名字同指 3129，id→shim
+   注册后写覆盖先注册 → CALL_NAT 3129 恒派发 dispatch shim →
+   `value_get_bool(obj.view, "ok")` 栈形错位报 "musk_extern_dispatch: expected
+   string" → `e2e_value_accessors`（C2 ③ path-b 回归）净树 500 一周。catalog
+   完整性测试盲区：唯一性只查 `for_each_native` 主表，NATIVE_ID_ENTRIES 核对为
+   `if let Some` 静默跳过。
+
+**修复**：① 三测试改空闲端口 18738/18739/18740；新增 `e2e_ports_unique`
+守卫（自扫本文件 `18xxx)` 字面量，重复即红）。② `musk_extern_dispatch` 移段
+3143（全仓无 3129 硬编码；codegen 编译期名→ID 解析，单表同步自洽）；
+catalog_integrity 增 442 extern/ctor 家族 26 名两两异 ID 靶向钉——通用同 ID
+检测不可行（108 组同 native 多名别名共享 ID 属有意设计，其中 5 组返回 Type
+不一致），通用方案登记 P442-5。
+
+**验证**：e2e 家族 **25/25 ×2 稳定**（含此前双红测试与两守卫）；守卫 negativity
+三态（净态绿/注错红/复原绿）双守卫均验；plan442 族绿；musk 后端探针 4/4
+（gap_enumerator/server_router_run/relay_store_bisect/app_config_vm_run——
+dispatch 新 ID 全链完好）；musk `PARITY_TARGET=vm` parity 6/6；`cargo tf` 全量
+门禁 **3394 跑 3393 绿**（唯一红 = master 同款 schema_drift_fence 基线陈旧，
+§8.2 已登记，非本改动引入）。
+
+**残余**（P442-4 尾巴 + P442-5，均已入债务簿）：`test-http-e2e` 家族仍仅存
+`cargo th` 手动档，t/tf 不编译——建议纳入日常档或 CI 定期；native ID 通用
+撞号检测需注册侧运行时唯一性（id→shim 单射断言）另立计划。

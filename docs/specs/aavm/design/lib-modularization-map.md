@@ -137,3 +137,42 @@ lib 由此成为 aavm 自身 `use` 能力的第一个真实多模块程序（自
    **教训：矩阵运行前置 = 重建 auto.exe**（或 parity 增二进制新鲜度校验，
    债候选）。corpus_a2r 现已至 g17（514 W3 增），use 发射件顺延为
    **g18_use_stmt**。
+
+---
+
+## 执行期定案（Plan 517 W1-W3，2026-09-02 折叠完毕）
+
+1. **D5 翻案执行完毕**：lib 七文件 use 模块化落地——互引 use（auto.lib.*
+   点路径定向清单）+ pub 契约标注（宿主现行为 pub 不过滤=D3，pub 为
+   API 契约与 AA2R 发射对齐）；模块探针真 use 递归解析全链首通。
+2. **双轨剥离定案**：`aavm2_lib_source`（lib.rs）为规则单一事实源，
+   parity 三腿/gen-aavm2-unit.py 镜像；compile 腿经剥后临时目录入
+   merge（单文件平铺产物中 crate:: 路径不可解析）。
+3. **use 发射形态定案**：AA2R `ar_use`（W1）——auto.→crate::+rest /
+   a2r_std 名映射+std_used / items {a,b} / 通配 * / bare；点路径 X.Y 的
+   X 命中导入名 → X::Y（imports 集）；`::{..}` 组形态与 use.rs 族 fail
+   拒绝（v2 子集规范）。语料 g18。
+4. **CLI 入口形态定案**（auto/aavm.at，真模块版）：CLI 直跑无位置参数
+   透传（clap 拒）、`process.args()` 返回值异常（argc=76，观察项）、
+   `IO.read_line` 空行/EOF 同返空串 → **行数协议 stdin**（首行行数前置
+   消歧）+ `parse_int`；多文件/ev_run_files 路径参数形态待 CLI 透传
+   支持（P517 后续/宿主小改候选）。
+
+---
+
+## 宿主小修收口（Plan 524，2026-09-03 折叠完毕）
+
+1. **CLI 透传收口**（§执行期定案 4 的"P517 后续/宿主小改候选"兑现）：
+   `auto <file> [args...]` 直跑透传成立——clap 形态 W0 实测定案 = 位置参数
+   放宽（index=2 `trailing_var_arg` + `allow_hyphen_values`；裸值撞子命令名
+   以 `--` 消歧；已知全局旗标后置于 file 会被旗标吞）。
+2. **`process.args()` 修复**（§执行期定案 4 的"argc=76 观察项"收口）：
+   76 = 对 join 空格字符串取长度的伪 argc；语言契约本即 List（a2rs
+   03_image_scraper 按 `list.len(args)`/下标消费）。native 现返回
+   `[程序路径] + CLI 透传参数` 的真实 argv List（`shim_process_args` →
+   `Vec<String>`；`run_file_with_args` 写 `SCRIPT_ARGS` 进程级全局）。
+3. **aavm.at 位置参数直达形态**（本文件上文预写形态落地）：有参 →
+   `ev_run_files(args[1])` 多文件主入口；无参 → 行数协议 stdin（保留）→
+   无 stdin → 冒烟。`auto auto/aavm.at <主文件.at>` 一条命令直达
+   （b07→55/corpus_use 六用例实测）。§基线坑 6 的"parity 增二进制新鲜度
+   校验"债候选同步清偿（parity 启动闸门，见 specs/parity）。

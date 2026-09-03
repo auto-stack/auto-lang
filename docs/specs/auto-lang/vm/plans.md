@@ -98,7 +98,7 @@ plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
-| 442 | cross-platform-closure（VM 侧） | 🟡 | plans/ | musk 后端切 AutoVM：native 桥/Http natives；A4 SVG 直通复用 View::Image svgdoc |
+| 442 | cross-platform-closure（VM 侧） | ✅（reviewed→archived） | archive/ | 跨平台合龙 VM 侧全链：后端 .at VM 直跑（32 模块 31/32 clean，第 32=extern_sigs 旁车设计）+ axum serve 适配层（axum_adapter.rs：提取器编组/{x}→:x/__axum:N 即时安装）+ extern 响应构造器与 SSE 形态（musk_response_ctor.rs：响应族+Sse/KeepAlive+sse_frame_from_nv event:/data: 帧）+ host_bridge 转发（try_host_forward+RC 死区 retain 补偿）+ rust 形态桥三件套（env.var/.ok()/clone 直通）+ parser 四批修复（Rust 类型相容/args 链式 Bug A/format!/枚举 is→IS_VARIANT/# 注释容错）；复审日 P442-4 双层撞号修复：e2e 端口 ×3 去重+e2e_ports_unique 守卫、native ID 3129 撞号（musk_extern_dispatch×value_get_bool）dispatch 移段 3143+catalog 442 家族靶向钉；观察期 09-03 期满无回滚；债务 P442-1..5;P442-1..6 台账 |
 | 446 | vm-backend-os-config-field-report | ✅ | archive/ | 实战 VM 渲染薄弱点清偿（A1 多 store 消歧/J1-J2 子树）；账本 P446-1..4；批五收口+下游结算完成（2026-08-29，reports/446-downstream-settlement.md） |
 | 466 | test-speedup | ✅ | plans/ | sccache/cargo t ≤30s/全量门禁收敛 review；账本 P466-1..7 |
 | 474 | vm-json-float-dot-read-fix | ✅ | archive/474-vm-json-float-dot-read-fix.md | CALL_SPEC 数学分发 nanbox 化石根除（一元 i32 位读/二元参数序倒置，plan011④）；三层回归载具 vm_json_float_read_tests；账本 P474-1..7 |

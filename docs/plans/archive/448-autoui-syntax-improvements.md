@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-448
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: autoui-syntax-improvements（AutoUI 语法改进滚动收集）
 author: [zhaopuming]
 created_at: 2026-08-25
@@ -22,7 +22,7 @@ total_steps: 6
 
 # Plan 448: AutoUI 语法改进——msg 声明去名 + 事件内联 lambda 简写（滚动收集）
 
-> **状态**: 🏁 **终态·已复审（2026-09-02 /auto-plan:review 通过）**——七实施条目
+> **状态**: 🏁 **终态·已归档（2026-09-02 review 通过 → merge 沉淀 P448-1..6 → archived）**——七实施条目
 > 全部合并 master：A/B（merge `7f4ed335c`）、C（`f5ad59bae`）、D（`89aa2aa31`）、
 > I（`1f258732b`）、H1/H2（`ec9c16fcd`）、收尾轮 C 补遗+F（`21b65e1f9`）。
 > 遗留归属：H3/024 编号族 → Plan 522（执行中）；F 剩余 019/020/021 →

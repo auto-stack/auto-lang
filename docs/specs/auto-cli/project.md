@@ -8,6 +8,11 @@
 ## 目标与范围
 
 - 提供 `auto` 二进制：无子命令时进入 BigVM REPL，`auto <file.at>` 直接以 AutoVM 执行脚本。
+- **直跑透传（Plan 524）**：`auto <file> [args...]`——file 之后的位置参数整段透传
+  给脚本，脚本内 `process.args()` 返回 `[程序路径, args...]` 字符串列表；
+  clap 形态 = index=2 `trailing_var_arg` + `allow_hyphen_values`（裸值撞
+  子命令名以 `--` 消歧；已知全局旗标后置于 file 会被旗标吞，此类值放 `--`
+  之后）。单测 `cli_passthrough_tests`（`cargo test -p auto --bin auto`）。
 - 工程命令（new/init/build/run/test/clean/add/fetch/deps/export）主要委托 auto-man 完成。
 - 转译子命令（ts/c/rust/python/js/gd/tscn/godot）委托 auto-lang 的 transpiler。
 - 支持 `--format json` 的机器可读输出（面向 AI 消费）。

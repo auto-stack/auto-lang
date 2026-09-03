@@ -474,3 +474,26 @@ H2);FStrPart 直通发射的三缺口实证见 D40 续。
   CG（28 方法）/Ar（23 方法）入 type 体；lexer/typeinfo/engine 按无状态
   类型裁定零转换或合并（peek_text/field_idx 去重）；产生式与纯表函数保留
   自由函数。方法风格规范入 divergence-rules.md §4b。
+
+## 523 W1–W4(中阶发射补全,2026-09-03)
+
+- **D-AA2R-struct 清偿**:Plan 523 全额清偿 511 待澄清①欠账——AA2R 发射
+  面补全(命名构造字面量/字段读写/for-in 数组/str 下标/一元负/全局变量),
+  corpus_a2r g19–g25 live 逐字符 25/25;compile corpus 十前缀摘除后全量
+  46/46;四路 runner 14/14(译文回链含主 a2r 同锚)。本条目状态:
+  **已清偿(523 W1/W2/W3)**;余项见 D-a2r-mode-entry。
+- **D-a2r-mode-entry(523 W4-14 实测登记)**:aavm.at 经主 a2r 平铺 merge
+  转译 + 原生 shim(process/IO.read_line/parse_int/a2r_std::value_len)后
+  可构建运行——b07_fib 位置参数直达 55 实测过;两洞登记:①宿主
+  `argv.get(1)` 发射 Option 形态缺自动解包(E0308,产品位文本垫片);②
+  转译版 VM 运行期 struct 字段表(b34 RUNTIME-ERROR:no field x in
+  Point——c.field_idx 动态查表在转译宿主的语料内 struct 形态未覆盖)。
+  归 525 OOP 批/后续宿主小修处置。
+- **D-let-shadow-global(523 W3 定案)**:参考口径为 fn 内 `let g` 名命中
+  全局即**写穿全局**(b43 怪序语料钉住;set_via_let 后 main 层 g 已=新值);
+  主 a2r/AA2R 均按全局写块形镜像(in_fn_body 旗标区分顶层 static)。
+  fn 内独立同名局部需换名(与参考一致的既定语言语义)。
+- **D-str-index(523 W3 定案)**:str 非区间下标 = 码点**十进制字符串**
+  形态(print(s[0])=65 且 s[i]+s[j]=拼接 "6667";v2 codegen str_flag
+  穿透同义)——裸 int 形态(as i64 直加得 133)与参考分歧,已按字符串
+  形态修正双侧;负下标回绕(VM: len+j)不在语料面,未实现未镜像。
