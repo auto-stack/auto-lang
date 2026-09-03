@@ -4,7 +4,7 @@ status: execution_done
 feature_name: widgets-gallery 检查问题跟踪与修复
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03T11:30:00+08:00
-updated_at: 2026-09-03T14:20:00+08:00
+updated_at: 2026-09-03T14:50:00+08:00
 
 # Leave these EMPTY here — /auto-plan:review fills them:
 supersedes_spec_components: []
@@ -342,6 +342,15 @@ shadcn PopoverContent 同款默认面板 chrome
 重建 CLI。验证(VM 实机,MCP 驱动):导航 /popover → 按 Open Popover →
 面板 w-72 锚定按钮下方,背景/边框/圆角/内边距齐全,不再全宽
 (src/front/tests/screenshots/w9b.png;截图目录不入库)。
+
+W9 追加打磨(用户反馈:贴按钮太近/对齐方式/防撞边界):
+- DEFAULT_GAP 0→4px(对齐 shadcn/radix sideOffset=4,0 缝时边框粘连);
+- shadcn 嵌套形态缺省对齐 BottomStart→Bottom(锚中,shadcn popper
+  align=center 默认);坐标锚(contextmenu)保持 BottomStart,menubar 用
+  自带显式 BottomStart 不受影响;显式 placement 恒优先;
+- 越界翻转(垂直):下方放不下且上方放得下→翻到锚上方,反之亦然;
+  剩余越界由既有 snap_within_viewport 钳制兜底(默认开启)。
+  复验截图 w9c.png:居中+4px 间隙。
 
 附带:VM 模式本次未复现 OBS-1 启动崩溃(721GB alloc),疑似页面相关。
 

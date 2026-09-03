@@ -38,8 +38,9 @@ use iced::{keyboard, window, Element, Point, Rectangle, Size, Vector};
 
 use crate::ui::view::PopoverPlacement;
 
-/// 面板与锚之间留出的间隙(menubar 语义:面板紧贴按钮条下缘)。
-const DEFAULT_GAP: f32 = 0.0;
+/// 面板与锚之间留出的间隙。PLAN-528 W9:对齐 shadcn/radix 的 sideOffset=4
+/// ——0 缝时面板边框与按钮边框视觉粘连。
+const DEFAULT_GAP: f32 = 4.0;
 
 pub struct Popover<'a, Message>
 where
@@ -361,6 +362,22 @@ where
         };
 
         if self.snap_within_viewport {
+            // PLAN-528 W9 续:越界翻转(垂直)——下方放不下且上方放得下时翻到
+            // 锚上方,反之亦然。x 规则 Bottom/Top 共用,翻转只改 y;剩余越界
+            // 交给下方 snap 钳制。
+            let bottom_y = position.y + anchor_bounds.height + self.gap;
+            let top_y = position.y - panel_bounds.height - self.gap;
+            let over_bottom =
+                panel_bounds.y + panel_bounds.height > viewport.y + viewport.height;
+            let over_top = panel_bounds.y < viewport.y;
+            if over_bottom && !over_top && top_y >= viewport.y {
+                panel_bounds.y = top_y;
+            } else if over_top && !over_bottom
+                && bottom_y + panel_bounds.height <= viewport.y + viewport.height
+            {
+                panel_bounds.y = bottom_y;
+            }
+
             if panel_bounds.x < viewport.x {
                 panel_bounds.x = viewport.x;
             } else if viewport.x + viewport.width
