@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-531
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-debt-clearance-batch
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（债务清欠,塔顶验证链前置）
 
 affects: [aavm, auto-lang/trans]
-current_step: 0
+current_step: 1
 total_steps: 11
 ---
 
@@ -163,8 +163,53 @@ D-a2r-mode-entry（:485）、`scripts/aavm_build_smoke.sh`、tt 档现状）
 （原子任务;W0 在 master,实现 in worktree `.worktrees/plan-531-dev`;
 单折叠点=步骤 9）
 
-1. [ ] W0 考古：两真缺陷根因+tt 可见性方案+bless 流程;两洞根因定位。
+1. [✅ 已完成] W0 考古：两真缺陷根因+tt 可见性方案+bless 流程;两洞根因定位。
    验证：考古注记+复现留档。
+   - **W0 考古注记（2026-09-03,master 探针）**：
+   - **tt 基线**：`cargo tt --no-fail-fast` 实测 28 红（与台账一致）,清单存
+     `scratch/p531/`；`.wrong.rs` 已随跑写入（gitignored）。
+   - **真缺陷①根因**（pointer/004,`x as *mut _.clone()`）：`rust.rs` fn call
+     实参循环 `dot_arg_owned_param`（:9147,Plan 016 Phase 4 引入）把
+     `Expr::Dot` 形实参（含取址伪字段 `x.@`）当"字段读取+所有权形参"附加
+     `.clone()`（:9344）——`x.@` 发射 `x as *mut _` 后接 `.clone()` 即
+     "cast cannot be followed by a method call"（rustc 实证 E0282+语法错）。
+     裸指针 Copy,修复=排除指针伪字段（`@`）。引入提交 06d086abc(2026-08-25)。
+   - **真缺陷②根因**（arc_dyn_spec/008,`self.tools[(name) as usize]`）：
+     `rust.rs` :7741-7757（Plan 514 W3 引入,8aef313ca 2026-09-02）
+     `recv_is_list2` 的 `Expr::Dot` 臂——`matches!(base, Ident("self"))`
+     **无条件**把任何 `self.xxx` 接收者当 List 索引化；`self.tools` 为
+     Map（HashMap）→ `.get(name)` 被改写 `[name as usize]`,`&str` 键被
+     强转 usize（E0605 同族,最小语料 probe_map_get.at 复现）。修复=经
+     `struct_field_types` 解析 self 字段真实类型,仅 List/Array 索引化。
+     （另注：非 self 局部接收者路径 `r.tools.get(name)` 发射正确。）
+   - **tt 复审可见性裁定**：沿用 Plan 507 desktop_protocol 先例——**tf 档
+     语义不动**（tf 不加 test-trans）,在 `.cargo/config.toml` tf 注记块
+     追加"复审清单须另跑 `cargo tt`"条目（W1 步骤 5 落地）。
+   - **bless 流程**：tt 金样 harness 失配即写 `.wrong.rs`（gitignored）；
+     bless = 修完真缺陷后重跑 tt,逐件 diff 评审 wrong vs expected 后
+     wrong→expected 覆写（28 件清单+逐件 diff 摘要留档本计划）。
+   - **P523-2①根因**（argv.get E0308）：双因——(a) `a2r_std::env::args()`
+     仍返回**空格拼接 String**（a2r_std.rs :510）,而 VM 参考侧 P524 已定
+     `process.args()`=List 契约（`shim_process_args()->Vec<String>`=
+     [程序路径]+透传,stdlib.rs :692）;现存 .at 消费方（03_image_scraper
+     `list.len/args[1]`）均已按 List 形态消费。(b) `var argv =
+     process.args()` 绑定的局部类型 Unknown → `.get(1)` 不走 Auto List
+     索引化发射（:6479/:7741 均需 List 类型）,落 Rust `Vec::get` Option
+     形态 → 传 `ev_run_files(str)` 位 E0308。修复向=a2r_std 对齐 List
+     契约+args() 绑定局部登记 List 类型（索引化自动接管）。
+   - **P523-2②定位面**（精确根因待红证复现）：报错点=engine.at :584-586
+     GetField 臂 `c.field_idx(tname,fname)` 动态查 `c.tys`;注册点=
+     codegen.at `cg_type_decl`（早注册+尾态刷新,:2032-2131）。差异面=
+     **ev_run_files（cg_compile_files 多文件路径,含 :3458 tys 跨单元合并）
+     vs ev_run（单文件）**——corpus 腿（ev_run 嵌源码形态）绿,位置参数
+     形态（--files 文件路径形态）红;同 .at 代码解释路径绿/转译路径红 →
+     a2r 对 cg 链某构造发射分歧,复现探针=worktree 内 aavm.at merge
+     构建（W0b 落盘,沿 fourpath/build_aavm_rust_bin 基建）。
+   - **a2r 模式构建基建**：`transpile_rust_project_merged`（rust.rs :21966,
+     无 CLI 暴露）+ vm_file_tests `build_aavm_rust_bin`（剥 use 行→merge→
+     prelude/harness→cargo build）+ aavm2_a2r.rs fourpath runner（#[ignore]
+     验收档）。aavm.at 入口形态探针沿此骨架改 harness 为 aavm.at 自身
+     main+原生 shim（process/IO.read_line/parse_int/a2r_std::value_len）。
 2. [ ] W0b 红先行：两真缺陷最小件/两洞复现/May 裸值件落盘（红证）。
 3. [ ] 真缺陷①修复（独立提交+锚）。验证：新金样绿。
 4. [ ] 真缺陷②修复（独立提交+锚）。验证：同上。
