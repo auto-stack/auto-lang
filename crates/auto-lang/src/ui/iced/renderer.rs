@@ -4125,8 +4125,32 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 col_spacing,
                 style: _,
                 col_widths,
-                on_col_resize: _, // Plan 045 T3 接（拖拽交互走 TableResize widget）
+                on_col_resize,
             } => {
+                // Plan 045 T3: 拖拽表格分派——on_col_resize Some 走 TableResize
+                // widget（自持网格布局 + Drag 临时宽实时重排 + 松手 publish）；
+                // None 走既有 lowering（零回归）。
+                if let Some(cb) = on_col_resize {
+                    let header_cells: Vec<_> = headers
+                        .into_iter()
+                        .map(|mut h| {
+                            apply_table_header_style(&mut h);
+                            h.into_iced()
+                        })
+                        .collect();
+                    let body_rows: Vec<Vec<_>> = rows
+                        .into_iter()
+                        .map(|r| r.into_iter().map(|c| c.into_iced()).collect())
+                        .collect();
+                    return crate::ui::iced::table_resize::table_resize(
+                        header_cells,
+                        body_rows,
+                        col_spacing as f32,
+                        col_widths,
+                        cb,
+                    )
+                    .into();
+                }
                 // Plan 411 P2-A④: vue 表格细节——表头 font-medium +
                 // text-muted-foreground、行 border-b、单元格 px-4/py-3。
                 // 行距改由 py-3 padding 提供(规则线与行贴合才是 border-b 语义),

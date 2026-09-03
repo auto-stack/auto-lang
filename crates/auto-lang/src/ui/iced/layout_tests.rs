@@ -695,3 +695,116 @@ fn plan045_table_natural_col_widths_layout() {
     assert!(bx < 224.0 - 40.0, "自然宽 col1 起点显著早于固定锚点: {bx}");
     assert!(bx > ax + 8.0, "col1 在 col0 之后: {ax} vs {bx}");
 }
+
+// ========== Plan 045 T3 — 列宽拖拽全链（命中→Drag→松手消息） ==========
+
+#[derive(Debug, Clone, PartialEq)]
+enum Plan045ResizeMsg {
+    Resized(usize, f32),
+}
+
+fn plan045_resize_table_view(col_widths: Option<Vec<f32>>) -> View<Plan045ResizeMsg> {
+    use crate::ui::view::ColResizeCallback;
+    View::Table {
+        headers: vec![View::text("AAA"), View::text("BBB")],
+        rows: vec![vec![View::text("aaa"), View::text("bbb")]],
+        spacing: 0,
+        col_spacing: 8,
+        style: None,
+        col_widths,
+        on_col_resize: Some(ColResizeCallback::new(|m| {
+            Plan045ResizeMsg::Resized(m.col, m.width)
+        })),
+    }
+}
+
+/// Plan 045 T3: 全链——表头列边界（10px 带）按下 → 拖拽（临时宽实时进
+/// 布局，BBB 列起点随动）→ 松手 publish 落定消息（拖拽中零消息）。
+#[test]
+fn plan045_table_resize_drag_chain_publishes_on_release() {
+    use iced::event::Event;
+    use iced::mouse;
+    use iced::Point;
+
+    let view = plan045_resize_table_view(Some(vec![200.0, 300.0]));
+    let mut ui = simulator(view.into_iced());
+    // col0 右边界 x=200；表头带 y=8（首行内）。
+    ui.point_at(Point::new(200.0, 8.0));
+    // 按下 + 拖 +50 → 临时宽 250（尚未发布）。
+    ui.simulate([
+        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(250.0, 8.0) }),
+    ]);
+    let (_, _, _, _) = (0.0f32, 0.0, 0.0, 0.0);
+    // 临时宽实时进布局：col1 起点从 200+8+16=224 移到 250+8+16=274。
+    let (bx, _by, _bw, _bh) = bounds_of(&mut ui, "BBB");
+    assert!(
+        (bx - 274.0).abs() < 1.0,
+        "拖拽中临时宽应实时生效（BBB 起点≈274，实测 {bx}）"
+    );
+    // 松手 → 落定消息（col 0, width 250）。
+    ui.simulate([Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))]);
+    let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
+    assert_eq!(msgs, vec![Plan045ResizeMsg::Resized(0, 250.0)]);
+}
+
+/// Plan 045 T3: 负向拖拽 clamp 到最小宽 40（vue 金标 max(40,…)）。
+#[test]
+fn plan045_table_resize_drag_clamps_to_min_width() {
+    use iced::event::Event;
+    use iced::mouse;
+    use iced::Point;
+
+    let view = plan045_resize_table_view(Some(vec![200.0, 300.0]));
+    let mut ui = simulator(view.into_iced());
+    ui.point_at(Point::new(200.0, 8.0));
+    ui.simulate([
+        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(-500.0, 8.0) }),
+        Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+    ]);
+    let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
+    assert_eq!(msgs, vec![Plan045ResizeMsg::Resized(0, 40.0)]);
+}
+
+/// Plan 045 T3: 列内远离边界（命中带外）按下拖拽不发消息——只有列边界
+/// 10px 带是拖拽把手。
+#[test]
+fn plan045_table_resize_out_of_band_press_is_inert() {
+    use iced::event::Event;
+    use iced::mouse;
+    use iced::Point;
+
+    let view = plan045_resize_table_view(Some(vec![200.0, 300.0]));
+    let mut ui = simulator(view.into_iced());
+    // x=100 是 col0 正中（边界 200 的带外）。
+    ui.point_at(Point::new(100.0, 8.0));
+    ui.simulate([
+        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(150.0, 8.0) }),
+        Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+    ]);
+    let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
+    assert!(msgs.is_empty(), "带外按压不应产生消息: {msgs:?}");
+}
+
+/// Plan 045 T3: 表头带外（体行内）的边界位置按压不触发——命中区域限定
+/// 表头行。
+#[test]
+fn plan045_table_resize_body_row_press_is_inert() {
+    use iced::event::Event;
+    use iced::mouse;
+    use iced::Point;
+
+    let view = plan045_resize_table_view(Some(vec![200.0, 300.0]));
+    let mut ui = simulator(view.into_iced());
+    // 体行 y（表头高≈文本高+24+1，取 60）在边界 x=200 按压。
+    ui.point_at(Point::new(200.0, 60.0));
+    ui.simulate([
+        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(250.0, 60.0) }),
+        Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+    ]);
+    let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
+    assert!(msgs.is_empty(), "体行按压不应触发拖拽: {msgs:?}");
+}
