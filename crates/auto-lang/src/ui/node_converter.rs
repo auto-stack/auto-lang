@@ -1048,6 +1048,8 @@ fn convert_scrollable_dynamic(
         height,
         style,
         auto_scroll: false,
+        offset: None,
+        on_scroll: None,
     })
 }
 

@@ -184,7 +184,7 @@ impl VTreeAtomBuilder {
                 node.set_prop("center_x", Value::Bool(*center_x));
                 node.set_prop("center_y", Value::Bool(*center_y));
             }
-            VNodeProps::Scrollable => {}
+            VNodeProps::Scrollable { .. } => {}
             VNodeProps::Slider { min, max, value, step } => {
                 node.set_prop("min", Value::Float(*min as f64));
                 node.set_prop("max", Value::Float(*max as f64));

@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（目标语言高阶能力,塔顶必经）
 
 affects: [aavm]
-current_step: 4
+current_step: 16
 total_steps: 30
 ---
 
@@ -295,26 +295,74 @@ playground-demo/13-methods.at（宿主方法族语义样板））
 
 ### W1 VBool（worktree）
 
-5. [ ] 三件套语料先行红（b13/b14/b19 恢复裸 bool+VBool 新件+g 件）。
-6. [ ] 折叠点①：Val+VBool 四层实现+全分派+期望重生成 → 三面绿+四路
-    → 合入（P474-旁支核销）。
+5. [✅ 已完成 2026-09-03] 三件套语料先行红:b13/b14/b19 恢复裸 bool
+   (worktree 077477ebb)+g26_bool_print per-case dir 9 断言行(宿主 bless:
+   true/false×11)+M4_SAMPLE 扩 3;m5 行为腿实证红(b13 mismatch:host
+   `true` vs aavm `1`)。
+6. [✅ 已完成 2026-09-03] 折叠点①:VBool 四层实现落地(worktree 6dc8d6d1c/
+    master 7ab140c41)——engine.at 8 分派位+ev_bool_str 辅助(规避主 a2r
+    is-match 混合臂发射破缺,登记债);**三宿主顺修/同步**:a2r.at Not 恒
+    括号(g26 发射分歧)、主 a2r merge 后处理 `&&"` 字面量误吃(前导引号
+    保护,g26 四路 p2≠p4 实证)、t_iter 期望翻转(宿主 for-in 已迭代);
+    单元 18/18+tv 3558+tf 绿+tt 28=存量 P523-3+rustc 闸(含 g26)+四路
+    18/18;矩阵/⑤腿留档见步骤 27。P474-旁支核销。
 
 ### W2 方法/impl+is-struct（worktree 续）
 
-7. [ ] 三件套语料先行红（b44 方法族五件+b45 is-struct 两件+g26+）。
-8. [ ] parser+typeinfo 方法层（type 体方法解析/方法表/is-struct 类型臂）。
-9. [ ] codegen+engine 方法执行（接收者/static/&mut 发射序按考古）。
-10. [ ] AA2R 同步发射（g 件逐字符——宿主 514 地基+中阶模式复用）。
-11. [ ] 折叠点②：三面绿+四路 → 合入。
+7. [✅ 已完成 2026-09-03] 三件套语料先行红(worktree e25713b78):b44
+   方法族五件(实例/static new/ext 并入/方法内调方法/.value 简写照——
+   宿主全绿实证 10-15/7/21-42/13-15/42)+b45 is-struct 两件(宿主 panic
+   洞承载)+g27 方法族/g28 is-struct 发射门件;m5 实证红(b44 首件
+   aavm v2-unsupported);b45/g28 金样待宿主顺修后 bless。
+8. [✅ 已完成 2026-09-03] parser+typeinfo 方法层(worktree 6add3fab1):
+    parse_type_decl 体内方法(Display (methods …) 镜像+自引用预注册占位
+    原地覆写)/parse_ext 并入(ext-merge 占位+终态手术)/expr_pratt 前导
+    点臂/is_pattern struct-cover 双形态+臂作用域绑定;typeinfo Type/ext
+    走查;corpus_m2 扩 p25/p26/p27——M2 全绿 35 件+m1/m3/单元 18 无回归。
+9. [✅ 已完成 2026-09-03] codegen+engine 方法执行(worktree 911d5fe73):
+    cg 双趟(pass1 Type/Ext 方法先于 wrapper 镜像宿主分区序)/cg_fn
+    Type.method 重整+self 注入+fn_rets/前导点主式+方法调用后缀臂(实例/
+    静态)/self 字段写名字基(m4 对拍定案)/cg_is struct-cover 解构臂;
+    **宿主顺修**:vm/codegen.rs StructPattern 两处 is 位 panic 洞(恒命中
+    +GET_FIELD 解构);M4+M5 各 53 件全绿;残留 4 红全在 g27/g28 AA2R
+    发射面(步骤 10 范围)。
+10. [✅ 已完成 2026-09-03] AA2R 同步发射(worktree 182e395ea):a2r.at
+    is 臂 struct-cover 模式(词法组装 `f`/`f: alias`→", ",主 a2r match
+    解构形态;`go` 保留字规避)+codegen 字段快照拷贝(转译 move);
+    g27(方法族,514 地基天然绿)/g28(is-struct,新发射)金样 bless;
+    全 aavm2 21/21 绿。
+11. [✅ 已完成 2026-09-03] 折叠点②(worktree f05ef8a06):三面绿(M4/M5
+    各 53+a2r 发射+compile 闸)+四路 22/22(b44/b45 入金样集)+rustc 闸
+    g19-g28+tf 绿+tv 3558+tt 28=存量 P523-3;**顺修**:a2r.at ext 并入
+    显式写回(主 a2r 链式变更 `.clone()` 丢变更洞,g27 四路 p2≠p4 实证,
+    登记债);矩阵补验折叠②后跑(见步骤 27 汇总)。
 
 ### W3 泛型（worktree 续）
 
-12. [ ] 三件套语料先行红（b46 族——W0 盘点清单形态）。
-13. [ ] parser/typeinfo 泛型层（类型参数/实例化表）。
-14. [ ] codegen 单态化/擦除（按 W0 定案）+engine。
-15. [ ] AA2R 同步（泛型声明/实例化发射）。
-16. [ ] 折叠点③：三面绿+四路+**塔顶前置达成核验**（lib 用法清单逐项
-    语料覆盖）→ 合入。
+12. [✅ 已完成 2026-09-03] 三件套语料先行红(worktree 59ec87a33):b46
+   容器族四件(basic/fn 参数返回位含 b32 存量洞核销/struct 字段位/嵌套
+   List<List<int>>;宿主四形态全绿实证)+g29 发射门件;m5 实证红
+   (b46_list_basic:unknown ident List)。
+13. [✅ 已完成 2026-09-03] parser/typeinfo 泛型层:W0 定案容器族面
+   parser.at 已解析(434 含嵌套),typeinfo Type/ext 走查已就——b46 红
+   全部落在 codegen 层(unknown ident List 实证),步骤 13 以现状收口
+   (单态化/实例化表按定案不需要)。
+14. [✅ 已完成 2026-09-03] codegen+engine(worktree 7812018d3):
+   CGType.ftys 字段类型表/注解串入 vty(let+param)/List 静态 new 探测/
+   CallNat 五方法分派(strip_generic+list_nat_id)/字段跳类型回传/len 快径
+   List 排除+字段链 arr.len 分派/语句位 CallNat pop;engine CallNat
+   100/101/106/107 四臂(arena 槽位)。M4+M5 各 57 件全绿。
+15. [✅ 已完成 2026-09-03] AA2R 同步发射(worktree 7812018d3):
+   derive 不降级 Vec(宿主仅 float/Map/enum)/owned 参数保守 mut
+   (mode=own 三通道,主 a2r G2.1 镜像)/get·set 恒 cast/get·len 打印
+   {:?} 形态(lenflag/getdbg 双位);g29 金样 bless;发射闸 29 件全绿。
+16. [✅ 已完成 2026-09-03] 折叠点③(master 5c2e2b1bb 含 W2 折叠②):
+   三面绿(M4/M5 各 57+发射闸 29+compile 闸)+四路 24/24+rustc 闸
+   g19-g29+tf 绿+tv 3558+tt 28=存量 P523-3;**塔顶前置核验达成**——
+   W0 盘点清单逐项:注解四位(fn 参数/返回/let/字段 b46 全覆盖)、嵌套
+   两层(b46_nested)、方法集恰 5(b46_basic);泛型 fn=0/自定义泛型
+   type=0/Map=0 显式延后。链式接收者型回传(get(0).len() 四路 exec
+   实证修复)。
 
 ### W4 闭包/嵌套 fn/跨模块类型（worktree 续）
 

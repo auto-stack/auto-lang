@@ -238,8 +238,9 @@ pub enum VNodeProps {
         center_y: bool,
     },
 
-    /// 可滚动容器属性
-    Scrollable,
+    /// 可滚动容器属性（PLAN-043 T6：offset 绑定 y 值——快照可观测口；
+    /// None = 无绑定）
+    Scrollable { offset_y: Option<f32> },
 
     /// 滑块属性
     Slider {

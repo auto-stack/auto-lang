@@ -300,6 +300,28 @@ type="multiple" variant="outline">;Playwright 实机三连按钮横排渲染
   僵尸 vite;OBS-2 升级认知:静默退出=原生崩溃 exit 127,与端口堆积互相
   放大,重跑可续(缓存增量)。
 
+### W8 togglegroup 连体样式 + 单选示例（已完成 2026-09-03）
+
+用户观察：三连按钮没有合在一起（三个独立圆角块+缝隙）；要求做成 shadcn
+原型的连体样式,并补单选示例。
+
+根因：bundled 快照是旧版 shadcn-vue toggle-group——root 写死
+`flex items-center justify-center gap-1`,item 各自 rounded-md+border,
+即"分离三按钮"观感;新版 shadcn 的连体(依赖闭包/首尾圆角)未包含在该
+快照版本中。
+
+修复（示例层,W7 的 codegen 链路已就绪）:togglegroup.at 两组示例 root
+注入 tailwind-merge 可覆盖的连体 class——`gap-0` 消缝 + `[&>*+*]:-ml-px`
+边框叠压 + 首尾/中段圆角分配;新增 Single (alignment) 示例:
+model.alignment + `value: .alignment` 走 codegen `v-model` 通路(type
+single 单选互斥)+ f-string "Selected: ${.alignment}" 实时回显。
+非目标:bundled 快照升级到新版连体设计(影响所有工程,登记 OBS-11)。
+
+验证:产物 `<ToggleGroup v-model="alignment" type="single" variant=
+"outline" class="gap-0 ...">`;Playwright 实机:Multiple 三连按钮合体
+(w8_joined.png),点 Right→激活高亮+"Selected: right"联动
+(w8_single_right.png),零 console error。
+
 ### W2+ （待问题清单追加）
 
 （占位：每追加一问题，在此按 T 粒度展开，并同步 total_steps/current_step。）
@@ -329,6 +351,7 @@ type="multiple" variant="outline">;Playwright 实机三连按钮横排渲染
 | W5 | charts 相关 5 页打不开：LineChart/BarChart/AreaChart/DonutChart/FlowDiagram；疑似近期 chart 重实现（charts-gallery）未完整移植到 widgets-gallery | 用户（人工检查） | ✅ 已修复并验证（本文档 W5；移植完整，真因=文本转义缺失） |
 | W6 | （W5 全站扫描发现）kitchen-sink、navitem 页 500：npm_deps 不生效 / model 逗号解析缺陷 / 裸词 src 静态 import / 桌面专属 widget 误入 web 画廊 | ZCode（扫描） | ✅ 已修复并验证（本文档 W6） |
 | W7 | togglegroup 页纵向裸排 B/I/U,应为 shadcn 横向三连按钮(outline/aria-label/单选多选 UX) | 用户（人工检查+截图对照 shadcn 原型） | ✅ 已修复并验证（本文档 W7） |
+| W8 | 三连按钮未合体（旧脚手架 gap-1 分离观感）;需补单选示例 | 用户（人工检查+截图） | ✅ 已修复并验证（本文档 W8;示例层 class 注入连体） |
 
 ### 观察（OBS，未定是否立项）
 
@@ -344,3 +367,4 @@ type="multiple" variant="outline">;Playwright 实机三连按钮横排渲染
 | OBS-8 | model 声明的逗号分隔式（`model { a str = "1", b str = "2" }`）解析缺陷：空名变量 + 名字错位 | parser 增强候补（家规为换行式） | open |
 | OBS-9 | master 存量测试失败共 4 个（git stash 验证与本计划无关）：`d8_toggle_dark_mode`、`plan055_strip_html_tests::strips_tags_and_decodes_entities`、`schema_drift_fence`、`gallery_vue_golden` | 影响全量测试门禁；golden 需重采样评估 | open |
 | OBS-10 | 战略方向（用户 2026-09-03）：现阶段的 shadcn 对齐是过渡态——组件库成熟后可能与 shadcn 分道扬镳：①跨平台需求催生更多自有组件；②web 端实现或脱离 shadcn 基底改为自研。届时命名体系（含 W3 的 alert/alert-dialog 互换、confirm/callout 别名）整体重议 | 远期 L2 级架构议题，需独立 design doc | open（远期） |
+| OBS-11 | bundled shadcn-ui 快照为旧版:toggle-group 无新版连体样式(其余组件亦可能滞后于上游 shadcn-vue) | 快照升级属独立工程,影响面全工程 | open（远期,关联 OBS-10） |

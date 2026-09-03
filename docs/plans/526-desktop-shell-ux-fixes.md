@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
 current_step: 19
-total_steps: 19
+total_steps: 20
 ---
 
 # [PLAN-526] 桌面壳 UX 十题修复：窗口三键/resize/焦点环/fit、任务栏样式统一、右键菜单、壁纸选择、launcher 焦点、关机确认
@@ -414,6 +414,46 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       [✅ 已完成] commit 491a047ff；实机：清键重启后 raiden.jpg Cover 满屏
       无顶缝（默认链 storage→env→stella 探测取目录首图）；壁纸分辨率测试
       按新链放行；desktop 142/142
+
+### 波8 追加反馈四（用户实机反馈，2026-09-03）
+
+- [ ] T20 跨窗口首击吞按钮（用户指示仅记录根因，暂缓修复）：
+      症状——焦点在窗口1 时首击窗口2 的按钮，焦点切过去但按钮不触发，
+      第二次点击才生效；点非交互空白区首击聚焦正常。
+
+      根因（调研定位，证据链闭合）——**聚焦置顶重排发生在 press 与
+      release 之间，iced Tree 按位 diff 弄丢 button 的 is_pressed 态**：
+      1. 首击按钮：widget 树内 iced button 捕获 press 置 `is_pressed=true`
+         （iced_widget-0.14.2 button.rs:307-312），客户区包裹 mouse_area
+         因子捕获让行（mouse_area.rs:241）→ `Focus(wid)` 不从 widget 路径
+         发出；焦点切换实际来自**并行订阅通道**：`ButtonPressed(Left)` →
+         `DM::Wm(GlobalPress)`（renderer.rs:14013-14017）→ 命中臂
+         `hit_test → wm_focus`（renderer.rs:13158-13171）。
+      2. `WmState::focus` 聚焦即置顶：`z_order.retain + push`（session.rs:
+         930-931），窗口2 层序从中途跳到末尾（顶层）。
+      3. 桌面层按 `z_order` 迭代装配 Stack（renderer.rs:13507）→ 重排后
+         `Stack::diff → Tree::diff_children`（iced_widget stack.rs:153-154
+         → iced_core-0.14.0 tree.rs:96-100）**纯按位置 zip 匹配、不看
+         widget Id**——错位槽位各拿别窗旧树 diff，button 持有的
+         `is_pressed=true` 树被丢弃换新。
+      4. release 到达：button 检查 `is_pressed`（button.rs:321）已为
+         false → on_press 不发布，首击作废。二次点击时窗口已在顶
+         （retain+push 幂等不重排），press→release 状态幸存 → 正常触发。
+      5. 旁证：标题栏拖拽/客户区聚焦都是 press 驱动（mouse_area
+         on_press），首击即生效——只有 release 驱动的 iced button 吞击。
+
+      修复方向（实施时定稿）——推荐把「置顶重排」与「焦点记录」拆开：
+      GlobalPress 命中新窗时只写 `focused`（焦点环即时移动，不改层序），
+      `z_order` 置顶推迟到既有 `__mouse_released` 全局臂（renderer.rs:
+      14004-14010，拖拽状态机同源）应用——release 后重排无害（无在途
+      点击）。备选：Stack 层稳定 Id（iced 0.14 diff_children 无 Id 匹配
+      路径，需上游改动，不推荐）。注意 `hit_test` 命中即未被遮挡，推迟
+      置顶在 press→release 窗口内无可见层序反转伪影。
+      文件：`crates/auto-lang/src/ui/session.rs`（focus 拆分）、
+      `renderer.rs`（GlobalPress/`__mouse_released` 两臂）。
+      验证：实机——焦点窗1 首击窗2 DualApp `-`/Reset/+ 与计算器键应一次
+      完成切焦+按下；已聚焦窗连点无回归；`cargo t session && cargo t
+      desktop`。
 
 ### 波间回归
 
