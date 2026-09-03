@@ -1347,6 +1347,34 @@ fn cg_expr(mut c CG, mut p P, min int) {
             c.inst_ty = name
             return
         }
+        // W2(525 复审补):位置参构造 T(v1, v2)——已注册类型紧随 ( →
+        // 值按位序 + NEW_INSTANCE 族尾(镜像宿主位置参路径,13-methods
+        // 样板 `return Counter(v)` 形态;同 cg_ctor_emit 尾序)
+        if p.kind() == TokenKind.LParen && c.tys_lookup(name) >= 0 {
+            p.next()
+            p.skip_empty_lines()
+            var pn = 0
+            if p.kind() != TokenKind.RParen {
+                cg_expr(c, p, 0)
+                pn = 1
+                while p.kind() == TokenKind.Comma || p.kind() == TokenKind.Newline {
+                    p.next()
+                    p.skip_empty_lines()
+                    cg_expr(c, p, 0)
+                    pn = pn + 1
+                }
+            }
+            p.expect(TokenKind.RParen)
+            var pnm = name.len()
+            c.emit(OpCode.ConstI32, pnm.str(), pnm)
+            c.emit(OpCode.NewInstance, "\"" + name + "\"", 0)
+            c.emit(OpCode.ConstI32, pn.str(), pn)
+            c.emit(OpCode.ConstructInstance, "", 0)
+            c.arr_flag = 0
+            c.str_flag = 0
+            c.inst_ty = name
+            return
+        }
         // W3:模块限定调用 db.fn(...)(db 为已 use 模块名;镜像宿主
         // auto_modules + mod.fn reloc 符号——链接期定址;调用后可接
         // 后缀/中缀,故 call_done 包裹而非 return)

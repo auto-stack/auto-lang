@@ -1,0 +1,18 @@
+// Plan 525 复审补:位置参构造 T(v)(13-methods 样板 `return Counter(v)`
+// 形态;复审发现的静默缩面,镜像宿主位置参 NEW_INSTANCE 路径)
+type Counter {
+    value int
+    static fn new(v int) Counter {
+        return Counter(v)
+    }
+    fn get() int {
+        return .value
+    }
+}
+
+fn main() {
+    let c = Counter.new(10)
+    print(c.get())
+    let d = Counter(7)
+    print(d.get())
+}
