@@ -46,7 +46,7 @@
 // Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;P 方法族随类型导入)
 use auto.lib.token: TokenKind, kind_name
 use auto.lib.lexer: tokenize
-use auto.lib.parser: E, Op, P, expect_eos, expr_pratt, find_sub, infix_l, infix_r, int_val, is_comment_kind, is_name_kind, is_op_kind, is_pattern, is_soft_ident_kind, is_type_name, p_op, parse_new, parse_type, split_commas
+use auto.lib.parser: E, Op, P, expect_eos, expr_pratt, find_sub, infix_l, infix_r, int_val, is_comment_kind, is_name_kind, is_op_kind, is_pattern, is_soft_ident_kind, is_type_name, p_op, parse_new, parse_type, split_commas, parse_type_decl
 use auto.lib.typeinfo: t_is_type_prop
 
 type I {
@@ -1751,6 +1751,25 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                     dot_seq = dot_seq + 1
                                     continue
                                 }
+                            }
+                            // P532 W1 G16:宿主 len 兜底镜像(codegen.rs 7563
+                            // ——任意接收者 .len() 无参 → ARRAY_LEN 运行期
+                            // 动态分派;已知非容器型(CGType.len 链接错)与
+                            // 未typed 接收者同治;置于 sym 臂前,List/str/int
+                            // /File 专用臂已先行 continue)
+                            if mname2 == "len" && p.peek(3) == TokenKind.RParen {
+                                p.next()
+                                p.next()
+                                cg_call_args(c, p)
+                                c.emit(OpCode.ArrLen, "", 0)
+                                dot_done = true
+                                c.str_flag = 0
+                                c.arr_flag = 0
+                                c.inst_ty = "int"
+                                c.recv_ty = "int"
+                                c.primary_tyname = ""
+                                dot_seq = dot_seq + 1
+                                continue
                             }
                             if recv_ty2 != "" {
                                 var sym = recv_ty2 + "." + mname2
@@ -4005,8 +4024,8 @@ pub fn cg_compile_files(main_path str) CG {
     var seed_ctors List<CGEnum> = List.new()
     var i = 0
     while i < res.mods.len() {
-        var mod = res.mods.get(i)
-        var mc = cg_compile_mod_seeded(mod.source, mod.name, seed, seed_consts, seed_ctors)
+        var mod_entry = res.mods.get(i)
+        var mc = cg_compile_mod_seeded(mod_entry.source, mod_entry.name, seed, seed_consts, seed_ctors)
         if mc.err != "" {
             return mc
         }

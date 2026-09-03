@@ -46,8 +46,10 @@
 // Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;P/Ar 方法族随类型导入)
 use auto.lib.token: TokenKind, kind_name
 use auto.lib.lexer: tokenize
-use auto.lib.parser: E, P, builtin_type, expect_eos, find_sub, infix_l, infix_r, int_val, is_name_kind, is_op_kind, is_pattern, is_type_name, is_unsupported_stmt_kind, op_display, p_op, parse_new, parse_type, prefix_power, split_commas
+use auto.lib.parser: E, P, builtin_type, expect_eos, find_sub, infix_l, infix_r, int_val, is_name_kind, is_op_kind, is_pattern, is_type_name, is_unsupported_stmt_kind, op_display, p_op, parse_new, parse_type, prefix_power, split_commas, binop_result
 use auto.lib.typeinfo: t_is_type_prop
+// P532 W1:审计补全
+use auto.lib.engine: ev_vs
 
 type ArParam {
     name str
