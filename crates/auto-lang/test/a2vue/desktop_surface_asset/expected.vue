@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Button } from '@/components/ui/button'
+import { Popover } from '@/components/ui/popover'
 
 
 const __desktop_cmd = ref<string>('')
@@ -47,7 +48,7 @@ function IconMenu(id: any): void {
   emit('IconMenu', id)
 }
 
-function MenuOpen(): void {
+function MenuOpen(e: any): void {
   if (menu_id.value != '') {__desktop_cmd.value = 'activate\t' + menu_id.value;
   menu_id.value = '';
   }
@@ -55,7 +56,7 @@ function MenuOpen(): void {
   emit('MenuOpen')
 }
 
-function MenuRemove(): void {
+function MenuRemove(e: any): void {
   if (menu_id.value != '') {if (__desktop_hidden.value == '') {__desktop_hidden.value = menu_id.value;
   } else {__desktop_hidden.value = __desktop_hidden.value + ',' + menu_id.value;
   }localStorage.setItem('shell.desktop.hidden', __desktop_hidden.value);
@@ -65,7 +66,7 @@ function MenuRemove(): void {
   emit('MenuRemove')
 }
 
-function MenuWallpaper(): void {
+function MenuWallpaper(e: any): void {
   menu_id.value = '';
   __desktop_cmd.value = 'open_settings';
 
@@ -80,6 +81,10 @@ function MenuWallpaperBlank(): void {
 function OpenSettingsBlank(): void {
   blank_menu.value = '';
   __desktop_cmd.value = 'open_settings';
+}
+
+function MenuClose(e: any): void {
+  menu_id.value = e
 }
 
 onMounted(() => {
@@ -109,7 +114,14 @@ onMounted(() => {
         <div class="grid grid-cols-8 gap-2 w-full">
           <div @dblclick="ActivateApp(e.id)" v-for="e in __desktop_icons" :key="(((e as any)?.id ?? e))">
             <div class="flex flex-col w-20 h-20 items-center justify-center gap-1">
-              <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" @contextmenu.prevent="IconMenu(e.id)" :key="'Button-6-' + (((e as any)?.id ?? e))" />
+              <Popover class="p-1 border rounded bg-card" @dismiss="MenuClose(e)" :key="'Popover-6-' + (((e as any)?.id ?? e))">
+                <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" @contextmenu.prevent="IconMenu(e.id)" :key="'Button-7-' + (((e as any)?.id ?? e))" />
+                <div class="flex flex-col w-44 gap-1">
+                  <Button class="w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-8-' + (((e as any)?.id ?? e))">打开</Button>
+                  <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-9-' + (((e as any)?.id ?? e))">从桌面移除</Button>
+                  <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-10-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
+                </div>
+              </Popover>
               <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
             </div>
           </div>

@@ -373,8 +373,8 @@ widget Desktop {
         }
         .SummonLauncher -> { .__desktop_cmd = "summon\tlauncher" }
         .LayoutFree -> { .__desktop_cmd = "layout\tfree" }
-        .LayoutGrid -> { .__desktop_cmd = "layout\tgrid" }
-        .LayoutStack -> { .__desktop_cmd = "layout\tmaster-stack" }
+        .LayoutGrid -> { .__desktop_cmd = "layout_toggle\tgrid" }
+        .LayoutStack -> { .__desktop_cmd = "layout_toggle\tmaster-stack" }
         // PLAN-526 T8：菜单态随动作消费清零（动作项与条目本体共用消息，
         // 非菜单路径清空为无害幂等）。
         .WinFocus(wid) -> { .__desktop_cmd = "focus\t" + wid; .win_menu = "" }

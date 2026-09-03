@@ -8432,6 +8432,16 @@ fn execute_desktop_commands(
                 crate::ui::iced::snapshot::invalidate_all();
                 state.wm_set_layout(mode)
             }
+            // PLAN-526 T33：预设 icon 切换键——同预设再按 = 恢复应用前的
+            // 手动排布快照；否则按普通预设应用（快照在 Free→预设迁移时采集）。
+            DC::TogglePresetLayout(mode) => {
+                crate::ui::iced::snapshot::invalidate_all();
+                if state.wm_layout_mode() == mode {
+                    state.wm_restore_layout_snapshot();
+                } else {
+                    state.wm_set_layout(mode);
+                }
+            }
             // Plan 472 T2：分区切换（dock 切换条/workspace_next；调用臂尾
             // sync_shell_windows 刷新投影）。
             DC::SetWorkspace(n) => state.wm_set_workspace(n),
@@ -13220,6 +13230,10 @@ fn compare_pngs(
                     }
                     // Plan 478 T4：Ctrl+Tab 改道——switcher 可见 → .Advance
                     // 直投（选中环走，仅 sel 变更不触发 drain）；否则召唤。
+                    // PLAN-526 T32：召唤后紧接一次 .Advance——首按即预选
+                    // 下一个窗口（Windows Alt-Tab 语义；RebuildMru 复位
+                    // sel=0=当前窗，预选顺延一位），松开 Ctrl 提交（见
+                    // __modifiers_changed 臂），按住期间再按继续推进。
                     DesktopEvent::SummonSwitcher => {
                         if state.switcher_visible() {
                             if let Some(sw) = state.desktop.switcher_app {
@@ -13231,7 +13245,17 @@ fn compare_pngs(
                                 return update_inner(state, sw, msg).map(move |m| DM::App(sw, m));
                             }
                         }
-                        return summon_switcher(state);
+                        let task = summon_switcher(state);
+                        if let Some(sw) = state.desktop.switcher_app {
+                            let msg = IcedMessage {
+                                widget: String::new(),
+                                event: "Advance".to_string(),
+                                input_value: None,
+                            };
+                            let advance = update_inner(state, sw, msg).map(move |m| DM::App(sw, m));
+                            return iced::Task::batch([task, advance]);
+                        }
+                        return task;
                     }
                     // Plan 488 步骤 4/6 → 505 D（债 P488-D4 清偿）：拖出完成 →
                     // on_dnd_finished 交付**发起时锚定 App**（dispatch 环置位；
@@ -13538,7 +13562,12 @@ fn compare_pngs(
                 // Plan 462 desktop：全局光标事件优先驱动 WM 拖拽/缩放状态机。
                 // 交互进行中消费事件（不下发 App——app 内 divider 拖拽与 WM
                 // 拖拽互斥，桌面语义下 WM 优先）。
-                if state.is_desktop() && matches!(m.event.as_str(), "__mouse_moved" | "__mouse_released") {
+                if state.is_desktop()
+                    && matches!(
+                        m.event.as_str(),
+                        "__mouse_moved" | "__mouse_released" | "__modifiers_changed"
+                    )
+                {
                     match m.event.as_str() {
                         "__mouse_moved" => {
                             if let Some(ref val) = m.input_value {
@@ -13558,6 +13587,36 @@ fn compare_pngs(
                                         .unwrap_or(false)
                                     {
                                         return iced::Task::none();
+                                    }
+                                }
+                            }
+                        }
+                        "__modifiers_changed" => {
+                            // PLAN-526 T32：Ctrl 松开且 switcher 可见 → 注入
+                            // .Pick 提交选中（Focus(wid) → __desktop_cmd →
+                            // 排水聚焦）——Windows/Linux Alt-Tab 语义的
+                            // "松手即切换"半边；Esc 取消语义不变（overlay
+                            // bind 自管）。修饰键事实源照旧回写。
+                            if let Some(ref val) = m.input_value {
+                                if let Ok(bits) = val.parse::<u32>() {
+                                    let prev =
+                                        *state.desktop.current_modifiers.borrow();
+                                    let new_mods =
+                                        iced::keyboard::Modifiers::from_bits_truncate(bits);
+                                    *state.desktop.current_modifiers.borrow_mut() =
+                                        new_mods;
+                                    let ctrl_released =
+                                        prev.control() && !new_mods.control();
+                                    if ctrl_released && state.switcher_visible() {
+                                        if let Some(sw) = state.desktop.switcher_app {
+                                            let pick = IcedMessage {
+                                                widget: String::new(),
+                                                event: "Pick".to_string(),
+                                                input_value: None,
+                                            };
+                                            return update_inner(state, sw, pick)
+                                                .map(move |m| DM::App(sw, m));
+                                        }
                                     }
                                 }
                             }
