@@ -22,7 +22,7 @@ impl Echo {
         Ok(())
     }
 
-    pub async fn handle_msg(&mut self, msg: String, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn handle_msg(&mut self, mut msg: String, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
         match msg.as_str() {
             "ping" => {
                 println!("pong");

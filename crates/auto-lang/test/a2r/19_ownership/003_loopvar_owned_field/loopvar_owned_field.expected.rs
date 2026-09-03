@@ -38,7 +38,7 @@ fn build_handoff(result: AgentRes) -> String {
         acc = take_blob(tc.blob.clone());
         let wp = WorkProduct { path: acc.to_string(), description: tc.tool.clone() };
         acc = wp.description;
-        acc = take_note(tc.note);
+        acc = take_note(tc.note.as_str());
     }
     let mut total: i64 = result.total_tokens.clone();
     total = total + 1;

@@ -1,9 +1,18 @@
 // Plan 525 W5 g34(b49):May/Option 最小面——?T 返回注解+Some(..) 构造+
 // None 哨兵+is Some/None 模式臂(宿主 30/none 实证;裸值 return 的
 // 宿主发射不编译,语料取显式 Some 构造形态)。
+// Plan 531 P525-4 清偿追加:裸值 return 臂(find_bare)——VM 语义=裸值
+// 即 Some(值),主 a2r 修复后同形包裹(修前直发裸值于 Option<T> 位 E0308)。
 fn find(n int) ?int {
     if n > 0 {
         return Some(n * 10)
+    }
+    return None
+}
+
+fn find_bare(n int) ?int {
+    if n > 0 {
+        return n * 10
     }
     return None
 }
@@ -16,6 +25,16 @@ fn main() {
     }
     let b = find(0)
     is b {
+        Some(v) -> print(v)
+        None -> print("none")
+    }
+    let c = find_bare(3)
+    is c {
+        Some(v) -> print(v)
+        None -> print("none")
+    }
+    let d = find_bare(0)
+    is d {
         Some(v) -> print(v)
         None -> print("none")
     }

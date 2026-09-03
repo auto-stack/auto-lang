@@ -4,7 +4,9 @@ use log::info;
 use chrono::Local;
 use env_logger::Builder;
 fn main() {
-    Builder::new().format(|buf, record| { buf.writeln(format!("[{}] {} - {}", Local::now().format("%Y-%m-%d %H:%M:%S"), record.level(), record.args())); }).init();
+    let mut builder = Builder::new();
+    builder.format(|buf, record| { buf.writeln(format!("[{}] {} - {}", Local::now().format("%Y-%m-%d %H:%M:%S"), record.level(), record.args())); });
+    builder.init();
     info!("application started");
     info!("with timestamp logging");
     assert!(true);

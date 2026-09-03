@@ -14,7 +14,7 @@ impl Registry {
     pub fn new() -> Registry {
         return Registry { tools: std::collections::HashMap::new() };
     }
-    pub fn register(&mut self, tool: Box<dyn Tool>) {
+    pub fn register(&mut self, mut tool: Box<dyn Tool>) {
         let n = tool.name();
         self.tools.insert(n, Arc::from(tool));
     }

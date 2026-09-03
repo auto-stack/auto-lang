@@ -18,6 +18,6 @@ trait Greeter {
 }
 
 
-fn say<T: Greeter>(g: T) -> String {
+fn say<T: Greeter>(mut g: T) -> String {
     return g.greet();
 }

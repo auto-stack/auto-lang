@@ -18,6 +18,6 @@ fn main() {
     p.x = 3;
     println!("P: {}, {}", p.x, p.y);
 
-    let circle = Circle { radius: 5.0, border: 1, center: Point { x: 50, y: 50 } };
+    let circle = Circle { radius: 5.0, border: 1 as u32, center: Point { x: 50, y: 50 } };
     println!("C: {}, {}, {}", circle.center.x, circle.center.y, circle.radius);
 }

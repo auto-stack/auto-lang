@@ -5,7 +5,7 @@ trait Tool {
 }
 
 
-pub fn free_register(tool: Box<dyn Tool>) {
+pub fn free_register(mut tool: Box<dyn Tool>) {
     println!("{}", tool.name());
 }
 
@@ -18,9 +18,9 @@ impl Reg {
     pub fn new() -> Reg {
         return Reg { tools: std::collections::HashMap::new() };
     }
-    pub fn register(&mut self, tool: Box<dyn Tool>) {
+    pub fn register(&mut self, mut tool: Box<dyn Tool>) {
         let n = tool.name();
-        self.tools.insert(n, Arc::from(tool));
+        self.tools.insert(n.to_string(), Arc::from(tool));
     }
 }
 

@@ -1055,6 +1055,11 @@ impl Automan {
                     crate::rust_ui::build_rust_ui(&root_dir)?;
                 } else {
                     println!("Transpiling Auto code to Rust (backend: rust)");
+                    // Plan 531 P523-1: rust target 链补齐——targets 的 autos
+                    // 由 resolve() 扫描填充;跳过 resolve 时 transpile_autot 的
+                    // has_auto() 全 false,转译空跑,CargoBuilder 只能落桩
+                    // main.rs + 空包名 Cargo.toml(最小工程实测实录)。
+                    self.pac.resolve()?;
                     self.transpile_auto()?;
                     self.pac.build()?;
                 }

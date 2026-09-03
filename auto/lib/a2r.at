@@ -151,6 +151,9 @@ type Ar {
     globals List<str>
     global_tys List<str>
     atom_global_name str
+    // Plan 531 P525-4 镜像:当前正在发射 fn/method 的 Auto 返回型原文
+    // (含 ?T May 前缀)——ar_return 裸值包裹判定。
+    cur_ret str
 
     // ── Plan 514 W3-16(γ4 塔顶):Ar 自有操作族入 type 体 ──
     // 映射:ar_* a-only 工具族(产生式 ar_expr/stmt/emit_*/
@@ -174,7 +177,7 @@ type Ar {
     var imps List<str> = List.new()
     var gls List<str> = List.new()
     var glt List<str> = List.new()
-    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, lm, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis, imps, gls, glt, "")
+    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, lm, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis, imps, gls, glt, "", "")
 }
 
     fn fail(msg str) {
@@ -3814,6 +3817,16 @@ fn ar_return(mut a Ar, mut p P) {
             e = f"(${e})"
         }
     }
+    // Plan 531 P525-4 镜像:May 裸值 return——?T fn 内裸值表达式包裹
+    // Some(...)(主 a2r 同口径,VM 语义=裸值即 Some(值));Some(/Ok(/
+    // None 形与 ?T 型表达式(a.ty May 前缀)不裹。
+    if a.cur_ret.len() > 0 && a.cur_ret.slice(0, 1) == "?" {
+        var opt_shaped = e == "None" || (e.len() > 5 && e.slice(0, 5) == "Some(") || (e.len() > 3 && e.slice(0, 3) == "Ok(")
+        var expr_may = a.ty.len() > 0 && a.ty.slice(0, 1) == "?"
+        if !opt_shaped && !expr_may {
+            e = f"Some(${e})"
+        }
+    }
     a.line("return " + e + ";")
 }
 
@@ -3923,6 +3936,9 @@ fn ar_emit_method2(mut a Ar, mut p P, m ArMethod, tyname str) {
     var name = p.text()
     p.next()
     a.cur_fn = name
+    // D25 范式(525-1 族):m 为按值参数,直接字段赋值在转译态 move 掉
+    // m.ret(后续 :3983/:4011 复用即 E0382)——空串拼接产生新值(借用不移动)。
+    a.cur_ret = "" + m.ret
     var empty List<str> = List.new()
     a.mutated = empty
     // Plan 523 H2:let-mut 装饰位独立列表(与 mutated 分离——后者还载
@@ -4005,6 +4021,7 @@ fn ar_emit_method2(mut a Ar, mut p P, m ArMethod, tyname str) {
     a.indent = a.indent - 1
     a.line("}")
     a.cur_fn = ""
+    a.cur_ret = ""
 }
 
 fn ar_char_str(c int) str {
@@ -4205,6 +4222,9 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
     var fi = a.fn_find(name)
     var f = a.fns.get(fi)
     a.cur_fn = name
+    // D25 范式(525-1 族):同 m 位——f 经 list.get 取得,直接字段赋值
+    // 转译态 move 掉 f.ret(后续签名位复用即 E0382);空串拼接借用不移动。
+    a.cur_ret = "" + f.ret
     var empty List<str> = List.new()
     a.mutated = empty
     // Plan 523 H2:let-mut 装饰位独立列表(与 mutated 分离——后者还载
@@ -4276,6 +4296,7 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
     a.indent = a.indent - 1
     a.line("}")
     a.cur_fn = ""
+    a.cur_ret = ""
 }
 
 // ── use 语句发射(Plan 517 W1)──────────────────────────────

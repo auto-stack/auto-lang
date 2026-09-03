@@ -3,7 +3,7 @@
 fn main() {
     let csv_str: String = "name,age\nAlice,30\nBob,25".to_string();
 
-    let mut lines = csv_str.split("\n").collect::<Vec<_>>();
+    let mut lines = csv_str.split("\n").map(|s| s.to_string()).collect::<Vec<String>>();
     assert!((lines.len() as i64) == 3);
     println!("Name: Alice, Age: 30");
     println!("Name: Bob, Age: 25");

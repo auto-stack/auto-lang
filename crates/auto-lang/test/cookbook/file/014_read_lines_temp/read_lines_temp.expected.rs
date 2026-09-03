@@ -4,8 +4,8 @@ use std::fs;
 fn main() {
     let content: String = "line1\nline2\nline3".to_string();
     let path: String = "test_temp.txt".to_string();
-    File::write_text(path.as_str(), content.as_str());
-    let lines = File::read_text(path.as_str());
+    if std::fs::write(&path.as_str(), &content.as_str()).is_ok() { 0 } else { -1 };
+    let lines = std::fs::read_to_string(&path.as_str()).unwrap_or_default();
     let mut line_count: i64 = 0;
     for line in lines.lines() {
         line_count += 1;

@@ -23,6 +23,6 @@ pub fn get_cb() -> Box<dyn Fn(i64) + Send + Sync> {
 
 fn main() {
     let c = Callback { on_ev: None, on_done: None, on_named: None };
-    set_cb(c.on_ev);
+    set_cb(c.on_ev.clone());
     println!("{}", get_cb() != None);
 }

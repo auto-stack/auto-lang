@@ -154,10 +154,17 @@ impl Builder for CargoBuilder {
 
         // Cargo package names can't start with a digit. Sanitize by prepending
         // "app-" if the name starts with a digit (e.g. 015-notes → app-015-notes).
-        let pkg_name = if target.name.as_str().chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-            format!("app-{}", target.name.as_str())
+        // Plan 531 P523-1: 无名目标(最小工程 `app { lang: rust }` 形)回落
+        // pac.name——此前空名直落 Cargo.toml `name = ""`,cargo 拒载。
+        let base_name = if target.name.as_str().is_empty() {
+            pac.name.as_str().to_string()
         } else {
             target.name.as_str().to_string()
+        };
+        let pkg_name = if base_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            format!("app-{}", base_name)
+        } else {
+            base_name
         };
 
         let mut cargo_toml = format!(
@@ -173,14 +180,21 @@ edition = "2021"
 
         // Add dependencies
         cargo_toml.push_str("\n\n[dependencies]\n");
-        // a2r-generated code imports auto_lang::a2r_std, so always add it
-        // Try to find auto-lang relative to current workspace
-        let auto_lang_path = self.find_auto_lang_path();
-        if let Some(path) = auto_lang_path {
-            cargo_toml.push_str(&format!("auto-lang = {{ path = \"{}\" }}\n", path));
-        } else {
-            // Fallback: assume it's available via cargo registry or workspace
-            cargo_toml.push_str("auto-lang = \"*\"\n");
+        // Plan 531 P523-1: auto-lang 依赖按生成代码的实际 a2r_std/auto_lang
+        // 引用添加——此前无条件注入 `"*"` 兜底,仓外最小工程(注册表无
+        // auto-lang)未用 a2r_std 也直接构建失败;纯标准库语料不需要该依赖。
+        let src_dir_path = self.path.parent().join("src");
+        if src_dir_path.path().exists()
+            && dir_references_auto_lang(src_dir_path.path())
+        {
+            // Try to find auto-lang relative to current workspace
+            let auto_lang_path = self.find_auto_lang_path();
+            if let Some(path) = auto_lang_path {
+                cargo_toml.push_str(&format!("auto-lang = {{ path = \"{}\" }}\n", path));
+            } else {
+                // Fallback: assume it's available via cargo registry or workspace
+                cargo_toml.push_str("auto-lang = \"*\"\n");
+            }
         }
         for dep in &target.deps {
             if dep.lang.as_str() == "rust" {
@@ -194,7 +208,6 @@ edition = "2021"
 
         // Scan existing .rs files in src/ for external crate usage
         // (e.g. hand-written files using `use serde::{Serialize, Deserialize}`)
-        let src_dir_path = self.path.parent().join("src");
         if src_dir_path.path().exists() {
             let mut extra_deps: Vec<String> = Vec::new();
             let built_in = ["std", "core", "alloc", "proc_macro", "crate", "super", "self",
@@ -310,6 +323,30 @@ edition = "2021"
     fn get_memory_output(&self) -> HashMap<String, Vec<u8>> {
         self.memory_files.clone()
     }
+}
+
+/// Plan 531 P523-1: does any .rs under `dir` reference the a2r_std/auto_lang
+/// crates (path-qualified use or inline `a2r_std::`)? Gates the auto-lang
+/// dependency — registry `"*"` fallback breaks out-of-repo projects.
+fn dir_references_auto_lang(dir: &Path) -> bool {
+    fn walk(dir: &Path) -> Option<bool> {
+        for entry in fs::read_dir(dir).ok()?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if walk(&path)? {
+                    return Some(true);
+                }
+            } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if content.contains("a2r_std") || content.contains("auto_lang") {
+                        return Some(true);
+                    }
+                }
+            }
+        }
+        Some(false)
+    }
+    walk(dir).unwrap_or(false)
 }
 
 /// Recursively scan .rs files for external crate usage (e.g. `use serde::{...}`).
