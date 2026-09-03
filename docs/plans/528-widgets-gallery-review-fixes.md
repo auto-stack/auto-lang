@@ -376,6 +376,10 @@ overlay/virtual_window/dock 合成,非示例层可修。
 复现配方：pac.at `window: "700x900"` 冷启动 → MCP 截图即现（本次实验
 已还原 pac.at）。
 
+> 2026-09-03：W10（问题 A）与 OBS-1（问题 B）已立项 **PLAN-530**
+> （`docs/plans/530-vm-mobile-paint-crash.md`）专项深挖,本计划保留
+> 定位结论与复现配方。
+
 ### W2+ （待问题清单追加）
 
 （占位：每追加一问题，在此按 T 粒度展开，并同步 total_steps/current_step。）
@@ -407,13 +411,13 @@ overlay/virtual_window/dock 合成,非示例层可修。
 | W7 | togglegroup 页纵向裸排 B/I/U,应为 shadcn 横向三连按钮(outline/aria-label/单选多选 UX) | 用户（人工检查+截图对照 shadcn 原型） | ✅ 已修复并验证（本文档 W7） |
 | W8 | 三连按钮未合体（旧脚手架 gap-1 分离观感）;需补单选示例 | 用户（人工检查+截图） | ✅ 已修复并验证（本文档 W8;示例层 class 注入连体） |
 | W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | ✅ 已修复并验证（本文档 W9;默认面板 chrome w-72 bg-popover border rounded-md shadow-md p-4） |
-| W10 | VM 版窗口收窄触发 mobile 断点后内容成双份（文字/按钮/代码块全部 ×2 重叠），底部导航栏出现 | 用户（人工检查+截图） | 🔍 根因已定位（绘制层双通道合成），修复需 VM shell 专项（见 W10 节） |
+| W10 | VM 版窗口收窄触发 mobile 断点后内容成双份（文字/按钮/代码块全部 ×2 重叠），底部导航栏出现 | 用户（人工检查+截图） | 🔍 已立项 **PLAN-530** 深挖（根因定位见 W10 节） |
 
 ### 观察（OBS，未定是否立项）
 
 | # | 现象 | 影响 | 状态 |
 |---|------|------|------|
-| OBS-1 | `auto run`（VM 模式）原生窗口崩溃：`memory allocation of 721554505560 bytes failed`，无 backtrace | VM 版 widgets-gallery 无法启动检查 | open |
+| OBS-1 | `auto run`（VM 模式）原生窗口崩溃：`memory allocation of 721554505560 bytes failed`，无 backtrace | VM 版 widgets-gallery 无法启动检查 | open 已立项 **PLAN-530**（问题 B） |
 | OBS-2 | `auto run -r vue` 外层包装进程曾静默退出（exit 1，无报错日志），vite 子进程存活 | 干扰长会话验证流程 | open |
 | OBS-3 | AutoUI MCP 默认端口 9247 与本机 musk.exe 服务冲突，需 `AUTOUI_MCP_PORT` 绕开 | 启动摩擦，非缺陷 | open（环境事实） |
 | OBS-4 | 浅色主题下，页面内硬编码深色样式区域（如 codeblock 代码体）不随主题翻转（token 驱动区域正常） | 浅色观感割裂，待立项逐页适配 | open |
