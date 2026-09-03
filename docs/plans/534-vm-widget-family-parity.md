@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-534
 status: drafting               # drafting → executing → execution_done → reviewed → archived
-feature_name: VM overlay/表单组件族补齐（widgets-gallery 双端 parity）
+feature_name: VM overlay 家族余量补齐（dialog/sheet/drawer/hovercard）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
 updated_at: 2026-09-03T17:00:00+08:00
@@ -20,51 +20,43 @@ total_steps: 0
 
 ## 变更摘要
 
-承接 PLAN-528（widgets-gallery 检查跟踪）遗留的两个已定位、被阻塞的实现项，
-并顺势覆盖同根因的 overlay 家族：VM 端 `alert-dialog`/`dialog`/`sheet`/
-`drawer` 等 overlay 族目前整体 fallback "renders as Column"（内容内联文档流、
-无悬浮层），`toggle_group` 族同样缺 VM 映射（纵向裸排）。本计划以 Plan 422
-Popover 锚定弹层原语为底座，配 PLAN-528 W9 的默认面板 chrome 成果，把
-overlay 家族 VM 端真悬浮化，并补齐 toggle_group 的横排按钮组映射。
+**2026-09-03 重定界**：立项时承接的 PLAN-528 W12（toggle_group VM 映射）与
+W13（alert-dialog 模态化）已由 **PLAN-530 在其执行期内一并落地并复审 PASS**
+（commit 93d933a62：toggle_group 横排连体消费臂 + alert_dialog 复用 Popover
+原语 PopoverPlacement::Modal + scrim）。本计划收敛为 **P3 余量**：overlay
+家族剩余成员 `dialog` / `sheet` / `drawer` / `hovercard` 仍为 fallback
+"renders as Column"，按 530 已验证的同一模式批量迁移为真悬浮。
 
-**前置依赖：PLAN-530**（VM shell 绘制一致性 + 崩溃专项）完成——overlay
-悬浮层与 toggle_group 的正确渲染依赖绘制/树一致性先行修复。
+**前置依赖 PLAN-530 已解除**（其 status: reviewed）。
 
 ## 目标
 
-1. **W12 承接**：VM 端 `toggle_group`/`toggle_group_item` 映射为横排
-   joined 按钮组（消费 variant/size/aria-label；single/multiple 语义），
-   gallery `/togglegroup` 页双端观感对齐（连体三连按钮）。
-2. **W13 承接**：VM 端 `alert-dialog` 按 Popover 原语实现真悬浮：点击
-   trigger 弹出**居中**模态面板 + 全屏半透明遮罩 + 默认面板 chrome
-   （复用 W9 成果），action/cancel 按钮 onclick 可用，点遮罩不可关
-   （shadcn AlertDialog 语义）。
-3. **同族扩展**（分档，按余力取舍）：`dialog`/`sheet`/`drawer`/
-   `hovercard` 同为 fallback 家族，alert-dialog 跑通后按同一模式批量
-   迁移（dialog 居中模态、sheet/drawer 侧滑、hovercard 悬浮锚定）。
+1. `dialog`：居中模态（复用 PopoverPlacement::Modal + scrim，open 属性/
+   trigger 双形态），DialogContent/Header/Footer/Title/Description/Close 子臂。
+2. `sheet` / `drawer`：侧滑面板（新增 side placement：left/right/top/bottom
+   贴边 + scrim，复用锚定/snap 原语）。
+3. `hovercard`：悬浮锚定（Bottom/Top placement + hover 触发语义,现有
+   Popover 原语 click 触发需扩展 hover 通道或降级 click）。
+4. gallery 对应文档页双端观感对齐 + 全站 69 页 VM 扫描回归。
 
 ## 架构方案
 
-- 底座：`crates/auto-lang/src/ui/iced/popover.rs`（Plan 422 锚定弹层
-  原语——overlay 机制、定位/翻转/防撞、dismiss 捕获语义已在 W9 打磨）。
-- 构建层：`crates/auto-lang/src/ui/aura_view_builder.rs` 增加
-  `convert_alert_dialog`（对齐 `convert_popover` 三形态先例）：
-  trigger/content 子标签拆解、自管开合注册表（`__ad_toggle` 同
-  `__popover_toggle` 型）、placement=居中（新 PopoverPlacement::Center
-  或坐标锚窗口中心）、遮罩层（基础树首个全屏半透明容器,open 时插位）。
-- chrome：面板缺省样式复用 W9 约定 `w-[max] bg-popover border
-  rounded-lg shadow-lg p-6`（alert-dialog 用 lg/宽版,与 W9 的 w-72 区分）。
-- toggle_group：`render_support.rs` TagSupport + 动态渲染路径增
-  toggle_group 映射——横排 Row + 相邻边框叠压（对齐 W8 vue 侧连体方案），
-  variant/size 透传按钮 preset。
-- 不动 vue 轨（W7/W8 已就绪）；schema 层 W7 已补全,零 schema 改动。
+底座全部就绪,本计划为模式复制：`crates/auto-lang/src/ui/iced/popover.rs`
+（Plan 422 原语 + 530 的 Modal/scrim 扩展）为唯一悬浮通道;
+`aura_view_builder.rs` 按成员增 convert 臂（对齐 530 的 convert_alert_dialog
+先例:子标签拆解/自管开合注册表/placement 映射）;面板缺省 chrome 沿用
+PLAN-528 W9 约定（modal 宽版 lg/shadow-lg,侧滑全高窄版）。sheet/drawer 需
+新增贴边 placement 变体（4 向）;hovercard 需 hover 触发通道（或 v1 降级
+click 并文档化差异）。
 
 ## 需求分析与背景调查
 
-- 源条目：PLAN-528 W12/W13（实现路径笔记在案）、W9（popover 默认 chrome
-  + 居中/翻转/防撞全套,直接复用）、W10/W11（绘制一致性→PLAN-530 前置）。
-- VM 现状：`render_support.rs:255` overlay 家族 fallback "renders as
-  Column";`toggle_group` 族 TagSupport 缺失。
+- 源条目：PLAN-528 W12/W13（**已由 PLAN-530 落地**,本计划只承接 P3 余量）、
+  W9（popover 默认 chrome + 居中/翻转/防撞全套,直接复用）。
+- 530 已交付可直接复用的资产：PopoverPlacement::Modal + scrim + 面板外
+  点击整吞、toggle_group 消费臂双层 D-GAP 镜像模式、绘制一致性修复。
+- VM 现状：overlay 家族 fallback "renders as Column" 仅剩
+  dialog/sheet/drawer/hovercard 四员。
 - Plan 422 三形态（坐标锚/widget 锚/shadcn 嵌套）与自管开合注册表
   （slot id 按构建路径键）均为成熟模式,alert-dialog 直接套用。
 - 遮罩先例：Plan 412 Stack 层序（toast 窗口级悬浮层）可参考;基础树
@@ -105,9 +97,9 @@ overlay 家族 VM 端真悬浮化，并补齐 toggle_group 的横排按钮组映
 
 （PLAN-530 完成后展开为原子任务;当前立项目录:）
 
-1. [ ] P1-alert-dialog：convert_alert_dialog + 居中放置 + 遮罩 + chrome
-2. [ ] P2-toggle_group：VM 映射 + 连体布局 + variant/size
-3. [ ] P3-overlay 家族批量迁移（dialog/sheet/drawer/hovercard,可裁剪）
+1. [ ] P3a-dialog：convert_dialog（Modal 复用）+ Close 子臂 + open/trigger 双形态
+2. [ ] P3b-sheet/drawer：贴边 placement 四向 + scrim + 高度语义
+3. [ ] P3c-hovercard：hover 触发通道（或 v1 click 降级文档化）
 4. [ ] 双端截图对齐 + 全站扫描回归
 
 ## 复审记录

@@ -1091,3 +1091,27 @@
   + view/resize 宽度轨迹）、`P530_NOMCP=1`（跳过 per-frame MCP 同步/
   capture 路径，A/B 判别用）两 env 门控留存于 renderer/layout_collector，
   零成本（env 缺省关）；后续排障可复用，偿还（删除）非必需。
+
+## P528 债务（widgets-gallery 检查跟踪,2026-09-03 复审登记）
+
+- **P528-D1 浅色主题硬编码区**（源 OBS-4）:页面内硬编码深色样式(codeblock
+  代码体 bg-zinc-950 等)在浅色主题下不翻转;token 驱动区正常。浅色逐页适配
+  属示例资产工程,量级 60+ 页。优先级低。
+- **P528-D2 主题状态持久化**（源 OBS-5）:dark_mode/accent 为 App 内存态,
+  刷新/深链回默认深色;可接 localStorage(015-notes storage 先例)。优先级低。
+- **P528-D3 model 逗号分隔声明解析缺陷**（源 OBS-8）:`model { a str = "1",
+  b str = "2" }` 解析出空名变量+名字错位(生成 `const , = ref`)。家规为换行
+  式;parser 增强候补(容错或报错),非阻断。
+- **P528-D4 bundled shadcn-ui 快照滞后**（源 OBS-11）:auto-man/assets
+  shadcn-ui 快照为旧版(toggle-group 无新版连体设计);其余组件可能同样滞后
+  上游。快照升级影响全工程,关联 OBS-10 远期"脱离 shadcn 基底"战略,届时
+  统一重议。
+- **P528-D5 环境事实二则**（源 OBS-3/7）:①AutoUI MCP 默认端口 9247 与本机
+  musk.exe 冲突,须 AUTOUI_MCP_PORT 绕开;②.auto/ui-cache.json 内容寻址,
+  mtime touch 不触发生成——改 codegen 后必须删缓存重生成(误判高发)。
+- **P528-D6 存量双红**（源 OBS-6/9,2026-09-04 复核更新）:tf 档 2 红——
+  docs_gen kitchen_sink_page_in_sync(fork 预存在案)+schema_drift_fence
+  (漂移已消除,baseline 待 SCHEMA_DRIFT_UPDATE_BASELINE=1 裁剪)。原始 4 红
+  中 d8_toggle_dark_mode/plan055/gallery_vue_golden 已在重建历史他席修复。
+- （注）vue 包装 exit 127 静默退出（源 OBS-2）疑与 530-B 泄漏族同源,530
+  修复后待复跑观察,暂不单列。

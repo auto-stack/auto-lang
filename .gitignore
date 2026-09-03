@@ -166,3 +166,4 @@ __pycache__/
 node_modules
 tmpb/
 target-412/
+examples/widgets-gallery/src/front/tests/

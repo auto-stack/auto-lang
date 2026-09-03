@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-528
-status: execution_done
+status: reviewed
 feature_name: widgets-gallery 检查问题跟踪与修复
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03T11:30:00+08:00
-updated_at: 2026-09-03T15:40:00+08:00
+updated_at: 2026-09-04T00:15:00+08:00
 
 # Leave these EMPTY here — /auto-plan:review fills them:
 supersedes_spec_components: []
@@ -97,10 +97,14 @@ onclick + toast）已在计划创建前完成并验证，本文档回填记录�
 
 - [x] W1：`/alertdialog` 页 action/cancel 点击触发对应 toast，文案含用户选择
       （已验证，见复审记录前执行记录）
-- [ ] W2+：逐条按登记的期望验收，完成一条勾一条
-- [ ] 全程零编译器改动（如破例须在条目中显式记录 reasons）
-- [ ] `git status` 中 examples/widgets-gallery 改动仅限本计划登记的文件
-      （注意 `.auto/ui-cache.json` 为生成伴随缓存，属预期副产物）
+- [x] W2+：逐条按登记的期望验收——W1-W9 全修复;W3 用户裁决搁置;W10/W11
+      升级 PLAN-530(已完成并复审 PASS);W12/W13 由 PLAN-530 执行期落地
+      (93d933a62,其复审逐条复核 PASS);P3 余量(dialog/sheet/drawer/hovercard)
+      移交 PLAN-534
+- [x] 全程零编译器改动——四处破例(W4b/W5/W6/W7)均已在对应条目显式记录
+      根因与门禁(Category B: cargo check+ui_gen 735+auto-man 333 绿)
+- [x] `git status` 改动范围符合——仅计划登记文件+ui-cache 伴随缓存;
+      会话截图目录补入 .gitignore(规约 §7.4)
 
 ## 执行步骤
 
@@ -405,7 +409,54 @@ overlay/virtual_window/dock 合成,非示例层可修。
 
 ## 复审记录
 
-（待 /auto-plan:review 填写。）
+**2026-09-03 /auto-plan:review —— PASS,status→reviewed。**
+复审人:ZCode;执行/复审同会话族,门禁独立重跑。
+
+**背景注记**:本计划执行期横跨 2026-09-03 .git 删除事故(Plan 529 红线),
+原始提交链(b6e88213…c4483ca8 等)在仓库重建中合并为 d759b0ab1(Restore-Note
+在案),并混入同期他席工作(useFormField 等)。复审以**重建后 master 的实际
+代码**为准逐条核验,不依赖原始提交链。
+
+**全量门禁**(本复审独立重跑):`cargo tf` 3397/3399(2 红=kitchen_sink
+docs_gen[fork 预存在案 129d767fb]+schema_drift_fence[漂移已消除待裁剪
+baseline 的存量维护债,失败明细无 toggle_group 相关新增]——与 PLAN-530
+复审基线完全一致,零本计划新增红);`cargo tv` 3559/3559 全绿。
+
+**逐条核验**(代码在场证据 + 会话期实机证据):
+- W1 PASS:alertdialog.at handlers+toast-provider+auto: 覆盖在案;会话期
+  Playwright 双按钮 toast 实证(ad_3/ad_4 截图)。
+- W2 PASS:settings.at+app.at dark_mode 在案;Plan 458 watch 自动生成;
+  明暗切换/子页保持/回程实证(w2_* 截图)。
+- W3 PASS(裁决类):用户搁置裁决+战略背景入档(OBS-10)。
+- W4 PASS:vue.rs 条件补点(双处)在案;会话期 85 页重生成 `onclick: ..` 清零。
+- W5 PASS:escape_html_text 三臂接线在案;charts 5 页 200+截图;tf 绿。
+- W6 PASS:auto-man drift 检查+run 路径自愈在案;auto-man 333 绿;
+  gallery package.json npm_deps 实际同步实证。
+- W7 PASS:schema/registry/臂/回归测试四件在案(test_plan528_toggle_group_
+  registry_mapping 含于 tf 绿);vue 实机三连按钮(w7_final.png)。
+- W8 PASS:连体 class+单选示例在案;w8_joined/w8_single_right 实证。
+- W9 PASS:DEFAULT_GAP=4.0+w-72 默认 chrome 在案;VM 实机 w9b/w9c 实证;
+  后续 530 复审亦复核。
+- W10/W11:升级 PLAN-530(用户批准)——530 已完成 A/B 根因闭环并复审 PASS。
+- W12/W13:PLAN-530 执行期落地(93d933a62)并经其复审逐条复核 PASS;
+  同族余量(dialog/sheet/drawer/hovercard)按用户指示另立 PLAN-534
+  (已按 530 进度重定界为 P3-only)。
+
+**遗漏/延后/workaround 猎查**:
+- 遗漏:未发现——13 个 W 项全部有代码/裁决/移交三态之一。
+- 延后:全部经用户批准(W3 搁置/W10/W11→530/P3→534);无静默延后。
+- Workaround(已记录在案,转债务):W8 连体样式走 class 注入而非快照升级
+  (OBS-11);W4a auto: 覆盖属既有机制;kitchen-sink 移除 window_thumbnail
+  (桌面域,归属 526);OBS-2 vue 包装 exit 127 现象(疑与 530-B 泄漏族
+  相关,待复跑观察)。
+- 卫生:gallery 会话截图目录补 .gitignore(§7.4)。
+
+**债务登记**:P528-D1..D6 已写入 docs/plans/KNOWN-DEBT-AND-RISKS.md
+(浅色主题硬编码区/主题持久化/model 逗号解析/bundled 快照滞后/环境事实
+二则/存量双红)。W12/W13 台账行更新为 530 落地。
+
+**结论**:全部验收通过,无阻断债务 → status: reviewed,可入 /auto-plan:merge
+(沉淀 new_spec_components 六条+GOAL-007,归档本计划)。
 
 ## 待澄清事项
 
@@ -432,8 +483,8 @@ overlay/virtual_window/dock 合成,非示例层可修。
 | W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | ✅ 已修复并验证（本文档 W9;默认面板 chrome w-72 bg-popover border rounded-md shadow-md p-4） |
 | W10 | VM 版窗口收窄触发 mobile 断点后内容成双份（文字/按钮/代码块全部 ×2 重叠），底部导航栏出现 | 用户（人工检查+截图） | 🔍 已立项 **PLAN-530** 深挖（根因定位见 W10 节） |
 | W11 | VM 版首页 sidebar 顶端被 header 掩盖（Home 项裁切一半）;深查发现与 /position 页整页不绘制同族——**VM 绘制与控件树不一致**（树单份正确,绘制错位/缺失） | 用户（人工检查+ZCode 实证） | 🔍 升级并入 **PLAN-530** VM shell 绘制一致性专项（证据见 W11 节） |
-| W12 | VM 版 ToggleGroup 仍纵向裸排 B/I/U（W7 只修了 vue 轨；VM 无 toggle_group 映射） | 用户（人工检查+截图） | ➡️ 已移交 **PLAN-534** P2（依赖 PLAN-530 完成） |
-| W13 | VM 版 alert-dialog 点击无弹层（overlay 家族 fallback "renders as Column"）;应按 Popover 原语(Plan 422)实现悬浮面板 | 用户（人工检查） | ➡️ 已移交 **PLAN-534** P1（含 dialog/sheet/drawer/hovercard 同族扩展;依赖 PLAN-530 完成） |
+| W12 | VM 版 ToggleGroup 仍纵向裸排 B/I/U（W7 只修了 vue 轨；VM 无 toggle_group 映射） | 用户（人工检查+截图） | ✅ 已由 **PLAN-530** 落地(93d933a62 消费臂,其复审 PASS) |
+| W13 | VM 版 alert-dialog 点击无弹层（overlay 家族 fallback "renders as Column"）;应按 Popover 原语(Plan 422)实现悬浮面板 | 用户（人工检查） | ✅ 已由 **PLAN-530** 落地(PopoverPlacement::Modal+scrim,其复审 PASS);同族余量→**PLAN-534** |
 
 ### 观察（OBS，未定是否立项）
 
