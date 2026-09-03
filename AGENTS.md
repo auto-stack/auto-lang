@@ -9,8 +9,16 @@ All AI coding assistants working in this repository must strictly adhere to the 
 > 范式设计与规约见 [docs/design/autoplan-spec-ledger.md](docs/design/autoplan-spec-ledger.md)
 > 与 [docs/specs/README.md](docs/specs/README.md) §4。**路径映射**（四技能为 auto-os 仓书写，
 > 在本仓执行时以此为准）：技能文档中的 `docs/plans/archived/` 在本仓为 **`docs/plans/archive/`**；
-> `.worktrees/plan-<NNN>-dev` 与 `.autoos/specs.json` 两仓一致。
+> 技能文档中的 `.worktrees/plan-<NNN>-dev` 在本仓为 **`D:/autostack/.wt/lang-<NNN>/auto-lang`**
+> （Plan 529 分组平铺布局；在途的 525/526 仍用旧 `.worktrees/`，fold 后退役）；
+> `.autoos/specs.json` 两仓一致。
 > Plan 状态机：`drafting → executing → execution_done → reviewed → archived`（终态）。
+>
+> **Worktree 红线（2026-09-03 三仓 .git 删除事故，Plan 529）**：worktree 内**禁止创建任何
+> junction/symlink**——`git worktree remove` 的递归删除会穿透链接删除目标仓内容（实测复现）。
+> 跨仓依赖用解析序解决：`$AUTO_LANG_ROOT 等 env 覆盖 → 组内 ../auto-lang →
+> D:/autostack/auto-lang 主检出`。移除任何 worktree 前必须先跑
+> `bash D:/autostack/wt-guard.sh <worktree 路径>`（reparse point 扫描，非空即拒）。
 
 ---
 
@@ -24,8 +32,8 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - *Action*:
     1. Run `scripts/new-plan.sh <slug>` on the default checkout (master) to atomically take the next `<NNN>` plan ID from `docs/plans/.next-id` and create the plan skeleton (v2 frontmatter).
     2. Fill `docs/plans/<NNN>-<plan-name>.md` (needs-analysis seeded from [docs/specs/overview.md](docs/specs/overview.md)) detailing goals, design, task checklist, and verification plan; present for confirmation before executing.
-    3. Create a dedicated worktree: `git worktree add .worktrees/plan-<NNN>-dev -b plan-<NNN>-dev`.
-    4. Perform all code implementation and testing inside `.worktrees/plan-<NNN>-dev`; plan-file bookkeeping (`[✅]` markers, frontmatter flips) stays on the default checkout.
+    3. Create a dedicated worktree in the sibling-group layout (Plan 529): `git worktree add D:/autostack/.wt/lang-<NNN>/auto-lang -b plan-<NNN>-dev`. Cross-repo plans add sibling worktrees into the same group dir (e.g. `.wt/down-047/{auto-down, auto-lang}`) so `../auto-lang` resolves uniformly.
+    4. Perform all code implementation and testing inside that worktree; plan-file bookkeeping (`[✅]` markers, frontmatter flips) stays on the default checkout.
 - **L2: Architectural Overhaul (重大架构级任务)**
   - *Criteria*: Changes impacting overall architecture, compiler/VM pipelines, core protocol definitions, or cross-system runtime contracts.
   - *Action*:
@@ -37,7 +45,8 @@ All AI coding assistants working in this repository must strictly adhere to the 
 
 ### 2. Execution Discipline in Worktree
 
-- Always perform code modifications, builds, and test runs within `.worktrees/plan-<NNN>-dev` to keep `master` clean (one worktree per plan per repo; multi-phase plans fold per phase and re-sync).
+- Always perform code modifications, builds, and test runs within the plan's worktree (`D:/autostack/.wt/lang-<NNN>/auto-lang`; legacy in-flight plans keep their `.worktrees/` path until folded) to keep `master` clean (one worktree per plan per repo; multi-phase plans fold per phase and re-sync).
+- **Never place junctions/symlinks inside a worktree** (see red line above); resolve cross-repo deps via the documented order (env → group sibling → main checkout), never via links.
 - **Fast Iteration during Development**:
   - During development, **DO NOT run full test suites repeatedly**. Use fast syntax/type checks:
     - Fast type check: `cargo check -p auto-lang`
@@ -97,9 +106,11 @@ Before merging or archiving, the agent **must explicitly execute an independent 
    ```bash
    feat(<scope>): <description> (Plan <NNN>)
    ```
-2. Remove the temporary worktree and branch:
+2. Remove the temporary worktree and branch (guard first — mandatory):
    ```bash
-   git worktree remove .worktrees/plan-<NNN>-dev
+   bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-<NNN>/auto-lang   # 必须输出 clean 才继续
+   git worktree remove D:/autostack/.wt/lang-<NNN>/auto-lang
    git branch -d plan-<NNN>-dev
+   # 组内已无兄弟 worktree 时删除组目录：rmdir D:/autostack/.wt/lang-<NNN>
    ```
 3. Summarize the completed work.
