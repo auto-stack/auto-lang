@@ -135,9 +135,21 @@ widget App {
                 full: "https://picsum.photos/seed/gal-01/1600/1200"
             }
         ]
-        // 与 view 平行的 id 列表（OpenPhoto 定位 + 循环导航；
+        // 与 view_list 平行的 id 列表（OpenPhoto 定位 + 循环导航；
         // 字符串/标量列表下标读保真——028 注入形态约束同思路）
         var view_ids = [1]
+
+        // 空态门控（027 has_items 同款；模板不可调 .len()）
+        var has_view bool = true
+
+        // accent 五色点（name = 主题契约 accent_color 值；dot = 色点类）
+        var accents = [
+            { name: "coral", dot: "text-[#fb7185]" },
+            { name: "ocean", dot: "text-[#38bdf8]" },
+            { name: "sage", dot: "text-[#4ade80]" },
+            { name: "amber", dot: "text-[#fbbf24]" },
+            { name: "indigo", dot: "text-[#818cf8]" }
+        ]
 
         // ---- 计数与文案（handler 预拼，模板零方法调用）----
         var view_label str = ""
@@ -161,7 +173,203 @@ widget App {
     view {
         col {
             style: "w-full h-screen flex bg-background text-foreground overflow-hidden font-sans"
-            text "Photo Gallery" { style: "p-8 text-muted-foreground" }
+
+            // ══════════ 网格分支（T3）══════════
+            if .mode == "grid" {
+                row {
+                    style: "w-full h-full flex flex-1 overflow-hidden"
+
+                    // ---- 左侧边栏：标题 + 相册导航（手写展开，保静态图标名）----
+                    col {
+                        style: "w-56 shrink-0 border-r border-border bg-card/40 flex flex-col py-3"
+                        col {
+                            style: "px-4 pt-1 pb-3 gap-0.5"
+                            text "图库 🖼" { style: "text-base font-bold" }
+                            text "Photos" { style: "text-[11px] text-muted-foreground uppercase tracking-wider" }
+                        }
+                        col {
+                            style: "mt-1 px-2 gap-0.5"
+
+                            // 相册图标用 emoji 文本（027 先例）：heart/mountain/
+                            // building-2/cloud-sun/sparkles 不在 VM lucide 表
+                            // （renderer.rs lucide_svg 84 项闭集），跨端不一致；
+                            // icon (name:) 仅用于双端表内名字（sun/moon/chevron-*）。
+                            button {
+                                onclick: .SelectAlbum("all")
+                                style: if .album == "all" { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-accent/10 text-accent border-l-2 border-primary" } else { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-transparent text-muted-foreground hover:bg-accent/40 border-l-2 border-transparent" }
+                                text "🖼️" { style: "text-sm shrink-0" }
+                                text "全部照片" { style: "text-sm flex-1 text-left" }
+                                text .cnt_all { style: "text-xs text-muted-foreground" }
+                            }
+                            button {
+                                onclick: .SelectAlbum("favorites")
+                                style: if .album == "favorites" { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-accent/10 text-accent border-l-2 border-primary" } else { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-transparent text-muted-foreground hover:bg-accent/40 border-l-2 border-transparent" }
+                                text "♡" { style: "text-sm shrink-0" }
+                                text "收藏" { style: "text-sm flex-1 text-left" }
+                                text .cnt_favorites { style: "text-xs text-muted-foreground" }
+                            }
+                            button {
+                                onclick: .SelectAlbum("nature")
+                                style: if .album == "nature" { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-accent/10 text-accent border-l-2 border-primary" } else { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-transparent text-muted-foreground hover:bg-accent/40 border-l-2 border-transparent" }
+                                text "🏔️" { style: "text-sm shrink-0" }
+                                text "自然" { style: "text-sm flex-1 text-left" }
+                                text .cnt_nature { style: "text-xs text-muted-foreground" }
+                            }
+                            button {
+                                onclick: .SelectAlbum("city")
+                                style: if .album == "city" { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-accent/10 text-accent border-l-2 border-primary" } else { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-transparent text-muted-foreground hover:bg-accent/40 border-l-2 border-transparent" }
+                                text "🏙️" { style: "text-sm shrink-0" }
+                                text "城市" { style: "text-sm flex-1 text-left" }
+                                text .cnt_city { style: "text-xs text-muted-foreground" }
+                            }
+                            button {
+                                onclick: .SelectAlbum("sky")
+                                style: if .album == "sky" { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-accent/10 text-accent border-l-2 border-primary" } else { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-transparent text-muted-foreground hover:bg-accent/40 border-l-2 border-transparent" }
+                                text "☁️" { style: "text-sm shrink-0" }
+                                text "天空" { style: "text-sm flex-1 text-left" }
+                                text .cnt_sky { style: "text-xs text-muted-foreground" }
+                            }
+                            button {
+                                onclick: .SelectAlbum("abstract")
+                                style: if .album == "abstract" { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-accent/10 text-accent border-l-2 border-primary" } else { "w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-transparent text-muted-foreground hover:bg-accent/40 border-l-2 border-transparent" }
+                                text "✨" { style: "text-sm shrink-0" }
+                                text "抽象" { style: "text-sm flex-1 text-left" }
+                                text .cnt_abstract { style: "text-xs text-muted-foreground" }
+                            }
+                        }
+                    }
+
+                    // ---- 主区：工具栏 + 计数条 + 网格 ----
+                    col {
+                        style: "flex-1 min-w-0 flex flex-col"
+
+                        // 工具栏：搜索 / 排序 / 密度 / 主题
+                        row {
+                            style: "h-14 shrink-0 items-center gap-2 px-4 border-b border-border"
+                            input {
+                                value: .search_q
+                                oninput: .SetSearch
+                                placeholder: "搜索照片…"
+                                style: "w-48 h-8 text-sm px-3 bg-card border border-border rounded-lg outline-none placeholder:text-muted-foreground focus:border-primary/50"
+                            }
+                            button (text: .sort_label, variant: "ghost") {
+                                onclick: .ToggleSort
+                                style: "h-8 px-2.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground"
+                            }
+                            row {
+                                style: "items-center bg-card border border-border rounded-lg p-0.5 gap-0.5"
+                                button (text: "2", variant: "ghost") {
+                                    onclick: .SetDensity("2")
+                                    style: if .density == "2" { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
+                                }
+                                button (text: "3", variant: "ghost") {
+                                    onclick: .SetDensity("3")
+                                    style: if .density == "3" { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
+                                }
+                                button (text: "4", variant: "ghost") {
+                                    onclick: .SetDensity("4")
+                                    style: if .density == "4" { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
+                                }
+                            }
+                            spacer { style: "flex-1" }
+                            if .dark_mode {
+                                button {
+                                    onclick: .ToggleDark
+                                    style: "h-8 w-8 rounded-lg bg-transparent text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                    icon (name: "moon", size: 16)
+                                }
+                            } else {
+                                button {
+                                    onclick: .ToggleDark
+                                    style: "h-8 w-8 rounded-lg bg-transparent text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                    icon (name: "sun", size: 16)
+                                }
+                            }
+                            row {
+                                style: "items-center gap-1 ml-1"
+                                for a in .accents {
+                                    if .accent_color == a.name {
+                                        button (text: "●") {
+                                            onclick: .SetAccent(a.name)
+                                            style: "h-7 w-7 p-0 bg-transparent text-lg ${a.dot}"
+                                        }
+                                    } else {
+                                        button (text: "●") {
+                                            onclick: .SetAccent(a.name)
+                                            style: "h-7 w-7 p-0 bg-transparent text-lg ${a.dot} opacity-40"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 计数条（view_label 由 handler 预拼）
+                        row {
+                            style: "h-8 shrink-0 items-center px-4 border-b border-border"
+                            text .view_label { style: "text-xs text-muted-foreground" }
+                        }
+
+                        // 网格滚动区
+                        col {
+                            style: "flex-1 min-h-0 overflow-y-auto p-4"
+                            if .has_view {
+                                col {
+                                    class: .grid_class
+                                    for item in .view_list {
+                                        col {
+                                            style: "rounded-xl overflow-hidden border border-border bg-card hover:border-primary/50 transition-colors"
+                                            // 图片区 = 打开点击区（button 子件形态，028 T12 实证）
+                                            button {
+                                                onclick: .OpenPhoto(item.id)
+                                                // h-auto 覆盖 button 变体默认 h-10
+                                                // （cn/tailwind-merge 后者覆盖前者），
+                                                // 否则图片溢出按钮盖住信息行。
+                                                style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+                                                col {
+                                                    style: "h-40 w-full overflow-hidden bg-muted"
+                                                    image (src: item.thumb, alt: item.title, fit: "cover") {
+                                                        style: "w-full h-full"
+                                                    }
+                                                }
+                                            }
+                                            // 信息行：标题点击开图 + 收藏按钮（兄弟节点，
+                                            // 无冒泡问题——待澄清①的落地形态）
+                                            row {
+                                                style: "items-center gap-1 px-3 py-2"
+                                                button {
+                                                    onclick: .OpenPhoto(item.id)
+                                                    // text-foreground 压过 button 变体
+                                                    // 默认 text-primary-foreground（深底深字）
+                                                    style: "flex-1 min-w-0 h-6 py-0 p-0 border-0 bg-transparent justify-start text-foreground"
+                                                    text item.title { style: "text-sm font-medium truncate" }
+                                                }
+                                                if item.fav {
+                                                    button (text: "❤", variant: "ghost") {
+                                                        onclick: .ToggleFav(item.id)
+                                                        style: "shrink-0 h-7 w-7 p-0 text-sm text-red-400"
+                                                    }
+                                                } else {
+                                                    button (text: "♡", variant: "ghost") {
+                                                        onclick: .ToggleFav(item.id)
+                                                        style: "shrink-0 h-7 w-7 p-0 text-sm text-muted-foreground"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                col {
+                                    style: "w-full flex flex-col items-center justify-center py-16 gap-2"
+                                    text "📷" { style: "text-4xl" }
+                                    text "未找到照片" { style: "text-sm text-muted-foreground" }
+                                    text "试试清除搜索或切换相册" { style: "text-xs text-muted-foreground/70" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -269,6 +477,7 @@ widget App {
 
             .view_list = vlist
             .view_ids = vids
+            .has_view = (vids.len() > 0)
 
             // 3) 侧边栏六计数（全种子系统计，收藏数随 ToggleFav 联动）
             var c_all int = 0
