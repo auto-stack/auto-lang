@@ -1310,15 +1310,29 @@ fn apply_table_header_style<M: Clone + Debug>(v: &mut AbstractView<M>) {
 }
 
 /// Plan 411 P2-A④: 单元格 px-4/py-3 padding(vue `<td class="px-4 py-3">`)。
-fn table_cell_container<'a, M: 'static>(el: iced::Element<'a, M>) -> iced::Element<'a, M> {
-    iced::widget::container(el)
-        .padding(iced::Padding {
-            top: 12.0,
-            bottom: 12.0,
-            left: 16.0,
-            right: 16.0,
-        })
-        .into()
+/// Plan 045 T2: `width` Some 时容器定宽（Fixed(w)）——列宽应用的落点；
+/// None 维持 Shrink 自然宽（现状）。
+fn table_cell_container<'a, M: 'static>(
+    el: iced::Element<'a, M>,
+    width: Option<f32>,
+) -> iced::Element<'a, M> {
+    let mut c = iced::widget::container(el).padding(iced::Padding {
+        top: 12.0,
+        bottom: 12.0,
+        left: 16.0,
+        right: 16.0,
+    });
+    if let Some(w) = width {
+        c = c.width(iced::Length::Fixed(w));
+    }
+    c.into()
+}
+
+/// Plan 045 T2: 列宽两态分派纯函数——`col_widths` Some 且列号在范围内返回
+/// 固定宽（px）；None 或长度不足的尾列返回 None（自然宽）。超列数的尾值
+/// 无消费方（自然截断）。表头与体行走同一分派。
+fn col_fixed_width(col_widths: Option<&[f32]>, col: usize) -> Option<f32> {
+    col_widths.and_then(|ws| ws.get(col).copied())
 }
 
 /// Plan 411 P2-A④: 行 border-b——iced 容器边框是四边整圈,单侧下边线用
@@ -4110,8 +4124,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 spacing: _,
                 col_spacing,
                 style: _,
-                col_widths: _,
-                on_col_resize: _,
+                col_widths,
+                on_col_resize: _, // Plan 045 T3 接（拖拽交互走 TableResize widget）
             } => {
                 // Plan 411 P2-A④: vue 表格细节——表头 font-medium +
                 // text-muted-foreground、行 border-b、单元格 px-4/py-3。
@@ -4122,10 +4136,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                 let mut header_row_widget = row([]);
                 header_row_widget = header_row_widget.spacing(col_spacing as f32);
-                for header in headers {
+                for (ci, header) in headers.into_iter().enumerate() {
                     let mut h = header;
                     apply_table_header_style(&mut h);
-                    header_row_widget = header_row_widget.push(table_cell_container(h.into_iced()));
+                    // Plan 045 T2: 固定列宽应用——有值列 Fixed(w)，无值列
+                    //（col_widths None 或长度不足的尾列）维持自然宽；超长
+                    // 尾值无消费方自然截断。表头与体列同源（同一分派函数）。
+                    let w = col_fixed_width(col_widths.as_deref(), ci);
+                    header_row_widget =
+                        header_row_widget.push(table_cell_container(h.into_iced(), w));
                 }
                 table_widget = table_widget.push(header_row_widget);
                 table_widget = table_widget.push(table_row_rule());
@@ -4133,8 +4152,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 for row_data in rows {
                     let mut row_widget = row([]);
                     row_widget = row_widget.spacing(col_spacing as f32);
-                    for cell in row_data {
-                        row_widget = row_widget.push(table_cell_container(cell.into_iced()));
+                    for (ci, cell) in row_data.into_iter().enumerate() {
+                        let w = col_fixed_width(col_widths.as_deref(), ci);
+                        row_widget = row_widget.push(table_cell_container(cell.into_iced(), w));
                     }
                     table_widget = table_widget.push(row_widget);
                     table_widget = table_widget.push(table_row_rule());
@@ -22935,6 +22955,18 @@ mod tests {
     }
 
     // ========== Plan 411 P2-A④ — 表头样式注入 ==========
+
+    #[test]
+    fn test_plan045_col_fixed_width_dispatch() {
+        // Plan 045 T2: 两态分派——Some 按列号取值；不足尾列补 None（自然宽）；
+        // 超列数尾值自然截断（get 越界即 None）。
+        let ws = vec![200.0f32, 300.0];
+        assert_eq!(col_fixed_width(Some(&ws), 0), Some(200.0));
+        assert_eq!(col_fixed_width(Some(&ws), 1), Some(300.0));
+        assert_eq!(col_fixed_width(Some(&ws), 2), None, "长度不足尾列补自然宽");
+        assert_eq!(col_fixed_width(None, 0), None, "None 态全自然宽");
+        assert_eq!(col_fixed_width(Some(&[]), 0), None, "空数组=自然宽");
+    }
 
     #[test]
     fn test_table_header_style_recursive() {

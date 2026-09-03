@@ -650,3 +650,48 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let (_tx, ty, _tw, th) = bounds_of(&mut ui, "T3W");
     assert!(th > 0.0 && ty < 40.0, "chrome 标题条在窗顶: y={ty}");
 }
+
+// ========== Plan 045 T2 — 表格列宽两态 lowering 结构 ==========
+
+fn plan045_table_view<M: Clone + std::fmt::Debug>(col_widths: Option<Vec<f32>>) -> View<M> {
+    View::Table {
+        headers: vec![View::text("AAA"), View::text("BBB")],
+        rows: vec![vec![View::text("aaa"), View::text("bbb")]],
+        spacing: 0,
+        col_spacing: 8,
+        style: None,
+        col_widths,
+        on_col_resize: None,
+    }
+}
+
+/// Plan 045 T2: col_widths Some → 列按固定 px 分列（表头与体列同源）。
+/// 固定态 [200, 300]：col0 文本 x=16（cell 左 padding），col1 文本
+/// x=200+8+16=224；体行同列同 x。截断/补自然宽的纯函数面由
+/// renderer::test_plan045_col_fixed_width_dispatch 覆盖。
+#[test]
+fn plan045_table_fixed_col_widths_layout() {
+    let view: View<()> = plan045_table_view(Some(vec![200.0, 300.0]));
+    let mut ui = simulator(view.into_iced());
+    let (ax, ay, _aw, _ah) = bounds_of(&mut ui, "AAA");
+    let (bx, _by, _bw, _bh) = bounds_of(&mut ui, "BBB");
+    let (ax2, ay2, _aw2, _ah2) = bounds_of(&mut ui, "aaa");
+    let (bx2, _by2, _bw2, _bh2) = bounds_of(&mut ui, "bbb");
+    assert!((ax - 16.0).abs() < 0.5, "col0 文本起于左 padding: {ax}");
+    assert!((bx - 224.0).abs() < 0.5, "col1 文本起于 200+8+16: {bx}");
+    assert!((ax2 - ax).abs() < 0.5 && (bx2 - bx).abs() < 0.5, "体列与表头列同源");
+    assert!(ay2 > ay + 4.0 && ay > 0.0, "两行纵向分离: {ay} vs {ay2}");
+}
+
+/// Plan 045 T2: col_widths None → 自然宽（现状零回归）——col1 起点由
+/// col0 内容自然宽决定（“AAA”远窄于 200），不在 224 固定锚点上。
+#[test]
+fn plan045_table_natural_col_widths_layout() {
+    let view: View<()> = plan045_table_view(None);
+    let mut ui = simulator(view.into_iced());
+    let (ax, _ay, _aw, _ah) = bounds_of(&mut ui, "AAA");
+    let (bx, _by, _bw, _bh) = bounds_of(&mut ui, "BBB");
+    assert!((ax - 16.0).abs() < 0.5, "col0 文本仍起于左 padding: {ax}");
+    assert!(bx < 224.0 - 40.0, "自然宽 col1 起点显著早于固定锚点: {bx}");
+    assert!(bx > ax + 8.0, "col1 在 col0 之后: {ax} vs {bx}");
+}
