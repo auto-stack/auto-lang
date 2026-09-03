@@ -1536,6 +1536,9 @@ impl<'a> AuraViewBuilder<'a> {
                         is_final,
                         details_onclick.as_deref(),
                         placeholder,
+                        // Plan 045 T5 接线（table_col_widths prop 消费）
+                        None,
+                        None,
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
@@ -2727,6 +2730,9 @@ impl<'a> AuraViewBuilder<'a> {
                         is_final,
                         details_onclick.as_deref(),
                         placeholder,
+                        // Plan 045 T5 接线（table_col_widths prop 消费）
+                        None,
+                        None,
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
