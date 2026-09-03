@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-526
-status: reviewed              # 复审通过 2026-09-03（cargo tf 3397/3399，唯二红=在案存量 530/531 同款归因；见复审记录） drafting → executing → execution_done → reviewed → archived
+status: archived              # 归档 2026-09-04（复审通过 → 沉淀 specs.json P526-1..6 六节） drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-shell-ux-fixes
 author: [zhaopuming]
 created_at: 2026-09-03
