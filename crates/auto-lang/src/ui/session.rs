@@ -490,6 +490,10 @@ pub enum WmCommand {
     /// listen_with 全局左键按下（坐标见 `WmState.last_cursor`，由全局
     /// CursorMoved 持续回写；update 侧做 z 序命中测试 → 聚焦置顶）。
     GlobalPress,
+    /// PLAN-526 T37：标题栏右键 → 开该窗菜单（chrome 自绘浮层）。
+    TitleMenuOpen(Wid),
+    /// PLAN-526 T37：关标题栏菜单（任意按压/选项执行后）。
+    TitleMenuClose,
     /// Plan 463 T3：桌面调试退出（全屏无框桌面无关闭按钮，Esc 保留出口）。
     ExitDesktop,
     /// Plan 463 T6：窗口循环（Alt+Tab/Ctrl+Tab；z 序栈顶往栈底方向轮转聚焦）。
@@ -613,6 +617,9 @@ pub struct WmState {
     /// PLAN-526 T33：布局预设历史快照——Free（手动排布）迁入预设布局时
     /// 采集当前分区窗口矩形；同一预设 icon 再按一次即恢复（回手动态）。
     layout_snapshot: Option<Vec<(Wid, iced::Rectangle)>>,
+    /// PLAN-526 T37：标题栏右键菜单开启中的窗口（chrome 自绘浮层；
+    /// GlobalPress 任意按压即关——T29 同款"点外部关"语义）。
+    pub title_menu: Option<Wid>,
 }
 
 impl WmState {
@@ -638,6 +645,7 @@ impl WmState {
             pending_native_geometry: Vec::new(),
             pending_raise: None,
             layout_snapshot: None,
+            title_menu: None,
         }
     }
 

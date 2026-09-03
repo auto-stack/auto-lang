@@ -10,6 +10,7 @@
 //! 与 [`NativeHwnd`] 的 isize 存储形态在本文件边界互转。
 
 use crate::ui::native_dock::{NativeHwnd, NativeSlotEvent, NativeSlotEventKind, Rect};
+use std::cell::Cell;
 use std::sync::mpsc;
 use std::sync::RwLock;
 use windows::core::HRESULT;
@@ -1977,4 +1978,35 @@ mod native_dock_events {
             "提取像素含 blue-500 特征（内容非空壳）"
         );
     }
+}
+
+/// PLAN-526 T39：本进程主顶层窗是否处于最小化（IsIconic）。
+/// 用途：MCP autoui_screenshot 前置护栏——最小化窗物理尺寸为 0，
+/// window::screenshot 触发 wgpu create_texture "Dimension X is zero"
+/// panic（wgpu-27 backend/wgpu_core.rs:1588，exit 101 实录）。
+pub fn main_window_minimized(pid: u32) -> bool {
+    mod raw {
+        #[link(name = "user32")]
+        extern "system" {
+            pub fn EnumWindows(cb: extern "system" fn(isize, isize) -> i32, lparam: isize) -> i32;
+            pub fn IsIconic(hwnd: isize) -> i32;
+            pub fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
+        }
+    }
+    thread_local! {
+        static MIN: Cell<Option<bool>> = const { Cell::new(None) };
+    }
+    extern "system" fn enum_cb(hwnd: isize, _lparam: isize) -> i32 {
+        let mut w = 0u32;
+        unsafe { raw::GetWindowThreadProcessId(hwnd, &mut w) };
+        if w == std::process::id() {
+            let iconic = unsafe { raw::IsIconic(hwnd) } != 0;
+            MIN.with(|m| m.set(Some(iconic)));
+            return 0;
+        }
+        1
+    }
+    MIN.with(|m| m.set(None));
+    unsafe { raw::EnumWindows(enum_cb, 0) };
+    MIN.with(|m| m.get().unwrap_or(false))
 }

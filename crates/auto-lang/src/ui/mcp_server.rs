@@ -1596,6 +1596,15 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
 // ── Tool: autoui_screenshot ──
 
 fn tool_screenshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    // PLAN-526 T39：最小化窗护栏——最小化窗物理尺寸 0，window::screenshot
+    // 触发 wgpu create_texture "Dimension X is zero" panic（exit 101 实录，
+    // RUST_BACKTRACE 栈定 iced_wgpu::Renderer::screenshot）。前置拒绝。
+    #[cfg(all(windows, feature = "native-dock"))]
+    if crate::ui::native_dock::main_window_minimized(std::process::id()) {
+        return error_result(
+            "Screenshot skipped: desktop window is minimized (restore it and retry)".to_string(),
+        );
+    }
     // Plan 371 Task 20: parse visual-regression options.
     let opts = ScreenshotOptions {
         name: args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),

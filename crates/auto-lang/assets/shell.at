@@ -241,10 +241,8 @@ widget Desktop {
                         onclick: .LayoutStack
                         style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                     }
-                    button (icon: "square") {
-                        onclick: .LayoutFree
-                        style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
-                    }
+                    // PLAN-526 T35：Free 布局钮（square）退役——T33 同预设
+                    // 再按即回手动排布，独立 Free 钮冗余（用户八轮反馈 #2）。
                     // Plan 479 T4：通知中心铃铛 + 未读 badge（v1.2；
                     // 开关走 notes_toggle 总线动词，清除钮在面板内）。
                     // PLAN-526 T7/T9：去默认 primary 底（显式透明）+ 统一

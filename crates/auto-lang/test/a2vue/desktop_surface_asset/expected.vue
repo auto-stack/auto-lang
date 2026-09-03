@@ -29,6 +29,10 @@ function ActivateApp(app: any): void {
   emit('ActivateApp', app)
 }
 
+function BlankClose(): void {
+  blank_menu.value = '';
+}
+
 function BlankMenu(): void {
   blank_menu.value = '1';
 
@@ -46,6 +50,10 @@ function IconMenu(id: any): void {
   menu_id.value = id;
 
   emit('IconMenu', id)
+}
+
+function MenuClose(e: any): void {
+  menu_id.value = '';
 }
 
 function MenuOpen(e: any): void {
@@ -83,10 +91,6 @@ function OpenSettingsBlank(): void {
   __desktop_cmd.value = 'open_settings';
 }
 
-function MenuClose(e: any): void {
-  menu_id.value = e
-}
-
 onMounted(() => {
   menu_id.value = '';
   blank_menu.value = '';
@@ -97,35 +101,28 @@ onMounted(() => {
 
 <template>
     <div :class="'w-full h-full p-3' + __desktop_bg" class="flex flex-col w-full h-full p-3">
-      <div class="w-full h-full" @click="BlankPress" @contextmenu.prevent="BlankMenu">
-        <template v-if="blank_menu != ''">
-          <div class="flex flex-col w-44 gap-1 p-1 bg-card/80 border rounded-xl shadow-xl">
-            <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-1'">更换壁纸…</Button>
-            <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-2'">显示设置</Button>
-          </div>
-        </template>
-        <template v-if="menu_id != ''">
-          <div class="flex flex-col w-44 gap-1 p-1 bg-card/80 border rounded-xl shadow-xl">
-            <Button class="w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10" @click="MenuOpen" :key="'Button-3'">打开</Button>
-            <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuRemove" :key="'Button-4'">从桌面移除</Button>
-            <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuWallpaper" :key="'Button-5'">更换壁纸…</Button>
-          </div>
-        </template>
-        <div class="grid grid-cols-8 gap-2 w-full">
-          <div @dblclick="ActivateApp(e.id)" v-for="e in __desktop_icons" :key="(((e as any)?.id ?? e))">
-            <div class="flex flex-col w-20 h-20 items-center justify-center gap-1">
-              <Popover class="p-1 border rounded bg-card" @dismiss="MenuClose(e)" :key="'Popover-6-' + (((e as any)?.id ?? e))">
-                <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" @contextmenu.prevent="IconMenu(e.id)" :key="'Button-7-' + (((e as any)?.id ?? e))" />
-                <div class="flex flex-col w-44 gap-1">
-                  <Button class="w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-8-' + (((e as any)?.id ?? e))">打开</Button>
-                  <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-9-' + (((e as any)?.id ?? e))">从桌面移除</Button>
-                  <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-10-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
-                </div>
-              </Popover>
-              <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
+      <Popover class="p-1 border rounded bg-card" @dismiss="BlankClose" :key="'Popover-1'">
+        <div class="w-full h-full" @click="BlankPress" @contextmenu.prevent="BlankMenu">
+          <div class="grid grid-cols-8 gap-2 w-full">
+            <div @dblclick="ActivateApp(e.id)" v-for="e in __desktop_icons" :key="(((e as any)?.id ?? e))">
+              <div class="flex flex-col w-20 h-20 items-center justify-center gap-1">
+                <Popover class="p-1 border rounded bg-card" @dismiss="MenuClose(e)" :key="'Popover-2-' + (((e as any)?.id ?? e))">
+                  <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" @contextmenu.prevent="IconMenu(e.id)" :key="'Button-3-' + (((e as any)?.id ?? e))" />
+                  <div class="flex flex-col w-44 gap-1">
+                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-4-' + (((e as any)?.id ?? e))">打开</Button>
+                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-5-' + (((e as any)?.id ?? e))">从桌面移除</Button>
+                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-6-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
+                  </div>
+                </Popover>
+                <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
+              </div>
             </div>
           </div>
         </div>
+      </Popover>
+      <div class="flex flex-col w-44 gap-1">
+        <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-7'">更换壁纸…</Button>
+        <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-8'">显示设置</Button>
       </div>
     </div>
 
