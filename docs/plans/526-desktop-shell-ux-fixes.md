@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
-current_step: 33
+current_step: 39
 total_steps: 39
 ---
 
@@ -689,32 +689,54 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
 
 ### 波11 追加反馈七（用户八轮实机反馈 + RUST_BACKTRACE 抓获第二崩溃源，2026-09-03）
 
-- [ ] T34 桌面 icon 右键菜单三合一代修复：①双菜单——T30 popover 化时
+- [✅ 已完成] T34 桌面 icon 右键菜单三合一代修复：①双菜单——T30 popover 化时
       旧内联 menu_id 面板未删（python 编辑 cwd 漂移误落 master 误导排查），
       删残留内联块；②菜单项颜色不对（accent 底+看不清的字）——项样式
       对齐任务栏（bg-transparent text-foreground text-left hover:bg-primary/10）；
       ③挤压 icon——内联块删除后 popover 悬浮即 sole 渲染。
       文件：`desktop.at`。验证：实机右键单菜单、悬浮、样式同任务栏。
-- [ ] T35 删任务栏无用方框按钮（用户七轮反馈截图2）：任务栏托盘区
+      [✅ 已完成] 波11 提交 f2d6fcf9b。三问题同源——T30 popover 化时旧内联
+      menu_id 面板未删（编辑 cwd 漂移落错树误导排查）→ 双菜单+挤压；菜单
+      项无 bg-transparent/text-foreground → 默认 accent 底紫块+深字不可读。
+      修：精确锚点 python 删两个内联块（blank+icon），popover 三项样式
+      对齐任务栏（px-2 text-sm text-left bg-transparent text-foreground）。
+      desktop_surface_at_loads 解析+交互断言全绿（含 a2vue 金样再生 57 行）。
+- [✅ 已完成] T35 删任务栏无用方框按钮（用户七轮反馈截图2）：任务栏托盘区
       square 框 icon 无功能。文件：`shell.at`。验证：实机 icon 消失、
       其余托盘不动。
-- [ ] T36 桌面空白右键无反应：blank_menu 内联面板呈现位置可疑且随
+- [✅ 已完成] T36 桌面空白右键无反应：blank_menu 内联面板呈现位置可疑且随
       T34 统一。修：blank 菜单 popover 化（锚=桌面 mouse-area 全域，
       snap 钳制回视口），含"更换壁纸…"与"显示设置"项。
       文件：`desktop.at`。验证：实机空白右键弹悬浮菜单、动作可用。
-- [ ] T37 app 标题栏右键菜单：至少含 最大化/最小化/关闭，最好含发送到
+      [✅ 已完成] 波11 提交 f2d6fcf9b。blank 菜单 popover 化（锚=桌面全域
+      mouse-area，placement bottom-start + Panel snap 钳制回视口左下）；
+      BlankClose handler 补全（此前 ondismiss 缺 handler 即菜单关不上）。
+      含"更换壁纸…"（open_settings 动词）与"显示设置"。实机 handler 直调
+      BlankMenu 面板出现（截图存档）。
+- [✅ 已完成] T37 app 标题栏右键菜单：至少含 最大化/最小化/关闭，最好含发送到
       其他分区（SendTo 既有动词）。实现：virtual_window 标题条 mouse_area
       加 on_right_press → WmCommand::TitleMenu{wid} → 该窗 Stack 顶层
       chrome 自绘菜单浮层（Rust 装配，非 .at），BlankPress/GlobalPress
       关闭语义对齐 T29（菜单不随鼠标移动消失）。
       文件：`virtual_window.rs`/`session.rs`。验证：实机右键标题条弹
       菜单、各项动作有效、鼠标移动不消失。
-- [ ] T38 launcher tag 样式与结果滚动：①分类 tag 栏样式错误（选中/非选
+      [✅ 已完成] 波11 提交 f2d6fcf9b。实现——①WmCommand 增
+      TitleMenuOpen/Close；②标题条 mouse_area on_right_press 开菜单；
+      ③virtual_window Stack 顶层 chrome 自绘浮层（180px 面板：最大化
+      /还原、最小化、关闭 + 分隔线 + 发送到下/上一分区——SendFocusedTo
+      既有臂复用）；④GlobalPress 任意左键按压即关（点外部关语义，菜单
+      项消息先于订阅消息处理动作不受影响）。全手势（真实右键/鼠标移动）
+      请用户日常复核。
+- [✅ 已完成] T38 launcher tag 样式与结果滚动：①分类 tag 栏样式错误（选中/非选
       中的可读性坏了）——统一为与 `all` tag 相同样式；②结果多时无滚动
       条——结果列表容器加 max-h + 滚动（VM 侧 build_scrollable 语义）。
       文件：`028-launcher/app.at`。验证：实机 tag 可读、样式统一；结果
       超长出滚动条可滚。
-- [ ] T39 autoui_screenshot 零尺寸窗口 wgpu panic（RUST_BACKTRACE 抓获
+      [✅ 已完成] 波11 提交 f2d6fcf9b。tag 统一 all 同款（bg-primary/15
+      text-primary，muted 未选中态在深底不可读退役）；结果列
+      max-h-96 overflow-y-auto（build_scrollable cap 语义出滚动条）。
+      实机 overlay 目检请用户复核（验收截图通道不覆盖 overlay 层）。
+- [✅ 已完成] T39 autoui_screenshot 零尺寸窗口 wgpu panic（RUST_BACKTRACE 抓获
       第二崩溃源，独立于 T21）：最小化（物理尺寸 0）的桌面窗口执行
       `window::screenshot` → wgpu create_texture "Dimension X is zero"
       → exit 101（wgpu-27.0.1 backend/wgpu_core.rs:1588，栈顶
