@@ -3663,7 +3663,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let key = format!("__textarea_{}", placeholder.len());
 
                 let content = get_textarea_content(&key, &value);
-                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let ph: &'static str = leaked_placeholder(&placeholder);
                 let mut editor = text_editor(content).placeholder(ph);
                 // PLAN-051 P2: 稳定 Id——iced text_editor 点击聚焦的前提
                   // (update 内 state.focus(id) 仅在 id 存在时执行;无 Id 则点
@@ -5005,13 +5005,41 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
     };
     // Use a small static cache to avoid re-formatting.
     // The SVG uses width/height=16 for compact button rendering.
-    Some(Box::leak(
-        format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{}</svg>"#,
-            elements
+    // PLAN-530 步骤5：按 icon 名去重——旧实现每次调用 Box::leak 一份新串
+    // （注释宣称缓存但实现是无界泄漏），每帧每图标 ~350B 随重建线性增长
+    // = B 内存崩塌主源。key 用字形 'static 片段（名↔片段 1:1），免每调用
+    // String 键分配。
+    static DOC_CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<&'static str, &'static str>>,
+    > = std::sync::OnceLock::new();
+    let cache = DOC_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut lock = cache.lock().unwrap();
+    Some(*lock.entry(elements).or_insert_with(|| {
+        Box::leak(
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{}</svg>"#,
+                elements
+            )
+            .into_boxed_str(),
         )
-        .into_boxed_str()
-    ))
+    }))
+}
+
+/// PLAN-530 步骤5：placeholder 'static 化的按文本去重缓存——text_editor
+/// placeholder 契约要求 `&'static str`，旧实现每次重建 `Box::leak` 一份
+/// 新串（无界泄漏，随页面重建频率线性增长）。同文本全局只 leak 一份。
+fn leaked_placeholder(placeholder: &str) -> &'static str {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, &'static str>>,
+    > = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut lock = cache.lock().unwrap();
+    if let Some(v) = lock.get(placeholder) {
+        return v;
+    }
+    let leaked: &'static str = Box::leak(placeholder.to_string().into_boxed_str());
+    lock.insert(placeholder.to_string(), leaked);
+    leaked
 }
 
 /// Cache svg::Handle by URL to avoid flickering.
@@ -14296,10 +14324,15 @@ fn dynamic_view(
     let capture = state.app.devtools.debug_mode && *state.app.devtools.inspect_mode.borrow() && !alt_held;
     INSPECT_CAPTURE.with(|c| c.set(capture));
 
+    // PLAN-530 步骤4 泄漏定位门控：P530_NOMCP=1 时整段跳过 per-frame MCP
+    // 同步 + capture 路径（view_with_debug_gated/vtree/id_map），用于
+    // A/B 判别每帧保留源。
+    let p530_nomcp = std::env::var("P530_NOMCP").as_deref() == Ok("1");
+
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
     // Must run in view() — not update() — because iced may not fire any events
     // initially, meaning update() might never run before an MCP client connects.
-    if sync_mcp {
+    if sync_mcp && !p530_nomcp {
     if let Some(ref mcp_handle) = state.desktop.mcp_shared {
         let mut mcp = mcp_handle.lock().unwrap();
         if !mcp.has_view() {
@@ -14437,7 +14470,7 @@ fn dynamic_view(
     // opening F12. Visual overlays (hover/selected highlight, inspect mouse_area)
     // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
     // early-return), so MCP-only capture never perturbs the rendered layout.
-    let mcp_active = state.desktop.mcp_shared.is_some();
+    let mcp_active = !p530_nomcp && state.desktop.mcp_shared.is_some();
     let capture_debug = state.app.devtools.debug_mode || mcp_active;
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
@@ -14510,24 +14543,26 @@ fn dynamic_view(
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
     // here (before `converted` is moved into render_dynamic_view and before
     // `debug_id_map` is moved into debug_ctx) as a side-effect snapshot only.
-    if let Some(id_map) = &debug_id_map {
-        let span_map = state.component.span_map().clone();
-        let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
-            converted.clone(),
-            |path: &[u16]| {
-                let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
-                id_map
-                    .get(&p)
-                    .and_then(|aura_id| span_map.get(&aura_id))
-                    .and_then(|info| info.span)
-                    .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
-            },
-        );
-        *state.app.live_vtree.borrow_mut() = Some(vtree);
-    } else {
-        *state.app.live_vtree.borrow_mut() = None;
-        *state.app.live_probe.borrow_mut() = None;
-        *state.app.live_cache.borrow_mut() = None;
+    if !p530_nomcp {
+        if let Some(id_map) = &debug_id_map {
+            let span_map = state.component.span_map().clone();
+            let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
+                converted.clone(),
+                |path: &[u16]| {
+                    let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
+                    id_map
+                        .get(&p)
+                        .and_then(|aura_id| span_map.get(&aura_id))
+                        .and_then(|info| info.span)
+                        .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
+                },
+            );
+            *state.app.live_vtree.borrow_mut() = Some(vtree);
+        } else {
+            *state.app.live_vtree.borrow_mut() = None;
+            *state.app.live_probe.borrow_mut() = None;
+            *state.app.live_cache.borrow_mut() = None;
+        }
     }
 
     // Clear view_dirty after consuming the change.
@@ -17357,7 +17392,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 oversized_textarea_preview(&value)
             } else if rich {
                 let content = get_textarea_content_rich(&key, &value, &ghost);
-                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let ph: &'static str = leaked_placeholder(&placeholder);
                 // PLAN-051 P2: 同 composer 命中区修复——style 高度消费。
                 let editor_height = textarea_editor_height(height, style.as_ref());
                 let mut rich_editor = text_editor(content).placeholder(ph);
@@ -17380,7 +17415,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let content = get_textarea_content(&key, &value);
                 // text_editor::placeholder borrows with the element's lifetime;
                 // since content is &'static, we need a &'static str for placeholder too.
-                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let ph: &'static str = leaked_placeholder(&placeholder);
                 // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
                 // 多行续行需显式 height prop(.at 的 max-h/field-sizing 是 CSS-only)。
                 let editor_height = match height {
@@ -19204,6 +19239,29 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-530 步骤5 回归（B 内存崩塌主源）：lucide_svg 同名 icon 必须命中
+    /// 去重缓存（同一 &'static str），不得每次调用 Box::leak 一份新 16×16
+    /// 文档——每帧每图标 ~350B 的无界泄漏随重建频率线性增长（homepage 实测
+    /// ~67MB/min 的主分量）。指针同一性 = 缓存命中的可观测契约。
+    #[test]
+    fn p530_lucide_svg_same_name_returns_same_static() {
+        let a = lucide_svg("bell").expect("bell 已登记");
+        let b = lucide_svg("bell").expect("bell 已登记");
+        assert!(std::ptr::eq(a, b), "同名 icon 返回了不同的 'static 串——缓存未命中，正在泄漏");
+        let c = lucide_svg("copy").expect("copy 已登记");
+        assert!(!std::ptr::eq(a, c), "不同 icon 不应串缓存");
+    }
+
+    /// PLAN-530 步骤5 回归：placeholder 'static 化必须按文本去重——text_editor
+    /// placeholder 契约要求 &'static str，旧实现每次重建 Box::leak 一份新串。
+    #[test]
+    fn p530_leaked_placeholder_dedupes_same_text() {
+        let a = leaked_placeholder("Search widgets...");
+        let b = leaked_placeholder("Search widgets...");
+        assert!(std::ptr::eq(a, b), "同文本 placeholder 返回了不同的 'static 串——正在泄漏");
+        assert_eq!(a, "Search widgets...");
+    }
+
     /// PLAN-530 步骤3 回归（W10/W11 双份叠印根因）：Column 叠层分区只认
     /// absolute 脱流子；z-index-only 子必须留在流内。472 时代的"前缀
     /// overlay"路径把 0..=elev_idx 整段重渲染进叠层 → 非提升子被 base +
