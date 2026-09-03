@@ -16,6 +16,6 @@ description: "Photo Gallery - album sidebar, search/sort/density toolbar, thumbn
 scene: "ui"
 render: "vue"
 front_port: 4029
-icon: "images"
+icon: "image"
 title: "Photo Gallery"
 category: "media"
