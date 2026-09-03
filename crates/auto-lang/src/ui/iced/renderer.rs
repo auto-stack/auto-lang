@@ -10941,6 +10941,12 @@ fn compare_pngs(
                                 h,
                             );
                             *state.app.view_dirty.borrow_mut() = true;
+                            // view_dirty 单独不驱动 iced 重绘（Task::none 无
+                            // 重排）——回发 __noop 消息走一轮 update→view，
+                            // 让 ghost 包装进当帧（Plan 482 no-op 通道）。
+                            return iced::Task::done(IcedMessage::from_dynamic(
+                                &DynamicMessage::String("__noop".to_string()),
+                            ));
                         }
                     }
                     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
