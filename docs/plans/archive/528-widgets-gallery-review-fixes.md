@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-528
-status: reviewed
+status: archived
 feature_name: widgets-gallery 检查问题跟踪与修复
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03T11:30:00+08:00
