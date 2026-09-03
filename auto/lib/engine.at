@@ -789,8 +789,13 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
             // load l → args → call.nat(栈 [list, value..])
             // P532 W1 G1+G2:str 方法族(宿主 native_catalog id 镜像;
             // 栈序=接收者先入,参数次之;引擎自跑宿主,同名内建直调)
-            // P532 W1 G9:int.str → nat#174(引擎自跑宿主 to_string)
-            if ins.n == 174 {
+            // P532 W1 G15:File.read_text → nat#1000(引擎自跑宿主内建)
+            if ins.n == 1000 {
+                var fp1000 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                sp = ev_push(stack, sp, ev_vs(File.read_text(fp1000)))
+            } else if ins.n == 174 {
+                // P532 W1 G9:int.str → nat#174(引擎自跑宿主 to_string)
                 var iv174 = ev_dec(ev_int(stack.get(sp - 1)))
                 sp = sp - 1
                 sp = ev_push(stack, sp, ev_vs(iv174.to_string()))
