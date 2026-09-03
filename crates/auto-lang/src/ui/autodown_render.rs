@@ -318,6 +318,7 @@ fn render_block<M: Clone + std::fmt::Debug>(
                     value,
                     is_final,
                     on_change: None,
+                    on_focus: None,
                     style: None,
                 }
             };

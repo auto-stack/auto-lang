@@ -1476,7 +1476,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus: None, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -1485,7 +1485,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus: None, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)
@@ -2608,7 +2608,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus: None, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -2617,7 +2617,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus: None, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)

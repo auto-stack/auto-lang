@@ -3748,8 +3748,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
-                build_autodown_editor_generic(&key, &value, is_final, on_change)
+            AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, style: _ } => {
+                build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus)
             }
 
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
@@ -5514,12 +5514,17 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             value,
             is_final,
             on_change,
+            on_focus,
             style,
         } => AbstractView::AutodownEditor {
             key,
             value,
             is_final,
             on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            // Plan 044 T2: 块聚焦读出回调跨消息类型包装（FocusCallback newtype）。
+            on_focus: on_focus.map(|cb| {
+                crate::ui::view::FocusCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+            }),
             style,
         },
 
@@ -16952,6 +16957,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     value: &str,
     is_final: bool,
     on_change: Option<M>,
+    on_focus: Option<crate::ui::view::FocusCallback<M>>,
 ) -> iced::Element<'static, M> {
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
     {
@@ -16964,11 +16970,15 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
         if let Some(msg) = on_change {
             widget = widget.on_change(move || msg.clone());
         }
+        // Plan 044 T2：块聚焦读出回调直挂 widget（FocusMetrics 载荷）。
+        if let Some(cb) = on_focus {
+            widget = widget.on_focus(move |m| cb.call(m));
+        }
         widget.into()
     }
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
     {
-        let _ = (key, is_final);
+        let _ = (key, is_final, on_focus);
         AbstractView::<M>::Text { content: value.to_owned(), style: None, selectable: false }.into_iced()
     }
 }
@@ -17731,7 +17741,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — INPUT_TEXT carries
         // the live document on edit (同 code editor 的 payload 通道惯例)。
-        AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
+        AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, style: _ } => {
             let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
             #[cfg(all(feature = "autodown", feature = "code-editor"))]
             {
@@ -17752,6 +17762,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                         msg.clone()
                     });
                 }
+                // Plan 044 T2：VM 轨块聚焦读出——FocusMetrics 载荷直挂
+                // widget（FocusCallback 已在 convert_view_messages 换型为
+                // IcedMessage；onfocus 事件 → Typed 消息在 aura_view_builder
+                // 装配，update 层 OnFocus 拦截直写快道消费）。
+                if let Some(cb) = on_focus {
+                    widget = widget.on_focus(move |m| cb.call(m));
+                }
                 let el: iced::Element<'static, IcedMessage> = widget.into();
                 let _ = dbg_props;
                 el
@@ -17759,7 +17776,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
             {
                 // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
-                let _ = use_ade;
+                let _ = (use_ade, on_focus);
                 let el: iced::Element<'static, IcedMessage> =
                     AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
                 el

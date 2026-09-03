@@ -54,6 +54,9 @@ impl EditorClipboard for IcedClipboard<'_> {
 pub struct DocEditor<'a, M> {
     core: &'static AutodownEditorCore,
     on_change: Option<Box<dyn Fn() -> M + 'a>>,
+    /// Plan 044 T2：块聚焦读出——焦点变化现场打包 (block_index, height)
+    /// （高度取 core 布局快照，宿主零查询）。
+    on_focus: Option<Box<dyn Fn(crate::ui::view::FocusMetrics) -> M + 'a>>,
     width: Length,
     /// 外层传入的基数前景色（正文基色；渲染器 lowering 由语义主题注入）。
     base_color: Rgba,
@@ -67,6 +70,7 @@ impl<'a, M: Clone> DocEditor<'a, M> {
         Self {
             core: super::autodown_editor(key),
             on_change: None,
+            on_focus: None,
             width: Length::Fill,
             base_color,
             _marker: std::marker::PhantomData,
@@ -77,6 +81,13 @@ impl<'a, M: Clone> DocEditor<'a, M> {
     /// `autodown_editor_text(key)` 读回）。
     pub fn on_change(mut self, f: impl Fn() -> M + 'a) -> Self {
         self.on_change = Some(Box::new(f));
+        self
+    }
+
+    /// Plan 044 T2：fires whenever block focus changed（点击/边界导航/失焦；
+    /// 载荷 = 焦点块索引 + DocLayout 实测高，ghost 定高单源）。
+    pub fn on_focus(mut self, f: impl Fn(crate::ui::view::FocusMetrics) -> M + 'a) -> Self {
+        self.on_focus = Some(Box::new(f));
         self
     }
 
@@ -93,6 +104,18 @@ impl<'a, M: Clone> DocEditor<'a, M> {
         if out.text_changed {
             if let Some(f) = &self.on_change {
                 shell.publish(f());
+            }
+        }
+        // Plan 044 T2：焦点变化现场打包 (block_index, height)。高度从
+        // core 布局快照取（render_frame 每帧写回，点击后必已就绪）；
+        // 失焦变体 block=None、height=0。
+        if out.focus_changed {
+            if let Some(f) = &self.on_focus {
+                let block = self.core.focused_block();
+                let height = block
+                    .and_then(|i| self.core.block_rects().get(i).map(|r| r.h))
+                    .unwrap_or(0.0);
+                shell.publish(f(crate::ui::view::FocusMetrics { block, height }));
             }
         }
     }
@@ -454,5 +477,60 @@ fn stroke_rect(renderer: &mut iced::Renderer, origin: Rectangle, r: Rect, color:
 impl<'a, M: Clone + 'a> From<DocEditor<'a, M>> for Element<'a, M> {
     fn from(editor: DocEditor<'a, M>) -> Self {
         Element::new(editor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::autodown_editor::{autodown_editor, storage_key, DocInput};
+
+    const WHITE: Rgba = Rgba { r: 1., g: 1., b: 1., a: 1. };
+
+    /// PLAN-044 T2：消息可达——模拟点击第一块 → focus_changed →
+    /// publish 把 on_focus 消息发进 shell，载荷 (block, height) 与
+    /// core 布局快照一致（高度 > 0 即 layout 现场取值）。
+    #[test]
+    fn on_focus_message_reaches_shell_on_click() {
+        // 测试字体系统引导（镜像 core.rs tests::run_fs）：先装 callback
+        // 再走 with_font_system 路径。
+        static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
+            std::sync::OnceLock::new();
+        crate::ui::code_editor::core::set_font_system_call(|with| {
+            let mut guard =
+                FS.get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new())).write().unwrap();
+            with(&mut guard);
+        });
+        let sk = storage_key("p044_t2_focus_msg");
+        let core = autodown_editor(&sk);
+        // sync_external 内部自调 with_font_system——必须在外层调用（同线程
+        // RwLock 写锁不可重入），否则死锁。
+        core.sync_external("甲段。\n\n乙段。\n", true);
+        crate::ui::code_editor::core::with_font_system(|fs| {
+            let _ = core.render_frame(fs, 400.0, WHITE);
+        });
+        // 点击第一块中部 → 建焦块 0。
+        let out = crate::ui::code_editor::core::with_font_system(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: 10.0, y: 8.0 },
+                &mut crate::ui::code_editor::core::NullClipboard,
+            )
+        });
+        assert!(out.focus_changed, "{out:?}");
+        assert_eq!(core.focused_block(), Some(0));
+
+        let expected_h = core.block_rects()[0].h;
+        assert!(expected_h > 0.0);
+        #[derive(Debug, Clone, PartialEq)]
+        enum FocusMsg {
+            F(Option<usize>, f32),
+        }
+        let editor = DocEditor::<FocusMsg>::new(&sk, WHITE)
+            .on_focus(|m| FocusMsg::F(m.block, m.height));
+        let mut msgs: Vec<FocusMsg> = Vec::new();
+        let mut shell = Shell::new(&mut msgs);
+        editor.publish(&out, &mut shell);
+        assert_eq!(msgs, vec![FocusMsg::F(Some(0), expected_h)]);
     }
 }
