@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
-current_step: 20
-total_steps: 21
+current_step: 21
+total_steps: 22
 ---
 
 # [PLAN-526] 桌面壳 UX 十题修复：窗口三键/resize/焦点环/fit、任务栏样式统一、右键菜单、壁纸选择、launcher 焦点、关机确认
@@ -486,6 +486,15 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       （以回溯栈定位为准）。
       验证：复现路径回归测试绿 + 实机极端拖拽（边缘拖过对侧、缩到
       最小再拖出屏）不再 panic。
+
+- [✅ 已完成] T22 标题栏三键命中盒正方形化（用户五轮实机截图反馈，
+      2026-09-03）：症状——`– ▢ ×` 命中盒 30×24 长方形，横向视觉松散。
+      修：`virtual_window.rs::title_button` 命中盒 30×24 → 24×24 正方形
+      （glyph 13/10/13 均容纳；hover 圆角块 6.0 不变；三键组宽 94→76
+      逻辑 px）。文件：`crates/auto-lang/src/ui/iced/virtual_window.rs`。
+      验证：cargo check + layout_tests 18/18；实机截图（8915 验收进程
+      重启后）：三键中心距 26 逻辑 px 紧拢，形态符合预期。
+      [✅ 已完成] commit cddbd9abd（worktree plan-526-dev 已折叠 master）。
 
 ### 波间回归
 
