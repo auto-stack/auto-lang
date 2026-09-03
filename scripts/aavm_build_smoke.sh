@@ -44,8 +44,42 @@ EOF
   fi
 }
 
+# Plan 531 P523-1 清偿:pac 正路(`auto build` 全管线:resolve→transpile→
+# Cargo.toml 生成→cargo build)。此前最小工程的 rust target 生成链三缺口
+# (rust 后端不 resolve/无名目标空包名/无条件 auto-lang 注册表依赖)已修。
+run_case_pac() {
+  local name="$1" at="$2" expect="$3"
+  local d="$SMOKE/pac_$name"
+  mkdir -p "$d"
+  cp "$at" "$d/main.at"
+  cat > "$d/pac.at" <<EOF
+name: "$name"
+version: "0.1.0"
+lang: "rust"
+
+app("$name") {
+    srcs: ["main.at"]
+}
+EOF
+  (cd "$d" && "$AUTO" build >/dev/null 2>&1)
+  local out
+  out="$("$d/rust/target/debug/$name.exe")"
+  if [ "$out" == "$expect" ]; then
+    echo "SMOKE pac_$name PASS (auto build 正路, output == $(
+      echo "$expect" | tr '\n' ' '))"
+  else
+    echo "SMOKE pac_$name FAIL (auto build 正路)"
+    echo "--- expect ---"; echo "$expect"
+    echo "--- got ---";    echo "$out"
+    exit 1
+  fi
+}
+
 # b07_fib:期望 55
 run_case b07_fib "$ROOT/crates/auto-lang/test/vm/aavm2/corpus_m4/b07_fib.at" "55"
 # b34_struct_basic:期望 10/20(中阶 struct 族代表)
 run_case b34_struct_basic "$ROOT/crates/auto-lang/test/vm/aavm2/corpus_m4/b34_struct_basic.at" "$(printf '10\n20')"
+# pac 正路双例(Plan 531 P523-1 清偿验收)
+run_case_pac b07_fib "$ROOT/crates/auto-lang/test/vm/aavm2/corpus_m4/b07_fib.at" "55"
+run_case_pac b34_struct_basic "$ROOT/crates/auto-lang/test/vm/aavm2/corpus_m4/b34_struct_basic.at" "$(printf '10\n20')"
 echo "aavm build smoke: all PASS"
