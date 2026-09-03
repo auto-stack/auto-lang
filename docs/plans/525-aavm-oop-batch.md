@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-525
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-oop-batch
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -424,7 +424,11 @@ playground-demo/13-methods.at（宿主方法族语义样板））
    新登记(主 a2r 转译洞两处/m4 闭包对拍/生成器+?? 延后/宿主 May 裸值
    发射/塔顶环境敏感);divergences.md 五条 D-VBool-degenerate/
    D-clo-model/D-nested-fn-scope/D-may-sentinel/D-generic-channel。
-29. [ ] 折叠点⑥+复审（/auto-plan:review）→ tf → status: reviewed。
+29. [ ] 折叠点⑥+复审(/auto-plan:review)→ tf → status: reviewed。
+   〔2026-09-03 交接:执行侧 30 步中 1-28 全勾;步骤 29-30 属
+   /auto-plan:review 与 /auto-plan:merge 技能范畴,另行触发。终态
+   证据:四路 29/29+goldens 29+发射闸 34+M4/M5 各 58+tf 绿+tv 3559+
+   tt 28=存量 P523-3;五债登记 P525-1..5;生成器/?? 延后显式化。〕
 30. [ ] merge 沉淀归档。
 
 ## 复审记录
