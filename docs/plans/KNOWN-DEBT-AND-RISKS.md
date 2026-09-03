@@ -9,6 +9,8 @@
 
 ## 🔴 高风险（可能在特定场景导致 UB 或数据损坏）
 
+| 526 | 崩溃（复现 2/2，2026-09-03/04） | 任务栏铃铛二次开合通知中心 → 桌面进程静默退出 code 1（无 panic 输出）。疑似 VM 层 `Process.exit`（stdlib.rs shim_process_exit）或未打印的 abort；RUST_BACKTRACE=full 复现实例仍无栈——进程性退出非 panic。跟踪于 535 D 项 | renderer.rs:8176 toggle_notification_center；stdlib.rs:683 shim_process_exit |
+
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
 | 385 | 逃逸风险 | 闭包 capture_slots 记录 creator_bp，若闭包逃逸（存入全局变量、在创建者函数返回后调用），creator_bp 指向已释放栈帧 → UB。当前无逃逸检测。常见用例（forEach 回调、直接调用）安全，因为创建者仍在栈上。 | `vm/engine.rs` Closure.capture_slots + `vm/codegen.rs:10971 compile_closure` |

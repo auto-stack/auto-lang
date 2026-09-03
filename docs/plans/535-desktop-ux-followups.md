@@ -92,6 +92,12 @@ total_steps: 0
 - [ ] A2 thumbnail 空显兜底（snapshot.rs/渲染臂）。
 - [ ] B wrap_layout_onclick 设计草稿 + launcher/桌面试点。
 - [ ] C 用户复核七项逐项销账（T20/T24/T28/T31/T32/T37/T38）。
+- [ ] D 崩溃：铃铛二次开合通知中心 → 进程静默退出 code 1（复现 2/2：
+      2026-09-03 21:38 用户实机 + 22:0x 验收通道 handler 双调；无 panic
+      输出、无错误日志——疑似 VM 层 Process.exit 或未打印的 abort，
+      需 RUST_BACKTRACE=full 实例复现取栈）。定位：`notes_toggle` →
+      toggle_notification_center（renderer.rs:8184）二连击路径。
+- [ ] E 用户复核：通知中心开合（同 D 场景）确认修复。
 
 ## 复审记录
 
