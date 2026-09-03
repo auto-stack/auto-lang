@@ -1,4 +1,5 @@
 mod aavm;
+mod freshness;
 mod compare;
 mod report;
 mod runner;
@@ -20,6 +21,11 @@ struct Cli {
     /// Path to the auto binary (default: "auto").
     #[arg(long, env = "AUTO_BINARY", default_value = "auto")]
     auto_binary: String,
+
+    /// Plan 524: skip the stale-auto-binary freshness gate (mtime 对账).
+    /// 陈旧产物会伪装回归假红（P511-5/P517-2）——默认硬失败，确认无碍再逃生。
+    #[arg(long)]
+    allow_stale: bool,
 
     /// Explicit Python interpreter for oracle/a2py subprocesses (Plan 461).
     /// Overrides the python3/python PATH probe — needed when the PATH
@@ -75,12 +81,31 @@ fn main() {
         std::process::exit(1);
     }
 
+    // Plan 524: auto.exe 新鲜度闸门（P517-2 根治）——启动时 mtime 对账
+    // crates/ 树最新源，陈旧硬失败（伪装回归假红先于一切结论），--allow-stale
+    // 逃生；相对路径在此统一解析为绝对路径（报错含绝对路径与 cwd）。
+    let repo_root = {
+        let canonical = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+        canonical
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from(".."))
+    };
+    let auto_binary = match freshness::check_freshness(&cli.auto_binary, &repo_root, cli.allow_stale)
+    {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
     // Async libraries (P4) need sorted output because their completion order
     // is non-deterministic. We also default sort_results to false and turn it
     // on per-library inside run_library.
     let base_config = RunConfig {
         parity_root: root.clone(),
-        auto_binary: cli.auto_binary.clone(),
+        auto_binary: auto_binary.clone(),
         library: String::new(),
         sort_results: false,
     };
@@ -116,15 +141,10 @@ fn main() {
             }
         }
         Command::Aavm { html } => {
-            // --root 可能是相对路径("parity" 或 "."),先规范化再取父目录
-            let canonical = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
-            let repo_root = canonical
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| PathBuf::from(".."));
+            // repo_root 与解析后的 auto_binary 已在 Plan 524 启动闸门算好
             let cfg = aavm::AavmConfig {
                 repo_root,
-                auto_binary: cli.auto_binary.clone(),
+                auto_binary,
             };
             match aavm::run_matrix(&cfg) {
                 Ok(report) => {

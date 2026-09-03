@@ -33,8 +33,10 @@
 //            域;D31(433 重构;447-③ E2 收账):值栈异构载体 → 枚举
 //            Val{VInt/VStr/VArr/VInst}(对齐 auto-val Value 的 match
 //            分派;433 期"枚举载荷跨函数丢标签"以宿主 H3 根治解除);
-//            布尔/nil 仍以 0/1 整型承载(宿主 print 对 bool 打
-//            "1"/"0",可观察行为一致)。
+//            W1(525):bool 加 VBool 载体(P474-旁支收口)——print/
+//            比较/逻辑结果 true/false 形态对齐宿主 TAG_BOOL;ADD/
+//            STR_CAT 混入 bool 的宿主哨兵退化形态(decode_i32)不
+//            镜像,语料不覆盖;nil 仍以 0 整型承载。
 
 // 值栈元素:异构值的显式载体(433:a2r 需要静态元素类型;VM 侧 List
 // 本就动态,行为不变)。447-③ E2(D34 收账):判别器结构体 {k,i,s}
@@ -45,9 +47,13 @@
 // 与 a2r 值语义在"单一事实源=arena 槽位"上对齐,局部槽/栈位持有的
 // 是可自由复制的索引);VInst 双载荷 {arena 字段表槽位, 变体名}
 // (部分② 的 k=3 实例形态枚举化)。
+// Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;纯解释器层仅依赖 codegen)
+use auto.lib.codegen: CG, OpCode, cg_compile, cg_compile_files, op_name
+
 enum Val {
     VInt(int)
     VStr(str)
+    VBool(bool)
     VArr(int)
     VInst(int, str)
 }
@@ -58,6 +64,12 @@ fn ev_vi(x int) Val {
 
 fn ev_vs(t str) Val {
     return Val.VStr(t)
+}
+
+// W1(Plan 525):bool 载体——print/比较/逻辑结果的显示形态与宿主
+// TAG_BOOL(encode_bool)对齐(true/false;P474-旁支收口)
+fn ev_vb(b bool) Val {
+    return Val.VBool(b)
 }
 
 fn ev_va(ai int) Val {
@@ -82,21 +94,33 @@ fn ev_int(v Val) int {
     }
 }
 
+// bool 显示形态(宿主 print tag==3 臂):块臂带 return 与表达式臂混排
+// 会触发主 a2r is-match 发射破缺(W1 实证:表达式臂被发成 `{...;}` 语句
+// 块丢值;登记债)——独立辅助函数规避
+fn ev_bool_str(b bool) str {
+    if b {
+        return "true"
+    }
+    return "false"
+}
+
 // 显示串(print 参数):镜像宿主 ADD-含字符串即拼接的语义;负 int
-// 先解偏置(D30 编码);arr 为不可比载体(语料以元素/len 为观察
-// 通道,D31),占位输出
+// 先解偏置(D30 编码);bool 走 true/false(宿主 print tag==3 臂);
+// arr 为不可比载体(语料以元素/len 为观察通道,D31),占位输出
 fn ev_str(v Val) str {
     is v {
         Val.VStr(t) -> t
+        Val.VBool(b) -> ev_bool_str(b)
         Val.VInt(n) -> ev_dec(n).str()
         else -> "[arr]"
     }
 }
 
-// 真值:int 按 !=0;其余(含 str)恒真(镜像 VM `v != 0` 的
-// 行为——字符串与 0 比较恒不等)
+// 真值:bool 按载荷(宿主 nv_truthy is_bool 权威);int 按 !=0;其余
+// (含 str)恒真(镜像 VM `v != 0` 的行为——字符串与 0 比较恒不等)
 fn ev_truthy(v Val) bool {
     is v {
+        Val.VBool(b) -> b
         Val.VInt(n) -> n != 0
         else -> true
     }
@@ -142,10 +166,25 @@ fn ev_add(a Val, b Val) Val {
 }
 
 // 全序比较:int 域比较先解偏置;str 域字典序(VM "b" > "a" 实测);
+// bool×bool 按位相等性(宿主 EQ a_nv==b_nv:同值 0、异值 2);
 // 混合型/arr 不可比 → 2(eq 取 false、ne 取 true,镜像 VM "x" == 1
 // → false);返回 -1/0/1/2
 fn ev_cmp(a Val, b Val) int {
     is a {
+        Val.VBool(ba) -> {
+            // 嵌套 is 用新鲜拷贝(H5;同上)
+            var b0 = b
+            is b0 {
+                Val.VBool(bb) -> {
+                    if ba == bb {
+                        return 0
+                    }
+                    return 2
+                }
+                else -> {
+                }
+            }
+        }
         Val.VInt(ax) -> {
             // 嵌套 is 用新鲜拷贝(同标识符二次 is 会触发主 a2r H5 的
             // match & 引用绑定,载荷变 &i64/&String 不可再入按值调用)
@@ -228,7 +267,7 @@ fn ev_len(mut arena List<List<Val>>, v Val) int {
 
 // ── 执行循环 ──────────────────────────────────────────────────
 
-fn ev_run(source str) str {
+pub fn ev_run(source str) str {
     return ev_run_t(source, 0)
 }
 
@@ -254,7 +293,7 @@ fn ev_run_t(source str, trace int) str {
 // W3(Plan 511)多文件执行入口:resolve_uses→多编译单元→链接→初始化序
 // (dep 模块链接序逐个执行至各自 HALT,全局区共享)→main 入口。
 // 模块解析/编译错误文本直返(宿主为规范)
-fn ev_run_files(main_path str) str {
+pub fn ev_run_files(main_path str) str {
     var c = cg_compile_files(main_path)
     if c.err != "" {
         return c.err
@@ -586,11 +625,12 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
             }
         }
         OpCode.PushBool -> {
-            // 布尔以 1/0 承载:与宿主 print(bool)→"1"/"0" 的可观察行为一致
+            // W1(525):bool 以 VBool 载体入栈——print/传递形态对齐宿主
+            // TAG_BOOL(旧 1/0 整型承载为 P474 过渡形态,收口)
             if ins.s == "true" {
-                sp = ev_push(stack, sp, ev_vi(1))
+                sp = ev_push(stack, sp, ev_vb(true))
             } else {
-                sp = ev_push(stack, sp, ev_vi(0))
+                sp = ev_push(stack, sp, ev_vb(false))
             }
         }
         OpCode.PushNil -> {
@@ -679,11 +719,83 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
             }
         }
         OpCode.CallNat -> {
-            if ins.n == 112 {
-                // W2:nat#112 = auto.iterator.next——镜像宿主可观察行为:
-                // 裸 List 句柄非迭代器对象,shim 对其零迭代(立即 -1;
-                // b38 实证:for w in mk() 宿主零输出;宿主 values()/keys()
-                // 特例即为此而生——超 W2 范围不镜像)
+            // W3(Plan 525):auto.list 容器族(native_catalog 100/101/
+            // 106/107;lib 盘点最小方法集)。宿主发射序:b46 m4 对拍
+            // load l → args → call.nat(栈 [list, value..])
+            if ins.n == 100 {
+                // nat#100 = auto.list.new——空表入 arena,推 VArr 索引
+                var nl100 List<Val> = List.new()
+                arena.push(nl100)
+                sp = ev_push(stack, sp, ev_va(arena.len() - 1))
+            } else if ins.n == 101 {
+                // nat#101 = auto.list.push——栈 [list, value]:槽位追加,
+                // 推 0(语句位 pop 消化)
+                var pv101 = stack.get(sp - 1)
+                sp = sp - 1
+                var pl101 = stack.get(sp - 1)
+                sp = sp - 1
+                is pl101 {
+                    Val.VArr(ai101) -> {
+                        var l101 = arena.get(ai101)
+                        l101.push(pv101)
+                        arena.set(ai101, l101)
+                    }
+                    else -> {
+                    }
+                }
+                sp = ev_push(stack, sp, ev_vi(0))
+            } else if ins.n == 106 {
+                // nat#106 = auto.list.get——栈 [list, idx]:OOB 推 0
+                // (镜像宿主 shim 缺省面)
+                var gi106 = ev_dec(ev_int(stack.get(sp - 1)))
+                sp = sp - 1
+                var gl106 = stack.get(sp - 1)
+                sp = sp - 1
+                var gval106 = ev_vi(0)
+                is gl106 {
+                    Val.VArr(gai106) -> {
+                        var glst106 = arena.get(gai106)
+                        if gi106 >= 0 && gi106 < glst106.len() {
+                            gval106 = glst106.get(gi106)
+                        }
+                    }
+                    else -> {
+                    }
+                }
+                sp = ev_push(stack, sp, gval106)
+            } else if ins.n == 107 {
+                // nat#107 = auto.list.set——栈 [list, idx, value]:写
+                // 槽位(OOB 静默),推 0
+                var sv107 = stack.get(sp - 1)
+                sp = sp - 1
+                var si107 = ev_dec(ev_int(stack.get(sp - 1)))
+                sp = sp - 1
+                var sl107 = stack.get(sp - 1)
+                sp = sp - 1
+                is sl107 {
+                    Val.VArr(sai107) -> {
+                        var slst107 = arena.get(sai107)
+                        if si107 >= 0 && si107 < slst107.len() {
+                            slst107.set(si107, sv107)
+                            arena.set(sai107, slst107)
+                        }
+                    }
+                    else -> {
+                    }
+                }
+                sp = ev_push(stack, sp, ev_vi(0))
+            } else if ins.n == 103 {
+                // Plan 523 H6:nat#103 = auto.list.len(镜像宿主 shim_list_len;
+                // PLAN-057 T3 for-in Call 源通道每迭代求长,m4 字节码镜像配套)
+                var larr103 = stack.get(sp - 1)
+                sp = sp - 1
+                var llen103 = ev_len(arena, larr103)
+                sp = ev_push(stack, sp, ev_vi(llen103))
+            } else if ins.n == 112 {
+                // W2:nat#112 = auto.iterator.next——裸 List 句柄非迭代器
+                // 对象,shim 立即 -1(511 期宿主实测零迭代;525 W1 复测宿主
+                // for-in 已按元素迭代——Call 源通道走 T3 求长路径不经此臂,
+                // 本臂保留为字节码镜像完备位,b38 现行两侧一致)
                 var itv = stack.get(sp - 1)
                 sp = sp - 1
                 var next_v = ev_vi(-1)
@@ -755,7 +867,8 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
                     r2 = 1
                 }
             }
-            stack.set(sp - 1, ev_vi(r2))
+            // W1(525):比较结果推 VBool(宿主 EQ 族全推 encode_bool)
+            stack.set(sp - 1, ev_vb(r2 == 1))
         }
         OpCode.And | OpCode.Or -> {
             var b3 = stack.get(sp - 1)
@@ -771,14 +884,16 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
                     r3 = 1
                 }
             }
-            stack.set(sp - 1, ev_vi(r3))
+            // W1(525):逻辑结果推 VBool(宿主 AND/OR 推 encode_bool)
+            stack.set(sp - 1, ev_vb(r3 == 1))
         }
         OpCode.Not -> {
             var v4 = stack.get(sp - 1)
+            // W1(525):非结果推 VBool(宿主 NOT 推 encode_bool)
             if ev_truthy(v4) {
-                stack.set(sp - 1, ev_vi(0))
+                stack.set(sp - 1, ev_vb(false))
             } else {
-                stack.set(sp - 1, ev_vi(1))
+                stack.set(sp - 1, ev_vb(true))
             }
         }
         OpCode.Neg -> {

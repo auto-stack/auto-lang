@@ -135,6 +135,15 @@ struct Cli {
     #[arg(index = 1)]
     file: Option<String>,
 
+    /// Plan 524: args passed through to the script (`auto <file> [args...]`) —
+    /// visible to the program as `process.args()[1..]`. Positional form
+    /// (W0 定案: trailing_var_arg); a bare value that clashes with a subcommand
+    /// name can be forced through with `--` (e.g. `auto probe.at -- run`).
+    /// Note: known global flags placed AFTER the file are consumed by the flag,
+    /// not passed through — put such values after `--`.
+    #[arg(index = 2, trailing_var_arg = true, allow_hyphen_values = true, value_name = "ARGS")]
+    script_args: Vec<String>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -708,7 +717,8 @@ fn real_main(cli: Cli) -> Result<()> {
             println!("Running Auto {} ", path);
             println!("----------------------");
         }
-        let result = auto_lang::run_file(&path).map_err(|e| {
+        // Plan 524: CLI 透传（`auto <file> [args...]`）→ process.args() 表
+        let result = auto_lang::run_file_with_args(&path, cli.script_args).map_err(|e| {
             if ai_mode {
                 eprintln!("{}", format_error_json(&e));
                 std::process::exit(1);
@@ -2172,4 +2182,67 @@ fn to_pascal_case(s: &str) -> String {
 }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_passthrough_tests {
+    use super::Cli;
+    use clap::Parser;
+
+    fn parse(argv: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(std::iter::once("auto").chain(argv.iter().copied()))
+    }
+
+    /// Plan 524/W0 形态 B 实测矩阵的入库面：透传成立 + 子命令/全局旗标零破坏。
+    #[test]
+    fn passthrough_positional_args_land_in_script_args() {
+        let c = parse(&["auto/aavm.at", "crates/x/b07_fib.at"]).expect("直达形态");
+        assert_eq!(c.file.as_deref(), Some("auto/aavm.at"));
+        assert_eq!(c.script_args, ["crates/x/b07_fib.at"]);
+    }
+
+    #[test]
+    fn passthrough_multiple_and_hyphen_values() {
+        let c = parse(&["probe.at", "alpha", "beta"]).expect("多参");
+        assert_eq!(c.script_args, ["alpha", "beta"]);
+        let c = parse(&["probe.at", "--flag-like"]).expect("hyphen 值");
+        assert_eq!(c.script_args, ["--flag-like"]);
+    }
+
+    #[test]
+    fn subcommands_unaffected() {
+        let c = parse(&["new", "myapp"]).expect("子命令仍工作");
+        assert!(c.file.is_none());
+        assert!(c.script_args.is_empty());
+        assert!(c.command.is_some());
+        let c = parse(&["--error-limit", "5", "new", "myapp"]).expect("全局旗标+子命令");
+        assert!(c.command.is_some());
+        assert_eq!(c.error_limit, Some(5));
+    }
+
+    #[test]
+    fn bare_file_without_args_and_empty_invocation() {
+        let c = parse(&["probe.at"]).expect("仅 file");
+        assert_eq!(c.file.as_deref(), Some("probe.at"));
+        assert!(c.script_args.is_empty());
+        let c = parse(&[]).expect("空参");
+        assert!(c.file.is_none());
+        assert!(c.command.is_none());
+    }
+
+    /// 裸值撞子命令名 → `--` 消歧（W0 实测 D1）。
+    #[test]
+    fn double_dash_forces_trailing_passthrough() {
+        let c = parse(&["probe.at", "--", "run"]).expect("-- 消歧");
+        assert_eq!(c.script_args, ["run"]);
+        assert!(c.command.is_none(), "-- 后的裸值不得劫持为子命令");
+    }
+
+    /// 已知全局旗标后置于 file 时被旗标吞（文档化行为，W0 实测 B9）。
+    #[test]
+    fn known_global_flag_after_file_is_consumed_by_flag() {
+        let c = parse(&["probe.at", "--error-limit", "5"]).expect("全局旗标后置");
+        assert_eq!(c.error_limit, Some(5));
+        assert!(c.script_args.is_empty());
+    }
 }

@@ -6,7 +6,7 @@
 // DIVERGE:  D11: Option<TokenKind> 返回 → Ident 哨兵(keyword_kind 的 else 臂);
 //           D11b 已收账(447-③):if 链 → is text/is k 一对一 match 对译
 
-enum TokenKind {
+pub enum TokenKind {
     Int
     Uint
     U8
@@ -151,7 +151,7 @@ enum TokenKind {
 }
 
 // keyword_kind: Rust keyword_kind 的 None → Ident 哨兵(DIVERGE D11);调用方以 != Ident 判定
-fn keyword_kind(text str) TokenKind {
+pub fn keyword_kind(text str) TokenKind {
     is text {
         "true" -> TokenKind.True
         "false" -> TokenKind.False
@@ -216,7 +216,7 @@ fn keyword_kind(text str) TokenKind {
 }
 
 // kind_name: 与 Rust Debug 输出({:?})逐字一致——M1 闸门 dump 对齐的唯一事实源
-fn kind_name(k TokenKind) str {
+pub fn kind_name(k TokenKind) str {
     is k {
         TokenKind.Int -> "Int"
         TokenKind.Uint -> "Uint"

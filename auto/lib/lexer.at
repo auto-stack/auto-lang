@@ -21,8 +21,11 @@
 //           D18: 块注释内容 '*' 后一字符被吞(基线 quirk 照抄,见块注释分支注释);
 //           D19: 转义 char 字面量收尾无条件吞一字符('\') 连吞 ')',基线照抄)
 
+// Plan 517 W2:模块化互引(token.at 的判据面;拼接消费面由双轨剥离消化)
+use auto.lib.token: TokenKind, keyword_kind, kind_name
+
 // S2 起的公开 token 结构:五字段与 M1 dump 行一致(parser 只用 kind/text/line)
-type Token {
+pub type Token {
     kind TokenKind
     text str
     line int
@@ -304,7 +307,7 @@ fn lex_fstr_at(mut toks List<Token>, source str, start int, line int, at int) in
     return p - start
 }
 
-fn tokenize(source str) List<Token> {
+pub fn tokenize(source str) List<Token> {
     var line = 1
     var at = 0
     var p = 0
@@ -660,7 +663,7 @@ fn tokenize(source str) List<Token> {
 }
 
 // M1 闸门包装:kind|esc_text|line|at|len 逐 token 行式 dump
-fn lex_dump(source str) str {
+pub fn lex_dump(source str) str {
     var toks = tokenize(source)
     var out = ""
     var i = 0

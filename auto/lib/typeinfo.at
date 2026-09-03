@@ -31,6 +31,11 @@
 
 // ── 函数签名注册表(TypeStore 的 S3 裁剪) ──────────────────────
 
+// Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;P 方法族随类型导入)
+use auto.lib.token: TokenKind
+use auto.lib.lexer: tokenize
+use auto.lib.parser: Op, P, expr_pratt, infix_l, infix_r, is_op_kind, is_pattern, is_soft_ident_kind, is_type_name, p_op, parse_args, parse_enum_decl, parse_ext, parse_new, parse_type, parse_type_decl, prefix_power, split_commas
+
 type TFnSig {
     name str
     ret str
@@ -134,7 +139,7 @@ fn t_body_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
 // print(EXPR.type) 查询收集:识别 print 调用且实参以 .type 收尾。
 // 返回 1 = 已处理(含非查询的普通 print:求值后跳过)。
 // pos+1 处是否 .type 属性词("type" 是关键字,lex 为 Type;亦容 Ident)
-fn t_is_type_prop(p P) bool {
+pub fn t_is_type_prop(p P) bool {
     var nk = p.peek(1)
     if nk == TokenKind.Type {
         return true
@@ -276,8 +281,15 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     }
     if k == TokenKind.Type {
         // W1:struct 声明走查——复用 parse_type_decl(注册入 p.decls,
-        // dump 弃置);字段型经 t_field_ty 从注册 dump 提取
+        // dump 弃置);字段型经 t_field_ty 从注册 dump 提取。
+        // W2(525):体内方法随 parse_type_decl 消费(方法 Fn 签名不
+        // 入 fns 注册表——方法位 .type 查询超本波语料面)
         parse_type_decl(p)
+        return
+    }
+    // W2(525):ext 块——复用 parse_ext 消费(并入占位 dump 弃置)
+    if k == TokenKind.Ext {
+        parse_ext(p)
         return
     }
     if k == TokenKind.Is {
@@ -621,7 +633,7 @@ fn t_fn_ret(fns List<TFnSig>, name str) str {
 }
 
 // ── M3 闸门入口:typecheck_dump(source) -> str ─────────────────
-fn typecheck_dump(source str) str {
+pub fn typecheck_dump(source str) str {
     var toks = tokenize(source)
     var p = parse_new(toks)
     var fns List<TFnSig> = List.new()

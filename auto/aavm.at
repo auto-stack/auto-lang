@@ -1,0 +1,46 @@
+// aavm.at —— AAVM CLI 入口(Plan 517 W3;真模块 use 形态)
+//
+// 用法(位置参数直达形态,Plan 524 透传):
+//   auto auto/aavm.at <主文件.at>
+//   ——主文件经 ev_run_files 多文件主入口运行(use 依赖经 resolve_uses
+//     加载,镜像宿主 lib.rs 1222);余下透传参数暂不消费(仅主文件形态)。
+//
+// 用法(行数协议,stdin 管道回退;517 W3 原形态保留):
+//   { echo $(( $(wc -l < 目标.at) + 1 )); cat 目标.at; echo; } | auto auto/aavm.at
+//   ——首行=源码行数 N(含末空行),随后 N 行源码;余下被忽略。
+//   (空行与 EOF 经 IO.read_line 同返空串,行数前置消歧。)
+//
+// 无参数且无 stdin(管道关闭)时跑内置冒烟语料。
+use auto.lib.engine: ev_run, ev_run_files
+
+fn main() {
+    // 位置参数形态(Plan 524):process.args() = [程序路径] + CLI 透传参数;
+    // len > 1 即有透传 → args[1] 为主文件路径(多文件主入口)
+    var argv = process.args()
+    if argv.len() > 1 {
+        print(ev_run_files(argv.get(1)))
+        return
+    }
+    var head = IO.read_line()
+    var n = head.parse_int()
+    var parts = List.new()
+    var i = 0
+    while i < n {
+        parts.push(IO.read_line())
+        i = i + 1
+    }
+    var src = ""
+    var j = 0
+    while j < parts.len() {
+        if j > 0 {
+            src = src + "\n"
+        }
+        src = src + parts.get(j)
+        j = j + 1
+    }
+    if n <= 0 {
+        print(ev_run("fn main() { print(1+1) }"))
+    } else {
+        print(ev_run(src))
+    }
+}

@@ -31,7 +31,14 @@ def gen() -> str:
     ]
     for f in LIB_FILES:
         src = (ROOT / f).read_text(encoding="utf-8")
-        parts.append(src.rstrip("\n") + "\n")
+        # Plan 517 W2 双轨剥离:剥除 use auto.lib.* 行(规则镜像
+        # crates/auto-lang/src/lib.rs aavm2_lib_source;auto test session
+        # 不播种源目录,聚合产物需符号同居一程序)
+        kept = "".join(
+            ln for ln in src.splitlines(keepends=True)
+            if not ln.lstrip().startswith("use auto.lib.")
+        )
+        parts.append(kept.rstrip("\n") + "\n")
     for case in sorted(CASES_DIR.glob("*.at")):
         parts.append(case.read_text(encoding="utf-8").rstrip("\n") + "\n")
     return "\n".join(parts)

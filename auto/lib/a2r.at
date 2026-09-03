@@ -43,6 +43,12 @@
 
 // ── 载体 ──────────────────────────────────────────────────────
 
+// Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;P/Ar 方法族随类型导入)
+use auto.lib.token: TokenKind, kind_name
+use auto.lib.lexer: tokenize
+use auto.lib.parser: E, P, builtin_type, expect_eos, find_sub, infix_l, infix_r, int_val, is_name_kind, is_op_kind, is_pattern, is_type_name, is_unsupported_stmt_kind, op_display, p_op, parse_new, parse_type, prefix_power, split_commas
+use auto.lib.typeinfo: t_is_type_prop
+
 type ArParam {
     name str
     ty str
@@ -108,10 +114,13 @@ type Ar {
     depth int
     cur_fn str
     mutated List<str>
+    let_mutated List<str>
     ty str
     strk int
     prec int
     lenflag int
+    // W3(525):get 映射的 Debug 打印位(裸局部接收者元素型宿主不可知)
+    getdbg int
     can_call int
     atom_mut int
     atom_param int
@@ -137,6 +146,11 @@ type Ar {
     // Plan 517 W1:use 语句定向导入名集(items;发射期先于 mains 体,
     // 点路径 X.Y 的 X 命中 → X::Y 镜像主 a2r 导入类型路径形态)
     imports List<str>
+    // Plan 523 W1(H5 镜像):顶层 var 全局名/型表 + 当前原子全局名
+    // (Asn 块形路由;名匹配无遮蔽判定——镜像主 a2r is_global_var 口径)
+    globals List<str>
+    global_tys List<str>
+    atom_global_name str
 
     // ── Plan 514 W3-16(γ4 塔顶):Ar 自有操作族入 type 体 ──
     // 映射:ar_* a-only 工具族(产生式 ar_expr/stmt/emit_*/
@@ -152,19 +166,34 @@ type Ar {
     var base List<ArVar> = List.new()
     scopes.push(base)
     var mutated List<str> = List.new()
+    var lm List<str> = List.new()
     var arglf List<int> = List.new()
     var lun List<str> = List.new()
     var lui List<int> = List.new()
     var mis List<str> = List.new()
     var imps List<str> = List.new()
-    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis, imps)
+    var gls List<str> = List.new()
+    var glt List<str> = List.new()
+    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, lm, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis, imps, gls, glt, "")
 }
 
     fn fail(msg str) {
     if self.err == "" {
         self.err = "A2R-ERROR:" + msg
     }
-}
+    }
+
+    // Plan 523 W1(H5 镜像):全局名查表(名匹配,无遮蔽判定)
+    fn global_find(name str) int {
+        var i = 0
+        while i < self.globals.len() {
+            if self.globals.get(i) == name {
+                return i
+            }
+            i = i + 1
+        }
+        return -1
+    }
 
     // ── 输出缓冲(D39:List<str> 片段 + 末尾 join) ─────────────────
 
@@ -429,7 +458,9 @@ type Ar {
     var i = 0
     while i < fields.len() {
         var t = fields.get(i).ty
-        if ar_is_float_ty(t) || ar_base_ty(t) == "List" || ar_base_ty(t) == "Map" {
+        // W3(525):List 不降级(宿主仅 float/Map/enum 降——Vec<i64>
+        // 全序;g29 实证 Box{vals List<int>} 全 derive)
+        if ar_is_float_ty(t) || ar_base_ty(t) == "Map" {
             full = 0
         }
         i = i + 1
@@ -654,6 +685,62 @@ fn ar_skip_expr_tokens(mut p P) {
 
 // ── 顶层预扫描:签名/类型/枚举表 + decl/main 起始拆分 ──────────
 
+// Plan 523 W1(H3 镜像):未注解 fn 返回推断——体 token 扫描 return 后随
+// token 定型([字面量数组→List<elem>]/int/float/str);冲突或不可判保持
+// void。p 须位于体 LBrace(平衡走完还原 pos)。
+fn ar_infer_ret_tokens(mut p P) str {
+    if p.kind() != TokenKind.LBrace {
+        return ""
+    }
+    var save = p.pos
+    var depth = 1
+    p.next()
+    var found = ""
+    var conflict = 0
+    while p.err == "" && p.kind() != TokenKind.EOF && depth > 0 {
+        var k = p.kind()
+        if k == TokenKind.LBrace {
+            depth = depth + 1
+            p.next()
+        } else if k == TokenKind.RBrace {
+            depth = depth - 1
+            p.next()
+        } else if k == TokenKind.Return {
+            var t = ""
+            var nk = p.peek(1)
+            if nk == TokenKind.LSquare {
+                var ek = p.peek(2)
+                if ek == TokenKind.Int || ek == TokenKind.Uint {
+                    t = "List<int>"
+                } else if ek == TokenKind.Str {
+                    t = "List<str>"
+                }
+            } else if nk == TokenKind.Int || nk == TokenKind.Uint {
+                t = "int"
+            } else if nk == TokenKind.Float || nk == TokenKind.Double {
+                t = "float"
+            } else if nk == TokenKind.Str {
+                t = "str"
+            }
+            if t != "" {
+                if found == "" {
+                    found = t
+                } else if found != t {
+                    conflict = 1
+                }
+            }
+            p.next()
+        } else {
+            p.next()
+        }
+    }
+    p.pos = save
+    if conflict == 1 {
+        return ""
+    }
+    return found
+}
+
 fn ar_prescan_fn(mut a Ar, mut p P) {
     if !is_name_kind(p.kind()) {
         p.fail("expected fn name ")
@@ -748,6 +835,62 @@ fn ar_prescan_fn(mut a Ar, mut p P) {
         }
         a.mutated = saved_mut
         p.pos = save
+        // W3(525):owned 大写类型参数的保守 mut(镜像主 a2r G2.1 后处理
+        // ——owned 值参的任何 `name.method(` 调用 → Rust 签名 `mut name:
+        // Ty` owned 绑定(非 &mut 借用通道;自定义类型的 &mut 性转译期
+        // 不可知。int/str 等小写原语不标;g29 sum(xs) 实证)。真突变
+        // (mut_params=&mut 通道)优先,不叠加。mode="own" 三通道发射。
+        var ci = 0
+        while ci < ps.len() {
+            var cp = ps.get(ci)
+            var cb = ar_base_ty(cp.ty)
+            var is_owned = 0
+            if cb != "" && cb.char_at(0) >= 65 && cb.char_at(0) <= 90 {
+                is_owned = 1
+            }
+            if is_owned == 1 {
+                var already2 = 0
+                var ai2 = 0
+                while ai2 < mp.len() {
+                    if mp.get(ai2) == cp.name {
+                        already2 = 1
+                    }
+                    ai2 = ai2 + 1
+                }
+                if already2 == 0 {
+                    // 体 token 扫描:name . Ident (
+                    var ti2 = save
+                    var depth2 = 0
+                    var hitm = 0
+                    while ti2 < p.toks.len() && hitm == 0 {
+                        var tk2 = p.toks.get(ti2).kind
+                        if tk2 == TokenKind.LBrace {
+                            depth2 = depth2 + 1
+                        } else if tk2 == TokenKind.RBrace {
+                            depth2 = depth2 - 1
+                            if depth2 <= 0 {
+                                ti2 = p.toks.len()
+                            }
+                        } else if depth2 >= 1 && tk2 == TokenKind.Ident && p.toks.get(ti2).text == cp.name && ti2 + 3 < p.toks.len() && p.toks.get(ti2 + 1).kind == TokenKind.Dot && p.toks.get(ti2 + 3).kind == TokenKind.LParen {
+                            hitm = 1
+                        }
+                        ti2 = ti2 + 1
+                    }
+                    if hitm == 1 && cp.mode == "view" {
+                        cp.mode = "own"
+                        ps.set(ci, cp)
+                    }
+                }
+            }
+            ci = ci + 1
+        }
+        // Plan 523 W1(H3 镜像):未注解 fn(void)返回推断
+        if ret == "void" {
+            var rit = ar_infer_ret_tokens(p)
+            if rit != "" {
+                ret = rit
+            }
+        }
     }
     a.fns.push(ArFn(name, ps, ret, mp))
 }
@@ -1128,7 +1271,13 @@ fn ar_prescan_ext(mut a Ar, mut p P) {
             if p.err != "" {
                 return
             }
-            a.tys.get(ti).methods.push(m2)
+            // W2(525):显式写回(引擎 arena 同款 D25 范式)——链式
+            // `a.tys.get(ti).methods.push` 在主 a2r 转译下成
+            // `.clone().methods.push`(临时副本,变更丢失;aavm2_bin
+            // 自译丢 ext 方法,g27 四路 p2≠p4 实证)
+            var mty = a.tys.get(ti)
+            mty.methods.push(m2)
+            a.tys.set(ti, mty)
             ar_skip_method_body(p)
             p.skip_empty_lines()
             continue
@@ -1279,6 +1428,12 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
             a.lu_record(name, p.pos)
             if ar_is_asn_kind(p.peek(1)) {
                 a.mutated.push(name)
+                // Plan 523 H2:let/var 自身初始化的 `=` 非再赋位——前一
+                // token 为 Let/Var 关键字时跳过(g03 回归:text/n 被
+                // let-init 误标 let mut;mutated 保持旧口径不动)。
+                if p.pos < 1 || (p.toks.get(p.pos - 1).kind != TokenKind.Let && p.toks.get(p.pos - 1).kind != TokenKind.Var) {
+                    a.let_mutated.push(name)
+                }
                 p.next()
             } else if p.peek(1) == TokenKind.Dot {
                 var j2 = p.pos + 1
@@ -1320,6 +1475,7 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                 }
                 if asn_found || mut_found {
                     a.mutated.push(name)
+                    a.let_mutated.push(name)
                 }
                 p.next()
             } else if p.peek(1) == TokenKind.LParen {
@@ -1358,6 +1514,22 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
 
 // ── 表达式发射(Pratt;返回文本,旗标经 a.* 附带) ──────────────
 
+fn ar_upper_name(name str) str {
+    var upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    var out = ""
+    var i = 0
+    while i < name.len() {
+        var c = name.char_at(i)
+        if c >= 97 && c <= 122 {
+            out = out + upper.slice(c - 97, c - 96)
+        } else {
+            out = out + name.slice(i, i + 1)
+        }
+        i = i + 1
+    }
+    return out
+}
+
 fn ar_usize_cast(text str, lit int) str {
     if lit == 1 {
         return text
@@ -1377,11 +1549,13 @@ fn ar_reset_expr(mut a Ar) {
     a.strk = 0
     a.prec = 100
     a.lenflag = 0
+    a.getdbg = 0
     a.can_call = 0
     a.atom_mut = 0
     a.ended_field = 0
     a.infer = 1
     a.arr_elem = ""
+    a.atom_global_name = ""
 }
 
 fn ar_expr(mut a Ar, mut p P, min int) str {
@@ -1400,15 +1574,25 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         if a.err != "" {
             return ""
         }
+        // Plan 523 W1(H7 镜像):一元负作用于二元操作数(Bina prec<=21<
+        // 前缀绑定)需括号——`-(x + y)` 此前发 `-x + y` 语义反转(g24:
+        // 参考 -4,产物 -10)。
+        var opnd = operand
+        if a.prec < 30 {
+            opnd = f"(${operand})"
+        }
         if k == TokenKind.Sub {
-            cur = f"-${operand}"
+            cur = f"-${opnd}"
         } else if k == TokenKind.Not {
-            cur = f"!${operand}"
+            // Plan 525 W1:主 a2r(Plan 204 1C)! 恒括号——!true → !(true)
+            // (优先级防护;g26 同步,此前仅二元操作数加括号致发射分歧)
+            cur = f"!(${operand})"
             a.ty = "bool"
         } else if k == TokenKind.Star {
-            cur = f"*${operand}"
+            cur = f"*${opnd}"
         } else {
-            cur = f"+${operand}"
+            // 主 a2r:一元 + 映射 &(Op::Add 地址位;g24 `+x`→`&x` 实证)
+            cur = f"&${opnd}"
         }
         a.prec = 60
         }
@@ -1511,6 +1695,83 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         }
         cur = ar_rust_ident(name)
         p.next()
+        // Plan 523 W1:命名构造字面量 `Name { field: e, ... }`——镜像主 a2r
+        // 的 Expr::Node 路径(g19–g21 中阶 struct 族)。仅当 Name 命中本
+        // 文件 type 表(ty_find)才走此臂,块表达式/软标识符形态不越界。
+        // str 字段喂非字面量时补 .to_string()(主 a2r needs_to_string 同款;
+        // 字面量裸发)。
+        if p.kind() == TokenKind.LBrace && a.ty_find(name) >= 0 {
+            var nti = a.ty_find(name)
+            var nfields = a.tys.get(nti).fields
+            p.next()
+            p.skip_empty_lines()
+            var nout = name + " {"
+            var nfirst = 1
+            while a.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+                if !is_name_kind(p.kind()) {
+                    a.fail("expected field name in ctor literal ")
+                    break
+                }
+                var nfname = p.text()
+                p.next()
+                p.expect(TokenKind.Colon)
+                p.skip_empty_lines()
+                var nval = ar_expr(a, p, 0)
+                if a.err != "" {
+                    break
+                }
+                var nfty = ""
+                var nj = 0
+                while nj < nfields.len() {
+                    if nfields.get(nj).name == nfname {
+                        nfty = nfields.get(nj).ty
+                    }
+                    nj = nj + 1
+                }
+                if ar_is_str_ty(nfty) {
+                    // 主 a2r:str 字段值一律 .to_string()(字面量走
+                    // write_expr_for_struct_field 无条件位,非字面量走
+                    // needs_to_string 位——g21 `tag: "t".to_string()` 实证)。
+                    nval = nval + ".to_string()"
+                }
+                if nfirst == 0 {
+                    nout = nout + ","
+                }
+                nout = nout + " " + nfname + ": " + nval
+                nfirst = 0
+                if p.kind() == TokenKind.Comma || p.kind() == TokenKind.Newline {
+                    p.next()
+                    p.skip_empty_lines()
+                } else if p.kind() != TokenKind.RBrace {
+                    a.fail("expected field separator in ctor literal ")
+                    break
+                }
+            }
+            p.expect(TokenKind.RBrace)
+            a.ty = name
+            a.strk = 0
+            a.infer = 0
+            a.prec = 100
+            a.lenflag = 0
+            a.can_call = 0
+            a.ended_field = 0
+            return ar_expr_tail(a, p, nout + " }", min)
+        }
+        // Plan 523 W1(H5 镜像):全局读位——名命中即改写 *UP.lock().unwrap()
+        var gidx2 = a.global_find(name)
+        if gidx2 >= 0 {
+            var gup2 = ar_upper_name(name)
+            var gcur = "*" + gup2 + ".lock().unwrap()"
+            a.ty = a.global_tys.get(gidx2)
+            a.strk = 0
+            a.infer = 0
+            a.prec = 100
+            a.lenflag = 0
+            a.can_call = 0
+            a.ended_field = 0
+            a.atom_global_name = name
+            return ar_expr_tail(a, p, gcur, min)
+        }
         a.ty = a.vty(name)
         if a.ty == "str" {
             if a.vparam(name) == 1 {
@@ -1552,6 +1813,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
     var cur_infer = a.infer
     var ended_field = a.ended_field
     var can_call = a.can_call
+    var cur_gname = a.atom_global_name
     while a.err == "" && p.err == "" {
         var opk = p.kind()
         var is_post = 0
@@ -1656,6 +1918,9 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                     cur_prec = 100
                     cur_len = 0
                     ended_field = 1
+                    // W3(525):同步 Ar 状态(get 映射的字面下标 cast 规则
+                    // 读 a.ended_field;后缀局部与状态一致化)
+                    a.ended_field = 1
                     can_call = 0
                 }
                 is_post = 1
@@ -1670,14 +1935,27 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 if ar_all_digits(idx) == 1 {
                     idx_lit = 1
                 }
-                cur = f"${cur}[${ar_usize_cast(idx, idx_lit)}]"
-                cur_ty = ""
-                cur_prec = 100
-                cur_len = 0
-                cur_infer = 0
-                ended_field = 0
-                can_call = 0
-                is_post = 1
+                // Plan 523 W1(H4 镜像):str 接收者下标 → chars().nth 码点形
+                if cur_strk > 0 || ar_is_str_ty(cur_ty) {
+                    cur = "(" + cur + ".chars().nth(" + ar_usize_cast(idx, idx_lit) + ").unwrap_or('" + "\\" + "0') as i64).to_string()"
+                    cur_ty = "str"
+                    cur_strk = 3
+                    cur_prec = 100
+                    cur_len = 0
+                    cur_infer = 0
+                    ended_field = 0
+                    can_call = 0
+                    is_post = 1
+                } else {
+                    cur = f"${cur}[${ar_usize_cast(idx, idx_lit)}]"
+                    cur_ty = ""
+                    cur_prec = 100
+                    cur_len = 0
+                    cur_infer = 0
+                    ended_field = 0
+                    can_call = 0
+                    is_post = 1
+                }
             }
             // Plan 514 W5:管道算子脱糖(镜像宿主 parser 专用臂)——
             // cur |> .m(args) → cur.m(args);cur |> .f → cur.f(字段投影);
@@ -1758,16 +2036,25 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 cur_strk = 3
                 cur_infer = 1
             } else if ar_is_asn_kind(opk) {
-                if rhs_ty == "str" && (rhs_strk == 1 || rhs_strk == 2) {
-                    rhs = f"${rhs}.to_string()"
-                } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && a.lu_after(rhs, rhs_pos) == true {
-                    rhs = f"${rhs}.clone()"
-                } else if rhs_ty == "str" && a.ended_field == 1 {
-                    rhs = f"${rhs}.clone()"
+                // Plan 523 W1(H5 镜像):全局赋值块形——主 a2r __a2r_gv 同款
+                if cur_gname != "" {
+                    var gup3 = ar_upper_name(cur_gname)
+                    cur = "{ let __a2r_gv = " + rhs + "; *" + gup3 + ".lock().unwrap() = __a2r_gv; }"
+                    cur_ty = rhs_ty
+                    cur_infer = 0
+                    cur_gname = ""
+                } else {
+                    if rhs_ty == "str" && (rhs_strk == 1 || rhs_strk == 2) {
+                        rhs = f"${rhs}.to_string()"
+                    } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && a.lu_after(rhs, rhs_pos) == true {
+                        rhs = f"${rhs}.clone()"
+                    } else if rhs_ty == "str" && a.ended_field == 1 {
+                        rhs = f"${rhs}.clone()"
+                    }
+                    cur = f"${cur} ${op_txt} ${rhs}"
+                    cur_ty = rhs_ty
+                    cur_infer = 0
                 }
-                cur = f"${cur} ${op_txt} ${rhs}"
-                cur_ty = rhs_ty
-                cur_infer = 0
             } else {
                 if cur_ty == "char" {
                     cur = f"(${cur}) as i64"
@@ -1971,6 +2258,9 @@ fn ar_array_literal(mut a Ar, mut p P) str {
 // ── 方法调用映射 ──────────────────────────────────────────────
 
 fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
+    // W3(525):入口快照——参数 ar_expr 会经 ar_reset_expr 清
+    // a.ended_field;字段链 get 的字面下标 cast 规则须用调用前状态
+    var ef_entry = a.ended_field
     var place = 0
     if word == "get" {
         var save = p.pos
@@ -2100,10 +2390,19 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
             if args.len() > 0 && ar_all_digits(a0) == 1 {
                 lit = 1
             }
-            if place == 1 {
-                return recv + "[" + ar_usize_cast(a0, lit) + "]"
+            // W3(525):get 映射恒 cast(主 a2r 6481:list[(i) as usize]
+            // .clone()——字面量亦括号 cast,与后缀下标 needs_usize_cast
+            // 的字面裸形是两构造;g29 rows.get(0)/b.vals.get(0) 实证)。
+            // 裸局部接收者的元素型宿主不可知 → print 直打走 {:?}
+            // (b46 l.get(0) 实证;字段链接收者元素型已知 → {},g29 b.vals)
+            a.getdbg = 0
+            if ef_entry == 0 && e_is_simple_ident(recv) == 1 {
+                a.getdbg = 1
             }
-            return recv + "[" + ar_usize_cast(a0, lit) + "].clone()"
+            if place == 1 {
+                return recv + "[(" + a0 + ") as usize]"
+            }
+            return recv + "[(" + a0 + ") as usize].clone()"
         }
         "char_at" -> {
             a.infer = 0
@@ -2203,11 +2502,9 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
                 a.ty = "void"
                 a.strk = 0
                 a.lenflag = 0
-                var lit2 = 0
-                if args.len() > 0 && ar_all_digits(a0) == 1 {
-                    lit2 = 1
-                }
-                return recv + "[" + ar_usize_cast(a0, lit2) + "] = " + a1
+                // W3(525):恒 cast(主 a2r list.set 位 l[(i) as usize] =
+                // v;与 get 同构,字面量亦 cast;b46 实证)
+                return recv + "[(" + a0 + ") as usize] = " + a1
             }
             a.infer = 0
             a.ty = ""
@@ -2452,6 +2749,14 @@ fn ar_call_args_text_m(mut a Ar, mut p P, m ArMethod) List<str> {
 
 // 参数位强制转换(D33/D36 同族决策的 AA2R 口径)
 fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm_mode str, arg_pos int) str {
+    // W3(525):owned 保守 mut 参数位——裸 Ident 克隆传入(主 a2r G2.1
+    // 形态 sum(l.clone());非借用通道)
+    if prm_mode == "own" {
+        if e_is_simple_ident(text) == 1 {
+            return text + ".clone()"
+        }
+        return text
+    }
     if prm_mode != "view" {
         if atom_mut == 1 {
             return "&mut *" + text
@@ -2583,6 +2888,8 @@ fn ar_print_tail(mut a Ar, mut p P) str {
     var n_args = 0
     var first_is_lit = 0
     var first_lit = ""
+    var last_lenflag = 0
+    var last_getdbg = 0
     while a.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RParen {
         var is_lit = 0
         var piece = ""
@@ -2605,6 +2912,8 @@ fn ar_print_tail(mut a Ar, mut p P) str {
             first_is_lit = 1
         } else {
             piece = ar_expr(a, p, 0)
+            last_lenflag = a.lenflag
+            last_getdbg = a.getdbg
         }
         if is_lit == 0 {
             if args_txt != "" {
@@ -2637,7 +2946,15 @@ fn ar_print_tail(mut a Ar, mut p P) str {
         }
         out = "println!(\"" + fmt + "\", " + args_txt + ")"
     } else if n_args == 1 {
-        out = "println!(\"{}\", " + args_txt + ")"
+        // W3(525):len 映射结果(容器 .len() as i64)——主 a2r 对未知型
+        // 方法调用打印走 Debug 形态(印证 g29 print(l.len()))
+        if last_lenflag == 1 {
+            out = "println!(\"{:?}\", (" + args_txt + "))"
+        } else if last_getdbg == 1 {
+            out = "println!(\"{:?}\", " + args_txt + ")"
+        } else {
+            out = "println!(\"{}\", " + args_txt + ")"
+        }
     } else {
         fmt = ""
         var k = 0
@@ -2817,6 +3134,46 @@ fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
     }
     if pat.kind == "name" && pat.name == "_" {
         return "_"
+    }
+    if pat.kind == "struct-cover" {
+        // W2(525):is-struct 解构模式——主 a2r 形态(trans/rust.rs 3393)
+        // `Type { f1, f2: alias }`;display 形态空格分隔 → ", " 连接。
+        // `f: alias` 冒号后含空格——词法组装(冒号黏字段词,次词为别名;
+        // 514 多元组载荷同款约束:字段名/别名不含空格)
+        var words List<str> = List.new()
+        var rest = pat.args
+        var wgo = true
+        while wgo {
+            var w = rest
+            var sp = find_sub(rest, " ")
+            if sp >= 0 {
+                w = rest.slice(0, sp)
+                rest = rest.slice(sp + 1, rest.len())
+            } else {
+                wgo = false
+            }
+            if w != "" {
+                words.push(w)
+            }
+        }
+        var fargs = ""
+        var wi = 0
+        while wi < words.len() {
+            var f = words.get(wi)
+            if f.len() > 1 && f.char_at(f.len() - 1) == ':' && wi + 1 < words.len() {
+                wi = wi + 1
+                f = f.slice(0, f.len() - 1) + ": " + words.get(wi)
+            }
+            if fargs != "" {
+                fargs = fargs + ", "
+            }
+            fargs = fargs + f
+            wi = wi + 1
+        }
+        if pat.word == "" {
+            return pat.name + " { " + fargs + " }"
+        }
+        return pat.name + "::" + pat.word + " { " + fargs + " }"
     }
     a.fail("unsupported is pattern: " + pat.kind)
     return ""
@@ -3138,9 +3495,28 @@ fn ar_store(mut a Ar, mut p P, kw TokenKind) {
             init = f"${init}.clone()"
         }
     }
+    // Plan 523 W3(四路 runner 回链修正):fn 内名命中全局的 let/var 初始化
+    // → 全局写块形(非 fn 内 static)——参考口径为写穿全局(b43 怪序:
+    // set_via_let 后 main 层 g 已=5;fn-local static 遮蔽形得 10/11≠参考
+    // 5/5/6,主 a2r 同修)。
+    if a.global_find(name) >= 0 {
+        var sh_up = ar_upper_name(name)
+        a.line("{ let __a2r_gv = " + init + "; *" + sh_up + ".lock().unwrap() = __a2r_gv; };")
+        return
+    }
     var kw_txt = "let"
     if kw == TokenKind.Var {
         kw_txt = "let mut"
+    } else {
+        // Plan 523 H2:let 后被赋值(place 根任意深度)/可变方法调用 →
+        // let mut(镜像主 a2r scan_mutated_bindings;此前仅 var 关键字)。
+        var lmi = 0
+        while lmi < a.let_mutated.len() {
+            if a.let_mutated.get(lmi) == name {
+                kw_txt = "let mut"
+            }
+            lmi = lmi + 1
+        }
     }
     var line = f"${kw_txt} ${ar_rust_ident(name)}"
     if anno != "" {
@@ -3248,6 +3624,7 @@ fn ar_for(mut a Ar, mut p P) {
         p.next()
         p.next()
         a.vscope()
+        var src_pos2 = p.pos
         var it = ar_expr(a, p, 18)
         var it_prec = a.prec
         if p.kind() == TokenKind.Range || p.kind() == TokenKind.RangeEq {
@@ -3258,7 +3635,14 @@ fn ar_for(mut a Ar, mut p P) {
             var iter_txt = ar_paren_if(it, it_prec, 17) + op + ar_paren_if(end, end_prec, 18)
             a.line("for " + name + " in " + iter_txt + " {")
         } else {
-            a.line("for " + name + " in &" + it + " {")
+            // Plan 523 W1(g22 镜像):借用迭代(&)仅裸 Ident 源(后随体
+            // LBrace);字面量/调用源发 owned 形态(for n in vec![...],
+            // for w in mk())——主 a2r borrowed_iter_vars 同口径。
+            var amp2 = ""
+            if p.toks.get(src_pos2).kind == TokenKind.Ident && src_pos2 + 1 < p.toks.len() && p.toks.get(src_pos2 + 1).kind == TokenKind.LBrace {
+                amp2 = "&"
+            }
+            a.line("for " + name + " in " + amp2 + it + " {")
         }
         a.vpush(name, "", "view", 0)
         ar_block_body(a, p)
@@ -3422,6 +3806,10 @@ fn ar_emit_method2(mut a Ar, mut p P, m ArMethod, tyname str) {
     a.cur_fn = name
     var empty List<str> = List.new()
     a.mutated = empty
+    // Plan 523 H2:let-mut 装饰位独立列表(与 mutated 分离——后者还载
+    // 调用实参标记,消费面不同,别名即口径污染)。
+    var empty2 List<str> = List.new()
+    a.let_mutated = empty2
     var sig = f"fn ${name}("
     var first = 1
     if m.is_static == 0 {
@@ -3447,7 +3835,10 @@ fn ar_emit_method2(mut a Ar, mut p P, m ArMethod, tyname str) {
             }
             pj = pj + 1
         }
-        if pm != "view" || prmmut == 1 {
+        if pm == "own" {
+            // W3(525):owned 保守 mut(主 a2r G2.1)——owned 值绑定
+            sig = f"${sig}mut ${prm.name}: ${ar_param_ty(prm.ty)}"
+        } else if pm != "view" || prmmut == 1 {
             sig = f"${sig}${prm.name}: &mut ${ar_rust_ty(prm.ty)}"
         } else {
             sig = f"${sig}${prm.name}: ${ar_param_ty(prm.ty)}"
@@ -3697,6 +4088,10 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
     a.cur_fn = name
     var empty List<str> = List.new()
     a.mutated = empty
+    // Plan 523 H2:let-mut 装饰位独立列表(与 mutated 分离——后者还载
+    // 调用实参标记,消费面不同,别名即口径污染)。
+    var empty2 List<str> = List.new()
+    a.let_mutated = empty2
     var sig = f"fn ${name}("
     var i = 0
     while i < f.params.len() {
@@ -3714,7 +4109,10 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
             }
             pj = pj + 1
         }
-        if pm != "view" || prmmut == 1 {
+        if pm == "own" {
+            // W3(525):owned 保守 mut(主 a2r G2.1)——owned 值绑定
+            sig = f"${sig}mut ${prm.name}: ${ar_param_ty(prm.ty)}"
+        } else if pm != "view" || prmmut == 1 {
             sig = f"${sig}${prm.name}: &mut ${ar_rust_ty(prm.ty)}"
         } else {
             sig = f"${sig}${prm.name}: ${ar_param_ty(prm.ty)}"
@@ -3888,6 +4286,11 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
         a.emit("// Auto-generated by a2r transpiler")
         a.blank()
     }
+    // Plan 523 W1(H5 镜像):全局在场 → std::sync::Mutex 导入(镜像主 a2r 头块)
+    if a.globals.len() > 0 {
+        a.line("use std::sync::Mutex;")
+        a.blank()
+    }
     var i = 0
     while i < decls.len() {
         p.pos = decls.get(i)
@@ -3941,6 +4344,9 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
             continue
         } else if k == TokenKind.Enum {
             ar_emit_enum2(a, p, pubkw)
+        } else if k == TokenKind.Var {
+            // Plan 523 W1(H5 镜像):顶层 var → static Mutex 发射
+            ar_emit_global(a, p)
         } else if k == TokenKind.Use {
             // Plan 517 W1:use 行不贡献声明间分隔空行(镜像主 a2r 语流序,
             // g18 探针实证 use 与后续声明紧邻)——Ext 同款 continue 免 blank
@@ -3988,7 +4394,61 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
 
 // ── 驱动 ──────────────────────────────────────────────────────
 
-fn ar_run(source str, merge int) str {
+// Plan 523 W1(H5 镜像):顶层 var 全局预扫——名/型登记(p 消费整条语句)。
+fn ar_prescan_global(mut a Ar, mut p P) {
+    p.next()
+    if !is_name_kind(p.kind()) {
+        p.fail("expected global name ")
+        return
+    }
+    var name = p.text()
+    p.next()
+    var gty = "int"
+    if p.kind() == TokenKind.Colon {
+        p.next()
+    }
+    if is_type_name(p) {
+        gty = ar_bare_type(p)
+    }
+    if p.kind() == TokenKind.Asn {
+        p.next()
+        ar_skip_expr_tokens(p)
+    }
+    a.globals.push(name)
+    a.global_tys.push(gty)
+}
+
+// Plan 523 W1(H5 镜像):全局 static 发射——字面量初始化 std const 通道
+// `static UP: Mutex<T> = Mutex::new(lit);`(str 字面量 &str 型;访问位
+// *UP.lock().unwrap() 形态由 Ident 臂/Asn 臂承担)。
+fn ar_emit_global(mut a Ar, mut p P) {
+    p.next()
+    var name = p.text()
+    p.next()
+    var gty = "int"
+    if p.kind() == TokenKind.Colon {
+        p.next()
+    }
+    if is_type_name(p) {
+        gty = ar_bare_type(p)
+    }
+    var is_str_lit = 0
+    var init = "0"
+    if p.kind() == TokenKind.Asn {
+        p.next()
+        if p.kind() == TokenKind.Str {
+            is_str_lit = 1
+        }
+        init = ar_expr(a, p, 0)
+    }
+    var rty = ar_rust_ty(gty)
+    if is_str_lit == 1 {
+        rty = "&str"
+    }
+    a.line("static " + ar_upper_name(name) + ": Mutex<" + rty + "> = Mutex::new(" + init + ");")
+}
+
+pub fn ar_run(source str, merge int) str {
     var toks = tokenize(source)
     var p = parse_new(toks)
     var a = Ar.new()
@@ -4033,6 +4493,16 @@ fn ar_run(source str, merge int) str {
             // 解析/发射在 ar_use(镜像主 a2r use_stmt 单文件子集)
             decls.push(p.pos)
             pubfs.push(pubf)
+        } else if k == TokenKind.Var {
+            // Plan 523 W1(H5 镜像):顶层 var = 全局——名/型登记 + 位置入
+            // decls 按源序发射 static(镜像主 a2r 模块级 static 位)
+            var start5 = p.pos
+            ar_prescan_global(a, p)
+            if a.err != "" {
+                return a.err
+            }
+            decls.push(start5)
+            pubfs.push(0)
         } else if is_unsupported_stmt_kind(k) {
             p.fail("v2 unsupported: " + kind_name(k) + " ")
         } else {
@@ -4081,6 +4551,6 @@ fn aa2r_transpile(source str) str {
 }
 
 // 合并模式转译(lib 自举口径:allows 头)
-fn aa2r_transpile_merge(source str) str {
+pub fn aa2r_transpile_merge(source str) str {
     return ar_run(source, 1)
 }

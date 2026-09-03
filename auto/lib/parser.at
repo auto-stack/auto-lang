@@ -59,12 +59,16 @@
 
 // ── 状态与载体 ────────────────────────────────────────────────
 
+// Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;P 方法族随类型导入)
+use auto.lib.token: TokenKind, kind_name
+use auto.lib.lexer: Token, tokenize
+
 type Binding {
     name str
     ty str
 }
 
-type P {
+pub type P {
     toks List<Token>
     pos int
     err str
@@ -225,7 +229,7 @@ type P {
 // 表达式结果:dump=S-expr;word=标识符词/方法词/运算符 kind;name=name 的
 // 文本或 int/uint 值串或 str/bool 原文(pair key 用);args=call 的
 // "(args ...)" 段;ity=构造期推断类型(Display 串,""=Unknown)
-type E {
+pub type E {
     kind str
     word str
     name str
@@ -234,7 +238,7 @@ type E {
     ity str
 }
 
-fn parse_new(toks List<Token>) P {
+pub fn parse_new(toks List<Token>) P {
     var scs List<List<Binding>> = List.new()
     var glo List<Binding> = List.new()
     var dcl List<Binding> = List.new()
@@ -257,7 +261,7 @@ fn parse_new(toks List<Token>) P {
 // (P1 步翻转返回 TokenKind 并参数化全部比较位)
 // 447-③P1:kind 载体枚举化,返回 TokenKind(错误消息经 kind_name)
 // 原始前瞻(不跳注释;与基线 lexer.pushback 前瞻同构,corpus 括号内无注释)
-fn is_comment_kind(k TokenKind) bool {
+pub fn is_comment_kind(k TokenKind) bool {
     is k {
         TokenKind.DocComment | TokenKind.CommentLine | TokenKind.CommentStart | TokenKind.CommentContent | TokenKind.CommentEnd -> true
         else -> false
@@ -280,7 +284,7 @@ fn digit_val(c int) int {
 }
 
 // parse_int 直译:0x/0b 前缀 + 十进制(下划线 lexer 已剥离)
-fn int_val(text str) int {
+pub fn int_val(text str) int {
     var base = 10
     var start = 0
     if text.len() >= 2 && text.slice(0, 2) == "0x" {
@@ -325,7 +329,7 @@ fn float_display(text str) str {
 
 // ── 类型解析(D23:类型即 Display 串) ──────────────────────────
 
-fn builtin_type(name str) str {
+pub fn builtin_type(name str) str {
     if name == "int" {
         return "int"
     }
@@ -368,7 +372,7 @@ fn builtin_type(name str) str {
     return ""
 }
 
-fn is_type_name(mut p P) bool {
+pub fn is_type_name(mut p P) bool {
     var k = p.kind()
     is k {
         TokenKind.Ident | TokenKind.Question | TokenKind.Not | TokenKind.Tilde | TokenKind.LSquare | TokenKind.Star | TokenKind.At | TokenKind.Fn | TokenKind.Link | TokenKind.Type -> true
@@ -377,7 +381,7 @@ fn is_type_name(mut p P) bool {
 }
 
 // parse_type 子集:标量/用户名 + ?T/!T/*T 前后缀;泛型/数组/fn 类型 Missing
-fn parse_type(mut p P) str {
+pub fn parse_type(mut p P) str {
     if p.err != "" {
         return ""
     }
@@ -459,7 +463,7 @@ fn parse_type_base(mut p P) str {
 
 // 运算符枚举(镜像 auto-val value.rs Op 的 lib 子集;447-③P3 杠杆点——
 // 六链函数一步收编为 is-on-Op)。NoOp = 非运算符哨兵(镜像 Parser::op 的兜底)
-enum Op {
+pub enum Op {
     Add
     Sub
     Mul
@@ -491,7 +495,7 @@ enum Op {
 }
 
 // Parser::op() 直译(parser.rs:2897):TokenKind → Op;非运算符 → NoOp
-fn p_op(k TokenKind) Op {
+pub fn p_op(k TokenKind) Op {
     is k {
         TokenKind.Add -> Op.Add
         TokenKind.Sub -> Op.Sub
@@ -524,7 +528,7 @@ fn p_op(k TokenKind) Op {
     }
 }
 
-fn prefix_power(op Op) int {
+pub fn prefix_power(op Op) int {
     // sign(Add/Sub/Star)=2*13=26;Not=2*14=28
     is op {
         Op.Add | Op.Sub | Op.Mul -> 26
@@ -544,7 +548,7 @@ fn postfix_power(op Op) int {
     }
 }
 
-fn infix_l(op Op) int {
+pub fn infix_l(op Op) int {
     is op {
         Op.Asn -> 1
         Op.AddEq | Op.SubEq -> 3
@@ -561,7 +565,7 @@ fn infix_l(op Op) int {
     }
 }
 
-fn infix_r(op Op) int {
+pub fn infix_r(op Op) int {
     is op {
         Op.Asn -> 2
         Op.AddEq | Op.SubEq -> 4
@@ -578,7 +582,7 @@ fn infix_r(op Op) int {
     }
 }
 
-fn op_display(op Op) str {
+pub fn op_display(op Op) str {
     is op {
         Op.Add -> "+"
         Op.Sub -> "-"
@@ -610,7 +614,7 @@ fn op_display(op Op) str {
 }
 
 // 运算符 token 是否可作 lhs 之后的运算符(infix 或 postfix)
-fn is_op_kind(k TokenKind) bool {
+pub fn is_op_kind(k TokenKind) bool {
     return op_display(p_op(k)) != "" || k == TokenKind.LParen || k == TokenKind.LSquare
 }
 
@@ -838,7 +842,7 @@ fn expr_atom(mut p P) E {
 }
 
 // args() 直译:Pos/Name 显示相同(D22 备注),统一按 Display 输出
-fn parse_args(mut p P) str {
+pub fn parse_args(mut p P) str {
     p.expect(TokenKind.LParen)
     p.skip_empty_lines()
     var out = "(args"
@@ -1097,7 +1101,7 @@ fn paren_prefix(mut p P) E {
 }
 
 // expr_pratt_inner 直译:前缀分发 + with_left 循环
-fn expr_pratt(mut p P, min int) E {
+pub fn expr_pratt(mut p P, min int) E {
     if p.err != "" {
         return bad_e()
     }
@@ -1133,6 +1137,19 @@ fn expr_pratt(mut p P, min int) E {
         }
         TokenKind.FStrStart -> {
             lhs = fstr_expr(p)
+        }
+        TokenKind.Dot -> {
+            // W2(525):接收者简写 .field/.method——宿主 dot_item:前导点
+            // 表达式 = Dot(Ident self, name)(parser.rs 2231;方法体内隐式
+            // self)。链式后续跳走既有 postfix Dot 臂
+            p.next()
+            if !is_name_kind(p.kind()) {
+                p.fail("expected field name after '.', got ")
+                return bad_e()
+            }
+            var fld0 = p.text()
+            p.next()
+            lhs = E("dot", fld0, "", "", "(dot (name self)." + fld0 + ")", "")
         }
         else -> {
             lhs = expr_atom(p)
@@ -1569,7 +1586,7 @@ fn parse_return(mut p P) str {
 
 // 可作名字的 token(对齐 parse_name 盲取文本;结构性分隔符除外——
 // 成员/变体名可为关键字,如 UI 方言的 grid)
-fn is_name_kind(k TokenKind) bool {
+pub fn is_name_kind(k TokenKind) bool {
     is k {
         TokenKind.EOF | TokenKind.RBrace | TokenKind.Newline | TokenKind.Semi | TokenKind.Comma | TokenKind.Colon | TokenKind.Asn | TokenKind.LParen | TokenKind.LBrace | TokenKind.LSquare | TokenKind.RParen | TokenKind.RSquare | TokenKind.Arrow | TokenKind.Dot | TokenKind.Lt | TokenKind.Gt -> false
         else -> true
@@ -1578,7 +1595,7 @@ fn is_name_kind(k TokenKind) bool {
 
 // 宿主 soft-ident 面(parser.rs:663 Plan 356):词法保留但表达式位合法
 // 作标识符的关键字(`o.tag` 的点右值位等);aavm 镜像同名集合
-fn is_soft_ident_kind(k TokenKind) bool {
+pub fn is_soft_ident_kind(k TokenKind) bool {
     is k {
         TokenKind.Tag | TokenKind.Type | TokenKind.Union | TokenKind.Spec | TokenKind.Super | TokenKind.Has | TokenKind.Copy | TokenKind.Move | TokenKind.Take | TokenKind.Hold | TokenKind.Alias | TokenKind.Ext | TokenKind.Impl | TokenKind.Mod | TokenKind.Enum -> true
         else -> false
@@ -1672,7 +1689,7 @@ fn parse_use(mut p P) str {
 // type 声明(Plan 434:AA2R 转译 lib 自身需要)。Display 对齐 ast/types.rs
 // 的 TypeDecl:仅 members 路径;泛型参数/别名/is/as/has/方法体/字段默认值
 // 遇之报 v2 unsupported(lib 未用,golden 02 组部分留后续)
-fn parse_type_decl(mut p P) str {
+pub fn parse_type_decl(mut p P) str {
     p.next()
     if !is_name_kind(p.kind()) {
         p.fail("expected type name, got ")
@@ -1700,13 +1717,36 @@ fn parse_type_decl(mut p P) str {
         p.fail("v2 unsupported: type has ")
         return ""
     }
+    // W2(525):预注册占位——体内方法先于尾态快照解析,自引用 ctor
+    // (`return Point { .. }`)的 decl_lookup 需类型名已入表(宿主
+    // scope 先注册后走体);decl_lookup 首中扫描,故尾态按登记位原地
+    // 覆写为完整快照(占位不残留)
+    var reg_idx = p.decls.len()
+    p.decl_register(name, f"(type-decl (name ${name}))")
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
     var members = ""
+    var methods = ""
     while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         if p.kind() == TokenKind.Fn || p.kind() == TokenKind.Static {
-            p.fail("v2 unsupported: method in type ")
-            return ""
+            // W2(525):体内方法——(methods (fn ...) ...) 镜像宿主 TypeDecl
+            // Display(types.rs 745);static 标记不进 Display(宿主 Fn
+            // Display 无 static 位);方法 Fn 复用 parse_fn(name/params/
+            // ret/body 同形态)
+            if p.kind() == TokenKind.Static {
+                p.next()
+            }
+            var m = parse_fn(p)
+            if p.err != "" {
+                return ""
+            }
+            if methods != "" {
+                methods = f"${methods} "
+            }
+            methods = methods + m
+            expect_eos(p)
+            p.skip_empty_lines()
+            continue
         }
         if p.kind() == TokenKind.Hash {
             p.fail("v2 unsupported: member attr ")
@@ -1739,15 +1779,66 @@ fn parse_type_decl(mut p P) str {
     if members != "" {
         out = f"${out} (members ${members})"
     }
+    if methods != "" {
+        out = f"${out} (methods ${methods})"
+    }
     out = f"${out})"
-    p.decl_register(name, out)
+    // W2(525):尾态完整快照覆写预注册占位(原地,首中查找即中)
+    p.decls.set(reg_idx, Binding(name, out))
     return out
+}
+
+// W2(525):ext 块——宿主 parser 级并入 TypeDecl.methods(parser.rs 1745
+// 合并:同名方法覆盖;字段/常量面超 v2 裁剪)。dump 侧返回 (ext-merge
+// TYPE M1 M2) 占位,由 parse_program 终态并入对应 type-decl 行(宿主
+// 终 AST 无独立 Ext 语句)
+pub fn parse_ext(mut p P) str {
+    p.next()
+    if !is_name_kind(p.kind()) {
+        p.fail("expected type name after ext, got ")
+        return ""
+    }
+    var ty = p.text()
+    p.next()
+    if p.kind() == TokenKind.Lt {
+        p.fail("v2 unsupported: ext generic target ")
+        return ""
+    }
+    if p.kind() == TokenKind.For {
+        p.fail("v2 unsupported: ext for trait ")
+        return ""
+    }
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
+    var methods = ""
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+        if p.kind() == TokenKind.Fn || p.kind() == TokenKind.Static {
+            if p.kind() == TokenKind.Static {
+                p.next()
+            }
+            var m = parse_fn(p)
+            if p.err != "" {
+                return ""
+            }
+            if methods != "" {
+                methods = f"${methods} "
+            }
+            methods = methods + m
+            expect_eos(p)
+            p.skip_empty_lines()
+            continue
+        }
+        p.fail("v2 unsupported: ext member ")
+        return ""
+    }
+    p.expect(TokenKind.RBrace)
+    return "(ext-merge " + ty + " " + methods + ")"
 }
 
 // enum 声明(Plan 434)。Display 对齐 ast/enums.rs 的 EnumDecl:
 // (enum (name X) (item (name A) (value 0)) ...);首项 value 0、显式 = N 后
 // last_val=N+1(基线 gap-fill);payload/方法/变体属性遇之报 unsupported
-fn parse_enum_decl(mut p P) str {
+pub fn parse_enum_decl(mut p P) str {
     p.next()
     if !is_name_kind(p.kind()) {
         p.fail("expected enum name, got ")
@@ -1894,7 +1985,7 @@ fn parse_expr_or_body(mut p P) str {
 }
 
 // 逗号切分(char_at/slice 手写,载荷绑定列表解析用)
-fn split_commas(s str) List<str> {
+pub fn split_commas(s str) List<str> {
     var out List<str> = List.new()
     var start = 0
     var i = 0
@@ -1913,13 +2004,65 @@ fn split_commas(s str) List<str> {
 // tag-cover;其余(字面量/裸名/调用形,含 Some(x)——两侧 lexer 均不产出
 // SomeKW,宿主同走 Call 路径)交给表达式机。E 复用约定:kind="tag-cover"
 // 时 name=枚举名、word=变体名、args=绑定逗号串
-fn is_pattern(mut p P) E {
+// W2(525):struct-cover 字段绑定段——`{ f1, f2: alias }`(宿主
+// parse_struct_cover parser.rs 4294:字段名[:别名],逗号分隔可选;
+// Display 对齐 FieldBinding——`f` 或 `f: alias`,空格连接)
+pub fn parse_struct_cover_fields(mut p P) str {
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
+    var out = ""
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+        if !is_name_kind(p.kind()) {
+            p.fail("expected field name in struct cover, got ")
+            return ""
+        }
+        var f = p.text()
+        p.next()
+        var fb = f
+        if p.kind() == TokenKind.Colon {
+            p.next()
+            if !is_name_kind(p.kind()) {
+                p.fail("expected binding name after ':', got ")
+                return ""
+            }
+            fb = p.text()
+            p.next()
+        }
+        if out != "" {
+            out = f"${out} "
+        }
+        if f == fb {
+            out = f"${out}${f}"
+        } else {
+            out = f"${out}${f}: ${fb}"
+        }
+        if p.kind() == TokenKind.Comma {
+            p.next()
+        }
+        p.skip_empty_lines()
+    }
+    p.expect(TokenKind.RBrace)
+    return out
+}
+
+pub fn is_pattern(mut p P) E {
     var k = p.kind()
     if k == TokenKind.Ident {
-        // 仅当 Ident 后随 Dot 才按点路径拦截(裸名/调用形留给表达式机)
+        // 仅当 Ident 后随 Dot/LBrace 才拦截(裸名/调用形留给表达式机)
         var nxt = TokenKind.EOF
         if p.pos + 1 < p.toks.len() {
             nxt = p.toks.get(p.pos + 1).kind
+        }
+        // W2(525):`Type { fields }` plain struct-cover(宿主
+        // is_branch_cond_expr 4177:Ident+LBrace → parse_struct_cover)
+        if nxt == TokenKind.LBrace {
+            var ty0 = p.text()
+            p.next()
+            var fs0 = parse_struct_cover_fields(p)
+            if p.err != "" {
+                return bad_e()
+            }
+            return E("struct-cover", "", ty0, fs0, "(struct-cover " + ty0 + " {" + fs0 + "})", "")
         }
         if nxt == TokenKind.Dot {
             var segs List<str> = List.new()
@@ -1937,6 +2080,15 @@ fn is_pattern(mut p P) E {
             // 3 段路径剥模块前缀(镜像参考 Call 转换:kind 取倒数第二段)
             var ek = segs.get(segs.len() - 2)
             var tg = segs.get(segs.len() - 1)
+            // W2(525):`Type.Variant { fields }` 变体 struct-cover(宿主
+            // is_branch_cond_expr 4216:Dot 链尾随 LBrace → parse_struct_cover)
+            if p.kind() == TokenKind.LBrace {
+                var fsv = parse_struct_cover_fields(p)
+                if p.err != "" {
+                    return bad_e()
+                }
+                return E("struct-cover", tg, ek, fsv, "(struct-cover " + ek + "." + tg + " {" + fsv + "})", "")
+            }
             var bind_list List<str> = List.new()
             if p.kind() == TokenKind.LParen {
                 p.next()
@@ -2015,6 +2167,26 @@ fn parse_is_branch(mut p P) str {
     p.skip_empty_lines()
     var body = ""
     var scoped = false
+    // W2(525):struct-cover 臂绑定入臂作用域(宿主 parse_is_branch 7856:
+    // 逐字段 define Let 占位;`f` 或 `f: alias` 的别名侧入作用域)
+    if pat.kind == "struct-cover" && pat.args != "" {
+        var fbnds = split_commas(pat.args)
+        p.push_scope()
+        scoped = true
+        var f0 = 0
+        while f0 < fbnds.len() {
+            var one = fbnds.get(f0)
+            var cname = one
+            var csp = find_sub(one, ": ")
+            if csp >= 0 {
+                cname = one.slice(csp + 2, one.len())
+            }
+            if cname != "_" {
+                p.bind(cname, "")
+            }
+            f0 = f0 + 1
+        }
+    }
     if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
         var binds = split_commas(pat.args)
         var real = false
@@ -2076,9 +2248,11 @@ fn parse_is(mut p P) str {
     return "(is " + t.dump + " " + branches + ")"
 }
 
-fn is_unsupported_stmt_kind(k TokenKind) bool {
+pub fn is_unsupported_stmt_kind(k TokenKind) bool {
     is k {
-        TokenKind.Spec | TokenKind.Tag | TokenKind.Union | TokenKind.Ext | TokenKind.Impl | TokenKind.Task | TokenKind.On | TokenKind.Dep | TokenKind.Hash | TokenKind.HashIf | TokenKind.HashFor | TokenKind.HashIs | TokenKind.HashBrace | TokenKind.HashIdent | TokenKind.Try | TokenKind.Yield | TokenKind.Reply | TokenKind.View -> true
+        // W2(525):Ext 移出 unsupported(parse_ext 并入方法;type 体
+        // ext-for-trait 仍在 parse_ext 内拒绝)
+        TokenKind.Spec | TokenKind.Tag | TokenKind.Union | TokenKind.Impl | TokenKind.Task | TokenKind.On | TokenKind.Dep | TokenKind.Hash | TokenKind.HashIf | TokenKind.HashFor | TokenKind.HashIs | TokenKind.HashBrace | TokenKind.HashIdent | TokenKind.Try | TokenKind.Yield | TokenKind.Reply | TokenKind.View -> true
         else -> false
     }
 }
@@ -2097,6 +2271,10 @@ fn parse_stmt(mut p P) str {
     }
     if k == TokenKind.Type {
         return parse_type_decl(p)
+    }
+    // W2(525):ext 块——方法并入(占位行,parse_program 终态并入)
+    if k == TokenKind.Ext {
+        return parse_ext(p)
     }
     if k == TokenKind.Enum {
         return parse_enum_decl(p)
@@ -2175,7 +2353,7 @@ fn parse_body(mut p P) str {
 }
 
 // expect_eos 直译(Semi/Newline/Comma 皆可分隔;返回 newline 数)
-fn expect_eos(mut p P) int {
+pub fn expect_eos(mut p P) int {
     var count = 0
     var has_sep = false
     while p.kind() == TokenKind.Semi || p.kind() == TokenKind.Newline || p.kind() == TokenKind.Comma {
@@ -2196,6 +2374,85 @@ fn expect_eos(mut p P) int {
 }
 
 // parse_impl 直译(#section/convert_last_block Missing;空 code → "(code )")
+// W2(525):子串查找(首现位置;未命中 -1)——ext-merge 并入 type-decl
+// 行的字符串手术用(char_at 循环,无内建 contains)
+pub fn find_sub(s str, sub str) int {
+    var n = s.len()
+    var m = sub.len()
+    if m == 0 || n < m {
+        return -1
+    }
+    var i = 0
+    while i <= n - m {
+        var hit = true
+        var j = 0
+        while j < m {
+            if s.char_at(i + j) != sub.char_at(j) {
+                hit = false
+                j = m
+            }
+            j = j + 1
+        }
+        if hit {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+// W2(525):(ext-merge TY M1 M2) 占位行并入对应 type-decl 行——同名
+// 方法覆盖语义收窄为追加(语料无同名;宿主 retain+push 全语义超 v2);
+// 无 methods 段则新建,有则在段尾 ")" 前并入
+fn ext_merge_lines(stmts List<str>) List<str> {
+    var out List<str> = List.new()
+    var exts List<str> = List.new()
+    var i = 0
+    while i < stmts.len() {
+        var s = stmts.get(i)
+        if find_sub(s, "(ext-merge ") == 0 {
+            exts.push(s)
+        } else {
+            out.push(s)
+        }
+        i = i + 1
+    }
+    var e = 0
+    while e < exts.len() {
+        var ex = exts.get(e)
+        // "(ext-merge TY M1 M2)" → ty=首词,methods=余串(前缀 11 字符,
+        // 尾部 wrapper ")" 一并剥除——仅剥前缀会把闭合括号混入 methods)
+        var body = ex.slice(11, ex.len())
+        var sp = find_sub(body, " ")
+        var ty = body
+        var ms = ""
+        if sp >= 0 {
+            ty = body.slice(0, sp)
+            ms = body.slice(sp + 1, body.len() - 1)
+        }
+        if ms != "" {
+            var r = 0
+            while r < out.len() {
+                var line = out.get(r)
+                if find_sub(line, "(type-decl (name " + ty + ")") == 0 {
+                    var patched = ""
+                    if find_sub(line, " (methods ") < 0 {
+                        patched = line.slice(0, line.len() - 1) + " (methods " + ms + "))"
+                    } else {
+                        // 已有 (methods M1) 段:并入段内(倒数第二 ")" 前)
+                        patched = line.slice(0, line.len() - 2) + " " + ms + "))"
+                    }
+                    out.set(r, patched)
+                    r = out.len()
+                }
+                r = r + 1
+            }
+        }
+        e = e + 1
+    }
+    return out
+}
+
 fn parse_program(mut p P) str {
     var stmts List<str> = List.new()
     p.skip_empty_lines()
@@ -2207,13 +2464,15 @@ fn parse_program(mut p P) str {
             stmts.push("(nl*" + (n - 1).str() + ")")
         }
     }
+    // W2(525):ext-merge 占位行终态并入 type-decl(宿主终 AST 形态)
+    stmts = ext_merge_lines(stmts)
     return "(code " + join_dump_list(stmts, " ") + ")"
 }
 
 // M2 闸门入口:parse_dump(source) -> str
 // 注意:当前 VM 存在字符串池 RC 回归(运行期串 List.push 后读回 UAF,
 // 242 tracker)——本入口在 VM 修复前会在含 List push 的循环上 canary。
-fn parse_dump(source str) str {
+pub fn parse_dump(source str) str {
     var toks = tokenize(source)
     var p = parse_new(toks)
     var dump = parse_program(p)

@@ -15,6 +15,40 @@ fn t_global_default_zero() {
 }
 
 #[test]
-fn t_iter_zero_on_raw_array() {
-    assert_eq(ev_run("fn mk() {\n    return [1, 2]\n}\n\nfn main() {\n    var n int = 0\n    for w in mk() {\n        n = n + 1\n    }\n    print(n)\n}"), "0")
+// Plan 525 W1 期望翻转:宿主 for-in 对裸 List(fn Call 源)已按元素迭代
+// (b38 live 实证 14/16/18;旧 "0" 零迭代断言编码 511 期宿主形态,随
+// VBool 落地双侧对拍收口)——宿主为规范,期望同步 "2"。
+fn t_iter_raw_array_iterates() {
+    assert_eq(ev_run("fn mk() {\n    return [1, 2]\n}\n\nfn main() {\n    var n int = 0\n    for w in mk() {\n        n = n + 1\n    }\n    print(n)\n}"), "2")
+}
+
+// Plan 525 W1:VBool 载体断言——print(bool)/比较/逻辑结果/fstr 插值
+// 全走 true/false 显示形态(宿主 print tag==3 臂镜像)
+#[test]
+fn t_vbool_print_true() {
+    assert_eq(ev_run("print(true)"), "true")
+}
+
+#[test]
+fn t_vbool_print_false() {
+    assert_eq(ev_run("print(false)"), "false")
+}
+
+#[test]
+fn t_vbool_cmp_result() {
+    assert_eq(ev_run("print(1 == 2)"), "false")
+    assert_eq(ev_run("print(3 > 2)"), "true")
+}
+
+#[test]
+fn t_vbool_logic_not() {
+    assert_eq(ev_run("print(!true)"), "false")
+    assert_eq(ev_run("print(true && false)"), "false")
+    assert_eq(ev_run("print(true || false)"), "true")
+}
+
+#[test]
+fn t_vbool_fstr() {
+    assert_eq(ev_run("print(f\"flag=${true}\")"), "flag=true")
+    assert_eq(ev_run("print(f\"cmp=${1 == 1}\")"), "cmp=true")
 }

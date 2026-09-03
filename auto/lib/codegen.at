@@ -43,6 +43,12 @@
 
 // 指令:op=助记符(空=已删除占位);s=序列化操作数文本;n=patch 载荷
 // (jmp/jmp.z:目标指令索引;call:FnEntry 索引;load.str:池索引)
+// Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;P 方法族随类型导入)
+use auto.lib.token: TokenKind, kind_name
+use auto.lib.lexer: tokenize
+use auto.lib.parser: E, Op, P, expect_eos, expr_pratt, find_sub, infix_l, infix_r, int_val, is_comment_kind, is_name_kind, is_op_kind, is_pattern, is_soft_ident_kind, is_type_name, p_op, parse_new, parse_type, split_commas
+use auto.lib.typeinfo: t_is_type_prop
+
 type I {
     op OpCode
     s str
@@ -63,7 +69,7 @@ type CGVar {
     ty str
 }
 
-type CG {
+pub type CG {
     ins List<I>
     pool List<str>
     fns List<FnEntry>
@@ -114,6 +120,25 @@ type CG {
     mod_bases List<int>
     // W3:fn→模块名平行表(链接期符号定址用;单文件路径恒空)
     fn_mods List<str>
+    // ── W2(Plan 525):方法族编译上下文 ──
+    // method_ty≠"":cg_fn 正在编译类型体方法 → fn 名重整 "Type.method"
+    // (镜像宿主 codegen.rs 2301 独立 fn + self 首参注入);
+    // method_self=1:非 static 方法注入 self 首参(add_var idx=0);
+    // wrapper_started=0:wrapper prolog 懒发射(镜像宿主 compile_and_link
+    // 分区序:Type/Ext 方法先于 wrapper——Type 声明位零字节码,首个
+    // 非 Type/Ext 语句才发 wrapper prolog)
+    method_ty str
+    method_self int
+    wrapper_started int
+    // W2(525):recv_ty——刚编译完的主式接收者类型名(Ident 变量位的
+    // CGVar.ty / 前导点 self 的类型;后缀方法调用解析用;每跳后缀清位)
+    recv_ty str
+    // W2(525):primary_tyname——主式是裸类型名(非变量;静态调用
+    // Type.m(args) 的探测载体)
+    primary_tyname str
+    // W2(525):fn_rets——c.fns 平行表(方法/函数返回类型名;链式
+    // 调用接收者类型解析:Box.new(7) 的结果类型)
+    fn_rets List<str>
 
     // ── Plan 514 W3-15(γ4):CG 自有操作族入 type 体 ──
     // 映射:cg_* c-only 操作族(产生式 cg_expr/stmt/if/while/fn 族
@@ -140,7 +165,8 @@ type CG {
     var defers_l List<CGDefer> = List.new()
     var bases_l List<int> = List.new()
     var fmods_l List<str> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l, uses_l, "", defers_l, bases_l, fmods_l)
+    var frets_l List<str> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l, uses_l, "", defers_l, bases_l, fmods_l, "", 0, 0, "", "", frets_l)
 }
 
     // W3:裸名 → 导入符号(遍历 uses:定向 items 命中或通配;返回 "mod.name",
@@ -219,6 +245,27 @@ type CG {
         j = j + 1
     }
     return -1
+}
+
+    // W3(525):字段类型名(ftys 平行表;未命中 "")
+    fn field_ty(tyname str, field str) str {
+    var ti = self.tys_lookup(tyname)
+    if ti < 0 {
+        return ""
+    }
+    var fl = self.tys.get(ti).fields
+    var ft = self.tys.get(ti).ftys
+    var j = 0
+    while j < fl.len() {
+        if fl.get(j) == field {
+            if j < ft.len() {
+                return ft.get(j)
+            }
+            return ""
+        }
+        j = j + 1
+    }
+    return ""
 }
 
     fn const_lookup(key str) int {
@@ -637,12 +684,15 @@ type CGEnum {
 type CGType {
     name str
     fields List<str>
+    // W3(525):字段类型名平行表(recv_ty 链式解析:b.vals.push 的
+    // vals:List<int> → 容器方法 CallNat 分派)
+    ftys List<str>
 }
 
 // 指令字节宽度(与 Rust opcode 编码一致;S4 子集)。new.instance/
 // is.variant 的名字内联字节随名长(Plan 447 部分②);get.generic.field
 // 的 u32 操作数在 Rust 侧按 1B 操作数+3B 残留(nop)错位展示,照抄
-enum OpCode {
+pub enum OpCode {
     Line
     Add
     Sub
@@ -702,7 +752,7 @@ enum OpCode {
 }
 
 // 助记符文本(M4 dump 序列化的唯一口径;447-③C1:载体 str → OpCode)
-fn op_name(op OpCode) str {
+pub fn op_name(op OpCode) str {
     is op {
         OpCode.Line -> ".line"
         OpCode.Add -> "add"
@@ -1008,6 +1058,8 @@ fn cg_expr(mut c CG, mut p P, min int) {
     c.str_flag = 0
     c.arr_flag = 0
     c.inst_ty = ""
+    c.recv_ty = ""
+    c.primary_tyname = ""
     // C3(Plan 447):p_kind 链 is 化——镜像宿主 match 臂形
     is k {
         TokenKind.Not -> {
@@ -1151,6 +1203,12 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 cg_call_args(c, p)
                 c.emit(OpCode.Call, "", fe)
             }
+        } else if !call_done && p.kind() == TokenKind.Dot && c.lookup(name) < 0 && (c.tys_lookup(name) >= 0 || name == "List") {
+            // W2(525):裸类型名 + 后随点——静态调用/静态字段探测位
+            // (Type.m(args);类型名无值不发装载,后缀臂按 primary_tyname
+            // 解析;宿主 unresolved-static → CALL reloc 同构)。
+            // W3(525):内建容器 List 同位(List.new → call.nat nat#100)
+            c.primary_tyname = name
         } else if !call_done {
             var idx = c.lookup(name)
             if idx < 0 {
@@ -1172,9 +1230,25 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 if c.var_ty(name) == "str" {
                     c.str_flag = 1
                 }
+                // W2(525):接收者类型回传(后缀方法调用解析)
+                c.recv_ty = c.var_ty(name)
             }
         }
         }
+        }
+        TokenKind.Dot -> {
+        // W2(525):接收者简写 .field/.method——宿主 dot_item 前导点 =
+        // Dot(self, name);self=方法首参。本臂仅发 self 装载+类型回传,
+        // **不消费 '.'**——后缀首跳臂(dot_seq==0 GetField / 方法调用)
+        // 按 `.name` 原样接管
+        var self_idx0 = c.lookup("self")
+        if self_idx0 < 0 {
+            c.fail("'.' shorthand outside method (no self)")
+            return
+        }
+        c.emit_load(self_idx0)
+        c.inst_ty = ""
+        c.recv_ty = c.var_ty("self")
         }
         TokenKind.LParen -> {
         // W2:括号 group 透明(镜像宿主 group();-(x+y) 形态经此)
@@ -1221,11 +1295,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
         c.emit(OpCode.GetElem, "", 0)
         c.arr_flag = 0
     }
-    if c.err == "" && p.kind() == TokenKind.Dot && p.peek_text(1) == "len" && p.peek(2) == TokenKind.LParen && p.peek(3) == TokenKind.RParen {
-        if c.arr_flag != 1 {
-            c.fail(".len() receiver is not an array")
-            return
-        }
+    // W3(525):快径仅裸数组(arr_flag=1 且非 List 注解型——List 参数
+    // /变量走 nat#103,b46 fn_sig/field 实证);List 接收者落到后缀
+    // 方法臂(call.nat nat#103,宿主 List 对象非 raw array)
+    if c.err == "" && c.arr_flag == 1 && find_sub(c.recv_ty, "List") != 0 && p.kind() == TokenKind.Dot && p.peek_text(1) == "len" && p.peek(2) == TokenKind.LParen && p.peek(3) == TokenKind.RParen {
         p.next()
         p.next()
         p.next()
@@ -1259,10 +1332,112 @@ fn cg_expr(mut c CG, mut p P, min int) {
                     var fk2 = p.peek(1)
                     if fk2 == TokenKind.Ident || is_soft_ident_kind(fk2) {
                         if p.peek(2) == TokenKind.LParen {
-                            c.fail("unsupported method call: ." + p.peek_text(1))
-                            break
+                            // W2(525):方法调用 recv.m(args)——三类:
+                            // ①recv_ty 命中(实例):接收者已在栈(self 位)
+                            //   → 参数 → call fnidx("Type.m";宿主 CALL
+                            //   reloc 同构,code.rs 9030 接收者先于参数)
+                            // ②主式是类型名(c.tys 命中且非变量):静态
+                            //   Type.m(args)——不推接收者(宿主 exports
+                            //   已含,直接参数+CALL)
+                            // ③其余:宿主 CALL_SPEC 兜底超 v2 裁剪
+                            var mname2 = p.peek_text(1)
+                            var recv_ty2 = c.recv_ty
+                            if recv_ty2 == "" && dot_seq == 0 {
+                                // 主式裸类型名静态调用探测:前缀主式记名
+                                recv_ty2 = c.primary_tyname
+                            }
+                            // W3(525):内建容器 List 分派——基名 List →
+                            // CallNat(宿主 native auto.list 族;静态
+                            // new=100 无接收者,实例=接收者先推+参数;
+                            // 发射序 b46 m4 对拍:load l;args;call.nat)
+                            if strip_generic(recv_ty2) == "List" {
+                                // W3(525):字段链接收者的 .len() 走 arr.len
+                                // (宿主 b.vals.len 实证:Ident 变量=nat#103,
+                                // 字段访问=ARRAY_LEN 两分支 List/str 分派)
+                                if mname2 == "len" && dot_seq > 0 && p.peek(3) == TokenKind.RParen {
+                                    p.next()
+                                    p.next()
+                                    p.next()
+                                    p.next()
+                                    c.emit(OpCode.ArrLen, "", 0)
+                                    dot_done = true
+                                    c.str_flag = 0
+                                    c.arr_flag = 0
+                                    c.inst_ty = ""
+                                    c.recv_ty = ""
+                                    c.primary_tyname = ""
+                                    dot_seq = dot_seq + 1
+                                    continue
+                                }
+                                var nid = list_nat_id(mname2)
+                                if nid < 0 {
+                                    c.fail("unsupported List method: " + mname2)
+                                    return
+                                }
+                                p.next()
+                                p.next()
+                                // 接收者(实例)/无(静态 new)——主式装载
+                                // 已就位;参数依次
+                                cg_call_args(c, p)
+                                c.emit(OpCode.CallNat, "nat#" + nid.str(), nid)
+                                dot_done = true
+                                c.str_flag = 0
+                                c.arr_flag = 0
+                                // get 的结果类型=接收者注解的元素型
+                                // (List<List<int>>.get → List<int>;
+                                // let 绑定 r0 的链式容器方法解析)
+                                if mname2 == "get" {
+                                    if find_sub(recv_ty2, "<") >= 0 && recv_ty2.len() > 5 {
+                                        c.inst_ty = recv_ty2.slice(5, recv_ty2.len() - 1)
+                                    } else {
+                                        c.inst_ty = ""
+                                    }
+                                } else {
+                                    c.inst_ty = ""
+                                }
+                                // W3(525):结果类型即链式后续跳的接收者型
+                                // (rows.get(0).len() 实证;g29 四路 exec)
+                                c.recv_ty = c.inst_ty
+                                c.primary_tyname = ""
+                                dot_seq = dot_seq + 1
+                                continue
+                            }
+                            if recv_ty2 != "" {
+                                var sym = recv_ty2 + "." + mname2
+                                var fe2 = -1
+                                var fi2 = 0
+                                while fi2 < c.fns.len() {
+                                    if c.fns.get(fi2).name == sym {
+                                        fe2 = fi2
+                                    }
+                                    fi2 = fi2 + 1
+                                }
+                                if fe2 < 0 {
+                                    c.fail("unknown method: " + sym)
+                                    return
+                                }
+                                p.next()
+                                p.next()
+                                cg_call_args(c, p)
+                                c.emit(OpCode.Call, "", fe2)
+                                dot_done = true
+                                c.str_flag = 0
+                                c.arr_flag = 0
+                                // W2(525):结果类型回传(fn_rets;let
+                                // 绑定/链式接收者解析;W3:兼作链式接收者型)
+                                c.inst_ty = c.fn_rets.get(fe2)
+                                c.recv_ty = c.inst_ty
+                                c.primary_tyname = ""
+                                dot_seq = dot_seq + 1
+                                continue
+                            }
+                            c.fail("unsupported method call: ." + mname2)
+                            return
                         }
                         var fname2 = p.peek_text(1)
+                        // W3(525):首跳前记接收者型(跳后 recv_ty=字段型,
+                        // 链式容器方法 b.vals.push 用)
+                        var hop_recv_ty = c.recv_ty
                         p.next()
                         p.next()
                         if dot_seq == 0 {
@@ -1270,6 +1445,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
                             // User 型):get.field field[N](名字池非去重追加)
                             var fidx4 = c.pool_push(fname2)
                             c.emit(OpCode.GetField, "field[" + fidx4.str() + "]", fidx4)
+                            // W3(525):字段类型回传(注解面;未知型清位)
+                            if hop_recv_ty != "" {
+                                c.recv_ty = c.field_ty(hop_recv_ty, fname2)
+                            }
                         } else {
                             // 链式后续跳(接收者已是表达式,宿主 untyped
                             // fallback):get.generic.field field=0 + 3 幽灵 nop
@@ -1535,6 +1714,76 @@ fn cg_use(mut c CG, mut p P) {
     c.uses.push(CGUse("auto", name, items, wildcard))
 }
 
+// W2(525):ext 块编译——方法经 cg_fn 名重整通道("Type.method";宿主
+// parse 级并入 TypeDecl.methods → 编译位=Type 声明位,本侧由 pass1
+// 预扫达成同序);类型须已注册;同名覆盖语义收窄为追加(语料无同名)
+fn cg_ext(mut c CG, mut p P) {
+    p.next()
+    if !is_name_kind(p.kind()) {
+        c.fail("ext: expected type name")
+        return
+    }
+    var ty = p.text()
+    p.next()
+    if p.kind() == TokenKind.Lt {
+        c.fail("v2 unsupported: ext generic target")
+        return
+    }
+    if p.kind() == TokenKind.For {
+        c.fail("v2 unsupported: ext for trait")
+        return
+    }
+    if c.tys_lookup(ty) < 0 {
+        c.fail("ext target type not found: " + ty)
+        return
+    }
+    p.expect(TokenKind.LBrace)
+    p.skip_empty_lines()
+    while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
+        if p.kind() == TokenKind.Fn || p.kind() == TokenKind.Static {
+            var es = 0
+            if p.kind() == TokenKind.Static {
+                es = 1
+                p.next()
+            }
+            c.method_ty = ty
+            c.method_self = 1 - es
+            cg_fn(c, p)
+            c.method_ty = ""
+            c.method_self = 0
+            if c.err != "" {
+                return
+            }
+            expect_eos(p)
+            p.skip_empty_lines()
+            continue
+        }
+        c.fail("v2 unsupported: ext member")
+        return
+    }
+    p.expect(TokenKind.RBrace)
+}
+
+// W2(525):语句跨度跳过(pass1 顶层预扫用)——按 {},(),[] 深度计数,
+// 深度 0 的 Newline/Semi 即语句尾;EOF/越界 RBrace 兜底返回
+fn cg_skip_stmt(mut p P) {
+    var depth = 0
+    while p.err == "" && p.kind() != TokenKind.EOF {
+        var k = p.kind()
+        if k == TokenKind.LBrace || k == TokenKind.LParen || k == TokenKind.LSquare {
+            depth = depth + 1
+        } else if k == TokenKind.RBrace || k == TokenKind.RParen || k == TokenKind.RSquare {
+            if depth == 0 {
+                return
+            }
+            depth = depth - 1
+        } else if depth == 0 && (k == TokenKind.Newline || k == TokenKind.Semi) {
+            return
+        }
+        p.next()
+    }
+}
+
 // ── W1 struct 声明注册(Plan 511:镜像宿主 Stmt::TypeDecl 的
 // register_type——零字节码,字段名表入 c.tys)─────────────────
 
@@ -1567,13 +1816,48 @@ fn cg_type_decl(mut c CG, mut p P) {
         c.fail("v2 unsupported: type has")
         return
     }
+    // W2(525):早注册——体内方法(static fn new 的 `return Type {..}`
+    // ctor 识别/字段写索引)先于尾态需要 c.tys 命中;方法编译前以
+    // 已收集字段刷新本条目(语料约定字段先于方法)
+    var ti = c.tys.len()
+    var empty_f List<str> = List.new()
+    var empty_ft List<str> = List.new()
+    c.tys.push(CGType(name, empty_f, empty_ft))
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
     var fields List<str> = List.new()
+    var ftys List<str> = List.new()
     while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         if p.kind() == TokenKind.Fn || p.kind() == TokenKind.Static {
-            c.fail("v2 unsupported: method in type")
-            return
+            // W2(525):体内方法编译——cg_fn 名重整通道(镜像宿主独立
+            // fn Type.method;方法在 Type 声明位发射,先于 wrapper——
+            // m4 分区序对齐);static 不注入 self;编译前刷新类型条目
+            // 字段表(早注册条目的字段补充)
+            var mis_static = 0
+            if p.kind() == TokenKind.Static {
+                mis_static = 1
+                p.next()
+            }
+            var fields_snap List<str> = List.new()
+            var ftys_snap List<str> = List.new()
+            var fs_i = 0
+            while fs_i < fields.len() {
+                fields_snap.push(fields.get(fs_i))
+                ftys_snap.push(ftys.get(fs_i))
+                fs_i = fs_i + 1
+            }
+            c.tys.set(ti, CGType(name, fields_snap, ftys_snap))
+            c.method_ty = name
+            c.method_self = 1 - mis_static
+            cg_fn(c, p)
+            c.method_ty = ""
+            c.method_self = 0
+            if c.err != "" {
+                return
+            }
+            expect_eos(p)
+            p.skip_empty_lines()
+            continue
         }
         if p.kind() == TokenKind.Hash {
             c.fail("v2 unsupported: member attr")
@@ -1588,18 +1872,21 @@ fn cg_type_decl(mut c CG, mut p P) {
         if p.kind() == TokenKind.Colon {
             p.next()
         }
-        parse_type(p)
+        var fty_t = parse_type(p)
         if p.kind() == TokenKind.Asn {
             c.fail("v2 unsupported: member default value")
             return
         }
         fields.push(fname)
+        ftys.push(fty_t)
         // 成员间空行:静默跳过
         expect_eos(p)
         p.skip_empty_lines()
     }
     p.expect(TokenKind.RBrace)
-    c.tys.push(CGType(name, fields))
+    // W2(525):尾态刷新早注册条目(完整字段表;去重防护:同名类型
+    // 重复声明以后到覆盖——镜像宿主 register_type 按名覆盖语义)
+    c.tys.set(ti, CGType(name, fields, ftys))
 }
 
 // W1 构造字面量发射 X { a: e1, b: e2 }:( 已在 cur 由调用方判别;
@@ -1703,6 +1990,57 @@ fn cg_is(mut c CG, mut p P) {
             }
             p.expect(TokenKind.Arrow)
             p.skip_empty_lines()
+            // W2(525):is-struct 解构臂——plain struct 静态恒命中(宿主
+            // 语义=match 解构绑定,a2r 规范;变体形超语料面):逐字段
+            // load t;get.field [N];store 绑定 → 体 → jmp end。
+            // pat.args 为 display 形态(空格分隔的 `f` / `f: alias` 列)
+            if pat.kind == "struct-cover" && pat.word == "" {
+                // 词切分(display 形态空格分隔;`f: alias` 的冒号黏字段
+                // 词——"x:" → 字段 x + 次词为别名)
+                var words3 List<str> = List.new()
+                var wrest = pat.args
+                var wgo = true
+                while wgo {
+                    var w = wrest
+                    var wsp = find_sub(wrest, " ")
+                    if wsp >= 0 {
+                        w = wrest.slice(0, wsp)
+                        wrest = wrest.slice(wsp + 1, wrest.len())
+                    } else {
+                        wgo = false
+                    }
+                    if w != "" {
+                        words3.push(w)
+                    }
+                }
+                var wi3 = 0
+                while wi3 < words3.len() && c.err == "" {
+                    var fld3 = words3.get(wi3)
+                    var alias3 = fld3
+                    if fld3.len() > 1 && fld3.char_at(fld3.len() - 1) == ':' {
+                        fld3 = fld3.slice(0, fld3.len() - 1)
+                        if wi3 + 1 < words3.len() {
+                            wi3 = wi3 + 1
+                            alias3 = words3.get(wi3)
+                        }
+                    }
+                    if alias3 != "_" {
+                        c.emit_load(t)
+                        var fidx5 = c.pool_push(fld3)
+                        c.emit(OpCode.GetField, "field[" + fidx5.str() + "]", fidx5)
+                        var bidx5 = c.add_var(alias3, 0, "")
+                        c.emit_store(bidx5)
+                    }
+                    wi3 = wi3 + 1
+                }
+                cg_is_arm_body(c, p)
+                var je5 = c.emit(OpCode.Jmp, "", -1)
+                end_jmps.push(je5)
+                // 臂尾换行消费(continue 跳过循环共享尾,需自带;镜像
+                // ③b 臂尾形态)
+                p.skip_empty_lines()
+                continue
+            }
             var fc = -1
             if pat.kind == "tag-cover" {
                 fc = c.ctor_lookup(pat.name + "." + pat.word)
@@ -1837,6 +2175,11 @@ fn cg_stmt(mut c CG, mut p P) {
             if vt == "str" {
                 vty = "str"
             }
+            // W3(525):容器注解串入 vty(List<..>/裸 List;recv_ty
+            // 解析——容器方法 CallNat 分派)
+            if find_sub(vt, "List") == 0 {
+                vty = vt
+            }
         }
         var is_arr = 0
         // W2(Plan 511):全局路径(镜像宿主 Plan 317/322——顶层 var/const
@@ -1969,6 +2312,36 @@ fn cg_stmt(mut c CG, mut p P) {
         }
         p.pos = start
     }
+    // W2(525):接收者简写字段赋值 `.f = rhs`——self 接收者(方法首参);
+    // 发射序镜像宿主 self 字段写:**名字基**(rhs → load self → load.str
+    // 字段名 → set.field;宿主 self 参数走 User/name-based 写路径,
+    // b44_methods_recv_write m4 对拍实证——与构造字面量源变量的
+    // set.generic.field 下标基不同)
+    if k == TokenKind.Dot {
+        var sd0 = p.pos
+        var sd1 = sd0 + 1
+        if sd1 < p.toks.len() && (p.toks.get(sd1).kind == TokenKind.Ident || is_soft_ident_kind(p.toks.get(sd1).kind)) && sd1 + 1 < p.toks.len() && p.toks.get(sd1 + 1).kind == TokenKind.Asn {
+            var self_i3 = c.lookup("self")
+            if self_i3 < 0 {
+                c.fail("'.' shorthand outside method (no self)")
+                return
+            }
+            var sfld = p.toks.get(sd1).text
+            p.pos = sd1 + 2
+            p.skip_empty_lines()
+            cg_expr(c, p, 0)
+            var send_pos = p.pos
+            c.emit_load(self_i3)
+            // 名字池直推非去重(镜像宿主 self 写路径的 strings.push;
+            // b44_recv_write m4 对拍:写/读各自入池,索引对齐)
+            var sidx3 = c.pool_push(sfld)
+            c.emit(OpCode.LoadStr, "", sidx3)
+            c.emit(OpCode.SetField, "", 0)
+            p.pos = send_pos
+            return
+        }
+        p.pos = sd0
+    }
     // W1 字段赋值 x.f = rhs / x.a.b = rhs:两段游标快照(镜像 a[idx]= 模式)
     // —— 先前瞻扫字段链至 Asn,先发 rhs 再回头发对象/字段
     if k == TokenKind.Ident && p.peek(1) == TokenKind.Dot {
@@ -2094,11 +2467,16 @@ fn cg_stmt(mut c CG, mut p P) {
         }
     }
     // W3:表达式语句——用户 fn 调用语句尾补 pop 弃值(镜像宿主
-    // Stmt::Expr 的非 void 结果丢弃;call.nat print 为 void 无 pop)
+    // Stmt::Expr 的非 void 结果丢弃;call.nat print 为 void 无 pop)。
+    // W3(525):容器方法 call.nat 同理(nat#10 print void 除外;b46
+    // m4 对拍:push/set 语句位 pop)
     var before_len = c.ins.len()
     cg_expr(c, p, 0)
     if c.err == "" && c.depth > 1 && c.ins.len() > before_len {
-        if c.ins.get(c.ins.len() - 1).op == OpCode.Call {
+        var last_i = c.ins.get(c.ins.len() - 1)
+        if last_i.op == OpCode.Call {
+            c.emit(OpCode.Pop, "", 0)
+        } else if last_i.op == OpCode.CallNat && last_i.n != 10 {
             c.emit(OpCode.Pop, "", 0)
         }
     }
@@ -2209,30 +2587,44 @@ fn cg_for(mut c CG, mut p P) {
         return
     }
     p.next()
-    // Call 迭代器通道不推作用域(宿主 2747-2829 无 push_scope——_iterator/
-    // 循环变量落 fn 层作用域,fn 尾统一释放;b38 实证)
+    // Plan 523 H6(m5 既有红根因,2026-09-03 根除):裸 Ident 调用源
+    // 并回下方通用「数组句柄+索引循环+GET_ELEM」通道——旧 Call 迭代器
+    // 通道(nat#112)镜像 511 期宿主缺陷(裸 List 句柄零迭代,
+    // engine.at nat#112 注释自证),PLAN-057 T3(e01eeba0b)修宿主后
+    // 双侧分歧(b38 第三循环缺失;基线 d54ec540d m5 绿→T3 红,二分
+    // 实证)。门禁:m5 corpus 46/46。
+    // Call 源(裸 Ident 调用)字节码级镜像宿主 T3 通道:临时句柄+索引循环
+    // +GET_ELEM+每迭代 call.nat nat#103(auto.list.len);槽序 arr/w/idx
+    // 镜像宿主 add_var 序(m4 字节码闸)。m5 行为闸走同一字节码自洽。
     if p.kind() == TokenKind.Ident && p.peek(1) == TokenKind.LParen {
-        // —— Call 迭代器协议 ——
         cg_expr(c, p, 0)
-        var it_idx = c.add_var("_iterator", 0, "")
-        c.emit_store(it_idx)
-        var it_v = c.add_var(name, 0, "")
-        var it_top = c.ins.len()
-        c.emit_load(it_idx)
-        c.emit(OpCode.CallNat, "nat#112", 112)
-        c.emit(OpCode.Dup, "", 0)
-        c.emit(OpCode.ConstI32, "-1", -1)
-        c.emit(OpCode.Eq, "", 0)
-        var it_jnz = c.emit(OpCode.JmpNz, "", -1)
-        c.emit_store(it_v)
+        var t_arr = c.add_var("_iterarr", 0, "")
+        c.emit_store(t_arr)
+        var t_v = c.add_var(name, 0, "")
+        var t_idx = c.add_var("_iteridx", 0, "")
+        c.emit(OpCode.ConstI32, "0", 0)
+        c.emit_store(t_idx)
+        var t_top = c.ins.len()
+        c.emit_load(t_idx)
+        c.emit_load(t_arr)
+        c.emit(OpCode.CallNat, "nat#103", 103)
+        c.emit(OpCode.Lt, "", 0)
+        var t_jz = c.emit(OpCode.JmpZ, "", -1)
+        c.emit_load(t_arr)
+        c.emit_load(t_idx)
+        c.emit(OpCode.GetElem, "", 0)
+        c.emit_store(t_v)
         c.loop_enter(0)
         cg_body_inline(c, p)
-        // continue 也回循环顶(重新 next),无增量段(宿主同款)
-        c.cont_tg.set(c.loop_depth - 1, it_top)
-        c.emit(OpCode.Jmp, "", it_top)
-        var it_end = c.ins.len()
-        c.ins.get(it_jnz).n = it_end
-        c.loop_exit(it_end)
+        c.cont_tg.set(c.loop_depth - 1, c.ins.len())
+        c.emit_load(t_idx)
+        c.emit(OpCode.ConstI32, "1", 1)
+        c.emit(OpCode.Add, "", 0)
+        c.emit_store(t_idx)
+        c.emit(OpCode.Jmp, "", t_top)
+        var t_end = c.ins.len()
+        c.ins.get(t_jz).n = t_end
+        c.loop_exit(t_end)
         return
     }
     c.push_scope()
@@ -2301,6 +2693,44 @@ fn cg_for(mut c CG, mut p P) {
 
 // ── fn 编译 ──────────────────────────────────────────────────
 
+// W3(525):"List<int>" → "List"(首个 '<' 前段;无 '<' 原样)——
+// 容器方法分派的基名提取
+fn strip_generic(ty str) str {
+    var i = 0
+    while i < ty.len() {
+        if ty.char_at(i) == '<' {
+            return ty.slice(0, i)
+        }
+        i = i + 1
+    }
+    return ty
+}
+
+// W3(525):容器方法 → CallNat id(宿主 native_catalog:auto.list 族;
+// 语料面=lib 盘点最小集 5 方法;未命中 -1)
+fn list_nat_id(m str) int {
+    is m {
+        "new" -> 100
+        "push" -> 101
+        "len" -> 103
+        "get" -> 106
+        "set" -> 107
+        else -> -1
+    }
+}
+
+// W2(525):"Type.method" → "Type"(首个 '.' 前段;无点原样)
+fn name_dot_head(s str) str {
+    var i = 0
+    while i < s.len() {
+        if s.char_at(i) == '.' {
+            return s.slice(0, i)
+        }
+        i = i + 1
+    }
+    return s
+}
+
 fn cg_fn(mut c CG, mut p P) {
     p.next()
     if p.kind() != TokenKind.Ident {
@@ -2309,9 +2739,21 @@ fn cg_fn(mut c CG, mut p P) {
     }
     var name = p.text()
     p.next()
+    // W2(525):方法上下文——名重整 "Type.method"(镜像宿主 2301 独立
+    // fn;方法体不重放全局 init(name 恒带点号,下方 main 判定天然隔离)
+    var self_inject = 0
+    if c.method_ty != "" {
+        name = c.method_ty + "." + name
+        self_inject = c.method_self
+        c.method_ty = ""
+        c.method_self = 0
+    }
     var jover = c.emit(OpCode.Jmp, "", -1)
     var entry = c.ins.len()
     c.fns.push(FnEntry(name, entry))
+    // W2(525):fn_rets 平行表占位(返回类型解析后回填)
+    var fret_idx = c.fns.len() - 1
+    c.fn_rets.push("")
     var saved_args = c.n_args
     var saved_max = c.max_idx
     c.max_idx = -1
@@ -2323,6 +2765,12 @@ fn cg_fn(mut c CG, mut p P) {
     var n_args = 0
     p.expect(TokenKind.LParen)
     p.skip_empty_lines()
+    // W2(525):非 static 方法注入 self 首参(idx=0,镜像宿主 2321 参数
+    // 注入 ParamMode::View;ty=方法所属类型名——.field 简写与方法解析用)
+    if self_inject == 1 {
+        c.add_var("self", 0, name_dot_head(name))
+        n_args = 1
+    }
     var running = true
     while running && c.err == "" {
         var k = p.kind()
@@ -2337,19 +2785,22 @@ fn cg_fn(mut c CG, mut p P) {
             if p.kind() == TokenKind.Colon {
                 p.next()
             }
-            // W2:List 型参数记 arr(447 收账缺口①——.len() 接收者跟踪)
+            // W2:List 型参数记 arr(447 收账缺口①——.len() 接收者跟踪);
+            // W3(525):注解串入 CGVar.ty(容器方法 CallNat 分派的
+            // recv_ty 解析,b46_list_fn_sig)
             var parr = 0
+            var pty_s = ""
             if is_type_name(p) {
                 if p.text() == "List" && p.peek(1) == TokenKind.Lt {
                     parr = 1
                 }
-                parse_type(p)
+                pty_s = parse_type(p)
             }
             if p.kind() == TokenKind.Asn {
                 p.next()
                 expr_pratt(p, 0)
             }
-            c.add_var(pname, parr, "")
+            c.add_var(pname, parr, pty_s)
             n_args = n_args + 1
             if p.kind() == TokenKind.Comma {
                 p.next()
@@ -2360,14 +2811,24 @@ fn cg_fn(mut c CG, mut p P) {
     }
     p.expect(TokenKind.RParen)
     c.n_args = n_args
+    // W2(525):返回类型名捕获(裸名;fn_rets 平行表回填——链式方法
+    // 调用的接收者类型解析)
+    var ret_name = ""
     if p.kind() == TokenKind.Arrow {
         p.next()
+        if is_name_kind(p.kind()) {
+            ret_name = p.text()
+        }
         parse_type(p)
         p.skip_empty_lines()
     } else if is_type_name(p) {
+        if is_name_kind(p.kind()) {
+            ret_name = p.text()
+        }
         parse_type(p)
         p.skip_empty_lines()
     }
+    c.fn_rets.set(fret_idx, ret_name)
     // W2:fn main 体首重放全局初始化(镜像宿主 codegen 1339-1348——入口
     // 直接 spawn main 跳过 wrapper 顶层,故在 main 体首按声明序重放
     // init token 区间;语料约定 fn main 声明于顶层 var 之后)
@@ -2594,7 +3055,7 @@ type AutoResult2 {
 
 // ── 编译入口(S5 engine 复用;返回 CG 结构) ────────────────────
 
-fn cg_compile(source str) CG {
+pub fn cg_compile(source str) CG {
     // W3:主模块经 cg_compile_mod(mod_name="" → wrapper 形态)
     return cg_compile_mod(source, "")
 }
@@ -2608,13 +3069,41 @@ fn cg_compile_mod(source str, mod_name str) CG {
     var p = parse_new(toks)
     var c = CG.new()
     c.mod_name = mod_name
+    // W2(525) pass1:Type/Ext 声明位预扫——体内/ext 方法先于 wrapper
+    // 编译(镜像宿主 parse 级 ext 并入 + compile_and_link 分区序;非
+    // Type/Ext 语句深度感知跨度跳过);类型注册(c.tys)亦在此趟完成
+    p.skip_empty_lines()
+    while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF {
+        if p.kind() == TokenKind.Type {
+            cg_type_decl(c, p)
+        } else if p.kind() == TokenKind.Ext {
+            cg_ext(c, p)
+        } else {
+            cg_skip_stmt(p)
+        }
+        if c.err == "" && p.err == "" {
+            expect_eos(p)
+            p.skip_empty_lines()
+        }
+    }
+    if c.err != "" || p.err != "" {
+        return c
+    }
+    // pass2:游标重置——wrapper + 全语句步行(Type/Ext 已在 pass1 编译,
+    // 此处仅跨度跳过;前导注释跳过镜像 parse_new 初始化)
+    p.pos = 0
+    while p.pos < p.toks.len() && is_comment_kind(p.toks.get(p.pos).kind) {
+        p.pos = p.pos + 1
+    }
     if mod_name == "" {
         c.emit(OpCode.FnProlog, "args=0, locals=16", 16)
         c.emit(OpCode.Reserve, "16", 16)
     }
     p.skip_empty_lines()
     while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF {
-        if p.kind() == TokenKind.Fn {
+        if p.kind() == TokenKind.Type || p.kind() == TokenKind.Ext {
+            cg_skip_stmt(p)
+        } else if p.kind() == TokenKind.Fn {
             cg_fn(c, p)
         } else if p.kind() == TokenKind.Ident && p.text() == "pub" {
             p.next()
@@ -2689,13 +3178,18 @@ fn cg_link_modules(mut cgs List<CG>) CG {
             m.ins.push(ins)
             ii = ii + 1
         }
-        // fns + fn_mods
+        // fns + fn_mods(+fn_rets 平行,W2 525)
         var fi = 0
         while fi < mc.fns.len() {
             var fe = mc.fns.get(fi)
             m.fns.push(FnEntry(fe.name, fe.ins + ins_base))
             var mn2 = mc.mod_name
             m.fn_mods.push(mn2)
+            if fi < mc.fn_rets.len() {
+                m.fn_rets.push(mc.fn_rets.get(fi))
+            } else {
+                m.fn_rets.push("")
+            }
             fi = fi + 1
         }
         // defers(绝对化 ins 指针)
@@ -2727,7 +3221,7 @@ fn cg_link_modules(mut cgs List<CG>) CG {
 }
 
 // W3 多文件编译主入口:main_path → 合并 CG(err 语义同 cg_compile)
-fn cg_compile_files(main_path str) CG {
+pub fn cg_compile_files(main_path str) CG {
     var res = cg_resolve(main_path)
     if res.err != "" {
         var e = CG.new()
@@ -2754,7 +3248,7 @@ fn codegen_dump_files(main_path str) str {
 }
 
 // M4 闸门入口
-fn codegen_dump(source str) str {
+pub fn codegen_dump(source str) str {
     var c = cg_compile(source)
     if c.err != "" {
         return c.err

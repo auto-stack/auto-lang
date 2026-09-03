@@ -23,3 +23,26 @@ CG(28)/Ar(23)自有操作入 type 体,产生式与纯表函数保留自由函数
 算子 `x |> .m()`(方法形+字段投影形);塔顶自举=方法化 AA2R 自己转译
 自己,rustc 零错。写法规范:docs/specs/aavm/design/divergence-rules.md
 §4b;corpus_a2r g01–g17 逐字符对拍+五方矩阵 46/46。
+
+## CLI 入口(Plan 517 W3;Plan 524 直达形态)
+
+`auto/aavm.at`——真模块 use 形态的 AAVM 启动入口(auto.exe 直跑模式):
+
+```bash
+# 位置参数直达(Plan 524 透传;主文件经 ev_run_files 多文件入口,use 依赖自动加载):
+auto auto/aavm.at path/to/prog.at
+# 编译执行目标程序(行数协议 stdin;空行与 EOF 经 IO.read_line 同返空串,行数前置消歧):
+F=path/to/prog.at; { echo $(( $(wc -l < $F) + 1 )); cat $F; echo; } | auto auto/aavm.at
+# 无参数无 stdin 时内置冒烟(1+1):
+auto auto/aavm.at < /dev/null
+```
+
+直跑透传一般形态:`auto <file> [args...]`(file 后的位置参数整段透传,
+脚本内 `process.args()` 返回 `[程序路径, args...]` 列表);裸值撞子命令名
+(如 `run`)时用 `--` 分隔消歧(`auto probe.at -- run`);已知全局旗标
+(`--error-limit` 等)置于 file 之后会被旗标吞——这类值放 `--` 之后。
+
+模块化结构(Plan 517 W2):七文件依赖 DAG
+`token←lexer←parser←{typeinfo←codegen←engine}`+`a2r 旁挂`;互引 use
+(auto.lib.* 点路径)+pub 契约标注;拼接消费面(harness/parity/99_unit 聚合)
+由双轨剥离消化(`aavm2_lib_source` 单一事实源)。

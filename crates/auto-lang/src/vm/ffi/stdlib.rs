@@ -684,10 +684,15 @@ pub fn shim_process_exit(code: i32) {
     std::process::exit(code);
 }
 
-/// Get command line arguments as a space-joined string
+/// Real argv as a List of strings: [程序路径] + CLI 透传参数（无透传时仅
+/// 程序路径）。Plan 524 修复：此前返回 join 空格字符串（517 W3 实测 argc=76
+/// 即对 join 串取长度的伪 argc），且含空格参数不可表达；List 契约对齐
+/// a2r 路径消费形态（examples/a2rs/03_image_scraper.at 的 list.len/下标）。
 #[auto_macros::rust_fn("Process.args")]
-pub fn shim_process_args() -> String {
-    std::env::args().collect::<Vec<_>>().join(" ")
+pub fn shim_process_args() -> Vec<String> {
+    let mut argv = vec![std::env::args().next().unwrap_or_default()];
+    argv.extend(crate::script_args());
+    argv
 }
 
 /// Get current working directory
@@ -2001,6 +2006,162 @@ pub fn shim_math_max_f(a: f64, b: f64) -> f64 {
     a.max(b)
 }
 
+// ============================================================================
+// PLAN-057 T6: web 内建 natives 补齐（等价性缺陷族③——未实现者原运行期
+// 静默 None 桩）。手动 shim（非 rust_fn 宏：需按 nv 标签分支/固 arity 弹栈），
+// 注册在 engine 的 AutoVM::new 覆盖块（build_from_inventory 之后，沿
+// shim_json_parse_vm 惯例）。
+// ============================================================================
+
+/// 堆 id 提取：object-tag 引用 / i32 裸句柄（≥ HEAP_ID_BASE）/ list-tag。
+/// 命中返回堆 id；标量与非法形态返回 None。
+fn web_builtin_heap_id(nv: auto_val::NanoValue) -> Option<u64> {
+    if auto_val::is_object(nv) {
+        Some(auto_val::decode_object(nv) as u64)
+    } else if auto_val::is_list(nv) {
+        Some(auto_val::decode_list(nv) as u64)
+    } else if auto_val::is_i32(nv) {
+        let v = auto_val::decode_i32(nv);
+        if v as i64 >= crate::vm::rc::HEAP_ID_BASE as i64 {
+            Some(v as u64)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn heap_is_list(vm: &AutoVM, id: u64) -> bool {
+    use crate::vm::types::ListData;
+    vm.get_heap_object(id)
+        .map(|o| {
+            let guard = o.read().unwrap();
+            let any = guard.as_any();
+            any.downcast_ref::<ListData<i32>>().is_some()
+                || any.downcast_ref::<ListData<String>>().is_some()
+                || any.downcast_ref::<ListData<bool>>().is_some()
+                || any.downcast_ref::<ListData<auto_val::Value>>().is_some()
+        })
+        .unwrap_or(false)
+}
+
+/// `Array.isArray(x)`——JS 语义：仅数组（ListData 全变体）为 true，
+/// 对象/字符串/标量/None 一律 false。推 encode_bool（`x == true` 字面量
+/// 比较与 print 均按 tag 消费；早前 i32 1/0 形态使 case A/B/C 的
+/// expected=true 跨 tag EQ 恒假）。
+pub fn shim_web_is_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = task.ram.pop_nv();
+    let is_arr = web_builtin_heap_id(nv)
+        .map(|id| heap_is_list(vm, id))
+        .unwrap_or(false);
+    task.ram.push_nv(auto_val::encode_bool(is_arr));
+    Ok(())
+}
+
+/// 栈 nv → `auto_val::Value`（stringify 序列化入口；标量直编码、堆引用
+/// 包 VmRef 交 vm_value_to_json 递归）。
+/// PLAN-057 T11 实机补遗：堆引用判定必须在 i32 标量臂**之前**——嵌套
+/// VmRef 字段读（GET_FIELD ObjectData 臂经 rc_push_id）以裸 int 句柄
+/// （≥HEAP_ID_BASE 约定，数组/列表槽同款）出栈，先走 Int 臂会把句柄
+/// 序列化成数字（实机工具卡 Arguments 显示 "4067504" 现场根因）。
+fn nv_to_vm_value(vm: &AutoVM, nv: auto_val::NanoValue) -> auto_val::Value {
+    use auto_val::Value;
+    if auto_val::is_null(nv) {
+        Value::Nil
+    } else if auto_val::is_bool(nv) {
+        Value::Bool(auto_val::decode_bool(nv))
+    } else if let Some(id) = web_builtin_heap_id(nv) {
+        Value::VmRef(auto_val::VmRef { id: id as usize })
+    } else if auto_val::is_i32(nv) {
+        Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_f64(nv) {
+        Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        Value::Float(auto_val::decode_f32(nv).into())
+    } else if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv);
+        let s = vm
+            .get_string(idx)
+            .map(|b| String::from_utf8_lossy(b.as_slice()).to_string())
+            .unwrap_or_default();
+        Value::Str(s.into())
+    } else {
+        Value::Nil
+    }
+}
+
+/// `JSON.stringify(v[, replacer][, space])`——固 arity 3 弹栈（codegen 对
+/// 缺参调用点编译期补位：replacer=null、space=0，沿 Plan 197 str.slice
+/// 先例）。replacer 采纳 JS 语义子集：忽略（musk 传 null）。space>0 走
+/// serde 两空格 pretty（与 JS JSON.stringify(v,null,2) 形态一致）。
+/// 不可序列化（None 顶层/NaN 等）推 None（musk T0 守卫口径）。
+pub fn shim_web_json_stringify(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let space_nv = task.ram.pop_nv();
+    let _replacer_nv = task.ram.pop_nv();
+    let value_nv = task.ram.pop_nv();
+
+    if auto_val::is_null(value_nv) {
+        task.ram.push_nv(auto_val::encode_null());
+        return Ok(());
+    }
+    let space = if auto_val::is_i32(space_nv) {
+        auto_val::decode_i32(space_nv)
+    } else {
+        0
+    };
+    let value = nv_to_vm_value(vm, value_nv);
+    let jv = vm_value_to_json(vm, &value, 0)?;
+    let text = if space > 0 {
+        serde_json::to_string_pretty(&jv)
+            .map_err(|e| VMError::RuntimeError(format!("JSON.stringify: {}", e)))?
+    } else {
+        serde_json::to_string(&jv)
+            .map_err(|e| VMError::RuntimeError(format!("JSON.stringify: {}", e)))?
+    };
+    let idx = vm.add_string(text.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `Math.trunc(x)`——int 表达式（含经宽通道的大整数商）恒等直通
+/// （wl_probe2 实证：原静默桩使 nowSec 回绕成 -2147483647 垃圾）；
+/// float 截断为 i32（.at 比较语义整型中心，避免 f64/i32 跨 tag EQ 陷阱）。
+pub fn shim_web_math_trunc(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_f64(nv) {
+        let t = auto_val::decode_f64(nv).trunc() as i32;
+        task.ram.push_nv(auto_val::encode_i32(t));
+    } else if auto_val::is_f32(nv) {
+        let t = auto_val::decode_f32(nv).trunc() as i32;
+        task.ram.push_nv(auto_val::encode_i32(t));
+    } else {
+        // int（任意宽度编码）/其它：恒等直通
+        task.ram.push_nv(nv);
+    }
+    Ok(())
+}
+
+/// `Math.imul(a, b)`——JS 32 位回绕乘（hash 链语义依赖，musk agentColors
+/// 的 hash*31 滚动乘）。
+pub fn shim_web_math_imul(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let b_nv = task.ram.pop_nv();
+    let a_nv = task.ram.pop_nv();
+    let to_i32 = |nv: auto_val::NanoValue| -> i32 {
+        if auto_val::is_f64(nv) {
+            auto_val::decode_f64(nv) as i32
+        } else if auto_val::is_f32(nv) {
+            auto_val::decode_f32(nv) as i32
+        } else {
+            auto_val::decode_i32(nv)
+        }
+    };
+    let product = to_i32(a_nv).wrapping_mul(to_i32(b_nv));
+    task.ram.push_nv(auto_val::encode_i32(product));
+    Ok(())
+}
+
+
 /// Sine function (radians)
 #[auto_macros::rust_fn("Math.sin")]
 pub fn shim_math_sin(n: f64) -> f64 {
@@ -2526,6 +2687,29 @@ fn vm_value_to_json(
                         if let Some(fv) = inst.fields.get(i) {
                             map.insert(name.clone(), vm_value_to_json(vm, fv, depth + 1)?);
                         }
+                    }
+                    Ok(serde_json::Value::Object(map))
+                } else if let Some(odata) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                    // PLAN-057 T6：对象字面量（ObjectData）——此前落末尾 else
+                    // 静默序列化成 null（JSON.stringify({a:1}) 现场根因）。
+                    // 键序：ObjectData 是 HashMap 无序，按字典序出键保确定性
+                    // （JS 为插入序——登记为已知观感差，非语义差）。
+                    let mut pairs: Vec<(String, &auto_val::Value)> = odata
+                        .fields
+                        .iter()
+                        .map(|(k, v)| {
+                            let key = match k {
+                                auto_val::ValueKey::Str(s) => s.to_string(),
+                                auto_val::ValueKey::Int(i) => i.to_string(),
+                                auto_val::ValueKey::Bool(b) => b.to_string(),
+                            };
+                            (key, v)
+                        })
+                        .collect();
+                    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+                    let mut map = serde_json::Map::new();
+                    for (key, v) in pairs {
+                        map.insert(key, vm_value_to_json(vm, v, depth + 1)?);
                     }
                     Ok(serde_json::Value::Object(map))
                 } else if let Some(list) = obj.as_any().downcast_ref::<ListData<auto_val::Value>>() {
@@ -8971,6 +9155,39 @@ pub(crate) fn lock_storage_for_test() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 524 三态：process.args() = [程序路径] + CLI 透传参数（List 契约，
+    /// 对齐 a2r 路径消费形态）；无透传 → 仅程序路径。修复前异端 = join 空格
+    /// 字符串（517 W3 "argc=76" 即对 join 串取长度的伪 argc）。
+    #[test]
+    fn process_args_three_states() {
+        crate::set_script_args(vec![]);
+        let a0 = shim_process_args();
+        assert_eq!(a0.len(), 1, "无参 → 仅程序路径");
+        assert!(!a0[0].is_empty(), "argv0 非空（宿主进程路径）");
+
+        crate::set_script_args(vec!["alpha".to_string()]);
+        let a1 = shim_process_args();
+        assert_eq!(a1.len(), 2, "单参 → 程序路径 + 1 透传");
+        assert_eq!(a1[0], a0[0]);
+        assert_eq!(a1[1], "alpha");
+
+        crate::set_script_args(vec![
+            "x.at".to_string(),
+            "--flag".to_string(),
+            "b c".to_string(),
+        ]);
+        let a2 = shim_process_args();
+        assert_eq!(a2.len(), 4, "多参 → 程序路径 + 3 透传");
+        assert_eq!(
+            &a2[1..],
+            &["x.at".to_string(), "--flag".to_string(), "b c".to_string()],
+            "含空格参数原样保留（join 形态不可表达）"
+        );
+
+        // 复位，防跨测试泄漏（script_args 是进程级全局）
+        crate::set_script_args(vec![]);
+    }
 
     /// KD-048「KV 会话恢复断裂」回归：raw localStorage 家族（.at 的
     /// localStorage.* 后端）必须 load-once + write-through 落盘——
