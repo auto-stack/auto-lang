@@ -1,18 +1,22 @@
 ---
 plan_id: PLAN-525
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-oop-batch
 author: [zhaopuming]
 created_at: 2026-09-03
 updated_at: 2026-09-03
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: [GOAL-017]     # 自举（目标语言高阶能力,塔顶必经）
+supersedes_spec_components:
+  - "docs/specs/aavm/project.md: 能力矩阵行改写(Plan 511 后→Plan 525 后,VBool/方法族/is-struct/容器族/闭包/嵌套 fn/pub type/May 全行+延后清单);后续计划队列第②条核销注记(~~已交付~~)"
+  - "docs/specs/aavm/design/divergences.md: 追加 Plan 525 五条(D-VBool-degenerate/D-clo-model/D-nested-fn-scope/D-may-sentinel/D-generic-channel)"
+  - "docs/plans/KNOWN-DEBT-AND-RISKS.md: P474-旁支条目核销(~~已清偿~~ 注记);新增 P525-1..5 五条"
+new_spec_components: []        # 无新 spec 模块——aavm spec 系既有文件扩展(见 supersedes 位点)
+touched_goals:
+  - "GOAL-017: 自举——目标语言高阶能力全波交付(VBool/方法/容器/闭包/May;塔顶前置=泛型+方法达成)"
 
 affects: [aavm]
-current_step: 28
+current_step: 29
 total_steps: 30
 ---
 
@@ -427,7 +431,10 @@ playground-demo/13-methods.at（宿主方法族语义样板））
    新登记(主 a2r 转译洞两处/m4 闭包对拍/生成器+?? 延后/宿主 May 裸值
    发射/塔顶环境敏感);divergences.md 五条 D-VBool-degenerate/
    D-clo-model/D-nested-fn-scope/D-may-sentinel/D-generic-channel。
-29. [ ] 折叠点⑥+复审(/auto-plan:review)→ tf → status: reviewed。
+29. [✅ 已完成 2026-09-03] 复审(/auto-plan:review):7/7 过(标准 3
+   初验失败→位置参构造静默缩面即修+g35 锚→13-methods 本体逐行一致);
+   tf 2 红归属非 525(schema_drift 存量/528 面);遗漏扫描 1 捕获 0 残留;
+   spec-impact 元数据填格 → status: reviewed。
    〔2026-09-03 交接:执行侧 30 步中 1-28 全勾;步骤 29-30 属
    /auto-plan:review 与 /auto-plan:merge 技能范畴,另行触发。终态
    证据:四路 29/29+goldens 29+发射闸 34+M4/M5 各 58+tf 绿+tv 3559+
@@ -435,6 +442,48 @@ playground-demo/13-methods.at（宿主方法族语义样板））
 30. [ ] merge 沉淀归档。
 
 ## 复审记录
+
+**复审人**:zhaopuming(zcode 会话);**时间**:2026-09-03;**方式**:worktree 内逐条重跑+实测(不信勾选框)。
+
+**逐条验收**:
+
+1. ✅ 三面闸+四路全绿——四路 runner **30/30 PASS**(金样 30 含 g26-g35);
+   M4 57 件字节码一致/M5 57 件行为一致/AA2R 发射闸 35 件逐字符/
+   compile 闸绿;判定表已随各折叠点留档(commit 串)。
+2. ✅ VBool——b13/b14/b19 裸 bool 断言恢复(expected.out=true/false
+   实测);P474-旁支 KNOWN-DEBT 条目已核销注记。
+3. ✅(复审修复后)**13-methods.at 本体 aavm 运行与宿主逐行一致**
+   (`counter: 10 / counter + 5: 15 / counter doubled: 20`)——初验失败
+   (`unknown fn: Counter`):位置参构造 `Counter(v)` 系执行期静默缩面
+   (语料当时用花括号形态规避而未登记)→ 复审即修(cg 位置参 NEW_INSTANCE
+   路径+g35 三件套锚,worktree 366fd664b)→ 复测通过。
+4. ✅ 泛型塔顶前置——W0 盘点清单逐项覆盖(注解四位/嵌套两层/方法集恰
+   5,b46 族);泛型 fn/自定义泛型 type/Map=盘点 0 使用,按计划裁剪面
+   不做(非缺件)。
+5. ✅ 闭包(g31/g32 执行 8/42/21)/嵌套 fn(g33,m5 形态绿)/pub type
+   跨模块(corpus_use 007 字节码一致)落地;生成器延后=计划内 W0 裁定。
+6. ✅ May 最小面(g34:30/none 与宿主一致);`??`/`.?` 操作符未实现未
+   覆盖——登记 P525-3(计划目标 5 的"显式延后登记"通道);⑤腿塔顶
+   趋势留档(① 10m4.6s 健康→终局 13m56s 成功+间歇快死复现,步骤 27)。
+7. ✅ cargo tf:2 红**均非 525 归属**——schema_drift_fence(523 存量基
+   线,已注记)+ docs_gen kitchen_sink_page_in_sync(diff 内含 PLAN-528
+   W6 手改注释与再生成分歧,属 528 面);tv 3559/tt 28(=存量 P523-3)。
+
+**遗漏/延后/workaround 扫描**:
+
+- 静默缩面 1 件(位置参构造)——复审捕获并即修+锚定(g35);其余延后
+  (生成器/??/泛型声明面/m4 闭包对拍)全部经登记(P525-1..5)且生成器
+  属计划内 W0 裁定,无未批准拆分。
+- 边界注记:is-struct 变体形态(`Msg.User { f }`)parser 可析而 cg 显式
+  拒绝("unsupported is pattern: struct-cover")——511 待澄清②口径为
+  plain struct,变体形超语料面,拒绝文本清晰(非静默)。
+- 恢复事故注记:.git 丢失后经远程+重建快照恢复(W1-W4 squash 为
+   6eb6d0dce);恢复期 master 侧与快照的并入冲突四件已裁定(526/528/
+   DEBTS 取 master,a2r.rs 取本支);`.worktrees/auto-down` junction 为
+   构建恢复件(非产品)。
+
+**结论**:验收 7/7 通过(1 件经复审修复后过),无阻塞债 → **reviewed**,
+交 /auto-plan:merge。
 
 ## 待澄清事项
 
