@@ -275,13 +275,13 @@ widget App {
                             if .dark_mode {
                                 button {
                                     onclick: .ToggleDark
-                                    style: "h-8 w-8 rounded-lg bg-transparent text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                    style: "h-8 w-8 rounded-lg bg-transparent hover:bg-transparent text-muted-foreground hover:text-foreground flex items-center justify-center"
                                     icon (name: "moon", size: 16)
                                 }
                             } else {
                                 button {
                                     onclick: .ToggleDark
-                                    style: "h-8 w-8 rounded-lg bg-transparent text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                    style: "h-8 w-8 rounded-lg bg-transparent hover:bg-transparent text-muted-foreground hover:text-foreground flex items-center justify-center"
                                     icon (name: "sun", size: 16)
                                 }
                             }
