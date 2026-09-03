@@ -24,7 +24,7 @@ widget App {
     msg {
         Init,
         SelectAlbum(str), SetSearch(str), ApplyFilter,
-        ToggleSort, SetDensity(str),
+        ToggleSort, SetDensity(int),
         OpenPhoto(int), PrevPhoto, NextPhoto, BackToGrid,
         ToggleFav(int),
         ToggleDark, SetAccent(str)
@@ -43,8 +43,8 @@ widget App {
         var search_q str = ""
         var sort_dir str = "desc"           // "desc"=最新在前（默认）| "asc"
         var sort_label str = "最新 ↓"
-        var density str = "3"               // "2" | "3" | "4"
-        var grid_class str = "grid grid-cols-3 gap-3"
+        var density int = 3                 // 网格列数（view 侧三臂静态
+                                            // grid cols: 2/3/4，见网格分支注记）
 
         // ---- 种子平行列表（24 张；唯一真源，handler 按下标读）----
         var p_ids = [
@@ -259,16 +259,16 @@ widget App {
                             row {
                                 style: "items-center bg-card border border-border rounded-lg p-0.5 gap-0.5"
                                 button (text: "2", variant: "ghost") {
-                                    onclick: .SetDensity("2")
-                                    style: if .density == "2" { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
+                                    onclick: .SetDensity(2)
+                                    style: if .density == 2 { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
                                 }
                                 button (text: "3", variant: "ghost") {
-                                    onclick: .SetDensity("3")
-                                    style: if .density == "3" { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
+                                    onclick: .SetDensity(3)
+                                    style: if .density == 3 { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
                                 }
                                 button (text: "4", variant: "ghost") {
-                                    onclick: .SetDensity("4")
-                                    style: if .density == "4" { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
+                                    onclick: .SetDensity(4)
+                                    style: if .density == 4 { "h-7 w-7 text-xs rounded-md bg-accent text-accent-foreground font-bold" } else { "h-7 w-7 text-xs rounded-md text-muted-foreground hover:text-foreground" }
                                 }
                             }
                             spacer { style: "flex-1" }
@@ -313,52 +313,152 @@ widget App {
                         col {
                             style: "flex-1 min-h-0 overflow-y-auto p-4"
                             if .has_view {
-                                col {
-                                    class: .grid_class
-                                    for item in .view_list {
-                                        col {
-                                            style: "rounded-xl overflow-hidden border border-border bg-card hover:border-primary/50 transition-colors"
-                                            // 图片区 = 打开点击区（button 子件形态，028 T12 实证）
-                                            button {
-                                                onclick: .OpenPhoto(item.id)
-                                                // h-auto 覆盖 button 变体默认 h-10
-                                                // （cn/tailwind-merge 后者覆盖前者），
-                                                // 否则图片溢出按钮盖住信息行。
-                                                style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
-                                                col {
-                                                    style: "h-40 w-full overflow-hidden bg-muted"
-                                                    image (src: item.thumb, alt: item.title, fit: "cover") {
-                                                        style: "w-full h-full"
+                                // 密度三臂各用静态语义 grid（028 同款构造）：
+                                // cols prop / grid 元素均静态——VM 的 cols/类
+                                // 动态绑定双不解析（T7 实测），静态臂双端实证。
+                                if .density == 2 {
+                                    grid {
+                                        cols: 2
+                                        gap: 12
+                                        for item in .view_list {
+                                            col {
+                                                style: "rounded-xl overflow-hidden border border-border bg-card hover:border-primary/50 transition-colors"
+                                                // 图片区 = 打开点击区（button 子件形态，028 T12 实证）
+                                                button {
+                                                    onclick: .OpenPhoto(item.id)
+                                                    // h-auto 覆盖 button 变体默认 h-10
+                                                    // （cn/tailwind-merge 后者覆盖前者），
+                                                    // 否则图片溢出按钮盖住信息行。
+                                                    style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+                                                    col {
+                                                        style: "h-40 w-full overflow-hidden bg-muted"
+                                                        image (src: item.thumb, alt: item.title, fit: "cover") {
+                                                            style: "w-full h-full"
+                                                        }
+                                                    }
+                                                }
+                                                // 信息行：标题点击开图 + 收藏按钮（兄弟节点，
+                                                // 无冒泡问题——待澄清①的落地形态）
+                                                row {
+                                                    style: "items-center gap-1 px-3 py-2"
+                                                    button {
+                                                        onclick: .OpenPhoto(item.id)
+                                                        // text-foreground 压过 button 变体
+                                                        // 默认 text-primary-foreground（深底深字）
+                                                        style: "flex-1 min-w-0 h-6 py-0 p-0 border-0 bg-transparent justify-start text-foreground"
+                                                        text item.title { style: "text-sm font-medium truncate" }
+                                                    }
+                                                    if item.fav {
+                                                        button (text: "❤", variant: "ghost") {
+                                                            onclick: .ToggleFav(item.id)
+                                                            style: "shrink-0 h-7 w-7 p-0 text-sm text-red-400"
+                                                        }
+                                                    } else {
+                                                        button (text: "♡", variant: "ghost") {
+                                                            onclick: .ToggleFav(item.id)
+                                                            style: "shrink-0 h-7 w-7 p-0 text-sm text-muted-foreground"
+                                                        }
                                                     }
                                                 }
                                             }
-                                            // 信息行：标题点击开图 + 收藏按钮（兄弟节点，
-                                            // 无冒泡问题——待澄清①的落地形态）
-                                            row {
-                                                style: "items-center gap-1 px-3 py-2"
+                                        }
+                                    }
+                                } else if .density == 3 {
+                                    grid {
+                                        cols: 3
+                                        gap: 12
+                                        for item in .view_list {
+                                            col {
+                                                style: "rounded-xl overflow-hidden border border-border bg-card hover:border-primary/50 transition-colors"
+                                                // 图片区 = 打开点击区（button 子件形态，028 T12 实证）
                                                 button {
                                                     onclick: .OpenPhoto(item.id)
-                                                    // text-foreground 压过 button 变体
-                                                    // 默认 text-primary-foreground（深底深字）
-                                                    style: "flex-1 min-w-0 h-6 py-0 p-0 border-0 bg-transparent justify-start text-foreground"
-                                                    text item.title { style: "text-sm font-medium truncate" }
-                                                }
-                                                if item.fav {
-                                                    button (text: "❤", variant: "ghost") {
-                                                        onclick: .ToggleFav(item.id)
-                                                        style: "shrink-0 h-7 w-7 p-0 text-sm text-red-400"
+                                                    // h-auto 覆盖 button 变体默认 h-10
+                                                    // （cn/tailwind-merge 后者覆盖前者），
+                                                    // 否则图片溢出按钮盖住信息行。
+                                                    style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+                                                    col {
+                                                        style: "h-40 w-full overflow-hidden bg-muted"
+                                                        image (src: item.thumb, alt: item.title, fit: "cover") {
+                                                            style: "w-full h-full"
+                                                        }
                                                     }
-                                                } else {
-                                                    button (text: "♡", variant: "ghost") {
-                                                        onclick: .ToggleFav(item.id)
-                                                        style: "shrink-0 h-7 w-7 p-0 text-sm text-muted-foreground"
+                                                }
+                                                // 信息行：标题点击开图 + 收藏按钮（兄弟节点，
+                                                // 无冒泡问题——待澄清①的落地形态）
+                                                row {
+                                                    style: "items-center gap-1 px-3 py-2"
+                                                    button {
+                                                        onclick: .OpenPhoto(item.id)
+                                                        // text-foreground 压过 button 变体
+                                                        // 默认 text-primary-foreground（深底深字）
+                                                        style: "flex-1 min-w-0 h-6 py-0 p-0 border-0 bg-transparent justify-start text-foreground"
+                                                        text item.title { style: "text-sm font-medium truncate" }
+                                                    }
+                                                    if item.fav {
+                                                        button (text: "❤", variant: "ghost") {
+                                                            onclick: .ToggleFav(item.id)
+                                                            style: "shrink-0 h-7 w-7 p-0 text-sm text-red-400"
+                                                        }
+                                                    } else {
+                                                        button (text: "♡", variant: "ghost") {
+                                                            onclick: .ToggleFav(item.id)
+                                                            style: "shrink-0 h-7 w-7 p-0 text-sm text-muted-foreground"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else if .density == 4 {
+                                    grid {
+                                        cols: 4
+                                        gap: 12
+                                        for item in .view_list {
+                                            col {
+                                                style: "rounded-xl overflow-hidden border border-border bg-card hover:border-primary/50 transition-colors"
+                                                // 图片区 = 打开点击区（button 子件形态，028 T12 实证）
+                                                button {
+                                                    onclick: .OpenPhoto(item.id)
+                                                    // h-auto 覆盖 button 变体默认 h-10
+                                                    // （cn/tailwind-merge 后者覆盖前者），
+                                                    // 否则图片溢出按钮盖住信息行。
+                                                    style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+                                                    col {
+                                                        style: "h-40 w-full overflow-hidden bg-muted"
+                                                        image (src: item.thumb, alt: item.title, fit: "cover") {
+                                                            style: "w-full h-full"
+                                                        }
+                                                    }
+                                                }
+                                                // 信息行：标题点击开图 + 收藏按钮（兄弟节点，
+                                                // 无冒泡问题——待澄清①的落地形态）
+                                                row {
+                                                    style: "items-center gap-1 px-3 py-2"
+                                                    button {
+                                                        onclick: .OpenPhoto(item.id)
+                                                        // text-foreground 压过 button 变体
+                                                        // 默认 text-primary-foreground（深底深字）
+                                                        style: "flex-1 min-w-0 h-6 py-0 p-0 border-0 bg-transparent justify-start text-foreground"
+                                                        text item.title { style: "text-sm font-medium truncate" }
+                                                    }
+                                                    if item.fav {
+                                                        button (text: "❤", variant: "ghost") {
+                                                            onclick: .ToggleFav(item.id)
+                                                            style: "shrink-0 h-7 w-7 p-0 text-sm text-red-400"
+                                                        }
+                                                    } else {
+                                                        button (text: "♡", variant: "ghost") {
+                                                            onclick: .ToggleFav(item.id)
+                                                            style: "shrink-0 h-7 w-7 p-0 text-sm text-muted-foreground"
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            } else {
+} else {
                                 col {
                                     style: "w-full flex flex-col items-center justify-center py-16 gap-2"
                                     text "📷" { style: "text-4xl" }
@@ -580,7 +680,6 @@ widget App {
 
         .SetDensity(d) -> {
             .density = d
-            .grid_class = "grid grid-cols-" + d + " gap-3"
         }
 
         .OpenPhoto(pid) -> {
