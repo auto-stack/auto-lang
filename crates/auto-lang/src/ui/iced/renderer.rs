@@ -13525,6 +13525,18 @@ fn compare_pngs(
                             state.wm_focus_soft(wid);
                         }
                     }
+                    // PLAN-526 T37：标题栏右键菜单开/关（chrome 自绘浮层，
+                    // 见 virtual_window.rs 菜单层；任意 GlobalPress 已清）。
+                    WmCommand::TitleMenuOpen(wid) => {
+                        if let Some(host) = state.host.as_mut() {
+                            host.wm.title_menu = Some(wid);
+                        }
+                    }
+                    WmCommand::TitleMenuClose => {
+                        if let Some(host) = state.host.as_mut() {
+                            host.wm.title_menu = None;
+                        }
+                    }
                     WmCommand::Focus(wid) => state.wm_focus(wid),
                     // Plan 463 T6：窗口循环（Alt+Tab/Ctrl+Tab 热键臂）。
                     WmCommand::CycleWindow => {
@@ -13919,9 +13931,11 @@ fn compare_pngs(
                     crate::ui::iced::broker_surface::broker_client_content(state, wid)
                 {
                     let focused = host.wm.focused == Some(wid);
+                    let title_menu_open = host.wm.title_menu == Some(wid);
                     layers.push(crate::ui::iced::virtual_window::virtual_window_element(
                         vwin,
                         focused,
+                        title_menu_open,
                         broker_client,
                     ));
                     continue;
@@ -13955,8 +13969,12 @@ fn compare_pngs(
                 };
                 let client = client.map(move |m| DM::App(app_id, m));
                 let focused = host.wm.focused == Some(wid);
+                let title_menu_open = host.wm.title_menu == Some(wid);
                 layers.push(crate::ui::iced::virtual_window::virtual_window_element(
-                    vwin, focused, client,
+                    vwin,
+                    focused,
+                    title_menu_open,
+                    client,
                 ));
             }
             // Plan 473 T6：槽位框 chrome 层（虚拟窗之上；中央透明不绘制——
@@ -22604,6 +22622,14 @@ mod tests {
                     t496_walk(c, dbl, clk, texts);
                 }
             }
+            // PLAN-526 T36：popover 下钻（blank 菜单 popover 化后桌面根即
+            // popover 祖先——walk 不下钻则全部交互臂计数为 0）。
+            View::Popover { anchor, content, .. } => {
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    t496_walk(w, dbl, clk, texts);
+                }
+                t496_walk(content, dbl, clk, texts);
+            }
             _ => {}
         }
     }
@@ -22757,6 +22783,13 @@ mod tests {
                 for c in cells {
                     t496_walk_iced(c, dbl, clk, texts);
                 }
+            }
+            // PLAN-526 T36：popover 下钻（同 t496_walk 注）。
+            View::Popover { anchor, content, .. } => {
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    t496_walk_iced(w, dbl, clk, texts);
+                }
+                t496_walk_iced(content, dbl, clk, texts);
             }
             _ => {}
         }

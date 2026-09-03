@@ -10,6 +10,14 @@
 // Win32 适配：cfg(windows) × native-dock feature（ui-iced 隐含启用）双门控——
 // feature 门控使 Windows 上非 ui 构建（默认档）不引入 windows crate 编译开销；
 // 其余情形（非 Windows / 未启用 feature）编译同名 no-op 模块，宿主层无需 cfg。
+/// PLAN-526 T39：主窗最小化探测（win32 实装 / no-op 双形态）。
+#[cfg(all(windows, feature = "native-dock"))]
+pub use win32::main_window_minimized;
+#[cfg(not(all(windows, feature = "native-dock")))]
+pub fn main_window_minimized(_pid: u32) -> bool {
+    false
+}
+
 #[cfg(all(windows, feature = "native-dock"))]
 pub mod win32;
 #[cfg(not(all(windows, feature = "native-dock")))]

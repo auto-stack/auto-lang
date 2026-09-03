@@ -51,46 +51,13 @@ widget DesktopSurface {
         // + oncontextmenu（右键空白菜单；Q6 实测桌面空白无右键闭环）。
         col {
             style: "w-full h-full p-3 ${.__desktop_bg}"
+            // PLAN-526 T36：blank 菜单 popover 化（锚=桌面全域 mouse-area，
+            // Panel snap 钳制回视口；T34：内联面板弃用——挤压布局+双菜单）。
+            popover (open: .blank_menu != "", placement: "bottom-start", ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
             mouse-area (onclick: .BlankPress, oncontextmenu.prevent: .BlankMenu) {
                 style: "w-full h-full"
 
-                // 空白右键菜单（本地面板；blank_menu 空 = 关）。
-                // 样式三件套同图标菜单（glass 降格 parity）。
-                if .blank_menu != "" {
-                    col {
-                        style: "w-44 gap-1 p-1 bg-card/80 border rounded-xl shadow-xl"
-                        button "更换壁纸…" {
-                            onclick: .MenuWallpaperBlank
-                            style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
-                        }
-                        button "显示设置" {
-                            onclick: .OpenSettingsBlank
-                            style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
-                        }
-                    }
-                }
 
-            // 右键菜单（本地面板；menu_id 空 = 关）。三项：打开 /
-            // 从桌面移除 / 更换壁纸（跳设置面板）。
-            // Plan 503：glass 三件套（bg-card/80 + 细边框 + rounded-xl 柔影，
-            // stella 降格 parity——无 blur）+ 菜单项 rounded-lg accent hover。
-            if .menu_id != "" {
-                col {
-                    style: "w-44 gap-1 p-1 bg-card/80 border rounded-xl shadow-xl"
-                    button "打开" {
-                        onclick: .MenuOpen
-                        style: "w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10"
-                    }
-                    button "从桌面移除" {
-                        onclick: .MenuRemove
-                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
-                    }
-                    button "更换壁纸…" {
-                        onclick: .MenuWallpaper
-                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
-                    }
-                }
-            }
 
             // 图标网格（固定网格 v1；列数 8 起步，占位 lucide 图标——
             // pinned 条目自带注册表 icon 优先）。双击 = mouse-area
@@ -117,15 +84,15 @@ widget DesktopSurface {
                                     style: "w-44 gap-1"
                                     button "打开" {
                                         onclick: .MenuOpen
-                                        style: "w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10"
+                                        style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                                     }
                                     button "从桌面移除" {
                                         onclick: .MenuRemove
-                                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
+                                        style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                                     }
                                     button "更换壁纸…" {
                                         onclick: .MenuWallpaper
-                                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
+                                        style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                                     }
                                 }
                             }
@@ -138,6 +105,19 @@ widget DesktopSurface {
             }
             }
         }
+            // blank 菜单内容（锚=全域，Panel snap 钳至视口内）。
+            col {
+                style: "w-44 gap-1"
+                button "更换壁纸…" {
+                    onclick: .MenuWallpaperBlank
+                    style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
+                }
+                button "显示设置" {
+                    onclick: .OpenSettingsBlank
+                    style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
+                }
+            }
+            }
     }
 
     on {
@@ -160,6 +140,9 @@ widget DesktopSurface {
         // 空白点击：关菜单（463 语义——不动 WM 焦点，纯本地态）。
         // PLAN-526 T10：兼清空白菜单。
         .BlankPress -> { .menu_id = ""; .blank_menu = "" }
+        // PLAN-526 T36/T34：popover ondismiss 关闭（点外部/Esc）。
+        .BlankClose -> { .blank_menu = "" }
+        .MenuClose -> { .menu_id = "" }
 
         // PLAN-526 T10：空白菜单动作（消费即收起；动词同图标菜单臂）。
         .MenuWallpaperBlank -> {

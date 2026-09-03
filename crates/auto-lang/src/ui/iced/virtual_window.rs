@@ -55,6 +55,114 @@ fn window_radius(maximized: bool) -> iced::border::Radius {
     }
 }
 
+
+/// PLAN-526 T37：标题栏右键菜单面板（窗口 Stack 顶层右上、标题条下方）。
+/// 项：最大化/还原、最小化、关闭（chrome 既有命令）；发送到下/上一分区
+/// （SendFocusedTo 既有热键臂复用）。左键任意按压经 GlobalPress 关菜单。
+fn title_menu_panel(wid: crate::ui::session::Wid) -> Element<'static, DesktopMessage> {
+    use iced::Padding;
+    let surface = token(crate::ui::style::Color::Surface);
+    let border_c = token(crate::ui::style::Color::Border);
+    let fg = token(crate::ui::style::Color::OnSurface);
+    let item = |label: &'static str, msg: DesktopMessage| -> iced::Element<'static, DesktopMessage> {
+        iced::widget::button(
+            iced::widget::container(iced::widget::text(label).size(12))
+                .width(Length::Fill)
+                .height(Length::Fixed(28.0))
+                .align_y(Alignment::Center)
+                .align_x(Alignment::Start),
+        )
+        .padding(Padding {
+            top: 0.0,
+            right: 10.0,
+            bottom: 0.0,
+            left: 10.0,
+        })
+        .style(move |_t, _st| iced::widget::button::Style {
+            background: Some(Color::TRANSPARENT.into()),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: fg,
+            ..Default::default()
+        })
+        .on_press(msg)
+        .into()
+    };
+    let divider = || -> iced::Element<'static, DesktopMessage> {
+        iced::widget::container(iced::widget::Space::new().height(Length::Fixed(0.0)))
+            .width(Length::Fill)
+            .height(Length::Fixed(1.0))
+            .style(move |_t| Style {
+                background: Some(Color::from_rgba(fg.r, fg.g, fg.b, 0.15).into()),
+                ..Default::default()
+            })
+            .into()
+    };
+    let menu = iced::widget::column![
+        item(
+            "最大化 / 还原",
+            DesktopMessage::Wm(WmCommand::ToggleMaximize(wid)),
+        ),
+        item("最小化", DesktopMessage::Wm(WmCommand::Minimize(wid))),
+        item("关闭", DesktopMessage::Wm(WmCommand::Close(wid))),
+        divider(),
+        item(
+            "发送到下一分区",
+            DesktopMessage::Wm(WmCommand::SendFocusedTo(
+                crate::ui::session::WorkspaceStep::Next,
+            )),
+        ),
+        item(
+            "发送到上一分区",
+            DesktopMessage::Wm(WmCommand::SendFocusedTo(
+                crate::ui::session::WorkspaceStep::Prev,
+            )),
+        ),
+    ]
+    .spacing(2.0)
+    .padding(Padding {
+        top: 4.0,
+        right: 4.0,
+        bottom: 4.0,
+        left: 4.0,
+    });
+    let panel = iced::widget::container(menu)
+        .width(Length::Fixed(180.0))
+        .style(move |_t| Style {
+            background: Some(Color::from_rgba(
+                surface.r,
+                surface.g,
+                surface.b,
+                0.98,
+            ).into()),
+            border: Border {
+                color: border_c,
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.4),
+                offset: Vector::new(0.0, 6.0),
+                blur_radius: 16.0,
+            },
+            ..Default::default()
+        });
+    // 定位：标题条下方、右收边 8px（与三键对齐）。
+    iced::widget::container(panel)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(Padding {
+            top: TITLEBAR_H + 4.0,
+            right: 8.0,
+            bottom: 0.0,
+            left: 0.0,
+        })
+        .align_x(Alignment::End)
+        .align_y(Alignment::Start)
+        .into()
+}
 /// 语义色快捷访问（跟随 iced_adapter 的 dark/accent thread-local）。
 fn token(c: crate::ui::style::Color) -> Color {
     crate::ui::style::iced_adapter::resolve_semantic_rgb(&c)
@@ -154,6 +262,7 @@ fn title_button(glyph: &'static str, size: f32, msg: DesktopMessage) -> Element<
 pub fn virtual_window_element<'a>(
     vwin: &VWinState,
     focused: bool,
+    title_menu_open: bool,
     client: Element<'a, DesktopMessage>,
 ) -> Element<'a, DesktopMessage> {
     let rect = *vwin.rect.borrow();
@@ -191,7 +300,9 @@ pub fn virtual_window_element<'a>(
         .height(Length::Fixed(TITLEBAR_H)),
     )
     .interaction(iced::mouse::Interaction::Idle)
-    .on_press(DesktopMessage::Wm(WmCommand::StartDrag { wid }));
+    .on_press(DesktopMessage::Wm(WmCommand::StartDrag { wid }))
+    // PLAN-526 T37：右键 → 标题栏菜单（最大化/最小化/关闭/送分区）。
+    .on_right_press(DesktopMessage::Wm(WmCommand::TitleMenuOpen(wid)));
 
     // --- 客户区（点击聚焦 + 阻断穿透；App 组件优先捕获不受影响）---
     // Plan 518 G6：底色乘 Transparency 档位 alpha（内容文字照常绘制其上）。
@@ -300,6 +411,13 @@ pub fn virtual_window_element<'a>(
             ..Default::default()
         });
     layers.push(ring.into());
+
+    // PLAN-526 T37：标题栏右键菜单浮层（窗口 Stack 顶层；chrome 自绘，
+    // 不经 .at——标题栏本为 I4 chrome 域）。任意左键按压经 GlobalPress
+    // 清 title_menu 关闭（点外部关语义，T29 对齐）。
+    if title_menu_open {
+        layers.push(title_menu_panel(wid));
+    }
 
     // 定位包裹：padding 出窗口原点，Start/Start 对齐（Stack 每层布局原点
     // 在桌面左上，见 T1 spike 记录）。
