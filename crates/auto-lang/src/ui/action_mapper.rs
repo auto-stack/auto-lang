@@ -152,6 +152,22 @@ fn resolve_action_from_view(
     input_map: &HashMap<String, String>,
 ) -> Result<ResolvedAction, ActionError> {
     match action {
+        // PLAN-043 T6: scroll 经 mcp_server 合成事件直落 iced，不经
+        // mapper 的 handler 解析通道。
+        UiActionType::Scroll => {
+            return Err(ActionError::InvalidAction {
+                action: action.clone(),
+                component_kind: target.kind.clone(),
+            });
+        }
+        // PLAN-043 T10: drag 同 scroll——mcp_server 前置分支按 widget 寻址
+        // 连发 handler，不经 mapper。
+        UiActionType::Drag => {
+            return Err(ActionError::InvalidAction {
+                action: action.clone(),
+                component_kind: target.kind.clone(),
+            });
+        }
         UiActionType::Press => {
             // Only valid for Button
             if target.kind != "Button" {

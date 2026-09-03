@@ -250,6 +250,59 @@ impl NavigationRailItem {
 // ============================================================================
 // Abstract view node - generic over message type M
 // ============================================================================
+
+/// Plan 043 T1: Scrollable 滚动事件测量（`View::Scrollable::on_scroll` 载荷）。
+///
+/// iced `Viewport` 的直接映射：绝对偏移 + 视口/内容两矩形。DSL 侧三测量
+/// （scrollTop/scrollHeight/clientHeight）分别对应 `offset_y`/`content_h`/
+/// `viewport_h`。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScrollMetrics {
+    /// 水平滚动偏移（px，左为 0）
+    pub offset_x: f32,
+    /// 垂直滚动偏移（px，顶为 0）——scrollTop
+    pub offset_y: f32,
+    /// 视口宽（px）——clientWidth
+    pub viewport_w: f32,
+    /// 视口高（px）——clientHeight
+    pub viewport_h: f32,
+    /// 内容宽（px）——scrollWidth
+    pub content_w: f32,
+    /// 内容高（px）——scrollHeight
+    pub content_h: f32,
+}
+
+/// Plan 043 T1: Scrollable 滚动读出回调（mouse-area `PointerMoveHandler`
+/// 同款 newtype 形态）。
+///
+/// 收 [`ScrollMetrics`] 六测量返回宿主消息。Arc<dyn Fn> 使其可跨消息类型
+/// 包装（map_msg / renderer 侧 DynamicMessage→IcedMessage 转换），fn 指针
+/// （Slider on_change）做不到这一点——VM 轨 view 树正是
+/// `View<DynamicMessage>` 经 `convert_view_messages` 转 `View<IcedMessage>`。
+#[derive(Clone)]
+pub struct ScrollCallback<M> {
+    callback: Arc<dyn Fn(ScrollMetrics) -> M + Send + Sync>,
+}
+
+impl<M> std::fmt::Debug for ScrollCallback<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScrollCallback").finish()
+    }
+}
+
+impl<M> ScrollCallback<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(ScrollMetrics) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f) }
+    }
+
+    pub fn call(&self, metrics: ScrollMetrics) -> M {
+        (self.callback)(metrics)
+    }
+}
+
 ///
 /// This enum represents the abstract UI tree that can be adapted to different backends.
 /// Messages are stored directly (not as Option) for simpler mapping to Auto language.
@@ -417,6 +470,14 @@ pub enum View<M: Clone + Debug> {
         /// 主列表滚动区。VM 端据此(且仅据此)挂 blocklist_scroll id;块内
         /// max-h 滚动区不再共享同 id(snap_to_end 曾误命中块内滚动区)。
         auto_scroll: bool,
+        /// Plan 043 T1: 滚动位置写入——DSL state 绑定求值出的绝对像素偏移
+        /// (renderer 面经 iced scroll_to 操作落盘;值变化才触发,见
+        /// build_scrollable 的 pending 队列)。None = 不写入。
+        offset: Option<(f32, f32)>,
+        /// Plan 043 T1: 滚动位置读出——滚动事件回调,Viewport 六测量随
+        /// 消息带出宿主(PointerMoveHandler 同款 newtype;可跨消息类型
+        /// 包装,VM 轨 DynamicMessage→IcedMessage 转换不丢)。
+        on_scroll: Option<ScrollCallback<M>>,
     },
 
     /// Radio button with optional styling
@@ -580,6 +641,13 @@ pub enum View<M: Clone + Debug> {
         on_exit: Option<M>,
         on_double_click: Option<M>,
         on_click: Option<M>,
+        /// PLAN-526 T10：右键事件（`oncontextmenu` → iced mouse_area
+        /// on_right_press；desktop.at 桌面空白/任务栏右键菜单挂点）。
+        on_context_menu: Option<M>,
+        /// PLAN-043 T9: onmouseup → iced mouse_area on_release（拖拽收尾
+        /// 原语；CustomScrollbar 拖拽发射面）。on_click 槽语义 = on_press
+        ///（Plan 498 近似 + onmousedown 优先，见 aura 臂注）。
+        on_release: Option<M>,
         on_move: Option<PointerMoveHandler<M>>,
         logical_extent: Option<(f32, f32)>,
         style: Option<Style>,
@@ -1301,6 +1369,8 @@ impl<M: Clone + Debug> View<M> {
             height: None,
             style: None,  // ✅ NEW: style field
             auto_scroll: false,
+            offset: None,
+            on_scroll: None,
         }
     }
 
@@ -1443,12 +1513,14 @@ impl<M: Clone + Debug> View<M> {
             // Plan 496 M5: 增 on_double_click 映射。
             // Plan 498 M0: 增 on_click 映射。
             // Plan 499 M2: 增 on_move 复合映射(handler 产出 M 经 f 转 N)。
-            View::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => View::MouseArea {
+            View::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => View::MouseArea {
                 content: Box::new(content.map_msg_with_arc(f)),
                 on_enter: on_enter.map(|m| f(m)),
                 on_exit: on_exit.map(|m| f(m)),
                 on_double_click: on_double_click.map(|m| f(m)),
                 on_click: on_click.map(|m| f(m)),
+                on_context_menu: on_context_menu.map(|m| f(m)),
+                on_release: on_release.map(|m| f(m)),
                 on_move: on_move.map(|h| {
                     let f = std::sync::Arc::clone(f);
                     PointerMoveHandler::new(move |x, y| f(h.call(x, y)))
@@ -1561,13 +1633,22 @@ impl<M: Clone + Debug> View<M> {
                 style,
                 onclick: onclick.map(|m| f(m)),
             },
-            View::Scrollable { child, width, height, style, auto_scroll } => View::Scrollable {
-                child: Box::new(child.map_msg_with_arc(f)),
-                width,
-                height,
-                style,
-                auto_scroll,
-            },
+            View::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
+                // Plan 043 T1: offset 透传;on_scroll 为 ScrollCallback
+                // newtype,可包装换消息类型(PointerMoveHandler 同款)。
+                View::Scrollable {
+                    child: Box::new(child.map_msg_with_arc(f)),
+                    width,
+                    height,
+                    style,
+                    auto_scroll,
+                    offset,
+                    on_scroll: on_scroll.map(|cb| {
+                        let f = std::sync::Arc::clone(f);
+                        ScrollCallback::new(move |m| f(cb.call(m)))
+                    }),
+                }
+            }
             View::Radio { label, is_selected, on_select, style } => View::Radio {
                 label,
                 is_selected,
@@ -1670,6 +1751,10 @@ pub struct ViewScrollableBuilder<M: Clone + Debug> {
     height: Option<u16>,
     style: Option<Style>,  // ✅ NEW: Unified styling support
     auto_scroll: bool,
+    /// Plan 043 T1: 滚动位置写入绑定（绝对像素偏移）。
+    offset: Option<(f32, f32)>,
+    /// Plan 043 T1: 滚动位置读出回调。
+    on_scroll: Option<ScrollCallback<M>>,
 }
 
 impl<M: Clone + Debug> ViewScrollableBuilder<M> {
@@ -1703,6 +1788,21 @@ impl<M: Clone + Debug> ViewScrollableBuilder<M> {
         self
     }
 
+    /// Plan 043 T1: 绑定滚动位置写入（绝对像素偏移；值变化才触发滚动）。
+    pub fn offset(mut self, offset: (f32, f32)) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Plan 043 T1: 绑定滚动位置读出（滚动事件携带六测量回宿主消息）。
+    pub fn on_scroll<F>(mut self, f: F) -> Self
+    where
+        F: Fn(ScrollMetrics) -> M + Send + Sync + 'static,
+    {
+        self.on_scroll = Some(ScrollCallback::new(f));
+        self
+    }
+
     /// Build the scrollable view
     pub fn build(self) -> View<M> {
         View::Scrollable {
@@ -1711,6 +1811,8 @@ impl<M: Clone + Debug> ViewScrollableBuilder<M> {
             height: self.height,
             style: self.style,
             auto_scroll: self.auto_scroll,
+            offset: self.offset,
+            on_scroll: self.on_scroll,
         }
     }
 }
@@ -2728,6 +2830,50 @@ mod tests {
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Border)));
             }
             _ => panic!("Expected View::Input"),
+        }
+    }
+
+    #[test]
+    fn test_scrollable_offset_binding() {
+        // Plan 043 T1: offset 绑定写入——builder 面求值出的 (x,y) 落进
+        // View::Scrollable.offset，map_msg 换消息类型时原值透传。
+        let child = View::text("scroll body");
+        let view: TestView = View::scrollable(child)
+            .offset((0.0, 128.5))
+            .build();
+        match &view {
+            View::Scrollable { offset, .. } => assert_eq!(*offset, Some((0.0, 128.5))),
+            _ => panic!("Expected View::Scrollable"),
+        }
+        let mapped = view.map_msg(|m| m);
+        match mapped {
+            View::Scrollable { offset: Some((x, y)), .. } => {
+                assert!((x - 0.0).abs() < f32::EPSILON && (y - 128.5).abs() < f32::EPSILON);
+            }
+            _ => panic!("Expected View::Scrollable with offset"),
+        }
+    }
+
+    #[test]
+    fn test_scrollable_on_scroll_callback() {
+        // Plan 043 T1: on_scroll 读出回调——fn 指针收 ScrollMetrics 六测量
+        // 构造消息（Slider on_change 同款先例）。
+        #[derive(Debug, Clone, PartialEq)]
+        enum ScrollMsg { Scrolled(f32, f32, f32) }
+        let child = View::<ScrollMsg>::text("scroll body");
+        let view = View::scrollable(child)
+            .on_scroll(|m: ScrollMetrics| ScrollMsg::Scrolled(m.offset_y, m.content_h, m.viewport_h))
+            .build();
+        match view {
+            View::Scrollable { on_scroll: Some(cb), .. } => {
+                let msg = cb.call(ScrollMetrics {
+                    offset_x: 0.0, offset_y: 42.0,
+                    viewport_w: 100.0, viewport_h: 200.0,
+                    content_w: 100.0, content_h: 800.0,
+                });
+                assert_eq!(msg, ScrollMsg::Scrolled(42.0, 800.0, 200.0));
+            }
+            _ => panic!("Expected View::Scrollable with on_scroll"),
         }
     }
 

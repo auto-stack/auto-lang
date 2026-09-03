@@ -102,6 +102,10 @@ pub mod render_support;
 #[cfg(feature = "autodown")]
 pub mod autodown_render;
 
+// PLAN-041 T1: 块家族注册表——chrome/样式单源，只读臂与编辑壳共同消费。
+#[cfg(feature = "autodown")]
+pub mod autodown_blocks;
+
 // Plan 019 Phase 3: autodown 文档编辑壳（cosmic-text 块缓冲 + 焦点导航）。
 // 双 feature 门控：块模型单源（autodown）× cosmic-text 栈（code-editor）。
 #[cfg(all(feature = "autodown", feature = "code-editor"))]

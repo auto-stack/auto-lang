@@ -213,7 +213,10 @@ pub(crate) struct NotificationEntry {
 /// `shell.notes.0..9`，见 renderer `persist_notes`/`restore_notifications`）。
 pub(crate) const NOTES_CAP: usize = 50;
 
-pub struct DesktopState {
+    pub struct DesktopState {
+    /// PLAN-526 T18：分区切换预览面板 transient 收起时点（热键切换置位；
+    /// ServiceTick 到期写 `switcher_open="0"` 收起。None = 无倒计时）。
+    pub switcher_until: Cell<Option<std::time::Instant>>,
     /// 裁定 M1：原 `LAST_MODIFIERS` thread-local 与 DynamicState.current_modifiers
     /// 合并为唯一事实源；读点经访问器替换。
     pub current_modifiers: RefCell<iced::keyboard::Modifiers>,
@@ -370,6 +373,9 @@ impl DesktopState {
                 "015-notes".to_string(),
             ],
             hole_mode: false,
+            // PLAN-526 T18：分区切换面板 transient 收起时点（热键切换置位；
+            // ServiceTick 到期写 `switcher_open="0"`。None = 无倒计时）。
+            switcher_until: std::cell::Cell::new(None),
             osconfig_status: crate::ui::osconfig_daemon::DaemonStatus::default(),
             osconfig_daemon_probe: None,
             back_keepalive: None,
@@ -504,6 +510,13 @@ pub enum WmCommand {
     /// 宿主解析 focused + 目标 = (current ± 1 + N) % N 后落
     /// `move_win_to_workspace`（见 [`WorkspaceStep`]）。
     SendFocusedTo(WorkspaceStep),
+    /// PLAN-526 T1：最小化到任务栏（标题栏 `–` 键/右键菜单/总线 `win_min`）——
+    /// 窗隐藏、任务栏 icon 保留，`focus` 即还原。
+    Minimize(Wid),
+    /// PLAN-526 T1：最大化/还原切换（标题栏 `▢` 键/右键菜单）——最大化 =
+    /// 桌面可用区（viewport 扣任务栏，`usable_rect` 同款），原 rect 存
+    /// [`VWinState::restore_rect`]；拖拽/缩放交互即退出最大化。
+    ToggleMaximize(Wid),
 }
 
 /// Plan 472 T2：workspace 分区（463 §3.6 转正实施）。成员关系不设二级列表
@@ -546,6 +559,12 @@ pub struct VWinState {
     pub fit_enabled: Cell<bool>,
     pub fit_user_locked: Cell<bool>,
     pub fit_dirty: Cell<bool>,
+    /// PLAN-526 T1：最小化（窗隐藏、任务栏 icon 保留；`focus` 即还原）。
+    pub minimized: Cell<bool>,
+    /// PLAN-526 T1：最大化真状态（替代 462 装配层"rect≥98% 桌面"派生判定）。
+    pub maximized: Cell<bool>,
+    /// PLAN-526 T1：最大化前矩形（还原落点；`toggle_maximize_win` 存取）。
+    pub restore_rect: RefCell<Option<iced::Rectangle>>,
 }
 
 /// 最小窗口管理器状态（Plan 462 T2）。位置/焦点/z 的唯一事实源；
@@ -636,6 +655,9 @@ impl WmState {
                 fit_enabled: Cell::new(false),
                 fit_user_locked: Cell::new(false),
                 fit_dirty: Cell::new(false),
+                minimized: Cell::new(false),
+                maximized: Cell::new(false),
+                restore_rect: RefCell::new(None),
             },
         );
         self.z_order.push(wid);
@@ -767,6 +789,10 @@ impl WmState {
             if v.workspace != self.current_workspace {
                 return None;
             }
+            // PLAN-526 T1：最小化窗不参与命中（已隐藏）。
+            if v.minimized.get() {
+                return None;
+            }
             let r = v.rect.borrow();
             (x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height)
                 .then_some(*w)
@@ -896,6 +922,10 @@ impl WmState {
         if !self.wins.contains_key(&wid) {
             return;
         }
+        // PLAN-526 T1：焦点即还原——任务栏 icon 点击最小化窗 = 取消最小化。
+        if let Some(v) = self.wins.get(&wid) {
+            v.minimized.set(false);
+        }
         self.focused = Some(wid);
         self.z_order.retain(|w| *w != wid);
         self.z_order.push(wid);
@@ -905,6 +935,64 @@ impl WmState {
         if let Some(v) = self.wins.get_mut(&wid) {
             v.z = self.next_z;
         }
+    }
+
+    /// PLAN-526 T1：最小化窗口（隐藏；焦点回退限当前分区的最顶非最小窗，
+    /// 回退语义同 `remove_win`）。进行中的拖拽/缩放交互一并取消。
+    pub fn minimize_win(&mut self, wid: Wid) {
+        let Some(v) = self.wins.get(&wid) else { return };
+        v.minimized.set(true);
+        if self.interaction.map(|i| i.wid()) == Some(wid) {
+            self.interaction = None;
+        }
+        if self.focused == Some(wid) {
+            self.focused = self
+                .wins_in_workspace(self.current_workspace)
+                .into_iter()
+                .rev()
+                .find(|w| {
+                    *w != wid && self.wins.get(w).is_some_and(|v| !v.minimized.get())
+                });
+        }
+    }
+
+    /// PLAN-526 T1：最大化/还原切换。`workarea` = viewport 扣任务栏的桌面
+    /// 可用区（Session 层按 host_viewport 经 `usable_rect` 现算传入）。
+    /// 最大化即聚焦（标准 WM 语义）。
+    pub fn toggle_maximize_win(&mut self, wid: Wid, workarea: iced::Rectangle) {
+        if !self.wins.contains_key(&wid) {
+            return;
+        }
+        self.focus(wid);
+        let v = &self.wins[&wid];
+        if v.maximized.get() {
+            if let Some(r) = v.restore_rect.borrow_mut().take() {
+                *v.rect.borrow_mut() = r;
+            }
+            v.maximized.set(false);
+        } else {
+            *v.restore_rect.borrow_mut() = Some(*v.rect.borrow());
+            *v.rect.borrow_mut() = workarea;
+            v.maximized.set(true);
+        }
+    }
+
+    /// PLAN-526 T1：拖拽/缩放启动时退出最大化——drag 回 restore_rect
+    /// （拖动最大化窗即还原并跟手），resize 仅清标志（新 rect 以缩放
+    /// 结果为准，不回跳）。
+    pub fn unmaximize_for_interaction(&mut self, wid: Wid, restore_rect: bool) {
+        let Some(v) = self.wins.get(&wid) else { return };
+        if !v.maximized.get() {
+            return;
+        }
+        if restore_rect {
+            if let Some(r) = v.restore_rect.borrow_mut().take() {
+                *v.rect.borrow_mut() = r;
+            }
+        } else {
+            v.restore_rect.borrow_mut().take();
+        }
+        v.maximized.set(false);
     }
 
     /// 全局光标移动：进行中的交互落位（拖拽平移 / 八向缩放），返回是否消费。
@@ -930,24 +1018,36 @@ impl WmState {
                 const MIN_H: f32 = 120.0;
                 if let Some(v) = self.wins.get(&wid) {
                     let mut r = v.rect.borrow_mut();
+                    let right = start_rect.x + start_rect.width;
+                    let bottom = start_rect.y + start_rect.height;
                     let mut left = start_rect.x;
                     let mut top = start_rect.y;
                     let mut width = start_rect.width;
                     let mut height = start_rect.height;
+                    // PLAN-526 T5：家族各自钳制——East/South 增长不越出宿主
+                    // 视口右/下缘；West/North 反向增长 left/top 不为负
+                    // （462 起只有 MIN 下限，实测可缩放出桌面）。可用区
+                    // 紧张时视口约束优先于 MIN 下限（min 下限 1.0 防退化）。
                     if matches!(edge, ResizeEdge::East | ResizeEdge::NorthEast | ResizeEdge::SouthEast) {
-                        width = (start_rect.width + dx).max(MIN_W);
+                        width = (start_rect.width + dx)
+                            .max(MIN_W)
+                            .min((host.width - start_rect.x).max(1.0));
                     }
                     if matches!(edge, ResizeEdge::South | ResizeEdge::SouthWest | ResizeEdge::SouthEast) {
-                        height = (start_rect.height + dy).max(MIN_H);
+                        height = (start_rect.height + dy)
+                            .max(MIN_H)
+                            .min((host.height - start_rect.y).max(1.0));
                     }
                     if matches!(edge, ResizeEdge::West | ResizeEdge::NorthWest | ResizeEdge::SouthWest) {
-                        let right = start_rect.x + start_rect.width;
-                        width = (start_rect.width - dx).max(MIN_W);
+                        width = (start_rect.width - dx)
+                            .max(MIN_W)
+                            .min(right.max(1.0));
                         left = right - width;
                     }
                     if matches!(edge, ResizeEdge::North | ResizeEdge::NorthWest | ResizeEdge::NorthEast) {
-                        let bottom = start_rect.y + start_rect.height;
-                        height = (start_rect.height - dy).max(MIN_H);
+                        height = (start_rect.height - dy)
+                            .max(MIN_H)
+                            .min(bottom.max(1.0));
                         top = bottom - height;
                     }
                     r.x = left;
@@ -1048,6 +1148,16 @@ pub enum DesktopCommand {
     /// 执行臂 set_dark_mode 即时生效 + storage `shell.appearance.theme`
     /// 持久化 + 全 App 视图标脏（语义 token 构建期解析，需重建换色）。
     SetTheme(bool),
+    /// PLAN-526 T8：窗口最小化（dock 右键菜单 `win_min\t<wid>`；落
+    /// `WmCommand::Minimize` 同款状态机——窗隐藏、任务栏保留）。
+    MinWindow(Wid),
+    /// PLAN-526 T11：桌面退出（dock 电源键确认面板 `shutdown` 无参动词）。
+    /// 执行臂恢复 native 槽位 + 停机 broker + 退出（ExitDesktop 同体，
+    /// Escape 热键已删——T13——本动词是唯一图形退出入口）。
+    Shutdown,
+    /// PLAN-526 T14：壁纸热切换（settings.at 壁纸卡 `set_wallpaper\t<path>`；
+    /// 执行臂 storage 持久化 + 会话字段回读 + 快照失效，仿 SetTheme 全链）。
+    SetWallpaper(String),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1155,6 +1265,14 @@ impl DesktopCommand {
             // Plan 487 M4：协议 v1.4 设置动词（无参 summon + 两驱动动词；
             // 位置值 top/bottom、开关值 1/0——.at 控件直书 \t 双轨兼容）。
             DesktopCommand::OpenSettings => "open_settings".to_string(),
+            // PLAN-526 T8/T11/T14：win_min / shutdown / set_wallpaper。
+            DesktopCommand::MinWindow(wid) => {
+                format!("win_min{}{}", Self::FIELD_SEP, wid.0)
+            }
+            DesktopCommand::Shutdown => "shutdown".to_string(),
+            DesktopCommand::SetWallpaper(path) => {
+                format!("set_wallpaper{}{}", Self::FIELD_SEP, path)
+            }
             DesktopCommand::SetDockPosition(top) => {
                 format!(
                     "set_dock_position{}{}",
@@ -1209,6 +1327,11 @@ impl DesktopCommand {
                 // Plan 487 M4：v1.4 无参动词前置（open 前缀不互吞）。
                 if rec == "open_settings" {
                     return Some(DesktopCommand::OpenSettings);
+                }
+                // PLAN-526 T11：无参退出动词（电源键确认面板；前置防与
+                // 带参动词互吞）。
+                if rec == "shutdown" {
+                    return Some(DesktopCommand::Shutdown);
                 }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
@@ -1277,6 +1400,13 @@ impl DesktopCommand {
                         "light" => Some(DesktopCommand::SetTheme(false)),
                         _ => None,
                     },
+                    // PLAN-526 T8/T14：win_min / set_wallpaper（arg 直传）。
+                    "win_min" => {
+                        arg.parse::<u64>().ok().map(|w| DesktopCommand::MinWindow(Wid(w)))
+                    }
+                    "set_wallpaper" if !arg.is_empty() => {
+                        Some(DesktopCommand::SetWallpaper(arg.to_string()))
+                    }
                     _ => None,
                 }
             })
@@ -1751,6 +1881,25 @@ impl DesktopSession {
         if let Some(host) = self.host.as_mut() {
             host.wm.focus(wid);
         }
+    }
+
+    /// PLAN-526 T1：最小化虚拟窗口（标题栏 `–` 键/右键菜单/总线 `win_min`）。
+    pub fn wm_minimize(&mut self, wid: Wid) {
+        if let Some(host) = self.host.as_mut() {
+            host.wm.minimize_win(wid);
+        }
+    }
+
+    /// PLAN-526 T1：最大化/还原切换（可用区 = host viewport 扣任务栏，
+    /// 与布局引擎同一 `usable_rect` 口径）。
+    pub fn wm_toggle_maximize(&mut self, wid: Wid) {
+        let viewport = self.host_viewport();
+        let workarea = crate::ui::layout::usable_rect(
+            viewport,
+            crate::ui::layout::ReservedEdges::taskbar(),
+        );
+        let Some(host) = self.host.as_mut() else { return };
+        host.wm.toggle_maximize_win(wid, workarea);
     }
 
     /// Plan 463 T6：窗口循环聚焦（桌面热键；见 [`WmState::cycle_focus`]）。
@@ -3348,7 +3497,10 @@ impl HotkeyTable {
     /// Ctrl+Space + 别名 Ctrl+Alt+Space（IME 兜底）。
     pub fn builtin() -> Self {
         let mut map = std::collections::HashMap::new();
-        map.insert(HotkeyAction::ExitDesktop, KeySpec { ctrl: false, alt: false, shift: false, key: KeyName::Escape });
+        // PLAN-526 T13：Escape→ExitDesktop 退役（实测全屏桌面 Esc 即退
+        // 进程，误触面过大）。图形退出入口 = dock 电源键确认面板（T11
+        // `shutdown` 动词）；storage `shell.keys.exit_desktop` 仍可自定义
+        // 复活（490 覆盖语义不变——load_hotkey_overrides 保留该动作位）。
         map.insert(HotkeyAction::CycleSwitcher, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::Tab });
         map.insert(HotkeyAction::SummonLauncher, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::Space });
         map.insert(HotkeyAction::SetLayoutGrid, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::G });
@@ -3764,6 +3916,97 @@ mod tests {
     }
 
     #[test]
+    fn wm_minimize_and_maximize_state_machine() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        let wid = ds.wm_add_win(
+            app,
+            "V".into(),
+            iced::Rectangle::new(iced::Point::new(10.0, 20.0), iced::Size::new(300.0, 200.0)),
+        );
+        let app2 = insert_app(&mut ds, "V2");
+        let wid2 = ds.wm_add_win(
+            app2,
+            "V2".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
+        ds.wm_focus(wid);
+
+        // 最小化：置位 + 焦点回退到同分区最顶非最小窗 + 命中失效。
+        ds.wm_minimize(wid);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let v = host.wm.wins.get(&wid).unwrap();
+            assert!(v.minimized.get(), "最小化置位");
+            // (200,150) 仅在 wid 矩形内（wid2 为 0,0,100,100）——最小化后
+            // 该点不再命中 wid。
+            assert_eq!(host.wm.hit_test(200.0, 150.0), None, "最小化窗不参与命中");
+        }
+        assert_eq!(ds.wm_focused_app(), Some(app2), "焦点回退顶窗");
+
+        // focus 即还原（任务栏 icon 点击 = 取消最小化并置顶）。
+        ds.wm_focus(wid);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert!(
+                !host.wm.wins.get(&wid).unwrap().minimized.get(),
+                "focus 还原"
+            );
+            assert_eq!(host.wm.focused, Some(wid));
+        }
+
+        // 最大化：rect → 可用区（viewport 800 高扣任务栏 48 = 752），原矩形存档。
+        ds.wm_toggle_maximize(wid);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let v = host.wm.wins.get(&wid).unwrap();
+            assert!(v.maximized.get(), "最大化置位");
+            let r = v.rect.borrow();
+            assert_eq!((r.x, r.y, r.width, r.height), (0.0, 0.0, 1280.0, 752.0), "rect=可用区");
+            assert_eq!(v.restore_rect.borrow().unwrap().width, 300.0, "原矩形存档");
+        }
+
+        // 还原：rect 回存档，标志翻转。
+        ds.wm_toggle_maximize(wid);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let v = host.wm.wins.get(&wid).unwrap();
+            assert!(!v.maximized.get(), "还原后标志清零");
+            let r = v.rect.borrow();
+            assert_eq!((r.width, r.height), (300.0, 200.0), "rect 回存档");
+            assert!(v.restore_rect.borrow().is_none(), "存档清空");
+        }
+
+        // 拖拽退出最大化：回 restore_rect（拖动最大化窗即还原跟手）。
+        ds.wm_toggle_maximize(wid);
+        ds.host.as_mut().unwrap().wm.unmaximize_for_interaction(wid, true);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let v = host.wm.wins.get(&wid).unwrap();
+            assert!(!v.maximized.get());
+            assert_eq!(v.rect.borrow().width, 300.0, "drag 回原矩形");
+        }
+
+        // 缩放退出最大化：仅清标志（新 rect 以缩放结果为准）。
+        ds.wm_toggle_maximize(wid);
+        ds.host.as_mut().unwrap().wm.unmaximize_for_interaction(wid2, false);
+        ds.host.as_mut().unwrap().wm.unmaximize_for_interaction(wid, false);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let v = host.wm.wins.get(&wid).unwrap();
+            assert!(!v.maximized.get(), "resize 清标志");
+            assert_eq!(v.rect.borrow().height, 752.0, "resize 不回跳原矩形");
+            assert!(v.restore_rect.borrow().is_none(), "存档清空");
+        }
+
+        // 最小化窗不在焦点回退链里复现（minimize 后 cycle 不命中）。
+        ds.wm_minimize(wid);
+        assert_eq!(ds.wm_focused_app(), Some(app2));
+        ds.wm_remove_win(wid);
+        assert_eq!(ds.wm_focused_app(), Some(app2));
+    }
+
+    #[test]
     fn wm_split_views_target_vwin_fields() {
         let mut ds = desktop_session_with_host();
         let app = insert_app(&mut ds, "V");
@@ -3829,6 +4072,45 @@ mod tests {
             assert_eq!(r.width, 340.0, "W 缩放右缘不动");
         }
         ds.host.as_mut().unwrap().wm.end_interaction();
+
+        // PLAN-526 T5：可用区钳制——SE 增长不越出宿主右/下缘（可用区紧
+        // 张时视口约束优先于 MIN 下限）。
+        ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
+            wid,
+            edge: ResizeEdge::SouthEast,
+            start_rect: iced::Rectangle::new(
+                iced::Point::new(1500.0, 800.0),
+                iced::Size::new(300.0, 200.0),
+            ),
+            start_cursor: iced::Point::new(0.0, 0.0),
+        });
+        ds.host.as_mut().unwrap().wm.apply_cursor(10_000.0, 10_000.0, host_size);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let r = host.wm.wins[&wid].rect.borrow();
+            assert_eq!(r.width, 100.0, "E 增长钳右缘=host 宽（1600-1500）");
+            assert_eq!(r.height, 100.0, "S 增长钳下缘=host 高（900-800）");
+        }
+        ds.host.as_mut().unwrap().wm.end_interaction();
+
+        // PLAN-526 T5：NW 反向增长 left/top 不为负（宽=right、高=bottom）。
+        ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
+            wid,
+            edge: ResizeEdge::NorthWest,
+            start_rect: iced::Rectangle::new(
+                iced::Point::new(50.0, 50.0),
+                iced::Size::new(300.0, 200.0),
+            ),
+            start_cursor: iced::Point::new(0.0, 0.0),
+        });
+        ds.host.as_mut().unwrap().wm.apply_cursor(-10_000.0, -10_000.0, host_size);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let r = host.wm.wins[&wid].rect.borrow();
+            assert_eq!((r.x, r.width), (0.0, 350.0), "W 反向钳 left=0");
+            assert_eq!((r.y, r.height), (0.0, 250.0), "N 反向钳 top=0");
+        }
+        ds.host.as_mut().unwrap().wm.end_interaction();
     }
 
     #[test]
@@ -3854,6 +4136,10 @@ mod tests {
             DesktopCommand::CloseWindow(Wid(3)),
             DesktopCommand::FocusWindow(Wid(7)),
             DesktopCommand::SetLayout(crate::ui::layout::LayoutMode::Grid),
+            // PLAN-526 T8/T11/T14：win_min / shutdown / set_wallpaper。
+            DesktopCommand::MinWindow(Wid(5)),
+            DesktopCommand::Shutdown,
+            DesktopCommand::SetWallpaper("D:/Down/stella-os/wallpapers/room.jpg".to_string()),
         ];
         let payload = cmds
             .iter()
@@ -5139,7 +5425,9 @@ mod hotkey_tests {
     fn hotkey_builtin_table_matrix() {
         let t = HotkeyTable::builtin();
 
-        assert!(t.matches(HotkeyAction::ExitDesktop, &mods(false, false, false), &named(iced::keyboard::key::Named::Escape)));
+        // PLAN-526 T13：Escape→ExitDesktop 退役——裸/Ctrl+Esc 均不再退出
+        //（图形退出入口 = dock 电源键确认 shutdown 动词）。
+        assert!(!t.matches(HotkeyAction::ExitDesktop, &mods(false, false, false), &named(iced::keyboard::key::Named::Escape)), "裸 Esc 不再退出");
         assert!(!t.matches(HotkeyAction::ExitDesktop, &mods(true, false, false), &named(iced::keyboard::key::Named::Escape)), "Ctrl+Esc 不是退出");
 
         assert!(t.matches(HotkeyAction::CycleSwitcher, &mods(true, false, false), &named(iced::keyboard::key::Named::Tab)));

@@ -367,13 +367,18 @@ impl SnapshotBuilder {
                 UiNode { id, kind: "Container".to_string(), props, actions: vec![], children: vec![child_node] }
             },
 
-            View::Scrollable { width, height, child, .. } => {
+            View::Scrollable { width, height, child, offset, .. } => {
                 let mut props = vec![];
                 if let Some(w) = width {
                     props.push(("width".to_string(), w.to_string()));
                 }
                 if let Some(h) = height {
                     props.push(("height".to_string(), h.to_string()));
+                }
+                // PLAN-043 T6：offset 绑定值（写入臂求值结果——VM 滚动
+                // 联动的可观测口；None = 无绑定）。
+                if let Some((_, y)) = offset {
+                    props.push(("offset_y".to_string(), y.to_string()));
                 }
                 let child_path = [path, &[0]].concat();
                 let child_node = Self::traverse_view(child, id_map, &child_path);

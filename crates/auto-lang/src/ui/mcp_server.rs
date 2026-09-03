@@ -595,7 +595,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_action",
             "title": "Perform Action",
-            "description": "Perform an action on a UI element.\n\n## Workflow\n1. Use autoui_snapshot to find element IDs and available actions\n2. Call this with element_id, action type, and optional value\n3. Use autoui_snapshot again to verify the result\n\n## Actions\n- press: Click a button\n- type_text: Type into an input/textarea (requires 'value')\n- toggle: Toggle a checkbox\n- select_option: Select from dropdown/radio (requires 'value')\n- set_value: Adjust a slider (requires numeric 'value')\n- clear: Clear an input/textarea",
+            "description": "Perform an action on a UI element.\n\n## Workflow\n1. Use autoui_snapshot to find element IDs and available actions\n2. Call this with element_id, action type, and optional value\n3. Use autoui_snapshot again to verify the result\n\n## Actions\n- press: Click a button\n- type_text: Type into an input/textarea (requires 'value')\n- toggle: Toggle a checkbox\n- select_option: Select from dropdown/radio (requires 'value')\n- set_value: Adjust a slider (requires numeric 'value')\n- clear: Clear an input/textarea\n- scroll: Scroll a Scrollable to a y offset (requires numeric 'value')\n- drag: Drag a MouseArea widget via its handlers (requires 'value' = \"Widget␟Down␟Move␟Up␟x0,y0;x1,y1;...\")",
             "inputSchema": {
                 "type": "object",
                 "required": ["element_id", "action"],
@@ -606,7 +606,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear"],
+                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear", "scroll", "drag"],
                         "description": "Action to perform"
                     },
                     "value": {
@@ -1213,10 +1213,102 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         "select_option" => UiActionType::SelectOption,
         "set_value" => UiActionType::SetValue,
         "clear" => UiActionType::Clear,
+        // PLAN-043 T6: scroll——Scrollable 节点直落 iced scroll_to。
+        "scroll" => UiActionType::Scroll,
+        // PLAN-043 T10: drag——mouse-area 拖拽序列（handler 通道合成）。
+        "drag" => UiActionType::Drag,
         _ => return error_result(format!("Unknown action: '{}'", action_str)),
     };
 
     let value = args.get("value").and_then(|v| json_value_to_auto_val(v));
+
+    // PLAN-043 T6: scroll——目标须为 Scrollable vnode；经合成事件
+    // __mcp_scroll（input_value = "element_id␟y"）直落 iced scroll_to，
+    // 不走 handler 提取通道（scrollable 无 VM handler）。
+    if action_type == UiActionType::Scroll {
+        let y = match value.as_ref() {
+            Some(auto_val::Value::Float(f)) => *f,
+            Some(auto_val::Value::Int(i)) => *i as f64,
+            Some(auto_val::Value::Double(d)) => *d,
+            _ => return error_result("Action 'scroll' requires a numeric 'value' (y offset px)"),
+        };
+        let ok = {
+            let shared = shared_handle.lock().unwrap();
+            match element_id {
+                ElementId::Vnode(vnode_id) => shared
+                    .styled_vtree
+                    .as_ref()
+                    .and_then(|s| s.vtree.get(vnode_id))
+                    .map(|n| format!("{}", n.kind) == "Scrollable")
+                    .unwrap_or(false),
+                ElementId::Aura(_) => false,
+            }
+        };
+        if !ok {
+            return error_result("Action 'scroll' requires a Scrollable element (vnode_N)");
+        }
+        let payload = format!("{element_id_str}{}{y}", crate::ui::iced::renderer::PAYLOAD_SEP);
+        let msg = ActionMessage {
+            target: ActionTarget::Event { widget: String::new(), event: "__mcp_scroll".to_string() },
+            action: UiActionType::Scroll,
+            value: Some(payload),
+        };
+        {
+            let shared = shared_handle.lock().unwrap();
+            if let Err(e) = shared.send_action(msg) {
+                return error_result(e);
+            }
+        }
+        return text_result(format!(
+            "Scrolled {} to y={} px (status: ok)",
+            element_id_str, y
+        ));
+    }
+
+    // PLAN-043 T10: drag——mouse-area 无 vnode 可寻址（styled vtree 映射为
+    // Text），拖拽按 widget 寻址经合成事件 __mcp_drag（input_value =
+    // "W␟Down␟Move␟Up␟x0,y0;x1,y1;..."）在 update_inner 连发
+    // on_with_input_for：与 PointerArea 闭包产出的消息同构（真实 .at 拖拽数
+    // 学 / emit / fast-path / 写臂 scroll_to）。element_id 仅作格式校验
+    // （约定传根件），路由由 value 承担。
+    if action_type == UiActionType::Drag {
+        let spec = match value.as_ref() {
+            Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
+            _ => return error_result(
+                "Action 'drag' requires a string 'value' = \"Widget␟DownHandler␟MoveHandler␟UpHandler␟x0,y0;x1,y1;...\"",
+            ),
+        };
+        let parts: Vec<&str> = spec.split(crate::ui::iced::renderer::PAYLOAD_SEP).collect();
+        if parts.len() != 5 || parts.iter().any(|p| p.is_empty()) {
+            return error_result(
+                "Action 'drag' value must be 5 payload fields: widget, down, move, up, points",
+            );
+        }
+        let pts_ok = parts[4].split(';').filter(|s| !s.is_empty()).all(|pair| {
+            let mut it = pair.split(',');
+            it.next().and_then(|s| s.parse::<f64>().ok()).is_some()
+                && it.next().and_then(|s| s.parse::<f64>().ok()).is_some()
+        });
+        if !pts_ok {
+            return error_result("Action 'drag' points must be 'x,y' float pairs joined by ';'");
+        }
+        let (w, down, mv, up) = (parts[0].to_string(), parts[1].to_string(), parts[2].to_string(), parts[3].to_string());
+        let msg = ActionMessage {
+            target: ActionTarget::Event { widget: String::new(), event: "__mcp_drag".to_string() },
+            action: UiActionType::Drag,
+            value: Some(spec),
+        };
+        {
+            let shared = shared_handle.lock().unwrap();
+            if let Err(e) = shared.send_action(msg) {
+                return error_result(e);
+            }
+        }
+        return text_result(format!(
+            "Dragged {} via {} (down={} move={} up={}) (status: ok)",
+            w, element_id_str, down, mv, up
+        ));
+    }
 
     // Capture before-state and execute action
     let (before_state, result) = {
@@ -2138,6 +2230,15 @@ fn execute_action_on_shared(
 
     // Validate action type
     match &action {
+        // PLAN-043 T6: scroll 在 tool_action 前置分支已处理，此旧通道
+        // （execute_action_on_shared）不可达 scroll。
+        UiActionType::Scroll => {
+            return Err("Action 'scroll' is handled before this path (Scrollable-only)".to_string());
+        }
+        // PLAN-043 T10: drag 同 scroll 在 tool_action 前置分支处理。
+        UiActionType::Drag => {
+            return Err("Action 'drag' is handled before this path (widget-addressed)".to_string());
+        }
         UiActionType::Press => {
             if target.kind != "Button" {
                 return Err(format!("Action 'press' not valid for component type '{}'", target.kind));
@@ -2177,6 +2278,8 @@ fn execute_action_on_shared(
 
     // Find handler from actions list
     let action_name = match &action {
+        UiActionType::Scroll => unreachable!("scroll handled in tool_action pre-branch"),
+        UiActionType::Drag => unreachable!("drag handled in tool_action pre-branch"),
         UiActionType::Press => "press",
         UiActionType::TypeText => "type",
         UiActionType::Submit => "submit",
@@ -2333,6 +2436,16 @@ fn extract_action_from_view(
         View::Checkbox { on_toggle, .. } if action_name == "toggle" => {
             on_toggle.as_ref().and_then(|m| extract_dyn_msg(m))
         }
+        // PLAN-043 T4: 布局件 onclick（row/col/div parity，renderer 侧
+        // wrap_layout_onclick 消费面）——press 通道可达 layout onclick 件
+        //（Details summary 行折叠回路）。
+        View::Row { onclick, .. }
+        | View::Column { onclick, .. }
+        | View::Container { onclick, .. }
+            if action_name == "press" =>
+        {
+            onclick.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
         _ => None,
     }
 }
@@ -2367,6 +2480,8 @@ fn execute_action_vnode(
 
     // Validate action type by VNode kind (works for both VM and Rust mode)
     let action_name = match &action {
+        UiActionType::Scroll => unreachable!("scroll handled in tool_action pre-branch"),
+        UiActionType::Drag => unreachable!("drag handled in tool_action pre-branch"),
         UiActionType::Press => "press",
         UiActionType::TypeText | UiActionType::Clear => "type",
         UiActionType::Submit => "submit",
@@ -2376,7 +2491,11 @@ fn execute_action_vnode(
     };
     let vnode_kind_str = format!("{}", vnode.kind);
     match &action {
-        UiActionType::Press if vnode_kind_str != "Button" =>
+        // PLAN-043 T4: press 放行可携带 onclick 的布局件（Row/Column/
+        // Container——layout onclick 件如 Details summary 行）；无 onclick
+        // 的件仍由 extract 的 "No 'press' handler" 错误兜底。
+        UiActionType::Press
+            if !matches!(vnode_kind_str.as_str(), "Button" | "Row" | "Column" | "Container") =>
             return Err(format!("Action 'press' not valid for component type '{}'", vnode_kind_str)),
         UiActionType::TypeText if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
             return Err(format!("Action 'type_text' not valid for component type '{}'", vnode_kind_str)),
@@ -2940,6 +3059,11 @@ fn aura_vtree_node(
         }
         VNodeProps::Checkbox { is_checked, .. } => {
             out.push_str(&format!("{}checked: {}\n", "  ".repeat(indent + 1), is_checked));
+        }
+        // PLAN-043 T6：scroll offset 绑定值进 AURA 快照（滚动联动可观测
+        // 口；无绑定的 scrollable 不输出该行）。
+        VNodeProps::Scrollable { offset_y: Some(y) } => {
+            out.push_str(&format!("{}offset_y: {:.1}\n", "  ".repeat(indent + 1), y));
         }
         // Plan 423 P3: disabled 标记进 AURA 快照(禁用项点击无消息的断言面)。
         VNodeProps::Button { disabled: true, .. } => {

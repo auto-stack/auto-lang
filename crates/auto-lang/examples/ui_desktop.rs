@@ -23,7 +23,8 @@ fn default_apps_dir() -> PathBuf {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    // Plan 463 T3：--fullscreen = borderless 全屏桌面（Esc 调试退出）。
+    // Plan 463 T3：--fullscreen = borderless 全屏桌面（PLAN-526 T13 起
+    // Esc 调试退出退役——退出走 dock 电源键确认面板）。
     let fullscreen = args.iter().any(|a| a == "--fullscreen");
     // Plan 463 T7：--apps-dir <path>（默认仓库 examples/ui；vm 兼容过滤）。
     let apps_dir = args
@@ -33,8 +34,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(default_apps_dir);
 
-    let comp_a = auto_lang::build_dynamic_component(APP_A, None)?;
-    let comp_b = auto_lang::build_dynamic_component(APP_B, None)?;
+    // PLAN-526 T6：传源路径（仓库根相对）——boot 直挂组件可按 source
+    // path 后缀对齐注册表条目（回填 registry_id + armed `window: "fit"`）。
+    let comp_a = auto_lang::build_dynamic_component(
+        APP_A,
+        Some("examples/ui/459-dual-app/app.at"),
+    )?;
+    let comp_b = auto_lang::build_dynamic_component(
+        APP_B,
+        Some("examples/ui/011-calculator/src/front/app.at"),
+    )?;
     // Plan 472 T5：窗口模式同样装配注册表（dock pinned/launch 依赖；
     // 463 只给了全屏路径）。
     let opts = DesktopOptions {

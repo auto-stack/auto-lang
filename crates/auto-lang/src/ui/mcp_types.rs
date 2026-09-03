@@ -110,6 +110,17 @@ pub enum UiActionType {
     /// command prompt). Plan 371 续篇 / ash-gui M1:needed because the keyboard
     /// tool dispatches a global key handler, not the iced input's on_submit.
     Submit,
+    /// Scroll a Scrollable to a y offset (PLAN-043 T6)。经合成事件
+    /// `__mcp_scroll` 直落 iced scroll_to——scrollable 无 VM handler 可提
+    /// 取，与 press/type 的 handler 通道不同。
+    Scroll,
+    /// Drag a MouseArea widget through its press/move/release handlers
+    /// (PLAN-043 T10)。经合成事件 `__mcp_drag` 在 update_inner 连发
+    /// on_with_input_for（down → move(x,y)×n → up），与 PointerArea
+    /// 闭包产出的消息同构——.at 拖拽数学、emit、SetScrollTop fast-path、
+    /// 写臂 scroll_to 全走真实机制。mouse-area 无 vnode 可寻址
+    /// （vnode_converter 映射为 Text），寻址由 value 携带 widget 名。
+    Drag,
 }
 
 impl fmt::Display for UiActionType {
@@ -122,6 +133,8 @@ impl fmt::Display for UiActionType {
             UiActionType::SetValue => write!(f, "set_value"),
             UiActionType::Clear => write!(f, "clear"),
             UiActionType::Submit => write!(f, "submit"),
+            UiActionType::Scroll => write!(f, "scroll"),
+            UiActionType::Drag => write!(f, "drag"),
         }
     }
 }
