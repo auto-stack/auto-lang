@@ -3609,14 +3609,55 @@ pub fn cg_compile_files(main_path str) CG {
         }
         si = si + 1
     }
+    // P532 W1 G4:同批播种 dep 枚举 consts/ctors(009_enum_import;
+    // 集积与 tys 同循环,key 去重后到覆盖)
+    var seed_consts List<CGEnum> = List.new()
+    var seed_ctors List<CGEnum> = List.new()
+    var si2b = 0
+    while si2b < cgs.len() {
+        var sc2 = cgs.get(si2b)
+        var ci = 0
+        while ci < sc2.consts.len() {
+            seed_consts = cg_seed_enum_table(seed_consts, sc2.consts.get(ci))
+            ci = ci + 1
+        }
+        var cj = 0
+        while cj < sc2.ctors.len() {
+            seed_ctors = cg_seed_enum_table(seed_ctors, sc2.ctors.get(cj))
+            cj = cj + 1
+        }
+        si2b = si2b + 1
+    }
     var main_mod = res.mods.get(res.mods.len() - 1)
-    cgs.push(cg_compile_mod_seeded(main_mod.source, main_mod.name, seed))
+    cgs.push(cg_compile_mod_seeded(main_mod.source, main_mod.name, seed, seed_consts, seed_ctors))
     return cg_link_modules(cgs)
+}
+
+// P532 W1 G4:dep 枚举跨模块播种(consts 判别值+ctors 载荷构造位)——
+// main 的 Enum.Variant 路径探查查 const_lookup/ctor_lookup,dep 侧
+// cg_enum_decl 只注册进自身 consts/ctors(不入 tys),不播种则 main 报
+// unknown ident(009_enum_import 红证)。key 去重后到覆盖(镜像 tys 播种)。
+fn cg_seed_enum_table(mut src List<CGEnum>, mut item CGEnum) List<CGEnum> {
+    var hit = -1
+    var j = 0
+    while j < src.len() {
+        if src.get(j).key == item.key {
+            hit = j
+            j = src.len()
+        }
+        j = j + 1
+    }
+    if hit < 0 {
+        src.push(item)
+    } else {
+        src.set(hit, item)
+    }
+    return src
 }
 
 // W4(525):带预播种类型表的模块编译(镜像 cg_compile_mod;种子先入
 // c.tys——同名本模块声明后到覆盖)
-fn cg_compile_mod_seeded(source str, mod_name str, seed List<CGType>) CG {
+fn cg_compile_mod_seeded(source str, mod_name str, seed List<CGType>, seed_consts List<CGEnum>, seed_ctors List<CGEnum>) CG {
     var toks = tokenize(source)
     var p = parse_new(toks)
     var c = CG.new()
@@ -3625,6 +3666,17 @@ fn cg_compile_mod_seeded(source str, mod_name str, seed List<CGType>) CG {
     while si2 < seed.len() {
         c.tys.push(seed.get(si2))
         si2 = si2 + 1
+    }
+    // P532 W1 G4:枚举播种——main 的 Enum.Variant 探查先行命中
+    var sc2 = 0
+    while sc2 < seed_consts.len() {
+        c.consts.push(seed_consts.get(sc2))
+        sc2 = sc2 + 1
+    }
+    var sk2 = 0
+    while sk2 < seed_ctors.len() {
+        c.ctors.push(seed_ctors.get(sk2))
+        sk2 = sk2 + 1
     }
     // pass1:Type/Ext 声明位预扫(cg_compile_mod 同款)
     p.skip_empty_lines()
