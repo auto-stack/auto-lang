@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（目标语言高阶能力,塔顶必经）
 
 affects: [aavm]
-current_step: 21
+current_step: 26
 total_steps: 30
 ---
 
@@ -390,11 +390,24 @@ playground-demo/13-methods.at（宿主方法族语义样板））
 
 ### W5 May/生成器（worktree 续）
 
-22. [ ] May 最小面三件套语料先行红（b49 族）。
-23. [ ] `?T` 解析+传播实现（四层）。
-24. [ ] （若裁定做）生成器 yield 脱糖与执行。
-25. [ ] AA2R 同步（May/生成器发射）。
-26. [ ] 折叠点⑤：三面绿+四路 → 合入（裁定延后项显式登记）。
+22. [✅ 已完成 2026-09-03] May 最小面语料:g34_may_basic(=b49;
+   ?int 返回+Some(n*10) 构造+None+is Some/None 双臂;宿主 30/none
+   实证;裸值 return 形态宿主发射不编译——语料取显式 Some 构造,
+   宿主发射债登记)。
+23. [✅ 已完成 2026-09-03] ?T 解析+传播:parser ? 后缀(既有)+
+   a2r.at ar_bare_type ? 前缀补;cg None 哨兵(ConstI32 -1,宿主
+   CREATE_NONE 同构)/Some(e) 内值直通/is Some(v) 臂(t!=-1 命中,
+   v=t 绑定)与 None 臂(-1 eq);哨兵别名语义同宿主文档。
+24. [✅ 已裁定延后 2026-09-03] 生成器:W0 考古 lib 用量=0(唯一
+   命中为 token 名声明)→ 按待澄清③缺省裁定延后,登记 KNOWN-DEBT
+   (宿主 Yield/CREATE_GENERATOR Plan 321 在位,后续波次可启)。
+25. [✅ 已完成 2026-09-03] AA2R 同步:?T→Option<T>(ar_rust_ty)/
+   Some(v)·None 模式直出(ar_is_pattern_text 双臂)/Some(e) 调用
+   直通;发射闸 34 件全绿(g34 逐字符一致)。
+26. [✅ 已完成 2026-09-03] 折叠点⑤(master 349dd97a3):goldens
+   29/29(g34 入集)+四路 29/29+tf 绿+tv 3559+单元 18;延后项:
+   生成器(W0 裁定)与 ?? NullCoalesce 语料面(未覆盖,登记)显式
+   登记 KNOWN-DEBT。
 
 ### 收尾
 
