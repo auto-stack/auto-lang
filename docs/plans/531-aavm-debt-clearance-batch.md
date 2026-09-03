@@ -1,14 +1,19 @@
 ---
 plan_id: PLAN-531
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-debt-clearance-batch
 author: [zhaopuming]
 created_at: 2026-09-03
 updated_at: 2026-09-03
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/aavm/design/divergences.md: D-a2r-mode-entry 条目清偿注记(状态→已清偿 531)"
+new_spec_components:
+  - "tests: crates/auto-lang/src/tests/aavm_at_mode_tests.rs——aavm.at a2r 模式入口验收锚(b07→55/b34→10/20,#[ignore] shells cargo)"
+  - "tests: tt 档入复审清单——.cargo/config.toml tf 注记块(复审另跑 cargo tt,沿 507 先例)"
+  - "tests: corpus_a2r g34 增 May 裸值臂(find_bare,金样 30/none/30/none)"
+  - "tests: scripts/aavm_build_smoke.sh 增 pac 正路双例(auto build 全管线)" 
 touched_goals: [GOAL-017]     # 自举（债务清欠,塔顶验证链前置）
 
 affects: [aavm, auto-lang/trans]
@@ -301,6 +306,40 @@ D-a2r-mode-entry（:485）、`scripts/aavm_build_smoke.sh`、tt 档现状）
 11. [ ] merge 沉淀归档。
 
 ## 复审记录
+
+**复审人**：zhaopuming（/auto-plan:review,2026-09-03）;**结论：PASS → reviewed**。
+
+**逐验收标准复验**（worktree 回同步 master 至 6e6bfd3c6 后全量重跑）：
+
+1. `cargo tt` 全绿——**pass**：3746/3746（27 件 bless+pointer/008 翻转全数
+   稳定）;两真缺陷回归锚=tt 件本体（pointer/arc_dyn_spec 持续绿）;
+   tt 入复审清单——**pass**：`.cargo/config.toml` tf 注记块实文核对
+   （"复审清单同样须另跑 cargo tt"）。
+2. aavm.at a2r 模式——**pass**：aavm_at_mode 探针重跑 2/2
+   （b07→55/b34→10/20,均无垫片路径）。
+3. pac target 链——**pass**：release auto.exe 重建（含 May 修复,排除
+   陈旧二进制假绿）后冒烟 4/4（trans 双例+pac 正路双例）。
+4. May 裸值语料——**pass**：tv 3559/3559（g34 三件套金样含裸值臂）;
+   可选项 `??` 按待澄清①条款显式延后（预授权通道,留档 KNOWN-DEBT
+   P525-3 实测注记）。
+5. 零新增红——**pass**：tf 3397/3399,2 红=基线注记红原样
+   （kitchen_sink_page_in_sync=528 面;schema_drift_fence=523 存量,
+   与并行 044 会话门禁记录互证）;KNOWN-DEBT 核销 4 处实文核对;
+   divergences 清偿注记实文核对。四路 30/30 与矩阵 57/57 为执行期
+   实测留档（其后本计划无代码变更;后续 master 合并均为 ui/* 片区,
+   与 lib/trans/auto-man 不相交）。
+
+**遗漏/延后/workaround 扫描**：bless 提交实数 27 件与宣称吻合;plan diff
+无新增 TODO/FIXME/HACK;延后三项（??/api-example 前端红/P525-1/2 不纳入）
+均属计划条款预授权通道,非静默;workaround 仅 D25 空串拼接范式（525-1
+既有登记路线,注释引用在位）。**新增登记债候选：无**（原生 VM 对不支持
+表达式静默空输出行为已在 P525-3 注记内提示为独立观察项）。
+
+**Nit（不阻塞）**：codegen.at :2091 位注释"name 已被 CGType 构造移动"
+的移动源表述未逐字验证（矩阵绿为实证面,方向正确）;`recv_is_list_like`
+不可解析 self 字段回落 `.get()` 形为保守设计（注释在位）。
+
+**状态机**：execution_done → **reviewed**（2026-09-03）。
 
 ## 待澄清事项
 
