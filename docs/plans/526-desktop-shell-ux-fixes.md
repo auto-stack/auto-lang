@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
 current_step: 27
-total_steps: 27
+total_steps: 33
 ---
 
 # [PLAN-526] 桌面壳 UX 十题修复：窗口三键/resize/焦点环/fit、任务栏样式统一、右键菜单、壁纸选择、launcher 焦点、关机确认
@@ -622,3 +622,37 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
    maximize 类）还是字符字面量 `▢`？默认查 icon 库取名，无则字符。
 5. **⑦T6 fit 匹配键**：boot 开窗按 source path 还是 registry id 匹配注册表
    条目？（默认 source path 后缀匹配，命中唯一才 armed，歧义回退现状。）
+
+### 波10 追加反馈六（用户七轮实机反馈，2026-09-03 六题）
+
+- [ ] T28 标题栏三键仍宽体：T22 只收了内层内容盒 24×24，但 iced button
+      自身主题 padding（水平更宽）仍在，hover 提亮盒呈宽体长方。修：
+      `title_button` 的 button 显式 `.padding(0)`，命中盒=内容盒=24×24
+      正方形。文件：`virtual_window.rs`。验证：实机 hover 盒正方形、
+      三键紧拢。
+- [ ] T29 任务栏 icon 右键菜单鼠标一动即消失：popover ondismiss 与条目
+      mouse-area onmouseleave 都走 `.HoverEnd`，后者把 win_menu 一并清空
+      ——右键开菜单后鼠标滑出条目即被杀，无法移动鼠标去点选项。修：
+      HoverEnd 只清 dock_hover；win_menu 的关闭走 popover ondismiss
+      （点外部）/选项点击/Esc 专设清理。
+      文件：`crates/auto-lang/assets/shell.at`。验证：实机开菜单后鼠标
+      随意移动菜单不消失，点选项生效，点外部/Esc 关闭。
+- [ ] T30 桌面 icon 右键菜单与任务栏不统一：现为准内联渲染（把图标挤
+      下）且样式不符。修：改用与任务栏同款 popover（placement/样式对齐）。
+      文件：`crates/auto-lang/assets/desktop.at`。验证：实机 icon 右键
+      弹悬浮菜单、样式与任务栏一致、不挤压布局。
+- [ ] T31 桌面 icon 双击打不开 app（T26 排水修复后仍不工作）：双击手势
+      → ondblclick → ActivateApp → __desktop_cmd → drain → LaunchApp 链
+      逐环取证（log/HANDLERNotFound/iced 双击检测状态是否被重建打断）。
+      文件：`desktop.at`/`renderer.rs` MouseArea 臂。验证：实机双击
+      icon 打开对应 app。
+- [ ] T32 Ctrl+Tab 切换语义标准化：现首按仅打开切换器且选中=当前窗，
+      需多按 Enter。修为 Windows/Linux Alt-Tab 语义——首按 Ctrl+Tab 即
+      预选下一个窗口（MRU 序），松开 Ctrl 即提交聚焦；按住期间再按
+      Ctrl+Tab 继续下一个（尾回卷首）；Esc 取消。
+      文件：`session.rs`/`renderer.rs`（switcher 状态机与热键臂）。
+      验证：实机 3 窗场景连按/松手/回卷行为。
+- [ ] T33 布局预设历史切换：右下角"重新排列窗口"icon 应用预设布局后，
+      再按同一 icon 应回到应用前的手动布局（快照-恢复切换）。
+      文件：`shell.at`/`session.rs`/`renderer.rs`（快照存储与切换臂）。
+      验证：实机手动摆窗→应用预设→再按同键→恢复原位。
