@@ -1365,7 +1365,11 @@ fn cg_expr(mut c CG, mut p P, min int) {
             c.defers.push(CGDefer(qdi, name + "." + qfn))
             call_done = true
         }
-        if !call_done && name == "print" && p.kind() == TokenKind.LParen {
+        // W5(525):Some(e) 构造——内值直通(哨兵模型:Some 载体即内值,
+        // None=-1 哨兵;镜像宿主 CREATE_SOME 标记 no-op 的可观察面)
+        if !call_done && name == "Some" && p.kind() == TokenKind.LParen {
+            cg_call_args(c, p)
+        } else if !call_done && name == "print" && p.kind() == TokenKind.LParen {
             cg_call_args(c, p)
             c.emit(OpCode.CallNat, "nat#10", 10)
         } else if !call_done && p.kind() == TokenKind.LParen {
@@ -1405,6 +1409,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 cg_call_args(c, p)
                 c.emit(OpCode.Call, "", fe)
             }
+        } else if !call_done && name == "None" && c.lookup("None") < 0 {
+            // W5(525):None 哨兵(镜像宿主 CREATE_NONE 推 -1;IS_SOME
+            // 判 !=-1——哨兵别名同宿主文档语义)
+            c.emit(OpCode.ConstI32, "-1", -1)
         } else if !call_done && p.kind() == TokenKind.Dot && c.lookup(name) < 0 && (c.tys_lookup(name) >= 0 || name == "List") {
             // W2(525):裸类型名 + 后随点——静态调用/静态字段探测位
             // (Type.m(args);类型名无值不发装载,后缀臂按 primary_tyname
@@ -2148,6 +2156,9 @@ fn cg_is_pattern_expr(mut c CG, pat E) {
         c.emit(OpCode.ConstI32, cp.str(), cp)
     } else if pat.kind == "int" {
         c.emit(OpCode.ConstI32, pat.name, int_val(pat.name))
+    } else if pat.kind == "name" && pat.name == "None" {
+        // W5(525):None 哨兵模式(-1;宿主 None 字面量运行期即 -1)
+        c.emit(OpCode.ConstI32, "-1", -1)
     } else {
         c.fail("unsupported is pattern: " + pat.kind)
     }
@@ -2196,6 +2207,35 @@ fn cg_is(mut c CG, mut p P) {
             }
             p.expect(TokenKind.Arrow)
             p.skip_empty_lines()
+            // W5(525):Some(v) 模式臂——t != -1 命中,v=t 绑定(哨兵
+            // 模型;绑定名自 args "(name v)" 提取)
+            if pat.kind == "call" && pat.word == "Some" {
+                var ap = pat.args
+                var bstart = find_sub(ap, "(name ")
+                var bname = "_"
+                if bstart >= 0 {
+                    var brest = ap.slice(bstart + 6, ap.len())
+                    var bend = find_sub(brest, ")")
+                    if bend >= 0 {
+                        bname = brest.slice(0, bend)
+                    }
+                }
+                c.emit_load(t)
+                c.emit(OpCode.ConstI32, "-1", -1)
+                c.emit(OpCode.Ne, "", 0)
+                var sjz = c.emit(OpCode.JmpZ, "", -1)
+                if bname != "_" {
+                    var svidx = c.add_var(bname, 0, "")
+                    c.emit_load(t)
+                    c.emit_store(svidx)
+                }
+                cg_is_arm_body(c, p)
+                var sje = c.emit(OpCode.Jmp, "", -1)
+                end_jmps.push(sje)
+                c.ins.get(sjz).n = c.ins.len()
+                p.skip_empty_lines()
+                continue
+            }
             // W2(525):is-struct 解构臂——plain struct 静态恒命中(宿主
             // 语义=match 解构绑定,a2r 规范;变体形超语料面):逐字段
             // load t;get.field [N];store 绑定 → 体 → jmp end。

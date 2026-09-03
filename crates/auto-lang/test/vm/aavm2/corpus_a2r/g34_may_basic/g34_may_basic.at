@@ -1,0 +1,22 @@
+// Plan 525 W5 g34(b49):May/Option 最小面——?T 返回注解+Some(..) 构造+
+// None 哨兵+is Some/None 模式臂(宿主 30/none 实证;裸值 return 的
+// 宿主发射不编译,语料取显式 Some 构造形态)。
+fn find(n int) ?int {
+    if n > 0 {
+        return Some(n * 10)
+    }
+    return None
+}
+
+fn main() {
+    let a = find(3)
+    is a {
+        Some(v) -> print(v)
+        None -> print("none")
+    }
+    let b = find(0)
+    is b {
+        Some(v) -> print(v)
+        None -> print("none")
+    }
+}
