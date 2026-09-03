@@ -72,7 +72,10 @@ impl ReservedEdges {
 }
 
 /// 任务栏高度（shell 装配层与布局预留共用同一常量；T1 报告 §4）。
-pub const TASKBAR_HEIGHT: f32 = 48.0;
+/// PLAN-526 T24：48 → 56 对齐 shell.at 任务栏行实际渲染高（h-14=56px，
+/// Tailwind 4px/单位）——此前预留 48 少 8px，最大化窗口底缘被任务栏
+/// 盖住（用户六轮反馈 #2）。
+pub const TASKBAR_HEIGHT: f32 = 56.0;
 
 /// master 宽占比（计划 §3.1：55%，T2 定参）。
 pub const MASTER_RATIO: f32 = 0.55;

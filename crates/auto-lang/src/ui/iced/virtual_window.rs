@@ -38,6 +38,23 @@ pub(crate) const BORDER: f32 = 1.0;
 /// Plan 503 M5：窗体圆角 8→16（stella rounded-2xl 档）。
 const WIN_RADIUS: f32 = 16.0;
 
+/// PLAN-526 T25：窗体圆角分角化——顶部 WIN_RADIUS 圆角、底部方角。
+/// 根因：app 自绘背景方角且 iced 0.14 clip 为矩形（container.rs:351 仅
+/// bounds 求交），圆角环底部两角必露内容方角；用户认可降级「环随内容
+/// 方角」。顶部属 chrome（标题条带随 win_box 圆角绘制），保持圆角。
+fn window_radius(maximized: bool) -> iced::border::Radius {
+    if maximized {
+        iced::border::Radius::default()
+    } else {
+        iced::border::Radius {
+            top_left: WIN_RADIUS,
+            top_right: WIN_RADIUS,
+            bottom_right: 0.0,
+            bottom_left: 0.0,
+        }
+    }
+}
+
 /// 语义色快捷访问（跟随 iced_adapter 的 dark/accent thread-local）。
 fn token(c: crate::ui::style::Color) -> Color {
     crate::ui::style::iced_adapter::resolve_semantic_rgb(&c)
@@ -169,15 +186,22 @@ pub fn virtual_window_element<'a>(
         .width(Length::Fill)
         .height(Length::Fixed(TITLEBAR_H)),
     )
+    .interaction(iced::mouse::Interaction::Idle)
     .on_press(DesktopMessage::Wm(WmCommand::StartDrag { wid }));
 
     // --- 客户区（点击聚焦 + 阻断穿透；App 组件优先捕获不受影响）---
     // Plan 518 G6：底色乘 Transparency 档位 alpha（内容文字照常绘制其上）。
+    // PLAN-526 T23：`.interaction(Arrow)` —— 客户区整块对 mouse_interaction
+    // 查询回报 Arrow，iced Stack 自顶向下的 levitate 语义随之生效：光标
+    // 悬在本窗 bounds 内时下层窗口的 button 不再收到 hover（半透明是
+    // 纯视觉，遮挡语义由此收口）；客户区内 App 自己的交互件（Pointer）
+    // 仍优先（mouse_area 的 child interaction 优先于 interaction 兜底）。
     let t_alpha = load_transparency_alpha();
     let mut client_bg = token(crate::ui::style::Color::Background);
     client_bg.a = t_alpha;
     let client_area = container(
         mouse_area(container(client).width(Length::Fill).height(Length::Fill))
+            .interaction(iced::mouse::Interaction::Idle)
             .on_press(DesktopMessage::Wm(WmCommand::Focus(wid))),
     )
     .width(Length::Fill)
@@ -219,7 +243,7 @@ pub fn virtual_window_element<'a>(
             border: Border {
                 color: token(crate::ui::style::Color::Surface),
                 width: BORDER,
-                radius: if maximized { 0.0.into() } else { WIN_RADIUS.into() },
+                radius: window_radius(maximized),
             },
             shadow: if maximized {
                 Shadow::default()
@@ -267,7 +291,7 @@ pub fn virtual_window_element<'a>(
                     Color::TRANSPARENT
                 },
                 width: if focused { 2.0 } else { 0.0 },
-                radius: if maximized { 0.0.into() } else { WIN_RADIUS.into() },
+                radius: window_radius(maximized),
             },
             ..Default::default()
         });
