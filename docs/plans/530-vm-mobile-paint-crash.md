@@ -1,15 +1,22 @@
 ---
 plan_id: PLAN-530
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: VM mobile 断点双份绘制 + 启动内存崩溃专项
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
 updated_at: 2026-09-03T20:00:00+08:00
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/project.md (ui 模块): Column/Row 提升叠层语义改版——z-index 前缀 overlay 双渲染路径退役(472 立场废弃),叠层仅 absolute 子脱流(column_layer_partition,Row 分支同语义),z-index-only 子保持流内;is_elevated_view/extract_max_z_index 随路径退役"
+  - "docs/specs/auto-lang/ui/overview.md (VM 运行时渲染): alert-dialog 全族 VM 消费臂——复用 Plan 422 Popover 原语模态化,面板 chrome=shadcn AlertDialogContent 同款(w-96 bg-background border rounded-lg shadow-lg p-6 gap-4);title/description/header/footer/cancel/action 子臂 chrome 类重写"
+  - "docs/specs/auto-lang/ui/overview.md (VM 运行时渲染): code_editor 视口防御契约——render() 非 finite 视口(NaN/∞)整帧拒绝 + GutterCache 光栅 4096/维上限;∞ 视口曾饱和 u32::MAX 致 gutter 光栅 42×u32::MAX×4=721GB 分配崩溃(OBS-1)"
+  - "docs/specs/auto-lang/ui/overview.md (VM 运行时渲染): lucide_svg 16×16 文档与 textarea/input placeholder 的 'static 化改按内容去重缓存——每帧 Box::leak 无界泄漏根除(强复现静默死亡根因,实测 +120MB/min→持平)"
+new_spec_components:
+  - "PopoverPlacement::Modal + PopoverWidget.modal(): 模态对话框原语——面板视口居中+全屏 scrim(50% 黑)+面板外点击整吞;on_dismiss=None 时外点/Esc 不关(shadcn AlertDialog 语义,关闭仅经 cancel/action 状态翻转);render_dynamic_view 与 into_iced 双臂同口径"
+  - "toggle_group/toggle_group_item VM 消费臂: 组→row+item 重写为 button 注入位置类(-ml-px 叠边/首尾圆角),variant=outline 传导 item outline 预设,size sm/lg→padding 档;tracked/untracked D-GAP 双镜像;页面书写的 [&>*+*] CSS 选择器经 unmapped 报告通道自然跳过"
+touched_goals:
+  - "GOAL-007: VM 轨 shadcn 组件补缺与稳定性对齐——toggle_group 横排连体组/alert-dialog 模态弹层双端观感补齐;VM 移动断点双份绘制根除(Column 叠层语义修复)+首页动画内存崩塌根除(Box::leak 家族去重缓存),69 页双宽扫描零失败"
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 8
@@ -161,15 +168,34 @@ fit 缩放合成与 Plan 527 T7 响应式重建的交互。
 
 ## 复审记录
 
-（待 /auto-plan:review 填写。执行期归因/判别材料汇总：）
-- A 根因链证据：树单份（tree_rendered.txt）→ 73/75 widget id 双布局
-  （run_700_trace.log）→ Column 前缀 overlay 双渲染（472 引入,f1f433dc1）
-  → 修复后 0 重复 + 断点往返干净（run_700_fixed.log）。
-- B 根因链证据：泄漏速率实测（67-120MB/min,∝ 树规模）→ P530_NOMCP A/B
-  判别（速率相同,排除 MCP/capture）→ Box::leak 家族（lucide_svg 每帧
-  ~350B/图标）→ 修复后 262MB 持平；OBS-1 原值 721GB 的 gutter 数学闭环
-  （42 × u32::MAX × 4）+ full backtrace frame16 GutterCache::image。
-- 归因实验：Breadcrumb 栈溢出 master 对照构建复现 = 存量缺陷（P530-D1）。
+**复审人**：ZCode（/auto-plan:review，2026-09-03）
+**复审基址**：worktree `D:/autostack/.wt/lang-530/auto-lang`（plan-530-dev
+@c7cdb588f..17148de34，4 提交，基 96586cca4）；计划文件在 master 检出。
+
+### 逐条验收复核（verify, don't trust——全部现场复跑/复核）
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---|---|---|
+| A | mobile 断点任意页面单份绘制 + 700↔1440 往返无残留 | **PASS**（含 D1 例外注记） | 复审期复核执行期留痕：run_700_fixed.log / run_scan_final.log 全程 `P530-TRACE` **0 DUPLICATE**（A 修复前 73/75 id 双布局对照）；700 冷启动单份 OS 截图 a700_fixed_os.png；跨断点逐页扫 67/67（导航→缩 700→实拍 1374×1800→还原），x700b/ 67 张全单份；往返 3 轮 trace 无残留。**例外注记**：Breadcrumb 页无法参与扫描（导航即栈溢出）= 存量 master 缺陷（master 对照构建复现归因，P530-D1），与本计划改动无关（本分支 diff 不触及其路径） |
+| B | 721GB 根因定位 + 确定性修复 + 首启 10 连发无崩溃 | **PASS** | 根因：GutterCache::image 无防御 × ∞ 视口饱和——`42 × 4294967295 × 4 = 721,554,505,560` 与 OBS-1 **逐位一致**，full backtrace frame16 `GutterCache::image` 指认；确定性复现（单点 code-editor 页）修复后 ALIVE（codeeditor_fixed.png）。10 连发启动回归（每发 120s 浸泡，超出强配方 1-5min 死亡窗）**10/10 PASS**（ten_launch_results.txt）。附带根除泄漏（+120MB/min → 262MB 持平） |
+| C | 全程 cargo t iced + 既有 VM 文件测试绿 | **PASS**（带 master 预存红注记） | 本复审门重跑：`cargo t iced` 164/164、`cargo t code_editor` 41/41、`cargo tv` **3559/3559 全绿**、`cargo tf` 3397/3399——唯二红 `docs_gen kitchen_sink_page_in_sync` + `schema_drift schema_drift_fence` 在 **master 检出同样复现**（归因复跑），属并行会话存量漂移（先例：448"schema_drift 基线陈旧"/528"master 预存红"），本分支 diff（ui/* + 示例页）不含其输入 |
+
+### 遗漏 / 延后 / workaround 猎查
+
+- diff 全文扫描 0 新增 TODO/FIXME/HACK。
+- **P530-D1**（延后→债务）：breadcrumb 栈溢出为执行期新暴露的存量 master
+  缺陷，非计划任务缩水；归因实验在案，已立项建议写入债务台账。
+- **P530-D2/D3**（延后→债务）：图表 timer 路由切换不退订 + Element 缓存
+  快速路径架构性失效——执行期发现的放大器/空转债，不在计划任务清单，
+  未经批准的缩水不存在（计划 8 步全数交付）。
+- **P530-D4**（留档非债）：P530_TRACE/P530_NOMCP 诊断门控留存（env 缺省关）。
+- workaround 检查：gutter 4096 上限为防御性契约（上游无限高测量的布局侧
+  根治留给布局约束面，已在上游 render() 同步拦截非有限值），非掩盖。
+
+### 判定
+
+**全部验收标准 PASS，无阻塞债（P530-D1..D4 均为登记在案的增量债/存量缺陷）。**
+status → `reviewed`，可进入 `/auto-plan:merge`。
 
 ## 待澄清事项
 
