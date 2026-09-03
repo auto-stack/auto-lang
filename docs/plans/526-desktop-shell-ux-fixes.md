@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
-current_step: 19
-total_steps: 20
+current_step: 20
+total_steps: 21
 ---
 
 # [PLAN-526] 桌面壳 UX 十题修复：窗口三键/resize/焦点环/fit、任务栏样式统一、右键菜单、壁纸选择、launcher 焦点、关机确认
@@ -417,7 +417,7 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
 
 ### 波8 追加反馈四（用户实机反馈，2026-09-03）
 
-- [ ] T20 跨窗口首击吞按钮（用户指示仅记录根因，暂缓修复）：
+- [✅ 已完成] T20 跨窗口首击吞按钮（git 事故恢复后继续，2026-09-03 实施）：
       症状——焦点在窗口1 时首击窗口2 的按钮，焦点切过去但按钮不触发，
       第二次点击才生效；点非交互空白区首击聚焦正常。
 
@@ -454,6 +454,38 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       验证：实机——焦点窗1 首击窗2 DualApp `-`/Reset/+ 与计算器键应一次
       完成切焦+按下；已聚焦窗连点无回归；`cargo t session && cargo t
       desktop`。
+      [✅ 已完成] commit cf454b489（worktree plan-526-dev，merge ac6a1c7d1）。
+      实施=GlobalPress 臂改 `wm_focus_soft`（只记焦点/还原最小化/MRU，
+      置顶挂 `pending_raise`）+ `__mouse_released` 臂 `wm_apply_pending_raise`
+      偿还；标题栏拖拽/缩放的即时置顶由 StartDrag/StartResize 臂自理
+      （命中 chrome 时无按钮在途，不受影响）。
+      验证（三层，全部绿）——① session 单测 2 个新用例：软聚焦延迟置顶
+      语义 + pending 过期防护（同窗已顶/焦点被改写/窗已关 no-op），
+      session 91/91；② layout_tests 机制双测试（真实 iced runtime
+      UserInterface build→update(press)→into_cache→rebuild→update(release)
+      管线，覆盖 Tree 按位 diff 与 is_pressed 跨事件存活）：修复前行为
+      复现（press 即置顶→release 丢点击）+ 修复后（首击命中+release 偿还
+      置顶），layout_tests 18/18；③ 组测试 shell_at 4/4、desktop_command
+      3/3、desktop 142/142。
+      遗留：SendInput 实机单击验证因机器存在持续并发鼠标输入（用户在用，
+      40s 无空闲窗口）且 UIPI/按键态干扰不可靠，改由上述无头机制测试承载
+      回归门；交互手感请用户日常使用中复核（桌面进程已带修复重启）。
+
+- [ ] T21 拖拽/缩放几何钳制 panic（本轮实机新发现，独立于 T20）：
+      症状——桌面进程 panic 退出（exit 101）：`f32::clamp` at
+      `num/f32.rs:1566` 报 `min > max, min = 8.0, max = -2.5`。时序与
+      并发鼠标输入（用户拖拽窗口）强相关；T20 改动零几何数学，非本次
+      回归。候选根因——某处 raw clamp 的 min/max 来自可负几何量（如
+      `(host.width - 60.0)` 类差值未 `.max(0.0)` 护栏，或视口/可用区在
+      极端拖拽下翻转），session.rs:1059 drag 钳制已有护栏但可能存在
+      同族未护栏点；不排除 iced 内部布局 clamp 接收了我们下发的负尺寸。
+      修复方向——启动加 `RUST_BACKTRACE=1` 复采一次栈；全面审计桌面
+      几何路径的 clamp 调用点补 `max(0.0)`/min-max 归正护栏；补负尺寸
+      驱动的单测。
+      文件：`crates/auto-lang/src/ui/session.rs`、`iced/renderer.rs`
+      （以回溯栈定位为准）。
+      验证：复现路径回归测试绿 + 实机极端拖拽（边缘拖过对侧、缩到
+      最小再拖出屏）不再 panic。
 
 ### 波间回归
 
