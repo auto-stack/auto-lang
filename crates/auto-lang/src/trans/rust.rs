@@ -10024,6 +10024,19 @@ impl RustTrans {
                         "split" => {
                             return Type::List(Box::new(Type::StrOwned));
                         }
+                        // Plan 531 P523-2①: `process.args()` = List 契约
+                        // (P524:[程序路径]+CLI 透传;VM 参考侧 shim_process_args
+                        // 同形,a2r 侧由宿主 shim 提供)。绑定型 List<str> 驱动
+                        // .get(i) 索引化 + 实参 .as_str() 借用——aavm.at 入口
+                        // `argv.get(1)` 此前 Unknown 落 Vec::get Option 形态
+                        // (E0308)。`env.args`(a2r_std String 契约)不在列。
+                        "args" => {
+                            if matches!(obj.as_ref(),
+                                Expr::Ident(n) if n.as_str() == "process")
+                            {
+                                return Type::List(Box::new(Type::StrOwned));
+                            }
+                        }
                         "get" => {
                             if let Type::List(elem) = self.infer_type_from_expr(obj) {
                                 return *elem;
