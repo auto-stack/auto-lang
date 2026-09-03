@@ -263,6 +263,11 @@ pub struct RustTrans {
     /// (直接字段写/已知 Rust 变异方法为种子,经 self 接收者调用闭包)。
     /// fn_decl 的接收者 &mut 判定据此跨方法传递(expect→next 族)。
     current_type_mut_methods: Option<std::collections::HashSet<AutoStr>>,
+    /// Plan 531 真缺陷②:当前正在发射的 type/ext 的名字。self.<field>
+    /// 接收者的字段实型解析据(struct_field_types 查表)——514 W3 的
+    /// `self.* 一律按 List 索引化` 使 Map 字段 .get 被改写成
+    /// `[(key) as usize]`(str as usize 非法强转)。
+    current_impl_type: Option<AutoStr>,
 
     // Track current function's return type for string coercion
     current_fn_ret_type: Option<Type>,
@@ -461,6 +466,7 @@ impl RustTrans {
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_type_mut_methods: None,
+            current_impl_type: None,
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
@@ -550,6 +556,7 @@ impl RustTrans {
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_type_mut_methods: None,
+            current_impl_type: None,
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
@@ -2163,6 +2170,28 @@ impl RustTrans {
     /// element write) differ from HashMap's get/insert; without this check,
     /// `list.get(i)` falls through to Vec::get → Option and `list.set(i,v)`
     /// becomes insert (shifts elements instead of replacing).
+    /// Plan 531 真缺陷②: .get 接收者是否 List/Array。Ident 接收者查
+    /// local_var_types;self.<field> 接收者经 current_impl_type 查
+    /// struct_field_types 字段实型——514 W3 曾无条件视 self.* 为 List,
+    /// 使 Map 字段 .get(key) 被改写 [(key) as usize](str as usize 非法
+    /// 强转)。实型不可解析的 self 字段回落 false(514 W3 前行为:
+    /// .get 方法形由 Vec::get/HashMap::get 各自正确分派)。
+    fn recv_is_list_like(&self, object: &Expr) -> bool {
+        if let Expr::Ident(name) = object {
+            self.local_var_types.get(name.as_str())
+                .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
+                .unwrap_or(false)
+        } else if let Expr::Dot(base, field) = object {
+            if matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self") {
+                self.current_impl_type.as_ref()
+                    .and_then(|ty| self.struct_field_types.get(ty.as_str()))
+                    .map(|fields| fields.iter().any(|(f, t)|
+                        f == field && matches!(t, Type::List(_) | Type::Array(_))))
+                    .unwrap_or(false)
+            } else { false }
+        } else { false }
+    }
+
     fn is_auto_list_expr(&self, obj: &Expr) -> bool {
         match obj {
             Expr::Ident(name) => self.local_var_types.get(name.as_str())
@@ -7739,13 +7768,9 @@ impl RustTrans {
                 // `recv[(i) as usize]`(Vec::get 返 Option<&T>,直接字段访问
                 // E0609;lib 方法体 `.toks.get(.pos).kind` 位)。
                 if rust_name == "get" && call.args.args.len() == 1 {
-                    let recv_is_list2 = if let Expr::Ident(name) = object.as_ref() {
-                        self.local_var_types.get(name)
-                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
-                            .unwrap_or(false)
-                    } else if let Expr::Dot(base, _) = object.as_ref() {
-                        matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self")
-                    } else { false };
+                    // Plan 531 真缺陷②:统一经 recv_is_list_like(self 字段
+                    // 实型解析),见其注释。
+                    let recv_is_list2 = self.recv_is_list_like(object);
                     if recv_is_list2 {
                         self.expr(object, out)?;
                         write!(out, "[(")?;
@@ -7800,16 +7825,9 @@ impl RustTrans {
                     // Plan 514 W3: List/Array 接收者（Vec::get(usize)）不做
                     // 借用——`.toks.get(.pos)` 此前经 Expr::Dot 臂误发
                     // `.get(&self.pos)`（E0277，lib 方法体字段位实参）。
-                    let recv_is_list = if let Expr::Ident(name) = object.as_ref() {
-                        self.local_var_types.get(name)
-                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
-                            .unwrap_or(false)
-                    } else if let Expr::Dot(base, _) = object.as_ref() {
-                        // `self.toks.get(.pos)` 形：self 基链的字段位实参
-                        // 按值传(lib 方法体索引位);Map 键位取值经具名局部走
-                        // 上面的 Ident 分支。
-                        matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self")
-                    } else { false };
+                    // Plan 531 真缺陷②:同上——self.<field> 经 recv_is_list_like
+                    // 实型解析(`.toks.get(.pos)` 的 List 字段照常走值位)。
+                    let recv_is_list = self.recv_is_list_like(object);
                     for (i, arg) in call.args.args.iter().enumerate() {
                         let is_owned_string_arg = if let Arg::Pos(e) = arg {
                             match e {
@@ -15730,10 +15748,12 @@ impl RustTrans {
 
             // Plan 514 W3: 预计算传递性可变方法集,供 fn_decl 接收者判定。
             self.current_type_mut_methods = Some(Self::compute_type_mut_methods(&own_methods));
+            self.current_impl_type = Some(type_decl.name.clone());
             for method in &own_methods {
                 self.fn_decl(method, sink)?;
                 sink.body.write(b"\n")?;
             }
+            self.current_impl_type = None;
             self.current_type_mut_methods = None;
 
             self.dedent();
@@ -16668,10 +16688,12 @@ impl RustTrans {
         // Plan 514 W3: ext 方法同款传递性可变方法集预计算。
         let ext_methods: Vec<&Fn> = ext.methods.iter().collect();
         self.current_type_mut_methods = Some(Self::compute_type_mut_methods(&ext_methods));
+        self.current_impl_type = Some(ext.target.clone());
         for method in &ext.methods {
             self.fn_decl(method, sink)?;
             sink.body.write(b"\n")?;
         }
+        self.current_impl_type = None;
         self.current_type_mut_methods = None;
 
         self.dedent();
