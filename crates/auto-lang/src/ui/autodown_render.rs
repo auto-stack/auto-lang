@@ -17,15 +17,21 @@
 
 use crate::ui::autodown_blocks::{callout_kind_classes, family_of, heading_classes};
 use crate::ui::style::Style;
-use crate::ui::view::View;
+use crate::ui::view::{ColResizeCallback, ColResizeMetrics, View};
 use autodown_core::block_model::{
     attrGet, attrGetBool, attrGetInt, attrGetStr, spansText, BlockNode, BlockType, InlineSpan,
     Mark, Value,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Plan 045 T4: 列宽拖拽落定通道注入形态（定义上移 view.rs——非门控，
+/// 复审门 ui-iced 档可命名性；本模块按原路径再导出保持引用稳定）。
+pub use crate::ui::view::TableColResizeFn;
 
 /// Parse `src` and render the document body as a column of block views.
-pub fn render_document<M: Clone + std::fmt::Debug>(src: &str, is_final: bool) -> View<M> {
-    render_document_with(src, is_final, None, None)
+pub fn render_document<M: Clone + std::fmt::Debug + 'static>(src: &str, is_final: bool) -> View<M> {
+    render_document_with(src, is_final, None, None, None, None)
 }
 
 /// PLAN-043 T2：带 Details onclick 注入的渲染入口——`details_onclick` 收
@@ -35,18 +41,31 @@ pub fn render_document<M: Clone + std::fmt::Debug>(src: &str, is_final: bool) ->
 ///
 /// PLAN-044 T3：`placeholder` = (块索引, 高度 px)——命中块前置 ghost 灰盒
 /// （[`wrap_with_ghost`]，vue placeholderBlockId/Height 同构消费面）。
-pub fn render_document_with<M: Clone + std::fmt::Debug>(
+///
+/// PLAN-045 T4：`table_widths` = 列宽状态（表键 [`block_key`] → 列宽 px
+/// 数组）；`on_col_resize` = 拖拽落定通道（表键 + 测量 → 宿主消息，Table
+/// 臂按表捕获键）。None/None = 既有行为。
+#[allow(clippy::too_many_arguments)]
+pub fn render_document_with<M: Clone + std::fmt::Debug + 'static>(
     src: &str,
     is_final: bool,
     details_onclick: Option<&(dyn Fn(u64) -> M)>,
     placeholder: Option<(usize, f32)>,
+    table_widths: Option<&HashMap<u64, Vec<f32>>>,
+    on_col_resize: Option<&TableColResizeFn<M>>,
 ) -> View<M> {
     let root = autodown_core::markdown_parser::parse_blocks(src, is_final);
     let children: Vec<View<M>> = root
         .children
         .iter()
         .enumerate()
-        .map(|(i, b)| wrap_with_ghost(render_block(b, is_final, details_onclick), i, placeholder))
+        .map(|(i, b)| {
+            wrap_with_ghost(
+                render_block(b, is_final, details_onclick, table_widths, on_col_resize),
+                i,
+                placeholder,
+            )
+        })
         .collect();
     View::Column {
         children,
@@ -95,6 +114,21 @@ fn wrap_with_ghost<M: Clone + std::fmt::Debug>(
 // 流式增量（PLAN-041 T8）——结构键 diff + 未变块复用
 // ---------------------------------------------------------------------------
 
+/// PLAN-045 T7：缓存 Table 块的列宽态是否陈旧——cached View 的
+/// col_widths 与 table_widths 中该表键的期望值不一致（含缺失↔在册翻
+/// 转）即陈旧。非 Table 块恒不陈旧（列宽不进块模型）。
+fn cached_table_widths_stale<M: Clone + std::fmt::Debug>(
+    cached: Option<&View<M>>,
+    key: u64,
+    table_widths: Option<&HashMap<u64, Vec<f32>>>,
+) -> bool {
+    let Some(View::Table { col_widths, .. }) = cached else {
+        return false;
+    };
+    let expected = table_widths.and_then(|m| m.get(&key).cloned());
+    *col_widths != expected
+}
+
 /// 单文档流式渲染缓存：帧间按**结构键**（块序列化全文的 FNV-1a——
 /// kind/attrs/children/inlines 全覆盖）比对，未变块复用上帧 View；
 /// 悬挂尾块（final=false 的末块）每帧重同步；final 旗标翻转整帧重建
@@ -135,12 +169,12 @@ fn block_key(b: &BlockNode) -> u64 {
 }
 
 /// 流式增量渲染入口（调用方持有缓存；VM 侧按 widget 身份挂注册表）。
-pub fn render_document_streamed<M: Clone + std::fmt::Debug>(
+pub fn render_document_streamed<M: Clone + std::fmt::Debug + 'static>(
     cache: &mut StreamCache<M>,
     src: &str,
     is_final: bool,
 ) -> View<M> {
-    render_document_streamed_with(cache, src, is_final, None, None)
+    render_document_streamed_with(cache, src, is_final, None, None, None, None)
 }
 
 /// PLAN-043 T2：流式增量渲染 + Details onclick 注入（同
@@ -149,12 +183,19 @@ pub fn render_document_streamed<M: Clone + std::fmt::Debug>(
 ///
 /// PLAN-044 T3：`placeholder` 同 [`render_document_with`]——ghost 是
 /// 包装层，缓存存裸块（复用键/代数不因包装抖动，每帧重建包装）。
-pub fn render_document_streamed_with<M: Clone + std::fmt::Debug>(
+///
+/// PLAN-045 T4：`table_widths`/`on_col_resize` 同 [`render_document_with`]
+/// ——复用块沿缓存视图携带 col_widths/on_col_resize，键为内容派生与缓存
+/// 命中键一致（表内容不变 ⇒ 键不变 ⇒ 列宽状态跨流式帧稳定）。
+#[allow(clippy::too_many_arguments)]
+pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     cache: &mut StreamCache<M>,
     src: &str,
     is_final: bool,
     details_onclick: Option<&(dyn Fn(u64) -> M)>,
     placeholder: Option<(usize, f32)>,
+    table_widths: Option<&HashMap<u64, Vec<f32>>>,
+    on_col_resize: Option<&TableColResizeFn<M>>,
 ) -> View<M> {
     let root = autodown_core::markdown_parser::parse_blocks(src, is_final);
     let final_flip = cache.last_final != Some(is_final);
@@ -167,15 +208,19 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug>(
     for (i, b) in root.children.iter().enumerate() {
         let key = block_key(b);
         let is_dangling_tail = !is_final && i + 1 == n;
+        // PLAN-045 T7：列宽态陈旧即重建——缓存块按内容键复用会冻结
+        // col_widths（表内容未变而 DSL 列宽 state 已变：拖拽松手 → state
+        // → 绑定回传需进下一帧）。只对 Table 块生效，其余块零开销。
         let reuse = !final_flip
             && !is_dangling_tail
-            && cache.keys.get(i) == Some(&key);
+            && cache.keys.get(i) == Some(&key)
+            && !cached_table_widths_stale(cache.blocks.get(i), key, table_widths);
         let raw = if reuse {
             gens.push(cache.gens[i]);
             cache.blocks[i].clone()
         } else {
             gens.push(cache.gens.get(i).copied().unwrap_or(0) + 1);
-            render_block(b, is_final, details_onclick)
+            render_block(b, is_final, details_onclick, table_widths, on_col_resize)
         };
         // 缓存存裸块（ghost 每帧重建包装，不进缓存——复用判定只看内容键）。
         raw_blocks.push(raw.clone());
@@ -310,21 +355,28 @@ fn inline_span_view<M: Clone + std::fmt::Debug>(s: &InlineSpan) -> View<M> {
     }
 }
 
-fn block_children<M: Clone + std::fmt::Debug>(
+fn block_children<M: Clone + std::fmt::Debug + 'static>(
     b: &BlockNode,
     is_final: bool,
     details_onclick: Option<&(dyn Fn(u64) -> M)>,
+    table_widths: Option<&HashMap<u64, Vec<f32>>>,
+    on_col_resize: Option<&TableColResizeFn<M>>,
 ) -> Vec<View<M>> {
-    b.children.iter().map(|c| render_block(c, is_final, details_onclick)).collect()
+    b.children
+        .iter()
+        .map(|c| render_block(c, is_final, details_onclick, table_widths, on_col_resize))
+        .collect()
 }
 
 /// 块 → View。面板词汇与 plan-450 批次三注册的面板族对齐（heading/
 /// quote/codeblock/list/table/separator）；parser 子集外的扩展块
 /// （callout/details 等）不会从 parse_blocks 产出，走默认段落降级。
-fn render_block<M: Clone + std::fmt::Debug>(
+fn render_block<M: Clone + std::fmt::Debug + 'static>(
     b: &BlockNode,
     is_final: bool,
     details_onclick: Option<&(dyn Fn(u64) -> M)>,
+    table_widths: Option<&HashMap<u64, Vec<f32>>>,
+    on_col_resize: Option<&TableColResizeFn<M>>,
 ) -> View<M> {
     match b.kind {
         BlockType::Heading => {
@@ -413,7 +465,7 @@ fn render_block<M: Clone + std::fmt::Debug>(
             }
         }
         BlockType::Blockquote => {
-            let inner: Vec<View<M>> = block_children(b, is_final, details_onclick);
+            let inner: Vec<View<M>> = block_children(b, is_final, details_onclick, table_widths, on_col_resize);
             let inner = if inner.len() == 1 {
                 inner.into_iter().next().unwrap()
             } else {
@@ -453,7 +505,7 @@ fn render_block<M: Clone + std::fmt::Debug>(
                     None if ordered => format!("{}. ", start + i as i64),
                     None => "\u{2022} ".to_string(),        // •
                 };
-                let body = block_children(item, is_final, details_onclick);
+                let body = block_children(item, is_final, details_onclick, table_widths, on_col_resize);
                 items.push(View::Row {
                     children: vec![
                         styled_text(marker.to_string(), "text-muted-foreground shrink-0"),
@@ -495,12 +547,24 @@ fn render_block<M: Clone + std::fmt::Debug>(
                     rows.push(cells);
                 }
             }
+            // PLAN-045 T4：列宽状态按表键（block_key 内容哈希——041 流式
+            // 复用同键）取用；拖拽落定通道捕获同键（details_onclick 同款
+            // 「键进闭包」通道，但延迟调用故 Arc）。表内容变更视为新表
+            //（宽度重置，与 vue 重渲染即丢同向）。
+            let key = block_key(b);
+            let col_widths = table_widths.and_then(|m| m.get(&key).cloned());
+            let on_col_resize_msg = on_col_resize
+                .cloned()
+                .map(|f| ColResizeCallback::new(move |m: ColResizeMetrics| f(key, m)));
             View::Table {
                 headers,
                 rows,
                 spacing: 0,
                 col_spacing: 8,
                 style: Style::parse(family_of(BlockType::Table).chrome.outer).ok(),
+                table_key: Some(format!("t{key}")),
+                col_widths,
+                on_col_resize: on_col_resize_msg,
             }
         }
         BlockType::Callout => {
@@ -535,7 +599,7 @@ fn render_block<M: Clone + std::fmt::Debug>(
             let mut parts: Vec<View<M>> = vec![title_row];
             if !b.children.is_empty() {
                 parts.push(View::Column {
-                    children: block_children(b, is_final, details_onclick),
+                    children: block_children(b, is_final, details_onclick, table_widths, on_col_resize),
                     spacing: 4,
                     padding: 0,
                     style: Style::parse("pt-1 w-full").ok(),
@@ -584,7 +648,7 @@ fn render_block<M: Clone + std::fmt::Debug>(
             let mut parts: Vec<View<M>> = vec![summary_row];
             if open && !b.children.is_empty() {
                 parts.push(View::Column {
-                    children: block_children(b, is_final, details_onclick),
+                    children: block_children(b, is_final, details_onclick, table_widths, on_col_resize),
                     spacing: 4,
                     padding: 0,
                     style: Style::parse("pt-1 border-t w-full").ok(),
@@ -816,7 +880,7 @@ mod tests {
     fn renders_placeholder_ghost_box_plain_and_streamed() {
         let src = "甲段。\n\n乙段。\n";
         // 有 props：块 0 前置灰盒。
-        let doc = render_document_with::<()>(src, true, None, Some((0, 96.0)));
+        let doc = render_document_with::<()>(src, true, None, Some((0, 96.0)), None, None);
         let View::Column { children, .. } = doc else { panic!("column") };
         assert_eq!(children.len(), 2);
         let View::Column { children: wrap, spacing, .. } = &children[0] else {
@@ -839,7 +903,7 @@ mod tests {
         assert!(matches!(&children[1], View::Text { .. }), "block 1 unwrapped");
 
         // 无 props：无任何包裹。
-        let plain = render_document_with::<()>(src, true, None, None);
+        let plain = render_document_with::<()>(src, true, None, None, None, None);
         let View::Column { children, .. } = plain else { panic!("column") };
         assert!(
             children.iter().all(|c| matches!(c, View::Text { .. })),
@@ -848,7 +912,7 @@ mod tests {
 
         // streamed 路径同构（命中块 1）+ 缓存复用不因 ghost 包装抖动。
         let mut cache = StreamCache::<()>::default();
-        let s1 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)));
+        let s1 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)), None, None);
         let View::Column { children, .. } = s1 else { panic!("column") };
         let View::Column { children: wrap, .. } = &children[1] else {
             panic!("expected ghost wrap column at block 1 (streamed)")
@@ -858,7 +922,7 @@ mod tests {
             _ => panic!("expected ghost container (streamed)"),
         }
         assert_eq!(cache.gens, vec![1, 1]);
-        let _s2 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)));
+        let _s2 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)), None, None);
         assert_eq!(cache.gens, vec![1, 1], "second frame reuses despite ghost wrap");
     }
 
@@ -923,6 +987,105 @@ mod tests {
         assert_eq!(text_of(&headers[0]), "a");
         assert_eq!(rows.len(), 1);
         assert_eq!(text_of(&rows[0][1]), "2");
+    }
+
+    /// PLAN-045 T4：表格列宽两态发射 + 落定通道闭包捕获表键。
+    #[test]
+    fn renders_table_with_widths_two_states_and_resize_channel() {
+        use std::collections::HashMap as Map;
+        let src = "| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+        let key = {
+            let root = autodown_core::markdown_parser::parse_blocks(src, true);
+            block_key(&root.children[0])
+        };
+        // 消息载荷观测：(表键, col, width) 三元组。
+        let channel: TableColResizeFn<(u64, usize, f32)> =
+            std::sync::Arc::new(|k, m| (k, m.col, m.width));
+
+        // 态一：map 命中 + 通道在——col_widths 取表键值、on_col_resize 捕获键。
+        let mut widths = Map::new();
+        widths.insert(key, vec![120.0, 200.0]);
+        let doc = render_document_with::<(u64, usize, f32)>(
+            src,
+            true,
+            None,
+            None,
+            Some(&widths),
+            Some(&channel),
+        );
+        let View::Column { children, .. } = &doc else {
+            panic!("col")
+        };
+        let View::Table { col_widths, on_col_resize: Some(cb), .. } = &children[0] else {
+            panic!("table with resize channel")
+        };
+        assert_eq!(col_widths.as_deref(), Some(&[120.0f32, 200.0][..]));
+        // 闭包捕获表键：call 的消息带 (key, col, width)。
+        assert_eq!(
+            cb.call(crate::ui::view::ColResizeMetrics { col: 1, width: 133.0 }),
+            (key, 1, 133.0)
+        );
+
+        // 态二：无 map 无通道——col_widths None、on_col_resize None（现状）。
+        let doc = render_document_with::<()>(src, true, None, None, None, None);
+        let View::Column { children, .. } = &doc else {
+            panic!("col")
+        };
+        let View::Table { col_widths, on_col_resize, .. } = &children[0] else {
+            panic!("table")
+        };
+        assert!(col_widths.is_none());
+        assert!(on_col_resize.is_none());
+    }
+
+    /// PLAN-045 T7：列宽态陈旧即重建——同内容（缓存键不变）下更新
+    /// table_widths，流式帧必须重建 Table 块让 col_widths 进下一帧；
+    /// 宽度不变则恢复复用（gens 不增）。
+    #[test]
+    fn streaming_table_widths_change_invalidates_cache() {
+        let src = "| a | b |
+| --- | --- |
+| 1 | 2 |
+";
+        let key = {
+            let root = autodown_core::markdown_parser::parse_blocks(src, true);
+            block_key(&root.children[0])
+        };
+        let mut cache = StreamCache::<()>::default();
+        // 帧一：无宽度 → col_widths None，gens=1。
+        let f1 = render_document_streamed_with(&mut cache, src, true, None, None, None, None);
+        let View::Column { children: c1, .. } = &f1 else { panic!("col") };
+        let View::Table { col_widths: w1, .. } = &c1[0] else { panic!("table") };
+        assert!(w1.is_none());
+        assert_eq!(cache.gens, vec![1]);
+        // 帧二：宽度入 state（内容未变）→ 陈旧即重建，col_widths 进帧。
+        let mut m = std::collections::HashMap::new();
+        m.insert(key, vec![150.0f32]);
+        let f2 = render_document_streamed_with(&mut cache, src, true, None, None, Some(&m), None);
+        let View::Column { children: c2, .. } = &f2 else { panic!("col") };
+        let View::Table { col_widths: w2, .. } = &c2[0] else { panic!("table") };
+        assert_eq!(w2.as_deref(), Some(&[150.0f32][..]));
+        assert_eq!(cache.gens, vec![2], "宽度态变化必须重建（gens 增）");
+        // 帧三：宽度不变 → 恢复复用。
+        let _ = render_document_streamed_with(&mut cache, src, true, None, None, Some(&m), None);
+        assert_eq!(cache.gens, vec![2], "宽度态未变应复用（gens 不增）");
+    }
+
+    /// PLAN-045 T4：map 键未命中（表内容变更 ⇒ 新键）→ col_widths None
+    ///（宽度重置语义，与 vue 重渲染即丢同向）。
+    #[test]
+    fn renders_table_widths_key_miss_resets() {
+        let src = "| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+        let mut widths = std::collections::HashMap::new();
+        widths.insert(0xDEADBEEFu64, vec![999.0]);
+        let doc = render_document_with::<()>(src, true, None, None, Some(&widths), None);
+        let View::Column { children, .. } = &doc else {
+            panic!("col")
+        };
+        let View::Table { col_widths, .. } = &children[0] else {
+            panic!("table")
+        };
+        assert!(col_widths.is_none(), "键未命中应回自然宽");
     }
 
     #[test]
@@ -1048,7 +1211,7 @@ mod tests {
     fn renders_wikilink_block() {
         use autodown_core::block_model::leafBlock;
         let node = leafBlock("w1", BlockType::WikilinkBlock, "页面名");
-        let v = render_block::<()>(&node, true, None);
+        let v = render_block::<()>(&node, true, None, None, None);
         match &v {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "页面名");

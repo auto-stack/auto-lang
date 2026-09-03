@@ -197,9 +197,17 @@ impl VTreeAtomBuilder {
                 node.set_prop("progress", Value::Float(*progress as f64));
             }
             VNodeProps::List { spacing } => node.set_prop("spacing", Value::Int(*spacing as i32)),
-            VNodeProps::Table { spacing, col_spacing } => {
+            VNodeProps::Table { spacing, col_spacing, table_key, col_widths } => {
                 node.set_prop("spacing", Value::Int(*spacing as i32));
                 node.set_prop("col_spacing", Value::Int(*col_spacing as i32));
+                // Plan 045 T7: 表键/列宽进 atom 属性面（快照与寻址下游）。
+                if let Some(k) = table_key {
+                    node.set_prop("table_key", Value::str(k));
+                }
+                if let Some(ws) = col_widths {
+                    let list: Vec<Value> = ws.iter().map(|w| Value::Double(*w as f64)).collect();
+                    node.set_prop("col_widths", Value::Array(auto_val::Array::from(list)));
+                }
             }
         }
     }

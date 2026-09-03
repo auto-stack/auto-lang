@@ -264,6 +264,11 @@ pub enum VNodeProps {
     Table {
         spacing: u16,
         col_spacing: u16,
+        /// Plan 045 T7: 表键（"t{block_hash}"）——mcp resize_col 寻址 +
+        /// AURA 快照观测口；None = 非 autodown 装配面。
+        table_key: Option<String>,
+        /// Plan 045 T7: 列宽应用观测口（Some 时进 AURA 快照）。
+        col_widths: Option<Vec<f32>>,
     },
 }
 

@@ -49,6 +49,7 @@ AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→auto
 | `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id (vue arm placeholderBlockId; VM arm consumed since PLAN-044 — block-${index} top-level id, ghost box before the hit block) |
 | `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px (vue arm placeholderHeight; VM arm consumed since PLAN-044) |
 | `scroll_sync` | `union: bool|state_ref` | true | Pane-level scroll sync (vue arm scrollSync; VM arm consumed since PLAN-043 — wraps in View::Scrollable, see EDITOR-CONTRACT §11) |
+| `table_col_widths` | `state_ref` | — | Table column widths state: Map<tableKey str, List<px float>> keyed 't{blockHash}' (VM arm consumed since PLAN-045 — header-edge drag lands per-table key, persists across re-renders; vue arm ignores — no engine consumer) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---

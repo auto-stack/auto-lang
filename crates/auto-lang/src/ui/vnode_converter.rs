@@ -345,12 +345,14 @@ where
         ),
 
         View::Table {
-            spacing, col_spacing, ..
+            spacing, col_spacing, table_key, col_widths, ..
         } => (
             VNodeKind::Table,
             VNodeProps::Table {
                 spacing: *spacing,
                 col_spacing: *col_spacing,
+                table_key: table_key.clone(),
+                col_widths: col_widths.clone(),
             },
         ),
 

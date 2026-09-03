@@ -62,6 +62,7 @@ element autodown {
         { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id (vue arm placeholderBlockId; VM arm consumed since PLAN-044 — block-${index} top-level id, ghost box before the hit block)" }
         { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px (vue arm placeholderHeight; VM arm consumed since PLAN-044)" }
         { name: "scroll_sync", type: "union:bool,state_ref", default: "true", description: "Pane-level scroll sync (vue arm scrollSync; VM arm consumed since PLAN-043 — wraps in View::Scrollable, see EDITOR-CONTRACT §11)" }
+        { name: "table_col_widths", type: "state_ref", description: "Table column widths state: Map<tableKey str, List<px float>> keyed 't{blockHash}' (VM arm consumed since PLAN-045 — header-edge drag lands per-table key, persists across re-renders; vue arm ignores — no engine consumer)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: false

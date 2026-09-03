@@ -606,7 +606,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear", "scroll", "drag"],
+                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear", "scroll", "drag", "resize_col"],
                         "description": "Action to perform"
                     },
                     "value": {
@@ -1217,6 +1217,9 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         "scroll" => UiActionType::Scroll,
         // PLAN-043 T10: drag——mouse-area 拖拽序列（handler 通道合成）。
         "drag" => UiActionType::Drag,
+        // PLAN-045 T7: resize_col——表格列宽直发（__mcp_resize_col 合成
+        // 事件，OnColResize 拦截同一写入路径）。
+        "resize_col" => UiActionType::ResizeCol,
         // PLAN-044 T6: click——autodown 编辑壳块内坐标点击（__mcp_click
         // 合成事件，走 core hit_test 真路径）。映射 Press 仅为枚举载体，
         // 下方前分支拦截，不入 handler 提取通道。
@@ -1266,6 +1269,74 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         return text_result(format!(
             "Scrolled {} to y={} px (status: ok)",
             element_id_str, y
+        ));
+    }
+
+    // PLAN-045 T7: resize_col——目标须为 Table vnode 且携带 table_key
+    //（autodown 装配面才有）；value = "col,width"。经合成事件
+    // __mcp_resize_col（input_value = "t{表键}␟col␟width"）走 OnColResize
+    // 拦截同一 rust 直写快道（坐标命中层由 rust 单测覆盖，待澄清②）。
+    if action_type == UiActionType::ResizeCol {
+        let spec = match value.as_ref() {
+            Some(auto_val::Value::Str(s)) => s.to_string(),
+            _ => {
+                return error_result(
+                    "Action 'resize_col' requires a string 'value' (\"col,width\")",
+                )
+            }
+        };
+        let mut it = spec.split(',');
+        let (col, width) = (it.next(), it.next());
+        let (Some(col), Some(width), None) = (col, width, it.next()) else {
+            return error_result("Action 'resize_col' value must be \"col,width\"");
+        };
+        let (Ok(col), Ok(width)) = (col.trim().parse::<usize>(), width.trim().parse::<f64>())
+        else {
+            return error_result("Action 'resize_col' value must be numeric \"col,width\"");
+        };
+        let table_key = {
+            let shared = shared_handle.lock().unwrap();
+            match element_id {
+                ElementId::Vnode(vnode_id) => shared
+                    .styled_vtree
+                    .as_ref()
+                    .and_then(|s| s.vtree.get(vnode_id))
+                    .and_then(|n| match &n.props {
+                        crate::ui::vnode::VNodeProps::Table { table_key: Some(k), .. } => {
+                            Some(k.clone())
+                        }
+                        _ => None,
+                    }),
+                ElementId::Aura(_) => None,
+            }
+        };
+        let Some(table_key) = table_key else {
+            return error_result(
+                "Action 'resize_col' requires a Table element with a table_key (vnode_N on the autodown render tree)",
+            );
+        };
+        let payload = format!(
+            "{table_key}{}{col}{}{width}",
+            crate::ui::iced::renderer::PAYLOAD_SEP,
+            crate::ui::iced::renderer::PAYLOAD_SEP
+        );
+        let msg = ActionMessage {
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__mcp_resize_col".to_string(),
+            },
+            action: UiActionType::ResizeCol,
+            value: Some(payload),
+        };
+        {
+            let shared = shared_handle.lock().unwrap();
+            if let Err(e) = shared.send_action(msg) {
+                return error_result(e);
+            }
+        }
+        return text_result(format!(
+            "Resized {} (table {table_key}) col {col} to {width}px (status: ok)",
+            element_id_str
         ));
     }
 
@@ -2313,6 +2384,10 @@ fn execute_action_on_shared(
         UiActionType::Drag => {
             return Err("Action 'drag' is handled before this path (widget-addressed)".to_string());
         }
+        // PLAN-045 T7: resize_col 同 drag 在 tool_action 前置分支处理。
+        UiActionType::ResizeCol => {
+            return Err("Action 'resize_col' is handled before this path (Table-keyed)".to_string());
+        }
         UiActionType::Press => {
             if target.kind != "Button" {
                 return Err(format!("Action 'press' not valid for component type '{}'", target.kind));
@@ -2354,6 +2429,7 @@ fn execute_action_on_shared(
     let action_name = match &action {
         UiActionType::Scroll => unreachable!("scroll handled in tool_action pre-branch"),
         UiActionType::Drag => unreachable!("drag handled in tool_action pre-branch"),
+        UiActionType::ResizeCol => unreachable!("resize_col handled in tool_action pre-branch"),
         UiActionType::Press => "press",
         UiActionType::TypeText => "type",
         UiActionType::Submit => "submit",
@@ -2556,6 +2632,7 @@ fn execute_action_vnode(
     let action_name = match &action {
         UiActionType::Scroll => unreachable!("scroll handled in tool_action pre-branch"),
         UiActionType::Drag => unreachable!("drag handled in tool_action pre-branch"),
+        UiActionType::ResizeCol => unreachable!("resize_col handled in tool_action pre-branch"),
         UiActionType::Press => "press",
         UiActionType::TypeText | UiActionType::Clear => "type",
         UiActionType::Submit => "submit",
@@ -3143,6 +3220,17 @@ fn aura_vtree_node(
         VNodeProps::Button { disabled: true, .. } => {
             out.push_str(&format!("{}disabled: true\n", "  ".repeat(indent + 1)));
         }
+        // PLAN-045 T7: 表格列宽面进 AURA 快照——table_key（resize_col 寻址
+        // 口）+ col_widths（列宽变化观测口，Some 时输出）。
+        VNodeProps::Table { table_key: Some(k), col_widths, .. } => {
+            out.push_str(&format!("{}table_key: \"{}\"
+", "  ".repeat(indent + 1), k));
+            if let Some(ws) = col_widths {
+                let fmt: Vec<String> = ws.iter().map(|w| format!("{w:.1}")).collect();
+                out.push_str(&format!("{}col_widths: [{}]
+", "  ".repeat(indent + 1), fmt.join(", ")));
+            }
+        }
         _ => {}
     }
 
@@ -3571,6 +3659,9 @@ mod tests_plan483_d4 {
             spacing: 0,
             col_spacing: 0,
             style: None,
+            table_key: None,
+            col_widths: None,
+            on_col_resize: None,
         };
         assert_nth_input_dispatches(&view, 0, "PasswordChanged");
     }

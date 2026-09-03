@@ -168,6 +168,14 @@ fn resolve_action_from_view(
                 component_kind: target.kind.clone(),
             });
         }
+        // PLAN-045 T7: resize_col 同 drag——mcp_server 前置分支按 Table
+        // vnode 寻址合成 __mcp_resize_col，不经 mapper。
+        UiActionType::ResizeCol => {
+            return Err(ActionError::InvalidAction {
+                action: action.clone(),
+                component_kind: target.kind.clone(),
+            });
+        }
         UiActionType::Press => {
             // Only valid for Button
             if target.kind != "Button" {

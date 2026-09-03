@@ -191,13 +191,14 @@ fn get_support_details(tag: &str) -> TagSupport {
         // Plan 019 批次七: feature "autodown" 下经 autodown-core crate 真渲染
         // (parse_blocks -> panel tree -> View);无 feature 时维持 D-GAP-3 textarea 降级。
         // Plan 040: 契约扩展 props（streaming/placeholder_block_id/
-        // placeholder_height/scroll_sync/placeholder）。043/044 收口后：
-        // scroll_sync 与 placeholder_*（ghost）真消费；streaming 恒按
-        // final、编辑臂 placeholder（空态文案）读取后忽略（豁免保留）。
+        // placeholder_height/scroll_sync/placeholder）。043/044/045 收口后：
+        // scroll_sync 与 placeholder_*（ghost）真消费；table_col_widths
+        //（列宽状态 Map）+ oncolresize（落定事件）只读臂真消费；streaming
+        // 恒按 final、编辑臂 placeholder（空态文案）读取后忽略（豁免保留）。
         "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" | "markdown" => {
             TagSupport::partial(
                 &["content", "final"],
-                "true rendering via autodown-core parse_blocks under feature `autodown` (plan 019); textarea degradation otherwise (D-GAP-3); scroll_sync consumed since PLAN-043, ghost placeholder_* since PLAN-044; streaming stays final-only on VM v1",
+                "true rendering via autodown-core parse_blocks under feature `autodown` (plan 019); textarea degradation otherwise (D-GAP-3); scroll_sync consumed since PLAN-043, ghost placeholder_* since PLAN-044, table_col_widths/oncolresize since PLAN-045; streaming stays final-only on VM v1",
             )
         }
         "square" => TagSupport::full(),

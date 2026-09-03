@@ -1310,15 +1310,29 @@ fn apply_table_header_style<M: Clone + Debug>(v: &mut AbstractView<M>) {
 }
 
 /// Plan 411 P2-A④: 单元格 px-4/py-3 padding(vue `<td class="px-4 py-3">`)。
-fn table_cell_container<'a, M: 'static>(el: iced::Element<'a, M>) -> iced::Element<'a, M> {
-    iced::widget::container(el)
-        .padding(iced::Padding {
-            top: 12.0,
-            bottom: 12.0,
-            left: 16.0,
-            right: 16.0,
-        })
-        .into()
+/// Plan 045 T2: `width` Some 时容器定宽（Fixed(w)）——列宽应用的落点；
+/// None 维持 Shrink 自然宽（现状）。
+fn table_cell_container<'a, M: 'static>(
+    el: iced::Element<'a, M>,
+    width: Option<f32>,
+) -> iced::Element<'a, M> {
+    let mut c = iced::widget::container(el).padding(iced::Padding {
+        top: 12.0,
+        bottom: 12.0,
+        left: 16.0,
+        right: 16.0,
+    });
+    if let Some(w) = width {
+        c = c.width(iced::Length::Fixed(w));
+    }
+    c.into()
+}
+
+/// Plan 045 T2: 列宽两态分派纯函数——`col_widths` Some 且列号在范围内返回
+/// 固定宽（px）；None 或长度不足的尾列返回 None（自然宽）。超列数的尾值
+/// 无消费方（自然截断）。表头与体行走同一分派。
+fn col_fixed_width(col_widths: Option<&[f32]>, col: usize) -> Option<f32> {
+    col_widths.and_then(|ws| ws.get(col).copied())
 }
 
 /// Plan 411 P2-A④: 行 border-b——iced 容器边框是四边整圈,单侧下边线用
@@ -4115,7 +4129,34 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 spacing: _,
                 col_spacing,
                 style: _,
+                table_key: _,
+                col_widths,
+                on_col_resize,
             } => {
+                // Plan 045 T3: 拖拽表格分派——on_col_resize Some 走 TableResize
+                // widget（自持网格布局 + Drag 临时宽实时重排 + 松手 publish）；
+                // None 走既有 lowering（零回归）。
+                if let Some(cb) = on_col_resize {
+                    let header_cells: Vec<_> = headers
+                        .into_iter()
+                        .map(|mut h| {
+                            apply_table_header_style(&mut h);
+                            h.into_iced()
+                        })
+                        .collect();
+                    let body_rows: Vec<Vec<_>> = rows
+                        .into_iter()
+                        .map(|r| r.into_iter().map(|c| c.into_iced()).collect())
+                        .collect();
+                    return crate::ui::iced::table_resize::table_resize(
+                        header_cells,
+                        body_rows,
+                        col_spacing as f32,
+                        col_widths,
+                        cb,
+                    )
+                    .into();
+                }
                 // Plan 411 P2-A④: vue 表格细节——表头 font-medium +
                 // text-muted-foreground、行 border-b、单元格 px-4/py-3。
                 // 行距改由 py-3 padding 提供(规则线与行贴合才是 border-b 语义),
@@ -4125,10 +4166,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                 let mut header_row_widget = row([]);
                 header_row_widget = header_row_widget.spacing(col_spacing as f32);
-                for header in headers {
+                for (ci, header) in headers.into_iter().enumerate() {
                     let mut h = header;
                     apply_table_header_style(&mut h);
-                    header_row_widget = header_row_widget.push(table_cell_container(h.into_iced()));
+                    // Plan 045 T2: 固定列宽应用——有值列 Fixed(w)，无值列
+                    //（col_widths None 或长度不足的尾列）维持自然宽；超长
+                    // 尾值无消费方自然截断。表头与体列同源（同一分派函数）。
+                    let w = col_fixed_width(col_widths.as_deref(), ci);
+                    header_row_widget =
+                        header_row_widget.push(table_cell_container(h.into_iced(), w));
                 }
                 table_widget = table_widget.push(header_row_widget);
                 table_widget = table_widget.push(table_row_rule());
@@ -4136,8 +4182,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 for row_data in rows {
                     let mut row_widget = row([]);
                     row_widget = row_widget.spacing(col_spacing as f32);
-                    for cell in row_data {
-                        row_widget = row_widget.push(table_cell_container(cell.into_iced()));
+                    for (ci, cell) in row_data.into_iter().enumerate() {
+                        let w = col_fixed_width(col_widths.as_deref(), ci);
+                        row_widget = row_widget.push(table_cell_container(cell.into_iced(), w));
                     }
                     table_widget = table_widget.push(row_widget);
                     table_widget = table_widget.push(table_row_rule());
@@ -5206,6 +5253,31 @@ fn write_ghost_state(component: &mut crate::ui::dynamic::DynamicComponent, id: i
     }
 }
 
+/// PLAN-045 T5/T7: 表格列宽 state 写入（OnColResize 拦截与 __mcp_resize_col
+/// 合成动作共用一条写入路径）。读-改-写保留其余表键；宽 +1e-3 防 nanbox
+/// 整值丢标签（write_ghost_state frac 同口径）。
+fn write_table_width_state(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    key: &str,
+    col: usize,
+    w: f32,
+) {
+    let mut obj = match component.read_state("table_widths") {
+        Ok(auto_val::Value::Obj(o)) => o,
+        _ => auto_val::Obj::new(),
+    };
+    let mut list: Vec<auto_val::Value> = match obj.get(key) {
+        Some(auto_val::Value::Array(a)) => a.iter().cloned().collect(),
+        _ => Vec::new(),
+    };
+    while list.len() <= col {
+        list.push(auto_val::Value::Double(0.001));
+    }
+    list[col] = auto_val::Value::Double(w as f64 + 0.001);
+    obj.set(key, auto_val::Value::Array(auto_val::Array::from(list)));
+    let _ = component.write_state("table_widths", auto_val::Value::Obj(obj));
+}
+
 /// Embed all onclick payload args (type-tagged) into the event string so they
 /// can be carried by the `Send` `IcedMessage`. Each arg is encoded as
 /// `{tc}{SEP}{val}` appended after the event name. Multi-arg handlers like
@@ -5630,6 +5702,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             col_spacing,
             style,
+            table_key,
+            col_widths,
+            on_col_resize,
         } => AbstractView::Table {
             headers: headers
                 .into_iter()
@@ -5642,6 +5717,12 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             col_spacing,
             style,
+            table_key,
+            col_widths,
+            // Plan 045 T1: 列宽拖拽回调跨消息类型包装（ScrollCallback 同款）。
+            on_col_resize: on_col_resize.map(|cb| {
+                crate::ui::view::ColResizeCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+            }),
         },
 
         AbstractView::ProgressBar { progress, style } => {
@@ -10915,6 +10996,62 @@ fn compare_pngs(
             }
         }
 
+        // PLAN-045 T5: 表格列宽落定 rust 直写快道——oncolresize 的 Typed
+        // 消息（args = [Str "t{表键}", Int col, Float width]；见
+        // aura_view_builder autodown_on_col_resize_binding）在此拦截直写
+        // table_widths state（043 scroll/044 ghost 同信任路径：VM handler
+        // 对 float 实参/map 索引写入腐坏，.at 的 OnColResize handler 保留
+        // 为 vue 契约面，VM 轨不再向下分派）。读-改-写保留其余表键；宽
+        // +1e-3 防 nanbox 整值丢标签（044 frac 同口径）。view_dirty 单独
+        // 不驱动重绘——回发 __noop 走一轮 update→view（__mcp_click 同款）。
+        if msg.event.starts_with("OnColResize") {
+            let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            if clean == "OnColResize" {
+                let key = args.first().and_then(|v| match v {
+                    auto_val::Value::Str(s) => Some(s.to_string()),
+                    _ => None,
+                });
+                let col = args.get(1).and_then(|v| match v {
+                    auto_val::Value::Int(i) => Some(*i as usize),
+                    auto_val::Value::Uint(u) => Some(*u as usize),
+                    _ => None,
+                });
+                let w = args.get(2).and_then(|v| match v {
+                    auto_val::Value::Float(f) => Some(*f as f32),
+                    auto_val::Value::Double(d) => Some(*d as f32),
+                    auto_val::Value::Int(i) => Some(*i as f32),
+                    _ => None,
+                });
+                if let (Some(k), Some(c), Some(w)) = (key, col, w) {
+                    write_table_width_state(&mut state.component, &k, c, w);
+                    *state.app.view_dirty.borrow_mut() = true;
+                    return iced::Task::done(IcedMessage::from_dynamic(
+                        &DynamicMessage::String("__noop".to_string()),
+                    ));
+                }
+            }
+        }
+
+        // PLAN-045 T7: MCP resize_col 直落——合成事件 __mcp_resize_col
+        //（input_value = "t{表键}␟col␟width"；mcp_server 侧已从 Table
+        // vnode props 解析表键）与 OnColResize 拦截同一 write_table_width_state
+        // 落 table_widths state；__noop 回发走一轮 update→view 让新列宽进当帧。
+        if msg.event == "__mcp_resize_col" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(k), Some(c), Some(w)) = (
+                parts.next(),
+                parts.next().and_then(|s| s.parse::<usize>().ok()),
+                parts.next().and_then(|s| s.parse::<f32>().ok()),
+            ) {
+                write_table_width_state(&mut state.component, k, c, w);
+                *state.app.view_dirty.borrow_mut() = true;
+                return iced::Task::done(IcedMessage::from_dynamic(
+                    &DynamicMessage::String("__noop".to_string()),
+                ));
+            }
+            return iced::Task::none();
+        }
+
         // PLAN-044 T6: MCP click action——autodown 编辑壳块内坐标点击合成
         //（input_value = "storage_key␟x,y"；mcp_server 侧已从 vnode path
         // 解析出编辑壳 storage key）。直调 core.handle_input（真实
@@ -15929,6 +16066,7 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
             VNodeProps::Table {
                 spacing,
                 col_spacing,
+                ..
             } => {
                 col = col.push(kv_row("spacing", spacing.to_string()));
                 col = col.push(kv_row("col_spacing", col_spacing.to_string()));
@@ -16212,6 +16350,7 @@ fn render_inspector_computed_tab(state: crate::ui::session::SessionViewRef) -> i
             VNodeProps::Table {
                 spacing,
                 col_spacing,
+                ..
             } => {
                 col = col.push(kv_row("spacing", spacing.to_string()));
                 col = col.push(kv_row("col_spacing", col_spacing.to_string()));
@@ -19277,6 +19416,7 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
             VNodeProps::Table {
                 spacing,
                 col_spacing,
+                ..
             } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()));
                 col = col.push(kv_row::<WrapperMsg<C>>("col_spacing", col_spacing.to_string()));
@@ -23036,6 +23176,18 @@ mod tests {
     }
 
     // ========== Plan 411 P2-A④ — 表头样式注入 ==========
+
+    #[test]
+    fn test_plan045_col_fixed_width_dispatch() {
+        // Plan 045 T2: 两态分派——Some 按列号取值；不足尾列补 None（自然宽）；
+        // 超列数尾值自然截断（get 越界即 None）。
+        let ws = vec![200.0f32, 300.0];
+        assert_eq!(col_fixed_width(Some(&ws), 0), Some(200.0));
+        assert_eq!(col_fixed_width(Some(&ws), 1), Some(300.0));
+        assert_eq!(col_fixed_width(Some(&ws), 2), None, "长度不足尾列补自然宽");
+        assert_eq!(col_fixed_width(None, 0), None, "None 态全自然宽");
+        assert_eq!(col_fixed_width(Some(&[]), 0), None, "空数组=自然宽");
+    }
 
     #[test]
     fn test_table_header_style_recursive() {
