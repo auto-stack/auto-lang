@@ -126,7 +126,7 @@ pub type P {
     fn next() {
         .pos = .pos + 1
         var scanning = true
-        for scanning {
+        while scanning {
             if .pos >= .toks.len() {
                 scanning = false
             } else if is_comment_kind(.toks.get(.pos).kind) {
@@ -245,7 +245,7 @@ pub fn parse_new(toks List<Token>) P {
     var p = P(toks, 0, "", scs, glo, 0, dcl)
     // Parser::from 的 cur 初始化含 skip_comments:起始位置跳过前导注释
     var scanning = true
-    for scanning {
+    while scanning {
         if p.pos >= p.toks.len() {
             scanning = false
         } else if is_comment_kind(p.toks.get(p.pos).kind) {
