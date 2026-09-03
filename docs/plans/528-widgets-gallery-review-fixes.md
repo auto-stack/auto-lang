@@ -4,7 +4,7 @@ status: execution_done
 feature_name: widgets-gallery 检查问题跟踪与修复
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03T11:30:00+08:00
-updated_at: 2026-09-03T15:10:00+08:00
+updated_at: 2026-09-03T15:40:00+08:00
 
 # Leave these EMPTY here — /auto-plan:review fills them:
 supersedes_spec_components: []
@@ -380,6 +380,25 @@ overlay/virtual_window/dock 合成,非示例层可修。
 > （`docs/plans/530-vm-mobile-paint-crash.md`）专项深挖,本计划保留
 > 定位结论与复现配方。
 
+### W11 sidebar/header 绘制错位 + /position 整页不绘制（2026-09-03 实证,并入 PLAN-530）
+
+现象一（用户截图）：首页 sidebar 内容（Overview/Home）从 y≈0 起绘制,
+被半透明 header（bg-background/95）盖住,"Home" 半裁。
+现象二（ZCode 实证）：/position 页 MCP snapshot 树 830 行完整包含页面
+内容,但窗口像素内容区**完全空白**。
+
+诊断要点：
+- 控件树结构均正确（header/aside/scrollable 层级与 vue 一致）;
+- sticky 降级链已核：IcedStyle.position 解析存储但 renderer 不消费
+  （iced_adapter.rs:151 注记 "ignored",降级为文档流位）——理论上
+  header 应占位,实测 sidebar 却从 y≈0 起,说明**绘制布局与树布局
+  脱钩**（与 W10 同族:树对,画错）;
+- /position 空白页进一步证实:内容在树、像素缺失,非页面构建问题
+  （run 日志无该页错误）。
+
+结论：W10/W11 同属"VM 绘制与控件树不一致"家族,合并入 PLAN-530
+（VM shell 绘制一致性专项）统一深挖;PLAN-528 不再单独推进。
+
 ### W2+ （待问题清单追加）
 
 （占位：每追加一问题，在此按 T 粒度展开，并同步 total_steps/current_step。）
@@ -412,6 +431,9 @@ overlay/virtual_window/dock 合成,非示例层可修。
 | W8 | 三连按钮未合体（旧脚手架 gap-1 分离观感）;需补单选示例 | 用户（人工检查+截图） | ✅ 已修复并验证（本文档 W8;示例层 class 注入连体） |
 | W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | ✅ 已修复并验证（本文档 W9;默认面板 chrome w-72 bg-popover border rounded-md shadow-md p-4） |
 | W10 | VM 版窗口收窄触发 mobile 断点后内容成双份（文字/按钮/代码块全部 ×2 重叠），底部导航栏出现 | 用户（人工检查+截图） | 🔍 已立项 **PLAN-530** 深挖（根因定位见 W10 节） |
+| W11 | VM 版首页 sidebar 顶端被 header 掩盖（Home 项裁切一半）;深查发现与 /position 页整页不绘制同族——**VM 绘制与控件树不一致**（树单份正确,绘制错位/缺失） | 用户（人工检查+ZCode 实证） | 🔍 升级并入 **PLAN-530** VM shell 绘制一致性专项（证据见 W11 节） |
+| W12 | VM 版 ToggleGroup 仍纵向裸排 B/I/U（W7 只修了 vue 轨；VM 无 toggle_group 映射） | 用户（人工检查+截图） | 📌 排队——实现路径:render_support/render_dynamic_view 增 toggle_group 映射(横排 joined button 组,消费 variant/size),与 PLAN-530 排期 |
+| W13 | VM 版 alert-dialog 点击无弹层（overlay 家族 fallback "renders as Column"）;应按 Popover 原语(Plan 422)实现悬浮面板 | 用户（人工检查） | 📌 排队——实现路径:复用 Plan 422 Popover 原语改道 alert_dialog 构建(居中放置+遮罩+默认面板 chrome,复用 W9 成果);依赖 PLAN-530 绘制一致性先行 |
 
 ### 观察（OBS，未定是否立项）
 
