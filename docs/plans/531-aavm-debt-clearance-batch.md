@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-531
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-debt-clearance-batch
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（债务清欠,塔顶验证链前置）
 
 affects: [aavm, auto-lang/trans]
-current_step: 7
+current_step: 10
 total_steps: 11
 ---
 
@@ -269,9 +269,35 @@ D-a2r-mode-entry（:485）、`scripts/aavm_build_smoke.sh`、tt 档现状）
      （codegen.at W2"早注册+尾态刷新"）已顺带清偿本洞,台账登记后未复测。
      债务核销注记按"已由 525 顺带清偿+本计划实测复证"落 KNOWN-DEBT
      （步骤10 文档回写）;不转 532（无遗留工作）。
-8. [ ] pac target 链补齐（冒烟切正路）+May 裸值修复+（可选）`??`。
-9. [ ] 全量回归+折叠合入 master。
-10. [ ] 文档回写+复审 → reviewed。
+8. [✅ 已完成] pac target 链补齐（冒烟切正路）+May 裸值修复+（可选）`??`。
+   - **May 裸值**（提交 4066bb214 主 a2r + 2075d6859 AA2R 镜像）：?T fn 内
+     裸标量 return 包裹 `Some(...)`（VM 语义=裸值即 Some(值),may_probe
+     实证）;仅裸标量形,Some/Ok/None/Unknown 不动;g34 补 find_bare 裸值
+     语料（金样 30/none/30/none,rustc 零错）。AA2R 镜像=Ar 增 cur_ret+
+     ar_return 同口径包裹（tv parity 闸捕获后补齐）;字段赋值位用 D25
+     空串拼接拷贝（m/f 经按值参数或 list.get,直赋转译态 move 即 E0382）。
+   - **pac target 链**（提交 5c8fed51c）:三缺口——①rust 后端路径补
+     `pac.resolve()`;②无名目标包名回落 pac.name;③auto-lang 依赖按
+     生成代码实际 a2r_std 引用条件添加。验收:冒烟脚本增 pac 正路双例
+     （`auto build` 全管线）,四例全绿（b07=55/b34=10-20 × trans+pac 双路）。
+   - **`??` 显式延后**（裁定留档待澄清①）:主 a2r 已支持（unwrap_or）,
+     原生 VM codegen 无臂（静默空输出）+自举 lib 三件全无臂——非便宜
+     量级,P525-3 维持（KNOWN-DEBT 已加 531 实测注记）。
+9. [✅ 已完成] 全量回归+折叠合入 master。
+   - 门禁留档:tf 3397/3399（2 红=基线注记红 schema_drift+docs_gen,
+     **零新增**）/tv 3559/3559（AA2R 镜像+codegen.at 修复后三跑稳定）/
+     tt 3746/3746/四路 runner 30/30（g34 扩展件含）/矩阵**57/57 全绿**
+     （⑤腿自举稳定集含）/冒烟 4 例。
+   - **⑤腿预存红顺带清偿**（提交 f93d6d478）:cg_ext/cg_type_decl 的
+     `c.method_ty = ty/name` 循环位直赋在转译态 move（525 W2 方法化引入,
+     被 P525-5 间歇快死掩盖）——D25 空串拼接两处,矩阵 57/57 实证。
+   - 折叠:8 件提交合入 master（merge 03da89288;并行会话 044 折叠同日,
+     片区不相交[ui/* vs trans/auto-man/lib],合并后 master 抽验
+     a2r_tests 356/356 绿）;worktree 已回同步,留待 /auto-plan:merge 终清。
+10. [✅ 已完成 2026-09-03] 文档回写（KNOWN-DEBT 五债核销/divergences
+    D-a2r-mode-entry 清偿注记）;复审移交 /auto-plan:review。
+    - 核销:P523-1/2/3 ✅、P525-4 ✅;P525-3 维持+531 实测注记;
+      P525-1/2 裁定留档维持（531 变更摘要既定不纳入）。
 11. [ ] merge 沉淀归档。
 
 ## 复审记录

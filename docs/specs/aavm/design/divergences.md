@@ -489,6 +489,12 @@ H2);FStrPart 直通发射的三缺口实证见 D40 续。
   转译版 VM 运行期 struct 字段表(b34 RUNTIME-ERROR:no field x in
   Point——c.field_idx 动态查表在转译宿主的语料内 struct 形态未覆盖)。
   归 525 OOP 批/后续宿主小修处置。
+- **D-a2r-mode-entry 清偿(2026-09-03,Plan 531)**:①argv.get——
+  `process.args()` 推断臂(List<str>,P524 契约)驱动 `.get(1)` 索引化+
+  实参 `.as_str()` 借用,merged 转译 aavm.at 无垫片构建 b07→55 实测
+  (回归锚 `aavm_at_mode_tests.rs`);②转译版 struct 字段表——实测不
+  重现(无垫片 b34→10/20 全链;判断 525 codegen 早注册批顺带清偿)。
+  本条目状态:**已清偿(531)**。
 - **D-let-shadow-global(523 W3 定案)**:参考口径为 fn 内 `let g` 名命中
   全局即**写穿全局**(b43 怪序语料钉住;set_via_let 后 main 层 g 已=新值);
   主 a2r/AA2R 均按全局写块形镜像(in_fn_body 旗标区分顶层 static)。
