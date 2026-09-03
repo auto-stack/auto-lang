@@ -369,6 +369,54 @@ widget App {
                         }
                     }
                 }
+            } else {
+                // ══════════ 查看器分支（T4）══════════
+                col {
+                    style: "w-full h-full flex flex-col bg-background"
+
+                    // 顶栏：返回 + 标题 + 收藏切换
+                    row {
+                        style: "h-14 shrink-0 items-center gap-3 px-4 border-b border-border"
+                        button (text: "← 返回网格", variant: "ghost") {
+                            onclick: .BackToGrid
+                            style: "h-8 px-2.5 text-xs rounded-lg bg-transparent text-muted-foreground hover:text-foreground"
+                        }
+                        spacer { style: "flex-1" }
+                        text .cur_title { style: "text-sm font-semibold" }
+                        spacer { style: "flex-1" }
+                        button (text: .fav_label, variant: "ghost") {
+                            onclick: .ToggleFav(.cur_id)
+                            style: "h-8 px-3 text-xs rounded-lg border border-border bg-transparent text-foreground hover:border-primary/50"
+                        }
+                    }
+
+                    // 大图区（contain 适配，黑场衬底）
+                    col {
+                        style: "flex-1 min-h-0 flex items-center justify-center bg-black/80 p-4"
+                        image (src: .cur_full, alt: .cur_title, fit: "contain") {
+                            style: "max-w-full max-h-full"
+                        }
+                    }
+
+                    // 底栏：prev/next 循环导航 + 元信息
+                    row {
+                        style: "h-14 shrink-0 items-center gap-3 px-4 border-t border-border"
+                        button {
+                            onclick: .PrevPhoto
+                            style: "h-9 px-3 rounded-lg border border-border bg-transparent text-muted-foreground hover:text-foreground flex items-center gap-1.5"
+                            icon (name: "chevron-left", size: 14)
+                            text "上一张" { style: "text-xs" }
+                        }
+                        button {
+                            onclick: .NextPhoto
+                            style: "h-9 px-3 rounded-lg border border-border bg-transparent text-muted-foreground hover:text-foreground flex items-center gap-1.5"
+                            text "下一张" { style: "text-xs" }
+                            icon (name: "chevron-right", size: 14)
+                        }
+                        spacer { style: "flex-1" }
+                        text .cur_meta { style: "text-xs text-muted-foreground" }
+                    }
+                }
             }
         }
     }
