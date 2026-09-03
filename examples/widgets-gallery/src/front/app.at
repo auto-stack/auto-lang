@@ -6,6 +6,9 @@
 // shadcn-vue mappings.
 
 widget App {
+    // PLAN-528 W2: SettingsPanel 组件来自 official 包（components/）
+    use { package: official from "./components" }
+
     // Route definitions
     routes {
         "/" -> use index
@@ -89,6 +92,9 @@ widget App {
         // (aligned with auto-forge).
         themeOpen bool = false
         accent_color str = "indigo"
+        // PLAN-528 W2: 深/浅主题切换（Plan 458 约定：声明 dark_mode 即由
+        // codegen 生成 html.dark class 翻转 + applyAccent 明暗重校准）
+        dark_mode bool = true
     }
 
     on {
@@ -97,7 +103,14 @@ widget App {
         .openSearch -> { searchOpen = true }
         .closeSearch -> { searchOpen = false }
         .openThemePicker -> { themeOpen = !themeOpen }
+        .closeThemePicker -> { themeOpen = false }
         .SetAccent(name) -> { accent_color = name }
+        .SetIndigo -> { accent_color = "indigo" }
+        .SetCoral -> { accent_color = "coral" }
+        .SetOcean -> { accent_color = "ocean" }
+        .SetSage -> { accent_color = "sage" }
+        .SetAmber -> { accent_color = "amber" }
+        .ToggleDark -> { dark_mode = !dark_mode }
     }
 
     view {
@@ -133,16 +146,23 @@ widget App {
                 }
             }
 
-            // Plan 409 §8: theme color picker panel. VM ignores `absolute`
+            // PLAN-528 W2: SettingsPanel 统一主题设置弹层（Theme 明暗切换 +
+            // Accent 色点），替换原 Plan 409 §8 裸色点行。VM ignores `absolute`
             // (iced limitation) so it renders inline below the header; vue
             // uses absolute positioning for a floating popover.
             if .themeOpen {
-                row (style: "absolute right-4 top-14 z-50 items-center gap-1.5 rounded-lg border bg-popover p-2 shadow-lg") {
-                    button (onClick: .SetAccent("indigo"), style: if .accent_color == "indigo" { "h-5 w-5 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-indigo-500 hover:scale-110 transition-transform" }) {}
-                    button (onClick: .SetAccent("coral"), style: if .accent_color == "coral" { "h-5 w-5 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-rose-500 hover:scale-110 transition-transform" }) {}
-                    button (onClick: .SetAccent("ocean"), style: if .accent_color == "ocean" { "h-5 w-5 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-blue-500 hover:scale-110 transition-transform" }) {}
-                    button (onClick: .SetAccent("sage"), style: if .accent_color == "sage" { "h-5 w-5 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-emerald-500 hover:scale-110 transition-transform" }) {}
-                    button (onClick: .SetAccent("amber"), style: if .accent_color == "amber" { "h-5 w-5 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-amber-500 hover:scale-110 transition-transform" }) {}
+                col (style: "absolute right-4 top-14 z-50") {
+                    SettingsPanel (
+                        dark_mode: .dark_mode,
+                        accent_color: .accent_color,
+                        on_close: .closeThemePicker,
+                        on_toggle_dark: .ToggleDark,
+                        on_set_indigo: .SetIndigo,
+                        on_set_coral: .SetCoral,
+                        on_set_ocean: .SetOcean,
+                        on_set_sage: .SetSage,
+                        on_set_amber: .SetAmber
+                    )
                 }
             }
 

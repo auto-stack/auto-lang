@@ -19,7 +19,9 @@ widget KitchenSinkPage {
             h2 "avatar"
             row (style: "gap-2 flex-wrap items-center") {
                 avatar {}
-                avatar (src: "sample") {}
+                // PLAN-528 W6: src 指向 public/icon.png——裸词 "sample" 会被
+                // vue 生成器当静态资源 import，vite 解析不到整页 500
+                avatar (src: "/icon.png") {}
                 avatar (alt: "sample") {}
                 avatar (fallback: "sample") {}
             }
@@ -83,7 +85,8 @@ widget KitchenSinkPage {
             h2 "image"
             row (style: "gap-2 flex-wrap items-center") {
                 image {}
-                image (src: "sample") {}
+                // PLAN-528 W6: 同 avatar——src 裸词会被当静态资源 import 致 500
+                image (src: "/icon.png") {}
                 image (alt: "sample") {}
                 image (fit: "cover") {}
                 image (fit: "contain") {}
@@ -221,10 +224,9 @@ widget KitchenSinkPage {
                 toaster (position: "top-center") {}
             }
 
-            h2 "window_thumbnail"
-            row (style: "gap-2 flex-wrap items-center") {
-                window_thumbnail {}
-            }
+            // PLAN-528 W6: window_thumbnail 属桌面壳（Plan 526）专属 widget，
+            // 其 @/wm/* 脚手架在 web 画廊工程不存在——移入桌面壳 demo 页，
+            // 不在 web gallery 展示。
         }
     }
 }

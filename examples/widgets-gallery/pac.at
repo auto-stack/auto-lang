@@ -11,3 +11,6 @@ render: "vm"
 front_port: 3024
 // Plan 411: VM 原生窗口启动尺寸（逻辑像素，iced 会乘以系统 DPI 缩放）
 window: "1440x900"
+// PLAN-528 W6: kitchen-sink 页的 autodown_editor 需要 @autodown 引擎包
+// （015-notes 同款 link 依赖；本机路径 auto-down/autodown/packages/*）
+npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/editor", "@autodown/core:link:D:/autostack/auto-down/autodown/packages/core", "@autodown/engine:link:D:/autostack/auto-down/autodown/packages/engine"]

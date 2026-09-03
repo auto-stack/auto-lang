@@ -156,6 +156,14 @@ fn build_syntax_system() -> SyntaxSystem {
             theme_set.themes.insert(name, theme.syntax_theme());
         }
     }
+    // PLAN-041 T4: autodown fence 家族 hljs 主题——autodown-core 的跨轨
+    // token 映射表（scope→.hljs-* 类→色板，rust 单源）烘焙为 syntect 主题。
+    // VM fence（编辑态 ViEditor / 只读态共享 buffer 实例）着色与 vue 侧
+    // lowlight 观感对齐：tokenize 仍是 syntect，仅色板跨轨共享。
+    #[cfg(feature = "autodown")]
+    for &dark in [true, false].iter() {
+        theme_set.themes.insert(hljs_theme_name_inner(dark), hljs_syntax_theme(dark));
+    }
     SyntaxSystem {
         syntax_set,
         theme_set,
@@ -186,6 +194,52 @@ pub fn register_theme(name: &str, _theme: SynTheme) -> String {
 /// Stable theme name for a (dark, accent) pair — the pre-registered key.
 pub fn theme_name(dark: bool, accent: &str) -> String {
     theme_name_inner(dark, accent)
+}
+
+// ── PLAN-041 T4：autodown fence 家族 hljs 主题（跨轨 token 映射表消费）──
+
+#[cfg(feature = "autodown")]
+fn hljs_theme_name_inner(dark: bool) -> String {
+    format!("autodown-hljs-{}", if dark { "dark" } else { "light" })
+}
+
+/// autodown fence 家族主题名（暗/明两态预烘焙键）。
+#[cfg(feature = "autodown")]
+pub fn hljs_theme_name(dark: bool) -> String {
+    hljs_theme_name_inner(dark)
+}
+
+/// 由映射表（scope→类→色板）构造 syntect 主题：每行 scope 一条
+/// ThemeItem（theme.rs CodeEditorTheme::syntax_theme 同款模式）；
+/// syntect 选择器的原子前缀 + 特异度排序天然实现
+/// 「constant.character.escape（String 组）压过 constant（Number 组）」。
+#[cfg(feature = "autodown")]
+fn hljs_syntax_theme(dark: bool) -> SynTheme {
+    use autodown_core::hljs_scope_map::{hljs_group_for_class, hljs_group_rgb, SCOPE_CLASS_TABLE};
+    use syntect::highlighting::{
+        Color, ScopeSelectors, StyleModifier, ThemeItem, ThemeSettings,
+    };
+
+    let fg = if dark { (250, 250, 250) } else { (9, 9, 11) };
+    let mut theme = SynTheme::default();
+    theme.settings = ThemeSettings {
+        foreground: Some(Color { r: fg.0, g: fg.1, b: fg.2, a: 0xFF }),
+        ..Default::default()
+    };
+    for row in SCOPE_CLASS_TABLE.iter() {
+        let Some(group) = hljs_group_for_class(row.hljs) else { continue };
+        let (r, g, b) = hljs_group_rgb(group, dark);
+        let Ok(selector) = row.scope.parse::<ScopeSelectors>() else { continue };
+        theme.scopes.push(ThemeItem {
+            scope: selector,
+            style: StyleModifier {
+                foreground: Some(Color { r, g, b, a: 0xFF }),
+                background: None,
+                font_style: None,
+            },
+        });
+    }
+    theme
 }
 
 /// Plan 442 A6: highlight-only API for read-only code rendering — the

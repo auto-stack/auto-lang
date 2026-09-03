@@ -5397,7 +5397,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                                 if let AuraNode::Text(content) = child {
                                     match content {
                                         AuraTextContent::Literal(s) => {
-                                            slot_content = Some(s.clone());
+                                            // PLAN-528 W5: 提升进 slot 的文本同样
+                                            // 是纯文本通道，按 HTML 转义。
+                                            slot_content = Some(Self::escape_html_text(s));
                                             consumed_text_child_idx = Some(i);
                                             break;
                                         }
@@ -5739,13 +5741,25 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                                 }
                                 _ => None,
                             });
+                            // PLAN-043 T9: 坐标取 currentTarget 矩形相对值（经
+                            // clientX/Y - rect）——e.offsetX/Y 相对事件 target，
+                            // mouse-area 带子元素时（CustomScrollbar thumb）拖拽
+                            // 期 target=子元素、offsetY 退化为子元素局部坐标。
+                            // 无子元素的既有消费方（charts 覆盖层）两式等价。
+                            // PLAN-043 T10 续: currentTarget 在 vue-tsc 模板检查
+                            // 下是 EventTarget|null（getBoundingClientRect 不在
+                            // 类型上）——as HTMLElement 收窄（regen 门禁此前用
+                            // 主仓二进制生成旧箭头而未暴露）。
                             let arrow = match extent {
                                 Some((w, h)) => format!(
-                                    "e => {}(e.offsetX / e.currentTarget.clientWidth * {}, \
-                                     e.offsetY / e.currentTarget.clientHeight * {})",
+                                    "e => {}((e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left) / (e.currentTarget as HTMLElement).clientWidth * {}, \
+                                     (e.clientY - (e.currentTarget as HTMLElement).getBoundingClientRect().top) / (e.currentTarget as HTMLElement).clientHeight * {})",
                                     call, w, h
                                 ),
-                                None => format!("e => {}(e.offsetX, e.offsetY)", call),
+                                None => format!(
+                                    "e => {}(e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left, e.clientY - (e.currentTarget as HTMLElement).getBoundingClientRect().top)",
+                                    call
+                                ),
                             };
                             attrs.push(format!("@mousemove=\"{}\"", arrow));
                             continue;
@@ -5969,7 +5983,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             AuraNode::Text(content) => {
                 match content {
                     AuraTextContent::Literal(s) => {
-                        Ok(format!("{}{}\n", ind, s))
+                        // PLAN-528 W5: 模板文本是纯文本通道——裸 `<`（如文档表格
+                        // 里的泛型 `List<str>`）会被 Vue 模板解析器当成未闭合
+                        // 元素，整个页面 SFC 编译 500。字面量按 HTML 转义。
+                        Ok(format!("{}{}\n", ind, Self::escape_html_text(s)))
                     }
                     AuraTextContent::Interpolated { template, bindings } => {
                         // Convert template to Vue interpolation
@@ -6650,7 +6667,14 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     } else {
                         format!("({})", event.params.join(", "))
                     };
-                    props_parts.push(format!("{}: .{}", event_name, event.handler));
+                    // PLAN-528 W4: handler 内部约定已含前导点（parse_event_handler
+                    // 返回 ".Name"），仅缺失时补点，避免打印出 `..Name`。
+                    let handler_disp = if event.handler.starts_with('.') {
+                        event.handler.clone()
+                    } else {
+                        format!(".{}", event.handler)
+                    };
+                    props_parts.push(format!("{}: {}", event_name, handler_disp));
                 }
 
                 let props_str = if props_parts.is_empty() {
@@ -6741,7 +6765,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
                             sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
                             for (event_name, event) in sorted_ev {
-                    props_parts.push(format!("{}: .{}", event_name, event.handler));
+                    // PLAN-528 W4: 同 node_to_auto_code——handler 已含前导点时不再补。
+                    let handler_disp = if event.handler.starts_with('.') {
+                        event.handler.clone()
+                    } else {
+                        format!(".{}", event.handler)
+                    };
+                    props_parts.push(format!("{}: {}", event_name, handler_disp));
                 }
 
                 let props_str = if props_parts.is_empty() {
@@ -9197,10 +9227,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         // If the raw result already contains {{ (e.g., from convert_template_to_vue),
         // or is a plain literal string / f-string, return as-is.
         // Otherwise wrap in {{ }}.
-        if raw.starts_with("{{") || matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)) {
-            Ok(raw)
+        let out = if raw.starts_with("{{") || matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)) {
+            raw
         } else {
-            Ok(format!("{{{{ {} }}}}", raw))
+            format!("{{{{ {} }}}}", raw)
+        };
+        // PLAN-528 W5: 结果是不含插值的纯文本时按 HTML 转义（裸 `<` 会让
+        // Vue 模板解析器报 "Element is missing end tag"，整页 500）。
+        if out.contains("{{") {
+            Ok(out)
+        } else {
+            Ok(Self::escape_html_text(&out))
         }
     }
 
@@ -12460,7 +12497,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             }
 
             // === Toggle Group ===
-            "toggle_group" => {
+            // PLAN-528 W7: normalize 把 `-` 折成 `_`,页面书写 togglegroup /
+            // toggle-group / toggle_group 三种拼写全部归并到这里。
+            "toggle_group" | "togglegroup" => {
                 // v-model for selected value(s)
                 if let Some(value) = props.get("value") {
                     if let Some(model) = self.extract_state_ref(value) {
@@ -12472,6 +12511,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     let type_val = self.extract_string_value(value).unwrap_or("single");
                     attrs.push(format!("type=\"{}\"", type_val));
                 }
+                // PLAN-528 W7: variant (default/outline) + size (default/sm/lg)
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+                if let Some(value) = props.get("size") {
+                    let size = self.extract_string_value(value).unwrap_or("default");
+                    if size != "default" {
+                        attrs.push(format!("size=\"{}\"", size));
+                    }
+                }
                 // disabled
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
@@ -12480,16 +12530,21 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 }
             }
 
-            "toggle_group_item" => {
+            "toggle_group_item" | "togglegroupitem" => {
                 // value
                 if let Some(value) = props.get("value") {
                     let val = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("value=\"{}\"", val));
                 }
-                // aria-label
-                if let Some(value) = props.get("label") {
+                // aria-label (PLAN-528 W7: 兼容 label 拼写)
+                let aria_label = props
+                    .get("aria-label")
+                    .or_else(|| props.get("label"));
+                if let Some(value) = aria_label {
                     let label = self.extract_string_value(value).unwrap_or("");
-                    attrs.push(format!("aria-label=\"{}\"", label));
+                    if !label.is_empty() {
+                        attrs.push(format!("aria-label=\"{}\"", label));
+                    }
                 }
                 // disabled
                 if let Some(value) = props.get("disabled") {
@@ -19693,15 +19748,19 @@ widget Chart {
     }
 }
 "#);
+        // PLAN-043 T9: 箭头改 currentTarget 矩形相对坐标（e.offsetX/Y 相对
+        // 事件 target——mouse-area 带子元素时拖拽期退化为子元素局部坐标）。
         assert!(
             sfc.contains(
-                "@mousemove=\"e => PointerMove(e.offsetX / e.currentTarget.clientWidth * 560, e.offsetY / e.currentTarget.clientHeight * 300)\""
+                "@mousemove=\"e => PointerMove((e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left) / (e.currentTarget as HTMLElement).clientWidth * 560, (e.clientY - (e.currentTarget as HTMLElement).getBoundingClientRect().top) / (e.currentTarget as HTMLElement).clientHeight * 300)\""
             ),
             "coords 换算箭头必须发射:\n{}",
             sfc
         );
         assert!(
-            sfc.contains("@mousemove=\"e => RawMove(e.offsetX, e.offsetY)\""),
+            sfc.contains(
+                "@mousemove=\"e => RawMove(e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left, e.clientY - (e.currentTarget as HTMLElement).getBoundingClientRect().top)\""
+            ),
             "raw px 形态必须发射:\n{}",
             sfc
         );
@@ -25169,6 +25228,18 @@ pub fn is_even(x int) bool {
             sfc.contains("build_month_grid(store.year, store.month, store.today, store.selected_date)"),
             "days computed keeps the bare-name call:\n{sfc}"
         );
+    }
+
+    // PLAN-528 W7 回归:togglegroup 族标签必须经 WidgetRegistry 映射到
+    // shadcn-vue 组件(此前 schema/registry 双缺,塌缩为裸 div,B/I/U
+    // 纵向裸排)。三种书写拼写(无连字符/kebab)全部覆盖。
+    #[test]
+    fn test_plan528_toggle_group_registry_mapping() {
+        let mut gen = VueGenerator::new().with_mode(crate::ui_gen::VueMode::Shadcn);
+        assert_eq!(gen.map_tag("togglegroup", false), "ToggleGroup");
+        assert_eq!(gen.map_tag("toggle-group", false), "ToggleGroup");
+        assert_eq!(gen.map_tag("togglegroup-item", false), "ToggleGroupItem");
+        assert_eq!(gen.map_tag("toggle-group-item", false), "ToggleGroupItem");
     }
 
     #[test]

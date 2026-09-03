@@ -3000,3 +3000,539 @@ mod musk_vm_track_p055_nav_active {
         );
     }
 }
+
+/// PLAN-057 T2：SET_FIELD 新键插入语义（等价性缺陷族①——Block 全家福 a1
+/// 整条空白的直接死因）。TS 基准：对象是开放 dict，`obj.newKey = v` 合法插入
+/// （ObjectData 底层本就是开放 HashMap，types.rs set=insert）。
+/// 根修仅放开 ObjectData 臂的 Str 新键；Int/Bool 键格式与
+/// GenericInstanceData（typed instance）维持 Plan 118 报错（类型严格性）。
+#[cfg(test)]
+mod musk_vm_track_p057_setfield_newkey {
+    fn run_code(code: &str) -> Result<String, String> {
+        match crate::run_with_capture(code) {
+            Ok((_, stdout)) => Ok(stdout),
+            Err(e) => Err(format!("{:?}", e)),
+        }
+    }
+
+    /// 空对象字面量加新键（此前 RuntimeError 中止——case_setfield_newkey A）。
+    #[test]
+    fn setfield_empty_literal_newkey_inserts() {
+        let out = run_code("var o = {}\no.a = 1\nprint(o.a)");
+        assert!(
+            matches!(&out, Ok(s) if s.contains('1')),
+            "expected inserted value 1, got: {:?}",
+            out
+        );
+    }
+
+    /// 既有键赋值仍走更新（对照——case_setfield_newkey B）。
+    #[test]
+    fn setfield_existing_key_updates() {
+        let out = run_code(concat!(
+            "let o = { name: \"a\", status: \"pending\" }\n",
+            "o.status = \"completed\"\n",
+            "print(o.status)",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("completed")),
+            "expected completed, got: {:?}",
+            out
+        );
+    }
+
+    /// for-in 元素加新键（messageBlocks 现场——case_setfield_newkey C）。
+    #[test]
+    fn setfield_forin_element_newkey_inserts() {
+        let out = run_code(concat!(
+            "let calls = [{ name: \"x\" }, { name: \"y\" }]\n",
+            "for raw in calls {\n",
+            "    var status = \"done\"\n",
+            "    raw.status = status\n",
+            "}\n",
+            "print(calls[0].status)",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("done")),
+            "expected done, got: {:?}",
+            out
+        );
+    }
+
+    /// typed instance（type 声明的泛型实例）加新键仍不落键——Plan 118
+    /// 类型严格性保留（GenericInstanceData 分支不动）。实测形态：写侧编译
+    /// 期告警+静默跳过（不中止），新键**读回**时 RuntimeError（engine.rs
+    /// GET_FIELD typed-instance 臂）。钉住可观测不变量：typed 写不创建键、
+    /// 读回应中止——若未来被"修成"插入语义，本测试转红。
+    #[test]
+    fn setfield_typed_instance_still_errs_on_readback() {
+        let out = run_code(concat!(
+            "type Point { x int, y int }\n",
+            "let p = Point { x: 1, y: 2 }\n",
+            "p.z = 3\n",
+            "print(p.z)\n",
+            "print(\"BOOM\")",
+        ));
+        let leaked = matches!(&out, Ok(s) if s.contains("BOOM") || s.contains('3'))
+            || matches!(&out, Err(e) if e.contains("BOOM"));
+        assert!(
+            !leaked,
+            "typed instance 新键不应落键（读回应中止，哨兵 BOOM/值 3 不应出现），got: {:?}",
+            out
+        );
+    }
+}
+
+/// PLAN-057 T3：for-in Call 源通道泛化（等价性缺陷族②）。TS 基准：`for x in f()`
+/// 迭代 f() 返回数组的全部元素；VM 现状=任意直接调用源恒 0 次静默迭代
+/// （codegen.rs Plan 454 E5b 索引通道仅覆盖 .values/.keys，其余 Call 源落
+/// 默认迭代器通道——List 句柄≠iterator，auto.iterator.next 立即判尽）。
+/// 泛化后索引通道承接全部 Call 源；迭代器协议族保留原通道（.iter()/.take()
+/// 等适配链——通道选择由 vm_types 编译形态测试钉住，运行期 .iter() 本身
+/// 零迭代是既有独立债，非本计划范围；sse_get_stream 流式源惰性拉帧）。
+#[cfg(test)]
+mod musk_vm_track_p057_forin_call {
+    fn run_code(code: &str) -> Result<String, String> {
+        match crate::run_with_capture(code) {
+            Ok((_, stdout)) => Ok(stdout),
+            Err(e) => Err(format!("{:?}", e)),
+        }
+    }
+
+    /// obj 返回注解的直接调用源——计数（case_forin_call A）。
+    #[test]
+    fn forin_call_obj_return_iterates() {
+        let out = run_code(concat!(
+            "fn g() obj {\n",
+            "    return [{ n: 1 }, { n: 2 }, { n: 3 }]\n",
+            "}\n",
+            "var n = 0\n",
+            "for x in g() {\n",
+            "    n = n + 1\n",
+            "}\n",
+            "print(n)",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains('3')),
+            "expected 3 iterations, got: {:?}",
+            out
+        );
+    }
+
+    /// list 返回注解的直接调用源——求和（case_forin_call D）。
+    #[test]
+    fn forin_call_int_list_sums() {
+        let out = run_code(concat!(
+            "fn g() list {\n",
+            "    return [10, 20, 30]\n",
+            "}\n",
+            "var sum = 0\n",
+            "for v in g() {\n",
+            "    sum = sum + v\n",
+            "}\n",
+            "print(sum)",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("60")),
+            "expected sum 60, got: {:?}",
+            out
+        );
+    }
+
+    /// 泛化回归面：`.values` 既有 E5b 形态不因泛化回归（索引通道承接）。
+    #[test]
+    fn forin_values_call_still_iterates() {
+        let out = run_code(concat!(
+            "let o = { a: 1, b: 2, c: 3 }\n",
+            "var n = 0\n",
+            "for v in Object.values(o) {\n",
+            "    n = n + v\n",
+            "}\n",
+            "print(n)",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains('6')),
+            "expected 6 via Object.values, got: {:?}",
+            out
+        );
+    }
+}
+
+/// PLAN-057 T4：实参含直接调用的参数槽错位（等价性缺陷族⑤）。现场：
+/// case_web_builtins A/B/C 标签乱码（4000000/None/hi）——实参为未解析调用
+/// （CALL_SPEC 静态兜底）时，str/List/unknown 接收者臂的未知方法兜底
+/// **只压 None 不弹 receiver+实参**，栈失衡 +1 使后续调用的参数槽整体
+/// 平移。根修=三处兜底臂配平（pop 0..=arg_count 再压 None）。
+/// 用合成名（Foo.bar/xs.frobnicate）锁未解析路径——不在 Math/JSON/Object/
+/// Array 命名空间，免疫 T7 编译期门禁。
+#[cfg(test)]
+mod musk_vm_track_p057_arg_stack {
+    fn run_code(code: &str) -> Result<String, String> {
+        match crate::run_with_capture(code) {
+            Ok((_, stdout)) => Ok(stdout),
+            Err(e) => Err(format!("{:?}", e)),
+        }
+    }
+
+    fn src(body: &str) -> String {
+        format!(
+            "fn f3(label str, v obj) {{\n    print(f\"${{label}}|${{v}}\")\n}}\nfn main() {{\n{}\n}}\n",
+            body
+        )
+    }
+
+    /// 未解析静态调用（str 接收者臂）：标签必须完整（case A/B/C 形态）。
+    #[test]
+    fn unresolved_static_call_keeps_sibling_label() {
+        let out = run_code(&src(concat!(
+            "    let o = { a: 1 }\n",
+            "    f3(\"lblA\", Foo.bar(o))\n",
+            "    f3(\"lblC\", \"tail\")",
+        )));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("lblA|") && s.contains("lblC|tail")),
+            "labels must stay intact across unresolved static call, got: {:?}",
+            out
+        );
+    }
+
+    /// 未知 list 方法（List 接收者臂）：同上。
+    #[test]
+    fn unknown_list_method_keeps_sibling_label() {
+        let out = run_code(&src(concat!(
+            "    let xs = [1, 2]\n",
+            "    f3(\"lblB\", xs.frobnicate(1))\n",
+            "    f3(\"lblC\", \"tail\")",
+        )));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("lblB|") && s.contains("lblC|tail")),
+            "labels must stay intact across unknown list method, got: {:?}",
+            out
+        );
+    }
+
+    /// 未解析调用的值语义：恒 None（静默桩，缺陷族③运行期面），配平后仍是。
+    #[test]
+    fn unresolved_call_value_is_none() {
+        let out = run_code(&src(concat!(
+            "    let o = { a: 1 }\n",
+            "    f3(\"lblA\", Foo.bar(o))",
+        )));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("lblA|None")),
+            "unresolved call value should be None, got: {:?}",
+            out
+        );
+    }
+}
+
+/// PLAN-057 T5：for-in 裸字符接收者分派重定位（等价性缺陷族④）。
+/// for-in over str 经 GET_ELEM 产出 i32 码点——`c.char_code_at(0)` 接收者
+/// 是码点不是字符串，落 CALL_SPEC 的 `<unknown:` 接收者臂（整型字面量方法
+/// 族）被静默吞 None；PLAN-055 加的 Char 恒等臂（engine.rs 7213 一带）
+/// 排在该臂之后永不命中。根修=恒等臂提升到 `<unknown:` 臂之前。
+#[cfg(test)]
+mod musk_vm_track_p057_char_receiver {
+    fn run_code(code: &str) -> Result<String, String> {
+        match crate::run_with_capture(code) {
+            Ok((_, stdout)) => Ok(stdout),
+            Err(e) => Err(format!("{:?}", e)),
+        }
+    }
+
+    /// for-in 字符接收者逐字符码点求和（"你好ab"=20320+22909+97+98=43424）。
+    #[test]
+    fn forin_char_receiver_char_code_at_sums() {
+        let out = run_code(concat!(
+            "let text = \"你好ab\"\n",
+            "var sum = 0\n",
+            "for c in text {\n",
+            "    sum = sum + c.char_code_at(0)\n",
+            "}\n",
+            "print(sum)",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("43424")),
+            "expected codepoint sum 43424, got: {:?}",
+            out
+        );
+    }
+
+    /// 控制组：单字符字符串接收者（str 臂）不回归。
+    #[test]
+    fn single_char_string_receiver_still_works() {
+        let out = run_code(concat!(
+            "let one = \"你\"\n",
+            "print(one.char_code_at(0))",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("20320")),
+            "expected 20320, got: {:?}",
+            out
+        );
+    }
+}
+
+/// PLAN-057 T6：web 内建 natives 补齐（等价性缺陷族③——未实现者运行期
+/// 静默 None）。TS 基准：Array.isArray/JSON.stringify（含缩进参）/
+/// JSON.parse 数组形态 `.length`/Math.trunc（int 恒等不回绕）/Math.imul
+/// （i32 回绕乘）。trunc/imul 为 T1 探针实证的 census 漏计项（待澄清⑤），
+/// 与 T7 编译期门禁连贯性要求一并落地。
+#[cfg(test)]
+mod musk_vm_track_p057_web_natives {
+    fn run_code(code: &str) -> Result<String, String> {
+        match crate::run_with_capture(code) {
+            Ok((_, stdout)) => Ok(stdout),
+            Err(e) => Err(format!("{:?}", e)),
+        }
+    }
+
+    fn assert_out(code: &str, needle: &str) {
+        let out = run_code(code);
+        assert!(
+            matches!(&out, Ok(s) if s.contains(needle)),
+            "expected stdout containing {:?}, got: {:?}",
+            needle, out
+        );
+    }
+
+    /// Array.isArray：真列表 true；对象/字符串 false；parse 数组 true。
+    #[test]
+    fn is_array_js_semantics() {
+        assert_out(
+            concat!(
+                "let l = [1, 2]\n",
+                "let o = { a: 1 }\n",
+                "var n = 0\n",
+                "if Array.isArray(l) { n = n + 1 }\n",
+                "if !Array.isArray(o) { n = n + 1 }\n",
+                "if !Array.isArray(\"hi\") { n = n + 1 }\n",
+                "if Array.isArray(JSON.parse(\"[1]\")) { n = n + 1 }\n",
+                "print(n)",
+            ),
+            "4",
+        );
+    }
+
+    /// JSON.stringify 单参：紧凑 JSON 文本。
+    #[test]
+    fn json_stringify_compact() {
+        assert_out(
+            concat!(
+                "let o = { a: 1, b: \"x\" }\n",
+                "let s = JSON.stringify(o)\n",
+                "if s == \"{\\\"a\\\":1,\\\"b\\\":\\\"x\\\"}\" {\n",
+                "    print(\"OK\")\n",
+                "} else {\n",
+                "    print(f\"got=${s}\")\n",
+                "}",
+            ),
+            "OK",
+        );
+    }
+
+    /// JSON.stringify 三参（v, null, 2）：缩进美化（多行）。
+    #[test]
+    fn json_stringify_pretty() {
+        assert_out(
+            concat!(
+                "let o = { a: 1, b: 2 }\n",
+                "let s = JSON.stringify(o, null, 2)\n",
+                "let compact = JSON.stringify(o)\n",
+                "if s != None && s.length > compact.length {\n",
+                "    print(\"PRETTY\")\n",
+                "} else {\n",
+                "    print(\"FLAT\")\n",
+                "}",
+            ),
+            "PRETTY",
+        );
+    }
+
+    /// JSON.parse 数组形态：.length=3、元素 [0]=10（case H）。
+    #[test]
+    fn json_parse_array_length() {
+        assert_out(
+            concat!(
+                "let pa = JSON.parse(\"[10,20,30]\")\n",
+                "if pa.length == 3 && pa[0] == 10 {\n",
+                "    print(\"OK\")\n",
+                "} else {\n",
+                "    print(f\"len=${pa.length} e0=${pa[0]}\")\n",
+                "}",
+            ),
+            "OK",
+        );
+    }
+
+    /// Math.trunc：int 表达式恒等（不 32 位回绕——wl_probe2 实证原值
+    /// -2147483647 垃圾）；float 截断。
+    #[test]
+    fn math_trunc_int_identity_and_float() {
+        assert_out(
+            concat!(
+                "let d = 1756812345678\n",
+                "let t = Math.trunc(d / 1000)\n",
+                "let f = Math.trunc(2.9)\n",
+                "if t == 1756812345 && f == 2 {\n",
+                "    print(\"OK\")\n",
+                "} else {\n",
+                "    print(f\"t=${t} f=${f}\")\n",
+                "}",
+            ),
+            "OK",
+        );
+    }
+
+    /// Math.imul：小值直乘 + i32 回绕语义（hash 链依赖）。
+    /// 123456789×1000 = 123456789000；mod 2^32 = 3197704712 > 2^31 →
+    /// 有符号 = 3197704712 − 4294967296 = −1097262584。
+    #[test]
+    fn math_imul_wrapping_semantics() {
+        assert_out(
+            concat!(
+                "let h = Math.imul(123456789, 1000)\n",
+                "let m = Math.imul(3, 4)\n",
+                "if h == -1097262584 && m == 12 {\n",
+                "    print(\"OK\")\n",
+                "} else {\n",
+                "    print(f\"h=${h} m=${m}\")\n",
+                "}",
+            ),
+            "OK",
+        );
+    }
+}
+
+/// PLAN-057 T7：未解析 web 内建编译期报错（等价性缺陷族③的门禁面）。
+/// VM 轨对 Math.*/JSON.*/Object.*/Array.* 命名空间内**解析失败**的调用
+/// 从「运行期静默 None 桩」升「编译期报错」；豁免=调用点同行或上一行
+/// `// vm-safe-allow <原因>`（与 musk 侧 scripts/vm-safe-lint.mjs 同机制）。
+/// 非四命名空间的未解析调用（Foo.bar 等）维持静默兜底（T4 语义面）。
+#[cfg(test)]
+mod musk_vm_track_p057_compile_gate {
+    fn run_code(code: &str) -> Result<String, String> {
+        match crate::run_with_capture(code) {
+            Ok((_, stdout)) => Ok(stdout),
+            Err(e) => Err(format!("{:?}", e)),
+        }
+    }
+
+    /// 未实现内建 → 编译失败（错误信息点名豁免机制）。
+    #[test]
+    fn unresolved_web_builtin_is_compile_error() {
+        let out = run_code("fn main() {\n    let x = Array.foo({ a: 1 })\n    print(x)\n}");
+        assert!(
+            matches!(&out, Err(e) if e.contains("web 内建") && e.contains("vm-safe-allow")),
+            "expected compile error mentioning vm-safe-allow, got: {:?}",
+            out
+        );
+    }
+
+    /// `// vm-safe-allow` 豁免后编译通过（运行期仍静默 None——豁免≠实现）。
+    #[test]
+    fn vm_safe_allow_exempts_compile_error() {
+        let out = run_code(concat!(
+            "fn main() {\n",
+            "    // vm-safe-allow 测试豁免\n",
+            "    let x = Array.foo({ a: 1 })\n",
+            "    if x == None { print(\"NONE\") }\n",
+            "}",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("NONE")),
+            "expected exempted call to compile and yield None, got: {:?}",
+            out
+        );
+    }
+
+    /// 控制组：非四命名空间的未解析静态调用维持静默（T4 语义面不回归）。
+    #[test]
+    fn non_web_namespace_stays_silent() {
+        let out = run_code("fn main() {\n    let x = Foo.bar({ a: 1 })\n    if x == None { print(\"NONE\") }\n}");
+        assert!(
+            matches!(&out, Ok(s) if s.contains("NONE")),
+            "non-web unresolved call should stay silent, got: {:?}",
+            out
+        );
+    }
+
+    /// 控制组：已实现内建不受门禁影响。
+    #[test]
+    fn implemented_builtins_unaffected() {
+        let out = run_code("fn main() {\n    print(Math.round(2.5))\n}");
+        assert!(
+            matches!(&out, Ok(s) if s.contains('3')),
+            "Math.round should still work, got: {:?}",
+            out
+        );
+    }
+}
+
+/// PLAN-057 T11 实机补遗：嵌套 compound 字段的 stringify。实机现场：
+/// 工具卡展开 Arguments 显示裸堆句柄数字（"4067504"）——嵌套 VmRef 字段读
+/// （GET_FIELD ObjectData 臂 rc_push_id）以裸 int 句柄（≥HEAP_ID_BASE 约定）
+/// 出栈，nv_to_vm_value 的 i32 标量臂先于堆判定吞掉句柄。修=解码序前移。
+#[cfg(test)]
+mod musk_vm_track_p057_nested_stringify {
+    fn run_code(code: &str) -> Result<String, String> {
+        match crate::run_with_capture(code) {
+            Ok((_, stdout)) => Ok(stdout),
+            Err(e) => Err(format!("{:?}", e)),
+        }
+    }
+
+    /// 对象字段嵌套对象的 stringify（实机 tc.arguments 形态）。
+    #[test]
+    fn stringify_nested_object_field() {
+        let out = run_code(concat!(
+            "fn main() {\n",
+            "    let tc = { name: \"x\", arguments: { a: 1, b: \"s\" } }\n",
+            "    let s = JSON.stringify(tc.arguments, null, 2)\n",
+            "    if s == \"{\n  \\\"a\\\": 1,\n  \\\"b\\\": \\\"s\\\"\n}\" {\n",
+            "        print(\"OK\")\n",
+            "    } else {\n",
+            "        print(f\"got=${s}\")\n",
+            "    }\n",
+            "}",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("OK")),
+            "expected pretty JSON of nested field, got: {:?}",
+            out
+        );
+    }
+
+    /// 列表元素嵌字段的 stringify（实机 blocks[i].tc.arguments 形态）。
+    #[test]
+    fn stringify_nested_list_elem_field() {
+        let out = run_code(concat!(
+            "fn main() {\n",
+            "    var arr = []\n",
+            "    arr.push({ kind: \"tool\", tc: { name: \"y\", arguments: { c: 2 } } })\n",
+            "    let s = JSON.stringify(arr[0].tc.arguments)\n",
+            "    if s == \"{\\\"c\\\":2}\" {\n",
+            "        print(\"OK\")\n",
+            "    } else {\n",
+            "        print(f\"got=${s}\")\n",
+            "    }\n",
+            "}",
+        ));
+        assert!(
+            matches!(&out, Ok(s) if s.contains("OK")),
+            "expected compact JSON of nested list elem, got: {:?}",
+            out
+        );
+    }
+
+    /// 控制组：真小整数不被误判为堆句柄（<HEAP_ID_BASE 走标量）。
+    #[test]
+    fn stringify_plain_int_untouched() {
+        let out = run_code("fn main() {\n    let s = JSON.stringify(42)\n    print(s)\n}");
+        assert!(
+            matches!(&out, Ok(s) if s.contains("42")),
+            "expected 42, got: {:?}",
+            out
+        );
+    }
+}

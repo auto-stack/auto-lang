@@ -80,6 +80,7 @@ pub struct CreateAuthUserChatsSendMessageInput {
     pub id: String,
     pub content: String,
     pub profession_id: String,
+    pub run: bool,
 }
 
 #[derive(serde::Deserialize)]
