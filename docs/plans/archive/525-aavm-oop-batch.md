@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-525
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-oop-batch
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -439,7 +439,9 @@ playground-demo/13-methods.at（宿主方法族语义样板））
    /auto-plan:review 与 /auto-plan:merge 技能范畴,另行触发。终态
    证据:四路 29/29+goldens 29+发射闸 34+M4/M5 各 58+tf 绿+tv 3559+
    tt 28=存量 P523-3;五债登记 P525-1..5;生成器/?? 延后显式化。〕
-30. [ ] merge 沉淀归档。
+30. [✅ 已完成 2026-09-03] merge 沉淀归档:worktree/分支清理(wt-guard
+   clean 先行)+specs.json 六节六条(P525-1..6,溯源 file=本档)+
+   计划入 archive/ +status: archived(终态)。
 
 ## 复审记录
 
