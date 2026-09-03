@@ -211,7 +211,7 @@ runner 层,以 manifest 解决。markdown 单文件(ast.rs markdown_tests
    升级)=同步规约三面闸,新语件直接落 per-case dir 三件套金样格式,
    四路统一 runner 判定**——511 式"待澄清缺省暂缓"逃生舱关闭。触发:
    517 复审时按本页能力矩阵起草(范围依赖 514/517 终态)。
-3. **塔顶自举**——**已立项 [Plan 532](../../plans/532-aavm-tower-selfhost.md)**(16 步,硬前置=531 archived;先行 [Plan 531](../../plans/531-aavm-debt-clearance-batch.md) 债务清偿批 11 步)。原范围:自举塔顶:aavm 编译 lib 自身
+3. **塔顶自举**——**已立项 [Plan 532](../../plans/532-aavm-tower-selfhost.md)**(16 步,硬前置=531 archived)。前置 **[Plan 531](../../plans/archive/531-aavm-debt-clearance-batch.md) 债务清偿批已交付并归档(2026-09-03)**:tt 档两真缺陷修复+27 件 bless+复审清单挂载/aavm.at a2r 模式两洞清偿(argv.get 类型化 b07→55 全链+字段表 525 顺带清偿复证)/pac rust target 三缺口/May 裸值双侧(主 a2r+AA2R 镜像)/⑤腿预存 E0382 顺带清偿(矩阵 57/57);`??` 显式延后维持(P525-3 注记)。原范围:自举塔顶:aavm 编译 lib 自身
    (VM 自举);Auto 版转译器家族扩展:a2r 已有(AA2R/a2r.at,434 核心子集),
    剩余=其他语言目标(a2ts/a2js/a2py…)的 Auto 版。缓议理由:在 Auto 写
    工具链能重建自身之前,新转译器仍由 Rust 宿主编译,自举边际价值低;
