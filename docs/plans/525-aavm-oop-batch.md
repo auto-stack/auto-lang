@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（目标语言高阶能力,塔顶必经）
 
 affects: [aavm]
-current_step: 16
+current_step: 21
 total_steps: 30
 ---
 
@@ -366,11 +366,27 @@ playground-demo/13-methods.at（宿主方法族语义样板））
 
 ### W4 闭包/嵌套 fn/跨模块类型（worktree 续）
 
-17. [ ] 三件套语料先行红（b47 闭包族+b48 pub_type+corpus_use 扩件）。
-18. [ ] 闭包捕获模型实现（四层）。
-19. [ ] 嵌套 fn（作用域链）。
-20. [ ] pub type 跨模块（cg_compile_files 类型跨单元+use 类型解析）。
-21. [ ] 折叠点④：三面绿+四路 → 合入。
+17. [✅ 已完成 2026-09-03] 三件套语料先行红:b47 闭包族三件(宿主
+   8/42、21、105/303 实证)+007_pub_type 跨模块扩件(宿主 7/30)+g30
+   发射门件;m5+use-corpus 双红实证。〔恢复注记:.git 丢失事故后语料随
+   W1-W4 重建快照(6eb6d0dce)存活;b47 闭包/嵌套 fn 三件因 m4 反汇编
+   层不可对拍(宿主 closure 编码乱码级/嵌套 fn 释放组规范化)迁位
+   corpus_a2r g31/g32/g33,判据面=发射闸+四路执行锚〕
+18. [✅ 已完成 2026-09-03] 闭包捕获模型:parser 闭包解析(双注解
+   形态)/codegen cg_closure(隐 fn $cloN+捕获=体内自由变量∩外层
+   作用域按值首引序+MakeClo)/engine VClo 载体+MakeClo/CallClo 臂
+   (捕获回放为首参组+标准帧);执行验证 8/42/21。
+19. [✅ 已完成 2026-09-03] 嵌套 fn:cg_stmt Fn 臂就地编译(不捕获
+   外层,按名查 c.fns);m5 58 件绿;m4 释放组规范化差异登记债(g33
+   迁位注记)。
+20. [✅ 已完成 2026-09-03] pub type 跨模块:cg_compile_files dep
+   tys 播种(main 编译前,先查位后置换规避主 a2r 转译 move 洞)+链接
+   期 tys 合并;use-corpus 3/3 件字节码一致(007 宿主 7/30 对拍)。
+21. [✅ 已完成 2026-09-03] 折叠点④(master fast-forward 至
+   34f3ae85d):全 aavm2 21 件+四路 28/28(金样 28 含 g30-g33)+
+   rustc 闸 g19-g30+tf 绿+tv 3559+tt 28=存量 P523-3;worktree 重同步
+   (merge master 冲突四件裁定:526/528/DEBTS 取 master 权威版,
+   a2r.rs 取本支完整版)。
 
 ### W5 May/生成器（worktree 续）
 
