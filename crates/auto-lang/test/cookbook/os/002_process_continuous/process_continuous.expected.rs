@@ -6,5 +6,5 @@ fn main() {
     output_lines.push("hello".to_string());
     output_lines.push("world".to_string());
     assert!((output_lines.len() as i64) == 2);
-    assert!(output_lines[0 as usize].clone() == "hello");
+    assert!(output_lines[(0) as usize].clone() == "hello");
 }

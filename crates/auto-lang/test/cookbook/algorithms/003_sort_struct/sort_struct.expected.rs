@@ -8,7 +8,7 @@ struct Person {
 }
 
 fn main() {
-    let mut people = vec![Person { name: "Zoe".to_string(), age: 25 }, Person { name: "Al".to_string(), age: 60 }, Person { name: "John".to_string(), age: 1 }];
+    let mut people = vec![Person { name: "Zoe".to_string(), age: 25 as u32 }, Person { name: "Al".to_string(), age: 60 as u32 }, Person { name: "John".to_string(), age: 1 as u32 }];
 
 
 

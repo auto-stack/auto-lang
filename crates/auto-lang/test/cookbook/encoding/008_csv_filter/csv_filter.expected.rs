@@ -2,7 +2,7 @@
 
 fn main() {
     let data: String = "name,age\nAlice,30\nBob,25\nCharlie,35".to_string();
-    let mut lines = data.split("\n").collect::<Vec<_>>();
+    let mut lines = data.split("\n").map(|s| s.to_string()).collect::<Vec<String>>();
     assert!((lines.len() as i64) == 4);
 
     let mut filtered_count: i64 = 0;

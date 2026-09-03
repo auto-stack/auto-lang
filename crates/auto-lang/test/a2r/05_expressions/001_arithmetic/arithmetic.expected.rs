@@ -5,9 +5,9 @@ fn main() {
     let y: i64 = 20;
     let z: i64 = 30;
 
-    let result1: i64 = x + y * z;
+    let result1: i64 = (x + y) * z;
     let result2: i64 = x + y * z;
-    let result3: i64 = x + y * z - x;
+    let result3: i64 = (x + y) * (z - x);
 
     println!("Result1: {}", result1);
     println!("Result2: {}", result2);

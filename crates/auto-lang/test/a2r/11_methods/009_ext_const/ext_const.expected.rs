@@ -19,8 +19,11 @@ const MAX_RETRIES: i64 = 3;
 
 /// The default mode name.
 /// Max modes (private associated const).
+/// Max modes (private associated const).
+/// Look up by name.
 /// Look up by name.
 /// Top-level pub const.
+/// Top-level private const.
 /// Top-level private const.
 fn main() {
     say(Registry::DEFAULT);

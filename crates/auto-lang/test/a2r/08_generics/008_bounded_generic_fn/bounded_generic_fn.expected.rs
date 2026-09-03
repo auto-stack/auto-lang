@@ -5,7 +5,7 @@ trait Comparable {
 }
 
 
-fn max_of<T: Comparable>(a: T, b: T) -> T {
+fn max_of<T: Comparable>(mut a: T, mut b: T) -> T {
     if a.compare(0) >= b.compare(0) {
         a
     } else {

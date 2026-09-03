@@ -49,6 +49,8 @@ t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test c
 # Plan 466: full 档 = 全部测试含 1M 大档 churn(review/fold 全量门禁专用)
 # (Plan 507 注:tf 不带 ui-iced——复审档语义不动,desktop_protocol 盲区由
 # 日常档 t[+ui-iced] 收口;复审清单须另跑 cargo t desktop_protocol --features ui-iced)
+# (Plan 531 注:tf 亦不含 test-trans(tt 档)——a2r/cookbook 文本金样 28 件曾
+# 因此脱离门禁烂了一年(444/514/523 三期累积);复审清单同样须另跑 cargo tt)
 tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
 tv = "nextest run -p auto-lang --lib --features test-vm-files"
 tt = "nextest run -p auto-lang --lib --features test-trans"
