@@ -106,12 +106,17 @@ button 收藏）。互不嵌套，无冒泡问题。
    lucide-vue-next 存在但 **不在 VM 表**——相册图标改用 emoji 文本
    （🖼️/♡/🏔️/🏙️/☁️/✨，027 先例），返回按钮用文本 "←"。
    `pac.at icon: "image"`（VM 表内名字）。
-3. **button 组件默认变体类**（h-10 / bg-primary / text-primary-foreground）
-   会与业务类叠加：本例凡透明底/自定义高按钮显式 `bg-transparent`/
-   `text-foreground`/`h-auto|h-6` 压制（cn/tailwind-merge 后者优先）。
-4. **动态 class 列表用 `class:` prop**（生成 `:class` 绑定）；`style:`
-   是 CSS 声明绑定（`:style`），不吃 Tailwind 类——grid_class 三列/四列
-   切换走 `class: .grid_class`（勘误，见下）。
+3. **button 组件默认变体类**（h-10 / bg-primary / hover:bg-primary/90 /
+   text-primary-foreground）会与业务类叠加：本例凡透明底/自定义高按钮
+   显式 `bg-transparent`/`hover:bg-transparent`/`text-foreground`/
+   `h-auto|h-6` 压制（cn/tailwind-merge 后者优先）。
+4. **动态网格密度用语义 grid 元素三静态臂**：VM 侧 `grid` 元素的
+   `cols:` 状态绑定不解析（回落 1 列）、`class:` 状态绑定不消费、CSS
+   `grid-cols-N` 类只对语义 grid 的 class 仲裁生效——故密度 2/3/4 以
+   `if .density == N { grid { cols: N … } }` 三臂静态展开（028 静态
+   `cols: 4` 同构造），双端一致（T7 实测 2/4 列截图在案）。
+   Vue 曾用 `class: .grid_class`（`:class` 绑定）工作，为双端统一改
+   语义 grid；`density` 相应由 str 改 **int**（SetDensity(int)）。
 5. **fit 语义**：缩略 `cover`（h-40 容器裁切）、查看器 `contain`
    （完整显示）——schema 单一定义，两端语义一致（首个 fit 双端应用）。
 
@@ -119,9 +124,9 @@ button 收藏）。互不嵌套，无冒泡问题。
 
 1. 状态名 `view` → **`view_list`**：`view` 是语言关键字（view 块），
    `.view = …` 解析报错（Expected term, got DotView）。
-2. grid_class 经 **`class:` prop** 驱动（`style:` 编译为 :style CSS 声明
-   绑定，Tailwind 类不生效——T3 实测后改）。
-3. 相册图标 emoji 化 + icon 名单收缩（上节差异 2）。
+2. 密度网格演进为**语义 grid 元素三静态臂**（见差异 4）；`grid_class`
+   状态删除、`SetDensity(str)` → `SetDensity(int)`。
+3. 相册图标 emoji 化 + icon 名单收缩（差异 2）。
 4. 新增 `view_ids`/`has_view`/`accents` 三个计划未点名状态：分别为
    OpenPhoto 定位（规避 handler 读注入 Obj 数组的失效面）、空态门控
    （模板不可调 .len()）、五色点渲染参数化；均为已实证形态。
