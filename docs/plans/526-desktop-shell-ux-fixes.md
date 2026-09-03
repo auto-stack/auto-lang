@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
 current_step: 33
-total_steps: 33
+total_steps: 39
 ---
 
 # [PLAN-526] 桌面壳 UX 十题修复：窗口三键/resize/焦点环/fit、任务栏样式统一、右键菜单、壁纸选择、launcher 焦点、关机确认
@@ -686,3 +686,39 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       TogglePresetLayout 执行臂：同预设再按 = 恢复快照回 Free，跨预设
       保留最初快照。实机：layout_toggle grid 前后截图——双窗对半网格
       ✓ → 再按 → 精确恢复手动排布 ✓。
+
+### 波11 追加反馈七（用户八轮实机反馈 + RUST_BACKTRACE 抓获第二崩溃源，2026-09-03）
+
+- [ ] T34 桌面 icon 右键菜单三合一代修复：①双菜单——T30 popover 化时
+      旧内联 menu_id 面板未删（python 编辑 cwd 漂移误落 master 误导排查），
+      删残留内联块；②菜单项颜色不对（accent 底+看不清的字）——项样式
+      对齐任务栏（bg-transparent text-foreground text-left hover:bg-primary/10）；
+      ③挤压 icon——内联块删除后 popover 悬浮即 sole 渲染。
+      文件：`desktop.at`。验证：实机右键单菜单、悬浮、样式同任务栏。
+- [ ] T35 删任务栏无用方框按钮（用户七轮反馈截图2）：任务栏托盘区
+      square 框 icon 无功能。文件：`shell.at`。验证：实机 icon 消失、
+      其余托盘不动。
+- [ ] T36 桌面空白右键无反应：blank_menu 内联面板呈现位置可疑且随
+      T34 统一。修：blank 菜单 popover 化（锚=桌面 mouse-area 全域，
+      snap 钳制回视口），含"更换壁纸…"与"显示设置"项。
+      文件：`desktop.at`。验证：实机空白右键弹悬浮菜单、动作可用。
+- [ ] T37 app 标题栏右键菜单：至少含 最大化/最小化/关闭，最好含发送到
+      其他分区（SendTo 既有动词）。实现：virtual_window 标题条 mouse_area
+      加 on_right_press → WmCommand::TitleMenu{wid} → 该窗 Stack 顶层
+      chrome 自绘菜单浮层（Rust 装配，非 .at），BlankPress/GlobalPress
+      关闭语义对齐 T29（菜单不随鼠标移动消失）。
+      文件：`virtual_window.rs`/`session.rs`。验证：实机右键标题条弹
+      菜单、各项动作有效、鼠标移动不消失。
+- [ ] T38 launcher tag 样式与结果滚动：①分类 tag 栏样式错误（选中/非选
+      中的可读性坏了）——统一为与 `all` tag 相同样式；②结果多时无滚动
+      条——结果列表容器加 max-h + 滚动（VM 侧 build_scrollable 语义）。
+      文件：`028-launcher/app.at`。验证：实机 tag 可读、样式统一；结果
+      超长出滚动条可滚。
+- [ ] T39 autoui_screenshot 零尺寸窗口 wgpu panic（RUST_BACKTRACE 抓获
+      第二崩溃源，独立于 T21）：最小化（物理尺寸 0）的桌面窗口执行
+      `window::screenshot` → wgpu create_texture "Dimension X is zero"
+      → exit 101（wgpu-27.0.1 backend/wgpu_core.rs:1588，栈顶
+      iced_wgpu::Renderer::screenshot）。修：screenshot 前查窗口物理
+      尺寸为零/最小化则跳过（返回上帧或空）。文件：`mcp_server.rs`
+      （autoui_screenshot 工具）/renderer 截图任务装配处。验证：最小化
+      状态下 autoui_screenshot 不再杀死进程。
