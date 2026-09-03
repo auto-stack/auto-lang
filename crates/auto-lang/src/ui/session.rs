@@ -2030,13 +2030,22 @@ impl DesktopSession {
         iced::Rectangle { x: 0.0, y: 0.0, width: size.width, height: size.height }
     }
 
-    /// Plan 463 T4：DesktopBus 排空 —— 读+清 shell 的 `__desktop_cmd`
-    /// 并解析为命令序列（幂等；无 shell/无记录均空转，`__toast` 同型）。
+    /// Plan 463 T4：DesktopBus 排空 —— 读+清 shell 与 desktop 两个特权
+    /// 表面的 `__desktop_cmd` 并解析为命令序列（幂等；无 shell/无记录均
+    /// 空转，`__toast` 同型）。
+    /// PLAN-526 T26：补排 desktop 表面——桌面 icon 的双击
+    /// （desktop.at `ondblclick: .ActivateApp(e.id)` → `activate\t<id>`）
+    /// 写在 desktop 自己的 `__desktop_cmd` 里，此前只排 shell 一路导致
+    /// 双击打开静默失效。
     pub fn drain_desktop_commands(&mut self) -> Vec<DesktopCommand> {
-        let Some(shell) = self.desktop.shell_app else {
-            return Vec::new();
-        };
-        self.drain_app_desktop_commands(shell)
+        let mut commands = Vec::new();
+        if let Some(shell) = self.desktop.shell_app {
+            commands.extend(self.drain_app_desktop_commands(shell));
+        }
+        if let Some(desktop) = self.desktop.desktop_app {
+            commands.extend(self.drain_app_desktop_commands(desktop));
+        }
+        commands
     }
 
     /// Plan 464 T4：任意特权 App 的 DesktopBus 排空（shell 之外，
@@ -4109,14 +4118,14 @@ mod tests {
             assert_eq!(host.wm.focused, Some(wid));
         }
 
-        // 最大化：rect → 可用区（viewport 800 高扣任务栏 48 = 752），原矩形存档。
+        // 最大化：rect → 可用区（viewport 800 高扣任务栏 56 = 744（T24）），原矩形存档。
         ds.wm_toggle_maximize(wid);
         {
             let host = ds.host.as_ref().unwrap();
             let v = host.wm.wins.get(&wid).unwrap();
             assert!(v.maximized.get(), "最大化置位");
             let r = v.rect.borrow();
-            assert_eq!((r.x, r.y, r.width, r.height), (0.0, 0.0, 1280.0, 752.0), "rect=可用区");
+            assert_eq!((r.x, r.y, r.width, r.height), (0.0, 0.0, 1280.0, 744.0), "rect=可用区");
             assert_eq!(v.restore_rect.borrow().unwrap().width, 300.0, "原矩形存档");
         }
 
@@ -4149,7 +4158,7 @@ mod tests {
             let host = ds.host.as_ref().unwrap();
             let v = host.wm.wins.get(&wid).unwrap();
             assert!(!v.maximized.get(), "resize 清标志");
-            assert_eq!(v.rect.borrow().height, 752.0, "resize 不回跳原矩形");
+            assert_eq!(v.rect.borrow().height, 744.0, "resize 不回跳原矩形");
             assert!(v.restore_rect.borrow().is_none(), "存档清空");
         }
 
@@ -4832,9 +4841,9 @@ mod tests {
             .map(|w| *host.wm.wins[w].rect.borrow())
             .collect();
         assert_eq!(rects.len(), 2);
-        // 1280x800 宿主、任务栏 48 → 可用 1280x752，两窗左右对半。
+        // 1280x800 宿主、任务栏 56 → 可用 1280x744（T24），两窗左右对半。
         assert!((rects[0].width - 640.0).abs() < 0.6, "w = {}", rects[0].width);
-        assert!((rects[0].height - 752.0).abs() < 0.6);
+        assert!((rects[0].height - 744.0).abs() < 0.6);
         assert!((rects[1].x - 640.0).abs() < 0.6, "右半 x = {}", rects[1].x);
     }
 
@@ -5335,9 +5344,9 @@ mod tests {
         assert_eq!(sync.len(), 2, "dock 初位 + relayout 各一项");
         let (sid, r) = sync[1];
         assert_eq!(sid, id);
-        // 视口 1280x800 扣 taskbar(bottom 48) → usable 1280x752；
-        // 2 列 2 行：槽位排第 3 位 = (0, 376, 640, 376)。
-        assert_eq!((r.x, r.y, r.width, r.height), (0.0, 376.0, 640.0, 376.0));
+        // 视口 1280x800 扣 taskbar(bottom 56) → usable 1280x744（T24）；
+        // 2 列 2 行：槽位排第 3 位 = (0, 372, 640, 372)。
+        assert_eq!((r.x, r.y, r.width, r.height), (0.0, 372.0, 640.0, 372.0));
         // 本地缓存同步更新（下轮排布输入）。
         let host = ds.host.as_ref().unwrap();
         assert_eq!(host.wm.native_slot_local_rects[&id], r);

@@ -5172,7 +5172,16 @@ let tabs_inner = View::Row {
             })
             .unwrap_or(PopoverPlacement::BottomStart);
         // 面板 chrome:popover 标签的 class 落在 content 列上(visual wrap 绘制)。
-        let panel_style = self.extract_style_with(props, bindings);
+        // PLAN-526 T27：面板列无 width 类时注入 Width(Auto)（hug）——
+        // 否则 visual-wrap 容器按块级语义 Fill，面板被撑满宿主宽
+        // （任务栏 icon 右键菜单横贯整个桌面，用户六轮反馈 #5）。
+        let mut panel_style = self.extract_style_with(props, bindings);
+        if let Some(s) = panel_style.as_mut() {
+            if !s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                let owned = std::mem::take(s);
+                *s = owned.add(StyleClass::Width(SizeValue::Auto));
+            }
+        }
 
         // shadcn 嵌套形态分区:popover-trigger / popover-content 子标签拆解。
         let mut trigger_node: Option<&AuraNode> = None;

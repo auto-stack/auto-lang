@@ -280,6 +280,9 @@ pub enum IcedSize {
     Full,
     FillPortion(u16),
     Fixed(f32),
+    /// PLAN-526 T27：`w-auto`/`h-auto`（hug 内容）。此前 Auto 误映射
+    /// Full——popover 面板等"无 width 类"场景被撑满宿主宽。
+    Shrink,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1286,7 +1289,9 @@ fn convert_size(size: &SizeValue) -> IcedSize {
         // Fill-ratio 近似:同分母互补分数(3/12+9/12)比例保真,混分母退化等分
         // (口径与 SizeValue::Fraction 文档注释一致,KNOWN-DEBT 登记)。
         SizeValue::Fraction(n, _) => IcedSize::FillPortion(*n),
-        SizeValue::Auto => IcedSize::Full,
+        // PLAN-526 T27：Auto = hug 内容（CSS width:auto 的 shrink-to-fit
+        // 语义）——此前误映射 Full，popover 面板被撑满宿主宽。
+        SizeValue::Auto => IcedSize::Shrink,
         SizeValue::Fixed(_) => IcedSize::Fixed(size.to_pixels() as f32),
         SizeValue::Pixels(px) => IcedSize::Fixed(*px),
     }

@@ -2315,6 +2315,7 @@ fn build_scrollable<M: Clone + Debug + 'static>(
                 IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)),
                 IcedSize::Full => s = s.width(iced::Length::Fill),
                 IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)),
+                IcedSize::Shrink => s = s.width(iced::Length::Shrink),
             }
         } else if let Some(w) = width {
             if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); }
@@ -2328,6 +2329,9 @@ fn build_scrollable<M: Clone + Debug + 'static>(
             }
             Some(IcedSize::FillPortion(n)) => {
                 if cap.is_none() { s = s.height(iced::Length::FillPortion(n)); }
+            }
+            Some(IcedSize::Shrink) => {
+                if cap.is_none() { s = s.height(iced::Length::Shrink); }
             }
             None => {
                 if cap.is_none() {
@@ -2433,6 +2437,7 @@ fn build_input_shape<M: Clone + Debug + 'static>(
                 IcedSize::Fixed(f) => Some(f as u16),
                 IcedSize::Full => None,
                 IcedSize::FillPortion(_) => None,
+                IcedSize::Shrink => None,
             })
             .unwrap_or(width);
         if let Some(w) = effective_width {
@@ -16904,10 +16909,10 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
     let is = IcedStyle::from_style(s);
     let mut props = Vec::new();
     if let Some(ref w) = is.width {
-        props.push(("w".into(), match w { IcedSize::Full => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
+        props.push(("w".into(), match w { IcedSize::Full => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into() }));
     }
     if let Some(ref h) = is.height {
-        props.push(("h".into(), match h { IcedSize::Full => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16) }));
+        props.push(("h".into(), match h { IcedSize::Full => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into() }));
     }
     if let Some(p) = is.padding { props.push(("pad".into(), format!("{}", p as u16))); }
     if let Some(g) = is.gap { props.push(("gap".into(), format!("{}", g as u16))); }
@@ -17845,6 +17850,8 @@ fn iced_length(size: &IcedSize) -> iced::Length {
         IcedSize::Full => iced::Length::Fill,
         IcedSize::FillPortion(n) => iced::Length::FillPortion(*n),
         IcedSize::Fixed(px) => iced::Length::Fixed(*px),
+        // PLAN-526 T27：w-auto/h-auto = hug 内容。
+        IcedSize::Shrink => iced::Length::Shrink,
     }
 }
 /// PLAN-051 P2 追加（composer 输入框命中区）: textarea 编辑器高度解析——
