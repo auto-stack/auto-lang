@@ -471,7 +471,7 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       40s 无空闲窗口）且 UIPI/按键态干扰不可靠，改由上述无头机制测试承载
       回归门；交互手感请用户日常使用中复核（桌面进程已带修复重启）。
 
-- [ ] T21 拖拽/缩放几何钳制 panic（本轮实机新发现，独立于 T20）：
+- [✅ 已完成] T21 拖拽/缩放几何钳制 panic（本轮实机新发现，独立于 T20）：
       症状——桌面进程 panic 退出（exit 101）：`f32::clamp` at
       `num/f32.rs:1566` 报 `min > max, min = 8.0, max = -2.5`。时序与
       并发鼠标输入（用户拖拽窗口）强相关；T20 改动零几何数学，非本次
@@ -486,6 +486,19 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       （以回溯栈定位为准）。
       验证：复现路径回归测试绿 + 实机极端拖拽（边缘拖过对侧、缩到
       最小再拖出屏）不再 panic。
+      [✅ 已完成] commit 6fec074d3（worktree 已折叠 master）。根因定位
+      （静态审计全 crate clamp 调用点 + panic 参数匹配）：**不在 WM/桌面
+      几何，而是 code_editor 滚动条渲染**——render.rs `track_h = viewport_h
+      - THICKNESS(8.0) - 2`，编辑区被压到 ~7.5px 高时 track=-2.5，
+      `natural.clamp(8.0, -2.5)` 即 panic 原样参数（min=8.0/max=-2.5）。
+      该编辑器随 code-editor feature 进桌面进程（F12 console 等嵌入面），
+      并发拖拽把嵌入面压扁即触发。修：抽 `scrollbar_thumb(track, natural)`
+      纯函数——track 下限 1.0、min 侧取 min(THICKNESS, track)，竖/横两条
+      滚动条共用；退化回归单测 `scrollbar_thumb_survives_degenerate_track`
+      （含实录参数与全 track 域扫描）；同族 clamp 审计——其余调用点均为
+      常量边界或已有 .max 护栏，无同族隐患。桌面实例已常驻
+      RUST_BACKTRACE=1 启动，若另有残余 panic 可直接取全栈。
+      验证：code_editor 39/39（含新回归测试）+ session/desktop 等组全绿。
 
 ### 波9 追加反馈五（用户六轮实机反馈，2026-09-03 五题）
 
