@@ -3677,7 +3677,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let key = format!("__textarea_{}", placeholder.len());
 
                 let content = get_textarea_content(&key, &value);
-                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let ph: &'static str = leaked_placeholder(&placeholder);
                 let mut editor = text_editor(content).placeholder(ph);
                 // PLAN-051 P2: 稳定 Id——iced text_editor 点击聚焦的前提
                   // (update 内 state.focus(id) 仅在 id 存在时执行;无 Id 则点
@@ -4027,7 +4027,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     };
                 let mut p = PopoverWidget::new(anchor_el, content.into_iced())
                     .placement(placement)
-                    .open(open);
+                    .open(open)
+                    // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
+                    // + 面板外点击整吞），alert-dialog 臂专用。
+                    .modal(placement == crate::ui::view::PopoverPlacement::Modal);
                 if let Some((x, y)) = anchor_point {
                     p = p.at_point(x, y);
                 }
@@ -5052,13 +5055,41 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
     };
     // Use a small static cache to avoid re-formatting.
     // The SVG uses width/height=16 for compact button rendering.
-    Some(Box::leak(
-        format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{}</svg>"#,
-            elements
+    // PLAN-530 步骤5：按 icon 名去重——旧实现每次调用 Box::leak 一份新串
+    // （注释宣称缓存但实现是无界泄漏），每帧每图标 ~350B 随重建线性增长
+    // = B 内存崩塌主源。key 用字形 'static 片段（名↔片段 1:1），免每调用
+    // String 键分配。
+    static DOC_CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<&'static str, &'static str>>,
+    > = std::sync::OnceLock::new();
+    let cache = DOC_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut lock = cache.lock().unwrap();
+    Some(*lock.entry(elements).or_insert_with(|| {
+        Box::leak(
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{}</svg>"#,
+                elements
+            )
+            .into_boxed_str(),
         )
-        .into_boxed_str()
-    ))
+    }))
+}
+
+/// PLAN-530 步骤5：placeholder 'static 化的按文本去重缓存——text_editor
+/// placeholder 契约要求 `&'static str`，旧实现每次重建 `Box::leak` 一份
+/// 新串（无界泄漏，随页面重建频率线性增长）。同文本全局只 leak 一份。
+fn leaked_placeholder(placeholder: &str) -> &'static str {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, &'static str>>,
+    > = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut lock = cache.lock().unwrap();
+    if let Some(v) = lock.get(placeholder) {
+        return v;
+    }
+    let leaked: &'static str = Box::leak(placeholder.to_string().into_boxed_str());
+    lock.insert(placeholder.to_string(), leaked);
+    leaked
 }
 
 /// Cache svg::Handle by URL to avoid flickering.
@@ -11826,6 +11857,10 @@ fn compare_pngs(
                     if let Some((w, h)) = val.split_once('x') {
                         let w: f32 = w.parse().unwrap_or(1600.0);
                         let h: f32 = h.parse().unwrap_or(900.0);
+                        // PLAN-530 步骤2 表面追踪：resize 事件轨迹。
+                        if std::env::var("P530_TRACE").as_deref() == Ok("1") {
+                            eprintln!("[P530-TRACE] __window_resized: {w}x{h} (widget={})", msg.widget);
+                        }
                         *state.window_size.borrow_mut() = iced::Size::new(w, h);
                         // PLAN-046-B: keep .at-visible viewport height fresh.
                         crate::vm::ffi::stdlib::storage_host_publish(
@@ -14617,10 +14652,15 @@ fn dynamic_view(
     let capture = state.app.devtools.debug_mode && *state.app.devtools.inspect_mode.borrow() && !alt_held;
     INSPECT_CAPTURE.with(|c| c.set(capture));
 
+    // PLAN-530 步骤4 泄漏定位门控：P530_NOMCP=1 时整段跳过 per-frame MCP
+    // 同步 + capture 路径（view_with_debug_gated/vtree/id_map），用于
+    // A/B 判别每帧保留源。
+    let p530_nomcp = std::env::var("P530_NOMCP").as_deref() == Ok("1");
+
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
     // Must run in view() — not update() — because iced may not fire any events
     // initially, meaning update() might never run before an MCP client connects.
-    if sync_mcp {
+    if sync_mcp && !p530_nomcp {
     if let Some(ref mcp_handle) = state.desktop.mcp_shared {
         let mut mcp = mcp_handle.lock().unwrap();
         if !mcp.has_view() {
@@ -14691,6 +14731,14 @@ fn dynamic_view(
     }
     // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
     crate::ui::style::iced_adapter::set_window_width(state.window_size.borrow().width);
+    // PLAN-530 步骤2 表面追踪：view 重建时的宽度信号轨迹。
+    if std::env::var("P530_TRACE").as_deref() == Ok("1") {
+        let sz = state.window_size.borrow();
+        eprintln!(
+            "[P530-TRACE] view rebuild: dirty={} window={:.0}x{:.0} app_id={}",
+            *state.app.view_dirty.borrow(), sz.width, sz.height, state.app_id.0
+        );
+    }
 
     // Resolve pending hover messages: pick the smallest counter (= deepest element).
     // This handles the case where nested mouse_areas both fire on_move — child has
@@ -14750,7 +14798,7 @@ fn dynamic_view(
     // opening F12. Visual overlays (hover/selected highlight, inspect mouse_area)
     // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
     // early-return), so MCP-only capture never perturbs the rendered layout.
-    let mcp_active = state.desktop.mcp_shared.is_some();
+    let mcp_active = !p530_nomcp && state.desktop.mcp_shared.is_some();
     let capture_debug = state.app.devtools.debug_mode || mcp_active;
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
@@ -14823,24 +14871,26 @@ fn dynamic_view(
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
     // here (before `converted` is moved into render_dynamic_view and before
     // `debug_id_map` is moved into debug_ctx) as a side-effect snapshot only.
-    if let Some(id_map) = &debug_id_map {
-        let span_map = state.component.span_map().clone();
-        let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
-            converted.clone(),
-            |path: &[u16]| {
-                let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
-                id_map
-                    .get(&p)
-                    .and_then(|aura_id| span_map.get(&aura_id))
-                    .and_then(|info| info.span)
-                    .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
-            },
-        );
-        *state.app.live_vtree.borrow_mut() = Some(vtree);
-    } else {
-        *state.app.live_vtree.borrow_mut() = None;
-        *state.app.live_probe.borrow_mut() = None;
-        *state.app.live_cache.borrow_mut() = None;
+    if !p530_nomcp {
+        if let Some(id_map) = &debug_id_map {
+            let span_map = state.component.span_map().clone();
+            let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
+                converted.clone(),
+                |path: &[u16]| {
+                    let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
+                    id_map
+                        .get(&p)
+                        .and_then(|aura_id| span_map.get(&aura_id))
+                        .and_then(|info| info.span)
+                        .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
+                },
+            );
+            *state.app.live_vtree.borrow_mut() = Some(vtree);
+        } else {
+            *state.app.live_vtree.borrow_mut() = None;
+            *state.app.live_probe.borrow_mut() = None;
+            *state.app.live_cache.borrow_mut() = None;
+        }
     }
 
     // Clear view_dirty after consuming the change.
@@ -17404,34 +17454,29 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
     }
 }
 
-/// Recursively extract the maximum z-index declared on a view or its subtree.
-fn extract_max_z_index<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> i32 {
-    let self_z = extract_view_style(view)
-        .and_then(|s| {
-            s.classes.iter().find_map(|c| match c {
-                StyleClass::ZIndex(z) => Some(*z as i32),
-                _ => None,
-            })
-        })
-        .unwrap_or(0);
-
-    let child_z = match view {
-        AbstractView::Row { children, .. } | AbstractView::Column { children, .. } => {
-            children.iter().map(extract_max_z_index).max().unwrap_or(0)
+/// PLAN-530 步骤3：Column 叠层分区——仅 absolute 子脱流（Row 分支同语义）。
+/// z-index-only 子保持流内：iced 列流布局子项永不重叠，z 序无视觉效果；
+/// 472 时代的"前缀 overlay"路径（0..=elev_idx 整段重渲染进叠层）使非提升
+/// 子被 base + overlay 双渲染，且 base 压 compact 把正文顶进 header 之下
+/// ——widgets-gallery 首页 <768 整页 ×2 叠印（W10/W11 同族）根因。
+/// （[`is_elevated_view`] 的 z-index 臂与 [`extract_max_z_index`] 随该路径
+/// 一并退役——仅 absolute 语义由本分区直接承载。）
+fn column_layer_partition<M: Clone + std::fmt::Debug>(
+    children: &[AbstractView<M>],
+) -> (Vec<usize>, Vec<usize>) {
+    let mut flow = Vec::new();
+    let mut floating = Vec::new();
+    for (i, child) in children.iter().enumerate() {
+        let is_abs = extract_view_style(child)
+            .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
+            .unwrap_or(false);
+        if is_abs {
+            floating.push(i);
+        } else {
+            flow.push(i);
         }
-        AbstractView::Container { child, .. } => extract_max_z_index(child),
-        _ => 0,
-    };
-
-    self_z.max(child_z)
-}
-
-/// Check if a view has absolute positioning or positive z-index elevating it above normal flow.
-fn is_elevated_view<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
-    let is_abs = extract_view_style(view)
-        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
-        .unwrap_or(false);
-    is_abs || extract_max_z_index(view) > 0
+    }
+    (flow, floating)
 }
 
 /// PLAN-051 P2: Stack elevated 层是否为空内容——空层不入栈。
@@ -17682,7 +17727,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 oversized_textarea_preview(&value)
             } else if rich {
                 let content = get_textarea_content_rich(&key, &value, &ghost);
-                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let ph: &'static str = leaked_placeholder(&placeholder);
                 // PLAN-051 P2: 同 composer 命中区修复——style 高度消费。
                 let editor_height = textarea_editor_height(height, style.as_ref());
                 let mut rich_editor = text_editor(content).placeholder(ph);
@@ -17705,7 +17750,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let content = get_textarea_content(&key, &value);
                 // text_editor::placeholder borrows with the element's lifetime;
                 // since content is &'static, we need a &'static str for placeholder too.
-                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let ph: &'static str = leaked_placeholder(&placeholder);
                 // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
                 // 多行续行需显式 height prop(.at 的 max-h/field-sizing 是 CSS-only)。
                 let editor_height = match height {
@@ -17790,9 +17835,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
 
-            let has_elevated = children.iter().any(is_elevated_view);
+            // PLAN-530 步骤3：仅 absolute 子脱流入叠层（Row 分支同语义）。
+            // z-index-only 子保持流内——前缀 overlay 双渲染路径随 472 立场
+            // 退役（见 column_layer_partition 文档）。
+            let (flow_idx, abs_idx) = column_layer_partition(&children);
 
-            let el = if !has_elevated {
+            let el = if abs_idx.is_empty() {
                 let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
                 for (i, child) in children.into_iter().enumerate() {
                     path.push(i);
@@ -17802,21 +17850,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
                 build_column(els, spacing, padding, style.as_ref(), widget_id)
             } else {
-                let mut base_items: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
-                let mut elevated_indices: Vec<usize> = Vec::new();
-
-                for (i, child) in children.iter().enumerate() {
-                    if is_elevated_view(child) {
-                        elevated_indices.push(i);
-                    } else {
-                        base_items.push((i, child.clone()));
-                    }
-                }
-
-                let mut base_els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(base_items.len());
-                for (i, child) in base_items {
+                let mut base_els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(flow_idx.len());
+                for &i in &flow_idx {
                     path.push(i);
-                    base_els.push(render_dynamic_view(axis_fix_col_child(child), debug_ctx, path));
+                    base_els.push(render_dynamic_view(axis_fix_col_child(children[i].clone()), debug_ctx, path));
                     path.pop();
                 }
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
@@ -17824,29 +17861,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
                 let mut stk = iced::widget::Stack::new().push(base);
 
-                for &elev_idx in &elevated_indices {
-                    let is_abs = extract_view_style(&children[elev_idx]).map_or(false, |s| {
-                        s.classes.iter().any(|c| matches!(c, StyleClass::Absolute))
-                    });
-
-                    if is_abs {
-                        // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
-                        if is_empty_stack_layer(&children[elev_idx]) { continue; }
-                        path.push(elev_idx);
-                        let abs_el = render_dynamic_view(children[elev_idx].clone(), debug_ctx, path);
-                        path.pop();
-                        stk = stk.push(abs_el);
-                    } else {
-                        let eff_spacing = effective_spacing(spacing, style.as_ref(), false);
-                        let mut overlay_col = column([]).spacing(eff_spacing).width(iced::Length::Fill);
-                        for j in 0..=elev_idx {
-                            path.push(j);
-                            let child_el = render_dynamic_view(axis_fix_col_child(children[j].clone()), debug_ctx, path);
-                            path.pop();
-                            overlay_col = overlay_col.push(child_el);
-                        }
-                        stk = stk.push(overlay_col);
-                    }
+                for &i in &abs_idx {
+                    // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
+                    if is_empty_stack_layer(&children[i]) { continue; }
+                    path.push(i);
+                    let abs_el = render_dynamic_view(children[i].clone(), debug_ctx, path);
+                    path.pop();
+                    stk = stk.push(iced::widget::opaque(abs_el));
                 }
 
                 let clip = style.as_ref()
@@ -17886,7 +17907,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.pop();
             let mut p = PopoverWidget::new(anchor_el, content_el)
                 .placement(placement)
-                .open(open);
+                .open(open)
+                // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
+                // + 面板外点击整吞），与 into_iced 臂同口径。
+                .modal(placement == crate::ui::view::PopoverPlacement::Modal);
             if let Some((x, y)) = anchor_point {
                 p = p.at_point(x, y);
             }
@@ -19561,6 +19585,60 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-530 步骤5 回归（B 内存崩塌主源）：lucide_svg 同名 icon 必须命中
+    /// 去重缓存（同一 &'static str），不得每次调用 Box::leak 一份新 16×16
+    /// 文档——每帧每图标 ~350B 的无界泄漏随重建频率线性增长（homepage 实测
+    /// ~67MB/min 的主分量）。指针同一性 = 缓存命中的可观测契约。
+    #[test]
+    fn p530_lucide_svg_same_name_returns_same_static() {
+        let a = lucide_svg("bell").expect("bell 已登记");
+        let b = lucide_svg("bell").expect("bell 已登记");
+        assert!(std::ptr::eq(a, b), "同名 icon 返回了不同的 'static 串——缓存未命中，正在泄漏");
+        let c = lucide_svg("copy").expect("copy 已登记");
+        assert!(!std::ptr::eq(a, c), "不同 icon 不应串缓存");
+    }
+
+    /// PLAN-530 步骤5 回归：placeholder 'static 化必须按文本去重——text_editor
+    /// placeholder 契约要求 &'static str，旧实现每次重建 Box::leak 一份新串。
+    #[test]
+    fn p530_leaked_placeholder_dedupes_same_text() {
+        let a = leaked_placeholder("Search widgets...");
+        let b = leaked_placeholder("Search widgets...");
+        assert!(std::ptr::eq(a, b), "同文本 placeholder 返回了不同的 'static 串——正在泄漏");
+        assert_eq!(a, "Search widgets...");
+    }
+
+    /// PLAN-530 步骤3 回归（W10/W11 双份叠印根因）：Column 叠层分区只认
+    /// absolute 脱流子；z-index-only 子必须留在流内。472 时代的"前缀
+    /// overlay"路径把 0..=elev_idx 整段重渲染进叠层 → 非提升子被 base +
+    /// overlay 双渲染（widgets-gallery 首页 <768 整页 ×2 叠印实测 73/75
+    /// widget id 布局两次），且 base 压 compact 把正文顶进 header 之下。
+    #[test]
+    fn p530_column_layer_partition_zindex_stays_in_flow() {
+        use crate::ui::style::Style;
+        let styled = |classes: &'static str| AbstractView::<IcedMessage>::Container {
+            child: Box::new(AbstractView::Empty),
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: false,
+            center_y: false,
+            style: Style::parse(classes).ok(),
+            onclick: None,
+        };
+        // widgets-gallery app.at 骨架同构：header(sticky z-40) / 正文 /
+        // 移动底栏(fixed z-40) / 帮助浮层(absolute z-50)。
+        let children = vec![
+            styled("sticky z-40"),
+            styled(""),
+            styled("fixed z-40"),
+            styled("absolute z-50"),
+        ];
+        let (flow, floating) = super::column_layer_partition(&children);
+        assert_eq!(floating, vec![3], "仅 absolute 子脱流入叠层");
+        assert_eq!(flow, vec![0, 1, 2], "z-index-only 子保持流内（每子恰渲染一次）");
+    }
+
     /// PLAN-526 T6：boot 对齐匹配核——双向后缀命中（相对源路径 vs 绝对
     /// 注册表 entry）+ 无关路径不命中。
     #[test]

@@ -83,6 +83,13 @@ impl GutterCache {
         if width == 0 || height == 0 {
             return None;
         }
+        // PLAN-530 步骤5(B)：视口尺寸防御——无限高容器测量（f32::INFINITY
+        // 经 `as u32` 饱和成 u32::MAX）曾直达此处，`w*h*4` 申请 721GB 崩进程
+        // （OBS-1 逐位复现）。光栅上限 4K 档，超限拒绝（下一帧布局正常即恢复）。
+        const MAX_GUTTER_DIM: u32 = 4096;
+        if width > MAX_GUTTER_DIM || height > MAX_GUTTER_DIM {
+            return None;
+        }
 
         let fresh = match &self.image {
             Some((_, cached_w, cached_h, cached_rev)) => {
@@ -287,6 +294,24 @@ mod tests {
             numbers: vec![GutterNumber { number: 1, y: 0.0 }, GutterNumber { number: 2, y: 19.0 }],
             folds: Vec::new(),
         }
+    }
+
+    /// PLAN-530 步骤5(B) 回归（OBS-1 721GB 崩溃）：无限高容器测量使
+    /// viewport_h = ∞，`∞ as u32` 饱和成 u32::MAX → `w*h*4` = 721GB 分配
+    /// 崩进程（实测 42 × 4294967295 × 4 = 721,554,505,560 与 OBS-1 逐位
+    /// 一致）。极端 bounds 必须拒绝光栅，不得进入分配。
+    #[test]
+    fn p530_gutter_image_rejects_oversized_bounds() {
+        let mut fs = FontSystem::new();
+        let mut cache = GutterCache::default();
+        // ∞ 高（无限高容器测量）。
+        assert!(cache.image(&section(f32::INFINITY), &mut fs, 1).is_none());
+        // NaN 高（未初始化布局）。
+        assert!(cache.image(&section(f32::NAN), &mut fs, 2).is_none());
+        // 超 4K 上限的有限高。
+        assert!(cache.image(&section(100_000.0), &mut fs, 3).is_none());
+        // 正常尺寸仍然光栅。
+        assert!(cache.image(&section(120.0), &mut fs, 4).is_some());
     }
 
     /// Plan 428 实机验收发现(413 期回归):console 打开使编辑器变矮,缓存

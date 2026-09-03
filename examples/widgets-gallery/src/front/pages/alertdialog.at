@@ -1,11 +1,23 @@
 // pages/alertdialog.at - AlertDialog component documentation page
 
 widget AlertdialogPage {
-    model { activeTab str = "preview" }
+    model {
+        activeTab str = "preview"
+        // PLAN-530 步骤8(W13): 对话框开关状态——alert-dialog `open` 绑定;
+        // 关闭仅经 cancel/action(外点/Esc 不关,shadcn AlertDialog 语义)。
+        show bool = false
+    }
 
     on {
-        .confirmAction -> { toast("AlertDialog choice: Continue") }
-        .cancelAction -> { toast("AlertDialog choice: Cancel") }
+        .openDialog -> { .show = true }
+        .confirmAction -> {
+            .show = false
+            toast("AlertDialog choice: Continue")
+        }
+        .cancelAction -> {
+            .show = false
+            toast("AlertDialog choice: Cancel")
+        }
     }
 
     view {
@@ -20,10 +32,10 @@ widget AlertdialogPage {
             // PLAN-528 W4: auto: 覆盖默认的 AST 反序列化——默认只打印
             // preview 子树，看不到 on {} 块里的 handler 声明与实现；
             // 这里手写完整可运行示例（对齐 toast.at 的 codeblock 模式）。
-            preview-card (id: "alertdialog-basic", auto: "widget Demo {\n    on {\n        .confirmAction -> { toast(\"AlertDialog choice: Continue\") }\n        .cancelAction -> { toast(\"AlertDialog choice: Cancel\") }\n    }\n    view {\n        alert-dialog {\n            alert-dialog-trigger {\n                button (text: \"Show Dialog\", variant: \"outline\") {}\n            }\n            alert-dialog-content {\n                alert-dialog-header {\n                    alert-dialog-title (text: \"Are you absolutely sure?\") {}\n                    alert-dialog-description (text: \"This action cannot be undone. This will permanently delete your account and remove your data from our servers.\") {}\n                }\n                alert-dialog-footer {\n                    alert-dialog-cancel (text: \"Cancel\", onclick: .cancelAction) {}\n                    alert-dialog-action (text: \"Continue\", onclick: .confirmAction) {}\n                }\n            }\n        }\n        toast-provider {}\n    }\n}") {
-                alert-dialog {
+            preview-card (id: "alertdialog-basic", auto: "widget Demo {\n    model { show bool = false }\n    on {\n        .openDialog -> { .show = true }\n        .confirmAction -> {\n            .show = false\n            toast(\"AlertDialog choice: Continue\")\n        }\n        .cancelAction -> {\n            .show = false\n            toast(\"AlertDialog choice: Cancel\")\n        }\n    }\n    view {\n        alert-dialog (open: .show) {\n            alert-dialog-trigger {\n                button (text: \"Show Dialog\", variant: \"outline\", onclick: .openDialog) {}\n            }\n            alert-dialog-content {\n                alert-dialog-header {\n                    alert-dialog-title (text: \"Are you absolutely sure?\") {}\n                    alert-dialog-description (text: \"This action cannot be undone. This will permanently delete your account and remove your data from our servers.\") {}\n                }\n                alert-dialog-footer {\n                    alert-dialog-cancel (text: \"Cancel\", onclick: .cancelAction) {}\n                    alert-dialog-action (text: \"Continue\", onclick: .confirmAction) {}\n                }\n            }\n        }\n        toast-provider {}\n    }\n}") {
+                alert-dialog (open: .show) {
                     alert-dialog-trigger {
-                        button (text: "Show Dialog", variant: "outline") {}
+                        button (text: "Show Dialog", variant: "outline", onclick: .openDialog) {}
                     }
                     alert-dialog-content {
                         alert-dialog-header {
