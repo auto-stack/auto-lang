@@ -395,6 +395,9 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 spacing,
                 col_spacing,
                 style,
+                // Plan 045 T1: 列宽/拖拽为 iced(VM) 轨交互面,gpui 臂不消费。
+                col_widths: _,
+                on_col_resize: _,
             } => {
                 let mut table_div = div().v_flex();
 

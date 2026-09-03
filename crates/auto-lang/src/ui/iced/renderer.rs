@@ -4110,6 +4110,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 spacing: _,
                 col_spacing,
                 style: _,
+                col_widths: _,
+                on_col_resize: _,
             } => {
                 // Plan 411 P2-A④: vue 表格细节——表头 font-medium +
                 // text-muted-foreground、行 border-b、单元格 px-4/py-3。
@@ -5625,6 +5627,8 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             col_spacing,
             style,
+            col_widths,
+            on_col_resize,
         } => AbstractView::Table {
             headers: headers
                 .into_iter()
@@ -5637,6 +5641,11 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             col_spacing,
             style,
+            col_widths,
+            // Plan 045 T1: 列宽拖拽回调跨消息类型包装（ScrollCallback 同款）。
+            on_col_resize: on_col_resize.map(|cb| {
+                crate::ui::view::ColResizeCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+            }),
         },
 
         AbstractView::ProgressBar { progress, style } => {

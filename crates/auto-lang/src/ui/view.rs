@@ -341,6 +341,75 @@ impl<M> FocusCallback<M> {
     }
 }
 
+/// Plan 045 T1: 表格列宽拖拽落定测量（[`View::Table::on_col_resize`] 载荷）。
+/// 拖拽的列序号 + 落定宽（px，已按 [`MIN_COL_WIDTH`] clamp）。表键不由
+/// 载荷携带——closure 捕获（details_onclick 同款通道，autodown_render
+/// Table 臂按 block_key 逐表装配）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColResizeMetrics {
+    /// 被拖列序号（0 起，右边界被拖的列）。
+    pub col: usize,
+    /// 落定宽（px，≥ [`MIN_COL_WIDTH`]）。
+    pub width: f32,
+}
+
+/// Plan 045 T1: 最小列宽（px）——vue 金标 `useTableColumnResize` L134
+/// `max(40, …)` 同值，行为对齐锚点三常量之一。
+pub const MIN_COL_WIDTH: f32 = 40.0;
+
+/// Plan 045 T1: 列边界命中带宽（px，对称 ±band/2）——vue 金标 L69-72
+/// 边缘带 right-6~right+4 共 10px 的对称化取值，行为对齐锚点之一。
+pub const COL_RESIZE_BAND: f32 = 10.0;
+
+/// Plan 045 T1: 列宽落定 clamp（≥ [`MIN_COL_WIDTH`]）。
+pub fn clamp_col_width(w: f32) -> f32 {
+    w.max(MIN_COL_WIDTH)
+}
+
+/// Plan 045 T1: 列边界命中纯函数——x 为表头行内局部坐标，widths 为当前
+/// 列宽序列（px），spacing 为列间距。返回右边界距 x 在带宽内的列序号
+/// （含末列右边界，vue `isNearEdge` 对每个 cell 生效同口径）；多边界
+/// 命中取最近；widths 为空返回 None。
+pub fn col_boundary_hit(x: f32, widths: &[f32], spacing: f32, band: f32) -> Option<usize> {
+    let mut best: Option<(usize, f32)> = None;
+    let mut edge = 0.0f32;
+    for (i, w) in widths.iter().enumerate() {
+        edge += w;
+        let d = (x - edge).abs();
+        if d <= band / 2.0 && best.map(|(_, bd)| d < bd).unwrap_or(true) {
+            best = Some((i, d));
+        }
+        edge += spacing;
+    }
+    best.map(|(i, _)| i)
+}
+
+/// Plan 045 T1: 表格列宽拖拽落定回调（[`ScrollCallback`] 同款 newtype 形态，
+/// Arc<dyn Fn> 可跨消息类型包装——VM 轨 DynamicMessage→IcedMessage 转换不丢）。
+#[derive(Clone)]
+pub struct ColResizeCallback<M> {
+    callback: Arc<dyn Fn(ColResizeMetrics) -> M + Send + Sync>,
+}
+
+impl<M> std::fmt::Debug for ColResizeCallback<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ColResizeCallback").finish()
+    }
+}
+
+impl<M> ColResizeCallback<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(ColResizeMetrics) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f) }
+    }
+
+    pub fn call(&self, metrics: ColResizeMetrics) -> M {
+        (self.callback)(metrics)
+    }
+}
+
 ///
 /// This enum represents the abstract UI tree that can be adapted to different backends.
 /// Messages are stored directly (not as Option) for simpler mapping to Auto language.
@@ -552,6 +621,15 @@ pub enum View<M: Clone + Debug> {
         spacing: u16,
         col_spacing: u16,
         style: Option<Style>,  // ✅ NEW: Unified styling support
+        /// Plan 045 T1: 列宽应用（px）。Some = 按固定宽分列（长度不齐截断、
+        /// 不足补自然宽）；None = 现状自然宽。宽度状态不进块模型（与 vue
+        /// 同向：不回写文档），由 DSL state 经 render 入参回传。
+        col_widths: Option<Vec<f32>>,
+        /// Plan 045 T2/T3: 列宽拖拽落定消息通道——表头列边界命中拖拽，
+        /// 松手才发（拖拽中 widget 内部临时宽实时绘制，不进 state，避免
+        /// mousemove 级消息洪泛 DSL 层）。closure 捕获表键（details_onclick
+        /// 同款通道）；None = 无拖拽交互（现状）。
+        on_col_resize: Option<ColResizeCallback<M>>,
     },
 
     /// Slider for numeric value input with optional styling
@@ -1306,6 +1384,7 @@ impl<M: Clone + Debug> View<M> {
             spacing: 0,
             col_spacing: 0,
             style: None,  // ✅ NEW: style field
+            col_widths: None,  // Plan 045 T1
         }
     }
 
@@ -1722,7 +1801,7 @@ impl<M: Clone + Debug> View<M> {
                 }),
                 style,
             },
-            View::Table { headers, rows, spacing, col_spacing, style } => View::Table {
+            View::Table { headers, rows, spacing, col_spacing, style, col_widths, on_col_resize } => View::Table {
                 headers: headers.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 rows: rows.into_iter()
                     .map(|row| row.into_iter().map(|c| c.map_msg_with_arc(f)).collect())
@@ -1730,6 +1809,13 @@ impl<M: Clone + Debug> View<M> {
                 spacing,
                 col_spacing,
                 style,
+                col_widths,
+                // Plan 045 T1: on_col_resize 为 ColResizeCallback newtype,可包装换
+                // 型（ScrollCallback/FocusCallback 同款）。
+                on_col_resize: on_col_resize.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    ColResizeCallback::new(move |m| f(cb.call(m)))
+                }),
             },
             View::Slider { min, max, value, on_change, step, style } => {
                 // Slider uses fn(f32) -> M which can't be wrapped into fn(f32) -> N.
@@ -2279,6 +2365,8 @@ pub struct ViewTableBuilder<M: Clone + Debug> {
     spacing: u16,
     col_spacing: u16,
     style: Option<Style>,  // ✅ NEW: Unified styling support
+    /// Plan 045 T1: 列宽应用（px）；None = 自然宽（现状）。
+    col_widths: Option<Vec<f32>>,
 }
 
 impl<M: Clone + Debug> ViewTableBuilder<M> {
@@ -2291,6 +2379,12 @@ impl<M: Clone + Debug> ViewTableBuilder<M> {
     /// Set spacing between columns
     pub fn col_spacing(mut self, col_spacing: u16) -> Self {
         self.col_spacing = col_spacing;
+        self
+    }
+
+    /// Plan 045 T1: 按固定宽（px）分列；长度不齐截断、不足补自然宽。
+    pub fn col_widths(mut self, widths: Vec<f32>) -> Self {
+        self.col_widths = Some(widths);
         self
     }
 
@@ -2314,6 +2408,8 @@ impl<M: Clone + Debug> ViewTableBuilder<M> {
             spacing: self.spacing,
             col_spacing: self.col_spacing,
             style: self.style,
+            col_widths: self.col_widths,
+            on_col_resize: None,  // Plan 045 T1: 拖拽通道由 render 装配面直构
         }
     }
 }
@@ -2932,7 +3028,7 @@ mod tests {
     #[test]
     fn test_scrollable_on_scroll_callback() {
         // Plan 043 T1: on_scroll 读出回调——fn 指针收 ScrollMetrics 六测量
-        // 构造消息（Slider on_change 同款先例）。
+        // （Slider on_change 同款先例）。
         #[derive(Debug, Clone, PartialEq)]
         enum ScrollMsg { Scrolled(f32, f32, f32) }
         let child = View::<ScrollMsg>::text("scroll body");
@@ -2950,6 +3046,110 @@ mod tests {
             }
             _ => panic!("Expected View::Scrollable with on_scroll"),
         }
+    }
+
+    #[test]
+    fn test_table_col_widths_and_callback_defaults() {
+        // Plan 045 T1: builder 默认——col_widths None（自然宽）+ 无拖拽通道。
+        let view: TestView = View::table(
+            vec![View::text("A"), View::text("B")],
+            vec![vec![View::text("1"), View::text("2")]],
+        )
+        .build();
+        match view {
+            View::Table { col_widths, on_col_resize, .. } => {
+                assert!(col_widths.is_none());
+                assert!(on_col_resize.is_none());
+            }
+            _ => panic!("Expected View::Table"),
+        }
+        // 显式列宽进字段。
+        let view: TestView = View::table(vec![View::text("A")], vec![])
+            .col_widths(vec![120.0])
+            .build();
+        match view {
+            View::Table { col_widths: Some(w), .. } => assert_eq!(w, vec![120.0]),
+            _ => panic!("Expected View::Table with col_widths"),
+        }
+    }
+
+    #[test]
+    fn test_table_on_col_resize_callback() {
+        // Plan 045 T1: on_col_resize 读出回调——ColResizeMetrics (col, width)
+        // 构造消息（FocusCallback 同款 newtype 形态）。
+        #[derive(Debug, Clone, PartialEq)]
+        enum ResizeMsg { Resized(usize, f32) }
+        let view = View::Table {
+            headers: vec![View::text("A"), View::text("B")],
+            rows: vec![vec![View::text("1"), View::text("2")]],
+            spacing: 0,
+            col_spacing: 8,
+            style: None,
+            col_widths: Some(vec![100.0, 80.0]),
+            on_col_resize: Some(ColResizeCallback::new(|m| ResizeMsg::Resized(m.col, m.width))),
+        };
+        match view {
+            View::Table { col_widths, on_col_resize: Some(cb), .. } => {
+                assert_eq!(col_widths, Some(vec![100.0, 80.0]));
+                let msg = cb.call(ColResizeMetrics { col: 1, width: 133.0 });
+                assert_eq!(msg, ResizeMsg::Resized(1, 133.0));
+            }
+            _ => panic!("Expected View::Table with on_col_resize"),
+        }
+    }
+
+    #[test]
+    fn test_table_map_msg_keeps_col_resize_callback() {
+        // Plan 045 T1: map_msg 换型——on_col_resize 经 newtype 包装不丢，
+        // col_widths 原样透传（ScrollCallback/FocusCallback 同款保证）。
+        #[derive(Debug, Clone, PartialEq)]
+        enum A { R(usize, f32) }
+        #[derive(Debug, Clone, PartialEq)]
+        enum B { R(usize, f32) }
+        let view = View::Table {
+            headers: vec![View::text("A")],
+            rows: vec![vec![View::text("1")]],
+            spacing: 0,
+            col_spacing: 8,
+            style: None,
+            col_widths: Some(vec![64.0]),
+            on_col_resize: Some(ColResizeCallback::new(|m| A::R(m.col, m.width))),
+        };
+        let mapped: View<B> = view.map_msg(|a| match a { A::R(c, w) => B::R(c, w) });
+        match mapped {
+            View::Table { col_widths, on_col_resize: Some(cb), .. } => {
+                assert_eq!(col_widths, Some(vec![64.0]));
+                assert_eq!(cb.call(ColResizeMetrics { col: 0, width: 90.0 }), B::R(0, 90.0));
+            }
+            _ => panic!("Expected mapped View::Table"),
+        }
+    }
+
+    #[test]
+    fn test_col_boundary_hit() {
+        // Plan 045 T1: 命中纯函数——带宽 ±5px、含末列右边界、最近者胜。
+        let widths = [100.0f32, 80.0, 60.0];
+        let sp = 8.0f32;
+        // 边界位置：col0 右缘 100、col1 右缘 188、col2 右缘 256。
+        assert_eq!(col_boundary_hit(100.0, &widths, sp, COL_RESIZE_BAND), Some(0)); // 正中
+        assert_eq!(col_boundary_hit(104.9, &widths, sp, COL_RESIZE_BAND), Some(0)); // 带内上沿
+        assert_eq!(col_boundary_hit(95.1, &widths, sp, COL_RESIZE_BAND), Some(0)); // 带内下沿
+        assert_eq!(col_boundary_hit(188.0, &widths, sp, COL_RESIZE_BAND), Some(1));
+        assert_eq!(col_boundary_hit(256.0, &widths, sp, COL_RESIZE_BAND), Some(2)); // 末列右边界
+        assert_eq!(col_boundary_hit(105.1, &widths, sp, COL_RESIZE_BAND), None); // 带外
+        assert_eq!(col_boundary_hit(10.0, &widths, sp, COL_RESIZE_BAND), None); // 列内远离边界
+        assert_eq!(col_boundary_hit(0.0, &widths, sp, COL_RESIZE_BAND), None); // 左缘非命中
+        assert_eq!(col_boundary_hit(300.0, &[] as &[f32], sp, COL_RESIZE_BAND), None); // 空表
+        // 单列：唯一边界即其右缘。
+        assert_eq!(col_boundary_hit(52.0, &[50.0], 0.0, COL_RESIZE_BAND), Some(0));
+    }
+
+    #[test]
+    fn test_clamp_col_width() {
+        // Plan 045 T1: 最小宽 40（vue useTableColumnResize L134 同值）。
+        assert_eq!(clamp_col_width(12.0), 40.0);
+        assert_eq!(clamp_col_width(40.0), 40.0);
+        assert_eq!(clamp_col_width(41.5), 41.5);
     }
 
     #[test]

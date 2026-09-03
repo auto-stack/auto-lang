@@ -3562,6 +3562,8 @@ mod tests_plan483_d4 {
             spacing: 0,
             col_spacing: 0,
             style: None,
+            col_widths: None,
+            on_col_resize: None,
         };
         assert_nth_input_dispatches(&view, 0, "PasswordChanged");
     }

@@ -501,6 +501,8 @@ fn render_block<M: Clone + std::fmt::Debug>(
                 spacing: 0,
                 col_spacing: 8,
                 style: Style::parse(family_of(BlockType::Table).chrome.outer).ok(),
+                col_widths: None,
+                on_col_resize: None,
             }
         }
         BlockType::Callout => {

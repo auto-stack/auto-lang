@@ -1201,7 +1201,7 @@ fn convert_table_dynamic(
     let spacing = extract_prop_u32(node, "spacing").unwrap_or(0) as u16;
     let col_spacing = extract_prop_u32(node, "col_spacing").unwrap_or(spacing as u32) as u16;
     let style = extract_style(node)?;
-    Ok(View::Table { headers, rows, spacing, col_spacing, style })
+    Ok(View::Table { headers, rows, spacing, col_spacing, style, col_widths: None, on_col_resize: None })
 }
 
 /// 递归提取子节点并转换为动态消息 View

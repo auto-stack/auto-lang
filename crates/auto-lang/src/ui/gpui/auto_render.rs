@@ -509,7 +509,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 list_div.into_any()
             }
 
-            View::Table { headers, rows, spacing, col_spacing, style } => {
+            View::Table { headers, rows, spacing, col_spacing, style, col_widths: _, on_col_resize: _ } => {
                 let mut table_div = div().v_flex();
 
                 // Apply unified styling if present
@@ -1041,7 +1041,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 list_div.into_any()
             }
 
-            View::Table { headers, rows, spacing, col_spacing, style } => {
+            View::Table { headers, rows, spacing, col_spacing, style, col_widths: _, on_col_resize: _ } => {
                 let mut table_div = div().v_flex();
 
                 // Apply unified styling if present
