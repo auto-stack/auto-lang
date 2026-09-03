@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-526
-status: executing             #  # 用户指示：继续实机检查与追加反馈，review/归档暂缓（T19 后） drafting → executing → execution_done → reviewed → archived
+status: reviewed              # 复审通过 2026-09-03（cargo tf 3397/3399，唯二红=在案存量 530/531 同款归因；见复审记录） drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-shell-ux-fixes
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -605,7 +605,40 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
 
 ## 复审记录
 
-（/auto-plan:review 回填）
+- **复审人**：ZCode（/auto-plan:review，2026-09-03）
+- **范围**：11 波 39 任务（T1–T39）——原十题 + 十轮实机追加反馈；验证基线 = master
+  （worktree plan-526-dev 分支已完全折叠，2449c2f56 后无分叉；master 额外含 528 W9
+  合并解决方案，以代码为准）。
+- **全量门禁**：`cargo tf` 3399 run / **3397 passed / 2 failed**。唯二红
+  `docs_gen kitchen_sink_page_in_sync` + `schema_drift schema_drift_fence` = **在案存量**
+  （530 复审同款归因复现；531 记录源头 528 面/523 存量；KNOWN-DEBT 在档）——526 分支
+  diff（ui/* + assets + examples/028-launcher）不含其输入。526 新增测试
+  scrollbar_thumb_survives_degenerate_track 全绿（计数 +1 来源）。
+- **逐项判定**：
+  | 项 | 判定 | 证据 |
+  |---|---|---|
+  | 原 10 题（T1–T15） | PASS | 实机逐条 + 截图存档（波间回归记录）；组测试全绿 |
+  | T16–T19（波2–7） | PASS | 各波实机 + 组测试（shell_at/desktop/session 等） |
+  | T20 跨窗首击 | PASS | 机制双测试（真实 runtime 管线）+ session 单测；全手势用户复核项 |
+  | T21 clamp panic | PASS | 根因修复（code_editor 滚动条）+ 退化回归单测 + 同族审计 |
+  | T22/T24/T25/T27 | PASS | 实机截图/放大验证 |
+  | T23/T26/T30/T33/T34/T36（波9–11） | PASS | 实机（截图/handler 直调链路实证）+ 组测试 |
+  | T28/T29/T31/T35 | PASS | 代码+组测试；手势/视觉用户日常复核项 |
+  | T32 Ctrl+Tab | PASS（实现）/复核项 | 两臂代码审查 + 组测试；全手势需真实按键，用户复核 |
+  | T37 标题栏右键 | PASS（实现）/复核项 | 编译+装配验证；视觉/交互用户复核 |
+  | T38 launcher | PASS（实现）/复核项 | app.at 改动+金样/组测试；滚动视觉用户复核 |
+  | T39 截图护栏 | PASS | 最小化实机复验：干净错误回包、进程存活 |
+- **遗漏捕获（复审闭环）**：T38 launcher app.at 改动未入 f2d6fcf9b 提交（git add 范围漏
+  examples/）——复审折叠检查捕获，补提交 a532e673a 并折叠（2449c2f56）✓。
+- **延后（用户核准/在档，非 silently dropped）**：①wrap_layout_onclick 布局件公共基建
+  （待澄清③，独立立项候选）；②thumbnail 懒捕获空显/popover 首开锚点偏左（KNOWN-DEBT
+  已登记 🟢）；③T20/T31/T32/T37/T38 全手势与视觉日常复核（验收通道无法合成 OS 输入，
+  机制层均有测试承载）。
+- **workaround 猎查**：无新增。T25 分角圆角为用户核准降级；T39 护栏为正解。
+- **spec-impact**：supersedes=specs/ui/overview.md 桌面交互语义六项+两护栏；new=无；
+  touched=GOAL-009。
+- **结论**：全部判定 PASS、无阻塞债 → **status: reviewed**，可进 /auto-plan:merge。
+  后续桌面问题（含 PLAN-533 实施）另立新计划跟踪（用户裁定，2026-09-03）。
 
 ## 待澄清事项
 
