@@ -1469,7 +1469,26 @@ impl RustTrans {
                 }
             }
         }
+        // Plan 531 P525-4: May 裸值 return——`fn f() ?int { return n * 10 }`
+        // 的裸值表达式按 Auto 语义即 Some(值);此前直发 `return n * 10;`
+        // 于 Option<T> 返回位 E0308(g34 语料被迫取显式 Some 规避形态)。
+        // 仅包裹已知裸标量形;Option 形态(Some/Ok/None/Call-Some)与
+        // Unknown 不动(保守避免双重包裹)。
+        let already_option_shaped = match expr {
+            Expr::Some(_) | Expr::None | Expr::Ok(_) => true,
+            Expr::Call(c) => matches!(c.name.as_ref(),
+                Expr::Ident(n) if matches!(n.as_str(), "Some" | "Ok")),
+            _ => false,
+        };
+        let expr_bare_scalar = matches!(self.infer_type_from_expr(expr),
+            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+            | Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit);
+        let may_wrap_bare = matches!(&self.current_fn_ret_type, Some(Type::Option(_)))
+            && !already_option_shaped
+            && expr_bare_scalar;
         out.write(b"return ")?;
+        if may_wrap_bare { write!(out, "Some(")?; }
         self.expr(expr, out)?;
         if needs_to_string {
             out.write(b".to_string()")?;
@@ -1493,6 +1512,7 @@ impl RustTrans {
                 write!(out, "{}", cast)?;
             }
         }
+        if may_wrap_bare { write!(out, ")")?; }
         if add_semi { out.write(b";")?; }
         Ok(())
     }

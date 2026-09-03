@@ -7,6 +7,13 @@ fn find(n: i64) -> Option<i64> {
     return None;
 }
 
+fn find_bare(n: i64) -> Option<i64> {
+    if n > 0 {
+        return Some(n * 10);
+    }
+    return None;
+}
+
 fn main() {
     let a = find(3);
     match a {
@@ -15,6 +22,16 @@ fn main() {
     };
     let b = find(0);
     match b {
+        Some(v) => println!("{}", v),
+        None => println!("none"),
+    };
+    let c = find_bare(3);
+    match c {
+        Some(v) => println!("{}", v),
+        None => println!("none"),
+    };
+    let d = find_bare(0);
+    match d {
         Some(v) => println!("{}", v),
         None => println!("none"),
     };
