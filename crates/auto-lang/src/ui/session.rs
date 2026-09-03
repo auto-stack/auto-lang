@@ -605,6 +605,11 @@ pub struct WmState {
     /// T6 宿主装配排水：换算屏幕物理坐标 → win32 set_bounds → slot_rect 回写。
     pub pending_native_geometry:
         Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)>,
+    /// PLAN-526 T20：软聚焦（[`WmState::focus_soft`]）挂起的延迟置顶，
+    /// mouse released 时经 [`WmState::apply_pending_raise`] 偿还。根因与
+    /// 语义见方法注——press→release 之间重排 z_order 会经 Stack 按位
+    /// diff 弄丢 button 的 is_pressed 态（跨窗首击吞按钮）。
+    pending_raise: Option<Wid>,
 }
 
 impl WmState {
@@ -628,6 +633,7 @@ impl WmState {
             next_native_slot_id: 0,
             native_slot_local_rects: BTreeMap::new(),
             pending_native_geometry: Vec::new(),
+            pending_raise: None,
         }
     }
 
@@ -935,6 +941,49 @@ impl WmState {
         if let Some(v) = self.wins.get_mut(&wid) {
             v.z = self.next_z;
         }
+    }
+
+    /// PLAN-526 T20：软聚焦——与 [`Self::focus`] 同样的"记录焦点 + 还原
+    /// 最小化 + MRU 前插"，但**不改 `z_order`/`v.z`**，置顶挂入
+    /// `pending_raise` 由 [`Self::apply_pending_raise`] 偿还。
+    ///
+    /// 动机：点击聚焦（GlobalPress）发生在鼠标 press 时刻，而 iced button
+    /// 的 on_press 在 release 时刻才发；press→release 之间 z_order 重排会
+    /// 改变桌面 Stack 层序，`Tree::diff_children` 按位 diff（无 Id 匹配）
+    /// 弄丢 button 持有的 `is_pressed` 态——首击只切焦点不触发按钮。
+    pub fn focus_soft(&mut self, wid: Wid) {
+        if !self.wins.contains_key(&wid) {
+            return;
+        }
+        if let Some(v) = self.wins.get(&wid) {
+            v.minimized.set(false);
+        }
+        self.focused = Some(wid);
+        self.mru.retain(|w| *w != wid);
+        self.mru.insert(0, wid);
+        self.pending_raise = Some(wid);
+    }
+
+    /// PLAN-526 T20：偿还 [`Self::focus_soft`] 挂起的置顶（mouse released
+    /// 臂调用——此刻无在途点击，重排不再吞 release 驱动的按钮）。返回是否
+    /// 发生了重排。pending 已过期（焦点被改写/窗已关/同窗已顶）= no-op。
+    pub fn apply_pending_raise(&mut self) -> bool {
+        let Some(wid) = self.pending_raise.take() else {
+            return false;
+        };
+        if self.focused != Some(wid) || !self.wins.contains_key(&wid) {
+            return false;
+        }
+        if self.z_order.last() == Some(&wid) {
+            return false;
+        }
+        self.z_order.retain(|w| *w != wid);
+        self.z_order.push(wid);
+        self.next_z += 1;
+        if let Some(v) = self.wins.get_mut(&wid) {
+            v.z = self.next_z;
+        }
+        true
     }
 
     /// PLAN-526 T1：最小化窗口（隐藏；焦点回退限当前分区的最顶非最小窗，
@@ -1881,6 +1930,22 @@ impl DesktopSession {
         if let Some(host) = self.host.as_mut() {
             host.wm.focus(wid);
         }
+    }
+
+    /// PLAN-526 T20：软聚焦（GlobalPress 点击聚焦专用；置顶推迟到 mouse
+    /// released 偿还，见 [`WmState::focus_soft`]）。
+    pub fn wm_focus_soft(&mut self, wid: Wid) {
+        if let Some(host) = self.host.as_mut() {
+            host.wm.focus_soft(wid);
+        }
+    }
+
+    /// PLAN-526 T20：偿还软聚焦的延迟置顶（`__mouse_released` 臂调用）。
+    pub fn wm_apply_pending_raise(&mut self) -> bool {
+        self.host
+            .as_mut()
+            .map(|h| h.wm.apply_pending_raise())
+            .unwrap_or(false)
     }
 
     /// PLAN-526 T1：最小化虚拟窗口（标题栏 `–` 键/右键菜单/总线 `win_min`）。
@@ -3801,6 +3866,95 @@ mod tests {
         let mut ds = DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());
         ds
+    }
+
+    /// PLAN-526 T20：软聚焦语义——`focus_soft` 即刻记焦点/MRU/还原最小化
+    /// 但不动 z_order（press→release 之间重排会经 Stack 按位 diff 弄丢
+    /// button 的 is_pressed，跨窗首击吞按钮），置顶由 `apply_pending_raise`
+    /// 在 mouse released 偿还。
+    #[test]
+    fn focus_soft_defers_raise_until_mouse_released() {
+        let mut ds = desktop_session_with_host();
+        let app1 = insert_app(&mut ds, "A");
+        let wid1 = ds.wm_add_win(
+            app1,
+            "A".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
+        let app2 = insert_app(&mut ds, "B");
+        let wid2 = ds.wm_add_win(
+            app2,
+            "B".into(),
+            iced::Rectangle::new(iced::Point::new(10.0, 10.0), iced::Size::new(100.0, 100.0)),
+        );
+        ds.wm_focus(wid1);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.z_order.last(), Some(&wid1));
+            assert_eq!(host.wm.focused, Some(wid1));
+        }
+
+        // 模拟 GlobalPress：软聚焦窗 2——焦点即切、层序不动。
+        ds.wm_focus_soft(wid2);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.focused, Some(wid2), "软聚焦即记焦点");
+            assert_eq!(
+                host.wm.z_order.last(),
+                Some(&wid1),
+                "press 期不重排（首击吞按钮根因）"
+            );
+            assert_eq!(host.wm.mru.first(), Some(&wid2));
+        }
+
+        // mouse released：偿还置顶。
+        assert!(ds.wm_apply_pending_raise(), "release 偿还应发生重排");
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.z_order.last(), Some(&wid2), "release 后置顶");
+            assert_eq!(host.wm.hit_test(50.0, 50.0), Some(wid2), "重叠区命中随置顶翻转");
+        }
+
+        // 重复偿还 = no-op。
+        assert!(!ds.wm_apply_pending_raise());
+    }
+
+    /// PLAN-526 T20：pending 过期防护——同窗已顶/焦点被改写/窗已关时
+    /// `apply_pending_raise` 不重排。
+    #[test]
+    fn apply_pending_raise_noop_when_stale_or_top() {
+        let mut ds = desktop_session_with_host();
+        let app1 = insert_app(&mut ds, "A");
+        let wid1 = ds.wm_add_win(
+            app1,
+            "A".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
+        let app2 = insert_app(&mut ds, "B");
+        let wid2 = ds.wm_add_win(
+            app2,
+            "B".into(),
+            iced::Rectangle::new(iced::Point::new(10.0, 10.0), iced::Size::new(100.0, 100.0)),
+        );
+
+        // ①同窗已顶：软聚焦已顶窗 → 偿还 no-op。
+        ds.wm_focus(wid1);
+        ds.wm_focus_soft(wid1);
+        assert!(!ds.wm_apply_pending_raise(), "已顶窗偿还 no-op");
+
+        // ②焦点被改写：软聚焦 2 后全聚焦回 1 → stale pending 不重排。
+        ds.wm_focus_soft(wid2);
+        ds.wm_focus(wid1);
+        assert!(!ds.wm_apply_pending_raise(), "stale pending（焦点已改写）no-op");
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.z_order.last(), Some(&wid1));
+        }
+
+        // ③窗已关：软聚焦 2 后关 2 → 偿还 no-op。
+        ds.wm_focus_soft(wid2);
+        ds.wm_remove_win(wid2);
+        assert!(!ds.wm_apply_pending_raise(), "stale pending（窗已关）no-op");
     }
 
     /// Plan 480 S8 —— L1 同进程换窗：detach → OS 窗登记翻转（虚拟窗摘除

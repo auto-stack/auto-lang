@@ -13361,9 +13361,16 @@ fn compare_pngs(
                         state.shutdown_broker();
                         return iced::exit();
                     }
-                    // 全局左键按下：按最近光标位置做 z 序命中测试 → 聚焦置顶
+                    // 全局左键按下：按最近光标位置做 z 序命中测试 → 软聚焦
                     //（last_cursor 由全局 CursorMoved 持续回写；点击桌面空白
                     // 不改焦点，其语义归 463 桌面层）。
+                    // PLAN-526 T20：点击聚焦改 `focus_soft`——只记焦点/
+                    // 还原最小化，置顶推迟到 `__mouse_released` 偿还。根因：
+                    // press→release 之间 z_order 重排会改变桌面 Stack 层序，
+                    // `Tree::diff_children` 按位 diff（iced 0.14 无 Id 匹配）
+                    // 弄丢 button 持有的 is_pressed 态——跨窗首击只切焦点
+                    // 不触发按钮。标题栏拖拽/缩放的即时置顶由 StartDrag/
+                    // StartResize 臂自理（彼时命中的是 chrome，无按钮在途）。
                     WmCommand::GlobalPress => {
                         let cursor = state
                             .host
@@ -13375,7 +13382,7 @@ fn compare_pngs(
                             .as_ref()
                             .and_then(|h| h.wm.hit_test(cursor.x, cursor.y))
                         {
-                            state.wm_focus(wid);
+                            state.wm_focus_soft(wid);
                         }
                     }
                     WmCommand::Focus(wid) => state.wm_focus(wid),
@@ -13551,6 +13558,10 @@ fn compare_pngs(
                             }
                         }
                         "__mouse_released" => {
+                            // PLAN-526 T20：先偿还软聚焦挂起的置顶（此刻无
+                            // 在途点击，重排无害），再判定拖拽/缩放交互收尾
+                            //——两分支语义互不干扰（pending 过期 = no-op）。
+                            state.wm_apply_pending_raise();
                             if state
                                 .host
                                 .as_mut()

@@ -650,3 +650,181 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let (_tx, ty, _tw, th) = bounds_of(&mut ui, "T3W");
     assert!(th > 0.0 && ty < 40.0, "chrome 标题条在窗顶: y={ty}");
 }
+
+// ── PLAN-526 T20：跨窗首击吞按钮机制回归 ─────────────────────────────
+// 真实 iced runtime 管线（UserInterface build → update(press) → into_cache
+// → rebuild → update(release)），覆盖 Tree 按位 diff 与 button is_pressed
+// 跨事件存活的完整机制。两条对照：
+//   A) press 即置顶（修复前 GlobalPress 行为）→ release 丢点击（ bug 复现）；
+//   B) press 软聚焦 + release 偿还（T20 修复）→ 首击命中按钮。
+
+#[derive(Clone, Debug, PartialEq)]
+enum T20Msg {
+    ButtonHit(&'static str),
+}
+
+struct T20Wm {
+    z_order: Vec<usize>,
+    focused: Option<usize>,
+    defer_raise: bool,
+    clicks: Vec<&'static str>,
+}
+
+impl T20Wm {
+    /// GlobalPress 订阅半边（不受 widget 捕获影响，press 必达）：
+    /// soft=false 修复前语义（press 即重排）；soft=true T20 修复语义。
+    fn global_press_focus(&mut self, wid: usize) {
+        self.focused = Some(wid);
+        if !self.defer_raise {
+            self.z_order.retain(|&w| w != wid);
+            self.z_order.push(wid);
+        }
+    }
+
+    /// __mouse_released 订阅半边：偿还 T20 挂起的置顶。
+    fn apply_pending_raise(&mut self) {
+        if self.defer_raise && self.focused.is_some() {
+            let wid = self.focused.unwrap();
+            self.z_order.retain(|&w| w != wid);
+            self.z_order.push(wid);
+        }
+    }
+}
+
+fn t20_view(wm: &T20Wm) -> iced::Element<'static, T20Msg> {
+    const POS: [(f32, f32); 2] = [(20.0, 20.0), (300.0, 20.0)];
+    const LABELS: [&str; 2] = ["hit0", "hit1"];
+    let layers: Vec<iced::Element<'static, T20Msg>> = wm
+        .z_order
+        .iter()
+        .map(|&i| {
+            let (x, y) = POS[i];
+            let label = LABELS[i];
+            let btn = iced::widget::button(
+                iced::widget::container(iced::widget::text(label).size(18))
+                    .width(iced::Length::Fixed(80.0))
+                    .height(iced::Length::Fixed(56.0))
+                    .center(iced::Length::Fill),
+            )
+            .on_press(T20Msg::ButtonHit(label));
+            let client = iced::widget::mouse_area(btn);
+            // 定位包裹（同 virtual_window_element：pad 出原点，Start 对齐）。
+            iced::widget::container(
+                iced::widget::container(client)
+                    .width(iced::Length::Fixed(240.0))
+                    .height(iced::Length::Fixed(240.0)),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .padding(iced::Padding {
+                top: y,
+                left: x,
+                right: 0.0,
+                bottom: 0.0,
+            })
+            .align_x(iced::Alignment::Start)
+            .align_y(iced::Alignment::Start)
+            .into()
+        })
+        .collect();
+    iced::widget::Stack::with_children(layers).into()
+}
+
+/// press → (真实 diff rebuild) → release 三段驱动；返回 (点击命中, press 后
+/// 层序, release 后层序)。光标恒指 win1 按钮中心 (380,90)。
+///
+/// 结构同真实桌面：ButtonPressed 事件的 widget 半边（button 捕获置
+/// is_pressed）+ 订阅半边 GlobalPress（`desktop_window_events` 产出、不受
+/// widget 捕获影响）→ 聚焦（是否立即重排由 defer_raise 分支）；release 后
+/// 订阅半边 `__mouse_released` 偿还置顶。
+fn t20_drive(defer_raise: bool) -> (Vec<&'static str>, Vec<usize>, Vec<usize>) {
+    use iced_test::core::{
+        clipboard::Null, mouse, renderer::Headless, Event, Font, Pixels, Point, Size,
+    };
+    use iced_test::runtime::user_interface::{Cache, UserInterface};
+
+    // 初始态符合真实不变量：聚焦窗 win0 在 z 顶，被点窗 win1 在其下。
+    // （z 序 [back→front]；两窗并排不重叠，光标 (380,90) 命中 win1 按钮。）
+    let mut wm = T20Wm {
+        z_order: vec![1, 0],
+        focused: Some(0),
+        defer_raise,
+        clicks: vec![],
+    };
+    let bounds = Size::new(560.0, 280.0);
+    let over_hit1 = Point::new(380.0, 90.0);
+
+    let backend = std::env::var("ICED_TEST_BACKEND").ok();
+    let mut renderer: iced_test::renderer::Renderer =
+        iced_test::futures::futures::executor::block_on(
+            <iced_test::renderer::Renderer as Headless>::new(
+                Font::DEFAULT,
+                Pixels(16.0),
+                backend.as_deref(),
+            ),
+        )
+        .expect("headless renderer");
+    let mut cache = Cache::default();
+
+    // ① press：未聚焦窗 win1 的按钮（button 捕获置 is_pressed=true）+
+    //    GlobalPress 订阅臂聚焦（T20 修复 = 软聚焦不重排；修复前 = 即重排）。
+    let mut msgs: Vec<T20Msg> = vec![];
+    {
+        let mut ui = UserInterface::build(t20_view(&wm), bounds, cache, &mut renderer);
+        ui.update(
+            &[Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))],
+            mouse::Cursor::Available(over_hit1),
+            &mut renderer,
+            &mut Null,
+            &mut msgs,
+        );
+        cache = ui.into_cache();
+    }
+    for m in msgs.drain(..) {
+        if let T20Msg::ButtonHit(label) = m {
+            wm.clicks.push(label);
+        }
+    }
+    wm.global_press_focus(1);
+    let z_after_press = wm.z_order.clone();
+
+    // ② rebuild：真实 Tree::diff——层序是否变化决定 button 状态树存亡。
+    // ③ release：iced button 仅在 is_pressed 幸存时发布 on_press；随后
+    //    __mouse_released 订阅臂偿还置顶。
+    {
+        let mut ui = UserInterface::build(t20_view(&wm), bounds, cache, &mut renderer);
+        ui.update(
+            &[Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))],
+            mouse::Cursor::Available(over_hit1),
+            &mut renderer,
+            &mut Null,
+            &mut msgs,
+        );
+        let _ = ui.into_cache();
+    }
+    for m in msgs {
+        if let T20Msg::ButtonHit(label) = m {
+            wm.clicks.push(label);
+        }
+    }
+    wm.apply_pending_raise();
+    (wm.clicks, z_after_press, wm.z_order.clone())
+}
+
+#[test]
+fn t20_naive_raise_on_press_loses_first_click() {
+    let (clicks, z_after_press, _) = t20_drive(false);
+    assert_eq!(z_after_press, vec![0, 1], "修复前语义：press 即置顶重排（win1 顶）");
+    assert!(
+        clicks.is_empty(),
+        "bug 复现：press→release 之间重排层序必须吞掉首击: {clicks:?}"
+    );
+}
+
+#[test]
+fn t20_deferred_raise_lets_first_click_through() {
+    let (clicks, z_after_press, final_z) = t20_drive(true);
+    assert_eq!(z_after_press, vec![1, 0], "T20 修复：press 期不重排层序");
+    assert_eq!(clicks, ["hit1"], "首击必须触发按钮: {clicks:?}");
+    assert_eq!(final_z, vec![0, 1], "release 偿还置顶（win1 顶）");
+}
