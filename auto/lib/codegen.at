@@ -3474,17 +3474,21 @@ pub fn cg_compile_files(main_path str) CG {
         var ti = 0
         while ti < sc.tys.len() {
             var st = sc.tys.get(ti)
-            var dup = false
+            // 先查位后置换单独落(内置环只读;环内 set(st) 移动后续读
+            // 触发主 a2r 转译 E0382 move 洞,aavm2_bin 自译两度实证)
+            var hit_at = -1
             var dj = 0
             while dj < seed.len() {
                 if seed.get(dj).name == st.name {
-                    dup = true
-                    seed.set(dj, st)
+                    hit_at = dj
+                    dj = seed.len()
                 }
                 dj = dj + 1
             }
-            if !dup {
+            if hit_at < 0 {
                 seed.push(st)
+            } else {
+                seed.set(hit_at, st)
             }
             ti = ti + 1
         }
