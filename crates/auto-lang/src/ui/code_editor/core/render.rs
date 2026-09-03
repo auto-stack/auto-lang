@@ -59,7 +59,11 @@ pub fn render(
         ..EditorDrawList::default()
     };
 
-    if viewport_w <= 1.0 || viewport_h <= 1.0 {
+    // PLAN-530 步骤5(B)：非有限视口防御——无限高容器测量（iced 滚动区
+    // 测量约束）给出 f32::INFINITY，`inf <= 1.0` 为假曾放行，下游 gutter
+    // 光栅 `inf as u32` 饱和 u32::MAX → w*h*4 = 721GB 分配崩进程（OBS-1）。
+    // NaN 同拒（NaN 比较恒假）。本帧跳过渲染，布局收敛后自然恢复。
+    if !viewport_w.is_finite() || !viewport_h.is_finite() || viewport_w <= 1.0 || viewport_h <= 1.0 {
         return list;
     }
 
@@ -623,6 +627,27 @@ pub fn default_config() -> CodeEditorConfig {
 #[cfg(test)]
 mod scrollbar_thumb_tests {
     use super::*;
+
+    /// PLAN-530 步骤5(B) 回归（OBS-1 721GB 崩溃）：无限高容器测量给出的
+    /// f32::INFINITY 视口必须整帧拒绝（含 gutter section），不得放行到
+    /// 光栅层做 `inf as u32` 饱和分配。
+    #[test]
+    fn p530_render_rejects_nonfinite_viewport() {
+        let mut fs = FontSystem::new();
+        let config = default_config();
+        let core = CodeEditorCore::new("p530-infinite-viewport", config, &mut fs);
+        core.set_text("fn main() {}\n", &mut fs);
+        // ∞ 高:此前放行 → gutter section 携 ∞ bounds → 光栅层 721GB 分配。
+        let list = render(&core, &mut fs, 400.0, f32::INFINITY, None);
+        assert!(list.gutter.is_none(), "∞ 视口不得产出 gutter section");
+        assert!(list.background.is_none(), "∞ 视口不得产出背景层");
+        // NaN 宽:同拒。
+        let list = render(&core, &mut fs, f32::NAN, 300.0, None);
+        assert!(list.gutter.is_none(), "NaN 视口不得产出 gutter section");
+        // 正常视口仍然渲染（守卫只拦非有限/过小）。
+        let list = render(&core, &mut fs, 400.0, 300.0, None);
+        assert!(list.background.is_some(), "正常视口必须正常渲染");
+    }
 
     /// PLAN-526 T21 回归：极端小编辑区（viewport < THICKNESS+2）下 track
     /// 为负，此前 `natural.clamp(THICKNESS, track)` 触发 f32 clamp min>max
