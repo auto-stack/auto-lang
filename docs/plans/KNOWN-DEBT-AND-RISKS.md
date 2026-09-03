@@ -1053,3 +1053,8 @@
 - 观察项（非债）：PreToolUse hook 样例（D:/autostack/hooks-config.sample.json）
   未启用，等用户决定；`.worktrees/auto-down` 为 17:08 某会话创建的普通目录
   （非链接，无穿透风险），首个新布局计划落地时可顺手清理。
+- **P529-3 specs.json 本地台账事故后重建仅含 P529 六项**：原 `.autoos/specs.json`
+  （含 P442/P517/P523/P524/P526/P527 等历史沉淀条目）随 2026-09-03 删除波丢失
+  （gitignored 不入库），Plan 529 merge 时以六空节骨架重建并仅沉淀 P529-1..6。
+  偿还路径：对 docs/plans/archive/ 各归档计划逐一重跑 deposit 脚本（scratch/
+  p515/p517/p509 等脚本留存可改造为通用遍历版），幂等 id 保证不重不漏。

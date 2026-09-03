@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-529
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: worktree-layout-migration
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -102,7 +102,9 @@ worktree 内**禁止任何 junction/symlink**（红线）；`.wt` 加入 clean-t
 3. ✅ hook 样例就位——wt-guard-hook.sh(1.7KB)+hooks-config.sample.json(537B)
    含启用方法说明；未启用（用户决策项）。
 4. ✅ clean-autolang-targets.ps1 `.wt` 发现逻辑假树干跑——正确发现
-   `.wtev-checkuto-langeal	arget`；另证通用 clean-targets.ps1 天然覆盖
+   `.wt
+ev-checkuto-lang
+eal	arget`；另证通用 clean-targets.ps1 天然覆盖
    .wt（根=D:utostack 全树递归）且自带 ReparsePoint 跳过守卫（line 41）。
 5. ✅ 在途 worktree 无扰——plan-525-dev/plan-526-dev 注册健康；复审期间另证
    plan-525 W4 已由执行会话折入 master（711722837，tf 绿+tv 3559），重建分支
@@ -121,3 +123,11 @@ spec-impact：new_spec_components=[worktree-group-layout]（跨仓工作流约�
 
 - 在途 plan-525-dev/plan-526-dev 就地跑完；下一个新计划（lang-530 起）首次使用新布局。
 - auto-down/auto-ai 无 AGENTS.md 此类引用，无需改动；如其后新建约定文件直接按新布局书写。
+
+## 归档记录（/auto-plan:merge，2026-09-03）
+
+- 无 worktree 折叠（本计划直接在 master 执行约定/用户级文件，幂等跳过）。
+- 手工沉淀（Step 4，仓内既有模式）：scratch/p529_merge_upsert.py 重建丢失的
+  .autoos/specs.json（六空节）并 upsert P529-1..6，双跑幂等验证通过。
+- 台账重建缺口登记 KNOWN-DEBT P529-3（历史条目偿还路径在案）。
+- git mv archive/ + status: archived（终态）。
