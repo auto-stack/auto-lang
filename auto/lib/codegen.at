@@ -1283,6 +1283,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
         p.next()
         var cv = int_val(t).str()
         c.emit(OpCode.ConstI32, cv, int_val(t))
+        // P532 W1 G9:int 字面量结果型(var slot=0 后 slot.str() 断链
+        // 实证;inst_ty 单值通道——var 绑定/链式接收者)
+        c.inst_ty = "int"
         }
         TokenKind.Str -> {
         var s = p.text()
@@ -1290,6 +1293,8 @@ fn cg_expr(mut c CG, mut p P, min int) {
         var idx = c.pool_add(s)
         c.emit(OpCode.LoadStr, "", idx)
         c.str_flag = 1
+        // P532 W1 G9:字面量主式接收者型("xy".char_at(0) 断链实证)
+        c.recv_ty = "str"
         }
         TokenKind.True -> {
         p.next()
@@ -1435,6 +1440,12 @@ fn cg_expr(mut c CG, mut p P, min int) {
                     cg_call_args(c, p)
                     var idi = c.emit(OpCode.Call, "", -1)
                     c.defers.push(CGDefer(idi, isym))
+                    // P532 W1 G8:导入调用清类型旗标(防陈旧 str_flag 污染
+                    // var 绑定——var out="" 后 var toks=imported() 实证)
+                    c.str_flag = 0
+                    c.arr_flag = 0
+                    c.inst_ty = ""
+                    c.recv_ty = ""
                 } else {
                     c.fail("unknown fn: " + name)
                     return
@@ -1442,6 +1453,12 @@ fn cg_expr(mut c CG, mut p P, min int) {
             } else {
                 cg_call_args(c, p)
                 c.emit(OpCode.Call, "", fe)
+                // P532 W1 G8:局部调用回传返回类型(fn_rets 平行表——
+                // var 绑定/链式接收者解析;var toks=tokenize(..) 实证)
+                c.str_flag = 0
+                c.arr_flag = 0
+                c.inst_ty = c.fn_rets.get(fe)
+                c.recv_ty = c.inst_ty
             }
         } else if !call_done && name == "None" && c.lookup("None") < 0 {
             // W5(525):None 哨兵(镜像宿主 CREATE_NONE 推 -1;IS_SOME
@@ -1605,10 +1622,12 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                     p.next()
                                     c.emit(OpCode.ArrLen, "", 0)
                                     dot_done = true
+                                    // P532 W1 G9:int 结果型回传(链式
+                                    // elems.len().str() 断链实证)
                                     c.str_flag = 0
                                     c.arr_flag = 0
-                                    c.inst_ty = ""
-                                    c.recv_ty = ""
+                                    c.inst_ty = "int"
+                                    c.recv_ty = "int"
                                     c.primary_tyname = ""
                                     dot_seq = dot_seq + 1
                                     continue
@@ -1636,6 +1655,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                     } else {
                                         c.inst_ty = ""
                                     }
+                                } else if mname2 == "len" {
+                                    // P532 W1 G9:int 结果型回传(var.len()
+                                    // 的 nat#103 通道——elems.len().str() 断链)
+                                    c.inst_ty = "int"
                                 } else {
                                     c.inst_ty = ""
                                 }
@@ -1645,6 +1668,24 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 c.primary_tyname = ""
                                 dot_seq = dot_seq + 1
                                 continue
+                            }
+                            if recv_ty2 == "int" {
+                                // P532 W1 G9:int.str() → nat#174(宿主
+                                // auto.int.str;t.line.str() dump 形态锚)
+                                if mname2 == "str" && p.peek(3) == TokenKind.RParen {
+                                    p.next()
+                                    p.next()
+                                    cg_call_args(c, p)
+                                    c.emit(OpCode.CallNat, "nat#174", 174)
+                                    dot_done = true
+                                    c.str_flag = 1
+                                    c.arr_flag = 0
+                                    c.inst_ty = ""
+                                    c.recv_ty = "str"
+                                    c.primary_tyname = ""
+                                    dot_seq = dot_seq + 1
+                                    continue
+                                }
                             }
                             if recv_ty2 == "str" {
                                 var snid = str_nat_id(mname2)
@@ -1659,14 +1700,18 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                     // 后续 t.replace 解析,dump_escape 锚):
                                     // slice/replace/trim 回 str,len/char_at 回 int
                                     if snid == 1502 || snid == 1500 {
-                                        c.recv_ty = ""
+                                        // int 结果型回传(var 绑定/后续
+                                        // .str() 链——var n=content.len()
+                                        // 后 n.str() 断链实证)
+                                        c.recv_ty = "int"
                                         c.str_flag = 0
+                                        c.inst_ty = "int"
                                     } else {
                                         c.recv_ty = "str"
                                         c.str_flag = 1
+                                        c.inst_ty = "str"
                                     }
                                     c.arr_flag = 0
-                                    c.inst_ty = ""
                                     c.primary_tyname = ""
                                     dot_seq = dot_seq + 1
                                     continue
@@ -2480,14 +2525,15 @@ fn cg_stmt(mut c CG, mut p P) {
         p.next()
         var vty = ""
         if is_type_name(p) {
-            var vt = parse_type(p)
-            if vt == "str" {
-                vty = "str"
-            }
-            // W3(525):容器注解串入 vty(List<..>/裸 List;recv_ty
-            // 解析——容器方法 CallNat 分派)
-            if find_sub(vt, "List") == 0 {
-                vty = vt
+            // P532 W1 G9 注:注解类型入 vty——裸名形态(parse_type 对
+            // 用户类型返回声明快照/占位串,污染 var_ty→字段型断链,
+            // t.line.str() 实证);复合型(List<..>/Map<..>)保留全串
+            var bare_ty = p.text()
+            var full_ty = parse_type(p)
+            if find_sub(full_ty, "<") >= 0 {
+                vty = full_ty
+            } else {
+                vty = bare_ty
             }
         }
         var is_arr = 0
@@ -2535,6 +2581,13 @@ fn cg_stmt(mut c CG, mut p P) {
             // 写走 load.str+set.field,与宿主 User 路径一致)
             if c.inst_ty != "" {
                 vty = c.inst_ty
+            } else {
+                // P532 W1 G9:裸 ident 初始化(var val=next_val)经
+                // recv_ty 兜底(装载臂已回传 var_ty;f-string 内
+                // val.str() 断链实证)
+                if c.recv_ty != "" {
+                    vty = c.recv_ty
+                }
             }
         }
         var idx = c.add_var(name, is_arr, vty)
@@ -3075,10 +3128,26 @@ fn cg_fn(mut c CG, mut p P) {
     }
     var jover = c.emit(OpCode.Jmp, "", -1)
     var entry = c.ins.len()
-    c.fns.push(FnEntry(name, entry))
-    // W2(525):fn_rets 平行表占位(返回类型解析后回填)
-    var fret_idx = c.fns.len() - 1
-    c.fn_rets.push("")
+    // P532 W1 G10:pass0 占位命中则原位回填(前向引用;Call 运行期
+    // 定址);未占位(闭包/嵌套 fn 等)照旧追加
+    var ph = -1
+    var pi3 = 0
+    while pi3 < c.fns.len() {
+        if c.fns.get(pi3).name == name && c.fns.get(pi3).ins == -1 {
+            ph = pi3
+            pi3 = c.fns.len()
+        }
+        pi3 = pi3 + 1
+    }
+    var fret_idx = 0
+    if ph >= 0 {
+        c.fns.set(ph, FnEntry(name, entry))
+        fret_idx = ph
+    } else {
+        c.fns.push(FnEntry(name, entry))
+        fret_idx = c.fns.len() - 1
+        c.fn_rets.push("")
+    }
     var saved_args = c.n_args
     var saved_max = c.max_idx
     c.max_idx = -1
@@ -3119,7 +3188,15 @@ fn cg_fn(mut c CG, mut p P) {
                 if p.text() == "List" && p.peek(1) == TokenKind.Lt {
                     parr = 1
                 }
-                pty_s = parse_type(p)
+                // P532 W1 G9:裸名捕获(同 var 注解——parse_type 用户
+                // 类型返回快照串污染 pty;复合型保留全串)
+                var pbare = p.text()
+                var pfull = parse_type(p)
+                if find_sub(pfull, "<") >= 0 {
+                    pty_s = pfull
+                } else {
+                    pty_s = pbare
+                }
             }
             if p.kind() == TokenKind.Asn {
                 p.next()
@@ -3144,13 +3221,21 @@ fn cg_fn(mut c CG, mut p P) {
         if is_name_kind(p.kind()) {
             ret_name = p.text()
         }
-        parse_type(p)
+        // P532 W1 G10:泛型全串保留(List<str> 裸名丢参——.get 元素型
+        // 断链,g19 系实证;用户类型快照不含 < 维持裸名)
+        var full_rt = parse_type(p)
+        if find_sub(full_rt, "<") >= 0 {
+            ret_name = full_rt
+        }
         p.skip_empty_lines()
     } else if is_type_name(p) {
         if is_name_kind(p.kind()) {
             ret_name = p.text()
         }
-        parse_type(p)
+        var full_rt2 = parse_type(p)
+        if find_sub(full_rt2, "<") >= 0 {
+            ret_name = full_rt2
+        }
         p.skip_empty_lines()
     }
     c.fn_rets.set(fret_idx, ret_name)
@@ -3239,6 +3324,133 @@ fn cg_dir_of(path str) str {
         return ""
     }
     return path.slice(0, last)
+}
+
+// P532 W1 G10:fn 名预扫描(pass0)——顶层 fn/pub fn 与类型体方法
+// (名重整 "Type.m")占位注册 FnEntry(name, -1);cg_fn 原位回填 entry。
+// 同文件前向引用宿主多趟天然支持,本侧原单趟注册先行调用报 unknown
+// fn(parser.at:132 P 方法调 264 位 is_comment_kind 实证)。Call 为
+// 运行期定址(engine c.fns.get(n).ins),占位-1 回填后自然命中。
+fn cg_prescan_fns(mut c CG, source str) {
+    var toks = tokenize(source)
+    var pp = parse_new(toks)
+    pp.skip_empty_lines()
+    var ty_ctx = ""
+    var brace = 0
+    while pp.err == "" && pp.kind() != TokenKind.EOF {
+        var k = pp.kind()
+        if k == TokenKind.LBrace {
+            brace = brace + 1
+            pp.next()
+            continue
+        }
+        if k == TokenKind.RBrace {
+            brace = brace - 1
+            if brace == 0 {
+                ty_ctx = ""
+            }
+            pp.next()
+            continue
+        }
+        if brace == 0 && k == TokenKind.Type {
+            // (pub) type X { → 类型体方法上下文(名取 X;pub 亦 Ident,
+            // 文本判别)
+            ty_ctx = pp.peek_text(1)
+            if ty_ctx == "pub" {
+                ty_ctx = pp.peek_text(2)
+            }
+            pp.next()
+            continue
+        }
+        if k == TokenKind.Fn || (k == TokenKind.Ident && pp.text() == "pub" && pp.peek(1) == TokenKind.Fn) {
+            // pub fn X:一次注册(pub 与 fn 两 token 连消——双注册会留
+            // 永 -1 占位,调用点末位匹配吃到空 fn_rets,tokenize 实证)
+            var fname = ""
+            var skip2 = 1
+            if k == TokenKind.Fn {
+                fname = pp.peek_text(1)
+            } else {
+                fname = pp.peek_text(2)
+                skip2 = 2
+            }
+            if fname != "" {
+                var reg = fname
+                if ty_ctx != "" && brace == 1 {
+                    reg = ty_ctx + "." + fname
+                }
+                c.fns.push(FnEntry(reg, -1))
+                // P532 W1 G10:返回类型预捕获(前向调用点的 inst_ty 需
+                // 要——调用先于定义编译时 fn_rets 尚空,split_commas
+                // 实证):名后跳平衡括号,Arrow/裸型注解取返回型
+                var fret0 = ""
+                var pj = pp.pos + skip2 + 1
+                var after_par = -1
+                if pj < pp.toks.len() && pp.toks.get(pj).kind == TokenKind.LParen {
+                    var pdepth = 0
+                    var pscan = true
+                    while pscan && pj < pp.toks.len() {
+                        var pk2 = pp.toks.get(pj).kind
+                        if pk2 == TokenKind.LParen {
+                            pdepth = pdepth + 1
+                        } else if pk2 == TokenKind.RParen {
+                            pdepth = pdepth - 1
+                            if pdepth == 0 {
+                                after_par = pj + 1
+                                pscan = false
+                            }
+                        }
+                        pj = pj + 1
+                    }
+                }
+                if after_par >= 0 && after_par < pp.toks.len() {
+                    pj = after_par
+                } else {
+                    pj = pp.toks.len()
+                }
+                if pj < pp.toks.len() {
+                    var rt0 = pp.toks.get(pj).kind
+                    var rtp = pj
+                    if rt0 == TokenKind.Arrow {
+                        rtp = pj + 1
+                    } else if rt0 != TokenKind.Ident {
+                        rtp = -1
+                    }
+                    if rtp >= 0 && rtp < pp.toks.len() && pp.toks.get(rtp).kind == TokenKind.Ident {
+                        fret0 = pp.toks.get(rtp).text
+                        // 泛型全串捕获(List<str> 形——裸 List 丢参致
+                        // .get 元素型断链)
+                        var gj = rtp + 1
+                        if gj < pp.toks.len() && pp.toks.get(gj).kind == TokenKind.Lt {
+                            fret0 = fret0 + "<"
+                            gj = gj + 1
+                            var gscan = true
+                            while gscan && gj < pp.toks.len() {
+                                var gk2 = pp.toks.get(gj).kind
+                                var gt2 = pp.toks.get(gj).text
+                                if gk2 == TokenKind.Ident {
+                                    fret0 = fret0 + gt2
+                                } else if gk2 == TokenKind.Comma {
+                                    fret0 = fret0 + ", "
+                                } else if gk2 == TokenKind.Gt {
+                                    fret0 = fret0 + ">"
+                                    gscan = false
+                                }
+                                gj = gj + 1
+                            }
+                        }
+                    }
+                }
+                c.fn_rets.push(fret0)
+            }
+            pp.next()
+            while skip2 > 1 {
+                pp.next()
+                skip2 = skip2 - 1
+            }
+            continue
+        }
+        pp.next()
+    }
 }
 
 // use 语句轻扫(复用 cg_use 的消费逻辑,记录进临时 CG 的 uses)
@@ -3402,6 +3614,8 @@ fn cg_compile_mod(source str, mod_name str) CG {
     var p = parse_new(toks)
     var c = CG.new()
     c.mod_name = mod_name
+    // P532 W1 G10:fn 名 pass0 预扫描(前向引用占位)
+    cg_prescan_fns(c, source)
     // W2(525) pass1:Type/Ext 声明位预扫——体内/ext 方法先于 wrapper
     // 编译(镜像宿主 parse 级 ext 并入 + compile_and_link 分区序;非
     // Type/Ext 语句深度感知跨度跳过);类型注册(c.tys)亦在此趟完成
@@ -3582,24 +3796,28 @@ pub fn cg_compile_files(main_path str) CG {
         e.err = res.err
         return e
     }
+    // P532 W1 G7:顺次累积播种——每模块(含 dep)以先序模块的 tys/
+    // consts/ctors 播种后编译(原形态仅 main 播种,dep 看不见自身依赖
+    // 的类型/枚举——parser 引 token 的 TokenKind.EOF 报 unknown ident
+    // 实证);resolve 的 DFS 后序保证依赖先于依赖者;错误直返(宿主
+    // 语义)。W4(525) main 播种为末位特例自然包含;同名/同 key 后到
+    // 覆盖(镜像原 tys 播种;先查位后置换单独落——内置环只读,环内
+    // set(st) 移动后续读触发主 a2r 转译 E0382 move 洞,实证两度)
     var cgs List<CG> = List.new()
-    var i = 0
-    while i < res.mods.len() - 1 {
-        var mod = res.mods.get(i)
-        cgs.push(cg_compile_mod(mod.source, mod.name))
-        i = i + 1
-    }
-    // W4(525):pub type 跨模块——main 编译前播种 dep 类型表(ctor
-    // 识别/field_idx 在编译期即需命中;链接期合并仅覆执行期查表)
     var seed List<CGType> = List.new()
-    var si = 0
-    while si < cgs.len() {
-        var sc = cgs.get(si)
+    var seed_consts List<CGEnum> = List.new()
+    var seed_ctors List<CGEnum> = List.new()
+    var i = 0
+    while i < res.mods.len() {
+        var mod = res.mods.get(i)
+        var mc = cg_compile_mod_seeded(mod.source, mod.name, seed, seed_consts, seed_ctors)
+        if mc.err != "" {
+            return mc
+        }
+        cgs.push(mc)
         var ti = 0
-        while ti < sc.tys.len() {
-            var st = sc.tys.get(ti)
-            // 先查位后置换单独落(内置环只读;环内 set(st) 移动后续读
-            // 触发主 a2r 转译 E0382 move 洞,aavm2_bin 自译两度实证)
+        while ti < mc.tys.len() {
+            var st = mc.tys.get(ti)
             var hit_at = -1
             var dj = 0
             while dj < seed.len() {
@@ -3616,29 +3834,18 @@ pub fn cg_compile_files(main_path str) CG {
             }
             ti = ti + 1
         }
-        si = si + 1
-    }
-    // P532 W1 G4:同批播种 dep 枚举 consts/ctors(009_enum_import;
-    // 集积与 tys 同循环,key 去重后到覆盖)
-    var seed_consts List<CGEnum> = List.new()
-    var seed_ctors List<CGEnum> = List.new()
-    var si2b = 0
-    while si2b < cgs.len() {
-        var sc2 = cgs.get(si2b)
         var ci = 0
-        while ci < sc2.consts.len() {
-            seed_consts = cg_seed_enum_table(seed_consts, sc2.consts.get(ci))
+        while ci < mc.consts.len() {
+            seed_consts = cg_seed_enum_table(seed_consts, mc.consts.get(ci))
             ci = ci + 1
         }
         var cj = 0
-        while cj < sc2.ctors.len() {
-            seed_ctors = cg_seed_enum_table(seed_ctors, sc2.ctors.get(cj))
+        while cj < mc.ctors.len() {
+            seed_ctors = cg_seed_enum_table(seed_ctors, mc.ctors.get(cj))
             cj = cj + 1
         }
-        si2b = si2b + 1
+        i = i + 1
     }
-    var main_mod = res.mods.get(res.mods.len() - 1)
-    cgs.push(cg_compile_mod_seeded(main_mod.source, main_mod.name, seed, seed_consts, seed_ctors))
     return cg_link_modules(cgs)
 }
 
@@ -3671,6 +3878,8 @@ fn cg_compile_mod_seeded(source str, mod_name str, seed List<CGType>, seed_const
     var p = parse_new(toks)
     var c = CG.new()
     c.mod_name = mod_name
+    // P532 W1 G10:fn 名 pass0 预扫描(前向引用占位)
+    cg_prescan_fns(c, source)
     var si2 = 0
     while si2 < seed.len() {
         c.tys.push(seed.get(si2))
