@@ -1525,6 +1525,9 @@ impl<'a> AuraViewBuilder<'a> {
                     let placeholder = self.autodown_placeholder(props, bindings);
                     let (scroll_sync, offset, on_scroll, details_onclick) =
                         self.autodown_scroll_binding(props, events, bindings);
+                    // PLAN-045 T5：列宽状态 + 落定通道（oncolresize）。
+                    let table_widths = self.autodown_table_widths(props, bindings);
+                    let col_resize = self.autodown_on_col_resize_binding(events);
                     // PLAN-041 T8：流式增量（结构键 diff + 未变块复用），
                     // 按节点 path 身份挂缓存。
                     let cache_key = format!("{path:?}");
@@ -1536,9 +1539,8 @@ impl<'a> AuraViewBuilder<'a> {
                         is_final,
                         details_onclick.as_deref(),
                         placeholder,
-                        // Plan 045 T5 接线（table_col_widths prop 消费）
-                        None,
-                        None,
+                        table_widths.as_ref(),
+                        col_resize.as_ref(),
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
@@ -2461,6 +2463,72 @@ impl<'a> AuraViewBuilder<'a> {
         (true, offset, on_scroll, details_onclick)
     }
 
+    /// PLAN-045 T5：表格列宽状态求值——`table_col_widths` prop
+    /// （Map<表键, 列宽 px 列表>，键形 "t{block_key}" 与 OnColResize 消息
+    /// payload 同源）→ render 入参 HashMap<u64, Vec<f32>>。坏键/坏值条目
+    /// 跳过（不整体失败）；prop 缺席 = None（自然宽现状）。
+    fn autodown_table_widths(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<std::collections::HashMap<u64, Vec<f32>>> {
+        let v = props.get("table_col_widths").and_then(|v| match v {
+            AuraPropValue::Expr(expr) => self.resolve_expr_to_value(expr, bindings),
+            _ => None,
+        })?;
+        let obj = match v {
+            auto_val::Value::Obj(o) => o,
+            _ => return None,
+        };
+        let mut m = std::collections::HashMap::new();
+        for (k, val) in obj.iter() {
+            let Some(u) = k.to_string().trim().strip_prefix('t').and_then(|d| d.parse::<u64>().ok())
+            else {
+                continue;
+            };
+            let widths: Vec<f32> = match val {
+                auto_val::Value::Array(a) => a
+                    .iter()
+                    .filter_map(|w| match w {
+                        auto_val::Value::Float(f) => Some(*f as f32),
+                        auto_val::Value::Double(d) => Some(*d as f32),
+                        auto_val::Value::Int(i) => Some(*i as f32),
+                        auto_val::Value::Uint(u) => Some(*u as f32),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => continue,
+            };
+            m.insert(u, widths);
+        }
+        Some(m)
+    }
+
+    /// PLAN-045 T5：列宽落定消息通道——`oncolresize` 事件 → TableColResizeFn
+    ///（Typed 消息 args = [Str "t{表键}", Int col, Float width]；043
+    /// onscroll/044 onfocusblock 同族装配）。表键进闭包捕获
+    ///（details_onclick 同款「键进闭包」通道）。
+    fn autodown_on_col_resize_binding(
+        &self,
+        events: &HashMap<String, AuraEvent>,
+    ) -> Option<crate::ui::autodown_render::TableColResizeFn<DynamicMessage>> {
+        aura_events_get_base(events, "oncolresize").map(|ev| {
+            let handler = extract_handler_name(&ev.handler).to_string();
+            let widget = self.widget_name.clone();
+            std::sync::Arc::new(
+                move |key: u64, m: crate::ui::view::ColResizeMetrics| DynamicMessage::Typed {
+                    widget_name: widget.clone(),
+                    event_name: handler.clone(),
+                    args: vec![
+                        auto_val::Value::str(format!("t{key}")),
+                        auto_val::Value::Int(m.col as i32),
+                        auto_val::Value::Float(m.width as f64),
+                    ],
+                },
+            ) as crate::ui::autodown_render::TableColResizeFn<DynamicMessage>
+        })
+    }
+
     /// PLAN-044 T4：autodown ghost 占位消费——`placeholder_block_id`/
     /// `placeholder_height` 双 prop 绑定求值（043 scroll_top 同机制：
     /// 数值 prop 直取、null/缺席即 None）。id 口径 = `block-${index}` 顶层
@@ -2725,14 +2793,16 @@ impl<'a> AuraViewBuilder<'a> {
                     let placeholder = self.autodown_placeholder(props, bindings);
                     let (scroll_sync, offset, on_scroll, details_onclick) =
                         self.autodown_scroll_binding(props, events, bindings);
+                    // PLAN-045 T5：列宽状态 + 落定通道（oncolresize）。
+                    let table_widths = self.autodown_table_widths(props, bindings);
+                    let col_resize = self.autodown_on_col_resize_binding(events);
                     let mut doc = crate::ui::autodown_render::render_document_with(
                         &content,
                         is_final,
                         details_onclick.as_deref(),
                         placeholder,
-                        // Plan 045 T5 接线（table_col_widths prop 消费）
-                        None,
-                        None,
+                        table_widths.as_ref(),
+                        col_resize.as_ref(),
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
@@ -9439,6 +9509,120 @@ mod tests {
                 assert!(matches!(args[0], auto_val::Value::Int(0)));
             }
             other => panic!("tracked arm: expected Typed message, got {:?}", other),
+        }
+    }
+
+    /// PLAN-045 T5：表格列宽双臂发射——`table_col_widths` prop（Map 状态
+    /// 绑定）+ `oncolresize` 事件 → View::Table col_widths/on_col_resize。
+    /// 三态：Nil state（自然宽）→ 命中 state（col_widths 取表键值）→
+    /// prop/事件缺席（两 None，vue 臂同面：透传无消费方）。消息载荷 =
+    /// [Str "t{表键}", Int col, Float width]（表键与 DSL state map 键同源）。
+    #[cfg(feature = "autodown")]
+    #[test]
+    fn test_autodown_table_col_resize_emission() {
+        use crate::ui::view::ColResizeMetrics;
+
+        let widget = make_test_widget(
+            "Test",
+            vec![AuraStateDef {
+                name: "table_widths".to_string(),
+                type_info: Type::Map(
+                    Box::new(Type::StrSlice),
+                    Box::new(Type::List(Box::new(Type::Float))),
+                ),
+                initial: Expr::Object(vec![]),
+                decorators: vec![],
+            }],
+        );
+        let mut bridge = VmBridge::new(&widget).unwrap();
+
+        let table_src = "| a | b |
+| --- | --- |
+| 1 | 2 |
+";
+        let node = AuraNode::element("autodown")
+            .with_prop("content", Expr::Str(table_src.into()))
+            .with_prop("final", Expr::Bool(true))
+            .with_prop("table_col_widths", Expr::Ident(".table_widths".into()))
+            .with_event("oncolresize", ".OnColResize");
+
+        // 态一：state 为 Nil → col_widths None（自然宽）+ 通道在；从消息
+        // 读表键（"t" 前缀内容哈希）。
+        let table_key = {
+            let builder = AuraViewBuilder::new(&bridge, "Test");
+            match builder.build(&node) {
+                View::Column { children, .. } => {
+                    let View::Table { col_widths, on_col_resize: Some(cb), .. } = &children[0]
+                    else {
+                        panic!("expected View::Table with resize channel, got {:?}", children[0])
+                    };
+                    assert!(col_widths.is_none(), "Nil state → 自然宽");
+                    match cb.call(ColResizeMetrics { col: 1, width: 133.0 }) {
+                        DynamicMessage::Typed { widget_name, event_name, args } => {
+                            assert_eq!(widget_name, "Test");
+                            assert_eq!(event_name, "OnColResize");
+                            match &args[0] {
+                                auto_val::Value::Str(s) => {
+                                    assert!(s.starts_with('t'), "表键 't' 前缀: {s}");
+                                    s.to_string()
+                                }
+                                other => panic!("key str, got {other:?}"),
+                            }
+                        }
+                        other => panic!("expected Typed, got {other:?}"),
+                    }
+                }
+                other => panic!("expected document column, got {other:?}"),
+            }
+        };
+        // 写入列宽 state（命中同表键）。
+        {
+            let mut obj = auto_val::Obj::new();
+            obj.set(
+                table_key.as_str(),
+                auto_val::Value::Array(auto_val::Array::from_vec(vec![120.0f64, 200.0f64])),
+            );
+            bridge
+                .write_state("table_widths", auto_val::Value::Obj(obj))
+                .unwrap();
+        }
+
+        // 态二：state 命中 → col_widths 消费。
+        {
+            let builder = AuraViewBuilder::new(&bridge, "Test");
+            match builder.build(&node) {
+                View::Column { children, .. } => {
+                    let View::Table { col_widths, on_col_resize: Some(_), .. } = &children[0]
+                    else {
+                        panic!("expected View::Table")
+                    };
+                    assert_eq!(
+                        col_widths.as_deref(),
+                        Some(&[120.0f32, 200.0][..]),
+                        "state map 按表键命中"
+                    );
+                }
+                other => panic!("expected document column, got {other:?}"),
+            }
+        }
+
+        // 态三：prop/事件缺席 → 两 None（绑定是消费开关；vue 臂同面——
+        // schema 描述注记 vue arm ignores，透传无消费方）。
+        {
+            let plain = AuraNode::element("autodown")
+                .with_prop("content", Expr::Str(table_src.into()))
+                .with_prop("final", Expr::Bool(true));
+            let builder = AuraViewBuilder::new(&bridge, "Test");
+            match builder.build(&plain) {
+                View::Column { children, .. } => {
+                    let View::Table { col_widths, on_col_resize, .. } = &children[0] else {
+                        panic!("expected View::Table")
+                    };
+                    assert!(col_widths.is_none(), "prop 缺席不读 state");
+                    assert!(on_col_resize.is_none(), "事件缺席无通道");
+                }
+                other => panic!("expected document column, got {other:?}"),
+            }
         }
     }
 

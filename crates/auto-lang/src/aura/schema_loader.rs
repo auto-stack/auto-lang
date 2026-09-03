@@ -814,6 +814,23 @@ mod tests {
         assert!(schema.get_element("col").is_some());
         assert!(schema.get_element("input").is_some());
 
+        // Plan 045 T5: autodown 列宽 prop 在册——描述带 vue 臂忽略注记
+        //（VM-only 消费面，StreamingRenderer 无对应 prop）。
+        let autodown = schema.get_element("autodown").expect("autodown element");
+        let p = autodown
+            .get_prop("table_col_widths")
+            .expect("table_col_widths prop registered");
+        assert!(
+            p.description.contains("vue arm ignores"),
+            "vue 臂忽略注记在册: {}",
+            p.description
+        );
+        assert!(
+            p.description.contains("PLAN-045"),
+            "消费计划号在册: {}",
+            p.description
+        );
+
         // Check button element
         let button = schema.get_element("button").unwrap();
         assert_eq!(button.tag, "button");

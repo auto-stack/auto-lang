@@ -10953,6 +10953,60 @@ fn compare_pngs(
             }
         }
 
+        // PLAN-045 T5: 表格列宽落定 rust 直写快道——oncolresize 的 Typed
+        // 消息（args = [Str "t{表键}", Int col, Float width]；见
+        // aura_view_builder autodown_on_col_resize_binding）在此拦截直写
+        // table_widths state（043 scroll/044 ghost 同信任路径：VM handler
+        // 对 float 实参/map 索引写入腐坏，.at 的 OnColResize handler 保留
+        // 为 vue 契约面，VM 轨不再向下分派）。读-改-写保留其余表键；宽
+        // +1e-3 防 nanbox 整值丢标签（044 frac 同口径）。view_dirty 单独
+        // 不驱动重绘——回发 __noop 走一轮 update→view（__mcp_click 同款）。
+        if msg.event.starts_with("OnColResize") {
+            let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            if clean == "OnColResize" {
+                let key = args.first().and_then(|v| match v {
+                    auto_val::Value::Str(s) => Some(s.to_string()),
+                    _ => None,
+                });
+                let col = args.get(1).and_then(|v| match v {
+                    auto_val::Value::Int(i) => Some(*i as usize),
+                    auto_val::Value::Uint(u) => Some(*u as usize),
+                    _ => None,
+                });
+                let w = args.get(2).and_then(|v| match v {
+                    auto_val::Value::Float(f) => Some(*f as f32),
+                    auto_val::Value::Double(d) => Some(*d as f32),
+                    auto_val::Value::Int(i) => Some(*i as f32),
+                    _ => None,
+                });
+                if let (Some(k), Some(c), Some(w)) = (key, col, w) {
+                    let mut obj = match state.component.read_state("table_widths") {
+                        Ok(auto_val::Value::Obj(o)) => o,
+                        _ => auto_val::Obj::new(),
+                    };
+                    let mut list: Vec<auto_val::Value> = match obj.get(k.as_str()) {
+                        Some(auto_val::Value::Array(a)) => a.iter().cloned().collect(),
+                        _ => Vec::new(),
+                    };
+                    while list.len() <= c {
+                        list.push(auto_val::Value::Double(0.001));
+                    }
+                    list[c] = auto_val::Value::Double(w as f64 + 0.001);
+                    obj.set(
+                        k.as_str(),
+                        auto_val::Value::Array(auto_val::Array::from(list)),
+                    );
+                    let _ = state
+                        .component
+                        .write_state("table_widths", auto_val::Value::Obj(obj));
+                    *state.app.view_dirty.borrow_mut() = true;
+                    return iced::Task::done(IcedMessage::from_dynamic(
+                        &DynamicMessage::String("__noop".to_string()),
+                    ));
+                }
+            }
+        }
+
         // PLAN-044 T6: MCP click action——autodown 编辑壳块内坐标点击合成
         //（input_value = "storage_key␟x,y"；mcp_server 侧已从 vnode path
         // 解析出编辑壳 storage key）。直调 core.handle_input（真实
