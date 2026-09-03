@@ -95,12 +95,14 @@ pub fn desktop_root(
 /// 改回 Fixed 命中盒 + align 双中。hover 反馈走 iced `button` 原生件：
 /// 天然 Pointer 光标 + `Status::Hovered/Pressed` 背景提亮（仅图标
 /// 包围容器提亮，圆角小块——用户截图3 VSCode 形态，非全条填充）。
+/// PLAN-526 T22：命中盒 30×24 → 24×24 正方形（用户反馈长方形盒让
+/// 三键横向松散；等宽=等高后三键紧拢，glyph 13/10/13 均可容纳）。
 fn title_button(glyph: &'static str, size: f32, msg: DesktopMessage) -> Element<'static, DesktopMessage> {
     let fg = token(crate::ui::style::Color::OnSurface);
     let hover_tint = if crate::ui::style::theme::dark_mode() { 1.0 } else { 0.0 };
     iced::widget::button(
         container(text(glyph).size(size))
-            .width(Length::Fixed(30.0))
+            .width(Length::Fixed(24.0))
             .height(Length::Fixed(24.0))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center),
