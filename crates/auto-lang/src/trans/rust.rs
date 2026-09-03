@@ -9144,7 +9144,10 @@ impl RustTrans {
             // excluded (the .as_str() borrow path handles them), as are
             // borrowed-iter-var fields — the defect-4 branch below decides
             // those first.
-            let dot_arg_owned_param = matches!(arg, Arg::Pos(Expr::Dot(_, _)))
+            // Plan 531 真缺陷①(pointer/004): `x.@` 取址伪字段发射 `x as *mut _`
+            // ——裸指针 Copy 无需 clone,且 as 强转后接 `.clone()` 是语法错
+            // (cast cannot be followed by a method call),排除出本支路。
+            let dot_arg_owned_param = matches!(arg, Arg::Pos(Expr::Dot(_, f)) if f.as_str() != "@")
                 && !needs_ref_borrow
                 && param_types.as_ref()
                     .and_then(|pts| pts.get(i))
