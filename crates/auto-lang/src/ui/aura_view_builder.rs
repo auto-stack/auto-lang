@@ -2495,17 +2495,18 @@ impl<'a> AuraViewBuilder<'a> {
         Some((id, height))
     }
 
-    /// PLAN-044 T4：编辑壳块聚焦读出装配——`onfocus` 事件进
+    /// PLAN-044 T4/T5：编辑壳块聚焦读出装配——`onfocusblock` 事件进
     /// View::AutodownEditor.on_focus（FocusCallback newtype，043 onscroll
-    /// 同款宿主消息通道）。FocusMetrics 载荷编码为 Typed 消息实参
-    /// (block, height)；失焦变体 block=None 编码 (Int -1, 0.0)。VM 轨由
-    /// update 层 rust 直写快道消费（043 T6 同拦截，引擎 float 实参腐坏
-    /// 规避）；handler 保留为 vue 契约面。
+    /// 同款宿主消息通道；事件名 = vue 轨 EngineEditor `focusblock` emit
+    /// 的 codegen 直映 onX→@X，双轨单源）。FocusMetrics 载荷编码为 Typed
+    /// 消息实参 (block_index, height)；失焦变体 block=None 编码 (Int -1,
+    /// 0.0)。VM 轨由 update 层 rust 直写快道消费（043 T6 同拦截，引擎
+    /// float 实参腐坏规避）；handler 保留为 vue 契约面。
     fn autodown_on_focus_binding(
         &self,
         events: &HashMap<String, AuraEvent>,
     ) -> Option<crate::ui::view::FocusCallback<DynamicMessage>> {
-        aura_events_get_base(events, "onfocus").map(|ev| {
+        aura_events_get_base(events, "onfocusblock").map(|ev| {
             let handler = extract_handler_name(&ev.handler).to_string();
             let widget = self.widget_name.clone();
             crate::ui::view::FocusCallback::new(
@@ -9384,7 +9385,7 @@ mod tests {
         let builder = AuraViewBuilder::new(&bridge, "Test");
         let node = AuraNode::element("autodown_editor")
             .with_prop("content", Expr::Str("段甲。\n".into()))
-            .with_event("onfocus", ".OnEditorFocus");
+            .with_event("onfocusblock", ".OnEditorFocus");
         match builder.build(&node) {
             View::AutodownEditor { on_focus: Some(cb), .. } => {
                 let msg = cb.call(FocusMetrics { block: Some(1), height: 128.0 });
@@ -9415,7 +9416,7 @@ mod tests {
         let builder = AuraViewBuilder::new(&bridge, "Test");
         let node = AuraNode::element("autodown_editor")
             .with_prop("content", Expr::Str("段乙。\n".into()))
-            .with_event("onfocus", ".OnEditorFocus2");
+            .with_event("onfocusblock", ".OnEditorFocus2");
         let (view, _id_map, _probe) = builder.build_with_debug_gated(&node, false);
         let editor = match &view {
             View::AutodownEditor { on_focus, .. } => on_focus.clone(),

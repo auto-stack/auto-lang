@@ -10851,6 +10851,50 @@ fn compare_pngs(
             }
         }
 
+        // PLAN-044 T5: ghost 占位 rust 直写快道——onfocusblock 的 Typed 消息
+        //（args = [Int block_index, Float height]，失焦 (Int -1, 0.0)；见
+        // aura_view_builder autodown_on_focus_binding）在此拦截直写
+        // placeholder state（043 T6 同信任路径：VM handler 对 float 实参/
+        // 算术写入腐坏，.at 的 OnEditorFocus handler 保留为 vue 契约面，
+        // VM 轨不再向下分派）。state 口径：ghost_id = "block-N" 字符
+        // 串（vue data-block-id 同源；空串 = 无 ghost）+ ghost_height
+        //（+1e-3 防 nanbox 整值丢标签，0.001px 误差不可见）。
+        if msg.event.starts_with("OnEditorFocus") {
+            let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            let geti = || {
+                args.first().and_then(|v| match v {
+                    auto_val::Value::Int(i) => Some(*i),
+                    auto_val::Value::Uint(u) => Some(*u as i32),
+                    _ => None,
+                })
+            };
+            let getf = || {
+                args.get(1).and_then(|v| match v {
+                    auto_val::Value::Float(f) => Some(*f as f32),
+                    auto_val::Value::Double(d) => Some(*d as f32),
+                    auto_val::Value::Int(i) => Some(*i as f32),
+                    _ => None,
+                })
+            };
+            if clean == "OnEditorFocus" {
+                if let (Some(id), Some(h)) = (geti(), getf()) {
+                    let frac = |v: f64| auto_val::Value::Double(v + 0.001);
+                    if id >= 0 {
+                        let _ = state.component.write_state(
+                            "ghost_id",
+                            auto_val::Value::Str(format!("block-{id}").into()),
+                        );
+                        let _ = state.component.write_state("ghost_height", frac(h as f64));
+                    } else {
+                        // 失焦变体：清空（空串 = 无 ghost）。
+                        let _ = state.component.write_state("ghost_id", auto_val::Value::Str(String::new().into()));
+                        let _ = state.component.write_state("ghost_height", frac(0.0));
+                    }
+                    return iced::Task::none();
+                }
+            }
+        }
+
         // PLAN-043 T6: MCP scroll action 直落——scrollable 无 VM handler，
         // 合成事件 __mcp_scroll 在此拦截（input_value = "element_id␟y"），
         // 直接发 iced scroll_to 写目标滚动位。
