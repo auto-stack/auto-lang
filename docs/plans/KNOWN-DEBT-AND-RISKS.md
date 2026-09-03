@@ -1039,3 +1039,17 @@
   ring 宽/色/inset（focus 环模拟）、inset-N 四向 offset（无 Stack 上下文时
   内联降级）、line-clamp（行高裁剪）、letter_spacing（tracking）——IR 在册
   applied，renderer 消费排期。引用：`iced_adapter.rs` 对应字段注释。
+
+### P529（2026-09-03，Plan 529 worktree 分组平铺布局迁移——复审登记）
+- **P529-1 wt-guard-hook 相对路径盲区**：hook 层仅对命令中以绝对路径（盘符/`/` 开头）
+  出现的目录参数做 reparse 扫描；相对路径形态的高危命令（如事故原命令
+  `git worktree remove .worktrees/plan-058-dev`）不会被 hook 拦截。缓解在位：
+  fold/merge 流程（技能与 AGENTS）强制先定位绝对路径再跑 `wt-guard.sh`，hook
+  本身是可选第二层。偿还路径：hook 内解析 cwd+相对路径（需 hook 输入携带
+  工作目录）或改用 fsutil 全盘 watcher 级方案。
+- **P529-2 new-plan.sh 不自动建组**：建 `.wt/<repo>-<NNN>/<repo>` worktree 仍由
+  会话按 AGENTS 命令模板手动执行，约定依赖指令面（6 文件）+复审流程兜底。
+  偿还路径：new-plan.sh 加 `--wt` 直接建组建 worktree。
+- 观察项（非债）：PreToolUse hook 样例（D:/autostack/hooks-config.sample.json）
+  未启用，等用户决定；`.worktrees/auto-down` 为 17:08 某会话创建的普通目录
+  （非链接，无穿透风险），首个新布局计划落地时可顺手清理。

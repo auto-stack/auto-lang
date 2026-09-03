@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-529
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: worktree-layout-migration
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -91,6 +91,31 @@ worktree 内**禁止任何 junction/symlink**（红线）；`.wt` 加入 clean-t
 7. [✅ 已完成] 提交 auto-lang（0d48f0433）/auto-musk（8dd0758）master；验收①复检：6 文件 grep 旧路径仅剩"在途计划沿用"的刻意说明；wt-guard 正反例 4/4、hook 3/3 实测通过（见上文证据）。
 
 ## 复审记录
+
+**复审（2026-09-03，/auto-plan:review，独立会话）——结论 PASS，status → reviewed**
+
+验收逐条复验（全部重跑，不信勾选框）：
+1. ✅ 6 指令文件旧路径残留复检——仅剩 5 处刻意保留（AGENTS 路径映射说明 + 技能中
+   "legacy/在途计划"语境），无真实遗漏。
+2. ✅ wt-guard 双例重跑——干净目录 clean/exit 0；含 junction 目录 BLOCKED/exit 1。
+   （执行期另实测带空格路径与真实 worktree 两例，共 4/4。）
+3. ✅ hook 样例就位——wt-guard-hook.sh(1.7KB)+hooks-config.sample.json(537B)
+   含启用方法说明；未启用（用户决策项）。
+4. ✅ clean-autolang-targets.ps1 `.wt` 发现逻辑假树干跑——正确发现
+   `.wtev-checkuto-langeal	arget`；另证通用 clean-targets.ps1 天然覆盖
+   .wt（根=D:utostack 全树递归）且自带 ReparsePoint 跳过守卫（line 41）。
+5. ✅ 在途 worktree 无扰——plan-525-dev/plan-526-dev 注册健康；复审期间另证
+   plan-525 W4 已由执行会话折入 master（711722837，tf 绿+tv 3559），重建分支
+   可正常续作；.worktrees/auto-down 为普通目录非链接。
+
+门禁归类：Category A（docs/convention-only，未触 crates/）——按仓规免 cargo 档，
+计划自有测试（guard/hook/grep/干跑）全绿。
+
+遗漏/延后/Workaround 扫描：无未批准延后；两项设计内局限登记为债（KNOWN-DEBT
+P529-1 hook 相对路径盲区、P529-2 new-plan.sh 不自动建组），均不阻塞。
+
+spec-impact：new_spec_components=[worktree-group-layout]（跨仓工作流约定，
+非代码 spec）；supersedes/touched_goals 留空（无对应在册组件/目标）。
 
 ## 待澄清事项
 
