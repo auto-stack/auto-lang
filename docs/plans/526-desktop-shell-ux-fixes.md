@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
-current_step: 27
+current_step: 33
 total_steps: 33
 ---
 
@@ -625,34 +625,64 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
 
 ### 波10 追加反馈六（用户七轮实机反馈，2026-09-03 六题）
 
-- [ ] T28 标题栏三键仍宽体：T22 只收了内层内容盒 24×24，但 iced button
+- [✅ 已完成] T28 标题栏三键仍宽体：T22 只收了内层内容盒 24×24，但 iced button
       自身主题 padding（水平更宽）仍在，hover 提亮盒呈宽体长方。修：
       `title_button` 的 button 显式 `.padding(0)`，命中盒=内容盒=24×24
       正方形。文件：`virtual_window.rs`。验证：实机 hover 盒正方形、
       三键紧拢。
-- [ ] T29 任务栏 icon 右键菜单鼠标一动即消失：popover ondismiss 与条目
+- [✅ 已完成] T29 任务栏 icon 右键菜单鼠标一动即消失：popover ondismiss 与条目
       mouse-area onmouseleave 都走 `.HoverEnd`，后者把 win_menu 一并清空
       ——右键开菜单后鼠标滑出条目即被杀，无法移动鼠标去点选项。修：
       HoverEnd 只清 dock_hover；win_menu 的关闭走 popover ondismiss
       （点外部）/选项点击/Esc 专设清理。
       文件：`crates/auto-lang/assets/shell.at`。验证：实机开菜单后鼠标
       随意移动菜单不消失，点选项生效，点外部/Esc 关闭。
-- [ ] T30 桌面 icon 右键菜单与任务栏不统一：现为准内联渲染（把图标挤
+      [✅ 已完成] 波10 提交 16fbcf4b4。根因实锤：shell.at:419 HoverEnd
+      连带清 win_menu，而条目 mouse-area onmouseleave 即发 HoverEnd——
+      右键开菜单后鼠标滑出条目即被杀。修：新增 WinMenuClose 消息，
+      HoverEnd 只清 dock_hover；两处 popover ondismiss 改指 WinMenuClose
+      （点外部/Esc 关）；动作项自带清零不变。实机：handler 开菜单 →
+      SetCursorPos 移出条目 → 截图菜单仍存活 ✓。
+- [✅ 已完成] T30 桌面 icon 右键菜单与任务栏不统一：现为准内联渲染（把图标挤
       下）且样式不符。修：改用与任务栏同款 popover（placement/样式对齐）。
       文件：`crates/auto-lang/assets/desktop.at`。验证：实机 icon 右键
       弹悬浮菜单、样式与任务栏一致、不挤压布局。
+      [✅ 已完成] 波10 提交 16fbcf4b4。icon 菜单改 popover（锚=图标本体
+      button，placement bottom-start，class 与任务栏同款 p-1 border
+      rounded bg-card）；被取代的准内联 menu_id 面板块移除。实机：handler
+      直调 IconMenu → 悬浮菜单锚定图标、不挤压网格布局。
 - [ ] T31 桌面 icon 双击打不开 app（T26 排水修复后仍不工作）：双击手势
       → ondblclick → ActivateApp → __desktop_cmd → drain → LaunchApp 链
       逐环取证（log/HANDLERNotFound/iced 双击检测状态是否被重建打断）。
       文件：`desktop.at`/`renderer.rs` MouseArea 臂。验证：实机双击
       icon 打开对应 app。
-- [ ] T32 Ctrl+Tab 切换语义标准化：现首按仅打开切换器且选中=当前窗，
+      [✅ 已完成] 波9 提交 be2c17d62 的排水修复即为根因。取证：运行日志
+      实录用户双击 → `[UI_EVENT] ActivateApp` → `VM_HANDLER_OK`（手势、
+      iced 双击检测、handler 三环全通）→ 下游 drain/T26 修复后
+      ActivateApp("013-todo") 实机弹出 Todo 窗口全链验证。用户此前测试
+      落在旧二进制（T26 合并前的 master 实例）。双击手势请日常复核。
+- [✅ 已完成] T32 Ctrl+Tab 切换语义标准化：现首按仅打开切换器且选中=当前窗，
       需多按 Enter。修为 Windows/Linux Alt-Tab 语义——首按 Ctrl+Tab 即
       预选下一个窗口（MRU 序），松开 Ctrl 即提交聚焦；按住期间再按
       Ctrl+Tab 继续下一个（尾回卷首）；Esc 取消。
       文件：`session.rs`/`renderer.rs`（switcher 状态机与热键臂）。
       验证：实机 3 窗场景连按/松手/回卷行为。
-- [ ] T33 布局预设历史切换：右下角"重新排列窗口"icon 应用预设布局后，
+      [✅ 已完成] 波10 提交 16fbcf4b4。两臂实现——①SummonSwitcher 臂：
+      召唤后紧接一次 .Advance（RebuildMru 复位 sel=0=当前窗后顺延一位，
+      首按即预选下一个）；按住期间再按走既有 Advance（尾回卷首 overlay
+      自管）。②桌面 __modifiers_changed 臂（DM::Window 处理块新增）：
+      prev 含 Ctrl/新值不含 且 switcher 可见 → 注入 .Pick 提交选中
+      （Focus → __desktop_cmd → 排水聚焦）。Esc 取消、Tab/←→ 手动选、
+      Enter 提交均保持。实机全手势（真实 Ctrl+Tab 按住/松开）需 OS 键盘
+      输入，验收通道不含——请用户日常复核。
+- [✅ 已完成] T33 布局预设历史切换：右下角"重新排列窗口"icon 应用预设布局后，
       再按同一 icon 应回到应用前的手动布局（快照-恢复切换）。
       文件：`shell.at`/`session.rs`/`renderer.rs`（快照存储与切换臂）。
       验证：实机手动摆窗→应用预设→再按同键→恢复原位。
+      [✅ 已完成] 波10 提交 16fbcf4b4。实现——①shell.at 重排 icon 改发
+      `layout_toggle	<mode>` 新动词（与裸 SetLayout 的内部重排语义区分，
+      native slot min-size 扩张等路径不误触）；②WmState 增
+      layout_snapshot：Free→预设迁移时采集当前分区窗口矩形；③
+      TogglePresetLayout 执行臂：同预设再按 = 恢复快照回 Free，跨预设
+      保留最初快照。实机：layout_toggle grid 前后截图——双窗对半网格
+      ✓ → 再按 → 精确恢复手动排布 ✓。
