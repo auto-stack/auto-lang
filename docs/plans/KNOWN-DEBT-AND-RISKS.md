@@ -1063,3 +1063,26 @@
   （gitignored 不入库），Plan 529 merge 时以六空节骨架重建并仅沉淀 P529-1..6。
   偿还路径：对 docs/plans/archive/ 各归档计划逐一重跑 deposit 脚本（scratch/
   p515/p517/p509 等脚本留存可改造为通用遍历版），幂等 id 保证不重不漏。
+
+### P530（2026-09-03，VM 双份绘制/721GB 崩溃专项——执行期登记）
+- **P530-D1 Breadcrumb 页栈溢出（存量 master 缺陷，非 530 回归）**：导航到
+  breadcrumb 页必现 `thread 'main' has overflowed its stack`，主检出
+  master@96586cca 对照构建同样复现（归因实验留档 scratch/p530/）。此前被
+  OBS-1 721GB 崩溃掩盖（扫描先死于 code-editor 页），B-2 修复后暴露。
+  偿还路径：breadcrumb 页视图构建递归（疑 ForLoop/嵌套 link 链）单独
+  立项 bisect，debug 构建抓栈。
+- **P530-D2 图表 timer 路由切换不退订**：LineChart/DonutChart 的
+  `AnimLnTick/AnimDnTick`（every_ms:33）订阅随首页卸载后仍以 30-60/s 投递
+  （离页后日志持续刷 tick），`when` 门控丢弃但每条消息仍触发一次 view()
+  全量树重建（空转功耗+泄漏倍增器）。偿还路径：路由/组件卸载时同步
+  退订 widget_event_tick 订阅（renderer 订阅面按存活组件过滤）。
+- **P530-D3 Element 缓存快速路径架构性失效（空转重建）**：dynamic_view
+  末尾 store-then-take 使 cached_rendered 恒 None，`dirty=false` 帧仍走
+  cached AbstractView → 全量 iced 树重建（实测 47k tick 仅 7 次 dirty，
+  4.1 万次全重建）。iced Element 不可 Clone，注释承诺的"同 Element 复用"
+  不可达；偿还路径：评估 iced `lazy`/组件化包层做帧间跳过，或接受重建
+  但以 D2 退订消除空转触发源。
+- **P530-D4 诊断门控留档**：`P530_TRACE=1`（LayoutCollector 重复 id 记录
+  + view/resize 宽度轨迹）、`P530_NOMCP=1`（跳过 per-frame MCP 同步/
+  capture 路径，A/B 判别用）两 env 门控留存于 renderer/layout_collector，
+  零成本（env 缺省关）；后续排障可复用，偿还（删除）非必需。

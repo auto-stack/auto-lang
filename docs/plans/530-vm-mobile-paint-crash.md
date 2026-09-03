@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-530
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: VM mobile 断点双份绘制 + 启动内存崩溃专项
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
-updated_at: 2026-09-03T15:30:00+08:00
+updated_at: 2026-09-03T20:00:00+08:00
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
-total_steps: 0
+current_step: 8
+total_steps: 8
 ---
 
 # [PLAN-530] VM mobile 断点双份绘制 + 启动内存崩溃专项
@@ -110,21 +110,71 @@ fit 缩放合成与 Plan 527 T7 响应式重建的交互。
 
 （深挖时展开为原子任务;当前立项目录:）
 
-1. [ ] A-复现固化:700x900 冷启动样本 + MCP 截图基线存档
-2. [ ] A-表面追踪:在 surface 注册表/绘制循环加诊断计数,断点翻转时
-       打印活跃表面清单（宽高+创建帧）,确认双表面假设 H1/H2
-3. [ ] A-修复+回归
-4. [ ] B-复现:bisect 页面样本（逐页独立 VM 启动）,RUST_BACKTRACE=full
-       抓分配栈
-5. [ ] B-修复+回归
-6. [ ] 双修复后 widgets-gallery 全宽度区间逐页扫描验收
+1. [✅ 已完成] worktree 内 700x900 冷启动复现成功：×2 叠印清晰（内容区
+   整份重绘两遍、垂直错位，header/底栏单份）；基线截图
+   scratch/p530/a700_coldstart.png + 启动日志 scratch/p530/run_700.log
+   （同进程兼作 B 强复现观察窗）
+2. [✅ 已完成] 表面追踪（P530_TRACE 诊断：LayoutCollector 重复 id 记录 +
+   view/resize 宽度轨迹）：**双表面假设 H1/H2 均否**——重复在 iced 控件树
+   本身：700x900 冷启动 73/75 widget id 被布局两次（header 两份完全重叠
+   (0,0,700x56)；页面行一份 (0,0,700x900) 全窗、一份 (0,57,700x778) 流内）。
+   根因：renderer.rs Column 分支 472 时代"前缀 overlay"路径——z-index 子
+   （app.at header `z-40`、移动底栏 `md:hidden fixed z-40`，<768 才可见）
+   触发 has_elevated，把 0..=elev_idx 整段重渲染进叠层 → 非提升子被
+   base+overlay 双渲染；base 压 compact 还把正文顶进 header 之下。
+   ≥768 时底栏被 md:hidden 剪枝 → 只有 header 单独提升 → 单份但存在
+   57px 顶入（被 95% 不透明 header 掩盖）。W11（sidebar 叠印 header、
+   /position 树在像素空）与 W10 同根。证据链：
+   scratch/p530/tree_rendered.txt（树单份）+ run_700_trace.log（dup 73/75）
+3. [✅ 已完成] 修复：Column 分支叠层判定改为仅 absolute 子脱流
+   （column_layer_partition，Row 分支同语义；z-index-only 子保持流内，
+   退役 is_elevated_view/extract_max_z_index 前缀 overlay 路径）。
+   回归：TDD 测试 p530_column_layer_partition_zindex_stays_in_flow 绿；
+   实证 700x900 冷启动单份绘制（a700_fixed_os.png）+ SetWindowPos
+   700↔1440 三轮往返 trace 全程 0 重复、1440 端sidebar/hero 干净
+   （a1440_after_roundtrip.png，run_700_fixed.log）
+4. [✅ 已完成] B-复现/定位：泄漏实测 +120MB/min（68B/tick，∝ 树规模）——
+   强配方死亡实体即泄漏耗尽家族；A/B 判别（P530_NOMCP 门控，MCP/capture
+   排除）+ master 对照构建（双份泄漏 ~2 倍）锁定每帧重建路径。full
+   backtrace 抓到 OBS-1 原值：code-editor 页确定性复现
+   `memory allocation of 721554505560 bytes` = gutter 宽 42 ×
+   (∞→u32::MAX) × 4（数学逐位一致）
+5. [✅ 已完成] B-修复+回归：lucide_svg/placeholder 'static 化按内容去重
+   （每帧 Box::leak 无界泄漏根除；复测动画 tick 浸泡内存 262MB 持平）；
+   render() 非 finite 视口整帧拒绝 + GutterCache 光栅 4096/维上限
+   （OBS-1 721GB 根除）。TDD 4 测试绿（p530_lucide/p530_placeholder/
+   p530_gutter_rejects/p530_render_rejects）；实机 CodeEditor 页访问
+   不再崩。**10 连发启动回归（每次 120s 浸泡）10/10 PASS**
+   （scratch/p530/ten_launch_results.txt）
+6. [✅ 已完成] 全宽度扫描验收：1440 宽 67/67 页 MCP 截图扫描零失败
+   （scratch/p530/scan1440_*.png）；跨断点逐页扫（导航→缩 700→截图→
+   还原 1440）67/67 零失败，700 实拍 1374×1800 单份（x700b/）；全程
+   P530_TRACE 0 重复 id。计划缺陷：Breadcrumb 页栈溢出为存量 master
+   缺陷（对照构建复现归因），登记 P530-D1 后跳过
+7. [✅ 已完成] W12-toggle_group VM 映射：tracked/untracked 双层 D-GAP
+   镜像臂，组→row+item 连体类注入（-ml-px 叠边/首尾圆角），variant/
+   size 传导；实机 togglegroup 页横排连体组成型（w12b_crop.png）
+8. [✅ 已完成] W13-alert-dialog 复用 Popover 原语：PopoverPlacement::Modal
+   （视口居中+全屏 scrim+外点整吞）+ alert-dialog 全族子臂（chrome 类
+   重写）；demo 页绑定 open 状态；实机点击弹层居中+遮罩（像素 50% 黑
+   验证）+ Cancel/Continue 可点（w13v3 系列）
 
 ## 复审记录
 
-（待 /auto-plan:review 填写。）
+（待 /auto-plan:review 填写。执行期归因/判别材料汇总：）
+- A 根因链证据：树单份（tree_rendered.txt）→ 73/75 widget id 双布局
+  （run_700_trace.log）→ Column 前缀 overlay 双渲染（472 引入,f1f433dc1）
+  → 修复后 0 重复 + 断点往返干净（run_700_fixed.log）。
+- B 根因链证据：泄漏速率实测（67-120MB/min,∝ 树规模）→ P530_NOMCP A/B
+  判别（速率相同,排除 MCP/capture）→ Box::leak 家族（lucide_svg 每帧
+  ~350B/图标）→ 修复后 262MB 持平；OBS-1 原值 721GB 的 gutter 数学闭环
+  （42 × u32::MAX × 4）+ full backtrace frame16 GutterCache::image。
+- 归因实验：Breadcrumb 栈溢出 master 对照构建复现 = 存量缺陷（P530-D1）。
 
 ## 待澄清事项
 
-1. B 的崩溃是否与特定页面（chart/svgdoc 家族）强相关——首次崩溃时
-   用户停在首页,但渲染是全树构建;待 bisect 证实。
-2. A 的双表面在 dock/多窗口形态（非全屏单窗）下是否也复现。
+1. （已裁决项沉淀）B 的"静默死亡"实体 = 泄漏耗尽家族（commit 异常时
+   stderr 丢失呈静默）；OBS-1 首启 721GB 与强配方同根因不同触发位
+   （首启 = editor 首帧无限高测量,强配方 = 泄漏积累后任意大分配失败）。
+2. （已裁决项沉淀）A 的"双表面"假设 H1/H2 均否——实为 iced 控件树内
+   前缀 overlay 双渲染,无表面注册表参与（单窗 scene:ui 不经 dock 层）。
