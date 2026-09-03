@@ -1480,6 +1480,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
             // W5(525):None 哨兵(镜像宿主 CREATE_NONE 推 -1;IS_SOME
             // 判 !=-1——哨兵别名同宿主文档语义)
             c.emit(OpCode.ConstI32, "-1", -1)
+        } else if !call_done && name == "File" && p.kind() == TokenKind.Dot && c.lookup(name) < 0 {
+            // P532 W1 G15:File 内建命名空间(read_text → nat#1000,
+            // 宿主 native_catalog 对拍);类型名无值不发装载
+            c.primary_tyname = "File"
         } else if !call_done && p.kind() == TokenKind.Dot && c.lookup(name) < 0 && (c.tys_lookup(name) >= 0 || name == "List") {
             // W2(525):裸类型名 + 后随点——静态调用/静态字段探测位
             // (Type.m(args);类型名无值不发装载,后缀臂按 primary_tyname
@@ -1685,6 +1689,21 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 dot_seq = dot_seq + 1
                                 continue
                             }
+                            if recv_ty2 == "File" && mname2 == "read_text" {
+                                // P532 W1 G15:File.read_text → nat#1000
+                                p.next()
+                                p.next()
+                                cg_call_args(c, p)
+                                c.emit(OpCode.CallNat, "nat#1000", 1000)
+                                dot_done = true
+                                c.str_flag = 1
+                                c.arr_flag = 0
+                                c.inst_ty = "str"
+                                c.recv_ty = "str"
+                                c.primary_tyname = ""
+                                dot_seq = dot_seq + 1
+                                continue
+                            }
                             if recv_ty2 == "int" {
                                 // P532 W1 G9:int.str() → nat#174(宿主
                                 // auto.int.str;t.line.str() dump 形态锚)
@@ -1864,6 +1883,11 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 if mn == OpCode.Add || mn == OpCode.Sub || mn == OpCode.Mul || mn == OpCode.Div || mn == OpCode.Mod || mn == OpCode.Lt || mn == OpCode.Gt || mn == OpCode.Le || mn == OpCode.Ge || mn == OpCode.Eq || mn == OpCode.Ne {
                     c.inst_ty = "int"
                     c.recv_ty = "int"
+                } else if mn == OpCode.StrCat {
+                    // P532 W1 G9:拼接串结果型(括号接收者 ("a"+b).len()
+                    // 断链实证——G12 侧车查询自身形态)
+                    c.inst_ty = "str"
+                    c.recv_ty = "str"
                 } else {
                     c.inst_ty = ""
                     c.recv_ty = ""
