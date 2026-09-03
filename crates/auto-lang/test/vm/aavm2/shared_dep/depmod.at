@@ -1,0 +1,6 @@
+// P532 W1 G0:根锚定多段 use 解析的共享 dep(cwd 探测位)。
+// 供 corpus_use/008_root_anchor 经 `use vm.aavm2.shared_dep.depmod: val`
+// 引用——预修复的 aavm resolver 只做引用文件目录拼接,解析必失败(红)。
+pub fn val() int {
+    return 432
+}

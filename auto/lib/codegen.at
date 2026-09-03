@@ -3294,10 +3294,18 @@ fn cg_resolve_into(file str, mut mods List<CGMod>, mut loading List<str>, mut do
             j2 = j2 + 1
         }
         if !already && !in_stack {
-            var mfile = dir + "/" + cg_mod_fs_path(m) + ".at"
+            var mrel = cg_mod_fs_path(m)
+            var mfile = dir + "/" + mrel + ".at"
             var msrc = File.read_text(mfile)
             if msrc == "" {
-                return "Module not found: " + m + " (module_path=" + cg_mod_fs_path(m) + ", parent_dirs=[])"
+                // P532 G0:宿主探测序镜像(compile.rs load_module_inner probe1
+                // ——CWD 直探):根锚定多段 use(auto.lib.* 形态)自 CWD 命中;
+                // 引用文件目录拼接先行未果时回落
+                mfile = mrel + ".at"
+                msrc = File.read_text(mfile)
+            }
+            if msrc == "" {
+                return "Module not found: " + m + " (module_path=" + mrel + ", parent_dirs=[])"
             }
             loading.push(m)
             var rerr = cg_resolve_into(mfile, mods, loading, done)

@@ -1,0 +1,13 @@
+// P532 W1 G4:跨模块枚举导入的 dep(枚举类型作表达式限定符)。
+pub enum Color {
+    Red(int)
+    Green(int)
+}
+
+pub fn val(c Color) int {
+    is c {
+        Color.Red(v) -> v
+        Color.Green(v) -> v * 10
+        else -> 0
+    }
+}

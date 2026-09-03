@@ -1,0 +1,8 @@
+// P532 W1 G4:dep 枚举类型经 use 导入后作表达式限定符(Color.Red(7))
+// ——007 语料只盖 struct;盘点附录 A G4 红证(deptest3 复现)。
+use colors: Color, val
+
+fn main() {
+    print(val(Color.Red(7)))
+    print(val(Color.Green(7)))
+}
