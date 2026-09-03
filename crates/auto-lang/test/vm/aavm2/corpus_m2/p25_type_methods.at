@@ -1,0 +1,14 @@
+type Point {
+    x int
+    y int
+    fn get() int {
+        return .x + .y
+    }
+    static fn new(a int) Point {
+        return Point { x: a, y: a }
+    }
+}
+
+fn main() {
+    print(1)
+}

@@ -1,0 +1,13 @@
+// Plan 525 W3 b46:struct 字段位 List<int>(lib 的 CGType.fields/
+// CG.scopes 等形态)——字段值通道 + 容器方法链
+type Box {
+    vals List<int>
+}
+
+fn main() {
+    var b Box = Box { vals: List.new() }
+    b.vals.push(7)
+    b.vals.push(8)
+    print(b.vals.len())
+    print(b.vals.get(1))
+}

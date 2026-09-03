@@ -1,0 +1,17 @@
+// Plan 525 W2 b44:type 体内实例方法(读字段+参数)——宿主方法编译路径
+// (独立 fn Type.method 重整+self 首参注入;code.rs 2265)的 aavm 镜像
+type Counter {
+    value int
+    fn get() int {
+        return .value
+    }
+    fn add(n int) int {
+        return .value + n
+    }
+}
+
+fn main() {
+    var c = Counter { value: 10 }
+    print(c.get())
+    print(c.add(5))
+}

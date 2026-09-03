@@ -1,0 +1,13 @@
+// Plan 525 W3 b46:内建容器 List<T> 使用面(lib 盘点最小集:方法恰
+// new/push/get/set/len;宿主 native shim 通道 auto.list.*,id 100/101/
+// 106/107/103)
+fn main() {
+    var l List<int> = List.new()
+    l.push(10)
+    l.push(20)
+    print(l.len())
+    print(l.get(0))
+    print(l.get(1))
+    l.set(0, 99)
+    print(l.get(0))
+}

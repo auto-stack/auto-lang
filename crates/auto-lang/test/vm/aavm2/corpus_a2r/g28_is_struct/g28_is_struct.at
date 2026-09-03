@@ -1,0 +1,18 @@
+// Plan 525 W2 g28:is-struct 发射(解构绑定/别名绑定/else)——主 a2r
+// match 解构臂(trans/rust.rs 3393)的 AA2R 同步;宿主 VM 洞顺修承载件
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    var p = Point { x: 3, y: 4 }
+    is p {
+        Point { x, y } -> print(x + y)
+        else -> print(0)
+    }
+    is p {
+        Point { x: a, y: b } -> print(a * 10 + b)
+        else -> print(-1)
+    }
+}

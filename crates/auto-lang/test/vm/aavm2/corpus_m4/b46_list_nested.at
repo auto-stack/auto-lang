@@ -1,0 +1,12 @@
+// Plan 525 W3 b46:嵌套 List<List<int>>(lib 的 arena/scopes 形态,
+// 塔顶覆盖清单项)
+fn main() {
+    var rows List<List<int>> = List.new()
+    var row List<int> = List.new()
+    row.push(1)
+    row.push(2)
+    rows.push(row)
+    var r0 List<int> = rows.get(0)
+    print(r0.len())
+    print(r0.get(0) + r0.get(1))
+}
