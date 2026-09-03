@@ -1359,6 +1359,69 @@ impl<'a> AuraViewBuilder<'a> {
                 self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
                 v
             }
+            // PLAN-530 步骤7（W12）：toggle_group VM 映射——横排连体 button
+            // 组（tracked 镜像臂,D-GAP 规则）。见 toggle_group_rewrite_children。
+            "togglegroup" | "toggle-group" | "toggle_group" => {
+                let rewritten = self.toggle_group_rewrite_children(props, children, bindings);
+                let mut v = self.convert_row_tracked_ctx(props, &rewritten, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            // 组外裸 item → 单 button（组内由重写改道,不走此臂）。
+            "togglegroup-item" | "toggle-group-item" | "toggle_group_item" => {
+                self.convert_button(props, events, children, bindings)
+            }
+            // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
+            // （tracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog_tracked_ctx。
+            "alert-dialog" | "alert_dialog" | "alertdialog" => {
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
+            "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+                // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
+                let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                for (i, c) in children.iter().enumerate() {
+                    path.push(i);
+                    views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                    path.pop();
+                }
+                match views.len() {
+                    0 => View::Empty,
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                }
+            }
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+                let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+                let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
+                self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
+            }
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+                let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
+                let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
+                // outline 变体预设（border+bg-background+text-foreground）,
+                // 裸类注入无文字色,暗底上 Cancel 字形不可见。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            "alert-dialog-action" | "alert_dialog_action" | "alertdialog-action" => {
+                self.convert_button(props, events, children, bindings)
+            }
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
             // PLAN-055 ④/T12: pre/code 进容器转换臂（带样式）——此前落
@@ -2542,6 +2605,67 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
             "button" | "btn" => self.convert_button(props, events, children, bindings),
+            // PLAN-530 步骤7（W12）：toggle_group VM 映射——横排连体 button
+            // 组（untracked 镜像臂,D-GAP 规则）。见 toggle_group_rewrite_children。
+            "togglegroup" | "toggle-group" | "toggle_group" => {
+                let rewritten = self.toggle_group_rewrite_children(props, children, bindings);
+                let mut v = self.convert_row(props, &rewritten, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            // 组外裸 item → 单 button（组内由重写改道,不走此臂）。
+            "togglegroup-item" | "toggle-group-item" | "toggle_group_item" => {
+                self.convert_button(props, events, children, bindings)
+            }
+            // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
+            // （untracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog。
+            "alert-dialog" | "alert_dialog" | "alertdialog" => {
+                self.convert_alert_dialog(props, children, bindings)
+            }
+            "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+                // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
+                let views: Vec<View<DynamicMessage>> = children
+                    .iter()
+                    .map(|c| self.convert_node_with(c, bindings))
+                    .collect();
+                match views.len() {
+                    0 => View::Empty,
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                }
+            }
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+                let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+                let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
+                self.convert_column(&p, children, bindings)
+            }
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+                let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
+                let mut v = self.convert_row(&p, children, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
+                // outline 变体预设（border+bg-background+text-foreground）,
+                // 裸类注入无文字色,暗底上 Cancel 字形不可见。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            "alert-dialog-action" | "alert_dialog_action" | "alertdialog-action" => {
+                self.convert_button(props, events, children, bindings)
+            }
             // Plan 482: nav 组件族 —— nav_contract 契约类转换（hover/active
             // 三态 + icon/desc/badge 槽 + to/onclick 双模式）。
             "nav-item" | "nav_item" => self.convert_nav_item(props, events, children, bindings),
@@ -5125,6 +5249,187 @@ let tabs_inner = View::Row {
     /// 显式 `open` 属性优先(应用态驱动);缺失时走自管注册表。
     /// 子路径约定与 vnode/snapshot/find_view_by_path 的 extract_children 同序:
     /// widget 锚 anchor=0/content=1;坐标锚 content=0。
+    // PLAN-530 步骤8（源 PLAN-528 W13）：alert_dialog VM 映射——复用 Plan 422
+    // Popover 原语的模态形态（PopoverPlacement::Modal：面板视口居中 + 全屏
+    // 半透明遮罩 + 面板外点击整吞）。此前 alert-dialog-* 全族落 unknown
+    // fallback（overlay 家族 "renders as Column"），点击无弹层。
+    // shadcn AlertDialog 语义：外点/Esc 不关闭（on_dismiss=None），关闭仅经
+    // cancel/action 操作钮的 VM handler 翻转 `open` 绑定状态。
+    fn alert_dialog_split_children(
+        children: &[AuraNode],
+    ) -> (Option<&AuraNode>, Option<&AuraNode>) {
+        let mut trigger: Option<&AuraNode> = None;
+        let mut content: Option<&AuraNode> = None;
+        for c in children {
+            if let AuraNode::Element { tag, .. } = c {
+                let t = tag.as_str();
+                if matches!(
+                    t,
+                    "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
+                ) && trigger.is_none()
+                {
+                    trigger = Some(c);
+                } else if matches!(
+                    t,
+                    "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+                ) && content.is_none()
+                {
+                    content = Some(c);
+                }
+            }
+        }
+        (trigger, content)
+    }
+
+    /// class prop 合并（静态直拼;已有动态绑定串按当前求值拍平——构建期
+    /// 一次求值,VM 轨可接受）。
+    fn with_class_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+        extra: &str,
+    ) -> HashMap<String, AuraPropValue> {
+        let existing = self
+            .extract_string_with(props, "class", bindings)
+            .unwrap_or_default();
+        let merged = if existing.is_empty() {
+            extra.to_string()
+        } else {
+            format!("{existing} {extra}")
+        };
+        let mut p = props.clone();
+        p.insert(
+            "class".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str(merged.into())),
+        );
+        p
+    }
+
+    fn convert_alert_dialog(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        // 锚:trigger 子件原位渲染（无 trigger = 空 anchor,open 属性直驱）。
+        let anchor_view = match trigger {
+            Some(AuraNode::Element { children: t_children, .. }) => {
+                let views: Vec<View<DynamicMessage>> = t_children
+                    .iter()
+                    .map(|c| self.convert_node_with(c, bindings))
+                    .collect();
+                match views.len() {
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                    },
+                }
+            }
+            _ => View::Empty,
+        };
+        // 面板:content 子件装 col,挂 shadcn AlertDialogContent 同款 chrome。
+        let panel_children: Vec<View<DynamicMessage>> = match content {
+            Some(AuraNode::Element { children: c_children, .. }) => c_children
+                .iter()
+                .map(|c| self.convert_node_with(c, bindings))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4").ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement: PopoverPlacement::Modal,
+            open,
+            on_dismiss: None,
+        }
+    }
+
+    /// convert_alert_dialog 的 tracked 镜像（D-GAP 规则）：trigger/content
+    /// 子件经 path 追踪递归,inspector/MCP 快照可定位面板内节点。
+    fn convert_alert_dialog_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        let anchor_view = match trigger {
+            Some(AuraNode::Element { children: t_children, .. }) => {
+                let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                for (i, c) in t_children.iter().enumerate() {
+                    path.push(i);
+                    views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                    path.pop();
+                }
+                match views.len() {
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                    },
+                }
+            }
+            _ => View::Empty,
+        };
+        let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
+        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+            for (i, c) in c_children.iter().enumerate() {
+                path.push(i);
+                panel_children
+                    .push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                path.pop();
+            }
+        }
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4").ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement: PopoverPlacement::Modal,
+            open,
+            on_dismiss: None,
+        }
+    }
+
     fn convert_popover(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -5642,6 +5947,98 @@ let tabs_inner = View::Row {
     }
 
     /// Convert a button element.
+    // PLAN-530 步骤7（源 PLAN-528 W12）：toggle_group VM 映射——横排连体
+    // button 组。此前 schema（aura 三表）/vue 轨（W7 registry）都在,VM 无
+    // 消费臂 → 页面 togglegroup 塌缩 unknown fallback,B/I/U 纵向裸排。
+    // 实现：组 → row；item 子节点重写为 "button"（既有 button 臂承接
+    // label/content/onclick）并按位置注入连体类（首/尾/中圆角 + 相邻
+    // -ml-px 边框叠压）;variant=outline → border 透明底;size sm/lg →
+    // padding 档。页面书写的 [&>*+*] CSS 选择器被解析器自然跳过（unmapped
+    // 报告通道,不静默丢语义）。
+    fn toggle_group_rewrite_children(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> Vec<AuraNode> {
+        let variant = self
+            .extract_string_with(props, "variant", bindings)
+            .unwrap_or_default();
+        let size = self
+            .extract_string_with(props, "size", bindings)
+            .unwrap_or_default();
+        let outline = variant == "outline";
+        let size_class = match size.as_str() {
+            "sm" => "px-2.5 text-sm",
+            "lg" => "px-4 text-base",
+            _ => "px-3",
+        };
+        let n = children.len();
+        let mut out = Vec::with_capacity(n);
+        for (i, child) in children.iter().enumerate() {
+            let AuraNode::Element { tag, props: item_props, events, children: item_children, span, debug_id } = child else {
+                out.push(child.clone());
+                continue;
+            };
+            let is_item = matches!(
+                tag.as_str(),
+                "togglegroup-item" | "toggle-group-item" | "toggle_group_item"
+            );
+            if !is_item {
+                out.push(child.clone());
+                continue;
+            }
+            let mut new_variant: Option<&str> = None;
+            let mut classes = String::from(size_class);
+            if outline {
+                // variant 传导:item button 用 outline 预设(border+bg-background
+                // +text-foreground),叠边/圆角由位置类承担。
+                new_variant = Some("outline");
+                classes.push_str(" -ml-px");
+            } else {
+                // ghost 档:透明底 + 前景文字（primary 默认预设的填充底色在
+                // 连体组里语义错误）。
+                classes.push_str("bg-transparent text-foreground hover:bg-secondary");
+            }
+            classes.push(' ');
+            if n > 1 {
+                if i == 0 {
+                    classes.push_str("rounded-l-md rounded-r-none");
+                } else if i == n - 1 {
+                    classes.push_str("rounded-r-md rounded-l-none");
+                } else {
+                    classes.push_str("rounded-none");
+                }
+            } else {
+                classes.push_str("rounded-md");
+            }
+            let mut merged = classes;
+            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = item_props.get("class") {
+                merged.push_str(s.as_str());
+            }
+            let mut new_props = item_props.clone();
+            if let Some(v) = new_variant {
+                new_props.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str(v.into())),
+                );
+            }
+            new_props.insert(
+                "class".to_string(),
+                AuraPropValue::Expr(crate::ast::Expr::Str(merged.into())),
+            );
+            out.push(AuraNode::Element {
+                tag: "button".to_string(),
+                props: new_props,
+                events: events.clone(),
+                children: item_children.clone(),
+                span: *span,
+                debug_id: *debug_id,
+            });
+        }
+        out
+    }
+
     fn convert_button(
         &self,
         props: &HashMap<String, AuraPropValue>,

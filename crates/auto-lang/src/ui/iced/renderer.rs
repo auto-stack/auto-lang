@@ -4013,7 +4013,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     };
                 let mut p = PopoverWidget::new(anchor_el, content.into_iced())
                     .placement(placement)
-                    .open(open);
+                    .open(open)
+                    // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
+                    // + 面板外点击整吞），alert-dialog 臂专用。
+                    .modal(placement == crate::ui::view::PopoverPlacement::Modal);
                 if let Some((x, y)) = anchor_point {
                     p = p.at_point(x, y);
                 }
@@ -17572,7 +17575,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.pop();
             let mut p = PopoverWidget::new(anchor_el, content_el)
                 .placement(placement)
-                .open(open);
+                .open(open)
+                // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
+                // + 面板外点击整吞），与 into_iced 臂同口径。
+                .modal(placement == crate::ui::view::PopoverPlacement::Modal);
             if let Some((x, y)) = anchor_point {
                 p = p.at_point(x, y);
             }

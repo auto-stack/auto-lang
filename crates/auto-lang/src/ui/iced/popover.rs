@@ -50,6 +50,9 @@ where
     content: Element<'a, Message>,
     placement: PopoverPlacement,
     open: bool,
+    /// PLAN-530 步骤8（W13）：模态形态——open 时面板下铺全屏半透明遮罩，
+    /// 面板外点击整吞（不透传基础树；on_dismiss 仍按 Some/None 发布）。
+    modal: bool,
     /// 坐标锚(contextmenu);None = widget 锚(anchor 元素的 bounds)。
     at_point: Option<(f32, f32)>,
     on_dismiss: Option<Message>,
@@ -71,6 +74,7 @@ where
             content: content.into(),
             placement: PopoverPlacement::default(),
             open: false,
+            modal: false,
             at_point: None,
             on_dismiss: None,
             gap: DEFAULT_GAP,
@@ -85,6 +89,12 @@ where
 
     pub fn open(mut self, open: bool) -> Self {
         self.open = open;
+        self
+    }
+
+    /// PLAN-530 步骤8（W13）：模态形态——全屏遮罩 + 面板外点击整吞。
+    pub fn modal(mut self, modal: bool) -> Self {
+        self.modal = modal;
         self
     }
 
@@ -236,6 +246,8 @@ where
                 gap: self.gap,
                 snap_within_viewport: self.snap_within_viewport,
                 on_dismiss: self.on_dismiss.clone(),
+                modal: self.modal,
+                viewport: std::cell::Cell::new(*viewport),
             })))
         } else {
             None
@@ -287,6 +299,11 @@ where
     gap: f32,
     snap_within_viewport: bool,
     on_dismiss: Option<Message>,
+    /// PLAN-530 步骤8（W13）：模态形态（遮罩 + 面板外点击整吞）。
+    modal: bool,
+    /// 遮罩铺满的视口矩形。overlay() 入参 viewport 是基础树可见裁剪区
+    /// （锚周边），非整窗——全屏尺寸以 layout() 入参为准（运行时回填）。
+    viewport: std::cell::Cell<Rectangle>,
 }
 
 impl<Message> overlay::Overlay<Message, iced::Theme, iced::Renderer> for Panel<'_, '_, Message>
@@ -295,6 +312,9 @@ where
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
         let viewport = Rectangle::with_size(bounds);
+        // PLAN-530 步骤8（W13）：遮罩按整窗尺寸铺（draw 无 viewport 入参,
+        // 这里缓存全屏 bounds）。
+        self.viewport.set(viewport);
 
         let (position, anchor_bounds) = match self.at_point {
             Some((x, y)) => (
@@ -359,9 +379,19 @@ where
                 ),
                 size,
             ),
+            // PLAN-530 步骤8（W13）：模态对话框——面板视口居中，与锚位无关。
+            PopoverPlacement::Modal => Rectangle::new(
+                Point::new(
+                    viewport.x + (viewport.width - size.width) / 2.0,
+                    viewport.y + (viewport.height - size.height) / 2.0,
+                ),
+                size,
+            ),
         };
 
-        if self.snap_within_viewport {
+        // Modal 居中即终位，不做越界翻转/钳制（面板尺寸被 viewport 上限
+        // 钳制后天然在视口内）。
+        if self.snap_within_viewport && self.placement != PopoverPlacement::Modal {
             // PLAN-528 W9 续:越界翻转(垂直)——下方放不下且上方放得下时翻到
             // 锚上方,反之亦然。x 规则 Bottom/Top 共用,翻转只改 y;剩余越界
             // 交给下方 snap 钳制。
@@ -431,6 +461,11 @@ where
                     // 面板/锚之外的点击:dismiss 但放行给基础树 —— 别的
                     // menubar 触发器可以直接切换菜单。
                     dismiss(shell, &self.on_dismiss);
+                    // PLAN-530 步骤8（W13）：模态形态整吞外点——遮罩语义，
+                    // 基础树收不到（alert-dialog：外点不关闭不透传）。
+                    if self.modal {
+                        shell.capture_event();
+                    }
                     return;
                 }
                 // 面板内(或锚上):转发给 content(菜单项自行发布/捕获),
@@ -505,6 +540,18 @@ where
         layout: Layout<'_>,
         cursor: mouse::Cursor,
     ) {
+        // PLAN-530 步骤8（W13）：模态形态先铺全屏遮罩（shadcn overlay 档
+        // bg-black/50），面板 chrome 仍由 content 自带 visual wrap 绘制。
+        if self.modal {
+            use iced::advanced::Renderer as _;
+            renderer.fill_quad(
+                iced::advanced::renderer::Quad {
+                    bounds: self.viewport.get(),
+                    ..iced::advanced::renderer::Quad::default()
+                },
+                iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5)),
+            );
+        }
         // chrome(bg/border/shadow)由 content 元素自带的 visual wrap 绘制。
         let content_layout = layout.children().next().expect("panel has content child");
         self.content.as_widget().draw(

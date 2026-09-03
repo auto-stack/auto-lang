@@ -677,6 +677,11 @@ pub enum PopoverPlacement {
     TopEnd,
     Left,
     Right,
+    /// PLAN-530 步骤8（源 PLAN-528 W13）：模态对话框形态——面板视口居中 +
+    /// 全屏半透明遮罩（scrim）+ 面板外点击整吞（on_dismiss 为 Some 时同时
+    /// 发布）。alert-dialog 臂专用（shadcn AlertDialog 语义：外点/Esc 不关，
+    /// 仅 cancel/action 操作钮经 VM 状态翻转关闭）。
+    Modal,
 }
 
 /// Plan 409 §10 续 5: Overlay 浮层的窗口相对定位(从 style 的 absolute +
