@@ -46,6 +46,11 @@ pub enum Color {
     Emerald(u16),  // emerald-50 to emerald-900
     Amber(u16),    // amber-50 to amber-900
     Sky(u16),      // sky-50 to sky-900 (Plan 047:ash-gui text-sky-300 等)
+    // Plan 527 T4: 缺失色板补全(Tailwind v3.4 默认主题全 22 家族)
+    Lime(u16),     // lime-50 to lime-950
+    Violet(u16),   // violet-50 to violet-950
+    Fuchsia(u16),  // fuchsia-50 to fuchsia-950
+    Stone(u16),    // stone-50 to stone-950
     White,
     Black,
 
@@ -154,6 +159,11 @@ impl Color {
                         "emerald" => Ok(Color::Emerald(shade)),
                         "amber" => Ok(Color::Amber(shade)),
                         "sky" => Ok(Color::Sky(shade)),
+                        // Plan 527 T4
+                        "lime" => Ok(Color::Lime(shade)),
+                        "violet" => Ok(Color::Violet(shade)),
+                        "fuchsia" => Ok(Color::Fuchsia(shade)),
+                        "stone" => Ok(Color::Stone(shade)),
                         _ => Err(format!("Unknown color name: {}", color_name)),
                     }
                 } else {
@@ -200,6 +210,11 @@ impl Color {
             Color::Emerald(s) => tailwind_emerald(*s),
             Color::Amber(s) => tailwind_amber(*s),
             Color::Sky(s) => tailwind_sky(*s),
+            // Plan 527 T4
+            Color::Lime(s) => tailwind_lime(*s),
+            Color::Violet(s) => tailwind_violet(*s),
+            Color::Fuchsia(s) => tailwind_fuchsia(*s),
+            Color::Stone(s) => tailwind_stone(*s),
         // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB.
         // (Plan 518 注:此表仅为 resolve_semantic_rgb 未覆盖路径的 light 回退,
         // 主题真源在 theme.rs;light 值随 stella 暖纸系同步。)
@@ -292,6 +307,7 @@ palette!(tailwind_gray, [
     700 => (55, 65, 81),
     800 => (31, 41, 55),
     900 => (17, 24, 39),
+    950 => (3, 7, 18),
 ]);
 
 // Tailwind Blue (blue-50 through blue-900)
@@ -306,6 +322,7 @@ palette!(tailwind_blue, [
     700 => (29, 78, 216),
     800 => (30, 64, 175),
     900 => (30, 58, 138),
+    950 => (23, 37, 84),
 ]);
 
 // Tailwind Red (red-50 through red-900)
@@ -320,6 +337,7 @@ palette!(tailwind_red, [
     700 => (185, 28, 28),
     800 => (153, 27, 27),
     900 => (127, 29, 29),
+    950 => (69, 10, 10),
 ]);
 
 // Tailwind Green (green-50 through green-900)
@@ -334,6 +352,7 @@ palette!(tailwind_green, [
     700 => (21, 128, 61),
     800 => (22, 101, 52),
     900 => (20, 83, 45),
+    950 => (5, 46, 22),
 ]);
 
 // Tailwind Yellow (yellow-50 through yellow-900)
@@ -348,6 +367,7 @@ palette!(tailwind_yellow, [
     700 => (161, 98, 7),
     800 => (133, 77, 14),
     900 => (113, 63, 18),
+    950 => (66, 32, 6),
 ]);
 
 // Tailwind Slate (slate-50 through slate-900)
@@ -362,6 +382,7 @@ palette!(tailwind_slate, [
     700 => (51, 65, 85),
     800 => (30, 41, 59),
     900 => (15, 23, 42),
+    950 => (2, 6, 23),
 ]);
 
 // Tailwind Zinc (zinc-50 through zinc-900)
@@ -391,6 +412,7 @@ palette!(tailwind_neutral, [
     700 => (64, 64, 64),
     800 => (38, 38, 38),
     900 => (23, 23, 23),
+    950 => (10, 10, 10),
 ]);
 
 // Tailwind Purple (purple-50 through purple-900)
@@ -405,6 +427,7 @@ palette!(tailwind_purple, [
     700 => (126, 34, 206),
     800 => (107, 33, 168),
     900 => (88, 28, 135),
+    950 => (59, 7, 100),
 ]);
 
 // Tailwind Pink (pink-50 through pink-900)
@@ -419,6 +442,7 @@ palette!(tailwind_pink, [
     700 => (190, 24, 93),
     800 => (157, 23, 77),
     900 => (131, 24, 67),
+    950 => (80, 7, 36),
 ]);
 
 // Tailwind Indigo (indigo-50 through indigo-900)
@@ -433,6 +457,7 @@ palette!(tailwind_indigo, [
     700 => (67, 56, 202),
     800 => (55, 48, 163),
     900 => (49, 46, 129),
+    950 => (30, 27, 75),
 ]);
 
 // Tailwind Orange (orange-50 through orange-900)
@@ -447,6 +472,7 @@ palette!(tailwind_orange, [
     700 => (194, 65, 12),
     800 => (154, 52, 18),
     900 => (124, 45, 18),
+    950 => (67, 20, 7),
 ]);
 
 // Tailwind Cyan (cyan-50 through cyan-900)
@@ -461,6 +487,7 @@ palette!(tailwind_cyan, [
     700 => (14, 116, 144),
     800 => (21, 94, 117),
     900 => (22, 78, 99),
+    950 => (8, 51, 68),
 ]);
 
 // Tailwind Teal (teal-50 through teal-900)
@@ -475,6 +502,7 @@ palette!(tailwind_teal, [
     700 => (15, 118, 110),
     800 => (17, 94, 89),
     900 => (19, 78, 74),
+    950 => (4, 47, 46),
 ]);
 
 // Tailwind Rose (rose-50 through rose-900) — used by 015-notes "coral" swatch
@@ -489,6 +517,7 @@ palette!(tailwind_rose, [
     700 => (190, 18, 60),
     800 => (159, 18, 57),
     900 => (136, 19, 55),
+    950 => (76, 5, 25),
 ]);
 
 // Tailwind Emerald (emerald-50 through emerald-900) — "sage" swatch
@@ -503,6 +532,7 @@ palette!(tailwind_emerald, [
     700 => (4, 120, 87),
     800 => (6, 95, 70),
     900 => (6, 78, 59),
+    950 => (2, 44, 34),
 ]);
 
 // Tailwind Amber (amber-50 through amber-900) — "amber" swatch
@@ -517,6 +547,7 @@ palette!(tailwind_amber, [
     700 => (180, 83, 9),
     800 => (146, 64, 14),
     900 => (120, 53, 15),
+    950 => (69, 26, 3),
 ]);
 
 // Plan 047:tailwind sky 色板(标准值)。ash-gui 大量使用 text-sky-300/200。
@@ -531,4 +562,66 @@ palette!(tailwind_sky, [
     700 => (3, 105, 161),
     800 => (7, 89, 133),
     900 => (12, 74, 110),
+    950 => (8, 47, 73),
 ]);
+
+// Plan 527 T4: Tailwind lime (lime/violet/fuchsia/stone 缺失色板补全)
+palette!(tailwind_lime, [
+    50 => (247, 254, 231),
+    100 => (236, 252, 203),
+    200 => (217, 249, 157),
+    300 => (190, 242, 100),
+    400 => (163, 230, 53),
+    500 => (132, 204, 22),
+    600 => (101, 163, 13),
+    700 => (77, 124, 15),
+    800 => (63, 98, 18),
+    900 => (54, 83, 20),
+    950 => (26, 46, 5),
+]);
+
+// Plan 527 T4: Tailwind violet (lime/violet/fuchsia/stone 缺失色板补全)
+palette!(tailwind_violet, [
+    50 => (245, 243, 255),
+    100 => (237, 233, 254),
+    200 => (221, 214, 254),
+    300 => (196, 181, 253),
+    400 => (167, 139, 250),
+    500 => (139, 92, 246),
+    600 => (124, 58, 237),
+    700 => (109, 40, 217),
+    800 => (91, 33, 182),
+    900 => (76, 29, 149),
+    950 => (46, 16, 101),
+]);
+
+// Plan 527 T4: Tailwind fuchsia (lime/violet/fuchsia/stone 缺失色板补全)
+palette!(tailwind_fuchsia, [
+    50 => (253, 244, 255),
+    100 => (250, 232, 255),
+    200 => (245, 208, 254),
+    300 => (240, 171, 252),
+    400 => (232, 121, 249),
+    500 => (217, 70, 239),
+    600 => (192, 38, 211),
+    700 => (162, 28, 175),
+    800 => (134, 25, 143),
+    900 => (112, 26, 117),
+    950 => (74, 4, 78),
+]);
+
+// Plan 527 T4: Tailwind stone (lime/violet/fuchsia/stone 缺失色板补全)
+palette!(tailwind_stone, [
+    50 => (250, 250, 249),
+    100 => (245, 245, 244),
+    200 => (231, 229, 228),
+    300 => (214, 211, 209),
+    400 => (168, 162, 158),
+    500 => (120, 113, 108),
+    600 => (87, 83, 78),
+    700 => (68, 64, 60),
+    800 => (41, 37, 36),
+    900 => (28, 25, 23),
+    950 => (12, 10, 9),
+]);
+

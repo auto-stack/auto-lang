@@ -2250,6 +2250,8 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected value binding" },
                 PropDef { name: "type", type_: PropType::OneOf(vec!["single", "multiple"]), required: false, default: Some("single"), description: "Selection type" },
+                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "outline"]), required: false, default: Some("default"), description: "Toggle style variant" },
+                PropDef { name: "size", type_: PropType::OneOf(vec!["default", "sm", "lg"]), required: false, default: Some("default"), description: "Toggle size" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
                 PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
@@ -2262,7 +2264,7 @@ impl AuraSchema {
             category: ElementCategory::Form,
             props: vec![
                 PropDef { name: "value", type_: PropType::String, required: true, default: None, description: "Item value" },
-                PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "ARIA label" },
+                PropDef { name: "aria-label", type_: PropType::String, required: false, default: None, description: "ARIA label" },
                 PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
                 PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],

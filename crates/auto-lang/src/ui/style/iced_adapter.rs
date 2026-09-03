@@ -53,7 +53,10 @@ fn warn_layout_degradation(class_name: &str) {
 /// This adapter converts StyleClass IR into Iced-compatible structures.
 ///
 /// NOTE: Iced does not support margin - margin-related classes will be ignored
-#[derive(Clone)]
+/// Plan 527 T2: `Default + PartialEq` power the parity audit's mechanical
+/// applied check — `from_style(single class) != IcedStyle::default()` means
+/// the adapter consumed the class (a field was set), vs a no-op arm.
+#[derive(Clone, Default, PartialEq)]
 pub struct IcedStyle {
     // Spacing (L1 + L2)
     pub padding: Option<f32>,
@@ -84,6 +87,23 @@ pub struct IcedStyle {
     pub gradient_dir: Option<crate::ui::style::class::GradientDir>,
     pub gradient_from: Option<iced::Color>,
     pub gradient_to: Option<iced::Color>,
+    /// Plan 527 T4: via 中间 stop(iced 多 stop 渐变真消费,默认 50% 位)
+    pub gradient_via: Option<iced::Color>,
+    /// Plan 527 T4: stop 位置百分比(from 默认 0/via 50/to 100,归一 0.0..1.0)
+    pub gradient_from_pos: Option<f32>,
+    pub gradient_via_pos: Option<f32>,
+    pub gradient_to_pos: Option<f32>,
+
+    // Plan 527 T4: ring(focus 环模拟,渲染层分期消费)
+    pub ring_width: Option<f32>,
+    pub ring_color: Option<iced::Color>,
+    pub ring_inset: bool,
+
+    // Plan 527 T4: object-fit(Image ContentFit 消费面)
+    pub object_fit: Option<crate::ui::style::ObjectFit>,
+
+    // Plan 527 T4: 彩色阴影(渲染层分期消费,默认半透明黑)
+    pub shadow_color: Option<iced::Color>,
 
     // Sizing (L1)
     pub width: Option<IcedSize>,
@@ -139,6 +159,8 @@ pub struct IcedStyle {
     // Layout (L1 Core)
     pub align_items: Option<IcedAlign>,
     pub justify_content: Option<IcedJustify>,
+    /// Plan 527 T3: display 类 IR(flex/block/inline/inline-block/inline-flex)
+    pub display: Option<IcedDisplay>,
     // PLAN-054 T4 (A6): self-start/center/end —— 此前仅降级告警,musk
     // 用户消息行 `self-end items-end` 右对齐失效(气泡贴左裸排)。
     pub align_self: Option<IcedAlign>,
@@ -158,6 +180,13 @@ pub struct IcedStyle {
     pub row_span: Option<u8>,       // Not supported by Iced
     pub col_start: Option<u8>,      // Not supported by Iced
     pub row_start: Option<u8>,      // Not supported by Iced
+    // Plan 527 T3: grid 定位扩档(存字段,渲染降级同 col_start/row_start)
+    pub col_end: Option<u8>,        // Not supported by Iced
+    pub row_end: Option<u8>,        // Not supported by Iced
+    /// Plan 527 T3: order-N 存字段(渲染按源码序,降级语义,KNOWN-DEBT 登记)
+    pub order: Option<i16>,
+    /// Plan 527 T3: flex-basis(Fill-ratio/像素近似,渲染层分期消费)
+    pub flex_basis: Option<crate::ui::style::SizeValue>,
 
     // Extended sizing
     pub min_height: Option<f32>,
@@ -166,6 +195,12 @@ pub struct IcedStyle {
     // Extended typography
     pub font_size_arbitrary: Option<f32>,
     pub line_height: Option<f32>,
+    /// Plan 527 T5: 绝对行高(leading-3..10,px 固定值,优先于相对倍率)
+    pub line_height_px: Option<f32>,
+    /// Plan 527 T5: 字距(tracking-*,em;iced 0.14 文本无 letter_spacing,渲染分期)
+    pub letter_spacing: Option<f32>,
+    /// Plan 527 T5: 行数截断(line-clamp-N;0 = none;渲染层以行高裁剪)
+    pub line_clamp: Option<u8>,
 
     // Shadow extended
     pub shadow_arbitrary: Option<String>,
@@ -216,9 +251,23 @@ pub enum IcedShadowSize {
 pub enum IcedPosition {
     Relative,
     Absolute, // Not supported by Iced
+    /// Plan 527 T3: fixed/sticky 落 position 字段(渲染降级为文档流位,表可见)
+    Fixed,    // Not supported by Iced (degrades to in-flow)
+    Sticky,   // Not supported by Iced (degrades to in-flow)
 }
 
+/// Plan 527 T3: display 类 IR 记录 —— flex/block/inline 等由 view builder
+/// 消费(布局分派),此前 IcedStyle 无字段导致审计机械差分误判 parsed-only。
 #[derive(Clone, Copy, PartialEq)]
+pub enum IcedDisplay {
+    Flex,
+    Block,
+    Inline,
+    InlineBlock,
+    InlineFlex,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum IcedOverflow {
     Auto,
     Hidden,
@@ -226,7 +275,7 @@ pub enum IcedOverflow {
     Scroll,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum IcedSize {
     Full,
     FillPortion(u16),
@@ -252,12 +301,16 @@ pub enum IcedFontSize {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum IcedFontWeight {
+    // Plan 527 T5: 全字重档(thin..black 9 档,对齐 iced::font::Weight)
+    Thin,
+    ExtraLight,
+    Light,
     Normal,
     Medium,
-    Bold,
-    Light,
-    ExtraLight,
     SemiBold,
+    Bold,
+    ExtraBold,
+    Black,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -295,6 +348,16 @@ impl IcedStyle {
             gradient_dir: None,
             gradient_from: None,
             gradient_to: None,
+            // Plan 527 T4
+            gradient_via: None,
+            gradient_from_pos: None,
+            gradient_via_pos: None,
+            gradient_to_pos: None,
+            ring_width: None,
+            ring_color: None,
+            ring_inset: false,
+            object_fit: None,
+            shadow_color: None,
             width: None,
             height: None,
             max_width: None,
@@ -329,6 +392,7 @@ impl IcedStyle {
             overflow_y: None,
             align_items: None,
             justify_content: None,
+            display: None,
             align_self: None,
             items_stretch: false,
             row_reverse: false,
@@ -341,12 +405,21 @@ impl IcedStyle {
             row_span: None,     // Not supported by Iced
             col_start: None,    // Not supported by Iced
             row_start: None,    // Not supported by Iced
+            // Plan 527 T3
+            col_end: None,
+            row_end: None,
+            order: None,
+            flex_basis: None,
             // Extended sizing
             min_height: None,
             min_width: None,
             // Extended typography
             font_size_arbitrary: None,
             line_height: None,
+            // Plan 527 T5
+            line_height_px: None,
+            letter_spacing: None,
+            line_clamp: None,
             // Shadow extended
             shadow_arbitrary: None,
             // Position offsets
@@ -396,6 +469,19 @@ impl IcedStyle {
         // mt-* into their internal padding.
 
         iced_style
+    }
+
+    /// Plan 527 T6: base + 指定变体类合并(变体后应用胜出,hover 先例同构)。
+    /// 按钮状态回调面(Hovered/Focused/Pressed/Disabled)经此构建各状态样式;
+    /// 无变体声明时等价 base。
+    pub fn merged_with_variant(base: &Style, variant: super::Variant) -> IcedStyle {
+        let mut merged = base.classes.clone();
+        merged.extend(base.variant_slice(variant));
+        IcedStyle::from_style(&Style {
+            classes: merged,
+            hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
+        })
     }
 
     /// Calculate the effective 4-corner iced border radius
@@ -518,6 +604,35 @@ impl IcedStyle {
             }
             StyleClass::GradientTo(color) => {
                 self.gradient_to = Some(convert_color(color));
+            }
+            // Plan 527 T4: via 中间 stop + stop 位置百分比(默认 0/50/100)
+            StyleClass::GradientVia(color) => {
+                self.gradient_via = Some(convert_color(color));
+            }
+            StyleClass::GradientFromStop(pct) => {
+                self.gradient_from_pos = Some(*pct as f32 / 100.0);
+            }
+            StyleClass::GradientViaStop(pct) => {
+                self.gradient_via_pos = Some(*pct as f32 / 100.0);
+            }
+            StyleClass::GradientToStop(pct) => {
+                self.gradient_to_pos = Some(*pct as f32 / 100.0);
+            }
+            // Plan 527 T4: ring / object-fit / 彩色阴影(渲染层分期消费面)
+            StyleClass::RingWidth(w) => {
+                self.ring_width = Some(*w);
+            }
+            StyleClass::RingColor(color) => {
+                self.ring_color = Some(convert_color(color));
+            }
+            StyleClass::RingInset => {
+                self.ring_inset = true;
+            }
+            StyleClass::ObjectFit(fit) => {
+                self.object_fit = Some(*fit);
+            }
+            StyleClass::ShadowColor(color) => {
+                self.shadow_color = Some(convert_color(color));
             }
 
             // ========== Sizing (L1) ==========
@@ -819,6 +934,25 @@ impl IcedStyle {
             StyleClass::OverflowYAuto => {
                 self.overflow_y = Some(IcedOverflow::Auto);
             }
+            // Plan 527 T3: 轴向量 overflow 全档(clip 语义已在解析面归并 Hidden)
+            StyleClass::OverflowXHidden => {
+                self.overflow_x = Some(IcedOverflow::Hidden);
+            }
+            StyleClass::OverflowXVisible => {
+                self.overflow_x = Some(IcedOverflow::Visible);
+            }
+            StyleClass::OverflowXScroll => {
+                self.overflow_x = Some(IcedOverflow::Scroll);
+            }
+            StyleClass::OverflowYHidden => {
+                self.overflow_y = Some(IcedOverflow::Hidden);
+            }
+            StyleClass::OverflowYVisible => {
+                self.overflow_y = Some(IcedOverflow::Visible);
+            }
+            StyleClass::OverflowYScroll => {
+                self.overflow_y = Some(IcedOverflow::Scroll);
+            }
 
             // ========== Grid (L3) ==========
             StyleClass::Grid => {
@@ -849,14 +983,40 @@ impl IcedStyle {
                 // Iced doesn't support grid - store but will be ignored
                 self.row_start = Some(*start);
             }
+            // Plan 527 T3: grid 定位扩档(存字段,渲染降级)
+            StyleClass::ColEnd(v) => {
+                self.col_end = Some(*v);
+            }
+            StyleClass::RowEnd(v) => {
+                self.row_end = Some(*v);
+            }
+            // Plan 527 T3: order 存字段 —— 渲染按源码序(降级语义),表可见。
+            StyleClass::Order(v) => {
+                self.order = Some(*v);
+                warn_layout_degradation("order-N");
+            }
+            // Plan 527 T3: flex-basis —— Fill-ratio/像素近似 IR,渲染层分期消费。
+            StyleClass::FlexBasis(size) => {
+                self.flex_basis = Some(*size);
+            }
 
             // ========== Layout styles ==========
-            StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexCol
-            | StyleClass::Block | StyleClass::Inline | StyleClass::InlineBlock
-            | StyleClass::InlineFlex => {
-                // Flex is implicit in Iced's Column/Row — no extra action needed.
-                // block/inline/inline-block/inline-flex: iced 无 inline/block 区别,
-                // 自然渲染即可(Plan 409 §10 续,主要用于响应式覆盖 Hidden)。
+            // Plan 527 T3: display 类落 display 字段(flex/block/inline…由
+            // view builder 布局分派消费;方向类 flex-row/col 隐含 flex)。
+            StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexCol => {
+                self.display = Some(IcedDisplay::Flex);
+            }
+            StyleClass::Block => {
+                self.display = Some(IcedDisplay::Block);
+            }
+            StyleClass::Inline => {
+                self.display = Some(IcedDisplay::Inline);
+            }
+            StyleClass::InlineBlock => {
+                self.display = Some(IcedDisplay::InlineBlock);
+            }
+            StyleClass::InlineFlex => {
+                self.display = Some(IcedDisplay::InlineFlex);
             }
             StyleClass::Flex1 => {
                 // flex-1: expand to fill available space along the main axis.
@@ -943,19 +1103,26 @@ impl IcedStyle {
             StyleClass::SelfEnd => {
                 self.align_self = Some(IcedAlign::End);
             }
-            StyleClass::SelfStretch | StyleClass::Order(_) => {
-                warn_layout_degradation(match class {
-                    StyleClass::SelfStretch => "self-stretch",
-                    _ => "order-N",
-                });
+            StyleClass::SelfStretch => {
+                warn_layout_degradation("self-stretch");
             }
-            // iced 无绝对/视口定位 — inset/fixed/sticky 降级为就近布局位。
-            StyleClass::Inset(_) | StyleClass::Fixed | StyleClass::Sticky => {
-                warn_layout_degradation(match class {
-                    StyleClass::Inset(_) => "inset-N",
-                    StyleClass::Fixed => "fixed",
-                    _ => "sticky",
-                });
+            // iced 无绝对/视口定位 — inset 落四向 offset 字段(Plan 527 T3:
+            // 表可见,渲染层无 Stack 上下文时降级内联,KNOWN-DEBT 登记),
+            // fixed/sticky 落 position 字段(降级为就近布局位)。
+            StyleClass::Inset(px) => {
+                self.top_offset = Some(*px);
+                self.bottom_offset = Some(*px);
+                self.right_offset = Some(*px);
+                self.left_offset = Some(*px);
+                warn_layout_degradation("inset-N");
+            }
+            StyleClass::Fixed => {
+                self.position = Some(IcedPosition::Fixed);
+                warn_layout_degradation("fixed");
+            }
+            StyleClass::Sticky => {
+                self.position = Some(IcedPosition::Sticky);
+                warn_layout_degradation("sticky");
             }
             // Plan 442 A6: lang-<token> 是代码高亮的元数据通道,非视觉
             // utility — 不产生任何样式,由 iced renderer 的 code 高亮
@@ -988,6 +1155,28 @@ impl IcedStyle {
             }
             StyleClass::LineHeightNone => {
                 self.line_height = Some(1.0);
+            }
+            // Plan 527 T5: 文本家族新臂
+            StyleClass::LineHeightPx(px) => {
+                self.line_height_px = Some(*px);
+            }
+            StyleClass::Tracking(em) => {
+                self.letter_spacing = Some(*em);
+            }
+            StyleClass::LineClamp(n) => {
+                self.line_clamp = Some(*n);
+            }
+            StyleClass::LineClampNone => {
+                self.line_clamp = Some(0);
+            }
+            StyleClass::FontThin => {
+                self.font_weight = Some(IcedFontWeight::Thin);
+            }
+            StyleClass::FontExtraBold => {
+                self.font_weight = Some(IcedFontWeight::ExtraBold);
+            }
+            StyleClass::FontBlack => {
+                self.font_weight = Some(IcedFontWeight::Black);
             }
 
             // ========== Text Control ==========
@@ -1093,6 +1282,10 @@ fn convert_size(size: &SizeValue) -> IcedSize {
         SizeValue::TwoThirds => IcedSize::FillPortion(2),
         SizeValue::Quarter => IcedSize::FillPortion(1),
         SizeValue::ThreeQuarters => IcedSize::FillPortion(3),
+        // Plan 527 T3: 通用分数 N/M → FillPortion(n) —— 无容器查询语义下的
+        // Fill-ratio 近似:同分母互补分数(3/12+9/12)比例保真,混分母退化等分
+        // (口径与 SizeValue::Fraction 文档注释一致,KNOWN-DEBT 登记)。
+        SizeValue::Fraction(n, _) => IcedSize::FillPortion(*n),
         SizeValue::Auto => IcedSize::Full,
         SizeValue::Fixed(_) => IcedSize::Fixed(size.to_pixels() as f32),
         SizeValue::Pixels(px) => IcedSize::Fixed(*px),
@@ -1152,7 +1345,7 @@ mod tests {
         let s = Style::parse("bg-transparent hover:bg-muted/60").unwrap();
         let mut merged = s.classes.clone();
         merged.extend(s.hover_classes.iter().cloned());
-        let is = IcedStyle::from_style(&Style { classes: merged, hover_classes: Vec::new() });
+        let is = IcedStyle::from_style(&Style { classes: merged, hover_classes: Vec::new(), variant_classes: Vec::new() });
         // hover bg-muted/60 wins over bg-transparent: semi-opaque surface.
         let bg = is.background_color.expect("hover bg must be set");
         assert!(bg.a > 0.0 && bg.a < 1.0, "expected muted/60 alpha, got {}", bg.a);
@@ -1211,6 +1404,55 @@ mod tests {
         assert_eq!(white.r, 1.0);
         assert_eq!(white.g, 1.0);
         assert_eq!(white.b, 1.0);
+    }
+
+    // Plan 527 T3:布局家族新臂的 iced 消费(单类机械差分的采样实证)。
+    #[test]
+    fn test_plan527_t3_iced_consumes_layout_extensions() {
+        // inset-N 落四向 offset 字段(渲染层无 Stack 上下文时降级内联,表可见)
+        let is = IcedStyle::from_style(&Style::parse("inset-4").unwrap());
+        assert_eq!(is.top_offset, Some(16.0));
+        assert_eq!(is.bottom_offset, Some(16.0));
+        assert_eq!(is.left_offset, Some(16.0));
+        assert_eq!(is.right_offset, Some(16.0));
+        // order-N 存字段(渲染按源码序,降级语义)
+        let is = IcedStyle::from_style(&Style::parse("order-2").unwrap());
+        assert_eq!(is.order, Some(2));
+        // basis 存字段(渲染层分期消费)
+        let is = IcedStyle::from_style(&Style::parse("basis-4").unwrap());
+        assert_eq!(is.flex_basis, Some(SizeValue::Fixed(4)));
+        // 轴向量 overflow + 分数宽 Fill-ratio
+        let is = IcedStyle::from_style(&Style::parse("overflow-x-scroll w-7/12").unwrap());
+        assert_eq!(is.overflow_x, Some(IcedOverflow::Scroll));
+        assert_eq!(is.width, Some(IcedSize::FillPortion(7)));
+        // grid 定位扩档存字段
+        let is = IcedStyle::from_style(&Style::parse("col-end-4 row-end-2").unwrap());
+        assert_eq!(is.col_end, Some(4));
+        assert_eq!(is.row_end, Some(2));
+    }
+
+    // Plan 527 T4:视觉家族新臂的 iced 消费(单类机械差分的采样实证)。
+    #[test]
+    fn test_plan527_t4_iced_consumes_visual_extensions() {
+        // ring 宽度+颜色组合
+        let is = IcedStyle::from_style(&Style::parse("ring-2 ring-red-500").unwrap());
+        assert_eq!(is.ring_width, Some(2.0));
+        assert!(is.ring_color.is_some());
+        // object-fit / 彩色阴影
+        let is = IcedStyle::from_style(&Style::parse("object-cover shadow-red-500 shadow-md").unwrap());
+        assert!(matches!(is.object_fit, Some(crate::ui::style::ObjectFit::Cover)));
+        assert!(is.shadow_color.is_some());
+        // 渐变三 stop + 位置
+        let is = IcedStyle::from_style(
+            &Style::parse("bg-gradient-to-r from-red-500 via-yellow-300 to-blue-500 from-10 to-90").unwrap(),
+        );
+        assert!(is.gradient_via.is_some());
+        assert_eq!(is.gradient_from_pos, Some(0.1));
+        assert_eq!(is.gradient_to_pos, Some(0.9));
+        // 新色板
+        let is = IcedStyle::from_style(&Style::parse("bg-lime-500").unwrap());
+        let bg = is.background_color.unwrap();
+        assert_eq!((bg.r, bg.g, bg.b), (132.0 / 255.0, 204.0 / 255.0, 22.0 / 255.0));
     }
 
     #[test]

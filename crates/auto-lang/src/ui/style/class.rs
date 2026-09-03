@@ -17,6 +17,10 @@ pub enum SizeValue {
     Auto,
     Fixed(u16),  // Tailwind spacing units (1 = 4px, 2 = 8px, etc.)
     Pixels(f32), // Arbitrary pixel value (e.g. w-[30px] → Pixels(30.0))
+    /// Plan 527 T3: 通用分数 N/M(w-3/12、w-2/5 …)。无容器查询语义,宿主按
+    /// Fill-ratio 近似消费(iced FillPortion(n)):同分母互补分数(3/12+9/12)
+    /// 比例保真,混分母组合退化为等分 —— 口径记 KNOWN-DEBT(待澄清③裁定)。
+    Fraction(u16, u16),
 }
 
 impl SizeValue {
@@ -80,6 +84,17 @@ pub enum GradientDir {
     ToBL,
     ToTR,
     ToTL,
+}
+
+/// Plan 527 T4: object-fit(object-contain/cover/fill/none/scale-down)——
+/// iced Image ContentFit 的后端无关 IR。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectFit {
+    Contain,
+    Cover,
+    Fill,
+    None,
+    ScaleDown,
 }
 
 /// Style class IR - represents a single parsed style property
@@ -540,6 +555,29 @@ pub enum StyleClass {
     /// Grid row start: row-start-{1-7} - L3
     RowStart(u8),
 
+    // ========== Plan 527 T3 — 布局家族补全 ==========
+    /// Grid column end: col-end-{1-13}(存字段,渲染降级同 col-start)
+    ColEnd(u8),
+
+    /// Grid row end: row-end-{1-7}(存字段,渲染降级同 row-start)
+    RowEnd(u8),
+
+    /// flex-basis: basis-{N|N/M|auto|full}(Fill-ratio/像素近似,渲染层分期消费)
+    FlexBasis(SizeValue),
+
+    /// Overflow X: overflow-x-hidden(clip 语义归并到 Hidden)
+    OverflowXHidden,
+    /// Overflow X: overflow-x-visible
+    OverflowXVisible,
+    /// Overflow X: overflow-x-scroll
+    OverflowXScroll,
+    /// Overflow Y: overflow-y-hidden(clip 语义归并到 Hidden)
+    OverflowYHidden,
+    /// Overflow Y: overflow-y-visible
+    OverflowYVisible,
+    /// Overflow Y: overflow-y-scroll
+    OverflowYScroll,
+
     // ========== Layout Extended (Plan 412 — Layout Gallery) ==========
     /// Column gap: gap-x-{N} — main-axis spacing on a Row
     GapX(SizeValue),
@@ -637,6 +675,46 @@ pub enum StyleClass {
     /// （刻度 50/100/150/200 → 0.5/1.0/1.5/2.0 + [N] 任意值,stella 配方
     /// [1.6]）。三臂语义同 BackdropBlur。
     BackdropSaturate(f32),
+
+    // ========== Plan 527 T4 — 视觉家族补全 ==========
+    /// object-fit: object-contain/cover/fill/none/scale-down(Image 消费面)
+    ObjectFit(ObjectFit),
+
+    /// ring 宽度: ring(3px)/ring-0/1/2/4/8(渲染层分期消费,focus 环模拟)
+    RingWidth(f32),
+    /// ring 颜色: ring-{color}
+    RingColor(Color),
+    /// ring-inset 标记
+    RingInset,
+
+    /// 渐变中间 stop 颜色: via-{color}(iced 多 stop 渐变真消费,默认 50% 位)
+    GradientVia(Color),
+    /// 渐变 stop 位置百分比: from-{0..100}(默认 0%)
+    GradientFromStop(u8),
+    /// 渐变 stop 位置百分比: via-{0..100}(默认 50%)
+    GradientViaStop(u8),
+    /// 渐变 stop 位置百分比: to-{0..100}(默认 100%)
+    GradientToStop(u8),
+
+    /// 彩色阴影: shadow-{color}(渲染层分期消费)
+    ShadowColor(Color),
+
+    // ========== Plan 527 T5 — 文本家族补全 ==========
+    /// 字距: tracking-tighter..widest(em 单位;iced 0.14 文本无 letter_spacing,
+    /// IR 冻结待渲染分期,KNOWN-DEBT 登记)
+    Tracking(f32),
+    /// 绝对行高: leading-3..10(px 固定值,区别于相对倍率 LineHeight)
+    LineHeightPx(f32),
+    /// 行数截断: line-clamp-{1..6}
+    LineClamp(u8),
+    /// line-clamp-none(对消语义,落 0 档)
+    LineClampNone,
+    /// font-thin(100)——此前与 extralight 合并,Plan 527 T5 全字重档拆分
+    FontThin,
+    /// font-extrabold(800)
+    FontExtraBold,
+    /// font-black(900)
+    FontBlack,
 }
 
 impl StyleClass {
@@ -858,18 +936,52 @@ impl StyleClass {
             return Ok(StyleClass::BackgroundColor(color));
         }
 
-        // Parse gradient start: from-{color}
-        if let Some(color_name) = class.strip_prefix("from-") {
-            if let Ok(color) = Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name)) {
+        // Parse gradient start: from-{color} / from-{0..100}(stop 位置百分比)
+        // Plan 527 T4:pct 档优先,堵 from-100 被 3 位 hex 展开误吞为 #110000
+        // 的假映射(from_hex("100") → len3 → 双字符展开)。
+        if let Some(rest) = class.strip_prefix("from-") {
+            if let Ok(pct) = rest.parse::<u8>() {
+                if pct <= 100 {
+                    return Ok(StyleClass::GradientFromStop(pct));
+                }
+            }
+            if let Ok(color) = Color::from_tailwind(rest).or_else(|_| Color::from_hex(rest)) {
                 return Ok(StyleClass::GradientFrom(color));
             }
         }
 
-        // Parse gradient end: to-{color}
+        // Parse gradient middle stop: via-{color} / via-{0..100}(默认 50% 位)
+        if let Some(rest) = class.strip_prefix("via-") {
+            if let Ok(pct) = rest.parse::<u8>() {
+                if pct <= 100 {
+                    return Ok(StyleClass::GradientViaStop(pct));
+                }
+            }
+            if let Ok(color) = Color::from_tailwind(rest).or_else(|_| Color::from_hex(rest)) {
+                return Ok(StyleClass::GradientVia(color));
+            }
+        }
+
+        // Parse gradient end: to-{color} / to-{0..100}(stop 位置百分比)
         if let Some(color_name) = class.strip_prefix("to-") {
+            if let Ok(pct) = color_name.parse::<u8>() {
+                if pct <= 100 {
+                    return Ok(StyleClass::GradientToStop(pct));
+                }
+            }
             if let Ok(color) = Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name)) {
                 return Ok(StyleClass::GradientTo(color));
             }
+        }
+
+        // Plan 527 T4: object-fit —— Image ContentFit 消费面
+        match class {
+            "object-contain" => return Ok(StyleClass::ObjectFit(ObjectFit::Contain)),
+            "object-cover" => return Ok(StyleClass::ObjectFit(ObjectFit::Cover)),
+            "object-fill" => return Ok(StyleClass::ObjectFit(ObjectFit::Fill)),
+            "object-none" => return Ok(StyleClass::ObjectFit(ObjectFit::None)),
+            "object-scale-down" => return Ok(StyleClass::ObjectFit(ObjectFit::ScaleDown)),
+            _ => {}
         }
 
         // ========== Typography (L2) ==========
@@ -909,13 +1021,18 @@ impl StyleClass {
         }
 
         // Parse font weight
+        // Plan 527 T5: 全字重档拆分(thin/extrabold/black 独立变体,
+        // 此前 black|extrabold 合并 FontBold、thin 合并 ExtraLight)。
         match class {
-            "font-black" | "font-extrabold" | "font-bold" => return Ok(StyleClass::FontBold),
+            "font-black" => return Ok(StyleClass::FontBlack),
+            "font-extrabold" => return Ok(StyleClass::FontExtraBold),
+            "font-bold" => return Ok(StyleClass::FontBold),
             "font-semibold" => return Ok(StyleClass::FontSemiBold),
             "font-medium" => return Ok(StyleClass::FontMedium),
             "font-normal" => return Ok(StyleClass::FontNormal),
             "font-light" => return Ok(StyleClass::FontLight),
-            "font-extralight" | "font-thin" => return Ok(StyleClass::FontExtraLight),
+            "font-extralight" => return Ok(StyleClass::FontExtraLight),
+            "font-thin" => return Ok(StyleClass::FontThin),
             "font-serif" => return Ok(StyleClass::FontSerif),
             "font-sans" => return Ok(StyleClass::FontSans),
             "font-mono" => return Ok(StyleClass::FontMono),
@@ -928,10 +1045,14 @@ impl StyleClass {
         }
 
         // Parse text alignment
+        // Plan 527 T5: start/end ≈ left/right(LTR 桌面语义);justify 无
+        // cosmic-text 支持不入(白名单)。text-ellipsis/text-clip = truncate
+        // 长形式 —— 必须先于下方 text-{color} 前缀臂(其 `?` 会吞掉未知词)。
         match class {
             "text-center" => return Ok(StyleClass::TextCenter),
-            "text-left" => return Ok(StyleClass::TextLeft),
-            "text-right" => return Ok(StyleClass::TextRight),
+            "text-left" | "text-start" => return Ok(StyleClass::TextLeft),
+            "text-right" | "text-end" => return Ok(StyleClass::TextRight),
+            "text-ellipsis" | "text-clip" => return Ok(StyleClass::Truncate),
             _ => {}
         }
 
@@ -951,9 +1072,49 @@ impl StyleClass {
                 }
             }
         }
-        // Parse leading-none
-        if class == "leading-none" {
-            return Ok(StyleClass::LineHeightNone);
+        // Plan 527 T5: 命名行高(相对倍率,Tailwind v3.4 值)+ 数值档 leading-3..10
+        // (绝对 px,N×4px —— 与字号无关的固定行高,别于相对倍率落 LineHeightPx)。
+        match class {
+            "leading-none" => return Ok(StyleClass::LineHeightNone),
+            "leading-tight" => return Ok(StyleClass::LineHeight(1.25)),
+            "leading-snug" => return Ok(StyleClass::LineHeight(1.375)),
+            "leading-normal" => return Ok(StyleClass::LineHeight(1.5)),
+            "leading-relaxed" => return Ok(StyleClass::LineHeight(1.625)),
+            "leading-loose" => return Ok(StyleClass::LineHeight(2.0)),
+            "leading-3" => return Ok(StyleClass::LineHeightPx(12.0)),
+            "leading-4" => return Ok(StyleClass::LineHeightPx(16.0)),
+            "leading-5" => return Ok(StyleClass::LineHeightPx(20.0)),
+            "leading-6" => return Ok(StyleClass::LineHeightPx(24.0)),
+            "leading-7" => return Ok(StyleClass::LineHeightPx(28.0)),
+            "leading-8" => return Ok(StyleClass::LineHeightPx(32.0)),
+            "leading-9" => return Ok(StyleClass::LineHeightPx(36.0)),
+            "leading-10" => return Ok(StyleClass::LineHeightPx(40.0)),
+            _ => {}
+        }
+
+        // Plan 527 T5: tracking 全档(em 单位,Tailwind v3.4 值)——iced 0.14
+        // 文本无 letter_spacing,IR 冻结待渲染分期(KNOWN-DEBT)。
+        match class {
+            "tracking-tighter" => return Ok(StyleClass::Tracking(-0.05)),
+            "tracking-tight" => return Ok(StyleClass::Tracking(-0.025)),
+            "tracking-normal" => return Ok(StyleClass::Tracking(0.0)),
+            "tracking-wide" => return Ok(StyleClass::Tracking(0.025)),
+            "tracking-wider" => return Ok(StyleClass::Tracking(0.05)),
+            "tracking-widest" => return Ok(StyleClass::Tracking(0.1)),
+            _ => {}
+        }
+
+        // Plan 527 T5: line-clamp-{1..6}/none —— 渲染层以行高×行数裁剪实现
+        // (cosmic-text 能力内的近似;无 ellipsis 字形)。
+        if let Some(rest) = class.strip_prefix("line-clamp-") {
+            if rest == "none" {
+                return Ok(StyleClass::LineClampNone);
+            }
+            if let Ok(n) = rest.parse::<u8>() {
+                if (1..=6).contains(&n) {
+                    return Ok(StyleClass::LineClamp(n));
+                }
+            }
         }
 
         // ========== Whitespace & Text Control ==========
@@ -1155,23 +1316,28 @@ impl StyleClass {
         }
 
         // Parse min-height: min-h-{size|screen} (supports arbitrary: min-h-[40px])
+        // Plan 527 T3: 视口单位(svh/lvh/dvh)≈ screen;未知命名值此前误落
+        // MinHeight(0.0)(如 min-h-svh/min-h-fit),收紧为 Err → 白名单显式受限。
         if let Some(rest) = class.strip_prefix("min-h-") {
             let px = match rest {
-                "screen" => f32::MAX,
+                "screen" | "svh" | "lvh" | "dvh" => f32::MAX,
+                "px" => 1.0,
                 _ => parse_pixel_arbitrary(arbitrary_value)
-                    .unwrap_or_else(|| {
-                        rest.parse::<f32>().unwrap_or(0.0) * 4.0
-                    }),
+                    .or_else(|| rest.parse::<f32>().ok().map(|n| n * 4.0))
+                    .ok_or_else(|| format!("Unknown min-h value: {}", rest))?,
             };
             return Ok(StyleClass::MinHeight(px));
         }
 
         // Parse min-width: min-w-{size} (supports arbitrary: min-w-[Npx])
+        // Plan 527 T3: 同 min-h 收紧(此前未知命名误落 MinWidth(0.0))。
         if let Some(rest) = class.strip_prefix("min-w-") {
-            let px = parse_pixel_arbitrary(arbitrary_value)
-                .unwrap_or_else(|| {
-                    rest.parse::<f32>().unwrap_or(0.0) * 4.0
-                });
+            let px = match rest {
+                "px" => 1.0,
+                _ => parse_pixel_arbitrary(arbitrary_value)
+                    .or_else(|| rest.parse::<f32>().ok().map(|n| n * 4.0))
+                    .ok_or_else(|| format!("Unknown min-w value: {}", rest))?,
+            };
             return Ok(StyleClass::MinWidth(px));
         }
 
@@ -1328,6 +1494,34 @@ impl StyleClass {
             _ => {}
         }
 
+        // Plan 527 T4: 彩色阴影 shadow-{color}(精确档已在上方;inner 不收)
+        if let Some(color_name) = class.strip_prefix("shadow-") {
+            if let Ok(color) = Color::from_tailwind(color_name)
+                .or_else(|_| Color::from_hex(color_name))
+            {
+                return Ok(StyleClass::ShadowColor(color));
+            }
+        }
+
+        // Plan 527 T4: ring 宽度/颜色/inset(width+color 组合)——渲染层分期
+        // 消费(focus 环模拟);ring-offset-* 不收(白名单受限)。
+        if class == "ring" {
+            return Ok(StyleClass::RingWidth(3.0));
+        }
+        if class == "ring-inset" {
+            return Ok(StyleClass::RingInset);
+        }
+        if let Some(rest) = class.strip_prefix("ring-") {
+            if let Ok(w) = rest.parse::<f32>() {
+                return Ok(StyleClass::RingWidth(w));
+            }
+            if let Ok(color) = Color::from_tailwind(rest)
+                .or_else(|_| Color::from_hex(rest))
+            {
+                return Ok(StyleClass::RingColor(color));
+            }
+        }
+
         // Parse opacity: opacity-{0-100}
         if let Some(rest) = class.strip_prefix("opacity-") {
             let value: u8 = rest.parse()
@@ -1397,20 +1591,36 @@ impl StyleClass {
         }
 
         // Plan 412: inset-N(all offsets)— iced 无绝对定位,解析保存(降级)。
-        // 支持 inset-0 / inset-N(N×4px)/ inset-[Npx]。
+        // 支持 inset-0 / inset-N(N×4px)/ inset-px / inset-[Npx](Plan 527 T3 补 px)。
+        // inset-{分数}/auto/full = 百分比/对消语义,无容器查询,白名单受限。
         if let Some(rest) = class.strip_prefix("inset-") {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::Inset(px));
+            }
+            if rest == "px" {
+                return Ok(StyleClass::Inset(1.0));
             }
             if let Ok(n) = rest.parse::<f32>() {
                 return Ok(StyleClass::Inset(n * 4.0));
             }
         }
 
+        // Plan 527 T3: basis-{N|N/M|auto|full|px} — flex-basis Fill-ratio/像素
+        // 近似,IR 保存,渲染层分期消费(同 inset 先例)。
+        if let Some(rest) = class.strip_prefix("basis-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::FlexBasis(size));
+        }
+
         // Parse position offsets: top-[Npx], -top-[Npx], bottom/right/left
+        // Plan 527 T3: 补 px 刻度(top-px = 1px);分数/auto/full 百分比语义
+        // 无容器查询,白名单受限。
         if let Some(rest) = class.strip_prefix("top-") {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::TopOffset(px));
+            }
+            if rest == "px" {
+                return Ok(StyleClass::TopOffset(1.0));
             }
             if let Ok(n) = rest.parse::<f32>() {
                 return Ok(StyleClass::TopOffset(n * 4.0));
@@ -1420,6 +1630,9 @@ impl StyleClass {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::BottomOffset(px));
             }
+            if rest == "px" {
+                return Ok(StyleClass::BottomOffset(1.0));
+            }
             if let Ok(n) = rest.parse::<f32>() {
                 return Ok(StyleClass::BottomOffset(n * 4.0));
             }
@@ -1427,6 +1640,9 @@ impl StyleClass {
         if let Some(rest) = class.strip_prefix("right-") {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::RightOffset(px));
+            }
+            if rest == "px" {
+                return Ok(StyleClass::RightOffset(1.0));
             }
             if let Ok(n) = rest.parse::<f32>() {
                 return Ok(StyleClass::RightOffset(n * 4.0));
@@ -1436,34 +1652,74 @@ impl StyleClass {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::LeftOffset(px));
             }
+            if rest == "px" {
+                return Ok(StyleClass::LeftOffset(1.0));
+            }
             if let Ok(n) = rest.parse::<f32>() {
                 return Ok(StyleClass::LeftOffset(n * 4.0));
             }
         }
 
         // Handle negative offsets: -top-[Npx], -bottom-[Npx], etc.
+        // Plan 527 T3: 补数值刻度(-top-4 → -16px),此前仅任意值形式。
         if class.starts_with("-top-") {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::TopOffset(-px));
+            }
+            if let Some(rest) = class.strip_prefix("-top-") {
+                if rest == "px" {
+                    return Ok(StyleClass::TopOffset(-1.0));
+                }
+                if let Ok(n) = rest.parse::<f32>() {
+                    return Ok(StyleClass::TopOffset(-n * 4.0));
+                }
             }
         }
         if class.starts_with("-bottom-") {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::BottomOffset(-px));
             }
+            if let Some(rest) = class.strip_prefix("-bottom-") {
+                if rest == "px" {
+                    return Ok(StyleClass::BottomOffset(-1.0));
+                }
+                if let Ok(n) = rest.parse::<f32>() {
+                    return Ok(StyleClass::BottomOffset(-n * 4.0));
+                }
+            }
         }
         if class.starts_with("-right-") {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::RightOffset(-px));
+            }
+            if let Some(rest) = class.strip_prefix("-right-") {
+                if rest == "px" {
+                    return Ok(StyleClass::RightOffset(-1.0));
+                }
+                if let Ok(n) = rest.parse::<f32>() {
+                    return Ok(StyleClass::RightOffset(-n * 4.0));
+                }
             }
         }
         if class.starts_with("-left-") {
             if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
                 return Ok(StyleClass::LeftOffset(-px));
             }
+            if let Some(rest) = class.strip_prefix("-left-") {
+                if rest == "px" {
+                    return Ok(StyleClass::LeftOffset(-1.0));
+                }
+                if let Ok(n) = rest.parse::<f32>() {
+                    return Ok(StyleClass::LeftOffset(-n * 4.0));
+                }
+            }
         }
 
-        // Parse z-index: z-{0-50}
+        // Parse z-index: z-{0-50} + z-auto(Plan 527 T3:z-auto ≈ 不设层序,
+        // 按 z-0 落 IR)
+        if class == "z-auto" {
+            return Ok(StyleClass::ZIndex(0));
+        }
         if let Some(rest) = class.strip_prefix("z-") {
             // Handle z-{0}, z-10, z-20, z-50, etc.
             let value: i16 = rest.parse()
@@ -1479,11 +1735,18 @@ impl StyleClass {
         // Parse overflow variants
         match class {
             "overflow-auto" => return Ok(StyleClass::OverflowAuto),
-            "overflow-hidden" => return Ok(StyleClass::OverflowHidden),
+            // Plan 527 T3: overflow-clip ≈ hidden(裁剪语义归并)
+            "overflow-hidden" | "overflow-clip" => return Ok(StyleClass::OverflowHidden),
             "overflow-visible" => return Ok(StyleClass::OverflowVisible),
             "overflow-scroll" => return Ok(StyleClass::OverflowScroll),
             "overflow-x-auto" => return Ok(StyleClass::OverflowXAuto),
+            "overflow-x-hidden" | "overflow-x-clip" => return Ok(StyleClass::OverflowXHidden),
+            "overflow-x-visible" => return Ok(StyleClass::OverflowXVisible),
+            "overflow-x-scroll" => return Ok(StyleClass::OverflowXScroll),
             "overflow-y-auto" => return Ok(StyleClass::OverflowYAuto),
+            "overflow-y-hidden" | "overflow-y-clip" => return Ok(StyleClass::OverflowYHidden),
+            "overflow-y-visible" => return Ok(StyleClass::OverflowYVisible),
+            "overflow-y-scroll" => return Ok(StyleClass::OverflowYScroll),
             _ => {}
         }
 
@@ -1537,14 +1800,25 @@ impl StyleClass {
             return Ok(StyleClass::RowSpan(value));
         }
 
-        // Parse col-start-{1-7}
+        // Parse col-start-{1-13}
+        // Plan 527 T3: 扩档 8..13(与 col-span 对齐;存字段,渲染降级同 1..7)。
         if let Some(rest) = class.strip_prefix("col-start-") {
             let value: u8 = rest.parse()
                 .map_err(|_| format!("Invalid col-start value: {}", rest))?;
-            if value < 1 || value > 7 {
-                return Err(format!("Column start must be 1-7, got: {}", value));
+            if value < 1 || value > 13 {
+                return Err(format!("Column start must be 1-13, got: {}", value));
             }
             return Ok(StyleClass::ColStart(value));
+        }
+
+        // Plan 527 T3: col-end-{1-13}(存字段,渲染降级)
+        if let Some(rest) = class.strip_prefix("col-end-") {
+            let value: u8 = rest.parse()
+                .map_err(|_| format!("Invalid col-end value: {}", rest))?;
+            if value < 1 || value > 13 {
+                return Err(format!("Column end must be 1-13, got: {}", value));
+            }
+            return Ok(StyleClass::ColEnd(value));
         }
 
         // Parse row-start-{1-7}
@@ -1555,6 +1829,16 @@ impl StyleClass {
                 return Err(format!("Row start must be 1-7, got: {}", value));
             }
             return Ok(StyleClass::RowStart(value));
+        }
+
+        // Plan 527 T3: row-end-{1-7}(存字段,渲染降级)
+        if let Some(rest) = class.strip_prefix("row-end-") {
+            let value: u8 = rest.parse()
+                .map_err(|_| format!("Invalid row-end value: {}", rest))?;
+            if value < 1 || value > 7 {
+                return Err(format!("Row end must be 1-7, got: {}", value));
+            }
+            return Ok(StyleClass::RowEnd(value));
         }
 
         Err(format!("Unknown style class: {}", class))
@@ -1617,6 +1901,8 @@ fn parse_color_with_alpha(color_name: &str, arbitrary: Option<&str>) -> Result<C
 fn parse_size_value(input: &str) -> Result<SizeValue, String> {
     match input {
         "full" | "screen" => Ok(SizeValue::Full),
+        // Plan 527 T3: 视口单位(svh/lvh/dvh)≈ screen/Full(桌面窗口即视口)
+        "svh" | "lvh" | "dvh" => Ok(SizeValue::Full),
         "auto" => Ok(SizeValue::Auto),
         // Tailwind *-px = 1px(2026-08-22:w-px/h-px 此前静默丢弃 —— sep 的
         // w-px 宽度丢失、041 横向发丝线 h-px 高度丢失,均源于此)。
@@ -1627,6 +1913,15 @@ fn parse_size_value(input: &str) -> Result<SizeValue, String> {
         "1/4" => Ok(SizeValue::Quarter),
         "3/4" => Ok(SizeValue::ThreeQuarters),
         _ => {
+            // Plan 527 T3: 通用分数 N/M(w-2/5、w-7/12 …)——Fill-ratio 近似,
+            // 口径见 SizeValue::Fraction 文档注释。
+            if let Some((num, den)) = input.split_once('/') {
+                if let (Ok(n), Ok(m)) = (num.parse::<u16>(), den.parse::<u16>()) {
+                    if n > 0 && m > 0 {
+                        return Ok(SizeValue::Fraction(n, m));
+                    }
+                }
+            }
             // Try to parse as a number
             if let Ok(value) = input.parse::<u16>() {
                 return Ok(SizeValue::Fixed(value));
@@ -1702,6 +1997,8 @@ fn parse_pixel_arbitrary(arbitrary: Option<&str>) -> Option<f32> {
 /// Tailwind: none=0, xs=320, sm=384, md=448, lg=512, xl=576, 2xl=672, 3xl=768, 4xl=896, full=∞
 /// Numeric values (e.g. max-w-96) use Tailwind spacing units (N * 4px).
 /// Parse max-width/height with optional arbitrary value support (e.g. [550px]).
+/// Plan 527 T3: none/full → INFINITY(无约束);min/max/fit/prose 无内容尺寸
+/// 查询返回 None(白名单受限);数值刻度放宽到 f32(0.5/1.5/2.5/3.5)。
 fn parse_max_size_value_arbitrary(input: &str, arbitrary: Option<&str>) -> Option<f32> {
     // Try arbitrary pixel value first: [550px], [300]
     if let Some(av) = arbitrary {
@@ -1715,7 +2012,8 @@ fn parse_max_size_value_arbitrary(input: &str, arbitrary: Option<&str>) -> Optio
         }
     }
     match input {
-        "none" | "0" | "" if arbitrary.is_some() => None, // No constraint
+        "none" | "full" => Some(f32::INFINITY), // 无 max 约束
+        "px" => Some(1.0),
         "xs" => Some(320.0),
         "sm" => Some(384.0),
         "md" => Some(448.0),
@@ -1727,15 +2025,16 @@ fn parse_max_size_value_arbitrary(input: &str, arbitrary: Option<&str>) -> Optio
         "5xl" => Some(1024.0),
         "6xl" => Some(1152.0),
         "7xl" => Some(1280.0),
-        "full" => None, // No max constraint (fills parent)
         "screen-sm" => Some(640.0),
         "screen-md" => Some(768.0),
         "screen-lg" => Some(1024.0),
         "screen-xl" => Some(1280.0),
         "screen-2xl" => Some(1536.0),
+        // min/max/fit/prose:无内容尺寸/ch 单位宿主,None → 未知类(白名单)
+        "min" | "max" | "fit" | "prose" => None,
         _ => {
-            // Numeric: max-w-96 → 96 * 4 = 384px
-            input.parse::<u16>().ok().map(|n| n as f32 * 4.0)
+            // Numeric: max-w-96 → 96 * 4 = 384px;0.5 步进分数刻度同理
+            input.parse::<f32>().ok().map(|n| n * 4.0)
         }
     }
 }
@@ -2148,6 +2447,121 @@ mod tests {
         assert_eq!(StyleClass::parse_single("order-2"), Ok(StyleClass::Order(2)));
         // 响应式前缀剥离对新类同样生效
         assert_eq!(StyleClass::parse_single("md:grid-cols-2"), Ok(StyleClass::GridCols(2)));
+    }
+
+    // Plan 527 T3:布局家族补全 —— z-auto/overflow 轴向量/clip 归并/px 与负数
+    // 值刻度/通用分数/vh 单位/basis/grid 扩档/max-w 扩展/min-h 收紧。
+    #[test]
+    fn test_parse_plan527_t3_layout_extensions() {
+        // z-auto ≈ 不设层序,按 z-0 落 IR
+        assert_eq!(StyleClass::parse_single("z-auto"), Ok(StyleClass::ZIndex(0)));
+        // overflow 轴向量全档 + clip 归并 Hidden
+        assert_eq!(StyleClass::parse_single("overflow-x-hidden"), Ok(StyleClass::OverflowXHidden));
+        assert_eq!(StyleClass::parse_single("overflow-x-clip"), Ok(StyleClass::OverflowXHidden));
+        assert_eq!(StyleClass::parse_single("overflow-x-visible"), Ok(StyleClass::OverflowXVisible));
+        assert_eq!(StyleClass::parse_single("overflow-x-scroll"), Ok(StyleClass::OverflowXScroll));
+        assert_eq!(StyleClass::parse_single("overflow-y-hidden"), Ok(StyleClass::OverflowYHidden));
+        assert_eq!(StyleClass::parse_single("overflow-y-scroll"), Ok(StyleClass::OverflowYScroll));
+        assert_eq!(StyleClass::parse_single("overflow-clip"), Ok(StyleClass::OverflowHidden));
+        // inset/offsets:px 刻度 + 负数值刻度
+        assert_eq!(StyleClass::parse_single("inset-px"), Ok(StyleClass::Inset(1.0)));
+        assert_eq!(StyleClass::parse_single("top-px"), Ok(StyleClass::TopOffset(1.0)));
+        assert_eq!(StyleClass::parse_single("left-px"), Ok(StyleClass::LeftOffset(1.0)));
+        assert_eq!(StyleClass::parse_single("-top-4"), Ok(StyleClass::TopOffset(-16.0)));
+        assert_eq!(StyleClass::parse_single("-bottom-2.5"), Ok(StyleClass::BottomOffset(-10.0)));
+        // 通用分数 → Fill-ratio(Fraction),此前仅 6 个命名分数
+        assert_eq!(StyleClass::parse_single("w-7/12"), Ok(StyleClass::Width(SizeValue::Fraction(7, 12))));
+        assert_eq!(StyleClass::parse_single("w-2/5"), Ok(StyleClass::Width(SizeValue::Fraction(2, 5))));
+        assert_eq!(StyleClass::parse_single("w-2/4"), Ok(StyleClass::Width(SizeValue::Fraction(2, 4))));
+        // vh 视口单位 ≈ screen/Full
+        assert_eq!(StyleClass::parse_single("h-svh"), Ok(StyleClass::Height(SizeValue::Full)));
+        assert_eq!(StyleClass::parse_single("h-dvh"), Ok(StyleClass::Height(SizeValue::Full)));
+        // basis 全档
+        assert_eq!(StyleClass::parse_single("basis-4"), Ok(StyleClass::FlexBasis(SizeValue::Fixed(4))));
+        assert_eq!(StyleClass::parse_single("basis-1/2"), Ok(StyleClass::FlexBasis(SizeValue::Half)));
+        assert_eq!(StyleClass::parse_single("basis-auto"), Ok(StyleClass::FlexBasis(SizeValue::Auto)));
+        // max-w:none/full → INFINITY;分数刻度;min/max/fit 收紧为 Err
+        assert!(matches!(StyleClass::parse_single("max-w-none"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY));
+        assert!(matches!(StyleClass::parse_single("max-w-full"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY));
+        assert_eq!(StyleClass::parse_single("max-w-0.5"), Ok(StyleClass::MaxWidth(2.0)));
+        assert_eq!(StyleClass::parse_single("max-h-px"), Ok(StyleClass::MaxHeight(1.0)));
+        assert!(StyleClass::parse_single("max-w-fit").is_err());
+        // grid 扩档:col-start 8..13 / col-end / row-end
+        assert_eq!(StyleClass::parse_single("col-start-13"), Ok(StyleClass::ColStart(13)));
+        assert_eq!(StyleClass::parse_single("col-end-4"), Ok(StyleClass::ColEnd(4)));
+        assert_eq!(StyleClass::parse_single("row-end-6"), Ok(StyleClass::RowEnd(6)));
+        assert!(StyleClass::parse_single("col-start-14").is_err());
+        // min-h/min-w 收紧:未知命名值不再误落 0.0(此前 min-h-svh→0.0)
+        assert!(StyleClass::parse_single("min-h-fit").is_err());
+        assert!(StyleClass::parse_single("min-w-full").is_err());
+        assert_eq!(StyleClass::parse_single("min-h-svh"), Ok(StyleClass::MinHeight(f32::MAX)));
+        assert_eq!(StyleClass::parse_single("min-w-px"), Ok(StyleClass::MinWidth(1.0)));
+    }
+
+    // Plan 527 T4:视觉家族补全 —— ring/object-fit/渐变 via+stop 位/彩色阴影/
+    // 缺失色板(lime/violet/fuchsia/stone)+ 950 档。
+    #[test]
+    fn test_parse_plan527_t4_visual_extensions() {
+        // ring 宽度/颜色/inset
+        assert_eq!(StyleClass::parse_single("ring"), Ok(StyleClass::RingWidth(3.0)));
+        assert_eq!(StyleClass::parse_single("ring-2"), Ok(StyleClass::RingWidth(2.0)));
+        assert_eq!(StyleClass::parse_single("ring-inset"), Ok(StyleClass::RingInset));
+        assert!(matches!(StyleClass::parse_single("ring-red-500"), Ok(StyleClass::RingColor(_))));
+        // object-fit
+        assert_eq!(StyleClass::parse_single("object-cover"), Ok(StyleClass::ObjectFit(ObjectFit::Cover)));
+        assert_eq!(StyleClass::parse_single("object-contain"), Ok(StyleClass::ObjectFit(ObjectFit::Contain)));
+        assert_eq!(StyleClass::parse_single("object-fill"), Ok(StyleClass::ObjectFit(ObjectFit::Fill)));
+        assert_eq!(StyleClass::parse_single("object-none"), Ok(StyleClass::ObjectFit(ObjectFit::None)));
+        assert_eq!(StyleClass::parse_single("object-scale-down"), Ok(StyleClass::ObjectFit(ObjectFit::ScaleDown)));
+        // 渐变 via + stop 百分比位(from-100 此前被 3 位 hex 展开误吞 #110000)
+        assert!(matches!(StyleClass::parse_single("via-sky-300"), Ok(StyleClass::GradientVia(_))));
+        assert_eq!(StyleClass::parse_single("from-100"), Ok(StyleClass::GradientFromStop(100)));
+        assert_eq!(StyleClass::parse_single("via-50"), Ok(StyleClass::GradientViaStop(50)));
+        assert_eq!(StyleClass::parse_single("to-0"), Ok(StyleClass::GradientToStop(0)));
+        assert!(matches!(StyleClass::parse_single("from-red-500"), Ok(StyleClass::GradientFrom(_))));
+        // 彩色阴影
+        assert!(matches!(StyleClass::parse_single("shadow-red-500"), Ok(StyleClass::ShadowColor(_))));
+        // 缺失色板补全(lime/violet/fuchsia/stone)
+        assert!(matches!(StyleClass::parse_single("bg-lime-500"), Ok(StyleClass::BackgroundColor(Color::Lime(500)))));
+        assert!(matches!(StyleClass::parse_single("text-violet-300"), Ok(StyleClass::TextColor(Color::Violet(300)))));
+        assert!(matches!(StyleClass::parse_single("border-fuchsia-200"), Ok(StyleClass::BorderColor(Color::Fuchsia(200)))));
+        assert!(matches!(StyleClass::parse_single("accent-stone-600"), Ok(StyleClass::AccentColor(Color::Stone(600)))));
+        // 950 档(此前 18 家族缺行,回退灰)
+        assert_eq!(
+            Color::from_tailwind("slate-950").unwrap().to_rgb8(),
+            (2, 6, 23),
+            "slate-950 应取真值 #020617,非灰度兜底"
+        );
+        assert_eq!(Color::from_tailwind("lime-500").unwrap().to_rgb8(), (132, 204, 22));
+        assert_eq!(Color::from_tailwind("stone-950").unwrap().to_rgb8(), (12, 10, 9));
+    }
+
+    // Plan 527 T5:文本家族补全 —— tracking/leading 全档/line-clamp/全字重拆分/
+    // truncate 长形式/start-end 对齐。
+    #[test]
+    fn test_parse_plan527_t5_text_extensions() {
+        // tracking 全档(em)
+        assert_eq!(StyleClass::parse_single("tracking-tighter"), Ok(StyleClass::Tracking(-0.05)));
+        assert_eq!(StyleClass::parse_single("tracking-normal"), Ok(StyleClass::Tracking(0.0)));
+        assert_eq!(StyleClass::parse_single("tracking-widest"), Ok(StyleClass::Tracking(0.1)));
+        // leading 命名(相对)+ 数值(绝对 px)
+        assert_eq!(StyleClass::parse_single("leading-tight"), Ok(StyleClass::LineHeight(1.25)));
+        assert_eq!(StyleClass::parse_single("leading-loose"), Ok(StyleClass::LineHeight(2.0)));
+        assert_eq!(StyleClass::parse_single("leading-3"), Ok(StyleClass::LineHeightPx(12.0)));
+        assert_eq!(StyleClass::parse_single("leading-10"), Ok(StyleClass::LineHeightPx(40.0)));
+        // line-clamp
+        assert_eq!(StyleClass::parse_single("line-clamp-2"), Ok(StyleClass::LineClamp(2)));
+        assert_eq!(StyleClass::parse_single("line-clamp-none"), Ok(StyleClass::LineClampNone));
+        assert!(StyleClass::parse_single("line-clamp-9").is_err(), "超档不收");
+        // 全字重拆分(此前 black/extrabold→FontBold,thin→ExtraLight)
+        assert_eq!(StyleClass::parse_single("font-thin"), Ok(StyleClass::FontThin));
+        assert_eq!(StyleClass::parse_single("font-extrabold"), Ok(StyleClass::FontExtraBold));
+        assert_eq!(StyleClass::parse_single("font-black"), Ok(StyleClass::FontBlack));
+        // truncate 长形式 + start/end(LTR)
+        assert_eq!(StyleClass::parse_single("text-ellipsis"), Ok(StyleClass::Truncate));
+        assert_eq!(StyleClass::parse_single("text-clip"), Ok(StyleClass::Truncate));
+        assert_eq!(StyleClass::parse_single("text-start"), Ok(StyleClass::TextLeft));
+        assert_eq!(StyleClass::parse_single("text-end"), Ok(StyleClass::TextRight));
     }
 
 }

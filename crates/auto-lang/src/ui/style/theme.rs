@@ -146,6 +146,28 @@ pub fn accent_primary_rgb(name: &str, dark: bool) -> Option<(u8, u8, u8)> {
     Some(hsl_to_rgb(h, s, l))
 }
 
+// Plan 527 T5: font-sans/serif/mono 字体栈契约 —— Tailwind fontFamily 默认栈的
+// 跨平台族名表。iced 端按 generic Family(SansSerif/Serif/Monospace) 交给
+// cosmic-text 平台解析,此表是「栈语义」的成文契约与未来自定义字体回退链
+// (fontFamily.config) 的锚点;docs/style-coverage.md 文本族行引用。
+pub fn font_stack(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "sans" => &[
+            "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto",
+            "Helvetica Neue", "Arial", "Noto Sans", "sans-serif",
+        ],
+        "serif" => &[
+            "ui-serif", "Georgia", "Cambria", "Times New Roman", "Times",
+            "Noto Serif", "serif",
+        ],
+        "mono" => &[
+            "ui-monospace", "SFMono-Regular", "Cascadia Mono", "Consolas",
+            "Menlo", "Monaco", "DejaVu Sans Mono", "monospace",
+        ],
+        _ => &[],
+    }
+}
+
 /// Resolve a semantic color to RGB, considering dark mode and accent.
 pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
     let is_dark = DARK_MODE.with(|d| d.get());
@@ -275,5 +297,22 @@ mod tests {
             assert_eq!(resolve_border_rgb(), rgb(Color::Border));
         }
         set_dark_mode(true); // 还原默认
+    }
+
+    /// Plan 527 T5: 字体栈契约 —— 三栈齐备且平台主流族名在册。
+    #[test]
+    fn font_stacks_cover_three_families() {
+        for kind in ["sans", "serif", "mono"] {
+            let stack = font_stack(kind);
+            assert!(!stack.is_empty(), "{kind} 栈非空");
+            assert!(
+                stack.iter().any(|f| f.to_ascii_lowercase().contains(kind))
+                    || stack.contains(&"Segoe UI")
+                    || stack.contains(&"Georgia")
+                    || stack.contains(&"Consolas"),
+                "{kind} 栈应含 generic 兜底或平台主流族名"
+            );
+        }
+        assert!(font_stack("unknown").is_empty(), "未知族返回空栈");
     }
 }

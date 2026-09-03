@@ -334,7 +334,10 @@ where
             },
         ),
 
-        View::Scrollable { .. } => (VNodeKind::Scrollable, VNodeProps::Scrollable),
+        View::Scrollable { offset, .. } => (
+            VNodeKind::Scrollable,
+            VNodeProps::Scrollable { offset_y: offset.map(|(_, y)| y) },
+        ),
 
         View::List { spacing, .. } => (
             VNodeKind::List,
@@ -920,6 +923,8 @@ mod tests {
             height: None,
             auto_scroll: false,
             style: None,
+            offset: None,
+            on_scroll: None,
         };
 
         let tree = view_to_vtree(view);

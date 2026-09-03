@@ -142,7 +142,8 @@ mod plan449_style_migration_probe {
         ("resize-y", "gap", "textarea resize 无臂"),
         ("appearance-none", "gap", "无臂"),
         ("italic", "gap", "无臂"),
-        ("tracking-wide", "gap", "letter-spacing 无臂"),
+        // Plan 527 T5:tracking 全档补臂(gap → ok,支持度列同步)
+        ("tracking-wide", "ok", "Plan 527 T5 tracking 全档(iced 无 letter_spacing,渲染分期)"),
     ];
 
     #[test]
@@ -250,6 +251,8 @@ mod plan449_style_parity_dump {
             SizeValue::Auto => "auto".into(),
             SizeValue::Fixed(u) => format!("{}px", u * 4),
             SizeValue::Pixels(p) => format!("{}px", trim_f32(*p)),
+            // Plan 527 T3: 通用分数按百分比分(Fill-ratio 近似)
+            SizeValue::Fraction(n, m) => format!("{}%", n * 100 / m),
         }
     }
 
