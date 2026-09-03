@@ -4,7 +4,7 @@ status: execution_done
 feature_name: widgets-gallery 检查问题跟踪与修复
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03T11:30:00+08:00
-updated_at: 2026-09-03T13:45:00+08:00
+updated_at: 2026-09-03T14:50:00+08:00
 
 # Leave these EMPTY here — /auto-plan:review fills them:
 supersedes_spec_components: []
@@ -322,6 +322,38 @@ single 单选互斥)+ f-string "Selected: ${.alignment}" 实时回显。
 (w8_joined.png),点 Right→激活高亮+"Selected: right"联动
 (w8_single_right.png),零 console error。
 
+### W9 VM popover 面板裸透明+全宽（已完成 2026-09-03）
+
+用户观察:VM 版点击按钮弹框出现,但无边框无背景(且全宽拉满)。
+
+根因:VM 端面板 chrome 设计上来自 `popover` 标签的 class(Plan 422
+"content 元素自带 visual wrap"),而 shadcn 语义是 PopoverContent **组件
+自带** chrome(bg-popover border rounded-md shadow-md p-4 w-72)——页面
+popover 未写 class,Vue 端靠组件自带 chrome 正常,VM 端面板裸透明;
+且 overlay content 列无宽度约束,被 viewport 上限拉满整窗。
+
+修复(crates/aura_view_builder.rs convert_popover):class 缺省时给
+shadcn PopoverContent 同款默认面板 chrome
+`w-72 bg-popover border border-border rounded-md shadow-md p-4`
+(显式 class 整体覆盖,坐标锚 contextmenu 形态同样受益)。VM Style 对
+未知 token 容错(filter),border-border 若不可解析仅该条丢弃。
+
+门禁:cargo check 零新错误;cargo t -p auto-lang iced 160/160 绿;
+重建 CLI。验证(VM 实机,MCP 驱动):导航 /popover → 按 Open Popover →
+面板 w-72 锚定按钮下方,背景/边框/圆角/内边距齐全,不再全宽
+(src/front/tests/screenshots/w9b.png;截图目录不入库)。
+
+W9 追加打磨(用户反馈:贴按钮太近/对齐方式/防撞边界):
+- DEFAULT_GAP 0→4px(对齐 shadcn/radix sideOffset=4,0 缝时边框粘连);
+- shadcn 嵌套形态缺省对齐 BottomStart→Bottom(锚中,shadcn popper
+  align=center 默认);坐标锚(contextmenu)保持 BottomStart,menubar 用
+  自带显式 BottomStart 不受影响;显式 placement 恒优先;
+- 越界翻转(垂直):下方放不下且上方放得下→翻到锚上方,反之亦然;
+  剩余越界由既有 snap_within_viewport 钳制兜底(默认开启)。
+  复验截图 w9c.png:居中+4px 间隙。
+
+附带:VM 模式本次未复现 OBS-1 启动崩溃(721GB alloc),疑似页面相关。
+
 ### W2+ （待问题清单追加）
 
 （占位：每追加一问题，在此按 T 粒度展开，并同步 total_steps/current_step。）
@@ -352,7 +384,7 @@ single 单选互斥)+ f-string "Selected: ${.alignment}" 实时回显。
 | W6 | （W5 全站扫描发现）kitchen-sink、navitem 页 500：npm_deps 不生效 / model 逗号解析缺陷 / 裸词 src 静态 import / 桌面专属 widget 误入 web 画廊 | ZCode（扫描） | ✅ 已修复并验证（本文档 W6） |
 | W7 | togglegroup 页纵向裸排 B/I/U,应为 shadcn 横向三连按钮(outline/aria-label/单选多选 UX) | 用户（人工检查+截图对照 shadcn 原型） | ✅ 已修复并验证（本文档 W7） |
 | W8 | 三连按钮未合体（旧脚手架 gap-1 分离观感）;需补单选示例 | 用户（人工检查+截图） | ✅ 已修复并验证（本文档 W8;示例层 class 注入连体） |
-| W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | 🔄 执行中 |
+| W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | ✅ 已修复并验证（本文档 W9;默认面板 chrome w-72 bg-popover border rounded-md shadow-md p-4） |
 
 ### 观察（OBS，未定是否立项）
 

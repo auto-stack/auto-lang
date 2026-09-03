@@ -5157,8 +5157,12 @@ let tabs_inner = View::Row {
             }
         };
         let (px, py) = (coord("x"), coord("y"));
-        let placement = self
-            .extract_string_with(props, "placement", bindings)
+        // PLAN-528 W9:缺省对齐——shadcn popper 默认 align=center,故 shadcn
+        // 嵌套形态(无坐标锚)缺省 Bottom(锚中);坐标锚(contextmenu)保持
+        // BottomStart(菜单右下展开约定)。显式 placement 恒优先。
+        let placement_prop = self.extract_string_with(props, "placement", bindings);
+        let placement = placement_prop
+            .as_deref()
             .and_then(|s| match s.to_ascii_lowercase().as_str() {
                 "bottom" => Some(PopoverPlacement::Bottom),
                 "bottom-start" | "bottomstart" => Some(PopoverPlacement::BottomStart),
@@ -5170,9 +5174,20 @@ let tabs_inner = View::Row {
                 "right" => Some(PopoverPlacement::Right),
                 _ => None,
             })
-            .unwrap_or(PopoverPlacement::BottomStart);
+            .unwrap_or(if px.is_some() && py.is_some() {
+                PopoverPlacement::BottomStart
+            } else {
+                PopoverPlacement::Bottom
+            });
         // 面板 chrome:popover 标签的 class 落在 content 列上(visual wrap 绘制)。
-        let panel_style = self.extract_style_with(props, bindings);
+        // PLAN-528 W9:class 缺省时给 shadcn PopoverContent 同款默认面板
+        // chrome(bg-popover + border + rounded-md + shadow-md + p-4)——vue 端
+        // PopoverContent 组件自带 chrome,VM 端面板否则裸透明。
+        let panel_style = self.extract_style_with(props, bindings).or_else(|| {
+            // w-72 与 shadcn PopoverContent 一致(shadcn 原版即 w-72 固定宽);
+            // 缺宽则面板列被 overlay 的 viewport 上限拉满整窗。
+            Style::parse("w-72 bg-popover border border-border rounded-md shadow-md p-4").ok()
+        });
 
         // shadcn 嵌套形态分区:popover-trigger / popover-content 子标签拆解。
         let mut trigger_node: Option<&AuraNode> = None;

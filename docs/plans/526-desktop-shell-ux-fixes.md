@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
 current_step: 21
-total_steps: 22
+total_steps: 27
 ---
 
 # [PLAN-526] 桌面壳 UX 十题修复：窗口三键/resize/焦点环/fit、任务栏样式统一、右键菜单、壁纸选择、launcher 焦点、关机确认
@@ -486,6 +486,49 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       （以回溯栈定位为准）。
       验证：复现路径回归测试绿 + 实机极端拖拽（边缘拖过对侧、缩到
       最小再拖出屏）不再 panic。
+
+### 波9 追加反馈五（用户六轮实机反馈，2026-09-03 五题）
+
+- [ ] T23 窗口客户区 hover 事件透穿：app 窗口底色半透明（518 G6 档位，
+      纯视觉）但鼠标 hover 事件穿透到下层——拖动窗口经过桌面 icon 或
+      背后 app 的 button 时被判定 hover，光标变 Pointer。根因候选——
+      Stack 空层事件穿透语义下，客户区包裹 mouse_area 只捕获 press，
+      CursorMoved 与 mouse_interaction 查询落到下层（下层 button 返回
+      Pointer 并套用 hover 样式）。修：客户区包裹对窗口 bounds 内的
+      hover/interaction 收口（mouse_area `.interaction(Arrow)` 挡光标
+      查询 + hover 事件捕获路径），遮挡语义与视觉半透明解耦。
+      文件：`crates/auto-lang/src/ui/iced/virtual_window.rs`（必要时
+      pointer_area/renderer MouseArea 臂）。
+      验证：实机拖动窗口扫过桌面 icon 与下层按钮，光标恒 Arrow、下层
+      无 hover 提亮；客户区内交互不受影响。
+
+- [ ] T24 最大化高度多算 1–2px：底部边界被任务栏盖住。根因候选——
+      `toggle_maximize_win` 的 `usable_rect`（ReservedEdges::taskbar）
+      与任务栏实际占高/顶缘阴影差 1–2px。修：maximize 高度扣掉任务栏
+      实际上缘重叠量（或 taskbar 预留值对齐实测）。
+      文件：`crates/auto-lang/src/ui/session.rs`、`ui/layout.rs`。
+      验证：实机最大化后窗口底缘完整可见（与任务栏间无遮挡）。
+
+- [ ] T25 焦点环圆角 vs 窗体内容方角外凸：焦点环 16px 圆角，但 app
+      自绘背景方角，底部两角内容凸出环外。修（优先级序）——①客户区
+      容器按窗体圆角裁剪（若 iced 0.14 clip 支持圆角路径）；②不可行
+      则焦点环与窗体描边改方角（用户认可降级）。
+      文件：`crates/auto-lang/src/ui/iced/virtual_window.rs`。
+      验证：实机聚焦 app 窗口，底部两角无内容外凸（或环为方角）。
+
+- [ ] T26 桌面 icon 双击打开不生效：桌面 icon 无双击语义。修——
+      renderer MouseArea 臂/builder 事件表补 on_double_click 映射 +
+      desktop.at icon 声明双击打开对应 app（单击行为保持）。
+      文件：`crates/auto-lang/src/ui/iced/renderer.rs`（MouseArea 臂/
+      builder 事件表）、`crates/auto-lang/assets/desktop.at`。
+      验证：实机双击桌面 icon 打开对应 app；单击/右键行为不回归。
+
+- [ ] T27 任务栏 icon 右键 ContextMenu 宽度爆表：菜单横向沾满整个
+      桌面宽度（应为目标内容宽度 hug）。根因候选——popover/菜单根
+      容器 width Fill（shell.at 菜单根或 popover 表面默认撑满）。
+      修：菜单根宽度 hug（w-auto 语义），最大宽上限可选。
+      文件：`crates/auto-lang/assets/shell.at`（或 popover.rs 表面）。
+      验证：实机任务栏 icon 右键，菜单宽度=内容宽，锚定在 icon 上方。
 
 - [✅ 已完成] T22 标题栏三键命中盒正方形化（用户五轮实机截图反馈，
       2026-09-03）：症状——`– ▢ ×` 命中盒 30×24 长方形，横向视觉松散。
