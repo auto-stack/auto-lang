@@ -1532,6 +1532,7 @@ impl<'a> AuraViewBuilder<'a> {
                         &content,
                         is_final,
                         details_onclick.as_deref(),
+                        None,
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
@@ -2655,6 +2656,7 @@ impl<'a> AuraViewBuilder<'a> {
                         &content,
                         is_final,
                         details_onclick.as_deref(),
+                        None,
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式

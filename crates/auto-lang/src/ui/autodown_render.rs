@@ -25,27 +25,69 @@ use autodown_core::block_model::{
 
 /// Parse `src` and render the document body as a column of block views.
 pub fn render_document<M: Clone + std::fmt::Debug>(src: &str, is_final: bool) -> View<M> {
-    render_document_with(src, is_final, None)
+    render_document_with(src, is_final, None, None)
 }
 
 /// PLAN-043 T2：带 Details onclick 注入的渲染入口——`details_onclick` 收
 /// 块结构键（[`block_key`] 内容哈希），返回值挂到 summary 行 onclick。
 /// None = 既有行为（全部 onclick: None）。键为内容派生：流式复用路径
 /// （按同键命中才复用）与全量重建天然同键，无错位。
+///
+/// PLAN-044 T3：`placeholder` = (块索引, 高度 px)——命中块前置 ghost 灰盒
+/// （[`wrap_with_ghost`]，vue placeholderBlockId/Height 同构消费面）。
 pub fn render_document_with<M: Clone + std::fmt::Debug>(
     src: &str,
     is_final: bool,
     details_onclick: Option<&(dyn Fn(u64) -> M)>,
+    placeholder: Option<(usize, f32)>,
 ) -> View<M> {
     let root = autodown_core::markdown_parser::parse_blocks(src, is_final);
-    let children: Vec<View<M>> =
-        root.children.iter().map(|b| render_block(b, is_final, details_onclick)).collect();
+    let children: Vec<View<M>> = root
+        .children
+        .iter()
+        .enumerate()
+        .map(|(i, b)| wrap_with_ghost(render_block(b, is_final, details_onclick), i, placeholder))
+        .collect();
     View::Column {
         children,
         spacing: 8,
         padding: 0,
         style: None,
         onclick: None,
+    }
+}
+
+/// PLAN-044 T3：ghost 占位盒包装——命中块（顶层索引口径，vue
+/// `block-${index}` data-block-id 同源）前置定高灰盒：外层
+/// `Column[ghost, block]` spacing=0，ghost = `View::Container{height,
+/// bg-muted rounded-lg w-full, child: Empty}`（插块内容之前，vue :302-314
+/// 同构；现成 View 变体，无新增）。
+fn wrap_with_ghost<M: Clone + std::fmt::Debug>(
+    block: View<M>,
+    index: usize,
+    placeholder: Option<(usize, f32)>,
+) -> View<M> {
+    match placeholder {
+        Some((id, h)) if id == index => View::Column {
+            children: vec![
+                View::Container {
+                    child: Box::new(View::Empty),
+                    padding: 0,
+                    width: None,
+                    height: Some(h.max(0.0) as u16),
+                    center_x: false,
+                    center_y: false,
+                    style: Style::parse("bg-muted rounded-lg w-full").ok(),
+                    onclick: None,
+                },
+                block,
+            ],
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None,
+        },
+        _ => block,
     }
 }
 
@@ -98,23 +140,28 @@ pub fn render_document_streamed<M: Clone + std::fmt::Debug>(
     src: &str,
     is_final: bool,
 ) -> View<M> {
-    render_document_streamed_with(cache, src, is_final, None)
+    render_document_streamed_with(cache, src, is_final, None, None)
 }
 
 /// PLAN-043 T2：流式增量渲染 + Details onclick 注入（同
 /// [`render_document_with`]；复用块沿缓存视图携带 onclick，键为内容派生
 /// 与缓存命中键一致，无错位）。
+///
+/// PLAN-044 T3：`placeholder` 同 [`render_document_with`]——ghost 是
+/// 包装层，缓存存裸块（复用键/代数不因包装抖动，每帧重建包装）。
 pub fn render_document_streamed_with<M: Clone + std::fmt::Debug>(
     cache: &mut StreamCache<M>,
     src: &str,
     is_final: bool,
     details_onclick: Option<&(dyn Fn(u64) -> M)>,
+    placeholder: Option<(usize, f32)>,
 ) -> View<M> {
     let root = autodown_core::markdown_parser::parse_blocks(src, is_final);
     let final_flip = cache.last_final != Some(is_final);
     cache.last_final = Some(is_final);
     let n = root.children.len();
     let mut children: Vec<View<M>> = Vec::with_capacity(n);
+    let mut raw_blocks: Vec<View<M>> = Vec::with_capacity(n);
     let mut keys: Vec<u64> = Vec::with_capacity(n);
     let mut gens: Vec<u32> = Vec::with_capacity(n);
     for (i, b) in root.children.iter().enumerate() {
@@ -123,18 +170,21 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug>(
         let reuse = !final_flip
             && !is_dangling_tail
             && cache.keys.get(i) == Some(&key);
-        if reuse {
-            children.push(cache.blocks[i].clone());
+        let raw = if reuse {
             gens.push(cache.gens[i]);
+            cache.blocks[i].clone()
         } else {
-            children.push(render_block(b, is_final, details_onclick));
             gens.push(cache.gens.get(i).copied().unwrap_or(0) + 1);
-        }
+            render_block(b, is_final, details_onclick)
+        };
+        // 缓存存裸块（ghost 每帧重建包装，不进缓存——复用判定只看内容键）。
+        raw_blocks.push(raw.clone());
+        children.push(wrap_with_ghost(raw, i, placeholder));
         keys.push(key);
     }
+    cache.blocks = raw_blocks;
     cache.keys = keys;
     cache.gens = gens;
-    cache.blocks = children.clone();
     View::Column {
         children,
         spacing: 8,
@@ -756,6 +806,60 @@ mod tests {
             }
             _ => panic!("span"),
         }
+    }
+
+    /// PLAN-044 T3：ghost 占位盒——placeholder (id, height) 命中块前置
+    /// 定高灰盒（Column[ghost, block] spacing=0 包裹，vue :302-314 同构：
+    /// 插块内容之前）；无 placeholder 无包裹；streamed 路径同构且缓存块
+    /// 不携 ghost（复用代数不因包装抖动）。
+    #[test]
+    fn renders_placeholder_ghost_box_plain_and_streamed() {
+        let src = "甲段。\n\n乙段。\n";
+        // 有 props：块 0 前置灰盒。
+        let doc = render_document_with::<()>(src, true, None, Some((0, 96.0)));
+        let View::Column { children, .. } = doc else { panic!("column") };
+        assert_eq!(children.len(), 2);
+        let View::Column { children: wrap, spacing, .. } = &children[0] else {
+            panic!("expected ghost wrap column at block 0")
+        };
+        assert_eq!(*spacing, 0);
+        assert_eq!(wrap.len(), 2);
+        match &wrap[0] {
+            View::Container { height, style, child, .. } => {
+                assert_eq!(*height, Some(96));
+                let expected = Style::parse("bg-muted rounded-lg w-full").unwrap();
+                assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+                assert!(matches!(child.as_ref(), View::Empty), "ghost box is empty child");
+            }
+            _ => panic!("expected ghost container"),
+        }
+        let View::Text { content, .. } = &wrap[1] else { panic!("block inside wrap") };
+        assert_eq!(content, "甲段。");
+        // 未命中块不包裹。
+        assert!(matches!(&children[1], View::Text { .. }), "block 1 unwrapped");
+
+        // 无 props：无任何包裹。
+        let plain = render_document_with::<()>(src, true, None, None);
+        let View::Column { children, .. } = plain else { panic!("column") };
+        assert!(
+            children.iter().all(|c| matches!(c, View::Text { .. })),
+            "no wrap without placeholder: {children:?}"
+        );
+
+        // streamed 路径同构（命中块 1）+ 缓存复用不因 ghost 包装抖动。
+        let mut cache = StreamCache::<()>::default();
+        let s1 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)));
+        let View::Column { children, .. } = s1 else { panic!("column") };
+        let View::Column { children: wrap, .. } = &children[1] else {
+            panic!("expected ghost wrap column at block 1 (streamed)")
+        };
+        match &wrap[0] {
+            View::Container { height: Some(h), .. } => assert_eq!(*h, 48),
+            _ => panic!("expected ghost container (streamed)"),
+        }
+        assert_eq!(cache.gens, vec![1, 1]);
+        let _s2 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)));
+        assert_eq!(cache.gens, vec![1, 1], "second frame reuses despite ghost wrap");
     }
 
     #[test]
