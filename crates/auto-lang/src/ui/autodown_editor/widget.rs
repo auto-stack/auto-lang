@@ -305,6 +305,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
             )
         };
 
+        // chrome 填充（PLAN-041 T3：fence header/边框/底色，家族单源）——
+        // 先于选区与文本绘制。
+        for (rect, color) in &list.fills {
+            fill_quad(renderer, to_rect(bounds, *rect), to_color(*color));
+        }
+
         for (rect, color) in &list.selection {
             fill_quad(renderer, to_rect(bounds, *rect), to_color(*color));
         }

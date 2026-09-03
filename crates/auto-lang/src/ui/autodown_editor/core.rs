@@ -27,21 +27,24 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use autodown_core::block_model::{
-    attrGetBool, attrGetInt, BlockNode, BlockType, InlineSpan, Mark,
+    attrGetBool, attrGetInt, attrGetStr, BlockNode, BlockType, InlineSpan, Mark,
 };
 use cosmic_text::{
     Action, Attrs, Buffer, Cursor, Edit, Family, FontSystem, Metrics, Motion, Selection,
     Shaping, SyntaxEditor, ViEditor, Wrap,
 };
 
+use crate::ui::autodown_blocks::{self, heading_size};
 use crate::ui::code_editor::core::{
     highlight as ce_highlight, EditorButton, EditorClipboard, EditorKey, EditorModifiers,
 };
 use crate::ui::code_editor::draw::{CaretDraw, PreeditDraw, Pt, Rect};
 use crate::ui::code_editor::theme::Rgba;
 
-/// 正文字号（逻辑 px）。标题字号对齐 VM 只读轨 tailwind 映射的量级。
-pub const BODY_SIZE: f32 = 16.0;
+/// 正文字号（逻辑 px）。PLAN-041 T3：字号表单源于块家族注册表
+/// （autodown_blocks）——两臂同源；fence 叶随之对齐家族 FENCE_SIZE（14，
+/// 与只读轨 text-sm 一致，编辑壳 16→14 的观感统一）。
+pub const BODY_SIZE: f32 = autodown_blocks::BODY_SIZE;
 const LINE_H_MULT: f32 = 1.45;
 /// 块间垂直间距（观感对齐只读轨 Column spacing=8 + 标题边距感）。
 pub const BLOCK_GAP: f32 = 10.0;
@@ -52,13 +55,15 @@ const CLICK_TIMING: Duration = Duration::from_millis(400);
 /// 链接色（v1 固定蓝；主题变量接线登记余量）。
 const LINK_COLOR: Rgba = Rgba { r: 0.30, g: 0.56, b: 1.0, a: 1.0 };
 
+fn rgb8(c: (u8, u8, u8)) -> Rgba {
+    Rgba { r: c.0 as f32 / 255.0, g: c.1 as f32 / 255.0, b: c.2 as f32 / 255.0, a: 1.0 }
+}
+
 fn kind_font_size(kind: LeafKind) -> f32 {
     match kind {
-        LeafKind::Heading(1) => 30.0,
-        LeafKind::Heading(2) => 24.0,
-        LeafKind::Heading(3) => 20.0,
-        LeafKind::Heading(4) => 18.0,
-        _ => BODY_SIZE,
+        LeafKind::Heading(l) => heading_size(l),
+        LeafKind::Fence => autodown_blocks::FENCE_SIZE,
+        LeafKind::Paragraph => autodown_blocks::BODY_SIZE,
     }
 }
 
@@ -151,9 +156,12 @@ enum Seg {
 }
 
 /// 叶子块缓冲：ViEditor + 解析快照（全块文本 + mark 区间）+ 种类。
+/// `syntax`：fence 语言 token（家族 header 标签与 T4 语法着色的数据源；
+/// 其余叶 None）。
 struct BlockBuf {
     editor: SendEditor,
     kind: LeafKind,
+    syntax: Option<String>,
     /// 解析期扁平文本；渲染期与实时 buffer 文本比对——相等才启用区间切片。
     snapshot: String,
     intervals: Vec<MarkInterval>,
@@ -180,16 +188,40 @@ fn mono_family() -> Family<'static> {
     Family::Monospace
 }
 
-fn new_leaf_buffer(font_system: &mut FontSystem, text: &str, mono: bool, size: f32) -> ViEditor<'static, 'static> {
+/// 只读 fence 视图实例的 key 前缀（PLAN-041 T4）：autodown_render 的 fence
+/// 臂为 view/stream 态生成共享 buffer 绘制实例——键含内容 hash（跨流式帧
+/// 稳定），实例**不路由键盘/不画 caret/不发射 chrome**（chrome 由只读臂
+/// View 树自家族装配；「view 模式关掉编辑功能」的 readonly 门控）。
+pub const VIEW_FENCE_PREFIX: &str = "view_fence_";
+
+fn new_leaf_buffer(
+    font_system: &mut FontSystem,
+    text: &str,
+    mono: bool,
+    size: f32,
+    lang: Option<&str>,
+) -> ViEditor<'static, 'static> {
     let attrs = Attrs::new().family(if mono { mono_family() } else { sans_family() });
     let mut buffer = Buffer::new(font_system, Metrics::new(size, size * LINE_H_MULT));
     buffer.set_text(font_system, text, &attrs, Shaping::Advanced, None);
     buffer.set_wrap(font_system, Wrap::Word);
     let arc = Arc::new(buffer);
     let system = ce_highlight::syntax_system();
-    // 无语言选择：不产生语法着色 span，颜色全部走区间叠加层。
-    let se = SyntaxEditor::new(arc, system, "base16-eighties.dark")
+    // PLAN-041 T4：fence 家族（带语言）走 hljs 主题——跨轨 token 映射表
+    // （autodown-core 单源）烘焙的 syntect 主题，观感与 vue lowlight 对齐；
+    // 无语言保持不染色（区间叠加层独走）。
+    let theme = match lang {
+        Some(_) => ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode()),
+        None => "base16-eighties.dark".to_string(),
+    };
+    let mut se = SyntaxEditor::new(arc, system, &theme)
         .expect("bootstrap syntax theme must exist");
+    if let Some(lang) = lang {
+        if let Some(ext) = ce_highlight::lang_to_extension(lang) {
+            se.syntax_by_extension(ext);
+        }
+        ce_highlight::warm_language(lang);
+    }
     let mut vi = ViEditor::new(se);
     vi.set_passthrough(true);
     vi
@@ -279,6 +311,9 @@ pub struct DocRun {
 /// 一帧文档绘制指令（后端中立；iced adapter 下沉为 quads/texts）。
 #[derive(Debug, Clone, Default)]
 pub struct DocDrawList {
+    /// chrome 填充（背景/边线；先于文本绘制）。PLAN-041 T3：编辑壳
+    /// fence chrome（header 栏/边框/底色）自家族单源发射。
+    pub fills: Vec<(Rect, Rgba)>,
     /// 焦点块外框（仅焦点存在时一项）。
     pub focus_frame: Option<(Rect, Rgba)>,
     /// 选区矩形。
@@ -361,6 +396,13 @@ impl AutodownEditorCore {
         &self.key
     }
 
+    /// PLAN-041 T4：是否只读视图实例（view_fence_* 键）。readonly 门控的
+    /// 单一事实源——输入不路由（不建 undo、无光标状态）、渲染不发射
+    /// chrome（只读臂 View 树自家族装配外壳）。
+    pub fn is_view_instance(&self) -> bool {
+        self.key.starts_with(&format!("__autodown_editor_{}", VIEW_FENCE_PREFIX))
+    }
+
     pub fn focused_block(&self) -> Option<usize> {
         *self.focus.lock().unwrap()
     }
@@ -410,8 +452,9 @@ impl AutodownEditorCore {
         build_walk(&root.children.iter().collect::<Vec<_>>(), &mut segs, &mut blocks, font_system);
         if segs.is_empty() {
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE)),
+                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None)),
                 kind: LeafKind::Paragraph,
+                syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
             });
@@ -460,6 +503,11 @@ impl AutodownEditorCore {
         input: DocInput,
         clipboard: &mut dyn EditorClipboard,
     ) -> DocOutput {
+        // PLAN-041 T4 readonly 门控：只读视图实例不路由任何输入——键盘/
+        // IME/鼠标全放行（不捕获、不建 undo、无光标状态；编辑机器零活动）。
+        if self.is_view_instance() {
+            return DocOutput::default();
+        }
         match input {
             DocInput::FocusGained => DocOutput { request_redraw: true, ..Default::default() },
             DocInput::FocusLost => {
@@ -871,6 +919,9 @@ impl AutodownEditorCore {
 
     /// 抽取一帧：全块纵向串联排版于 `viewport_w` 视口，返回绘制指令 +
     /// 内容总高；同时回写布局供命中测试。焦点块补光标/选区/框。
+    /// PLAN-041 T3：正文段抽取走共享纯函数 `buffer_block_runs`（与只读臂
+    /// fence 正文同一路径）；fence chrome（header/边框/底色/语言标签）自
+    /// 家族注册表发射。
     pub fn render_frame(&self, font_system: &mut FontSystem, viewport_w: f32, base: Rgba) -> DocFrame {
         let mut list = DocDrawList { revision: self.revision(), ..Default::default() };
         let mut layouts: Vec<BlockLayout> = Vec::new();
@@ -879,6 +930,7 @@ impl AutodownEditorCore {
         let sel_color = Rgba { r: 0.34, g: 0.51, b: 1.0, a: 0.35 };
         let frame_color = Rgba { r: 0.35, g: 0.55, b: 1.0, a: 0.55 };
 
+        let view_inst = self.is_view_instance();
         let mut blocks = self.blocks.lock().unwrap();
         let mut y = 0.0f32;
         for (bi, b) in blocks.iter_mut().enumerate() {
@@ -889,59 +941,86 @@ impl AutodownEditorCore {
                 let snapshot_eq = SendEdit::of(b).text() == b.snapshot;
                 snapshot_eq || b.snapshot.is_empty()
             };
+            let fam = autodown_blocks::family_of(match b.kind {
+                LeafKind::Heading(_) => BlockType::Heading,
+                LeafKind::Fence => BlockType::Fence,
+                LeafKind::Paragraph => BlockType::Paragraph,
+            });
+            // fenced = 文体形态（mono/语法着色，三态恒真）；
+            // fenced_chrome = 编辑态 chrome 发射（视图实例的外壳由只读臂
+            // View 树装配，不重复发射——readonly 门控的一半）。
+            let fenced = matches!(b.kind, LeafKind::Fence);
+            let fenced_chrome = fenced && !view_inst;
+            let pad = fam.chrome.pad;
+            let x_off = if fenced_chrome { pad } else { 0.0 };
+            let buf_w = if fenced_chrome {
+                (viewport_w.max(1.0) - 2.0 * pad).max(1.0)
+            } else {
+                viewport_w.max(1.0)
+            };
+            let text_y = y + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
             let ed = &mut b.editor.0;
 
             ed.with_buffer_mut(|buf| {
                 buf.set_metrics_and_size(
                     font_system,
                     Metrics::new(size, line_h),
-                    Some(viewport_w.max(1.0)),
+                    Some(buf_w),
                     Some(4000.0),
                 );
             });
             ed.shape_as_needed(font_system, true);
 
-            // 行前缀偏移表：区间是全块字节坐标，layout run 的 glyph 偏移是
-            // 行内坐标 —— 求交前先平移。cosmic 行文本不含行尾符，故 +1 为
-            // 换行宽（\n 单字节）。
-            let line_bases: Vec<usize> = {
-                let bases = ed.with_buffer(|buf| {
-                    let mut acc = 0usize;
-                    buf.lines
-                        .iter()
-                        .map(|l| {
-                            let base = acc;
-                            acc += l.text().len() + 1;
-                            base
-                        })
-                        .collect::<Vec<_>>()
+            // 共享绘制段：&Buffer → 样式化段（mark 区间 × 语法着色合并）。
+            let ctx = BlockDrawCtx {
+                marks: &b.intervals,
+                styled_ok,
+                mono_all,
+                syntax: fenced,
+                base,
+            };
+            let block_h =
+                ed.with_buffer(|buf| buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs));
+
+            let total_h = if fenced_chrome {
+                let h_h = fam.chrome.header_h;
+                let full = Rect::new(0.0, y, viewport_w.max(1.0), h_h + pad + block_h.max(line_h) + pad);
+                list.fills.push((Rect::new(full.x, full.y, full.w, full.h), rgb8(autodown_blocks::FENCE_BG)));
+                list.fills.push((
+                    Rect::new(full.x, full.y, full.w, h_h),
+                    rgb8(autodown_blocks::FENCE_HEADER_BG),
+                ));
+                let px = 1.0;
+                for e in [
+                    Rect::new(full.x, full.y, full.w, px),
+                    Rect::new(full.x, full.y + full.h - px, full.w, px),
+                    Rect::new(full.x, full.y, px, full.h),
+                    Rect::new(full.x + full.w - px, full.y, px, full.h),
+                ] {
+                    list.fills.push((e, rgb8(autodown_blocks::FENCE_BORDER)));
+                }
+                // 语言标签（家族 header_label 位；lang 缺省 "code"，与只读
+                // 轨同口径）。
+                let label = b.syntax.as_deref().filter(|s| !s.is_empty()).unwrap_or("code");
+                list.runs.push(DocRun {
+                    text: label.to_owned(),
+                    x: pad,
+                    y: y + (h_h - 12.0).max(0.0) / 2.0,
+                    size: 12.0,
+                    line_height: 16.0,
+                    color: rgb8(autodown_blocks::FENCE_HEADER_FG),
+                    bold: false,
+                    italic: false,
+                    mono: false,
+                    strike: false,
+                    underline: false,
                 });
-                bases
+                full.h
+            } else {
+                block_h.max(line_h)
             };
 
-            let mut block_h = 0.0f32;
-            ed.with_buffer(|buf| {
-                for run in buf.layout_runs() {
-                    let top = y + run.line_top;
-                    block_h = block_h.max(run.line_top + run.line_height);
-                    let base_off = line_bases.get(run.line_i).copied().unwrap_or(0);
-                    push_styled_pieces(
-                        &run,
-                        &b.intervals,
-                        styled_ok,
-                        mono_all,
-                        base_off,
-                        0.0,
-                        top,
-                        size,
-                        line_h,
-                        base,
-                        &mut list.runs,
-                    );
-                }
-            });
-
-            if focus == Some(bi) {
+            if focus == Some(bi) && !view_inst {
                 if let Some((start, end)) = ed.selection_bounds() {
                     ed.with_buffer(|buf| {
                         for run in buf.layout_runs() {
@@ -955,7 +1034,7 @@ impl AutodownEditorCore {
                             }
                             if let (Some(x0), Some(x1)) = (index_x(&run, lo), index_x(&run, hi)) {
                                 list.selection.push((
-                                    Rect::new(x0.min(x1), y + run.line_top, (x1 - x0).abs().max(2.0), run.line_height),
+                                    Rect::new(x_off + x0.min(x1), text_y + run.line_top, (x1 - x0).abs().max(2.0), run.line_height),
                                     sel_color,
                                 ));
                             }
@@ -963,18 +1042,18 @@ impl AutodownEditorCore {
                     });
                 }
                 if let Some((cx, cy)) = ed.cursor_position() {
-                    let rect = Rect::new(cx as f32, y + cy as f32, CARET_WIDTH, size * 1.15);
+                    let rect = Rect::new(x_off + cx as f32, text_y + cy as f32, CARET_WIDTH, size * 1.15);
                     list.caret = Some(CaretDraw { rect, color: caret_color });
                     let preedit = self.preedit.lock().unwrap().clone();
                     if let Some(ptext) = preedit.filter(|p| !p.is_empty()) {
                         list.preedit = Some(PreeditDraw {
                             text: ptext,
-                            origin: Pt::new(cx as f32, y + cy as f32),
+                            origin: Pt::new(x_off + cx as f32, text_y + cy as f32),
                             font_size: size,
                             color: base,
                             underline: Rect::new(
-                                cx as f32,
-                                y + cy as f32 + size * 1.15 - 2.0,
+                                x_off + cx as f32,
+                                text_y + cy as f32 + size * 1.15 - 2.0,
                                 viewport_w.min(240.0),
                                 1.5,
                             ),
@@ -984,12 +1063,12 @@ impl AutodownEditorCore {
             }
 
             layouts.push(BlockLayout {
-                rect: Rect::new(0.0, y, viewport_w.max(1.0), block_h.max(line_h)),
-                origin: Pt::new(0.0, y),
+                rect: Rect::new(0.0, y, viewport_w.max(1.0), total_h),
+                origin: Pt::new(x_off, text_y),
                 font_size: size,
                 line_height: line_h,
             });
-            y += block_h.max(line_h) + BLOCK_GAP;
+            y += total_h + BLOCK_GAP;
         }
         drop(blocks);
 
@@ -1022,23 +1101,74 @@ fn hit_test(layout: &DocLayout, x: f32, y: f32) -> Option<usize> {
 }
 
 // ---------------------------------------------------------------------------
-// 区间切片（marks → 样式段）
+// 共享绘制段（PLAN-041 T3）——&Buffer → 样式化文本段
 // ---------------------------------------------------------------------------
 
-/// 把一个 layout run 按 mark 区间切样式段。styled_ok=false 时整段退化
-/// 基础色（本地编辑后、回写重建前的暂态）。区间偏移先加上行前缀。
-#[allow(clippy::too_many_arguments)]
+/// 共享段绘制上下文：mark 区间 + 形态开关。
+#[derive(Clone, Copy)]
+pub struct BlockDrawCtx<'a> {
+    /// mark 区间表（全块字节坐标；空 = 无 mark）。
+    pub marks: &'a [MarkInterval],
+    /// 快照匹配期 marks 是否生效（本地编辑暂态退化基础样式）。
+    pub styled_ok: bool,
+    /// 整块等宽（fence）。
+    pub mono_all: bool,
+    /// 是否消费行 attrs_list 的语法着色 span（fence 家族）。
+    pub syntax: bool,
+    /// 基础前景色。
+    pub base: Rgba,
+}
+
+/// 单个已布局 Buffer → 样式化 DocRun 段。**纯函数**：只读 layout_runs，
+/// 不整形、不触状态——编辑壳（render_frame）与只读臂 fence 正文（T4）
+/// 共用，「同一 Buffer + 同一绘制路径」的结构基座。返回块内容高（px）。
+pub fn buffer_block_runs(
+    buf: &Buffer,
+    x_origin: f32,
+    y_top: f32,
+    size: f32,
+    line_h: f32,
+    ctx: &BlockDrawCtx,
+    out: &mut Vec<DocRun>,
+) -> f32 {
+    // 行前缀偏移表：mark 区间是全块字节坐标，layout run 的 glyph 偏移是
+    // 行内坐标——求交前先平移。cosmic 行文本不含行尾符，故 +1 为换行宽。
+    let mut line_bases: Vec<usize> = Vec::with_capacity(buf.lines.len());
+    {
+        let mut acc = 0usize;
+        for l in buf.lines.iter() {
+            line_bases.push(acc);
+            acc += l.text().len() + 1;
+        }
+    }
+    let mut block_h = 0.0f32;
+    for run in buf.layout_runs() {
+        let top = y_top + run.line_top;
+        block_h = block_h.max(run.line_top + run.line_height);
+        let base_off = line_bases.get(run.line_i).copied().unwrap_or(0);
+        let attrs = if ctx.syntax {
+            buf.lines.get(run.line_i).map(|l| l.attrs_list())
+        } else {
+            None
+        };
+        push_styled_pieces(&run, attrs, ctx, base_off, x_origin, top, size, line_h, out);
+    }
+    block_h
+}
+
+/// 把一个 layout run 按【语法着色 span × mark 区间】切样式段：两源边界
+/// 取并集成格，逐格取覆盖的语法色 + mark 样式。styled_ok=false 时 mark
+/// 退化基础样式（本地编辑后、回写重建前的暂态）；无 attrs 时语法色缺席。
+/// 区间偏移先加行前缀（Plan 428 P2 + code_editor push_run_pieces 同路）。
 fn push_styled_pieces(
     run: &cosmic_text::LayoutRun,
-    intervals: &[MarkInterval],
-    styled_ok: bool,
-    mono_all: bool,
+    attrs: Option<&cosmic_text::AttrsList>,
+    ctx: &BlockDrawCtx,
     base_off: usize,
     x_origin: f32,
     y_top: f32,
     size: f32,
     line_h: f32,
-    base: Rgba,
     out: &mut Vec<DocRun>,
 ) {
     let (Some(first), Some(last)) = (run.glyphs.first(), run.glyphs.last()) else {
@@ -1049,46 +1179,95 @@ fn push_styled_pieces(
     if run_hi <= run_lo {
         return;
     }
-    let mut pieces: Vec<(usize, usize, SpanStyle)> = Vec::new();
-    if styled_ok {
-        let mut cursor = run_lo;
-        for iv in intervals {
-            // 全块坐标 → 行内坐标。
+
+    // 语法着色片段（行内坐标截取；Plan 442 code_editor 同款）。
+    let mut syn: Vec<(usize, usize, Option<cosmic_text::Color>)> = Vec::new();
+    if let Some(attrs) = &attrs {
+        for (range, a) in attrs.spans_iter() {
+            let s = range.start.max(run_lo);
+            let e = range.end.min(run_hi);
+            if e <= s {
+                continue;
+            }
+            syn.push((s, e, a.color_opt));
+        }
+    }
+    // mark 片段（全块坐标 → 行内坐标）。
+    let mut mk: Vec<(usize, usize, SpanStyle)> = Vec::new();
+    if ctx.styled_ok {
+        for iv in ctx.marks {
             let s = iv.lo.saturating_sub(base_off);
             let e = iv.hi.saturating_sub(base_off);
-            let s = s.clamp(cursor, run_hi);
+            let s = s.clamp(run_lo, run_hi);
             let e = e.clamp(s, run_hi);
             if e <= s {
                 continue;
             }
-            if s > cursor {
-                pieces.push((cursor, s, SpanStyle::default()));
-            }
-            pieces.push((s, e, iv.style));
-            cursor = e;
+            mk.push((s, e, iv.style));
         }
-        if cursor < run_hi {
-            pieces.push((cursor, run_hi, SpanStyle::default()));
-        }
-    } else {
-        pieces.push((run_lo, run_hi, SpanStyle::default()));
     }
-    for (s, e, st) in pieces {
+
+    // 边界并集 → 逐格定型。
+    let mut cuts: Vec<usize> = vec![run_lo];
+    cuts.extend(syn.iter().flat_map(|(s, e, _)| [*s, *e]));
+    cuts.extend(mk.iter().flat_map(|(s, e, _)| [*s, *e]));
+    cuts.retain(|&c| c > run_lo && c < run_hi);
+    cuts.sort_unstable();
+    cuts.dedup();
+
+    let style_at = |pos: usize| -> SpanStyle {
+        mk.iter()
+            .find(|(s, e, _)| *s <= pos && pos < *e)
+            .map(|(_, _, st)| *st)
+            .unwrap_or_default()
+    };
+    let syn_at = |pos: usize| -> Option<cosmic_text::Color> {
+        syn.iter().find(|(s, e, _)| *s <= pos && pos < *e).and_then(|(_, _, c)| *c)
+    };
+
+    let mut edges: Vec<usize> = vec![run_lo];
+    edges.extend(cuts);
+    edges.push(run_hi);
+    let mut pieces: Vec<(usize, usize, Option<cosmic_text::Color>, SpanStyle)> = Vec::new();
+    for w in edges.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        if b <= a {
+            continue;
+        }
+        let st = style_at(a);
+        let color = syn_at(a);
+        match pieces.last_mut() {
+            Some((_, hi, pc, pst)) if *hi == a && *pc == color && *pst == st => *hi = b,
+            _ => pieces.push((a, b, color, st)),
+        }
+    }
+
+    for (s, e, color, st) in pieces {
         let seg = &run.text[s.min(run.text.len())..e.min(run.text.len())];
         if seg.trim().is_empty() {
             continue;
         }
         let Some(x0) = index_x(run, s) else { continue };
+        let color = match color {
+            Some(c) => Rgba {
+                r: c.r() as f32 / 255.0,
+                g: c.g() as f32 / 255.0,
+                b: c.b() as f32 / 255.0,
+                a: c.a() as f32 / 255.0,
+            },
+            None if st.link => LINK_COLOR,
+            None => ctx.base,
+        };
         out.push(DocRun {
             text: seg.to_owned(),
             x: x_origin + x0,
             y: y_top,
             size,
             line_height: line_h,
-            color: if st.link { LINK_COLOR } else { base },
+            color,
             bold: st.strong,
             italic: st.em,
-            mono: mono_all || st.code,
+            mono: ctx.mono_all || st.code,
             strike: st.del,
             underline: st.underline,
         });
@@ -1129,8 +1308,9 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 };
                 let (text, ivs) = flatten_inlines(&node.inlines);
                 blocks.push(BlockBuf {
-                    editor: SendEditor(new_leaf_buffer(fs, &text, false, leaf_size(kind))),
+                    editor: SendEditor(new_leaf_buffer(fs, &text, false, leaf_size(kind), None)),
                     kind,
+                    syntax: None,
                     snapshot: text,
                     intervals: ivs,
                 });
@@ -1141,9 +1321,23 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 // 索引，尾随空行会干扰软尾判定）。
                 let (raw, _) = flatten_inlines(&node.inlines);
                 let text = raw.trim_end_matches('\n').to_owned();
+                // 家族 header 标签 + T4 语法着色的语言 token（只读轨同源）。
+                let lang = attrGetStr(node.attrs.clone(), "language", "");
+                let syntax = if lang.is_empty() || lang.contains(char::is_whitespace) {
+                    None
+                } else {
+                    Some(lang)
+                };
                 blocks.push(BlockBuf {
-                    editor: SendEditor(new_leaf_buffer(fs, &text, true, BODY_SIZE)),
+                    editor: SendEditor(new_leaf_buffer(
+                        fs,
+                        &text,
+                        true,
+                        autodown_blocks::FENCE_SIZE,
+                        syntax.as_deref(),
+                    )),
                     kind: LeafKind::Fence,
+                    syntax,
                     snapshot: text,
                     intervals: Vec::new(),
                 });
@@ -1173,8 +1367,9 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
             _ => {
                 let (text, ivs) = flatten_inlines(&node.inlines);
                 blocks.push(BlockBuf {
-                    editor: SendEditor(new_leaf_buffer(fs, &text, false, BODY_SIZE)),
+                    editor: SendEditor(new_leaf_buffer(fs, &text, false, BODY_SIZE, None)),
                     kind: LeafKind::Paragraph,
+                    syntax: None,
                     snapshot: text,
                     intervals: ivs,
                 });
@@ -1526,8 +1721,9 @@ impl AutodownEditorCore {
             let mono = matches!(kind, LeafKind::Fence);
             let size = leaf_size(kind);
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, &right, mono, size)),
+                editor: SendEditor(new_leaf_buffer(font_system, &right, mono, size, None)),
                 kind,
+                syntax: None,
                 snapshot: right,
                 intervals: Vec::new(),
             });
@@ -1608,8 +1804,9 @@ impl AutodownEditorCore {
             let mut blocks = self.blocks.lock().unwrap();
             let id = blocks.len();
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE)),
+                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None)),
                 kind: LeafKind::Paragraph,
+                syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
             });
@@ -2205,5 +2402,132 @@ mod tests {
             assert!(out.text_changed && out.captured);
         });
         assert_eq!(c.emit_document(), "空的。拼音");
+    }
+
+    /// PLAN-041 T3：共享绘制段与编辑壳路径一致——同一 Buffer 经
+    /// `buffer_block_runs` 生成的文本段与 render_frame 全帧输出中的
+    /// 对应段逐项相等（像素一致的结构性验证）。
+    #[test]
+    fn shared_segment_matches_render_frame_runs() {
+        let c = core_for("t41a", "普通段 **粗**。\n\n```rust\nfn a() {}\n```\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        // 逐块用共享段重放，拼接后应与全帧 runs 完全一致（排除 chrome
+        // 标签 run——它由 render_frame 的 chrome 臂发射，非共享段职责）。
+        let blocks = c.blocks.lock().unwrap();
+        let mut replay: Vec<DocRun> = Vec::new();
+        for b in blocks.iter() {
+            let fam = autodown_blocks::family_of(match b.kind {
+                LeafKind::Heading(_) => BlockType::Heading,
+                LeafKind::Fence => BlockType::Fence,
+                LeafKind::Paragraph => BlockType::Paragraph,
+            });
+            let fenced = matches!(b.kind, LeafKind::Fence);
+            let size = leaf_size(b.kind);
+            let line_h = size * LINE_H_MULT;
+            let ctx = BlockDrawCtx {
+                marks: &b.intervals,
+                styled_ok: true,
+                mono_all: fenced,
+                syntax: fenced,
+                base: WHITE,
+            };
+            let _ = b.editor.ed().with_buffer(|buf| {
+                buffer_block_runs(
+                    buf,
+                    if fenced { fam.chrome.pad } else { 0.0 },
+                    0.0,
+                    size,
+                    line_h,
+                    &ctx,
+                    &mut replay,
+                )
+            });
+        }
+        let text_runs: Vec<&DocRun> =
+            frame.list.runs.iter().filter(|r| r.size != 12.0).collect();
+        let replay_norm: Vec<DocRun> = replay.into_iter().map(|mut r| { r.y = 0.0; r }).collect();
+        assert_eq!(text_runs.len(), replay_norm.len(), "段数一致");
+        for (a, b) in text_runs.iter().zip(replay_norm.iter()) {
+            assert_eq!(a.text, b.text);
+            assert_eq!(a.size, b.size);
+            assert_eq!(a.bold, b.bold);
+            assert_eq!(a.mono, b.mono);
+        }
+    }
+
+    /// PLAN-041 T3：fence 编辑壳 chrome——header 底色/外框边线/语言标签
+    /// run 自家族发射；段落块无 chrome。
+    #[test]
+    fn fence_editor_chrome_emitted_from_family() {
+        let c = core_for("t41b", "一段。\n\n```rust\nlet x = 1;\n```\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        // chrome 填充 ≥ 6（底色+header+四边线）
+        assert!(
+            frame.list.fills.len() >= 6,
+            "fence chrome fills: {}",
+            frame.list.fills.len()
+        );
+        // 语言标签 run（size 12、色 = 家族 FENCE_HEADER_FG）
+        let label = frame.list.runs.iter().find(|r| r.size == 12.0).expect("header label run");
+        assert_eq!(label.text, "rust");
+        let fg = rgb8(autodown_blocks::FENCE_HEADER_FG);
+        assert!((label.color.r - fg.r).abs() < 1e-6);
+        // fence 正文段为家族字号（14）且 mono
+        assert!(frame
+            .list
+            .runs
+            .iter()
+            .any(|r| r.mono
+                && (r.size - autodown_blocks::FENCE_SIZE).abs() < 1e-6
+                && r.text.contains("let")));
+    }
+
+    /// PLAN-041 T4：只读 fence 视图实例——readonly 门控（输入不路由/
+    /// 无 chrome/无光标）+ hljs 着色链（与编辑态同主题同 Buffer 路径）。
+    #[test]
+    fn view_fence_instance_readonly_and_colored() {
+        run_fs(|_fs| {}); // 确保 font system callback 先于 sync_external 安装
+        let raw = "view_fence_deadbeef00000000";
+        let sk = storage_key(raw);
+        registry().lock().unwrap().remove(&sk);
+        let c = autodown_editor(raw);
+        assert!(c.is_view_instance(), "view_fence_* 键应识别为视图实例");
+        assert!(c.sync_external("```rust
+fn main() { let s = \"hi\"; }
+```
+", true));
+        // 输入不路由：点击/按键零捕获零焦点。
+        let out = run_fs(|fs| {
+            c.handle_input(fs, DocInput::MousePressed { button: EditorButton::Left, x: 3.0, y: 3.0 }, &mut NullClipboard)
+        });
+        assert!(!out.captured, "视图实例不捕获输入");
+        assert_eq!(c.focused_block(), None, "视图实例无焦点");
+        // 渲染：无 chrome 填充、无光标/焦点框；正文段存在且带语法着色
+        //（hljs 主题，色 ≠ 基色 WHITE）。
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        assert!(frame.list.fills.is_empty(), "视图实例不发射 chrome");
+        assert!(frame.list.caret.is_none());
+        assert!(frame.list.focus_frame.is_none());
+        assert!(!frame.list.runs.is_empty(), "正文段存在");
+        assert!(
+            frame.list.runs.iter().any(|r| r.color != WHITE),
+            "hljs 语法着色生效: {:?}",
+            frame.list.runs.iter().map(|r| (r.text.as_str(), r.color)).collect::<Vec<_>>()
+        );
+        assert!(frame.list.runs.iter().all(|r| r.mono), "fence 正文整块 mono");
+    }
+
+    /// PLAN-041 T3：fence 语言 attr 进 BlockBuf.syntax；无语言 fence 标签
+    /// 落 "code"（与只读轨同口径）。
+    #[test]
+    fn fence_language_recorded_for_label() {
+        let c = core_for("t41c", "```\nplain\n```\n");
+        {
+            let blocks = c.blocks.lock().unwrap();
+            assert_eq!(blocks[0].syntax, None);
+        }
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let label = frame.list.runs.iter().find(|r| r.size == 12.0).expect("label");
+        assert_eq!(label.text, "code");
     }
 }
