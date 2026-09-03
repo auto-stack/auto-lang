@@ -361,9 +361,10 @@ pub fn render(
         (s.horizontal, s.vertical)
     });
     let scrollbar_v = if visible_lines < total_lines {
-        let track_h = viewport_h - SCROLLBAR_THICKNESS - 2.0;
-        let thumb_h =
-            (viewport_h * (visible_lines.max(1) as f32 / total_effective as f32)).clamp(SCROLLBAR_THICKNESS, track_h);
+        // PLAN-526 T21：track 退化护栏（viewport < THICKNESS+2 时为负，
+        // clamp(min>max) 曾 panic 打死桌面进程——min=8.0/max=-2.5 实录）。
+        let track_h = (viewport_h - SCROLLBAR_THICKNESS - 2.0).max(1.0);
+        let thumb_h = scrollbar_thumb(track_h, viewport_h * (visible_lines.max(1) as f32 / total_effective as f32));
         let frac = if visible_lines > 0 {
             (first_visible_line as f32) / (total_effective as f32)
         } else {
@@ -379,8 +380,8 @@ pub fn render(
         None
     };
     let scrollbar_h = if max_line_width > text_w + 0.5 {
-        let track_w = text_w - SCROLLBAR_THICKNESS - 2.0;
-        let thumb_w = (track_w * (text_w / max_line_width)).clamp(SCROLLBAR_THICKNESS, track_w);
+        let track_w = (text_w - SCROLLBAR_THICKNESS - 2.0).max(1.0);
+        let thumb_w = scrollbar_thumb(track_w, track_w * (text_w / max_line_width));
         let frac = (scroll_x / max_line_width).clamp(0.0, 1.0);
         Some(Rect::new(
             2.0 + frac * (track_w - thumb_w),
@@ -430,6 +431,17 @@ pub fn render(
 // ---------------------------------------------------------------------------
 // Geometry helpers
 // ---------------------------------------------------------------------------
+
+/// PLAN-526 T21：滚动条 thumb 高/宽钳制（track 退化护栏）。
+/// `track` = 可用行程（viewport - THICKNESS - 2），极端缩放/极小编辑区下
+/// 可为负；此前 `natural.clamp(THICKNESS, track)` 在 track < THICKNESS 时
+/// 触发 `f32::clamp` min>max panic（实录 min=8.0/max=-2.5，exit 101 打死
+/// 桌面进程）。护栏：track 下限 1.0，min 侧取 `min(THICKNESS, track)`，
+/// 任何输入下不再 panic。
+fn scrollbar_thumb(track: f32, natural: f32) -> f32 {
+    let track = track.max(1.0);
+    natural.clamp(SCROLLBAR_THICKNESS.min(track), track)
+}
 
 fn digits_of(mut n: usize) -> usize {
     let mut digits = 1;
@@ -606,4 +618,29 @@ pub fn rgba_to_cosmic(color: Rgba) -> cosmic_text::Color {
 /// Expose config construction used by tests.
 pub fn default_config() -> CodeEditorConfig {
     CodeEditorConfig::default()
+}
+
+#[cfg(test)]
+mod scrollbar_thumb_tests {
+    use super::*;
+
+    /// PLAN-526 T21 回归：极端小编辑区（viewport < THICKNESS+2）下 track
+    /// 为负，此前 `natural.clamp(THICKNESS, track)` 触发 f32 clamp min>max
+    /// panic（实录 min=8.0/max=-2.5，exit 101 打死桌面进程）。
+    #[test]
+    fn scrollbar_thumb_survives_degenerate_track() {
+        // 实录参数：viewport_h=7.5 → track=-2.5，natural=7.5。
+        let t = scrollbar_thumb(-2.5, 7.5);
+        assert!((1.0..=8.0).contains(&t), "退化 track 下 thumb 应收敛: {t}");
+
+        // 任意负/零/正常 track 均不 panic 且落在 [1, max(track,1)]。
+        for track in [-100.0f32, 0.0, 1.0, 5.0, 8.0, 40.0, 400.0] {
+            let t = scrollbar_thumb(track, 7.5);
+            assert!((1.0..=track.max(1.0)).contains(&t), "track={track} thumb={t}");
+        }
+
+        // 正常路径：natural 夹在 THICKNESS 与 track 之间。
+        assert_eq!(scrollbar_thumb(100.0, 7.5), 8.0, "natural < THICKNESS → THICKNESS");
+        assert_eq!(scrollbar_thumb(100.0, 500.0), 100.0, "natural > track → track");
+    }
 }
