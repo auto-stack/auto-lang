@@ -120,24 +120,22 @@ widget App {
                         // 分类胶囊（Plan 503）：选中 = bg-primary/15 + text-primary
                         row {
                             style: "flex items-center gap-1 px-4 py-2 border-b"
+                            // PLAN-526 T38：tag 统一为 all 同款可读样式
+                            // （此前未选中 tag muted 前景在深底上不可读，
+                            // 用户八轮反馈截图3）。
                             for c in .cats {
-                                if .cat == c {
-                                    button (text: c) {
-                                        onclick: .PickCat(c)
-                                        style: "h-6 px-2.5 text-xs rounded-full bg-primary/15 text-primary"
-                                    }
-                                } else {
-                                    button (text: c) {
-                                        onclick: .PickCat(c)
-                                        style: "h-6 px-2.5 text-xs rounded-full text-muted-foreground hover:bg-primary/10"
-                                    }
+                                button (text: c) {
+                                    onclick: .PickCat(c)
+                                    style: "h-6 px-2.5 text-xs rounded-full bg-primary/15 text-primary"
                                 }
                             }
                         }
 
-                        // 结果列表（空态/无结果态）
+                        // 结果列表（空态/无结果态）。
+                        // PLAN-526 T38：max-h + overflow-y-auto——结果过多时
+                        // VM 侧 build_scrollable cap 语义出滚动条。
                         col {
-                            style: "w-full"
+                            style: "w-full max-h-96 overflow-y-auto"
                             if .nres == 0 {
                                 col {
                                     style: "flex flex-col items-center py-10"
