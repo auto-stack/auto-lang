@@ -1988,7 +1988,9 @@ fn cg_ext(mut c CG, mut p P) {
                 es = 1
                 p.next()
             }
-            c.method_ty = ty
+            // D25 范式(525-1 族):循环位直赋在转译态 move 掉 ty——ext 体内
+            // 第二个方法即 E0382;空串拼接产生新值(借用不移动)。
+            c.method_ty = "" + ty
             c.method_self = 1 - es
             cg_fn(c, p)
             c.method_ty = ""
@@ -2089,7 +2091,8 @@ fn cg_type_decl(mut c CG, mut p P) {
                 fs_i = fs_i + 1
             }
             c.tys.set(ti, CGType(name, fields_snap, ftys_snap))
-            c.method_ty = name
+            // D25 范式:name 已被 CGType 构造移动,空串拼接拷贝续用
+            c.method_ty = "" + name
             c.method_self = 1 - mis_static
             cg_fn(c, p)
             c.method_ty = ""
