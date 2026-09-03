@@ -5300,21 +5300,42 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         let nv = crate::vm::native::pop_arg_nv(task);
 
         let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
-        if auto_val::is_i32(nv) {
-            let i = auto_val::decode_i32(nv);
-            if i >= 4000000 {
-                // Looks like a heap object ID — try list.len
-                use crate::vm::types::ListData;
-                if let Some(obj) = vm.get_heap_object(i as u64) {
-                    let guard = obj.read().unwrap();
-                    if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                        task.ram.push_i32(list.len() as i32);
-                        return Ok(());
-                    }
-                }
+        // PLAN-057 T6（JSON.parse 数组形态接线）：堆句柄判定扩展——
+        // ①编码从裸 i32 扩到 object/list tag（json.parse 数组产物是
+        //   encode_object 推栈的 ListData<Value>，此前只认 i32 ≥4000000）；
+        // ②变体从 ListData<i32> 扩到全四型（Value/String/bool 同为列表）。
+        //   原 i32-tag + 非 i32 列表形态落「字符串路径」按池索引解码 → 恒 0
+        //   （case_web_builtins H 现场）。
+        let heap_id = if auto_val::is_object(nv) {
+            Some(auto_val::decode_object(nv) as u64)
+        } else if auto_val::is_list(nv) {
+            Some(auto_val::decode_list(nv) as u64)
+        } else if auto_val::is_i32(nv) && auto_val::decode_i32(nv) >= 4000000 {
+            Some(auto_val::decode_i32(nv) as u64)
+        } else {
+            None
+        };
+        if let Some(id) = heap_id {
+            use crate::vm::types::ListData;
+            if let Some(obj) = vm.get_heap_object(id) {
+                let guard = obj.read().unwrap();
+                let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                    list.len() as i32
+                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                    list.len() as i32
+                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                    list.len() as i32
+                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+                    list.len() as i32
+                } else {
+                    // 堆上非列表（对象/实例）：按 0 走（.length 对非数组无 JS 语义）
+                    0
+                };
+                task.ram.push_i32(len);
+            } else {
                 task.ram.push_i32(0);
-                return Ok(());
             }
+            return Ok(());
         }
         // Normal string path
         // PLAN-055: JS .length 语义 = 字符数（web a2ts `text.length` 同值）。

@@ -27,11 +27,7 @@ fn test_m5_corpus_file(path: &std::path::Path) -> AutoResult<()> {
     let code = std::fs::read_to_string(path)?;
     let (_r, expected) = run_with_capture(&code)?;
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let mut lib_code = String::new();
-    for f in crate::AUTO_LIB_FILES_V2 {
-        lib_code.push_str(&std::fs::read_to_string(root.join(f))?);
-        lib_code.push('\n');
-    }
+    let lib_code = crate::aavm2_lib_source(&root)?;
     let program = format!(
         "{}\nfn main() {{\n    print(ev_run(\"{}\"))\n}}\n",
         lib_code,
@@ -77,11 +73,7 @@ fn corpus_use_dir_m5() -> PathBuf {
 
 fn aavm_lib_program_m5(call: &str) -> AutoResult<String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let mut lib_code = String::new();
-    for f in crate::AUTO_LIB_FILES_V2 {
-        lib_code.push_str(&std::fs::read_to_string(root.join(f))?);
-        lib_code.push('\u{a}');
-    }
+    let lib_code = crate::aavm2_lib_source(&root)?;
     Ok(format!("{}
 fn main() {{
     print({})
@@ -185,11 +177,7 @@ fn test_aavm2_m3_milestone_fib() {
     for (name, code) in [("helloworld", &hello), ("fib", &fib)] {
         let (_r, expected) = run_with_capture(code).unwrap();
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let mut lib_code = String::new();
-        for f in crate::AUTO_LIB_FILES_V2 {
-            lib_code.push_str(&std::fs::read_to_string(root.join(f)).unwrap());
-            lib_code.push('\n');
-        }
+        let lib_code = crate::aavm2_lib_source(&root).unwrap();
         let program = format!(
             "{}\nfn main() {{\n    print(ev_run(\"{}\"))\n}}\n",
             lib_code,

@@ -674,17 +674,8 @@ static AUTO_LIB_V2_CACHE: OnceLock<String> = OnceLock::new();
 fn read_auto_lib_v2() -> AutoResult<&'static str> {
     Ok(AUTO_LIB_V2_CACHE.get_or_init(|| {
         let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let mut code = String::new();
-        for file in AUTO_LIB_FILES_V2 {
-            let path = d.join(file);
-            if path.exists() {
-                if let Ok(content) = read_to_string(&path) {
-                    code.push_str(&content);
-                    code.push('\n');
-                }
-            }
-        }
-        code
+        // Plan 517 W2 双轨剥离:经 aavm2_lib_source 剥 use auto.lib.* 行
+        crate::aavm2_lib_source(&d).unwrap_or_default()
     }))
 }
 
@@ -777,7 +768,35 @@ fn build_aavm_rust_bin() -> PathBuf {
     use std::process::Command;
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     // Plan 434 追记:242 #18 修复后 ② 回归整目录(含 a2r.at)。
-    let lib_dir = root.join("auto/lib");
+    // Plan 517 W2 双轨剥离:merge 输入为剥除 use 行的临时目录副本
+    // (use 发射的 crate:: 路径在单文件平铺 merge 产物中不可解析,剥离后
+    // 与模块化前行为逐字节等价)。
+    let lib_dir = {
+        let src_dir = &root;
+        // Plan 523 复审修复:剥离目录按进程隔离——固定共享路径在两 corpus 腿
+        // 并发首建时互删(remove_dir_all 打架,199KB/400KB 残缺 merge 实证)。
+        let stripped = std::env::temp_dir().join(format!(
+            "aavm2-merge-lib-stripped-p{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&stripped);
+        std::fs::create_dir_all(&stripped).expect("mkdir merge-lib-stripped");
+        for file in AUTO_LIB_FILES_V2 {
+            let content = std::fs::read_to_string(src_dir.join(file)).expect("read lib file");
+            let mut out = String::new();
+            for line in content.lines() {
+                if line.trim_start().starts_with("use auto.lib.") {
+                    continue;
+                }
+                out.push_str(line);
+                out.push('\n');
+            }
+            let name = std::path::Path::new(file)
+                .file_name().unwrap().to_str().unwrap().to_string();
+            std::fs::write(stripped.join(name), out).expect("write stripped lib");
+        }
+        stripped
+    };
     let merged = crate::trans::rust::transpile_rust_project_merged(
         lib_dir.to_str().expect("utf8 path")).expect("a2r merge transpile auto/lib");
 
@@ -795,25 +814,27 @@ impl File {
     }
 }
 "#;
-    let hash = {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        merged.hash(&mut h);
-        prelude.hash(&mut h);
-        format!("{:016x}", h.finish())
-    };
-    let proj = std::env::temp_dir().join(format!("aavm2-bin-{}", hash));
-    let exe = proj.join("target/release/aavm2_bin.exe");
-    if exe.exists() {
-        return exe;
-    }
-    let src_dir = proj.join("src");
-    std::fs::create_dir_all(&src_dir).expect("create src dir");
-    std::fs::write(proj.join("Cargo.toml"), "[package]\nname = \"aavm2_bin\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n[dependencies]\n").unwrap();
     // harness main:读 .at → ev_run → stdout
     let harness = r#"
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // Plan 523 W2:--files <main.at> → ev_run_files 多文件主入口
+    // (corpus_use 编译腿;524 aavm.at 位置参数形态同款路由)
+    if args.len() >= 3 && &args[1] == "--files" {
+        let out = ev_run_files(&args[2]);
+        print!("{}", out);
+        return;
+    }
+    // Plan 523 W3:path4(AA2R self-bin)译文模式——读 .at → ar_run → stdout
+    if args.len() >= 3 && &args[1] == "--trans" {
+        let source = match std::fs::read_to_string(&args[2]) {
+            Ok(s) => s,
+            Err(e) => { eprintln!("read error: {}", e); std::process::exit(2); }
+        };
+        let out = ar_run(&source, 0);
+        print!("{}", out);
+        return;
+    }
     if args.len() < 2 {
         eprintln!("usage: aavm2 <file.at>");
         std::process::exit(2);
@@ -826,6 +847,39 @@ fn main() {
     print!("{}", out);
 }
 "#;
+
+    let hash = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        merged.hash(&mut h);
+        prelude.hash(&mut h);
+        format!("{:016x}", h.finish())
+    };
+    // Plan 523 W2:harness 文本入键(--files 模式加入后,harness 变更必须
+    // 换新缓存——此前仅 merged+prelude,harness 演进走旧 exe)。
+    let harness_hash = {
+        use std::hash::{Hash, Hasher};
+        let mut hh = std::collections::hash_map::DefaultHasher::new();
+        harness.hash(&mut hh);
+        format!("{:016x}", hh.finish())
+    };
+    let proj = std::env::temp_dir().join(format!("aavm2-bin-{}-{}", hash, harness_hash));
+    // Plan 523 W3:每进程独立 staging 构建 + 完工原子改名发布——规避
+    // nextest 多进程对同一新 hash 目录的首建竞态(写/读竞态在 cargo 自身
+    // 锁之外;前期 mkdir 锁方案在进程异常退出时残留锁目录致等待死等)。
+    let staging = std::env::temp_dir().join(format!(
+        "aavm2-bin-{}-{}-p{}",
+        hash,
+        harness_hash,
+        std::process::id()
+    ));
+    let exe = proj.join("target/release/aavm2_bin.exe");
+    if exe.exists() {
+        return exe;
+    }
+    let src_dir = staging.join("src");
+    std::fs::create_dir_all(&src_dir).expect("create src dir");
+    std::fs::write(staging.join("Cargo.toml"), "[package]\nname = \"aavm2_bin\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n[dependencies]\n").unwrap();
     let mut full = merged.clone();
     full.extend_from_slice(prelude.as_bytes());
     full.extend_from_slice(harness.as_bytes());
@@ -833,7 +887,7 @@ fn main() {
 
     let build = Command::new("cargo")
         .args(["build", "--release"])
-        .current_dir(&proj)
+        .current_dir(&staging)
         .output()
         .expect("cargo spawn");
     assert!(
@@ -841,7 +895,23 @@ fn main() {
         "AAVM-Rust cargo build failed:\n{}",
         String::from_utf8_lossy(&build.stderr)
     );
-    exe
+    // Plan 523 W3:完工发布——赢家改名;输家(发布位已被赢家占位)清理
+    // 自身 staging 用已发布产物;改名失败且发布位仍缺时退回自身产物。
+    if exe.exists() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return exe;
+    }
+    match std::fs::rename(&staging, &proj) {
+        Ok(()) => exe,
+        Err(_) => {
+            if exe.exists() {
+                let _ = std::fs::remove_dir_all(&staging);
+                exe
+            } else {
+                staging.join("target/release/aavm2_bin.exe")
+            }
+        }
+    }
 }
 
 /// Plan 433 B2: corpus 执行层语料上 ②(AAVM-Rust) vs ①(Rust 参考)
@@ -855,20 +925,16 @@ fn test_aavm2_compile_corpus() {
     let exe = build_aavm_rust_bin();
     let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/vm/aavm2/corpus_m4");
-    // Plan 511 待澄清①缺省处置:struct/use 新语料不入 AA2R 矩阵腿
-    // (AA2R 服务自举回路语料,struct/use 非必需;a2r.at 发射面暂缓,
-    // divergence 登记见 docs/specs/aavm/design/divergences.md)。
-    // 语料前缀 b34+ 为 W1(struct)及后续波次新件,按前缀跳过。
-    let a2r_skip_prefixes = ["b34", "b35", "b36", "b37", "b38", "b39", "b40", "b41", "b42", "b43"];
+    // Plan 511 待澄清①缺省处置的欠账(b34–b43 十前缀跳过)于 Plan 523 W2
+    // 摘除——中阶发射面已补全(主 a2r H1–H5/H7 洞清偿 + AA2R 镜像 +
+    // H6 T3 通道),a2r 运行闸全量覆盖中阶语料。留痕:原
+    // a2r_skip_prefixes = ["b34","b35","b36","b37","b38","b39","b40",
+    // "b41","b42","b43"]。
     let mut entries: Vec<_> = std::fs::read_dir(&corpus)
         .expect("corpus_m4 dir")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "at").unwrap_or(false))
-        .filter(|p| {
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            !a2r_skip_prefixes.iter().any(|pre| name.starts_with(pre))
-        })
         .collect();
     entries.sort();
     assert!(!entries.is_empty());
@@ -899,6 +965,62 @@ fn test_aavm2_compile_corpus() {
         mismatches.len(), checked, mismatches.join("\n====\n")
     );
     eprintln!("AAVM-Rust corpus: {checked} files, outputs identical to Rust reference");
+}
+
+/// Plan 523 W2:corpus_use 多文件用例入 a2r 编译腿(转译版 ev_run_files
+/// 首次实测)——① Rust 参考(run_with_capture_and_path 模块解析 oracle,
+/// 与 M5 use-corpus 同源)vs ② aavm2_bin --files(merge 转译编译产物,
+/// 内容寻址缓存)。
+#[test]
+fn test_aavm2_compile_use_corpus() {
+    let exe = build_aavm_rust_bin();
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test/vm/aavm2/corpus_use");
+    let mut cases: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("corpus_use dir {}: {e}", dir.display()))
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| n != "errors").unwrap_or(true))
+        .collect();
+    cases.sort();
+    assert!(!cases.is_empty(), "no corpus_use cases");
+    let mut mismatches: Vec<String> = Vec::new();
+    let mut checked = 0usize;
+    for case in &cases {
+        let main_path = case.join("main.at");
+        let code = std::fs::read_to_string(&main_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", main_path.display()));
+        let (_r, expected) = crate::run_with_capture_and_path(&code, &main_path.display().to_string())
+            .unwrap_or_else(|e| panic!("rust reference failed on {}: {e}", case.display()));
+        let out = std::process::Command::new(&exe)
+            .arg("--files")
+            .arg(&main_path)
+            .output()
+            .unwrap_or_else(|e| panic!("run aavm2 bin on {}", case.display()));
+        assert!(out.status.success(), "aavm2 bin --files failed on {}", case.display());
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        checked += 1;
+        if stdout.trim_end() != expected.trim_end() {
+            mismatches.push(format!(
+                "{}
+--- rust ---
+{}
+--- aavm-rust ---
+{}",
+                case.display(), expected, stdout
+            ));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "AAVM-Rust use-corpus mismatches ({} of {}):
+{}",
+        mismatches.len(), checked, mismatches.join("
+====
+")
+    );
+    eprintln!("AAVM-Rust use corpus: {checked} cases, outputs identical to Rust reference");
 }
 
 // Plan 233: AAVM Parser tests
@@ -1241,3 +1363,9 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_99_idiom2_d01b_nested_fn_capture() { test_vm("99_idiom2/d01b_nested_fn_capture").unwrap(); }
 #[test] fn test_99_idiom2_d02_struct_misuse() { test_vm("99_idiom2/d02_struct_misuse").unwrap(); }
 #[test] fn test_99_idiom2_m10_pipe() { test_vm("99_idiom2/m10_pipe").unwrap(); }
+
+/// Plan 523 W3:build_aavm_rust_bin 的 four-path runner 复用入口(内容寻址
+/// 缓存同源;aavm2_a2r::test_aavm2_fourpath_runner 消费)。
+pub(crate) fn build_aavm_rust_bin_pub() -> PathBuf {
+    build_aavm_rust_bin()
+}

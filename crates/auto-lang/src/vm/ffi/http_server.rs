@@ -1042,6 +1042,44 @@ mod plan326_tests {
             port
         }
 
+        /// P442-4: e2e 端口唯一性守卫。nextest 每测试一进程并行执行，两个
+        /// 测试复用同一端口时，后绑定进程的请求会打到先绑定进程的服务器上
+        /// （无该路由 → 连接被静默丢弃 → 空 body 假红）。历史三组撞号
+        /// （Plan 442 §8.5）由本守卫防复发：扫描本文件全部端口字面量，任何
+        /// 五位端口号后随右括号出现两次即红。新测试请选用未占用端口。
+        #[test]
+        fn e2e_ports_unique() {
+            let src = include_str!("http_server.rs");
+            let mut seen: std::collections::BTreeMap<&str, usize> = Default::default();
+            let mut dup: Vec<&str> = Vec::new();
+            for (i, line) in src.lines().enumerate() {
+                let b = line.as_bytes();
+                let mut j = 0;
+                while j < b.len() {
+                    if b[j].is_ascii_digit() {
+                        let start = j;
+                        while j < b.len() && b[j].is_ascii_digit() {
+                            j += 1;
+                        }
+                        let run = &line[start..j];
+                        let paren_next = j < b.len() && b[j] == b')';
+                        if run.len() == 5 && run.starts_with("18") && paren_next {
+                            if seen.insert(run, i + 1).is_some() {
+                                dup.push(run);
+                            }
+                        }
+                    } else {
+                        j += 1;
+                    }
+                }
+            }
+            assert!(
+                dup.is_empty(),
+                "e2e 端口撞号（nextest 并行下输家连到赢家服务器假红）: {:?}",
+                dup
+            );
+        }
+
         #[test]
         fn e2e_struct_handler_returns_json() {
             let port = start_server(r#"
@@ -1133,7 +1171,7 @@ fn events_handler() ~Iter<int> {
     yield sse_named_event("e1", "hello")
     yield sse_named_event("e2", "world")
 }
-"#, 18744);
+"#, 18738);
             let resp = http_get(port, "/api/events");
             let body = body_of(&resp);
             assert!(
@@ -1432,7 +1470,7 @@ fn old_handler() int {
 fn new_handler() str {
     return "arrived"
 }
-"#, 18736);
+"#, 18740);
             let resp = http_get(port, "/old");
             assert!(
                 resp.starts_with("HTTP/1.1 302"),
@@ -1481,7 +1519,7 @@ fn text_handler() int {
 fn to_handler() int {
     return to_response(null, "failed", 500)
 }
-"#, 18745);
+"#, 18739);
 
             let ok = http_get(port, "/ok");
             assert!(

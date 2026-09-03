@@ -496,6 +496,32 @@ impl AutoVM {
                     crate::vm::ffi::stdlib::shim_json_parse_vm,
                 );
             }
+            // PLAN-057 T6（等价性缺陷族③）：web 内建 natives 补齐——
+            // Array.isArray/JSON.stringify/Math.trunc/Math.imul 此前未注册，
+            // 调用点经未解析静态兜底（CALL_SPEC str 接收者臂）静默 None。
+            // 名/ID 已入 native_catalog 静态表（NATIVE_ID_ENTRIES，codegen
+            // 任意时刻可解析，沿 auto.json.parse 惯例）；此处绑定 shim 到
+            // 固定 ID + 注册字面/canonical 双名（沿 build_from_inventory
+            // 三名惯例）。注意 canonical 经 TYPE_CANONICAL_MAP：Array→
+            // auto.list、Object→auto.obj。
+            {
+                const WEB_NATIVES: &[(&str, &str, fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>)] = &[
+                    ("Array.isArray", "auto.list.is_array", crate::vm::ffi::stdlib::shim_web_is_array),
+                    ("JSON.stringify", "auto.json.stringify", crate::vm::ffi::stdlib::shim_web_json_stringify),
+                    ("Math.trunc", "auto.math.trunc", crate::vm::ffi::stdlib::shim_web_math_trunc),
+                    ("Math.imul", "auto.math.imul", crate::vm::ffi::stdlib::shim_web_math_imul),
+                ];
+                for (name, canonical, shim) in WEB_NATIVES {
+                    let id = crate::vm::native_registry::BIGVM_NATIVES
+                        .lock()
+                        .unwrap()
+                        .resolve_qualified(canonical)
+                        .expect("PLAN-057 web native missing from NATIVE_ID_ENTRIES");
+                    native_interface.register(id, *shim);
+                    native_interface.register_name(name, id);
+                    native_interface.register_name(canonical, id);
+                }
+            }
             // Plan 446 批三 D1(续): 文档类 json native（get/get_at/has_key/
             // len/keys/is_valid）双态化——堆文档首参序列化回文本走原路径，
             // json.get(json.parse(x), k) 文本工具链与点访问 idiom 互通。
@@ -5027,11 +5053,12 @@ impl AutoVM {
                                     )));
                                 }
                             } else {
-                                // Plan 118: Field not found - return error instead of creating new field
-                                return Err(VMError::RuntimeError(format!(
-                                    "Field '{}' not found on object",
-                                    field_name
-                                )));
+                                // PLAN-057（等价性缺陷族①）：ObjectData 未见过的
+                                // Str 键改为插入（JS `obj.newKey = v` 赋值语义；
+                                // ObjectData 底层是开放 HashMap，set=insert）。
+                                // Plan 118 的类型严格性仍由 Int/Bool 键格式分支
+                                // （上方）与 GenericInstanceData 分支（下方）持有。
+                                auto_val::ValueKey::Str(field_name.clone().into())
                             };
                             old_field_ref = obj.get(&key).and_then(|v| match v {
                                 auto_val::Value::VmRef(r) => Some(r.id as u64),
@@ -6572,7 +6599,15 @@ impl AutoVM {
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_f64(result)); }
                             }
                             _ => {
-                                // Unknown str method — fall through to other handlers below
+                                // PLAN-057 T4（等价性缺陷族⑤）：未知 str 方法兜底
+                                // 配平——原只压 None 不弹 receiver+实参，栈失衡 +1
+                                // 平移后续调用的参数槽。未解析静态调用
+                                // （Array.isArray/JSON.stringify 等，接收者=类型名
+                                // 字符串）正落本臂：case_web_builtins A/B/C 标签
+                                // 乱码（4000000/None/hi）根因。
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
                                 task.ram.push_nv(auto_val::encode_null());
                             }
                         }
@@ -6918,11 +6953,32 @@ impl AutoVM {
                                     // Pop args only (not receiver) — receiver stays as return value
                                     for _ in 0..arg_count { task.ram.pop_nv(); } 
                                 } else {
-                                    // Unknown List method — push nil, fall through
+                                    // PLAN-057 T4（等价性缺陷族⑤）：未知 List
+                                    // 方法兜底配平（同 str 臂，原失衡 +1）。
+                                    for _ in 0..=arg_count {
+                                        task.ram.pop_nv();
+                                    }
                                     task.ram.push_nv(auto_val::encode_null());
                                 }
                             }
                         }
+                    } else if auto_val::is_i32(receiver_nv)
+                        && matches!(method_name.as_str(), "char_code_at" | "charCodeAt")
+                        && !self
+                            .heap_objects
+                            .contains_key(&(auto_val::decode_i32(receiver_nv).max(0) as u64))
+                    {
+                        // PLAN-055 Char（码点）接收者恒等臂 + PLAN-057 T5 重定位
+                        // （等价性缺陷族④）：for-in over str 经 GET_ELEM 逐字符
+                        // 产出 i32 码点，`c.char_code_at(0)` 语义等价单字符字符串
+                        // 的 charCodeAt（web a2ts 同值）= 恒等。原位置在链尾，
+                        // 被 `<unknown:` 接收者臂（整型字面量方法族）先行吞
+                        // None——恒等臂永不命中（case_str_charcode A 红根因），
+                        // 故提升到本臂之前。heap 命中者优先按对象走原链。
+                        for _ in 0..=arg_count {
+                            task.ram.pop_nv();
+                        }
+                        task.ram.push_nv(receiver_nv);
                     } else if type_name.starts_with("<unknown:") || type_name.starts_with("<invalid") || type_name.starts_with("<unknown_nv:") {
                         // Integer literal methods: 0x1234.to_be_bytes(), etc.
                         // Plan 499 M3: f64/f32/bool nanbox 接收者的 type_name 是
@@ -7006,6 +7062,11 @@ impl AutoVM {
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_f64(v)); }
                             }
                             _ => {
+                                // PLAN-057 T4（等价性缺陷族⑤）：unknown 接收者臂
+                                // 兜底配平（同 str/List 臂，原失衡 +1）。
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
                                 task.ram.push_nv(auto_val::encode_null());
                             }
                         }
@@ -7208,22 +7269,6 @@ impl AutoVM {
                                 )));
                             }
                         }
-                    } else if auto_val::is_i32(receiver_nv)
-                        && matches!(method_name.as_str(), "char_code_at" | "charCodeAt")
-                        && !self
-                            .heap_objects
-                            .contains_key(&(auto_val::decode_i32(receiver_nv).max(0) as u64))
-                    {
-                        // PLAN-055: Char（码点）接收者恒等臂——for-in over str 经
-                        // GET_ELEM 逐字符产出 i32 码点，`c.char_code_at(0)` 语义
-                        // 等价单字符字符串的 charCodeAt（web a2ts 同值）= 恒等。
-                        // 此前落 "no function for type '<invalid_i32:N>'" Err，
-                        // musk estimateTokens 的 cjk 判定恒 0（思考块 "1 tokens"
-                        // 根因之二，P055 探针实锤）。heap 命中者优先按对象走原链。
-                        for _ in 0..=arg_count {
-                            task.ram.pop_nv();
-                        }
-                        task.ram.push_nv(receiver_nv);
                     } else {
                         return Err(VMError::RuntimeError(
                             format!("CALL_SPEC: no function '{}' for type '{}'", func_name, type_name)

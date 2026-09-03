@@ -26,6 +26,22 @@ pub const AUTO_LIB_FILES_V2: &[&str] = &[
     "auto/lib/a2r.at",
 ];
 
+/// Plan 517 W2 双轨剥离:剥除 `use auto.lib.*` 行(拼接消费面专用,行为
+/// 与模块化前逐字节等价;规则镜像 crates/auto-lang/src/lib.rs 的
+/// aavm2_lib_source——单文件平铺拼接产物中 use 发射的 crate:: 路径
+/// 不可解析,且外层拼接程序会与 use 模块加载形成重复定义)。
+fn strip_use_lines(content: &str) -> String {
+    let mut out = String::new();
+    for line in content.lines() {
+        if line.trim_start().starts_with("use auto.lib.") {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// corpus 执行层语料目录(相对 repo root)。
 pub const CORPUS_DIR: &str = "crates/auto-lang/test/vm/aavm2/corpus_m4";
 
@@ -128,8 +144,8 @@ fn run_aavm_vm(config: &AavmConfig, case: &Path) -> Result<String, String> {
     let mut program = String::new();
     for f in AUTO_LIB_FILES_V2 {
         let path = config.repo_root.join(f);
-        program.push_str(&std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path.display(), e))?);
-        program.push('\n');
+        let content = std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path.display(), e))?;
+        program.push_str(&strip_use_lines(&content));
     }
     let source = std::fs::read_to_string(case).map_err(|e| e.to_string())?;
     program.push_str(&format!(
@@ -144,7 +160,19 @@ fn run_aavm_vm(config: &AavmConfig, case: &Path) -> Result<String, String> {
 /// ② AAVM-Rust:auto trans --merge → main harness → cargo bin(内容寻址缓存)。
 fn build_aavm_rust_bin(config: &AavmConfig) -> Result<(PathBuf, String), String> {
     // Plan 434 追记:242 #18 修复后 ② 回归整目录(含 a2r.at 七文件全塔)。
-    let lib_dir = config.repo_root.join("auto/lib");
+    // Plan 517 W2 双轨剥离:merge 输入为剥除 use 行的临时目录副本。
+    let lib_dir = {
+        let src_dir = config.repo_root.join("auto/lib");
+        let stripped = std::env::temp_dir().join("aavm-parity-lib-stripped");
+        let _ = std::fs::remove_dir_all(&stripped);
+        std::fs::create_dir_all(&stripped).map_err(|e| e.to_string())?;
+        for f in AUTO_LIB_FILES_V2 {
+            let content = std::fs::read_to_string(config.repo_root.join(f)).map_err(|e| e.to_string())?;
+            let name = std::path::Path::new(f).file_name().unwrap().to_str().unwrap();
+            std::fs::write(stripped.join(name), strip_use_lines(&content)).map_err(|e| e.to_string())?;
+        }
+        stripped
+    };
     // 经临时文件取 merge 产物(CLI 的 stdout 会带 [trans] 横幅,文件内容干净)
     let tmp = std::env::temp_dir().join(format!("aavm-parity-merged-{}.rs", std::process::id()));
     let out = Command::new(&config.auto_binary)
@@ -222,11 +250,9 @@ fn build_aa2r_bin(config: &AavmConfig) -> Result<(PathBuf, String), String> {
     let mut program = String::new();
     for f in AUTO_LIB_FILES_V2 {
         let path = config.repo_root.join(f);
-        let content = std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path.display(), e))?;
+        let content = strip_use_lines(&std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path.display(), e))?);
         lib_source.push_str(&content);
-        lib_source.push('\n');
         program.push_str(&content);
-        program.push('\n');
     }
     program.push_str(&format!(
         "\nfn main() {{\n    print(aa2r_transpile_merge(\"{}\"))\n}}\n",

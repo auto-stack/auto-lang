@@ -1,0 +1,8 @@
+fn main() {
+    let s = "ABC"
+    print(s[0])
+    print(s[1])
+    print(s[2])
+    var i = 1
+    print(s[i] + s[2])
+}

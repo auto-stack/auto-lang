@@ -740,6 +740,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.list.set", 107, Void),
             ("auto.list.insert", 108, Void),
             ("auto.list.remove", 109, Void),
+            // PLAN-057 T6：Array.isArray 静态名/ID（shim 由 engine 覆盖块绑定，
+            // 沿 auto.json.parse 惯例——rust_fn 宏不适配 raw-nv 分派）。
+            ("auto.list.is_array", 1919, Bool),
             ("auto.list.drop", 110, Void),
             ("auto.list.reserve", 118, Void),
             ("auto.list.capacity", 205, Void),
@@ -1087,7 +1090,7 @@ macro_rules! for_each_bigvm_native {
             ("Log.warn", 1807, Void),
             ("Log.error", 1808, Void),
 
-            // === Math (1700-1733) ===
+            // === Math (1700-1735) ===
             // Plan 437 §0.6.H：三角/指对数族 shim 均经原生栈 push_f64 返回
             // （native.rs math_unary/binary_shim、stdlib sqrt/min_f/max_f/clamp），
             // 此前整族误标 Void → Plan 378 跳过 Void → 推断 Unknown → 混合
@@ -1121,6 +1124,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.math.powf", 1731, Float),
             ("auto.math.to_radians", 1732, Float),
             ("auto.math.to_degrees", 1733, Float),
+            // PLAN-057 T6：trunc int 恒等/imul i32 回绕乘（Int 语义）
+            ("auto.math.trunc", 1734, Int),
+            ("auto.math.imul", 1735, Int),
 
             // === Rand (1850-1854) ===
             ("auto.rand.thread_rng", 1850, Void),
@@ -1129,10 +1135,12 @@ macro_rules! for_each_bigvm_native {
             ("auto.rng.drop", 1853, Void),
             ("auto.rand.random", 1854, Void),
 
-            // === JSON (1900-1917) ===
+            // === JSON (1900-1918) ===
             ("auto.json.encode", 1900, Void),
             ("auto.json.decode", 1901, Void),
             ("auto.json.parse", 1902, Void),
+            // PLAN-057 T6：JSON.stringify → JSON 文本
+            ("auto.json.stringify", 1918, String),
             ("auto.json.prettify", 1903, Void),
             ("auto.json.minify", 1904, Void),
             ("auto.json.is_valid", 1905, Void),
@@ -1513,7 +1521,10 @@ macro_rules! for_each_bigvm_native {
             // PLAN-044: generic musk extern dispatcher — extern_sigs.at stub
             // bodies call this with (name, [args]); forwards to a registered
             // host call (path (a)) or pushes null as the no-host fallback.
-            ("musk_extern_dispatch", 3129, Void),
+            // P442-4: 原登 3129 与 value_get_bool 撞号（id→shim 后写覆盖，
+            // CALL_NAT 3129 恒派发本 shim → e2e_value_accessors 500），
+            // 移段 3143。
+            ("musk_extern_dispatch", 3143, Void),
             ("value_get_bool", 3129, Bool),
             ("value_is_null", 3130, Bool),
             ("value_get", 3131, Int),
@@ -1723,6 +1734,11 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.list.insert", 108),
     ("auto.list.remove", 109),
     ("auto.list.drop", 110),
+    // PLAN-057 T6: Array.isArray（shim 由 engine 覆盖块绑定）。双行别名：
+    // resolve 的 canonical 化保留方法名大小写——"Array.isArray" 规整为
+    // "auto.list.isArray"（camelCase），而注册惯例是 snake_case；两形同指 111。
+    ("auto.list.is_array", 1919),
+    ("auto.list.isArray", 1919),
     ("auto.list.reserve", 118),
     ("auto.list.capacity", 205),
     ("auto.list.map", 2060),
@@ -1979,6 +1995,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.math.powf", 1731),
     ("auto.math.to_radians", 1732),
     ("auto.math.to_degrees", 1733),
+    // PLAN-057 T6: web 内建（shim 由 engine 覆盖块绑定）
+    ("auto.math.trunc", 1734),
+    ("auto.math.imul", 1735),
     ("auto.rand.thread_rng", 1850),
     ("auto.rng.gen_range", 1851),
     ("auto.rng.gen", 1852),
@@ -1987,6 +2006,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.json.encode", 1900),
     ("auto.json.decode", 1901),
     ("auto.json.parse", 1902),
+    // PLAN-057 T6: JSON.stringify（shim 由 engine 覆盖块绑定；codegen 缺参补位）
+    ("auto.json.stringify", 1918),
     ("auto.json.prettify", 1903),
     ("auto.json.minify", 1904),
     ("auto.json.is_valid", 1905),
@@ -2293,7 +2314,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("sse_plain_event", 3127),
     // Pure-logic value accessors.
     ("value_get_str", 3128),
-    ("musk_extern_dispatch", 3129),
+    ("musk_extern_dispatch", 3143),
     ("value_get_bool", 3129),
     ("value_is_null", 3130),
     ("value_get", 3131),
@@ -2529,6 +2550,52 @@ mod catalog_integrity_tests {
                     cat_id, *id,
                     "bigvm 表与 catalog ID 不一致: {} (catalog={}, bigvm={})",
                     name, cat_id, id
+                );
+            }
+        }
+        // P442-4: 442 extern/ctor 家族靶向撞号钉。历史事故：PLAN-044 把
+        // musk_extern_dispatch 登到 3129,与 442 先落的 value_get_bool 撞号
+        // ——id→shim 后写覆盖先注册,CALL_NAT 3129 恒派发 dispatch shim,
+        // e2e_value_accessors 500 长期漏网(修复:dispatch 移段 3143)。
+        // 通用同 ID 撞号检测在当前别名设计下不可行(108 组同 native 多名
+        // 别名共享 ID 属有意设计,其中 5 组返回 Type 还不一致——见
+        // KNOWN-DEBT P442-5),故对本高危家族做两两异 ID 钉死。
+        let family = [
+            "ok_response",
+            "err_response",
+            "json_response",
+            "error_response",
+            "text_response",
+            "empty_response",
+            "err_json_response",
+            "to_response",
+            "resp_is_err",
+            "resp_err_code",
+            "resp_err_message",
+            "sse_named_event",
+            "sse_event",
+            "sse_plain_event",
+            "value_get_str",
+            "value_get_bool",
+            "value_is_null",
+            "value_get",
+            "value_get_array",
+            "new_id",
+            "random_hex",
+            "hash_password",
+            "path_inner",
+            "app_config_effective_daemon_url",
+            "relay_runs_list",
+            "musk_extern_dispatch",
+        ];
+        let mut fam_ids: std::collections::HashMap<u16, &str> = Default::default();
+        for name in family {
+            let id = crate::vm::native_registry::NATIVE_ID_MAP[name];
+            if let Some(prev) = fam_ids.insert(id, name) {
+                panic!(
+                    "442 extern/ctor 家族 native ID 撞号: {} ({} 与 {} —— \
+                     id→shim 后写覆盖先注册,CALL_NAT 派发将错位)",
+                    id, name, prev
                 );
             }
         }

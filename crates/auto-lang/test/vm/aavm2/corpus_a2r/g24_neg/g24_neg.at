@@ -1,0 +1,8 @@
+fn main() {
+    let x = 7
+    print(-x)
+    var y = -3
+    print(y)
+    print(-(x + y))
+    print(+x)
+}

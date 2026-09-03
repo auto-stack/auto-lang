@@ -156,11 +156,7 @@ fn test_m4_corpus_file(path: &std::path::Path) -> AutoResult<()> {
     let expected = normalized_dump(&linked, &strings);
     // 前置拼接 AAVM v2 lib(AUTO_LIB_FILES_V2,单一事实源)
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let mut lib_code = String::new();
-    for f in crate::AUTO_LIB_FILES_V2 {
-        lib_code.push_str(&std::fs::read_to_string(root.join(f))?);
-        lib_code.push('\n');
-    }
+    let lib_code = crate::aavm2_lib_source(&root)?;
     let program = format!(
         "{}\nfn main() {{\n    print(codegen_dump(\"{}\"))\n}}\n",
         lib_code,
@@ -269,11 +265,7 @@ fn normalized_dump_lines(lines: Vec<crate::vm::disasm::DisasmLine>, strings: &[S
 
 fn aavm_lib_program(call: &str) -> AutoResult<String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let mut lib_code = String::new();
-    for f in crate::AUTO_LIB_FILES_V2 {
-        lib_code.push_str(&std::fs::read_to_string(root.join(f))?);
-        lib_code.push('\u{a}');
-    }
+    let lib_code = crate::aavm2_lib_source(&root)?;
     Ok(format!("{}
 fn main() {{
     print({})

@@ -223,6 +223,12 @@ pub struct RustTrans {
     // Plan 151: Global variables (top-level var declarations)
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
+    /// Plan 523 H5: 任一全局走了非字面量初始化（保留 once_cell Lazy 形态）
+    /// ——决定产物头是否仍需 once_cell 导入。Phase 2 登记期置位。
+    global_lazy_used: bool,
+    /// Plan 523 W3:fn 体发射中旗标——fn 内名命中全局的 store 走全局写块
+    /// 形(参考写穿语义),顶层 decl 走 static。
+    in_fn_body: bool,
 
     // Plan 383: Top-level function names — used to recognize a bare function
     // name used as a value (function reference, e.g. `apply(handler)`) so the
@@ -442,6 +448,8 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            global_lazy_used: false,
+            in_fn_body: false,
             function_names: HashSet::new(),
             local_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
@@ -529,6 +537,8 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            global_lazy_used: false,
+            in_fn_body: false,
             function_names: HashSet::new(),
             local_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
@@ -721,6 +731,16 @@ impl RustTrans {
         self.global_vars.contains(name)
     }
 
+    /// Plan 523 H5: 全局变量字面量初始化判定——数值/布尔/字符/字符串
+    /// 字面量走 std const 通道 `static X: Mutex<T> = Mutex::new(lit);`
+    /// （Rust 1.63+ const Mutex::new，产物零外部依赖——once_cell 导入使
+    /// 独立 rustc 产物 E0433，b42/b43 考古）。非字面量保留 Lazy 形态。
+    fn global_store_is_const_init(store: &Store) -> bool {
+        matches!(&store.expr,
+            Expr::Int(_) | Expr::Uint(_) | Expr::Float(_, _) | Expr::Double(_, _)
+            | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_) | Expr::CStr(_))
+    }
+
     /// Scan statements for Err(X) calls; if all use the same enum type, return it
     fn infer_err_enum(&self, stmts: &[Stmt]) -> Option<AutoStr> {
         let mut found_enum: Option<AutoStr> = None;
@@ -807,6 +827,14 @@ impl RustTrans {
     fn expr_contains_string(&self, e: &Expr) -> bool {
         match e {
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => true,
+            // Plan 523 H4: str 非区间下标读发射为码点十进制 String 形态
+            // (chars().nth(..).to_string())——`s[i] + s[j]` 的 + 须走
+            // format! 拼接(参考口径 "6667"),裸 + 为 String+String E0308。
+            Expr::Index(arr, idx)
+                if !matches!(idx.as_ref(), Expr::Range(_)) && self.expr_is_string_like(arr) =>
+            {
+                true
+            }
             Expr::Ident(name) => {
                 if let Some(ty) = self.local_var_types.get(name) {
                     return matches!(ty,
@@ -3061,7 +3089,17 @@ impl RustTrans {
                     write!(out, ")")?;
                 } else {
                     write!(out, "{}", op_str)?;
+                    // Plan 523 H7: 一元符作用于二元操作数需括号——此前
+                    // `-(x + y)` 发射 `-x + y` 语义反转（b40/g24：参考 -4，
+                    // 产物 -10；auto_op_prec 全体二元 1–21 < 前缀绑定）。
+                    let operand_needs_paren = matches!(expr.as_ref(), Expr::Bina(_, _, _));
+                    if operand_needs_paren {
+                        write!(out, "(")?;
+                    }
                     self.expr(expr, out)?;
+                    if operand_needs_paren {
+                        write!(out, ")")?;
+                    }
                 }
                 Ok(())
             }
@@ -3134,6 +3172,25 @@ impl RustTrans {
             }
 
             Expr::Index(arr, idx) => {
+                // Plan 523 H4: str 非区间下标读 → chars().nth 码点形态
+                // （b39 考古：`s[0]` 直发 str 不可整数下标，E0277）。语义
+                // 镜像 v2 engine GetElem VStr 臂：nth(j).unwrap_or('\0')
+                // as i64；负下标回绕（VM: len+j）不在语料面，登记差异。
+                // 区间下标（Range）走原臂（str 切片合法 Rust）。
+                if !matches!(idx.as_ref(), Expr::Range(_)) && self.expr_is_string_like(arr) {
+                    write!(out, "(")?;
+                    self.expr(arr, out)?;
+                    write!(out, ".chars().nth(")?;
+                    if Self::needs_usize_cast(idx) {
+                        write!(out, "(")?;
+                        self.expr(idx, out)?;
+                        write!(out, ") as usize")?;
+                    } else {
+                        self.expr(idx, out)?;
+                    }
+                    write!(out, ").unwrap_or('\\0') as i64).to_string()")?;
+                    return Ok(());
+                }
                 self.expr(arr, out)?;
                 write!(out, "[")?;
                 match idx.as_ref() {
@@ -9874,6 +9931,21 @@ impl RustTrans {
     /// Infer Rust type from an Auto expression (for let-bound variables without type annotation).
     fn infer_type_from_expr(&self, expr: &Expr) -> Type {
         match expr {
+            // Plan 523 H1: struct 构造字面量 `Name { field: e }` 解析为
+            // Expr::Node(Pair args)。未注解 `let p = Point { ... }` 此前推成
+            // Unknown,433 A1 字段优先护栏(object_has_such_field)落空——
+            // 字段名撞内置方法名(count/len/push 族)时发射成方法调用
+            // (b35 考古: `c.count() = c.count() + c.step`)。已知 struct 名
+            // 即登记 User 占位类型,护栏按名命中。
+            Expr::Node(node) => {
+                if self.struct_fields.contains_key(&node.name)
+                    || self.struct_field_types.contains_key(&node.name)
+                {
+                    Self::placeholder_user_type(node.name.clone())
+                } else {
+                    Type::Unknown
+                }
+            }
             Expr::Call(call) => {
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
                     // method is AutoStr, obj is Expr
@@ -11986,8 +12058,21 @@ impl RustTrans {
         }
 
         // Plan 6B-4.19: shared var → static NAME: Lazy<Mutex<T>> = Lazy::new(|| Mutex::new(...));
+        // Plan 523 H5: 字面量初始化 → std const `static NAME: Mutex<T> = ...`
+        // （访问位 `*NAME.lock().unwrap()` 形态不变；str 字面量静态为 &str 型）。
         if matches!(store.kind, StoreKind::Shared) {
             let static_name = self.global_var_static_name(&store.name);
+            if Self::global_store_is_const_init(store) {
+                let ty = if matches!(store.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit) {
+                    "&str".to_string()
+                } else {
+                    self.rust_type_name(&store.ty)
+                };
+                write!(out, "static {}: Mutex<{}> = Mutex::new(", static_name, ty)?;
+                self.expr(&store.expr, out)?;
+                write!(out, ")")?;
+                return Ok(());
+            }
             let ty = self.rust_type_name(&store.ty);
             write!(out, "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
                    static_name, ty)?;
@@ -12016,8 +12101,30 @@ impl RustTrans {
         }
 
         // Plan 151: Generate static Lazy<Mutex<T>> for global variables
+        // Plan 523 H5: 字面量初始化 → std const static Mutex（同 Shared 位）。
+        // Plan 523 W3(四路 runner 回链修正):fn 内名命中全局的 let/var
+        // 初始化 → 全局写块形(参考写穿语义,b43 怪序;fn 内 static 遮蔽
+        // 形得 10/11 ≠ 参考 5/5/6)。
+        if self.is_global_var(&store.name) && self.in_fn_body {
+            let static_name = self.global_var_static_name(&store.name);
+            write!(out, "{{ let __a2r_gv = ")?;
+            self.expr(&store.expr, out)?;
+            write!(out, "; *{}.lock().unwrap() = __a2r_gv; }}", static_name)?;
+            return Ok(());
+        }
         if self.is_global_var(&store.name) {
             let static_name = self.global_var_static_name(&store.name);
+            if Self::global_store_is_const_init(store) {
+                let ty = if matches!(store.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit) {
+                    "&str".to_string()
+                } else {
+                    self.rust_type_name(&store.ty)
+                };
+                write!(out, "static {}: Mutex<{}> = Mutex::new(", static_name, ty)?;
+                self.expr(&store.expr, out)?;
+                write!(out, ")")?;
+                return Ok(());
+            }
             let ty = self.rust_type_name(&store.ty);
 
             // Generate: static NAME: Lazy<Mutex<T>> = Lazy::new(|| Mutex::new(...))
@@ -12410,26 +12517,6 @@ impl RustTrans {
         out: &mut Vec<(AutoStr, Type)>,
     ) {
         use crate::ast::Stmt;
-        /// Plan 514 W1: minimal User 占位类型(名字即类型;按名查询注册表生效)。
-        fn placeholder_user_type(name: AutoStr) -> Type {
-            Type::User(TypeDecl {
-                consts: Vec::new(),
-                name,
-                kind: crate::ast::TypeDeclKind::UserType,
-                parent: None,
-                has: Vec::new(),
-                specs: Vec::new(),
-                spec_impls: Vec::new(),
-                generic_params: Vec::new(),
-                members: Vec::new(),
-                delegations: Vec::new(),
-                methods: Vec::new(),
-                attrs: Vec::new(),
-                impl_attrs: Vec::new(),
-                doc: None,
-                is_pub: false,
-            })
-        }
         fn visit(stmts: &[Stmt], ret_types: &HashMap<AutoStr, Type>, out: &mut Vec<(AutoStr, Type)>) {
             for stmt in stmts {
                 match stmt {
@@ -12452,14 +12539,14 @@ impl RustTrans {
                                     // 两种调用名形态都认。
                                     Expr::Dot(obj, m) if m.as_str() == "new" => {
                                         if let Expr::Ident(tname) = obj.as_ref() {
-                                            out.push((store.name.clone(), placeholder_user_type(tname.clone())));
+                                            out.push((store.name.clone(), RustTrans::placeholder_user_type(tname.clone())));
                                         }
                                     }
                                     Expr::Bina(obj, Op::Dot, m) => {
                                         let is_new = matches!(m.as_ref(), Expr::Ident(id) if id.as_str() == "new");
                                         if is_new {
                                             if let Expr::Ident(tname) = obj.as_ref() {
-                                                out.push((store.name.clone(), placeholder_user_type(tname.clone())));
+                                                out.push((store.name.clone(), RustTrans::placeholder_user_type(tname.clone())));
                                             }
                                         }
                                     }
@@ -12493,6 +12580,76 @@ impl RustTrans {
         visit(stmts, ret_types, out);
     }
 
+    /// Plan 514 W1 → Plan 523 H1 提升为关联函数: minimal User 占位类型
+    /// (名字即类型;按名查询注册表生效)。原 nested fn 于 scan_call_init_bindings
+    /// 内,H1(struct 构造字面量类型推断)同需。
+    fn placeholder_user_type(name: AutoStr) -> Type {
+        Type::User(TypeDecl {
+            consts: Vec::new(),
+            name,
+            kind: crate::ast::TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            spec_impls: Vec::new(),
+            generic_params: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+            attrs: Vec::new(),
+            impl_attrs: Vec::new(),
+            doc: None,
+            is_pub: false,
+        })
+    }
+
+    /// Plan 523 H3: 未注解 fn 的返回类型推断——扫描 body 的 return 表达式
+    /// （嵌套控制流内）与顶层尾表达式，经 infer_type_from_expr 推型。首个
+    /// 非 Unknown 型胜出；形态冲突（discriminant 不同）回退 Unknown（保守）。
+    /// b38 考古：`fn mk() { return [7, 8, 9] }` 此前发射 unit，
+    /// `for w in mk()` rustc E0308。
+    fn infer_fn_ret_type(&self, body: &crate::ast::Body) -> Type {
+        let mut found: Option<Type> = None;
+        let mut conflict = false;
+        fn visit_stmts(tr: &RustTrans, stmts: &[Stmt], found: &mut Option<Type>, conflict: &mut bool) {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Return(ret) => {
+                        let t = tr.infer_type_from_expr(ret);
+                        if !matches!(t, Type::Unknown | Type::Void) {
+                            match found {
+                                Some(prev) => {
+                                    if std::mem::discriminant(prev) != std::mem::discriminant(&t) {
+                                        *conflict = true;
+                                    }
+                                }
+                                None => *found = Some(t),
+                            }
+                        }
+                    }
+                    Stmt::If(if_) => {
+                        for b in &if_.branches { visit_stmts(tr, &b.body.stmts, found, conflict); }
+                        if let Some(e) = &if_.else_ { visit_stmts(tr, &e.stmts, found, conflict); }
+                    }
+                    Stmt::For(f) => visit_stmts(tr, &f.body.stmts, found, conflict),
+                    Stmt::Block(b) => visit_stmts(tr, &b.stmts, found, conflict),
+                    Stmt::Try(t) => {
+                        visit_stmts(tr, &t.body.stmts, found, conflict);
+                        visit_stmts(tr, &t.catch_body.stmts, found, conflict);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        visit_stmts(self, &body.stmts, &mut found, &mut conflict);
+        if conflict {
+            return Type::Unknown;
+        }
+        // 只认显式 return 语句——顶层尾表达式（语句位调用值弃置常见）
+        // 假阳率高，不入本推断面（parser.rs 8720 同款 TODO 的保守子集）。
+        found.unwrap_or(Type::Unknown)
+    }
+
     fn scan_mutated_bindings(body: &crate::ast::Body) -> std::collections::HashSet<AutoStr> {
         let mut out = std::collections::HashSet::new();
         let mutating_methods = ["push", "insert", "extend", "pop", "remove", "retain", "next",
@@ -12510,6 +12667,23 @@ impl RustTrans {
                 // Recurse into call args
                 for arg in &call.args.args {
                     if let crate::ast::Arg::Pos(e) = arg { visit_expr(e, out, methods); }
+                }
+            }
+            // Plan 523 H2: 赋值 place 根(任意深度)——`x = e`/`x.f = e`/
+            // `x.f.g = e`/`x[i] = e` 及复合赋值族,根绑定需 mut。此前
+            // AST 层零覆盖,一级 place 靠 post-process 正则补(其
+            // `\b{name}\.\w+\s*=` 不匹配两级 place——b36 考古:
+            // `o.first.v = ...` 后 `let o` 缺 mut,rustc E0594)。
+            if let crate::ast::Expr::Bina(lhs, op, _) = expr {
+                if matches!(op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq) {
+                    let mut root = lhs.as_ref();
+                    loop {
+                        match root {
+                            crate::ast::Expr::Ident(n) => { out.insert(n.clone()); break; }
+                            crate::ast::Expr::Dot(o, _) | crate::ast::Expr::Index(o, _) => root = o.as_ref(),
+                            _ => break,
+                        }
+                    }
                 }
             }
         }
@@ -13023,11 +13197,24 @@ impl RustTrans {
             self.fn_param_types.insert(qualified, param_types);
         }
 
+        // Plan 523 H3: 未注解 fn 返回推断值（签名/缓存/调用点三处同源）。
+        // 未注解 fn 在 parser 即坍缩为 Void(:8761)，故以 Void 为触发位；
+        // 体无显式 return 表达式时推断回 Unknown → 维持 Void 原样。
+        // main 排除（Rust 要求 fn main 返回 ()；main 体内 return 值仅作
+        // 退出语义，002_const_generics/002_list_storage 金样实证）。
+        let inferred_ret: Type = if matches!(fn_decl.ret, Type::Void)
+            && fn_decl.name.as_str() != "main"
+        {
+            let t = self.infer_fn_ret_type(&fn_decl.body);
+            if matches!(t, Type::Unknown | Type::Void) { fn_decl.ret.clone() } else { t }
+        } else {
+            fn_decl.ret.clone()
+        };
         // Plan 373: Cache return type for .await insertion (keyed same as params).
-        self.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+        self.fn_ret_types.insert(fn_decl.name.clone(), inferred_ret.clone());
         if let Some(parent) = &fn_decl.parent {
             let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
-            self.fn_ret_types.insert(qualified, fn_decl.ret.clone());
+            self.fn_ret_types.insert(qualified, inferred_ret.clone());
         }
 
         // In merge mode, track which params are context types (need &mut instead of .clone())
@@ -13087,7 +13274,7 @@ impl RustTrans {
             let ok_ty = self.infer_result_ok_type(&fn_decl.body.stmts);
             Type::Result(Box::new(ok_ty))
         } else {
-            fn_decl.ret.clone()
+            inferred_ret.clone()
         };
         self.current_fn_ret_type = Some(effective_ret_type.clone());
         // Plan 417-E3: record this fn's type-parameter names so return/param
@@ -13126,9 +13313,9 @@ impl RustTrans {
                 "impl Iterator<Item = "
             };
             write!(sink.body, " -> {}{}>", stream_or_iter, inner)?;
-        } else if !matches!(fn_decl.ret, Type::Void) {
+        } else if !matches!(effective_ret_type, Type::Void) {
             let ret_str = if is_async_fn {
-                match &fn_decl.ret {
+                match &effective_ret_type {
                     Type::Handle { task_type } => self.rust_return_type_name(task_type),
                     Type::GenericInstance(inst) if inst.base_name == "Future" => {
                         self.rust_return_type_name(inst.args.first().unwrap_or(&Type::Unknown))
@@ -13136,7 +13323,7 @@ impl RustTrans {
                     other => self.rust_return_type_name(other),
                 }
             } else {
-                self.rust_return_type_name(&fn_decl.ret)
+                self.rust_return_type_name(&effective_ret_type)
             };
             write!(sink.body, " -> {}", ret_str)?;
         }
@@ -13166,7 +13353,9 @@ impl RustTrans {
         }
 
         // Plan 091: scope removed
+        self.in_fn_body = true; // Plan 523 W3:fn 内全局 store 走写块形
         self.body(&fn_decl.body, sink, &effective_ret_type, "")?;
+        self.in_fn_body = false;
         // Plan 091: scope removed
 
         // Plan 387: clear actor prologue/epilogue after use.
@@ -19047,6 +19236,23 @@ impl RustTrans {
         let mut func_paren_depths: std::collections::HashSet<i32> = std::collections::HashSet::new();
 
         while i < len {
+            // Plan 523 W3(path4 首曝的既有洞):外层扫描须跳过双引号字符串
+            // 字面量——字面量内的文本 "vec!["(AA2R ar_array_literal 的 out
+            // 初值 "vec![")会伪触发 vec 域,后续所有字符串被误插
+            // .to_string()(s8 复现:format!("{}, ", out) →
+            // format!(".to_string(){}, ", out);既有自 511 期,AA2R-in-bin
+            // 首次运行时触达)。
+            if !in_vec && bytes[i] == b'"' {
+                let start = i;
+                i += 1;
+                while i < len && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' { i += 1; }
+                    i += 1;
+                }
+                if i < len { i += 1; }
+                result.extend_from_slice(&content[start..i].as_bytes());
+                continue;
+            }
             if !in_vec && i + 5 <= len && &bytes[i..i+5] == b"vec![" {
                 in_vec = true;
                 vec_depth = 1;
@@ -20599,6 +20805,7 @@ impl Trans for RustTrans {
         self.run_type_inference(&ast.stmts);
 
         // Phase 2: Split into declarations and main, preserving source line info
+        self.global_lazy_used = false; // Plan 523 H5
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
         let mut main: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
 
@@ -20613,6 +20820,10 @@ impl Trans for RustTrans {
                 {
                     if matches!(store.kind, StoreKind::Var) || matches!(store.kind, StoreKind::Shared) {
                         self.register_global_var(store.name.clone());
+                        // Plan 523 H5: 非字面量初始化的全局保留 Lazy 形态。
+                        if !Self::global_store_is_const_init(store) {
+                            self.global_lazy_used = true;
+                        }
                     }
                     decls.push((stmt, line));
                 } else {
@@ -20662,9 +20873,13 @@ impl Trans for RustTrans {
             }
         }
 
-        // Plan 151: Add once_cell imports if we have global variables
+        // Plan 151: Add once_cell imports if we have global variables.
+        // Plan 523 H5: 字面量初始化的全局已改 std const static Mutex——
+        // 仅当存在非字面量全局（Lazy 残留）时才引入 once_cell 依赖。
         if !self.global_vars.is_empty() {
-            sink.body.write(b"use once_cell::sync::Lazy;\n")?;
+            if self.global_lazy_used {
+                sink.body.write(b"use once_cell::sync::Lazy;\n")?;
+            }
             sink.body.write(b"use std::sync::Mutex;\n\n")?;
         }
 
@@ -22623,7 +22838,14 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // state.get(&&"key".to_string()) -> state.get(&"key".to_string())
     // state.get(&&format!(...)) -> state.get(&format!(...))
     // state.get(&&nkey.to_string()) -> state.get(&nkey.to_string())
-    content = content.replace("&&\"", "&\"");
+    // Plan 525 W1 宿主顺修:盲替换 `&&"`→`&"` 会误吃以 && 结尾的字符串
+    // 字面量(lib 的 lexer/parser/a2r 各有 "&&" 字面量,aavm2_bin merge
+    // 产物被改成 "&";g26 四路 p2≠p4 实证)——改为捕获前导字符,仅当
+    // 前导非 `"`(即不是 "…&&" 字面量收尾)才替换
+    {
+        let re_amp = cached_regex(r#"([^"])&&""#).unwrap();
+        content = re_amp.replace_all(&content, "$1&\"").to_string();
+    }
     content = content.replace("&&format!", "&format!");
     // Fix &&var.to_string() patterns
     for var in &["nkey", "ekey", "vkey", "name", "key", "skey"] {
@@ -22838,7 +23060,11 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
         let before = content.len();
         // Only replace && that are before expressions, not logical AND
         // Safe patterns: &&"  &&{  &&var.  &&*  &&format!
-        content = content.replace("&&\"", "&\"");
+        // Plan 525 W1 宿主顺修:同前——字面量收尾保护(前导非 `"`)
+        {
+            let re_amp2 = cached_regex(r#"([^"])&&""#).unwrap();
+            content = re_amp2.replace_all(&content, "$1&\"").to_string();
+        }
         content = content.replace("&&format!", "&format!");
         content = content.replace("&&*", "&*");
         for var in &["nkey", "ekey", "vkey", "name", "key", "skey", "fn_name"] {

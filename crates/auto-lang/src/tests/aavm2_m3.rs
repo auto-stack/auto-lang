@@ -26,11 +26,7 @@ fn test_m3_corpus_file(path: &std::path::Path) -> AutoResult<()> {
     let (_r, expected) = crate::run_with_capture(&code)?;
     // 前置拼接 AAVM v2 lib(AUTO_LIB_FILES_V2,单一事实源)
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let mut lib_code = String::new();
-    for f in crate::AUTO_LIB_FILES_V2 {
-        lib_code.push_str(&std::fs::read_to_string(root.join(f))?);
-        lib_code.push('\n');
-    }
+    let lib_code = crate::aavm2_lib_source(&root)?;
     let program = format!(
         "{}\nfn main() {{\n    print(typecheck_dump(\"{}\"))\n}}\n",
         lib_code,

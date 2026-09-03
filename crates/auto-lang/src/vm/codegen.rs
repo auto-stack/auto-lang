@@ -434,6 +434,10 @@ pub struct Codegen {
     /// Plan 199: Current source line for SOURCE_LINE opcode emission
     /// Avoids emitting redundant SOURCE_LINE for consecutive stmts on the same line
     current_source_line: u32,
+
+    /// PLAN-057 T7：原始源文本（执行管线注入；None=纯 AST 编译场景，
+    /// web 内建编译期门禁的 `// vm-safe-allow` 行级豁免退化为不可豁免）。
+    pub source_text: Option<String>,
 }
 
 impl Codegen {
@@ -590,6 +594,7 @@ impl Codegen {
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
+            source_text: None, // PLAN-057 T7
         };
 
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
@@ -956,6 +961,7 @@ impl Codegen {
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
+            source_text: None, // PLAN-057 T7
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
@@ -2654,21 +2660,47 @@ impl Codegen {
                             }
                             self.loop_continue_positions.pop();
                         } else if let Expr::Call(_call) = &for_stmt.range {
-                            // Plan 454 E5b(§M 缺口③):Call 产物若静态型别为
-                            // Array(如 auto.obj.values),走「临时数组句柄 +
-                            // 索引循环 + GET_ELEM」通道——默认的 .iter() 迭代
-                            // 器通道对 List 句柄零迭代(句柄≠iterator)。
-                            // Array 型只能经 infer_expr_type 的 Object 映射间接
-                            // 观察——这里直接看原生名(infer 返回 Type 侧)。
-                            let arr_typed = match &for_stmt.range {
-                                Expr::Call(c) => matches!(
-                                    c.name.as_ref(),
-                                    Expr::Dot(_, m)
-                                        if matches!(m.as_str(), "values" | "keys")
-                                ),
+                            // Plan 454 E5b(§M 缺口③) + PLAN-057 T3 泛化(等价性
+                            // 缺陷族②):Call 源统一走「临时数组句柄 + 索引循环 +
+                            // GET_ELEM」通道——默认的 .iter() 迭代器通道对 List
+                            // 句柄零迭代(句柄≠iterator)。原 E5b 仅按名放行
+                            // .values/.keys;泛化后承接全部 Call 源,例外仅留
+                            // 迭代器协议族与流式源(惰性拉帧,len() 不可表达):
+                            //   - .iter/.take/.skip/.rev/.chain/.zip 适配链
+                            //     (通道选择由 vm_types 编译形态测试钉住)
+                            //   - 生成器 fn 调用(generator_fns 在案——
+                            //     CREATE_GENERATOR 产物是迭代器对象,索引通道
+                            //     len() 不可表达;generator_tests 5 例回归钉)
+                            //   - 名含 stream / sse_ 前缀(plan341 SSE 惰性流)
+                            //   - 未知 callee 形态保守走原迭代器通道
+                            let callee_iter_protocol = match &for_stmt.range {
+                                Expr::Call(c) => {
+                                    let seg = match c.name.as_ref() {
+                                        Expr::Dot(_, m) => Some(m.as_str()),
+                                        Expr::Ident(n) => Some(n.as_str()),
+                                        _ => None,
+                                    };
+                                    match seg {
+                                        Some(m) => {
+                                            self.generator_fns.contains(m)
+                                                || matches!(
+                                                    m,
+                                                    "iter"
+                                                        | "take"
+                                                        | "skip"
+                                                        | "rev"
+                                                        | "chain"
+                                                        | "zip"
+                                                )
+                                                || m.contains("stream")
+                                                || m.starts_with("sse_")
+                                        }
+                                        None => true,
+                                    }
+                                }
                                 _ => false,
                             };
-                            if arr_typed {
+                            if !callee_iter_protocol {
                                 self.push_scope(); // 迭代变量 + 句柄 + 计数器
                                 self.compile_expr(&for_stmt.range)?;
                                 let arr_index = self.add_var("_iterarr");
@@ -3554,6 +3586,31 @@ impl Codegen {
                             // Use first pattern for special pattern types (Option/Result/Cover)
                             let pattern = &patterns[0];
                             match pattern {
+                                crate::ast::Expr::StructPattern(sc) if sc.variant.is_none() => {
+                                    // Plan 525 W2: is-struct 解构臂——plain struct
+                                    // 静态恒命中(a2r 规范=match 解构绑定;此前
+                                    // StructPattern 直落 10117 panic 洞顺修)。
+                                    // 发射镜像 aavm cg_is struct-cover 臂:逐绑定
+                                    // load target → GET_FIELD(名字池)→ store
+                                    // 绑定 → 体 → JMP end。
+                                    for fb in &sc.fields {
+                                        if fb.binding.as_str() != "_" {
+                                            self.emit_load_loc(target_var);
+                                            let field_bytes = fb.field.as_bytes().to_vec();
+                                            let field_idx = self.strings.len() as u32;
+                                            self.strings.push(field_bytes);
+                                            self.emit(OpCode::GET_FIELD);
+                                            self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                            let var_idx = self.add_var(fb.binding.as_str());
+                                            self.emit_store_loc(var_idx);
+                                        }
+                                    }
+                                    self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                    self.emit(OpCode::JMP);
+                                    let jump_to_end = self.emit_placeholder_i16();
+                                    end_jumps.push(jump_to_end);
+                                    continue;
+                                }
                                 crate::ast::Expr::None => {
                                     self.emit_load_loc(target_var);
                                     self.emit(OpCode::IS_VARIANT);
@@ -8118,6 +8175,38 @@ impl Codegen {
                         } else if let Some(&id) = self.c_ffi_functions.get(name) {
                             Some(id)
                         } else {
+                            // PLAN-057 T7（等价性缺陷族③门禁面）：模块式 web 内建
+                            // 全局调用（接收者字面 ∈ Math/JSON/Object/Array 且非
+                            // 变量/全局）解析失败时升编译期报错——不再落「运行期
+                            // 静默 None 桩」（Array.isArray/stringify 掩蔽雷点
+                            // 教训）。豁免=调用点同行或上一行
+                            // `// vm-safe-allow <原因>`（musk 侧
+                            // scripts/vm-safe-lint.mjs 同机制）。
+                            // 注意：实例方法的 func_name 会被类型重写带上
+                            // "Array." 前缀（xs.frobnicate → Array.frobnicate），
+                            // 按原始接收者形态判别不误伤实例方法路径；非四
+                            // 命名空间的未解析静态调用维持静默兜底。
+                            let is_module_style_web_global = match call.name.as_ref() {
+                                Expr::Dot(obj, _) => match obj.as_ref() {
+                                    Expr::Ident(id)
+                                        if matches!(
+                                            id.as_str(),
+                                            "Math" | "JSON" | "Object" | "Array"
+                                        ) =>
+                                    {
+                                        self.lookup_var(id.as_str()).is_none()
+                                            && !self.global_vars.contains(id.as_str())
+                                    }
+                                    _ => false,
+                                },
+                                _ => false,
+                            };
+                            if is_module_style_web_global && !self.web_builtin_call_exempt() {
+                                return Err(AutoError::Msg(format!(
+                                    "未解析的 web 内建 `{}`：VM 轨对 natives 表外的 Math.*/JSON.*/Object.*/Array.* 调用不再静默 None。请实现对应 native，或在调用点上一行加 `// vm-safe-allow <原因>` 豁免（musk 侧 scripts/vm-safe-lint.mjs 同机制）",
+                                    name
+                                )));
+                            }
                             None
                         }
                     }
@@ -8233,7 +8322,12 @@ impl Codegen {
                                     // math shim 只弹实参不消费占位 → 每次调用
                                     // 泄漏 +1 槽（循环体内累积；还会顶高 sp 干扰
                                     // list.new 族 bp+num_locals+2 有参判定启发式）。
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math")
+                                    // PLAN-057 T6：JS web 内建全局（Array/JSON/
+                                    // Object/Math）补入——Array.isArray 走实例路径
+                                    // 时类型名 receiver 被推栈，shim 弹到字符串
+                                    // 索引（实测评价值 0..N 递增=类型名池位）。
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math"
+                                        | "Array" | "Object" | "JSON" | "Math" | "Date")
                                         || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)
                                 }
@@ -8422,6 +8516,26 @@ impl Codegen {
                             // Call str.len to get the string length as the end index
                             self.emit(OpCode::CALL_NAT);
                             self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.str.len").unwrap());
+                        }
+                    }
+
+                    // PLAN-057 T6: JSON.stringify 参数规整——JS 可变参
+                    // (v[, replacer][, space])，CALL_NAT shim 固定弹 3 参；
+                    // 缺位编译期补齐（replacer=null、space=0），沿 Plan 197
+                    // str.slice 补参先例。超参（>3）沿 JS 忽略语义不管——
+                    // shim 只弹 3，多参调用点会失衡，现源无此形态。
+                    if func_name.as_deref() == Some("JSON.stringify") {
+                        match call.args.args.len() {
+                            1 => {
+                                self.emit(OpCode::PUSH_NIL);
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(0);
+                            }
+                            2 => {
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(0);
+                            }
+                            _ => {}
                         }
                     }
 
@@ -8624,7 +8738,10 @@ impl Codegen {
                                     | "env_logger" | "chrono" | "serde_json" | "csv" | "walkdir" | "clap" | "simplelog"
                                     | "crossbeam" | "rayon" | "num" | "percent_encoding" | "urlencoding"
                                     | "sha2" | "hmac" | "flate2" | "tar" | "semver" | "once_cell"
-                                    | "rand_distr")
+                                    | "rand_distr"
+                                    // PLAN-057 T6：JS web 内建全局（防未解析静态
+                                    // 兜底推类型名 receiver 占位栈）
+                                    | "Array" | "Object" | "JSON" | "Math" | "Date")
                                     || self.is_type_name_heuristic(obj_name)
                                     || self.is_type(obj_name)
                             }
@@ -9738,6 +9855,28 @@ impl Codegen {
                         crate::ast::IsBranch::EqBranch(patterns, body) => {
                             let pattern = &patterns[0];
                             match pattern {
+                                crate::ast::Expr::StructPattern(sc) if sc.variant.is_none() => {
+                                    // Plan 525 W2: is-struct 解构臂(表达式位)——
+                                    // 同语句位:恒命中+逐绑定解构;体末值留栈
+                                    // (is 表达式的值通道)
+                                    for fb in &sc.fields {
+                                        if fb.binding.as_str() != "_" {
+                                            self.emit_load_loc(target_var);
+                                            let field_bytes = fb.field.as_bytes().to_vec();
+                                            let field_idx = self.strings.len() as u32;
+                                            self.strings.push(field_bytes);
+                                            self.emit(OpCode::GET_FIELD);
+                                            self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                            let var_idx = self.add_var(fb.binding.as_str());
+                                            self.emit_store_loc(var_idx);
+                                        }
+                                    }
+                                    self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                    self.emit(OpCode::JMP);
+                                    let jump_to_end = self.emit_placeholder_i16();
+                                    end_jumps.push(jump_to_end);
+                                    continue;
+                                }
                                 crate::ast::Expr::None => {
                                     self.emit_load_loc(target_var);
                                     self.emit(OpCode::IS_VARIANT);
@@ -10099,6 +10238,27 @@ impl Codegen {
             self.emit(OpCode::SOURCE_LINE);
             self.emit_u16(line as u16);
         }
+    }
+
+    /// PLAN-057 T7：web 内建编译期门禁的行级豁免——当前调用点（按
+    /// current_source_line）同行或上一行含 `// vm-safe-allow` 即豁免。
+    /// source_text 缺席（纯 AST 编译）时不可豁免（保守报错）。
+    fn web_builtin_call_exempt(&self) -> bool {
+        let Some(text) = self.source_text.as_ref() else {
+            return false;
+        };
+        let line1 = self.current_source_line as usize; // 1-based
+        if line1 == 0 {
+            return false;
+        }
+        let cur = text.split('\n').nth(line1 - 1);
+        let prev = if line1 >= 2 {
+            text.split('\n').nth(line1 - 2)
+        } else {
+            None
+        };
+        let mark = |l: Option<&str>| l.map(|s| s.contains("// vm-safe-allow")).unwrap_or(false);
+        mark(cur) || mark(prev)
     }
 
     // Plan 073: Emit i16 value (2 bytes, little-endian) for jump offsets

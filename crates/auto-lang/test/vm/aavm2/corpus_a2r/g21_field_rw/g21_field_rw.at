@@ -1,0 +1,23 @@
+type Counter {
+    count int
+    step int
+}
+
+type Inner {
+    v int
+}
+
+type Outer {
+    first Inner
+    tag str
+}
+
+fn main() {
+    let c = Counter { count: 0, step: 3 }
+    c.count = c.count + c.step
+    print(c.count)
+    let o = Outer { first: Inner { v: 1 }, tag: "t" }
+    o.first.v = o.first.v + 5
+    print(o.first.v)
+    print(o.tag)
+}
