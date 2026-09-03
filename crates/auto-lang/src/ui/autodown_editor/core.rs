@@ -407,6 +407,13 @@ impl AutodownEditorCore {
         *self.focus.lock().unwrap()
     }
 
+    /// PLAN-044 T1：块矩形快照（`render_frame` 布局写回的读出）。on_focus
+    /// 消息在焦点变化现场取 `block_rects()[focus].h` 作为 ghost 定高；
+    /// widget 内部消费 + 单测锚定，不对 DSL 开放查询面。
+    pub fn block_rects(&self) -> Vec<Rect> {
+        self.layout.lock().unwrap().blocks.iter().map(|b| b.rect).collect()
+    }
+
     pub fn revision(&self) -> u64 {
         self.revision.load(Ordering::Relaxed)
     }
@@ -2151,6 +2158,22 @@ mod tests {
         });
         assert_eq!(c.block_count(), 1);
         assert_eq!(c.emit_document(), "只有一段。\n第二行");
+    }
+
+    /// PLAN-044 T1：layout 快照暴露——block_rects 与 render_frame 写回的
+    /// 块布局一致（长度=块数、y 严格单调、块高为正、末块底≈帧高），
+    /// on_focus 消息在焦点变化现场取 `block_rects()[focus].h` 作 ghost 定高。
+    #[test]
+    fn block_rects_snapshot_matches_frame_layout() {
+        let c = core_for("t44a", "甲段。\n\n乙段。\n\n丙段。\n");
+        assert_eq!(c.block_count(), 3);
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let rects = c.block_rects();
+        assert_eq!(rects.len(), 3, "{rects:?}");
+        assert!(rects.windows(2).all(|w| w[1].y > w[0].y), "{rects:?}");
+        assert!(rects.iter().all(|r| r.h > 0.0), "{rects:?}");
+        let last_bottom = rects[2].y + rects[2].h;
+        assert!((last_bottom - frame.height).abs() < 0.5, "bottom={last_bottom} frame={}", frame.height);
     }
 
     #[test]
