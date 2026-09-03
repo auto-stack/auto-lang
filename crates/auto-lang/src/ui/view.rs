@@ -384,6 +384,13 @@ pub fn col_boundary_hit(x: f32, widths: &[f32], spacing: f32, band: f32) -> Opti
     best.map(|(i, _)| i)
 }
 
+/// Plan 045 T4/T5: 列宽落定通道注入形态——`(表键, 测量) -> M` 的 Arc<dyn Fn>。
+/// 定义在 view.rs（非门控）而非 autodown_render：消费臂
+///（aura_view_builder autodown_on_col_resize_binding）在无 autodown 特性
+/// 的构建档也要可命名（复审门 ui-iced 档抓红后上移）。
+pub type TableColResizeFn<M> =
+    std::sync::Arc<dyn Fn(u64, ColResizeMetrics) -> M + Send + Sync>;
+
 /// Plan 045 T1: 表格列宽拖拽落定回调（[`ScrollCallback`] 同款 newtype 形态，
 /// Arc<dyn Fn> 可跨消息类型包装——VM 轨 DynamicMessage→IcedMessage 转换不丢）。
 #[derive(Clone)]

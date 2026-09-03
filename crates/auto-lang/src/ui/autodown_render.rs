@@ -25,10 +25,9 @@ use autodown_core::block_model::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Plan 045 T4: 列宽拖拽落定通道注入形态——`(表键, 测量) -> M`。Arc<dyn Fn>
-/// 使闭包可被 [`ColResizeCallback`]（要求 'static + Send + Sync）捕获表键
-/// 后长期持有（details_onclick 是即调 `&dyn Fn`，本通道是延迟调用故 Arc）。
-pub type TableColResizeFn<M> = Arc<dyn Fn(u64, ColResizeMetrics) -> M + Send + Sync>;
+/// Plan 045 T4: 列宽拖拽落定通道注入形态（定义上移 view.rs——非门控，
+/// 复审门 ui-iced 档可命名性；本模块按原路径再导出保持引用稳定）。
+pub use crate::ui::view::TableColResizeFn;
 
 /// Parse `src` and render the document body as a column of block views.
 pub fn render_document<M: Clone + std::fmt::Debug + 'static>(src: &str, is_final: bool) -> View<M> {

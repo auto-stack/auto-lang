@@ -2511,7 +2511,7 @@ impl<'a> AuraViewBuilder<'a> {
     fn autodown_on_col_resize_binding(
         &self,
         events: &HashMap<String, AuraEvent>,
-    ) -> Option<crate::ui::autodown_render::TableColResizeFn<DynamicMessage>> {
+    ) -> Option<crate::ui::view::TableColResizeFn<DynamicMessage>> {
         aura_events_get_base(events, "oncolresize").map(|ev| {
             let handler = extract_handler_name(&ev.handler).to_string();
             let widget = self.widget_name.clone();
@@ -2525,7 +2525,7 @@ impl<'a> AuraViewBuilder<'a> {
                         auto_val::Value::Float(m.width as f64),
                     ],
                 },
-            ) as crate::ui::autodown_render::TableColResizeFn<DynamicMessage>
+            ) as crate::ui::view::TableColResizeFn<DynamicMessage>
         })
     }
 
