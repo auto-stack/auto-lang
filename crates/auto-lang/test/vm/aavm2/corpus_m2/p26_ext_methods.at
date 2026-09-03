@@ -1,0 +1,15 @@
+enum K { A }
+
+type P2 {
+    x int
+}
+
+ext P2 {
+    fn double() int {
+        return .x * 2
+    }
+}
+
+fn main() {
+    print(2)
+}

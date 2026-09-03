@@ -74,6 +74,11 @@ widget Settings {
         var cfg_wallpaper str = ""  // 宿主召唤注入当前键值快照
         var wallpaper_draft str = "" // 壁纸输入草稿（路径 | #hex）
         var wallpaper_saved str = "0"
+        // PLAN-526 T14：壁纸目录选择（Q8——磁盘图片可选）。__wallpapers =
+        // 宿主召唤注入 {name,path,src} Obj 数组（wallpapers_dir storage 键
+        // 目录扫描 jpg/png）；dir_draft = 目录输入草稿（storage 直写）。
+        var __wallpapers = []
+        var wallpapers_dir_draft str = ""
         // ---- Appearance 增量（Plan 518 G1/G6）：主题与透明度快照（宿主
         //      召唤注入;主题切换 = set_theme 驱动动词即时生效,透明度 =
         //      storage 直写虚拟窗每帧读即时生效）----
@@ -385,6 +390,8 @@ widget Settings {
                                             // 壁纸卡（496 M5）：路径/色值 storage
                                             // 直写——boot 解析（#hex 直传/路径验在/
                                             // 坏值回退默认色），重启生效。
+                                            // PLAN-526 T14：+ 壁纸目录扫描缩略图
+                                            // （点选即 set_wallpaper 热切换）。
                                             col {
                                                 style: "gap-2 p-3 bg-gray-750 rounded-lg"
                                                 text "壁纸" { style: "text-gray-200 text-sm font-medium" }
@@ -410,6 +417,40 @@ widget Settings {
                                                         text "当前：" { style: "text-gray-500 text-xs" }
                                                         text .cfg_wallpaper { style: "text-gray-300 text-xs" }
                                                     }
+                                                }
+                                                // PLAN-526 T14：壁纸目录（storage
+                                                // shell.desktop.wallpapers_dir 直
+                                                // 写；重开面板扫描）+ 缩略图点选
+                                                // （set_wallpaper 动词即时生效+持久）。
+                                                row {
+                                                    style: "items-center gap-2"
+                                                    input {
+                                                        value: .wallpapers_dir_draft
+                                                        oninput: .DraftWallpapersDir
+                                                        placeholder: "壁纸目录，如 D:\\Down\\stella-os\\wallpapers"
+                                                        style: "flex-1 text-sm text-white bg-gray-900"
+                                                    }
+                                                    button "保存目录" {
+                                                        onclick: .SaveWallpapersDir
+                                                        style: "h-8 px-3 text-xs"
+                                                    }
+                                                }
+                                                if .__wallpapers.len() > 0 {
+                                                    grid (cols: 4, gap: 8) {
+                                                        style: "w-full"
+                                                        for wp in .__wallpapers {
+                                                            button {
+                                                                onclick: .PickWallpaper(wp.path)
+                                                                style: "w-full h-20 p-0 bg-transparent rounded-lg overflow-hidden hover:bg-primary/10"
+                                                                image (src: wp.src) {
+                                                                    style: "w-full h-full object-cover"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    text "点选缩略图立即更换壁纸" { style: "text-gray-500 text-xs" }
+                                                } else {
+                                                    text "未配置壁纸目录或目录无 jpg/png 图片" { style: "text-gray-600 text-xs" }
                                                 }
                                             }
                                         }
@@ -571,6 +612,26 @@ widget Settings {
                 .wallpaper_draft = ""
                 .wallpaper_saved = "1"
             }
+        }
+
+        // ---- PLAN-526 T14：壁纸目录与缩略图点选（Q8 闭环）----
+        // 目录 = storage 直写（重开面板/重启扫描生效）；缩略图 = set_wallpaper
+        // 驱动动词（宿主臂 storage 持久 + 会话字段回读 + 快照撤——即时生效，
+        // 无需重启；SetTheme 同链先例）。
+        .DraftWallpapersDir(v) -> {
+            .wallpapers_dir_draft = v
+        }
+
+        .SaveWallpapersDir -> {
+            if .wallpapers_dir_draft != "" {
+                storage.set("shell.desktop.wallpapers_dir", .wallpapers_dir_draft)
+            }
+        }
+
+        .PickWallpaper(p) -> {
+            .cfg_wallpaper = p
+            .wallpaper_saved = "0"
+            .__desktop_cmd = "set_wallpaper\t" + p
         }
 
         // ---- Appearance 增量（Plan 518 G1/G6）：主题 = set_theme 驱动动词

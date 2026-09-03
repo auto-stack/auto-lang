@@ -1,7 +1,10 @@
 // pages/navitem.at - NavItem / NavGroup component documentation page (Plan 482)
 
 widget NavItemPage {
-    model { activeTab str = "preview", picked str = "inbox" }
+    model {
+        activeTab str = "preview"
+        picked str = "inbox"
+    }
 
     view {
         col {

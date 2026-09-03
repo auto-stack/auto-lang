@@ -149,6 +149,22 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
         }
     }
 
+    // PLAN-528 W7: bundled scaffold cross-dependencies. shadcn-vue 的
+    // `add toggle-group` 经 registry 自动带上 toggle 依赖;bundled 快照
+    // 物化路径没有 registry 元数据,依赖闭包在此显式声明。
+    const SCAFFOLD_DEPS: &[(&str, &str)] = &[("toggle-group", "toggle")];
+    loop {
+        let mut added = false;
+        for (scaffold, dep) in SCAFFOLD_DEPS {
+            if components.contains(*scaffold) && components.insert((*dep).to_string()) {
+                added = true;
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+
     let mut result: Vec<String> = components.into_iter().collect();
     result.sort();
     result
@@ -351,11 +367,21 @@ impl VueDependencyUsage {
 /// Plan 442 P0-1: package.json is stale when any optional dep's declared
 /// state no longer matches the code's usage — either direction (missing
 /// after a feature was added, or leftover from the full-hardcoded era).
-fn package_json_deps_drifted(existing: &str, usage: &VueDependencyUsage) -> bool {
+fn package_json_deps_drifted(
+    existing: &str,
+    usage: &VueDependencyUsage,
+    extra_deps: &[(String, String)],
+) -> bool {
     let required = usage.required_packages();
     OPTIONAL_DEPS
         .iter()
         .any(|(pkg, _)| existing.contains(&format!("\"{}\"", pkg)) != required.contains(pkg))
+        // PLAN-528 W6: pac.at npm_deps（如 @autodown/* link 依赖）缺失时同样
+        // 视为漂移——此前只对比 OPTIONAL_DEPS 用量，npm_deps 声明了也永远
+        // 不会触发 package.json 重写。
+        || extra_deps
+            .iter()
+            .any(|(pkg, _)| !existing.contains(&format!("\"{}\"", pkg)))
 }
 
 /// Plan 442 P0-1: sync the CodeEditor.vue shell with actual usage. The
@@ -3271,7 +3297,7 @@ export default router
             if !existing_pkg.contains("@types/prismjs")
                 || !existing_pkg.contains("onlyBuiltDependencies")
                 || needs_i18n
-                || package_json_deps_drifted(&existing_pkg, &usage)
+                || package_json_deps_drifted(&existing_pkg, &usage, &self.npm_deps)
             {
                 let new_pkg = generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage);
                 fs::write(&pkg_path, &new_pkg)
@@ -4489,6 +4515,30 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         }
     }
 
+    // PLAN-528 W6: pac.at npm_deps（如 @autodown/* link 依赖）必须每次 run
+    // 自愈进 package.json——增量路径不走 regenerate_source_files 的漂移重写，
+    // 只在 pac.at 新增的依赖永远不会被安装。自愈理由同上方 index.html。
+    {
+        let pkg_path = project.output_dir.join("package.json");
+        if pkg_path.exists() {
+            let existing = fs::read_to_string(&pkg_path).unwrap_or_default();
+            let usage = project.dependency_usage();
+            if package_json_deps_drifted(&existing, &usage, &project.npm_deps) {
+                let new_pkg = generate_package_json(
+                    &project.name,
+                    project.has_routes,
+                    project.i18n.enabled,
+                    &project.npm_deps,
+                    &usage,
+                );
+                match fs::write(&pkg_path, new_pkg) {
+                    Ok(_) => println!("{}", "  ✓ Updated package.json (npm_deps sync)".bright_green()),
+                    Err(e) => println!("  ⚠ package.json refresh skipped: {}", e),
+                }
+            }
+        }
+    }
+
     // Copy handmade theme assets if available
     let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
     let gen_css = root_dir.join("gen").join("front").join("vue").join("src").join("assets").join("index.css");
@@ -5336,12 +5386,12 @@ render: \"vm\"
             "demo", false, false, &[],
             &VueDependencyUsage { code_editor: true, toast: true, button: true, ..Default::default() },
         );
-        assert!(!package_json_deps_drifted(&legacy_full, &VueDependencyUsage { code_editor: true, toast: true, button: true, ..Default::default() }));
+        assert!(!package_json_deps_drifted(&legacy_full, &VueDependencyUsage { code_editor: true, toast: true, button: true, ..Default::default() }, &[]));
         // Same pkg, app no longer uses the features → drifted (prune).
-        assert!(package_json_deps_drifted(&legacy_full, &VueDependencyUsage::default()));
+        assert!(package_json_deps_drifted(&legacy_full, &VueDependencyUsage::default(), &[]));
         // Minimal pkg, app gained a feature → drifted (add).
         let minimal = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
-        assert!(package_json_deps_drifted(&minimal, &VueDependencyUsage { toast: true, ..Default::default() }));
+        assert!(package_json_deps_drifted(&minimal, &VueDependencyUsage { toast: true, ..Default::default() }, &[]));
     }
 
     /// Plan 444 (ash-shell-057 ⑥): the progress / scroll-area / table
@@ -5374,7 +5424,8 @@ render: \"vm\"
         );
         assert!(package_json_deps_drifted(
             &stale,
-            &VueDependencyUsage { vueuse_scaffold: true, ..Default::default() }
+            &VueDependencyUsage { vueuse_scaffold: true, ..Default::default() },
+            &[],
         ));
     }
 

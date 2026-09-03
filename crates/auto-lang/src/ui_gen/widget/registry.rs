@@ -494,6 +494,22 @@ impl WidgetRegistry {
         });
         self.register(switch);
 
+        // PLAN-528 W7: ToggleGroup / ToggleGroupItem——shadcn-vue toggle-group
+        // 三连按钮组(single/multiple)。此前 schema/registry 双缺,页面
+        // togglegroup 标签塌缩为裸 div,B/I/U 纵向裸排。
+        // canonical 名小写即 "togglegroup";页面书写 toggle-group/togglegroup
+        // 均可达。item 的页面拼写 togglegroup-item 由显式别名覆盖。
+        let mut toggle_group = WidgetSpec::new("ToggleGroup", WidgetCategory::Form)
+            .with_alias("toggle-group");
+        toggle_group.has_children = true;
+        self.register(toggle_group);
+
+        let mut toggle_group_item = WidgetSpec::new("ToggleGroupItem", WidgetCategory::Form)
+            .with_alias("toggle-group-item")
+            .with_alias("togglegroup-item");
+        toggle_group_item.has_children = true;
+        self.register(toggle_group_item);
+
         // Select
         let mut select = WidgetSpec::new("Select", WidgetCategory::Form)
             .with_alias("select");

@@ -1,0 +1,10 @@
+# Plan 523 W3-11 bless 工作流演示留档(2026-09-03,worktree)
+# 1) 篡改金样: printf '\n// TAMPER-DEMO\n' >> g24_neg.expected.rs
+# 2) --check → 红:
+#    golden mismatches (1 of 14):
+#    g24_neg: expected.rs (③ 主 a2r 产物漂移)
+#    test result: FAILED
+# 3) --bless → 再生 14 件 BLESSED
+# 4) --check → 绿: Goldens: 14/14 cases checked
+# 5) diff 复原产物与篡改前逐字节一致(bless 由 live 生成,无漂移)
+# 流程口径:bless 产物走 git diff 评审(A2R_BLESS=1 显式置位)

@@ -1,0 +1,14 @@
+// Plan 525 W4 g30:闭包/嵌套 fn 发射护航(多参/单参/捕获/体内 fn)
+fn main() {
+    let add = (a int, b int) => a + b
+    print(add(5, 3))
+    let double = x => x * 2
+    print(double(21))
+    let factor = 3
+    let scale = x => x * factor
+    print(scale(7))
+    fn helper(n int) int {
+        return n + 100
+    }
+    print(helper(5))
+}

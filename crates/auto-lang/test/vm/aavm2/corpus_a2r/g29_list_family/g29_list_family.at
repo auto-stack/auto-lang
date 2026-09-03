@@ -1,0 +1,36 @@
+// Plan 525 W3 g29:容器族发射护航(List<T> 注解位/方法族/嵌套/参数
+// 位/字段位)——AA2R 的 Vec 映射同步判据
+type Box {
+    vals List<int>
+}
+
+fn mk() List<int> {
+    var l List<int> = List.new()
+    l.push(3)
+    l.push(4)
+    return l
+}
+
+fn sum(xs List<int>) int {
+    var t int = 0
+    var i int = 0
+    while i < xs.len() {
+        t = t + xs.get(i)
+        i = i + 1
+    }
+    return t
+}
+
+fn main() {
+    var l List<int> = mk()
+    print(l.len())
+    print(sum(l))
+    var rows List<List<int>> = List.new()
+    var row List<int> = List.new()
+    row.push(1)
+    rows.push(row)
+    var b Box = Box { vals: List.new() }
+    b.vals.push(9)
+    print(b.vals.get(0))
+    print(rows.get(0).len())
+}

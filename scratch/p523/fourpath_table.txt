@@ -1,0 +1,16 @@
+==== 四路 runner 判定表 ====
+g19_struct_decl          exec(②): p1=p3 trans(③): p2=p4 PASS
+g20_struct_ctor          exec(②): p1=p3 trans(③): p2=p4 PASS
+g21_field_rw             exec(②): p1=p3 trans(③): p2=p4 PASS
+g22_for_in_arr           exec(②): p1=p3 trans(③): p2=p4 PASS
+g23_str_index            exec(②): p1=p3 trans(③): p2=p4 PASS
+g24_neg                  exec(②): p1=p3 trans(③): p2=p4 PASS
+g25_globals              exec(②): p1=p3 trans(③): p2=p4 PASS
+b07_fib                  exec(②): p1=p3 trans(③): p2=p4 PASS
+b13_is_enum              exec(②): p1=p3 trans(③): p2=p4 PASS
+b32_is_break_continue    exec(②): p1=p3 trans(③): p2=p4 PASS
+b33_fstr_eval            exec(②): p1=p3 trans(③): p2=p4 PASS
+b34_struct_basic         exec(②): p1=p3 trans(③): p2=p4 PASS
+b36_struct_nested        exec(②): p1=p3 trans(③): p2=p4 PASS
+b42_globals              exec(②): p1=p3 trans(③): p2=p4 PASS
+==== 14 cases, 14 PASS, 0 FAIL ====

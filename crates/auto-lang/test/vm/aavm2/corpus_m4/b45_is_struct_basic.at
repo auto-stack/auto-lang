@@ -1,0 +1,15 @@
+// Plan 525 W2 b45:is-struct 解构模式(plain struct 臂)——宿主语义=
+// StructCover 解构绑定(parser.rs 4177;主 a2r→Rust match 解构);
+// 宿主 VM codegen 洞(10117 panic)随 W2 顺修
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    var p = Point { x: 3, y: 4 }
+    is p {
+        Point { x, y } -> print(x + y)
+        else -> print(0)
+    }
+}

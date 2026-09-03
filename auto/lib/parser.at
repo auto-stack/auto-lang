@@ -1034,6 +1034,76 @@ fn tuple_rest(mut p P, first E) E {
     return E("tuple", "", "", "", "(tuple " + join_dump_list(dumps, " ") + ")", "(" + join_dump_list(itys, ", ") + ")")
 }
 
+// W4(525):闭包表达式——宿主 Plan 060:`(a int, b int) => body`(typed
+// 多参)/`(a, b) => body`(多参)。Display 对齐 fun.rs Closure:单参全型
+// `(x : int)`、多参仅名 `(a, b)`;体=单表达式(块体超语料面)。
+// E 复用约定:kind="closure"、args=参数名逗号串(码 gen 编译用)
+fn parse_closure_paren(mut p P) E {
+    p.next()
+    p.skip_empty_lines()
+    var names List<str> = List.new()
+    var single_full = ""
+    var n = 0
+    while p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RParen {
+        if !is_name_kind(p.kind()) {
+            p.fail("expected closure param, got ")
+            return bad_e()
+        }
+        var nm = p.text()
+        var full = "(" + nm + ")"
+        p.next()
+        // W4(525):注解双形态(: T 与空格 T——镜像 parse_fn_params)
+        if p.kind() == TokenKind.Colon {
+            p.next()
+        }
+        if is_type_name(p) {
+            var t = parse_type(p)
+            full = "(" + nm + " : " + t + ")"
+        }
+        names.push(nm)
+        if n == 0 {
+            single_full = full
+        }
+        n = n + 1
+        if p.kind() == TokenKind.Comma {
+            p.next()
+            p.skip_empty_lines()
+        }
+    }
+    p.expect(TokenKind.RParen)
+    p.expect(TokenKind.DoubleArrow)
+    p.skip_empty_lines()
+    var body = expr_pratt(p, 0)
+    if p.err != "" {
+        return bad_e()
+    }
+    var head = ""
+    if n == 1 {
+        head = single_full
+    } else {
+        head = "("
+        var j = 0
+        while j < names.len() {
+            if j > 0 {
+                head = head + ", "
+            }
+            head = head + names.get(j)
+            j = j + 1
+        }
+        head = head + ")"
+    }
+    var aj = ""
+    var j2 = 0
+    while j2 < names.len() {
+        if j2 > 0 {
+            aj = aj + ","
+        }
+        aj = aj + names.get(j2)
+        j2 = j2 + 1
+    }
+    return E("closure", "", "", aj, "(closure " + head + " => " + body.dump + ")", "")
+}
+
 // LParen 前缀的 group/tuple/closure 判定(expr_pratt_inner LParen 臂直译)
 fn paren_prefix(mut p P) E {
     var k1 = p.peek(1)
@@ -1075,8 +1145,8 @@ fn paren_prefix(mut p P) E {
             i = i + 1
         }
         if found_arrow {
-            p.fail("v2 unsupported: multi-param closure ")
-            return bad_e()
+            // W4(525):闭包(多参/带型)——镜像宿主 closure 解析
+            return parse_closure_paren(p)
         }
         if found_comma {
             // 元组:消费 (,首元素后按逗号续
@@ -1165,8 +1235,15 @@ fn expr_with_left(mut p P, lhs E, min int) E {
     }
     // 单参闭包 x => e:Missing
     if lhs.kind == "name" && p.kind() == TokenKind.DoubleArrow {
-        p.fail("v2 unsupported: single-param closure ")
-        return lhs
+        // W4(525):单参无注解闭包 `x => body`(宿主 Display:
+        // (closure (x) => body))
+        p.next()
+        p.skip_empty_lines()
+        var body1 = expr_pratt(p, 0)
+        if p.err != "" {
+            return bad_e()
+        }
+        return E("closure", "", "", lhs.word, "(closure (" + lhs.word + ") => " + body1.dump + ")", "")
     }
     var cur = lhs
     while p.err == "" {

@@ -5582,7 +5582,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 } else {
                                     c.inst_ty = ""
                                 }
-                                c.recv_ty = ""
+                                // W3(525):结果类型即链式后续跳的接收者型
+                                // (rows.get(0).len() 实证;g29 四路 exec)
+                                c.recv_ty = c.inst_ty
                                 c.primary_tyname = ""
                                 dot_seq = dot_seq + 1
                                 continue
@@ -5609,9 +5611,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 c.str_flag = 0
                                 c.arr_flag = 0
                                 // W2(525):结果类型回传(fn_rets;let
-                                // 绑定/链式接收者解析)
+                                // 绑定/链式接收者解析;W3:兼作链式接收者型)
                                 c.inst_ty = c.fn_rets.get(fe2)
-                                c.recv_ty = ""
+                                c.recv_ty = c.inst_ty
                                 c.primary_tyname = ""
                                 dot_seq = dot_seq + 1
                                 continue

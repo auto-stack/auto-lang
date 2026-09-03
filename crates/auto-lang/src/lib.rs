@@ -161,6 +161,30 @@ static ERROR_LIMIT: AtomicUsize = AtomicUsize::new(20);
 /// Global VM debug logging flag
 static VM_DEBUG: AtomicBool = AtomicBool::new(false);
 
+/// Plan 524: CLI 透传参数（`auto <file> [args...]` 直跑形态中 file 之后的
+/// 位置参数）。`process.args()` native 读此表拼真实 argv = [程序路径] +
+/// 透传参数；`run_file_with_args` 写入。进程级全局（argv 本就是进程概念，
+/// 与 VM_DEBUG 同款）。
+static SCRIPT_ARGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Set the CLI pass-through script args (consumed by `process.args()`).
+pub fn set_script_args(args: Vec<String>) {
+    match SCRIPT_ARGS.lock() {
+        Ok(mut g) => *g = args,
+        Err(poisoned) => {
+            *poisoned.into_inner() = args;
+        }
+    }
+}
+
+/// Current CLI pass-through script args (empty = run without passthrough).
+pub fn script_args() -> Vec<String> {
+    match SCRIPT_ARGS.lock() {
+        Ok(g) => g.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
 /// Set the global error limit for parser error recovery
 ///
 /// This controls how many errors the parser will collect before aborting.
@@ -1028,6 +1052,9 @@ async fn execute_autovm_with_path(
     }
     // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-057 T7：注入源文本——web 内建编译期门禁的 `// vm-safe-allow`
+    // 行级豁免需要按 current_source_line 回读原始行。
+    codegen.source_text = Some(code.to_string());
     // Separate type/ext declarations from other statements
     // Type declarations and ext blocks stay at global level, other code goes into script wrapper
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
@@ -1561,6 +1588,25 @@ pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
     // plan-434: AA2R(Auto 版 a2r 核心子集;含 434 扩展后的 parser/lexer 见 D38)
     "auto/lib/a2r.at",
 ];
+
+/// Plan 517 W2 双轨剥离:读 AUTO_LIB_FILES_V2 拼接并剥除 `use auto.lib.*`
+/// 行(拼接消费面专用——行为与模块化前逐字节等价:符号同居一程序;真 use
+/// 解析只走 auto.exe 直跑/auto build 模块路径。剥离规则单一事实源,
+/// parity/gen-aavm2-unit.py 镜像之)。
+pub(crate) fn aavm2_lib_source(project_root: &std::path::Path) -> AutoResult<String> {
+    let mut out = String::new();
+    for file in AUTO_LIB_FILES_V2 {
+        let content = std::fs::read_to_string(project_root.join(file))?;
+        for line in content.lines() {
+            if line.trim_start().starts_with("use auto.lib.") {
+                continue;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    Ok(out)
+}
 
 /// Read and concatenate all auto/lib/*.at files for bootstrap tests.
 fn read_auto_lib(project_root: &std::path::Path) -> AutoResult<String> {
@@ -3892,6 +3938,14 @@ fn run_file_dynamic_ui_inner(
 }
 
 pub fn run_file(path: &str) -> AutoResult<String> {
+    run_file_with_args(path, Vec::new())
+}
+
+/// Plan 524: run a script with CLI pass-through args (`auto <file> [args...]`
+/// 直跑透传形态)。Args land in the process-wide `process.args()` 表 =
+/// [程序路径] + args。每次调用覆盖前值（同进程串行多次运行不残留）。
+pub fn run_file_with_args(path: &str, args: Vec<String>) -> AutoResult<String> {
+    set_script_args(args);
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // Plan 227: Detect UI keywords and run with iced backend

@@ -1,0 +1,17 @@
+// Plan 525 W2 b44:方法内调方法(.helper(3) 接收者简写调用链)——
+// g10 同形态的 VM 侧语料
+type Calc {
+    base int
+    fn helper(n int) int {
+        return .base + n
+    }
+    fn call_helper() int {
+        return .helper(3)
+    }
+}
+
+fn main() {
+    var c = Calc { base: 10 }
+    print(c.call_helper())
+    print(c.helper(5))
+}

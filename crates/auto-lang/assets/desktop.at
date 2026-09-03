@@ -30,7 +30,10 @@ widget DesktopSurface {
         BlankPress,
         MenuOpen,
         MenuRemove,
-        MenuWallpaper
+        MenuWallpaper,
+        // PLAN-526 T10：空白处右键（mouse-area oncontextmenu——布局件
+        // 右键臂缺位的替代挂点；菜单态本地门控，IconMenu 同型）。
+        BlankMenu
     }
 
     model {
@@ -39,14 +42,33 @@ widget DesktopSurface {
         var __desktop_icons = []
         var __desktop_hidden str = ""
         var menu_id str = ""
+        var blank_menu str = ""
     }
 
     view {
         // 根：全屏透明容器（纯色壁纸时 __desktop_bg 带 bg-[#hex] 实铺）。
-        // 布局件 onclick（490 G4）承载空白点击——取消菜单选中。
+        // PLAN-526 T10：内容包 mouse-area——onclick（原布局件 490 G4 左键）
+        // + oncontextmenu（右键空白菜单；Q6 实测桌面空白无右键闭环）。
         col {
             style: "w-full h-full p-3 ${.__desktop_bg}"
-            onclick: .BlankPress
+            mouse-area (onclick: .BlankPress, oncontextmenu.prevent: .BlankMenu) {
+                style: "w-full h-full"
+
+                // 空白右键菜单（本地面板；blank_menu 空 = 关）。
+                // 样式三件套同图标菜单（glass 降格 parity）。
+                if .blank_menu != "" {
+                    col {
+                        style: "w-44 gap-1 p-1 bg-card/80 border rounded-xl shadow-xl"
+                        button "更换壁纸…" {
+                            onclick: .MenuWallpaperBlank
+                            style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
+                        }
+                        button "显示设置" {
+                            onclick: .OpenSettingsBlank
+                            style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
+                        }
+                    }
+                }
 
             // 右键菜单（本地面板；menu_id 空 = 关）。三项：打开 /
             // 从桌面移除 / 更换壁纸（跳设置面板）。
@@ -94,6 +116,7 @@ widget DesktopSurface {
                     }
                 }
             }
+            }
         }
     }
 
@@ -102,6 +125,7 @@ widget DesktopSurface {
         // 数据全宿主侧解析注入，此处仅消 boot 期 handler-not-found 噪音）。
         .Init -> {
             .menu_id = ""
+            .blank_menu = ""
         }
 
         // 双击启动/聚焦（472 activate 两臂动词复用——宿主臂已备）。
@@ -110,8 +134,22 @@ widget DesktopSurface {
         // 右键图标：开菜单（记录目标条目）。
         .IconMenu(id) -> { .menu_id = id }
 
+        // PLAN-526 T10：空白处右键 → 空白菜单态。
+        .BlankMenu -> { .blank_menu = "1" }
+
         // 空白点击：关菜单（463 语义——不动 WM 焦点，纯本地态）。
-        .BlankPress -> { .menu_id = "" }
+        // PLAN-526 T10：兼清空白菜单。
+        .BlankPress -> { .menu_id = ""; .blank_menu = "" }
+
+        // PLAN-526 T10：空白菜单动作（消费即收起；动词同图标菜单臂）。
+        .MenuWallpaperBlank -> {
+            .blank_menu = ""
+            .__desktop_cmd = "open_settings"
+        }
+        .OpenSettingsBlank -> {
+            .blank_menu = ""
+            .__desktop_cmd = "open_settings"
+        }
 
         // 菜单：打开 = activate 两臂（同双击）。
         .MenuOpen -> {

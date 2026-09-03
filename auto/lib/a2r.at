@@ -1558,12 +1558,91 @@ fn ar_reset_expr(mut a Ar) {
     a.atom_global_name = ""
 }
 
+// W4(525):`(params) =>` 前瞻(depth 扫描;镜像 parser 同款)
+fn ar_clo_paren_ahead(mut p P) bool {
+    var depth = 1
+    var i = p.pos + 1
+    while i < p.toks.len() {
+        var tk = p.toks.get(i).kind
+        if tk == TokenKind.LParen || tk == TokenKind.LSquare || tk == TokenKind.LBrace {
+            depth = depth + 1
+        } else if tk == TokenKind.RParen || tk == TokenKind.RSquare || tk == TokenKind.RBrace {
+            depth = depth - 1
+            if depth == 0 {
+                return i + 1 < p.toks.len() && p.toks.get(i + 1).kind == TokenKind.DoubleArrow
+            }
+        } else if tk == TokenKind.EOF {
+            return false
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// W4(525):闭包发射——主 a2r 形态:typed 参数 `|a: i64, b: i64| body`;
+// 无型参数裸名 `|x| body`(单参/多参同构);捕获自然(Rust 闭包)
+fn ar_closure(mut a Ar, mut p P, single bool) str {
+    var pstr = ""
+    if single {
+        pstr = p.text()
+        p.next()
+    } else {
+        p.next()
+        p.skip_empty_lines()
+        var first = true
+        while a.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RParen {
+            if !is_name_kind(p.kind()) {
+                a.fail("closure: expected param")
+                return ""
+            }
+            var nm = p.text()
+            p.next()
+            var ty = ""
+            if p.kind() == TokenKind.Colon {
+                p.next()
+            }
+            if is_type_name(p) {
+                ty = ar_bare_type(p)
+            }
+            if !first {
+                pstr = pstr + ", "
+            }
+            if ty != "" && ty != "int" {
+                pstr = pstr + nm + ": " + ar_rust_ty(ty)
+            } else if ty == "int" {
+                pstr = pstr + nm + ": i64"
+            } else {
+                pstr = pstr + nm
+            }
+            first = false
+            if p.kind() == TokenKind.Comma {
+                p.next()
+                p.skip_empty_lines()
+            }
+        }
+        p.expect(TokenKind.RParen)
+    }
+    p.expect(TokenKind.DoubleArrow)
+    p.skip_empty_lines()
+    var body = ar_expr(a, p, 0)
+    a.ty = ""
+    a.infer = 0
+    return "|" + pstr + "| " + body
+}
+
 fn ar_expr(mut a Ar, mut p P, min int) str {
     if a.err != "" || p.err != "" {
         return ""
     }
     ar_reset_expr(a)
     var k = p.kind()
+    // W4(525):闭包前瞻——单参 `x =>` / `(params) =>`
+    if k == TokenKind.Ident && p.peek(1) == TokenKind.DoubleArrow {
+        return ar_closure(a, p, true)
+    }
+    if k == TokenKind.LParen && ar_clo_paren_ahead(p) {
+        return ar_closure(a, p, false)
+    }
     var cur = ""
     // A2:主分派 is 化(镜像 Rust expr_pratt 的 match kind 链)
     is k {
@@ -3341,6 +3420,20 @@ fn ar_stmt(mut a Ar, mut p P) {
         return
     }
     var k = p.kind()
+    // W4(525):嵌套 fn——体内声明就地发射(主 a2r 同形态;447-旁支②);
+    // 先 prescan 入 fns 表(签名/返回推断),ar_emit_fn2 按表发射
+    if k == TokenKind.Fn {
+        var fn_pos = p.pos
+        p.next()
+        ar_prescan_fn(a, p)
+        p.pos = fn_pos
+        var fn_save = a.cur_fn
+        a.vscope()
+        ar_emit_fn2(a, p, "")
+        a.vunscope()
+        a.cur_fn = fn_save
+        return
+    }
     if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared {
         ar_store(a, p, k)
         return

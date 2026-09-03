@@ -1,11 +1,7 @@
 // recycled from 99_bootstrap/046_eval_closure
-// Plan 474 待澄清#3 追记：同 b13/b14——aavm bool 整型承载与宿主 true/false
-// 显示形态分歧（值模型级 parity 债，见 KNOWN-DEBT-AND-RISKS）。
-// 改写为「双 bool 求值 + 分支」保语义覆盖，输出类型稳定。
-if true {
-    if false {
-        print("unreachable")
-    } else {
-        print("both-evaluated")
-    }
+// Plan 525 W1:双 bool print 断言恢复(P474 过渡形态收口)——true/false
+// 两形态各一行(镜像宿主 print(TAG_BOOL) 形态)。
+fn main() {
+    print(true)
+    print(false)
 }

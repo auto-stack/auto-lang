@@ -101,7 +101,22 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
 > 缺省跳过(b34–b43/corpus_use 前缀 skip)、`auto build`(pac)产品路径
 > 与 CLI 入口的 a2r 模式未验。
 
-## 能力同步规约(2026-09-02 起,常设判据)
+## 模块化结构(Plan 517,2026-09-02 折叠完毕)
+
+lib 七文件依赖 DAG:`token←lexer←parser←{typeinfo←codegen←engine}`+
+`a2r→{token,lexer,parser,typeinfo}`(engine 纯解释器层仅依赖 codegen);
+互引 use(auto.lib.* 点路径定向)+pub 契约标注;拼接消费面由双轨剥离消化
+(`aavm2_lib_source` 规则单一事实源);CLI 入口 `auto/aavm.at`(真模块
+use 形态,行数协议 stdin,见 auto/lib/README.md);AA2R use 发射(g18)。
+规格:`design/lib-modularization-map.md`(含执行期定案四条)。
+
+## 能力同步规约(2026-09-02 起,常设判据;2026-09-03 起基建落地)
+
+> **载体状态(Plan 523 W3 落地)**:四路统一 runner =
+> `test_aavm2_fourpath_runner`(#[ignore],验收/折叠点档;
+> `python scripts/aavm4_check.py --fourpath`);三件套金样 --check/bless =
+> `test_aavm2_goldens_check`(`--check`/`--bless`);主 a2r 发射确定性
+> 已实证(W0:27/27+merge 三连跑逐字节一致,无非确定位,免规范化)。
 
 > **aavm ↔ AA2R 能力同步**:每当 aavm 目标语言新增能力 X(语料进
 > corpus_m*/corpus_use),同步要求 AA2R(a2r.at)能**发射**含 X 语法的
@@ -157,9 +172,9 @@ runner 层,以 manifest 解决。markdown 单文件(ast.rs markdown_tests
 **语言行为用例(输入 Auto 代码+预期输出形态)新增一律文件化,存量高频
 触碰时迁移**——避免同一语言行为两处真相。
 
-## 后续计划队列(2026-09-02 存档,517 收口后领取起草)
+## 后续计划队列(2026-09-03 三计划已立项:523/524/525)
 
-1. **a2r 模式中阶覆盖收口(目标 2 + 同步规约清欠)**——小计划:
+1. **a2r 模式中阶覆盖收口(目标 2 + 同步规约清欠)**——**已立项 [Plan 523](../../plans/523-aavm-a2r-midlang-coverage.md)**(17 步)——**队列①已核销(2026-09-03,W1–W4 全落):g19–g25 live 25/25、compile 前缀摘除全量 46/46、四路 runner 14/14 判定表、三件套金样 14 件+A2R_BLESS、auto build a2r 链冒烟脚本(scripts/aavm_build_smoke.sh)、aavm.at a2r 模式实测(b07=55;两洞登记 D-a2r-mode-entry)、D-AA2R-struct 清偿+同步规约四规约载体全部落地(本页 §能力同步规约 判据即其验收形态)**:
    ①AA2R 发射面补全:struct 声明/构造/字段读写(b34–b37 对应发射件
    g17+)、for-in 数组/字符串下标/一元负/全局变量(b38–b43 对应件),
    live 对拍主 a2r + rustc;②摘除 compile corpus 的 b34+/corpus_use
@@ -175,14 +190,14 @@ runner 层,以 manifest 解决。markdown 单文件(ast.rs markdown_tests
    (`case.at`+`case.expected.out`+`case.expected.rs`,复用 Plan 177/
    263 两约定)+ bless 再生工作流 + 主 a2r 发射确定性前置检查;主 a2r
    译文同锚金样(oracle 回归入闸)。
-2. **OOP 批(目标 1 续阶)**——aavm 目标语言的方法/impl(`type T { fn }`/
+2. **OOP 批(目标 1 续阶)**——**已立项 [Plan 525](../../plans/525-aavm-oop-batch.md)**(30 步六波,硬前置=523 archived;另 524 宿主小修批[CLI 透传/process.args/parity 新鲜度]可先于/并行 523)。原范围:aavm 目标语言的方法/impl(`type T { fn }`/
    `ext T`)编译执行、is-struct 模式匹配、跨模块类型共享(pub type)、
    闭包与嵌套 fn、泛型(List\<T\> 实例化——通往塔顶必经)、May/生成器;
    搭车清偿 P474-旁支 VBool parity(Val 载体扩展同批)。**验收口径(2026-09-02
    升级)=同步规约三面闸,新语件直接落 per-case dir 三件套金样格式,
    四路统一 runner 判定**——511 式"待澄清缺省暂缓"逃生舱关闭。触发:
    517 复审时按本页能力矩阵起草(范围依赖 514/517 终态)。
-3. **远期(缓议,AAVM 跑通后再立项)**——自举塔顶:aavm 编译 lib 自身
+3. **远期(缓议,前置=525 泛型+方法落地)**——自举塔顶:aavm 编译 lib 自身
    (VM 自举);Auto 版转译器家族扩展:a2r 已有(AA2R/a2r.at,434 核心子集),
    剩余=其他语言目标(a2ts/a2js/a2py…)的 Auto 版。缓议理由:在 Auto 写
    工具链能重建自身之前,新转译器仍由 Rust 宿主编译,自举边际价值低;

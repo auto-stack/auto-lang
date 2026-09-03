@@ -1,0 +1,7 @@
+// Plan 525 W4 g31/g32(b47 迁位;宿主 closure 反汇编乱码级——m4 层不可对拍,判据面=发射闸+四路执行锚):闭包捕获(外层局部 factor;宿主 385 by-ref 槽位
+// 记录;捕获值入 env)
+fn main() {
+    let factor = 3
+    let scale = x => x * factor
+    print(scale(7))
+}

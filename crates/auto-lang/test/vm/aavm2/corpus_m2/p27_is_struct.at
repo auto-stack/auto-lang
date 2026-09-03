@@ -1,0 +1,12 @@
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    var p = Point { x: 3, y: 4 }
+    is p {
+        Point { x, y: b } -> print(x + b)
+        else -> print(0)
+    }
+}

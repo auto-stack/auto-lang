@@ -1,0 +1,12 @@
+pub type Point {
+    x int
+    y int
+}
+
+pub fn mk(x int, y int) -> Point {
+    return Point { x: x, y: y }
+}
+
+pub fn sum(p Point) int {
+    return p.x + p.y
+}

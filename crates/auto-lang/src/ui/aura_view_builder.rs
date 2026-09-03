@@ -28,12 +28,13 @@
 //! - String interpolation for `${.field}` patterns
 //! - Event handler → DynamicMessage mapping
 //!
-//! ## Plan 040 VM v1 豁免登记（autodown 契约扩展）
+//! ## Plan 040 VM v1 豁免登记（autodown 契约扩展；043 收口后）
 //!
-//! `autodown` 只读臂与 `autodown_editor` 编辑臂读取 streaming/
-//! placeholder_block_id/placeholder_height/scroll_sync/placeholder 后忽略：
-//! **VM v1 豁免——streaming 恒按 final、ghost 占位块与 scroll_sync 未实现**，
-//! 滚动同步归 PLAN-042、ghost 占位归 PLAN-043 补齐（vue 臂全量发射）。
+//! `autodown` 只读臂与 `autodown_editor` 编辑臂：streaming 恒按 final、
+//! placeholder_block_id/placeholder_height（ghost 占位）读取后忽略——
+//! **归 PLAN-044 补齐（vue 臂全量发射）**；`scroll_sync` 自 PLAN-043 起
+//! **真消费**（外包 View::Scrollable：scroll_top 绑定写入臂 + onscroll
+//! 消息读出臂 + ondetailsclick 折叠回路，EDITOR-CONTRACT §11 在册）。
 
 use std::collections::HashMap;
 
@@ -180,6 +181,59 @@ fn extract_slot_fills(children: &[AuraNode]) -> HashMap<String, Vec<&AuraNode>> 
         }
     }
     fills
+}
+
+
+/// PLAN-041 T8：autodown 只读 widget 的流式增量缓存注册表（按节点 path
+/// 身份键）。帧间结构键 diff，未变块复用上帧 View；尾块重同步。
+/// PLAN-043 T5：容量上限 32（对齐 DOC_EDITORS/413 §5.4 口径，DEBTS #041
+/// 「StreamCache 注册表无容量上限」销号）——插入序 FIFO 淘汰（超容逐
+/// 最旧 path 键，计划允许的最小实现；伴随 VecDeque 维持插入序）。
+#[cfg(feature = "autodown")]
+const AUTODOWN_STREAM_REGISTRY_CAP: usize = 32;
+
+#[cfg(feature = "autodown")]
+fn autodown_stream_registry() -> &'static std::sync::Mutex<(
+    std::collections::HashMap<String, crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>>,
+    std::collections::VecDeque<String>,
+)> {
+    static REG: std::sync::OnceLock<
+        std::sync::Mutex<(
+            std::collections::HashMap<String, crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>>,
+            std::collections::VecDeque<String>,
+        )>,
+    > = std::sync::OnceLock::new();
+    REG.get_or_init(|| {
+        std::sync::Mutex::new((
+            std::collections::HashMap::new(),
+            std::collections::VecDeque::new(),
+        ))
+    })
+}
+
+/// PLAN-043 T5：取（或建）注册表槽位——新键插入前若已满（≥ 容量）按
+/// 插入序逐出最旧键；已存在的键原地复用（不刷新插入序位，FIFO 口径）。
+#[cfg(feature = "autodown")]
+fn stream_registry_entry(
+    reg: &mut (
+        std::collections::HashMap<String, crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>>,
+        std::collections::VecDeque<String>,
+    ),
+    key: String,
+) -> &mut crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage> {
+    let (map, order) = reg;
+    if !map.contains_key(&key) {
+        while map.len() >= AUTODOWN_STREAM_REGISTRY_CAP {
+            match order.pop_front() {
+                Some(oldest) => {
+                    map.remove(&oldest);
+                }
+                None => break,
+            }
+        }
+        order.push_back(key.clone());
+    }
+    map.entry(key).or_default()
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -1411,6 +1465,26 @@ impl<'a> AuraViewBuilder<'a> {
                     // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
                     // 无空态概念，读取后忽略。
                     let _ = props.get("placeholder");
+                    // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
+                    //（DocEditor 全内容高、外滚）外包 View::Scrollable，
+                    // 编辑栏 offset 绑定写入 + onscroll 消息读出。
+                    let (scroll_sync, offset, on_scroll, _details) =
+                        self.autodown_scroll_binding(props, events, bindings);
+                    // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
+                    // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
+                    // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
+                    // 到内容全高（外滚）。编辑壳自身样式保留在内层。
+                    if scroll_sync {
+                        return View::Scrollable {
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, style }),
+                            width: None,
+                            height: None,
+                            style: Style::parse("w-full h-full").ok(),
+                            auto_scroll: false,
+                            offset,
+                            on_scroll,
+                        };
+                    }
                     return View::AutodownEditor { key, value, is_final, on_change, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
@@ -1437,14 +1511,43 @@ impl<'a> AuraViewBuilder<'a> {
                         })
                         .flatten()
                         .unwrap_or(true);
-                    // Plan 040 契约扩展——VM v1 豁免：streaming 恒按 final、
-                    // ghost 占位块（placeholder_*）与 scroll_sync 未实现，
-                    // 读取后忽略；PLAN-042（滚动同步）/043（ghost）补。
+                    // Plan 040 契约扩展——VM v1 豁免收口（PLAN-043 T2）：
+                    // streaming 恒按 final、ghost 占位块（placeholder_*）仍
+                    // 忽略（→PLAN-044）；scroll_sync 真消费——true 时文档
+                    // 外包 View::Scrollable（offset 绑定写入 + on_scroll
+                    // 消息读出，稳定 id 由 render_dynamic_view 的 vnode_*
+                    // 路径派生）。
                     let _ = props.get("streaming");
                     let _ = props.get("placeholder_block_id");
                     let _ = props.get("placeholder_height");
-                    let _ = props.get("scroll_sync");
-                    return crate::ui::autodown_render::render_document(&content, is_final);
+                    let (scroll_sync, offset, on_scroll, details_onclick) =
+                        self.autodown_scroll_binding(props, events, bindings);
+                    // PLAN-041 T8：流式增量（结构键 diff + 未变块复用），
+                    // 按节点 path 身份挂缓存。
+                    let cache_key = format!("{path:?}");
+                    let mut reg = autodown_stream_registry().lock().unwrap();
+                    let cache = stream_registry_entry(&mut reg, cache_key);
+                    let mut doc = crate::ui::autodown_render::render_document_streamed_with(
+                        cache,
+                        &content,
+                        is_final,
+                        details_onclick.as_deref(),
+                    );
+                    if scroll_sync {
+                        // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
+                        //（Fill×Fill 视口约束——元素 class 混合样式实测炸
+                        // 布局），内层文档列收缩到内容全高外滚。
+                        doc = View::Scrollable {
+                            child: Box::new(doc),
+                            width: None,
+                            height: None,
+                            style: Style::parse("w-full h-full").ok(),
+                            auto_scroll: false,
+                            offset,
+                            on_scroll,
+                        };
+                    }
+                    return doc;
                 }
                 #[cfg(not(feature = "autodown"))]
                 self.convert_textarea(props, events, bindings)
@@ -1590,6 +1693,7 @@ impl<'a> AuraViewBuilder<'a> {
                 child: Box::new(col_view),
                 width: None, height: None, style: scroll_style,
                 auto_scroll: false,
+                offset: None, on_scroll: None,
             };
         }
         col_view
@@ -1639,6 +1743,8 @@ impl<'a> AuraViewBuilder<'a> {
             height: None,
             style: scroll_style,
             auto_scroll,
+            offset: None,
+            on_scroll: None,
         }
     }
 
@@ -2262,11 +2368,90 @@ impl<'a> AuraViewBuilder<'a> {
         let style = Style {
             classes,
             hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
         };
         View::Image {
             src: format!("lucide:{}", pascal_to_kebab_icon(tag)),
             style: Some(style),
         }
+    }
+
+    /// PLAN-043 T2：autodown 元素滚动/折叠事件面。返回
+    /// (offset 写入臂, on_scroll 读出臂, Details 点击注入工厂)。
+    /// - `scroll_sync` 求值真 → 文档外包 `View::Scrollable`：`scroll_top`
+    ///   绑定求值进 offset（Int/Double/Float 均收），`onscroll` 事件进
+    ///   on_scroll（六测量取三 top/height/client 编码为 args 随宿主通道
+    ///   回 DSL handler）。
+    /// - `ondetailsclick` 事件独立于 scroll_sync：summary 行 onclick 注入
+    ///   Typed 消息（args = ["d<块结构键>"]，键 = block_key 内容哈希）。
+    fn autodown_scroll_binding(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> (
+        bool,
+        Option<(f32, f32)>,
+        Option<crate::ui::view::ScrollCallback<DynamicMessage>>,
+        Option<Box<dyn Fn(u64) -> DynamicMessage>>,
+    ) {
+        let scroll_sync = props
+            .get("scroll_sync")
+            .and_then(|v| match v {
+                AuraPropValue::Expr(expr) => self.resolve_expr_to_value(expr, bindings),
+                _ => None,
+            })
+            .map(|val| val.as_bool())
+            .unwrap_or(false);
+
+        // Details 折叠注入不随 scroll_sync 门控（独立事件面）。
+        let details_onclick = aura_events_get_base(events, "ondetailsclick").map(|ev| {
+            let handler = extract_handler_name(&ev.handler).to_string();
+            let widget = self.widget_name.clone();
+            Box::new(move |key: u64| DynamicMessage::Typed {
+                widget_name: widget.clone(),
+                event_name: handler.clone(),
+                args: vec![Value::str(format!("d{key}"))],
+            }) as Box<dyn Fn(u64) -> DynamicMessage>
+        });
+
+        if !scroll_sync {
+            return (false, None, None, details_onclick);
+        }
+        let offset = props
+            .get("scroll_top")
+            .and_then(|v| match v {
+                AuraPropValue::Expr(expr) => self.resolve_expr_to_value(expr, bindings),
+                _ => None,
+            })
+            .and_then(|val| match val {
+                Value::Float(f) => Some(f as f32),
+                Value::Double(d) => Some(d as f32),
+                Value::Int(i) => Some(i as f32),
+                Value::Uint(u) => Some(u as f32),
+                _ => None,
+            })
+            .map(|top| (0.0, top));
+        let on_scroll = aura_events_get_base(events, "onscroll").map(|ev| {
+            let handler = extract_handler_name(&ev.handler).to_string();
+            let widget = self.widget_name.clone();
+            crate::ui::view::ScrollCallback::new(
+                move |m: crate::ui::view::ScrollMetrics| DynamicMessage::Typed {
+                    widget_name: widget.clone(),
+                    event_name: handler.clone(),
+                    // PLAN-043 T6：实参序 (height, client, top)。VM 轨由
+                    // update 层 rust 直写快道消费（renderer.rs T6 拦截——
+                    // 引擎 handler 对 float 实参/算术写入腐坏，DEBTS 登记；
+                    // handler 保留为 vue 契约面）。
+                    args: vec![
+                        Value::Float(m.content_h as f64),
+                        Value::Float(m.viewport_h as f64),
+                        Value::Float(m.offset_y as f64),
+                    ],
+                },
+            )
+        });
+        (true, offset, on_scroll, details_onclick)
     }
 
     fn convert_element(
@@ -2412,6 +2597,26 @@ impl<'a> AuraViewBuilder<'a> {
                     // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
                     // 无空态概念，读取后忽略。
                     let _ = props.get("placeholder");
+                    // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
+                    //（DocEditor 全内容高、外滚）外包 View::Scrollable，
+                    // 编辑栏 offset 绑定写入 + onscroll 消息读出。
+                    let (scroll_sync, offset, on_scroll, _details) =
+                        self.autodown_scroll_binding(props, events, bindings);
+                    // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
+                    // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
+                    // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
+                    // 到内容全高（外滚）。编辑壳自身样式保留在内层。
+                    if scroll_sync {
+                        return View::Scrollable {
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, style }),
+                            width: None,
+                            height: None,
+                            style: Style::parse("w-full h-full").ok(),
+                            auto_scroll: false,
+                            offset,
+                            on_scroll,
+                        };
+                    }
                     return View::AutodownEditor { key, value, is_final, on_change, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
@@ -2438,14 +2643,34 @@ impl<'a> AuraViewBuilder<'a> {
                         })
                         .flatten()
                         .unwrap_or(true);
-                    // Plan 040 契约扩展——VM v1 豁免：streaming 恒按 final、
-                    // ghost 占位块（placeholder_*）与 scroll_sync 未实现，
-                    // 读取后忽略；PLAN-042（滚动同步）/043（ghost）补。
+                    // Plan 040 契约扩展——VM v1 豁免收口（PLAN-043 T2）：
+                    // streaming 恒按 final、ghost 占位块（placeholder_*）仍
+                    // 忽略（→PLAN-044）；scroll_sync 真消费（同 streamed 臂）。
                     let _ = props.get("streaming");
                     let _ = props.get("placeholder_block_id");
                     let _ = props.get("placeholder_height");
-                    let _ = props.get("scroll_sync");
-                    return crate::ui::autodown_render::render_document(&content, is_final);
+                    let (scroll_sync, offset, on_scroll, details_onclick) =
+                        self.autodown_scroll_binding(props, events, bindings);
+                    let mut doc = crate::ui::autodown_render::render_document_with(
+                        &content,
+                        is_final,
+                        details_onclick.as_deref(),
+                    );
+                    if scroll_sync {
+                        // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
+                        //（Fill×Fill 视口约束——元素 class 混合样式实测炸
+                        // 布局），内层文档列收缩到内容全高外滚。
+                        doc = View::Scrollable {
+                            child: Box::new(doc),
+                            width: None,
+                            height: None,
+                            style: Style::parse("w-full h-full").ok(),
+                            auto_scroll: false,
+                            offset,
+                            on_scroll,
+                        };
+                    }
+                    return doc;
                 }
                 #[cfg(not(feature = "autodown"))]
                 self.convert_textarea(props, events, bindings)
@@ -4122,6 +4347,7 @@ let tabs_inner = View::Row {
                 child: Box::new(col_view),
                 width: None, height: None, style: scroll_style,
                 auto_scroll: false,
+                offset: None, on_scroll: None,
             }
         } else {
             col_view
@@ -4178,6 +4404,8 @@ let tabs_inner = View::Row {
             height: None,
             style: scroll_style,
             auto_scroll,
+            offset: None,
+            on_scroll: None,
         }
     }
 
@@ -5573,6 +5801,7 @@ let tabs_inner = View::Row {
                     // hover: utilities only feed button hover styling; a text
                     // child view never consumes them.
                     hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
                 });
                 views.push(View::Text {
                     content: label.clone(),
@@ -5627,6 +5856,7 @@ let tabs_inner = View::Row {
                             .cloned()
                             .collect(),
                         hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
                     });
                     if is_col {
                         Some(Box::new(View::Column {
@@ -7488,8 +7718,10 @@ let tabs_inner = View::Row {
             crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| match &base {
                 DynamicMessage::Typed { widget_name, event_name, args } => {
                     let mut new_args = args.clone();
-                    new_args.push(Value::Float(x as f64));
-                    new_args.push(Value::Float(y as f64));
+                    // PLAN-043 T9: +1e-3 分数化——auto_val nanbox 整值 float
+                    // 实参绑定腐坏绕道（DEBTS 043 引擎债；0.001px 不可见）。
+                    new_args.push(Value::Float(x as f64 + 0.001));
+                    new_args.push(Value::Float(y as f64 + 0.001));
                     DynamicMessage::Typed {
                         widget_name: widget_name.clone(),
                         event_name: event_name.clone(),
@@ -7526,7 +7758,17 @@ let tabs_inner = View::Row {
         // 切换显隐;iced on_press / vue @click)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
             .map(|event| self.event_to_message_with(event, bindings));
-        let on_click = aura_events_get_base(events, "onclick")
+        // PLAN-043 T9: onmousedown 优先占 on_press 槽（真按下语义——
+        // CustomScrollbar 拖拽发射面；onclick 保留 Plan 498 近似回退）；
+        // onmouseup → on_release（拖拽收尾原语）。
+        let on_click = aura_events_get_base(events, "onmousedown")
+            .or_else(|| aura_events_get_base(events, "onclick"))
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_release = aura_events_get_base(events, "onmouseup")
+            .map(|event| self.event_to_message_with(event, bindings));
+        // PLAN-526 T10: oncontextmenu → 右键事件（iced on_right_press;
+        // 桌面空白/任务栏右键菜单挂点）。
+        let on_context_menu = aura_events_get_base(events, "oncontextmenu")
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 499 M2: onmousemove + coords(镜像臂)。
         let (on_move, logical_extent) = self.mouse_area_move_arm(props, events, bindings);
@@ -7551,6 +7793,8 @@ let tabs_inner = View::Row {
             on_exit,
             on_double_click,
             on_click,
+            on_context_menu,
+            on_release,
             on_move,
             logical_extent,
             style,
@@ -7581,7 +7825,14 @@ let tabs_inner = View::Row {
         // Plan 498 M0: onclick → mouse_area on_click(untracked 镜像臂)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
             .map(|event| self.event_to_message_with(event, bindings));
-        let on_click = aura_events_get_base(events, "onclick")
+        // PLAN-043 T9: onmousedown 优先 / onmouseup → on_release（镜像臂）。
+        let on_click = aura_events_get_base(events, "onmousedown")
+            .or_else(|| aura_events_get_base(events, "onclick"))
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_release = aura_events_get_base(events, "onmouseup")
+            .map(|event| self.event_to_message_with(event, bindings));
+        // PLAN-526 T10: oncontextmenu → 右键事件（untracked 镜像臂）。
+        let on_context_menu = aura_events_get_base(events, "oncontextmenu")
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 499 M2: onmousemove + coords(限频流臂)。
         let (on_move, logical_extent) = self.mouse_area_move_arm(props, events, bindings);
@@ -7606,6 +7857,8 @@ let tabs_inner = View::Row {
             on_exit,
             on_double_click,
             on_click,
+            on_context_menu,
+            on_release,
             on_move,
             logical_extent,
             style,
@@ -8858,6 +9111,40 @@ mod tests {
     /// 时 textarea 降级由其余测试矩阵覆盖）。
     #[cfg(feature = "autodown")]
     #[test]
+    /// PLAN-043 T5：StreamCache 注册表容量上限——插入序 FIFO 淘汰，超容
+    /// 后最旧键不在册、容量恒 ≤ 32、既有键复用不占新位。
+    #[cfg(feature = "autodown")]
+    #[test]
+    fn p043_stream_registry_capacity_eviction() {
+        let reg = autodown_stream_registry();
+        // 全局表独占清场（同进程其它用例可能残留）
+        {
+            let mut g = reg.lock().unwrap();
+            g.0.clear();
+            g.1.clear();
+        }
+        let n = AUTODOWN_STREAM_REGISTRY_CAP + 8;
+        for i in 0..n {
+            let mut g = reg.lock().unwrap();
+            stream_registry_entry(&mut g, format!("p043_reg_{i}"));
+        }
+        {
+            let g = reg.lock().unwrap();
+            assert_eq!(g.0.len(), AUTODOWN_STREAM_REGISTRY_CAP, "容量封顶");
+            assert!(!g.0.contains_key("p043_reg_0"), "最旧键已逐出");
+            assert!(!g.0.contains_key("p043_reg_7"), "第 8 旧键已逐出");
+            assert!(g.0.contains_key("p043_reg_8"), "第 9 键起在册（恰留 32）");
+            assert!(g.0.contains_key(&format!("p043_reg_{}", n - 1)), "最新键在册");
+        }
+        // 既有键复用不占新位、不触发淘汰
+        {
+            let mut g = reg.lock().unwrap();
+            stream_registry_entry(&mut g, "p043_reg_8".to_string());
+            assert_eq!(g.0.len(), AUTODOWN_STREAM_REGISTRY_CAP);
+            assert!(g.0.contains_key("p043_reg_9"), "复用不淘汰次旧键");
+        }
+    }
+
     fn test_autodown_widget_true_render() {
         let widget = make_test_widget("Test", vec![]);
         let bridge = VmBridge::new(&widget).unwrap();
@@ -8866,26 +9153,35 @@ mod tests {
         let node = AuraNode::element("autodown")
             .with_prop("content", Expr::Str("# 标题\n\n段落 **粗**\n".into()))
             .with_prop("final", Expr::Bool(true))
-            // Plan 040 契约扩展 props：VM v1 读取后忽略（豁免在案），不破
-            // 真渲染路径、不影响 final 语义。
+            // Plan 040 契约扩展 props：PLAN-043 T2 起 scroll_sync 真消费——
+            // 文档外包 View::Scrollable（本用例未给 scroll_top/onscroll，
+            // 绑定/消息两臂为 None）；streaming 恒按 final、placeholder_*
+            //（ghost）仍忽略（→PLAN-044）。
             .with_prop("streaming", Expr::Bool(true))
             .with_prop("placeholder_block_id", Expr::Str("ghost".into()))
             .with_prop("placeholder_height", Expr::Float(96.0, "96".into()))
             .with_prop("scroll_sync", Expr::Bool(true));
         match builder.build(&node) {
-            View::Column { children, .. } => {
-                assert_eq!(children.len(), 2);
-                match &children[0] {
-                    View::Text { content, style, .. } => {
-                        assert_eq!(content, "标题");
-                        let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
-                        assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+            View::Scrollable { child, offset, on_scroll, .. } => {
+                assert_eq!(offset, None, "no scroll_top prop → no offset binding");
+                assert!(on_scroll.is_none(), "no onscroll event → no read-out message");
+                match *child {
+                    View::Column { children, .. } => {
+                        assert_eq!(children.len(), 2);
+                        match &children[0] {
+                            View::Text { content, style, .. } => {
+                                assert_eq!(content, "标题");
+                                let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
+                                assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+                            }
+                            _ => panic!("expected heading text"),
+                        }
+                        assert!(matches!(&children[1], View::Row { .. }));
                     }
-                    _ => panic!("expected heading text"),
+                    _ => panic!("expected document column inside scrollable"),
                 }
-                assert!(matches!(&children[1], View::Row { .. }));
             }
-            _ => panic!("expected document column"),
+            _ => panic!("expected View::Scrollable wrapper (scroll_sync consumed)"),
         }
 
         // markdown 别名同臂；final 缺省 true。
@@ -8896,6 +9192,142 @@ mod tests {
             View::Column { children, .. } => {
                 assert_eq!(children.len(), 1);
                 assert!(matches!(&children[0], View::Column { .. }), "list column");
+            }
+            _ => panic!("expected document column"),
+        }
+    }
+
+    /// PLAN-043 T2：scroll_sync 双臂消费——scroll_top 绑定求值进 offset
+    /// 写入臂，onscroll 事件进 on_scroll 读出臂（回调收 ScrollMetrics 六
+    /// 测量构造 Typed 消息：args = [top, height, client]）。普通臂
+    /// （render_document）与流式臂（render_document_streamed）同一包装。
+    #[cfg(feature = "autodown")]
+    #[test]
+    fn test_autodown_scroll_sync_binding_and_message() {
+        use crate::ui::view::ScrollMetrics;
+
+        let widget = make_test_widget("Test", vec![]);
+        // plan-446 C1-3 共享 Temp 包竞态（并行用例偶发 InvalidState——
+        // plan448 用例同款受害，041 复审在案的隔离 flake）：重试三拍。
+        let mut bridge = VmBridge::new(&widget);
+        for _ in 0..3 {
+            if bridge.is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            bridge = VmBridge::new(&widget);
+        }
+        let bridge = bridge.unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("autodown")
+            .with_prop("content", Expr::Str("# 文档\n\n正文。\n".into()))
+            .with_prop("scroll_sync", Expr::Bool(true))
+            .with_prop("scroll_top", Expr::Float(128.0, "128".into()))
+            .with_event("onscroll", ".LeftScroll");
+        match builder.build(&node) {
+            View::Scrollable { offset, on_scroll: Some(cb), .. } => {
+                assert_eq!(offset, Some((0.0, 128.0)), "scroll_top binding → offset write arm");
+                match cb.call(ScrollMetrics {
+                    offset_x: 0.0, offset_y: 42.0,
+                    viewport_w: 100.0, viewport_h: 200.0,
+                    content_w: 100.0, content_h: 800.0,
+                }) {
+                    DynamicMessage::Typed { widget_name, event_name, args } => {
+                        assert_eq!(widget_name, "Test");
+                        assert_eq!(event_name, "LeftScroll");
+                        // PLAN-043 T6 实参序（height, client, top）——top 居末
+                        // 位是 VM 引擎整值 float 实参绑定 bug 的绕道形态
+                        //（EDITOR-CONTRACT §11 注记）。
+                        assert_eq!(args.len(), 3, "height/client/top three measurements");
+                        assert!(matches!(args[0], auto_val::Value::Float(f) if (f - 800.0).abs() < 1e-6), "scrollHeight = args[0], got {:?}", args[0]);
+                        assert!(matches!(args[1], auto_val::Value::Float(f) if (f - 200.0).abs() < 1e-6), "clientHeight = args[1], got {:?}", args[1]);
+                        assert!(matches!(args[2], auto_val::Value::Float(f) if (f - 42.0).abs() < 1e-6), "scrollTop = args[2], got {:?}", args[2]);
+                    }
+                    other => panic!("expected Typed message, got {:?}", other),
+                }
+            }
+            _ => panic!("expected View::Scrollable with offset + on_scroll"),
+        }
+
+        // 流式臂同包装（build_with_debug_gated → tracked ctx →
+        // render_document_streamed）。registry 键 = 节点 path，两用例树形
+        // 同构会同键——内容不同则整帧重建，无复用串扰。
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("autodown")
+            .with_prop("content", Expr::Str("# 流式\n\n正文。\n".into()))
+            .with_prop("final", Expr::Bool(true))
+            .with_prop("scroll_sync", Expr::Bool(true))
+            .with_prop("scroll_top", Expr::Float(64.0, "64".into()))
+            .with_event("onscroll", ".RightScroll");
+        let (view, _id_map, _probe) = builder.build_with_debug_gated(&node, false);
+        match view {
+            View::Scrollable { offset, on_scroll: Some(cb), .. } => {
+                assert_eq!(offset, Some((0.0, 64.0)), "streamed arm: scroll_top binding");
+                match cb.call(ScrollMetrics {
+                    offset_x: 0.0, offset_y: 7.0,
+                    viewport_w: 100.0, viewport_h: 200.0,
+                    content_w: 100.0, content_h: 800.0,
+                }) {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "RightScroll");
+                        assert!(matches!(args[2], auto_val::Value::Float(f) if (f - 7.0).abs() < 1e-6), "scrollTop = args[2]");
+                    }
+                    other => panic!("streamed arm: expected Typed message, got {:?}", other),
+                }
+            }
+            _ => panic!("streamed arm: expected View::Scrollable"),
+        }
+    }
+
+    /// PLAN-043 T2：Details 折叠消息通道——ondetailsclick 事件 →
+    /// summary 行 onclick = Typed（事件名 = handler 名，args = [d<块结构键>]）。
+    /// 键为 block_key 内容哈希（流式复用与全量重建同键）。
+    #[cfg(feature = "autodown")]
+    #[test]
+    fn test_autodown_details_onclick_message_channel() {
+        fn find_details_onclick(v: &View<DynamicMessage>) -> Option<&DynamicMessage> {
+            match v {
+                View::Row { onclick, children, .. } | View::Column { onclick, children, .. } => {
+                    if onclick.is_some() {
+                        return onclick.as_ref();
+                    }
+                    children.iter().find_map(find_details_onclick)
+                }
+                View::Container { child, onclick, .. } => {
+                    if onclick.is_some() {
+                        return onclick.as_ref();
+                    }
+                    find_details_onclick(child)
+                }
+                View::Scrollable { child, .. } => find_details_onclick(child),
+                _ => None,
+            }
+        }
+
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("autodown")
+            .with_prop("content", Expr::Str("$details(summary:\"折叠\") {\n藏起来的正文。\n}\n".into()))
+            .with_event("ondetailsclick", ".ToggleDetails");
+        match builder.build(&node) {
+            view @ (View::Column { .. } | View::Scrollable { .. }) => {
+                let msg = find_details_onclick(&view)
+                    .expect("details summary row must carry onclick message");
+                match msg {
+                    DynamicMessage::Typed { widget_name, event_name, args } => {
+                        assert_eq!(widget_name, "Test");
+                        assert_eq!(event_name, "ToggleDetails");
+                        assert!(
+                            matches!(args.first(), Some(auto_val::Value::Str(s)) if s.starts_with('d')),
+                            "args[0] = d<block_key hash>, got {:?}",
+                            args.first()
+                        );
+                    }
+                    other => panic!("expected Typed message, got {:?}", other),
+                }
             }
             _ => panic!("expected document column"),
         }
@@ -9161,8 +9593,9 @@ mod tests {
                     DynamicMessage::Typed { event_name, args, .. } => {
                         assert_eq!(event_name, "PointerMove");
                         assert_eq!(args.len(), 2, "坐标必须追加为两个实参");
-                        assert!(matches!(args[0], Value::Float(f) if (f - 280.0).abs() < f64::EPSILON));
-                        assert!(matches!(args[1], Value::Float(f) if (f - 150.0).abs() < f64::EPSILON));
+                        // PLAN-043 T9: 坐标实参 +1e-3 分数化（nanbox 绕道）。
+                        assert!(matches!(args[0], Value::Float(f) if (f - 280.001).abs() < 1e-9));
+                        assert!(matches!(args[1], Value::Float(f) if (f - 150.001).abs() < 1e-9));
                     }
                     other => panic!("Expected Typed message, got: {:?}", other),
                 }

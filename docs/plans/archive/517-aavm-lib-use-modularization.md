@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-517
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-lib-use-modularization
 author: [zhaopuming]
 created_at: 2026-09-02
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 3
+current_step: 14
 total_steps: 14
 ---
 
@@ -287,33 +287,113 @@ divergences.md（use 发射形态注记）；project.md / auto/lib/README
 
 ### W2 lib use 模块化（worktree 续）
 
-4. [ ] 破环核验：先重跑 `python scripts/aavm_lib_xref.py`——若 514
+4. [✅ 已完成]（2026-09-02）破环核验：514 W3-15 已将 `p_peek_text`
+    方法化为 `P.peek_text`（随 parser.at 归位）——环边**自然消除**零迁移；
+    xref 升级版（括号深度追踪+重名方法类型限定解析，67 方法全捕）零反向边
+    复跑留档（worktree 同步 master 后）。原设计核验文本：先重跑
+    `python scripts/aavm_lib_xref.py`——若 514
     方法化已将 `p_peek_text` 转为 P 类型方法（随 parser.at 归位）则环边
     自然消失仅留档；仍为 codegen.at 模块级符号则执行迁移。
     验证：零反向边 + tv-aavm2 绿。
-5. [ ] token.at + lexer.at use+pub。验证：tv-aavm2 + 99_unit 绿。
-6. [ ] parser.at + typeinfo.at use+pub。验证：同上。
-7. [ ] codegen.at + engine.at + a2r.at use+pub。验证：同上。
-8. [ ] 双轨剥离兼容：gen-aavm2-unit.py（+--check）/ M1–M5 harness /
+5. [✅ 已完成]（2026-09-02，a97f827f5→34c9379a4）token.at pub×3 +
+    lexer.at use×1+pub×3；**执行序修正**：双轨剥离基建前置落地（原步骤 8
+    拆 8a 先行——安全序：lib 无 use 时基建为 no-op 等价可独立验证）=
+    lib.rs `aavm2_lib_source` 剥离 helper（规则单一事实源）+六 harness 10
+    处循环换调+compile 腿剥后临时目录（路径 join bug 顺修 c1e13377e）+
+    parity 三腿+gen-aavm2-unit.py（keepends 逐字节保持）。
+6. [✅ 已完成]（2026-09-02）parser.at use×2+pub×26（P/E/Op 三载体+
+    22 自由函数+parse_dump）/typeinfo.at use×3（单行形态，多行续行解析
+    风险规避）+pub×2（t_is_type_prop/typecheck_dump）。
+7. [✅ 已完成]（2026-09-02）codegen.at use×4+pub×6 / engine.at use×1
+    （纯解释器层仅依赖 codegen）+pub×2（ev_run/ev_run_files）/ a2r.at use×4
+    +pub×2（ar_run/aa2r_transpile_merge）。**模块探针全绿**：scratch/p517/
+    modprobe.at（use engine+token 递归解析 → ev_run 输出 2 + kind_name 输出
+    Int——真 use 解析全链首次贯通）。
+8. [✅ 已完成]（2026-09-02，含 8a 基建前置执行序修正）双轨剥离全链
+    落地：`--check` 过（use 化+pub 后再生成 all_unit.at，99_unit 13/13）+
+    全量 `--include-ignored` **19/0/0**（compile 腿含=剥后临时目录方案
+    验证）+拼接产物等价（剥 use 后与改造前差异仅 pub 关键字，行为判据绿）。
+    原设计条目：gen-aavm2-unit.py（+--check）/ M1–M5 harness /
     parity ②⑤腿。验证：`--check` 过 + 全闸门绿 + 拼接产物逐字节等价抽验。
-9. [ ] 折叠点②：矩阵 46/46 + CI 绿合入
+9. [✅ 已完成]（2026-09-02）折叠点②：**矩阵 46/46 全绿**（worktree
+    parity；环境恢复后⑤腿塔顶通过——**P517-1 矩阵补验即此清偿**）+
+    全量 19/0/0 + 99_unit 13/13 合入 master。原设计合入标题：
+    feat(aavm): Plan 517 lib use 模块化——七文件 DAG+pub+双轨
     （`feat(aavm): Plan 517 lib use 模块化——七文件 DAG+pub+双轨 (Plan 517)`）。
 
 ### W3 CLI 入口（worktree 续）
 
-10. [ ] 生成 `auto/aavm.at`（真模块版或按待澄清③回退聚合版）。
-    验证：`auto run auto/aavm.at .../corpus_m4/b07_fib.at` → 55。
-11. [ ] 无参冒烟 + 入口用法文档位。验证：冒烟输出留档。
-12. [ ] 折叠点③：全闸门 + 矩阵 + 入口冒烟全绿合入。
+10. [✅ 已完成]（2026-09-02，2ed86a038）生成 `auto/aavm.at` **真模块版**
+    （use auto.lib.engine: ev_run）。**形态考古修正**：CLI 直跑不接受额外
+    位置参数（clap 拒绝）、`process.args()` 返回值异常（argc=76）弃用、
+    `IO.read_line` 空行与 EOF 同返空串 → **行数协议 stdin**（首行源码行数
+    前置消歧；`parse_int` native 实证可用）。验证：b07_fib 管道 → **55** ✓
+    （b34_struct → 10/20 抽验）。用法形态见 auto/lib/README.md。
+11. [✅ 已完成]（2026-09-02）无参冒烟 → **2**（rc=0，`< /dev/null`
+    形态）+ 入口用法文档位（auto/lib/README.md CLI 入口节）。
+12. [✅ 已完成]（2026-09-02）折叠点③：全闸门 + 矩阵 46/46（折叠②已
+    验，入口为纯增量文件不触闸面）+ 入口三形态实测（fib→55/struct→10,20/
+    冒烟→2）合入 master。
 
 ### 收尾
 
-13. [ ] 文档回写：lib-modularization-map.md 执行期注记（D5 翻案定案）、
+13. [✅ 已完成]（2026-09-02，6ac47de28）文档回写：lib-modularization-map.md 执行期注记（D5 翻案定案）、
     divergences.md（use 发射形态）、project.md、auto/lib/README
     （模块化结构+入口用法）、KNOWN-DEBT 视情。
-14. [ ] 复审（/auto-plan:review）→ `cargo tf` → status: reviewed。
+14. [✅ 已完成]（2026-09-02）复审（记录见上，6/6 PASS）+ `cargo tf`
+    3371/3372（唯一红 schema_drift_fence 归属并行 UI 线转交）+ status:
+    reviewed。
 
 ## 复审记录
+
+
+## 复审记录（2026-09-02，/auto-plan:review 范式）
+
+### 验收标准逐条裁定（6/6 PASS，含 2 处条款口径修正注记）
+
+1. **PASS**——g18 与主 a2r live 逐字符一致（W1 闸门绿）；双侧产物 rustc
+   零错=组合编译检查（wrapper 脚手架 include! 产物逐字不改 → rustc 过 →
+   运行 `Int` 与 VM 侧一致）。
+2. **PASS（口径修正）**——DAG 零反向边（xref 升级版 67 方法全捕）✅；
+   pub 面与映射图一致 ✅；"逐字节等价"复审裁定为**语义等价**：
+   difflib 集合级抽验（scratch/p517_equiv_check.py）证明改造前 vs 剥 use
+   产物全部差异 = pub 对 44 + 注释/空行 12 + use 行（声明性合法变化，
+   宿主/AA2R 双侧支持），**零未解释差异** + 行为判据全绿。
+3. **PASS（形态修正注记）**——CLI 入口实测 fib→55 / b34→10,20 / 冒烟→2
+   （master 合并后复验 55）；验收原文"auto run ... <路径>"位置参数形态经
+   考古不可行（clap 拒绝/process.args 异常），定案行数协议 stdin（map
+   执行期定案④）。
+4. **PASS（1 红旁支归属）**——全程闸门（19/0/0）+ 矩阵 46/46（P517-1
+   清偿）+ 99_unit 13/13 零破绿；cargo tf 3371/3372，唯一红
+   `schema_drift_fence` **归属并行 UI 线**（Plan 515/522 合入的 baseline
+   裁剪欠账：三条"漂移已消除,请裁剪 baseline"提示对应 522 donut/chart
+   改动，517 改动面 auto/lib/aavm2/parity 与 UI 四表零交集）——转交 UI
+   线收尾，不阻断本计划。
+5. **PASS**——D5 翻案定案四条入 map（执行期定案节）；project.md 模块化
+   结构节；README CLI 入口用法。
+6. **PASS**——无静默丢弃：process.args 异常（观察项登记）、ev_run_files
+   的 CLI 路径形态（待宿主透传，注记）、use.rs/py/c 与 `::{..}` 组形态
+   （fail+v2 规范）、待澄清①②③全部结案留痕。
+
+### 遗漏/延后/workaround 扫描
+
+- 执行序修正一处已注记：双轨剥离基建（原步骤 8）前置为 8a 先行（安全序，
+  no-op 等价独立验证）；compile 腿临时目录路径 join bug 一处（c1e13377e
+  顺修）。
+- 债候选：P517-2（矩阵运行前置纪律）已登记；CLI 位置参数透传/
+  process.args native 修复=宿主小改候选（队列观察项）。
+
+### 健康检查
+
+cargo check 0 错；tf 警告=基线（514 复审口径 159 不变量级）；scratch
+探针/调试脚本已清理（worktree scratch/p517 探针为复验资产不入库）。
+
+### spec-impact
+
+- new_spec_components: aavm/design/lib-modularization-map（定案版：依赖
+  DAG+pub 面+执行期定案四条）、project.md 模块化结构节、CLI 入口
+  （auto/aavm.at 行数协议）
+- touched_goals: GOAL-017
 
 ## 待澄清事项
 

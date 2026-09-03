@@ -1,0 +1,14 @@
+// Plan 525 W1 g26:VBool 全形态护航——裸 bool/比较结果/逻辑运算结果/
+// fstr 插值的 true/false 显示形态(宿主 print tag==3 + BUILD_FSTR is_bool
+// 臂 + EQ 族/AND/OR/NOT 全推 encode_bool 的 aavm 镜像判据)。
+fn main() {
+    print(true)
+    print(false)
+    print(1 == 2)
+    print(3 > 2)
+    print(!true)
+    print(true && false)
+    print(true || false)
+    print(f"flag=${true}")
+    print(f"cmp=${1 == 1}")
+}

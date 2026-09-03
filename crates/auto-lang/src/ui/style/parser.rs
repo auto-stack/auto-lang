@@ -33,7 +33,7 @@ impl StyleParser {
         let classes = self.parse(input)?;
         // hover: tokens are dropped by parse(); Style::parse is the entry
         // point that collects them into hover_classes.
-        Ok(Style { classes, hover_classes: Vec::new() })
+        Ok(Style { classes, hover_classes: Vec::new(), variant_classes: Vec::new() })
     }
 }
 

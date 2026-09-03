@@ -724,6 +724,10 @@ pub enum OpCode {
     Ret
     Call
     CallNat
+    // W4(525):闭包族——D29 谱系自有模型(可观察行为对齐宿主 Direct
+    // Capture;宿主 closure 反汇编乱码级不可镜像,m4 层闭包语料迁 g 件)
+    MakeClo
+    CallClo
     Jmp
     JmpZ
     JmpNz
@@ -785,6 +789,8 @@ pub fn op_name(op OpCode) str {
         OpCode.Ret -> "ret"
         OpCode.Call -> "call"
         OpCode.CallNat -> "call.nat"
+        OpCode.MakeClo -> "make.clo"
+        OpCode.CallClo -> "call.clo"
         OpCode.Jmp -> "jmp"
         OpCode.JmpZ -> "jmp.z"
         OpCode.JmpNz -> "jmp.nz"
@@ -822,6 +828,8 @@ fn i_size(op OpCode) int {
         OpCode.LoadStr -> 5
         OpCode.Call -> 5
         OpCode.CallNat -> 3
+        OpCode.MakeClo -> 3
+        OpCode.CallClo -> 3
         OpCode.ConstI32 -> 5
         OpCode.PushBool -> 2
         OpCode.Ret -> 2
@@ -1049,11 +1057,193 @@ fn cg_fstr(mut c CG, mut p P) {
     c.arr_flag = 0
 }
 
+// W4(525):闭包表达式编译——捕获=体内自由变量∩外层作用域(按值,
+// 首引序);隐 fn "$cloN"(参数=捕获(前)+声明参数(后),cg_fn 同款
+// 帧/prolog 回填/尾码);创建点=捕获值依序入栈+make.clo n=fnidx
+// s=ncap。调闭包变量见 Ident 调用臂(call.clo n=nargs)。
+// W4(525):`(params) =>` 前瞻(depth 扫描至配对 RParen,后随 =>)
+fn cg_clo_paren_ahead(mut p P) bool {
+    var depth = 1
+    var i = p.pos + 1
+    while i < p.toks.len() {
+        var tk = p.toks.get(i).kind
+        if tk == TokenKind.LParen || tk == TokenKind.LSquare || tk == TokenKind.LBrace {
+            depth = depth + 1
+        } else if tk == TokenKind.RParen || tk == TokenKind.RSquare || tk == TokenKind.RBrace {
+            depth = depth - 1
+            if depth == 0 {
+                return i + 1 < p.toks.len() && p.toks.get(i + 1).kind == TokenKind.DoubleArrow
+            }
+        } else if tk == TokenKind.EOF {
+            return false
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn cg_closure(mut c CG, mut p P, single bool) {
+    var names List<str> = List.new()
+    if single {
+        names.push(p.text())
+        p.next()
+    } else {
+        p.next()
+        p.skip_empty_lines()
+        while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RParen {
+            if !is_name_kind(p.kind()) {
+                c.fail("closure: expected param")
+                return
+            }
+            names.push(p.text())
+            p.next()
+            // W4(525):注解双形态(: T 与空格 T——镜像 parse_fn_params)
+            if p.kind() == TokenKind.Colon {
+                p.next()
+            }
+            if is_type_name(p) {
+                parse_type(p)
+            }
+            if p.kind() == TokenKind.Comma {
+                p.next()
+                p.skip_empty_lines()
+            }
+        }
+        p.expect(TokenKind.RParen)
+    }
+    p.expect(TokenKind.DoubleArrow)
+    p.skip_empty_lines()
+    // 捕获分析:体 token 扫描(至深度 0 EOS),自由名命中外层作用域
+    var captured List<str> = List.new()
+    var bi = p.pos
+    var depth = 0
+    while bi < p.toks.len() {
+        var tk = p.toks.get(bi).kind
+        if tk == TokenKind.LParen || tk == TokenKind.LSquare || tk == TokenKind.LBrace {
+            depth = depth + 1
+        } else if tk == TokenKind.RParen || tk == TokenKind.RSquare || tk == TokenKind.RBrace {
+            if depth == 0 {
+                break
+            }
+            depth = depth - 1
+        } else if depth == 0 && (tk == TokenKind.Newline || tk == TokenKind.Semi) {
+            break
+        } else if tk == TokenKind.Ident {
+            var w = p.toks.get(bi).text
+            var is_param = false
+            var pi = 0
+            while pi < names.len() {
+                if names.get(pi) == w {
+                    is_param = true
+                }
+                pi = pi + 1
+            }
+            var already = false
+            var ci = 0
+            while ci < captured.len() {
+                if captured.get(ci) == w {
+                    already = true
+                }
+                ci = ci + 1
+            }
+            if !is_param && !already && w != "print" && c.lookup(w) >= 0 {
+                var is_fn = false
+                var fi = 0
+                while fi < c.fns.len() {
+                    if c.fns.get(fi).name == w {
+                        is_fn = true
+                    }
+                    fi = fi + 1
+                }
+                if !is_fn {
+                    captured.push(w)
+                }
+            }
+        }
+        bi = bi + 1
+    }
+    // 隐 fn 编译(cg_fn 骨架:帧/prolog/回填)
+    var clo_name = "$clo" + c.fns.len().str()
+    var saved_args = c.n_args
+    var saved_max = c.max_idx
+    var saved_hi = c.hi_idx
+    c.max_idx = -1
+    c.hi_idx = -1
+    var jover = c.emit(OpCode.Jmp, "", -1)
+    var entry = c.ins.len()
+    c.fns.push(FnEntry(clo_name, entry))
+    c.fn_rets.push("")
+    c.push_scope()
+    var prolog = c.emit(OpCode.FnProlog, "", 0)
+    var reserve = c.emit(OpCode.Reserve, "", 0)
+    var n_total = 0
+    var ci2 = 0
+    while ci2 < captured.len() {
+        var cty = c.var_ty(captured.get(ci2))
+        c.add_var(captured.get(ci2), 0, cty)
+        n_total = n_total + 1
+        ci2 = ci2 + 1
+    }
+    var pi2 = 0
+    while pi2 < names.len() {
+        c.add_var(names.get(pi2), 0, "")
+        n_total = n_total + 1
+        pi2 = pi2 + 1
+    }
+    c.n_args = n_total
+    cg_expr(c, p, 0)
+    var rs = f"n_args=${n_total.str()}"
+    c.emit(OpCode.Ret, rs, n_total)
+    c.pop_scope()
+    var n_locals = 0
+    if c.hi_idx >= n_total {
+        n_locals = c.hi_idx + 1 - n_total
+    }
+    c.ins.get(prolog).s = f"args=${n_total.str()}, locals=${n_locals.str()}"
+    c.ins.get(prolog).n = n_total
+    c.ins.get(reserve).s = n_locals.str()
+    c.ins.get(reserve).n = n_locals
+    c.ins.get(jover).n = c.ins.len()
+    c.n_args = saved_args
+    c.max_idx = saved_max
+    c.hi_idx = saved_hi
+    // 创建点:捕获值依序入栈 → make.clo
+    var ci3 = 0
+    while ci3 < captured.len() {
+        var cidx = c.lookup(captured.get(ci3))
+        c.emit_load(cidx)
+        ci3 = ci3 + 1
+    }
+    var fn_idx = -1
+    var fi2 = 0
+    while fi2 < c.fns.len() {
+        if c.fns.get(fi2).name == clo_name {
+            fn_idx = fi2
+        }
+        fi2 = fi2 + 1
+    }
+    c.emit(OpCode.MakeClo, captured.len().str(), fn_idx)
+    c.str_flag = 0
+    c.arr_flag = 0
+    c.inst_ty = ""
+    c.recv_ty = ""
+}
+
 fn cg_expr(mut c CG, mut p P, min int) {
     if c.err != "" {
         return
     }
     var k = p.kind()
+    // W4(525):闭包表达式前瞻——单参 `x =>` / `(params) =>`(主式位
+    // 拦截,镜像宿主 closure 前置判定)
+    if k == TokenKind.Ident && p.peek(1) == TokenKind.DoubleArrow {
+        cg_closure(c, p, true)
+        return
+    }
+    if k == TokenKind.LParen && cg_clo_paren_ahead(p) {
+        cg_closure(c, p, false)
+        return
+    }
     // 每次表达式求值从干净 flag 起;原子按需置位(str/arr/inst_ty)
     c.str_flag = 0
     c.arr_flag = 0
@@ -1188,6 +1378,18 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 fi = fi + 1
             }
             if fe < 0 {
+                // W4(525):闭包变量调用——局部持有 VClo,call.clo n=nargs
+                // (捕获值由引擎从闭包载体回放为首参组)
+                if c.lookup(name) >= 0 {
+                    var ncl = cg_call_args(c, p)
+                    c.emit_load(c.lookup(name))
+                    c.emit(OpCode.CallClo, "", ncl)
+                    c.str_flag = 0
+                    c.arr_flag = 0
+                    c.inst_ty = ""
+                    c.recv_ty = ""
+                    return
+                }
                 // W3:导入名(use mod: item / 通配)→ 延迟调用,链接期定址
                 // (无 return:调用结果可接后缀/中缀,如 get_base() * 2)
                 var isym = c.import_symbol(name)
@@ -1507,18 +1709,22 @@ fn cg_expr(mut c CG, mut p P, min int) {
 }
 
 // 调用实参:( 已在 cur;消费至 RParen
-fn cg_call_args(mut c CG, mut p P) {
+fn cg_call_args(mut c CG, mut p P) int {
     p.next()
     p.skip_empty_lines()
+    var n = 0
     if p.kind() != TokenKind.RParen {
         cg_expr(c, p, 0)
+        n = 1
         while p.kind() == TokenKind.Comma || p.kind() == TokenKind.Newline {
             p.next()
             p.skip_empty_lines()
             cg_expr(c, p, 0)
+            n = n + 1
         }
     }
     p.expect(TokenKind.RParen)
+    return n
 }
 
 // ── 语句发射(.line 由语句步行者发,见 cg_stmts) ────────────────
@@ -2246,7 +2452,10 @@ fn cg_stmt(mut c CG, mut p P) {
         TokenKind.If -> cg_if(c, p)
         TokenKind.While -> cg_while(c, p)
         TokenKind.For -> cg_for(c, p)
-        TokenKind.Fn -> c.fail("nested fn unsupported")
+        // W4(525):嵌套 fn——体内声明按普通 fn 就地编译(jmp-over+
+        // 帧;447-旁支②宿主已修,本侧能力承载;作用域链=不捕获外层,
+        // 调用按名查 c.fns)
+        TokenKind.Fn -> cg_fn(c, p)
         else -> {
     if k == TokenKind.Ident && p.text() == "pub" {
         // W3:pub 前缀跳过(D3:VM 链路无导出过滤)
@@ -3178,6 +3387,27 @@ fn cg_link_modules(mut cgs List<CG>) CG {
             m.ins.push(ins)
             ii = ii + 1
         }
+        // W4(525):tys 跨单元合并(pub type 跨模块)——按名去重后到
+        // 覆盖(镜像宿主链接期类型表共享;field_idx/VInst 名字键跨单元
+        // 命中,corpus_use 007)
+        var tyi = 0
+        while tyi < mc.tys.len() {
+            var t2 = mc.tys.get(tyi)
+            var hit2 = -1
+            var tj2 = 0
+            while tj2 < m.tys.len() {
+                if m.tys.get(tj2).name == t2.name {
+                    hit2 = tj2
+                }
+                tj2 = tj2 + 1
+            }
+            if hit2 < 0 {
+                m.tys.push(t2)
+            } else {
+                m.tys.set(hit2, t2)
+            }
+            tyi = tyi + 1
+        }
         // fns + fn_mods(+fn_rets 平行,W2 525)
         var fi = 0
         while fi < mc.fns.len() {
@@ -3230,12 +3460,103 @@ pub fn cg_compile_files(main_path str) CG {
     }
     var cgs List<CG> = List.new()
     var i = 0
-    while i < res.mods.len() {
+    while i < res.mods.len() - 1 {
         var mod = res.mods.get(i)
         cgs.push(cg_compile_mod(mod.source, mod.name))
         i = i + 1
     }
+    // W4(525):pub type 跨模块——main 编译前播种 dep 类型表(ctor
+    // 识别/field_idx 在编译期即需命中;链接期合并仅覆执行期查表)
+    var seed List<CGType> = List.new()
+    var si = 0
+    while si < cgs.len() {
+        var sc = cgs.get(si)
+        var ti = 0
+        while ti < sc.tys.len() {
+            var st = sc.tys.get(ti)
+            var dup = false
+            var dj = 0
+            while dj < seed.len() {
+                if seed.get(dj).name == st.name {
+                    dup = true
+                    seed.set(dj, st)
+                }
+                dj = dj + 1
+            }
+            if !dup {
+                seed.push(st)
+            }
+            ti = ti + 1
+        }
+        si = si + 1
+    }
+    var main_mod = res.mods.get(res.mods.len() - 1)
+    cgs.push(cg_compile_mod_seeded(main_mod.source, main_mod.name, seed))
     return cg_link_modules(cgs)
+}
+
+// W4(525):带预播种类型表的模块编译(镜像 cg_compile_mod;种子先入
+// c.tys——同名本模块声明后到覆盖)
+fn cg_compile_mod_seeded(source str, mod_name str, seed List<CGType>) CG {
+    var toks = tokenize(source)
+    var p = parse_new(toks)
+    var c = CG.new()
+    c.mod_name = mod_name
+    var si2 = 0
+    while si2 < seed.len() {
+        c.tys.push(seed.get(si2))
+        si2 = si2 + 1
+    }
+    // pass1:Type/Ext 声明位预扫(cg_compile_mod 同款)
+    p.skip_empty_lines()
+    while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF {
+        if p.kind() == TokenKind.Type {
+            cg_type_decl(c, p)
+        } else if p.kind() == TokenKind.Ext {
+            cg_ext(c, p)
+        } else {
+            cg_skip_stmt(p)
+        }
+        if c.err == "" && p.err == "" {
+            expect_eos(p)
+            p.skip_empty_lines()
+        }
+    }
+    if c.err != "" || p.err != "" {
+        return c
+    }
+    p.pos = 0
+    while p.pos < p.toks.len() && is_comment_kind(p.toks.get(p.pos).kind) {
+        p.pos = p.pos + 1
+    }
+    if mod_name == "" {
+        c.emit(OpCode.FnProlog, "args=0, locals=16", 16)
+        c.emit(OpCode.Reserve, "16", 16)
+    }
+    p.skip_empty_lines()
+    while c.err == "" && p.err == "" && p.kind() != TokenKind.EOF {
+        if p.kind() == TokenKind.Type || p.kind() == TokenKind.Ext {
+            cg_skip_stmt(p)
+        } else if p.kind() == TokenKind.Fn {
+            cg_fn(c, p)
+        } else if p.kind() == TokenKind.Ident && p.text() == "pub" {
+            p.next()
+            if p.kind() == TokenKind.Fn {
+                cg_fn(c, p)
+            } else {
+                cg_stmt(c, p)
+            }
+        } else {
+            cg_stmt(c, p)
+        }
+        if c.err == "" {
+            cg_eos(c, p)
+        }
+    }
+    if c.err == "" {
+        c.emit(OpCode.Halt, "", 0)
+    }
+    return c
 }
 
 // W3 M4 多文件闸门入口

@@ -1,7 +1,7 @@
 # ui（AURA / UI 引擎 / 桌面运行时）
 
 > **Status**: active（主战场：vue 轨 codegen 成熟化 + VM 轨视觉 parity + 虚拟桌面线推进中）
-> 最近刷新：2026-09-02（Plan 516 归档回写：vue 桌面远程窗 remote_window——508 渲染器包物化进 465 宿主 WM，远程 App 同权混排 + remote-apps.json 配置/URL 注入 + Playwright 全链闭环）
+> 最近刷新：2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
 
 ## 职责
 
@@ -18,6 +18,15 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
 ## 现状（2026-08-28）
+
+**use 导入 helper fn 发射（plan-522 落地）**：`use` 导入的模块级 fn 按需转译
+进消费方 SFC（池收集全模块 fn + 入口门控与 VM import_aliases 同口径 + 闭包
+不动点拉取 + ext_imports/命名冲突/转译边界三态闸 R013 回退）——437 §0.6.E-3
+缺口关闭，computed/handler/lifecycle 体裸名调用双端同源；配套：VM 装载对包
+组件文件 use 依赖的收集+别名、auto-man components/ 通道挂池、
+`transpile_body_as_return` 尾表达式 return 化。语料：016 computed 化迁移
+（store ×4 重算链删除）、024 donut dc/ds 回正。机制见
+[design/vue-use-fn-emission.md](design/vue-use-fn-emission.md)。
 
 **组件线（plan-437 落地，ADR-18/19）**：chart 族（line/bar/area/donut）schema 契约落库
 + vue 发射 spec 驱动化（特判臂退役）；四类图官方 Auto 组件（AutoLineChart 等四件，
@@ -108,11 +117,13 @@ J1/J2 渲染器子树，批五转正中）。
 **示例轨道**：examples/ui 024-charts（437/445）、025-dashboard（438）已交付；026-database（439）、
 027-file-manager（440）草案可领取；028-launcher 归 464。
 
+**448 AutoUI 语法改进滚动收集已落地（七条目）**：三轮全量走查 examples/ui 收集并实施——A `msg {…}` 无名正字法（兼容窗口保留旧名）·B 事件内联 lambda `onclick: () => {…}`（parser 铸名 `__evt_*` 单点 desugar，三后端同源）·C 裸 `value:` 两向绑定（`__bind_<W>_<n>` 空体铸名——VM input_state_map 预写回/原生 Rust input_fields 注入/Vue v-model 折叠+噪音抑制；输入框免 msg/on 三件套）·D style 组合（数组形态 `["基座", if…]` 显式类段 join；class-safe 拼接结构判定→:class 三发射点齐备）·I grid `cols:/gap:` 动态值（VM 重建期求值+失败落默认；Vue 内联 `grid-template-columns: repeat(N,…)` 绕 JIT 扫描）·H1/H2 computed 块体（Vue 尾 return+`computed<T>` 推断；VM `__computed_<W>_<p>` 隐藏函数经 handler 合成机制执行）。H3（模块级 helper fn 进 vue SFC）划出独立 Plan 522。复审 tf 3357/3358+12/12 条目测试；债务 P448-1..3（__evt_ 跨兄弟冲撞面/plain 生成器 cols 死属性/computed store 消歧未接）。
 **481 展示型文字选择/复制已落地**：text/label 增 `selectable` 属性（bool,默认 false——opt-in,缺省渲染路径逐行零变化）;VM 端自研 `ui/iced/selectable_text.rs` SelectableText widget(advanced Widget——绘制复用 iced `text` 同参同路径保证逐像素一致,命中走 iced_graphics Paragraph 公开 `buffer()`;手势集 v1=拖选/双击词选(字符类分段词界,UAX#29 默认 CJK 连字)/Ctrl+C 写剪贴板(有选区才捕获)/Esc 清除不夺全局流;选区为 widget 本地状态,零桌面集成改动) + `selection.rs` 选区纯逻辑(全平台单测);vue 端显式化 `style="user-select: text"`(plain/shadcn 双路径);a2vue 金样 011 锁 prop 往返;001-helloworld/004-profile-card 点亮。边界:font-mono 代码文本 v1 保持 Rich 高亮不可选;arboard 兜底未启用(iced 剪贴板恒可用)。
 
 **504 示例桌面化三件套（011-calculator 样板）**：pac.at `window: "fit"` 自适应窗口——独立 VM 窗首帧按内容 shrink 测量后 resize（clamp [200, 可用区]）、桌面虚拟窗以测量值替代"可用区 60%"写死初值（`register_window` 覆盖保留 fit_pending 为关键修复）；title/settings 上移 os-config per-app 配置（`~/.config/autoos/apps/<app>/config.at`，launch 直读文件注入 theme/accent——启动期 daemon 可能未起，不经 daemon；`modules.d/<id>.at` 注册后通用编辑器零手写获得设置 UI）；应用内 `ExampleHeader` 退役，标题由 pac.at `title:` + 桌面 chrome 提供。债项 P504-1..4 见 KNOWN-DEBT。
 **506 示例桌面化批一（011 样板批量展开 7 例）**：三件套向首批示例批量兑现——header 退役线（008/009/010）：`common/header.at`（ExampleHeader 组件包）整体删除，app.at 无 header/settings，`dark_mode`/`accent_color` 声明保留作 os-config/env 播种挂钩（宿主 `seed_app_config` 与 renderer env 播种均要求已声明变量，删声明即静默失效）；theme/accent 注册 os-config per-app 配置（`~/.config/autoos/modules.d/auto-<app>.at` + `apps/<app>/config.at`，shape 循 calculator 先例 theme/accent 两键），优先级链 CLI > os-config > pac.at > 内置。fit/title 线（002/003/012/038）：pac.at 补 `title:` + `window: "fit"`，根容器 `center` 居中外壳拆除改"内容即页面"（四 app 实测均有 center，012 另删 min-h-screen），VM 独立窗实测收缩 400x400/400x720/550x774/647x878（默认 1293x836），fit 断言范式 = VM 截图 PNG 像素尺寸 < 900。测试改法范式：双端脚本删 settings 交互、增"无 header 元素 + 内容标记"断言（循 504 test_011）。债项 P506-1（038 Reveal 触发 VM RC use-after-free，master 预存疑 511 回归）/P506-2（MCP rendered-vtree 快照无事件注记，038 改 label 定位法）见 KNOWN-DEBT；批二 = 剩余 20 例 title 债务（001/004-007/013-025/028/042）。
 **512 示例桌面化批二（fit 动态重测机制 + 批二 20 例）**：`window: "fit"` 语义补全——由首帧一次性测量升级为**动态重测双向跟随**：app view 重建（dispatch 漏斗 view_dirty）落到 fit 窗条目打 `fit_dirty` 标 → ServiceTick 400ms 节拍发起内容测量（**standalone 订阅补齐**：原仅 desktop 门控且宿主窗句柄恒 None，现 desktop 或 standalone 有脏标即订、测量目标取待测窗自身 id）→ `decide_fit_resize` 滞回 8px 决策 → standalone `window::resize` / desktop vwin rect 更新双路径；用户手动 resize 一次性锁定（程序化回波 ±2px 豁免）。**量测法关键修正**：活树布局受当前窗口钳制（内容自然高超出窗口即被裁，增长方向量不到；504 首测成功仅因默认窗大于内容）——`fit_aware_root` 锚点外套 vertical scrollable（内部无限高约束排版），锚点量真实自然尺寸；副作用=内容超窗瞬态出滚动条而非裁剪，宽度方向 v1 仍受视口钳制（P512-1）。实证：011 Scientific +44px/回缩基线、005 校验错误行 +39px/回缩（双探针 `tests/test_512_fit_remeasure.py`，win32 物理尺寸断言，阈值 >24px=3×滞回有实测依据）。迁移：fit 线 4 例（001/004/005/016）拆 `center` 外壳 + 卡片固定宽（**实证：`w-[28rem]` rem 任意值 iced 端不支持塌缩 213px，改 Tailwind 刻度 w-96/w-112 双端兼容**）实测 213x236/445x451/573x535/541x441 截图留痕；title-only 线 16 例 pac.at 补 `title:`。债项 P512-1（宽度钳制）/P512-2（锁定后余量视觉语义）/P512-3（p508_g2_outproc_arm 并发偶红）见 KNOWN-DEBT；P504-2 已清偿，P506-1（038 Reveal UAF）核对仍在（511 归档未修）。
+**527 VM 轨 Tailwind 全量覆盖契约**：样式子系统从「Tailwind-inspired 按需子集」升级为 **v3.4 清单驱动的全量覆盖契约**——①清单锚定：Tailwind v3.4 core 展开清单 vendor 入库（`tests/fixtures/tailwind-v34-utilities.txt` 8861 类×15 families，`tools/gen_tailwind_manifest.py` 零依赖再生）+`Style::parse_reported` 报告通道（未映射类按原文名报告，**静默丢弃通道关闭**）；②对拍审计台常驻（`tests/style_parity.rs` 已挂 `cargo t`）：白名单外零 missing + 布局/视觉/文本三家族 iced applied 门 + PARSED_ONLY_ALLOWED 豁免台账 + 覆盖率表 `docs/style-coverage.md` 同源再生（基线 applied 3807/parsed-only 276/unsupported 4778/missing 0）；③三家族补全：布局 1582/视觉 1901/文本 308 applied（SizeValue::Fraction 分数 Fill-ratio 口径、四色板 lime/violet/fuchsia/stone 补全+950 真值行、渐变三 stop+位置百分比真消费、彩色阴影、object-fit→ContentFit、全字重 9 档、leading 双轨、line-clamp；顺修 from-100 三位 hex 误吞/min-h 未知命名误落 0.0 等隐性假映射）；④Variant 管道泛化：hover/focus/active/disabled 同构（按钮状态面真消费+opacity 乘法降级）、responsive 五断点解析期按 `theme::window_width` 门控（resize→view 重建→重解析既有回路）、`dark:` 按 `theme::dark_mode` 门控——未命中态登记 variant_classes 可见不静默；⑤不做/受限台账 KNOWN-DEBT P527-1..5（永久不做族/宿主上限/分数近似口径/变体分期消费/存字段类）。复审 tf 3397/3398（唯一红=在案存量）零新增红。
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
@@ -121,8 +132,10 @@ J1/J2 渲染器子树，批五转正中）。
 - 桌面线：`ui/session.rs`（DesktopSession/AppSession + WmState/WmCommand/DM::Wm）·
   `ui/iced/virtual_window.rs`（VirtualWindow）· `ui/iced/renderer.rs`（view_desktop_fn/run_dynamic_iced_multi）·
   `ui/desktop_protocol/`（路线 B 桌面协议 v1.1：五通道/传输/shm/broker/状态机）
-- 样式与主题：`ui/style/`（class/theme/iced_adapter）· `ui/action_config.rs`（actions 配置层，
-  热重载/OS keymap/表达式条件）
+- 样式与主题：`ui/style/`（class/color/theme/iced/headless/gpui 适配 + **Plan 527 v3.4 清单驱动全量
+  覆盖契约**——parse_reported 报告通道/对拍审计台 style_parity/Variant 管道〔hover/focus/active/
+  disabled/responsive 五断点窗口宽门控/dark 主题态门控〕，覆盖矩阵 docs/style-coverage.md）·
+  `ui/action_config.rs`（actions 配置层，热重载/OS keymap/表达式条件）
 - 内建编辑器：`ui/code_editor/` · `ui/autodown_editor/` · `ui/handler_codegen.rs` · `ui/hot_reload.rs`
 - `ui/mcp_server.rs`（AutoUI MCP 调试服务）· `a2ui/schema.rs:A2UIMessage`
 

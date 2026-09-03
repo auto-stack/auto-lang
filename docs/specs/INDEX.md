@@ -342,17 +342,19 @@
 
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
-| parity | active | 6 | [parity/project.md](parity/project.md) |
+| parity | active | 8 | [parity/project.md](parity/project.md) |
 | a2r-actor-tests | test-only | 2 | [a2r-actor-tests/project.md](a2r-actor-tests/project.md) |
 
 <details><summary>parity 模块明细</summary>
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| auto-parity/main | CLI 入口 | active |
+| auto-parity/main | CLI 入口 + 启动闸门接线 | active |
+| auto-parity/freshness | `--auto-binary` 绝对路径解析 + mtime 陈旧对账 + `--allow-stale` 逃生（Plan 524） | active |
 | auto-parity/runner | 三后端运行器 | active |
 | auto-parity/compare | 输出比对 | active |
 | auto-parity/report / tap | 报告与 TAP 格式输出 | active |
+| auto-parity/aavm | AAVM 五向对比矩阵（①ref ②aavm_rust ③aavm_vm ④golden ⑤aa2r） | active |
 | libs | 20+ 三方库移植样例（一致性语料） | active |
 | docs | parity-guide / known-divergences / dashboard | active |
 

@@ -3,6 +3,11 @@
 widget AlertdialogPage {
     model { activeTab str = "preview" }
 
+    on {
+        .confirmAction -> { toast("AlertDialog choice: Continue") }
+        .cancelAction -> { toast("AlertDialog choice: Cancel") }
+    }
+
     view {
         col {
             h1 "AlertDialog"
@@ -12,7 +17,10 @@ widget AlertdialogPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add alert-dialog") {}
 
             h2 "Simple"
-            preview-card (id: "alertdialog-basic") {
+            // PLAN-528 W4: auto: 覆盖默认的 AST 反序列化——默认只打印
+            // preview 子树，看不到 on {} 块里的 handler 声明与实现；
+            // 这里手写完整可运行示例（对齐 toast.at 的 codeblock 模式）。
+            preview-card (id: "alertdialog-basic", auto: "widget Demo {\n    on {\n        .confirmAction -> { toast(\"AlertDialog choice: Continue\") }\n        .cancelAction -> { toast(\"AlertDialog choice: Cancel\") }\n    }\n    view {\n        alert-dialog {\n            alert-dialog-trigger {\n                button (text: \"Show Dialog\", variant: \"outline\") {}\n            }\n            alert-dialog-content {\n                alert-dialog-header {\n                    alert-dialog-title (text: \"Are you absolutely sure?\") {}\n                    alert-dialog-description (text: \"This action cannot be undone. This will permanently delete your account and remove your data from our servers.\") {}\n                }\n                alert-dialog-footer {\n                    alert-dialog-cancel (text: \"Cancel\", onclick: .cancelAction) {}\n                    alert-dialog-action (text: \"Continue\", onclick: .confirmAction) {}\n                }\n            }\n        }\n        toast-provider {}\n    }\n}") {
                 alert-dialog {
                     alert-dialog-trigger {
                         button (text: "Show Dialog", variant: "outline") {}
@@ -23,11 +31,12 @@ widget AlertdialogPage {
                             alert-dialog-description "This action cannot be undone. This will permanently delete your account and remove your data from our servers."
                         }
                         alert-dialog-footer {
-                            alert-dialog-cancel "Cancel"
-                            alert-dialog-action "Continue"
+                            alert-dialog-cancel "Cancel" { onclick: .cancelAction }
+                            alert-dialog-action "Continue" { onclick: .confirmAction }
                         }
                     }
                 }
+                toast-provider {}
             }
 
             h2 "Properties"

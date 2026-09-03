@@ -1,0 +1,15 @@
+// Plan 525 W4 g33(b47 迁位;m4 层释放组规范化超本轮——排序组与 jmp 目标互算,登记债;判据面=行为(m5 已绿形态)+发射闸+四路):嵌套 fn(体内声明+调用+循环内复用;447-旁支②
+// 宿主已修——本件为 aavm 侧能力承载)
+fn main() {
+    fn helper(n int) int {
+        return n + 100
+    }
+    print(helper(5))
+    var t = 0
+    var i = 0
+    while i < 3 {
+        t = t + helper(i)
+        i = i + 1
+    }
+    print(t)
+}

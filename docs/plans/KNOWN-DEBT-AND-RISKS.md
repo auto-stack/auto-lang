@@ -744,12 +744,21 @@
    900s+ 不完成（447 期记录正常需 240-420s 且"超时线贴边"）。**master
    基线（未含 517 改动的 lib）同双形态挂**（scratch 对照实证）→ 非本
    计划改动引入；内存充足（11G/33.6G 空闲）排除 OOM；触发因子=并行
+   会话构建负载下解释执行 700KB 程序的 CPU 竞争。**〔2026-09-02 核销注记：
+   W2 折叠点②矩阵 46/46 全绿（环境恢复后⑤腿塔顶通过），矩阵补验即此清偿；
+   环境敏感观察项保留（高负载下塔顶程序仍可能贴线）〕原登记：
    会话构建负载下解释执行 700KB 程序的 CPU 竞争。处置：折叠点①以替代
    证据链放行（g18 逐字符+rustc 组合运行+全量 19/0/0+99_unit 13/13+
    ③腿等价程序绿），**矩阵全绿补验挂账至折叠点②/复审**（环境空闲时
    复跑；届时若仍红则独立分诊）。447 期"环境相关异常终止族"同族。
-2. **P517-2 矩阵运行前置纪律（自 P511-5 坑引申）**：parity ②/⑤腿经
-   `--auto-binary` 调 auto.exe——**lib/trans 改动后必须重建该二进制**
+2. **~~P517-2 矩阵运行前置纪律（自 P511-5 坑引申）~~ ✅ 已清偿（2026-09-03，
+   Plan 524 W2）**：parity 启动闸门（`parity/crates/auto-parity/src/freshness.rs`）
+   ——`--auto-binary` 统一解析为绝对路径（缺档报错含绝对路径+cwd，不再裸
+   os error 3；顺带实锤原坑根因：`parity/../../target` 多退一级）+ mtime
+   对账 `crates/` 树最新源，陈旧**硬失败**（文案含指认最新源+重建命令+
+   `--allow-stale` 逃生）。三态单测 5 例 + 陈旧/逃生/缺档/相对路径四场景
+   实测留档见 Plan 524 步骤 5。**原登记**：parity ②/⑤腿经
+   `--auto-binary` 调 auto.exe——lib/trans 改动后必须重建该二进制
    （master target/debug/auto.exe 曾因陈旧+进程锁定致矩阵假红）；且
    worktree 跑矩阵需绝对路径传 `--auto-binary`（相对路径解析挂）。
    债候选：parity 启动时校验二进制新鲜度/统一路径解析。
@@ -827,8 +836,9 @@
 > ② 语言/VM/测试红族等其余 ~25 条"值得近期做"清偿候选（P506-1 UAF、
 > P499-1 timer 空转、测试红族 444×3/P487-2/P495-1/P496-2/P504-1/P507-2/
 > P502-1 等）不在 513/515 两批范围，待另立批次（无既设计划）；
-> ③ Plan 442 观察期 2026-09-03 到期——到期且无回滚由后续会话顺手归档
-> （442 尾注在案，2026-09-01 执行日未到期故未归档）；
+> ③ Plan 442 观察期 2026-09-03 到期——✅ 已执行（2026-09-03 当日
+> /auto-plan:review 通过：到期日实跑 PARITY_TARGET=vm parity 6/6 绿、
+> 无回滚证据，status → reviewed 待 merge 归档；债务入本簿 P442 小节）；
 > ④ `scratch/schema_drift_audit.py` 为 schema_drift 门禁脚本唯一副本（门禁
 > 引入 `78a9f138c`，检查已闭合在 cargo t 内）——是否 promote 至 `scripts/`
 > 正式化**候裁定**（Plan 513 待澄清②，复审落格；默认不动）。
@@ -929,3 +939,103 @@
   "新观察"条目）；Plan 522 复审实证 d8/strips 在 master e6885460b 仍
   红（style_migration_probe 已由 Plan 518 496032e21 修复，522 merge
   后转绿）。
+
+### P442（2026-09-03，Plan 442 跨平台合龙复审登记）
+
+- **P442-1 rust/a2r adapter 轨递延（§6.1 用户裁定，非静默）**：B 阶段五域端口的
+  `X.rust.at` adapter（platform/composables/icons/renderer/upload）与 A5 sched 的
+  rs.at shim 均未落——VM 轨全部落地或显式降级，rust 轨待 a2r 消费面明确后批量补。
+  偿还路径：musk 启用 a2r 后端轨时按 `ports/*.rust.at` 映射表补齐（442 §4-B 各条
+  已列内容物）。引用：`auto-musk ports/`（web 侧 re-export 壳为参照）。
+- **P442-2 svg 能力 partial（A4 登记面）**：动态 svg 属性/动画不支持；SVG text
+  子元素未支持（与 DSL text→span 冲突）；musk icons 渲染层解除待 Icon widget
+  实现 + renderToString 对拍升级（musk 侧独立小任务，musk KNOWN-DEBT 038 条已
+  更新"解除条件已达成"）。引用：`crates/auto-lang/src/ui/render_support`（partial
+  登记）。
+- **P442-3 VM marshalling 语义债（442 §C1 wave-1 登记）**：PathBuf 句柄
+  `.starts_with` 返回值错（0）；HashMap str 键 insert/get 往返空。**疑似已被
+  08-31~09-01 PLAN-053 字符串池/freelist 整改与 Plan 510 over-release 清偿顺带
+  修复（同窗口大改 marshalling 咽喉）——偿还时先复测再修**。引用：
+  `ffi_dual 015_musk_backend_wave1`（原回归锁定处）。
+- **P442-4 e2e 家族双层撞号（2026-09-03 复审发现，同日随 Plan 442 修复——
+  提交 87eb8a730）**：双层根因——① e2e 测试端口撞号 ×3（18744/18745/18736，
+  nextest 并行下输家连到赢家服务器空 body 假红，串行不暴露）；② native
+  catalog ID 撞号（真产品缺陷，08-27 起）：PLAN-044 将 musk_extern_dispatch
+  登到 3129 与 442 的 value_get_bool 撞号，id→shim 后写覆盖，
+  `e2e_value_accessors` 净树 500 一周。修复：端口去重 + e2e_ports_unique 守卫 +
+  dispatch 移段 3143 + catalog 家族靶向钉（negativity 三态验证）。**残余（未偿）**：
+  `test-http-e2e` 家族仅存 `cargo th` 手动档，`cargo t`/`tf` 均不编译——本次
+  产品级 ID 撞号漏网一周正因于此。偿还路径：th 家族纳入日常档或 CI 定期跑。
+  引用：`crates/auto-lang/src/vm/ffi/http_server.rs`（e2e_ports_unique）、
+  `crates/auto-lang/src/vm/native_catalog.rs`（家族钉）。
+- **P442-5 native ID 通用撞号检测在别名设计下不可行（2026-09-03 登记）**：
+  NATIVE_ID_ENTRIES 有 108 组同 native 多名别名有意共享 ID（限定名/短名/类型
+  名/裸名，如 auto.hashmap.new/Map.new @120），静态表无法区分别名对与真撞号；
+  且 5 组别名组返回 Type 不一致（103/120/170/175/1516，含 str.len 双登记），
+  2850 组 auto.cell.once_new×auto.io.write_text_async 同挂疑为历史误登记。
+  P442-4 修复只能做 442 家族靶向钉。偿还路径：注册侧运行时唯一性（bind_shims
+  后 id→shim 单射断言 / shim 注册带 native 身份标识）；顺带审计 5 组 Type
+  不一致与 2850 组。引用：`crates/auto-lang/src/vm/native_catalog.rs`
+  （catalog_integrity_tests）。
+
+### P524（2026-09-03，Plan 524 宿主小修批——回归期存量红发现登记）
+
+- **P524-1 `cargo t`（ui-iced 日常档）两处 master 存量红（非本计划引入，
+  db9bfc977 基线同红实证）**：① `plan370_015_behavior_tests::d8_toggle_dark_mode`
+  ——1f7313e93（2026-09-01，015-notes 暗色主题默认化）把 store `dark_mode`
+  初值翻 `true`，plan370 测试期望 `"false"` 未跟（断言三连首条即挂）；②
+  `plan055_strip_html_tests::strips_tags_and_decodes_entities`——strip_html
+  空白折叠行为漂移（`" @x  你好"` vs `" @x 你好"` 双空格）。两者均
+  ui-iced/ui-interpreter 门控，`cargo tf`（不带该 feature）不可见——故
+  PLAN-041 合入门禁（tf 3396/3397）未拦住，日常档自此带红。偿还路径：
+  ①更新 d8 断言或回退示例默认（语义裁定归 015-notes 属主）；②strip_html
+  空白折叠语义对照 055 期单测意图裁定。同族存量（在档）：schema_drift_fence、
+  aavm2 m4/m5 corpus。
+- **P524-2 CLI crate（crates/auto）单测不在 `cargo t` 别名内**：`cargo t`
+  固定 `-p auto-lang`，crates/auto 的 clap 解析单测（Plan 524 步骤 3 六例）
+  需显式 `cargo test -p auto --bin auto`。偿还路径：日常档扩展 `-p auto`
+  或 CI 显式补跑（改动 nextest 别名影响全仓日常档节奏，留裁定）。
+
+- **P523-1 `auto build`(pac) 最小工程 rust target 生成缺口 + api-example 前端存量红**:Plan 523 W4-13 实测——按 pac.rs 语义构造的最小工程(lang/render rust)走完转译但 pac.targets 无 rust App/Lib 项(CargoBuilder "no rust target found");examples/api-example 全管线构建被 front/app.at 的 codegen strict 校验存量红拦(R008 逗号分隔等)。a2r 核心链(转译→cargo build→运行对拍)由 scripts/aavm_build_smoke.sh 常态化覆盖(b07=55/b34=10-20)。偿还路径:pac 最小工程 target 生成链补齐 + api-example 前端 strict 红清偿(可随 525/UI 线)。
+- **P523-2 aavm.at a2r 模式入口两洞**(divergences.md D-a2r-mode-entry 同源登记):①宿主 `argv.get(1)` 发射 Rust `Vec::get` Option 形态缺自动解包(E0308;产品位文本垫片实测通过);②转译版 VM 运行期 struct 字段表:b34 经转译构建的 aavm 报 RUNTIME-ERROR:no field x in Point(c.field_idx 动态查表在转译宿主的语料内 struct 形态未覆盖;VM 内解释路径不受影响)。归 525 OOP 批/宿主小修。
+- **P523-3 tt 档(a2r test-trans 金样)28 件存量过期**:514 W2 括号修复(30e75c327)后未再 bless,tt 不在任何日常/复审门禁(tf 不含 test-trans)。Plan 523 期间实证其中 pointer(004)与 arc_dyn_spec(008)两件为**真发射缺陷**(cast 后方法调用/str as usize,文本金样长期掩盖);523 改动净新增为零(28↔28,3 件正当 bless)。偿还路径:批量 bless + 两件真缺陷修复 + tt 入复审清单。
+- **P524-3 plan worktree 深度下 autodown-core 跨仓 path 依赖解析断裂**：
+  `crates/auto-lang/Cargo.toml` 的 `autodown-core = { path = "../../../auto-down/..." }`
+  按主检出深度写死——`.worktrees/plan-NNN-dev`（两层深）内任何 nextest/
+  `--all-features` metadata 解析都会指向 `.worktrees/auto-down/...` 而挂
+  （Plan 524 执行期实证；本地以 junction
+  `.worktrees/auto-down → D:\autostack\auto-down` 临时解）。偿还路径：path
+  改相对 repo 根不可表达（Cargo 限制），候选=cargo `[patch]` 档案/环境级
+  `CARGO_AUTODOWN_DIR` 文档化/构建脚本预检；至少把 junction 手法写进
+  auto-plan work 技能的环境注意事项。
+
+### P527（2026-09-03，Plan 527 VM 轨 Tailwind 全量覆盖契约——不做/受限台账）
+
+与 `docs/style-coverage.md`（UNSUPPORTED 白名单 + Parsed-only 豁免台账，测试
+同源再生）互链；逐类状态常驻机器断言 `crates/auto-lang/tests/style_parity.rs`。
+
+- **P527-1 原生无语义族（永久不做）**：float/clear（无浮动文档流）、
+  columns-*/break-*（无分栏/分片宿主）、print/伪元素（content-none 等）、
+  aspect-ratio（无原生）、table 显示模式与 tables 家族、SVG fill-/stroke-
+  （图标走字体/着色管道）、isolation/appearance/pointer-events/touch-/
+  will-change/forced-color-（宿主/OS 层接管）、混合模式（mix-blend-/bg-blend-）。
+- **P527-2 宿主上限受限族**：whitespace/word-break 细分（cosmic-text 换行
+  策略仅 word/none，nowrap 已接）、装饰线型/粗细/偏移（decoration-* 家族）、
+  text-transform（渲染层无字形变换）、object-position、inset/top 等百分比与
+  auto/full 档（无容器查询）、w/h min/max/fit（无内容尺寸查询）、tracking
+  全档与 focus 变体按钮面（iced 0.14 无 letter_spacing / button Status 无
+  Focused）、单侧边框宽/色分档（PLAN-050 C2 1px 填充条模拟边界）、滤镜系
+  （Plan 518 G8 声明冻结先例）。
+- **P527-3 w/h 分数 Fill-ratio 近似口径（待澄清③裁定）**：无容器查询语义
+  下 N/M → iced FillPortion(n)——同分母互补分数比例保真，混分母组合退化
+  等分；显式像素计算需父宽布局期注入，偿还路径=renderer 布局期二阶段解析。
+  引用：`class.rs` SizeValue::Fraction / `iced_adapter.rs` convert_size。
+- **P527-4 变体管道分期消费**：focus/active/disabled 可声明可合并
+  （IcedStyle::merged_with_variant），v1 仅按钮族真消费（Hovered/Pressed/
+  Disabled 状态回调）；focus 在按钮面为 iced 0.14 上限（Status 无 Focused
+  档）；非按钮 widget 的变体类登记 parsed-only（coverage 表可见不静默）。
+  偿还路径：text_input/radio 等 iced 状态样式面接入。
+- **P527-5 渲染层分期消费的存字段类**：order-N（按源码序渲染）、flex-basis、
+  ring 宽/色/inset（focus 环模拟）、inset-N 四向 offset（无 Stack 上下文时
+  内联降级）、line-clamp（行高裁剪）、letter_spacing（tracking）——IR 在册
+  applied，renderer 消费排期。引用：`iced_adapter.rs` 对应字段注释。

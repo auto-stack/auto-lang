@@ -1,0 +1,10 @@
+// Plan 525 W4 b48:pub type 跨模块(use 导入类型+跨模块构造/收发;
+// 宿主行为 probe 实证 7/30)
+use geom: Point, mk, sum
+
+fn main() {
+    let p = mk(3, 4)
+    print(sum(p))
+    let q = Point { x: 10, y: 20 }
+    print(q.x + q.y)
+}

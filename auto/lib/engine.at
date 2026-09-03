@@ -56,6 +56,9 @@ enum Val {
     VBool(bool)
     VArr(int)
     VInst(int, str)
+    // W4(525):闭包载体(fn 索引,捕获表 arena 槽位)——D29 谱系自有
+    // 模型(可观察行为对齐宿主 Direct Capture)
+    VClo(int, int)
 }
 
 fn ev_vi(x int) Val {
@@ -362,6 +365,68 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
         is op {
             OpCode.Blank -> {
             // 已删除的占位指令(如 n_locals=0 时的 reserve)——跳过
+        }
+        OpCode.MakeClo -> {
+            // W4(525):弹 n_cap 个捕获值(创建点依序入栈)→ 捕获表入
+            // arena → 推 VClo(n=fn 索引,s 串还原 n_cap)
+            var ncap = int_val(ins.s)
+            var caps4 List<Val> = List.new()
+            var ci4 = 0
+            while ci4 < ncap {
+                caps4.push(stack.get(sp - ncap + ci4))
+                ci4 = ci4 + 1
+            }
+            sp = sp - ncap
+            arena.push(caps4)
+            sp = ev_push(stack, sp, Val.VClo(ins.n, arena.len() - 1))
+        }
+        OpCode.CallClo -> {
+            // W4(525):栈 [.., clo, args(n)] → 弹 clo/args;捕获值回放为
+            // 首参组 → 标准帧(n_args_total = ncap+n)跳 fn
+            var nclo = stack.get(sp - 1)
+            sp = sp - 1
+            var nargs4 = ins.n
+            var fi4 = -1
+            var capai4 = -1
+            is nclo {
+                Val.VClo(f4, ca4) -> {
+                    fi4 = f4
+                    capai4 = ca4
+                }
+                else -> {
+                }
+            }
+            if fi4 < 0 {
+                out = "RUNTIME-ERROR:call.clo on non-closure"
+                running = false
+            } else {
+                var args4 List<Val> = List.new()
+                var ai4 = 0
+                while ai4 < nargs4 {
+                    args4.push(stack.get(sp - nargs4 + ai4))
+                    ai4 = ai4 + 1
+                }
+                sp = sp - nargs4
+                var caps5 = arena.get(capai4)
+                var ci5 = 0
+                while ci5 < caps5.len() {
+                    sp = ev_push(stack, sp, caps5.get(ci5))
+                    ci5 = ci5 + 1
+                }
+                var ai5 = 0
+                while ai5 < args4.len() {
+                    sp = ev_push(stack, sp, args4.get(ai5))
+                    ai5 = ai5 + 1
+                }
+                var total4 = caps5.len() + args4.len()
+                args_stack.push(cur_args)
+                args_depth = args_depth + 1
+                cur_args = total4
+                sp = ev_push(stack, sp, ev_vi(ip))
+                sp = ev_push(stack, sp, ev_vi(bp))
+                bp = sp - 1
+                ip = c.fns.get(fi4).ins
+            }
         }
         OpCode.Halt -> {
             running = false

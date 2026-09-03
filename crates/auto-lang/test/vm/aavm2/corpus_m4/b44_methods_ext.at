@@ -1,0 +1,20 @@
+// Plan 525 W2 b44:ext 块方法——宿主 parser 级并入 TypeDecl.methods
+// (parser.rs 1745 merge),编译同独立 fn Type.method
+type Counter {
+    value int
+    fn get() int {
+        return .value
+    }
+}
+
+ext Counter {
+    fn double() int {
+        return .value * 2
+    }
+}
+
+fn main() {
+    var c = Counter { value: 21 }
+    print(c.get())
+    print(c.double())
+}

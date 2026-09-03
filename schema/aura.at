@@ -59,9 +59,9 @@ element autodown {
         { name: "content", type: "union:string,state_ref", description: "AutoDown source (literal or state-bound)" }
         { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — emitted as :streaming=!final; an explicit streaming prop wins when both are set" }
         { name: "streaming", type: "union:bool,state_ref", default: "false", description: "Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040 契约扩展)" }
-        { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043)" }
-        { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043)" }
-        { name: "scroll_sync", type: "union:bool,state_ref", default: "true", description: "Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042)" }
+        { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-044)" }
+        { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-044)" }
+        { name: "scroll_sync", type: "union:bool,state_ref", default: "true", description: "Pane-level scroll sync (vue arm scrollSync; VM arm consumed since PLAN-043 — wraps in View::Scrollable, see EDITOR-CONTRACT §11)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: false
@@ -4978,10 +4978,14 @@ element toggle_group {
     tag: "toggle_group"
     category: "form"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["ToggleGroup", "toggle-group", "togglegroup"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "ToggleGroup", import: "@/components/ui/toggle-group" }
     props: [
         { name: "value", type: "state_ref", description: "Selected value binding" }
         { name: "type", type: "one_of:single,multiple", default: "single", description: "Selection type" }
+        { name: "variant", type: "one_of:default,outline", default: "default", description: "Toggle style variant" }
+        { name: "size", type: "one_of:default,sm,lg", default: "default", description: "Toggle size" }
         { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -4993,10 +4997,12 @@ element toggle_group_item {
     tag: "toggle_group_item"
     category: "form"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["ToggleGroupItem", "toggle-group-item", "togglegroup-item", "togglegroupitem"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "ToggleGroupItem", import: "@/components/ui/toggle-group" }
     props: [
         { name: "value", type: "string", required: true, description: "Item value" }
-        { name: "label", type: "string", description: "ARIA label" }
+        { name: "aria-label", type: "string", description: "ARIA label" }
         { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]

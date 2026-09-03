@@ -1,0 +1,13 @@
+// Plan 525 W2 b45:is-struct 别名绑定(field: alias 形态)+else 臂
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    var p = Point { x: 3, y: 4 }
+    is p {
+        Point { x: a, y: b } -> print(a * 10 + b)
+        else -> print(-1)
+    }
+}

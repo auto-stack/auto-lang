@@ -1203,7 +1203,15 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
             _ => (2.0, 4.0),
         };
         iced::Shadow {
-            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15),
+            // Plan 527 T4: shadow-{color} 彩色阴影 —— 保留默认阴影 alpha(0.15),
+            // 只替换色相(对齐 Tailwind 彩色阴影 = color × 默认阴影透明度)。
+            color: {
+                let (sr, sg, sb) = is
+                    .shadow_color
+                    .map(|c| (c.r, c.g, c.b))
+                    .unwrap_or((0.0, 0.0, 0.0));
+                iced::Color::from_rgba(sr, sg, sb, 0.15)
+            },
             offset: iced::Vector::new(0.0, offset_y),
             blur_radius: blur,
         }
@@ -1225,11 +1233,15 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
             Some(crate::ui::style::GradientDir::ToTL) => 315.0_f32.to_radians(),
         };
         use iced::gradient::Linear;
+        // Plan 527 T4: from/via/to 多 stop + 位置百分比(默认 0/50/100)——
+        // iced 0.14 Linear::add_stop 任意 offset,via 缺席时保持双 stop 旧观感。
+        let mut lin = Linear::new(angle)
+            .add_stop(is.gradient_from_pos.unwrap_or(0.0), from);
+        if let Some(via) = is.gradient_via {
+            lin = lin.add_stop(is.gradient_via_pos.unwrap_or(0.5), via);
+        }
         Some(Background::Gradient(
-            Linear::new(angle)
-                .add_stop(0.0, from)
-                .add_stop(1.0, to)
-                .into()
+            lin.add_stop(is.gradient_to_pos.unwrap_or(1.0), to).into()
         ))
     } else {
         is.background_color.map(Background::Color)
@@ -1408,22 +1420,35 @@ fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
             _ => (2.0, 4.0),
         };
         iced::Shadow {
-            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15),
+            // Plan 527 T4: shadow-{color} 彩色阴影 —— 保留默认阴影 alpha(0.15),
+            // 只替换色相(对齐 Tailwind 彩色阴影 = color × 默认阴影透明度)。
+            color: {
+                let (sr, sg, sb) = is
+                    .shadow_color
+                    .map(|c| (c.r, c.g, c.b))
+                    .unwrap_or((0.0, 0.0, 0.0));
+                iced::Color::from_rgba(sr, sg, sb, 0.15)
+            },
             offset: iced::Vector::new(0.0, offset_y),
             blur_radius: blur,
         }
     } else {
         iced::Shadow::default()
     };
+    // Plan 527 T6: opacity-{N} —— iced 无元素级 opacity 组,按钮面降级为
+    // 背景/文字 alpha 乘以倍率(visible 而非静默;disabled:opacity-50 等
+    // 变体类经 merged_with_variant 到此消费)。
+    let opacity = is.opacity.unwrap_or(1.0);
+    let fade = |c: iced::Color| iced::Color { a: c.a * opacity, ..c };
     iced::widget::button::Style {
-        background: is.background_color.map(Background::Color),
-        text_color: is.text_color.unwrap_or_else(|| {
+        background: is.background_color.map(|c| Background::Color(fade(c))),
+        text_color: fade(is.text_color.unwrap_or_else(|| {
             // Plan 408: dark-mode-aware default (equivalent to vue body text-foreground).
             crate::ui::style::iced_adapter::resolve_semantic_rgb(
                 &crate::ui::style::Color::OnBackground,
             ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
              .unwrap_or(iced::Color::BLACK)
-        }),
+        })),
         border,
         shadow,
         ..Default::default()
@@ -1473,6 +1498,10 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
         IcedFontWeight::Light => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Light, ..Default::default() },
         IcedFontWeight::ExtraLight => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Thin, ..Default::default() },
         IcedFontWeight::SemiBold => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Semibold, ..Default::default() },
+        // Plan 527 T5: 全字重档拆分(thin/extrabold/black 正身)
+        IcedFontWeight::Thin => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Thin, ..Default::default() },
+        IcedFontWeight::ExtraBold => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::ExtraBold, ..Default::default() },
+        IcedFontWeight::Black => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Black, ..Default::default() },
     }
 }
 
@@ -2188,18 +2217,85 @@ fn build_container<M: Clone + Debug + 'static>(
     )
 }
 
+/// Plan 043 T1: Scrollable offset 绑定写入的 pending 队列。
+///
+/// build 面（view→element）无法返回 iced Task，写入请求先在此登记，
+/// update 面（`update_inner` 尾部）排空并发射 `operation::scroll_to`——
+/// devtools.pending_scroll_to_center 同款「pending + update 排空」先例。
+/// 去抖：仅当绑定值与该 id 上次请求值之差超 0.5px 才入队，同帧重复 build /
+/// 无变化重渲染不重复触发。键 = scrollable widget id（写入要求稳定 id）。
+struct PendingScrollOffsetEntry {
+    last_requested: (f32, f32),
+    pending: Option<(f32, f32)>,
+}
+
+fn pending_scroll_offsets() -> &'static std::sync::Mutex<std::collections::HashMap<String, PendingScrollOffsetEntry>> {
+    static REG: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, PendingScrollOffsetEntry>>> =
+        std::sync::OnceLock::new();
+    REG.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// build 面登记：绑定值变化（>0.5px）才入队。
+pub(crate) fn note_scroll_offset(id: &str, offset: (f32, f32)) {
+    let mut reg = pending_scroll_offsets().lock().unwrap();
+    let entry = reg.entry(id.to_string()).or_insert(PendingScrollOffsetEntry {
+        last_requested: offset,
+        pending: Some(offset),
+    });
+    let (dx, dy) = (offset.0 - entry.last_requested.0, offset.1 - entry.last_requested.1);
+    if dx.abs() > 0.5 || dy.abs() > 0.5 {
+        entry.last_requested = offset;
+        entry.pending = Some(offset);
+    }
+}
+
+/// update 面排空：取走全部待写入项（id → 绝对像素偏移）。
+pub(crate) fn drain_pending_scroll_offsets() -> Vec<(String, (f32, f32))> {
+    let mut reg = pending_scroll_offsets().lock().unwrap();
+    reg.iter_mut()
+        .filter_map(|(id, e)| e.pending.take().map(|off| (id.clone(), off)))
+        .collect()
+}
+
 /// Build a Scrollable around a single pre-built child. Width/height come
 /// from style (preferred) or the legacy numeric fields; id is set when the
 /// caller supplies one (VM path injects the aura id for bounds collection).
+/// Plan 043 T1: offset/on_scroll 为滚动位置写入/读出双臂——写入经 pending
+/// 队列（要求 widget_id 稳定），读出经 iced on_scroll 事件回调。
 fn build_scrollable<M: Clone + Debug + 'static>(
     child: iced::Element<'static, M>,
     width: Option<u16>,
     height: Option<u16>,
     style: Option<&Style>,
     widget_id: Option<String>,
+    offset: Option<(f32, f32)>,
+    on_scroll: Option<crate::ui::view::ScrollCallback<M>>,
 ) -> iced::Element<'static, M> {
+    if let (Some(id), Some(off)) = (&widget_id, offset) {
+        if std::env::var("P043_DEBUG").is_ok() {
+            eprintln!("[P043-NOTE] id={id} off={off:?}");
+        }
+        note_scroll_offset(id, off);
+    }
     let mut cap: Option<f32> = None;
     let mut s = scrollable(child);
+    if let Some(cb) = on_scroll {
+        // Viewport 六测量 → ScrollMetrics → 宿主消息（DSL 侧三测量
+        // scrollTop/scrollHeight/clientHeight 对应 offset_y/content_h/viewport_h）。
+        s = s.on_scroll(move |vp: scrollable::Viewport| {
+            let abs = vp.absolute_offset();
+            let b = vp.bounds();
+            let cbounds = vp.content_bounds();
+            cb.call(crate::ui::view::ScrollMetrics {
+                offset_x: abs.x,
+                offset_y: abs.y,
+                viewport_w: b.width,
+                viewport_h: b.height,
+                content_w: cbounds.width,
+                content_h: cbounds.height,
+            })
+        });
+    }
     if let Some(ref st) = style {
         let is = IcedStyle::from_style(st);
         // 2026-08-22(max-h 封顶修复):cap 判定从 is.height 的 None 分支
@@ -2891,6 +2987,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             style: weight.style,
                         });
                     }
+                    // Plan 527 T5: 行高 —— 绝对档(leading-3..10)优先,相对倍率次之
+                    if let Some(px) = iced_style.line_height_px {
+                        text_widget = text_widget
+                            .line_height(iced::widget::text::LineHeight::Absolute(iced::Pixels(px)));
+                    } else if let Some(lh) = iced_style.line_height {
+                        text_widget =
+                            text_widget.line_height(iced::widget::text::LineHeight::Relative(lh));
+                    }
                     // Apply width (e.g., from flex-1)
                     if let Some(ref w) = iced_style.width {
                         text_widget = text_widget.width(iced_length(w));
@@ -3036,9 +3140,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let handle = iced::widget::image::Handle::from_rgba(
                             icon.w, icon.h, icon.rgba,
                         );
+                        // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
+                        // 回退 14px（462 档）——大框小图实测反馈闭环。
+                        let icon_px = iced_style
+                            .as_ref()
+                            .and_then(|is| is.font_size.as_ref())
+                            .map(font_size_to_f32)
+                            .unwrap_or(14.0);
                         let icon_el = iced::widget::image(handle)
-                            .width(iced::Length::Fixed(14.0))
-                            .height(iced::Length::Fixed(14.0));
+                            .width(iced::Length::Fixed(icon_px))
+                            .height(iced::Length::Fixed(icon_px));
                         if text_label.is_empty() {
                             icon_el.into()
                         } else {
@@ -3079,6 +3190,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             &format!("lucide:{}", icon_name),
                             svg_str.as_bytes().to_vec(),
                         );
+                        // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
+                        // 回退 14px——与 hicon 臂同口径。
+                        let icon_px = iced_style
+                            .as_ref()
+                            .and_then(|is| is.font_size.as_ref())
+                            .map(font_size_to_f32)
+                            .unwrap_or(14.0);
                         let icon_el = iced::widget::svg(handle)
                             .style(move |_, status| {
                                 let color = match status {
@@ -3089,8 +3207,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 };
                                 iced::widget::svg::Style { color: Some(color) }
                             })
-                            .width(iced::Length::Fixed(14.0))
-                            .height(iced::Length::Fixed(14.0));
+                            .width(iced::Length::Fixed(icon_px))
+                            .height(iced::Length::Fixed(icon_px));
                         let mut tw = text(text_label.to_string());
                         if let Some(ref is) = iced_style {
                             if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
@@ -3289,28 +3407,55 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // their own svg Status styling (see Image lucide arm /
                     // PUA icon arm, 2026-08-21 方案 A), other pre-built child
                     // content is unaffected.
+                                   // Plan 527 T6: 变体管道泛化 —— base+变体合并构建各状态样式(变体后应用
+                    // 胜出,`hover:` 先例同构);无声明时等价 base。iced 状态
+                    // 回调面:Hovered→hover、Pressed→active(缺 active 声明时
+                    // 回 hover,保持 legacy 行为)、Focused→focus、
+                    // Disabled→disabled。focus: iced 0.14 button Status 无
+                    // Focused 档(上限),类可声明可合并(IcedStyle::
+                    // merged_with_variant),按钮回调面登记 parsed-only(KNOWN-DEBT)。
                     let bs_hover = match style.as_ref() {
-                        Some(s) if !s.hover_classes.is_empty() => {
-                            let mut merged = s.classes.clone();
-                            merged.extend(s.hover_classes.iter().cloned());
-                            build_button_style(&IcedStyle::from_style(&Style {
-                                classes: merged,
-                                hover_classes: Vec::new(),
-                            }))
+                        Some(s) if s.has_variant(crate::ui::style::Variant::Hover) => {
+                            build_button_style(&IcedStyle::merged_with_variant(
+                                s,
+                                crate::ui::style::Variant::Hover,
+                            ))
                         }
                         _ => bs,
                     };
-                    // Plan 423 P3: disabled 灰态 —— 文本色压成 zinc-500(hover
-                    // 态同样压,禁用不应有可点提示)。
-                    let (mut bs, mut bs_hover) = (bs, bs_hover);
+                    let bs_active = match style.as_ref() {
+                        Some(s) if s.has_variant(crate::ui::style::Variant::Active) => {
+                            build_button_style(&IcedStyle::merged_with_variant(
+                                s,
+                                crate::ui::style::Variant::Active,
+                            ))
+                        }
+                        _ => bs_hover,
+                    };
+                    let bs_disabled = match style.as_ref() {
+                        Some(s) if s.has_variant(crate::ui::style::Variant::Disabled) => {
+                            build_button_style(&IcedStyle::merged_with_variant(
+                                s,
+                                crate::ui::style::Variant::Disabled,
+                            ))
+                        }
+                        _ => bs,
+                    };
+                    // Plan 423 P3: disabled 灰态 —— 文本色压成 zinc-500(全部
+                    // 状态压灰,禁用不应有可点提示)。
+                    let (mut bs, mut bs_hover, mut bs_active, mut bs_disabled) =
+                        (bs, bs_hover, bs_active, bs_disabled);
                     if disabled {
                         let gray = iced::Color::from_rgb8(113, 113, 122); // zinc-500
                         bs.text_color = gray;
                         bs_hover.text_color = gray;
+                        bs_active.text_color = gray;
+                        bs_disabled.text_color = gray;
                     }
                     btn = btn.style(move |_, status| match status {
-                        iced::widget::button::Status::Hovered
-                        | iced::widget::button::Status::Pressed => bs_hover,
+                        iced::widget::button::Status::Hovered => bs_hover,
+                        iced::widget::button::Status::Pressed => bs_active,
+                        iced::widget::button::Status::Disabled => bs_disabled,
                         _ => bs,
                     });
                     if fixed_both {
@@ -3750,16 +3895,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            AbstractView::Scrollable { child, width, height, style, auto_scroll } => {
+            AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
                 // Plan 049 → 057 续:仅 `auto_scroll` 标记的主列表挂固定 Id
                 // (snap_to_end 目标)。此前所有 Scrollable 共享该 Id,块内 max-h
                 // 滚动区会抢先命中 snap/scroll 操作 → 自动滚动失灵。
+                // Plan 043 T1:offset 写入要求稳定 id——auto_scroll 标记自带
+                // blocklist_scroll;其余 offset 绑定由调用面(aura_view_builder
+                // scroll_sync 臂)传入显式 id,无 id 的 offset 静默不写入。
                 let scroll_id = if auto_scroll {
                     Some("blocklist_scroll".to_string())
                 } else {
                     None
                 };
-                build_scrollable(child.into_iced(), width, height, style.as_ref(), scroll_id)
+                build_scrollable(child.into_iced(), width, height, style.as_ref(), scroll_id, offset, on_scroll)
             }
 
             AbstractView::Grid { cols, gap, cells, style } => {
@@ -3787,7 +3935,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // Plan 499 M2: 带 on_move 时再包 PointerArea——坐标换算(bounds
             // px → coords 逻辑幅面)+ ≤30Hz 限频 + 量化去重;不带 on_move
             // 的存量 mouse-area 映射零改动。
-            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => {
+            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
                 let mut ma = mouse_area(content.into_iced());
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
@@ -3803,8 +3951,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     // Plan 498 M0: onclick → iced mouse_area on_press(chart
                     // legend 点击切换显隐;同 inspect 捕获态丢臂规则)。
+                    // PLAN-043 T9: on_click 槽由 aura 臂按 onmousedown 优先
+                    // 填充（真按下语义）；onmouseup → on_release（拖拽收尾）。
                     if let Some(msg) = on_click {
                         ma = ma.on_press(msg);
+                    }
+                    // PLAN-526 T10: oncontextmenu → iced on_right_press
+                    //（桌面空白/任务栏右键菜单；同 inspect 捕获态丢臂规则）。
+                    if let Some(msg) = on_context_menu {
+                        ma = ma.on_right_press(msg);
+                    }
+                    if let Some(msg) = on_release {
+                        ma = ma.on_release(msg);
                     }
                 }
                 let inner: iced::Element<'static, M> = ma.into();
@@ -4470,6 +4628,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     } else {
                         let handle = get_or_create_image_handle(&src, data, img_border_radius, eff_img_w, eff_img_h);
                         let mut img_widget = iced::widget::image(handle);
+                        // Plan 527 T4: object-fit → ContentFit(缺失时 iced 默认 Contain)
+                        if let Some(fit) = is.as_ref().and_then(|is| is.object_fit) {
+                            img_widget = img_widget.content_fit(match fit {
+                                crate::ui::style::ObjectFit::Contain => iced::ContentFit::Contain,
+                                crate::ui::style::ObjectFit::Cover => iced::ContentFit::Cover,
+                                crate::ui::style::ObjectFit::Fill => iced::ContentFit::Fill,
+                                crate::ui::style::ObjectFit::None => iced::ContentFit::None,
+                                crate::ui::style::ObjectFit::ScaleDown => iced::ContentFit::ScaleDown,
+                            });
+                        }
                         if let Some(w) = eff_img_w { img_widget = img_widget.width(iced::Length::Fixed(w)); }
                         else if let Some(w) = eff_w { img_widget = img_widget.width(w); }
                         if let Some(h) = eff_img_h { img_widget = img_widget.height(iced::Length::Fixed(h)); }
@@ -4738,6 +4906,8 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "list-checks" => r#"<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>"#,
         "notebook" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/>"#,
         "bell" => r#"<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>"#,
+        // PLAN-526 T11：电源键字形（dock 关机键；lucide "power"）。
+        "power" => r#"<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>"#,
         // Plan 479 T3：通知面板 kind 图标（success→check / error→x / info 兜底；
         // T1 施工图定案 5）。
         "info" => r#"<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>"#,
@@ -5391,12 +5561,19 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             height,
             style,
             auto_scroll,
+            offset,
+            on_scroll,
         } => AbstractView::Scrollable {
             child: Box::new(convert_view_messages(*child)),
             width,
             height,
             style,
             auto_scroll,
+            offset,
+            // Plan 043 T1: 滚动读出回调跨消息类型包装（ScrollCallback newtype）。
+            on_scroll: on_scroll.map(|cb| {
+                crate::ui::view::ScrollCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+            }),
         },
 
         AbstractView::Radio {
@@ -5490,13 +5667,15 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // Plan 498 M0: 增 on_click 映射(chart legend 点击切换显隐)。
         // Plan 499 M2: on_move handler 递归复合(调用产出 DynamicMessage 经
         // from_dynamic 编码为 IcedMessage;逻辑坐标在闭包现场追加)。
-        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => {
+        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
             AbstractView::MouseArea {
                 content: Box::new(convert_view_messages(*content)),
                 on_enter: on_enter.map(|m| IcedMessage::from_dynamic(&m)),
                 on_exit: on_exit.map(|m| IcedMessage::from_dynamic(&m)),
                 on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
                 on_click: on_click.map(|m| IcedMessage::from_dynamic(&m)),
+                on_context_menu: on_context_menu.map(|m| IcedMessage::from_dynamic(&m)),
+                on_release: on_release.map(|m| IcedMessage::from_dynamic(&m)),
                 on_move: on_move.map(|h| {
                     crate::ui::view::PointerMoveHandler::new(move |x, y| {
                         IcedMessage::from_dynamic(&h.call(x, y))
@@ -7057,11 +7236,9 @@ mod hotkey_subscription_tests {
         // 旧默认方向键 → None（可覆盖恢复）
         assert!(desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)).is_none());
 
-        // 既有臂不回归
-        assert!(matches!(
-            desktop_hotkey_message(&t, &mods(false, false, false), &named(Named::Escape)),
-            Some(DM::Wm(WmCommand::ExitDesktop))
-        ));
+        // 既有臂不回归（PLAN-526 T13：Escape→ExitDesktop 已退役——
+        // 裸 Esc 不再出任何 WM 命令）
+        assert!(desktop_hotkey_message(&t, &mods(false, false, false), &named(Named::Escape)).is_none());
         assert!(matches!(
             desktop_hotkey_message(&t, &mods(true, false, false), &named(Named::Tab)),
             Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher))
@@ -7733,11 +7910,18 @@ fn summon_launcher(
     // 3. 聚焦（打开即聚焦 P3；任务回 DM::App(launcher) 对齐消息形状）。
     // Plan 483: 目标 = launcher 视图登记的首个 input Id(focus Task 在
     // 下一帧 view 重建后执行,登记已就位);空表退旧字面量(无匹配即空聚焦)。
-    let summon_target = state
-        .apps
-        .get(&launcher)
-        .and_then(|app| app.state.devtools.input_ids.borrow().first().cloned())
-        .unwrap_or_else(|| iced::widget::Id::new("prompt_input"));
+    // PLAN-526 T13：首次召唤登记表恒空（视图从未建→回退 prompt_input
+    // 字面量盲聚焦，实测打字无反应）——同步构建一次 AbstractView 预登记
+    // （derive_input_id 跨重建稳定，下一帧真视图同 Id 收敛）。
+    let summon_target = {
+        let app = state.apps.get(&launcher).expect("launcher mounted");
+        let (view, _, _) = app.component.view_with_debug_gated(false);
+        let converted = convert_view_messages(view);
+        let mut ids = Vec::new();
+        collect_input_ids(&converted, &mut ids);
+        ids.first().cloned()
+    }
+    .unwrap_or_else(|| iced::widget::Id::new("prompt_input"));
     iced::widget::operation::focus(summon_target)
         .map(move |m| DM::App(launcher, m))
 }
@@ -7976,6 +8160,14 @@ fn toggle_settings(
     let transparency = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency")
         .filter(|t| t == "low" || t == "high")
         .unwrap_or_else(|| "off".to_string());
+    // PLAN-526 T14：壁纸目录扫描（storage `shell.desktop.wallpapers_dir`
+    // 键目录 jpg/png 枚举；召唤点注入 = 重开面板刷新——目录键直写后重开
+    // 即见）。name = 文件 stem（缩略 tooltip/无障碍面），path = 绝对路径
+    // （PickWallpaper 载荷），src = 同路径（image 件 load_image_bytes
+    // 本地分支直读）。
+    let wallpapers = scan_wallpapers_dir();
+    let wallpapers_dir = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpapers_dir")
+        .unwrap_or_default();
     let pinned: Vec<auto_val::Value> = state
         .desktop
         .dock_pinned
@@ -8008,6 +8200,12 @@ fn toggle_settings(
             "cfg_transparency",
             auto_val::Value::str(transparency),
         );
+        let _ = app
+            .component
+            .write_state("wallpapers_dir_draft", auto_val::Value::str(wallpapers_dir));
+        let _ = app
+            .component
+            .write_state_vec("__wallpapers", wallpapers);
         let _ = app.component.write_state(
             "osconfig_state",
             auto_val::Value::str(osc_state),
@@ -8033,6 +8231,48 @@ fn toggle_settings(
         *app.state.view_dirty.borrow_mut() = true;
     }
     iced::Task::none()
+}
+
+/// PLAN-526 T14：壁纸目录扫描（jpg/png 枚举 → {name,path,src} Obj 数组）。
+/// 键缺席/非目录/空目录 = 空表（面板显示引导文案）。load_desktop_id_list
+/// 同型的宿主派生面——.at 无 read_dir 原语，目录枚举保持宿主侧（I9）。
+fn scan_wallpapers_dir() -> Vec<auto_val::Value> {
+    let Some(dir) = wallpapers_dir_or_default() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| {
+                        let e = e.to_ascii_lowercase();
+                        e == "jpg" || e == "jpeg" || e == "png"
+                    })
+                    .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    files
+        .into_iter()
+        .map(|p| {
+            let path = p.to_string_lossy().to_string();
+            let name = p
+                .file_stem()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                ("name", auto_val::Value::Str(name.into())),
+                ("path", auto_val::Value::Str(path.clone().into())),
+                ("src", auto_val::Value::Str(path.into())),
+            ]))
+        })
+        .collect()
 }
 
 /// Plan 487 M4：`set_dock_position` 执行臂（I7：几何是驱动事实）。写回
@@ -8170,6 +8410,17 @@ fn execute_desktop_commands(
                 }
             }
             DC::FocusWindow(wid) => state.wm_focus(wid),
+            // PLAN-526 T8：dock 右键菜单最小化（win_min → 同款状态机）。
+            DC::MinWindow(wid) => state.wm_minimize(wid),
+            // PLAN-526 T11：电源键确认退出（Escape 热键已删后的唯一图形
+            // 退出入口；ExitDesktop 同体——恢复槽位，退出由调用点收尾）。
+            DC::Shutdown => {
+                restore_all_native_slots(state);
+                return (true, Vec::new());
+            }
+            // PLAN-526 T14：壁纸热切换（storage 持久 + 会话字段回读 +
+            // 全场快照撤——壁纸层每帧重建读字段即生效，SetTheme 同链）。
+            DC::SetWallpaper(path) => execute_set_wallpaper(state, &path),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
             // stale）。
             DC::SetLayout(mode) => {
@@ -8305,6 +8556,36 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
                 .write_state("dark_mode", auto_val::Value::Bool(dark));
         }
         *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
+/// PLAN-526 T14：壁纸热切换执行体——storage `shell.desktop.wallpaper`
+/// 持久化 + 会话字段回读（load_desktop_wallpaper 含 is_file 验证与坏值
+/// 回退）+ 快照全撤。壁纸层 view 每帧重建读该字段，下一帧即生效
+/// （518 G1 set_theme 同链先例）。
+fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &str) {
+    crate::vm::ffi::stdlib::storage_host_publish(
+        "shell.desktop.wallpaper",
+        path.to_string(),
+    );
+    state.desktop.desktop_wallpaper = load_desktop_wallpaper();
+    crate::ui::iced::snapshot::invalidate_all();
+}
+
+/// PLAN-526 T18：热键分区切换 → transient 显示切换预览面板（写 shell
+/// `switcher_open="1"` + 记 ServiceTick 倒计时 ~1.6s；触发 icon 手动
+/// 开合不走此——无倒计时，再点即收）。
+fn show_workspace_switcher(state: &mut crate::ui::session::DesktopSession) {
+    state.desktop.switcher_until.set(Some(
+        std::time::Instant::now() + std::time::Duration::from_millis(1600),
+    ));
+    if let Some(shell) = state.desktop.shell_app {
+        if let Some(app) = state.apps.get_mut(&shell) {
+            let _ = app
+                .component
+                .write_state("switcher_open", auto_val::Value::str("1"));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
     }
 }
 
@@ -9455,19 +9736,66 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
 /// [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]）。
 fn load_desktop_wallpaper() -> String {
     use crate::ui::session::DESKTOP_WALLPAPER_DEFAULT;
-    let Some(raw) = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper") else {
-        return DESKTOP_WALLPAPER_DEFAULT.to_string();
+    let valid = |v: String| {
+        !v.is_empty()
+            && (v.starts_with('#')
+                || v.starts_with("builtin:")
+                || std::path::Path::new(&v).is_file())
     };
-    let v = raw.trim().to_string();
-    if v.is_empty()
-        || (!v.starts_with('#')
-            && !v.starts_with("builtin:")
-            && !std::path::Path::new(&v).is_file())
-    {
-        DESKTOP_WALLPAPER_DEFAULT.to_string()
-    } else {
-        v
+    if let Some(v) = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper") {
+        let v = v.trim().to_string();
+        if valid(v.clone()) {
+            return v;
+        }
     }
+    // PLAN-526 T19：缺省不再直接回退内置——优先取壁纸目录首图（机器
+    // 首启即有真壁纸；设置面板目录/手输写入 storage 后走上面的键）。
+    if let Some(dir) = wallpapers_dir_or_default() {
+        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_file()
+                    && p.extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| {
+                            let e = e.to_ascii_lowercase();
+                            e == "jpg" || e == "jpeg" || e == "png"
+                        })
+                        .unwrap_or(false)
+            })
+            .collect();
+        files.sort();
+        if let Some(first) = files.first() {
+            return first.to_string_lossy().to_string();
+        }
+    }
+    DESKTOP_WALLPAPER_DEFAULT.to_string()
+}
+
+/// PLAN-526 T19：壁纸目录解析链——storage `shell.desktop.wallpapers_dir`
+/// → env `AUTO_DESKTOP_WALLPAPERS_DIR` → 探测 stella-os 素材目录（机器
+/// 便利默认，存在即用；目录不存在/未配置 = None，scan_wallpapers_dir
+/// 与缺省壁纸链共用）。
+fn wallpapers_dir_or_default() -> Option<std::path::PathBuf> {
+    if let Some(d) = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpapers_dir") {
+        let d = d.trim().to_string();
+        if !d.is_empty() {
+            return Some(std::path::PathBuf::from(d));
+        }
+    }
+    if let Ok(d) = std::env::var("AUTO_DESKTOP_WALLPAPERS_DIR") {
+        if !d.trim().is_empty() {
+            return Some(std::path::PathBuf::from(d));
+        }
+    }
+    let stella = std::path::PathBuf::from(r"D:\Down\stella-os\wallpapers");
+    if stella.is_dir() {
+        return Some(stella);
+    }
+    None
 }
 
 /// Plan 496 M5：boot 桌面条目读入——id 逗号串解析（自定义
@@ -9553,6 +9881,9 @@ fn desktop_wallpaper_element<M: 'static>(path: &str) -> iced::Element<'static, M
             iced::widget::image(handle)
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)
+                // PLAN-526 T19：Cover 铺满（iced 默认 Contain 按比例
+                // letterbox——实测宽高比不匹配时顶部留空一条）。
+                .content_fit(iced::ContentFit::Cover)
                 .into()
         }
         None => iced::widget::container(iced::widget::Space::new())
@@ -9665,6 +9996,49 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
             }
         }
     }
+}
+
+/// PLAN-526 T6：boot 直挂窗的注册表对齐。462/459 直挂组件（include_str!
+/// 编译，无 pac 上下文）按 source path 归一化后缀对齐注册表 `entry`
+/// （"<appdir>/src/front/app.at" 或 "<appdir>/app.at" 段）：唯一命中 →
+/// 回填 `registry_id` + armed `fit_pending/fit_enabled`（504 launch 路径
+/// 同款语义，`window: "fit"` 声明随 400ms ServiceTick 首测收缩）。无
+/// source path / 歧义 / 无注册表均维持 462 固定初值（现状不回归）。
+fn arm_boot_fit_windows(session: &mut crate::ui::session::DesktopSession) {
+    use crate::ui::session::{AppId, Wid};
+    let entries = session.desktop.registry_entries.clone();
+    if entries.is_empty() {
+        return;
+    }
+    let pairs: Vec<(Wid, AppId)> = {
+        let Some(host) = session.host.as_ref() else { return };
+        host.wm.wins.values().map(|v| (v.wid, v.app)).collect()
+    };
+    for (wid, app_id) in pairs {
+        let Some(entry) = session.apps.get(&app_id) else { continue };
+        let Some(src) = entry.component.source_path() else { continue };
+        let norm = src.to_string_lossy().replace('\\', "/");
+        let mut hits = entries.iter().filter(|e| {
+            boot_entry_matches(&norm, &e.entry.to_string_lossy().replace('\\', "/"))
+        });
+        // 唯一命中才 armed（歧义回退现状——待澄清⑦裁定默认）。
+        let (Some(first), None) = (hits.next(), hits.next()) else { continue };
+        if let Some(host) = session.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid) {
+                v.registry_id = Some(first.id.clone());
+                if first.fit {
+                    v.fit_pending.set(true);
+                    v.fit_enabled.set(true);
+                }
+            }
+        }
+    }
+}
+
+/// PLAN-526 T6：boot 对齐匹配核（归一化 `/` 分隔后的双向后缀；纯函数
+/// 便于单测——相对源路径 vs 绝对注册表 entry 任一方向收尾命中即真）。
+fn boot_entry_matches(src_norm: &str, entry_norm: &str) -> bool {
+    entry_norm.ends_with(src_norm) || src_norm.ends_with(entry_norm)
 }
 
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
@@ -10269,6 +10643,10 @@ fn compare_pngs(
                     // 入口匹配：id "launcher" 或 "-launcher" 结尾（441 预订
                     // 028-launcher；459 回退形态同名规则）。
                     session.desktop.registry_entries = entries;
+                    // PLAN-526 T6：boot 直挂窗注册表对齐——回填 registry_id
+                    // 并 armed `window: "fit"`（计算器等直挂 App 窗随内容
+                    // 收缩；462 固定 60% 初值 blanks 的实测反馈根治）。
+                    arm_boot_fit_windows(&mut session);
                     if let Some(e) = session
                         .desktop
                         .registry_entries
@@ -10403,6 +10781,119 @@ fn compare_pngs(
         };
         if !msg.event.starts_with("__") {
             eprintln!("[UI_EVENT] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
+        }
+        // PLAN-043 T6: 滚动同步 rust 直写快道——VM handler 对 float 实参
+        // 绑定与算术写入存在引擎级腐坏（整值 float 实参恒丢/复合算式
+        // RHS 全哑，多形态实测；DEBTS 登记引擎 bug），onscroll 三测量记
+        // 录与比例级联改在 update 层经 write_state 直写（theme seeding
+        // 同信任路径）。app.at 的 OnLeft/OnRightScroll handler 保留为
+        // 契约面（vue 生成侧），VM 轨在此拦截不再向下分派。
+        if msg.event.starts_with("OnLeftScroll")
+            || msg.event.starts_with("OnRightScroll")
+            || msg.event.starts_with("SetScrollTop")
+        {
+            let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            // auto_val nanbox 根因：整值 float（240.0/0.0）编码丢失 float
+            // 标签——实参绑定读垃圾、state 写读回 0（贯穿本计划全部
+            // 「handler 哑」假象的单一根因；DEBTS 登记引擎 bug）。写入值
+            // 统一 +1e-3 强制分数形态（0.001px 误差不可见）。
+            let frac = |v: f64| auto_val::Value::Double(v + 0.001);
+            let getf = |i: usize| {
+                args.get(i).and_then(|v| match v {
+                    auto_val::Value::Float(f) => Some(*f as f32),
+                    auto_val::Value::Int(i2) => Some(*i2 as f32),
+                    auto_val::Value::Double(d) => Some(*d as f32),
+                    auto_val::Value::Str(s) => s.as_str().trim().parse::<f32>().ok(),
+                    _ => None,
+                })
+            };
+            if clean == "OnLeftScroll" || clean == "OnRightScroll" {
+                if let (Some(h), Some(c), Some(top)) = (getf(0), getf(1), getf(2)) {
+                    let left = clean == "OnLeftScroll";
+                    let (me_t, me_h, me_c, peer_t, peer_h, peer_c) = if left {
+                        ("left_top", "left_height", "left_client", "right_top", "right_height", "right_client")
+                    } else {
+                        ("right_top", "right_height", "right_client", "left_top", "left_height", "left_client")
+                    };
+                    let _ = state.component.write_state(me_t, frac(top as f64));
+                    let _ = state.component.write_state(me_h, frac(h as f64));
+                    let _ = state.component.write_state(me_c, frac(c as f64));
+                    let ph = match state.component.read_state(peer_h) {
+                        Ok(auto_val::Value::Double(f)) => f as f32,
+                        Ok(auto_val::Value::Float(f)) => f as f32,
+                        Ok(auto_val::Value::Int(i)) => i as f32,
+                        _ => 0.0,
+                    };
+                    let pc = match state.component.read_state(peer_c) {
+                        Ok(auto_val::Value::Double(f)) => f as f32,
+                        Ok(auto_val::Value::Float(f)) => f as f32,
+                        Ok(auto_val::Value::Int(i)) => i as f32,
+                        _ => 0.0,
+                    };
+                    let (my_range, peer_range) = (h - c, ph - pc);
+                    if my_range > 0.0 && peer_range > 0.0 {
+                        let target = top / my_range * peer_range;
+                        let _ = state.component.write_state(peer_t, frac(target as f64));
+                    }
+                    return iced::Task::none();
+                }
+            }
+            if clean == "SetScrollTop" {
+                if let Some(v) = getf(0) {
+                    let _ = state.component.write_state("left_top", frac(v as f64));
+                    return iced::Task::none();
+                }
+            }
+        }
+
+        // PLAN-043 T6: MCP scroll action 直落——scrollable 无 VM handler，
+        // 合成事件 __mcp_scroll 在此拦截（input_value = "element_id␟y"），
+        // 直接发 iced scroll_to 写目标滚动位。
+        if msg.event == "__mcp_scroll" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
+                return iced::Task::batch([iced::widget::operation::scroll_to(
+                    id.to_string(),
+                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y },
+                )]);
+            }
+            return iced::Task::none();
+        }
+        // PLAN-043 T10: MCP drag action——mouse-area 拖拽序列合成（input_value
+        // = "W␟Down␟Move␟Up␟x0,y0;x1,y1;..."）。逐段 on_with_input_for，与
+        // PointerArea 闭包产出的消息同构：down 不带实参（VM 按压无坐标原语，
+        // e 未绑定 → TrackDown 的 DOM 几何守卫为假，与真实按压一致）；
+        // move 附加 (x, y) 尾参（+1e-3 防 nanbox 整值丢标签，见上 frac）；
+        // up 收尾。.at 拖拽数学 → emit → SetScrollTop fast-path → 写臂
+        // scroll_to 全走真实机制；唯一不覆盖的是 iced 按钮分发本身（库层）。
+        if msg.event == "__mcp_drag" {
+            if let Some(spec) = msg.input_value.as_deref() {
+                let parts: Vec<&str> = spec.split(PAYLOAD_SEP).collect();
+                if parts.len() == 5 {
+                    let (w, down, mv, up, pts) = (parts[0], parts[1], parts[2], parts[3], parts[4]);
+                    // down 带 $event 冻结标记实参（与真实转换器的
+                    // onmousedown DynamicMessage 同构——handler 声明 (e) 时
+                    // 0 参派发会错帧，函数体静默不执行）。
+                    let down_ev = encode_payload(down, &[auto_val::Value::str("$event")]);
+                    state.component.on_with_input_for(w, &down_ev, None);
+                    for pair in pts.split(';').filter(|s| !s.is_empty()) {
+                        let mut it = pair.split(',');
+                        if let (Some(x), Some(y)) = (
+                            it.next().and_then(|s| s.parse::<f64>().ok()),
+                            it.next().and_then(|s| s.parse::<f64>().ok()),
+                        ) {
+                            let ev = encode_payload(
+                                mv,
+                                &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                            );
+                            state.component.on_with_input_for(w, &ev, None);
+                        }
+                    }
+                    state.component.on_with_input_for(w, up, None);
+                    *state.app.view_dirty.borrow_mut() = true;
+                }
+            }
+            return iced::Task::none();
         }
         // Plan 412 续(toast 修正 3/6):在 update 最前消费 handler 写入的
         // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
@@ -12354,6 +12845,19 @@ fn compare_pngs(
             ));
         }
 
+        // Plan 043 T1: 排空 Scrollable offset 绑定写入队列（build 面
+        // note_scroll_offset 登记，此处发 scroll_to Task——build 面拿不到
+        // Task 返回槽，devtools pending_scroll_to_center 同款接力）。
+        for (id, (x, y)) in drain_pending_scroll_offsets() {
+            if std::env::var("P043_DEBUG").is_ok() {
+                eprintln!("[P043-DRAIN] scroll_to id={id} y={y}");
+            }
+            tail_tasks.push(iced::widget::operation::scroll_to(
+                id,
+                iced::widget::scrollable::AbsoluteOffset { x, y },
+            ));
+        }
+
         if !tail_tasks.is_empty() {
             return iced::Task::batch(tail_tasks);
         }
@@ -12491,6 +12995,22 @@ fn compare_pngs(
                         // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
                         // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
                         update_shell_clock(state);
+                        // PLAN-526 T18：热键切换的切换预览面板倒计时收起
+                        // （~1.6s；触发 icon 手动开合不经此——无倒计时）。
+                        if let Some(until) = state.desktop.switcher_until.get() {
+                            if std::time::Instant::now() >= until {
+                                state.desktop.switcher_until.set(None);
+                                if let Some(shell) = state.desktop.shell_app {
+                                    if let Some(app) = state.apps.get_mut(&shell) {
+                                        let _ = app.component.write_state(
+                                            "switcher_open",
+                                            auto_val::Value::str(""),
+                                        );
+                                        *app.state.view_dirty.borrow_mut() = true;
+                                    }
+                                }
+                            }
+                        }
                         // Plan 504：fit 虚拟窗触发——节拍上若有待测量窗且
                         // 单程闸空闲，发起内容测量（宿主树恒在；vwin 首帧
                         // 渲染后锚点即在，回执 __fit_measured 收缩矩形）。
@@ -12896,8 +13416,18 @@ fn compare_pngs(
                     }
                     // Plan 472 T2：分区切换热键臂（同落 WmState 分区方法；
                     // 臂尾 sync_shell_windows 即时刷新投影）。
-                    WmCommand::NextWorkspace => state.wm_next_workspace(),
-                    WmCommand::PrevWorkspace => state.wm_prev_workspace(),
+                    // Plan 472 T2：分区切换热键臂（同落 WmState 分区方法；
+                    // 臂尾 sync_shell_windows 即时刷新投影）。
+                    // PLAN-526 T18：热键切换即 transient 显示切换预览面板
+                    // （~1.6s 自动收起，ServiceTick 到期臂）。
+                    WmCommand::NextWorkspace => {
+                        state.wm_next_workspace();
+                        show_workspace_switcher(state);
+                    }
+                    WmCommand::PrevWorkspace => {
+                        state.wm_prev_workspace();
+                        show_workspace_switcher(state);
+                    }
                     // Plan 478 T2：发送聚焦窗到相邻分区（Ctrl+Alt+Shift+←/→；
                     // 目标 = 环切对称，与 next/prev_workspace 同肌肉记忆）。
                     WmCommand::SendFocusedTo(step) => {
@@ -12920,9 +13450,11 @@ fn compare_pngs(
                     }
                     // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
                     // last_cursor 现算；后续 move/release 走 DM::Window 拦截）。
+                    // PLAN-526 T2：拖动最大化窗即还原（回 restore_rect 跟手）。
                     WmCommand::StartDrag { wid } => {
                         state.wm_focus(wid);
                         if let Some(host) = state.host.as_mut() {
+                            host.wm.unmaximize_for_interaction(wid, true);
                             let grab = host.wm.last_cursor.get();
                             let origin = host
                                 .wm
@@ -12937,9 +13469,12 @@ fn compare_pngs(
                                 });
                         }
                     }
+                    // PLAN-526 T2：缩放启动即退出最大化（仅清标志，新 rect
+                    // 以缩放结果为准不回跳）。
                     WmCommand::StartResize { wid, edge } => {
                         state.wm_focus(wid);
                         if let Some(host) = state.host.as_mut() {
+                            host.wm.unmaximize_for_interaction(wid, false);
                             host.wm.interaction =
                                 Some(crate::ui::session::WmInteraction::Resize {
                                     wid,
@@ -12954,6 +13489,12 @@ fn compare_pngs(
                                 });
                         }
                     }
+                    // PLAN-526 T2：最小化到任务栏（标题栏 `–`/右键菜单/总线
+                    // win_min）；任务栏 icon 点击 = WinFocus → focus 还原。
+                    WmCommand::Minimize(wid) => state.wm_minimize(wid),
+                    // PLAN-526 T2：最大化/还原切换（标题栏 `▢`/右键菜单；
+                    // 可用区 = viewport 扣任务栏，见 wm_toggle_maximize）。
+                    WmCommand::ToggleMaximize(wid) => state.wm_toggle_maximize(wid),
                     // 关闭虚拟窗口；App 随窗移除（459 一窗一 App 不变式的
                     // WM 化，见 459 update 注释预告）。全部虚拟窗关闭：
                     // 无 shell = daemon 语义退出进程（462 行为不变）；有
@@ -13176,6 +13717,11 @@ fn compare_pngs(
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
                 if vwin.workspace != host.wm.current_workspace {
+                    continue;
+                }
+                // PLAN-526 T2：最小化窗不推层（隐藏；任务栏 icon 保留，
+                // WinFocus → focus 即还原）。
+                if vwin.minimized.get() {
                     continue;
                 }
                 let app_id = vwin.app;
@@ -15158,7 +15704,7 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
                 col = col.push(kv_row("center_x", center_x.to_string()));
                 col = col.push(kv_row("center_y", center_y.to_string()));
             }
-            VNodeProps::Scrollable => {}
+            VNodeProps::Scrollable { .. } => {}
             VNodeProps::Slider {
                 min,
                 max,
@@ -17075,7 +17621,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             wrap_layout_onclick(el, onclick)
         }
 
-        AbstractView::Scrollable { child, width, height, style, auto_scroll } => {
+        AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
             if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
@@ -17088,12 +17634,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // (snap_to_end 目标)。debug 路径原本只挂 aura_N,导致
             // snap_to_end("blocklist_scroll") 找不到 widget 静默失效。
             // 代价:该 scroll 节点不再带 aura id(bounds 收集少一个节点)。
+            // Plan 043 T1:offset 写入复用本路径的稳定 vnode_* id。
             let widget_id = if auto_scroll {
                 Some("blocklist_scroll".to_string())
             } else {
                 widget_id
             };
-            let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id);
+            let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id, offset, on_scroll);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -18491,7 +19038,7 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
                 col = col.push(kv_row::<WrapperMsg<C>>("center_x", center_x.to_string()));
                 col = col.push(kv_row::<WrapperMsg<C>>("center_y", center_y.to_string()));
             }
-            VNodeProps::Scrollable => {}
+            VNodeProps::Scrollable { .. } => {}
             VNodeProps::Slider {
                 min,
                 max,
@@ -18656,6 +19203,166 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-526 T6：boot 对齐匹配核——双向后缀命中（相对源路径 vs 绝对
+    /// 注册表 entry）+ 无关路径不命中。
+    #[test]
+    fn boot_entry_matches_suffix_both_directions() {
+        assert!(super::boot_entry_matches(
+            "examples/ui/011-calculator/src/front/app.at",
+            "C:/autostack/auto-lang/examples/ui/011-calculator/src/front/app.at",
+        ));
+        assert!(super::boot_entry_matches(
+            "C:/repo/examples/ui/459-dual-app/app.at",
+            "459-dual-app/app.at",
+        ));
+        assert!(!super::boot_entry_matches(
+            "examples/ui/011-calculator/src/front/app.at",
+            "examples/ui/013-todo/src/front/app.at",
+        ));
+    }
+
+    /// Plan 527 T6:变体管道按钮状态面 —— focus/active/disabled 可声明、
+    /// merged_with_variant 可应用(变体后应用胜出)。focus 在按钮回调面为
+    /// iced 0.14 上限(Status 无 Focused 档),本测锁定「类可合并构建」的
+    /// applied 面;hover 沿既有先例零回归。
+    #[test]
+    fn plan527_t6_variant_button_status_applied() {
+        use crate::ui::style::{Style, Variant};
+        let s = Style::parse(
+            "bg-surface hover:bg-primary/20 focus:bg-blue-500 active:bg-muted disabled:opacity-50",
+        )
+        .unwrap();
+        let base = build_button_style(&crate::ui::style::IcedStyle::from_style(&s));
+        // hover:变体色覆盖 base(既有先例)
+        let hover = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Hover));
+        assert!(hover.background.is_some());
+        // focus/active/disabled:同构合并,各自底色生效
+        let focus = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Focus));
+        let active = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Active));
+        let disabled = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Disabled));
+        let bg_of = |st: &iced::widget::button::Style| {
+            st.background.map(|b| match b {
+                iced::Background::Color(c) => (c.r, c.g, c.b),
+                _ => (-1.0, -1.0, -1.0),
+            })
+        };
+        let (fb, ab, db) = (bg_of(&focus), bg_of(&active), bg_of(&disabled));
+        assert!(fb.is_some() && fb != bg_of(&base), "focus:bg-blue-500 生效(合并面)");
+        assert!(ab.is_some() && ab != bg_of(&base), "active:bg-muted 生效");
+        // disabled:opacity-50 不改底色但改透明度——锁定 opacity 生效
+        if let Some(iced::Background::Color(c)) = disabled.background {
+            assert!(c.a < 1.0, "disabled:opacity-50 半透明生效,got a={}", c.a);
+        } else {
+            panic!("disabled 状态应有底色");
+        }
+    }
+
+    /// Plan 043 T1: Scrollable offset 绑定写入的消费测——build_scrollable
+    /// 首次见 (id, offset) 入队，排空取走；同值重建不重复入队（去抖）。
+    /// build_scrollable 本体无法在 headless 下断言滚动效果，这里锁
+    /// pending 队列的登记/排空/去抖语义（发射面 = update_inner 尾部
+    /// 排空 → operation::scroll_to）。
+    #[test]
+    fn p043_scrollable_offset_pending_registry() {
+        use super::{build_scrollable, drain_pending_scroll_offsets};
+
+        let id = format!("p043_test_scroll_{}", std::process::id());
+        // 清残留（同进程其它用例可能用过同 id）
+        {
+            let mut reg = super::pending_scroll_offsets().lock().unwrap();
+            reg.remove(&id);
+        }
+        let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None);
+        let drained = drain_pending_scroll_offsets();
+        assert!(
+            drained.iter().any(|(i, (x, y))| i == &id && *x == 0.0 && *y == 100.0),
+            "first build must enqueue: got {:?}",
+            drained
+        );
+        // 同值重建 → 不再入队
+        let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None);
+        let drained = drain_pending_scroll_offsets();
+        assert!(!drained.iter().any(|(i, _)| i == &id), "same-offset rebuild must not re-enqueue: got {:?}", drained);
+        // 值变化（>0.5px）→ 再入队
+        let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.0)), None);
+        let drained = drain_pending_scroll_offsets();
+        assert!(drained.iter().any(|(i, (_, y))| i == &id && *y == 250.0), "changed offset must re-enqueue");
+        // 微抖（≤0.5px）→ 不入队
+        let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.3)), None);
+        let drained = drain_pending_scroll_offsets();
+        assert!(!drained.iter().any(|(i, _)| i == &id), "sub-epsilon jitter must not re-enqueue");
+    }
+
+    /// PLAN-057 T8：musk 图标桥全量锁定——icons.web.at 的 use.web component
+    /// 名单（lucide-vue-next 44 项）经 pascal_to_kebab_icon 规则（大写断词、
+    /// 数字前补划线）必须全部命中 lucide_svg 字形表。054 R2 已扩容到位，
+    /// 本测锁死"新增图标必同步字形表"的回归面（未命中→VM 实机 [Image]
+    /// 空图标/ext-stub 警告）。
+    #[test]
+    fn p057_musk_icon_bridge_full_coverage() {
+        let musk_icons: &[(&str, &str)] = &[
+            ("ArrowDown", "arrow-down"),
+            ("ArrowUp", "arrow-up"),
+            ("BookOpen", "book-open"),
+            ("Check", "check"),
+            ("ChevronDown", "chevron-down"),
+            ("ChevronRight", "chevron-right"),
+            ("ChevronUp", "chevron-up"),
+            ("Clock", "clock"),
+            ("Copy", "copy"),
+            ("CopyCheck", "copy-check"),
+            ("Download", "download"),
+            ("ExternalLink", "external-link"),
+            ("Eye", "eye"),
+            ("File", "file"),
+            ("FileIcon", "file-icon"),
+            ("FileText", "file-text"),
+            ("Folder", "folder"),
+            ("FolderInput", "folder-input"),
+            ("FolderOpen", "folder-open"),
+            ("FolderPlus", "folder-plus"),
+            ("HelpCircle", "help-circle"),
+            ("Inbox", "inbox"),
+            ("Info", "info"),
+            ("ListTodo", "list-todo"),
+            ("Loader2", "loader-2"),
+            ("MessageSquare", "message-square"),
+            ("Monitor", "monitor"),
+            ("Moon", "moon"),
+            ("Orbit", "orbit"),
+            ("PanelLeft", "panel-left"),
+            ("Pencil", "pencil"),
+            ("Plus", "plus"),
+            ("Scroll", "scroll"),
+            ("Search", "search"),
+            ("Send", "send"),
+            ("Settings", "settings"),
+            ("Square", "square"),
+            ("Sun", "sun"),
+            ("Terminal", "terminal"),
+            ("Trash2", "trash-2"),
+            ("Unlink", "unlink"),
+            ("UploadCloud", "upload-cloud"),
+            ("Wrench", "wrench"),
+            ("X", "x"),
+        ];
+        let mut missing = Vec::new();
+        for (pascal, kebab) in musk_icons {
+            if lucide_svg(kebab).is_none() {
+                missing.push(format!("{pascal}→{kebab}"));
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "musk 图标桥字形缺失（lucide_svg 表补齐后重跑）：{:?}",
+            missing
+        );
+    }
+
     /// Plan 504：pac `window: "fit"` env 解析（大小写不敏感；"WxH" / 缺席 → false）。
     #[test]
     fn startup_window_fit_parses_env() {
@@ -18872,7 +19579,7 @@ mod tests {
 
     // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----
     fn p050_style(classes: Vec<StyleClass>) -> IcedStyle {
-        IcedStyle::from_style(&Style { classes, hover_classes: Vec::new() })
+        IcedStyle::from_style(&Style { classes, hover_classes: Vec::new(), variant_classes: Vec::new() })
     }
 
     #[test]
@@ -19558,9 +20265,10 @@ mod tests {
 
         // 基线：无 hover——popover 全收起（open 计数 0）；缩略叶为树构建
         // 面（popover content 预构建、open 才走 iced overlay 渲染）：dock
-        // 条目 ×2（a/b）+ pager 分区网格 ×2（分区0=a、分区1=b）= 4。
+        // 条目 ×2（a/b）。PLAN-526 T18：直列分区条（含 pager hover
+        // popover）退役为切换面板——缩略叶 4→2。
         let (p0, t0) = counts(&ds);
-        assert_eq!((p0, t0), (0, 4), "无 hover 基线零 open、四枚预构建缩略叶");
+        assert_eq!((p0, t0), (0, 2), "无 hover 基线零 open、两枚预构建缩略叶（T18 后）");
 
         // dock hover b：b 条目 popover open ×1（缩略叶已在预构建集内）。
         {
@@ -19572,29 +20280,16 @@ mod tests {
         }
         let (p1, t1) = counts(&ds);
         assert_eq!(p1, 1, "dock hover 打开单个 popover");
-        assert_eq!(t1, 4, "缩略叶集不变（open 不增建）");
+        assert_eq!(t1, 2, "缩略叶集不变（open 不增建；T18 后基线 2）");
         {
             let app = ds.apps.get_mut(&shell).unwrap();
             app.component.bridge_mut().call_handler("HoverEnd", &[]).expect("HoverEnd");
         }
         assert_eq!(counts(&ds).0, 0, "HoverEnd 收起");
 
-        // pager hover 分区 1（=b）：分区按钮 popover open ×1。
-        {
-            let app = ds.apps.get_mut(&shell).unwrap();
-            app.component
-                .bridge_mut()
-                .call_handler("HoverWs", &[auto_val::Value::str("1")])
-                .expect("HoverWs");
-        }
-        let (p2, t2) = counts(&ds);
-        assert_eq!(p2, 1, "pager hover 打开单个 popover");
-        assert_eq!(t2, 4, "分区 1 网格含 b 缩略（a 在分区 0 不入该网格——预构建集不变）");
-        {
-            let app = ds.apps.get_mut(&shell).unwrap();
-            app.component.bridge_mut().call_handler("HoverWsEnd", &[]).expect("HoverWsEnd");
-        }
-        assert_eq!(counts(&ds).0, 0, "HoverWsEnd 收起");
+        // PLAN-526 T18：直列分区条（HoverWs/HoverWsEnd pager popover）
+        // 退役——hover 面只剩 dock 条目臂，base 不回归即可。
+        assert_eq!(counts(&ds).0, 0, "无 hover 时零 open（T18 后基线）");
         let _ = a;
     }
 
@@ -21517,11 +22212,15 @@ mod tests {
     #[test]
     fn desktop_surface_storage_roundtrip_and_wallpaper_resolution() {
         let _guard = t2_isolate_storage("d496-t2a");
-        // 壁纸三分支。
-        assert_eq!(
-            load_desktop_wallpaper(),
-            crate::ui::session::DESKTOP_WALLPAPER_DEFAULT,
-            "键缺席回退 pack 默认色"
+        // 壁纸三分支。PLAN-526 T19：键缺席/坏路径不再直接回退内置——
+        // 先取壁纸目录首图（解析链：storage dir 键 → env → stella 素材
+        // 目录探测），目录不可用才回退 builtin；断言按新链放行两种合法
+        // 结果（目录命中=存在文件路径 / 兜底=builtin 常量）。
+        let absent = load_desktop_wallpaper();
+        assert!(
+            absent == crate::ui::session::DESKTOP_WALLPAPER_DEFAULT
+                || std::path::Path::new(&absent).is_file(),
+            "键缺席 → 目录首图或内置兜底，得到 {absent}"
         );
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#123456".into());
         assert_eq!(load_desktop_wallpaper(), "#123456", "#hex 直传");
@@ -21529,10 +22228,11 @@ mod tests {
             "shell.desktop.wallpaper",
             "Z:/no/such/file.png".into(),
         );
-        assert_eq!(
-            load_desktop_wallpaper(),
-            crate::ui::session::DESKTOP_WALLPAPER_DEFAULT,
-            "坏路径回退默认色"
+        let bad = load_desktop_wallpaper();
+        assert!(
+            bad == crate::ui::session::DESKTOP_WALLPAPER_DEFAULT
+                || std::path::Path::new(&bad).is_file(),
+            "坏路径 → 目录首图或内置兜底，得到 {bad}"
         );
         let tmp = std::env::temp_dir().join(format!("autoui-496-wp-{}.png", std::process::id()));
         std::fs::write(&tmp, b"png").expect("临时壁纸写入");
@@ -21733,7 +22433,9 @@ mod tests {
             t496_walk(&view, &mut dbl, &mut clk, &mut texts);
         }
         assert_eq!(dbl, 4, "每个图标格一枚 mouse-area 双击臂（pinned∪custom 去重后）");
-        assert_eq!(clk, 0, "desktop.at 无 onclick 臂（498 新臂不误伤）");
+        // PLAN-526 T10：空白点击自布局件 onclick 迁至根 mouse-area on_press
+        //（兼挂 oncontextmenu 右键臂）——恰一枚 onclick 臂为预期形状。
+        assert_eq!(clk, 1, "desktop.at 根 mouse-area onclick（526 T10 空白点击迁移）");
         assert_eq!(
             texts.iter().filter(|t| t.as_str() == "014-weather").count(),
             1,
@@ -22109,7 +22811,7 @@ mod tests {
                 AbstractView::Text { content: "Prop".to_string(), style: None, selectable: false },
                 AbstractView::Text {
                     content: "Type".to_string(),
-                    style: Some(Style { classes: vec![], hover_classes: vec![] }),
+                    style: Some(Style { classes: vec![], hover_classes: vec![], variant_classes: vec![] }),
                     selectable: false,
                 },
             ],

@@ -1,0 +1,24 @@
+// Plan 525 W3 b46:List 参数/返回位(b32 登记的"List-typed fn params
+// (.len() in aavm cg)"存量洞核销承载件)
+fn mk() List<int> {
+    var l List<int> = List.new()
+    l.push(3)
+    l.push(4)
+    return l
+}
+
+fn sum(xs List<int>) int {
+    var t int = 0
+    var i int = 0
+    while i < xs.len() {
+        t = t + xs.get(i)
+        i = i + 1
+    }
+    return t
+}
+
+fn main() {
+    var l List<int> = mk()
+    print(l.len())
+    print(sum(l))
+}

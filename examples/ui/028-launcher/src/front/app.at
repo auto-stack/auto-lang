@@ -146,9 +146,13 @@ widget App {
                             }
                             for r in .ranked {
                                 if .sel == r.i {
-                                    row {
+                                    button {
                                         onclick: .Launch(r.name)
-                                        style: "flex items-center gap-3 px-4 py-3 bg-primary/15 cursor-pointer"
+                                        // PLAN-526 T12：行 button 化——hover 类
+                                        // 仅 button 臂消费（row 静默丢弃→实测
+                                        // 无高亮），且 iced button 天然报 Pointer
+                                        // 光标（修复跟随后方窗的穿透）。
+                                        style: "w-full flex items-center gap-3 px-4 py-3 bg-primary/15 text-foreground rounded-none cursor-pointer"
                                         col {
                                             style: "h-10 w-10 rounded-xl flex items-center justify-center ${r.chip}"
                                             text r.mg { style: "text-sm font-bold ${r.tchip}" }
@@ -161,9 +165,10 @@ widget App {
                                         text r.category { style: "ml-auto text-xs text-muted-foreground" }
                                     }
                                 } else {
-                                    row {
+                                    button {
                                         onclick: .Launch(r.name)
-                                        style: "flex items-center gap-3 px-4 py-3 hover:bg-primary/10 cursor-pointer"
+                                        // PLAN-526 T12：同上（hover 高亮 + Pointer）。
+                                        style: "w-full flex items-center gap-3 px-4 py-3 bg-transparent text-foreground hover:bg-primary/10 rounded-none cursor-pointer"
                                         col {
                                             style: "h-10 w-10 rounded-xl flex items-center justify-center ${r.chip}"
                                             text r.mg { style: "text-sm font-bold ${r.tchip}" }

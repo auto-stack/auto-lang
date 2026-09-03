@@ -29,8 +29,10 @@ use crate::ui::session::{DesktopMessage, ResizeEdge, VWinState, WmCommand};
 /// 标题条高度（Plan 473 T6：native slot chrome 与同步换算共用，pub(crate)）。
 /// Plan 503 M5：28→36（stella 36-40px 标题栏带）。
 pub(crate) const TITLEBAR_H: f32 = 36.0;
-const EDGE: f32 = 6.0;
-const CORNER: f32 = 14.0;
+/// PLAN-526 T5：缩放把手命中区加宽（462 起边 6/角 14——透明无光标反馈
+/// 被实测反馈为"无法缩放"；加宽 + 系统缩放光标双管齐下）。
+const EDGE: f32 = 8.0;
+const CORNER: f32 = 16.0;
 /// 边框宽（Plan 473 T6：native slot chrome 与同步换算共用，pub(crate)）。
 pub(crate) const BORDER: f32 = 1.0;
 /// Plan 503 M5：窗体圆角 8→16（stella rounded-2xl 档）。
@@ -45,7 +47,7 @@ fn token(c: crate::ui::style::Color) -> Color {
 
 /// Plan 518 G6：Transparency 三档 → 虚拟窗底色 alpha（off=0.95 / low=0.80 /
 /// high=0.62，初值实机可调）。决策纯函数；storage 键
-/// `shell.desktop.transparency` 缺席/坏值 = off。仅底色——chrome 圆点/
+/// `shell.desktop.transparency` 缺席/坏值 = off。仅底色——chrome 窗口键/
 /// 描边/文字不透明保可用性（计划条款）；每帧读键 = 设置面板写后下一帧
 /// 即时生效（壁纸键先例为 boot 读，此处面板同屏切换要求即时）。
 pub(crate) fn transparency_alpha_for(level: &str) -> f32 {
@@ -87,26 +89,40 @@ pub fn desktop_root(
         .into()
 }
 
-/// Plan 503 M5：macOS 三色圆点（stella 视觉签名，12px）。red = 关闭
-/// （WmCommand::Close）；yellow/green = min/max 视觉位预留——session 暂无
-/// 虚拟窗 min/max 动词（KNOWN-DEBT 挂账），None = 纯视觉不挂命中。
-fn traffic_light(color: Color, msg: Option<DesktopMessage>) -> Element<'static, DesktopMessage> {
-    let dot = container(text(""))
-        .width(Length::Fixed(12.0))
-        .height(Length::Fixed(12.0))
-        .style(move |_t| Style {
-            background: Some(color.into()),
+/// PLAN-526 T16：标题栏窗口键（右置 `– ▢ ×`，Windows 惯例序——关闭
+/// 最右；T3 一轮版的左置组实测间隔失控 + 无 hover 反馈）。根因：
+/// `container.center(Fill)` 同时把宽高置 Fill（按钮被均分拉散）——
+/// 改回 Fixed 命中盒 + align 双中。hover 反馈走 iced `button` 原生件：
+/// 天然 Pointer 光标 + `Status::Hovered/Pressed` 背景提亮（仅图标
+/// 包围容器提亮，圆角小块——用户截图3 VSCode 形态，非全条填充）。
+fn title_button(glyph: &'static str, size: f32, msg: DesktopMessage) -> Element<'static, DesktopMessage> {
+    let fg = token(crate::ui::style::Color::OnSurface);
+    let hover_tint = if crate::ui::style::theme::dark_mode() { 1.0 } else { 0.0 };
+    iced::widget::button(
+        container(text(glyph).size(size))
+            .width(Length::Fixed(30.0))
+            .height(Length::Fixed(24.0))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    )
+    .style(move |_t, status| {
+        let alpha = match status {
+            iced::widget::button::Status::Hovered => 0.10,
+            iced::widget::button::Status::Pressed => 0.18,
+            _ => 0.0,
+        };
+        iced::widget::button::Style {
+            background: Some(Color::from_rgba(hover_tint, hover_tint, hover_tint, alpha).into()),
             border: Border {
-                color,
-                width: 0.0,
-                radius: 999.0.into(),
+                radius: 6.0.into(),
+                ..Default::default()
             },
+            text_color: fg,
             ..Default::default()
-        });
-    match msg {
-        Some(m) => mouse_area(dot).on_press(m).into(),
-        None => dot.into(),
-    }
+        }
+    })
+    .on_press(msg)
+    .into()
 }
 
 /// 组装一个虚拟窗口层：定位包裹 + 窗体（标题栏 chrome + 客户区 + 八向
@@ -120,34 +136,33 @@ pub fn virtual_window_element<'a>(
     let rect = *vwin.rect.borrow();
     let wid = vwin.wid;
 
-    // --- 标题栏（整条为拖拽把手；三色圆点组优先捕获）---
-    let lights = row![
-        traffic_light(
-            Color::from_rgb8(0xff, 0x5f, 0x57),
-            Some(DesktopMessage::Wm(WmCommand::Close(wid))),
-        ),
-        traffic_light(Color::from_rgb8(0xfe, 0xbc, 0x2e), None),
-        traffic_light(Color::from_rgb8(0x28, 0xc8, 0x40), None),
+    // --- 标题栏（整条为拖拽把手；窗口键优先捕获）---
+    // PLAN-526 T16：三键右置（Windows 惯例序 `– ▢ ×`，关闭最右；紧排
+    // 间距 2px、右收边 8px），左配重列对称保持标题窗口级居中（518 G5
+    // 形态不变）。行内垂直居中由容器 center_y 承载（T3 一轮修复保留）。
+    let win_buttons = row![
+        title_button("–", 13.0, DesktopMessage::Wm(WmCommand::Minimize(wid))),
+        title_button("□", 10.0, DesktopMessage::Wm(WmCommand::ToggleMaximize(wid))),
+        title_button("×", 13.0, DesktopMessage::Wm(WmCommand::Close(wid))),
     ]
-    .spacing(8.0);
+    .spacing(2.0);
 
-    // Plan 518 G5：标题窗口级居中（stella 形态）——三列 row：左圆点组 /
-    // 中标题 Fill 居中 / 右等宽配重（3×12px 圆点 + 2×8 间距 + 12 左垫 =
-    // 64px）。整条 mouse_area 拖拽把手语义不变（配重列仍在其内）。
     let titlebar = mouse_area(
         row![
-            container(lights).padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 0.0,
-                left: 12.0,
-            }),
+            container(text("")).width(Length::Fixed(102.0)),
             container(text(vwin.title.clone()).size(12))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .center_x(Length::Fill)
                 .center_y(Length::Fill),
-            container(text("")).width(Length::Fixed(64.0)),
+            container(win_buttons)
+                .padding(Padding {
+                    top: 0.0,
+                    right: 8.0,
+                    bottom: 0.0,
+                    left: 0.0,
+                })
+                .center_y(Length::Fill),
         ]
         .width(Length::Fill)
         .height(Length::Fixed(TITLEBAR_H)),
@@ -174,16 +189,15 @@ pub fn virtual_window_element<'a>(
         .width(Length::Fill)
         .height(Length::Fill);
 
-    // --- 窗体容器：裁剪 + 阴影 + 焦点描边 ---
-    // Plan 503 M5：focused 描边 2px accent → 1px accent/60；柔影
-    // (0,8)/32px——light 12% / dark 40%，focused 加深；窗矩形 ≈ 全桌面
-    // （≥98%）视作最大化——去圆角去影（贴边平铺）。
+    // --- 窗体容器：裁剪 + 阴影 + 常驻弱描边 ---
+    // Plan 503 M5：柔影 (0,8)/32px——light 12% / dark 40%，focused 加深。
     // Plan 518 G5 重校：柔影 (0,10)/40——dark 40–52%（聚焦区间上限即
     // 0.52）、light 12–18%（聚焦 0.18,原 0.20 收敛对齐 stella 轻影）。
+    // PLAN-526 T2/T4：最大化改读真状态（462 的"rect≈全桌面 98%"派生判定
+    // 退役）；描边职责移交 Stack 顶层焦点环（本框只留常驻弱描边——
+    // 整框 1px 会被客户区不透明底色盖住，实测只剩标题栏三边可见）。
     let accent = token(crate::ui::style::Color::Primary);
-    let desktop_size = *vwin.window_size.borrow();
-    let maximized =
-        rect.width >= desktop_size.width * 0.98 && rect.height >= desktop_size.height * 0.98;
+    let maximized = vwin.maximized.get();
     let dark = crate::ui::style::theme::dark_mode();
     let (base_alpha, focus_boost): (f32, f32) = if dark { (0.40, 0.12) } else { (0.12, 0.06) };
     let shadow_alpha = if focused {
@@ -201,11 +215,7 @@ pub fn virtual_window_element<'a>(
         .style(move |_t| Style {
             background: Some(win_surface.into()),
             border: Border {
-                color: if focused {
-                    Color::from_rgba(accent.r, accent.g, accent.b, 0.6)
-                } else {
-                    token(crate::ui::style::Color::Surface)
-                },
+                color: token(crate::ui::style::Color::Surface),
                 width: BORDER,
                 radius: if maximized { 0.0.into() } else { WIN_RADIUS.into() },
             },
@@ -241,6 +251,26 @@ pub fn virtual_window_element<'a>(
     layers.push(handle(rect.height - CORNER, rect.width - CORNER,
         Length::Fill, Length::Fill, wid, ResizeEdge::SouthEast));
 
+    // --- 焦点环 overlay（PLAN-526 T4；Stack 最顶层）---
+    // 聚焦 accent 2px 环：非捕获空层事件穿透到下层把手，且永不被客户区
+    // 不透明底色覆盖（503 的"描边只围标题栏"缺口随此闭合）。失焦透明。
+    let ring = container(text(""))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(move |_t| Style {
+            border: Border {
+                color: if focused {
+                    Color::from_rgba(accent.r, accent.g, accent.b, 0.9)
+                } else {
+                    Color::TRANSPARENT
+                },
+                width: if focused { 2.0 } else { 0.0 },
+                radius: if maximized { 0.0.into() } else { WIN_RADIUS.into() },
+            },
+            ..Default::default()
+        });
+    layers.push(ring.into());
+
     // 定位包裹：padding 出窗口原点，Start/Start 对齐（Stack 每层布局原点
     // 在桌面左上，见 T1 spike 记录）。
     let win_stack = iced::widget::Stack::with_children(layers)
@@ -256,6 +286,7 @@ pub fn virtual_window_element<'a>(
 }
 
 /// 缩放把手：透明命中区（pad 定位于窗体局部坐标，其余维度 Fill 补齐）。
+/// PLAN-526 T5：挂系统缩放光标（拖拽可供性）。
 fn handle<'a>(
     pad_top: f32,
     pad_left: f32,
@@ -268,6 +299,7 @@ fn handle<'a>(
         mouse_area(
             container(text("")).width(w).height(h),
         )
+        .interaction(resize_cursor(edge))
         .on_press(DesktopMessage::Wm(WmCommand::StartResize { wid, edge })),
     )
     .width(Length::Fill)
@@ -276,6 +308,17 @@ fn handle<'a>(
     .align_x(Alignment::Start)
     .align_y(Alignment::Start)
     .into()
+}
+
+/// PLAN-526 T5：八向把手 → 系统缩放光标映射。
+fn resize_cursor(edge: ResizeEdge) -> iced::mouse::Interaction {
+    use iced::mouse::Interaction;
+    match edge {
+        ResizeEdge::North | ResizeEdge::South => Interaction::ResizingVertically,
+        ResizeEdge::East | ResizeEdge::West => Interaction::ResizingHorizontally,
+        ResizeEdge::NorthWest | ResizeEdge::SouthEast => Interaction::ResizingDiagonallyDown,
+        ResizeEdge::NorthEast | ResizeEdge::SouthWest => Interaction::ResizingDiagonallyUp,
+    }
 }
 
 /// Plan 473 T6：原生窗口槽位框 chrome——槽位顶部标题条（标题 + 最小化 +

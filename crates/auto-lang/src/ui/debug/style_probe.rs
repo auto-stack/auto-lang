@@ -111,6 +111,8 @@ fn format_size(v: &SizeValue) -> String {
         SizeValue::Auto => "auto".into(),
         SizeValue::Fixed(units) => format!("{}px", *units as u32 * 4),
         SizeValue::Pixels(px) => format!("{px}px"),
+        // Plan 527 T3: 通用分数 N/M(Fill-ratio 近似)按百分比分显示
+        SizeValue::Fraction(n, m) => format!("{:.0}%", *n as f32 * 100.0 / *m as f32),
     }
 }
 

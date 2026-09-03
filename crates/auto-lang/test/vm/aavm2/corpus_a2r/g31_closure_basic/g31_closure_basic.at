@@ -1,0 +1,8 @@
+// Plan 525 W4 g31/g32(b47 迁位;宿主 closure 反汇编乱码级——m4 层不可对拍,判据面=发射闸+四路执行锚):闭包表达式(多参带注解/单参无注解;`=>` 语法——
+// 宿主 Direct Capture:CLOSURE 0x90 建 env + CALL_CLOSURE 0x94 调用)
+fn main() {
+    let add = (a int, b int) => a + b
+    print(add(5, 3))
+    let double = x => x * 2
+    print(double(21))
+}

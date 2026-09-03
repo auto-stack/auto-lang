@@ -1,0 +1,151 @@
+// settings.at — SettingsPanel 统一主题设置弹层组件（PLAN-528 W2）。
+// 移植自 examples/ui/019-video-app/src/front/settings.at（018/019 等 UI
+// 示例同款交互）：Theme 明暗分段切换 + Accent Color 五色圆点 + ✕ 关闭。
+// 调色板对齐 gallery Plan 409 §8：indigo/coral/ocean/sage/amber。
+// vue 端：dark_mode 由 App model 声明（Plan 458 约定），翻转 html.dark
+// 并重刷 applyAccent；VM 端：dark_mode 驱动 iced 主题种子。
+
+widget SettingsPanel(dark_mode: bool, accent_color: str, on_close: msg, on_toggle_dark: msg, on_set_indigo: msg, on_set_coral: msg, on_set_ocean: msg, on_set_sage: msg, on_set_amber: msg) {
+    msg {
+        Close,
+        ToggleDark,
+        SetIndigo,
+        SetCoral,
+        SetOcean,
+        SetSage,
+        SetAmber
+    }
+
+    view {
+        col {
+            style: if .dark_mode {
+                "p-4 bg-zinc-900 border border-zinc-800 rounded-2xl gap-3.5 shadow-2xl w-72"
+            } else {
+                "p-4 bg-white border border-gray-200 rounded-2xl gap-3.5 shadow-2xl w-72"
+            }
+
+            // Header
+            row {
+                style: "items-center justify-between"
+                row {
+                    style: "items-center gap-1.5"
+                    text "⚙" { style: "text-sm" }
+                    text "Settings" {
+                        style: if .dark_mode {
+                            "text-xs font-bold text-zinc-100 uppercase tracking-wider"
+                        } else {
+                            "text-xs font-bold text-gray-900 uppercase tracking-wider"
+                        }
+                    }
+                }
+                button "✕" {
+                    onclick: .Close
+                    style: if .dark_mode {
+                        "text-xs text-zinc-400 hover:text-zinc-100 w-6 h-6 flex items-center justify-center rounded-lg bg-transparent hover:bg-zinc-800 transition-colors cursor-pointer"
+                    } else {
+                        "text-xs text-gray-400 hover:text-gray-900 w-6 h-6 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors cursor-pointer"
+                    }
+                }
+            }
+
+            // Theme section
+            col {
+                style: "gap-1.5"
+                text "Theme" {
+                    style: if .dark_mode {
+                        "text-xs font-medium text-zinc-400"
+                    } else {
+                        "text-xs font-medium text-gray-500"
+                    }
+                }
+                row {
+                    style: "gap-1.5 p-0.5 bg-muted/40 rounded-lg"
+                    if .dark_mode {
+                        button "🌙 Dark" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                        }
+                        button "☀ Light" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md text-zinc-400 hover:text-zinc-100 bg-transparent transition-colors cursor-pointer"
+                        }
+                    } else {
+                        button "🌙 Dark" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md text-gray-500 hover:text-gray-900 bg-transparent transition-colors cursor-pointer"
+                        }
+                        button "☀ Light" {
+                            onclick: .ToggleDark
+                            style: "flex-1 py-1.5 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                        }
+                    }
+                }
+            }
+
+            // Accent color section
+            col {
+                style: "gap-1.5"
+                text "Accent Color" {
+                    style: if .dark_mode {
+                        "text-xs font-medium text-zinc-400"
+                    } else {
+                        "text-xs font-medium text-gray-500"
+                    }
+                }
+                row {
+                    style: "items-center gap-2.5 py-1"
+                    button "" {
+                        onclick: .SetIndigo
+                        style: if .accent_color == "indigo" {
+                            "w-6 h-6 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-indigo-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetCoral
+                        style: if .accent_color == "coral" {
+                            "w-6 h-6 p-0 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-rose-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-rose-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetOcean
+                        style: if .accent_color == "ocean" {
+                            "w-6 h-6 p-0 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-blue-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-blue-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetSage
+                        style: if .accent_color == "sage" {
+                            "w-6 h-6 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-emerald-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                    button "" {
+                        onclick: .SetAmber
+                        style: if .accent_color == "amber" {
+                            "w-6 h-6 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-amber-500 cursor-pointer shadow-sm"
+                        } else {
+                            "w-6 h-6 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform cursor-pointer"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Close -> { on_close() }
+        .ToggleDark -> { on_toggle_dark() }
+        .SetIndigo -> { on_set_indigo() }
+        .SetCoral -> { on_set_coral() }
+        .SetOcean -> { on_set_ocean() }
+        .SetSage -> { on_set_sage() }
+        .SetAmber -> { on_set_amber() }
+    }
+}

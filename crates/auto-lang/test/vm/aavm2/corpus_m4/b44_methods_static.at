@@ -1,0 +1,16 @@
+// Plan 525 W2 b44:static fn(类型名直呼构造)+实例方法——静态调用不推
+// 接收者(宿主 is_unresolved_static→CALL reloc Type.method)
+type Box {
+    v int
+    static fn new(x int) Box {
+        return Box { v: x }
+    }
+    fn get() int {
+        return .v
+    }
+}
+
+fn main() {
+    var b = Box.new(7)
+    print(b.get())
+}

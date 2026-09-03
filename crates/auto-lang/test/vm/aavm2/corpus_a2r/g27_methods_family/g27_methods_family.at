@@ -1,0 +1,32 @@
+// Plan 525 W2 g27:方法族发射护航(体内方法/static/ext/接收者简写
+// 读+写/方法内调方法)——b44 五件的 AA2R 发射面同步判据
+type Counter {
+    value int
+    fn get() int {
+        return .value
+    }
+    fn add(n int) int {
+        return .value + n
+    }
+    static fn new(v int) Counter {
+        return Counter { value: v }
+    }
+    fn bump() {
+        .value = .value + 1
+    }
+}
+
+ext Counter {
+    fn double() int {
+        return .value * 2
+    }
+}
+
+fn main() {
+    var c = Counter.new(20)
+    print(c.get())
+    print(c.add(5))
+    c.bump()
+    print(c.double())
+    print(c.get())
+}
