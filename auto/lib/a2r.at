@@ -566,6 +566,10 @@ fn ar_rust_ty(t str) str {
             if ar_is_str_ty(t) {
                 return "String"
             }
+            // W5(525):May/Option 后缀型 ?T → Option<T>(g34)
+            if t.len() > 1 && t.char_at(0) == '?' {
+                return "Option<" + ar_rust_ty(t.slice(1, t.len())) + ">"
+            }
             if t.len() > 6 && t.slice(0, 5) == "List<" {
                 return "Vec<" + ar_rust_ty(ar_list_elem(t)) + ">"
             }
@@ -587,6 +591,11 @@ fn ar_param_ty(t str) str {
 // ── 裸名类型解析(预扫描/签名用;D39:不经 D38b 内联 Display) ──
 
 fn ar_bare_type(mut p P) str {
+    // W5(525):May 后缀/前缀型 ?T(parse_type 双形态;prescan 走查)
+    if p.kind() == TokenKind.Question {
+        p.next()
+        return "?" + ar_bare_type(p)
+    }
     if p.kind() != TokenKind.Ident {
         p.fail("expected type name ")
         return ""
@@ -3213,6 +3222,23 @@ fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
     }
     if pat.kind == "name" && pat.name == "_" {
         return "_"
+    }
+    // W5(525):May/Option 模式——Some(v)/None 直出(g34)
+    if pat.kind == "call" && pat.word == "Some" {
+        var sb = pat.args
+        var s1 = find_sub(sb, "(name ")
+        var sname = ""
+        if s1 >= 0 {
+            var srest = sb.slice(s1 + 6, sb.len())
+            var s2 = find_sub(srest, ")")
+            if s2 >= 0 {
+                sname = srest.slice(0, s2)
+            }
+        }
+        return "Some(" + sname + ")"
+    }
+    if pat.kind == "name" && pat.name == "None" {
+        return "None"
     }
     if pat.kind == "struct-cover" {
         // W2(525):is-struct 解构模式——主 a2r 形态(trans/rust.rs 3393)
