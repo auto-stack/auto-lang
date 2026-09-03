@@ -2155,6 +2155,91 @@ impl RustGenerator {
                     );
                 }
 
+                // PLAN-533 T3: 模态对话框家族（alert-dialog/dialog）→
+                // View::Popover 模态构造（与解释器侧 PLAN-530 W13 臂同形态,
+                // 双轨视觉一致）。根臂拆解 trigger/content;组外兜底子件按
+                // 角色降级渲染（透传/预设样式/按钮预设）。
+                if let Some(role) = Self::modal_dialog_tag_role(tag) {
+                    match role {
+                        "root" => return self.generate_modal_popover(props, children),
+                        "trigger" | "content" => {
+                            // 透传:组内已被根臂拆解消费;组外裸渲染子件。
+                            let views: Vec<String> = children
+                                .iter()
+                                .map(|c| self.generate_view_tree(c))
+                                .collect();
+                            return match views.len() {
+                                0 => "auto_lang::ui::view::View::Empty".to_string(),
+                                1 => views.into_iter().next().unwrap(),
+                                _ => {
+                                    let mut b = "View::row()".to_string();
+                                    for v in views {
+                                        b = format!("{}.child({})", b, v);
+                                    }
+                                    format!("{}.build()", b)
+                                }
+                            };
+                        }
+                        "title" | "description" => {
+                            let preset = if role == "title" {
+                                "text-lg font-semibold"
+                            } else {
+                                "text-sm text-muted-foreground"
+                            };
+                            let label = Self::modal_child_label(props, children);
+                            let user_class = Self::modal_user_class(props);
+                            let class = if user_class.is_empty() {
+                                preset.to_string()
+                            } else {
+                                format!("{} {}", preset, user_class)
+                            };
+                            let text_expr = if label.contains("${") {
+                                self.interpolate_str(&label)
+                            } else {
+                                format!("\"{}\".to_string()", label)
+                            };
+                            return format!("View::text_styled({}, \"{}\")", text_expr, class);
+                        }
+                        "header" => {
+                            let mut b = "View::col()".to_string();
+                            for c in children {
+                                b = format!("{}.child({})", b, self.generate_view_tree(c));
+                            }
+                            return format!(
+                                "{}.style(\"flex flex-col gap-2\").build()",
+                                b
+                            );
+                        }
+                        "footer" => {
+                            let mut b = "View::row()".to_string();
+                            for c in children {
+                                b = format!("{}.child({})", b, self.generate_view_tree(c));
+                            }
+                            return format!(
+                                "{}.style(\"flex justify-end gap-2\").build()",
+                                b
+                            );
+                        }
+                        "cancel" | "close" => {
+                            return self.generate_modal_button(
+                                props,
+                                events,
+                                children,
+                                "border border-input bg-background text-foreground rounded-md hover:bg-secondary hover:text-secondary-foreground h-10 px-4",
+                            );
+                        }
+                        "action" => {
+                            return self.generate_modal_button(
+                                props,
+                                events,
+                                children,
+                                "bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90 h-10 px-4",
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+
                 // grid → View::grid() builder. iced has no native grid; the
                 // col-of-rows decomposition (final-row padding + w-full rows)
                 // now lives in ONE place — the shared generic `build_grid`
@@ -3028,6 +3113,167 @@ impl RustGenerator {
     /// Generate child component instantiation with message wrapping.
     /// E.g., EditorPanel(note: .notes[.active_id]) →
     ///   EditorPanel::new(self.notes[self.active_id as usize]).view().map_msg(|m| AppMsg::EditorPanel(m))
+    /// PLAN-533 T3: 模态对话框家族 tag 角色。归一化（剥 `-`/`_` + 小写，
+    /// 与 schema/aura.at 头部同规则）后匹配 alert-dialog 与 dialog 两族
+    /// （alert-dialog-action ≡ alert_dialog_action ≡ AlertDialogAction）。
+    fn modal_dialog_tag_role(tag: &str) -> Option<&'static str> {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "alertdialog" | "dialog" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" => Some("content"),
+            "alertdialogtitle" | "dialogtitle" => Some("title"),
+            "alertdialogdescription" | "dialogdescription" => Some("description"),
+            "alertdialogheader" | "dialogheader" => Some("header"),
+            "alertdialogfooter" | "dialogfooter" => Some("footer"),
+            "alertdialogcancel" => Some("cancel"),
+            "alertdialogaction" => Some("action"),
+            "alertdialogclose" | "dialogclose" => Some("close"),
+            _ => None,
+        }
+    }
+
+    /// 家族子件的文字内容：text prop → label prop → 首 Text 子节点。
+    fn modal_child_label(
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+    ) -> String {
+        for key in ["text", "label"] {
+            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get(key) {
+                return s.to_string();
+            }
+        }
+        if let Some(AuraNode::Text(AuraTextContent::Literal(s))) = children.first() {
+            return s.to_string();
+        }
+        String::new()
+    }
+
+    /// 家族子件的 user class（class/style prop 的字面量串）。
+    fn modal_user_class(props: &std::collections::HashMap<String, AuraPropValue>) -> String {
+        props
+            .get("class")
+            .or_else(|| props.get("style"))
+            .and_then(|v| {
+                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                    Some(s.to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// PLAN-533 T3: alert-dialog/dialog 根臂 —— 拆解 trigger（首枚锚）与
+    /// content（面板），发射 View::Popover 模态构造。面板 chrome 与解释
+    /// 器臂（PLAN-530 W13 convert_alert_dialog）同串（w-96 …），保双轨
+    /// 视觉一致。open 取 `open` prop 绑定（缺省 false）；on_dismiss 暂
+    /// None（T6 接 dialog 族 ESC/外点回流）。trigger 单 Text 子降级为无
+    /// 操作按钮（vue trigger 语义；T5 换铸 __popover_toggle 自管开合）。
+    fn generate_modal_popover(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+    ) -> String {
+        let mut trigger: Option<&AuraNode> = None;
+        let mut panel_nodes: Vec<&AuraNode> = Vec::new();
+        for c in children {
+            if let AuraNode::Element { tag, .. } = c {
+                match Self::modal_dialog_tag_role(tag) {
+                    Some("trigger") if trigger.is_none() => {
+                        trigger = Some(c);
+                        continue;
+                    }
+                    Some("content") => {
+                        if let AuraNode::Element { children: inner, .. } = c {
+                            panel_nodes.extend(inner.iter());
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let anchor_code = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, .. }) => {
+                // 裸文本 trigger（`dialog-trigger "Open"` → text prop）或单
+                // Text 子 → 真 button（vue trigger 语义;T5 换铸 toggle）。
+                if t_children.len() == 1 {
+                    if let AuraNode::Text(AuraTextContent::Literal(s)) = &t_children[0] {
+                        format!("View::button(\"{}\").on_click(|_| ()).build()", s)
+                    } else {
+                        self.generate_view_tree(&t_children[0])
+                    }
+                } else if t_children.is_empty() {
+                    let label = Self::modal_child_label(t_props, t_children);
+                    if label.is_empty() {
+                        "auto_lang::ui::view::View::Empty".to_string()
+                    } else {
+                        format!("View::button(\"{}\").on_click(|_| ()).build()", label)
+                    }
+                } else {
+                    let mut b = "View::row()".to_string();
+                    for c in t_children {
+                        b = format!("{}.child({})", b, self.generate_view_tree(c));
+                    }
+                    format!("{}.build()", b)
+                }
+            }
+            _ => "auto_lang::ui::view::View::Empty".to_string(),
+        };
+        let mut panel = "View::col()".to_string();
+        for c in panel_nodes {
+            panel = format!("{}.child({})", panel, self.generate_view_tree(c));
+        }
+        panel = format!(
+            "{}.style(\"w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4\").build()",
+            panel
+        );
+        let open_expr = match props.get("open") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => b.to_string(),
+            Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
+            _ => "false".to_string(),
+        };
+        format!(
+            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: auto_lang::ui::view::PopoverPlacement::Modal, open: {}, on_dismiss: None }}",
+            anchor_code, panel, open_expr
+        )
+    }
+
+    /// PLAN-533 T3: cancel/action/close 子件 → 按钮。variant 预设与解释器
+    /// convert_button 同表（outline/primary + h-10 px-4 尺寸档）;onclick 走
+    /// 既有消息派发形态（Msg::Variant 闭包），缺省 no-op 防恐慌。
+    fn generate_modal_button(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        events: &std::collections::HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        preset: &str,
+    ) -> String {
+        let label = Self::modal_child_label(props, children);
+        let user_class = Self::modal_user_class(props);
+        let class = if user_class.is_empty() {
+            preset.to_string()
+        } else {
+            format!("{} {}", preset, user_class)
+        };
+        let onclick = ["onclick", "onClick", "on_click"]
+            .iter()
+            .find_map(|k| events.get(*k))
+            .map(|handler| {
+                self.handler_to_rust_closure_with_params(&handler.handler, &handler.params)
+            })
+            .unwrap_or_else(|| "|_| ()".to_string());
+        format!(
+            "View::button(\"{}\").style(\"{}\").on_click({}).build()",
+            label, class, onclick
+        )
+    }
+
     fn generate_child_component(&self, tag: &str, props: &std::collections::HashMap<String, crate::aura::AuraPropValue>) -> String {
         let msg_name = self.current_msg_name();
 
@@ -5714,8 +5960,169 @@ widget Counter {
         assert!(code.contains("self.count += 1"), "lambda body:\n{}", code);
     }
 
+    /// PLAN-533 T3 产物级断言：真实 gallery 页（widgets-gallery
+    /// alertdialog.at）经完整管线后，AlertdialogPage 的视图产物包含
+    /// Modal Popover 构造与 w-96 面板 chrome（gallery 整仓 rust 生成因壳层
+    /// 词汇存量红，页级断言为 codegen 臂的产物门禁）。
+    #[test]
+    fn test_gallery_alertdialog_page_codegen_contains_modal() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/widgets-gallery/src/front/pages/alertdialog.at"
+        );
+        let src = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read gallery page: {e}"));
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut codes = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                let widget = crate::aura::extract::extract_widget_from_decl(decl)
+                    .unwrap_or_else(|e| panic!("extract {}: {e:?}", decl.name));
+                let mut gen = RustGenerator::new();
+                codes.push(gen.generate(&widget).expect("generate"));
+            }
+        }
+        let all = codes.join("\n");
+        assert!(
+            all.contains("View::Popover {")
+                && all.contains("auto_lang::ui::view::PopoverPlacement::Modal"),
+            "gallery alertdialog page must emit Modal Popover construction"
+        );
+        assert!(
+            all.contains("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"),
+            "panel chrome must match interpreter arm"
+        );
+        assert!(
+            all.contains("cancelAction"),
+            "cancel onclick dispatch must survive the real page"
+        );
+    }
+
+    /// PLAN-533 T3: alert-dialog 家族经真实管线（parse → extract → generate）
+    /// 发射模态 Popover 构造——根臂拆解 trigger/content，面板 w-96 chrome 与
+    /// 解释器臂（PLAN-530 W13）同串，action·cancel onclick 走既有消息派发。
+    #[test]
+    fn test_alert_dialog_codegen_emits_modal_popover() {
+        let src = r#"
+widget Demo {
+    model { show bool = false }
+    on {
+        .openDialog -> { .show = true }
+        .cancelAction -> { .show = false }
+    }
+    view {
+        alert-dialog (open: .show) {
+            alert-dialog-trigger {
+                button (text: "Show Dialog", onclick: .openDialog) {}
+            }
+            alert-dialog-content {
+                alert-dialog-header {
+                    alert-dialog-title "Are you sure?"
+                    alert-dialog-description "This cannot be undone."
+                }
+                alert-dialog-footer {
+                    alert-dialog-cancel "Cancel" { onclick: .cancelAction }
+                    alert-dialog-action "Continue" { onclick: .openDialog }
+                }
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(code.contains("View::Popover {"), "Popover variant literal:\n{}", code);
+        assert!(code.contains("auto_lang::ui::view::PopoverPlacement::Modal"), "Modal placement:\n{}", code);
+        assert!(code.contains("auto_lang::ui::view::PopoverAnchor::Widget"), "widget anchor:\n{}", code);
+        assert!(code.contains("open: self.show"), "open bound to state:\n{}", code);
+        assert!(
+            code.contains("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"),
+            "panel chrome matches interpreter arm:\n{}", code
+        );
+        assert!(
+            code.contains("View::text_styled(\"Are you sure?\".to_string(), \"text-lg font-semibold\")"),
+            "title default class:\n{}", code
+        );
+        assert!(
+            code.contains("text-sm text-muted-foreground"),
+            "description default class:\n{}", code
+        );
+        assert!(
+            code.contains("border border-input bg-background text-foreground rounded-md"),
+            "cancel outline preset:\n{}", code
+        );
+        assert!(
+            code.contains("bg-primary text-primary-foreground font-medium rounded-md"),
+            "action primary preset:\n{}", code
+        );
+        assert!(code.contains("DemoMsg::openDialog"), "trigger onclick dispatch:\n{}", code);
+        assert!(code.contains("DemoMsg::cancelAction"), "cancel onclick dispatch:\n{}", code);
+    }
+
+    /// PLAN-533 T3: dialog 家族（可关闭模态，schema sub_widgets 无连字符
+    /// 形态 + dashed 形态均识别）同样发射 Modal Popover；裸文本 trigger
+    /// 降级为无操作按钮（T5 换铸 __popover_toggle）。
+    #[test]
+    fn test_dialog_family_codegen_modal_and_bare_trigger() {
+        let src = r#"
+widget DialogDemo {
+    model { var open bool = false }
+    on { .openDialog -> { .open = true } }
+    view {
+        dialog (open: .open) {
+            dialog-trigger "Open Dialog"
+            dialog-content {
+                dialog-header {
+                    dialog-title "Edit Profile"
+                    dialog-description "Make changes here."
+                }
+                dialog-footer {
+                    dialog-close "Save changes"
+                }
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(code.contains("View::Popover {"), "dialog family emits Popover:\n{}", code);
+        assert!(code.contains("auto_lang::ui::view::PopoverPlacement::Modal"), "Modal placement:\n{}", code);
+        assert!(code.contains("open: self.open"), "open bound:\n{}", code);
+        assert!(
+            code.contains("View::button(\"Open Dialog\")"),
+            "bare-text trigger renders as button:\n{}", code
+        );
+        assert!(
+            code.contains("View::button(\"Save changes\")"),
+            "dialog-close renders as button:\n{}", code
+        );
+    }
+
     /// Plan 448 C: bare `value:` input through the real pipeline. The minted
-    /// `__bind_*` variant must reach the enum AND the input_fields injection
+    /// `__bind_*` variant must reach the enum AND the on_fields injection
     /// (`self.email = last_input_text`) — without the variant the match arm
     /// is silently skipped and typing never persists.
     #[test]
@@ -6424,3 +6831,4 @@ fn main() {{}}
         );
     }
 }
+
