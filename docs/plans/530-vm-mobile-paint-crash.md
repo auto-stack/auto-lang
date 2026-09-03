@@ -71,6 +71,11 @@ fit 缩放合成与 Plan 527 T7 响应式重建的交互。
     （实验后已还原 1440x900）;推断 resize 跨 768 亦可触发。
   - B：master @ 7ab140c41 时代 `auto run`（VM merged）首启即崩;
     复现概率不稳定,建议保留当日环境线索（RTX 4060 Ti / Vulkan backend）。
+  **强复现配方（2026-09-03 下午,W11 排查中实证）**：widgets-gallery
+  VM 启动后停在首页（LineChart/DonutChart 动画 AnimLnTick/AnimDnTick
+  持续 tick）,约 1–5 分钟内进程静默死亡（exit 无 panic、无 memory
+  allocation 行,日志末尾即动画 tick 事件）。离开首页则存活。崩溃与
+  首页动画 tick 强相关——优先 bisect 图表动画路径。
 
 ## 详细设计
 
