@@ -59,8 +59,8 @@ element autodown {
         { name: "content", type: "union:string,state_ref", description: "AutoDown source (literal or state-bound)" }
         { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — emitted as :streaming=!final; an explicit streaming prop wins when both are set" }
         { name: "streaming", type: "union:bool,state_ref", default: "false", description: "Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040 契约扩展)" }
-        { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-044)" }
-        { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-044)" }
+        { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id (vue arm placeholderBlockId; VM arm consumed since PLAN-044 — block-${index} top-level id, ghost box before the hit block)" }
+        { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px (vue arm placeholderHeight; VM arm consumed since PLAN-044)" }
         { name: "scroll_sync", type: "union:bool,state_ref", default: "true", description: "Pane-level scroll sync (vue arm scrollSync; VM arm consumed since PLAN-043 — wraps in View::Scrollable, see EDITOR-CONTRACT §11)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]

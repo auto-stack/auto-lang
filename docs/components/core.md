@@ -46,8 +46,8 @@ AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→auto
 | `content` | `union: string|state_ref` | — | AutoDown source (literal or state-bound) |
 | `final` | `union: bool|state_ref` | true | Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — emitted as :streaming=!final; an explicit streaming prop wins when both are set |
 | `streaming` | `union: bool|state_ref` | false | Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040 契约扩展) |
-| `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-044) |
-| `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-044) |
+| `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id (vue arm placeholderBlockId; VM arm consumed since PLAN-044 — block-${index} top-level id, ghost box before the hit block) |
+| `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px (vue arm placeholderHeight; VM arm consumed since PLAN-044) |
 | `scroll_sync` | `union: bool|state_ref` | true | Pane-level scroll sync (vue arm scrollSync; VM arm consumed since PLAN-043 — wraps in View::Scrollable, see EDITOR-CONTRACT §11) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 

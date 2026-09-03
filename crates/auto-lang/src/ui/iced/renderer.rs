@@ -3753,8 +3753,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
-                build_autodown_editor_generic(&key, &value, is_final, on_change)
+            AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, style: _ } => {
+                build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus)
             }
 
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
@@ -5190,6 +5190,22 @@ pub struct IcedMessage {
 /// name. Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
 pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
 
+/// PLAN-044 T5/T6：ghost 占位 state 写入（OnEditorFocus 拦截与 __mcp_click
+/// 合成点击共用一条写入路径）。ghost_id = "block-N" 字符串（vue
+/// data-block-id 同源；空串 = 无 ghost）；ghost_height 带 +1e-3 强制分数
+/// 形态（防 nanbox 整值丢标签，0.001px 误差不可见——043 T6 frac 同口径）。
+/// id < 0 = 失焦变体（清空）。
+fn write_ghost_state(component: &mut crate::ui::dynamic::DynamicComponent, id: i32, h: f32) {
+    let frac = |v: f64| auto_val::Value::Double(v + 0.001);
+    if id >= 0 {
+        let _ = component.write_state("ghost_id", auto_val::Value::Str(format!("block-{id}").into()));
+        let _ = component.write_state("ghost_height", frac(h as f64));
+    } else {
+        let _ = component.write_state("ghost_id", auto_val::Value::Str(String::new().into()));
+        let _ = component.write_state("ghost_height", frac(0.0));
+    }
+}
+
 /// Embed all onclick payload args (type-tagged) into the event string so they
 /// can be carried by the `Send` `IcedMessage`. Each arg is encoded as
 /// `{tc}{SEP}{val}` appended after the event name. Multi-arg handlers like
@@ -5519,12 +5535,17 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             value,
             is_final,
             on_change,
+            on_focus,
             style,
         } => AbstractView::AutodownEditor {
             key,
             value,
             is_final,
             on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            // Plan 044 T2: 块聚焦读出回调跨消息类型包装（FocusCallback newtype）。
+            on_focus: on_focus.map(|cb| {
+                crate::ui::view::FocusCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+            }),
             style,
         },
 
@@ -10859,6 +10880,96 @@ fn compare_pngs(
                     return iced::Task::none();
                 }
             }
+        }
+
+        // PLAN-044 T5: ghost 占位 rust 直写快道——onfocusblock 的 Typed 消息
+        //（args = [Int block_index, Float height]，失焦 (Int -1, 0.0)；见
+        // aura_view_builder autodown_on_focus_binding）在此拦截直写
+        // placeholder state（043 T6 同信任路径：VM handler 对 float 实参/
+        // 算术写入腐坏，.at 的 OnEditorFocus handler 保留为 vue 契约面，
+        // VM 轨不再向下分派）。state 口径：ghost_id = "block-N" 字符
+        // 串（vue data-block-id 同源；空串 = 无 ghost）+ ghost_height
+        //（+1e-3 防 nanbox 整值丢标签，0.001px 误差不可见）。
+        if msg.event.starts_with("OnEditorFocus") {
+            let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            let geti = || {
+                args.first().and_then(|v| match v {
+                    auto_val::Value::Int(i) => Some(*i),
+                    auto_val::Value::Uint(u) => Some(*u as i32),
+                    _ => None,
+                })
+            };
+            let getf = || {
+                args.get(1).and_then(|v| match v {
+                    auto_val::Value::Float(f) => Some(*f as f32),
+                    auto_val::Value::Double(d) => Some(*d as f32),
+                    auto_val::Value::Int(i) => Some(*i as f32),
+                    _ => None,
+                })
+            };
+            if clean == "OnEditorFocus" {
+                if let (Some(id), Some(h)) = (geti(), getf()) {
+                    write_ghost_state(&mut state.component, id, h);
+                    return iced::Task::none();
+                }
+            }
+        }
+
+        // PLAN-044 T6: MCP click action——autodown 编辑壳块内坐标点击合成
+        //（input_value = "storage_key␟x,y"；mcp_server 侧已从 vnode path
+        // 解析出编辑壳 storage key）。直调 core.handle_input（真实
+        // hit_test/焦点写入路径），focus_changed 后与 widget publish →
+        // OnEditorFocus 拦截同一 write_ghost_state 落 ghost state；唯一
+        // 不覆盖的是 iced Shell 消息分发本身（T2 单测在册）。
+        if msg.event == "__mcp_click" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(sk), Some(xy)) = (parts.next(), parts.next()) {
+                let mut it = xy.split(',');
+                if let (Some(x), Some(y)) = (
+                    it.next().and_then(|s| s.parse::<f32>().ok()),
+                    it.next().and_then(|s| s.parse::<f32>().ok()),
+                ) {
+                    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                    {
+                        use crate::ui::autodown_editor as ade;
+                        use crate::ui::autodown_editor::DocInput;
+                        let core = ade::autodown_editor(sk);
+                        let out = crate::ui::code_editor::core::with_font_system(|fs| {
+                            core.handle_input(
+                                fs,
+                                DocInput::MousePressed {
+                                    button: crate::ui::code_editor::core::EditorButton::Left,
+                                    x,
+                                    y,
+                                },
+                                &mut crate::ui::code_editor::core::NullClipboard,
+                            )
+                        });
+                        if out.focus_changed {
+                            let block = core.focused_block();
+                            let h = block
+                                .and_then(|i| core.block_rects().get(i).map(|r| r.h))
+                                .unwrap_or(0.0);
+                            write_ghost_state(
+                                &mut state.component,
+                                block.map(|b| b as i32).unwrap_or(-1),
+                                h,
+                            );
+                            *state.app.view_dirty.borrow_mut() = true;
+                            // view_dirty 单独不驱动 iced 重绘（Task::none 无
+                            // 重排）——回发 __noop 消息走一轮 update→view，
+                            // 让 ghost 包装进当帧（Plan 482 no-op 通道）。
+                            return iced::Task::done(IcedMessage::from_dynamic(
+                                &DynamicMessage::String("__noop".to_string()),
+                            ));
+                        }
+                    }
+                    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                    let _ = (sk, x, y);
+                    return iced::Task::none();
+                }
+            }
+            return iced::Task::none();
         }
 
         // PLAN-043 T6: MCP scroll action 直落——scrollable 无 VM handler，
@@ -17027,6 +17138,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     value: &str,
     is_final: bool,
     on_change: Option<M>,
+    on_focus: Option<crate::ui::view::FocusCallback<M>>,
 ) -> iced::Element<'static, M> {
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
     {
@@ -17039,11 +17151,15 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
         if let Some(msg) = on_change {
             widget = widget.on_change(move || msg.clone());
         }
+        // Plan 044 T2：块聚焦读出回调直挂 widget（FocusMetrics 载荷）。
+        if let Some(cb) = on_focus {
+            widget = widget.on_focus(move |m| cb.call(m));
+        }
         widget.into()
     }
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
     {
-        let _ = (key, is_final);
+        let _ = (key, is_final, on_focus);
         AbstractView::<M>::Text { content: value.to_owned(), style: None, selectable: false }.into_iced()
     }
 }
@@ -17806,7 +17922,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — INPUT_TEXT carries
         // the live document on edit (同 code editor 的 payload 通道惯例)。
-        AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
+        AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, style: _ } => {
             let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
             #[cfg(all(feature = "autodown", feature = "code-editor"))]
             {
@@ -17827,6 +17943,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                         msg.clone()
                     });
                 }
+                // Plan 044 T2：VM 轨块聚焦读出——FocusMetrics 载荷直挂
+                // widget（FocusCallback 已在 convert_view_messages 换型为
+                // IcedMessage；onfocus 事件 → Typed 消息在 aura_view_builder
+                // 装配，update 层 OnFocus 拦截直写快道消费）。
+                if let Some(cb) = on_focus {
+                    widget = widget.on_focus(move |m| cb.call(m));
+                }
                 let el: iced::Element<'static, IcedMessage> = widget.into();
                 let _ = dbg_props;
                 el
@@ -17834,7 +17957,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
             {
                 // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
-                let _ = use_ade;
+                let _ = (use_ade, on_focus);
                 let el: iced::Element<'static, IcedMessage> =
                     AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
                 el

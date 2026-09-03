@@ -28,11 +28,12 @@
 //! - String interpolation for `${.field}` patterns
 //! - Event handler → DynamicMessage mapping
 //!
-//! ## Plan 040 VM v1 豁免登记（autodown 契约扩展；043 收口后）
+//! ## Plan 040 VM v1 豁免登记（autodown 契约扩展；044 收口后）
 //!
-//! `autodown` 只读臂与 `autodown_editor` 编辑臂：streaming 恒按 final、
-//! placeholder_block_id/placeholder_height（ghost 占位）读取后忽略——
-//! **归 PLAN-044 补齐（vue 臂全量发射）**；`scroll_sync` 自 PLAN-043 起
+//! `autodown` 只读臂与 `autodown_editor` 编辑臂：streaming 恒按 final
+//! （豁免保留）；placeholder_block_id/placeholder_height（ghost 占位）自
+//! PLAN-044 起**真消费**（只读臂绑定求值进 render——命中块前置定高灰盒；
+//! 编辑臂 onfocus 事件进 on_focus 消息读出）；`scroll_sync` 自 PLAN-043 起
 //! **真消费**（外包 View::Scrollable：scroll_top 绑定写入臂 + onscroll
 //! 消息读出臂 + ondetailsclick 折叠回路，EDITOR-CONTRACT §11 在册）。
 
@@ -1468,15 +1469,18 @@ impl<'a> AuraViewBuilder<'a> {
                     // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
                     //（DocEditor 全内容高、外滚）外包 View::Scrollable，
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
+                    // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
+                    // ghost 消息）。
                     let (scroll_sync, offset, on_scroll, _details) =
                         self.autodown_scroll_binding(props, events, bindings);
+                    let on_focus = self.autodown_on_focus_binding(events);
                     // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
                     // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
                     // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -1485,7 +1489,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)
@@ -1511,15 +1515,14 @@ impl<'a> AuraViewBuilder<'a> {
                         })
                         .flatten()
                         .unwrap_or(true);
-                    // Plan 040 契约扩展——VM v1 豁免收口（PLAN-043 T2）：
-                    // streaming 恒按 final、ghost 占位块（placeholder_*）仍
-                    // 忽略（→PLAN-044）；scroll_sync 真消费——true 时文档
-                    // 外包 View::Scrollable（offset 绑定写入 + on_scroll
-                    // 消息读出，稳定 id 由 render_dynamic_view 的 vnode_*
-                    // 路径派生）。
+                    // Plan 040 契约扩展——VM v1 豁免收口（PLAN-044 T4）：
+                    // streaming 恒按 final（豁免保留）；placeholder_*（ghost）
+                    // 自本计划真消费（绑定求值传入 render）；scroll_sync
+                    // 消费同前——true 时文档外包 View::Scrollable（offset
+                    // 绑定写入 + on_scroll 消息读出，稳定 id 由
+                    // render_dynamic_view 的 vnode_* 路径派生）。
                     let _ = props.get("streaming");
-                    let _ = props.get("placeholder_block_id");
-                    let _ = props.get("placeholder_height");
+                    let placeholder = self.autodown_placeholder(props, bindings);
                     let (scroll_sync, offset, on_scroll, details_onclick) =
                         self.autodown_scroll_binding(props, events, bindings);
                     // PLAN-041 T8：流式增量（结构键 diff + 未变块复用），
@@ -1532,6 +1535,7 @@ impl<'a> AuraViewBuilder<'a> {
                         &content,
                         is_final,
                         details_onclick.as_deref(),
+                        placeholder,
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
@@ -2454,6 +2458,70 @@ impl<'a> AuraViewBuilder<'a> {
         (true, offset, on_scroll, details_onclick)
     }
 
+    /// PLAN-044 T4：autodown ghost 占位消费——`placeholder_block_id`/
+    /// `placeholder_height` 双 prop 绑定求值（043 scroll_top 同机制：
+    /// 数值 prop 直取、null/缺席即 None）。id 口径 = `block-${index}` 顶层
+    /// 索引（vue data-block-id 同源）：字符串带 `block-` 前缀剥前缀、裸数字
+    /// 串与 Int 直接收。仅 id 命中（非 None）即出 ghost；height 缺席置 0。
+    fn autodown_placeholder(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<(usize, f32)> {
+        let num = |name: &str| {
+            props.get(name).and_then(|v| match v {
+                AuraPropValue::Expr(expr) => self.resolve_expr_to_value(expr, bindings),
+                _ => None,
+            })
+        };
+        let id = match num("placeholder_block_id")? {
+            auto_val::Value::Str(s) => {
+                let digits = s.trim().strip_prefix("block-").unwrap_or(s.trim());
+                digits.parse::<usize>().ok()?
+            }
+            auto_val::Value::Int(i) if i >= 0 => i as usize,
+            auto_val::Value::Uint(u) => u as usize,
+            auto_val::Value::Float(f) if f >= 0.0 => f as usize,
+            auto_val::Value::Double(d) if d >= 0.0 => d as usize,
+            _ => return None,
+        };
+        let height = match num("placeholder_height") {
+            Some(auto_val::Value::Float(f)) => f as f32,
+            Some(auto_val::Value::Double(d)) => d as f32,
+            Some(auto_val::Value::Int(i)) => i as f32,
+            Some(auto_val::Value::Uint(u)) => u as f32,
+            _ => 0.0,
+        };
+        Some((id, height))
+    }
+
+    /// PLAN-044 T4/T5：编辑壳块聚焦读出装配——`onfocusblock` 事件进
+    /// View::AutodownEditor.on_focus（FocusCallback newtype，043 onscroll
+    /// 同款宿主消息通道；事件名 = vue 轨 EngineEditor `focusblock` emit
+    /// 的 codegen 直映 onX→@X，双轨单源）。FocusMetrics 载荷编码为 Typed
+    /// 消息实参 (block_index, height)；失焦变体 block=None 编码 (Int -1,
+    /// 0.0)。VM 轨由 update 层 rust 直写快道消费（043 T6 同拦截，引擎
+    /// float 实参腐坏规避）；handler 保留为 vue 契约面。
+    fn autodown_on_focus_binding(
+        &self,
+        events: &HashMap<String, AuraEvent>,
+    ) -> Option<crate::ui::view::FocusCallback<DynamicMessage>> {
+        aura_events_get_base(events, "onfocusblock").map(|ev| {
+            let handler = extract_handler_name(&ev.handler).to_string();
+            let widget = self.widget_name.clone();
+            crate::ui::view::FocusCallback::new(
+                move |m: crate::ui::view::FocusMetrics| DynamicMessage::Typed {
+                    widget_name: widget.clone(),
+                    event_name: handler.clone(),
+                    args: vec![
+                        auto_val::Value::Int(m.block.map(|b| b as i32).unwrap_or(-1)),
+                        auto_val::Value::Float(m.height as f64),
+                    ],
+                },
+            )
+        })
+    }
+
     fn convert_element(
         &self,
         tag: &str,
@@ -2600,15 +2668,18 @@ impl<'a> AuraViewBuilder<'a> {
                     // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
                     //（DocEditor 全内容高、外滚）外包 View::Scrollable，
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
+                    // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
+                    // ghost 消息）。
                     let (scroll_sync, offset, on_scroll, _details) =
                         self.autodown_scroll_binding(props, events, bindings);
+                    let on_focus = self.autodown_on_focus_binding(events);
                     // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
                     // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
                     // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -2617,7 +2688,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)
@@ -2643,18 +2714,19 @@ impl<'a> AuraViewBuilder<'a> {
                         })
                         .flatten()
                         .unwrap_or(true);
-                    // Plan 040 契约扩展——VM v1 豁免收口（PLAN-043 T2）：
-                    // streaming 恒按 final、ghost 占位块（placeholder_*）仍
-                    // 忽略（→PLAN-044）；scroll_sync 真消费（同 streamed 臂）。
+                    // Plan 040 契约扩展——VM v1 豁免收口（PLAN-044 T4）：
+                    // streaming 恒按 final（豁免保留）；placeholder_*（ghost）
+                    // 自本计划真消费（绑定求值传入 render，同 streamed 臂）；
+                    // scroll_sync 真消费（同 streamed 臂）。
                     let _ = props.get("streaming");
-                    let _ = props.get("placeholder_block_id");
-                    let _ = props.get("placeholder_height");
+                    let placeholder = self.autodown_placeholder(props, bindings);
                     let (scroll_sync, offset, on_scroll, details_onclick) =
                         self.autodown_scroll_binding(props, events, bindings);
                     let mut doc = crate::ui::autodown_render::render_document_with(
                         &content,
                         is_final,
                         details_onclick.as_deref(),
+                        placeholder,
                     );
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
@@ -9180,10 +9252,11 @@ mod tests {
             .with_prop("final", Expr::Bool(true))
             // Plan 040 契约扩展 props：PLAN-043 T2 起 scroll_sync 真消费——
             // 文档外包 View::Scrollable（本用例未给 scroll_top/onscroll，
-            // 绑定/消息两臂为 None）；streaming 恒按 final、placeholder_*
-            //（ghost）仍忽略（→PLAN-044）。
+            // 绑定/消息两臂为 None）；streaming 恒按 final（豁免保留）；
+            // PLAN-044 T4 起 placeholder_*（ghost）真消费——`block-0` 命中
+            // 首块前置定高灰盒。
             .with_prop("streaming", Expr::Bool(true))
-            .with_prop("placeholder_block_id", Expr::Str("ghost".into()))
+            .with_prop("placeholder_block_id", Expr::Str("block-0".into()))
             .with_prop("placeholder_height", Expr::Float(96.0, "96".into()))
             .with_prop("scroll_sync", Expr::Bool(true));
         match builder.build(&node) {
@@ -9193,14 +9266,31 @@ mod tests {
                 match *child {
                     View::Column { children, .. } => {
                         assert_eq!(children.len(), 2);
-                        match &children[0] {
+                        // PLAN-044 T4：ghost 消费——首块被 Column[ghost, block]
+                        // spacing=0 包裹，ghost = Container{height:96, bg-muted}
+                        //（ignored→consumed 断言翻转）。
+                        let View::Column { children: wrap, spacing, .. } = &children[0] else {
+                            panic!("expected ghost wrap column at block 0")
+                        };
+                        assert_eq!(*spacing, 0);
+                        assert_eq!(wrap.len(), 2);
+                        match &wrap[0] {
+                            View::Container { height, style, .. } => {
+                                assert_eq!(*height, Some(96), "ghost height consumed");
+                                let expected = Style::parse("bg-muted rounded-lg w-full").unwrap();
+                                assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+                            }
+                            _ => panic!("expected ghost container"),
+                        }
+                        match &wrap[1] {
                             View::Text { content, style, .. } => {
                                 assert_eq!(content, "标题");
                                 let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
                                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
                             }
-                            _ => panic!("expected heading text"),
+                            _ => panic!("expected heading text inside ghost wrap"),
                         }
+                        // 未命中块不包裹。
                         assert!(matches!(&children[1], View::Row { .. }));
                     }
                     _ => panic!("expected document column inside scrollable"),
@@ -9303,6 +9393,71 @@ mod tests {
                 }
             }
             _ => panic!("streamed arm: expected View::Scrollable"),
+        }
+    }
+
+    /// PLAN-044 T4：编辑壳块聚焦消息通道——onfocus 事件 →
+    /// View::AutodownEditor.on_focus = FocusCallback（Typed 消息：
+    /// args = [Int block, Float height]；失焦变体 (Int -1, 0.0)）。
+    /// 普通臂与 tracked 臂同一装配（两镜像编辑臂对称）。
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    #[test]
+    fn test_autodown_editor_on_focus_message_channel() {
+        use crate::ui::view::{FocusCallback, FocusMetrics};
+
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("autodown_editor")
+            .with_prop("content", Expr::Str("段甲。\n".into()))
+            .with_event("onfocusblock", ".OnEditorFocus");
+        match builder.build(&node) {
+            View::AutodownEditor { on_focus: Some(cb), .. } => {
+                let msg = cb.call(FocusMetrics { block: Some(1), height: 128.0 });
+                match msg {
+                    DynamicMessage::Typed { widget_name, event_name, args } => {
+                        assert_eq!(widget_name, "Test");
+                        assert_eq!(event_name, "OnEditorFocus");
+                        assert!(matches!(args[0], auto_val::Value::Int(1)), "block index, got {:?}", args[0]);
+                        assert!(matches!(args[1], auto_val::Value::Float(f) if (f - 128.0).abs() < 1e-6), "height, got {:?}", args[1]);
+                    }
+                    other => panic!("expected Typed message, got {:?}", other),
+                }
+                // 失焦变体：block=None → (Int -1, 0.0)。
+                match cb.call(FocusMetrics { block: None, height: 0.0 }) {
+                    DynamicMessage::Typed { args, .. } => {
+                        assert!(matches!(args[0], auto_val::Value::Int(-1)), "blur encodes -1, got {:?}", args[0]);
+                    }
+                    other => panic!("expected Typed blur message, got {:?}", other),
+                }
+            }
+            _ => panic!("expected View::AutodownEditor with on_focus"),
+        }
+
+        // tracked 臂（build_with_debug_gated → tracked ctx）同装配；无 onfocus
+        // 事件 → on_focus None。
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("autodown_editor")
+            .with_prop("content", Expr::Str("段乙。\n".into()))
+            .with_event("onfocusblock", ".OnEditorFocus2");
+        let (view, _id_map, _probe) = builder.build_with_debug_gated(&node, false);
+        let editor = match &view {
+            View::AutodownEditor { on_focus, .. } => on_focus.clone(),
+            View::Scrollable { child, .. } => match child.as_ref() {
+                View::AutodownEditor { on_focus, .. } => on_focus.clone(),
+                _ => panic!("tracked arm: expected editor in scrollable"),
+            },
+            _ => panic!("tracked arm: expected editor view"),
+        };
+        let cb: FocusCallback<DynamicMessage> = editor.expect("tracked arm wires on_focus too");
+        match cb.call(FocusMetrics { block: Some(0), height: 64.0 }) {
+            DynamicMessage::Typed { event_name, args, .. } => {
+                assert_eq!(event_name, "OnEditorFocus2");
+                assert!(matches!(args[0], auto_val::Value::Int(0)));
+            }
+            other => panic!("tracked arm: expected Typed message, got {:?}", other),
         }
     }
 

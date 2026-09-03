@@ -303,6 +303,44 @@ impl<M> ScrollCallback<M> {
     }
 }
 
+/// Plan 044 T2: AutodownEditor 块聚焦事件测量（`View::AutodownEditor::on_focus`
+/// 载荷）。焦点块顶层索引 + 该块 DocLayout 实测高（px）；`block: None` 为
+/// 失焦变体（高度无意义置 0）。高度在 widget 焦点变化现场从 layout 快照
+/// 取（宿主零查询）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FocusMetrics {
+    /// 焦点块索引（`block-${index}` 顶层口径，与 vue data-block-id 同源）。
+    pub block: Option<usize>,
+    /// 焦点块 DocLayout 实测高（px）——ghost 定高的单一事实源。
+    pub height: f32,
+}
+
+/// Plan 044 T2: 编辑壳块聚焦读出回调（[`ScrollCallback`] 同款 newtype 形态，
+/// Arc<dyn Fn> 可跨消息类型包装——VM 轨 DynamicMessage→IcedMessage 转换不丢）。
+#[derive(Clone)]
+pub struct FocusCallback<M> {
+    callback: Arc<dyn Fn(FocusMetrics) -> M + Send + Sync>,
+}
+
+impl<M> std::fmt::Debug for FocusCallback<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FocusCallback").finish()
+    }
+}
+
+impl<M> FocusCallback<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(FocusMetrics) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f) }
+    }
+
+    pub fn call(&self, metrics: FocusMetrics) -> M {
+        (self.callback)(metrics)
+    }
+}
+
 ///
 /// This enum represents the abstract UI tree that can be adapted to different backends.
 /// Messages are stored directly (not as Option) for simpler mapping to Auto language.
@@ -436,6 +474,10 @@ pub enum View<M: Clone + Debug> {
         /// 流式收口标记（编辑轨恒按 final 处理;占位透传渲染契约）。
         is_final: bool,
         on_change: Option<M>,
+        /// Plan 044 T2: 块聚焦读出——焦点变化（点击/边界导航/失焦）回调，
+        /// [`FocusMetrics`] 携块索引 + DocLayout 实测高（043 on_scroll 同款
+        /// 扩字段非新变体）。
+        on_focus: Option<FocusCallback<M>>,
         style: Option<Style>,
     },
 
@@ -1610,11 +1652,17 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::AutodownEditor { key, value, is_final, on_change, style } => View::AutodownEditor {
+            View::AutodownEditor { key, value, is_final, on_change, on_focus, style } => View::AutodownEditor {
                 key,
                 value,
                 is_final,
                 on_change: on_change.map(|m| f(m)),
+                // Plan 044 T2: on_focus 为 FocusCallback newtype,可包装换
+                // 消息类型(ScrollCallback map 同款)。
+                on_focus: on_focus.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    FocusCallback::new(move |m| f(cb.call(m)))
+                }),
                 style,
             },
             View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
@@ -2851,6 +2899,33 @@ mod tests {
                 assert!((x - 0.0).abs() < f32::EPSILON && (y - 128.5).abs() < f32::EPSILON);
             }
             _ => panic!("Expected View::Scrollable with offset"),
+        }
+    }
+
+    #[test]
+    fn test_autodown_editor_on_focus_callback() {
+        // Plan 044 T2: on_focus 读出回调——FocusMetrics (block, height)
+        // 构造消息（ScrollCallback 同款 newtype 形态）；失焦变体 block=None。
+        #[derive(Debug, Clone, PartialEq)]
+        enum FocusMsg {
+            Focused(Option<usize>, f32),
+        }
+        let view = View::<FocusMsg>::AutodownEditor {
+            key: "k".into(),
+            value: String::new(),
+            is_final: true,
+            on_change: None,
+            on_focus: Some(FocusCallback::new(|m| FocusMsg::Focused(m.block, m.height))),
+            style: None,
+        };
+        match view {
+            View::AutodownEditor { on_focus: Some(cb), .. } => {
+                let msg = cb.call(FocusMetrics { block: Some(2), height: 128.5 });
+                assert_eq!(msg, FocusMsg::Focused(Some(2), 128.5));
+                let blur = cb.call(FocusMetrics { block: None, height: 0.0 });
+                assert_eq!(blur, FocusMsg::Focused(None, 0.0));
+            }
+            _ => panic!("Expected View::AutodownEditor with on_focus"),
         }
     }
 
