@@ -1,0 +1,46 @@
+// overlay-probe — PLAN-533 T2 解释模式探针（alert-dialog 模态浮层）。
+// 开：触发钮 .openDialog 置 show=true；关：仅 cancel/action（shadcn
+// AlertDialog 语义，外点/Esc 不关）。VM 轨经 aura_view_builder 的
+// alert-dialog 家族臂 → View::Popover(placement: Modal)。
+
+widget App {
+    model {
+        show bool = false
+        last str = "none"
+    }
+
+    on {
+        .openDialog -> { .show = true }
+        .confirmAction -> {
+            .show = false
+            .last = "continue"
+        }
+        .cancelAction -> {
+            .show = false
+            .last = "cancel"
+        }
+    }
+
+    view {
+        col {
+            style: "w-full h-full items-center justify-center gap-4"
+            text "overlay probe (alert-dialog modal)" { style: "text-sm text-muted-foreground" }
+            text "last: ${.last}" { style: "text-xs" }
+            alert-dialog (open: .show) {
+                alert-dialog-trigger {
+                    button (text: "Show Dialog", variant: "outline", onclick: .openDialog) {}
+                }
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "Are you absolutely sure?"
+                        alert-dialog-description "This action cannot be undone. This will permanently delete your account and remove your data from our servers."
+                    }
+                    alert-dialog-footer {
+                        alert-dialog-cancel "Cancel" { onclick: .cancelAction }
+                        alert-dialog-action "Continue" { onclick: .confirmAction }
+                    }
+                }
+            }
+        }
+    }
+}
