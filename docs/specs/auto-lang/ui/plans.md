@@ -5,6 +5,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
+| 530 | vm-mobile-paint-crash | ✅（reviewed→archived） | archive/ | VM mobile 断点双份绘制+721GB 启动崩溃专项（GOAL-007）：A 根因=Column 前缀 overlay 双渲染(472 立场退役,73/75 id 双布局实证)→叠层仅 absolute 脱流(column_layer_partition);B=每帧 Box::leak 无界泄漏(lucide_svg ~350B/图标/帧,+120MB/min)→按内容去重缓存(浸泡 262MB 持平,10/10 启动回归)+OBS-1 721GB=gutter 光栅 ∞ 视口饱和(42×u32::MAX×4 逐位一致)→非 finite 门卫+4096 上限;W12 toggle_group 横排连体组/W13 alert-dialog 模态 Popover 落地;P530_TRACE/NOMCP 诊断门控留档;67 页双宽扫描零失败;债 P530-D1..D4(breadcrumb 栈溢出=存量 master 缺陷归因在案) |
 | 527 | vm-tailwind-parity | ✅（reviewed→archived） | archive/ | VM 轨 Tailwind 全量覆盖契约（GOAL-007,plan-512 刻度口径机制上游）：v3.4 core 清单 vendor（8861 类×15 families+零依赖再生器 tools/gen_tailwind_manifest.py）+parse_reported 报告通道（静默丢弃关闭）+对拍审计台 style_parity 常驻 cargo t（白名单外零 missing+三家族〔布局 1582/视觉 1901/文本 308〕iced applied 门+PARSED_ONLY 台账+coverage 表 docs/style-coverage.md 同源再生）+四色板补全+950 真值行+渐变三 stop/彩色阴影/object-fit/全字重/leading 双轨/line-clamp/Fraction 分数 Fill-ratio 口径+隐性假映射三处顺修+Variant 管道（hover/focus/active/disabled 按钮状态面+responsive 五断点 window_width 解析期门控+dark 主题态门控,未命中登记不静默）+KNOWN-DEBT P527-1..5;复审 tf 3397/3398（唯一红=schema_drift 在案存量）零新增红 |
 | 096 | scenario-ui | ⏳（index 口径） | old/ | UI 场景架构：保留 View/Model/Msg 三元骨架 |
 | 098 | aura-schema | ⏳（index 口径） | old/ | AURA schema：校验 + LSP 补全 + 诊断，落地为 schema/aura.at |

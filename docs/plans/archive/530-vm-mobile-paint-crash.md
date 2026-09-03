@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-530
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: VM mobile 断点双份绘制 + 启动内存崩溃专项
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
