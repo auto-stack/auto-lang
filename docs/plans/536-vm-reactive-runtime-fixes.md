@@ -1,5 +1,5 @@
 ---
-plan_id: PLAN-534
+plan_id: PLAN-536
 status: drafting         # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 反应性运行时三题——timer 写入不重渲染 / 子件 Init 重入风暴 / Date.format 时区
 author: [zhaopuming, ZCode]
@@ -16,7 +16,11 @@ current_step: 0
 total_steps: 5
 ---
 
-# [PLAN-534] VM 反应性运行时三题
+# [PLAN-536] VM 反应性运行时三题
+
+> 序号更正（2026-09-04）：本计划原立项为 PLAN-534,与先建的
+> `534-vm-widget-family-parity.md`（09-03 23:56 立项）序号冲突,
+> 按"后建者换号"改为 PLAN-536。
 
 ## 变更摘要
 
