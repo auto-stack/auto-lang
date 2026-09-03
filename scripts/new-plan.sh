@@ -3,7 +3,7 @@
 #
 # 重要：必须在 master 主检出上运行（不要在 plan-NNN worktree 里取号），
 # 否则并发 worktree 会撞号（历史教训：336/337/338/342/351/355/359 重复）。
-# 取号成功后应立即 commit .next-id 与新 plan 骨架，再开 .worktrees/plan-<NNN>-dev worktree。
+# 取号成功后应立即 commit .next-id 与新 plan 骨架，再开分组平铺 worktree（Plan 529：git worktree add D:/autostack/.wt/lang-<NNN>/auto-lang -b plan-<NNN>-dev）。
 # 范式：/auto-plan:new 起草（status: drafting）→ work 执行 → review 复审 → merge 沉淀归档。
 set -euo pipefail
 
@@ -83,4 +83,4 @@ EOF
 echo "$((ID + 1))" > "$ID_FILE"
 echo "created: $PLAN_FILE"
 echo "next id: $((ID + 1))"
-echo "提醒：请先在 master 上 commit .next-id 与 plan 骨架，再创建 .worktrees/plan-${ID}-dev worktree（分支 plan-${ID}-dev）。"
+echo "提醒：请先在 master 上 commit .next-id 与 plan 骨架，再创建分组平铺 worktree：git worktree add D:/autostack/.wt/lang-${ID}/auto-lang -b plan-${ID}-dev（Plan 529 布局）。"
