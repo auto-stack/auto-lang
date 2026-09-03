@@ -26,6 +26,8 @@
 
 ## 🟡 一致性遗漏（功能正确但代码不干净）
 
+| 526 | 一致性 | 布局件级 hover/右键公共基建（wrap_layout_onclick）未做——launcher 用 button、桌面右键用 mouse-area 替代挂点，逐点特设；任意 .at 布局件要 hover/右键仍需逐个特设 | 526 待澄清③（用户核准延后，独立立项候选） |
+
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
 | 377 | heap-aware 遗漏 | stdlib.rs 有 10 处 `push_i64(handle/server)` 未改用 `push_i64_vm`。值是 heap ID（< 2^48），实际安全，但不符合 Plan 377 的"所有 64 位值走 heap-aware"一致性目标。 | `vm/ffi/stdlib.rs:3092,3105,3115,3125,3135,3146,3478,3493,3511,3531` |
@@ -62,6 +64,9 @@
 | ~~525-4~~ ✅ 已清偿(2026-09-03,Plan 531) | 宿主 May 裸值 return 发射不编译——?T fn 内裸标量 return 包裹 Some(...)(主 a2r return 位+AA2R ar_return 镜像[Ar 增 cur_ret];仅裸标量形,Some/Ok/None/Unknown 不动);g34 补裸值语料 find_bare 臂(金样 30/none/30/none)。原描述: | `fn f() ?int { return n*10 }`(无 Some 包裹)主 a2r 发 `return n * 10;` 于 Option<T> fn——rustc E0308。525 语料取显式 Some 构造规避(g34);宿主发射修复(裸值自动包 Some)待后续。 | `crates/auto-lang/src/trans/rust.rs` | 语料已规避;宿主修复后可补裸值语料 |
 | 525-5 | ⑤腿塔顶程序 rc=1 快死(P517-1 族再现,W2-W5 折叠点) | 折叠②起矩阵两次+手动塔顶均 rc=1 快速返回无输出(P517-1 文档形态一致);lib 增长至 ~879KB 后贴线加剧。折叠①时点矩阵 46/46(10m4.6s)健康;各折叠点四路全绿+语料腿全绿为替代证据链(517 折叠①先例)。恢复后终局复跑一次成功(13m56s 全程无 error,W1 基线 10m4.6s 的 +39%,健康带);紧接确认性复跑又快死——**间歇性**实锤。 | `parity/crates/auto-parity/src/aavm.rs`(build_aa2r_bin);环境负载 | 维持 P517-1 观察项;复现则独立分诊(非 525 改动引入——语料腿/四路全绿) |
 ## 🟢 已知限制（设计决策，非 bug）
+
+| 526 | 视觉 | window_thumbnail 快照懒捕获前显示空（fallback icon 兜底；命中预抓已在 summon 链）| 526 T18 记录（KNOWN-DEBT 候选） |
+| 526 | 视觉 | Popover 首次打开横向锚点偏左（任务栏菜单/icon 菜单同族；功能与消失正常，497 hover 缩略同族先例）| 526 波间回归记录（KNOWN-DEBT 候选） |
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
