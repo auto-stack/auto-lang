@@ -628,7 +628,7 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let client: iced::Element<'_, crate::ui::session::DesktopMessage> =
         iced::widget::text("WINCLIENT").into();
     let win_el: iced::Element<'static, ()> =
-        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, client)
+        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, false, client)
             .map(|_| ());
 
     // Stack push 序 = view() 装配序（surface 先于虚拟窗 = 底序）。
@@ -827,6 +827,7 @@ fn t20_deferred_raise_lets_first_click_through() {
     assert_eq!(z_after_press, vec![1, 0], "T20 修复：press 期不重排层序");
     assert_eq!(clicks, ["hit1"], "首击必须触发按钮: {clicks:?}");
     assert_eq!(final_z, vec![0, 1], "release 偿还置顶（win1 顶）");
+}
 
 // ========== Plan 045 T2 — 表格列宽两态 lowering 结构 ==========
 
