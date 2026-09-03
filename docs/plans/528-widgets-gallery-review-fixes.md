@@ -4,7 +4,7 @@ status: execution_done
 feature_name: widgets-gallery 检查问题跟踪与修复
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03T11:30:00+08:00
-updated_at: 2026-09-03T14:50:00+08:00
+updated_at: 2026-09-03T15:10:00+08:00
 
 # Leave these EMPTY here — /auto-plan:review fills them:
 supersedes_spec_components: []
@@ -354,6 +354,28 @@ W9 追加打磨(用户反馈:贴按钮太近/对齐方式/防撞边界):
 
 附带:VM 模式本次未复现 OBS-1 启动崩溃(721GB alloc),疑似页面相关。
 
+### W10 VM mobile 断点内容双份（2026-09-03 定位,待 VM shell 专项修复）
+
+现象：窗口收窄过 md 断点（≤768）后,页面内容整体 ×2 重叠（两种不同换行
+宽度=两种布局约束的两份绘制叠印）,同时 mobile 色素正确出现（汉堡菜单、
+底部导航、桌面侧栏隐藏）。
+
+对分实验结论（pac.at window 700x900 冷启动复现,排除 resize 过渡）：
+- **结构无双份**：MCP snapshot 树中页面节点仅一份（"Popover"×1、
+  "Installation"×1,"Open Popover"×2 中一处在展示用代码串里,合法）;
+- **绘制层双通道**：同一棵树被以两种宽度约束各绘制一遍叠印（两份文案
+  换行点不同=两种 max 宽度）,且 mobile 断点门控本身工作正常
+  （Plan 527 T7 的类过滤对）。
+- 定位：绘制合成层——虚拟窗口 fit 缩放/表面管理（Plan 512/463）与
+  Plan 527 T7 响应式重建的交互,疑似旧表面未随断点重建移除（双表面
+  叠印）。
+
+修复建议（专项）：VM shell 表面生命周期排查——断点翻转时虚拟窗口表面
+是否复用/重建、fit 缩放通道与直绘通道是否同时上屏。涉及 iced 0.14
+overlay/virtual_window/dock 合成,非示例层可修。
+复现配方：pac.at `window: "700x900"` 冷启动 → MCP 截图即现（本次实验
+已还原 pac.at）。
+
 ### W2+ （待问题清单追加）
 
 （占位：每追加一问题，在此按 T 粒度展开，并同步 total_steps/current_step。）
@@ -385,7 +407,7 @@ W9 追加打磨(用户反馈:贴按钮太近/对齐方式/防撞边界):
 | W7 | togglegroup 页纵向裸排 B/I/U,应为 shadcn 横向三连按钮(outline/aria-label/单选多选 UX) | 用户（人工检查+截图对照 shadcn 原型） | ✅ 已修复并验证（本文档 W7） |
 | W8 | 三连按钮未合体（旧脚手架 gap-1 分离观感）;需补单选示例 | 用户（人工检查+截图） | ✅ 已修复并验证（本文档 W8;示例层 class 注入连体） |
 | W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | ✅ 已修复并验证（本文档 W9;默认面板 chrome w-72 bg-popover border rounded-md shadow-md p-4） |
-| W10 | VM 版窗口收窄触发 mobile 断点后内容成双份（文字/按钮/代码块全部 ×2 重叠），底部导航栏出现 | 用户（人工检查+截图） | 🔄 执行中 |
+| W10 | VM 版窗口收窄触发 mobile 断点后内容成双份（文字/按钮/代码块全部 ×2 重叠），底部导航栏出现 | 用户（人工检查+截图） | 🔍 根因已定位（绘制层双通道合成），修复需 VM shell 专项（见 W10 节） |
 
 ### 观察（OBS，未定是否立项）
 
