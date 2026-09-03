@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-529
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: worktree-layout-migration
 author: [zhaopuming]
 created_at: 2026-09-03
@@ -88,7 +88,7 @@ worktree 内**禁止任何 junction/symlink**（红线）；`.wt` 加入 clean-t
 4. [✅ 已完成] 用户级 4 个 auto-plan 技能同步（54 处）。
 5. [✅ 已完成] D:/autostack/wt-guard.sh 编写 + 正反例实测。
 6. [✅ 已完成] hook 样例 + 启用说明；clean-autolang-targets.ps1 加 .wt。
-7. [ ] 提交 auto-lang/auto-musk master，状态 execution_done。
+7. [✅ 已完成] 提交 auto-lang（0d48f0433）/auto-musk（8dd0758）master；验收①复检：6 文件 grep 旧路径仅剩"在途计划沿用"的刻意说明；wt-guard 正反例 4/4、hook 3/3 实测通过（见上文证据）。
 
 ## 复审记录
 
