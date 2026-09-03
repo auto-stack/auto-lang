@@ -352,6 +352,7 @@ single 单选互斥)+ f-string "Selected: ${.alignment}" 实时回显。
 | W6 | （W5 全站扫描发现）kitchen-sink、navitem 页 500：npm_deps 不生效 / model 逗号解析缺陷 / 裸词 src 静态 import / 桌面专属 widget 误入 web 画廊 | ZCode（扫描） | ✅ 已修复并验证（本文档 W6） |
 | W7 | togglegroup 页纵向裸排 B/I/U,应为 shadcn 横向三连按钮(outline/aria-label/单选多选 UX) | 用户（人工检查+截图对照 shadcn 原型） | ✅ 已修复并验证（本文档 W7） |
 | W8 | 三连按钮未合体（旧脚手架 gap-1 分离观感）;需补单选示例 | 用户（人工检查+截图） | ✅ 已修复并验证（本文档 W8;示例层 class 注入连体） |
+| W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | 🔄 执行中 |
 
 ### 观察（OBS，未定是否立项）
 

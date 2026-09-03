@@ -77,12 +77,24 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
   生成器 `scripts/gen-aavm2-unit.py --check`)。语料:c05/p25/p26/p27/
   t08/b34–b43 + corpus_use 六用例+errors 三件。W0 考古规格:
   `design/midlang-w0-archaeology.md`(§7 W2 实测补充)。
-- 能力矩阵(Plan 511 后):struct 声明/构造/字段读写 ✅;全局变量(顶层
-  var/const + fn 内同名写全局怪序)✅;for-in 数组+返回数组调用
-  (迭代器协议零迭代镜像)✅;字符串下标(码点)✅;一元负 ✅;下标/字段
-  复合赋值=宿主同文本拒绝(D1)✅;use 四形态+跨模块 fn+初始化序+传递依赖
-  +合法环(D2)✅;pub 不过滤(D3)✅。延后:OOP/闭包/嵌套 fn/泛型/
-  May/生成器(计划 Out-of-Scope 登记)。
+- 能力矩阵(Plan 525 后,2026-09-03):struct 声明/构造/字段读写 ✅;
+  全局变量 ✅;for-in 数组+返回数组调用 ✅;字符串下标(码点)✅;
+  一元负 ✅;下标/字段复合赋值=宿主同文本拒绝(D1)✅;use 四形态+
+  跨模块 fn+初始化序+传递依赖+合法环(D2)✅;pub 不过滤(D3)✅;
+  **VBool 载体**(print/比较/逻辑结果 true/false,P474-旁支清偿)✅;
+  **方法族**(type 体内方法/ext 并入/static fn/接收者 `.field` 简写
+  读+写/方法链,独立 fn `Type.method` 重整+self 注入)✅;
+  **is-struct 解构模式**(plain struct 恒命中+别名绑定;宿主 VM panic
+  洞 525 顺修)✅;**内建容器 List<T>**(嵌套两层/方法集 new-push-get-
+  set-len/注解四位=fn 参数·返回·let·struct 字段;CallNat 通道)✅;
+  **闭包**(MakeClo/CallClo+VClo 载体,捕获按值首引序;D29 谱系自有
+  模型)✅;**嵌套 fn**(就地编译,不捕获外层)✅;**pub type 跨模块**
+  (dep tys 播种+链接合并)✅;**May/Option 最小面**(?T 返回注解+
+  Some(e) 直通+None 哨兵+is Some/None 臂)✅。延后:生成器(W0 裁定,
+  lib 0 使用)、`??` NullCoalesce 语料面、泛型 fn 声明与自定义泛型
+  type(lib 盘点 0 使用;单态化决策点不存在——容器族走 CallNat 内建
+  通道)、闭包/嵌套 fn 的 m4 反汇编层对拍(宿主 closure 编码乱码级/
+  释放组规范化超本轮,判据面=发射闸+四路执行锚,g31-g33 迁位注记)。
 - divergence 登记簿:docs/specs/aavm/design/divergences.md(判定规则见
   divergence-rules.md)。
 - 风格升级(类 C → 一对一 Rust 对译)前提条件调研:
@@ -190,7 +202,9 @@ runner 层,以 manifest 解决。markdown 单文件(ast.rs markdown_tests
    (`case.at`+`case.expected.out`+`case.expected.rs`,复用 Plan 177/
    263 两约定)+ bless 再生工作流 + 主 a2r 发射确定性前置检查;主 a2r
    译文同锚金样(oracle 回归入闸)。
-2. **OOP 批(目标 1 续阶)**——**已立项 [Plan 525](../../plans/525-aavm-oop-batch.md)**(30 步六波,硬前置=523 archived;另 524 宿主小修批[CLI 透传/process.args/parity 新鲜度]可先于/并行 523)。原范围:aavm 目标语言的方法/impl(`type T { fn }`/
+2. ~~**OOP 批(目标 1 续阶)**~~ **已交付(2026-09-03,Plan 525 六波
+   全折叠,四路 29/29;详见 [Plan 525](../../plans/525-aavm-oop-batch.md)
+   与能力矩阵)**。原立项(30 步六波,硬前置=523 archived;另 524 宿主小修批[CLI 透传/process.args/parity 新鲜度]可先于/并行 523)。原范围:aavm 目标语言的方法/impl(`type T { fn }`/
    `ext T`)编译执行、is-struct 模式匹配、跨模块类型共享(pub type)、
    闭包与嵌套 fn、泛型(List\<T\> 实例化——通往塔顶必经)、May/生成器;
    搭车清偿 P474-旁支 VBool parity(Val 载体扩展同批)。**验收口径(2026-09-02

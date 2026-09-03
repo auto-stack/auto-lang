@@ -497,3 +497,22 @@ H2);FStrPart 直通发射的三缺口实证见 D40 续。
   形态(print(s[0])=65 且 s[i]+s[j]=拼接 "6667";v2 codegen str_flag
   穿透同义)——裸 int 形态(as i64 直加得 133)与参考分歧,已按字符串
   形态修正双侧;负下标回绕(VM: len+j)不在语料面,未实现未镜像。
+
+## Plan 525(2026-09-03)——OOP 批六波新增
+
+- **D-VBool-degenerate**:ADD/STR_CAT 混入 bool 的宿主哨兵退化形态
+  (decode_i32 → -2147483648 族)不镜像——aavm ev_str(VBool) 走
+  true/false。语料不覆盖;宿主自身 print 与 STR_CAT 形态不一致
+  (宿主洞候选非镜像面)。g26/b13 族护航。
+- **D-clo-model**:闭包=D29 谱系**自有模型**(MakeClo/CallClo+VClo
+  (fnidx, capArenaIdx)+捕获按值回放为首参组),非宿主 0x90-0x94 opcode
+  族镜像——宿主 closure 反汇编乱码级不可对拍(m4 层裁定,KNOWN-DEBT
+  P525-2);可观察行为(执行/发射)对齐。
+- **D-nested-fn-scope**:嵌套 fn 就地编译不捕获外层局部(按名查
+  c.fns);宿主 447-旁支②修复语义的最小子集。跨层捕获超语料面。
+- **D-may-sentinel**:May/Option=哨兵模型(None=-1,镜像宿主
+  CREATE_NONE/IS_SAME 的 -1 语义文档);Some(e) 载体即内值(镜像宿主
+  CREATE_SOME 标记 no-op)。哨兵别名(内值恰 -1)同宿主。
+- **D-generic-channel**:泛型容器 List<T> 走 CallNat 内建通道
+  (auto.list.* id 100/101/103/106/107),不经 generic_registry 单态化
+  (宿主同构;lib 盘点=纯内建使用,无用户泛型声明需求)。

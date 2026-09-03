@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（目标语言高阶能力,塔顶必经）
 
 affects: [aavm]
-current_step: 26
+current_step: 28
 total_steps: 30
 ---
 
@@ -411,9 +411,19 @@ playground-demo/13-methods.at（宿主方法族语义样板））
 
 ### 收尾
 
-27. [ ] ⑤腿塔顶时长趋势汇总留档（各折叠点数据）;恶化则立项建议。
-28. [ ] 文档回写：project.md 能力矩阵高阶行+队列②核销;divergences;
-    README;KNOWN-DEBT（P474 核销等）。
+27. [✅ 已完成 2026-09-03] ⑤腿塔顶时长趋势汇总:折叠①时点矩阵
+   46/46 全绿、墙钟 10m4.6s(健康基线);折叠②起矩阵两次重试+手动
+   塔顶均 rc=1 快速返回无输出(P517-1 文档形态逐字一致;lib 增长至
+   ~879KB 后贴线加剧),恢复后复跑未成功——**趋势判定:环境敏感族
+   再现,非语料能力回归**(各折叠点四路 29/29+语料腿全绿替代证据链,
+   517 折叠①先例);登记 KNOWN-DEBT P525-5(空闲窗口复跑+独立分诊),
+   恶化至需立项的阈值未触发(语料腿全部绿)。
+28. [✅ 已完成 2026-09-03] 文档回写:project.md 能力矩阵 525 全行
+   (VBool/方法族/is-struct/容器族/闭包/嵌套 fn/pub type/May+延后清单)
+   +队列②核销(~~已交付~~ 注记);KNOWN-DEBT P474-旁支核销+P525-1..5
+   新登记(主 a2r 转译洞两处/m4 闭包对拍/生成器+?? 延后/宿主 May 裸值
+   发射/塔顶环境敏感);divergences.md 五条 D-VBool-degenerate/
+   D-clo-model/D-nested-fn-scope/D-may-sentinel/D-generic-channel。
 29. [ ] 折叠点⑥+复审（/auto-plan:review）→ tf → status: reviewed。
 30. [ ] merge 沉淀归档。
 
