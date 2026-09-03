@@ -19,12 +19,17 @@ pub type BoundsMap = HashMap<String, (f32, f32, f32, f32)>;
 /// for all containers/scrollables/inputs with `aura_`-prefixed IDs.
 pub struct LayoutCollector {
     bounds: BoundsMap,
+    /// PLAN-530 步骤2 表面追踪：同一 widget id 被遍历到第二次即"双份布局"
+    /// 实证（树单份/绘制双份假设的判定面）。env P530_TRACE=1 时 finish()
+    /// 打印到 stderr。
+    dup: Vec<(String, (f32, f32, f32, f32), (f32, f32, f32, f32))>,
 }
 
 impl LayoutCollector {
     pub fn new() -> Self {
         Self {
             bounds: HashMap::new(),
+            dup: Vec::new(),
         }
     }
 
@@ -49,6 +54,9 @@ impl LayoutCollector {
     fn try_record(&mut self, id: Option<&Id>, bounds: Rectangle) {
         if let Some(id) = id {
             if let Some(key) = Self::aura_id_str(id) {
+                if let Some(prev) = self.bounds.get(&key) {
+                    self.dup.push((key.clone(), *prev, (bounds.x, bounds.y, bounds.width, bounds.height)));
+                }
                 self.bounds.insert(key, (bounds.x, bounds.y, bounds.width, bounds.height));
             }
         }
@@ -94,6 +102,18 @@ impl Operation<BoundsMap> for LayoutCollector {
     }
 
     fn finish(&self) -> Outcome<BoundsMap> {
+        // PLAN-530 步骤2：P530_TRACE=1 时输出重复 id 的双组 bounds。
+        if std::env::var("P530_TRACE").as_deref() == Ok("1") {
+            if self.dup.is_empty() {
+                eprintln!("[P530-TRACE] layout: no duplicate widget ids ({} total)", self.bounds.len());
+            } else {
+                eprintln!("[P530-TRACE] layout: {} DUPLICATE widget ids ({} total):", self.dup.len(), self.bounds.len());
+                for (key, a, b) in self.dup.iter().take(20) {
+                    eprintln!("[P530-TRACE]   dup {key}: first=({:.0},{:.0},{:.0}x{:.0}) again=({:.0},{:.0},{:.0}x{:.0})",
+                        a.0, a.1, a.2, a.3, b.0, b.1, b.2, b.3);
+                }
+            }
+        }
         Outcome::Some(self.bounds.clone())
     }
 }
