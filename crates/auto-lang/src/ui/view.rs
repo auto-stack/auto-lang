@@ -621,6 +621,9 @@ pub enum View<M: Clone + Debug> {
         spacing: u16,
         col_spacing: u16,
         style: Option<Style>,  // ✅ NEW: Unified styling support
+        /// Plan 045 T7: 表键观测口（"t{block_hash}"，autodown_render 装配）
+        /// ——snapshot/mcp 寻址用（resize_col 按键落 state），不进渲染面。
+        table_key: Option<String>,
         /// Plan 045 T1: 列宽应用（px）。Some = 按固定宽分列（长度不齐截断、
         /// 不足补自然宽）；None = 现状自然宽。宽度状态不进块模型（与 vue
         /// 同向：不回写文档），由 DSL state 经 render 入参回传。
@@ -1801,7 +1804,7 @@ impl<M: Clone + Debug> View<M> {
                 }),
                 style,
             },
-            View::Table { headers, rows, spacing, col_spacing, style, col_widths, on_col_resize } => View::Table {
+            View::Table { headers, rows, spacing, col_spacing, style, table_key, col_widths, on_col_resize } => View::Table {
                 headers: headers.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 rows: rows.into_iter()
                     .map(|row| row.into_iter().map(|c| c.map_msg_with_arc(f)).collect())
@@ -1809,6 +1812,7 @@ impl<M: Clone + Debug> View<M> {
                 spacing,
                 col_spacing,
                 style,
+                table_key,
                 col_widths,
                 // Plan 045 T1: on_col_resize 为 ColResizeCallback newtype,可包装换
                 // 型（ScrollCallback/FocusCallback 同款）。
@@ -2408,6 +2412,7 @@ impl<M: Clone + Debug> ViewTableBuilder<M> {
             spacing: self.spacing,
             col_spacing: self.col_spacing,
             style: self.style,
+            table_key: None,  // Plan 045 T7: render 装配面填
             col_widths: self.col_widths,
             on_col_resize: None,  // Plan 045 T1: 拖拽通道由 render 装配面直构
         }
@@ -3085,6 +3090,7 @@ mod tests {
             spacing: 0,
             col_spacing: 8,
             style: None,
+            table_key: None,
             col_widths: Some(vec![100.0, 80.0]),
             on_col_resize: Some(ColResizeCallback::new(|m| ResizeMsg::Resized(m.col, m.width))),
         };
@@ -3112,6 +3118,7 @@ mod tests {
             spacing: 0,
             col_spacing: 8,
             style: None,
+            table_key: None,
             col_widths: Some(vec![64.0]),
             on_col_resize: Some(ColResizeCallback::new(|m| A::R(m.col, m.width))),
         };

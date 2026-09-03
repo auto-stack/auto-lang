@@ -396,6 +396,7 @@ impl VNodeEntity {
             VNodeProps::Table {
                 spacing,
                 col_spacing,
+                ..
             } => (*spacing, *col_spacing),
             _ => (5, 10),
         };

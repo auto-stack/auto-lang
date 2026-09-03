@@ -396,7 +396,7 @@ impl SnapshotBuilder {
                 }
             },
 
-            View::Table { headers, rows, spacing, col_spacing, .. } => {
+            View::Table { headers, rows, spacing, col_spacing, table_key, col_widths, .. } => {
                 let mut all_children = Vec::new();
                 // Headers
                 for (i, h) in headers.iter().enumerate() {
@@ -410,15 +410,25 @@ impl SnapshotBuilder {
                         all_children.push(Self::traverse_view(cell, id_map, &child_path));
                     }
                 }
+                // Plan 045 T7: col_widths（Some 时）+ table_key 进 props——
+                // 列宽变化观测口与 resize_col 寻址口。
+                let mut props = vec![
+                    ("rows".to_string(), rows.len().to_string()),
+                    ("cols".to_string(), headers.len().to_string()),
+                    ("spacing".to_string(), spacing.to_string()),
+                    ("col_spacing".to_string(), col_spacing.to_string()),
+                ];
+                if let Some(k) = table_key {
+                    props.push(("table_key".to_string(), k.clone()));
+                }
+                if let Some(ws) = col_widths {
+                    let fmt: Vec<String> = ws.iter().map(|w| format!("{w:.1}")).collect();
+                    props.push(("col_widths".to_string(), format!("[{}]", fmt.join(", "))));
+                }
                 UiNode {
                     id,
                     kind: "Table".to_string(),
-                    props: vec![
-                        ("rows".to_string(), rows.len().to_string()),
-                        ("cols".to_string(), headers.len().to_string()),
-                        ("spacing".to_string(), spacing.to_string()),
-                        ("col_spacing".to_string(), col_spacing.to_string()),
-                    ],
+                    props,
                     actions: vec![],
                     children: all_children,
                 }

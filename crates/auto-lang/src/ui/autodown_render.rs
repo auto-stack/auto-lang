@@ -115,6 +115,21 @@ fn wrap_with_ghost<M: Clone + std::fmt::Debug>(
 // 流式增量（PLAN-041 T8）——结构键 diff + 未变块复用
 // ---------------------------------------------------------------------------
 
+/// PLAN-045 T7：缓存 Table 块的列宽态是否陈旧——cached View 的
+/// col_widths 与 table_widths 中该表键的期望值不一致（含缺失↔在册翻
+/// 转）即陈旧。非 Table 块恒不陈旧（列宽不进块模型）。
+fn cached_table_widths_stale<M: Clone + std::fmt::Debug>(
+    cached: Option<&View<M>>,
+    key: u64,
+    table_widths: Option<&HashMap<u64, Vec<f32>>>,
+) -> bool {
+    let Some(View::Table { col_widths, .. }) = cached else {
+        return false;
+    };
+    let expected = table_widths.and_then(|m| m.get(&key).cloned());
+    *col_widths != expected
+}
+
 /// 单文档流式渲染缓存：帧间按**结构键**（块序列化全文的 FNV-1a——
 /// kind/attrs/children/inlines 全覆盖）比对，未变块复用上帧 View；
 /// 悬挂尾块（final=false 的末块）每帧重同步；final 旗标翻转整帧重建
@@ -194,9 +209,13 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     for (i, b) in root.children.iter().enumerate() {
         let key = block_key(b);
         let is_dangling_tail = !is_final && i + 1 == n;
+        // PLAN-045 T7：列宽态陈旧即重建——缓存块按内容键复用会冻结
+        // col_widths（表内容未变而 DSL 列宽 state 已变：拖拽松手 → state
+        // → 绑定回传需进下一帧）。只对 Table 块生效，其余块零开销。
         let reuse = !final_flip
             && !is_dangling_tail
-            && cache.keys.get(i) == Some(&key);
+            && cache.keys.get(i) == Some(&key)
+            && !cached_table_widths_stale(cache.blocks.get(i), key, table_widths);
         let raw = if reuse {
             gens.push(cache.gens[i]);
             cache.blocks[i].clone()
@@ -544,6 +563,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 spacing: 0,
                 col_spacing: 8,
                 style: Style::parse(family_of(BlockType::Table).chrome.outer).ok(),
+                table_key: Some(format!("t{key}")),
                 col_widths,
                 on_col_resize: on_col_resize_msg,
             }
@@ -1017,6 +1037,39 @@ mod tests {
         };
         assert!(col_widths.is_none());
         assert!(on_col_resize.is_none());
+    }
+
+    /// PLAN-045 T7：列宽态陈旧即重建——同内容（缓存键不变）下更新
+    /// table_widths，流式帧必须重建 Table 块让 col_widths 进下一帧；
+    /// 宽度不变则恢复复用（gens 不增）。
+    #[test]
+    fn streaming_table_widths_change_invalidates_cache() {
+        let src = "| a | b |
+| --- | --- |
+| 1 | 2 |
+";
+        let key = {
+            let root = autodown_core::markdown_parser::parse_blocks(src, true);
+            block_key(&root.children[0])
+        };
+        let mut cache = StreamCache::<()>::default();
+        // 帧一：无宽度 → col_widths None，gens=1。
+        let f1 = render_document_streamed_with(&mut cache, src, true, None, None, None, None);
+        let View::Column { children: c1, .. } = &f1 else { panic!("col") };
+        let View::Table { col_widths: w1, .. } = &c1[0] else { panic!("table") };
+        assert!(w1.is_none());
+        assert_eq!(cache.gens, vec![1]);
+        // 帧二：宽度入 state（内容未变）→ 陈旧即重建，col_widths 进帧。
+        let mut m = std::collections::HashMap::new();
+        m.insert(key, vec![150.0f32]);
+        let f2 = render_document_streamed_with(&mut cache, src, true, None, None, Some(&m), None);
+        let View::Column { children: c2, .. } = &f2 else { panic!("col") };
+        let View::Table { col_widths: w2, .. } = &c2[0] else { panic!("table") };
+        assert_eq!(w2.as_deref(), Some(&[150.0f32][..]));
+        assert_eq!(cache.gens, vec![2], "宽度态变化必须重建（gens 增）");
+        // 帧三：宽度不变 → 恢复复用。
+        let _ = render_document_streamed_with(&mut cache, src, true, None, None, Some(&m), None);
+        assert_eq!(cache.gens, vec![2], "宽度态未变应复用（gens 不增）");
     }
 
     /// PLAN-045 T4：map 键未命中（表内容变更 ⇒ 新键）→ col_widths None

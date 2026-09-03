@@ -121,6 +121,11 @@ pub enum UiActionType {
     /// 写臂 scroll_to 全走真实机制。mouse-area 无 vnode 可寻址
     /// （vnode_converter 映射为 Text），寻址由 value 携带 widget 名。
     Drag,
+    /// Resize a table column (PLAN-045 T7)。对 Table 节点直发（坐标命中
+    /// 层由 rust 单测覆盖——待澄清②）经合成事件 `__mcp_resize_col`
+    ///（input_value = "t{表键}␟col␟width"）走 OnColResize 拦截同一
+    /// rust 直写快道。
+    ResizeCol,
 }
 
 impl fmt::Display for UiActionType {
@@ -135,6 +140,7 @@ impl fmt::Display for UiActionType {
             UiActionType::Submit => write!(f, "submit"),
             UiActionType::Scroll => write!(f, "scroll"),
             UiActionType::Drag => write!(f, "drag"),
+            UiActionType::ResizeCol => write!(f, "resize_col"),
         }
     }
 }

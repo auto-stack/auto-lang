@@ -4124,6 +4124,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 spacing: _,
                 col_spacing,
                 style: _,
+                table_key: _,
                 col_widths,
                 on_col_resize,
             } => {
@@ -5247,6 +5248,31 @@ fn write_ghost_state(component: &mut crate::ui::dynamic::DynamicComponent, id: i
     }
 }
 
+/// PLAN-045 T5/T7: 表格列宽 state 写入（OnColResize 拦截与 __mcp_resize_col
+/// 合成动作共用一条写入路径）。读-改-写保留其余表键；宽 +1e-3 防 nanbox
+/// 整值丢标签（write_ghost_state frac 同口径）。
+fn write_table_width_state(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    key: &str,
+    col: usize,
+    w: f32,
+) {
+    let mut obj = match component.read_state("table_widths") {
+        Ok(auto_val::Value::Obj(o)) => o,
+        _ => auto_val::Obj::new(),
+    };
+    let mut list: Vec<auto_val::Value> = match obj.get(key) {
+        Some(auto_val::Value::Array(a)) => a.iter().cloned().collect(),
+        _ => Vec::new(),
+    };
+    while list.len() <= col {
+        list.push(auto_val::Value::Double(0.001));
+    }
+    list[col] = auto_val::Value::Double(w as f64 + 0.001);
+    obj.set(key, auto_val::Value::Array(auto_val::Array::from(list)));
+    let _ = component.write_state("table_widths", auto_val::Value::Obj(obj));
+}
+
 /// Embed all onclick payload args (type-tagged) into the event string so they
 /// can be carried by the `Send` `IcedMessage`. Each arg is encoded as
 /// `{tc}{SEP}{val}` appended after the event name. Multi-arg handlers like
@@ -5671,6 +5697,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             col_spacing,
             style,
+            table_key,
             col_widths,
             on_col_resize,
         } => AbstractView::Table {
@@ -5685,6 +5712,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             col_spacing,
             style,
+            table_key,
             col_widths,
             // Plan 045 T1: 列宽拖拽回调跨消息类型包装（ScrollCallback 同款）。
             on_col_resize: on_col_resize.map(|cb| {
@@ -10980,31 +11008,33 @@ fn compare_pngs(
                     _ => None,
                 });
                 if let (Some(k), Some(c), Some(w)) = (key, col, w) {
-                    let mut obj = match state.component.read_state("table_widths") {
-                        Ok(auto_val::Value::Obj(o)) => o,
-                        _ => auto_val::Obj::new(),
-                    };
-                    let mut list: Vec<auto_val::Value> = match obj.get(k.as_str()) {
-                        Some(auto_val::Value::Array(a)) => a.iter().cloned().collect(),
-                        _ => Vec::new(),
-                    };
-                    while list.len() <= c {
-                        list.push(auto_val::Value::Double(0.001));
-                    }
-                    list[c] = auto_val::Value::Double(w as f64 + 0.001);
-                    obj.set(
-                        k.as_str(),
-                        auto_val::Value::Array(auto_val::Array::from(list)),
-                    );
-                    let _ = state
-                        .component
-                        .write_state("table_widths", auto_val::Value::Obj(obj));
+                    write_table_width_state(&mut state.component, &k, c, w);
                     *state.app.view_dirty.borrow_mut() = true;
                     return iced::Task::done(IcedMessage::from_dynamic(
                         &DynamicMessage::String("__noop".to_string()),
                     ));
                 }
             }
+        }
+
+        // PLAN-045 T7: MCP resize_col 直落——合成事件 __mcp_resize_col
+        //（input_value = "t{表键}␟col␟width"；mcp_server 侧已从 Table
+        // vnode props 解析表键）与 OnColResize 拦截同一 write_table_width_state
+        // 落 table_widths state；__noop 回发走一轮 update→view 让新列宽进当帧。
+        if msg.event == "__mcp_resize_col" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(k), Some(c), Some(w)) = (
+                parts.next(),
+                parts.next().and_then(|s| s.parse::<usize>().ok()),
+                parts.next().and_then(|s| s.parse::<f32>().ok()),
+            ) {
+                write_table_width_state(&mut state.component, k, c, w);
+                *state.app.view_dirty.borrow_mut() = true;
+                return iced::Task::done(IcedMessage::from_dynamic(
+                    &DynamicMessage::String("__noop".to_string()),
+                ));
+            }
+            return iced::Task::none();
         }
 
         // PLAN-044 T6: MCP click action——autodown 编辑壳块内坐标点击合成
@@ -15943,6 +15973,7 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
             VNodeProps::Table {
                 spacing,
                 col_spacing,
+                ..
             } => {
                 col = col.push(kv_row("spacing", spacing.to_string()));
                 col = col.push(kv_row("col_spacing", col_spacing.to_string()));
@@ -16226,6 +16257,7 @@ fn render_inspector_computed_tab(state: crate::ui::session::SessionViewRef) -> i
             VNodeProps::Table {
                 spacing,
                 col_spacing,
+                ..
             } => {
                 col = col.push(kv_row("spacing", spacing.to_string()));
                 col = col.push(kv_row("col_spacing", col_spacing.to_string()));
@@ -19289,6 +19321,7 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
             VNodeProps::Table {
                 spacing,
                 col_spacing,
+                ..
             } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()));
                 col = col.push(kv_row::<WrapperMsg<C>>("col_spacing", col_spacing.to_string()));

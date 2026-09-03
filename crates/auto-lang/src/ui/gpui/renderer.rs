@@ -396,6 +396,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 col_spacing,
                 style,
                 // Plan 045 T1: 列宽/拖拽为 iced(VM) 轨交互面,gpui 臂不消费。
+                table_key: _,
                 col_widths: _,
                 on_col_resize: _,
             } => {

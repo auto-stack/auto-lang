@@ -660,6 +660,7 @@ fn plan045_table_view<M: Clone + std::fmt::Debug>(col_widths: Option<Vec<f32>>) 
         spacing: 0,
         col_spacing: 8,
         style: None,
+        table_key: None,
         col_widths,
         on_col_resize: None,
     }
@@ -711,6 +712,7 @@ fn plan045_resize_table_view(col_widths: Option<Vec<f32>>) -> View<Plan045Resize
         spacing: 0,
         col_spacing: 8,
         style: None,
+        table_key: None,
         col_widths,
         on_col_resize: Some(ColResizeCallback::new(|m| {
             Plan045ResizeMsg::Resized(m.col, m.width)
