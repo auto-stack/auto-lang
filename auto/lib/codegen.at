@@ -377,7 +377,13 @@ pub type CG {
 
     fn fail(msg str) {
     if self.err == "" {
-        self.err = "CODEGEN-ERROR:" + msg
+        // P532 W1 G6:位置注入(零布局风险——复用既有 cur_line 状态机,
+        // 最后发射的 .line 标记;struct 加字段实证破坏实例布局,弃)
+        if self.cur_line > 0 {
+            self.err = "CODEGEN-ERROR:" + msg + " @line " + self.cur_line.to_string()
+        } else {
+            self.err = "CODEGEN-ERROR:" + msg
+        }
     }
 }
 
@@ -1648,16 +1654,19 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                     cg_call_args(c, p)
                                     c.emit(OpCode.CallNat, "nat#" + snid.str(), snid)
                                     dot_done = true
-                                    c.str_flag = 0
-                                    c.arr_flag = 0
-                                    c.inst_ty = ""
-                                    // 链式接收者型:slice/replace/trim 回 str,
-                                    // len/char_at 回 int(b58 链式 u.slice().trim() 锚)
+                                    // 链式接收者型+var 绑定类型回传
+                                    // (str_flag 单值通道——var t = s.replace()
+                                    // 后续 t.replace 解析,dump_escape 锚):
+                                    // slice/replace/trim 回 str,len/char_at 回 int
                                     if snid == 1502 || snid == 1500 {
                                         c.recv_ty = ""
+                                        c.str_flag = 0
                                     } else {
                                         c.recv_ty = "str"
+                                        c.str_flag = 1
                                     }
+                                    c.arr_flag = 0
+                                    c.inst_ty = ""
                                     c.primary_tyname = ""
                                     dot_seq = dot_seq + 1
                                     continue
