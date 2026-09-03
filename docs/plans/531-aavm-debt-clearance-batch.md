@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（债务清欠,塔顶验证链前置）
 
 affects: [aavm, auto-lang/trans]
-current_step: 1
+current_step: 7
 total_steps: 11
 ---
 
@@ -210,13 +210,65 @@ D-a2r-mode-entry（:485）、`scripts/aavm_build_smoke.sh`、tt 档现状）
      prelude/harness→cargo build）+ aavm2_a2r.rs fourpath runner（#[ignore]
      验收档）。aavm.at 入口形态探针沿此骨架改 harness 为 aavm.at 自身
      main+原生 shim（process/IO.read_line/parse_int/a2r_std::value_len）。
-2. [ ] W0b 红先行：两真缺陷最小件/两洞复现/May 裸值件落盘（红证）。
-3. [ ] 真缺陷①修复（独立提交+锚）。验证：新金样绿。
-4. [ ] 真缺陷②修复（独立提交+锚）。验证：同上。
-5. [ ] tt 28 件批量 bless（逐件 diff 清单评审）+入复审清单。
+2. [✅ 已完成] W0b 红先行：两真缺陷最小件/两洞复现/May 裸值件落盘（红证）。
+   - 红证留档：(a) 两真缺陷=tt 基线 28 红（`scratch/p531/tt_28_reds.txt`）+
+     rustc 报文（①"cast cannot be followed by a method call"+E0282;②
+     E0605 族 str as usize——最小语料 probe_map_get.at 复现 `self.tools`
+     接收者即触发）;(b) May 裸值=probe_may_bare.at 发射 `return n * 10;`
+     于 `-> Option<i64>` 位,rustc E0308;(c) 洞①全链红证=aavm_at_mode
+     探针（worktree `tests/aavm_at_mode_tests.rs`,#[ignore] 验收锚）实测
+     merged 转译 aavm.at（13k 行,含全 lib）构建仅 1 错：
+     `ev_run_files(argv.get(1))` E0308 Option<&String> vs &str——与台账
+     记录逐字吻合;(d) 洞②**不重现**：argv 文本垫片桥接后 b34 经转译版
+     aavm 输出 10/20（转译版 struct 字段表已绿——疑 525 codegen 早注册批
+     顺带清偿;步骤7 转为无垫片复证+核销注记）。
+   - 探针基建修正留痕：merge 入口须为**目录**（文件入口经 use 发现,
+     use 已剥→lib 不入）;原生 shim 形态=ProcessShim const 实例（mod/
+     关联函数在 `process.args()` 值位是 E0423/E0599）+IO 静态+
+     parse_int 扩展 trait+a2r_std::value_len。
+3. [✅ 已完成] 真缺陷①修复（独立提交+锚）。验证：新金样绿。
+   - 提交 b9e044e20：`dot_arg_owned_param` 排除 `@` 伪字段
+     （rust.rs :9147 形）;pointer/004 tt 件翻转绿;修复发射与金样逐字节
+     一致（残余 E0133 unsafe-deref 为裸指针语料固有形,金样同形）。
+4. [✅ 已完成] 真缺陷②修复（独立提交+锚）。验证：同上。
+   - 提交 978bad5fd：新增 `current_impl_type`（type/ext 方法发射位设置）
+     +`recv_is_list_like`（self.<field> 经 struct_field_types 实型解析,
+     仅 List/Array 索引化,不可解析回落 .get 方法形）;两处 get 转换位
+     （索引化位+实参 as usize 位）统一走该判定。arc_dyn_spec/008 的
+     `self.tools.get(name)` 与金样一致（残余 `mut tool` 参数位漂移属
+     bless 面）;E0605 str-as-usize 消失（残余 Arc 裸引为该语料金样
+     固有形,两形同）。
+5. [✅ 已完成] tt 28 件批量 bless（逐件 diff 清单评审）+入复审清单。
    验证：`cargo tt` 全绿。
-6. [ ] argv.get 解包修复+aavm.at 全链实测（b07→55,垫片撤除）。
-7. [ ] 转译版 struct 字段表修复（b34→10/20 实测;超量级转 532 登记）。
+   - 实际 bless 27 件（28−pointer/004 真缺陷①修复后直接翻绿,金样未动）。
+     逐件 diff 评审归类（27 件全量清单与 diff 摘要存
+     `scratch/p531/bless_diffs.txt`）:mut 参数漂移 6/`(i) as usize` 括号化
+     3/split→map(to_string).collect 物化 6/as u32 字段字面量强转 2/
+     算符优先级显式括号 1（514 W2 修复本体）/builder 链拆句 1/
+     File::write_text→std::fs 直写 2/a2r_std use 前置 2/fn 指针字段
+     .clone() 1/私有 const doc 注释发射 1/str 借用 .as_str() 1——全部为
+     433-514 期发射演进的滞后金样,无真缺陷形态。
+   - tt 入复审清单：`.cargo/config.toml` tf 注记块增补（沿 507
+     desktop_protocol 先例,tf 档语义不动）:"复审清单须另跑 cargo tt"
+     （a2r/cookbook 文本金样曾脱离门禁 444/514/523 三期累积）。
+   - 提交 dace61b20。
+6. [✅ 已完成] argv.get 解包修复+aavm.at 全链实测（b07→55,垫片撤除）。
+   - 提交 f0c10894f：`infer_type_from_expr` 增 `process.args()` 臂 →
+     `Type::List(StrOwned)`（P524 List 契约;`env.args` 的 a2r_std String
+     契约不动）。`var argv = process.args()` 绑定型经 store 推断登记 →
+     `.get(1)` 走既有 List 索引化 + `arg_is_str_get` 实参 `.as_str()` 借用
+     → `ev_run_files(argv[(1) as usize].as_str())`。
+   - 全链实测（aavm_at_mode 探针,无垫片）：merged 转译 aavm.at(全 lib
+     13k 行)+原生 shim → cargo build 零 E0308 → `b07_fib.at` 位置参数
+     运行输出 **55** ✓;文本垫片路径自然退役（构建直接成功,垫片分支
+     不触发）。另 tt 全绿 3746/3746（bless 后复验）。
+7. [✅ 已完成] 转译版 struct 字段表修复（b34→10/20 实测;超量级转 532 登记）。
+   - **实测不重现（已绿）**：无垫片全链构建后 `b34_struct_basic.at` 经
+     转译版 aavm 输出 **10/20** ✓（位置参数→ev_run_files→cg_compile_files
+     →GetField 动态查表全链）。判断：525 的 codegen 早注册批
+     （codegen.at W2"早注册+尾态刷新"）已顺带清偿本洞,台账登记后未复测。
+     债务核销注记按"已由 525 顺带清偿+本计划实测复证"落 KNOWN-DEBT
+     （步骤10 文档回写）;不转 532（无遗留工作）。
 8. [ ] pac target 链补齐（冒烟切正路）+May 裸值修复+（可选）`??`。
 9. [ ] 全量回归+折叠合入 master。
 10. [ ] 文档回写+复审 → reviewed。
