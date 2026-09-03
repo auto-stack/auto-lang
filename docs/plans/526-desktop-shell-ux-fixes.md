@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [ui/session, ui/iced, shell.at, desktop.at, settings.at, 028-launcher]
-current_step: 21
+current_step: 27
 total_steps: 27
 ---
 
@@ -489,7 +489,7 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
 
 ### 波9 追加反馈五（用户六轮实机反馈，2026-09-03 五题）
 
-- [ ] T23 窗口客户区 hover 事件透穿：app 窗口底色半透明（518 G6 档位，
+- [✅ 已完成] T23 窗口客户区 hover 事件透穿：app 窗口底色半透明（518 G6 档位，
       纯视觉）但鼠标 hover 事件穿透到下层——拖动窗口经过桌面 icon 或
       背后 app 的 button 时被判定 hover，光标变 Pointer。根因候选——
       Stack 空层事件穿透语义下，客户区包裹 mouse_area 只捕获 press，
@@ -501,34 +501,67 @@ build_shell_component 进程内编译，Stack 一层），因此 Q5/Q6/Q7/Q10-UI
       pointer_area/renderer MouseArea 臂）。
       验证：实机拖动窗口扫过桌面 icon 与下层按钮，光标恒 Arrow、下层
       无 hover 提亮；客户区内交互不受影响。
+      [✅ 已完成] 波9 提交 be2c17d62。修=`virtual_window.rs` 标题条/客户区
+      包裹 mouse_area 加 `.interaction(Idle)`——iced 0.14 Stack::update 自带
+      levitate 遮挡语义（上层回报非 None interaction 即对下层悬空光标），
+      此前客户区回报 None 导致下层 button hover/Pointer 透穿；半透明是纯
+      视觉与遮挡解耦。实机：遮挡点（Todo 窗压住计算器按键）光标句柄恒为
+      iced Arrow（65539），无 Pointer 泄漏。
 
-- [ ] T24 最大化高度多算 1–2px：底部边界被任务栏盖住。根因候选——
+- [✅ 已完成] T24 最大化高度多算 1–2px：底部边界被任务栏盖住。根因候选——
       `toggle_maximize_win` 的 `usable_rect`（ReservedEdges::taskbar）
       与任务栏实际占高/顶缘阴影差 1–2px。修：maximize 高度扣掉任务栏
       实际上缘重叠量（或 taskbar 预留值对齐实测）。
       文件：`crates/auto-lang/src/ui/session.rs`、`ui/layout.rs`。
       验证：实机最大化后窗口底缘完整可见（与任务栏间无遮挡）。
+      [✅ 已完成] 波9 提交 be2c17d62。根因坐实：`TASKBAR_HEIGHT=48` 而
+      shell.at 任务栏行 `h-14`=56px（Tailwind 4px/单位，实测渲染 56），
+      预留少 8px。修：常量 48→56（布局预留/最大化可用区/网格 dock edges
+      同源联动）。session 4 处硬编码期望值 752/376→744/372 同步更新；
+      session 91/91、desktop 142/142。
 
-- [ ] T25 焦点环圆角 vs 窗体内容方角外凸：焦点环 16px 圆角，但 app
+- [✅ 已完成] T25 焦点环圆角 vs 窗体内容方角外凸：焦点环 16px 圆角，但 app
       自绘背景方角，底部两角内容凸出环外。修（优先级序）——①客户区
       容器按窗体圆角裁剪（若 iced 0.14 clip 支持圆角路径）；②不可行
       则焦点环与窗体描边改方角（用户认可降级）。
       文件：`crates/auto-lang/src/ui/iced/virtual_window.rs`。
       验证：实机聚焦 app 窗口，底部两角无内容外凸（或环为方角）。
+      [✅ 已完成] 波9 提交 be2c17d62。取证：iced 0.14 container clip 为矩形
+      viewport 求交（container.rs:351），无圆角裁剪路径 → 方案①不可行，
+      按用户认可降级②：`window_radius()` 分角圆角——顶部 16 圆（标题条带
+      属 chrome 随 win_box 圆角绘制）、底部 0 方（与 app 方角内容一致），
+      win_box/焦点环/阴影同源。实机：环贴合内容，底部两角无外凸。
 
-- [ ] T26 桌面 icon 双击打开不生效：桌面 icon 无双击语义。修——
+- [✅ 已完成] T26 桌面 icon 双击打开不生效：桌面 icon 无双击语义。修——
       renderer MouseArea 臂/builder 事件表补 on_double_click 映射 +
       desktop.at icon 声明双击打开对应 app（单击行为保持）。
       文件：`crates/auto-lang/src/ui/iced/renderer.rs`（MouseArea 臂/
       builder 事件表）、`crates/auto-lang/assets/desktop.at`。
       验证：实机双击桌面 icon 打开对应 app；单击/右键行为不回归。
+      [✅ 已完成] 波9 提交 be2c17d62。取证推翻立项假设：ondblclick 管线
+      （484）与 desktop.at 声明均在，真因是 **DesktopBus 排水只读 shell
+      的 `__desktop_cmd`**（session.rs drain_desktop_commands），desktop
+      表面自己写的 `activate	<id>` 无人消费。修：drain 补排 desktop_app
+      一路（`desktop_app` 字段既有）。实机：handler 直调 desktop
+      ActivateApp("013-todo") → Todo 窗口弹出置顶聚焦（activate 执行臂
+      renderer.rs:8441 既有）。双击手势本身（iced on_double_click，484
+      既有）建议用户日常复核。
 
-- [ ] T27 任务栏 icon 右键 ContextMenu 宽度爆表：菜单横向沾满整个
+- [✅ 已完成] T27 任务栏 icon 右键 ContextMenu 宽度爆表：菜单横向沾满整个
       桌面宽度（应为目标内容宽度 hug）。根因候选——popover/菜单根
       容器 width Fill（shell.at 菜单根或 popover 表面默认撑满）。
       修：菜单根宽度 hug（w-auto 语义），最大宽上限可选。
       文件：`crates/auto-lang/assets/shell.at`（或 popover.rs 表面）。
       验证：实机任务栏 icon 右键，菜单宽度=内容宽，锚定在 icon 上方。
+      [✅ 已完成] 波9 提交 be2c17d62（master 合并含 528 W9 缺省面板叠加
+      +mut follow-up）。取证链——popover Panel content 布局 limits 上限=
+      viewport，面板列无 width 类时 visual-wrap 容器按块级语义 Fill
+      （renderer.rs apply_column_style）→ 撑满 1280（探针实证 content
+      1280×112、子列 300×104 正确）。修：builder Popover 臂给无 width 类
+      的面板注入 `Width(Auto)` + `IcedSize::Shrink` 新变体（convert_size
+      Auto 误映射 Full→改 Shrink；assets 无 w-auto 依赖，零回归）。
+      实机：菜单宽度=内容宽、锚定 icon 上方。与 528 W9 的 w-72 缺省
+      （class 缺省场景）互补，合并冲突已叠加解决。
 
 - [✅ 已完成] T22 标题栏三键命中盒正方形化（用户五轮实机截图反馈，
       2026-09-03）：症状——`– ▢ ×` 命中盒 30×24 长方形，横向视觉松散。
