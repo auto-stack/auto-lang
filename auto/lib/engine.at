@@ -49,6 +49,8 @@
 // (部分② 的 k=3 实例形态枚举化)。
 // Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;纯解释器层仅依赖 codegen)
 use auto.lib.codegen: CG, OpCode, cg_compile, cg_compile_files, op_name
+// P532 W1:审计补全(跨模块显式导入——宿主宽松链接对齐)
+use auto.lib.parser: int_val
 
 enum Val {
     VInt(int)
