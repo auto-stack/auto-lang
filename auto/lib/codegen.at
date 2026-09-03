@@ -1640,6 +1640,29 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 dot_seq = dot_seq + 1
                                 continue
                             }
+                            if recv_ty2 == "str" {
+                                var snid = str_nat_id(mname2)
+                                if snid >= 0 {
+                                    p.next()
+                                    p.next()
+                                    cg_call_args(c, p)
+                                    c.emit(OpCode.CallNat, "nat#" + snid.str(), snid)
+                                    dot_done = true
+                                    c.str_flag = 0
+                                    c.arr_flag = 0
+                                    c.inst_ty = ""
+                                    // 链式接收者型:slice/replace/trim 回 str,
+                                    // len/char_at 回 int(b58 链式 u.slice().trim() 锚)
+                                    if snid == 1502 || snid == 1500 {
+                                        c.recv_ty = ""
+                                    } else {
+                                        c.recv_ty = "str"
+                                    }
+                                    c.primary_tyname = ""
+                                    dot_seq = dot_seq + 1
+                                    continue
+                                }
+                            }
                             if recv_ty2 != "" {
                                 var sym = recv_ty2 + "." + mname2
                                 var fe2 = -1
@@ -2988,6 +3011,19 @@ fn strip_generic(ty str) str {
 
 // W3(525):容器方法 → CallNat id(宿主 native_catalog:auto.list 族;
 // 语料面=lib 盘点最小集 5 方法;未命中 -1)
+// P532 W1 G1+G2:str 方法族 native id(镜像宿主 native_catalog 运行时
+// id;M4 反汇编对拍锚:b58 host 期望 nat#1500/1502/1524/1510/1507)
+fn str_nat_id(m str) int {
+    is m {
+        "len" -> 1500
+        "char_at" -> 1502
+        "slice" -> 1524
+        "replace" -> 1510
+        "trim" -> 1507
+        else -> -1
+    }
+}
+
 fn list_nat_id(m str) int {
     is m {
         "new" -> 100
