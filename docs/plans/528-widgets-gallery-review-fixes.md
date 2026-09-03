@@ -432,8 +432,8 @@ overlay/virtual_window/dock 合成,非示例层可修。
 | W9 | VM 版 popover：点击按钮有弹框但无边框无背景 | 用户（人工检查） | ✅ 已修复并验证（本文档 W9;默认面板 chrome w-72 bg-popover border rounded-md shadow-md p-4） |
 | W10 | VM 版窗口收窄触发 mobile 断点后内容成双份（文字/按钮/代码块全部 ×2 重叠），底部导航栏出现 | 用户（人工检查+截图） | 🔍 已立项 **PLAN-530** 深挖（根因定位见 W10 节） |
 | W11 | VM 版首页 sidebar 顶端被 header 掩盖（Home 项裁切一半）;深查发现与 /position 页整页不绘制同族——**VM 绘制与控件树不一致**（树单份正确,绘制错位/缺失） | 用户（人工检查+ZCode 实证） | 🔍 升级并入 **PLAN-530** VM shell 绘制一致性专项（证据见 W11 节） |
-| W12 | VM 版 ToggleGroup 仍纵向裸排 B/I/U（W7 只修了 vue 轨；VM 无 toggle_group 映射） | 用户（人工检查+截图） | 📌 排队——实现路径:render_support/render_dynamic_view 增 toggle_group 映射(横排 joined button 组,消费 variant/size),与 PLAN-530 排期 |
-| W13 | VM 版 alert-dialog 点击无弹层（overlay 家族 fallback "renders as Column"）;应按 Popover 原语(Plan 422)实现悬浮面板 | 用户（人工检查） | 📌 排队——实现路径:复用 Plan 422 Popover 原语改道 alert_dialog 构建(居中放置+遮罩+默认面板 chrome,复用 W9 成果);依赖 PLAN-530 绘制一致性先行 |
+| W12 | VM 版 ToggleGroup 仍纵向裸排 B/I/U（W7 只修了 vue 轨；VM 无 toggle_group 映射） | 用户（人工检查+截图） | ➡️ 已移交 **PLAN-534** P2（依赖 PLAN-530 完成） |
+| W13 | VM 版 alert-dialog 点击无弹层（overlay 家族 fallback "renders as Column"）;应按 Popover 原语(Plan 422)实现悬浮面板 | 用户（人工检查） | ➡️ 已移交 **PLAN-534** P1（含 dialog/sheet/drawer/hovercard 同族扩展;依赖 PLAN-530 完成） |
 
 ### 观察（OBS，未定是否立项）
 
