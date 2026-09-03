@@ -1217,6 +1217,10 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         "scroll" => UiActionType::Scroll,
         // PLAN-043 T10: drag——mouse-area 拖拽序列（handler 通道合成）。
         "drag" => UiActionType::Drag,
+        // PLAN-044 T6: click——autodown 编辑壳块内坐标点击（__mcp_click
+        // 合成事件，走 core hit_test 真路径）。映射 Press 仅为枚举载体，
+        // 下方前分支拦截，不入 handler 提取通道。
+        "click" => UiActionType::Press,
         _ => return error_result(format!("Unknown action: '{}'", action_str)),
     };
 
@@ -1307,6 +1311,67 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         return text_result(format!(
             "Dragged {} via {} (down={} move={} up={}) (status: ok)",
             w, element_id_str, down, mv, up
+        ));
+    }
+
+    // PLAN-044 T6: click——autodown 编辑壳块内坐标点击。element_id 须为
+    // autodown_editor 的 vnode_N（VM 模式 typed view 按路径解析出编辑壳
+    // key）；value = "x,y" widget 本地坐标。经合成事件 __mcp_click
+    //（input_value = "key␟x,y"）在 update 层走 core.handle_input 真路径
+    //（hit_test 建焦 → block_rects 取高 → ghost state 直写），与
+    // OnEditorFocus 拦截同一 write_ghost_state。不走 handler 提取通道
+    //（编辑壳焦点非 DSL handler 面）。
+    if action_str == "click" {
+        let xy = match value.as_ref() {
+            Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
+            _ => return error_result("Action 'click' requires a string 'value' = \"x,y\" (widget-local px)"),
+        };
+        {
+            let mut it = xy.split(',');
+            if it.next().and_then(|v| v.trim().parse::<f64>().ok()).is_none()
+                || it.next().and_then(|v| v.trim().parse::<f64>().ok()).is_none()
+            {
+                return error_result("Action 'click' value must be 'x,y' float pair");
+            }
+        }
+        let key = {
+            let shared = shared_handle.lock().unwrap();
+            let vnode = match element_id {
+                ElementId::Vnode(v) => shared.styled_vtree.as_ref().and_then(|s| s.vtree.get(v)),
+                ElementId::Aura(_) => None,
+            };
+            let view = match shared.view.as_ref() {
+                Some(v) => v,
+                None => return error_result("Action 'click' requires VM mode (typed view)"),
+            };
+            let vnode = match vnode {
+                Some(n) => n,
+                None => return error_result(format!("VNode not found: {}", element_id_str)),
+            };
+            let target = match find_view_by_path(view, &vnode.path) {
+                Some(t) => t,
+                None => return error_result(format!("View not found at path {:?}", vnode.path)),
+            };
+            match target {
+                View::AutodownEditor { key, .. } => key.clone(),
+                _ => return error_result("Action 'click' targets autodown_editor elements only"),
+            }
+        };
+        let payload = format!("{}{}{}", key, crate::ui::iced::renderer::PAYLOAD_SEP, xy);
+        let msg = ActionMessage {
+            target: ActionTarget::Event { widget: String::new(), event: "__mcp_click".to_string() },
+            action: UiActionType::Press,
+            value: Some(payload),
+        };
+        {
+            let shared = shared_handle.lock().unwrap();
+            if let Err(e) = shared.send_action(msg) {
+                return error_result(e);
+            }
+        }
+        return text_result(format!(
+            "Clicked {} at {} (autodown editor block focus) (status: ok)",
+            element_id_str, xy
         ));
     }
 

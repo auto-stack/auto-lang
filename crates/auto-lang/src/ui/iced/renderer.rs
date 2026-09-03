@@ -5185,6 +5185,22 @@ pub struct IcedMessage {
 /// name. Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
 pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
 
+/// PLAN-044 T5/T6：ghost 占位 state 写入（OnEditorFocus 拦截与 __mcp_click
+/// 合成点击共用一条写入路径）。ghost_id = "block-N" 字符串（vue
+/// data-block-id 同源；空串 = 无 ghost）；ghost_height 带 +1e-3 强制分数
+/// 形态（防 nanbox 整值丢标签，0.001px 误差不可见——043 T6 frac 同口径）。
+/// id < 0 = 失焦变体（清空）。
+fn write_ghost_state(component: &mut crate::ui::dynamic::DynamicComponent, id: i32, h: f32) {
+    let frac = |v: f64| auto_val::Value::Double(v + 0.001);
+    if id >= 0 {
+        let _ = component.write_state("ghost_id", auto_val::Value::Str(format!("block-{id}").into()));
+        let _ = component.write_state("ghost_height", frac(h as f64));
+    } else {
+        let _ = component.write_state("ghost_id", auto_val::Value::Str(String::new().into()));
+        let _ = component.write_state("ghost_height", frac(0.0));
+    }
+}
+
 /// Embed all onclick payload args (type-tagged) into the event string so they
 /// can be carried by the `Send` `IcedMessage`. Each arg is encoded as
 /// `{tc}{SEP}{val}` appended after the event name. Multi-arg handlers like
@@ -10878,21 +10894,61 @@ fn compare_pngs(
             };
             if clean == "OnEditorFocus" {
                 if let (Some(id), Some(h)) = (geti(), getf()) {
-                    let frac = |v: f64| auto_val::Value::Double(v + 0.001);
-                    if id >= 0 {
-                        let _ = state.component.write_state(
-                            "ghost_id",
-                            auto_val::Value::Str(format!("block-{id}").into()),
-                        );
-                        let _ = state.component.write_state("ghost_height", frac(h as f64));
-                    } else {
-                        // 失焦变体：清空（空串 = 无 ghost）。
-                        let _ = state.component.write_state("ghost_id", auto_val::Value::Str(String::new().into()));
-                        let _ = state.component.write_state("ghost_height", frac(0.0));
-                    }
+                    write_ghost_state(&mut state.component, id, h);
                     return iced::Task::none();
                 }
             }
+        }
+
+        // PLAN-044 T6: MCP click action——autodown 编辑壳块内坐标点击合成
+        //（input_value = "storage_key␟x,y"；mcp_server 侧已从 vnode path
+        // 解析出编辑壳 storage key）。直调 core.handle_input（真实
+        // hit_test/焦点写入路径），focus_changed 后与 widget publish →
+        // OnEditorFocus 拦截同一 write_ghost_state 落 ghost state；唯一
+        // 不覆盖的是 iced Shell 消息分发本身（T2 单测在册）。
+        if msg.event == "__mcp_click" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(sk), Some(xy)) = (parts.next(), parts.next()) {
+                let mut it = xy.split(',');
+                if let (Some(x), Some(y)) = (
+                    it.next().and_then(|s| s.parse::<f32>().ok()),
+                    it.next().and_then(|s| s.parse::<f32>().ok()),
+                ) {
+                    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                    {
+                        use crate::ui::autodown_editor as ade;
+                        use crate::ui::autodown_editor::DocInput;
+                        let core = ade::autodown_editor(sk);
+                        let out = crate::ui::code_editor::core::with_font_system(|fs| {
+                            core.handle_input(
+                                fs,
+                                DocInput::MousePressed {
+                                    button: crate::ui::code_editor::core::EditorButton::Left,
+                                    x,
+                                    y,
+                                },
+                                &mut crate::ui::code_editor::core::NullClipboard,
+                            )
+                        });
+                        if out.focus_changed {
+                            let block = core.focused_block();
+                            let h = block
+                                .and_then(|i| core.block_rects().get(i).map(|r| r.h))
+                                .unwrap_or(0.0);
+                            write_ghost_state(
+                                &mut state.component,
+                                block.map(|b| b as i32).unwrap_or(-1),
+                                h,
+                            );
+                            *state.app.view_dirty.borrow_mut() = true;
+                        }
+                    }
+                    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                    let _ = (sk, x, y);
+                    return iced::Task::none();
+                }
+            }
+            return iced::Task::none();
         }
 
         // PLAN-043 T6: MCP scroll action 直落——scrollable 无 VM handler，
