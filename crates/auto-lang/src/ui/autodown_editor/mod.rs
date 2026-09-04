@@ -25,5 +25,5 @@ pub mod widget;
 pub use core::{
     autodown_editor, autodown_editor_dispose, autodown_editor_sync, autodown_editor_text,
     storage_key, AutodownEditorCore, BlockDrawCtx, DocDrawList, DocFrame, DocInput, DocLayout,
-    DocOutput, DocRun, VIEW_FENCE_PREFIX,
+    DocOutput, DocRun, SelAnchor, VIEW_FENCE_PREFIX,
 };
