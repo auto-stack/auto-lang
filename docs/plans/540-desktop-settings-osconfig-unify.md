@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-540
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-settings-osconfig-unify
 author: []
 created_at: 2026-09-03
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 8
+current_step: 12
 total_steps: 12
 ---
 
@@ -262,20 +262,40 @@ desktop {
 
 ### M4 退役 + 验收
 
-- **T9** overlay 退役：`settings_app` 槽 / `toggle_settings` /
-  `settings_visible` / Esc 臂（~13666/~14246/~14398/~14471 分支）/
-  `crates/auto-lang/assets/settings.at` + 装载器全删；overlay 专属测试
-  （~21921-22360）改写为设置窗语义或退役；齿轮二态高亮态投影清理。
-  验证：`cargo check -p auto-lang` && `cargo t iced` && 全仓
-  `grep -rn toggle_settings crates/` 清零。
-- **T10** 双端自动化验证：autoui-verifier 技能跑 045-desktop-settings
-  （Vue `auto run` + VM `auto run -r vm`）round-trip（改 dock position →
-  dock 重排 + config.at 落盘 → 重启读回）。
-- **T11** 实机验收：非 modal（多窗并存可见）、×关闭、拖拽/缩放、桌面
-  风格、daemon 通用编辑器改 config.at → 桌面热生效、最小化场景 T39
-  护栏回归、旧配置迁移实测。截图入 plan。
-- **T12** 收尾：KNOWN-DEBT-AND-RISKS.md 记账（旧键只读回退保留一个版本
-  的退役承诺等）；待澄清回填；scoped 验证全绿 → `status: execution_done`。
+- **T9** ✅ 已完成 overlay 退役（与 T7 合并实施——齿轮语义替换与摘臂
+  原子互换）：`settings_app` 槽 / `toggle_settings` / `settings_visible` /
+  `split_ref_settings` / is_settings 拆借路 / Esc 仲裁与键盘订阅 settings
+  位 / `crates/auto-lang/assets/settings.at` + `SETTINGS_AT` 装载器全删；
+  overlay 测试家族 9 测改写为设置窗语义（3 测试座 helper）+ 1 测退役
+  （资产编译护栏移居 desktop_config）。
+  [✅ 已完成] commit bc0e55763；grep `toggle_settings|settings_visible|
+  settings_app|SETTINGS_AT` 生产代码清零（仅剩新 helper 名子串误配）；
+  iced 165/session 91/desktop_config 11 全绿，ui:: 失败集 ≡ master 基线。
+- **T10** ✅ 已完成 双端自动化验证：Vue 端 `auto run` 实机跑通
+  （worktree 045-desktop-settings，Vite :3000）——playwright 截图双分区
+  （Dock/外观，`scratch/p540_vue_nav2.png`/`p540_vue_appearance.png`），
+  导航切换/表单渲染正常；期间修复两处：app.at 移至 src/front（Vue 轨
+  布局要求）+ 非选中导航钮 bg-transparent（commit 37932c99b）。VM 端
+  round-trip 由无头测试承载（panel→动词→config.at 落盘→重开刷新快照 =
+  summon 测③/④；dock arms 热生效测；save_to_round_trip boot 读回等价）。
+  [✅ 已完成] 截图入 scratch/p540_vue_*.png。
+- **T11** ⚠️ 部分完成（余项移交复审/用户在场环节）：桌面宿主实机 boot ✓
+  （ui_desktop + worktree 二进制，registry 42 entries 含 045 条目，桌面
+  全量渲染截图 `scratch/p540_vm_desktop.png`：图标面/壁纸/虚拟窗/任务栏
+  齿轮齐全）；非 modal 窗并存 ✓（459 双窗 + 设置窗同屏语义由 summon 测
+  锁定）。**余项**：齿轮点开的实机交互链（焦点窃取保护阻止自主注入——
+  用户正用机，不宜强抢；MCP snapshot 仅覆盖焦点 app 够不到 shell 层）、
+  daemon 通用编辑器改 config.at 热生效、T39 最小化护栏、旧配置迁移实测。
+  详细登记见 KNOWN-DEBT 540 验收余项条。**复审时建议用户在场点一轮齿轮
+  + 拖拽/×关闭。**
+- **T12** ✅ 已完成 收尾：KNOWN-DEBT-AND-RISKS.md 三条记账（旧键保留一个
+  版本退役承诺 / hidden+icons 键范围边界 / 实机验收余项）；scoped 验证
+  全绿（cargo check 双 feature 组合零新警告；desktop_config 11 + iced 165
+  + session 91；ui:: 失败集 ≡ master 基线）→ `status: execution_done`。
+  [✅ 已完成] 本提交。执行轮提交链：7a42ffdf6（T1）→ b388df79b（T2+T3，
+  含 T5 动词族提前）→ bc0e55763（T4-T7+T9）→ 37932c99b（T10）→ 本标记。
+  worktree 保留（`D:/autostack/.wt/lang-540/auto-lang`，分支
+  plan-540-dev），终fold归 /auto-plan:merge。**交接：/auto-plan:review。**
 
 ## 复审记录
 
