@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-550
-status: executing             # drafting → executing → execution_done → reviewed → archived
+status: execution_done      # drafting → executing → execution_done → reviewed → archived
 feature_name: null-family-audit
 author: [zhaopuming]
 created_at: 2026-09-04
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径
-current_step: 4
+current_step: 12
 total_steps: 12
 ---
 
@@ -219,8 +219,9 @@ print((s + y).to(str))     // y=null → "a-2147483647"（垃圾数字入字符�
 - [x] T11 未初始化 var 处置：按 T02 结论实施禁止或记录（验证：探针 /
       `cargo tv`）
       [✅ 已完成] 记录证据分支：T02 盘存结论=现状即禁止（p10/p11 探针，裸 `var x` 与 `var x: int` 均 parser E0007 拒绝，无未初始化值形态），证据在执行注记 T02 节——无需实施禁止，验收标准 6 后半分支成立
-- [ ] T12 折叠：KNOWN-DEBT 回写（越界/翻案行为变更登记）+ 全量门禁
+- [x] T12 折叠：KNOWN-DEBT 回写（越界/翻案行为变更登记）+ 全量门禁
       `cargo tv` + `cargo tt` + py 五套件三方（验证：门禁输出留档）
+      [✅ 已完成] KNOWN-DEBT P550-D1..D7 登记在案（翻案存量语义/str 越界未覆盖/i32 哨兵不可守卫/CALL 守卫单测钉/null.len 顺带翻/门控信号面/master cargo t 修复注记）；**cargo tv 3585/3585 + cargo tt 3772/3772 全绿**；py 五套件三方全绿（py_math 20/20 + py_torch 7/7 + py_torch_infer 17/17 + py_torch_train 10/10 + py_numpy 10/10 = 64/64，生产者门控 stderr 警告不破坏对拍）；终态全探针复播矩阵见执行注记
 
 ## 复审记录
 
@@ -254,6 +255,26 @@ print((s + y).to(str))     // y=null → "a-2147483647"（垃圾数字入字符�
 
 **结论：现状即"不允许"**——语言当前不存在未初始化 var 形态（带注解无初值也被拒），
 T11 无需实施禁止，仅记录证据（本节即证据；验收标准 6 后半分支成立）。
+
+### 终态探针矩阵（2026-09-05，plan-550-dev 全 12 任务落地后复播）
+
+| 探针 | 基线（master） | 终态（plan-550-dev） |
+|---|---|---|
+| p1 `null+1` | `-2147483646` 静默垃圾 | **TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'** |
+| p2 `"a"+null` | `a-2147483647` 垃圾入串 | **TypeError: ... for +: 'str' and 'NoneType'**（STR_CAT 臂） |
+| p3 `null[0]` | `0` 静默哨兵 | **TypeError: 'NoneType' object is not subscriptable** |
+| p4 null callee | 编译期 E0401 | 不变（VM 动态路径守卫由单测钉住，P550-D4） |
+| p5 for-in null | 静默零迭代 | **TypeError: 'NoneType' object is not iterable** |
+| p6 `null.to(int)` | `-1` 静默 | **TypeError: int() argument must be ..., not 'NoneType'** |
+| p7 `print(null)` / `null.to(str)` | `None` / `-2147483647` | `None` / **`None`** |
+| p8 `arr[999]` | `0` 哨兵 | **IndexError: index 999 out of range** |
+| p9 try-catch | no-throw | **caught** + e 绑定完整消息 |
+| p12b nil 双写 | 无警告 | `'nil' is deprecated` 警告一次 + 语义不变（nil==null true） |
+| p13 None/Some | 全家判等正常 | 行为零回归（含 `o == null` 裸字面量触发的门控提示，属预期） |
+| p14/15/16 门控 | — | use.py/null 信号出迁移警告、#[script] 豁免、无信号零误报 |
+
+终态门禁读数：`cargo tv` 3585/3585 · `cargo tt` 3772/3772 ·
+`cargo t vm` 800/800 · py 五套件三方 64/64 · `cargo t engine` 25/25。
 
 ## 待澄清事项
 
