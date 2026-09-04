@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-536
-status: archived        # drafting → executing → execution_done → reviewed → archived (终态)
+status: executing       # 2026-09-05 用户裁定破例重开（archived 终态回开,见 ## 重开与尾债清偿）
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
-updated_at: 2026-09-04T14:30:00+08:00
+updated_at: 2026-09-05T00:00:00+08:00
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
@@ -19,8 +19,8 @@ touched_goals:
   - "GOAL-007: VM 轨反应性修复——timer 写入触发视图失效/Init 重入收敛/时间标签时区正确(musk KD 059-FU1 三题)"
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 9
-total_steps: 9
+current_step: 10
+total_steps: 12
 ---
 
 # [PLAN-536] VM 运行时修复批(反应性 + prop 约束 + absolute 原语 + 家族 open 绑定)
@@ -168,6 +168,68 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   机制成立。**实机验收受阻**：复跑实例窗口布局卡死（KD-048-a 族,window
   size zero）,AskDelete→模态弹出+派发终验留用户实机;通过后 musk 侧退役
   内联确认行（059 T9 待澄清⑨ 处置）。
+- [ ] **T10** D1 根修：悬浮机制统一——① renderer 动态路径
+  （render_dynamic_view Column/Row 臂）abs 拆分层消费偏移：abs 子节点带
+  非零 top/right/left 偏移时按 build_floating_layer 同款 spacer 几何定位
+  （共享 helper）,零偏移/无偏移（inset-0 ghost 叠加族）保持落原点语义;
+  ② builder 四处 hoist 臂（col/row tracked+untracked）多浮层折叠修复——
+  全部 floats 保留（嵌套 Overlay）,不再 `.next()` 丢弃首个之后的浮层;
+  ③ 语料扩充 test/ui/plan536_absolute（双浮层存活断言+偏移定位断言）,
+  UI 切片不劣于基线。
+- [ ] **T11** D2 清偿：schema drift baseline 裁剪
+  （SCHEMA_DRIFT_UPDATE_BASELINE=1,人工复核 diff 逐维度写明理由）+
+  kitchen-sink 生成页重生成（KITCHEN_SINK_UPDATE=1）;围栏两测
+  （schema_drift_fence/kitchen_sink_page_in_sync）转绿。
+- [ ] **T12** D4 清偿：①组件层发送链探针（child onsend → 父一参 handler →
+  跨模块 store handler:list push+draft 清空+Sse.open handler 引用）——
+  复验 aa92a821e 帧错位根修后 KD-493① 是否已顺带收敛;②核实
+  forge_store StartStream `.streaming=true` 置位与 `Sse.open` 抛点的先后
+  （决定 PollStream 兜底链活性）;③musk 实机 E2E：发送→回复到达→
+  免重选直显（059-FU1 验收配方）;④若崩复现→按帧对齐/哨兵两假说诊断
+  根修;055-4② SSE handler-as-value 若不在本计划范围内根修,则明确
+  PollStream 兜底口径并回写 musk KD。
+
+## 重开与尾债清偿（2026-09-05,用户裁定）
+
+> **状态机破例注记**：本计划已于 09-04 走到 archived 终态;用户裁定
+> "不用另起项目,直接在计划536中完成"——复审债候选 D1/D2/D4 就地清偿,
+> 破例回开。回开仅此一次,清偿完成后重新走 execution_done → reviewed →
+> archived。（档案迁移：git mv docs/plans/archive/ ↔ docs/plans/,历史
+> 复审记录原样保留。）
+
+**勘察定案（2026-09-05,主检出只读复核）**：
+
+- **D1 根因闭合（× 落左上 + build_floating_layer 0 调用双谜一体解释）**：
+  系统内存在**两套判定标准与定位语义分裂的悬浮机制**——
+  ① builder hoist 臂（T6,aura_view_builder col/row tracked 主路径）:
+  门槛=absolute+**z-N**,产物=View::Overlay → into_iced →
+  build_floating_layer（**offset 感知**,spacer 几何 top/right/left 定位）;
+  ② renderer 动态路径（render_dynamic_view Column/Row 臂,Plan 057 2.2 /
+  PLAN-530 步骤3 的 abs 拆分）: 门槛=**纯 absolute 类**（不要求 z）,
+  产物=裸 iced Stack **落原点**（"overlay 落原点,接近 CSS absolute 语义"
+  ——不消费任何 top/right 偏移）。musk V2 会话卡 ×（span+onclick.stop →
+  View::Button,aura_events_get_base 按 base 名命中 .stop 修饰符,白名单
+  在列）在 0515c8e 改构时**丢了 z-10**（T7 在 button 内形态加过）→ ①不收
+  → ②接盘 → absolute 类拆 Stack 落原点 = "落左上";层经 opaque 包裹且
+  span 未显式宽时撑满（musk 998d1fa 实录）→ 遮卡片 = "抢点击";
+  build_floating_layer 全程 0 调用 = "渲染旁路"实锤。`right-[6px]` 任意值
+  解析正常（parse_pixel_arbitrary → RightOffset(6.0)）,非解析问题。
+  次生缺陷：四处 hoist 臂（col/row tracked+untracked）只取
+  `floats.into_iter().next()`——**首个之后的 absolute 子节点被整体丢弃**
+  （从 child_views 滤除却未进 Overlay）。musk 侧已弃浮 × 改 hover 标题行
+  （dbe52a7 定案）,消费面不再受阻,auto-lang 侧按机制统一根修。
+- **D2 现状**：KD P528-D6 更新口径——schema 漂移本体已消除,余
+  baseline 裁剪（SCHEMA_DRIFT_UPDATE_BASELINE=1）+ kitchen-sink 重生成
+  （KITCHEN_SINK_UPDATE=1）两件围栏内例行再生成。
+- **D4 复验前提成立**：059-T9 双根修（aa92a821e dispatch_parent_route
+  零参父 handler 帧错位根修,3837aa8b5 折入）落在 T5 崩溃复现**之后**,
+  KD-493① 发送链 `Invalid object ID`（0xFFFFFFFF80000000=i32::MIN 符号
+  扩展哨兵形态,与帧移垃圾 self 同族）**可能已被顺带修复但从未复验**
+  （493 行"待复验"在案）。首步=组件层发送链探针+实机复验,而非盲修。
+  055-4② `Sse.open(.OnStreamEvent)`（handler 名作值）Field not found 为
+  KD-047 SSE 桥族独立缺口;PollStream 兜底送达链（536 T2 修复）使端到端
+  验收不阻于 SSE——但需核实 .streaming=true 置位与 Sse.open 抛点的先后,
+  若置位在前则 PollStream 活、验收可达。
 
 ## 重测记录（2026-09-04 合并后,合并点 fe962a3ed→432e15dab）
 
