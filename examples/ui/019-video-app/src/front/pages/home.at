@@ -73,30 +73,72 @@ widget home {
                     "w-full px-6 pt-3 pb-1 gap-6 border-b border-gray-200/60 items-center"
                 }
 
-                button "Recommend" {
+                button {
                     onclick: .SelectTab("recommend")
-                    style: if .store.active_tab == "recommend" {
-                        "pb-2 text-sm font-bold border-b-2 border-primary text-primary transition-colors cursor-pointer"
-                    } else {
-                        "pb-2 text-sm font-medium text-muted-foreground hover:text-foreground border-b-2 border-transparent transition-colors cursor-pointer"
+                    variant: "ghost"
+                    style: "p-0 h-auto bg-transparent hover:bg-transparent rounded-none cursor-pointer"
+                    col {
+                        style: "items-center gap-1.5"
+                        text "Recommend" {
+                            style: if .store.active_tab == "recommend" {
+                                "text-sm font-bold text-primary"
+                            } else {
+                                "text-sm font-medium text-muted-foreground hover:text-foreground"
+                            }
+                        }
+                        col {
+                            style: if .store.active_tab == "recommend" {
+                                "w-full h-0.5 bg-primary rounded-full"
+                            } else {
+                                "w-full h-0.5 bg-transparent"
+                            }
+                        }
                     }
                 }
 
-                button "Trending" {
+                button {
                     onclick: .SelectTab("trending")
-                    style: if .store.active_tab == "trending" {
-                        "pb-2 text-sm font-bold border-b-2 border-primary text-primary transition-colors cursor-pointer"
-                    } else {
-                        "pb-2 text-sm font-medium text-muted-foreground hover:text-foreground border-b-2 border-transparent transition-colors cursor-pointer"
+                    variant: "ghost"
+                    style: "p-0 h-auto bg-transparent hover:bg-transparent rounded-none cursor-pointer"
+                    col {
+                        style: "items-center gap-1.5"
+                        text "Trending" {
+                            style: if .store.active_tab == "trending" {
+                                "text-sm font-bold text-primary"
+                            } else {
+                                "text-sm font-medium text-muted-foreground hover:text-foreground"
+                            }
+                        }
+                        col {
+                            style: if .store.active_tab == "trending" {
+                                "w-full h-0.5 bg-primary rounded-full"
+                            } else {
+                                "w-full h-0.5 bg-transparent"
+                            }
+                        }
                     }
                 }
 
-                button "Following" {
+                button {
                     onclick: .SelectTab("following")
-                    style: if .store.active_tab == "following" {
-                        "pb-2 text-sm font-bold border-b-2 border-primary text-primary transition-colors cursor-pointer"
-                    } else {
-                        "pb-2 text-sm font-medium text-muted-foreground hover:text-foreground border-b-2 border-transparent transition-colors cursor-pointer"
+                    variant: "ghost"
+                    style: "p-0 h-auto bg-transparent hover:bg-transparent rounded-none cursor-pointer"
+                    col {
+                        style: "items-center gap-1.5"
+                        text "Following" {
+                            style: if .store.active_tab == "following" {
+                                "text-sm font-bold text-primary"
+                            } else {
+                                "text-sm font-medium text-muted-foreground hover:text-foreground"
+                            }
+                        }
+                        col {
+                            style: if .store.active_tab == "following" {
+                                "w-full h-0.5 bg-primary rounded-full"
+                            } else {
+                                "w-full h-0.5 bg-transparent"
+                            }
+                        }
                     }
                 }
             }
@@ -153,8 +195,10 @@ widget home {
                         text "Try selecting another category or clear search filter" { style: "text-sm text-muted-foreground" }
                     }
                 } else {
-                    div {
-                        style: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 p-6"
+                    grid {
+                        cols: 3
+                        gap: 24
+                        style: "p-6"
                         for video in .store.videos {
                             col {
                                 onclick: .OpenVideo(video.id)
@@ -166,7 +210,7 @@ widget home {
 
                                 // Thumbnail box
                                 col {
-                                    style: "w-full h-44 bg-gradient-to-br " + video.cover_color + " items-center justify-center p-3 relative rounded-t-2xl"
+                                    class: "w-full h-44 bg-gradient-to-br " + video.cover_color + " items-center justify-center p-3 relative rounded-t-2xl"
                                     text "▶" { style: "text-4xl text-white/80 group-hover:scale-110 transition-transform" }
                                     row {
                                         style: "absolute bottom-2 right-2 bg-black/80 px-2 py-0.5 rounded-md"
@@ -188,9 +232,9 @@ widget home {
                                         style: "items-center gap-2 text-xs text-muted-foreground"
                                         text video.author { style: "font-medium text-foreground/80" }
                                         text "•" {}
-                                        text f"${video.views} views" {}
+                                        text f"${video.views_fmt} views" {}
                                         text "•" {}
-                                        text f"❤️ ${video.likes}" {}
+                                        text f"❤️ ${video.likes_fmt}" {}
                                     }
                                 }
                             }

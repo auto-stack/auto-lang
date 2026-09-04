@@ -50,7 +50,7 @@ widget watch {
 
                             // Player screen
                             col {
-                                style: "w-full h-72 md:h-96 rounded-2xl bg-gradient-to-br " + .video.cover_color + " items-center justify-center relative overflow-hidden shadow-xl"
+                                class: "w-full h-72 md:h-96 rounded-2xl bg-gradient-to-br " + .video.cover_color + " items-center justify-center relative overflow-hidden shadow-xl"
                                 text "▶" { style: "text-6xl text-white/90 drop-shadow-md cursor-pointer hover:scale-110 transition-transform" }
 
                                 // Bottom player control bar overlay
@@ -112,7 +112,7 @@ widget watch {
                                         }
                                         row {
                                             style: "px-3 py-1.5 text-xs text-muted-foreground"
-                                            text f"${.video.views} views" {}
+                                            text f"${.video.views_fmt} views" {}
                                         }
                                     }
                                 }
@@ -154,7 +154,7 @@ widget watch {
 
                                             // Mini thumbnail
                                             col {
-                                                style: "w-28 h-18 rounded-lg bg-gradient-to-br " + rel.cover_color + " items-center justify-center flex-shrink-0 relative overflow-hidden"
+                                                class: "w-28 h-18 rounded-lg bg-gradient-to-br " + rel.cover_color + " items-center justify-center flex-shrink-0 relative overflow-hidden"
                                                 text "▶" { style: "text-lg text-white/80 group-hover:scale-110 transition-transform" }
                                                 row {
                                                     style: "absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.2 rounded"
@@ -169,9 +169,9 @@ widget watch {
                                                 text rel.author { style: "text-[11px] text-muted-foreground truncate" }
                                                 row {
                                                     style: "items-center gap-1.5 text-[10px] text-muted-foreground"
-                                                    text f"${rel.views} views" {}
+                                                    text f"${rel.views_fmt} views" {}
                                                     text "•" {}
-                                                    text f"❤️ ${rel.likes}" {}
+                                                    text f"❤️ ${rel.likes_fmt}" {}
                                                 }
                                             }
                                         }
