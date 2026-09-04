@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 3
+current_step: 8
 total_steps: 12
 ---
 
@@ -223,40 +223,42 @@ desktop {
 
 ### M2 设置窗口 registry App 化
 
-- **T4** 新建 `examples/ui/045-desktop-settings/`（pac：`name: "desktop"`、
-  `title: "设置"`、icon ⚙️）：桌面风格设置页——bg-card 卡片 + 左列分区
-  （Dock/通知/外观/系统/关于），声明 `cfg_dock_position/cfg_dock_enabled/
-  cfg_dock_pinned/cfg_wallpaper_path/cfg_wallpapers_dir/cfg_dark_theme/
-  cfg_transparency/cfg_notes_enabled` state var（缺省 = 内置默认，Vue 端
-  即此形态）。验证：`cargo check -p auto-lang`；`auto run` 双端可起（记录
-  截图）。
-- **T5** 宿主写动词扩展：`__desktop_cmd` DC 枚举新增
-  `SetDockPinned(csv)/SetTransparency(level)/SetNotesEnabled(0|1)/
-  SetWallpapersDir(dir)` 四臂（收口同 T3：config+save+热生效）；既有
-  SetWallpaper/SetTheme/SetDockPosition/SetDockEnabled/LaunchApp 复用。
-  验证：`cargo check -p auto-lang` && `cargo t iced`。
+- **T4** ✅ 已完成 新建 `examples/ui/045-desktop-settings/`（pac：
+  `name: "desktop"`、`title: "设置"`、icon ⚙️）：桌面风格设置页——bg-card
+  卡片 + 左列分区（Dock/通知/外观/系统/关于），cfg_* 快照 var（bool 用
+  "1"/"0"、主题用 "dark"/"light"、pinned 用 csv——与播种约定对齐）+
+  `__desktop_cmd` 上行总线 var。编译护栏测试
+  `desktop_settings_app_source_compiles`（build_dynamic_component 真管线）。
+  [✅ 已完成] commit bc0e55763；实机截图归 T11。
+- **T5** ✅ 已完成 宿主写动词扩展——**提前落入 T3 提交**（b388df79b）：
+  `SetTransparency/SetNotesEnabled/SetDockPinned/SetWallpapersDir` 枚举/
+  to_record/parse/执行臂全链 + settings.at（时为 overlay）五写点改走动词。
+  [✅ 已完成] 见 T3 行。
 - **T6** 504 播种扩展：launch 期对已声明 `cfg_<field>` var 的 App 灌
   config 字段值（bool coerce；`osconfig_state`/`osconfig_hint`/
   `about_host`/`about_version` 同批注入——徽标三态复用
   `badge_projection`）。设置页表单 handler 全接线
   （`__desktop_cmd = "set_*\t" + v`）。
   验证：`cargo check -p auto-lang` && `cargo t osconfig_apps`（或所在模块）。
-- **T7** 齿轮/菜单接线：`open_settings` 宿主臂（renderer ~8673-8676）从
-  `toggle_settings` 换成 launch-or-focus（`DC::ActivateApp` 同构：按
-  `registry_id == "045-desktop-settings"` 找窗→跨 workspace 聚焦，缺席则
-  `launch_app`）；T29/T37 标题栏菜单"设置"入口同改。Esc 不再是设置关闭
-  路径（M4 摘臂）。验证：`cargo t iced` + 实机点齿轮。
+- **T7** ✅ 已完成 齿轮/菜单接线：`open_settings` 臂 →
+  `execute_open_settings`（launch-or-focus：`registry_id ==
+  SETTINGS_APP_ID` 找窗→跨 workspace 聚焦，缺席 launch）；设置窗上行经
+  registry 定位进联合排空。T29/T37 菜单入口同走 open_settings 动词（零
+  额外改动）。Esc 不再是设置关闭路径。齿轮冒烟/summon 重开刷新等 3 测试
+  座 helper（t540_resolver_session/t540_settings_app/t540_close_settings）。
+  [✅ 已完成] commit bc0e55763。
 
 ### M3 auto-os-config 注册
 
-- **T8** 依赖 worktree：`git -C D:/autostack/auto-os-config worktree add
-  D:/autostack/.wt/lang-540/auto-os-config -b auto-lang-dev`；
-  `auto-os-config-back/src/registry.rs` 的 `DEFAULT_REGISTRY_ATOM` 基线增
-  desktop 模块块（`kind: file, id: "desktop", file: "apps/desktop/config.at",
-  root: "desktop", name: "桌面", icon: "🖥️", group: "系统"`）；后端模块解析
-  测试补一条。**消费即折返**：daemon 侧测试绿后折回 auto-os-config 主分支，
-  本仓 worktree 验证 `../auto-os-config` 解析序不受阻。
-  验证：os-config 侧 `cargo test`（back crate）；本仓无代码改动。
+- **T8** ✅ 已完成 依赖 worktree（lang-540 组，分支 auto-lang-dev）：
+  `DEFAULT_REGISTRY_ATOM` 基线增 desktop 模块块（`kind: file,
+  id: "desktop", file: "apps/desktop/config.at", root: "desktop",
+  name: "Desktop", icon: 🖥️, group: "System"`——英文标签对齐 os-config UI
+  语言）；计数断言 7→8；`modules_json`/`fetch_modules_raw` 两测试改环境
+  无关（本机 modules.d 4 drop-in 既有红——os-config master 上复核确认）。
+  **消费即折返**：back crate 39/39 绿后折回 os-config master（b153637），
+  wt-guard clean 后依赖 worktree 已移除。
+  [✅ 已完成] os-config master b153637；本仓无代码改动。
 
 ### M4 退役 + 验收
 
