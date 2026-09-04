@@ -4605,13 +4605,35 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
     ) {
+        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+            eprintln!(
+                "[VM-EMIT-REG] child={} events={:?} on-props={:?}",
+                child_name,
+                events.keys().collect::<Vec<_>>(),
+                props
+                    .keys()
+                    .filter(|k| k.starts_with("on"))
+                    .collect::<Vec<_>>()
+            );
+        }
         for (key, ev) in events.iter() {
-            if !key.starts_with("on") || crate::aura::extract::is_native_event_key(key) {
+            if crate::aura::extract::is_native_event_key(key) {
                 continue;
             }
+            // auto-down PLAN-051 T11 补面：Plan-367 引号式监听落 events 的键
+            // 是原样 `on"SetTheme"` 形（内嵌引号，CustomScrollbar 的
+            // `on"update:scrollTop"` 同形）——原样键查表 miss（musk C2 双样
+            // 点只有 onsend/on_send 属性式）。剥引号归一 + 无 on 前缀补前缀，
+            // 与派发侧 "on"+子 msg 名两侧折叠命中。
+            let cleaned: String = key.replace('"', "");
+            let folded_key = if cleaned.starts_with("on") {
+                cleaned
+            } else {
+                format!("on{}", cleaned)
+            };
             crate::ui::child_emit::record_route(
                 &child_name,
-                key,
+                &folded_key,
                 crate::ui::child_emit::ParentRoute {
                     parent_widget: parent_widget.clone(),
                     handler: ev.handler.trim_start_matches('.').to_string(),
