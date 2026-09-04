@@ -251,6 +251,12 @@ pub enum DocInput {
         x: f32,
         y: f32,
     },
+    /// 拖选移动（PLAN-048 T3）：widget 层 CursorMoved 直通，core 侧以
+    /// drag 状态门控（非拖选零操作零捕获）。
+    MouseDragged {
+        x: f32,
+        y: f32,
+    },
     MouseReleased {
         button: EditorButton,
     },
@@ -373,6 +379,9 @@ pub struct AutodownEditorCore {
     /// PLAN-048 T2：跨块选区（锚,焦点）。None = 无跨块选区（块内选区
     /// 仍走每叶 cosmic Selection 渲染路径）。
     doc_sel: Mutex<Option<(SelAnchor, SelAnchor)>>,
+    /// PLAN-048 T3：拖选起点端点（MousePressed 现场锁定；跨块拖选时作
+    /// doc_sel 锚端）。
+    drag_anchor: Mutex<Option<SelAnchor>>,
     preedit: Mutex<Option<String>>,
     /// 外部最近一次推送值（差分口径对齐 413 last_external）。
     last_external: Mutex<Option<String>>,
@@ -395,6 +404,7 @@ impl AutodownEditorCore {
             shift_anchor: Mutex::new(None),
             nav_goal_x: Mutex::new(None),
             doc_sel: Mutex::new(None),
+            drag_anchor: Mutex::new(None),
             preedit: Mutex::new(None),
             last_external: Mutex::new(None),
             layout: Mutex::new(DocLayout { blocks: Vec::new() }),
@@ -499,6 +509,7 @@ impl AutodownEditorCore {
         *self.shift_anchor.lock().unwrap() = None;
         *self.nav_goal_x.lock().unwrap() = None;
         *self.doc_sel.lock().unwrap() = None;
+        *self.drag_anchor.lock().unwrap() = None;
         self.revision.fetch_add(1, Ordering::Relaxed);
         true
     }
@@ -547,6 +558,7 @@ impl AutodownEditorCore {
             DocInput::FocusLost => {
                 *self.preedit.lock().unwrap() = None;
                 *self.drag.lock().unwrap() = Drag::None;
+                *self.drag_anchor.lock().unwrap() = None;
                 DocOutput { request_redraw: true, ..Default::default() }
             }
             DocInput::ModifiersChanged(m) => {
@@ -569,8 +581,10 @@ impl AutodownEditorCore {
                 self.handle_key(font_system, key, text, clipboard)
             }
             DocInput::MousePressed { button, x, y } => self.handle_mouse_press(font_system, button, x, y),
+            DocInput::MouseDragged { x, y } => self.handle_mouse_drag(font_system, x, y),
             DocInput::MouseReleased { button } => {
                 *self.drag.lock().unwrap() = Drag::None;
+                *self.drag_anchor.lock().unwrap() = None;
                 if matches!(button, EditorButton::Left | EditorButton::Right) {
                     DocOutput::default().captured()
                 } else {
@@ -643,24 +657,65 @@ impl AutodownEditorCore {
         let ctrl = mods.control || mods.logo;
         let plain_char = |c: char| matches!(key, EditorKey::Char(k) if k.to_ascii_lowercase() == c);
 
-        // ── 剪贴板 / undo 组合键（对齐 413 最小集）────────────────────
+        // ── 剪贴板 / 全选 / undo 组合键（对齐 413 最小集 + PLAN-048 T3
+        //    跨块选区感知）─────────────────────────────────────────────────
+        if ctrl && plain_char('a') {
+            let segs = self.segs.lock().unwrap();
+            let mut order = Vec::new();
+            dfs_leaf_order(&segs, &mut order);
+            drop(segs);
+            if let (Some(&first), Some(&last)) = (order.first(), order.last()) {
+                let len = self.live_text(last).len();
+                self.set_doc_selection(
+                    SelAnchor { block: first, offset: 0 },
+                    SelAnchor { block: last, offset: len },
+                );
+                // 端点块原生选区清零（渲染单源 doc_sel）。
+                let mut blocks = self.blocks.lock().unwrap();
+                for b in blocks.iter_mut() {
+                    b.editor.ed_mut().set_selection(Selection::None);
+                }
+                out.cursor_changed = true;
+                out.request_redraw = true;
+            }
+            return out.captured();
+        }
         if ctrl && plain_char('c') {
-            if let Some(Some(s)) = self.edit_copy(font_system, bi) {
+            let copied = if self.doc_selection().is_some() {
+                self.doc_copy()
+            } else {
+                self.edit_copy(font_system, bi)
+            };
+            if let Some(Some(s)) = copied {
                 clipboard.write(&s);
             }
             return out.captured();
         }
         if ctrl && plain_char('x') {
-            if let Some(Some(s)) = self.edit_copy(font_system, bi) {
-                clipboard.write(&s);
-                self.block_action(font_system, bi, Action::Backspace);
-                out.text_changed = true;
-                out.cursor_changed = true;
+            let copied = if self.doc_selection().is_some() {
+                self.doc_copy()
+            } else {
+                self.edit_copy(font_system, bi)
+            };
+            if let Some(s) = copied {
+                if let Some(t) = s {
+                    clipboard.write(&t);
+                }
+                if self.delete_doc_selection(font_system) {
+                    out.text_changed = true;
+                    out.cursor_changed = true;
+                } else {
+                    self.block_action(font_system, bi, Action::Backspace);
+                    out.text_changed = true;
+                    out.cursor_changed = true;
+                }
             }
             return out.captured();
         }
         if ctrl && plain_char('v') {
             if let Some(t) = clipboard.read() {
+                let had_doc_sel = self.delete_doc_selection(font_system);
+                let bi = self.focused_block().unwrap_or(bi);
                 let mut blocks = self.blocks.lock().unwrap();
                 if let Some(b) = blocks.get_mut(bi) {
                     b.editor.ed_mut().insert_string(&t.replace("\r\n", "\n"), None);
@@ -668,6 +723,7 @@ impl AutodownEditorCore {
                 drop(blocks);
                 out.text_changed = true;
                 out.cursor_changed = true;
+                let _ = had_doc_sel;
             }
             return out.captured();
         }
@@ -700,12 +756,41 @@ impl AutodownEditorCore {
                     let cur = self.focus_locked_cursor();
                     *anchor = cur.map(|c| (bi, c));
                 }
+            } else {
+                // 普通水平 motion 折叠跨块选区（shift+←/→ 跨块不做，
+                // T1 冻结登记）。
+                self.clear_doc_selection();
             }
             *self.nav_goal_x.lock().unwrap() = None;
             self.block_motion(font_system, bi, motion);
             out.cursor_changed = true;
             out.request_redraw = true;
             return out;
+        }
+
+        // ── 跨块选区下的编辑动作：先剪接选区（PLAN-048 T3）；Backspace/
+        //    Delete 即删除本身；Char/Enter/Other 剪接后落正常动作。
+        let mut bi = bi;
+        if self.doc_selection().is_some()
+            && matches!(
+                key,
+                EditorKey::Char(_)
+                    | EditorKey::Enter
+                    | EditorKey::Backspace
+                    | EditorKey::Delete
+                    | EditorKey::Other(_)
+            )
+        {
+            let changed = self.delete_doc_selection(font_system);
+            if let Some(nb) = self.focused_block() {
+                bi = nb;
+            }
+            out.cursor_changed = true;
+            out.request_redraw = true;
+            if changed && matches!(key, EditorKey::Backspace | EditorKey::Delete) {
+                out.text_changed = true;
+                return out;
+            }
         }
 
         // ── 编辑动作（v1 全部不出块；拆块归输入规则批次）───────────────
@@ -815,7 +900,7 @@ impl AutodownEditorCore {
         font_system: &mut FontSystem,
         bi: usize,
         up: bool,
-        _shift: bool,
+        shift: bool,
     ) -> DocOutput {
         // 跨块判定采用编辑器通行惯例：光标位于块的**首物理行**按 ↑、
         // **末物理行**按 ↓ 即迁焦邻块（水平落点保留登记余量）；否则交给
@@ -823,6 +908,14 @@ impl AutodownEditorCore {
         let (cur_line, line_total) = self.cursor_geometry(bi);
         let edge = if up { cur_line == 0 } else { cur_line + 1 >= line_total.max(1) };
         let boundary = edge;
+        // PLAN-048 T3：shift 跨块扩展的起点端点（迁焦前捕获）。
+        let origin_anchor = {
+            let blocks = self.blocks.lock().unwrap();
+            blocks
+                .get(bi)
+                .and_then(Self::cursor_byte_offset)
+                .map(|o| SelAnchor { block: bi, offset: o })
+        };
         let n = self.block_count();
         let target = if up {
             if bi == 0 { None } else { Some(bi - 1) }
@@ -869,7 +962,22 @@ impl AutodownEditorCore {
                 }
                 drop(blocks);
                 *self.focus.lock().unwrap() = Some(t);
-                *self.shift_anchor.lock().unwrap() = None;
+                if shift {
+                    // PLAN-048 T3：跨块扩展——锚端保持既有 doc_sel 锚
+                    // （首次扩展取迁出叶端点），焦点端随迁焦落位。
+                    let dest = {
+                        let blocks = self.blocks.lock().unwrap();
+                        blocks.get(t).and_then(Self::cursor_byte_offset)
+                    };
+                    let anchor = self.doc_selection().map(|(a, _)| a).or(origin_anchor);
+                    if let (Some(a), Some(d)) = (anchor, dest) {
+                        self.set_doc_selection(a, SelAnchor { block: t, offset: d });
+                    }
+                    *self.shift_anchor.lock().unwrap() = None;
+                } else {
+                    self.clear_doc_selection();
+                    *self.shift_anchor.lock().unwrap() = None;
+                }
                 return DocOutput {
                     cursor_changed: true,
                     focus_changed: true,
@@ -902,6 +1010,10 @@ impl AutodownEditorCore {
             *self.shift_anchor.lock().unwrap() = None;
         }
         *self.nav_goal_x.lock().unwrap() = None;
+        if !self.modifiers.lock().unwrap().shift {
+            // 普通点击折叠跨块选区（PLAN-048 T3）。
+            self.clear_doc_selection();
+        }
         let mut out = DocOutput {
             request_redraw: true,
             focus_changed: prev_focus != Some(hit),
@@ -945,8 +1057,74 @@ impl AutodownEditorCore {
             }
         }
         self.block_action(font_system, hit, action);
+        // 拖选锚点锁定：按压现场的字节端点（跨块拖选时作 doc_sel 锚端）。
+        let press_off = {
+            let blocks = self.blocks.lock().unwrap();
+            blocks.get(hit).and_then(Self::cursor_byte_offset)
+        };
+        *self.drag_anchor.lock().unwrap() =
+            press_off.map(|o| SelAnchor { block: hit, offset: o });
         *self.drag.lock().unwrap() = Drag::Buffer;
         out.captured()
+    }
+
+    /// 拖选移动（PLAN-048 T3）：同叶保持块内原生拖选（cosmic Action::Drag）；
+    /// 越叶（或已入跨块模式）→ 目标块定位字节偏移，doc_sel 端点推进 +
+    /// 焦点随动。非拖选零操作。
+    fn handle_mouse_drag(&self, fs: &mut FontSystem, x: f32, y: f32) -> DocOutput {
+        if !matches!(*self.drag.lock().unwrap(), Drag::Buffer) {
+            return DocOutput::default();
+        }
+        let layout = self.layout.lock().unwrap().clone();
+        let Some(tb) = hit_test(&layout, x, y) else { return DocOutput::default() };
+        let Some(anchor) = *self.drag_anchor.lock().unwrap() else {
+            return DocOutput::default();
+        };
+        // 同叶且未入跨块模式：原生拖选路径（cosmic 原生选区语义不变）。
+        if tb == anchor.block && self.doc_selection().is_none() {
+            let bl = layout.blocks[tb];
+            self.block_action(
+                fs,
+                tb,
+                Action::Drag {
+                    x: ((x - bl.origin.x).max(0.0)) as i32,
+                    y: ((y - bl.origin.y).max(0.0)) as i32,
+                },
+            );
+            return DocOutput { cursor_changed: true, request_redraw: true, ..Default::default() };
+        }
+        // 跨块：目标块 Click 定位 → 字节偏移 → doc_sel 推进。
+        let offset = {
+            let mut blocks = self.blocks.lock().unwrap();
+            let Some(b) = blocks.get_mut(tb) else { return DocOutput::default() };
+            let ed = b.editor.ed_mut();
+            ed.shape_as_needed(fs, true);
+            let bl = layout.blocks[tb];
+            ed.action(
+                fs,
+                Action::Click {
+                    x: ((x - bl.origin.x).max(0.0)) as i32,
+                    y: ((y - bl.origin.y).max(0.0)) as i32,
+                },
+            );
+            Self::cursor_byte_offset(b)
+        };
+        // 端点块原生选区清零（渲染单源 doc_sel）。
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(anchor.block) {
+                b.editor.ed_mut().set_selection(Selection::None);
+            }
+            if let Some(b) = blocks.get_mut(tb) {
+                b.editor.ed_mut().set_selection(Selection::None);
+            }
+        }
+        if let Some(off) = offset {
+            self.set_doc_selection(anchor, SelAnchor { block: tb, offset: off });
+            *self.focus.lock().unwrap() = Some(tb);
+            *self.shift_anchor.lock().unwrap() = None;
+        }
+        DocOutput { cursor_changed: true, request_redraw: true, ..Default::default() }
     }
 
     // ── 绘制抽取 ──────────────────────────────────────────────────────
@@ -984,23 +1162,15 @@ impl AutodownEditorCore {
                 }
             }
         }
-        // 跨块选区段表：块 id → (lo, hi)。区间内部叶（含空叶）整叶覆盖；
-        // 空叶以虚拟 1 字节触发窄条矩形。
+        // 跨块选区段表：块 id → (lo, hi)（T3 doc_sel_spans_in 复用）。
+        // 区间内部空叶以虚拟 1 字节触发窄条矩形保持可见。
         let mut doc_segs: HashMap<usize, (usize, usize)> = HashMap::new();
-        if let Some((fb, flo, lb, lhi)) = self.doc_sel_range() {
-            let (s0, e0) = (
-                render_order.iter().position(|&i| i == fb),
-                render_order.iter().position(|&i| i == lb),
-            );
-            if let (Some(s0), Some(e0)) = (s0, e0) {
-                for &bi in &render_order[s0..=e0] {
-                    let len = blocks.get(bi).map(|b| SendEdit::of(b).text().len()).unwrap_or(0);
-                    let interior = bi != fb && bi != lb;
-                    let lo = if bi == fb { flo.min(len) } else { 0 };
-                    let hi = if bi == lb { lhi.min(len) } else { len };
-                    let (lo, hi) = if interior && len == 0 { (0, 1) } else { (lo, hi.max(lo)) };
-                    doc_segs.insert(bi, (lo, hi));
-                }
+        if let Some((fb, _, lb, _)) = self.doc_sel_range() {
+            for (bi, lo, hi) in self.doc_sel_spans_in(&blocks) {
+                let interior = bi != fb && bi != lb;
+                let len = blocks.get(bi).map(|b| SendEdit::of(b).text().len()).unwrap_or(0);
+                let seg = if interior && len == 0 { (0, 1) } else { (lo, hi) };
+                doc_segs.insert(bi, seg);
             }
         }
         let mut layouts: Vec<Option<BlockLayout>> = vec![None; blocks.len()];
@@ -1695,6 +1865,114 @@ impl AutodownEditorCore {
             (f, a)
         };
         Some((first.block, first.offset, last.block, last.offset))
+    }
+
+    /// 跨块选区段表（PLAN-048 T3）：(块, lo, hi) dfs 序，偏移钳制到叶
+    /// 现文本长。调用方已持 blocks 锁时用本变体（render 路径）。
+    fn doc_sel_spans_in(&self, blocks: &[BlockBuf]) -> Vec<(usize, usize, usize)> {
+        let Some((fb, flo, lb, lhi)) = self.doc_sel_range() else {
+            return Vec::new();
+        };
+        let segs = self.segs.lock().unwrap();
+        let mut order = Vec::new();
+        dfs_leaf_order(&segs, &mut order);
+        drop(segs);
+        let (Some(s0), Some(e0)) = (
+            order.iter().position(|&i| i == fb),
+            order.iter().position(|&i| i == lb),
+        ) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for &bi in &order[s0..=e0] {
+            let len = blocks.get(bi).map(|b| SendEdit::of(b).text().len()).unwrap_or(0);
+            let lo = if bi == fb { flo.min(len) } else { 0 };
+            let hi = if bi == lb { lhi.min(len) } else { len };
+            out.push((bi, lo, hi.max(lo)));
+        }
+        out
+    }
+
+    /// 跨块选区段表（行为路径：自取 blocks 锁）。
+    fn doc_sel_spans(&self) -> Vec<(usize, usize, usize)> {
+        let blocks = self.blocks.lock().unwrap();
+        self.doc_sel_spans_in(&blocks)
+    }
+
+    /// 跨块 copy：范围叶段文本按骨架 join（段落语义 "\n\n"）；容器前缀
+    ///（"> "/列表标记）的忠实拼装登记余量。
+    fn doc_copy(&self) -> Option<Option<String>> {
+        let spans = self.doc_sel_spans();
+        if spans.is_empty() {
+            return None;
+        }
+        let blocks = self.blocks.lock().unwrap();
+        let mut parts: Vec<String> = Vec::new();
+        for (bi, lo, hi) in spans {
+            let Some(b) = blocks.get(bi) else { continue };
+            let text = SendEdit::of(b).text();
+            let (lo, hi) = (lo.min(text.len()), hi.min(text.len()));
+            let mut s = lo;
+            while s < hi && !text.is_char_boundary(s) {
+                s += 1;
+            }
+            let mut e = hi;
+            while e > s && !text.is_char_boundary(e) {
+                e -= 1;
+            }
+            if e > s {
+                parts.push(text[s..e].to_owned());
+            }
+        }
+        Some(Some(parts.join("\n\n")))
+    }
+
+    /// 跨块选区剪接删除（PLAN-048 T3）：首叶头 + 尾叶尾拼入首叶，内部叶
+    /// 与尾叶摘除（remove_leaves_compact 原语）；焦点落接缝。范围叶间的
+    /// 只读 Raw 段（表格/分隔线）保留——登记余量。返回是否发生了删除。
+    fn delete_doc_selection(&self, fs: &mut FontSystem) -> bool {
+        let spans = self.doc_sel_spans();
+        let Some(&(fb, flo, _)) = spans.first() else { return false };
+        let (lb, _, lhi) = spans[spans.len() - 1];
+        if fb == lb && flo >= lhi {
+            return false; // 折叠空域
+        }
+        let (head, tail) = {
+            let blocks = self.blocks.lock().unwrap();
+            let t_of = |i: usize| {
+                blocks.get(i).map(|b| SendEdit::of(b).text()).unwrap_or_default()
+            };
+            let ft = t_of(fb);
+            let lt = t_of(lb);
+            (ft[..flo.min(ft.len())].to_owned(), lt[lhi.min(lt.len())..].to_owned())
+        };
+        let mut dead: Vec<usize> = spans[1..].iter().map(|&(bi, _, _)| bi).collect();
+        if lb != fb {
+            dead.push(lb);
+        }
+        // 创建序 ≠ dfs 序（拆块后成立）：dead 中 id < fb 的压缩使 fb 前移。
+        let new_fb = fb - dead.iter().filter(|&&d| d < fb).count();
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(pb) = blocks.get_mut(fb) {
+                self.overwrite_block_text(fs, pb, format!("{head}{tail}"));
+                Self::place_caret_byte(pb, head.len());
+            }
+        }
+        if !dead.is_empty() {
+            remove_leaves_compact(
+                &mut self.blocks.lock().unwrap(),
+                &mut self.segs.lock().unwrap(),
+                &dead,
+            );
+        }
+        *self.focus.lock().unwrap() = Some(new_fb);
+        *self.shift_anchor.lock().unwrap() = None;
+        *self.nav_goal_x.lock().unwrap() = None;
+        self.clear_doc_selection();
+        *self.drag_anchor.lock().unwrap() = None;
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        true
     }
 }
 
@@ -2824,5 +3102,171 @@ fn main() { let s = \"hi\"; }
         assert!(rects[3].y > rects[0].y, "new leaf below first");
         assert!(rects[1].y > rects[3].y, "block1 (二) must render BELOW the new empty leaf");
         assert!(rects[2].y > rects[1].y);
+    }
+
+    // ── PLAN-048 T3：跨块选区·行为面 ───────────────────────────────────
+
+    /// 可读写的剪贴板替身（copy 断言用）。
+    struct ClipRecorder(std::cell::RefCell<Option<String>>);
+    impl EditorClipboard for ClipRecorder {
+        fn read(&mut self) -> Option<String> {
+            self.0.borrow().clone()
+        }
+        fn write(&mut self, text: &str) {
+            *self.0.borrow_mut() = Some(text.to_owned());
+        }
+    }
+
+    fn press_key(core: &AutodownEditorCore, key: EditorKey, mods: EditorModifiers) -> DocOutput {
+        run_fs(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::KeyPressed { key, text: None, modifiers: mods },
+                &mut NullClipboard,
+            )
+        })
+    }
+
+    /// 跨块 copy：范围叶段文本按骨架 join（段落语义 "\n\n"）。
+    #[test]
+    fn cross_block_copy_joins_leaf_texts() {
+        let c = core_for("cp1", "甲块。\n\n乙块。\n\n丙块。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 2, offset: 3 },
+        );
+        let mut clip = ClipRecorder(std::cell::RefCell::new(None));
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::KeyPressed {
+                    key: EditorKey::Char('c'),
+                    text: None,
+                    modifiers: EditorModifiers { control: true, ..Default::default() },
+                },
+                &mut clip,
+            )
+        });
+        assert_eq!(clip.0.borrow().as_deref(), Some("块。\n\n乙块。\n\n丙"));
+    }
+
+    /// 跨块退格：首尾叶剪接 + 焦点驻接缝 + 选区清除。
+    #[test]
+    fn cross_block_delete_splices_at_seam() {
+        let c = core_for("dl1", "甲块。\n\n乙块。\n\n丙块。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 2, offset: 3 },
+        );
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "甲块。");
+        assert_eq!(c.focused_block(), Some(0));
+        assert!(c.doc_selection().is_none());
+        let seam = {
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        assert_eq!(seam, Some(3), "caret rests at splice seam");
+    }
+
+    /// Delete 键同剪接语义。
+    #[test]
+    fn cross_block_delete_key_also_splices() {
+        let c = core_for("dl2", "甲块。\n\n乙块。\n\n丙块。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 2, offset: 3 },
+        );
+        let out = press(c, EditorKey::Delete);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "甲块。");
+    }
+
+    /// ctrl+a 全文选（首叶头 → 尾叶尾）；键入替换全文。
+    #[test]
+    fn ctrl_a_selects_all_then_typing_replaces() {
+        let c = core_for("sa1", "甲块。\n\n乙块。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        ctrl(c, 'a');
+        let sel = c.doc_selection().expect("ctrl+a sets doc selection");
+        assert_eq!(sel.0, SelAnchor { block: 0, offset: 0 });
+        assert_eq!(sel.1, SelAnchor { block: 1, offset: 9 }, "tail leaf fully covered");
+        press(c, EditorKey::Char('替'));
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "替");
+        assert_eq!(c.focused_block(), Some(0));
+    }
+
+    /// 跨块拖选：press→drag 落邻块 → doc_sel 双端建立 + 焦点随动 +
+    /// 逐带高亮。
+    #[test]
+    fn mouse_drag_across_blocks_sets_doc_selection() {
+        let c = core_for("dg1", "甲块。\n\n乙块。\n\n丙块。\n");
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let rects = c.block_rects();
+        let press_out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: 2.0, y: rects[0].y + 4.0 },
+                &mut NullClipboard,
+            )
+        });
+        assert!(press_out.captured);
+        // 拖入块2 文字中部（x=60 → 有字节宽度的落点；叶首字节零宽无高亮
+        // 属正常语义）。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MouseDragged { x: 60.0, y: rects[2].y + 4.0 },
+                &mut NullClipboard,
+            )
+        });
+        let sel = c.doc_selection().expect("cross-block drag sets doc selection");
+        assert_eq!(sel.0.block, 0);
+        assert_eq!(sel.1.block, 2);
+        assert_eq!(c.focused_block(), Some(2), "caret follows drag head");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        for (i, r) in rects.iter().enumerate() {
+            assert!(
+                frame.list.selection.iter().any(|(s, _)| s.y >= r.y && s.y < r.y + r.h),
+                "drag band {i} must highlight"
+            );
+        }
+    }
+
+    /// shift+↑/↓ 跨块边界扩展选区；反向收拢；无 shift 迁移清除。
+    #[test]
+    fn shift_down_across_boundary_extends_selection() {
+        let c = core_for("sh1", "甲块。\n\n乙块。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        let shift = EditorModifiers { shift: true, ..Default::default() };
+        run_fs(|fs| {
+            c.handle_input(fs, DocInput::ModifiersChanged(shift), &mut NullClipboard)
+        });
+        let out = press_key(c, EditorKey::Down, shift);
+        assert!(out.focus_changed);
+        assert_eq!(c.focused_block(), Some(1));
+        let sel = c.doc_selection().expect("shift+Down extends across blocks");
+        assert_eq!(sel.0, SelAnchor { block: 0, offset: 0 }, "anchor stays at origin");
+        assert_eq!(sel.1.block, 1);
+        // 反向收拢回块0：锚端保持，焦点端随 nav 落位回到原块（块内
+        // 选区 {0,0}→{0,尾}，nav 上行落末行尾为既有惯例）。
+        press_key(c, EditorKey::Up, shift);
+        assert_eq!(c.focused_block(), Some(0));
+        let sel2 = c.doc_selection().unwrap();
+        assert_eq!(sel2.0, SelAnchor { block: 0, offset: 0 }, "anchor stays at origin");
+        assert_eq!(sel2.1.block, 0, "focus endpoint back in origin block");
+        // 无 shift 迁移清选区。
+        run_fs(|fs| {
+            c.handle_input(fs, DocInput::ModifiersChanged(EditorModifiers::none()), &mut NullClipboard)
+        });
+        press_key(c, EditorKey::Down, EditorModifiers::none());
+        assert!(c.doc_selection().is_none(), "plain navigation clears selection");
     }
 }
