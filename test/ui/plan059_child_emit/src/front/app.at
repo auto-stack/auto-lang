@@ -1,0 +1,24 @@
+// app.at — PLAN-059 T9 探针语料（musk DeleteConfirmDialog 端口链同形）：
+// 父 widget 以 oncancel/onconfirm 绑定子件 msg——oncancel 目标为**零参**
+// 父 handler（CancelDelete 形）,onconfirm 目标为一参 handler（ConfirmDelete
+// 形,$event 载荷）。锁定零参路由的帧对齐契约。
+use child_panel: ChildPanel
+
+widget App {
+    model {
+        var cancel_done bool = false
+        var last_target str = ""
+    }
+    view {
+        col {
+            ChildPanel {
+                oncancel: .OnCancel
+                onconfirm: .OnConfirm($event)
+            }
+        }
+    }
+    on {
+        .OnCancel -> { .cancel_done = true }
+        .OnConfirm(t str) -> { .last_target = t }
+    }
+}

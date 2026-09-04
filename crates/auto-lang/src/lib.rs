@@ -6204,6 +6204,11 @@ mod plan442_musk_probe_tests;
 // (a2r sources). #[ignore] — manual-only, never in CI.
 #[cfg(test)]
 mod plan442_musk_backend_probe_tests;
+
+// PLAN-059 T9 探针（musk DeleteConfirmDialog 端口链实机复现）：零参父
+// handler 的子→父声明式路由帧对齐契约。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan059_child_emit_probe_tests;
 mod auto_down_vm_server_probe_tests;
 mod autodown_codegen_debts_tests;
 

@@ -1100,7 +1100,18 @@ impl DynamicComponent {
         payload: auto_val::Value,
     ) {
         let state_id = self.bridge.state_obj_id();
-        match self.bridge.call_handler_for(&route.parent_widget, &route.handler, state_id, &[payload]) {
+        // PLAN-059 T9 依赖修正（musk DeleteConfirmDialog 实机:Cancel →
+        // ChatsView.CancelDelete 崩 Invalid object ID: 0）:零参父 handler
+        // 不得塞 Nil 载荷——调用帧从 [self] 变 [self, Nil],handler 体内
+        // 首个字段写按错位帧解 self 即崩。按父 handler 声明参数数对齐帧;
+        // 未知 arity 保持 legacy（塞载荷）。
+        let declared_params = self.bridge.handler_param_count(&route.parent_widget, &route.handler);
+        let args: Vec<auto_val::Value> = if declared_params.unwrap_or(1) > 0 {
+            vec![payload]
+        } else {
+            Vec::new()
+        };
+        match self.bridge.call_handler_for(&route.parent_widget, &route.handler, state_id, &args) {
             Ok(()) => {
                 self.dirty = true;
             }
