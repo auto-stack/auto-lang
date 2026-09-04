@@ -253,16 +253,30 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
      镜像宿主 {:?};⑥b cg_is_arm_body 包块作用域(tokenize locals
      34→16)。差分首分歧单调前移 1498→2047→2846;门禁 m4/m5/use_
      corpus/goldens 全绿(大套件并行 flake 重跑即绿)。
-   - **残留③末段(⑥c)**:tokenize locals 16 vs 宿主 14(差 2 槽)+
-     1 处多余 store.loc.1——⑥a add_var 现算挤隙镜像方案实测回退早期
-     区域对齐(分歧 2846→418)已回退,仅存 ⑥b 臂体作用域;下一轮从
-     "tokenize 内 2 槽差额的具体构造"切入。差分测试转绿后随正式
-     资产(静态对拍闸门)一并提交。
-   - **残留③末段(⑥c)**:tokenize locals 16 vs 宿主 14(差 2 槽)+
-     1 处多余 store.loc.1——⑥a add_var 现算挤隙镜像方案实测回退早期
-     区域对齐(分歧 2846→418)已回退,仅存 ⑥b 臂体作用域;下一轮从
-     "tokenize 内 2 槽差额的具体构造"切入。差分测试转绿后随正式
-     资产(静态对拍闸门)一并提交。
+   - **残留③末段(⑥c,2026-09-05 收窄)**:差分口径升级为语义等价
+     (.line 整行剔除/jmp-call 目标抽象/fn.prolog-reserve 容量豁免/
+     **字段与全局名经池解析**——双侧一致升级,serialize+normalized_dump
+     同步,commit e622d1675 含根修⑦ is 多模式测序 swap_remove 镜像 +
+     ⑧ 字段/全局名渲染)。语义口径下指令流唯一残余=**绝对槽号区域
+     差**(tokenize 注释臂 aavm +4,locals 16 vs 14)——根因=两侧作用域
+     推入结构层级不同(宿主 while 体/is 臂嵌套更深:d5/d6/d8 vs aavm
+     d4/d5/d6),完全镜像需作用域架构专项对齐(非热修);帧多预留 2 槽
+     自洽且零语义。差分测试(test_aavm2_p532_lib_static_diff)留
+     worktree 未提交(红=该已知差),作用域对齐落地后转绿随闸门提交。
+     诊断资产:scratch532/libdiff/、%TEMP%/p532_{rust,aavm}.txt、
+     scratch/p532/diff_dumps.py(离线对齐器)。
+   - **残留③末段(⑥c,2026-09-05 收窄)**:差分口径升级为语义等价
+     (.line 整行剔除/jmp-call 目标抽象/fn.prolog-reserve 容量豁免/
+     **字段与全局名经池解析**——双侧一致升级,serialize+normalized_dump
+     同步,commit e622d1675 含根修⑦ is 多模式测序 swap_remove 镜像 +
+     ⑧ 字段/全局名渲染)。语义口径下指令流唯一残余=**绝对槽号区域
+     差**(tokenize 注释臂 aavm +4,locals 16 vs 14)——根因=两侧作用域
+     推入结构层级不同(宿主 while 体/is 臂嵌套更深:d5/d6/d8 vs aavm
+     d4/d5/d6),完全镜像需作用域架构专项对齐(非热修);帧多预留 2 槽
+     自洽且零语义。差分测试(test_aavm2_p532_lib_static_diff)留
+     worktree 未提交(红=该已知差),作用域对齐落地后转绿随闸门提交。
+     诊断资产:scratch532/libdiff/、%TEMP%/p532_{rust,aavm}.txt、
+     scratch/p532/diff_dumps.py(离线对齐器)。
    - 架构指令执行面(拼接→模块加载默认化)在残留③清零后启动
      (aavm2_lib_source 族消费面,超出本计划部分立项)。
 7. [ ] 原生一代对拍：a2r 原生 aavm exe 跑 corpus（代表集）与宿主一致
