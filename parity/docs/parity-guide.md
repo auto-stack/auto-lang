@@ -38,6 +38,9 @@ Phase mapping (Plans 347/358/367/368/369 — source of truth is the
   `py_re`, `py_string`, `py_sys`
 - `p8`: `py_numpy`, `py_pandas`, `py_matplotlib`, `py_torch` (Plan 461
   sci-compute parity via `use.py`; torch adds ~10s import per backend)
+- `p9`: `py_torch_infer`, `py_torch_train` (Plan 539 torch idiom parity —
+  dunder operator routing, matmul/getitem/slice/call0/py_with/kwargs/May
+  inference idioms, then the seeded-MLP training loop)
 - `d1`: `cli_app`
 - `d2`: `trait_advanced`, `generators`
 - `d4`: `string_utils`
