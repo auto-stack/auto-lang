@@ -105,6 +105,10 @@ pub const NATIVE_PY_WITH: u16 = 461;
 pub const NATIVE_PY_ENTER: u16 = 462;
 /// Plan 539 W1 (T14): `py_exit(ctx)` — `__exit__(None, None, None)` half.
 pub const NATIVE_PY_EXIT: u16 = 463;
+/// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
+/// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
+/// handles on return (see the marshal note); this is the honest channel.
+pub const NATIVE_PY_FLOAT: u16 = 465;
 /// Plan 539 W2 (T17): `py_item_kw(module, func, posargs, kw_names, kw_vals)` —
 /// keyword-argument channel for ITEM-IMPORT direct calls
 /// (`nn.Linear(784, 10, bias: false)`). Resolves the target at runtime by
@@ -979,6 +983,37 @@ impl PyFfiBridge {
             Ok(())
         };
         self.native_interface.register_static(NATIVE_PY_ITEM_KW, item_kw_shim);
+
+        // ---- py_float(x) ----
+        // Plan 539 W2 (T19): float(x) — explicit scalar extraction.
+        let float_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_float needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let val = pop_auto_py_arg(task, vm, py)?;
+                let builtins = py.import("builtins").map_err(|e| {
+                    VMError::FFI(format!("py_float: builtins import failed: {}", e))
+                })?;
+                let float_fn = builtins.getattr("float").map_err(|e| {
+                    VMError::FFI(format!("py_float: builtins.float missing: {}", e))
+                })?;
+                let result = float_fn.call1((val,)).map_err(|e| {
+                    VMError::FFI(format!("py_float failed: {}", e))
+                })?;
+                let f: f64 = result.extract().map_err(|e| {
+                    VMError::FFI(format!("py_float did not return float: {}", e))
+                })?;
+                task.ram.push_f64(f);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_FLOAT, float_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -1516,6 +1551,14 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Boun
             // Clone the payload out, release the guard, then recurse so nested
             // VmRef lookups never stack read locks on the heap.
             let guard = heap_obj.read().unwrap();
+            // Plan 539 W2 (T17): a VmRef to a PyObjectHandle resolves to the
+            // live Python object (nested handles inside Auto lists — e.g. the
+            // positional-args envelope of py_item_kw carrying a generator).
+            if let Some(py_handle) = guard.as_any().downcast_ref::<PyObjectHandle>() {
+                let owned = py_handle.obj.clone_ref(py);
+                drop(guard);
+                return owned.into_bound(py).into_any();
+            }
             if let Some(list_data) = guard
                 .as_any()
                 .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
@@ -1570,15 +1613,17 @@ fn py_auto_marshal_return(
     if py_val.is_instance_of::<pyo3::types::PyBool>() {
         let b: bool = py_val.extract().unwrap_or(false);
         task.ram.push_i32(if b { 1 } else { 0 });
+    } else if py_val.is_instance_of::<PyFloat>() {
+        // Plan 539 W2 (T19): only EXACT Python floats eagerly marshal to
+        // f64. The W0-era extract::<f64> also captured 0-dim tensors via
+        // __float__ (and numpy scalars subclass float, which still matches
+        // here) — eager-f64ing tensors broke the training loop (loss needs
+        // to stay a tensor for backward). Tensor scalars stay opaque
+        // handles; extract with py_float(x) explicitly.
+        let f: f64 = py_val.extract().unwrap_or(0.0);
+        task.ram.push_f64(f);
     } else if let Ok(i) = py_val.extract::<i32>() {
         task.ram.push_i32(i);
-    } else if let Ok(f) = py_val.extract::<f64>() {
-        // Plan 539 W0 (DIV-PY-FLOAT-1): floats return as a real f64. The
-        // historic string-pool round-trip existed because the 2-slot f64
-        // encoding broke `let x = py_func()` — obsolete since Plan 377 made
-        // f64 single-slot. It dropped ".0" on integral values and silently
-        // degraded arithmetic on the stringified result to NaN.
-        task.ram.push_f64(f);
     } else if let Ok(s) = py_val.extract::<String>() {
         let idx = vm.add_string(s.into_bytes());
         vm.rc_push_str_idx(task, idx);

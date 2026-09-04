@@ -5025,6 +5025,27 @@ impl Codegen {
         self.register_py_object_builtins();
     }
 
+    /// Plan 539 (T19): unified dispatch for py special call forms. Returns
+    /// true when the call was fully compiled (caller returns immediately).
+    fn try_py_call_special_form(&mut self, call: &crate::ast::Call) -> AutoResult<bool> {
+        // py_with inline bracket (T14)
+        if self.is_py_with_inline_form(call) {
+            self.compile_py_with_inline(call)?;
+            return Ok(true);
+        }
+        // item-import kwargs (T17)
+        if self.is_py_item_kw_form(call) {
+            self.compile_py_item_kw_form(call)?;
+            return Ok(true);
+        }
+        // py_call with named args (T03)
+        if self.is_py_call_kw_form(call) {
+            self.compile_py_call_kw_form(call)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     /// Plan 539 W2 (T17): does this call site match an item-import direct
     /// call carrying named args (`Linear(784, 10, bias: false)`)? The callee
     /// must NOT be one of the py_* builtins (those have their own kw forms).
@@ -5241,6 +5262,10 @@ impl Codegen {
         }
         self.emit(OpCode::CREATE_ARRAY);
         self.code.push(kw_names.len() as u8);
+        // The fixed 5-slot convention of py_call_kw (id 452).
+        self.emit(OpCode::CALL_PY);
+        self.emit_u16(452);
+        self.code.push(5u8);
         Ok(())
     }
 
@@ -5320,6 +5345,8 @@ impl Codegen {
             "py_slice",
             "py_call0",
             "py_with",
+            "py_item_kw",
+            "py_float",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
@@ -8720,34 +8747,13 @@ impl Codegen {
                         return Ok(());
                     }
 
-                    // Plan 539 W1 (T14): py_with with a 0-param closure body
-                    // lowers to the inline enter/exit bracket — see the
-                    // helper (kept out of this arm to bound its stack frame,
-                    // the aavm2 corpus overflow lesson from T09).
-                    if is_py_ffi_call && self.is_py_with_inline_form(call) {
-                        self.compile_py_with_inline(call)?;
+                    // Plan 539: all py special call forms (py_call kwargs /
+                    // py_with inline bracket / item-import kwargs) dispatch
+                    // through ONE helper call — this hot recursive arm's
+                    // stack frame must stay minimal (the inline versions
+                    // overflowed the deeply recursive aavm2 corpus, T09/T19).
+                    if is_py_ffi_call && self.try_py_call_special_form(call)? {
                         return Ok(());
-                    }
-
-                    // Plan 539 W2 (T17): item-import direct call with named
-                    // args (`Linear(784, 10, bias: false)`) lowers to the
-                    // py_item_kw 5-slot convention (module/func resolved at
-                    // runtime by name). Helper-kept, same frame-size rule.
-                    if is_py_ffi_call && self.is_py_item_kw_form(call) {
-                        self.compile_py_item_kw_form(call)?;
-                        return Ok(());
-                    }
-
-                    // Plan 539 W0 (DIV-PY-KWARGS-1): py_call-with-named-args
-                    // lowers to the py_call_kw 5-slot convention. The emission
-                    // lives in a helper so this hot recursive arm keeps a small
-                    // stack frame (the inline version overflowed the deeply
-                    // recursive aavm2 corpus compile, Plan 539 T09).
-                    let py_call_kw_form = is_py_ffi_call
-                        && self.is_py_call_kw_form(call);
-
-                    if py_call_kw_form {
-                        self.compile_py_call_kw_form(call)?;
                     } else
                     // Compile arguments (left-to-right)
                     // Plan 088 Phase 4: Smart parameter passing for native functions
@@ -8892,17 +8898,9 @@ impl Codegen {
                     // the ACTUAL number of args (count cannot be introspected for
                     // C builtins like datetime.date, and struct.pack is variadic).
                     if is_py_ffi_call {
-                        // Plan 539 W0 (DIV-PY-KWARGS-1): the kw form always pops the
-                        // fixed 5 slots of the py_call_kw convention (id 452).
-                        const NATIVE_PY_CALL_KW: u16 = 452;
-                        let (py_id, py_arg_count) = if py_call_kw_form {
-                            (NATIVE_PY_CALL_KW, 5u8)
-                        } else {
-                            (resolved_id, call.args.args.len().min(255) as u8)
-                        };
                         self.emit(OpCode::CALL_PY);
-                        self.code.extend_from_slice(&py_id.to_le_bytes());
-                        self.code.push(py_arg_count);
+                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                        self.code.push(call.args.args.len().min(255) as u8);
                     } else {
                         self.emit(OpCode::CALL_NAT);
                         self.code.extend_from_slice(&resolved_id.to_le_bytes());

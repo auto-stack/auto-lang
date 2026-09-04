@@ -27,8 +27,8 @@ the W1 operator/idiom layer cleared by Plan 539.
 - Composite receivers use intermediate variables: a2py does not
   parenthesize nested expressions in method receivers (`t == t.sum()`
   would mis-bind).
-- 0-dim tensor results assert via `.to(int)` on the marshalled scalar
-  (AutoVM rides `__float__`); never `.to(str)` a tensor handle.
+- 0-dim tensor results stay OPAKE handles (W2 rule) — extract scalars
+  with `py_float(x)`; never `.to(str)`/`.to(int)` a tensor handle.
 - `py_with(ctx, () => { body })` compiles to an INLINE bracket —
   `py_enter(ctx); body; py_exit(ctx)` — because py handles in closure
   locals degrade to raw ids (DIV-PY-CLOSURE-1, pre-existing). The body

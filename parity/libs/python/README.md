@@ -55,9 +55,14 @@ W1/W2 suites and probed in `scratch/p539/` during development:
 
 - Auto array arguments marshal to Python lists (nested arrays and
   objects too — DIV-PY-AUTOLIST-1 cleared in Plan 539 W0).
-- Python float returns push a real f64 (`.to(str)`/`.to(int)`/
-  `.to(float)` are tag-dispatched); 0-dim tensors ride `__float__` —
-  assert `py_call(t, "sum")` directly (DIV-PY-FLOAT-1 cleared).
+- Scalar marshalling (W2 rule): only EXACT Python floats (`.item()`,
+  math functions, numpy scalars) push a real f64; 0-dim TENSORS stay
+  opaque handles so `backward` keeps working — extract with
+  `py_float(x)`. `.to(str)`/`.to(int)`/`.to(float)` are tag-dispatched.
+- Training loop (Plan 539 W2): kwargs constructors (`Linear(2, 1, bias:
+  false)`, `SGD(params, lr: 0.1)`), seeded convergence loop (forward →
+  MSELoss → zero_grad/backward/step), tuple/dict round-trips — see the
+  `py_torch_train` suite.
 - Known a2py gap: Auto float literals emit as Python ints (`1.0` → `1`)
   — pre-existing, suite authors must keep this in mind for dtype
   sensitive assertions.

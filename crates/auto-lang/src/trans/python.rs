@@ -1072,6 +1072,16 @@ impl PythonTrans {
                     sink.body.write(b", None)")?;
                     return Ok(());
                 }
+                // Plan 539 W2 (T19): py_float(x) → float(x) — explicit
+                // scalar extraction (tensor scalars stay opaque in AutoVM).
+                "py_float" if call.args.args.len() == 1 => {
+                    sink.body.write(b"float(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
                 // Plan 539 W1 (T11-T14): inference idiom lowerings.
                 // py_matmul(a, b) → a.matmul(b) — the torch-idiomatic surface,
                 // avoiding the @ infix (annotation-prefix lexer territory).
