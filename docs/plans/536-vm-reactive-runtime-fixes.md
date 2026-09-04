@@ -162,6 +162,27 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   size zero）,AskDelete→模态弹出+派发终验留用户实机;通过后 musk 侧退役
   内联确认行（059 T9 待澄清⑨ 处置）。
 
+## 重测记录（2026-09-04 合并后,合并点 fe962a3ed→432e15dab）
+
+两仓分支已合并（auto-lang master←plan-536-dev; musk main←auto-lang-536-dev）,
+master 清理重编译（v0.4.1-3478-g432e15dab）。重测面板结果：
+
+1. **#4 标签 PASS**：合并版二进制下 KD 059-FU1 样本 created_at=1788436450
+   渲染 **19:54:10**（此前 08:34）,四 turn 标签与本地库 timestamp 本地时
+   逐秒吻合（19:54:10/18/39/45,scratch/p536_retest*）。+42043s 恒偏**未
+   复现**,支持"陈旧产物"假说（用户判定的合并+重编译路径有效）。
+2. **重测发现并修复两件**：①delete_confirm.vm.at msg 声明带参数名
+   （`Confirm(target str)`）致适配器模块解析 fatal（boot plan-446 C1 门禁
+   拦截实录）→改 `Confirm(str)`;②button 结构子件内 absolute hoist 臂使
+   Button{content:Overlay} **画布空壳**（会话列表卡片名称/× 全失,截图
+   p536_retest_rail）→auto-lang master 撤销该臂（commit 432e15dab）,测试
+   契约反转锁定;musk 会话卡 × 改兄弟悬浮结构（外层 relative col 承接）。
+3. **遗留（rail 空列表）**：会话列表 for 循环仍空（session_list 空/拉取
+   未达）,而消息区有数据——数据源路由疑似落在 spawn 的 8080 backend VM
+   （本地 musk-demo 库）而非 AUTO_BACKEND=9247,与 KD-048-a/055-4③（8080
+   落 Windows 保留端口段 8068-8167）邻接;#3 × 悬浮/T9 模态的像素终验
+   待 rail 恢复后一并做（结构改动已就位）。
+
 ## 测试设计
 
 - 本仓：三题各配 iced/vm 单测或探针断言;全量 lib（--features ui-iced）不劣于基线。
