@@ -737,6 +737,9 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_call_kw", crate::py_ffi::NATIVE_PY_CALL_KW);
         // Plan 539 W0 (DIV-PY-EXCEPT-1): May-valued method-call channel.
         registry.register_with_id("py.py_call_may", crate::py_ffi::NATIVE_PY_CALL_MAY);
+        // Plan 539 W0 (DIV-PY-ITER-1): iteration protocol pair.
+        registry.register_with_id("py.py_iter", crate::py_ffi::NATIVE_PY_ITER);
+        registry.register_with_id("py.py_next", crate::py_ffi::NATIVE_PY_NEXT);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();

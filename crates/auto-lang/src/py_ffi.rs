@@ -73,6 +73,13 @@ pub const NATIVE_PY_CALL_KW: u16 = 452;
 /// hard `VMError::FFI` abort. `py_call` stays the strict variant (its errors
 /// are catchable by try/catch through the VM's intercept_error path).
 pub const NATIVE_PY_CALL_MAY: u16 = 453;
+/// Plan 539 W0 (DIV-PY-ITER-1): `py_iter(handle) -> iterator handle` — GIL
+/// `iter(obj)` wrapped as an opaque PyObjectHandle.
+pub const NATIVE_PY_ITER: u16 = 454;
+/// Plan 539 W0 (DIV-PY-ITER-1): `py_next(it) -> value | null` — GIL `next(it)`;
+/// StopIteration marshals to the Auto null family so `while x != null` style
+/// loops work.
+pub const NATIVE_PY_NEXT: u16 = 455;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -499,6 +506,90 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALL_MAY, call_may_shim);
+
+        // ---- py_iter(handle) -> iterator handle ----
+        // Plan 539 W0 (DIV-PY-ITER-1): Python iteration protocol entry. The
+        // resulting handle feeds py_next; for-in over sized/indexed py objects
+        // additionally works through the ARRAY_LEN/GET_ELEM GIL arms.
+        let iter_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_iter needs 1 arg (iterable handle), got {}",
+                        n
+                    )));
+                }
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+                let it = obj_py
+                    .try_iter()
+                    .map_err(|e| {
+                        VMError::FFI(format!(
+                            "py_iter: {} is not iterable: {}",
+                            safe_type_name(&obj_py), e
+                        ))
+                    })?
+                    .into_any();
+                let type_name = safe_type_name(&it);
+                let owned = it.clone().unbind();
+                let handle = PyObjectHandle::new(type_name, owned);
+                let id = vm.insert_heap_object(handle);
+                vm.rc_push(task, auto_val::encode_object(id as u32));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_ITER, iter_shim);
+
+        // ---- py_next(it) -> value | null ----
+        // Plan 539 W0 (DIV-PY-ITER-1): StopIteration → Auto null family; any
+        // other value marshals through the standard return path (handles stay
+        // opaque, scalars/f64/lists marshal natively).
+        let next_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_next needs 1 arg (iterator handle), got {}",
+                        n
+                    )));
+                }
+                let it_py = pop_auto_py_arg(task, vm, py)?;
+                let builtins = py.import("builtins").map_err(|e| {
+                    VMError::FFI(format!("py_next: builtins import failed: {}", e))
+                })?;
+                let next_fn = builtins.getattr("next").map_err(|e| {
+                    VMError::FFI(format!("py_next: builtins.next not found: {}", e))
+                })?;
+                let result = next_fn
+                    .call((&it_py,), None)
+                    .map_err(|e| {
+                        // StopIteration is the exhaustion signal, not an error.
+                        let is_stop = e
+                            .is_instance_of::<pyo3::exceptions::PyStopIteration>(py);
+                        if is_stop {
+                            VMError::FFI("__stopiteration__".to_string())
+                        } else {
+                            VMError::FFI(format!(
+                                "py_next on {} failed: {}",
+                                safe_type_name(&it_py), e
+                            ))
+                        }
+                    });
+                match result {
+                    Ok(value) => {
+                        py_auto_marshal_return(&value, task, vm)?;
+                    }
+                    Err(VMError::FFI(msg)) if msg == "__stopiteration__" => {
+                        task.ram.push_nv(auto_val::encode_null());
+                    }
+                    Err(e) => return Err(e),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_NEXT, next_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -640,6 +731,17 @@ impl PyFfiBridge {
             callables
         })
     }
+}
+
+/// Plan 539 W0 (DIV-PY-ITER-1): engine-side entry for marshalling a Python
+/// value onto the VM stack (used by the ARRAY_LEN/GET_ELEM GIL arms). Public
+/// within the crate because those handlers live in vm/engine.rs.
+pub(crate) fn marshal_pyany_to_stack(
+    value: &Bound<'_, PyAny>,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    py_auto_marshal_return(value, task, vm)
 }
 
 /// Pop a single argument from the VM stack and convert to a Python object,

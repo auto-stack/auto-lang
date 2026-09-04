@@ -5035,6 +5035,9 @@ impl Codegen {
         const NATIVE_PY_CALL: u16 = 450;
         const NATIVE_PY_GETATTR: u16 = 451;
         const NATIVE_PY_CALL_KW: u16 = 452;
+        const NATIVE_PY_CALL_MAY: u16 = 453;
+        const NATIVE_PY_ITER: u16 = 454;
+        const NATIVE_PY_NEXT: u16 = 455;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5051,6 +5054,9 @@ impl Codegen {
                 reg.register_with_id("py.py_call", NATIVE_PY_CALL);
                 reg.register_with_id("py.py_getattr", NATIVE_PY_GETATTR);
                 reg.register_with_id("py.py_call_kw", NATIVE_PY_CALL_KW);
+                reg.register_with_id("py.py_call_may", NATIVE_PY_CALL_MAY);
+                reg.register_with_id("py.py_iter", NATIVE_PY_ITER);
+                reg.register_with_id("py.py_next", NATIVE_PY_NEXT);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5066,7 +5072,7 @@ impl Codegen {
         // (posargs / kw_names / kw_vals as marshalled Auto lists).
         // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may is the May-valued
         // variant (Result.Ok wrap / Result.Err on Python exceptions).
-        for builtin in ["py_call_kw", "py_call_may"] {
+        for builtin in ["py_call_kw", "py_call_may", "py_iter", "py_next"] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
                     builtin.to_string(),

@@ -2949,6 +2949,31 @@ impl AutoVM {
                             if let Some(list) = self.heap_objects.get(&array_id) {
                                 use crate::vm::types::ListData;
                                 let guard = list.read().unwrap();
+                                // Plan 539 W0 (DIV-PY-ITER-1): PyObjectHandle —
+                                // GIL len() so for-in over sized py objects
+                                // (tensors/lists/dicts) iterates like Python.
+                                #[cfg(feature = "python")]
+                                {
+                                    #[allow(unused_imports)]
+                                    use pyo3::prelude::*;
+                                    let py_len = guard
+                                        .as_any()
+                                        .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                        .map(|pyh| {
+                                            pyo3::Python::attach(|py| {
+                                                pyh.obj
+                                                    .clone_ref(py)
+                                                    .into_bound(py)
+                                                    .len()
+                                                    .map(|l| l as i32)
+                                                    .unwrap_or(0)
+                                            })
+                                        });
+                                    if let Some(n) = py_len {
+                                        task.ram.push_i32(n);
+                                        return Ok(StepResult::Continue);
+                                    }
+                                }
                                 let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
                                     list.elems.len() as i32
                                 } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
@@ -4800,6 +4825,41 @@ impl AutoVM {
                         if let Some(obj) = self.get_heap_object(obj_id) {
                             use crate::vm::types::ListData;
                             let guard = obj.read().unwrap();
+
+                            // Plan 539 W0 (DIV-PY-ITER-1): PyObjectHandle —
+                            // GIL obj[index], result marshalled through the
+                            // standard py return path (handles stay opaque).
+                            #[cfg(feature = "python")]
+                            if guard
+                                .as_any()
+                                .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                .is_some()
+                            {
+                                #[cfg(feature = "python")]
+                                {
+                                    #[allow(unused_imports)]
+                                    use pyo3::prelude::*;
+                                    let pyh = guard
+                                        .as_any()
+                                        .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                        .unwrap();
+                                    pyo3::Python::attach(|py| -> Result<(), VMError> {
+                                        let bound = pyh.obj.clone_ref(py).into_bound(py);
+                                        let item = bound.get_item(index_i32).map_err(|e| {
+                                            VMError::FFI(format!(
+                                                "Python getitem on {} failed: {}",
+                                                bound.get_type().name().map(|n| n.to_string()).unwrap_or_default(),
+                                                e
+                                            ))
+                                        })?;
+                                        crate::py_ffi::marshal_pyany_to_stack(&item, task, self)?;
+                                        Ok(())
+                                    })?;
+                                    // Plan 419: receiver(list/数组引用)的栈上 stake 死亡。
+                                    self.rc_release(obj_or_str_nv);
+                                    return Ok(StepResult::Continue);
+                                }
+                            }
 
                             // Try List<int>
                             if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
