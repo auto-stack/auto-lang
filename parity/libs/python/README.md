@@ -21,6 +21,12 @@ W1/W2 suites and probed in `scratch/p539/` during development:
   `Result.Ok(value)` / `Result.Err("PyException <Type>: <msg>")`; consume
   with `expr.?` (propagate) or `expr.?(default)` (fallback). `py_call`
   stays strict — its exceptions abort unless wrapped in try/catch.
+- **Callback bridge** (Plan 539 W3) — `py_callable(closure)` wraps an Auto
+  closure as a Python callable (`PyCFunction`); callbacks re-enter the
+  CURRENT task through a thread-local window installed by the call shims.
+  Constraint: callbacks may only fire inside a host py shim on the VM thread
+  (num_workers=0 CPU loaders). Expression-bodied closures only in a2py
+  (`(x) => x * 2`, not `{ x * 2 }`).
 - **Iteration** — `py_iter(x)` → iterator handle, `py_next(it)` → value
   or null (StopIteration); `for x in handle` iterates sized/indexed py
   objects (tensors, lists, dicts) through the index channel. Loaders and

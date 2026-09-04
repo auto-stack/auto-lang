@@ -5347,6 +5347,7 @@ impl Codegen {
             "py_with",
             "py_item_kw",
             "py_float",
+            "py_callable",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(

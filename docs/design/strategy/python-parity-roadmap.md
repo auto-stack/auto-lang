@@ -305,3 +305,37 @@ P0: 框架扩展 → P1: math + random → P2: datetime + struct + uuid
 | D | 数据分析 | numpy, pandas | 是（C 核心） |
 | E | 解析 | lxml, xml.etree, beautifulsoup4 | 是（libxml2/expat） |
 | F | 复杂 | matplotlib, pillow | 混合 |
+
+## 7. 中缀运算符调研节（Plan 539 收官追加，2026-09-04）
+
+Plan 539 定案：`*` 保持逐元素语义（torch/numpy 同义），矩阵乘走
+`py_matmul(a, b)` / `a.matmul(b)` 函数形式。以下两个中缀运算符为
+**独立语言层决策**，登记于此供后续计划调研：
+
+### 7.1 中缀 `@`（matmul）
+
+- **现状**：`@` 为注解前缀（声明位置）。词法上注解在声明位置、
+  matmul 在表达式中缀位置，可区分——但需要 lexer/parser 双通道改造
+  与歧义测试（装饰器风格 `@fn` 表达式、`a @ b @ c` 链）。
+- **收益面**：`W = A @ B + C` 训练脚本可读性；与 Python 数值生态
+  逐字对齐。
+- **成本面**：词法双义 + 既有 `@` 注解语料回归面；dunder 路由臂
+  （Plan 539 T10 已建 `__matmul__` 通道）只差中缀表面。
+- **建议**：独立小计划，先探针注解/中缀冲突语料，再定案。
+
+### 7.2 中缀 `**`（幂）
+
+- **现状**：Auto 无幂运算符（`pow` 函数在）。`**` 词法与指针/解引用
+  家族无冲突，风险低于 `@`。
+- **收益面**：`lr ** 0.5`、数学脚本惯用法。
+- **成本面**：dunder `__pow__` 路由臂 + 优先级表插入（右结合）。
+- **建议**：可与 `@` 合并同一运算符批计划。
+
+### 7.3 W3 类派生（py_subclass）延期备注
+
+自定义 `nn.Module`/`Dataset` 需要 Python 侧类工厂（`exec` 生成类 +
+`__len__`/`__getitem__`/`forward` 方法绑回 Auto 回调）。回调桥
+（Plan 539 T21，thread-local 任务槽）已打通单回调通道（map/apply_
+探针实证），但类工厂的方法绑定面 + GIL/生存期约束审查超出 W3 预算，
+**显式延期**——组合式替代（`nn.Sequential`/裸 Linear 栈）已由
+py_torch_train 套件覆盖为金样。见 KNOWN-DEBT P539-D4。

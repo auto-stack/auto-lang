@@ -105,6 +105,11 @@ pub const NATIVE_PY_WITH: u16 = 461;
 pub const NATIVE_PY_ENTER: u16 = 462;
 /// Plan 539 W1 (T14): `py_exit(ctx)` — `__exit__(None, None, None)` half.
 pub const NATIVE_PY_EXIT: u16 = 463;
+/// Plan 539 W3 (T21): `py_callable(closure_id)` — wrap an Auto closure as a
+/// Python callable (PyCFunction). Callbacks execute on the CURRENT task via
+/// the thread-local task slot (valid only inside a host py shim window —
+/// the T02 constraint: GIL thread == VM thread, num_workers=0).
+pub const NATIVE_PY_CALLABLE: u16 = 466;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -327,6 +332,9 @@ impl PyFfiBridge {
     pub fn register_object_shims(&mut self) {
         // ---- py_call(obj, method_name, ...args) ----
         let call_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            // Plan 539 W3 (T21): the bridge window lets PyCFunction callbacks
+            // created by py_callable re-enter THIS task while Python runs.
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 // Layout (TOS → bottom): argN ... arg1, method_name, obj
                 // pending_native_arg_count = total args including obj & method_name.
@@ -429,6 +437,7 @@ impl PyFfiBridge {
         // pop_auto_py_arg), so Python receives real keyword arguments instead
         // of the historic silent name-drop.
         let call_kw_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 // Layout (TOS → bottom): kw_vals, kw_names, posargs, method_name, obj
                 let n = task.pending_native_arg_count as usize;
@@ -482,6 +491,7 @@ impl PyFfiBridge {
         // but the Python exception channel lands as a May value instead of a
         // process-level VMError::FFI (which only try/catch can intercept).
         let call_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n < 2 {
@@ -782,6 +792,7 @@ impl PyFfiBridge {
         // ---- py_call0(fn_handle, args...) ----
         // Plan 539 W1 (T13): direct invocation of a callable handle.
         let call0_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n < 1 {
@@ -937,6 +948,7 @@ impl PyFfiBridge {
         // ---- py_item_kw(module, func, posargs, kw_names, kw_vals) ----
         // Plan 539 W2 (T17): item-import direct call with keyword args.
         let item_kw_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n != 5 {
@@ -1014,6 +1026,57 @@ impl PyFfiBridge {
             Ok(())
         };
         self.native_interface.register_static(NATIVE_PY_FLOAT, float_shim);
+
+        // ---- py_callable(closure_id) -> callable handle ----
+        // Plan 539 W3 (T21): wrap an Auto closure as a Python callable. The
+        // PyCFunction routes back into the CURRENT task through the
+        // thread-local bridge window installed by the call shims below.
+        let callable_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_callable needs 1 arg (closure), got {}",
+                        n
+                    )));
+                }
+                let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+                let func = pyo3::types::PyCFunction::new_closure(
+                    py,
+                    None,
+                    None,
+                    move |args: &Bound<'_, PyTuple>,
+                          _kwargs: Option<&Bound<'_, PyDict>>|
+                          -> PyResult<Py<PyAny>> {
+                        let arg = args
+                            .get_item(0)
+                            .map_err(|_| {
+                                pyo3::exceptions::PyRuntimeError::new_err(
+                                    "auto_callback expects at least 1 argument",
+                                )
+                            })?;
+                        // The GIL is held by the calling C frame; attach is
+                        // the 0.29 way to obtain the token without capturing it.
+                        pyo3::Python::attach(|py| {
+                            run_closure_bridged(py, closure_id, &arg)
+                        })
+                    },
+                )                .map_err(|e| {
+                    VMError::FFI(format!("py_callable construction failed: {}", e))
+                })?;
+
+                let type_name = safe_type_name(&func);
+                let owned: Py<PyAny> = func.clone().into_any().unbind();
+                let handle = PyObjectHandle::new(type_name, owned);
+                let id = vm.insert_heap_object(handle);
+                vm.rc_push(task, auto_val::encode_object(id as u32));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CALLABLE, callable_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -1277,6 +1340,99 @@ pub(crate) fn py_dunder_neg(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         py_auto_marshal_return(&result, task, vm)?;
         Ok::<(), VMError>(())
     })
+}
+
+// ============================================================================
+// Plan 539 W3 (T21): callback bridge — Auto closure as a Python callable
+// ============================================================================
+
+/// Thread-local window into the currently-running host py shim. Set on shim
+/// entry, cleared on exit — a PyCFunction callback may only fire while a
+/// py_call-family shim holds the GIL on the VM thread (T02 constraint:
+/// num_workers=0 CPU loaders; a callback from another thread is a bug).
+thread_local! {
+    static BRIDGE_TASK: std::cell::Cell<*mut AutoTask> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+    static BRIDGE_VM: std::cell::Cell<*const AutoVM> = const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+/// Local nv→Value conversion for the callback bridge (nv_to_value in
+/// vm/native.rs is private; this mirrors its scalar/container decoding for
+/// callback return marshalling).
+fn nv_to_value_local(nv: auto_val::NanoValue, vm: &AutoVM) -> auto_val::Value {
+    if auto_val::is_f64(nv) {
+        auto_val::Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+    } else if auto_val::is_bool(nv) {
+        auto_val::Value::Bool(auto_val::decode_bool(nv))
+    } else if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv) as u32;
+        let bytes = vm.get_string(idx).unwrap_or_default();
+        auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+    } else if auto_val::is_null(nv) {
+        auto_val::Value::Nil
+    } else if auto_val::is_object(nv) || auto_val::is_list(nv) {
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: (nv & 0xFFFF_FFFF) as usize,
+        })
+    } else {
+        auto_val::Value::Int(auto_val::decode_i32(nv))
+    }
+}
+
+/// RAII guard installing the bridge window for the duration of a shim.
+pub(crate) struct BridgeGuard;
+
+impl BridgeGuard {
+    pub(crate) fn enter(task: &mut AutoTask, vm: &AutoVM) -> Self {
+        BRIDGE_TASK.with(|c| c.set(task as *mut AutoTask));
+        BRIDGE_VM.with(|c| c.set(vm as *const AutoVM));
+        BridgeGuard
+    }
+}
+
+impl Drop for BridgeGuard {
+    fn drop(&mut self) {
+        BRIDGE_TASK.with(|c| c.set(std::ptr::null_mut()));
+        BRIDGE_VM.with(|c| c.set(std::ptr::null()));
+    }
+}
+
+/// Plan 539 W3 (T21): run an Auto closure to completion on the bridged task
+/// and marshal its return value to Python. Returns Err when no bridge window
+/// is active (callback fired outside a host shim — unsupported, T02).
+fn run_closure_bridged<'py>(
+    py: Python<'py>,
+    closure_id: u32,
+    arg: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let task_ptr = BRIDGE_TASK.with(|c| c.get());
+    let vm_ptr = BRIDGE_VM.with(|c| c.get());
+    if task_ptr.is_null() || vm_ptr.is_null() {
+        return Err(pyo3::exceptions::PyRuntimeError::new_err(
+            "Auto callback fired outside a host py shim window (unsupported; num_workers=0 only)",
+        ));
+    }
+    // SAFETY: the pointers are valid for the duration of the BridgeGuard,
+    // which outlives this call (it is held by the enclosing host shim).
+    let task: &mut AutoTask = unsafe { &mut *task_ptr };
+    let vm: &AutoVM = unsafe { &*vm_ptr };
+
+    // Marshal the Python argument onto the VM stack as the closure argument.
+    py_auto_marshal_return(arg, task, vm).map_err(|e| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Auto callback argument marshal failed: {:?}",
+            e
+        ))
+    })?;
+
+    vm.call_closure(task, closure_id, 1)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Auto callback body failed: {:?}", e)))?;
+
+    // Marshal the closure's return value back to Python.
+    let ret_nv = task.ram.pop_nv();
+    let ret_val = nv_to_value_local(ret_nv, vm);
+    Ok(value_to_py(&ret_val, py, vm).unbind())
 }
 
 /// Pop a single argument from the VM stack and convert to a Python object,
@@ -2214,6 +2370,31 @@ mod tests {
             assert_eq!(s, 30);
         });
         let _ = two_t;
+    }
+
+    // ========================================================================
+    // Plan 539 W3 (T21): callback bridge
+    // ========================================================================
+
+    #[test]
+    fn test_py_callable_registers_and_guards_window() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CALLABLE).is_some(), "py_callable");
+
+        // Outside a host shim window the bridge must refuse (T02 constraint
+        // made executable): no task slot installed -> RuntimeError.
+        Python::attach(|py| {
+            let arg = py.eval(
+                &std::ffi::CString::new("41").unwrap(),
+                None,
+                None,
+            )
+            .unwrap();
+            let err = run_closure_bridged(py, 0, &arg).unwrap_err();
+            assert!(err.to_string().contains("outside a host py shim window"));
+        });
     }
 
     #[test]
