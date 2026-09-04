@@ -8603,6 +8603,7 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
     crate::ui::style::iced_adapter::set_dark_mode(dark);
     // PLAN-051 T10（DEBTS 050 处置）：桌面壳主题翻转臂与 D-GAP 值变化臂
     // 同款——既有 fence buffer 重着色到新档 hljs 主题。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
     crate::ui::autodown_editor::retheme_all_fence_buffers();
     state.desktop.config.dark_theme = dark;
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
@@ -14647,6 +14648,7 @@ fn dynamic_view(
                 // fence buffer——编辑壳 hljs 主题在 buffer 构建期选定，不随
                 // 全局翻转自换（wontfix 前提「运行时切换器」由 settings 面
                 // 落地成立）。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
                 crate::ui::autodown_editor::retheme_all_fence_buffers();
             }
             crate::ui::style::iced_adapter::set_dark_mode(is_dark);
