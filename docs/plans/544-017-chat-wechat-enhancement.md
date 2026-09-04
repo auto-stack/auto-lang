@@ -207,14 +207,14 @@ pub fn stream() ~Stream<ChatEvent> {
 
 ## 验收标准
 
-- [ ] `auto gen` 在 `examples/ui/017-chat` 下运行无报错。
-- [ ] `cargo test -p auto-man test_017_chat` 保持 PASS。
-- [ ] 界面呈现现代微信风格分栏：左侧联系人会话列表，右侧主聊天区，视觉清爽美观。
-- [ ] 支持在 Alice、Bob、AutoBot 🤖、Tech Support 之间切换，切换后会话头部与状态更新。
-- [ ] 联系人搜索框可动态过滤会话列表。
-- [ ] Emoji 选择面板点击后能正确将对应表情追加至输入框草稿。
-- [ ] 支持向 AutoBot 发送消息或点击模拟回复，后端能返回智能应答。
-- [ ] 既有冒烟测试 T1-T9 全部兼容通过。
+- [x] `auto gen` 在 `examples/ui/017-chat` 下运行无报错。
+- [x] `cargo test -p auto-man test_017_chat` 保持 PASS。
+- [x] 界面呈现现代微信风格分栏：左侧联系人会话列表，右侧主聊天区，视觉清爽美观。
+- [x] 支持在 Alice、Bob、AutoBot 🤖、Tech Support 之间切换，切换后会话头部与状态更新。
+- [x] 联系人搜索框可动态过滤会话列表。
+- [x] Emoji 选择面板点击后能正确将对应表情追加至输入框草稿。
+- [x] 支持向 AutoBot 发送消息或点击模拟回复，后端能返回智能应答。
+- [x] 既有冒烟测试 T1-T9 全部兼容通过。
 
 ---
 
