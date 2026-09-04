@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-543
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: Knowledge Base Sync Baseline
 author: [Codex]
 created_at: 2026-09-04
@@ -247,3 +247,13 @@ PLAN-462～465 的活跃状态，和 2026-09-04 的仓库现状存在时间差�
 
 无。默认采用“Git 跟踪的 Markdown/current spec 为 canonical，机器 JSON 为兼容期投影”的
 方向；具体生成格式和 CI 实现留给后续 lint/catalog 计划，避免本计划把设计与实现混为一体。
+
+## Spec-sync 回写记录
+
+- 2026-09-04：实现提交 `472b4a4f1` 经 merge commit `b719530c0` 折回 master；
+  `wt-guard` 输出 clean 后移除 worktree、`plan-543-dev` 分支和空组目录。
+- Git 跟踪的 current-state/Design/report 已在本计划实现中直接回写：Design 27、架构入口、
+  `docs/specs/README.md`、`docs/specs/overview.md` 与同步审计报告。
+- `.autoos/specs.json` 兼容台账以稳定 ID `P543-1..P543-6` upsert 到
+  reports/goals/architecture/designs/tests/reviews；二次执行后仍为 6 条，验证幂等。
+- 计划终态归档至 `docs/plans/archive/543-knowledge-base-sync-baseline.md`。
