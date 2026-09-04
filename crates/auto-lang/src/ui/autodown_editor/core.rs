@@ -2076,30 +2076,24 @@ fn remove_leaves_compact(blocks: &mut Vec<BlockBuf>, segs: &mut Vec<Seg>, dead: 
     prune(segs, &map);
 }
 
-/// 覆盖文本写入用的 fallback 视口宽（渲染帧会再设真值）。
-const FALLBACK_WIDTH: f32 = 800.0;
-
 impl AutodownEditorCore {
     /// 写一块的全文（家族/字号按种类重建 Attrs）。
-    /// 区间快照随之失效（保守清空；回写重建后恢复切片）。
+    /// PLAN-048 T6：整换新 ViEditor——set_text 直改会残留旧 undo 历史
+    ///（cosmic-text 0.15 无清历史 API，save_point 只设脏 pivot），拆块/
+    /// 合并/规则转换后 Ctrl+Z 会把陈旧 Change 套在新文本上错乱；新缓冲
+    /// 历史为空，undo 自然无操作。区间快照随之失效（保守清空）。
     fn overwrite_block_text(&self, fs: &mut FontSystem, buf: &mut BlockBuf, text: String) {
-        let family =
-            if matches!(buf.kind, LeafKind::Fence) { mono_family() } else { sans_family() };
-        let attrs = Attrs::new().family(family);
-        let size = leaf_size(buf.kind);
-        buf.editor.ed_mut().with_buffer_mut(|b| {
-            b.set_metrics_and_size(
-                fs,
-                Metrics::new(size, size * LINE_H_MULT),
-                Some(FALLBACK_WIDTH),
-                Some(4000.0),
-            );
-            b.set_text(fs, &text, &attrs, Shaping::Advanced, None);
-        });
+        let mono = matches!(buf.kind, LeafKind::Fence);
+        let syntax = buf.syntax.clone();
+        buf.editor = SendEditor(new_leaf_buffer(
+            fs,
+            &text,
+            mono,
+            leaf_size(buf.kind),
+            syntax.as_deref(),
+        ));
         buf.snapshot = text;
         buf.intervals.clear();
-        let ed = buf.editor.ed_mut();
-        ed.set_selection(Selection::None);
     }
 
     fn block_kind_of(&self, bi: usize) -> LeafKind {
@@ -2860,6 +2854,74 @@ mod tests {
         }
         assert_eq!(c.block_kind_of(0), LeafKind::Paragraph);
         assert_eq!(c.emit_document(), "1. ");
+    }
+
+    // ── PLAN-048 T6：undo/redo 面 ───────────────────────────────────────
+
+    /// 打字 undo/redo 往返钉死（cosmic 逐叶记账，passthrough 逐动作
+    /// 一步）。
+    #[test]
+    fn undo_redo_typing_roundtrip() {
+        let c = core_for("un1", "原。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| {
+            c.block_motion(fs, 0, Motion::End);
+            c.block_action(fs, 0, Action::Insert('加'));
+            c.block_action(fs, 0, Action::Insert('笔'));
+        });
+        assert_eq!(c.emit_document(), "原。加笔");
+        ctrl(c, 'z');
+        assert_eq!(c.emit_document(), "原。加");
+        ctrl(c, 'z');
+        assert_eq!(c.emit_document(), "原。");
+        // 重做：Ctrl+Shift+Z。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::KeyPressed {
+                    key: EditorKey::Char('z'),
+                    text: None,
+                    modifiers: EditorModifiers {
+                        control: true,
+                        shift: true,
+                        ..Default::default()
+                    },
+                },
+                &mut NullClipboard,
+            );
+        });
+        assert_eq!(c.emit_document(), "原。加");
+    }
+
+    /// 删除可回退（Backspace 走 cosmic 记账路径）。
+    #[test]
+    fn undo_restores_delete() {
+        let c = core_for("un2", "原文。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Backspace);
+        assert_eq!(c.emit_document(), "原文");
+        ctrl(c, 'z');
+        assert_eq!(c.emit_document(), "原文。");
+    }
+
+    /// 结构操作不入 undo + overwrite 陈旧栈已清：合并后 Ctrl+Z 必须零
+    /// 变化（新缓冲空历史），否则陈旧 Change 套在新文本上错乱。
+    #[test]
+    fn merge_then_undo_is_noop_stale_history_cleared() {
+        let c = core_for("un3", "甲。\n\n乙。\n");
+        // 先在块0 打字积累历史。
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| {
+            c.block_motion(fs, 0, Motion::End);
+            c.block_action(fs, 0, Action::Insert('X'));
+        });
+        // 块1 块首合并入块0（overwrite 块0 → 新缓冲应清栈）。
+        *c.focus.lock().unwrap() = Some(1);
+        press(c, EditorKey::Backspace);
+        assert_eq!(c.emit_document(), "甲。X乙。");
+        ctrl(c, 'z'); // 块0 新缓冲空历史 → 无操作。
+        assert_eq!(c.emit_document(), "甲。X乙。", "stale history must be cleared");
     }
 
     // ── PLAN-048 T4：跨容器合并 ─────────────────────────────────────────
