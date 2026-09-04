@@ -733,6 +733,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
     if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
         registry.register_with_id("py.py_call", crate::py_ffi::NATIVE_PY_CALL);
         registry.register_with_id("py.py_getattr", crate::py_ffi::NATIVE_PY_GETATTR);
+        // Plan 539 W0 (DIV-PY-KWARGS-1): keyword-argument method-call channel.
+        registry.register_with_id("py.py_call_kw", crate::py_ffi::NATIVE_PY_CALL_KW);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
