@@ -6159,6 +6159,11 @@ mod plan442_ext_link_tests;
 mod plan051_ext_widget_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
 mod plan051_timer_tests;
+
+// PLAN-536 T1: timer 写 state → 视图失效全链复现探针（musk 059-FU1 题 1）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan536_t1_reactive_probe_tests;
+
 // Plan 051 Phase 2: 会话壳视觉五缺陷（子模块 use.web 注册表/容器 min-h/i18n 参数）。
 mod plan051_p2_tests;
 

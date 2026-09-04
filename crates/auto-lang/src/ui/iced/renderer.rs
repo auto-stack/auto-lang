@@ -12030,9 +12030,16 @@ fn compare_pngs(
                     }
                 }
             }
+            // PLAN-536 T2(题1 兜底桥): 热重载拍是 source_path 在案时的常驻
+            // 500ms update 泵。update 间隙落到 state 的脏写(timer handler
+            // 异步回填/native 完成回调等,不经过任何 update 派发)由此桥接进
+            // view 失效通路——否则 update 尾部的 is_dirty→view_dirty 回填
+            // 永远看不到它们,画布最坏冻在最后一帧。干净拍零写入零 dirty。
+            if state.component.is_dirty() {
+                *state.app.view_dirty.borrow_mut() = true;
+            }
             return iced::Task::none();
         }
-
         // Handle periodic tick events (stopwatch, timers)
         if msg.event == TICK_EVENT {
             // Plan 402: dispatch Tick to the handler unconditionally — the

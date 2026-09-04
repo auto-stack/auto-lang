@@ -1,0 +1,11 @@
+// chat_bubble.at — PLAN-536 T1 探针子件：prop bubble_title 由父传入，
+// 视图直出，用于实测 prop 在重建帧是否重新解析（题 4 快照定界）。
+widget ChatBubble {
+    msg { }
+    model { var bubble_title str = "" }
+    view {
+        col {
+            text f"bubble=${.bubble_title}"
+        }
+    }
+}

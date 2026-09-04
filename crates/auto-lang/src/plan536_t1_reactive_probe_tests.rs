@@ -1,0 +1,287 @@
+//! PLAN-536 T1 复现探针：timer 写 state → 视图失效 → 视图重建全链实证。
+//!
+//! musk KD 059-FU1 三题的最小复现面（timer handler 写 state + 视图绑定该
+//! state），语料复用 `test/ui/plan051_timer/`（根 widget LocalTick + store
+//! 门控 PollTick，视图 f-string 同时绑定 `.local_count` 与 `.store.poll_count`）。
+//!
+//! 链路分界（计划 T1 要求逐环定位）：
+//! 1. 失效广播臂：fire_timer → handler 执行 → `component.dirty` 置位；
+//! 2. 消费臂：重建视图（view_with_debug_gated）读 state → 文本更新；
+//! 3. update 周期契约：renderer 每拍 clear_dirty → 派发 → 尾部
+//!    `is_dirty() → view_dirty`（renderer.rs update 尾）——本探针按同序
+//!    模拟，验证契约成立。
+
+#![cfg(test)]
+
+#[cfg(test)]
+mod plan536_t1_reactive_probe_tests {
+    use crate::ui::view::View;
+
+    fn locate_corpus() -> Option<std::path::PathBuf> {
+        // 指向 app.at（非 pac.at——build_component_from_app 从 manifest
+        // 内容里找根 WidgetDecl，裸 manifest 会静默返回 None）。
+        let rel = "test/ui/plan051_timer/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(format!("../../{}", rel))),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    fn collect_texts(view: &View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+        match view {
+            View::Text { content, .. } => out.push(content.clone()),
+            View::Button { label, content, .. } => {
+                out.push(label.clone());
+                if let Some(c) = content.as_ref() {
+                    collect_texts(c, out);
+                }
+            }
+            View::Row { children, .. } | View::Column { children, .. } => {
+                for c in children {
+                    collect_texts(c, out);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => collect_texts(child, out),
+            View::Grid { cells, .. } => {
+                for c in cells {
+                    collect_texts(c, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn rendered_texts(dc: &crate::ui::dynamic::DynamicComponent) -> Vec<String> {
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        let mut texts = Vec::new();
+        collect_texts(&view, &mut texts);
+        texts
+    }
+
+    /// 环节 1+2（根 widget 计时器）：timer 写 state → dirty 置位（失效广播）
+    /// → 重建视图文本更新（消费）。任一臂断即题 1 在该环节复现。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t1_root_timer_write_reaches_rebuilt_view() {
+        let corpus = match locate_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T1: SKIPPED — corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan051_timer component");
+
+        // 初渲染基线
+        let base = rendered_texts(&dc);
+        assert!(
+            base.iter().any(|t| t.contains("local=0")),
+            "baseline must show local=0; got {base:?}"
+        );
+
+        // renderer update 周期契约：清 dirty → 派发 timer 拍
+        dc.clear_dirty();
+        assert!(dc.is_timer_entry("App", "LocalTick"), "timer entry registered");
+        assert!(dc.fire_timer("App", "LocalTick"), "ungated tick dispatches");
+        assert!(dc.is_dirty(), "ARM-1 失效广播: timer handler 写 state 后 dirty 必须置位");
+        assert_eq!(dc.read_state("local_count"), Ok(auto_val::Value::Int(1)));
+
+        // 消费臂：按 dirty 重建的视图文本必须更新
+        let after = rendered_texts(&dc);
+        assert!(
+            after.iter().any(|t| t.contains("local=1")),
+            "ARM-2 消费: rebuilt view must show local=1; got {after:?}"
+        );
+    }
+
+    /// store 计时器（musk PollStream 同形）：store handler 写 store 字段 →
+    /// 视图经 `.store.poll_count` 跨模块绑定消费。musk 题身的最近似面。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t1_store_timer_write_reaches_rebuilt_view() {
+        let corpus = match locate_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T1: SKIPPED — corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan051_timer component");
+
+        dc.clear_dirty();
+        dc.on_with_input_for("TickerStore", "SetGate", Some("true".to_string()));
+        assert!(dc.fire_timer("TickerStore", "PollTick"), "gated tick dispatches after SetGate");
+        assert!(dc.is_dirty(), "ARM-1 失效广播: store timer handler 写 state 后 dirty 必须置位");
+        assert_eq!(dc.read_state("poll_count"), Ok(auto_val::Value::Int(1)));
+
+        let after = rendered_texts(&dc);
+        assert!(
+            after.iter().any(|t| t.contains("poll=1")),
+            "ARM-2 消费: rebuilt view must show poll=1 via .store binding; got {after:?}"
+        );
+    }
+
+    /// 待澄清 #1 定案：`when` 门是**派发前过滤**（fire_timer 内求值，假丢弃
+    /// 本拍），订阅层消息（[UI_EVENT] 可见）无条件到达 update——即日志里
+    /// when=false 仍见 UI_EVENT 与门语义不矛盾。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t1_when_gate_is_pre_dispatch_filter() {
+        let corpus = match locate_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T1: SKIPPED — corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan051_timer component");
+
+        // 门关：条目在表（订阅在发、消息可达 update），但 fire_timer 丢弃本拍
+        assert!(dc.is_timer_entry("TickerStore", "PollTick"), "entry 在表=订阅层照发");
+        dc.clear_dirty();
+        assert!(!dc.fire_timer("TickerStore", "PollTick"), "gate closed must drop tick");
+        assert!(!dc.is_dirty(), "被门拦的拍不得置 dirty");
+        assert_eq!(dc.read_state("poll_count"), Ok(auto_val::Value::Int(0)));
+    }
+
+    /// 边界：handler 不存在/执行失败时 dirty 不得置位（防伪失效风暴）；
+    /// 并验证连续多拍累积（musk 18 拍场景的累计口径）。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t1_dirty_contract_under_repeated_ticks() {
+        let corpus = match locate_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T1: SKIPPED — corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan051_timer component");
+
+        // 18 拍连打（musk PollStream 实测拍数）
+        for i in 0..18 {
+            dc.clear_dirty();
+            assert!(dc.fire_timer("App", "LocalTick"), "tick {i} must dispatch");
+            assert!(dc.is_dirty(), "tick {i}: dirty must re-arm every tick");
+        }
+        assert_eq!(dc.read_state("local_count"), Ok(auto_val::Value::Int(18)));
+        let after = rendered_texts(&dc);
+        assert!(
+            after.iter().any(|t| t.contains("local=18")),
+            "rebuilt view must show local=18; got {after:?}"
+        );
+
+        // 未注册事件：fire_timer 返回 false（条目不存在），不置 dirty
+        dc.clear_dirty();
+        assert!(!dc.fire_timer("App", "NoSuchEvent"));
+        assert!(!dc.is_dirty(), "no-op dispatch must not dirty");
+    }
+
+    // ── 双臂语料（test/ui/plan536_reactive/）：直绑 vs 子件 prop ──────────
+
+    fn locate_reactive_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan536_reactive/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(format!("../../{}", rel))),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    /// musk 同形面：timer 写 store 字段后重建视图，直绑臂
+    /// （`.store.title` f-string）与子件 prop 臂（ChatBubble.bubble_title）
+    /// 是否同拍更新。题 4 的"prop 构建期快照、子件读侧恒旧"若在 builder
+    /// 层成立，此探针的子件臂必红；若双臂同绿，则快照冻结只发生在
+    /// iced Element 缓存层（画布未重建），题 4 的活性问题与题 1 同根。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t1_store_timer_updates_child_prop_and_direct_binding() {
+        let corpus = match locate_reactive_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T1: SKIPPED — reactive corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_reactive component");
+
+        // 基线：两臂都显示 initial
+        let base = rendered_texts(&dc);
+        assert!(
+            base.iter().any(|t| t.contains("direct=initial")),
+            "baseline direct arm must show initial; got {base:?}"
+        );
+        assert!(
+            base.iter().any(|t| t.contains("bubble=initial")),
+            "baseline child-prop arm must show initial; got {base:?}"
+        );
+
+        // store 计时器一拍：title → poll-1
+        dc.clear_dirty();
+        assert!(dc.fire_timer("ChatStore", "PollTick"), "store tick dispatches");
+        assert!(dc.is_dirty(), "store handler write must dirty");
+        assert_eq!(dc.read_state("title"), Ok(auto_val::Value::str("poll-1")));
+
+        // 重建后两臂同拍更新
+        let after = rendered_texts(&dc);
+        assert!(
+            after.iter().any(|t| t.contains("direct=poll-1")),
+            "direct binding arm must update on rebuild; got {after:?}"
+        );
+        assert!(
+            after.iter().any(|t| t.contains("bubble=poll-1")),
+            "child-prop arm must re-resolve props on rebuild (题4 快照语义定界); got {after:?}"
+        );
+    }
+
+    /// T2 失效根修（题1 musk 根因定案）：handler **执行中崩**（副作用已落盘
+    /// 后 RuntimeError，musk "Invalid object ID: 0" 同形状）时 dirty 也必须
+    /// 置位——否则 store 已拿到数据而画布永冻（059-FU1 实录）。RED 先行。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t2_handler_error_after_side_effects_still_invalidates() {
+        let corpus = match locate_reactive_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T2: SKIPPED — reactive corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_reactive component");
+
+        dc.clear_dirty();
+        // 副作用（title="written"）先落，再 SET_FIELD on None 崩（Err 收场）
+        dc.on_with_input_for("ChatStore", "Boom", None);
+        assert_eq!(
+            dc.read_state("title"),
+            Ok(auto_val::Value::str("written")),
+            "side effect before the crash must have landed"
+        );
+        assert!(
+            dc.is_dirty(),
+            "ARM-1 根修: handler Err(mid-body) 后 dirty 必须置位,否则画布永冻"
+        );
+
+        // 对照组：handler 缺失（HandlerNotFound,无副作用）不置 dirty
+        dc.clear_dirty();
+        dc.on_with_input_for("ChatStore", "NoSuchHandler", None);
+        assert!(!dc.is_dirty(), "HandlerNotFound (no side effects) must not dirty");
+    }
+}
