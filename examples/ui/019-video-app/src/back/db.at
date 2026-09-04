@@ -16,6 +16,8 @@ var videos List<Video> = List<Video>.new([
         duration: "10:15",
         views: 856000,
         likes: 42000,
+        views_fmt: "856K",
+        likes_fmt: "42K",
         desc: "A fast-paced introduction to Rust systems programming and AutoLang fullstack UI application development.",
         followed: true,
         cover_color: "from-indigo-700 to-purple-800",
@@ -28,6 +30,8 @@ var videos List<Video> = List<Video>.new([
         duration: "24:08",
         views: 1500000,
         likes: 87000,
+        views_fmt: "1.5M",
+        likes_fmt: "87K",
         desc: "Step-by-step custom water cooling loop build in a transparent dual-chamber chassis.",
         followed: false,
         cover_color: "from-emerald-700 to-teal-900",
@@ -40,6 +44,8 @@ var videos List<Video> = List<Video>.new([
         duration: "18:42",
         views: 2100000,
         likes: 98000,
+        views_fmt: "2.1M",
+        likes_fmt: "98K",
         desc: "Exploring Shinjuku and Shibuya alleyways for the best yakitori, ramen, and matcha desserts.",
         followed: true,
         cover_color: "from-rose-600 to-orange-600",
@@ -52,6 +58,8 @@ var videos List<Video> = List<Video>.new([
         duration: "12:34",
         views: 1200000,
         likes: 54000,
+        views_fmt: "1.2M",
+        likes_fmt: "54K",
         desc: "High altitude cinematic 4K drone timelapse over the Swiss Alps at golden hour.",
         followed: false,
         cover_color: "from-amber-600 to-rose-700",
@@ -64,6 +72,8 @@ var videos List<Video> = List<Video>.new([
         duration: "05:20",
         views: 430000,
         likes: 31000,
+        views_fmt: "430K",
+        likes_fmt: "31K",
         desc: "Beethoven Moonlight Sonata 3rd Movement performed on a Steinway D grand piano.",
         followed: true,
         cover_color: "from-sky-700 to-indigo-900",
@@ -76,6 +86,8 @@ var videos List<Video> = List<Video>.new([
         duration: "14:55",
         views: 3200000,
         likes: 145000,
+        views_fmt: "3.2M",
+        likes_fmt: "145K",
         desc: "Raw POV action down Utah cliffs in the annual RedBull Rampage championship.",
         followed: false,
         cover_color: "from-violet-700 to-pink-800",
@@ -88,6 +100,8 @@ var videos List<Video> = List<Video>.new([
         duration: "32:10",
         views: 640000,
         likes: 38000,
+        views_fmt: "640K",
+        likes_fmt: "38K",
         desc: "Architecture patterns for high-throughput microservices using asynchronous Rust.",
         followed: true,
         cover_color: "from-blue-600 to-cyan-600",
@@ -100,6 +114,8 @@ var videos List<Video> = List<Video>.new([
         duration: "45:00",
         views: 2800000,
         likes: 120000,
+        views_fmt: "2.8M",
+        likes_fmt: "120K",
         desc: "Relaxing chillhop and lo-fi hip hop rhythms to focus, study, or write clean code.",
         followed: true,
         cover_color: "from-fuchsia-600 to-pink-600",
@@ -112,6 +128,8 @@ var videos List<Video> = List<Video>.new([
         duration: "15:20",
         views: 950000,
         likes: 61000,
+        views_fmt: "950K",
+        likes_fmt: "61K",
         desc: "72-hour cold fermented sourdough pizza baked in a 900F outdoor wood-fired oven.",
         followed: true,
         cover_color: "from-yellow-600 to-amber-700",
@@ -124,6 +142,8 @@ var videos List<Video> = List<Video>.new([
         duration: "20:15",
         views: 1800000,
         likes: 91000,
+        views_fmt: "1.8M",
+        likes_fmt: "91K",
         desc: "Full path tracing gameplay benchmark at 4K 120FPS with DLSS 4 frame generation.",
         followed: false,
         cover_color: "from-teal-600 to-emerald-700",
@@ -136,6 +156,8 @@ var videos List<Video> = List<Video>.new([
         duration: "16:40",
         views: 1100000,
         likes: 72000,
+        views_fmt: "1.1M",
+        likes_fmt: "72K",
         desc: "Chasing green and violet solar auroras across glaciers and black sand beaches.",
         followed: false,
         cover_color: "from-purple-600 to-indigo-700",
@@ -148,6 +170,8 @@ var videos List<Video> = List<Video>.new([
         duration: "28:50",
         views: 520000,
         likes: 29000,
+        views_fmt: "520K",
+        likes_fmt: "29K",
         desc: "Deep dive into AST transformations, bytecode generation, and VM JIT runtimes.",
         followed: true,
         cover_color: "from-red-600 to-rose-700",
@@ -175,19 +199,44 @@ pub fn find_video(id int) ?Video {
     return None
 }
 
+pub fn format_count(n int) str {
+    if n >= 1000000 {
+        let m = n / 1000000
+        let rem = (n % 1000000) / 100000
+        if rem > 0 {
+            return m.to_string() + "." + rem.to_string() + "M"
+        } else {
+            return m.to_string() + "M"
+        }
+    } else if n >= 1000 {
+        let k = n / 1000
+        let rem = (n % 1000) / 100
+        if rem > 0 && k < 10 {
+            return k.to_string() + "." + rem.to_string() + "K"
+        } else {
+            return k.to_string() + "K"
+        }
+    } else {
+        return n.to_string()
+    }
+}
+
 pub fn add_view(id int) int {
     var new_videos List<Video> = List<Video>.new([])
     var new_views int = 0
     for v in videos {
         if v.id == id {
+            let nv = v.views + 1
             let updated = Video {
                 id: v.id,
                 title: v.title,
                 author: v.author,
                 category: v.category,
                 duration: v.duration,
-                views: v.views + 1,
+                views: nv,
                 likes: v.likes,
+                views_fmt: format_count(nv),
+                likes_fmt: v.likes_fmt,
                 desc: v.desc,
                 followed: v.followed,
                 cover_color: v.cover_color,
@@ -207,6 +256,7 @@ pub fn toggle_like(id int) int {
     var new_likes int = 0
     for v in videos {
         if v.id == id {
+            let nl = v.likes + 1
             let updated = Video {
                 id: v.id,
                 title: v.title,
@@ -214,7 +264,9 @@ pub fn toggle_like(id int) int {
                 category: v.category,
                 duration: v.duration,
                 views: v.views,
-                likes: v.likes + 1,
+                likes: nl,
+                views_fmt: v.views_fmt,
+                likes_fmt: format_count(nl),
                 desc: v.desc,
                 followed: v.followed,
                 cover_color: v.cover_color,
