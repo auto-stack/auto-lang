@@ -67,6 +67,12 @@ pub const NATIVE_PY_GETATTR: u16 = 451;
 /// 5-slot convention so the CALL_PY arg-count byte stays a plain slot count
 /// (no sentinel sniffing inside the variadic py_call convention).
 pub const NATIVE_PY_CALL_KW: u16 = 452;
+/// Plan 539 W0 (DIV-PY-EXCEPT-1): May-valued method call. Success wraps the
+/// result in a `Result.Ok` heap instance; a Python exception becomes a
+/// `Result.Err` carrying `PyException <TypeName>: <message>` instead of a
+/// hard `VMError::FFI` abort. `py_call` stays the strict variant (its errors
+/// are catchable by try/catch through the VM's intercept_error path).
+pub const NATIVE_PY_CALL_MAY: u16 = 453;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -423,6 +429,76 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALL_KW, call_kw_shim);
+
+        // ---- py_call_may(obj, method_name, ...args) ----
+        // Plan 539 W0 (DIV-PY-EXCEPT-1): same variadic convention as py_call,
+        // but the Python exception channel lands as a May value instead of a
+        // process-level VMError::FFI (which only try/catch can intercept).
+        let call_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_call_may needs at least 2 args (obj, method), got {}",
+                        n
+                    )));
+                }
+                let extra = n - 2;
+
+                let mut method_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(extra);
+                for _ in 0..extra {
+                    method_args.push(pop_auto_py_arg(task, vm, py)?);
+                }
+                method_args.reverse();
+
+                let method_py = pop_auto_py_arg(task, vm, py)?;
+                let method_name: String = method_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_call_may method name not string: {}", e))
+                })?;
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+
+                let call_result: PyResult<Bound<'_, PyAny>> = if method_args.is_empty() {
+                    obj_py.call_method0(&method_name)
+                } else {
+                    let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
+                        VMError::FFI(format!("Failed to build method args tuple: {}", e))
+                    })?;
+                    obj_py.call_method1(&method_name, args_tuple)
+                };
+
+                match call_result {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => {
+                        // Carry str(e) + type name per the DIV-PY-EXCEPT-1 brief.
+                        let type_name = py_err
+                            .value(py)
+                            .get_type()
+                            .name()
+                            .map(|n| n.to_string())
+                            .unwrap_or_else(|_| "UnknownException".to_string());
+                        let msg = py_err
+                            .value(py)
+                            .str()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let text = format!("PyException {}: {}", type_name, msg);
+                        let instance = crate::vm::generic_registry::GenericInstanceData::new(
+                            "Result.Err".to_string(),
+                            vec![auto_val::Value::Str(text.into())],
+                        );
+                        let id = vm.insert_heap_object(instance);
+                        vm.rc_push(task, auto_val::encode_object(id as u32));
+                    }
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CALL_MAY, call_may_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -708,6 +784,40 @@ fn safe_type_name(obj: &Bound<'_, PyAny>) -> String {
         .name()
         .map(|n| n.to_string())
         .unwrap_or_else(|_| "?".to_string())
+}
+
+/// Plan 539 W0 (DIV-PY-EXCEPT-1): pop the value a py shim just pushed and
+/// wrap it in a `Result.Ok` heap instance, mirroring CREATE_OK's stake
+/// semantics (strings copy + release, objects transfer their stake, scalars
+/// inline). The container is rc_pushed so unwinding releases it.
+fn wrap_tos_as_result_ok(task: &mut AutoTask, vm: &AutoVM) {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let nv = task.ram.pop_nv();
+    let val = if auto_val::is_f64(nv) {
+        auto_val::Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+    } else if auto_val::is_bool(nv) {
+        auto_val::Value::Bool(auto_val::decode_bool(nv))
+    } else if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv) as usize;
+        let s = vm
+            .get_string(idx as u32)
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default();
+        // Copy is complete — release the stack stake (Plan 510 G3 pairing).
+        vm.pool_release(idx);
+        auto_val::Value::Str(s.into())
+    } else if auto_val::is_object(nv) {
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_object(nv) as usize,
+        })
+    } else {
+        auto_val::Value::Int(auto_val::decode_i32(nv))
+    };
+    let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
+    let id = vm.insert_heap_object(instance);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
 }
 
 /// Plan 539 W0 (DIV-PY-KWARGS-1): zip a names list and a values list (both
@@ -1344,5 +1454,89 @@ mod tests {
         let nv = task.ram.pop_nv();
         assert!(auto_val::is_i32(nv));
         assert_eq!(auto_val::decode_i32(nv), 42);
+    }
+
+    // ========================================================================
+    // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may May channel
+    // ========================================================================
+
+    #[test]
+    fn test_py_call_may_registers_fixed_id() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CALL_MAY).is_some(), "py_call_may shim not registered");
+    }
+
+    #[test]
+    fn test_py_call_may_err_and_ok_shapes() {
+        // Drive the shim through a minimal VM task: push (obj, method) with
+        // pending_native_arg_count = 2, run the shim, inspect the stack.
+        use crate::vm::native::NativeInterface;
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.import_module("math").unwrap();
+        bridge.register_object_shims();
+        let shim = bridge.native_interface().get(NATIVE_PY_CALL_MAY).unwrap();
+
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            // Error case: math module has no attribute no_such_fn.
+            let math_mod: Py<PyModule> = py.import("math").unwrap().into();
+            let handle = PyObjectHandle::new("module".to_string(), math_mod.into_any());
+            let id = vm.insert_heap_object(handle);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            let m_idx = vm.add_string(b"no_such_fn".to_vec());
+            vm.rc_push_str_idx(&mut task, m_idx);
+            task.pending_native_arg_count = 2;
+            shim(&mut task, &vm).unwrap();
+
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "Err should be a heap Result");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Err");
+            match &inst.fields[0] {
+                auto_val::Value::Str(s) => {
+                    assert!(s.as_str().starts_with("PyException AttributeError"));
+                }
+                other => panic!("expected Str payload, got {:?}", other),
+            }
+        });
+
+        // Success case: math.sqrt(4) -> Result.Ok(2.0)
+        Python::attach(|py| {
+            let math_mod: Py<PyModule> = py.import("math").unwrap().into();
+            let handle = PyObjectHandle::new("module".to_string(), math_mod.into_any());
+            let id = vm.insert_heap_object(handle);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            let m_idx = vm.add_string(b"sqrt".to_vec());
+            vm.rc_push_str_idx(&mut task, m_idx);
+            task.ram.push_i32(4);
+            task.pending_native_arg_count = 3;
+            shim(&mut task, &vm).unwrap();
+
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "Ok should be a heap Result");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Ok");
+            match &inst.fields[0] {
+                auto_val::Value::Double(d) => assert_eq!(*d, 2.0),
+                other => panic!("expected Double payload, got {:?}", other),
+            }
+        });
     }
 }
