@@ -5,7 +5,10 @@
 //! identities and lifetimes.  Task 1 deliberately provides only the module
 //! seam; its types and behavior are added in the following tasks.
 
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 /// Opaque identifier used in public media URIs.  It deliberately has no path
 /// representation: callers can only address an asset ticket issued by the
@@ -163,6 +166,291 @@ pub struct MediaPipelineStats {
     pub evictions: u64,
 }
 
+/// A registry-issued ticket.  Only this opaque pair may be used to address a
+/// media datum; source paths remain private to the service that queued it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MediaAssetTicket {
+    pub id: MediaAssetId,
+    pub revision: u64,
+}
+
+/// Read result used by both the native URI resolver and the HTTP data plane.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MediaLookup {
+    Missing,
+    Expired,
+    Pending,
+    Failed(MediaAssetError),
+    Ready(Arc<[u8]>),
+}
+
+#[derive(Debug)]
+struct MediaAssetEntry {
+    key: MediaAssetKey,
+    metadata: MediaMetadata,
+    state: MediaAssetState,
+    encoded: Option<Arc<[u8]>>,
+    error: Option<MediaAssetError>,
+    references: usize,
+    expires_at: Option<Instant>,
+}
+
+#[derive(Default)]
+struct RegistryState {
+    entries: HashMap<MediaAssetId, MediaAssetEntry>,
+    by_key: HashMap<MediaAssetKey, MediaAssetId>,
+    shutting_down: bool,
+}
+
+struct RegistryInner {
+    state: Mutex<RegistryState>,
+    changed: Condvar,
+    ttl: Duration,
+}
+
+/// Process-local media asset registry shared by the HTTP adapter, VM, and
+/// generated Rust UI.  It owns byte lifetimes and is intentionally unaware of
+/// filesystem paths and decode workers.
+#[derive(Clone)]
+pub struct MediaAssetRegistry {
+    inner: Arc<RegistryInner>,
+}
+
+impl MediaAssetRegistry {
+    pub const DEFAULT_TTL: Duration = Duration::from_secs(2);
+
+    pub fn new(ttl: Duration) -> Self {
+        Self {
+            inner: Arc::new(RegistryInner {
+                state: Mutex::new(RegistryState::default()),
+                changed: Condvar::new(),
+                ttl,
+            }),
+        }
+    }
+
+    pub fn queue(&self, key: MediaAssetKey, metadata: MediaMetadata) -> MediaAssetTicket {
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        if let Some(existing_id) = state.by_key.get(&key).copied() {
+            if let Some(existing) = state.entries.get_mut(&existing_id) {
+                if existing.state != MediaAssetState::Expired {
+                    existing.references = existing.references.saturating_add(1);
+                    existing.expires_at = None;
+                    return MediaAssetTicket {
+                        id: existing_id,
+                        revision: existing.key.revision,
+                    };
+                }
+            }
+        }
+
+        let id = loop {
+            let candidate = MediaAssetId(
+                ((fastrand::u64(..) as u128) << 64) | fastrand::u64(..) as u128,
+            );
+            if !state.entries.contains_key(&candidate) {
+                break candidate;
+            }
+        };
+        let revision = key.revision;
+        state.by_key.insert(key.clone(), id);
+        state.entries.insert(
+            id,
+            MediaAssetEntry {
+                key,
+                metadata,
+                state: MediaAssetState::Queued,
+                encoded: None,
+                error: None,
+                references: 1,
+                expires_at: None,
+            },
+        );
+        self.inner.changed.notify_all();
+        MediaAssetTicket { id, revision }
+    }
+
+    pub fn transition(
+        &self,
+        id: MediaAssetId,
+        next: MediaAssetState,
+    ) -> Result<(), MediaAssetError> {
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let entry = state
+            .entries
+            .get_mut(&id)
+            .ok_or(MediaAssetError::Expired)?;
+        if !entry.state.can_transition_to(next) {
+            return Err(MediaAssetError::Rejected("invalid media state transition".into()));
+        }
+        entry.state = next;
+        if next == MediaAssetState::Error && entry.error.is_none() {
+            entry.error = Some(MediaAssetError::Corrupt);
+        }
+        self.inner.changed.notify_all();
+        Ok(())
+    }
+
+    pub fn publish_ready(
+        &self,
+        id: MediaAssetId,
+        revision: u64,
+        bytes: Arc<[u8]>,
+    ) -> Result<(), MediaAssetError> {
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let entry = state
+            .entries
+            .get_mut(&id)
+            .ok_or(MediaAssetError::Expired)?;
+        if entry.key.revision != revision {
+            return Err(MediaAssetError::Stale);
+        }
+        if entry.state != MediaAssetState::Transforming {
+            return Err(MediaAssetError::Rejected("asset is not ready to publish".into()));
+        }
+        entry.encoded = Some(bytes);
+        entry.state = MediaAssetState::Ready;
+        self.inner.changed.notify_all();
+        Ok(())
+    }
+
+    pub fn fail(&self, id: MediaAssetId, error: MediaAssetError) -> Result<(), MediaAssetError> {
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let entry = state
+            .entries
+            .get_mut(&id)
+            .ok_or(MediaAssetError::Expired)?;
+        if !entry.state.can_transition_to(MediaAssetState::Error) {
+            return Err(MediaAssetError::Rejected("asset cannot fail from its current state".into()));
+        }
+        entry.state = MediaAssetState::Error;
+        entry.error = Some(error);
+        self.inner.changed.notify_all();
+        Ok(())
+    }
+
+    pub fn lookup(&self, id: MediaAssetId, revision: u64) -> MediaLookup {
+        let state = self.inner.state.lock().expect("media registry lock poisoned");
+        let Some(entry) = state.entries.get(&id) else {
+            return MediaLookup::Missing;
+        };
+        if entry.key.revision != revision {
+            return MediaLookup::Missing;
+        }
+        match entry.state {
+            MediaAssetState::Ready => entry
+                .encoded
+                .as_ref()
+                .cloned()
+                .map(MediaLookup::Ready)
+                .unwrap_or(MediaLookup::Pending),
+            MediaAssetState::Error => MediaLookup::Failed(
+                entry.error.clone().unwrap_or(MediaAssetError::Corrupt),
+            ),
+            MediaAssetState::Expired | MediaAssetState::Stale => MediaLookup::Expired,
+            _ => MediaLookup::Pending,
+        }
+    }
+
+    pub fn metadata(&self, id: MediaAssetId) -> Option<MediaMetadata> {
+        self.inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned")
+            .entries
+            .get(&id)
+            .map(|entry| entry.metadata.clone())
+    }
+
+    pub fn retain(&self, id: MediaAssetId) -> bool {
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let Some(entry) = state.entries.get_mut(&id) else {
+            return false;
+        };
+        if entry.state == MediaAssetState::Expired {
+            return false;
+        }
+        entry.references = entry.references.saturating_add(1);
+        entry.expires_at = None;
+        true
+    }
+
+    pub fn release(&self, id: MediaAssetId) {
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        if let Some(entry) = state.entries.get_mut(&id) {
+            entry.references = entry.references.saturating_sub(1);
+            if entry.references == 0 {
+                entry.expires_at = Some(Instant::now() + self.inner.ttl);
+            }
+        }
+    }
+
+    /// Converts unreferenced, elapsed tickets to 410-visible expired entries.
+    pub fn collect_expired(&self) {
+        let now = Instant::now();
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        for entry in state.entries.values_mut() {
+            if entry.references == 0
+                && entry.expires_at.is_some_and(|expiry| expiry <= now)
+                && entry.state != MediaAssetState::Expired
+            {
+                entry.encoded = None;
+                entry.state = MediaAssetState::Expired;
+            }
+        }
+        self.inner.changed.notify_all();
+    }
+
+    pub fn wait_for_terminal(&self, id: MediaAssetId, timeout: Duration) -> Option<MediaAssetState> {
+        let deadline = Instant::now() + timeout;
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        loop {
+            let entry = state.entries.get(&id)?;
+            if entry.state.is_terminal() {
+                return Some(entry.state);
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            let (next_state, _) = self
+                .inner
+                .changed
+                .wait_timeout(state, remaining)
+                .expect("media registry lock poisoned");
+            state = next_state;
+        }
+    }
+
+    pub fn shutdown(&self) {
+        let now = Instant::now();
+        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        state.shutting_down = true;
+        for entry in state.entries.values_mut() {
+            entry.references = 0;
+            entry.expires_at = Some(now);
+            if !entry.state.is_terminal() {
+                entry.state = MediaAssetState::Stale;
+            }
+        }
+        self.inner.changed.notify_all();
+    }
+
+    pub fn is_shutdown(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned")
+            .shutting_down
+    }
+}
+
+impl Default for MediaAssetRegistry {
+    fn default() -> Self {
+        Self::new(Self::DEFAULT_TTL)
+    }
+}
+
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
 pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
@@ -174,7 +462,13 @@ pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{checked_rgba_bytes, MediaAssetState};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use super::{
+        checked_rgba_bytes, MediaAssetKey, MediaAssetRegistry, MediaAssetState, MediaLookup,
+        MediaMetadata, RenditionSpec,
+    };
 
     #[test]
     fn asset_state_rejects_invalid_terminal_transitions() {
@@ -189,5 +483,40 @@ mod tests {
     fn asset_state_checked_size_rejects_overflow() {
         assert_eq!(checked_rgba_bytes(2, 3), Some(24));
         assert_eq!(checked_rgba_bytes(u32::MAX, u32::MAX), None);
+    }
+
+    #[test]
+    fn registry_tracks_ready_expired_and_missing_assets() {
+        let registry = MediaAssetRegistry::new(Duration::ZERO);
+        let ticket = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "fixture-a".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::viewport(16, 16),
+                revision: 7,
+            },
+            MediaMetadata::default(),
+        );
+        assert_eq!(registry.lookup(ticket.id, ticket.revision), MediaLookup::Pending);
+
+        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry
+            .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([1, 2, 3]))
+            .unwrap();
+        assert!(matches!(
+            registry.lookup(ticket.id, ticket.revision),
+            MediaLookup::Ready(_)
+        ));
+        assert_eq!(
+            registry.wait_for_terminal(ticket.id, Duration::from_millis(1)),
+            Some(MediaAssetState::Ready)
+        );
+
+        registry.release(ticket.id);
+        registry.collect_expired();
+        assert_eq!(registry.lookup(ticket.id, ticket.revision), MediaLookup::Expired);
+        assert_eq!(registry.lookup(ticket.id, ticket.revision + 1), MediaLookup::Missing);
     }
 }
