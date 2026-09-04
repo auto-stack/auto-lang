@@ -1227,6 +1227,18 @@ pub enum DesktopCommand {
     /// PLAN-526 T14：壁纸热切换（settings.at 壁纸卡 `set_wallpaper\t<path>`；
     /// 执行臂 storage 持久化 + 会话字段回读 + 快照失效，仿 SetTheme 全链）。
     SetWallpaper(String),
+    /// Plan 540 T3：透明度三档写动词（设置面 `set_transparency\t<off|low|high>`；
+    /// 执行臂 config 落盘——虚拟窗底色每帧映射，下一帧即时生效）。
+    SetTransparency(String),
+    /// Plan 540 T3：通知开关写动词（`set_notes_enabled\t<0|1>`；执行臂
+    /// config 落盘——push_notification 门控直读）。
+    SetNotesEnabled(bool),
+    /// Plan 540 T3：dock pinned 表写动词（`set_dock_pinned\t<csv>`；执行臂
+    /// config 落盘 + 会话域同步 + shell 投影热同步；空表 = 复位默认三枚）。
+    SetDockPinned(String),
+    /// Plan 540 T3：壁纸目录写动词（`set_wallpapers_dir\t<dir>`；执行臂
+    /// config 落盘——scan_wallpapers_dir 与缺省壁纸链共用解析）。
+    SetWallpapersDir(String),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1363,6 +1375,20 @@ impl DesktopCommand {
                     if *dark { "dark" } else { "light" }
                 )
             }
+            // Plan 540 T3：配置写动词族（值域窄——transparency 三档、
+            // notes 1/0、pinned csv、wallpapers_dir 直传）。
+            DesktopCommand::SetTransparency(level) => {
+                format!("set_transparency{}{}", Self::FIELD_SEP, level)
+            }
+            DesktopCommand::SetNotesEnabled(on) => {
+                format!("set_notes_enabled{}{}", Self::FIELD_SEP, if *on { 1 } else { 0 })
+            }
+            DesktopCommand::SetDockPinned(csv) => {
+                format!("set_dock_pinned{}{}", Self::FIELD_SEP, csv)
+            }
+            DesktopCommand::SetWallpapersDir(dir) => {
+                format!("set_wallpapers_dir{}{}", Self::FIELD_SEP, dir)
+            }
         }
     }
 
@@ -1482,6 +1508,25 @@ impl DesktopCommand {
                     }
                     "set_wallpaper" if !arg.is_empty() => {
                         Some(DesktopCommand::SetWallpaper(arg.to_string()))
+                    }
+                    // Plan 540 T3：配置写动词族（坏值/空参跳过——单源
+                    // config.at 收口，写侧唯一走宿主执行臂）。
+                    "set_transparency" => match arg {
+                        "off" | "low" | "high" => {
+                            Some(DesktopCommand::SetTransparency(arg.to_string()))
+                        }
+                        _ => None,
+                    },
+                    "set_notes_enabled" => match arg {
+                        "1" => Some(DesktopCommand::SetNotesEnabled(true)),
+                        "0" => Some(DesktopCommand::SetNotesEnabled(false)),
+                        _ => None,
+                    },
+                    "set_dock_pinned" => {
+                        Some(DesktopCommand::SetDockPinned(arg.to_string()))
+                    }
+                    "set_wallpapers_dir" => {
+                        Some(DesktopCommand::SetWallpapersDir(arg.to_string()))
                     }
                     _ => None,
                 }

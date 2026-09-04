@@ -31,8 +31,8 @@
 //       （479 门控键快照）、`osconfig_state`（501：unknown/ready/offline
 //       ——宿主 osconfig_status 三态投影）、`osconfig_hint`（offline 原因）、
 //       `about_host`/`about_version`（boot 投影常量）、`hosted`/`visible`。
-// pinned 持久化：storage.set("shell.dock.pinned", "id1,id2,…") 直写
-// （逗号拼接 = 宿主 load_dock_pinned 解析格式；boot 生效）。
+// pinned 持久化：set_dock_pinned 驱动动词上行（Plan 540 T3 写通道收口；
+// 逗号拼接 = 宿主臂解析格式，config.at 落盘 + shell 投影热同步）。
 // 快照语义：召唤时点定序；面板打开期间宿主配置变更不重注（设置面板是
 // 配置的编辑面，不是配置的监视面）。
 // 消费者唯一：宿主 renderer 的 toggle_settings / 设置面板键盘订阅。
@@ -587,27 +587,28 @@ widget Settings {
             .__desktop_cmd = "set_dock_enabled\t" + v
         }
 
-        // ---- 通知分区：持久化开关 → storage 直写（479 持久化链
-        // push_notification 门控消费；"false" = 关，其余/缺席 = 开）----
+        // ---- 通知分区：持久化开关 → set_notes_enabled 驱动动词（Plan 540
+        // T3 写通道收口：宿主臂 config 落盘，push_notification 门控直读；
+        // "false" = 关，其余/缺席 = 开）----
         .PickNotes(v) -> {
             if v == "1" {
                 .cfg_notes_enabled = "1"
-                storage.set("shell.notes.enabled", "true")
             } else {
                 .cfg_notes_enabled = "0"
-                storage.set("shell.notes.enabled", "false")
             }
+            .__desktop_cmd = "set_notes_enabled	" + v
         }
 
-        // ---- 外观分区（496 M5）：壁纸 storage 直写（boot 解析生效——
-        // #hex 直传/路径验在/坏值回退默认色；487 非几何无动词判定同款）----
+        // ---- 外观分区（496 M5）：壁纸 set_wallpaper 驱动动词（Plan 540
+        // T3 收口：宿主臂 config 落盘 + 会话回读 + 快照失效——#hex 直传/
+        // 路径验在/坏值回退默认色）----
         .DraftWallpaper(v) -> {
             .wallpaper_draft = v
         }
 
         .SaveWallpaper -> {
             if .wallpaper_draft != "" {
-                storage.set("shell.desktop.wallpaper", .wallpaper_draft)
+                .__desktop_cmd = "set_wallpaper	" + .wallpaper_draft
                 .cfg_wallpaper = .wallpaper_draft
                 .wallpaper_draft = ""
                 .wallpaper_saved = "1"
@@ -624,7 +625,7 @@ widget Settings {
 
         .SaveWallpapersDir -> {
             if .wallpapers_dir_draft != "" {
-                storage.set("shell.desktop.wallpapers_dir", .wallpapers_dir_draft)
+                .__desktop_cmd = "set_wallpapers_dir	" + .wallpapers_dir_draft
             }
         }
 
@@ -635,8 +636,9 @@ widget Settings {
         }
 
         // ---- Appearance 增量（Plan 518 G1/G6）：主题 = set_theme 驱动动词
-        //（宿主臂 set_dark_mode 即时生效 + shell.appearance.theme 持久化）;
-        // 透明度 = storage 直写（虚拟窗底色每帧读,即时生效）----
+        //（宿主臂 set_dark_mode 即时生效 + config 持久化）; 透明度 =
+        // set_transparency 驱动动词（Plan 540 T3：宿主臂 config 落盘,虚拟窗
+        // 底色每帧映射,即时生效）----
         .PickTheme(v) -> {
             if v == "light" {
                 .cfg_theme = "light"
@@ -656,7 +658,7 @@ widget Settings {
                     .cfg_transparency = "off"
                 }
             }
-            storage.set("shell.desktop.transparency", .cfg_transparency)
+            .__desktop_cmd = "set_transparency	" + .cfg_transparency
         }
 
         // ---- pinned 编辑 → storage 键直写（boot 生效；逗号拼接 = 宿主
@@ -700,7 +702,7 @@ widget Settings {
                 s = s + .pinned_rows[idx].id
                 idx = idx + 1
             }
-            storage.set("shell.dock.pinned", s)
+            .__desktop_cmd = "set_dock_pinned	" + s
             .pinned_saved = "1"
         }
 

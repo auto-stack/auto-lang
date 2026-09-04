@@ -29,7 +29,9 @@
 use std::path::PathBuf;
 
 /// 旧散布 storage 键（迁移源；迁移后仅存只读回退，下版本退役）。
-pub const LEGACY_STORAGE_KEYS: [&str; 6] = [
+pub const LEGACY_STORAGE_KEYS: [&str; 8] = [
+    "shell.dock.position",
+    "shell.dock.enabled",
     "shell.dock.pinned",
     "shell.desktop.wallpaper",
     "shell.desktop.wallpapers_dir",
@@ -75,9 +77,15 @@ impl Default for DesktopConfig {
     }
 }
 
-/// 配置文件路径：`~/.config/autoos/apps/desktop/config.at`。
-/// home 目录缺席（异常环境）→ None。
+/// 配置文件路径：`~/.config/autoos/apps/desktop/config.at`。env
+/// `AUTOOS_DESKTOP_CONFIG` 覆盖（便携/测试隔离用——t2_isolate_storage
+/// 同型）。home 目录缺席（异常环境）且无 env → None。
 pub fn desktop_config_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("AUTOOS_DESKTOP_CONFIG") {
+        if !p.trim().is_empty() {
+            return Some(PathBuf::from(p));
+        }
+    }
     Some(
         dirs::home_dir()?
             .join(".config")
@@ -225,32 +233,40 @@ pub fn load_from(
             return (DesktopConfig::default(), false);
         }
         let mut cfg = DesktopConfig::default();
-        if let Some(v) = reads[0]
+        if let Some(v) = reads[0].as_deref().map(str::trim) {
+            if v == "top" || v == "bottom" {
+                cfg.dock_position = v.to_string();
+            }
+        }
+        if let Some(v) = reads[1].as_deref().and_then(parse_bool) {
+            cfg.dock_enabled = v;
+        }
+        if let Some(v) = reads[2]
             .as_deref()
             .map(|raw| csv_pinned(raw))
             .filter(|l| !l.is_empty())
         {
             cfg.dock_pinned = v;
         }
-        if let Some(v) = reads[1].as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        if let Some(v) = reads[3].as_deref().map(str::trim).filter(|v| !v.is_empty()) {
             cfg.wallpaper_path = v.to_string();
         }
-        if let Some(v) = reads[2].as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        if let Some(v) = reads[4].as_deref().map(str::trim).filter(|v| !v.is_empty()) {
             cfg.wallpapers_dir = v.to_string();
         }
-        if let Some(v) = reads[3].as_deref() {
+        if let Some(v) = reads[5].as_deref() {
             if v.trim() == "light" {
                 cfg.dark_theme = false;
             } else if v.trim() == "dark" {
                 cfg.dark_theme = true;
             }
         }
-        if let Some(v) = reads[4].as_deref() {
+        if let Some(v) = reads[6].as_deref() {
             if v.trim() == "low" || v.trim() == "high" {
                 cfg.transparency = v.trim().to_string();
             }
         }
-        if let Some(v) = reads[5].as_deref().and_then(parse_bool) {
+        if let Some(v) = reads[7].as_deref().and_then(parse_bool) {
             cfg.notes_enabled = v;
         }
         return (cfg, true);
@@ -353,24 +369,28 @@ mod tests {
         assert_eq!(parse_config(&serialize_config(&cfg)), cfg);
     }
 
-    /// 迁移：文件缺席 + 6 旧键全在 → 按旧键拼装 + migrated=true（含
+    /// 迁移：文件缺席 + 8 旧键全在 → 按旧键拼装 + migrated=true（含
     /// theme "dark"/"light" → bool、transparency 档位、notes "false"）。
     #[test]
     fn migration_from_legacy_keys_one_shot() {
         let keys = LEGACY_STORAGE_KEYS;
         let mut legacy = |k: &str| -> Option<String> {
             match k {
-                k if k == keys[0] => Some("013-todo,015-notes".to_string()),
-                k if k == keys[1] => Some("#abc123".to_string()),
-                k if k == keys[2] => Some("D:/wp".to_string()),
-                k if k == keys[3] => Some("light".to_string()),
-                k if k == keys[4] => Some("high".to_string()),
-                k if k == keys[5] => Some("false".to_string()),
+                k if k == keys[0] => Some("top".to_string()),
+                k if k == keys[1] => Some("false".to_string()),
+                k if k == keys[2] => Some("013-todo,015-notes".to_string()),
+                k if k == keys[3] => Some("#abc123".to_string()),
+                k if k == keys[4] => Some("D:/wp".to_string()),
+                k if k == keys[5] => Some("light".to_string()),
+                k if k == keys[6] => Some("high".to_string()),
+                k if k == keys[7] => Some("false".to_string()),
                 _ => None,
             }
         };
         let (cfg, migrated) = load_from(None, &mut legacy);
         assert!(migrated);
+        assert_eq!(cfg.dock_position, "top");
+        assert!(!cfg.dock_enabled);
         assert_eq!(cfg.dock_pinned, vec!["013-todo", "015-notes"]);
         assert_eq!(cfg.wallpaper_path, "#abc123");
         assert_eq!(cfg.wallpapers_dir, "D:/wp");
