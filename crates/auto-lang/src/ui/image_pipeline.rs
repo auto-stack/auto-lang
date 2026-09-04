@@ -582,6 +582,30 @@ impl DecodedPixelCache {
 }
 impl Default for DecodedPixelCache { fn default() -> Self { Self::new(Self::DEFAULT_BUDGET_BYTES) } }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MediaPriority { Thumbnail = 5, Neighbor = 10, SettledCurrent = 90, Current = 100 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediaWork { pub id: u64, pub priority: MediaPriority, sequence: u64 }
+impl MediaWork { pub const fn new(id: u64, priority: MediaPriority) -> Self { Self { id, priority, sequence: 0 } } }
+/// Scheduler ingress queue; the worker pool consumes `pop` in priority then
+/// FIFO order.  Duplicate renditions are coalesced before consuming capacity.
+#[derive(Default)]
+pub struct MediaPriorityQueue { items: Vec<MediaWork>, next_sequence: u64 }
+impl MediaPriorityQueue {
+    pub const CAPACITY: usize = 8;
+    pub fn new() -> Self { Self::default() }
+    pub fn len(&self) -> usize { self.items.len() }
+    pub fn push(&mut self, mut work: MediaWork) -> bool {
+        if self.items.iter().any(|item| item.id == work.id) { return false; }
+        if work.priority == MediaPriority::Neighbor && self.items.iter().filter(|item| item.priority == MediaPriority::Neighbor).count() >= 2 { return false; }
+        work.sequence = self.next_sequence; self.next_sequence = self.next_sequence.wrapping_add(1); self.items.push(work);
+        self.items.sort_by_key(|item| (std::cmp::Reverse(item.priority), item.sequence));
+        if self.items.len() > Self::CAPACITY { self.items.pop(); }
+        true
+    }
+    pub fn pop(&mut self) -> Option<MediaWork> { (!self.items.is_empty()).then(|| self.items.remove(0)) }
+}
+
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
 pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
@@ -686,5 +710,20 @@ mod tests {
         cache.set_pin(current, super::MediaPin::None);
         cache.collect();
         assert!(cache.used_bytes() <= 4);
+    }
+
+    #[test]
+    fn priority_queue_is_bounded_stable_deduplicated_and_limits_neighbors() {
+        let mut queue = super::MediaPriorityQueue::new();
+        for id in 1..=2 {
+            assert!(queue.push(super::MediaWork::new(id, super::MediaPriority::Neighbor)));
+        }
+        assert_eq!(queue.len(), 2);
+        assert!(!queue.push(super::MediaWork::new(3, super::MediaPriority::Neighbor)));
+        assert!(queue.push(super::MediaWork::new(10, super::MediaPriority::Thumbnail)));
+        assert!(queue.push(super::MediaWork::new(11, super::MediaPriority::Current)));
+        assert!(!queue.push(super::MediaWork::new(11, super::MediaPriority::Current)));
+        assert_eq!(queue.pop().unwrap().id, 11);
+        assert_eq!(queue.pop().unwrap().id, 1);
     }
 }
