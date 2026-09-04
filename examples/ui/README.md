@@ -60,6 +60,7 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 - **024**：原 widget-gallery，已升级为顶级 [`examples/widgets-gallery/`](../widgets-gallery/)。
 - **025**：原 notes 前端丰富度临时 fork，能力并入 015-notes 后删除（Plan 354 §7）；2026-08-26 由 Plan 438 系统监视器回填。
 - **021-block-static、026–040**：能力样板，迁至 [`examples/capability-tests/`](../capability-tests/)（同号共存，引用带全路径即无歧义）。
+- **029**：原能力样板 external-imports 已迁 [`examples/capability-tests/029-external-imports/`](../capability-tests/029-external-imports/)；2026-09-04 由 Plan 537 图库应用回填（同号共存）。
 - **038/041 保留**：撞号的 038-vshow 已随迁移离开，038 现在专指扫雷。
 
 ## 示例总览
@@ -94,6 +95,7 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 | 026 | database | SQLite 可视化客户端 | 4026/8026 | 📋 [Plan 439](../../docs/plans/439-026-database.md) 立项中 |
 | 027 | file-manager | 文件管理器（双栏布局 + 目录面包屑 + 列表/网格双视图 + 排序搜索 + Plan 422 popover 右键/新建/删除确认 + 剪贴板 + 配置持久化） | 4027 | ✅ [Plan 440](../../docs/plans/archive/440-027-file-manager.md)（vue 实机 build 0 错误 + vm desktop_mcp 49/49） |
 | 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |
+| 029 | photo-gallery | 图库（macOS 相册风：侧边栏相册导航 + 搜索/排序/密度工具栏 + 缩略图网格 + 大图查看器 prev/next/收藏；picsum 固定 seed 网络真实图片，image widget 首个应用级双端示范） | 4029 | ✅ [Plan 537](../../docs/plans/537-photo-gallery.md)（vue+vm+ui_desktop） |
 | 038 | minesweeper | 经典扫雷（双后端） | 4038 | 🎯 严肃应用，持续扩展 |
 | 041 | auto-edit | 文本编辑器 | 4041 | 🎯 严肃应用，持续扩展 |
 | 043 | clipboard-bridge | 原生剪贴板三族互通（text 418 对照 / files CF_HDROP / image DIBV5+PNG；Plan 485） | 4043 | ✅ [Plan 485](../../docs/plans/485-vm-native-clipboard.md)（实机 T4 五项 PASS） |
