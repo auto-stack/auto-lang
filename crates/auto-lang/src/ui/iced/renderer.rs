@@ -2556,30 +2556,29 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     content: iced::Element<'static, M>,
     position: crate::ui::view::OverlayPosition,
 ) -> iced::Element<'static, M> {
-    // PLAN-536 重测修正(2026-09-04)：悬浮层列显式 Fill 宽——缺省收缩宽度使
-    // right/left 对齐失效(容器 Fill 退化为内容宽,× 落左上,musk 会话卡实测)。
-    let mut col = iced::widget::Column::<M>::with_capacity(2).width(iced::Length::Fill);
-    if let Some(top) = position.top {
-        if top > 0.0 {
-            col = col.push(iced::widget::Space::new().width(iced::Length::Fill).height(iced::Length::Fixed(top)));
+    // PLAN-536 重测修正(2026-09-04)：悬浮层几何改**显式 spacer**——原
+    // container(Fill)+align_x 在 Stack 子路径不生效(× 落左上,musk 会话卡
+    // 实测),spacer 是不会说谎的几何：top spacer 垂直定位,水平方向
+    // Fill-spacer + 定宽 right/left spacer 夹出水平位置。
+    let top_space = iced::widget::Space::new()
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(position.top.unwrap_or(0.0) as f32));
+    let mut row = iced::widget::Row::<M>::new().width(iced::Length::Fill);
+    if let Some(left) = position.left {
+        if left > 0.0 {
+            row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(left)));
+        }
+        row = row.push(content);
+    } else {
+        row = row.push(iced::widget::Space::new().width(iced::Length::Fill));
+        row = row.push(content);
+        if let Some(right) = position.right {
+            if right > 0.0 {
+                row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(right)));
+            }
         }
     }
-    let mut cont = container(content);
-    if let Some(right) = position.right {
-        cont = cont
-            .width(iced::Length::Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .padding(iced::Padding { top: 0.0, right, bottom: 0.0, left: 0.0 });
-    } else if let Some(left) = position.left {
-        cont = cont
-            .width(iced::Length::Fill)
-            .align_x(iced::alignment::Horizontal::Left)
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left });
-    } else {
-        cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
-    }
-    col = col.push(cont);
-    col.into()
+    iced::widget::column![top_space, row].into()
 }
 
 /// Plan 412 F2: per-cell metadata the grid builder needs but can't recover
