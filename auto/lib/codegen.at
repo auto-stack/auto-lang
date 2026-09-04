@@ -326,12 +326,29 @@ pub type CG {
 
     // P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
     // 与 a2r 值语义两可;镜像 ev_arr_write 写回注释)
+    // P532 W2 根修②:帧槽位深度对齐写——原无条件 push 而按 loop_depth
+    // 索引读,首循环退出后帧列表只增不删,后续同层循环永远读写 brk_js[0]
+    // (首循环的残帧):旧洞被逐次重patch,末位循环的 end 覆盖全部历史
+    // break 跳(实证:cg_expr pratt break 跳进 cg_compile_mod_seeded 循环尾,
+    // get.field on non-instance;洞 4215 被 59 次重patch)。修法镜像
+    // engine.at args_stack 根修①:深度对齐 set-else-push,重入即整帧
+    // 置新,残洞无从残留
     fn loop_enter(cont_target int) {
-    var bl List<int> = List.new()
-    self.brk_js.push(bl)
-    var cl List<int> = List.new()
-    self.cont_js.push(cl)
-    self.cont_tg.push(cont_target)
+    if self.brk_js.len() > self.loop_depth {
+        self.brk_js.set(self.loop_depth, List.new())
+    } else {
+        self.brk_js.push(List.new())
+    }
+    if self.cont_js.len() > self.loop_depth {
+        self.cont_js.set(self.loop_depth, List.new())
+    } else {
+        self.cont_js.push(List.new())
+    }
+    if self.cont_tg.len() > self.loop_depth {
+        self.cont_tg.set(self.loop_depth, cont_target)
+    } else {
+        self.cont_tg.push(cont_target)
+    }
     self.loop_depth = self.loop_depth + 1
 }
 
