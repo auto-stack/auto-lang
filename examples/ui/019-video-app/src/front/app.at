@@ -32,17 +32,17 @@ widget App {
                 "w-full min-h-screen bg-gray-50 text-gray-900 flex"
             }
 
-            // ── Left Sidebar Navigation (Desktop) ──
+            // ── Left Sidebar Navigation ──
             col {
                 style: if .store.dark_mode {
-                    "w-64 min-h-screen bg-zinc-900 border-r border-zinc-800 flex-shrink-0 justify-between relative hidden md:flex"
+                    "w-64 min-h-screen bg-zinc-900 border-r border-zinc-800 shrink-0 flex flex-col"
                 } else {
-                    "w-64 min-h-screen bg-white border-r border-gray-200 flex-shrink-0 justify-between relative hidden md:flex"
+                    "w-64 min-h-screen bg-white border-r border-gray-200 shrink-0 flex flex-col"
                 }
 
                 // Top: Brand Logo & Navigation
                 col {
-                    style: "p-4 gap-4"
+                    style: "flex-1 p-4 gap-4 flex flex-col"
 
                     // Logo
                     row {
@@ -73,7 +73,11 @@ widget App {
 
                 // Bottom: Settings Popup Panel & Trigger Button
                 col {
-                    style: "p-3 gap-2 border-t border-border"
+                    style: if .store.dark_mode {
+                        "p-3 gap-2 border-t border-zinc-800 shrink-0"
+                    } else {
+                        "p-3 gap-2 border-t border-gray-200 shrink-0"
+                    }
 
                     if .store.show_settings {
                         SettingsPanel(
