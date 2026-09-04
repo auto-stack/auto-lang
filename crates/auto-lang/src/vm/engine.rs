@@ -3606,6 +3606,15 @@ impl AutoVM {
                         // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
                         let str_idx = self.add_string(string_value.as_bytes().to_vec());
                         self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_null(nv) {
+                        // Plan 550 T07: null → "None"（a2py str(None) 三方
+                        // parity）。print shim（native.rs shim_print_i32）
+                        // 已然输出 "None"，本臂补齐 TYPE_TO_STR 同型——
+                        // 原落 i32 兜底臂把位模式解码成 -2147483647
+                        // （p7 探针病灶）。
+                        // Plan 423 P5 续修:入池收口 add_string。
+                        let str_idx = self.add_string(b"None".to_vec());
+                        self.rc_push_str_idx(task, str_idx);
                     } else {
                         let value_bits = auto_val::decode_i32(nv);
                         let string_value = format!("{}", value_bits);

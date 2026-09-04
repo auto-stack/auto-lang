@@ -147,6 +147,12 @@ def main():
     else:
         tap_not_ok(16, "test_may_ok", f"got {total}")
 
+    # 17. null print/str fidelity (Plan 550 T07)
+    if str(None) == "None":
+        tap_ok(17, "test_print_none")
+    else:
+        tap_not_ok(17, "test_print_none", f"got {None}")
+
 
 if __name__ == "__main__":
     main()
