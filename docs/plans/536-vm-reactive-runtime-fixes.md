@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-536
-status: executing       # 2026-09-05 用户裁定破例重开（archived 终态回开,见 ## 重开与尾债清偿）
+status: execution_done       # 2026-09-05 重开段执行完毕,进入复审 → reviewed → archived（二次关闭）
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
-updated_at: 2026-09-05T00:00:00+08:00
+updated_at: 2026-09-05T02:00:00+08:00
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
@@ -168,26 +168,37 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   机制成立。**实机验收受阻**：复跑实例窗口布局卡死（KD-048-a 族,window
   size zero）,AskDelete→模态弹出+派发终验留用户实机;通过后 musk 侧退役
   内联确认行（059 T9 待澄清⑨ 处置）。
-- [ ] **T10** D1 根修：悬浮机制统一——① renderer 动态路径
+- [✅ 已完成] **T10** D1 根修：悬浮机制统一——① renderer 动态路径
   （render_dynamic_view Column/Row 臂）abs 拆分层消费偏移：abs 子节点带
   非零 top/right/left 偏移时按 build_floating_layer 同款 spacer 几何定位
-  （共享 helper）,零偏移/无偏移（inset-0 ghost 叠加族）保持落原点语义;
-  ② builder 四处 hoist 臂（col/row tracked+untracked）多浮层折叠修复——
-  全部 floats 保留（嵌套 Overlay）,不再 `.next()` 丢弃首个之后的浮层;
-  ③ 语料扩充 test/ui/plan536_absolute（双浮层存活断言+偏移定位断言）,
-  UI 切片不劣于基线。
-- [ ] **T11** D2 清偿：schema drift baseline 裁剪
-  （SCHEMA_DRIFT_UPDATE_BASELINE=1,人工复核 diff 逐维度写明理由）+
-  kitchen-sink 生成页重生成（KITCHEN_SINK_UPDATE=1）;围栏两测
-  （schema_drift_fence/kitchen_sink_page_in_sync）转绿。
-- [ ] **T12** D4 清偿：①组件层发送链探针（child onsend → 父一参 handler →
-  跨模块 store handler:list push+draft 清空+Sse.open handler 引用）——
-  复验 aa92a821e 帧错位根修后 KD-493① 是否已顺带收敛;②核实
-  forge_store StartStream `.streaming=true` 置位与 `Sse.open` 抛点的先后
-  （决定 PollStream 兜底链活性）;③musk 实机 E2E：发送→回复到达→
-  免重选直显（059-FU1 验收配方）;④若崩复现→按帧对齐/哨兵两假说诊断
-  根修;055-4② SSE handler-as-value 若不在本计划范围内根修,则明确
-  PollStream 兜底口径并回写 musk KD。
+  （共享 helper dynamic_abs_layer_position）,零偏移/无偏移（inset-0 ghost
+  叠加族）保持落原点语义;② builder 四处 hoist 臂（col/row
+  tracked+untracked）多浮层折叠修复——fold_floats 全部保留（嵌套
+  Overlay,源序=栈序）,废除 `.next()` 丢弃;③ 语料增补双浮层/无 z 偏移 ×
+  两形状+T10 双探针。**复审加验（遗漏猎查发现）**：plan536 探针套件的
+  lib.rs 挂载声明被 b4d1ced7b（539 折叠前同步合并）冲突解决时静默丢弃
+  ——全套 17 探针自 09-04 起在 master 为死代码未编译,本次复挂载并全绿。
+  另:日常档暴露 schema.rs autodown 缺 table_col_widths 事实源（PLAN-045
+  期只在手工 aura.at 登记）,已补进 schema.rs 并再生 aura.at。
+- [✅ 已完成] **T11** D2 清偿：schema/aura.at 再生成（dialog/dropdown
+  家族臂补齐）+ element_coverage 双向登记（23 增 10 删）+ drift baseline
+  更新（-17 已消除裁剪/+128 vb 侧家族有意漂移登记——PLAN-533/540 家族
+  浮层专用路径未镜像通用四表,全表同步归家族二期）+ kitchen-sink 生成器
+  固化 PLAN-528 W6 两规则（src 资源占位、桌面壳专属排除）后页面再生成
+  （31→38 元素）+ core.md 再生成 + gallery vue golden 重采样;
+  schema_drift 2/2+docs_gen 4/4+gallery_golden 绿。
+- [✅ 已完成（含边界注记）] **T12** D4 清偿：①组件层发送链探针
+  （plan536_send_chain 三件语料+t12 探针）——一参回调链帧对齐零崩,
+  KD-493① 复验收敛（aa92a821e 覆盖）;②**musk 实机 E2E**（后端 9267+
+  worktree VM 实例,MCP 驱动）:发送链零崩、user turn 落库、agent 回复
+  生成（turns.jsonl 实证）;③musk 侧四修（forge_store.at 8b1ae23）:
+  streaming 置位前移/头部直连 close/启发式回合增长守卫/when 门摘除+
+  deadman 2 分钟窗——PollStream 兜底链恢复（258 拍全 OK）;④**边界注记**:
+  最后一步画布投影仍未直显——实机时序对拍立案**新引擎缺陷 P536-D2**
+  （跨模块 store handler 帧内 SET_FIELD 重绑定不可达根态;同帧列表
+  vmref 突变可见——两种写可见性分裂）,属 state-scope 专项（KD 在案,
+  偿还方向已写明）;KD-047 handler-as-value（Sse 实参抛点）仍归上游
+  SSE 专项,musk 已绕行（日志噪音级）。
 
 ## 重开与尾债清偿（2026-09-05,用户裁定）
 
@@ -263,6 +274,56 @@ master 清理重编译（v0.4.1-3478-g432e15dab）。重测面板结果：
    需先追 × 元素的实际 element 转换链（View::Overlay→into_iced 之外
    存在旁路）,留 T9 收尾/专项。瞬态数字帧一例（v9 截图,消息气泡呈字符
    码串,新实例快照恒正确）记录在案不立案。
+
+## 重开复审记录（2026-09-05）
+
+- **Reviewer**: ZCode（/auto-plan:review,重开段独立复审）
+- **时间**: 2026-09-05
+- **复核基线**: worktree plan-536-dev（a6aeb1164→b65245f13→fe78a25a3）+
+  musk worktree plan-536-musk-dev（8b1ae23→b26bd00）;实机证据
+  scratch/p536_t12_evidence/（vm_ui5/6/9/B.log + turns.jsonl + 快照序列）。
+
+### 逐项判定（对照 T10-T12）
+
+1. **T10（D1 悬浮机制统一）——pass**：renderer 动态路径偏移消费+
+   builder 多浮层折叠+复挂载探针套件 20/20 绿;探针 Red 面成立
+   （T10① 多浮层在旧码必丢,T10② 为新 API 面）。日常档 4534/4553,
+   19 红逐一在 master 基线复跑甄别为存量（layout 族 14+lucide+c2_param+
+   d8+strip_html+charts）,零本计划回归。
+2. **T11（D2 围栏清偿）——pass**：schema_drift 2/2+docs_gen 4/4+
+   gallery_golden 绿;W6 两修正固化进生成器（页面恢复"勿手改"幂等）;
+   四表同步被裁定为"baseline 登记+理由"路径（全表同步归家族二期）。
+   附带收口:autodown.table_col_widths 事实源补齐（test_load_schema 转绿）。
+   附带立案:aura.at 再生成 canonical 形态振荡（KD P536-D1,四次再生实证）。
+3. **T12（D4 端到端）——pass（含重大边界注记）**：
+   - **KD-493① 发送链崩:收敛**（实机多轮零崩+组件探针双证,aa92a821e
+     覆盖 confirmed）;
+   - **KD-055-4②/门控死:绕行收敛**（musk 四修,PollStream 258 拍全 OK;
+     KD-047 handler-as-value 根修仍归上游 SSE 专项）;
+   - **后端链:通**（user turn 落库+agent 回复生成,turns.jsonl 实证）;
+   - **未达**:最后一里画布投影不显示新回合——**新立案引擎缺陷
+     P536-D2**（跨模块 store handler 帧内 SET_FIELD 重绑定不可达根态,
+     实机时序对拍证据链完整）,属 state-scope 专项,非本计划可收敛。
+   - 验收标准 #1"免变通直显":**部分达成**——阻塞物从"SSE 桥债+发送崩"
+     推进为"画布投影读侧"（证据链完整、专项方向明确）,残余归
+     musk KD-057④ + auto-lang P536-D2。
+
+### 遗漏/延后/workaround 猎查（重开段）
+
+- **重大遗漏（本复审发现并修复）**:plan536 探针套件挂载声明被
+  b4d1ced7b 合并静默丢弃（17 探针死代码）——已在 T10 复挂载;教训:
+  合并冲突解决后应对 test 挂载面做存在性断言。
+- **新立案**:KD P536-D1（aura.at 再生成 canonical 振荡）、
+  KD P536-D2（跨模块 SET_FIELD 可见性,实机证据链完整）。
+- **延后（经证据链支持,非隐性）**:D4 最后一里归 KD-057④+P536-D2
+  state-scope 专项;KD-047 归上游 SSE 桥专项。
+
+### 判定（重开段）
+
+**reviewed**——T10/T11 全绿;T12 登记债收敛+新缺陷立案+边界注记。
+债候选:KD P536-D1（生成器振荡）、KD P536-D2（state-scope 专项）、
+KD-047（SSE 桥专项,存量）。重开段目标"尾债就地清偿"按此口径达成,
+计划重新归档（archived 终态,二次关闭）。
 
 ## 测试设计
 
