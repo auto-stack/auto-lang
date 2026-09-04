@@ -32,7 +32,7 @@ use autodown_core::block_model::{
     attrGetBool, attrGetInt, attrGetStr, BlockNode, BlockType, InlineSpan, Mark,
 };
 use cosmic_text::{
-    Action, Attrs, Buffer, Cursor, Edit, Family, FontSystem, Metrics, Motion, Selection,
+    Action, Attrs, AttrsList, Buffer, Cursor, Edit, Family, FontSystem, Metrics, Motion, Selection,
     Shaping, SyntaxEditor, ViEditor, Wrap,
 };
 
@@ -187,7 +187,67 @@ fn sans_family() -> Family<'static> {
     Family::SansSerif
 }
 fn mono_family() -> Family<'static> {
-    Family::Monospace
+    // PLAN-050：与绘制侧 widget.rs mono_iced_font 同源——Windows 用
+    // Consolas 名族。cosmic 的 Monospace 缺省解析（实测 ≈8.2px/字符@14px）
+    // 与绘制 Consolas（≈7.77px）advance 不齐，曾致 fence token 间距散架；
+    // 两端同族后测宽=画宽。
+    if cfg!(windows) {
+        Family::Name("Consolas")
+    } else {
+        Family::Monospace
+    }
+}
+
+/// PLAN-050 F4：把 code mark 区间以 mono family span 落到行 attrs_list
+/// （defaults 保留；段落绘制不消费颜色 span——ctx.syntax=false——
+/// SyntaxEditor 高亮重写的颜色 span 可让位）。返回是否有改动（true =
+/// 调用方需补一次整形）。幂等：区间已就位则该行跳过。
+fn ensure_code_family_spans(
+    ed: &mut ViEditor<'static, 'static>,
+    intervals: &[MarkInterval],
+) -> bool {
+    let code: Vec<(usize, usize)> =
+        intervals.iter().filter(|iv| iv.style.code).map(|iv| (iv.lo, iv.hi)).collect();
+    ed.with_buffer_mut(|buf| {
+        let mut bases: Vec<usize> = Vec::with_capacity(buf.lines.len());
+        let mut acc = 0usize;
+        for l in buf.lines.iter() {
+            bases.push(acc);
+            acc += l.text().len() + 1;
+        }
+        let mut changed = false;
+        for (li, line) in buf.lines.iter_mut().enumerate() {
+            let base = bases[li];
+            let llen = line.text().len();
+            let mut locals: Vec<std::ops::Range<usize>> = Vec::new();
+            for &(lo, hi) in &code {
+                let s = lo.saturating_sub(base).min(llen);
+                let e = hi.saturating_sub(base).min(llen);
+                if e > s {
+                    locals.push(s..e);
+                }
+            }
+            if locals.is_empty() {
+                continue;
+            }
+            let already = line.attrs_list().spans_iter().any(|(sp, a)| {
+                a.as_attrs().family != sans_family()
+                    && locals.iter().any(|r| sp.start <= r.start && r.start < sp.end)
+            });
+            if already {
+                continue;
+            }
+            let defaults = line.attrs_list().defaults();
+            let mut list = AttrsList::new(&defaults);
+            let mono = Attrs::new().family(mono_family());
+            for r in locals {
+                list.add_span(r, &mono);
+            }
+            line.set_attrs_list(list);
+            changed = true;
+        }
+        changed
+    })
 }
 
 /// 只读 fence 视图实例的 key 前缀（PLAN-041 T4）：autodown_render 的 fence
@@ -207,6 +267,10 @@ fn new_leaf_buffer(
     let mut buffer = Buffer::new(font_system, Metrics::new(size, size * LINE_H_MULT));
     buffer.set_text(font_system, text, &attrs, Shaping::Advanced, None);
     buffer.set_wrap(font_system, Wrap::Word);
+    // PLAN-050 F4 注：段落行内 code 区间的 mono 测宽不在此落——cosmic
+    // SyntaxEditor 的高亮扫描会以 defaults+颜色 span 整体重写行
+    // attrs_list（syntect.rs:337-369），建缓冲期落的 family span 会被
+    // 抹除；改由 render_frame 的 ensure_code_family_spans 帧内幂等保障。
     let arc = Arc::new(buffer);
     let system = ce_highlight::syntax_system();
     // PLAN-041 T4：fence 家族（带语言）走 hljs 主题——跨轨 token 映射表
@@ -1227,6 +1291,15 @@ impl AutodownEditorCore {
             });
             ed.shape_as_needed(font_system, true);
 
+            // PLAN-050 F4：段落行内 code 区间 mono 测宽——高亮扫描会重写
+            // 行 attrs_list（见 new_leaf_buffer 注），shape 后帧内幂等重落
+            // family span 并补一次整形；已就位时零成本跳过（常态单整形）。
+            if !fenced && b.intervals.iter().any(|iv| iv.style.code) {
+                if ensure_code_family_spans(ed, &b.intervals) {
+                    ed.shape_as_needed(font_system, true);
+                }
+            }
+
             // 共享绘制段：&Buffer → 样式化段（mark 区间 × 语法着色合并）。
             let ctx = BlockDrawCtx {
                 marks: &b.intervals,
@@ -1240,12 +1313,12 @@ impl AutodownEditorCore {
 
             let total_h = if fenced_chrome {
                 let h_h = fam.chrome.header_h;
+                // PLAN-050 F2：配色随主题取用（与 family_of(Fence) 的 chrome
+                // 类串同读 dark_mode——修复浅色 hljs 标点画 zinc 暗底不可见）。
+                let (bg, header_bg, header_fg, border) = autodown_blocks::fence_palette();
                 let full = Rect::new(0.0, y, viewport_w.max(1.0), h_h + pad + block_h.max(line_h) + pad);
-                list.fills.push((Rect::new(full.x, full.y, full.w, full.h), rgb8(autodown_blocks::FENCE_BG)));
-                list.fills.push((
-                    Rect::new(full.x, full.y, full.w, h_h),
-                    rgb8(autodown_blocks::FENCE_HEADER_BG),
-                ));
+                list.fills.push((Rect::new(full.x, full.y, full.w, full.h), rgb8(bg)));
+                list.fills.push((Rect::new(full.x, full.y, full.w, h_h), rgb8(header_bg)));
                 let px = 1.0;
                 for e in [
                     Rect::new(full.x, full.y, full.w, px),
@@ -1253,7 +1326,7 @@ impl AutodownEditorCore {
                     Rect::new(full.x, full.y, px, full.h),
                     Rect::new(full.x + full.w - px, full.y, px, full.h),
                 ] {
-                    list.fills.push((e, rgb8(autodown_blocks::FENCE_BORDER)));
+                    list.fills.push((e, rgb8(border)));
                 }
                 // 语言标签（家族 header_label 位；lang 缺省 "code"，与只读
                 // 轨同口径）。
@@ -1264,7 +1337,7 @@ impl AutodownEditorCore {
                     y: y + (h_h - 12.0).max(0.0) / 2.0,
                     size: 12.0,
                     line_height: 16.0,
-                    color: rgb8(autodown_blocks::FENCE_HEADER_FG),
+                    color: rgb8(header_fg),
                     bold: false,
                     italic: false,
                     mono: false,
@@ -3719,5 +3792,64 @@ fn main() { let s = \"hi\"; }
         });
         press_key(c, EditorKey::Down, EditorModifiers::none());
         assert!(c.doc_selection().is_none(), "plain navigation clears selection");
+    }
+
+    /// PLAN-050 F1/F2：浅色主题下 fence chrome 与正文基色同源——chrome 填充
+    /// 为浅色（gray-50 族），标点段（语法基色）为深色。修复前 chrome 硬编码
+    /// zinc 暗板，浅色 hljs 主题的近黑标点画在近黑底上不可见（用户实测
+    /// `console.log(foo)` → `console .log foo`）。
+    #[test]
+    fn fence_chrome_and_text_follow_light_theme() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let c = core_for("t50a", "```rust\nfn main() {}\n```\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
+        crate::ui::style::theme::set_dark_mode(true);
+        let bg = frame
+            .list
+            .fills
+            .iter()
+            .map(|(_, c)| *c)
+            .next()
+            .expect("fence chrome fills");
+        assert!(
+            bg.r > 0.7 && bg.g > 0.7 && bg.b > 0.7,
+            "light theme fence bg must be light gray, got ({:.2},{:.2},{:.2})",
+            bg.r,
+            bg.g,
+            bg.b
+        );
+        let paren = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.mono && r.text.contains('('))
+            .expect("paren run");
+        assert!(
+            paren.color.r < 0.35 && paren.color.g < 0.35 && paren.color.b < 0.35,
+            "light theme base-fg punctuation must be dark, got ({:.2},{:.2},{:.2})",
+            paren.color.r,
+            paren.color.g,
+            paren.color.b
+        );
+    }
+
+    /// PLAN-050 F4：段落行内 code 区间以 mono 家族测宽——render_frame 后
+    /// （高亮重写 + 帧内重落之后）buffer attrs_list 的 code 范围 span 族
+    /// 非 sans。绘制侧 st.code 段换 mono 字体（更宽），buffer 若 sans 测宽
+    /// 则 code 段画宽超出预留槽位压叠后词（"inline code"×"and" 实测）。
+    #[test]
+    fn paragraph_inline_code_measured_mono() {
+        let c = core_for("t50b", "a `code` b\n");
+        let _ = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
+        let blocks = c.blocks.lock().unwrap();
+        let b = &blocks[0];
+        let found = b.editor.ed().with_buffer(|buf| {
+            let Some(line) = buf.lines.first() else { return false };
+            let Some(lo) = line.text().find("code") else { return false };
+            line.attrs_list()
+                .spans_iter()
+                .any(|(range, a)| range.start <= lo && lo < range.end && a.as_attrs().family != sans_family())
+        });
+        assert!(found, "inline code span must carry non-sans family for width measurement");
     }
 }
