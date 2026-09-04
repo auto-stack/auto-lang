@@ -249,6 +249,15 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 };
                 Some(DocInput::MouseReleased { button: b })
             }
+            Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                // 拖选移动通路（PLAN-048 T3）：core 侧以 drag 状态门控，
+                // 非拖选零操作零捕获；界外丢弃（413 同款取舍：拖选停在边缘）。
+                if !cursor.is_over(bounds) {
+                    return;
+                }
+                let (x, y) = local(*position);
+                Some(DocInput::MouseDragged { x, y })
+            }
             Event::Mouse(mouse::Event::WheelScrolled { .. }) => None, // 页面滚动透传
             Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, text, .. }) => {
                 Some(DocInput::KeyPressed {
