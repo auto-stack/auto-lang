@@ -145,15 +145,15 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   VM 偏移模型为 px（bottom-full/top-1/2 百分比不支持）→ settings 浮位
   暂不合,记 spec 边界;新二进制标签 +42043s 恒偏异常见待澄清 #4;
   KD 059-FU1 核销回写归 merge（musk 仓 bookkeeping）。
-- [✅ 已完成（命题证伪+新缺陷立案）] **T8** fallback 路径 open 绑定根修
-  (题6)：组件层探针（test/ui/plan536_modal,三变体隔离）——**原命题证伪**：
-  unknown-tag fallback 包家族根 v1 全绿（open 绑定解析无断链,翻转即
-  Modal(open=true)）;但加子件后根写失效暴露**新引擎缺陷**（待澄清 #5）。
-  musk 题6 真因改判：DeleteConfirmDialog 的 use.web 导入直指 .vue→VM 轨
-  落 stub 无视图（非 bindings 断链）——T9 前置已修（端口链三件套落 musk
-  worktree,commit 见 T9 行）。受阻测试 #[ignore] 在案（引擎缺陷修复后
-  转正）。子件字段逐帧默认值重播种打回 handler 写入的机制缺陷亦已修
-  （prepare_child_render_state 4/4b 缺字段守卫）。
+- [✅ 已完成] **T8** fallback 路径 open 绑定根修(题6)：组件层探针
+  （test/ui/plan536_modal,两形态）——**原命题证伪**：unknown-tag
+  fallback 包家族根/子件视图根部两形态,open 绑定翻转均出
+  Modal(open=true),fallback 路径绑定解析无断链;重渲染帧不回打默认值
+  由 prepare_child_render_state 缺字段播种守卫锁定（4/4b）。musk 题6
+  真因改判：DeleteConfirmDialog 的 use.web 导入直指 .vue→VM 轨落 stub
+  无视图（非 bindings 断链）——T9 前置已修（端口链三件套落 musk
+  worktree）。排查插曲："引擎缺陷"（根 handler 字段写不落盘）经查为
+  测试派发名错位,已证伪销案（待澄清 #5）。
 - [✅ 已完成（前置就绪,实机受阻）] **T9** musk 联测(题6)：端口链三件套
   （delete_confirm.at 约定/vm.at 真源/web.at facade）落 musk worktree
   （auto-lang-536-dev）,chats_view 导入换接;子件同形探针
@@ -198,16 +198,11 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
    与该值异常的因果链待查。旧二进制（T2-T4）+裸秒直传已证标签正确
    （run A）,T4 native 单测全绿。复现证据:scratch/p536_t7_snapshot*.txt、
    p536_t5_musk_vm.log。
-5. 【T8 发现 2026-09-04·引擎缺陷立案】**存在带 model 的子件时,根 widget
-   handler 对自身模型字段的 SET 写不落盘**。复现：test/ui/plan536_modal
-   三变体隔离——①fallback 包家族根独占=Flip 落盘 ✓;②+ChatsLike 子件
-  （model 含字段）=App.Flip 执行 Ok（handler_App_Flip 无 Err）但 root_open
-   恒 false;③换 col 包裹（无 fallback）同败=子件在场即触发,fallback/
-   reseed 守卫均非因。子件自身 handler 写入（ChatsLike.Flip）正常。疑似
-   codegen 字段槽解析在根+子件模型合并编译时错位（SET_FIELD index 化）。
-   修复需引擎级排查（vm/codegen 字段解析序）,超出本计划范围——立案转
-   专项;受阻测试 p536_t8_unknown_tag_fallback_resolves_open_binding
-   #[ignore] 在案,修复后转正。**连带影响评估**：musk 现网 App 层 handler
-   少、模型字段写入多在子件域,故未成大面积现场;但 012-stopwatch 等根
-   计时器写法（根 handler 写根字段）在带子件工程中疑似同雷,建议 review
-   阶段评估普适度。
+5. 【T8 已结案 2026-09-04·证伪】"子件在场时根 handler 字段写不落盘"的
+   引擎缺陷**不存在**——排查定位为测试自身派发名错位（语料 msg 声明为
+   FlipRoot,测试派发 "Flip"→handler_App_Flip 不存在→HandlerNotFound→
+   写入不发生;此前 [VM_EXEC] handler_App_Flip 的日志来自更早语料版本,
+   误导定位）。修正派发名后 p536_t8_unknown_tag_fallback_resolves_open_
+   binding 转正全绿（17/17）,含"重渲染帧不回打默认值"守卫锁定断言。
+   教训入档：诊断时 fn 表名与派发名必须同源核对
+   （debug_fn_table 实证命中=[handler_App_FlipRoot]）。
