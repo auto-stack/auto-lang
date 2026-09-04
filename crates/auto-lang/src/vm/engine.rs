@@ -475,6 +475,13 @@ fn null_guard_peek_unary(task: &AutoTask, op: &str) -> Result<(), VMError> {
     Ok(())
 }
 
+/// Plan 550 T05: GET_ELEM 越界消息（对标 Python IndexError；携带原始
+/// 索引值，负索引越界同报原值）。原先静默 push_i32(0) 哨兵（p8 探针）。
+#[cold]
+fn index_out_of_range_error(index: i32) -> VMError {
+    VMError::RuntimeError(format!("IndexError: index {} out of range", index))
+}
+
 /// Plan 406: unified condition truthiness. Tagged bools (TAG_BOOL) are
 /// authoritative; null is falsy; everything else falls back to legacy i32
 /// truthiness (0 / i32::MIN+1 sentinels) for values pushed by older code
@@ -4957,8 +4964,8 @@ impl AutoVM {
                                         }
                                     }
                                 } else {
-                                    vm_debug!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<String>
@@ -4972,7 +4979,8 @@ impl AutoVM {
                                     let str_idx = self.add_string(elem.as_bytes().to_vec());
                                     self.rc_push_str_idx(task, str_idx);
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<bool>
@@ -4984,7 +4992,8 @@ impl AutoVM {
                                     // (print/to_string/EQ bit-compare) behave like bool literals.
                                     task.ram.push_nv(auto_val::encode_bool(elem));
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<Value> (generic list of Values)
@@ -5024,7 +5033,8 @@ impl AutoVM {
                                         _ => { task.ram.push_i32(0); }
                                     }
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Plan 437: 动态 record 字段访问 —— d[field_name]，
