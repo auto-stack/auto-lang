@@ -1,0 +1,24 @@
+// composer.at — PLAN-536 T12 探针子件：MentionInput 同形（draft 字段 +
+// Send(str) msg,子 handler 清自身 draft 后经 onsend 声明式路由上抛载荷）。
+// KD 051 T8 契约：父侧消费 $event 载荷而非回读子件字段（子 handler 已清空）。
+widget Composer {
+    msg {
+        Send(str)
+    }
+    model {
+        var draft str = "hello"
+    }
+    view {
+        col {
+            button {
+                onclick: .Send(.draft)
+                text "send"
+            }
+        }
+    }
+    on {
+        .Send(t str) -> {
+            .draft = ""
+        }
+    }
+}

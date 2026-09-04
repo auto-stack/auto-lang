@@ -6251,6 +6251,11 @@ mod plan059_child_emit_probe_tests;
 // 为死代码未编译，复审遗漏扫描立案；本行恢复挂载。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan536_t1_reactive_probe_tests;
+// PLAN-536 T12 探针（musk 发送链最小同形）：一参回调链帧对齐复验（KD-493①
+// 在 aa92a821e 后的组件层面）+ PollStream 兜底链活性（streaming 置位先于
+// Sse.open 抛点）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan536_t12_send_chain_probe_tests;
 mod auto_down_vm_server_probe_tests;
 mod autodown_codegen_debts_tests;
 

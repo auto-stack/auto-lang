@@ -1268,3 +1268,24 @@
   fence（双向围栏）**，处置=按新形态再对齐登记表（登记动作即过）。根修
   方向：两条 canonical 选择路径统一排序口径（例如别名组根同样"取小写
   成员"），属围栏生成器专项，需全量 diff 评估（牵动全部 alias 组）。
+- **P536-D2 跨模块 store handler 帧内 SET_FIELD 重绑定不可达根态**（2026-09-05，
+  PLAN-536 T12 实机立案——KD-057④/c13c250"循环副本写读侧不更新"家族的引擎级
+  根因候选）：musk 实机 E2E 时序对拍（autoui_state 逐拍采样+VM 日志）实证：
+  `SendInput`（dispatcher 派发,root state_obj_id=4000029/4000030）帧内经
+  `store.Send/store.StartStream` **跨模块调用**执行的 SET_FIELD——
+  `.streaming = true`（Send 与 StartStream 两处）、`.pre_stream_len = ...`——
+  **不达根态**（PollStream when 门 104 拍全被 `.streaming==false` 拦截、
+  无一 VM_HANDLER_CALL;autoui_state +3s/ +40s 读恒 false）,而**同帧同
+  handler** 的 `.messages.push(...)`（列表 vmref 共享突变）与
+  `.pre_stream_len = .messages.length`（?——见下）可见性存在矛盾样本
+  （pre_stream_len=18 曾在读侧出现）,指向跨模块调用帧的 self 绑定/写
+  提交路径分裂（方法突变经共享 vmref 可达根、字段重绑定落在子作用域
+  副本或被父向子同步回写覆盖）。timer 派发的 store handler（PollStream
+  经 fire_timer→dispatcher,root 帧_init LoadSessionList 同）写入可靠
+  ——两种进入路径可见性不一致是核心矛盾。**影响面**：凡"父 handler 体内
+  `store.X()` 跨模块调用"对 store 字段的标量重绑定（musk streaming 门控、
+  KD-057④ computed 读侧、c13c250 循环副本写、051-T8 列表 prop 族）。
+  musk 侧已以 deadman 窗+列表承载绕行（forge_store.at T12 四修,8b1ae23）。
+  **偿还方向**：VM codegen/engine 的跨模块调用 self 绑定统一到根态
+  （merged 模型下子件 state 即根态,Plan 370 D-GAP-4 语义收口）,需
+  state-scope 专项立项（engine.rs/codegen.rs 调用帧与 rc 语义联动,非小修）。

@@ -1,0 +1,41 @@
+// chat_store.at — PLAN-536 T12 探针 store：ForgeStore 发送面同形。
+// stream_seq 是 StartStream 推进深度哨兵：1=Send 完成（musk 形:streaming
+// 置位于 Send）;2=StartStream 已越过 `.streaming = true`（**musk T12 修复
+// 形:置位挪到 Sse.open 之前**）,Sse.open 实参(handler 引用)在 VM 的
+// Field not found 抛点不得回滚它。musking 原形（置位只在 Send、StartStream
+// 头部 StopStream 先置 false）会在抛点后留下 streaming=false——PollStream
+// 死、回复永不直显（KD 059-FU1 题1 残余通路）。
+store ChatStore {
+    msg {
+        Send(str),
+        StartStream(str, str),
+        StopStream,
+        OnStreamEvent(Value)
+    }
+    model {
+        var current_draft str = "x"
+        var streaming bool = false
+        var stream_seq int = 0
+        var stream_es Value = null
+        var messages []Value = []
+    }
+    on {
+        .Send(content str) -> {
+            .current_draft = ""
+            .streaming = true
+            .stream_seq = 1
+        }
+        .StopStream -> {
+            .streaming = false
+        }
+        .StartStream(sid str, userContent str) -> {
+            .StopStream()
+            .messages.push({ id: "u-1", role: "user", content: userContent })
+            .streaming = true
+            .stream_seq = 2
+            .stream_es = Sse.open("/api/chats/stream", .OnStreamEvent)
+        }
+        .OnStreamEvent(ev) -> {
+        }
+    }
+}
