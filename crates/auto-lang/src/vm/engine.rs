@@ -5,7 +5,9 @@ use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
 use crate::vm::task_system::TaskRegistry;
-use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
+use crate::vm::virt_memory::{
+    null_binop_type_error, null_unop_type_error, VirtualFlash, VirtualRAM,
+};
 use auto_val::AutoStr;
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -445,6 +447,32 @@ fn pop_f32_operand(task: &mut AutoTask) -> f32 {
     } else {
         auto_val::decode_f32(nv)
     }
+}
+
+/// Plan 550 T03: 定点算术槽（_F/_D/_U64/MOD 族）弹栈前的 null 窥视守卫。
+/// 这些臂的弹栈助手按 tag/位模式解码（TAG_NULL → 垃圾整数或 NaN 静默
+/// 传播），统一在弹栈前窥视拦截。peek(0)=右操作数，peek(1)=左操作数。
+#[inline(always)]
+fn null_guard_peek_pair(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    let b_nv = task.ram.peek_nv(0);
+    let a_nv = task.ram.peek_nv(1);
+    if auto_val::is_null(a_nv) || auto_val::is_null(b_nv) {
+        return Err(null_binop_type_error(
+            op,
+            (a_nv, !auto_val::is_nanboxed(a_nv)),
+            (b_nv, !auto_val::is_nanboxed(b_nv)),
+        ));
+    }
+    Ok(())
+}
+
+/// Plan 550 T03: 一元定点算术槽（NEG_F/NEG_D）弹栈前的 null 窥视守卫。
+#[inline(always)]
+fn null_guard_peek_unary(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    if auto_val::is_null(task.ram.peek_nv(0)) {
+        return Err(null_unop_type_error(op));
+    }
+    Ok(())
 }
 
 /// Plan 406: unified condition truthiness. Tagged bools (TAG_BOOL) are
@@ -3797,8 +3825,19 @@ impl AutoVM {
                 // Plan 075: Concatenate two strings
                 OpCode::STR_CAT => {
                     {
-                        let right_nv = task.ram.pop_nv();
-                        let left_nv = task.ram.pop_nv();
+                    let right_nv = task.ram.pop_nv();
+                    let left_nv = task.ram.pop_nv();
+                    // Plan 550 T03: null 拼接守卫（539 探针 2 病灶：
+                    // "a" + null → 垃圾数字入串）。字符串形态的 `+` 在
+                    // codegen 静态路由到本臂，守卫消息与算术族同格式
+                    // （op 报 '+'，null 方报 'NoneType'，另一方报 'str'）。
+                    if auto_val::is_null(left_nv) || auto_val::is_null(right_nv) {
+                        return Err(null_binop_type_error(
+                            "+",
+                            (left_nv, !auto_val::is_nanboxed(left_nv)),
+                            (right_nv, !auto_val::is_nanboxed(right_nv)),
+                        ));
+                    }
                         // Plan 419 Phase 2: 操作数 stake 在物化完成后释放(先读后放)。
                         let strings = self.strings.read().unwrap();
                         let left_str = if auto_val::is_string(left_nv) {
@@ -5584,8 +5623,11 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    // Plan 550 T03: 算术双操作数经 null 守卫弹出（TAG_NULL
+                    // 拒收，含下方字符串拼接臂——decode_i32(null) 垃圾入串
+                    // 的 539 探针 2 病灶在分派前拦截）。
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("+")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) + f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5638,8 +5680,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("-")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) - f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5665,8 +5707,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("*")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) * f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5692,8 +5734,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("/")?;
                     if a_is_f64 && b_is_f64 {
                         let b = f64::from_bits(b_bits);
                         if b == 0.0 { return Err(VMError::DivisionByZero); }
@@ -5725,7 +5767,7 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand_non_null("-")?;
                     if a_is_f64 {
                         task.ram.push_f64(-f64::from_bits(a_bits));
                     } else if auto_val::is_f32(a_bits) {
@@ -5738,24 +5780,28 @@ impl AutoVM {
 
                 // Plan 073 Stage A: Floating-point arithmetic (f32)
                 OpCode::ADD_F => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a + b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::SUB_F => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a - b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::MUL_F => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a * b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::DIV_F => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     if b == 0.0 {
@@ -5765,6 +5811,7 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::NEG_F => {
+                    null_guard_peek_unary(task, "-")?;
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(-a);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
@@ -5772,24 +5819,28 @@ impl AutoVM {
 
                 // Plan 073 Stage A: Double precision arithmetic (f64)
                 OpCode::ADD_D => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a + b);
                     task.last_result_type = ResultType::Float; // Plan 403-F: mark f64 result
                 }
                 OpCode::SUB_D => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a - b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::MUL_D => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a * b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::DIV_D => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     if b == 0.0 {
@@ -5807,6 +5858,7 @@ impl AutoVM {
                         crate::py_ffi::py_dunder_arith("__mod__", "__rmod__", task, self)?;
                         return Ok(StepResult::Continue);
                     }
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     if b == 0 {
@@ -5815,17 +5867,20 @@ impl AutoVM {
                     task.ram.push_i32(a % b);
                 }
                 OpCode::MOD_F => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a % b);
                 }
                 OpCode::MOD_D => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a % b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::NEG_D => {
+                    null_guard_peek_unary(task, "-")?;
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(-a);
                     task.last_result_type = ResultType::Float;
@@ -5833,21 +5888,25 @@ impl AutoVM {
 
                 // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot; heap-aware for full range)
                 OpCode::ADD_U64 => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_add(b));
                 }
                 OpCode::SUB_U64 => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_sub(b));
                 }
                 OpCode::MUL_U64 => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_mul(b));
                 }
                 OpCode::DIV_U64 => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     if b == 0 {
@@ -5856,6 +5915,7 @@ impl AutoVM {
                     self.push_u64_vm(task, a / b);
                 }
                 OpCode::MOD_U64 => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     if b == 0 {

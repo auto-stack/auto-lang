@@ -453,6 +453,42 @@ impl VirtualRAM {
         (nv, is_f64)
     }
 
+    /// Plan 550 T03: 弹出二元算术操作数对并拒收 null（TAG_NULL）。
+    ///
+    /// null 位模式直接 decode_i32 参与运算是 539 实证的静默垃圾病灶
+    /// （`null + 1` → -2147483646、`"a" + null` → 垃圾数字入串拼接），
+    /// 本计划全族统一翻转为可 try-catch 捕获的 Python 风格 TypeError。
+    ///
+    /// 只拒 TAG_NULL：`null`/`nil`/`None` 三拼写经 PUSH_NIL 同落
+    /// encode_null（PLAN-053 P-053-2 归一）。历史 i32 哨兵编码
+    /// （-1 / i32::MIN+1）与真实整数在算术槽不可区分，不在守卫范围
+    /// （EQ 判等的 null-family 兼容语义不变，见 nv_is_null_family）。
+    #[inline(always)]
+    pub fn pop_arith_pair_non_null(
+        &mut self,
+        op: &str,
+    ) -> Result<((u64, bool), (u64, bool)), crate::vm::engine::VMError> {
+        let b = self.pop_arith_operand();
+        let a = self.pop_arith_operand();
+        if arith_operand_is_null(&a) || arith_operand_is_null(&b) {
+            return Err(null_binop_type_error(op, a, b));
+        }
+        Ok((a, b))
+    }
+
+    /// Plan 550 T03: 弹出一元算术操作数并拒收 null（TAG_NULL）。
+    #[inline(always)]
+    pub fn pop_arith_operand_non_null(
+        &mut self,
+        op: &str,
+    ) -> Result<(u64, bool), crate::vm::engine::VMError> {
+        let a = self.pop_arith_operand();
+        if arith_operand_is_null(&a) {
+            return Err(null_unop_type_error(op));
+        }
+        Ok(a)
+    }
+
     /// Write a raw NanoValue at an address (preserves type tag).
     #[inline(always)]
     pub fn write_nv(&mut self, addr: usize, val: NanoValue) {
@@ -486,4 +522,56 @@ impl VirtualRAM {
     pub fn push_str_idx(&mut self, idx: u32) {
         self.push_nv(encode_string(idx));
     }
+}
+
+// ---- Plan 550 T03: null 算术守卫的共享消息助手 ----
+// 栈帧纪律（539 三次溢出教训）：守卫体保持 2-3 行，消息构造集中到
+// 模块级函数，不内联大块进热递归 match 臂。
+
+/// Plan 550 T03: 算术操作数的 Python 风格类型名（TypeError 消息渲染）。
+/// 粗粒度映射：nanbox 可判定的标量类型 + object 兜底（堆对象具体
+/// 类型名需 VM 堆访问，不在本层）。
+#[inline(always)]
+pub fn nv_py_type_name(nv: NanoValue) -> &'static str {
+    if !auto_val::is_nanboxed(nv) {
+        return "float"; // f64 直接位模式（非 nanboxed）
+    }
+    if auto_val::is_null(nv) {
+        "NoneType"
+    } else if auto_val::is_f32(nv) {
+        "float"
+    } else if auto_val::is_string(nv) {
+        "str"
+    } else if auto_val::is_bool(nv) {
+        "bool"
+    } else if auto_val::is_object(nv) || auto_val::is_list(nv) {
+        "object"
+    } else {
+        "int"
+    }
+}
+
+/// Plan 550 T03: 二元算术 null 守卫的 TypeError 消息（Python 格式，
+/// a=左操作数、b=右操作数，按操作数次序渲染类型名）。
+pub fn null_binop_type_error(op: &str, a: (u64, bool), b: (u64, bool)) -> crate::vm::engine::VMError {
+    crate::vm::engine::VMError::RuntimeError(format!(
+        "TypeError: unsupported operand type(s) for {}: '{}' and '{}'",
+        op,
+        nv_py_type_name(a.0),
+        nv_py_type_name(b.0)
+    ))
+}
+
+/// Plan 550 T03: 一元算术 null 守卫的 TypeError 消息（Python 格式）。
+pub fn null_unop_type_error(op: &str) -> crate::vm::engine::VMError {
+    crate::vm::engine::VMError::RuntimeError(format!(
+        "TypeError: bad operand type for unary {}: 'NoneType'",
+        op
+    ))
+}
+
+/// Plan 550 T03: 算术操作数是否为 TAG_NULL（f64 槽不可能是 null）。
+#[inline(always)]
+fn arith_operand_is_null(operand: &(u64, bool)) -> bool {
+    !operand.1 && auto_val::is_null(operand.0)
 }
