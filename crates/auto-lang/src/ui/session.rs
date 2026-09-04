@@ -315,6 +315,12 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// `daemon: autoos` 的 App 时更新；boot 不预检）。settings 入口徽标
     ///（offline 置灰/提示，T5）消费。
     pub osconfig_status: crate::ui::osconfig_daemon::DaemonStatus,
+    /// Plan 551 T6:外写热应用轮询锚——上次见到的 desktop config.at
+    /// mtime(None = boot 后未采样,首 tick 只采样不应用)。
+    pub config_poll_mtime: Option<std::time::SystemTime>,
+    /// Plan 551 T6:boot 后是否已采过样(文件缺席时 mtime None 无法与
+    /// 「未采样」区分——本哨兵保证首 tick 只建锚不应用)。
+    pub config_poll_sampled: bool,
     /// Plan 501：daemon 检活注入位（单测假实现；None = 生产
     /// [`crate::ui::osconfig_daemon::ensure_ready`]）。launch 执行臂消费。
     pub osconfig_daemon_probe:
@@ -379,6 +385,8 @@ impl DesktopState {
             // ServiceTick 到期写 `switcher_open="0"`。None = 无倒计时）。
             switcher_until: std::cell::Cell::new(None),
             osconfig_status: crate::ui::osconfig_daemon::DaemonStatus::default(),
+            config_poll_mtime: None,
+            config_poll_sampled: false,
             osconfig_daemon_probe: None,
             back_keepalive: None,
             process_model: ProcessModel::default(),

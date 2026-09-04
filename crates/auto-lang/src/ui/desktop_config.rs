@@ -96,6 +96,14 @@ pub fn desktop_config_path() -> Option<PathBuf> {
     )
 }
 
+/// Plan 551 T6:config.at mtime 采样——外写热应用轮询锚(宿主 ServiceTick
+/// 400ms stat 一次;路径缺席/不可 stat = None)。宿主自写路径 save() 后
+/// mtime 变化 → 下次 poll 读回内容相等即早退,无回环。
+pub fn config_mtime() -> Option<std::time::SystemTime> {
+    let path = desktop_config_path()?;
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
 /// `parse_pac_fields` 平铺行读 → 逐字段强类型（坏值/缺席回退默认）。
 pub fn parse_config(src: &str) -> DesktopConfig {
     let f = parse_flat_fields(src);

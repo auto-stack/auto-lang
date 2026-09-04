@@ -8668,6 +8668,76 @@ fn execute_set_dock_pinned(state: &mut crate::ui::session::DesktopSession, csv: 
     inject_dock_pinned(state);
 }
 
+/// Plan 551 T6:外写热应用轮询——os-config(或任意写方)经 daemon 改
+/// config.at 后,宿主 ServiceTick(400ms)stat mtime;变更即 load() 差异
+/// 应用(400ms 节拍 ≪ 2s 生效门)。写竞争防回环:宿主自写臂 save() 后
+/// mtime 变化,下次 poll 读回内容与内存态相等即早退(DesktopConfig:
+/// PartialEq 全字段);应用臂不 save(宿主非本路径写方,避免 mtime 抖动)。
+fn poll_external_config(state: &mut crate::ui::session::DesktopSession) {
+    if !state.desktop.config_poll_sampled {
+        // boot 后首采样:boot load() 已是当前事实,只建锚不应用
+        // (文件缺席 = None 锚,后续创建文件即 Some≠None → 应用)。
+        state.desktop.config_poll_sampled = true;
+        state.desktop.config_poll_mtime = crate::ui::desktop_config::config_mtime();
+        return;
+    }
+    let mtime = crate::ui::desktop_config::config_mtime();
+    if mtime == state.desktop.config_poll_mtime {
+        return;
+    }
+    state.desktop.config_poll_mtime = mtime;
+    let cfg = crate::ui::desktop_config::load();
+    if cfg == state.desktop.config {
+        return;
+    }
+    apply_external_config_diff(state, &cfg);
+}
+
+/// Plan 551 T6:差异应用臂——按字段复用 set_* 执行臂的生效语义(主题/
+/// 壁纸/透明度/Dock/通知),但不落盘(宿主非本路径写方)。透明度与壁纸
+/// 目录为逐帧/按需消费面,零额外动作。
+fn apply_external_config_diff(
+    state: &mut crate::ui::session::DesktopSession,
+    cfg: &crate::ui::desktop_config::DesktopConfig,
+) {
+    let old = state.desktop.config.clone();
+    if cfg.dock_position != old.dock_position || cfg.dock_enabled != old.dock_enabled {
+        state.desktop.config.dock_position = cfg.dock_position.clone();
+        state.desktop.config.dock_enabled = cfg.dock_enabled;
+        apply_dock_edges_now(state);
+    }
+    if cfg.dock_pinned != old.dock_pinned {
+        state.desktop.config.dock_pinned = cfg.dock_pinned.clone();
+        state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
+        inject_dock_pinned(state);
+    }
+    if cfg.dark_theme != old.dark_theme {
+        // execute_set_theme 同款生效面(减 save):adapter 切换 + fence
+        // 重着色(autodown 门控)+ 全场快照随撤 + 全 App view_dirty/dark_mode 回写。
+        crate::ui::style::iced_adapter::set_dark_mode(cfg.dark_theme);
+        #[cfg(feature = "autodown")]
+        crate::ui::autodown_editor::retheme_all_fence_buffers();
+        let dark = cfg.dark_theme;
+        for app in state.apps.values_mut() {
+            if app.component.read_state("dark_mode").is_ok() {
+                let _ = app
+                    .component
+                    .write_state("dark_mode", auto_val::Value::Bool(dark));
+            }
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
+    if cfg.wallpaper_path != old.wallpaper_path {
+        state.desktop.config.wallpaper_path = cfg.wallpaper_path.clone();
+        state.desktop.desktop_wallpaper = load_desktop_wallpaper(&state.desktop.config);
+        crate::ui::iced::snapshot::invalidate_all();
+    }
+    state.desktop.config.wallpapers_dir = cfg.wallpapers_dir.clone();
+    state.desktop.config.transparency = cfg.transparency.clone();
+    state.desktop.config.notes_enabled = cfg.notes_enabled;
+    state.desktop.config.dark_theme = cfg.dark_theme;
+}
+
 /// Plan 540 T3：壁纸目录写臂——config 落盘（scan_wallpapers_dir 与缺省
 /// 壁纸链共用解析；设置面重开即见新目录扫描）。
 fn execute_set_wallpapers_dir(state: &mut crate::ui::session::DesktopSession, dir: &str) {
@@ -13242,6 +13312,9 @@ fn compare_pngs(
                         // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
                         // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
                         update_shell_clock(state);
+                        // Plan 551 T6:外写热应用轮询(os-config 经 daemon 改
+                        // config.at → 宿主 400ms 节拍感知 → 差异应用)。
+                        poll_external_config(state);
                         // PLAN-526 T18：热键切换的切换预览面板倒计时收起
                         // （~1.6s；触发 icon 手动开合不经此——无倒计时）。
                         if let Some(until) = state.desktop.switcher_until.get() {
@@ -22089,6 +22162,44 @@ mod tests {
             })
             .unwrap_or(0);
         assert_eq!(settings_wins, 1, "恰好一 os-config 窗（无重复 launch）");
+
+        let _ = std::fs::remove_file(&path);
+    }
+    /// Plan 551 T6:外写热应用轮询——首采样不应用/外写差异应用(主题+
+    /// pinned+透明度+壁纸目录)/宿主自写后内容相等早退(防回环)。
+    #[test]
+    fn external_config_poll_hot_apply_loopsafe() {
+        let path = t2_isolate_storage("551-poll");
+        let mut ds = t3_session_with_shell();
+        // ① 首采样:只建哨兵锚不应用(文件尚未存在,mtime 锚 = None)。
+        poll_external_config(&mut ds);
+        assert!(ds.desktop.config_poll_sampled, "首采样落哨兵");
+        assert!(ds.desktop.config_poll_mtime.is_none(), "文件缺席锚 None");
+        // ② 外写(模拟 daemon PUT):多字段一次落盘 → 下一 tick 差异应用。
+        let mut cfg = ds.desktop.config.clone();
+        cfg.dark_theme = !cfg.dark_theme;
+        cfg.dock_pinned = vec!["011-calculator".to_string()];
+        cfg.transparency = "high".to_string();
+        cfg.wallpapers_dir = r"D:\wallpapers".to_string();
+        let cfg_path = crate::ui::desktop_config::desktop_config_path().unwrap();
+        crate::ui::desktop_config::save_to(&cfg_path, &cfg);
+        poll_external_config(&mut ds);
+        assert_eq!(ds.desktop.config.dark_theme, cfg.dark_theme, "主题热应用");
+        assert_eq!(
+            ds.desktop.config.dock_pinned, cfg.dock_pinned,
+            "pinned 热应用"
+        );
+        assert_eq!(ds.desktop.dock_pinned, cfg.dock_pinned, "会话域同步");
+        assert_eq!(ds.desktop.config.transparency, "high", "透明度面同步");
+        assert_eq!(
+            ds.desktop.config.wallpapers_dir, r"D:\wallpapers",
+            "壁纸目录面同步"
+        );
+        // ③ 防回环:宿主自写(save)后 poll → mtime 变但内容相等早退。
+        crate::ui::desktop_config::save(&ds.desktop.config);
+        let snap = ds.desktop.config.clone();
+        poll_external_config(&mut ds);
+        assert_eq!(ds.desktop.config, snap, "内容相等早退(无回环)");
 
         let _ = std::fs::remove_file(&path);
     }
