@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-533
-status: reviewed       # drafting → executing → execution_done → reviewed → archived
+status: archived      # drafting → executing → execution_done → reviewed → archived
 feature_name: VM(a2r) 悬浮层运行时通道——alert-dialog/dropdown 家族 codegen 臂 + Modal iced 运行时
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
