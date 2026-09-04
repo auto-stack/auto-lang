@@ -5103,6 +5103,12 @@ impl Codegen {
         const NATIVE_PY_CALL_MAY: u16 = 453;
         const NATIVE_PY_ITER: u16 = 454;
         const NATIVE_PY_NEXT: u16 = 455;
+        const NATIVE_PY_MATMUL: u16 = 456;
+        const NATIVE_PY_GETITEM: u16 = 457;
+        const NATIVE_PY_SETITEM: u16 = 458;
+        const NATIVE_PY_SLICE: u16 = 459;
+        const NATIVE_PY_CALL0: u16 = 460;
+        const NATIVE_PY_WITH: u16 = 461;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5122,6 +5128,12 @@ impl Codegen {
                 reg.register_with_id("py.py_call_may", NATIVE_PY_CALL_MAY);
                 reg.register_with_id("py.py_iter", NATIVE_PY_ITER);
                 reg.register_with_id("py.py_next", NATIVE_PY_NEXT);
+                reg.register_with_id("py.py_matmul", NATIVE_PY_MATMUL);
+                reg.register_with_id("py.py_getitem", NATIVE_PY_GETITEM);
+                reg.register_with_id("py.py_setitem", NATIVE_PY_SETITEM);
+                reg.register_with_id("py.py_slice", NATIVE_PY_SLICE);
+                reg.register_with_id("py.py_call0", NATIVE_PY_CALL0);
+                reg.register_with_id("py.py_with", NATIVE_PY_WITH);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5137,7 +5149,18 @@ impl Codegen {
         // (posargs / kw_names / kw_vals as marshalled Auto lists).
         // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may is the May-valued
         // variant (Result.Ok wrap / Result.Err on Python exceptions).
-        for builtin in ["py_call_kw", "py_call_may", "py_iter", "py_next"] {
+        for builtin in [
+            "py_call_kw",
+            "py_call_may",
+            "py_iter",
+            "py_next",
+            "py_matmul",
+            "py_getitem",
+            "py_setitem",
+            "py_slice",
+            "py_call0",
+            "py_with",
+        ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
                     builtin.to_string(),
