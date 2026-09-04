@@ -470,6 +470,10 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // backend run; matplotlib asserts file artifacts under
         // libs/python/py_matplotlib/py_matplotlib_tmp/ (gitignored).
         ("p8", &["py_numpy", "py_pandas", "py_matplotlib", "py_torch"]),
+        // Plan 539 W1/W2 (torch idiom parity): inference idioms (dunder ops,
+        // matmul/getitem/slice/call0/with/kwargs/May) then the training-loop
+        // suite (seeded MLP).
+        ("p9", &["py_torch_infer", "py_torch_train"]),
     ];
 
     for (p, libs) in phase_map {

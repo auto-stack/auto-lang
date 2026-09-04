@@ -747,6 +747,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_slice", crate::py_ffi::NATIVE_PY_SLICE);
         registry.register_with_id("py.py_call0", crate::py_ffi::NATIVE_PY_CALL0);
         registry.register_with_id("py.py_with", crate::py_ffi::NATIVE_PY_WITH);
+        registry.register_with_id("py.py_enter", crate::py_ffi::NATIVE_PY_ENTER);
+        registry.register_with_id("py.py_exit", crate::py_ffi::NATIVE_PY_EXIT);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
