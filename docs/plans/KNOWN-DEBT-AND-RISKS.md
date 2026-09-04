@@ -1179,3 +1179,15 @@
 - **P533-D8 on-only 带参 handler 悬垂**：rust 轨 on-only 带参 handler
   （gallery 壳层 openSidebar 形态）枚举注入零参变体与派发带参闭包不匹配
   →编译响亮失败（payload 类型无法从 on 块推断,保持显式失败不静默）。
+
+### P543（2026-09-04，知识库同步基线独立复审登记）
+
+- **P543-D1 源码数量缺少 canonical 计数口径**：PLAN-543 文档将核心 Rust 文件写为
+  “约 528”；复审时 `rg --files crates/auto-lang/src -g '*.rs'` 得 520，而
+  `git ls-files 'crates/auto-lang/src/*.rs'` 得 530（ignore/枚举口径不同）。现有文档已明确
+  该值仅为审计数量级且不可长期手工维护，因此不阻断本计划；根治归属 Design 27 阶段 B
+  Knowledge lint/catalog，以 Git 跟踪文件和 workspace metadata 生成唯一 inventory。
+- **P543-D2 Design 26 遗留未勾选样板项**：`docs/design/autoplan-spec-ledger.md` 的
+  “Plan 467 落地清单”仍保留一条历史 `[ ]` 首个完整循环样板项；PLAN-543 新增的 §9 已
+  说明当前兼容期与后续工作包，但旧 checkbox 可能被误读为当前 blocker。归属阶段 C
+  Auto-plan v3/Design 26 收敛时改成带日期的 historical outcome，不在本轮入口校准中扩 scope。

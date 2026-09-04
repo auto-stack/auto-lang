@@ -1,14 +1,22 @@
 ---
 plan_id: PLAN-543
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: Knowledge Base Sync Baseline
 author: [Codex]
 created_at: 2026-09-04
 updated_at: 2026-09-04
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components:
+  - "docs/design/00-intro.md: 注册 Design 27，并停止把手工文档数量作为完整性门禁"
+  - "docs/design/01-architecture.md: 校准 AutoVM、多后端、QueryEngine 与 self-host current-state"
+  - "docs/architecture-clarification.md: 将 Evaluator/三后端/366 tests 降为 historical correction"
+  - "docs/design/autoplan-spec-ledger.md: 将 Markdown 定为 canonical、specs.json 定为兼容投影"
+  - "docs/specs/README.md: 增补五层职责、canonical-source 与 sibling-group 操作规约"
+  - "docs/specs/overview.md: 刷新仓库规模、VM execution 与 PLAN-532/536 活跃线"
+new_spec_components:
+  - "docs/design/27-knowledge-base-lifecycle.md: 新增知识库生命周期 canonical design"
+  - "docs/reports/knowledge-base-sync-audit-2026-09-04.md: 新增可复现同步审计基线"
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [global, process, architecture]
@@ -134,16 +142,16 @@ PLAN-462～465 的活跃状态，和 2026-09-04 的仓库现状存在时间差�
 
 ## 验收标准
 
-- [ ] Design 27 被创建并在 `docs/design/00-intro.md` 注册。
-- [ ] 审计报告包含架构图、规模数据、至少五项代码—文档漂移和可复现命令。
-- [ ] Design/RFC、ADR、Spec、Plan、Generated Catalog 的职责与 canonical source 无歧义。
-- [ ] `.autoos/specs.json` 的当前身份、兼容策略和目标态被明确记录。
-- [ ] 仓库级架构入口不再把旧 Evaluator、待接入 QueryEngine、VM 32-bit/约 120 opcode
+- [x] Design 27 被创建并在 `docs/design/00-intro.md` 注册。
+- [x] 审计报告包含架构图、规模数据、至少五项代码—文档漂移和可复现命令。
+- [x] Design/RFC、ADR、Spec、Plan、Generated Catalog 的职责与 canonical source 无歧义。
+- [x] `.autoos/specs.json` 的当前身份、兼容策略和目标态被明确记录。
+- [x] 仓库级架构入口不再把旧 Evaluator、待接入 QueryEngine、VM 32-bit/约 120 opcode
   或 PLAN-462～465 状态作为未经标注的当前事实。
-- [ ] 后续自动化、技能升级、模块 rebaseline 被拆成三个互不混杂的候选工作包。
-- [ ] `spec-lint` 没有新增 error 或 warning；现存 warning 有明确归属。
-- [ ] 没有修改 Rust/JS/Auto 实现、Cargo/npm 清单、PLAN-532、PLAN-536 或其 worktree。
-- [ ] 未创建 junction、symlink 或其他 reparse point。
+- [x] 后续自动化、技能升级、模块 rebaseline 被拆成三个互不混杂的候选工作包。
+- [x] `spec-lint` 没有新增 error 或 warning；现存 warning 有明确归属。
+- [x] 没有修改 Rust/JS/Auto 实现、Cargo/npm 清单、PLAN-532、PLAN-536 或其 worktree。
+- [x] 未创建 junction、symlink 或其他 reparse point。
 
 ## 执行步骤
 
@@ -202,7 +210,38 @@ PLAN-462～465 的活跃状态，和 2026-09-04 的仓库现状存在时间差�
 
 ## 复审记录
 
-待 `/auto-plan:review` 独立复核。
+### 2026-09-04 独立复审（Codex，`/auto-plan:review`）
+
+复审对象：`plan-543-dev`，实现提交 `472b4a4f1`，基线 `432e15dabc`；实际 diff 为
+8 个文档、474 insertions、88 deletions。按 Category A 门禁未运行 Cargo 测试。
+
+| # | 结论 | 独立证据 |
+|---|---|---|
+| 1 | PASS | `docs/design/27-knowledge-base-lifecycle.md:14` 声明 canonical design；`docs/design/00-intro.md:124` 完成注册 |
+| 2 | PASS | 审计报告 `:14/:28/:45/:82` 分别包含规模、模块图、7 项漂移和复现命令 |
+| 3 | PASS | Design 27 `:49-65` 给出五层职责与 canonical-source 问答矩阵；Spec README 同步落规约 |
+| 4 | PASS | Design 27 `:156-164` 明确 specs.json 为 ignored 本地投影、目标态单向生成 |
+| 5 | PASS | 修改后的入口仅在 historical correction 中出现 Evaluator/deferred；overview `:87-95` 不再复述 462～465 为当前线；Design 05 的 32-bit/约 120 被审计报告显式列为待 module rebaseline 的旧文档 |
+| 6 | PASS | Design 27 `:175-193/:208-212` 将 lint/catalog、Auto-plan v3、module rebaseline 分为独立阶段/工作包 |
+| 7 | PASS | 重跑 `python scripts/spec-lint.py --stale-days 7`：`0 errors, 9 warnings, 0 infos`，与执行前基线一致；warning 分属阶段 B/D |
+| 8 | PASS | `git diff --name-only 432e15d..HEAD` 仅列 8 个 docs 文件，无 Rust/JS/Auto/Cargo/npm/PLAN-532/536 路径 |
+| 9 | PASS | `bash /mnt/d/autostack/wt-guard.sh /mnt/d/autostack/.wt/lang-543/auto-lang` 输出 `clean` |
+
+补充门禁：`python scripts/spec-index.py` 重建 26 projects，INDEX 无内容 diff；
+`git diff --check 432e15d..HEAD` 返回 0；复审结束时 worktree clean。
+
+**遗漏/延后/workaround 猎查**：
+
+- 遗漏：未发现计划步骤或验收子项缺失；8 个实际文件与计划声明一致。
+- 延后：Generated Catalog/CI、auto-musk 技能升级、module rebaseline 均在已确认计划中显式
+  划为后续工作包，不属于执行者静默缩 scope。
+- Workaround：specs.json 双写仅作为有边界的兼容期存在，文档明确禁止其覆盖 canonical
+  Markdown；不是隐藏 workaround。
+- 非阻断债务：计数口径差异 P543-D1、Design 26 历史未勾选项 P543-D2，已登记
+  `docs/plans/KNOWN-DEBT-AND-RISKS.md`，分别归属阶段 B/C。
+
+**复审结论：PASS**。全部验收标准通过，无阻断债务；状态推进为 `reviewed`，可交给
+`/auto-plan:merge`。
 
 ## 待澄清事项
 
