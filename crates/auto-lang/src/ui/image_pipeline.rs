@@ -451,6 +451,102 @@ impl Default for MediaAssetRegistry {
     }
 }
 
+#[derive(Clone, Debug)]
+struct EncodedLruEntry {
+    bytes: Arc<[u8]>,
+    last_access: u64,
+}
+
+/// Byte-accounted encoded rendition cache.  This deliberately owns no global
+/// static state: its owner decides lifecycle and drops it with the registry.
+#[derive(Clone, Debug)]
+pub struct EncodedByteLru {
+    budget_bytes: usize,
+    used_bytes: usize,
+    access_clock: u64,
+    entries: HashMap<MediaAssetId, EncodedLruEntry>,
+    stats: MediaPipelineStats,
+}
+
+impl EncodedByteLru {
+    pub const DEFAULT_BUDGET_BYTES: usize = 64 * 1024 * 1024;
+
+    pub fn new(budget_bytes: usize) -> Self {
+        Self {
+            budget_bytes,
+            used_bytes: 0,
+            access_clock: 0,
+            entries: HashMap::new(),
+            stats: MediaPipelineStats::default(),
+        }
+    }
+
+    pub fn insert(&mut self, id: MediaAssetId, bytes: Arc<[u8]>) {
+        self.access_clock = self.access_clock.wrapping_add(1);
+        if let Some(previous) = self.entries.remove(&id) {
+            self.used_bytes = self.used_bytes.saturating_sub(previous.bytes.len());
+        }
+        self.used_bytes = self.used_bytes.saturating_add(bytes.len());
+        self.entries.insert(
+            id,
+            EncodedLruEntry {
+                bytes,
+                last_access: self.access_clock,
+            },
+        );
+        self.evict_to_budget();
+    }
+
+    pub fn get(&mut self, id: MediaAssetId) -> Option<Arc<[u8]>> {
+        self.access_clock = self.access_clock.wrapping_add(1);
+        match self.entries.get_mut(&id) {
+            Some(entry) => {
+                entry.last_access = self.access_clock;
+                self.stats.cache_hits = self.stats.cache_hits.saturating_add(1);
+                Some(entry.bytes.clone())
+            }
+            None => {
+                self.stats.cache_misses = self.stats.cache_misses.saturating_add(1);
+                None
+            }
+        }
+    }
+
+    pub const fn used_bytes(&self) -> usize {
+        self.used_bytes
+    }
+
+    pub const fn budget_bytes(&self) -> usize {
+        self.budget_bytes
+    }
+
+    pub fn stats(&self) -> &MediaPipelineStats {
+        &self.stats
+    }
+
+    fn evict_to_budget(&mut self) {
+        while self.used_bytes > self.budget_bytes {
+            let Some((&oldest_id, _)) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_access)
+            else {
+                break;
+            };
+            let removed = self.entries.remove(&oldest_id).expect("LRU entry exists");
+            self.used_bytes = self.used_bytes.saturating_sub(removed.bytes.len());
+            self.stats.evictions = self.stats.evictions.saturating_add(1);
+        }
+        self.stats.encoded_bytes = self.used_bytes;
+    }
+}
+
+impl Default for EncodedByteLru {
+    fn default() -> Self {
+        Self::new(Self::DEFAULT_BUDGET_BYTES)
+    }
+}
+
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
 pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
@@ -518,5 +614,23 @@ mod tests {
         registry.collect_expired();
         assert_eq!(registry.lookup(ticket.id, ticket.revision), MediaLookup::Expired);
         assert_eq!(registry.lookup(ticket.id, ticket.revision + 1), MediaLookup::Missing);
+    }
+
+    #[test]
+    fn encoded_lru_deduplicates_refreshes_and_evicts_by_byte_budget() {
+        let mut cache = super::EncodedByteLru::new(4);
+        let first = super::MediaAssetId(1);
+        let second = super::MediaAssetId(2);
+        let third = super::MediaAssetId(3);
+        cache.insert(first, Arc::<[u8]>::from([1, 2]));
+        cache.insert(second, Arc::<[u8]>::from([3, 4]));
+        assert_eq!(cache.used_bytes(), 4);
+        assert_eq!(cache.get(first).unwrap().as_ref(), &[1, 2]);
+        cache.insert(third, Arc::<[u8]>::from([5, 6]));
+
+        assert!(cache.get(first).is_some(), "recently accessed entry is retained");
+        assert!(cache.get(second).is_none(), "least-recent entry is evicted");
+        assert!(cache.get(third).is_some());
+        assert_eq!(cache.stats().evictions, 1);
     }
 }
