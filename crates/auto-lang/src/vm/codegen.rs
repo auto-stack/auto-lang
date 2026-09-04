@@ -5025,6 +5025,71 @@ impl Codegen {
         self.register_py_object_builtins();
     }
 
+    /// Plan 539 W0 (DIV-PY-KWARGS-1): does this call site match
+    /// `py_call(obj, "m", pos..., k: v...)`? Requires the callee to be the
+    /// py_call builtin, >=3 args, obj/method positional, and at least one
+    /// named arg in the tail.
+    fn is_py_call_kw_form(&self, call: &crate::ast::Call) -> bool {
+        matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call")
+            && call.args.args.len() >= 3
+            && matches!(call.args.args.first(), Some(crate::ast::Arg::Pos(_)))
+            && matches!(call.args.args.get(1), Some(crate::ast::Arg::Pos(_)))
+            && call.args.args[2..]
+                .iter()
+                .any(|a| matches!(a, crate::ast::Arg::Pair(..)))
+    }
+
+    /// Plan 539 W0 (DIV-PY-KWARGS-1): emit the py_call_kw 5-slot convention
+    /// (obj, method, posargs_list, kw_names_list, kw_vals_list) for a matched
+    /// call site. Kept out of the native-call arm to bound its stack frame.
+    fn compile_py_call_kw_form(&mut self, call: &crate::ast::Call) -> AutoResult<()> {
+        // obj + method (slots 1-2 of the convention)
+        if let Some(crate::ast::Arg::Pos(e)) = call.args.args.first() {
+            self.compile_expr(e)?;
+        }
+        if let Some(crate::ast::Arg::Pos(e)) = call.args.args.get(1) {
+            self.compile_expr(e)?;
+        }
+        // positional tail -> Auto list
+        let pos_count = call.args.args[2..]
+            .iter()
+            .filter(|a| matches!(a, crate::ast::Arg::Pos(_)))
+            .count();
+        for arg in call.args.args[2..].iter() {
+            if let crate::ast::Arg::Pos(e) = arg {
+                self.compile_expr(e)?;
+            }
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(pos_count as u8);
+        // kw names -> list of str (pool constants)
+        let kw_names: Vec<String> = call.args.args[2..]
+            .iter()
+            .filter_map(|a| match a {
+                crate::ast::Arg::Pair(k, _) => Some(k.to_string()),
+                _ => None,
+            })
+            .collect();
+        for name in &kw_names {
+            let name_bytes = name.as_bytes().to_vec();
+            let name_idx = self.strings.len() as u32;
+            self.strings.push(name_bytes);
+            self.emit(OpCode::LOAD_STR);
+            self.code.extend_from_slice(&name_idx.to_le_bytes());
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(kw_names.len() as u8);
+        // kw values -> Auto list (source order, matching names)
+        for arg in call.args.args[2..].iter() {
+            if let crate::ast::Arg::Pair(_, e) = arg {
+                self.compile_expr(e)?;
+            }
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(kw_names.len() as u8);
+        Ok(())
+    }
+
     /// Plan 369 Task 12: register py_call / py_getattr in py_native_map so the
     /// codegen treats them as py-FFI calls (emitting CALL_PY with runtime arg
     /// count). Idempotent.
@@ -8472,67 +8537,16 @@ impl Codegen {
                         return Ok(());
                     }
 
-                    // Plan 539 W0 (DIV-PY-KWARGS-1): `py_call(obj, "m", pos...,
-                    // k=v...)` with any keyword arg compiles to the py_call_kw
-                    // 5-slot convention (obj, method, posargs_list, kw_names_list,
-                    // kw_vals_list) instead of the positional channel, which
-                    // historically dropped the names. Requires the first two
-                    // args (obj, method) to be positional — otherwise fall
-                    // through to the generic path.
+                    // Plan 539 W0 (DIV-PY-KWARGS-1): py_call-with-named-args
+                    // lowers to the py_call_kw 5-slot convention. The emission
+                    // lives in a helper so this hot recursive arm keeps a small
+                    // stack frame (the inline version overflowed the deeply
+                    // recursive aavm2 corpus compile, Plan 539 T09).
                     let py_call_kw_form = is_py_ffi_call
-                        && matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call")
-                        && call.args.args.len() >= 3
-                        && matches!(call.args.args.first(), Some(crate::ast::Arg::Pos(_)))
-                        && matches!(call.args.args.get(1), Some(crate::ast::Arg::Pos(_)))
-                        && call.args.args[2..]
-                            .iter()
-                            .any(|a| matches!(a, crate::ast::Arg::Pair(..)));
+                        && self.is_py_call_kw_form(call);
 
                     if py_call_kw_form {
-                        // obj + method (slots 1–2 of the convention)
-                        if let Some(crate::ast::Arg::Pos(e)) = call.args.args.first() {
-                            self.compile_expr(e)?;
-                        }
-                        if let Some(crate::ast::Arg::Pos(e)) = call.args.args.get(1) {
-                            self.compile_expr(e)?;
-                        }
-                        // positional tail → Auto list
-                        let pos_count = call.args.args[2..]
-                            .iter()
-                            .filter(|a| matches!(a, crate::ast::Arg::Pos(_)))
-                            .count();
-                        for arg in call.args.args[2..].iter() {
-                            if let crate::ast::Arg::Pos(e) = arg {
-                                self.compile_expr(e)?;
-                            }
-                        }
-                        self.emit(OpCode::CREATE_ARRAY);
-                        self.code.push(pos_count as u8);
-                        // kw names → list of str (pool constants)
-                        let kw_names: Vec<String> = call.args.args[2..]
-                            .iter()
-                            .filter_map(|a| match a {
-                                crate::ast::Arg::Pair(k, _) => Some(k.to_string()),
-                                _ => None,
-                            })
-                            .collect();
-                        for name in &kw_names {
-                            let name_bytes = name.as_bytes().to_vec();
-                            let name_idx = self.strings.len() as u32;
-                            self.strings.push(name_bytes);
-                            self.emit(OpCode::LOAD_STR);
-                            self.code.extend_from_slice(&name_idx.to_le_bytes());
-                        }
-                        self.emit(OpCode::CREATE_ARRAY);
-                        self.code.push(kw_names.len() as u8);
-                        // kw values → Auto list (source order, matching names)
-                        for arg in call.args.args[2..].iter() {
-                            if let crate::ast::Arg::Pair(_, e) = arg {
-                                self.compile_expr(e)?;
-                            }
-                        }
-                        self.emit(OpCode::CREATE_ARRAY);
-                        self.code.push(kw_names.len() as u8);
+                        self.compile_py_call_kw_form(call)?;
                     } else
                     // Compile arguments (left-to-right)
                     // Plan 088 Phase 4: Smart parameter passing for native functions
