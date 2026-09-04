@@ -589,7 +589,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_ITER, iter_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_ITER, iter_shim);
 
         // ---- py_next(it) -> value | null ----
         // Plan 539 W0 (DIV-PY-ITER-1): StopIteration → Auto null family; any
@@ -605,27 +606,25 @@ impl PyFfiBridge {
                     )));
                 }
                 let it_py = pop_auto_py_arg(task, vm, py)?;
-                let builtins = py.import("builtins").map_err(|e| {
-                    VMError::FFI(format!("py_next: builtins import failed: {}", e))
-                })?;
+                let builtins = py
+                    .import("builtins")
+                    .map_err(|e| VMError::FFI(format!("py_next: builtins import failed: {}", e)))?;
                 let next_fn = builtins.getattr("next").map_err(|e| {
                     VMError::FFI(format!("py_next: builtins.next not found: {}", e))
                 })?;
-                let result = next_fn
-                    .call((&it_py,), None)
-                    .map_err(|e| {
-                        // StopIteration is the exhaustion signal, not an error.
-                        let is_stop = e
-                            .is_instance_of::<pyo3::exceptions::PyStopIteration>(py);
-                        if is_stop {
-                            VMError::FFI("__stopiteration__".to_string())
-                        } else {
-                            VMError::FFI(format!(
-                                "py_next on {} failed: {}",
-                                safe_type_name(&it_py), e
-                            ))
-                        }
-                    });
+                let result = next_fn.call((&it_py,), None).map_err(|e| {
+                    // StopIteration is the exhaustion signal, not an error.
+                    let is_stop = e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py);
+                    if is_stop {
+                        VMError::FFI("__stopiteration__".to_string())
+                    } else {
+                        VMError::FFI(format!(
+                            "py_next on {} failed: {}",
+                            safe_type_name(&it_py),
+                            e
+                        ))
+                    }
+                });
                 match result {
                     Ok(value) => {
                         py_auto_marshal_return(&value, task, vm)?;
@@ -639,7 +638,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_NEXT, next_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_NEXT, next_shim);
 
         // ---- py_matmul(a, b) ----
         // Plan 539 W1 (T11): matrix product. `*` keeps elementwise semantics
@@ -663,7 +663,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_MATMUL, matmul_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_MATMUL, matmul_shim);
 
         // ---- py_getitem(obj, idx...) / py_setitem(obj, idx..., value) ----
         // Plan 539 W1 (T12): single index passes through; 2+ indices build a
@@ -701,7 +702,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_GETITEM, getitem_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_GETITEM, getitem_shim);
 
         let setitem_shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
@@ -739,7 +741,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_SETITEM, setitem_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_SETITEM, setitem_shim);
 
         // ---- py_slice(start, stop, step) ----
         // Plan 539 W1 (T12): null endpoints → Python None (unbounded).
@@ -779,15 +782,16 @@ impl PyFfiBridge {
                     None => none.clone(),
                 };
                 let args = (norm(start, &none), norm(stop, &none), norm(step_v, &none));
-                let result = slice_ty.call1(args).map_err(|e| {
-                    VMError::FFI(format!("py_slice construction failed: {}", e))
-                })?;
+                let result = slice_ty
+                    .call1(args)
+                    .map_err(|e| VMError::FFI(format!("py_slice construction failed: {}", e)))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_SLICE, slice_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_SLICE, slice_shim);
 
         // ---- py_call0(fn_handle, args...) ----
         // Plan 539 W1 (T13): direct invocation of a callable handle.
@@ -807,9 +811,8 @@ impl PyFfiBridge {
                 }
                 args.reverse();
                 let func = pop_auto_py_arg(task, vm, py)?;
-                let args_tuple = PyTuple::new(py, &args).map_err(|e| {
-                    VMError::FFI(format!("py_call0 args tuple: {}", e))
-                })?;
+                let args_tuple = PyTuple::new(py, &args)
+                    .map_err(|e| VMError::FFI(format!("py_call0 args tuple: {}", e)))?;
                 let result = func.call(args_tuple, None).map_err(|e| {
                     VMError::FFI(format!(
                         "Python call {}() failed: {}",
@@ -821,7 +824,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_CALL0, call0_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_CALL0, call0_shim);
 
         // ---- py_with(ctx_handle, closure) ----
         // Plan 539 W1 (T14): context-manager protocol — `__enter__`, run the
@@ -887,7 +891,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_WITH, with_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_WITH, with_shim);
 
         // ---- py_enter(ctx) / py_exit(ctx) ----
         // Plan 539 W1 (T14): halves of the INLINE with-bracket — codegen
@@ -915,7 +920,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_ENTER, enter_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_ENTER, enter_shim);
 
         let exit_shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
@@ -943,7 +949,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_EXIT, exit_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_EXIT, exit_shim);
 
         // ---- py_item_kw(module, func, posargs, kw_names, kw_vals) ----
         // Plan 539 W2 (T17): item-import direct call with keyword args.
@@ -961,9 +968,9 @@ impl PyFfiBridge {
                 let kw_names = pop_auto_py_arg(task, vm, py)?;
                 let posargs = pop_auto_py_arg(task, vm, py)?;
                 let func_name_py = pop_auto_py_arg(task, vm, py)?;
-                let func_name: String = func_name_py.extract().map_err(|e| {
-                    VMError::FFI(format!("py_item_kw func name not string: {}", e))
-                })?;
+                let func_name: String = func_name_py
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_item_kw func name not string: {}", e)))?;
                 let module_name_py = pop_auto_py_arg(task, vm, py)?;
                 let module_name: String = module_name_py.extract().map_err(|e| {
                     VMError::FFI(format!("py_item_kw module name not string: {}", e))
@@ -975,16 +982,20 @@ impl PyFfiBridge {
                     .try_iter()
                     .map_err(|e| VMError::FFI(format!("py_item_kw posargs not iterable: {}", e)))?
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(|e| VMError::FFI(format!("py_item_kw posargs iteration failed: {}", e)))?;
-                let args_tuple = PyTuple::new(py, &pos_vec).map_err(|e| {
-                    VMError::FFI(format!("py_item_kw args tuple: {}", e))
-                })?;
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_item_kw posargs iteration failed: {}", e))
+                    })?;
+                let args_tuple = PyTuple::new(py, &pos_vec)
+                    .map_err(|e| VMError::FFI(format!("py_item_kw args tuple: {}", e)))?;
 
                 let module = py.import(&module_name).map_err(|e| {
                     VMError::FFI(format!("py_item_kw import '{}' failed: {}", module_name, e))
                 })?;
                 let func = module.getattr(&func_name).map_err(|e| {
-                    VMError::FFI(format!("py_item_kw '{}.{}' not found: {}", module_name, func_name, e))
+                    VMError::FFI(format!(
+                        "py_item_kw '{}.{}' not found: {}",
+                        module_name, func_name, e
+                    ))
                 })?;
                 let result = func.call(args_tuple, Some(&kwargs)).map_err(|e| {
                     VMError::FFI(format!("Python call {}.{}(**kw) failed: {}", module_name, func_name, e))
@@ -994,7 +1005,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_ITEM_KW, item_kw_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_ITEM_KW, item_kw_shim);
 
         // ---- py_float(x) ----
         // Plan 539 W2 (T19): float(x) — explicit scalar extraction.
@@ -1002,10 +1014,7 @@ impl PyFfiBridge {
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n != 1 {
-                    return Err(VMError::FFI(format!(
-                        "py_float needs 1 arg, got {}",
-                        n
-                    )));
+                    return Err(VMError::FFI(format!("py_float needs 1 arg, got {}", n)));
                 }
                 let val = pop_auto_py_arg(task, vm, py)?;
                 let builtins = py.import("builtins").map_err(|e| {
@@ -1014,18 +1023,19 @@ impl PyFfiBridge {
                 let float_fn = builtins.getattr("float").map_err(|e| {
                     VMError::FFI(format!("py_float: builtins.float missing: {}", e))
                 })?;
-                let result = float_fn.call1((val,)).map_err(|e| {
-                    VMError::FFI(format!("py_float failed: {}", e))
-                })?;
-                let f: f64 = result.extract().map_err(|e| {
-                    VMError::FFI(format!("py_float did not return float: {}", e))
-                })?;
+                let result = float_fn
+                    .call1((val,))
+                    .map_err(|e| VMError::FFI(format!("py_float failed: {}", e)))?;
+                let f: f64 = result
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_float did not return float: {}", e)))?;
                 task.ram.push_f64(f);
                 Ok::<(), VMError>(())
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_FLOAT, float_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_FLOAT, float_shim);
 
         // ---- py_callable(closure_id) -> callable handle ----
         // Plan 539 W3 (T21): wrap an Auto closure as a Python callable. The
@@ -1058,13 +1068,10 @@ impl PyFfiBridge {
                             })?;
                         // The GIL is held by the calling C frame; attach is
                         // the 0.29 way to obtain the token without capturing it.
-                        pyo3::Python::attach(|py| {
-                            run_closure_bridged(py, closure_id, &arg)
-                        })
+                        pyo3::Python::attach(|py| run_closure_bridged(py, closure_id, &arg))
                     },
-                )                .map_err(|e| {
-                    VMError::FFI(format!("py_callable construction failed: {}", e))
-                })?;
+                )
+                .map_err(|e| VMError::FFI(format!("py_callable construction failed: {}", e)))?;
 
                 let type_name = safe_type_name(&func);
                 let owned: Py<PyAny> = func.clone().into_any().unbind();
@@ -2412,11 +2419,13 @@ mod tests {
         assert!(ni.get(NATIVE_PY_CALL0).is_some(), "py_call0");
         assert!(ni.get(NATIVE_PY_WITH).is_some(), "py_with");
         bridge.import_module("json").unwrap();
-        let id = bridge.register_function(
-            "json",
-            "dumps",
-            crate::py_ffi_types::PySignature::default_string_string(),
-        ).unwrap();
+        let id = bridge
+            .register_function(
+                "json",
+                "dumps",
+                crate::py_ffi_types::PySignature::default_string_string(),
+            )
+            .unwrap();
         assert!(id >= 500, "module functions must start at 500, got {}", id);
     }
 
@@ -2449,7 +2458,10 @@ mod tests {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.register_object_shims();
         let ni = bridge.native_interface();
-        assert!(ni.get(NATIVE_PY_CALL_MAY).is_some(), "py_call_may shim not registered");
+        assert!(
+            ni.get(NATIVE_PY_CALL_MAY).is_some(),
+            "py_call_may shim not registered"
+        );
     }
 
     #[test]

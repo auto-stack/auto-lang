@@ -1137,6 +1137,12 @@
   界内，读到池内真串长度——实测"20"）。规避：for-in 计数、`x[0]` 索引
   （GET_ELEM tag 分派）、`py_call(x, "__len__")`。RuntimeArray 谎言翻转
   试验无效已回退。根治需动态分派（独立计划）。
+- **P539-D5 py_call_may 仅位置实参**：kwargs 与 May 通道组合未支持
+  （py_call_kw 是 strict 语义；py_call_may 弹参走位置约定）。需要时用
+  `py_call_may(py_call_kw 形态兼容路径)` 前先以探针定 ABI；影响面小
+  （训练循环捕获路径用 try-catch 或 `.?` 兜底即可）。关联存量：
+  a2py 语句体闭包降级为 set 字面量（`(x) => { x * 2 }` → Python set），
+  表达式体必需——见 libs/python README 回调节。
 - **P539-D3 a2py 复合接收者无括号**（存量）：`py_call(t == t, "sum")`
   发射 `t == t.sum()`（优先级错）；套件用中间变量规避。
 - **P539-D4 py_subclass 类派生延期（计划内预案路径）**：自定义
