@@ -546,13 +546,11 @@ fn find_modal(
 
 /// T8(题6)：unknown-tag 子件（fallback Column 路径）包 alert-dialog 家族根,
 /// `open` 绑定根态——翻转后渲染树必须出 open=true 的 Modal。
-/// 初版（无子件）全绿=fallback 绑定解析无断链;现形态暴露**新引擎缺陷**
-/// （见计划待澄清 #5）：存在带 model 的子件时,根 handler 对自身模型字段
-/// 的写不落盘（Flip 执行 Ok 但 root_open 恒 false,三变体隔离定界）。
-/// 引擎修复立案后转正。
+/// 勘误:此前误报"引擎缺陷"实为测试派发名错位（语料 msg=FlipRoot 而测试
+/// 派发 "Flip"→HandlerNotFound→写入不发生）;修正后本测试锁定 fallback
+/// 路径 open 绑定在带子件工程中依然成立。
 #[cfg(feature = "ui-interpreter")]
 #[test]
-#[ignore = "P536-T8 引擎缺陷:子件在场时根 handler 模型字段写不落盘(待澄清 #5)"]
 fn p536_t8_unknown_tag_fallback_resolves_open_binding() {
     let corpus = match locate_modal_corpus() {
         Some(p) => p,
@@ -574,11 +572,15 @@ fn p536_t8_unknown_tag_fallback_resolves_open_binding() {
     );
 
     // 翻转 open → 重建 → Modal open=true
-    dc.on_with_input_for("App", "Flip", None);
+    dc.on_with_input_for("App", "FlipRoot", None);
+    assert_eq!(
+        dc.read_state("root_open"),
+        Ok(auto_val::Value::Bool(true)),
+        "flip write must land on root state"
+    );
     let (view2, _, _) = dc.view_with_debug_gated(false);
     let mut modals2 = Vec::new();
     find_modal(&view2, &mut modals2);
-    eprintln!("DBG modals2 = {modals2:?}");
     assert!(
         modals2.contains(&true),
         "open 翻转后 fallback 路径必须解析 open 绑定出 Modal(open=true); modals={modals2:?}"
