@@ -611,6 +611,45 @@ pub type CG {
     return self.pool.len() - 1
 }
 
+    // P532 W2 根修⑤:serialize 的字符串操作数转义镜像宿主 normalized_dump
+    // (Rust {:?} 语义:\n \r \t \\ \" ;原版裸打原文——池串含真实换行时
+    // 单条指令被拆成多行,静态差分/M4 对拍行对齐即断)
+    fn esc_disasm(s str) str {
+    var out = ""
+    var i = 0
+    while i < s.len() {
+        var c = s.char_at(i)
+        if c == 10 {
+            out = out + "\\n"
+        } else if c == 13 {
+            out = out + "\\r"
+        } else if c == 9 {
+            out = out + "\\t"
+        } else if c == 92 {
+            out = out + "\\\\"
+        } else if c == 34 {
+            out = out + "\\\""
+        } else if c == 0 {
+            out = out + "\\0"
+        } else if c < 32 || c == 127 {
+            // 其余控制字符:Rust {:?} 形态 \u{小写hex}(无补零)
+            var hexchars = "0123456789abcdef"
+            var h = ""
+            var v = c
+            while v > 0 {
+                var d = v % 16
+                h = hexchars.slice(d, d + 1) + h
+                v = v / 16
+            }
+            out = out + "\\u{" + h + "}"
+        } else {
+            out = out + s.slice(i, i + 1)
+        }
+        i = i + 1
+    }
+    return out
+}
+
     fn serialize() str {
     var offs List<int> = List.new()
     var acc = 0
@@ -635,7 +674,7 @@ pub type CG {
                 var fe = self.fns.get(ins.n)
                 ops = f"0x${hex4(offs.get(fe.ins))}"
             } else if ins.op == OpCode.LoadStr {
-                ops = "\"" + self.pool.get(ins.n) + "\""
+                ops = "\"" + self.esc_disasm(self.pool.get(ins.n)) + "\""
             } else if ins.op == OpCode.LoadGlobal || ins.op == OpCode.StoreGlobal {
                 // W3:链接后 ins.n 为合并池索引(s 为模块本地旧值,弃用)
                 ops = ins.n.str()
@@ -986,13 +1025,17 @@ fn cg_fstr(mut c CG, mut p P) {
     while i < n {
         var ch = content.char_at(i)
         if ch == 36 {
-            if lit != "" {
-                var pi = c.pool_add(lit)
-                c.emit(OpCode.LoadStr, "", pi)
-                tags = f"${tags}1"
-                n_parts = n_parts + 1
-                lit = ""
-            }
+            // P532 W2 根修③:fstr 空字面段镜像宿主——lexer fstr() 每遇 $
+            // 无条件发射累积 FStrPart(空也发,lexer.rs 623-627 无条件
+            // push;仅末尾空文本抑制,lexer.rs 600 行 !text.is_empty())。
+            // 原版 if lit != "" 跳过空段→parts 计数与字节序双分歧
+            // (lexer.at f"${digits}0" 实证 aavm parts=2 vs 宿主 3,首个
+            // lib 静态差分分歧点;M4 语料未覆盖空段 f-string 故漏网)
+            var pi = c.pool_add(lit)
+            c.emit(OpCode.LoadStr, "", pi)
+            tags = f"${tags}1"
+            n_parts = n_parts + 1
+            lit = ""
             if i + 1 < n && content.char_at(i + 1) == 123 {
                 var depth = 1
                 var j = i + 2
@@ -2079,8 +2122,17 @@ fn cg_enum_decl(mut c CG, mut p P) {
 // 臂体:{...} 块(compile_body_inline,不推作用域);return 单语句;
 // 其余单表达式(无 pop,镜像 Stmt::Expr 语句)
 fn cg_is_arm_body(mut c CG, mut p P) {
+    // P532 W2 根修⑥b:is 臂体包块作用域——镜像宿主臂体编译路径
+    // Stmt::Block(push_scope/pop_scope):臂内变量随作用域消亡,兄弟臂
+    // 复用槽号(pop 释放组仅 depth>2 发射,与宿主 scope_stack.len()>2
+    // 同判)。原版臂体 inline 无 scope,臂内变量全数进 fn 级作用域单调
+    // 烧槽(tokenize locals 34 vs 宿主 14;静态差分首分歧)。注意:绑定
+    // 变量(_is_target/解构绑定)在宿主注册于 Block 之外,仍由调用点
+    // 事先 add_var,不在本包裹内。
+    c.push_scope()
     if p.kind() == TokenKind.LBrace {
         cg_body_inline(c, p)
+        c.pop_scope()
         return
     }
     // Plan 495: 非块体 arm 体镜像宿主 parse_expr_or_body 的 stmt_line——
@@ -2088,13 +2140,16 @@ fn cg_is_arm_body(mut c CG, mut p P) {
     c.line(p.line())
     if p.kind() == TokenKind.Return {
         cg_stmt(c, p)
+        c.pop_scope()
         return
     }
     if p.kind() == TokenKind.Break || p.kind() == TokenKind.Continue {
         cg_stmt(c, p)
+        c.pop_scope()
         return
     }
     cg_expr(c, p, 0)
+    c.pop_scope()
 }
 
 // 单模式比较发射:load t;<pattern 表达式>;eq —— 标量枚举判别值直接
@@ -3074,34 +3129,39 @@ fn cg_stmts(mut c CG, mut p P) {
 
 // if/else-if/else:每分支 cond,jz→下一;体;jmp→end(含 return 后死 jmp)
 fn cg_if(mut c CG, mut p P) {
-    var jzs List<int> = List.new()
+    // P532 W2 根修④:else-if 语义修复——镜像宿主 codegen.rs 1156-1185
+    // (每分支 cond 的 JmpZ 立即回填到"下一分支 cond 求值起点"
+    // patch_jump(jump_to_next);仅各分支体尾真跳 Jmp 留到链尾统一回填)。
+    // 原版把全部 JmpZ 累积到链尾/else 定靶——else if 的中间分支永不可达
+    // (静态字节差分首语义分歧:lexer.lex_number 内层 if 'x' else if 'b',
+    // aavm JmpZ 直跳链尾跳过 'b' 检查→0b/0x 字面量错词法;aavm2 语料
+    // 断言未踩 else-if 路径故 M5 漏网)。pending_jz 单槽即可:链上任一
+    // 时刻至多一个未定靶 JmpZ。
     var jends List<int> = List.new()
+    var pending_jz = -1
     var more = true
     while more {
+        if pending_jz >= 0 {
+            c.ins.get(pending_jz).n = c.ins.len()
+            pending_jz = -1
+        }
         p.next()
         cg_expr(c, p, 0)
-        var jz = c.emit(OpCode.JmpZ, "", -1)
-        jzs.push(jz)
+        pending_jz = c.emit(OpCode.JmpZ, "", -1)
         cg_body_inline(c, p)
         var je = c.emit(OpCode.Jmp, "", -1)
         jends.push(je)
         if p.kind() == TokenKind.Else {
             p.next()
             if p.kind() != TokenKind.If {
-                var z = 0
-                while z < jzs.len() {
-                    c.ins.get(jzs.get(z)).n = c.ins.len()
-                    z = z + 1
-                }
+                c.ins.get(pending_jz).n = c.ins.len()
+                pending_jz = -1
                 cg_body_inline(c, p)
                 more = false
             }
         } else {
-            var z2 = 0
-            while z2 < jzs.len() {
-                c.ins.get(jzs.get(z2)).n = c.ins.len()
-                z2 = z2 + 1
-            }
+            c.ins.get(pending_jz).n = c.ins.len()
+            pending_jz = -1
             more = false
         }
     }
