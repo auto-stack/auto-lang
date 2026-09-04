@@ -1007,6 +1007,25 @@ impl PythonTrans {
                     sink.body.write(b"), None)")?;
                     return Ok(());
                 }
+                // Plan 539 W0 (DIV-PY-ITER-1): py_iter(x) → iter(x);
+                // py_next(x) → next(x, None) — the None sentinel mirrors the
+                // AutoVM's StopIteration→null marshalling.
+                "py_iter" if call.args.args.len() == 1 => {
+                    sink.body.write(b"iter(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
+                "py_next" if call.args.args.len() == 1 => {
+                    sink.body.write(b"next(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b", None)")?;
+                    return Ok(());
+                }
                 // Plan 369 Task 12: py_call(obj, "method", args...) → obj.method(args...)
                 "py_call" => {
                     // py_call(obj, "method_name", arg1, arg2, ...)
