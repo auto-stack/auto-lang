@@ -6,7 +6,10 @@ use chat_bubble: ChatBubble
 
 widget App {
     msg { }
-    model { var local_count int = 0 }
+    model {
+        var local_count int = 0
+        var bubble_init_count int = 0
+    }
     timer { }
     view {
         col {

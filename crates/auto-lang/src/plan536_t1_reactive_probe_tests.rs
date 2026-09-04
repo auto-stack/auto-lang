@@ -284,4 +284,40 @@ mod plan536_t1_reactive_probe_tests {
         dc.on_with_input_for("ChatStore", "NoSuchHandler", None);
         assert!(!dc.is_dirty(), "HandlerNotFound (no side effects) must not dirty");
     }
+
+    /// T3 Init 重入收敛（题 2）：子件 Init=挂载语义,只随首渲染执行一次,
+    /// 不随脏重建帧重放。RED：当前每渲染帧重放(437 v1 近似,债务在案),
+    /// musk 单会话期子件 Init 1.6 万+次重放即此——副作用(ForgeStore.Init
+    /// → LoadSessionList 打后端)随帧重入。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t3_child_init_fires_once_not_per_rebuild() {
+        let corpus = match locate_reactive_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T3: SKIPPED — reactive corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_reactive component");
+
+        // 首次渲染 = 挂载：ChatBubble.Init 恰好一次
+        let _ = dc.view_with_debug_gated(false);
+        assert_eq!(
+            dc.read_state("bubble_init_count"),
+            Ok(auto_val::Value::Int(1)),
+            "first render must fire child Init exactly once"
+        );
+
+        // 后续 6 次脏重建帧：Init 不再重放
+        for _ in 0..6 {
+            let _ = dc.view_with_debug_gated(false);
+        }
+        assert_eq!(
+            dc.read_state("bubble_init_count"),
+            Ok(auto_val::Value::Int(1)),
+            "rebuild frames must NOT replay child Init (题2 重入风暴根修)"
+        );
+    }
 }

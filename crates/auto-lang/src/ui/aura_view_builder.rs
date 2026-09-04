@@ -4506,6 +4506,14 @@ let tabs_inner = View::Row {
         if !has_init {
             return;
         }
+        // PLAN-536 T3(题2 收敛): Init 收敛为挂载语义——本组件生命周期内每
+        // 子件只派发一次,不随脏重建帧重放。437 v1 的逐帧重放使副作用型
+        // Init(ForgeStore.Init→LoadSessionList)随帧重入(musk 单会话期
+        // 1.6 万+次实录);props 仍每帧重播种(ensure_child_state),派生值
+        // 响应沿 vue 语义归 watch/computed。
+        if !self.bridge.child_init_first_mount(&child_widget.name) {
+            return;
+        }
         if let Err(e) = self
             .bridge
             .call_handler_for(&child_widget.name, "Init", state_obj_id, &[])

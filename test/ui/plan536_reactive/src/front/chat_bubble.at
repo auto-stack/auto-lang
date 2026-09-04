@@ -1,11 +1,16 @@
 // chat_bubble.at — PLAN-536 T1 探针子件：prop bubble_title 由父传入，
 // 视图直出，用于实测 prop 在重建帧是否重新解析（题 4 快照定界）。
+// T3 增补：Init 副作用写**根态**计数（App 模型字段,不经子件模型播种,
+// 不会被逐帧默认值覆盖）,用于实测 Init 是否随重建帧重放（题 2）。
 widget ChatBubble {
-    msg { }
+    msg { Init }
     model { var bubble_title str = "" }
     view {
         col {
             text f"bubble=${.bubble_title}"
         }
+    }
+    on {
+        .Init -> { .bubble_init_count = .bubble_init_count + 1 }
     }
 }
