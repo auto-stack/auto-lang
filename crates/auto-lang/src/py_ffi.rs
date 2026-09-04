@@ -744,6 +744,117 @@ pub(crate) fn marshal_pyany_to_stack(
     py_auto_marshal_return(value, task, vm)
 }
 
+// ============================================================================
+// Plan 539 W1 (T10): dunder operator routing for PyObjectHandle operands
+// ============================================================================
+
+/// Peek the top 3 stack slots for a TAG_OBJECT value resolving to a
+/// PyObjectHandle (slot 1 may hold the null padding of a legacy 2-slot f64
+/// rhs, so the lhs can sit at offset 2). Engine binary/unary arms call this
+/// before their own operand pops.
+pub(crate) fn stack_has_py_handle(task: &AutoTask, vm: &AutoVM) -> bool {
+    for off in 0..3 {
+        if task.ram.sp <= off {
+            break;
+        }
+        let nv = task.ram.peek_nv(off);
+        if auto_val::is_object(nv) {
+            let id = auto_val::decode_object(nv) as u64;
+            if let Some(h) = vm.get_heap_object(id) {
+                let guard = h.read().unwrap();
+                if guard.as_any().downcast_ref::<PyObjectHandle>().is_some() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Shared dunder dispatch inside one GIL scope: pops rhs then lhs (2-slot-f64
+/// aware via pop_auto_py_arg), calls `lhs.<dunder>(rhs)`; on NotImplemented
+/// tries the reflected `rhs.<reflect>(lhs)` (Python binary-op protocol).
+fn py_dunder_dispatch<'py>(
+    py: Python<'py>,
+    dunder: &str,
+    reflect: &str,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<Bound<'py, PyAny>, VMError> {
+    let rhs = pop_auto_py_arg(task, vm, py)?;
+    let lhs = pop_auto_py_arg(task, vm, py)?;
+
+    let not_implemented = py
+        .import("builtins")
+        .and_then(|b| b.getattr("NotImplemented"))
+        .ok();
+
+    let direct = lhs.call_method1(dunder, (rhs.clone(),));
+    match direct {
+        Ok(r) => {
+            let reflected = not_implemented.as_ref().filter(|ni| r.is(ni));
+            match reflected {
+                Some(_) => {
+                    if reflect.is_empty() {
+                        Ok(r)
+                    } else {
+                        rhs.call_method1(reflect, (lhs.clone(),)).map_err(|e| {
+                            VMError::FFI(format!("Python {} / {} failed: {}", dunder, reflect, e))
+                        })
+                    }
+                }
+                None => Ok(r),
+            }
+        }
+        Err(e) => Err(VMError::FFI(format!("Python {} failed: {}", dunder, e))),
+    }
+}
+
+/// Plan 539 W1 (T10): arithmetic dunder (`+ - * / %`) — result marshalled
+/// through the standard py return path (tensors stay opaque handles).
+pub(crate) fn py_dunder_arith(
+    dunder: &str,
+    reflect: &str,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    Python::attach(|py| {
+        let result = py_dunder_dispatch(py, dunder, reflect, task, vm)?;
+        py_auto_marshal_return(&result, task, vm)?;
+        Ok::<(), VMError>(())
+    })
+}
+
+/// Plan 539 W1 (T10): comparison dunder (`== != < > <= >=`). The result
+/// marshals through the standard py return path — torch comparisons return
+/// elementwise bool TENSORS, and forcing `bool()` would break both the
+/// elementwise semantics and a2py parity (`t == t` is a tensor in Python).
+/// Plain Python bools marshal to i32 0/1, which JMP_IF_Z treats correctly.
+pub(crate) fn py_dunder_cmp(
+    dunder: &str,
+    reflect: &str,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    Python::attach(|py| {
+        let result = py_dunder_dispatch(py, dunder, reflect, task, vm)?;
+        py_auto_marshal_return(&result, task, vm)?;
+        Ok::<(), VMError>(())
+    })
+}
+
+/// Plan 539 W1 (T10): unary dunder (`-` → `__neg__`).
+pub(crate) fn py_dunder_neg(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Python::attach(|py| {
+        let val = pop_auto_py_arg(task, vm, py)?;
+        let result = val.call_method0("__neg__").map_err(|e| {
+            VMError::FFI(format!("Python __neg__ failed: {}", e))
+        })?;
+        py_auto_marshal_return(&result, task, vm)?;
+        Ok::<(), VMError>(())
+    })
+}
+
 /// Pop a single argument from the VM stack and convert to a Python object,
 /// using the NanoValue tag to determine the actual type at runtime.
 /// Plan 300: Replaces fixed-type popping for Python FFI auto-type marshalling.
@@ -1561,6 +1672,81 @@ mod tests {
     // ========================================================================
     // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may May channel
     // ========================================================================
+
+    // ========================================================================
+    // Plan 539 W1 (T10): dunder operator routing
+    // ========================================================================
+
+    #[test]
+    fn test_py_dunder_arith_and_reflection() {
+        // tensor + 1 through the real stack path: push handle + i32, run
+        // py_dunder_arith, expect a tensor-handle result; then the reflected
+        // form (2 * tensor) exercises the __rmul__ fallback.
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        let (t, two_t): (u64, u64) = Python::attach(|py| {
+            let torch = py.import("torch").unwrap();
+            let t = torch.getattr("arange").unwrap().call1((6,)).unwrap();
+            let two_t = t.call_method1("__rmul__", (2,)).unwrap();
+            let h1 = PyObjectHandle::new("Tensor".into(), t.clone().unbind());
+            let h2 = PyObjectHandle::new("Tensor".into(), two_t.clone().unbind());
+            (vm.insert_heap_object(h1), vm.insert_heap_object(h2))
+        });
+        // t + 1
+        task.ram.push_nv(auto_val::encode_object(t as u32));
+        task.ram.push_i32(1);
+        py_dunder_arith("__add__", "__radd__", &mut task, &vm).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(nv), "tensor + 1 should stay a handle");
+        // verify via sum -> 21
+        Python::attach(|py| {
+            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let guard = obj.read().unwrap();
+            let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
+            let bound = pyh.obj.clone_ref(py).into_bound(py);
+            let s: i64 = bound.call_method0("sum").unwrap().extract().unwrap();
+            assert_eq!(s, 21);
+        });
+        // 2 * t via reflection: lhs = 2 (i32), rhs = tensor handle
+        task.ram.push_i32(2);
+        task.ram.push_nv(auto_val::encode_object(t as u32));
+        py_dunder_arith("__mul__", "__rmul__", &mut task, &vm).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(nv));
+        Python::attach(|py| {
+            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let guard = obj.read().unwrap();
+            let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
+            let bound = pyh.obj.clone_ref(py).into_bound(py);
+            let s: i64 = bound.call_method0("sum").unwrap().extract().unwrap();
+            assert_eq!(s, 30);
+        });
+        let _ = two_t;
+    }
+
+    #[test]
+    fn test_py_dunder_neg() {
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        let id = Python::attach(|py| {
+            let torch = py.import("torch").unwrap();
+            let t = torch.getattr("arange").unwrap().call1((6,)).unwrap();
+            let h = PyObjectHandle::new("Tensor".into(), t.clone().unbind());
+            vm.insert_heap_object(h)
+        });
+        task.ram.push_nv(auto_val::encode_object(id as u32));
+        py_dunder_neg(&mut task, &vm).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(nv));
+        Python::attach(|py| {
+            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let guard = obj.read().unwrap();
+            let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
+            let bound = pyh.obj.clone_ref(py).into_bound(py);
+            let s: i64 = bound.call_method0("sum").unwrap().extract().unwrap();
+            assert_eq!(s, -15);
+        });
+    }
 
     #[test]
     fn test_py_call_may_registers_fixed_id() {

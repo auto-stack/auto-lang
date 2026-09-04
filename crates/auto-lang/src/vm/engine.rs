@@ -5558,6 +5558,14 @@ impl AutoVM {
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {
+                    // Plan 539 W1 (T10): py-handle operands route to the
+                    // Python dunder (arms stay one-liners to bound the
+                    // recursive frame size — see the aavm2 overflow note).
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_arith("__add__", "__radd__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -5604,6 +5612,14 @@ impl AutoVM {
                     }
                 }
                 OpCode::SUB => {
+                    // Plan 539 W1 (T10): py-handle operands route to the
+                    // Python dunder (arms stay one-liners to bound the
+                    // recursive frame size — see the aavm2 overflow note).
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_arith("__sub__", "__rsub__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -5623,6 +5639,14 @@ impl AutoVM {
                     }
                 }
                 OpCode::MUL => {
+                    // Plan 539 W1 (T10): py-handle operands route to the
+                    // Python dunder (arms stay one-liners to bound the
+                    // recursive frame size — see the aavm2 overflow note).
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_arith("__mul__", "__rmul__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -5642,6 +5666,14 @@ impl AutoVM {
                     }
                 }
                 OpCode::DIV => {
+                    // Plan 539 W1 (T10): py-handle operands route to the
+                    // Python dunder (arms stay one-liners to bound the
+                    // recursive frame size — see the aavm2 overflow note).
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_arith("__truediv__", "__rtruediv__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
@@ -5669,6 +5701,12 @@ impl AutoVM {
 
                 // === Control Flow ===
                 OpCode::NEG => {
+                    // Plan 539 W1 (T10): py-handle unary minus dunder.
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_neg(task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
                     if a_is_f64 {
@@ -5744,6 +5782,14 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::MOD => {
+                    // Plan 539 W1 (T10): py-handle operands route to the
+                    // Python dunder (arms stay one-liners to bound the
+                    // recursive frame size — see the aavm2 overflow note).
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_arith("__mod__", "__rmod__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     if b == 0 {
@@ -8394,6 +8440,12 @@ impl AutoVM {
 
                 // === Comparison ===
                 OpCode::EQ => {
+                    // Plan 539 W1 (T10): py-handle comparison dunder.
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_cmp("__eq__", "", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -8444,6 +8496,12 @@ self.rc_release(a_nv);
                     }
                 }
                 OpCode::NE => {
+                    // Plan 539 W1 (T10): py-handle comparison dunder.
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_cmp("__ne__", "", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -8486,6 +8544,12 @@ self.rc_release(a_nv);
                     }
                 }
                 OpCode::LT => {
+                    // Plan 539 W1 (T10): py-handle comparison dunder.
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_cmp("__lt__", "__gt__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -8521,6 +8585,12 @@ self.rc_release(a_nv);
                     }
                 }
                 OpCode::GT => {
+                    // Plan 539 W1 (T10): py-handle comparison dunder.
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_cmp("__gt__", "__lt__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -8575,6 +8645,12 @@ self.rc_release(a_nv);
                     }
                 }
                 OpCode::LE => {
+                    // Plan 539 W1 (T10): py-handle comparison dunder.
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_cmp("__le__", "__ge__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
@@ -8600,6 +8676,12 @@ self.rc_release(a_nv);
                     }
                 }
                 OpCode::GE => {
+                    // Plan 539 W1 (T10): py-handle comparison dunder.
+                    #[cfg(feature = "python")]
+                    if crate::py_ffi::stack_has_py_handle(task, self) {
+                        crate::py_ffi::py_dunder_cmp("__ge__", "__le__", task, self)?;
+                        return Ok(StepResult::Continue);
+                    }
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
