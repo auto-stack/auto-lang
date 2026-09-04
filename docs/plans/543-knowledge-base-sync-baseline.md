@@ -1,0 +1,185 @@
+---
+plan_id: PLAN-543
+status: drafting               # drafting → executing → execution_done → reviewed → archived
+feature_name: Knowledge Base Sync Baseline
+author: [Codex]
+created_at: 2026-09-04
+updated_at: 2026-09-04
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components: []
+new_spec_components: []
+touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+
+affects: [global, process, architecture]
+current_step: 0
+total_steps: 12
+---
+
+# [PLAN-543] 知识库同步基线与生命周期设计
+
+## 变更摘要
+
+在不触碰 PLAN-532、PLAN-536 实施代码及其 worktree 的前提下，为 AutoLang 建立一份
+可长期维护的知识库同步基线：固化 Design / ADR / Spec / Plan / Generated Catalog 的职责，
+记录 2026-09-04 的代码—文档漂移审计，刷新仓库级架构入口，并把后续自动化与模块
+rebaseline 工作拆成可独立执行的计划候选。
+
+本计划是纯文档与流程设计任务，不修改 `crates/`、`packages/`、`auto/`、`examples/`
+中的实现，不修改 `D:/autostack/auto-musk/.agents/skills`，也不创建 junction/symlink。
+
+## 目标
+
+1. 让新贡献者和 Agent 能从一个入口准确理解当前仓库的系统边界、模块与主要执行路径。
+2. 明确“当前事实、未来设计、历史决策、执行过程、机器索引”各自唯一的承载层。
+3. 把本轮审计中已经证实的仓库级漂移写入受版本控制的文档，而不是只保留在对话中。
+4. 明确 `.autoos/specs.json` 当前的非 canonical 地位，并给出后续迁移目标与兼容期。
+5. 为后续 lint/catalog 自动化、四技能升级、逐模块 spec rebaseline 提供边界清晰的拆分方案。
+6. 保证本计划的 diff 与正在实施的 PLAN-532、PLAN-536 无路径重叠。
+
+## 架构方案
+
+采用“一个事实、一种职责”的五层知识模型：
+
+| 层 | 职责 | 更新策略 |
+|---|---|---|
+| Design/RFC | 目标态、备选方案、约束 | 带 `status` 与 `describes`，可被 supersede |
+| ADR | 已接受的重要决策、理由、代价 | 接受后不可改写，只能新增 superseding ADR |
+| Spec | 已实现的当前态与公共契约 | 与代码同一变更内更新，可重写 |
+| Plan | 一次任务的动作、证据、偏离与复审 | 执行期可变，归档后不可变 |
+| Generated Catalog | crate/module/path/测试/追踪关系 | 从代码与 Git 跟踪文档生成，不手工维护 |
+
+本计划只完成模型设计、审计基线和仓库级入口校准。生成器、CI 门禁和外部技能修改均作为
+后续计划，不在本计划中顺手实现。
+
+## 需求分析与背景调查
+
+`docs/specs/overview.md` 将 AutoLang 描述为多目标语言、AutoVM、AutoUI/桌面生态与工具链
+组成的 monorepo，并将 `auto-lang` 划分为 frontend、types、comptime、interpreter、vm、
+trans、runtime、ui、mcp 九个逻辑模块。该总览仍记录 2026-08-28、463 个源码文件以及
+PLAN-462～465 的活跃状态，和 2026-09-04 的仓库现状存在时间差。
+
+本轮只读审计确认：
+
+- 工作区约 20 个 Rust package，`crates/auto-lang/src` 约 528 个 Rust 文件；
+- 旧架构入口仍包含已删除 Evaluator、QueryEngine 待接入、VM 32-bit/约 120 opcode 等陈述；
+- 当前 VM spec 已记录 178 opcode 与 NaN-boxed `u64`；
+- `python scripts/spec-lint.py --stale-days 7` 返回 0 errors、9 warnings，包含 3 个断链和
+  6 个超过阈值的 module overview；
+- `.autoos/specs.json` 受 `.gitignore` 的 `*.json` 规则影响且不在 Git 中，不能作为团队
+  唯一事实源；
+- 现有 lint 侧重 frontmatter、相对链接和按日期的 stale 判断，尚未验证代码清单、
+  全局 Plan ID、代码符号引用或 Markdown/机器台账一致性；
+- PLAN-520、原 PLAN-533 的实施已由用户确认完成并合并；当前 PLAN-532、PLAN-536
+  正在其他进程中执行，本计划必须避免修改它们及其实现范围；
+- 当前序列中 PLAN-540、541、542 已被占用，PLAN-543 由 `scripts/new-plan.sh` 原子分配。
+
+## 详细设计
+
+### 1. 新增知识库生命周期设计
+
+新增 `docs/design/27-knowledge-base-lifecycle.md`，至少包含：
+
+- 当前问题与非目标；
+- 五层知识模型和 canonical-source 矩阵；
+- current-state 与 target-state 的区分；
+- 文档 frontmatter 最小字段；
+- Plan → Spec/ADR → Archive 的写入顺序；
+- change-based freshness、结构/引用/语义三类一致性检查；
+- 并行 Plan 的 ID、owner、路径冲突约束；
+- `.autoos/specs.json` 兼容期与目标态；
+- 分阶段迁移方案、风险和回滚策略。
+
+在 `docs/design/00-intro.md` 注册 Design 27，并将其标为本轮知识库治理的 canonical design。
+
+### 2. 保存审计基线
+
+新增 `docs/reports/knowledge-base-sync-audit-2026-09-04.md`，保存可复现的仓库规模、模块图、
+已验证漂移、lint 输出摘要、同步度分层判断和审计命令。报告只记录证据，不承担规范职责。
+
+### 3. 校准仓库级入口
+
+只修订已经由代码或当前 spec 直接证实的仓库级事实：
+
+- `docs/design/01-architecture.md`：移除旧 Evaluator 与 QueryEngine deferred 陈述；
+- `docs/architecture-clarification.md`：更新执行后端和 self-host 状态，区分历史快照；
+- `docs/specs/overview.md`：更新仓库规模、当前活跃轨道和维护日期；
+- `docs/specs/README.md`：写明五层职责、canonical source 与 generated artifact 规则；
+- `docs/design/autoplan-spec-ledger.md`：增加 Design 27 的兼容说明，不在本计划中重写技能实现。
+
+不在本计划中批量改写九个 module overview；它们进入后续 rebaseline 计划。
+
+### 4. 后续计划拆分
+
+在 Design 27 中形成三个独立后续候选，不预占编号：
+
+1. Knowledge lint/catalog：全局 Plan ID、代码清单、符号/链接、生成物一致性和 CI 门禁；
+2. Auto-plan v3：调整 new/work/review/merge 的上下文与沉淀契约，涉及 auto-musk 时使用
+   sibling-group 多仓 worktree；
+3. Module spec rebaseline：按 types/trans/interpreter/runtime/comptime 等模块分批复核。
+
+## 测试设计
+
+本计划没有 Rust、schema 或文档生成器改动，按仓库 Category A 门禁禁止运行 `cargo t`、
+`cargo tf` 和 `docs_gen`。验证仅包含：
+
+- `python scripts/spec-lint.py --stale-days 7`：记录修改前后差异，不要求本计划清零所有
+  module stale 告警，但不得新增 error、断链或 frontmatter 问题；
+- `python scripts/spec-index.py` 后执行 `git diff --exit-code -- docs/specs/INDEX.md`，确认索引
+  可重现；若脚本暴露既有格式问题，只记录为后续 lint/catalog 验收项，不越界修复；
+- `rg` 验证旧的 Evaluator、QueryEngine deferred、463 文件、462/463 活跃线等已知仓库级
+  陈述不再以“当前事实”出现；历史引用必须明确标注为 historical；
+- `git diff --name-only` 确认 diff 只包含本计划列出的文档和计划跟踪文件；
+- `git status --short` 确认未触碰 PLAN-532、PLAN-536 及实现目录。
+
+## 验收标准
+
+- [ ] Design 27 被创建并在 `docs/design/00-intro.md` 注册。
+- [ ] 审计报告包含架构图、规模数据、至少五项代码—文档漂移和可复现命令。
+- [ ] Design/RFC、ADR、Spec、Plan、Generated Catalog 的职责与 canonical source 无歧义。
+- [ ] `.autoos/specs.json` 的当前身份、兼容策略和目标态被明确记录。
+- [ ] 仓库级架构入口不再把旧 Evaluator、待接入 QueryEngine、VM 32-bit/约 120 opcode
+  或 PLAN-462～465 状态作为未经标注的当前事实。
+- [ ] 后续自动化、技能升级、模块 rebaseline 被拆成三个互不混杂的候选工作包。
+- [ ] `spec-lint` 没有新增 error 或 warning；现存 warning 有明确归属。
+- [ ] 没有修改 Rust/JS/Auto 实现、Cargo/npm 清单、PLAN-532、PLAN-536 或其 worktree。
+- [ ] 未创建 junction、symlink 或其他 reparse point。
+
+## 执行步骤
+
+1. 在 `D:/autostack/.wt/lang-543/auto-lang` 创建 `plan-543-dev` worktree，记录
+   `git status --short` 与 `git worktree list --porcelain` 基线；验证：
+   `git -C D:/autostack/.wt/lang-543/auto-lang status --short`。
+2. 在 `docs/reports/knowledge-base-sync-audit-2026-09-04.md` 写入仓库规模与 Git 快照；
+   验证：`rg -n "工作区|Rust|design|spec|plan" docs/reports/knowledge-base-sync-audit-2026-09-04.md`。
+3. 在同一报告中写入实际模块图和主执行路径；验证：
+   `rg -n "frontend|QueryEngine|AutoVM|Transpiler|AutoUI" docs/reports/knowledge-base-sync-audit-2026-09-04.md`。
+4. 在同一报告中写入已验证漂移、lint 输出和复现命令；验证：
+   `rg -n "spec-lint|Evaluator|178|\.autoos/specs.json" docs/reports/knowledge-base-sync-audit-2026-09-04.md`。
+5. 创建 `docs/design/27-knowledge-base-lifecycle.md` 的五层模型、canonical-source 矩阵和
+   frontmatter 契约；验证：`rg -n "Design/RFC|ADR|Spec|Plan|Generated Catalog|canonical" docs/design/27-knowledge-base-lifecycle.md`。
+6. 为 Design 27 补充同步流水线、三类一致性检查、并行安全和迁移阶段；验证：
+   `rg -n "structural|referential|semantic|change-based|并行|迁移" docs/design/27-knowledge-base-lifecycle.md`。
+7. 更新 `docs/design/00-intro.md` 注册 Design 27；验证：
+   `rg -n "27-knowledge-base-lifecycle" docs/design/00-intro.md`。
+8. 更新 `docs/design/01-architecture.md` 与 `docs/architecture-clarification.md` 的仓库级
+   当前事实，并为仍保留的历史描述加显式标签；验证：
+   `rg -n "Evaluator|QueryEngine|historical|历史" docs/design/01-architecture.md docs/architecture-clarification.md`。
+9. 更新 `docs/specs/overview.md` 的规模、日期与活跃轨道；验证：
+   `rg -n "2026-09-04|528|PLAN-532|PLAN-536" docs/specs/overview.md`。
+10. 更新 `docs/specs/README.md` 与 `docs/design/autoplan-spec-ledger.md` 的职责和兼容说明；
+    验证：`rg -n "canonical|Generated Catalog|Design 27|specs.json" docs/specs/README.md docs/design/autoplan-spec-ledger.md`。
+11. 运行 `python scripts/spec-lint.py --stale-days 7` 和 `python scripts/spec-index.py`，记录
+    结果并确认 `docs/specs/INDEX.md` 可重现；验证：
+    `git diff --exit-code -- docs/specs/INDEX.md`。
+12. 执行范围与健康检查，确认仅修改计划列出的文档；验证：
+    `git diff --check`、`git diff --name-only`、`git status --short`，并在计划中记录证据。
+
+## 复审记录
+
+待 `/auto-plan:review` 独立复核。
+
+## 待澄清事项
+
+无。默认采用“Git 跟踪的 Markdown/current spec 为 canonical，机器 JSON 为兼容期投影”的
+方向；具体生成格式和 CI 实现留给后续 lint/catalog 计划，避免本计划把设计与实现混为一体。
