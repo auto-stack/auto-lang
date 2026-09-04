@@ -2578,7 +2578,7 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
             }
         }
     }
-    iced::widget::column![top_space, row].into()
+    iced::widget::column![top_space, row].width(iced::Length::Fill).into()
 }
 
 /// Plan 412 F2: per-cell metadata the grid builder needs but can't recover
