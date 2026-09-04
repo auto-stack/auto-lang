@@ -1,10 +1,10 @@
 ---
-plan_id: PLAN-533
+plan_id: PLAN-540
 status: drafting               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-settings-osconfig-unify
 author: []
 created_at: 2026-09-03
-updated_at: 2026-09-03
+updated_at: 2026-09-04
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -16,7 +16,10 @@ current_step: 0
 total_steps: 0
 ---
 
-# [PLAN-533] desktop-settings-osconfig-unify
+# [PLAN-540] desktop-settings-osconfig-unify
+
+> 改号记录（2026-09-04）：原 PLAN-533 与已归档的 `533-vm-overlay-runtime-channel` 撞号，
+> 本计划改号为 **PLAN-540**，内容不变。
 
 ## 变更摘要
 
@@ -163,7 +166,7 @@ total_steps: 0
 ## 执行步骤
 
 （立项评审后细化；骨架：M1 config.at 模块化 → M2 窗口化 → M3 注册 → M4 收尾。
-建议 worktree：`git worktree add D:/autostack/.wt/lang-533/auto-lang -b plan-533-dev`。）
+建议 worktree：`git worktree add D:/autostack/.wt/lang-540/auto-lang -b plan-540-dev`。）
 
 ## 复审记录
 
@@ -181,7 +184,3 @@ total_steps: 0
 4. **迁移触发点**：boot 一次性搬运后旧键是否删除（防回滚双源）——建议保留只读回退一个版本。
 5. **与 Plan 530（vm-mobile-paint-crash，他人在办）无依赖**；与 501 os-config 外链的退役衔接
    需要知会 auto-os-config 侧。
-
-## 复审记录
-
-（/auto-plan:review 回填）
