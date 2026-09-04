@@ -1832,7 +1832,7 @@ element alert_dialog {
     category: "overlay"
     tier: "web_component"
     aliases: ["AlertDialog", "alert-dialog", "alertdialog"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialog", import: "@/components/ui/alert-dialog" }
     sub_widgets: ["alert_dialog_action", "alert_dialog_cancel", "alert_dialog_content", "alert_dialog_description", "alert_dialog_footer", "alert_dialog_header", "alert_dialog_title", "alert_dialog_trigger"]
     props: [
@@ -1848,7 +1848,7 @@ element alert_dialog_action {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogaction"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogAction", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Action button text" }
@@ -1864,7 +1864,7 @@ element alert_dialog_cancel {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogcancel"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogCancel", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Cancel button text" }
@@ -1879,7 +1879,7 @@ element alert_dialog_content {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogcontent"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogContent", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1893,7 +1893,7 @@ element alert_dialog_description {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogdescription"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogDescription", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Description text" }
@@ -1908,7 +1908,7 @@ element alert_dialog_footer {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogfooter"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogFooter", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1922,7 +1922,7 @@ element alert_dialog_header {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogheader"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogHeader", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1936,7 +1936,7 @@ element alert_dialog_title {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogtitle"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogTitle", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Title text" }
@@ -1951,7 +1951,7 @@ element alert_dialog_trigger {
     category: "overlay"
     tier: "web_component"
     aliases: ["alertdialogtrigger"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "AlertDialogTrigger", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
@@ -2857,7 +2857,7 @@ element dialog {
     category: "unknown"
     tier: "web_component"
     aliases: ["Dialog"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "Dialog", import: "@/components/ui/dialog" }
     sub_widgets: ["dialogclose", "dialogcontent", "dialogdescription", "dialogfooter", "dialogheader", "dialogtitle", "dialogtrigger"]
     props: [
@@ -2873,7 +2873,7 @@ element dialogclose {
     tag: "dialogclose"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DialogClose", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -2884,7 +2884,7 @@ element dialogcontent {
     tag: "dialogcontent"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DialogContent", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -2895,7 +2895,7 @@ element dialogdescription {
     tag: "dialogdescription"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DialogDescription", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -2906,7 +2906,7 @@ element dialogfooter {
     tag: "dialogfooter"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DialogFooter", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -2917,7 +2917,7 @@ element dialogheader {
     tag: "dialogheader"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DialogHeader", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -2928,7 +2928,7 @@ element dialogtitle {
     tag: "dialogtitle"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DialogTitle", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -2939,7 +2939,7 @@ element dialogtrigger {
     tag: "dialogtrigger"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DialogTrigger", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -3081,7 +3081,7 @@ element dropdown-menu {
     category: "unknown"
     tier: "web_component"
     aliases: ["DropdownMenu", "dropdownmenu"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DropdownMenu", import: "@/components/ui/dropdown-menu" }
     sub_widgets: ["dropdownmenucontent", "dropdownmenuitem", "dropdownmenutrigger"]
     props: [
@@ -3097,7 +3097,7 @@ element dropdown-menu-separator {
     tag: "dropdown-menu-separator"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "none", iced: "native", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
@@ -3107,7 +3107,7 @@ element dropdown_content {
     tag: "dropdown_content"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "none", iced: "native", gpui: "unknown" }
     props: [
         { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position side" }
         { name: "align", type: "one_of:start,center,end", default: "center", description: "Content alignment" }
@@ -3122,7 +3122,7 @@ element dropdown_item {
     category: "navigation"
     tier: "web_component"
     aliases: ["DropdownItem", "dropdown-item"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "none", iced: "native", gpui: "unknown" }
     props: [
         { name: "value", type: "string", description: "Item value" }
         { name: "text", type: "string", description: "Item text" }
@@ -3138,7 +3138,7 @@ element dropdown_label {
     tag: "dropdown_label"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "none", iced: "native", gpui: "unknown" }
     props: [
         { name: "text", type: "string", description: "Label text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3151,7 +3151,7 @@ element dropdown_separator {
     tag: "dropdown_separator"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "none", iced: "native", gpui: "unknown" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3163,7 +3163,7 @@ element dropdown_trigger {
     tag: "dropdown_trigger"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "none", iced: "native", gpui: "unknown" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3176,7 +3176,7 @@ element dropdownmenucontent {
     tag: "dropdownmenucontent"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DropdownMenuContent", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
@@ -3187,7 +3187,7 @@ element dropdownmenuitem {
     tag: "dropdownmenuitem"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DropdownMenuItem", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
@@ -3198,7 +3198,7 @@ element dropdownmenutrigger {
     tag: "dropdownmenutrigger"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "native", gpui: "unknown" }
     vue: { component: "DropdownMenuTrigger", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
