@@ -31,6 +31,10 @@ pub struct PythonTrans {
     local_var_types: HashMap<AutoStr, Type>,
     /// Names of scalar (C-style) enums, used to emit value patterns in match statements.
     scalar_enums: HashSet<AutoStr>,
+    /// Plan 539 W0 (DIV-PY-EXCEPT-1): set when a `py_call_may(...).?(default)`
+    /// form is emitted — assembles a `_auto_may` try/except helper into the
+    /// module preamble (Python has no inline catch expression).
+    needs_may_helper: bool,
     #[allow(dead_code)]
     name: AutoStr,
 }
@@ -45,6 +49,7 @@ impl PythonTrans {
             py_deps: Vec::new(),
             local_var_types: HashMap::new(),
             scalar_enums: HashSet::new(),
+            needs_may_helper: false,
             name,
         }
     }
@@ -190,6 +195,8 @@ impl PythonTrans {
             }
 
             // Plan 213: Null coalescing - x ?? default -> x if x is not None else default
+            // Plan 539 W0: py_call_may lowers to a None-on-exception helper, so
+            // the plain conditional already yields the fallback for Err cases.
             Expr::NullCoalesce(lhs, rhs) => {
                 write!(sink.body, "(")?;
                 self.expr(lhs, sink)?;
@@ -971,6 +978,53 @@ impl PythonTrans {
                 | "sorted" | "reversed" | "enumerate" | "zip" | "map" | "filter"
                 | "isinstance" | "hasattr" | "getattr" | "setattr" => {
                     return self.emit_plain_call(call, sink);
+                }
+                // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may always lowers to
+                // `_auto_may(lambda: obj.method(args), None)` — exceptions become
+                // a None sentinel, so `.?` passes the value/None through and
+                // `.?(default)` falls back via the plain NullCoalesce conditional.
+                "py_call_may" if call.args.args.len() >= 2 => {
+                    self.needs_may_helper = true;
+                    sink.body.write(b"_auto_may(lambda: ")?;
+                    if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
+                        self.expr(obj_expr, sink)?;
+                    }
+                    sink.body.write(b".")?;
+                    if let Some(Arg::Pos(Expr::Str(method))) = call.args.args.get(1) {
+                        sink.body.write(method.as_bytes())?;
+                    } else {
+                        sink.body.write(b"__call__")?;
+                    }
+                    sink.body.write(b"(")?;
+                    let mut first = true;
+                    for arg in call.args.args.iter().skip(2) {
+                        if !first {
+                            sink.body.write(b", ")?;
+                        }
+                        first = false;
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b"), None)")?;
+                    return Ok(());
+                }
+                // Plan 539 W0 (DIV-PY-ITER-1): py_iter(x) → iter(x);
+                // py_next(x) → next(x, None) — the None sentinel mirrors the
+                // AutoVM's StopIteration→null marshalling.
+                "py_iter" if call.args.args.len() == 1 => {
+                    sink.body.write(b"iter(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
+                "py_next" if call.args.args.len() == 1 => {
+                    sink.body.write(b"next(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b", None)")?;
+                    return Ok(());
                 }
                 // Plan 369 Task 12: py_call(obj, "method", args...) → obj.method(args...)
                 "py_call" => {
@@ -2136,6 +2190,19 @@ if __name__ == \"__main__\":
         // Blank line after all imports, before code body
         if has_py_imports || has_typing_imports {
             import_buf.write(b"
+")?;
+        }
+
+        // Plan 539 W0 (DIV-PY-EXCEPT-1): the py_call_may helper — catches
+        // Python exceptions and yields the None sentinel (Python has no
+        // inline catch expression).
+        if self.needs_may_helper {
+            import_buf.write(b"def _auto_may(f, default):
+    try:
+        return f()
+    except Exception:
+        return default
+
 ")?;
         }
 
