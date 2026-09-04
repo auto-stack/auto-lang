@@ -3720,4 +3720,61 @@ fn main() { let s = \"hi\"; }
         press_key(c, EditorKey::Down, EditorModifiers::none());
         assert!(c.doc_selection().is_none(), "plain navigation clears selection");
     }
+
+    /// PLAN-050 F1/F2：浅色主题下 fence chrome 与正文基色同源——chrome 填充
+    /// 为浅色（gray-50 族），标点段（语法基色）为深色。修复前 chrome 硬编码
+    /// zinc 暗板，浅色 hljs 主题的近黑标点画在近黑底上不可见（用户实测
+    /// `console.log(foo)` → `console .log foo`）。
+    #[test]
+    fn fence_chrome_and_text_follow_light_theme() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let c = core_for("t50a", "```rust\nfn main() {}\n```\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
+        crate::ui::style::theme::set_dark_mode(true);
+        let bg = frame
+            .list
+            .fills
+            .iter()
+            .map(|(_, c)| *c)
+            .next()
+            .expect("fence chrome fills");
+        assert!(
+            bg.r > 0.7 && bg.g > 0.7 && bg.b > 0.7,
+            "light theme fence bg must be light gray, got ({:.2},{:.2},{:.2})",
+            bg.r,
+            bg.g,
+            bg.b
+        );
+        let paren = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.mono && r.text.contains('('))
+            .expect("paren run");
+        assert!(
+            paren.color.r < 0.35 && paren.color.g < 0.35 && paren.color.b < 0.35,
+            "light theme base-fg punctuation must be dark, got ({:.2},{:.2},{:.2})",
+            paren.color.r,
+            paren.color.g,
+            paren.color.b
+        );
+    }
+
+    /// PLAN-050 F4：段落行内 code 区间以 mono 家族测宽——buffer attrs_list
+    /// 的 code 范围 span 族非 sans。修复前全文 sans 测宽、绘制换 mono（更宽）
+    /// → 行内 code 压叠后词（用户实测 "inline code" 与 "and" 叠字）。
+    #[test]
+    fn paragraph_inline_code_measured_mono() {
+        let c = core_for("t50b", "a `code` b\n");
+        let blocks = c.blocks.lock().unwrap();
+        let b = &blocks[0];
+        let found = b.editor.ed().with_buffer(|buf| {
+            let Some(line) = buf.lines.first() else { return false };
+            let Some(lo) = line.text().find("code") else { return false };
+            line.attrs_list()
+                .spans_iter()
+                .any(|(range, a)| range.start <= lo && lo < range.end && a.as_attrs().family != sans_family())
+        });
+        assert!(found, "inline code span must carry non-sans family for width measurement");
+    }
 }
