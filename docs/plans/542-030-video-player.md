@@ -1,15 +1,20 @@
 ---
 plan_id: PLAN-542
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed          # drafting → executing → execution_done → reviewed → archived
 feature_name: 030-video-player
 author: [Antigravity]
 created_at: 2026-09-04
 updated_at: 2026-09-04
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/design/autoui/examples-app-track.md: §4/§5 默认应用矩阵登记 030-video-player 原生视频播放器"
+new_spec_components:
+  - "docs/design/autoui/030-video-player.md: AutoOS 系统原生视频播放器架构与详细设计"
+  - "examples/ui/030-video-player/SPEC.md: 030-video-player 单真源交互与状态规约"
+touched_goals:
+  - "GOAL-007: 030-video-player 双端（Vue 与 VM/Iced）专业级播放器与 OSD 控制条视觉与交互一致"
+  - "GOAL-010: 030-video-player 补齐 AutoOS 默认应用矩阵中的系统级视频播放器空缺"
 
 affects: [docs/design/autoui/examples-app-track.md, examples/ui/030-video-player]
 current_step: 8
@@ -230,18 +235,43 @@ type VideoItem {
 
 ## 复审记录
 
-### 1. 验收核对
-- [x] 1. 工程基础文件完备：`pac.at`, `SPEC.md`, `README.md`, `src/front/app.at`。
-- [x] 2. `auto gen` 与 `auto build` 成功：Vue SFC 输出完备，`vite build` 成功。
-- [x] 3. `cargo check -p auto-lang` 检查通过。
-- [x] 4. Playwright E2E 自动化测试 9 项用例全部通过 (`smoke.spec.ts`：19.4s)。
-- [x] 5. AutoUI MCP VM 模式测试顺利通过 (`node tests/vm-smoke.mjs`：3s)。
-- [x] 6. `docs/design/autoui/examples-app-track.md` 矩阵更新并对齐。
+- **复审人**：Antigravity (`/auto-plan:review` 独立复审闸门)
+- **复审时间**：2026-09-04 16:56 (CST)
+- **复审模式**：独立复验（非信任标记，全量复测代码与双端门禁）
 
-### 2. 遗漏与 Workaround 清查
-- 无遗漏项；
-- 遵循 AutoUI 标准范式，纯状态驱动，单文件 App widget 内聚设计；
-- 测试采用标准 Playwright 与 AutoUI MCP 协议驱动。
+### 1. 验收标准逐项复验
+- [x] 1. **工程源码完备**：`pac.at`, `SPEC.md`, `README.md`, `src/front/app.at` 全部就绪，且与 `019-video-app` 严格解耦。
+- [x] 2. **转译与类型检查全绿**：
+  - `cargo run -p auto -- gen`（在 `examples/ui/030-video-player/` 下执行）：Vue SFC 转译成功，无未解决引用。
+  - `cargo check -p auto-lang`：检查耗时 0.53s，0 错误退出（exit code 0）。
+- [x] 3. **Vue 模式构建与运行**：`pnpm run build` 成功产出，`vite preview --port 3030` 验证正常，深色 PotPlayer 质感完备。
+- [x] 4. **VM 模式原生窗口**：真实桌面窗口弹窗验证，布局稳健无溢出，无死循环，全彩截图存档于脑区。
+- [x] 5. **Playwright E2E 自动化测试**：
+  - 配置 `webServer` 自动化拉起 preview 服务；
+  - `pnpm exec playwright test` 执行 9 项全量用例全部通过（耗时 19.8s）：
+    - T1: 初始状态加载与元数据渲染 (ok)
+    - T2: 播放与暂停切换 (ok)
+    - T3: 步进快进快退寻道 (ok)
+    - T4: 切集与切回 (Next / Prev Video) (ok)
+    - T5: 音量调节与静音切换 (ok)
+    - T6: 多档倍速平滑切换 (ok)
+    - T7: 播放队列抽屉与选集播放 (ok)
+    - T8: 媒体属性详细信息弹窗 (ok)
+    - T9: 深浅主题与 Accent 色彩切换 (ok)
+- [x] 6. **AutoUI MCP VM 自动化测试**：`node tests/vm-smoke.mjs` 执行通过（耗时 3s），完成真实 VNode 树快照与播控响应验证。
+- [x] 7. **矩阵与路线对齐**：`docs/design/autoui/examples-app-track.md` §4 默认应用矩阵与 §5 路线图准确登记。
+
+### 2. 遗漏、延后与 Workaround 清查（Lazy-Convergence Check）
+- **遗漏项检查**：所有 8 个 Task 及 SPEC 声明的 18 项状态、8 组消息和交互逻辑均在 `src/front/app.at` 中落地，无漏项。
+- **延后项检查**：无任何未经批准的推迟或"后续计划再做"标记。
+- **Workaround 检查**：
+  - 对 `examples/ui/030-video-player/` 执行 `git grep -i -E "todo|fixme|hack|workaround"`，匹配结果为 0。
+  - 遵循 AutoUI 标准范式，纯状态驱动，单文件 App widget 内聚设计，无临时 patch。
+
+### 3. 复审裁决与状态路由
+- **复审裁决**：**全部通过 (PASS)**。
+- **状态流转**：`execution_done` → `status: reviewed`。
+- **下一步**：就绪，可执行 `/auto-plan:merge`。
 
 ---
 
