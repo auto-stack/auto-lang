@@ -56,13 +56,15 @@
 | 笔记 | 015-notes | ✅ 已是真实应用形态 |
 | 游戏 | 038-minesweeper | ✅ 双后端,持续扩展 |
 | 天气 | 014-weather | ✅ 有 demo |
-| 音乐 / 视频 | 020 / 019 | ✅ 有壳,待升级 |
+| 音乐播放器 | 020-music-player | ✅ 有 demo，现代双端播放器 |
+| 流媒体视频门户 | 019-video-app | ✅ 有 demo，Bilibili/YouTube 风格 |
+| 视频播放器 (本地/系统) | 030-video-player | ✅ [Plan 542] 原生极简播放器 (VLC/PotPlayer 风格) |
 | 时钟(世界钟/闹钟/计时) | 012-stopwatch | ◐ 原地升级为 clock suite,不占新号 |
 | 系统监视器 | 025-dashboard | 🆕 §5 |
 | 文件管理器 | 027-file-manager | 🆕 §5 |
 | 启动器 | 028-launcher | 🆕 §5 |
-| 图片查看器 | 029-image-viewer | 🆕 §5 |
-| 邮件 | 030-email | 🆕 §5 |
+| 图片查看器 | 029-photo-gallery | ✅ [Plan 537] macOS 相册风图库 |
+| 邮件 | 034-email | 🆕 规划中 |
 | 系统设置 | 033-settings | 🆕 §5(轻,后置) |
 | 终端 | — | 远期(pty + 等宽网格) |
 | 浏览器 | — | 独立产品线,不属 demo 范畴 |
@@ -75,12 +77,12 @@
 | 025 | **dashboard** 系统监视器 | charts 组合 + KPI + 轮询刷新(.Tick) + 响应式布局 | 低 | 024 |
 | 026 | **database** SQLite 客户端 | DataTable 深水区(虚拟滚动/分页/排序/筛选)、**Tree 缺口**、SQL 编辑器(复用 code_editor)、rusqlite 后端 a2r 大结果集 | 高,分三阶段(只读浏览→SQL console→写操作) | — |
 | 027 | **file-manager** 文件管理器 | Tree 导航、列表/网格切换、右键菜单(Plan 422 已解锁)、内联重命名、fs 后端 | 中 | — |
-| 028 | **launcher** 启动器 | **焦点/键盘导航原语**(roving focus/Enter/Esc 分层,三端共同薄弱)、模糊搜索、结果网格虚拟化 | 中 | — |
-| 029 | **image-viewer** 图片查看器 | 图片解码缓存管线、zoom/pan 手势、全屏、缩略图懒加载(图像) | 中 | — |
-| 030 | **email** 邮件 | **万级虚拟化长列表**(与 026 表格形态互补)、已读状态同步、AutoDown 富文本复用(写邮件) | 高,mock 后端 | 015(AutoDown 先例) |
+| 029 | **photo-gallery** 图库 | 图片解码缓存管线、zoom/pan 手势、全屏、缩略图网格（[Plan 537]） | 中 | — |
+| 030 | **video-player** 原生视频播放器 | 沉浸式大视口画布、自动渐隐 OSD 悬浮控制条、交互式寻道、多档倍速、可折叠播放队列、双端媒体引擎（[Plan 542] 对标 VLC/PotPlayer/IINA） | 中 | — |
 | 031 | **git-gui** | commit DAG 自绘、双栏 diff(code_editor 行高亮)、staging 右键、git2-rs 后端 | 高 | 422、code_editor |
 | 032 | **admin** 管理后台 | (再评估)DataTable 交互全谱 + dialog 表单 + 权限路由;与 023/022/026 重叠度高 | 中 | 026 落地后评估 |
 | 033 | **settings** 系统设置 | 表单 + tabs + 持久化;平台锻炼低但 OS 刚需,可兼作 Design 16 AI 生成试金石 | 低 | — |
+| 034 | **email** 邮件 | **万级虚拟化长列表**(与 026 表格形态互补)、已读状态同步、AutoDown 富文本复用(写邮件) | 高,mock 后端 | 015(AutoDown 先例) |
 
 剩 034–037、039–040 留空,候选池(settings 之外另有 spreadsheet/paint/terminal/contacts 等)等真实需求出现再填,**不为凑连续性造示例**。
 
