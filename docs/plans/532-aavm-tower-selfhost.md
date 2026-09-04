@@ -240,6 +240,29 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
    - **静默空输出 flake 未根治**:净 lib 构建 3 连跑 rc=0 空输出/rc=1
      空输出/rc=124 超时各一,时长 348-574s 漂移——fix① 治愈声明
      (deptest2 12/12)不完整,与残留③并案查。
+   - **残留③清零进行中(2026-09-04 晚,方法学升级:静态字节差分取代
+     运行时 trace)**——新临时闸门 `test_aavm2_p532_lib_static_diff`
+     (aavm2_m4.rs,worktree 未提交):同一 probe(scratch532/libdiff/
+     main.at)宿主 compile_and_link_multi(加 root source dir)vs aavm
+     codegen_dump_files(拼接 harness 可信执行)归一化逐行对拍,.line
+     元数据脱敏计数。**四修已落盘(commit 828125e04)**:③ cg_fstr 空
+     字面段镜像宿主 lexer(每遇 $ 无条件发射,仅末尾空抑制;原跳空段
+     →parts/字节序双分歧);④ cg_if else-if 语义修复(JmpZ 立即回填
+     下一分支 cond 起点,仅真跳留链尾——原版 else if 中间分支永不可达
+     ,0b/0x 词法错,语料无 else-if 形态故漏网);⑤ serialize 字符串转义
+     镜像宿主 {:?};⑥b cg_is_arm_body 包块作用域(tokenize locals
+     34→16)。差分首分歧单调前移 1498→2047→2846;门禁 m4/m5/use_
+     corpus/goldens 全绿(大套件并行 flake 重跑即绿)。
+   - **残留③末段(⑥c)**:tokenize locals 16 vs 宿主 14(差 2 槽)+
+     1 处多余 store.loc.1——⑥a add_var 现算挤隙镜像方案实测回退早期
+     区域对齐(分歧 2846→418)已回退,仅存 ⑥b 臂体作用域;下一轮从
+     "tokenize 内 2 槽差额的具体构造"切入。差分测试转绿后随正式
+     资产(静态对拍闸门)一并提交。
+   - **残留③末段(⑥c)**:tokenize locals 16 vs 宿主 14(差 2 槽)+
+     1 处多余 store.loc.1——⑥a add_var 现算挤隙镜像方案实测回退早期
+     区域对齐(分歧 2846→418)已回退,仅存 ⑥b 臂体作用域;下一轮从
+     "tokenize 内 2 槽差额的具体构造"切入。差分测试转绿后随正式
+     资产(静态对拍闸门)一并提交。
    - 架构指令执行面(拼接→模块加载默认化)在残留③清零后启动
      (aavm2_lib_source 族消费面,超出本计划部分立项)。
 7. [ ] 原生一代对拍：a2r 原生 aavm exe 跑 corpus（代表集）与宿主一致
