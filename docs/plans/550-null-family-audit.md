@@ -1,15 +1,19 @@
 ---
 plan_id: PLAN-550
-status: execution_done      # drafting → executing → execution_done → reviewed → archived
+status: reviewed           # drafting → executing → execution_done → reviewed → archived
 feature_name: null-family-audit
 author: [zhaopuming]
 created_at: 2026-09-04
 updated_at: 2026-09-05
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "specs/auto-lang/vm/overview.md: 修改 —— 现状节补 Plan 550 null 家族守卫全景：算术族（pop_arith_pair/operand_non_null + _F/_D/_U64/MOD peek 守卫）/STR_CAT 拼接/GET_ELEM 三相守卫+越界 IndexError（ListData 四型）/TYPE_TO_I32/F64 null 翻案/TYPE_TO_STR null→\"None\"/ARRAY_LEN not iterable/CALL_CLOSURE callable；单测模块 engine.rs tests_null_guards 13 例"
+  - "specs/auto-lang/frontend/overview.md: 修改 —— 现状节补 nil deprecated（W0005 双臂警告，语义不变）+ #[script] 文件级 pragma（parser.script_pragma/saw_bare_null → CompileSession.script_marked）+ 生产者门控 lint（三信号 use.py/null/nil，stderr 迁移提示，pragma 豁免）+ CLI 直跑路径 parser 警告可见化（lib.rs execute_autovm_with_path）"
+new_spec_components:
+  - "specs/auto-lang/vm/design/null-family.md: 新增 —— null 家族语义契约：守卫矩阵全表（opcode/路径→行为）+ Python 格式消息规范 + TAG_NULL-only 守卫边界（三拼写经 PUSH_NIL 归一；历史 i32 哨兵 -1/MIN+1 与真实整数不可区分故不守卫，P550-D3）+ 越界翻转存量面结论（tv 零撞击，无需降级）"
+touched_goals:
+  - "GOAL-005: null 正确性=py parity 消费侧地基——null.to(str)/print 三方 \"None\" 对齐（py_torch_infer 扩例 test_print_none 17/17），py 五套件三方 64/64 全绿"
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径
 current_step: 12
@@ -225,7 +229,59 @@ print((s + y).to(str))     // y=null → "a-2147483647"（垃圾数字入字符�
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审人**：zhaopuming（/auto-plan:review，2026-09-05）
+**验证场所**：worktree `D:/autostack/.wt/lang-550/auto-lang`（branch plan-550-dev，
+fork 点 5d4919080，9 commits，代码 diff 9 文件 +568/−23——engine/virt_memory/native/
+parser/compile/lib/renderer + parity py_torch_infer 双侧）
+
+### 逐条验收裁定
+
+| # | 验收标准 | 裁定 | 证据 |
+|---|---|---|---|
+| 1 | 539 双探针翻转（可 catch + 'NoneType'） | **PASS** | p9 复跑：`caught` + e 绑定 `TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'`；p1/p2 裸抛同型（终态矩阵在案） |
+| 2 | 守卫矩阵全表（六新探针各得其所） | **PASS（一处已注记分歧）** | p3 subscriptable / p5 iterable / p8 IndexError 999 / p6 to(int) TypeError / p7 print "None" 全探针复验过；**callable 分歧**：null callee 在正常模式被编译期 E0401 拦截（p4 复验），.at 探针结构性不可达——VM 守卫在位（engine.rs CALL_CLOSURE peek）+ 单测 `test_null_callee_not_callable` 钉住（13/13 绿），P550-D4 在案 |
+| 3 | nil 出 deprecated 警告且语义不变；None/Some 零回归 | **PASS** | p12b：警告一次（双 nil 去重）+ `nil==null`=true / `nil!=nil`=false；p13：true/false/true 三行与基线逐位一致、无警告 |
+| 4 | 门控 lint 生效（三信号警告+pragma 豁免）+ py 五套件全绿 | **PASS** | p14（use.py→1 警告）/p16（null→1 警告）/p15（#[script]→0 警告且正常运行）/无信号文件零误报；py 五套件三方 64/64（math 20 + torch 7 + infer 17 + train 10 + numpy 10），stderr 警告不入对拍 |
+| 5 | cargo tv + cargo tt 全绿（存量红处置） | **PASS（附 tf 既有红注记）** | tv 3585/3585 + tt 3772/3772（终态复跑）；越界翻转**存量零撞击**（设计要点 2 降级路径未触发）。全量档 `cargo tf` 3423/3425——**2 红为 master 既有漂移，非本计划回归**（详下） |
+| 6 | 未初始化 var 盘存结论在案 | **PASS** | 执行注记 T02 节：p10/p11 双形态 E0007 拒绝证据（现状即禁止，记录分支成立） |
+
+### cargo tf 两红甄别（master 既有，非本计划）
+
+`schema_drift_fence` 与 `kitchen_sink_page_in_sync` 失败。甄别证据：
+(a) 两测试的输入对（view_builder 生产表 / schema/aura.at / kitchen-sink 生成页）
+在本分支与 fork 点**逐字节相同**（本计划 diff 不含任何相关文件）→ 分支上必与
+fork 点同结果；(b) 失败内容为 dialog/dropdown widget 标签未覆盖与 avatar/image
+`src` 取值差异（PLAN-528 系 schema 内容），与 null 语义无交集；(c) 主检出
+`schema/aura.at` 处于脏态（另一在途 schema 计划的未提交工作）。**归口**：在途
+schema 计划（推测 Plan 551/532 线）所有，建议其折入前跑 `cargo tf` 收口。
+
+### 遗漏 / 延后 / workaround 扫描
+
+- **遗漏**：无——12 任务逐项有代码/探针/测试证据；T11 无操作为证据支持（E0007 现状）。
+- **延后**：无未经批准延期。str 越界不翻（P550-D2）系守卫矩阵措辞内授权范围
+  （"Auto 数组"）；i32 哨兵算术不守卫（P550-D3）系结构性不可行且已注记；CALL-null
+  探针面（P550-D4）系编译期拦截所致，均有债登记。
+- **Workaround**：diff 内无新增 TODO/HACK/FIXME（grep 复核）。master ui-iced 档
+  编译修复（e1d8fd097）为**披露的环境修复**（待澄清#4 + P550-D7，独立提交，
+  非本计划病灶），plan051 复审方可回馈。
+
+### 计划文 vs 实现分歧清单（均已在执行注记/标记记录）
+
+1. "ADD 拼接臂单独守卫" → 拼接病灶实际落点=**STR_CAT opcode 臂**（codegen 对含
+   str 的 `+` 静态路由），ADD 内嵌拼接分支亦被 pair 守卫覆盖——双落点均守。
+2. "for-in 迭代源（疑静默零迭代）" → 实际落点=**ARRAY_LEN 静默 0 臂**（array 通道
+   for-in 长度探针，顺带翻 null.len()，P550-D5）；shim_iterator_next 另加防御。
+3. CALL null（矩阵"未验证"）→ 复审实证=**编译期 E0401**，VM 守卫改单测钉（P550-D4）。
+4. "复用 parser 现有警告通道；无则 stderr 一次性去重" → 通道存在（W0005，LSP 消费）
+   但 CLI 直跑不可见——落地为 stderr 按名去重可见化（两支并用）。
+
+### 门禁读数汇总（终态）
+
+`cargo tf` 3423/3425（2 红=master 既有，甄别如上）· `cargo tv` 3585/3585 ·
+`cargo tt` 3772/3772 · `cargo t vm` 800/800 · `cargo t engine` 25/25 ·
+tests_null_guards 13/13 · py 五套件三方 64/64 · 探针矩阵 p1–p16 终态复播在案。
+
+**裁定：全部验收标准通过，无阻断债 → status: reviewed，可入 /auto-plan:merge。**
 
 ## 执行注记
 
