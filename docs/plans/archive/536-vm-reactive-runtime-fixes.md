@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-536
-status: execution_done       # 2026-09-05 重开段执行完毕,进入复审 → reviewed → archived（二次关闭）
+status: archived        # 2026-09-05 重开段复审通过,二次关闭（终态）
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
