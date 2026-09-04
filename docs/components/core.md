@@ -186,6 +186,7 @@ AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→auto
 | `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043) |
 | `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043) |
 | `scroll_sync` | `union: bool|state_ref` | true | Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042) |
+| `table_col_widths` | `state_ref` | — | Table column widths state: Map<tableKey str, List<px float>> keyed 't{blockHash}' (VM arm consumed since PLAN-045 — header-edge drag lands per-table key, persists across re-renders; vue arm ignores — no engine consumer) |
 | `dark_mode` | `union: bool|state_ref` | false | Theme declaration entry (PLAN-051): palette档 for the document face (vue arm darkMode → .is-dark; VM consumes the same-named STATE via the Plan 370 D-GAP global sync, prop itself inert on the VM arm) |
 | `accent` | `union: string|state_ref` | indigo | Accent palette name (PLAN-051): indigo|coral|ocean|sage|amber (vue arm data-accent; VM document-accent consumption is a registered PARITY exemption) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |

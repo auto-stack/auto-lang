@@ -6245,6 +6245,12 @@ mod plan442_musk_backend_probe_tests;
 // handler 的子→父声明式路由帧对齐契约。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan059_child_emit_probe_tests;
+// PLAN-536 探针套件（timer 失效/Init 挂载/absolute 悬浮/modal 绑定）。
+// PLAN-536 T10 复挂载：声明原随 T1 落 lib.rs（6189f679f），被 b4d1ced7b
+// （539 折叠前同步合并）冲突解决时静默丢弃——全套 17+ 探针自此在 master
+// 为死代码未编译，复审遗漏扫描立案；本行恢复挂载。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan536_t1_reactive_probe_tests;
 mod auto_down_vm_server_probe_tests;
 mod autodown_codegen_debts_tests;
 

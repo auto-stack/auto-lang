@@ -1817,10 +1817,7 @@ impl<'a> AuraViewBuilder<'a> {
         // 布局语义被类覆盖(元素语义为默认,显式类优先)。hoist 在前,浮层不占格。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
             let base = View::Grid { cols, gap, cells: child_views, style };
-            if let Some((content, position)) = floats.into_iter().next() {
-                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
-            }
-            return base;
+            return fold_floats(base, floats);
         }
         let use_row = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Row));
 
@@ -1853,15 +1850,9 @@ impl<'a> AuraViewBuilder<'a> {
                 auto_scroll: false,
                 offset: None, on_scroll: None,
             };
-            if let Some((content, position)) = floats.into_iter().next() {
-                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
-            }
-            return base;
+            return fold_floats(base, floats);
         }
-        if let Some((content, position)) = floats.into_iter().next() {
-            return View::Overlay { base: Box::new(col_view), content: Box::new(content), position };
-        }
-        col_view
+        fold_floats(col_view, floats)
     }
 
     /// Tracked convert_scroll — mirrors `convert_scroll` but recurses via
@@ -2171,10 +2162,7 @@ impl<'a> AuraViewBuilder<'a> {
             let cells: Vec<View<DynamicMessage>> =
                 child_views.into_iter().filter(|v| !is_visually_empty(v)).collect();
             let base = View::Grid { cols, gap, cells, style };
-            if let Some((content, position)) = floats.into_iter().next() {
-                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
-            }
-            return base;
+            return fold_floats(base, floats);
         }
         let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
 
@@ -2197,11 +2185,7 @@ impl<'a> AuraViewBuilder<'a> {
         }
         let row_view = builder.build();
         // PLAN-536 T6: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层)。
-        if let Some((content, position)) = floats.into_iter().next() {
-            View::Overlay { base: Box::new(row_view), content: Box::new(content), position }
-        } else {
-            row_view
-        }
+        fold_floats(row_view, floats)
     }
 
     /// Tracked convert_container — mirrors `convert_container`.
@@ -4794,10 +4778,7 @@ let tabs_inner = View::Row {
         let red = rederive_layout(style.as_ref());
         if let Some(RederivedLayout::Grid { cols, gap }) = red {
             let base = View::Grid { cols, gap, cells: child_views, style };
-            if let Some((content, position)) = floats.into_iter().next() {
-                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
-            }
-            return base;
+            return fold_floats(base, floats);
         }
         let use_row = matches!(red, Some(RederivedLayout::Row));
 
@@ -4836,11 +4817,7 @@ let tabs_inner = View::Row {
             col_view
         };
         // Plan 409 §10 续 5: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层,不挤压)。
-        if let Some((content, position)) = floats.into_iter().next() {
-            View::Overlay { base: Box::new(base), content: Box::new(content), position }
-        } else {
-            base
-        }
+        fold_floats(base, floats)
     }
 
     /// Convert a scroll element — always scrollable (schema: Scrollable container).
@@ -4953,10 +4930,7 @@ let tabs_inner = View::Row {
                 .filter(|v| !is_visually_empty(v))
                 .collect();
             let base = View::Grid { cols, gap, cells, style };
-            if let Some((content, position)) = floats.into_iter().next() {
-                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
-            }
-            return base;
+            return fold_floats(base, floats);
         }
         let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
 
@@ -4982,11 +4956,7 @@ let tabs_inner = View::Row {
 
         let row_view = builder.build();
         // PLAN-536 T6: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层)。
-        if let Some((content, position)) = floats.into_iter().next() {
-            View::Overlay { base: Box::new(row_view), content: Box::new(content), position }
-        } else {
-            row_view
-        }
+        fold_floats(row_view, floats)
     }
 
     /// Iterate a `for` loop's iterable, converting its body once per item, and
@@ -9442,6 +9412,21 @@ fn is_visually_empty(v: &View<DynamicMessage>) -> bool {
         View::Text { content, .. } => content.is_empty(),
         _ => false,
     }
+}
+
+/// PLAN-536 T10(D1 次生缺陷根修): absolute 浮层全部保留——按源序嵌套
+/// Overlay 折叠(首个最外=栈序最低,后续逐层叠上,对齐 CSS 同 z 源序)。
+/// 此前四处 hoist 臂(col/row × tracked/untracked)只取 `.next()` 首个,
+/// 其余 absolute 子节点已被滤出流内却未进任何浮层,整体丢弃。
+fn fold_floats(
+    base: View<DynamicMessage>,
+    floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)>,
+) -> View<DynamicMessage> {
+    let mut acc = base;
+    for (content, position) in floats {
+        acc = View::Overlay { base: Box::new(acc), content: Box::new(content), position };
+    }
+    acc
 }
 
 /// Plan 499 M2: coords 逻辑幅面解析("WxH",如 "560x300")。
