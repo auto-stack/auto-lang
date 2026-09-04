@@ -213,7 +213,13 @@ fn literal_prop_variants(prop: &(String, String, String, String)) -> Vec<String>
 pub fn generate_kitchen_sink() -> String {
     let mut elems = load_elements();
     elems.retain(|e| {
-        e.tier == "builtin_widget" && e.props.iter().any(|pr| !literal_prop_variants(pr).is_empty())
+        // PLAN-528 W6(生成器固化,PLAN-536 T11): 桌面壳专属 widget(Plan 526)
+        // 的 @/wm/* 脚手架在 web 画廊工程不存在——不入 web 生成页
+        // (此前是手工版页面的例外注记,固化后页面回归"勿手改"幂等)。
+        const DESKTOP_SHELL_ONLY: &[&str] = &["window_thumbnail"];
+        e.tier == "builtin_widget"
+            && !DESKTOP_SHELL_ONLY.contains(&e.canonical.as_str())
+            && e.props.iter().any(|pr| !literal_prop_variants(pr).is_empty())
     });
     elems.sort_by(|a, b| a.canonical.cmp(&b.canonical));
 
@@ -263,6 +269,10 @@ pub fn generate_kitchen_sink() -> String {
             for v in literal_prop_variants(pr).into_iter().take(2) {
                 if variants >= 4 { break; }
                 if pr.0 == "text" { continue; } // text 已用简写
+                // PLAN-528 W6(生成器固化,PLAN-536 T11): src 指向 public/icon.png
+                // ——裸词 "sample" 会被 vue 生成器当静态资源 import,vite 解析
+                // 不到整页 500(此前是手工版页面的例外注记)。
+                let v = if pr.0 == "src" { "/icon.png".to_string() } else { v };
                 at.push_str(&format!(
                     "                {} ({}: {}) {{}}\n",
                     e.canonical, pr.0, quote_if_str(&v, &pr.1)
