@@ -4336,167 +4336,354 @@ element sidebar {
     tag: "sidebar"
     category: "navigation"
     tier: "web_component"
+    aliases: ["Sidebar"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Sidebar", import: "@/components/ui/sidebar" }
-    sub_widgets: ["sidebar_content", "sidebar_footer", "sidebar_header", "sidebar_menu", "sidebar_menu_button", "sidebar_menu_item"]
+    sub_widgets: ["sidebar_content", "sidebar_footer", "sidebar_group", "sidebar_header", "sidebar_input", "sidebar_menu", "sidebar_rail", "sidebar_separator"]
     props: [
-        { name: "side", type: "one_of:left,right", default: "left", description: "Sidebar position" }
-        { name: "variant", type: "one_of:sidebar,floating,inset", default: "sidebar", description: "Sidebar variant" }
-        { name: "collapsible", type: "one_of:offcanvas,icon,none", default: "offcanvas", description: "Collapsible mode" }
+        { name: "side", type: "one_of:left,right", default: "left", description: "Which side of the layout the sidebar is pinned to" }
+        { name: "variant", type: "one_of:sidebar,floating,inset", default: "sidebar", description: "Visual variant: plain sidebar, floating card, or inset (pairs with sidebar_inset)" }
+        { name: "collapsible", type: "one_of:offcanvas,icon,none", default: "offcanvas", description: "Collapse behavior: slide off-canvas, shrink to icon rail, or never collapse" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar container"
+    description: "Composable application sidebar container (shadcn-vue Sidebar 1:1, desktop web only); root of the sidebar family, lives inside sidebar_provider"
 }
 
 element sidebar_content {
     tag: "sidebar_content"
     category: "navigation"
     tier: "web_component"
-    aliases: ["sidebarcontent"]
+    aliases: ["SidebarContent", "sidebarcontent"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SidebarContent", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar content"
+    description: "Scrollable main region of the sidebar (flex-1, overflow-auto; overflow locked in icon-collapsed mode)"
 }
 
 element sidebar_footer {
     tag: "sidebar_footer"
     category: "navigation"
     tier: "web_component"
-    aliases: ["sidebarfooter"]
+    aliases: ["SidebarFooter", "sidebarfooter"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SidebarFooter", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar footer"
+    description: "Bottom region of the sidebar (user card / secondary actions)"
 }
 
 element sidebar_group {
     tag: "sidebar_group"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarGroup", "sidebargroup"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarGroup", import: "@/components/ui/sidebar" }
+    sub_widgets: ["sidebar_group_action", "sidebar_group_content", "sidebar_group_label"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar group"
+    description: "Labeled section that groups related menu items inside the sidebar (relative flex column, p-2)"
+}
+
+element sidebar_group_action {
+    tag: "sidebar_group_action"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarGroupAction", "sidebargroupaction"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarGroupAction", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Click message (state mode)" }
+        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Icon action button anchored top-right of a sidebar group header (hidden in icon-collapsed mode)"
 }
 
 element sidebar_group_content {
     tag: "sidebar_group_content"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarGroupContent", "sidebargroupcontent"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarGroupContent", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar group content"
+    description: "Body of a sidebar group (w-full text-sm); holds the group's sidebar_menu"
 }
 
 element sidebar_group_label {
     tag: "sidebar_group_label"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarGroupLabel", "sidebargrouplabel"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarGroupLabel", import: "@/components/ui/sidebar" }
     props: [
-        { name: "text", type: "string", description: "Group label text" }
+        { name: "text", type: "string", description: "Label text (shorthand; becomes slot content)" }
+        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar group label"
+    description: "Group header label (text-xs, fades out in icon-collapsed mode)"
 }
 
 element sidebar_header {
     tag: "sidebar_header"
     category: "navigation"
     tier: "web_component"
-    aliases: ["sidebarheader"]
+    aliases: ["SidebarHeader", "sidebarheader"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SidebarHeader", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar header"
+    description: "Top region of the sidebar (brand, search, workspace switcher)"
+}
+
+element sidebar_input {
+    tag: "sidebar_input"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarInput", "sidebarinput"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarInput", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Search/filter input styled for the sidebar (h-8, sidebar focus ring)"
+}
+
+element sidebar_inset {
+    tag: "sidebar_inset"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarInset", "sidebarinset"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarInset", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Main content area sibling to the sidebar (main element); picks up rounded-card styling when variant=inset"
 }
 
 element sidebar_menu {
     tag: "sidebar_menu"
     category: "navigation"
     tier: "web_component"
-    aliases: ["sidebarmenu"]
+    aliases: ["SidebarMenu", "sidebarmenu"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SidebarMenu", import: "@/components/ui/sidebar" }
-    sub_widgets: ["sidebar_menu_button", "sidebar_menu_item"]
+    sub_widgets: ["sidebar_menu_action", "sidebar_menu_badge", "sidebar_menu_button", "sidebar_menu_item", "sidebar_menu_skeleton", "sidebar_menu_sub"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar menu"
+    description: "Vertical menu list (ul) of sidebar entries; direct child of sidebar_content or sidebar_group_content"
+}
+
+element sidebar_menu_action {
+    tag: "sidebar_menu_action"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarMenuAction", "sidebarmenuaction"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuAction", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Click message (state mode)" }
+        { name: "show_on_hover", type: "bool", default: "false", description: "Reveal only on hover/focus of the parent menu item" }
+        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Icon action button pinned to the right of a sidebar_menu_button (e.g. dropdown trigger; hidden in icon-collapsed mode)"
+}
+
+element sidebar_menu_badge {
+    tag: "sidebar_menu_badge"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarMenuBadge", "sidebarmenubadge"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuBadge", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Right-aligned count/label badge inside a menu item (hidden in icon-collapsed mode)"
 }
 
 element sidebar_menu_button {
     tag: "sidebar_menu_button"
     category: "navigation"
     tier: "web_component"
-    aliases: ["sidebarmenubutton"]
+    aliases: ["SidebarMenuButton", "sidebarmenubutton"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SidebarMenuButton", import: "@/components/ui/sidebar" }
     props: [
-        { name: "tooltip", type: "string", description: "Tooltip text" }
-        { name: "active", type: "bool", default: "false", description: "Active state" }
-        { name: "text", type: "string", description: "Button text" }
-        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "to", type: "string", description: "Route address: vue renders RouterLink via as-child polymorphism; auto-detects active from $route.path (exact or prefix-segment match)" }
+        { name: "active", type: "expr", description: "Selected state (maps to shadcn isActive); with to: auto-detected from route when unbound" }
+        { name: "variant", type: "one_of:default,outline", default: "default", description: "Visual variant (outline adds background, border and hover shadow)" }
+        { name: "size", type: "one_of:default,sm,lg", default: "default", description: "default=h-8 text-sm; sm=h-7 text-xs; lg=h-12 text-sm" }
+        { name: "tooltip", type: "string", description: "Tooltip text — declared; functional wiring deferred (icon-collapsed tooltip)" }
+        { name: "text", type: "string", description: "Label text (shorthand; becomes slot content)" }
+        { name: "onclick", type: "msg_ref", description: "Click message (state mode); to wins over onclick when both given" }
+        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism; used by the to route mode)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar menu button"
+    description: "Interactive menu entry button with built-in hover/active states (shadcn-vue SidebarMenuButton); extension props to/active (Plan 548 D2) add route-aware active detection"
 }
 
 element sidebar_menu_item {
     tag: "sidebar_menu_item"
     category: "navigation"
     tier: "web_component"
-    aliases: ["sidebarmenuitem"]
+    aliases: ["SidebarMenuItem", "sidebarmenuitem"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SidebarMenuItem", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar menu item"
+    description: "Single menu entry wrapper (li; group/menu-item peer scope for action/badge hover wiring)"
+}
+
+element sidebar_menu_skeleton {
+    tag: "sidebar_menu_skeleton"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarMenuSkeleton", "sidebarmenuskeleton"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuSkeleton", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "show_icon", type: "bool", default: "false", description: "Render a leading icon placeholder block" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Loading placeholder row for a sidebar menu (randomized width between 50-90%)"
+}
+
+element sidebar_menu_sub {
+    tag: "sidebar_menu_sub"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarMenuSub", "sidebarmenusub"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuSub", import: "@/components/ui/sidebar" }
+    sub_widgets: ["sidebar_menu_sub_button", "sidebar_menu_sub_item"]
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Nested sub-menu list (indented with left border; hidden in icon-collapsed mode)"
+}
+
+element sidebar_menu_sub_button {
+    tag: "sidebar_menu_sub_button"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarMenuSubButton", "sidebarmenusubbutton"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuSubButton", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "to", type: "string", description: "Route address: vue renders RouterLink via as-child polymorphism; auto-detects active from $route.path (exact or prefix-segment match)" }
+        { name: "active", type: "expr", description: "Selected state (maps to shadcn isActive); with to: auto-detected from route when unbound" }
+        { name: "size", type: "one_of:sm,md", default: "md", description: "sm=text-xs; md=regular" }
+        { name: "onclick", type: "msg_ref", description: "Click message (state mode); to wins over onclick when both given" }
+        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism; used by the to route mode)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sub-menu link/button (anchor by default, h-7); extension props to/active (Plan 548 D2) add route-aware active detection"
+}
+
+element sidebar_menu_sub_item {
+    tag: "sidebar_menu_sub_item"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarMenuSubItem", "sidebarmenusubitem"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuSubItem", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Single sub-menu entry wrapper (li)"
 }
 
 element sidebar_provider {
     tag: "sidebar_provider"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarProvider", "sidebarprovider"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarProvider", import: "@/components/ui/sidebar" }
+    sub_widgets: ["sidebar", "sidebar_inset", "sidebar_trigger"]
     props: [
+        { name: "default_open", type: "bool", default: "true", description: "Initial open state when uncontrolled (asset also persists to the sidebar cookie)" }
+        { name: "open", type: "expr", description: "Controlled open state (v-model:open); unbound falls back to default_open" }
+        { name: "onopenchange", type: "msg_ref", description: "Message on open-state change (update:open)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Sidebar provider context"
+    description: "Provider owning the sidebar open/collapsed state context (useSidebar); wraps sidebar + sidebar_inset"
+}
+
+element sidebar_rail {
+    tag: "sidebar_rail"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarRail", "sidebarrail"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarRail", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Invisible hover handle on the sidebar edge that toggles collapse on click"
+}
+
+element sidebar_separator {
+    tag: "sidebar_separator"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["SidebarSeparator", "sidebarseparator"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarSeparator", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Horizontal divider between sidebar sections (mx-2 w-auto, sidebar-border color)"
 }
 
 element sidebar_trigger {
     tag: "sidebar_trigger"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarTrigger", "sidebartrigger"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarTrigger", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: false
-    description: "Sidebar trigger button"
+    description: "Ghost icon button (PanelLeft) that toggles the sidebar open/collapsed state"
 }
 
 element skeleton {
