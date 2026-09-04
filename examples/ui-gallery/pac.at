@@ -1,0 +1,14 @@
+// pac.at - AutoUI Gallery (Plan 549)
+// 官方 UI 示例交互式画廊与教程中心
+// 聚合全部 examples/ui/ 示例，支持可交互内嵌视口与 AutoDown 教程解析
+
+name: "ui-gallery"
+version: "1.0.0"
+description: "AutoUI Gallery - Interactive UI Demo Gallery & Code Tutorials"
+
+scene: "ui"
+render: "vue"
+front_port: 3049
+window: "1440x900"
+
+npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/editor", "@autodown/core:link:D:/autostack/auto-down/autodown/packages/core", "@autodown/engine:link:D:/autostack/auto-down/autodown/packages/engine"]

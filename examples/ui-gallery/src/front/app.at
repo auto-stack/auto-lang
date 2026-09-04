@@ -1,0 +1,260 @@
+// src/front/app.at - AutoUI Gallery Main Application (Plan 549)
+// 对齐 widgets-gallery 体验的官方 UI 示例交互画廊与教程中心
+
+widget App {
+    use {
+        component: AppViewport from "src/gallery/AppViewport.vue"
+        fn: getAllDemos, getDemoTitle, getDemoDesc, getDemoDoc, getDemoSource, getDemoPac, isDemoLoadable, filterDemosBy from "src/front/utils/demos.ts"
+    }
+
+    model {
+        var selected_id str = "002-counter"
+        var search_query str = ""
+        var active_category str = "all"
+        var active_tab str = "tutorial"
+        var viewport_mode str = "full"
+        var dark_mode bool = true
+        var reload_key int = 0
+    }
+
+    computed {
+        currentTitle => getDemoTitle(selected_id)
+        currentDesc => getDemoDesc(selected_id)
+        currentDoc => getDemoDoc(selected_id)
+        currentSource => getDemoSource(selected_id)
+        currentPac => getDemoPac(selected_id)
+        currentLoadable => isDemoLoadable(selected_id)
+        filteredDemos => filterDemosBy(search_query, active_category)
+    }
+
+    view {
+        col {
+            style: "w-full h-screen bg-background text-foreground overflow-hidden flex-col"
+
+            // 1. 顶部导航栏 (Header)
+            header {
+                style: "h-14 border-b border-border px-6 flex items-center justify-between shrink-0 bg-card/60 backdrop-blur"
+
+                row {
+                    style: "items-center gap-3"
+                    text "🎨" { style: "text-2xl" }
+                    h1 "AutoUI Gallery" {
+                        style: "text-lg font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent"
+                    }
+                    text "官方示例交互画廊与教程中心" {
+                        style: "text-xs text-muted-foreground hidden sm:inline ml-2"
+                    }
+                }
+
+                row {
+                    style: "items-center gap-3"
+                    input (value: .search_query) {
+                        placeholder: "搜索示例 (按名称或标签)..."
+                        style: "w-64 h-8 text-xs rounded-md bg-muted/50 border-input px-3"
+                    }
+                    button "🌓 主题" {
+                        style: "h-8 px-3 text-xs rounded-md border border-input hover:bg-muted font-medium"
+                        onclick: () => { .dark_mode = !.dark_mode }
+                    }
+                }
+            }
+
+            // 2. 主展示区分栏 (Sidebar + Main Content)
+            row {
+                style: "flex-1 overflow-hidden"
+
+                // 左侧导航侧边栏
+                aside {
+                    style: "w-72 border-r border-border bg-card/40 flex-col shrink-0 overflow-y-auto p-4 gap-4"
+
+                    // 分类筛选 Pills
+                    row {
+                        style: "gap-1 flex-wrap pb-2 border-b border-border/50 text-xs"
+                        button "全部" {
+                            style: if .active_category == "all" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                            onclick: () => { .active_category = "all" }
+                        }
+                        button "基础" {
+                            style: if .active_category == "01-basic" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                            onclick: () => { .active_category = "01-basic" }
+                        }
+                        button "组件" {
+                            style: if .active_category == "02-components" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                            onclick: () => { .active_category = "02-components" }
+                        }
+                        button "应用" {
+                            style: if .active_category == "03-apps" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                            onclick: () => { .active_category = "03-apps" }
+                        }
+                        button "系统" {
+                            style: if .active_category == "04-systems" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                            onclick: () => { .active_category = "04-systems" }
+                        }
+                    }
+
+                    // 示例列表
+                    col {
+                        style: "gap-1.5"
+                        for demo in .filteredDemos {
+                            button {
+                                style: if .selected_id == demo.id {
+                                    "w-full text-left p-2.5 rounded-lg bg-primary/10 border border-primary/40 text-primary font-medium flex-col gap-1 transition-all"
+                                } else {
+                                    "w-full text-left p-2.5 rounded-lg hover:bg-muted/60 border border-transparent text-foreground flex-col gap-1 transition-all"
+                                }
+                                onclick: () => {
+                                    .selected_id = demo.id
+                                    .reload_key = 0
+                                }
+
+                                row {
+                                    style: "items-center justify-between w-full"
+                                    text demo.title { style: "text-xs font-semibold truncate flex-1" }
+                                    if demo.loadable {
+                                        text "可交互" { style: "text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-mono" }
+                                    } else {
+                                        text "独立" { style: "text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono" }
+                                    }
+                                }
+                                text demo.description { style: "text-[11px] text-muted-foreground line-clamp-1" }
+                            }
+                        }
+                    }
+                }
+
+                // 右侧主展示区 (可滚动)
+                scroll {
+                    style: "flex-1 p-6 overflow-y-auto"
+
+                    col {
+                        style: "max-w-6xl mx-auto gap-6 pb-16"
+
+                        // Demo 头部信息
+                        col {
+                            style: "gap-2"
+                            row {
+                                style: "items-center gap-3"
+                                h2 .currentTitle { style: "text-2xl font-bold tracking-tight text-foreground" }
+                                text .selected_id { style: "text-xs font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border" }
+                            }
+                            text .currentDesc { style: "text-sm text-muted-foreground" }
+                        }
+
+                        // 上半部：可交互应用视口卡片 (Live Interactive Canvas)
+                        col {
+                            style: "border border-border rounded-xl bg-card overflow-hidden shadow-sm"
+
+                            // 视口控制工具栏
+                            row {
+                                style: "h-11 px-4 border-b border-border items-center justify-between bg-muted/30 text-xs"
+
+                                row {
+                                    style: "items-center gap-2"
+                                    text "实时内嵌视口" { style: "font-semibold text-muted-foreground flex items-center gap-1.5" }
+                                    if .currentLoadable {
+                                        text "• 运行中" { style: "text-emerald-500 font-mono" }
+                                    } else {
+                                        text "• 静态说明" { style: "text-amber-500 font-mono" }
+                                    }
+                                }
+
+                                row {
+                                    style: "items-center gap-2"
+
+                                    // 视口尺寸选择
+                                    row {
+                                        style: "bg-muted rounded-md p-0.5 text-xs font-medium"
+                                        button "全宽" {
+                                            style: if .viewport_mode == "full" { "px-2 py-1 rounded bg-background shadow-xs text-foreground font-bold" } else { "px-2 py-1 text-muted-foreground" }
+                                            onclick: () => { .viewport_mode = "full" }
+                                        }
+                                        button "桌面 (1024)" {
+                                            style: if .viewport_mode == "desktop" { "px-2 py-1 rounded bg-background shadow-xs text-foreground font-bold" } else { "px-2 py-1 text-muted-foreground" }
+                                            onclick: () => { .viewport_mode = "desktop" }
+                                        }
+                                        button "平板 (768)" {
+                                            style: if .viewport_mode == "tablet" { "px-2 py-1 rounded bg-background shadow-xs text-foreground font-bold" } else { "px-2 py-1 text-muted-foreground" }
+                                            onclick: () => { .viewport_mode = "tablet" }
+                                        }
+                                        button "手机 (375)" {
+                                            style: if .viewport_mode == "mobile" { "px-2 py-1 rounded bg-background shadow-xs text-foreground font-bold" } else { "px-2 py-1 text-muted-foreground" }
+                                            onclick: () => { .viewport_mode = "mobile" }
+                                        }
+                                    }
+
+                                    // 重置状态按钮
+                                    button "🔄 重置状态" {
+                                        style: "h-7 px-2.5 rounded bg-background border border-input hover:bg-accent font-medium transition-colors"
+                                        onclick: () => { .reload_key = .reload_key + 1 }
+                                    }
+                                }
+                            }
+
+                            // 内嵌容器挂载点
+                            col {
+                                style: "h-[540px] w-full relative bg-muted/10 items-center justify-center overflow-hidden"
+
+                                AppViewport {
+                                    app: .selected_id
+                                    reloadKey: .reload_key
+                                    viewportMode: .viewport_mode
+                                }
+                            }
+                        }
+
+                        // 下半部：教程文档与源码深度解析 (Tabs)
+                        col {
+                            style: "gap-4 border border-border rounded-xl bg-card p-6 shadow-sm"
+
+                            // 选项卡切换
+                            row {
+                                style: "border-b border-border pb-3 gap-4"
+                                button "📖 教程与深度解析" {
+                                    style: if .active_tab == "tutorial" { "text-sm font-bold text-primary border-b-2 border-primary pb-3 -mb-3" } else { "text-sm text-muted-foreground hover:text-foreground pb-3 -mb-3" }
+                                    onclick: () => { .active_tab = "tutorial" }
+                                }
+                                button "💻 完整源码 (app.at)" {
+                                    style: if .active_tab == "source" { "text-sm font-bold text-primary border-b-2 border-primary pb-3 -mb-3" } else { "text-sm text-muted-foreground hover:text-foreground pb-3 -mb-3" }
+                                    onclick: () => { .active_tab = "source" }
+                                }
+                                button "📦 工程配置 (pac.at)" {
+                                    style: if .active_tab == "pac" { "text-sm font-bold text-primary border-b-2 border-primary pb-3 -mb-3" } else { "text-sm text-muted-foreground hover:text-foreground pb-3 -mb-3" }
+                                    onclick: () => { .active_tab = "pac" }
+                                }
+                            }
+
+                            // 选项卡内容区
+                            if .active_tab == "tutorial" {
+                                col {
+                                    style: "w-full"
+                                    autodown {
+                                        content: .currentDoc
+                                        style: "w-full prose dark:prose-invert max-w-none text-sm"
+                                    }
+                                }
+                            } else if .active_tab == "source" {
+                                col {
+                                    style: "w-full gap-2"
+                                    text "主视图源文件: src/front/app.at" { style: "text-xs font-mono text-muted-foreground" }
+                                    pre {
+                                        style: "p-4 rounded-lg bg-muted text-xs font-mono overflow-x-auto border border-border leading-relaxed"
+                                        text .currentSource {}
+                                    }
+                                }
+                            } else {
+                                col {
+                                    style: "w-full gap-2"
+                                    text "项目声明文件: pac.at" { style: "text-xs font-mono text-muted-foreground" }
+                                    pre {
+                                        style: "p-4 rounded-lg bg-muted text-xs font-mono overflow-x-auto border border-border leading-relaxed"
+                                        text .currentPac {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
