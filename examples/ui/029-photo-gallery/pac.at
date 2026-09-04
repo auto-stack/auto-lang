@@ -1,0 +1,21 @@
+// pac.at — 029-photo-gallery（Plan 537）。
+//
+// 图库：macOS 相册风图片浏览器——侧边栏相册导航 + 搜索/排序/网格密度
+// 工具栏 + 响应式缩略图网格 + 大图查看器（上一张/下一张/收藏）。
+// 全部基于既有 image widget 真实加载网络图片（picsum.photos 固定 seed），
+// 是该 widget 首个应用级双端示范（019/020 媒体 demo 封面均为渐变色块模拟）。
+//
+// render 声明 "vue"（开发目标端）；vm 兼容性由实机验收兜底（注册表扫描
+// 不过滤 render——声明的 render 是前端目标）。编号 029 回填空洞：原能力
+// 样板 029-external-imports 已迁 examples/capability-tests/（README 编号说明）。
+
+name: "photo-gallery"
+version: "0.1.0"
+description: "Photo Gallery - album sidebar, search/sort/density toolbar, thumbnail grid & fullscreen viewer (vue/vm)"
+
+scene: "ui"
+render: "vue"
+front_port: 4029
+icon: "image"
+title: "Photo Gallery"
+category: "media"
