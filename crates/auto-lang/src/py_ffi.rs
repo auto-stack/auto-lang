@@ -80,6 +80,31 @@ pub const NATIVE_PY_ITER: u16 = 454;
 /// StopIteration marshals to the Auto null family so `while x != null` style
 /// loops work.
 pub const NATIVE_PY_NEXT: u16 = 455;
+/// Plan 539 W1 (T11): `py_matmul(a, b)` — matrix product via `__matmul__`
+/// (the `*` operator stays elementwise, matching torch/numpy semantics).
+pub const NATIVE_PY_MATMUL: u16 = 456;
+/// Plan 539 W1 (T12): `py_getitem(obj, idx...)` — multi-arg indices build a
+/// Python tuple key (covers `x[:, 1]` via slice handles from py_slice).
+pub const NATIVE_PY_GETITEM: u16 = 457;
+/// Plan 539 W1 (T12): `py_setitem(obj, idx..., value)` — tuple keys as above.
+pub const NATIVE_PY_SETITEM: u16 = 458;
+/// Plan 539 W1 (T12): `py_slice(start, stop, step)` — null endpoints map to
+/// Python None (unbounded), enabling `x[:, 1]` as py_getitem(x, py_slice(null, 1)).
+pub const NATIVE_PY_SLICE: u16 = 459;
+/// Plan 539 W1 (T13): `py_call0(fn_handle, args...)` — direct callable
+/// invocation (`model(x)`); a2py lowers to `fn_handle(args...)`.
+pub const NATIVE_PY_CALL0: u16 = 460;
+/// Plan 539 W1 (T14): `py_with(ctx_handle, closure)` — host-side
+/// `__enter__` / body / `__exit__` context-manager protocol (no_grad).
+/// The closure form stays for non-py bodies; codegen lowers py-containing
+/// bodies to the inline py_enter/py_exit bracket (closure-local py handles
+/// degrade to raw ids — pre-existing, see known-divergences).
+pub const NATIVE_PY_WITH: u16 = 461;
+/// Plan 539 W1 (T14): `py_enter(ctx)` — `__enter__` half of the inline
+/// with-bracket; pushes nil to keep the stack balanced.
+pub const NATIVE_PY_ENTER: u16 = 462;
+/// Plan 539 W1 (T14): `py_exit(ctx)` — `__exit__(None, None, None)` half.
+pub const NATIVE_PY_EXIT: u16 = 463;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -95,7 +120,12 @@ impl PyFfiBridge {
         Ok(Self {
             modules: HashMap::new(),
             functions: HashMap::new(),
-            next_native_id: 400,
+            // Plan 539 W1: module-function ids start at 500 — the 450..=499
+            // band is reserved for the fixed py-object builtins (py_call..
+            // py_with). A bare  discovery run used to climb
+            // from 400 straight into that band and silently overwrite the
+            // fixed shims via register_static.
+            next_native_id: 500,
             native_interface: NativeInterface::new(),
         })
     }
@@ -590,6 +620,309 @@ impl PyFfiBridge {
             Ok(())
         };
         self.native_interface.register_static(NATIVE_PY_NEXT, next_shim);
+
+        // ---- py_matmul(a, b) ----
+        // Plan 539 W1 (T11): matrix product. `*` keeps elementwise semantics
+        // (DIV-PY parity decision) — matmul is the explicit function form.
+        let matmul_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_matmul needs 2 args (a, b), got {}",
+                        n
+                    )));
+                }
+                let b = pop_auto_py_arg(task, vm, py)?;
+                let a = pop_auto_py_arg(task, vm, py)?;
+                let result = a.call_method1("__matmul__", (b,)).map_err(|e| {
+                    VMError::FFI(format!("Python __matmul__ failed: {}", e))
+                })?;
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_MATMUL, matmul_shim);
+
+        // ---- py_getitem(obj, idx...) / py_setitem(obj, idx..., value) ----
+        // Plan 539 W1 (T12): single index passes through; 2+ indices build a
+        // Python tuple key so `x[:, 1]` works via py_slice handles.
+        let getitem_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_getitem needs at least 2 args (obj, idx), got {}",
+                        n
+                    )));
+                }
+                let mut idxs: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n - 1);
+                for _ in 0..(n - 1) {
+                    idxs.push(pop_auto_py_arg(task, vm, py)?);
+                }
+                idxs.reverse();
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let key: Bound<'_, PyAny> = if idxs.len() == 1 {
+                    idxs.pop().unwrap().into_any()
+                } else {
+                    PyTuple::new(py, &idxs)
+                        .map_err(|e| VMError::FFI(format!("py_getitem key tuple: {}", e)))?
+                        .into_any()
+                };
+                let result = obj.get_item(&key).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python getitem on {} failed: {}",
+                        safe_type_name(&obj), e
+                    ))
+                })?;
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_GETITEM, getitem_shim);
+
+        let setitem_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 3 {
+                    return Err(VMError::FFI(format!(
+                        "py_setitem needs at least 3 args (obj, idx, value), got {}",
+                        n
+                    )));
+                }
+                let value = pop_auto_py_arg(task, vm, py)?;
+                let mut idxs: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n - 2);
+                for _ in 0..(n - 2) {
+                    idxs.push(pop_auto_py_arg(task, vm, py)?);
+                }
+                idxs.reverse();
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let key: Bound<'_, PyAny> = if idxs.len() == 1 {
+                    idxs.pop().unwrap().into_any()
+                } else {
+                    PyTuple::new(py, &idxs)
+                        .map_err(|e| VMError::FFI(format!("py_setitem key tuple: {}", e)))?
+                        .into_any()
+                };
+                obj.set_item(&key, value).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python setitem on {} failed: {}",
+                        safe_type_name(&obj), e
+                    ))
+                })?;
+                // Statement form: push a nil so the stack stays balanced for
+                // CALL_PY's dead-zone accounting.
+                task.ram.push_nv(auto_val::encode_null());
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_SETITEM, setitem_shim);
+
+        // ---- py_slice(start, stop, step) ----
+        // Plan 539 W1 (T12): null endpoints → Python None (unbounded).
+        let slice_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if !(2..=3).contains(&n) {
+                    return Err(VMError::FFI(format!(
+                        "py_slice needs 2-3 args (start, stop[, step]), got {}",
+                        n
+                    )));
+                }
+                let step = if n == 3 {
+                    Some(pop_auto_py_arg(task, vm, py)?)
+                } else {
+                    None
+                };
+                let stop = pop_auto_py_arg(task, vm, py)?;
+                let start = pop_auto_py_arg(task, vm, py)?;
+
+                let builtins = py.import("builtins").map_err(|e| {
+                    VMError::FFI(format!("py_slice: builtins import failed: {}", e))
+                })?;
+                let slice_ty = builtins.getattr("slice").map_err(|e| {
+                    VMError::FFI(format!("py_slice: builtins.slice missing: {}", e))
+                })?;
+                fn norm<'py>(v: Bound<'py, PyAny>, none: &Bound<'py, PyAny>) -> Bound<'py, PyAny> {
+                    if v.is_none() {
+                        none.clone()
+                    } else {
+                        v
+                    }
+                }
+                let none: Bound<'_, PyAny> = py.None().into_bound(py);
+                let step_v = match step {
+                    Some(s) => s,
+                    None => none.clone(),
+                };
+                let args = (norm(start, &none), norm(stop, &none), norm(step_v, &none));
+                let result = slice_ty.call1(args).map_err(|e| {
+                    VMError::FFI(format!("py_slice construction failed: {}", e))
+                })?;
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_SLICE, slice_shim);
+
+        // ---- py_call0(fn_handle, args...) ----
+        // Plan 539 W1 (T13): direct invocation of a callable handle.
+        let call0_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_call0 needs at least 1 arg (fn), got {}",
+                        n
+                    )));
+                }
+                let mut args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n - 1);
+                for _ in 0..(n - 1) {
+                    args.push(pop_auto_py_arg(task, vm, py)?);
+                }
+                args.reverse();
+                let func = pop_auto_py_arg(task, vm, py)?;
+                let args_tuple = PyTuple::new(py, &args).map_err(|e| {
+                    VMError::FFI(format!("py_call0 args tuple: {}", e))
+                })?;
+                let result = func.call(args_tuple, None).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python call {}() failed: {}",
+                        safe_type_name(&func), e
+                    ))
+                })?;
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_CALL0, call0_shim);
+
+        // ---- py_with(ctx_handle, closure) ----
+        // Plan 539 W1 (T14): context-manager protocol — `__enter__`, run the
+        // Auto closure with the entered value, `__exit__(None, None, None)`.
+        // Best-effort cleanup: if the closure raises, __exit__ still runs
+        // before the error propagates.
+        let with_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_with needs 2 args (ctx, closure), got {}",
+                        n
+                    )));
+                }
+                let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+                let _stake_closure = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+                let ctx = pop_auto_py_arg(task, vm, py)?;
+
+                // __enter__ is invoked for protocol correctness; its return
+                // (usually the ctx itself) is intentionally NOT marshalled to
+                // the VM stack — the closure runs with zero params. Pushing it
+                // as a call_closure arg proved RC-fragile (entered-handle
+                // stake vs closure frame unwind, canary-fired), and the common
+                // contexts (no_grad) don't need it — the ctx is already in
+                // the enclosing scope.
+                ctx.call_method0("__enter__").map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python __enter__ on {} failed: {}",
+                        safe_type_name(&ctx), e
+                    ))
+                })?;
+
+                let body = vm.call_closure(task, closure_id, 0);
+                // Pop the closure's return value (dead value; keep balance).
+                let _ = task.ram.pop_nv();
+
+                let exit_result = ctx
+                    .call_method(
+                        "__exit__",
+                        (py.None(), py.None(), py.None()),
+                        None::<&Bound<'_, PyDict>>,
+                    )
+                    .map_err(|e| {
+                        VMError::FFI(format!(
+                            "Python __exit__ on {} failed: {}",
+                            safe_type_name(&ctx), e
+                        ))
+                    })?;
+                if let Ok(true) = exit_result.extract::<bool>() {
+                    // __exit__ returned True — the context suppresses errors:
+                    // clear any body error (Python with-semantics).
+                    if body.is_err() {
+                        task.ram.push_nv(auto_val::encode_null());
+                        return Ok::<(), VMError>(());
+                    }
+                }
+                // Push a void nil for the statement's stack balance, then
+                // surface the body error if any.
+                task.ram.push_nv(auto_val::encode_null());
+                body?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_WITH, with_shim);
+
+        // ---- py_enter(ctx) / py_exit(ctx) ----
+        // Plan 539 W1 (T14): halves of the INLINE with-bracket — codegen
+        // lowers `py_with(ctx, body)` whose body touches py values into
+        // py_enter(ctx); <body statements>; py_exit(ctx), sidestepping the
+        // closure channel (py handles in closure locals degrade to raw ids).
+        let enter_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_enter needs 1 arg (ctx), got {}",
+                        n
+                    )));
+                }
+                let ctx = pop_auto_py_arg(task, vm, py)?;
+                ctx.call_method0("__enter__").map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python __enter__ on {} failed: {}",
+                        safe_type_name(&ctx), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_null());
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_ENTER, enter_shim);
+
+        let exit_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_exit needs 1 arg (ctx), got {}",
+                        n
+                    )));
+                }
+                let ctx = pop_auto_py_arg(task, vm, py)?;
+                ctx.call_method(
+                    "__exit__",
+                    (py.None(), py.None(), py.None()),
+                    None::<&Bound<'_, PyDict>>,
+                )
+                .map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python __exit__ on {} failed: {}",
+                        safe_type_name(&ctx), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_null());
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_EXIT, exit_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -742,6 +1075,117 @@ pub(crate) fn marshal_pyany_to_stack(
     vm: &AutoVM,
 ) -> Result<(), VMError> {
     py_auto_marshal_return(value, task, vm)
+}
+
+// ============================================================================
+// Plan 539 W1 (T10): dunder operator routing for PyObjectHandle operands
+// ============================================================================
+
+/// Peek the top 3 stack slots for a TAG_OBJECT value resolving to a
+/// PyObjectHandle (slot 1 may hold the null padding of a legacy 2-slot f64
+/// rhs, so the lhs can sit at offset 2). Engine binary/unary arms call this
+/// before their own operand pops.
+pub(crate) fn stack_has_py_handle(task: &AutoTask, vm: &AutoVM) -> bool {
+    for off in 0..3 {
+        if task.ram.sp <= off {
+            break;
+        }
+        let nv = task.ram.peek_nv(off);
+        if auto_val::is_object(nv) {
+            let id = auto_val::decode_object(nv) as u64;
+            if let Some(h) = vm.get_heap_object(id) {
+                let guard = h.read().unwrap();
+                if guard.as_any().downcast_ref::<PyObjectHandle>().is_some() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Shared dunder dispatch inside one GIL scope: pops rhs then lhs (2-slot-f64
+/// aware via pop_auto_py_arg), calls `lhs.<dunder>(rhs)`; on NotImplemented
+/// tries the reflected `rhs.<reflect>(lhs)` (Python binary-op protocol).
+fn py_dunder_dispatch<'py>(
+    py: Python<'py>,
+    dunder: &str,
+    reflect: &str,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<Bound<'py, PyAny>, VMError> {
+    let rhs = pop_auto_py_arg(task, vm, py)?;
+    let lhs = pop_auto_py_arg(task, vm, py)?;
+
+    let not_implemented = py
+        .import("builtins")
+        .and_then(|b| b.getattr("NotImplemented"))
+        .ok();
+
+    let direct = lhs.call_method1(dunder, (rhs.clone(),));
+    match direct {
+        Ok(r) => {
+            let reflected = not_implemented.as_ref().filter(|ni| r.is(ni));
+            match reflected {
+                Some(_) => {
+                    if reflect.is_empty() {
+                        Ok(r)
+                    } else {
+                        rhs.call_method1(reflect, (lhs.clone(),)).map_err(|e| {
+                            VMError::FFI(format!("Python {} / {} failed: {}", dunder, reflect, e))
+                        })
+                    }
+                }
+                None => Ok(r),
+            }
+        }
+        Err(e) => Err(VMError::FFI(format!("Python {} failed: {}", dunder, e))),
+    }
+}
+
+/// Plan 539 W1 (T10): arithmetic dunder (`+ - * / %`) — result marshalled
+/// through the standard py return path (tensors stay opaque handles).
+pub(crate) fn py_dunder_arith(
+    dunder: &str,
+    reflect: &str,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    Python::attach(|py| {
+        let result = py_dunder_dispatch(py, dunder, reflect, task, vm)?;
+        py_auto_marshal_return(&result, task, vm)?;
+        Ok::<(), VMError>(())
+    })
+}
+
+/// Plan 539 W1 (T10): comparison dunder (`== != < > <= >=`). The result
+/// marshals through the standard py return path — torch comparisons return
+/// elementwise bool TENSORS, and forcing `bool()` would break both the
+/// elementwise semantics and a2py parity (`t == t` is a tensor in Python).
+/// Plain Python bools marshal to i32 0/1, which JMP_IF_Z treats correctly.
+pub(crate) fn py_dunder_cmp(
+    dunder: &str,
+    reflect: &str,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    Python::attach(|py| {
+        let result = py_dunder_dispatch(py, dunder, reflect, task, vm)?;
+        py_auto_marshal_return(&result, task, vm)?;
+        Ok::<(), VMError>(())
+    })
+}
+
+/// Plan 539 W1 (T10): unary dunder (`-` → `__neg__`).
+pub(crate) fn py_dunder_neg(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Python::attach(|py| {
+        let val = pop_auto_py_arg(task, vm, py)?;
+        let result = val.call_method0("__neg__").map_err(|e| {
+            VMError::FFI(format!("Python __neg__ failed: {}", e))
+        })?;
+        py_auto_marshal_return(&result, task, vm)?;
+        Ok::<(), VMError>(())
+    })
 }
 
 /// Pop a single argument from the VM stack and convert to a Python object,
@@ -1201,7 +1645,7 @@ mod tests {
         bridge.import_module("json").unwrap();
         let native_id = bridge.register_function("json", "dumps", PySignature::default_string_string());
         assert!(native_id.is_ok());
-        assert_eq!(native_id.unwrap(), 400);
+        assert_eq!(native_id.unwrap(), 500);
     }
 
     #[test]
@@ -1225,7 +1669,7 @@ mod tests {
         let sig = PySignature::new().param(PyType::Float).returns(PyType::Float);
         let native_id = bridge.register_function("math", "sqrt", sig);
         assert!(native_id.is_ok());
-        assert_eq!(native_id.unwrap(), 400);
+        assert_eq!(native_id.unwrap(), 500);
     }
 
     #[test]
@@ -1244,7 +1688,7 @@ mod tests {
         let sig = PySignature::all_auto(1);
         let native_id = bridge.register_function("math", "sqrt", sig);
         assert!(native_id.is_ok());
-        assert_eq!(native_id.unwrap(), 400);
+        assert_eq!(native_id.unwrap(), 500);
     }
 
     #[test]
@@ -1561,6 +2005,104 @@ mod tests {
     // ========================================================================
     // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may May channel
     // ========================================================================
+
+    // ========================================================================
+    // Plan 539 W1 (T10): dunder operator routing
+    // ========================================================================
+
+    #[test]
+    fn test_py_dunder_arith_and_reflection() {
+        // tensor + 1 through the real stack path: push handle + i32, run
+        // py_dunder_arith, expect a tensor-handle result; then the reflected
+        // form (2 * tensor) exercises the __rmul__ fallback.
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        let (t, two_t): (u64, u64) = Python::attach(|py| {
+            let torch = py.import("torch").unwrap();
+            let t = torch.getattr("arange").unwrap().call1((6,)).unwrap();
+            let two_t = t.call_method1("__rmul__", (2,)).unwrap();
+            let h1 = PyObjectHandle::new("Tensor".into(), t.clone().unbind());
+            let h2 = PyObjectHandle::new("Tensor".into(), two_t.clone().unbind());
+            (vm.insert_heap_object(h1), vm.insert_heap_object(h2))
+        });
+        // t + 1
+        task.ram.push_nv(auto_val::encode_object(t as u32));
+        task.ram.push_i32(1);
+        py_dunder_arith("__add__", "__radd__", &mut task, &vm).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(nv), "tensor + 1 should stay a handle");
+        // verify via sum -> 21
+        Python::attach(|py| {
+            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let guard = obj.read().unwrap();
+            let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
+            let bound = pyh.obj.clone_ref(py).into_bound(py);
+            let s: i64 = bound.call_method0("sum").unwrap().extract().unwrap();
+            assert_eq!(s, 21);
+        });
+        // 2 * t via reflection: lhs = 2 (i32), rhs = tensor handle
+        task.ram.push_i32(2);
+        task.ram.push_nv(auto_val::encode_object(t as u32));
+        py_dunder_arith("__mul__", "__rmul__", &mut task, &vm).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(nv));
+        Python::attach(|py| {
+            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let guard = obj.read().unwrap();
+            let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
+            let bound = pyh.obj.clone_ref(py).into_bound(py);
+            let s: i64 = bound.call_method0("sum").unwrap().extract().unwrap();
+            assert_eq!(s, 30);
+        });
+        let _ = two_t;
+    }
+
+    #[test]
+    fn test_w1_idiom_shims_registered() {
+        // Plan 539 W1 (T11-T14): all six idiom builtins at their fixed ids,
+        // and the dynamic module-function band now starts at 500 (the
+        // 450..=499 reservation prevents bare-import discovery collisions).
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_MATMUL).is_some(), "py_matmul");
+        assert!(ni.get(NATIVE_PY_GETITEM).is_some(), "py_getitem");
+        assert!(ni.get(NATIVE_PY_SETITEM).is_some(), "py_setitem");
+        assert!(ni.get(NATIVE_PY_SLICE).is_some(), "py_slice");
+        assert!(ni.get(NATIVE_PY_CALL0).is_some(), "py_call0");
+        assert!(ni.get(NATIVE_PY_WITH).is_some(), "py_with");
+        bridge.import_module("json").unwrap();
+        let id = bridge.register_function(
+            "json",
+            "dumps",
+            crate::py_ffi_types::PySignature::default_string_string(),
+        ).unwrap();
+        assert!(id >= 500, "module functions must start at 500, got {}", id);
+    }
+
+    #[test]
+    fn test_py_dunder_neg() {
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        let id = Python::attach(|py| {
+            let torch = py.import("torch").unwrap();
+            let t = torch.getattr("arange").unwrap().call1((6,)).unwrap();
+            let h = PyObjectHandle::new("Tensor".into(), t.clone().unbind());
+            vm.insert_heap_object(h)
+        });
+        task.ram.push_nv(auto_val::encode_object(id as u32));
+        py_dunder_neg(&mut task, &vm).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(nv));
+        Python::attach(|py| {
+            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let guard = obj.read().unwrap();
+            let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
+            let bound = pyh.obj.clone_ref(py).into_bound(py);
+            let s: i64 = bound.call_method0("sum").unwrap().extract().unwrap();
+            assert_eq!(s, -15);
+        });
+    }
 
     #[test]
     fn test_py_call_may_registers_fixed_id() {
