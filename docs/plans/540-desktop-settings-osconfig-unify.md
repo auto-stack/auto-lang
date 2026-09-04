@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 3
 total_steps: 12
 ---
 
@@ -187,7 +187,7 @@ desktop {
 
 ### M1 desktop config.at 单源
 
-- **T1** 新建 `crates/auto-lang/src/ui/desktop_config.rs`：`DesktopConfig` 结构
+- **T1** ✅ 已完成 新建 `crates/auto-lang/src/ui/desktop_config.rs`：`DesktopConfig` 结构
   （8 字段见 schema 定稿）+ `Default`（对齐现 boot 内置缺省：dock bottom/enabled、
   pinned 三默认、wallpaper 空、theme dark、transparency off、notes on）+
   `load()`（config.at 经 `parse_pac_fields` 平铺读，逐字段坏值回退默认；缺席 →
@@ -197,17 +197,29 @@ desktop {
   `config: DesktopConfig` 字段 boot 装载。TDD：先写解析好/坏/缺席、迁移一次性、
   save/load round-trip、bool/CSV coerce 单测。
   验证：`cargo check -p auto-lang` && `cargo t desktop_config`。
-- **T2** boot/驱动事实读切 config：`load_desktop_wallpaper`/`load_dock_pinned`/
-  boot 主题读回（renderer.rs ~9895/~9815/~10846）与 session boot 字段
-  （~276/~295）改读 `state.desktop.config`；每帧投影（renderer ~8288-8309
-  notes_on/wallpaper/theme/transparency）与 `virtual_window.rs` 透明度底色链
-  （~175-190）同切。旧键读点清零（迁移判定除外）。
-  验证：`cargo check -p auto-lang` && `cargo t iced`（scoped）。
-- **T3** 写通道收口：`execute_set_theme`/`execute_set_wallpaper`/dock
-  position/enabled 臂 + notes gate 写点改 `config` 字段更新 + `save()`，删
-  对应 `storage_host_publish` 旧键写；热生效管线原样保留（set_dark_mode/
-  snapshot invalidate/view_dirty/dock 重排）。既有持久化断言测试迁移改写。
-  验证：`cargo check -p auto-lang` && `cargo t iced`。
+  [✅ 已完成] commit 7a42ffdf6；实施勘误二条：解析用自建 `parse_flat_fields`
+  （`parse_pac_fields` 先剥 `#` 注释会截断 `"#hex"` 壁纸值——引号外才剥）；
+  `load()` 为模块级自由函数（session 调 `desktop_config::load()`）。9 单测绿。
+- **T2** ✅ 已完成 boot/驱动事实读切 config：`load_desktop_wallpaper`/
+  `load_dock_pinned`/boot 主题读回与 session boot 字段改读
+  `state.desktop.config`；`desktop_dock_edges`/`wallpapers_dir_or_default`/
+  `scan_wallpapers_dir` 参数化收 `&DesktopConfig`；`virtual_window` 底色链
+  参数化 `t_alpha`（`load_transparency_alpha` 退役）；notes 门控直读
+  config.notes_enabled；overlay 快照注入同切 config（退役前保持语义）。
+  新增 env `AUTOOS_DESKTOP_CONFIG`（t2_isolate_storage 同场隔离）。
+  [✅ 已完成] commit b388df79b（与 T3 合并提交——两者共享测试改写面）；
+  iced 166/session 91 全绿，ui:: 失败集 ≡ master 基线（layout/aura/clipboard
+  既有红 + resolve_order 环境抖动两处单独跑均过）。
+- **T3** ✅ 已完成 写通道收口：`execute_set_theme`/`execute_set_wallpaper`/
+  dock position/enabled 臂改 config 字段更新 + `save()`，旧键
+  `storage_host_publish` 删除；**提前落 T5 的四动词族**
+  `SetTransparency/SetNotesEnabled/SetDockPinned/SetWallpapersDir`（枚举/
+  to_record/parse/执行臂全链）并把 settings.at 五个 storage.set 写点全部
+  改走 `__desktop_cmd`（overlay 退役前保持全功能，测试保持端到端语义）。
+  迁移清单勘误：**8 键**（原 6 键漏 `shell.dock.position/enabled`——dock
+  臂一直在 storage 写回）。热生效管线原样保留。settings 家族 5 测试改写
+  config 语义（panel → 动词 → config 端到端）。
+  [✅ 已完成] commit b388df79b；验证同 T2 行。
 
 ### M2 设置窗口 registry App 化
 
