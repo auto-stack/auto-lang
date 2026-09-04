@@ -800,7 +800,7 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
                 // P532 W1 G9:int.str → nat#174(引擎自跑宿主 to_string)
                 var iv174 = ev_dec(ev_int(stack.get(sp - 1)))
                 sp = sp - 1
-                sp = ev_push(stack, sp, ev_vs(iv174.to_string()))
+                sp = ev_push(stack, sp, ev_vs(iv174.str()))
             } else if ins.n == 1500 {
                 var sl1500 = ev_str(stack.get(sp - 1))
                 sp = sp - 1

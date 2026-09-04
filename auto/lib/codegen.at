@@ -380,7 +380,7 @@ pub type CG {
         // P532 W1 G6:位置注入(零布局风险——复用既有 cur_line 状态机,
         // 最后发射的 .line 标记;struct 加字段实证破坏实例布局,弃)
         if self.cur_line > 0 {
-            self.err = "CODEGEN-ERROR:" + msg + " @line " + self.cur_line.to_string()
+            self.err = "CODEGEN-ERROR:" + msg + " @line " + self.cur_line.str()
         } else {
             self.err = "CODEGEN-ERROR:" + msg
         }
@@ -1856,6 +1856,13 @@ fn cg_expr(mut c CG, mut p P, min int) {
                             c.emit(OpCode.Nop, "", 0)
                             c.emit(OpCode.Nop, "", 0)
                             c.emit(OpCode.Nop, "", 0)
+                            // P532 W1 G17:链式跳类型续传——recv 为已知
+                            // struct 型时按 ftys 查字段型(否则陈旧型污染
+                            // 后续方法分派:CGType.get/CGEnum.slice 链接错
+                            // 两族实证)
+                            if c.recv_ty != "" && c.tys_lookup(c.recv_ty) >= 0 {
+                                c.recv_ty = c.field_ty(c.recv_ty, fname2)
+                            }
                         }
                         dot_seq = dot_seq + 1
                         c.str_flag = 0
@@ -1966,6 +1973,7 @@ fn cg_enum_decl(mut c CG, mut p P) {
         var key = f"${name}.${vname}"
         var nfields = 0
         var has_payload = false
+        var pay_tys = ""
         if p.kind() == TokenKind.LParen {
             p.next()
             p.skip_empty_lines()
@@ -1973,7 +1981,14 @@ fn cg_enum_decl(mut c CG, mut p P) {
             if p.kind() != TokenKind.RParen {
                 var more = true
                 while more {
-                    parse_type(p)
+                    // P532 W1 G18:载荷类型收集(vpay 侧车——is 臂绑定
+                    // 的类型解析;sv7.char_at 断链实证)
+                    var pty18 = cg_sanitize_ty(parse_type(p))
+                    if pay_tys == "" {
+                        pay_tys = pty18
+                    } else {
+                        pay_tys = pay_tys + ", " + pty18
+                    }
                     nfields = nfields + 1
                     if p.kind() == TokenKind.Comma {
                         p.next()
@@ -2026,6 +2041,10 @@ fn cg_enum_decl(mut c CG, mut p P) {
             next_val = val + 1
         }
         c.consts.push(CGEnum(key, val))
+        // P532 W1 G18:载荷类型侧车
+        if has_payload {
+            c.consts.push(CGEnum("vpay:" + key + "=>" + pay_tys, 0))
+        }
         if has_payload {
             c.ctors.push(CGEnum(key, nfields))
         }
@@ -2526,7 +2545,37 @@ fn cg_is(mut c CG, mut p P) {
                         c.emit(OpCode.Nop, "", 0)
                         c.emit(OpCode.Nop, "", 0)
                         c.emit(OpCode.Nop, "", 0)
-                        var bidx = c.add_var(binds2.get(si), 0, "")
+                        // P532 W1 G18:vpay 侧车查槽位类型(单载荷整串;
+                        // 多载荷 ", " 切分)
+                        var bty18 = ""
+                        var vri = 0
+                        var vkey18 = "vpay:" + key + "=>"
+                        while vri < c.consts.len() {
+                            var vk18 = c.consts.get(vri).key
+                            if find_sub(vk18, vkey18) == 0 {
+                                var vlist18 = vk18.slice(vkey18.len(), vk18.len())
+                                var slot18 = 0
+                                var vscan18 = true
+                                while vscan18 {
+                                    var comma18 = find_sub(vlist18, ", ")
+                                    var one18 = vlist18
+                                    if comma18 >= 0 {
+                                        one18 = vlist18.slice(0, comma18)
+                                        vlist18 = vlist18.slice(comma18 + 2, vlist18.len())
+                                    } else {
+                                        vscan18 = false
+                                    }
+                                    if slot18 == si {
+                                        bty18 = one18
+                                        vscan18 = false
+                                    }
+                                    slot18 = slot18 + 1
+                                }
+                                vri = c.consts.len()
+                            }
+                            vri = vri + 1
+                        }
+                        var bidx = c.add_var(binds2.get(si), 0, bty18)
                         c.emit_store(bidx)
                     }
                     si = si + 1
