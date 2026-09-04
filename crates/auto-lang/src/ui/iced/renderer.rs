@@ -2556,10 +2556,12 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     content: iced::Element<'static, M>,
     position: crate::ui::view::OverlayPosition,
 ) -> iced::Element<'static, M> {
-    let mut col = iced::widget::Column::<M>::with_capacity(2);
+    // PLAN-536 重测修正(2026-09-04)：悬浮层列显式 Fill 宽——缺省收缩宽度使
+    // right/left 对齐失效(容器 Fill 退化为内容宽,× 落左上,musk 会话卡实测)。
+    let mut col = iced::widget::Column::<M>::with_capacity(2).width(iced::Length::Fill);
     if let Some(top) = position.top {
         if top > 0.0 {
-            col = col.push(iced::widget::Space::new().height(iced::Length::Fixed(top)));
+            col = col.push(iced::widget::Space::new().width(iced::Length::Fill).height(iced::Length::Fixed(top)));
         }
     }
     let mut cont = container(content);
