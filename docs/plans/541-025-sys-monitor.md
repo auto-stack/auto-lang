@@ -98,8 +98,10 @@ front .at ──► use back.api: system_snapshot()/kill_process()
     滑窗历史（30 点）、排序键/向、选中 PID、刷新档位。
   - `processes.at` / `performance.at` / `details_users.at`：三个页面 widget。
 - **进程页**：顶部四张 summary tile（CPU/内存/磁盘/网络，Win11 风）+ 进程表
-  （名称/CPU/内存/磁盘/网络/状态）+ 行选中 + 行内「结束任务」按钮（Windows
-  不做二次确认，沿袭；风险见下）。
+  （名称/CPU/内存/磁盘/网络/状态）+ 行选中 + 行内「结束任务」按钮——点击不
+  直接 kill，先弹 **alert-dialog 二次确认**（标题带目标进程名，action 才执行
+  `kill_process(pid)`，cancel/外点/Esc 均不杀；shadcn AlertDialog 语义，
+  overlay-probe 先例：开=置 show 状态，关=仅 cancel/action）。
 - **性能页**：左 mini rail 四项点选 + 右侧大 SVG 面积图（现有 path 几何模式
   扩到四图四定标）+ CPU 核级 sparkline 网格 + 系统信息卡（os/version/kernel/
   hostname/uptime/cpu_brand）。
@@ -234,6 +236,7 @@ pub fn kill_process(pid int) bool
 model: summary(SysSummary 初始零值), procs [], disks [], cores [], users [],
   cpuHist/memHist/diskHist/netHist []float (30 点滑窗，Init 预填),
   sortColumn str="cpu", sortDir str="desc", selected_pid int=0,
+  kill_target int=0,   // alert-dialog 驱动：0=关，>0=待杀 pid（T9）
   active_tab str="processes", interval int=250, running str="false",
   speedDiv int=4, subTick/tickN, backend_ok str="true"
 computed: procsView（排序视图）, userAgg（用户聚合视图）
@@ -296,8 +299,9 @@ accent: "indigo"
 - [ ] AC2 真数据双端：`auto run`（vue，浏览器）与 `auto run -r vm`（原生窗口）
       均显示真实 CPU/内存/网络/进程（进程表可检索到真实系统进程名，如
       explorer.exe/dllhost.exe；数值与 Windows 任务管理器同量级）。
-- [ ] AC3 结束任务：选中/点击「结束任务」后，目标进程在 ≤2 个刷新周期内从
-      表中消失（用一个牺牲测试进程验证，不在 smoke/mcp 中杀真进程）。
+- [ ] AC3 结束任务：点击「结束任务」先弹 alert-dialog 确认（含进程名）；
+      确认后目标进程在 ≤2 个刷新周期内从表中消失，**取消/关闭则进程保留**，
+      再次点击可重新弹窗（用一个牺牲测试进程验证，不在 smoke/mcp 中杀真进程）。
 - [ ] AC4 四页完整：进程/性能/详细信息/用户均可达且数据真实；排序持久化
       （刷新后保持）；`sysmon.*` 键落盘、旧 `dash.*` 回退生效。
 - [ ] AC5 桌面注册：pac.at 含 icon/category；`ui_desktop --apps-dir examples/ui`
@@ -356,8 +360,10 @@ accent: "indigo"
       `app.at` 收敛为壳（nav rail + 顶栏 + `.Tick`）。
       验证：`auto build`；`cargo t iced`（若渲染侧有联动断言）。
 - [ ] T9 进程页：新 `src/front/processes.at`——summary tile 行 + 六列表格 +
-      行选中 + 行内「结束任务」（`.KillProcess` → `kill_process(pid)`）。
-      验证：`auto build`；实机 kill 牺牲进程 AC3。
+      行选中 + 行内「结束任务」→ alert-dialog 确认（open 由 `kill_target`
+      int 驱动：0=关、>0=待杀 pid；action → `.KillProcess` →
+      `kill_process(pid)` 后清零关闭；cancel 仅清零）。
+      验证：`auto build`；实机 kill 牺牲进程 AC3（确认才杀 + 取消不杀）。
 - [ ] T10 性能页：新 `src/front/performance.at`——mini rail + 四图（复用 path
       几何模式扩四定标）+ 核级 sparkline 网格 + 系统信息卡。
       验证：`auto build`；双端走查。
@@ -389,7 +395,8 @@ accent: "indigo"
 - [ ] T17 vue 测试：新 `tests/smoke.spec.ts`（022 模板；断言见测试设计）。
       验证：`npx playwright test` 全绿。
 - [ ] T18 vm 测试：`tests/desktop_mcp.py` 按 T7-T11 新 UI 重建断言矩阵
-      （现 26 断言基线翻新；kill 走 pid=0 否路）。
+      （现 26 断言基线翻新；kill 走 pid=0 否路；alert-dialog 走
+      开→取消→不杀 与 开→确认→杀牺牲进程 两条安全路径）。
       验证：按文件头说明运行全绿。
 - [ ] T19 双端 parity：autoui-verifier 技能跑四页 × 双端截图对比。
       验证：技能结论记入 plan。
@@ -409,7 +416,10 @@ accent: "indigo"
   自动起 AutoVM HTTP server 已从 automan.rs:1447 代码确认存在，但触发条件
   （是否需要 `api:` 声明）以实机为准；若需要 pac 显式声明，按最小声明补齐，
   不改 CLI。
-- **结束任务无二次确认**：沿袭 Windows 行为；若复审认为 demo 场景风险高，
-  备选方案是 027 的确认 popover 先例（改动局部化在 processes.at）。
+- **结束任务确认（已裁定 2026-09-04）**：用 alert-dialog 二次确认，不沿袭
+  Windows 的无确认直杀。双端能力已核实：vue=shadcn AlertDialog（vue.rs lowering），
+  vm=aura_view_builder alert-dialog 家族臂 → `View::Popover(placement: Modal)`
+  （overlay-probe 先例，开=置状态、关=仅 cancel/action，外点/Esc 不关）。
+  开合状态用 `kill_target` int 驱动（0=关，>0=待杀 pid）。
 - sysinfo 版本以 T1 实际解析为准；若 0.33 API 与签名假设不符（如 status
   枚举），以「D1 语义不变」原则适配并在 plan 记录偏差。
