@@ -10146,6 +10146,18 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     "launcher" => state.desktop.launcher_app,
                     // Plan 505 C：桌面本体面（496 M5——图标交互/壁纸面）。
                     "desktop" => state.desktop.desktop_app,
+                    // Plan 551：settings 槽 = os-config 窗（⚙️ 同靶——
+                    // 540 的 045 专用槽随窗退役，验收通道按 registry_id
+                    // 定位 launch-or-focus 后的 os-config 前端）。
+                    "settings" => state.host.as_ref().and_then(|h| {
+                        h.wm
+                            .wins
+                            .iter()
+                            .find(|(_, v)| {
+                                v.registry_id.as_deref() == Some(OSCONFIG_APP_ID)
+                            })
+                            .map(|(_, v)| v.app)
+                    }),
                     _ => None,
                 };
                 let Some(app_id) = app_id else { continue };
