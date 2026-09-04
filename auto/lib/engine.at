@@ -795,7 +795,10 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
             if ins.n == 1000 {
                 var fp1000 = ev_str(stack.get(sp - 1))
                 sp = sp - 1
-                sp = ev_push(stack, sp, ev_vs(File.read_text(fp1000)))
+                // P532 W1 G19:落变量再传(a2r 对 ev_vs(嵌套调用) 不
+                // 发借用,变量形有先例)
+                var fr1000 = File.read_text(fp1000)
+                sp = ev_push(stack, sp, ev_vs(fr1000))
             } else if ins.n == 174 {
                 // P532 W1 G9:int.str → nat#174(引擎自跑宿主 to_string)
                 var iv174 = ev_dec(ev_int(stack.get(sp - 1)))

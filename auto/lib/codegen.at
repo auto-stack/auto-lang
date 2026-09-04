@@ -1797,11 +1797,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                     // p.text() 的 content.len() 断链实证)
                                     var mret = ""
                                     var mri = 0
-                                    var mkey = "fnret:" + sym + "=>"
                                     while mri < c.consts.len() {
                                         var mk2 = c.consts.get(mri).key
-                                        if find_sub(mk2, mkey) == 0 {
-                                            mret = mk2.slice(mkey.len(), mk2.len())
+                                        if find_sub(mk2, "fnret:" + sym + "=>") == 0 {
+                                            mret = mk2.slice(("fnret:" + sym + "=>").len(), mk2.len())
                                             mri = c.consts.len()
                                         }
                                         mri = mri + 1
@@ -2549,11 +2548,10 @@ fn cg_is(mut c CG, mut p P) {
                         // 多载荷 ", " 切分)
                         var bty18 = ""
                         var vri = 0
-                        var vkey18 = "vpay:" + key + "=>"
                         while vri < c.consts.len() {
                             var vk18 = c.consts.get(vri).key
-                            if find_sub(vk18, vkey18) == 0 {
-                                var vlist18 = vk18.slice(vkey18.len(), vk18.len())
+                            if find_sub(vk18, "vpay:" + key + "=>") == 0 {
+                                var vlist18 = vk18.slice(("vpay:" + key + "=>").len(), vk18.len())
                                 var slot18 = 0
                                 var vscan18 = true
                                 while vscan18 {
@@ -3535,14 +3533,13 @@ fn cg_dir_of(path str) str {
 // 回裸名(List<..> 参数位同治)。
 fn cg_sanitize_ty(t str) str {
     var out = t
-    var probe = "(type-decl (name "
     var guard = 0
     while guard < 8 {
-        var at = find_sub(out, probe)
+        var at = find_sub(out, "(type-decl (name ")
         if at < 0 {
             guard = 8
         } else {
-            var nstart = at + probe.len()
+            var nstart = at + "(type-decl (name ".len()
             var nend = nstart
             while nend < out.len() && out.char_at(nend) != 41 {
                 nend = nend + 1
@@ -4100,12 +4097,40 @@ pub fn cg_compile_files(main_path str) CG {
         }
         var ci = 0
         while ci < mc.consts.len() {
-            seed_consts = cg_seed_enum_table(seed_consts, mc.consts.get(ci))
+            var citem = mc.consts.get(ci)
+            var chit = -1
+            var cj0 = 0
+            while cj0 < seed_consts.len() {
+                if seed_consts.get(cj0).key == citem.key {
+                    chit = cj0
+                    cj0 = seed_consts.len()
+                }
+                cj0 = cj0 + 1
+            }
+            if chit < 0 {
+                seed_consts.push(citem)
+            } else {
+                seed_consts.set(chit, citem)
+            }
             ci = ci + 1
         }
         var cj = 0
         while cj < mc.ctors.len() {
-            seed_ctors = cg_seed_enum_table(seed_ctors, mc.ctors.get(cj))
+            var ctitem = mc.ctors.get(cj)
+            var thit = -1
+            var tj0 = 0
+            while tj0 < seed_ctors.len() {
+                if seed_ctors.get(tj0).key == ctitem.key {
+                    thit = tj0
+                    tj0 = seed_ctors.len()
+                }
+                tj0 = tj0 + 1
+            }
+            if thit < 0 {
+                seed_ctors.push(ctitem)
+            } else {
+                seed_ctors.set(thit, ctitem)
+            }
             cj = cj + 1
         }
         // P532 W1 G12:dep fn 返回类型侧车(consts 键值约定
@@ -4118,34 +4143,26 @@ pub fn cg_compile_files(main_path str) CG {
             if fri < mc.fn_rets.len() {
                 fr_ret = mc.fn_rets.get(fri)
             }
-            seed_consts = cg_seed_enum_table(seed_consts, CGEnum("fnret:" + fr_name + "=>" + fr_ret, 0))
+            var frkey = "fnret:" + fr_name + "=>" + fr_ret
+            var frhit = -1
+            var fj0 = 0
+            while fj0 < seed_consts.len() {
+                if seed_consts.get(fj0).key == frkey {
+                    frhit = fj0
+                    fj0 = seed_consts.len()
+                }
+                fj0 = fj0 + 1
+            }
+            if frhit < 0 {
+                seed_consts.push(CGEnum(frkey, 0))
+            } else {
+                seed_consts.set(frhit, CGEnum(frkey, 0))
+            }
             fri = fri + 1
         }
         i = i + 1
     }
     return cg_link_modules(cgs)
-}
-
-// P532 W1 G4:dep 枚举跨模块播种(consts 判别值+ctors 载荷构造位)——
-// main 的 Enum.Variant 路径探查查 const_lookup/ctor_lookup,dep 侧
-// cg_enum_decl 只注册进自身 consts/ctors(不入 tys),不播种则 main 报
-// unknown ident(009_enum_import 红证)。key 去重后到覆盖(镜像 tys 播种)。
-fn cg_seed_enum_table(mut src List<CGEnum>, mut item CGEnum) List<CGEnum> {
-    var hit = -1
-    var j = 0
-    while j < src.len() {
-        if src.get(j).key == item.key {
-            hit = j
-            j = src.len()
-        }
-        j = j + 1
-    }
-    if hit < 0 {
-        src.push(item)
-    } else {
-        src.set(hit, item)
-    }
-    return src
 }
 
 // W4(525):带预播种类型表的模块编译(镜像 cg_compile_mod;种子先入
