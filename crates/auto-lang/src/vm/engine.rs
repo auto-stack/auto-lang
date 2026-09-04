@@ -3034,6 +3034,15 @@ impl AutoVM {
                             } else {
                                 task.ram.push_i32(0);
                             }
+                        } else if auto_val::is_null(nv) {
+                            // Plan 550 T04: null 迭代源守卫。ARRAY_LEN 是
+                            // array 通道 for-in 的长度探针（codegen Plan 089），
+                            // 现状落此静默 push 0 → 零迭代（p5 探针实证）。
+                            // 同臂亦承接 .len() 发射点——null.len() 同翻为
+                            // TypeError（Python: None 无 len）。
+                            return Err(VMError::RuntimeError(
+                                "TypeError: 'NoneType' object is not iterable".to_string(),
+                            ));
                         } else {
                             task.ram.push_i32(0);
                         }
@@ -4821,6 +4830,15 @@ impl AutoVM {
                     let index_i32 = auto_val::decode_i32(index_nv);
                     // Pop array_id/list_id or str_id (tagged)
                     let obj_or_str_nv = task.ram.pop_nv();
+
+                    // Plan 550 T04: null 索引对象守卫（现状：null 位模式当
+                    // obj_id 解码 → 堆查找落空 → 静默 push 0）。Python 风格
+                    // TypeError，try-catch 可捕获。
+                    if auto_val::is_null(obj_or_str_nv) {
+                        return Err(VMError::RuntimeError(
+                            "TypeError: 'NoneType' object is not subscriptable".to_string(),
+                        ));
+                    }
 
                     // Helper function to convert negative index to actual index
                     // e.g., for array of length 3: -1 -> 2, -2 -> 1, -3 -> 0
@@ -7876,6 +7894,16 @@ impl AutoVM {
                     // Immediate: arg_count (u8)
                     let _arg_count = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
+
+                    // Plan 550 T04: null callee 守卫。正常模式 null callee 被
+                    // 静态解析在编译期拦下（E0401，见 p4 探针），本守卫覆盖
+                    // 动态/脚本路径：现状 pop_i32 把 TAG_NULL 解码成垃圾 id，
+                    // 落到 "Invalid closure ID" 无类型语义错误。
+                    if auto_val::is_null(task.ram.peek_nv(0)) {
+                        return Err(VMError::RuntimeError(
+                            "TypeError: 'NoneType' object is not callable".to_string(),
+                        ));
+                    }
 
                     let closure_id = task.ram.pop_i32() as u32;
 
