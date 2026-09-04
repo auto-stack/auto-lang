@@ -9523,3 +9523,217 @@ self.rc_release(a_nv);
         }
     }
 }
+
+// ============================================================================
+// Plan 550 T08: null 家族守卫单测——直推 null 调 opcode，断言 VMError
+// 消息格式（539 py_ffi 单测同型：AutoVM::new(VirtualFlash::new_with_code)
+// + AutoTask::new，run_one_instruction 单步驱动）。
+// ============================================================================
+#[cfg(test)]
+mod tests_null_guards {
+    use super::*;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn runtime_err_of(res: Result<StepResult, VMError>) -> String {
+        match res {
+            Err(VMError::RuntimeError(msg)) => msg,
+            other => panic!("expected RuntimeError, got {:?}", other),
+        }
+    }
+
+    // ---- T03 算术族 ----
+
+    #[test]
+    fn test_null_add_none_left() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(1);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"
+        );
+    }
+
+    #[test]
+    fn test_null_add_none_right() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(1);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_null_sub_mul_div_mod() {
+        for (op, sym) in [
+            (OpCode::SUB, "-"),
+            (OpCode::MUL, "*"),
+            (OpCode::DIV, "/"),
+            (OpCode::MOD, "%"),
+        ] {
+            let vm = vm_with(vec![op as u8]);
+            let mut task = AutoTask::new(1, 256, 0);
+            task.ram.push_nv(auto_val::encode_null());
+            task.ram.push_i32(2);
+            let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+            assert_eq!(
+                msg,
+                format!("TypeError: unsupported operand type(s) for {}: 'NoneType' and 'int'", sym)
+            );
+        }
+    }
+
+    #[test]
+    fn test_null_neg_unary() {
+        let vm = vm_with(vec![OpCode::NEG as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: bad operand type for unary -: 'NoneType'");
+    }
+
+    #[test]
+    fn test_null_strcat_concat() {
+        // "a" + null：含 str 的 + 经 codegen 静态路由到 STR_CAT（539 探针 2
+        // 病灶实际落点）；守卫在解码前拦截，消息报 op='+' 类型 'str'。
+        let vm = vm_with(vec![OpCode::STR_CAT as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_string(0));
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'str' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_legit_minus_one_arithmetic_unaffected() {
+        // 合法 i32(-1) / i32::MIN+1 算术不得被守卫误伤（守卫只拒 TAG_NULL，
+        // 历史 i32 哨兵编码与真实整数不可区分，不在守卫范围）。
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(-1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 0);
+
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(i32::MIN + 1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), i32::MIN + 2);
+    }
+
+    // ---- T04 GET_ELEM / CALL_CLOSURE / 迭代源 ----
+
+    #[test]
+    fn test_null_getelem_not_subscriptable() {
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(0);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not subscriptable");
+    }
+
+    #[test]
+    fn test_null_callee_not_callable() {
+        // 正常模式 null callee 被静态解析在编译期拦下（p4 探针 E0401），
+        // .at 探针不可达 VM 路径——CALL_CLOSURE 守卫由此单测钉住。
+        let vm = vm_with(vec![OpCode::CALL_CLOSURE as u8, 0]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not callable");
+    }
+
+    #[test]
+    fn test_null_array_len_not_iterable() {
+        // array 通道 for-in 的长度探针（p5 探针病灶实际落点）；同臂承接
+        // null.len() 发射点。
+        let vm = vm_with(vec![OpCode::ARRAY_LEN as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not iterable");
+    }
+
+    // ---- T05 越界 ----
+
+    #[test]
+    fn test_oob_getelem_index_error() {
+        use crate::vm::types::ListData;
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let list_id = vm.insert_heap_object(ListData::<i32> { elems: vec![1, 2, 3], storage: None });
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_object(list_id as u32));
+        task.ram.push_i32(999);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "IndexError: index 999 out of range");
+    }
+
+    // ---- T06 TYPE_TO_I32/F64 翻案 + 合法回归 ----
+
+    #[test]
+    fn test_null_to_i32_f64_type_error() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: int() argument must be a string or a real number, not 'NoneType'"
+        );
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: float() argument must be a string or a real number, not 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_to_i32_f64_legit_paths_unaffected() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(7);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 7);
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_f64(2.5);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_f64(), 2.5);
+    }
+
+    // ---- T07 TYPE_TO_STR null → "None" ----
+
+    #[test]
+    fn test_null_to_str_renders_none() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_STR as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        vm.run_one_instruction(&mut task).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "expected string result");
+        let idx = auto_val::decode_string(nv) as usize;
+        let rendered = vm.strings.read().unwrap().get(idx).cloned().unwrap();
+        assert_eq!(rendered, b"None".to_vec());
+    }
+}
