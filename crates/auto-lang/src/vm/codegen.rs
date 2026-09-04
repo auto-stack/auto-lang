@@ -5025,6 +5025,105 @@ impl Codegen {
         self.register_py_object_builtins();
     }
 
+    /// Plan 539 W2 (T17): does this call site match an item-import direct
+    /// call carrying named args (`Linear(784, 10, bias: false)`)? The callee
+    /// must NOT be one of the py_* builtins (those have their own kw forms).
+    fn is_py_item_kw_form(&self, call: &crate::ast::Call) -> bool {
+        match call.name.as_ref() {
+            Expr::Ident(n) => {
+                let name = n.as_str();
+                if name.starts_with("py_") {
+                    return false;
+                }
+                match self.py_native_map.get(name) {
+                    Some((module_path, _full)) => {
+                        // item imports carry a real module path; the fixed
+                        // builtins use the __pyobj__ placeholder.
+                        module_path != "__pyobj__"
+                            && call.args.args.len() >= 1
+                            && call
+                                .args
+                                .args
+                                .iter()
+                                .any(|a| matches!(a, crate::ast::Arg::Pair(..)))
+                    }
+                    None => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Plan 539 W2 (T17): emit the py_item_kw 5-slot convention —
+    /// (module_name, func_name, posargs, kw_names, kw_vals).
+    fn compile_py_item_kw_form(&mut self, call: &crate::ast::Call) -> AutoResult<()> {
+        const NATIVE_PY_ITEM_KW: u16 = 464;
+        let name = match call.name.as_ref() {
+            Expr::Ident(n) => n.to_string(),
+            _ => return Ok(()),
+        };
+        let module_path = self
+            .py_native_map
+            .get(&name)
+            .map(|(m, _)| m.clone())
+            .unwrap_or_default();
+
+        // module name + func name as pool constants
+        for text in [&module_path, &name] {
+            let bytes = text.as_bytes().to_vec();
+            let idx = self.strings.len() as u32;
+            self.strings.push(bytes);
+            self.emit(OpCode::LOAD_STR);
+            self.code.extend_from_slice(&idx.to_le_bytes());
+        }
+        // positional args -> list
+        let pos_count = call
+            .args
+            .args
+            .iter()
+            .filter(|a| matches!(a, crate::ast::Arg::Pos(_)))
+            .count();
+        for arg in call.args.args.iter() {
+            if let crate::ast::Arg::Pos(e) = arg {
+                self.compile_expr(e)?;
+            }
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(pos_count as u8);
+        // kw names -> list of str
+        let kw_names: Vec<String> = call
+            .args
+            .args
+            .iter()
+            .filter_map(|a| match a {
+                crate::ast::Arg::Pair(k, _) => Some(k.to_string()),
+                _ => None,
+            })
+            .collect();
+        for kn in &kw_names {
+            let bytes = kn.as_bytes().to_vec();
+            let idx = self.strings.len() as u32;
+            self.strings.push(bytes);
+            self.emit(OpCode::LOAD_STR);
+            self.code.extend_from_slice(&idx.to_le_bytes());
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(kw_names.len() as u8);
+        // kw values -> list (source order)
+        for arg in call.args.args.iter() {
+            if let crate::ast::Arg::Pair(_, e) = arg {
+                self.compile_expr(e)?;
+            }
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(kw_names.len() as u8);
+        // CALL_PY py_item_kw with count = 5
+        self.emit(OpCode::CALL_PY);
+        self.emit_u16(NATIVE_PY_ITEM_KW);
+        self.code.push(5u8);
+        Ok(())
+    }
+
     /// Plan 539 W1 (T14): does this call site match `py_with(ctx, () => { body })`?
     fn is_py_with_inline_form(&self, call: &crate::ast::Call) -> bool {
         matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_with")
@@ -5166,6 +5265,7 @@ impl Codegen {
         const NATIVE_PY_WITH: u16 = 461;
         const NATIVE_PY_ENTER: u16 = 462;
         const NATIVE_PY_EXIT: u16 = 463;
+        const NATIVE_PY_ITEM_KW: u16 = 464;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5193,6 +5293,7 @@ impl Codegen {
                 reg.register_with_id("py.py_with", NATIVE_PY_WITH);
                 reg.register_with_id("py.py_enter", NATIVE_PY_ENTER);
                 reg.register_with_id("py.py_exit", NATIVE_PY_EXIT);
+                reg.register_with_id("py.py_item_kw", NATIVE_PY_ITEM_KW);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -8625,6 +8726,15 @@ impl Codegen {
                     // the aavm2 corpus overflow lesson from T09).
                     if is_py_ffi_call && self.is_py_with_inline_form(call) {
                         self.compile_py_with_inline(call)?;
+                        return Ok(());
+                    }
+
+                    // Plan 539 W2 (T17): item-import direct call with named
+                    // args (`Linear(784, 10, bias: false)`) lowers to the
+                    // py_item_kw 5-slot convention (module/func resolved at
+                    // runtime by name). Helper-kept, same frame-size rule.
+                    if is_py_ffi_call && self.is_py_item_kw_form(call) {
+                        self.compile_py_item_kw_form(call)?;
                         return Ok(());
                     }
 

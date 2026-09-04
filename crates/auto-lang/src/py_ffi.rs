@@ -105,6 +105,12 @@ pub const NATIVE_PY_WITH: u16 = 461;
 pub const NATIVE_PY_ENTER: u16 = 462;
 /// Plan 539 W1 (T14): `py_exit(ctx)` — `__exit__(None, None, None)` half.
 pub const NATIVE_PY_EXIT: u16 = 463;
+/// Plan 539 W2 (T17): `py_item_kw(module, func, posargs, kw_names, kw_vals)` —
+/// keyword-argument channel for ITEM-IMPORT direct calls
+/// (`nn.Linear(784, 10, bias: false)`). Resolves the target at runtime by
+/// qualified name, so it works for any import without consulting the
+/// registration machinery.
+pub const NATIVE_PY_ITEM_KW: u16 = 464;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -923,6 +929,56 @@ impl PyFfiBridge {
             Ok(())
         };
         self.native_interface.register_static(NATIVE_PY_EXIT, exit_shim);
+
+        // ---- py_item_kw(module, func, posargs, kw_names, kw_vals) ----
+        // Plan 539 W2 (T17): item-import direct call with keyword args.
+        let item_kw_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 5 {
+                    return Err(VMError::FFI(format!(
+                        "py_item_kw needs 5 slots (module, func, posargs, kw_names, kw_vals), got {}",
+                        n
+                    )));
+                }
+                let kw_vals = pop_auto_py_arg(task, vm, py)?;
+                let kw_names = pop_auto_py_arg(task, vm, py)?;
+                let posargs = pop_auto_py_arg(task, vm, py)?;
+                let func_name_py = pop_auto_py_arg(task, vm, py)?;
+                let func_name: String = func_name_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_item_kw func name not string: {}", e))
+                })?;
+                let module_name_py = pop_auto_py_arg(task, vm, py)?;
+                let module_name: String = module_name_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_item_kw module name not string: {}", e))
+                })?;
+
+                let kwargs = build_kwargs(&kw_names, &kw_vals)
+                    .map_err(|e| VMError::FFI(format!("py_item_kw kwargs build failed: {}", e)))?;
+                let pos_vec: Vec<Bound<'_, PyAny>> = posargs
+                    .try_iter()
+                    .map_err(|e| VMError::FFI(format!("py_item_kw posargs not iterable: {}", e)))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| VMError::FFI(format!("py_item_kw posargs iteration failed: {}", e)))?;
+                let args_tuple = PyTuple::new(py, &pos_vec).map_err(|e| {
+                    VMError::FFI(format!("py_item_kw args tuple: {}", e))
+                })?;
+
+                let module = py.import(&module_name).map_err(|e| {
+                    VMError::FFI(format!("py_item_kw import '{}' failed: {}", module_name, e))
+                })?;
+                let func = module.getattr(&func_name).map_err(|e| {
+                    VMError::FFI(format!("py_item_kw '{}.{}' not found: {}", module_name, func_name, e))
+                })?;
+                let result = func.call(args_tuple, Some(&kwargs)).map_err(|e| {
+                    VMError::FFI(format!("Python call {}.{}(**kw) failed: {}", module_name, func_name, e))
+                })?;
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_ITEM_KW, item_kw_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -1251,6 +1307,33 @@ fn pop_auto_py_arg<'py>(
                     let owned = py_handle.obj.clone_ref(py);
                     return Ok(owned.into_bound(py));
                 }
+                // Plan 539 W2 (T18): plain ObjectData (Auto object/map
+                // literal) marshals to a Python dict — value_to_py handles
+                // the nested arms.
+                if let Some(obj_data) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ObjectData>()
+                {
+                    let entries: Vec<(auto_val::ValueKey, auto_val::Value)> = obj_data
+                        .fields
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    drop(guard);
+                    let dict = PyDict::new(py);
+                    for (k, v) in &entries {
+                        let py_key = match k {
+                            auto_val::ValueKey::Str(s) => s.to_string(),
+                            auto_val::ValueKey::Int(i) => i.to_string(),
+                            auto_val::ValueKey::Bool(b) => b.to_string(),
+                        };
+                        let py_val = value_to_py(v, py, vm);
+                        dict.set_item(py_key, py_val).map_err(|e| {
+                            VMError::FFI(format!("Failed to set dict item: {}", e))
+                        })?;
+                    }
+                    return Ok(dict.into_any());
+                }
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
                     if let Some(obj) = rust_obj.downcast_ref::<auto_val::Obj>() {
                         let dict = PyDict::new(py);
@@ -1500,7 +1583,29 @@ fn py_auto_marshal_return(
         let idx = vm.add_string(s.into_bytes());
         vm.rc_push_str_idx(task, idx);
     } else if py_val.is_none() {
-        task.ram.push_i32(0);
+        // Plan 539 W2 (T18): None marshals to the Auto null family (was
+        // i32 0). `x != null` guards and py_next exhaustion now agree.
+        task.ram.push_nv(auto_val::encode_null());
+    } else if py_val.is_instance_of::<PyTuple>() {
+        // Plan 539 W2 (T18): top-level tuple returns flatten to an Auto
+        // List (tuple-as-List mapping; immutability/hashability divergence
+        // registered in known-divergences).
+        let tuple = py_val.cast::<PyTuple>().map_err(|e| {
+            VMError::FFI(format!("Cast to PyTuple failed: {}", e))
+        })?;
+        let mut values = Vec::with_capacity(tuple.len());
+        for item in tuple.iter() {
+            values.push(py_any_to_value(&item, vm)?);
+        }
+        let list = crate::vm::types::ListData::<auto_val::Value> {
+            elems: values,
+            storage: None,
+        };
+        // TAG_OBJECT (not TAG_LIST): array literals and the T04/T07 GIL arms
+        // all speak TAG_OBJECT — TAG_LIST values degrade through .to(str)/
+        // .len() consumers that only decode TAG_OBJECT/i32.
+        let id = vm.insert_heap_object(list);
+        vm.rc_push(task, auto_val::encode_object(id as u32));
     } else if py_val.is_instance_of::<PyDict>() {
         // pyo3 0.29: cast() returns reference, borrow for heap conversion
         let dict = py_val.cast::<PyDict>().map_err(|e| {
@@ -1603,6 +1708,15 @@ fn py_any_to_value(
     if let Ok(list) = py_val.cast::<PyList>() {
         let mut values = Vec::new();
         for item in list.iter() {
+            values.push(py_any_to_value(&item, vm)?);
+        }
+        return Ok(auto_val::Value::Array(auto_val::Array::from(values)));
+    }
+    // Plan 539 W2 (T18): nested tuple flattens to Array, same as list
+    // (tuple-as-List mapping).
+    if let Ok(tuple) = py_val.cast::<PyTuple>() {
+        let mut values = Vec::new();
+        for item in tuple.iter() {
             values.push(py_any_to_value(&item, vm)?);
         }
         return Ok(auto_val::Value::Array(auto_val::Array::from(values)));
