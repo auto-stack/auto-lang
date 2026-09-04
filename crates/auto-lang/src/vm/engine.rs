@@ -3638,8 +3638,10 @@ impl AutoVM {
                     } else if auto_val::is_bool(nv) {
                         task.ram.push_i32(if auto_val::decode_bool(nv) { 1 } else { 0 });
                     } else if auto_val::is_null(nv) {
-                        // None (null nanbox) — old sentinel for backward compat.
-                        task.ram.push_i32(-1);
+                        // Plan 550 T06: null 静默 -1 臂翻案 → TypeError
+                        // （原臂为 539 T05 兼容自加；TYPE_TO_I32 仅由显式
+                        // .to(int) 发射，内部路径无依赖——T06 前置排查结论）。
+                        return Err(crate::vm::virt_memory::null_to_type_error("int"));
                     } else {
                         task.ram.push_i32(auto_val::decode_i32(nv));
                     }
@@ -3666,7 +3668,8 @@ impl AutoVM {
                     } else if auto_val::is_bool(nv) {
                         task.ram.push_f32(if auto_val::decode_bool(nv) { 1.0 } else { 0.0 });
                     } else if auto_val::is_null(nv) {
-                        task.ram.push_f32(-1.0);
+                        // Plan 550 T06: null 静默 -1.0 臂翻案 → TypeError。
+                        return Err(crate::vm::virt_memory::null_to_type_error("float"));
                     } else {
                         task.ram.push_f32(auto_val::decode_i32(nv) as f32);
                     }

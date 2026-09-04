@@ -570,6 +570,17 @@ pub fn null_unop_type_error(op: &str) -> crate::vm::engine::VMError {
     ))
 }
 
+/// Plan 550 T06: 显式类型转换（.to(int)/.to(float)）null 输入的
+/// TypeError 消息（Python 风格；原 -1/-1.0 静默臂是 539 T05 自加的
+/// 兼容臂，本计划翻案——TYPE_TO_* 仅由 Expr::To 显式转换发射，
+/// `??`/迭代哨兵等内部路径不经过，无内部依赖）。
+pub fn null_to_type_error(op: &str) -> crate::vm::engine::VMError {
+    crate::vm::engine::VMError::RuntimeError(format!(
+        "TypeError: {}() argument must be a string or a real number, not 'NoneType'",
+        op
+    ))
+}
+
 /// Plan 550 T03: 算术操作数是否为 TAG_NULL（f64 槽不可能是 null）。
 #[inline(always)]
 fn arith_operand_is_null(operand: &(u64, bool)) -> bool {
