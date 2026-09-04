@@ -2271,31 +2271,9 @@ fn spawn_outproc_child(
         if let Some(cfg_name) = spec.name.as_deref() {
             if let Some(app) = self.apps.get_mut(&app_id) {
                 crate::ui::osconfig_apps::seed_app_config(&mut app.component, cfg_name);
-                // Plan 540 T6：桌面设置窗单源播种——cfg_* 快照 + 501 徽标
-                // 三态 + 关于常量（launch 期点定序；打开期间宿主变更不重注
-                // ——487 overlay 同语义）。
-                if cfg_name == "desktop" {
-                    crate::ui::desktop_config::seed_desktop_config(
-                        &mut app.component,
-                        &self.desktop.config,
-                    );
-                    let (osc_state, osc_hint) = crate::ui::osconfig_daemon::badge_projection(
-                        &self.desktop.osconfig_status,
-                    );
-                    let _ = app
-                        .component
-                        .write_state("osconfig_state", auto_val::Value::str(osc_state));
-                    let _ = app
-                        .component
-                        .write_state("osconfig_hint", auto_val::Value::str(osc_hint));
-                    let _ = app
-                        .component
-                        .write_state("about_host", auto_val::Value::str(std::env::consts::OS));
-                    let _ = app.component.write_state(
-                        "about_version",
-                        auto_val::Value::str(env!("CARGO_PKG_VERSION")),
-                    );
-                }
+                // Plan 551:540 T6 的 cfg_*/徽标播种臂随 045 设置窗退役——
+                // ⚙️ 靶 os-config 的配置读写单源走 daemon(config.at),宿主
+                // 侧由 T6 mtime 轮询热应用,不再 launch 期播种。
             }
         }
         let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
