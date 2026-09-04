@@ -1,0 +1,7 @@
+// overlay-probe — PLAN-533 T2 解释模式探针：alert-dialog 模态浮层
+// （PopoverPlacement::Modal 原语）按触发钮开合的实机验证语料。
+// 语料形状对齐 widgets-gallery alertdialog 页的 Simple 示例。
+name: "overlay-probe"
+version: "1.0.0"
+scene: "ui"
+render: "vue"

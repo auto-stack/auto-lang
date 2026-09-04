@@ -1139,3 +1139,38 @@
   grid cols 提取（extract_u16/eval_u16_prop）;029 SPEC.md 差异注记 4/勘误 2。
 - （注）`.photos` 主列表为 Init 构建的 write-only 状态（计划文本明确要求
   构建,view/handler 仅消费 view_list）——保留不删,登记为设计内冗余。
+
+### P533（2026-09-04，Plan 533 VM 悬浮层运行时通道——执行登记）
+
+- **P533-D1 overlay 家族 Phase 2 余量**：tooltip/hover_card/select/combobox/
+  drawer/sheet/command/context_menu/menubar/nav_menu 等约 33 个 overlay 语义
+  元素仍 iced:none/unknown（schema 回填仅覆盖 alert_dialog×9/dialog×8/
+  dropdown×15 实现族）。Phase 1 视范围裁定为 musk 三场景所需三族;余量按
+  musk PLAN-059 T5-T8 铺开节奏另批。
+- **P533-D2 MCP 合成键盘不经 overlay**：autoui_keyboard 直派 VM handler
+  （key_bindings→config→key_<k> 回退）,不进 iced overlay update——浮层 ESC
+  自动化只能走真键（computer-use/SendInput）或 iced_test 单元。自动化验收
+  口径需知悉;musk 侧 T9 联测如需 MCP ESC 需扩 mcp_server 路由。
+- **P533-D3 snapshot 含关闭态 overlay 子树**：VTree/snapshot 恒含 Popover
+  content 子树（open 与否）,open 断言以 autoui_state 为准;"弹层不在文档流
+  父链下"的结构断言在现行快照口径下不可表达——open 态 overlay 层呈现口径
+  （待澄清③）留 musk 侧验收自动化前定案。
+- **P533-D4 gallery 整仓 rust 轨存量红**：examples/rust-workspace widgets-
+  gallery 生成物含壳层词汇（SettingsPanel 自定义组件/icon/scroll/openSidebar
+  on-only 带参等）超 rust 轨能力,12+ 编译错为存量（与本计划改动无关）;
+  页级 codegen 产物断言（test_gallery_alertdialog_page_codegen_contains_modal）
+  为现行门禁。rust 轨 gallery 全绿需专项（视图词汇覆盖面工程）。
+- **P533-D5 模态面板宽偏离**：计划文 T4 为 min(480px,90vw),实现取 w-96
+  （384px）与解释器轨 PLAN-530 W13 同串保双轨对拍一致。如需 480 档,两轨
+  同步改面板 chrome 一处各一行。
+- **P533-D6 显式绑定 dialog 的 ESC/外点不接管**：dialog (open: .x) 显式
+  绑定形态 on_dismiss=None（自管语义,Phase 1 记录）;仅铸造形态（无 open
+  绑定）折算 __dlg_close_N 回流。显式绑定需 ESC 关闭时用户自接 ondismiss。
+- **P533-D7 丢失工作重做归档**：auto-musk-dev 分支（已删未合回）三件
+  （PopoverPlacement::Modal/popover 模态三语义/aura_view_builder 臂）经查
+  已由 PLAN-530 步骤8（源 W13）先行落地,本计划 T2 转为验证面+补 iced_test
+  四断言;child_emit 大小写折叠（musk PLAN-059 T2）按重做处理（T1,净修好
+  存量 1）。
+- **P533-D8 on-only 带参 handler 悬垂**：rust 轨 on-only 带参 handler
+  （gallery 壳层 openSidebar 形态）枚举注入零参变体与派发带参闭包不匹配
+  →编译响亮失败（payload 类型无法从 on 块推断,保持显式失败不静默）。

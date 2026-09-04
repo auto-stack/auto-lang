@@ -237,6 +237,13 @@ fn stream_registry_entry(
     map.entry(key).or_default()
 }
 
+/// PLAN-533 T7: 模态对话框族别（转换参数化）。
+enum ModalDialogFamily {
+    Alert,
+    Dialog,
+    DropdownMenu,
+}
+
 impl<'a> AuraViewBuilder<'a> {
     /// Create a new builder bound to a VmBridge instance.
     ///
@@ -1374,11 +1381,20 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
             // （tracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog_tracked_ctx。
+            // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
+            "dialog" | "Dialog" => {
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Dialog)
+            }
+            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => {
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::DropdownMenu)
+            }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
-                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings)
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Alert)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
+            | "dialog-content" | "dialog_content" | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let mut views: Vec<View<DynamicMessage>> = Vec::new();
                 for (i, c) in children.iter().enumerate() {
@@ -1392,23 +1408,69 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
+            | "dialog-title" | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
+            | "dialog-description" | "dialog_description" | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
+            | "dialog-header" | "dialog_header" | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
+            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
                 self.set_layout_onclick(&mut v, events, bindings);
                 v
+            }
+            "dialog-close" | "dialog_close" | "dialogclose" => {
+                // PLAN-533 T5: dialog-close → outline 按钮（cancel 同款预设）。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            // PLAN-533 T7: dropdown-menu 子件——item（有 onclick 走按钮,
+            // 纯文本项 text 预设）/label/separator。
+            "dropdown-menu-item" | "dropdown_menu_item" | "dropdownmenuitem" => {
+                let preset = "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
+                if events.iter().any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click")) {
+                    let mut b = props.clone();
+                    b.insert(
+                        "variant".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("ghost".into())),
+                    );
+                    let b2 = self.with_class_prop(&b, bindings, preset);
+                    self.convert_button(&b2, events, children, bindings)
+                } else {
+                    let p = self.with_class_prop(props, bindings, preset);
+                    self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                }
+            }
+            "dropdown-menu-label" | "dropdown_menu_label" | "dropdownmenulabel" => {
+                let p = self.with_class_prop(props, bindings, "px-2 py-1.5 text-sm font-semibold");
+                self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+            }
+            "dropdown-menu-separator" | "dropdown_menu_separator" | "dropdownmenuseparator" => {
+                View::Container {
+                    child: Box::new(View::Empty),
+                    padding: 0,
+                    width: None,
+                    height: None,
+                    center_x: false,
+                    center_y: false,
+                    onclick: None,
+                    style: Style::parse("w-full h-px bg-border my-1").ok(),
+                }
             }
             "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
                 // outline 变体预设（border+bg-background+text-foreground）,
@@ -2758,11 +2820,20 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
             // （untracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog。
+            // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
+            "dialog" | "Dialog" => {
+                self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Dialog)
+            }
+            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => {
+                self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::DropdownMenu)
+            }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
-                self.convert_alert_dialog(props, children, bindings)
+                self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Alert)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
+            | "dialog-content" | "dialog_content" | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
@@ -2774,23 +2845,69 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
+            | "dialog-title" | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
+            | "dialog-description" | "dialog_description" | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
+            | "dialog-header" | "dialog_header" | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column(&p, children, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
+            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row(&p, children, bindings);
                 self.set_layout_onclick(&mut v, events, bindings);
                 v
+            }
+            "dialog-close" | "dialog_close" | "dialogclose" => {
+                // PLAN-533 T5: dialog-close → outline 按钮（cancel 同款预设）。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            // PLAN-533 T7: dropdown-menu 子件——item（有 onclick 走按钮,
+            // 纯文本项 text 预设）/label/separator。
+            "dropdown-menu-item" | "dropdown_menu_item" | "dropdownmenuitem" => {
+                let preset = "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
+                if events.iter().any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click")) {
+                    let mut b = props.clone();
+                    b.insert(
+                        "variant".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("ghost".into())),
+                    );
+                    let b2 = self.with_class_prop(&b, bindings, preset);
+                    self.convert_button(&b2, events, children, bindings)
+                } else {
+                    let p = self.with_class_prop(props, bindings, preset);
+                    self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                }
+            }
+            "dropdown-menu-label" | "dropdown_menu_label" | "dropdownmenulabel" => {
+                let p = self.with_class_prop(props, bindings, "px-2 py-1.5 text-sm font-semibold");
+                self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+            }
+            "dropdown-menu-separator" | "dropdown_menu_separator" | "dropdownmenuseparator" => {
+                View::Container {
+                    child: Box::new(View::Empty),
+                    padding: 0,
+                    width: None,
+                    height: None,
+                    center_x: false,
+                    center_y: false,
+                    onclick: None,
+                    style: Style::parse("w-full h-px bg-border my-1").ok(),
+                }
             }
             "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
                 // outline 变体预设（border+bg-background+text-foreground）,
@@ -5403,6 +5520,70 @@ let tabs_inner = View::Row {
     // fallback（overlay 家族 "renders as Column"），点击无弹层。
     // shadcn AlertDialog 语义：外点/Esc 不关闭（on_dismiss=None），关闭仅经
     // cancel/action 操作钮的 VM handler 翻转 `open` 绑定状态。
+    /// PLAN-533 T5: 裸文本 trigger（`dialog-trigger "Open"` → text prop
+    /// 无子节点）→ Button（vue trigger 语义）。onclick 经 convert_button
+    /// 取 parser 铸造的 `.__dlg_toggle_<n>`（或用户显式绑定）;无文字且无
+    /// 子件 → Empty。
+    fn bare_trigger_button_view(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let has_label = ["text", "label"].iter().any(|k| {
+            matches!(
+                props.get(*k),
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) if !s.is_empty()
+            )
+        });
+        if has_label {
+            self.convert_button(props, events, &[], bindings)
+        } else {
+            View::Empty
+        }
+    }
+
+    /// PLAN-533 T7: 模态对话框族别——Alert/Dialog 共用模态卡 chrome,
+    /// DropdownMenu 锚定菜单（BottomStart + p-1 紧凑档）。
+    fn modal_dialog_family(tag: &str) -> ModalDialogFamily {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "dropdownmenu" => ModalDialogFamily::DropdownMenu,
+            "dialog" => ModalDialogFamily::Dialog,
+            _ => ModalDialogFamily::Alert,
+        }
+    }
+
+    /// PLAN-533 T6: 铸造形态（open 绑 `__dlg_open_N`）→ dismiss 折算消息
+    /// `__dlg_close_N`。非铸造形态（用户显式 open 绑定/无 open prop）返回
+    /// None（自管语义,Phase 1 不接管）。
+    fn minted_dismiss_msg(
+        widget: &str,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> Option<DynamicMessage> {
+        let AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) = props.get("open")? else {
+            return None;
+        };
+        if !matches!(
+            obj.as_ref(),
+            crate::ast::Expr::Ident(b) if b.as_str() == "self" || b.as_str() == "."
+        ) {
+            return None;
+        }
+        field
+            .to_string()
+            .strip_prefix("__dlg_open_")
+            .map(|n| DynamicMessage::Typed {
+                widget_name: widget.to_string(),
+                event_name: format!("__dlg_close_{n}"),
+                args: vec![],
+            })
+    }
+
     fn alert_dialog_split_children(
         children: &[AuraNode],
     ) -> (Option<&AuraNode>, Option<&AuraNode>) {
@@ -5413,13 +5594,29 @@ let tabs_inner = View::Row {
                 let t = tag.as_str();
                 if matches!(
                     t,
-                    "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
+                    "alert-dialog-trigger"
+                        | "alert_dialog_trigger"
+                        | "alertdialog-trigger"
+                        | "dialog-trigger"
+                        | "dialog_trigger"
+                        | "dialogtrigger"
+                        | "dropdown-menu-trigger"
+                        | "dropdown_menu_trigger"
+                        | "dropdownmenutrigger"
                 ) && trigger.is_none()
                 {
                     trigger = Some(c);
                 } else if matches!(
                     t,
-                    "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+                    "alert-dialog-content"
+                        | "alert_dialog_content"
+                        | "alertdialog-content"
+                        | "dialog-content"
+                        | "dialog_content"
+                        | "dialogcontent"
+                        | "dropdown-menu-content"
+                        | "dropdown_menu_content"
+                        | "dropdownmenucontent"
                 ) && content.is_none()
                 {
                     content = Some(c);
@@ -5458,25 +5655,32 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
         bindings: &Bindings,
+        family: ModalDialogFamily,
     ) -> View<DynamicMessage> {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         // 锚:trigger 子件原位渲染（无 trigger = 空 anchor,open 属性直驱）。
+        // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button,onclick 取
+        // parser 铸造的 toggle（或用户显式绑定）。
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, .. }) => {
-                let views: Vec<View<DynamicMessage>> = t_children
-                    .iter()
-                    .map(|c| self.convert_node_with(c, bindings))
-                    .collect();
-                match views.len() {
-                    1 => views.into_iter().next().unwrap(),
-                    _ => View::Row {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                        onclick: None,
-                    },
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let views: Vec<View<DynamicMessage>> = t_children
+                        .iter()
+                        .map(|c| self.convert_node_with(c, bindings))
+                        .collect();
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
                 }
             }
             _ => View::Empty,
@@ -5489,11 +5693,24 @@ let tabs_inner = View::Row {
                 .collect(),
             _ => Vec::new(),
         };
+        // PLAN-533 T7: dropdown-menu 族锚定菜单 chrome（shadcn
+        // DropdownMenuContent 同款 p-1 紧凑档 + BottomStart）;对话框族
+        // 保持 w-96 模态卡。
+        let (panel_chrome, placement) = match family {
+            ModalDialogFamily::DropdownMenu => (
+                "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1",
+                PopoverPlacement::BottomStart,
+            ),
+            _ => (
+                "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4",
+                PopoverPlacement::Modal,
+            ),
+        };
         let panel = View::Column {
             children: panel_children,
             spacing: 0,
             padding: 0,
-            style: Style::parse("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4").ok(),
+            style: Style::parse(panel_chrome).ok(),
             onclick: None,
         };
         let open = match props.get("open") {
@@ -5503,12 +5720,20 @@ let tabs_inner = View::Row {
             ),
             _ => false,
         };
+        // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
+        // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
+        // 形态不接管。
+        let on_dismiss = if matches!(family, ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu) {
+            Self::minted_dismiss_msg(&self.widget_name, props)
+        } else {
+            None
+        };
         View::Popover {
             anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
             content: Box::new(panel),
-            placement: PopoverPlacement::Modal,
+            placement,
             open,
-            on_dismiss: None,
+            on_dismiss,
         }
     }
 
@@ -5522,26 +5747,33 @@ let tabs_inner = View::Row {
         id_map: &mut DebugIdMap,
         probe: &mut BuildProbe,
         bindings: &Bindings,
+        family: ModalDialogFamily,
     ) -> View<DynamicMessage> {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, .. }) => {
-                let mut views: Vec<View<DynamicMessage>> = Vec::new();
-                for (i, c) in t_children.iter().enumerate() {
-                    path.push(i);
-                    views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
-                    path.pop();
-                }
-                match views.len() {
-                    1 => views.into_iter().next().unwrap(),
-                    _ => View::Row {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                        onclick: None,
-                    },
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button
+                // （铸造/显式 onclick 经 convert_button 接线）。
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                    for (i, c) in t_children.iter().enumerate() {
+                        path.push(i);
+                        views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                        path.pop();
+                    }
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
                 }
             }
             _ => View::Empty,
@@ -5555,11 +5787,24 @@ let tabs_inner = View::Row {
                 path.pop();
             }
         }
+        // PLAN-533 T7: dropdown-menu 族锚定菜单 chrome（shadcn
+        // DropdownMenuContent 同款 p-1 紧凑档 + BottomStart）;对话框族
+        // 保持 w-96 模态卡。
+        let (panel_chrome, placement) = match family {
+            ModalDialogFamily::DropdownMenu => (
+                "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1",
+                PopoverPlacement::BottomStart,
+            ),
+            _ => (
+                "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4",
+                PopoverPlacement::Modal,
+            ),
+        };
         let panel = View::Column {
             children: panel_children,
             spacing: 0,
             padding: 0,
-            style: Style::parse("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4").ok(),
+            style: Style::parse(panel_chrome).ok(),
             onclick: None,
         };
         let open = match props.get("open") {
@@ -5569,12 +5814,20 @@ let tabs_inner = View::Row {
             ),
             _ => false,
         };
+        // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
+        // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
+        // 形态不接管。
+        let on_dismiss = if matches!(family, ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu) {
+            Self::minted_dismiss_msg(&self.widget_name, props)
+        } else {
+            None
+        };
         View::Popover {
             anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
             content: Box::new(panel),
-            placement: PopoverPlacement::Modal,
+            placement,
             open,
-            on_dismiss: None,
+            on_dismiss,
         }
     }
 

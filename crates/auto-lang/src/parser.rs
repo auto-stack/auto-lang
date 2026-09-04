@@ -12559,6 +12559,29 @@ impl<'a> Parser<'a> {
         let mut minted: Vec<(String, Vec<Stmt>)> = Vec::new();
         Self::mint_view_inline(&mut view.root, &mut counter, &mut minted)?;
         Self::mint_bare_input_sync(&decl.name, &mut view.root, &mut counter, &mut minted)?;
+        let dlg_states = Self::mint_modal_dialog_toggle(
+            &mut view.root,
+            &mut counter,
+            &mut minted,
+        )?;
+        // PLAN-533 T5: 铸造的 `__dlg_open_<n>` state 落 model 块（缺失则建）。
+        if !dlg_states.is_empty() {
+            let model = decl.model.get_or_insert_with(|| ModelBlock {
+                fields: Vec::new(),
+            });
+            for name in dlg_states {
+                if !model.fields.iter().any(|f| f.name.as_str() == name) {
+                    model.fields.push(ModelField {
+                        name: Name::from(name.as_str()),
+                        ty: Type::Bool,
+                        init: Expr::Bool(false),
+                        mutable: true,
+                        is_primary: false,
+                        decorators: Vec::new(),
+                    });
+                }
+            }
+        }
         if minted.is_empty() {
             return Ok(());
         }
@@ -12746,6 +12769,153 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// PLAN-533 T5: 模态对话框家族 tag 角色（归一化：剥 `-`/`_` + 小写，
+    /// 与 ui_gen/rust.rs 的 modal_dialog_tag_role 同规则）。
+    fn modal_dialog_tag_role(tag: &str) -> Option<&'static str> {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
+            "alertdialogcancel" => Some("cancel"),
+            "alertdialogaction" => Some("action"),
+            "alertdialogclose" | "dialogclose" => Some("close"),
+            "dropdownmenuitem" => Some("item"),
+            "dropdownmenulabel" => Some("label"),
+            "dropdownmenuseparator" => Some("separator"),
+            _ => None,
+        }
+    }
+
+    /// PLAN-533 T5: 模态对话框自管开合铸造。
+    ///
+    /// alert-dialog/dialog 根无 `open` prop 时（vue 风格内建开合——
+    /// gallery dialog 页形态），三轨没有共享的内建 open 态。铸造一组
+    /// 显式装置让 vue/解释器/rust codegen 同源：
+    ///   state   `__dlg_open_<n> bool = false`（调用方落 model 块）
+    ///   root    补 `open: .__dlg_open_<n>`
+    ///   trigger 无 onclick → 补 `onclick: .__dlg_toggle_<n>`（体：翻转）
+    ///   cancel/action/close 无 onclick → 补 `onclick: .__dlg_close_<n>`（体：置 false）
+    /// handler 体经 `minted` 折叠进 decl.on + decl.messages（与 __evt_/
+    /// __bind_ 铸造同槽）。显式 `open` 绑定不铸造。
+    fn mint_modal_dialog_toggle(
+        node: &mut ViewNode,
+        counter: &mut u32,
+        minted: &mut Vec<(String, Vec<Stmt>)>,
+    ) -> AutoResult<Vec<String>> {
+        let mut states = Vec::new();
+        Self::mint_modal_dialog_toggle_inner(node, counter, minted, &mut states)?;
+        Ok(states)
+    }
+
+    fn mint_modal_dialog_toggle_inner(
+        node: &mut ViewNode,
+        counter: &mut u32,
+        minted: &mut Vec<(String, Vec<Stmt>)>,
+        states: &mut Vec<String>,
+    ) -> AutoResult<()> {
+        match node {
+            ViewNode::Element { tag, props, events, children, .. } => {
+                if Self::modal_dialog_tag_role(tag) == Some("root")
+                    && !props.iter().any(|p| p.name == "open")
+                {
+                    *counter += 1;
+                    let n = *counter;
+                    let state_name = format!("__dlg_open_{n}");
+                    let toggle = format!("__dlg_toggle_{n}");
+                    let close = format!("__dlg_close_{n}");
+                    // root 补 open 绑定：与真实 `.state` 解析同形态
+                    //（Dot(Ident("self"), field)——见 direct_state_value_field 注）。
+                    let state_ref = |name: &str| {
+                        Expr::Dot(Box::new(Expr::Ident(Name::from("self"))), Name::from(name))
+                    };
+                    props.push(ViewProp {
+                        name: "open".to_string(),
+                        value: ViewPropValue::Expr(state_ref(&state_name)),
+                    });
+                    // toggle 体：`.__dlg_open_<n> = !.__dlg_open_<n>`
+                    let toggle_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Unary(Op::Not, Box::new(state_ref(&state_name)))),
+                    ));
+                    // close 体：`.__dlg_open_<n> = false`
+                    let close_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Bool(false)),
+                    ));
+                    minted.push((format!(".{toggle}"), vec![toggle_body]));
+                    minted.push((format!(".{close}"), vec![close_body]));
+                    states.push(state_name);
+                    // 子件接线：trigger（直接子）→ toggle;cancel/action/close
+                    // （content 内任意深度）→ close。
+                    let is_click = |name: &str| matches!(name, "onclick" | "onClick" | "on_click");
+                    for c in children.iter_mut() {
+                        if let ViewNode::Element { tag: ctag, events: cev, children: cch, .. } = c {
+                            if Self::modal_dialog_tag_role(ctag) == Some("trigger") {
+                                // 包裹形态（trigger 内单 Element 子,如包住的
+                                // button）且内层无 onclick → toggle 落内层按钮
+                                // （渲染面只画子件,落 wrapper 会丢）;否则落
+                                // trigger 自身（裸文本形态由转换层读）。
+                                let target: &mut Vec<ViewEvent> = if cch.len() == 1 {
+                                    match &mut cch[0] {
+                                        ViewNode::Element { events: inner_ev, .. }
+                                            if !inner_ev.iter().any(|e| is_click(e.name.as_str())) =>
+                                        {
+                                            inner_ev
+                                        }
+                                        _ => cev,
+                                    }
+                                } else {
+                                    cev
+                                };
+                                if !target.iter().any(|e| is_click(e.name.as_str())) {
+                                    target.push(ViewEvent {
+                                        name: "onclick".to_string(),
+                                        handler: format!(".{toggle}"),
+                                        params: Vec::new(),
+                                        inline: None,
+                                    });
+                                }
+                            }
+                        }
+                        Self::wire_modal_close_recursive(c, &close);
+                    }
+                }
+                for c in children.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+            }
+            ViewNode::ForLoop { body, .. } => {
+                for c in body.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+            }
+            ViewNode::Conditional { then_body, else_body, .. } => {
+                for c in then_body.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+                if let Some(else_nodes) = else_body {
+                    for c in else_nodes.iter_mut() {
+                        Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                    }
+                }
+            }
+            ViewNode::Link { children, .. } => {
+                for c in children.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// The state field a `value:` prop targets, when it is a direct state
     /// reference — `.field` (parsed as `Dot(Ident("self"), field)`) or the
     /// legacy bare `field` form. Multi-level dots and non-expr values return
@@ -12762,6 +12932,53 @@ impl<'a> Parser<'a> {
                 _ => None,
             },
             _ => None,
+        }
+    }
+
+    /// PLAN-533 T5: 在对话框根子树内递归接线 close 家族
+    /// （cancel/action/close 无 onclick → 补 `.__dlg_close_<n>`）。
+    fn wire_modal_close_recursive(node: &mut ViewNode, close_variant: &str) {
+        match node {
+            ViewNode::Element { tag, events, children, .. } => {
+                if matches!(
+                    Self::modal_dialog_tag_role(tag),
+                    Some("cancel") | Some("action") | Some("close")
+                ) && !events
+                    .iter()
+                    .any(|e| matches!(e.name.as_str(), "onclick" | "onClick" | "on_click"))
+                {
+                    events.push(ViewEvent {
+                        name: "onclick".to_string(),
+                        handler: format!(".{close_variant}"),
+                        params: Vec::new(),
+                        inline: None,
+                    });
+                }
+                for c in children.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+            }
+            ViewNode::ForLoop { body, .. } => {
+                for c in body.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+            }
+            ViewNode::Conditional { then_body, else_body, .. } => {
+                for c in then_body.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+                if let Some(else_nodes) = else_body {
+                    for c in else_nodes.iter_mut() {
+                        Self::wire_modal_close_recursive(c, close_variant);
+                    }
+                }
+            }
+            ViewNode::Link { children, .. } => {
+                for c in children.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -18439,6 +18656,135 @@ exe hello {
             w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
         assert!(variants.contains(&"__bind_App_oninput_1"));
         assert!(variants.contains(&"__bind_App_oninput_2"));
+    }
+
+    /// PLAN-533 T5: 模态对话框自管开合铸造。无 `open` prop 的
+    /// alert-dialog/dialog 根（vue 风格内建开合——gallery dialog 页形态）
+    /// 铸造 state + toggle/close 双 handler + open 绑定，三轨同源。
+    /// 显式 `open` 绑定不铸造（负例）。
+    #[test]
+    fn test_modal_dialog_mints_self_managed_open() {
+        let code = concat!(
+            "widget App {\n",
+            "    view {\n",
+            "        dialog {\n",
+            "            dialog-trigger \"Open Dialog\"\n",
+            "            dialog-content {\n",
+            "                dialog-header {\n",
+            "                    dialog-title \"Edit Profile\"\n",
+            "                }\n",
+            "                dialog-footer {\n",
+            "                    dialog-close \"Save changes\"\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("unbound dialog must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+
+        // 铸造 state：`var __dlg_open_1 bool = false`
+        let model = w.model.as_ref().expect("model block minted");
+        let field = model.fields.iter().find(|f| f.name.as_str() == "__dlg_open_1")
+            .expect("minted state var");
+        assert!(matches!(field.init, Expr::Bool(false)), "init false");
+        assert!(matches!(field.ty, Type::Bool), "typed bool");
+
+        // 根节点补 open 绑定，形态与真实解析的 `.state` 完全一致。
+        fn find_dialog<'a>(node: &'a ViewNode) -> Option<&'a ViewNode> {
+            match node {
+                ViewNode::Element { tag, children, .. } => {
+                    if tag == "dialog" { return Some(node); }
+                    children.iter().find_map(find_dialog)
+                }
+                _ => None,
+            }
+        }
+        let dlg = find_dialog(&w.view.as_ref().unwrap().root).expect("dialog root");
+        let open = dlg_element_props(dlg).iter().find(|p| p.name == "open")
+            .expect("open prop minted");
+        // 对照：真实解析 `(open: .show)` 的表达式形态。
+        let bound_code = "widget B { view { dialog (open: .show) { } } }";
+        let mut p2 = Parser::from(bound_code).with_session(crate::session::CompilerSession::ui());
+        let ast2 = p2.parse().expect("bound dialog parses");
+        let w2 = ast2.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget 2");
+        let real = find_dialog(&w2.view.as_ref().unwrap().root).unwrap();
+        let real_open = dlg_element_props(real).iter().find(|p| p.name == "open").unwrap();
+        let ViewPropValue::Expr(real_expr) = &real_open.value else {
+            panic!("bound open prop must be an expr");
+        };
+        let ViewPropValue::Expr(mint_expr) = &open.value else {
+            panic!("minted open prop must be an expr");
+        };
+        assert_eq!(
+            format!("{:?}", mint_expr),
+            format!("{:?}", real_expr).replace("show", "__dlg_open_1"),
+            "minted open binding must match real `.state` parse shape"
+        );
+
+        // trigger/close 补 onclick。
+        fn events_of<'a>(node: &'a ViewNode, tag: &str) -> Vec<(String, String)> {
+            fn walk<'a>(node: &'a ViewNode, tag: &str, out: &mut Vec<(String, String)>) {
+                if let ViewNode::Element { tag: t, events, children, .. } = node {
+                    if t == tag {
+                        for e in events {
+                            out.push((e.name.clone(), e.handler.clone()));
+                        }
+                    }
+                    for c in children { walk(c, tag, out); }
+                }
+            }
+            let mut out = Vec::new();
+            walk(node, tag, &mut out);
+            out
+        }
+        let root = &w.view.as_ref().unwrap().root;
+        let trig = events_of(root, "dialog-trigger");
+        assert!(
+            trig.iter().any(|(n, h)| n == "onclick" && h == ".__dlg_toggle_1"),
+            "trigger onclick minted: {trig:?}"
+        );
+        let close = events_of(root, "dialog-close");
+        assert!(
+            close.iter().any(|(n, h)| n == "onclick" && h == ".__dlg_close_1"),
+            "close onclick minted: {close:?}"
+        );
+
+        // 折叠进 on + msg（decl-based VM 合成路径读取面）。
+        let on = w.on.as_ref().expect("on block injected");
+        let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
+        assert!(patterns.contains(&".__dlg_toggle_1"), "toggle handler folded: {patterns:?}");
+        assert!(patterns.contains(&".__dlg_close_1"), "close handler folded: {patterns:?}");
+        let variants: Vec<&str> =
+            w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
+        assert!(variants.contains(&"__dlg_toggle_1"));
+        assert!(variants.contains(&"__dlg_close_1"));
+
+        // 负例：显式 open 绑定不铸造。
+        let w2_open = dlg_element_props(real);
+        assert!(w2_open.iter().any(|p| p.name == "open"), "bound form has its own open");
+        let trig2 = events_of(&w2.view.as_ref().unwrap().root, "dialog-trigger");
+        assert!(trig2.is_empty(), "bound form mints nothing: {trig2:?}");
+        assert!(
+            !w2.model.as_ref().map(|m| m.fields.iter().any(|f| f.name.as_str().starts_with("__dlg_"))).unwrap_or(false),
+            "bound form mints no state"
+        );
+    }
+
+    fn dlg_element_props(node: &ViewNode) -> &[crate::ast::ui::ViewProp] {
+        match node {
+            ViewNode::Element { props, .. } => props,
+            _ => &[],
+        }
     }
 
     #[test]
