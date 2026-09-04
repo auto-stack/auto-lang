@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 /// Opaque identifier used in public media URIs.  It deliberately has no path
@@ -619,6 +620,31 @@ impl MediaLatestWins {
     pub const fn dropped(&self) -> u64 { self.dropped }
 }
 
+struct WorkerState { stopping: bool }
+struct WorkerInner { state: Mutex<WorkerState>, wake: Condvar }
+/// Idle workers sleep on a condition variable; no timer or busy poll is used.
+pub struct MediaWorkerPool { inner: Arc<WorkerInner>, workers: Vec<JoinHandle<()>> }
+impl MediaWorkerPool {
+    pub fn new() -> Self {
+        let inner = Arc::new(WorkerInner { state: Mutex::new(WorkerState { stopping: false }), wake: Condvar::new() });
+        let mut workers = Vec::with_capacity(3);
+        for name in ["media-decode-1", "media-decode-2", "media-resize"] {
+            let worker_inner = inner.clone();
+            workers.push(thread::Builder::new().name(name.into()).spawn(move || {
+                let mut state = worker_inner.state.lock().expect("media worker lock poisoned");
+                while !state.stopping { state = worker_inner.wake.wait(state).expect("media worker lock poisoned"); }
+            }).expect("spawn media worker"));
+        }
+        Self { inner, workers }
+    }
+    pub fn worker_count(&self) -> usize { self.workers.len() }
+    pub fn shutdown(&mut self) {
+        { let mut state = self.inner.state.lock().expect("media worker lock poisoned"); state.stopping = true; self.inner.wake.notify_all(); }
+        for worker in self.workers.drain(..) { let _ = worker.join(); }
+    }
+}
+impl Drop for MediaWorkerPool { fn drop(&mut self) { self.shutdown(); } }
+
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
 pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
@@ -749,5 +775,13 @@ mod tests {
         assert!(!gate.accept_publish(5, 9));
         assert!(gate.accept_publish(5, 10));
         assert_eq!(gate.dropped(), 2);
+    }
+
+    #[test]
+    fn worker_shutdown_joins_two_decode_workers_and_resize_lane() {
+        let mut workers = super::MediaWorkerPool::new();
+        assert_eq!(workers.worker_count(), 3);
+        workers.shutdown();
+        assert_eq!(workers.worker_count(), 0);
     }
 }
