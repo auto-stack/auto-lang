@@ -297,6 +297,10 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// 后以 {id,icon} Obj 数组注入 shell `__dock_pinned`（.at 无法自注册表
     /// 解析图标；平行 Obj 数组为 view 消费已证形态）。
     pub dock_pinned: Vec<String>,
+    /// Plan 540 M1：桌面单源配置（boot 期 `DesktopConfig::load()`——
+    /// `~/.config/autoos/apps/desktop/config.at` 好/坏/缺席回退链 + 旧
+    /// storage 键一次性迁移；驱动事实读自本字段，写入经宿主臂收口落盘）。
+    pub config: crate::ui::desktop_config::DesktopConfig,
     /// Plan 494：真洞模式位（boot 期读 `shell.native.hole` storage，默认
     /// off）。on = docked 原生窗口垫到桌面窗口下方 + SetWindowRgn 洞排除
     /// （视觉+输入穿透）；运行时回退（win32 失败）置回 false 并留日志。
@@ -372,6 +376,7 @@ impl DesktopState {
                 "013-todo".to_string(),
                 "015-notes".to_string(),
             ],
+            config: crate::ui::desktop_config::load(),
             hole_mode: false,
             // PLAN-526 T18：分区切换面板 transient 收起时点（热键切换置位；
             // ServiceTick 到期写 `switcher_open="0"`。None = 无倒计时）。
