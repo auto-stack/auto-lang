@@ -53,7 +53,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 二、应用框架与生态 | 5（11–15） | Shell / 并发 / 网络 / 开发工具 / AI 基础设施 |
 | 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blocks/`（4） |
 | 四、流程与知识体系 | 1 个域级章 + 2 个根级专题 | Knowledge Lifecycle、AutoPlan 账本、Plan+Spec v1 |
-| 五、战略路线图 `strategy/` | 4 | Rust 脚本层 / 消费者 parity / Python parity / Rust 库复刻 |
+| 五、战略路线图 `strategy/` | 5 | Rust 脚本层 / 消费者 parity / Python parity / Rust 库复刻 |
 | 六、专题诊断（根级） | 4 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题）、[管道算子 `|>`](pipe-operator.md)（讨论稿，Plan 514 衍生） |
 | 七、附录 `forge/` | 5 | AutoForge（已迁 auto-os 生态） |
 | 八、历史素材 `raw/` | 67 | 早期原始设计草稿（只读参考） |
@@ -133,6 +133,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
 | [python-parity-roadmap](strategy/python-parity-roadmap.md) | Python parity 第三维度（use.py + a2py） | ✅ 现行（Plan 369 首批落地） |
 | [consumer-parity-strategy](strategy/consumer-parity-strategy.md) | Auto 作为库消费者（consumer-mode） | 📝 Draft |
+| [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
 
 ## 六、专题诊断（根级）
 
