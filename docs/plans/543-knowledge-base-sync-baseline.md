@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-543
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: Knowledge Base Sync Baseline
 author: [Codex]
 created_at: 2026-09-04
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [global, process, architecture]
-current_step: 0
+current_step: 12
 total_steps: 12
 ---
 
@@ -150,30 +150,55 @@ PLAN-462～465 的活跃状态，和 2026-09-04 的仓库现状存在时间差�
 1. 在 `D:/autostack/.wt/lang-543/auto-lang` 创建 `plan-543-dev` worktree，记录
    `git status --short` 与 `git worktree list --porcelain` 基线；验证：
    `git -C D:/autostack/.wt/lang-543/auto-lang status --short`。
+   [✅ 已完成] worktree 位于 `D:/autostack/.wt/lang-543/auto-lang`，分支为
+   `plan-543-dev`；`git status --short --untracked-files=no` 无输出，基线干净；
+   532、536、539、542、544 均位于各自独立 worktree。
 2. 在 `docs/reports/knowledge-base-sync-audit-2026-09-04.md` 写入仓库规模与 Git 快照；
    验证：`rg -n "工作区|Rust|design|spec|plan" docs/reports/knowledge-base-sync-audit-2026-09-04.md`。
+   [✅ 已完成] 报告记录约 20 个 workspace package、528 个核心 Rust 文件、Design/Spec/Plan
+   规模和 `432e15d` worktree 基线；关键词验证通过。
 3. 在同一报告中写入实际模块图和主执行路径；验证：
    `rg -n "frontend|QueryEngine|AutoVM|Transpiler|AutoUI" docs/reports/knowledge-base-sync-audit-2026-09-04.md`。
+   [✅ 已完成] 报告已给出 frontend → semantic → compile infra → VM/trans/UI → desktop
+   的执行路径；五组关键节点验证通过。
 4. 在同一报告中写入已验证漂移、lint 输出和复现命令；验证：
    `rg -n "spec-lint|Evaluator|178|\.autoos/specs.json" docs/reports/knowledge-base-sync-audit-2026-09-04.md`。
+   [✅ 已完成] 报告列出 7 类高置信度漂移、0 errors/9 warnings 基线和完整复现命令；
+   四组关键词验证通过。
 5. 创建 `docs/design/27-knowledge-base-lifecycle.md` 的五层模型、canonical-source 矩阵和
    frontmatter 契约；验证：`rg -n "Design/RFC|ADR|Spec|Plan|Generated Catalog|canonical" docs/design/27-knowledge-base-lifecycle.md`。
+   [✅ 已完成] Design 27 已定义五层职责、canonical-source 问答矩阵和渐进式最小元数据；
+   六组关键词验证通过。
 6. 为 Design 27 补充同步流水线、三类一致性检查、并行安全和迁移阶段；验证：
    `rg -n "structural|referential|semantic|change-based|并行|迁移" docs/design/27-knowledge-base-lifecycle.md`。
+   [✅ 已完成] Design 27 已包含 structural/referential/semantic verification、change-based
+   freshness、并行安全、四阶段迁移与回滚策略；关键词验证通过。
 7. 更新 `docs/design/00-intro.md` 注册 Design 27；验证：
    `rg -n "27-knowledge-base-lifecycle" docs/design/00-intro.md`。
+   [✅ 已完成] Design 27 已在知识资产入口和“流程与知识体系”表中注册为 canonical
+   design；链接验证通过，下一域级章号推进为 28。
 8. 更新 `docs/design/01-architecture.md` 与 `docs/architecture-clarification.md` 的仓库级
    当前事实，并为仍保留的历史描述加显式标签；验证：
    `rg -n "Evaluator|QueryEngine|historical|历史" docs/design/01-architecture.md docs/architecture-clarification.md`。
+   [✅ 已完成] 两个入口现描述 AutoVM、多目标 transpiler、AutoUI 与已集成 QueryEngine；
+   Evaluator、三后端和 366 tests 均仅以 historical correction 出现。
 9. 更新 `docs/specs/overview.md` 的规模、日期与活跃轨道；验证：
    `rg -n "2026-09-04|528|PLAN-532|PLAN-536" docs/specs/overview.md`。
+   [✅ 已完成] overview 已更新为 2026-09-04 快照、约 528 个核心 Rust 文件，并明确
+   PLAN-532/PLAN-536 两条并行开发线；四组关键词验证通过。
 10. 更新 `docs/specs/README.md` 与 `docs/design/autoplan-spec-ledger.md` 的职责和兼容说明；
     验证：`rg -n "canonical|Generated Catalog|Design 27|specs.json" docs/specs/README.md docs/design/autoplan-spec-ledger.md`。
+    [✅ 已完成] 操作规约和 Design 26 已统一为 Markdown current-state canonical、
+    specs.json 兼容投影、Generated Catalog 目标态，并记录 Design 27 与 sibling-group 路径。
 11. 运行 `python scripts/spec-lint.py --stale-days 7` 和 `python scripts/spec-index.py`，记录
     结果并确认 `docs/specs/INDEX.md` 可重现；验证：
     `git diff --exit-code -- docs/specs/INDEX.md`。
+    [✅ 已完成] spec-lint 保持基线 `0 errors, 9 warnings, 0 infos`，未新增问题；
+    spec-index 生成 26 projects，`git diff --exit-code -- docs/specs/INDEX.md` 返回 0。
 12. 执行范围与健康检查，确认仅修改计划列出的文档；验证：
     `git diff --check`、`git diff --name-only`、`git status --short`，并在计划中记录证据。
+    [✅ 已完成] `432e15d..472b4a4` 范围只包含 8 个计划内文档；`git diff --check`
+    返回 0，worktree `git status --short` 无输出。实现提交：`472b4a4f1`。
 
 ## 复审记录
 
