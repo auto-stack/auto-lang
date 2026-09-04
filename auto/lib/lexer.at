@@ -85,7 +85,7 @@ fn lex_number(source str, start int) Tok {
         }
     }
     var scanning = true
-    for scanning {
+    while scanning {
         if p >= source.len() {
             scanning = false
         } else {
@@ -144,7 +144,7 @@ fn lex_string(source str, start int) Tok {
     var p = start + 1
     var text = ""
     var scanning = true
-    for scanning {
+    while scanning {
         if p >= source.len() {
             scanning = false
         } else {
@@ -203,7 +203,7 @@ fn lex_char(source str, start int) Tok {
 fn lex_ident(source str, start int) Tok {
     var p = start + 1
     var scanning = true
-    for scanning {
+    while scanning {
         if p >= source.len() {
             scanning = false
         } else {
@@ -313,7 +313,7 @@ pub fn tokenize(source str) List<Token> {
     var p = 0
     var len = source.len()
     var toks List<Token> = List.new()
-    for p < len {
+    while p < len {
         var c = cur_char(source, p)
         // Plan 514 W2(P511-1 根因①):VM 侧 len 为码点数、char_at 亦码点索引,
         // 两侧自洽;a2r 转译侧 len()=字节数 > 码点数——无哨兵时主循环越过
@@ -409,7 +409,7 @@ pub fn tokenize(source str) List<Token> {
                     // 行注释:text 含第二个 '/'(Rust 未消费即读);/// → DocComment
                     var q = p + 2
                     var scanning = true
-                    for scanning {
+                    while scanning {
                         if q >= len || cur_char(source, q) == '\n' {
                             scanning = false
                         } else {
@@ -433,7 +433,7 @@ pub fn tokenize(source str) List<Token> {
                     var q = p + 1
                     var ctext = ""
                     var scanning = true
-                    for scanning {
+                    while scanning {
                         if q >= len {
                             scanning = false
                         } else {

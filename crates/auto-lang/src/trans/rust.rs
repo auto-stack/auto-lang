@@ -6450,7 +6450,10 @@ impl RustTrans {
                         if lhs_parens { write!(out, ")")?; }
                         write!(out, ".{}(", rust_name)?;
                         // Auto-borrow string args for pattern-matching methods
-                        if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with") {
+                        // P532 W1 G19: replace 族同入(String::replace 首参
+                        // Pattern 界;次参 &str——&String 双参 coerce 均合;
+                        // ⑤腿 engine nat#1510 变量实参 E0277 实证)
+                        if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with" | "replace" | "replace_first") {
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 // Plan 380: char/&str literals are already valid
                                 // Patterns — `&'"'` would be `&char` (E0277).
@@ -6952,6 +6955,24 @@ impl RustTrans {
                     write!(out, ", width = ")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr(a, out)?;
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+                "replace" if self.expr_is_string_like(object) => {
+                    // P532 W1 G19: s.replace(from, to) —— String::replace 首参
+                    // Pattern 界需 &str,通用发射对变量实参(String)E0277;
+                    // 专用臂非字面量实参包 &(字面量裸传维持既有形态)。
+                    // 守卫:仅字符串接收者——用户类型自有 replace 方法
+                    // (Cell.replace(42) cookbook 形态)走通用发射。
+                    self.expr(object, out)?;
+                    write!(out, ".replace(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if i > 0 { write!(out, ", ")?; }
+                        let already_pattern = matches!(arg,
+                            Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)) | Arg::Pos(Expr::Char(_)));
+                        if !already_pattern { write!(out, "&")?; }
+                        self.arg(arg, out)?;
                     }
                     write!(out, ")")?;
                     return Ok(());
@@ -7817,7 +7838,8 @@ impl RustTrans {
                 self.emit_turbofish_args(call, out)?;
                 write!(out, "(")?;
                 // Auto-borrow string args for pattern-matching and map lookup methods
-                if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with" | "split") {
+                // P532 W1 G19: replace 同入(同上 Pattern 界)
+                if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with" | "split" | "replace") {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         // Only add & for String-typed args, not &str params or literals
                         // Note: local_var_types has StrSlice for ALL str vars (params AND locals),

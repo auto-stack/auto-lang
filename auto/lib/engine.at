@@ -49,6 +49,8 @@
 // (部分② 的 k=3 实例形态枚举化)。
 // Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;纯解释器层仅依赖 codegen)
 use auto.lib.codegen: CG, OpCode, cg_compile, cg_compile_files, op_name
+// P532 W1:审计补全(跨模块显式导入——宿主宽松链接对齐)
+use auto.lib.parser: int_val
 
 enum Val {
     VInt(int)
@@ -787,7 +789,52 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
             // W3(Plan 525):auto.list 容器族(native_catalog 100/101/
             // 106/107;lib 盘点最小方法集)。宿主发射序:b46 m4 对拍
             // load l → args → call.nat(栈 [list, value..])
-            if ins.n == 100 {
+            // P532 W1 G1+G2:str 方法族(宿主 native_catalog id 镜像;
+            // 栈序=接收者先入,参数次之;引擎自跑宿主,同名内建直调)
+            // P532 W1 G15:File.read_text → nat#1000(引擎自跑宿主内建)
+            if ins.n == 1000 {
+                var fp1000 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                // P532 W1 G19:落变量再传(a2r 对 ev_vs(嵌套调用) 不
+                // 发借用,变量形有先例)
+                var fr1000 = File.read_text(fp1000)
+                sp = ev_push(stack, sp, ev_vs(fr1000))
+            } else if ins.n == 174 {
+                // P532 W1 G9:int.str → nat#174(引擎自跑宿主 to_string)
+                var iv174 = ev_dec(ev_int(stack.get(sp - 1)))
+                sp = sp - 1
+                sp = ev_push(stack, sp, ev_vs(iv174.str()))
+            } else if ins.n == 1500 {
+                var sl1500 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                sp = ev_push(stack, sp, ev_vi(sl1500.len()))
+            } else if ins.n == 1502 {
+                var ca1502 = ev_dec(ev_int(stack.get(sp - 1)))
+                sp = sp - 1
+                var cs1502 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                sp = ev_push(stack, sp, ev_vi(cs1502.char_at(ca1502)))
+            } else if ins.n == 1507 {
+                var ts1507 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                sp = ev_push(stack, sp, ev_vs(ts1507.trim()))
+            } else if ins.n == 1510 {
+                var rt1510 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                var rf1510 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                var rs1510 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                sp = ev_push(stack, sp, ev_vs(rs1510.replace(rf1510, rt1510)))
+            } else if ins.n == 1524 {
+                var se1524 = ev_dec(ev_int(stack.get(sp - 1)))
+                sp = sp - 1
+                var ss1524a = ev_dec(ev_int(stack.get(sp - 1)))
+                sp = sp - 1
+                var ss1524 = ev_str(stack.get(sp - 1))
+                sp = sp - 1
+                sp = ev_push(stack, sp, ev_vs(ss1524.slice(ss1524a, se1524)))
+            } else if ins.n == 100 {
                 // nat#100 = auto.list.new——空表入 arena,推 VArr 索引
                 var nl100 List<Val> = List.new()
                 arena.push(nl100)
