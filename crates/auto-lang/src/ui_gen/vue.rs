@@ -10345,6 +10345,28 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // show_actions → :showActions (bool). Defaults to true.
                 attrs.push(self.bool_prop_binding(props, "show_actions", "showActions", true));
 
+                // PLAN-051 T5: theme declaration entry — dark_mode → :dark-mode
+                // (bound .dark_mode state flips the editor pane's .is-dark);
+                // accent → :accent (string/state → data-accent). Defaults
+                // false/indigo = the pre-051 look, byte-for-byte.
+                attrs.push(self.bool_prop_binding(props, "dark_mode", "darkMode", false));
+                match props.get("accent") {
+                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                        attrs.push(format!("accent=\"{}\"", s));
+                    }
+                    Some(AuraPropValue::Expr(expr)) => {
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("autodown_editor `accent`: {}; prop not emitted", e),
+                            ),
+                        }
+                    }
+                    _ => {}
+                }
+
                 // style/class (editor chrome sizing).
                 self.push_style_class(&mut attrs, props);
                 // NOTE: events (onupdate/onsave/oncancel → @update/@save/@cancel)
@@ -10432,6 +10454,27 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 }
                 // scroll_sync → :scroll-sync（默认 true；VM v1 忽略）。
                 attrs.push(self.bool_prop_binding(props, "scroll_sync", "scrollSync", true));
+                // PLAN-051 T5: theme declaration entry — dark_mode → :dark-mode
+                // (bound .dark_mode state flips the render pane's .is-dark);
+                // accent → :accent (string/state → data-accent). Defaults
+                // false/indigo = the pre-051 look, byte-for-byte.
+                attrs.push(self.bool_prop_binding(props, "dark_mode", "darkMode", false));
+                match props.get("accent") {
+                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                        attrs.push(format!("accent=\"{}\"", s));
+                    }
+                    Some(AuraPropValue::Expr(expr)) => {
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("autodown `accent`: {}; prop not emitted", e),
+                            ),
+                        }
+                    }
+                    _ => {}
+                }
                 // style/class (wrapper sizing).
                 self.push_style_class(&mut attrs, props);
             }
@@ -17190,6 +17233,75 @@ widget DocStream {
         );
         assert!(sfc.contains("<StreamingRenderer"), "component tag:\n{}", sfc);
         assert!(!sfc.contains("MarkdownRender"), "MarkdownRender fully rebound:\n{}", sfc);
+    }
+
+    /// PLAN-051 T5：双轨组件主题声明入口——`dark_mode`/`accent` props 经
+    /// autodown_editor/autodown 两臂发射为 `:dark-mode`/`:accent`（绑定）；
+    /// 缺省 `:dark-mode="false"`（引擎默认档零差异）+ 无 accent 发射。
+    /// 排查路径锚：demo app.at 声明 → 本发射 → 引擎 darkMode/accent props。
+    #[test]
+    fn test_autodown_theme_props_emit() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget Themed {
+    model {
+        var body str = "# Welcome"
+        var dark_mode bool = false
+        var accent_color str = "indigo"
+    }
+    view {
+        col {
+            autodown_editor {
+                content: .body
+                dark_mode: .dark_mode
+                accent: .accent_color
+            }
+            autodown {
+                content: .body
+                dark_mode: .dark_mode
+                accent: .accent_color
+            }
+        }
+    }
+}
+"##);
+
+        assert_eq!(
+            sfc.matches(":dark-mode=\"dark_mode\"").count(),
+            2,
+            "editor + renderer arms each emit the bound dark_mode:\n{}",
+            sfc
+        );
+        assert_eq!(
+            sfc.matches(":accent=\"accent_color\"").count(),
+            2,
+            "both arms carry the bound accent:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains("R013"), "no warnings:\n{}", sfc);
+    }
+
+    #[test]
+    fn test_autodown_theme_props_defaults() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget Plain {
+    model { var body str = "# Welcome" }
+    view {
+        col {
+            autodown_editor { content: .body }
+            autodown { content: .body }
+        }
+    }
+}
+"##);
+
+        assert_eq!(
+            sfc.matches(":dark-mode=\"false\"").count(),
+            2,
+            "default light档 on both arms:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":accent"), "no accent attr when omitted:\n{}", sfc);
+        assert!(!sfc.contains("accent=\""), "no literal accent either:\n{}", sfc);
     }
 
     #[test]
