@@ -13,7 +13,8 @@ import time
 import urllib.request
 
 AUTO_BIN = r"D:/autostack/.wt/lang-536/auto-lang/target/debug/auto.exe"
-MUSK_ROOT = r"D:/autostack/auto-musk"
+import sys as _sys
+MUSK_ROOT = _sys.argv[1] if len(_sys.argv) > 1 else r"D:/autostack/auto-musk"
 LOG = r"D:/autostack/.wt/lang-536/auto-lang/scratch/p536_t5_musk_vm.log"
 
 
