@@ -1741,8 +1741,11 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 emit_seg(s, blocks, &mut body);
                 body.push_str("\n\n");
             }
+            // 尾部分隔 "\n\n" 整体摘除（原 while+pop 每轮只弹 1 字节，
+            // 残留单个 \n 会发射尾行 ">"——重解析每次增长空引用段，
+            // PLAN-048 T4 修复并钉死）。
             while body.ends_with("\n\n") {
-                body.pop();
+                body.truncate(body.len() - 2);
             }
             for (i, line) in body.split('\n').enumerate() {
                 if i > 0 {
@@ -2283,10 +2286,15 @@ impl AutodownEditorCore {
         true
     }
 
-    /// Backspace 块首合并：同宿主相邻两叶（顶↔顶 / 同一 Quote 内）；
-    /// fence 与跨容器边界登记余量不做。合并后焦点驻接缝。
+    /// Backspace 块首合并（PLAN-048 T4 撤 same_host 闸扩面）：顶↔顶、
+    /// 同 Quote、同项内、同列表相邻项（vue backspaceAtItemStart 语义）、
+    /// 跨容器——quote 尾段↔后续外段、列表尾项↔外段、quote/列表首段并入
+    /// 前外段（提升向）。fence 双侧维持不做（代码块语义，并入段落非
+    /// 往返安全——待澄清④口径，登记）。列表项首叶且项内有余段时仅同
+    /// 列表前项可接（余段移接前项尾）；前外段接手 v1 拒绝（VM parser
+    /// 嵌套列表扁平化，余段防御性约束，登记）。合并后焦点驻接缝。
     fn merge_into_previous(&self, font_system: &mut FontSystem, bi: usize) -> bool {
-        let prev_bi = {
+        let (prev_bi, cur_slot, prev_slot) = {
             let segs = self.segs.lock().unwrap();
             let mut order = Vec::new();
             dfs_leaf_order(&segs, &mut order);
@@ -2297,24 +2305,46 @@ impl AutodownEditorCore {
             if pos == 0 {
                 return false;
             }
-            order[pos - 1]
+            let prev = order[pos - 1];
+            (prev, locate_leaf(&segs, bi), locate_leaf(&segs, prev))
         };
-        let same_host = {
-            let segs = self.segs.lock().unwrap();
-            match (locate_leaf(&segs, prev_bi), locate_leaf(&segs, bi)) {
-                (Some(LeafSlot::TopLevel(_)), Some(LeafSlot::TopLevel(_))) => true,
-                (
-                    Some(LeafSlot::QuoteInner { quote_pos: q1, .. }),
-                    Some(LeafSlot::QuoteInner { quote_pos: q2, .. }),
-                ) => q1 == q2,
-                _ => false,
-            }
-        };
-        if !same_host
-            || matches!(self.block_kind_of(prev_bi), LeafKind::Fence)
+        if matches!(self.block_kind_of(prev_bi), LeafKind::Fence)
             || matches!(self.block_kind_of(bi), LeafKind::Fence)
         {
             return false;
+        }
+        // 余段约束（防御性；v1 嵌套列表不可达）。
+        let mut move_remainder = false;
+        if let Some(LeafSlot::ListItem { list_pos, item_idx, inner_pos }) = cur_slot {
+            if inner_pos == 0 {
+                let prev_same_list_prev_item = matches!(prev_slot,
+                    Some(LeafSlot::ListItem { list_pos: p, item_idx: pi, .. })
+                        if p == list_pos && pi + 1 == item_idx);
+                let has_remainder = {
+                    let segs = self.segs.lock().unwrap();
+                    match segs.get(list_pos) {
+                        Some(Seg::List { items, .. }) => {
+                            items.get(item_idx).map(|it| it.len() > 1).unwrap_or(false)
+                        }
+                        _ => false,
+                    }
+                };
+                if has_remainder {
+                    if !prev_same_list_prev_item {
+                        return false;
+                    }
+                    move_remainder = true;
+                }
+            }
+        }
+        if move_remainder {
+            if let Some(LeafSlot::ListItem { list_pos, item_idx, .. }) = cur_slot {
+                let mut segs = self.segs.lock().unwrap();
+                if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
+                    let rem: Vec<Seg> = items[item_idx].drain(1..).collect();
+                    items[item_idx - 1].extend(rem);
+                }
+            }
         }
         let (prev_text, cur_text, junction) = {
             let blocks = self.blocks.lock().unwrap();
@@ -2338,8 +2368,9 @@ impl AutodownEditorCore {
             &mut self.segs.lock().unwrap(),
             &[bi],
         );
-        // 单死叶压缩（创建序 bi > prev_bi 恒真）⇒ prev_bi 重编号不变。
-        *self.focus.lock().unwrap() = Some(prev_bi);
+        // 创建序 ≠ dfs 序（拆块后成立）：死叶 id 小于目标时目标前移一位。
+        let focus_id = if bi < prev_bi { prev_bi - 1 } else { prev_bi };
+        *self.focus.lock().unwrap() = Some(focus_id);
         *self.shift_anchor.lock().unwrap() = None;
         *self.nav_goal_x.lock().unwrap() = None;
         self.revision.fetch_add(1, Ordering::Relaxed);
@@ -2642,14 +2673,95 @@ mod tests {
         assert_eq!(c.focused_block(), Some(0));
     }
 
-    /// 跨容器边界（quote 内 → 顶层上一叶）仍不合并（登记边界）。
+    // ── PLAN-048 T4：跨容器合并 ─────────────────────────────────────────
+
+    /// quote 尾段 ↔ 后续外段：外段块首退格并入 quote 尾（骨架重生成
+    /// "> " 前缀往返）。
     #[test]
-    fn backspace_across_container_boundary_stays_noop() {
-        let c = core_for("mg2", "顶段。\n\n> 引内。\n");
+    fn backspace_merges_outer_paragraph_into_quote_tail() {
+        let c = core_for("xc1", "顶段。\n\n> 引一行。\n\n外段。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.emit_document(), "顶段。\n\n> 引一行。外段。");
+        assert_eq!(c.focused_block(), Some(1));
+        assert_eq!(c.live_text(1), "引一行。外段。");
+    }
+
+    /// 反向提升：quote 首段块首退格并入前外段（容器随之溶解）。
+    #[test]
+    fn backspace_lifts_quote_first_paragraph_into_outer() {
+        let c = core_for("xc2", "顶段。\n\n> 引内。\n");
         *c.focus.lock().unwrap() = Some(1);
         let out = press(c, EditorKey::Backspace);
-        assert!(!out.text_changed);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "顶段。引内。");
+        assert_eq!(c.focused_block(), Some(0));
+    }
+
+    /// 列表尾项 ↔ 后续外段：外段并入尾项（序号/圆点骨架重生成）。
+    #[test]
+    fn backspace_merges_outer_paragraph_into_list_tail_item() {
+        let c = core_for("xc3", "- 甲\n- 乙\n\n外段。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
         assert_eq!(c.block_count(), 2);
+        let doc = c.emit_document();
+        assert!(doc.contains("- 甲"), "{doc}");
+        assert!(doc.contains("- 乙外段。"), "{doc}");
+        assert_eq!(c.focused_block(), Some(1));
+    }
+
+    /// 同列表相邻项合并（vue backspaceAtItemStart 项间语义）：乙 并入
+    /// 甲，列表收缩为单项。
+    #[test]
+    fn backspace_merges_adjacent_list_items() {
+        let c = core_for("xc4", "- 甲\n- 乙\n");
+        *c.focus.lock().unwrap() = Some(1);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "- 甲乙");
+        assert_eq!(c.focused_block(), Some(0));
+    }
+
+    /// fence 口径（待澄清④）：fence 双侧均不合并——前段并入 fence 与
+    /// fence 并入前段都拒绝。
+    #[test]
+    fn backspace_at_fence_boundary_stays_noop() {
+        // fence 为 cur：并入前段落会破坏围栏语义。
+        let c = core_for("xc5", "前段。\n\n```\ncode\n```\n");
+        *c.focus.lock().unwrap() = Some(1);
+        let out = press(c, EditorKey::Backspace);
+        assert!(!out.text_changed, "fence must not merge into paragraph");
+        assert_eq!(c.block_count(), 2);
+        // fence 为 prev：后段并入 fence 同样拒绝。
+        let c2 = core_for("xc6", "```\ncode\n```\n\n后段。\n");
+        *c2.focus.lock().unwrap() = Some(1);
+        let out2 = press(c2, EditorKey::Backspace);
+        assert!(!out2.text_changed, "paragraph must not merge into fence");
+        assert_eq!(c2.block_count(), 2);
+    }
+
+    /// 重编号回归：拆块产生的 id（文档中部空叶）作合并目标时焦点须落
+    /// 压缩后的正确块（创建序≠dfs 序）。
+    #[test]
+    fn backspace_merge_focus_survives_renumber_after_split() {
+        let c = core_for("xc7", "甲\n\n乙\n\n丙\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Enter); // 空叶 id3 落文档位次 1：dfs [0,3,1,2]
+        // 焦点移到 乙（id1）块首退格 → 并入空叶 id3 → 压缩后 id3→2。
+        *c.focus.lock().unwrap() = Some(1);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 3);
+        assert_eq!(c.focused_block(), Some(2), "focus follows renumbered merge target");
+        assert_eq!(c.live_text(2), "乙");
+        assert_eq!(c.emit_document(), "甲\n\n乙\n\n丙");
     }
 
     /// 批次十②：段中 Enter → 拆成两段，焦点落新块首。
