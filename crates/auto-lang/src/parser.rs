@@ -3552,7 +3552,17 @@ impl<'a> Parser<'a> {
             TokenKind::Double => self.parse_double(),
             TokenKind::True => Ok(Expr::Bool(true)),
             TokenKind::False => Ok(Expr::Bool(false)),
-            TokenKind::Nil => Ok(Expr::Nil),
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' 拼写退役为 null 的 deprecated 别名
+                // （语义不变——运行期同落 PUSH_NIL/encode_null）。
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Ok(Expr::Nil)
+            }
             TokenKind::Str => self.parse_str(),
             TokenKind::CStr => Ok(Expr::CStr(self.cur.text.clone())),
             TokenKind::Char => Ok(Expr::Char(self.cur.text.chars().nth(0).unwrap())),
@@ -3803,7 +3813,16 @@ impl<'a> Parser<'a> {
             // Allow @ and * as special identifiers for pointer operations
             TokenKind::At => Expr::Ident("@".into()),
             TokenKind::Star => Expr::Ident("*".into()),
-            TokenKind::Nil => Expr::Nil,
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' deprecated 警告（语义不变，见 literal 臂注记）。
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Expr::Nil
+            }
             TokenKind::Null => Expr::Null,
             // Plan 120: Option and Result constructors
             TokenKind::NoneKW => Expr::None,

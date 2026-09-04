@@ -1051,6 +1051,21 @@ async fn execute_autovm_with_path(
     let mut parser = Parser::new_with_type_store(code, session.type_store());
     let mut ast = parser.parse()?;
 
+    // Plan 550 T09: parser 警告通道在 CLI 直跑路径可见化（LSP 侧本就
+    // 消费 parser.warnings；此前直跑不显示任何警告）。DeprecatedFeature
+    // 按名一次性去重输出到 stderr——'nil' 退役提示等。仅警告不拒绝，
+    // 运行行为不受影响（py parity 套件对 stdout TAP 行，stderr 不入对拍）。
+    {
+        let mut seen = std::collections::HashSet::new();
+        for w in &parser.warnings {
+            if let crate::error::Warning::DeprecatedFeature { name, message, .. } = w {
+                if seen.insert(name.as_str()) {
+                    eprintln!("warning: '{}' is deprecated: {}", name, message);
+                }
+            }
+        }
+    }
+
     // Plan 095: Run CTEE (Compile-Time Execution Engine) to transform AST
     // This handles #if, #for, #is, #{} constructs
     let mut ctee = crate::comptime::CTEE::new();
