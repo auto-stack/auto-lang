@@ -827,6 +827,10 @@ impl AutodownEditorCore {
             }
             EditorKey::Char(c) => {
                 self.block_action(font_system, bi, Action::Insert(c));
+                if c == ' ' {
+                    // PLAN-048 T5：行首标记转换（整块精确命中检定）。
+                    self.try_line_start_rule(font_system, bi);
+                }
                 out.text_changed = true;
                 out.cursor_changed = true;
             }
@@ -1788,6 +1792,41 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
 // 全程以【字节】偏移为口径（cosmic-text 0.15 的 Cursor.index 即行内字节）。
 // ---------------------------------------------------------------------------
 
+/// 行首输入规则标记表（PLAN-048 T5，T1 冻结面）。触发语义对齐 vue
+/// input-rules.ts「typed at block start, whole-block」：整块文本精确
+/// 等于 marker（空格键入后检定）。冻结：标题×3 / 无序列表×3 / 引用；
+/// ``` fence（代码块语义）、`---`/`***`（Raw 只读固化）、任务列表、
+/// `1. ` 有序（vue 亦无）不补——登记余量。
+const LINE_START_RULES: [&str; 7] = ["# ", "## ", "### ", "- ", "* ", "+ ", "> "];
+
+/// 骨架树内把叶子槽位原位替换为包装段（quote/list wrap 用；递归定位；
+/// wrap 以工厂闭包构造——Seg 非 Clone，递归多臂各建一次；闭包仅捕获
+/// usize，Clone 传递避免 &&&… 嵌套单态化）。
+fn replace_leaf_seg(segs: &mut Vec<Seg>, leaf: usize, make: impl Fn() -> Seg + Clone) -> bool {
+    for seg in segs.iter_mut() {
+        match seg {
+            Seg::Leaf(i) if *i == leaf => {
+                *seg = make();
+                return true;
+            }
+            Seg::Quote(inner) => {
+                if replace_leaf_seg(inner, leaf, make.clone()) {
+                    return true;
+                }
+            }
+            Seg::List { items, .. } => {
+                for item in items.iter_mut() {
+                    if replace_leaf_seg(item, leaf, make.clone()) {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// 叶子块在骨架树中的宿主槽位描述。
 #[derive(Debug, Clone, PartialEq)]
 enum LeafSlot {
@@ -2099,6 +2138,53 @@ impl AutodownEditorCore {
         let ed = b.editor.ed_mut();
         ed.set_selection(Selection::None);
         ed.set_cursor(Cursor::new(dest.0, dest.1));
+    }
+
+    /// 行首标记转换（PLAN-048 T5）：整块文本精确等于 marker 时——标题
+    /// 走 kind 迁移（字号/家族随 LeafKind 重置），列表/引用走骨架 wrap
+    /// （replace_leaf_seg 原位替换）；marker 前缀消费，焦点/光标驻原块首。
+    fn try_line_start_rule(&self, font_system: &mut FontSystem, bi: usize) {
+        if matches!(self.block_kind_of(bi), LeafKind::Fence) {
+            return;
+        }
+        let live = {
+            let blocks = self.blocks.lock().unwrap();
+            SendEdit(blocks[bi].editor.ed()).text()
+        };
+        let marker = match LINE_START_RULES.iter().find(|m| live == **m) {
+            Some(m) => *m,
+            None => return,
+        };
+        let stripped = live[marker.len()..].to_owned();
+        match marker {
+            "> " => {
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, || Seg::Quote(vec![Seg::Leaf(bi)]));
+            }
+            "- " | "* " | "+ " => {
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, || {
+                    Seg::List { ordered: false, start: 1, items: vec![vec![Seg::Leaf(bi)]] }
+                });
+            }
+            _ => {
+                let level = marker.trim().len().min(3) as i64; // "# "→1 … "### "→3
+                let mut blocks = self.blocks.lock().unwrap();
+                if let Some(b) = blocks.get_mut(bi) {
+                    b.kind = LeafKind::Heading(level);
+                }
+            }
+        }
+        // 缓冲文本剥前缀重写（标题 kind 迁移时字号/家族随 kind 重置），
+        // 光标驻块首。
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(bi) {
+                self.overwrite_block_text(font_system, b, stripped);
+                Self::place_caret_byte(b, 0);
+            }
+        }
+        self.revision.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Enter 输入规则主入口。true = 已做结构拆分（调用方跳过软换行）。
@@ -2545,6 +2631,17 @@ mod tests {
         })
     }
 
+    /// 空文档核心（core_for 对 "" 走自回显快路径不建块表——强制 rebuild
+    /// 出初始空段叶）。PLAN-048 T5 输入规则测试用。
+    fn core_empty(key: &str) -> &'static AutodownEditorCore {
+        run_fs(|fs| {
+            let sk = storage_key(key);
+            registry().lock().unwrap().remove(&sk);
+            autodown_editor(&sk).rebuild("", fs);
+        });
+        autodown_editor(&storage_key(key))
+    }
+
     fn ctrl(core: &AutodownEditorCore, c: char) -> DocOutput {
         run_fs(|fs| {
             core.handle_input(
@@ -2671,6 +2768,98 @@ mod tests {
         assert_eq!(c.block_count(), 1);
         assert_eq!(c.emit_document(), "甲块。乙块。");
         assert_eq!(c.focused_block(), Some(0));
+    }
+
+    // ── PLAN-048 T5：行首输入规则 ───────────────────────────────────────
+
+    /// `# ` → H1 kind 迁移 + 标记消费；续打正文进标题。
+    #[test]
+    fn input_rule_hash_converts_to_heading() {
+        let c = core_empty("ir1");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('#'));
+        press(c, EditorKey::Char(' '));
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(1));
+        assert_eq!(c.live_text(0), "");
+        press(c, EditorKey::Char('标'));
+        press(c, EditorKey::Char('题'));
+        assert_eq!(c.live_text(0), "标题");
+        assert_eq!(c.emit_document(), "# 标题");
+    }
+
+    /// `## ` / `### ` → H2/H3。
+    #[test]
+    fn input_rule_heading_levels() {
+        let c = core_empty("ir2");
+        *c.focus.lock().unwrap() = Some(0);
+        for k in ['#', '#', ' '] {
+            press(c, EditorKey::Char(k));
+        }
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(2));
+        let c2 = core_empty("ir3");
+        *c2.focus.lock().unwrap() = Some(0);
+        for k in ['#', '#', '#', ' '] {
+            press(c2, EditorKey::Char(k));
+        }
+        assert_eq!(c2.block_kind_of(0), LeafKind::Heading(3));
+    }
+
+    /// `- ` / `* ` / `+ ` → 无序列表 wrap（骨架重生成圆点）。
+    #[test]
+    fn input_rule_bullet_wrap_roundtrip() {
+        for (key, tag) in [('-', "bl1"), ('*', "bl2"), ('+', "bl3")] {
+            let c = core_empty(tag);
+            *c.focus.lock().unwrap() = Some(0);
+            press(c, EditorKey::Char(key));
+            press(c, EditorKey::Char(' '));
+            press(c, EditorKey::Char('甲'));
+            assert_eq!(c.emit_document(), "- 甲", "marker {key}");
+        }
+    }
+
+    /// `> ` → 引用 wrap。
+    #[test]
+    fn input_rule_quote_wrap_roundtrip() {
+        let c = core_empty("ir4");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('>'));
+        press(c, EditorKey::Char(' '));
+        press(c, EditorKey::Char('引'));
+        assert_eq!(c.emit_document(), "> 引");
+    }
+
+    /// fence 内规则不触发（代码块语义）。
+    #[test]
+    fn input_rule_noop_inside_fence() {
+        let c = core_for("ir5", "```\n\n```\n");
+        assert_eq!(c.block_kind_of(0), LeafKind::Fence);
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('#'));
+        press(c, EditorKey::Char(' '));
+        assert_eq!(c.block_kind_of(0), LeafKind::Fence, "fence must not convert");
+    }
+
+    /// 非整块精确命中不触发（段中打空格/前导文本）。
+    #[test]
+    fn input_rule_requires_whole_block_match() {
+        let c = core_for("ir6", "正文\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Char(' '));
+        assert_eq!(c.block_kind_of(0), LeafKind::Paragraph);
+        assert_eq!(c.block_count(), 1);
+    }
+
+    /// 冻结面钉死：`1. ` 有序标记不接线（vue 亦无，登记）。
+    #[test]
+    fn input_rule_ordered_marker_not_wired() {
+        let c = core_empty("ir7");
+        *c.focus.lock().unwrap() = Some(0);
+        for k in ['1', '.', ' '] {
+            press(c, EditorKey::Char(k));
+        }
+        assert_eq!(c.block_kind_of(0), LeafKind::Paragraph);
+        assert_eq!(c.emit_document(), "1. ");
     }
 
     // ── PLAN-048 T4：跨容器合并 ─────────────────────────────────────────
