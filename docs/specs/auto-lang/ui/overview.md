@@ -19,6 +19,12 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-08-28）
 
+**029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范
+（picsum 固定 seed 网络图源，缩略 cover/查看 contain）；单组件+平行列表
+数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 84 项闭集——
+icon 名单受限；P537-D2 语义 grid 的 cols/class 状态绑定不解析——密度
+三臂静态 grid 绕开），详见 KNOWN-DEBT-AND-RISKS.md P537 节。
+
 **use 导入 helper fn 发射（plan-522 落地）**：`use` 导入的模块级 fn 按需转译
 进消费方 SFC（池收集全模块 fn + 入口门控与 VM import_aliases 同口径 + 闭包
 不动点拉取 + ext_imports/命名冲突/转译边界三态闸 R013 回退）——437 §0.6.E-3
