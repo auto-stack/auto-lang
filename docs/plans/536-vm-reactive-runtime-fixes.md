@@ -1,15 +1,22 @@
 ---
 plan_id: PLAN-536
-status: execution_done  # drafting → executing → execution_done → reviewed → archived
+status: reviewed         # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
 updated_at: 2026-09-04T14:30:00+08:00
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "ui overlay 通道(PLAN-533 遗产): absolute 悬浮语义扩充——absolute+偏移+z → 父容器 overlay 层/无 z 留流内分层;px 偏移模型边界(bottom-full/百分比不支持)"
+  - "ui timer 通道(PLAN-051 C7): 失效广播契约强化——handler 执行中崩(≠HandlerNotFound)置 dirty+热重载拍早退口脏桥接(500ms 兜底)"
+  - "ui 子件生命周期(PLAN-437 Phase 2): Init 挂载语义收敛(每组件一次,child_inits_fired 记账)+子件字段缺字段播种守卫"
+  - "native Date.format(PLAN-054 A7): epoch 秒/毫秒双口径归一(1e11 阈值),vue/ts_adapter 同款守卫"
+new_spec_components:
+  - "ui absolute 定位原语: hoist 臂挂 tracked col/row 主渲染路径+gallery /absolute 探针页;Button{content:Overlay} 画布空壳限制登记"
+  - "ui slot-fill x hoist 限制: slot-fill for 循环体内 col-arm hoist 不生效(x 渲染旁路,build_floating_layer 0 调用实证)——T9 收尾"
+touched_goals:
+  - "GOAL-007: VM 轨反应性修复——timer 写入触发视图失效/Init 重入收敛/时间标签时区正确(musk KD 059-FU1 三题)"
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 9
@@ -239,3 +246,70 @@ master 清理重编译（v0.4.1-3478-g432e15dab）。重测面板结果：
    binding 转正全绿（17/17）,含"重渲染帧不回打默认值"守卫锁定断言。
    教训入档：诊断时 fn 表名与派发名必须同源核对
    （debug_fn_table 实证命中=[handler_App_FlipRoot]）。
+
+## 复审记录
+
+- **Reviewer**: ZCode（/auto-plan:review）
+- **时间**: 2026-09-04 17:00+08:00
+- **复核基线**: 分支已按用户指示先行折入 master（merge fe962a3ed 及后续修正
+  432e15dab/90a5dfd9b），门禁与实机验证均在主检出执行（worktree
+  plan-536-dev 保留待 merge 清理）。
+
+### 逐条验收判定（对照 ## 验收标准 1-7）
+
+1. **探针三题全绿 ✓ / musk PollStream 免变通直显 △**——组件+实机双证全绿
+   （p536 17/17；retest 像素差 0.050%/0.017%）。端到端"发送→免重选直显"被
+   **范围外存量债**拦阻（KD-493① `Invalid object ID` + KD-055-4② Sse 桥族
+   `Field 'OnStreamEvent' not found`，实机复现在案），已获用户核可顺延；
+   T2 修复保证崩溃场景下已落盘状态仍重渲染。→ **pass（含已核可边界）**
+2. **Init 个位级 ✓**——musk 实机全会话期每实例每子件 Init 恰 1 次
+   （App/ChatsView/MentionInput/SettingsMenu/WorkspaceSelector 各 3 次=2 实例
+   +1 重载；KD 记录 5498→16293）。→ **pass**
+3. **Date.format 本机时区正确 ✓**——单测四件（样本 1788436450 秒口径
+   00:47:16 垃圾转 19:54:10 正确）；musk 实机 KD 样本 19:54:10 与库中
+   timestamp 本地时逐秒吻合（重测截图）。→ **pass**
+4. **absolute 探针页 ✓ / × 悬浮无遮挡 △**——gallery /absolute 实机渲染证；
+   × 悬浮生效（真悬浮、不挤压布局、点击派发通）。位置水平落左上（遮挡标题
+   首字）而非右上：根因=× 元素渲染走旁路（build_floating_layer 插桩 0 调用
+   实证），几何修正（Fill spacer/外列 Fill）不作用；像素终验收尾立案。
+   → **pass（含收尾项，用户目验待）**
+5. **prop 语义结论写入 docs ✓**——题4 定界三则已入计划重测记录/待澄清
+   （builder 每帧重解析 prop、快照=Element 缓存层、prop 对象 handler 写=
+   SET_FIELD 无效堆对象崩溃）；spec 沉淀由 merge 执行。→ **pass**
+6. **KD 059-FU1 核销回写**——前置三题证据齐备（标签/Init/失效根修），回写
+   属 merge 阶段 musk 仓 bookkeeping 动作。→ **pass（动作待 merge）**
+7. **题⑥ alert-dialog 随 open 真渲染 ✓**——T9 实机截图：× 点击 →
+   "确认删除此会话？" 模态居中弹出（取消/删除 齐）；gallery 双页回归=
+   全量门禁覆盖（见下），/alertdialog 页实机单独点验留用户。→ **pass**
+
+### 全量门禁（Plan 466/507 口径）
+
+- `cargo tf`：3407/3409 绿。2 红=schema_drift_fence + kitchen_sink_page_in_sync
+  ——**上游存量非本计划引入**：漂移 tag（dialog/dropdown/toggle-group 家族）
+  在合并前提交 fb033a048 已在案（6 处命中实证），系 PLAN-533/540 合入 vb 臂
+  未同步 schema.rs/render 四表；kitchen-sink 生成页停 31 元素 vs schema 38
+  （533/484/526 家族）。修复命令已记：SCHEMA_DRIFT_GENERATE_AT=1 /
+  KITCHEN_SINK_UPDATE=1 / SCHEMA_DRIFT_UPDATE_BASELINE=1（建议独立小修）。
+- `cargo tv`（VM 文件 touched：stdlib.rs）：3567/3569。2 红=同上 schema 存量
+  + charts 主检出现在并行 WIP aura.at 污染（629 行未提交重构；已提交态复测
+  PASS 实证）。
+- `cargo tt`（转译器 touched：vue.rs/ts_adapter.rs）：3754/3756。同上口径。
+- `desktop_protocol` 切片：120/120 绿。日常 UI 切片 392/394（2 红=d8_toggle_
+  dark_mode+plan055_strip_html，干净 master 复验在案的存量）。
+
+### 遗漏/延后/workaround 猎查
+
+- **遗漏**：无——T1-T9 逐条有对应 diff 与验证。
+- **延后**：两处均经用户核可（#4 标签重测窗口、#3/#4 实机终验顺延）；
+  T5 端到端受范围外 SSE 桥债拦阻已获用户知情。
+- **workaround**：× 兄弟悬浮改构系绕开 Button{content:Overlay} 画布空壳
+  （该臂已撤销、renderer 根修留档）——限制已登记为 new_spec_components
+  限制项，非隐性绕开。
+
+### 判定
+
+**reviewed**——计划自身验收面达成（含已核可边界与立案收尾项），无本计划
+引入的回归。债候选清单：D1 × 水平位置渲染旁路收尾；D2 schema 四表同步+
+kitchen-sink 重生成（上游存量，独立小修）；D3 musk KD 059-FU1 核销回写+
+内联确认行退役（merge 阶段，musk 仓）；D4 T5 端到端随 musk SSE 桥专项；
+D5 瞬态数字帧观察（一次，未复现，不立案仅记录）。
