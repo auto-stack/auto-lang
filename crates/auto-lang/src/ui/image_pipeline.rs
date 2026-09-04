@@ -5,7 +5,7 @@
 //! identities and lifetimes.  Task 1 deliberately provides only the module
 //! seam; its types and behavior are added in the following tasks.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
@@ -660,6 +660,73 @@ pub fn inspect_image_metadata(bytes: &[u8]) -> Result<MediaMetadata, MediaAssetE
     let orientation = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(bytes)).ok().and_then(|exif| exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY).and_then(|field| field.value.get_uint(0))).map(|value| match value { 2 => MediaOrientation::FlipHorizontal, 3 => MediaOrientation::Rotate180, 4 => MediaOrientation::FlipVertical, 5 => MediaOrientation::Transpose, 6 => MediaOrientation::Rotate90, 7 => MediaOrientation::Transverse, 8 => MediaOrientation::Rotate270, _ => MediaOrientation::Normal }).unwrap_or_default();
     Ok(MediaMetadata { width, height, orientation, mime_type: mime_type.into(), byte_len: bytes.len() as u64 })
 }
+
+/// Transport-neutral result for the media endpoint.  The generated Axum and
+/// VM HTTP adapters translate this shape to their native response types.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediaHttpResponse {
+    pub status: u16,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<Arc<[u8]>>,
+}
+
+impl MediaHttpResponse {
+    fn status(status: u16) -> Self {
+        Self {
+            status,
+            headers: BTreeMap::new(),
+            body: None,
+        }
+    }
+}
+
+/// Resolves the only public media URI shape without accepting filesystem paths.
+pub fn media_http_response(
+    registry: &MediaAssetRegistry,
+    method: &str,
+    path: &str,
+    if_none_match: Option<&str>,
+) -> MediaHttpResponse {
+    let Some((id, revision)) = parse_media_path(path) else {
+        return MediaHttpResponse::status(404);
+    };
+
+    match registry.lookup(id, revision) {
+        MediaLookup::Missing => MediaHttpResponse::status(404),
+        MediaLookup::Expired => MediaHttpResponse::status(410),
+        MediaLookup::Pending => MediaHttpResponse::status(503),
+        MediaLookup::Failed(_) => MediaHttpResponse::status(422),
+        MediaLookup::Ready(bytes) => {
+            let Some(metadata) = registry.metadata(id) else {
+                return MediaHttpResponse::status(404);
+            };
+            let etag = format!("\"{id}-{revision}\"");
+            if if_none_match == Some(etag.as_str()) {
+                return MediaHttpResponse::status(304);
+            }
+            let mut headers = BTreeMap::new();
+            headers.insert("content-type".into(), metadata.mime_type);
+            headers.insert("content-length".into(), bytes.len().to_string());
+            headers.insert("cache-control".into(), "public, max-age=31536000, immutable".into());
+            headers.insert("etag".into(), etag);
+            MediaHttpResponse {
+                status: 200,
+                headers,
+                body: (method == "GET").then_some(bytes),
+            }
+        }
+    }
+}
+
+fn parse_media_path(path: &str) -> Option<(MediaAssetId, u64)> {
+    let route = path.strip_prefix("/api/__auto/media/")?;
+    let (id, revision) = route.split_once('/')?;
+    if revision.contains('/') || id.len() != 32 {
+        return None;
+    }
+    Some((MediaAssetId(u128::from_str_radix(id, 16).ok()?), revision.parse().ok()?))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderedImage { pub width: u32, pub height: u32, pub rgba: Arc<[u8]> }
 pub fn decode_rendition(bytes: &[u8], orientation: MediaOrientation, spec: &RenditionSpec) -> Result<RenderedImage, MediaAssetError> {
@@ -842,5 +909,50 @@ mod tests {
         )
         .unwrap();
         assert_eq!((viewport.width, viewport.height), (1, 1));
+    }
+
+    #[test]
+    fn http_response_maps_media_states_without_source_paths() {
+        let registry = MediaAssetRegistry::new(Duration::ZERO);
+        let ticket = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "C:/private/source.png".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 9,
+            },
+            MediaMetadata {
+                mime_type: "image/png".into(),
+                ..Default::default()
+            },
+        );
+        let path = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+        assert_eq!(super::media_http_response(&registry, "GET", &path, None).status, 503);
+
+        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry
+            .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([1, 2, 3]))
+            .unwrap();
+        let response = super::media_http_response(&registry, "GET", &path, None);
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body.as_deref(), Some(&[1, 2, 3][..]));
+        assert_eq!(response.headers.get("content-type"), Some(&"image/png".into()));
+        assert_eq!(super::media_http_response(&registry, "HEAD", &path, None).body, None);
+        assert_eq!(super::media_http_response(&registry, "GET", &path, Some(response.headers["etag"].as_str())).status, 304);
+        assert_eq!(super::media_http_response(&registry, "GET", "/api/__auto/media/nope/9", None).status, 404);
+        assert!(!format!("{:?}", response).contains("private/source"));
+
+        let failed = registry.queue(
+            MediaAssetKey { source_fingerprint: "fixture-b".into(), orientation: Default::default(), rendition: RenditionSpec::original(), revision: 10 },
+            MediaMetadata::default(),
+        );
+        registry.fail(failed.id, super::MediaAssetError::UnsupportedFormat).unwrap();
+        let failed_path = format!("/api/__auto/media/{}/{}", failed.id, failed.revision);
+        assert_eq!(super::media_http_response(&registry, "GET", &failed_path, None).status, 422);
+        registry.release(ticket.id);
+        registry.collect_expired();
+        assert_eq!(super::media_http_response(&registry, "GET", &path, None).status, 410);
     }
 }
