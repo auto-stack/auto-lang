@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-540
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-settings-osconfig-unify
 author: []
 created_at: 2026-09-03
@@ -13,7 +13,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 0
-total_steps: 0
+total_steps: 12
 ---
 
 # [PLAN-540] desktop-settings-osconfig-unify
@@ -92,15 +92,32 @@ total_steps: 0
 └────────────────┘                        └────────────────────────┘
 ```
 
-### 关键决策（定案见待澄清→实施时回填）
+### 关键决策（2026-09-04 实施定稿，用户裁定 D2）
 
-| # | 决策点 | 倾向 |
+| # | 决策点 | 定案 |
 |---|---|---|
-| D1 | 配置读写路径：进程直读 config.at vs 走 daemon API | **直读同一文件**（同机 trusted；daemon 仅编辑器消费——与体系"运行时代码直接读同一文件"惯例一致：aaid/roles/musk 均直读） |
-| D2 | 设置窗口形态：registry App（examples/ui，Vue 双端 parity）vs 特权 .at 窗（进程内 iced） | **registry App**（普通窗行为免费获得：×关闭/拖拽/缩放/z 序；双端一致性受益）。特权形态仅保留引导期兜底 |
-| D3 | 设置页实现：手写桌面设置页（读写 config.at）vs iced 复刻通用表单 | **首期手写**（桌面风格页，读写同源文件）；通用表单 iced 复刻列远期 |
-| D4 | 旧键迁移 | boot 迁移：config.at 缺席 && 旧键存在 → 搬运写 config.at（一次性，之后 config.at 为准） |
-| D5 | overlay 槽退役 | settings_app overlay 槽（487 M4）与齿轮二态翻转退役；齿轮 → 打开设置窗口（已开则聚焦） |
+| D1 | 配置读写路径 | **宿主进程直读/直写 config.at**（同机 trusted；daemon 仅通用编辑器消费）。运行时驱动事实读 `DesktopConfig` 内存结构（boot 自 config.at 装载），全部写入经宿主唯一收口后落文件 |
+| D2 | 设置窗口形态 | **registry App**（用户 2026-09-04 裁定）：`examples/ui/045-desktop-settings/`（pac `name: "desktop"` → 504 播种路径即 `apps/desktop/config.at`），×关闭/拖拽/缩放/z 序免费继承 WM；接受 Vue 双端 parity 义务 |
+| D3 | 设置页实现 | 首期手写桌面风格页（bg-card 卡片 + 左列分区），**读 = 504 播种扩展**（launch 期 `cfg_*` 命名约定 var 灌当前值），**写 = `__desktop_cmd` 驱动动词**（复用 set_theme/set_wallpaper/set_dock_*，新增 set_dock_pinned/set_transparency/set_notes_enabled/set_wallpapers_dir） |
+| D4 | 旧键迁移 | boot 一次性：config.at 缺席 && 6 枚旧 storage 键任一存在 → 搬运写 config.at；**旧键保留只读回退一个版本**（本期不删，下版本退役） |
+| D5 | overlay 槽退役 | settings_app 槽 / toggle_settings / settings_visible / Esc 臂 / settings.at 资产全退役；齿轮与标题栏菜单 `open_settings` 动词语义改为 launch-or-focus 设置窗（shell.at 零改动） |
+
+schema 定稿（顶层块 + 叶子，贴通用编辑器 file 模块约定与 `parse_pac_fields` 平铺行读；pinned v1 逗号串，数组/Collection 化列远期）：
+
+```at
+desktop {
+    dock_position : "bottom"        # bottom | top
+    dock_enabled : true
+    dock_pinned : "011-calculator,013-todo,015-notes"
+    wallpaper_path : ""
+    wallpapers_dir : ""
+    dark_theme : true
+    transparency : "off"            # 沿用现档位取值
+    notes_enabled : true
+}
+```
+
+（第 6 枚旧键 `shell.desktop.wallpapers_dir` 系 PLAN-526 T14 实际在用，入迁移清单——原计划列 5 枚系勘误。）
 
 ## 需求分析与背景调查
 
@@ -165,8 +182,86 @@ total_steps: 0
 
 ## 执行步骤
 
-（立项评审后细化；骨架：M1 config.at 模块化 → M2 窗口化 → M3 注册 → M4 收尾。
-建议 worktree：`git worktree add D:/autostack/.wt/lang-540/auto-lang -b plan-540-dev`。）
+（2026-09-04 细化定稿；代码改动一律在 worktree `D:/autostack/.wt/lang-540/auto-lang`（分支
+`plan-540-dev`），本文件进度标记留主检出。scoped 验证门禁按 AGENTS.md Category B。）
+
+### M1 desktop config.at 单源
+
+- **T1** 新建 `crates/auto-lang/src/ui/desktop_config.rs`：`DesktopConfig` 结构
+  （8 字段见 schema 定稿）+ `Default`（对齐现 boot 内置缺省：dock bottom/enabled、
+  pinned 三默认、wallpaper 空、theme dark、transparency off、notes on）+
+  `load()`（config.at 经 `parse_pac_fields` 平铺读，逐字段坏值回退默认；缺席 →
+  旧 6 键迁移检查（D4，任一存在则搬运 + 立即 save 一次）→ 内置缺省）+
+  `save()`（mkdir -p + 写 `~/.config/autoos/apps/desktop/config.at`）。
+  挂 `pub mod desktop_config` 进 `ui/mod.rs`；session `DesktopState` 增
+  `config: DesktopConfig` 字段 boot 装载。TDD：先写解析好/坏/缺席、迁移一次性、
+  save/load round-trip、bool/CSV coerce 单测。
+  验证：`cargo check -p auto-lang` && `cargo t desktop_config`。
+- **T2** boot/驱动事实读切 config：`load_desktop_wallpaper`/`load_dock_pinned`/
+  boot 主题读回（renderer.rs ~9895/~9815/~10846）与 session boot 字段
+  （~276/~295）改读 `state.desktop.config`；每帧投影（renderer ~8288-8309
+  notes_on/wallpaper/theme/transparency）与 `virtual_window.rs` 透明度底色链
+  （~175-190）同切。旧键读点清零（迁移判定除外）。
+  验证：`cargo check -p auto-lang` && `cargo t iced`（scoped）。
+- **T3** 写通道收口：`execute_set_theme`/`execute_set_wallpaper`/dock
+  position/enabled 臂 + notes gate 写点改 `config` 字段更新 + `save()`，删
+  对应 `storage_host_publish` 旧键写；热生效管线原样保留（set_dark_mode/
+  snapshot invalidate/view_dirty/dock 重排）。既有持久化断言测试迁移改写。
+  验证：`cargo check -p auto-lang` && `cargo t iced`。
+
+### M2 设置窗口 registry App 化
+
+- **T4** 新建 `examples/ui/045-desktop-settings/`（pac：`name: "desktop"`、
+  `title: "设置"`、icon ⚙️）：桌面风格设置页——bg-card 卡片 + 左列分区
+  （Dock/通知/外观/系统/关于），声明 `cfg_dock_position/cfg_dock_enabled/
+  cfg_dock_pinned/cfg_wallpaper_path/cfg_wallpapers_dir/cfg_dark_theme/
+  cfg_transparency/cfg_notes_enabled` state var（缺省 = 内置默认，Vue 端
+  即此形态）。验证：`cargo check -p auto-lang`；`auto run` 双端可起（记录
+  截图）。
+- **T5** 宿主写动词扩展：`__desktop_cmd` DC 枚举新增
+  `SetDockPinned(csv)/SetTransparency(level)/SetNotesEnabled(0|1)/
+  SetWallpapersDir(dir)` 四臂（收口同 T3：config+save+热生效）；既有
+  SetWallpaper/SetTheme/SetDockPosition/SetDockEnabled/LaunchApp 复用。
+  验证：`cargo check -p auto-lang` && `cargo t iced`。
+- **T6** 504 播种扩展：launch 期对已声明 `cfg_<field>` var 的 App 灌
+  config 字段值（bool coerce；`osconfig_state`/`osconfig_hint`/
+  `about_host`/`about_version` 同批注入——徽标三态复用
+  `badge_projection`）。设置页表单 handler 全接线
+  （`__desktop_cmd = "set_*\t" + v`）。
+  验证：`cargo check -p auto-lang` && `cargo t osconfig_apps`（或所在模块）。
+- **T7** 齿轮/菜单接线：`open_settings` 宿主臂（renderer ~8673-8676）从
+  `toggle_settings` 换成 launch-or-focus（`DC::ActivateApp` 同构：按
+  `registry_id == "045-desktop-settings"` 找窗→跨 workspace 聚焦，缺席则
+  `launch_app`）；T29/T37 标题栏菜单"设置"入口同改。Esc 不再是设置关闭
+  路径（M4 摘臂）。验证：`cargo t iced` + 实机点齿轮。
+
+### M3 auto-os-config 注册
+
+- **T8** 依赖 worktree：`git -C D:/autostack/auto-os-config worktree add
+  D:/autostack/.wt/lang-540/auto-os-config -b auto-lang-dev`；
+  `auto-os-config-back/src/registry.rs` 的 `DEFAULT_REGISTRY_ATOM` 基线增
+  desktop 模块块（`kind: file, id: "desktop", file: "apps/desktop/config.at",
+  root: "desktop", name: "桌面", icon: "🖥️", group: "系统"`）；后端模块解析
+  测试补一条。**消费即折返**：daemon 侧测试绿后折回 auto-os-config 主分支，
+  本仓 worktree 验证 `../auto-os-config` 解析序不受阻。
+  验证：os-config 侧 `cargo test`（back crate）；本仓无代码改动。
+
+### M4 退役 + 验收
+
+- **T9** overlay 退役：`settings_app` 槽 / `toggle_settings` /
+  `settings_visible` / Esc 臂（~13666/~14246/~14398/~14471 分支）/
+  `crates/auto-lang/assets/settings.at` + 装载器全删；overlay 专属测试
+  （~21921-22360）改写为设置窗语义或退役；齿轮二态高亮态投影清理。
+  验证：`cargo check -p auto-lang` && `cargo t iced` && 全仓
+  `grep -rn toggle_settings crates/` 清零。
+- **T10** 双端自动化验证：autoui-verifier 技能跑 045-desktop-settings
+  （Vue `auto run` + VM `auto run -r vm`）round-trip（改 dock position →
+  dock 重排 + config.at 落盘 → 重启读回）。
+- **T11** 实机验收：非 modal（多窗并存可见）、×关闭、拖拽/缩放、桌面
+  风格、daemon 通用编辑器改 config.at → 桌面热生效、最小化场景 T39
+  护栏回归、旧配置迁移实测。截图入 plan。
+- **T12** 收尾：KNOWN-DEBT-AND-RISKS.md 记账（旧键只读回退保留一个版本
+  的退役承诺等）；待澄清回填；scoped 验证全绿 → `status: execution_done`。
 
 ## 复审记录
 
@@ -174,13 +269,16 @@ total_steps: 0
 
 ## 待澄清事项
 
-1. **D1 直读 vs daemon**：桌面进程直读 config.at（同机 trusted，daemon 仅编辑器用）是否
-   为最终形态？若未来跨机远程桌面则需要切 daemon API——接口预留。
-2. **D2 registry App 的双端义务**：examples/ui 形态意味着 Vue 端也要能跑设置页（双端 parity
-   义务）；若不想背，退特权 .at 窗（进程内 iced only）——需要用户定夺。
-3. **config.at schema 形状**：以通用编辑器 file 模块约定（顶层块+叶子）为准，嵌套层级 v1
-   只做顶层块——dock.pinned 数组形态与 Collection 模块是否更契合（collection 有 sidecar/CRUD）
-   需与 auto-os-config 侧对一次。
-4. **迁移触发点**：boot 一次性搬运后旧键是否删除（防回滚双源）——建议保留只读回退一个版本。
-5. **与 Plan 530（vm-mobile-paint-crash，他人在办）无依赖**；与 501 os-config 外链的退役衔接
-   需要知会 auto-os-config 侧。
+（2026-09-04 实施定稿回填——1/2/3/4 已决，见「关键决策」表；5 为知会项。）
+
+1. ~~**D1 直读 vs daemon**~~ ✅ 定案：宿主直读直写 config.at；接口预留远程桌面
+   未来切 daemon API。
+2. ~~**D2 registry App 的双端义务**~~ ✅ 用户裁定（2026-09-04）：registry App，
+   接受 Vue 双端 parity 义务。
+3. ~~**config.at schema 形状**~~ ✅ 定案：顶层块 + 叶子平铺（`desktop { … }`），
+   pinned v1 逗号串；数组/Collection 化列远期（与 auto-os-config 侧对齐后再议）。
+4. ~~**迁移触发点**~~ ✅ 定案：boot 一次性搬运；旧键保留只读回退一个版本（本期
+   不删键，下版本退役；KNOWN-DEBT 记账）。
+5. **知会项**：与 Plan 530（vm-mobile-paint-crash）无依赖；501 os-config 外链
+   入口在设置页内保留（`launch\tos-config`），M3 注册完成后知会 auto-os-config
+   侧。
