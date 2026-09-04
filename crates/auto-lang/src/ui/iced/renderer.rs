@@ -2556,6 +2556,7 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     content: iced::Element<'static, M>,
     position: crate::ui::view::OverlayPosition,
 ) -> iced::Element<'static, M> {
+
     // PLAN-536 重测修正(2026-09-04)：悬浮层几何改**显式 spacer**——原
     // container(Fill)+align_x 在 Stack 子路径不生效(× 落左上,musk 会话卡
     // 实测),spacer 是不会说谎的几何：top spacer 垂直定位,水平方向
