@@ -421,6 +421,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     is_final,
                     on_change: None,
                     on_focus: None,
+                    placeholder: None,
                     style: None,
                 }
             };
