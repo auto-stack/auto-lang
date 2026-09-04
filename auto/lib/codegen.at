@@ -675,11 +675,14 @@ pub type CG {
                 ops = f"0x${hex4(offs.get(fe.ins))}"
             } else if ins.op == OpCode.LoadStr {
                 ops = "\"" + self.esc_disasm(self.pool.get(ins.n)) + "\""
+            } else if ins.op == OpCode.GetField {
+                // P532 W2 根修⑧:GetField/全局操作数经池解析为名字(镜像
+                // 宿主 normalized_dump 的 load.str 内容替换哲学)——池布局
+                // 两侧不同,下标比较误报字段错位;名字才是语义
+                ops = "field[\"" + self.esc_disasm(self.pool.get(ins.n)) + "\"]"
             } else if ins.op == OpCode.LoadGlobal || ins.op == OpCode.StoreGlobal {
                 // W3:链接后 ins.n 为合并池索引(s 为模块本地旧值,弃用)
-                ops = ins.n.str()
-            } else if ins.op == OpCode.GetField {
-                ops = "field[" + ins.n.str() + "]"
+                ops = "\"" + self.esc_disasm(self.pool.get(ins.n)) + "\""
             }
             if out != "" {
                 out = out + "\n"
@@ -2668,16 +2671,26 @@ fn cg_is(mut c CG, mut p P) {
                     c.emit(OpCode.Eq, "", 0)
                 } else {
                     // ③b or 链:逐模式 eq + jmp.nz 匹配标号;全落空 jmp next
+                    // P532 W2 根修⑦:多模式测试顺序镜像宿主 parser 的
+                    // patterns.swap_remove(0)(parser.rs 7766)——取首位后
+                    // 末位搬到表首,宿主有效测试序=pat,extras[末],extras[0..n-2]
+                    // (实证:lexer ' ' | '\t' | '\r' 宿主测序 ' ','\r','\t';
+                    // aavm 原按源码序 ' ','\t','\r'→静态差分体内首分歧)
                     var nz_jmps List<int> = List.new()
+                    var en7 = extras.len()
                     c.emit_load(t)
                     cg_is_pattern_expr(c, pat)
                     c.emit(OpCode.Eq, "", 0)
                     var nz = c.emit(OpCode.JmpNz, "", -1)
                     nz_jmps.push(nz)
                     var ei = 0
-                    while ei < extras.len() {
+                    while ei < en7 {
+                        var idx7 = en7 - 1
+                        if ei > 0 {
+                            idx7 = ei - 1
+                        }
                         c.emit_load(t)
-                        cg_is_pattern_expr(c, extras.get(ei))
+                        cg_is_pattern_expr(c, extras.get(idx7))
                         c.emit(OpCode.Eq, "", 0)
                         var nz2 = c.emit(OpCode.JmpNz, "", -1)
                         nz_jmps.push(nz2)
