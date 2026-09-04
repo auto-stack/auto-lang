@@ -14717,12 +14717,23 @@ fn dynamic_view(
 
     // Plan 370 D-GAP-2/D-GAP-5: sync dark mode + accent to iced_adapter thread_locals
     // so semantic colors (bg-primary, text-foreground, etc.) resolve correctly.
-    if let Ok(dark_val) = state.component.read_state("dark_mode") {
-        let is_dark = match dark_val {
-            auto_val::Value::Bool(b) => b,
-            _ => false,
-        };
-        crate::ui::style::iced_adapter::set_dark_mode(is_dark);
+    // PLAN-050：值变化时标 view_dirty——fence 家族 chrome 等在 view 求值期
+    // 解析类串（family_of 按 dark_mode 选 static），Element 缓存若不随主题
+    // 翻转重建，预览臂会卡在首帧的暗色档（编辑臂 palette 在 draw 期取用
+    // 不受影响，两臂曾因此分叉）。
+    {
+        static LAST_SYNCED_DARK: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(true);
+        if let Ok(dark_val) = state.component.read_state("dark_mode") {
+            let is_dark = match dark_val {
+                auto_val::Value::Bool(b) => b,
+                _ => false,
+            };
+            if LAST_SYNCED_DARK.swap(is_dark, std::sync::atomic::Ordering::SeqCst) != is_dark {
+                *state.app.view_dirty.borrow_mut() = true;
+            }
+            crate::ui::style::iced_adapter::set_dark_mode(is_dark);
+        }
     }
     if let Ok(accent_val) = state.component.read_state("accent_color") {
         let name = match accent_val {
