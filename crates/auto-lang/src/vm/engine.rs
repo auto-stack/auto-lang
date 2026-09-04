@@ -3498,38 +3498,58 @@ impl AutoVM {
                     }
                 }
                 OpCode::TYPE_TO_I32 => {
-                    match pop_tagged(&mut task.ram) {
-                        StackTag::Str(idx) => {
-                            let strings = self.strings.read().unwrap();
-                            let parsed = strings.get(idx as usize)
-                                .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
-                                .unwrap_or(0);
-                            drop(strings);
-                            // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
-                            self.pool_release(idx as usize);
-                            task.ram.push_i32(parsed);
-                        }
-                        StackTag::Int(v) => {
-                            task.ram.push_i32(v);
-                        }
+                    // Plan 539 W0 (DIV-PY-FLOAT-1): py-FFI returns now carry
+                    // real f64/f32 NanoValues — convert by truncation instead
+                    // of letting pop_tagged misdecode the payload bits as i32.
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        let idx = auto_val::decode_string(nv);
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings.get(idx as usize)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
+                            .unwrap_or(0);
+                        drop(strings);
+                        // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                        self.pool_release(idx as usize);
+                        task.ram.push_i32(parsed);
+                    } else if auto_val::is_f64(nv) {
+                        task.ram.push_i32(auto_val::decode_f64(nv) as i32);
+                    } else if auto_val::is_f32(nv) {
+                        task.ram.push_i32(auto_val::decode_f32(nv) as i32);
+                    } else if auto_val::is_bool(nv) {
+                        task.ram.push_i32(if auto_val::decode_bool(nv) { 1 } else { 0 });
+                    } else if auto_val::is_null(nv) {
+                        // None (null nanbox) — old sentinel for backward compat.
+                        task.ram.push_i32(-1);
+                    } else {
+                        task.ram.push_i32(auto_val::decode_i32(nv));
                     }
                     task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_TO_F64 => {
-                    match pop_tagged(&mut task.ram) {
-                        StackTag::Str(idx) => {
-                            let strings = self.strings.read().unwrap();
-                            let parsed = strings.get(idx as usize)
-                                .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
-                                .unwrap_or(0.0);
-                            drop(strings);
-                            // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
-                            self.pool_release(idx as usize);
-                            task.ram.push_f32(parsed);
-                        }
-                        StackTag::Int(v) => {
-                            task.ram.push_f32(v as f32);
-                        }
+                    // Plan 539 W0 (DIV-PY-FLOAT-1): same tag-aware dispatch —
+                    // an f64 on the stack is already the answer; f32 widens.
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        let idx = auto_val::decode_string(nv);
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings.get(idx as usize)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
+                            .unwrap_or(0.0);
+                        drop(strings);
+                        // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                        self.pool_release(idx as usize);
+                        task.ram.push_f32(parsed);
+                    } else if auto_val::is_f64(nv) {
+                        task.ram.push_f64(auto_val::decode_f64(nv));
+                    } else if auto_val::is_f32(nv) {
+                        task.ram.push_f32(auto_val::decode_f32(nv));
+                    } else if auto_val::is_bool(nv) {
+                        task.ram.push_f32(if auto_val::decode_bool(nv) { 1.0 } else { 0.0 });
+                    } else if auto_val::is_null(nv) {
+                        task.ram.push_f32(-1.0);
+                    } else {
+                        task.ram.push_f32(auto_val::decode_i32(nv) as f32);
                     }
                     task.last_result_type = ResultType::Float;
                 }

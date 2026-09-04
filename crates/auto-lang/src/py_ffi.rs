@@ -834,17 +834,12 @@ fn py_auto_marshal_return(
     } else if let Ok(i) = py_val.extract::<i32>() {
         task.ram.push_i32(i);
     } else if let Ok(f) = py_val.extract::<f64>() {
-        // Plan 300: Store float as string in string pool because codegen assumes
-        // Python FFI returns are single-slot values. The 2-slot f64 encoding
-        // breaks `let x = py_func()` (only stores 1 slot = null marker).
-        // TODO: When codegen supports multi-slot return types, switch to push_f64.
-        let s = if f == f.floor() && f.abs() < 1e15 {
-            format!("{}", f as i64)
-        } else {
-            format!("{}", f)
-        };
-        let idx = vm.add_string(s.into_bytes());
-        vm.rc_push_str_idx(task, idx);
+        // Plan 539 W0 (DIV-PY-FLOAT-1): floats return as a real f64. The
+        // historic string-pool round-trip existed because the 2-slot f64
+        // encoding broke `let x = py_func()` — obsolete since Plan 377 made
+        // f64 single-slot. It dropped ".0" on integral values and silently
+        // degraded arithmetic on the stringified result to NaN.
+        task.ram.push_f64(f);
     } else if let Ok(s) = py_val.extract::<String>() {
         let idx = vm.add_string(s.into_bytes());
         vm.rc_push_str_idx(task, idx);
@@ -1305,5 +1300,49 @@ mod tests {
             let result = obj.call_method("combine", args, Some(&kwargs)).unwrap();
             assert_eq!(result.extract::<i32>().unwrap(), 6);
         });
+    }
+
+    // ========================================================================
+    // Plan 539 W0 (DIV-PY-FLOAT-1): float returns push a real f64
+    // ========================================================================
+
+    #[test]
+    fn test_marshal_return_float_pushes_f64() {
+        // A Python float return must land on the stack as an f64 NanoValue
+        // (single-slot since Plan 377), not a string-pool reference. Also
+        // covers the 0-dim-tensor `.item()` channel: extract::<f64> rides
+        // the __float__ protocol.
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            let f = PyFloat::new(py, 2.0);
+            py_auto_marshal_return(&f, &mut task, &vm).unwrap();
+        });
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_f64(nv), "expected f64 tag, got {:?}", nv);
+        assert_eq!(auto_val::decode_f64(nv), 2.0);
+
+        // Integral floats keep their f64-ness (no ".0"-dropping stringify).
+        Python::attach(|py| {
+            let f = PyFloat::new(py, 9.0);
+            py_auto_marshal_return(&f, &mut task, &vm).unwrap();
+        });
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_f64(nv));
+        assert_eq!(auto_val::decode_f64(nv), 9.0);
+    }
+
+    #[test]
+    fn test_marshal_return_int_and_bool_unchanged() {
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            let i: i64 = 42;
+            let iv = i.into_pyobject(py).unwrap();
+            py_auto_marshal_return(&iv.into_any(), &mut task, &vm).unwrap();
+        });
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_i32(nv));
+        assert_eq!(auto_val::decode_i32(nv), 42);
     }
 }
