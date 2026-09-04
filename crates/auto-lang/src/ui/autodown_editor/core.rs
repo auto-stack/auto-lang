@@ -16,8 +16,10 @@
 // （quote 前缀 / list 序号 / 表格管道行重生成），`autodown_editor_text`
 // 为 .at 回环 payload 读数口。
 //
-// Phase 3 v1 边界（余量登记在 mod.rs）：块内软换行不拆块、块首退格不
-// 跨块合并、选区不跨块、markdown 输入规则未接线。
+// PLAN-048 收口：跨块选区（SelAnchor×2 + 逐叶渲染 + copy 拼接 + 跨块
+// 删除剪接）、行首输入规则（LINE_START_RULES 7 条）、跨容器合并
+// （same_host 闸撤除；fence 维持不做）、undo 面（打字/删除级钉死，
+// 结构操作不入栈——overwrite 整换新缓冲防陈旧栈）。余量台账见 mod.rs。
 //
 // License: MIT. 架构参照 cosmic-edit（GPL-3.0，System76）；原始实现。
 
@@ -251,6 +253,12 @@ pub enum DocInput {
         x: f32,
         y: f32,
     },
+    /// 拖选移动（PLAN-048 T3）：widget 层 CursorMoved 直通，core 侧以
+    /// drag 状态门控（非拖选零操作零捕获）。
+    MouseDragged {
+        x: f32,
+        y: f32,
+    },
     MouseReleased {
         button: EditorButton,
     },
@@ -349,6 +357,14 @@ enum Drag {
     Buffer,
 }
 
+/// 跨块选区端点（PLAN-048 T2）：块下标 + 块内字节偏移（`SendEdit::text`
+/// 扁平字节流口径）。锚/焦点双端点经 dfs 叶序规范化求范围。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelAnchor {
+    pub block: usize,
+    pub offset: usize,
+}
+
 /// autodown 文档编辑器核心状态机（全局注册表共享 `&'static`，
 /// 内部可变性经 Mutex——与 413 同一线程约定）。
 pub struct AutodownEditorCore {
@@ -362,6 +378,12 @@ pub struct AutodownEditorCore {
     shift_anchor: Mutex<Option<(usize, Cursor)>>,
     /// 批次十④：↑↓ 连续导航的水平目标列（px）；横向移动/点击/结构操作重置。
     nav_goal_x: Mutex<Option<f32>>,
+    /// PLAN-048 T2：跨块选区（锚,焦点）。None = 无跨块选区（块内选区
+    /// 仍走每叶 cosmic Selection 渲染路径）。
+    doc_sel: Mutex<Option<(SelAnchor, SelAnchor)>>,
+    /// PLAN-048 T3：拖选起点端点（MousePressed 现场锁定；跨块拖选时作
+    /// doc_sel 锚端）。
+    drag_anchor: Mutex<Option<SelAnchor>>,
     preedit: Mutex<Option<String>>,
     /// 外部最近一次推送值（差分口径对齐 413 last_external）。
     last_external: Mutex<Option<String>>,
@@ -383,6 +405,8 @@ impl AutodownEditorCore {
             modifiers: Mutex::new(EditorModifiers::none()),
             shift_anchor: Mutex::new(None),
             nav_goal_x: Mutex::new(None),
+            doc_sel: Mutex::new(None),
+            drag_anchor: Mutex::new(None),
             preedit: Mutex::new(None),
             last_external: Mutex::new(None),
             layout: Mutex::new(DocLayout { blocks: Vec::new() }),
@@ -405,6 +429,20 @@ impl AutodownEditorCore {
 
     pub fn focused_block(&self) -> Option<usize> {
         *self.focus.lock().unwrap()
+    }
+
+    /// PLAN-048 T2：跨块选区设定（锚,焦点；两端先后语义任意——渲染/行为
+    /// 侧按 dfs 叶序规范化）。
+    pub fn set_doc_selection(&self, anchor: SelAnchor, focus: SelAnchor) {
+        *self.doc_sel.lock().unwrap() = Some((anchor, focus));
+    }
+
+    pub fn clear_doc_selection(&self) {
+        *self.doc_sel.lock().unwrap() = None;
+    }
+
+    pub fn doc_selection(&self) -> Option<(SelAnchor, SelAnchor)> {
+        self.doc_sel.lock().unwrap().clone()
     }
 
     /// PLAN-044 T1：块矩形快照（`render_frame` 布局写回的读出）。on_focus
@@ -472,6 +510,8 @@ impl AutodownEditorCore {
         *self.focus.lock().unwrap() = None;
         *self.shift_anchor.lock().unwrap() = None;
         *self.nav_goal_x.lock().unwrap() = None;
+        *self.doc_sel.lock().unwrap() = None;
+        *self.drag_anchor.lock().unwrap() = None;
         self.revision.fetch_add(1, Ordering::Relaxed);
         true
     }
@@ -520,6 +560,7 @@ impl AutodownEditorCore {
             DocInput::FocusLost => {
                 *self.preedit.lock().unwrap() = None;
                 *self.drag.lock().unwrap() = Drag::None;
+                *self.drag_anchor.lock().unwrap() = None;
                 DocOutput { request_redraw: true, ..Default::default() }
             }
             DocInput::ModifiersChanged(m) => {
@@ -542,8 +583,10 @@ impl AutodownEditorCore {
                 self.handle_key(font_system, key, text, clipboard)
             }
             DocInput::MousePressed { button, x, y } => self.handle_mouse_press(font_system, button, x, y),
+            DocInput::MouseDragged { x, y } => self.handle_mouse_drag(font_system, x, y),
             DocInput::MouseReleased { button } => {
                 *self.drag.lock().unwrap() = Drag::None;
+                *self.drag_anchor.lock().unwrap() = None;
                 if matches!(button, EditorButton::Left | EditorButton::Right) {
                     DocOutput::default().captured()
                 } else {
@@ -616,24 +659,65 @@ impl AutodownEditorCore {
         let ctrl = mods.control || mods.logo;
         let plain_char = |c: char| matches!(key, EditorKey::Char(k) if k.to_ascii_lowercase() == c);
 
-        // ── 剪贴板 / undo 组合键（对齐 413 最小集）────────────────────
+        // ── 剪贴板 / 全选 / undo 组合键（对齐 413 最小集 + PLAN-048 T3
+        //    跨块选区感知）─────────────────────────────────────────────────
+        if ctrl && plain_char('a') {
+            let segs = self.segs.lock().unwrap();
+            let mut order = Vec::new();
+            dfs_leaf_order(&segs, &mut order);
+            drop(segs);
+            if let (Some(&first), Some(&last)) = (order.first(), order.last()) {
+                let len = self.live_text(last).len();
+                self.set_doc_selection(
+                    SelAnchor { block: first, offset: 0 },
+                    SelAnchor { block: last, offset: len },
+                );
+                // 端点块原生选区清零（渲染单源 doc_sel）。
+                let mut blocks = self.blocks.lock().unwrap();
+                for b in blocks.iter_mut() {
+                    b.editor.ed_mut().set_selection(Selection::None);
+                }
+                out.cursor_changed = true;
+                out.request_redraw = true;
+            }
+            return out.captured();
+        }
         if ctrl && plain_char('c') {
-            if let Some(Some(s)) = self.edit_copy(font_system, bi) {
+            let copied = if self.doc_selection().is_some() {
+                self.doc_copy()
+            } else {
+                self.edit_copy(font_system, bi)
+            };
+            if let Some(Some(s)) = copied {
                 clipboard.write(&s);
             }
             return out.captured();
         }
         if ctrl && plain_char('x') {
-            if let Some(Some(s)) = self.edit_copy(font_system, bi) {
-                clipboard.write(&s);
-                self.block_action(font_system, bi, Action::Backspace);
-                out.text_changed = true;
-                out.cursor_changed = true;
+            let copied = if self.doc_selection().is_some() {
+                self.doc_copy()
+            } else {
+                self.edit_copy(font_system, bi)
+            };
+            if let Some(s) = copied {
+                if let Some(t) = s {
+                    clipboard.write(&t);
+                }
+                if self.delete_doc_selection(font_system) {
+                    out.text_changed = true;
+                    out.cursor_changed = true;
+                } else {
+                    self.block_action(font_system, bi, Action::Backspace);
+                    out.text_changed = true;
+                    out.cursor_changed = true;
+                }
             }
             return out.captured();
         }
         if ctrl && plain_char('v') {
             if let Some(t) = clipboard.read() {
+                let had_doc_sel = self.delete_doc_selection(font_system);
+                let bi = self.focused_block().unwrap_or(bi);
                 let mut blocks = self.blocks.lock().unwrap();
                 if let Some(b) = blocks.get_mut(bi) {
                     b.editor.ed_mut().insert_string(&t.replace("\r\n", "\n"), None);
@@ -641,6 +725,7 @@ impl AutodownEditorCore {
                 drop(blocks);
                 out.text_changed = true;
                 out.cursor_changed = true;
+                let _ = had_doc_sel;
             }
             return out.captured();
         }
@@ -673,12 +758,41 @@ impl AutodownEditorCore {
                     let cur = self.focus_locked_cursor();
                     *anchor = cur.map(|c| (bi, c));
                 }
+            } else {
+                // 普通水平 motion 折叠跨块选区（shift+←/→ 跨块不做，
+                // T1 冻结登记）。
+                self.clear_doc_selection();
             }
             *self.nav_goal_x.lock().unwrap() = None;
             self.block_motion(font_system, bi, motion);
             out.cursor_changed = true;
             out.request_redraw = true;
             return out;
+        }
+
+        // ── 跨块选区下的编辑动作：先剪接选区（PLAN-048 T3）；Backspace/
+        //    Delete 即删除本身；Char/Enter/Other 剪接后落正常动作。
+        let mut bi = bi;
+        if self.doc_selection().is_some()
+            && matches!(
+                key,
+                EditorKey::Char(_)
+                    | EditorKey::Enter
+                    | EditorKey::Backspace
+                    | EditorKey::Delete
+                    | EditorKey::Other(_)
+            )
+        {
+            let changed = self.delete_doc_selection(font_system);
+            if let Some(nb) = self.focused_block() {
+                bi = nb;
+            }
+            out.cursor_changed = true;
+            out.request_redraw = true;
+            if changed && matches!(key, EditorKey::Backspace | EditorKey::Delete) {
+                out.text_changed = true;
+                return out;
+            }
         }
 
         // ── 编辑动作（v1 全部不出块；拆块归输入规则批次）───────────────
@@ -715,6 +829,10 @@ impl AutodownEditorCore {
             }
             EditorKey::Char(c) => {
                 self.block_action(font_system, bi, Action::Insert(c));
+                if c == ' ' {
+                    // PLAN-048 T5：行首标记转换（整块精确命中检定）。
+                    self.try_line_start_rule(font_system, bi);
+                }
                 out.text_changed = true;
                 out.cursor_changed = true;
             }
@@ -788,7 +906,7 @@ impl AutodownEditorCore {
         font_system: &mut FontSystem,
         bi: usize,
         up: bool,
-        _shift: bool,
+        shift: bool,
     ) -> DocOutput {
         // 跨块判定采用编辑器通行惯例：光标位于块的**首物理行**按 ↑、
         // **末物理行**按 ↓ 即迁焦邻块（水平落点保留登记余量）；否则交给
@@ -796,6 +914,14 @@ impl AutodownEditorCore {
         let (cur_line, line_total) = self.cursor_geometry(bi);
         let edge = if up { cur_line == 0 } else { cur_line + 1 >= line_total.max(1) };
         let boundary = edge;
+        // PLAN-048 T3：shift 跨块扩展的起点端点（迁焦前捕获）。
+        let origin_anchor = {
+            let blocks = self.blocks.lock().unwrap();
+            blocks
+                .get(bi)
+                .and_then(Self::cursor_byte_offset)
+                .map(|o| SelAnchor { block: bi, offset: o })
+        };
         let n = self.block_count();
         let target = if up {
             if bi == 0 { None } else { Some(bi - 1) }
@@ -842,7 +968,22 @@ impl AutodownEditorCore {
                 }
                 drop(blocks);
                 *self.focus.lock().unwrap() = Some(t);
-                *self.shift_anchor.lock().unwrap() = None;
+                if shift {
+                    // PLAN-048 T3：跨块扩展——锚端保持既有 doc_sel 锚
+                    // （首次扩展取迁出叶端点），焦点端随迁焦落位。
+                    let dest = {
+                        let blocks = self.blocks.lock().unwrap();
+                        blocks.get(t).and_then(Self::cursor_byte_offset)
+                    };
+                    let anchor = self.doc_selection().map(|(a, _)| a).or(origin_anchor);
+                    if let (Some(a), Some(d)) = (anchor, dest) {
+                        self.set_doc_selection(a, SelAnchor { block: t, offset: d });
+                    }
+                    *self.shift_anchor.lock().unwrap() = None;
+                } else {
+                    self.clear_doc_selection();
+                    *self.shift_anchor.lock().unwrap() = None;
+                }
                 return DocOutput {
                     cursor_changed: true,
                     focus_changed: true,
@@ -875,6 +1016,10 @@ impl AutodownEditorCore {
             *self.shift_anchor.lock().unwrap() = None;
         }
         *self.nav_goal_x.lock().unwrap() = None;
+        if !self.modifiers.lock().unwrap().shift {
+            // 普通点击折叠跨块选区（PLAN-048 T3）。
+            self.clear_doc_selection();
+        }
         let mut out = DocOutput {
             request_redraw: true,
             focus_changed: prev_focus != Some(hit),
@@ -918,8 +1063,74 @@ impl AutodownEditorCore {
             }
         }
         self.block_action(font_system, hit, action);
+        // 拖选锚点锁定：按压现场的字节端点（跨块拖选时作 doc_sel 锚端）。
+        let press_off = {
+            let blocks = self.blocks.lock().unwrap();
+            blocks.get(hit).and_then(Self::cursor_byte_offset)
+        };
+        *self.drag_anchor.lock().unwrap() =
+            press_off.map(|o| SelAnchor { block: hit, offset: o });
         *self.drag.lock().unwrap() = Drag::Buffer;
         out.captured()
+    }
+
+    /// 拖选移动（PLAN-048 T3）：同叶保持块内原生拖选（cosmic Action::Drag）；
+    /// 越叶（或已入跨块模式）→ 目标块定位字节偏移，doc_sel 端点推进 +
+    /// 焦点随动。非拖选零操作。
+    fn handle_mouse_drag(&self, fs: &mut FontSystem, x: f32, y: f32) -> DocOutput {
+        if !matches!(*self.drag.lock().unwrap(), Drag::Buffer) {
+            return DocOutput::default();
+        }
+        let layout = self.layout.lock().unwrap().clone();
+        let Some(tb) = hit_test(&layout, x, y) else { return DocOutput::default() };
+        let Some(anchor) = *self.drag_anchor.lock().unwrap() else {
+            return DocOutput::default();
+        };
+        // 同叶且未入跨块模式：原生拖选路径（cosmic 原生选区语义不变）。
+        if tb == anchor.block && self.doc_selection().is_none() {
+            let bl = layout.blocks[tb];
+            self.block_action(
+                fs,
+                tb,
+                Action::Drag {
+                    x: ((x - bl.origin.x).max(0.0)) as i32,
+                    y: ((y - bl.origin.y).max(0.0)) as i32,
+                },
+            );
+            return DocOutput { cursor_changed: true, request_redraw: true, ..Default::default() };
+        }
+        // 跨块：目标块 Click 定位 → 字节偏移 → doc_sel 推进。
+        let offset = {
+            let mut blocks = self.blocks.lock().unwrap();
+            let Some(b) = blocks.get_mut(tb) else { return DocOutput::default() };
+            let ed = b.editor.ed_mut();
+            ed.shape_as_needed(fs, true);
+            let bl = layout.blocks[tb];
+            ed.action(
+                fs,
+                Action::Click {
+                    x: ((x - bl.origin.x).max(0.0)) as i32,
+                    y: ((y - bl.origin.y).max(0.0)) as i32,
+                },
+            );
+            Self::cursor_byte_offset(b)
+        };
+        // 端点块原生选区清零（渲染单源 doc_sel）。
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(anchor.block) {
+                b.editor.ed_mut().set_selection(Selection::None);
+            }
+            if let Some(b) = blocks.get_mut(tb) {
+                b.editor.ed_mut().set_selection(Selection::None);
+            }
+        }
+        if let Some(off) = offset {
+            self.set_doc_selection(anchor, SelAnchor { block: tb, offset: off });
+            *self.focus.lock().unwrap() = Some(tb);
+            *self.shift_anchor.lock().unwrap() = None;
+        }
+        DocOutput { cursor_changed: true, request_redraw: true, ..Default::default() }
     }
 
     // ── 绘制抽取 ──────────────────────────────────────────────────────
@@ -928,8 +1139,15 @@ impl AutodownEditorCore {
     /// 内容总高；同时回写布局供命中测试。焦点块补光标/选区/框。
     /// PLAN-041 T3：正文段抽取走共享纯函数 `buffer_block_runs`（与只读臂
     /// fence 正文同一路径）；fence chrome（header/边框/底色/语言标签）自
-    /// 家族注册表发射。
-    pub fn render_frame(&self, font_system: &mut FontSystem, viewport_w: f32, base: Rgba) -> DocFrame {
+    /// 家族注册表发射。PLAN-048 T7：placeholder 空态注入（content 空 &&
+    /// 非聚焦 → 浅灰文案 run）。
+    pub fn render_frame(
+        &self,
+        font_system: &mut FontSystem,
+        viewport_w: f32,
+        base: Rgba,
+        placeholder: Option<&str>,
+    ) -> DocFrame {
         let mut list = DocDrawList { revision: self.revision(), ..Default::default() };
         let mut layouts: Vec<BlockLayout> = Vec::new();
         let focus = self.focused_block();
@@ -939,8 +1157,39 @@ impl AutodownEditorCore {
 
         let view_inst = self.is_view_instance();
         let mut blocks = self.blocks.lock().unwrap();
+        // PLAN-048 T2：渲染栈按文档（dfs）序堆叠——跨块选区/焦点接缝的
+        // 视觉序与文档序同源（块 id 创建序会让拆块新叶视觉落到文档尾）。
+        // 布局矩形仍按块 id 索引，block_rects/on_focus 面不变。
+        let mut render_order: Vec<usize> = {
+            let segs = self.segs.lock().unwrap();
+            let mut order = Vec::new();
+            dfs_leaf_order(&segs, &mut order);
+            order
+        };
+        if render_order.len() != blocks.len() {
+            // 防御：不在骨架的块按 id 补尾（正常建树/结构操作后不发生）。
+            let known: std::collections::HashSet<usize> = render_order.iter().copied().collect();
+            for bi in 0..blocks.len() {
+                if !known.contains(&bi) {
+                    render_order.push(bi);
+                }
+            }
+        }
+        // 跨块选区段表：块 id → (lo, hi)（T3 doc_sel_spans_in 复用）。
+        // 区间内部空叶以虚拟 1 字节触发窄条矩形保持可见。
+        let mut doc_segs: HashMap<usize, (usize, usize)> = HashMap::new();
+        if let Some((fb, _, lb, _)) = self.doc_sel_range() {
+            for (bi, lo, hi) in self.doc_sel_spans_in(&blocks) {
+                let interior = bi != fb && bi != lb;
+                let len = blocks.get(bi).map(|b| SendEdit::of(b).text().len()).unwrap_or(0);
+                let seg = if interior && len == 0 { (0, 1) } else { (lo, hi) };
+                doc_segs.insert(bi, seg);
+            }
+        }
+        let mut layouts: Vec<Option<BlockLayout>> = vec![None; blocks.len()];
         let mut y = 0.0f32;
-        for (bi, b) in blocks.iter_mut().enumerate() {
+        for &bi in render_order.iter() {
+            let b = &mut blocks[bi];
             let size = leaf_size(b.kind);
             let line_h = size * LINE_H_MULT;
             let mono_all = matches!(b.kind, LeafKind::Fence);
@@ -1027,49 +1276,60 @@ impl AutodownEditorCore {
                 block_h.max(line_h)
             };
 
-            if focus == Some(bi) && !view_inst {
-                if let Some((start, end)) = ed.selection_bounds() {
+            if !view_inst {
+                // PLAN-048 T2：跨块选区段矩形——独立于焦点渲染（拖选中/
+                // ctrl+a 焦点块即端点，但段覆盖的其余叶无焦点）；选区模型
+                // 单一事实源在 doc_sel，命中段时块内 cosmic 选区路径让位。
+                if let Some(&(lo, hi)) = doc_segs.get(&bi) {
                     ed.with_buffer(|buf| {
-                        for run in buf.layout_runs() {
-                            if run.line_i < start.line || run.line_i > end.line {
-                                continue;
-                            }
-                            let lo = if run.line_i == start.line { start.index } else { 0 };
-                            let hi = if run.line_i == end.line { end.index } else { run.text.len() };
-                            if hi <= lo {
-                                continue;
-                            }
-                            if let (Some(x0), Some(x1)) = (index_x(&run, lo), index_x(&run, hi)) {
-                                list.selection.push((
-                                    Rect::new(x_off + x0.min(x1), text_y + run.line_top, (x1 - x0).abs().max(2.0), run.line_height),
-                                    sel_color,
-                                ));
-                            }
-                        }
+                        push_byte_range_rects(buf, x_off, text_y, lo, hi, sel_color, &mut list.selection);
                     });
-                }
-                if let Some((cx, cy)) = ed.cursor_position() {
-                    let rect = Rect::new(x_off + cx as f32, text_y + cy as f32, CARET_WIDTH, size * 1.15);
-                    list.caret = Some(CaretDraw { rect, color: caret_color });
-                    let preedit = self.preedit.lock().unwrap().clone();
-                    if let Some(ptext) = preedit.filter(|p| !p.is_empty()) {
-                        list.preedit = Some(PreeditDraw {
-                            text: ptext,
-                            origin: Pt::new(x_off + cx as f32, text_y + cy as f32),
-                            font_size: size,
-                            color: base,
-                            underline: Rect::new(
-                                x_off + cx as f32,
-                                text_y + cy as f32 + size * 1.15 - 2.0,
-                                viewport_w.min(240.0),
-                                1.5,
-                            ),
+                } else if focus == Some(bi) {
+                    if let Some((start, end)) = ed.selection_bounds() {
+                        ed.with_buffer(|buf| {
+                            for run in buf.layout_runs() {
+                                if run.line_i < start.line || run.line_i > end.line {
+                                    continue;
+                                }
+                                let lo = if run.line_i == start.line { start.index } else { 0 };
+                                let hi = if run.line_i == end.line { end.index } else { run.text.len() };
+                                if hi <= lo {
+                                    continue;
+                                }
+                                if let (Some(x0), Some(x1)) = (index_x(&run, lo), index_x(&run, hi)) {
+                                    list.selection.push((
+                                        Rect::new(x_off + x0.min(x1), text_y + run.line_top, (x1 - x0).abs().max(2.0), run.line_height),
+                                        sel_color,
+                                    ));
+                                }
+                            }
                         });
+                    }
+                }
+                if focus == Some(bi) {
+                    if let Some((cx, cy)) = ed.cursor_position() {
+                        let rect = Rect::new(x_off + cx as f32, text_y + cy as f32, CARET_WIDTH, size * 1.15);
+                        list.caret = Some(CaretDraw { rect, color: caret_color });
+                        let preedit = self.preedit.lock().unwrap().clone();
+                        if let Some(ptext) = preedit.filter(|p| !p.is_empty()) {
+                            list.preedit = Some(PreeditDraw {
+                                text: ptext,
+                                origin: Pt::new(x_off + cx as f32, text_y + cy as f32),
+                                font_size: size,
+                                color: base,
+                                underline: Rect::new(
+                                    x_off + cx as f32,
+                                    text_y + cy as f32 + size * 1.15 - 2.0,
+                                    viewport_w.min(240.0),
+                                    1.5,
+                                ),
+                            });
+                        }
                     }
                 }
             }
 
-            layouts.push(BlockLayout {
+            layouts[bi] = Some(BlockLayout {
                 rect: Rect::new(0.0, y, viewport_w.max(1.0), total_h),
                 origin: Pt::new(x_off, text_y),
                 font_size: size,
@@ -1077,14 +1337,45 @@ impl AutodownEditorCore {
             });
             y += total_h + BLOCK_GAP;
         }
+        // PLAN-048 T7（W4）：空态占位——content 空 && 非聚焦时浅灰文案
+        //（视图实例只读轨豁免；聚焦即隐；空白文案跳过；基色按 0.55 调光
+        // 贴主题）。
+        if let Some(ph) = placeholder.filter(|p| !p.trim().is_empty()) {
+            if !view_inst
+                && focus.is_none()
+                && blocks.len() == 1
+                && SendEdit::of(&blocks[0]).text().is_empty()
+            {
+                let dim = Rgba {
+                    r: base.r * 0.55,
+                    g: base.g * 0.55,
+                    b: base.b * 0.55,
+                    a: base.a,
+                };
+                list.runs.push(DocRun {
+                    text: ph.to_owned(),
+                    x: 4.0,
+                    y: 4.0,
+                    size: BODY_SIZE,
+                    line_height: BODY_SIZE * LINE_H_MULT,
+                    color: dim,
+                    bold: false,
+                    italic: false,
+                    mono: false,
+                    strike: false,
+                    underline: false,
+                });
+            }
+        }
         drop(blocks);
 
         if let Some(fi) = focus {
-            if let Some(lay) = layouts.get(fi) {
+            if let Some(lay) = layouts.get(fi).copied().flatten() {
                 list.focus_frame = Some((lay.rect, frame_color));
             }
         }
-        *self.layout.lock().unwrap() = DocLayout { blocks: layouts };
+        *self.layout.lock().unwrap() =
+            DocLayout { blocks: layouts.into_iter().map(|l| l.expect("render covers every block")).collect() };
         DocFrame { list, height: (y - BLOCK_GAP).max(0.0) }
     }
 }
@@ -1299,6 +1590,58 @@ fn index_x(run: &cosmic_text::LayoutRun, index: usize) -> Option<f32> {
     Some(prev_end)
 }
 
+/// 单叶字节区间 [lo,hi) → 选区矩形（PLAN-048 T2 跨块选区逐叶切；
+/// 软换行 run 按行内字节段钳制；无字形空行整行落在区间内时出窄条保持
+/// 可见）。纯函数：只读已整形 buffer。
+fn push_byte_range_rects(
+    buf: &Buffer,
+    x_off: f32,
+    y_top: f32,
+    lo: usize,
+    hi: usize,
+    color: Rgba,
+    out: &mut Vec<(Rect, Rgba)>,
+) {
+    if hi <= lo {
+        return;
+    }
+    let mut bases: Vec<usize> = Vec::with_capacity(buf.lines.len());
+    let mut acc = 0usize;
+    for l in buf.lines.iter() {
+        bases.push(acc);
+        acc += l.text().len() + 1;
+    }
+    for run in buf.layout_runs() {
+        let base = bases.get(run.line_i).copied().unwrap_or(0);
+        let (run_lo, run_hi) = match (run.glyphs.first(), run.glyphs.last()) {
+            (Some(f), Some(l)) => (f.start, l.end),
+            _ => {
+                // 空行（无字形）：整行落在区间内 → 窄条。
+                if base >= lo && base <= hi {
+                    out.push((Rect::new(x_off, y_top + run.line_top, 2.0, run.line_height), color));
+                }
+                continue;
+            }
+        };
+        let s = lo.saturating_sub(base).clamp(run_lo, run_hi);
+        let e = hi.saturating_sub(base).clamp(run_lo, run_hi);
+        if e <= s {
+            continue;
+        }
+        if let (Some(x0), Some(x1)) = (index_x(&run, s), index_x(&run, e)) {
+            out.push((
+                Rect::new(
+                    x_off + x0.min(x1),
+                    y_top + run.line_top,
+                    (x1 - x0).abs().max(2.0),
+                    run.line_height,
+                ),
+                color,
+            ));
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 建树 & 发射
 // ---------------------------------------------------------------------------
@@ -1441,8 +1784,11 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 emit_seg(s, blocks, &mut body);
                 body.push_str("\n\n");
             }
+            // 尾部分隔 "\n\n" 整体摘除（原 while+pop 每轮只弹 1 字节，
+            // 残留单个 \n 会发射尾行 ">"——重解析每次增长空引用段，
+            // PLAN-048 T4 修复并钉死）。
             while body.ends_with("\n\n") {
-                body.pop();
+                body.truncate(body.len() - 2);
             }
             for (i, line) in body.split('\n').enumerate() {
                 if i > 0 {
@@ -1484,6 +1830,41 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
 // 结构编辑引擎（批次十②③）—— Enter 拆块 / 列表续项与退列 / 块首合并
 // 全程以【字节】偏移为口径（cosmic-text 0.15 的 Cursor.index 即行内字节）。
 // ---------------------------------------------------------------------------
+
+/// 行首输入规则标记表（PLAN-048 T5，T1 冻结面）。触发语义对齐 vue
+/// input-rules.ts「typed at block start, whole-block」：整块文本精确
+/// 等于 marker（空格键入后检定）。冻结：标题×3 / 无序列表×3 / 引用；
+/// ``` fence（代码块语义）、`---`/`***`（Raw 只读固化）、任务列表、
+/// `1. ` 有序（vue 亦无）不补——登记余量。
+const LINE_START_RULES: [&str; 7] = ["# ", "## ", "### ", "- ", "* ", "+ ", "> "];
+
+/// 骨架树内把叶子槽位原位替换为包装段（quote/list wrap 用；递归定位；
+/// wrap 以工厂闭包构造——Seg 非 Clone，递归多臂各建一次；闭包仅捕获
+/// usize，Clone 传递避免 &&&… 嵌套单态化）。
+fn replace_leaf_seg(segs: &mut Vec<Seg>, leaf: usize, make: impl Fn() -> Seg + Clone) -> bool {
+    for seg in segs.iter_mut() {
+        match seg {
+            Seg::Leaf(i) if *i == leaf => {
+                *seg = make();
+                return true;
+            }
+            Seg::Quote(inner) => {
+                if replace_leaf_seg(inner, leaf, make.clone()) {
+                    return true;
+                }
+            }
+            Seg::List { items, .. } => {
+                for item in items.iter_mut() {
+                    if replace_leaf_seg(item, leaf, make.clone()) {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
 
 /// 叶子块在骨架树中的宿主槽位描述。
 #[derive(Debug, Clone, PartialEq)]
@@ -1540,6 +1921,139 @@ fn dfs_leaf_order(segs: &[Seg], out: &mut Vec<usize>) {
             }
             Seg::Raw(_) => {}
         }
+    }
+}
+
+impl AutodownEditorCore {
+    /// 跨块选区规范化范围（PLAN-048 T2）：dfs 序 (首叶, 首偏移, 尾叶,
+    /// 尾偏移)。端点块已不在骨架（结构操作后未清）返回 None。调用方
+    /// 不得持有 blocks 锁（本函数锁 doc_sel + segs）。
+    fn doc_sel_range(&self) -> Option<(usize, usize, usize, usize)> {
+        let (a, f) = self.doc_sel.lock().unwrap().clone()?;
+        let segs = self.segs.lock().unwrap();
+        let mut order = Vec::new();
+        dfs_leaf_order(&segs, &mut order);
+        drop(segs);
+        let pa = order.iter().position(|&i| i == a.block)?;
+        let pb = order.iter().position(|&i| i == f.block)?;
+        let (first, last) = if pa < pb {
+            (a, f)
+        } else if pb < pa {
+            (f, a)
+        } else if a.offset <= f.offset {
+            (a, f)
+        } else {
+            (f, a)
+        };
+        Some((first.block, first.offset, last.block, last.offset))
+    }
+
+    /// 跨块选区段表（PLAN-048 T3）：(块, lo, hi) dfs 序，偏移钳制到叶
+    /// 现文本长。调用方已持 blocks 锁时用本变体（render 路径）。
+    fn doc_sel_spans_in(&self, blocks: &[BlockBuf]) -> Vec<(usize, usize, usize)> {
+        let Some((fb, flo, lb, lhi)) = self.doc_sel_range() else {
+            return Vec::new();
+        };
+        let segs = self.segs.lock().unwrap();
+        let mut order = Vec::new();
+        dfs_leaf_order(&segs, &mut order);
+        drop(segs);
+        let (Some(s0), Some(e0)) = (
+            order.iter().position(|&i| i == fb),
+            order.iter().position(|&i| i == lb),
+        ) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for &bi in &order[s0..=e0] {
+            let len = blocks.get(bi).map(|b| SendEdit::of(b).text().len()).unwrap_or(0);
+            let lo = if bi == fb { flo.min(len) } else { 0 };
+            let hi = if bi == lb { lhi.min(len) } else { len };
+            out.push((bi, lo, hi.max(lo)));
+        }
+        out
+    }
+
+    /// 跨块选区段表（行为路径：自取 blocks 锁）。
+    fn doc_sel_spans(&self) -> Vec<(usize, usize, usize)> {
+        let blocks = self.blocks.lock().unwrap();
+        self.doc_sel_spans_in(&blocks)
+    }
+
+    /// 跨块 copy：范围叶段文本按骨架 join（段落语义 "\n\n"）；容器前缀
+    ///（"> "/列表标记）的忠实拼装登记余量。
+    fn doc_copy(&self) -> Option<Option<String>> {
+        let spans = self.doc_sel_spans();
+        if spans.is_empty() {
+            return None;
+        }
+        let blocks = self.blocks.lock().unwrap();
+        let mut parts: Vec<String> = Vec::new();
+        for (bi, lo, hi) in spans {
+            let Some(b) = blocks.get(bi) else { continue };
+            let text = SendEdit::of(b).text();
+            let (lo, hi) = (lo.min(text.len()), hi.min(text.len()));
+            let mut s = lo;
+            while s < hi && !text.is_char_boundary(s) {
+                s += 1;
+            }
+            let mut e = hi;
+            while e > s && !text.is_char_boundary(e) {
+                e -= 1;
+            }
+            if e > s {
+                parts.push(text[s..e].to_owned());
+            }
+        }
+        Some(Some(parts.join("\n\n")))
+    }
+
+    /// 跨块选区剪接删除（PLAN-048 T3）：首叶头 + 尾叶尾拼入首叶，内部叶
+    /// 与尾叶摘除（remove_leaves_compact 原语）；焦点落接缝。范围叶间的
+    /// 只读 Raw 段（表格/分隔线）保留——登记余量。返回是否发生了删除。
+    fn delete_doc_selection(&self, fs: &mut FontSystem) -> bool {
+        let spans = self.doc_sel_spans();
+        let Some(&(fb, flo, _)) = spans.first() else { return false };
+        let (lb, _, lhi) = spans[spans.len() - 1];
+        if fb == lb && flo >= lhi {
+            return false; // 折叠空域
+        }
+        let (head, tail) = {
+            let blocks = self.blocks.lock().unwrap();
+            let t_of = |i: usize| {
+                blocks.get(i).map(|b| SendEdit::of(b).text()).unwrap_or_default()
+            };
+            let ft = t_of(fb);
+            let lt = t_of(lb);
+            (ft[..flo.min(ft.len())].to_owned(), lt[lhi.min(lt.len())..].to_owned())
+        };
+        let mut dead: Vec<usize> = spans[1..].iter().map(|&(bi, _, _)| bi).collect();
+        if lb != fb {
+            dead.push(lb);
+        }
+        // 创建序 ≠ dfs 序（拆块后成立）：dead 中 id < fb 的压缩使 fb 前移。
+        let new_fb = fb - dead.iter().filter(|&&d| d < fb).count();
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(pb) = blocks.get_mut(fb) {
+                self.overwrite_block_text(fs, pb, format!("{head}{tail}"));
+                Self::place_caret_byte(pb, head.len());
+            }
+        }
+        if !dead.is_empty() {
+            remove_leaves_compact(
+                &mut self.blocks.lock().unwrap(),
+                &mut self.segs.lock().unwrap(),
+                &dead,
+            );
+        }
+        *self.focus.lock().unwrap() = Some(new_fb);
+        *self.shift_anchor.lock().unwrap() = None;
+        *self.nav_goal_x.lock().unwrap() = None;
+        self.clear_doc_selection();
+        *self.drag_anchor.lock().unwrap() = None;
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        true
     }
 }
 
@@ -1601,30 +2115,24 @@ fn remove_leaves_compact(blocks: &mut Vec<BlockBuf>, segs: &mut Vec<Seg>, dead: 
     prune(segs, &map);
 }
 
-/// 覆盖文本写入用的 fallback 视口宽（渲染帧会再设真值）。
-const FALLBACK_WIDTH: f32 = 800.0;
-
 impl AutodownEditorCore {
     /// 写一块的全文（家族/字号按种类重建 Attrs）。
-    /// 区间快照随之失效（保守清空；回写重建后恢复切片）。
+    /// PLAN-048 T6：整换新 ViEditor——set_text 直改会残留旧 undo 历史
+    ///（cosmic-text 0.15 无清历史 API，save_point 只设脏 pivot），拆块/
+    /// 合并/规则转换后 Ctrl+Z 会把陈旧 Change 套在新文本上错乱；新缓冲
+    /// 历史为空，undo 自然无操作。区间快照随之失效（保守清空）。
     fn overwrite_block_text(&self, fs: &mut FontSystem, buf: &mut BlockBuf, text: String) {
-        let family =
-            if matches!(buf.kind, LeafKind::Fence) { mono_family() } else { sans_family() };
-        let attrs = Attrs::new().family(family);
-        let size = leaf_size(buf.kind);
-        buf.editor.ed_mut().with_buffer_mut(|b| {
-            b.set_metrics_and_size(
-                fs,
-                Metrics::new(size, size * LINE_H_MULT),
-                Some(FALLBACK_WIDTH),
-                Some(4000.0),
-            );
-            b.set_text(fs, &text, &attrs, Shaping::Advanced, None);
-        });
+        let mono = matches!(buf.kind, LeafKind::Fence);
+        let syntax = buf.syntax.clone();
+        buf.editor = SendEditor(new_leaf_buffer(
+            fs,
+            &text,
+            mono,
+            leaf_size(buf.kind),
+            syntax.as_deref(),
+        ));
         buf.snapshot = text;
         buf.intervals.clear();
-        let ed = buf.editor.ed_mut();
-        ed.set_selection(Selection::None);
     }
 
     fn block_kind_of(&self, bi: usize) -> LeafKind {
@@ -1663,6 +2171,53 @@ impl AutodownEditorCore {
         let ed = b.editor.ed_mut();
         ed.set_selection(Selection::None);
         ed.set_cursor(Cursor::new(dest.0, dest.1));
+    }
+
+    /// 行首标记转换（PLAN-048 T5）：整块文本精确等于 marker 时——标题
+    /// 走 kind 迁移（字号/家族随 LeafKind 重置），列表/引用走骨架 wrap
+    /// （replace_leaf_seg 原位替换）；marker 前缀消费，焦点/光标驻原块首。
+    fn try_line_start_rule(&self, font_system: &mut FontSystem, bi: usize) {
+        if matches!(self.block_kind_of(bi), LeafKind::Fence) {
+            return;
+        }
+        let live = {
+            let blocks = self.blocks.lock().unwrap();
+            SendEdit(blocks[bi].editor.ed()).text()
+        };
+        let marker = match LINE_START_RULES.iter().find(|m| live == **m) {
+            Some(m) => *m,
+            None => return,
+        };
+        let stripped = live[marker.len()..].to_owned();
+        match marker {
+            "> " => {
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, || Seg::Quote(vec![Seg::Leaf(bi)]));
+            }
+            "- " | "* " | "+ " => {
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, || {
+                    Seg::List { ordered: false, start: 1, items: vec![vec![Seg::Leaf(bi)]] }
+                });
+            }
+            _ => {
+                let level = marker.trim().len().min(3) as i64; // "# "→1 … "### "→3
+                let mut blocks = self.blocks.lock().unwrap();
+                if let Some(b) = blocks.get_mut(bi) {
+                    b.kind = LeafKind::Heading(level);
+                }
+            }
+        }
+        // 缓冲文本剥前缀重写（标题 kind 迁移时字号/家族随 kind 重置），
+        // 光标驻块首。
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(bi) {
+                self.overwrite_block_text(font_system, b, stripped);
+                Self::place_caret_byte(b, 0);
+            }
+        }
+        self.revision.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Enter 输入规则主入口。true = 已做结构拆分（调用方跳过软换行）。
@@ -1850,10 +2405,15 @@ impl AutodownEditorCore {
         true
     }
 
-    /// Backspace 块首合并：同宿主相邻两叶（顶↔顶 / 同一 Quote 内）；
-    /// fence 与跨容器边界登记余量不做。合并后焦点驻接缝。
+    /// Backspace 块首合并（PLAN-048 T4 撤 same_host 闸扩面）：顶↔顶、
+    /// 同 Quote、同项内、同列表相邻项（vue backspaceAtItemStart 语义）、
+    /// 跨容器——quote 尾段↔后续外段、列表尾项↔外段、quote/列表首段并入
+    /// 前外段（提升向）。fence 双侧维持不做（代码块语义，并入段落非
+    /// 往返安全——待澄清④口径，登记）。列表项首叶且项内有余段时仅同
+    /// 列表前项可接（余段移接前项尾）；前外段接手 v1 拒绝（VM parser
+    /// 嵌套列表扁平化，余段防御性约束，登记）。合并后焦点驻接缝。
     fn merge_into_previous(&self, font_system: &mut FontSystem, bi: usize) -> bool {
-        let prev_bi = {
+        let (prev_bi, cur_slot, prev_slot) = {
             let segs = self.segs.lock().unwrap();
             let mut order = Vec::new();
             dfs_leaf_order(&segs, &mut order);
@@ -1864,24 +2424,46 @@ impl AutodownEditorCore {
             if pos == 0 {
                 return false;
             }
-            order[pos - 1]
+            let prev = order[pos - 1];
+            (prev, locate_leaf(&segs, bi), locate_leaf(&segs, prev))
         };
-        let same_host = {
-            let segs = self.segs.lock().unwrap();
-            match (locate_leaf(&segs, prev_bi), locate_leaf(&segs, bi)) {
-                (Some(LeafSlot::TopLevel(_)), Some(LeafSlot::TopLevel(_))) => true,
-                (
-                    Some(LeafSlot::QuoteInner { quote_pos: q1, .. }),
-                    Some(LeafSlot::QuoteInner { quote_pos: q2, .. }),
-                ) => q1 == q2,
-                _ => false,
-            }
-        };
-        if !same_host
-            || matches!(self.block_kind_of(prev_bi), LeafKind::Fence)
+        if matches!(self.block_kind_of(prev_bi), LeafKind::Fence)
             || matches!(self.block_kind_of(bi), LeafKind::Fence)
         {
             return false;
+        }
+        // 余段约束（防御性；v1 嵌套列表不可达）。
+        let mut move_remainder = false;
+        if let Some(LeafSlot::ListItem { list_pos, item_idx, inner_pos }) = cur_slot {
+            if inner_pos == 0 {
+                let prev_same_list_prev_item = matches!(prev_slot,
+                    Some(LeafSlot::ListItem { list_pos: p, item_idx: pi, .. })
+                        if p == list_pos && pi + 1 == item_idx);
+                let has_remainder = {
+                    let segs = self.segs.lock().unwrap();
+                    match segs.get(list_pos) {
+                        Some(Seg::List { items, .. }) => {
+                            items.get(item_idx).map(|it| it.len() > 1).unwrap_or(false)
+                        }
+                        _ => false,
+                    }
+                };
+                if has_remainder {
+                    if !prev_same_list_prev_item {
+                        return false;
+                    }
+                    move_remainder = true;
+                }
+            }
+        }
+        if move_remainder {
+            if let Some(LeafSlot::ListItem { list_pos, item_idx, .. }) = cur_slot {
+                let mut segs = self.segs.lock().unwrap();
+                if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
+                    let rem: Vec<Seg> = items[item_idx].drain(1..).collect();
+                    items[item_idx - 1].extend(rem);
+                }
+            }
         }
         let (prev_text, cur_text, junction) = {
             let blocks = self.blocks.lock().unwrap();
@@ -1905,8 +2487,9 @@ impl AutodownEditorCore {
             &mut self.segs.lock().unwrap(),
             &[bi],
         );
-        // 单死叶压缩（创建序 bi > prev_bi 恒真）⇒ prev_bi 重编号不变。
-        *self.focus.lock().unwrap() = Some(prev_bi);
+        // 创建序 ≠ dfs 序（拆块后成立）：死叶 id 小于目标时目标前移一位。
+        let focus_id = if bi < prev_bi { prev_bi - 1 } else { prev_bi };
+        *self.focus.lock().unwrap() = Some(focus_id);
         *self.shift_anchor.lock().unwrap() = None;
         *self.nav_goal_x.lock().unwrap() = None;
         self.revision.fetch_add(1, Ordering::Relaxed);
@@ -2081,6 +2664,17 @@ mod tests {
         })
     }
 
+    /// 空文档核心（core_for 对 "" 走自回显快路径不建块表——强制 rebuild
+    /// 出初始空段叶）。PLAN-048 T5 输入规则测试用。
+    fn core_empty(key: &str) -> &'static AutodownEditorCore {
+        run_fs(|fs| {
+            let sk = storage_key(key);
+            registry().lock().unwrap().remove(&sk);
+            autodown_editor(&sk).rebuild("", fs);
+        });
+        autodown_editor(&storage_key(key))
+    }
+
     fn ctrl(core: &AutodownEditorCore, c: char) -> DocOutput {
         run_fs(|fs| {
             core.handle_input(
@@ -2167,7 +2761,7 @@ mod tests {
     fn block_rects_snapshot_matches_frame_layout() {
         let c = core_for("t44a", "甲段。\n\n乙段。\n\n丙段。\n");
         assert_eq!(c.block_count(), 3);
-        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
         assert_eq!(rects.len(), 3, "{rects:?}");
         assert!(rects.windows(2).all(|w| w[1].y > w[0].y), "{rects:?}");
@@ -2209,14 +2803,304 @@ mod tests {
         assert_eq!(c.focused_block(), Some(0));
     }
 
-    /// 跨容器边界（quote 内 → 顶层上一叶）仍不合并（登记边界）。
+    // ── PLAN-048 T5：行首输入规则 ───────────────────────────────────────
+
+    /// `# ` → H1 kind 迁移 + 标记消费；续打正文进标题。
     #[test]
-    fn backspace_across_container_boundary_stays_noop() {
-        let c = core_for("mg2", "顶段。\n\n> 引内。\n");
+    fn input_rule_hash_converts_to_heading() {
+        let c = core_empty("ir1");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('#'));
+        press(c, EditorKey::Char(' '));
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(1));
+        assert_eq!(c.live_text(0), "");
+        press(c, EditorKey::Char('标'));
+        press(c, EditorKey::Char('题'));
+        assert_eq!(c.live_text(0), "标题");
+        assert_eq!(c.emit_document(), "# 标题");
+    }
+
+    /// `## ` / `### ` → H2/H3。
+    #[test]
+    fn input_rule_heading_levels() {
+        let c = core_empty("ir2");
+        *c.focus.lock().unwrap() = Some(0);
+        for k in ['#', '#', ' '] {
+            press(c, EditorKey::Char(k));
+        }
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(2));
+        let c2 = core_empty("ir3");
+        *c2.focus.lock().unwrap() = Some(0);
+        for k in ['#', '#', '#', ' '] {
+            press(c2, EditorKey::Char(k));
+        }
+        assert_eq!(c2.block_kind_of(0), LeafKind::Heading(3));
+    }
+
+    /// `- ` / `* ` / `+ ` → 无序列表 wrap（骨架重生成圆点）。
+    #[test]
+    fn input_rule_bullet_wrap_roundtrip() {
+        for (key, tag) in [('-', "bl1"), ('*', "bl2"), ('+', "bl3")] {
+            let c = core_empty(tag);
+            *c.focus.lock().unwrap() = Some(0);
+            press(c, EditorKey::Char(key));
+            press(c, EditorKey::Char(' '));
+            press(c, EditorKey::Char('甲'));
+            assert_eq!(c.emit_document(), "- 甲", "marker {key}");
+        }
+    }
+
+    /// `> ` → 引用 wrap。
+    #[test]
+    fn input_rule_quote_wrap_roundtrip() {
+        let c = core_empty("ir4");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('>'));
+        press(c, EditorKey::Char(' '));
+        press(c, EditorKey::Char('引'));
+        assert_eq!(c.emit_document(), "> 引");
+    }
+
+    /// fence 内规则不触发（代码块语义）。
+    #[test]
+    fn input_rule_noop_inside_fence() {
+        let c = core_for("ir5", "```\n\n```\n");
+        assert_eq!(c.block_kind_of(0), LeafKind::Fence);
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('#'));
+        press(c, EditorKey::Char(' '));
+        assert_eq!(c.block_kind_of(0), LeafKind::Fence, "fence must not convert");
+    }
+
+    /// 非整块精确命中不触发（段中打空格/前导文本）。
+    #[test]
+    fn input_rule_requires_whole_block_match() {
+        let c = core_for("ir6", "正文\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Char(' '));
+        assert_eq!(c.block_kind_of(0), LeafKind::Paragraph);
+        assert_eq!(c.block_count(), 1);
+    }
+
+    /// 冻结面钉死：`1. ` 有序标记不接线（vue 亦无，登记）。
+    #[test]
+    fn input_rule_ordered_marker_not_wired() {
+        let c = core_empty("ir7");
+        *c.focus.lock().unwrap() = Some(0);
+        for k in ['1', '.', ' '] {
+            press(c, EditorKey::Char(k));
+        }
+        assert_eq!(c.block_kind_of(0), LeafKind::Paragraph);
+        assert_eq!(c.emit_document(), "1. ");
+    }
+
+    // ── PLAN-048 T6：undo/redo 面 ───────────────────────────────────────
+
+    /// 打字 undo/redo 往返钉死（cosmic 逐叶记账，passthrough 逐动作
+    /// 一步）。
+    #[test]
+    fn undo_redo_typing_roundtrip() {
+        let c = core_for("un1", "原。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| {
+            c.block_motion(fs, 0, Motion::End);
+            c.block_action(fs, 0, Action::Insert('加'));
+            c.block_action(fs, 0, Action::Insert('笔'));
+        });
+        assert_eq!(c.emit_document(), "原。加笔");
+        ctrl(c, 'z');
+        assert_eq!(c.emit_document(), "原。加");
+        ctrl(c, 'z');
+        assert_eq!(c.emit_document(), "原。");
+        // 重做：Ctrl+Shift+Z。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::KeyPressed {
+                    key: EditorKey::Char('z'),
+                    text: None,
+                    modifiers: EditorModifiers {
+                        control: true,
+                        shift: true,
+                        ..Default::default()
+                    },
+                },
+                &mut NullClipboard,
+            );
+        });
+        assert_eq!(c.emit_document(), "原。加");
+    }
+
+    /// 删除可回退（Backspace 走 cosmic 记账路径）。
+    #[test]
+    fn undo_restores_delete() {
+        let c = core_for("un2", "原文。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Backspace);
+        assert_eq!(c.emit_document(), "原文");
+        ctrl(c, 'z');
+        assert_eq!(c.emit_document(), "原文。");
+    }
+
+    /// 结构操作不入 undo + overwrite 陈旧栈已清：合并后 Ctrl+Z 必须零
+    /// 变化（新缓冲空历史），否则陈旧 Change 套在新文本上错乱。
+    #[test]
+    fn merge_then_undo_is_noop_stale_history_cleared() {
+        let c = core_for("un3", "甲。\n\n乙。\n");
+        // 先在块0 打字积累历史。
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| {
+            c.block_motion(fs, 0, Motion::End);
+            c.block_action(fs, 0, Action::Insert('X'));
+        });
+        // 块1 块首合并入块0（overwrite 块0 → 新缓冲应清栈）。
+        *c.focus.lock().unwrap() = Some(1);
+        press(c, EditorKey::Backspace);
+        assert_eq!(c.emit_document(), "甲。X乙。");
+        ctrl(c, 'z'); // 块0 新缓冲空历史 → 无操作。
+        assert_eq!(c.emit_document(), "甲。X乙。", "stale history must be cleared");
+    }
+
+    // ── PLAN-048 T7（W4）：空态 placeholder ─────────────────────────────
+
+    /// 空文档 + 非聚焦 → placeholder 浅灰 run（基色调光 0.55）。
+    #[test]
+    fn placeholder_renders_on_empty_unfocused_doc() {
+        let c = core_empty("ph1");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        let ph = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "写点什么…")
+            .expect("placeholder run on empty doc");
+        assert!((ph.color.r - 0.55).abs() < 1e-6, "dimmed vs base: {:?}", ph.color);
+        // 聚焦后隐。
+        *c.focus.lock().unwrap() = Some(0);
+        let frame2 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        assert!(
+            !frame2.list.runs.iter().any(|r| r.text == "写点什么…"),
+            "focused hides placeholder"
+        );
+    }
+
+    /// 非空文档不渲染 placeholder。
+    #[test]
+    fn placeholder_absent_on_nonempty_doc() {
+        let c = core_for("ph2", "有内容。\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        assert!(!frame.list.runs.iter().any(|r| r.text == "写点什么…"));
+    }
+
+    /// 空 placeholder 字符串与只读视图实例不注入。
+    #[test]
+    fn placeholder_guards() {
+        let c = core_empty("ph3");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("  ")));
+        assert!(!frame.list.runs.iter().any(|r| r.text == "  "), "blank placeholder skipped");
+        // 视图实例（只读轨）豁免。
+        let sk = storage_key("view_fence_ph0000000000");
+        registry().lock().unwrap().remove(&sk);
+        let v = autodown_editor(&sk);
+        v.sync_external("", true);
+        let vf = run_fs(|fs| v.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        assert!(
+            !vf.list.runs.iter().any(|r| r.text == "写点什么…"),
+            "view instance exempt"
+        );
+    }
+
+    // ── PLAN-048 T4：跨容器合并 ─────────────────────────────────────────
+
+    /// quote 尾段 ↔ 后续外段：外段块首退格并入 quote 尾（骨架重生成
+    /// "> " 前缀往返）。
+    #[test]
+    fn backspace_merges_outer_paragraph_into_quote_tail() {
+        let c = core_for("xc1", "顶段。\n\n> 引一行。\n\n外段。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.emit_document(), "顶段。\n\n> 引一行。外段。");
+        assert_eq!(c.focused_block(), Some(1));
+        assert_eq!(c.live_text(1), "引一行。外段。");
+    }
+
+    /// 反向提升：quote 首段块首退格并入前外段（容器随之溶解）。
+    #[test]
+    fn backspace_lifts_quote_first_paragraph_into_outer() {
+        let c = core_for("xc2", "顶段。\n\n> 引内。\n");
         *c.focus.lock().unwrap() = Some(1);
         let out = press(c, EditorKey::Backspace);
-        assert!(!out.text_changed);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "顶段。引内。");
+        assert_eq!(c.focused_block(), Some(0));
+    }
+
+    /// 列表尾项 ↔ 后续外段：外段并入尾项（序号/圆点骨架重生成）。
+    #[test]
+    fn backspace_merges_outer_paragraph_into_list_tail_item() {
+        let c = core_for("xc3", "- 甲\n- 乙\n\n外段。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
         assert_eq!(c.block_count(), 2);
+        let doc = c.emit_document();
+        assert!(doc.contains("- 甲"), "{doc}");
+        assert!(doc.contains("- 乙外段。"), "{doc}");
+        assert_eq!(c.focused_block(), Some(1));
+    }
+
+    /// 同列表相邻项合并（vue backspaceAtItemStart 项间语义）：乙 并入
+    /// 甲，列表收缩为单项。
+    #[test]
+    fn backspace_merges_adjacent_list_items() {
+        let c = core_for("xc4", "- 甲\n- 乙\n");
+        *c.focus.lock().unwrap() = Some(1);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "- 甲乙");
+        assert_eq!(c.focused_block(), Some(0));
+    }
+
+    /// fence 口径（待澄清④）：fence 双侧均不合并——前段并入 fence 与
+    /// fence 并入前段都拒绝。
+    #[test]
+    fn backspace_at_fence_boundary_stays_noop() {
+        // fence 为 cur：并入前段落会破坏围栏语义。
+        let c = core_for("xc5", "前段。\n\n```\ncode\n```\n");
+        *c.focus.lock().unwrap() = Some(1);
+        let out = press(c, EditorKey::Backspace);
+        assert!(!out.text_changed, "fence must not merge into paragraph");
+        assert_eq!(c.block_count(), 2);
+        // fence 为 prev：后段并入 fence 同样拒绝。
+        let c2 = core_for("xc6", "```\ncode\n```\n\n后段。\n");
+        *c2.focus.lock().unwrap() = Some(1);
+        let out2 = press(c2, EditorKey::Backspace);
+        assert!(!out2.text_changed, "paragraph must not merge into fence");
+        assert_eq!(c2.block_count(), 2);
+    }
+
+    /// 重编号回归：拆块产生的 id（文档中部空叶）作合并目标时焦点须落
+    /// 压缩后的正确块（创建序≠dfs 序）。
+    #[test]
+    fn backspace_merge_focus_survives_renumber_after_split() {
+        let c = core_for("xc7", "甲\n\n乙\n\n丙\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Enter); // 空叶 id3 落文档位次 1：dfs [0,3,1,2]
+        // 焦点移到 乙（id1）块首退格 → 并入空叶 id3 → 压缩后 id3→2。
+        *c.focus.lock().unwrap() = Some(1);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 3);
+        assert_eq!(c.focused_block(), Some(2), "focus follows renumbered merge target");
+        assert_eq!(c.live_text(2), "乙");
+        assert_eq!(c.emit_document(), "甲\n\n乙\n\n丙");
     }
 
     /// 批次十②：段中 Enter → 拆成两段，焦点落新块首。
@@ -2343,14 +3227,14 @@ mod tests {
     #[test]
     fn styled_runs_expire_after_local_edit() {
         let c = core_for("t9", "带 **重点** 的句子。\n");
-        let f1 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let f1 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(f1.list.runs.iter().any(|r| r.bold));
         *c.focus.lock().unwrap() = Some(0);
         run_fs(|fs| {
             c.block_motion(fs, 0, Motion::End);
             c.block_action(fs, 0, Action::Insert('!'));
         });
-        let f2 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let f2 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(!f2.list.runs.iter().any(|r| r.bold));
     }
 
@@ -2360,7 +3244,7 @@ mod tests {
         *c.focus.lock().unwrap() = Some(0);
         assert!(c.sync_external("*改*\n\n新收尾。\n", true));
         assert_eq!(c.focused_block(), None);
-        let f = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let f = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(f.list.runs.iter().any(|r| r.italic));
     }
 
@@ -2433,7 +3317,7 @@ mod tests {
     #[test]
     fn shared_segment_matches_render_frame_runs() {
         let c = core_for("t41a", "普通段 **粗**。\n\n```rust\nfn a() {}\n```\n");
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         // 逐块用共享段重放，拼接后应与全帧 runs 完全一致（排除 chrome
         // 标签 run——它由 render_frame 的 chrome 臂发射，非共享段职责）。
         let blocks = c.blocks.lock().unwrap();
@@ -2483,7 +3367,7 @@ mod tests {
     #[test]
     fn fence_editor_chrome_emitted_from_family() {
         let c = core_for("t41b", "一段。\n\n```rust\nlet x = 1;\n```\n");
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         // chrome 填充 ≥ 6（底色+header+四边线）
         assert!(
             frame.list.fills.len() >= 6,
@@ -2527,7 +3411,7 @@ fn main() { let s = \"hi\"; }
         assert_eq!(c.focused_block(), None, "视图实例无焦点");
         // 渲染：无 chrome 填充、无光标/焦点框；正文段存在且带语法着色
         //（hljs 主题，色 ≠ 基色 WHITE）。
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(frame.list.fills.is_empty(), "视图实例不发射 chrome");
         assert!(frame.list.caret.is_none());
         assert!(frame.list.focus_frame.is_none());
@@ -2549,8 +3433,291 @@ fn main() { let s = \"hi\"; }
             let blocks = c.blocks.lock().unwrap();
             assert_eq!(blocks[0].syntax, None);
         }
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         let label = frame.list.runs.iter().find(|r| r.size == 12.0).expect("label");
         assert_eq!(label.text, "code");
+    }
+
+    // ── PLAN-048 T2：跨块选区·数据面与渲染 ─────────────────────────────
+
+    /// 三叶文档拖选：高亮矩形逐叶命中（三纵带各有着落），首叶矩形越过
+    /// 锚点字符起步。
+    #[test]
+    fn cross_block_selection_renders_per_leaf_rects() {
+        let c = core_for("sel1", "甲块。\n\n乙块。\n\n丙块。\n");
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        assert_eq!(rects.len(), 3);
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 2, offset: 6 },
+        );
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(frame.list.selection.len() >= 3, "{:?}", frame.list.selection);
+        for (i, r) in rects.iter().enumerate() {
+            let hit = frame
+                .list
+                .selection
+                .iter()
+                .any(|(s, _)| s.y >= r.y && s.y < r.y + r.h);
+            assert!(hit, "leaf {i} band has no selection rect");
+        }
+        let first = frame
+            .list
+            .selection
+            .iter()
+            .find(|(s, _)| s.y < rects[0].y + rects[0].h)
+            .unwrap();
+        assert!(first.0.x > 0.0, "first leaf rect must start past anchor char: {:?}", first.0);
+    }
+
+    /// 倒锚（焦点在锚前）与正锚渲染出同一矩形集（dfs 序规范化）。
+    #[test]
+    fn doc_selection_normalizes_reversed_endpoints() {
+        let c = core_for("sel2", "甲块。\n\n乙块。\n");
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        c.set_doc_selection(
+            SelAnchor { block: 1, offset: 3 },
+            SelAnchor { block: 0, offset: 3 },
+        );
+        let fwd = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 1, offset: 3 },
+        );
+        let rev = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let norm = |f: &DocFrame| {
+            let mut v: Vec<(u32, u32)> = f
+                .list
+                .selection
+                .iter()
+                .map(|(r, _)| ((r.y * 8.0) as u32, (r.x * 8.0) as u32))
+                .collect();
+            v.sort_unstable();
+            v
+        };
+        assert!(!fwd.list.selection.is_empty());
+        assert_eq!(norm(&fwd), norm(&rev), "reversed endpoints must render identically");
+    }
+
+    /// 外部重建清跨块选区（与 shift_anchor 同重置口径）。
+    #[test]
+    fn rebuild_resets_doc_selection() {
+        let c = core_for("sel3", "甲块。\n\n乙块。\n");
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 0 },
+            SelAnchor { block: 1, offset: 1 },
+        );
+        assert!(c.doc_selection().is_some());
+        assert!(c.sync_external("换内容。\n", true));
+        assert!(c.doc_selection().is_none());
+    }
+
+    /// 范围内的空叶（拆块产物）以窄条矩形可见。
+    #[test]
+    fn doc_selection_empty_middle_leaf_thin_rect() {
+        let c = core_for("sel4", "一\n\n二\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Enter); // 块0 末端拆块 → 空叶插中（blocks 追加 id2）
+        // segs: [Leaf0, Leaf2(""), Leaf1]；选区跨 空 叶。
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 1, offset: 0 },
+        );
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        assert_eq!(rects.len(), 3);
+        let empty_id = 2;
+        let band = &rects[empty_id];
+        let thin = frame
+            .list
+            .selection
+            .iter()
+            .find(|(r, _)| r.y >= band.y && r.y < band.y + band.h);
+        assert!(thin.is_some(), "empty middle leaf needs a visible rect");
+        assert!(thin.unwrap().0.w <= 4.0, "thin rect, got {:?}", thin.unwrap().0);
+    }
+
+    /// T2 执行期发现修复：中部拆块后渲染栈须按文档（dfs）序——新叶
+    /// 视觉落位在其文档位置（块 id 序会让新块堆到文档尾）。
+    #[test]
+    fn split_before_existing_blocks_renders_in_document_order() {
+        let c = core_for("sel5", "一\n\n二\n\n三\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Enter); // 新空叶 id3 文档位次 1；blocks 追加尾位
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        // 视觉序 = dfs 序 [0,3,1,2]：空叶 id3 的纵带夹在块0 与块1 之间。
+        assert!(rects[3].y > rects[0].y, "new leaf below first");
+        assert!(rects[1].y > rects[3].y, "block1 (二) must render BELOW the new empty leaf");
+        assert!(rects[2].y > rects[1].y);
+    }
+
+    // ── PLAN-048 T3：跨块选区·行为面 ───────────────────────────────────
+
+    /// 可读写的剪贴板替身（copy 断言用）。
+    struct ClipRecorder(std::cell::RefCell<Option<String>>);
+    impl EditorClipboard for ClipRecorder {
+        fn read(&mut self) -> Option<String> {
+            self.0.borrow().clone()
+        }
+        fn write(&mut self, text: &str) {
+            *self.0.borrow_mut() = Some(text.to_owned());
+        }
+    }
+
+    fn press_key(core: &AutodownEditorCore, key: EditorKey, mods: EditorModifiers) -> DocOutput {
+        run_fs(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::KeyPressed { key, text: None, modifiers: mods },
+                &mut NullClipboard,
+            )
+        })
+    }
+
+    /// 跨块 copy：范围叶段文本按骨架 join（段落语义 "\n\n"）。
+    #[test]
+    fn cross_block_copy_joins_leaf_texts() {
+        let c = core_for("cp1", "甲块。\n\n乙块。\n\n丙块。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 2, offset: 3 },
+        );
+        let mut clip = ClipRecorder(std::cell::RefCell::new(None));
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::KeyPressed {
+                    key: EditorKey::Char('c'),
+                    text: None,
+                    modifiers: EditorModifiers { control: true, ..Default::default() },
+                },
+                &mut clip,
+            )
+        });
+        assert_eq!(clip.0.borrow().as_deref(), Some("块。\n\n乙块。\n\n丙"));
+    }
+
+    /// 跨块退格：首尾叶剪接 + 焦点驻接缝 + 选区清除。
+    #[test]
+    fn cross_block_delete_splices_at_seam() {
+        let c = core_for("dl1", "甲块。\n\n乙块。\n\n丙块。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 2, offset: 3 },
+        );
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "甲块。");
+        assert_eq!(c.focused_block(), Some(0));
+        assert!(c.doc_selection().is_none());
+        let seam = {
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        assert_eq!(seam, Some(3), "caret rests at splice seam");
+    }
+
+    /// Delete 键同剪接语义。
+    #[test]
+    fn cross_block_delete_key_also_splices() {
+        let c = core_for("dl2", "甲块。\n\n乙块。\n\n丙块。\n");
+        *c.focus.lock().unwrap() = Some(2);
+        c.set_doc_selection(
+            SelAnchor { block: 0, offset: 3 },
+            SelAnchor { block: 2, offset: 3 },
+        );
+        let out = press(c, EditorKey::Delete);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "甲块。");
+    }
+
+    /// ctrl+a 全文选（首叶头 → 尾叶尾）；键入替换全文。
+    #[test]
+    fn ctrl_a_selects_all_then_typing_replaces() {
+        let c = core_for("sa1", "甲块。\n\n乙块。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        ctrl(c, 'a');
+        let sel = c.doc_selection().expect("ctrl+a sets doc selection");
+        assert_eq!(sel.0, SelAnchor { block: 0, offset: 0 });
+        assert_eq!(sel.1, SelAnchor { block: 1, offset: 9 }, "tail leaf fully covered");
+        press(c, EditorKey::Char('替'));
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "替");
+        assert_eq!(c.focused_block(), Some(0));
+    }
+
+    /// 跨块拖选：press→drag 落邻块 → doc_sel 双端建立 + 焦点随动 +
+    /// 逐带高亮。
+    #[test]
+    fn mouse_drag_across_blocks_sets_doc_selection() {
+        let c = core_for("dg1", "甲块。\n\n乙块。\n\n丙块。\n");
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let press_out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: 2.0, y: rects[0].y + 4.0 },
+                &mut NullClipboard,
+            )
+        });
+        assert!(press_out.captured);
+        // 拖入块2 文字中部（x=60 → 有字节宽度的落点；叶首字节零宽无高亮
+        // 属正常语义）。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MouseDragged { x: 60.0, y: rects[2].y + 4.0 },
+                &mut NullClipboard,
+            )
+        });
+        let sel = c.doc_selection().expect("cross-block drag sets doc selection");
+        assert_eq!(sel.0.block, 0);
+        assert_eq!(sel.1.block, 2);
+        assert_eq!(c.focused_block(), Some(2), "caret follows drag head");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        for (i, r) in rects.iter().enumerate() {
+            assert!(
+                frame.list.selection.iter().any(|(s, _)| s.y >= r.y && s.y < r.y + r.h),
+                "drag band {i} must highlight"
+            );
+        }
+    }
+
+    /// shift+↑/↓ 跨块边界扩展选区；反向收拢；无 shift 迁移清除。
+    #[test]
+    fn shift_down_across_boundary_extends_selection() {
+        let c = core_for("sh1", "甲块。\n\n乙块。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        let shift = EditorModifiers { shift: true, ..Default::default() };
+        run_fs(|fs| {
+            c.handle_input(fs, DocInput::ModifiersChanged(shift), &mut NullClipboard)
+        });
+        let out = press_key(c, EditorKey::Down, shift);
+        assert!(out.focus_changed);
+        assert_eq!(c.focused_block(), Some(1));
+        let sel = c.doc_selection().expect("shift+Down extends across blocks");
+        assert_eq!(sel.0, SelAnchor { block: 0, offset: 0 }, "anchor stays at origin");
+        assert_eq!(sel.1.block, 1);
+        // 反向收拢回块0：锚端保持，焦点端随 nav 落位回到原块（块内
+        // 选区 {0,0}→{0,尾}，nav 上行落末行尾为既有惯例）。
+        press_key(c, EditorKey::Up, shift);
+        assert_eq!(c.focused_block(), Some(0));
+        let sel2 = c.doc_selection().unwrap();
+        assert_eq!(sel2.0, SelAnchor { block: 0, offset: 0 }, "anchor stays at origin");
+        assert_eq!(sel2.1.block, 0, "focus endpoint back in origin block");
+        // 无 shift 迁移清选区。
+        run_fs(|fs| {
+            c.handle_input(fs, DocInput::ModifiersChanged(EditorModifiers::none()), &mut NullClipboard)
+        });
+        press_key(c, EditorKey::Down, EditorModifiers::none());
+        assert!(c.doc_selection().is_none(), "plain navigation clears selection");
     }
 }
