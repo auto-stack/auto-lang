@@ -10,6 +10,8 @@ pub type Video = {
     duration: str
     views: int
     likes: int
+    views_fmt: str
+    likes_fmt: str
     desc: str
     followed: bool
     cover_color: str
