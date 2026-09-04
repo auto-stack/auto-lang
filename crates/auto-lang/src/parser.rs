@@ -12778,12 +12778,15 @@ impl<'a> Parser<'a> {
             .collect::<String>()
             .to_lowercase();
         match norm.as_str() {
-            "alertdialog" | "dialog" => Some("root"),
-            "alertdialogtrigger" | "dialogtrigger" => Some("trigger"),
-            "alertdialogcontent" | "dialogcontent" => Some("content"),
+            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
             "alertdialogcancel" => Some("cancel"),
             "alertdialogaction" => Some("action"),
             "alertdialogclose" | "dialogclose" => Some("close"),
+            "dropdownmenuitem" => Some("item"),
+            "dropdownmenulabel" => Some("label"),
+            "dropdownmenuseparator" => Some("separator"),
             _ => None,
         }
     }
@@ -12851,17 +12854,34 @@ impl<'a> Parser<'a> {
                     states.push(state_name);
                     // 子件接线：trigger（直接子）→ toggle;cancel/action/close
                     // （content 内任意深度）→ close。
+                    let is_click = |name: &str| matches!(name, "onclick" | "onClick" | "on_click");
                     for c in children.iter_mut() {
-                        if let ViewNode::Element { tag: ctag, events: cev, .. } = c {
-                            if Self::modal_dialog_tag_role(ctag) == Some("trigger")
-                                && !cev.iter().any(|e| matches!(e.name.as_str(), "onclick" | "onClick" | "on_click"))
-                            {
-                                cev.push(ViewEvent {
-                                    name: "onclick".to_string(),
-                                    handler: format!(".{toggle}"),
-                                    params: Vec::new(),
-                                    inline: None,
-                                });
+                        if let ViewNode::Element { tag: ctag, events: cev, children: cch, .. } = c {
+                            if Self::modal_dialog_tag_role(ctag) == Some("trigger") {
+                                // 包裹形态（trigger 内单 Element 子,如包住的
+                                // button）且内层无 onclick → toggle 落内层按钮
+                                // （渲染面只画子件,落 wrapper 会丢）;否则落
+                                // trigger 自身（裸文本形态由转换层读）。
+                                let target: &mut Vec<ViewEvent> = if cch.len() == 1 {
+                                    match &mut cch[0] {
+                                        ViewNode::Element { events: inner_ev, .. }
+                                            if !inner_ev.iter().any(|e| is_click(e.name.as_str())) =>
+                                        {
+                                            inner_ev
+                                        }
+                                        _ => cev,
+                                    }
+                                } else {
+                                    cev
+                                };
+                                if !target.iter().any(|e| is_click(e.name.as_str())) {
+                                    target.push(ViewEvent {
+                                        name: "onclick".to_string(),
+                                        handler: format!(".{toggle}"),
+                                        params: Vec::new(),
+                                        inline: None,
+                                    });
+                                }
                             }
                         }
                         Self::wire_modal_close_recursive(c, &close);

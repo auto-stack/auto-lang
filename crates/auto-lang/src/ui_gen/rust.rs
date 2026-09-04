@@ -2238,6 +2238,36 @@ impl RustGenerator {
                                 b
                             );
                         }
+                        "item" => {
+                            // PLAN-533 T7: dropdown-menu-item——有 onclick
+                            // 走按钮（菜单项交互预设）;纯文本项 text_styled。
+                            let preset = "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
+                            let label = Self::modal_child_label(props, children);
+                            let onclick = ["onclick", "onClick", "on_click"]
+                                .iter()
+                                .find_map(|k| events.get(*k))
+                                .map(|h| self.handler_to_rust_closure_with_params(&h.handler, &h.params));
+                            return match onclick {
+                                Some(cl) => format!(
+                                    "View::button(\"{}\").style(\"{}\").on_click({}).build()",
+                                    label, preset, cl
+                                ),
+                                None => format!(
+                                    "View::text_styled(\"{}\".to_string(), \"{}\")",
+                                    label, preset
+                                ),
+                            };
+                        }
+                        "label" => {
+                            let label = Self::modal_child_label(props, children);
+                            return format!(
+                                "View::text_styled(\"{}\".to_string(), \"px-2 py-1.5 text-sm font-semibold\")",
+                                label
+                            );
+                        }
+                        "separator" => {
+                            return "View::col().style(\"w-full h-px bg-border my-1\").build()".to_string();
+                        }
                         "cancel" | "close" => {
                             return self.generate_modal_button(
                                 props,
@@ -3141,9 +3171,9 @@ impl RustGenerator {
             .collect::<String>()
             .to_lowercase();
         match norm.as_str() {
-            "alertdialog" | "dialog" => Some("root"),
-            "alertdialogtrigger" | "dialogtrigger" => Some("trigger"),
-            "alertdialogcontent" | "dialogcontent" => Some("content"),
+            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
             "alertdialogtitle" | "dialogtitle" => Some("title"),
             "alertdialogdescription" | "dialogdescription" => Some("description"),
             "alertdialogheader" | "dialogheader" => Some("header"),
@@ -3151,8 +3181,21 @@ impl RustGenerator {
             "alertdialogcancel" => Some("cancel"),
             "alertdialogaction" => Some("action"),
             "alertdialogclose" | "dialogclose" => Some("close"),
+            "dropdownmenuitem" => Some("item"),
+            "dropdownmenulabel" => Some("label"),
+            "dropdownmenuseparator" => Some("separator"),
             _ => None,
         }
+    }
+
+    /// PLAN-533 T7: dropdown-menu 根（锚定菜单族）。
+    fn dropdown_menu_root(tag: &str) -> bool {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        norm == "dropdownmenu"
     }
 
     /// PLAN-533 T6: 可关闭模态根（dialog 族）——非 alert 族。shadcn 语义：
@@ -3163,7 +3206,7 @@ impl RustGenerator {
             .filter(|c| *c != '-' && *c != '_')
             .collect::<String>()
             .to_lowercase();
-        norm == "dialog"
+        norm == "dialog" || norm == "dropdownmenu"
     }
 
     /// 家族子件的文字内容：text prop → label prop → 首 Text 子节点。
@@ -3272,10 +3315,14 @@ impl RustGenerator {
         for c in panel_nodes {
             panel = format!("{}.child({})", panel, self.generate_view_tree(c));
         }
-        panel = format!(
-            "{}.style(\"w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4\").build()",
-            panel
-        );
+        // PLAN-533 T7: dropdown-menu 族锚定菜单 chrome（shadcn
+        // DropdownMenuContent 同款 p-1 紧凑档）;对话框族保持 w-96 模态卡。
+        let panel_chrome = if Self::dropdown_menu_root(tag) {
+            "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1"
+        } else {
+            "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"
+        };
+        panel = format!("{}.style(\"{}\").build()", panel, panel_chrome);
         let open_expr = match props.get("open") {
             Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => b.to_string(),
             Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
@@ -3306,9 +3353,14 @@ impl RustGenerator {
         } else {
             "None".to_string()
         };
+        let placement_path = if Self::dropdown_menu_root(tag) {
+            "auto_lang::ui::view::PopoverPlacement::BottomStart"
+        } else {
+            "auto_lang::ui::view::PopoverPlacement::Modal"
+        };
         format!(
-            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: auto_lang::ui::view::PopoverPlacement::Modal, open: {}, on_dismiss: {} }}",
-            anchor_code, panel, open_expr, on_dismiss_expr
+            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
+            anchor_code, panel, placement_path, open_expr, on_dismiss_expr
         )
     }
 
@@ -6239,6 +6291,65 @@ widget DialogDemo {
         assert!(
             code.contains("on_dismiss: Some(DialogDemoMsg::__dlg_close_1)"),
             "unbound dialog must wire dismiss reflow:\n{}", code
+        );
+    }
+
+    /// PLAN-533 T7: dropdown-menu 家族 → 锚定 Popover（BottomStart + 菜单
+    /// chrome p-1 gap-1）;无 open 绑定走铸造（trigger 包裹形态 onclick 落
+    /// 内层按钮）;外点/ESC 经 on_dismiss=__dlg_close_N 回流;item 预设样式。
+    #[test]
+    fn test_dropdown_menu_codegen_anchored_popover() {
+        let src = r#"
+widget MenuDemo {
+    view {
+        dropdown-menu {
+            dropdown-menu-trigger {
+                button (text: "Open", variant: "outline") {}
+            }
+            dropdown-menu-content {
+                dropdown-menu-item "Profile"
+                dropdown-menu-item "Billing"
+                dropdown-menu-separator {}
+                dropdown-menu-item "Log out"
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::BottomStart"),
+            "dropdown-menu anchors BottomStart:\n{}", code
+        );
+        assert!(
+            code.contains("open: self.__dlg_open_1"),
+            "minted open bound:\n{}", code
+        );
+        assert!(
+            code.contains("MenuDemoMsg::__dlg_toggle_1"),
+            "minted toggle reaches the wrapped trigger button:\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: Some(MenuDemoMsg::__dlg_close_1)"),
+            "dismiss reflow:\n{}", code
+        );
+        assert!(
+            code.contains("bg-popover border border-border rounded-md shadow-md p-1"),
+            "menu chrome:\n{}", code
+        );
+        assert!(
+            code.contains("View::text_styled(\"Profile\".to_string(), \"w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start\")"),
+            "item preset style:\n{}", code
         );
     }
 

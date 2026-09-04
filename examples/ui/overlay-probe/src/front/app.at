@@ -55,6 +55,18 @@ widget App {
                     }
                 }
             }
+            // T7 锚定菜单形态（gallery dropdownmenu 页同款,铸造 __dlg_open_2）。
+            dropdown-menu {
+                dropdown-menu-trigger {
+                    button (text: "Open Menu", variant: "outline") {}
+                }
+                dropdown-menu-content {
+                    dropdown-menu-item "Profile"
+                    dropdown-menu-item "Billing"
+                    dropdown-menu-separator {}
+                    dropdown-menu-item "Log out"
+                }
+            }
         }
     }
 }
