@@ -34,6 +34,25 @@ pub const FENCE_BODY_FG: (u8, u8, u8) = (250, 250, 250); // zinc-50
 /// 编辑壳 fence 边线（view 轨 `border` 默认色的暗色面板取值，zinc-700）。
 pub const FENCE_BORDER: (u8, u8, u8) = (63, 63, 70);
 
+/// PLAN-050 F2：编辑壳 fence 配色浅色档——与 FENCE_CHROME_LIGHT 同源
+/// （gray-50 容器 / gray-200 header 与边线 / gray-700 标签）。
+pub const FENCE_BG_LIGHT: (u8, u8, u8) = (249, 250, 251); // gray-50
+pub const FENCE_HEADER_BG_LIGHT: (u8, u8, u8) = (229, 231, 235); // gray-200
+pub const FENCE_HEADER_FG_LIGHT: (u8, u8, u8) = (55, 65, 81); // gray-700
+pub const FENCE_BORDER_LIGHT: (u8, u8, u8) = (229, 231, 235); // gray-200
+
+/// PLAN-050：编辑壳 fence 配色随主题取用（bg, header_bg, header_fg,
+/// border）——与 `family_of(Fence)` 的 chrome 类串同读 `theme::dark_mode`，
+/// 两臂同帧翻转，杜绝「buffer hljs 主题浅色 × chrome 硬编码暗色」的
+/// 标点不可见分叉（PLAN-050 F1/F2 同根修复）。
+pub fn fence_palette() -> ((u8, u8, u8), (u8, u8, u8), (u8, u8, u8), (u8, u8, u8)) {
+    if crate::ui::style::theme::dark_mode() {
+        (FENCE_BG, FENCE_HEADER_BG, FENCE_HEADER_FG, FENCE_BORDER)
+    } else {
+        (FENCE_BG_LIGHT, FENCE_HEADER_BG_LIGHT, FENCE_HEADER_FG_LIGHT, FENCE_BORDER_LIGHT)
+    }
+}
+
 /// 容器 chrome：view 轨类串 + 编辑轨几何，单源。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ChromeSpec {
@@ -84,12 +103,30 @@ const PLAIN: ChromeSpec = ChromeSpec {
 };
 
 /// fence 家族 chrome（从 autodown_render fence 臂搬家；两轨同源）。
+/// PLAN-050 F3：header 补 w-full（全宽语言栏，对齐 vue .code-block-header
+/// 的 flex 拉伸）；标签自带色（容器色类不达子 Text，曾默认黑画 zinc-800
+/// 上不可见 → 塌成游离黑块）。
 pub const FENCE_CHROME: ChromeSpec = ChromeSpec {
     outer: "rounded-lg border bg-zinc-950 overflow-hidden w-full",
-    header: Some("px-4 py-2 border-b bg-zinc-800 text-zinc-400"),
-    header_label: "text-xs font-medium",
+    header: Some("w-full px-4 py-2 border-b bg-zinc-800 text-zinc-400"),
+    header_label: "text-xs font-medium text-zinc-400",
     body: "p-4",
     body_text: "font-mono text-sm text-zinc-50 whitespace-pre-wrap",
+    pad: FENCE_PAD,
+    header_h: FENCE_HEADER_H,
+};
+
+/// PLAN-050 F2：fence 家族浅色 chrome——对齐 vue 轨 `.code-block-container`
+/// 实值（engine autodown-editor.css：容器 #f9fafb、边 #e5e7eb、header 底
+/// #e5e7eb、header 字 #374151、pre 字色继承正文深色取 gray-800）。与暗色
+/// 档同构同源，`family_of` 按 `theme::dark_mode` 翻转（与 buffer hljs 主题
+/// 选取同读一处——修复浅色 hljs 基色标点画 zinc 暗底不可见的分叉）。
+pub const FENCE_CHROME_LIGHT: ChromeSpec = ChromeSpec {
+    outer: "rounded-lg border bg-gray-50 border-gray-200 overflow-hidden w-full",
+    header: Some("w-full px-4 py-2 border-b bg-gray-200 text-gray-700"),
+    header_label: "text-xs font-medium text-gray-700",
+    body: "p-4",
+    body_text: "font-mono text-sm text-gray-800 whitespace-pre-wrap",
     pad: FENCE_PAD,
     header_h: FENCE_HEADER_H,
 };
@@ -187,11 +224,19 @@ pub fn heading_size(level: i64) -> f32 {
 }
 
 /// 全量家族注册表：17 种 BlockType 一一对应（PLAN-041 T1 验收锚）。
+/// PLAN-050 F2：fence 臂按 `theme::dark_mode` 在暗/浅两 static 间切换
+/// （同主题下仍是单例——`family_of_returns_static_singleton` 语义不变）。
 pub fn family_of(kind: BlockType) -> &'static BlockFamily {
     match kind {
         BlockType::Heading => &FAMILY_HEADING,
         BlockType::Paragraph => &FAMILY_PARAGRAPH,
-        BlockType::Fence => &FAMILY_FENCE,
+        BlockType::Fence => {
+            if crate::ui::style::theme::dark_mode() {
+                &FAMILY_FENCE
+            } else {
+                &FAMILY_FENCE_LIGHT
+            }
+        }
         BlockType::Blockquote => &FAMILY_QUOTE,
         BlockType::ListBlock => &FAMILY_LIST,
         BlockType::ListItem => &FAMILY_LIST_ITEM,
@@ -222,6 +267,11 @@ static FAMILY_PARAGRAPH: BlockFamily = BlockFamily {
 static FAMILY_FENCE: BlockFamily = BlockFamily {
     kind: BlockType::Fence,
     chrome: FENCE_CHROME,
+    body: BodyKind::Text { mono: true, size: FENCE_SIZE },
+};
+static FAMILY_FENCE_LIGHT: BlockFamily = BlockFamily {
+    kind: BlockType::Fence,
+    chrome: FENCE_CHROME_LIGHT,
     body: BodyKind::Text { mono: true, size: FENCE_SIZE },
 };
 static FAMILY_QUOTE: BlockFamily = BlockFamily {
@@ -345,23 +395,34 @@ mod tests {
     }
 
     /// 家族单源：同 kind 两次取用同一 'static 实例（两臂消费同一注册表）。
+    /// PLAN-050：fence 按主题在暗/浅两 static 间切换——同主题下仍单例；
+    /// 主题固定时指针稳定语义不变（默认测试线程为暗色档）。
     #[test]
     fn family_of_returns_static_singleton() {
         let a = family_of(BlockType::Fence);
         let b = family_of(BlockType::Fence);
         assert!(std::ptr::eq(a, b));
+        // 浅色档同为单例，且与暗色档是不同实例（两 static）。
+        crate::ui::style::theme::set_dark_mode(false);
+        let c = family_of(BlockType::Fence);
+        let d = family_of(BlockType::Fence);
+        crate::ui::style::theme::set_dark_mode(true);
+        assert!(std::ptr::eq(c, d));
+        assert!(!std::ptr::eq(a, c), "light/dark fence families must be distinct statics");
     }
 
     /// T2 行为等价锚：fence/quote/break chrome 与搬家前字面量一致
-    /// （原 autodown_render 内联字符串的逐字快照）。
+    /// （原 autodown_render 内联字符串的逐字快照）。PLAN-050 F3 后暗色档
+    /// header 增 w-full、标签自带色（黑底不可见教训）；浅色档见
+    /// FENCE_CHROME_LIGHT（vue .code-block-container 实值对齐）。
     #[test]
     fn migrated_chrome_strings_match_pre_family_literals() {
         assert_eq!(FENCE_CHROME.outer, "rounded-lg border bg-zinc-950 overflow-hidden w-full");
         assert_eq!(
             FENCE_CHROME.header.unwrap(),
-            "px-4 py-2 border-b bg-zinc-800 text-zinc-400"
+            "w-full px-4 py-2 border-b bg-zinc-800 text-zinc-400"
         );
-        assert_eq!(FENCE_CHROME.header_label, "text-xs font-medium");
+        assert_eq!(FENCE_CHROME.header_label, "text-xs font-medium text-zinc-400");
         assert_eq!(FENCE_CHROME.body, "p-4");
         assert_eq!(
             FENCE_CHROME.body_text,
