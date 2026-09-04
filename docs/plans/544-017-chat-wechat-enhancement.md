@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-544
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: 017-chat-wechat-enhancement
 author: ["Antigravity"]
 created_at: 2026-09-04
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: ["auto-lang/ui", "auto-lang/examples"]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -219,33 +219,33 @@ pub fn stream() ~Stream<ChatEvent> {
 
 ## 执行步骤
 
-### Step 1: 后端数据模型与接口增强 (src/back/api.at & db.at)
+### Step 1: 后端数据模型与接口增强 (src/back/api.at & db.at) [✅ 已完成] cargo test -p auto-man test_017_chat 绿灯通过，保持 mine:true 和函数签名委托不变
 - 修改 `examples/ui/017-chat/src/back/api.at`，增加 `Contact` 类型与 `list_contacts`、`bot_reply` 路由。
 - 修改 `examples/ui/017-chat/src/back/db.at`，增加联系人数据集合及智能回复逻辑，保持既有 `all_messages`、`create_message` 和 `mine: true` 签名不变。
 - 验证命令: `cargo test -p auto-man test_017_chat`
 
-### Step 2: 前端数据模型与全局 Store 扩展 (src/front/types.at & chat_store.at)
+### Step 2: 前端数据模型与全局 Store 扩展 (src/front/types.at & chat_store.at) [✅ 已完成] auto gen 成功生成 useChatStoreStore.ts，支持 contacts、active_contact_id、search_query 与 TriggerBot
 - 修改 `examples/ui/017-chat/src/front/types.at`，补充 `Contact` 类型定义。
 - 修改 `examples/ui/017-chat/src/front/chat_store.at`，管理联系人列表、当前激活联系人 ID、搜索过滤词、未读状态清除等逻辑。
 - 验证命令: `auto gen` (在 `examples/ui/017-chat` 下)
 
-### Step 3: 编写左侧联系人与会话栏组件 (src/front/sidebar.at)
-- 新建 `examples/ui/017-chat/src/front/sidebar.at` 组件，实现个人 Profile 栏、搜索栏、带头像/未读角标/最新发言的联系人会话项。
+### Step 3: 编写左侧联系人与会话栏组件 (src/front/chat_sidebar.at) [✅ 已完成] auto gen 成功生成 ChatSidebar.vue，支持用户名片、搜索过滤、联系人会话项与未读提示
+- 新建 `examples/ui/017-chat/src/front/chat_sidebar.at` 组件，实现个人 Profile 栏、搜索栏、带头像/未读角标/最新发言的联系人会话项。
 - 验证命令: `auto gen` (在 `examples/ui/017-chat` 下)
 
-### Step 4: 增强消息气泡流与会话窗口头部 (src/front/message_thread.at)
+### Step 4: 增强消息气泡流与会话窗口头部 (src/front/message_thread.at) [✅ 已完成] auto gen 成功生成 MessageThread.vue，支持联系人头像、状态、Bot Reply 快捷操作和左右气泡流
 - 修改 `examples/ui/017-chat/src/front/message_thread.at`，添加会话顶部状态栏（当前联系人、在线状态、快捷操作），丰富气泡渲染，并保持 typing 指示器。
 - 验证命令: `auto gen` (在 `examples/ui/017-chat` 下)
 
-### Step 5: 增强输入框与 Emoji 表情/快捷操作栏 (src/front/composer.at)
+### Step 5: 增强输入框与 Emoji 表情/快捷操作栏 (src/front/composer.at) [✅ 已完成] auto gen 成功生成 Composer.vue，支持表情快捷插入（😀、😂、👍 等）及常用短语一键发送
 - 修改 `examples/ui/017-chat/src/front/composer.at`，在输入框上方增加 Emoji 选择器（点击注入）与常用快捷回复按钮。
 - 验证命令: `auto gen` (在 `examples/ui/017-chat` 下)
 
-### Step 6: 组装微信风格双栏主界面 (src/front/app.at)
+### Step 6: 组装微信风格双栏主界面 (src/front/app.at) [✅ 已完成] auto gen 成功生成 App.vue，完成 ChatSidebar + MessageThread + Composer 双栏响应式组装与事件流打通
 - 修改 `examples/ui/017-chat/src/front/app.at`，将 `Sidebar`、`MessageThread`、`Composer` 组合为现代双栏布局，保留原有的时钟计时器和 SSE 消息通道。
 - 验证命令: `auto gen` (在 `examples/ui/017-chat` 下)
 
-### Step 7: 更新说明文档与测试套件 (README.md & tests/smoke.spec.ts)
+### Step 7: 更新说明文档与测试套件 (README.md & tests/smoke.spec.ts) [✅ 已完成] 更新 README 现代分栏架构与全栈接口说明，扩展 acceptance.atd 与 smoke.spec.ts 至 T1-T13，并通过 cargo test -p auto-man test_017_chat 验证
 - 更新 `examples/ui/017-chat/README.md`，记录新的架构图、组件清单与交互演示。
 - 更新 `examples/ui/017-chat/tests/smoke.spec.ts` 与 `acceptance.atd`，确保涵盖旧测试及新增特性。
 - 验证命令: `cargo test -p auto-man test_017_chat`
