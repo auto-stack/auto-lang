@@ -547,6 +547,41 @@ impl Default for EncodedByteLru {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MediaPin { #[default] None, Soft, Hard }
+#[derive(Clone, Debug)]
+struct DecodedEntry { bytes: Arc<[u8]>, pin: MediaPin, last_access: u64 }
+/// Bounded host-pixel cache. Hard-pinned current content may exceed budget;
+/// all non-hard entries are reclaimed as soon as a publish changes the set.
+#[derive(Clone, Debug)]
+pub struct DecodedPixelCache {
+    budget_bytes: usize, used_bytes: usize, clock: u64,
+    entries: HashMap<MediaAssetId, DecodedEntry>, stats: MediaPipelineStats,
+}
+impl DecodedPixelCache {
+    pub const DEFAULT_BUDGET_BYTES: usize = 256 * 1024 * 1024;
+    pub fn new(budget_bytes: usize) -> Self { Self { budget_bytes, used_bytes: 0, clock: 0, entries: HashMap::new(), stats: MediaPipelineStats::default() } }
+    pub fn insert(&mut self, id: MediaAssetId, bytes: Arc<[u8]>, pin: MediaPin) {
+        self.clock = self.clock.wrapping_add(1);
+        if let Some(old) = self.entries.remove(&id) { self.used_bytes = self.used_bytes.saturating_sub(old.bytes.len()); }
+        self.used_bytes = self.used_bytes.saturating_add(bytes.len());
+        self.entries.insert(id, DecodedEntry { bytes, pin, last_access: self.clock }); self.collect();
+    }
+    pub fn set_pin(&mut self, id: MediaAssetId, pin: MediaPin) { if let Some(entry) = self.entries.get_mut(&id) { entry.pin = pin; } }
+    pub fn contains(&self, id: MediaAssetId) -> bool { self.entries.contains_key(&id) }
+    pub const fn used_bytes(&self) -> usize { self.used_bytes }
+    pub fn stats(&self) -> &MediaPipelineStats { &self.stats }
+    pub fn collect(&mut self) {
+        while self.used_bytes > self.budget_bytes {
+            let candidate = self.entries.iter().filter(|(_, e)| e.pin != MediaPin::Hard).min_by_key(|(_, e)| (e.pin != MediaPin::None, e.last_access)).map(|(&id, _)| id);
+            let Some(id) = candidate else { break; };
+            let entry = self.entries.remove(&id).expect("decoded cache entry exists"); self.used_bytes = self.used_bytes.saturating_sub(entry.bytes.len()); self.stats.evictions = self.stats.evictions.saturating_add(1);
+        }
+        self.stats.decoded_bytes = self.used_bytes;
+    }
+}
+impl Default for DecodedPixelCache { fn default() -> Self { Self::new(Self::DEFAULT_BUDGET_BYTES) } }
+
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
 pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
@@ -632,5 +667,24 @@ mod tests {
         assert!(cache.get(second).is_none(), "least-recent entry is evicted");
         assert!(cache.get(third).is_some());
         assert_eq!(cache.stats().evictions, 1);
+    }
+
+    #[test]
+    fn decoded_budget_keeps_current_allows_its_temporary_overflow_and_evicts_neighbors() {
+        let mut cache = super::DecodedPixelCache::new(4);
+        let current = super::MediaAssetId(1);
+        let neighbor = super::MediaAssetId(2);
+        let replacement = super::MediaAssetId(3);
+        cache.insert(neighbor, Arc::<[u8]>::from([1, 2, 3, 4]), super::MediaPin::Soft);
+        cache.insert(current, Arc::<[u8]>::from([5, 6, 7, 8, 9, 10]), super::MediaPin::Hard);
+        assert!(cache.contains(current));
+        assert_eq!(cache.used_bytes(), 6, "hard-pinned current can temporarily exceed budget");
+        assert!(!cache.contains(neighbor), "publish reclaims non-current content");
+
+        cache.insert(replacement, Arc::<[u8]>::from([11, 12]), super::MediaPin::None);
+        assert!(cache.contains(current));
+        cache.set_pin(current, super::MediaPin::None);
+        cache.collect();
+        assert!(cache.used_bytes() <= 4);
     }
 }
