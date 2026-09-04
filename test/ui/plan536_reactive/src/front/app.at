@@ -1,0 +1,21 @@
+// app.at — PLAN-536 T1 双臂探针：timer 写 store 字段后，
+// 直绑臂（text f-string 引 .store.title）与子件 prop 臂（ChatBubble.bubble_title）
+// 是否随重建视图更新。musk 会话卡（子件消费 store 数据）的最小同形面。
+use chat_store: ChatStore
+use chat_bubble: ChatBubble
+
+widget App {
+    msg { }
+    model {
+        var local_count int = 0
+        var bubble_init_count int = 0
+    }
+    timer { }
+    view {
+        col {
+            text f"direct=${.store.title}"
+            ChatBubble(bubble_title: .store.title)
+        }
+    }
+    on { }
+}

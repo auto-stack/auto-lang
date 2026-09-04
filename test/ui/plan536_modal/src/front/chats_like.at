@@ -1,0 +1,26 @@
+// chats_like.at — musk chats_view 同形：子件模型持 open 态,视图根部
+// 直接放 alert-dialog 家族根（musk 探针"视图根部"形态）。
+widget ChatsLike {
+    msg { Flip }
+    model { var dialog_open bool = false }
+    view {
+        col {
+            alert-dialog (open: .dialog_open) {
+                alert-dialog-trigger {
+                    text "trigger"
+                }
+                alert-dialog-content {
+                    alert-dialog-title {
+                        text "child title"
+                    }
+                    alert-dialog-action {
+                        text "ok"
+                    }
+                }
+            }
+        }
+    }
+    on {
+        .Flip -> { .dialog_open = true }
+    }
+}

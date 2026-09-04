@@ -1,0 +1,7 @@
+fn fmtTime(ts int) str {
+    return Date.format(ts, "HH:mm:ss")
+}
+
+fn relayNow() str {
+    return Date.format(Date.now(), "HH:mm:ss")
+}

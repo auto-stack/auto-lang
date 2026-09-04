@@ -1,0 +1,32 @@
+// app.at — PLAN-536 T8 探针语料：①unknown-tag fallback 包家族根(App 自己
+// 的 open 态);②子件(musk chats_view 同形)视图根部家族根 + 子件 open 态
+// （字段只declare在子件,沿 musk 实况）。
+use chats_like: ChatsLike
+
+widget App {
+    msg { FlipRoot }
+    model { var root_open bool = false }
+    view {
+        col {
+            unknown-shell {
+                alert-dialog (open: .root_open) {
+                    alert-dialog-trigger {
+                        text "open dialog"
+                    }
+                    alert-dialog-content {
+                        alert-dialog-title {
+                            text "confirm title"
+                        }
+                        alert-dialog-action {
+                            text "ok"
+                        }
+                    }
+                }
+            }
+            ChatsLike { }
+        }
+    }
+    on {
+        .FlipRoot -> { .root_open = true }
+    }
+}

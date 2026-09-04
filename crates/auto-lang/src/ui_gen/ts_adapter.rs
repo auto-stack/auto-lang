@@ -1256,15 +1256,30 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     }
                     // Plan 028 F3: Date.format(ts, "HH:mm") → toLocaleTimeString
                     // （窄面日期 API，与 vue.rs expr_to_js 同规则）。
+                    // PLAN-536 T4(题3): 秒/毫秒双口径归一（1e11 阈值,与 VM
+                    // format_date_ms 同口径），调用方无需自行 ×1000。
                     if method.as_str() == "format"
                         && matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Date")
                     {
-                        write!(out, "(new Date(").ok();
+                        write!(out, "(new Date(((").ok();
                         if let Some(first) = call.args.args.first() {
                             transpile_expr(&first.get_expr().clone(), ctx, out);
                         } else {
                             write!(out, "0").ok();
                         }
+                        write!(out, ") < 100000000000 ? (").ok();
+                        if let Some(first) = call.args.args.first() {
+                            transpile_expr(&first.get_expr().clone(), ctx, out);
+                        } else {
+                            write!(out, "0").ok();
+                        }
+                        write!(out, ") * 1000 : (").ok();
+                        if let Some(first) = call.args.args.first() {
+                            transpile_expr(&first.get_expr().clone(), ctx, out);
+                        } else {
+                            write!(out, "0").ok();
+                        }
+                        write!(out, ")))").ok();
                         let pattern = call.args.args.get(1).and_then(|a| match a.get_expr() {
                             Expr::Str(s) => Some(s.as_str().to_string()),
                             _ => None,

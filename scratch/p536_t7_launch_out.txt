@@ -1,0 +1,42 @@
+[*] launching musk VM UI (mcp:10021) with D:/autostack/.wt/lang-536/auto-lang/target/debug/auto.exe
+[+] UI ready
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  col #vnode_12642422519345821663 {
+    row #vnode_4305065243889594349 {
+      text #vnode_4321691031005245367 "🔥"
+      text #vnode_4321673438819200516 "AutoForge"
+    }
+    col #vnode_4305047651703549498 {
+      col #vnode_4306385829146414222 {
+        text #vnode_5889769877696550218 "Username"
+        input #vnode_5889787469882595069 {
+          placeholder: "Enter username"
+          value: ""
+        }
+      }
+      col #vnode_4306403421332459073 {
+        text #vnode_5905075079555381363 "Password"
+        input #vnode_5905057487369336512 {
+          placeholder: "Enter password"
+          value: ""
+        }
+      }
+      button #vnode_4306350644774324520 "" {
+        text #vnode_5859159473978887928 "Login"
+      }
+    }
+    col #vnode_4305030059517504647 {
+      button #vnode_4291080627287583077 "" {
+        text #vnode_14349869738559936159 "No account? Register"
+      }
+    }
+  }
+}
+
+
+[SNAPSHOT_TAIL_MODE=json]
+[*] full snapshot saved. observe window 30s, then exit (proc left running for follow-up probe).

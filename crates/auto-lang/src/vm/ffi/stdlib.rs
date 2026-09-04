@@ -7607,8 +7607,18 @@ pub(crate) fn push_rust_obj<T: Any + Send + Sync + 'static>(
 /// 对齐 web 轨 `new Date(ms).toLocaleTimeString()`。token 按连续同字符
 /// run 解析:yyyy/MM/dd/HH/hh/mm/ss/SSS 全宽,单字符窄位;未知 run 原样保留
 /// （分隔符 `:` 等自然直通）。ms 非法(溢出/回退)返回空串。
+/// PLAN-536 T4(题3): 双口径归一——后端时间戳常以 epoch **秒**下发(musk
+/// created_at=1788436450 实录),此前恒按毫秒换算 → 1970 垃圾时刻(呈现为
+/// "非整时区偏移"假象)。阈值 1e11 沿业界惯例:真实纪元秒(< 2286 年)恒
+/// < 1e11,真实纪元毫秒(> 1973-03)恒 ≥ 1e11。归一在 Local 换算之前,
+/// 只动单位、不动时区。
 fn format_date_ms(ms: i64, pattern: &str) -> String {
     use chrono::{Datelike, Local, TimeZone, Timelike};
+    let ms = if ms.abs() < 100_000_000_000 {
+        ms.saturating_mul(1000)
+    } else {
+        ms
+    };
     let dt = match Local.timestamp_millis_opt(ms) {
         chrono::LocalResult::Single(dt) => dt,
         _ => return String::new(),
@@ -9702,4 +9712,67 @@ pub fn shim_test_run_a2r_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
     failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod plan536_date_format_tests {
+    use super::format_date_ms;
+
+    /// PLAN-536 T4(题3): epoch **秒**口径（后端 created_at 原始单位,musk
+    /// 实录 1788436450 = 2026-09-03 19:54:10+08）此前被当毫秒换算 → 产出
+    /// 1970 年垃圾时刻（非整时区偏移假象）。秒/毫秒双口径必须产出同一
+    /// 时刻标签；归一阈值沿业界惯例 1e11（< 1e11 视为秒）。
+    #[test]
+    fn p536_seconds_and_millis_agree() {
+        // 2026-09-03T11:54:10Z 的两种口径
+        let secs: i64 = 1_788_436_450;
+        let millis: i64 = secs * 1000;
+        assert_eq!(
+            format_date_ms(secs, "HH:mm:ss"),
+            format_date_ms(millis, "HH:mm:ss"),
+            "dual-unit inputs must label the same instant"
+        );
+        assert_eq!(
+            format_date_ms(secs, "yyyy/MM/dd HH:mm:ss"),
+            format_date_ms(millis, "yyyy/MM/dd HH:mm:ss"),
+        );
+        // 毫秒样本含亚秒:SSS 口径双口径一致(秒×1000 无亚秒残差)
+        assert_eq!(
+            format_date_ms(secs, "yyyy-MM-dd HH:mm:ss.SSS"),
+            format_date_ms(millis, "yyyy-MM-dd HH:mm:ss.SSS"),
+        );
+    }
+
+    /// 不再产出 1970 垃圾:2026 纪元秒的 yyyy 必须是 2026(与本机时区无关
+    /// ——秒归一发生在 Local 换算之前)。
+    #[test]
+    fn p536_seconds_no_1970_garbage() {
+        let secs: i64 = 1_788_436_450;
+        let label = format_date_ms(secs, "yyyy");
+        assert_eq!(label, "2026", "seconds input must land in 2026, got {label}");
+    }
+
+    /// 毫秒口径回归锚:Date.now 产毫秒,1e12 级值仍按毫秒(归一不误伤)。
+    #[test]
+    fn p536_millis_path_unchanged() {
+        let ms: i64 = 1_788_436_450_000;
+        assert_eq!(format_date_ms(ms, "yyyy"), "2026");
+        // 0 纪元:两口径同锚(秒 0 → 1970-01-01 本地;不宣称可读,只锁同—)
+        assert_eq!(format_date_ms(0, "HH:mm:ss"), format_date_ms(0, "HH:mm:ss"));
+    }
+
+    /// 时区边界:归一只动单位不动时区——任取秒值,与同瞬毫秒在本地时刻
+    /// 逐位一致(含 UTC 跨日边界/闰日样本;Local 换算不受归一影响)。
+    /// 样本限 ≥1e11 毫秒形态的现代时刻——<1973-03 的毫秒值(<1e11)落在
+    /// 双义带内被按秒读出,属 1e11 阈值惯例的固有边界,不在承诺内。
+    #[test]
+    fn p536_normalization_precedes_local_conversion() {
+        for s in [951_782_399i64 /* 2000-02-29 跨日闰日 */, 1_756_857_599 /* 2025-09 跨日 */, 1_788_436_450] {
+            assert_eq!(
+                format_date_ms(s, "yyyy/MM/dd HH:mm:ss"),
+                format_date_ms(s.saturating_mul(1000), "yyyy/MM/dd HH:mm:ss"),
+                "sec={s}"
+            );
+        }
+    }
 }

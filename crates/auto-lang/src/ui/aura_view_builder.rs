@@ -1795,10 +1795,29 @@ impl<'a> AuraViewBuilder<'a> {
         // (父作用域 tracked 转换,编号同幸存槽位约定)。
         let child_views = self.expand_children_spliced_resulting(children, path, id_map, probe, bindings);
 
+        // PLAN-536 T6(题5 ①②): absolute 悬浮 hoist 激活到 tracked 主渲染
+        // 路径——此前 hoist 臂只挂在未追踪 convert_column(409 §10 续 5),
+        // 真实视图走 build_with_debug_gated 从不过臂,"absolute 类 VM 不
+        // 消费退化为流内排布"(musk 会话卡 × 实录)即此。语义定界:
+        // absolute+偏移+z → 父容器 overlay 层(锚=父 bounds,不占流内格);
+        // absolute 无 z → 分层技巧(textarea 叠加族)保留流内。
+        let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+        let child_views: Vec<View<DynamicMessage>> = child_views
+            .into_iter()
+            .filter_map(|v| match extract_absolute_position(&v) {
+                Some(pos) => { floats.push((v, pos)); None }
+                None => Some(v),
+            })
+            .collect();
+
         // Plan 412 F1: 交叉类仲裁 — col 元素带 `grid grid-cols-N`/`flex` 类时
-        // 布局语义被类覆盖(元素语义为默认,显式类优先)。
+        // 布局语义被类覆盖(元素语义为默认,显式类优先)。hoist 在前,浮层不占格。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
-            return View::Grid { cols, gap, cells: child_views, style };
+            let base = View::Grid { cols, gap, cells: child_views, style };
+            if let Some((content, position)) = floats.into_iter().next() {
+                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
+            }
+            return base;
         }
         let use_row = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Row));
 
@@ -1822,14 +1841,22 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.child(child);
         }
         let col_view = builder.build();
-        // Plan 048:overflow-y-auto / overflow-auto → Scrollable。
+        // PLAN-536 T6: overflow 包 Scrollable 之后再包 Overlay 悬浮层——
+        // 浮层锚=父容器(含滚动外壳)整体 bounds。
         if needs_scroll {
-            return View::Scrollable {
+            let base = View::Scrollable {
                 child: Box::new(col_view),
                 width: None, height: None, style: scroll_style,
                 auto_scroll: false,
                 offset: None, on_scroll: None,
             };
+            if let Some((content, position)) = floats.into_iter().next() {
+                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
+            }
+            return base;
+        }
+        if let Some((content, position)) = floats.into_iter().next() {
+            return View::Overlay { base: Box::new(col_view), content: Box::new(content), position };
         }
         col_view
     }
@@ -2124,12 +2151,27 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
+        // PLAN-536 T6(题5 ①②): absolute 悬浮 hoist(tracked 主路径,row 臂
+        // 与 convert_column_tracked_ctx 同批激活;语义定界见该处注释)。
+        let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+        let child_views: Vec<View<DynamicMessage>> = child_views
+            .into_iter()
+            .filter_map(|v| match extract_absolute_position(&v) {
+                Some(pos) => { floats.push((v, pos)); None }
+                None => Some(v),
+            })
+            .collect();
+
         // Plan 412 F1: 交叉类仲裁 — row 元素带 `grid grid-cols-N`/`flex-col` 类时
-        // 布局语义被类覆盖。
+        // 布局语义被类覆盖。hoist 在前,浮层不占格。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
             let cells: Vec<View<DynamicMessage>> =
                 child_views.into_iter().filter(|v| !is_visually_empty(v)).collect();
-            return View::Grid { cols, gap, cells, style };
+            let base = View::Grid { cols, gap, cells, style };
+            if let Some((content, position)) = floats.into_iter().next() {
+                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
+            }
+            return base;
         }
         let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
 
@@ -2150,7 +2192,13 @@ impl<'a> AuraViewBuilder<'a> {
             }
             builder = builder.child(child);
         }
-        builder.build()
+        let row_view = builder.build();
+        // PLAN-536 T6: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层)。
+        if let Some((content, position)) = floats.into_iter().next() {
+            View::Overlay { base: Box::new(row_view), content: Box::new(content), position }
+        } else {
+            row_view
+        }
     }
 
     /// Tracked convert_container — mirrors `convert_container`.
@@ -4454,6 +4502,10 @@ let tabs_inner = View::Row {
         //    condition short-circuits to false (body hidden) and the string
         //    falls back to "${collapsed}" / "${collapse_glyph}".
         //    Only runs when the parent didn't provide the prop (parent wins).
+        //    PLAN-536 T8(题6 根修): 缺省播种只在根态**缺字段**时发生——此前
+        //    每帧无条件重播种,子件 handler 对本件模型字段的写入(受控 open
+        //    翻转等)在下一帧重建时被打回默认值:musk delete_confirm_open=true
+        //    而视图恒无 modal 的实录机制。首次挂载播种语义不变。
         for state_var in &child_widget.state_vars {
             if !resolved_props.contains_key(&state_var.name) {
                 resolved_props.insert(
@@ -4467,9 +4519,13 @@ let tabs_inner = View::Row {
         // colors: List<str> = [...])` 一类 widget-parens 默认值此前只在
         // vue 轨生效(withDefaults),VM 轨不播种 → 子组件 handler 读未传
         // prop 时 GET_FIELD 直接失败(donut 的 colors 即此)。父级显式传值
-        // 优先(parent wins)。
+        // 优先(parent wins)。PLAN-536 T8: 同 4 的缺字段守卫——已存在的
+        // 字段不重播种(防 handler 写入被逐帧打回默认)。
         for prop in &child_widget.props {
             if !resolved_props.contains_key(&prop.name) {
+                if self.bridge.read_state(&prop.name).is_ok() {
+                    continue;
+                }
                 if let Some(default_expr) = &prop.default {
                     resolved_props.insert(
                         prop.name.clone(),
@@ -4506,6 +4562,14 @@ let tabs_inner = View::Row {
             .iter()
             .any(|l| l.name == "Init");
         if !has_init {
+            return;
+        }
+        // PLAN-536 T3(题2 收敛): Init 收敛为挂载语义——本组件生命周期内每
+        // 子件只派发一次,不随脏重建帧重放。437 v1 的逐帧重放使副作用型
+        // Init(ForgeStore.Init→LoadSessionList)随帧重入(musk 单会话期
+        // 1.6 万+次实录);props 仍每帧重播种(ensure_child_state),派生值
+        // 响应沿 vue 语义归 watch/computed。
+        if !self.bridge.child_init_first_mount(&child_widget.name) {
             return;
         }
         if let Err(e) = self
@@ -4841,14 +4905,30 @@ let tabs_inner = View::Row {
             }
         }
 
+        // PLAN-536 T6(题5 ①②): absolute 悬浮层 hoist——与 convert_column
+        // 同规(409 §10 续 5 先例)。row 此前缺臂,行内悬浮元素(会话卡 ×)
+        // 退化流内挤压兄弟。
+        let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+        let child_views: Vec<View<DynamicMessage>> = child_views
+            .into_iter()
+            .filter_map(|v| match extract_absolute_position(&v) {
+                Some(pos) => { floats.push((v, pos)); None }
+                None => Some(v),
+            })
+            .collect();
+
         // Plan 412 F1: 交叉类仲裁 — row 元素带 `grid grid-cols-N`/`flex-col` 类时
-        // 布局语义被类覆盖。
+        // 布局语义被类覆盖。absolute hoist 在前,浮层不占格(409 同款)。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
             let cells: Vec<View<DynamicMessage>> = child_views
                 .into_iter()
                 .filter(|v| !is_visually_empty(v))
                 .collect();
-            return View::Grid { cols, gap, cells, style };
+            let base = View::Grid { cols, gap, cells, style };
+            if let Some((content, position)) = floats.into_iter().next() {
+                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
+            }
+            return base;
         }
         let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
 
@@ -4872,7 +4952,13 @@ let tabs_inner = View::Row {
             builder = builder.child(child);
         }
 
-        builder.build()
+        let row_view = builder.build();
+        // PLAN-536 T6: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层)。
+        if let Some((content, position)) = floats.into_iter().next() {
+            View::Overlay { base: Box::new(row_view), content: Box::new(content), position }
+        } else {
+            row_view
+        }
     }
 
     /// Iterate a `for` loop's iterable, converting its body once per item, and
@@ -6649,6 +6735,19 @@ let tabs_inner = View::Row {
                 // 对齐）。此前恒 Column → 图标叠文字上方且整体居中（vue 轨
                 // flex 行形态）。
                 _ => {
+                    // PLAN-536 T6/T7(题5 musk 会话卡 ×): button 结构子件内的
+                    // absolute 悬浮同样 hoist——卡片 button 的手搓 Row/Column
+                    // 不经过 convert_column,无此臂时 × 删除钮退化流内挤压
+                    // 标题(musk 实录)。注:MCP 快照对 Button{content:Overlay}
+                    // 的子树展开有盲区(canvas 渲染正常),快照取证走像素。
+                    let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+                    let views: Vec<View<DynamicMessage>> = views
+                        .into_iter()
+                        .filter_map(|v| match extract_absolute_position(&v) {
+                            Some(pos) => { floats.push((v, pos)); None }
+                            None => Some(v),
+                        })
+                        .collect();
                     let is_col = style.as_ref().map_or(false, |s| {
                         s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol))
                     });
@@ -6683,22 +6782,28 @@ let tabs_inner = View::Row {
                         hover_classes: Vec::new(),
             variant_classes: Vec::new(),
                     });
-                    if is_col {
-                        Some(Box::new(View::Column {
+                    let base: View<DynamicMessage> = if is_col {
+                        View::Column {
                             children: views,
                             spacing,
                             padding: 0,
                             style: layout_style,
             onclick: None,
-        }))
+        }
                     } else {
-                        Some(Box::new(View::Row {
+                        View::Row {
                             children: views,
                             spacing,
                             padding: 0,
                             style: layout_style,
             onclick: None,
-        }))
+        }
+                    };
+                    // PLAN-536 T6/T7: 有 absolute 子件 → Overlay 包整个内容布局。
+                    if let Some((content, position)) = floats.into_iter().next() {
+                        Some(Box::new(View::Overlay { base: Box::new(base), content: Box::new(content), position }))
+                    } else {
+                        Some(Box::new(base))
                     }
                 }
             }
@@ -9296,6 +9401,9 @@ fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view
     use crate::ui::style::iced_adapter::{IcedStyle, IcedPosition};
     let style = match v {
         View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. } => style.as_ref()?,
+        // PLAN-536 T6(题5 ②): button(会话卡 × 删除钮)/mouse_area(Plan 484
+        // 注:其 style 参与 absolute/z 判定)同样可作悬浮载体。
+        View::Button { style, .. } | View::MouseArea { style, .. } => style.as_ref()?,
         _ => return None,
     };
     let is = IcedStyle::from_style(style);
