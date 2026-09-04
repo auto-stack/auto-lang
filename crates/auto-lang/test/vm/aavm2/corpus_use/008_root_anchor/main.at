@@ -1,0 +1,7 @@
+// P532 W1 G0:根锚定多段 use(test CWD=crate 根,宿主 CWD 直探命中;
+// aavm 需补同款探测序——宿主为规范)。
+use test.vm.aavm2.shared_dep.depmod: val
+
+fn main() {
+    print(val())
+}

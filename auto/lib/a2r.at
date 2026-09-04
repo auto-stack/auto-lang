@@ -46,8 +46,10 @@
 // Plan 517 W2:模块化互引(拼接消费面由双轨剥离消化;P/Ar 方法族随类型导入)
 use auto.lib.token: TokenKind, kind_name
 use auto.lib.lexer: tokenize
-use auto.lib.parser: E, P, builtin_type, expect_eos, find_sub, infix_l, infix_r, int_val, is_name_kind, is_op_kind, is_pattern, is_type_name, is_unsupported_stmt_kind, op_display, p_op, parse_new, parse_type, prefix_power, split_commas
+use auto.lib.parser: E, P, builtin_type, expect_eos, find_sub, infix_l, infix_r, int_val, is_name_kind, is_op_kind, is_pattern, is_type_name, is_unsupported_stmt_kind, op_display, p_op, parse_new, parse_type, prefix_power, split_commas, binop_result
 use auto.lib.typeinfo: t_is_type_prop
+// P532 W1:审计补全
+use auto.lib.engine: ev_vs
 
 type ArParam {
     name str
@@ -2529,7 +2531,24 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
             a.ty = "str"
             a.strk = 3
             a.lenflag = 0
-            return recv + ".replace(" + join_args(args) + ")"
+            // P532 W1 G19:参数条件借用——非字面量参数包 &(String→&str
+            // coerce;Pattern 界需 &str,变量直传 E0277 实证;字面量
+            // 裸传维持既有形态)
+            var rargs19 = ""
+            var ri19 = 0
+            while ri19 < args.len() {
+                if ri19 > 0 {
+                    rargs19 = rargs19 + ", "
+                }
+                var ra19 = args.get(ri19)
+                if ra19.len() > 0 && ra19.char_at(0) == 34 {
+                    rargs19 = rargs19 + ra19
+                } else {
+                    rargs19 = rargs19 + "&(" + ra19 + ")"
+                }
+                ri19 = ri19 + 1
+            }
+            return recv + ".replace(" + rargs19 + ")"
         }
         "trim" -> {
             a.infer = 0

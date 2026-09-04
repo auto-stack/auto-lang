@@ -1,0 +1,14 @@
+// P532 W1 G1+G2: str 方法族(len/char_at/slice/replace/trim)——
+// 宿主支持而 aavm 分派缺(盘点附录 A);红先行语料。
+fn main() {
+    var s = "hello world"
+    print(s.len())
+    print(s.char_at(0))
+    print(s.slice(0, 5))
+    print(s.replace("world", "auto"))
+    var t = "  pad  "
+    print(t.trim())
+    // 链式形态(lexer.at:421 同款:slice 后接 trim)
+    var u = "xxvalueyy"
+    print(u.slice(2, u.len() - 2).trim())
+}
