@@ -4208,6 +4208,9 @@ fn cg_compile_mod_seeded(source str, mod_name str, seed List<CGType>, seed_const
             p.skip_empty_lines()
         }
     }
+    if p.err != "" && c.err == "" {
+        c.err = "P532SWEEP:" + p.err
+    }
     if c.err != "" || p.err != "" {
         return c
     }

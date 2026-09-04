@@ -1,0 +1,11 @@
+// tower3.at —— P532 W2 三阶自持语料(附录 B 形态)
+//
+// 第 3 阶:aavm 编译 tower2 源文(其内含 aavm 编译 tower1(其内含
+// aavm 编译 corpus))——三阶嵌套自持,输出 O3。判据 O3 == O2 == O1
+// == R0(固定点性质:N 阶输出稳定即自持)。
+use auto.lib.engine: ev_run
+
+fn main() {
+    var src = File.read_text("crates/auto-lang/test/vm/aavm2/tower/tower2.at")
+    print(ev_run(src))
+}

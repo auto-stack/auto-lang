@@ -1,0 +1,11 @@
+// tower2.at —— P532 W2 二阶自持语料(附录 B 形态)
+//
+// 第 2 阶:aavm 编译 tower1 源文(其内含 aavm 编译 corpus)——本文件
+// 经 aavm 路径执行时,ev_run(tower1 源) 的编译+执行全程经 lib 产物,
+// 输出 O2。判据 O2 == O1 == R0。
+use auto.lib.engine: ev_run
+
+fn main() {
+    var src = File.read_text("crates/auto-lang/test/vm/aavm2/tower/tower1.at")
+    print(ev_run(src))
+}
