@@ -2,11 +2,16 @@
 
 > 本文档是 `docs/design/` 的总入口，索引树内**全部**文档并标注分类与状态。
 > 整理历史：2026-06-15 首次体系化（14 章版）→ 2026-08-28 Plan 467 全量重整 →
-> 2026-08-28 Plan 468 需求级文档去序号化、按模块归位。
+> 2026-08-28 Plan 468 需求级文档去序号化、按模块归位 →
+> 2026-09-04 Plan 543 建立知识库生命周期与 current/target-state 分层。
 
 ---
 
-## 三层文档资产（先读这个）
+## 知识资产分层（先读这个）
+
+完整职责和 canonical-source 矩阵以
+[Design 27：Knowledge Base Lifecycle](27-knowledge-base-lifecycle.md) 为准。目录层仍保持
+Design / Specs / Plans 三个主入口，ADR 位于模块架构文档，Generated Catalog 由后续工具生成。
 
 | 层 | 目录 | 职责 | 回答的问题 |
 |---|---|---|---|
@@ -14,9 +19,10 @@
 | **账本层** | `docs/specs/` | 现状知识（project/module 树 + 6 段 spec ledger） | "现在是什么样、关键入口在哪" |
 | **过程层** | `docs/plans/`（active + `archive/` 438 篇） | 一次开发任务的完整时间线叙事 | "某次改动是怎么做的" |
 
-三层互相**引用**不复制：设计文档描述意图并链接 specs 现状；specs 描述现状并溯源 `(plan-NNN)`；
+各层互相**引用**不复制：设计文档描述意图并链接 specs 现状；specs 描述现状并溯源 `(plan-NNN)`；
 plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs（范式详见
-[autoplan-spec-ledger.md](autoplan-spec-ledger.md) 与 [specs/README.md](../specs/README.md)）。
+[Design 27](27-knowledge-base-lifecycle.md)、[autoplan-spec-ledger.md](autoplan-spec-ledger.md)
+与 [specs/README.md](../specs/README.md)）。
 
 ---
 
@@ -26,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构） | 根级拿号（下一可用章号 **27**），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **28**），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blocks/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -37,22 +43,23 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 ---
 
-## 分类总览（115 篇）
+## 分类总览
+
+文档数量不再作为手工维护的架构事实；当前数量和目录清单应由后续 Generated Catalog 生成。
 
 | 分区 | 数量 | 内容 |
 |---|---|---|
 | 一、语言核心 | 10（01–10） | 从源码到执行的语言本体设计 |
 | 二、应用框架与生态 | 5（11–15） | Shell / 并发 / 网络 / 开发工具 / AI 基础设施 |
 | 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blocks/`（4） |
-| 四、流程与体系（根级，无编号） | 2 | AutoPlan 账本（现行）、Plan+Spec v1（已取代） |
+| 四、流程与知识体系 | 1 个域级章 + 2 个根级专题 | Knowledge Lifecycle、AutoPlan 账本、Plan+Spec v1 |
 | 五、战略路线图 `strategy/` | 4 | Rust 脚本层 / 消费者 parity / Python parity / Rust 库复刻 |
 | 六、专题诊断（根级） | 4 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题）、[管道算子 `|>`](pipe-operator.md)（讨论稿，Plan 514 衍生） |
 | 七、附录 `forge/` | 5 | AutoForge（已迁 auto-os 生态） |
 | 八、历史素材 `raw/` | 67 | 早期原始设计草稿（只读参考） |
 | 0 | —（原在途 `25-autoshell-dsl-unified-shell.md` 已归位为 `autoui/desktop-shell.md`） |
 
-对账公式：1(本索引) + 18(00–16、20 章号) + 1(25 在途) + 10(autoui 含 README) + 4(blocks)
-+ 2(流程) + 4(strategy) + 3(诊断) + 5(forge) + 67(raw) = **114**。
+> 历史文档曾维护人工“对账公式”；该公式随目录演进已失效，不再作为完整性门禁。
 
 ---
 
@@ -110,10 +117,11 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 **在途**：`25-autoshell-dsl-unified-shell.md`——桌面 Shell 的 AutoUI 统一层（细化 Design 23/24，
 服务 463/464/465 shell-track），稳定后归位 `autoui/`。
 
-## 四、流程与体系（根级，无编号）
+## 四、流程与知识体系
 
 | 文档 | 主题 | 状态 |
 |------|------|------|
+| [27-knowledge-base-lifecycle](27-knowledge-base-lifecycle.md) | current/target-state、canonical source、ADR/Spec/Plan/Generated Catalog 生命周期 | ✅ **现行 canonical design**（Plan 543） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 

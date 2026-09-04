@@ -1,7 +1,8 @@
 # Auto-Lang Specs 体系规约
 
-> 版本：v2（2026-08-28，Plan 467）
+> 版本：v2.1 兼容期（2026-09-04，PLAN-543）
 > 设计文档：[docs/design/autoplan-spec-ledger.md](../design/autoplan-spec-ledger.md)（现行范式）
+> 知识生命周期：[Design 27](../design/27-knowledge-base-lifecycle.md)（canonical-source 与同步模型）
 > 历史版本：v1 见 [docs/design/plan-spec-hybrid-model.md](../design/plan-spec-hybrid-model.md)（已被取代，
 > 其文档类型定义与反模式清单被本版继承）
 > 本文档是**操作规约**：目录怎么组织、文档怎么写、流程怎么走。改动本规约需先改设计文档。
@@ -15,13 +16,19 @@ project   子项目 = 一个 Cargo crate / 一个 npm package / 一个顶层资�
 module    模块   = project 内一个内聚功能单元（对应 src/ 下一个目录或一组强相关文件）
 plan      一次开发任务的过程记录（docs/plans/NNN-slug.md），存"过程"，状态机管理
 spec      本目录下的文档，存"现状与知识"，持续重写
-ledger    六段知识账本（goals/architecture/designs/tests/reviews/reports）：
-          机器形态 = .autoos/specs.json（merge 技能 upsert），
-          人类形态 = 本目录 markdown 树（本规约定义的投影）
+adr       已接受的重要决策、理由与后果；接受后只追加 superseding 决策
+catalog   从 Git 跟踪文档与代码 metadata 生成的结构/引用索引，不手工维护
+ledger    goals/architecture/designs/tests/reviews/reports 六个知识视角；
+          canonical 形态 = 本目录 Git 跟踪的 Markdown current-state，
+          兼容期机器投影 = .autoos/specs.json（现有 merge 技能本地 upsert）
 ```
 
-原则：**plan 管过程，spec 管沉淀；只引用，不复制；索引脚本生成，不手维护；
-状态机推进，门禁不跳步。**
+原则：**Design/RFC 管 target-state，ADR 管原因，Spec 管 current-state，Plan 管过程，
+Generated Catalog 管代码事实；只引用，不复制；状态机推进，门禁不跳步。**
+
+`.autoos/specs.json` 当前被 Git ignore 且覆盖依赖本地执行，因此不是共享 canonical source。
+兼容期允许继续写入，但不得以其内容覆盖 Git 跟踪的 Spec/ADR；目标态由后续计划改为从
+Markdown frontmatter 与代码 metadata 单向生成。
 
 ## 2. 目录结构
 
@@ -68,17 +75,18 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 /auto-plan:new ─→ /auto-plan:work ─→ /auto-plan:review ─→ /auto-plan:merge
    drafting         executing          execution_done        reviewed → archived
    读 overview.md    worktree 隔离       全量测试门禁           账本沉淀 + module 回写 + 归档
-   取材背景         只读该 plan         遗漏/延后/workaround   （本仓扩展，见下）
+   取材背景         plan 作执行合同      遗漏/延后/workaround   current spec/ADR → catalog → archive
 ```
 
 - **new**：`scripts/new-plan.sh <slug>` 中央取号（`.next-id`）；drafting 等用户确认。
-- **work**：一切代码修改在 `.worktrees/plan-<NNN>-dev`（一 plan 一 worktree 全生命周期）；
+- **work**：一切实现修改在 `D:/autostack/.wt/lang-<NNN>/auto-lang` sibling-group worktree
+  （一 plan 一 worktree 全生命周期，禁止 junction/symlink）；
   `[✅]` 簿记写主检出的 plan 文件；scoped 测试；多阶段计划按阶段 fold + re-sync；
   fold 前全量门禁 `cargo tf`（+tv/tt/tb 按触碰面）。
 - **review**：重跑验收（不信勾选框）；全量套件仅在此（与 fold 前）运行；填
   `supersedes_spec_components` / `new_spec_components` / `touched_goals`。
-- **merge**：gate（必须 reviewed）→ fold worktree → specs.json upsert（手工回退按技能
-  Step 4 的 P\<seq\>-n 幂等条目）→ **本仓扩展（下述）** → 归档。
+- **merge**：gate（必须 reviewed）→ fold worktree → current-state Spec/ADR 蒸馏 →
+  specs.json 兼容 upsert → 索引再生 → 归档。Plan 正文不复制进 current-state Spec。
 
 **merge 本仓扩展程序**（技能文档之外，本规约追加）：
 
@@ -98,14 +106,14 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 |---|---|
 | `docs/plans/NNN-slug.md` | 相同 |
 | `docs/plans/archived/` | **`docs/plans/archive/`** |
-| `.worktrees/plan-<NNN>-dev` | 相同 |
+| `.worktrees/plan-<NNN>-dev` | `D:/autostack/.wt/lang-<NNN>/auto-lang`（Plan 529 sibling-group） |
 | `.autoos/specs.json` | 相同 |
 | `docs/designs/008-auto-plan.md` | `docs/design/autoplan-spec-ledger.md` |
 | musk 后端 `127.0.0.1:8080` | 通常不可用 → 走手工回退 + §4 扩展 |
 
 ## 6. 六段账本映射
 
-| 账本段 | specs.json | markdown 投影 |
+| 账本段 | specs.json（兼容期本地投影） | markdown canonical source |
 |---|---|---|
 | goals | `goals` | `goals.md` + project.md 目标节 |
 | architecture | `architecture` | `<module>/architecture.md`（ADR） |
@@ -114,7 +122,8 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 | reviews | `reviews` | plan 文件 `## 复审记录`（只引用不复制） |
 | reports | `reports` | plan 变更摘要 + `plans.md` 行 |
 
-条目溯源：机器条目带 `file` + `related: [PLAN-NNN]`；markdown 侧用 `(plan-NNN)`。
+条目溯源：兼容期机器条目带 `file` + `related: [PLAN-NNN]`；Markdown 侧用 `(plan-NNN)`。
+发生分歧时以 Git 跟踪的 current-state Spec/ADR 和可执行代码/测试为准。
 
 ## 7. 编号与引用
 
@@ -137,4 +146,5 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 v1 §9 八条（手工中央 manifest / 按流程产物分文档 / 多 role 接力 / 并发自行取号 /
 同构双索引 / 描述不存在的代码 / 内容互相复制 / 归档双轨）+ Design 26 新增三条
 （状态机跳步 / 账本双写不一致 / plan 复制 spec 全文）——全文见
-[26-autoplan-spec-ledger.md §7](../design/autoplan-spec-ledger.md)。
+[autoplan-spec-ledger.md §7](../design/autoplan-spec-ledger.md)。Design 27 进一步禁止把本地
+`.autoos/specs.json` 当作共享真相，以及在 overview 中长期手工维护可生成的数量。
