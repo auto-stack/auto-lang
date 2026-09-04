@@ -1,0 +1,28 @@
+// child_panel.at — 子件持 msg（Confirm(str)/Cancel）,视图内按钮直发本件
+// msg;handler 体为空——子→父转发全靠 child_emit 声明式路由（vm.at 真源
+// 同款,PLAN-536 T9 端口链形态）。
+widget ChildPanel {
+    msg {
+        Confirm(str),
+        Cancel
+    }
+    model {
+        var open bool = false
+    }
+    view {
+        col {
+            button {
+                onclick: .Confirm("tt")
+                text "ok"
+            }
+            button {
+                onclick: .Cancel
+                text "c"
+            }
+        }
+    }
+    on {
+        .Confirm(t str) -> { }
+        .Cancel -> { }
+    }
+}
