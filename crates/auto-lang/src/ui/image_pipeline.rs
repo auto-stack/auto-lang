@@ -606,6 +606,19 @@ impl MediaPriorityQueue {
     pub fn pop(&mut self) -> Option<MediaWork> { (!self.items.is_empty()).then(|| self.items.remove(0)) }
 }
 
+/// Per-session generation/revision gate shared by each asynchronous phase.
+#[derive(Clone, Debug)]
+pub struct MediaLatestWins { generation: u64, view_revision: u64, dropped: u64 }
+impl MediaLatestWins {
+    pub const fn new(generation: u64, view_revision: u64) -> Self { Self { generation, view_revision, dropped: 0 } }
+    pub fn advance(&mut self, generation: u64, view_revision: u64) { self.generation = generation; self.view_revision = view_revision; }
+    fn accept(&mut self, generation: u64, view_revision: u64) -> bool { let ok = (generation, view_revision) == (self.generation, self.view_revision); if !ok { self.dropped = self.dropped.saturating_add(1); } ok }
+    pub fn accept_enqueue(&mut self, generation: u64, view_revision: u64) -> bool { self.accept(generation, view_revision) }
+    pub fn accept_decode_complete(&mut self, generation: u64, view_revision: u64) -> bool { self.accept(generation, view_revision) }
+    pub fn accept_publish(&mut self, generation: u64, view_revision: u64) -> bool { self.accept(generation, view_revision) }
+    pub const fn dropped(&self) -> u64 { self.dropped }
+}
+
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
 pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
@@ -725,5 +738,16 @@ mod tests {
         assert!(!queue.push(super::MediaWork::new(11, super::MediaPriority::Current)));
         assert_eq!(queue.pop().unwrap().id, 11);
         assert_eq!(queue.pop().unwrap().id, 1);
+    }
+
+    #[test]
+    fn latest_wins_rejects_stale_work_at_every_pipeline_gate() {
+        let mut gate = super::MediaLatestWins::new(4, 9);
+        assert!(gate.accept_enqueue(4, 9));
+        gate.advance(5, 10);
+        assert!(!gate.accept_decode_complete(4, 9));
+        assert!(!gate.accept_publish(5, 9));
+        assert!(gate.accept_publish(5, 10));
+        assert_eq!(gate.dropped(), 2);
     }
 }
