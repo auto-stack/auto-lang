@@ -186,6 +186,11 @@ pub struct CompileSession {
 
     py_imports: std::collections::HashMap<String, Vec<String>>,
 
+    /// Plan 550 T10: `#[script]` 文件级 pragma 登记（parser.script_pragma
+    /// 回填）。生产者门控的豁免标志——置位后 use.py/null/nil 不再出
+    /// 迁移提示。W1 的 .as 管线消费。
+    pub script_marked: bool,
+
 }
 
 
@@ -226,6 +231,8 @@ impl Clone for CompileSession {
             rust_imports: self.rust_imports.clone(),
 
             py_imports: self.py_imports.clone(),
+
+            script_marked: self.script_marked, // Plan 550 T10
 
         }
 
@@ -278,8 +285,16 @@ impl CompileSession {
 
             py_imports: std::collections::HashMap::new(),
 
+            script_marked: false, // Plan 550 T10
+
         }
 
+    }
+
+    /// Plan 550 T10: 登记 `#[script]` 文件级 pragma（parser 解析后回填）。
+    /// W0 仅作生产者门控的豁免标志；.as 模式管线归 W1。
+    pub fn mark_script(&mut self) {
+        self.script_marked = true;
     }
 
     /// Plan 317: Add a source directory to the search path for module resolution.

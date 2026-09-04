@@ -5,7 +5,9 @@ use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
 use crate::vm::task_system::TaskRegistry;
-use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
+use crate::vm::virt_memory::{
+    null_binop_type_error, null_unop_type_error, VirtualFlash, VirtualRAM,
+};
 use auto_val::AutoStr;
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -445,6 +447,39 @@ fn pop_f32_operand(task: &mut AutoTask) -> f32 {
     } else {
         auto_val::decode_f32(nv)
     }
+}
+
+/// Plan 550 T03: 定点算术槽（_F/_D/_U64/MOD 族）弹栈前的 null 窥视守卫。
+/// 这些臂的弹栈助手按 tag/位模式解码（TAG_NULL → 垃圾整数或 NaN 静默
+/// 传播），统一在弹栈前窥视拦截。peek(0)=右操作数，peek(1)=左操作数。
+#[inline(always)]
+fn null_guard_peek_pair(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    let b_nv = task.ram.peek_nv(0);
+    let a_nv = task.ram.peek_nv(1);
+    if auto_val::is_null(a_nv) || auto_val::is_null(b_nv) {
+        return Err(null_binop_type_error(
+            op,
+            (a_nv, !auto_val::is_nanboxed(a_nv)),
+            (b_nv, !auto_val::is_nanboxed(b_nv)),
+        ));
+    }
+    Ok(())
+}
+
+/// Plan 550 T03: 一元定点算术槽（NEG_F/NEG_D）弹栈前的 null 窥视守卫。
+#[inline(always)]
+fn null_guard_peek_unary(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    if auto_val::is_null(task.ram.peek_nv(0)) {
+        return Err(null_unop_type_error(op));
+    }
+    Ok(())
+}
+
+/// Plan 550 T05: GET_ELEM 越界消息（对标 Python IndexError；携带原始
+/// 索引值，负索引越界同报原值）。原先静默 push_i32(0) 哨兵（p8 探针）。
+#[cold]
+fn index_out_of_range_error(index: i32) -> VMError {
+    VMError::RuntimeError(format!("IndexError: index {} out of range", index))
 }
 
 /// Plan 406: unified condition truthiness. Tagged bools (TAG_BOOL) are
@@ -3006,6 +3041,15 @@ impl AutoVM {
                             } else {
                                 task.ram.push_i32(0);
                             }
+                        } else if auto_val::is_null(nv) {
+                            // Plan 550 T04: null 迭代源守卫。ARRAY_LEN 是
+                            // array 通道 for-in 的长度探针（codegen Plan 089），
+                            // 现状落此静默 push 0 → 零迭代（p5 探针实证）。
+                            // 同臂亦承接 .len() 发射点——null.len() 同翻为
+                            // TypeError（Python: None 无 len）。
+                            return Err(VMError::RuntimeError(
+                                "TypeError: 'NoneType' object is not iterable".to_string(),
+                            ));
                         } else {
                             task.ram.push_i32(0);
                         }
@@ -3562,6 +3606,15 @@ impl AutoVM {
                         // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
                         let str_idx = self.add_string(string_value.as_bytes().to_vec());
                         self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_null(nv) {
+                        // Plan 550 T07: null → "None"（a2py str(None) 三方
+                        // parity）。print shim（native.rs shim_print_i32）
+                        // 已然输出 "None"，本臂补齐 TYPE_TO_STR 同型——
+                        // 原落 i32 兜底臂把位模式解码成 -2147483647
+                        // （p7 探针病灶）。
+                        // Plan 423 P5 续修:入池收口 add_string。
+                        let str_idx = self.add_string(b"None".to_vec());
+                        self.rc_push_str_idx(task, str_idx);
                     } else {
                         let value_bits = auto_val::decode_i32(nv);
                         let string_value = format!("{}", value_bits);
@@ -3594,8 +3647,10 @@ impl AutoVM {
                     } else if auto_val::is_bool(nv) {
                         task.ram.push_i32(if auto_val::decode_bool(nv) { 1 } else { 0 });
                     } else if auto_val::is_null(nv) {
-                        // None (null nanbox) — old sentinel for backward compat.
-                        task.ram.push_i32(-1);
+                        // Plan 550 T06: null 静默 -1 臂翻案 → TypeError
+                        // （原臂为 539 T05 兼容自加；TYPE_TO_I32 仅由显式
+                        // .to(int) 发射，内部路径无依赖——T06 前置排查结论）。
+                        return Err(crate::vm::virt_memory::null_to_type_error("int"));
                     } else {
                         task.ram.push_i32(auto_val::decode_i32(nv));
                     }
@@ -3622,7 +3677,8 @@ impl AutoVM {
                     } else if auto_val::is_bool(nv) {
                         task.ram.push_f32(if auto_val::decode_bool(nv) { 1.0 } else { 0.0 });
                     } else if auto_val::is_null(nv) {
-                        task.ram.push_f32(-1.0);
+                        // Plan 550 T06: null 静默 -1.0 臂翻案 → TypeError。
+                        return Err(crate::vm::virt_memory::null_to_type_error("float"));
                     } else {
                         task.ram.push_f32(auto_val::decode_i32(nv) as f32);
                     }
@@ -3797,8 +3853,19 @@ impl AutoVM {
                 // Plan 075: Concatenate two strings
                 OpCode::STR_CAT => {
                     {
-                        let right_nv = task.ram.pop_nv();
-                        let left_nv = task.ram.pop_nv();
+                    let right_nv = task.ram.pop_nv();
+                    let left_nv = task.ram.pop_nv();
+                    // Plan 550 T03: null 拼接守卫（539 探针 2 病灶：
+                    // "a" + null → 垃圾数字入串）。字符串形态的 `+` 在
+                    // codegen 静态路由到本臂，守卫消息与算术族同格式
+                    // （op 报 '+'，null 方报 'NoneType'，另一方报 'str'）。
+                    if auto_val::is_null(left_nv) || auto_val::is_null(right_nv) {
+                        return Err(null_binop_type_error(
+                            "+",
+                            (left_nv, !auto_val::is_nanboxed(left_nv)),
+                            (right_nv, !auto_val::is_nanboxed(right_nv)),
+                        ));
+                    }
                         // Plan 419 Phase 2: 操作数 stake 在物化完成后释放(先读后放)。
                         let strings = self.strings.read().unwrap();
                         let left_str = if auto_val::is_string(left_nv) {
@@ -4783,6 +4850,15 @@ impl AutoVM {
                     // Pop array_id/list_id or str_id (tagged)
                     let obj_or_str_nv = task.ram.pop_nv();
 
+                    // Plan 550 T04: null 索引对象守卫（现状：null 位模式当
+                    // obj_id 解码 → 堆查找落空 → 静默 push 0）。Python 风格
+                    // TypeError，try-catch 可捕获。
+                    if auto_val::is_null(obj_or_str_nv) {
+                        return Err(VMError::RuntimeError(
+                            "TypeError: 'NoneType' object is not subscriptable".to_string(),
+                        ));
+                    }
+
                     // Helper function to convert negative index to actual index
                     // e.g., for array of length 3: -1 -> 2, -2 -> 1, -3 -> 0
                     let normalize_index = |idx: i32, len: usize| -> Option<usize> {
@@ -4900,8 +4976,8 @@ impl AutoVM {
                                         }
                                     }
                                 } else {
-                                    vm_debug!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<String>
@@ -4915,7 +4991,8 @@ impl AutoVM {
                                     let str_idx = self.add_string(elem.as_bytes().to_vec());
                                     self.rc_push_str_idx(task, str_idx);
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<bool>
@@ -4927,7 +5004,8 @@ impl AutoVM {
                                     // (print/to_string/EQ bit-compare) behave like bool literals.
                                     task.ram.push_nv(auto_val::encode_bool(elem));
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<Value> (generic list of Values)
@@ -4967,7 +5045,8 @@ impl AutoVM {
                                         _ => { task.ram.push_i32(0); }
                                     }
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Plan 437: 动态 record 字段访问 —— d[field_name]，
@@ -5584,8 +5663,11 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    // Plan 550 T03: 算术双操作数经 null 守卫弹出（TAG_NULL
+                    // 拒收，含下方字符串拼接臂——decode_i32(null) 垃圾入串
+                    // 的 539 探针 2 病灶在分派前拦截）。
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("+")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) + f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5638,8 +5720,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("-")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) - f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5665,8 +5747,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("*")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) * f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5692,8 +5774,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("/")?;
                     if a_is_f64 && b_is_f64 {
                         let b = f64::from_bits(b_bits);
                         if b == 0.0 { return Err(VMError::DivisionByZero); }
@@ -5725,7 +5807,7 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand_non_null("-")?;
                     if a_is_f64 {
                         task.ram.push_f64(-f64::from_bits(a_bits));
                     } else if auto_val::is_f32(a_bits) {
@@ -5738,24 +5820,28 @@ impl AutoVM {
 
                 // Plan 073 Stage A: Floating-point arithmetic (f32)
                 OpCode::ADD_F => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a + b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::SUB_F => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a - b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::MUL_F => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a * b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::DIV_F => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     if b == 0.0 {
@@ -5765,6 +5851,7 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::NEG_F => {
+                    null_guard_peek_unary(task, "-")?;
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(-a);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
@@ -5772,24 +5859,28 @@ impl AutoVM {
 
                 // Plan 073 Stage A: Double precision arithmetic (f64)
                 OpCode::ADD_D => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a + b);
                     task.last_result_type = ResultType::Float; // Plan 403-F: mark f64 result
                 }
                 OpCode::SUB_D => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a - b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::MUL_D => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a * b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::DIV_D => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     if b == 0.0 {
@@ -5807,6 +5898,7 @@ impl AutoVM {
                         crate::py_ffi::py_dunder_arith("__mod__", "__rmod__", task, self)?;
                         return Ok(StepResult::Continue);
                     }
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     if b == 0 {
@@ -5815,17 +5907,20 @@ impl AutoVM {
                     task.ram.push_i32(a % b);
                 }
                 OpCode::MOD_F => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a % b);
                 }
                 OpCode::MOD_D => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a % b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::NEG_D => {
+                    null_guard_peek_unary(task, "-")?;
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(-a);
                     task.last_result_type = ResultType::Float;
@@ -5833,21 +5928,25 @@ impl AutoVM {
 
                 // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot; heap-aware for full range)
                 OpCode::ADD_U64 => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_add(b));
                 }
                 OpCode::SUB_U64 => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_sub(b));
                 }
                 OpCode::MUL_U64 => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_mul(b));
                 }
                 OpCode::DIV_U64 => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     if b == 0 {
@@ -5856,6 +5955,7 @@ impl AutoVM {
                     self.push_u64_vm(task, a / b);
                 }
                 OpCode::MOD_U64 => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     if b == 0 {
@@ -7817,6 +7917,16 @@ impl AutoVM {
                     let _arg_count = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
+                    // Plan 550 T04: null callee 守卫。正常模式 null callee 被
+                    // 静态解析在编译期拦下（E0401，见 p4 探针），本守卫覆盖
+                    // 动态/脚本路径：现状 pop_i32 把 TAG_NULL 解码成垃圾 id，
+                    // 落到 "Invalid closure ID" 无类型语义错误。
+                    if auto_val::is_null(task.ram.peek_nv(0)) {
+                        return Err(VMError::RuntimeError(
+                            "TypeError: 'NoneType' object is not callable".to_string(),
+                        ));
+                    }
+
                     let closure_id = task.ram.pop_i32() as u32;
 
                     if let Some(_closure) = self.closures.get(&closure_id) {
@@ -9411,5 +9521,219 @@ self.rc_release(a_nv);
             };
             collector.record(ip, &op_name, line, task.ram.sp, task.call_stack.len());
         }
+    }
+}
+
+// ============================================================================
+// Plan 550 T08: null 家族守卫单测——直推 null 调 opcode，断言 VMError
+// 消息格式（539 py_ffi 单测同型：AutoVM::new(VirtualFlash::new_with_code)
+// + AutoTask::new，run_one_instruction 单步驱动）。
+// ============================================================================
+#[cfg(test)]
+mod tests_null_guards {
+    use super::*;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn runtime_err_of(res: Result<StepResult, VMError>) -> String {
+        match res {
+            Err(VMError::RuntimeError(msg)) => msg,
+            other => panic!("expected RuntimeError, got {:?}", other),
+        }
+    }
+
+    // ---- T03 算术族 ----
+
+    #[test]
+    fn test_null_add_none_left() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(1);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"
+        );
+    }
+
+    #[test]
+    fn test_null_add_none_right() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(1);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_null_sub_mul_div_mod() {
+        for (op, sym) in [
+            (OpCode::SUB, "-"),
+            (OpCode::MUL, "*"),
+            (OpCode::DIV, "/"),
+            (OpCode::MOD, "%"),
+        ] {
+            let vm = vm_with(vec![op as u8]);
+            let mut task = AutoTask::new(1, 256, 0);
+            task.ram.push_nv(auto_val::encode_null());
+            task.ram.push_i32(2);
+            let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+            assert_eq!(
+                msg,
+                format!("TypeError: unsupported operand type(s) for {}: 'NoneType' and 'int'", sym)
+            );
+        }
+    }
+
+    #[test]
+    fn test_null_neg_unary() {
+        let vm = vm_with(vec![OpCode::NEG as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: bad operand type for unary -: 'NoneType'");
+    }
+
+    #[test]
+    fn test_null_strcat_concat() {
+        // "a" + null：含 str 的 + 经 codegen 静态路由到 STR_CAT（539 探针 2
+        // 病灶实际落点）；守卫在解码前拦截，消息报 op='+' 类型 'str'。
+        let vm = vm_with(vec![OpCode::STR_CAT as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_string(0));
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'str' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_legit_minus_one_arithmetic_unaffected() {
+        // 合法 i32(-1) / i32::MIN+1 算术不得被守卫误伤（守卫只拒 TAG_NULL，
+        // 历史 i32 哨兵编码与真实整数不可区分，不在守卫范围）。
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(-1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 0);
+
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(i32::MIN + 1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), i32::MIN + 2);
+    }
+
+    // ---- T04 GET_ELEM / CALL_CLOSURE / 迭代源 ----
+
+    #[test]
+    fn test_null_getelem_not_subscriptable() {
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(0);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not subscriptable");
+    }
+
+    #[test]
+    fn test_null_callee_not_callable() {
+        // 正常模式 null callee 被静态解析在编译期拦下（p4 探针 E0401），
+        // .at 探针不可达 VM 路径——CALL_CLOSURE 守卫由此单测钉住。
+        let vm = vm_with(vec![OpCode::CALL_CLOSURE as u8, 0]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not callable");
+    }
+
+    #[test]
+    fn test_null_array_len_not_iterable() {
+        // array 通道 for-in 的长度探针（p5 探针病灶实际落点）；同臂承接
+        // null.len() 发射点。
+        let vm = vm_with(vec![OpCode::ARRAY_LEN as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not iterable");
+    }
+
+    // ---- T05 越界 ----
+
+    #[test]
+    fn test_oob_getelem_index_error() {
+        use crate::vm::types::ListData;
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let list_id = vm.insert_heap_object(ListData::<i32> { elems: vec![1, 2, 3], storage: None });
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_object(list_id as u32));
+        task.ram.push_i32(999);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "IndexError: index 999 out of range");
+    }
+
+    // ---- T06 TYPE_TO_I32/F64 翻案 + 合法回归 ----
+
+    #[test]
+    fn test_null_to_i32_f64_type_error() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: int() argument must be a string or a real number, not 'NoneType'"
+        );
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: float() argument must be a string or a real number, not 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_to_i32_f64_legit_paths_unaffected() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(7);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 7);
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_f64(2.5);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_f64(), 2.5);
+    }
+
+    // ---- T07 TYPE_TO_STR null → "None" ----
+
+    #[test]
+    fn test_null_to_str_renders_none() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_STR as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        vm.run_one_instruction(&mut task).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "expected string result");
+        let idx = auto_val::decode_string(nv) as usize;
+        let rendered = vm.strings.read().unwrap().get(idx).cloned().unwrap();
+        assert_eq!(rendered, b"None".to_vec());
     }
 }

@@ -1051,6 +1051,42 @@ async fn execute_autovm_with_path(
     let mut parser = Parser::new_with_type_store(code, session.type_store());
     let mut ast = parser.parse()?;
 
+    // Plan 550 T09: parser 警告通道在 CLI 直跑路径可见化（LSP 侧本就
+    // 消费 parser.warnings；此前直跑不显示任何警告）。DeprecatedFeature
+    // 按名一次性去重输出到 stderr——'nil' 退役提示等。仅警告不拒绝，
+    // 运行行为不受影响（py parity 套件对 stdout TAP 行，stderr 不入对拍）。
+    {
+        let mut seen = std::collections::HashSet::new();
+        for w in &parser.warnings {
+            if let crate::error::Warning::DeprecatedFeature { name, message, .. } = w {
+                if seen.insert(name.as_str()) {
+                    eprintln!("warning: '{}' is deprecated: {}", name, message);
+                }
+            }
+        }
+    }
+
+    // Plan 550 T10: 生产者门控（lint 级）——`#[script]` pragma 登记进
+    // compile session；无 pragma 的文件含三信号（use.py / null / nil
+    // 字面量）之一 → 疑似脚本内容迁移提示。只警告不拒绝（硬拒会打断
+    // 现有 py parity 套件）；.as 扩展名与模式管线归 W1。
+    if parser.script_pragma {
+        session.mark_script();
+    } else {
+        let py_signal = !session.py_imports().is_empty();
+        let null_signal = parser.saw_bare_null;
+        if py_signal || null_signal {
+            let mut signals = Vec::new();
+            if py_signal { signals.push("use.py"); }
+            if null_signal { signals.push("null/nil 字面量"); }
+            eprintln!(
+                "warning: 疑似脚本内容（{}）——正常模式不鼓励裸 null/use.py；\
+                 W1 起建议改名 .as 或标注 #[script]（Plan 550）",
+                signals.join(" + ")
+            );
+        }
+    }
+
     // Plan 095: Run CTEE (Compile-Time Execution Engine) to transform AST
     // This handles #if, #for, #is, #{} constructs
     let mut ctee = crate::comptime::CTEE::new();

@@ -3165,6 +3165,16 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::types::ListData;
     use crate::vm::engine::Iterator;
 
+    // Plan 550 T04: null 迭代源守卫——for-in 源为 TAG_NULL 时按 Python
+    // 风格报 TypeError（现状：位模式解码成垃圾 iterator id → 查表落空
+    // → 静默 -1 → 零迭代，p5 探针实证）。合法迭代器 id 永不与 TAG_NULL
+    // 重叠，守卫零误伤。
+    if auto_val::is_null(task.ram.peek_nv(0)) {
+        return Err(VMError::RuntimeError(
+            "TypeError: 'NoneType' object is not iterable".to_string(),
+        ));
+    }
+
     let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
 
 

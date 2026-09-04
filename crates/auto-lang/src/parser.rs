@@ -283,6 +283,13 @@ pub struct Parser<'a> {
     /// with "undefined variable" in argument or assignment position
     /// (`uuid5(NAMESPACE_DNS, ...)`). See Task 13.
     py_item_imports: Vec<AutoStr>,
+    /// Plan 550 T10: 文件级 `#[script]` pragma——脚本模式生产者门控标注。
+    /// 仅登记（→ CompileSession.script_marked），不改变任何编译/运行
+    /// 行为；.as 扩展名与模式管线归 W1。
+    pub script_pragma: bool,
+    /// Plan 550 T10: 文件含裸 null/nil 字面量（生产者门控三信号之一；
+    /// None/Some 是 Option 构造器，不计入）。
+    pub saw_bare_null: bool,
 }
 
 /// Plan 451: 从 on-handler 模式串提取事件名——".ActNew" / ".AddItem(text)"
@@ -419,6 +426,8 @@ impl<'a> Parser<'a> {
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
         parser
@@ -489,6 +498,8 @@ impl<'a> Parser<'a> {
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
         parser
@@ -542,6 +553,8 @@ impl<'a> Parser<'a> {
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
         parser
@@ -3552,7 +3565,19 @@ impl<'a> Parser<'a> {
             TokenKind::Double => self.parse_double(),
             TokenKind::True => Ok(Expr::Bool(true)),
             TokenKind::False => Ok(Expr::Bool(false)),
-            TokenKind::Nil => Ok(Expr::Nil),
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' 拼写退役为 null 的 deprecated 别名
+                // （语义不变——运行期同落 PUSH_NIL/encode_null）。
+                // Plan 550 T10: 裸 null 家族字面量是脚本内容三信号之一。
+                self.saw_bare_null = true;
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Ok(Expr::Nil)
+            }
             TokenKind::Str => self.parse_str(),
             TokenKind::CStr => Ok(Expr::CStr(self.cur.text.clone())),
             TokenKind::Char => Ok(Expr::Char(self.cur.text.chars().nth(0).unwrap())),
@@ -3803,8 +3828,21 @@ impl<'a> Parser<'a> {
             // Allow @ and * as special identifiers for pointer operations
             TokenKind::At => Expr::Ident("@".into()),
             TokenKind::Star => Expr::Ident("*".into()),
-            TokenKind::Nil => Expr::Nil,
-            TokenKind::Null => Expr::Null,
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' deprecated 警告（语义不变，见 literal 臂注记）。
+                self.saw_bare_null = true; // Plan 550 T10: 脚本内容三信号
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Expr::Nil
+            }
+            TokenKind::Null => {
+                self.saw_bare_null = true; // Plan 550 T10: 脚本内容三信号
+                Expr::Null
+            }
             // Plan 120: Option and Result constructors
             TokenKind::NoneKW => Expr::None,
             TokenKind::SomeKW => {
@@ -8466,6 +8504,15 @@ impl<'a> Parser<'a> {
                         "single" => {
                             // Plan 121: #[single] annotation for singleton tasks
                             // This is handled by the caller, just skip here
+                        }
+                        "script" => {
+                            // Plan 550 T10: #[script] 文件级 pragma——脚本模式
+                            // 生产者门控标注。仅登记 parser.script_pragma（→
+                            // CompileSession.script_marked），不挂到任何声明，
+                            // 不改变编译/运行行为（.as 管线归 W1）。
+                            // 注：不自行 skip——循环尾部统一 next()（同
+                            // single/async 臂约定，只有 with 例外）。
+                            self.script_pragma = true;
                         }
                         "with" => {
                             // Plan 061: Parse #[with(T, U as Spec<V>)]
