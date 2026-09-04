@@ -1137,8 +1137,15 @@ impl AutodownEditorCore {
     /// 内容总高；同时回写布局供命中测试。焦点块补光标/选区/框。
     /// PLAN-041 T3：正文段抽取走共享纯函数 `buffer_block_runs`（与只读臂
     /// fence 正文同一路径）；fence chrome（header/边框/底色/语言标签）自
-    /// 家族注册表发射。
-    pub fn render_frame(&self, font_system: &mut FontSystem, viewport_w: f32, base: Rgba) -> DocFrame {
+    /// 家族注册表发射。PLAN-048 T7：placeholder 空态注入（content 空 &&
+    /// 非聚焦 → 浅灰文案 run）。
+    pub fn render_frame(
+        &self,
+        font_system: &mut FontSystem,
+        viewport_w: f32,
+        base: Rgba,
+        placeholder: Option<&str>,
+    ) -> DocFrame {
         let mut list = DocDrawList { revision: self.revision(), ..Default::default() };
         let mut layouts: Vec<BlockLayout> = Vec::new();
         let focus = self.focused_block();
@@ -1327,6 +1334,36 @@ impl AutodownEditorCore {
                 line_height: line_h,
             });
             y += total_h + BLOCK_GAP;
+        }
+        // PLAN-048 T7（W4）：空态占位——content 空 && 非聚焦时浅灰文案
+        //（视图实例只读轨豁免；聚焦即隐；空白文案跳过；基色按 0.55 调光
+        // 贴主题）。
+        if let Some(ph) = placeholder.filter(|p| !p.trim().is_empty()) {
+            if !view_inst
+                && focus.is_none()
+                && blocks.len() == 1
+                && SendEdit::of(&blocks[0]).text().is_empty()
+            {
+                let dim = Rgba {
+                    r: base.r * 0.55,
+                    g: base.g * 0.55,
+                    b: base.b * 0.55,
+                    a: base.a,
+                };
+                list.runs.push(DocRun {
+                    text: ph.to_owned(),
+                    x: 4.0,
+                    y: 4.0,
+                    size: BODY_SIZE,
+                    line_height: BODY_SIZE * LINE_H_MULT,
+                    color: dim,
+                    bold: false,
+                    italic: false,
+                    mono: false,
+                    strike: false,
+                    underline: false,
+                });
+            }
         }
         drop(blocks);
 
@@ -2722,7 +2759,7 @@ mod tests {
     fn block_rects_snapshot_matches_frame_layout() {
         let c = core_for("t44a", "甲段。\n\n乙段。\n\n丙段。\n");
         assert_eq!(c.block_count(), 3);
-        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
         assert_eq!(rects.len(), 3, "{rects:?}");
         assert!(rects.windows(2).all(|w| w[1].y > w[0].y), "{rects:?}");
@@ -2922,6 +2959,55 @@ mod tests {
         assert_eq!(c.emit_document(), "甲。X乙。");
         ctrl(c, 'z'); // 块0 新缓冲空历史 → 无操作。
         assert_eq!(c.emit_document(), "甲。X乙。", "stale history must be cleared");
+    }
+
+    // ── PLAN-048 T7（W4）：空态 placeholder ─────────────────────────────
+
+    /// 空文档 + 非聚焦 → placeholder 浅灰 run（基色调光 0.55）。
+    #[test]
+    fn placeholder_renders_on_empty_unfocused_doc() {
+        let c = core_empty("ph1");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        let ph = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "写点什么…")
+            .expect("placeholder run on empty doc");
+        assert!((ph.color.r - 0.55).abs() < 1e-6, "dimmed vs base: {:?}", ph.color);
+        // 聚焦后隐。
+        *c.focus.lock().unwrap() = Some(0);
+        let frame2 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        assert!(
+            !frame2.list.runs.iter().any(|r| r.text == "写点什么…"),
+            "focused hides placeholder"
+        );
+    }
+
+    /// 非空文档不渲染 placeholder。
+    #[test]
+    fn placeholder_absent_on_nonempty_doc() {
+        let c = core_for("ph2", "有内容。\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        assert!(!frame.list.runs.iter().any(|r| r.text == "写点什么…"));
+    }
+
+    /// 空 placeholder 字符串与只读视图实例不注入。
+    #[test]
+    fn placeholder_guards() {
+        let c = core_empty("ph3");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("  ")));
+        assert!(!frame.list.runs.iter().any(|r| r.text == "  "), "blank placeholder skipped");
+        // 视图实例（只读轨）豁免。
+        let sk = storage_key("view_fence_ph0000000000");
+        registry().lock().unwrap().remove(&sk);
+        let v = autodown_editor(&sk);
+        v.sync_external("", true);
+        let vf = run_fs(|fs| v.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
+        assert!(
+            !vf.list.runs.iter().any(|r| r.text == "写点什么…"),
+            "view instance exempt"
+        );
     }
 
     // ── PLAN-048 T4：跨容器合并 ─────────────────────────────────────────
@@ -3139,14 +3225,14 @@ mod tests {
     #[test]
     fn styled_runs_expire_after_local_edit() {
         let c = core_for("t9", "带 **重点** 的句子。\n");
-        let f1 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let f1 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(f1.list.runs.iter().any(|r| r.bold));
         *c.focus.lock().unwrap() = Some(0);
         run_fs(|fs| {
             c.block_motion(fs, 0, Motion::End);
             c.block_action(fs, 0, Action::Insert('!'));
         });
-        let f2 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let f2 = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(!f2.list.runs.iter().any(|r| r.bold));
     }
 
@@ -3156,7 +3242,7 @@ mod tests {
         *c.focus.lock().unwrap() = Some(0);
         assert!(c.sync_external("*改*\n\n新收尾。\n", true));
         assert_eq!(c.focused_block(), None);
-        let f = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let f = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(f.list.runs.iter().any(|r| r.italic));
     }
 
@@ -3229,7 +3315,7 @@ mod tests {
     #[test]
     fn shared_segment_matches_render_frame_runs() {
         let c = core_for("t41a", "普通段 **粗**。\n\n```rust\nfn a() {}\n```\n");
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         // 逐块用共享段重放，拼接后应与全帧 runs 完全一致（排除 chrome
         // 标签 run——它由 render_frame 的 chrome 臂发射，非共享段职责）。
         let blocks = c.blocks.lock().unwrap();
@@ -3279,7 +3365,7 @@ mod tests {
     #[test]
     fn fence_editor_chrome_emitted_from_family() {
         let c = core_for("t41b", "一段。\n\n```rust\nlet x = 1;\n```\n");
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         // chrome 填充 ≥ 6（底色+header+四边线）
         assert!(
             frame.list.fills.len() >= 6,
@@ -3323,7 +3409,7 @@ fn main() { let s = \"hi\"; }
         assert_eq!(c.focused_block(), None, "视图实例无焦点");
         // 渲染：无 chrome 填充、无光标/焦点框；正文段存在且带语法着色
         //（hljs 主题，色 ≠ 基色 WHITE）。
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         assert!(frame.list.fills.is_empty(), "视图实例不发射 chrome");
         assert!(frame.list.caret.is_none());
         assert!(frame.list.focus_frame.is_none());
@@ -3345,7 +3431,7 @@ fn main() { let s = \"hi\"; }
             let blocks = c.blocks.lock().unwrap();
             assert_eq!(blocks[0].syntax, None);
         }
-        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
         let label = frame.list.runs.iter().find(|r| r.size == 12.0).expect("label");
         assert_eq!(label.text, "code");
     }
@@ -3357,14 +3443,14 @@ fn main() { let s = \"hi\"; }
     #[test]
     fn cross_block_selection_renders_per_leaf_rects() {
         let c = core_for("sel1", "甲块。\n\n乙块。\n\n丙块。\n");
-        run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
         assert_eq!(rects.len(), 3);
         c.set_doc_selection(
             SelAnchor { block: 0, offset: 3 },
             SelAnchor { block: 2, offset: 6 },
         );
-        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         assert!(frame.list.selection.len() >= 3, "{:?}", frame.list.selection);
         for (i, r) in rects.iter().enumerate() {
             let hit = frame
@@ -3387,17 +3473,17 @@ fn main() { let s = \"hi\"; }
     #[test]
     fn doc_selection_normalizes_reversed_endpoints() {
         let c = core_for("sel2", "甲块。\n\n乙块。\n");
-        run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         c.set_doc_selection(
             SelAnchor { block: 1, offset: 3 },
             SelAnchor { block: 0, offset: 3 },
         );
-        let fwd = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let fwd = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         c.set_doc_selection(
             SelAnchor { block: 0, offset: 3 },
             SelAnchor { block: 1, offset: 3 },
         );
-        let rev = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let rev = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let norm = |f: &DocFrame| {
             let mut v: Vec<(u32, u32)> = f
                 .list
@@ -3437,7 +3523,7 @@ fn main() { let s = \"hi\"; }
             SelAnchor { block: 0, offset: 3 },
             SelAnchor { block: 1, offset: 0 },
         );
-        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
         assert_eq!(rects.len(), 3);
         let empty_id = 2;
@@ -3459,7 +3545,7 @@ fn main() { let s = \"hi\"; }
         *c.focus.lock().unwrap() = Some(0);
         run_fs(|fs| c.block_motion(fs, 0, Motion::End));
         press(c, EditorKey::Enter); // 新空叶 id3 文档位次 1；blocks 追加尾位
-        run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
         // 视觉序 = dfs 序 [0,3,1,2]：空叶 id3 的纵带夹在块0 与块1 之间。
         assert!(rects[3].y > rects[0].y, "new leaf below first");
@@ -3571,7 +3657,7 @@ fn main() { let s = \"hi\"; }
     #[test]
     fn mouse_drag_across_blocks_sets_doc_selection() {
         let c = core_for("dg1", "甲块。\n\n乙块。\n\n丙块。\n");
-        run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
         let press_out = run_fs(|fs| {
             c.handle_input(
@@ -3594,7 +3680,7 @@ fn main() { let s = \"hi\"; }
         assert_eq!(sel.0.block, 0);
         assert_eq!(sel.1.block, 2);
         assert_eq!(c.focused_block(), Some(2), "caret follows drag head");
-        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE));
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         for (i, r) in rects.iter().enumerate() {
             assert!(
                 frame.list.selection.iter().any(|(s, _)| s.y >= r.y && s.y < r.y + r.h),

@@ -1526,9 +1526,10 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| aura_events_get_base(events, "change"))
                         .map(|event| self.event_to_message(&event.handler));
                     let style = self.extract_style_with(props, bindings);
-                    // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
-                    // 无空态概念，读取后忽略。
-                    let _ = props.get("placeholder");
+                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
+                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
+                    // 忽略」豁免摘除）。
+                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
                     // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
                     //（DocEditor 全内容高、外滚）外包 View::Scrollable，
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
@@ -1543,7 +1544,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -1552,7 +1553,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)
@@ -2857,9 +2858,10 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| aura_events_get_base(events, "change"))
                         .map(|event| self.event_to_message(&event.handler));
                     let style = self.extract_style_with(props, bindings);
-                    // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
-                    // 无空态概念，读取后忽略。
-                    let _ = props.get("placeholder");
+                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
+                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
+                    // 忽略」豁免摘除）。
+                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
                     // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
                     //（DocEditor 全内容高、外滚）外包 View::Scrollable，
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
@@ -2874,7 +2876,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -2883,7 +2885,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)
@@ -10113,15 +10115,31 @@ mod tests {
             .with_prop("key", Expr::Str("doc-ed".into()))
             .with_prop("content", Expr::Str("# 编辑\nn".into()))
             .with_prop("final", Expr::Bool(true))
-            // Plan 040: placeholder 读取后忽略（VM v1 编辑壳无空态概念）。
+            // PLAN-048 T7（W4）：placeholder 真消费——空态文案发射进 View
+            // 字段（Plan 040「读取后忽略」豁免摘除）。
             .with_prop("placeholder", Expr::Str("Start typing...".into()))
             .with_event("oninput", ".DocEdit");
         match builder.build(&node) {
-            View::AutodownEditor { key, value, is_final, on_change, .. } => {
+            View::AutodownEditor { key, value, is_final, on_change, placeholder, .. } => {
                 assert_eq!(key, "doc-ed");
                 assert_eq!(value, "# 编辑\nn");
                 assert!(is_final);
                 assert!(on_change.is_some(), "oninput → on_change message");
+                assert_eq!(
+                    placeholder.as_deref(),
+                    Some("Start typing..."),
+                    "placeholder prop → View 字段发射"
+                );
+            }
+            other => panic!("expected AutodownEditor variant"),
+        }
+        // 无 placeholder prop → None。
+        let node2 = AuraNode::element("autodown_editor")
+            .with_prop("key", Expr::Str("doc-ed2".into()))
+            .with_prop("content", Expr::Str("正文".into()));
+        match builder.build(&node2) {
+            View::AutodownEditor { placeholder, .. } => {
+                assert!(placeholder.is_none(), "missing prop → None");
             }
             other => panic!("expected AutodownEditor variant"),
         }

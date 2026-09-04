@@ -3767,8 +3767,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, style: _ } => {
-                build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus)
+            AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
+                build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus, placeholder)
             }
 
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
@@ -5639,6 +5639,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             is_final,
             on_change,
             on_focus,
+            placeholder,
             style,
         } => AbstractView::AutodownEditor {
             key,
@@ -5649,6 +5650,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_focus: on_focus.map(|cb| {
                 crate::ui::view::FocusCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
             }),
+            placeholder,
             style,
         },
 
@@ -17346,6 +17348,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     is_final: bool,
     on_change: Option<M>,
     on_focus: Option<crate::ui::view::FocusCallback<M>>,
+    placeholder: Option<String>,
 ) -> iced::Element<'static, M> {
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
     {
@@ -17355,6 +17358,11 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
         ade::autodown_editor_sync(&sk, value, is_final);
         let fg = if crate::ui::style::iced_adapter::dark_mode() { ade_fg_dark() } else { ade_fg_light() };
         let mut widget = ade::widget::DocEditor::<M>::new(&sk, fg);
+        // PLAN-048 T7（W4）：空态文案 lowering（content 空且非聚焦时
+        // 编辑壳浅灰渲染）。
+        if let Some(ph) = placeholder {
+            widget = widget.placeholder(ph);
+        }
         if let Some(msg) = on_change {
             widget = widget.on_change(move || msg.clone());
         }
@@ -18103,7 +18111,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — INPUT_TEXT carries
         // the live document on edit (同 code editor 的 payload 通道惯例)。
-        AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, style: _ } => {
+        AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
             let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
             #[cfg(all(feature = "autodown", feature = "code-editor"))]
             {
@@ -18117,6 +18125,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     ade_fg_light()
                 };
                 let mut widget = ade::widget::DocEditor::<IcedMessage>::new(&sk, fg);
+                // PLAN-048 T7（W4）：空态文案 lowering（VM 轨同 build_autodown_editor_generic）。
+                if let Some(ph) = placeholder {
+                    widget = widget.placeholder(ph);
+                }
                 if let Some(msg) = on_change.clone() {
                     let sk2 = sk.clone();
                     widget = widget.on_change(move || {
