@@ -3202,8 +3202,41 @@ impl AutoVM {
                                     self.rc_release(default_nv);
                                 }
                             } else {
-                                task.ram.push_nv(may_nv);
-                                self.rc_release(default_nv);
+                                // Plan 539 W0 (DIV-PY-EXCEPT-1): Result values
+                                // participate in `??` fallback — Err yields the
+                                // default, Ok unwraps the inner value (previously
+                                // Result objects passed through opaquely).
+                                use crate::vm::generic_registry::GenericInstanceData;
+                                let result_kind = self.get_heap_object(obj_id).and_then(|obj| {
+                                    let guard = obj.read().unwrap();
+                                    guard
+                                        .as_any()
+                                        .downcast_ref::<GenericInstanceData>()
+                                        .and_then(|inst| match inst.mono_name.as_str() {
+                                            "Result.Err" => Some(None),
+                                            "Result.Ok" => {
+                                                inst.fields.first().cloned().map(|f| Some(f))
+                                            }
+                                            _ => None,
+                                        })
+                                });
+                                match result_kind {
+                                    // Result.Err — fall back to the default.
+                                    Some(None) => {
+                                        self.rc_release(may_nv);
+                                        task.ram.push_nv(default_nv);
+                                    }
+                                    // Result.Ok — unwrap the inner value.
+                                    Some(Some(field_val)) => {
+                                        self.rc_release(may_nv);
+                                        self.rc_release(default_nv);
+                                        Self::push_value(task, &field_val, self);
+                                    }
+                                    _ => {
+                                        task.ram.push_nv(may_nv);
+                                        self.rc_release(default_nv);
+                                    }
+                                }
                             }
                         } else {
                             // Non-None, non-object: push as-is (it's the value itself)

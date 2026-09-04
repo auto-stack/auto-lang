@@ -735,6 +735,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_getattr", crate::py_ffi::NATIVE_PY_GETATTR);
         // Plan 539 W0 (DIV-PY-KWARGS-1): keyword-argument method-call channel.
         registry.register_with_id("py.py_call_kw", crate::py_ffi::NATIVE_PY_CALL_KW);
+        // Plan 539 W0 (DIV-PY-EXCEPT-1): May-valued method-call channel.
+        registry.register_with_id("py.py_call_may", crate::py_ffi::NATIVE_PY_CALL_MAY);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();

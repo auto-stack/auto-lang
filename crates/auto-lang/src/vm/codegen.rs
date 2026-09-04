@@ -5064,13 +5064,17 @@ impl Codegen {
         // Plan 539 W0 (DIV-PY-KWARGS-1): py_call_kw is the fixed 5-slot
         // keyword-argument channel that py_call-with-named-args lowers into
         // (posargs / kw_names / kw_vals as marshalled Auto lists).
-        if !self.py_native_map.contains_key("py_call_kw") {
-            self.py_native_map.insert(
-                "py_call_kw".to_string(),
-                ("__pyobj__".to_string(), "__pyobj__.py_call_kw".to_string()),
-            );
-            self.py_return_types
-                .insert("py_call_kw".to_string(), crate::py_ffi_types::PyType::Auto);
+        // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may is the May-valued
+        // variant (Result.Ok wrap / Result.Err on Python exceptions).
+        for builtin in ["py_call_kw", "py_call_may"] {
+            if !self.py_native_map.contains_key(builtin) {
+                self.py_native_map.insert(
+                    builtin.to_string(),
+                    ("__pyobj__".to_string(), format!("__pyobj__.{}", builtin)),
+                );
+                self.py_return_types
+                    .insert(builtin.to_string(), crate::py_ffi_types::PyType::Auto);
+            }
         }
     }
 
