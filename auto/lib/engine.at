@@ -758,7 +758,15 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
         }
         OpCode.Call -> {
             var fe = c.fns.get(ins.n)
-            args_stack.push(cur_args)
+            // P532 W2 根修:args_stack 深度对齐写——原 push-only 无弹出,
+            // Ret 按 get(args_depth) 索引读,先前调用的残留条目使深度≥2
+            // 的恢复错槽(cur_args 错→参数寻址 bp-cur_args+rel-1 落随机
+            // 槽,读到返回地址等;模块路径 tokenize=0/lp2 循环 71 次实证)
+            if args_stack.len() > args_depth {
+                args_stack.set(args_depth, cur_args)
+            } else {
+                args_stack.push(cur_args)
+            }
             args_depth = args_depth + 1
             sp = ev_push(stack, sp, ev_vi(ip))
             sp = ev_push(stack, sp, ev_vi(bp))
