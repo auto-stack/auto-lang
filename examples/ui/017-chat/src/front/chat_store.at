@@ -1,9 +1,9 @@
-// chat_store.at — SharedStore (Plan musk-022 SSE multi-event).
+// chat_store.at — SharedStore (Plan musk-022 & Plan 544).
 // Consumes the SSE stream via codegen-injected EventSource.
 // NOTE: `stream` MUST be imported here — Plan musk-022 Phase 4 filters
 // stream_endpoints by the store's api_imports, so omitting it silently drops
 // the SSE wiring (T6/T7 regression).
-use back.api: list_messages, stream
+use back.api: list_contacts, list_messages, bot_reply, stream
 
 // TypingEvent: the SSE payload for a typing signal (Plan 399 Phase 12).
 // Backend broadcasts {"event":"Typing","name":"<user>"}. The store reads .name.
@@ -11,21 +11,41 @@ type TypingEvent { name str }
 
 store ChatStore {
     model {
+        var contacts []Contact = []
         var messages []Message = []
+        var active_contact_id str = "alice"
+        var search_query str = ""
         var typing_name str = ""
         var loading bool = false
     }
 
-    msg { Init, NewMessage(Message), Typing(TypingEvent), RefreshMessages }
+    msg { Init, SelectContact(str), Search(str), NewMessage(Message), Typing(TypingEvent), RefreshMessages, TriggerBot(str) }
 
     on {
         .Init -> {
             .loading = true
+            .contacts = list_contacts()
             .messages = list_messages()
             .loading = false
         }
-        .NewMessage(msg) -> { .messages.push(msg) }
-        .Typing(evt) -> { .typing_name = evt.name }
-        .RefreshMessages -> { .messages = list_messages() }
+        .SelectContact(id) -> {
+            .active_contact_id = id
+        }
+        .Search(query) -> {
+            .search_query = query
+        }
+        .NewMessage(msg) -> {
+            .messages.push(msg)
+        }
+        .Typing(evt) -> {
+            .typing_name = evt.name
+        }
+        .RefreshMessages -> {
+            .messages = list_messages()
+        }
+        .TriggerBot(query) -> {
+            bot_reply(.active_contact_id, query)
+            .messages = list_messages()
+        }
     }
 }
