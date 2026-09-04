@@ -78,7 +78,7 @@ widget App {
                     } else {
                         button "Dock" {
                             onclick: .Nav("dock")
-                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg hover:bg-muted"
+                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg bg-transparent hover:bg-muted"
                         }
                     }
                     if .section == "notes" {
@@ -88,7 +88,7 @@ widget App {
                     } else {
                         button "通知" {
                             onclick: .Nav("notes")
-                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg hover:bg-muted"
+                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg bg-transparent hover:bg-muted"
                         }
                     }
                     if .section == "appearance" {
@@ -98,7 +98,7 @@ widget App {
                     } else {
                         button "外观" {
                             onclick: .Nav("appearance")
-                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg hover:bg-muted"
+                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg bg-transparent hover:bg-muted"
                         }
                     }
                     if .section == "system" {
@@ -108,7 +108,7 @@ widget App {
                     } else {
                         button "系统" {
                             onclick: .Nav("system")
-                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg hover:bg-muted"
+                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg bg-transparent hover:bg-muted"
                         }
                     }
                     if .section == "about" {
@@ -118,7 +118,7 @@ widget App {
                     } else {
                         button "关于" {
                             onclick: .Nav("about")
-                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg hover:bg-muted"
+                            style: "w-full h-9 px-3 text-sm text-left text-muted-foreground rounded-lg bg-transparent hover:bg-muted"
                         }
                     }
                 }

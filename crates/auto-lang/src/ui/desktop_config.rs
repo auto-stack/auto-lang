@@ -527,9 +527,11 @@ mod tests {
             .join("examples")
             .join("ui")
             .join("045-desktop-settings")
+            .join("src")
+            .join("front")
             .join("app.at");
         let src = std::fs::read_to_string(&path)
-            .expect("045-desktop-settings/app.at 存在（examples 随仓）");
+            .expect("045-desktop-settings/src/front/app.at 存在（examples 随仓）");
         let comp = crate::build_dynamic_component(&src, None)
             .expect("设置窗 app.at 语法/语义编译通过");
         assert_eq!(comp.widget_name(), "App");
