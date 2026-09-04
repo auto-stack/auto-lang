@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-536
 status: drafting         # drafting → executing → execution_done → reviewed → archived
-feature_name: VM 反应性运行时三题——timer 写入不重渲染 / 子件 Init 重入风暴 / Date.format 时区
+feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
 updated_at: 2026-09-04T00:10:00+08:00
@@ -13,10 +13,10 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 0
-total_steps: 5
+total_steps: 7
 ---
 
-# [PLAN-536] VM 反应性运行时三题
+# [PLAN-536] VM 运行时修复批(反应性 + prop 约束 + absolute 原语)
 
 > 序号更正（2026-09-04）：本计划原立项为 PLAN-534,与先建的
 > `534-vm-widget-family-parity.md`（09-03 23:56 立项）序号冲突,
@@ -37,6 +37,14 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
    随之重复打后端）。
 3. **Date.format 时区异常**——created_at=1788436450（19:54:10+08）渲染成
    08:34:14,偏差 11h19m56s,非整时区偏移,疑 native 换算缺陷。
+4. **【09-04 增补】子件 prop 对象运行时约束（实证）**——子件 handler 作用域
+   读写 prop 对象字段即崩（`RuntimeError("Invalid object ID: 0")`,musk
+   ToolToggleKey 实录）;prop 传值为构建期快照,源端更新不达（store 键写入
+   autoui_state 实证、子件读侧恒旧）。musk 已顶层内联绕行（4700cdc）。
+5. **【09-04 增补】absolute 定位原语缺失**——视图元素 `absolute + right/top`
+   类在解释器不消费,悬浮语义全退化为流内布局（musk 会话卡 × 挤压标题实录;
+   用户裁定:悬浮元素不应影响任何兄弟布局）。方案=参考 popover 通道
+   （详见执行步骤 T6）。
 
 ## 目标
 
@@ -45,6 +53,9 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
 2. Init 语义收敛:Init 只在挂载时执行一次（或有明确的 per-render 生命周期
    契约）,副作用不随重渲染重入。
 3. Date.format 对 epoch 秒/毫秒产出与本机时区一致的 HH:mm:ss。
+4. 子件 prop 生命周期语义定案(可写性/活性/快照边界)并文档化。
+5. `absolute + right/top` 在解释器渲染为父容器内真悬浮层,不影响兄弟布局;
+   musk 会话卡 × 实机验证无遮挡、位置正确。
 
 ## 现状勘察（证据源）
 
@@ -67,6 +78,18 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   口径 × 时区边界）。验证:musk 气泡时间与系统时钟一致。
 - [ ] **T5** musk 联动回归：三题在 musk VM 实机复验,PollStream 场景解除
   "重选会话才见回复"变通,musk KD 059-FU1 核销。
+- [ ] **T6** absolute 定位原语(增补题 5,参考 popover 通道实现):
+  ① parser 侧 OverlayPosition(Plan 409 已解析 absolute+right/top/left/bottom)
+  全链激活;② aura_view_builder:含 position:absolute + 偏移的元素不进流内
+  children,改挂父容器的 overlay 层(锚=父 bounds,非窗口——与 popover 的
+  trigger 锚差异点);③ renderer:父容器降级为 `iced::widget::stack`
+  (stack![flow_children…, opaque(absolute_children 按 offsets 定位)],
+  沿 renderer.rs:3948 popover 先例),悬浮层不影响兄弟布局与命中;
+  ④ mouse_area 在 overlay 层可用(popover 先例)。验证:gallery 增 absolute
+  探针页;musk 会话卡 × 真·悬浮实机(不遮挡标题、位置右上、hover 显隐)。
+- [ ] **T7** musk 联测:absolute 落地后 musk 会话卡 × 切真悬浮
+  (撤 4700cdc/7eddc92 的宽度链/字符串槽变通中与布局相关的部分),
+  settings dropdown 等 absolute 消费面顺验。
 
 ## 测试设计
 
@@ -78,6 +101,8 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
 1. 探针三题全绿;musk 实机 PollStream 场景免变通直显。
 2. musk 单会话期 Init 调用数个位级;LoadSessionList 无 per-render 重入。
 3. Date.format 样本（1788436450 等）本机时区正确。
+4. absolute 探针页通过;musk 会话卡 × 悬浮无遮挡(用户目验)。
+5. 子件 prop 约束有明确语义结论并写入 docs(spec 或 KD 出口)。
 4. musk KD 059-FU1 核销回写。
 
 ## 待澄清事项
