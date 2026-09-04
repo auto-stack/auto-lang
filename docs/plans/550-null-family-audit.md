@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径
-current_step: 2
+current_step: 4
 total_steps: 12
 ---
 
@@ -190,12 +190,14 @@ print((s + y).to(str))     // y=null → "a-2147483647"（垃圾数字入字符�
 - [x] T02 未初始化 `var x` 盘存探针 + 结论记录入执行注记（验证：探针
       .at 在案）
       [✅ 已完成] p10/p11 探针在案：`var x` 与 `var x: int` 均被 parser E0007 拒绝——现状即禁止，无未初始化值形态；T11 走记录证据分支
-- [ ] T03 算术族守卫：`virt_memory.rs` pop_arith_operand 家族 null 拒收
+- [x] T03 算术族守卫：`virt_memory.rs` pop_arith_operand 家族 null 拒收
       （TypeError VMError，Python 格式消息助手），engine 算术臂 `?`
       传播；ADD 拼接臂单独守卫（验证：双探针翻转 + try-catch 端到端
       探针）
-- [ ] T04 GET_ELEM/CALL/迭代源守卫：null 对象三分支 TypeError（验证：
+      [✅ 已完成] 双探针翻转在案：p1 `null+1`→TypeError('NoneType' and 'int')、p2 `"a"+null`→TypeError('str' and 'NoneType')；p9 try-catch 捕获且 e 绑定消息。拼接病灶实际落点=STR_CAT 臂（codegen 对含 str 的 + 静态路由），与 ADD 内嵌拼接臂双守卫。守卫只拒 TAG_NULL（三拼写经 PUSH_NIL 同落 tag-null，PLAN-053 归一）；历史 i32 哨兵与真实 -1 不可区分故不守卫（合法 `-2147483647+1` 回归探针绿）。_F/_D/_U64/MOD 族经 null_guard_peek_pair 前缀守卫覆盖
+- [x] T04 GET_ELEM/CALL/迭代源守卫：null 对象三分支 TypeError（验证：
       三探针翻转）
+      [✅ 已完成] p3 subscriptable / p5 not iterable 双探针翻转在案（p5b try-catch 捕获验证）；callable 探针不可达（p4 = 编译期 E0401），守卫落 CALL_CLOSURE 动态路径以 T08 单测验证。迭代病灶实际落点=ARRAY_LEN null 静默 0 臂（array 通道 for-in 的长度探针，顺带翻 null.len()）；shim_iterator_next 迭代器通道另加防御守卫。合法 for-in（list/range）回归绿 + cargo t engine 25/25
 - [ ] T05 越界翻转：GET_ELEM 越界 0→IndexError（验证：探针 + `cargo tv`
       存量面裁决——红则按设计要点 2 处置）
 - [ ] T06 TYPE_TO_I32/F64 null 臂翻案：-1/-1.0 → TypeError；先排查
@@ -254,3 +256,11 @@ T11 无需实施禁止，仅记录证据（本节即证据；验收标准 6 后�
 2. **`null.to(int)` 内部依赖**：`?.`/迭代哨兵是否依赖 -1 静默臂——T06
    前置排查，若依赖则该内部路径改显式哨兵不经过 TYPE_TO。
 3. **未初始化 var 现状**：T02 探针定（允许则禁、不允许则记录证据）。
+   ——已裁定：现状即禁止（E0007），T11 记录证据分支。
+4. **master cargo t 断裂（执行中发现，非本计划病灶）**：plan051 合入
+   （26211362c）在 renderer.rs:8606/14650 留下对
+   `autodown_editor::retheme_all_fence_buffers` 的**无条件调用**，而模块
+   门控 `#[cfg(all(feature="autodown", feature="code-editor"))]`——
+   ui-iced-only 档（`cargo t` 别名档）编译断裂。本计划已在 worktree
+   以同 cfg 补门修复（e1d8fd097，随分支折入 master）；plan051 复审方
+   知悉，若该修复与其意图不符请回馈。
