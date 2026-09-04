@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-550
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing             # drafting → executing → execution_done → reviewed → archived
 feature_name: null-family-audit
 author: [zhaopuming]
 created_at: 2026-09-04
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径
-current_step: 0
+current_step: 2
 total_steps: 12
 ---
 
@@ -183,11 +183,13 @@ print((s + y).to(str))     // y=null → "a-2147483647"（垃圾数字入字符�
 
 ## 执行步骤
 
-- [ ] T01 探针基线：`scratch/p550/` 复跑 539 双探针 + 新增六探针
+- [x] T01 探针基线：`scratch/p550/` 复跑 539 双探针 + 新增六探针
       （null[0]/null(x)/for-in-null/null.to(int)/print(null)/arr[999]），
       现状输出记录入执行注记（验证：八探针逐条可复跑）
-- [ ] T02 未初始化 `var x` 盘存探针 + 结论记录入执行注记（验证：探针
+      [✅ 已完成] 2026-09-05 worktree master HEAD（5d4919080）二进制八探针全复跑在案 + p9 try-catch 基线 + p12/p13 nil/None 基线，逐条输出见下方执行注记 T01
+- [x] T02 未初始化 `var x` 盘存探针 + 结论记录入执行注记（验证：探针
       .at 在案）
+      [✅ 已完成] p10/p11 探针在案：`var x` 与 `var x: int` 均被 parser E0007 拒绝——现状即禁止，无未初始化值形态；T11 走记录证据分支
 - [ ] T03 算术族守卫：`virt_memory.rs` pop_arith_operand 家族 null 拒收
       （TypeError VMError，Python 格式消息助手），engine 算术臂 `?`
       传播；ADD 拼接臂单独守卫（验证：双探针翻转 + try-catch 端到端
@@ -214,6 +216,35 @@ print((s + y).to(str))     // y=null → "a-2147483647"（垃圾数字入字符�
 ## 复审记录
 
 （/auto-plan:review 填写）
+
+## 执行注记
+
+### T01 探针基线（2026-09-05，worktree master HEAD 5d4919080 干净构建二进制）
+
+探针文件 `scratch/p550/p1..p13`（未跟踪 scratch，复跑命令
+`<bin> scratch/p550/<file>.at`）：
+
+| 探针 | 现状输出 | 判读 |
+|---|---|---|
+| p1 `null+1` → to(str) | `-2147483646` | 539 探针复现：TAG_NULL 位模式当 i32 解码（-2147483647）再 +1 |
+| p2 `"a"+null` → to(str) | `a-2147483647` | 539 探针复现：垃圾数字入字符串拼接 |
+| p3 `null[0]` | `0` | GET_ELEM 静默哨兵：null 位模式当 obj_id 解码→查找落空→push_i32(0) |
+| p4 `var f = null; f(1)` | **编译期 E0401 Undefined symbol: f** | 非 VM 路径！p4b（闭包中转变量）/p4c（map 字段中转）同样 E0401——静态解析拦截。T04 的 callable 守卫落 VM 动态路径（CALL_CLOSURE/CALL_SPEC），.at 探针不可达，改以 Rust 单测验证（并入 T08） |
+| p5 for-in 迭代 null | `done`（零迭代） | 疑静默零迭代证实 |
+| p6 `null.to(int)` | `-1` | TYPE_TO_I32 null 静默臂（engine.rs:3596） |
+| p7 `print(null)` / `null.to(str)` | `None` / `-2147483647` | **print shim 已输出 "None"**（T07 实际工作量=TYPE_TO_STR null 臂，engine.rs:3565 else 兜底解码 i32） |
+| p8 `arr[999]` | `0` | GET_ELEM 越界 0 哨兵证实 |
+| p9 try-catch 基线 | `-2147483646` + `no-throw` | 现状 null+1 不抛错，catch 不触发 |
+| p12 `nil+1` / `nil==null` | `-2147483646` / `true` | T09 改动前语义参考（nil=i32(MIN+1)，全族判等） |
+| p13 `None==null` / `Some(1)==null` / `None==None` | `true` / `false` / `true` | Option 构造器行为参考（T09 零回归基线） |
+
+### T02 未初始化 var 盘存结论（2026-09-05）
+
+- p10 `var x`（裸）→ **E0007** `Variable 'x' must have either a type annotation or an initial value`（parser 拒绝）
+- p11 `var x: int`（带注解无初值）→ 同 E0007 拒绝
+
+**结论：现状即"不允许"**——语言当前不存在未初始化 var 形态（带注解无初值也被拒），
+T11 无需实施禁止，仅记录证据（本节即证据；验收标准 6 后半分支成立）。
 
 ## 待澄清事项
 
