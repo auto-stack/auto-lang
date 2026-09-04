@@ -1005,6 +1005,56 @@ mod tests {
         assert_eq!(text_of(&body[0]), "三");
     }
 
+    /// PLAN-050 F2/F3：浅色主题下只读臂 fence chrome——outer 底色浅
+    /// （gray-50 族）、header 全宽（w-full）、语言标签自带颜色类（不依赖
+    /// 容器继承——zinc 暗板下默认黑标签曾不可见，塌成游离黑块）。
+    #[test]
+    fn fence_view_chrome_light_header_full_width_label_colored() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
+        crate::ui::style::theme::set_dark_mode(true);
+        let View::Column { children, .. } = doc else {
+            panic!("expected column")
+        };
+        let View::Container { style, child, .. } = &children[0] else {
+            panic!("fence outer container")
+        };
+        let classes = &style.as_ref().expect("outer style").classes;
+        let light_bg = classes.iter().any(|c| match c {
+            crate::ui::style::StyleClass::BackgroundColor(col) => {
+                let (r, g, b) = col.to_rgb8();
+                r > 180 && g > 180 && b > 180
+            }
+            _ => false,
+        });
+        assert!(light_bg, "light theme outer bg must be light gray, got {classes:?}");
+        let View::Column { children: parts, .. } = child.as_ref() else {
+            panic!("fence parts column")
+        };
+        let View::Container { style: hs, child: h, .. } = &parts[0] else {
+            panic!("fence header container")
+        };
+        let hclasses = &hs.as_ref().expect("header style").classes;
+        assert!(
+            hclasses.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::Width(crate::ui::style::SizeValue::Full)
+            )),
+            "header must be full width, got {hclasses:?}"
+        );
+        let View::Text { style: ls, .. } = h.as_ref() else {
+            panic!("header label text")
+        };
+        let lclasses = &ls.as_ref().expect("label style").classes;
+        assert!(
+            lclasses.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::TextColor(_)
+            )),
+            "label must carry explicit color class, got {lclasses:?}"
+        );
+    }
+
     #[test]
     fn renders_table_headers_and_rows() {
         let src = "| a | b |\n| --- | --- |\n| 1 | 2 |\n";
