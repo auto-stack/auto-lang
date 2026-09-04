@@ -1255,3 +1255,31 @@
   模块双 feature 门控——`cargo t` 别名档（ui-iced only）断裂。本计划以
   同 cfg 补门修复（随 plan-550-dev 折入）；plan051 复审方如认为与原意图
   不符请回馈（详见 550 待澄清#4）。
+
+- **P551-D1 master tf 双红（schema 漂移，非 551 回归）**：`schema_drift_fence`+
+  `docs_gen kitchen_sink_page_in_sync` 红——alert-dialog/dialog/dropdown shadcn
+  tag 表（93d933a62，Plan 530 W12/W13）未被 schema/aura.at 覆盖；551 全量门
+  实证（3412 跑 3410 绿，551 diff 未触及 schema.rs/aura_view_builder.rs）。
+  归属 548 会话收口（主检出 schema/aura.at 已有未提交修改疑似修复中）；
+  修复路径=`SCHEMA_DRIFT_GENERATE_AT=1` 重生成+复核。
+- **P551-D2 auto-down 挪包致 master cargo 全红**：auto-down e7d079e（052 前置，
+  2026-09-05）把 autodown-core `packages/core/rust`→`packages/engine/rust`，
+  auto-lang master Cargo.toml 的 path 依赖当场失效（任何 cargo 命令清单解析
+  即败）。需 052 侧或 auto-lang 随行修（指向 packages/engine/rust 并核 API 面；
+  551 worktree 以 pinned e7d079e~1 worktree 解析、未启用该 feature 绕行）。
+- **P551-D3 os-config vue 构建 tsc 红（基线既有）**：`auto build` vue 轨
+  `Cannot find module '@/lib/api'` 等——gen 树缺 lib/api.ts 生成，auto.exe
+  （主检出 master）与 os-config 已提交源码版本偏斜，pristine 同红。阻塞
+  Desktop 页 vue 对拍（551 待澄清②，follow-up 先修）。
+- **P551-D4 通用编辑器字段级 widget 挂载**：ConfigEditor 内联按 widgets 声明
+  替换控件需 per-render 取 widgets 映射——vm 无状态 fn 面下每次 HTTP 不可接受,
+  需缓存设计（551 T5 跟进项；desktop_page 自定义视图已演示机制全链）。
+- **P551-D5 wallpaper_picker 点选 click-through e2e 缺注入面**：验收通道
+  autoui_desktop handler 只达 app root（settings 槽已重绑 os-config root，
+  但 DesktopPage/子 widget msg 不可达）——picker 点选链当前以组件级实证
+  （数据源/写路径三组件均实机验证）+渲染截图覆盖，click-through 需 vm 子
+  组件注入能力。
+- **P551-D6 主检出 daemon 二进制落后部署坑**：桌面 daemon 发现序指向相邻仓
+  target/release——源码推进后旧二进制仍在位（540 期实机踩坑：缺 desktop 模块
+  注册）。551 已加 boot registry 自检日志（模块数+id 一行）；merge 后主检出
+  侧 daemon 需重建。
