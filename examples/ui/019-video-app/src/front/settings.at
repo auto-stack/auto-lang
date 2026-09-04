@@ -15,9 +15,9 @@ widget SettingsPanel(dark_mode: bool, accent_color: str, on_close: msg, on_toggl
     view {
         col {
             style: if .dark_mode {
-                "p-4 bg-zinc-900 border border-zinc-800 rounded-2xl gap-3.5 shadow-2xl w-72"
+                "p-4 bg-zinc-900 border border-zinc-800 rounded-2xl gap-3.5 shadow-2xl w-full"
             } else {
-                "p-4 bg-white border border-gray-200 rounded-2xl gap-3.5 shadow-2xl w-72"
+                "p-4 bg-white border border-gray-200 rounded-2xl gap-3.5 shadow-2xl w-full"
             }
 
             // Header
