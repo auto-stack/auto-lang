@@ -456,16 +456,16 @@ widget App {
                                                 }
                                             }
                                         }
+                                        }
+                                    }
+                                } else {
+                                    col {
+                                        style: "w-full flex flex-col items-center justify-center py-16 gap-2"
+                                        text "📷" { style: "text-4xl" }
+                                        text "未找到照片" { style: "text-sm text-muted-foreground" }
+                                        text "试试清除搜索或切换相册" { style: "text-xs text-muted-foreground/70" }
                                     }
                                 }
-} else {
-                                col {
-                                    style: "w-full flex flex-col items-center justify-center py-16 gap-2"
-                                    text "📷" { style: "text-4xl" }
-                                    text "未找到照片" { style: "text-sm text-muted-foreground" }
-                                    text "试试清除搜索或切换相册" { style: "text-xs text-muted-foreground/70" }
-                                }
-                            }
                         }
                     }
                 }
