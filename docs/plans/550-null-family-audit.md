@@ -198,20 +198,27 @@ print((s + y).to(str))     // y=null → "a-2147483647"（垃圾数字入字符�
 - [x] T04 GET_ELEM/CALL/迭代源守卫：null 对象三分支 TypeError（验证：
       三探针翻转）
       [✅ 已完成] p3 subscriptable / p5 not iterable 双探针翻转在案（p5b try-catch 捕获验证）；callable 探针不可达（p4 = 编译期 E0401），守卫落 CALL_CLOSURE 动态路径以 T08 单测验证。迭代病灶实际落点=ARRAY_LEN null 静默 0 臂（array 通道 for-in 的长度探针，顺带翻 null.len()）；shim_iterator_next 迭代器通道另加防御守卫。合法 for-in（list/range）回归绿 + cargo t engine 25/25
-- [ ] T05 越界翻转：GET_ELEM 越界 0→IndexError（验证：探针 + `cargo tv`
+- [x] T05 越界翻转：GET_ELEM 越界 0→IndexError（验证：探针 + `cargo tv`
       存量面裁决——红则按设计要点 2 处置）
-- [ ] T06 TYPE_TO_I32/F64 null 臂翻案：-1/-1.0 → TypeError；先排查
+      [✅ 已完成] p8 `arr[999]`→IndexError: index 999 out of range；p8b 矩阵：负索引合法面（a[-1]/a[-3]）保留、a[-5] 可 catch、str 索引非翻转面不动。**cargo tv 3572/3572 全绿**——存量面零撞击，全量翻转成立，设计要点 2 降级路径不需要（str 越界/by-name 缺字段未翻，越界语义按矩阵限 Auto 数组）
+- [x] T06 TYPE_TO_I32/F64 null 臂翻案：-1/-1.0 → TypeError；先排查
       `?.`/NULL_COALESCE 内部依赖（验证：探针 + `cargo tv`）
-- [ ] T07 print/to(str) 保真：null 打 `"None"`（TYPE_TO_STR null 臂 +
+      [✅ 已完成] 前置排查：TYPE_TO_I32/F64 仅由 Expr::To（显式 .to(int)/.to(float)）发射；NULL_COALESCE 是独立 opcode（自带 null-family 逻辑），`?.` 语言尚不存在——**无内部哨兵依赖**（待澄清#2 关闭）。p6 `null.to(int)`→TypeError 翻转；p6b 矩阵：to(float) null 同翻、合法转换（"42"/"1.5"/true/3.to(str)）零回归。cargo tv 3572/3572 全绿
+- [x] T07 print/to(str) 保真：null 打 `"None"`（TYPE_TO_STR null 臂 +
       print unified shim）（验证：探针 + py_torch_infer 扩例三方绿）
-- [ ] T08 Rust 单测：守卫消息格式断言 + TYPE_TO 翻案回归（engine 模块，
+      [✅ 已完成] p7 双形态翻转：print(null)→"None"（print shim 已然）+ null.to(str)→"None"（TYPE_TO_STR 新 null 臂，原落 i32 兜底 -2147483647）；py_torch_infer 扩例 test_print_none（.to(str) 断言形态，a2py 出 str(None)）——三方 17/17 (100%) 绿
+- [x] T08 Rust 单测：守卫消息格式断言 + TYPE_TO 翻案回归（engine 模块，
       539 单测同型）（验证：`cargo t vm` 含新增用例全绿）
-- [ ] T09 `nil` deprecated 警告（parser，语义不变）（验证：探针出警告
+      [✅ 已完成] engine.rs 新增 tests_null_guards 模块 13 例：算术双形态消息（NoneType 左/右）、SUB/MUL/DIV/MOD 参数化、NEG 一元、STR_CAT 拼接（'str' and 'NoneType'）、合法 -1/MIN+1 算术零误伤、subscriptable/callable（p4 编译期不可达路径的单测钉住）/iterable、IndexError 999、TYPE_TO_I32/F64 翻案+合法回归、TYPE_TO_STR→"None"。**cargo t vm 800/800 全绿**（ui-iced 档经待澄清#4 修复已可运行）
+- [x] T09 `nil` deprecated 警告（parser，语义不变）（验证：探针出警告
       + 行为不变 + `cargo tv`）
-- [ ] T10 `#[script]` pragma + 生产者门控 lint（警告级，.as 指引文案）
+      [✅ 已完成] parser 双臂（literal/atom）发 W0005 DeprecatedFeature；CLI 直跑路径可见化 parser 警告（stderr 按名一次性去重——p12b 两次 nil 仅一条警告；LSP 侧本就消费 parser.warnings；tv 语料对拍 stdout 不受 stderr 影响）。p12b `nil==null`→true 语义不变；p13 None/Some 零回归无警告。**cargo tv 3585/3585 全绿**
+- [x] T10 `#[script]` pragma + 生产者门控 lint（警告级，.as 指引文案）
       （验证：无 pragma 含 use.py 文件出警告、pragma 豁免探针）
-- [ ] T11 未初始化 var 处置：按 T02 结论实施禁止或记录（验证：探针 /
+      [✅ 已完成] p14 use.py 信号→警告（运行不受阻）；p15 `#[script]` 豁免（use.py+null 双信号静默）+ 正常运行；p16 裸 null 信号→警告；无信号文件零误报。parser.script_pragma/saw_bare_null → CompileSession.script_marked（mark_script 登记，codegen 零分支）；annotation match 新增 script 臂（否则 Unknown annotation 硬错——顺带使其可解析）。py_math 20/20 三方烟测：stderr 警告不破坏 parity 对拍
+- [x] T11 未初始化 var 处置：按 T02 结论实施禁止或记录（验证：探针 /
       `cargo tv`）
+      [✅ 已完成] 记录证据分支：T02 盘存结论=现状即禁止（p10/p11 探针，裸 `var x` 与 `var x: int` 均 parser E0007 拒绝，无未初始化值形态），证据在执行注记 T02 节——无需实施禁止，验收标准 6 后半分支成立
 - [ ] T12 折叠：KNOWN-DEBT 回写（越界/翻案行为变更登记）+ 全量门禁
       `cargo tv` + `cargo tt` + py 五套件三方（验证：门禁输出留档）
 

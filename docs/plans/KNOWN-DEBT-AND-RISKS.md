@@ -1221,3 +1221,37 @@
   “Plan 467 落地清单”仍保留一条历史 `[ ]` 首个完整循环样板项；PLAN-543 新增的 §9 已
   说明当前兼容期与后续工作包，但旧 checkbox 可能被误读为当前 blocker。归属阶段 C
   Auto-plan v3/Design 26 收敛时改成带日期的 historical outcome，不在本轮入口校准中扩 scope。
+
+### P550（2026-09-05，null 家族审计与术语统一——行为翻转登记）
+
+- **P550-D1 越界/TYPE_TO 行为翻转的存量语义变更**：GET_ELEM 越界
+  （Auto 数组四型）从静默 `push_i32(0)` 翻为 `IndexError: index N out of
+  range`；TYPE_TO_I32/F64 对 null 从静默 -1/-1.0 翻为 TypeError——这是
+  **计划内行为变更**（对标 Python），`cargo tv` 3585/3585 全绿证明存量
+  语料零依赖旧哨兵。若有仓外/未入库语料依赖 0/-1 哨兵，属预期翻案面。
+- **P550-D2 越界翻转未覆盖 str 索引/by-name 缺字段**：GET_ELEM 的字符串
+  索引越界（push 0）与 ObjectData/GenericInstanceData 按名缺字段（push 0）
+  未翻 IndexError/KeyError——守卫矩阵仅列 Auto 数组；str 越界对标 Python
+  IndexError 属后续波次收口面。
+- **P550-D3 历史 i32 哨兵编码不在算术守卫范围**：算术族守卫只拒 TAG_NULL
+  （null/nil/None 三拼写经 PUSH_NIL 同落 tag-null，PLAN-053 归一）；历史
+  i32 哨兵（-1 / i32::MIN+1）与真实整数在算术槽不可区分，无法守卫——
+  持久化旧数据经算术仍产垃圾（EQ 判等的 null-family 兼容语义不变）。
+- **P550-D4 CALL null 守卫无 .at 探针面**：正常模式 null callee 被静态
+  解析在编译期拦下（E0401），VM 层 CALL_CLOSURE 守卫（'NoneType' object
+  is not callable）仅动态/脚本路径可达，由 Rust 单测
+  tests_null_guards::test_null_callee_not_callable 钉住（W1 脚本管线落地后
+  才有端到端面）。
+- **P550-D5 null.len() 顺带翻转**：ARRAY_LEN null 静默 0 臂（array 通道
+  for-in 的长度探针）翻为 not iterable TypeError 时，同臂承接的
+  `null.len()` 发射点一并翻转（Python: None 无 len）——顺带翻案，tv 全绿
+  佐证无存量依赖。
+- **P550-D6 生产者门控 lint 信号面窄**：三信号仅 use.py / null / nil 字面量
+  （None/Some 不计入——Option 构造器合法）；#[script] pragma 经 fn 注解
+  通道解析（文件任意位置的 #[script] 均标记整文件）。W1 .as 管线落地时
+  需复核 pragma 位置语义与 .as 扩展名联动。
+- **P550-D7 master ui-iced 档编译断裂修复（非本计划病灶）**：plan051 合入
+  （26211362c）在 renderer.rs 留下对 autodown_editor 模块的无条件调用而
+  模块双 feature 门控——`cargo t` 别名档（ui-iced only）断裂。本计划以
+  同 cfg 补门修复（随 plan-550-dev 折入）；plan051 复审方如认为与原意图
+  不符请回馈（详见 550 待澄清#4）。
