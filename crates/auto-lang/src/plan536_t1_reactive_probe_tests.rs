@@ -48,6 +48,10 @@ mod plan536_t1_reactive_probe_tests {
                 }
             }
             View::Container { child, .. } | View::Scrollable { child, .. } => collect_texts(child, out),
+            View::Overlay { base, content, .. } => {
+                collect_texts(base, out);
+                collect_texts(content, out);
+            }
             View::Grid { cells, .. } => {
                 for c in cells {
                     collect_texts(c, out);
@@ -319,5 +323,148 @@ mod plan536_t1_reactive_probe_tests {
             Ok(auto_val::Value::Int(1)),
             "rebuild frames must NOT replay child Init (题2 重入风暴根修)"
         );
+    }
+
+    // ── T6 absolute 定位原语（题5）：row/button 载体全链 hoist ────────────
+
+    fn locate_absolute_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan536_absolute/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(format!("../../{}", rel))),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    fn collect_views<'a>(
+        view: &'a View<crate::ui::interpreter::DynamicMessage>,
+        out: &mut Vec<&'a View<crate::ui::interpreter::DynamicMessage>>,
+    ) {
+        out.push(view);
+        match view {
+            View::Row { children, .. } | View::Column { children, .. } => {
+                for c in children {
+                    collect_views(c, out);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => collect_views(child, out),
+            View::Overlay { base, content, .. } => {
+                collect_views(base, out);
+                collect_views(content, out);
+            }
+            View::Button { content: Some(c), .. } => collect_views(c, out),
+            _ => {}
+        }
+    }
+
+    /// T6①②: absolute + 偏移 + z 的悬浮元素在 **row 父容器**内也必须
+    /// hoist 为 Overlay(锚=父 bounds),不再挤压兄弟流内布局(musk 会话卡 ×
+    /// 的行内形状;此前仅 convert_column 有 hoist 臂)。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t6_row_parent_hoists_absolute_child() {
+        let corpus = match locate_absolute_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T6: SKIPPED — absolute corpus not found");
+                return;
+            }
+        };
+        let dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_absolute component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+
+        let mut all = Vec::new();
+        collect_views(&view, &mut all);
+        let overlays: Vec<_> = all.iter().filter_map(|v| match v {
+            View::Overlay { base, content, position } => Some((base, content, position)),
+            _ => None,
+        }).collect();
+
+        assert!(
+            overlays.iter().any(|(base, content, pos)| {
+                matches!(base.as_ref(), View::Row { .. })
+                    && matches!(content.as_ref(), View::Column { .. })
+                    && pos.right == Some(8.0)
+                    && pos.top == Some(8.0)
+            }),
+            "row 父容器的 absolute(z) 子件必须 hoist 为 Overlay(right/top 偏移); overlays={}",
+            overlays.len()
+        );
+        // 悬浮层文本在树上仍可见(MCP 快照口径)
+        let texts = rendered_texts(&dc);
+        assert!(texts.iter().any(|t| t.contains("float-from-row")), "float text must render; got {texts:?}");
+        assert!(texts.iter().any(|t| t.contains("flow-text")), "flow sibling must stay; got {texts:?}");
+    }
+
+    /// T6②: absolute 载体不止 col/row——button(× 删除钮)/container 一类
+    /// 自带样式的叶子同样可 hoist。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t6_button_carrier_hoists() {
+        let corpus = match locate_absolute_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T6: SKIPPED — absolute corpus not found");
+                return;
+            }
+        };
+        let dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_absolute component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+
+        let mut all = Vec::new();
+        collect_views(&view, &mut all);
+        let overlays: Vec<_> = all.iter().filter_map(|v| match v {
+            View::Overlay { base, content, position } => Some((base, content, position)),
+            _ => None,
+        }).collect();
+
+        assert!(
+            overlays.iter().any(|(_base, content, pos)| {
+                matches!(content.as_ref(), View::Button { .. })
+                    && pos.right == Some(6.0)
+                    && pos.top == Some(8.0)
+            }),
+            "button 载体的 absolute(z) 必须 hoist(right=6/top=8); overlays={}",
+            overlays.len()
+        );
+    }
+
+    /// T6 语义定界(负面): absolute 无 z 的分层技巧(p051-min-ta textarea
+    /// 叠加族)保留流内——不 hoist,防 inset-0 背景层翻到内容之上。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t6_absolute_without_z_stays_in_flow() {
+        let corpus = match locate_absolute_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T6: SKIPPED — absolute corpus not found");
+                return;
+            }
+        };
+        let dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_absolute component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+
+        let mut all = Vec::new();
+        collect_views(&view, &mut all);
+        // layer-text(inset-0 无 z)必须仍作为 col 的流内子件存在
+        let flow_layer = all.iter().any(|v| matches!(v,
+            View::Text { content, .. } if content.contains("layer-text")));
+        assert!(flow_layer, "无 z 的 absolute 分层文本必须留在流内");
+        // 且不在任何 Overlay 的 content 侧
+        let in_overlay = all.iter().any(|v| match v {
+            View::Overlay { content, .. } => {
+                matches!(**content, View::Text { ref content, .. } if content.contains("layer-text"))
+            }
+            _ => false,
+        });
+        assert!(!in_overlay, "无 z 不得 hoist");
     }
 }
