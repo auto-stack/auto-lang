@@ -3217,12 +3217,22 @@ impl RustGenerator {
             }
         }
         let anchor_code = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, .. }) => {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
                 // 裸文本 trigger（`dialog-trigger "Open"` → text prop）或单
-                // Text 子 → 真 button（vue trigger 语义;T5 换铸 toggle）。
+                // Text 子 → 真 button（vue trigger 语义）。onclick 优先取
+                // trigger 自带事件（parser 铸造的 `.__dlg_toggle_<n>` 或用户
+                // 显式绑定），无则 no-op 防恐慌。
+                let trigger_onclick = ["onclick", "onClick", "on_click"]
+                    .iter()
+                    .find_map(|k| t_events.get(*k))
+                    .map(|h| self.handler_to_rust_closure_with_params(&h.handler, &h.params))
+                    .unwrap_or_else(|| "|_| ()".to_string());
                 if t_children.len() == 1 {
                     if let AuraNode::Text(AuraTextContent::Literal(s)) = &t_children[0] {
-                        format!("View::button(\"{}\").on_click(|_| ()).build()", s)
+                        format!(
+                            "View::button(\"{}\").on_click({}).build()",
+                            s, trigger_onclick
+                        )
                     } else {
                         self.generate_view_tree(&t_children[0])
                     }
@@ -3231,7 +3241,10 @@ impl RustGenerator {
                     if label.is_empty() {
                         "auto_lang::ui::view::View::Empty".to_string()
                     } else {
-                        format!("View::button(\"{}\").on_click(|_| ()).build()", label)
+                        format!(
+                            "View::button(\"{}\").on_click({}).build()",
+                            label, trigger_onclick
+                        )
                     }
                 } else {
                     let mut b = "View::row()".to_string();

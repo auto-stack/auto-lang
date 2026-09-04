@@ -41,6 +41,20 @@ widget App {
                     }
                 }
             }
+            // T5 自管开合形态（无 open 绑定,parser 铸造 __dlg_open_1）：
+            // gallery dialog 页同款——裸文本 trigger + dialog-close。
+            dialog {
+                dialog-trigger "Open Self-Managed"
+                dialog-content {
+                    dialog-header {
+                        dialog-title "Edit Profile"
+                        dialog-description "Make changes to your profile here."
+                    }
+                    dialog-footer {
+                        dialog-close "Save changes"
+                    }
+                }
+            }
         }
     }
 }

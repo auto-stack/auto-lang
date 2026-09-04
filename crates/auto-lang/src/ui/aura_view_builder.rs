@@ -1374,11 +1374,17 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
             // （tracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog_tracked_ctx。
+            // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
+            "dialog" | "Dialog" => {
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
                 self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
+            | "dialog-content" | "dialog_content" | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let mut views: Vec<View<DynamicMessage>> = Vec::new();
                 for (i, c) in children.iter().enumerate() {
@@ -1392,23 +1398,36 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
+            | "dialog-title" | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
+            | "dialog-description" | "dialog_description" | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
+            | "dialog-header" | "dialog_header" | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
+            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
                 self.set_layout_onclick(&mut v, events, bindings);
                 v
+            }
+            "dialog-close" | "dialog_close" | "dialogclose" => {
+                // PLAN-533 T5: dialog-close → outline 按钮（cancel 同款预设）。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
             }
             "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
                 // outline 变体预设（border+bg-background+text-foreground）,
@@ -2758,11 +2777,17 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
             // （untracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog。
+            // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
+            "dialog" | "Dialog" => {
+                self.convert_alert_dialog(props, children, bindings)
+            }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
                 self.convert_alert_dialog(props, children, bindings)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
+            | "dialog-content" | "dialog_content" | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
@@ -2774,23 +2799,36 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
+            | "dialog-title" | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
+            | "dialog-description" | "dialog_description" | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
+            | "dialog-header" | "dialog_header" | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column(&p, children, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
+            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row(&p, children, bindings);
                 self.set_layout_onclick(&mut v, events, bindings);
                 v
+            }
+            "dialog-close" | "dialog_close" | "dialogclose" => {
+                // PLAN-533 T5: dialog-close → outline 按钮（cancel 同款预设）。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
             }
             "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
                 // outline 变体预设（border+bg-background+text-foreground）,
@@ -5403,6 +5441,29 @@ let tabs_inner = View::Row {
     // fallback（overlay 家族 "renders as Column"），点击无弹层。
     // shadcn AlertDialog 语义：外点/Esc 不关闭（on_dismiss=None），关闭仅经
     // cancel/action 操作钮的 VM handler 翻转 `open` 绑定状态。
+    /// PLAN-533 T5: 裸文本 trigger（`dialog-trigger "Open"` → text prop
+    /// 无子节点）→ Button（vue trigger 语义）。onclick 经 convert_button
+    /// 取 parser 铸造的 `.__dlg_toggle_<n>`（或用户显式绑定）;无文字且无
+    /// 子件 → Empty。
+    fn bare_trigger_button_view(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let has_label = ["text", "label"].iter().any(|k| {
+            matches!(
+                props.get(*k),
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) if !s.is_empty()
+            )
+        });
+        if has_label {
+            self.convert_button(props, events, &[], bindings)
+        } else {
+            View::Empty
+        }
+    }
+
     fn alert_dialog_split_children(
         children: &[AuraNode],
     ) -> (Option<&AuraNode>, Option<&AuraNode>) {
@@ -5413,13 +5474,23 @@ let tabs_inner = View::Row {
                 let t = tag.as_str();
                 if matches!(
                     t,
-                    "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
+                    "alert-dialog-trigger"
+                        | "alert_dialog_trigger"
+                        | "alertdialog-trigger"
+                        | "dialog-trigger"
+                        | "dialog_trigger"
+                        | "dialogtrigger"
                 ) && trigger.is_none()
                 {
                     trigger = Some(c);
                 } else if matches!(
                     t,
-                    "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+                    "alert-dialog-content"
+                        | "alert_dialog_content"
+                        | "alertdialog-content"
+                        | "dialog-content"
+                        | "dialog_content"
+                        | "dialogcontent"
                 ) && content.is_none()
                 {
                     content = Some(c);
@@ -5462,21 +5533,27 @@ let tabs_inner = View::Row {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         // 锚:trigger 子件原位渲染（无 trigger = 空 anchor,open 属性直驱）。
+        // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button,onclick 取
+        // parser 铸造的 toggle（或用户显式绑定）。
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, .. }) => {
-                let views: Vec<View<DynamicMessage>> = t_children
-                    .iter()
-                    .map(|c| self.convert_node_with(c, bindings))
-                    .collect();
-                match views.len() {
-                    1 => views.into_iter().next().unwrap(),
-                    _ => View::Row {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                        onclick: None,
-                    },
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let views: Vec<View<DynamicMessage>> = t_children
+                        .iter()
+                        .map(|c| self.convert_node_with(c, bindings))
+                        .collect();
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
                 }
             }
             _ => View::Empty,
@@ -5526,22 +5603,28 @@ let tabs_inner = View::Row {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, .. }) => {
-                let mut views: Vec<View<DynamicMessage>> = Vec::new();
-                for (i, c) in t_children.iter().enumerate() {
-                    path.push(i);
-                    views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
-                    path.pop();
-                }
-                match views.len() {
-                    1 => views.into_iter().next().unwrap(),
-                    _ => View::Row {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                        onclick: None,
-                    },
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button
+                // （铸造/显式 onclick 经 convert_button 接线）。
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                    for (i, c) in t_children.iter().enumerate() {
+                        path.push(i);
+                        views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                        path.pop();
+                    }
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
                 }
             }
             _ => View::Empty,
