@@ -72,6 +72,8 @@
 | 540 | 兼容: 旧 storage 配置键只读回退保留一个版本 | 桌面配置单源迁至 `~/.config/autoos/apps/desktop/config.at`（8 键：dock.position/enabled/pinned、desktop.wallpaper/wallpapers_dir、appearance.theme、desktop.transparency、notes.enabled），boot 一次性迁移后旧键**不再读不再写但未删除**——按 D4 定案保留一个版本防回滚双源，下一版本随清理 plan 删键（届时旧版桌面回滚将丢设置,属预期）。 | `ui/desktop_config.rs` LEGACY_STORAGE_KEYS + `docs/plans/540-desktop-settings-osconfig-unify.md` D4 |
 | 540 | 范围边界: shell.desktop.hidden/icons 键留 storage | 桌面图标面可见性（`shell.desktop.hidden`/`shell.desktop.icons`）不属本期 8 键单源范围，仍走 storage 直写（desktop.at 右键隐藏链）——与 config.at 并存双轨；若未来图标面配置也要进 os-config 插件体系，随通用"桌面面配置"扩展再迁。 | `assets/desktop.at:174`；`docs/plans/540-desktop-settings-osconfig-unify.md` T2 勘察注 |
 | 540 | 验收余项: 实机齿轮点击链路留给复审/用户在场环节 | 真桌面（ui_desktop）齿轮→设置窗的交互实机验收在自主执行轮受阻于焦点窃取保护（用户正用机，SetForegroundWindow/SendInput 不生效且不宜强抢）——已验证替代面：桌面 boot 含 045 条目（registry 42 entries 日志）、桌面全量渲染 PrintWindow 截图、无头端到端测试（真 shell.at 齿轮→open_settings→launch-or-focus→播种→config 落盘，settings_shell_at_smoke_gear_to_panel 等 10 测）；复审批准前建议用户在场点一次齿轮 + 拖拽/× 关闭。 | `docs/plans/540-desktop-settings-osconfig-unify.md` T11；`scratch/p540_vm_desktop.png` |
+| 540 | 语义边界: daemon 直改 config.at 重启生效（无文件监视） | D1 定案桌面宿主 boot 直读 config.at（进程内 `DesktopConfig::load`）——设置窗写路径经宿主臂即时热生效 ✓，但 **auto-os-config 通用编辑器直改文件后，运行中的桌面需重启才吸收**（无 file-watch 通道）。若未来要求 daemon 编辑即时生效，需 boot 后增量 file-watch + apply 扩展（新计划立项，涉 M1 装载层改造）。 | `ui/desktop_config.rs` load()；`docs/plans/540-desktop-settings-osconfig-unify.md` D1 |
+| 540 | 清理余项: HostCtx.settings_fields 死字段 | is_settings windowless 拆借路退役（T9）后 `HostCtx.settings_fields`（ShellFields）仅构造无人读写——pub struct 字段无编译告警；下个清理批随其它 ShellFields 家族（launcher/switcher/notification 同型仍在用）一并审视。 | `ui/session.rs:1685` |
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|

@@ -1,17 +1,25 @@
 ---
 plan_id: PLAN-540
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-settings-osconfig-unify
 author: []
 created_at: 2026-09-03
 updated_at: 2026-09-04
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui: 特权 settings.at overlay 槽（487 M4 第四枚,toggle_settings/settings_visible/Esc 臂）退役——设置入口改 launch-or-focus registry 窗（open_settings 动词语义替换,shell.at 零改动）"
+  - "docs/specs/auto-lang/ui: 桌面配置散布 storage 键（8 枚）退役为一次性迁移源——单源收敛至 ~/.config/autoos/apps/desktop/config.at（D1 宿主直读直写,504 只读播种升级为读写）"
+new_spec_components:
+  - "crates/auto-lang/src/ui/desktop_config.rs: 桌面单源配置模块——DesktopConfig 8 字段+parse_flat_fields 引号感知平铺读+load 回退链（坏值/缺席/旧键迁移 D4）+save+seed_desktop_config launch 播种（cfg_* 命名约定）"
+  - "examples/ui/045-desktop-settings: 设置窗 registry App——桌面风格页（bg-card+左列五分区）,读=cfg_* 播种快照,写=__desktop_cmd 动词族,Vue/VM 双端（GOAL-007 义务）"
+  - "桌面协议 __desktop_cmd 动词族扩展: set_transparency/set_notes_enabled/set_dock_pinned/set_wallpapers_dir（枚举/to_record/parse/执行臂全链,config+save 唯一收口）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——设置去 modal 化收官（504'设置上移 os-config'兑现）+配置单源接入 os-config 插件体系（modules 基线 desktop 模块,os-config master b153637）"
+  - "GOAL-007: AutoUI 跨端一致——设置页 registry App 双端（Vue auto run 实机截图+VM/iced 同 .at 源,cfg_* 缺省=宿主内置默认双端一致）"
+  - "GOAL-010: 示例应用轨道——examples/ui 新增 045-desktop-settings"
 
-affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
+affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 12
 total_steps: 12
 ---
@@ -299,7 +307,54 @@ desktop {
 
 ## 复审记录
 
-（/auto-plan:review 回填）
+**复审人**：ZCode（/auto-plan:review）；**时间**：2026-09-04；**分支**：plan-540-dev
+（4 提交 7a42ffdf6→b388df79b→bc0e55763→37932c99b，净足迹 12 文件 +2152/−1354，
+settings.at −723 行整删）。
+
+### 验收标准逐条复核
+
+1. **普通 app 窗口（非 modal/×关闭/拖拽缩放/桌面风格）——PASS（机制级）**：
+   设置 = registry 虚拟窗（registry_id 定位），×关闭/拖拽/缩放/z 序继承
+   virtual_window 既有受测机械；launch-or-focus + 播种由无头端到端锁定
+   （settings_shell_at_smoke_gear_to_panel：真 shell.at 齿轮→open_settings→
+   窗挂载→cfg_dock_position 播种断言；summon 测②聚焦不开新窗/恰一窗）。
+   桌面风格 = Vue 实机截图（scratch/p540_vue_nav2.png/p540_vue_appearance.png）
+   + iced 端同 .at 源。附注：真机齿轮交互确认登记 KNOWN-DEBT（焦点窃取
+   保护,留用户在场一轮）。
+2. **单源 config.at；旧键不再读——PASS**：生产旧键读点 grep 清零（仅
+   load_from 迁移闭包+测试）；旧键 storage_host_publish 写点生产清零
+   （测试区 icons/hidden 属范围外键,KNOWN-DEBT 已记边界）；round-trip/
+   迁移单测绿（desktop_config 11/11）。
+3. **os-config 侧栏 desktop 模块——PASS（代码级）**：DEFAULT_REGISTRY_ATOM
+   基线 + back crate 39/39（含 desktop File 模块断言）+ 计数测试改环境
+   无关（本机 modules.d 4 drop-in 既有红经 master 复核确认）；已折返
+   os-config master（b153637）。「热生效」条款：设置窗路径即时热生效 ✓；
+   daemon 直改文件重启生效 = D1 直读裁定固有语义，登记 KNOWN-DEBT
+   （file-watch 扩展留未来计划）。
+4. **旧配置无损迁移；Esc 退役——PASS**：migration_from_legacy_keys_one_shot
+   8 键逐字段断言；Esc 仲裁链/键盘订阅 settings 位 grep 清零。
+
+### 全量门禁
+
+`cargo tf`（worktree）：**3403/3405 绿**；2 红（schema_drift_fence、
+docs_gen kitchen_sink_page_in_sync）经 master 检出复核 = 既有基线红，
+非本计划引入。未触 VM 文件/transpiler/book，cargo tv/tt/tb 免跑（门禁规则）。
+
+### 遗漏/延后/workaround 猎查
+
+- 无 silent deferral：T5 动词族提前入 T3、T7+T9 合并实施均已登记实施
+  定案；541 docs 提交经本 worktree 落枝系并行会话行为，与 master 同源
+  同内容，fold 无冲突，不属本计划足迹。
+- 无 TODO/FIXME/workaround 残留（新代码 grep 清零）。
+- 债务候选（已入 KNOWN-DEBT，均非阻塞）：①旧键只读回退保留一个版本
+  （D4 定案）；②shell.desktop.hidden/icons 不在 8 键范围（范围边界）；
+  ③实机齿轮交互余项；④daemon 直改重启生效（D1 语义）；⑤
+  HostCtx.settings_fields 死字段（下个清理批）。
+
+### 结论
+
+**全部验收标准通过（含机制级证据），无阻塞债务 → `status: reviewed`。**
+交接 `/auto-plan:merge`（fold + 归档 + 台账沉淀）。
 
 ## 待澄清事项
 
