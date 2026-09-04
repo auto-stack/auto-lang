@@ -21,6 +21,15 @@
 - AST 序列化三件套 `ToNode`/`ToAtom`/`AtomWriter` 覆盖全部 AST 类型（S 表达式文本）。
 - `.as` / `.to` 点属性已在 parser 实现（`Expr::Cast`/`Expr::To`，parser.rs:1979/2257），
   早于 docs/design/10 的"未实现"描述（见分歧记录）。
+- null 术语统一与生产者门控（plan-550，脚本模式 W0）：`nil` 拼写退役为
+  `null` 的 deprecated 别名（literal/atom 双臂发 W0005 DeprecatedFeature，
+  语义不变——运行期同落 PUSH_NIL/encode_null；CLI 直跑路径在
+  lib.rs `execute_autovm_with_path` 可见化 parser 警告，stderr 按名一次
+  性去重）；`#[script]` 文件级 pragma（annotation match `script` 臂登记
+  `parser.script_pragma` → `CompileSession.script_marked`，不挂声明不改
+  行为）；生产者门控 lint——无 pragma 文件含 `use.py`/null/nil 字面量
+  （`parser.saw_bare_null`，None/Some 不计入）→ stderr 迁移提示（.as 指
+  引，只警告不拒绝）。`.as` 扩展名与模式管线归 W1。
 
 ## 关键入口
 
