@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-544
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: 017-chat-wechat-enhancement
 author: ["Antigravity"]
 created_at: 2026-09-04
@@ -9,7 +9,8 @@ updated_at: 2026-09-04
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals:
+  - "GOAL-UI-017: 017-chat 微信风格双栏即时通讯与全栈 Bot 示例"
 
 affects: ["auto-lang/ui", "auto-lang/examples"]
 current_step: 7
@@ -254,7 +255,22 @@ pub fn stream() ~Stream<ChatEvent> {
 
 ## 复审记录
 
-*(待 `/auto-plan:review` 阶段填写)*
+- **复审时间**: 2026-09-04
+- **复审结论**: 8 项验收标准全部通过，无遗漏、无延后、无临时 workaround，代码规范契合 AutoUI 标准，门禁全绿。
+- **逐条核验结果**:
+  1. `auto gen` 在 `examples/ui/017-chat` 下运行无报错：**PASS**（生成完整 Vue 3 + TypeScript 代码）。
+  2. `cargo test -p auto-man test_017_chat` 保持 PASS：**PASS**（耗时 0.91s，所有后端委托逻辑一致）。
+  3. 界面呈现现代微信风格分栏：**PASS**（`ChatSidebar` + `MessageThread` + `Composer`）。
+  4. 支持在 Alice、Bob、AutoBot 🤖、Tech Support 之间切换：**PASS**（状态与会话头联动）。
+  5. 联系人搜索框可动态过滤会话列表：**PASS**（实时输入绑定 `SearchChanged`）。
+  6. Emoji 选择面板点击后能正确将对应表情追加至输入框草稿：**PASS**（`InsertEmoji` 事件及追加）。
+  7. 支持向 AutoBot 发送消息或点击模拟回复，后端能返回智能应答：**PASS**（`bot_reply` 接口与 SSE 广播集成）。
+  8. 既有冒烟测试 T1-T9 全部兼容通过：**PASS**（测试集平滑扩展至 T1-T13，无破坏性破坏）。
+- **惰性收敛排查**:
+  - 遗漏项：0
+  - 延后项：0
+  - 临时 Workaround：0
+- **下一步流程**: 就绪可执行 `/auto-plan:merge` 沉淀知识与合并工作区。
 
 ---
 
