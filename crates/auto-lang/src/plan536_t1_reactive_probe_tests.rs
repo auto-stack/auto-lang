@@ -506,6 +506,119 @@ mod plan536_t1_reactive_probe_tests {
         assert!(!in_overlay, "无 z 不得 hoist");
     }
 
+    // ── T10(D1 根修): 多浮层保留 + 无 z 偏移浮层的动态路径偏移消费 ──────
+
+    /// T10①: col 内多个 absolute(z) 子件必须**全部**进浮层(嵌套 Overlay,
+    /// 源序=栈序)。此前四处 hoist 臂只取 `.next()` 首个,其余 absolute
+    /// 子件已被滤出流内却未进任何浮层,整体丢弃(D1 次生缺陷面)。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t10_multiple_absolute_children_all_survive() {
+        let corpus = match locate_absolute_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T10: SKIPPED — absolute corpus not found");
+                return;
+            }
+        };
+        let dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_absolute component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+
+        let mut all = Vec::new();
+        collect_views(&view, &mut all);
+        for wanted in ["float-a", "float-b"] {
+            let hoisted = all.iter().any(|v| match v {
+                View::Overlay { content, .. } => matches!(
+                    content.as_ref(),
+                    View::Button { label, .. } if label == wanted
+                ),
+                _ => false,
+            });
+            assert!(hoisted, "浮层 {wanted} 必须保留在 Overlay content 侧(不得被 .next() 丢弃)");
+        }
+    }
+
+    /// T10②: 无 z 的 absolute+偏移子件(× V2 形态,musk 0515c8e 实录)——
+    /// builder 不 hoist(T6 负面语义保持),但渲染器动态路径的 abs 分区
+    /// 接盘且消费偏移(此前裸 Stack 落原点 = "× 落左上"根因);inset-0
+    /// 零偏移(ghost 叠加族)判 None 保持落原点满铺语义。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t10_noz_offset_floater_positioned_by_dynamic_path() {
+        use crate::ui::iced::renderer::{column_layer_partition, dynamic_abs_layer_position};
+
+        let corpus = match locate_absolute_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T10: SKIPPED — absolute corpus not found");
+                return;
+            }
+        };
+        let dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_absolute component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+
+        let mut all = Vec::new();
+        collect_views(&view, &mut all);
+        // builder 层: noz-x 不进任何 Overlay content
+        let in_overlay = all.iter().any(|v| match v {
+            View::Overlay { content, .. } => matches!(
+                content.as_ref(),
+                View::Button { label, .. } if label == "noz-x"
+            ),
+            _ => false,
+        });
+        assert!(!in_overlay, "无 z 浮层不得被 builder hoist(T6 语义)");
+
+        // noz-x 所在 col 的兄弟切片: 分区必须判它为浮层(纯 absolute 门槛)
+        fn find_parent_children<'a>(
+            v: &'a View<crate::ui::interpreter::DynamicMessage>,
+            out: &mut Vec<&'a [View<crate::ui::interpreter::DynamicMessage>]>,
+        ) {
+            match v {
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    out.push(children.as_slice());
+                    for c in children {
+                        find_parent_children(c, out);
+                    }
+                }
+                View::Overlay { base, content, .. } => {
+                    find_parent_children(base, out);
+                    find_parent_children(content, out);
+                }
+                _ => {}
+            }
+        }
+        let mut sibling_slices = Vec::new();
+        find_parent_children(&view, &mut sibling_slices);
+        let noz_partitioned = sibling_slices.iter().any(|slice| {
+            let (_, floating) = column_layer_partition(slice);
+            floating.iter().any(|&i| matches!(
+                &slice[i],
+                View::Button { label, .. } if label == "noz-x"
+            ))
+        });
+        assert!(noz_partitioned, "动态路径分区必须把无 z 偏移浮层(noz-x)判入 floating");
+
+        // 偏移消费判定: noz-x(right-[6px] top-2, 无 z)→ Some(right=6, top=8);
+        // layer-text(inset-0 全零偏移)→ None(落原点满铺语义保持)。
+        let noz = all.iter().find_map(|v| match v {
+            View::Button { label, .. } if label == "noz-x" => Some(v.clone()),
+            _ => None,
+        }).expect("noz-x in tree");
+        let pos = dynamic_abs_layer_position(&noz).expect("无 z 偏移浮层必须产出定位");
+        assert_eq!(pos.right, Some(6.0));
+        assert_eq!(pos.top, Some(8.0));
+
+        let ghost = all.iter().find(|v| matches!(v,
+            View::Text { content, .. } if content.contains("layer-text"))).expect("ghost in tree");
+        assert!(
+            dynamic_abs_layer_position(ghost).is_none(),
+            "inset-0 零偏移(ghost 叠加族)必须保持落原点(None)"
+        );
+    }
+
 
 fn locate_modal_corpus() -> Option<std::path::PathBuf> {
     let rel = "test/ui/plan536_modal/src/front/app.at";

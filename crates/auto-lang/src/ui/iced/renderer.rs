@@ -2582,6 +2582,31 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     iced::widget::column![top_space, row].width(iced::Length::Fill).into()
 }
 
+/// PLAN-536 T10(D1 根修): 动态路径 abs 拆分层的偏移消费判定。
+/// 渲染器 Column/Row 臂的 absolute 拆分(Plan 057 2.2 / PLAN-530 步骤3)门槛
+/// 是纯 `absolute` 类、落原点不消费偏移——与 builder hoist 臂(absolute+z,
+/// View::Overlay → build_floating_layer offset 感知)判定/语义分裂,musk
+/// 会话卡 ×(V2 改构丢 z-10)落 builder 门外被本路径接盘,"落左上+遮卡片"
+/// 实录。本判定:top/right/left 任一非零 → 用 build_floating_layer 同款
+/// spacer 几何定位;全零/无偏移(inset-0 ghost 叠加族)→ None=保持落原点
+/// 满铺语义不变。bottom 不参与(T6 边界:px 偏移模型不含 bottom,仅 bottom
+/// 非零时保持原点,不做 top 化错位)。pub(crate): plan536 探针单测直测。
+pub(crate) fn dynamic_abs_layer_position<M: Clone + std::fmt::Debug>(
+    view: &AbstractView<M>,
+) -> Option<crate::ui::view::OverlayPosition> {
+    let is = crate::ui::style::iced_adapter::IcedStyle::from_style(extract_view_style(view)?);
+    let pos = crate::ui::view::OverlayPosition {
+        top: is.top_offset,
+        right: is.right_offset,
+        bottom: is.bottom_offset,
+        left: is.left_offset,
+    };
+    let has_offset = pos.top.map_or(false, |v| v > 0.0)
+        || pos.right.map_or(false, |v| v > 0.0)
+        || pos.left.map_or(false, |v| v > 0.0);
+    has_offset.then_some(pos)
+}
+
 /// Plan 412 F2: per-cell metadata the grid builder needs but can't recover
 /// from an already-built `iced::Element`. Callers extract these from the cell
 /// `View`'s style before converting it: `col-span-N` → span, any `w-*` width
@@ -17399,7 +17424,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
 /// ——widgets-gallery 首页 <768 整页 ×2 叠印（W10/W11 同族）根因。
 /// （[`is_elevated_view`] 的 z-index 臂与 [`extract_max_z_index`] 随该路径
 /// 一并退役——仅 absolute 语义由本分区直接承载。）
-fn column_layer_partition<M: Clone + std::fmt::Debug>(
+/// pub(crate): plan536 探针单测直测(× 无 z 落本分区)。
+pub(crate) fn column_layer_partition<M: Clone + std::fmt::Debug>(
     children: &[AbstractView<M>],
 ) -> (Vec<usize>, Vec<usize>) {
     let mut flow = Vec::new();
@@ -17805,6 +17831,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     path.push(i);
                     let abs_el = render_dynamic_view(children[i].clone(), debug_ctx, path);
                     path.pop();
+                    // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上根修);
+                    // 零偏移(inset-0 ghost 族)保持落原点。
+                    let abs_el = match dynamic_abs_layer_position(&children[i]) {
+                        Some(pos) => build_floating_layer(abs_el, pos),
+                        None => abs_el,
+                    };
                     stk = stk.push(iced::widget::opaque(abs_el));
                 }
 
@@ -17875,12 +17907,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // normal 子元素走 build_row 作 base;absolute 子元素叠在 base 之上
             // (stack 尺寸由 base 决定,overlay 落原点,接近 CSS absolute 语义)。
             let mut normal: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
-            let mut absolute: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
+            let mut absolute: Vec<(usize, Option<crate::ui::view::OverlayPosition>, AbstractView<IcedMessage>)> = Vec::new();
             for (i, child) in children.into_iter().enumerate() {
                 let is_abs = extract_view_style(&child)
                     .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
                     .unwrap_or(false);
-                if is_abs { absolute.push((i, child)); } else { normal.push((i, child)); }
+                if is_abs {
+                    // PLAN-536 T10: 偏移判定在 move 前取好(child 随分区 move)。
+                    let pos = dynamic_abs_layer_position(&child);
+                    absolute.push((i, pos, child));
+                } else {
+                    normal.push((i, child));
+                }
             }
             let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(normal.len());
             for (i, child) in normal.into_iter() {
@@ -17894,12 +17932,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 base
             } else {
                 let mut stk = iced::widget::Stack::new().push(base);
-                for (i, child) in absolute.into_iter() {
+                for (i, pos, child) in absolute.into_iter() {
                     // PLAN-051 P2: 空层不渲染不入栈(同 Column 站点)。
                     if is_empty_stack_layer(&child) { continue; }
                     path.push(i);
                     let abs_el = render_dynamic_view(child, debug_ctx, path);
                     path.pop();
+                    // PLAN-536 T10: 同 Column 站点——非零偏移消费 offset,
+                    // 零偏移(inset-0 ghost 族)保持落原点。
+                    let abs_el = match pos {
+                        Some(pos) => build_floating_layer(abs_el, pos),
+                        None => abs_el,
+                    };
                     stk = stk.push(iced::widget::opaque(abs_el));
                 }
                 let clip = style.as_ref()

@@ -9,6 +9,143 @@ title: 核心组件参考(Core Components)
 
 ## 内置组件(builtin_widget)
 
+### `alert_dialog`
+
+`builtin_widget` · `alert_dialog` · web: `component` · iced: `unknown` · category: `overlay`
+
+[demo →](/examples/widgets-gallery/alertdialog)
+
+Alert dialog container
+
+别名:`AlertDialog` `alert-dialog` `alertdialog`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `open` | `state_ref` | — | Open state binding |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+子件:`alert_dialog_action` `alert_dialog_cancel` `alert_dialog_content` `alert_dialog_description` `alert_dialog_footer` `alert_dialog_header` `alert_dialog_title` `alert_dialog_trigger`
+
+---
+
+### `alert_dialog_action`
+
+`builtin_widget` · `alert_dialog_action` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog action button
+
+别名:`alert-dialog-action` `alertdialog-action` `alertdialogaction`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Action button text |
+| `onclick` | `msg_ref` | — | Click handler |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `alert_dialog_cancel`
+
+`builtin_widget` · `alert_dialog_cancel` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog cancel button
+
+别名:`alert-dialog-cancel` `alertdialog-cancel` `alertdialogcancel`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Cancel button text |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `alert_dialog_content`
+
+`builtin_widget` · `alert_dialog_content` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog content
+
+别名:`alert-dialog-content` `alertdialog-content` `alertdialogcontent`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `alert_dialog_description`
+
+`builtin_widget` · `alert_dialog_description` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog description
+
+别名:`alert-dialog-description` `alertdialog-description` `alertdialogdescription`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Description text |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `alert_dialog_footer`
+
+`builtin_widget` · `alert_dialog_footer` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog footer
+
+别名:`alert-dialog-footer` `alertdialog-footer` `alertdialogfooter`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `alert_dialog_header`
+
+`builtin_widget` · `alert_dialog_header` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog header
+
+别名:`alert-dialog-header` `alertdialog-header` `alertdialogheader`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `alert_dialog_title`
+
+`builtin_widget` · `alert_dialog_title` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog title
+
+别名:`alert-dialog-title` `alertdialog-title` `alertdialogtitle`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Title text |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `alert_dialog_trigger`
+
+`builtin_widget` · `alert_dialog_trigger` · web: `component` · iced: `unknown` · category: `overlay`
+
+Alert dialog trigger
+
+别名:`alert-dialog-trigger` `alertdialog-trigger` `alertdialogtrigger`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `as_child` | `bool` | false | Use child as trigger |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `article`
 
 `builtin_widget` · `article` · web: `native` · iced: `unknown` · category: `content`
@@ -44,13 +181,17 @@ AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→auto
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `content` | `union: string|state_ref` | — | AutoDown source (literal or state-bound) |
-| `final` | `union: bool|state_ref` | true | Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — emitted as :streaming=!final; an explicit streaming prop wins when both are set |
-| `streaming` | `union: bool|state_ref` | false | Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040 契约扩展) |
-| `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id (vue arm placeholderBlockId; VM arm consumed since PLAN-044 — block-${index} top-level id, ghost box before the hit block) |
-| `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px (vue arm placeholderHeight; VM arm consumed since PLAN-044) |
-| `scroll_sync` | `union: bool|state_ref` | true | Pane-level scroll sync (vue arm scrollSync; VM arm consumed since PLAN-043 — wraps in View::Scrollable, see EDITOR-CONTRACT §11) |
+| `final` | `union: bool|state_ref` | true | Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — an explicit streaming prop wins when both are set |
+| `streaming` | `union: bool|state_ref` | false | Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040) |
+| `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043) |
+| `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043) |
+| `scroll_sync` | `union: bool|state_ref` | true | Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042) |
 | `table_col_widths` | `state_ref` | — | Table column widths state: Map<tableKey str, List<px float>> keyed 't{blockHash}' (VM arm consumed since PLAN-045 — header-edge drag lands per-table key, persists across re-renders; vue arm ignores — no engine consumer) |
+| `dark_mode` | `union: bool|state_ref` | false | Theme declaration entry (PLAN-051): palette档 for the document face (vue arm darkMode → .is-dark; VM consumes the same-named STATE via the Plan 370 D-GAP global sync, prop itself inert on the VM arm) |
+| `accent` | `union: string|state_ref` | indigo | Accent palette name (PLAN-051): indigo|coral|ocean|sage|amber (vue arm data-accent; VM document-accent consumption is a registered PARITY exemption) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
+
+子件:`autodown_editor`
 
 ---
 
@@ -70,6 +211,8 @@ AutoDown block editor (plan 019 Phase 3 shell; @autodown/engine AutoDownEditor o
 | `final` | `union: bool|state_ref` | true | Streaming marker (editor treats document as final) |
 | `can_edit` | `bool` | true | Whether the editor is interactive (vue arm: canEdit) |
 | `show_actions` | `bool` | true | Show editor action bar (vue arm: showActions) |
+| `dark_mode` | `union: bool|state_ref` | false | Theme declaration entry (PLAN-051): palette档 for the editor face (vue arm darkMode → .is-dark; VM consumes the same-named STATE via the Plan 370 D-GAP global sync, prop itself inert on the VM arm) |
+| `accent` | `union: string|state_ref` | indigo | Accent palette name (PLAN-051): indigo|coral|ocean|sage|amber (vue arm data-accent; VM document-accent consumption is a registered PARITY exemption) |
 | `oninput` | `msg_ref` | — | Message on document edit (payload via autodown_editor_text(key) on VM) |
 | `onchange` | `msg_ref` | — | Alias of oninput |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
@@ -124,6 +267,16 @@ Badge for status or labels
 
 ---
 
+### `btn`
+
+`builtin_widget` · `btn` · web: `none` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+_props 待声明_
+
+---
+
 ### `button`
 
 `builtin_widget` · `button` · web: `component` · iced: `full` · category: `content`
@@ -132,7 +285,7 @@ Badge for status or labels
 
 A clickable button element
 
-别名:`Button` `btn`
+别名:`Button`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -140,7 +293,7 @@ A clickable button element
 | `onclick` | `msg_ref` | — | Message to send when clicked |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 | `disabled` | `union: bool|state_ref` | false | Whether button is disabled |
-| `variant` | `one_of: default|secondary|destructive|outline|ghost|link` | default | Visual style variant |
+| `variant` | `one_of: default|secondary|destructive|outline|ghost|link|submit` | default | Visual style variant; \\ |
 | `size` | `one_of: sm|default|lg|icon` | default | Button size |
 | `icon` | `string` | — | Icon name shown alongside the label |
 
@@ -227,13 +380,23 @@ Vertical layout container
 
 Generic container with optional constraints
 
-别名:`Container` `div`
+别名:`Container`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 | `max_width` | `int` | — | Maximum width in pixels |
 | `padding` | `union: int|string` | — | Inner padding |
+
+---
+
+### `div`
+
+`builtin_widget` · `div` · web: `native` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+_props 待声明_
 
 ---
 
@@ -249,6 +412,38 @@ Horizontal or vertical divider line
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 | `direction` | `one_of: horizontal|vertical` | horizontal | Divider direction |
+
+---
+
+### `dropdown-menu`
+
+`builtin_widget` · `dropdown-menu` · web: `component` · iced: `unknown` · category: `content`
+
+[demo →](/examples/widgets-gallery/dropdownmenu)
+
+P1 extracted from production tables; props TBD
+
+别名:`DropdownMenu` `dropdown_menu` `dropdownmenu`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Menu item text |
+| `disabled` | `one_of: true|false` | false | Disables the menu item |
+| `shortcut` | `string` | — | Keyboard shortcut hint |
+
+子件:`dropdown-menu-item` `dropdownmenucontent` `dropdownmenutrigger`
+
+---
+
+### `dropdown-menu-label`
+
+`builtin_widget` · `dropdown-menu-label` · web: `none` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`dropdown_menu_label` `dropdownmenulabel`
+
+_props 待声明_
 
 ---
 
@@ -547,9 +742,28 @@ Menubar container
 
 `builtin_widget` · `mouse-area` · web: `component` · iced: `full` · category: `overlay`
 
-Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick (desktop icon double-click). Plan 498 M0: onclick (iced on_press / vue @click; chart legend click-toggle, diagram select shared prerequisite).
+Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite). Plan 499: onmousemove -> logical-coordinate move stream (engine-side screen->logical conversion + <=30Hz throttle on VM arm; handler receives (x, y) float args; coords prop declares the logical extent).
 
-_props 待声明_
+别名:`mousearea`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `coords` | `string` | — | Logical extent for onmousemove coordinates, \\ |
+
+---
+
+### `native_button`
+
+`builtin_widget` · `native_button` · web: `native` · iced: `unknown` · category: `content`
+
+Native HTML button escape (bypasses button-to-Button mapping)
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Button label text |
+| `onclick` | `msg_ref` | — | Message to send when clicked |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `disabled` | `bool` | false | Whether button is disabled |
 
 ---
 
@@ -662,6 +876,20 @@ Anchored popover (overlay)
 | `class` | `union: string|class_binding` | — | Panel chrome classes (bg/border/shadow land on the panel) |
 
 子件:`popover_content` `popover_trigger`
+
+---
+
+### `pre`
+
+`builtin_widget` · `pre` · web: `native` · iced: `unknown` · category: `typography`
+
+Preformatted text block
+
+别名:`Pre`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -937,17 +1165,17 @@ _props 待声明_
 
 ### `window_thumbnail`
 
-`builtin_widget` · `window_thumbnail` · web: `component` · iced: `full` · category: `media`
+`builtin_widget` · `window_thumbnail` · web: `component` · iced: `full` · category: `display`
 
-Per-window live thumbnail (Plan 497 S3). Renders host-side downsampled snapshot pixels; data flows renderer-side (never through VM state); miss -> async capture request + fallback icon.
+Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)
 
-别名:`WindowThumbnail` `windowthumbnail` `window-thumbnail`
+别名:`WindowThumbnail` `window-thumbnail` `windowthumbnail`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `wid` | `expr` | — | Target window id (string; host snapshot-cache key — App wid numeric, native N<slot> falls back) |
-| `fallback_icon` | `string` | app-window | Lucide icon rendered while no fresh snapshot exists (Plan 497) |
-| `class` | `union: string|class_binding` | — | Chrome classes (w-/h- size, border, rounded land on the thumbnail frame) |
+| `wid` | `string` | — | Target window id (host snapshot-cache key; native N<slot> falls back) |
+| `fallback_icon` | `string` | app-window | Lucide icon while no fresh snapshot (Plan 497) |
+| `class` | `union: string|class_binding` | — | Chrome classes (w-/h-/border/rounded land on the frame) |
 
 ---
 
@@ -1223,21 +1451,6 @@ _props 待声明_
 
 ---
 
-### `native_button`
-
-`native_html` · `native_button` · web: `native` · iced: `none` · category: `content`
-
-Native HTML button escape (bypasses button-to-Button mapping)
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `text` | `string` | — | Button label text |
-| `onclick` | `msg_ref` | — | Message to send when clicked |
-| `class` | `union: string|class_binding` | — | CSS class(es) |
-| `disabled` | `bool` | false | Whether button is disabled |
-
----
-
 ### `ol`
 
 `native_html` · `ol` · web: `native` · iced: `none` · category: `list`
@@ -1304,20 +1517,6 @@ _props 待声明_
 P1 extracted from production tables; props TBD
 
 _props 待声明_
-
----
-
-### `pre`
-
-`native_html` · `pre` · web: `native` · iced: `none` · category: `typography`
-
-Preformatted text block
-
-别名:`Pre`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 

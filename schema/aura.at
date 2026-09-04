@@ -26,6 +26,140 @@
 
 // ============ tier: builtin_widget ============
 
+element alert_dialog {
+    tag: "alert_dialog"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["AlertDialog", "alert-dialog", "alertdialog"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialog", import: "@/components/ui/alert-dialog" }
+    sub_widgets: ["alert_dialog_action", "alert_dialog_cancel", "alert_dialog_content", "alert_dialog_description", "alert_dialog_footer", "alert_dialog_header", "alert_dialog_title", "alert_dialog_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog container"
+}
+
+element alert_dialog_action {
+    tag: "alert_dialog_action"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-action", "alertdialog-action", "alertdialogaction"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogAction", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "text", type: "string", description: "Action button text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog action button"
+}
+
+element alert_dialog_cancel {
+    tag: "alert_dialog_cancel"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-cancel", "alertdialog-cancel", "alertdialogcancel"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogCancel", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "text", type: "string", description: "Cancel button text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog cancel button"
+}
+
+element alert_dialog_content {
+    tag: "alert_dialog_content"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-content", "alertdialog-content", "alertdialogcontent"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogContent", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog content"
+}
+
+element alert_dialog_description {
+    tag: "alert_dialog_description"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-description", "alertdialog-description", "alertdialogdescription"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogDescription", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "text", type: "string", description: "Description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog description"
+}
+
+element alert_dialog_footer {
+    tag: "alert_dialog_footer"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-footer", "alertdialog-footer", "alertdialogfooter"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogFooter", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog footer"
+}
+
+element alert_dialog_header {
+    tag: "alert_dialog_header"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-header", "alertdialog-header", "alertdialogheader"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogHeader", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog header"
+}
+
+element alert_dialog_title {
+    tag: "alert_dialog_title"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-title", "alertdialog-title", "alertdialogtitle"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogTitle", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "text", type: "string", description: "Title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog title"
+}
+
+element alert_dialog_trigger {
+    tag: "alert_dialog_trigger"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["alert-dialog-trigger", "alertdialog-trigger", "alertdialogtrigger"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AlertDialogTrigger", import: "@/components/ui/alert-dialog" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog trigger"
+}
+
 element article {
     tag: "article"
     category: "unknown"
@@ -55,14 +189,17 @@ element autodown {
     aliases: ["markdown", "markdown_editor"]
     backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "StreamingRenderer", import: "@autodown/engine", npm: "@autodown/engine@^0.4.0" }
+    sub_widgets: ["autodown_editor"]
     props: [
         { name: "content", type: "union:string,state_ref", description: "AutoDown source (literal or state-bound)" }
-        { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — emitted as :streaming=!final; an explicit streaming prop wins when both are set" }
-        { name: "streaming", type: "union:bool,state_ref", default: "false", description: "Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040 契约扩展)" }
-        { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id (vue arm placeholderBlockId; VM arm consumed since PLAN-044 — block-${index} top-level id, ghost box before the hit block)" }
-        { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px (vue arm placeholderHeight; VM arm consumed since PLAN-044)" }
-        { name: "scroll_sync", type: "union:bool,state_ref", default: "true", description: "Pane-level scroll sync (vue arm scrollSync; VM arm consumed since PLAN-043 — wraps in View::Scrollable, see EDITOR-CONTRACT §11)" }
+        { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker: false = still receiving chunks (dangling-marker stripping). Inverse of streaming — an explicit streaming prop wins when both are set" }
+        { name: "streaming", type: "union:bool,state_ref", default: "false", description: "Streaming mode (vue arm StreamingRenderer): true = still receiving chunks + ghost placeholder. Inverse of final (plan 040)" }
+        { name: "placeholder_block_id", type: "union:string,state_ref", description: "Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043)" }
+        { name: "placeholder_height", type: "union:float,state_ref", description: "Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043)" }
+        { name: "scroll_sync", type: "union:bool,state_ref", default: "true", description: "Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042)" }
         { name: "table_col_widths", type: "state_ref", description: "Table column widths state: Map<tableKey str, List<px float>> keyed 't{blockHash}' (VM arm consumed since PLAN-045 — header-edge drag lands per-table key, persists across re-renders; vue arm ignores — no engine consumer)" }
+        { name: "dark_mode", type: "union:bool,state_ref", default: "false", description: "Theme declaration entry (PLAN-051): palette档 for the document face (vue arm darkMode → .is-dark; VM consumes the same-named STATE via the Plan 370 D-GAP global sync, prop itself inert on the VM arm)" }
+        { name: "accent", type: "union:string,state_ref", default: "indigo", description: "Accent palette name (PLAN-051): indigo|coral|ocean|sage|amber (vue arm data-accent; VM document-accent consumption is a registered PARITY exemption)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: false
@@ -83,6 +220,8 @@ element autodown_editor {
         { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker (editor treats document as final)" }
         { name: "can_edit", type: "bool", default: "true", description: "Whether the editor is interactive (vue arm: canEdit)" }
         { name: "show_actions", type: "bool", default: "true", description: "Show editor action bar (vue arm: showActions)" }
+        { name: "dark_mode", type: "union:bool,state_ref", default: "false", description: "Theme declaration entry (PLAN-051): palette档 for the editor face (vue arm darkMode → .is-dark; VM consumes the same-named STATE via the Plan 370 D-GAP global sync, prop itself inert on the VM arm)" }
+        { name: "accent", type: "union:string,state_ref", default: "indigo", description: "Accent palette name (PLAN-051): indigo|coral|ocean|sage|amber (vue arm data-accent; VM document-accent consumption is a registered PARITY exemption)" }
         { name: "oninput", type: "msg_ref", description: "Message on document edit (payload via autodown_editor_text(key) on VM)" }
         { name: "onchange", type: "msg_ref", description: "Alias of oninput" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -134,11 +273,21 @@ element badge {
     description: "Badge for status or labels"
 }
 
+element btn {
+    tag: "btn"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element button {
     tag: "button"
     category: "content"
     tier: "builtin_widget"
-    aliases: ["Button", "btn"]
+    aliases: ["Button"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "Button", import: "@/components/ui/button" }
     props: [
@@ -146,7 +295,7 @@ element button {
         { name: "onclick", type: "msg_ref", description: "Message to send when clicked" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "disabled", type: "union:bool,state_ref", default: "false", description: "Whether button is disabled" }
-        { name: "variant", type: "one_of:default,secondary,destructive,outline,ghost,link", default: "default", description: "Visual style variant" }
+        { name: "variant", type: "one_of:default,secondary,destructive,outline,ghost,link,submit", default: "default", description: "Visual style variant; \\" }
         { name: "size", type: "one_of:sm,default,lg,icon", default: "default", description: "Button size" }
         { name: "icon", type: "string", description: "Icon name shown alongside the label" }
     ]
@@ -225,7 +374,7 @@ element container {
     tag: "container"
     category: "layout"
     tier: "builtin_widget"
-    aliases: ["Container", "div"]
+    aliases: ["Container"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -234,6 +383,16 @@ element container {
     ]
     allows_children: true
     description: "Generic container with optional constraints"
+}
+
+element div {
+    tag: "div"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element divider {
@@ -248,6 +407,34 @@ element divider {
     ]
     allows_children: false
     description: "Horizontal or vertical divider line"
+}
+
+element dropdown-menu {
+    tag: "dropdown-menu"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["DropdownMenu", "dropdown_menu", "dropdownmenu"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DropdownMenu", import: "@/components/ui/dropdown-menu" }
+    sub_widgets: ["dropdown-menu-item", "dropdownmenucontent", "dropdownmenutrigger"]
+    props: [
+        { name: "text", type: "string", description: "Menu item text" }
+        { name: "disabled", type: "one_of:true,false", default: "false", description: "Disables the menu item" }
+        { name: "shortcut", type: "string", description: "Keyboard shortcut hint" }
+    ]
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element dropdown-menu-label {
+    tag: "dropdown-menu-label"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["dropdown_menu_label", "dropdownmenulabel"]
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element em {
@@ -526,13 +713,29 @@ element mouse-area {
     tag: "mouse-area"
     category: "overlay"
     tier: "builtin_widget"
-    aliases: []
+    aliases: ["mousearea"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "div" }
-    events: ["onmouseenter", "onmouseleave", "ondblclick", "onclick"]
-    props: []
+    props: [
+        { name: "coords", type: "string", description: "Logical extent for onmousemove coordinates, \\" }
+    ]
     allows_children: true
-    description: "Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick (desktop icon double-click). Plan 498 M0: onclick (iced on_press / vue @click; chart legend click-toggle, diagram select shared prerequisite)."
+    description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite). Plan 499: onmousemove -> logical-coordinate move stream (engine-side screen->logical conversion + <=30Hz throttle on VM arm; handler receives (x, y) float args; coords prop declares the logical extent)."
+}
+
+element native_button {
+    tag: "native_button"
+    category: "content"
+    tier: "builtin_widget"
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Button label text" }
+        { name: "onclick", type: "msg_ref", description: "Message to send when clicked" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "disabled", type: "bool", default: "false", description: "Whether button is disabled" }
+    ]
+    allows_children: true
+    description: "Native HTML button escape (bypasses button-to-Button mapping)"
 }
 
 element nav {
@@ -636,6 +839,19 @@ element popover {
     ]
     allows_children: true
     description: "Anchored popover (overlay)"
+}
+
+element pre {
+    tag: "pre"
+    category: "typography"
+    tier: "builtin_widget"
+    aliases: ["Pre"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Preformatted text block"
 }
 
 element progress {
@@ -889,6 +1105,22 @@ element toolbar {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element window_thumbnail {
+    tag: "window_thumbnail"
+    category: "display"
+    tier: "builtin_widget"
+    aliases: ["WindowThumbnail", "window-thumbnail", "windowthumbnail"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "WindowThumbnail", import: "@/wm/WindowThumbnail" }
+    props: [
+        { name: "wid", type: "string", description: "Target window id (host snapshot-cache key; native N<slot> falls back)" }
+        { name: "fallback_icon", type: "string", default: "app-window", description: "Lucide icon while no fresh snapshot (Plan 497)" }
+        { name: "class", type: "union:string,class_binding", description: "Chrome classes (w-/h-/border/rounded land on the frame)" }
+    ]
+    allows_children: false
+    description: "Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)"
 }
 
 
@@ -1155,21 +1387,6 @@ element mask {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element native_button {
-    tag: "native_button"
-    category: "content"
-    tier: "native_html"
-    backends: { web: "native", iced: "none", gpui: "unknown" }
-    props: [
-        { name: "text", type: "string", description: "Button label text" }
-        { name: "onclick", type: "msg_ref", description: "Message to send when clicked" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-        { name: "disabled", type: "bool", default: "false", description: "Whether button is disabled" }
-    ]
-    allows_children: true
-    description: "Native HTML button escape (bypasses button-to-Button mapping)"
-}
-
 element ol {
     tag: "ol"
     category: "list"
@@ -1235,19 +1452,6 @@ element polyline {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element pre {
-    tag: "pre"
-    category: "typography"
-    tier: "native_html"
-    aliases: ["Pre"]
-    backends: { web: "native", iced: "none", gpui: "unknown" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Preformatted text block"
 }
 
 element previewcard {
@@ -1465,8 +1669,58 @@ element video {
 
 // ============ tier: unclassified ============
 
+element AnimDnTick {
+    tag: "AnimDnTick"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element AnimLnTick {
+    tag: "AnimLnTick"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
 element Change {
     tag: "Change"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element SettingsPanel {
+    tag: "SettingsPanel"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element area-chart {
+    tag: "area-chart"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element bar-chart {
+    tag: "bar-chart"
     category: "unknown"
     tier: "unclassified"
     backends: { web: "none", iced: "none", gpui: "unknown" }
@@ -1526,6 +1780,16 @@ element details {
     description: "AutoDown collapsible panel (registry Details, `:::details Summary`)"
 }
 
+element donut-chart {
+    tag: "donut-chart"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
 element dyn {
     tag: "dyn"
     category: "content"
@@ -1547,6 +1811,16 @@ element embed_block {
     ]
     allows_children: false
     description: "AutoDown block-reference embed panel (registry Embed)"
+}
+
+element flow-diagram {
+    tag: "flow-diagram"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element frame {
@@ -1572,6 +1846,16 @@ element heading {
     ]
     allows_children: false
     description: "AutoDown heading panel (registry Heading, level prop carries H1..H6)"
+}
+
+element line-chart {
+    tag: "line-chart"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element math_block {
@@ -1715,6 +1999,16 @@ element text_input {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element timer {
+    tag: "timer"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
 
 // ============ tier: web_component ============
 
@@ -1825,140 +2119,6 @@ element alert {
     ]
     allows_children: true
     description: "Alert message box"
-}
-
-element alert_dialog {
-    tag: "alert_dialog"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["AlertDialog", "alert-dialog", "alertdialog"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialog", import: "@/components/ui/alert-dialog" }
-    sub_widgets: ["alert_dialog_action", "alert_dialog_cancel", "alert_dialog_content", "alert_dialog_description", "alert_dialog_footer", "alert_dialog_header", "alert_dialog_title", "alert_dialog_trigger"]
-    props: [
-        { name: "open", type: "state_ref", description: "Open state binding" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog container"
-}
-
-element alert_dialog_action {
-    tag: "alert_dialog_action"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogaction"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogAction", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "text", type: "string", description: "Action button text" }
-        { name: "onclick", type: "msg_ref", description: "Click handler" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog action button"
-}
-
-element alert_dialog_cancel {
-    tag: "alert_dialog_cancel"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogcancel"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogCancel", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "text", type: "string", description: "Cancel button text" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog cancel button"
-}
-
-element alert_dialog_content {
-    tag: "alert_dialog_content"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogcontent"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogContent", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog content"
-}
-
-element alert_dialog_description {
-    tag: "alert_dialog_description"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogdescription"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogDescription", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "text", type: "string", description: "Description text" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog description"
-}
-
-element alert_dialog_footer {
-    tag: "alert_dialog_footer"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogfooter"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogFooter", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog footer"
-}
-
-element alert_dialog_header {
-    tag: "alert_dialog_header"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogheader"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogHeader", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog header"
-}
-
-element alert_dialog_title {
-    tag: "alert_dialog_title"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogtitle"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogTitle", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "text", type: "string", description: "Title text" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog title"
-}
-
-element alert_dialog_trigger {
-    tag: "alert_dialog_trigger"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["alertdialogtrigger"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "AlertDialogTrigger", import: "@/components/ui/alert-dialog" }
-    props: [
-        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Alert dialog trigger"
 }
 
 element alertdescription {
@@ -2857,9 +3017,9 @@ element dialog {
     category: "unknown"
     tier: "web_component"
     aliases: ["Dialog"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Dialog", import: "@/components/ui/dialog" }
-    sub_widgets: ["dialogclose", "dialogcontent", "dialogdescription", "dialogfooter", "dialogheader", "dialogtitle", "dialogtrigger"]
+    sub_widgets: ["dialog-close", "dialog-content", "dialog-description", "dialog-footer", "dialog-header", "dialog-title", "dialog-trigger"]
     props: [
         { name: "open", type: "one_of:true,false", default: "false", description: "Controls dialog visibility" }
         { name: "title", type: "string", description: "Dialog title" }
@@ -2869,77 +3029,84 @@ element dialog {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element dialogclose {
-    tag: "dialogclose"
+element dialog-close {
+    tag: "dialog-close"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    aliases: ["dialog_close", "dialogclose"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "DialogClose", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
 
-element dialogcontent {
-    tag: "dialogcontent"
+element dialog-content {
+    tag: "dialog-content"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    aliases: ["dialog_content", "dialogcontent"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "DialogContent", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
 
-element dialogdescription {
-    tag: "dialogdescription"
+element dialog-description {
+    tag: "dialog-description"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    aliases: ["dialog_description", "dialogdescription"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "DialogDescription", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
 
-element dialogfooter {
-    tag: "dialogfooter"
+element dialog-footer {
+    tag: "dialog-footer"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    aliases: ["dialog_footer", "dialogfooter"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "DialogFooter", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
 
-element dialogheader {
-    tag: "dialogheader"
+element dialog-header {
+    tag: "dialog-header"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    aliases: ["dialog_header", "dialogheader"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "DialogHeader", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
 
-element dialogtitle {
-    tag: "dialogtitle"
+element dialog-title {
+    tag: "dialog-title"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    aliases: ["dialog_title", "dialogtitle"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "DialogTitle", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
 
-element dialogtrigger {
-    tag: "dialogtrigger"
+element dialog-trigger {
+    tag: "dialog-trigger"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    aliases: ["dialog_trigger", "dialogtrigger"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "DialogTrigger", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
@@ -3076,19 +3243,14 @@ element dropdown {
     description: "Dropdown menu container"
 }
 
-element dropdown-menu {
-    tag: "dropdown-menu"
+element dropdown-menu-item {
+    tag: "dropdown-menu-item"
     category: "unknown"
     tier: "web_component"
-    aliases: ["DropdownMenu", "dropdownmenu"]
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "DropdownMenu", import: "@/components/ui/dropdown-menu" }
-    sub_widgets: ["dropdownmenucontent", "dropdownmenuitem", "dropdownmenutrigger"]
-    props: [
-        { name: "text", type: "string", description: "Menu item text" }
-        { name: "disabled", type: "one_of:true,false", default: "false", description: "Disables the menu item" }
-        { name: "shortcut", type: "string", description: "Keyboard shortcut hint" }
-    ]
+    aliases: ["dropdown_menu_item", "dropdownmenuitem"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DropdownMenuItem", import: "@/components/ui/dropdown-menu" }
+    props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -3097,17 +3259,18 @@ element dropdown-menu-separator {
     tag: "dropdown-menu-separator"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "none", iced: "native", gpui: "unknown" }
+    aliases: ["dropdown_menu_separator", "dropdownmenuseparator"]
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element dropdown_content {
     tag: "dropdown_content"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "native", gpui: "unknown" }
+    backends: { web: "none", iced: "none", gpui: "unknown" }
     props: [
         { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position side" }
         { name: "align", type: "one_of:start,center,end", default: "center", description: "Content alignment" }
@@ -3122,7 +3285,7 @@ element dropdown_item {
     category: "navigation"
     tier: "web_component"
     aliases: ["DropdownItem", "dropdown-item"]
-    backends: { web: "none", iced: "native", gpui: "unknown" }
+    backends: { web: "none", iced: "none", gpui: "unknown" }
     props: [
         { name: "value", type: "string", description: "Item value" }
         { name: "text", type: "string", description: "Item text" }
@@ -3138,7 +3301,7 @@ element dropdown_label {
     tag: "dropdown_label"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "native", gpui: "unknown" }
+    backends: { web: "none", iced: "none", gpui: "unknown" }
     props: [
         { name: "text", type: "string", description: "Label text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3151,7 +3314,7 @@ element dropdown_separator {
     tag: "dropdown_separator"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "native", gpui: "unknown" }
+    backends: { web: "none", iced: "none", gpui: "unknown" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3163,7 +3326,7 @@ element dropdown_trigger {
     tag: "dropdown_trigger"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "native", gpui: "unknown" }
+    backends: { web: "none", iced: "none", gpui: "unknown" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3176,19 +3339,8 @@ element dropdownmenucontent {
     tag: "dropdownmenucontent"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DropdownMenuContent", import: "@/components/ui/dropdown-menu" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element dropdownmenuitem {
-    tag: "dropdownmenuitem"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
-    vue: { component: "DropdownMenuItem", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3198,7 +3350,7 @@ element dropdownmenutrigger {
     tag: "dropdownmenutrigger"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "native", gpui: "unknown" }
+    backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DropdownMenuTrigger", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
@@ -4980,8 +5132,9 @@ element toggle_group {
     category: "form"
     tier: "web_component"
     aliases: ["ToggleGroup", "toggle-group", "togglegroup"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "ToggleGroup", import: "@/components/ui/toggle-group" }
+    sub_widgets: ["toggle_group_item"]
     props: [
         { name: "value", type: "state_ref", description: "Selected value binding" }
         { name: "type", type: "one_of:single,multiple", default: "single", description: "Selection type" }
@@ -4999,7 +5152,7 @@ element toggle_group_item {
     category: "form"
     tier: "web_component"
     aliases: ["ToggleGroupItem", "toggle-group-item", "togglegroup-item", "togglegroupitem"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "ToggleGroupItem", import: "@/components/ui/toggle-group" }
     props: [
         { name: "value", type: "string", required: true, description: "Item value" }
@@ -5059,22 +5212,6 @@ element tooltiptrigger {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element window_thumbnail {
-    tag: "window_thumbnail"
-    category: "media"
-    tier: "builtin_widget"
-    aliases: ["WindowThumbnail", "windowthumbnail", "window-thumbnail"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "WindowThumbnail", import: "@/wm/WindowThumbnail" }
-    props: [
-        { name: "wid", type: "expr", description: "Target window id (string; host snapshot-cache key — App wid numeric, native N<slot> falls back)" }
-        { name: "fallback_icon", type: "string", default: "app-window", description: "Lucide icon rendered while no fresh snapshot exists (Plan 497)" }
-        { name: "class", type: "union:string,class_binding", description: "Chrome classes (w-/h- size, border, rounded land on the thumbnail frame)" }
-    ]
-    allows_children: false
-    description: "Per-window live thumbnail (Plan 497 S3). Renders host-side downsampled snapshot pixels; data flows renderer-side (never through VM state); miss -> async capture request + fallback icon."
-}
-
 element virtual_window {
     tag: "virtual_window"
     category: "unknown"
@@ -5082,9 +5219,8 @@ element virtual_window {
     aliases: ["VirtualWindow", "virtualwindow"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "VirtualWindow", import: "@/wm/VirtualWindow" }
-    events: ["on_native_drop", "on_native_paste", "on_dnd_finished"]
     props: []
     allows_children: true
-    description: "Plan 465 shell leaf; Plan 488 native interop event surface - on_native_drop(OLE drop payload record), on_native_paste(Ctrl+V clipboard record), on_dnd_finished(drag-out effect). Host-injected (renderer), no widget-level dispatch."
+    description: "P1 extracted from production tables; props TBD"
 }
 
