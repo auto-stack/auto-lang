@@ -1545,7 +1545,10 @@ impl<'a> AuraViewBuilder<'a> {
             // Leaf/atom widgets with no AuraNode children — fall back to the
             // untracked converter. They have no nested text to probe (Task 9
             // scope is text interpolation only).
-            "button" | "btn" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            // native_button：vue 侧显式原生逃生名（避开 button→shadcn
+            // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
+            //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
             // Plan 482: nav 组件族 —— nav_contract 契约类转换（hover/active
             // 三态 + icon/desc/badge 槽 + to/onclick 双模式）。
             "nav-item" | "nav_item" => self.convert_nav_item(props, events, children, bindings),
@@ -2854,7 +2857,10 @@ impl<'a> AuraViewBuilder<'a> {
             "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
-            "button" | "btn" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            // native_button：vue 侧显式原生逃生名（避开 button→shadcn
+            // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
+            //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
             // PLAN-530 步骤7（W12）：toggle_group VM 映射——横排连体 button
             // 组（untracked 镜像臂,D-GAP 规则）。见 toggle_group_rewrite_children。
             "togglegroup" | "toggle-group" | "toggle_group" => {
@@ -4599,13 +4605,35 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
     ) {
+        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+            eprintln!(
+                "[VM-EMIT-REG] child={} events={:?} on-props={:?}",
+                child_name,
+                events.keys().collect::<Vec<_>>(),
+                props
+                    .keys()
+                    .filter(|k| k.starts_with("on"))
+                    .collect::<Vec<_>>()
+            );
+        }
         for (key, ev) in events.iter() {
-            if !key.starts_with("on") || crate::aura::extract::is_native_event_key(key) {
+            if crate::aura::extract::is_native_event_key(key) {
                 continue;
             }
+            // auto-down PLAN-051 T11 补面：Plan-367 引号式监听落 events 的键
+            // 是原样 `on"SetTheme"` 形（内嵌引号，CustomScrollbar 的
+            // `on"update:scrollTop"` 同形）——原样键查表 miss（musk C2 双样
+            // 点只有 onsend/on_send 属性式）。剥引号归一 + 无 on 前缀补前缀，
+            // 与派发侧 "on"+子 msg 名两侧折叠命中。
+            let cleaned: String = key.replace('"', "");
+            let folded_key = if cleaned.starts_with("on") {
+                cleaned
+            } else {
+                format!("on{}", cleaned)
+            };
             crate::ui::child_emit::record_route(
                 &child_name,
-                key,
+                &folded_key,
                 crate::ui::child_emit::ParentRoute {
                     parent_widget: parent_widget.clone(),
                     handler: ev.handler.trim_start_matches('.').to_string(),

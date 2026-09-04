@@ -589,6 +589,19 @@ impl AutodownEditorCore {
         blocks.get(i).map(|b| SendEdit::of(b).text()).unwrap_or_default()
     }
 
+    /// PLAN-051 T10：本核的 fence 叶 buffer 换到当前 dark_mode 档的 hljs
+    /// 主题（retheme_all_fence_buffers 的单核臂；带语言 fence 才染，
+    /// 无语言 fence 不染色保持）。
+    pub fn retheme_fence_buffers(&self) {
+        let theme = ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode());
+        let mut blocks = self.blocks.lock().unwrap();
+        for b in blocks.iter_mut() {
+            if b.kind == LeafKind::Fence && b.syntax.is_some() {
+                b.editor.ed_mut().update_theme(&theme);
+            }
+        }
+    }
+
     /// 全文回读（native payload 与 on_change 回环共用口）。
     pub fn emit_document(&self) -> String {
         let segs = self.segs.lock().unwrap();
@@ -2648,6 +2661,21 @@ pub fn autodown_editor_sync(key: &str, content: &str, is_final: bool) -> bool {
     }
 }
 
+/// PLAN-051 T10（DEBTS 050 处置·实现分支）：运行时主题翻转的 fence buffer
+/// 重着色。DEBTS 050 登记的 wontfix 前提「直到运行时主题切换器存在」由
+/// settings 面（PLAN-051 T6）落地成立——本函数在 dark_mode 翻转后由
+/// renderer 两处翻转臂（Plan 370 D-GAP 值变化臂 + Plan 518 set_theme 执行
+/// 臂）调用，把全部注册编辑核的 fence 叶 buffer 换到新档 hljs 主题
+/// （ViEditor::update_theme：换主题+清高亮缓存+重置行 attrs；PLAN-050 的
+/// render_frame 帧内 ensure_code_family_spans 幂等机制自动补回被重置的
+/// family span，mono 测宽契约不受影响）。
+pub fn retheme_all_fence_buffers() {
+    let map = registry().lock().unwrap();
+    for core in map.values() {
+        core.retheme_fence_buffers();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 借封装：绕开 413 私有 EditorGuard，为 BlockBuf 提供只读方法面
 // ---------------------------------------------------------------------------
@@ -3831,6 +3859,33 @@ fn main() { let s = \"hi\"; }
             paren.color.g,
             paren.color.b
         );
+    }
+
+    /// PLAN-051 T10（DEBTS 050 处置·实现分支）：运行时主题翻转的 fence
+    /// buffer 重着色——hljs 主题在 buffer 构建期选定，set_dark_mode 本身
+    /// 不自换；retheme_all_fence_buffers 负责换挡：fence buffer 主题前景
+    /// 应随全局翻转 dark↔light（hljs 基色 light (9,9,11) / dark
+    /// (250,250,250)，hljs_syntax_theme 同源值）。
+    #[test]
+    fn fence_buffer_rethemes_on_runtime_flip() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let c = core_for("t51a", "```rust\nfn main() {}\n```\n");
+        // 暗 + 重着色：基色前景翻到 zinc-50。
+        crate::ui::style::theme::set_dark_mode(true);
+        retheme_all_fence_buffers();
+        {
+            let blocks = c.blocks.lock().unwrap();
+            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("dark fg");
+            assert_eq!((fg.r, fg.g, fg.b), (250, 250, 250), "dark retheme base fg");
+        }
+        // 回浅 + 重着色：基色前景回 zinc-950。
+        crate::ui::style::theme::set_dark_mode(false);
+        retheme_all_fence_buffers();
+        {
+            let blocks = c.blocks.lock().unwrap();
+            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("light fg");
+            assert_eq!((fg.r, fg.g, fg.b), (9, 9, 11), "light retheme base fg");
+        }
     }
 
     /// PLAN-050 F4：段落行内 code 区间以 mono 家族测宽——render_frame 后

@@ -1100,11 +1100,12 @@ impl DynamicComponent {
         payload: auto_val::Value,
     ) {
         let state_id = self.bridge.state_obj_id();
-        // PLAN-059 T9 依赖修正（musk DeleteConfirmDialog 实机:Cancel →
-        // ChatsView.CancelDelete 崩 Invalid object ID: 0）:零参父 handler
+        // 趋同修复汇流（PLAN-059 T9 musk DeleteConfirmDialog + auto-down
+        // PLAN-051 T11 demo SettingsPopover.Close 双实证）：零参父 handler
         // 不得塞 Nil 载荷——调用帧从 [self] 变 [self, Nil],handler 体内
-        // 首个字段写按错位帧解 self 即崩。按父 handler 声明参数数对齐帧;
-        // 未知 arity 保持 legacy（塞载荷）。
+        // 首个字段写按错位帧解 self 即崩（B12(b) 同款「Invalid object
+        // ID: 0」）。按父 handler 声明参数数对齐帧;未知 arity 保持
+        // legacy（塞载荷）。
         let declared_params = self.bridge.handler_param_count(&route.parent_widget, &route.handler);
         let args: Vec<auto_val::Value> = if declared_params.unwrap_or(1) > 0 {
             vec![payload]
@@ -1360,6 +1361,32 @@ impl DynamicComponent {
                 // 只能靠重选会话(handler 驱动)强行重渲染。失效广播必须照常。
                 if !matches!(_e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
                     self.dirty = true;
+                } else {
+                    // auto-down PLAN-051 T11 补面：纯 emit 子件——msg 声明了
+                    // 但子件无自有 handler（如 SettingsPopover.SetTheme，消息
+                    // 只面向父级 on 监听）。HandlerNotFound 在此形态不是错误：
+                    // 声明式父路由照派（Ok 臂 C2 形态① 同款；载荷 = 首实参
+                    // 回落输入值）。
+                    let emit_key = format!("on{}", clean_name);
+                    if let Some(route) =
+                        crate::ui::child_emit::lookup_route(&emit_widget, &emit_key)
+                    {
+                        let payload = args
+                            .first()
+                            .cloned()
+                            .or_else(|| {
+                                input_value.clone().map(|t| auto_val::Value::Str(t.into()))
+                            })
+                            .unwrap_or(auto_val::Value::Nil);
+                        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                            eprintln!(
+                                "[VM-EMIT] {}.{} -> {}.{} (handler-less declarative)",
+                                emit_widget, clean_name, route.parent_widget, route.handler
+                            );
+                        }
+                        self.dispatch_parent_route(&emit_widget, &clean_name, &route, payload);
+                        self.dirty = true;
+                    }
                 }
                 // Fallback: try legacy handler_<Event> on root state (backward compat).
                 // ⚠️ 仅当本消息本就属于根 widget 时才回退 —— 若给子 widget/store 的
