@@ -645,6 +645,22 @@ impl MediaWorkerPool {
 }
 impl Drop for MediaWorkerPool { fn drop(&mut self) { self.shutdown(); } }
 
+pub const MAX_IMAGE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
+pub const MAX_IMAGE_PIXELS: u64 = 400_000_000;
+pub fn validate_image_limits(width: u32, height: u32, byte_len: u64) -> Result<(), MediaAssetError> {
+    if byte_len > MAX_IMAGE_FILE_BYTES { return Err(MediaAssetError::FileTooLarge); }
+    match (width as u64).checked_mul(height as u64) { Some(pixels) if pixels <= MAX_IMAGE_PIXELS => Ok(()), Some(_) => Err(MediaAssetError::PixelLimitExceeded), None => Err(MediaAssetError::SizeOverflow) }
+}
+pub fn inspect_image_metadata(bytes: &[u8]) -> Result<MediaMetadata, MediaAssetError> {
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().map_err(|_| MediaAssetError::UnsupportedFormat)?;
+    let format = reader.format().ok_or(MediaAssetError::UnsupportedFormat)?;
+    let mime_type = match format { image::ImageFormat::Jpeg => "image/jpeg", image::ImageFormat::Png => "image/png", image::ImageFormat::WebP => "image/webp", _ => return Err(MediaAssetError::UnsupportedFormat) };
+    let (width, height) = reader.into_dimensions().map_err(|_| MediaAssetError::Corrupt)?;
+    validate_image_limits(width, height, bytes.len() as u64)?;
+    let orientation = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(bytes)).ok().and_then(|exif| exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY).and_then(|field| field.value.get_uint(0))).map(|value| match value { 2 => MediaOrientation::FlipHorizontal, 3 => MediaOrientation::Rotate180, 4 => MediaOrientation::FlipVertical, 5 => MediaOrientation::Transpose, 6 => MediaOrientation::Rotate90, 7 => MediaOrientation::Transverse, 8 => MediaOrientation::Rotate270, _ => MediaOrientation::Normal }).unwrap_or_default();
+    Ok(MediaMetadata { width, height, orientation, mime_type: mime_type.into(), byte_len: bytes.len() as u64 })
+}
+
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
 pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
@@ -783,5 +799,17 @@ mod tests {
         assert_eq!(workers.worker_count(), 3);
         workers.shutdown();
         assert_eq!(workers.worker_count(), 0);
+    }
+
+    #[test]
+    fn metadata_and_limits_identify_png_and_reject_invalid_or_excessive_inputs() {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image::RgbaImage::new(2, 3))
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let metadata = super::inspect_image_metadata(bytes.get_ref()).unwrap();
+        assert_eq!((metadata.width, metadata.height, metadata.mime_type.as_str()), (2, 3, "image/png"));
+        assert_eq!(super::inspect_image_metadata(b"not an image"), Err(super::MediaAssetError::UnsupportedFormat));
+        assert_eq!(super::validate_image_limits(2, 3, super::MAX_IMAGE_FILE_BYTES + 1), Err(super::MediaAssetError::FileTooLarge));
     }
 }
