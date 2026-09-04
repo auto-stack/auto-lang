@@ -32,63 +32,63 @@ fn main() {
 
     // 1. dunder add: t + 1 = [1..6] sum 21
     var a1 = t + 1
-    if py_call(a1, "sum").to(int) == 21 { tap_ok(1, "test_add_scalar") } else { tap_not_ok(1, "test_add_scalar", "got " + py_call(a1, "sum").to(str)) }
+    if py_float(py_call(a1, "sum")) == 21 { tap_ok(1, "test_add_scalar") } else { tap_not_ok(1, "test_add_scalar", "got " + py_float(py_call(a1, "sum")).to(str)) }
 
     // 2. dunder mul (elementwise): t * 2 sum 30
     var a2 = t * 2
-    if py_call(a2, "sum").to(int) == 30 { tap_ok(2, "test_mul_scalar") } else { tap_not_ok(2, "test_mul_scalar", "got " + py_call(a2, "sum").to(str)) }
+    if py_float(py_call(a2, "sum")) == 30 { tap_ok(2, "test_mul_scalar") } else { tap_not_ok(2, "test_mul_scalar", "got " + py_float(py_call(a2, "sum")).to(str)) }
 
     // 3. dunder sub tensor-tensor: (t + 10) - t = 10*6 sum 60
     var base = t + 10
     var a3 = base - t
-    if py_call(a3, "sum").to(int) == 60 { tap_ok(3, "test_sub_tensors") } else { tap_not_ok(3, "test_sub_tensors", "got " + py_call(a3, "sum").to(str)) }
+    if py_float(py_call(a3, "sum")) == 60 { tap_ok(3, "test_sub_tensors") } else { tap_not_ok(3, "test_sub_tensors", "got " + py_float(py_call(a3, "sum")).to(str)) }
 
     // 4. dunder div: t / 2 sum 7.5 -> int 7
     var a4 = t / 2
-    if py_call(a4, "sum").to(int) == 7 { tap_ok(4, "test_div_scalar") } else { tap_not_ok(4, "test_div_scalar", "got " + py_call(a4, "sum").to(str)) }
+    if py_float(py_call(a4, "sum")) == 7.5 { tap_ok(4, "test_div_scalar") } else { tap_not_ok(4, "test_div_scalar", "got " + py_float(py_call(a4, "sum")).to(str)) }
 
     // 5. unary neg: -t sum -15
     var a5 = -t
-    if py_call(a5, "sum").to(int) == -15 { tap_ok(5, "test_neg") } else { tap_not_ok(5, "test_neg", "got " + py_call(a5, "sum").to(str)) }
+    if py_float(py_call(a5, "sum")) == -15 { tap_ok(5, "test_neg") } else { tap_not_ok(5, "test_neg", "got " + py_float(py_call(a5, "sum")).to(str)) }
 
     // 6. elementwise square: t * t sum 55
     var a6 = t * t
-    if py_call(a6, "sum").to(int) == 55 { tap_ok(6, "test_mul_elementwise") } else { tap_not_ok(6, "test_mul_elementwise", "got " + py_call(a6, "sum").to(str)) }
+    if py_float(py_call(a6, "sum")) == 55 { tap_ok(6, "test_mul_elementwise") } else { tap_not_ok(6, "test_mul_elementwise", "got " + py_float(py_call(a6, "sum")).to(str)) }
 
     // 7. reflected mul: 2 * t sum 30 (int __mul__ NotImplemented -> __rmul__)
     var a7 = 2 * t
-    if py_call(a7, "sum").to(int) == 30 { tap_ok(7, "test_reflect_mul") } else { tap_not_ok(7, "test_reflect_mul", "got " + py_call(a7, "sum").to(str)) }
+    if py_float(py_call(a7, "sum")) == 30 { tap_ok(7, "test_reflect_mul") } else { tap_not_ok(7, "test_reflect_mul", "got " + py_float(py_call(a7, "sum")).to(str)) }
 
     // 8. elementwise eq: (t == t).sum() == 6
     var a8 = t == t
-    if py_call(a8, "sum").to(int) == 6 { tap_ok(8, "test_eq_elementwise") } else { tap_not_ok(8, "test_eq_elementwise", "got " + py_call(a8, "sum").to(str)) }
+    if py_float(py_call(a8, "sum")) == 6 { tap_ok(8, "test_eq_elementwise") } else { tap_not_ok(8, "test_eq_elementwise", "got " + py_float(py_call(a8, "sum")).to(str)) }
 
     // 9. matmul: [[0,1,2],[3,4,5]] @ [[0,1],[2,3],[4,5]] = [[10,13],[28,40]]
     var ma = py_call(arange(6), "reshape", 2, 3)
     var mb = py_call(arange(6), "reshape", 3, 2)
     var mm = py_matmul(ma, mb)
     var mm00 = py_getitem(py_getitem(mm, 0), 1)
-    if mm00.to(int) == 13 { tap_ok(9, "test_matmul") } else { tap_not_ok(9, "test_matmul", "got " + mm00.to(str)) }
+    if py_float(mm00) == 13 { tap_ok(9, "test_matmul") } else { tap_not_ok(9, "test_matmul", "got " + py_float(mm00).to(str)) }
 
     // 10. slice getitem: mm[:1] row [10, 13] sum 23; mm[1] row sum 68
     var sl = py_slice(null, 1)
     var row0 = py_getitem(mm, sl)
     var row1 = py_getitem(mm, 1)
-    if py_call(row0, "sum").to(int) == 23 { tap_ok(10, "test_getitem_slice") } else { tap_not_ok(10, "test_getitem_slice", "got " + py_call(row0, "sum").to(str)) }
+    if py_float(py_call(row0, "sum")) == 23 { tap_ok(10, "test_getitem_slice") } else { tap_not_ok(10, "test_getitem_slice", "got " + py_float(py_call(row0, "sum")).to(str)) }
 
     // 11. setitem: ma[0, 0] = 100 -> sum 15 - 0 + 100 = 115
     py_setitem(ma, 0, 0, 100)
-    if py_call(ma, "sum").to(int) == 115 { tap_ok(11, "test_setitem") } else { tap_not_ok(11, "test_setitem", "got " + py_call(ma, "sum").to(str)) }
+    if py_float(py_call(ma, "sum")) == 115 { tap_ok(11, "test_setitem") } else { tap_not_ok(11, "test_setitem", "got " + py_float(py_call(ma, "sum")).to(str)) }
 
     // 12. callable direct: torch.tensor([1, 2, 3]) -> sum 6
     var tensor_cls = py_getattr(torch, "tensor")
     var t12 = py_call0(tensor_cls, [1, 2, 3])
-    if py_call(t12, "sum").to(int) == 6 { tap_ok(12, "test_call0") } else { tap_not_ok(12, "test_call0", "got " + py_call(t12, "sum").to(str)) }
+    if py_float(py_call(t12, "sum")) == 6 { tap_ok(12, "test_call0") } else { tap_not_ok(12, "test_call0", "got " + py_float(py_call(t12, "sum")).to(str)) }
 
     // 13. kwargs channel: sum(dim: 0) on 2x3 arange = [3, 5, 7] sum 15
     var g2 = py_call(arange(6), "reshape", 2, 3)
     var cols = py_call(g2, "sum", dim: 0)
-    if py_call(cols, "sum").to(int) == 15 { tap_ok(13, "test_kwargs_dim") } else { tap_not_ok(13, "test_kwargs_dim", "got " + py_call(cols, "sum").to(str)) }
+    if py_float(py_call(cols, "sum")) == 15 { tap_ok(13, "test_kwargs_dim") } else { tap_not_ok(13, "test_kwargs_dim", "got " + py_float(py_call(cols, "sum")).to(str)) }
 
     // 14. py_with no_grad: ops inside produce requires_grad == False
     var ng = py_call0(py_getattr(torch, "no_grad"))
@@ -109,5 +109,5 @@ fn main() {
     // 16. May channel success unwrap: sum Ok -> 15
     var good = py_call_may(t, "sum")
     var total = good.?(-1)
-    if total.to(int) == 15 { tap_ok(16, "test_may_ok") } else { tap_not_ok(16, "test_may_ok", "got " + total.to(str)) }
+    if py_float(total) == 15 { tap_ok(16, "test_may_ok") } else { tap_not_ok(16, "test_may_ok", "got " + py_float(total).to(str)) }
 }

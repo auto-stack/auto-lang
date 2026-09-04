@@ -26,14 +26,14 @@ fn tap_not_ok(n int, name str, diag str) {
 }
 
 fn main() {
-    if py_call(arange(5), "sum").to(int) == 10 { tap_ok(1, "test_arange_sum") } else { tap_not_ok(1, "test_arange_sum", "got " + py_call(arange(5), "sum").to(str)) }
-    if py_call(ones(4), "sum").to(int) == 4 { tap_ok(2, "test_ones_sum") } else { tap_not_ok(2, "test_ones_sum", "got " + py_call(ones(4), "sum").to(str)) }
-    if py_call(zeros(3), "sum").to(int) == 0 { tap_ok(3, "test_zeros_sum") } else { tap_not_ok(3, "test_zeros_sum", "got " + py_call(zeros(3), "sum").to(str)) }
+    if py_float(py_call(arange(5), "sum")) == 10 { tap_ok(1, "test_arange_sum") } else { tap_not_ok(1, "test_arange_sum", "got " + py_float(py_call(arange(5), "sum")).to(str)) }
+    if py_float(py_call(ones(4), "sum")) == 4 { tap_ok(2, "test_ones_sum") } else { tap_not_ok(2, "test_ones_sum", "got " + py_float(py_call(ones(4), "sum")).to(str)) }
+    if py_float(py_call(zeros(3), "sum")) == 0 { tap_ok(3, "test_zeros_sum") } else { tap_not_ok(3, "test_zeros_sum", "got " + py_float(py_call(zeros(3), "sum")).to(str)) }
 
     // Functional activations: linspace(0,-4,5) = [0,-1,-2,-3,-4].
     var neg = linspace(0.0, -4.0, 5)
-    if py_call(relu(neg), "sum").to(int) == 0 { tap_ok(4, "test_relu_sum") } else { tap_not_ok(4, "test_relu_sum", "got " + py_call(relu(neg), "sum").to(str)) }
-    if py_call(abs(neg), "sum").to(int) == 10 { tap_ok(5, "test_abs_sum") } else { tap_not_ok(5, "test_abs_sum", "got " + py_call(abs(neg), "sum").to(str)) }
+    if py_float(py_call(relu(neg), "sum")) == 0 { tap_ok(4, "test_relu_sum") } else { tap_not_ok(4, "test_relu_sum", "got " + py_float(py_call(relu(neg), "sum")).to(str)) }
+    if py_float(py_call(abs(neg), "sum")) == 10 { tap_ok(5, "test_abs_sum") } else { tap_not_ok(5, "test_abs_sum", "got " + py_float(py_call(abs(neg), "sum")).to(str)) }
 
     // numpy↔torch interop via from_numpy is covered by the numpy-side suite
     // absence note: use.py has no import aliasing, and torch.arange would

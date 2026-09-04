@@ -1440,6 +1440,23 @@ impl AutoVM {
     /// i32(-1)(历史 `null` 字面量/CREATE_NONE)或 i32(i32::MIN+1)
     /// (历史 `nil` 字面量)。EQ/NE/NULL_COALESCE 用它在等值/合并语义上
     /// 抹平新旧编码(存量持久化字段兼容)。
+    /// Plan 539 W2 (T19): numeric tag test for mixed-type comparisons
+    /// (f64/f32/i32 — bools excluded, they have their own bit-compare).
+    fn nv_is_numeric(nv: auto_val::NanoValue) -> bool {
+        auto_val::is_f64(nv) || auto_val::is_f32(nv) || auto_val::is_i32(nv)
+    }
+
+    /// Plan 539 W2 (T19): widen a numeric nv to f64 for comparison.
+    fn nv_as_f64(nv: auto_val::NanoValue) -> f64 {
+        if auto_val::is_f64(nv) {
+            auto_val::decode_f64(nv)
+        } else if auto_val::is_f32(nv) {
+            auto_val::decode_f32(nv) as f64
+        } else {
+            auto_val::decode_i32(nv) as f64
+        }
+    }
+
     fn nv_is_null_family(nv: auto_val::NanoValue) -> bool {
         if auto_val::is_null(nv) {
             return true;
@@ -8487,6 +8504,11 @@ impl AutoVM {
                         auto_val::decode_f64(a_nv) == auto_val::decode_f64(b_nv)
                     } else if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
                         auto_val::decode_f32(a_nv) == auto_val::decode_f32(b_nv)
+                    } else if Self::nv_is_numeric(a_nv) && Self::nv_is_numeric(b_nv) {
+                        // Plan 539 W2 (T19): mixed numeric compare (f64 ==
+                        // i32 literal) — py_float results against int
+                        // literals previously fell to the false catch-all.
+                        Self::nv_as_f64(a_nv) == Self::nv_as_f64(b_nv)
                     } else {
                         false
                     };
@@ -8535,6 +8557,9 @@ self.rc_release(a_nv);
                         } else {
                             !Self::bool_eq(a_val, b_val)
                         }
+                    } else if Self::nv_is_numeric(a_nv) && Self::nv_is_numeric(b_nv) {
+                        // Plan 539 W2 (T19): mixed numeric compare — see EQ.
+                        Self::nv_as_f64(a_nv) != Self::nv_as_f64(b_nv)
                     } else {
                         true
                     };

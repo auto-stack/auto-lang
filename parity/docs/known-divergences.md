@@ -389,6 +389,17 @@ bug is worked around in-source:
 
 ## Python Parity Divergences
 
+### DIV-PY-TUPLE-1: Python tuple flattens to Auto List
+
+- **库**: py_torch_train（W2 生效面）
+- **状态**: documented (2026-09-04, Plan 539 W2 裁定)
+- **映射**: Python tuple（顶层返回与嵌套）→ Auto （拍平为
+  TAG_OBJECT ListData，与数组字面量同编码，可索引/for-in）。divergence：
+  Python tuple 不可变、可哈希；Auto List 可变——哈希键用途与不可变性
+  依赖不受支持。是否引入 Auto tuple 值类型不在本计划（待澄清③）。
+  注意：Python **list** 返回仍走 461 TAG_LIST 通道（py_call 消费面），
+  与 tuple 通道刻意不同——统一需先清 py_list 存量红（P539-D1）。
+
 ### DIV-PY-CLOSURE-1: py 句柄在闭包局部/捕获中退化为裸 id
 
 - **库**: py_torch_infer（规避在案）, W2/W3 回调面（影响在案）

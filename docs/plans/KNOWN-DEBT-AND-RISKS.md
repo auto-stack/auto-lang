@@ -1123,6 +1123,36 @@
 - （注）vue 包装 exit 127 静默退出（源 OBS-2）疑与 530-B 泄漏族同源,530
   修复后待复跑观察,暂不单列。
 
+### P539（2026-09-04，Plan 539 PyTorch FFI——执行期存量红/缺口登记）
+
+- **P539-D1 py_list `test_sorted_getitem` master 存量红**（非本计划引入，
+  master 二进制同形复现：`[P053-8] phantom freelist entry dropped: slot 41
+  (live holders, rc=4294967295)` + `got d`）。py_list 属 p7 相位，近期
+  各计划门禁只跑 p5/p8/p9 相邻相，从未显形。疑与 ADD 字符串拼接臂的
+  双重 rc_release（engine.rs ADD string-concat 分支两对 release）或
+  Plan 510 G 系池工作交互有关——待专项排查（rc 配平 forensics）。
+- **P539-D2 `.len()`/方法分派对 py 返回值不可靠（存量，类型谎言）**：
+  py 调用返回被 codegen 谎记类型（fn_return_types=StrFixed 等），`.len()`
+  静态路由到 str.len，把句柄/列表 id 解码为字符串池索引（垃圾但常在
+  界内，读到池内真串长度——实测"20"）。规避：for-in 计数、`x[0]` 索引
+  （GET_ELEM tag 分派）、`py_call(x, "__len__")`。RuntimeArray 谎言翻转
+  试验无效已回退。根治需动态分派（独立计划）。
+- **P539-D5 py_call_may 仅位置实参**：kwargs 与 May 通道组合未支持
+  （py_call_kw 是 strict 语义；py_call_may 弹参走位置约定）。需要时用
+  `py_call_may(py_call_kw 形态兼容路径)` 前先以探针定 ABI；影响面小
+  （训练循环捕获路径用 try-catch 或 `.?` 兜底即可）。关联存量：
+  a2py 语句体闭包降级为 set 字面量（`(x) => { x * 2 }` → Python set），
+  表达式体必需——见 libs/python README 回调节。
+- **P539-D3 a2py 复合接收者无括号**（存量）：`py_call(t == t, "sum")`
+  发射 `t == t.sum()`（优先级错）；套件用中间变量规避。
+- **P539-D4 py_subclass 类派生延期（计划内预案路径）**：自定义
+  nn.Module/Dataset 需 Python 侧类工厂（exec 生成类 + 方法绑回 Auto
+  回调）。回调桥 T21 已通（thread-local 任务槽，map/apply_ 双探针
+  实证：Auto 闭包经 PyCFunction::new_closure 回投当前任务），
+  但类工厂的方法绑定面 + GIL/生存期约束审查超 W3 预算。组合式
+  替代金样 = py_torch_train（Linear 裸栈 + seed 化收敛）已在案。
+  调研节落 python-parity-roadmap.md §7.3。
+
 ### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
 
 - **P537-D1 VM lucide 图标闭集缺口**:`iced/renderer.rs lucide_svg(name)` 为

@@ -105,6 +105,21 @@ pub const NATIVE_PY_WITH: u16 = 461;
 pub const NATIVE_PY_ENTER: u16 = 462;
 /// Plan 539 W1 (T14): `py_exit(ctx)` — `__exit__(None, None, None)` half.
 pub const NATIVE_PY_EXIT: u16 = 463;
+/// Plan 539 W3 (T21): `py_callable(closure_id)` — wrap an Auto closure as a
+/// Python callable (PyCFunction). Callbacks execute on the CURRENT task via
+/// the thread-local task slot (valid only inside a host py shim window —
+/// the T02 constraint: GIL thread == VM thread, num_workers=0).
+pub const NATIVE_PY_CALLABLE: u16 = 466;
+/// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
+/// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
+/// handles on return (see the marshal note); this is the honest channel.
+pub const NATIVE_PY_FLOAT: u16 = 465;
+/// Plan 539 W2 (T17): `py_item_kw(module, func, posargs, kw_names, kw_vals)` —
+/// keyword-argument channel for ITEM-IMPORT direct calls
+/// (`nn.Linear(784, 10, bias: false)`). Resolves the target at runtime by
+/// qualified name, so it works for any import without consulting the
+/// registration machinery.
+pub const NATIVE_PY_ITEM_KW: u16 = 464;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -317,6 +332,9 @@ impl PyFfiBridge {
     pub fn register_object_shims(&mut self) {
         // ---- py_call(obj, method_name, ...args) ----
         let call_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            // Plan 539 W3 (T21): the bridge window lets PyCFunction callbacks
+            // created by py_callable re-enter THIS task while Python runs.
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 // Layout (TOS → bottom): argN ... arg1, method_name, obj
                 // pending_native_arg_count = total args including obj & method_name.
@@ -419,6 +437,7 @@ impl PyFfiBridge {
         // pop_auto_py_arg), so Python receives real keyword arguments instead
         // of the historic silent name-drop.
         let call_kw_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 // Layout (TOS → bottom): kw_vals, kw_names, posargs, method_name, obj
                 let n = task.pending_native_arg_count as usize;
@@ -472,6 +491,7 @@ impl PyFfiBridge {
         // but the Python exception channel lands as a May value instead of a
         // process-level VMError::FFI (which only try/catch can intercept).
         let call_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n < 2 {
@@ -569,7 +589,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_ITER, iter_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_ITER, iter_shim);
 
         // ---- py_next(it) -> value | null ----
         // Plan 539 W0 (DIV-PY-ITER-1): StopIteration → Auto null family; any
@@ -585,27 +606,25 @@ impl PyFfiBridge {
                     )));
                 }
                 let it_py = pop_auto_py_arg(task, vm, py)?;
-                let builtins = py.import("builtins").map_err(|e| {
-                    VMError::FFI(format!("py_next: builtins import failed: {}", e))
-                })?;
+                let builtins = py
+                    .import("builtins")
+                    .map_err(|e| VMError::FFI(format!("py_next: builtins import failed: {}", e)))?;
                 let next_fn = builtins.getattr("next").map_err(|e| {
                     VMError::FFI(format!("py_next: builtins.next not found: {}", e))
                 })?;
-                let result = next_fn
-                    .call((&it_py,), None)
-                    .map_err(|e| {
-                        // StopIteration is the exhaustion signal, not an error.
-                        let is_stop = e
-                            .is_instance_of::<pyo3::exceptions::PyStopIteration>(py);
-                        if is_stop {
-                            VMError::FFI("__stopiteration__".to_string())
-                        } else {
-                            VMError::FFI(format!(
-                                "py_next on {} failed: {}",
-                                safe_type_name(&it_py), e
-                            ))
-                        }
-                    });
+                let result = next_fn.call((&it_py,), None).map_err(|e| {
+                    // StopIteration is the exhaustion signal, not an error.
+                    let is_stop = e.is_instance_of::<pyo3::exceptions::PyStopIteration>(py);
+                    if is_stop {
+                        VMError::FFI("__stopiteration__".to_string())
+                    } else {
+                        VMError::FFI(format!(
+                            "py_next on {} failed: {}",
+                            safe_type_name(&it_py),
+                            e
+                        ))
+                    }
+                });
                 match result {
                     Ok(value) => {
                         py_auto_marshal_return(&value, task, vm)?;
@@ -619,7 +638,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_NEXT, next_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_NEXT, next_shim);
 
         // ---- py_matmul(a, b) ----
         // Plan 539 W1 (T11): matrix product. `*` keeps elementwise semantics
@@ -643,7 +663,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_MATMUL, matmul_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_MATMUL, matmul_shim);
 
         // ---- py_getitem(obj, idx...) / py_setitem(obj, idx..., value) ----
         // Plan 539 W1 (T12): single index passes through; 2+ indices build a
@@ -681,7 +702,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_GETITEM, getitem_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_GETITEM, getitem_shim);
 
         let setitem_shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
@@ -719,7 +741,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_SETITEM, setitem_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_SETITEM, setitem_shim);
 
         // ---- py_slice(start, stop, step) ----
         // Plan 539 W1 (T12): null endpoints → Python None (unbounded).
@@ -759,19 +782,21 @@ impl PyFfiBridge {
                     None => none.clone(),
                 };
                 let args = (norm(start, &none), norm(stop, &none), norm(step_v, &none));
-                let result = slice_ty.call1(args).map_err(|e| {
-                    VMError::FFI(format!("py_slice construction failed: {}", e))
-                })?;
+                let result = slice_ty
+                    .call1(args)
+                    .map_err(|e| VMError::FFI(format!("py_slice construction failed: {}", e)))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_SLICE, slice_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_SLICE, slice_shim);
 
         // ---- py_call0(fn_handle, args...) ----
         // Plan 539 W1 (T13): direct invocation of a callable handle.
         let call0_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n < 1 {
@@ -786,9 +811,8 @@ impl PyFfiBridge {
                 }
                 args.reverse();
                 let func = pop_auto_py_arg(task, vm, py)?;
-                let args_tuple = PyTuple::new(py, &args).map_err(|e| {
-                    VMError::FFI(format!("py_call0 args tuple: {}", e))
-                })?;
+                let args_tuple = PyTuple::new(py, &args)
+                    .map_err(|e| VMError::FFI(format!("py_call0 args tuple: {}", e)))?;
                 let result = func.call(args_tuple, None).map_err(|e| {
                     VMError::FFI(format!(
                         "Python call {}() failed: {}",
@@ -800,7 +824,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_CALL0, call0_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_CALL0, call0_shim);
 
         // ---- py_with(ctx_handle, closure) ----
         // Plan 539 W1 (T14): context-manager protocol — `__enter__`, run the
@@ -866,7 +891,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_WITH, with_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_WITH, with_shim);
 
         // ---- py_enter(ctx) / py_exit(ctx) ----
         // Plan 539 W1 (T14): halves of the INLINE with-bracket — codegen
@@ -894,7 +920,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_ENTER, enter_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_ENTER, enter_shim);
 
         let exit_shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
@@ -922,7 +949,141 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_EXIT, exit_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_EXIT, exit_shim);
+
+        // ---- py_item_kw(module, func, posargs, kw_names, kw_vals) ----
+        // Plan 539 W2 (T17): item-import direct call with keyword args.
+        let item_kw_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 5 {
+                    return Err(VMError::FFI(format!(
+                        "py_item_kw needs 5 slots (module, func, posargs, kw_names, kw_vals), got {}",
+                        n
+                    )));
+                }
+                let kw_vals = pop_auto_py_arg(task, vm, py)?;
+                let kw_names = pop_auto_py_arg(task, vm, py)?;
+                let posargs = pop_auto_py_arg(task, vm, py)?;
+                let func_name_py = pop_auto_py_arg(task, vm, py)?;
+                let func_name: String = func_name_py
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_item_kw func name not string: {}", e)))?;
+                let module_name_py = pop_auto_py_arg(task, vm, py)?;
+                let module_name: String = module_name_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_item_kw module name not string: {}", e))
+                })?;
+
+                let kwargs = build_kwargs(&kw_names, &kw_vals)
+                    .map_err(|e| VMError::FFI(format!("py_item_kw kwargs build failed: {}", e)))?;
+                let pos_vec: Vec<Bound<'_, PyAny>> = posargs
+                    .try_iter()
+                    .map_err(|e| VMError::FFI(format!("py_item_kw posargs not iterable: {}", e)))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_item_kw posargs iteration failed: {}", e))
+                    })?;
+                let args_tuple = PyTuple::new(py, &pos_vec)
+                    .map_err(|e| VMError::FFI(format!("py_item_kw args tuple: {}", e)))?;
+
+                let module = py.import(&module_name).map_err(|e| {
+                    VMError::FFI(format!("py_item_kw import '{}' failed: {}", module_name, e))
+                })?;
+                let func = module.getattr(&func_name).map_err(|e| {
+                    VMError::FFI(format!(
+                        "py_item_kw '{}.{}' not found: {}",
+                        module_name, func_name, e
+                    ))
+                })?;
+                let result = func.call(args_tuple, Some(&kwargs)).map_err(|e| {
+                    VMError::FFI(format!("Python call {}.{}(**kw) failed: {}", module_name, func_name, e))
+                })?;
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_ITEM_KW, item_kw_shim);
+
+        // ---- py_float(x) ----
+        // Plan 539 W2 (T19): float(x) — explicit scalar extraction.
+        let float_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!("py_float needs 1 arg, got {}", n)));
+                }
+                let val = pop_auto_py_arg(task, vm, py)?;
+                let builtins = py.import("builtins").map_err(|e| {
+                    VMError::FFI(format!("py_float: builtins import failed: {}", e))
+                })?;
+                let float_fn = builtins.getattr("float").map_err(|e| {
+                    VMError::FFI(format!("py_float: builtins.float missing: {}", e))
+                })?;
+                let result = float_fn
+                    .call1((val,))
+                    .map_err(|e| VMError::FFI(format!("py_float failed: {}", e)))?;
+                let f: f64 = result
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_float did not return float: {}", e)))?;
+                task.ram.push_f64(f);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_FLOAT, float_shim);
+
+        // ---- py_callable(closure_id) -> callable handle ----
+        // Plan 539 W3 (T21): wrap an Auto closure as a Python callable. The
+        // PyCFunction routes back into the CURRENT task through the
+        // thread-local bridge window installed by the call shims below.
+        let callable_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_callable needs 1 arg (closure), got {}",
+                        n
+                    )));
+                }
+                let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+                let func = pyo3::types::PyCFunction::new_closure(
+                    py,
+                    None,
+                    None,
+                    move |args: &Bound<'_, PyTuple>,
+                          _kwargs: Option<&Bound<'_, PyDict>>|
+                          -> PyResult<Py<PyAny>> {
+                        let arg = args
+                            .get_item(0)
+                            .map_err(|_| {
+                                pyo3::exceptions::PyRuntimeError::new_err(
+                                    "auto_callback expects at least 1 argument",
+                                )
+                            })?;
+                        // The GIL is held by the calling C frame; attach is
+                        // the 0.29 way to obtain the token without capturing it.
+                        pyo3::Python::attach(|py| run_closure_bridged(py, closure_id, &arg))
+                    },
+                )
+                .map_err(|e| VMError::FFI(format!("py_callable construction failed: {}", e)))?;
+
+                let type_name = safe_type_name(&func);
+                let owned: Py<PyAny> = func.clone().into_any().unbind();
+                let handle = PyObjectHandle::new(type_name, owned);
+                let id = vm.insert_heap_object(handle);
+                vm.rc_push(task, auto_val::encode_object(id as u32));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CALLABLE, callable_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -1188,6 +1349,99 @@ pub(crate) fn py_dunder_neg(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     })
 }
 
+// ============================================================================
+// Plan 539 W3 (T21): callback bridge — Auto closure as a Python callable
+// ============================================================================
+
+/// Thread-local window into the currently-running host py shim. Set on shim
+/// entry, cleared on exit — a PyCFunction callback may only fire while a
+/// py_call-family shim holds the GIL on the VM thread (T02 constraint:
+/// num_workers=0 CPU loaders; a callback from another thread is a bug).
+thread_local! {
+    static BRIDGE_TASK: std::cell::Cell<*mut AutoTask> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+    static BRIDGE_VM: std::cell::Cell<*const AutoVM> = const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+/// Local nv→Value conversion for the callback bridge (nv_to_value in
+/// vm/native.rs is private; this mirrors its scalar/container decoding for
+/// callback return marshalling).
+fn nv_to_value_local(nv: auto_val::NanoValue, vm: &AutoVM) -> auto_val::Value {
+    if auto_val::is_f64(nv) {
+        auto_val::Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+    } else if auto_val::is_bool(nv) {
+        auto_val::Value::Bool(auto_val::decode_bool(nv))
+    } else if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv) as u32;
+        let bytes = vm.get_string(idx).unwrap_or_default();
+        auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+    } else if auto_val::is_null(nv) {
+        auto_val::Value::Nil
+    } else if auto_val::is_object(nv) || auto_val::is_list(nv) {
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: (nv & 0xFFFF_FFFF) as usize,
+        })
+    } else {
+        auto_val::Value::Int(auto_val::decode_i32(nv))
+    }
+}
+
+/// RAII guard installing the bridge window for the duration of a shim.
+pub(crate) struct BridgeGuard;
+
+impl BridgeGuard {
+    pub(crate) fn enter(task: &mut AutoTask, vm: &AutoVM) -> Self {
+        BRIDGE_TASK.with(|c| c.set(task as *mut AutoTask));
+        BRIDGE_VM.with(|c| c.set(vm as *const AutoVM));
+        BridgeGuard
+    }
+}
+
+impl Drop for BridgeGuard {
+    fn drop(&mut self) {
+        BRIDGE_TASK.with(|c| c.set(std::ptr::null_mut()));
+        BRIDGE_VM.with(|c| c.set(std::ptr::null()));
+    }
+}
+
+/// Plan 539 W3 (T21): run an Auto closure to completion on the bridged task
+/// and marshal its return value to Python. Returns Err when no bridge window
+/// is active (callback fired outside a host shim — unsupported, T02).
+fn run_closure_bridged<'py>(
+    py: Python<'py>,
+    closure_id: u32,
+    arg: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let task_ptr = BRIDGE_TASK.with(|c| c.get());
+    let vm_ptr = BRIDGE_VM.with(|c| c.get());
+    if task_ptr.is_null() || vm_ptr.is_null() {
+        return Err(pyo3::exceptions::PyRuntimeError::new_err(
+            "Auto callback fired outside a host py shim window (unsupported; num_workers=0 only)",
+        ));
+    }
+    // SAFETY: the pointers are valid for the duration of the BridgeGuard,
+    // which outlives this call (it is held by the enclosing host shim).
+    let task: &mut AutoTask = unsafe { &mut *task_ptr };
+    let vm: &AutoVM = unsafe { &*vm_ptr };
+
+    // Marshal the Python argument onto the VM stack as the closure argument.
+    py_auto_marshal_return(arg, task, vm).map_err(|e| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Auto callback argument marshal failed: {:?}",
+            e
+        ))
+    })?;
+
+    vm.call_closure(task, closure_id, 1)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Auto callback body failed: {:?}", e)))?;
+
+    // Marshal the closure's return value back to Python.
+    let ret_nv = task.ram.pop_nv();
+    let ret_val = nv_to_value_local(ret_nv, vm);
+    Ok(value_to_py(&ret_val, py, vm).unbind())
+}
+
 /// Pop a single argument from the VM stack and convert to a Python object,
 /// using the NanoValue tag to determine the actual type at runtime.
 /// Plan 300: Replaces fixed-type popping for Python FFI auto-type marshalling.
@@ -1250,6 +1504,33 @@ fn pop_auto_py_arg<'py>(
                     // Clone the Py<PyAny> (increments refcount) and bind under GIL.
                     let owned = py_handle.obj.clone_ref(py);
                     return Ok(owned.into_bound(py));
+                }
+                // Plan 539 W2 (T18): plain ObjectData (Auto object/map
+                // literal) marshals to a Python dict — value_to_py handles
+                // the nested arms.
+                if let Some(obj_data) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ObjectData>()
+                {
+                    let entries: Vec<(auto_val::ValueKey, auto_val::Value)> = obj_data
+                        .fields
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    drop(guard);
+                    let dict = PyDict::new(py);
+                    for (k, v) in &entries {
+                        let py_key = match k {
+                            auto_val::ValueKey::Str(s) => s.to_string(),
+                            auto_val::ValueKey::Int(i) => i.to_string(),
+                            auto_val::ValueKey::Bool(b) => b.to_string(),
+                        };
+                        let py_val = value_to_py(v, py, vm);
+                        dict.set_item(py_key, py_val).map_err(|e| {
+                            VMError::FFI(format!("Failed to set dict item: {}", e))
+                        })?;
+                    }
+                    return Ok(dict.into_any());
                 }
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
                     if let Some(obj) = rust_obj.downcast_ref::<auto_val::Obj>() {
@@ -1433,6 +1714,14 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Boun
             // Clone the payload out, release the guard, then recurse so nested
             // VmRef lookups never stack read locks on the heap.
             let guard = heap_obj.read().unwrap();
+            // Plan 539 W2 (T17): a VmRef to a PyObjectHandle resolves to the
+            // live Python object (nested handles inside Auto lists — e.g. the
+            // positional-args envelope of py_item_kw carrying a generator).
+            if let Some(py_handle) = guard.as_any().downcast_ref::<PyObjectHandle>() {
+                let owned = py_handle.obj.clone_ref(py);
+                drop(guard);
+                return owned.into_bound(py).into_any();
+            }
             if let Some(list_data) = guard
                 .as_any()
                 .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
@@ -1487,20 +1776,44 @@ fn py_auto_marshal_return(
     if py_val.is_instance_of::<pyo3::types::PyBool>() {
         let b: bool = py_val.extract().unwrap_or(false);
         task.ram.push_i32(if b { 1 } else { 0 });
+    } else if py_val.is_instance_of::<PyFloat>() {
+        // Plan 539 W2 (T19): only EXACT Python floats eagerly marshal to
+        // f64. The W0-era extract::<f64> also captured 0-dim tensors via
+        // __float__ (and numpy scalars subclass float, which still matches
+        // here) — eager-f64ing tensors broke the training loop (loss needs
+        // to stay a tensor for backward). Tensor scalars stay opaque
+        // handles; extract with py_float(x) explicitly.
+        let f: f64 = py_val.extract().unwrap_or(0.0);
+        task.ram.push_f64(f);
     } else if let Ok(i) = py_val.extract::<i32>() {
         task.ram.push_i32(i);
-    } else if let Ok(f) = py_val.extract::<f64>() {
-        // Plan 539 W0 (DIV-PY-FLOAT-1): floats return as a real f64. The
-        // historic string-pool round-trip existed because the 2-slot f64
-        // encoding broke `let x = py_func()` — obsolete since Plan 377 made
-        // f64 single-slot. It dropped ".0" on integral values and silently
-        // degraded arithmetic on the stringified result to NaN.
-        task.ram.push_f64(f);
     } else if let Ok(s) = py_val.extract::<String>() {
         let idx = vm.add_string(s.into_bytes());
         vm.rc_push_str_idx(task, idx);
     } else if py_val.is_none() {
-        task.ram.push_i32(0);
+        // Plan 539 W2 (T18): None marshals to the Auto null family (was
+        // i32 0). `x != null` guards and py_next exhaustion now agree.
+        task.ram.push_nv(auto_val::encode_null());
+    } else if py_val.is_instance_of::<PyTuple>() {
+        // Plan 539 W2 (T18): top-level tuple returns flatten to an Auto
+        // List (tuple-as-List mapping; immutability/hashability divergence
+        // registered in known-divergences).
+        let tuple = py_val.cast::<PyTuple>().map_err(|e| {
+            VMError::FFI(format!("Cast to PyTuple failed: {}", e))
+        })?;
+        let mut values = Vec::with_capacity(tuple.len());
+        for item in tuple.iter() {
+            values.push(py_any_to_value(&item, vm)?);
+        }
+        let list = crate::vm::types::ListData::<auto_val::Value> {
+            elems: values,
+            storage: None,
+        };
+        // TAG_OBJECT (not TAG_LIST): array literals and the T04/T07 GIL arms
+        // all speak TAG_OBJECT — TAG_LIST values degrade through .to(str)/
+        // .len() consumers that only decode TAG_OBJECT/i32.
+        let id = vm.insert_heap_object(list);
+        vm.rc_push(task, auto_val::encode_object(id as u32));
     } else if py_val.is_instance_of::<PyDict>() {
         // pyo3 0.29: cast() returns reference, borrow for heap conversion
         let dict = py_val.cast::<PyDict>().map_err(|e| {
@@ -1603,6 +1916,15 @@ fn py_any_to_value(
     if let Ok(list) = py_val.cast::<PyList>() {
         let mut values = Vec::new();
         for item in list.iter() {
+            values.push(py_any_to_value(&item, vm)?);
+        }
+        return Ok(auto_val::Value::Array(auto_val::Array::from(values)));
+    }
+    // Plan 539 W2 (T18): nested tuple flattens to Array, same as list
+    // (tuple-as-List mapping).
+    if let Ok(tuple) = py_val.cast::<PyTuple>() {
+        let mut values = Vec::new();
+        for item in tuple.iter() {
             values.push(py_any_to_value(&item, vm)?);
         }
         return Ok(auto_val::Value::Array(auto_val::Array::from(values)));
@@ -2057,6 +2379,31 @@ mod tests {
         let _ = two_t;
     }
 
+    // ========================================================================
+    // Plan 539 W3 (T21): callback bridge
+    // ========================================================================
+
+    #[test]
+    fn test_py_callable_registers_and_guards_window() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CALLABLE).is_some(), "py_callable");
+
+        // Outside a host shim window the bridge must refuse (T02 constraint
+        // made executable): no task slot installed -> RuntimeError.
+        Python::attach(|py| {
+            let arg = py.eval(
+                &std::ffi::CString::new("41").unwrap(),
+                None,
+                None,
+            )
+            .unwrap();
+            let err = run_closure_bridged(py, 0, &arg).unwrap_err();
+            assert!(err.to_string().contains("outside a host py shim window"));
+        });
+    }
+
     #[test]
     fn test_w1_idiom_shims_registered() {
         // Plan 539 W1 (T11-T14): all six idiom builtins at their fixed ids,
@@ -2072,11 +2419,13 @@ mod tests {
         assert!(ni.get(NATIVE_PY_CALL0).is_some(), "py_call0");
         assert!(ni.get(NATIVE_PY_WITH).is_some(), "py_with");
         bridge.import_module("json").unwrap();
-        let id = bridge.register_function(
-            "json",
-            "dumps",
-            crate::py_ffi_types::PySignature::default_string_string(),
-        ).unwrap();
+        let id = bridge
+            .register_function(
+                "json",
+                "dumps",
+                crate::py_ffi_types::PySignature::default_string_string(),
+            )
+            .unwrap();
         assert!(id >= 500, "module functions must start at 500, got {}", id);
     }
 
@@ -2109,7 +2458,10 @@ mod tests {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.register_object_shims();
         let ni = bridge.native_interface();
-        assert!(ni.get(NATIVE_PY_CALL_MAY).is_some(), "py_call_may shim not registered");
+        assert!(
+            ni.get(NATIVE_PY_CALL_MAY).is_some(),
+            "py_call_may shim not registered"
+        );
     }
 
     #[test]
