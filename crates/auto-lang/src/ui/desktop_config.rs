@@ -311,6 +311,39 @@ pub fn save_to(path: &std::path::Path, cfg: &DesktopConfig) -> std::io::Result<(
     std::fs::write(path, serialize_config(cfg))
 }
 
+/// Plan 540 T6：桌面设置窗 launch 期播种（Plan 504 扩展）——单源 config
+/// 字段写入已声明的 `cfg_*` state var（504 同语义：只做初始值，宿主写
+/// 状态不触发 handler；未声明 var 静默跳过）。命名约定：
+/// `cfg_dock_position` str / `cfg_dock_enabled`·`cfg_notes_enabled` "1"/"0" /
+/// `cfg_dock_pinned` csv / `cfg_wallpaper`·`cfg_wallpapers_dir` str /
+/// `cfg_theme` "dark"/"light" / `cfg_transparency` str。
+/// Vue 端（无宿主）不走此链——app 缺省值即内置默认，双端一致。
+#[cfg(feature = "ui-iced")]
+pub fn seed_desktop_config(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    cfg: &DesktopConfig,
+) {
+    let mut put = |k: &str, v: String| {
+        let _ = component.write_state(k, auto_val::Value::str(v));
+    };
+    put("cfg_dock_position", cfg.dock_position.clone());
+    put("cfg_dock_enabled", bool01(cfg.dock_enabled));
+    put("cfg_dock_pinned", cfg.dock_pinned.join(","));
+    put("cfg_wallpaper", cfg.wallpaper_path.clone());
+    put("cfg_wallpapers_dir", cfg.wallpapers_dir.clone());
+    put(
+        "cfg_theme",
+        if cfg.dark_theme { "dark" } else { "light" }.to_string(),
+    );
+    put("cfg_transparency", cfg.transparency.clone());
+    put("cfg_notes_enabled", bool01(cfg.notes_enabled));
+}
+
+/// bool → "1"/"0"（.at 控件选中态判定约定）。
+fn bool01(b: bool) -> String {
+    if b { "1".to_string() } else { "0".to_string() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,5 +465,73 @@ mod tests {
         let src = std::fs::read_to_string(&path).expect("read back");
         assert_eq!(parse_config(&src), cfg);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// T6：launch 期播种——cfg_* 命名约定 var 写入（bool → "1"/"0"、
+    /// dark_theme → "dark"/"light"、pinned → csv）；未声明 var 静默跳过。
+    #[cfg(feature = "ui-iced")]
+    #[test]
+    fn seed_desktop_config_writes_cfg_vars() {
+        let src = "widget App {\n    model {\n        var cfg_dock_position str = \"bottom\"\n        var cfg_dock_enabled str = \"1\"\n        var cfg_dock_pinned str = \"\"\n        var cfg_wallpaper str = \"\"\n        var cfg_wallpapers_dir str = \"\"\n        var cfg_theme str = \"dark\"\n        var cfg_transparency str = \"off\"\n        var cfg_notes_enabled str = \"1\"\n    }\n    view { text \"x\" }\n}\n";
+        let mut comp = crate::build_dynamic_component(src, None).unwrap();
+        let cfg = DesktopConfig {
+            dock_position: "top".to_string(),
+            dock_enabled: false,
+            dock_pinned: vec!["013-todo".to_string(), "015-notes".to_string()],
+            wallpaper_path: "#243b55".to_string(),
+            wallpapers_dir: "D:/wp".to_string(),
+            dark_theme: false,
+            transparency: "high".to_string(),
+            notes_enabled: false,
+        };
+        seed_desktop_config(&mut comp, &cfg);
+        assert_eq!(
+            comp.read_state("cfg_dock_position").unwrap(),
+            auto_val::Value::str("top")
+        );
+        assert_eq!(
+            comp.read_state("cfg_dock_enabled").unwrap(),
+            auto_val::Value::str("0")
+        );
+        assert_eq!(
+            comp.read_state("cfg_dock_pinned").unwrap(),
+            auto_val::Value::str("013-todo,015-notes")
+        );
+        assert_eq!(
+            comp.read_state("cfg_wallpaper").unwrap(),
+            auto_val::Value::str("#243b55")
+        );
+        assert_eq!(
+            comp.read_state("cfg_theme").unwrap(),
+            auto_val::Value::str("light")
+        );
+        assert_eq!(
+            comp.read_state("cfg_transparency").unwrap(),
+            auto_val::Value::str("high")
+        );
+        assert_eq!(
+            comp.read_state("cfg_notes_enabled").unwrap(),
+            auto_val::Value::str("0")
+        );
+        // 未声明 var（cfg_nonsense）静默跳过由 write_state Err 吞掉——无
+        // panic 即语义（504 seed_fields_skips_undeclared_vars 同型）。
+    }
+
+    /// T4 护栏：045-desktop-settings app.at 源码可编译（.at 语法回归门；
+    /// 路径解析同 app_registry tests 的 repo_examples_ui——仓库内单测）。
+    #[test]
+    fn desktop_settings_app_source_compiles() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("045-desktop-settings")
+            .join("app.at");
+        let src = std::fs::read_to_string(&path)
+            .expect("045-desktop-settings/app.at 存在（examples 随仓）");
+        let comp = crate::build_dynamic_component(&src, None)
+            .expect("设置窗 app.at 语法/语义编译通过");
+        assert_eq!(comp.widget_name(), "App");
     }
 }

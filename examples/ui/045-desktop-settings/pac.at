@@ -1,0 +1,10 @@
+name: "desktop"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+icon: "settings"
+title: "设置"
+theme: "dark"
+accent: "indigo"
+# Plan 540：pac name=desktop → Plan 504 播种路径 ~/.config/autoos/apps/desktop/config.at
+#（桌面单源配置；宿主 launch 期 cfg_* 播种见 osconfig_apps seed_desktop_config）。

@@ -267,8 +267,6 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
     /// Plan 487 M4：设置面板 overlay App 的 AppId。首次 open_settings 召唤时
-    /// 懒挂载（第四枚 overlay 槽）；独立模式恒 None。
-    pub settings_app: Option<AppId>,
     /// Plan 496 M5：桌面本体面（assets/desktop.at 图标网格面）的 AppId。
     /// boot 期常驻装载（非 overlay 懒挂载——面常驻不召唤），装配层 Stack
     /// 先于虚拟窗推层（463 桌面层 z 槽消费）；独立模式恒 None。
@@ -365,7 +363,6 @@ impl DesktopState {
             launcher_app: None,
             switcher_app: None,
             notification_app: None,
-            settings_app: None,
             desktop_app: None,
             desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),
             launcher_entry: None,
@@ -2266,6 +2263,31 @@ fn spawn_outproc_child(
         if let Some(cfg_name) = spec.name.as_deref() {
             if let Some(app) = self.apps.get_mut(&app_id) {
                 crate::ui::osconfig_apps::seed_app_config(&mut app.component, cfg_name);
+                // Plan 540 T6：桌面设置窗单源播种——cfg_* 快照 + 501 徽标
+                // 三态 + 关于常量（launch 期点定序；打开期间宿主变更不重注
+                // ——487 overlay 同语义）。
+                if cfg_name == "desktop" {
+                    crate::ui::desktop_config::seed_desktop_config(
+                        &mut app.component,
+                        &self.desktop.config,
+                    );
+                    let (osc_state, osc_hint) = crate::ui::osconfig_daemon::badge_projection(
+                        &self.desktop.osconfig_status,
+                    );
+                    let _ = app
+                        .component
+                        .write_state("osconfig_state", auto_val::Value::str(osc_state));
+                    let _ = app
+                        .component
+                        .write_state("osconfig_hint", auto_val::Value::str(osc_hint));
+                    let _ = app
+                        .component
+                        .write_state("about_host", auto_val::Value::str(std::env::consts::OS));
+                    let _ = app.component.write_state(
+                        "about_version",
+                        auto_val::Value::str(env!("CARGO_PKG_VERSION")),
+                    );
+                }
             }
         }
         let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
@@ -3057,8 +3079,6 @@ fn spawn_outproc_child(
             let is_switcher = self.desktop.switcher_app == Some(id);
             // Plan 479 T3：通知中心 overlay（windowless 拆借第四路）。
             let is_notification = self.desktop.notification_app == Some(id);
-            // Plan 487 M4：设置面板 overlay（windowless 拆借第五路）。
-            let is_settings = self.desktop.settings_app == Some(id);
             // Plan 496 M5：桌面本体面（windowless 拆借第六路；常驻面，
             // shell/overlay 同型垫片承接）。
             let is_desktop = self.desktop.desktop_app == Some(id);
@@ -3066,7 +3086,6 @@ fn spawn_outproc_child(
                 && !is_launcher
                 && !is_switcher
                 && !is_notification
-                && !is_settings
                 && !is_desktop
             {
                 return None;
@@ -3109,15 +3128,6 @@ fn spawn_outproc_child(
                     &mut host.notification_fields.initial_focus_done,
                     &host.notification_fields.fit_pending,
                     &host.notification_fields.fit_enabled,
-                )
-            } else if is_settings {
-                (
-                    &mut host.settings_fields.window_size,
-                    &mut host.settings_fields.pending_window_resize,
-                    &mut host.settings_fields.initial_resize_done,
-                    &mut host.settings_fields.initial_focus_done,
-                    &host.settings_fields.fit_pending,
-                    &host.settings_fields.fit_enabled,
                 )
             } else {
                 (
@@ -3339,6 +3349,19 @@ fn spawn_outproc_child(
         )
     }
 
+    /// Plan 479 T3：通知中心 overlay 是否可见（Esc 仲裁 / 键盘独占路由的
+    /// 判定位；[`Self::switcher_visible`] 同型）。未挂载恒 false。
+    /// （Plan 540 T9 误删恢复——本 fn 与设置 overlay 退役无关。）
+    pub fn notification_visible(&self) -> bool {
+        let Some(panel) = self.desktop.notification_app else { return false };
+        matches!(
+            self.apps
+                .get(&panel)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
+    }
+
     /// Plan 479 T3：通知中心 overlay App 的拆借视图（view 装配的通知面板
     /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_switcher`] 相同，
     /// 字段走 [`HostCtx::notification_fields`]）。
@@ -3361,54 +3384,6 @@ fn spawn_outproc_child(
             vwin_rect: None,
         })
     }
-
-    /// Plan 479 T3：通知中心 overlay 是否可见（Esc 仲裁 / 键盘独占路由的
-    /// 判定位；[`Self::switcher_visible`] 同型）。未挂载恒 false。
-    pub fn notification_visible(&self) -> bool {
-        let Some(panel) = self.desktop.notification_app else { return false };
-        matches!(
-            self.apps
-                .get(&panel)
-                .and_then(|a| a.component.read_state("visible").ok()),
-            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
-        )
-    }
-
-    /// Plan 487 M4：设置面板 overlay 是否可见（Esc 仲裁 / 键盘独占路由的
-    /// 判定位；[`Self::notification_visible`] 同型）。未挂载恒 false。
-    pub fn settings_visible(&self) -> bool {
-        let Some(panel) = self.desktop.settings_app else { return false };
-        matches!(
-            self.apps
-                .get(&panel)
-                .and_then(|a| a.component.read_state("visible").ok()),
-            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
-        )
-    }
-
-    /// Plan 487 M4：设置面板 overlay App 的拆借视图（view 装配的设置面板
-    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_notification`] 相同，
-    /// 字段走 [`HostCtx::settings_fields`]）。
-    pub fn split_ref_settings(&self) -> Option<SessionViewRef<'_>> {
-        let panel = self.desktop.settings_app?;
-        let app = self.apps.get(&panel)?;
-        let host = self.host.as_ref()?;
-        Some(SessionViewRef {
-            app_id: panel,
-            window: host.window,
-            component: &app.component,
-            app: &app.state,
-            desktop: &self.desktop,
-            window_size: &host.settings_fields.window_size,
-            pending_window_resize: &host.settings_fields.pending_window_resize,
-            initial_resize_done: &host.settings_fields.initial_resize_done,
-            initial_focus_done: &host.settings_fields.initial_focus_done,
-            fit_pending: &host.settings_fields.fit_pending,
-            fit_enabled: &host.settings_fields.fit_enabled,
-            vwin_rect: None,
-        })
-    }
-
     /// Plan 496 M5：桌面本体面 App 的拆借视图（view 装配的桌面层 z 槽
     /// 专用；无虚拟窗——垫片语义与 [`Self::split_ref_settings`] 相同，
     /// 字段走 [`HostCtx::desktop_fields`]）。
