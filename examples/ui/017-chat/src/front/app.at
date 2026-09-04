@@ -1,56 +1,106 @@
-// app.at — Chat shell (Plan musk-022 SSE multi-event end-to-end).
+// app.at — Chat shell (WeChat-style multi-contact & bot enhancements).
 // Plan 051 C7 试点：header 秒表计时器（timer 块 demo，vue/VM 双轨）。
+// Plan 544: 现代双栏布局（左侧 ChatSidebar + 右侧 MessageThread + Composer）。
 use chat_store: ChatStore
+use chat_sidebar: ChatSidebar
 use message_thread: MessageThread
 use composer: Composer
 use back.api: send_message, list_messages, set_typing
 
 widget App {
-    msg { Init, SendMessage(str), Typing(str), ClockTick }
+    msg {
+        Init,
+        SendMessage(str),
+        Typing(str),
+        ClockTick,
+        SelectContact(str),
+        SearchContacts(str),
+        TriggerBotReply(str)
+    }
+
     model {
         var clock_secs int = 0
     }
+
     timer {
         ClockTick (every_ms: 1000)
     }
+
+    computed {
+        active_name => if .store.active_contact_id == "alice" { "Alice" } else if .store.active_contact_id == "bob" { "Bob" } else if .store.active_contact_id == "autobot" { "AutoBot 🤖" } else { "Tech Support" }
+        active_avatar => if .store.active_contact_id == "alice" { "👩‍💼" } else if .store.active_contact_id == "bob" { "👨‍💻" } else if .store.active_contact_id == "autobot" { "🤖" } else { "🛠️" }
+        active_status => if .store.active_contact_id == "autobot" { "AI Assistant • Online" } else { "Online • Available" }
+    }
+
     view {
         col {
-            style: "w-full h-screen flex-col bg-muted/30 p-3 gap-3"
+            style: "w-full h-screen flex-col bg-muted/20 p-3 gap-3 overflow-hidden"
+            // Header Bar
             row {
-                style: "items-center justify-between px-5 py-3 bg-card rounded-xl shadow-sm"
+                style: "items-center justify-between px-5 py-2.5 bg-card rounded-xl shadow-xs border border-border"
                 row {
                     style: "items-center gap-2"
                     text "💬" { style: "text-xl" }
-                    h2 "Chat" { style: "text-lg font-bold text-foreground" }
+                    h2 "Chat" { style: "text-lg font-bold text-foreground tracking-tight" }
+                    text "WeChat Edition" { style: "text-xs font-medium text-muted-foreground ml-2 px-2.5 py-0.5 bg-muted rounded-full border border-border/50" }
                 }
                 row {
                     style: "items-center gap-3"
                     if .store.loading {
                         text "Loading…" { style: "text-xs text-muted-foreground" }
                     }
-                    text f"⏱ ${.clock_secs}s" { style: "text-xs text-muted-foreground tabular-nums" }
+                    text f"⏱ ${.clock_secs}s" { style: "text-xs text-muted-foreground tabular-nums font-mono" }
                 }
             }
-            col {
-                style: "flex-1 gap-3 min-h-0"
-                MessageThread(messages: .store.messages, typing_name: .store.typing_name)
-                Composer(on_send: .SendMessage, on_typing: .Typing)
+
+            // Main Dual-column Body
+            row {
+                style: "flex-1 gap-3 min-h-0 overflow-hidden"
+                ChatSidebar(
+                    contacts: .store.contacts,
+                    active_id: .store.active_contact_id,
+                    search_query: .store.search_query,
+                    on_select: .SelectContact,
+                    on_search: .SearchContacts
+                )
+                col {
+                    style: "flex-1 gap-3 min-h-0 overflow-hidden"
+                    MessageThread(
+                        messages: .store.messages,
+                        typing_name: .store.typing_name,
+                        active_name: .active_name,
+                        active_avatar: .active_avatar,
+                        active_status: .active_status,
+                        on_trigger_bot: .TriggerBotReply
+                    )
+                    Composer(on_send: .SendMessage, on_typing: .Typing)
+                }
             }
         }
     }
+
     on {
-        .Init -> { store.Init() }
-        // Plan 051 C7: 每秒 +1（timer 拍进既有 msg 流）。
-        .ClockTick -> { .clock_secs = .clock_secs + 1 }
+        .Init -> {
+            store.Init()
+        }
+        .ClockTick -> {
+            .clock_secs = .clock_secs + 1
+        }
         .SendMessage(text) -> {
             send_message("You", text)
             store.messages = list_messages()
         }
-        // Plan 399 §6: typing-indicator — fire-and-forget POST /api/typing.
-        // The backend broadcasts a Typing SSE event; connected clients' stores
-        // receive it via the .Typing(name) handler (chat_store.at).
         .Typing(name) -> {
             set_typing(name)
+        }
+        .SelectContact(id) -> {
+            store.SelectContact(id)
+        }
+        .SearchContacts(query) -> {
+            store.Search(query)
+        }
+        .TriggerBotReply(query) -> {
+            store.TriggerBot(query)
         }
     }
 }
