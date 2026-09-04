@@ -2734,6 +2734,10 @@ impl VueGenerator {
                             && !ts_type.contains("null")
                         {
                             format!("({default_js} as any)")
+                        } else if default_js.trim().starts_with('[') {
+                            format!("() => {}", default_js.trim())
+                        } else if default_js.trim().starts_with('{') {
+                            format!("() => ({})", default_js.trim())
                         } else {
                             default_js
                         };
@@ -3771,7 +3775,7 @@ impl VueGenerator {
                     None => "true".to_string(),
                 };
                 script.push_str(&format!(
-                    "let {var} = null
+                    "let {var}: any = null
 const __t51_on_{ev} = () => {{ if ({guard}) {{ {body} }} }}
 onMounted(() => {{ {var} = setInterval(__t51_on_{ev}, {ms}) }})
 onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }} }})
@@ -15533,7 +15537,7 @@ function getAccentNames(): string[] {
         use crate::ast::Expr;
         match expr {
             Expr::Int(n) => n.to_string(),
-            Expr::Str(s) | Expr::CStr(s) => format!("'{}'", s.as_str().replace('\'', "\\'")),
+            Expr::Str(s) | Expr::CStr(s) => format!("'{}'", Self::escape_js_string(s.as_str())),
             Expr::Bool(b) => b.to_string(),
             Expr::Array(elems) => {
                 let parts: Vec<String> = elems.iter().map(Self::store_init_to_js).collect();

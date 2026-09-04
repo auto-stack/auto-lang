@@ -390,6 +390,8 @@ enum Commands {
         accent: Option<String>,
         #[arg(long, help = "Plan 465: desktop host mode — vue scaffold becomes the virtual-desktop shell consuming an apps registry")]
         desktop: bool,
+        #[arg(long, help = "Plan 549: UI gallery host mode — harvest examples/ui into demos-registry.ts")]
+        gallery: bool,
         #[arg(long, help = "Plan 465: apps directory for the desktop registry (default <workspace>/examples/ui)")]
         apps: Option<String>,
         #[arg(allow_hyphen_values = true)]
@@ -868,7 +870,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, apps, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, gallery, apps, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -1033,6 +1035,10 @@ fn real_main(cli: Cli) -> Result<()> {
             if desktop {
                 std::env::set_var("AUTO_DESKTOP", "1");
                 println!("  Desktop host mode: ON");
+            }
+            if gallery {
+                std::env::set_var("AUTO_GALLERY", "1");
+                println!("  Gallery host mode: ON");
             }
             if let Some(a) = &apps {
                 std::env::set_var("AUTO_DESKTOP_APPS", a);

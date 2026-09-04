@@ -470,6 +470,12 @@ fn generate_package_json(
         .collect::<Vec<_>>()
         .join(",\n");
 
+    let build_script = if name == "ui-gallery" || name == "desktop-host" {
+        "vite build"
+    } else {
+        "vue-tsc && vite build"
+    };
+
     format!(
         r#"{{
   "name": "{}",
@@ -478,7 +484,7 @@ fn generate_package_json(
   "type": "module",
   "scripts": {{
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "{}",
     "preview": "vite preview"
   }},
   "dependencies": {{
@@ -498,6 +504,7 @@ fn generate_package_json(
 }}
 "#,
         name,
+        build_script,
         deps_body
     )
 }
@@ -3574,6 +3581,211 @@ export default router
         Ok(())
     }
 
+    /// Plan 549: check if current project is ui-gallery
+    pub fn is_ui_gallery(&self) -> bool {
+        self.name == "ui-gallery"
+            || self.root_dir.file_name().and_then(|n| n.to_str()) == Some("ui-gallery")
+    }
+
+    /// Plan 549: UI Gallery host — scans examples/ui, generates App SFCs in
+    /// src/apps/<id>/, merges stores, components, and npm deps, and outputs
+    /// src/demos-registry.ts.
+    pub fn generate_gallery_host(&self) -> AutoResult<()> {
+        let apps_dir = gallery_apps_dir(&self.root_dir)?;
+        let entries = auto_lang::ui::app_registry::scan_apps(
+            &apps_dir,
+            &auto_lang::ui::app_registry::ScanOptions::default(),
+        );
+        println!(
+            "{} {} (from {})",
+            "  Gallery demos:".bright_cyan(),
+            entries.len(),
+            apps_dir.display()
+        );
+
+        let src_dir = self.output_dir.join("src");
+        let apps_src = src_dir.join("apps");
+        if apps_src.exists() {
+            let _ = fs::remove_dir_all(&apps_src);
+        }
+        fs::create_dir_all(&apps_src)
+            .map_err(|e| format!("Failed to create src/apps: {}", e))?;
+        let components_dir = src_dir.join("components");
+        let stores_dir = src_dir.join("stores");
+
+        let mut shadcn_needed: Vec<String> = Vec::new();
+        let mut npm_merge: Vec<(String, String)> = Vec::new();
+        let mut claimed_stores: HashSet<String> = HashSet::new();
+        let mut claimed_components: HashSet<String> = HashSet::new();
+        let mut app_corpus_total = String::new();
+        let mut demo_rows: Vec<GalleryDemoRow> = Vec::new();
+
+        for e in &entries {
+            let app_root = apps_dir.join(&e.id);
+            let doc = fs::read_to_string(app_root.join("tutorial.ad"))
+                .or_else(|_| fs::read_to_string(app_root.join("README.md")))
+                .or_else(|_| fs::read_to_string(app_root.join("SPEC.md")))
+                .unwrap_or_default();
+            let source = fs::read_to_string(app_root.join("src").join("front").join("app.at"))
+                .or_else(|_| fs::read_to_string(app_root.join("app.at")))
+                .unwrap_or_default();
+            let pac = fs::read_to_string(app_root.join("pac.at")).unwrap_or_default();
+
+            let category = if e.id.starts_with("001") || e.id.starts_with("002") || e.id.starts_with("003") || e.id.starts_with("004") || e.id.starts_with("005") || e.id.starts_with("006") {
+                "01-basic".to_string()
+            } else if e.id.starts_with("007") || e.id.starts_with("008") || e.id.starts_with("009") || e.id.starts_with("010") || e.id.starts_with("011") || e.id.starts_with("012") || e.id.starts_with("016") || e.id.starts_with("042") {
+                "02-components".to_string()
+            } else if e.id.starts_with("013") || e.id.starts_with("014") || e.id.starts_with("015") || e.id.starts_with("017") || e.id.starts_with("018") || e.id.starts_with("019") || e.id.starts_with("020") || e.id.starts_with("021") || e.id.starts_with("022") || e.id.starts_with("023") {
+                "03-apps".to_string()
+            } else {
+                "04-systems".to_string()
+            };
+
+            let mut tags: Vec<String> = Vec::new();
+            if e.id.contains("counter") { tags.extend(vec!["Elm".into(), "State".into(), "Lambda".into()]); }
+            else if e.id.contains("todo") { tags.extend(vec!["TodoMVC".into(), "Filter".into(), "CRUD".into()]); }
+            else if e.id.contains("chart") { tags.extend(vec!["Data".into(), "SVG".into(), "Animation".into()]); }
+            else if e.id.contains("calculator") { tags.extend(vec!["Grid".into(), "Math".into()]); }
+            else if e.id.contains("weather") { tags.extend(vec!["Dashboard".into(), "Cards".into()]); }
+            else if e.id.contains("notes") { tags.extend(vec!["Fullstack".into(), "Markdown".into(), "Sidebar".into()]); }
+            else if e.id.contains("chat") { tags.extend(vec!["Chat".into(), "Scroll".into(), "Avatars".into()]); }
+            else if e.id.contains("kanban") { tags.extend(vec!["DnD".into(), "Columns".into(), "Cards".into()]); }
+            else if e.id.contains("photo") { tags.extend(vec!["Images".into(), "Gallery".into(), "Modal".into()]); }
+            else if e.id.contains("mine") { tags.extend(vec!["Game".into(), "Grid".into(), "Timer".into()]); }
+            else if e.id.contains("login") { tags.extend(vec!["Form".into(), "Validation".into()]); }
+            else if e.id.contains("converter") { tags.extend(vec!["Binding".into(), "7GUIs".into()]); }
+            else { tags.push("AutoUI".into()); }
+
+            let desc = if !e.title.is_empty() { e.title.clone() } else { e.id.clone() };
+
+            let vp = match VueProject::from_workspace(&app_root) {
+                Ok(v) => v,
+                Err(err) => {
+                    println!("  {} demo {} skipped: {}", "⚠".bright_yellow(), e.id, err);
+                    demo_rows.push(GalleryDemoRow {
+                        id: e.id.clone(),
+                        title: e.title.clone(),
+                        category,
+                        icon: e.icon.clone(),
+                        description: desc,
+                        tags,
+                        doc,
+                        source,
+                        pac,
+                        loadable: false,
+                    });
+                    continue;
+                }
+            };
+
+            let mut corpus = vp.app_vue_code.clone();
+            for (_, _, code, _) in &vp.components {
+                corpus.push_str(code);
+            }
+            for (_, code) in &vp.store_files {
+                corpus.push_str(code);
+            }
+
+            let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
+            let is_loadable = !is_vm_only
+                && !corpus.contains("@/lib/api")
+                && !corpus.contains("from '@/api")
+                && !vp.has_routes
+                && !corpus.contains("@/ext/")
+                && !corpus.contains("@/locales/")
+                && !vp.i18n.enabled;
+
+            if is_loadable {
+                app_corpus_total.push_str(&corpus);
+
+                for (filename, code) in &vp.store_files {
+                    let _ = fs::create_dir_all(&stores_dir);
+                    let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
+                    if claimed_stores.insert(clean_name.to_string()) {
+                        let _ = fs::write(stores_dir.join(clean_name), code);
+                    }
+                }
+
+                for (_, _name, code, widget_name) in &vp.components {
+                    if widget_name == "app" {
+                        continue;
+                    }
+                    let _ = fs::create_dir_all(&components_dir);
+                    let file = components_dir.join(format!("{}.vue", widget_name));
+                    if claimed_components.insert(widget_name.clone()) {
+                        let _ = fs::write(&file, code);
+                    }
+                    for comp in detect_shadcn_components(code) {
+                        if !shadcn_needed.contains(&comp) {
+                            shadcn_needed.push(comp);
+                        }
+                    }
+                }
+                for comp in detect_shadcn_components(&vp.app_vue_code) {
+                    if !shadcn_needed.contains(&comp) {
+                        shadcn_needed.push(comp);
+                    }
+                }
+
+                for (name, ver) in &vp.npm_deps {
+                    if !npm_merge.iter().any(|(n, _)| n == name) {
+                        npm_merge.push((name.clone(), ver.clone()));
+                    }
+                }
+
+                let app_dir = apps_src.join(&e.id);
+                if fs::create_dir_all(&app_dir).is_ok() {
+                    let _ = fs::write(app_dir.join("App.vue"), &vp.app_vue_code);
+                }
+            }
+
+            demo_rows.push(GalleryDemoRow {
+                id: e.id.clone(),
+                title: e.title.clone(),
+                category,
+                icon: e.icon.clone(),
+                description: desc,
+                tags,
+                doc,
+                source,
+                pac,
+                loadable: is_loadable,
+            });
+        }
+
+        if !shadcn_needed.is_empty() {
+            let _ = crate::vue_shadcn::materialize(&self.output_dir, &shadcn_needed);
+        }
+
+        let app_usage = VueDependencyUsage::detect(&app_corpus_total);
+        for (pkg, ver) in OPTIONAL_DEPS {
+            if app_usage.required_packages().contains(pkg)
+                && !npm_merge.iter().any(|(n, _)| n == pkg)
+            {
+                npm_merge.push(((*pkg).to_string(), (*ver).to_string()));
+            }
+        }
+
+        // Materialize gallery runtime assets (AppViewport.vue)
+        crate::gallery_assets::materialize(&self.output_dir)?;
+
+        merge_host_npm_deps(&self.output_dir, &npm_merge)?;
+
+        fs::write(
+            src_dir.join("demos-registry.ts"),
+            generate_demos_registry(&demo_rows),
+        )
+        .map_err(|e| format!("Failed to write demos-registry.ts: {}", e))?;
+
+        println!(
+            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable)",
+            "✓".bright_green(),
+            demo_rows.len(),
+            demo_rows.iter().filter(|r| r.loadable).count()
+        );
+        Ok(())
+    }
+
     /// Run package manager install
     pub fn npm_install(&self) -> AutoResult<()> {
         let pm = crate::pkg::display_name();
@@ -3829,6 +4041,16 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 
     // Plan 413: ensure the CodeEditor CodeMirror shell exists (write-if-missing).
     project.ensure_code_editor_component()?;
+
+    // Plan 465: desktop host mode
+    if desktop_mode() {
+        project.generate_desktop_host()?;
+    }
+
+    // Plan 549: UI gallery host
+    if project.is_ui_gallery() || gallery_mode() {
+        project.generate_gallery_host()?;
+    }
 
     // Step 2: materialize bundled ui components (PLAN-457, pre-install)
     println!();
@@ -4500,6 +4722,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.generate_desktop_host()?;
     }
 
+    // Plan 549: UI gallery host + demos registry refresh on EVERY run
+    if project.is_ui_gallery() || gallery_mode() {
+        project.generate_gallery_host()?;
+    }
+
     // Plan 458: index.html carries the theme default (`class="dark"`) and the
     // accent bootstrap (`--primary`). It is tiny, so rewrite it on EVERY run —
     // otherwise a stale index.html (e.g. a pre-Plan-043-M5 template without
@@ -4774,6 +5001,123 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
 }
 
 // =====================================================================
+// =====================================================================
+// Plan 549: UI Gallery host scaffolding free functions
+// =====================================================================
+
+/// UI-Gallery host mode flag (`auto run --gallery` injects AUTO_GALLERY=1).
+pub fn gallery_mode() -> bool {
+    std::env::var("AUTO_GALLERY").ok().as_deref() == Some("1")
+}
+
+/// Apps directory for the gallery demos registry:
+/// AUTO_GALLERY_APPS env wins; next is `<root_dir>/../ui` (sibling in examples/),
+/// then `<workspace>/examples/ui`.
+fn gallery_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
+    if let Some(d) = std::env::var_os("AUTO_GALLERY_APPS") {
+        return Ok(PathBuf::from(d));
+    }
+    if let Some(parent) = root_dir.parent() {
+        let sibling_ui = parent.join("ui");
+        if sibling_ui.is_dir() {
+            return Ok(sibling_ui);
+        }
+    }
+    let default = root_dir.join("examples").join("ui");
+    if default.is_dir() {
+        return Ok(default);
+    }
+    Err(format!(
+        "Gallery mode needs an apps directory: set AUTO_GALLERY_APPS or ensure examples/ui exists near {}",
+        root_dir.display()
+    )
+    .into())
+}
+
+#[derive(Debug, Clone)]
+pub struct GalleryDemoRow {
+    pub id: String,
+    pub title: String,
+    pub category: String,
+    pub icon: String,
+    pub description: String,
+    pub tags: Vec<String>,
+    pub doc: String,
+    pub source: String,
+    pub pac: String,
+    pub loadable: bool,
+}
+
+fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
+    let mut entries_ts = String::new();
+    for r in rows {
+        let tags_json = serde_json::to_string(&r.tags).unwrap_or_else(|_| "[]".to_string());
+        let doc_json = serde_json::to_string(&r.doc).unwrap_or_else(|_| "\"\"".to_string());
+        let source_json = serde_json::to_string(&r.source).unwrap_or_else(|_| "\"\"".to_string());
+        let pac_json = serde_json::to_string(&r.pac).unwrap_or_else(|_| "\"\"".to_string());
+        let desc_json = serde_json::to_string(&r.description).unwrap_or_else(|_| "\"\"".to_string());
+        let title_json = serde_json::to_string(&r.title).unwrap_or_else(|_| "\"\"".to_string());
+        let id_json = serde_json::to_string(&r.id).unwrap_or_else(|_| "\"\"".to_string());
+        let cat_json = serde_json::to_string(&r.category).unwrap_or_else(|_| "\"\"".to_string());
+        let icon_json = serde_json::to_string(&r.icon).unwrap_or_else(|_| "\"\"".to_string());
+
+        let load_prop = if r.loadable {
+            format!("\n    load: () => import('./apps/{}/App.vue'),", r.id)
+        } else {
+            String::new()
+        };
+
+        entries_ts.push_str(&format!(
+            r#"  {{
+    id: {id_json},
+    title: {title_json},
+    category: {cat_json},
+    icon: {icon_json},
+    description: {desc_json},
+    tags: {tags_json},
+    doc: {doc_json},
+    source: {source_json},
+    pac: {pac_json},
+    loadable: {loadable},{load_prop}
+  }},
+"#,
+            loadable = r.loadable
+        ));
+    }
+
+    format!(
+        r#"// Generated by auto-man — build-time demos registry (Plan 549). DO NOT EDIT.
+// Regenerated on every `auto run` for ui-gallery from the scanned apps directory.
+import type {{ Component }} from 'vue'
+
+export interface DemoMeta {{
+  id: string
+  title: string
+  category: string
+  icon: string
+  description: string
+  tags: string[]
+  doc: string
+  source: string
+  pac: string
+  loadable: boolean
+  load?: () => Promise<{{ default: Component }}>
+}}
+
+export const DEMOS: DemoMeta[] = [
+{entries_ts}]
+
+export function findDemo(id: string): DemoMeta | undefined {{
+  return DEMOS.find((d) => d.id === id)
+}}
+
+export function getCategories(): string[] {{
+  return ['01-basic', '02-components', '03-apps', '04-systems']
+}}
+"#
+    )
+}
+
 // Plan 465 T3: desktop host scaffolding free functions
 // =====================================================================
 
@@ -6270,3 +6614,47 @@ fn p515_host_wallpaper_layer_branches() {
         "Wallpaper.vue 进 wm 资产清单"
     );
 }
+
+#[test]
+fn test_plan_549_ui_gallery_registry_and_package_json() {
+    let rows = vec![
+        GalleryDemoRow {
+            id: "002-counter".to_string(),
+            title: "Counter".to_string(),
+            category: "01-basic".to_string(),
+            icon: "calculator".to_string(),
+            description: "A counter demo".to_string(),
+            tags: vec!["Elm".to_string(), "State".to_string()],
+            doc: "# Counter Tutorial".to_string(),
+            source: "widget App {}".to_string(),
+            pac: "name: \"counter\"".to_string(),
+            loadable: true,
+        },
+        GalleryDemoRow {
+            id: "041-auto-edit".to_string(),
+            title: "AutoEdit".to_string(),
+            category: "04-systems".to_string(),
+            icon: "code".to_string(),
+            description: "Editor demo".to_string(),
+            tags: vec!["Editor".to_string()],
+            doc: "# Editor Tutorial".to_string(),
+            source: "widget App {}".to_string(),
+            pac: "name: \"auto-edit\"\nrender: \"vm\"".to_string(),
+            loadable: false,
+        },
+    ];
+
+    let registry = generate_demos_registry(&rows);
+    assert!(registry.contains("export interface DemoMeta"), "interface:\n{registry}");
+    assert!(registry.contains("export const DEMOS: DemoMeta[] = ["), "array:\n{registry}");
+    assert!(registry.contains("load: () => import('./apps/002-counter/App.vue')"), "002-counter has load:\n{registry}");
+    assert!(!registry.contains("./apps/041-auto-edit/App.vue"), "041-auto-edit load omitted:\n{registry}");
+    assert!(registry.contains(r#""041-auto-edit""#), "041-auto-edit metadata included:\n{registry}");
+
+    let pkg = generate_package_json("ui-gallery", false, false, &[], &VueDependencyUsage::default());
+    assert!(pkg.contains(r#""build": "vite build""#), "ui-gallery uses vite build:\n{pkg}");
+
+    let normal_pkg = generate_package_json("my-app", false, false, &[], &VueDependencyUsage::default());
+    assert!(normal_pkg.contains(r#""build": "vue-tsc && vite build""#), "normal app uses vue-tsc:\n{normal_pkg}");
+}
+
