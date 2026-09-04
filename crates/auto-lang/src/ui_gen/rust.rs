@@ -556,6 +556,24 @@ impl RustGenerator {
             }
         }
 
+        // PLAN-533 T4: on-only handlers（无 msg 块声明的 vue 风格源——gallery
+        // 页/探针均此形态）此前静默跳过（generate_on_method 的 Plan 374 skip）
+        // → 生成 type Msg = ()，而 view 派发闭包仍引用 <Widget>Msg::<variant>
+        // 的悬垂路径，编译断。rust 轨在此把 handler 的零参变体补进枚举，
+        // 枚举/match/派发三方一致。带参 on-only handler 仍走悬垂编译错
+        // （响亮失败：payload 类型无法从 on 块推断）。
+        for pattern in widget.handlers.keys() {
+            let variant_name = self.extract_variant_name(pattern);
+            if !self.message_variants.iter().any(|v| v.name == variant_name) {
+                self.message_variants.push(AuraMsgVariant {
+                    name: variant_name,
+                    quoted: false,
+                    payload: vec![],
+                    payload_names: vec![],
+                });
+            }
+        }
+
         // Message enum (includes wrapper variants for child components + Init lifecycle)
         if !self.message_variants.is_empty() || !self.child_components.is_empty() {
             code.push_str(&self.generate_msg_enum()?);
@@ -5958,6 +5976,53 @@ widget Counter {
             code
         );
         assert!(code.contains("self.count += 1"), "lambda body:\n{}", code);
+    }
+
+    /// PLAN-533 T4: on-only handler（无 msg 块声明,vue 风格源——gallery 页
+    /// 与探针均此形态）此前在 rust 轨静默丢失：type Msg = ()、view 派发
+    /// 闭包引用不存在的变体（T3 字符串断言 dangling 的根因）。修复后枚举
+    /// 补零参变体 + match 臂 + type Msg 回升为 <Widget>Msg。
+    #[test]
+    fn test_on_only_handlers_get_msg_variants_rust_track() {
+        let src = r#"
+widget App {
+    model { show bool = false }
+    on { .openDialog -> { .show = true } }
+    view {
+        button (text: "Show", onclick: .openDialog) {}
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(
+            code.contains("pub enum AppMsg {") && code.contains("    openDialog,"),
+            "on-only handler variant must reach the enum:
+{}", code
+        );
+        assert!(
+            code.contains("type Msg = AppMsg;"),
+            "Msg type must promote from ():
+{}", code
+        );
+        assert!(
+            code.contains("AppMsg::openDialog => {"),
+            "match arm for on-only handler:
+{}", code
+        );
+        assert!(
+            code.contains("self.show = true"),
+            "handler body survives:
+{}", code
+        );
     }
 
     /// PLAN-533 T3 产物级断言：真实 gallery 页（widgets-gallery
