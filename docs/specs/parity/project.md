@@ -15,6 +15,10 @@
   实现在 `auto-parity/src/freshness.rs`（三态单测 5 例）。
 - libs/：20+ 个三方库移植样例（base64/regex/rusqlite/serde_json/sha2/tokio/url 等）作为一致性语料。
 - docs/：parity-guide、known-divergences、parity-dashboard。
+- **Python parity 线（Plans 369/461/539）**：py_* 三方套件（AutoVM vs
+  a2py vs 原生 Python，tests/python/ 自动识别）+ phase p5-p7（stdlib）
+  p8（sci-compute）p9（torch 惯用法——py_torch_infer 16 例 +
+  py_torch_train 10 例 seed 化收敛，Plan 539）。
 - 不做：不修复编译器分歧本身（修复在 auto-lang）；不纳入主 workspace（独立 Cargo.toml/lock）。
 
 ## 模块架构
