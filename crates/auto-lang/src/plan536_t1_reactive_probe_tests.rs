@@ -436,9 +436,11 @@ mod plan536_t1_reactive_probe_tests {
         );
     }
 
-    /// T6/T7(musk 会话卡形状): 卡片 **button 结构子件内**的 absolute(z) ×
-    /// 必须在按钮手搓 Row/Column 内容布局里 hoist(Overlay 为 button 内容),
-    /// 不再挤压卡片标题——musk chats_view 会话卡 × 的直接同形面。
+    /// T6/T7 重测改判(2026-09-04): button 结构子件内的 absolute **保持流内**
+    /// ——Button{content:Overlay} 在 iced 画布渲染为空壳(musk 会话列表
+    /// 实测:名称/× 全失,仅剩描边),hoist 臂已撤销。× 的悬浮由消费方
+    /// 结构承接(musk:× 移出卡片 button,外层 col 的 col-arm hoist)。
+    /// renderer 侧 Button{content:Overlay} 渲染根修后本测试可再翻转。
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn p536_t6_button_inner_absolute_hoists_in_card() {
@@ -457,19 +459,19 @@ mod plan536_t1_reactive_probe_tests {
         collect_views(&view, &mut all);
         // 找到含 "session-name" 文本的 Overlay:base 是按钮内容 Column(含
         // session-name),content 是悬浮的 × Button。
-        let hit = all.iter().any(|v| match v {
-            View::Overlay { base, content, position } => {
-                let base_has_name = {
-                    let mut t = Vec::new();
-                    collect_texts(base, &mut t);
-                    t.iter().any(|x| x.contains("session-name"))
-                };
-                let content_is_close = matches!(content.as_ref(), View::Button { label, .. } if label == "×");
-                base_has_name && content_is_close && position.right == Some(6.0) && position.top == Some(8.0)
+        // 卡片 button(内容含 session-name)的**直接内容**不得是 Overlay——
+        // 该形态画布空壳(musk 会话列表实测),button 臂已撤销。
+        // 注:col 下的 ×(第一个结构)由 col 臂合法 hoist,不受此限。
+        let card_content_is_overlay = all.iter().any(|v| match v {
+            View::Button { label, content: Some(c), .. } if label.is_empty() => {
+                matches!(c.as_ref(), View::Overlay { .. })
             }
             _ => false,
         });
-        assert!(hit, "卡片 button 内的 × 必须 hoist 为 Overlay 悬浮层");
+        assert!(
+            !card_content_is_overlay,
+            "卡片 button 的内容不得为 Overlay(画布空壳回归)"
+        );
     }
 
     /// T6 语义定界(负面): absolute 无 z 的分层技巧(p051-min-ta textarea

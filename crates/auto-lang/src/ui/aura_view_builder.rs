@@ -6735,19 +6735,13 @@ let tabs_inner = View::Row {
                 // 对齐）。此前恒 Column → 图标叠文字上方且整体居中（vue 轨
                 // flex 行形态）。
                 _ => {
-                    // PLAN-536 T6/T7(题5 musk 会话卡 ×): button 结构子件内的
-                    // absolute 悬浮同样 hoist——卡片 button 的手搓 Row/Column
-                    // 不经过 convert_column,无此臂时 × 删除钮退化流内挤压
-                    // 标题(musk 实录)。注:MCP 快照对 Button{content:Overlay}
-                    // 的子树展开有盲区(canvas 渲染正常),快照取证走像素。
-                    let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
-                    let views: Vec<View<DynamicMessage>> = views
-                        .into_iter()
-                        .filter_map(|v| match extract_absolute_position(&v) {
-                            Some(pos) => { floats.push((v, pos)); None }
-                            None => Some(v),
-                        })
-                        .collect();
+                    // PLAN-536 重测回归撤销(2026-09-04):button 结构子件内的
+                    // absolute hoist 臂使 Button{content:Overlay} 在画布上
+                    // 渲染为空壳(musk 会话列表卡片实测:名称/× 全失,仅剩
+                    // 圆角描边;截图 p536_retest_rail)。悬浮消费方改走兄弟
+                    // 结构(musk chats_view:× 移出卡片 button,由外层 col
+                    // 的 col-arm hoist 承接)。本臂待 renderer 侧
+                    // Button{content:Overlay} 渲染根修后再启。
                     let is_col = style.as_ref().map_or(false, |s| {
                         s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol))
                     });
@@ -6782,28 +6776,22 @@ let tabs_inner = View::Row {
                         hover_classes: Vec::new(),
             variant_classes: Vec::new(),
                     });
-                    let base: View<DynamicMessage> = if is_col {
-                        View::Column {
+                    if is_col {
+                        Some(Box::new(View::Column {
                             children: views,
                             spacing,
                             padding: 0,
                             style: layout_style,
             onclick: None,
-        }
+        }))
                     } else {
-                        View::Row {
+                        Some(Box::new(View::Row {
                             children: views,
                             spacing,
                             padding: 0,
                             style: layout_style,
             onclick: None,
-        }
-                    };
-                    // PLAN-536 T6/T7: 有 absolute 子件 → Overlay 包整个内容布局。
-                    if let Some((content, position)) = floats.into_iter().next() {
-                        Some(Box::new(View::Overlay { base: Box::new(base), content: Box::new(content), position }))
-                    } else {
-                        Some(Box::new(base))
+        }))
                     }
                 }
             }
