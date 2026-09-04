@@ -5025,6 +5025,61 @@ impl Codegen {
         self.register_py_object_builtins();
     }
 
+    /// Plan 539 W1 (T14): does this call site match `py_with(ctx, () => { body })`?
+    fn is_py_with_inline_form(&self, call: &crate::ast::Call) -> bool {
+        matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_with")
+            && call.args.args.len() == 2
+            && matches!(call.args.args.first(), Some(crate::ast::Arg::Pos(_)))
+            && matches!(
+                call.args.args.get(1),
+                Some(crate::ast::Arg::Pos(Expr::Closure(cl))) if cl.params.is_empty()
+            )
+    }
+
+    /// Plan 539 W1 (T14): emit the INLINE with-bracket —
+    /// py_enter(ctx); <body statements>; py_exit(ctx). Py handles in closure
+    /// locals degrade to raw ids (DIV-PY-CLOSURE-1, pre-existing), so the
+    /// body runs in the enclosing scope with normal local semantics.
+    fn compile_py_with_inline(&mut self, call: &crate::ast::Call) -> AutoResult<()> {
+        const NATIVE_PY_ENTER: u16 = 462;
+        const NATIVE_PY_EXIT: u16 = 463;
+        // temp local holding the ctx handle across the body
+        self.push_scope();
+        let ctx_idx = self.add_var("_with_ctx");
+        if let Some(crate::ast::Arg::Pos(e)) = call.args.args.first() {
+            self.compile_expr(e)?;
+        }
+        self.emit_store_loc(ctx_idx);
+        // py_enter(ctx)
+        self.emit_load_loc(ctx_idx);
+        self.emit(OpCode::CALL_PY);
+        self.emit_u16(NATIVE_PY_ENTER);
+        self.code.push(1u8);
+        // body statements inline (discard inner expression results)
+        if let Some(crate::ast::Arg::Pos(Expr::Closure(cl))) = call.args.args.get(1) {
+            if let Expr::Block(block) = cl.body.as_ref() {
+                let old_pop = self.should_pop_expr_result;
+                self.should_pop_expr_result = true;
+                for st in &block.stmts {
+                    self.compile_stmt(st)?;
+                }
+                self.should_pop_expr_result = old_pop;
+            } else {
+                self.compile_expr(&cl.body)?;
+                self.emit(OpCode::POP);
+            }
+        }
+        // py_exit(ctx)
+        self.emit_load_loc(ctx_idx);
+        self.emit(OpCode::CALL_PY);
+        self.emit_u16(NATIVE_PY_EXIT);
+        self.code.push(1u8);
+        self.pop_scope();
+        self.last_expr_type = ObjectType::Void;
+        self.last_was_native_void = true;
+        Ok(())
+    }
+
     /// Plan 539 W0 (DIV-PY-KWARGS-1): does this call site match
     /// `py_call(obj, "m", pos..., k: v...)`? Requires the callee to be the
     /// py_call builtin, >=3 args, obj/method positional, and at least one
@@ -5103,6 +5158,14 @@ impl Codegen {
         const NATIVE_PY_CALL_MAY: u16 = 453;
         const NATIVE_PY_ITER: u16 = 454;
         const NATIVE_PY_NEXT: u16 = 455;
+        const NATIVE_PY_MATMUL: u16 = 456;
+        const NATIVE_PY_GETITEM: u16 = 457;
+        const NATIVE_PY_SETITEM: u16 = 458;
+        const NATIVE_PY_SLICE: u16 = 459;
+        const NATIVE_PY_CALL0: u16 = 460;
+        const NATIVE_PY_WITH: u16 = 461;
+        const NATIVE_PY_ENTER: u16 = 462;
+        const NATIVE_PY_EXIT: u16 = 463;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5122,6 +5185,14 @@ impl Codegen {
                 reg.register_with_id("py.py_call_may", NATIVE_PY_CALL_MAY);
                 reg.register_with_id("py.py_iter", NATIVE_PY_ITER);
                 reg.register_with_id("py.py_next", NATIVE_PY_NEXT);
+                reg.register_with_id("py.py_matmul", NATIVE_PY_MATMUL);
+                reg.register_with_id("py.py_getitem", NATIVE_PY_GETITEM);
+                reg.register_with_id("py.py_setitem", NATIVE_PY_SETITEM);
+                reg.register_with_id("py.py_slice", NATIVE_PY_SLICE);
+                reg.register_with_id("py.py_call0", NATIVE_PY_CALL0);
+                reg.register_with_id("py.py_with", NATIVE_PY_WITH);
+                reg.register_with_id("py.py_enter", NATIVE_PY_ENTER);
+                reg.register_with_id("py.py_exit", NATIVE_PY_EXIT);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5137,7 +5208,18 @@ impl Codegen {
         // (posargs / kw_names / kw_vals as marshalled Auto lists).
         // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may is the May-valued
         // variant (Result.Ok wrap / Result.Err on Python exceptions).
-        for builtin in ["py_call_kw", "py_call_may", "py_iter", "py_next"] {
+        for builtin in [
+            "py_call_kw",
+            "py_call_may",
+            "py_iter",
+            "py_next",
+            "py_matmul",
+            "py_getitem",
+            "py_setitem",
+            "py_slice",
+            "py_call0",
+            "py_with",
+        ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
                     builtin.to_string(),
@@ -8534,6 +8616,15 @@ impl Codegen {
                     if func_name.as_deref() == Some("auto.log.noop") {
                         self.last_expr_type = ObjectType::Void;
                         self.last_was_native_void = true;
+                        return Ok(());
+                    }
+
+                    // Plan 539 W1 (T14): py_with with a 0-param closure body
+                    // lowers to the inline enter/exit bracket — see the
+                    // helper (kept out of this arm to bound its stack frame,
+                    // the aavm2 corpus overflow lesson from T09).
+                    if is_py_ffi_call && self.is_py_with_inline_form(call) {
+                        self.compile_py_with_inline(call)?;
                         return Ok(());
                     }
 

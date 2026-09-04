@@ -395,6 +395,52 @@ impl PythonTrans {
         match stmt {
             // Expression statements
             Stmt::Expr(expr) => {
+                // Plan 539 W1 (T14): a bare `py_with(ctx, closure)` statement
+                // lowers to a native `with ctx as p:` block — the closure
+                // body's statements indent under it (lambda bodies cannot
+                // carry statements).
+                if let Expr::Call(c) = expr {
+                    if let Expr::Ident(name) = c.name.as_ref() {
+                        if name.as_ref() == "py_with"
+                            && c.args.args.len() == 2
+                            && matches!(c.args.args.first(), Some(Arg::Pos(_)))
+                            && matches!(
+                                c.args.args.get(1),
+                                Some(Arg::Pos(Expr::Closure(cl))) if cl.params.len() <= 1
+                            )
+                        {
+                            self.print_indent(&mut sink.body)?;
+                            sink.body.write(b"with ")?;
+                            if let Some(Arg::Pos(ctx_expr)) = c.args.args.first() {
+                                self.expr(ctx_expr, sink)?;
+                            }
+                            if let Some(Arg::Pos(Expr::Closure(cl))) = c.args.args.get(1) {
+                                // 1-param closure binds the entered value
+                                // (with ctx as p); the AutoVM shim runs the
+                                // closure 0-arg — the entered value stays on
+                                // the Python side either way.
+                                if cl.params.len() == 1 {
+                                    sink.body.write(b" as ")?;
+                                    sink.body
+                                        .write_all(cl.params[0].name.as_bytes())?;
+                                }
+                                sink.body.write(b":\n")?;
+                                self.indent();
+                                if let Expr::Block(block) = cl.body.as_ref() {
+                                    for st in &block.stmts {
+                                        self.stmt(st, sink)?;
+                                    }
+                                } else {
+                                    self.print_indent(&mut sink.body)?;
+                                    self.expr(&cl.body, sink)?;
+                                    sink.body.write(b"\n")?;
+                                }
+                                self.dedent();
+                            }
+                            return Ok(true);
+                        }
+                    }
+                }
                 self.print_indent(&mut sink.body)?;
                 self.expr(expr, sink)?;
                 sink.body.write(b"\n")?;
@@ -1024,6 +1070,93 @@ impl PythonTrans {
                         self.arg(arg, sink)?;
                     }
                     sink.body.write(b", None)")?;
+                    return Ok(());
+                }
+                // Plan 539 W1 (T11-T14): inference idiom lowerings.
+                // py_matmul(a, b) → a.matmul(b) — the torch-idiomatic surface,
+                // avoiding the @ infix (annotation-prefix lexer territory).
+                "py_matmul" if call.args.args.len() == 2 => {
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, sink)?;
+                    }
+                    sink.body.write(b".matmul(")?;
+                    if let Some(Arg::Pos(b)) = call.args.args.get(1) {
+                        self.expr(b, sink)?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
+                // py_getitem(obj, idx...) → obj[idx] (tuple key when 2+).
+                "py_getitem" if call.args.args.len() >= 2 => {
+                    if let Some(Arg::Pos(o)) = call.args.args.first() {
+                        self.expr(o, sink)?;
+                    }
+                    sink.body.write(b"[")?;
+                    let mut first = true;
+                    for arg in call.args.args.iter().skip(1) {
+                        if !first {
+                            sink.body.write(b", ")?;
+                        }
+                        first = false;
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b"]")?;
+                    return Ok(());
+                }
+                // py_setitem(obj, idx..., value) → obj[idx] = value —
+                // statement context only (expression lowering is meaningless).
+                "py_setitem" if call.args.args.len() >= 3 => {
+                    if let Some(Arg::Pos(o)) = call.args.args.first() {
+                        self.expr(o, sink)?;
+                    }
+                    sink.body.write(b"[")?;
+                    let idx_args = call.args.args.len() - 2;
+                    let mut first = true;
+                    for arg in call.args.args.iter().skip(1).take(idx_args) {
+                        if !first {
+                            sink.body.write(b", ")?;
+                        }
+                        first = false;
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b"] = ")?;
+                    if let Some(Arg::Pos(v)) = call.args.args.last() {
+                        self.expr(v, sink)?;
+                    }
+                    return Ok(());
+                }
+                // py_slice(a, b[, s]) → slice(a, b, s) with null→None.
+                "py_slice" if (2..=3).contains(&call.args.args.len()) => {
+                    sink.body.write(b"slice(")?;
+                    let mut first = true;
+                    for arg in call.args.args.iter() {
+                        if !first {
+                            sink.body.write(b", ")?;
+                        }
+                        first = false;
+                        self.arg(arg, sink)?;
+                    }
+                    if call.args.args.len() == 2 {
+                        sink.body.write(b", None")?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
+                // py_call0(fn, args...) → fn(args...).
+                "py_call0" if !call.args.args.is_empty() => {
+                    if let Some(Arg::Pos(f)) = call.args.args.first() {
+                        self.expr(f, sink)?;
+                    }
+                    sink.body.write(b"(")?;
+                    let mut first = true;
+                    for arg in call.args.args.iter().skip(1) {
+                        if !first {
+                            sink.body.write(b", ")?;
+                        }
+                        first = false;
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b")")?;
                     return Ok(());
                 }
                 // Plan 369 Task 12: py_call(obj, "method", args...) → obj.method(args...)
@@ -2205,6 +2338,7 @@ if __name__ == \"__main__\":
 
 ")?;
         }
+
 
         sink.prepend_body(&import_buf);
 

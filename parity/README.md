@@ -88,6 +88,8 @@ used — see known-divergence DIV-PY-AUTOLIST-1.
 | `py_pandas` | pandas | DataFrame from numpy handle, shape/len, column sums, iloc row selection |
 | `py_matplotlib` | matplotlib | headless plot + savefig file artifacts |
 | `py_torch` | torch (CPU) | tensor creation, sum, relu/abs, runtime type strings |
+| `py_torch_infer` | torch (CPU) | Plan 539 W1 inference idioms: dunder ops (elementwise `*`), matmul, getitem/slice/setitem, call0, kwargs, no_grad, May channel |
+| `py_torch_train` | torch (CPU) | Plan 539 W2 training loop: seeded MLP, kwargs constructors, tuple/dict round-trip, loss收敛 |
 
 ### `libs/consumer/` — consumer apps (9)
 
