@@ -1255,3 +1255,16 @@
   模块双 feature 门控——`cargo t` 别名档（ui-iced only）断裂。本计划以
   同 cfg 补门修复（随 plan-550-dev 折入）；plan051 复审方如认为与原意图
   不符请回馈（详见 550 待澄清#4）。
+- **P536-D1 schema/aura.at 再生成 canonical 形态振荡**（2026-09-05，PLAN-536
+  T11 实录）：`SCHEMA_DRIFT_GENERATE_AT=1` 连续四次重生成，nav-destination/
+  swiper 两元素在 kebab 小写形态与 NavDestination/Swiper Pascal 形态间
+  **交替翻转**（读 Pascal 文件产 kebab、读 kebab 产 Pascal，反不动点振荡，
+  无收敛不动点）。机制在 tests/schema_drift.rs 的 AtGenInput 组装链——
+  alias 组根选择（build_alias_groups 字典序最小，Pascal<'n'… 即 ASCII 序
+  Pascal 在前）与注册表第 11 源 uncovered_buckets 的"canonical 取小写成员"
+  两路径分歧，经"当前 aura.at 拼写回喂 prod_union/carried"通道放大为振荡。
+  已证与运行期随机无关（同输入两次运行仍翻转）。现仓状态=kebab 形态 +
+  element_coverage 对齐；**手动再生成可能翻面并打红 queue_coverage_drift_
+  fence（双向围栏）**，处置=按新形态再对齐登记表（登记动作即过）。根修
+  方向：两条 canonical 选择路径统一排序口径（例如别名组根同样"取小写
+  成员"），属围栏生成器专项，需全量 diff 评估（牵动全部 alias 组）。
