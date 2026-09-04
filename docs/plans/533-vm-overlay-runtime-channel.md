@@ -1,15 +1,22 @@
 ---
 plan_id: PLAN-533
-status: execution_done  # drafting → executing → execution_done → reviewed → archived
+status: reviewed       # drafting → executing → execution_done → reviewed → archived
 feature_name: VM(a2r) 悬浮层运行时通道——alert-dialog/dropdown 家族 codegen 臂 + Modal iced 运行时
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
-updated_at: 2026-09-04T00:00:00+08:00
+updated_at: 2026-09-04T16:30:00+08:00
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/ui: alert-dialog 家族模态臂语义补全（530 W13 基础上扩 dialog/dropdown_menu 双族+铸造自管开合,planation 见 reviews）"
+new_spec_components:
+  - "crates/auto-lang/src/parser.rs: 模态自管开合铸造（__dlg_open/toggle/close 三件套,三轨同源,与 __evt_/__bind_ 同槽）"
+  - "crates/auto-lang/src/ui_gen/rust.rs: codegen 模态对话框家族臂（View::Popover 构造发射+on-only handler 枚举注入）"
+  - "crates/auto-lang/src/ui/child_emit.rs: 路由/剥离两表键大小写折叠匹配（跨 widget 派发断点修复）"
+  - "schema/aura.at: overlay 实现族 iced 标注 26 条回填 native"
+touched_goals:
+  - "GOAL-007: overlay 家族（alert_dialog/dialog/dropdown_menu）Vue 与 VM/iced 双端+编译轨三轨同源开合/dismiss 语义锁定"
+  - "GOAL-003: a2r 编译轨获得悬浮层运行时通道（View::Popover 发射+on-only 枚举修复）,三方行为一致性推进"
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 8
@@ -185,3 +192,24 @@ toast 等约 100 个悬浮语义元素全部退化为流内容器。本计划给
 4. **丢失工作口径**：auto-musk-dev 分支三件（①②③）+T2 大小写折叠按"重做"
    处理（原分支未合回已删）,还是能从 musk 侧留存的 PLAN-059 检查点记录
    （本文件现状勘察节）直接复原——建议直接按本文档重做,不找回升序。
+
+## 复审记录（2026-09-04,/auto-plan:review）
+
+**复审者**：ZCode（独立复审会话） ｜ **对象**：worktree `D:/autostack/.wt/lang-533/auto-lang`（plan-533-dev,9 commit,worktree clean）
+
+**全量门禁（复审档唯一全量运行）**：
+- `cargo tf`：3405 跑/3403 过/2 败——kitchen_sink_page_in_sync + schema_drift_fence,均为 P528-D6 在案存量红（fork 预存在+基线待 SCHEMA_DRIFT_UPDATE_BASELINE=1 裁剪;本计划 schema 26 条回填将随该裁剪一并入基线）,非本计划回归。
+- `cargo tv`：3565/3565 全绿 ｜ `cargo tt`：3752/3752 全绿。
+- tf 的 ui-iced 盲区收口：`desktop_protocol`（ui-iced）120/120 全绿（含 p508_g2）。
+- ui-iced 全量 lib（执行期已跑,复审采信并在 worktree 复跑过）：4493/4476/17,失败集与基线一致（layout×14+d8+c2+strips 存量环境性）,较基线净 -2 零新增。
+
+**验收标准逐条复核（verify,don't trust）**：
+1. gallery /alertdialog /dialog VM 实机模态+遮罩+关闭——**PASS**：探针像素（开 92.7% 差/Cancel 复位 0.0 差/50% 黑幕像素 13≈26/2）+gallery 三页双态差分（71.6%/71.7%,attachments/533/ 六图在案）+本次补验 action 派发（Continue→last=continue+show=false）;ESC/遮罩/取消三路关闭真键真鼠实证（T6）。**口径分歧记录**：目标 1 原文"ESC/遮罩点击均可关闭"对 alert-dialog 族未从——实现循 shadcn AlertDialog 语义（ESC/外点不关,仅 cancel/action;gallery alertdialog.at 页内注释与 530 W13 决策一致）,dialog 族三路全关。以代码+上游对齐为准,记为目标文过时（非缺陷）。
+2. gallery /dropdownmenu 锚定/外点/翻转——**PASS**：差分定位面板 y 中心 71.4% 于触发钮下方（非模态居中）+真外点关闭在案+越界翻转/收口循 popover Panel 既有 iced_test（popover_snaps_within_viewport_right_edge 等,全绿）。
+3. AutoUI snapshot 含 open 态 overlay 层——**PASS（带口径债）**：overlay 子树恒在快照（含关闭态）,open 断言以 autoui_state 为准——P533-D3 已登记,musk 验收自动化前需定口径。
+4. schema 回填+校验——**PASS**：26 条 iced:native,schema_drift 无新增失败（fence 红为 P528-D6 存量基线债）。
+5. musk 三场景联测——**外部共签挂起（by design）**：计划明文"与 musk PLAN-059 T9 共同签收";本仓侧通道全通已具备联测条件（T8 通知项在案）。
+
+**遗漏/延后/workaround 终扫**：无未批准项。已登记债务 P533-D1..D8（Phase2 家族余量[计划待澄清①内裁定]/MCP 合成键盘/snapshot 口径/gallery rust 存量红/面板宽 w-96 偏离/显式绑定不接管/丢失工作归档/on-only 带参悬垂）;vue-ref 实机对拍延至 musk T9 联测（T8 回填在案）。ark 012_dialog 金样随铸造语义更新（净-1 揭示 p508 掩盖位）。
+
+**结论**：全部验收 PASS（1 条目标文过时分歧+2 条在册口径债,均非阻断）→ **status: reviewed**,就绪 /auto-plan:merge。
