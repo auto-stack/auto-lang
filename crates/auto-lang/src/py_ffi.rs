@@ -62,6 +62,24 @@ impl HeapObject for PyObjectHandle {
 /// codegen can register them in `BIGVM_NATIVES` without consulting the bridge.
 pub const NATIVE_PY_CALL: u16 = 450;
 pub const NATIVE_PY_GETATTR: u16 = 451;
+/// Plan 539 W0 (DIV-PY-KWARGS-1): keyword-argument method-call channel.
+/// Codegen lowers `py_call(obj, "m", pos..., k=v...)` into this shim's fixed
+/// 5-slot convention so the CALL_PY arg-count byte stays a plain slot count
+/// (no sentinel sniffing inside the variadic py_call convention).
+pub const NATIVE_PY_CALL_KW: u16 = 452;
+/// Plan 539 W0 (DIV-PY-EXCEPT-1): May-valued method call. Success wraps the
+/// result in a `Result.Ok` heap instance; a Python exception becomes a
+/// `Result.Err` carrying `PyException <TypeName>: <message>` instead of a
+/// hard `VMError::FFI` abort. `py_call` stays the strict variant (its errors
+/// are catchable by try/catch through the VM's intercept_error path).
+pub const NATIVE_PY_CALL_MAY: u16 = 453;
+/// Plan 539 W0 (DIV-PY-ITER-1): `py_iter(handle) -> iterator handle` — GIL
+/// `iter(obj)` wrapped as an opaque PyObjectHandle.
+pub const NATIVE_PY_ITER: u16 = 454;
+/// Plan 539 W0 (DIV-PY-ITER-1): `py_next(it) -> value | null` — GIL `next(it)`;
+/// StopIteration marshals to the Auto null family so `while x != null` style
+/// loops work.
+pub const NATIVE_PY_NEXT: u16 = 455;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -363,6 +381,215 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_GETATTR, getattr_shim);
+
+        // ---- py_call_kw(obj, method_name, posargs, kw_names, kw_vals) ----
+        // Plan 539 W0 (DIV-PY-KWARGS-1): keyword-argument channel. The codegen
+        // rewrites `py_call(obj, "m", pos..., k=v...)` into this fixed 5-slot
+        // convention (posargs/kw_names/kw_vals are Auto lists marshalled by
+        // pop_auto_py_arg), so Python receives real keyword arguments instead
+        // of the historic silent name-drop.
+        let call_kw_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                // Layout (TOS → bottom): kw_vals, kw_names, posargs, method_name, obj
+                let n = task.pending_native_arg_count as usize;
+                if n != 5 {
+                    return Err(VMError::FFI(format!(
+                        "py_call_kw needs 5 slots (obj, method, posargs, kw_names, kw_vals), got {}",
+                        n
+                    )));
+                }
+
+                let kw_vals_py = pop_auto_py_arg(task, vm, py)?;
+                let kw_names_py = pop_auto_py_arg(task, vm, py)?;
+                let posargs_py = pop_auto_py_arg(task, vm, py)?;
+                let method_py = pop_auto_py_arg(task, vm, py)?;
+                let method_name: String = method_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_call_kw method name not string: {}", e))
+                })?;
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+
+                let kwargs = build_kwargs(&kw_names_py, &kw_vals_py)
+                    .map_err(|e| VMError::FFI(format!("py_call_kw kwargs build failed: {}", e)))?;
+
+                let pos_vec: Vec<Bound<'_, PyAny>> = posargs_py
+                    .try_iter()
+                    .map_err(|e| VMError::FFI(format!("py_call_kw posargs not iterable: {}", e)))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| VMError::FFI(format!("py_call_kw posargs iteration failed: {}", e)))?;
+                let args_tuple = PyTuple::new(py, &pos_vec).map_err(|e| {
+                    VMError::FFI(format!("Failed to build method args tuple: {}", e))
+                })?;
+
+                let result = obj_py
+                    .call_method(&method_name, args_tuple, Some(&kwargs))
+                    .map_err(|e| {
+                        VMError::FFI(format!(
+                            "Python method {}.{}(**kw) failed: {}",
+                            safe_type_name(&obj_py), method_name, e
+                        ))
+                    })?;
+
+                py_auto_marshal_return(&result, task, vm)?;
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CALL_KW, call_kw_shim);
+
+        // ---- py_call_may(obj, method_name, ...args) ----
+        // Plan 539 W0 (DIV-PY-EXCEPT-1): same variadic convention as py_call,
+        // but the Python exception channel lands as a May value instead of a
+        // process-level VMError::FFI (which only try/catch can intercept).
+        let call_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_call_may needs at least 2 args (obj, method), got {}",
+                        n
+                    )));
+                }
+                let extra = n - 2;
+
+                let mut method_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(extra);
+                for _ in 0..extra {
+                    method_args.push(pop_auto_py_arg(task, vm, py)?);
+                }
+                method_args.reverse();
+
+                let method_py = pop_auto_py_arg(task, vm, py)?;
+                let method_name: String = method_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_call_may method name not string: {}", e))
+                })?;
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+
+                let call_result: PyResult<Bound<'_, PyAny>> = if method_args.is_empty() {
+                    obj_py.call_method0(&method_name)
+                } else {
+                    let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
+                        VMError::FFI(format!("Failed to build method args tuple: {}", e))
+                    })?;
+                    obj_py.call_method1(&method_name, args_tuple)
+                };
+
+                match call_result {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => {
+                        // Carry str(e) + type name per the DIV-PY-EXCEPT-1 brief.
+                        let type_name = py_err
+                            .value(py)
+                            .get_type()
+                            .name()
+                            .map(|n| n.to_string())
+                            .unwrap_or_else(|_| "UnknownException".to_string());
+                        let msg = py_err
+                            .value(py)
+                            .str()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let text = format!("PyException {}: {}", type_name, msg);
+                        let instance = crate::vm::generic_registry::GenericInstanceData::new(
+                            "Result.Err".to_string(),
+                            vec![auto_val::Value::Str(text.into())],
+                        );
+                        let id = vm.insert_heap_object(instance);
+                        vm.rc_push(task, auto_val::encode_object(id as u32));
+                    }
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CALL_MAY, call_may_shim);
+
+        // ---- py_iter(handle) -> iterator handle ----
+        // Plan 539 W0 (DIV-PY-ITER-1): Python iteration protocol entry. The
+        // resulting handle feeds py_next; for-in over sized/indexed py objects
+        // additionally works through the ARRAY_LEN/GET_ELEM GIL arms.
+        let iter_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_iter needs 1 arg (iterable handle), got {}",
+                        n
+                    )));
+                }
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+                let it = obj_py
+                    .try_iter()
+                    .map_err(|e| {
+                        VMError::FFI(format!(
+                            "py_iter: {} is not iterable: {}",
+                            safe_type_name(&obj_py), e
+                        ))
+                    })?
+                    .into_any();
+                let type_name = safe_type_name(&it);
+                let owned = it.clone().unbind();
+                let handle = PyObjectHandle::new(type_name, owned);
+                let id = vm.insert_heap_object(handle);
+                vm.rc_push(task, auto_val::encode_object(id as u32));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_ITER, iter_shim);
+
+        // ---- py_next(it) -> value | null ----
+        // Plan 539 W0 (DIV-PY-ITER-1): StopIteration → Auto null family; any
+        // other value marshals through the standard return path (handles stay
+        // opaque, scalars/f64/lists marshal natively).
+        let next_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_next needs 1 arg (iterator handle), got {}",
+                        n
+                    )));
+                }
+                let it_py = pop_auto_py_arg(task, vm, py)?;
+                let builtins = py.import("builtins").map_err(|e| {
+                    VMError::FFI(format!("py_next: builtins import failed: {}", e))
+                })?;
+                let next_fn = builtins.getattr("next").map_err(|e| {
+                    VMError::FFI(format!("py_next: builtins.next not found: {}", e))
+                })?;
+                let result = next_fn
+                    .call((&it_py,), None)
+                    .map_err(|e| {
+                        // StopIteration is the exhaustion signal, not an error.
+                        let is_stop = e
+                            .is_instance_of::<pyo3::exceptions::PyStopIteration>(py);
+                        if is_stop {
+                            VMError::FFI("__stopiteration__".to_string())
+                        } else {
+                            VMError::FFI(format!(
+                                "py_next on {} failed: {}",
+                                safe_type_name(&it_py), e
+                            ))
+                        }
+                    });
+                match result {
+                    Ok(value) => {
+                        py_auto_marshal_return(&value, task, vm)?;
+                    }
+                    Err(VMError::FFI(msg)) if msg == "__stopiteration__" => {
+                        task.ram.push_nv(auto_val::encode_null());
+                    }
+                    Err(e) => return Err(e),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_NEXT, next_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -506,6 +733,17 @@ impl PyFfiBridge {
     }
 }
 
+/// Plan 539 W0 (DIV-PY-ITER-1): engine-side entry for marshalling a Python
+/// value onto the VM stack (used by the ARRAY_LEN/GET_ELEM GIL arms). Public
+/// within the crate because those handlers live in vm/engine.rs.
+pub(crate) fn marshal_pyany_to_stack(
+    value: &Bound<'_, PyAny>,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    py_auto_marshal_return(value, task, vm)
+}
+
 /// Pop a single argument from the VM stack and convert to a Python object,
 /// using the NanoValue tag to determine the actual type at runtime.
 /// Plan 300: Replaces fixed-type popping for Python FFI auto-type marshalling.
@@ -578,13 +816,34 @@ fn pop_auto_py_arg<'py>(
                                 auto_val::ValueKey::Int(i) => i.to_string(),
                                 auto_val::ValueKey::Bool(b) => b.to_string(),
                             };
-                            let py_val = value_to_py(v, py);
+                            let py_val = value_to_py(v, py, vm);
                             dict.set_item(&py_key, py_val).map_err(|e| {
                                 VMError::FFI(format!("Failed to set dict item: {}", e))
                             })?;
                         }
                         return Ok(dict.into_any());
                     }
+                }
+                // Plan 539 W0 (DIV-PY-AUTOLIST-1): array literals are
+                // TAG_OBJECT-encoded ListData (CREATE_ARRAY pushes
+                // encode_object, not encode_list) — this historic miss
+                // marshalled every Auto array argument to a single None.
+                // Clone the elements out, release the guard, then marshal so
+                // nested VmRef lookups never stack read locks.
+                if let Some(list_data) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                {
+                    let elems = list_data.elems.clone();
+                    drop(guard);
+                    let py_list = PyList::empty(py);
+                    for v in &elems {
+                        let py_val = value_to_py(v, py, vm);
+                        py_list.append(py_val).map_err(|e| {
+                            VMError::FFI(format!("Failed to append to Python list: {}", e))
+                        })?;
+                    }
+                    return Ok(py_list.into_any());
                 }
             }
             // Unknown object type — fall back to None
@@ -599,7 +858,7 @@ fn pop_auto_py_arg<'py>(
                 if let Some(list_data) = downcast::<crate::vm::types::ListData<auto_val::Value>>(&*guard) {
                     let py_list = PyList::empty(py);
                     for v in &list_data.elems {
-                        let py_val = value_to_py(v, py);
+                        let py_val = value_to_py(v, py, vm);
                         py_list.append(py_val).map_err(|e| {
                             VMError::FFI(format!("Failed to append to Python list: {}", e))
                         })?;
@@ -629,8 +888,68 @@ fn safe_type_name(obj: &Bound<'_, PyAny>) -> String {
         .unwrap_or_else(|_| "?".to_string())
 }
 
+/// Plan 539 W0 (DIV-PY-EXCEPT-1): pop the value a py shim just pushed and
+/// wrap it in a `Result.Ok` heap instance, mirroring CREATE_OK's stake
+/// semantics (strings copy + release, objects transfer their stake, scalars
+/// inline). The container is rc_pushed so unwinding releases it.
+fn wrap_tos_as_result_ok(task: &mut AutoTask, vm: &AutoVM) {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let nv = task.ram.pop_nv();
+    let val = if auto_val::is_f64(nv) {
+        auto_val::Value::Double(auto_val::decode_f64(nv))
+    } else if auto_val::is_f32(nv) {
+        auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+    } else if auto_val::is_bool(nv) {
+        auto_val::Value::Bool(auto_val::decode_bool(nv))
+    } else if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv) as usize;
+        let s = vm
+            .get_string(idx as u32)
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default();
+        // Copy is complete — release the stack stake (Plan 510 G3 pairing).
+        vm.pool_release(idx);
+        auto_val::Value::Str(s.into())
+    } else if auto_val::is_object(nv) {
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_object(nv) as usize,
+        })
+    } else {
+        auto_val::Value::Int(auto_val::decode_i32(nv))
+    };
+    let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
+    let id = vm.insert_heap_object(instance);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
+}
+
+/// Plan 539 W0 (DIV-PY-KWARGS-1): zip a names list and a values list (both
+/// already marshalled to Python sequences by pop_auto_py_arg) into a PyDict
+/// suitable as the kwargs argument of a pyo3 call.
+fn build_kwargs<'py>(
+    kw_names: &Bound<'py, PyAny>,
+    kw_vals: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let names: Vec<String> = kw_names
+        .try_iter()?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|n: Bound<'_, PyAny>| n.extract())
+        .collect::<Result<Vec<_>, _>>()?;
+    let vals: Vec<Bound<'py, PyAny>> = kw_vals
+        .try_iter()?
+        .collect::<Result<Vec<_>, _>>()?;
+    let dict = PyDict::new(kw_names.py());
+    for (name, val) in names.into_iter().zip(vals.into_iter()) {
+        dict.set_item(name.as_str(), val)?;
+    }
+    Ok(dict)
+}
+
 /// Convert an AutoVal Value to a Python object (for passing VM values as Python args).
-fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>) -> Bound<'py, PyAny> {
+/// Plan 539 W0 (DIV-PY-AUTOLIST-1): handles nested containers — Array/Block →
+/// PyList, Obj → PyDict, VmRef → heap-object resolution (nested arrays inside
+/// arrays are stored as VmRef ids by CREATE_ARRAY).
+fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Bound<'py, PyAny> {
     match val {
         auto_val::Value::Int(i) => i.into_pyobject(py).unwrap().into_any(),
         auto_val::Value::Uint(u) => (*u as i32).into_pyobject(py).unwrap().into_any(),
@@ -640,6 +959,72 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>) -> Bound<'py, PyAny>
         auto_val::Value::Bool(b) => pyo3::types::PyBool::new(py, *b).to_owned().into_any(),
         auto_val::Value::Str(s) => PyString::new(py, s.as_str()).into_any(),
         auto_val::Value::Nil | auto_val::Value::Null | auto_val::Value::None => {
+            py.None().into_bound(py)
+        }
+        auto_val::Value::Array(a) | auto_val::Value::Block(a) => {
+            let py_list = PyList::empty(py);
+            for v in &a.values {
+                let py_val = value_to_py(v, py, vm);
+                let _ = py_list.append(py_val);
+            }
+            py_list.into_any()
+        }
+        auto_val::Value::Obj(o) => {
+            let dict = PyDict::new(py);
+            for (k, v) in o.iter() {
+                let py_key = match k {
+                    auto_val::ValueKey::Str(s) => s.to_string(),
+                    auto_val::ValueKey::Int(i) => i.to_string(),
+                    auto_val::ValueKey::Bool(b) => b.to_string(),
+                };
+                let py_val = value_to_py(v, py, vm);
+                let _ = dict.set_item(py_key, py_val);
+            }
+            dict.into_any()
+        }
+        auto_val::Value::VmRef(r) => {
+            let Some(heap_obj) = vm.get_heap_object(r.id as u64) else {
+                return py.None().into_bound(py);
+            };
+            // Clone the payload out, release the guard, then recurse so nested
+            // VmRef lookups never stack read locks on the heap.
+            let guard = heap_obj.read().unwrap();
+            if let Some(list_data) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+            {
+                let elems = list_data.elems.clone();
+                drop(guard);
+                let py_list = PyList::empty(py);
+                for v in &elems {
+                    let _ = py_list.append(value_to_py(v, py, vm));
+                }
+                return py_list.into_any();
+            }
+            if let Some(rust_obj) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+            {
+                if let Some(obj) = rust_obj.downcast_ref::<auto_val::Obj>() {
+                    let entries: Vec<(String, auto_val::Value)> = obj
+                        .iter()
+                        .map(|(k, v)| {
+                            let key = match k {
+                                auto_val::ValueKey::Str(s) => s.to_string(),
+                                auto_val::ValueKey::Int(i) => i.to_string(),
+                                auto_val::ValueKey::Bool(b) => b.to_string(),
+                            };
+                            (key, v.clone())
+                        })
+                        .collect();
+                    drop(guard);
+                    let dict = PyDict::new(py);
+                    for (k, v) in &entries {
+                        let _ = dict.set_item(k, value_to_py(v, py, vm));
+                    }
+                    return dict.into_any();
+                }
+            }
             py.None().into_bound(py)
         }
         _ => py.None().into_bound(py),
@@ -661,17 +1046,12 @@ fn py_auto_marshal_return(
     } else if let Ok(i) = py_val.extract::<i32>() {
         task.ram.push_i32(i);
     } else if let Ok(f) = py_val.extract::<f64>() {
-        // Plan 300: Store float as string in string pool because codegen assumes
-        // Python FFI returns are single-slot values. The 2-slot f64 encoding
-        // breaks `let x = py_func()` (only stores 1 slot = null marker).
-        // TODO: When codegen supports multi-slot return types, switch to push_f64.
-        let s = if f == f.floor() && f.abs() < 1e15 {
-            format!("{}", f as i64)
-        } else {
-            format!("{}", f)
-        };
-        let idx = vm.add_string(s.into_bytes());
-        vm.rc_push_str_idx(task, idx);
+        // Plan 539 W0 (DIV-PY-FLOAT-1): floats return as a real f64. The
+        // historic string-pool round-trip existed because the 2-slot f64
+        // encoding broke `let x = py_func()` — obsolete since Plan 377 made
+        // f64 single-slot. It dropped ".0" on integral values and silently
+        // degraded arithmetic on the stringified result to NaN.
+        task.ram.push_f64(f);
     } else if let Ok(s) = py_val.extract::<String>() {
         let idx = vm.add_string(s.into_bytes());
         vm.rc_push_str_idx(task, idx);
@@ -904,30 +1284,109 @@ mod tests {
     #[test]
     fn test_py_value_to_py_roundtrip() {
         // Test AutoVal Value → Python → extract round-trip
+        // Plan 539 W0: value_to_py now takes &AutoVM (VmRef resolution);
+        // a minimal empty VM suffices for scalar paths.
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
         Python::attach(|py| {
             // Int round-trip
             let val = auto_val::Value::Int(42);
-            let py_val = value_to_py(&val, py);
+            let py_val = value_to_py(&val, py, &vm);
             let back: i32 = py_val.extract().unwrap();
             assert_eq!(back, 42);
 
             // Bool round-trip
             let val = auto_val::Value::Bool(true);
-            let py_val = value_to_py(&val, py);
+            let py_val = value_to_py(&val, py, &vm);
             let back: bool = py_val.extract().unwrap();
             assert!(back);
 
             // Float round-trip
             let val = auto_val::Value::Double(3.14);
-            let py_val = value_to_py(&val, py);
+            let py_val = value_to_py(&val, py, &vm);
             let back: f64 = py_val.extract().unwrap();
             assert!((back - 3.14).abs() < 0.001);
 
             // String round-trip
             let val = auto_val::Value::Str("hello".into());
-            let py_val = value_to_py(&val, py);
+            let py_val = value_to_py(&val, py, &vm);
             let back: String = py_val.extract().unwrap();
             assert_eq!(back, "hello");
+        });
+    }
+
+    // ========================================================================
+    // Plan 539 W0 (DIV-PY-AUTOLIST-1): nested container marshalling
+    // ========================================================================
+
+    #[test]
+    fn test_value_to_py_nested_array_and_obj() {
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        Python::attach(|py| {
+            // Nested Array → nested PyList
+            let inner = auto_val::Value::Array(auto_val::Array::from(vec![
+                auto_val::Value::Int(1),
+                auto_val::Value::Double(2.5),
+                auto_val::Value::Str("x".into()),
+            ]));
+            let outer = auto_val::Value::Array(auto_val::Array::from(vec![
+                auto_val::Value::Int(0),
+                inner,
+            ]));
+            let py_val = value_to_py(&outer, py, &vm);
+            let back: Vec<pyo3::Bound<'_, PyAny>> = py_val.extract().unwrap();
+            assert_eq!(back.len(), 2);
+            assert_eq!(back[0].extract::<i32>().unwrap(), 0);
+            let inner_back: Vec<pyo3::Bound<'_, PyAny>> = back[1].extract().unwrap();
+            assert_eq!(inner_back.len(), 3);
+            assert_eq!(inner_back[0].extract::<i32>().unwrap(), 1);
+            assert_eq!(inner_back[2].extract::<String>().unwrap(), "x");
+
+            // Obj → PyDict with string keys
+            let mut obj = auto_val::Obj::new();
+            obj.set(
+                auto_val::ValueKey::from("bias"),
+                auto_val::Value::Bool(false),
+            );
+            obj.set(
+                auto_val::ValueKey::from("lr"),
+                auto_val::Value::Double(0.1),
+            );
+            let py_val = value_to_py(&auto_val::Value::Obj(obj), py, &vm);
+            let dict = py_val.cast::<PyDict>().unwrap();
+            assert_eq!(dict.len(), 2);
+            assert!(!dict
+                .get_item("bias")
+                .unwrap()
+                .expect("bias")
+                .extract::<bool>()
+                .unwrap());
+            assert_eq!(
+                dict.get_item("lr").unwrap().expect("lr").extract::<f64>().unwrap(),
+                0.1
+            );
+        });
+    }
+
+    #[test]
+    fn test_value_to_py_resolves_vmref_list() {
+        // A nested list stored as ListData in the heap, referenced by VmRef —
+        // the shape CREATE_ARRAY produces for nested array literals.
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let list = crate::vm::types::ListData::<auto_val::Value> {
+            elems: vec![
+                auto_val::Value::Int(7),
+                auto_val::Value::Str("seven".into()),
+            ],
+            storage: None,
+        };
+        let id = vm.insert_heap_object(list);
+        Python::attach(|py| {
+            let val = auto_val::Value::VmRef(auto_val::VmRef { id: id as usize });
+            let py_val = value_to_py(&val, py, &vm);
+            let back: Vec<pyo3::Bound<'_, PyAny>> = py_val.extract().unwrap();
+            assert_eq!(back.len(), 2);
+            assert_eq!(back[0].extract::<i32>().unwrap(), 7);
+            assert_eq!(back[1].extract::<String>().unwrap(), "seven");
         });
     }
 
@@ -978,5 +1437,208 @@ mod tests {
         let ni = bridge.native_interface();
         assert!(ni.get(NATIVE_PY_CALL).is_some(), "py_call shim not registered");
         assert!(ni.get(NATIVE_PY_GETATTR).is_some(), "py_getattr shim not registered");
+    }
+
+    // ========================================================================
+    // Plan 539 W0 (DIV-PY-KWARGS-1): py_call_kw keyword-argument channel
+    // ========================================================================
+
+    #[test]
+    fn test_py_call_kw_registers_fixed_id() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CALL_KW).is_some(), "py_call_kw shim not registered");
+    }
+
+    #[test]
+    fn test_build_kwargs_zips_names_and_values() {
+        Python::attach(|py| {
+            let names = PyList::new(py, ["alpha", "beta"]).unwrap().into_any();
+            let vals = PyList::new(py, [1, 2]).unwrap().into_any();
+            let kwargs = build_kwargs(&names, &vals).unwrap();
+            assert_eq!(kwargs.len(), 2);
+            assert_eq!(
+                kwargs
+                    .get_item("alpha")
+                    .unwrap()
+                    .expect("alpha missing")
+                    .extract::<i32>()
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                kwargs
+                    .get_item("beta")
+                    .unwrap()
+                    .expect("beta missing")
+                    .extract::<i32>()
+                    .unwrap(),
+                2
+            );
+        });
+    }
+
+    #[test]
+    fn test_build_kwargs_rejects_length_mismatch_silently_zips() {
+        // zip() semantics: a longer names list simply drops the unmatched tail
+        // (Python raises TypeError for extra kwargs — our shim's zip keeps the
+        // contract "kwargs = zip(names, vals)", documented for the ABI).
+        Python::attach(|py| {
+            let names = PyList::new(py, ["a", "b", "c"]).unwrap().into_any();
+            let vals = PyList::new(py, [1]).unwrap().into_any();
+            let kwargs = build_kwargs(&names, &vals).unwrap();
+            assert_eq!(kwargs.len(), 1);
+            assert!(kwargs
+                .get_item("a")
+                .unwrap()
+                .is_some_and(|v| v.extract::<i32>().unwrap() == 1));
+        });
+    }
+
+    #[test]
+    fn test_pyo3_call_method_with_kwargs() {
+        // Pins the pyo3 API the py_call_kw shim relies on: call_method with an
+        // args tuple + kwargs dict reaches the Python method as keyword args.
+        Python::attach(|py| {
+            let code = std::ffi::CString::new(
+                "type('KwBox', (), {'combine': lambda self, a, b=0: a + b})()",
+            )
+            .unwrap();
+            let obj = py.eval(&code, None, None).unwrap();
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("b", 5).unwrap();
+            let args = PyTuple::new(py, vec![1]).unwrap();
+            let result = obj.call_method("combine", args, Some(&kwargs)).unwrap();
+            assert_eq!(result.extract::<i32>().unwrap(), 6);
+        });
+    }
+
+    // ========================================================================
+    // Plan 539 W0 (DIV-PY-FLOAT-1): float returns push a real f64
+    // ========================================================================
+
+    #[test]
+    fn test_marshal_return_float_pushes_f64() {
+        // A Python float return must land on the stack as an f64 NanoValue
+        // (single-slot since Plan 377), not a string-pool reference. Also
+        // covers the 0-dim-tensor `.item()` channel: extract::<f64> rides
+        // the __float__ protocol.
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            let f = PyFloat::new(py, 2.0);
+            py_auto_marshal_return(&f, &mut task, &vm).unwrap();
+        });
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_f64(nv), "expected f64 tag, got {:?}", nv);
+        assert_eq!(auto_val::decode_f64(nv), 2.0);
+
+        // Integral floats keep their f64-ness (no ".0"-dropping stringify).
+        Python::attach(|py| {
+            let f = PyFloat::new(py, 9.0);
+            py_auto_marshal_return(&f, &mut task, &vm).unwrap();
+        });
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_f64(nv));
+        assert_eq!(auto_val::decode_f64(nv), 9.0);
+    }
+
+    #[test]
+    fn test_marshal_return_int_and_bool_unchanged() {
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            let i: i64 = 42;
+            let iv = i.into_pyobject(py).unwrap();
+            py_auto_marshal_return(&iv.into_any(), &mut task, &vm).unwrap();
+        });
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_i32(nv));
+        assert_eq!(auto_val::decode_i32(nv), 42);
+    }
+
+    // ========================================================================
+    // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may May channel
+    // ========================================================================
+
+    #[test]
+    fn test_py_call_may_registers_fixed_id() {
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CALL_MAY).is_some(), "py_call_may shim not registered");
+    }
+
+    #[test]
+    fn test_py_call_may_err_and_ok_shapes() {
+        // Drive the shim through a minimal VM task: push (obj, method) with
+        // pending_native_arg_count = 2, run the shim, inspect the stack.
+        use crate::vm::native::NativeInterface;
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.import_module("math").unwrap();
+        bridge.register_object_shims();
+        let shim = bridge.native_interface().get(NATIVE_PY_CALL_MAY).unwrap();
+
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            // Error case: math module has no attribute no_such_fn.
+            let math_mod: Py<PyModule> = py.import("math").unwrap().into();
+            let handle = PyObjectHandle::new("module".to_string(), math_mod.into_any());
+            let id = vm.insert_heap_object(handle);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            let m_idx = vm.add_string(b"no_such_fn".to_vec());
+            vm.rc_push_str_idx(&mut task, m_idx);
+            task.pending_native_arg_count = 2;
+            shim(&mut task, &vm).unwrap();
+
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "Err should be a heap Result");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Err");
+            match &inst.fields[0] {
+                auto_val::Value::Str(s) => {
+                    assert!(s.as_str().starts_with("PyException AttributeError"));
+                }
+                other => panic!("expected Str payload, got {:?}", other),
+            }
+        });
+
+        // Success case: math.sqrt(4) -> Result.Ok(2.0)
+        Python::attach(|py| {
+            let math_mod: Py<PyModule> = py.import("math").unwrap().into();
+            let handle = PyObjectHandle::new("module".to_string(), math_mod.into_any());
+            let id = vm.insert_heap_object(handle);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            let m_idx = vm.add_string(b"sqrt".to_vec());
+            vm.rc_push_str_idx(&mut task, m_idx);
+            task.ram.push_i32(4);
+            task.pending_native_arg_count = 3;
+            shim(&mut task, &vm).unwrap();
+
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "Ok should be a heap Result");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Ok");
+            match &inst.fields[0] {
+                auto_val::Value::Double(d) => assert_eq!(*d, 2.0),
+                other => panic!("expected Double payload, got {:?}", other),
+            }
+        });
     }
 }

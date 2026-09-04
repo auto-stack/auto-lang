@@ -5025,14 +5025,84 @@ impl Codegen {
         self.register_py_object_builtins();
     }
 
+    /// Plan 539 W0 (DIV-PY-KWARGS-1): does this call site match
+    /// `py_call(obj, "m", pos..., k: v...)`? Requires the callee to be the
+    /// py_call builtin, >=3 args, obj/method positional, and at least one
+    /// named arg in the tail.
+    fn is_py_call_kw_form(&self, call: &crate::ast::Call) -> bool {
+        matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call")
+            && call.args.args.len() >= 3
+            && matches!(call.args.args.first(), Some(crate::ast::Arg::Pos(_)))
+            && matches!(call.args.args.get(1), Some(crate::ast::Arg::Pos(_)))
+            && call.args.args[2..]
+                .iter()
+                .any(|a| matches!(a, crate::ast::Arg::Pair(..)))
+    }
+
+    /// Plan 539 W0 (DIV-PY-KWARGS-1): emit the py_call_kw 5-slot convention
+    /// (obj, method, posargs_list, kw_names_list, kw_vals_list) for a matched
+    /// call site. Kept out of the native-call arm to bound its stack frame.
+    fn compile_py_call_kw_form(&mut self, call: &crate::ast::Call) -> AutoResult<()> {
+        // obj + method (slots 1-2 of the convention)
+        if let Some(crate::ast::Arg::Pos(e)) = call.args.args.first() {
+            self.compile_expr(e)?;
+        }
+        if let Some(crate::ast::Arg::Pos(e)) = call.args.args.get(1) {
+            self.compile_expr(e)?;
+        }
+        // positional tail -> Auto list
+        let pos_count = call.args.args[2..]
+            .iter()
+            .filter(|a| matches!(a, crate::ast::Arg::Pos(_)))
+            .count();
+        for arg in call.args.args[2..].iter() {
+            if let crate::ast::Arg::Pos(e) = arg {
+                self.compile_expr(e)?;
+            }
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(pos_count as u8);
+        // kw names -> list of str (pool constants)
+        let kw_names: Vec<String> = call.args.args[2..]
+            .iter()
+            .filter_map(|a| match a {
+                crate::ast::Arg::Pair(k, _) => Some(k.to_string()),
+                _ => None,
+            })
+            .collect();
+        for name in &kw_names {
+            let name_bytes = name.as_bytes().to_vec();
+            let name_idx = self.strings.len() as u32;
+            self.strings.push(name_bytes);
+            self.emit(OpCode::LOAD_STR);
+            self.code.extend_from_slice(&name_idx.to_le_bytes());
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(kw_names.len() as u8);
+        // kw values -> Auto list (source order, matching names)
+        for arg in call.args.args[2..].iter() {
+            if let crate::ast::Arg::Pair(_, e) = arg {
+                self.compile_expr(e)?;
+            }
+        }
+        self.emit(OpCode::CREATE_ARRAY);
+        self.code.push(kw_names.len() as u8);
+        Ok(())
+    }
+
     /// Plan 369 Task 12: register py_call / py_getattr in py_native_map so the
     /// codegen treats them as py-FFI calls (emitting CALL_PY with runtime arg
     /// count). Idempotent.
     fn register_py_object_builtins(&mut self) {
         // Use fixed IDs directly to avoid importing py_ffi (which is feature-gated).
-        // NATIVE_PY_CALL = 450, NATIVE_PY_GETATTR = 451 (defined in py_ffi.rs).
+        // NATIVE_PY_CALL = 450, NATIVE_PY_GETATTR = 451, NATIVE_PY_CALL_KW = 452
+        // (defined in py_ffi.rs).
         const NATIVE_PY_CALL: u16 = 450;
         const NATIVE_PY_GETATTR: u16 = 451;
+        const NATIVE_PY_CALL_KW: u16 = 452;
+        const NATIVE_PY_CALL_MAY: u16 = 453;
+        const NATIVE_PY_ITER: u16 = 454;
+        const NATIVE_PY_NEXT: u16 = 455;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5048,6 +5118,10 @@ impl Codegen {
             if let Ok(mut reg) = BIGVM_NATIVES.lock() {
                 reg.register_with_id("py.py_call", NATIVE_PY_CALL);
                 reg.register_with_id("py.py_getattr", NATIVE_PY_GETATTR);
+                reg.register_with_id("py.py_call_kw", NATIVE_PY_CALL_KW);
+                reg.register_with_id("py.py_call_may", NATIVE_PY_CALL_MAY);
+                reg.register_with_id("py.py_iter", NATIVE_PY_ITER);
+                reg.register_with_id("py.py_next", NATIVE_PY_NEXT);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5057,6 +5131,21 @@ impl Codegen {
             );
             self.py_return_types
                 .insert("py_getattr".to_string(), crate::py_ffi_types::PyType::Auto);
+        }
+        // Plan 539 W0 (DIV-PY-KWARGS-1): py_call_kw is the fixed 5-slot
+        // keyword-argument channel that py_call-with-named-args lowers into
+        // (posargs / kw_names / kw_vals as marshalled Auto lists).
+        // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may is the May-valued
+        // variant (Result.Ok wrap / Result.Err on Python exceptions).
+        for builtin in ["py_call_kw", "py_call_may", "py_iter", "py_next"] {
+            if !self.py_native_map.contains_key(builtin) {
+                self.py_native_map.insert(
+                    builtin.to_string(),
+                    ("__pyobj__".to_string(), format!("__pyobj__.{}", builtin)),
+                );
+                self.py_return_types
+                    .insert(builtin.to_string(), crate::py_ffi_types::PyType::Auto);
+            }
         }
     }
 
@@ -8448,6 +8537,17 @@ impl Codegen {
                         return Ok(());
                     }
 
+                    // Plan 539 W0 (DIV-PY-KWARGS-1): py_call-with-named-args
+                    // lowers to the py_call_kw 5-slot convention. The emission
+                    // lives in a helper so this hot recursive arm keeps a small
+                    // stack frame (the inline version overflowed the deeply
+                    // recursive aavm2 corpus compile, Plan 539 T09).
+                    let py_call_kw_form = is_py_ffi_call
+                        && self.is_py_call_kw_form(call);
+
+                    if py_call_kw_form {
+                        self.compile_py_call_kw_form(call)?;
+                    } else
                     // Compile arguments (left-to-right)
                     // Plan 088 Phase 4: Smart parameter passing for native functions
                     if !call.args.is_empty() && !skip_task_spawn_user_args {
@@ -8591,9 +8691,16 @@ impl Codegen {
                     // the ACTUAL number of args (count cannot be introspected for
                     // C builtins like datetime.date, and struct.pack is variadic).
                     if is_py_ffi_call {
+                        // Plan 539 W0 (DIV-PY-KWARGS-1): the kw form always pops the
+                        // fixed 5 slots of the py_call_kw convention (id 452).
+                        const NATIVE_PY_CALL_KW: u16 = 452;
+                        let (py_id, py_arg_count) = if py_call_kw_form {
+                            (NATIVE_PY_CALL_KW, 5u8)
+                        } else {
+                            (resolved_id, call.args.args.len().min(255) as u8)
+                        };
                         self.emit(OpCode::CALL_PY);
-                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
-                        let py_arg_count = call.args.args.len().min(255) as u8;
+                        self.code.extend_from_slice(&py_id.to_le_bytes());
                         self.code.push(py_arg_count);
                     } else {
                         self.emit(OpCode::CALL_NAT);

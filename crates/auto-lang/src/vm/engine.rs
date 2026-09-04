@@ -2949,6 +2949,31 @@ impl AutoVM {
                             if let Some(list) = self.heap_objects.get(&array_id) {
                                 use crate::vm::types::ListData;
                                 let guard = list.read().unwrap();
+                                // Plan 539 W0 (DIV-PY-ITER-1): PyObjectHandle —
+                                // GIL len() so for-in over sized py objects
+                                // (tensors/lists/dicts) iterates like Python.
+                                #[cfg(feature = "python")]
+                                {
+                                    #[allow(unused_imports)]
+                                    use pyo3::prelude::*;
+                                    let py_len = guard
+                                        .as_any()
+                                        .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                        .map(|pyh| {
+                                            pyo3::Python::attach(|py| {
+                                                pyh.obj
+                                                    .clone_ref(py)
+                                                    .into_bound(py)
+                                                    .len()
+                                                    .map(|l| l as i32)
+                                                    .unwrap_or(0)
+                                            })
+                                        });
+                                    if let Some(n) = py_len {
+                                        task.ram.push_i32(n);
+                                        return Ok(StepResult::Continue);
+                                    }
+                                }
                                 let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
                                     list.elems.len() as i32
                                 } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
@@ -3202,8 +3227,41 @@ impl AutoVM {
                                     self.rc_release(default_nv);
                                 }
                             } else {
-                                task.ram.push_nv(may_nv);
-                                self.rc_release(default_nv);
+                                // Plan 539 W0 (DIV-PY-EXCEPT-1): Result values
+                                // participate in `??` fallback — Err yields the
+                                // default, Ok unwraps the inner value (previously
+                                // Result objects passed through opaquely).
+                                use crate::vm::generic_registry::GenericInstanceData;
+                                let result_kind = self.get_heap_object(obj_id).and_then(|obj| {
+                                    let guard = obj.read().unwrap();
+                                    guard
+                                        .as_any()
+                                        .downcast_ref::<GenericInstanceData>()
+                                        .and_then(|inst| match inst.mono_name.as_str() {
+                                            "Result.Err" => Some(None),
+                                            "Result.Ok" => {
+                                                inst.fields.first().cloned().map(|f| Some(f))
+                                            }
+                                            _ => None,
+                                        })
+                                });
+                                match result_kind {
+                                    // Result.Err — fall back to the default.
+                                    Some(None) => {
+                                        self.rc_release(may_nv);
+                                        task.ram.push_nv(default_nv);
+                                    }
+                                    // Result.Ok — unwrap the inner value.
+                                    Some(Some(field_val)) => {
+                                        self.rc_release(may_nv);
+                                        self.rc_release(default_nv);
+                                        Self::push_value(task, &field_val, self);
+                                    }
+                                    _ => {
+                                        task.ram.push_nv(may_nv);
+                                        self.rc_release(default_nv);
+                                    }
+                                }
                             }
                         } else {
                             // Non-None, non-object: push as-is (it's the value itself)
@@ -3498,38 +3556,58 @@ impl AutoVM {
                     }
                 }
                 OpCode::TYPE_TO_I32 => {
-                    match pop_tagged(&mut task.ram) {
-                        StackTag::Str(idx) => {
-                            let strings = self.strings.read().unwrap();
-                            let parsed = strings.get(idx as usize)
-                                .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
-                                .unwrap_or(0);
-                            drop(strings);
-                            // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
-                            self.pool_release(idx as usize);
-                            task.ram.push_i32(parsed);
-                        }
-                        StackTag::Int(v) => {
-                            task.ram.push_i32(v);
-                        }
+                    // Plan 539 W0 (DIV-PY-FLOAT-1): py-FFI returns now carry
+                    // real f64/f32 NanoValues — convert by truncation instead
+                    // of letting pop_tagged misdecode the payload bits as i32.
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        let idx = auto_val::decode_string(nv);
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings.get(idx as usize)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
+                            .unwrap_or(0);
+                        drop(strings);
+                        // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                        self.pool_release(idx as usize);
+                        task.ram.push_i32(parsed);
+                    } else if auto_val::is_f64(nv) {
+                        task.ram.push_i32(auto_val::decode_f64(nv) as i32);
+                    } else if auto_val::is_f32(nv) {
+                        task.ram.push_i32(auto_val::decode_f32(nv) as i32);
+                    } else if auto_val::is_bool(nv) {
+                        task.ram.push_i32(if auto_val::decode_bool(nv) { 1 } else { 0 });
+                    } else if auto_val::is_null(nv) {
+                        // None (null nanbox) — old sentinel for backward compat.
+                        task.ram.push_i32(-1);
+                    } else {
+                        task.ram.push_i32(auto_val::decode_i32(nv));
                     }
                     task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_TO_F64 => {
-                    match pop_tagged(&mut task.ram) {
-                        StackTag::Str(idx) => {
-                            let strings = self.strings.read().unwrap();
-                            let parsed = strings.get(idx as usize)
-                                .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
-                                .unwrap_or(0.0);
-                            drop(strings);
-                            // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
-                            self.pool_release(idx as usize);
-                            task.ram.push_f32(parsed);
-                        }
-                        StackTag::Int(v) => {
-                            task.ram.push_f32(v as f32);
-                        }
+                    // Plan 539 W0 (DIV-PY-FLOAT-1): same tag-aware dispatch —
+                    // an f64 on the stack is already the answer; f32 widens.
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        let idx = auto_val::decode_string(nv);
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings.get(idx as usize)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
+                            .unwrap_or(0.0);
+                        drop(strings);
+                        // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                        self.pool_release(idx as usize);
+                        task.ram.push_f32(parsed);
+                    } else if auto_val::is_f64(nv) {
+                        task.ram.push_f64(auto_val::decode_f64(nv));
+                    } else if auto_val::is_f32(nv) {
+                        task.ram.push_f32(auto_val::decode_f32(nv));
+                    } else if auto_val::is_bool(nv) {
+                        task.ram.push_f32(if auto_val::decode_bool(nv) { 1.0 } else { 0.0 });
+                    } else if auto_val::is_null(nv) {
+                        task.ram.push_f32(-1.0);
+                    } else {
+                        task.ram.push_f32(auto_val::decode_i32(nv) as f32);
                     }
                     task.last_result_type = ResultType::Float;
                 }
@@ -4747,6 +4825,41 @@ impl AutoVM {
                         if let Some(obj) = self.get_heap_object(obj_id) {
                             use crate::vm::types::ListData;
                             let guard = obj.read().unwrap();
+
+                            // Plan 539 W0 (DIV-PY-ITER-1): PyObjectHandle —
+                            // GIL obj[index], result marshalled through the
+                            // standard py return path (handles stay opaque).
+                            #[cfg(feature = "python")]
+                            if guard
+                                .as_any()
+                                .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                .is_some()
+                            {
+                                #[cfg(feature = "python")]
+                                {
+                                    #[allow(unused_imports)]
+                                    use pyo3::prelude::*;
+                                    let pyh = guard
+                                        .as_any()
+                                        .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                        .unwrap();
+                                    pyo3::Python::attach(|py| -> Result<(), VMError> {
+                                        let bound = pyh.obj.clone_ref(py).into_bound(py);
+                                        let item = bound.get_item(index_i32).map_err(|e| {
+                                            VMError::FFI(format!(
+                                                "Python getitem on {} failed: {}",
+                                                bound.get_type().name().map(|n| n.to_string()).unwrap_or_default(),
+                                                e
+                                            ))
+                                        })?;
+                                        crate::py_ffi::marshal_pyany_to_stack(&item, task, self)?;
+                                        Ok(())
+                                    })?;
+                                    // Plan 419: receiver(list/数组引用)的栈上 stake 死亡。
+                                    self.rc_release(obj_or_str_nv);
+                                    return Ok(StepResult::Continue);
+                                }
+                            }
 
                             // Try List<int>
                             if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
