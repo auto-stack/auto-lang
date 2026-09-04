@@ -1545,7 +1545,10 @@ impl<'a> AuraViewBuilder<'a> {
             // Leaf/atom widgets with no AuraNode children — fall back to the
             // untracked converter. They have no nested text to probe (Task 9
             // scope is text interpolation only).
-            "button" | "btn" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            // native_button：vue 侧显式原生逃生名（避开 button→shadcn
+            // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
+            //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
             // Plan 482: nav 组件族 —— nav_contract 契约类转换（hover/active
             // 三态 + icon/desc/badge 槽 + to/onclick 双模式）。
             "nav-item" | "nav_item" => self.convert_nav_item(props, events, children, bindings),
@@ -2854,7 +2857,10 @@ impl<'a> AuraViewBuilder<'a> {
             "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
-            "button" | "btn" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            // native_button：vue 侧显式原生逃生名（避开 button→shadcn
+            // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
+            //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
             // PLAN-530 步骤7（W12）：toggle_group VM 映射——横排连体 button
             // 组（untracked 镜像臂,D-GAP 规则）。见 toggle_group_rewrite_children。
             "togglegroup" | "toggle-group" | "toggle_group" => {
