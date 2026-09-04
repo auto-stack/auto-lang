@@ -96,7 +96,15 @@ pub const NATIVE_PY_SLICE: u16 = 459;
 pub const NATIVE_PY_CALL0: u16 = 460;
 /// Plan 539 W1 (T14): `py_with(ctx_handle, closure)` — host-side
 /// `__enter__` / body / `__exit__` context-manager protocol (no_grad).
+/// The closure form stays for non-py bodies; codegen lowers py-containing
+/// bodies to the inline py_enter/py_exit bracket (closure-local py handles
+/// degrade to raw ids — pre-existing, see known-divergences).
 pub const NATIVE_PY_WITH: u16 = 461;
+/// Plan 539 W1 (T14): `py_enter(ctx)` — `__enter__` half of the inline
+/// with-bracket; pushes nil to keep the stack balanced.
+pub const NATIVE_PY_ENTER: u16 = 462;
+/// Plan 539 W1 (T14): `py_exit(ctx)` — `__exit__(None, None, None)` half.
+pub const NATIVE_PY_EXIT: u16 = 463;
 
 pub struct PyFfiBridge {
     modules: HashMap<String, Py<PyModule>>,
@@ -812,15 +820,21 @@ impl PyFfiBridge {
                 let _stake_closure = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
                 let ctx = pop_auto_py_arg(task, vm, py)?;
 
-                let entered = ctx.call_method0("__enter__").map_err(|e| {
+                // __enter__ is invoked for protocol correctness; its return
+                // (usually the ctx itself) is intentionally NOT marshalled to
+                // the VM stack — the closure runs with zero params. Pushing it
+                // as a call_closure arg proved RC-fragile (entered-handle
+                // stake vs closure frame unwind, canary-fired), and the common
+                // contexts (no_grad) don't need it — the ctx is already in
+                // the enclosing scope.
+                ctx.call_method0("__enter__").map_err(|e| {
                     VMError::FFI(format!(
                         "Python __enter__ on {} failed: {}",
                         safe_type_name(&ctx), e
                     ))
                 })?;
-                py_auto_marshal_return(&entered, task, vm)?;
 
-                let body = vm.call_closure(task, closure_id, 1);
+                let body = vm.call_closure(task, closure_id, 0);
                 // Pop the closure's return value (dead value; keep balance).
                 let _ = task.ram.pop_nv();
 
@@ -853,6 +867,62 @@ impl PyFfiBridge {
             Ok(())
         };
         self.native_interface.register_static(NATIVE_PY_WITH, with_shim);
+
+        // ---- py_enter(ctx) / py_exit(ctx) ----
+        // Plan 539 W1 (T14): halves of the INLINE with-bracket — codegen
+        // lowers `py_with(ctx, body)` whose body touches py values into
+        // py_enter(ctx); <body statements>; py_exit(ctx), sidestepping the
+        // closure channel (py handles in closure locals degrade to raw ids).
+        let enter_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_enter needs 1 arg (ctx), got {}",
+                        n
+                    )));
+                }
+                let ctx = pop_auto_py_arg(task, vm, py)?;
+                ctx.call_method0("__enter__").map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python __enter__ on {} failed: {}",
+                        safe_type_name(&ctx), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_null());
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_ENTER, enter_shim);
+
+        let exit_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_exit needs 1 arg (ctx), got {}",
+                        n
+                    )));
+                }
+                let ctx = pop_auto_py_arg(task, vm, py)?;
+                ctx.call_method(
+                    "__exit__",
+                    (py.None(), py.None(), py.None()),
+                    None::<&Bound<'_, PyDict>>,
+                )
+                .map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python __exit__ on {} failed: {}",
+                        safe_type_name(&ctx), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_null());
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface.register_static(NATIVE_PY_EXIT, exit_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type

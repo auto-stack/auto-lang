@@ -1,0 +1,113 @@
+// py_torch_infer Auto test — TAP output format (Plan 539 W1 inference
+// idioms parity). Three-way: AutoVM vs a2py vs native Python.
+//
+// The parity runner sets the working directory to the library root, so
+// `use.py torch` resolves the installed torch package through the embedded
+// CPython (PyO3) bridge.
+//
+// Test names MUST match tests/python/test_infer.py (comparator joins by name).
+//
+// Conventions (Plan 539 W1):
+// - Operator dunders (+ - * / %, unary -) route to Python on handle
+//   operands; `*` is ELEMENTWISE (torch semantics), matmul is the explicit
+//   py_matmul function form.
+// - Composite receivers go through intermediate vars (a2py does not
+//   parenthesize nested exprs in method receivers).
+// - 0-dim tensor results assert via .to(int)/.to(str) on the marshalled
+//   scalar, never on the tensor handle.
+use.py torch: arange, randn
+use.py importlib: import_module
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn main() {
+    var torch = import_module("torch")
+    var t = arange(6)
+
+    // 1. dunder add: t + 1 = [1..6] sum 21
+    var a1 = t + 1
+    if py_call(a1, "sum").to(int) == 21 { tap_ok(1, "test_add_scalar") } else { tap_not_ok(1, "test_add_scalar", "got " + py_call(a1, "sum").to(str)) }
+
+    // 2. dunder mul (elementwise): t * 2 sum 30
+    var a2 = t * 2
+    if py_call(a2, "sum").to(int) == 30 { tap_ok(2, "test_mul_scalar") } else { tap_not_ok(2, "test_mul_scalar", "got " + py_call(a2, "sum").to(str)) }
+
+    // 3. dunder sub tensor-tensor: (t + 10) - t = 10*6 sum 60
+    var base = t + 10
+    var a3 = base - t
+    if py_call(a3, "sum").to(int) == 60 { tap_ok(3, "test_sub_tensors") } else { tap_not_ok(3, "test_sub_tensors", "got " + py_call(a3, "sum").to(str)) }
+
+    // 4. dunder div: t / 2 sum 7.5 -> int 7
+    var a4 = t / 2
+    if py_call(a4, "sum").to(int) == 7 { tap_ok(4, "test_div_scalar") } else { tap_not_ok(4, "test_div_scalar", "got " + py_call(a4, "sum").to(str)) }
+
+    // 5. unary neg: -t sum -15
+    var a5 = -t
+    if py_call(a5, "sum").to(int) == -15 { tap_ok(5, "test_neg") } else { tap_not_ok(5, "test_neg", "got " + py_call(a5, "sum").to(str)) }
+
+    // 6. elementwise square: t * t sum 55
+    var a6 = t * t
+    if py_call(a6, "sum").to(int) == 55 { tap_ok(6, "test_mul_elementwise") } else { tap_not_ok(6, "test_mul_elementwise", "got " + py_call(a6, "sum").to(str)) }
+
+    // 7. reflected mul: 2 * t sum 30 (int __mul__ NotImplemented -> __rmul__)
+    var a7 = 2 * t
+    if py_call(a7, "sum").to(int) == 30 { tap_ok(7, "test_reflect_mul") } else { tap_not_ok(7, "test_reflect_mul", "got " + py_call(a7, "sum").to(str)) }
+
+    // 8. elementwise eq: (t == t).sum() == 6
+    var a8 = t == t
+    if py_call(a8, "sum").to(int) == 6 { tap_ok(8, "test_eq_elementwise") } else { tap_not_ok(8, "test_eq_elementwise", "got " + py_call(a8, "sum").to(str)) }
+
+    // 9. matmul: [[0,1,2],[3,4,5]] @ [[0,1],[2,3],[4,5]] = [[10,13],[28,40]]
+    var ma = py_call(arange(6), "reshape", 2, 3)
+    var mb = py_call(arange(6), "reshape", 3, 2)
+    var mm = py_matmul(ma, mb)
+    var mm00 = py_getitem(py_getitem(mm, 0), 1)
+    if mm00.to(int) == 13 { tap_ok(9, "test_matmul") } else { tap_not_ok(9, "test_matmul", "got " + mm00.to(str)) }
+
+    // 10. slice getitem: mm[:1] row [10, 13] sum 23; mm[1] row sum 68
+    var sl = py_slice(null, 1)
+    var row0 = py_getitem(mm, sl)
+    var row1 = py_getitem(mm, 1)
+    if py_call(row0, "sum").to(int) == 23 { tap_ok(10, "test_getitem_slice") } else { tap_not_ok(10, "test_getitem_slice", "got " + py_call(row0, "sum").to(str)) }
+
+    // 11. setitem: ma[0, 0] = 100 -> sum 15 - 0 + 100 = 115
+    py_setitem(ma, 0, 0, 100)
+    if py_call(ma, "sum").to(int) == 115 { tap_ok(11, "test_setitem") } else { tap_not_ok(11, "test_setitem", "got " + py_call(ma, "sum").to(str)) }
+
+    // 12. callable direct: torch.tensor([1, 2, 3]) -> sum 6
+    var tensor_cls = py_getattr(torch, "tensor")
+    var t12 = py_call0(tensor_cls, [1, 2, 3])
+    if py_call(t12, "sum").to(int) == 6 { tap_ok(12, "test_call0") } else { tap_not_ok(12, "test_call0", "got " + py_call(t12, "sum").to(str)) }
+
+    // 13. kwargs channel: sum(dim: 0) on 2x3 arange = [3, 5, 7] sum 15
+    var g2 = py_call(arange(6), "reshape", 2, 3)
+    var cols = py_call(g2, "sum", dim: 0)
+    if py_call(cols, "sum").to(int) == 15 { tap_ok(13, "test_kwargs_dim") } else { tap_not_ok(13, "test_kwargs_dim", "got " + py_call(cols, "sum").to(str)) }
+
+    // 14. py_with no_grad: ops inside produce requires_grad == False
+    var ng = py_call0(py_getattr(torch, "no_grad"))
+    var ygrad = 1
+    py_with(ng, () => {
+        var x = arange(3) / 1
+        py_call(x, "requires_grad_", true)
+        var y = x * 2
+        ygrad = py_getattr(y, "requires_grad").to(int)
+    })
+    if ygrad == 0 { tap_ok(14, "test_with_no_grad") } else { tap_not_ok(14, "test_with_no_grad", "got " + ygrad.to(str)) }
+
+    // 15. May channel: exception -> fallback via .?(default)
+    var bad = py_call_may(t, "no_such_method")
+    var msg = bad.?("fallback")
+    if msg.to(str) == "fallback" { tap_ok(15, "test_may_exception") } else { tap_not_ok(15, "test_may_exception", "got " + msg.to(str)) }
+
+    // 16. May channel success unwrap: sum Ok -> 15
+    var good = py_call_may(t, "sum")
+    var total = good.?(-1)
+    if total.to(int) == 15 { tap_ok(16, "test_may_ok") } else { tap_not_ok(16, "test_may_ok", "got " + total.to(str)) }
+}

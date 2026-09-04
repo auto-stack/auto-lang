@@ -406,7 +406,7 @@ impl PythonTrans {
                             && matches!(c.args.args.first(), Some(Arg::Pos(_)))
                             && matches!(
                                 c.args.args.get(1),
-                                Some(Arg::Pos(Expr::Closure(cl))) if cl.params.len() == 1
+                                Some(Arg::Pos(Expr::Closure(cl))) if cl.params.len() <= 1
                             )
                         {
                             self.print_indent(&mut sink.body)?;
@@ -415,9 +415,15 @@ impl PythonTrans {
                                 self.expr(ctx_expr, sink)?;
                             }
                             if let Some(Arg::Pos(Expr::Closure(cl))) = c.args.args.get(1) {
-                                sink.body.write(b" as ")?;
-                                sink.body
-                                    .write_all(cl.params[0].name.as_bytes())?;
+                                // 1-param closure binds the entered value
+                                // (with ctx as p); the AutoVM shim runs the
+                                // closure 0-arg — the entered value stays on
+                                // the Python side either way.
+                                if cl.params.len() == 1 {
+                                    sink.body.write(b" as ")?;
+                                    sink.body
+                                        .write_all(cl.params[0].name.as_bytes())?;
+                                }
                                 sink.body.write(b":\n")?;
                                 self.indent();
                                 if let Expr::Block(block) = cl.body.as_ref() {

@@ -389,6 +389,17 @@ bug is worked around in-source:
 
 ## Python Parity Divergences
 
+### DIV-PY-CLOSURE-1: py 句柄在闭包局部/捕获中退化为裸 id
+
+- **库**: py_torch_infer（规避在案）, W2/W3 回调面（影响在案）
+- **状态**: open（存量，master 同形复现——Plan 539 W1 探针 c7）
+- **原因**: 闭包体内经 item-import CALL_PY 产生的 PyObjectHandle 存入
+  闭包局部槽后，读回退化为堆 id 裸 i32（ 报
+  ）；闭包捕获句柄同样退化。461 套件从未在闭包内调 py 故未
+  显形。规避：py_with 语句体经 codegen 内联降级（py_enter/py_exit
+  bracket，Plan 539 T14）；map/回调式消费见 W3 回调桥（新任务执行
+  模型）。
+
 ### DIV-PY-FLOAT-1: Python float return values are stringified
 
 - **库**: py_math, py_random, py_struct
