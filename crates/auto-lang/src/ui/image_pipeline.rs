@@ -660,6 +660,15 @@ pub fn inspect_image_metadata(bytes: &[u8]) -> Result<MediaMetadata, MediaAssetE
     let orientation = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(bytes)).ok().and_then(|exif| exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY).and_then(|field| field.value.get_uint(0))).map(|value| match value { 2 => MediaOrientation::FlipHorizontal, 3 => MediaOrientation::Rotate180, 4 => MediaOrientation::FlipVertical, 5 => MediaOrientation::Transpose, 6 => MediaOrientation::Rotate90, 7 => MediaOrientation::Transverse, 8 => MediaOrientation::Rotate270, _ => MediaOrientation::Normal }).unwrap_or_default();
     Ok(MediaMetadata { width, height, orientation, mime_type: mime_type.into(), byte_len: bytes.len() as u64 })
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderedImage { pub width: u32, pub height: u32, pub rgba: Arc<[u8]> }
+pub fn decode_rendition(bytes: &[u8], orientation: MediaOrientation, spec: &RenditionSpec) -> Result<RenderedImage, MediaAssetError> {
+    let image = image::load_from_memory(bytes).map_err(|_| MediaAssetError::Corrupt)?;
+    let oriented = match orientation { MediaOrientation::Normal => image, MediaOrientation::FlipHorizontal => image.fliph(), MediaOrientation::Rotate180 => image.rotate180(), MediaOrientation::FlipVertical => image.flipv(), MediaOrientation::Transpose => image.rotate90().fliph(), MediaOrientation::Rotate90 => image.rotate90(), MediaOrientation::Transverse => image.rotate270().fliph(), MediaOrientation::Rotate270 => image.rotate270() };
+    let rendered = if spec.original_pixels || spec.width == 0 || spec.height == 0 { oriented } else { oriented.resize(spec.width, spec.height, image::imageops::FilterType::Lanczos3) };
+    let rgba = rendered.to_rgba8(); let (width, height) = rgba.dimensions();
+    Ok(RenderedImage { width, height, rgba: Arc::from(rgba.into_raw()) })
+}
 
 /// Computes an RGBA8 allocation length without allowing image dimensions to
 /// wrap on 32-bit or 64-bit hosts.
@@ -811,5 +820,27 @@ mod tests {
         assert_eq!((metadata.width, metadata.height, metadata.mime_type.as_str()), (2, 3, "image/png"));
         assert_eq!(super::inspect_image_metadata(b"not an image"), Err(super::MediaAssetError::UnsupportedFormat));
         assert_eq!(super::validate_image_limits(2, 3, super::MAX_IMAGE_FILE_BYTES + 1), Err(super::MediaAssetError::FileTooLarge));
+    }
+
+    #[test]
+    fn decode_and_rendition_applies_orientation_and_preserves_rgba() {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        let mut source = image::RgbaImage::new(2, 3);
+        source.put_pixel(1, 2, image::Rgba([4, 5, 6, 7]));
+        image::DynamicImage::ImageRgba8(source)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let rendered = super::decode_rendition(bytes.get_ref(), super::MediaOrientation::Rotate90, &RenditionSpec::original()).unwrap();
+        assert_eq!((rendered.width, rendered.height), (3, 2));
+        assert_eq!(rendered.rgba.len(), 3 * 2 * 4);
+        assert!(rendered.rgba.chunks_exact(4).any(|pixel| pixel == [4, 5, 6, 7]));
+
+        let viewport = super::decode_rendition(
+            bytes.get_ref(),
+            super::MediaOrientation::Normal,
+            &RenditionSpec::viewport(1, 1),
+        )
+        .unwrap();
+        assert_eq!((viewport.width, viewport.height), (1, 1));
     }
 }
