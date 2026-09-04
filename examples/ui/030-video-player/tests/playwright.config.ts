@@ -18,4 +18,11 @@ export default defineConfig({
     navigationTimeout: 10000,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: {
+    command: 'pnpm run preview --port 3030',
+    cwd: '../gen/front/vue',
+    port: 3030,
+    reuseExistingServer: !process.env.CI,
+    timeout: 15000,
+  },
 })
