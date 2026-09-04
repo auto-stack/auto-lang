@@ -1117,3 +1117,25 @@
   中 d8_toggle_dark_mode/plan055/gallery_vue_golden 已在重建历史他席修复。
 - （注）vue 包装 exit 127 静默退出（源 OBS-2）疑与 530-B 泄漏族同源,530
   修复后待复跑观察,暂不单列。
+
+### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
+
+- **P537-D1 VM lucide 图标闭集缺口**:`iced/renderer.rs lucide_svg(name)` 为
+  84 项闭集,examples/ui 层 `icon (name:)` 只能消费表内名;计划 537 原拟的
+  images/heart/mountain/building-2/cloud-sun/sparkles 在 lucide-vue-next
+  存在但不在 VM 表（Vue 端正常/VM 端缺渲染=双端不一致）。绕开（已落地）:
+  相册图标 emoji 文本（027 先例）;`icon` 仅用双端表内名（sun/moon/
+  chevron-left/chevron-right）。根治:VM 表按 lucide-vue-next 常用面扩充
+  （或建立单测围栏对齐两端名单）,建议随 widgets 双端 parity 批处理。
+  引用:`crates/auto-lang/src/ui/iced/renderer.rs` lucide_svg;
+  `examples/ui/029-photo-gallery/SPEC.md` 差异注记 2。
+- **P537-D2 VM 语义 grid 的 cols/class 状态绑定不解析**:`grid { cols: .state }`
+  回落 1 列（eval_u16_prop 对 widget 状态引用不解析,unwrap_or(1)）;`class:`
+  状态绑定 VM 不消费;`style:`(if 静态臂 grid-cols-N)叠加语义 grid 曾实测
+  尺寸异常一次（未深究根因）。绕开（已落地）:密度 2/3/4 以三臂静态
+  `grid { cols: N }` if-链展开（028 静态 cols 同构造,双端一致实证）。
+  根治:builder 的 cols/类仲裁路径补 widget 状态引用解析;补双端
+  "动态列数"回归锚。引用:`crates/auto-lang/src/ui/aura_view_builder.rs`
+  grid cols 提取（extract_u16/eval_u16_prop）;029 SPEC.md 差异注记 4/勘误 2。
+- （注）`.photos` 主列表为 Init 构建的 write-only 状态（计划文本明确要求
+  构建,view/handler 仅消费 view_list）——保留不删,登记为设计内冗余。
