@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-536
-status: executing        # drafting → executing → execution_done → reviewed → archived
+status: execution_done  # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
@@ -161,6 +161,39 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   机制成立。**实机验收受阻**：复跑实例窗口布局卡死（KD-048-a 族,window
   size zero）,AskDelete→模态弹出+派发终验留用户实机;通过后 musk 侧退役
   内联确认行（059 T9 待澄清⑨ 处置）。
+
+## 重测记录（2026-09-04 合并后,合并点 fe962a3ed→432e15dab）
+
+两仓分支已合并（auto-lang master←plan-536-dev; musk main←auto-lang-536-dev）,
+master 清理重编译（v0.4.1-3478-g432e15dab）。重测面板结果：
+
+1. **#4 标签 PASS**：合并版二进制下 KD 059-FU1 样本 created_at=1788436450
+   渲染 **19:54:10**（此前 08:34）,四 turn 标签与本地库 timestamp 本地时
+   逐秒吻合（19:54:10/18/39/45,scratch/p536_retest*）。+42043s 恒偏**未
+   复现**,支持"陈旧产物"假说（用户判定的合并+重编译路径有效）。
+2. **重测发现并修复两件**：①delete_confirm.vm.at msg 声明带参数名
+   （`Confirm(target str)`）致适配器模块解析 fatal（boot plan-446 C1 门禁
+   拦截实录）→改 `Confirm(str)`;②button 结构子件内 absolute hoist 臂使
+   Button{content:Overlay} **画布空壳**（会话列表卡片名称/× 全失,截图
+   p536_retest_rail）→auto-lang master 撤销该臂（commit 432e15dab）,测试
+   契约反转锁定;musk 会话卡 × 改兄弟悬浮结构（外层 relative col 承接）。
+3. **遗留（rail 空列表）**：会话列表 for 循环仍空（session_list 空/拉取
+   未达）,而消息区有数据——数据源路由疑似落在 spawn 的 8080 backend VM
+   （本地 musk-demo 库）而非 AUTO_BACKEND=9247,与 KD-048-a/055-4③（8080
+   落 Windows 保留端口段 8068-8167）邻接;#3 × 悬浮/T9 模态的像素终验
+   待 rail 恢复后一并做（结构改动已就位）。
+   **【续查 2026-09-04 下午·三项收敛】**①数据源非问题：AUTO_BACKEND 指
+   空端口 9248 → 应用数据全空,指 9247 → 2 会话进 state（app 消费
+   musk serve 的 musk-demo 工作区,非 8080）——路由正常;②msg 声明修正后
+   rail 恢复（此前的空 rail 系 delete_confirm.vm.at 解析 fatal 毒化,非
+   hoist/结构问题）;③**T9 模态实机弹出达成**：× 点击 → "确认删除此
+   会话？" 模态居中悬浮（取消/删除 齐,截图 autoui-screenshot-1788515730934）
+   ——端口链 vm.at 真源渲染成立。**× 位置收尾**：× 悬浮生效（top-2 不
+   挤压布局）但水平落左上;`build_floating_layer` 插桩实证 **0 调用**——
+   × 的渲染未走该路径,几何修正（Fill spacer/外列 Fill）均不作用;根修
+   需先追 × 元素的实际 element 转换链（View::Overlay→into_iced 之外
+   存在旁路）,留 T9 收尾/专项。瞬态数字帧一例（v9 截图,消息气泡呈字符
+   码串,新实例快照恒正确）记录在案不立案。
 
 ## 测试设计
 

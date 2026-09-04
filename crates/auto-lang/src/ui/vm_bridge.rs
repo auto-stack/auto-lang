@@ -147,6 +147,12 @@ pub struct VmBridge {
     /// stem 限定，如 chatActivePath → forge_helpers.chatActivePath）。computed
     /// 求值面的裸 fn 调用经 [`VmBridge::call_vm_fn`] 按此解析真实导出名。
     import_aliases: std::collections::HashMap<String, String>,
+
+    /// PLAN-536 T3(题2 收敛): 已派发过 Init 的子件名集合——Init 收敛为
+    /// 挂载语义(每组件生命周期一次),不随脏重建帧重放。子件 state 走统一
+    /// 根态、无独立堆对象可挂"首建"信号,故以名字集合在 bridge(唯一跨帧
+    /// 存活、渲染期可变的组件侧结构)上记账。
+    child_inits_fired: std::cell::RefCell<std::collections::HashSet<String>>,
 }
 
 /// PLAN-051 C3: 栈顶 nanbox → Value（call_vm_fn 返回值解码；与
@@ -338,6 +344,7 @@ impl VmBridge {
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
             import_aliases: import_aliases.clone(),
+            child_inits_fired: std::cell::RefCell::new(std::collections::HashSet::new()),
         })
     }
 
@@ -494,6 +501,7 @@ impl VmBridge {
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
             import_aliases: import_aliases.clone(),
+            child_inits_fired: std::cell::RefCell::new(std::collections::HashSet::new()),
         })
     }
 
@@ -983,6 +991,15 @@ impl VmBridge {
 
         // Return root state id — all reads/writes go to the unified state.
         root_id
+    }
+
+    /// PLAN-536 T3(题2 收敛): 子件 Init 挂载判定——该子件名首次出现返回
+    /// true（调用方派发 Init 并记账）,此后每帧重渲染恒 false。挂载语义对齐
+    /// vue onMounted（props 响应走 watch/computed,不靠 Init 重放）。
+    pub fn child_init_first_mount(&self, name: &str) -> bool {
+        self.child_inits_fired
+            .borrow_mut()
+            .insert(name.to_string())
     }
 
     /// Plan 320: read a state field from a SPECIFIC child widget's state object

@@ -2,7 +2,7 @@
 
 > **用途**：`/auto-plan:new` Step 2 的取材源——新计划的需求分析从这里获得项目现状背景。
 > 维护：merge 时如有结构性变化（新模块/crate/状态翻转）须更新（规约 §4）。
-> 更新：2026-08-28（Plan 467）
+> 更新：2026-09-04（PLAN-543 仓库级 current-state rebaseline）
 
 **一句话**：Auto 语言——AI 原生的多目标（VM/C/Rust/TS/Python）脚本与 UI 语言，
 "脚本开发 → 转译发布"双形态，配套 AutoUI 跨端 UI 与桌面生态。
@@ -15,7 +15,7 @@
 
 | crate | 职责 | 状态 |
 |---|---|---|
-| [auto-lang](auto-lang/project.md) | 语言核心：lexer/parser/typeck/infer/ownership/comptime/interpreter/VM/trans/ui/mcp（463 个 src 文件，九模块见下） | active |
+| [auto-lang](auto-lang/project.md) | 语言核心：lexer/parser/typeck/infer/ownership/comptime/VM execution/trans/ui/mcp（本快照约 528 个 Rust src 文件，九模块见下；数量后续改由 Generated Catalog 提供） | active |
 | [auto-val](auto-val/project.md) | 运行时 Value/Node 值体系（含 serde 双向、nano_value） | active |
 | [auto-atom](auto-atom/project.md) | Atom 静态数据结构与解析器 | active |
 | [auto-macros](auto-macros/project.md) | 过程宏 `value!`（AutoLang 语法→Value） | active |
@@ -77,23 +77,22 @@
 | frontend | lexer/token/parser/AST/dialect/resolver/宏 | 448 语法改进、442 跨平台闭包 |
 | types | infer/typeck/ownership/trait_checker | 453 W5 ext impl 库方法 |
 | comptime | 编译期求值 | 稳定 |
-| interpreter | TreeWalker 解释器 | 436 setup 前导语义 |
+| interpreter | VM-based execution facade（旧 TreeWalker/evaluator 已移除） | 公共执行统一走 AutoVM；待 module rebaseline |
 | vm | AutoVM：abt/codegen/engine/debugger/ffi/generic | 446 渲染后端薄弱点清偿、466 测试提速 |
 | trans | 转译后端：C/Rust/JS/TS/Python/GDScript/r2a | 400/415 a2r 深化、417/427 parity 修复线 |
 | runtime | runtime/scope/session/libs/ffi | 442 平台桥 natives |
-| ui | aura/ + ui/（渲染/编辑器/主题）+ 桌面运行时（session/wm/VirtualWindow）+ ui_gen/ + a2ui/ | 桌面线 462/463 落地、464/465 设计中；spec 已随 Plan 471 刷新 |
+| ui | aura/ + ui/（渲染/编辑器/主题）+ 桌面运行时（session/wm/VirtualWindow）+ ui_gen/ + a2ui/ | 桌面基础与后续多轮 parity/UX 计划已落地；当前变化以 module spec 和 active Plan 为准 |
 | mcp | MCP server 集成 | 稳定 |
 
-## 活跃开发线（2026-08）
+## 活跃开发线（2026-09-04 快照）
 
-1. **AutoUI 桌面轨道**（最热）：WM 地基与桌面 Shell 已落地（462/463 execution_done）→
-   Launcher（464）→ Vue 虚拟桌面（465）设计就绪待施工；RenderQueue 386 暂缓观察；
-   前置：charts（437 ✅）/database（439）/
-   file-manager（440）/launcher 示例（441）/主题系统（458）/双端 parity（455）。
-   设计：Design [20](../design/20-autoui-separation-architecture.md)–[24](../design/autoui/desktop-shell-and-launcher.md)。
-2. **a2r parity 线**：功能差距 tracker（242）+ api_gen body 转译（400）+ 剩余大项（415）。
-3. **构建与测试基础设施**：466（sccache/cargo t ≤30s/全量门禁收敛 review）已落地。
-4. **LSP/VSCode**：416 Phase 5–6（semantic tokens/TS 迁移）。
+1. **AAVM/self-host**：PLAN-532 正在推进自举 tower 与覆盖收敛；Rust compiler 仍是
+   canonical reference，`auto/lib/` 为 active experimental implementation。
+2. **VM/AutoUI reactive runtime**：PLAN-536 正在修复 VM reactive runtime 与跨端行为；
+   桌面基础、launcher、virtual desktop 和多轮 parity/UX 计划已在此前落地。
+3. **多目标与生态**：a2r/parity、LSP、Playground、标准库与示例继续按各 module spec 演进。
+4. 并行任务变化频繁，不再在本页复制全部 active Plan；权威状态以 `docs/plans/` frontmatter
+   和 `git worktree list` 为准。
 
 ## 入口索引
 
@@ -102,4 +101,5 @@
 - 技术债：[docs/plans/KNOWN-DEBT-AND-RISKS.md](../plans/KNOWN-DEBT-AND-RISKS.md)
 - 计划状态审计：[docs/plans/archive/plans-status-audit-2026-08-20.md](../plans/archive/plans-status-audit-2026-08-20.md)（2026-09-01 起接任审计 = [Plan 513](../plans/archive/513-repo-integration-cleanup.md) 需求分析总表）
 - 设计文档：[docs/design/00-intro.md](../design/00-intro.md)
-- 开发范式：[docs/specs/README.md](README.md)（v2）+ [Design 26](../design/autoplan-spec-ledger.md)
+- 知识库生命周期：[Design 27](../design/27-knowledge-base-lifecycle.md)
+- 开发范式：[docs/specs/README.md](README.md)（v2.1 兼容期）+ [Design 26](../design/autoplan-spec-ledger.md)

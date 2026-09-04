@@ -1,0 +1,1167 @@
+// app.at — 030-video-player AutoOS 原生视频播放器（Plan 542）
+//
+// 系统级原生视频播放器（对标 VLC / PotPlayer / IINA / MPC-HC）。
+// 沉浸式大视口画布播放 + 自动隐匿 OSD 专业播控条 + 交互式进度寻道 +
+// 多档倍速 + 音量调节与静音 + 画幅切换 + 可折叠播放队列抽屉 + 媒体属性弹窗。
+//
+// 双端契约：
+// - dark_mode bool = true
+// - accent_color str = "indigo"
+// - 模板内零方法调用，文案与字段由 handler 预拼准备
+
+widget App {
+    msg {
+        Init,
+        TogglePlay,
+        StepForward,
+        StepBackward,
+        NextVideo,
+        PrevVideo,
+        StopPlayback,
+        SeekPercent(int),
+        VolUp,
+        VolDown,
+        SetVolume(int),
+        ToggleMute,
+        CycleSpeed,
+        SetSpeed(str),
+        ToggleSpeedMenu,
+        TogglePlaylist,
+        ToggleControls,
+        ToggleFullscreen,
+        ToggleAspect,
+        CycleLoopMode,
+        ToggleTimeMode,
+        SelectVideo(int),
+        ToggleInfoModal,
+        DismissToast,
+        OpenLocalDemo,
+        ToggleDarkMode,
+        SetAccent(str)
+    }
+
+    model {
+        // ---- 主题契约 ----
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+
+        // ---- 强调色列表 ----
+        var accents = [
+            { name: "indigo", dot: "text-indigo-500", bg: "bg-indigo-500" },
+            { name: "coral",  dot: "text-rose-500",   bg: "bg-rose-500" },
+            { name: "ocean",  dot: "text-sky-500",    bg: "bg-sky-500" },
+            { name: "sage",   dot: "text-emerald-500",bg: "bg-emerald-500" },
+            { name: "amber",  dot: "text-amber-500",  bg: "bg-amber-500" }
+        ]
+
+        // ---- 播放状态 ----
+        var is_playing bool = true
+        var current_id int = 1
+        var current_title str = "AutoOS 2026 Keynote & Intro"
+        var current_file str = "01_intro.mp4"
+        var current_res str = "1080P"
+        var current_codec str = "H.264"
+        var current_size str = "48 MB"
+        var current_fps str = "60.00 FPS"
+        var current_bitrate str = "4.2 Mbps"
+        var current_audio str = "AAC Stereo 48kHz"
+        var current_bg str = "from-indigo-950 via-slate-900 to-purple-950"
+
+        var current_time_sec int = 45
+        var total_time_sec int = 225
+        var current_time_str str = "00:45"
+        var total_time_str str = "03:45"
+        var time_display_fmt str = "00:45 / 03:45"
+        var progress_pct int = 20
+
+        var volume int = 80
+        var volume_label str = "80%"
+        var is_muted bool = false
+        var playback_speed str = "1.0x"
+        var aspect_mode str = "16:9"
+        var loop_mode str = "list"
+        var loop_label str = "🔁 列表循环"
+        var time_mode str = "elapsed" // "elapsed" | "remaining"
+
+        // ---- 界面与交互状态 ----
+        var show_playlist bool = true
+        var show_controls bool = true
+        var show_speed_menu bool = false
+        var show_info_modal bool = false
+        var is_fullscreen bool = false
+
+        // ---- 操作反馈 Toast ----
+        var toast_msg str = "准备就绪"
+        var show_toast bool = true
+
+        // ---- 播放列表 (5 项种子视频) ----
+        var playlist = [
+            {
+                id: 1,
+                title: "AutoOS 2026 Keynote & Intro",
+                file_name: "01_intro.mp4",
+                duration_str: "03:45",
+                duration_sec: 225,
+                resolution: "1080P",
+                codec: "H.264",
+                size_str: "48 MB",
+                bg_gradient: "from-indigo-950 via-slate-900 to-purple-950",
+                badge_color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+            },
+            {
+                id: 2,
+                title: "Kernel & AutoVM Architecture",
+                file_name: "02_architecture.mkv",
+                duration_str: "12:20",
+                duration_sec: 740,
+                resolution: "4K",
+                codec: "HEVC",
+                size_str: "210 MB",
+                bg_gradient: "from-blue-950 via-slate-900 to-cyan-950",
+                badge_color: "bg-blue-500/20 text-blue-400 border-blue-500/30"
+            },
+            {
+                id: 3,
+                title: "AutoUI Dual-Backend Engine Demo",
+                file_name: "03_ui_engine.mp4",
+                duration_str: "08:15",
+                duration_sec: 495,
+                resolution: "1080P",
+                codec: "AV1",
+                size_str: "85 MB",
+                bg_gradient: "from-emerald-950 via-slate-900 to-teal-950",
+                badge_color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+            },
+            {
+                id: 4,
+                title: "Fullstack Parity & Toolchain",
+                file_name: "04_workflow.webm",
+                duration_str: "05:30",
+                duration_sec: 330,
+                resolution: "1080P",
+                codec: "VP9",
+                size_str: "62 MB",
+                bg_gradient: "from-amber-950 via-slate-900 to-orange-950",
+                badge_color: "bg-amber-500/20 text-amber-400 border-amber-500/30"
+            },
+            {
+                id: 5,
+                title: "AutoOS Ambient Desktop Visuals",
+                file_name: "05_ambient.mp4",
+                duration_str: "01:30",
+                duration_sec: 90,
+                resolution: "720P",
+                codec: "H.264",
+                size_str: "24 MB",
+                bg_gradient: "from-rose-950 via-slate-900 to-pink-950",
+                badge_color: "bg-rose-500/20 text-rose-400 border-rose-500/30"
+            }
+        ]
+    }
+
+    view {
+        col {
+            style: if .dark_mode {
+                "min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col select-none font-sans"
+            } else {
+                "min-h-screen w-full bg-slate-100 text-slate-900 flex flex-col select-none font-sans"
+            }
+
+            // ══════════════════════════════════════════════════════════════════════
+            // 1. 顶部专业播放器菜单栏 / 标题栏 (Title & Menu Bar)
+            // ══════════════════════════════════════════════════════════════════════
+            row {
+                style: if .dark_mode {
+                    "h-10 px-3 items-center justify-between bg-zinc-900/90 border-b border-zinc-800 text-xs shrink-0 select-none"
+                } else {
+                    "h-10 px-3 items-center justify-between bg-white border-b border-slate-200 text-xs shrink-0 select-none"
+                }
+
+                // 左侧：应用图标与菜单项
+                row {
+                    style: "items-center gap-2"
+                    text "🎬" { style: "text-base" }
+                    text "AutoOS Video Player" { style: "font-bold text-xs tracking-wide" }
+
+                    row {
+                        style: "items-center gap-1 ml-3 text-muted-foreground hidden sm:flex"
+                        button "文件" {
+                            onclick: .OpenLocalDemo
+                            style: "px-2 py-1 hover:text-foreground hover:bg-muted/50 rounded cursor-pointer transition-colors"
+                        }
+                        button "播放" {
+                            onclick: .TogglePlay
+                            style: "px-2 py-1 hover:text-foreground hover:bg-muted/50 rounded cursor-pointer transition-colors"
+                        }
+                        button "媒体信息" {
+                            onclick: .ToggleInfoModal
+                            style: "px-2 py-1 hover:text-foreground hover:bg-muted/50 rounded cursor-pointer transition-colors"
+                        }
+                        button "视图" {
+                            onclick: .ToggleFullscreen
+                            style: "px-2 py-1 hover:text-foreground hover:bg-muted/50 rounded cursor-pointer transition-colors"
+                        }
+                    }
+                }
+
+                // 中间：当前文件名
+                row {
+                    style: "items-center gap-2 text-xs text-muted-foreground truncate max-w-xs hidden md:flex"
+                    text "▶" { style: "text-[10px] text-primary opacity-80" }
+                    text .current_file { style: "font-mono font-medium truncate" }
+                }
+
+                // 右侧：主题、强调色与窗口装饰控制
+                row {
+                    style: "items-center gap-2"
+
+                    // 深浅主题切换
+                    if .dark_mode {
+                        button "🌙" {
+                            onclick: .ToggleDarkMode
+                            style: "px-2 py-1 rounded hover:bg-zinc-800 text-xs cursor-pointer transition-colors"
+                        }
+                    } else {
+                        button "☀" {
+                            onclick: .ToggleDarkMode
+                            style: "px-2 py-1 rounded hover:bg-slate-200 text-xs cursor-pointer transition-colors"
+                        }
+                    }
+
+                    // 五色 Accent 色点
+                    row {
+                        style: "items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted/40"
+                        for a in .accents {
+                            if .accent_color == a.name {
+                                button "●" {
+                                    onclick: .SetAccent(a.name)
+                                    style: "text-sm p-0 bg-transparent cursor-pointer leading-none " + a.dot
+                                }
+                            } else {
+                                button "●" {
+                                    onclick: .SetAccent(a.name)
+                                    style: "text-sm p-0 bg-transparent opacity-30 hover:opacity-80 cursor-pointer leading-none " + a.dot
+                                }
+                            }
+                        }
+                    }
+
+                    // 窗口控件装饰
+                    row {
+                        style: "items-center gap-1.5 ml-2 text-muted-foreground"
+                        button "—" { style: "w-5 h-5 rounded hover:bg-muted flex items-center justify-center cursor-pointer text-xs" }
+                        button "□" {
+                            onclick: .ToggleFullscreen
+                            style: "w-5 h-5 rounded hover:bg-muted flex items-center justify-center cursor-pointer text-xs"
+                        }
+                        button "✕" {
+                            onclick: .StopPlayback
+                            style: "w-5 h-5 rounded hover:bg-rose-500 hover:text-white flex items-center justify-center cursor-pointer text-xs"
+                        }
+                    }
+                }
+            }
+
+            // ══════════════════════════════════════════════════════════════════════
+            // 2. 主体区：左侧视频视口 + 右侧播放队列抽屉
+            // ══════════════════════════════════════════════════════════════════════
+            row {
+                style: "flex-1 w-full overflow-hidden relative flex-row"
+
+                // ──────────────────────────────────────────────────────────────────
+                // 2.1 视频播放主视口 (Video Viewport & OSD Overlay)
+                // ──────────────────────────────────────────────────────────────────
+                col {
+                    style: "flex-1 h-full flex flex-col relative bg-black justify-between overflow-hidden"
+
+                    // 画布顶端悬浮信息条 (Header HUD Overlay)
+                    row {
+                        style: "w-full p-4 items-center justify-between z-20 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-auto"
+
+                        // 视频标签与信息
+                        row {
+                            style: "items-center gap-3"
+                            col {
+                                style: "gap-0.5"
+                                text .current_title { style: "text-sm md:text-base font-extrabold text-white tracking-tight drop-shadow-md" }
+                                row {
+                                    style: "items-center gap-2 text-[11px] text-zinc-300 font-mono"
+                                    text .current_res { style: "px-1.5 py-0.2 rounded bg-white/20 font-bold text-white text-[10px]" }
+                                    text .current_codec { style: "px-1.5 py-0.2 rounded bg-white/10 text-zinc-300 text-[10px]" }
+                                    text .current_fps {}
+                                    text "•" {}
+                                    text .current_bitrate {}
+                                }
+                            }
+                        }
+
+                        // 状态反馈 Toast / 通知气泡
+                        if .show_toast {
+                            row {
+                                style: "items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900/90 border border-white/20 backdrop-blur shadow-xl animate-fade"
+                                text "⚡" { style: "text-xs text-amber-400" }
+                                text .toast_msg { style: "text-xs font-semibold text-white tracking-wide" }
+                                button "×" {
+                                    onclick: .DismissToast
+                                    style: "text-xs text-zinc-400 hover:text-white cursor-pointer ml-1"
+                                }
+                            }
+                        }
+
+                        // 右上角快速辅助按钮
+                        row {
+                            style: "items-center gap-2"
+                            button "ℹ 属性" {
+                                onclick: .ToggleInfoModal
+                                style: "px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs font-medium cursor-pointer transition-colors backdrop-blur"
+                            }
+                            button "👁 OSD" {
+                                onclick: .ToggleControls
+                                style: "px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs font-medium cursor-pointer transition-colors backdrop-blur"
+                            }
+                        }
+                    }
+
+                    // 视频主体渲染区域 (Canvas Screen Area)
+                    col {
+                        class: "flex-1 w-full items-center justify-center relative overflow-hidden bg-gradient-to-br " + .current_bg
+                        onclick: .TogglePlay
+
+                        // 居中大播放状态指示器
+                        col {
+                            style: "items-center justify-center gap-4 cursor-pointer hover:scale-105 transition-transform"
+                            if .is_playing {
+                                col {
+                                    style: "w-24 h-24 rounded-full bg-white/10 backdrop-blur-md border border-white/20 items-center justify-center shadow-2xl"
+                                    text "⏸" { style: "text-4xl text-white drop-shadow-lg" }
+                                }
+                                text "● 正在播放 (60 FPS 硬件解码)" { style: "text-xs font-semibold text-white/80 tracking-widest uppercase drop-shadow" }
+                            } else {
+                                col {
+                                    style: "w-24 h-24 rounded-full bg-white/20 backdrop-blur-md border border-white/30 items-center justify-center shadow-2xl"
+                                    text "▶" { style: "text-4xl text-white ml-1 drop-shadow-lg" }
+                                }
+                                text "已暂停 (点击或按空格播放)" { style: "text-xs font-semibold text-white/90 tracking-widest uppercase drop-shadow" }
+                            }
+                        }
+
+                        // 底部快捷提示
+                        row {
+                            style: "absolute bottom-3 text-[11px] text-white/50 tracking-wider font-mono select-none"
+                            text "画幅: " + .aspect_mode + " · 音频: " + .current_audio + " · 双击全屏 · 空格暂停" {}
+                        }
+                    }
+
+                    // ──────────────────────────────────────────────────────────────
+                    // 2.2 底部专业 OSD 悬浮播控条 (Bottom OSD Control Bar)
+                    // ──────────────────────────────────────────────────────────────
+                    if .show_controls {
+                        col {
+                            style: "w-full bg-gradient-to-t from-black/95 via-black/80 to-transparent p-4 pb-5 gap-3.5 z-20 pointer-events-auto"
+
+                            // ── 交互式进度条 (Timeline Scrubber) ──
+                            row {
+                                style: "items-center gap-3 w-full"
+
+                                // 当前播放时间
+                                text .current_time_str {
+                                    style: "text-xs font-mono font-bold text-white/90 w-12 text-center"
+                                }
+
+                                // 进度条轨道
+                                col {
+                                    style: "flex-1 h-3.5 justify-center cursor-pointer group relative"
+                                    onclick: .StepForward
+
+                                    // 背景槽
+                                    row {
+                                        style: "w-full h-1.5 group-hover:h-2 rounded-full bg-white/20 relative overflow-hidden transition-all items-center"
+
+                                        // 缓冲进度条模拟 (65%)
+                                        row {
+                                            style: "h-full w-2/3 bg-white/30 rounded-full"
+                                        }
+
+                                        // 已播放主进度条
+                                        col {
+                                            style: if .accent_color == "coral" {
+                                                "absolute inset-y-0 left-0 bg-rose-500 rounded-full transition-all"
+                                            } else if .accent_color == "ocean" {
+                                                "absolute inset-y-0 left-0 bg-sky-500 rounded-full transition-all"
+                                            } else if .accent_color == "sage" {
+                                                "absolute inset-y-0 left-0 bg-emerald-500 rounded-full transition-all"
+                                            } else if .accent_color == "amber" {
+                                                "absolute inset-y-0 left-0 bg-amber-500 rounded-full transition-all"
+                                            } else {
+                                                "absolute inset-y-0 left-0 bg-indigo-500 rounded-full transition-all"
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 进度百分比跳转快捷锚点
+                                row {
+                                    style: "items-center gap-1 text-[10px] font-mono text-zinc-400 hidden lg:flex"
+                                    button "0%" {
+                                        onclick: .SeekPercent(0)
+                                        style: "px-1.5 py-0.5 rounded hover:bg-white/10 hover:text-white cursor-pointer"
+                                    }
+                                    button "25%" {
+                                        onclick: .SeekPercent(25)
+                                        style: "px-1.5 py-0.5 rounded hover:bg-white/10 hover:text-white cursor-pointer"
+                                    }
+                                    button "50%" {
+                                        onclick: .SeekPercent(50)
+                                        style: "px-1.5 py-0.5 rounded hover:bg-white/10 hover:text-white cursor-pointer"
+                                    }
+                                    button "75%" {
+                                        onclick: .SeekPercent(75)
+                                        style: "px-1.5 py-0.5 rounded hover:bg-white/10 hover:text-white cursor-pointer"
+                                    }
+                                }
+
+                                // 总时间 / 剩余时间
+                                button .total_time_str {
+                                    onclick: .ToggleTimeMode
+                                    style: "text-xs font-mono font-bold text-white/80 hover:text-primary w-12 text-center cursor-pointer transition-colors"
+                                }
+                            }
+
+                            // ── 播放器底栏控制区 (Transport & Action Buttons) ──
+                            row {
+                                style: "items-center justify-between w-full flex-wrap gap-2 text-white"
+
+                                // 左侧：传输控制组 (Prev, -5s, Play/Pause, +5s, Next, Stop)
+                                row {
+                                    style: "items-center gap-1.5 sm:gap-2"
+
+                                    button "⏮" {
+                                        onclick: .PrevVideo
+                                        style: "w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                                    }
+                                    button "⏪ 5s" {
+                                        onclick: .StepBackward
+                                        style: "px-2 py-1 rounded-lg hover:bg-white/20 text-xs font-medium cursor-pointer transition-colors"
+                                    }
+
+                                    // 主播放/暂停突出按钮
+                                    if .is_playing {
+                                        button "⏸ 暂停" {
+                                            onclick: .TogglePlay
+                                            style: if .accent_color == "coral" {
+                                                "px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else if .accent_color == "ocean" {
+                                                "px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else if .accent_color == "sage" {
+                                                "px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else if .accent_color == "amber" {
+                                                "px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else {
+                                                "px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            }
+                                        }
+                                    } else {
+                                        button "▶ 播放" {
+                                            onclick: .TogglePlay
+                                            style: if .accent_color == "coral" {
+                                                "px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else if .accent_color == "ocean" {
+                                                "px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else if .accent_color == "sage" {
+                                                "px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else if .accent_color == "amber" {
+                                                "px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            } else {
+                                                "px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold shadow-lg cursor-pointer transition-all hover:scale-105"
+                                            }
+                                        }
+                                    }
+
+                                    button "5s ⏩" {
+                                        onclick: .StepForward
+                                        style: "px-2 py-1 rounded-lg hover:bg-white/20 text-xs font-medium cursor-pointer transition-colors"
+                                    }
+                                    button "⏭" {
+                                        onclick: .NextVideo
+                                        style: "w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                                    }
+                                    button "⏹" {
+                                        onclick: .StopPlayback
+                                        style: "w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                                    }
+
+                                    // 音量调节组
+                                    row {
+                                        style: "items-center gap-1.5 ml-2 pl-2 border-l border-white/20"
+                                        if .is_muted {
+                                            button "🔇" {
+                                                onclick: .ToggleMute
+                                                style: "text-sm p-1 rounded hover:bg-white/20 cursor-pointer"
+                                            }
+                                        } else {
+                                            button "🔊" {
+                                                onclick: .ToggleMute
+                                                style: "text-sm p-1 rounded hover:bg-white/20 cursor-pointer"
+                                            }
+                                        }
+                                        button "-" {
+                                            onclick: .VolDown
+                                            style: "w-5 h-5 rounded hover:bg-white/20 flex items-center justify-center text-xs cursor-pointer"
+                                        }
+                                        text .volume_label {
+                                            style: "text-xs font-mono text-zinc-300 w-9 text-center"
+                                        }
+                                        button "+" {
+                                            onclick: .VolUp
+                                            style: "w-5 h-5 rounded hover:bg-white/20 flex items-center justify-center text-xs cursor-pointer"
+                                        }
+                                    }
+                                }
+
+                                // 右侧：播放模式、倍速、画幅、抽屉与全屏切换
+                                row {
+                                    style: "items-center gap-2"
+
+                                    // 循环模式切换
+                                    button .loop_label {
+                                        onclick: .CycleLoopMode
+                                        style: "px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium cursor-pointer transition-colors"
+                                    }
+
+                                    // 倍速切换按钮
+                                    button f"⚡ ${.playback_speed}" {
+                                        onclick: .CycleSpeed
+                                        style: "px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-mono font-bold cursor-pointer transition-colors"
+                                    }
+
+                                    // 画幅比切换
+                                    button f"⛶ ${.aspect_mode}" {
+                                        onclick: .ToggleAspect
+                                        style: "px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium cursor-pointer transition-colors hidden sm:flex"
+                                    }
+
+                                    // 播放队列抽屉开关
+                                    if .show_playlist {
+                                        button "≡ 列表 (5)" {
+                                            onclick: .TogglePlaylist
+                                            style: "px-3 py-1.5 rounded-lg bg-white/25 text-white text-xs font-bold border border-white/30 cursor-pointer transition-colors shadow-sm"
+                                        }
+                                    } else {
+                                        button "≡ 列表" {
+                                            onclick: .TogglePlaylist
+                                            style: "px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white text-xs font-medium cursor-pointer transition-colors"
+                                        }
+                                    }
+
+                                    // 全屏切换
+                                    button "⛶" {
+                                        onclick: .ToggleFullscreen
+                                        style: "w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center text-base cursor-pointer transition-colors"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ──────────────────────────────────────────────────────────────────
+                // 2.3 可折叠右侧播放队列抽屉 (Collapsible Playlist Drawer)
+                // ──────────────────────────────────────────────────────────────────
+                if .show_playlist {
+                    col {
+                        style: if .dark_mode {
+                            "w-80 h-full bg-zinc-900 border-l border-zinc-800 flex flex-col shrink-0 z-30 transition-all"
+                        } else {
+                            "w-80 h-full bg-white border-l border-slate-200 flex flex-col shrink-0 z-30 transition-all"
+                        }
+
+                        // 抽屉顶头栏
+                        row {
+                            style: "h-12 px-4 items-center justify-between border-b border-border shrink-0"
+                            row {
+                                style: "items-center gap-2"
+                                text "播放队列" { style: "font-bold text-sm text-foreground" }
+                                text "5 个项目" { style: "text-xs text-muted-foreground" }
+                            }
+                            button "✕" {
+                                onclick: .TogglePlaylist
+                                style: "text-xs text-muted-foreground hover:text-foreground cursor-pointer p-1"
+                            }
+                        }
+
+                        // 队列项目滚动区
+                        col {
+                            style: "flex-1 overflow-y-auto p-2.5 gap-2"
+
+                            for item in .playlist {
+                                row {
+                                    onclick: .SelectVideo(item.id)
+                                    style: if item.id == .current_id {
+                                        "p-2.5 rounded-xl bg-accent border border-primary/40 gap-3 items-center cursor-pointer transition-all shadow-sm"
+                                    } else {
+                                        "p-2.5 rounded-xl hover:bg-muted/60 border border-transparent gap-3 items-center cursor-pointer transition-all"
+                                    }
+
+                                    // 微缩封面块
+                                    col {
+                                        class: "w-16 h-11 rounded-lg bg-gradient-to-br " + item.bg_gradient + " items-center justify-center shrink-0 relative overflow-hidden shadow-inner"
+                                        if item.id == .current_id {
+                                            text "▶" { style: "text-sm text-white drop-shadow" }
+                                        } else {
+                                            text "🎬" { style: "text-xs opacity-60 text-white" }
+                                        }
+                                        row {
+                                            style: "absolute bottom-0.5 right-0.5 bg-black/80 px-1 py-0.2 rounded"
+                                            text item.duration_str { style: "text-[9px] font-mono text-white font-medium" }
+                                        }
+                                    }
+
+                                    // 信息列
+                                    col {
+                                        style: "flex-1 min-w-0 justify-center gap-1"
+                                        text item.title {
+                                            style: if item.id == .current_id {
+                                                "text-xs font-bold text-foreground truncate"
+                                            } else {
+                                                "text-xs font-medium text-foreground truncate"
+                                            }
+                                        }
+                                        row {
+                                            style: "items-center gap-1.5 text-[10px] text-muted-foreground font-mono"
+                                            text item.resolution { style: "px-1 py-0.2 rounded bg-muted text-foreground font-bold text-[9px]" }
+                                            text item.codec {}
+                                            text "•" {}
+                                            text item.size_str {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 抽屉底部工具栏
+                        col {
+                            style: "p-3 border-t border-border gap-2 shrink-0 bg-muted/20"
+                            button "+ 打开本地视频文件 (Open File...)" {
+                                onclick: .OpenLocalDemo
+                                style: "w-full py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer text-center"
+                            }
+                            row {
+                                style: "items-center justify-between text-[11px] text-muted-foreground px-1"
+                                text "快捷键: 空格/方向键/P" {}
+                                button "清空历史" {
+                                    onclick: .StopPlayback
+                                    style: "hover:text-foreground cursor-pointer"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ══════════════════════════════════════════════════════════════════════
+            // 3. 视频媒体属性详细信息弹窗 (Media Properties Modal)
+            // ══════════════════════════════════════════════════════════════════════
+            if .show_info_modal {
+                col {
+                    style: "fixed inset-0 bg-black/60 backdrop-blur-sm z-50 items-center justify-center p-4"
+
+                    col {
+                        style: if .dark_mode {
+                            "w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-2xl p-6 gap-4 shadow-2xl animate-fade"
+                        } else {
+                            "w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 gap-4 shadow-2xl animate-fade"
+                        }
+
+                        // 弹层标题
+                        row {
+                            style: "items-center justify-between pb-3 border-b border-border"
+                            row {
+                                style: "items-center gap-2"
+                                text "ℹ" { style: "text-lg text-primary" }
+                                text "媒体详细属性 (Media Info)" { style: "font-bold text-base text-foreground" }
+                            }
+                            button "✕" {
+                                onclick: .ToggleInfoModal
+                                style: "text-muted-foreground hover:text-foreground cursor-pointer text-sm"
+                            }
+                        }
+
+                        // 属性网格
+                        col {
+                            style: "gap-2.5 text-xs text-muted-foreground font-mono"
+
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "标题 (Title):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_title { style: "text-foreground font-sans truncate max-w-[200px]" }
+                            }
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "文件名 (File):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_file { style: "text-foreground" }
+                            }
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "分辨率 (Resolution):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_res { style: "text-primary font-bold" }
+                            }
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "视频编码 (Codec):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_codec { style: "text-foreground" }
+                            }
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "帧率 (Frame Rate):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_fps { style: "text-foreground" }
+                            }
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "视频码率 (Bitrate):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_bitrate { style: "text-foreground" }
+                            }
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "音频声道 (Audio):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_audio { style: "text-foreground" }
+                            }
+                            row {
+                                style: "justify-between py-1 border-b border-border/50"
+                                text "文件大小 (File Size):" { style: "font-sans font-semibold text-foreground" }
+                                text .current_size { style: "text-foreground" }
+                            }
+                            row {
+                                style: "justify-between py-1"
+                                text "解码管线 (Pipeline):" { style: "font-sans font-semibold text-foreground" }
+                                text "AutoOS wgpu / HTML5 HW" { style: "text-emerald-500 font-bold" }
+                            }
+                        }
+
+                        // 弹层底部按钮
+                        button "确定 (Close)" {
+                            onclick: .ToggleInfoModal
+                            style: "w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer text-center mt-2"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .current_time_str = "00:45"
+            .total_time_str = "03:45"
+            .time_display_fmt = "00:45 / 03:45"
+            .progress_pct = 20
+            .volume = 80
+            .volume_label = "80%"
+            .is_playing = true
+            .toast_msg = "已载入: 01_intro.mp4 (1080P 60FPS)"
+            .show_toast = true
+        }
+
+        .TogglePlay -> {
+            .is_playing = !.is_playing
+            if .is_playing {
+                .toast_msg = "播放"
+            } else {
+                .toast_msg = "暂停"
+            }
+            .show_toast = true
+        }
+
+        .StepForward -> {
+            .current_time_sec = .current_time_sec + 5
+            if .current_time_sec > .total_time_sec {
+                .current_time_sec = .total_time_sec
+            }
+            let min = .current_time_sec / 60
+            let sec = .current_time_sec % 60
+            let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
+            let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
+            .current_time_str = min_str + ":" + sec_str
+            .time_display_fmt = .current_time_str + " / " + .total_time_str
+            .progress_pct = (.current_time_sec * 100) / .total_time_sec
+            .toast_msg = "快进 +5 秒 (" + .current_time_str + ")"
+            .show_toast = true
+        }
+
+        .StepBackward -> {
+            .current_time_sec = .current_time_sec - 5
+            if .current_time_sec < 0 {
+                .current_time_sec = 0
+            }
+            let min = .current_time_sec / 60
+            let sec = .current_time_sec % 60
+            let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
+            let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
+            .current_time_str = min_str + ":" + sec_str
+            .time_display_fmt = .current_time_str + " / " + .total_time_str
+            .progress_pct = (.current_time_sec * 100) / .total_time_sec
+            .toast_msg = "快退 -5 秒 (" + .current_time_str + ")"
+            .show_toast = true
+        }
+
+        .NextVideo -> {
+            .current_id = .current_id + 1
+            if .current_id > 5 {
+                .current_id = 1
+            }
+            if .current_id == 1 {
+                .current_title = "AutoOS 2026 Keynote & Intro"
+                .current_file = "01_intro.mp4"
+                .current_res = "1080P"
+                .current_codec = "H.264"
+                .current_size = "48 MB"
+                .current_bg = "from-indigo-950 via-slate-900 to-purple-950"
+                .total_time_sec = 225
+                .total_time_str = "03:45"
+            } else if .current_id == 2 {
+                .current_title = "Kernel & AutoVM Architecture"
+                .current_file = "02_architecture.mkv"
+                .current_res = "4K"
+                .current_codec = "HEVC"
+                .current_size = "210 MB"
+                .current_bg = "from-blue-950 via-slate-900 to-cyan-950"
+                .total_time_sec = 740
+                .total_time_str = "12:20"
+            } else if .current_id == 3 {
+                .current_title = "AutoUI Dual-Backend Engine Demo"
+                .current_file = "03_ui_engine.mp4"
+                .current_res = "1080P"
+                .current_codec = "AV1"
+                .current_size = "85 MB"
+                .current_bg = "from-emerald-950 via-slate-900 to-teal-950"
+                .total_time_sec = 495
+                .total_time_str = "08:15"
+            } else if .current_id == 4 {
+                .current_title = "Fullstack Parity & Toolchain"
+                .current_file = "04_workflow.webm"
+                .current_res = "1080P"
+                .current_codec = "VP9"
+                .current_size = "62 MB"
+                .current_bg = "from-amber-950 via-slate-900 to-orange-950"
+                .total_time_sec = 330
+                .total_time_str = "05:30"
+            } else {
+                .current_title = "AutoOS Ambient Desktop Visuals"
+                .current_file = "05_ambient.mp4"
+                .current_res = "720P"
+                .current_codec = "H.264"
+                .current_size = "24 MB"
+                .current_bg = "from-rose-950 via-slate-900 to-pink-950"
+                .total_time_sec = 90
+                .total_time_str = "01:30"
+            }
+            .current_time_sec = 0
+            .current_time_str = "00:00"
+            .time_display_fmt = "00:00 / " + .total_time_str
+            .progress_pct = 0
+            .is_playing = true
+            .toast_msg = "播放下一集: " + .current_file
+            .show_toast = true
+        }
+
+        .PrevVideo -> {
+            .current_id = .current_id - 1
+            if .current_id < 1 {
+                .current_id = 5
+            }
+            if .current_id == 1 {
+                .current_title = "AutoOS 2026 Keynote & Intro"
+                .current_file = "01_intro.mp4"
+                .current_res = "1080P"
+                .current_codec = "H.264"
+                .current_size = "48 MB"
+                .current_bg = "from-indigo-950 via-slate-900 to-purple-950"
+                .total_time_sec = 225
+                .total_time_str = "03:45"
+            } else if .current_id == 2 {
+                .current_title = "Kernel & AutoVM Architecture"
+                .current_file = "02_architecture.mkv"
+                .current_res = "4K"
+                .current_codec = "HEVC"
+                .current_size = "210 MB"
+                .current_bg = "from-blue-950 via-slate-900 to-cyan-950"
+                .total_time_sec = 740
+                .total_time_str = "12:20"
+            } else if .current_id == 3 {
+                .current_title = "AutoUI Dual-Backend Engine Demo"
+                .current_file = "03_ui_engine.mp4"
+                .current_res = "1080P"
+                .current_codec = "AV1"
+                .current_size = "85 MB"
+                .current_bg = "from-emerald-950 via-slate-900 to-teal-950"
+                .total_time_sec = 495
+                .total_time_str = "08:15"
+            } else if .current_id == 4 {
+                .current_title = "Fullstack Parity & Toolchain"
+                .current_file = "04_workflow.webm"
+                .current_res = "1080P"
+                .current_codec = "VP9"
+                .current_size = "62 MB"
+                .current_bg = "from-amber-950 via-slate-900 to-orange-950"
+                .total_time_sec = 330
+                .total_time_str = "05:30"
+            } else {
+                .current_title = "AutoOS Ambient Desktop Visuals"
+                .current_file = "05_ambient.mp4"
+                .current_res = "720P"
+                .current_codec = "H.264"
+                .current_size = "24 MB"
+                .current_bg = "from-rose-950 via-slate-900 to-pink-950"
+                .total_time_sec = 90
+                .total_time_str = "01:30"
+            }
+            .current_time_sec = 0
+            .current_time_str = "00:00"
+            .time_display_fmt = "00:00 / " + .total_time_str
+            .progress_pct = 0
+            .is_playing = true
+            .toast_msg = "播放上一集: " + .current_file
+            .show_toast = true
+        }
+
+        .StopPlayback -> {
+            .is_playing = false
+            .current_time_sec = 0
+            .current_time_str = "00:00"
+            .time_display_fmt = "00:00 / " + .total_time_str
+            .progress_pct = 0
+            .toast_msg = "已停止播放"
+            .show_toast = true
+        }
+
+        .SeekPercent(pct int) -> {
+            .progress_pct = pct
+            .current_time_sec = (.total_time_sec * pct) / 100
+            let min = .current_time_sec / 60
+            let sec = .current_time_sec % 60
+            let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
+            let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
+            .current_time_str = min_str + ":" + sec_str
+            .time_display_fmt = .current_time_str + " / " + .total_time_str
+            .toast_msg = "跳转至 " + pct.to_string() + "% (" + .current_time_str + ")"
+            .show_toast = true
+        }
+
+        .VolUp -> {
+            .volume = .volume + 5
+            if .volume > 100 {
+                .volume = 100
+            }
+            .volume_label = .volume.to_string() + "%"
+            .is_muted = false
+            .toast_msg = "音量 " + .volume_label
+            .show_toast = true
+        }
+
+        .VolDown -> {
+            .volume = .volume - 5
+            if .volume < 0 {
+                .volume = 0
+            }
+            .volume_label = .volume.to_string() + "%"
+            .is_muted = false
+            .toast_msg = "音量 " + .volume_label
+            .show_toast = true
+        }
+
+        .SetVolume(vol int) -> {
+            .volume = vol
+            .volume_label = vol.to_string() + "%"
+            .is_muted = false
+            .toast_msg = "音量 " + .volume_label
+            .show_toast = true
+        }
+
+        .ToggleMute -> {
+            .is_muted = !.is_muted
+            if .is_muted {
+                .toast_msg = "已静音"
+            } else {
+                .toast_msg = "取消静音 (" + .volume_label + ")"
+            }
+            .show_toast = true
+        }
+
+        .CycleSpeed -> {
+            if .playback_speed == "1.0x" {
+                .playback_speed = "1.25x"
+            } else if .playback_speed == "1.25x" {
+                .playback_speed = "1.5x"
+            } else if .playback_speed == "1.5x" {
+                .playback_speed = "2.0x"
+            } else if .playback_speed == "2.0x" {
+                .playback_speed = "0.5x"
+            } else if .playback_speed == "0.5x" {
+                .playback_speed = "0.75x"
+            } else {
+                .playback_speed = "1.0x"
+            }
+            .toast_msg = "倍速 " + .playback_speed
+            .show_toast = true
+        }
+
+        .SetSpeed(spd str) -> {
+            .playback_speed = spd
+            .show_speed_menu = false
+            .toast_msg = "倍速 " + spd
+            .show_toast = true
+        }
+
+        .ToggleSpeedMenu -> {
+            .show_speed_menu = !.show_speed_menu
+        }
+
+        .TogglePlaylist -> {
+            .show_playlist = !.show_playlist
+        }
+
+        .ToggleControls -> {
+            .show_controls = !.show_controls
+        }
+
+        .ToggleFullscreen -> {
+            .is_fullscreen = !.is_fullscreen
+            if .is_fullscreen {
+                .toast_msg = "进入全屏视口"
+            } else {
+                .toast_msg = "退出全屏"
+            }
+            .show_toast = true
+        }
+
+        .ToggleAspect -> {
+            if .aspect_mode == "16:9" {
+                .aspect_mode = "4:3"
+            } else if .aspect_mode == "4:3" {
+                .aspect_mode = "铺满"
+            } else {
+                .aspect_mode = "16:9"
+            }
+            .toast_msg = "画幅比例: " + .aspect_mode
+            .show_toast = true
+        }
+
+        .CycleLoopMode -> {
+            if .loop_mode == "list" {
+                .loop_mode = "single"
+                .loop_label = "🔂 单曲循环"
+                .toast_msg = "模式: 单曲循环"
+            } else if .loop_mode == "single" {
+                .loop_mode = "shuffle"
+                .loop_label = "🔀 随机播放"
+                .toast_msg = "模式: 随机播放"
+            } else {
+                .loop_mode = "list"
+                .loop_label = "🔁 列表循环"
+                .toast_msg = "模式: 列表循环"
+            }
+            .show_toast = true
+        }
+
+        .ToggleTimeMode -> {
+            if .time_mode == "elapsed" {
+                .time_mode = "remaining"
+                let rem = .total_time_sec - .current_time_sec
+                let min = rem / 60
+                let sec = rem % 60
+                let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
+                let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
+                .total_time_str = "-" + min_str + ":" + sec_str
+                .toast_msg = "显示剩余时间"
+            } else {
+                .time_mode = "elapsed"
+                let min = .total_time_sec / 60
+                let sec = .total_time_sec % 60
+                let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
+                let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
+                .total_time_str = min_str + ":" + sec_str
+                .toast_msg = "显示总时长"
+            }
+            .show_toast = true
+        }
+
+        .SelectVideo(id int) -> {
+            .current_id = id
+            if id == 1 {
+                .current_title = "AutoOS 2026 Keynote & Intro"
+                .current_file = "01_intro.mp4"
+                .current_res = "1080P"
+                .current_codec = "H.264"
+                .current_size = "48 MB"
+                .current_bg = "from-indigo-950 via-slate-900 to-purple-950"
+                .total_time_sec = 225
+                .total_time_str = "03:45"
+            } else if id == 2 {
+                .current_title = "Kernel & AutoVM Architecture"
+                .current_file = "02_architecture.mkv"
+                .current_res = "4K"
+                .current_codec = "HEVC"
+                .current_size = "210 MB"
+                .current_bg = "from-blue-950 via-slate-900 to-cyan-950"
+                .total_time_sec = 740
+                .total_time_str = "12:20"
+            } else if id == 3 {
+                .current_title = "AutoUI Dual-Backend Engine Demo"
+                .current_file = "03_ui_engine.mp4"
+                .current_res = "1080P"
+                .current_codec = "AV1"
+                .current_size = "85 MB"
+                .current_bg = "from-emerald-950 via-slate-900 to-teal-950"
+                .total_time_sec = 495
+                .total_time_str = "08:15"
+            } else if id == 4 {
+                .current_title = "Fullstack Parity & Toolchain"
+                .current_file = "04_workflow.webm"
+                .current_res = "1080P"
+                .current_codec = "VP9"
+                .current_size = "62 MB"
+                .current_bg = "from-amber-950 via-slate-900 to-orange-950"
+                .total_time_sec = 330
+                .total_time_str = "05:30"
+            } else {
+                .current_title = "AutoOS Ambient Desktop Visuals"
+                .current_file = "05_ambient.mp4"
+                .current_res = "720P"
+                .current_codec = "H.264"
+                .current_size = "24 MB"
+                .current_bg = "from-rose-950 via-slate-900 to-pink-950"
+                .total_time_sec = 90
+                .total_time_str = "01:30"
+            }
+            .current_time_sec = 0
+            .current_time_str = "00:00"
+            .time_display_fmt = "00:00 / " + .total_time_str
+            .progress_pct = 0
+            .is_playing = true
+            .toast_msg = "开始播放: " + .current_file
+            .show_toast = true
+        }
+
+        .ToggleInfoModal -> {
+            .show_info_modal = !.show_info_modal
+        }
+
+        .DismissToast -> {
+            .show_toast = false
+        }
+
+        .OpenLocalDemo -> {
+            .toast_msg = "已模拟关联系统文件管理器 (027-file-manager) 打开媒体"
+            .show_toast = true
+        }
+
+        .ToggleDarkMode -> {
+            .dark_mode = !.dark_mode
+        }
+
+        .SetAccent(color str) -> {
+            .accent_color = color
+            .toast_msg = "强调色已设为 " + color
+            .show_toast = true
+        }
+    }
+}

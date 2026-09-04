@@ -2556,28 +2556,30 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     content: iced::Element<'static, M>,
     position: crate::ui::view::OverlayPosition,
 ) -> iced::Element<'static, M> {
-    let mut col = iced::widget::Column::<M>::with_capacity(2);
-    if let Some(top) = position.top {
-        if top > 0.0 {
-            col = col.push(iced::widget::Space::new().height(iced::Length::Fixed(top)));
+
+    // PLAN-536 重测修正(2026-09-04)：悬浮层几何改**显式 spacer**——原
+    // container(Fill)+align_x 在 Stack 子路径不生效(× 落左上,musk 会话卡
+    // 实测),spacer 是不会说谎的几何：top spacer 垂直定位,水平方向
+    // Fill-spacer + 定宽 right/left spacer 夹出水平位置。
+    let top_space = iced::widget::Space::new()
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(position.top.unwrap_or(0.0) as f32));
+    let mut row = iced::widget::Row::<M>::new().width(iced::Length::Fill);
+    if let Some(left) = position.left {
+        if left > 0.0 {
+            row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(left)));
+        }
+        row = row.push(content);
+    } else {
+        row = row.push(iced::widget::Space::new().width(iced::Length::Fill));
+        row = row.push(content);
+        if let Some(right) = position.right {
+            if right > 0.0 {
+                row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(right)));
+            }
         }
     }
-    let mut cont = container(content);
-    if let Some(right) = position.right {
-        cont = cont
-            .width(iced::Length::Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .padding(iced::Padding { top: 0.0, right, bottom: 0.0, left: 0.0 });
-    } else if let Some(left) = position.left {
-        cont = cont
-            .width(iced::Length::Fill)
-            .align_x(iced::alignment::Horizontal::Left)
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left });
-    } else {
-        cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
-    }
-    col = col.push(cont);
-    col.into()
+    iced::widget::column![top_space, row].width(iced::Length::Fill).into()
 }
 
 /// Plan 412 F2: per-cell metadata the grid builder needs but can't recover
@@ -7833,12 +7835,10 @@ fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
 }
 
 fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
-    // Plan 487 M4：通知持久化开关门控（479 消费链单点）——settings 面板
-    // 写 `shell.notes.enabled`，"false" = 关：notify 动词全链路（入史 +
-    // toast + 未读 + 落盘）短路。缺席/其余值 = 开（向后兼容：键不存在
-    // 的旧 store 行为不变）。
-    if crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref() == Some("false")
-    {
+    // Plan 487 M4 + Plan 540 T2：通知持久化开关门控（479 消费链单点）——
+    // 单源 `config.notes_enabled`（设置窗写经宿主臂收口落 config.at），
+    // false = 关：notify 动词全链路（入史 + toast + 未读 + 落盘）短路。
+    if !state.desktop.config.notes_enabled {
         return;
     }
     let id = {
@@ -8240,144 +8240,42 @@ fn toggle_notification_center(
     iced::Task::none()
 }
 
-/// Plan 487 M4：设置面板 overlay 召唤执行体（open_settings 总线动词；
-/// toggle_notification_center 同型第四枚）。懒挂载（assets/settings.at
-/// 进程内嵌——装载失败走 push_notification 降级）→ 可见即自隐（二态翻转，
-/// 待澄清④定案），隐时打开：配置快照注入——dock 位置/开关当前驱动事实
-/// （cfg_*，storage 键重推导——驱动写回保证键即事实，I9）+ pinned 平行
-/// 字符串列表（pinned_ids，B12 规避）+ 通知开关快照 + 版本/宿主常量
-/// （about_*，挂召唤注入通道——无新协议字段）→ 显式 RebuildPinned 重建
-/// rows + hosted/visible 置位。无输入控件（v1 三分区皆按钮/开关）——无
-/// `__focus_input`/聚焦任务（Esc 关闭走订阅独占，R12）。
-fn toggle_settings(
-    state: &mut crate::ui::session::DesktopSession,
-) -> iced::Task<crate::ui::session::DesktopMessage> {
-    // 1. 懒挂载
-    if state.desktop.settings_app.is_none() {
-        match crate::ui::shell::build_settings_component() {
-            Ok(comp) => {
-                let app_id = state.allocate_app(comp);
-                state.desktop.settings_app = Some(app_id);
-            }
-            Err(err) => {
-                push_notification(state, "error", &format!("设置面板装载失败: {err}"));
-                return iced::Task::none();
-            }
-        }
-    }
-    // 2. toggle：可见 → 自隐（再点齿轮/Esc 同效）。
-    if state.settings_visible() {
-        let panel = state.desktop.settings_app.expect("panel checked");
-        if let Some(app) = state.apps.get_mut(&panel) {
-            let _ = app.component.write_state("visible", auto_val::Value::str("0"));
-            *app.state.view_dirty.borrow_mut() = true;
-        }
-        return iced::Task::none();
-    }
-    // 3. 打开：配置快照注入 + 重建 pinned rows + 刷 view。
-    let panel = state.desktop.settings_app.expect("panel mounted");
-    let pos = if crate::vm::ffi::stdlib::storage_host_read("shell.dock.position").as_deref()
-        == Some("top")
-    {
-        "top"
-    } else {
-        "bottom"
-    };
-    let dock_on = crate::vm::ffi::stdlib::storage_host_read("shell.dock.enabled").as_deref()
-        != Some("false");
-    let notes_on = crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref()
-        != Some("false");
-    // Plan 496 M5：壁纸键快照（外观分区「当前：」展示；写入 = 面板内
-    // storage 直写，本注入只在召唤时点）。
-    let wallpaper = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
-        .unwrap_or_default();
-    // Plan 518 G1/G6：Appearance 分区快照——主题键（缺席 = dark 默认）与
-    // 透明度档位（缺席 = off）。
-    let theme = crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme")
-        .filter(|t| t == "light")
-        .map(|_| "light")
-        .unwrap_or("dark");
-    let transparency = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency")
-        .filter(|t| t == "low" || t == "high")
-        .unwrap_or_else(|| "off".to_string());
-    // PLAN-526 T14：壁纸目录扫描（storage `shell.desktop.wallpapers_dir`
-    // 键目录 jpg/png 枚举；召唤点注入 = 重开面板刷新——目录键直写后重开
-    // 即见）。name = 文件 stem（缩略 tooltip/无障碍面），path = 绝对路径
-    // （PickWallpaper 载荷），src = 同路径（image 件 load_image_bytes
-    // 本地分支直读）。
-    let wallpapers = scan_wallpapers_dir();
-    let wallpapers_dir = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpapers_dir")
-        .unwrap_or_default();
-    let pinned: Vec<auto_val::Value> = state
-        .desktop
-        .dock_pinned
-        .iter()
-        .map(|id| auto_val::Value::Str(id.clone().into()))
-        .collect();
-    // Plan 501：os-config daemon 状态快照（unknown/ready/offline + 原因；
-    // 会话域 osconfig_status 的投影，首次 launch 前 = unknown）。
-    let (osc_state, osc_hint) =
-        crate::ui::osconfig_daemon::badge_projection(&state.desktop.osconfig_status);
-    if let Some(app) = state.apps.get_mut(&panel) {
-        let _ = app
-            .component
-            .write_state("cfg_dock_position", auto_val::Value::str(pos));
-        let _ = app.component.write_state(
-            "cfg_dock_enabled",
-            auto_val::Value::str(if dock_on { "1" } else { "0" }),
-        );
-        let _ = app.component.write_state(
-            "cfg_notes_enabled",
-            auto_val::Value::str(if notes_on { "1" } else { "0" }),
-        );
-        let _ = app
-            .component
-            .write_state("cfg_wallpaper", auto_val::Value::str(wallpaper));
-        let _ = app
-            .component
-            .write_state("cfg_theme", auto_val::Value::str(theme));
-        let _ = app.component.write_state(
-            "cfg_transparency",
-            auto_val::Value::str(transparency),
-        );
-        let _ = app
-            .component
-            .write_state("wallpapers_dir_draft", auto_val::Value::str(wallpapers_dir));
-        let _ = app
-            .component
-            .write_state_vec("__wallpapers", wallpapers);
-        let _ = app.component.write_state(
-            "osconfig_state",
-            auto_val::Value::str(osc_state),
-        );
-        let _ = app
-            .component
-            .write_state("osconfig_hint", auto_val::Value::str(osc_hint));
-        let _ = app.component.write_state_vec("pinned_ids", pinned);
-        let _ = app.component.write_state(
-            "about_host",
-            auto_val::Value::str(std::env::consts::OS),
-        );
-        let _ = app.component.write_state(
-            "about_version",
-            auto_val::Value::str(env!("CARGO_PKG_VERSION")),
-        );
-        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
-        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
-        // 宿主写状态不触发 handler——显式重建 rows + 刷 view。
-        if let Err(err) = app.component.bridge_mut().call_handler("RebuildPinned", &[]) {
-            eprintln!("[session] settings RebuildPinned failed: {err}");
-        }
-        *app.state.view_dirty.borrow_mut() = true;
-    }
-    iced::Task::none()
-}
+/// Plan 540 设置窗 registry id（examples/ui/045-desktop-settings；pac
+/// `name: "desktop"` → Plan 504 播种路径即桌面单源
+/// `~/.config/autoos/apps/desktop/config.at`）。
+pub(crate) const SETTINGS_APP_ID: &str = "045-desktop-settings";
 
+/// Plan 540 T7：设置召唤执行体——launch-or-focus（`DC::ActivateApp` 同构：
+/// 已开窗跨分区聚焦，未开 launch）。设置 = 普通 registry 窗（×关闭/拖拽/
+/// 缩放/z 序全继承 WM，替代 487 overlay 的二态翻转；Esc 不再是关闭路径）。
+fn execute_open_settings(state: &mut crate::ui::session::DesktopSession) {
+    if let Some(host) = state.host.as_ref() {
+        if let Some((wid, ws)) = host
+            .wm
+            .wins
+            .iter()
+            .find(|(_, v)| v.registry_id.as_deref() == Some(SETTINGS_APP_ID))
+            .map(|(wid, v)| (*wid, v.workspace))
+        {
+            let current = state
+                .host
+                .as_ref()
+                .map(|h| h.wm.current_workspace)
+                .unwrap_or(0);
+            if ws != current {
+                state.wm_set_workspace(ws);
+            }
+            state.wm_focus(wid);
+            return;
+        }
+    }
+    execute_launch_app(state, SETTINGS_APP_ID);
+}
 /// PLAN-526 T14：壁纸目录扫描（jpg/png 枚举 → {name,path,src} Obj 数组）。
 /// 键缺席/非目录/空目录 = 空表（面板显示引导文案）。load_desktop_id_list
 /// 同型的宿主派生面——.at 无 read_dir 原语，目录枚举保持宿主侧（I9）。
-fn scan_wallpapers_dir() -> Vec<auto_val::Value> {
-    let Some(dir) = wallpapers_dir_or_default() else {
+fn scan_wallpapers_dir(cfg: &crate::ui::desktop_config::DesktopConfig) -> Vec<auto_val::Value> {
+    let Some(dir) = wallpapers_dir_or_default(cfg) else {
         return Vec::new();
     };
     let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -8420,20 +8318,19 @@ fn scan_wallpapers_dir() -> Vec<auto_val::Value> {
 /// 单一事实：boot `desktop_dock_edges` 同函数）→ apply_layout relayout +
 /// 槽位几何排水 + shell.at 投影热同步。
 fn execute_set_dock_position(state: &mut crate::ui::session::DesktopSession, top: bool) {
-    crate::vm::ffi::stdlib::storage_host_publish(
-        "shell.dock.position",
-        if top { "top" } else { "bottom" }.to_string(),
-    );
+    // Plan 540 T3：写通道收口——单源 config 落盘（旧 storage 键写退役）。
+    state.desktop.config.dock_position = if top { "top" } else { "bottom" }.to_string();
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
     apply_dock_edges_now(state);
 }
 
 /// Plan 487 M4：`set_dock_enabled` 执行臂（同上；false = 零预留，位置键
 /// 保留——重开时按原位置恢复）。
 fn execute_set_dock_enabled(state: &mut crate::ui::session::DesktopSession, on: bool) {
-    crate::vm::ffi::stdlib::storage_host_publish(
-        "shell.dock.enabled",
-        if on { "true" } else { "false" }.to_string(),
-    );
+    // Plan 540 T3：写通道收口——位置语义保留在 config.dock_position
+    //（关再开按原位置恢复）。
+    state.desktop.config.dock_enabled = on;
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
     apply_dock_edges_now(state);
 }
 
@@ -8445,7 +8342,7 @@ fn apply_dock_edges_now(state: &mut crate::ui::session::DesktopSession) {
     // Plan 497 G3：dock 位置/开关热切换 = 全场重排（487 I7 三联动之一），
     // 快照随撤（裁剪区域全部 stale）。
     crate::ui::iced::snapshot::invalidate_all();
-    state.desktop.dock_edges = desktop_dock_edges();
+    state.desktop.dock_edges = desktop_dock_edges(&state.desktop.config);
     let viewport = state.host_viewport();
     let edges = state.desktop.dock_edges;
     if let Some(host) = state.host.as_mut() {
@@ -8497,9 +8394,17 @@ fn drain_and_execute_desktop_commands(
     if let Some(panel) = state.desktop.notification_app {
         cmds.extend(state.drain_app_desktop_commands(panel));
     }
-    // Plan 487 M4：设置面板上行（set_dock_position/enabled）联合排空。
-    if let Some(panel) = state.desktop.settings_app {
-        cmds.extend(state.drain_app_desktop_commands(panel));
+    // Plan 540 T7：设置窗（registry App）上行联合排空——按 registry_id
+    // 定位（普通窗可关可重开，不落 overlay 槽位）。
+    let settings_window_app = state.host.as_ref().and_then(|h| {
+        h.wm
+            .wins
+            .iter()
+            .find(|(_, v)| v.registry_id.as_deref() == Some(SETTINGS_APP_ID))
+            .map(|(_, v)| v.app)
+    });
+    if let Some(app) = settings_window_app {
+        cmds.extend(state.drain_app_desktop_commands(app));
     }
     if cmds.is_empty() {
         return (false, Vec::new());
@@ -8561,6 +8466,11 @@ fn execute_desktop_commands(
             // PLAN-526 T14：壁纸热切换（storage 持久 + 会话字段回读 +
             // 全场快照撤——壁纸层每帧重建读字段即生效，SetTheme 同链）。
             DC::SetWallpaper(path) => execute_set_wallpaper(state, &path),
+            // Plan 540 T3：配置写动词族（单源 config.at 收口）。
+            DC::SetTransparency(level) => execute_set_transparency(state, &level),
+            DC::SetNotesEnabled(on) => execute_set_notes_enabled(state, on),
+            DC::SetDockPinned(csv) => execute_set_dock_pinned(state, &csv),
+            DC::SetWallpapersDir(dir) => execute_set_wallpapers_dir(state, &dir),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
             // stale）。
             DC::SetLayout(mode) => {
@@ -8670,11 +8580,9 @@ fn execute_desktop_commands(
             DC::NotesToggle => {
                 tasks.push(toggle_notification_center(state));
             }
-            // Plan 487 M4：open_settings（dock 齿轮；summon 二态翻转——
-            // 可见再召唤即关，待澄清④定案翻转）。
-            DC::OpenSettings => {
-                tasks.push(toggle_settings(state));
-            }
+            // Plan 540 T7：open_settings（齿轮/菜单）——launch-or-focus
+            // 设置窗（execute_open_settings）。
+            DC::OpenSettings => execute_open_settings(state),
             // Plan 487 M4：dock 几何驱动动词（I7：热改 dock_edges + relayout
             // + storage 写回；执行体见下）。
             DC::SetDockPosition(top) => execute_set_dock_position(state, top),
@@ -8686,17 +8594,15 @@ fn execute_desktop_commands(
     (false, tasks)
 }
 
-/// Plan 518 G1：`set_theme` 执行臂——set_dark_mode 即时生效（语义 token
-/// + 窗口调色板同源跟帧）+ storage `shell.appearance.theme` 持久化（boot
-/// 读回）+ 已声明 dark_mode 的 App 状态变量同步（458 语义：运行时变量
-/// 每帧回写全局,不同步则被旧值翻回）+ 全 App view_dirty（构建期解析的
+/// Plan 518 G1 + Plan 540 T3：`set_theme` 执行臂——set_dark_mode 即时生效
+/// （语义 token + 窗口调色板同源跟帧）+ 单源 `config.dark_theme` 落盘
+/// （boot 读回）+ 已声明 dark_mode 的 App 状态变量同步（458 语义：运行时
+/// 变量每帧回写全局,不同步则被旧值翻回）+ 全 App view_dirty（构建期解析的
 /// 颜色需重建换色）。
 fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool) {
     crate::ui::style::iced_adapter::set_dark_mode(dark);
-    crate::vm::ffi::stdlib::storage_host_publish(
-        "shell.appearance.theme",
-        if dark { "dark" } else { "light" }.to_string(),
-    );
+    state.desktop.config.dark_theme = dark;
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
     // Plan 497 G3 同款：全场快照随撤（窗口缩略按旧主题渲染）。
     crate::ui::iced::snapshot::invalidate_all();
     for app in state.apps.values_mut() {
@@ -8709,17 +8615,58 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
     }
 }
 
-/// PLAN-526 T14：壁纸热切换执行体——storage `shell.desktop.wallpaper`
-/// 持久化 + 会话字段回读（load_desktop_wallpaper 含 is_file 验证与坏值
+/// PLAN-526 T14 + Plan 540 T3：壁纸热切换执行体——单源 `config.wallpaper_path`
+/// 落盘 + 会话字段回读（load_desktop_wallpaper 含 is_file 验证与坏值
 /// 回退）+ 快照全撤。壁纸层 view 每帧重建读该字段，下一帧即生效
 /// （518 G1 set_theme 同链先例）。
 fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &str) {
-    crate::vm::ffi::stdlib::storage_host_publish(
-        "shell.desktop.wallpaper",
-        path.to_string(),
-    );
-    state.desktop.desktop_wallpaper = load_desktop_wallpaper();
+    state.desktop.config.wallpaper_path = path.to_string();
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+    state.desktop.desktop_wallpaper = load_desktop_wallpaper(&state.desktop.config);
     crate::ui::iced::snapshot::invalidate_all();
+}
+
+/// Plan 540 T3：透明度写臂——config 落盘（虚拟窗底色每帧自 config 映射，
+/// 下一帧即时生效；518 G6 即时语义保持）。
+fn execute_set_transparency(state: &mut crate::ui::session::DesktopSession, level: &str) {
+    state.desktop.config.transparency = level.to_string();
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+}
+
+/// Plan 540 T3：通知开关写臂——config 落盘（push_notification 门控直读，
+/// 后续 notify 全链路即时短路/恢复）。
+fn execute_set_notes_enabled(state: &mut crate::ui::session::DesktopSession, on: bool) {
+    state.desktop.config.notes_enabled = on;
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+}
+
+/// Plan 540 T3：pinned 写臂——config 落盘 + 会话域同步 + shell 投影热同步
+/// （`inject_dock_pinned` 同格式 {id,icon} 注入；空表 = 复位默认三枚，
+/// 472 load 缺席回退同语义）。
+fn execute_set_dock_pinned(state: &mut crate::ui::session::DesktopSession, csv: &str) {
+    let list: Vec<String> = csv
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    state.desktop.config.dock_pinned = if list.is_empty() {
+        crate::ui::desktop_config::DEFAULT_DOCK_PINNED
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        list
+    };
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+    state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
+    inject_dock_pinned(state);
+}
+
+/// Plan 540 T3：壁纸目录写臂——config 落盘（scan_wallpapers_dir 与缺省
+/// 壁纸链共用解析；设置面重开即见新目录扫描）。
+fn execute_set_wallpapers_dir(state: &mut crate::ui::session::DesktopSession, dir: &str) {
+    state.desktop.config.wallpapers_dir = dir.to_string();
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
 }
 
 /// PLAN-526 T18：热键分区切换 → transient 显示切换预览面板（写 shell
@@ -9776,12 +9723,14 @@ fn apply_fit_measured(
 /// `shell.dock.position` top/bottom、`shell.dock.enabled`；缺席回退 pack
 /// 默认 bottom/48）。boot 期读一次写 `DesktopState.dock_edges`（v1 不做
 /// 运行时热更；auto-os-config settings 写手为 shell-track M4）。
-pub(crate) fn desktop_dock_edges() -> crate::ui::layout::ReservedEdges {
+pub(crate) fn desktop_dock_edges(
+    cfg: &crate::ui::desktop_config::DesktopConfig,
+) -> crate::ui::layout::ReservedEdges {
     let mut edges = crate::ui::layout::ReservedEdges::taskbar();
-    if crate::vm::ffi::stdlib::storage_host_read("shell.dock.enabled").as_deref() == Some("false") {
+    if !cfg.dock_enabled {
         return crate::ui::layout::ReservedEdges::default();
     }
-    if crate::vm::ffi::stdlib::storage_host_read("shell.dock.position").as_deref() == Some("top") {
+    if cfg.dock_position == "top" {
         edges.bottom = 0.0;
         edges.top = crate::ui::layout::TASKBAR_HEIGHT;
     }
@@ -9809,17 +9758,9 @@ fn load_remote_token() -> Option<String> {
         .filter(|t| !t.trim().is_empty())
 }
 
-/// Plan 472 T5：dock pinned 表（storage `shell.dock.pinned` 逗号分隔；
-/// 缺席回退 DesktopState pack 默认）。boot 期读一次。
-fn load_dock_pinned() -> Option<Vec<String>> {
-    let raw = crate::vm::ffi::stdlib::storage_host_read("shell.dock.pinned")?;
-    let list: Vec<String> = raw
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    (!list.is_empty()).then_some(list)
-}
+/// Plan 540 T2：dock pinned 消费点唯一化——boot 期直接取
+/// `session.desktop.config.dock_pinned`（单源 config.at 装载 + 旧键迁移
+/// 已在 `DesktopConfig::load()` 完成；`load_dock_pinned` storage 读退役）。
 
 /// Plan 490 T3：热键覆盖读入（storage `shell.keys.<action>` > 内置默认）。
 /// 宿主侧无键枚举面——逐个读已知动作位（11 个），缺席 = 不覆盖；坏值由
@@ -9880,11 +9821,11 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
     *app.state.view_dirty.borrow_mut() = true;
 }
 
-/// Plan 496 M5：boot 壁纸解析（storage `shell.desktop.wallpaper`——
-/// #hex 色值直传；`builtin:` 内嵌资产方案直传（Plan 518）；图片路径验
+/// Plan 496 M5 + Plan 540 T2：boot 壁纸解析（单源 `config.wallpaper_path`
+/// ——`#hex` 色值直传；`builtin:` 内嵌资产方案直传（Plan 518）；图片路径验
 /// 存在；缺席/空/坏值回退
 /// [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]）。
-fn load_desktop_wallpaper() -> String {
+fn load_desktop_wallpaper(cfg: &crate::ui::desktop_config::DesktopConfig) -> String {
     use crate::ui::session::DESKTOP_WALLPAPER_DEFAULT;
     let valid = |v: String| {
         !v.is_empty()
@@ -9892,15 +9833,13 @@ fn load_desktop_wallpaper() -> String {
                 || v.starts_with("builtin:")
                 || std::path::Path::new(&v).is_file())
     };
-    if let Some(v) = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper") {
-        let v = v.trim().to_string();
-        if valid(v.clone()) {
-            return v;
-        }
+    let v = cfg.wallpaper_path.trim().to_string();
+    if valid(v.clone()) {
+        return v;
     }
     // PLAN-526 T19：缺省不再直接回退内置——优先取壁纸目录首图（机器
-    // 首启即有真壁纸；设置面板目录/手输写入 storage 后走上面的键）。
-    if let Some(dir) = wallpapers_dir_or_default() {
+    // 首启即有真壁纸；设置面板目录/手输写 config 后走上面的键）。
+    if let Some(dir) = wallpapers_dir_or_default(cfg) {
         let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
             .into_iter()
             .flatten()
@@ -9925,16 +9864,14 @@ fn load_desktop_wallpaper() -> String {
     DESKTOP_WALLPAPER_DEFAULT.to_string()
 }
 
-/// PLAN-526 T19：壁纸目录解析链——storage `shell.desktop.wallpapers_dir`
+/// PLAN-526 T19 + Plan 540 T2：壁纸目录解析链——单源 `config.wallpapers_dir`
 /// → env `AUTO_DESKTOP_WALLPAPERS_DIR` → 探测 stella-os 素材目录（机器
 /// 便利默认，存在即用；目录不存在/未配置 = None，scan_wallpapers_dir
 /// 与缺省壁纸链共用）。
-fn wallpapers_dir_or_default() -> Option<std::path::PathBuf> {
-    if let Some(d) = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpapers_dir") {
-        let d = d.trim().to_string();
-        if !d.is_empty() {
-            return Some(std::path::PathBuf::from(d));
-        }
+fn wallpapers_dir_or_default(cfg: &crate::ui::desktop_config::DesktopConfig) -> Option<std::path::PathBuf> {
+    let d = cfg.wallpapers_dir.trim().to_string();
+    if !d.is_empty() {
+        return Some(std::path::PathBuf::from(d));
     }
     if let Ok(d) = std::env::var("AUTO_DESKTOP_WALLPAPERS_DIR") {
         if !d.trim().is_empty() {
@@ -10129,7 +10066,6 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
             DesktopInject::Handler { app: which, handler, arg } => {
                 let app_id = match which {
                     "shell" => state.desktop.shell_app,
-                    "settings" => state.desktop.settings_app,
                     "notification" => state.desktop.notification_app,
                     "launcher" => state.desktop.launcher_app,
                     // Plan 505 C：桌面本体面（496 M5——图标交互/壁纸面）。
@@ -10710,7 +10646,7 @@ fn compare_pngs(
                 }
                 // Plan 472 T4：dock 数据级配置（shell.dock.* storage 键）→
                 // 布局预留边；缺席回退 pack 默认 bottom/48。v1 boot 读一次。
-                session.desktop.dock_edges = desktop_dock_edges();
+                session.desktop.dock_edges = desktop_dock_edges(&session.desktop.config);
                 // Plan 494：真洞模式位（`shell.native.hole` storage >
                 // DesktopOptions 程序位取或；缺席 = off）。
                 session.desktop.hole_mode = opts.hole_mode || load_native_hole_mode();
@@ -10805,10 +10741,9 @@ fn compare_pngs(
                     {
                         session.desktop.launcher_entry = Some(e.entry.clone());
                     }
-                    // Plan 472 T5：pinned 配置（storage 覆盖 > pack 默认）。
-                    if let Some(pinned) = load_dock_pinned() {
-                        session.desktop.dock_pinned = pinned;
-                    }
+                    // Plan 540 T2：pinned 单源（config.dock_pinned——构造期
+                    // DesktopConfig::load 已含旧键迁移；pack 默认 = 缺省链）。
+                    session.desktop.dock_pinned = session.desktop.config.dock_pinned.clone();
                     // Plan 490 T3：热键表覆盖（storage `shell.keys.*` >
                     // 内置默认；坏值静默回退——订阅唯一消费面为
                     // desktop_hotkey_subscription 的会话表快照）。
@@ -10835,17 +10770,16 @@ fn compare_pngs(
                 // pack 默认色）+ 图标投影注入（pinned ∪ 自定义合并去重、
                 // hidden 排除）。settings/右键移除写键，boot 重读生效
                 // （487 pinned 同语义）。
-                session.desktop.desktop_wallpaper = load_desktop_wallpaper();
+                session.desktop.desktop_wallpaper = load_desktop_wallpaper(&session.desktop.config);
                 inject_desktop_surface(&mut session);
-                // Plan 518 G1：boot 主题读回（storage `shell.appearance.theme`
-                // 覆盖 thread-local 默认——settings.at Appearance 切换的持久
-                // 端,后于 458 env 播种 = 存储键优先于 CLI 初值）。已声明
-                // dark_mode 的 App 变量须同步——dynamic_view 每帧读该变量
-                // 回写全局（如 011-calculator）,不同步则首帧被翻回。
-                if let Some(t) =
-                    crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme")
+                // Plan 518 G1 + Plan 540 T2：boot 主题读回（单源
+                // `config.dark_theme` 覆盖 thread-local 默认——设置窗
+                // set_theme 持久端,后于 458 env 播种 = 配置文件优先于 CLI
+                // 初值）。已声明 dark_mode 的 App 变量须同步——dynamic_view
+                // 每帧读该变量回写全局（如 011-calculator）,不同步则首帧
+                // 被翻回。
                 {
-                    let dark = t.trim() != "light";
+                    let dark = session.desktop.config.dark_theme;
                     crate::ui::style::iced_adapter::set_dark_mode(dark);
                     for app in session.apps.values_mut() {
                         if app.component.read_state("dark_mode").is_ok() {
@@ -12032,9 +11966,16 @@ fn compare_pngs(
                     }
                 }
             }
+            // PLAN-536 T2(题1 兜底桥): 热重载拍是 source_path 在案时的常驻
+            // 500ms update 泵。update 间隙落到 state 的脏写(timer handler
+            // 异步回填/native 完成回调等,不经过任何 update 派发)由此桥接进
+            // view 失效通路——否则 update 尾部的 is_dirty→view_dirty 回填
+            // 永远看不到它们,画布最坏冻在最后一帧。干净拍零写入零 dirty。
+            if state.component.is_dirty() {
+                *state.app.view_dirty.borrow_mut() = true;
+            }
             return iced::Task::none();
         }
-
         // Handle periodic tick events (stopwatch, timers)
         if msg.event == TICK_EVENT {
             // Plan 402: dispatch Tick to the handler unconditionally — the
@@ -13659,11 +13600,11 @@ fn compare_pngs(
                         // 退出（P3：清词→退网格→关闭）。Plan 478 T4：switcher
                         // 可见时 Esc 归 switcher 自隐（app 内 bind 路径处理），
                         // 不退桌面。Plan 479 T3：通知中心可见时同理自隐。
-                        // Plan 487 M4：设置面板可见时同理自隐。
+                        // Plan 540 T9：设置 overlay 退役——Esc 不再与设置
+                        // 相干（设置 = 普通窗，×关闭）。
                         if state.launcher_visible()
                             || state.switcher_visible()
                             || state.notification_visible()
-                            || state.settings_visible()
                         {
                             return iced::Task::none();
                         }
@@ -14110,6 +14051,9 @@ fn compare_pngs(
                         vwin,
                         focused,
                         title_menu_open,
+                        crate::ui::iced::virtual_window::transparency_alpha_for(
+                            &state.desktop.config.transparency,
+                        ),
                         broker_client,
                     ));
                     continue;
@@ -14148,6 +14092,9 @@ fn compare_pngs(
                     vwin,
                     focused,
                     title_menu_open,
+                    crate::ui::iced::virtual_window::transparency_alpha_for(
+                        &state.desktop.config.transparency,
+                    ),
                     client,
                 ));
             }
@@ -14236,23 +14183,6 @@ fn compare_pngs(
                     Ok(None) => iced::widget::text("[AutoUI 会话] 通知面板缺失").size(14).into(),
                     Err(payload) => {
                         eprintln!("[session] notification view panicked (plan-453 T6 boundary): {payload:?}");
-                        desktop_crash_element()
-                    }
-                };
-                layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
-            }
-            // Plan 487 M4：设置面板 overlay 层（通知中心层邻位顶层；仅
-            // visible 时推层——第四枚 overlay 槽，同款语义）。
-            if state.settings_visible() {
-                let panel_app = state.desktop.settings_app.expect("panel checked");
-                let build = || state.split_ref_settings().map(|v| dynamic_view(v, false));
-                let panel_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] 设置面板缺失").size(14).into(),
-                    Err(payload) => {
-                        eprintln!("[session] settings view panicked (plan-453 T6 boundary): {payload:?}");
                         desktop_crash_element()
                     }
                 };
@@ -14389,13 +14319,11 @@ fn compare_pngs(
                     // Plan 478 T4：switcher overlay 可见时同样独占（Tab/←→/
                     // Enter/Esc 进面板，不漏进底层虚拟窗）。
                     // Plan 479 T3：通知中心可见时同样独占（Esc 进面板）。
-                    // Plan 487 M4：设置面板可见时同样独占（Esc 进面板）。
                     let focused = if state.is_desktop() {
                         state.wm_focused_app() == Some(app_id)
                             && !state.launcher_visible()
                             && !state.switcher_visible()
                             && !state.notification_visible()
-                            && !state.settings_visible()
                     } else {
                         true
                     };
@@ -14452,25 +14380,6 @@ fn compare_pngs(
             if state.is_desktop() && state.notification_visible() {
                 if let (Some(panel), Some(host)) =
                     (state.desktop.notification_app, state.host.as_ref())
-                {
-                    if let Some(app) = state.apps.get(&panel) {
-                        let bindings = app.component.key_bindings().clone();
-                        subs.push(keyboard_subscription_ext(
-                            panel,
-                            host.window,
-                            bindings,
-                            true,
-                            true,
-                            true,
-                        ));
-                    }
-                }
-            }
-            // Plan 487 M4：设置面板的键盘订阅（通知中心块同型第五块；Esc
-            // Captured 转发自隐，幂等由 handler visible 门控保证）。
-            if state.is_desktop() && state.settings_visible() {
-                if let (Some(panel), Some(host)) =
-                    (state.desktop.settings_app, state.host.as_ref())
                 {
                     if let Some(app) = state.apps.get(&panel) {
                         let bindings = app.component.key_bindings().clone();
@@ -20150,6 +20059,69 @@ mod tests {
         ds
     }
 
+    /// Plan 540 T7 测试座：t3 会话 + 真注册表 resolver（扫仓库 examples/ui，
+    /// boot 同构——launch 链 build + 504/540 播种可无头全跑）。
+    fn t540_resolver_session() -> crate::ui::session::DesktopSession {
+        let mut ds = t3_session_with_shell();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui");
+        let apps = std::sync::Arc::new(crate::ui::app_registry::scan_apps(
+            &root,
+            &crate::ui::app_registry::ScanOptions::default(),
+        ));
+        ds.desktop.registry_entries = (*apps).clone();
+        ds.desktop.app_resolver = Some({
+            let apps = apps.clone();
+            std::sync::Arc::new(move |name: &str| {
+                let e = apps.iter().find(|a| a.id == name)?;
+                Some(crate::ui::session::LaunchSpec {
+                    code: std::fs::read_to_string(&e.entry).ok()?,
+                    source_path: Some(e.entry.to_string_lossy().to_string()),
+                    title: Some(e.title.clone()),
+                    name: e.name.clone(),
+                    fit: e.fit,
+                    daemon: None,
+                    back_root: None,
+                })
+            })
+        });
+        ds
+    }
+
+    /// 已开设置窗的 AppId（按 registry_id 定位——T7 后无 overlay 槽）。
+    fn t540_settings_app(
+        ds: &crate::ui::session::DesktopSession,
+    ) -> crate::ui::session::AppId {
+        ds.host
+            .as_ref()
+            .and_then(|h| {
+                h.wm
+                    .wins
+                    .iter()
+                    .find(|(_, v)| v.registry_id.as_deref() == Some(SETTINGS_APP_ID))
+                    .map(|(_, v)| v.app)
+            })
+            .expect("设置窗已开")
+    }
+
+    /// 关设置窗（重开刷新播种快照的驱动步骤——487 快照点定序同语义）。
+    fn t540_close_settings(ds: &mut crate::ui::session::DesktopSession) {
+        let entry = ds.host.as_ref().and_then(|h| {
+            h.wm
+                .wins
+                .iter()
+                .find(|(_, v)| v.registry_id.as_deref() == Some(SETTINGS_APP_ID))
+                .map(|(wid, v)| (wid, v.app))
+        });
+        if let Some((wid, app)) = entry {
+            let _ = ds.wm_remove_win(*wid);
+            ds.apps.remove(&app);
+        }
+    }
+
     /// Plan 486 T1/T4：拖入高亮落位/清除（set_native_drag_over 经映射或
     /// headless 恒等——断言映射无关的存在性）+ 高亮元素构建冒烟。
     #[test]
@@ -21047,6 +21019,16 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+        // Plan 540 T2：桌面单源 config 文件同场隔离——DesktopState::new 的
+        // DesktopConfig::load 读 env 指向的空文件（缺席 = 内置默认，且迁移
+        // 写不落真实家目录）。
+        let cfg_path = std::env::temp_dir().join(format!(
+            "auto-540-config-{}-{}.at",
+            tag,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&cfg_path);
+        std::env::set_var("AUTOOS_DESKTOP_CONFIG", &cfg_path);
         StorageTestIsolation(serial, path)
     }
 
@@ -21535,38 +21517,36 @@ mod tests {
         assert_eq!(host.wm.focused, Some(wid));
     }
 
-    /// dock 数据级配置 → 布局预留边（协议 v1 §6：shell.dock.* 缺席回退
-    /// pack 默认 bottom/48；top 反转；enabled=false 全零）。
-    /// Plan 489 merge 补隔离：raw_remove 只清内存不清落盘文件——本机实机
-    /// 桌面用过设置面板后 store 含 shell.dock.* 键（487 写回链正常生效），
-    /// storage_host_read→storage_load 会把盘上键并回打破「缺席回退」前提
-    ///（P487-2 同族：测试依赖进程级 storage 全局态）。
+    /// dock 数据级配置 → 布局预留边（协议 v1 §6：缺席回退 pack 默认
+    /// bottom/48；top 反转；enabled=false 全零）。
+    /// Plan 540 T2：读源切单源 config——直接构造 DesktopConfig 断言
+    /// （storage 全局态不再参与，隔离不再需要）。
     #[test]
-    fn desktop_dock_edges_reads_storage_overrides() {
-        let _store = t2_isolate_storage("489-dock-edges");
-        let key_pos = "shell.dock.position";
-        let key_en = "shell.dock.enabled";
-        crate::vm::ffi::stdlib::storage_raw_remove(key_pos);
-        crate::vm::ffi::stdlib::storage_raw_remove(key_en);
+    fn desktop_dock_edges_reads_config_overrides() {
+        use crate::ui::desktop_config::DesktopConfig;
 
         // 缺省 → pack 默认（bottom 48）。
-        let e = desktop_dock_edges();
+        let e = desktop_dock_edges(&DesktopConfig::default());
         assert_eq!(e.bottom, crate::ui::layout::TASKBAR_HEIGHT);
         assert_eq!(e.top, 0.0);
 
         // position=top → 预留翻转到顶。
-        crate::vm::ffi::stdlib::storage_raw_set(key_pos.into(), "top".into());
-        let e = desktop_dock_edges();
+        let cfg = DesktopConfig {
+            dock_position: "top".to_string(),
+            ..DesktopConfig::default()
+        };
+        let e = desktop_dock_edges(&cfg);
         assert_eq!(e.top, crate::ui::layout::TASKBAR_HEIGHT);
         assert_eq!(e.bottom, 0.0);
 
         // enabled=false → dock 关，零预留。
-        crate::vm::ffi::stdlib::storage_raw_set(key_en.into(), "false".into());
-        let e = desktop_dock_edges();
+        let cfg = DesktopConfig {
+            dock_enabled: false,
+            ..DesktopConfig::default()
+        };
+        let e = desktop_dock_edges(&cfg);
         assert_eq!(e.bottom, 0.0);
         assert_eq!(e.top, 0.0);
-
-        let _ = std::fs::remove_file(&_store);
     }
 
     /// Plan 494：真洞模式位 boot 读入——`shell.native.hole`=="true" 开，
@@ -21632,15 +21612,15 @@ mod tests {
         let wid = t3_add_win(&mut ds, "Alpha");
         let shell = ds.desktop.shell_app.expect("real shell");
 
-        // ① set_dock_position(top)：键写回 + 边翻转 + 投影 + relayout。
+        // ① set_dock_position(top)：单源 config 写回 + 边翻转 + 投影 +
+        // relayout（Plan 540 T3：storage 键写退役）。
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::SetDockPosition(true)],
         );
         assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.dock.position").as_deref(),
-            Some("top"),
-            "位置键驱动侧写回"
+            ds.desktop.config.dock_position, "top",
+            "位置单源 config 写回"
         );
         assert_eq!(ds.desktop.dock_edges.top, crate::ui::layout::TASKBAR_HEIGHT);
         assert_eq!(ds.desktop.dock_edges.bottom, 0.0);
@@ -21659,16 +21639,12 @@ mod tests {
             assert_eq!(rect.y, crate::ui::layout::TASKBAR_HEIGHT, "Grid 窗 y=top 预留");
         }
 
-        // ② set_dock_enabled(false)：零预留 + 键 false + 投影关 + 窗回满铺。
+        // ② set_dock_enabled(false)：零预留 + config false + 投影关 + 窗回满铺。
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::SetDockEnabled(false)],
         );
-        assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.dock.enabled").as_deref(),
-            Some("false"),
-            "开关键驱动侧写回"
-        );
+        assert!(!ds.desktop.config.dock_enabled, "开关单源 config 写回");
         assert_eq!(ds.desktop.dock_edges.top, 0.0);
         assert_eq!(ds.desktop.dock_edges.bottom, 0.0);
         {
@@ -21900,14 +21876,13 @@ mod tests {
             "native 条目 × → close_native（N 前缀归一）"
         );
     }
-
-    /// Plan 487 M4 步骤7：真 assets/shell.at 齿轮冒烟——OpenSettingsPanel
-    /// handler → `open_settings` 记录 → 联合排空 → 面板懒挂载 visible
-    ///（T2 齿轮→面板全链；notif_shell_at_smoke 同型）。
+    /// Plan 487 M4 步骤7 + Plan 540 T7：真 assets/shell.at 齿轮冒烟——
+    /// OpenSettingsPanel handler → `open_settings` 记录 → 联合排空 →
+    /// 设置窗 launch（registry App；launch-or-focus 语义）。
     #[test]
     fn settings_shell_at_smoke_gear_to_panel() {
         let path = t2_isolate_storage("487-gear");
-        let mut ds = t3_session_with_shell();
+        let mut ds = t540_resolver_session();
         // 换装真 shell 资产（t3_session_with_shell 挂的是裁剪探针）。
         let probe = ds.desktop.shell_app.expect("probe shell");
         let real =
@@ -21927,27 +21902,40 @@ mod tests {
             vec![crate::ui::session::DesktopCommand::OpenSettings],
             "齿轮钮 → open_settings 动词"
         );
-        // 排空执行 → 设置面板懒挂载 + visible。
+        // 排空执行 → 设置窗 launch（registry_id 定位 + cfg_* 播种）。
         let _ = execute_desktop_commands(&mut ds, cmds);
-        assert!(ds.settings_visible(), "open_settings → 面板挂载可见");
+        let panel = t540_settings_app(&ds);
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "bottom", "launch 播种快照（pack 默认）")
+                }
+                other => panic!("cfg_dock_position 读回异常: {other:?}"),
+            }
+        }
 
         let _ = std::fs::remove_file(&path);
     }
-
-    /// Plan 487 M4 步骤6：通知/关于分区无头——PickNotes("0") →
-    /// `shell.notes.enabled` 落键 + 479 消费链门控（notify 全链路短路：
-    /// 零入史/零未读/零 toast）；PickNotes("1") 恢复；关于分区 Nav 可达。
+    /// Plan 487 M4 步骤6 + Plan 540 T7：通知/关于分区无头（设置窗）——
+    /// PickNotes("0") → set_notes_enabled 上行 → 执行臂 config 落盘 +
+    /// 479 消费链门控（notify 全链路短路）；PickNotes("1") 恢复；关于分区
+    /// Nav 可达。
     #[test]
     fn settings_notes_gate_and_about_section() {
         let path = t2_isolate_storage("487-notes");
-        let mut ds = t3_session_with_shell();
+        let mut ds = t540_resolver_session();
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
-        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        let panel = t540_settings_app(&ds);
+        // launch toast（execute_launch_app 通知）清场——门控计数隔离。
+        ds.desktop.notifications.borrow_mut().clear();
+        ds.desktop.notes_unread.set(0);
 
-        // ① 开关写键：PickNotes("0") → 键 false + 本地 cfg 更新。
+        // ① 开关：PickNotes("0") → set_notes_enabled 上行 → config 落盘
+        // （Plan 540 T3 写通道收口）+ 本地 cfg 更新。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
@@ -21962,11 +21950,16 @@ mod tests {
                 other => panic!("cfg_notes_enabled 读回异常: {other:?}"),
             }
         }
-        assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref(),
-            Some("false"),
-            "开关键落盘"
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                crate::ui::session::DesktopCommand::SetNotesEnabled(false)
+            )),
+            "PickNotes 上行 set_notes_enabled 0,得到 {cmds:?}"
         );
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert!(!ds.desktop.config.notes_enabled, "开关单源 config 落盘");
         // ② 门控：notify 动词全链路短路（零入史/零未读）。
         let _ = execute_desktop_commands(
             &mut ds,
@@ -21977,16 +21970,15 @@ mod tests {
         );
         assert!(ds.desktop.notifications.borrow().is_empty(), "关 → notify 短路");
         assert_eq!(ds.desktop.notes_unread.get(), 0);
-        // ③ 恢复：PickNotes("1") → 键 true → notify 入史 + 未读。
+        // ③ 恢复：PickNotes("1") → 执行臂 config true → notify 入史 + 未读。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
             .call_handler("PickNotes", &[auto_val::Value::str("1")])
             .expect("PickNotes handler");
-        assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref(),
-            Some("true")
-        );
+        let cmds = ds.drain_app_desktop_commands(panel);
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert!(ds.desktop.config.notes_enabled);
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::Notify(
@@ -21996,7 +21988,7 @@ mod tests {
         );
         assert_eq!(ds.desktop.notifications.borrow().len(), 1, "开 → notify 入史");
         assert_eq!(ds.desktop.notes_unread.get(), 1);
-        // ④ 关于分区：Nav 可达（about_* 常量注入已在 summon 测断言）。
+        // ④ 关于分区：Nav 可达（about_* 常量 launch 播种）。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
@@ -22010,19 +22002,19 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
-
-    /// Plan 487 M4 步骤5：Dock 分区接线无头——面板 PickPosition/
-    /// PickEnabled handler → `__desktop_cmd` 记录 → 联合排空执行（热生效）
-    /// + pinned 增删 → storage.set 落键（宿主 load_dock_pinned 同格式）。
+    /// Plan 487 M4 步骤5 + Plan 540 T3/T7：Dock 分区接线无头（设置窗）——
+    /// PickPosition/PickEnabled handler → `__desktop_cmd` 记录 → 联合排空
+    /// 执行（热生效）+ pinned 编辑（DraftPinned/SavePinned）→ set_dock_pinned
+    /// 上行 → config 落盘 + 会话域同步。
     #[test]
     fn settings_dock_section_dispatch_and_pinned_storage() {
         let path = t2_isolate_storage("487-dock-section");
-        let mut ds = t3_session_with_shell();
+        let mut ds = t540_resolver_session();
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
-        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        let panel = t540_settings_app(&ds);
 
         // ① PickPosition(top)：handler 写记录 + 本地 cfg 即时更新。
         let app = ds.apps.get_mut(&panel).unwrap();
@@ -22045,7 +22037,7 @@ mod tests {
             vec![crate::ui::session::DesktopCommand::SetDockPosition(true)],
             "位置钮 → set_dock_position 记录"
         );
-        // ② 执行 → 热生效（edges 翻转 + 键写回）。
+        // ② 执行 → 热生效（edges 翻转 + config 落盘）。
         let _ = execute_desktop_commands(&mut ds, cmds);
         assert_eq!(ds.desktop.dock_edges.top, crate::ui::layout::TASKBAR_HEIGHT);
 
@@ -22065,58 +22057,87 @@ mod tests {
         assert_eq!(ds.desktop.dock_edges.top, 0.0);
         assert_eq!(ds.desktop.dock_edges.bottom, 0.0);
 
-        // ④ pinned 编辑：AddPinned → storage 键追加（逗号拼接格式）。
+        // ④ pinned 编辑：DraftPinned csv → SavePinned → set_dock_pinned
+        // 上行 → config 落盘 + 会话域同步。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
-            .call_handler("DraftPinned", &[auto_val::Value::str("020-newapp")])
+            .call_handler(
+                "DraftPinned",
+                &[auto_val::Value::str("011-calculator,013-todo,015-notes,020-newapp")],
+            )
             .expect("DraftPinned handler");
         app.component
             .bridge_mut()
-            .call_handler("AddPinned", &[])
-            .expect("AddPinned handler");
+            .call_handler("SavePinned", &[])
+            .expect("SavePinned handler");
         {
             let app = ds.apps.get(&panel).unwrap();
-            match app.component.read_state("pinned_n") {
-                Ok(auto_val::Value::Int(n)) => assert_eq!(n, 4, "pinned 行追加"),
-                other => panic!("pinned_n 读回异常: {other:?}"),
+            match app.component.read_state("cfg_dock_pinned") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(
+                    s.to_string(),
+                    "011-calculator,013-todo,015-notes,020-newapp",
+                    "SavePinned 后本地 cfg 即时更新"
+                ),
+                other => panic!("cfg_dock_pinned 读回异常: {other:?}"),
             }
         }
-        assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.dock.pinned").as_deref(),
-            Some("011-calculator,013-todo,015-notes,020-newapp"),
-            "AddPinned 落键（load_dock_pinned 同格式）"
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                crate::ui::session::DesktopCommand::SetDockPinned(v)
+                    if v == "011-calculator,013-todo,015-notes,020-newapp"
+            )),
+            "SavePinned 上行 set_dock_pinned,得到 {cmds:?}"
         );
-        // ⑤ RemovePinned(0)：键收缩（首枚 calculator 删除）。
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert_eq!(
+            ds.desktop.config.dock_pinned,
+            vec![
+                "011-calculator".to_string(),
+                "013-todo".to_string(),
+                "015-notes".to_string(),
+                "020-newapp".to_string()
+            ],
+            "SavePinned 单源 config 落盘"
+        );
+        assert_eq!(
+            ds.desktop.dock_pinned,
+            ds.desktop.config.dock_pinned,
+            "会话域 pinned 同步"
+        );
+        // ⑤ 复位：空值 = 默认三枚（472 load 缺席回退同语义）。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
-            .call_handler("RemovePinned", &[auto_val::Value::Int(0)])
-            .expect("RemovePinned handler");
-        assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.dock.pinned").as_deref(),
-            Some("013-todo,015-notes,020-newapp"),
-            "RemovePinned 落键收缩"
-        );
+            .call_handler("DraftPinned", &[auto_val::Value::str("")])
+            .expect("DraftPinned handler");
+        app.component
+            .bridge_mut()
+            .call_handler("SavePinned", &[])
+            .expect("SavePinned handler");
+        let cmds = ds.drain_app_desktop_commands(panel);
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert_eq!(ds.desktop.config.dock_pinned.len(), 3, "空 csv → 默认三枚");
 
         let _ = std::fs::remove_file(&path);
     }
-
-    /// Plan 496 M5 步骤5：外观分区——壁纸输入 storage 直写闭环（Nav
-    /// appearance 导航 / DraftWallpaper 草稿 / SaveWallpaper 落键
-    /// shell.desktop.wallpaper / saved 提示 / 空草稿不写键）+ 召唤快照
+    /// Plan 496 M5 步骤5 + Plan 540 T3：外观分区——壁纸输入动词闭环（Nav
+    /// appearance 导航 / DraftWallpaper 草稿 / SaveWallpaper set_wallpaper
+    /// 上行 → config 落盘 / saved 提示 / 空草稿不写）+ 召唤快照
     /// cfg_wallpaper 注入。
     #[test]
     fn settings_appearance_wallpaper_section_writes_storage() {
         let path = t2_isolate_storage("496-appearance");
-        // 预置旧壁纸：召唤快照应注入 cfg_wallpaper。
-        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#101820".into());
-        let mut ds = t3_session_with_shell();
+        let mut ds = t540_resolver_session();
+        // 预置旧壁纸（单源 config 字段）：召唤快照应注入 cfg_wallpaper。
+        ds.desktop.config.wallpaper_path = "#101820".to_string();
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
-        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        let panel = t540_settings_app(&ds);
         {
             let app = ds.apps.get(&panel).unwrap();
             match app.component.read_state("cfg_wallpaper") {
@@ -22141,18 +22162,18 @@ mod tests {
                 other => panic!("section 读回异常: {other:?}"),
             }
         }
-        // 空草稿保存：不落键。
+        // 空草稿保存：不写。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
             .call_handler("SaveWallpaper", &[])
             .expect("SaveWallpaper handler（空草稿）");
         assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper").as_deref(),
-            Some("#101820"),
-            "空草稿不写键"
+            ds.desktop.config.wallpaper_path, "#101820",
+            "空草稿不写 config"
         );
-        // 草稿 + 保存：落键 + cfg 快照刷新 + saved 提示 + 草稿清空。
+        // 草稿 + 保存：set_wallpaper 上行 → config 落盘 + cfg 快照刷新 +
+        // saved 提示 + 草稿清空。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
@@ -22162,10 +22183,19 @@ mod tests {
             .bridge_mut()
             .call_handler("SaveWallpaper", &[])
             .expect("SaveWallpaper handler");
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                crate::ui::session::DesktopCommand::SetWallpaper(v)
+                    if v == "#243b55"
+            )),
+            "SaveWallpaper 上行 set_wallpaper,得到 {cmds:?}"
+        );
+        let _ = execute_desktop_commands(&mut ds, cmds);
         assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper").as_deref(),
-            Some("#243b55"),
-            "SaveWallpaper 落键（load_desktop_wallpaper 同键）"
+            ds.desktop.config.wallpaper_path, "#243b55",
+            "SaveWallpaper 单源 config 落盘"
         );
         {
             let app = ds.apps.get(&panel).unwrap();
@@ -22194,14 +22224,15 @@ mod tests {
     #[test]
     fn settings_appearance_theme_and_transparency_sections() {
         let path = t2_isolate_storage("518-appearance");
-        // 预置 light 主题 + 无透明度键：召唤快照应注入 light / off。
-        crate::vm::ffi::stdlib::storage_host_publish("shell.appearance.theme", "light".into());
-        let mut ds = t3_session_with_shell();
+        let mut ds = t540_resolver_session();
+        // 预置 light 主题（单源 config 字段）+ 透明度缺省 off：召唤快照应
+        // 注入 light / off。
+        ds.desktop.config.dark_theme = false;
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
-        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        let panel = t540_settings_app(&ds);
         {
             let app = ds.apps.get(&panel).unwrap();
             match app.component.read_state("cfg_theme") {
@@ -22253,45 +22284,51 @@ mod tests {
             "SetTheme 执行臂 set_dark_mode(true)"
         );
         assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.appearance.theme").as_deref(),
-            Some("dark"),
-            "set_theme 持久化 shell.appearance.theme"
+            ds.desktop.config.dark_theme,
+            true,
+            "set_theme 持久化单源 config.dark_theme"
         );
-        // PickTransparency(high)：storage 直写 + load_transparency_alpha 即时 0.62。
+        // PickTransparency(high)：面板态翻转 + set_transparency 上行 →
+        // 执行臂 config 落盘；虚拟窗 alpha 由 config.transparency 映射
+        //（high 档 0.62 即时生效）。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
             .call_handler("PickTransparency", &[auto_val::Value::str("high")])
             .expect("PickTransparency handler");
-        assert_eq!(
-            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency").as_deref(),
-            Some("high"),
-            "PickTransparency 直写透明度键"
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                crate::ui::session::DesktopCommand::SetTransparency(v) if v == "high"
+            )),
+            "PickTransparency 上行 set_transparency high,得到 {cmds:?}"
         );
+        let _ = execute_desktop_commands(&mut ds, cmds);
         assert_eq!(
-            crate::ui::iced::virtual_window::load_transparency_alpha(),
+            crate::ui::iced::virtual_window::transparency_alpha_for(
+                &ds.desktop.config.transparency
+            ),
             0.62,
             "虚拟窗底色 alpha 即时取值 high 档"
         );
 
         let _ = std::fs::remove_file(&path);
     }
-
-    /// Plan 487 M4 步骤4：设置面板召唤无头——OpenSettings 懒挂载 + 配置
-    /// 快照注入（cfg_* 键推导 / pinned 平行列表 / about 常量）+ 二态翻转
-    /// （再召唤自隐）+ Esc 自隐。齿轮→open_settings 记录接线在步骤7 测。
+    /// Plan 487 M4 步骤4 + Plan 540 T7：设置窗开/聚焦无头——OpenSettings =
+    /// launch-or-focus（已开聚焦不开新窗）+ launch 期播种（cfg_* 键推导 /
+    /// about 常量）+ 快照点定序（打开期间宿主变更不重注，重开刷新——487
+    /// 同语义）。
     #[test]
     fn settings_panel_summon_headless() {
         let path = t2_isolate_storage("487-summon");
-        let mut ds = t3_session_with_shell();
-        assert!(ds.desktop.settings_app.is_none(), "未召唤不挂载");
-        // ① 召唤：懒挂载 + visible + 快照注入（键缺席 → pack 默认）。
+        let mut ds = t540_resolver_session();
+        // ① 开：launch + 播种（pack 默认）。
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
-        assert!(ds.settings_visible(), "召唤后面板 visible");
-        let panel = ds.desktop.settings_app.expect("懒挂载完成");
+        let panel = t540_settings_app(&ds);
         {
             let app = ds.apps.get(&panel).unwrap();
             for (field, want) in [
@@ -22301,14 +22338,18 @@ mod tests {
             ] {
                 match app.component.read_state(field) {
                     Ok(auto_val::Value::Str(ref s)) => {
-                        assert_eq!(s.to_string(), want, "{field} 快照注入")
+                        assert_eq!(s.to_string(), want, "{field} 快照播种")
                     }
                     other => panic!("{field} 读回异常: {other:?}"),
                 }
             }
-            match app.component.read_state("pinned_n") {
-                Ok(auto_val::Value::Int(n)) => assert_eq!(n, 3, "pinned 平行列表注入（pack 默认三枚）"),
-                other => panic!("pinned_n 读回异常: {other:?}"),
+            match app.component.read_state("cfg_dock_pinned") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(
+                    s.to_string(),
+                    "011-calculator,013-todo,015-notes",
+                    "pinned csv 播种（pack 默认三枚）"
+                ),
+                other => panic!("cfg_dock_pinned 读回异常: {other:?}"),
             }
             for field in ["about_host", "about_version"] {
                 match app.component.read_state(field) {
@@ -22319,53 +22360,72 @@ mod tests {
                 }
             }
         }
-        // ② 再召唤：二态翻转自隐。
+        // ② 再召唤：launch-or-focus——不开新窗（AppId 不变、恰一窗）。
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
-        assert!(!ds.settings_visible(), "再召唤翻转自隐");
-        // ③ 键预置 top → 重召唤注入 top 快照（键即事实，I9）。
-        crate::vm::ffi::stdlib::storage_raw_set("shell.dock.position".into(), "top".into());
-        let _ = execute_desktop_commands(
-            &mut ds,
-            vec![crate::ui::session::DesktopCommand::OpenSettings],
-        );
-        assert!(ds.settings_visible());
+        let panel2 = t540_settings_app(&ds);
+        assert_eq!(panel, panel2, "已开再召唤 = 聚焦（AppId 不变）");
+        let settings_wins = ds
+            .host
+            .as_ref()
+            .map(|h| {
+                h.wm
+                    .wins
+                    .iter()
+                    .filter(|(_, v)| v.registry_id.as_deref() == Some(SETTINGS_APP_ID))
+                    .count()
+            })
+            .unwrap_or(0);
+        assert_eq!(settings_wins, 1, "恰好一设置窗（无重复 launch）");
+        // ③ 快照点定序：打开期间宿主变更不重注（487 同语义）……
+        ds.desktop.config.dock_position = "top".to_string();
         {
             let app = ds.apps.get(&panel).unwrap();
             match app.component.read_state("cfg_dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(
+                    s.to_string(), "bottom",
+                    "打开期间宿主变更不重注（编辑面非监视面）"
+                ),
+                other => panic!("cfg_dock_position 读回异常: {other:?}"),
+            }
+        }
+        // ……重开（关窗再开）刷新快照（单源 config 即事实，I9）。
+        t540_close_settings(&mut ds);
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel3 = t540_settings_app(&ds);
+        {
+            let app = ds.apps.get(&panel3).unwrap();
+            match app.component.read_state("cfg_dock_position") {
                 Ok(auto_val::Value::Str(ref s)) => {
-                    assert_eq!(s.to_string(), "top", "位置键预置 → 快照 top")
+                    assert_eq!(s.to_string(), "top", "重开 → 快照 top")
                 }
                 other => panic!("cfg_dock_position 读回异常: {other:?}"),
             }
         }
-        // ④ Esc 自隐。
-        let app = ds.apps.get_mut(&panel).unwrap();
-        app.component
-            .bridge_mut()
-            .call_handler("Escape", &[])
-            .expect("Escape handler");
-        assert!(!ds.settings_visible(), "Esc 后自隐");
+        // ④ Esc 不再是设置关闭路径（T9 摘臂——键盘仲裁链已无 settings
+        // 位，编译即保证；窗关闭 = ×，WM 语义）。
 
         let _ = std::fs::remove_file(&path);
     }
-
-    /// Plan 501 T2：系统设置入口——osconfig 状态快照注入（三态投影）+
-    /// OpenSystemSettings 派发（launch 记录 + 自隐）+ 记录 → LaunchApp
-    /// 解析（execute_desktop_commands 臂消费的入参形状）。
+    /// Plan 501 T2 + Plan 540 T6/T7：系统设置入口（设置窗）——osconfig
+    /// 状态 launch 播种（三态投影）+ OpenSystemSettings 派发（launch 记录
+    /// → LaunchApp 解析）。重开刷新播种（点定序同 summon 测③）。
     #[test]
     fn settings_osconfig_entry_badge_and_launch_dispatch() {
         use crate::ui::osconfig_daemon::DaemonStatus;
         let path = t2_isolate_storage("501-osconfig-entry");
-        let mut ds = t3_session_with_shell();
-        // ① 未检活（boot 缺省）→ unknown 注入，无 hint。
+        let mut ds = t540_resolver_session();
+        // ① 未检活（boot 缺省）→ unknown 播种，无 hint。
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
-        let panel = ds.desktop.settings_app.expect("懒挂载");
+        let panel = t540_settings_app(&ds);
         {
             let app = ds.apps.get(&panel).unwrap();
             match app.component.read_state("osconfig_state") {
@@ -22379,18 +22439,14 @@ mod tests {
                 other => panic!("osconfig_hint 读回异常: {other:?}"),
             }
         }
-        // ② offline → 置灰态注入（原因投影）。先自隐再召唤（二态翻转语义：
-        // 可见时再召唤 = 自隐，不重注入）。
+        // ② offline → 置灰态播种（原因投影）。重开刷新快照。
         ds.desktop.osconfig_status = DaemonStatus::Offline("daemon 就绪超时".to_string());
-        let app = ds.apps.get_mut(&panel).unwrap();
-        app.component
-            .bridge_mut()
-            .call_handler("Escape", &[])
-            .expect("Escape handler");
+        t540_close_settings(&mut ds);
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
+        let panel = t540_settings_app(&ds);
         {
             let app = ds.apps.get(&panel).unwrap();
             match app.component.read_state("osconfig_state") {
@@ -22406,44 +22462,31 @@ mod tests {
                 other => panic!("osconfig_hint 读回异常: {other:?}"),
             }
         }
-        // ③ 派发：OpenSystemSettings → launch\tos-config 记录 + 面板自隐
-        //    （App 在面板之下开窗）。
+        // ③ 派发：OpenSystemSettings → launch os-config 记录（宿主 launch
+        // 臂全链——daemon 检活/spawn/env 注入）。
         let app = ds.apps.get_mut(&panel).unwrap();
         app.component
             .bridge_mut()
             .call_handler("OpenSystemSettings", &[])
             .expect("OpenSystemSettings handler");
-        {
-            let app = ds.apps.get(&panel).unwrap();
-            let cmd = match app.component.read_state("__desktop_cmd") {
-                Ok(auto_val::Value::Str(ref s)) => s.to_string(),
-                other => panic!("__desktop_cmd 读回异常: {other:?}"),
-            };
-            assert_eq!(cmd, "launch\tos-config", "launch 记录上行（desktop.launch；TAB 与 unit-sep 均为合法分隔）");
-            match app.component.read_state("visible") {
-                Ok(auto_val::Value::Str(ref s)) => {
-                    assert_eq!(s.to_string(), "0", "派发后自隐（Esc 同型）")
-                }
-                other => panic!("visible 读回异常: {other:?}"),
-            }
-            // 记录 → DesktopCommand 解析（drain → execute 臂的入参形状）。
-            assert_eq!(
-                crate::ui::session::DesktopCommand::parse_records(&cmd),
-                vec![crate::ui::session::DesktopCommand::LaunchApp("os-config".to_string())],
-            );
-        }
-        // ④ ready 徽标注入（Running → ready）。先自隐再召唤（同②）。
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                crate::ui::session::DesktopCommand::LaunchApp(name)
+                    if name == "os-config"
+            )),
+            "OpenSystemSettings 上行 launch os-config,得到 {cmds:?}"
+        );
+        // ④ ready 徽标播种（Running → ready）——重开刷新。
         ds.desktop.osconfig_status =
             DaemonStatus::Running(crate::ui::osconfig_daemon::default_daemon_url());
-        let app = ds.apps.get_mut(&panel).unwrap();
-        app.component
-            .bridge_mut()
-            .call_handler("Escape", &[])
-            .expect("Escape handler");
+        t540_close_settings(&mut ds);
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::OpenSettings],
         );
+        let panel = t540_settings_app(&ds);
         {
             let app = ds.apps.get(&panel).unwrap();
             match app.component.read_state("osconfig_state") {
@@ -22456,71 +22499,10 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
-
     /// Plan 487 M4 步骤1：资产 settings.at（widget Settings）装载冒烟——编译 +
     /// Init 默认（visible=0/section=dock）+ Nav 分区切换 + pinned 平行列表
     /// 注入 → RebuildPinned 重建 rows（B12 规避形态）。控件→动词接线在
     /// 执行步骤 5/6 扩测。
-    #[test]
-    fn settings_at_builds_and_nav_smoke() {
-        let comp = crate::ui::shell::build_settings_component().expect("settings.at 装载");
-        let mut ds = crate::ui::session::DesktopSession::__test_session();
-        ds.open_desktop(iced::window::Id::unique());
-        let id = ds.allocate_app(comp);
-        {
-            let app = ds.apps.get(&id).unwrap();
-            match app.component.read_state("visible") {
-                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0"),
-                other => panic!("visible 读回异常: {other:?}"),
-            }
-            match app.component.read_state("section") {
-                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "dock"),
-                other => panic!("section 读回异常: {other:?}"),
-            }
-        }
-        // 分区导航：dock → notes → about（未知值忽略）。
-        let app = ds.apps.get_mut(&id).unwrap();
-        app.component
-            .bridge_mut()
-            .call_handler("Nav", &[auto_val::Value::str("notes")])
-            .expect("Nav handler");
-        let app = ds.apps.get(&id).unwrap();
-        match app.component.read_state("section") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "notes"),
-            other => panic!("Nav 后 section 异常: {other:?}"),
-        }
-        // pinned 平行列表注入 + RebuildPinned 重建。
-        let app = ds.apps.get_mut(&id).unwrap();
-        let _ = app.component.write_state_vec(
-            "pinned_ids",
-            vec![
-                auto_val::Value::str("011-calculator"),
-                auto_val::Value::str("013-todo"),
-            ],
-        );
-        app.component
-            .bridge_mut()
-            .call_handler("RebuildPinned", &[])
-            .expect("RebuildPinned handler");
-        let app = ds.apps.get(&id).unwrap();
-        match app.component.read_state("pinned_n") {
-            Ok(auto_val::Value::Int(n)) => assert_eq!(n, 2, "pinned rows 重建"),
-            other => panic!("pinned_n 读回异常: {other:?}"),
-        }
-        // Esc 自隐（宿主写 visible 不触发 handler——先置 1 再 Escape）。
-        let app = ds.apps.get_mut(&id).unwrap();
-        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
-        app.component
-            .bridge_mut()
-            .call_handler("Escape", &[])
-            .expect("Escape handler");
-        let app = ds.apps.get(&id).unwrap();
-        match app.component.read_state("visible") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0", "Esc 后自隐"),
-            other => panic!("Esc 后 visible 异常: {other:?}"),
-        }
-    }
-
     // ---- Plan 496 M5：桌面本体数据链（T2——storage 往返 + 合并去重）----
 
     /// T2 族读回辅助：desktop_app 面的标量/数组状态（t3_read* 绑 shell_app，
@@ -22573,7 +22555,6 @@ mod tests {
             ("shell.at", crate::ui::shell::SHELL_AT),
             ("desktop.at", crate::ui::shell::DESKTOP_AT),
             ("switcher.at", crate::ui::shell::SWITCHER_AT),
-            ("settings.at", crate::ui::shell::SETTINGS_AT),
             ("notification_center.at", crate::ui::shell::NOTIFICATION_CENTER_AT),
         ];
         let mut names: Vec<(String, String)> = Vec::new();
@@ -22671,23 +22652,28 @@ mod tests {
     #[test]
     fn desktop_surface_storage_roundtrip_and_wallpaper_resolution() {
         let _guard = t2_isolate_storage("d496-t2a");
-        // 壁纸三分支。PLAN-526 T19：键缺席/坏路径不再直接回退内置——
-        // 先取壁纸目录首图（解析链：storage dir 键 → env → stella 素材
-        // 目录探测），目录不可用才回退 builtin；断言按新链放行两种合法
-        // 结果（目录命中=存在文件路径 / 兜底=builtin 常量）。
-        let absent = load_desktop_wallpaper();
+        use crate::ui::desktop_config::DesktopConfig;
+        // 壁纸三分支（Plan 540 T2：源切单源 config.wallpaper_path——
+        // storage publish 不再参与壁纸解析）。PLAN-526 T19：值缺席/坏路径
+        // 不直接回退内置——先取壁纸目录首图（解析链：config dir 字段 →
+        // env → stella 素材目录探测），目录不可用才回退 builtin；断言按
+        // 新链放行两种合法结果（目录命中=存在文件路径 / 兜底=builtin 常量）。
+        let absent = load_desktop_wallpaper(&DesktopConfig::default());
         assert!(
             absent == crate::ui::session::DESKTOP_WALLPAPER_DEFAULT
                 || std::path::Path::new(&absent).is_file(),
             "键缺席 → 目录首图或内置兜底，得到 {absent}"
         );
-        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#123456".into());
-        assert_eq!(load_desktop_wallpaper(), "#123456", "#hex 直传");
-        crate::vm::ffi::stdlib::storage_host_publish(
-            "shell.desktop.wallpaper",
-            "Z:/no/such/file.png".into(),
-        );
-        let bad = load_desktop_wallpaper();
+        let hex_cfg = DesktopConfig {
+            wallpaper_path: "#123456".to_string(),
+            ..DesktopConfig::default()
+        };
+        assert_eq!(load_desktop_wallpaper(&hex_cfg), "#123456", "#hex 直传");
+        let bad_cfg = DesktopConfig {
+            wallpaper_path: "Z:/no/such/file.png".to_string(),
+            ..DesktopConfig::default()
+        };
+        let bad = load_desktop_wallpaper(&bad_cfg);
         assert!(
             bad == crate::ui::session::DESKTOP_WALLPAPER_DEFAULT
                 || std::path::Path::new(&bad).is_file(),
@@ -22695,12 +22681,12 @@ mod tests {
         );
         let tmp = std::env::temp_dir().join(format!("autoui-496-wp-{}.png", std::process::id()));
         std::fs::write(&tmp, b"png").expect("临时壁纸写入");
-        crate::vm::ffi::stdlib::storage_host_publish(
-            "shell.desktop.wallpaper",
-            tmp.to_string_lossy().to_string(),
-        );
+        let file_cfg = DesktopConfig {
+            wallpaper_path: tmp.to_string_lossy().to_string(),
+            ..DesktopConfig::default()
+        };
         assert_eq!(
-            load_desktop_wallpaper(),
+            load_desktop_wallpaper(&file_cfg),
             tmp.to_string_lossy(),
             "存在路径保留"
         );
@@ -22711,11 +22697,15 @@ mod tests {
             "builtin:ricepaper",
             "518 默认壁纸 = 内嵌宣纸资产"
         );
-        crate::vm::ffi::stdlib::storage_host_publish(
-            "shell.desktop.wallpaper",
-            "builtin:inkwash".into(),
+        let builtin_cfg = DesktopConfig {
+            wallpaper_path: "builtin:inkwash".to_string(),
+            ..DesktopConfig::default()
+        };
+        assert_eq!(
+            load_desktop_wallpaper(&builtin_cfg),
+            "builtin:inkwash",
+            "builtin 直传"
         );
-        assert_eq!(load_desktop_wallpaper(), "builtin:inkwash", "builtin 直传");
         // 内嵌资产可解码:load_image_bytes 返回 JPEG 字节(FF D8 魔数)。
         let bytes = load_image_bytes("builtin:ricepaper").expect("内嵌壁纸字节");
         assert_eq!(&bytes[0..2], &[0xFF, 0xD8], "JPEG 魔数");
@@ -22776,8 +22766,8 @@ mod tests {
             "014-weather,011-calculator".into(),
         );
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", "013-todo".into());
-        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#243b55".into());
-        ds.desktop.desktop_wallpaper = load_desktop_wallpaper();
+        ds.desktop.config.wallpaper_path = "#243b55".to_string();
+        ds.desktop.desktop_wallpaper = load_desktop_wallpaper(&ds.desktop.config);
         inject_desktop_surface(&mut ds);
         let entries = t496_read_array(&ds, "__desktop_icons");
         let ids: Vec<String> = entries
@@ -22808,14 +22798,10 @@ mod tests {
             other => panic!("__desktop_hidden 异常: {other:?}"),
         }
         // 图片壁纸分支：__desktop_bg 空（宿主壁纸图层铺底）。
-        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "bad".into());
         let tmp = std::env::temp_dir().join(format!("autoui-496-img-{}.png", std::process::id()));
         std::fs::write(&tmp, b"png").expect("临时壁纸写入");
-        crate::vm::ffi::stdlib::storage_host_publish(
-            "shell.desktop.wallpaper",
-            tmp.to_string_lossy().to_string(),
-        );
-        ds.desktop.desktop_wallpaper = load_desktop_wallpaper();
+        ds.desktop.config.wallpaper_path = tmp.to_string_lossy().to_string();
+        ds.desktop.desktop_wallpaper = load_desktop_wallpaper(&ds.desktop.config);
         inject_desktop_surface(&mut ds);
         match t496_read(&ds, "__desktop_bg") {
             auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "图片路径 → 空片段"),

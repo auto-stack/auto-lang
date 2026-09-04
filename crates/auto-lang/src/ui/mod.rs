@@ -59,6 +59,10 @@ pub mod osconfig_daemon;
 // 只读；run 臂优先级链 + desktop launch 播种两个消费点）。
 pub mod osconfig_apps;
 
+// Plan 540 M1：桌面单源配置（~/.config/autoos/apps/desktop/config.at——
+// boot 读 + 设置窗经宿主臂写 + os-config 通用编辑器同文件）。
+pub mod desktop_config;
+
 // Plan 386 Stage 1：桌面协议（进程外 App 五通道）——loopback 同进程走通，
 // 施工图 Design 25 §7；Stage 2 换真 transport 时只替换其 loopback 层。
 #[cfg(feature = "ui-iced")]

@@ -8425,6 +8425,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     // Plan 028 F3: `Date.format(ts, "HH:mm")` — 平台日期 API 的
                     // 窄面（避免暴露整个 Date），映射到 toLocaleTimeString 的
                     // 2-digit 选项。模式支持 HH:mm / HH:mm:ss。
+                    // PLAN-536 T4(题3): 秒/毫秒双口径归一（1e11 阈值,与 VM
+                    // format_date_ms 同口径）——epoch 秒直入亦可,调用方无需
+                    // 自行 ×1000（VM int i32 回绕,musk msgTimeLabel 实录）。
                     if method.as_str() == "format" && object_js == "Date" {
                         let ts_arg = args_js.first().cloned().unwrap_or_else(|| "0".to_string());
                         let pattern = args_js.get(1)
@@ -8434,9 +8437,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         if pattern.contains("ss") {
                             opts.push("second: '2-digit'");
                         }
+                        let norm = format!(
+                            "(({}) < 100000000000 ? ({}) * 1000 : ({}))",
+                            ts_arg, ts_arg, ts_arg
+                        );
                         return Ok(format!(
                             "new Date({}).toLocaleTimeString([], {{ {} }})",
-                            ts_arg,
+                            norm,
                             opts.join(", ")
                         ));
                     }

@@ -1050,10 +1050,15 @@ impl Component for DynamicComponent {
         // handler declared `.SelectDay(date) ->` receives them as parameters.
         // Only mark dirty if handler was found and executed successfully.
         // Plan 446 批一 (F1): 失败诊断无条件打 stderr(与 dispatch 主路径同款)。
+        // PLAN-536 T2: 执行中崩(≠HandlerNotFound)= 副作用可能已落盘,失效
+        // 广播照常(与 on_with_input_for Err 臂同规)。
         match self.bridge.call_handler(&event_name, &args) {
             Ok(()) => { self.dirty = true; }
             Err(e) => {
                 eprintln!("[VM-HANDLER] {}.{} failed: {}", self.widget_name, event_name, e);
+                if !matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
+                    self.dirty = true;
+                }
             }
         }
     }
@@ -1338,6 +1343,13 @@ impl DynamicComponent {
                     if widget_name.is_empty() { &self.widget_name } else { widget_name },
                     clean_name, _e
                 );
+                // PLAN-536 T2(题1 根修): handler **执行中崩**(≠HandlerNotFound)
+                // = 副作用已部分落盘——musk PollStream 实录:store 已拿到数据、
+                // 完成启发式已翻转,而 dirty 不置 → 画布永冻在崩前旧帧,用户
+                // 只能靠重选会话(handler 驱动)强行重渲染。失效广播必须照常。
+                if !matches!(_e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
+                    self.dirty = true;
+                }
                 // Fallback: try legacy handler_<Event> on root state (backward compat).
                 // ⚠️ 仅当本消息本就属于根 widget 时才回退 —— 若给子 widget/store 的
                 // handler 失败后去根 widget 找同名 handler,会误执行一个语义完全
@@ -1351,6 +1363,9 @@ impl DynamicComponent {
                                 "[VM-HANDLER] {}.{} legacy fallback also failed: {}",
                                 self.widget_name, clean_name, _e2
                             );
+                            if !matches!(_e2, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
+                                self.dirty = true;
+                            }
                         }
                     }
                 }

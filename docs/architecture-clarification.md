@@ -1,31 +1,37 @@
+---
+status: active
+describes: current-state
+last_verified_at: 2026-09-04
+verified_by_plan: PLAN-543
+---
+
 # AutoLang Architecture Clarification
 
 ## Overview
 
 AutoLang has **ONE canonical compiler implementation**: the Rust implementation located in `crates/` directory.
 
-Previous documentation incorrectly referenced multiple compiler implementations (C, Rust, self-hosted). This document clarifies the actual architecture.
+Previous documentation incorrectly mixed compiler implementations with output backends. This document is
+a compatibility clarification; the canonical repository-level map is `docs/design/01-architecture.md`.
 
 ## Compiler Architecture
 
 ### Primary Implementation: Rust Compiler (`crates/`)
 
-The AutoLang compiler is implemented in Rust and located in `crates/auto-lang/`. It supports three execution modes:
+The AutoLang compiler is implemented in Rust and located in `crates/auto-lang/`. It supports three backend families:
 
-1. **Evaluator** (`eval.rs`): Interprets AutoLang code directly
+1. **AutoVM** (`vm/`): Canonical script, file and REPL execution
    - Supports REPL (Read-Eval-Print Loop)
    - Executes `.at` files as scripts
-   - Used for configuration and templating
+   - Uses bytecode/codegen/engine rather than the removed direct evaluator
 
-2. **C Transpiler** (`trans/c.rs`): Transpiles AutoLang to C
-   - Generates C code for embedded systems
-   - Test framework: `crates/auto-lang/test/a2c/`
-   - Provides low-level access and minimal footprint
+2. **Transpilers** (`trans/`): Multi-target source generation
+   - Targets include C, Rust, JavaScript, TypeScript, Python, GDScript and r2a
+   - C/Rust fixtures remain under `crates/auto-lang/test/a2c/` and `test/a2r/`
 
-3. **Rust Transpiler** (`trans/rust.rs`): Transpiles AutoLang to Rust
-   - Generates Rust code for native applications
-   - Test framework: `crates/auto-lang/test/a2r/`
-   - Leverages Rust's performance and safety
+3. **AutoUI** (`aura/`, `ui/`, `ui_gen/`, `a2ui/`): UI generation and runtime
+   - Targets/hosts include iced, gpui, Vue and headless paths
+   - Desktop layers add session, WM, VirtualWindow and protocol integration
 
 ### Compilation Pipeline
 
@@ -36,9 +42,9 @@ Lexer (lexer.rs) → Tokens
     ↓
 Parser (parser.rs) → AST (ast.rs)
     ↓
-├─→ Evaluator (eval.rs) → Value (REPL/execution)
-├─→ C Transpiler (trans/c.rs) → C code
-└─→ Rust Transpiler (trans/rust.rs) → Rust code
+├─→ AutoVM (vm/) → bytecode → engine
+├─→ Transpilers (trans/) → C/Rust/JS/TS/Python/GDScript/r2a
+└─→ AutoUI → AURA/ui_gen/VTree → iced/gpui/Vue/headless
 ```
 
 ## Directory Structure
@@ -46,15 +52,18 @@ Parser (parser.rs) → AST (ast.rs)
 ### Compiler Implementation
 - `crates/auto-lang/` - Main AutoLang compiler (Rust)
 - `crates/auto-val/` - Value system and data structures (Rust)
-- `crates/auto-lang/src/trans/` - Transpilers (c.rs, rust.rs)
+- `crates/auto-lang/src/vm/` - AutoVM bytecode compiler and runtime
+- `crates/auto-lang/src/trans/` - Multi-target transpilers
+- `crates/auto-lang/src/ui/`, `ui_gen/`, `aura/`, `a2ui/` - AutoUI paths
 
 ### Test Frameworks
 - `crates/auto-lang/test/a2c/` - Auto-to-C transpiler tests
 - `crates/auto-lang/test/a2r/` - Auto-to-Rust transpiler tests
 
-### Self-Hosted Compiler (Future)
+### Self-Hosted Compiler (Experimental)
 - `auto/` - AutoLang compiler written in AutoLang itself
-- **Status**: Early stage, not yet functional
+- **Status**: Active experimental chain covering token/lexer/parser/typeinfo/codegen/engine/a2r;
+  coverage and bootstrap readiness remain incomplete
 - **Goal**: Bootstrap the compiler to compile itself
 
 ### Standard Library
@@ -70,11 +79,11 @@ cargo build --release
 # Run REPL
 cargo run --release
 
-# Run tests
-cargo test -p auto-lang
+# Fast daily tests
+cargo t
 
-# Run transpiler tests
-cargo test -p auto-lang -- trans
+# Run scoped transpiler tests
+cargo t trans
 
 # Transpile AutoLang to C
 cargo run --release -- c input.at
@@ -93,8 +102,8 @@ Previous documentation suggested:
 
 ### ✅ Correct: Single Compiler with Multiple Backends
 - **ONE compiler**: Rust implementation in `crates/`
-- **THREE backends**: Evaluator, C transpiler, Rust transpiler
-- **Future work**: Self-hosted compiler in `auto/`
+- **Backend families**: AutoVM execution, multi-target transpilation, AutoUI generation/runtime
+- **Experimental implementation**: Self-hosted compiler in `auto/`, not the canonical product compiler
 
 ### Removed Directories
 - `autoc/` - Was AI-generated test files, not a real C compiler implementation
@@ -122,14 +131,15 @@ Test coverage:
 - `test/a2r/033_multi_delegation/` - Multiple composition
 - `test/a2r/034_delegation_params/` - Delegation with parameters
 
-All 366 tests passing.
+The historical “366 tests passing” snapshot is intentionally removed: test counts vary by feature set
+and are executable evidence, not a stable architecture fact.
 
 ## Future Work
 
 ### Self-Hosted Compiler (`auto/`)
-- Implement AutoLang compiler in AutoLang itself
-- Bootstrap the compiler to compile itself
-- Create a self-sustaining ecosystem
+- Close remaining coverage gaps in the existing staged implementation
+- Define the bootstrap/release readiness gate
+- Preserve Rust as the canonical reference until that gate passes
 
 ### Enhanced Type System
 - Generic type parameters
@@ -138,4 +148,6 @@ All 366 tests passing.
 
 ## Summary
 
-AutoLang has a single, well-architected compiler implementation in Rust that supports multiple execution modes. The compiler can interpret code directly or transpile it to C or Rust based on the target use case. This design provides flexibility while maintaining a single source of truth for language semantics.
+AutoLang has one canonical Rust compiler with AutoVM execution, multiple transpilation targets and
+AutoUI generation/runtime. The direct Evaluator and three-backend description are historical; detailed
+current-state belongs in module Specs, while self-hosting remains an active experimental track.
