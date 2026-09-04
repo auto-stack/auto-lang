@@ -21,6 +21,11 @@ widget home {
         col {
             style: "w-full flex-1 flex-col"
 
+            // Safelist gradient classes for Tailwind CSS generation
+            row {
+                style: "hidden from-indigo-700 to-purple-800 from-emerald-700 to-teal-900 from-rose-600 to-orange-600 from-amber-600 to-rose-700 from-sky-700 to-indigo-900 from-violet-700 to-pink-800 from-blue-600 to-cyan-600 from-fuchsia-600 to-pink-600 from-yellow-600 to-amber-700 from-teal-600 to-emerald-700 from-purple-600 to-indigo-700 from-red-600 to-rose-700"
+            }
+
             // ── Top Header: Search Bar ──
             row {
                 style: if .store.dark_mode {
