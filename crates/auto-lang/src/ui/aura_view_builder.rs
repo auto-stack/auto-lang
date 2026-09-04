@@ -4500,6 +4500,10 @@ let tabs_inner = View::Row {
         //    condition short-circuits to false (body hidden) and the string
         //    falls back to "${collapsed}" / "${collapse_glyph}".
         //    Only runs when the parent didn't provide the prop (parent wins).
+        //    PLAN-536 T8(题6 根修): 缺省播种只在根态**缺字段**时发生——此前
+        //    每帧无条件重播种,子件 handler 对本件模型字段的写入(受控 open
+        //    翻转等)在下一帧重建时被打回默认值:musk delete_confirm_open=true
+        //    而视图恒无 modal 的实录机制。首次挂载播种语义不变。
         for state_var in &child_widget.state_vars {
             if !resolved_props.contains_key(&state_var.name) {
                 resolved_props.insert(
@@ -4513,9 +4517,13 @@ let tabs_inner = View::Row {
         // colors: List<str> = [...])` 一类 widget-parens 默认值此前只在
         // vue 轨生效(withDefaults),VM 轨不播种 → 子组件 handler 读未传
         // prop 时 GET_FIELD 直接失败(donut 的 colors 即此)。父级显式传值
-        // 优先(parent wins)。
+        // 优先(parent wins)。PLAN-536 T8: 同 4 的缺字段守卫——已存在的
+        // 字段不重播种(防 handler 写入被逐帧打回默认)。
         for prop in &child_widget.props {
             if !resolved_props.contains_key(&prop.name) {
+                if self.bridge.read_state(&prop.name).is_ok() {
+                    continue;
+                }
                 if let Some(default_expr) = &prop.default {
                     resolved_props.insert(
                         prop.name.clone(),

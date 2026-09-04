@@ -436,6 +436,42 @@ mod plan536_t1_reactive_probe_tests {
         );
     }
 
+    /// T6/T7(musk 会话卡形状): 卡片 **button 结构子件内**的 absolute(z) ×
+    /// 必须在按钮手搓 Row/Column 内容布局里 hoist(Overlay 为 button 内容),
+    /// 不再挤压卡片标题——musk chats_view 会话卡 × 的直接同形面。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t6_button_inner_absolute_hoists_in_card() {
+        let corpus = match locate_absolute_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T6: SKIPPED — absolute corpus not found");
+                return;
+            }
+        };
+        let dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_absolute component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+
+        let mut all = Vec::new();
+        collect_views(&view, &mut all);
+        // 找到含 "session-name" 文本的 Overlay:base 是按钮内容 Column(含
+        // session-name),content 是悬浮的 × Button。
+        let hit = all.iter().any(|v| match v {
+            View::Overlay { base, content, position } => {
+                let base_has_name = {
+                    let mut t = Vec::new();
+                    collect_texts(base, &mut t);
+                    t.iter().any(|x| x.contains("session-name"))
+                };
+                let content_is_close = matches!(content.as_ref(), View::Button { label, .. } if label == "×");
+                base_has_name && content_is_close && position.right == Some(6.0) && position.top == Some(8.0)
+            }
+            _ => false,
+        });
+        assert!(hit, "卡片 button 内的 × 必须 hoist 为 Overlay 悬浮层");
+    }
+
     /// T6 语义定界(负面): absolute 无 z 的分层技巧(p051-min-ta textarea
     /// 叠加族)保留流内——不 hoist,防 inset-0 背景层翻到内容之上。
     #[cfg(feature = "ui-interpreter")]
@@ -467,4 +503,110 @@ mod plan536_t1_reactive_probe_tests {
         });
         assert!(!in_overlay, "无 z 不得 hoist");
     }
+
+
+fn locate_modal_corpus() -> Option<std::path::PathBuf> {
+    let rel = "test/ui/plan536_modal/src/front/app.at";
+    [
+        std::env::var("CARGO_MANIFEST_DIR")
+            .ok()
+            .map(|d| std::path::PathBuf::from(d).join(format!("../../{}", rel))),
+        Some(std::path::PathBuf::from(rel)),
+        Some(std::path::PathBuf::from(format!("../../{}", rel))),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|p| p.exists())
+}
+
+fn find_modal(
+    view: &View<crate::ui::interpreter::DynamicMessage>,
+    out: &mut Vec<bool>,
+) {
+    if let View::Popover { open, placement, .. } = view {
+        if matches!(placement, crate::ui::view::PopoverPlacement::Modal) {
+            out.push(*open);
+        }
+    }
+    match view {
+        View::Row { children, .. } | View::Column { children, .. } => {
+            for c in children {
+                find_modal(c, out);
+            }
+        }
+        View::Container { child, .. } | View::Scrollable { child, .. } => find_modal(child, out),
+        View::Overlay { base, content, .. } => {
+            find_modal(base, out);
+            find_modal(content, out);
+        }
+        View::Button { content: Some(c), .. } => find_modal(c, out),
+        _ => {}
+    }
+}
+
+/// T8(题6)：unknown-tag 子件（fallback Column 路径）包 alert-dialog 家族根,
+/// `open` 绑定根态——翻转后渲染树必须出 open=true 的 Modal。
+/// 初版（无子件）全绿=fallback 绑定解析无断链;现形态暴露**新引擎缺陷**
+/// （见计划待澄清 #5）：存在带 model 的子件时,根 handler 对自身模型字段
+/// 的写不落盘（Flip 执行 Ok 但 root_open 恒 false,三变体隔离定界）。
+/// 引擎修复立案后转正。
+#[cfg(feature = "ui-interpreter")]
+#[test]
+#[ignore = "P536-T8 引擎缺陷:子件在场时根 handler 模型字段写不落盘(待澄清 #5)"]
+fn p536_t8_unknown_tag_fallback_resolves_open_binding() {
+    let corpus = match locate_modal_corpus() {
+        Some(p) => p,
+        None => {
+            eprintln!("p536 T8: SKIPPED — modal corpus not found");
+            return;
+        }
+    };
+    let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+        .expect("build plan536_modal component");
+
+    // 初渲染：Modal 在树但 open=false（受控闭合态）
+    let (view, _, _) = dc.view_with_debug_gated(false);
+    let mut modals = Vec::new();
+    find_modal(&view, &mut modals);
+    assert!(
+        modals.contains(&false),
+        "closed alert-dialog must render as Modal(open=false); modals={modals:?}"
+    );
+
+    // 翻转 open → 重建 → Modal open=true
+    dc.on_with_input_for("App", "Flip", None);
+    let (view2, _, _) = dc.view_with_debug_gated(false);
+    let mut modals2 = Vec::new();
+    find_modal(&view2, &mut modals2);
+    eprintln!("DBG modals2 = {modals2:?}");
+    assert!(
+        modals2.contains(&true),
+        "open 翻转后 fallback 路径必须解析 open 绑定出 Modal(open=true); modals={modals2:?}"
+    );
+}
+
+/// T8(musk chats_view 同形)：alert-dialog 在**子件视图根部**,open 绑定
+/// 子件模型字段（统一根态播种）——翻转后 Modal(open=true) 须在树。
+#[cfg(feature = "ui-interpreter")]
+#[test]
+fn p536_t8_child_widget_root_alert_dialog_resolves_open() {
+    let corpus = match locate_modal_corpus() {
+        Some(p) => p,
+        None => {
+            eprintln!("p536 T8: SKIPPED — modal corpus not found");
+            return;
+        }
+    };
+    let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+        .expect("build plan536_modal component");
+
+    dc.on_with_input_for("ChatsLike", "Flip", None);
+    let (view, _, _) = dc.view_with_debug_gated(false);
+    let mut modals = Vec::new();
+    find_modal(&view, &mut modals);
+    assert!(
+        modals.contains(&true),
+        "子件视图根部的 alert-dialog 翻转后必须出 Modal(open=true); modals={modals:?}"
+    );
+}
 }
