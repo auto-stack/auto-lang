@@ -16,8 +16,10 @@
 // （quote 前缀 / list 序号 / 表格管道行重生成），`autodown_editor_text`
 // 为 .at 回环 payload 读数口。
 //
-// Phase 3 v1 边界（余量登记在 mod.rs）：块内软换行不拆块、块首退格不
-// 跨块合并、选区不跨块、markdown 输入规则未接线。
+// PLAN-048 收口：跨块选区（SelAnchor×2 + 逐叶渲染 + copy 拼接 + 跨块
+// 删除剪接）、行首输入规则（LINE_START_RULES 7 条）、跨容器合并
+// （same_host 闸撤除；fence 维持不做）、undo 面（打字/删除级钉死，
+// 结构操作不入栈——overwrite 整换新缓冲防陈旧栈）。余量台账见 mod.rs。
 //
 // License: MIT. 架构参照 cosmic-edit（GPL-3.0，System76）；原始实现。
 
