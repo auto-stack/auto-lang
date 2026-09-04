@@ -749,11 +749,42 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             }
         }
         BlockType::MathBlock => {
-            // PLAN-041 T7 显式降级：mono 文本 + $$ 标记（KaTeX web-only）。
+            // PLAN-041 T7 显式降级 + PLAN-048 T8（W5 裁定）：header 栏
+            // 「math · web-only」与 mermaid 降级形态对齐（面板族 chrome
+            // 一致性）+ mono $$ 包裹文本（KaTeX web-only，显式豁免登记）。
             let chrome = family_of(BlockType::MathBlock).chrome;
+            let header = View::Container {
+                child: Box::new(styled_text(
+                    "math \u{00b7} web-only".to_string(),
+                    chrome.header_label,
+                )),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: Style::parse(chrome.header.unwrap_or("")).ok(),
+                onclick: None,
+            };
             let body = format!("$$\n{}\n$$", spansText(b.inlines.clone()));
-            View::Container {
+            let code_area = View::Container {
                 child: Box::new(styled_text(body, chrome.body_text)),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: Style::parse(chrome.body).ok(),
+                onclick: None,
+            };
+            View::Container {
+                child: Box::new(View::Column {
+                    children: vec![header, code_area],
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                }),
                 padding: 0,
                 width: None,
                 height: None,
@@ -1282,14 +1313,20 @@ mod tests {
         assert_eq!(text_of(body), "graph TD; A-->B;");
     }
 
-    /// PLAN-041 T7 降级臂②：MathBlock——mono 文本 + $$ 包裹（KaTeX
-    /// web-only，豁免表在册）。
+    /// PLAN-041 T7 降级臂② + PLAN-048 T8（W5 裁定）：MathBlock——
+    /// 「math · web-only」header（与 mermaid 面板族形态一致）+ mono $$
+    /// 包裹（KaTeX web-only，显式豁免登记）。
     #[test]
     fn renders_degraded_math_block() {
         let doc = render_document::<()>("%{\nE=mc^2\n}%\n", true);
         let View::Column { children, .. } = doc else { panic!("col") };
         let View::Container { child, .. } = &children[0] else { panic!("math outer") };
-        assert_eq!(text_of(child), "$$\nE=mc^2\n$$");
+        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        assert_eq!(parts.len(), 2, "header + body");
+        let View::Container { child: h, .. } = &parts[0] else { panic!("header") };
+        assert_eq!(text_of(h), "math \u{00b7} web-only");
+        let View::Container { child: body, .. } = &parts[1] else { panic!("body") };
+        assert_eq!(text_of(body), "$$\nE=mc^2\n$$");
     }
 
     /// PLAN-041 T7 降级臂③：QueryBlock——query 文本面板 + 「query · 未求值」
