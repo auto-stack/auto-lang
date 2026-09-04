@@ -2179,7 +2179,7 @@ impl RustGenerator {
                 // 角色降级渲染（透传/预设样式/按钮预设）。
                 if let Some(role) = Self::modal_dialog_tag_role(tag) {
                     match role {
-                        "root" => return self.generate_modal_popover(props, children),
+                        "root" => return self.generate_modal_popover(tag, props, children),
                         "trigger" | "content" => {
                             // 透传:组内已被根臂拆解消费;组外裸渲染子件。
                             let views: Vec<String> = children
@@ -3155,6 +3155,17 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-533 T6: 可关闭模态根（dialog 族）——非 alert 族。shadcn 语义：
+    /// dialog 的 ESC/外点/锚点关闭经 on_dismiss 回流;alert-dialog 不关。
+    fn dismissable_dialog_root(tag: &str) -> bool {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        norm == "dialog"
+    }
+
     /// 家族子件的文字内容：text prop → label prop → 首 Text 子节点。
     fn modal_child_label(
         props: &std::collections::HashMap<String, AuraPropValue>,
@@ -3194,6 +3205,7 @@ impl RustGenerator {
     /// 操作按钮（vue trigger 语义；T5 换铸 __popover_toggle 自管开合）。
     fn generate_modal_popover(
         &mut self,
+        tag: &str,
         props: &std::collections::HashMap<String, AuraPropValue>,
         children: &[AuraNode],
     ) -> String {
@@ -3269,9 +3281,34 @@ impl RustGenerator {
             Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
             _ => "false".to_string(),
         };
+        // PLAN-533 T6: dialog（可关闭）族铸造形态的 on_dismiss 折算
+        // __dlg_close_N —— popover Panel 的 ESC/外点/锚点 dismiss 经此回流
+        // update:open(false)。alert-dialog 族（shadcn 语义）与显式 open
+        // 绑定的自管形态不接管（None）。
+        if std::env::var("P533_DBG").is_ok() {
+            eprintln!("[P533] tag={tag} open_prop={:?} role={:?} dismissable={}", props.get("open"), Self::modal_dialog_tag_role(tag), Self::dismissable_dialog_root(tag));
+        }
+        let on_dismiss_expr = if Self::modal_dialog_tag_role(tag) == Some("root")
+            && Self::dismissable_dialog_root(tag)
+        {
+            match props.get("open") {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)))
+                    if matches!(
+                        obj.as_ref(),
+                        crate::ast::Expr::Ident(b) if b.as_str() == "self" || b.as_str() == "."
+                    ) && field.to_string().starts_with("__dlg_open_") =>
+                {
+                    let n = field.to_string().trim_start_matches("__dlg_open_").to_string();
+                    format!("Some({}::__dlg_close_{})", self.current_msg_name(), n)
+                }
+                _ => "None".to_string(),
+            }
+        } else {
+            "None".to_string()
+        };
         format!(
-            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: auto_lang::ui::view::PopoverPlacement::Modal, open: {}, on_dismiss: None }}",
-            anchor_code, panel, open_expr
+            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: auto_lang::ui::view::PopoverPlacement::Modal, open: {}, on_dismiss: {} }}",
+            anchor_code, panel, open_expr, on_dismiss_expr
         )
     }
 
@@ -6149,17 +6186,15 @@ widget Demo {
         assert!(code.contains("DemoMsg::cancelAction"), "cancel onclick dispatch:\n{}", code);
     }
 
-    /// PLAN-533 T3: dialog 家族（可关闭模态，schema sub_widgets 无连字符
-    /// 形态 + dashed 形态均识别）同样发射 Modal Popover；裸文本 trigger
-    /// 降级为无操作按钮（T5 换铸 __popover_toggle）。
+    /// PLAN-533 T3/T6: dialog 家族（可关闭模态，schema sub_widgets 无连字符
+    /// 形态 + dashed 形态均识别）发射 Modal Popover；无 open 绑定形态走
+    /// parser 铸造（__dlg_open_1 + toggle/close），on_dismiss 折算 close 回流。
     #[test]
     fn test_dialog_family_codegen_modal_and_bare_trigger() {
         let src = r#"
 widget DialogDemo {
-    model { var open bool = false }
-    on { .openDialog -> { .open = true } }
     view {
-        dialog (open: .open) {
+        dialog {
             dialog-trigger "Open Dialog"
             dialog-content {
                 dialog-header {
@@ -6188,7 +6223,9 @@ widget DialogDemo {
 
         assert!(code.contains("View::Popover {"), "dialog family emits Popover:\n{}", code);
         assert!(code.contains("auto_lang::ui::view::PopoverPlacement::Modal"), "Modal placement:\n{}", code);
-        assert!(code.contains("open: self.open"), "open bound:\n{}", code);
+        assert!(code.contains("open: self.__dlg_open_1"), "minted open bound:\n{}", code);
+        assert!(code.contains("DialogDemoMsg::__dlg_toggle_1"), "minted toggle dispatch:\n{}", code);
+        assert!(code.contains("DialogDemoMsg::__dlg_close_1"), "minted close dispatch:\n{}", code);
         assert!(
             code.contains("View::button(\"Open Dialog\")"),
             "bare-text trigger renders as button:\n{}", code
@@ -6196,6 +6233,12 @@ widget DialogDemo {
         assert!(
             code.contains("View::button(\"Save changes\")"),
             "dialog-close renders as button:\n{}", code
+        );
+        // PLAN-533 T6: dialog（可关闭）族铸造形态 on_dismiss 折算
+        // __dlg_close_N（ESC/外点/锚点 → update:open(false)）。
+        assert!(
+            code.contains("on_dismiss: Some(DialogDemoMsg::__dlg_close_1)"),
+            "unbound dialog must wire dismiss reflow:\n{}", code
         );
     }
 

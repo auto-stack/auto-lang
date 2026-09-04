@@ -1376,10 +1376,10 @@ impl<'a> AuraViewBuilder<'a> {
             // （tracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog_tracked_ctx。
             // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
             "dialog" | "Dialog" => {
-                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings)
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, true)
             }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
-                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings)
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, false)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
             | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
@@ -2779,10 +2779,10 @@ impl<'a> AuraViewBuilder<'a> {
             // （untracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog。
             // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
             "dialog" | "Dialog" => {
-                self.convert_alert_dialog(props, children, bindings)
+                self.convert_alert_dialog(props, children, bindings, true)
             }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
-                self.convert_alert_dialog(props, children, bindings)
+                self.convert_alert_dialog(props, children, bindings, false)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
             | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
@@ -5464,6 +5464,32 @@ let tabs_inner = View::Row {
         }
     }
 
+    /// PLAN-533 T6: 铸造形态（open 绑 `__dlg_open_N`）→ dismiss 折算消息
+    /// `__dlg_close_N`。非铸造形态（用户显式 open 绑定/无 open prop）返回
+    /// None（自管语义,Phase 1 不接管）。
+    fn minted_dismiss_msg(
+        widget: &str,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> Option<DynamicMessage> {
+        let AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) = props.get("open")? else {
+            return None;
+        };
+        if !matches!(
+            obj.as_ref(),
+            crate::ast::Expr::Ident(b) if b.as_str() == "self" || b.as_str() == "."
+        ) {
+            return None;
+        }
+        field
+            .to_string()
+            .strip_prefix("__dlg_open_")
+            .map(|n| DynamicMessage::Typed {
+                widget_name: widget.to_string(),
+                event_name: format!("__dlg_close_{n}"),
+                args: vec![],
+            })
+    }
+
     fn alert_dialog_split_children(
         children: &[AuraNode],
     ) -> (Option<&AuraNode>, Option<&AuraNode>) {
@@ -5529,6 +5555,7 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
         bindings: &Bindings,
+        dismissable: bool,
     ) -> View<DynamicMessage> {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
@@ -5580,12 +5607,20 @@ let tabs_inner = View::Row {
             ),
             _ => false,
         };
+        // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
+        // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
+        // 形态不接管。
+        let on_dismiss = if dismissable {
+            Self::minted_dismiss_msg(&self.widget_name, props)
+        } else {
+            None
+        };
         View::Popover {
             anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
             content: Box::new(panel),
             placement: PopoverPlacement::Modal,
             open,
-            on_dismiss: None,
+            on_dismiss,
         }
     }
 
@@ -5599,6 +5634,7 @@ let tabs_inner = View::Row {
         id_map: &mut DebugIdMap,
         probe: &mut BuildProbe,
         bindings: &Bindings,
+        dismissable: bool,
     ) -> View<DynamicMessage> {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
@@ -5652,12 +5688,20 @@ let tabs_inner = View::Row {
             ),
             _ => false,
         };
+        // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
+        // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
+        // 形态不接管。
+        let on_dismiss = if dismissable {
+            Self::minted_dismiss_msg(&self.widget_name, props)
+        } else {
+            None
+        };
         View::Popover {
             anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
             content: Box::new(panel),
             placement: PopoverPlacement::Modal,
             open,
-            on_dismiss: None,
+            on_dismiss,
         }
     }
 
