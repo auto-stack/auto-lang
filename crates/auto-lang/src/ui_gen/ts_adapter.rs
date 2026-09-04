@@ -1261,7 +1261,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     if method.as_str() == "format"
                         && matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Date")
                     {
-                        write!(out, "(new Date(((").ok();
+                        write!(out, "new Date(((").ok();
                         if let Some(first) = call.args.args.first() {
                             transpile_expr(&first.get_expr().clone(), ctx, out);
                         } else {
@@ -1288,7 +1288,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         if pattern.contains("ss") {
                             opts.push("second: '2-digit'");
                         }
-                        write!(out, ").toLocaleTimeString([], {{ {} }}))", opts.join(", ")).ok();
+                        write!(out, ".toLocaleTimeString([], {{ {} }})", opts.join(", ")).ok();
                         return;
                     }
                     // Plan 028 F8: platform HTTP protocol — `Http.get(url)` /
@@ -2547,6 +2547,51 @@ mod tests {
         let out = transpile_handler_body(&stmts, &test_ctx());
         assert!(out.contains("document.activeElement;"), "output:\n{}", out);
         assert!(out.contains("window.innerWidth;"), "output:\n{}", out);
+    }
+
+    /// PLAN-059 依赖回归(musk 实测 2026-09-04): `Date.format` 的 ts 发射
+    /// 括号失衡——外层包裹 `(` 在 Date 实参后先行闭合,方法调用结束后又补
+    /// 一个收尾 `)`,产出 `return (new Date(G)).toLocaleTimeString(...));`
+    ///（TS1005 ';' expected,relay_store/forge_helpers ext 镜像实测）。与
+    /// vue.rs expr_to_js 同形:new Date(G).toLocaleTimeString(...)。
+    #[test]
+    fn date_format_ts_emission_is_balanced() {
+        let call = Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident("Date".into())),
+                "format".into(),
+            )),
+            args: Args {
+                args: vec![Arg::Pos(Expr::Call(Call {
+                    name: Box::new(Expr::Dot(
+                        Box::new(Expr::Ident("Date".into())),
+                        "now".into(),
+                    )),
+                    args: Args::new(),
+                    ret: Type::Unknown,
+                    type_args: vec![],
+                    generic_args: Vec::new(),
+                    pos: None,
+                }))],
+            },
+            ret: Type::Unknown,
+            type_args: vec![],
+            generic_args: Vec::new(),
+            pos: None,
+        });
+        let out = transpile_handler_body(
+            &[Stmt::Return(Box::new(call))],
+            &test_ctx(),
+        );
+        assert!(
+            out.contains("new Date(((Date.now()) < 100000000000 ? (Date.now()) * 1000 : (Date.now()))).toLocaleTimeString"),
+            "Date.format must emit balanced new Date(...).toLocaleTimeString(...):\n{}",
+            out
+        );
+        // 括号配对守卫:发射片段内 ( 与 ) 数量相等（此前多一个收尾 `)`）。
+        let opens = out.matches('(').count();
+        let closes = out.matches(')').count();
+        assert_eq!(opens, closes, "paren imbalance in emission:\n{}", out);
     }
 
     /// Block-bodied closures (`nextTick(() => { .state = x })`) must stay
