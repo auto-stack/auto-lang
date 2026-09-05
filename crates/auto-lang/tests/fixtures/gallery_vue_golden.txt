@@ -69,7 +69,7 @@ front/pages/scrollarea.at	10524	991913d26854c617
 front/pages/select.at	18889	32d36631a10a80e2
 front/pages/separator.at	13922	a86fe9aa4c06ac4d
 front/pages/sheet.at	10752	f913591d55b08f5e
-front/pages/sidebar.at	75377	261f6a3b8abdfc35
+front/pages/sidebar.at	76305	3e564c09b8bdbace
 front/pages/sizing.at	25159	8f4dc3a59699363c
 front/pages/skeleton.at	13580	012eae596d412b88
 front/pages/slider.at	9162	c54b62face19fa25
@@ -83,4 +83,4 @@ front/pages/toast.at	38169	05657deebd2a290c
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	18665	2aae5b01cc2fb0e2
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1623983	f5914b3d4704adc6
+TOTAL	1624911	77e1655cf03f41cb

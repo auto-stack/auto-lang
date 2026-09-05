@@ -21,8 +21,8 @@ widget SidebarPage {
 
             h2 "Simple"
             preview-card (id: "sidebar-simple") {
-                sidebar_provider {
-                    div (style: "h-72 w-64 border rounded-md overflow-hidden") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar {
                             sidebar_header {
                                 text "Acme Inc" (style: "font-semibold") {}
@@ -53,8 +53,8 @@ widget SidebarPage {
 
             h2 "Group"
             preview-card (id: "sidebar-group") {
-                sidebar_provider {
-                    div (style: "h-72 w-64 border rounded-md overflow-hidden") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar {
                             sidebar_content {
                                 sidebar_group {
@@ -97,8 +97,8 @@ widget SidebarPage {
 
             h2 "Group Action"
             preview-card (id: "sidebar-group-action") {
-                sidebar_provider {
-                    div (style: "h-72 w-64 border rounded-md overflow-hidden") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar {
                             sidebar_content {
                                 sidebar_group {
@@ -125,8 +125,8 @@ widget SidebarPage {
 
             h2 "Collapsible Group"
             preview-card (id: "sidebar-collapsible-group") {
-                sidebar_provider {
-                    div (style: "h-72 w-64 border rounded-md overflow-hidden") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar {
                             sidebar_content {
                                 collapsible (open: .projOpen) {
@@ -165,8 +165,8 @@ widget SidebarPage {
 
             h2 "Menu Badge and Action"
             preview-card (id: "sidebar-menu-extras") {
-                sidebar_provider {
-                    div (style: "h-72 w-64 border rounded-md overflow-hidden") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar {
                             sidebar_content {
                                 sidebar_menu {
@@ -183,7 +183,7 @@ widget SidebarPage {
                                             text "Messages"
                                         }
                                         sidebar_menu_action (onclick: .MessageMore) {
-                                            icon (name: "ellipsis") {}
+                                            icon (name: "more-horizontal") {}
                                         }
                                     }
                                 }
@@ -195,8 +195,8 @@ widget SidebarPage {
 
             h2 "Menu Sub"
             preview-card (id: "sidebar-menu-sub") {
-                sidebar_provider {
-                    div (style: "h-72 w-64 border rounded-md overflow-hidden") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar {
                             sidebar_content {
                                 sidebar_menu {
@@ -223,8 +223,8 @@ widget SidebarPage {
 
             h2 "Router mode (to:)"
             preview-card (id: "sidebar-router") {
-                sidebar_provider {
-                    div (style: "h-72 w-64 border rounded-md overflow-hidden") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar {
                             sidebar_content {
                                 sidebar_menu {
@@ -255,8 +255,8 @@ widget SidebarPage {
 
             h2 "Trigger and explicit Provider"
             preview-card (id: "sidebar-provider") {
-                sidebar_provider {
-                    div (style: "flex h-72 border rounded-md overflow-hidden") {
+                div (style: "relative flex h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
                         sidebar (collapsible: "icon") {
                             sidebar_content {
                                 sidebar_menu {
