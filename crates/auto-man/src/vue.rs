@@ -139,6 +139,32 @@ const COMPONENT_PATTERNS: &[(&str, &str)] = &[
     ("@/components/ui/auto-complete", "auto-complete"),
 ];
 
+/// PLAN-063 Phase B T12 (KD 061 D27): shadcn 检测语料并入 ext 手写件。
+/// ext_file_set 收集的项目本地 .vue/.ts(use { component X from "..." } 与
+/// .at 端口的 web 目标,如 musk DeleteConfirmDialog.vue)可 import
+/// `@/components/ui/*` 家族——此前语料只含 .at 生成代码,冷检出重生成后
+/// 脚手架缺失(vue-tsc TS2307;058 手工步"regen 后需重装"的根因)。
+fn detect_ext_shadcn_components(
+    root_dir: &Path,
+    ext_files: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    let mut found = HashSet::new();
+    for rel in ext_files {
+        let ext = Path::new(rel).extension().and_then(|e| e.to_str());
+        if ext != Some("vue") && ext != Some("ts") {
+            continue;
+        }
+        if let Ok(body) = fs::read_to_string(root_dir.join(rel)) {
+            for comp in detect_shadcn_components(&body) {
+                found.insert(comp);
+            }
+        }
+    }
+    let mut out: Vec<String> = found.into_iter().collect();
+    out.sort();
+    out
+}
+
 /// Detect which shadcn-vue components are needed from generated Vue code
 fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
     let mut components = HashSet::new();
@@ -420,6 +446,31 @@ fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Res
 }
 
 // Template generators
+
+/// PLAN-063 Phase B T12 (KD 061 D27): 重生成 package.json 时保留既有
+/// 未知 devDependencies(模板只发射固定脚手架组——会话级 `pnpm add -D
+/// vitest` 等用户安装项此前被整写抹除;058 ⑪④ 工具债根因)。解析失败
+/// (手改坏 JSON)防御性回退 generated 原文。
+fn merge_unknown_devdeps(existing: &str, generated: String) -> String {
+    let Ok(old) = serde_json::from_str::<serde_json::Value>(existing) else {
+        return generated;
+    };
+    let Ok(mut new) = serde_json::from_str::<serde_json::Value>(&generated) else {
+        return generated;
+    };
+    let (Some(old_dev), Some(new_dev)) = (
+        old.get("devDependencies").and_then(|v| v.as_object()),
+        new.get_mut("devDependencies").and_then(|v| v.as_object_mut()),
+    ) else {
+        return generated;
+    };
+    for (k, v) in old_dev {
+        if !new_dev.contains_key(k) {
+            new_dev.insert(k.clone(), v.clone());
+        }
+    }
+    serde_json::to_string_pretty(&new).unwrap_or(generated)
+}
 
 fn generate_package_json(
     name: &str,
@@ -2737,7 +2788,6 @@ export default router
             }
         }
 
-        let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
         let has_routes = !all_routes.is_empty();
 
         // Get App.vue code
@@ -2748,6 +2798,11 @@ export default router
 
         // PLAN-037 Phase 5: pull port-file (.at fn module) web targets in.
         expand_at_module_web_imports(root_dir, &mut ext_file_set);
+        // PLAN-063 Phase B T12 (KD 061 D27): ext 手写件语料并入检测。
+        for comp in detect_ext_shadcn_components(root_dir, &ext_file_set) {
+            all_shadcn_components.insert(comp);
+        }
+        let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
             output_dir,
@@ -3334,7 +3389,11 @@ export default router
                 || needs_i18n
                 || package_json_deps_drifted(&existing_pkg, &usage, &self.npm_deps)
             {
-                let new_pkg = generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage);
+                // PLAN-063 Phase B T12 (KD 061 D27): 保留既有未知 devDeps。
+                let new_pkg = merge_unknown_devdeps(
+                    &existing_pkg,
+                    generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage),
+                );
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
                 println!("{}", "  ✓ Updated package.json".bright_green());
@@ -5506,6 +5565,53 @@ onMounted(() => {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-063 Phase B T12 (KD 061 D27): ext 手写 .vue 的 ui 家族导入
+    /// 必须进入 shadcn 检测语料(冷检出脚手架缺失根修)。
+    #[test]
+    fn ext_handwritten_vue_imports_enter_shadcn_corpus() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src/front/components")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/front/components/DeleteConfirmDialog.vue"),
+            "<script setup>
+import { AlertDialogAction } from '@/components/ui/alert-dialog'
+</script>
+",
+        )
+        .unwrap();
+        // 无关 ts 不误报;.vue 内空 trigger 家族命中 alert-dialog。
+        std::fs::write(tmp.path().join("src/front/plain.ts"), "export const x = 1
+").unwrap();
+        let mut set = std::collections::BTreeSet::new();
+        set.insert("src/front/components/DeleteConfirmDialog.vue".to_string());
+        set.insert("src/front/plain.ts".to_string());
+        let found = detect_ext_shadcn_components(tmp.path(), &set);
+        assert!(found.contains(&"alert-dialog".to_string()), "found={:?}", found);
+    }
+
+    /// PLAN-063 Phase B T12 (KD 061 D27): 重生成保留会话级 devDeps
+    /// (vitest 抹除根修);模板自带组不重复、dependencies 不受影响。
+    #[test]
+    fn regen_preserves_unknown_devdeps() {
+        let existing = r#"{ "name": "auto-musk", "devDependencies": { "vite": "^5.0.0", "vitest": "^2.1.9" }, "dependencies": { "vue": ">=3.4.0" } }"#;
+        let generated = r#"{
+  "name": "auto-musk",
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}"#
+        .to_string();
+        let merged = merge_unknown_devdeps(existing, generated);
+        let v: serde_json::Value = serde_json::from_str(&merged).unwrap();
+        let dev = v["devDependencies"].as_object().unwrap();
+        assert_eq!(dev.get("vitest").and_then(|x| x.as_str()), Some("^2.1.9"));
+        assert!(dev.contains_key("@vitejs/plugin-vue"));
+        assert!(dev.contains_key("vite"));
+        // 坏 JSON 防御:回退 generated 原文
+        assert!(merge_unknown_devdeps("{oops", "{\"a\":1}".to_string()).contains("\"a\":1"));
+    }
 
     /// Trailing commas in pac.at values must be stripped BEFORE quote
     /// stripping — the old order (quotes, then comma) left a stray `"` on
