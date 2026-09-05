@@ -209,12 +209,23 @@ pub fn callout_kind_classes(kind: &str) -> (&'static str, &'static str) {
 /// 静态合规）。h4-h6 维持应用级档位（§7.3 未定义）。
 pub fn heading_classes(level: i64) -> &'static str {
     match level.clamp(1, 6) {
-        1 => "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mb-4",
-        2 => "text-[21.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-8 mb-4",
-        3 => "text-[18.9px] font-bold text-indigo-700 dark:text-indigo-400 mb-3",
+        1 => "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
+        2 => "text-[21.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
+        3 => "text-[18.9px] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
         4 => "text-lg font-semibold mb-2",
         5 => "text-base font-semibold mb-1",
         _ => "text-sm font-semibold mb-1",
+    }
+}
+
+/// PLAN-053 T15：heading 额外块距（§7.3 vue margins 19.2/17.6 与
+/// 25.6/14.4 减去两臂共同基础节奏 8px 后的额外量）。编辑壳布局循环按
+/// 此在块前后加空；只读臂经 heading_classes 的 mt-[]/mb-[] 类同值表达
+/// ——两臂逐块 pitch 一致，左右 block 对齐（用户验收面）。
+pub fn heading_extra_margins(level: i64) -> (f32, f32) {
+    match level.clamp(1, 3) {
+        1 => (11.2, 9.6),
+        _ => (17.6, 6.4),
     }
 }
 
@@ -457,7 +468,7 @@ mod tests {
     fn heading_tables_single_sourced() {
         assert_eq!(
             heading_classes(1),
-            "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mb-4"
+            "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]"
         );
         assert_eq!(heading_classes(6), "text-sm font-semibold mb-1");
         assert_eq!(heading_classes(0), heading_classes(1), "clamp 到 1");
