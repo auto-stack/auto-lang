@@ -6,3 +6,26 @@ use directory_index: supported_extension, redact_relative_path, cycle_index
 pub fn image_service_status() str {
     return "Ready"
 }
+
+// Session orchestration is intentionally metadata-only. Every image operation
+// is delegated to the shared auto.image registry; this file never carries
+// decoded bytes or source filesystem paths in model state.
+pub fn open_session(root str) str {
+    return auto.image.open(root)
+}
+
+pub fn navigate_session(session str, delta int) int {
+    return auto.image.navigate(session, delta)
+}
+
+pub fn request_view(session str, index int, viewport_width int, viewport_height int, quality int) str {
+    return auto.image.request(session, index, viewport_width, viewport_height, quality)
+}
+
+pub fn close_session(session str) bool {
+    return auto.image.close(session)
+}
+
+pub fn image_stats(session str) str {
+    return auto.image.stats(session)
+}

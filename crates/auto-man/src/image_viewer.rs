@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 
@@ -37,6 +39,141 @@ pub struct ViewRequest {
     pub viewport_width: u32,
     pub viewport_height: u32,
     pub quality: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewTicket {
+    pub session_id: String,
+    pub entry_id: String,
+    pub generation: u64,
+    pub revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ImageViewerStats {
+    pub open_sessions: usize,
+    pub requests: u64,
+    pub settled: u64,
+    pub stale_dropped: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImageViewerSession {
+    pub id: String,
+    pub snapshot: ViewerSnapshot,
+    pub generation: u64,
+    pub request_revision: u64,
+    pub accepted_revision: u64,
+}
+
+impl ImageViewerSession {
+    pub fn selected_entry(&self) -> Option<&ImageEntry> {
+        self.snapshot.entries.get(self.snapshot.selected)
+    }
+
+    pub fn keep_indices(&self) -> Vec<usize> {
+        let len = self.snapshot.entries.len();
+        let Some(current) = cycle_index(len, self.snapshot.selected, 0) else {
+            return Vec::new();
+        };
+        let mut keep = vec![current];
+        for delta in [-1, 1] {
+            if let Some(index) = cycle_index(len, current, delta) {
+                if !keep.contains(&index) {
+                    keep.push(index);
+                }
+            }
+        }
+        keep
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ImageViewerService {
+    next_session: u64,
+    sessions: HashMap<String, ImageViewerSession>,
+    stats: ImageViewerStats,
+}
+
+impl ImageViewerService {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn open(&mut self, root: impl AsRef<Path>) -> io::Result<String> {
+        let snapshot = index_directory(root)?;
+        self.next_session = self.next_session.saturating_add(1);
+        let id = format!("session-{}", self.next_session);
+        self.sessions.insert(
+            id.clone(),
+            ImageViewerSession {
+                id: id.clone(),
+                generation: snapshot.generation,
+                request_revision: 0,
+                accepted_revision: 0,
+                snapshot,
+            },
+        );
+        self.stats.open_sessions = self.sessions.len();
+        Ok(id)
+    }
+
+    pub fn session(&self, id: &str) -> Option<&ImageViewerSession> {
+        self.sessions.get(id)
+    }
+
+    pub fn navigate(&mut self, id: &str, delta: isize) -> Option<&ImageEntry> {
+        let session = self.sessions.get_mut(id)?;
+        let next = cycle_index(session.snapshot.entries.len(), session.snapshot.selected, delta)?;
+        session.snapshot.selected = next;
+        session.generation = session.generation.saturating_add(1);
+        session.snapshot.generation = session.generation;
+        session.selected_entry()
+    }
+
+    pub fn request_view(
+        &mut self,
+        id: &str,
+        viewport_width: u32,
+        viewport_height: u32,
+        quality: u8,
+    ) -> Option<ViewTicket> {
+        let session = self.sessions.get_mut(id)?;
+        let entry = session.selected_entry()?.id.clone();
+        session.request_revision = session.request_revision.saturating_add(1);
+        self.stats.requests = self.stats.requests.saturating_add(1);
+        Some(ViewTicket {
+            session_id: id.to_string(),
+            entry_id: entry,
+            generation: session.generation,
+            revision: session.request_revision,
+        })
+    }
+
+    pub fn accept_settled(&mut self, id: &str, revision: u64, elapsed: Duration) -> bool {
+        let Some(session) = self.sessions.get_mut(id) else {
+            return false;
+        };
+        if revision != session.request_revision || elapsed < Duration::from_millis(80) {
+            self.stats.stale_dropped = self.stats.stale_dropped.saturating_add(1);
+            return false;
+        }
+        session.accepted_revision = revision;
+        self.stats.settled = self.stats.settled.saturating_add(1);
+        true
+    }
+
+    pub fn close(&mut self, id: &str) -> bool {
+        let removed = self.sessions.remove(id).is_some();
+        self.stats.open_sessions = self.sessions.len();
+        removed
+    }
+
+    pub fn stats(&self) -> ImageViewerStats {
+        let mut stats = self.stats.clone();
+        stats.open_sessions = self.sessions.len();
+        stats
+    }
 }
 
 pub fn canonical_root(root: impl AsRef<Path>) -> io::Result<PathBuf> {
@@ -178,5 +315,27 @@ mod tests {
         let file = dir.path().join("one.png");
         fs::write(&file, b"x").unwrap();
         assert_eq!(canonical_root(&file).unwrap_err().kind(), io::ErrorKind::NotADirectory);
+    }
+
+    #[test]
+    fn image_viewer_service_is_current_first_and_revision_gated() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["1.png", "2.png", "3.png"] {
+            fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        let mut service = ImageViewerService::new();
+        let session = service.open(dir.path()).unwrap();
+        assert_eq!(service.session(&session).unwrap().keep_indices(), vec![0, 2, 1]);
+
+        service.navigate(&session, 1).unwrap();
+        assert_eq!(service.session(&session).unwrap().keep_indices(), vec![1, 0, 2]);
+        let first = service.request_view(&session, 800, 600, 90).unwrap();
+        let second = service.request_view(&session, 800, 600, 90).unwrap();
+        assert!(!service.accept_settled(&session, first.revision, Duration::from_millis(80)));
+        assert!(!service.accept_settled(&session, second.revision, Duration::from_millis(79)));
+        assert!(service.accept_settled(&session, second.revision, Duration::from_millis(80)));
+        assert_eq!(service.stats().settled, 1);
+        assert!(service.close(&session));
+        assert_eq!(service.stats().open_sessions, 0);
     }
 }
