@@ -60,6 +60,9 @@ pub mod rust_ui;
 // Phase 9: API code generation (Plan 130)
 pub mod api_gen;
 
+// Plan 547: deterministic image-viewer directory/index primitives.
+pub mod image_viewer;
+
 // Phase 10: Tauri backend generator (Plan 151)
 pub mod tauri_backend;
 
@@ -103,6 +106,8 @@ pub use pac::*;
 
 // Re-exports (Phase 5: Vue)
 pub use vue::*;
+
+pub use image_viewer::*;
 
 // Re-exports (Phase 6: Tauri)
 pub use tauri::*;

@@ -1,0 +1,20 @@
+// Directory indexing seam. Filesystem work is delegated to the host helper;
+// this module documents the metadata-only Auto contract.
+pub fn supported_extension(ext str) bool {
+    return ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp"
+}
+
+pub fn redact_relative_path(path str) str {
+    return path
+}
+
+pub fn cycle_index(length int, current int, delta int) int {
+    if length <= 0 {
+        return -1
+    }
+    var next int = (current + delta) % length
+    if next < 0 {
+        next = next + length
+    }
+    return next
+}

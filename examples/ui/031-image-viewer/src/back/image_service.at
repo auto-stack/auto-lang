@@ -1,5 +1,7 @@
 // Image service seam for 031-image-viewer (Plan 547 Task 29).
 // Directory/session/cache behavior is implemented in Tasks 30–32.
+use types: ImageEntry, ImageAsset, ViewerSnapshot, ViewRequest
+use directory_index: supported_extension, redact_relative_path, cycle_index
 
 pub fn image_service_status() str {
     return "Ready"

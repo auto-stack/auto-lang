@@ -1,0 +1,182 @@
+//! Deterministic directory/index primitives for Plan 547's image viewer.
+
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+const SUPPORTED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageEntry {
+    pub id: String,
+    pub name: String,
+    pub relative_path: String,
+    pub extension: String,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageAsset {
+    pub entry: ImageEntry,
+    pub revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewerSnapshot {
+    pub root: String,
+    pub entries: Vec<ImageEntry>,
+    pub selected: usize,
+    pub generation: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewRequest {
+    pub index: usize,
+    pub viewport_width: u32,
+    pub viewport_height: u32,
+    pub quality: u8,
+}
+
+pub fn canonical_root(root: impl AsRef<Path>) -> io::Result<PathBuf> {
+    let canonical = fs::canonicalize(root.as_ref())?;
+    if !canonical.is_dir() {
+        return Err(io::Error::new(io::ErrorKind::NotADirectory, "image viewer root is not a directory"));
+    }
+    Ok(canonical)
+}
+
+pub fn is_supported_format(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| SUPPORTED_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NaturalPart {
+    Text(String),
+    Number(u64),
+}
+
+impl Ord for NaturalPart {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::Number(a), Self::Number(b)) => a.cmp(b),
+            (Self::Text(a), Self::Text(b)) => a.cmp(b),
+            (Self::Number(_), Self::Text(_)) => Ordering::Less,
+            (Self::Text(_), Self::Number(_)) => Ordering::Greater,
+        }
+    }
+}
+
+impl PartialOrd for NaturalPart {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+pub fn natural_sort_key(name: &str) -> Vec<NaturalPart> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut numeric = None;
+    for ch in name.chars() {
+        let is_digit = ch.is_ascii_digit();
+        if numeric != Some(is_digit) && !current.is_empty() {
+            parts.push(if numeric == Some(true) {
+                NaturalPart::Number(current.parse::<u64>().unwrap_or(u64::MAX))
+            } else {
+                NaturalPart::Text(current.to_ascii_lowercase())
+            });
+            current.clear();
+        }
+        numeric = Some(is_digit);
+        current.push(ch);
+    }
+    if !current.is_empty() {
+        parts.push(if numeric == Some(true) {
+            NaturalPart::Number(current.parse::<u64>().unwrap_or(u64::MAX))
+        } else {
+            NaturalPart::Text(current.to_ascii_lowercase())
+        });
+    }
+    parts
+}
+
+fn collect_files(root: &Path, dir: &Path, out: &mut Vec<(PathBuf, fs::Metadata)>) -> io::Result<()> {
+    for item in fs::read_dir(dir)? {
+        let item = item?;
+        let path = item.path();
+        let metadata = item.metadata()?;
+        if metadata.is_dir() {
+            collect_files(root, &path, out)?;
+        } else if metadata.is_file() && is_supported_format(&path) && path.strip_prefix(root).is_ok() {
+            out.push((path, metadata));
+        }
+    }
+    Ok(())
+}
+
+pub fn index_directory(root: impl AsRef<Path>) -> io::Result<ViewerSnapshot> {
+    let canonical = canonical_root(root)?;
+    let mut files = Vec::new();
+    collect_files(&canonical, &canonical, &mut files)?;
+    files.sort_by(|(a, _), (b, _)| {
+        let a_rel = a.strip_prefix(&canonical).unwrap().to_string_lossy();
+        let b_rel = b.strip_prefix(&canonical).unwrap().to_string_lossy();
+        natural_sort_key(&a_rel).cmp(&natural_sort_key(&b_rel)).then_with(|| a_rel.cmp(&b_rel))
+    });
+    let entries = files.into_iter().map(|(path, metadata)| {
+        let relative = path.strip_prefix(&canonical).unwrap().to_string_lossy().replace('\\', "/");
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let id = blake3::hash(relative.as_bytes()).to_hex().to_string();
+        ImageEntry { id, name, relative_path: relative, extension, bytes: metadata.len() }
+    }).collect();
+    Ok(ViewerSnapshot { root: redact_path(&canonical, &canonical), entries, selected: 0, generation: 1 })
+}
+
+pub fn redact_path(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| "<outside-root>".to_string())
+}
+
+pub fn cycle_index(len: usize, current: usize, delta: isize) -> Option<usize> {
+    if len == 0 { None } else { Some((current as isize + delta).rem_euclid(len as isize) as usize) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn image_viewer_directory_index_filters_naturally_and_redacts_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["image10.JPG", "image2.png", "image01.webp", "notes.txt"] {
+            let mut file = fs::File::create(dir.path().join(name)).unwrap();
+            writeln!(file, "fixture").unwrap();
+        }
+        let nested = dir.path().join("nested");
+        fs::create_dir(&nested).unwrap();
+        fs::write(nested.join("image3.jpeg"), b"nested").unwrap();
+        let snapshot = index_directory(dir.path()).unwrap();
+        let names: Vec<_> = snapshot.entries.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(names, ["image01.webp", "image2.png", "image10.JPG", "image3.jpeg"]);
+        assert!(snapshot.entries.iter().all(|entry| !entry.relative_path.contains(':')));
+        assert!(snapshot.entries.iter().all(|entry| !entry.relative_path.contains('\\')));
+        assert_eq!(snapshot.root, "");
+        assert_eq!(cycle_index(names.len(), 0, -1), Some(3));
+        assert_eq!(cycle_index(names.len(), 3, 1), Some(0));
+    }
+
+    #[test]
+    fn image_viewer_directory_rejects_non_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("one.png");
+        fs::write(&file, b"x").unwrap();
+        assert_eq!(canonical_root(&file).unwrap_err().kind(), io::ErrorKind::NotADirectory);
+    }
+}
