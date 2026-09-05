@@ -5792,9 +5792,13 @@ impl AutoVM {
                         task.ram.push_f32(auto_val::decode_f32(a_bits) + auto_val::decode_f32(b_bits));
                     } else if auto_val::is_string(a_bits) || auto_val::is_string(b_bits) {
                         // String concatenation: decode both as strings, concatenate, push new string
-                        // Plan 419 Phase 2: 操作数 stake 随消费死亡。
-                        self.rc_release(a_bits);
-                        self.rc_release(b_bits);
+                        // Plan 567 T01（P539-D1 双症状收口）: 先读后放——对齐
+                        // STR_CAT 单次释放纪律。原实现有两处病灶：①release 在读
+                        // 之前，左结合链的中间结果槽被 FREE+tombstone 后
+                        // strings.get 归空（"got d" 病灶，池日志实证：retain"ab"
+                        // 0→1 → release 1→0 → FREE → 读空 → intern"cd"）；
+                        // ②add_string 前另有第二对 release 对同一操作数重复扣减，
+                        // rc 从 0 回绕 u32::MAX = P053-8 freelist 幻影条目。
                         let a_str = if auto_val::is_string(a_bits) {
                             let idx = auto_val::decode_string(a_bits) as usize;
                             let strings = self.strings.read().unwrap();
@@ -5809,10 +5813,11 @@ impl AutoVM {
                         } else {
                             auto_val::decode_i32(b_bits).to_string().into_bytes()
                         };
-                        let mut combined = a_str;
-                        combined.extend_from_slice(&b_str);
+                        // Plan 419 Phase 2: 操作数 stake 随消费死亡（读完再放）。
                         self.rc_release(a_bits);
                         self.rc_release(b_bits);
+                        let mut combined = a_str;
+                        combined.extend_from_slice(&b_str);
                         // Plan 419 Phase 2: 同 STR_CAT(原为裸 push,dedup 漂移源)。
                         let new_idx = self.add_string(combined);
                         self.rc_push_str_idx(task, new_idx as usize);
@@ -9896,5 +9901,62 @@ mod tests_null_guards {
         let idx = auto_val::decode_string(nv) as usize;
         let rendered = vm.strings.read().unwrap().get(idx).cloned().unwrap();
         assert_eq!(rendered, b"None".to_vec());
+    }
+}
+
+mod tests_add_concat_rc {
+    use super::*;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn pop_str(vm: &AutoVM, task: &mut AutoTask) -> String {
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "expected string on stack");
+        let idx = auto_val::decode_string(nv) as usize;
+        String::from_utf8(vm.strings.read().unwrap().get(idx).cloned().unwrap_or_default()).unwrap()
+    }
+
+    /// Plan 567 T02（P539-D1）: rc=1 操作数 ADD 拼接——先读后放纪律回归。
+    /// 病灶形态：release 在读之前 → 中间结果槽 FREE+tombstone 后读归空
+    /// （"got d"）；add_string 前的旧第二对 release → rc 下溢回绕 u32::MAX
+    /// （P053-8 幻影 freelist 条目）。
+    #[test]
+    fn test_add_string_concat_rc1_operands() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        let a = vm.add_string(b"a".to_vec());
+        let b = vm.add_string(b"b".to_vec());
+        vm.rc_push_str_idx(&mut task, a);
+        vm.rc_push_str_idx(&mut task, b);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(pop_str(&vm, &mut task), "ab");
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0, "no double release (rc underflow)");
+        assert_eq!(h.phantom_drops, 0, "no phantom freelist entry");
+    }
+
+    /// 左结合链的中间结果必须可读：((a+b)+c) == "abc"——修复前第二跳
+    /// 读到已释放的 "ab" 槽（tombstone）归空串，得 "c"（py_list
+    /// test_sorted_getitem "got d" 的引擎级最小复现）。
+    #[test]
+    fn test_add_string_concat_chain_intermediate_survives() {
+        let vm = vm_with(vec![OpCode::ADD as u8, OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        let a = vm.add_string(b"a".to_vec());
+        let b = vm.add_string(b"b".to_vec());
+        let c = vm.add_string(b"c".to_vec());
+        vm.rc_push_str_idx(&mut task, a);
+        vm.rc_push_str_idx(&mut task, b);
+        vm.run_one_instruction(&mut task).unwrap();
+        vm.rc_push_str_idx(&mut task, c);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(pop_str(&vm, &mut task), "abc");
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0);
+        assert_eq!(h.phantom_drops, 0);
     }
 }
