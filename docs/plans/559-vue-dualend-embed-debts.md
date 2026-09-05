@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 2
+current_step: 3
 total_steps: 9
 ---
 
@@ -175,7 +175,16 @@ P551-D1..D5，2026-09-05）
   全量门只在全量门跑）。
 - T3 W2：vue 轨 lib/api 粘合层生成（crates/auto-man/src/vue.rs 或
   auto-lang codegen 相应环节）+ os-config gen 树再生成 →
-  `auto build` tsc+vite 绿。
+  `auto build` tsc+vite 绿。[✅ 已完成] 四件上收+粘合安装：a)
+  $event.target 收窄（vue_event_param 单点）；b) store 跨 store 限定
+  调用 facade 化（sibling_stores+store_bare_heads）；c) 项目供给 TS
+  粘合安装（api_gen install_project_api_glue：抽取零端点时
+  src/back/api.ts→gen lib/api.ts+dist）+use back.api 排除出 use-fn
+  拉取（TS2440/TS2304 根修）；os-config 侧 api.ts 孪生落位
+  auto/src/back/api.ts（+5 fn 移植/types 内联/pickModule 补齐）+
+  regen.sh 镜像行。实测：os-config `auto build` tsc+vite 全绿、host
+  `npm run build` 绿、部署树补齐 DesktopPage/WallpaperPicker/
+  useDesktopCfgStore。
 - T4 W3：generate_desktop_host 守卫放开（api-client 类）+ 粘合层
   注入 + extra roots（crates/auto-man/src/vue.rs）→ desktop-host
   嵌入 os-config 实机（Playwright）。
