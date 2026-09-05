@@ -497,6 +497,49 @@ pub type CG {
     }
 }
 
+    // P532 W2 根修⑥f:var 语句跨层槽复用——镜像宿主 Store 路径
+    // (codegen.rs 2197-2218:StoreKind::Var 按名全存活作用域查找,命中
+    // 即复用既有槽;let/const 才开新槽;aavm 语法面 lib 源全为 var,统一
+    // 按 var 语义)。原版同名无条件新槽——tokenize 注释臂 q/ctext/scanning
+    // 跨臂重声明实证 +4(宿主 q=9/scanning=10 复用,aavm q=13/scanning=15
+    // 新槽)。查找仅扫存活层(0..depth;表只增不减,死层不可见=宿主弹栈
+    // 语义)。注意:_is_target/参数/for 临时走 add_var(恒新槽,镜像宿主
+    // is-target/params/Iter::Named 的裸 add_var),不走本路径。
+    fn add_var_reuse(name str, arr int, ty str) int {
+    var hit = -1
+    var si = 0
+    while si < self.depth {
+        var sc = self.scopes.get(si)
+        var vi = 0
+        while vi < sc.len() {
+            if sc.get(vi).name == name {
+                hit = sc.get(vi).idx
+            }
+            vi = vi + 1
+        }
+        si = si + 1
+    }
+    if hit >= 0 {
+        // 复用既有槽(var 语义):当前层登记 name→hit 供后续解析
+        var sc = self.scopes.get(self.depth - 1)
+        var replaced = false
+        var ri = 0
+        while ri < sc.len() {
+            if sc.get(ri).name == name {
+                sc.set(ri, CGVar(name, hit, arr, ty))
+                replaced = true
+            }
+            ri = ri + 1
+        }
+        if !replaced {
+            sc.push(CGVar(name, hit, arr, ty))
+        }
+        self.scopes.set(self.depth - 1, sc)
+        return hit
+    }
+    return self.add_var(name, arr, ty)
+}
+
     fn add_var(name str, arr int, ty str) int {
     var next = self.max_idx + 1
     self.max_idx = next
@@ -1936,6 +1979,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
                         } else {
                             // 链式后续跳(接收者已是表达式,宿主 untyped
                             // fallback):get.generic.field field=0 + 3 幽灵 nop
+                            // (P532 W2 ⑨回退:typed→direct 镜像实测与宿主在
+                            // 语料形状上分歧——宿主类型判定面与 aavm recv_ty
+                            // 并不一致,直接化需先对齐类型推断,挂账)
                             c.emit(OpCode.GetGenericField, "field=0", 0)
                             c.emit(OpCode.Nop, "", 0)
                             c.emit(OpCode.Nop, "", 0)
@@ -2845,7 +2891,8 @@ fn cg_stmt(mut c CG, mut p P) {
                 }
             }
         }
-        var idx = c.add_var(name, is_arr, vty)
+        // P532 W2 根修⑥f:var 语句走跨层复用分配
+        var idx = c.add_var_reuse(name, is_arr, vty)
         c.emit_store(idx)
         }
         TokenKind.Return -> {
@@ -3236,12 +3283,18 @@ fn cg_while(mut c CG, mut p P) {
     // for 同构(体内变量每迭代释放,cg_pop_scope depth>2 发释放组)
     c.push_scope()
     c.loop_enter(top)
+    // P532 W2 根修⑥d:体包 Stmt::Block 作用域——宿主 while 脱糖为
+    // Stmt::For(Iter::Cond)(parser.rs 1227-1255),体经 Stmt::Block
+    // 编译(codegen.rs 3366;For 自身 push 于 3344)→ 双层结构;原版
+    // 单层,体内变量存活层级与宿主差一级
+    c.push_scope()
     cg_body_inline(c, p)
-    // 宿主布局:体 → 体内变量释放组 → 回跳;break 越过释放组直达 end
     c.pop_scope()
+    // 宿主布局:体 → 体内变量释放组 → 回跳;break 越过释放组直达 end
     c.emit(OpCode.Jmp, "", top)
     var end = c.ins.len()
     c.ins.get(jz).n = end
+    c.pop_scope()
     c.loop_exit(end)
 }
 
