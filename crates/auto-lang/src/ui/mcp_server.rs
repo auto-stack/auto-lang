@@ -955,6 +955,10 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                     "arg": {
                         "type": "string",
                         "description": "Optional single string argument for the handler"
+                    },
+                    "widget": {
+                        "type": "string",
+                        "description": "Plan 559 W7: optional sub-widget name for (app, widget) targeting — dispatches into that DynamicComponent's handler context (e.g. widget:\"DesktopPage\" handler:\"Nav\" arg:\"appearance\"; widget:\"WallpaperPicker\" handler:\"Pick\" arg:\"<image path>\")"
                     }
                 }
             },
@@ -1889,6 +1893,11 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                 return error_result("Missing required parameter: handler (e.g. \"OpenSettingsPanel\")");
             };
             let arg = args.get("arg").and_then(|v| v.as_str()).map(str::to_string);
+            // Plan 559 W7: optional (app, widget) sub-component targeting.
+            let widget = args
+                .get("widget")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
             let app_static: &'static str = match app {
                 "shell" => "shell",
                 "settings" => "settings",
@@ -1904,6 +1913,7 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                         app: app_static,
                         handler: handler.to_string(),
                         arg,
+                        widget,
                     },
                 );
                 text_result(format!("queued {app_static} handler: {handler}"))

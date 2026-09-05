@@ -669,6 +669,30 @@ impl DynamicComponent {
         &mut self.bridge
     }
 
+    /// Plan 559 W7: dispatch a handler into a named sub-widget's handler
+    /// context — the acceptance channel's (app, widget) targeting. Uses the
+    /// namespaced `call_handler_for` pipeline (same as onclick). Plan 320
+    /// single-VM unified state: `ensure_child_state` keeps all child state
+    /// in the ROOT state object, so the dispatch targets the root state id
+    /// unless the bridge tracks a dedicated child object (older multi-state
+    /// shape); instance props (module_id/field/dir…) are re-seeded into the
+    /// unified state on every render, so the mounted instance's context is
+    /// what the handler reads.
+    pub fn call_widget_handler(
+        &mut self,
+        widget: &str,
+        handler: &str,
+        args: &[auto_val::Value],
+    ) -> Result<(), String> {
+        let sid = self
+            .bridge
+            .get_child_state_id(widget)
+            .unwrap_or_else(|| self.bridge.state_obj_id());
+        self.bridge
+            .call_handler_for(widget, handler, sid, args)
+            .map_err(|e| e.to_string())
+    }
+
     /// Get the tick interval in ms (if set).
     pub fn tick_interval(&self) -> Option<u32> {
         self.tick_interval
