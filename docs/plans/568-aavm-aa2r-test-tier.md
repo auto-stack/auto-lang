@@ -21,16 +21,25 @@ total_steps: 8
 ## 变更摘要
 
 AAVM 自举（auto/lib/*.at，~504KB Auto 版编译器）与 AA2R（a2r.at 发射对齐）
-相关测试目前挂在 `test-vm-files` feature 下，随 `cargo tv` 运行。多个 agent
-改完编译器后反射性调用 `cargo tv`，每次都被这批三重解释/现场 cargo build
-的"锦上添花"级测试拖住（本机实测 21 测 Σ单测 ≈1163s、20 路并行墙钟 4m24s、
-单测峰值内存 800MB~1.2GB——多 agent 并发即资源耗尽）。本 plan 把 AAVM/AA2R
-全系测试**按域**拆到独立 feature `test-aavm` + 独立别名 `cargo taa`：
+相关测试目前挂在 `test-vm-files` feature 下，随 `cargo tv` 运行。**概念纠偏
+（用户裁定，2026-09-05）："改 VM/编译器后的回归测试"与"AAVM 自举展示"不是
+同一概念**——AAVM 目前仅用于展示 VM 能力（秀肌肉），无实用面，平时修改
+VM/编译器**不需要关心 aavm 是否被改坏**（守护面=CI push/PR + 全量档）；
+aavm 测试的触发条件独立：**只有改了 aavm 自己的代码才需要测 aavm，且按
+改动位置缩小作用域，不全量跑**。多个 agent 改完编译器后反射性调用
+`cargo tv`，每次都被这批三重解释/现场 cargo build 的测试拖住（本机实测
+21 测 Σ单测 ≈1163s、20 路并行墙钟 4m24s、单测峰值内存 800MB~1.2GB——
+多 agent 并发即资源耗尽）。本 plan 把 AAVM/AA2R 全系测试**按域**拆到独立
+feature `test-aavm` + 独立别名 `cargo taa`：
 
-- `cargo tv` 回归**纯 .at 语料 golden 档**（vm_file_tests/cookbook/conformance），
-  编译期即不含任何 aavm 代码——agent 再怎么反射性调用也拖不慢系统；
-- `cargo taa` = AAVM/AA2R 专属档（full 配置：带 564 组限流、含 XL、排 T3 塔）；
-- `cargo ta`/`t3` 全量/里程碑档追加 `test-aavm` feature（全量门禁语义不变）；
+- `cargo tv` 回归**纯 .at 语料 golden 档**（vm_file_tests/cookbook/conformance）
+  ——名实相符地对应"改 VM/编译器后的回归"场景，编译期即不含任何 aavm
+  代码，agent 再怎么反射性调用也拖不慢系统；
+- `cargo taa` = AAVM/AA2R 专属档（full 配置：带 564 组限流、含 XL、排 T3
+  塔），**别名不带固定滤串**（同 `cargo t <module>` 习惯用法）：裸
+  `cargo taa` = aavm 全集兜底；`cargo taa aavm2_m5` = 追加滤串缩小作用域，
+  只跑相关闸门（触发条件与作用域映射见 D6）；
+- `cargo ta`/`t3` 追加 `test-aavm` feature（全量门禁语义不变）；
 - CI `vm-files-ci.yml` 的 aavm2 六闸门步骤同步换 feature。
 
 与 Plan 564（重内存分层，按**内存**分级限流）互补：564 治"跑的时候别爆"，
@@ -48,6 +57,9 @@ AAVM 自举（auto/lib/*.at，~504KB Auto 版编译器）与 AA2R（a2r.at 发�
   `test-aavm`；CI aavm2 六闸门步骤换用新 feature 后覆盖不变。
 - G5: 文档口径更新（AGENTS.md 档表 + 改码指引：动 auto/lib / aavm2 →
   `cargo taa`；动编译器 → `cargo tv` 纯语料档即可）。
+- G6: aavm 测试**触发条件与作用域**成文（AGENTS.md）：非 aavm 改动零触发；
+  aavm 改动按 D6 映射缩小作用域（`cargo taa <滤串>`），review/fold 前全量
+  `taa` 兜底；顺带收口全档资源表（测试数/耗时/内存，含 tt/tb/th/ta 补测）。
 
 ## 架构方案
 
@@ -69,14 +81,17 @@ AAVM 自举（auto/lib/*.at，~504KB Auto 版编译器）与 AA2R（a2r.at 发�
               vm_file_tests.rs 从此名实相符=纯 .at 语料 golden 套件
 层4 别名      .cargo/config.toml
               taa = nextest run -p auto-lang --lib --features test-aavm
-                    --config-file .config/nextest-full.toml aavm
-              （full 配置=564 组限流+含 XL+排 T3 塔；positional 滤串
-               "aavm" 子串命中全部目标测——含 repro_242 系经模块路径
-               tests::aavm2_repro_242 命中；无引号解析问题）
+                    --config-file .config/nextest-full.toml
+              （无固定尾滤串，同 cargo t <module> 习惯用法：裸跑=aavm 全集
+               兜底；追加滤串=作用域缩小，如 cargo taa aavm2_m5 只跑 M5；
+               full 配置=564 组限流+含 XL+排 T3 塔）
               ta/t3 feature 列表 + test-aavm；tv 字符串不动（语义自动变轻）
 层5 守护面    .github/workflows/vm-files-ci.yml aavm2 六闸门步骤
               --features test-vm-files → test-aavm（implies 自带）；
               AGENTS.md 档表 + Category B 指引 + Heavy-Mem 节补测法注
+层6 指引层    AGENTS.md 触发条件与作用域映射（D6）+ 全档资源表
+              （测试数/耗时/内存，现状散落 plan 文档与 config 注释，
+               本次一并收口进档表）
 ```
 
 **与 532/564 的叠放约束**：564 已在 aavm 测试文件里接线 heavy_gate 守门行、
@@ -161,53 +176,105 @@ test_aavm2_*`——CI 滤串/564 权重表滤串均 fn 名子串，不受影响�
 
 ```toml
 # Plan 568: AAVM/AA2R 自举档——auto/lib+aavm2/aa2r 全系（implies vm-files；
-# full 配置=564 组限流+含 XL+排 T3 塔）。动 auto/lib 或 aavm2 代码时用本档；
-# cargo tv 已不含 aavm（纯 .at 语料 golden），反射性 tv 不再触发自举重测试。
-taa = "nextest run -p auto-lang --lib --features test-aavm --config-file .config/nextest-full.toml aavm"
+# full 配置=564 组限流+含 XL+排 T3 塔）。仅当改动触及 aavm 代码时使用
+# （触发条件与作用域映射见 AGENTS.md）；cargo tv 已不含 aavm（纯 .at 语料
+# golden），反射性 tv 不再触发自举重测试。裸跑=aavm 全集；追加滤串缩小
+# 作用域（同 cargo t <module> 习惯用法），如 cargo taa aavm2_m5 只跑 M5。
+taa = "nextest run -p auto-lang --lib --features test-aavm --config-file .config/nextest-full.toml"
 ta = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book --config-file .config/nextest-full.toml"
 t3 = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book --config-file .config/nextest-t3.toml"
 # tv/tt/tb/tf/th 不动（tv 语义自动变轻；tf 本就不含 feature 档，复审清单加 taa）
 ```
 
-（头注 usage 块同步补 `taa` 行与 `tv` 语义变化说明。）
+（头注 usage 块同步补 `taa` 行与 `tv` 语义变化说明。设计取舍：别名**不带**
+固定尾滤串——若带 `aavm` 尾串，追加 `aavm2_m5` 会变成两者 OR（nextest 语义）
+反而放大到全集，作用域缩小就废了；裸跑附带日常面 ~46s，相对 aavm 分钟级
+可忽略，换取滤串追加的习惯一致性。）
 
 ### D5: CI 与文档
 
 - vm-files-ci.yml 步骤"aavm2 six gates"：`--features test-vm-files` →
   `--features test-aavm`；文件头注释补 Plan 568 拆档说明。其余步骤不动。
-- AGENTS.md：别名参考表加 `taa` 行、`tv` 行语义改注；Category B 指引补
-  "动 auto/lib / aavm2 / AA2R → `cargo taa`（aavm 专属档）；动编译器 →
-  `cargo tv`（纯语料档，不含 aavm）"；Heavy-Mem Tiering 节补一句
-  "aavm 系复测命令 `-F test-aavm`"。
+- AGENTS.md：
+  - 别名参考表加 `taa` 行、`tv` 行语义改注（"改 VM/编译器后的 .at 语料
+    golden 回归，不含 aavm"）；
+  - Category B 指引补两行："动 auto/lib / aavm2 / AA2R → `cargo taa`
+    （aavm 专属档，按 D6 作用域缩小）；动编译器/VM → `cargo tv`（纯语料
+    档）——aavm 无实用面，非 aavm 改动**不需要**跑 aavm 测试"；
+  - Heavy-Mem Tiering 节补一句 "aavm 系复测命令 `-F test-aavm`"；
+  - **全档资源表收口**：别名表扩为"档位 | 场景 | 测试数 | 耗时 | 内存"
+    （已知数据先行：t=4304/~46s、tf=3441/77.2s、tv 拆档后待实测、tb 69 测
+    ×5-7s；tt/th/ta 耗时 T7 补测后填入；同步修正 `t` 的过时"~3200"口径）。
 - KNOWN-DEBT-AND-RISKS.md：登记覆盖差两条（①tv/t 日常面不再含任何 aavm
   闸门，守护移至 CI push/PR + taa + ta；②m1 lexer parity 离开日常档）。
+
+### D6: aavm 测试触发条件与作用域映射（核心新增，成文入 AGENTS.md）
+
+**触发条件（什么时候才需要测 aavm）**——diff 触及以下路径时才触发，其余
+（VM/编译器/stdlib/examples/ui 等）**零触发**：
+
+```
+auto/lib/*.at            aavm2 主体（Auto 版编译器 + a2r.at）
+test/vm/aavm2/**         aavm2 语料与用例（corpus_m1..m4/corpus_use/corpus_a2r/99_unit…）
+parity/**                aavm2 生成脚本（gen-aavm2-unit.py 等）
+aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
+                         lib.rs 的 aavm2_lib_source/AUTO_LIB_FILES*
+```
+
+改 VM/编译器导致 aavm 破坏的兜底 = CI push/PR（vm-files-ci）+ `ta`/`t3`
+全量档 + fold 前 `taa` 全量，**不进日常/反射性档**。
+
+**作用域映射（改了 aavm 的什么 → 跑哪个闸门）**——管线结构决定：上游共享
+文件级联全链，终段文件与语料可精确缩小。耗时为 2026-09-05 master 实测
+（供选择参考；fold/review 前一律全量 `taa` 兜底）：
+
+| 改动位置 | 跑什么 | 实测耗时 |
+|---|---|---|
+| `corpus_m1/**` | `cargo taa aavm2_m1` | 31s |
+| `corpus_m2/**` | `cargo taa aavm2_m2` | 172s |
+| `corpus_m3/**` | `cargo taa aavm2_m3` | 47s |
+| `corpus_m4/**` | `cargo taa aavm2_m4` | ~315s |
+| `corpus_use/**` | `cargo taa aavm2_m4 aavm2_m5` | ~127s（compile_use 腿按需） |
+| `corpus_a2r/**` | `cargo taa aavm2_a2r` | ~185s |
+| `auto/lib/engine.at`（终段：执行器） | `cargo taa aavm2_m5` | ~350s |
+| `auto/lib/a2r.at`（终段：发射器） | `cargo taa aavm2_a2r aavm_at_mode` + compile 腿 | ~260s |
+| `auto/lib/{token,lexer,parser,typeinfo,codegen}.at`（上游共享） | 全管线级联，直接裸 `cargo taa` | ~10min 量级 |
+
+（闸门粒度=测试目录级：单语料文件的新增/修改由所属闸门整体覆盖，不做
+单文件粒度——闸门本体就是逐文件遍历断言。compile 腿
+`compile_corpus`/`compile_use_corpus` 含现场 cargo build，产物按内容 hash
+缓存，二次运行为秒级。）
 
 ## 测试设计
 
 - 门隔离：`cargo nextest list -p auto-lang --lib --features test-vm-files
   -E 'test(aavm) or test(aa2r)'` 须 0 行；`cargo nextest list -p auto-lang
   --lib`（日常）不含 m1。
-- 档完整性：`cargo nextest list -p auto-lang --lib --features test-aavm aavm`
-  名单 ≥21 测（master 集）且与搬移前 tv 内 aavm 名单一致（模块路径除外）。
-- 运行：`cargo tv` 全绿；`cargo taa` 全绿（墙钟预期 ~4-5 分钟单机）；
+- 档完整性与作用域：裸 `cargo nextest list -p auto-lang --lib --features
+  test-aavm` 名单含 aavm 全集（≥21 测 + 日常面）；`cargo taa aavm2_m5`
+  实跑只出 M5 四测（作用域缩小实证——追加滤串不放大到全集）。
+- 运行：`cargo tv` 全绿；裸 `cargo taa` 全绿（墙钟预期 ~10 分钟量级）；
   `cargo t` 基线不回归（564 Q6 预存红在案，非本 plan 归因）。
 - CI：yaml 解析校验 + 六闸门滤串 `test_aavm2` 对新名单逐一命中。
-- 计时对比：tv 搬移前后墙钟记入本文件（预期 4m24s 级 → ~1.5 分钟级，
-  corpus 档主导）。
+- 计时对比：tv 搬移前后墙钟 + tt/tb/th/ta 补测（全档资源表数据源）记入
+  本文件与 AGENTS.md。
 
 ## 验收标准
 
 - [ ] A1: tv 零 aavm——`nextest list --features test-vm-files -E 'test(aavm)
       or test(aa2r)'` 输出 0 行；`cargo tv` 全绿。
-- [ ] A2: `cargo taa` 全绿，名单与搬移前 tv 内 aavm 集（21 测）一致，
-      nextest full 档组限流生效（`show-config test-groups` 三组非零）。
+- [ ] A2: 裸 `cargo taa` 全绿（名单含 aavm 全集 21 测 + 日常面），nextest
+      full 档组限流生效（`show-config test-groups` 三组非零）。
 - [ ] A3: `cargo t` 日常档 m1 消失（计数 -1），基线无新增红。
 - [ ] A4: `cargo ta` feature 集编译通过且 list 含 aavm 全集（全量门禁不缩水）。
 - [ ] A5: CI vm-files-ci.yml 四步骤 feature/滤串核对无误（yaml 解析过 +
       滤串对名单复核），aavm2 步骤换 test-aavm。
-- [ ] A6: AGENTS.md（档表/Category B/Heavy-Mem 节）与 KNOWN-DEBT 覆盖差
-      两条登记完成。
-- [ ] A7: tv 前后墙钟实测对比记入复审记录区。
+- [ ] A6: AGENTS.md（档表/Category B/Heavy-Mem 节/D6 触发条件与作用域
+      映射/全档资源表）与 KNOWN-DEBT 覆盖差两条登记完成。
+- [ ] A7: tv 前后墙钟实测对比 + tt/tb/th/ta 补测耗时记入复审记录区与
+      AGENTS.md 资源表。
+- [ ] A8: 作用域缩小实证——`cargo taa aavm2_m5` 只运行 M5 闸门测试
+      （不放大到 aavm 全集）。
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
@@ -234,18 +301,22 @@ t3 = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book -
   `cargo nextest list -p auto-lang --lib --features test-aavm aavm` 名单 ≥21。
 - **T5** 别名 + CI + 文档。
   文件: `.cargo/config.toml`、`.github/workflows/vm-files-ci.yml`、
-  `AGENTS.md`。操作: 按 D4/D5。
-  验证: `cargo taa`（真实跑，全绿）；`grep -n taa .cargo/config.toml AGENTS.md`；
-  yaml 解析（python yaml.safe_load）通过。
+  `AGENTS.md`。操作: 按 D4/D5——含 D6 触发条件与作用域映射表成文入
+  AGENTS.md、全档资源表骨架（已知数据先行）。
+  验证: `cargo taa`（裸跑，全绿）；`cargo taa aavm2_m5` 只出 M5 测；
+  `grep -n taa .cargo/config.toml AGENTS.md`；yaml 解析（python
+  yaml.safe_load）通过。
 - **T6** 档验证矩阵。
-  操作: ①`cargo tv` 全绿计时；②`cargo nextest list --features
+  操作: ①`cargo tv` 全绿计时（拆档后）；②`cargo nextest list --features
   test-aavm,test-trans,test-book`（ta 集）含 aavm 全集；③`cargo t` 计数-1、
   无新增红（预存红 Q6 在案基线对照）。
   验证: 三项输出记入本文件证据行。
-- **T7** 覆盖差登记 + 计时对比收口。
-  文件: `docs/plans/KNOWN-DEBT-AND-RISKS.md`、本文件。操作: 按 D5 登记两条
-  覆盖差；tv 前后墙钟对比写入复审记录区。
-  验证: `grep -n "568" docs/plans/KNOWN-DEBT-AND-RISKS.md` 命中。
+- **T7** 资源表补测 + 覆盖差登记收口。
+  文件: `docs/plans/KNOWN-DEBT-AND-RISKS.md`、`AGENTS.md`、本文件。
+  操作: 补测 `cargo tt`/`tb`/`th`/`ta` 墙钟（全档资源表缺口数据）填入
+  AGENTS.md；登记两条覆盖差；tv 前后墙钟对比写入复审记录区。
+  验证: `grep -n "568" docs/plans/KNOWN-DEBT-AND-RISKS.md` 命中；
+  AGENTS.md 资源表无"未测"空洞。
 - **T8** 收口自检（worktree 内零 warning 增量、无 debug 残留、格式
   `cargo fmt --check` 于触达文件），status → execution_done。
 
@@ -253,8 +324,10 @@ t3 = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book -
 
 ## 待澄清事项
 
-- **Q1（档名）**: `taa`（AA=AAVM/AA2R）为默认；备选 `tva`/`tg`。`ta` 已被
-  全量档占用（用户原话"比如 cargo ta"不可行，取最近邻 taa）。
+- **Q1（档名与交互）**: `taa`（AA=AAVM/AA2R）为默认；备选 `tva`/`tg`。
+  `ta` 已被全量档占用（用户原话"比如 cargo ta"不可行，取最近邻 taa）。
+  交互设计已按用户裁定定型（D4/D6）：**无固定尾滤串**——裸跑=全集兜底，
+  追加滤串=作用域缩小（只测改动相关闸门），非 aavm 改动零触发。
 - **Q2（m1 去留）**: 默认随迁（用户口径"所有 AAVM 相关测试"）；代价=日常档
   失去 lexer token 流 parity 早警（31s/次），守护转 CI+taa。若要留日常档，
   T3 中 m1 改挂 `any(feature = "test-aavm", feature = "test-vm-files")`
