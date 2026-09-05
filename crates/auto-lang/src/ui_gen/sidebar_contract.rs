@@ -42,9 +42,10 @@ pub const GROUP_LABEL: &str =
     "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70";
 /// sidebar_group_content。
 pub const GROUP_CONTENT: &str = "w-full text-sm";
-/// sidebar_group_action（去 after:/focus-visible/`[&>svg]`/icon-collapse 串）。
+/// sidebar_group_action（去 after:/focus-visible/`[&>svg]`/icon-collapse 串；
+/// `aspect-square w-5` 的 VM 等价为 `w-5 h-5`——aspect 比例类 VM 不解析）。
 pub const GROUP_ACTION: &str =
-    "absolute right-3 top-3.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground";
+    "absolute right-3 top-3.5 flex w-5 h-5 items-center justify-center rounded-md p-0 text-sidebar-foreground";
 
 // ── 菜单 ────────────────────────────────────────────────────────────
 
@@ -69,9 +70,10 @@ pub const MENU_BUTTON_ACTIVE: &str =
     "bg-sidebar-accent text-sidebar-accent-foreground font-medium";
 /// disabled（cva `disabled:opacity-50` 的裸类等价；pointer-events 为 web-only）。
 pub const MENU_BUTTON_DISABLED: &str = "opacity-50";
-/// sidebar_menu_action（行内动作槽；去 peer/after/focus/`[&>svg]`/icon-collapse 串）。
+/// sidebar_menu_action（行内动作槽；去 peer/after/focus/`[&>svg]`/icon-collapse 串，
+/// aspect-square → w-5 h-5 同 group_action）。
 pub const MENU_ACTION: &str =
-    "absolute right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground";
+    "absolute right-1 flex w-5 h-5 items-center justify-center rounded-md p-0 text-sidebar-foreground";
 /// sidebar_menu_badge（去 peer/icon-collapse/tabular-nums/select-none/pointer-events）。
 pub const MENU_BADGE: &str =
     "flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs font-medium text-sidebar-foreground";
@@ -86,7 +88,7 @@ pub const MENU_SUB_BUTTON_SIZE_SM: &str = "text-xs";
 
 /// VM 专适配 token（web 端由 scaffold 资产的 var/shadow 机制表达，资产里找不到
 /// 对应逐字串——资产锚测试跳过这些常量）。
-const VM_ADAPTED: &[&str] = &["w-64", "rounded-lg", "border", "border-sidebar-border", "bg-background"];
+const VM_ADAPTED: &[&str] = &["w-64", "rounded-lg", "border", "border-sidebar-border", "bg-background", "h-5"];
 
 /// hover:/active 等状态变体前缀在 parity 提取时剥壳（Style::parse 自行分流）。
 const STATE_PREFIXES: &[&str] = &["hover:"];
