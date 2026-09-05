@@ -16,6 +16,8 @@ widget App {
         OneToOne,
         RotateLeft,
         RotateRight,
+        PanLeft,
+        PanRight,
         ToggleFullscreen,
         ImageLoaded,
         ImageFailed,
@@ -160,6 +162,10 @@ widget App {
     bind {
         "ArrowLeft" -> .RotateLeft
         "ArrowRight" -> .RotateRight
+        "a" -> .PanLeft
+        "A" -> .PanLeft
+        "d" -> .PanRight
+        "D" -> .PanRight
         "+" -> .ZoomIn
         "-" -> .ZoomOut
         "0" -> .FitContain
@@ -227,6 +233,8 @@ widget App {
         .OneToOne -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
         .RotateLeft -> { .rotation = (.rotation + 270) % 360 }
         .RotateRight -> { .rotation = (.rotation + 90) % 360 }
+        .PanLeft -> { .offset_x = .offset_x - 40.0; .fit_mode = "free" }
+        .PanRight -> { .offset_x = .offset_x + 40.0; .fit_mode = "free" }
         .ToggleFullscreen -> { .is_fullscreen = !.is_fullscreen }
         .ImageLoaded -> { .view_state = "ready"; .status = "Ready" }
         // A media ticket can briefly be 503 while the bounded worker publishes
