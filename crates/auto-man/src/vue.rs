@@ -5447,6 +5447,7 @@ import { APPS, REMOTE_APPS, findApp } from './apps-registry'
 import {
   wm,
   launchWindow,
+  focus,
   focusAtPoint,
   setViewport,
   attachClient,
@@ -5487,6 +5488,19 @@ async function launch(id: string): Promise<void> {
 function launchFirst(): void {
   const first = filtered.value[0]
   if (first) void launch(first.id)
+}
+
+// Plan 559 W4: Taskbar ⚙️ — vue-track parity of the vm shell gear (551 T2).
+// Focus the live os-config window when one exists, launch it otherwise.
+function launchSettings(): void {
+  const entry = findApp('os-config')
+  if (!entry) return
+  const existing = wm.wins.find((w) => w.appId === 'os-config')
+  if (existing) {
+    focus(existing.wid)
+    return
+  }
+  void launch('os-config')
 }
 
 function setClient(w: (typeof wm.wins)[number], el: unknown): void {
@@ -5577,7 +5591,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <Taskbar @summon="toggleOverlay" />
+    <Taskbar @summon="toggleOverlay" @settings="launchSettings" />
   </div>
 </template>
 "#
