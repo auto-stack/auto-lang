@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 5
+current_step: 6
 total_steps: 15
 ---
 
@@ -257,10 +257,11 @@ total_steps: 15
       索引 lowering 规则 + 单测（验证：source-to-source 单测 + torch
       探针 `t.sum(dim: 0)`/`w.shape`/`x[i]`）
       [✅ 已完成] py_known.rs 静态分析（items/裸模块/桥与组合子调用/导入项调用流+Ident 直传，分支不敏感保守单遍）+ rule_ab_family；**设计修正**：A1/A2 只对 py-known 接收者改写→py_call（盲改会让 obj_call Auto 臂拒绝 `s.len()`——Auto 方法分派保持糖态，实证钉）；B 族同门。考古减负：A4 item-kwargs 已由 codegen（539 T17）覆盖无需规则；A3 裸名调用流型归 T13。探针：p01 复跑翻绿（sum=15/kw=15——T01 基线病灶根除）+p08（shape/索引）；语料 round-trip 幂等保持（规则激活态）
-- [ ] T06 A/B 族规则（二）：B5 切片族（含步长 `a..b..c` 实现——词法
+- [x] T06 A/B 族规则（二）：B5 切片族（含步长 `a..b..c` 实现——词法
       步长位落地）+ B6 len + A5 闭包自动 py_callable + D7 句柄
       print/f-string GIL str()（验证：单测 + `x[1..3]`/`len(x)`/
       print(tensor) 探针）
+      [✅ 已完成] 步长无需词法工作——`a..b..c` 已解析为嵌套 Range(a, Range(b,c))（实证），规则拆解三参 py_slice；B3 让位 B5（切片位形跳过）；D7 双通道=py_str 472 桥+print shim 运行期 handle 臂（嵌套形态兜底）+s2s 裸名包裹（防 obj_len/py_str 二遍重入收敛钉）；A5 防 py_callable 重入。六单测+端到端（10/3/4/tensor 全文）绿。f-string 面=print shim 已覆盖打印路径，f-string 插值语法本身语言无此形态（`"a" + x` 走 ADD dunder）——D7 以 print/拼接通道收口
 - [ ] T07 C 族（一）：`@` 词法消歧（`@T` 引用不动）+ `a @ b`→
       py_matmul lowering；`a ** b`→Math.pow/`__pow__`（py_ffi dunder
       表 POW 臂）（验证：单测 + `a @ b`/`a ** 2` 探针）
