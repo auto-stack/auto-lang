@@ -11,16 +11,20 @@
 //     段边界空白（gen App.vue:192 实证），类值自带空格后拼接恒有效；
 //   - VM 侧同机制（028 launcher bg-[<color>21] chip 先例）。
 //
-// 其余状态表示（T1 探针）：px 平行字符串列表（B12 规避）；cells/swatches
-// handler 自建行对象（view 读自建 Obj 数组已证可用）；快照 join("|")/split；
-// BFS 邻居判定 `h%16`/`h>=16`/`h<240` 边界式绕开整数除法。
+// 变更纪律（T6 VM 实测修正）：**运行时 str 列表禁止下标写**（`.px[i] = v`
+// 静默不生效——saved 翻转证分支执行、px 不变实证；038 下标写是 Obj 列表
+// +store 形态、028 从不下标写）。一律本地构建新列表 → 整体赋值 `.px = np`
+// （028 `.recent = nr` 同型）。单格改动走 `.SetPx`（256 拷贝），泛洪 BFS
+// 只算 seen 标记再单趟重建。
 //
-// 拖画：v1 点击画（T1c——无按压门控的指针流不合画笔语义）。
+// 其余状态表示（T1 探针）：cells/swatches handler 自建行对象（view 读自建
+// Obj 数组已证可用）；快照 join("|")/split；BFS 邻接判定 `h%16`/`h>=16`/
+// `h<240` 边界式绕开整数除法。拖画：v1 点击画（T1c——无按压门控指针流）。
 
 widget App {
     msg {
-        Init, SetTool(str), SetCur(str), Paint(int), Fill(int), PushUndo,
-        Undo, Redo, Clear, New, Save, Load
+        Init, SetTool(str), SetCur(str), Paint(int), Fill(int), SetPx(int, str),
+        PushUndo, Undo, Redo, ApplySnap(str), Clear, New, Save, Load
     }
 
     model {
@@ -129,11 +133,13 @@ widget App {
 
     on {
         .Init -> {
+            var ip = []
             var k int = 0
             while k < 256 {
-                .px.push(.white)
+                ip.push(.white)
                 k = k + 1
             }
+            .px = ip
             .undo_stack = []
             .redo_stack = []
             .saved = "1"
@@ -207,19 +213,34 @@ widget App {
             }
         }
 
+        // ---- 单格替换（本地构建 → 整体赋值；下标写静默失效，见文件头）----
+        .SetPx(i, v) -> {
+            var np = []
+            var k int = 0
+            while k < 256 {
+                if k == i {
+                    np.push(v)
+                } else {
+                    np.push(.px[k])
+                }
+                k = k + 1
+            }
+            .px = np
+        }
+
         // ---- 落笔分派 ----
         .Paint(i) -> {
             if .tool == "pencil" {
                 if .px[i] != .cur {
                     .PushUndo()
-                    .px[i] = .cur
+                    .SetPx(i, .cur)
                     .RebuildCells()
                 }
             }
             if .tool == "eraser" {
                 if .px[i] != .white {
                     .PushUndo()
-                    .px[i] = .white
+                    .SetPx(i, .white)
                     .RebuildCells()
                 }
             }
@@ -248,15 +269,199 @@ widget App {
             .saved = "0"
         }
 
-        // ---- T4 填充：泛洪 / 撤销重做 / 清空新建 ----
-        .Fill(i) -> { }
-        .Undo -> { }
-        .Redo -> { }
-        .Clear -> { }
-        .New -> { }
+        // ---- 泛洪（迭代 BFS 只算 seen 标记——变更集即 seen；随后单趟
+        // 重建整体赋值。队列 int 列表 + qi 游标，禁递归；邻接用
+        // h%16 / h>=16 / h<240 边界式绕开整数除法）----
+        .Fill(i) -> {
+            var target = .px[i]
+            if target != .cur {
+                .PushUndo()
+                var queue = []
+                queue.push(i)
+                var seen = []
+                var k int = 0
+                while k < 256 {
+                    seen.push(0)
+                    k = k + 1
+                }
+                seen[i] = 1
+                var qi int = 0
+                while qi < queue.len() {
+                    var h int = queue[qi]
+                    qi = qi + 1
+                    if h >= 16 {
+                        var up int = h - 16
+                        if seen[up] == 0 {
+                            if .px[up] == target {
+                                seen[up] = 1
+                                queue.push(up)
+                            }
+                        }
+                    }
+                    if h < 240 {
+                        var dn int = h + 16
+                        if seen[dn] == 0 {
+                            if .px[dn] == target {
+                                seen[dn] = 1
+                                queue.push(dn)
+                            }
+                        }
+                    }
+                    if h % 16 != 0 {
+                        var lf int = h - 1
+                        if seen[lf] == 0 {
+                            if .px[lf] == target {
+                                seen[lf] = 1
+                                queue.push(lf)
+                            }
+                        }
+                    }
+                    if h % 16 != 15 {
+                        var rt int = h + 1
+                        if seen[rt] == 0 {
+                            if .px[rt] == target {
+                                seen[rt] = 1
+                                queue.push(rt)
+                            }
+                        }
+                    }
+                }
+                // 单趟重建：seen 位 → cur，否则原色
+                var np = []
+                var k2 int = 0
+                while k2 < 256 {
+                    if seen[k2] == 1 {
+                        np.push(.cur)
+                    } else {
+                        np.push(.px[k2])
+                    }
+                    k2 = k2 + 1
+                }
+                .px = np
+                .RebuildCells()
+            }
+        }
 
-        // ---- T5 填充：storage 存取 ----
-        .Save -> { }
-        .Load -> { }
+        // ---- 撤销/重做（快照互倒；栈丢底重建）----
+        .Undo -> {
+            if .undo_stack.len() > 0 {
+                .redo_stack.push(.px.join("|"))
+                var last int = .undo_stack.len() - 1
+                var snap = .undo_stack[last]
+                var kept = []
+                var k int = 0
+                while k < last {
+                    kept.push(.undo_stack[k])
+                    k = k + 1
+                }
+                .undo_stack = kept
+                .ApplySnap(snap)
+                .saved = "0"
+            } else {
+                .status = "nothing to undo"
+            }
+        }
+
+        .Redo -> {
+            if .redo_stack.len() > 0 {
+                var last2 int = .redo_stack.len() - 1
+                var snap2 = .redo_stack[last2]
+                var kept2 = []
+                var k2 int = 0
+                while k2 < last2 {
+                    kept2.push(.redo_stack[k2])
+                    k2 = k2 + 1
+                }
+                var cur_snap = .px.join("|")
+                .redo_stack = kept2
+                .ApplySnap(snap2)
+                .undo_stack.push(cur_snap)
+                .saved = "0"
+            } else {
+                .status = "nothing to redo"
+            }
+        }
+
+        // ---- 快照应用（本地构建 → 整体赋值）。已知 VM 债 P553-D1：split
+        // 产物重建的**全同串列表**整体赋值后塌缩为单元素（uniform 快照恢复
+        // px len=1，实测；逐格 SetPx 恢复则触预算截断——两害取整体赋值，
+        // 混合内容快照不受影响；债见 KNOWN-DEBT P553-D1）。----
+        .ApplySnap(s) -> {
+            var parts = s.split("|")
+            if parts.len() == 256 {
+                var np = []
+                var k int = 0
+                while k < 256 {
+                    np.push(parts[k])
+                    k = k + 1
+                }
+                .px = np
+                .RebuildCells()
+            }
+        }
+
+        // ---- 清空（可撤销）/ 新建（清历史）----
+        .Clear -> {
+            var dirty int = 0
+            var k int = 0
+            while k < 256 {
+                if .px[k] != .white {
+                    dirty = 1
+                }
+                k = k + 1
+            }
+            if dirty == 1 {
+                .PushUndo()
+                var np = []
+                var k2 int = 0
+                while k2 < 256 {
+                    np.push(.white)
+                    k2 = k2 + 1
+                }
+                .px = np
+                .RebuildCells()
+                .status = ""
+            }
+        }
+
+        .New -> {
+            var np = []
+            var k int = 0
+            while k < 256 {
+                np.push(.white)
+                k = k + 1
+            }
+            .px = np
+            .undo_stack = []
+            .redo_stack = []
+            .saved = "0"
+            .RebuildCells()
+            .status = "new canvas"
+        }
+
+        // ---- storage 存取（null 防御在 lowering 层：storage.get 产物
+        // ?? '' 对齐 VM "" 缺省——PLAN-553 ts_adapter 修复）----
+        .Save -> {
+            storage.set("paint.canvas.v1", .px.join("|"))
+            .saved = "1"
+            .status = "saved"
+        }
+
+        .Load -> {
+            var snap = storage.get("paint.canvas.v1")
+            if snap != "" {
+                var parts = snap.split("|")
+                if parts.len() == 256 {
+                    .PushUndo()
+                    .ApplySnap(snap)
+                    .saved = "1"
+                    .status = "loaded"
+                } else {
+                    .status = "bad save data"
+                }
+            } else {
+                .status = "no saved canvas"
+            }
+        }
     }
 }

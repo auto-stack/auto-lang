@@ -1956,10 +1956,23 @@ fn try_transpile_builtin_call(
             write!(out, ")").ok();
             true
         }
-        // storage.get(x) → localStorage.getItem(x); storage.set(x, y) → localStorage.setItem(x, y)
+        // storage.get(x) → (localStorage.getItem(x) ?? ''); storage.set(x, y) → localStorage.setItem(x, y)
+        // PLAN-553: getItem 返回 string|null（键缺席为 null）——补 ?? '' 与 VM 侧
+        // storage_host_read 的 "" 缺省对齐（stdlib.rs unwrap_or_default），使 vue 产物
+        // 可对结果安全调用方法（split/len 等；028 头注 TS18047 陷阱收口）。
         "storage" => {
+            if method == "get" {
+                write!(out, "(localStorage.getItem(").ok();
+                for (i, arg) in args.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
+                    }
+                    transpile_expr(&arg.get_expr(), ctx, out);
+                }
+                write!(out, ") ?? '')").ok();
+                return true;
+            }
             let js_method = match method {
-                "get" => "getItem",
                 "set" => "setItem",
                 "remove" => "removeItem",
                 "clear" => "clear",
@@ -2456,6 +2469,44 @@ mod tests {
         });
         let out = transpile_handler_body(&[Stmt::Expr(call)], &test_ctx());
         assert!(out.contains("/^[0-9]$/.test(ch)"), "output:\n{}", out);
+    }
+
+    /// PLAN-553: storage.get 产物裹 `?? ''`（getItem string|null → ""），与
+    /// VM 侧 storage_host_read 的 "" 缺省对齐——vue 侧可对结果安全调用方法。
+    #[test]
+    fn storage_get_emits_null_coalescing() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Str("k".into())));
+        let mut out = Vec::new();
+        assert!(try_transpile_builtin_call(
+            &Expr::Ident("storage".into()),
+            "get",
+            &args,
+            &test_ctx(),
+            &mut out,
+        ));
+        let js = String::from_utf8(out).unwrap();
+        assert!(
+            js.contains("(localStorage.getItem(") && js.contains(") ?? '')"),
+            "output: {js}"
+        );
+        // set 侧不裹（值参数无 null 面）。
+        let mut args2 = Args::new();
+        args2.args.push(Arg::Pos(Expr::Str("k".into())));
+        args2.args.push(Arg::Pos(Expr::Str("v".into())));
+        let mut out2 = Vec::new();
+        assert!(try_transpile_builtin_call(
+            &Expr::Ident("storage".into()),
+            "set",
+            &args2,
+            &test_ctx(),
+            &mut out2,
+        ));
+        let js2 = String::from_utf8(out2).unwrap();
+        assert!(
+            js2.contains("localStorage.setItem(") && !js2.contains("??"),
+            "output: {js2}"
+        );
     }
 
     // -----------------------------------------------------------------------

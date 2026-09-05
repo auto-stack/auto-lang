@@ -29,10 +29,24 @@
 
 ## 双端注记
 
-- 拖画：v1 点击画（T1c 探针——无按压门控的指针流，hover 刷不合画笔语义）。
+- 拖画：v1 点击画（T1c——无按压门控的指针流，hover 刷不合画笔语义）。
 - 格子着色经 style 插值 `bg-[<色>]`（028 chip 同机制，双端同源）。
 - icon：lucide VM 闭集无 `brush`，取 `pencil`（T1b）。
+- **VM 变更纪律（T6 实测）**：运行时 **str 状态列表禁止下标写**（`.px[i]=v`
+  静默不生效——saved 翻转证分支执行、px 不变）；一律本地构建 → 整体赋值
+  （028 `.recent = nr` 同型）。单格 `SetPx` 全量拷贝，泛洪 BFS 只算 seen 再
+  单趟重建。
+- **VM 债 P553-D1**：split 产物重建的**全同串列表**整体赋值后塌缩为单元素
+  （uniform 快照恢复 px len=1；`+""` 新鲜句柄无效；逐格 SetPx 恢复触预算
+  截断）。影响：全同盘的 Redo/Load 恢复（desktop_mcp T6-redo 按债引用式
+  SKIP，013 audit-B12 同型惯例）。混合内容快照不受影响。
+- **MCP harness 经验**：VM app 首帧前日志量大，子进程 stdout 必须 DEVNULL
+  （PIPE 塞满致写阻塞、UI 永不渲染）；重渲染改变 vnode 哈希 id——每次交互
+  组前必须重取快照重发现元素。
 
 ## 测试
 
-- `tests/desktop_mcp.py`：五断言组（染格/泛洪/吸管/undo-redo/存取），vue+vm 双轨。
+- `tests/desktop_mcp.py`：VM 轨八组断言（结构/初始态/染格/橡皮/泛洪/
+  撤销重做/吸管/存取），30 PASS + 1 SKIP（P553-D1）。
+- vue 轨：playwright 冒烟（scratch/p553/ 截图族——手画/泛洪/撤销/存取像素
+  校验）。
