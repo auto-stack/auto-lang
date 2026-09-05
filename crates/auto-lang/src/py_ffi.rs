@@ -2270,7 +2270,16 @@ fn py_auto_marshal_return(
         // Plan 539 W2 (T18): None marshals to the Auto null family (was
         // i32 0). `x != null` guards and py_next exhaustion now agree.
         task.ram.push_nv(auto_val::encode_null());
-    } else if py_val.is_instance_of::<PyTuple>() {
+    } else if py_val.is_instance_of::<PyTuple>()
+        // Plan 567 T03（P560-D6 py_sys 红）: 带属性面的 tuple 走下方 opaque
+        // 句柄分支——namedtuple（`_fields`）与 PyStructSequence
+        // （`n_sequence_fields`，如 sys.version_info——实测无 `_fields`）。
+        // 拍平成 List 后 `py_getattr(vi, "major")` 的 TAG_OBJECT 臂会把
+        // ListData 转回 Python list 而 AttributeError；普通 tuple 维持
+        // 拍平裁定（DIV-PY-TUPLE-1）。
+        && py_val.getattr("_fields").is_err()
+        && py_val.getattr("n_sequence_fields").is_err()
+    {
         // Plan 539 W2 (T18): top-level tuple returns flatten to an Auto
         // List (tuple-as-List mapping; immutability/hashability divergence
         // registered in known-divergences).
@@ -3048,6 +3057,68 @@ mod tests {
                 auto_val::Value::Double(d) => assert_eq!(*d, 2.0),
                 other => panic!("expected Double payload, got {:?}", other),
             }
+        });
+    }
+
+    #[test]
+    fn test_marshal_structseq_namedtuple_opaque_plain_tuple_list() {
+        // Plan 567 T03（P560-D6 py_sys 红）: 带属性面的 tuple 封送 opaque
+        // 句柄——PyStructSequence（sys.version_info，无 `_fields` 有
+        // `n_sequence_fields`）与 namedtuple（`_fields`）；普通 tuple 维持
+        // List 拍平（DIV-PY-TUPLE-1）。句柄形态下 py_getattr(vi,"major")
+        // 才可达（拍平会把 TAG_OBJECT 臂转回 Python list 而 AttributeError）。
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+
+        Python::attach(|py| {
+            // PyStructSequence: sys.version_info
+            let vi = py.import("sys").unwrap().getattr("version_info").unwrap();
+            py_auto_marshal_return(&vi, &mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "structseq should be a heap value");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            assert!(
+                guard.as_any().downcast_ref::<PyObjectHandle>().is_some(),
+                "structseq should marshal to an opaque PyObjectHandle"
+            );
+
+            // namedtuple: collections.namedtuple instance (has _fields)
+            let collections = py.import("collections").unwrap();
+            let p_type = collections
+                .getattr("namedtuple")
+                .unwrap()
+                .call(("P", "x y"), None)
+                .unwrap();
+            let nt = p_type.call((1, 2), None).unwrap();
+            py_auto_marshal_return(&nt, &mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "namedtuple should be a heap value");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            assert!(
+                guard.as_any().downcast_ref::<PyObjectHandle>().is_some(),
+                "namedtuple should marshal to an opaque PyObjectHandle"
+            );
+
+            // plain tuple: flattens to ListData (DIV-PY-TUPLE-1 unchanged)
+            let tup = py.eval(c"(1, 2)", None, None).unwrap();
+            py_auto_marshal_return(&tup, &mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "plain tuple should be a heap value");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let list = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                .expect("plain tuple should flatten to ListData");
+            assert_eq!(list.elems.len(), 2);
         });
     }
 }
