@@ -844,6 +844,16 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -1111,6 +1121,15 @@ fn generate_index_css() -> String {
     --ring: 239 84% 67%;
 
     --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 222.2 47.4% 11.2%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 96.1%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 239 84% 67%;
   }
 
   .dark {
@@ -1141,6 +1160,15 @@ fn generate_index_css() -> String {
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 239 84% 77%;
+
+    --sidebar-background: 222.2 47% 10%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 239 84% 77%;
+    --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-ring: 239 84% 77%;
   }
 }
 
@@ -4738,6 +4766,25 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
             let index_html = generate_index_html(&project.name);
             if let Err(e) = fs::write(&index_html_path, index_html) {
                 println!("  ⚠ index.html refresh skipped: {}", e);
+            }
+        }
+    }
+
+    // Plan 548: tailwind.config.cjs / index.css 同理自愈——它们是确定性模板，
+    // 增量路径不重写，生成器侧新增的主题色（如 sidebar 色阶）与 CSS 变量
+    // 在老项目里会永久缺失。两个文件都不含用户手改入口（样式走 pac.at
+    // `styles:` 注入），每次 run 重写零风险。
+    {
+        let tw_path = project.output_dir.join("tailwind.config.cjs");
+        if tw_path.exists() {
+            if let Err(e) = fs::write(&tw_path, generate_tailwind_config()) {
+                println!("  ⚠ tailwind.config.cjs refresh skipped: {}", e);
+            }
+        }
+        let index_css_path = project.output_dir.join("src/assets/index.css");
+        if index_css_path.exists() {
+            if let Err(e) = fs::write(&index_css_path, generate_index_css()) {
+                println!("  ⚠ index.css refresh skipped: {}", e);
             }
         }
     }

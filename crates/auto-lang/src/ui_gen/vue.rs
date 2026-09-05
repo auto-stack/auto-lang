@@ -220,6 +220,29 @@ fn fold_eq(a: &str, b: &str) -> bool {
     f(a) == f(b)
 }
 
+/// Plan 548 T7: view 树折叠匹配(kebab/underscore/Pascal 同键)查找 tag,
+/// 递归 Element/ForLoop/Conditional/Component/Link 的全部子节点。
+fn view_tree_has_tag(node: &AuraNode, tag: &str) -> bool {
+    match node {
+        AuraNode::Element { tag: t, children, .. } => {
+            fold_eq(t, tag) || children.iter().any(|c| view_tree_has_tag(c, tag))
+        }
+        AuraNode::ForLoop { body, .. } => body.iter().any(|c| view_tree_has_tag(c, tag)),
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            then_body.iter().any(|c| view_tree_has_tag(c, tag))
+                || else_body
+                    .as_deref()
+                    .unwrap_or(&[])
+                    .iter()
+                    .any(|c| view_tree_has_tag(c, tag))
+        }
+        AuraNode::Component { children, .. } | AuraNode::Link { children, .. } => {
+            children.iter().any(|c| view_tree_has_tag(c, tag))
+        }
+        _ => false,
+    }
+}
+
 /// Plan 435 P4:tag 是否为内置(schema 三级折叠解析可命中)。
 /// 内置优先(Plan 408 推广):内置 tag 不参与子组件折叠桥接。
 fn tag_is_builtin(tag: &str) -> bool {
@@ -1686,6 +1709,143 @@ impl VueGenerator {
             html.push_str(&format!("{}<{} {}>\n", ind, tag_name, inline_attrs.join(" ")));
             html.push_str(&content);
             html.push_str(&format!("{}</{}>\n", ind, tag_name));
+        }
+        Ok(html)
+    }
+
+    /// Plan 548 T6: `<sidebar_menu_button>` / `<sidebar_menu_sub_button>` ——
+    /// shadcn SidebarMenuButton/SidebarMenuSubButton + to/active 扩展臂(D2)。
+    ///
+    /// 资产 props 真名(crates/auto-man/assets/shadcn-ui/sidebar/
+    /// SidebarMenuButtonChild.vue / SidebarMenuSubButton.vue 的 defineProps):
+    /// variant/size/isActive/asChild(class 之外);isActive 在模板发 kebab 形
+    /// `:is-active`,asChild 发 `as-child`。
+    ///
+    /// - `to:` → as-child 多态:RouterLink **内嵌**(button 套 a 是非法
+    ///   HTML),静态 `to="..."` / 绑定 `:to="..."`;置位 needs_router。
+    /// - `active` → `:is-active`;`to` 存在且 active 缺省时按 $route.path
+    ///   自动探测(exact 或前缀段匹配)。$route 由 vue-router 全局注入,
+    ///   模板内免 import。
+    /// - variant/size/tooltip/text/class/onclick 与通用 shadcn 臂同规透传。
+    fn generate_sidebar_menu_button_html(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        let comp = if fold_eq(tag, "sidebar_menu_sub_button") {
+            "SidebarMenuSubButton"
+        } else {
+            "SidebarMenuButton"
+        };
+        self.shadcn_components_used.insert(comp.to_string());
+
+        let mut attrs: Vec<String> = Vec::new();
+        // variant / size / tooltip —— 静态或绑定透传(资产 defineProps 真名)。
+        for key in ["variant", "size", "tooltip"] {
+            if let Some(value) = props.get(key) {
+                if let Some(frag) = self.nav_attr_fragment(key, value) {
+                    attrs.push(frag);
+                }
+            }
+        }
+        // active → :is-active;缺省且带 to 时 $route.path 自动探测。
+        let to_value = props.get("to");
+        if let Some(value) = props.get("active") {
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => {
+                    attrs.push(format!(":is-active=\"{}\"", b));
+                }
+                AuraPropValue::Expr(expr) => {
+                    let js =
+                        self.bound_value_or_warn(expr, "sidebar menu button `active`", "false");
+                    attrs.push(format!(":is-active=\"{}\"", js));
+                }
+                _ => {}
+            }
+        } else if let Some(to) = to_value {
+            let detect = match to {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s))
+                | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
+                    let p = Self::escape_js_string(s.as_str());
+                    format!("$route.path === '{0}' || $route.path.startsWith('{0}' + '/')", p)
+                }
+                AuraPropValue::Expr(expr) => {
+                    let js = self.bound_value_or_warn(expr, "sidebar menu button `to`", "''");
+                    format!("$route.path === ({0}) || $route.path.startsWith(({0}) + '/')", js)
+                }
+                _ => String::new(),
+            };
+            if !detect.is_empty() {
+                attrs.push(format!(":is-active=\"{}\"", detect));
+            }
+        }
+        if let Some(click) = self.nav_click_attr(events) {
+            attrs.push(click);
+        }
+        if let Some(cls) = self.nav_user_class_attr(props) {
+            attrs.push(cls);
+        }
+
+        // as-child 多态:to 存在(路由模式必须)或用户显式 as_child: true。
+        let explicit_as_child = props
+            .get("as_child")
+            .map(|v| self.extract_bool_value(v))
+            .unwrap_or(false);
+        let has_to = to_value.is_some();
+        let as_child = has_to || explicit_as_child;
+        if has_to {
+            self.needs_router = true;
+        }
+
+        // 内容:children 优先;否则 text prop 作 slot 文本。as-child 路由
+        // 模式下内容缩进再进一层(RouterLink 内)。
+        let inner_indent = if has_to { indent + 2 } else { indent + 1 };
+        let cind = "  ".repeat(inner_indent);
+        let mut content = String::new();
+        if !children.is_empty() {
+            for child in children {
+                content.push_str(&self.node_to_html(child, inner_indent)?);
+            }
+        } else if let Some(value) = props.get("text") {
+            content.push_str(&format!("{}{}\n", cind, self.prop_to_text_content(value)?));
+        }
+
+        let as_child_str = if as_child { " as-child" } else { "" };
+        let attr_str = if attrs.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", attrs.join(" "))
+        };
+
+        let mut html = String::new();
+        if has_to {
+            // <Comp as-child ...><RouterLink to="...">content</RouterLink></Comp>
+            let to_attr = match to_value {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s)))
+                | Some(AuraPropValue::Expr(crate::ast::Expr::CStr(s))) => {
+                    format!("to=\"{}\"", Self::escape_html_attr(s.as_str()))
+                }
+                Some(value) => self
+                    .nav_attr_fragment("to", value)
+                    .unwrap_or_else(|| "to=\"\"".to_string()),
+                None => unreachable!("has_to checked"),
+            };
+            let ind1 = "  ".repeat(indent + 1);
+            html.push_str(&format!("{}<{}{}{}>\n", ind, comp, as_child_str, attr_str));
+            html.push_str(&format!("{}<RouterLink {}>\n", ind1, to_attr));
+            html.push_str(&content);
+            html.push_str(&format!("{}</RouterLink>\n", ind1));
+            html.push_str(&format!("{}</{}>\n", ind, comp));
+        } else if content.is_empty() {
+            html.push_str(&format!("{}<{}{}{} />\n", ind, comp, as_child_str, attr_str));
+        } else {
+            html.push_str(&format!("{}<{}{}{}>\n", ind, comp, as_child_str, attr_str));
+            html.push_str(&content);
+            html.push_str(&format!("{}</{}>\n", ind, comp));
         }
         Ok(html)
     }
@@ -4431,6 +4591,20 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             template.push_str(&root_html);
         }
 
+        // Plan 548 T7: SidebarProvider 自动包裹 —— SidebarMenuButton/
+        // SidebarRail 等资产注入 useSidebar() context(utils.ts),缺
+        // Provider 祖先会白屏(同 TooltipProvider 教训)。view 树含 sidebar
+        // 且无 sidebar_provider 时模板根自动包一层,并登记 import;用户
+        // 显式写了 sidebar_provider 则不重复包裹。仅 shadcn 模式。
+        if self.is_shadcn()
+            && view_tree_has_tag(root, "sidebar")
+            && !view_tree_has_tag(root, "sidebar_provider")
+        {
+            self.shadcn_components_used.insert("SidebarProvider".to_string());
+            let ind = "  ".repeat(2);
+            template = format!("{ind}<SidebarProvider>\n{template}{ind}</SidebarProvider>\n");
+        }
+
         Ok(template)
     }
 
@@ -5101,6 +5275,15 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // Special handling for category-section element
                 if tag == "category-section" || tag == "category_section" {
                     return self.generate_category_section_html(props, children, indent);
+                }
+
+                // Plan 548 T6: sidebar_menu_button/sidebar_menu_sub_button ——
+                // to/active 扩展臂(as-child 路由多态 + $route 自动探测)。
+                // 仅 shadcn 模式拦截;非 shadcn 走通用路径。
+                if self.is_shadcn()
+                    && (fold_eq(tag, "sidebar_menu_button") || fold_eq(tag, "sidebar_menu_sub_button"))
+                {
+                    return self.generate_sidebar_menu_button_html(tag, props, events, children, indent);
                 }
 
                 // Plan 482: nav 组件族 —— nav-item/nav-group 全量生成；
@@ -23472,6 +23655,142 @@ widget SidebarProbe {
             sfc.contains("<Sidebar") && sfc.contains("class=\"w-64 border-r\""),
             "Sidebar (sidebar family) must forward its static class:\n{sfc}"
         );
+    }
+
+    /// Plan 548 T6: sidebar_menu_button to/active 臂 —— to 触发 as-child
+    /// 多态(RouterLink 内嵌,button 套 a 是非法 HTML),active 映射资产的
+    /// isActive prop(模板 kebab 形 is-active),variant/size 透传。
+    #[test]
+    fn test_sidebar_menu_button_to_active_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarMenuButtonProbe {
+    model { var flag bool = true }
+    view {
+        col {
+            sidebar {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button (to: "/dash", active: .flag, variant: "outline", size: "lg") {
+                            text "Dashboard"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("<SidebarMenuButton as-child"), "as-child 多态:\n{sfc}");
+        assert!(sfc.contains("<RouterLink to=\"/dash\">"), "内嵌 RouterLink:\n{sfc}");
+        assert!(sfc.contains(":is-active=\"flag\""), "active → :is-active:\n{sfc}");
+        assert!(sfc.contains("variant=\"outline\""), "variant 透传:\n{sfc}");
+        assert!(sfc.contains("size=\"lg\""), "size 透传:\n{sfc}");
+        assert!(sfc.contains("Dashboard"), "text slot 内容:\n{sfc}");
+        assert!(
+            sfc.contains("SidebarMenuButton") && sfc.contains("@/components/ui/sidebar"),
+            "sidebar 契约 import:\n{sfc}"
+        );
+        assert!(sfc.contains("useRouter"), "to 置位 needs_router:\n{sfc}");
+    }
+
+    /// Plan 548 T6: to 存在且 active 缺省 → $route.path 自动探测(exact 或
+    /// 前缀段匹配);sidebar_menu_sub_button 同款。
+    #[test]
+    fn test_sidebar_menu_button_route_autodetect_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarAutoActiveProbe {
+    view {
+        col {
+            sidebar {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button (to: "/settings") {
+                            text "Settings"
+                        }
+                        sidebar_menu_sub {
+                            sidebar_menu_sub_item {
+                                sidebar_menu_sub_button (to: "/settings/net") {
+                                    text "Network"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"##);
+        assert!(
+            sfc.contains(":is-active=\"$route.path === '/settings' || $route.path.startsWith('/settings' + '/')\""),
+            "静态 to 自动探测:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("<SidebarMenuSubButton as-child"),
+            "sub_button as-child 多态:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":is-active=\"$route.path === '/settings/net' || $route.path.startsWith('/settings/net' + '/')\""),
+            "sub_button 自动探测:\n{sfc}"
+        );
+    }
+
+    /// Plan 548 T7: 含 sidebar 且无 sidebar_provider → 模板根自动包
+    /// <SidebarProvider>(useSidebar() inject 缺祖先白屏,同 TooltipProvider
+    /// 教训);显式写了 provider 的不重复包裹;非 shadcn 模式不动。
+    #[test]
+    fn test_sidebar_provider_autowrap_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarAutowrapProbe {
+    view {
+        col {
+            sidebar {
+                sidebar_content { text "nav" }
+            }
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("<SidebarProvider>"), "模板根自动包裹:\n{sfc}");
+        assert!(sfc.contains("</SidebarProvider>"), "包裹闭合:\n{sfc}");
+        assert!(
+            sfc2_check_import(&sfc, "SidebarProvider"),
+            "SidebarProvider import 生成:\n{sfc}"
+        );
+
+        let explicit = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarExplicitProbe {
+    view {
+        sidebar_provider {
+            sidebar {
+                sidebar_content { text "nav" }
+            }
+        }
+    }
+}
+"##);
+        assert_eq!(
+            explicit.matches("<SidebarProvider").count(),
+            1,
+            "显式 sidebar_provider 不重复包裹:\n{explicit}"
+        );
+
+        let plain = gen_sfc_from_widget_src(r##"
+widget SidebarPlainProbe {
+    view {
+        col {
+            sidebar { text "nav" }
+        }
+    }
+}
+"##);
+        assert!(!plain.contains("SidebarProvider"), "非 shadcn 模式不包裹:\n{plain}");
+    }
+
+    /// T7 断言辅助:SFC 的 import 段含 sidebar 契约路径且点名组件。
+    fn sfc2_check_import(sfc: &str, component: &str) -> bool {
+        sfc.contains("@/components/ui/sidebar")
+            && sfc.lines().any(|l| l.contains("@/components/ui/sidebar") && l.contains(component))
     }
 
     #[test]
