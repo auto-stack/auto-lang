@@ -88,6 +88,7 @@ pub const MENU_SUB_BUTTON_SIZE_SM: &str = "text-xs";
 
 /// VM 专适配 token（web 端由 scaffold 资产的 var/shadow 机制表达，资产里找不到
 /// 对应逐字串——资产锚测试跳过这些常量）。
+#[cfg(test)]
 const VM_ADAPTED: &[&str] = &["w-64", "rounded-lg", "border", "border-sidebar-border", "bg-background", "h-5"];
 
 /// hover:/active 等状态变体前缀在 parity 提取时剥壳（Style::parse 自行分流）。
@@ -95,6 +96,7 @@ const STATE_PREFIXES: &[&str] = &["hover:"];
 
 /// 每个常量锚定的 scaffold 资产文件（相对 auto-man/assets/shadcn-ui/sidebar/）。
 /// 用于逐 token 防漂移断言。
+#[cfg(test)]
 const ASSET_ANCHORS: &[(&str, &[&str])] = &[
     ("Sidebar.vue", &[SIDEBAR_BASE]),
     ("SidebarHeader.vue", &[HEADER_BASE]),
