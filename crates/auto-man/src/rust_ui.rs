@@ -1681,7 +1681,7 @@ fn to_snake_case(s: &str) -> String {
 /// No `[workspace]` section — this project is a member of the shared workspace
 /// at `examples/rust-workspace/`. Dependencies use `workspace = true` to inherit
 /// from the workspace-level `[workspace.dependencies]`.
-fn generate_cargo_toml(project_name: &str, _project_dir: &Path) -> String {
+pub(crate) fn generate_cargo_toml(project_name: &str, _project_dir: &Path) -> String {
     let snake_name = to_snake_case(project_name);
 
     format!(

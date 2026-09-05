@@ -3190,4 +3190,14 @@ pub fn list_items() []str { return [] }
         }
         assert!(generate_cargo_toml("media-back", false, false).contains("auto-lang.workspace = true"));
     }
+
+    #[test]
+    fn image_stdlib_codegen_uses_shared_runtime_feature() {
+        let rs_api = include_str!("../../../stdlib/auto/image.rs.at");
+        assert!(rs_api.contains("pub fn queue") && rs_api.contains("pub fn stats"));
+        let cargo = crate::api_gen::generate_cargo_toml("image-back", false, false);
+        assert!(cargo.contains("auto-lang.workspace = true"));
+        let ui_cargo = crate::rust_ui::generate_cargo_toml("image-ui", Path::new("."));
+        assert!(ui_cargo.contains("auto-lang/ui-iced"));
+    }
 }
