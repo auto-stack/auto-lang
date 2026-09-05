@@ -952,7 +952,7 @@ fn generate_postcss_config() -> String {
 "#.to_string()
 }
 
-fn generate_index_html(name: &str) -> String {
+fn generate_index_html(name: &str, title: Option<&str>) -> String {
     // Plan 043 M5: the shadcn template ships fully-populated `.dark` tokens
     // in index.css; the handwritten ash-gui (and the shadcn default) render
     // dark. Without `class="dark"` on <html> the app falls back to the light
@@ -1012,7 +1012,7 @@ fn generate_index_html(name: &str) -> String {
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-"#, dark_attr, name, accent_bootstrap)
+"#, dark_attr, title.unwrap_or(name), accent_bootstrap)
 }
 
 fn generate_main_ts(
@@ -1371,6 +1371,7 @@ fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
 fn write_project_files(
     output_path: &Path,
     name: &str,
+    index_title: Option<&str>,
     vue_code: &str,
     usage: &VueDependencyUsage,
     has_routes: bool,
@@ -1450,7 +1451,7 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write postcss.config.cjs: {}", e))?;
 
     // index.html
-    let index_html = generate_index_html(name);
+    let index_html = generate_index_html(name, index_title);
     fs::write(output_path.join("index.html"), index_html)
         .map_err(|e| format!("Failed to write index.html: {}", e))?;
 
@@ -1527,6 +1528,25 @@ fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
 }
 
 /// Parse project name from pac.at content
+/// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` 字段——
+/// document.title 展示名(回退 name;name 是包标识不宜作展示标题)。
+fn parse_pac_title(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("title:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 fn parse_pac_name(content: &str) -> Option<String> {
     for line in content.lines() {
         let line = line.trim();
@@ -2005,6 +2025,9 @@ pub struct VueProject {
     pub output_dir: std::path::PathBuf,
     /// Project name
     pub name: String,
+    /// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` —
+    /// document.title 展示名(None 回退 name)。
+    pub index_title: Option<String>,
     /// Front source directory
     pub front_dir: std::path::PathBuf,
     /// Public assets source directory
@@ -2232,6 +2255,8 @@ export default router
         // Get project name
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "aura-app".to_string());
+        // PLAN-063 Phase B T13 (KD 061 D28): 展示名 title 可选透传。
+        let index_title = parse_pac_title(&pac_content);
 
         // Plan 013: shadcn-vue mapping toggle (`shadcn: off` in pac.at).
         let shadcn = parse_shadcn(&pac_content);
@@ -2807,6 +2832,7 @@ export default router
             root_dir: root_dir.to_path_buf(),
             output_dir,
             name,
+            index_title,
             front_dir,
             public_dir,
             shadcn_components,
@@ -3124,6 +3150,7 @@ export default router
         write_project_files(
             &self.output_dir,
             &self.name,
+            self.index_title.as_deref(),
             &self.app_vue_code,
             &self.dependency_usage(),
             self.has_routes,
@@ -3275,6 +3302,7 @@ export default router
         write_project_files(
             output_path,
             &self.name,
+            self.index_title.as_deref(),
             &self.app_vue_code,
             &self.dependency_usage(),
             self.has_routes,
@@ -3370,7 +3398,7 @@ export default router
         // app renders light). Previously only written on the initial scaffold,
         // so a fresh index.html (or a generator fix) never took effect.
         let index_html_path = self.output_dir.join("index.html");
-        let index_html = generate_index_html(&self.name);
+        let index_html = generate_index_html(&self.name, self.index_title.as_deref());
         fs::write(&index_html_path, &index_html)
             .map_err(|e| format!("Failed to write index.html: {}", e))?;
         println!("{}", "  ✓ Regenerated index.html".bright_green());
@@ -4822,7 +4850,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     {
         let index_html_path = project.output_dir.join("index.html");
         if index_html_path.parent().map(|p| p.exists()).unwrap_or(false) {
-            let index_html = generate_index_html(&project.name);
+            let index_html = generate_index_html(&project.name, project.index_title.as_deref());
             if let Err(e) = fs::write(&index_html_path, index_html) {
                 println!("  ⚠ index.html refresh skipped: {}", e);
             }
@@ -5566,6 +5594,21 @@ onMounted(() => {
 mod tests {
     use super::*;
 
+    /// PLAN-063 Phase B T13 (KD 061 D28): pac title 解析+index.html 优先。
+    #[test]
+    fn pac_title_overrides_document_title() {
+        let pac = "name: \"auto-musk\"
+title: \"Auto Musk\"
+";
+        assert_eq!(parse_pac_title(pac).as_deref(), Some("Auto Musk"));
+        assert_eq!(parse_pac_title("name: \"x\"
+"), None);
+        let html = generate_index_html("auto-musk", Some("Auto Musk"));
+        assert!(html.contains("<title>Auto Musk</title>"));
+        let fallback = generate_index_html("auto-musk", None);
+        assert!(fallback.contains("<title>auto-musk</title>"));
+    }
+
     /// PLAN-063 Phase B T12 (KD 061 D27): ext 手写 .vue 的 ui 家族导入
     /// 必须进入 shadcn 检测语料(冷检出脚手架缺失根修)。
     #[test]
@@ -6219,6 +6262,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: front.clone(),
             public_dir: front.join("public"),
             shadcn_components: vec![],
@@ -6251,6 +6295,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.clone(),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -6361,6 +6406,7 @@ widget App {
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.join("src/front"),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -6391,6 +6437,7 @@ widget App {
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.clone(),
             public_dir: root.join("public"),
             shadcn_components: vec![],
