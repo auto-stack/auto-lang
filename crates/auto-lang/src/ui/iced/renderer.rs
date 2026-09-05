@@ -17405,6 +17405,11 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
         };
         props.push(("font".into(), format!("{}px", px)));
     }
+    // PLAN-053 T14: 任意字号（text-[<n>px] → font_size_arbitrary）也进
+    // vtree 转储——heading §7.3 档（25.3px 等）的检验面。
+    if let Some(px) = is.font_size_arbitrary {
+        props.push(("font".into(), format!("{}px", px as u16)));
+    }
     if let Some(r) = is.border_radius { props.push(("radius".into(), format!("{}", r as u16))); }
     if let Some(w) = is.border_width { props.push(("border".into(), format!("{}", w as u16))); }
     if let Some(ref a) = is.align_items {
