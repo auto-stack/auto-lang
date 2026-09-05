@@ -549,12 +549,19 @@ pub fn generate_component_from_file(
             store.module_fns = module_fns.clone();
             let (composable, warnings) = VueGenerator::generate_store_composable_full(&store);
             store_warnings.extend(warnings);
-            let filename = format!("stores/use{}Store.ts", store.name);
+            // PLAN-063 Phase B T15 (KD 061 D13): 归一命名(AuthStore→useAuthStore)。
+            let filename = format!(
+                "stores/{}.ts",
+                crate::ui_gen::vue::store_composable_name(&store.name)
+            );
             store_composables.push((filename, composable));
             // Also stash via thread-local for callers that use STORE_EXTRA_FILES
             crate::STORE_EXTRA_FILES.with(|cell| {
                 cell.borrow_mut().push((
-                    format!("stores/use{}Store.ts", store.name),
+                    format!(
+                        "stores/{}.ts",
+                        crate::ui_gen::vue::store_composable_name(&store.name)
+                    ),
                     VueGenerator::generate_store_composable(&store),
                 ));
             });
@@ -1505,7 +1512,7 @@ store BetaStore {
             .collect();
         assert_eq!(
             names,
-            vec!["stores/useAlphaStoreStore.ts", "stores/useBetaStoreStore.ts"],
+            vec!["stores/useAlphaStore.ts", "stores/useBetaStore.ts"],
             "both stores must be emitted, got: {:?}",
             names
         );
@@ -1645,9 +1652,9 @@ store NotesLikeStore {
 
         assert_eq!(result.store_composables.len(), 1);
         let (filename, code) = &result.store_composables[0];
-        assert_eq!(filename, "stores/useNotesLikeStoreStore.ts");
+        assert_eq!(filename, "stores/useNotesLikeStore.ts");
         assert!(
-            code.contains("export function useNotesLikeStoreStore()"),
+            code.contains("export function useNotesLikeStore()"),
             "composable function, got:\n{}",
             code
         );

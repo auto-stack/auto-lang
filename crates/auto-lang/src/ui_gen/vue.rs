@@ -3177,22 +3177,31 @@ impl VueGenerator {
             for dep in &self.store_deps {
                 // Plan 446 批三 G1: 导入前缀可配（默认 @/stores），对齐
                 // 部署管线的实际生成位置（os-config: src/stores/auto/）。
+                // PLAN-063 Phase B T15 (KD 061 D13): 命名经归一助手
+                //(AuthStore → useAuthStore,无双后缀)。
+                let comp = store_composable_name(dep);
                 script.push_str(&format!(
-                    "import {{ use{}Store }} from '{}/use{}Store'\n",
-                    dep, self.store_import_prefix, dep
+                    "import {{ {comp} }} from '{}/{}'\n",
+                    self.store_import_prefix, comp
                 ));
             }
             // v1: single store → const store = reactive(useXxxStore())
             // reactive() auto-unwraps nested refs so templates can use store.notes directly
             let first = &self.store_deps[0];
             script.push_str(&format!("import {{ reactive }} from 'vue'\n"));
-            script.push_str(&format!("const store = reactive(use{}Store())\n\n", first));
+            script.push_str(&format!(
+                "const store = reactive({}())\n\n",
+                store_composable_name(first)
+            ));
             // PLAN-048 (auto-musk A 线): 跨 store 依赖(deps[1..])各发独立
             // facade(如 ForgeStore → forgeStore),配套 ts_adapter 的 Ident
             // 映射——此前第二个及以后的 store 调用裸发名字(TS2304)。
             for dep in self.store_deps.iter().skip(1) {
                 let var = facade_var_for(dep);
-                script.push_str(&format!("const {var} = reactive(use{}Store())\n\n", dep));
+                script.push_str(&format!(
+                    "const {var} = reactive({}())\n\n",
+                    store_composable_name(dep)
+                ));
             }
         }
 
@@ -15310,7 +15319,8 @@ export function cn(...inputs: ClassValue[]) {
         let wire_sse = wire_sse && !active_stream_eps.is_empty();
 
         // Export function.
-        let fn_name = format!("use{}Store", store.name);
+        // PLAN-063 Phase B T15 (KD 061 D13): 归一命名(AuthStore→useAuthStore)。
+        let fn_name = store_composable_name(&store.name);
         // Module-level guard: every widget calls reactive(useXxxStore()), so
         // without a flag each call would open its own SSE connection. One guard
         // per endpoint (keyed by path) so multi-endpoint stores don't collapse.
@@ -22412,7 +22422,7 @@ store ShellStore {
         );
         // The store composable function name follows the use{Name}Store convention.
         assert!(
-            code.contains("export function useShellStoreStore()"),
+            code.contains("export function useShellStore()"),
             "composable function name, got:\n{}",
             code
         );
@@ -23990,7 +24000,7 @@ widget A1Probe {
         let mut gen = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
         let sfc = gen.generate(&widget).expect("generate SFC");
         assert!(
-            sfc.contains("const store = reactive(useAuthStoreStore())"),
+            sfc.contains("const store = reactive(useAuthStore())"),
             "use store decl must yield the facade const:
 {sfc}"
         );
@@ -24024,7 +24034,7 @@ widget A1Probe {
         let mut gen_default = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
         let sfc_default = gen_default.generate(&widget).expect("generate SFC (default)");
         assert!(
-            sfc_default.contains("from '@/stores/useAuthStoreStore'"),
+            sfc_default.contains("from '@/stores/useAuthStore'"),
             "default prefix must stay @/stores:\n{sfc_default}"
         );
 
@@ -24034,11 +24044,11 @@ widget A1Probe {
             .with_store_import_prefix("@/stores/auto");
         let sfc_cfg = gen_cfg.generate(&widget).expect("generate SFC (configured)");
         assert!(
-            sfc_cfg.contains("from '@/stores/auto/useAuthStoreStore'"),
+            sfc_cfg.contains("from '@/stores/auto/useAuthStore'"),
             "configured prefix must reach the import line:\n{sfc_cfg}"
         );
         assert!(
-            !sfc_cfg.contains("from '@/stores/useAuthStoreStore'"),
+            !sfc_cfg.contains("from '@/stores/useAuthStore'"),
             "stale default-prefix import must not remain:\n{sfc_cfg}"
         );
     }
@@ -25732,6 +25742,17 @@ pub fn double(x int) int {
             sfc
         );
     }
+}
+
+/// PLAN-063 Phase B T15 (KD 061 D13): store 组合式命名归一——DSL store
+/// 名以 `Store` 结尾时(如 AuthStore)剥一层再补,消除 useAuthStoreStore
+/// 双后缀(文件名/导出 fn/消费 import 三面同源)。裸名(NotesLike)不变。
+pub fn store_composable_name(store_name: &str) -> String {
+    let stem = store_name
+        .strip_suffix("Store")
+        .filter(|s| !s.is_empty())
+        .unwrap_or(store_name);
+    format!("use{}Store", stem)
 }
 
 /// PLAN-048 (auto-musk A 线): 跨 store facade 变量名——`ForgeStore` →

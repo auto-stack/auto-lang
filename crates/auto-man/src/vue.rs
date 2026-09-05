@@ -6630,11 +6630,11 @@ store BetaStore {
         let changed = incremental_compile_changed(root).expect("first pass must succeed");
         assert!(changed > 0);
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "alpha composable after first pass"
         );
         assert!(
-            stores_dir.join("useBetaStoreStore.ts").exists(),
+            stores_dir.join("useBetaStore.ts").exists(),
             "beta composable after first pass"
         );
 
@@ -6654,11 +6654,11 @@ store BetaStore {
 
         incremental_compile_changed(root).expect("second pass must succeed");
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "alpha composable re-emitted by incremental pass"
         );
         assert!(
-            stores_dir.join("useBetaStoreStore.ts").exists(),
+            stores_dir.join("useBetaStore.ts").exists(),
             "beta composable re-emitted by incremental pass"
         );
     }
@@ -6687,11 +6687,11 @@ store BetaStore {
         assert!(ok.is_ok(), "non-strict build must continue: {:?}", ok.err());
         let stores_dir = root.join("gen").join("front").join("vue").join("src").join("stores");
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "healthy store still emitted"
         );
         assert!(
-            !stores_dir.join("useBetaStoreStore.ts").exists(),
+            !stores_dir.join("useBetaStore.ts").exists(),
             "broken store must not emit a composable"
         );
 
