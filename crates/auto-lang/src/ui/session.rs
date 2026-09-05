@@ -315,6 +315,12 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// `daemon: autoos` 的 App 时更新；boot 不预检）。settings 入口徽标
     ///（offline 置灰/提示，T5）消费。
     pub osconfig_status: crate::ui::osconfig_daemon::DaemonStatus,
+    /// Plan 551 T6:外写热应用轮询锚——上次见到的 desktop config.at
+    /// mtime(None = boot 后未采样,首 tick 只采样不应用)。
+    pub config_poll_mtime: Option<std::time::SystemTime>,
+    /// Plan 551 T6:boot 后是否已采过样(文件缺席时 mtime None 无法与
+    /// 「未采样」区分——本哨兵保证首 tick 只建锚不应用)。
+    pub config_poll_sampled: bool,
     /// Plan 501：daemon 检活注入位（单测假实现；None = 生产
     /// [`crate::ui::osconfig_daemon::ensure_ready`]）。launch 执行臂消费。
     pub osconfig_daemon_probe:
@@ -379,6 +385,8 @@ impl DesktopState {
             // ServiceTick 到期写 `switcher_open="0"`。None = 无倒计时）。
             switcher_until: std::cell::Cell::new(None),
             osconfig_status: crate::ui::osconfig_daemon::DaemonStatus::default(),
+            config_poll_mtime: None,
+            config_poll_sampled: false,
             osconfig_daemon_probe: None,
             back_keepalive: None,
             process_model: ProcessModel::default(),
@@ -2263,31 +2271,9 @@ fn spawn_outproc_child(
         if let Some(cfg_name) = spec.name.as_deref() {
             if let Some(app) = self.apps.get_mut(&app_id) {
                 crate::ui::osconfig_apps::seed_app_config(&mut app.component, cfg_name);
-                // Plan 540 T6：桌面设置窗单源播种——cfg_* 快照 + 501 徽标
-                // 三态 + 关于常量（launch 期点定序；打开期间宿主变更不重注
-                // ——487 overlay 同语义）。
-                if cfg_name == "desktop" {
-                    crate::ui::desktop_config::seed_desktop_config(
-                        &mut app.component,
-                        &self.desktop.config,
-                    );
-                    let (osc_state, osc_hint) = crate::ui::osconfig_daemon::badge_projection(
-                        &self.desktop.osconfig_status,
-                    );
-                    let _ = app
-                        .component
-                        .write_state("osconfig_state", auto_val::Value::str(osc_state));
-                    let _ = app
-                        .component
-                        .write_state("osconfig_hint", auto_val::Value::str(osc_hint));
-                    let _ = app
-                        .component
-                        .write_state("about_host", auto_val::Value::str(std::env::consts::OS));
-                    let _ = app.component.write_state(
-                        "about_version",
-                        auto_val::Value::str(env!("CARGO_PKG_VERSION")),
-                    );
-                }
+                // Plan 551:540 T6 的 cfg_*/徽标播种臂随 045 设置窗退役——
+                // ⚙️ 靶 os-config 的配置读写单源走 daemon(config.at),宿主
+                // 侧由 T6 mtime 轮询热应用,不再 launch 期播种。
             }
         }
         let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
