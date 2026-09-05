@@ -323,6 +323,12 @@ pub const NATIVE_PY_LEN: u16 = 468;
 /// Plan 555 T04 (D8): `py_type_name(obj)` — GIL type(x).__name__ 字符串，
 /// 组合子 obj_type_name 的 py 臂。
 pub const NATIVE_PY_TYPE_NAME: u16 = 469;
+/// Plan 560 T04 (B7): `py_contains(obj, key)` — `__contains__` 归 bool，
+/// 糖 `k in d` 的桥半。
+pub const NATIVE_PY_CONTAINS: u16 = 470;
+/// Plan 560 T04 (B8): `py_module("torch")` — 裸模块绑句柄（重做 Plan 300
+/// 腐烂面）；糖 `var torch = use.py torch` 的桥半，B9 dotted 递归的地基。
+pub const NATIVE_PY_MODULE: u16 = 471;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -1383,6 +1389,63 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_TYPE_NAME, type_name_shim);
+
+        // ---- py_contains(obj, key) ----
+        // Plan 560 T04 (B7): `k in d` 桥半——__contains__ 归 bool。
+        let contains_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_contains needs 2 args (obj, key), got {}",
+                        n
+                    )));
+                }
+                let key = pop_auto_py_arg(task, vm, py)?;
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let contained = obj.contains(&key).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python contains on {} failed: {}",
+                        safe_type_name(&obj), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_bool(contained));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CONTAINS, contains_shim);
+
+        // ---- py_module("torch") ----
+        // Plan 560 T04 (B8): 裸模块句柄——py.import（Python 模块缓存，
+        // 同名同对象）；B9 dotted 递归的地基（py_getattr 链）。
+        let module_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_module needs 1 arg (name), got {}",
+                        n
+                    )));
+                }
+                let name_py = pop_auto_py_arg(task, vm, py)?;
+                let name: String = name_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_module name not string: {}", e))
+                })?;
+                let module = py.import(&name).map_err(|e| {
+                    VMError::FFI(format!("py_module import '{}' failed: {}", name, e))
+                })?;
+                let owned: Py<PyAny> = module.into_pyobject(py).unwrap().into_any().unbind();
+                let handle = PyObjectHandle::new("module".to_string(), owned);
+                let id = vm.insert_heap_object(handle);
+                vm.rc_push(task, auto_val::encode_object(id as u32));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_MODULE, module_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -2718,6 +2781,16 @@ mod tests {
             let fo: &dyn ForeignObject = &handle;
             assert_eq!(fo.foreign_kind(), "py");
         });
+    }
+
+    #[test]
+    fn test_w2_b7_b8_bridges_registered() {
+        // Plan 560 T04: py_contains(470) + py_module(471) 注册在位。
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CONTAINS).is_some(), "py_contains");
+        assert!(ni.get(NATIVE_PY_MODULE).is_some(), "py_module");
     }
 
     #[test]
