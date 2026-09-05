@@ -640,6 +640,11 @@ impl DynamicComponent {
         self.dirty = false;
     }
 
+    /// PLAN-062: VM 堆活跃对象数只读透传（retain 泄漏 soak 断言通道）。
+    pub fn heap_live_objects(&self) -> usize {
+        self.bridge.heap_live_objects()
+    }
+
     /// Get the widget name.
     pub fn widget_name(&self) -> &str {
         &self.widget_name
@@ -2967,5 +2972,51 @@ mod tests {
         assert_eq!(state.len(), 2);
         assert_eq!(state.get("x"), Some(&auto_val::Value::Int(1)));
         assert_eq!(state.get("y"), Some(&auto_val::Value::Int(2)));
+    }
+
+    // ── PLAN-062 T1: timer 空转拍不应置脏 ─────────────────────────────
+    //
+    // 现场（2026-09-05 实机定罪）：musk PollStream when 门摘除后每 500ms
+    // 空转拍经 call_handler Ok → dirty=true 无条件置脏 → 整树重建 ×
+    // retain 泄漏。本测钉死"零状态写的拍不得失效视图"。
+
+    #[cfg(feature = "ui-interpreter")]
+    fn locate_plan062_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan062_memleak/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn fire_timer_noop_does_not_dirty() {
+        let Some(path) = locate_plan062_corpus() else {
+            eprintln!("plan062: SKIPPED — corpus not found");
+            return;
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path)
+            .expect("plan062 corpus builds");
+        // 基线：Init 写状态置脏 → 清掉，得到干净起点。
+        assert!(dc.is_dirty(), "Init populated state (dirty)");
+        dc.clear_dirty();
+
+        // 空转拍：handler 执行成功但 running=false 守卫拦截，零状态写。
+        assert!(dc.fire_timer("App", "IdleTick"), "ungated entry dispatches");
+        assert!(
+            !dc.is_dirty(),
+            "no-op tick (handler Ok, zero state writes) must not dirty the view"
+        );
+
+        // 对照：恒写拍照常置脏（timer 活性回归锚）。
+        assert!(dc.fire_timer("App", "BeatTick"));
+        assert!(dc.is_dirty(), "state-writing tick still dirties");
     }
 }

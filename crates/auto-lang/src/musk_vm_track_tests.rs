@@ -3536,3 +3536,73 @@ mod musk_vm_track_p057_nested_stringify {
         );
     }
 }
+
+/// PLAN-062 T1: retain 泄漏 soak——恒写 timer 拍 × 整树重建，VM 堆
+/// live_heap 增量必须有界。
+///
+/// 现场（2026-09-05 实机定罪）：每次视图重建经 call_vm_fn/
+/// call_computed_fn 求值 computed，`retain_heap_result` 对返回堆引用
+/// +1 后无配对释放（KD-051 ⑤）——每拍泄漏整棵当帧 computed 输出树
+/// （musk 空闲实测 0.85–2.2 MB/s，30–60 分钟达 4GB）。语料
+/// `test/ui/plan062_memleak`（BeatTick 恒写 + `items => build_items(20)`
+/// 表达式体 computed）同构 musk PollStream × filteredMessages 链。
+#[cfg(feature = "ui-interpreter")]
+mod musk_vm_track_p062_heap_soak {
+    fn locate_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan062_memleak/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    /// 40 拍脏重建后 live_heap 增量 ≤ 64（warmup 10 拍后计基线）。
+    /// 现状红：每拍保留 1 list + 20 obj ⇒ +840 量级。
+    /// 修复后绿：帧账本换代释放，残差仅常数（字符串池 dedup 命中零增长）。
+    #[test]
+    fn musk_vm_track_heap_soak() {
+        let Some(path) = locate_corpus() else {
+            eprintln!("plan062: SKIPPED — corpus not found");
+            return;
+        };
+        let mut dc = match crate::plan370_test_support::build_component_from_app(&path) {
+            Some(c) => c,
+            None => {
+                eprintln!("plan062: SKIPPED — component build failed");
+                return;
+            }
+        };
+        let tick_rebuild = |dc: &mut crate::ui::dynamic::DynamicComponent| {
+            dc.fire_timer("App", "BeatTick");
+            let _ = dc.view_with_debug_gated(false);
+            dc.clear_dirty();
+        };
+        for _ in 0..10 {
+            tick_rebuild(&mut dc);
+        }
+        let base = dc.heap_live_objects();
+        for _ in 0..40 {
+            tick_rebuild(&mut dc);
+        }
+        let after = dc.heap_live_objects();
+        eprintln!(
+            "[P062-soak] live_heap {} -> {} (+{})",
+            base,
+            after,
+            after.saturating_sub(base)
+        );
+        assert!(
+            after <= base + 64,
+            "heap must be bounded across rebuilds: base={} after={} (+{})",
+            base,
+            after,
+            after.saturating_sub(base)
+        );
+    }
+}

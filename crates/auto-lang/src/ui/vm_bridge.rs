@@ -1190,6 +1190,12 @@ impl VmBridge {
         }
     }
 
+    /// PLAN-062: 只读 VM 堆水位（泄漏 soak 断言通道——live_heap 以
+    /// heap_objects.len() 为准，见 rc.rs rc_stats 注释）。
+    pub fn heap_live_objects(&self) -> usize {
+        self.vm.rc_stats().live_heap
+    }
+
     /// Plan 448 H2: execute a block-bodied computed's hidden fn
     /// (`__computed_<Widget>_<Prop>`) against the ROOT state object — the
     /// same receiver convention handler dispatch uses. The fn is synthesized
