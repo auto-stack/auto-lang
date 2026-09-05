@@ -179,7 +179,7 @@ widget App {
             if .session_id != "" {
                 let _closed = close_session(.session_id)
             }
-            let session = open_file("examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png")
+            let session = open_file("../../tests/fixtures/rgb-1x1.png")
             .session_id = session
             .media_src = current_uri(session)
             .media_alt = "Selected image"
@@ -196,7 +196,7 @@ widget App {
             if .session_id != "" {
                 let _closed = close_session(.session_id)
             }
-            let session = open_directory("examples/ui/031-image-viewer/tests/fixtures")
+            let session = open_directory("../../tests/fixtures")
             .session_id = session
             .media_src = current_uri(session)
             .media_alt = "Selected image"
@@ -251,10 +251,14 @@ widget App {
                         thumb_list.push({ id: j, name: names_list[j], src: "" })
                         j = j + 1
                     }
-                    if names_list.len() > 0 { .thumbnails = thumb_list }
+                    if names_list.len() > 0 {
+                        .thumbnails = thumb_list
+                        .media_src = current_uri(.session_id)
+                        if .selected_name == "Opening directory…" { .selected_name = names_list[0] }
+                        .view_state = "ready"
+                        .status = "Ready"
+                    }
                 }
-                .view_state = "ready"
-                .status = "Ready"
             }
         }
         .Close -> {

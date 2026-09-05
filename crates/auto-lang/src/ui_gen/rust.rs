@@ -550,11 +550,24 @@ impl RustGenerator {
             // (See generate_msg_enum for the direct string injection.)
         }
 
-        // If widget has a tick_interval, add Tick variant to message enum
+        // If widget has a tick_interval, add Tick variant to message enum.
+        // Timer-block entries already name their message variants, but keep a
+        // defensive insertion here so generated Rust remains total even when a
+        // hand-built AuraWidget omits the declaration from `msg { ... }`.
         if widget.tick_interval.is_some() {
             if !self.message_variants.iter().any(|v| v.name == "Tick") {
                 self.message_variants.push(AuraMsgVariant {
                     name: "Tick".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                    payload_names: vec![],
+                });
+            }
+        }
+        for timer in &widget.timers {
+            if !self.message_variants.iter().any(|v| v.name == timer.event) {
+                self.message_variants.push(AuraMsgVariant {
+                    name: timer.event.clone(),
                     quoted: false,
                     payload: vec![],
                     payload_names: vec![],
@@ -1039,16 +1052,26 @@ impl RustGenerator {
         }
 
         // Plan 407: tick_msg() + tick_interval_ms() — for run_app subscription.
-        if widget.tick_interval.is_some() {
+        // Plan 051 C7: the standalone Rust/Iced runner has one generic
+        // periodic subscription, so expose the first `timer { ... }` entry
+        // through that hook. Desktop/VM mode supports all entries via its
+        // dynamic timer registry; this keeps the Rust path useful for the
+        // common single-settle-timer case without changing Component's API.
+        let periodic_timer = widget.timers.first().map(|timer| {
+            let interval = u32::try_from(timer.every_ms).unwrap_or(u32::MAX);
+            (interval, timer.event.as_str())
+        });
+        if let Some((interval, event)) = periodic_timer.or_else(|| {
+            widget.tick_interval.map(|interval| (interval, "Tick"))
+        }) {
             let msg_name = self.current_msg_name();
-            let interval = widget.tick_interval.unwrap();
             code.push_str(&format!(
                 "    fn tick_interval_ms(&self) -> Option<u32> {{ Some({}) }}\n",
                 interval
             ));
             code.push_str(&format!(
-                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::Tick) }}\n",
-                msg_name, msg_name
+                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::{}) }}\n",
+                msg_name, msg_name, event
             ));
         }
 
@@ -2673,7 +2696,7 @@ impl RustGenerator {
                 // Runtime event payloads are appended by the Iced surface;
                 // the typed message variant and declared Aura arguments are
                 // captured here as Option<M> values.
-                if matches!(tag.as_str(), "imagesurface" | "image-surface" | "ImageSurface") {
+                if matches!(tag.as_str(), "imagesurface" | "image-surface" | "image_surface" | "ImageSurface") {
                     let expr_for = |key: &str, default: &str| -> String {
                         props
                             .get(key)
@@ -3975,7 +3998,7 @@ impl RustGenerator {
             "slider", "radio", "radiogroup",
             "progress", "badge", "spinner",
             "card", "avatar",
-            "image", "icon", "imagesurface", "image-surface", "ImageSurface",
+            "image", "icon", "imagesurface", "image-surface", "image_surface", "ImageSurface",
             "divider", "spacer",
             "for", "if",
         ];
@@ -6011,6 +6034,38 @@ mod tests {
         assert!(code.contains("Some(ImageViewerMsg::ZoomAt)"), "wheel event missing:\n{code}");
         assert!(code.contains("Some(ImageViewerMsg::PanBy)"), "pan event missing:\n{code}");
         assert!(code.contains("Some(ImageViewerMsg::ToggleOneToOne)"), "double-click event missing:\n{code}");
+    }
+
+    /// Plan 547 desktop validation: a declarative `timer { ... }` entry must
+    /// become the named periodic message used by the standalone Rust/Iced
+    /// runner. Without this bridge the image viewer remains stuck in loading
+    /// because its async media session is never polled for readiness.
+    #[test]
+    fn timer_block_rust_codegen_emits_named_tick_subscription() {
+        let src = r#"
+widget App {
+    msg { SettleTick }
+    model { var status str = "loading" }
+    timer { SettleTick (every_ms: 80) }
+    view { text .status }
+    on { .SettleTick -> { .status = "ready" } }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let code = RustGenerator::new().generate(&widget).expect("generate");
+
+        assert!(
+            code.contains("fn tick_interval_ms(&self) -> Option<u32> { Some(80) }")
+                && code.contains("fn tick_msg(&self) -> Option<AppMsg> { Some(AppMsg::SettleTick) }")
+        );
+        assert!(!code.contains("AppMsg::Tick"), "timer entry must retain its message name");
     }
 
     /// Plan 436 T1(决策 1-A):带 setup 前导槽的 widget 在 Rust 目标显式
