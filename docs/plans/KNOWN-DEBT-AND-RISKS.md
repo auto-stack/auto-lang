@@ -1291,16 +1291,24 @@
   target/release——源码推进后旧二进制仍在位（540 期实机踩坑：缺 desktop 模块
   注册）。551 已加 boot registry 自检日志（模块数+id 一行）；merge 后主检出
   侧 daemon 需重建。
-- **P559-D1（新，Plan 559 复审）**：`auto run` 不把 AUTO_HTTP_PROXY（及
-  AUTO_HTTP_PORT 类运行期 env）透传给其 vite 子进程（Windows 实测）——
-  desktop-host 嵌入 api-client app 后，开箱 `auto run --desktop` 的数据面
-  404，需手动以 env 裸起 vite（复审活体复验即此形态）。上游属 env 注入臂
-  缺口，vm 轨有 AUTOOS_DAEMON 注入先例，建议后续波次收口。
-- **P559-D2（新，Plan 559 复审）**：os-config auto/gen/regen.sh 部署侧 sed
-  中事件 cast（$event.target）与 Collection.Init 跨 store 重写两族已被 559
-  codegen 上收，现为冗余（幂等无害）；建议下轮 os-config 清理顺带删除。
-  另：p559 验收场景初版缺幂等基线（复跑 before==after 假绿）——复审发现
-  即修（daemon PUT 基线重置），非遗留。
+- **P559-D1 ✅ 复验证伪（2026-09-05，merge 前复核）**：原记录「auto run 不把
+  AUTO_HTTP_PROXY 透传给 vite 子进程」不成立——pkg.rs run_script_live 用
+  std::process::Command（cmd /C pnpm run dev）零 env 操纵，Windows 默认继承
+  父环境；干净环境（杀净全部 node/auto，daemon 独占 17701）下 env 内联
+  `auto run --desktop` 的 vite 代理 `/api` 实测 200，端到端 ⚙️→os-config→
+  daemon 数据活体过（scratch/p559/d1_e2e_osconfig_data.png）。原 404 根因=
+  多轮起停中旧无 env vite 进程残留占用 3000，新 vite 被默认 auto-increment
+  挤到 3001，探测打到旧进程的假象。**遗留小口径**（非 env 问题，不立案）：
+  生成 vite config 未设 strictPort，端口占用时静默漂移；daemon 默认端口为
+  AUTOOS_BACK_PORT=17901（生态各处硬编码 17701），起服务须显式
+  AUTOOS_BACK_PORT=17701。
+- **P559-D2 ✅ 已清（2026-09-05，merge 前复核）**：regen.sh 删除两族已被
+  559 codegen 上收的部署 sed——①组件/App.vue 的 $event.target cast 四行
+  （vue_event_param 单点收窄）；②plan010 R10 Collection.Init 跨 store 重写
+  与 plan446 VG16 Collection.Select 自限定重写两块（sibling facade/
+  store_bare_heads）。**零漂证明**：清理后全量 regen 重跑，`git status`
+  仅剩 regen.sh 自身——全部部署产物（7 组件+4 stores+App.vue+lib/api.ts）
+  与已提交状态逐字节一致，host `npm run build` 绿。
 - **P536-D1 schema/aura.at 再生成 canonical 形态振荡**（2026-09-05，PLAN-536
   T11 实录）：`SCHEMA_DRIFT_GENERATE_AT=1` 连续四次重生成，nav-destination/
   swiper 两元素在 kebab 小写形态与 NavDestination/Swiper Pascal 形态间
@@ -1400,6 +1408,27 @@
 - **P547-D8 复审基线红（非本计划）**：`cargo tf` 仍有既有 alert-dialog/dropdown
   schema drift，`cargo tv` 的 `cb_os_error_file` 因外部程序缺失失败；前者关联既有
   P551-D1/P536-D1 记录，后者需修复测试环境或明确 fixture 依赖，不归因于 Plan 547。
+
+### P547 修复回归（2026-09-05）
+
+- **P547-D1 已修复**：重新生成 `docs/components/core.md`，ImageSurface 的三种
+  alias 与 schema/docs_gen 对齐；docs_gen 4/4 通过。
+- **P547-D2 已修复**：接入有界 registry、2 个 decode worker、resize/publish lane、
+  latest-wins generation，以及 encoded/decoded cache；新增 queue→decode→publish
+  集成断言（image_pipeline 17/17）。
+- **P547-D3 已修复**：扩展 `auto.image` session API，031 back 改用真实 host
+  control-plane，front 通过 session/current URI/names/request_view 驱动，无 demo URI。
+- **P547-D4 已修复**：Iced renderer 仅消费已发布 RGBA rendition，并将 fit/zoom/pan/
+  rotation/filter 几何状态传给 ImageSurface；不再在渲染路径读文件或解码。
+- **P547-D5 已修复**：VM ticket handle 表改为 256 项有界队列，session close/eviction
+  释放引用；queue/scan 走异步媒体 worker，不在 handler 线程同步读文件。
+- **P547-D6 已修复**：Rust CLI 增加显式 `--merged` 选择并不再透传 Cargo；release
+  harness 使用隔离 workspace，报告 `passed: true` 且 cold start 349.584ms。
+- **P547-D7 已修复**：Vue 标准 runner 14 动作通过，保存 initial/open-file/controls/
+  directory-ready；VM MCP 首帧与 OpenFile/ZoomIn 交互通过，保存 `vm-initial`/
+  `vm-open-file-controls`，均位于 canonical ignored screenshot 目录。
+- **P547-D8 保留为基线说明**：本批未修改既有 alert-dialog/dropdown schema drift 或
+  `cb_os_error_file` 外部程序依赖；它们仍应由既有计划/测试环境治理处理。
 
 ### P548（2026-09-05，sidebar Vue 端 shadcn 1:1 接线）
 

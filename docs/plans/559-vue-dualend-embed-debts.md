@@ -313,6 +313,21 @@ P551-D1..D5，2026-09-05）
 master 再折，预计无实质冲突；tf 基线唯一红=charts 存量与 555 复审读数
 3428/3429 同源。）
 
+### 债务收口附记（2026-09-05，merge 前用户裁定先清两债）
+
+- **P559-D1 复验证伪**：干净环境（杀净全部 node/auto，daemon 独占 17701）
+  下 env 内联 `auto run --desktop` 的 vite 代理 `/api` 实测 200 + ⚙️→
+  os-config→daemon 数据端到端活体（scratch/p559/d1_e2e_osconfig_data.png）。
+  pkg.rs run_script_live 零 env 操纵、std 默认继承——「不透传」不成立；
+  原 404 为旧无 env vite 残留占 3000 + vite auto-increment 静默漂移的假象。
+  台账改判细节见 KNOWN-DEBT P559-D1（含 strictPort/daemon 默认端口两条
+  小口径注记，不立案）。
+- **P559-D2 已清**：regen.sh 删两族已上游化的 sed（事件 cast 四行 ×2 处、
+  plan010 R10 与 plan446 VG16 两块）；清理后全量 regen 重跑部署树零漂
+  （git status 仅剩 regen.sh 自身），host `npm run build` 绿。
+
+复审结论维持 `reviewed` 不变。
+
 ## 待澄清事项
 
 - W1 与 548 会话的 schema/aura.at 协调窗口：其未提交修改仍在时,
