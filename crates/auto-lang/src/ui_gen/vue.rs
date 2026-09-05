@@ -587,6 +587,10 @@ pub struct VueGenerator {
     /// Populated during template generation, consumed during script generation
     /// to emit `const menuEl = ref<HTMLElement | null>(null)` declarations.
     template_refs: Vec<String>,
+    /// Plan 547: ImageSurface onpan 合成登记(pointer down/move/up 三绑定,
+    /// script 臂发包装函数——DOM 无 pan 事件,裸 @pan 既不触发也过不了
+    /// vue-tsc)。
+    surface_pans: Vec<(String, bool)>,
 
     /// Subset of `template_refs` attached to child components (not DOM
     /// elements) via `ref: "canvasRef"` on a sub-widget instantiation.
@@ -805,6 +809,7 @@ impl VueGenerator {
             explicit_api_imports: false,
             global_listeners: Vec::new(),
             template_refs: Vec::new(),
+            surface_pans: Vec::new(),
             component_ref_names: HashSet::new(),
             scroll_auto_scroll: Vec::new(),
             pending_scroll_sentinel: None,
@@ -1157,6 +1162,7 @@ impl VueGenerator {
         self.needs_vm_only_helper = false;
         self.global_listeners.clear();
         self.template_refs.clear();
+        self.surface_pans.clear();
         self.ext_components.clear();
         self.ext_import_lines.clear();
         self.ext_composables.clear();
@@ -2848,6 +2854,49 @@ impl VueGenerator {
             }
         }
         if !self.template_refs.is_empty() {
+            script.push('\n');
+        }
+
+        // Plan 547: ImageSurface onpan 合成包装(pointer 三绑定的函数体;
+        // buttons&1 门控 + start/move/end 相位,handler 收 (dx, dy, phase))。
+        if !self.surface_pans.is_empty() {
+            for (i, (call, with_args)) in self.surface_pans.iter().enumerate() {
+                // 按事件声明参数个数决定调用形态:空声明 -> 无参(vue-tsc
+                // 严格匹配);声明了参数 -> (dx, dy, phase) 全参。
+                let (start_call, move_call, end_call) = if *with_args {
+                    (
+                        format!("{call}(0, 0, 'start')"),
+                        format!("{call}(dx, dy, 'move')"),
+                        format!("{call}(0, 0, 'end')"),
+                    )
+                } else {
+                    (format!("{call}()"), format!("{call}()"), format!("{call}()"))
+                };
+                script.push_str(&format!(
+                    concat!(
+                        "let __surfPanLast_{i}: [number, number] | null = null\n",
+                        "function __surfPanD_{i}(e: PointerEvent) {{\n",
+                        "  __surfPanLast_{i} = [e.clientX, e.clientY]\n",
+                        "  {start_call}\n",
+                        "}}\n",
+                        "function __surfPanM_{i}(e: PointerEvent) {{\n",
+                        "  if (!__surfPanLast_{i} || !(e.buttons & 1)) return\n",
+                        "  const dx = e.clientX - __surfPanLast_{i}[0], dy = e.clientY - __surfPanLast_{i}[1]\n",
+                        "  __surfPanLast_{i} = [e.clientX, e.clientY]\n",
+                        "  {move_call}\n",
+                        "}}\n",
+                        "function __surfPanU_{i}(_e: PointerEvent) {{\n",
+                        "  if (!__surfPanLast_{i}) return\n",
+                        "  __surfPanLast_{i} = null\n",
+                        "  {end_call}\n",
+                        "}}\n"
+                    ),
+                    i = i,
+                    start_call = start_call,
+                    move_call = move_call,
+                    end_call = end_call
+                ));
+            }
             script.push('\n');
         }
 
@@ -5087,8 +5136,11 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             "'translate(' + ({}) + 'px, ' + ({}) + 'px) rotate(' + ({}) + 'deg) scale(' + ({}) + ')'",
             offset_x, offset_y, rotation, zoom
         );
+        // Plan 547: 字符串形态的 :style 绑定——对象形态(嵌套括号拼接
+        // 表达式)在 vue-tsc 的模板检查下类型收窄失败(StyleValue 被解析
+        // 为 undefined,TS2345 实证);CSS 声明串语义等价且类型稳定。
         image_attrs.push(format!(
-            ":style=\"{{ transform: {}, objectFit: {}, filter: {} }}\"",
+            ":style=\"'transform:' + ({}) + ';object-fit:' + ({}) + ';filter:' + ({}) + ';'\"",
             transform, fit, filter
         ));
 
@@ -5102,11 +5154,29 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 continue;
             }
             let (base, modifiers) = Self::split_event_key(event);
+            // Plan 547 修复:DOM 没有 pan 事件——裸 @pan 从不触发且被
+            // vue-tsc 拒绝(ImgHTMLAttributes 无 onPan)。onpan 改为
+            // pointer 三绑定 + script 合成包装(buttons&1 门控,start/
+            // move/end 相位,handler 收 (dx, dy, phase))。
+            if matches!(base.to_ascii_lowercase().as_str(), "onpan" | "pan") {
+                let handler_fn =
+                    self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                self.used_handlers
+                    .insert(self.handler_to_function_call(&aura_event.handler));
+                let idx = self.surface_pans.len();
+                // 按事件声明参数个数决定调用形态(空声明 -> 无参调用,
+                // vue-tsc 严格匹配;声明了参数 -> (dx, dy, phase) 全参)。
+                let with_args = !aura_event.params.is_empty();
+                self.surface_pans.push((handler_fn.clone(), with_args));
+                image_attrs.push(format!("@pointerdown=\"__surfPanD_{idx}\""));
+                image_attrs.push(format!("@pointermove=\"__surfPanM_{idx}\""));
+                image_attrs.push(format!("@pointerup=\"__surfPanU_{idx}\""));
+                continue;
+            }
             let event_name = match base.to_ascii_lowercase().as_str() {
                 "onerror" | "on_error" | "error" => "@error",
                 "onload" | "onloaded" | "on_loaded" | "loaded" => "@load",
                 "onwheel" | "wheel" => "@wheel",
-                "onpan" | "pan" => "@pan",
                 "ondblclick" | "on_double_click" | "dblclick" | "doubleclick" => "@dblclick",
                 _ => continue,
             };
@@ -24498,12 +24568,19 @@ widget ImageViewer {
 "#);
         assert!(sfc.contains("class=\"relative overflow-hidden\""), "crop wrapper:\n{sfc}");
         assert!(sfc.contains(":src=\"asset_src\""), "URI source binding:\n{sfc}");
-        assert!(sfc.contains(":style=\"{ transform:"), "interactive transform:\n{sfc}");
-        assert!(sfc.contains("objectFit: fit_mode"), "fit binding:\n{sfc}");
+        assert!(sfc.contains(":style=\"'transform:' +"), "interactive transform (string style):\n{sfc}");
+        assert!(sfc.contains("object-fit:' + (fit_mode)"), "fit binding (string style):\n{sfc}");
         assert!(sfc.contains("@load=\"ImageLoaded\""), "onload normalization:\n{sfc}");
         assert!(sfc.contains("@error=\"ImageFailed\""), "onerror normalization:\n{sfc}");
         assert!(sfc.contains("@wheel=\"ZoomAt\""), "onwheel normalization:\n{sfc}");
-        assert!(sfc.contains("@pan=\"PanBy\""), "onpan normalization:\n{sfc}");
+        // Plan 547: onpan -> pointer 三绑定 + script 合成包装(DOM 无 pan 事件)
+        assert!(sfc.contains("@pointerdown=\"__surfPanD_0\""), "onpan pointer down:\n{sfc}");
+        assert!(sfc.contains("@pointermove=\"__surfPanM_0\""), "onpan pointer move:\n{sfc}");
+        assert!(sfc.contains("@pointerup=\"__surfPanU_0\""), "onpan pointer up:\n{sfc}");
+        assert!(sfc.contains("function __surfPanM_0(e: PointerEvent)"), "pan wrapper fn:\n{sfc}");
+        assert!(sfc.contains("e.buttons & 1"), "pan buttons gate:\n{sfc}");
+        assert!(sfc.contains("PanBy()"), "pan handler arity-0 call:
+{sfc}");
         assert!(sfc.contains("@dblclick=\"ToggleFit\""), "ondblclick normalization:\n{sfc}");
         for forbidden in ["FileReader", "decodeImage", "prefetch", "imageCache", "cache.put"] {
             assert!(!sfc.to_ascii_lowercase().contains(&forbidden.to_ascii_lowercase()), "forbidden browser-side media implementation {forbidden}:\n{sfc}");
