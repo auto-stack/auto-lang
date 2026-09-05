@@ -198,7 +198,19 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
     // PLAN-528 W7: bundled scaffold cross-dependencies. shadcn-vue 的
     // `add toggle-group` 经 registry 自动带上 toggle 依赖;bundled 快照
     // 物化路径没有 registry 元数据,依赖闭包在此显式声明。
-    const SCAFFOLD_DEPS: &[(&str, &str)] = &[("toggle-group", "toggle")];
+    // Plan 562: sidebar 族六件内部依赖（Sidebar.vue→sheet 移动态包装 +
+    // button/trigger 区、SidebarInput→input、SidebarSeparator→separator、
+    // SidebarMenuButton→tooltip、SidebarMenuSkeleton→skeleton；六件自身
+    // 无进一步 @/components 依赖，闭包到此为止）。
+    const SCAFFOLD_DEPS: &[(&str, &str)] = &[
+        ("toggle-group", "toggle"),
+        ("sidebar", "button"),
+        ("sidebar", "sheet"),
+        ("sidebar", "input"),
+        ("sidebar", "separator"),
+        ("sidebar", "tooltip"),
+        ("sidebar", "skeleton"),
+    ];
     loop {
         let mut added = false;
         for (scaffold, dep) in SCAFFOLD_DEPS {

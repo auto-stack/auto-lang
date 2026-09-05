@@ -25,13 +25,28 @@ widget App {
                     text "📖" { style: "text-xl" }
                     text "AutoRead" { style: "font-bold text-lg text-foreground" }
                 }
-                nav {
-                    style: "p-3 gap-1 flex-1 flex flex-col"
-                    // Plan 482: nav-item(to:) 路由模式 —— Vue hash URL + 浏览器
-                    // 返回；VM __navigate + router.back() 历史栈。选中态主色调
-                    // 高亮由 to 自动判定（/ 对 /book/1 不误亮——前缀段匹配）。
-                    nav-item (to: "/", exact: true, icon: "📚", label: "Library")
-                    nav-item (to: "/settings", icon: "⚙️", label: "Settings")
+                // Plan 562: nav → sidebar 族（nav 退役）。外壳 col 已承担
+                // w-60 宽度/fixed 定位，不用 sidebar root；provider class
+                // 覆盖 min-h-svh/w-full 默认（独子直返，VM 零布局介入）。
+                sidebar_provider (class: "w-auto min-h-0 flex flex-1 min-h-0 flex-col") {
+                    sidebar_menu (style: "p-3 flex-1") {
+                        // Plan 548 D2: menu_button(to:) 路由模式 —— Vue hash
+                        // URL + 浏览器返回；VM __navigate + router.back() 历史栈。
+                        // 选中态主色调高亮由 to 自动判定（/ 对 /book/1 不误亮——
+                        // 前缀段匹配，exact: true 锁首页恰等）。
+                        sidebar_menu_item {
+                            sidebar_menu_button (to: "/", exact: true) {
+                                text "📚" {}
+                                text "Library" {}
+                            }
+                        }
+                        sidebar_menu_item {
+                            sidebar_menu_button (to: "/settings") {
+                                text "⚙️" {}
+                                text "Settings" {}
+                            }
+                        }
+                    }
                 }
                 // Runtime dark/light toggle (handmade ThemeToggle.vue escape hatch).
                 row {
