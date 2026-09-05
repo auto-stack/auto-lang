@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 0
+current_step: 1
 total_steps: 15
 ---
 
@@ -236,9 +236,10 @@ total_steps: 15
 
 （批 0 管线激活 → 批 1 B 族 → 批 2 C 族 → 批 3 E 族+Err → 批 4 迁移硬化）
 
-- [ ] T01 探针基线：`scratch/p560/` §3 全表糖形态 + Err 六条形态在
+- [x] T01 探针基线：`scratch/p560/` §3 全表糖形态 + Err 六条形态在
       现状 `.as`（passthrough）下的行为逐条记录（验证：探针可复跑，
       基线入执行注记）
+      [✅ 已完成] 2026-09-05 六探针矩阵在案（p01-p06）：A 族方法糖=运行期 CALL_SPEC 错（PyObj 无 sum）；B1 属性=GET_FIELD 垃圾 `<obj:...>`；B3 handle 索引疑似已通（zeros(3)[0]→0）；B6 len=链接错 E0401；B5 切片可解析（len 先拦）；E3 for-in over tensor **今日已工作**（539 array 通道 GIL len+getitem，0/1/2）；Err：py IndexError 可 try-catch 但 e 绑定裸 FFI 串（非 PyException 载荷）、无隐式传播。详见执行注记 T01
 - [ ] T02 s2s 升级：AST 发射器（`trans/emit.rs` 新模块，AST→Auto 源
       打印）+ 链式规则语义（规则表有序全过+产物再解析）——P555-D2
       裁定落地（验证：identity round-trip 稳定单测 + 链式注入单测绿）
@@ -288,6 +289,22 @@ total_steps: 15
 ## 复审记录
 
 （/auto-plan:review 填写）
+
+## 执行注记
+
+### T01 探针基线（2026-09-05，worktree master HEAD 95cf3fa32 干净构建）
+
+| 探针 | 糖形态 | 现状（passthrough .as） | 判读 |
+|---|---|---|---|
+| p01 | `t.sum()` / `t.sum(dim: 0)` | 运行期 `CALL_SPEC: no function 'PyObj(Tensor).sum'` | A1/A2 缺口在**分派层**（方法调用不走 py_call）——s2s lowering 直呼 py_call 即解 |
+| p02 | `w.shape` / `w[0]` | `<obj:4000001>` / `0` | B1 属性=GET_FIELD 垃圾引用；B3 handle 索引疑似已通（GET_ELEM 的 PyObjectHandle GIL 臂，539）——T05 落 B1/B3 lowering 后复核 |
+| p03 | `x[2..5]` / `len(x)` | `x[2..5]` 可解析（后续运行）；`len` E0401 链接错 | B5 range 索引词法/语法在；B6 len 非内建——组合子 obj_len 已在（555），s2s lower `len(x)`→`obj_len(x)` |
+| p04 | matmul（桥直呼形态） | `134` ✓ | 桥基线绿；C5 `@` 糖未探（词法位待 T07） |
+| p05 | for-in over tensor | `0 1 2` ✓ | **E3 array 通道今日已工作**（539 GIL len+getitem）——T10 只需双通道分派（__iter__ 语义源）+ py_iter 糖 |
+| p06 | Err 形态（try-catch 拦 py IndexError） | caught，e=`FFI("Python getitem on Tensor failed: IndexError: ...")` | 可捕获但载荷=裸 FFI 串（缺 PyException 类型前缀形态）+ 无隐式传播（手工 try）——T11 目标形态的基线 |
+| — | `with` | 未探（预期解析错——关键字未落） | T09 前置：parser `with` 关键字 |
+
+
 
 ## 待澄清事项
 
