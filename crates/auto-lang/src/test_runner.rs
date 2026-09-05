@@ -268,11 +268,15 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
                     let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
                     let stem = extract_test_stem(&case_dir_name);
 
-                    // Look for source file
+                    // Look for source file（Plan 560 T14：.at 优先，
+                    // .as 回退——null 语义语料按用户裁定迁 .as）
                     let source_file = case_path.join(format!("{}.at", stem));
-                    if !source_file.is_file() {
-                        continue;
-                    }
+                    let source_file = if source_file.is_file() {
+                        source_file
+                    } else {
+                        let alt = case_path.join(format!("{}.as", stem));
+                        if alt.is_file() { alt } else { continue; }
+                    };
 
                     // Look for expected files
                     let expected_out = {

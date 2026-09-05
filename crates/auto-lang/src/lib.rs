@@ -1106,21 +1106,27 @@ async fn execute_autovm_with_path(
     );
     session.set_script_mode(script_mode);
 
-    // Plan 550 T10: 生产者门控（lint 级）——脚本模式（555 起统一为
-    // ScriptMode 判定：.as 扩展名与 #[script] pragma 皆豁免）之外的三
-    // 信号（use.py / null / nil 字面量）→ 疑似脚本内容迁移提示。只警告
-    // 不拒绝（硬拒会打断现有 py parity 套件；硬化归 W2 迁移批）。
-    if !matches!(script_mode, crate::mode::ScriptMode::Script) {
+    // Plan 550 T10 / Plan 560 T14: 生产者门控**硬化**——正常模式（.as
+    // 扩展名与 #[script] pragma 豁免；#[rust] 压回）含三信号（use.py /
+    // null / nil 字面量）→ **诊断错误**（编译期拒绝）。用户裁定在案
+    //（2026-09-05，待澄清#5）：py 套件已全量 .as（19 套件），vm 语料
+    // 走 run_with_capture 框架不经本路径（实证 tv 零撞击），CLI 直跑
+    // .at 信号的存量面按设计拒绝并指引迁移。
+    // 门控仅对**文件上下文**生效（设计 §2 = 文件级信号；内联/eval
+    // 源码无扩展名档位，T14 实证：musk null 语义测试与 550 探针族
+    // 走 run_with_capture 无 path 通道——VM 语义测试不应被文件门拦）。
+    if path.is_some() && !matches!(script_mode, crate::mode::ScriptMode::Script) {
         let py_signal = !session.py_imports().is_empty();
         let null_signal = parser.saw_bare_null;
         if py_signal || null_signal {
             let mut signals = Vec::new();
             if py_signal { signals.push("use.py"); }
             if null_signal { signals.push("null/nil 字面量"); }
-            eprintln!(
-                "warning: 疑似脚本内容（{}）——正常模式不鼓励裸 null/use.py；                 W1 起建议改名 .as 或标注 #[script]（Plan 550）",
+            return Err(format!(
+                "auto_gate_E5501: 正常模式 .at 含脚本内容信号（{}）——                 改名为 .as 或标注 #[script]（#[rust] 可压回）；                 参见脚本模式设计 script-mode-interop.md §2",
                 signals.join(" + ")
-            );
+            )
+            .into());
         }
     }
 
@@ -1795,7 +1801,10 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
     }
 
     // Normal execution with capture
-    let (result, stdout) = match run_with_capture(&src) {
+    // Plan 560 T14：文件测试走带 path 通道（硬化门控对 .at 文件生效、
+    // .as 豁免——内联 run_with_capture 不门控，见 execute 段注记）。
+    let src_path_str = case.source_file.to_string_lossy().to_string();
+    let (result, stdout) = match run_with_capture_and_path(&src, &src_path_str) {
         Ok(r) => r,
         Err(e) => {
             return test_runner::FileTestReport {
