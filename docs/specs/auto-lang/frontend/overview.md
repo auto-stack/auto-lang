@@ -36,6 +36,11 @@
   优先序 `#[rust]` > `#[script]` > 扩展名；`CompileSession.script_mode`
   回填（550 `script_marked` 派生兼容），门控 lint 按 ScriptMode 统一判定
   （.as 自动豁免）。W1 语义 passthrough（脚本语义激活在 W2 lowering 批）。
+- W2 语法糖批（plan-560）：`.as` 执行翻转为 **lower→compile**（s2s 改写
+  管线激活）；`with` 上下文管理器关键字（无 as 形态直产 py_with 调用；
+  as 形态与 Cast 中缀歧义响亮拒绝 P560-D1）；`**` Power token + `@`/`**`
+  中缀直产 py_matmul/py_pow 桥调用；`is` 中缀→py_is；`#[with(...)]` 注解名
+  撞 With 关键字收位修复。
 
 ## 关键入口
 
