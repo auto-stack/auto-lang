@@ -7679,7 +7679,12 @@ impl AutoVM {
                     // Plan 419: 同 CALL_NAT 的死区结算。
                     let sp_before_native = task.ram.sp;
                     if let Some(shim) = self.native_interface.get(native_id).cloned() {
-                        shim(task, self)?;
+                        // Plan 560 T11（§4-3）：py 桥错误统一 RuntimeError
+                        // 通道（catch 拦值一致绑定——FFI 标签在载荷里保留
+                        // 上下文原文；PyException 前缀精化归 P560 债）。
+                        if let Err(VMError::FFI(msg)) = shim(task, self) {
+                            return Err(VMError::RuntimeError(msg));
+                        }
                     } else {
                         return Err(VMError::MissingNative(native_id));
                     }
