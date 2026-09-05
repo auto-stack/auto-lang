@@ -1018,4 +1018,39 @@ mod tests {
         assert_eq!(super::resolve_media_uri(&uri), Some(vec![0, 255, 2]));
         assert_eq!(super::resolve_media_uri("relative/path.png"), None);
     }
+
+    #[test]
+    fn fixture_manifest() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(root.join("manifest.json")).unwrap())
+                .unwrap();
+        let fixtures = manifest["fixtures"].as_array().unwrap();
+        assert_eq!(fixtures.len(), 6);
+        for fixture in fixtures {
+            let name = fixture["file"].as_str().unwrap();
+            let bytes = std::fs::read(root.join(name)).unwrap();
+            assert!(!bytes.is_empty(), "fixture {name} is empty");
+            match fixture["kind"].as_str().unwrap() {
+                "jpeg" => assert!(bytes.starts_with(&[0xff, 0xd8, 0xff]), "{name} is not JPEG"),
+                "png" => assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "{name} is not PNG"),
+                "webp" => assert!(bytes.starts_with(b"RIFF") && bytes[8..].starts_with(b"WEBP"), "{name} is not WebP"),
+                "corrupt" => assert!(super::inspect_image_metadata(&bytes).is_err()),
+                other => panic!("unknown fixture kind {other}"),
+            }
+        }
+        let alpha = image::load_from_memory(&std::fs::read(root.join("alpha-2x1.png")).unwrap())
+            .unwrap()
+            .to_rgba8();
+        assert_eq!(alpha.dimensions(), (2, 1));
+        assert_eq!(alpha.get_pixel(1, 0).0[3], 64);
+        let orientation = manifest["fixtures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|fixture| fixture["file"] == "orientation-6.jpg")
+            .unwrap();
+        assert_eq!(orientation["orientation"], 6);
+    }
 }
