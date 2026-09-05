@@ -53,8 +53,6 @@ widget App {
         "/label" -> use label
         "/menubar" -> use menubar
         "/navigationmenu" -> use navigationmenu
-        "/navlink" -> use navlink
-        "/navitem" -> use navitem
         "/pagination" -> use pagination
         "/popover" -> use popover
         "/position" -> use position
@@ -176,102 +174,491 @@ widget App {
             row (style: "flex-1 overflow-hidden") {
                 // Desktop sidebar (hidden on mobile)
                 aside (style: "hidden md:flex w-64 lg:w-72 border-r bg-background flex-col shrink-0") {
-                    scroll (style: "flex-1 px-3 py-4") {
+                    sidebar_provider (class: "w-full min-h-0 flex-1 flex-col") {
+                        sidebar_content (style: "flex-1 px-3 py-4") {
                         // Overview group
-                        text "Overview" (style: "mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/", icon: "home", label: "Home")
+                        sidebar_group {
+                            sidebar_group_label { text "Overview" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/", exact: true) {
+                                            icon (name: "home") {}
+                                            text "Home" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Layout group (Plan 412: 布局专区,插在 Overview 之后)
-                        text "Layout" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/row", icon: "arrow-right", label: "Row")
-                        nav-item (to: "/col", icon: "arrow-down", label: "Column")
-                        nav-item (to: "/center", icon: "plus", label: "Center")
-                        nav-item (to: "/flex", icon: "move-horizontal", label: "Flex")
-                        nav-item (to: "/alignment", icon: "align-center", label: "Alignment")
-                        nav-item (to: "/absolute", icon: "move", label: "Absolute")
-                        nav-item (to: "/spacing", icon: "space", label: "Spacing")
-                        nav-item (to: "/sizing", icon: "ruler", label: "Sizing")
-                        nav-item (to: "/scroll", icon: "chevrons-down", label: "Scroll")
-                        nav-item (to: "/position", icon: "layers", label: "Position")
-                        nav-item (to: "/responsive", icon: "monitor", label: "Responsive")
-                        nav-item (to: "/grid", icon: "layout-grid", label: "Grid")
-                        nav-item (to: "/grid-span", icon: "square-stack", label: "GridSpan")
+                        sidebar_group {
+                            sidebar_group_label { text "Layout" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/row") {
+                                            icon (name: "arrow-right") {}
+                                            text "Row" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/col") {
+                                            icon (name: "arrow-down") {}
+                                            text "Column" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/center") {
+                                            icon (name: "plus") {}
+                                            text "Center" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/flex") {
+                                            icon (name: "move-horizontal") {}
+                                            text "Flex" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/alignment") {
+                                            icon (name: "align-center") {}
+                                            text "Alignment" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/absolute") {
+                                            icon (name: "move") {}
+                                            text "Absolute" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/spacing") {
+                                            icon (name: "space") {}
+                                            text "Spacing" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/sizing") {
+                                            icon (name: "ruler") {}
+                                            text "Sizing" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/scroll") {
+                                            icon (name: "chevrons-down") {}
+                                            text "Scroll" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/position") {
+                                            icon (name: "layers") {}
+                                            text "Position" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/responsive") {
+                                            icon (name: "monitor") {}
+                                            text "Responsive" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/grid") {
+                                            icon (name: "layout-grid") {}
+                                            text "Grid" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/grid-span") {
+                                            icon (name: "square-stack") {}
+                                            text "GridSpan" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Form group
-                        text "Form" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/button", icon: "mouse-pointer-click", label: "Button")
-                        nav-item (to: "/calendar", icon: "layout-grid", label: "Calendar")
-                        nav-item (to: "/checkbox", icon: "square-stack", label: "Checkbox")
-                        nav-item (to: "/code-editor", icon: "type", label: "CodeEditor")
-                        nav-item (to: "/combobox", icon: "command", label: "Combobox")
-                        nav-item (to: "/datepicker", icon: "layout-grid", label: "DatePicker")
-                        nav-item (to: "/form", icon: "layout-grid", label: "Form")
-                        nav-item (to: "/input", icon: "type", label: "Input")
-                        nav-item (to: "/label", icon: "type", label: "Label")
-                        nav-item (to: "/radiogroup", icon: "layout-grid", label: "RadioGroup")
-                        nav-item (to: "/select", icon: "layout-grid", label: "Select")
-                        nav-item (to: "/slider", icon: "layout-grid", label: "Slider")
-                        nav-item (to: "/switch", icon: "square-stack", label: "Switch")
-                        nav-item (to: "/textarea", icon: "type", label: "Textarea")
-                        nav-item (to: "/toggle", icon: "square-stack", label: "Toggle")
-                        nav-item (to: "/togglegroup", icon: "layout-grid", label: "ToggleGroup")
+                        sidebar_group {
+                            sidebar_group_label { text "Form" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/button") {
+                                            icon (name: "mouse-pointer-click") {}
+                                            text "Button" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/calendar") {
+                                            icon (name: "layout-grid") {}
+                                            text "Calendar" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/checkbox") {
+                                            icon (name: "square-stack") {}
+                                            text "Checkbox" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/code-editor") {
+                                            icon (name: "type") {}
+                                            text "CodeEditor" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/combobox") {
+                                            icon (name: "command") {}
+                                            text "Combobox" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/datepicker") {
+                                            icon (name: "layout-grid") {}
+                                            text "DatePicker" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/form") {
+                                            icon (name: "layout-grid") {}
+                                            text "Form" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/input") {
+                                            icon (name: "type") {}
+                                            text "Input" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/label") {
+                                            icon (name: "type") {}
+                                            text "Label" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/radiogroup") {
+                                            icon (name: "layout-grid") {}
+                                            text "RadioGroup" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/select") {
+                                            icon (name: "layout-grid") {}
+                                            text "Select" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/slider") {
+                                            icon (name: "layout-grid") {}
+                                            text "Slider" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/switch") {
+                                            icon (name: "square-stack") {}
+                                            text "Switch" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/textarea") {
+                                            icon (name: "type") {}
+                                            text "Textarea" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/toggle") {
+                                            icon (name: "square-stack") {}
+                                            text "Toggle" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/togglegroup") {
+                                            icon (name: "layout-grid") {}
+                                            text "ToggleGroup" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Charts group (Plan 437)
-                        text "Charts" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/line-chart", icon: "activity", label: "LineChart")
-                        nav-item (to: "/bar-chart", icon: "bar-chart-3", label: "BarChart")
-                        nav-item (to: "/area-chart", icon: "area-chart", label: "AreaChart")
-                        nav-item (to: "/donut-chart", icon: "circle", label: "DonutChart")
+                        sidebar_group {
+                            sidebar_group_label { text "Charts" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/line-chart") {
+                                            icon (name: "activity") {}
+                                            text "LineChart" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/bar-chart") {
+                                            icon (name: "bar-chart-3") {}
+                                            text "BarChart" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/area-chart") {
+                                            icon (name: "area-chart") {}
+                                            text "AreaChart" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/donut-chart") {
+                                            icon (name: "circle") {}
+                                            text "DonutChart" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Diagrams group (Plan 502)
-                        text "Diagrams" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/flow-diagram", icon: "git-branch", label: "FlowDiagram")
+                        sidebar_group {
+                            sidebar_group_label { text "Diagrams" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/flow-diagram") {
+                                            icon (name: "git-branch") {}
+                                            text "FlowDiagram" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Display group
-                        text "Display" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/aspectratio", icon: "image", label: "AspectRatio")
-                        nav-item (to: "/avatar", icon: "image", label: "Avatar")
-                        nav-item (to: "/badge", icon: "bell", label: "Badge")
-                        nav-item (to: "/card", icon: "square-stack", label: "Card")
-                        nav-item (to: "/carousel", icon: "layout-grid", label: "Carousel")
-                        nav-item (to: "/datatable", icon: "layout-grid", label: "DataTable")
-                        nav-item (to: "/skeleton", icon: "layout-grid", label: "Skeleton")
-                        nav-item (to: "/table", icon: "layout-grid", label: "Table")
+                        sidebar_group {
+                            sidebar_group_label { text "Display" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/aspectratio") {
+                                            icon (name: "image") {}
+                                            text "AspectRatio" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/avatar") {
+                                            icon (name: "image") {}
+                                            text "Avatar" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/badge") {
+                                            icon (name: "bell") {}
+                                            text "Badge" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/card") {
+                                            icon (name: "square-stack") {}
+                                            text "Card" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/carousel") {
+                                            icon (name: "layout-grid") {}
+                                            text "Carousel" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/datatable") {
+                                            icon (name: "layout-grid") {}
+                                            text "DataTable" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/skeleton") {
+                                            icon (name: "layout-grid") {}
+                                            text "Skeleton" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/table") {
+                                            icon (name: "layout-grid") {}
+                                            text "Table" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Feedback group
-                        text "Feedback" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/alert", icon: "bell", label: "Alert")
-                        nav-item (to: "/progress", icon: "layout-grid", label: "Progress")
-                        nav-item (to: "/sonner", icon: "bell", label: "Sonner")
-                        nav-item (to: "/toast", icon: "bell", label: "Toast")
-                        nav-item (to: "/tooltip", icon: "bell", label: "Tooltip")
+                        sidebar_group {
+                            sidebar_group_label { text "Feedback" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/alert") {
+                                            icon (name: "bell") {}
+                                            text "Alert" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/progress") {
+                                            icon (name: "layout-grid") {}
+                                            text "Progress" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/sonner") {
+                                            icon (name: "bell") {}
+                                            text "Sonner" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/toast") {
+                                            icon (name: "bell") {}
+                                            text "Toast" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/tooltip") {
+                                            icon (name: "bell") {}
+                                            text "Tooltip" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Navigation group
-                        text "Navigation" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/breadcrumb", icon: "navigation", label: "Breadcrumb")
-                        nav-item (to: "/command", icon: "command", label: "Command")
-                        nav-item (to: "/menubar", icon: "layout-grid", label: "Menubar")
-                        nav-item (to: "/navigationmenu", icon: "navigation", label: "NavigationMenu")
-                        nav-item (to: "/navlink", icon: "navigation", label: "NavLink")
-                        nav-item (to: "/navitem", icon: "mouse-pointer-click", label: "NavItem")
-                        nav-item (to: "/pagination", icon: "layout-grid", label: "Pagination")
-                        nav-item (to: "/scrollarea", icon: "layout-grid", label: "ScrollArea")
-                        nav-item (to: "/separator", icon: "layout-grid", label: "Separator")
-                        nav-item (to: "/sidebar", icon: "layout-grid", label: "Sidebar")
-                        nav-item (to: "/tabs", icon: "layout-grid", label: "Tabs")
+                        sidebar_group {
+                            sidebar_group_label { text "Navigation" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/breadcrumb") {
+                                            icon (name: "navigation") {}
+                                            text "Breadcrumb" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/command") {
+                                            icon (name: "command") {}
+                                            text "Command" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/menubar") {
+                                            icon (name: "layout-grid") {}
+                                            text "Menubar" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/navigationmenu") {
+                                            icon (name: "navigation") {}
+                                            text "NavigationMenu" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/pagination") {
+                                            icon (name: "layout-grid") {}
+                                            text "Pagination" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/scrollarea") {
+                                            icon (name: "layout-grid") {}
+                                            text "ScrollArea" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/separator") {
+                                            icon (name: "layout-grid") {}
+                                            text "Separator" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/sidebar") {
+                                            icon (name: "layout-grid") {}
+                                            text "Sidebar" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/tabs") {
+                                            icon (name: "layout-grid") {}
+                                            text "Tabs" {}
+                                        }
+                                    }
 
+                                }
+                            }
+                        }
                         // Overlay group
-                        text "Overlay" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/accordion", icon: "layout-grid", label: "Accordion")
-                        nav-item (to: "/alertdialog", icon: "bell", label: "AlertDialog")
-                        nav-item (to: "/collapsible", icon: "layout-grid", label: "Collapsible")
-                        nav-item (to: "/contextmenu", icon: "layout-grid", label: "ContextMenu")
-                        nav-item (to: "/dialog", icon: "square-stack", label: "Dialog")
-                        nav-item (to: "/drawer", icon: "layout-grid", label: "Drawer")
-                        nav-item (to: "/dropdownmenu", icon: "layout-grid", label: "DropdownMenu")
-                        nav-item (to: "/hovercard", icon: "layout-grid", label: "HoverCard")
-                        nav-item (to: "/popover", icon: "layout-grid", label: "Popover")
-                        nav-item (to: "/sheet", icon: "square-stack", label: "Sheet")
+                        sidebar_group {
+                            sidebar_group_label { text "Overlay" }
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/accordion") {
+                                            icon (name: "layout-grid") {}
+                                            text "Accordion" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/alertdialog") {
+                                            icon (name: "bell") {}
+                                            text "AlertDialog" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/collapsible") {
+                                            icon (name: "layout-grid") {}
+                                            text "Collapsible" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/contextmenu") {
+                                            icon (name: "layout-grid") {}
+                                            text "ContextMenu" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/dialog") {
+                                            icon (name: "square-stack") {}
+                                            text "Dialog" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/drawer") {
+                                            icon (name: "layout-grid") {}
+                                            text "Drawer" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/dropdownmenu") {
+                                            icon (name: "layout-grid") {}
+                                            text "DropdownMenu" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/hovercard") {
+                                            icon (name: "layout-grid") {}
+                                            text "HoverCard" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/popover") {
+                                            icon (name: "layout-grid") {}
+                                            text "Popover" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/sheet") {
+                                            icon (name: "square-stack") {}
+                                            text "Sheet" {}
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                        }
                     }
                 }
 
@@ -282,9 +669,11 @@ widget App {
 
                 // Main content
                 main (style: "flex-1 overflow-hidden") {
-                    scroll (style: "h-full") {
+                    sidebar_provider (class: "w-full min-h-0 flex-1 flex-col") {
+                        sidebar_content (style: "h-full") {
                         div (style: "p-4 md:p-8 lg:p-10 max-w-5xl mx-auto pb-32 md:pb-20") {
                             outlet
+                        }
                         }
                     }
                 }

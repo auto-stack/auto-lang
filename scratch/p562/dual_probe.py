@@ -124,10 +124,14 @@ def vm_leg(args) -> bool:
 
 def vue_leg(args) -> bool:
     port = pick_free_port()
-    env = dict(os.environ, PORT=str(port))
+    mcp_port = pick_free_port()
+    env = dict(os.environ, PORT=str(port), AUTOUI_MCP_PORT=str(mcp_port))
     print(f"[*] Vue 启动: {args.auto_bin} run @ {args.app_dir}")
+    run_cmd = [args.auto_bin, "run"]
+    if args.vue_render:
+        run_cmd += ["-r", args.vue_render]
     proc = subprocess.Popen(
-        [args.auto_bin, "run"], cwd=args.app_dir, env=env,
+        run_cmd, cwd=args.app_dir, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
     )
     url = None
@@ -190,6 +194,7 @@ def main() -> int:
     ap.add_argument("--skip-vue", action="store_true")
     ap.add_argument("--skip-vm", action="store_true")
     ap.add_argument("--timeout", type=int, default=90)
+    ap.add_argument("--vue-render", default="", help="显式 -r 渲染目标（如 vue；gallery 等 pac.at 默认非 vue 的项目用）")
     args = ap.parse_args()
 
     args.app_dir = os.path.abspath(args.app_dir)

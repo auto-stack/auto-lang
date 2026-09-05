@@ -1,4 +1,4 @@
-front/app.at	16770	515ca2bbb98ed572
+front/app.at	46399	b9045a2d786e40df
 front/components/area_chart.at	20439	2139e4f0916e2a0d
 front/components/bar_chart.at	19078	188e5b1fa6a054f5
 front/components/carousel.at	3149	7d8b748fff8cafa9
@@ -48,15 +48,13 @@ front/pages/form.at	10913	bcad99645200d0f9
 front/pages/grid-span.at	29129	12cc16f0211e6803
 front/pages/grid.at	29791	ddbdbe8ed1a6e966
 front/pages/hovercard.at	12180	f1fa65f34b9105cc
-front/pages/index.at	67498	5d285b0bfbabcfaa
+front/pages/index.at	66450	95db46aa7a79ebfc
 front/pages/input.at	28240	2cf646939fde14f3
-front/pages/kitchen-sink.at	13337	a6238ffb929568db
+front/pages/kitchen-sink.at	14455	ae0693de488c6ce2
 front/pages/label.at	13276	378c7d9a69235176
 front/pages/line-chart.at	14657	3e25b0f59a1eac47
 front/pages/menubar.at	8947	717c321af1d86722
 front/pages/navigationmenu.at	9144	4338ed3213ff2136
-front/pages/navitem.at	34271	6149742ffc480289
-front/pages/navlink.at	19663	d1994369e4fd3efe
 front/pages/pagination.at	9483	37e88b459a449512
 front/pages/popover.at	10768	cbc7f80a41dbdeb0
 front/pages/position.at	16935	312b008a8900854b
@@ -83,4 +81,4 @@ front/pages/toast.at	38169	05657deebd2a290c
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	18665	2aae5b01cc2fb0e2
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1626869	090de57b61c6b150
+TOTAL	1602632	6e374dcbe6c95e46

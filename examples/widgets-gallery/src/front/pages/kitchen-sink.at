@@ -156,27 +156,41 @@ widget KitchenSinkPage {
                 native_button (disabled: true) {}
             }
 
-            h2 "nav-group"
+            // Plan 562: nav 族三节退役，改演示 sidebar 族（1:1 shadcn-vue 移植）。
+            // 完整矩阵见 /sidebar 专页，此处保留最小组合 smoke。
+            h2 "sidebar"
             row (style: "gap-2 flex-wrap items-center") {
-                nav-group {}
-                nav-group (label: "sample") {}
-                nav-group (collapsible: true) {}
-                nav-group (indent: true) {}
-            }
-
-            h2 "nav-item"
-            row (style: "gap-2 flex-wrap items-center") {
-                nav-item {}
-                nav-item (to: "sample") {}
-                nav-item (exact: true) {}
-                nav-item (icon: "sample") {}
-                nav-item (label: "sample") {}
-            }
-
-            h2 "nav-link"
-            row (style: "gap-2 flex-wrap items-center") {
-                nav-link "sample" {}
-                nav-link (icon: "badge") {}
+                sidebar_provider {
+                    sidebar {
+                        sidebar_header {
+                            text "Acme" (style: "font-semibold") {}
+                        }
+                        sidebar_content {
+                            sidebar_group {
+                                sidebar_group_label { text "Workspace" }
+                                sidebar_group_content {
+                                    sidebar_menu {
+                                        sidebar_menu_item {
+                                            sidebar_menu_button {
+                                                icon (name: "home") {}
+                                                text "Home"
+                                            }
+                                        }
+                                        sidebar_menu_item {
+                                            sidebar_menu_button (to: "/kitchen-sink", exact: true) {
+                                                icon (name: "settings") {}
+                                                text "Sink"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        sidebar_footer {
+                            text "v1" (style: "text-xs text-muted-foreground") {}
+                        }
+                    }
+                }
             }
 
             h2 "p"
