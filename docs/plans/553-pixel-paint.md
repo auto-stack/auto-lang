@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-553
-status: execution_done           # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: pixel-paint
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -8,8 +8,14 @@ updated_at: 2026-09-05
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - "examples/ui/031-paint: AutoOS 画图 v1 像素形态——颜色完整类串字面量进 Tailwind JIT 扫描面/画布 cols 表达式绑定(超 grid-cols-N 刻度)/VM 本地构建→整体赋值三范式 + tests/desktop_mcp.py VM 轨套件(30P/0F/1S,树解析寻址+DEVNULL+id-refresh 三 harness 教训)"
+  - "crates/auto-lang/src/ui_gen/ts_adapter.rs: storage.get 产物补 ?? ''(getItem string|null → "")，对齐 VM storage_host_read 的 "" 缺省——028 头注 TS18047 陷阱收口，storage_get_emits_null_coalescing 单测"
+  - "crates/auto-man/src/vue.rs: 画廊 03-apps 分类臂 +031 前缀"
+  - "crates/auto-lang/src/ui/app_registry.rs: 策展集合恰等断言 19→20（+031-paint；复审发现的遗漏调用点修复）"
+touched_goals:
+  - "GOAL-010: AutoOS 默认应用集 +031-paint（desktop: true 上架，画图 v1 像素形态落地）"
+  - "GOAL-007: storage.get 双端语义对齐（vue 产物 ?? '' ≡ VM "" 缺省）"
 
 affects: [auto-lang/ui, auto-man]   # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 8
@@ -180,6 +186,45 @@ window: "fit"
   [✅ 已完成] vue.rs 03-apps 臂补 031 前缀；README 总览表 031 行 + 编号注记（capability-tests 同号共存说明）；终检三绿：最终 vue build 0 错误 / cargo check（auto-lang+ui-iced、auto-man）0 错误 / storage_get 单测 1P
 
 ## 复审记录
+
+**reviewer**: zhaopuming（agent 复审，2026-09-05）；worktree
+`D:/autostack/.wt/lang-553/auto-lang` @ plan-553-dev（5 提交，+963/-3）。
+
+**逐条验收（verify, don't trust）**：
+
+| # | 验收项 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 双端可画/四工具/undo-redo | PASS | vue playwright 像素校验（scratch/p553/ 截图族：手画/fill 25929 采样/undo-redo/save-load 回环）+ VM MCP 套件 ×3 复跑稳定 + vm 笑脸截图像素验证（vm_paint.png） |
+| 2 | desktop_mcp 双轨 | PASS（含已记录偏差） | VM 轨 30P/0F/1SKIP（P553-D1 上游 VM 债，013 audit-B12 债引用式惯例，执行期已向用户实时报备）；vue 轨 = playwright 冒烟（计划测试设计即此分工，011/013 惯例 MCP=VM 轨） |
+| 3 | 桌面 Paint 图标 | PASS | 策展集合测试（scan_examples_ui_curation_set）含 031 断言绿——552 上架机制 + 注册表级实证（boot 实机未重跑） |
+| 4 | 画廊 03-apps 收录 | PASS | vue.rs:3666 分类臂 031 前缀（编译绿；画廊重新生成实机未跑） |
+| 5 | README 031 行 + 注记 | PASS | README:114 总览行 + 编号说明 031 回填注记 |
+
+**复审发现并已修复（遗漏调用点）**：552 的策展集合测试钉死 C 档 19 id，
+031 上架（desktop: true）后为 20 → 合入即红。已修（期望集 + 031 + 文案
+19→20，worktree 提交 `fix(app_registry)`），app_registry 13/13 绿。
+
+**全量门禁（零新增红，逐测基线核验，musk-062 合入口径）**：
+- 日常档（ui-iced，4563 测试）：worktree 19 红 ⊆ master 20 红（master 多
+  一个 d2_new_note_appends，worktree 分支点较早）——零新增；
+- 全量档（cargo tf 语义，3433 测试）：仅 1 红 = test_charts_gallery_compiles，
+  master 既有（master 日常档名单内 3695 号实证）；
+- master 既有红清单（转交，非 553 范围）：ui::layout 族 ×13、plan370_015
+  ×2（d2/d8——1f7313e93 暗色默认化漏更老测试）、plan492 c2、plan055
+  strip_html、lucide_icon_coverage、charts_gallery_compiles。
+
+**债候选（KNOWN-DEBT 待 merge 沉淀）**：
+1. P553-D1：split 产物重建的全同串列表整体赋值塌缩（VM 运行时；执行期
+   已报备用户，建议 VM 侧修复计划）；
+2. 运行时 str 状态列表下标写静默失效（app 侧已绕开并成文 SPEC）；
+3. 248 采样瞬态（诊断版独见，最终代码不可复现——附录备案不立案）。
+
+**环境注记**：lang-553 组含 auto-down 旁挂 worktree（a2r-actor-tests 的
+autodown-core path 解析需要，auto-lang-553-dev 分支）——merge 时随组
+wt-guard 后移除。
+
+**结论：PASS → status: reviewed**（5/5 验收过，1 遗漏已修，零新增红，
+债均已记录报备）。
 
 ## 待澄清事项
 
