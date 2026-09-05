@@ -57,6 +57,16 @@ pub trait HeapObject: Any + Send + Sync {
     /// This enables mutable downcasting for modifying the concrete type.
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
+    /// Plan 555 T05: 外对象协议（ForeignObject）接入钩子。
+    ///
+    /// 分发组合子（vm/interop.rs）经此取协议面做宿主分派（py 句柄/
+    /// 未来 JS/ArkTS 宿主），替代 isinstance 式硬编码 downcast。默认
+    /// None（非外对象）；宿主句柄类型覆写为 Some(self)。engine 热臂
+    /// 不调用本方法（仅组合子层查表，§10 裁决"架构"行）。
+    fn as_foreign_object(&self) -> Option<&dyn crate::vm::interop::ForeignObject> {
+        None
+    }
+
     /// Plan 419 Phase 1: 本对象直接持有的子堆引用 id 集合。
     ///
     /// RC 归零释放对象时,这些子引用的 stakes 随之死亡(递归 decref,

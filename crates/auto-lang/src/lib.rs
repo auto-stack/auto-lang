@@ -753,6 +753,10 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_float", crate::py_ffi::NATIVE_PY_FLOAT);
         // Plan 539 W3 (T21): Auto closure as Python callable.
         registry.register_with_id("py.py_callable", crate::py_ffi::NATIVE_PY_CALLABLE);
+        // Plan 555 T04: 分发组合子配套三桥（B2 桥半/B6/D8）。
+        registry.register_with_id("py.py_setattr", crate::py_ffi::NATIVE_PY_SETATTR);
+        registry.register_with_id("py.py_len", crate::py_ffi::NATIVE_PY_LEN);
+        registry.register_with_id("py.py_type_name", crate::py_ffi::NATIVE_PY_TYPE_NAME);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
@@ -1066,13 +1070,23 @@ async fn execute_autovm_with_path(
         }
     }
 
-    // Plan 550 T10: 生产者门控（lint 级）——`#[script]` pragma 登记进
-    // compile session；无 pragma 的文件含三信号（use.py / null / nil
-    // 字面量）之一 → 疑似脚本内容迁移提示。只警告不拒绝（硬拒会打断
-    // 现有 py parity 套件）；.as 扩展名与模式管线归 W1。
-    if parser.script_pragma {
-        session.mark_script();
-    } else {
+    // Plan 555 T02: 脚本方言模式解析（扩展名 .as ≡ 隐式 #[script] +
+    // #[rust] 显式压回，八格矩阵见 mode.rs resolve_script_mode）→
+    // session 回填（script_marked 保持 550 派生兼容）。W1 语义
+    // passthrough——信号先行，语义激活在 W2 lowering 批。
+    let script_mode = crate::mode::resolve_script_mode(
+        path.and_then(|p| p.rsplit('.').next())
+            .filter(|e| e.eq_ignore_ascii_case("at") || e.eq_ignore_ascii_case("as")),
+        parser.script_pragma,
+        parser.rust_pragma,
+    );
+    session.set_script_mode(script_mode);
+
+    // Plan 550 T10: 生产者门控（lint 级）——脚本模式（555 起统一为
+    // ScriptMode 判定：.as 扩展名与 #[script] pragma 皆豁免）之外的三
+    // 信号（use.py / null / nil 字面量）→ 疑似脚本内容迁移提示。只警告
+    // 不拒绝（硬拒会打断现有 py parity 套件；硬化归 W2 迁移批）。
+    if !matches!(script_mode, crate::mode::ScriptMode::Script) {
         let py_signal = !session.py_imports().is_empty();
         let null_signal = parser.saw_bare_null;
         if py_signal || null_signal {
@@ -1080,8 +1094,7 @@ async fn execute_autovm_with_path(
             if py_signal { signals.push("use.py"); }
             if null_signal { signals.push("null/nil 字面量"); }
             eprintln!(
-                "warning: 疑似脚本内容（{}）——正常模式不鼓励裸 null/use.py；\
-                 W1 起建议改名 .as 或标注 #[script]（Plan 550）",
+                "warning: 疑似脚本内容（{}）——正常模式不鼓励裸 null/use.py；                 W1 起建议改名 .as 或标注 #[script]（Plan 550）",
                 signals.join(" + ")
             );
         }
@@ -3995,6 +4008,34 @@ fn run_file_dynamic_ui_inner(
 
 pub fn run_file(path: &str) -> AutoResult<String> {
     run_file_with_args(path, Vec::new())
+}
+
+/// Plan 555 T07: s2s 改写——Auto 脚本糖源 → 正常模式桥源
+/// （W1 规则表空置=identity passthrough；W2 糖批逐条落
+/// trans::auto_s2s::builtin_rules）。
+pub fn trans_auto_s2s(path: &str) -> AutoResult<String> {
+    let src = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    crate::trans::auto_s2s::lower_source(&src)
+}
+
+/// Plan 555 T08: `--dump-lowered` 渲染——模式头 + 改写产物（run/trans
+/// 双入口共用）。W1 产物 = passthrough 源；模式头按扩展名解析
+/// （pragma 属解析期信号，离线 dump 按扩展名档位）。
+pub fn dump_lowered(path: &str) -> AutoResult<String> {
+    let lowered = trans_auto_s2s(path)?;
+    let ext = path.rsplit('.').next().unwrap_or("");
+    let mode = crate::mode::resolve_script_mode(Some(ext), false, false);
+    let header = format!(
+        "// lowered (Plan 555 W1 passthrough) mode={} src={}
+",
+        match mode {
+            crate::mode::ScriptMode::Script => "script",
+            crate::mode::ScriptMode::Normal => "normal",
+        },
+        path
+    );
+    Ok(header + &lowered)
 }
 
 /// Plan 524: run a script with CLI pass-through args (`auto <file> [args...]`

@@ -5348,6 +5348,11 @@ impl Codegen {
             "py_item_kw",
             "py_float",
             "py_callable",
+            // Plan 555 T04: 分发组合子配套三桥（B2 桥半/B6/D8）——
+            // 固定 id 注册见 lib.rs init_py_ffi（467-469）。
+            "py_setattr",
+            "py_len",
+            "py_type_name",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
@@ -8453,6 +8458,20 @@ impl Codegen {
                             reg.resolve_qualified(name)
                         }; // guard dropped here
                         if let Some(id) = natives_id {
+                            // Plan 555 T06: 分发组合子走 CALL_PY 传输形态
+                            // （携带调用点实参数字节——组合子 shim 按
+                            // pending_native_arg_count 弹参；is_py_ffi_call
+                            // 在此仅是"带计数字节的原生调用"发射约定，
+                            // 与 py 无耦合）。限定名/裸名皆可命中。
+                            if id == crate::vm::interop::NATIVE_INTEROP_OBJ_GET
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_SET
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_CALL
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_LEN
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_ITER
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_TYPE_NAME
+                            {
+                                is_py_ffi_call = true;
+                            }
                             Some(id)
                         } else if let Some(qualified) = self.import_scope.get(name) {
                             // Plan 347: a user-loaded Auto library must shadow a

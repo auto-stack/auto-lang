@@ -506,6 +506,8 @@ impl AutoVM {
         native_interface.register_std_shims();
         // Plan 094: Register manual FFI shims (cannot use #[rust_fn])
         crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
+        // Plan 555 T06: 分发组合子（interop.obj_* 家族，1860-1865）。
+        crate::vm::interop::register_interop_natives(&mut native_interface);
         // Plan 198: Register #[rust_fn]-annotated shims via inventory
         native_interface.build_from_inventory();
 
