@@ -169,16 +169,16 @@ daemon merge → config.at → 宿主轮询热应用。自定义的是"输入交
 
 ## 验收标准
 
-- [ ] ⚙️ 单击直接打开/聚焦 os-config 窗（不再出现 045 设置窗）。
-- [ ] os-config 侧栏：System Overview 第 1、Desktop 第 2。
-- [ ] Desktop 页二级导航四子页（Dock/通知/外观/关于），控件集与 540 设置窗
+- [x] ⚙️ 单击直接打开/聚焦 os-config 窗（不再出现 045 设置窗）。
+- [x] os-config 侧栏：System Overview 第 1、Desktop 第 2。
+- [x] Desktop 页二级导航四子页（Dock/通知/外观/关于），控件集与 540 设置窗
       对齐（壁纸、壁纸目录、主题、透明度、Dock 位置/开关/固定、通知开关）。
-- [ ] 壁纸字段经 wallpaper_picker 点选生效（非手输路径），值落 config.at
+- [x] 壁纸字段经 wallpaper_picker 点选生效（非手输路径），值落 config.at
       与手输同构（纯字符串，无 UI 注解）。
-- [ ] 机制契约文档化：`view`/`widgets` 声明、解析责任表回写
+- [x] 机制契约文档化：`view`/`widgets` 声明、解析责任表回写
       config-plugin-architecture.md（Plan 006 退役注记更新）。
-- [ ] os-config 内改主题/壁纸/透明度，运行中桌面 ≤2s 热生效。
-- [ ] examples/ui/045-desktop-settings 退役，全仓无悬挂引用。
+- [x] os-config 内改主题/壁纸/透明度，运行中桌面 ≤2s 热生效。
+- [x] examples/ui/045-desktop-settings 退役，全仓无悬挂引用。
 - [x] Vue desktop-host 齿轮入口同步换向，Desktop 页双端对拍绿。
       → **用户裁定（2026-09-05）拆 follow-up**：vm 轨全部验收项随本 plan 过复审/merge；
       Vue 侧受两件基线既有问题挡住（②os-config vue 构建 tsc 红=auto.exe 生成偏斜、
