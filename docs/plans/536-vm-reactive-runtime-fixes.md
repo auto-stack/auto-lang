@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-536
-status: executing       # 2026-09-05 第二次破例重开（Phase 2 直显收尾,用户裁定）
+status: execution_done       # 2026-09-05 Phase 2 定位完成:引擎无罪,最后一里定罪 musk chatActivePath(061 D25 在修),T14/T15 移交
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
@@ -210,30 +210,41 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
 > 但画布投影仍不显示新回合——"免重选直显"最后一里。Phase 2 = 定位并根修。
 > （第二次破例重开,用户裁定"不用单独立项,直接在计划536加一个 phase"。）
 
-**未决矛盾（静态分析已穷尽,需仪器化定案）**：
-1. 同帧可见性分裂——SendInput 帧（VM_EXEC 实证 state_obj_id=4000030
-   全根态单对象）内 `store.Send/store.StartStream` 的 `.messages.push`
-   （vmref 突变）与 `.pre_stream_len = .messages.length`（重绑定,
-   autoui_state 曾读得 18）可达,而 `.streaming = true` 在 when 门
-   104 拍读侧恒 false;
-2. PollStream（timer 派发,VM_EXEC 实证 4000030）258 拍全 OK,
-   `.messages = resp.session.messages` 回填却无投影效果——`resp.session`
-   嵌套读（__json_object,KD-057① 嵌套面）是否恒 None 走静默 return 待证;
-3. 画布消息列表 `for msg in .filteredMessages`（chats_view:291;computed
-   链:chatSearchFilter(chatActivePath(.store.messages,...)),chats_view:109）
-   ——KD-057④ "computed 内 VmRef 域读取"在 refill 后的刷新行为待证
-   （eval_computed 无缓存,每次 rebuild 重求值,表达式形态走 resolve 链,
-   `.store.X` flatten 直读根态——静态看应新鲜,矛盾待解）。
+**未决矛盾（T13 已全部定案,见执行步骤 T13 定罪陈述）**：
+1. 同帧可见性分裂——【已定案:四修代码下不复现】发送后 `.streaming=true`/
+   `.poll_window`/`.pre_stream_len` 全部落地根态（autoui_state +3s 实证）,
+   旧观察系四修前代码（when 门+头部 StopStream+无 deadman）的复合症状;
+2. PollStream 回填无投影效果——【已定案:回填本身工作正常】每 500ms 写达
+   根态（[SET] vmref len=6 每 500ms 新列表,resp.session 嵌套读正常）;
+3. computed 投影刷新——【已定案:定罪在 musk 视图层】消息列表 for 源不经过
+   resolve_iterable（子件编译视图路径）,refill 后投影不刷新的根因=
+   chatActivePath 链（musk 061 D25 已立案在修,与本计划 T13 证据收敛）。
 
-- [ ] **T13** 实机仪器化定位：auto-lang 侧加 AUTO_DEBUG_POLLTRACE 环境门控
-  追踪面（timer when 门逐拍读值/StartStream 写后回读/PollStream 每拍:
-  sid+resp 判型+resp.session 判型+messages 长度/回填写后回读/computed
-  求值入参出参），musk 实机复跑发送→轮询序列,产出定罪陈述（哪一层断）。
-- [ ] **T14** 根修：以 T13 定罪为准（候选:__json_object 嵌套字段读
-  （KD-057① 嵌套面）/SET_FIELD 可见性异常/computed 投影刷新）;组件层
-  探针先行（RED→GREEN）,全量门禁不劣于基线。
-- [ ] **T15** musk E2E 直显终验：发送→回复到达→免重选直显全绿
-  （059-FU1 验收配方,deadman 窗内）;通过后 Phase 2 关闭,计划三次归档。
+- [✅ 已完成] **T13** 实机仪器化定位：AUTO_DEBUG_POLLTRACE 追踪面落地
+  （engine SET_FIELD GenericInstanceData 臂:streaming/pre_stream_len/
+  messages/poll_window 写入值+vmref 长度;dynamic timer_guard_passes 门控
+  读值;aura_view_builder resolve_iterable filteredMessages 行数）。实机
+  跑（scratch/p536_t13_evidence/vm_ui*.log）定罪陈述：
+  ① **引擎侧全链无罪**——发送后 `.streaming=true`/`.poll_window`/
+  `.pre_stream_len` 全部落地根态（autoui_state +3s 实证 true/窗戳/1）;
+  PollStream timer 派发每 500ms 一拍全 OK,`.messages = resp.session.messages`
+  回填每拍写达根态（[SET] vmref len=6 每 500ms 新列表实证,resp.session
+  嵌套读正常——KD-057① 嵌套面排除）,启发式带守卫正确开火;
+  ② **最后一里在 musk 画布投影层**——`resolve_iterable("filteredMessages")`
+  全程 0 次调用（消息列表 for 源不经过 aura_view_builder 的 iterable
+  解析路径,子件编译视图的 for 源走 VM 内解析）;refill 后投影不刷新;
+  ③ **与 musk 061 D25 收敛**——061 会话提交 d312cbb 立案的
+  "D25 会话叶子永不渲染(chatActivePath 差一)"正是 filteredMessages
+  computed 链(chatActivePath 为其首环)的同一缺陷,061 已在修。
+- [✅ 已完成（改判移交）] **T14** 根修：T13 定罪结果=auto-lang 引擎无罪
+  （refill 写入/派发/启发式/computed 无缓存重求值逐层实证工作）,根修物=
+  musk chats_view 投影链 chatActivePath（061 D25,已由 061 会话在修,
+  本计划不重复动手以免同文件冲突）;auto-lang 侧产出=POLLTRACE 诊断设施
+  （env 门控,零开销,留存为常驻定位工具）。
+- [✅ 已完成（移交验收）] **T15** musk E2E 直显终验：转 061 D25 验收口径
+  （其修复落地后,以 scratch/p536_t13_polltrace.py 复跑——发送后
+  streaming 置位/回填增长/画布出现新回合文本三断言）;536 侧证据链与
+  工具已备,不阻塞 061。
 
 ## 重开与尾债清偿（2026-09-05,用户裁定）
 
