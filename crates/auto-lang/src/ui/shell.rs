@@ -39,18 +39,6 @@ pub fn build_notification_center_component(
     crate::build_dynamic_component(NOTIFICATION_CENTER_AT, None)
 }
 
-/// Plan 487 M4：设置面板 overlay 源码（进程内嵌；shell pack 同级特权组件，
-/// 不进注册表/examples——switcher/通知中心同型第四枚 overlay 槽）。
-pub const SETTINGS_AT: &str = include_str!("../../assets/settings.at");
-
-/// 进程内编译装载设置面板组件（open_settings 召唤期懒挂载调用；失败由调用
-/// 方通知降级）。
-#[cfg(feature = "ui-iced")]
-pub fn build_settings_component(
-) -> Result<crate::ui::dynamic::DynamicComponent, crate::error::AutoError> {
-    crate::build_dynamic_component(SETTINGS_AT, None)
-}
-
 /// Plan 496 M5：桌面本体面源码（进程内嵌；shell pack 同级特权组件，不进
 /// 注册表/examples——第五面。与 overlay 槽不同：常驻不召唤，boot 期装载，
 /// 挂桌面层 z 槽（壁纸之上、App 虚拟窗口之下））。
@@ -76,7 +64,6 @@ mod pack_tests {
             ("shell", crate::ui::shell::SHELL_AT),
             ("switcher", crate::ui::shell::SWITCHER_AT),
             ("notification_center", crate::ui::shell::NOTIFICATION_CENTER_AT),
-            ("settings", crate::ui::shell::SETTINGS_AT),
             ("desktop", crate::ui::shell::DESKTOP_AT),
         ] {
             crate::build_dynamic_component(src, None)

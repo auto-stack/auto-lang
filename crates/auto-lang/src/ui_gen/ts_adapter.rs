@@ -38,6 +38,13 @@ pub struct AuraTsContext {
     /// PLAN-048 (auto-musk A 线): deps[1..] 的跨 store facade 映射
     /// (store 真名 → facade 变量,如 "ForgeStore" → "forgeStore")。
     pub store_facades: std::collections::HashMap<String, String>,
+    /// Plan 559 W2: qualified-call heads that emit BARE (`Collection.Select`
+    /// → `Select(...)`) instead of a facade var — the store-composable
+    /// self-qualification contract (vm A1): the sibling's action is a local
+    /// fn in the same module, and no `store` const exists in a composable.
+    /// Widget-path facades are unaffected (heads listed here only appear in
+    /// store files' own bodies).
+    pub store_bare_heads: HashSet<String>,
     /// Known API function names (need `await` prefix).
     api_functions: Vec<String>,
     /// Plan 012 Batch A (gap 19): state/prop names whose declared type is
@@ -105,6 +112,7 @@ impl AuraTsContext {
             computed_names: HashSet::new(),
             store_facade_from: None,
             store_facades: Default::default(),
+            store_bare_heads: Default::default(),
             api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
             typed_arrays: HashSet::new(),
             typed_strings: HashSet::new(),
@@ -225,6 +233,12 @@ impl AuraTsContext {
     /// PLAN-048 (auto-musk A 线): 跨 store facade 映射(deps[1..])。
     pub fn with_store_facades(mut self, map: std::collections::HashMap<String, String>) -> Self {
         self.store_facades = map;
+        self
+    }
+
+    /// Plan 559 W2: 注入裸发头(store 组合式自限定,vm A1 契约)。
+    pub fn with_store_bare_heads(mut self, heads: HashSet<String>) -> Self {
+        self.store_bare_heads = heads;
         self
     }
 
@@ -1071,6 +1085,27 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         write!(out, ")").ok();
                         return;
                     }
+                    // Plan 559 W2: store-composable self-qualification (vm A1
+                    // contract) — `Collection.Select(x)` inside the Collection
+                    // store's own bodies emits as a bare local call. Same
+                    // shape as the is_self arm; the head just arrives spelled
+                    // as the store name instead of `.`/`self`.
+                    if let crate::ast::Expr::Ident(head) = object.as_ref() {
+                        if ctx.store_bare_heads.contains(head.as_str()) {
+                            if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
+                                return;
+                            }
+                            write!(out, "{}(", sanitize_ident(method.as_str())).ok();
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ").ok();
+                                }
+                                transpile_expr(&arg.get_expr(), ctx, out);
+                            }
+                            write!(out, ")").ok();
+                            return;
+                        }
+                    }
                     if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
                         return;
                     }
@@ -1256,15 +1291,30 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     }
                     // Plan 028 F3: Date.format(ts, "HH:mm") → toLocaleTimeString
                     // （窄面日期 API，与 vue.rs expr_to_js 同规则）。
+                    // PLAN-536 T4(题3): 秒/毫秒双口径归一（1e11 阈值,与 VM
+                    // format_date_ms 同口径），调用方无需自行 ×1000。
                     if method.as_str() == "format"
                         && matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Date")
                     {
-                        write!(out, "(new Date(").ok();
+                        write!(out, "new Date(((").ok();
                         if let Some(first) = call.args.args.first() {
                             transpile_expr(&first.get_expr().clone(), ctx, out);
                         } else {
                             write!(out, "0").ok();
                         }
+                        write!(out, ") < 100000000000 ? (").ok();
+                        if let Some(first) = call.args.args.first() {
+                            transpile_expr(&first.get_expr().clone(), ctx, out);
+                        } else {
+                            write!(out, "0").ok();
+                        }
+                        write!(out, ") * 1000 : (").ok();
+                        if let Some(first) = call.args.args.first() {
+                            transpile_expr(&first.get_expr().clone(), ctx, out);
+                        } else {
+                            write!(out, "0").ok();
+                        }
+                        write!(out, ")))").ok();
                         let pattern = call.args.args.get(1).and_then(|a| match a.get_expr() {
                             Expr::Str(s) => Some(s.as_str().to_string()),
                             _ => None,
@@ -1273,7 +1323,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         if pattern.contains("ss") {
                             opts.push("second: '2-digit'");
                         }
-                        write!(out, ").toLocaleTimeString([], {{ {} }}))", opts.join(", ")).ok();
+                        write!(out, ".toLocaleTimeString([], {{ {} }})", opts.join(", ")).ok();
                         return;
                     }
                     // Plan 028 F8: platform HTTP protocol — `Http.get(url)` /
@@ -1941,10 +1991,23 @@ fn try_transpile_builtin_call(
             write!(out, ")").ok();
             true
         }
-        // storage.get(x) → localStorage.getItem(x); storage.set(x, y) → localStorage.setItem(x, y)
+        // storage.get(x) → (localStorage.getItem(x) ?? ''); storage.set(x, y) → localStorage.setItem(x, y)
+        // PLAN-553: getItem 返回 string|null（键缺席为 null）——补 ?? '' 与 VM 侧
+        // storage_host_read 的 "" 缺省对齐（stdlib.rs unwrap_or_default），使 vue 产物
+        // 可对结果安全调用方法（split/len 等；028 头注 TS18047 陷阱收口）。
         "storage" => {
+            if method == "get" {
+                write!(out, "(localStorage.getItem(").ok();
+                for (i, arg) in args.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
+                    }
+                    transpile_expr(&arg.get_expr(), ctx, out);
+                }
+                write!(out, ") ?? '')").ok();
+                return true;
+            }
             let js_method = match method {
-                "get" => "getItem",
                 "set" => "setItem",
                 "remove" => "removeItem",
                 "clear" => "clear",
@@ -2443,6 +2506,44 @@ mod tests {
         assert!(out.contains("/^[0-9]$/.test(ch)"), "output:\n{}", out);
     }
 
+    /// PLAN-553: storage.get 产物裹 `?? ''`（getItem string|null → ""），与
+    /// VM 侧 storage_host_read 的 "" 缺省对齐——vue 侧可对结果安全调用方法。
+    #[test]
+    fn storage_get_emits_null_coalescing() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Str("k".into())));
+        let mut out = Vec::new();
+        assert!(try_transpile_builtin_call(
+            &Expr::Ident("storage".into()),
+            "get",
+            &args,
+            &test_ctx(),
+            &mut out,
+        ));
+        let js = String::from_utf8(out).unwrap();
+        assert!(
+            js.contains("(localStorage.getItem(") && js.contains(") ?? '')"),
+            "output: {js}"
+        );
+        // set 侧不裹（值参数无 null 面）。
+        let mut args2 = Args::new();
+        args2.args.push(Arg::Pos(Expr::Str("k".into())));
+        args2.args.push(Arg::Pos(Expr::Str("v".into())));
+        let mut out2 = Vec::new();
+        assert!(try_transpile_builtin_call(
+            &Expr::Ident("storage".into()),
+            "set",
+            &args2,
+            &test_ctx(),
+            &mut out2,
+        ));
+        let js2 = String::from_utf8(out2).unwrap();
+        assert!(
+            js2.contains("localStorage.setItem(") && !js2.contains("??"),
+            "output: {js2}"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // DOM escape hatch: template refs + document/window pass-through
     // -----------------------------------------------------------------------
@@ -2532,6 +2633,51 @@ mod tests {
         let out = transpile_handler_body(&stmts, &test_ctx());
         assert!(out.contains("document.activeElement;"), "output:\n{}", out);
         assert!(out.contains("window.innerWidth;"), "output:\n{}", out);
+    }
+
+    /// PLAN-059 依赖回归(musk 实测 2026-09-04): `Date.format` 的 ts 发射
+    /// 括号失衡——外层包裹 `(` 在 Date 实参后先行闭合,方法调用结束后又补
+    /// 一个收尾 `)`,产出 `return (new Date(G)).toLocaleTimeString(...));`
+    ///（TS1005 ';' expected,relay_store/forge_helpers ext 镜像实测）。与
+    /// vue.rs expr_to_js 同形:new Date(G).toLocaleTimeString(...)。
+    #[test]
+    fn date_format_ts_emission_is_balanced() {
+        let call = Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident("Date".into())),
+                "format".into(),
+            )),
+            args: Args {
+                args: vec![Arg::Pos(Expr::Call(Call {
+                    name: Box::new(Expr::Dot(
+                        Box::new(Expr::Ident("Date".into())),
+                        "now".into(),
+                    )),
+                    args: Args::new(),
+                    ret: Type::Unknown,
+                    type_args: vec![],
+                    generic_args: Vec::new(),
+                    pos: None,
+                }))],
+            },
+            ret: Type::Unknown,
+            type_args: vec![],
+            generic_args: Vec::new(),
+            pos: None,
+        });
+        let out = transpile_handler_body(
+            &[Stmt::Return(Box::new(call))],
+            &test_ctx(),
+        );
+        assert!(
+            out.contains("new Date(((Date.now()) < 100000000000 ? (Date.now()) * 1000 : (Date.now()))).toLocaleTimeString"),
+            "Date.format must emit balanced new Date(...).toLocaleTimeString(...):\n{}",
+            out
+        );
+        // 括号配对守卫:发射片段内 ( 与 ) 数量相等（此前多一个收尾 `)`）。
+        let opens = out.matches('(').count();
+        let closes = out.matches(')').count();
+        assert_eq!(opens, closes, "paren imbalance in emission:\n{}", out);
     }
 
     /// Block-bodied closures (`nextTick(() => { .state = x })`) must stay

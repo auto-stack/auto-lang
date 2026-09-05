@@ -1,23 +1,46 @@
-// composer.at — input bar. DoSend msg avoids name collision with on_send
-// callback (U21: on_send -> "Send" would collide with a Send variant).
-// Plan 448 C: 输入同步由裸 `value: .draft` 两向绑定承担（自动铸名）；
-// on_typing 副作用经内联 lambda（Plan 448 B）触发。
+// composer.at — enhanced input bar with emoji picker and quick chips.
+// DoSend msg avoids name collision with on_send callback (Gotcha U21).
+// Input sync via value: .draft two-way binding; on_typing triggered via inline lambda.
 widget Composer(on_send: msg, on_typing: msg) {
-    msg { DoSend }
+    msg { DoSend, InsertEmoji(str), SendQuick(str) }
     model { var draft str = "" }
     view {
-        row {
-            style: "items-center gap-2 p-4 bg-card rounded-xl shadow-sm"
-            input {
-                placeholder: "Type a message..."
-                value: .draft
-                oninput: () => { on_typing("You") }
-                onenter: .DoSend
-                style: "flex-1 px-4 py-2 bg-background border border-border rounded-full text-sm text-foreground outline-none focus:border-primary transition-colors"
+        col {
+            style: "p-3 bg-card rounded-xl shadow-sm border border-border gap-2"
+            // Emoji toolbar & quick action chips
+            row {
+                style: "items-center justify-between gap-2 overflow-x-auto pb-1"
+                row {
+                    style: "items-center gap-1"
+                    button "😀" { onclick: .InsertEmoji("😀"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "😂" { onclick: .InsertEmoji("😂"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "👍" { onclick: .InsertEmoji("👍"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "❤️" { onclick: .InsertEmoji("❤️"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "🎉" { onclick: .InsertEmoji("🎉"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "🔥" { onclick: .InsertEmoji("🔥"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "🚀" { onclick: .InsertEmoji("🚀"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "🤖" { onclick: .InsertEmoji("🤖"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                }
+                row {
+                    style: "items-center gap-1.5 flex-shrink-0"
+                    button "Hello! 👋" { onclick: .SendQuick("Hello! 👋"), style: "text-xs px-2.5 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors border border-border/40 font-medium" }
+                    button "Got it! 👍" { onclick: .SendQuick("Got it! 👍"), style: "text-xs px-2.5 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors border border-border/40 font-medium" }
+                }
             }
-            button "Send" {
-                onclick: .DoSend
-                style: "px-5 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors"
+            // Input row
+            row {
+                style: "items-center gap-2"
+                input {
+                    placeholder: "Type a message..."
+                    value: .draft
+                    oninput: () => { on_typing("You") }
+                    onenter: .DoSend
+                    style: "flex-1 px-4 py-2 bg-background border border-border rounded-xl text-sm text-foreground outline-none focus:border-primary transition-colors shadow-xs"
+                }
+                button "Send" {
+                    onclick: .DoSend
+                    style: "px-5 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-xs hover:bg-primary/90 transition-colors"
+                }
             }
         }
     }
@@ -27,6 +50,12 @@ widget Composer(on_send: msg, on_typing: msg) {
                 on_send(.draft)
                 .draft = ""
             }
+        }
+        .InsertEmoji(emoji) -> {
+            .draft = .draft + emoji
+        }
+        .SendQuick(text) -> {
+            on_send(text)
         }
     }
 }

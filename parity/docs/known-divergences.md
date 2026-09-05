@@ -389,35 +389,92 @@ bug is worked around in-source:
 
 ## Python Parity Divergences
 
+### DIV-PY-TUPLE-1: Python tuple flattens to Auto List
+
+- **库**: py_torch_train（W2 生效面）
+- **状态**: documented (2026-09-04, Plan 539 W2 裁定)
+- **映射**: Python tuple（顶层返回与嵌套）→ Auto （拍平为
+  TAG_OBJECT ListData，与数组字面量同编码，可索引/for-in）。divergence：
+  Python tuple 不可变、可哈希；Auto List 可变——哈希键用途与不可变性
+  依赖不受支持。是否引入 Auto tuple 值类型不在本计划（待澄清③）。
+  注意：Python **list** 返回仍走 461 TAG_LIST 通道（py_call 消费面），
+  与 tuple 通道刻意不同——统一需先清 py_list 存量红（P539-D1）。
+
+### DIV-PY-CLOSURE-1: py 句柄在闭包局部/捕获中退化为裸 id
+
+- **库**: py_torch_infer（规避在案）, W2/W3 回调面（影响在案）
+- **状态**: open（存量，master 同形复现——Plan 539 W1 探针 c7）
+- **原因**: 闭包体内经 item-import CALL_PY 产生的 PyObjectHandle 存入
+  闭包局部槽后，读回退化为堆 id 裸 i32（ 报
+  ）；闭包捕获句柄同样退化。461 套件从未在闭包内调 py 故未
+  显形。规避：py_with 语句体经 codegen 内联降级（py_enter/py_exit
+  bracket，Plan 539 T14）；map/回调式消费见 W3 回调桥（新任务执行
+  模型）。
+
 ### DIV-PY-FLOAT-1: Python float return values are stringified
 
 - **库**: py_math, py_random, py_struct
-- **状态**: open
-- **原因**: `py_ffi.rs:666-682` stores floats as strings in the string pool (codegen allocates 1 slot, f64 needs 2). All float tests use `.to(int)` or exact string comparison as workaround.
+- **状态**: ✅ fixed (2026-09-04, Plan 539 W0)
+- **原因/修复**: Plan 377 已把 f64 单槽化，字符串池的 2-slot 理由过时。
+  `py_auto_marshal_return` 浮点分支改 `push_f64`；消费侧
+  TYPE_TO_I32/TYPE_TO_F64 改按 NanoValue tag 分派（此前 py 返回被
+  codegen 谎记 StrFixed 使 `.to(int)` 走字符串解析臂，f64 位模式被
+  pop_tagged 误当 i32）。`.to(str)` 原已全 tag 分派无需动。回归：
+  py_math 20/20 + py_torch 7/7 三方绿。
 
 ### DIV-PY-EXCEPT-1: Python exceptions not catchable in Auto
 
 - **库**: all py_* libraries
-- **状态**: open (language limitation)
-- **原因**: Python exceptions propagate as `FFI("Python call ... failed: ValueError: ...")` VM errors. There is no Auto-side try/catch mechanism for PyFFI errors. A Python exception crashes the AutoVM task.
+- **状态**: ✅ fixed (2026-09-04, Plan 539 W0；考古修正：VMError::FFI
+  在 try-catch 下本就可捕获，实缺是 May 值通道)
+- **原因/修复**: 新增 `py_call_may` 内建（id 453）：成功包 Result.Ok、
+  异常包 Result.Err 携带 `PyException <类型名>: <消息>`，`expr.?`
+  传播 / `expr.?(default)` 兜底（NULL_COALESCE 补 Result 臂）。
+  `py_call` 保持 strict（无 try 时硬错中止）。a2py 发射
+  `_auto_may(lambda…, None)` 哨兵。
 
 ### DIV-PY-ITER-1: Manual iteration works but no for-loop over Python iterables
 
 - **库**: py_list
-- **状态**: open (language limitation)
-- **原因**: `py_call(lst, "__iter__")` + `py_call(iter, "__next__")` works for manual iteration. But Auto's `for x in py_list` does not work because Python lists are opaque handles, not Auto-native iterables.
+- **状态**: ✅ fixed (2026-09-04, Plan 539 W0)
+- **原因/修复**: `py_iter`(454)/`py_next`(455) 内建（StopIteration→
+  null 家族）覆盖 loader/生成器手动模式；for-in 贯通走索引通道 GIL 臂
+  （ARRAY_LEN/GET_ELEM 补 PyObjectHandle 下转：len()/obj[i]），张量/
+  字典/列表句柄 for-in 按 Python 语义。注意 `for x, y in z` 元组解构
+  形态语义不齐（单次迭代无解包），py 句柄源勿用。
 
 ### DIV-PY-KWARGS-1: No keyword argument syntax
 
 - **库**: py_datetime, py_random
-- **状态**: open (language limitation)
-- **原因**: Auto has no `func(key=value)` syntax. All Python calls must use positional arguments. `timedelta(days=30)` → use `timedelta(30)` instead.
+- **状态**: ✅ fixed (2026-09-04, Plan 539 W0；考古修正：Auto 已有
+  `Arg::Pair` 命名实参语法，形态是**冒号** `k: v`——`k = v` 解析为
+  赋值表达式按位置传)
+- **原因/修复**: `py_call(obj, "m", pos..., k: v)` 经 codegen 降发
+  `py_call_kw` 内建（id 452）固定 5 槽约定（posargs/kw_names/kw_vals
+  封送列表）；a2py `Arg::Pair → key=value` 原已正确。项导入直呼形态
+  `nn.Linear(…, bias: False)` 在 W2 T17 贯通。
+
+### DIV-PY-CONST-1: Constant imports and module-level member access
+
+- **库**: py_torch, py_numpy
+- **状态**: ✅ documented (2026-09-04, Plan 539 W0；裁定不做语法级别名)
+- **原因/裁定**: 同名项跨模块**静默后者胜**（torch/numpy 同名 arange，
+  非报错）；无别名语法（`use.py torch as t` 不存在——刻意出范围，
+  roadmap 在案）。官方绕行：`use.py importlib: import_module` 取模块
+  句柄 + `py_getattr(mod, name)`（no_grad/arange 实证）。裸模块
+  dot-call（`use.py torch` + `torch.arange`）在案已坏（Plan 300 时代
+  特性腐烂，探针 p8a）。子模块项导入（`use.py torch.nn: Linear`）
+  可用。详见 `parity/libs/python/README.md`。
 
 ### DIV-PY-AUTOLIST-1: Auto list literals don't marshal to Python list
 
 - **库**: py_random
-- **状态**: open
-- **原因**: `[1, 2, 3]` in Auto is a VM-internal list, not a Python list. `choice([1,2,3])` fails. Workaround: use Python functions that return lists (sorted, list), or pass strings as iterables.
+- **状态**: ✅ fixed (2026-09-04, Plan 539 W0)
+- **原因/修复**: 病根是编码不匹配——数组字面量 CREATE_ARRAY 产物是
+  TAG_OBJECT 编码 ListData（非 TAG_LIST），pop_auto_py_arg 的 TAG_OBJECT
+  臂下转三连失败落单 None。修复：TAG_OBJECT 臂补 ListData 下转 +
+  value_to_py 嵌套臂（Array/Block→PyList、Obj→PyDict、VmRef→堆解析）。
+  `tensor([1.0,2.0,3.0])`/`len([1,2,3])` 实证。
 - **Plan 461 补充发现 (2026-08-28)**: 直调路径下 list 实参抵达 Python 侧后
   变成 0 维/空对象（`array([7,8,9])` → 0-d ndarray，`sum([1,2,3,4])` → 0），
   且传入 pyplot 时直接触发 VM panic（Stack Underflow）。a2py 文本转译不受

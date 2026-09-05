@@ -135,6 +135,11 @@ struct Cli {
     #[arg(index = 1)]
     file: Option<String>,
 
+    /// Plan 555 T08: dump the s2s-lowered source instead of running
+    /// （`auto <file> --dump-lowered`，审查面；W1=passthrough+模式头）
+    #[arg(long = "dump-lowered", global = true)]
+    dump_lowered: bool,
+
     /// Plan 524: args passed through to the script (`auto <file> [args...]`) —
     /// visible to the program as `process.args()[1..]`. Positional form
     /// (W0 定案: trailing_var_arg); a bare value that clashes with a subcommand
@@ -258,6 +263,12 @@ enum TransTarget {
     /// Emit both .tscn (from any `scene`) and .gd (from functions) for one .at file.
     Godot {
         #[arg(short, long, help = "Output base name (default: source name; writes <base>.tscn + <base>.gd)")]
+        output: Option<String>,
+    },
+    /// Plan 555 T07: Auto → Auto（脚本糖 → 正常模式桥，s2s 改写器；
+    /// W1 规则表空置=identity；--dump-lowered 的产物源）
+    Auto {
+        #[arg(short, long, help = "Output file path (default: stdout)")]
         output: Option<String>,
     },
 }
@@ -390,6 +401,8 @@ enum Commands {
         accent: Option<String>,
         #[arg(long, help = "Plan 465: desktop host mode — vue scaffold becomes the virtual-desktop shell consuming an apps registry")]
         desktop: bool,
+        #[arg(long, help = "Plan 549: UI gallery host mode — harvest examples/ui into demos-registry.ts")]
+        gallery: bool,
         #[arg(long, help = "Plan 465: apps directory for the desktop registry (default <workspace>/examples/ui)")]
         apps: Option<String>,
         #[arg(allow_hyphen_values = true)]
@@ -710,6 +723,16 @@ fn real_main(cli: Cli) -> Result<()> {
         auto_lang::set_vm_debug(true);
     }
 
+    // Plan 555 T08: `auto <file> --dump-lowered`——展示 s2s 改写产物
+    // （模式头 + W1 passthrough 源），不执行（审查面，AI 生成-验证循环）。
+    if let Some(path) = &cli.file.clone() {
+        if cli.dump_lowered {
+            let lowered = auto_lang::dump_lowered(path).map_err(to_miette_err)?;
+            println!("{}", lowered);
+            return Ok(());
+        }
+    }
+
     // Execution: Run an Auto script directly via AutoVM
     if let Some(path) = cli.file {
         if !ai_mode {
@@ -868,7 +891,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, apps, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, gallery, apps, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -1033,6 +1056,10 @@ fn real_main(cli: Cli) -> Result<()> {
             if desktop {
                 std::env::set_var("AUTO_DESKTOP", "1");
                 println!("  Desktop host mode: ON");
+            }
+            if gallery {
+                std::env::set_var("AUTO_GALLERY", "1");
+                println!("  Gallery host mode: ON");
             }
             if let Some(a) = &apps {
                 std::env::set_var("AUTO_DESKTOP_APPS", a);
@@ -1894,6 +1921,19 @@ fn real_main(cli: Cli) -> Result<()> {
                     to_miette_err(e)
                 })?;
                 output_success(ai_mode, &msg);
+            }
+            // Plan 555 T07: Auto → Auto（s2s 改写器；W1 identity passthrough）
+            TransTarget::Auto { output } => {
+                let lowered = auto_lang::trans_auto_s2s(path.as_str()).map_err(|e| {
+                    if ai_mode { eprintln!("{}", format_error_json(&e)); std::process::exit(1); }
+                    to_miette_err(e)
+                })?;
+                if let Some(out) = output {
+                    std::fs::write(&out, &lowered).map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                    println!("[s2s] {} -> {}", path, out);
+                } else {
+                    output_success(ai_mode, &lowered);
+                }
             }
         }
         Some(Commands::R2a { path, output }) => {

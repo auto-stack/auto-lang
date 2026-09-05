@@ -248,6 +248,12 @@ pub struct VirtualRAM {
     pub raw: Vec<i32>,
     /// Plan 221: NaN-boxed stack
     pub raw_nv: Vec<NanoValue>,
+    /// PLAN-062 Phase2 T12: stake 影子账本——与 raw_nv 平行，slot i ≠0
+    /// 表示该槽拥有一份对应堆 id 的 RC 份额（rc_push* 家族写入；裸写/
+    /// write_nv 清零；STORE_* 转移读写）。释放清扫按影子判定，不再按
+    /// 字节内容猜测（根治 raw 副本双重释放与陈旧字节误杀/漏放两类事故）。
+    /// 字符串池份额不入影子（沿 Plan 510 按内容释放的稳定语义）。
+    pub stake_shadow: Vec<u64>,
     pub sp: usize, // Stack Pointer (Index of the next free slot)
     pub bp: usize, // Base Pointer (Index of the current frame)
     /// Range storage: (start, end, is_inclusive)
@@ -259,6 +265,7 @@ impl VirtualRAM {
         Self {
             raw: vec![0; size],
             raw_nv: vec![0u64; size],
+            stake_shadow: vec![0u64; size],
             sp: 0,
             bp: 0,
             ranges: Vec::new(),
@@ -271,8 +278,10 @@ impl VirtualRAM {
             // Double the stack capacity
             let new_size = (self.raw_nv.len() * 2).max(256);
             self.raw_nv.resize(new_size, 0);
+            self.stake_shadow.resize(new_size, 0);
         }
         self.raw_nv[self.sp] = encode_i32(val);
+        self.stake_shadow[self.sp] = 0;
         self.sp += 1;
     }
 
@@ -401,7 +410,11 @@ impl VirtualRAM {
 
     pub fn read_i32(&self, addr: usize) -> i32 { decode_i32(self.raw_nv[addr]) }
 
-    pub fn write_i32(&mut self, addr: usize, val: i32) { self.raw_nv[addr] = encode_i32(val); }
+    pub fn write_i32(&mut self, addr: usize, val: i32) {
+        self.raw_nv[addr] = encode_i32(val);
+        // PLAN-062 T12: 裸写清影子（同 write_nv 约定）。
+        if addr < self.stake_shadow.len() { self.stake_shadow[addr] = 0; }
+    }
 
     // For manual viewing
     pub fn top(&self) -> Option<i32> {
@@ -415,8 +428,10 @@ impl VirtualRAM {
         if self.sp >= self.raw_nv.len() {
             let new_size = (self.raw_nv.len() * 2).max(256);
             self.raw_nv.resize(new_size, 0);
+            self.stake_shadow.resize(new_size, 0);
         }
         self.raw_nv[self.sp] = val;
+        self.stake_shadow[self.sp] = 0;
         self.sp += 1;
     }
 
@@ -453,10 +468,51 @@ impl VirtualRAM {
         (nv, is_f64)
     }
 
+    /// Plan 550 T03: 弹出二元算术操作数对并拒收 null（TAG_NULL）。
+    ///
+    /// null 位模式直接 decode_i32 参与运算是 539 实证的静默垃圾病灶
+    /// （`null + 1` → -2147483646、`"a" + null` → 垃圾数字入串拼接），
+    /// 本计划全族统一翻转为可 try-catch 捕获的 Python 风格 TypeError。
+    ///
+    /// 只拒 TAG_NULL：`null`/`nil`/`None` 三拼写经 PUSH_NIL 同落
+    /// encode_null（PLAN-053 P-053-2 归一）。历史 i32 哨兵编码
+    /// （-1 / i32::MIN+1）与真实整数在算术槽不可区分，不在守卫范围
+    /// （EQ 判等的 null-family 兼容语义不变，见 nv_is_null_family）。
+    #[inline(always)]
+    pub fn pop_arith_pair_non_null(
+        &mut self,
+        op: &str,
+    ) -> Result<((u64, bool), (u64, bool)), crate::vm::engine::VMError> {
+        let b = self.pop_arith_operand();
+        let a = self.pop_arith_operand();
+        if arith_operand_is_null(&a) || arith_operand_is_null(&b) {
+            return Err(null_binop_type_error(op, a, b));
+        }
+        Ok((a, b))
+    }
+
+    /// Plan 550 T03: 弹出一元算术操作数并拒收 null（TAG_NULL）。
+    #[inline(always)]
+    pub fn pop_arith_operand_non_null(
+        &mut self,
+        op: &str,
+    ) -> Result<(u64, bool), crate::vm::engine::VMError> {
+        let a = self.pop_arith_operand();
+        if arith_operand_is_null(&a) {
+            return Err(null_unop_type_error(op));
+        }
+        Ok(a)
+    }
+
     /// Write a raw NanoValue at an address (preserves type tag).
     #[inline(always)]
     pub fn write_nv(&mut self, addr: usize, val: NanoValue) {
         self.raw_nv[addr] = val;
+        // PLAN-062 T12: 裸写清影子——覆盖目标旧份额由调用方先行释放
+        // （range 清扫/mark 转移路径均如此约定）。
+        if addr < self.stake_shadow.len() {
+            self.stake_shadow[addr] = 0;
+        }
     }
 
     /// Read a raw NanoValue from an address (preserves type tag).
@@ -486,4 +542,114 @@ impl VirtualRAM {
     pub fn push_str_idx(&mut self, idx: u32) {
         self.push_nv(encode_string(idx));
     }
+
+    // ── PLAN-062 Phase2 T12: stake 影子账本 API ──────────────────────
+
+    /// 栈顶槽标记为拥有一份 id 的份额（rc_push* 家族 push 后调用）。
+    #[inline(always)]
+    pub fn mark_top_stake(&mut self, id: u64) {
+        if self.sp > 0 {
+            let i = self.sp - 1;
+            if i < self.stake_shadow.len() {
+                self.stake_shadow[i] = id;
+            }
+        }
+    }
+
+    /// 指定槽标记份额（RET 结果回写转移用）。
+    #[inline(always)]
+    pub fn mark_stake_at(&mut self, idx: usize, id: u64) {
+        if idx < self.stake_shadow.len() {
+            self.stake_shadow[idx] = id;
+        }
+    }
+
+    /// 读走指定槽的份额（转移语义：读后清零，不释放计数）。
+    #[inline(always)]
+    pub fn take_stake_at(&mut self, idx: usize) -> u64 {
+        if idx < self.stake_shadow.len() {
+            let v = self.stake_shadow[idx];
+            self.stake_shadow[idx] = 0;
+            v
+        } else {
+            0
+        }
+    }
+
+    /// 只读查询。
+    #[inline(always)]
+    pub fn stake_at(&self, idx: usize) -> u64 {
+        self.stake_shadow.get(idx).copied().unwrap_or(0)
+    }
+
+    /// 清指定槽影子（与 raw_nv 清零配对）。
+    #[inline(always)]
+    pub fn clear_stake_at(&mut self, idx: usize) {
+        if idx < self.stake_shadow.len() {
+            self.stake_shadow[idx] = 0;
+        }
+    }
+}
+
+// ---- Plan 550 T03: null 算术守卫的共享消息助手 ----
+// 栈帧纪律（539 三次溢出教训）：守卫体保持 2-3 行，消息构造集中到
+// 模块级函数，不内联大块进热递归 match 臂。
+
+/// Plan 550 T03: 算术操作数的 Python 风格类型名（TypeError 消息渲染）。
+/// 粗粒度映射：nanbox 可判定的标量类型 + object 兜底（堆对象具体
+/// 类型名需 VM 堆访问，不在本层）。
+#[inline(always)]
+pub fn nv_py_type_name(nv: NanoValue) -> &'static str {
+    if !auto_val::is_nanboxed(nv) {
+        return "float"; // f64 直接位模式（非 nanboxed）
+    }
+    if auto_val::is_null(nv) {
+        "NoneType"
+    } else if auto_val::is_f32(nv) {
+        "float"
+    } else if auto_val::is_string(nv) {
+        "str"
+    } else if auto_val::is_bool(nv) {
+        "bool"
+    } else if auto_val::is_object(nv) || auto_val::is_list(nv) {
+        "object"
+    } else {
+        "int"
+    }
+}
+
+/// Plan 550 T03: 二元算术 null 守卫的 TypeError 消息（Python 格式，
+/// a=左操作数、b=右操作数，按操作数次序渲染类型名）。
+pub fn null_binop_type_error(op: &str, a: (u64, bool), b: (u64, bool)) -> crate::vm::engine::VMError {
+    crate::vm::engine::VMError::RuntimeError(format!(
+        "TypeError: unsupported operand type(s) for {}: '{}' and '{}'",
+        op,
+        nv_py_type_name(a.0),
+        nv_py_type_name(b.0)
+    ))
+}
+
+/// Plan 550 T03: 一元算术 null 守卫的 TypeError 消息（Python 格式）。
+pub fn null_unop_type_error(op: &str) -> crate::vm::engine::VMError {
+    crate::vm::engine::VMError::RuntimeError(format!(
+        "TypeError: bad operand type for unary {}: 'NoneType'",
+        op
+    ))
+}
+
+/// Plan 550 T06: 显式类型转换（.to(int)/.to(float)）null 输入的
+/// TypeError 消息（Python 风格；原 -1/-1.0 静默臂是 539 T05 自加的
+/// 兼容臂，本计划翻案——TYPE_TO_* 仅由 Expr::To 显式转换发射，
+/// `??`/迭代哨兵等内部路径不经过，无内部依赖）。
+pub fn null_to_type_error(op: &str) -> crate::vm::engine::VMError {
+    crate::vm::engine::VMError::RuntimeError(format!(
+        "TypeError: {}() argument must be a string or a real number, not 'NoneType'",
+        op
+    ))
+}
+
+/// Plan 550 T03: 算术操作数是否为 TAG_NULL（f64 槽不可能是 null）。
+#[inline(always)]
+fn arith_operand_is_null(operand: &(u64, bool)) -> bool {
+    !operand.1 && auto_val::is_null(operand.0)
 }

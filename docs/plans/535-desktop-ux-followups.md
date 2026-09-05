@@ -97,6 +97,10 @@ total_steps: 0
       输出、无错误日志——疑似 VM 层 Process.exit 或未打印的 abort，
       需 RUST_BACKTRACE=full 实例复现取栈）。定位：`notes_toggle` →
       toggle_notification_center（renderer.rs:8184）二连击路径。
+      ⚠ 归因备注（2026-09-04）：本机存在并行会话的 taskkill /F 强杀
+      ui_desktop 的干扰源（强杀退出码恰为 1、无输出——与静默退出同
+      signature），上述"复现"不能排除该干扰；复核时需先排除并行
+      taskkill（或以 RUST_BACKTRACE=full + 独占环境复现）。
 - [ ] E 用户复核：通知中心开合（同 D 场景）确认修复。
 
 ## 复审记录

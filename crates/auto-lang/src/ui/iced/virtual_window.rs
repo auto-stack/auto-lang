@@ -171,22 +171,17 @@ fn token(c: crate::ui::style::Color) -> Color {
 }
 
 /// Plan 518 G6：Transparency 三档 → 虚拟窗底色 alpha（off=0.95 / low=0.80 /
-/// high=0.62，初值实机可调）。决策纯函数；storage 键
-/// `shell.desktop.transparency` 缺席/坏值 = off。仅底色——chrome 窗口键/
-/// 描边/文字不透明保可用性（计划条款）；每帧读键 = 设置面板写后下一帧
-/// 即时生效（壁纸键先例为 boot 读，此处面板同屏切换要求即时）。
+/// high=0.62，初值实机可调）。决策纯函数；档位坏值 = off。仅底色——chrome
+/// 窗口键/描边/文字不透明保可用性（计划条款）；alpha 由调用方自单源
+/// `config.transparency` 映射传入（Plan 540 T2，storage 每帧读退役），
+/// 设置窗写后下一帧即时生效（壁纸键先例为 boot 读，此处面板同屏切换
+/// 要求即时）。
 pub(crate) fn transparency_alpha_for(level: &str) -> f32 {
     match level.trim() {
         "low" => 0.80,
         "high" => 0.62,
         _ => 0.95,
     }
-}
-
-pub(crate) fn load_transparency_alpha() -> f32 {
-    crate::vm::ffi::stdlib::storage_host_read("shell.desktop.transparency")
-        .map(|v| transparency_alpha_for(&v))
-        .unwrap_or(0.95)
 }
 
 /// 桌面根：背景层 + 虚拟窗口 z-stack（back → front，调用方保证顺序）。
@@ -263,6 +258,7 @@ pub fn virtual_window_element<'a>(
     vwin: &VWinState,
     focused: bool,
     title_menu_open: bool,
+    t_alpha: f32,
     client: Element<'a, DesktopMessage>,
 ) -> Element<'a, DesktopMessage> {
     let rect = *vwin.rect.borrow();
@@ -311,7 +307,6 @@ pub fn virtual_window_element<'a>(
     // 悬在本窗 bounds 内时下层窗口的 button 不再收到 hover（半透明是
     // 纯视觉，遮挡语义由此收口）；客户区内 App 自己的交互件（Pointer）
     // 仍优先（mouse_area 的 child interaction 优先于 interaction 兜底）。
-    let t_alpha = load_transparency_alpha();
     let mut client_bg = token(crate::ui::style::Color::Background);
     client_bg.a = t_alpha;
     let client_area = container(
@@ -577,7 +572,13 @@ mod tests {
         assert_eq!(transparency_alpha_for(""), 0.95);
         assert_eq!(transparency_alpha_for("bogus"), 0.95);
         assert_eq!(transparency_alpha_for(" low "), 0.80, "首尾空白容忍");
-        // 键缺席 = off（load 路径)。
-        assert_eq!(load_transparency_alpha(), 0.95);
+        // Plan 540 T2：单源映射（config.transparency → alpha；storage
+        // 每帧读已退役，缺省档 off 同型兜底）。
+        assert_eq!(
+            transparency_alpha_for(
+                &crate::ui::desktop_config::DesktopConfig::default().transparency
+            ),
+            0.95
+        );
     }
 }

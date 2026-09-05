@@ -11,9 +11,10 @@ type strings (`torch.LongTensor` / `torch.FloatTensor`).
 
 ## Notes
 
-- 0-dim tensors marshal via `__float__` straight to a scalar string — assert
-  `sum()` directly; do NOT chain `.item()` on the marshalled value (it is a
-  str by then).
+- Plan 539 W2 update: 0-dim tensors now stay OPAQUE handles (only exact
+  Python floats marshal to f64) — extract scalars with `py_float(x)`
+  (`float(x)`). Real float returns (`.item()`, math functions) still land
+  as f64 directly.
 - Never use arithmetic operators on handles (`t - 0` degrades the handle to
   an int); use torch functional forms instead.
 - `use.py` has no import aliasing and torch/numpy both export `arange`, so

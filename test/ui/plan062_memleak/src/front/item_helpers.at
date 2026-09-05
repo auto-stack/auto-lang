@@ -1,0 +1,13 @@
+// item_helpers.at — PLAN-062 泄漏语料 helper：每次调用新建列表 + N 个对象。
+// 最小同构 musk chatActivePath/messageBlocks（computed 每帧新建输出树），
+// 供 heap soak 断言 VM 堆 live_heap 增量有界。
+fn build_items(n int) list {
+    var out list = []
+    var i int = 0
+    while i < n {
+        let e obj = { v: i }
+        out.push(e)
+        i = i + 1
+    }
+    return out
+}

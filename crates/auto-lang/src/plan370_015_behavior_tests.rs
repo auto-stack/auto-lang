@@ -288,6 +288,9 @@ mod plan370_015_behavior_tests {
                     return;
                 }
             };
+            // PLAN-062 注记: 本测在干净基线(e51bd02a6, stash 后仅 T1 提交)
+            // 即红——基线既有红(主检出同红),归 015 语料/行为在途变更,
+            // 非 PLAN-062 回归。差分对照口径登记于 docs/plans/062。
             assert_eq!(state_str(&dc, "dark_mode"), "false", "initial dark_mode");
             dc.on_with_input("ToggleDarkMode", None);
             assert_eq!(state_str(&dc, "dark_mode"), "true", "after first toggle");

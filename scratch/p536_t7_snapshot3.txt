@@ -1,0 +1,381 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+row #vnode_14695981039346656037 {
+  col #vnode_12642422519345821663 {
+    row #vnode_4305065243889594349 {
+      row #vnode_4321691031005245367 {
+        text #vnode_15876414090542715893 "Auto Musk"
+        text #vnode_15876396498356671042 "v0.1.0"
+      }
+    }
+    col #vnode_4305047651703549498 {
+      button #vnode_4306385829146414222 "会话" {
+        row #vnode_5889769877696550218 {
+          text #vnode_4965876993954819262 "[Image]"
+          col #vnode_4965894586140864113 {
+            text #vnode_9021770874781493763 "会话"
+          }
+        }
+      }
+      button #vnode_4306403421332459073 "计划" {
+        row #vnode_5905075079555381363 {
+          text #vnode_14952521206800984937 "[Image]"
+          col #vnode_14952503614614940086 {
+            text #vnode_8967164765105348674 "计划"
+          }
+        }
+      }
+      button #vnode_4306350644774324520 "规范" {
+        row #vnode_5859159473978887928 {
+          text #vnode_3439332641972039528 "[Image]"
+          col #vnode_3439350234158084379 {
+            text #vnode_9069762286698459361 "规范"
+          }
+        }
+      }
+      button #vnode_4306368236960369371 "知识库" {
+        row #vnode_5874464675837719073 {
+          text #vnode_13425976854818205203 "[Image]"
+          col #vnode_13425959262632160352 {
+            text #vnode_9015156177022314272 "知识库"
+          }
+        }
+      }
+    }
+    col #vnode_4305030059517504647 {
+      container #vnode_4291080627287583077 {
+        button #vnode_14349869738559936159 "选择工作目录" {
+          row #vnode_4989872699913302061 {
+            text #vnode_12830762644906351735 "[Image]"
+            text #vnode_12830745052720306884 "选择工作目录"
+            text #vnode_12830797829278441437 "[Image]"
+          }
+        }
+      }
+      container #vnode_4291063035101538226 {
+        button #vnode_14334564536701105014 "设置" {
+          row #vnode_13449972560776688002 {
+            text #vnode_12854758350864834534 "[Image]"
+            text #vnode_12854775943050879385 "设置"
+          }
+        }
+      }
+    }
+  }
+  col #vnode_12642404927159776812 {
+    row #vnode_4289760042030763204 {
+      container #vnode_12781790891868631308 {
+        col #vnode_15900409796501198692 {
+          row #vnode_8766178259980025580 {
+            text #vnode_9218183197671271172 "会话"
+            button #vnode_9218200789857316023 "新建会话" {
+              text #vnode_1987110575879387893 "[Image]"
+            }
+            button #vnode_9218218382043360874 "×删除全部会话" {
+              text #vnode_2002415777738219038 "×"
+            }
+          }
+          scrollable #vnode_8766195852166070431 {
+            col #vnode_9233488399530102317 {
+              text #vnode_11958449586866722423 "[Image]"
+              col #vnode_11958431994680677572 {
+                button #vnode_13288206263992043788 "" {
+                  col #vnode_3985499882962853732 {
+                    text #vnode_14251395774782035692 "Block 全家福演示"
+                    row #vnode_14251413366968080543 {
+                      text #vnode_4540223551012476461 "5 条"
+                    }
+                    button #vnode_14251430959154125394 "×"
+                  }
+                }
+                button #vnode_13288223856178088639 "" {
+                  col #vnode_4000805084821684877 {
+                    text #vnode_5791295913918649751 "你好"
+                    row #vnode_5791278321732604900 {
+                      text #vnode_4485617441336331372 "4 条"
+                    }
+                    button #vnode_5791331098290739453 "×"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      col #vnode_12781808484054676159 {
+        row #vnode_15915714998360029837 {
+          text #vnode_306078399116639639 "聊天"
+          row #vnode_306060806930594788 {
+            row #vnode_9178882289853957228 {
+              text #vnode_6607608262900253572 "[Image]"
+              input #vnode_6607625855086298423 {
+                placeholder: "搜索消息…"
+                value: ""
+              }
+            }
+          }
+          row #vnode_306113583488729341 {
+            container #vnode_9224797895430450663 {
+              button #vnode_18120796827729198981 "会话信息" {
+                text #vnode_9243501263160094463 "[Image]"
+              }
+            }
+          }
+        }
+        scrollable #vnode_15915697406173984986 {
+          col #vnode_290773197257808494 {
+            col #vnode_17654287352576174314 {
+              col #vnode_16618248181704902046 {
+                row #vnode_13115789647060749178
+                col #vnode_13115807239246794029 {
+                  row #vnode_2221034601962939255 {
+                    text #vnode_161550450438062901 "🧑 You"
+                    text #vnode_161532858252018050 "20:06:06"
+                  }
+                  col #vnode_2221017009776894404 {
+                    container #vnode_146245248579231756 {
+                      text #vnode_16779458113545188452 "请把 Auto/vue 版支持的所有 Block 类型都演示一遍：Markdown 文本/表格/代码、思考块、各类工具卡、内嵌 Run 窗口、完成报告卡，最后再给我一份可交互问卷。"
+                    }
+                  }
+                }
+              }
+              col #vnode_16618265773890946897 {
+                row #vnode_13131094848919580323
+                col #vnode_13131077256733535472 {
+                  row #vnode_12177068411091442640 {
+                    text #vnode_17057754466206351984 "🤖 AI"
+                    text #vnode_17057772058392396835 "20:06:26"
+                  }
+                  col #vnode_12177086003277487491 {
+                    col #vnode_17073059668065183129 {
+                      col #vnode_14529696905461244667 {
+                        button #vnode_7177532674575134849 "💭
+已思考 · 122 tokens" {
+                          row #vnode_4080716028927814451 {
+                            text #vnode_18253651548229691305 "💭"
+                            text #vnode_18253633956043646454 "已思考 · 122 tokens"
+                            text #vnode_18253616363857601603 "▼"
+                          }
+                        }
+                      }
+                      col #vnode_14529679313275199816 {
+                        container #vnode_7162227472716303704 {
+                          text #vnode_12540815889791200392 "## 文本块（Markdown 全谱）
+
+这是 **Auto/vue 版**聊天消息里的 `text` block——支持 *行内样式*、[链接](https://example.com)、行内代码 `Http.post`，以及下面这些富形态：
+
+### 列表
+
+1. 有序列表项一
+2. 有序列表项二
+   - 嵌套无序项
+   - 嵌套无序项二
+
+> 引用块：ThinkBlock 默认折叠，按 token 估算展示。
+
+### 表格
+
+| Block 类型 | 触发方式 | 呈现组件 |
+|---|---|---|
+| 文本块 | assistant 正文 | Markdown（markstream） |
+| 思考块 | msg.thinking | ThinkBlock |
+| 工具卡 | tool_calls | ToolBlock → 分发 |
+| 问卷卡 | 问卷 JSON（末条） | QuestionnaireCard |
+| Run 窗口 | spawn_relay 工具 | RelayRunBox |
+| 报告卡 | report 工具 / run 完成 | ReportCard |
+
+### 代码块
+
+```rust
+fn ws_pick() Value {
+    try {
+        let data = Http.post("/api/workspace/pick", {})
+        return data.path ?? None
+    } catch {
+        return None
+    }
+}
+```
+
+```ts
+const blocks = await messageDisplayBlocks(msg, streaming);
+// text → 思考 → 工具，按到达顺序渲染，块不删除
+for (const b of blocks) render(b);
+```
+
+---"
+                        }
+                      }
+                      col #vnode_14529732089833334369 {
+                        col #vnode_7208143078292797139 {
+                          row #vnode_5607260380910594185 {
+                            text #vnode_18205660136312725707 "🔧"
+                            text #vnode_18205642544126680856 "run_command"
+                            text #vnode_18205695320684815409 "cargo test -p musk --lib workspace"
+                            text #vnode_18205677728498770558 "completed"
+                            text #vnode_18205730505056905111 "▼"
+                          }
+                        }
+                      }
+                      col #vnode_14529714497647289518 {
+                        col #vnode_7192837876433965994 {
+                          row #vnode_14067360241773980126 {
+                            text #vnode_18229655842271208506 "🔧"
+                            text #vnode_18229673434457253357 "read_file"
+                            text #vnode_18229620657899118804 "src/front/workspace_selector.at"
+                            text #vnode_18229638250085163655 ":40:"
+                            text #vnode_18229585473527029102 "completed"
+                            text #vnode_18229603065713073953 "▼"
+                          }
+                        }
+                      }
+                      col #vnode_14529767274205424071 {
+                        col #vnode_7238753482010459429 {
+                          row #vnode_7133804732893373919 {
+                            text #vnode_18157668724395760109 "🔧"
+                            text #vnode_18157651132209715258 "edit_file"
+                            text #vnode_18157633540023670407 "src/front/workspace_selector.at"
+                            text #vnode_18157615947837625556 "completed"
+                            text #vnode_18157598355651580705 "▼"
+                          }
+                        }
+                      }
+                      col #vnode_14529749682019379220 {
+                        col #vnode_7223448280151628284 {
+                          row #vnode_15593904593756759860 {
+                            text #vnode_18181664430354242908 "🔧"
+                            text #vnode_18181682022540287759 "write_file"
+                            text #vnode_18181699614726332610 "examples/block-showcase/README.md"
+                            text #vnode_18181717206912377461 "completed"
+                            text #vnode_18181594061610063504 "▼"
+                          }
+                        }
+                      }
+                      col #vnode_14529802458577513773 {
+                        col #vnode_7269363885728121719 {
+                          row #vnode_8660349084876153653 {
+                            text #vnode_18109677312478794511 "🔧"
+                            text #vnode_18109659720292749660 "list_dir"
+                            text #vnode_18109712496850884213 "src/front/ports"
+                            text #vnode_18109694904664839362 "completed"
+                            text #vnode_18109606943734615107 "▼"
+                          }
+                        }
+                      }
+                      col #vnode_14529784866391468922 {
+                        col #vnode_7254058683869290574 {
+                          row #vnode_17120448945739539594 {
+                            text #vnode_18133673018437277310 "🔧"
+                            text #vnode_18133690610623322161 "spawn_relay"
+                            text #vnode_18133637834065187608 "Block 全家福 Run——演示 Run 窗口全部块型"
+                            text #vnode_18133655426251232459 "completed"
+                            text #vnode_18133743387181456714 "▼"
+                          }
+                        }
+                      }
+                      col #vnode_14529556167972885859 {
+                        col #vnode_7055091059704485689 {
+                          row #vnode_16421282694706247131 {
+                            text #vnode_18445617195897553697 "🔧"
+                            text #vnode_18445599603711508846 "report"
+                            text #vnode_18445582011525463995 "completed"
+                            text #vnode_18445564419339419144 "▼"
+                          }
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_12177103595463532342 {
+                    button #vnode_17088364869924014274 "Copy" {
+                      text #vnode_6069597044597858726 "[Image]"
+                    }
+                  }
+                }
+              }
+              col #vnode_16618212997332812344 {
+                row #vnode_13085179243343086888
+                col #vnode_13085196835529131739 {
+                  row #vnode_694490249980159521 {
+                    text #vnode_209541862355028499 "🤖 AI"
+                    text #vnode_209524270168983648 "20:07:06"
+                  }
+                  col #vnode_694472657794114670 {
+                    col #vnode_194236660496197354 {
+                      col #vnode_5981307983803015070 {
+                        container #vnode_11684973632721615226 {
+                          text #vnode_7197227251564636750 "前面的块都演示完了。最后是**问卷 Block**（QuestionnaireCard）——它只挂在最新一条 assistant 消息上，提交后会折叠成摘要。
+
+```json
+{
+  "type": "questionnaire",
+  "questions": [
+    {
+      "id": "q1",
+      "text": "哪种 Block 类型对你最有用？",
+      "type": "single",
+      "options": ["文本/表格/代码", "思考块", "工具卡", "Run 窗口", "报告卡"]
+    },
+    {
+      "id": "q2",
+      "text": "还希望补充哪些演示？（可多选）",
+      "type": "multiple",
+      "options": ["Deck 幻灯片层", "Errand 卡片", "TaskPlan 卡片", "Gate 审批流"]
+    },
+    {
+      "id": "q3",
+      "text": "其他建议",
+      "type": "text",
+      "placeholder": "随便写点什么…"
+    }
+  ]
+}
+```"
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_694455065608069819 {
+                    button #vnode_178931458637366209 "Copy" {
+                      text #vnode_14441407844666401011 "[Image]"
+                    }
+                  }
+                }
+              }
+              col #vnode_16618230589518857195 {
+                row #vnode_13100484445201918033
+                col #vnode_13100466853015873182 {
+                  row #vnode_10650524059108662906 {
+                    text #vnode_17105745878123317582 "🧑 You"
+                    text #vnode_17105763470309362433 "12:37:24"
+                  }
+                  col #vnode_10650541651294707757 {
+                    container #vnode_17121051079982148727 {
+                      text #vnode_3731546775719071285 "p536 probe three: reply with exactly pong3"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        container #vnode_15915679813987940135 {
+          container #vnode_275467995398977349 {
+            row #vnode_7667643139730008639 {
+              container #vnode_16642243887663384845 {
+                textarea #vnode_16940086619044438295 {
+                  value: ""
+                  placeholder: "描述你想构建的内容... (Enter 发送, @ 呼出 agent, /relay /superpower /spec1 命令)"
+                }
+              }
+              button #vnode_16642226295477339994 "" {
+                text #vnode_16924781417185607150 "[Image]"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

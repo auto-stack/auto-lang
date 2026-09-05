@@ -14,3 +14,4 @@ front_port: 4027
 icon: "folder"
 title: "File Manager"
 category: "system"
+desktop: "true"

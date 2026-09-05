@@ -11,6 +11,19 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
 ## 现状
 
 统一抽象是 `Trans` trait + `Sink` 输出缓冲（含 source map），各后端实现同一接口。
+
+- s2s 改写器骨架（plan-555 W1）：`auto_s2s.rs`——Auto 脚本糖 → 正常模式
+  桥的 source-to-source 工具（Babel 模式独立先行，稳定后折 multi_mode，
+  不进 codegen 热臂）。W1 规则表空置（identity 逐字节发射）；帧形 =
+  `LoweringRule { id: A1..F4, rewrite }` token 粒度单遍首中（W2 链式
+  语义与 AST 发射器待裁定，P555-D2）；`Lexer::tokenize_all` 词法面；
+  CLI `auto trans --path x auto [-o]`。
+- W2 糖批规则入住（plan-560）：AST 帧形+链式规则（LoweringRule 有序单遍）
+  落地——`py_known.rs` 静态分析（use.py items/桥调用/导入项调用流）+
+  `s2s_rules.rs` A/B/C 族规则（方法糖→py_call 仅 py-known 接收者·Auto
+  方法零打扰；切片族含步长·嵌套 Range 位形；len→obj_len；闭包实参自动
+  py_callable；print py-known→py_str；if/while/and/or/not 真值包裹）；
+  `emit.rs` Str 再转义；py 五套件+14 补迁共 **19 套件 .as 载体**。
 规模与成熟度（按代码行数，`crates/auto-lang/src/trans/`）：
 
 | 后端 | 文件 | 行数 | 状态 |

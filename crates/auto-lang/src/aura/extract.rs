@@ -616,6 +616,9 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
             })
             .collect(),
         module_fns: Vec::new(),
+        // Plan 559 W2: sibling stores are discovered by the workspace driver
+        // (api.rs collect_store_siblings) after extraction, not here.
+        sibling_stores: Vec::new(),
         // Plan 051 C7: store timer 块条目。
         timers: extract_timer_entries(&decl.timer),
     })

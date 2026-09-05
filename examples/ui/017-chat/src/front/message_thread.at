@@ -1,25 +1,51 @@
-// message_thread.at — presentational child widget.
-// Bubble direction is driven by the persisted `mine` field. Plan 399 第4-5步
-// made the backend call db::create_message (which sets mine:true), so `mine`
-// is now authoritative — no more sender=="You" heuristic. mine=true → right.
-widget MessageThread(messages: []Message, typing_name: str) {
+// message_thread.at — presentational child widget with chat header and bubbles.
+// Bubble direction is driven by the persisted `mine` field (Plan 399).
+// Sent bubbles are styled with bg-primary (right/justify-end),
+// Received bubbles are styled with bg-muted (left/justify-start).
+widget MessageThread(messages: []Message, typing_name: str, active_name: str, active_avatar: str, active_status: str, on_trigger_bot: msg) {
+    msg {
+        RequestBotReply
+    }
+
     view {
         col {
-            style: "flex-1 flex-col bg-card rounded-xl shadow-sm overflow-hidden min-h-0"
+            style: "flex-1 flex-col bg-card rounded-xl shadow-sm border border-border overflow-hidden min-h-0"
+            // Conversation Header
             row {
-                style: "items-center gap-2 px-6 py-3 border-b border-border"
-                text "Thread" { style: "text-base font-bold text-foreground" }
-                if .typing_name != "" {
-                    text f"${.typing_name} is typing…" { style: "text-xs text-muted-foreground italic ml-auto" }
+                style: "items-center justify-between px-6 py-3.5 border-b border-border bg-muted/20"
+                row {
+                    style: "items-center gap-3"
+                    text .active_avatar { style: "text-2xl p-1.5 bg-card rounded-xl shadow-xs border border-border/50" }
+                    col {
+                        row {
+                            style: "items-center gap-2"
+                            text .active_name { style: "text-base font-bold text-foreground" }
+                            text "🟢" { style: "text-[9px]" }
+                        }
+                        text .active_status { style: "text-xs text-muted-foreground" }
+                    }
+                }
+                row {
+                    style: "items-center gap-3"
+                    if .typing_name != "" {
+                        text f"${.typing_name} is typing…" { style: "text-xs text-primary font-medium italic animate-pulse" }
+                    }
+                    button "🤖 Bot Reply" {
+                        onclick: .RequestBotReply
+                        style: "px-3 py-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-lg text-xs font-medium transition-colors shadow-xs"
+                    }
                 }
             }
+
+            // Message Scroll Stream
             col {
-                style: "flex-1 overflow-y-auto p-6 gap-3"
+                style: "flex-1 overflow-y-auto p-6 gap-4"
                 if .messages.len() == 0 {
                     col {
-                        style: "flex-1 items-center justify-center"
-                        text "💬" { style: "text-5xl mb-3 opacity-40" }
-                        text "No messages yet" { style: "text-muted-foreground" }
+                        style: "flex-1 items-center justify-center py-12"
+                        text "💬" { style: "text-5xl mb-3 opacity-30" }
+                        text "No messages in this conversation yet" { style: "text-sm text-muted-foreground font-medium" }
+                        text "Send a message or click Bot Reply to start chatting" { style: "text-xs text-muted-foreground/80 mt-1" }
                     }
                 }
                 for msg in .messages {
@@ -28,25 +54,40 @@ widget MessageThread(messages: []Message, typing_name: str) {
                             row {
                                 style: "justify-end"
                                 col {
-                                    text msg.text { style: "text-sm bg-primary text-primary-foreground px-4 py-2 rounded-2xl rounded-br-sm max-w-md" }
-                                    text msg.time { style: "text-xs text-muted-foreground mt-0.5 text-right" }
-                                    style: "items-end max-w-[70%]"
+                                    style: "items-end max-w-[75%]"
+                                    text msg.text { style: "text-sm bg-primary text-primary-foreground px-4 py-2.5 rounded-2xl rounded-tr-xs shadow-xs break-words" }
+                                    text msg.time { style: "text-[11px] text-muted-foreground mt-1 text-right" }
                                 }
                             }
                         } else {
                             row {
-                                style: "justify-start gap-2"
+                                style: "justify-start gap-2.5 items-start"
+                                if msg.sender == "Alice" {
+                                    text "👩‍💼" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                } else if msg.sender == "Bob" {
+                                    text "👨‍💻" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                } else if msg.sender == "AutoBot" {
+                                    text "🤖" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                } else {
+                                    text "💬" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                }
                                 col {
-                                    text msg.sender { style: "text-xs font-semibold text-muted-foreground mb-0.5" }
-                                    text msg.text { style: "text-sm bg-muted text-foreground px-4 py-2 rounded-2xl rounded-bl-sm max-w-md" }
-                                    text msg.time { style: "text-xs text-muted-foreground mt-0.5" }
-                                    style: "items-start max-w-[70%]"
+                                    style: "items-start max-w-[75%]"
+                                    text msg.sender { style: "text-xs font-semibold text-muted-foreground mb-1" }
+                                    text msg.text { style: "text-sm bg-muted text-foreground px-4 py-2.5 rounded-2xl rounded-tl-xs shadow-xs break-words" }
+                                    text msg.time { style: "text-[11px] text-muted-foreground mt-1" }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    on {
+        .RequestBotReply -> {
+            on_trigger_bot("Can you give me a status update on AutoLang?")
         }
     }
 }

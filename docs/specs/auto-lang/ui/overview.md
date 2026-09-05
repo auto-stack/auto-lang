@@ -19,6 +19,8 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-08-28）
 
+**ui-gallery 画廊与应用内嵌架构（plan-549 落地）**：对齐 widgets-gallery 交互体验，建立 examples/ui-gallery 示例画廊应用；构建期自动扫描与元数据提炼（auto-man generate_gallery_host + demos-registry 动态装配），左栏导航聚合全部 43 个 UI 示例（分类折叠与实时过滤），右侧上部提供真实可交互的 AppViewport 沙盒视口（独立 createApp 挂载隔离、异常边界 errorHandler、状态一键重置与 Desktop 100% / 1024px / Tablet 768px / Mobile 375px 多端尺寸切换），右侧下部提供基于 AutoDown/Markdown 的教程与源码逐行剖析；形成跨目录应用沙盒化内嵌的通用规范。
+
 **029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范
 （picsum 固定 seed 网络图源，缩略 cover/查看 contain）；单组件+平行列表
 数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 84 项闭集——
@@ -66,6 +68,16 @@ class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGro
 `router.back()`）与 onclick 状态双模式、data-active 与 nav-name/nav-desc 语义
 锚；顺修 lucide_svg 裸片段缺陷（此前全部 VM lucide 图标空渲染）。三 app 落地：
 015-notes/018-book-reader/widgets-gallery + 外部 auto-musk(052)/auto-os-config(012)。
+
+**sidebar 组件族（plan-548 落地，Vue 端先行）**：shadcn-vue Sidebar 1:1 复刻的
+sidebar_* 23 元素族——schema/aura.at 手写扩全 props（collapsible/variant/side/
+collapsed_size 等，`SCHEMA_DRIFT_UPDATE_BASELINE=1` 更基线）+ Vue 端逐元素接线
+（gen/vue.rs shadcn 发射臂，脚手架组件模板对齐 shadcn 原版）+ `to:`/`active` D2
+扩展（免 RouterLink 手写）+ sidebar 裸用自动包 Provider + widgets-gallery sidebar
+页重写；设计/退役路线见 [design/autoui/sidebar-family-and-nav-retirement.md](../../design/autoui/sidebar-family-and-nav-retirement.md)。
+VM 端契约子集归后续 P2 计划，nav-item/nav-group 迁移与退役归 P3；债务
+P548-D1..D3（schema.rs 双侧分化/tooltip 未实现/vue.rs 旧臂死代码）台账
+KNOWN-DEBT。
 
 **slot 替换（plan-476 落地）**：VM 轨 widget 插座/填充与 vue 轨语义对齐——调用位
 `slot(name:X){..}`/裸子节点渲染到子 widget outlet，父作用域求值+父事件路由+逐帧重求值；
@@ -129,6 +141,8 @@ J1/J2 渲染器子树，批五转正中）。
 **504 示例桌面化三件套（011-calculator 样板）**：pac.at `window: "fit"` 自适应窗口——独立 VM 窗首帧按内容 shrink 测量后 resize（clamp [200, 可用区]）、桌面虚拟窗以测量值替代"可用区 60%"写死初值（`register_window` 覆盖保留 fit_pending 为关键修复）；title/settings 上移 os-config per-app 配置（`~/.config/autoos/apps/<app>/config.at`，launch 直读文件注入 theme/accent——启动期 daemon 可能未起，不经 daemon；`modules.d/<id>.at` 注册后通用编辑器零手写获得设置 UI）；应用内 `ExampleHeader` 退役，标题由 pac.at `title:` + 桌面 chrome 提供。债项 P504-1..4 见 KNOWN-DEBT。
 **506 示例桌面化批一（011 样板批量展开 7 例）**：三件套向首批示例批量兑现——header 退役线（008/009/010）：`common/header.at`（ExampleHeader 组件包）整体删除，app.at 无 header/settings，`dark_mode`/`accent_color` 声明保留作 os-config/env 播种挂钩（宿主 `seed_app_config` 与 renderer env 播种均要求已声明变量，删声明即静默失效）；theme/accent 注册 os-config per-app 配置（`~/.config/autoos/modules.d/auto-<app>.at` + `apps/<app>/config.at`，shape 循 calculator 先例 theme/accent 两键），优先级链 CLI > os-config > pac.at > 内置。fit/title 线（002/003/012/038）：pac.at 补 `title:` + `window: "fit"`，根容器 `center` 居中外壳拆除改"内容即页面"（四 app 实测均有 center，012 另删 min-h-screen），VM 独立窗实测收缩 400x400/400x720/550x774/647x878（默认 1293x836），fit 断言范式 = VM 截图 PNG 像素尺寸 < 900。测试改法范式：双端脚本删 settings 交互、增"无 header 元素 + 内容标记"断言（循 504 test_011）。债项 P506-1（038 Reveal 触发 VM RC use-after-free，master 预存疑 511 回归）/P506-2（MCP rendered-vtree 快照无事件注记，038 改 label 定位法）见 KNOWN-DEBT；批二 = 剩余 20 例 title 债务（001/004-007/013-025/028/042）。
 **512 示例桌面化批二（fit 动态重测机制 + 批二 20 例）**：`window: "fit"` 语义补全——由首帧一次性测量升级为**动态重测双向跟随**：app view 重建（dispatch 漏斗 view_dirty）落到 fit 窗条目打 `fit_dirty` 标 → ServiceTick 400ms 节拍发起内容测量（**standalone 订阅补齐**：原仅 desktop 门控且宿主窗句柄恒 None，现 desktop 或 standalone 有脏标即订、测量目标取待测窗自身 id）→ `decide_fit_resize` 滞回 8px 决策 → standalone `window::resize` / desktop vwin rect 更新双路径；用户手动 resize 一次性锁定（程序化回波 ±2px 豁免）。**量测法关键修正**：活树布局受当前窗口钳制（内容自然高超出窗口即被裁，增长方向量不到；504 首测成功仅因默认窗大于内容）——`fit_aware_root` 锚点外套 vertical scrollable（内部无限高约束排版），锚点量真实自然尺寸；副作用=内容超窗瞬态出滚动条而非裁剪，宽度方向 v1 仍受视口钳制（P512-1）。实证：011 Scientific +44px/回缩基线、005 校验错误行 +39px/回缩（双探针 `tests/test_512_fit_remeasure.py`，win32 物理尺寸断言，阈值 >24px=3×滞回有实测依据）。迁移：fit 线 4 例（001/004/005/016）拆 `center` 外壳 + 卡片固定宽（**实证：`w-[28rem]` rem 任意值 iced 端不支持塌缩 213px，改 Tailwind 刻度 w-96/w-112 双端兼容**）实测 213x236/445x451/573x535/541x441 截图留痕；title-only 线 16 例 pac.at 补 `title:`。债项 P512-1（宽度钳制）/P512-2（锁定后余量视觉语义）/P512-3（p508_g2_outproc_arm 并发偶红）见 KNOWN-DEBT；P504-2 已清偿，P506-1（038 Reveal UAF）核对仍在（511 归档未修）。
+
+**552 桌面应用策展已落地（desktop 字段 opt-in + 测试探针清退）**：R10 注册表条目增 `desktop_visible`（pac `desktop:` 字段——主根 examples/ui 缺省 false=opt-in、外部自含根缺省 true=opt-out，坏值静默回退；`entry_for_dir(default_visible)`）；boot 两分——`app_resolver` 捕获全量（按名启动/自定义图标启动不受策展限制），`registry_entries`=策展过滤（launcher/图标格/dock 三消费面只见策展集，boot 日志双计数）。C 档 19 例加 `desktop: "true"`（045 已由 551 退役，20→19）；8 个测试探针（overlay-probe/p051/p493/p507/p515/p518/459-dual-app/042-two-inputs-child）迁 `examples/capability-tests/`（stage3 e2e 双根解析、ui_desktop/ui_dual_app include_str 改指、`scan_examples_ui_curation_set` 恰等断言防今后 demo 悄悄上架/掉字段）；examples/ui README 总览表增"桌面"列。债务 P552（customs 非策展 id 元数据回退 app-window/裸 id）。
 **527 VM 轨 Tailwind 全量覆盖契约**：样式子系统从「Tailwind-inspired 按需子集」升级为 **v3.4 清单驱动的全量覆盖契约**——①清单锚定：Tailwind v3.4 core 展开清单 vendor 入库（`tests/fixtures/tailwind-v34-utilities.txt` 8861 类×15 families，`tools/gen_tailwind_manifest.py` 零依赖再生）+`Style::parse_reported` 报告通道（未映射类按原文名报告，**静默丢弃通道关闭**）；②对拍审计台常驻（`tests/style_parity.rs` 已挂 `cargo t`）：白名单外零 missing + 布局/视觉/文本三家族 iced applied 门 + PARSED_ONLY_ALLOWED 豁免台账 + 覆盖率表 `docs/style-coverage.md` 同源再生（基线 applied 3807/parsed-only 276/unsupported 4778/missing 0）；③三家族补全：布局 1582/视觉 1901/文本 308 applied（SizeValue::Fraction 分数 Fill-ratio 口径、四色板 lime/violet/fuchsia/stone 补全+950 真值行、渐变三 stop+位置百分比真消费、彩色阴影、object-fit→ContentFit、全字重 9 档、leading 双轨、line-clamp；顺修 from-100 三位 hex 误吞/min-h 未知命名误落 0.0 等隐性假映射）；④Variant 管道泛化：hover/focus/active/disabled 同构（按钮状态面真消费+opacity 乘法降级）、responsive 五断点解析期按 `theme::window_width` 门控（resize→view 重建→重解析既有回路）、`dark:` 按 `theme::dark_mode` 门控——未命中态登记 variant_classes 可见不静默；⑤不做/受限台账 KNOWN-DEBT P527-1..5（永久不做族/宿主上限/分数近似口径/变体分期消费/存字段类）。复审 tf 3397/3398（唯一红=在案存量）零新增红。
 ## 关键入口
 
@@ -227,6 +241,8 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 消费臂，AUTOUI_ACCEPTANCE=1 门控）+ ADR 规程 + acceptance_channel.py 统一
 入口，P487-1/P496-1/P501-2 三债实机照补拍归档；D P488-D4 on_dnd_finished
 发起方锚定 + 壁纸热切换定案（天然支持）。债项 P505-1/2 见 KNOWN-DEBT。
+
+**559 vue 双端嵌入债并案已落地（GOAL-007/009 收尾面）**：W2 四件上收——①`vue_event_param` 单点收窄 `$event.target.{value,checked}`（gen 树 TS2339/18047 清零）②store 组合式跨 store 限定调用 facade 化（`AuraStore.sibling_stores` + 组合式发 sibling 导入/reactive facade 常量 + ts_adapter `store_bare_heads` 自限定裸发——vm A1 契约）③项目供给 TS 粘合安装 `install_project_api_glue`（契约抽取零端点=实现式 back/api.at 时 src/back/api.ts 孪生装入 gen lib/api.ts+dist；os-config 首试点：孪生真源签入 auto/src/back/api.ts，regen.sh 镜像 host）④`use back.api` 排除出 Plan 522 use-fn 拉取（TS2440/TS2304 根修）。W3 desktop-host api-client 守卫放开（gen 粘合/项目孪生择先，run 内先到先得+每次覆写防陈旧属主）+`desktop_extra_app_roots`（默认探测 `../auto-os-config/auto`，id=os-config 与 vm `extra_roots_from` 对齐，`AUTO_DESKTOP_APPS_EXTRA` 可覆）。W4 Taskbar ⚙️（emit settings，registry 在场性门控）+宿主 `launchSettings` 聚焦-或-启动（vm 551 T2 对齐）。W6 通用编辑器字段级挂载（`entryAtW`×2——vm merged 真源 auto-os-config-back/api.at 同步，漏改即 launch 不可用——+ConfigEditor `widgets` prop（Modules.active_widgets 装载一次零额外 HTTP）+wallpaper_picker 渲染分支；drop-in 夹具 p559-fixture 双端实证点选落盘）。W7 `autoui_desktop` handler 增 (app,widget) 子组件定位维度（`DesktopInject::Handler.widget` + `DynamicComponent.call_widget_handler` namespaced 派发 onclick 同管线——Plan 320 单 VM 统一态恒根 state id）+验收场景 p559（Pick→config.at 断言→已应用，幂等基线 PUT 重置）。对拍 Desktop 页双端三 shots（顶部标签/外观壁纸卡/Settings 卡同源）。门禁 tf 3426/3427（唯一红=charts 存量甄别）+desktop_protocol ui-iced 120/120+auto-man 245/245。债 P559-D1 证伪（AUTO_HTTP_PROXY 实际透传正常——404 系陈旧 vite 占港+auto-increment 漂移假象）/P559-D2 regen.sh 两族已上游化 sed 已清；P559-1..6 台账。
 
 ## 蒸馏来源
 

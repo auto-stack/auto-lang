@@ -431,6 +431,17 @@ pub struct AuraStore {
     /// handlers can call them by bare name. Without this, such helpers are
     /// silently dropped and generated handlers throw ReferenceError at runtime.
     pub module_fns: Vec<AuraModuleFn>,
+
+    /// Plan 559 W2: sibling store names this store's bodies reference through
+    /// `use <other>_store: <Alias>` imports (alias == the store's declared
+    /// name in this codebase's convention). The vue store composable emits a
+    /// composable import + reactive facade const per sibling and maps the
+    /// qualified call heads (`Collection.Init(...)`) onto it via the
+    /// ts_adapter store_facades channel — previously these emitted bare
+    /// (`Collection.Init(...)` → TS2304, os-config modules_store).
+    /// Self-qualification (`Collection.Select` inside the Collection store
+    /// itself, vm A1 contract) stays a bare local call (store_facade_from).
+    pub sibling_stores: Vec<String>,
 }
 
 /// A plain (non-`#[api]`, non-widget) module-level function from a store file.

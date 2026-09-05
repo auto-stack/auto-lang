@@ -1,0 +1,18 @@
+use helpers: Helpers
+
+widget App {
+    msg { }
+    model { var anchor int = 1788399923 }
+    view {
+        col {
+            text .tslabel
+            text .nowlabel
+        }
+    }
+    on {
+        .Init -> {
+            .tslabel = fmtTime(.anchor)
+            .nowlabel = relayNow()
+        }
+    }
+}

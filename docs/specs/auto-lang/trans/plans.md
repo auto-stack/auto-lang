@@ -64,3 +64,5 @@
 | 415 | a2r-remaining-big-items | 📋/🟡 | plans/ | a2r 剩余大项（242 tracker 收口线） |
 | 417 | a2r-parity-debt 持续清偿线 | ✅（E1-E4 系列） | archive/ | string_utils/serde_json 等 parity 断裂根修（D2 导入签名/E3 if 尾值/427 str_param_borrow） |
 | 442 | cross-platform-closure（转译侧） | 🟡 | plans/ | musk 五域接线；vue.rs SVG 静态字面量直通 |
+| 555 | script-mode-w1-dispatch-foundation（trans 侧） | ✅（reviewed→archived） | archive/555-script-mode-w1-dispatch-foundation.md | s2s 改写器骨架 auto_s2s.rs：LoweringRule{id:A1..F4} 规则表 W1 空置/token 粒度单遍首中/identity 逐字节发射/语法验证兜底，三单测（幂等+注入即生效+非法源拒绝）；CLI trans auto 子命令+--dump-lowered；W2 链式语义与 AST 发射器待裁定（P555-D2） |
+| 560 | script-mode-w2-sugar-batch（trans 侧） | ✅（reviewed→archived） | archive/560-script-mode-w2-sugar-batch.md | s2s AST 帧形+链式规则落地（P555-D2 销号）：emit.rs 源发射器（Op/Type 符号表+Str 再转义+幂等纪律）+py_known 静态分析+s2s_rules A/B/C 族（py-known 门控设计修正·步长嵌套 Range·词法双星惯例教训）；管线激活 .as=lower→compile；19 py 套件 .as 载体；契约 design/s2s-lowering.md；账本 P560-1..6 |

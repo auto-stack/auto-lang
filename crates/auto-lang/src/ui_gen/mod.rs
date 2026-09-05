@@ -14,6 +14,8 @@
 pub mod shared;
 // Plan 482: nav-item/nav-group class-token contract (Vue scaffold ↔ VM builder).
 pub mod nav_contract;
+// Plan 561: sidebar_* class-token contract (VM 契约子集 ↔ shadcn 原版资产逐 token 锚).
+pub mod sidebar_contract;
 pub mod ts_adapter;
 pub mod vue;
 pub mod block;

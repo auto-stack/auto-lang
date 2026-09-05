@@ -1,5 +1,15 @@
-// api.at — Chat API (Plan musk-022: first SSE multi-event example).
-// CRUD message endpoints + a streaming endpoint that fans out events.
+// api.at — Chat API (Plan 544: WeChat-style multi-contact & bot enhancements).
+// CRUD message endpoints + contacts list + bot reply + SSE stream.
+
+pub type Contact = {
+    id: str
+    name: str
+    avatar: str
+    status: str
+    last_message: str
+    time: str
+    unread: int
+}
 
 pub type Message = {
     id: int
@@ -18,6 +28,11 @@ pub tag ChatEvent {
 
 use db
 
+#[api(method = "GET", path = "/api/contacts")]
+pub fn list_contacts() []Contact {
+    return db.all_contacts()
+}
+
 #[api(method = "GET", path = "/api/messages")]
 pub fn list_messages() []Message {
     return db.all_messages()
@@ -26,6 +41,11 @@ pub fn list_messages() []Message {
 #[api(method = "POST", path = "/api/messages")]
 pub fn send_message(sender str, text str) Message {
     return db.create_message(sender, text)
+}
+
+#[api(method = "POST", path = "/api/bot_reply")]
+pub fn bot_reply(contact_id str, query str) Message {
+    return db.bot_reply(contact_id, query)
 }
 
 /// POST /api/typing — Plan 399 §6: typing-indicator signal. Void return; the

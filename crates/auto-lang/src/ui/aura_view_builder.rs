@@ -237,6 +237,13 @@ fn stream_registry_entry(
     map.entry(key).or_default()
 }
 
+/// PLAN-533 T7: 模态对话框族别（转换参数化）。
+enum ModalDialogFamily {
+    Alert,
+    Dialog,
+    DropdownMenu,
+}
+
 impl<'a> AuraViewBuilder<'a> {
     /// Create a new builder bound to a VmBridge instance.
     ///
@@ -637,7 +644,16 @@ impl<'a> AuraViewBuilder<'a> {
             // 求值回退——musk `for msg in .filteredMessages` 以 computed 为
             // for 源，此前直接 None → WARN 刷屏 + 气泡列表整体空。
             if let Some(v) = self.eval_computed(stripped, bindings) {
-                return self.value_to_iter_vec(&v);
+                let arr = self.value_to_iter_vec(&v);
+                // PLAN-536 Phase 2 T13: for 源 computed 每次重建解析行数追踪
+                // (KD P536-D2/057④ 定罪:refill 后投影到底见几行)。
+                if std::env::var("AUTO_DEBUG_POLLTRACE").is_ok() && stripped == "filteredMessages" {
+                    eprintln!(
+                        "[POLLTRACE][FOR] computed .{stripped} -> {} rows",
+                        arr.as_ref().map(|a| a.len()).unwrap_or(usize::MAX)
+                    );
+                }
+                return arr;
             }
             return None;
         }
@@ -1374,11 +1390,20 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
             // （tracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog_tracked_ctx。
+            // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
+            "dialog" | "Dialog" => {
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Dialog)
+            }
+            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => {
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::DropdownMenu)
+            }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
-                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings)
+                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Alert)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
+            | "dialog-content" | "dialog_content" | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let mut views: Vec<View<DynamicMessage>> = Vec::new();
                 for (i, c) in children.iter().enumerate() {
@@ -1392,23 +1417,69 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
+            | "dialog-title" | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
+            | "dialog-description" | "dialog_description" | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
+            | "dialog-header" | "dialog_header" | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
+            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
                 self.set_layout_onclick(&mut v, events, bindings);
                 v
+            }
+            "dialog-close" | "dialog_close" | "dialogclose" => {
+                // PLAN-533 T5: dialog-close → outline 按钮（cancel 同款预设）。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            // PLAN-533 T7: dropdown-menu 子件——item（有 onclick 走按钮,
+            // 纯文本项 text 预设）/label/separator。
+            "dropdown-menu-item" | "dropdown_menu_item" | "dropdownmenuitem" => {
+                let preset = "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
+                if events.iter().any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click")) {
+                    let mut b = props.clone();
+                    b.insert(
+                        "variant".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("ghost".into())),
+                    );
+                    let b2 = self.with_class_prop(&b, bindings, preset);
+                    self.convert_button(&b2, events, children, bindings)
+                } else {
+                    let p = self.with_class_prop(props, bindings, preset);
+                    self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                }
+            }
+            "dropdown-menu-label" | "dropdown_menu_label" | "dropdownmenulabel" => {
+                let p = self.with_class_prop(props, bindings, "px-2 py-1.5 text-sm font-semibold");
+                self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+            }
+            "dropdown-menu-separator" | "dropdown_menu_separator" | "dropdownmenuseparator" => {
+                View::Container {
+                    child: Box::new(View::Empty),
+                    padding: 0,
+                    width: None,
+                    height: None,
+                    center_x: false,
+                    center_y: false,
+                    onclick: None,
+                    style: Style::parse("w-full h-px bg-border my-1").ok(),
+                }
             }
             "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
                 // outline 变体预设（border+bg-background+text-foreground）,
@@ -1469,6 +1540,62 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 482: nav 容器支持 search:true 集成搜索行（子节点随 untracked
             // 转换，同 button 先例）。
             "nav" => self.convert_nav_container(props, events, children, bindings),
+            // Plan 561: sidebar_* VM 契约子集 —— 实现集中在 untracked 转换器组
+            // （本节镜像 untracked 站同名臂，D-GAP 规则；契约类见
+            // ui_gen::sidebar_contract）。
+            "sidebar" => self.convert_sidebar_root(props, children, bindings),
+            "sidebar_provider" | "sidebar-provider" => {
+                self.convert_sidebar_provider(props, events, children, bindings)
+            }
+            "sidebar_header" | "sidebar-header" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::HEADER_BASE,
+            ),
+            "sidebar_footer" | "sidebar-footer" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::FOOTER_BASE,
+            ),
+            "sidebar_content" | "sidebar-content" => {
+                self.convert_sidebar_content(props, children, bindings)
+            }
+            "sidebar_separator" | "sidebar-separator" => self.convert_sidebar_separator(),
+            "sidebar_inset" | "sidebar-inset" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::INSET_BASE,
+            ),
+            "sidebar_group" | "sidebar-group" => {
+                self.convert_sidebar_group(props, children, bindings)
+            }
+            "sidebar_group_label" | "sidebar-group-label" => {
+                self.convert_sidebar_group_label(tag, props, events, children, bindings)
+            }
+            "sidebar_group_content" | "sidebar-group-content" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::GROUP_CONTENT,
+            ),
+            "sidebar_group_action" | "sidebar-group-action" => {
+                self.convert_sidebar_group_action(props, events, children, bindings)
+            }
+            "sidebar_menu" | "sidebar-menu" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_BASE,
+            ),
+            "sidebar_menu_item" | "sidebar-menu-item" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_ITEM,
+            ),
+            "sidebar_menu_action" | "sidebar-menu-action" => {
+                self.convert_sidebar_menu_action(props, events, children, bindings)
+            }
+            "sidebar_menu_badge" | "sidebar-menu-badge" => {
+                self.convert_sidebar_menu_badge(props, children, bindings)
+            }
+            "sidebar_menu_button" | "sidebar-menu-button" => {
+                self.convert_sidebar_menu_button(props, events, children, bindings, false)
+            }
+            "sidebar_menu_sub" | "sidebar-menu-sub" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_SUB,
+            ),
+            "sidebar_menu_sub_item" | "sidebar-menu-sub-item" => {
+                self.convert_children_passthrough(children, bindings)
+            }
+            "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => {
+                self.convert_sidebar_menu_button(props, events, children, bindings, true)
+            }
             "aside" | "main" | "header" | "section" | "footer" | "article" => {
                 self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings)
             }
@@ -1483,7 +1610,10 @@ impl<'a> AuraViewBuilder<'a> {
             // Leaf/atom widgets with no AuraNode children — fall back to the
             // untracked converter. They have no nested text to probe (Task 9
             // scope is text interpolation only).
-            "button" | "btn" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            // native_button：vue 侧显式原生逃生名（避开 button→shadcn
+            // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
+            //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
             // Plan 482: nav 组件族 —— nav_contract 契约类转换（hover/active
             // 三态 + icon/desc/badge 槽 + to/onclick 双模式）。
             "nav-item" | "nav_item" => self.convert_nav_item(props, events, children, bindings),
@@ -1526,9 +1656,10 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| aura_events_get_base(events, "change"))
                         .map(|event| self.event_to_message(&event.handler));
                     let style = self.extract_style_with(props, bindings);
-                    // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
-                    // 无空态概念，读取后忽略。
-                    let _ = props.get("placeholder");
+                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
+                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
+                    // 忽略」豁免摘除）。
+                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
                     // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
                     //（DocEditor 全内容高、外滚）外包 View::Scrollable，
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
@@ -1543,7 +1674,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -1552,7 +1683,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)
@@ -1732,10 +1863,26 @@ impl<'a> AuraViewBuilder<'a> {
         // (父作用域 tracked 转换,编号同幸存槽位约定)。
         let child_views = self.expand_children_spliced_resulting(children, path, id_map, probe, bindings);
 
+        // PLAN-536 T6(题5 ①②): absolute 悬浮 hoist 激活到 tracked 主渲染
+        // 路径——此前 hoist 臂只挂在未追踪 convert_column(409 §10 续 5),
+        // 真实视图走 build_with_debug_gated 从不过臂,"absolute 类 VM 不
+        // 消费退化为流内排布"(musk 会话卡 × 实录)即此。语义定界:
+        // absolute+偏移+z → 父容器 overlay 层(锚=父 bounds,不占流内格);
+        // absolute 无 z → 分层技巧(textarea 叠加族)保留流内。
+        let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+        let child_views: Vec<View<DynamicMessage>> = child_views
+            .into_iter()
+            .filter_map(|v| match extract_absolute_position(&v) {
+                Some(pos) => { floats.push((v, pos)); None }
+                None => Some(v),
+            })
+            .collect();
+
         // Plan 412 F1: 交叉类仲裁 — col 元素带 `grid grid-cols-N`/`flex` 类时
-        // 布局语义被类覆盖(元素语义为默认,显式类优先)。
+        // 布局语义被类覆盖(元素语义为默认,显式类优先)。hoist 在前,浮层不占格。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
-            return View::Grid { cols, gap, cells: child_views, style };
+            let base = View::Grid { cols, gap, cells: child_views, style };
+            return fold_floats(base, floats);
         }
         let use_row = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Row));
 
@@ -1759,16 +1906,18 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.child(child);
         }
         let col_view = builder.build();
-        // Plan 048:overflow-y-auto / overflow-auto → Scrollable。
+        // PLAN-536 T6: overflow 包 Scrollable 之后再包 Overlay 悬浮层——
+        // 浮层锚=父容器(含滚动外壳)整体 bounds。
         if needs_scroll {
-            return View::Scrollable {
+            let base = View::Scrollable {
                 child: Box::new(col_view),
                 width: None, height: None, style: scroll_style,
                 auto_scroll: false,
                 offset: None, on_scroll: None,
             };
+            return fold_floats(base, floats);
         }
-        col_view
+        fold_floats(col_view, floats)
     }
 
     /// Tracked convert_scroll — mirrors `convert_scroll` but recurses via
@@ -2061,12 +2210,24 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
+        // PLAN-536 T6(题5 ①②): absolute 悬浮 hoist(tracked 主路径,row 臂
+        // 与 convert_column_tracked_ctx 同批激活;语义定界见该处注释)。
+        let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+        let child_views: Vec<View<DynamicMessage>> = child_views
+            .into_iter()
+            .filter_map(|v| match extract_absolute_position(&v) {
+                Some(pos) => { floats.push((v, pos)); None }
+                None => Some(v),
+            })
+            .collect();
+
         // Plan 412 F1: 交叉类仲裁 — row 元素带 `grid grid-cols-N`/`flex-col` 类时
-        // 布局语义被类覆盖。
+        // 布局语义被类覆盖。hoist 在前,浮层不占格。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
             let cells: Vec<View<DynamicMessage>> =
                 child_views.into_iter().filter(|v| !is_visually_empty(v)).collect();
-            return View::Grid { cols, gap, cells, style };
+            let base = View::Grid { cols, gap, cells, style };
+            return fold_floats(base, floats);
         }
         let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
 
@@ -2087,7 +2248,9 @@ impl<'a> AuraViewBuilder<'a> {
             }
             builder = builder.child(child);
         }
-        builder.build()
+        let row_view = builder.build();
+        // PLAN-536 T6: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层)。
+        fold_floats(row_view, floats)
     }
 
     /// Tracked convert_container — mirrors `convert_container`.
@@ -2743,7 +2906,10 @@ impl<'a> AuraViewBuilder<'a> {
             "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
-            "button" | "btn" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            // native_button：vue 侧显式原生逃生名（避开 button→shadcn
+            // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
+            //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
             // PLAN-530 步骤7（W12）：toggle_group VM 映射——横排连体 button
             // 组（untracked 镜像臂,D-GAP 规则）。见 toggle_group_rewrite_children。
             "togglegroup" | "toggle-group" | "toggle_group" => {
@@ -2758,11 +2924,20 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
             // （untracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog。
+            // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
+            "dialog" | "Dialog" => {
+                self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Dialog)
+            }
+            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => {
+                self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::DropdownMenu)
+            }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
-                self.convert_alert_dialog(props, children, bindings)
+                self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Alert)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content" => {
+            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
+            | "dialog-content" | "dialog_content" | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
@@ -2774,23 +2949,69 @@ impl<'a> AuraViewBuilder<'a> {
                     _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
+            | "dialog-title" | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description" => {
+            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
+            | "dialog-description" | "dialog_description" | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header" => {
+            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
+            | "dialog-header" | "dialog_header" | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column(&p, children, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer" => {
+            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
+            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row(&p, children, bindings);
                 self.set_layout_onclick(&mut v, events, bindings);
                 v
+            }
+            "dialog-close" | "dialog_close" | "dialogclose" => {
+                // PLAN-533 T5: dialog-close → outline 按钮（cancel 同款预设）。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
+            // PLAN-533 T7: dropdown-menu 子件——item（有 onclick 走按钮,
+            // 纯文本项 text 预设）/label/separator。
+            "dropdown-menu-item" | "dropdown_menu_item" | "dropdownmenuitem" => {
+                let preset = "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
+                if events.iter().any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click")) {
+                    let mut b = props.clone();
+                    b.insert(
+                        "variant".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("ghost".into())),
+                    );
+                    let b2 = self.with_class_prop(&b, bindings, preset);
+                    self.convert_button(&b2, events, children, bindings)
+                } else {
+                    let p = self.with_class_prop(props, bindings, preset);
+                    self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                }
+            }
+            "dropdown-menu-label" | "dropdown_menu_label" | "dropdownmenulabel" => {
+                let p = self.with_class_prop(props, bindings, "px-2 py-1.5 text-sm font-semibold");
+                self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+            }
+            "dropdown-menu-separator" | "dropdown_menu_separator" | "dropdownmenuseparator" => {
+                View::Container {
+                    child: Box::new(View::Empty),
+                    padding: 0,
+                    width: None,
+                    height: None,
+                    center_x: false,
+                    center_y: false,
+                    onclick: None,
+                    style: Style::parse("w-full h-px bg-border my-1").ok(),
+                }
             }
             "alert-dialog-cancel" | "alert_dialog_cancel" | "alertdialog-cancel" => {
                 // outline 变体预设（border+bg-background+text-foreground）,
@@ -2809,6 +3030,61 @@ impl<'a> AuraViewBuilder<'a> {
             // 三态 + icon/desc/badge 槽 + to/onclick 双模式）。
             "nav-item" | "nav_item" => self.convert_nav_item(props, events, children, bindings),
             "nav-group" | "nav_group" => self.convert_nav_group(props, events, children, bindings),
+            // Plan 561: sidebar_* VM 契约子集 —— tracked 站同名臂的镜像
+            // （D-GAP 规则；契约类见 ui_gen::sidebar_contract）。
+            "sidebar" => self.convert_sidebar_root(props, children, bindings),
+            "sidebar_provider" | "sidebar-provider" => {
+                self.convert_sidebar_provider(props, events, children, bindings)
+            }
+            "sidebar_header" | "sidebar-header" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::HEADER_BASE,
+            ),
+            "sidebar_footer" | "sidebar-footer" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::FOOTER_BASE,
+            ),
+            "sidebar_content" | "sidebar-content" => {
+                self.convert_sidebar_content(props, children, bindings)
+            }
+            "sidebar_separator" | "sidebar-separator" => self.convert_sidebar_separator(),
+            "sidebar_inset" | "sidebar-inset" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::INSET_BASE,
+            ),
+            "sidebar_group" | "sidebar-group" => {
+                self.convert_sidebar_group(props, children, bindings)
+            }
+            "sidebar_group_label" | "sidebar-group-label" => {
+                self.convert_sidebar_group_label(tag, props, events, children, bindings)
+            }
+            "sidebar_group_content" | "sidebar-group-content" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::GROUP_CONTENT,
+            ),
+            "sidebar_group_action" | "sidebar-group-action" => {
+                self.convert_sidebar_group_action(props, events, children, bindings)
+            }
+            "sidebar_menu" | "sidebar-menu" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_BASE,
+            ),
+            "sidebar_menu_item" | "sidebar-menu-item" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_ITEM,
+            ),
+            "sidebar_menu_action" | "sidebar-menu-action" => {
+                self.convert_sidebar_menu_action(props, events, children, bindings)
+            }
+            "sidebar_menu_badge" | "sidebar-menu-badge" => {
+                self.convert_sidebar_menu_badge(props, children, bindings)
+            }
+            "sidebar_menu_button" | "sidebar-menu-button" => {
+                self.convert_sidebar_menu_button(props, events, children, bindings, false)
+            }
+            "sidebar_menu_sub" | "sidebar-menu-sub" => self.convert_sidebar_region(
+                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_SUB,
+            ),
+            "sidebar_menu_sub_item" | "sidebar-menu-sub-item" => {
+                self.convert_children_passthrough(children, bindings)
+            }
+            "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => {
+                self.convert_sidebar_menu_button(props, events, children, bindings, true)
+            }
             // Plan 409 §10 续 8: badge = shadcn Badge(水平 inline + variant 配色)。
             "badge" => self.convert_badge(props, children, bindings),
 
@@ -2857,9 +3133,10 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| aura_events_get_base(events, "change"))
                         .map(|event| self.event_to_message(&event.handler));
                     let style = self.extract_style_with(props, bindings);
-                    // Plan 040: placeholder（空态提示文案）——VM v1 编辑壳
-                    // 无空态概念，读取后忽略。
-                    let _ = props.get("placeholder");
+                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
+                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
+                    // 忽略」豁免摘除）。
+                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
                     // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
                     //（DocEditor 全内容高、外滚）外包 View::Scrollable，
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
@@ -2874,7 +3151,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // 到内容全高（外滚）。编辑壳自身样式保留在内层。
                     if scroll_sync {
                         return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, style }),
+                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
                             width: None,
                             height: None,
                             style: Style::parse("w-full h-full").ok(),
@@ -2883,7 +3160,7 @@ impl<'a> AuraViewBuilder<'a> {
                             on_scroll,
                         };
                     }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, style };
+                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
                 }
                 #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                 self.convert_textarea(props, events, bindings)
@@ -4286,6 +4563,546 @@ let tabs_inner = View::Row {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Plan 561: sidebar_* —— VM 端契约子集（设计 sidebar-family-and-nav-
+    // retirement §3.3 D3）。契约类唯一来源 ui_gen::sidebar_contract（单测
+    // 逐 token 锚定 shadcn 原版资产，双端不可漂移）。结构等价验收，不追求
+    // 像素级复刻 web；offcanvas 动画、icon-collapse、Rail 拖拽、tooltip、
+    // cookie/快捷键/mobile 均不在子集。dispatch 双站（tracked/untracked）
+    // 镜像，实现集中在本节（同 nav 先例）。
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// `sidebar_provider`：open 状态容器（web 端无视觉盒，VM 同样透明）。
+    /// 受控 `open:` 或 `default_open:` 求值后注入直连 `sidebar` 子节点
+    /// （sidebar 自身 schema 无 open prop——状态归 provider，shadcn 同构）；
+    /// 显式写了 `open:` 的 sidebar 不被覆盖。
+    fn convert_sidebar_provider(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let _ = events;
+        let open = self
+            .extract_bool_expr(props, "open", bindings)
+            .or_else(|| self.extract_bool(props, "open"))
+            .or_else(|| self.extract_bool_expr(props, "default_open", bindings))
+            .or_else(|| self.extract_bool(props, "default_open"))
+            .unwrap_or(true);
+        let rewritten: Vec<AuraNode> = children
+            .iter()
+            .map(|n| match n {
+                AuraNode::Element { tag, props: cp, events: ce, children: cc, span, debug_id }
+                    if tag == "sidebar" && !cp.contains_key("open") =>
+                {
+                    let mut cp2 = cp.clone();
+                    cp2.insert(
+                        "open".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Bool(open)),
+                    );
+                    AuraNode::Element {
+                        tag: tag.clone(),
+                        props: cp2,
+                        events: ce.clone(),
+                        children: cc.clone(),
+                        span: *span,
+                        debug_id: *debug_id,
+                    }
+                }
+                _ => n.clone(),
+            })
+            .collect();
+        self.convert_children_passthrough(&rewritten, bindings)
+    }
+
+    /// 透明容器：独子直返，多子合列（provider/menu_item/sub_item 共用）。
+    fn convert_children_passthrough(
+        &self,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .map(|n| self.convert_node_with(n, bindings))
+            .filter(|v| !matches!(v, View::Empty))
+            .collect();
+        if views.len() == 1 {
+            views.into_iter().next().unwrap()
+        } else if views.is_empty() {
+            View::Empty
+        } else {
+            View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+            }
+        }
+    }
+
+    /// `sidebar` 根容器：契约基座 + VM 宽度（w-64 = web `--sidebar-width:16rem`
+    /// 等价）。`open:`（provider 注入或显式）驱动 offcanvas 桌面显隐——
+    /// 关且 collapsible != "none" 时整树不渲染（滑出动画不做）；`icon`
+    /// 模式不在 VM 子集，按展开处理。variant="floating" 加圆角描边；
+    /// side="right" 的贴边由父级排布承担（VM 无 fixed 层）。
+    fn convert_sidebar_root(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui_gen::sidebar_contract as sc;
+        let open = self
+            .extract_bool_expr(props, "open", bindings)
+            .or_else(|| self.extract_bool(props, "open"))
+            .unwrap_or(true);
+        let collapsible = self
+            .extract_string_with(props, "collapsible", bindings)
+            .unwrap_or_else(|| "offcanvas".to_string());
+        if !open && collapsible != "none" {
+            return View::Empty;
+        }
+        let variant = self
+            .extract_string_with(props, "variant", bindings)
+            .unwrap_or_else(|| "sidebar".to_string());
+        let mut class = format!("{} {}", sc::SIDEBAR_BASE, sc::WIDTH_VM);
+        if variant == "floating" {
+            class.push(' ');
+            class.push_str(sc::VARIANT_FLOATING_VM);
+        }
+        let p = self.with_class_prop(props, bindings, &class);
+        self.convert_column(&p, children, bindings)
+    }
+
+    /// sidebar_header / sidebar_footer 分区（契约同串，列容器）。
+    fn convert_sidebar_region(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        base: &str,
+    ) -> View<DynamicMessage> {
+        let p = self.with_class_prop(props, bindings, base);
+        self.convert_column(&p, children, bindings)
+    }
+
+    /// sidebar_content：可滚动主区（flex-1 + overflow-auto → scroll 臂）。
+    fn convert_sidebar_content(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let p = self.with_class_prop(props, bindings, crate::ui_gen::sidebar_contract::CONTENT_BASE);
+        self.convert_scroll(&p, children, bindings)
+    }
+
+    /// sidebar_separator：细分隔线（h-px 为 VM 显式高度补全，web 端由
+    /// Separator 组件自带）。
+    fn convert_sidebar_separator(&self) -> View<DynamicMessage> {
+        View::Container {
+            child: Box::new(View::Empty),
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: false,
+            center_y: false,
+            onclick: None,
+            style: Style::parse(&format!(
+                "h-px {}",
+                crate::ui_gen::sidebar_contract::SEPARATOR
+            ))
+            .ok(),
+        }
+    }
+
+    /// `sidebar_group`：分组容器。`collapsible: true` 时首个
+    /// sidebar_group_label 子节点（或 `label:` prop）渲染为开合按钮
+    /// （内部 `__nav_toggle` 消息 + nav_group_states 通道复用，键名
+    /// `__sidebar_group_open:<label>` 命名空间隔离），其余子节点收起不渲染。
+    fn convert_sidebar_group(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui_gen::sidebar_contract as sc;
+        let collapsible = self.extract_bool(props, "collapsible").unwrap_or(false)
+            || self.extract_bool_expr(props, "collapsible", bindings).unwrap_or(false);
+        let p = self.with_class_prop(props, bindings, sc::GROUP_BASE);
+        if !collapsible {
+            return self.convert_column(&p, children, bindings);
+        }
+        // 可折叠：定位 label（首个 sidebar_group_label 子节点的文本，或 label: prop）。
+        let label_text = self
+            .extract_string_with(props, "label", bindings)
+            .or_else(|| {
+                children.iter().find_map(|n| match n {
+                    AuraNode::Element { tag, props: lp, children: lc, .. }
+                        if tag == "sidebar_group_label" || tag == "sidebar-group-label" =>
+                    {
+                        self.extract_string_with(lp, "text", bindings)
+                            .or_else(|| self.extract_children_text(lc, bindings))
+                    }
+                    _ => None,
+                })
+            })
+            .unwrap_or_default();
+        let key = format!("__sidebar_group_open:{}", label_text);
+        let open = self
+            .extract_bool_expr(props, "open", bindings)
+            .unwrap_or_else(|| {
+                self.nav_group_states
+                    .as_ref()
+                    .and_then(|m| m.get(&key).copied())
+                    .unwrap_or(true)
+            });
+        let toggle = View::Button {
+            disabled: false,
+            label: label_text.clone(),
+            content: Some(Box::new(View::Row {
+                children: vec![
+                    View::Text { content: label_text, style: None, selectable: false },
+                    View::Text {
+                        content: if open { "▾".to_string() } else { "▸".to_string() },
+                        style: Style::parse("ml-auto text-muted-foreground").ok(),
+                        selectable: false,
+                    },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("w-full items-center").ok(),
+                onclick: None,
+            })),
+            onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                widget_name: self.widget_name.clone(),
+                event_name: "__nav_toggle".to_string(),
+                args: vec![auto_val::Value::str(&key)],
+            },
+            style: Style::parse(&format!("{} w-full text-left", sc::GROUP_LABEL)).ok(),
+            on_right_click: None,
+        };
+        let mut views: Vec<View<DynamicMessage>> = vec![toggle];
+        if open {
+            for n in children {
+                if matches!(n, AuraNode::Element { tag, .. } if tag == "sidebar_group_label" || tag == "sidebar-group-label")
+                {
+                    continue; // label 已进 toggle
+                }
+                let v = self.convert_node_with(n, bindings);
+                if !matches!(v, View::Empty) {
+                    views.push(v);
+                }
+            }
+        }
+        let user_class = self
+            .extract_string_with(props, "class", bindings)
+            .unwrap_or_default();
+        let class = if user_class.trim().is_empty() {
+            sc::GROUP_BASE.to_string()
+        } else {
+            format!("{} {}", user_class.trim(), sc::GROUP_BASE)
+        };
+        View::Column {
+            children: views,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(&class).ok(),
+            onclick: None,
+        }
+    }
+
+    /// sidebar_group_label 独立用法（非折叠组内）：文本 + 契约类。
+    fn convert_sidebar_group_label(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let p = self.with_class_prop(props, bindings, crate::ui_gen::sidebar_contract::GROUP_LABEL);
+        self.convert_text_element(tag, &p, events, children, bindings)
+    }
+
+    /// sidebar_group_action：组头右上动作按钮。
+    fn convert_sidebar_group_action(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        self.convert_sidebar_action_button(
+            props,
+            events,
+            children,
+            bindings,
+            crate::ui_gen::sidebar_contract::GROUP_ACTION,
+        )
+    }
+
+    /// sidebar_menu_action：行内动作按钮（与 group_action 同构，类不同）。
+    fn convert_sidebar_menu_action(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        self.convert_sidebar_action_button(
+            props,
+            events,
+            children,
+            bindings,
+            crate::ui_gen::sidebar_contract::MENU_ACTION,
+        )
+    }
+
+    /// 动作按钮共用实现：children 优先，否则 text:/icon: 合成；onclick 缺省 __noop。
+    fn convert_sidebar_action_button(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        base: &str,
+    ) -> View<DynamicMessage> {
+        let text = self
+            .extract_string_with(props, "text", bindings)
+            .or_else(|| self.extract_string_with(props, "label", bindings))
+            .unwrap_or_default();
+        let content: Option<Box<View<DynamicMessage>>> = if !children.is_empty() {
+            let v = self.convert_children_passthrough(children, bindings);
+            Some(Box::new(v))
+        } else if !text.is_empty() {
+            Some(Box::new(View::Text { content: text.clone(), style: None, selectable: false }))
+        } else {
+            None
+        };
+        let onclick = match aura_events_get_base(events, "onclick")
+            .or_else(|| aura_events_get_base(events, "click"))
+        {
+            Some(event) => self.event_to_message_with(&event, bindings),
+            None => crate::ui::interpreter::DynamicMessage::Typed {
+                widget_name: self.widget_name.clone(),
+                event_name: "__noop".to_string(),
+                args: Vec::new(),
+            },
+        };
+        let mut class = base.to_string();
+        if let Some(user) = self.extract_string_with(props, "class", bindings) {
+            if !user.trim().is_empty() {
+                class.push(' ');
+                class.push_str(user.trim());
+            }
+        }
+        let label = if !text.is_empty() {
+            text
+        } else {
+            self.extract_children_text(children, bindings).unwrap_or_default()
+        };
+        View::Button {
+            disabled: false,
+            label,
+            content,
+            onclick,
+            style: Style::parse(&class).ok(),
+            on_right_click: None,
+        }
+    }
+
+    /// sidebar_menu_badge：行尾徽标文本。
+    fn convert_sidebar_menu_badge(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let text = self
+            .extract_string_with(props, "text", bindings)
+            .or_else(|| self.extract_children_text(children, bindings))
+            .unwrap_or_default();
+        let mut class = crate::ui_gen::sidebar_contract::MENU_BADGE.to_string();
+        if let Some(user) = self.extract_string_with(props, "class", bindings) {
+            if !user.trim().is_empty() {
+                class.push(' ');
+                class.push_str(user.trim());
+            }
+        }
+        View::Text {
+            content: text,
+            style: Style::parse(&class).ok(),
+            selectable: false,
+        }
+    }
+
+    /// `sidebar_menu_button` / `sidebar_menu_sub_button`（sub=true）——契约
+    /// 三态 + `to:` 路由双模式（Plan 548 D2 的 VM 半）。active 决定序：
+    /// 显式 `active:` 表达式 > `to:` 路由自动探测（exact/前缀段，同
+    /// nav-item）；active 态整串替换 hover（双端 either/or，hover 永不
+    /// 压过选中底）。`to:` 非空时 dispatch `__navigate`（route/mod.rs
+    /// 机制，`__current_route` + 历史栈），优先于 onclick。
+    fn convert_sidebar_menu_button(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        sub: bool,
+    ) -> View<DynamicMessage> {
+        use crate::ui_gen::sidebar_contract as sc;
+
+        let to = self.extract_string_with(props, "to", bindings).unwrap_or_default();
+        let text = self
+            .extract_string_with(props, "text", bindings)
+            .or_else(|| self.extract_string_with(props, "label", bindings))
+            .unwrap_or_default();
+        let icon = self.extract_string_with(props, "icon", bindings).unwrap_or_default();
+        let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
+        let variant = self
+            .extract_string_with(props, "variant", bindings)
+            .unwrap_or_default();
+        let disabled = self.extract_bool(props, "disabled").unwrap_or(false)
+            || self.extract_bool_expr(props, "disabled", bindings).unwrap_or(false);
+        let exact = self.extract_bool(props, "exact").unwrap_or(false);
+
+        let active = self
+            .extract_bool_expr(props, "active", bindings)
+            .unwrap_or_else(|| self.nav_route_active(&to, exact));
+
+        // 点击目标：to 优先（路由模式）；否则用户消息；否则 __noop。
+        let onclick = if !to.is_empty() {
+            crate::ui::interpreter::DynamicMessage::Typed {
+                widget_name: self.widget_name.clone(),
+                event_name: "__navigate".to_string(),
+                args: vec![auto_val::Value::str(&to)],
+            }
+        } else {
+            match aura_events_get_base(events, "onclick")
+                .or_else(|| aura_events_get_base(events, "click"))
+            {
+                Some(event) => self.event_to_message_with(&event, bindings),
+                None => crate::ui::interpreter::DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__noop".to_string(),
+                    args: Vec::new(),
+                },
+            }
+        };
+
+        // 内容：显式 children 优先（多子合为契约行——基座 flex row gap-2
+        // 的 VM 同构，icon+text 横排；竖列会在 h-8 定高下裁掉文本）；
+        // 否则 icon + text 合成行。
+        let content: Option<Box<View<DynamicMessage>>> = if !children.is_empty() {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .filter(|v| !matches!(v, View::Empty))
+                .collect();
+            if views.len() == 1 {
+                Some(Box::new(views.into_iter().next().unwrap()))
+            } else if views.is_empty() {
+                None
+            } else {
+                Some(Box::new(View::Row {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse("items-center gap-2").ok(),
+                    onclick: None,
+                }))
+            }
+        } else {
+            let mut parts: Vec<View<DynamicMessage>> = Vec::new();
+            if !icon.is_empty() {
+                if Self::is_lucide_name(&icon) {
+                    parts.push(View::Image {
+                        src: format!("lucide:{}", icon),
+                        style: Style::parse("h-4 w-4 shrink-0").ok(),
+                    });
+                } else {
+                    parts.push(View::Text { content: icon, style: None, selectable: false });
+                }
+            }
+            if !text.is_empty() {
+                parts.push(View::Text { content: text.clone(), style: None, selectable: false });
+            }
+            if parts.is_empty() {
+                None
+            } else {
+                Some(Box::new(View::Row {
+                    children: parts,
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse("items-center gap-2").ok(),
+                    onclick: None,
+                }))
+            }
+        };
+
+        // 契约类装配：基座 + 尺寸 + 变体 + 状态（+ 用户追加最后）。
+        let mut class = if sub {
+            sc::MENU_SUB_BUTTON_BASE.to_string()
+        } else {
+            sc::MENU_BUTTON_BASE.to_string()
+        };
+        let size_cls = match (sub, size.as_str()) {
+            (true, "sm") => Some(sc::MENU_SUB_BUTTON_SIZE_SM),
+            (false, "sm") => Some(sc::MENU_BUTTON_SIZE_SM),
+            (false, "lg") => Some(sc::MENU_BUTTON_SIZE_LG),
+            (false, _) => Some(sc::MENU_BUTTON_SIZE_DEFAULT),
+            (true, _) => None, // sub md 的 text-sm 已在基座
+        };
+        if let Some(c) = size_cls {
+            class.push(' ');
+            class.push_str(c);
+        }
+        if !sub && variant == "outline" {
+            class.push(' ');
+            class.push_str(sc::MENU_BUTTON_OUTLINE_VM);
+        }
+        if active {
+            class.push(' ');
+            class.push_str(sc::MENU_BUTTON_ACTIVE);
+        } else if !disabled {
+            class.push(' ');
+            class.push_str(sc::MENU_BUTTON_HOVER);
+        }
+        if disabled {
+            class.push(' ');
+            class.push_str(sc::MENU_BUTTON_DISABLED);
+        }
+        if let Some(user) = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+        {
+            if !user.trim().is_empty() {
+                class.push(' ');
+                class.push_str(user.trim());
+            }
+        }
+
+        let label = if !text.is_empty() {
+            text
+        } else if let Some(derived) = self.extract_children_text(children, bindings) {
+            derived
+        } else {
+            to.clone()
+        };
+
+        View::Button {
+            disabled,
+            label,
+            content,
+            onclick,
+            style: Style::parse(&class).ok(),
+            on_right_click: None,
+        }
+    }
+
     /// Steps shared by the tracked/untracked child-widget render paths:
     /// resolve props from parent state (1), collect child state field names
     /// (2), sync matching parent state → child (3), seed model-var defaults
@@ -4335,6 +5152,10 @@ let tabs_inner = View::Row {
         //    condition short-circuits to false (body hidden) and the string
         //    falls back to "${collapsed}" / "${collapse_glyph}".
         //    Only runs when the parent didn't provide the prop (parent wins).
+        //    PLAN-536 T8(题6 根修): 缺省播种只在根态**缺字段**时发生——此前
+        //    每帧无条件重播种,子件 handler 对本件模型字段的写入(受控 open
+        //    翻转等)在下一帧重建时被打回默认值:musk delete_confirm_open=true
+        //    而视图恒无 modal 的实录机制。首次挂载播种语义不变。
         for state_var in &child_widget.state_vars {
             if !resolved_props.contains_key(&state_var.name) {
                 resolved_props.insert(
@@ -4348,9 +5169,13 @@ let tabs_inner = View::Row {
         // colors: List<str> = [...])` 一类 widget-parens 默认值此前只在
         // vue 轨生效(withDefaults),VM 轨不播种 → 子组件 handler 读未传
         // prop 时 GET_FIELD 直接失败(donut 的 colors 即此)。父级显式传值
-        // 优先(parent wins)。
+        // 优先(parent wins)。PLAN-536 T8: 同 4 的缺字段守卫——已存在的
+        // 字段不重播种(防 handler 写入被逐帧打回默认)。
         for prop in &child_widget.props {
             if !resolved_props.contains_key(&prop.name) {
+                if self.bridge.read_state(&prop.name).is_ok() {
+                    continue;
+                }
                 if let Some(default_expr) = &prop.default {
                     resolved_props.insert(
                         prop.name.clone(),
@@ -4389,6 +5214,14 @@ let tabs_inner = View::Row {
         if !has_init {
             return;
         }
+        // PLAN-536 T3(题2 收敛): Init 收敛为挂载语义——本组件生命周期内每
+        // 子件只派发一次,不随脏重建帧重放。437 v1 的逐帧重放使副作用型
+        // Init(ForgeStore.Init→LoadSessionList)随帧重入(musk 单会话期
+        // 1.6 万+次实录);props 仍每帧重播种(ensure_child_state),派生值
+        // 响应沿 vue 语义归 watch/computed。
+        if !self.bridge.child_init_first_mount(&child_widget.name) {
+            return;
+        }
         if let Err(e) = self
             .bridge
             .call_handler_for(&child_widget.name, "Init", state_obj_id, &[])
@@ -4416,13 +5249,35 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
     ) {
+        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+            eprintln!(
+                "[VM-EMIT-REG] child={} events={:?} on-props={:?}",
+                child_name,
+                events.keys().collect::<Vec<_>>(),
+                props
+                    .keys()
+                    .filter(|k| k.starts_with("on"))
+                    .collect::<Vec<_>>()
+            );
+        }
         for (key, ev) in events.iter() {
-            if !key.starts_with("on") || crate::aura::extract::is_native_event_key(key) {
+            if crate::aura::extract::is_native_event_key(key) {
                 continue;
             }
+            // auto-down PLAN-051 T11 补面：Plan-367 引号式监听落 events 的键
+            // 是原样 `on"SetTheme"` 形（内嵌引号，CustomScrollbar 的
+            // `on"update:scrollTop"` 同形）——原样键查表 miss（musk C2 双样
+            // 点只有 onsend/on_send 属性式）。剥引号归一 + 无 on 前缀补前缀，
+            // 与派发侧 "on"+子 msg 名两侧折叠命中。
+            let cleaned: String = key.replace('"', "");
+            let folded_key = if cleaned.starts_with("on") {
+                cleaned
+            } else {
+                format!("on{}", cleaned)
+            };
             crate::ui::child_emit::record_route(
                 &child_name,
-                key,
+                &folded_key,
                 crate::ui::child_emit::ParentRoute {
                     parent_widget: parent_widget.clone(),
                     handler: ev.handler.trim_start_matches('.').to_string(),
@@ -4583,10 +5438,7 @@ let tabs_inner = View::Row {
         let red = rederive_layout(style.as_ref());
         if let Some(RederivedLayout::Grid { cols, gap }) = red {
             let base = View::Grid { cols, gap, cells: child_views, style };
-            if let Some((content, position)) = floats.into_iter().next() {
-                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
-            }
-            return base;
+            return fold_floats(base, floats);
         }
         let use_row = matches!(red, Some(RederivedLayout::Row));
 
@@ -4625,11 +5477,7 @@ let tabs_inner = View::Row {
             col_view
         };
         // Plan 409 §10 续 5: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层,不挤压)。
-        if let Some((content, position)) = floats.into_iter().next() {
-            View::Overlay { base: Box::new(base), content: Box::new(content), position }
-        } else {
-            base
-        }
+        fold_floats(base, floats)
     }
 
     /// Convert a scroll element — always scrollable (schema: Scrollable container).
@@ -4722,14 +5570,27 @@ let tabs_inner = View::Row {
             }
         }
 
+        // PLAN-536 T6(题5 ①②): absolute 悬浮层 hoist——与 convert_column
+        // 同规(409 §10 续 5 先例)。row 此前缺臂,行内悬浮元素(会话卡 ×)
+        // 退化流内挤压兄弟。
+        let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+        let child_views: Vec<View<DynamicMessage>> = child_views
+            .into_iter()
+            .filter_map(|v| match extract_absolute_position(&v) {
+                Some(pos) => { floats.push((v, pos)); None }
+                None => Some(v),
+            })
+            .collect();
+
         // Plan 412 F1: 交叉类仲裁 — row 元素带 `grid grid-cols-N`/`flex-col` 类时
-        // 布局语义被类覆盖。
+        // 布局语义被类覆盖。absolute hoist 在前,浮层不占格(409 同款)。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
             let cells: Vec<View<DynamicMessage>> = child_views
                 .into_iter()
                 .filter(|v| !is_visually_empty(v))
                 .collect();
-            return View::Grid { cols, gap, cells, style };
+            let base = View::Grid { cols, gap, cells, style };
+            return fold_floats(base, floats);
         }
         let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
 
@@ -4753,7 +5614,9 @@ let tabs_inner = View::Row {
             builder = builder.child(child);
         }
 
-        builder.build()
+        let row_view = builder.build();
+        // PLAN-536 T6: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层)。
+        fold_floats(row_view, floats)
     }
 
     /// Iterate a `for` loop's iterable, converting its body once per item, and
@@ -5403,6 +6266,70 @@ let tabs_inner = View::Row {
     // fallback（overlay 家族 "renders as Column"），点击无弹层。
     // shadcn AlertDialog 语义：外点/Esc 不关闭（on_dismiss=None），关闭仅经
     // cancel/action 操作钮的 VM handler 翻转 `open` 绑定状态。
+    /// PLAN-533 T5: 裸文本 trigger（`dialog-trigger "Open"` → text prop
+    /// 无子节点）→ Button（vue trigger 语义）。onclick 经 convert_button
+    /// 取 parser 铸造的 `.__dlg_toggle_<n>`（或用户显式绑定）;无文字且无
+    /// 子件 → Empty。
+    fn bare_trigger_button_view(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let has_label = ["text", "label"].iter().any(|k| {
+            matches!(
+                props.get(*k),
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) if !s.is_empty()
+            )
+        });
+        if has_label {
+            self.convert_button(props, events, &[], bindings)
+        } else {
+            View::Empty
+        }
+    }
+
+    /// PLAN-533 T7: 模态对话框族别——Alert/Dialog 共用模态卡 chrome,
+    /// DropdownMenu 锚定菜单（BottomStart + p-1 紧凑档）。
+    fn modal_dialog_family(tag: &str) -> ModalDialogFamily {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "dropdownmenu" => ModalDialogFamily::DropdownMenu,
+            "dialog" => ModalDialogFamily::Dialog,
+            _ => ModalDialogFamily::Alert,
+        }
+    }
+
+    /// PLAN-533 T6: 铸造形态（open 绑 `__dlg_open_N`）→ dismiss 折算消息
+    /// `__dlg_close_N`。非铸造形态（用户显式 open 绑定/无 open prop）返回
+    /// None（自管语义,Phase 1 不接管）。
+    fn minted_dismiss_msg(
+        widget: &str,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> Option<DynamicMessage> {
+        let AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) = props.get("open")? else {
+            return None;
+        };
+        if !matches!(
+            obj.as_ref(),
+            crate::ast::Expr::Ident(b) if b.as_str() == "self" || b.as_str() == "."
+        ) {
+            return None;
+        }
+        field
+            .to_string()
+            .strip_prefix("__dlg_open_")
+            .map(|n| DynamicMessage::Typed {
+                widget_name: widget.to_string(),
+                event_name: format!("__dlg_close_{n}"),
+                args: vec![],
+            })
+    }
+
     fn alert_dialog_split_children(
         children: &[AuraNode],
     ) -> (Option<&AuraNode>, Option<&AuraNode>) {
@@ -5413,13 +6340,29 @@ let tabs_inner = View::Row {
                 let t = tag.as_str();
                 if matches!(
                     t,
-                    "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
+                    "alert-dialog-trigger"
+                        | "alert_dialog_trigger"
+                        | "alertdialog-trigger"
+                        | "dialog-trigger"
+                        | "dialog_trigger"
+                        | "dialogtrigger"
+                        | "dropdown-menu-trigger"
+                        | "dropdown_menu_trigger"
+                        | "dropdownmenutrigger"
                 ) && trigger.is_none()
                 {
                     trigger = Some(c);
                 } else if matches!(
                     t,
-                    "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
+                    "alert-dialog-content"
+                        | "alert_dialog_content"
+                        | "alertdialog-content"
+                        | "dialog-content"
+                        | "dialog_content"
+                        | "dialogcontent"
+                        | "dropdown-menu-content"
+                        | "dropdown_menu_content"
+                        | "dropdownmenucontent"
                 ) && content.is_none()
                 {
                     content = Some(c);
@@ -5458,25 +6401,32 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
         bindings: &Bindings,
+        family: ModalDialogFamily,
     ) -> View<DynamicMessage> {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         // 锚:trigger 子件原位渲染（无 trigger = 空 anchor,open 属性直驱）。
+        // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button,onclick 取
+        // parser 铸造的 toggle（或用户显式绑定）。
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, .. }) => {
-                let views: Vec<View<DynamicMessage>> = t_children
-                    .iter()
-                    .map(|c| self.convert_node_with(c, bindings))
-                    .collect();
-                match views.len() {
-                    1 => views.into_iter().next().unwrap(),
-                    _ => View::Row {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                        onclick: None,
-                    },
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let views: Vec<View<DynamicMessage>> = t_children
+                        .iter()
+                        .map(|c| self.convert_node_with(c, bindings))
+                        .collect();
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
                 }
             }
             _ => View::Empty,
@@ -5489,11 +6439,24 @@ let tabs_inner = View::Row {
                 .collect(),
             _ => Vec::new(),
         };
+        // PLAN-533 T7: dropdown-menu 族锚定菜单 chrome（shadcn
+        // DropdownMenuContent 同款 p-1 紧凑档 + BottomStart）;对话框族
+        // 保持 w-96 模态卡。
+        let (panel_chrome, placement) = match family {
+            ModalDialogFamily::DropdownMenu => (
+                "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1",
+                PopoverPlacement::BottomStart,
+            ),
+            _ => (
+                "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4",
+                PopoverPlacement::Modal,
+            ),
+        };
         let panel = View::Column {
             children: panel_children,
             spacing: 0,
             padding: 0,
-            style: Style::parse("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4").ok(),
+            style: Style::parse(panel_chrome).ok(),
             onclick: None,
         };
         let open = match props.get("open") {
@@ -5503,12 +6466,20 @@ let tabs_inner = View::Row {
             ),
             _ => false,
         };
+        // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
+        // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
+        // 形态不接管。
+        let on_dismiss = if matches!(family, ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu) {
+            Self::minted_dismiss_msg(&self.widget_name, props)
+        } else {
+            None
+        };
         View::Popover {
             anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
             content: Box::new(panel),
-            placement: PopoverPlacement::Modal,
+            placement,
             open,
-            on_dismiss: None,
+            on_dismiss,
         }
     }
 
@@ -5522,26 +6493,33 @@ let tabs_inner = View::Row {
         id_map: &mut DebugIdMap,
         probe: &mut BuildProbe,
         bindings: &Bindings,
+        family: ModalDialogFamily,
     ) -> View<DynamicMessage> {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, .. }) => {
-                let mut views: Vec<View<DynamicMessage>> = Vec::new();
-                for (i, c) in t_children.iter().enumerate() {
-                    path.push(i);
-                    views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
-                    path.pop();
-                }
-                match views.len() {
-                    1 => views.into_iter().next().unwrap(),
-                    _ => View::Row {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                        onclick: None,
-                    },
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button
+                // （铸造/显式 onclick 经 convert_button 接线）。
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                    for (i, c) in t_children.iter().enumerate() {
+                        path.push(i);
+                        views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                        path.pop();
+                    }
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
                 }
             }
             _ => View::Empty,
@@ -5555,11 +6533,24 @@ let tabs_inner = View::Row {
                 path.pop();
             }
         }
+        // PLAN-533 T7: dropdown-menu 族锚定菜单 chrome（shadcn
+        // DropdownMenuContent 同款 p-1 紧凑档 + BottomStart）;对话框族
+        // 保持 w-96 模态卡。
+        let (panel_chrome, placement) = match family {
+            ModalDialogFamily::DropdownMenu => (
+                "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1",
+                PopoverPlacement::BottomStart,
+            ),
+            _ => (
+                "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4",
+                PopoverPlacement::Modal,
+            ),
+        };
         let panel = View::Column {
             children: panel_children,
             spacing: 0,
             padding: 0,
-            style: Style::parse("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4").ok(),
+            style: Style::parse(panel_chrome).ok(),
             onclick: None,
         };
         let open = match props.get("open") {
@@ -5569,12 +6560,20 @@ let tabs_inner = View::Row {
             ),
             _ => false,
         };
+        // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
+        // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
+        // 形态不接管。
+        let on_dismiss = if matches!(family, ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu) {
+            Self::minted_dismiss_msg(&self.widget_name, props)
+        } else {
+            None
+        };
         View::Popover {
             anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
             content: Box::new(panel),
-            placement: PopoverPlacement::Modal,
+            placement,
             open,
-            on_dismiss: None,
+            on_dismiss,
         }
     }
 
@@ -6394,6 +7393,13 @@ let tabs_inner = View::Row {
                 // 对齐）。此前恒 Column → 图标叠文字上方且整体居中（vue 轨
                 // flex 行形态）。
                 _ => {
+                    // PLAN-536 重测回归撤销(2026-09-04):button 结构子件内的
+                    // absolute hoist 臂使 Button{content:Overlay} 在画布上
+                    // 渲染为空壳(musk 会话列表卡片实测:名称/× 全失,仅剩
+                    // 圆角描边;截图 p536_retest_rail)。悬浮消费方改走兄弟
+                    // 结构(musk chats_view:× 移出卡片 button,由外层 col
+                    // 的 col-arm hoist 承接)。本臂待 renderer 侧
+                    // Button{content:Overlay} 渲染根修后再启。
                     let is_col = style.as_ref().map_or(false, |s| {
                         s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol))
                     });
@@ -9041,6 +10047,9 @@ fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view
     use crate::ui::style::iced_adapter::{IcedStyle, IcedPosition};
     let style = match v {
         View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. } => style.as_ref()?,
+        // PLAN-536 T6(题5 ②): button(会话卡 × 删除钮)/mouse_area(Plan 484
+        // 注:其 style 参与 absolute/z 判定)同样可作悬浮载体。
+        View::Button { style, .. } | View::MouseArea { style, .. } => style.as_ref()?,
         _ => return None,
     };
     let is = IcedStyle::from_style(style);
@@ -9063,6 +10072,21 @@ fn is_visually_empty(v: &View<DynamicMessage>) -> bool {
         View::Text { content, .. } => content.is_empty(),
         _ => false,
     }
+}
+
+/// PLAN-536 T10(D1 次生缺陷根修): absolute 浮层全部保留——按源序嵌套
+/// Overlay 折叠(首个最外=栈序最低,后续逐层叠上,对齐 CSS 同 z 源序)。
+/// 此前四处 hoist 臂(col/row × tracked/untracked)只取 `.next()` 首个,
+/// 其余 absolute 子节点已被滤出流内却未进任何浮层,整体丢弃。
+fn fold_floats(
+    base: View<DynamicMessage>,
+    floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)>,
+) -> View<DynamicMessage> {
+    let mut acc = base;
+    for (content, position) in floats {
+        acc = View::Overlay { base: Box::new(acc), content: Box::new(content), position };
+    }
+    acc
 }
 
 /// Plan 499 M2: coords 逻辑幅面解析("WxH",如 "560x300")。
@@ -10113,15 +11137,31 @@ mod tests {
             .with_prop("key", Expr::Str("doc-ed".into()))
             .with_prop("content", Expr::Str("# 编辑\nn".into()))
             .with_prop("final", Expr::Bool(true))
-            // Plan 040: placeholder 读取后忽略（VM v1 编辑壳无空态概念）。
+            // PLAN-048 T7（W4）：placeholder 真消费——空态文案发射进 View
+            // 字段（Plan 040「读取后忽略」豁免摘除）。
             .with_prop("placeholder", Expr::Str("Start typing...".into()))
             .with_event("oninput", ".DocEdit");
         match builder.build(&node) {
-            View::AutodownEditor { key, value, is_final, on_change, .. } => {
+            View::AutodownEditor { key, value, is_final, on_change, placeholder, .. } => {
                 assert_eq!(key, "doc-ed");
                 assert_eq!(value, "# 编辑\nn");
                 assert!(is_final);
                 assert!(on_change.is_some(), "oninput → on_change message");
+                assert_eq!(
+                    placeholder.as_deref(),
+                    Some("Start typing..."),
+                    "placeholder prop → View 字段发射"
+                );
+            }
+            other => panic!("expected AutodownEditor variant"),
+        }
+        // 无 placeholder prop → None。
+        let node2 = AuraNode::element("autodown_editor")
+            .with_prop("key", Expr::Str("doc-ed2".into()))
+            .with_prop("content", Expr::Str("正文".into()));
+        match builder.build(&node2) {
+            View::AutodownEditor { placeholder, .. } => {
+                assert!(placeholder.is_none(), "missing prop → None");
             }
             other => panic!("expected AutodownEditor variant"),
         }
@@ -12544,7 +13584,12 @@ mod tests {
         let v = AuraViewBuilder::new(&bridge, "Test").build(&node);
         let classes = nav_style_classes(&v);
         assert!(classes_contain(&classes, nc::ITEM_ACTIVE), "命中应有 active 块");
-        assert!(!hover_classes_contain(&nav_hover_classes(&v), nc::ITEM_HOVER), "选中不再挂 hover");
+        assert!(!hover_classes_contain(&nav_hover_classes(&v), nc::ITEM_HOVER), "选中不再挂完整 hover 组");
+        // PLAN-063 Phase B T19 (KD 061 D23): active 自带中性灰 hover。
+        assert!(
+            hover_classes_contain(&nav_hover_classes(&v), "hover:bg-accent"),
+            "选中项应自带 hover:bg-accent(契约放宽)"
+        );
 
         // 前缀段命中（/chats 对 /chats/1 生效）；exact 收紧。
         let node = AuraNode::element("nav-item").with_prop("to", Expr::Str("/chats".into()));
@@ -12694,6 +13739,274 @@ mod tests {
             }
             other => panic!("期望 View::Column,得到 {other:?}"),
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Plan 561: sidebar_* VM 契约子集转换测试
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// 容器与分区树：provider 透明传递 → sidebar 根列（契约基座 + w-64），
+    /// header/content/footer 三分区各就各位；provider `default_open: false`
+    /// 时 offcanvas 整树隐藏；collapsible:"none" 不受 open 门控。
+    #[test]
+    fn test_sidebar_tree_structure_and_provider_gate() {
+        use crate::ui_gen::sidebar_contract as sc;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let sidebar_node = || {
+            AuraNode::element("sidebar")
+                .with_child(AuraNode::element("sidebar_header").with_child(AuraNode::text("头")))
+                .with_child(AuraNode::element("sidebar_content").with_child(AuraNode::text("体")))
+                .with_child(AuraNode::element("sidebar_footer").with_child(AuraNode::text("脚")))
+        };
+        let provider = AuraNode::element("sidebar_provider").with_child(sidebar_node());
+        match builder.build(&provider) {
+            View::Column { children, style, .. } => {
+                let classes = style.expect("sidebar 根 style").classes;
+                assert!(classes_contain(&classes, sc::SIDEBAR_BASE), "根契约基座缺失: {:?}", classes);
+                assert!(classes_contain(&classes, sc::WIDTH_VM), "VM 宽度缺失");
+                assert_eq!(children.len(), 3, "header/content/footer 三分区");
+                assert!(matches!(&children[0], View::Column { .. }), "header 列");
+                assert!(matches!(&children[2], View::Column { .. }), "footer 列");
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+
+        // provider default_open:false → offcanvas 桌面 = 整树隐藏。
+        let closed = AuraNode::element("sidebar_provider")
+            .with_prop("default_open", Expr::Bool(false))
+            .with_child(sidebar_node());
+        assert!(
+            matches!(builder.build(&closed), View::Empty),
+            "offcanvas 关 = 隐藏"
+        );
+
+        // collapsible:"none" 不受 open 门控。
+        let pinned = AuraNode::element("sidebar_provider")
+            .with_prop("default_open", Expr::Bool(false))
+            .with_child(
+                AuraNode::element("sidebar")
+                    .with_prop("collapsible", Expr::Str("none".into()))
+                    .with_child(AuraNode::text("x")),
+            );
+        assert!(
+            matches!(builder.build(&pinned), View::Column { .. }),
+            "collapsible=none 不隐藏"
+        );
+    }
+
+    /// 可折叠 group：首个 group_label 子节点转 toggle 按钮（__nav_toggle
+    /// 消息 + `__sidebar_group_open:` 命名空间键），内置态 false 时内容
+    /// 收起；非折叠 group 的 label 走 Text + GROUP_LABEL 契约类。
+    #[test]
+    fn test_sidebar_group_collapsible_toggle() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("sidebar_group")
+            .with_prop("collapsible", Expr::Bool(true))
+            .with_child(
+                AuraNode::element("sidebar_group_label")
+                    .with_prop("text", Expr::Str("工作区".into())),
+            )
+            .with_child(
+                AuraNode::element("sidebar_group_content").with_child(AuraNode::text("项")),
+            );
+        match builder.build(&node) {
+            View::Column { children, .. } => {
+                assert_eq!(children.len(), 2, "toggle 头 + 内容");
+                match &children[0] {
+                    View::Button { onclick, .. } => match onclick.clone() {
+                        DynamicMessage::Typed { event_name, args, .. } => {
+                            assert_eq!(event_name, "__nav_toggle");
+                            assert_eq!(
+                                args.first().map(|v| v.as_str()),
+                                Some("__sidebar_group_open:工作区")
+                            );
+                        }
+                        other => panic!("期望 __nav_toggle,得到 {other:?}"),
+                    },
+                    other => panic!("折叠头应为 Button,得到 {other:?}"),
+                }
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+
+        // 内置态 false → 内容收起（仅头）。
+        let mut states = std::collections::HashMap::new();
+        states.insert("__sidebar_group_open:工作区".to_string(), false);
+        let builder = AuraViewBuilder::new(&bridge, "Test").with_nav_group_states(&states);
+        match builder.build(&node) {
+            View::Column { children, .. } => assert_eq!(children.len(), 1, "收起时仅头"),
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+
+        // 非折叠：label 是带契约类的 Text。
+        let node = AuraNode::element("sidebar_group")
+            .with_child(
+                AuraNode::element("sidebar_group_label")
+                    .with_prop("text", Expr::Str("项目".into())),
+            )
+            .with_child(AuraNode::text("x"));
+        match AuraViewBuilder::new(&bridge, "Test").build(&node) {
+            View::Column { children, .. } => {
+                assert!(matches!(&children[0], View::Text { .. }), "非折叠 label 为 Text");
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+    }
+
+    /// 菜单层级：menu → MENU_BASE 列；item → MENU_ITEM 列（button + badge
+    /// 双子）；badge 为 MENU_BADGE 文本；sub → MENU_SUB 缩进列（border-l）。
+    #[test]
+    fn test_sidebar_menu_hierarchy() {
+        use crate::ui_gen::sidebar_contract as sc;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("sidebar_menu")
+            .with_child(
+                AuraNode::element("sidebar_menu_item")
+                    .with_child(
+                        AuraNode::element("sidebar_menu_button")
+                            .with_prop("text", Expr::Str("收件箱".into())),
+                    )
+                    .with_child(
+                        AuraNode::element("sidebar_menu_badge")
+                            .with_prop("text", Expr::Str("3".into())),
+                    ),
+            )
+            .with_child(
+                AuraNode::element("sidebar_menu_sub").with_child(
+                    AuraNode::element("sidebar_menu_sub_item").with_child(
+                        AuraNode::element("sidebar_menu_sub_button")
+                            .with_prop("text", Expr::Str("子项".into())),
+                    ),
+                ),
+            );
+        match builder.build(&node) {
+            View::Column { children, style, .. } => {
+                assert!(
+                    classes_contain(&style.expect("menu style").classes, sc::MENU_BASE),
+                    "menu 契约类缺失"
+                );
+                assert_eq!(children.len(), 2, "item + sub");
+                match &children[0] {
+                    View::Column { children: item_children, style, .. } => {
+                        assert!(
+                            classes_contain(&style.as_ref().expect("item style").classes, sc::MENU_ITEM),
+                            "item 契约类缺失"
+                        );
+                        assert!(matches!(&item_children[0], View::Button { .. }), "button 子");
+                        match &item_children[1] {
+                            View::Text { content, style, .. } => {
+                                assert_eq!(content, "3");
+                                assert!(
+                                    classes_contain(
+                                        &style.as_ref().expect("badge style").classes,
+                                        sc::MENU_BADGE
+                                    ),
+                                    "badge 契约类缺失"
+                                );
+                            }
+                            other => panic!("badge 应为 Text,得到 {other:?}"),
+                        }
+                    }
+                    other => panic!("item 应为 Column,得到 {other:?}"),
+                }
+                match &children[1] {
+                    View::Column { style, .. } => {
+                        assert!(
+                            classes_contain(&style.as_ref().expect("sub style").classes, sc::MENU_SUB),
+                            "sub 缩进契约类缺失"
+                        );
+                    }
+                    other => panic!("sub 应为 Column,得到 {other:?}"),
+                }
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+    }
+
+    /// menu_button 三态与路由：to: → __navigate；未命中挂 hover；路由命中
+    /// 或显式 active: → active 块替换 hover；disabled 灰置无 hover；
+    /// sub_button 走 SUB 基座 + size sm。
+    #[test]
+    fn test_sidebar_menu_button_states_and_route() {
+        use crate::ui_gen::sidebar_contract as sc;
+        let widget = make_test_widget("Test", vec![AuraStateDef {
+            name: "__current_route".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("/".into()),
+            decorators: vec![],
+        }]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state("__current_route", auto_val::Value::str("/dash")).unwrap();
+
+        // 默认态：to: → __navigate，未命中 → hover 无 active。
+        let node = AuraNode::element("sidebar_menu_button")
+            .with_prop("to", Expr::Str("/settings".into()))
+            .with_prop("text", Expr::Str("设置".into()));
+        match AuraViewBuilder::new(&bridge, "Test").build(&node) {
+            View::Button { onclick, style, disabled, .. } => {
+                assert!(!disabled);
+                match onclick {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "__navigate");
+                        assert_eq!(args.first().map(|v| v.as_str()), Some("/settings"));
+                    }
+                    other => panic!("期望 __navigate,得到 {other:?}"),
+                }
+                let st = style.expect("style");
+                assert!(classes_contain(&st.classes, sc::MENU_BUTTON_BASE), "基座缺失");
+                assert!(classes_contain(&st.classes, sc::MENU_BUTTON_SIZE_DEFAULT), "尺寸缺失");
+                assert!(hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER), "未选中应挂 hover");
+                assert!(!classes_contain(&st.classes, sc::MENU_BUTTON_ACTIVE), "不应有 active 块");
+            }
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        }
+
+        // 路由命中 → active 整串替换 hover（前缀段同 nav-item 语义）。
+        let node = AuraNode::element("sidebar_menu_button")
+            .with_prop("to", Expr::Str("/dash".into()))
+            .with_prop("text", Expr::Str("面板".into()));
+        let v = AuraViewBuilder::new(&bridge, "Test").build(&node);
+        let st = match &v {
+            View::Button { style, .. } => style.as_ref().expect("style"),
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        };
+        assert!(classes_contain(&st.classes, sc::MENU_BUTTON_ACTIVE), "命中应有 active 块");
+        assert!(!hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER), "选中不挂 hover");
+
+        // disabled：灰置 + 无 hover。
+        let node = AuraNode::element("sidebar_menu_button")
+            .with_prop("text", Expr::Str("禁用".into()))
+            .with_prop("disabled", Expr::Bool(true));
+        match AuraViewBuilder::new(&bridge, "Test").build(&node) {
+            View::Button { disabled, style, .. } => {
+                assert!(disabled);
+                let st = style.expect("style");
+                assert!(classes_contain(&st.classes, sc::MENU_BUTTON_DISABLED));
+                assert!(!hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER));
+            }
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        }
+
+        // sub_button：SUB 基座 + size sm 附加 text-xs。
+        let node = AuraNode::element("sidebar_menu_sub_button")
+            .with_prop("text", Expr::Str("子".into()))
+            .with_prop("size", Expr::Str("sm".into()));
+        let v = AuraViewBuilder::new(&bridge, "Test").build(&node);
+        let st = match &v {
+            View::Button { style, .. } => style.as_ref().expect("style"),
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        };
+        assert!(classes_contain(&st.classes, sc::MENU_SUB_BUTTON_BASE), "sub 基座缺失");
+        assert!(classes_contain(&st.classes, sc::MENU_SUB_BUTTON_SIZE_SM), "sub sm 尺寸缺失");
     }
 }
 

@@ -1,0 +1,51 @@
+// pages/absolute.at - PLAN-536 T6: absolute 定位原语探针页。
+// 悬浮语义契约:absolute + 偏移 + z-N → 父容器 overlay 层(锚=父 bounds,
+// 不影响兄弟布局);absolute 无 z → 流内分层技巧(textarea 叠加族),保留。
+
+widget AbsolutePage {
+    model { }
+
+    view {
+        col {
+            h1 "Absolute"
+            text "absolute + offset + z-N classes float the element in the parent's overlay layer (stack), anchored to the parent bounds — siblings are not affected. Without z-N it stays in flow (layering idiom)."
+
+            h2 "Close button floats over a card (col parent)"
+            preview-card (id: "absolute-card-close") {
+                col (style: "relative w-full") {
+                    col {
+                        style: "p-4 border rounded-md bg-card"
+                        text "Card title" (style: "font-medium") {}
+                        text "Body text that the floating close button must not push down. Body text that the floating close button must not push down." (style: "text-sm text-muted-foreground") {}
+                    }
+                    button "×" {
+                        style: "absolute right-2 top-2 z-10 w-6 h-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs"
+                    }
+                }
+            }
+
+            h2 "Badge floats inside a row (row parent)"
+            preview-card (id: "absolute-row-badge") {
+                row (style: "relative w-full items-center gap-2 border rounded-md p-3") {
+                    text "flow sibling A" (style: "text-sm") {}
+                    text "flow sibling B" (style: "text-sm text-muted-foreground") {}
+                    col {
+                        style: "absolute right-2 top-2 z-10 px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs"
+                        text "floating badge"
+                    }
+                }
+            }
+
+            h2 "Without z-N: stays in flow (layering idiom)"
+            preview-card (id: "absolute-no-z") {
+                col {
+                    style: "relative w-full p-4 border rounded-md"
+                    text "flow text (no z on the layer below)" (style: "text-sm") {}
+                    text "inset layer" {
+                        style: "absolute inset-0 text-xs text-muted-foreground"
+                    }
+                }
+            }
+        }
+    }
+}

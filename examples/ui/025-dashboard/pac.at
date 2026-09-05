@@ -12,3 +12,4 @@ scene: "ui"
 render: "vue"
 title: "Dashboard"
 front_port: 4025
+desktop: "true"

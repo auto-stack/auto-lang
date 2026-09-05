@@ -8,3 +8,7 @@
 # T7: SSE 连接建立 (EventSource /api/stream)
 # T8: 控制台无实质错误
 # T9: typing 指示器跨标签页 (B输入→A看到"You is typing…", Phase 12 协议 evt.name)
+# T10: 侧栏联系人列表渲染与多会话切换 (Alice / Bob / AutoBot / Tech Support)
+# T11: Emoji 表情面板点击追加至输入框 (😀, 👍 等)
+# T12: 后端 Bot Reply 智能助手问答
+# T13: 侧栏联系人搜索动态过滤

@@ -1,0 +1,92 @@
+// chat_sidebar.at — Left contacts and conversation navigation panel.
+widget ChatSidebar(contacts: []Contact, active_id: str, search_query: str, on_select: msg, on_search: msg) {
+    msg {
+        SelectContact(str),
+        SearchChanged
+    }
+
+    model {
+        var local_query str = ""
+    }
+
+    view {
+        col {
+            style: "w-72 md:w-80 bg-card rounded-xl shadow-sm border border-border flex-col h-full overflow-hidden flex-shrink-0"
+            // Header user profile
+            row {
+                style: "items-center gap-3 p-4 border-b border-border bg-muted/20"
+                text "🧑‍💻" { style: "text-2xl p-1.5 bg-card rounded-xl shadow-xs border border-border/50" }
+                col {
+                    style: "flex-1 min-w-0"
+                    row {
+                        style: "items-center gap-1.5"
+                        text "You" { style: "text-sm font-bold text-foreground" }
+                        text "🟢" { style: "text-[10px]" }
+                    }
+                    text "Online • WeChat IM" { style: "text-xs text-muted-foreground truncate" }
+                }
+            }
+
+            // Search bar
+            col {
+                style: "p-3 border-b border-border/50"
+                row {
+                    style: "items-center gap-2 px-3 py-1.5 bg-background border border-border rounded-lg shadow-xs"
+                    text "🔍" { style: "text-xs opacity-60" }
+                    input {
+                        placeholder: "Search chats..."
+                        value: .local_query
+                        oninput: .SearchChanged
+                        style: "flex-1 bg-transparent text-xs text-foreground outline-none"
+                    }
+                }
+            }
+
+            // Contact list
+            col {
+                style: "flex-1 overflow-y-auto p-2 gap-1 min-h-0"
+                if .contacts.len() == 0 {
+                    col {
+                        style: "flex-1 items-center justify-center p-6 text-muted-foreground text-xs"
+                        text "No contacts found"
+                    }
+                }
+                for c in .contacts {
+                    row {
+                        onclick: .SelectContact(.c.id)
+                        style: if .active_id == .c.id {
+                            "items-center gap-3 p-3 rounded-xl bg-accent text-accent-foreground border border-primary/20 cursor-pointer transition-all shadow-xs"
+                        } else {
+                            "items-center gap-3 p-3 rounded-xl hover:bg-muted/60 cursor-pointer transition-all border border-transparent"
+                        }
+                        text .c.avatar { style: "text-2xl p-1 bg-card rounded-lg shadow-xs flex-shrink-0" }
+                        col {
+                            style: "flex-1 min-w-0"
+                            row {
+                                style: "items-center justify-between"
+                                text .c.name { style: "text-sm font-semibold truncate" }
+                                text .c.time { style: "text-[11px] text-muted-foreground ml-1 flex-shrink-0" }
+                            }
+                            row {
+                                style: "items-center justify-between mt-1"
+                                text .c.last_message { style: "text-xs text-muted-foreground truncate" }
+                                if .c.unread > 0 {
+                                    text f"${.c.unread}" { style: "text-[10px] font-bold bg-destructive text-destructive-foreground px-1.5 py-0.5 rounded-full flex-shrink-0" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .SelectContact(id) -> {
+            on_select(id)
+        }
+        .SearchChanged -> {
+            on_search(.local_query)
+        }
+    }
+}

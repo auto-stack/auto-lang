@@ -129,6 +129,16 @@ impl Color {
             // "border" → 独立 Border 语义(theme.rs 双盘);input/ring 保持底色语义
             "border" => Ok(Color::Border),
             "input" | "ring" => Ok(Color::Surface),
+            // Plan 561: shadcn sidebar 语义色板（bg-sidebar / text-sidebar-foreground /
+            // bg-sidebar-accent / border-sidebar-border 等）映射到既有双盘语义位。
+            "sidebar" => Ok(Color::Surface),
+            "sidebar-foreground" => Ok(Color::OnSurface),
+            "sidebar-accent" => Ok(Color::Secondary),
+            "sidebar-accent-foreground" => Ok(Color::OnSecondary),
+            "sidebar-border" => Ok(Color::Border),
+            "sidebar-ring" => Ok(Color::Surface),
+            "sidebar-primary" => Ok(Color::Primary),
+            "sidebar-primary-foreground" => Ok(Color::OnPrimary),
             // Conduit/RealWorld brand green (#5cb85c) — used by 023-realworld.
             "brand-green" | "brand" => Ok(Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c }),
             _ => {

@@ -583,6 +583,137 @@ fn popover_escape_dismisses() {
     assert!(msgs.contains(&PopMsg::Dismiss), "Esc must publish dismiss: {msgs:?}");
 }
 
+// ── PLAN-533 T2: Modal 形态断言（居中/遮罩整吞/ESC）──────────────────────
+// alert-dialog 家族的模态通道：面板视口居中、外点整吞（基础树收不到，
+// dismiss 仍发布）、Esc 捕获发布。与 anchored 形态的差异全在这三处。
+
+/// Modal 定位：面板在 1024x768 视口正中，与锚位置无关（锚在左上角，
+// anchored BottomStart 会把面板放锚正下方——Modal 不会）。
+#[test]
+fn popover_modal_places_panel_centered() {
+    let view = View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Button {
+                label: "MODALTRIG".to_string(),
+                onclick: (),
+                disabled: false,
+                style: Some(Style::parse("h-7 px-3").ok().unwrap()),
+                on_right_click: None,
+                content: None,
+            })),
+            content: Box::new(View::Container {
+                child: Box::new(styled_view("MODALBODY")),
+                padding: 0,
+                width: Some(200),
+                height: None,
+                center_x: false,
+                center_y: false,
+                onclick: None,
+                style: None,
+            }),
+            placement: PopoverPlacement::Modal,
+            open: true,
+            on_dismiss: None,
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+                onclick: None,
+            };
+    let mut ui = simulator(view.into_iced());
+    let (px, py, pw, ph) = bounds_of(&mut ui, "MODALBODY");
+    assert!(pw > 0.0 && ph > 0.0, "modal panel body must be visible: {pw}x{ph}");
+    // 面板宽 200、文字贴容器左缘：面板左缘 ≈ 512 - 100 = 412。
+    assert!(
+        (px - 312.0).abs() <= 110.0,
+        "modal panel must center horizontally in 1024 viewport (text near left of 200px panel): x {px}"
+    );
+    // 面板高 ≈ 文字行高（~20-30），面板顶 ≈ 384 - h/2：文字 y 应在 384±40。
+    assert!(
+        (py - 384.0).abs() <= 40.0,
+        "modal panel must center vertically in 768 viewport: y {py}"
+    );
+    // 反证 anchored 语义：面板顶不在锚（高 28px 的按钮）正下方。
+    assert!(py > 60.0, "modal panel must NOT anchor under the trigger: y {py}");
+}
+
+/// Modal 外点：dismiss 发布且事件被整吞（Captured）——遮罩语义，
+/// 基础树收不到这次点击（anchored 形态是放行的，见上方
+/// popover_outside_click_dismisses 的对照）。
+#[test]
+fn popover_modal_outside_click_captures() {
+    let mut ui = simulator(popover_modal_view().into_iced());
+    ui.point_at(iced::Point::new(900.0, 700.0));
+    let statuses = ui.simulate(iced_test::simulator::click());
+    assert!(
+        statuses.iter().any(|s| *s == iced::event::Status::Captured),
+        "modal outside click must be captured (scrim swallows it): {statuses:?}"
+    );
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Dismiss), "modal outside click must publish dismiss: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Trig), "no trigger leak through scrim: {msgs:?}");
+}
+
+/// Modal Esc：dismiss 发布并捕获（关闭路径之一，T6 的事件回流源头）。
+#[test]
+fn popover_modal_escape_dismisses_and_captures() {
+    let mut ui = simulator(popover_modal_view().into_iced());
+    let status = ui.tap_key(iced::keyboard::Key::Named(
+        iced::keyboard::key::Named::Escape,
+    ));
+    assert_eq!(status, iced::event::Status::Captured, "modal Esc must be captured");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Dismiss), "modal Esc must publish dismiss: {msgs:?}");
+}
+
+/// Modal 面板内点击不受遮罩影响：项消息正常发布。
+#[test]
+fn popover_modal_panel_item_click_publishes_item() {
+    let mut ui = simulator(popover_modal_view().into_iced());
+    ui.click("PANELITEM").expect("modal panel item clickable");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Item), "modal panel item must publish: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
+}
+
+/// Modal 语义视图：与 popover_semantics_view 同构，仅 placement 换 Modal。
+fn popover_modal_view() -> View<PopMsg> {
+    let panel_item = View::<PopMsg>::Button {
+        label: "PANELITEM".to_string(),
+        onclick: PopMsg::Item,
+        disabled: false,
+        style: None,
+        on_right_click: None,
+        content: None,
+    };
+    View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Button {
+                label: "TRIGBTN".to_string(),
+                onclick: PopMsg::Trig,
+                disabled: false,
+                style: None,
+                on_right_click: None,
+                content: None,
+            })),
+            content: Box::new(View::Column {
+                children: vec![panel_item],
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+            }),
+            placement: PopoverPlacement::Modal,
+            open: true,
+            on_dismiss: Some(PopMsg::Dismiss),
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+                onclick: None,
+            }
+}
+
 /// Plan 496 M5 T3：桌面层 z 槽——App 虚拟窗覆盖桌面图标的装配几何断言。
 /// 复刻 view() 的 Stack 装配序（壁纸层[省略，纯底] → 桌面图标面 → 虚拟窗
 /// z_order），断言首枚图标格落在虚拟窗矩形内（Stack 底序绘制 → 窗口

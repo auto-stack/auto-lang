@@ -73,6 +73,26 @@ fn are_shadcn_components_installed(output_path: &Path, components: &[String]) ->
     true
 }
 
+/// PLAN-063 Phase B T14 (KD 061 D12): 清理 CLI 时代的嵌套冗余组件目录。
+/// 旧版 shadcn-vue CLI 对多文件组件(alert-dialog 族)曾把文件写进
+/// `ui/<comp>/<comp>/` 嵌套目录;PLAN-457 捆绑快照为平铺布局,且
+/// write-if-missing 语义令嵌套残壳永不清除(字节级重复,唯一危害是
+/// 双份体积/误 import 混淆)。平铺 index.ts 在场时嵌套目录即冗余,
+/// 安装期一并移除。
+fn dedupe_nested_component_dirs(output_path: &Path, components: &[String]) -> Vec<String> {
+    let mut removed = Vec::new();
+    for comp in components {
+        let flat = output_path.join("src/components/ui").join(comp);
+        let nested = flat.join(comp);
+        if nested.is_dir() && flat.join("index.ts").exists() {
+            if fs::remove_dir_all(&nested).is_ok() {
+                removed.push(comp.clone());
+            }
+        }
+    }
+    removed
+}
+
 /// PLAN-457: every shadcn-vue component import marker the generator emits,
 /// with the component (bundle/folder) name. Single source of truth for
 /// [`detect_shadcn_components`] and the bundle-catalog sync test.
@@ -138,6 +158,32 @@ const COMPONENT_PATTERNS: &[(&str, &str)] = &[
     ("@/components/ui/resizable", "resizable"),
     ("@/components/ui/auto-complete", "auto-complete"),
 ];
+
+/// PLAN-063 Phase B T12 (KD 061 D27): shadcn 检测语料并入 ext 手写件。
+/// ext_file_set 收集的项目本地 .vue/.ts(use { component X from "..." } 与
+/// .at 端口的 web 目标,如 musk DeleteConfirmDialog.vue)可 import
+/// `@/components/ui/*` 家族——此前语料只含 .at 生成代码,冷检出重生成后
+/// 脚手架缺失(vue-tsc TS2307;058 手工步"regen 后需重装"的根因)。
+fn detect_ext_shadcn_components(
+    root_dir: &Path,
+    ext_files: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    let mut found = HashSet::new();
+    for rel in ext_files {
+        let ext = Path::new(rel).extension().and_then(|e| e.to_str());
+        if ext != Some("vue") && ext != Some("ts") {
+            continue;
+        }
+        if let Ok(body) = fs::read_to_string(root_dir.join(rel)) {
+            for comp in detect_shadcn_components(&body) {
+                found.insert(comp);
+            }
+        }
+    }
+    let mut out: Vec<String> = found.into_iter().collect();
+    out.sort();
+    out
+}
 
 /// Detect which shadcn-vue components are needed from generated Vue code
 fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
@@ -421,6 +467,31 @@ fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Res
 
 // Template generators
 
+/// PLAN-063 Phase B T12 (KD 061 D27): 重生成 package.json 时保留既有
+/// 未知 devDependencies(模板只发射固定脚手架组——会话级 `pnpm add -D
+/// vitest` 等用户安装项此前被整写抹除;058 ⑪④ 工具债根因)。解析失败
+/// (手改坏 JSON)防御性回退 generated 原文。
+fn merge_unknown_devdeps(existing: &str, generated: String) -> String {
+    let Ok(old) = serde_json::from_str::<serde_json::Value>(existing) else {
+        return generated;
+    };
+    let Ok(mut new) = serde_json::from_str::<serde_json::Value>(&generated) else {
+        return generated;
+    };
+    let (Some(old_dev), Some(new_dev)) = (
+        old.get("devDependencies").and_then(|v| v.as_object()),
+        new.get_mut("devDependencies").and_then(|v| v.as_object_mut()),
+    ) else {
+        return generated;
+    };
+    for (k, v) in old_dev {
+        if !new_dev.contains_key(k) {
+            new_dev.insert(k.clone(), v.clone());
+        }
+    }
+    serde_json::to_string_pretty(&new).unwrap_or(generated)
+}
+
 fn generate_package_json(
     name: &str,
     has_routes: bool,
@@ -470,6 +541,12 @@ fn generate_package_json(
         .collect::<Vec<_>>()
         .join(",\n");
 
+    let build_script = if name == "ui-gallery" || name == "desktop-host" {
+        "vite build"
+    } else {
+        "vue-tsc && vite build"
+    };
+
     format!(
         r#"{{
   "name": "{}",
@@ -478,7 +555,7 @@ fn generate_package_json(
   "type": "module",
   "scripts": {{
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "{}",
     "preview": "vite preview"
   }},
   "dependencies": {{
@@ -498,6 +575,7 @@ fn generate_package_json(
 }}
 "#,
         name,
+        build_script,
         deps_body
     )
 }
@@ -837,6 +915,16 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -884,7 +972,7 @@ fn generate_postcss_config() -> String {
 "#.to_string()
 }
 
-fn generate_index_html(name: &str) -> String {
+fn generate_index_html(name: &str, title: Option<&str>) -> String {
     // Plan 043 M5: the shadcn template ships fully-populated `.dark` tokens
     // in index.css; the handwritten ash-gui (and the shadcn default) render
     // dark. Without `class="dark"` on <html> the app falls back to the light
@@ -944,7 +1032,48 @@ fn generate_index_html(name: &str) -> String {
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-"#, dark_attr, name, accent_bootstrap)
+"#, dark_attr, title.unwrap_or(name), accent_bootstrap)
+}
+
+/// PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。此前 createI18n
+/// 内联在 main.ts 且实例未导出——应用侧(如 musk useT.ts)在 setup 外无法
+/// 触达实例,语言切换只能走 useI18n() 组合式(出 setup 即失效,locale 不
+/// 翻转)。独立模块 + `export const i18n` 后,应用可
+/// `import { i18n } from '@/i18n-instance'` 直写 i18n.global.locale。
+fn generate_i18n_instance_ts(i18n: &I18nConfig, locale_files: &[String]) -> String {
+    if !i18n.enabled {
+        return String::new();
+    }
+    let locale_imports: String = locale_files
+        .iter()
+        .map(|f| {
+            let stem = std::path::Path::new(f)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("locale");
+            format!("import {} from './locales/{}'\n", stem, basename(f))
+        })
+        .collect();
+    let messages_entries: String = locale_files
+        .iter()
+        .map(|f| {
+            let stem = std::path::Path::new(f)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("locale");
+            format!("  {},\n", stem)
+        })
+        .collect();
+    let default_locale = locale_files
+        .first()
+        .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
+        .unwrap_or("en");
+    format!(
+        "// i18n-instance.ts — generated (PLAN-063 Phase B T13b, KD 061 D29).\n// 全局 i18n 实例独立持有:main.ts 与应用侧桥(语言切换在 setup 外)\n// 共同 import;i18n.global.locale.value 可直写。\n\nimport {{ createI18n }} from 'vue-i18n'\n{locale_imports}\nexport const i18n = createI18n({{\n  legacy: false,\n  locale: '{default_locale}',\n  messages: {{\n{messages_entries}  }},\n}})\n",
+        locale_imports = locale_imports,
+        default_locale = default_locale,
+        messages_entries = messages_entries,
+    )
 }
 
 fn generate_main_ts(
@@ -991,17 +1120,11 @@ fn generate_main_ts(
                 format!("    {},\n", stem)
             })
             .collect();
-        let setup = format!(
-            "\nimport {{ createI18n }} from 'vue-i18n'{locale_imports}\n\n\
-const i18n = createI18n({{\n  legacy: false,\n  locale: {default_locale:?},\n\
-  messages: {{\n{messages_entries}  }},\n}})\n",
-            locale_imports = locale_imports,
-            default_locale = locale_files
-                .first()
-                .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
-                .unwrap_or("en"),
-            messages_entries = messages_entries,
-        );
+        // PLAN-063 Phase B T13b (KD 061 D29): 实例移 src/i18n-instance.ts
+        //(generate_i18n_instance_ts 导出,应用侧 setup 外可直写
+        // i18n.global.locale),main.ts 只 import。
+        let setup = "\nimport { i18n } from './i18n-instance'".to_string();
+        let _ = (locale_imports, messages_entries);
         (String::new(), setup)
     } else {
         (String::new(), String::new())
@@ -1104,6 +1227,15 @@ fn generate_index_css() -> String {
     --ring: 239 84% 67%;
 
     --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 222.2 47.4% 11.2%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 96.1%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 239 84% 67%;
   }
 
   .dark {
@@ -1134,6 +1266,15 @@ fn generate_index_css() -> String {
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 239 84% 77%;
+
+    --sidebar-background: 222.2 47% 10%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 239 84% 77%;
+    --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-ring: 239 84% 77%;
   }
 }
 
@@ -1285,6 +1426,7 @@ fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
 fn write_project_files(
     output_path: &Path,
     name: &str,
+    index_title: Option<&str>,
     vue_code: &str,
     usage: &VueDependencyUsage,
     has_routes: bool,
@@ -1364,7 +1506,7 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write postcss.config.cjs: {}", e))?;
 
     // index.html
-    let index_html = generate_index_html(name);
+    let index_html = generate_index_html(name, index_title);
     fs::write(output_path.join("index.html"), index_html)
         .map_err(|e| format!("Failed to write index.html: {}", e))?;
 
@@ -1373,6 +1515,12 @@ fn write_project_files(
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
     let main_ts = generate_main_ts(has_routes, uses_autodown, style_files, i18n, locale_files);
+    // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块随 main.ts 落盘。
+    let i18n_instance_ts = generate_i18n_instance_ts(i18n, locale_files);
+    if !i18n_instance_ts.is_empty() {
+        fs::write(output_path.join("src/i18n-instance.ts"), i18n_instance_ts)
+            .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+    }
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
 
@@ -1441,6 +1589,25 @@ fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
 }
 
 /// Parse project name from pac.at content
+/// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` 字段——
+/// document.title 展示名(回退 name;name 是包标识不宜作展示标题)。
+fn parse_pac_title(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("title:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 fn parse_pac_name(content: &str) -> Option<String> {
     for line in content.lines() {
         let line = line.trim();
@@ -1919,6 +2086,9 @@ pub struct VueProject {
     pub output_dir: std::path::PathBuf,
     /// Project name
     pub name: String,
+    /// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` —
+    /// document.title 展示名(None 回退 name)。
+    pub index_title: Option<String>,
     /// Front source directory
     pub front_dir: std::path::PathBuf,
     /// Public assets source directory
@@ -2146,6 +2316,8 @@ export default router
         // Get project name
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "aura-app".to_string());
+        // PLAN-063 Phase B T13 (KD 061 D28): 展示名 title 可选透传。
+        let index_title = parse_pac_title(&pac_content);
 
         // Plan 013: shadcn-vue mapping toggle (`shadcn: off` in pac.at).
         let shadcn = parse_shadcn(&pac_content);
@@ -2702,7 +2874,6 @@ export default router
             }
         }
 
-        let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
         let has_routes = !all_routes.is_empty();
 
         // Get App.vue code
@@ -2713,10 +2884,16 @@ export default router
 
         // PLAN-037 Phase 5: pull port-file (.at fn module) web targets in.
         expand_at_module_web_imports(root_dir, &mut ext_file_set);
+        // PLAN-063 Phase B T12 (KD 061 D27): ext 手写件语料并入检测。
+        for comp in detect_ext_shadcn_components(root_dir, &ext_file_set) {
+            all_shadcn_components.insert(comp);
+        }
+        let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
             output_dir,
             name,
+            index_title,
             front_dir,
             public_dir,
             shadcn_components,
@@ -3034,6 +3211,7 @@ export default router
         write_project_files(
             &self.output_dir,
             &self.name,
+            self.index_title.as_deref(),
             &self.app_vue_code,
             &self.dependency_usage(),
             self.has_routes,
@@ -3170,6 +3348,20 @@ export default router
         fs::create_dir_all(&assets_dir)
             .map_err(|e| format!("Failed to create src/assets: {}", e))?;
 
+        // PLAN-063 Phase B T22 (KD 061 D27 同族): 冷重生成自愈——增量路径
+        // 此前不写 src/lib/utils.ts 与 src/assets/index.css(常态靠粘性存在;
+        // 冷删 src/ 后脚手架 ui 组件的 @/lib/utils 导入即断链)。write-if-missing。
+        let utils_path = self.output_dir.join("src/lib/utils.ts");
+        if !utils_path.exists() {
+            fs::write(&utils_path, generate_utils_ts())
+                .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
+        }
+        let css_path = self.output_dir.join("src/assets/index.css");
+        if !css_path.exists() {
+            fs::write(&css_path, generate_index_css())
+                .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
+        }
+
         // Copy pac.at `styles:` CSS files (byte-for-byte) so main.ts can
         // import them.
         let style_copies = self.copy_style_files()?;
@@ -3185,6 +3377,7 @@ export default router
         write_project_files(
             output_path,
             &self.name,
+            self.index_title.as_deref(),
             &self.app_vue_code,
             &self.dependency_usage(),
             self.has_routes,
@@ -3205,6 +3398,13 @@ export default router
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+        // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
+        let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
+        if !i18n_instance_content.is_empty() {
+            let p = src_dir.join("i18n-instance.ts");
+            fs::write(&p, &i18n_instance_content)
+                .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+        }
         fs::write(src_dir.join("main.ts"), &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
 
@@ -3253,6 +3453,13 @@ export default router
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+        // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
+        let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
+        if !i18n_instance_content.is_empty() {
+            let p = src_dir.join("i18n-instance.ts");
+            fs::write(&p, &i18n_instance_content)
+                .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+        }
         let main_ts_path = src_dir.join("main.ts");
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
@@ -3268,6 +3475,18 @@ export default router
             .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
         println!("{}", "  ✓ Regenerated src/assets/index.css".bright_green());
 
+        // PLAN-063 Phase B T22 (KD 061 D27 同族): 冷重生成自愈——增量路径
+        // write-if-missing src/lib/utils.ts(常态靠粘性存在;冷删 src/ 后
+        // 脚手架 ui 组件的 @/lib/utils 导入断链,冷脉冲实测咬中)。
+        let utils_path = src_dir.join("lib").join("utils.ts");
+        if !utils_path.exists() {
+            fs::create_dir_all(src_dir.join("lib"))
+                .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+            fs::write(&utils_path, generate_utils_ts())
+                .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
+            println!("{}", "  ✓ Restored src/lib/utils.ts (cold regen self-heal)".bright_green());
+        }
+
         // Regenerate tsconfig.json
         let tsconfig_path = self.output_dir.join("tsconfig.json");
         let tsconfig = generate_tsconfig();
@@ -3280,7 +3499,7 @@ export default router
         // app renders light). Previously only written on the initial scaffold,
         // so a fresh index.html (or a generator fix) never took effect.
         let index_html_path = self.output_dir.join("index.html");
-        let index_html = generate_index_html(&self.name);
+        let index_html = generate_index_html(&self.name, self.index_title.as_deref());
         fs::write(&index_html_path, &index_html)
             .map_err(|e| format!("Failed to write index.html: {}", e))?;
         println!("{}", "  ✓ Regenerated index.html".bright_green());
@@ -3299,7 +3518,11 @@ export default router
                 || needs_i18n
                 || package_json_deps_drifted(&existing_pkg, &usage, &self.npm_deps)
             {
-                let new_pkg = generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage);
+                // PLAN-063 Phase B T12 (KD 061 D27): 保留既有未知 devDeps。
+                let new_pkg = merge_unknown_devdeps(
+                    &existing_pkg,
+                    generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage),
+                );
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
                 println!("{}", "  ✓ Updated package.json".bright_green());
@@ -3398,12 +3621,39 @@ export default router
     /// (registered limitation; see plan §3.3 known-limits approach).
     pub fn generate_desktop_host(&self) -> AutoResult<()> {
         let apps_dir = desktop_apps_dir(&self.root_dir)?;
-        let entries = auto_lang::ui::app_registry::scan_apps(
-            &apps_dir,
-            &auto_lang::ui::app_registry::ScanOptions {
-                render: Some("vue".to_string()),
-            },
-        );
+        let scan_opts = auto_lang::ui::app_registry::ScanOptions {
+            render: Some("vue".to_string()),
+        };
+        let mut entries = auto_lang::ui::app_registry::scan_apps(&apps_dir, &scan_opts);
+        // Plan 559 W3: sibling extra roots — single-app dirs carrying their
+        // own pac.at (id = the sibling dir name; primary-root ids win). Env
+        // override AUTO_DESKTOP_APPS_EXTRA (path list), else the Plan 501
+        // sibling probe `../auto-os-config/auto` — vue-track parity with
+        // app_registry::host_extra_roots/aggregate_scan; the Plan 529 group
+        // worktree layout resolves it in dev too.
+        let mut extra_roots: HashMap<String, PathBuf> = HashMap::new();
+        for (id, root) in desktop_extra_app_roots(&self.root_dir) {
+            if entries.iter().any(|e| e.id == id) {
+                continue;
+            }
+            match auto_lang::ui::app_registry::scan_app_root(&root, &id, &scan_opts) {
+                Some(entry) => {
+                    println!(
+                        "  {} extra root: {} (from {})",
+                        "✓".bright_green(),
+                        id,
+                        root.display()
+                    );
+                    entries.push(entry);
+                    extra_roots.insert(id, root);
+                }
+                None => println!(
+                    "  {} extra root {} skipped: no entry .at",
+                    "⚠".bright_yellow(),
+                    id
+                ),
+            }
+        }
         println!(
             "{} {} (from {}, render: vue)",
             "  Desktop apps:".bright_cyan(),
@@ -3424,9 +3674,16 @@ export default router
         let mut claimed_stores: HashSet<String> = HashSet::new();
         let mut claimed_components: HashSet<String> = HashSet::new();
         let mut app_corpus_total = String::new();
+        // Plan 559 W3: the api glue winner of this run — installed after the
+        // scan so a re-run rewrites src/lib/api.ts from the deterministic
+        // first claimant instead of keeping a stale file.
+        let mut api_glue_source: Option<PathBuf> = None;
 
         for e in &entries {
-            let app_root = apps_dir.join(&e.id);
+            let app_root = extra_roots
+                .get(&e.id)
+                .cloned()
+                .unwrap_or_else(|| apps_dir.join(&e.id));
             let vp = match VueProject::from_workspace(&app_root) {
                 Ok(v) => v,
                 Err(err) => {
@@ -3444,9 +3701,56 @@ export default router
             for (_, code) in &vp.store_files {
                 corpus.push_str(code);
             }
-            let skip = if corpus.contains("@/lib/api") || corpus.contains("from '@/api") {
-                Some("needs API client (v1 desktop is front-only)")
-            } else if vp.has_routes {
+            // Plan 559 W3: the api-client guard class opens when the app
+            // ships an installable glue (src/back/api.ts — the project-provided
+            // web implementation; contract-style projects get theirs generated
+            // by api_gen into their own gen tree, which we copy verbatim).
+            // Apps needing an API client WITHOUT an installable glue still
+            // skip. The glue lands in the shared src/lib/api.ts namespace —
+            // first api-client app of THIS run claims it (deterministic scan
+            // order), the file is rewritten from the winner every run so
+            // stale state can't survive an owner change; later api-client
+            // apps skip with a collision warning (v1: one api surface per
+            // desktop).
+            let needs_api_client = corpus.contains("@/lib/api") || corpus.contains("from '@/api");
+            if needs_api_client {
+                let generated = app_root
+                    .join("gen")
+                    .join("front")
+                    .join("vue")
+                    .join("src")
+                    .join("lib")
+                    .join("api.ts");
+                let project_glue = app_root.join("src").join("back").join("api.ts");
+                let source = if generated.exists() {
+                    generated
+                } else if project_glue.exists() {
+                    project_glue
+                } else {
+                    println!(
+                        "  {} app {} skipped: needs API client (no src/back/api.ts glue)",
+                        "⚠".bright_yellow(),
+                        e.id
+                    );
+                    continue;
+                };
+                match &api_glue_source {
+                    Some(existing) if existing != &source => {
+                        println!(
+                            "  {} app {} skipped: API client namespace claimed by {}",
+                            "⚠".bright_yellow(),
+                            e.id,
+                            existing.display()
+                        );
+                        continue;
+                    }
+                    _ => {}
+                }
+                if api_glue_source.as_ref() != Some(&source) {
+                    api_glue_source = Some(source.clone());
+                }
+            }
+            let skip = if vp.has_routes {
                 Some("has router pages (v1 desktop is single-view)")
             } else if corpus.contains("@/ext/") {
                 Some("needs ext files")
@@ -3516,6 +3820,19 @@ export default router
         // App-referenced shadcn components are absent from the host's own
         // detection set — materialize them directly (idempotent, skips
         // existing files).
+        if let Some(source) = &api_glue_source {
+            let lib_dir = src_dir.join("lib");
+            fs::create_dir_all(&lib_dir)
+                .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+            let target = lib_dir.join("api.ts");
+            fs::copy(source, &target)
+                .map_err(|e| format!("Failed to install api glue: {}", e))?;
+            println!(
+                "  {} api glue installed ← {}",
+                "✓".bright_green(),
+                source.display()
+            );
+        }
         if !shadcn_needed.is_empty() {
             let report = crate::vue_shadcn::materialize(&self.output_dir, &shadcn_needed)?;
             if report.written > 0 {
@@ -3570,6 +3887,211 @@ export default router
             "  {} Desktop host: src/App.vue + src/apps-registry.ts ({} apps)",
             "✓".bright_green(),
             registry_rows.len()
+        );
+        Ok(())
+    }
+
+    /// Plan 549: check if current project is ui-gallery
+    pub fn is_ui_gallery(&self) -> bool {
+        self.name == "ui-gallery"
+            || self.root_dir.file_name().and_then(|n| n.to_str()) == Some("ui-gallery")
+    }
+
+    /// Plan 549: UI Gallery host — scans examples/ui, generates App SFCs in
+    /// src/apps/<id>/, merges stores, components, and npm deps, and outputs
+    /// src/demos-registry.ts.
+    pub fn generate_gallery_host(&self) -> AutoResult<()> {
+        let apps_dir = gallery_apps_dir(&self.root_dir)?;
+        let entries = auto_lang::ui::app_registry::scan_apps(
+            &apps_dir,
+            &auto_lang::ui::app_registry::ScanOptions::default(),
+        );
+        println!(
+            "{} {} (from {})",
+            "  Gallery demos:".bright_cyan(),
+            entries.len(),
+            apps_dir.display()
+        );
+
+        let src_dir = self.output_dir.join("src");
+        let apps_src = src_dir.join("apps");
+        if apps_src.exists() {
+            let _ = fs::remove_dir_all(&apps_src);
+        }
+        fs::create_dir_all(&apps_src)
+            .map_err(|e| format!("Failed to create src/apps: {}", e))?;
+        let components_dir = src_dir.join("components");
+        let stores_dir = src_dir.join("stores");
+
+        let mut shadcn_needed: Vec<String> = Vec::new();
+        let mut npm_merge: Vec<(String, String)> = Vec::new();
+        let mut claimed_stores: HashSet<String> = HashSet::new();
+        let mut claimed_components: HashSet<String> = HashSet::new();
+        let mut app_corpus_total = String::new();
+        let mut demo_rows: Vec<GalleryDemoRow> = Vec::new();
+
+        for e in &entries {
+            let app_root = apps_dir.join(&e.id);
+            let doc = fs::read_to_string(app_root.join("tutorial.ad"))
+                .or_else(|_| fs::read_to_string(app_root.join("README.md")))
+                .or_else(|_| fs::read_to_string(app_root.join("SPEC.md")))
+                .unwrap_or_default();
+            let source = fs::read_to_string(app_root.join("src").join("front").join("app.at"))
+                .or_else(|_| fs::read_to_string(app_root.join("app.at")))
+                .unwrap_or_default();
+            let pac = fs::read_to_string(app_root.join("pac.at")).unwrap_or_default();
+
+            let category = if e.id.starts_with("001") || e.id.starts_with("002") || e.id.starts_with("003") || e.id.starts_with("004") || e.id.starts_with("005") || e.id.starts_with("006") {
+                "01-basic".to_string()
+            } else if e.id.starts_with("007") || e.id.starts_with("008") || e.id.starts_with("009") || e.id.starts_with("010") || e.id.starts_with("011") || e.id.starts_with("012") || e.id.starts_with("016") {
+                "02-components".to_string()
+            } else if e.id.starts_with("013") || e.id.starts_with("014") || e.id.starts_with("015") || e.id.starts_with("017") || e.id.starts_with("018") || e.id.starts_with("019") || e.id.starts_with("020") || e.id.starts_with("021") || e.id.starts_with("022") || e.id.starts_with("023") || e.id.starts_with("031") {
+                "03-apps".to_string()
+            } else {
+                "04-systems".to_string()
+            };
+
+            let mut tags: Vec<String> = Vec::new();
+            if e.id.contains("counter") { tags.extend(vec!["Elm".into(), "State".into(), "Lambda".into()]); }
+            else if e.id.contains("todo") { tags.extend(vec!["TodoMVC".into(), "Filter".into(), "CRUD".into()]); }
+            else if e.id.contains("chart") { tags.extend(vec!["Data".into(), "SVG".into(), "Animation".into()]); }
+            else if e.id.contains("calculator") { tags.extend(vec!["Grid".into(), "Math".into()]); }
+            else if e.id.contains("weather") { tags.extend(vec!["Dashboard".into(), "Cards".into()]); }
+            else if e.id.contains("notes") { tags.extend(vec!["Fullstack".into(), "Markdown".into(), "Sidebar".into()]); }
+            else if e.id.contains("chat") { tags.extend(vec!["Chat".into(), "Scroll".into(), "Avatars".into()]); }
+            else if e.id.contains("kanban") { tags.extend(vec!["DnD".into(), "Columns".into(), "Cards".into()]); }
+            else if e.id.contains("photo") { tags.extend(vec!["Images".into(), "Gallery".into(), "Modal".into()]); }
+            else if e.id.contains("mine") { tags.extend(vec!["Game".into(), "Grid".into(), "Timer".into()]); }
+            else if e.id.contains("login") { tags.extend(vec!["Form".into(), "Validation".into()]); }
+            else if e.id.contains("converter") { tags.extend(vec!["Binding".into(), "7GUIs".into()]); }
+            else { tags.push("AutoUI".into()); }
+
+            let desc = if !e.title.is_empty() { e.title.clone() } else { e.id.clone() };
+
+            let vp = match VueProject::from_workspace(&app_root) {
+                Ok(v) => v,
+                Err(err) => {
+                    println!("  {} demo {} skipped: {}", "⚠".bright_yellow(), e.id, err);
+                    demo_rows.push(GalleryDemoRow {
+                        id: e.id.clone(),
+                        title: e.title.clone(),
+                        category,
+                        icon: e.icon.clone(),
+                        description: desc,
+                        tags,
+                        doc,
+                        source,
+                        pac,
+                        loadable: false,
+                    });
+                    continue;
+                }
+            };
+
+            let mut corpus = vp.app_vue_code.clone();
+            for (_, _, code, _) in &vp.components {
+                corpus.push_str(code);
+            }
+            for (_, code) in &vp.store_files {
+                corpus.push_str(code);
+            }
+
+            let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
+            let is_loadable = !is_vm_only
+                && !corpus.contains("@/lib/api")
+                && !corpus.contains("from '@/api")
+                && !vp.has_routes
+                && !corpus.contains("@/ext/")
+                && !corpus.contains("@/locales/")
+                && !vp.i18n.enabled;
+
+            if is_loadable {
+                app_corpus_total.push_str(&corpus);
+
+                for (filename, code) in &vp.store_files {
+                    let _ = fs::create_dir_all(&stores_dir);
+                    let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
+                    if claimed_stores.insert(clean_name.to_string()) {
+                        let _ = fs::write(stores_dir.join(clean_name), code);
+                    }
+                }
+
+                for (_, _name, code, widget_name) in &vp.components {
+                    if widget_name == "app" {
+                        continue;
+                    }
+                    let _ = fs::create_dir_all(&components_dir);
+                    let file = components_dir.join(format!("{}.vue", widget_name));
+                    if claimed_components.insert(widget_name.clone()) {
+                        let _ = fs::write(&file, code);
+                    }
+                    for comp in detect_shadcn_components(code) {
+                        if !shadcn_needed.contains(&comp) {
+                            shadcn_needed.push(comp);
+                        }
+                    }
+                }
+                for comp in detect_shadcn_components(&vp.app_vue_code) {
+                    if !shadcn_needed.contains(&comp) {
+                        shadcn_needed.push(comp);
+                    }
+                }
+
+                for (name, ver) in &vp.npm_deps {
+                    if !npm_merge.iter().any(|(n, _)| n == name) {
+                        npm_merge.push((name.clone(), ver.clone()));
+                    }
+                }
+
+                let app_dir = apps_src.join(&e.id);
+                if fs::create_dir_all(&app_dir).is_ok() {
+                    let _ = fs::write(app_dir.join("App.vue"), &vp.app_vue_code);
+                }
+            }
+
+            demo_rows.push(GalleryDemoRow {
+                id: e.id.clone(),
+                title: e.title.clone(),
+                category,
+                icon: e.icon.clone(),
+                description: desc,
+                tags,
+                doc,
+                source,
+                pac,
+                loadable: is_loadable,
+            });
+        }
+
+        if !shadcn_needed.is_empty() {
+            let _ = crate::vue_shadcn::materialize(&self.output_dir, &shadcn_needed);
+        }
+
+        let app_usage = VueDependencyUsage::detect(&app_corpus_total);
+        for (pkg, ver) in OPTIONAL_DEPS {
+            if app_usage.required_packages().contains(pkg)
+                && !npm_merge.iter().any(|(n, _)| n == pkg)
+            {
+                npm_merge.push(((*pkg).to_string(), (*ver).to_string()));
+            }
+        }
+
+        // Materialize gallery runtime assets (AppViewport.vue)
+        crate::gallery_assets::materialize(&self.output_dir)?;
+
+        merge_host_npm_deps(&self.output_dir, &npm_merge)?;
+
+        fs::write(
+            src_dir.join("demos-registry.ts"),
+            generate_demos_registry(&demo_rows),
+        )
+        .map_err(|e| format!("Failed to write demos-registry.ts: {}", e))?;
+
+        println!(
+            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable)",
+            "✓".bright_green(),
+            demo_rows.len(),
+            demo_rows.iter().filter(|r| r.loadable).count()
         );
         Ok(())
     }
@@ -3703,6 +4225,12 @@ export default router
         // Fix known compatibility issues regardless of whether components are already installed
         self.fix_shadcn_compatibility_issues();
 
+        // PLAN-063 Phase B T14 (KD 061 D12): 移除 CLI 时代嵌套冗余目录。
+        let deduped = dedupe_nested_component_dirs(&self.output_dir, &self.shadcn_components);
+        if !deduped.is_empty() {
+            println!("{}", format!("  ✓ Removed duplicate nested dirs: {}", deduped.join(", ")).bright_green());
+        }
+
         // Only names still absent from disk need the registry round trip;
         // bundled ones landed during materialization.
         let remaining: Vec<String> = self
@@ -3829,6 +4357,16 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
 
     // Plan 413: ensure the CodeEditor CodeMirror shell exists (write-if-missing).
     project.ensure_code_editor_component()?;
+
+    // Plan 465: desktop host mode
+    if desktop_mode() {
+        project.generate_desktop_host()?;
+    }
+
+    // Plan 549: UI gallery host
+    if project.is_ui_gallery() || gallery_mode() {
+        project.generate_gallery_host()?;
+    }
 
     // Step 2: materialize bundled ui components (PLAN-457, pre-install)
     println!();
@@ -4500,6 +5038,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.generate_desktop_host()?;
     }
 
+    // Plan 549: UI gallery host + demos registry refresh on EVERY run
+    if project.is_ui_gallery() || gallery_mode() {
+        project.generate_gallery_host()?;
+    }
+
     // Plan 458: index.html carries the theme default (`class="dark"`) and the
     // accent bootstrap (`--primary`). It is tiny, so rewrite it on EVERY run —
     // otherwise a stale index.html (e.g. a pre-Plan-043-M5 template without
@@ -4508,9 +5051,28 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     {
         let index_html_path = project.output_dir.join("index.html");
         if index_html_path.parent().map(|p| p.exists()).unwrap_or(false) {
-            let index_html = generate_index_html(&project.name);
+            let index_html = generate_index_html(&project.name, project.index_title.as_deref());
             if let Err(e) = fs::write(&index_html_path, index_html) {
                 println!("  ⚠ index.html refresh skipped: {}", e);
+            }
+        }
+    }
+
+    // Plan 548: tailwind.config.cjs / index.css 同理自愈——它们是确定性模板，
+    // 增量路径不重写，生成器侧新增的主题色（如 sidebar 色阶）与 CSS 变量
+    // 在老项目里会永久缺失。两个文件都不含用户手改入口（样式走 pac.at
+    // `styles:` 注入），每次 run 重写零风险。
+    {
+        let tw_path = project.output_dir.join("tailwind.config.cjs");
+        if tw_path.exists() {
+            if let Err(e) = fs::write(&tw_path, generate_tailwind_config()) {
+                println!("  ⚠ tailwind.config.cjs refresh skipped: {}", e);
+            }
+        }
+        let index_css_path = project.output_dir.join("src/assets/index.css");
+        if index_css_path.exists() {
+            if let Err(e) = fs::write(&index_css_path, generate_index_css()) {
+                println!("  ⚠ index.css refresh skipped: {}", e);
             }
         }
     }
@@ -4774,6 +5336,123 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
 }
 
 // =====================================================================
+// =====================================================================
+// Plan 549: UI Gallery host scaffolding free functions
+// =====================================================================
+
+/// UI-Gallery host mode flag (`auto run --gallery` injects AUTO_GALLERY=1).
+pub fn gallery_mode() -> bool {
+    std::env::var("AUTO_GALLERY").ok().as_deref() == Some("1")
+}
+
+/// Apps directory for the gallery demos registry:
+/// AUTO_GALLERY_APPS env wins; next is `<root_dir>/../ui` (sibling in examples/),
+/// then `<workspace>/examples/ui`.
+fn gallery_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
+    if let Some(d) = std::env::var_os("AUTO_GALLERY_APPS") {
+        return Ok(PathBuf::from(d));
+    }
+    if let Some(parent) = root_dir.parent() {
+        let sibling_ui = parent.join("ui");
+        if sibling_ui.is_dir() {
+            return Ok(sibling_ui);
+        }
+    }
+    let default = root_dir.join("examples").join("ui");
+    if default.is_dir() {
+        return Ok(default);
+    }
+    Err(format!(
+        "Gallery mode needs an apps directory: set AUTO_GALLERY_APPS or ensure examples/ui exists near {}",
+        root_dir.display()
+    )
+    .into())
+}
+
+#[derive(Debug, Clone)]
+pub struct GalleryDemoRow {
+    pub id: String,
+    pub title: String,
+    pub category: String,
+    pub icon: String,
+    pub description: String,
+    pub tags: Vec<String>,
+    pub doc: String,
+    pub source: String,
+    pub pac: String,
+    pub loadable: bool,
+}
+
+fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
+    let mut entries_ts = String::new();
+    for r in rows {
+        let tags_json = serde_json::to_string(&r.tags).unwrap_or_else(|_| "[]".to_string());
+        let doc_json = serde_json::to_string(&r.doc).unwrap_or_else(|_| "\"\"".to_string());
+        let source_json = serde_json::to_string(&r.source).unwrap_or_else(|_| "\"\"".to_string());
+        let pac_json = serde_json::to_string(&r.pac).unwrap_or_else(|_| "\"\"".to_string());
+        let desc_json = serde_json::to_string(&r.description).unwrap_or_else(|_| "\"\"".to_string());
+        let title_json = serde_json::to_string(&r.title).unwrap_or_else(|_| "\"\"".to_string());
+        let id_json = serde_json::to_string(&r.id).unwrap_or_else(|_| "\"\"".to_string());
+        let cat_json = serde_json::to_string(&r.category).unwrap_or_else(|_| "\"\"".to_string());
+        let icon_json = serde_json::to_string(&r.icon).unwrap_or_else(|_| "\"\"".to_string());
+
+        let load_prop = if r.loadable {
+            format!("\n    load: () => import('./apps/{}/App.vue'),", r.id)
+        } else {
+            String::new()
+        };
+
+        entries_ts.push_str(&format!(
+            r#"  {{
+    id: {id_json},
+    title: {title_json},
+    category: {cat_json},
+    icon: {icon_json},
+    description: {desc_json},
+    tags: {tags_json},
+    doc: {doc_json},
+    source: {source_json},
+    pac: {pac_json},
+    loadable: {loadable},{load_prop}
+  }},
+"#,
+            loadable = r.loadable
+        ));
+    }
+
+    format!(
+        r#"// Generated by auto-man — build-time demos registry (Plan 549). DO NOT EDIT.
+// Regenerated on every `auto run` for ui-gallery from the scanned apps directory.
+import type {{ Component }} from 'vue'
+
+export interface DemoMeta {{
+  id: string
+  title: string
+  category: string
+  icon: string
+  description: string
+  tags: string[]
+  doc: string
+  source: string
+  pac: string
+  loadable: boolean
+  load?: () => Promise<{{ default: Component }}>
+}}
+
+export const DEMOS: DemoMeta[] = [
+{entries_ts}]
+
+export function findDemo(id: string): DemoMeta | undefined {{
+  return DEMOS.find((d) => d.id === id)
+}}
+
+export function getCategories(): string[] {{
+  return ['01-basic', '02-components', '03-apps', '04-systems']
+}}
+"#
+    )
+}
+
 // Plan 465 T3: desktop host scaffolding free functions
 // =====================================================================
 
@@ -4800,6 +5479,41 @@ fn desktop_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
         default.display()
     )
     .into())
+}
+
+/// Plan 559 W3: sibling extra app roots for the desktop registry. Each entry
+/// is a single-app dir carrying its own pac.at; the registry id is the dir's
+/// own file name. `AUTO_DESKTOP_APPS_EXTRA` (a path list, `std::env::
+/// split_paths` semantics) wins; the default probes the Plan 501 sibling
+/// `../auto-os-config/auto` relative to the project root — under the Plan 529
+/// group worktree layout (`.wt/lang-NNN/{auto-lang,auto-os-config}`) and on
+/// the default checkout alike the sibling resolves. Missing siblings are
+/// silently skipped (desktop-host must keep working in solo checkouts).
+fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    let mut push_root = |p: PathBuf, out: &mut Vec<(String, PathBuf)>| {
+        if p.is_dir() {
+            if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                out.push((name.to_string(), p));
+            }
+        }
+    };
+    if let Some(extra) = std::env::var_os("AUTO_DESKTOP_APPS_EXTRA") {
+        for p in std::env::split_paths(&extra) {
+            push_root(p, &mut out);
+        }
+        return out;
+    }
+    if let Some(parent) = root_dir.parent() {
+        let sibling = parent.join("auto-os-config").join("auto");
+        // vm-track parity (app_registry::extra_roots_from): the Plan 501
+        // sibling registers as id `os-config` — Taskbar ⚙️/launch and the
+        // acceptance channel key on this id on both tracks.
+        if sibling.is_dir() {
+            out.push(("os-config".to_string(), sibling));
+        }
+    }
+    out
 }
 
 /// Plan 516 G4: `remote-apps.json` 条目（声明式远程窗配置）。
@@ -4974,6 +5688,7 @@ import { APPS, REMOTE_APPS, findApp } from './apps-registry'
 import {
   wm,
   launchWindow,
+  focus,
   focusAtPoint,
   setViewport,
   attachClient,
@@ -5014,6 +5729,19 @@ async function launch(id: string): Promise<void> {
 function launchFirst(): void {
   const first = filtered.value[0]
   if (first) void launch(first.id)
+}
+
+// Plan 559 W4: Taskbar ⚙️ — vue-track parity of the vm shell gear (551 T2).
+// Focus the live os-config window when one exists, launch it otherwise.
+function launchSettings(): void {
+  const entry = findApp('os-config')
+  if (!entry) return
+  const existing = wm.wins.find((w) => w.appId === 'os-config')
+  if (existing) {
+    focus(existing.wid)
+    return
+  }
+  void launch('os-config')
 }
 
 function setClient(w: (typeof wm.wins)[number], el: unknown): void {
@@ -5104,7 +5832,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <Taskbar @summon="toggleOverlay" />
+    <Taskbar @summon="toggleOverlay" @settings="launchSettings" />
   </div>
 </template>
 "#
@@ -5115,6 +5843,95 @@ onMounted(() => {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-063 Phase B T14 (KD 061 D12): 嵌套冗余目录被移除;
+    /// 无平铺 index.ts 时(纯 CLI 形态)不动;无嵌套时幂等。
+    #[test]
+    fn nested_duplicate_component_dirs_are_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ui = tmp.path().join("src/components/ui/alert-dialog");
+        std::fs::create_dir_all(ui.join("alert-dialog")).unwrap();
+        std::fs::write(ui.join("index.ts"), "export {}
+").unwrap();
+        std::fs::write(ui.join("AlertDialog.vue"), "<template/>
+").unwrap();
+        std::fs::write(ui.join("alert-dialog/AlertDialog.vue"), "<template/>
+").unwrap();
+        let removed = dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]);
+        assert_eq!(removed, vec!["alert-dialog".to_string()]);
+        assert!(!ui.join("alert-dialog").exists());
+        assert!(ui.join("index.ts").exists());
+        // 幂等 + 纯嵌套形态(无平铺 index.ts)不误删
+        assert!(dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]).is_empty());
+        let cli_only = tmp.path().join("src/components/ui/foo/foo");
+        std::fs::create_dir_all(&cli_only).unwrap();
+        std::fs::write(cli_only.join("Foo.vue"), "<template/>
+").unwrap();
+        assert!(dedupe_nested_component_dirs(tmp.path(), &["foo".to_string()]).is_empty());
+        assert!(cli_only.exists());
+    }
+
+    /// PLAN-063 Phase B T13 (KD 061 D28): pac title 解析+index.html 优先。
+    #[test]
+    fn pac_title_overrides_document_title() {
+        let pac = "name: \"auto-musk\"
+title: \"Auto Musk\"
+";
+        assert_eq!(parse_pac_title(pac).as_deref(), Some("Auto Musk"));
+        assert_eq!(parse_pac_title("name: \"x\"
+"), None);
+        let html = generate_index_html("auto-musk", Some("Auto Musk"));
+        assert!(html.contains("<title>Auto Musk</title>"));
+        let fallback = generate_index_html("auto-musk", None);
+        assert!(fallback.contains("<title>auto-musk</title>"));
+    }
+
+    /// PLAN-063 Phase B T12 (KD 061 D27): ext 手写 .vue 的 ui 家族导入
+    /// 必须进入 shadcn 检测语料(冷检出脚手架缺失根修)。
+    #[test]
+    fn ext_handwritten_vue_imports_enter_shadcn_corpus() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src/front/components")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/front/components/DeleteConfirmDialog.vue"),
+            "<script setup>
+import { AlertDialogAction } from '@/components/ui/alert-dialog'
+</script>
+",
+        )
+        .unwrap();
+        // 无关 ts 不误报;.vue 内空 trigger 家族命中 alert-dialog。
+        std::fs::write(tmp.path().join("src/front/plain.ts"), "export const x = 1
+").unwrap();
+        let mut set = std::collections::BTreeSet::new();
+        set.insert("src/front/components/DeleteConfirmDialog.vue".to_string());
+        set.insert("src/front/plain.ts".to_string());
+        let found = detect_ext_shadcn_components(tmp.path(), &set);
+        assert!(found.contains(&"alert-dialog".to_string()), "found={:?}", found);
+    }
+
+    /// PLAN-063 Phase B T12 (KD 061 D27): 重生成保留会话级 devDeps
+    /// (vitest 抹除根修);模板自带组不重复、dependencies 不受影响。
+    #[test]
+    fn regen_preserves_unknown_devdeps() {
+        let existing = r#"{ "name": "auto-musk", "devDependencies": { "vite": "^5.0.0", "vitest": "^2.1.9" }, "dependencies": { "vue": ">=3.4.0" } }"#;
+        let generated = r#"{
+  "name": "auto-musk",
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}"#
+        .to_string();
+        let merged = merge_unknown_devdeps(existing, generated);
+        let v: serde_json::Value = serde_json::from_str(&merged).unwrap();
+        let dev = v["devDependencies"].as_object().unwrap();
+        assert_eq!(dev.get("vitest").and_then(|x| x.as_str()), Some("^2.1.9"));
+        assert!(dev.contains_key("@vitejs/plugin-vue"));
+        assert!(dev.contains_key("vite"));
+        // 坏 JSON 防御:回退 generated 原文
+        assert!(merge_unknown_devdeps("{oops", "{\"a\":1}".to_string()).contains("\"a\":1"));
+    }
 
     /// Trailing commas in pac.at values must be stripped BEFORE quote
     /// stripping — the old order (quotes, then comma) left a stray `"` on
@@ -5674,16 +6491,21 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
         };
         let locales = vec!["en.json".to_string(), "zh.json".to_string()];
         let main_ts = generate_main_ts(false, false, &[], &cfg, &locales);
-        // createI18n + vue-i18n import.
-        assert!(main_ts.contains("import { createI18n } from 'vue-i18n'"), "main.ts:\n{}", main_ts);
-        assert!(main_ts.contains("const i18n = createI18n("), "main.ts:\n{}", main_ts);
-        // Locale imports keyed by filename stem.
-        assert!(main_ts.contains("import en from './locales/en.json'"), "main.ts:\n{}", main_ts);
-        assert!(main_ts.contains("import zh from './locales/zh.json'"), "main.ts:\n{}", main_ts);
-        // messages object includes both locales.
-        assert!(main_ts.contains("messages: {"), "main.ts:\n{}", main_ts);
+        // PLAN-063 Phase B T13b (KD 061 D29): 实例移独立模块,main.ts 只 import。
+        assert!(main_ts.contains("import { i18n } from './i18n-instance'"), "main.ts:\n{}", main_ts);
+        assert!(!main_ts.contains("createI18n("), "main.ts 不再内联 createI18n:\n{}", main_ts);
         // app.use(i18n) before mount.
         assert!(main_ts.contains("app.use(i18n)"), "main.ts:\n{}", main_ts);
+        // 实例模块:export const i18n + locale imports + 默认 locale=首文件 stem。
+        let instance = generate_i18n_instance_ts(&cfg, &locales);
+        assert!(instance.contains("export const i18n = createI18n("), "instance:\n{}", instance);
+        assert!(instance.contains("import en from './locales/en.json'"), "instance:\n{}", instance);
+        assert!(instance.contains("import zh from './locales/zh.json'"), "instance:\n{}", instance);
+        assert!(instance.contains("locale: 'en'"), "instance:\n{}", instance);
+        // 未启用 i18n:模块空,main.ts 无 import。
+        assert!(generate_i18n_instance_ts(&I18nConfig::default(), &[]).is_empty());
+        let plain = generate_main_ts(false, false, &[], &I18nConfig::default(), &[]);
+        assert!(!plain.contains("i18n-instance"));
     }
 
     #[test]
@@ -5722,6 +6544,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: front.clone(),
             public_dir: front.join("public"),
             shadcn_components: vec![],
@@ -5754,6 +6577,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.clone(),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -5864,6 +6688,7 @@ widget App {
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.join("src/front"),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -5894,6 +6719,7 @@ widget App {
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.clone(),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -5973,11 +6799,11 @@ store BetaStore {
         let changed = incremental_compile_changed(root).expect("first pass must succeed");
         assert!(changed > 0);
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "alpha composable after first pass"
         );
         assert!(
-            stores_dir.join("useBetaStoreStore.ts").exists(),
+            stores_dir.join("useBetaStore.ts").exists(),
             "beta composable after first pass"
         );
 
@@ -5997,11 +6823,11 @@ store BetaStore {
 
         incremental_compile_changed(root).expect("second pass must succeed");
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "alpha composable re-emitted by incremental pass"
         );
         assert!(
-            stores_dir.join("useBetaStoreStore.ts").exists(),
+            stores_dir.join("useBetaStore.ts").exists(),
             "beta composable re-emitted by incremental pass"
         );
     }
@@ -6030,11 +6856,11 @@ store BetaStore {
         assert!(ok.is_ok(), "non-strict build must continue: {:?}", ok.err());
         let stores_dir = root.join("gen").join("front").join("vue").join("src").join("stores");
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "healthy store still emitted"
         );
         assert!(
-            !stores_dir.join("useBetaStoreStore.ts").exists(),
+            !stores_dir.join("useBetaStore.ts").exists(),
             "broken store must not emit a composable"
         );
 
@@ -6270,3 +7096,47 @@ fn p515_host_wallpaper_layer_branches() {
         "Wallpaper.vue 进 wm 资产清单"
     );
 }
+
+#[test]
+fn test_plan_549_ui_gallery_registry_and_package_json() {
+    let rows = vec![
+        GalleryDemoRow {
+            id: "002-counter".to_string(),
+            title: "Counter".to_string(),
+            category: "01-basic".to_string(),
+            icon: "calculator".to_string(),
+            description: "A counter demo".to_string(),
+            tags: vec!["Elm".to_string(), "State".to_string()],
+            doc: "# Counter Tutorial".to_string(),
+            source: "widget App {}".to_string(),
+            pac: "name: \"counter\"".to_string(),
+            loadable: true,
+        },
+        GalleryDemoRow {
+            id: "041-auto-edit".to_string(),
+            title: "AutoEdit".to_string(),
+            category: "04-systems".to_string(),
+            icon: "code".to_string(),
+            description: "Editor demo".to_string(),
+            tags: vec!["Editor".to_string()],
+            doc: "# Editor Tutorial".to_string(),
+            source: "widget App {}".to_string(),
+            pac: "name: \"auto-edit\"\nrender: \"vm\"".to_string(),
+            loadable: false,
+        },
+    ];
+
+    let registry = generate_demos_registry(&rows);
+    assert!(registry.contains("export interface DemoMeta"), "interface:\n{registry}");
+    assert!(registry.contains("export const DEMOS: DemoMeta[] = ["), "array:\n{registry}");
+    assert!(registry.contains("load: () => import('./apps/002-counter/App.vue')"), "002-counter has load:\n{registry}");
+    assert!(!registry.contains("./apps/041-auto-edit/App.vue"), "041-auto-edit load omitted:\n{registry}");
+    assert!(registry.contains(r#""041-auto-edit""#), "041-auto-edit metadata included:\n{registry}");
+
+    let pkg = generate_package_json("ui-gallery", false, false, &[], &VueDependencyUsage::default());
+    assert!(pkg.contains(r#""build": "vite build""#), "ui-gallery uses vite build:\n{pkg}");
+
+    let normal_pkg = generate_package_json("my-app", false, false, &[], &VueDependencyUsage::default());
+    assert!(normal_pkg.contains(r#""build": "vue-tsc && vite build""#), "normal app uses vue-tsc:\n{normal_pkg}");
+}
+

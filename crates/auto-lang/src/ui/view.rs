@@ -554,6 +554,9 @@ pub enum View<M: Clone + Debug> {
         /// [`FocusMetrics`] 携块索引 + DocLayout 实测高（043 on_scroll 同款
         /// 扩字段非新变体）。
         on_focus: Option<FocusCallback<M>>,
+        /// PLAN-048 T7（W4）：空态提示文案——content 空且非聚焦时编辑壳
+        /// 渲染浅灰占位（043/044 同款扩字段模式）。
+        placeholder: Option<String>,
         style: Option<Style>,
     },
 
@@ -1746,7 +1749,7 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::AutodownEditor { key, value, is_final, on_change, on_focus, style } => View::AutodownEditor {
+            View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {
                 key,
                 value,
                 is_final,
@@ -1757,6 +1760,7 @@ impl<M: Clone + Debug> View<M> {
                     let f = std::sync::Arc::clone(f);
                     FocusCallback::new(move |m| f(cb.call(m)))
                 }),
+                placeholder,
                 style,
             },
             View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
@@ -3029,6 +3033,7 @@ mod tests {
             is_final: true,
             on_change: None,
             on_focus: Some(FocusCallback::new(|m| FocusMsg::Focused(m.block, m.height))),
+            placeholder: None,
             style: None,
         };
         match view {

@@ -1204,39 +1204,159 @@ impl WidgetRegistry {
 
         // SidebarHeader
         let mut sidebar_header = WidgetSpec::new("SidebarHeader", WidgetCategory::Navigation)
-            .with_alias("sidebar-header");
+            .with_alias("sidebar-header")
+            .with_alias("sidebar_header");
         sidebar_header.has_children = true;
         self.register(sidebar_header);
 
         // SidebarContent
         let mut sidebar_content = WidgetSpec::new("SidebarContent", WidgetCategory::Navigation)
-            .with_alias("sidebar-content");
+            .with_alias("sidebar-content")
+            .with_alias("sidebar_content");
         sidebar_content.has_children = true;
         self.register(sidebar_content);
 
         // SidebarFooter
         let mut sidebar_footer = WidgetSpec::new("SidebarFooter", WidgetCategory::Navigation)
-            .with_alias("sidebar-footer");
+            .with_alias("sidebar-footer")
+            .with_alias("sidebar_footer");
         sidebar_footer.has_children = true;
         self.register(sidebar_footer);
 
         // SidebarMenu
         let mut sidebar_menu = WidgetSpec::new("SidebarMenu", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu");
+            .with_alias("sidebar-menu")
+            .with_alias("sidebar_menu");
         sidebar_menu.has_children = true;
         self.register(sidebar_menu);
 
         // SidebarMenuItem
         let mut sidebar_menu_item = WidgetSpec::new("SidebarMenuItem", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu-item");
+            .with_alias("sidebar-menu-item")
+            .with_alias("sidebar_menu_item");
         sidebar_menu_item.has_children = true;
         self.register(sidebar_menu_item);
 
         // SidebarMenuButton
         let mut sidebar_menu_btn = WidgetSpec::new("SidebarMenuButton", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu-button");
+            .with_alias("sidebar-menu-button")
+            .with_alias("sidebar_menu_button");
         sidebar_menu_btn.has_children = true;
         self.register(sidebar_menu_btn);
+
+        // Plan 548 T6-T7: sidebar 族补全(23 件)——schema/aura.at 已有
+        // `vue: { component, import: "@/components/ui/sidebar" }` 声明,
+        // apply_schema_vue_mappings 会按折叠键把 vue 映射灌进这些 spec;
+        // 此处只补 spec 骨架(name/alias/has_children),否则 import 生成
+        // (generate_shadcn_imports 按 spec 反查)与 is_backend_supported
+        // 对这批元素落空。underscore 别名同挂:get() 只做小写归一不折叠,
+        // schema tag 是 snake_case。
+        // SidebarProvider
+        let mut sidebar_provider = WidgetSpec::new("SidebarProvider", WidgetCategory::Navigation)
+            .with_alias("sidebar-provider")
+            .with_alias("sidebar_provider");
+        sidebar_provider.has_children = true;
+        self.register(sidebar_provider);
+
+        // SidebarTrigger
+        let sidebar_trigger = WidgetSpec::new("SidebarTrigger", WidgetCategory::Navigation)
+            .with_alias("sidebar-trigger")
+            .with_alias("sidebar_trigger");
+        self.register(sidebar_trigger);
+
+        // SidebarGroup
+        let mut sidebar_group = WidgetSpec::new("SidebarGroup", WidgetCategory::Navigation)
+            .with_alias("sidebar-group")
+            .with_alias("sidebar_group");
+        sidebar_group.has_children = true;
+        self.register(sidebar_group);
+
+        // SidebarGroupAction
+        let mut sidebar_group_action = WidgetSpec::new("SidebarGroupAction", WidgetCategory::Navigation)
+            .with_alias("sidebar-group-action")
+            .with_alias("sidebar_group_action");
+        sidebar_group_action.has_children = true;
+        self.register(sidebar_group_action);
+
+        // SidebarGroupContent
+        let mut sidebar_group_content = WidgetSpec::new("SidebarGroupContent", WidgetCategory::Navigation)
+            .with_alias("sidebar-group-content")
+            .with_alias("sidebar_group_content");
+        sidebar_group_content.has_children = true;
+        self.register(sidebar_group_content);
+
+        // SidebarGroupLabel
+        let mut sidebar_group_label = WidgetSpec::new("SidebarGroupLabel", WidgetCategory::Navigation)
+            .with_alias("sidebar-group-label")
+            .with_alias("sidebar_group_label");
+        sidebar_group_label.has_children = true;
+        self.register(sidebar_group_label);
+
+        // SidebarInput
+        let sidebar_input = WidgetSpec::new("SidebarInput", WidgetCategory::Navigation)
+            .with_alias("sidebar-input")
+            .with_alias("sidebar_input");
+        self.register(sidebar_input);
+
+        // SidebarInset
+        let mut sidebar_inset = WidgetSpec::new("SidebarInset", WidgetCategory::Navigation)
+            .with_alias("sidebar-inset")
+            .with_alias("sidebar_inset");
+        sidebar_inset.has_children = true;
+        self.register(sidebar_inset);
+
+        // SidebarMenuAction
+        let mut sidebar_menu_action = WidgetSpec::new("SidebarMenuAction", WidgetCategory::Navigation)
+            .with_alias("sidebar-menu-action")
+            .with_alias("sidebar_menu_action");
+        sidebar_menu_action.has_children = true;
+        self.register(sidebar_menu_action);
+
+        // SidebarMenuBadge
+        let mut sidebar_menu_badge = WidgetSpec::new("SidebarMenuBadge", WidgetCategory::Navigation)
+            .with_alias("sidebar-menu-badge")
+            .with_alias("sidebar_menu_badge");
+        sidebar_menu_badge.has_children = true;
+        self.register(sidebar_menu_badge);
+
+        // SidebarMenuSkeleton
+        let sidebar_menu_skeleton = WidgetSpec::new("SidebarMenuSkeleton", WidgetCategory::Navigation)
+            .with_alias("sidebar-menu-skeleton")
+            .with_alias("sidebar_menu_skeleton");
+        self.register(sidebar_menu_skeleton);
+
+        // SidebarMenuSub
+        let mut sidebar_menu_sub = WidgetSpec::new("SidebarMenuSub", WidgetCategory::Navigation)
+            .with_alias("sidebar-menu-sub")
+            .with_alias("sidebar_menu_sub");
+        sidebar_menu_sub.has_children = true;
+        self.register(sidebar_menu_sub);
+
+        // SidebarMenuSubButton
+        let mut sidebar_menu_sub_btn = WidgetSpec::new("SidebarMenuSubButton", WidgetCategory::Navigation)
+            .with_alias("sidebar-menu-sub-button")
+            .with_alias("sidebar_menu_sub_button");
+        sidebar_menu_sub_btn.has_children = true;
+        self.register(sidebar_menu_sub_btn);
+
+        // SidebarMenuSubItem
+        let mut sidebar_menu_sub_item = WidgetSpec::new("SidebarMenuSubItem", WidgetCategory::Navigation)
+            .with_alias("sidebar-menu-sub-item")
+            .with_alias("sidebar_menu_sub_item");
+        sidebar_menu_sub_item.has_children = true;
+        self.register(sidebar_menu_sub_item);
+
+        // SidebarRail
+        let sidebar_rail = WidgetSpec::new("SidebarRail", WidgetCategory::Navigation)
+            .with_alias("sidebar-rail")
+            .with_alias("sidebar_rail");
+        self.register(sidebar_rail);
+
+        // SidebarSeparator
+        let sidebar_separator = WidgetSpec::new("SidebarSeparator", WidgetCategory::Navigation)
+            .with_alias("sidebar-separator")
+            .with_alias("sidebar_separator");
+        self.register(sidebar_separator);
 
         // MenuBar
         let mut menu_bar = WidgetSpec::new("MenuBar", WidgetCategory::Navigation)

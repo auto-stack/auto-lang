@@ -19,3 +19,4 @@ front_port: 4029
 icon: "image"
 title: "Photo Gallery"
 category: "media"
+desktop: "true"

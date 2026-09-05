@@ -15,7 +15,8 @@
 
 use auto_lang::ui::iced::run_dynamic_iced_multi;
 
-const APP_SOURCE: &str = include_str!("../../../examples/ui/459-dual-app/app.at");
+// PLAN-552：459-dual-app 探针迁 examples/capability-tests/（深度 ../../../ 不变）。
+const APP_SOURCE: &str = include_str!("../../../examples/capability-tests/459-dual-app/app.at");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 方案①：同一 .at 双实例 —— 两个独立 DynamicComponent（各自 VM/store），

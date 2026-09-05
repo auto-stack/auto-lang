@@ -21,6 +21,26 @@
 - AST 序列化三件套 `ToNode`/`ToAtom`/`AtomWriter` 覆盖全部 AST 类型（S 表达式文本）。
 - `.as` / `.to` 点属性已在 parser 实现（`Expr::Cast`/`Expr::To`，parser.rs:1979/2257），
   早于 docs/design/10 的"未实现"描述（见分歧记录）。
+- null 术语统一与生产者门控（plan-550，脚本模式 W0）：`nil` 拼写退役为
+  `null` 的 deprecated 别名（literal/atom 双臂发 W0005 DeprecatedFeature，
+  语义不变——运行期同落 PUSH_NIL/encode_null；CLI 直跑路径在
+  lib.rs `execute_autovm_with_path` 可见化 parser 警告，stderr 按名一次
+  性去重）；`#[script]` 文件级 pragma（annotation match `script` 臂登记
+  `parser.script_pragma` → `CompileSession.script_marked`，不挂声明不改
+  行为）；生产者门控 lint——无 pragma 文件含 `use.py`/null/nil 字面量
+  （`parser.saw_bare_null`，None/Some 不计入）→ stderr 迁移提示（.as 指
+  引，只警告不拒绝）。`.as` 扩展名与模式管线归 W1。
+- 脚本方言模式解析（plan-555 W1）：`mode.rs` `ScriptMode` +
+  `resolve_script_mode` 八格矩阵——`.as` ≡ 隐式 `#[script]`，`#[rust]`
+  文件级 pragma 显式压回（parser `rust_pragma`，annotation "rust" 臂），
+  优先序 `#[rust]` > `#[script]` > 扩展名；`CompileSession.script_mode`
+  回填（550 `script_marked` 派生兼容），门控 lint 按 ScriptMode 统一判定
+  （.as 自动豁免）。W1 语义 passthrough（脚本语义激活在 W2 lowering 批）。
+- W2 语法糖批（plan-560）：`.as` 执行翻转为 **lower→compile**（s2s 改写
+  管线激活）；`with` 上下文管理器关键字（无 as 形态直产 py_with 调用；
+  as 形态与 Cast 中缀歧义响亮拒绝 P560-D1）；`**` Power token + `@`/`**`
+  中缀直产 py_matmul/py_pow 桥调用；`is` 中缀→py_is；`#[with(...)]` 注解名
+  撞 With 关键字收位修复。
 
 ## 关键入口
 

@@ -283,6 +283,17 @@ pub struct Parser<'a> {
     /// with "undefined variable" in argument or assignment position
     /// (`uuid5(NAMESPACE_DNS, ...)`). See Task 13.
     py_item_imports: Vec<AutoStr>,
+    /// Plan 550 T10: 文件级 `#[script]` pragma——脚本模式生产者门控标注。
+    /// 仅登记（→ CompileSession.script_marked），不改变任何编译/运行
+    /// 行为；.as 扩展名与模式管线归 W1。
+    pub script_pragma: bool,
+    /// Plan 555 T02: 文件级 `#[rust]` pragma——脚本模式的显式压回通道
+    /// （.as 文件标注 #[rust] 即回正常模式；设计 §2 pragma 覆盖）。
+    /// 优先序：#[rust] > #[script] > 扩展名（见 mode.rs resolve_script_mode）。
+    pub rust_pragma: bool,
+    /// Plan 550 T10: 文件含裸 null/nil 字面量（生产者门控三信号之一；
+    /// None/Some 是 Option 构造器，不计入）。
+    pub saw_bare_null: bool,
 }
 
 /// Plan 451: 从 on-handler 模式串提取事件名——".ActNew" / ".AddItem(text)"
@@ -419,6 +430,9 @@ impl<'a> Parser<'a> {
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            rust_pragma: false, // Plan 555 T02
+            saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
         parser
@@ -489,6 +503,9 @@ impl<'a> Parser<'a> {
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            rust_pragma: false, // Plan 555 T02
+            saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
         parser
@@ -542,6 +559,9 @@ impl<'a> Parser<'a> {
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            rust_pragma: false, // Plan 555 T02
+            saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
         parser
@@ -1222,6 +1242,56 @@ impl<'a> Parser<'a> {
             new_line: has_new_line,
             init: None,
         }))
+    }
+
+    /// Plan 560 T09 (E2)：`with expr { body }` / `with expr as x { body }`。
+    ///
+    /// 无 as：直产 `py_with(expr, () => { body })`——全复用 539 通道
+    /// （host __enter__/闭包体/__exit__；异常抑制默认不做，§10 裁决）。
+    /// as x：`{ var __w = expr; var x = py_enter(__w); try { body }
+    /// finally { py_exit(__w) } }`——块形态（绑定 + 出口保证）。
+    fn with_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `with`
+        let ctx = self.parse_expr()?;
+        // `as` 是既有中缀（Cast）——with-as 绑定语法与其歧义未决
+        //（P560 债）：响亮拒绝，不静默错解。
+        if matches!(ctx, Expr::Cast { .. }) {
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic {
+                message: "with-as binding is not yet supported (as-infix cast "
+                    .to_string()
+                    + "ambiguity, P560 债); use py_enter/py_exit explicitly",
+                span,
+            }
+            .into());
+        }
+        self.skip_empty_lines();
+        let body = self.body()?;
+        // 直产 `py_with(ctx, () => { body })` 调用（Stmt::Expr——非
+        // Block：body 尾块的 convert_last_block 会把 Block 末语句转
+        // 对象字面量，T09 实证）。539 py_with 通道：host __enter__/体/
+        // __exit__；异常抑制默认不做（§10 裁决）。A5 规则（T06）随后
+        // 自动包 py_callable。
+        let closure = crate::ast::Closure {
+            params: vec![],
+            ret: None,
+            body: Box::new(Expr::Block(body)),
+            is_move: false,
+        };
+        let call = crate::ast::Call {
+            name: Box::new(Expr::Ident("py_with".into())),
+            args: crate::ast::Args {
+                args: vec![
+                    crate::ast::Arg::Pos(ctx),
+                    crate::ast::Arg::Pos(Expr::Closure(closure)),
+                ],
+            },
+            ret: crate::ast::Type::Unknown,
+            type_args: Vec::new(),
+            generic_args: Vec::new(),
+            pos: None,
+        };
+        Ok(Stmt::Expr(Expr::Call(call)))
     }
 
     /// Plan 010 (MS3-A): `while (cond) { body }` — desugars to a conditional
@@ -2575,6 +2645,29 @@ impl<'a> Parser<'a> {
                 | TokenKind::Ge => self.op(),
                 TokenKind::And | TokenKind::Or => self.op(),
                 TokenKind::QuestionQuestion => self.op(),
+                // Plan 560 T07 (C5/C6)：`a @ b` / `a ** b` 脚本糖——直接
+                // 解析为桥调用（免新增 Op 变量的全仓波及；@T 引用类型
+                // 在类型位不受影响——此臂仅在表达式 infix 位命中）。
+                // Plan 560 T08 (C7)：`a is b` 同一性糖——词位判别（is 为
+                // 普通标识符 token，非保留字；仅 infix 位命中，变量名
+                // is 的常规用法在 atom 位不受影响）。
+                TokenKind::Is => {
+                    self.next(); // skip `is`
+                    let rhs = self.atom()?;
+                    lhs = mk_infix_sugar_call("py_is", lhs, rhs);
+                    continue;
+                }
+                TokenKind::At | TokenKind::Power => {
+                    let is_matmul = matches!(self.cur.kind, TokenKind::At);
+                    self.next(); // skip @ / **
+                    let rhs = self.atom()?;
+                    lhs = mk_infix_sugar_call(
+                        if is_matmul { "py_matmul" } else { "py_pow" },
+                        lhs,
+                        rhs,
+                    );
+                    continue;
+                }
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
                 _ => {
@@ -3552,7 +3645,19 @@ impl<'a> Parser<'a> {
             TokenKind::Double => self.parse_double(),
             TokenKind::True => Ok(Expr::Bool(true)),
             TokenKind::False => Ok(Expr::Bool(false)),
-            TokenKind::Nil => Ok(Expr::Nil),
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' 拼写退役为 null 的 deprecated 别名
+                // （语义不变——运行期同落 PUSH_NIL/encode_null）。
+                // Plan 550 T10: 裸 null 家族字面量是脚本内容三信号之一。
+                self.saw_bare_null = true;
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Ok(Expr::Nil)
+            }
             TokenKind::Str => self.parse_str(),
             TokenKind::CStr => Ok(Expr::CStr(self.cur.text.clone())),
             TokenKind::Char => Ok(Expr::Char(self.cur.text.chars().nth(0).unwrap())),
@@ -3803,8 +3908,21 @@ impl<'a> Parser<'a> {
             // Allow @ and * as special identifiers for pointer operations
             TokenKind::At => Expr::Ident("@".into()),
             TokenKind::Star => Expr::Ident("*".into()),
-            TokenKind::Nil => Expr::Nil,
-            TokenKind::Null => Expr::Null,
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' deprecated 警告（语义不变，见 literal 臂注记）。
+                self.saw_bare_null = true; // Plan 550 T10: 脚本内容三信号
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Expr::Nil
+            }
+            TokenKind::Null => {
+                self.saw_bare_null = true; // Plan 550 T10: 脚本内容三信号
+                Expr::Null
+            }
             // Plan 120: Option and Result constructors
             TokenKind::NoneKW => Expr::None,
             TokenKind::SomeKW => {
@@ -4734,6 +4852,8 @@ impl<'a> Parser<'a> {
             TokenKind::For => self.for_stmt()?,
             TokenKind::Loop => self.loop_stmt()?, // Plan 200 Task 1.1
             TokenKind::While => self.while_stmt()?, // Plan 010 (MS3-A)
+            // Plan 560 T09 (E2)：with 上下文管理器糖。
+            TokenKind::With => self.with_stmt()?,
             TokenKind::Try => self.try_stmt()?,    // Plan 010 (MS3-A)
             TokenKind::Is => self.is_stmt()?,
             // Plan 095: Compile-time execution statements
@@ -8380,7 +8500,11 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::LSquare) {
                 self.next(); // skip [
 
-                while self.is_kind(TokenKind::Ident) {
+                while self.is_kind(TokenKind::Ident)
+                    // Plan 560 T09：`with` 关键字化后 #[with(...)] 注解名
+                    // 撞位（§10"零冲突"假设漏了注解名位）——此处同Ident 收。
+                    || self.is_kind(TokenKind::With)
+                {
                     let annot = self.cur.text.clone();
 
                     // Plan 364 W1: dotted annotation path — `#[zbus.interface]`.
@@ -8466,6 +8590,22 @@ impl<'a> Parser<'a> {
                         "single" => {
                             // Plan 121: #[single] annotation for singleton tasks
                             // This is handled by the caller, just skip here
+                        }
+                        "rust" => {
+                            // Plan 555 T02: #[rust] 文件级 pragma——脚本模式
+                            // 显式压回通道（.as + #[rust] → Normal）。仅登记
+                            // parser.rust_pragma，不改变既有 rust/rs 注解的
+                            // 逐声明语义。不自行 skip——循环尾部统一 next()。
+                            self.rust_pragma = true;
+                        }
+                        "script" => {
+                            // Plan 550 T10: #[script] 文件级 pragma——脚本模式
+                            // 生产者门控标注。仅登记 parser.script_pragma（→
+                            // CompileSession.script_marked），不挂到任何声明，
+                            // 不改变编译/运行行为（.as 管线归 W1）。
+                            // 注：不自行 skip——循环尾部统一 next()（同
+                            // single/async 臂约定，只有 with 例外）。
+                            self.script_pragma = true;
                         }
                         "with" => {
                             // Plan 061: Parse #[with(T, U as Spec<V>)]
@@ -12559,6 +12699,29 @@ impl<'a> Parser<'a> {
         let mut minted: Vec<(String, Vec<Stmt>)> = Vec::new();
         Self::mint_view_inline(&mut view.root, &mut counter, &mut minted)?;
         Self::mint_bare_input_sync(&decl.name, &mut view.root, &mut counter, &mut minted)?;
+        let dlg_states = Self::mint_modal_dialog_toggle(
+            &mut view.root,
+            &mut counter,
+            &mut minted,
+        )?;
+        // PLAN-533 T5: 铸造的 `__dlg_open_<n>` state 落 model 块（缺失则建）。
+        if !dlg_states.is_empty() {
+            let model = decl.model.get_or_insert_with(|| ModelBlock {
+                fields: Vec::new(),
+            });
+            for name in dlg_states {
+                if !model.fields.iter().any(|f| f.name.as_str() == name) {
+                    model.fields.push(ModelField {
+                        name: Name::from(name.as_str()),
+                        ty: Type::Bool,
+                        init: Expr::Bool(false),
+                        mutable: true,
+                        is_primary: false,
+                        decorators: Vec::new(),
+                    });
+                }
+            }
+        }
         if minted.is_empty() {
             return Ok(());
         }
@@ -12746,6 +12909,153 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// PLAN-533 T5: 模态对话框家族 tag 角色（归一化：剥 `-`/`_` + 小写，
+    /// 与 ui_gen/rust.rs 的 modal_dialog_tag_role 同规则）。
+    fn modal_dialog_tag_role(tag: &str) -> Option<&'static str> {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
+            "alertdialogcancel" => Some("cancel"),
+            "alertdialogaction" => Some("action"),
+            "alertdialogclose" | "dialogclose" => Some("close"),
+            "dropdownmenuitem" => Some("item"),
+            "dropdownmenulabel" => Some("label"),
+            "dropdownmenuseparator" => Some("separator"),
+            _ => None,
+        }
+    }
+
+    /// PLAN-533 T5: 模态对话框自管开合铸造。
+    ///
+    /// alert-dialog/dialog 根无 `open` prop 时（vue 风格内建开合——
+    /// gallery dialog 页形态），三轨没有共享的内建 open 态。铸造一组
+    /// 显式装置让 vue/解释器/rust codegen 同源：
+    ///   state   `__dlg_open_<n> bool = false`（调用方落 model 块）
+    ///   root    补 `open: .__dlg_open_<n>`
+    ///   trigger 无 onclick → 补 `onclick: .__dlg_toggle_<n>`（体：翻转）
+    ///   cancel/action/close 无 onclick → 补 `onclick: .__dlg_close_<n>`（体：置 false）
+    /// handler 体经 `minted` 折叠进 decl.on + decl.messages（与 __evt_/
+    /// __bind_ 铸造同槽）。显式 `open` 绑定不铸造。
+    fn mint_modal_dialog_toggle(
+        node: &mut ViewNode,
+        counter: &mut u32,
+        minted: &mut Vec<(String, Vec<Stmt>)>,
+    ) -> AutoResult<Vec<String>> {
+        let mut states = Vec::new();
+        Self::mint_modal_dialog_toggle_inner(node, counter, minted, &mut states)?;
+        Ok(states)
+    }
+
+    fn mint_modal_dialog_toggle_inner(
+        node: &mut ViewNode,
+        counter: &mut u32,
+        minted: &mut Vec<(String, Vec<Stmt>)>,
+        states: &mut Vec<String>,
+    ) -> AutoResult<()> {
+        match node {
+            ViewNode::Element { tag, props, events, children, .. } => {
+                if Self::modal_dialog_tag_role(tag) == Some("root")
+                    && !props.iter().any(|p| p.name == "open")
+                {
+                    *counter += 1;
+                    let n = *counter;
+                    let state_name = format!("__dlg_open_{n}");
+                    let toggle = format!("__dlg_toggle_{n}");
+                    let close = format!("__dlg_close_{n}");
+                    // root 补 open 绑定：与真实 `.state` 解析同形态
+                    //（Dot(Ident("self"), field)——见 direct_state_value_field 注）。
+                    let state_ref = |name: &str| {
+                        Expr::Dot(Box::new(Expr::Ident(Name::from("self"))), Name::from(name))
+                    };
+                    props.push(ViewProp {
+                        name: "open".to_string(),
+                        value: ViewPropValue::Expr(state_ref(&state_name)),
+                    });
+                    // toggle 体：`.__dlg_open_<n> = !.__dlg_open_<n>`
+                    let toggle_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Unary(Op::Not, Box::new(state_ref(&state_name)))),
+                    ));
+                    // close 体：`.__dlg_open_<n> = false`
+                    let close_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Bool(false)),
+                    ));
+                    minted.push((format!(".{toggle}"), vec![toggle_body]));
+                    minted.push((format!(".{close}"), vec![close_body]));
+                    states.push(state_name);
+                    // 子件接线：trigger（直接子）→ toggle;cancel/action/close
+                    // （content 内任意深度）→ close。
+                    let is_click = |name: &str| matches!(name, "onclick" | "onClick" | "on_click");
+                    for c in children.iter_mut() {
+                        if let ViewNode::Element { tag: ctag, events: cev, children: cch, .. } = c {
+                            if Self::modal_dialog_tag_role(ctag) == Some("trigger") {
+                                // 包裹形态（trigger 内单 Element 子,如包住的
+                                // button）且内层无 onclick → toggle 落内层按钮
+                                // （渲染面只画子件,落 wrapper 会丢）;否则落
+                                // trigger 自身（裸文本形态由转换层读）。
+                                let target: &mut Vec<ViewEvent> = if cch.len() == 1 {
+                                    match &mut cch[0] {
+                                        ViewNode::Element { events: inner_ev, .. }
+                                            if !inner_ev.iter().any(|e| is_click(e.name.as_str())) =>
+                                        {
+                                            inner_ev
+                                        }
+                                        _ => cev,
+                                    }
+                                } else {
+                                    cev
+                                };
+                                if !target.iter().any(|e| is_click(e.name.as_str())) {
+                                    target.push(ViewEvent {
+                                        name: "onclick".to_string(),
+                                        handler: format!(".{toggle}"),
+                                        params: Vec::new(),
+                                        inline: None,
+                                    });
+                                }
+                            }
+                        }
+                        Self::wire_modal_close_recursive(c, &close);
+                    }
+                }
+                for c in children.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+            }
+            ViewNode::ForLoop { body, .. } => {
+                for c in body.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+            }
+            ViewNode::Conditional { then_body, else_body, .. } => {
+                for c in then_body.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+                if let Some(else_nodes) = else_body {
+                    for c in else_nodes.iter_mut() {
+                        Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                    }
+                }
+            }
+            ViewNode::Link { children, .. } => {
+                for c in children.iter_mut() {
+                    Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// The state field a `value:` prop targets, when it is a direct state
     /// reference — `.field` (parsed as `Dot(Ident("self"), field)`) or the
     /// legacy bare `field` form. Multi-level dots and non-expr values return
@@ -12762,6 +13072,53 @@ impl<'a> Parser<'a> {
                 _ => None,
             },
             _ => None,
+        }
+    }
+
+    /// PLAN-533 T5: 在对话框根子树内递归接线 close 家族
+    /// （cancel/action/close 无 onclick → 补 `.__dlg_close_<n>`）。
+    fn wire_modal_close_recursive(node: &mut ViewNode, close_variant: &str) {
+        match node {
+            ViewNode::Element { tag, events, children, .. } => {
+                if matches!(
+                    Self::modal_dialog_tag_role(tag),
+                    Some("cancel") | Some("action") | Some("close")
+                ) && !events
+                    .iter()
+                    .any(|e| matches!(e.name.as_str(), "onclick" | "onClick" | "on_click"))
+                {
+                    events.push(ViewEvent {
+                        name: "onclick".to_string(),
+                        handler: format!(".{close_variant}"),
+                        params: Vec::new(),
+                        inline: None,
+                    });
+                }
+                for c in children.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+            }
+            ViewNode::ForLoop { body, .. } => {
+                for c in body.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+            }
+            ViewNode::Conditional { then_body, else_body, .. } => {
+                for c in then_body.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+                if let Some(else_nodes) = else_body {
+                    for c in else_nodes.iter_mut() {
+                        Self::wire_modal_close_recursive(c, close_variant);
+                    }
+                }
+            }
+            ViewNode::Link { children, .. } => {
+                for c in children.iter_mut() {
+                    Self::wire_modal_close_recursive(c, close_variant);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -18441,6 +18798,135 @@ exe hello {
         assert!(variants.contains(&"__bind_App_oninput_2"));
     }
 
+    /// PLAN-533 T5: 模态对话框自管开合铸造。无 `open` prop 的
+    /// alert-dialog/dialog 根（vue 风格内建开合——gallery dialog 页形态）
+    /// 铸造 state + toggle/close 双 handler + open 绑定，三轨同源。
+    /// 显式 `open` 绑定不铸造（负例）。
+    #[test]
+    fn test_modal_dialog_mints_self_managed_open() {
+        let code = concat!(
+            "widget App {\n",
+            "    view {\n",
+            "        dialog {\n",
+            "            dialog-trigger \"Open Dialog\"\n",
+            "            dialog-content {\n",
+            "                dialog-header {\n",
+            "                    dialog-title \"Edit Profile\"\n",
+            "                }\n",
+            "                dialog-footer {\n",
+            "                    dialog-close \"Save changes\"\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("unbound dialog must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+
+        // 铸造 state：`var __dlg_open_1 bool = false`
+        let model = w.model.as_ref().expect("model block minted");
+        let field = model.fields.iter().find(|f| f.name.as_str() == "__dlg_open_1")
+            .expect("minted state var");
+        assert!(matches!(field.init, Expr::Bool(false)), "init false");
+        assert!(matches!(field.ty, Type::Bool), "typed bool");
+
+        // 根节点补 open 绑定，形态与真实解析的 `.state` 完全一致。
+        fn find_dialog<'a>(node: &'a ViewNode) -> Option<&'a ViewNode> {
+            match node {
+                ViewNode::Element { tag, children, .. } => {
+                    if tag == "dialog" { return Some(node); }
+                    children.iter().find_map(find_dialog)
+                }
+                _ => None,
+            }
+        }
+        let dlg = find_dialog(&w.view.as_ref().unwrap().root).expect("dialog root");
+        let open = dlg_element_props(dlg).iter().find(|p| p.name == "open")
+            .expect("open prop minted");
+        // 对照：真实解析 `(open: .show)` 的表达式形态。
+        let bound_code = "widget B { view { dialog (open: .show) { } } }";
+        let mut p2 = Parser::from(bound_code).with_session(crate::session::CompilerSession::ui());
+        let ast2 = p2.parse().expect("bound dialog parses");
+        let w2 = ast2.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget 2");
+        let real = find_dialog(&w2.view.as_ref().unwrap().root).unwrap();
+        let real_open = dlg_element_props(real).iter().find(|p| p.name == "open").unwrap();
+        let ViewPropValue::Expr(real_expr) = &real_open.value else {
+            panic!("bound open prop must be an expr");
+        };
+        let ViewPropValue::Expr(mint_expr) = &open.value else {
+            panic!("minted open prop must be an expr");
+        };
+        assert_eq!(
+            format!("{:?}", mint_expr),
+            format!("{:?}", real_expr).replace("show", "__dlg_open_1"),
+            "minted open binding must match real `.state` parse shape"
+        );
+
+        // trigger/close 补 onclick。
+        fn events_of<'a>(node: &'a ViewNode, tag: &str) -> Vec<(String, String)> {
+            fn walk<'a>(node: &'a ViewNode, tag: &str, out: &mut Vec<(String, String)>) {
+                if let ViewNode::Element { tag: t, events, children, .. } = node {
+                    if t == tag {
+                        for e in events {
+                            out.push((e.name.clone(), e.handler.clone()));
+                        }
+                    }
+                    for c in children { walk(c, tag, out); }
+                }
+            }
+            let mut out = Vec::new();
+            walk(node, tag, &mut out);
+            out
+        }
+        let root = &w.view.as_ref().unwrap().root;
+        let trig = events_of(root, "dialog-trigger");
+        assert!(
+            trig.iter().any(|(n, h)| n == "onclick" && h == ".__dlg_toggle_1"),
+            "trigger onclick minted: {trig:?}"
+        );
+        let close = events_of(root, "dialog-close");
+        assert!(
+            close.iter().any(|(n, h)| n == "onclick" && h == ".__dlg_close_1"),
+            "close onclick minted: {close:?}"
+        );
+
+        // 折叠进 on + msg（decl-based VM 合成路径读取面）。
+        let on = w.on.as_ref().expect("on block injected");
+        let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
+        assert!(patterns.contains(&".__dlg_toggle_1"), "toggle handler folded: {patterns:?}");
+        assert!(patterns.contains(&".__dlg_close_1"), "close handler folded: {patterns:?}");
+        let variants: Vec<&str> =
+            w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
+        assert!(variants.contains(&"__dlg_toggle_1"));
+        assert!(variants.contains(&"__dlg_close_1"));
+
+        // 负例：显式 open 绑定不铸造。
+        let w2_open = dlg_element_props(real);
+        assert!(w2_open.iter().any(|p| p.name == "open"), "bound form has its own open");
+        let trig2 = events_of(&w2.view.as_ref().unwrap().root, "dialog-trigger");
+        assert!(trig2.is_empty(), "bound form mints nothing: {trig2:?}");
+        assert!(
+            !w2.model.as_ref().map(|m| m.fields.iter().any(|f| f.name.as_str().starts_with("__dlg_"))).unwrap_or(false),
+            "bound form mints no state"
+        );
+    }
+
+    fn dlg_element_props(node: &ViewNode) -> &[crate::ast::ui::ViewProp] {
+        match node {
+            ViewNode::Element { props, .. } => props,
+            _ => &[],
+        }
+    }
+
     #[test]
     fn test_msg_decl_unnamed_and_legacy_name() {
         // Plan 448 A: canonical `msg { ... }` (no type name — the name was
@@ -19697,4 +20183,18 @@ fn main() {
     }
 
 
+}
+
+
+/// Plan 560 T07：中缀糖直产桥调用（`a @ b`→py_matmul、`a ** b`→py_pow）。
+fn mk_infix_sugar_call(name: &str, l: crate::ast::Expr, r: crate::ast::Expr) -> crate::ast::Expr {
+    use crate::ast::{Arg, Args, Call, Expr, Type};
+    Expr::Call(Call {
+        name: Box::new(Expr::Ident(name.into())),
+        args: Args { args: vec![Arg::Pos(l), Arg::Pos(r)] },
+        ret: Type::Unknown,
+        type_args: Vec::new(),
+        generic_args: Vec::new(),
+        pos: None,
+    })
 }

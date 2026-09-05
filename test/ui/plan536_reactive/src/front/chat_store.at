@@ -1,0 +1,31 @@
+// chat_store.at — PLAN-536 T1 探针 store：PollTick 每 50ms 改写 title，
+// 模拟 musk PollStream 回填 session 数据的写入侧。
+// Boom 是 T2 失效根修的 RED 语料：先写 title（副作用落盘）再对 None 可选
+// 对象做字段写（SET_FIELD 打无效堆对象 → RuntimeError，musk "Invalid
+// object ID: 0" 同形状）——派发以 Err 结束时 dirty 也必须置位。
+store ChatStore {
+    msg { PollTick, Boom }
+    model {
+        var title str = "initial"
+        var poll_count int = 0
+        var cur ?ChatSession = None
+    }
+    timer {
+        PollTick (every_ms: 50)
+    }
+    on {
+        .PollTick -> {
+            .poll_count = .poll_count + 1
+            .title = f"poll-${.poll_count}"
+        }
+        .Boom -> {
+            .title = "written"
+            .cur.name = "boom"
+        }
+    }
+}
+
+type ChatSession {
+    name str
+}
+

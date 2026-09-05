@@ -40,6 +40,7 @@ pub enum TokenKind {
     Add,              // +
     Sub,              // -
     Star,             // *
+    Power,           // ** (Plan 560 T07: 幂算子)
     Div,              // /
     Mod,              // %
     Not,              // !
@@ -101,6 +102,7 @@ pub enum TokenKind {
     Catch,  // Plan 010 (MS3-A): catch handler
     While,  // Plan 010 (MS3-A): while (cond) { }
     Is,
+    With,        // Plan 560 T09 (E2): with expr { } / with expr as x { }
     Var,
     In,
     Fn,
@@ -263,6 +265,7 @@ impl fmt::Display for Token {
             TokenKind::EOF => write!(f, "<eof>"),
             TokenKind::Char => write!(f, "<'{}'>", self.text),
             TokenKind::Is => write!(f, "<is>"),
+            TokenKind::With => write!(f, "<with>"),
             TokenKind::Return => write!(f, "<return>"),
     TokenKind::Yield => write!(f, "<yield>"),
             TokenKind::On => write!(f, "<on>"),
@@ -377,6 +380,9 @@ impl Token {
             "try" => Some(TokenKind::Try),     // Plan 010 (MS3-A)
             "catch" => Some(TokenKind::Catch), // Plan 010 (MS3-A)
             "is" => Some(TokenKind::Is),
+            // Plan 560 T09 (E2)：with 上下文管理器糖（§10 裁决：新
+            // 关键字；零冲突——#[with(...)] 注解参数位方括号封闭）。
+            "with" => Some(TokenKind::With),
             "var" => Some(TokenKind::Var),
             "in" => Some(TokenKind::In),
             "fn" => Some(TokenKind::Fn),

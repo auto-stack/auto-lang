@@ -64,6 +64,13 @@ const DOC_EXCLUDE: &[&str] = &[
     "dropdownmenuseparator", // dropdownmenu 页
     "toastprovider",     // toast 页
     "tabtrigger",        // tabs 页(Pascal 拼写变体)
+    // PLAN-536 T11(schema/aura.at 再生成随 Plan 533/540 家族臂补齐后进入
+    // builtin_widget 层的新件,文档面归类):
+    "btn",           // button 同臂别名(convert_button "button"|"btn"|"native_button" 一臂),随 button 页文档化
+    "nativebutton",  // button 同臂原生逃生名,随 button 页文档化(schema 描述在案)
+    "div",           // 语义 HTML 通用容器,随 Layout 组(语义 HTML 行)文档化
+    "pre",           // 语义 HTML 等宽块,随 Layout 组(语义 HTML 行)文档化
+    "dropdownmenulabel", // dropdownmenu 页(kebab 拼写变体,同 dropdownlabel)
     // Plan 435 P8-3(D11)批量归类配套:家族件随家族页文档化(父族在
     // cmd_vue.rs 安装表或官方包;tier 已归 web_component,文档面随页)。
     "autocomplete", "autocompleteempty", "autocompleteinput", // combobox 页

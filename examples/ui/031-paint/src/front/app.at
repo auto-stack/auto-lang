@@ -1,0 +1,467 @@
+// app.at — 031-paint 像素画板根组件（Plan 553）。
+//
+// 形态：单组件内聚（025/028 形态——store 子组件 vue TS 生成损坏先例 013/038，
+// 全部状态进 App model）。
+//
+// 颜色表示（T3 实测修正，scratch/p553/）：颜色一律以 **完整 Tailwind 类串**
+// 形式存状态（如 " bg-[#ef4444] "，前后各一空格）——
+//   - 字面量随 model/handler 源进 vue 生成码 → Tailwind JIT 扫描命中
+//     （运行时拼接的任意值类不会进扫描面，T3 冒烟实证）；
+//   - 段间空格编进值本身：生成器把 style 的 ${} 段接为 `+` 拼接时会丢
+//     段边界空白（gen App.vue:192 实证），类值自带空格后拼接恒有效；
+//   - VM 侧同机制（028 launcher bg-[<color>21] chip 先例）。
+//
+// 变更纪律（T6 VM 实测修正）：**运行时 str 列表禁止下标写**（`.px[i] = v`
+// 静默不生效——saved 翻转证分支执行、px 不变实证；038 下标写是 Obj 列表
+// +store 形态、028 从不下标写）。一律本地构建新列表 → 整体赋值 `.px = np`
+// （028 `.recent = nr` 同型）。单格改动走 `.SetPx`（256 拷贝），泛洪 BFS
+// 只算 seen 标记再单趟重建。
+//
+// 其余状态表示（T1 探针）：cells/swatches handler 自建行对象（view 读自建
+// Obj 数组已证可用）；快照 join("|")/split；BFS 邻接判定 `h%16`/`h>=16`/
+// `h<240` 边界式绕开整数除法。拖画：v1 点击画（T1c——无按压门控指针流）。
+
+widget App {
+    msg {
+        Init, SetTool(str), SetCur(str), Paint(int), Fill(int), SetPx(int, str),
+        PushUndo, Undo, Redo, ApplySnap(str), Clear, New, Save, Load
+    }
+
+    model {
+        // ---- 颜色词汇表（17 个字面类；白色 = 橡皮色）----
+        var white str = " bg-[#ffffff] "
+        var palette = [
+            " bg-[#111827] ", " bg-[#ef4444] ", " bg-[#f97316] ", " bg-[#f59e0b] ",
+            " bg-[#84cc16] ", " bg-[#22c55e] ", " bg-[#14b8a6] ", " bg-[#3b82f6] ",
+            " bg-[#6366f1] ", " bg-[#a855f7] ", " bg-[#ec4899] ", " bg-[#92400e] ",
+            " bg-[#57534e] ", " bg-[#a8a29e] ", " bg-[#e7e5e4] ", " bg-[#ffffff] "
+        ]
+
+        // ---- 画布 ----
+        var canvas_cols int = 16   // 表式 cols → 生成内联 grid-template-columns
+                                   // （字面量 int 走 grid-cols-N 类，N>12 超
+                                   // Tailwind 刻度不生成——ui_gen/vue.rs 10289；
+                                   // 038 动态列同型）
+        var px = []                 // 256 × 类串（初始全 white）
+        var cells = []              // {i, chip} 行对象（handler 重建）
+
+        // ---- 工具与当前色 ----
+        var tool str = "pencil"     // pencil | eraser | fill | picker
+        var cur str = " bg-[#111827] "
+        var swatches = []           // {c, chip, sel} 行对象（handler 重建）
+        var pencil_class str = ""
+        var eraser_class str = ""
+        var fill_class str = ""
+        var picker_class str = ""
+
+        // ---- 历史 ----
+        var undo_stack = []         // 快照串列表，上限 20
+        var redo_stack = []
+        var saved str = "1"         // "0" = 有未保存改动（标题行 ● 提示）
+
+        // ---- 状态条 ----
+        var status str = ""
+    }
+
+    view {
+        col {
+            style: "w-full max-w-2xl bg-card border rounded-2xl shadow-2xl p-4 gap-3"
+
+            // ---- 标题 + 工具行 ----
+            row {
+                style: "items-center gap-2 flex-wrap"
+                text "Paint" { style: "text-base font-semibold text-foreground mr-2" }
+                if .saved == "0" {
+                    text "●" { style: "text-xs text-primary" }
+                }
+                button "✏ Pencil" { onclick: .SetTool("pencil"), style: .pencil_class }
+                button "◻ Eraser" { onclick: .SetTool("eraser"), style: .eraser_class }
+                button "🪣 Fill" { onclick: .SetTool("fill"), style: .fill_class }
+                button "💧 Picker" { onclick: .SetTool("picker"), style: .picker_class }
+            }
+
+            // ---- 画布（16×16；容器 muted 底透 gap 成网格线）----
+            col {
+                style: "p-1 bg-muted/50 border rounded-lg w-fit"
+                grid {
+                    cols: .canvas_cols
+                    gap: 1
+                    for c in .cells {
+                        col {
+                            onclick: .Paint(c.i)
+                            style: "w-5 h-5${c.chip}cursor-pointer"
+                        }
+                    }
+                }
+            }
+
+            // ---- 调色板（当前色块 + 8×2 色板）----
+            row {
+                style: "items-center gap-3"
+                col {
+                    style: "flex flex-col items-center gap-1"
+                    col {
+                        style: "w-8 h-8 rounded-lg border${.cur}"
+                    }
+                    text "Current" { style: "text-xs text-muted-foreground" }
+                }
+                grid {
+                    cols: 8
+                    gap: 1
+                    for s in .swatches {
+                        col {
+                            onclick: .SetCur(s.c)
+                            style: "w-6 h-6 rounded${s.chip}${s.sel}cursor-pointer"
+                        }
+                    }
+                }
+            }
+
+            // ---- 操作行 + 状态条 ----
+            row {
+                style: "items-center gap-2 flex-wrap"
+                button "Undo" { onclick: .Undo, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
+                button "Redo" { onclick: .Redo, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
+                button "Clear" { onclick: .Clear, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
+                button "New" { onclick: .New, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
+                button "Save" { onclick: .Save, style: "px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground" }
+                button "Load" { onclick: .Load, style: "px-3 py-1.5 text-sm rounded-lg bg-primary/15 text-primary" }
+                text .status { style: "ml-auto text-xs text-muted-foreground" }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            var ip = []
+            var k int = 0
+            while k < 256 {
+                ip.push(.white)
+                k = k + 1
+            }
+            .px = ip
+            .undo_stack = []
+            .redo_stack = []
+            .saved = "1"
+            .status = ""
+            .tool = "pencil"
+            .cur = " bg-[#111827] "
+            .ToolClasses()
+            .Swatches()
+            .RebuildCells()
+        }
+
+        // ---- 工具/当前色（选中态经 class 串状态，038 难度按钮同型）----
+        .SetTool(t) -> {
+            .tool = t
+            .ToolClasses()
+            .status = ""
+        }
+
+        .SetCur(c) -> {
+            .cur = c
+            .Swatches()
+            .status = ""
+        }
+
+        .ToolClasses -> {
+            if .tool == "pencil" {
+                .pencil_class = "px-3 py-1.5 text-sm rounded-lg bg-primary/15 text-primary"
+                .eraser_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .fill_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .picker_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            }
+            if .tool == "eraser" {
+                .pencil_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .eraser_class = "px-3 py-1.5 text-sm rounded-lg bg-primary/15 text-primary"
+                .fill_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .picker_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            }
+            if .tool == "fill" {
+                .pencil_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .eraser_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .fill_class = "px-3 py-1.5 text-sm rounded-lg bg-primary/15 text-primary"
+                .picker_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            }
+            if .tool == "picker" {
+                .pencil_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .eraser_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .fill_class = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                .picker_class = "px-3 py-1.5 text-sm rounded-lg bg-primary/15 text-primary"
+            }
+        }
+
+        .Swatches -> {
+            .swatches = []
+            var k int = 0
+            while k < .palette.len() {
+                var sel str = " border border-transparent "
+                if .palette[k] == .cur {
+                    sel = " border border-primary "
+                }
+                .swatches.push({ c: .palette[k], chip: .palette[k], sel: sel })
+                k = k + 1
+            }
+        }
+
+        .RebuildCells -> {
+            .cells = []
+            var k int = 0
+            while k < 256 {
+                .cells.push({ i: k, chip: .px[k] })
+                k = k + 1
+            }
+        }
+
+        // ---- 单格替换（本地构建 → 整体赋值；下标写静默失效，见文件头）----
+        .SetPx(i, v) -> {
+            var np = []
+            var k int = 0
+            while k < 256 {
+                if k == i {
+                    np.push(v)
+                } else {
+                    np.push(.px[k])
+                }
+                k = k + 1
+            }
+            .px = np
+        }
+
+        // ---- 落笔分派 ----
+        .Paint(i) -> {
+            if .tool == "pencil" {
+                if .px[i] != .cur {
+                    .PushUndo()
+                    .SetPx(i, .cur)
+                    .RebuildCells()
+                }
+            }
+            if .tool == "eraser" {
+                if .px[i] != .white {
+                    .PushUndo()
+                    .SetPx(i, .white)
+                    .RebuildCells()
+                }
+            }
+            if .tool == "fill" {
+                .Fill(i)
+            }
+            if .tool == "picker" {
+                .cur = .px[i]
+                .Swatches()
+            }
+        }
+
+        // ---- 历史栈 ----
+        .PushUndo -> {
+            .undo_stack.push(.px.join("|"))
+            if .undo_stack.len() > 20 {
+                var kept = []
+                var k int = 1
+                while k < .undo_stack.len() {
+                    kept.push(.undo_stack[k])
+                    k = k + 1
+                }
+                .undo_stack = kept
+            }
+            .redo_stack = []
+            .saved = "0"
+        }
+
+        // ---- 泛洪（迭代 BFS 只算 seen 标记——变更集即 seen；随后单趟
+        // 重建整体赋值。队列 int 列表 + qi 游标，禁递归；邻接用
+        // h%16 / h>=16 / h<240 边界式绕开整数除法）----
+        .Fill(i) -> {
+            var target = .px[i]
+            if target != .cur {
+                .PushUndo()
+                var queue = []
+                queue.push(i)
+                var seen = []
+                var k int = 0
+                while k < 256 {
+                    seen.push(0)
+                    k = k + 1
+                }
+                seen[i] = 1
+                var qi int = 0
+                while qi < queue.len() {
+                    var h int = queue[qi]
+                    qi = qi + 1
+                    if h >= 16 {
+                        var up int = h - 16
+                        if seen[up] == 0 {
+                            if .px[up] == target {
+                                seen[up] = 1
+                                queue.push(up)
+                            }
+                        }
+                    }
+                    if h < 240 {
+                        var dn int = h + 16
+                        if seen[dn] == 0 {
+                            if .px[dn] == target {
+                                seen[dn] = 1
+                                queue.push(dn)
+                            }
+                        }
+                    }
+                    if h % 16 != 0 {
+                        var lf int = h - 1
+                        if seen[lf] == 0 {
+                            if .px[lf] == target {
+                                seen[lf] = 1
+                                queue.push(lf)
+                            }
+                        }
+                    }
+                    if h % 16 != 15 {
+                        var rt int = h + 1
+                        if seen[rt] == 0 {
+                            if .px[rt] == target {
+                                seen[rt] = 1
+                                queue.push(rt)
+                            }
+                        }
+                    }
+                }
+                // 单趟重建：seen 位 → cur，否则原色
+                var np = []
+                var k2 int = 0
+                while k2 < 256 {
+                    if seen[k2] == 1 {
+                        np.push(.cur)
+                    } else {
+                        np.push(.px[k2])
+                    }
+                    k2 = k2 + 1
+                }
+                .px = np
+                .RebuildCells()
+            }
+        }
+
+        // ---- 撤销/重做（快照互倒；栈丢底重建）----
+        .Undo -> {
+            if .undo_stack.len() > 0 {
+                .redo_stack.push(.px.join("|"))
+                var last int = .undo_stack.len() - 1
+                var snap = .undo_stack[last]
+                var kept = []
+                var k int = 0
+                while k < last {
+                    kept.push(.undo_stack[k])
+                    k = k + 1
+                }
+                .undo_stack = kept
+                .ApplySnap(snap)
+                .saved = "0"
+            } else {
+                .status = "nothing to undo"
+            }
+        }
+
+        .Redo -> {
+            if .redo_stack.len() > 0 {
+                var last2 int = .redo_stack.len() - 1
+                var snap2 = .redo_stack[last2]
+                var kept2 = []
+                var k2 int = 0
+                while k2 < last2 {
+                    kept2.push(.redo_stack[k2])
+                    k2 = k2 + 1
+                }
+                var cur_snap = .px.join("|")
+                .redo_stack = kept2
+                .ApplySnap(snap2)
+                .undo_stack.push(cur_snap)
+                .saved = "0"
+            } else {
+                .status = "nothing to redo"
+            }
+        }
+
+        // ---- 快照应用（本地构建 → 整体赋值）。已知 VM 债 P553-D1：split
+        // 产物重建的**全同串列表**整体赋值后塌缩为单元素（uniform 快照恢复
+        // px len=1，实测；逐格 SetPx 恢复则触预算截断——两害取整体赋值，
+        // 混合内容快照不受影响；债见 KNOWN-DEBT P553-D1）。----
+        .ApplySnap(s) -> {
+            var parts = s.split("|")
+            if parts.len() == 256 {
+                var np = []
+                var k int = 0
+                while k < 256 {
+                    np.push(parts[k])
+                    k = k + 1
+                }
+                .px = np
+                .RebuildCells()
+            }
+        }
+
+        // ---- 清空（可撤销）/ 新建（清历史）----
+        .Clear -> {
+            var dirty int = 0
+            var k int = 0
+            while k < 256 {
+                if .px[k] != .white {
+                    dirty = 1
+                }
+                k = k + 1
+            }
+            if dirty == 1 {
+                .PushUndo()
+                var np = []
+                var k2 int = 0
+                while k2 < 256 {
+                    np.push(.white)
+                    k2 = k2 + 1
+                }
+                .px = np
+                .RebuildCells()
+                .status = ""
+            }
+        }
+
+        .New -> {
+            var np = []
+            var k int = 0
+            while k < 256 {
+                np.push(.white)
+                k = k + 1
+            }
+            .px = np
+            .undo_stack = []
+            .redo_stack = []
+            .saved = "0"
+            .RebuildCells()
+            .status = "new canvas"
+        }
+
+        // ---- storage 存取（null 防御在 lowering 层：storage.get 产物
+        // ?? '' 对齐 VM "" 缺省——PLAN-553 ts_adapter 修复）----
+        .Save -> {
+            storage.set("paint.canvas.v1", .px.join("|"))
+            .saved = "1"
+            .status = "saved"
+        }
+
+        .Load -> {
+            var snap = storage.get("paint.canvas.v1")
+            if snap != "" {
+                var parts = snap.split("|")
+                if parts.len() == 256 {
+                    .PushUndo()
+                    .ApplySnap(snap)
+                    .saved = "1"
+                    .status = "loaded"
+                } else {
+                    .status = "bad save data"
+                }
+            } else {
+                .status = "no saved canvas"
+            }
+        }
+    }
+}

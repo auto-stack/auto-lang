@@ -6,3 +6,4 @@ title: "Book Reader"
 api: "rust"
 front_port: 3018
 back_port: 8018
+desktop: "true"

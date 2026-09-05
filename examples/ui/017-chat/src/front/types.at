@@ -1,3 +1,13 @@
+type Contact {
+    id str
+    name str
+    avatar str
+    status str
+    last_message str
+    time str
+    unread int
+}
+
 type Message {
     id int
     sender str

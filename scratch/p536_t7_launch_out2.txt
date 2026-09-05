@@ -1,0 +1,98 @@
+[*] launching musk VM UI (mcp:6550) with D:/autostack/.wt/lang-536/auto-lang/target/debug/auto.exe
+[+] UI ready
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+row #vnode_14695981039346656037 {
+  col #vnode_12642422519345821663 {
+    row #vnode_4305065243889594349 {
+      row #vnode_4321691031005245367 {
+        text #vnode_15876414090542715893 "Auto Musk"
+        text #vnode_15876396498356671042 "v0.1.0"
+      }
+    }
+    col #vnode_4305047651703549498 {
+      button #vnode_4306385829146414222 "会话" {
+        row #vnode_5889769877696550218 {
+          text #vnode_4965876993954819262 "[Image]"
+          col #vnode_4965894586140864113 {
+            text #vnode_9021770874781493763 "会话"
+          }
+        }
+      }
+      button #vnode_4306403421332459073 "计划" {
+        row #vnode_5905075079555381363 {
+          text #vnode_14952521206800984937 "[Image]"
+          col #vnode_14952503614614940086 {
+            text #vnode_8967164765105348674 "计划"
+          }
+        }
+      }
+      button #vnode_4306350644774324520 "规范" {
+        row #vnode_5859159473978887928 {
+          text #vnode_3439332641972039528 "[Image]"
+          col #vnode_3439350234158084379 {
+            text #vnode_9069762286698459361 "规范"
+          }
+        }
+      }
+      button #vnode_4306368236960369371 "知识库" {
+        row #vnode_5874464675837719073 {
+          text #vnode_13425976854818205203 "[Image]"
+          col #vnode_13425959262632160352 {
+            text #vnode_9015156177022314272 "知识库"
+          }
+        }
+      }
+    }
+    col #vnode_4305030059517504647 {
+      container #vnode_4291080627287583077 {
+        button #vnode_14349869738559936159 "选择工作目录" {
+          row #vnode_4989872699913302061 {
+            text #vnode_12830762644906351735 "[Image]"
+            text #vnode_12830745052720306884 "选择工作目录"
+            text #vnode_12830797829278441437 "[Image]"
+          }
+        }
+      }
+      container #vnode_4291063035101538226 {
+        button #vnode_14334564536701105014 "设置" {
+          row #vnode_13449972560776688002 {
+            text #vnode_12854758350864834534 "[Image]"
+            text #vnode_12854775943050879385 "设置"
+          }
+        }
+      }
+    }
+  }
+  col #vnode_12642404927159776812 {
+    row #vnode_4289760042030763204 {
+      container #vnode_12781790891868631308 {
+        col #vnode_15900409796501198692 {
+          row #vnode_8766178259980025580 {
+            text #vnode_9218183197671271172 "会话"
+            button #vnode_9218200789857316023 "新建会话" {
+              text #vnode_1987110575879387893 "[Image]"
+            }
+            button #vnode_9218218382043360874 "×删除全部会话" {
+              text #vnode_2002415777738219038 "×"
+            }
+          }
+          scrollable #vnode_8766195852166070431 {
+            col #vnode_9233488399530102317 {
+              text #vnode_11958449586866722423 "[Image]"
+              col #vnode_11958431994680677572 {
+                button #vnode_13288206263992043788 "" {
+                }
+                button #vnode_13288223856178088639 "" {
+                }
+              }
+            }
+          }
+        }
+      }
+      col 
+
+[SNAPSHOT_TAIL_MODE=json]
+[*] full snapshot saved. observe window 30s, then exit (proc left running for follow-up probe).

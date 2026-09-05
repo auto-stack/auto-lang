@@ -16,7 +16,7 @@ const ITEM_BASE_LG =
 const ITEM_BASE_SM =
   "nav-item flex w-full items-center justify-start gap-2 rounded-md px-2 h-7 text-xs text-left text-foreground select-none cursor-pointer transition-colors"
 const ITEM_HOVER = "hover:bg-accent hover:text-accent-foreground"
-const ITEM_ACTIVE = "bg-primary/10 text-primary font-medium"
+const ITEM_ACTIVE = "bg-primary/10 text-primary font-medium hover:bg-accent"
 const ITEM_DISABLED = "opacity-60 cursor-default"
 const BADGE_PILL =
   "ml-auto inline-flex items-center justify-center rounded-full bg-primary/15 text-primary px-2 py-[2px] text-xs font-medium shrink-0"
@@ -57,8 +57,9 @@ const props = withDefaults(
 const base = computed(
   () => (props.size === "sm" ? ITEM_BASE_SM : props.size === "lg" ? ITEM_BASE_LG : ITEM_BASE_MD),
 )
-// Active items never carry hover classes (build-time either/or) so hover can
-// never override the selected background — mirrors the VM builder exactly.
+// Active items carry their own hover:bg-accent (PLAN-063 Phase B T19,
+// KD 061 D23 — user ruling 2026-09-04: selected hover = neutral gray) —
+// mirrors the VM builder exactly.
 const state = computed(() =>
   props.disabled ? ITEM_DISABLED : props.active ? ITEM_ACTIVE : ITEM_HOVER,
 )

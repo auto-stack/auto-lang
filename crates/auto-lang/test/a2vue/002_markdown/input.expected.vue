@@ -11,7 +11,7 @@ const body = ref<string>('')
 
 <template>
     <div class="flex flex-col doc-wrap">
-      <StreamingRenderer :source="body" :scroll-sync="true" class="doc-content" :key="'StreamingRenderer-1'" />
+      <StreamingRenderer :source="body" :scroll-sync="true" :dark-mode="false" class="doc-content" :key="'StreamingRenderer-1'" />
     </div>
 
 </template>

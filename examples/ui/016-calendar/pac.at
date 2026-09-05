@@ -10,3 +10,4 @@ window: "fit"
 dep settings {
     path: "../common/settings"
 }
+desktop: "true"

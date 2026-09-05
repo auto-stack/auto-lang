@@ -6,8 +6,15 @@
 // 同进程直读 WmStore（无字符串总线，T1 蓝图登记差异）。
 import { computed } from 'vue'
 import { wm, close, focus, setLayout, cycleFocus, type LayoutModeName } from './store'
+import { findApp } from '../apps-registry'
 
-const emit = defineEmits<{ summon: [] }>()
+const emit = defineEmits<{ summon: []; settings: [] }>()
+
+// Plan 559 W4: ⚙️ settings entry — vue-track parity of the vm shell's gear
+// (551 T2 semantics: opens the os-config window). Presence-gated on the
+// generated registry: solo checkouts without the os-config sibling render
+// no gear instead of a dead button.
+const settingsApp = findApp('os-config')
 
 const sorted = computed(() => [...wm.wins].sort((a, b) => b.z - a.z))
 
@@ -53,6 +60,15 @@ defineExpose({ onAltTab })
         ×
       </button>
     </template>
+    <button
+      v-if="settingsApp"
+      class="h-9 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
+      :title="`settings: ${settingsApp.title}`"
+      aria-label="open settings"
+      @click="emit('settings')"
+    >
+      ⚙️
+    </button>
     <span class="flex-1" />
     <button
       v-for="l in layouts"

@@ -186,6 +186,15 @@ pub struct CompileSession {
 
     py_imports: std::collections::HashMap<String, Vec<String>>,
 
+    /// Plan 550 T10: `#[script]` 文件级 pragma 登记（parser.script_pragma
+    /// 回填）。生产者门控的豁免标志——置位后 use.py/null/nil 不再出
+    /// 迁移提示。W1 的 .as 管线消费。
+    pub script_marked: bool,
+    /// Plan 555 T02: 解析后的文件级脚本方言模式（扩展名+pragma 矩阵，
+    /// mode.rs resolve_script_mode 产物）。W1 仅作信号（passthrough 语义），
+    /// W2 lowering 批消费。script_marked 保持派生兼容（=ScriptMode::Script）。
+    pub script_mode: crate::mode::ScriptMode,
+
 }
 
 
@@ -226,6 +235,9 @@ impl Clone for CompileSession {
             rust_imports: self.rust_imports.clone(),
 
             py_imports: self.py_imports.clone(),
+
+            script_marked: self.script_marked, // Plan 550 T10
+            script_mode: self.script_mode, // Plan 555 T02
 
         }
 
@@ -278,8 +290,24 @@ impl CompileSession {
 
             py_imports: std::collections::HashMap::new(),
 
+            script_marked: false, // Plan 550 T10
+            script_mode: crate::mode::ScriptMode::Normal, // Plan 555 T02
+
         }
 
+    }
+
+    /// Plan 550 T10: 登记 `#[script]` 文件级 pragma（parser 解析后回填）。
+    /// W0 仅作生产者门控的豁免标志；.as 模式管线归 W1。
+    pub fn mark_script(&mut self) {
+        self.script_marked = true;
+    }
+
+    /// Plan 555 T02: 回填解析后的脚本方言模式（扩展名+pragma 矩阵产物），
+    /// 并保持 550 的 script_marked 派生兼容。
+    pub fn set_script_mode(&mut self, mode: crate::mode::ScriptMode) {
+        self.script_mode = mode;
+        self.script_marked = matches!(mode, crate::mode::ScriptMode::Script);
     }
 
     /// Plan 317: Add a source directory to the search path for module resolution.

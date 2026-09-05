@@ -60,6 +60,8 @@ pub struct DocEditor<'a, M> {
     width: Length,
     /// 外层传入的基数前景色（正文基色；渲染器 lowering 由语义主题注入）。
     base_color: Rgba,
+    /// PLAN-048 T7（W4）：空态提示文案——content 空且非聚焦时浅灰渲染。
+    placeholder: Option<String>,
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -73,8 +75,15 @@ impl<'a, M: Clone> DocEditor<'a, M> {
             on_focus: None,
             width: Length::Fill,
             base_color,
+            placeholder: None,
             _marker: std::marker::PhantomData,
         }
+    }
+
+    /// PLAN-048 T7（W4）：空态提示文案。
+    pub fn placeholder(mut self, text: String) -> Self {
+        self.placeholder = Some(text);
+        self
     }
 
     /// Fires whenever document text changed（payload 经
@@ -161,7 +170,7 @@ impl<'a, M: Clone> DocEditor<'a, M> {
     /// 内容高度实测（layout/draw 共用；整形缓存落在 cosmic 内部）。
     fn measure(&self, viewport_w: f32) -> super::DocFrame {
         crate::ui::code_editor::core::with_font_system(|fs| {
-            self.core.render_frame(fs, viewport_w, self.base_color)
+            self.core.render_frame(fs, viewport_w, self.base_color, self.placeholder.as_deref())
         })
     }
 }
@@ -248,6 +257,15 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     _ => EditorButton::Other,
                 };
                 Some(DocInput::MouseReleased { button: b })
+            }
+            Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                // 拖选移动通路（PLAN-048 T3）：core 侧以 drag 状态门控，
+                // 非拖选零操作零捕获；界外丢弃（413 同款取舍：拖选停在边缘）。
+                if !cursor.is_over(bounds) {
+                    return;
+                }
+                let (x, y) = local(*position);
+                Some(DocInput::MouseDragged { x, y })
             }
             Event::Mouse(mouse::Event::WheelScrolled { .. }) => None, // 页面滚动透传
             Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, text, .. }) => {
@@ -507,7 +525,7 @@ mod tests {
         // RwLock 写锁不可重入），否则死锁。
         core.sync_external("甲段。\n\n乙段。\n", true);
         crate::ui::code_editor::core::with_font_system(|fs| {
-            let _ = core.render_frame(fs, 400.0, WHITE);
+            let _ = core.render_frame(fs, 400.0, WHITE, None);
         });
         // 点击第一块中部 → 建焦块 0。
         let out = crate::ui::code_editor::core::with_font_system(|fs| {

@@ -60,12 +60,21 @@ fn stripped() -> &'static Mutex<HashMap<(String, String), Vec<StrippedCall>>> {
     T.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// PLAN-533 T1: 键大小写折叠——两张表的键在注册/查表两侧统一小写。
+/// 父侧声明 `onsend`（全小写）而派发侧按 "on"+msg 变体名构造 `onSend`
+/// （PascalCase），精确匹配 miss 是跨 widget 派发断点的根因（musk
+/// PLAN-059 T2 定案）。widget 名与回调键都折叠：两侧任意侧大小写漂移
+/// 不再丢路由。
+fn fold_key(widget: &str, key: &str) -> (String, String) {
+    (widget.to_lowercase(), key.to_lowercase())
+}
+
 /// 视图构建期记录一条子→父回调路由（同键后写覆盖）。
 pub fn record_route(child_widget: &str, callback_key: &str, route: ParentRoute) {
     routes()
         .lock()
         .unwrap()
-        .insert((child_widget.to_string(), callback_key.to_string()), route);
+        .insert(fold_key(child_widget, callback_key), route);
 }
 
 /// 派发期查路由。
@@ -73,7 +82,7 @@ pub fn lookup_route(child_widget: &str, callback_key: &str) -> Option<ParentRout
     routes()
         .lock()
         .unwrap()
-        .get(&(child_widget.to_string(), callback_key.to_string()))
+        .get(&fold_key(child_widget, callback_key))
         .cloned()
 }
 
@@ -85,7 +94,7 @@ pub fn record_stripped(widget: &str, event: &str, calls: Vec<StrippedCall>) {
     stripped()
         .lock()
         .unwrap()
-        .insert((widget.to_string(), event.to_string()), calls);
+        .insert(fold_key(widget, event), calls);
 }
 
 /// 派发期查被剥离调用。
@@ -93,7 +102,50 @@ pub fn lookup_stripped(widget: &str, event: &str) -> Vec<StrippedCall> {
     stripped()
         .lock()
         .unwrap()
-        .get(&(widget.to_string(), event.to_string()))
+        .get(&fold_key(widget, event))
         .cloned()
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// PLAN-533 T1: 路由表键两侧大小写折叠。父模板声明 `onsend`（全小写），
+    /// 派发侧按 "on"+msg 变体名构造 `onSend`（PascalCase）——精确匹配 miss
+    /// 是 musk PLAN-059 T2 定案的跨 widget 派发断点根因。
+    #[test]
+    fn route_keys_fold_case_on_both_sides() {
+        record_route(
+            "T533WidgetA",
+            "onsend",
+            ParentRoute {
+                parent_widget: "T533Host".into(),
+                handler: "SendInput".into(),
+                params: vec!["$event".into()],
+            },
+        );
+        // 派发侧 PascalCase 构造键 → 命中。
+        assert!(lookup_route("T533WidgetA", "onSend").is_some());
+        // 注册/查表两侧任意侧大小写不一致（含 widget 名）→ 仍命中同一槽位。
+        assert!(lookup_route("t533widgeta", "ONSEND").is_some());
+        // 未声明的回调键不误命中。
+        assert!(lookup_route("T533WidgetA", "onCancel").is_none());
+    }
+
+    /// PLAN-533 T1: STRIPPED 表键（widget, event）同样两侧折叠——
+    /// 合成期 `handler_DoSend` 剥前缀记 `DoSend`，派发期事件名大小写
+    /// 漂移（msg 变体与 handler 名不同源）不再丢被剥离调用。
+    #[test]
+    fn stripped_keys_fold_case_on_both_sides() {
+        record_stripped(
+            "T533WidgetB",
+            "DoSend",
+            vec![StrippedCall { callback: "on_send".into(), arg: Some("this.draft".into()) }],
+        );
+        let calls = lookup_stripped("t533widgetb", "dosend");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].callback, "on_send");
+        assert_eq!(calls[0].arg.as_deref(), Some("this.draft"));
+    }
 }

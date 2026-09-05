@@ -16,6 +16,7 @@ widget App {
         "/alert" -> use alert
         "/alertdialog" -> use alertdialog
         "/alignment" -> use alignment
+        "/absolute" -> use absolute
         "/aspectratio" -> use aspectratio
         "/avatar" -> use avatar
         "/badge" -> use badge
@@ -147,9 +148,9 @@ widget App {
             }
 
             // PLAN-528 W2: SettingsPanel 统一主题设置弹层（Theme 明暗切换 +
-            // Accent 色点），替换原 Plan 409 §8 裸色点行。VM ignores `absolute`
-            // (iced limitation) so it renders inline below the header; vue
-            // uses absolute positioning for a floating popover.
+            // Accent 色点），替换原 Plan 409 §8 裸色点行。PLAN-536 T6:VM 轨
+            // absolute+偏移+z 走父容器 Overlay 悬浮层(tracked col/row 臂),
+            // 与 vue 的 absolute 浮层语义对齐。
             if .themeOpen {
                 col (style: "absolute right-4 top-14 z-50") {
                     SettingsPanel (
@@ -187,6 +188,7 @@ widget App {
                         nav-item (to: "/center", icon: "plus", label: "Center")
                         nav-item (to: "/flex", icon: "move-horizontal", label: "Flex")
                         nav-item (to: "/alignment", icon: "align-center", label: "Alignment")
+                        nav-item (to: "/absolute", icon: "move", label: "Absolute")
                         nav-item (to: "/spacing", icon: "space", label: "Spacing")
                         nav-item (to: "/sizing", icon: "ruler", label: "Sizing")
                         nav-item (to: "/scroll", icon: "chevrons-down", label: "Scroll")

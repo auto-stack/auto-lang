@@ -421,6 +421,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     is_final,
                     on_change: None,
                     on_focus: None,
+                    placeholder: None,
                     style: None,
                 }
             };
@@ -748,11 +749,42 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             }
         }
         BlockType::MathBlock => {
-            // PLAN-041 T7 显式降级：mono 文本 + $$ 标记（KaTeX web-only）。
+            // PLAN-041 T7 显式降级 + PLAN-048 T8（W5 裁定）：header 栏
+            // 「math · web-only」与 mermaid 降级形态对齐（面板族 chrome
+            // 一致性）+ mono $$ 包裹文本（KaTeX web-only，显式豁免登记）。
             let chrome = family_of(BlockType::MathBlock).chrome;
+            let header = View::Container {
+                child: Box::new(styled_text(
+                    "math \u{00b7} web-only".to_string(),
+                    chrome.header_label,
+                )),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: Style::parse(chrome.header.unwrap_or("")).ok(),
+                onclick: None,
+            };
             let body = format!("$$\n{}\n$$", spansText(b.inlines.clone()));
-            View::Container {
+            let code_area = View::Container {
                 child: Box::new(styled_text(body, chrome.body_text)),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: Style::parse(chrome.body).ok(),
+                onclick: None,
+            };
+            View::Container {
+                child: Box::new(View::Column {
+                    children: vec![header, code_area],
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                }),
                 padding: 0,
                 width: None,
                 height: None,
@@ -971,6 +1003,56 @@ mod tests {
             panic!("item body column")
         };
         assert_eq!(text_of(&body[0]), "三");
+    }
+
+    /// PLAN-050 F2/F3：浅色主题下只读臂 fence chrome——outer 底色浅
+    /// （gray-50 族）、header 全宽（w-full）、语言标签自带颜色类（不依赖
+    /// 容器继承——zinc 暗板下默认黑标签曾不可见，塌成游离黑块）。
+    #[test]
+    fn fence_view_chrome_light_header_full_width_label_colored() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
+        crate::ui::style::theme::set_dark_mode(true);
+        let View::Column { children, .. } = doc else {
+            panic!("expected column")
+        };
+        let View::Container { style, child, .. } = &children[0] else {
+            panic!("fence outer container")
+        };
+        let classes = &style.as_ref().expect("outer style").classes;
+        let light_bg = classes.iter().any(|c| match c {
+            crate::ui::style::StyleClass::BackgroundColor(col) => {
+                let (r, g, b) = col.to_rgb8();
+                r > 180 && g > 180 && b > 180
+            }
+            _ => false,
+        });
+        assert!(light_bg, "light theme outer bg must be light gray, got {classes:?}");
+        let View::Column { children: parts, .. } = child.as_ref() else {
+            panic!("fence parts column")
+        };
+        let View::Container { style: hs, child: h, .. } = &parts[0] else {
+            panic!("fence header container")
+        };
+        let hclasses = &hs.as_ref().expect("header style").classes;
+        assert!(
+            hclasses.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::Width(crate::ui::style::SizeValue::Full)
+            )),
+            "header must be full width, got {hclasses:?}"
+        );
+        let View::Text { style: ls, .. } = h.as_ref() else {
+            panic!("header label text")
+        };
+        let lclasses = &ls.as_ref().expect("label style").classes;
+        assert!(
+            lclasses.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::TextColor(_)
+            )),
+            "label must carry explicit color class, got {lclasses:?}"
+        );
     }
 
     #[test]
@@ -1281,14 +1363,20 @@ mod tests {
         assert_eq!(text_of(body), "graph TD; A-->B;");
     }
 
-    /// PLAN-041 T7 降级臂②：MathBlock——mono 文本 + $$ 包裹（KaTeX
-    /// web-only，豁免表在册）。
+    /// PLAN-041 T7 降级臂② + PLAN-048 T8（W5 裁定）：MathBlock——
+    /// 「math · web-only」header（与 mermaid 面板族形态一致）+ mono $$
+    /// 包裹（KaTeX web-only，显式豁免登记）。
     #[test]
     fn renders_degraded_math_block() {
         let doc = render_document::<()>("%{\nE=mc^2\n}%\n", true);
         let View::Column { children, .. } = doc else { panic!("col") };
         let View::Container { child, .. } = &children[0] else { panic!("math outer") };
-        assert_eq!(text_of(child), "$$\nE=mc^2\n$$");
+        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        assert_eq!(parts.len(), 2, "header + body");
+        let View::Container { child: h, .. } = &parts[0] else { panic!("header") };
+        assert_eq!(text_of(h), "math \u{00b7} web-only");
+        let View::Container { child: body, .. } = &parts[1] else { panic!("body") };
+        assert_eq!(text_of(body), "$$\nE=mc^2\n$$");
     }
 
     /// PLAN-041 T7 降级臂③：QueryBlock——query 文本面板 + 「query · 未求值」

@@ -4,12 +4,14 @@
 //! 运行：`cargo run -p auto-lang --features ui-iced --example ui_desktop`
 //! 全屏：`cargo run -p auto-lang --features ui-iced --example ui_desktop -- --fullscreen`
 //! 指定注册表：`... -- --fullscreen --apps-dir examples/ui`
-//! panic 隔离演示沿用 459：`AUTOUI_PANIC_PROBE=1`（事件名 `__panic_probe`）。
+//! panic 隔离演示沿用 459：`AUTOUI_PANIC_PROBE=1`（事件名 `__panic_probe`；
+//! PLAN-552 起 459-dual-app 源位于 examples/capability-tests/）。
 
 use auto_lang::ui::iced::{run_dynamic_desktop_fullscreen, run_dynamic_desktop_with_options, DesktopOptions};
 use std::path::PathBuf;
 
-const APP_A: &str = include_str!("../../../examples/ui/459-dual-app/app.at");
+// PLAN-552：459-dual-app 探针迁 examples/capability-tests/（深度 ../../../ 不变）。
+const APP_A: &str = include_str!("../../../examples/capability-tests/459-dual-app/app.at");
 const APP_B: &str = include_str!("../../../examples/ui/011-calculator/src/front/app.at");
 
 /// 默认注册表目录：仓库 examples/ui（相对 crate 编译期定位，CWD 无关）。
@@ -38,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // path 后缀对齐注册表条目（回填 registry_id + armed `window: "fit"`）。
     let comp_a = auto_lang::build_dynamic_component(
         APP_A,
-        Some("examples/ui/459-dual-app/app.at"),
+        Some("examples/capability-tests/459-dual-app/app.at"),
     )?;
     let comp_b = auto_lang::build_dynamic_component(
         APP_B,

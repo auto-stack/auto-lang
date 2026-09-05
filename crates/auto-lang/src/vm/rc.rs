@@ -78,6 +78,11 @@ pub fn heap_ref_id(nv: auto_val::NanoValue) -> Option<u64> {
 // GET_GENERIC_FIELD 的启发式探测处,tag 来源(TAG_OBJECT vs TAG_I32≥4M)
 // 直接判 H0(启发式误判)与 H1/H2(真悬垂)。
 // ============================================================================
+/// PLAN-062 T12: 归零对象的宽限窗（解释步）。窗口内复活即出队；到期由
+/// reap_dying 真回收。取值覆盖若干帧的近邻别名（raw 拷贝残留面），
+/// 同时远小于 soak/长会话的可观测尺度（有界不累积）。
+const DYING_GRACE_STEPS: u64 = 8_192;
+
 static P419_UAF_CFG: OnceLock<(bool, u64, u64)> = OnceLock::new();
 
 fn p419_uaf_cfg() -> &'static (bool, u64, u64) {
@@ -215,12 +220,18 @@ impl AutoVM {
     /// Phase 2 起 TAG_STRING 同走池计数(pinned 条目免计费)。
     #[inline(always)]
     pub fn rc_push(&self, task: &mut AutoTask, nv: auto_val::NanoValue) {
+        let mut staked = 0u64;
         if let Some(id) = heap_ref_id(nv) {
             self.rc_retain_id(id);
+            staked = id;
         } else if let Some(idx) = pool_idx_nv(nv) {
             self.pool_retain(idx as usize);
         }
         task.ram.push_nv(nv);
+        // PLAN-062 T12: 带份额入栈记影子（裸 push 不记——影子默认 0）。
+        if staked != 0 {
+            task.ram.mark_top_stake(staked);
+        }
     }
 
     /// Plan 419 Phase 2: 池索引入栈(+1;pinned 免计费)。
@@ -235,6 +246,8 @@ impl AutoVM {
     pub fn rc_push_id(&self, task: &mut AutoTask, id: u64) {
         self.rc_retain_id(id);
         task.ram.push_i32(id as i32);
+        // PLAN-062 T12: 裸 id 入栈同样带份额——记影子。
+        task.ram.mark_top_stake(id);
     }
 
     /// 计数 +1(容器字段/全局表项获得持有时)。
@@ -276,6 +289,13 @@ impl AutoVM {
             }
             dashmap::mapref::entry::Entry::Vacant(e) => {
                 e.insert(AtomicU32::new(1));
+                // PLAN-062 T12: 复活——从 dying 队列出队（宽限窗内重获
+                // 持有,不回收）。
+                if let Ok(mut q) = self.dying_heap.lock() {
+                    if let Some(pos) = q.iter().position(|(i, _)| *i == id) {
+                        q.swap_remove(pos);
+                    }
+                }
             }
         }
     }
@@ -314,6 +334,69 @@ impl AutoVM {
             // remove_if 而非 remove:窗口内若有新 retain 把计数拉回 >0
             //(audit 缺口),保留条目让 canary/泄漏追踪可见。
             self.heap_rc.remove_if(&id, |_, a| a.load(Ordering::Acquire) == 0);
+            // PLAN-062 T12: 宽限窗延迟回收——归零先入 dying 队列（携带当前
+            // 解释步），DYING_GRACE_STEPS 内未被复活才真回收。帧内/近邻的
+            // raw 别名（无份额拷贝——历史内容保活语义的残余面）窗口内安全；
+            // 窗口有界故长期零累积。
+            let step = self.interp_steps.load(Ordering::Relaxed);
+            if let Ok(mut q) = self.dying_heap.lock() {
+                q.push((id, step));
+            }
+        }
+    }
+
+    /// PLAN-062 T12: 收割宽限窗到期的 dying 对象（解释循环每 1024 步调用；
+    /// 复活者在 rc_retain_id 出队，此处只见未复活者）。rc 条目若再现
+    /// （retain 竞态）跳过并留队下轮。
+    /// PLAN-062 T12: 静止点（rc_stats/任务收尾）无视宽限全收。循环到空——
+    /// free_heap_id 的级联释放（子引用 stakes 随父死亡）会向 dying 再入队。
+    pub fn reap_all(&self) {
+        loop {
+            let due: Vec<u64> = match self.dying_heap.lock() {
+                Ok(mut q) => {
+                    if q.is_empty() {
+                        return;
+                    }
+                    q.drain(..).map(|(id, _)| id).collect()
+                }
+                Err(_) => return,
+            };
+            let mut freed_any = false;
+            for id in due {
+                if self.heap_rc.get(&id).is_some() {
+                    continue;
+                }
+                self.free_heap_id(id);
+                freed_any = true;
+            }
+            if !freed_any {
+                return;
+            }
+        }
+    }
+
+    pub fn reap_dying(&self, now: u64) {
+        let due: Vec<u64> = match self.dying_heap.lock() {
+            Ok(mut q) => {
+                let mut keep = Vec::with_capacity(q.len() / 2);
+                let mut due = Vec::new();
+                for (id, at) in q.drain(..) {
+                    if now.saturating_sub(at) >= DYING_GRACE_STEPS {
+                        due.push(id);
+                    } else {
+                        keep.push((id, at));
+                    }
+                }
+                q.extend(keep);
+                due
+            }
+            Err(_) => return,
+        };
+        for id in due {
+            if self.heap_rc.get(&id).is_some() {
+                // 复活竞态——保留对象,静默跳过。
+                continue;
+            }
             self.free_heap_id(id);
         }
     }
@@ -335,11 +418,21 @@ impl AutoVM {
     pub fn rc_release_slot_range(&self, ram: &mut VirtualRAM, from: usize, to: usize) {
         // 注意不夹到 ram.sp:CALL_NAT 死区结算覆盖 sp 之上的已弹槽位;
         // 各调用方自传合理区间,这里只做越界保护。
+        // PLAN-062 T12: 堆份额按**影子**释放（槽显式持有才算）——按字节
+        // 内容判定的旧法对 raw 副本双重释放、对陈旧字节误杀/漏放（本
+        // 计划两度 canary 实证）。字符串池份额沿 Plan 510 按内容释放。
         let to = to.min(ram.raw_nv.len());
         for i in from..to {
+            let sh = ram.stake_at(i);
+            if sh != 0 {
+                self.rc_release_id(sh);
+                ram.clear_stake_at(i);
+            }
             let nv = ram.raw_nv[i];
-            if is_heap_ref_nv(nv) || auto_val::is_string(nv) {
+            if auto_val::is_string(nv) {
                 self.rc_release(nv);
+            }
+            if sh != 0 || auto_val::is_string(nv) {
                 ram.raw_nv[i] = 0;
             }
         }
@@ -350,6 +443,11 @@ impl AutoVM {
     /// 结果,故只应在"不再有人读该任务栈"时调用。
     pub fn rc_release_task_stack(&self, task: &mut AutoTask) {
         let sp = task.ram.sp;
+        // PLAN-062 注记:只清 [0, sp)。曾试帧范围扩展（max(sp, 局部+实参+2))
+        // 清 bp==0 主任务 RET 未扫的局部槽——被 STORE_GLOBAL 转移语义否决:
+        // pop 的 stake 转入全局表而槽内留陈旧字节,扩域清扫即双重释放
+        // (global_keeps_alive 实证全局对象被误杀)。局部槽滞留份额归上游
+        // RC 槽位记账专项(KD-051⑤ 续行,每 call 1 个、钉住当帧返回树)。
         self.rc_release_slot_range(&mut task.ram, 0, sp);
         task.ram.sp = 0;
         for i in 0..task.state_vars.len() {
@@ -371,6 +469,9 @@ impl AutoVM {
 
     /// 测试断言钩子。
     pub fn rc_stats(&self) -> RcStats {
+        // PLAN-062 T12: 静止点强制收割——读数前清空 dying 队列（宽限窗
+        // 只在解释执行期生效；观测/断言点报告精确终态）。
+        self.reap_all();
         RcStats {
             live_heap: self.heap_objects.len(),
             live_pool: self.pool_live_count(),
