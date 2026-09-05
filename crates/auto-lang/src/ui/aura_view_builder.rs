@@ -4993,10 +4993,28 @@ let tabs_inner = View::Row {
             }
         };
 
-        // 内容：显式 children 优先；否则 icon + text 合成行。
+        // 内容：显式 children 优先（多子合为契约行——基座 flex row gap-2
+        // 的 VM 同构，icon+text 横排；竖列会在 h-8 定高下裁掉文本）；
+        // 否则 icon + text 合成行。
         let content: Option<Box<View<DynamicMessage>>> = if !children.is_empty() {
-            let v = self.convert_children_passthrough(children, bindings);
-            Some(Box::new(v))
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .filter(|v| !matches!(v, View::Empty))
+                .collect();
+            if views.len() == 1 {
+                Some(Box::new(views.into_iter().next().unwrap()))
+            } else if views.is_empty() {
+                None
+            } else {
+                Some(Box::new(View::Row {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse("items-center gap-2").ok(),
+                    onclick: None,
+                }))
+            }
         } else {
             let mut parts: Vec<View<DynamicMessage>> = Vec::new();
             if !icon.is_empty() {
