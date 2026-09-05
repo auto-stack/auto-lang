@@ -389,8 +389,16 @@ fn emit_expr(e: &Expr, depth: usize, out: &mut String) -> AutoResult<()> {
             out.push('\'');
         }
         Expr::Str(s) => {
+            // Plan 560 T12：再转义（源含 \" 的字符串在发射产物里必须
+            // 保持合法字面量——py_json 套件实证）。
             out.push('"');
-            out.push_str(s.as_str());
+            for ch in s.as_str().chars() {
+                match ch {
+                    '"' => out.push_str("\\\""),
+                    '\\' => out.push_str("\\\\"),
+                    _ => out.push(ch),
+                }
+            }
             out.push('"');
         }
         Expr::Ident(n) | Expr::GenName(n) => out.push_str(n.as_str()),
