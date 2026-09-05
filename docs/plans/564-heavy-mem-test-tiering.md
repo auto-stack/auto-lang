@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径（测试基建，review 时定）
-current_step: 0
+current_step: 6
 total_steps: 7
 ---
 
@@ -228,18 +228,35 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   跑一次、再裸 `cargo test probe_env` 跑一次，记录两侧 env 差异。
   验证: nextest 侧输出含 `NEXTEST=1`；裸侧无。若本机版本不注入，
   改用 `AUTO_LANG_HEAVY_MEM` 双 env 方案并更新 D4。
+  [✅ 已完成] 2026-09-05 实测：nextest 路径 `P564ENV NEXTEST=1` 可见，裸
+  cargo test 路径 `<absent>`——D4 heavy_gate 设计成立（探针临时文件已清理）。
+  > 执行注记: worktree 引导补齐——组内需 auto-down 兄弟（a2r-actor-tests
+  > → auto-lang → autodown-core 路径依赖），532 组占用了 auto-down 的
+  > auto-lang-dev 分支检出，564 组以 **detached worktree @939a38b**（与
+  > 532 兄弟同提交）补齐，只读不改。
 - **T2** 测量脚本。
   文件: `scripts/measure_test_mem.py`（新建）。
   操作: 按 D1 实现（nextest --jobs=1 串行 + Win32_Process 峰值轮询 +
   Markdown 表输出 + 与既有权重表对比漂移标注）。
   验证: `python scripts/measure_test_mem.py str_churn`（master 存量）
   输出非零峰值表；重复运行结果稳定（±20%）。
+  [✅ 已完成] 2026-09-05 实测：`str_churn_bounded` = 20MB/LT，两次复跑
+  稳定；期间修复两个测量缺陷（Win32_Process.PeakWorkingSetSize 单位
+  存疑改自轮询 WorkingSetSize 字节值；监视器按 worktree 路径过滤，排除
+  兄弟会话 lang-532 并发测试进程误采）。脚本已提交 plan-564-dev 9dbe59c3b。
 - **T3** aavm2 权重测量与定级。
   文件: `.config/test-mem-weights.md`（新建，入库）。
   操作: worktree 内 `python scripts/measure_test_mem.py aavm2_ -F test-vm-files`
   + `python scripts/measure_test_mem.py str_churn`；按 D2 阈值定级填表。
   验证: 表覆盖全部 aavm2_* 测试名（与 `cargo nextest list aavm2_` 名单
   逐一对照无遗漏）；最重单测数值明确（决定 D2 分支走向）。
+  [✅ 已完成] 2026-09-05 三段链式实测(RUN1 主档 1216s/RUN2 ignored 档 905s/RUN3 1M churn):
+    12 XL(1232-802MB,最重 static_diff 1232)+4 LG(797-744)+4 MD(138-123)+LT;
+    1M churn 实测 20MB 修正预设(迭代型不驻留,无需门控);6 个秒级轻测低于
+    120ms 采样窗口未捕获(推断 LT)。表入库 .config/test-mem-weights.md。
+    发现①:lg=2 预算否决(931+2×780≈2.5GB)→组定 1/1/2;发现②:RUN2 中
+    static_diff FAILED(P532 挂账债,canon 4506 分叉,非本 plan 范围,已登记
+    待澄清)。
 - **T4** nextest 组配置接线。
   文件: `.config/nextest.toml`、`.config/nextest-full.toml`、
   `.config/nextest-t3.toml`。
@@ -248,6 +265,12 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   验证: `cargo nextest show-config test-groups --config-file .config/nextest.toml`
   三组匹配数非零；`cargo nextest list -E 'not test(...)'` 确认 XL 被日常档
   排除。
+  [✅ 已完成] 2026-09-05 实测:show-config 三组建(mem-xl/lg/md=1/1/2),lg 4/4 归属,
+    md 2/4(差两个为 #[ignore],--run-ignored 时生效),xl 日常档 0 匹配
+    (=default-filter 排除生效)/full 档 9/9 非 ignore 匹配;
+    list 验证:m2_parser_corpus 日常档 0 行、001_smoke 保留 1 行。
+    附注:nextest-t3.toml 为 532 主检出未提交态,564 不代笔,t3 档组配置
+    待其落地后合流(塔测试自带 T3_MILESTONE env 守门,风险低)。
 - **T5** 自守门接线。
   文件: `crates/auto-lang/src/tests/heavy_gate.rs`（新建）+ XL/LG 测试
   函数头部接线（aavm2_m1~m5/a2r/vm_file_tests 中达档者 + str_churn_large
@@ -256,12 +279,19 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   验证: `cargo check -p auto-lang` 零错；worktree 内裸
   `cargo test -p auto-lang --lib --features test-vm-files aavm2_` 秒级
   完成且输出 SKIP 指引（对照 A3）。
+  [✅ 已完成] 2026-09-05 实测:16 处守门接线(12 XL+4 LG,含 3 个 #[ignore]);
+    cargo check 零错;裸 cargo test aavm2_ --test-threads 12:19s(测试段
+    2.01s)/22 passed 0 failed/峰值 149MB(事发形态 15+min/9.78GB);
+    SKIP 指引 --nocapture 可见(libtest 默认捕获通过测试输出,AGENTS.md
+    已注明)。
 - **T6** 文档与权重表收口。
   文件: `AGENTS.md`（测试档表 + 重内存分层说明）、
   `docs/plans/564-heavy-mem-test-tiering.md`（本文件，记录前后对比数据）。
   操作: 更新档表注释（t/tf/tv/t3 语义变化：XL 仅全量档 + 组限流；
   新增重测试登记路径三步：测量 → 权重表 → overrides/守门）。
   验证: 文档审读 + `grep -n "mem-xl" AGENTS.md .cargo/config.toml` 命中。
+  [✅ 已完成] 2026-09-05 AGENTS.md 增 Heavy-Mem Test Tiering 节:权重表单一事实来源/
+    三档组限流/heavy_gate 守门与强制跑法/新增重测试三步登记。
 - **T7** 复审验证（峰值实测 + 基线回归）。
   操作: ① worktree 内 `cargo tf aavm2_`，另终端轮询 auto_lang-* 进程树
   峰值记入本文件；② `cargo t` 全绿且耗时对照 46s 基线；③ 裸 cargo test
