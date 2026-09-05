@@ -5277,6 +5277,43 @@ impl AutoVM {
                                 self.decode_tagged_nv(value_nv)
                             });
                         } else if let Some(inst) = heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                            // PLAN-536 Phase 2 T13: PollStream 兜底链追踪面——
+                            // 环境门控(AUTO_DEBUG_POLLTRACE=1),观察跨模块调用帧
+                            // 内对 store 字段(合并根态 GenericInstanceData)的
+                            // SET_FIELD 实际落点与值(KD P536-D2 定罪)。
+                            if std::env::var("AUTO_DEBUG_POLLTRACE").is_ok()
+                                && matches!(
+                                    field_name.as_str(),
+                                    "streaming" | "pre_stream_len" | "messages" | "poll_window"
+                                )
+                            {
+                                let decoded = self.decode_tagged_nv(value_nv);
+                                let vdesc = match &decoded {
+                                    auto_val::Value::Bool(b) => format!("bool={b}"),
+                                    auto_val::Value::Int(i) => format!("int={i}"),
+                                    auto_val::Value::Str(_) => "str".to_string(),
+                                    auto_val::Value::Nil => "nil".to_string(),
+                                    auto_val::Value::VmRef(r) => {
+                                        let len = self
+                                            .heap_objects
+                                            .get(&(r.id as u64))
+                                            .map(|h| {
+                                                let g = h.read().unwrap();
+                                                g.as_any()
+                                                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                                                    .map(|l| l.len())
+                                                    .unwrap_or(usize::MAX)
+                                            })
+                                            .unwrap_or(usize::MAX);
+                                        format!("vmref={} len={len}", r.id)
+                                    }
+                                    other => format!("nv({:?})", std::mem::discriminant(other)),
+                                };
+                                eprintln!(
+                                    "[POLLTRACE][SET] obj={obj_id} .{field_name} = {vdesc} (ip=0x{:x})",
+                                    task.ip
+                                );
+                            }
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
                             if let Some(idx) = field_idx {
                                 old_field_ref = inst.fields.get(idx).and_then(|v| match v {

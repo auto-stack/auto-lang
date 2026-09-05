@@ -644,7 +644,16 @@ impl<'a> AuraViewBuilder<'a> {
             // 求值回退——musk `for msg in .filteredMessages` 以 computed 为
             // for 源，此前直接 None → WARN 刷屏 + 气泡列表整体空。
             if let Some(v) = self.eval_computed(stripped, bindings) {
-                return self.value_to_iter_vec(&v);
+                let arr = self.value_to_iter_vec(&v);
+                // PLAN-536 Phase 2 T13: for 源 computed 每次重建解析行数追踪
+                // (KD P536-D2/057④ 定罪:refill 后投影到底见几行)。
+                if std::env::var("AUTO_DEBUG_POLLTRACE").is_ok() && stripped == "filteredMessages" {
+                    eprintln!(
+                        "[POLLTRACE][FOR] computed .{stripped} -> {} rows",
+                        arr.as_ref().map(|a| a.len()).unwrap_or(usize::MAX)
+                    );
+                }
+                return arr;
             }
             return None;
         }

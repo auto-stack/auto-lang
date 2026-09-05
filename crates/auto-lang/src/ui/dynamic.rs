@@ -541,9 +541,10 @@ impl DynamicComponent {
                 tries.push((*last).to_string());
             }
         }
+        let polltrace = std::env::var("AUTO_DEBUG_POLLTRACE").is_ok();
         for t in tries {
             if let Ok(v) = self.read_state(&t) {
-                return match v {
+                let pass = match v {
                     auto_val::Value::Bool(b) => b,
                     auto_val::Value::Str(ref s) => {
                         matches!(s.as_str(), "true" | "1" | "on")
@@ -551,7 +552,15 @@ impl DynamicComponent {
                     auto_val::Value::Int(n) => n != 0,
                     _ => false,
                 };
+                // PLAN-536 Phase 2 T13: when 门逐拍读值追踪(KD P536-D2 定罪)。
+                if polltrace {
+                    eprintln!("[POLLTRACE][GATE] read .{t} -> pass={pass}");
+                }
+                return pass;
             }
+        }
+        if polltrace {
+            eprintln!("[POLLTRACE][GATE] read .{when} failed -> false");
         }
         false
     }
