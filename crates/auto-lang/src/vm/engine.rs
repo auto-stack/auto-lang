@@ -3499,26 +3499,7 @@ impl AutoVM {
                             if let Some(handler) = task.handler_stack.last().copied() {
                                 if handler.bp == task.bp {
                                     task.handler_stack.pop();
-                                    let payload = self
-                                        .get_heap_object(propagate_value as u64)
-                                        .and_then(|obj| {
-                                            let guard = obj.read().unwrap();
-                                            guard
-                                                .as_any()
-                                                .downcast_ref::<GenericInstanceData>()
-                                                .and_then(|inst| match inst.fields.first() {
-                                                    Some(auto_val::Value::Str(s)) => {
-                                                        Some(s.as_str().to_string())
-                                                    }
-                                                    _ => Some(format!(
-                                                        "Result.Err {}",
-                                                        propagate_value
-                                                    )),
-                                                })
-                                        })
-                                        .unwrap_or_else(|| {
-                                            format!("Result.Err {}", propagate_value)
-                                        });
+                                    let payload = self.result_err_payload(propagate_value);
                                     // 容器 stake 死亡（消费于 catch）。
                                     self.rc_release_id(propagate_value as u64);
                                     let sp_at_unwind = task.ram.sp;
@@ -3536,6 +3517,16 @@ impl AutoVM {
                             }
                         }
                         if task.bp == 0 {
+                            // Plan 567 T10（P560-D2）: 未捕获 Err 传播到 main
+                            // 边界 → 带错退出（= Python traceback 等价物）。
+                            // 原形态为静默 Terminated（退出码 0）——p7 四套件
+                            // 中止时无消息可寻的根因面。None/null 传播维持
+                            // 原 May 语义（main 正常结束）。
+                            if interceptable_err {
+                                let payload = self.result_err_payload(propagate_value);
+                                self.rc_release_id(propagate_value as u64);
+                                return Err(VMError::RuntimeError(payload));
+                            }
                             // Main task: just push the error value and terminate
                             task.ram.push_i32(propagate_value);
                             return Ok(StepResult::Terminated);
@@ -7750,10 +7741,16 @@ impl AutoVM {
                     } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         let pre_call_ip = task.ip;
                         // Plan 567 T05：对齐 CALL_NAT_COUNTED 的 560 T11 通道
-                        // 统一——py 桥 FFI 错误转 RuntimeError，两条 native
-                        // 分发路径 catch 载荷一致（P560-D3 半件）。
-                        if let Err(VMError::FFI(msg)) = shim(task, self) {
-                            return Err(VMError::RuntimeError(msg));
+                        // 统一——py 桥 FFI 错误转 RuntimeError；**非 FFI 错误
+                        // 原样传播**（`if let Err(FFI)` 形态会把 RuntimeError/
+                        // MissingNative 等静默吞掉——alloc_array 负尺寸回归
+                        // 实证）。
+                        match shim(task, self) {
+                            Err(VMError::FFI(msg)) => {
+                                return Err(VMError::RuntimeError(msg));
+                            }
+                            Err(other) => return Err(other),
+                            Ok(()) => {}
                         }
                         // Plan 349 step 7: if HTTP json native yielded (async
                         // request pending), back up IP to retry CALL_NAT.
@@ -7788,8 +7785,14 @@ impl AutoVM {
                         // Plan 560 T11（§4-3）：py 桥错误统一 RuntimeError
                         // 通道（catch 拦值一致绑定——FFI 标签在载荷里保留
                         // 上下文原文；PyException 前缀精化归 P560 债）。
-                        if let Err(VMError::FFI(msg)) = shim(task, self) {
-                            return Err(VMError::RuntimeError(msg));
+                        // Plan 567 T05 加固：非 FFI 错误原样传播（同 CALL_NAT
+                        // 臂的静默吞错回归教训）。
+                        match shim(task, self) {
+                            Err(VMError::FFI(msg)) => {
+                                return Err(VMError::RuntimeError(msg));
+                            }
+                            Err(other) => return Err(other),
+                            Ok(()) => {}
                         }
                     } else {
                         return Err(VMError::MissingNative(native_id));
@@ -9530,6 +9533,24 @@ self.rc_release(a_nv);
     /// Plan 010 (MS3-A): try/catch interception.
     ///
     /// If the task has a handler frame on its stack, the error is caught:
+    /// Plan 567 T08/T10（P560-D2）: Result.Err 载荷串——fields[0] Str
+    /// （`PyException <Type>: <msg>`）；非 Str/缺容兜底描述。
+    fn result_err_payload(&self, obj_id_bits: i32) -> String {
+        use crate::vm::generic_registry::GenericInstanceData;
+        self.get_heap_object(obj_id_bits as u64)
+            .and_then(|obj| {
+                let guard = obj.read().unwrap();
+                guard
+                    .as_any()
+                    .downcast_ref::<GenericInstanceData>()
+                    .and_then(|inst| match inst.fields.first() {
+                        Some(auto_val::Value::Str(s)) => Some(s.as_str().to_string()),
+                        _ => Some(format!("Result.Err {}", obj_id_bits)),
+                    })
+            })
+            .unwrap_or_else(|| format!("Result.Err {}", obj_id_bits))
+    }
+
     /// unwind to the recorded bp/sp, push the error message as a value, and
     /// jump to the catch handler. Returns `true` if caught (caller continues
     /// execution), `false` if the error should propagate (caller returns Err).

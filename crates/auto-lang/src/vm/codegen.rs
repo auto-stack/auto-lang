@@ -5205,7 +5205,10 @@ impl Codegen {
     /// py_call builtin, >=3 args, obj/method positional, and at least one
     /// named arg in the tail.
     fn is_py_call_kw_form(&self, call: &crate::ast::Call) -> bool {
-        matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call")
+        // Plan 567 T09: py_call_may + Pair 实参同走 5 槽 kwargs 约定
+        // （native id 由 compile_py_call_kw_form 按 may 名路由 478）。
+        matches!(call.name.as_ref(), Expr::Ident(n)
+            if n.as_ref() == "py_call" || n.as_ref() == "py_call_may")
             && call.args.args.len() >= 3
             && matches!(call.args.args.first(), Some(crate::ast::Arg::Pos(_)))
             && matches!(call.args.args.get(1), Some(crate::ast::Arg::Pos(_)))
@@ -5262,9 +5265,11 @@ impl Codegen {
         }
         self.emit(OpCode::CREATE_ARRAY);
         self.code.push(kw_names.len() as u8);
-        // The fixed 5-slot convention of py_call_kw (id 452).
+        // The fixed 5-slot convention of py_call_kw (id 452); the may variant
+        // (Plan 567 T09) routes py_call_kw_may (id 478) — same ABI, Err value out.
+        let is_may = matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call_may");
         self.emit(OpCode::CALL_NAT_COUNTED);
-        self.emit_u16(452);
+        self.emit_u16(if is_may { 478 } else { 452 });
         self.code.push(5u8);
         Ok(())
     }

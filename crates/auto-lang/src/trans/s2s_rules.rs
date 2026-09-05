@@ -12,7 +12,7 @@
 //! - A3 裸名调用 py 可调用值——依赖 use.py 直接调用通道 + py_call0 显式
 //!   形态；流型自动改写归 T13 静态 py 分析的窥孔批。
 
-use crate::ast::{Arg, Args, Call, Code, Expr, Stmt, Type};
+use crate::ast::{Arg, Args, Call, Code, Expr, Stmt, Type, UseKind};
 use crate::error::AutoResult;
 use crate::trans::py_known::{expr_is_py, PyKnowledge};
 
@@ -526,4 +526,164 @@ fn wrap_truthy_operands(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mu
         }
         _ => {}
     }
+}
+
+// ============================================================================
+// Plan 567 T09（P560-D2）: 隐式 !T 传播规则
+// ============================================================================
+
+/// 桥调用严格变体 → may 变体的改名表（kwargs 形态由 codegen
+/// is_py_call_kw_form 路由 py_call_kw_may=478）。
+const MAY_RENAMES: &[(&str, &str)] = &[
+    ("py_call", "py_call_may"),
+    ("py_getattr", "py_getattr_may"),
+    ("py_getitem", "py_getitem_may"),
+];
+
+/// Plan 567 T09（P560-D2）: 隐式 `!T` 传播——含 use.py 的 `.as` 函数体内：
+/// - 桥调用（py_call/py_getattr/py_getitem，含 kwargs 形态）→ may 变体
+///   + `.?`（Err 落值通道，ERROR_PROPAGATE 帧展开或被 T08 值通道拦截进
+///   catch）；
+/// - 同文件用户函数调用点 → 追加 `.?`（裸值零开销透传——engine 裸值分支）。
+///
+/// 保守边界：已带 `.?` 或 `_may` 名不重包；`py_with`/`py_callable` 等
+/// 全函数桥不涉；**无 use.py 的文件零改写**（纯 Auto `.as` 语料不受扰，
+/// 含 legacy -1 哨兵返回值语义）。
+pub fn rule_err_propagate(code: &mut Code) -> AutoResult<bool> {
+    let has_py = code
+        .stmts
+        .iter()
+        .any(|s| matches!(s, Stmt::Use(u) if matches!(u.kind, UseKind::Py)));
+    if !has_py {
+        return Ok(false);
+    }
+    let user_fns: std::collections::HashSet<String> = code
+        .stmts
+        .iter()
+        .filter_map(|s| {
+            if let Stmt::Fn(f) = s {
+                Some(f.name.as_str().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    let mut changed = false;
+    for stmt in code.stmts.iter_mut() {
+        if let Stmt::Fn(f) = stmt {
+            errprop_body(&mut f.body.stmts, &user_fns, &mut changed);
+        }
+    }
+    Ok(changed)
+}
+
+fn errprop_body(stmts: &mut [Stmt], user_fns: &std::collections::HashSet<String>, changed: &mut bool) {
+    for stmt in stmts.iter_mut() {
+        match stmt {
+            Stmt::Store(s) => errprop_expr(&mut s.expr, user_fns, changed),
+            Stmt::Expr(e) => errprop_expr(e, user_fns, changed),
+            Stmt::Return(e) => errprop_expr(e, user_fns, changed),
+            Stmt::If(i) => {
+                for b in i.branches.iter_mut() {
+                    errprop_expr(&mut b.cond, user_fns, changed);
+                    errprop_body(&mut b.body.stmts, user_fns, changed);
+                }
+                if let Some(e) = i.else_.as_mut() {
+                    errprop_body(&mut e.stmts, user_fns, changed);
+                }
+            }
+            Stmt::For(f) => {
+                errprop_expr(&mut f.range, user_fns, changed);
+                errprop_body(&mut f.body.stmts, user_fns, changed);
+            }
+            Stmt::Try(t) => {
+                errprop_body(&mut t.body.stmts, user_fns, changed);
+                errprop_body(&mut t.catch_body.stmts, user_fns, changed);
+            }
+            Stmt::Block(b) => errprop_body(&mut b.stmts, user_fns, changed),
+            _ => {}
+        }
+    }
+}
+
+fn errprop_expr(e: &mut Expr, user_fns: &std::collections::HashSet<String>, changed: &mut bool) {
+    match e {
+        // 已传播形态：no-op（内层调用首遍已各自包裹；递归会二遍重包
+        // `.?.?` ——幂等性由 corpus 测试钉死）。
+        Expr::ErrorPropagate(_) => {}
+        Expr::Call(c) => {
+            // 实参自底向上先改。
+            for a in c.args.args.iter_mut() {
+                if let Arg::Pos(inner) = a {
+                    errprop_expr(inner, user_fns, changed);
+                }
+            }
+            if let Expr::Ident(n) = c.name.as_ref() {
+                let name = n.as_str().to_string();
+                if let Some((_, may)) = MAY_RENAMES.iter().find(|(from, _)| *from == name) {
+                    *c.name = Expr::Ident((*may).into());
+                    wrap_propagate(e, changed);
+                } else if user_fns.contains(&name)
+                    && !name.starts_with("py_")
+                    && !name.starts_with("obj_")
+                {
+                    // 用户函数调用点：隐式可失败（调用约定值通道透传）。
+                    wrap_propagate(e, changed);
+                }
+            } else if matches!(c.name.as_ref(), Expr::Dot(_, _)) {
+                // Auto 方法糖保留态（ab 规则未动的非 py 接收者）：callee 位
+                // 不包；实参已在上面的循环覆盖。
+            }
+        }
+        // ---- 通用容器下钻 ----
+        Expr::Bina(l, _, r) => {
+            errprop_expr(l, user_fns, changed);
+            errprop_expr(r, user_fns, changed);
+        }
+        Expr::Unary(_, inner) => errprop_expr(inner, user_fns, changed),
+        Expr::Array(elems) => {
+            for el in elems.iter_mut() {
+                errprop_expr(el, user_fns, changed);
+            }
+        }
+        Expr::Object(pairs) => {
+            for p in pairs.iter_mut() {
+                errprop_expr(&mut p.value, user_fns, changed);
+            }
+        }
+        Expr::Some(inner) | Expr::Ok(inner) | Expr::Err(inner) => {
+            errprop_expr(inner, user_fns, changed)
+        }
+        Expr::NullCoalesce(l, r) => {
+            errprop_expr(l, user_fns, changed);
+            errprop_expr(r, user_fns, changed);
+        }
+        Expr::To { expr, .. } | Expr::Cast { expr, .. } => {
+            errprop_expr(expr, user_fns, changed)
+        }
+        Expr::Closure(cl) => errprop_expr(&mut cl.body, user_fns, changed),
+        Expr::Block(b) => errprop_body(&mut b.stmts, user_fns, changed),
+        Expr::If(i) => {
+            for b in i.branches.iter_mut() {
+                errprop_expr(&mut b.cond, user_fns, changed);
+                errprop_body(&mut b.body.stmts, user_fns, changed);
+            }
+            if let Some(eb) = i.else_.as_mut() {
+                errprop_body(&mut eb.stmts, user_fns, changed);
+            }
+        }
+        Expr::Dot(recv, _) | Expr::Index(recv, _) => {
+            errprop_expr(recv, user_fns, changed);
+        }
+        _ => {}
+    }
+}
+
+fn wrap_propagate(e: &mut Expr, changed: &mut bool) {
+    if matches!(e, Expr::ErrorPropagate(_)) {
+        return;
+    }
+    let taken = std::mem::replace(e, Expr::Null);
+    *e = Expr::ErrorPropagate(Box::new(taken));
+    *changed = true;
 }

@@ -2123,6 +2123,15 @@ fn wrap_tos_as_result_ok(task: &mut AutoTask, vm: &AutoVM) {
         auto_val::Value::VmRef(auto_val::VmRef {
             id: auto_val::decode_object(nv) as usize,
         })
+    } else if auto_val::is_null(nv) {
+        // Plan 567 T09: null 是值——Ok(null)（`sort()` 等 None 返回形态）。
+        auto_val::Value::Nil
+    } else if auto_val::is_list(nv) {
+        // Plan 567 T09: py list 返回走 TAG_LIST 通道（461）——同 payload
+        // 异标签，未覆盖时落 Int 垃圾解码（p7 四套件中止根因）。
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_list(nv) as usize,
+        })
     } else {
         auto_val::Value::Int(auto_val::decode_i32(nv))
     };
