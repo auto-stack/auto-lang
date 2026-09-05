@@ -1,38 +1,227 @@
-// 031-image-viewer front shell (Plan 547 Task 29).
-// The model contains metadata only; image bytes are served by the media route.
-use back.api: viewer_health
+// 031-image-viewer front UI (Plan 547 Tasks 29 and 33).
+// The model is metadata and transform state only; pixels stay behind the
+// shared media route and ImageSurface renderer.
+use image_viewport: ImageViewport
 
 widget App {
-    msg { Refresh }
+    msg {
+        Init,
+        OpenFile,
+        OpenDirectory,
+        SelectImage(int),
+        ZoomIn,
+        ZoomOut,
+        FitContain,
+        FitWidth,
+        OneToOne,
+        RotateLeft,
+        RotateRight,
+        ToggleFullscreen,
+        ImageLoaded,
+        ImageFailed,
+        Wheel,
+        Pan,
+        DoubleClick,
+        SettleTick,
+        Close
+    }
 
     model {
-        var status str = "Ready"
+        var view_state str = "empty"
+        var status str = "Open a file or directory to begin"
+        var session_id str = ""
         var media_src str = ""
+        var media_alt str = ""
+        var selected_name str = ""
+        var selected_path str = ""
+        var image_count int = 0
+        var selected_index int = 0
+        var zoom float = 1.0
+        var offset_x float = 0.0
+        var offset_y float = 0.0
+        var rotation int = 0
+        var fit_mode str = "contain"
+        var is_fullscreen bool = false
+        var revision int = 0
+        var thumbnails = [
+            { id: 0, name: "No images", src: "" }
+        ]
+    }
+
+    timer {
+        SettleTick (every_ms: 80)
     }
 
     view {
         col {
-            style: "w-full h-screen flex-col bg-background p-4 gap-4"
+            style: "w-full h-screen flex-col bg-background text-foreground overflow-hidden"
             row {
-                style: "items-center justify-between"
-                h1 "Image Viewer" { style: "text-2xl font-bold" }
-                button "Refresh" { onclick: .Refresh }
+                style: "h-12 shrink-0 items-center justify-between px-4 border-b border-border bg-card"
+                row {
+                    style: "items-center gap-2"
+                    text "🖼️" { style: "text-lg" }
+                    h1 "Image Viewer" { style: "text-lg font-semibold" }
+                    text .status { style: "text-xs text-muted-foreground ml-2 truncate max-w-sm" }
+                }
+                row {
+                    style: "items-center gap-1"
+                    button "Open File" { onclick: .OpenFile, style: "px-2.5 py-1.5 text-xs" }
+                    button "Open Directory" { onclick: .OpenDirectory, style: "px-2.5 py-1.5 text-xs" }
+                    button "Fullscreen" { onclick: .ToggleFullscreen, style: "px-2.5 py-1.5 text-xs" }
+                }
             }
-            col {
-                style: "flex-1 items-center justify-center rounded-xl border border-border bg-card"
-                text .status { style: "text-sm text-muted-foreground" }
-                image_surface (
-                    src: .media_src,
-                    alt: "No image selected",
-                    fit: "contain",
-                    zoom: 1.0,
-                    rotation: 0
-                ) {}
+
+            row {
+                style: "flex-1 min-h-0"
+                col {
+                    style: "w-52 shrink-0 border-r border-border bg-card p-3 gap-2 overflow-hidden"
+                    row {
+                        style: "items-center justify-between"
+                        text "Images" { style: "text-xs font-semibold" }
+                        text .image_count { style: "text-xs text-muted-foreground" }
+                    }
+                    if .image_count == 0 {
+                        text "No images yet" { style: "text-xs text-muted-foreground p-2" }
+                    } else {
+                        scroll {
+                            style: "flex-1 min-h-0"
+                            col {
+                                style: "gap-1"
+                                for item in .thumbnails {
+                                    button item.name {
+                                        onclick: .SelectImage(item.id),
+                                        style: "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-muted"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                col {
+                    style: "flex-1 min-w-0 min-h-0"
+                    row {
+                        style: "h-10 shrink-0 items-center justify-center gap-1 border-b border-border"
+                        button "−" { onclick: .ZoomOut, style: "w-8 h-7" }
+                        text "Zoom" { style: "text-xs text-muted-foreground px-2" }
+                        button "+" { onclick: .ZoomIn, style: "w-8 h-7" }
+                        button "Fit" { onclick: .FitContain, style: "px-2 text-xs" }
+                        button "Width" { onclick: .FitWidth, style: "px-2 text-xs" }
+                        button "1:1" { onclick: .OneToOne, style: "px-2 text-xs" }
+                        button "↺" { onclick: .RotateLeft, style: "w-8 h-7" }
+                        button "↻" { onclick: .RotateRight, style: "w-8 h-7" }
+                    }
+
+                    col {
+                        style: "flex-1 min-h-0 items-center justify-center p-3 bg-muted/20"
+                        if .view_state == "empty" {
+                            col {
+                                style: "items-center justify-center gap-2"
+                                text "🖼️" { style: "text-5xl opacity-40" }
+                                text "Choose an image file or directory" { style: "text-sm text-muted-foreground" }
+                            }
+                        } else if .view_state == "loading" {
+                            text "Loading image…" { style: "text-sm text-muted-foreground" }
+                        } else if .view_state == "error" {
+                            col {
+                                style: "items-center justify-center gap-2"
+                                text "Unable to load image" { style: "text-sm text-destructive" }
+                                button "Retry" { onclick: .OpenFile, style: "px-3 py-1.5 text-xs" }
+                            }
+                        } else {
+                            ImageViewport(
+                                src: .media_src,
+                                alt: .media_alt,
+                                fit_mode: .fit_mode,
+                                zoom: .zoom,
+                                offset_x: .offset_x,
+                                offset_y: .offset_y,
+                                rotation: .rotation,
+                                on_loaded: .ImageLoaded,
+                                on_error: .ImageFailed,
+                                on_wheel: .Wheel,
+                                on_pan: .Pan,
+                                on_double_click: .DoubleClick
+                            )
+                        }
+                    }
+
+                    row {
+                        style: "h-9 shrink-0 items-center justify-between px-3 border-t border-border bg-card"
+                        text .selected_name { style: "text-xs font-medium truncate" }
+                        text .selected_path { style: "text-[11px] text-muted-foreground truncate max-w-md" }
+                    }
+                }
             }
         }
     }
 
+    bind {
+        "ArrowLeft" -> .RotateLeft
+        "ArrowRight" -> .RotateRight
+        "+" -> .ZoomIn
+        "-" -> .ZoomOut
+        "0" -> .FitContain
+        "1" -> .OneToOne
+        "F" -> .ToggleFullscreen
+        "Escape" -> .Close
+    }
+
     on {
-        .Refresh -> { .status = viewer_health() }
+        .Init -> {
+            .view_state = "empty"
+            .status = "Open a file or directory to begin"
+        }
+        .OpenFile -> {
+            .view_state = "loading"
+            .status = "Reading image metadata…"
+            .media_src = "/api/__auto/media/demo/1"
+            .media_alt = "Selected image"
+            .selected_name = "demo-image"
+            .selected_path = "demo-image"
+            .image_count = 1
+            .selected_index = 0
+            .revision = .revision + 1
+        }
+        .OpenDirectory -> {
+            .view_state = "loading"
+            .status = "Indexing directory…"
+            .image_count = 1
+            .revision = .revision + 1
+        }
+        .SelectImage(i) -> {
+            .selected_index = i
+            .view_state = "loading"
+            .revision = .revision + 1
+        }
+        .ZoomIn -> {
+            .zoom = .zoom + 0.1
+            .fit_mode = "free"
+        }
+        .ZoomOut -> {
+            if .zoom > 0.2 { .zoom = .zoom - 0.1 }
+            .fit_mode = "free"
+        }
+        .FitContain -> { .fit_mode = "contain"; .zoom = 1.0; .offset_x = 0.0; .offset_y = 0.0 }
+        .FitWidth -> { .fit_mode = "width"; .zoom = 1.0 }
+        .OneToOne -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
+        .RotateLeft -> { .rotation = (.rotation + 270) % 360 }
+        .RotateRight -> { .rotation = (.rotation + 90) % 360 }
+        .ToggleFullscreen -> { .is_fullscreen = !.is_fullscreen }
+        .ImageLoaded -> { .view_state = "ready"; .status = "Ready" }
+        .ImageFailed -> { .view_state = "error"; .status = "Image failed to load" }
+        .Wheel -> { .zoom = .zoom + 0.1; .fit_mode = "free" }
+        .Pan -> { .offset_x = .offset_x + 8.0; .offset_y = .offset_y + 4.0 }
+        .DoubleClick -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
+        .SettleTick -> {
+            if .view_state == "loading" { .view_state = "ready"; .status = "Ready" }
+        }
+        .Close -> {
+            .view_state = "empty"
+            .media_src = ""
+            .selected_name = ""
+            .selected_path = ""
+            .status = "Closed"
+        }
     }
 }
