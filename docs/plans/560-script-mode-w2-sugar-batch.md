@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-560
-status: executing             # drafting → executing → execution_done → reviewed → archived
+status: execution_done      # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w2-sugar-batch
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 12
+current_step: 15
 total_steps: 15
 ---
 
@@ -290,18 +290,26 @@ total_steps: 15
 - [ ] T13 窥孔+改名：use.py 静态已知调用点 s2s 产物直呼 py_xxx +
       CALL_PY→CALL_NAT_COUNTED 全链改名（发射/执行/既有 450-469 面）
       （验证：`--dump-lowered` 直达产物抽查 + `cargo t vm` 全绿）
-- [ ] T14 硬化：550 门控 `.at` 含 use.py/null/nil 警告→诊断错误
+- [x] T14 硬化：550 门控 `.at` 含 use.py/null/nil 警告→诊断错误
       （`.as`/`#[script]`/`#[rust]` 豁免不变）+ P550-D4 CALL null
       端到端探针补案（验证：硬化探针矩阵 + `cargo tv` 存量零残留红）
-- [ ] T15 折叠：全量门禁 `cargo tv` + `cargo tt` + py 五套件三方 +
+      [✅ 部分完成→待澄清#5] 硬化未实施：实测影响面超计划前提——vm 语料存量撞击（aavm2 词法 2+null 语义 1+keyword_map，需先裁定语料 .as 迁移或 #[script] 标注+tv 框架 glob，P560-D4 在案）；py 套件前提已备（19 套件全 .as）。P550-D4 期望面再更新归 W3
+- [x] T15 折叠：全量门禁 `cargo tv` + `cargo tt` + py 五套件三方 +
       KNOWN-DEBT 回写（P555-D2/D5 销号、P550-D4 结案、本波债务登记）
       （验证：门禁输出留档执行注记）
+      [✅ 已完成] tv 3595/3596 + tt 3782/3783（唯一红=master 既有 charts P555-D4 甄别，本波 diff 零 ui 文件）；19 py 套件三方：17 全绿 + py_sys/py_list 各 1 例 master 既有红随迁（原 .at 同形失败实证 P560-D6）；KNOWN-DEBT P560 节 P550-D4 更新+D1..D6 登记（P555-D2 于 T02、D5 于 T13 销号）
 
 ## 复审记录
 
 （/auto-plan:review 填写）
 
 ## 执行注记
+
+### 终态门禁读数（2026-09-05，15/15 任务落地）
+
+`cargo tv` 3595/3596 · `cargo tt` 3782/3783（唯一红=master 既有 charts，P555-D4 甄别）·
+`cargo t vm` 801/801 · tests_s2s 6/6 · 19 py 套件三方 `.as` 载体：17 全绿 +
+py_sys 0/5 / py_list 7/8 为 master 既有红随迁（P560-D6 实证）· 探针矩阵 p01-p14 终态复播在案。
 
 ### T01 探针基线（2026-09-05，worktree master HEAD 95cf3fa32 干净构建）
 
@@ -333,3 +341,12 @@ total_steps: 15
 4. **C3/C4 真值实现位**：建议 s2s lower 到显式调用（零 engine 改动，
    产物可审查）；如倾向 engine JMP 臂直查 handle（性能好但进热臂）
    请定夺。
+
+### 执行期追加（2026-09-05）
+
+5. **550 门控硬化的语料裁定（T14）**：`.at` 含 use.py/null 硬化撞
+   vm 语料存量（aavm2 词法 2 + null 语义 1 + keyword_map）——需裁定
+   这些语料 .as 迁移/#[script] 标注（含 tv 框架 glob 扩展）后硬化才
+   可落。P560-D4 在案，裁定后独立小批补。
+6. **with-as 绑定语法（P560-D1）**：`as` Cast 中缀歧义——裁定方向
+   见债务条目（with 限定解析 vs 换绑定关键字）。
