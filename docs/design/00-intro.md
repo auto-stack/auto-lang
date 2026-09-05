@@ -110,7 +110,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 - [`autoui/`](autoui/README.md)（需求级设计 + 索引）：shared-store(原18)、theming(19)、
   examples-app-track(21)、base-styles(22)、virtual-desktop(23)、desktop-shell-and-launcher(24)、
-  a2ui-composer-analysis(原25)、image-viewer-pipeline、025-gap-enumeration(16a)
+  a2ui-composer-analysis(原25)、image-viewer-pipeline(Plan 547)、025-gap-enumeration(16a)
 - [`blocks/`](blocks/blocks-first-class.md)（4 篇）：blocks-first-class(原17) 为 Blocks 层主设计，
   配套 agent-generation-workflow / block-package-format / datasource-convention
 

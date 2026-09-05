@@ -59,6 +59,7 @@
 | 音乐播放器 | 020-music-player | ✅ 有 demo，现代双端播放器 |
 | 流媒体视频门户 | 019-video-app | ✅ 有 demo，Bilibili/YouTube 风格 |
 | 视频播放器 (本地/系统) | 030-video-player | ✅ [Plan 542] 原生极简播放器 (VLC/PotPlayer 风格) |
+| 图片查看器 (本地/系统) | 031-image-viewer | ◐ [Plan 547] 三运行形态 ImageSurface 与后端媒体管线 |
 | 时钟(世界钟/闹钟/计时) | 012-stopwatch | ◐ 原地升级为 clock suite,不占新号 |
 | 系统监视器 | 025-dashboard | 🆕 §5 |
 | 文件管理器 | 027-file-manager | 🆕 §5 |
