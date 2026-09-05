@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-536
-status: execution_done       # 2026-09-05 Phase 2 定位完成:引擎无罪,最后一里定罪 musk chatActivePath(061 D25 在修),T14/T15 移交
+status: reviewed             # 2026-09-05 Phase 2 复审通过(定位+定罪+移交),待合并归档
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
@@ -370,6 +370,38 @@ master 清理重编译（v0.4.1-3478-g432e15dab）。重测面板结果：
 债候选:KD P536-D1（生成器振荡）、KD P536-D2（state-scope 专项）、
 KD-047（SSE 桥专项,存量）。重开段目标"尾债就地清偿"按此口径达成,
 计划重新归档（archived 终态,二次关闭）。
+
+## Phase 2 复审记录（2026-09-05）
+
+- **Reviewer**: ZCode（/auto-plan:review,Phase 2 段）
+- **复核基线**: worktree plan-536-dev(7cf766e5b)+musk main(d312cbb,含 061 在途);
+  证据 scratch/p536_t13_evidence/(vm_ui.log POLLTRACE 全序列+autoui_state 时序)。
+
+### 逐项判定（T13-T15）
+
+1. **T13 仪器化定位——pass**:POLLTRACE 三追踪面(SET/GATE/FOR)落地并产出
+   定罪陈述;四则矛盾全部定案(引擎 refill/派发/启发式/置位逐层实证工作,
+   最后一里=musk 画布投影 chatActivePath 链,与 061 D25 收敛)。
+2. **T14 根修(改判移交)——pass(口径修正)**:T13 实证 auto-lang 引擎在本
+   链路无罪,根修物属 musk 视图层(chatActivePath,061 D25 在修)——本计划
+   不重复动手(同文件冲突风险),改判移交是证据支持的正确处置;auto-lang
+   侧产出 POLLTRACE 常驻诊断设施(env 门控零开销)。
+3. **T15 直显终验(移交验收)——pass(移交口径)**:验收配方与工具已备
+   (p536_t13_polltrace.py+POLLTRACE),随 061 D25 落地执行;不阻塞 061。
+
+### 遗漏/延后/workaround 猎查（Phase 2 段）
+
+- KD P536-D2 的"跨模块 SET_FIELD 不可达根态"定性**被 T13 证据修正**:
+  实证全部 handler 帧均绑根态(4000030),写入可达;旧观察的矛盾系四修前
+  代码(when 门+头部 StopStream)复合症状。KD 行需随本合并更新口径
+  （保留:列表 vmref 突变 vs 标量重绑定的可见性差异现象仍待
+  state-scope/RC 专项解释,但不再阻塞直显链路）。
+- musk deadman 窗为 KD P536-D2 修正前的绕行,留存无害(2 分钟窗自愈)。
+
+### 判定（Phase 2 段）
+
+**reviewed**——T13 定位达成,T14/T15 以证据支持的改判移交 061;Phase 2
+关闭,计划三次归档。
 
 ## 测试设计
 
