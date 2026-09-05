@@ -2003,6 +2003,7 @@ widget SvgProbe {
             use crate::ui::view::View;
             match v {
                 View::Image { src, .. } => out.push(src.clone()),
+                View::ImageSurface { src, .. } => out.push(src.clone()),
                 View::Column { children, .. } | View::Row { children, .. } => {
                     for c in children { find_svgdoc(c, out); }
                 }
@@ -2089,6 +2090,7 @@ widget OpProbeOrig {
             use crate::ui::View;
             match v {
                 View::Image { src, .. } => out.push(src.clone()),
+                View::ImageSurface { src, .. } => out.push(src.clone()),
                 View::Column { children, .. } | View::Row { children, .. } => {
                     for c in children { find_svgdoc(c, out); }
                 }
@@ -3327,4 +3329,3 @@ impl VmBridge {
         out
     }
 }
-
