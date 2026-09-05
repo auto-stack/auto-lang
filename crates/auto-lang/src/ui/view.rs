@@ -708,6 +708,18 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// Plan 547: asynchronous image surface backed by an opaque media URI.
+    ImageSurface {
+        src: String,
+        alt: String,
+        width: u32,
+        height: u32,
+        quality: u8,
+        on_error: Option<M>,
+        on_loaded: Option<M>,
+        style: Option<Style>,
+    },
+
     /// Plan 497: per-window live thumbnail — renders the host-side snapshot
     /// cache for `wid` (real downsampled pixels); falls back to
     /// `fallback_icon` (lucide glyph) when no fresh snapshot exists.
@@ -1262,6 +1274,19 @@ impl<M: Clone + Debug> View<M> {
         View::Image { src: src.into(), style: None }
     }
 
+    pub fn image_surface(src: impl Into<String>) -> Self {
+        View::ImageSurface {
+            src: src.into(),
+            alt: String::new(),
+            width: 0,
+            height: 0,
+            quality: 90,
+            on_error: None,
+            on_loaded: None,
+            style: None,
+        }
+    }
+
     /// Create styled image view
     pub fn image_styled(src: impl Into<String>, style_str: &str) -> Self {
         View::Image {
@@ -1802,6 +1827,16 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
+            View::ImageSurface { src, alt, width, height, quality, on_error, on_loaded, style } => View::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                on_error: on_error.map(|m| f(m)),
+                on_loaded: on_loaded.map(|m| f(m)),
+                style,
+            },
             View::WindowThumbnail { wid, fallback_icon, style } => {
                 View::WindowThumbnail { wid, fallback_icon, style }
             }
@@ -3821,6 +3856,20 @@ mod tests {
                 }
             }
             _ => panic!("Expected View::Grid after map_msg"),
+        }
+    }
+
+    #[test]
+    fn image_surface_view_constructor_and_map_callbacks() {
+        let view = View::<u8>::image_surface("/api/__auto/media/asset/1");
+        let mapped = view.map_msg(|value| value + 1);
+        match mapped {
+            View::ImageSurface { src, width, height, quality, on_error, on_loaded, .. } => {
+                assert_eq!(src, "/api/__auto/media/asset/1");
+                assert_eq!((width, height, quality), (0, 0, 90));
+                assert!(on_error.is_none() && on_loaded.is_none());
+            }
+            _ => panic!("expected ImageSurface"),
         }
     }
 }

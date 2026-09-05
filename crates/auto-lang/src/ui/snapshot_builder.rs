@@ -291,6 +291,13 @@ impl SnapshotBuilder {
                 actions: vec![],
                 children: vec![],
             },
+            View::ImageSurface { src, alt, .. } => UiNode {
+                id,
+                kind: "ImageSurface".to_string(),
+                props: vec![("src".to_string(), src.clone()), ("alt".to_string(), alt.clone())],
+                actions: vec![],
+                children: vec![],
+            },
 
             // Plan 497: 窗口缩略(宿主快照缓存资产;检视面披露 wid 与
             // fallback)。

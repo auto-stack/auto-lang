@@ -4755,6 +4755,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     cont.into()
                 }
             }
+
+            AbstractView::ImageSurface { src, style, .. } => {
+                // Until the dedicated widget lands, reuse Image's native
+                // loader while preserving the backend-neutral node contract.
+                AbstractView::Image { src, style }.into_iced()
+            }
         }
     }
 }
@@ -4901,6 +4907,16 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
         // `bg-primary text-primary-foreground { Send{} }` 的图标此前落
         // OnBackground 回退,亮色主题下白钮白标不可见。
         AbstractView::Image { style, .. } => {
+            let has_explicit_color = style.as_ref().map_or(false, |s| {
+                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+            });
+            if !has_explicit_color {
+                let mut inherited = style.take().unwrap_or_default();
+                inherited.classes.push(StyleClass::TextColor(color));
+                *style = Some(inherited);
+            }
+        }
+        AbstractView::ImageSurface { style, .. } => {
             let has_explicit_color = style.as_ref().map_or(false, |s| {
                 s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
             });
@@ -5772,6 +5788,18 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
 
         AbstractView::Image { src, style } => {
             AbstractView::Image { src, style }
+        }
+        AbstractView::ImageSurface { src, alt, width, height, quality, on_error, on_loaded, style } => {
+            AbstractView::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                on_error: on_error.map(|m| IcedMessage::from_dynamic(&m)),
+                on_loaded: on_loaded.map(|m| IcedMessage::from_dynamic(&m)),
+                style,
+            }
         }
 
         // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`
@@ -17366,6 +17394,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Slider { style, .. } => style.as_ref(),
         AbstractView::ProgressBar { style, .. } => style.as_ref(),
         AbstractView::Image { style, .. } => style.as_ref(),
+        AbstractView::ImageSurface { style, .. } => style.as_ref(),
         AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
@@ -17444,6 +17473,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Slider { .. } => "slider",
         AbstractView::ProgressBar { .. } => "progress",
         AbstractView::Image { .. } => "image",
+        AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
