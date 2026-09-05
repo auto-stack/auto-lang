@@ -5789,15 +5789,24 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         AbstractView::Image { src, style } => {
             AbstractView::Image { src, style }
         }
-        AbstractView::ImageSurface { src, alt, width, height, quality, on_error, on_loaded, style } => {
+        AbstractView::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => {
             AbstractView::ImageSurface {
                 src,
                 alt,
                 width,
                 height,
                 quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
                 on_error: on_error.map(|m| IcedMessage::from_dynamic(&m)),
                 on_loaded: on_loaded.map(|m| IcedMessage::from_dynamic(&m)),
+                on_wheel: on_wheel.map(|m| IcedMessage::from_dynamic(&m)),
+                on_pan: on_pan.map(|m| IcedMessage::from_dynamic(&m)),
+                on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
                 style,
             }
         }

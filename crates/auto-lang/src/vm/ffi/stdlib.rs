@@ -7570,6 +7570,17 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.server_listen", shim_http_server_listen);
     #[cfg(feature = "ui-iced")]
     {
+        // Package unit tests and embedded callers run with the crate directory
+        // as cwd, so native_registry's relative stdlib scan cannot be relied on
+        // to discover image.vm.at.  Seed these eight names explicitly before
+        // resolving the shims; the declaration file remains the source of the
+        // public signatures for normal workspace builds.
+        {
+            let mut registry = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+            for name in IMAGE_NATIVE_NAMES {
+                registry.register(name);
+            }
+        }
         natives.register_shim_by_name("auto.image.queue", shim_image_queue);
         natives.register_shim_by_name("auto.image.open", shim_image_open);
         natives.register_shim_by_name("auto.image.scan", shim_image_scan);

@@ -537,6 +537,10 @@ mod tests {
     #[test]
     fn image_stdlib_declarations_expose_ticket_api_without_pixels() {
         let api = include_str!("../../../../stdlib/auto/image.at");
+        let vm_api = include_str!("../../../../stdlib/auto/image.vm.at");
+        crate::parser::Parser::from(vm_api)
+            .parse()
+            .unwrap_or_else(|e| panic!("image.vm.at must parse: {e}"));
         for name in ["queue", "open", "scan", "request", "retain", "release", "close", "stats"] {
             assert!(api.contains(&format!("fn {name}")), "missing image API: {name}");
         }

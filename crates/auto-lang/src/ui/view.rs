@@ -715,8 +715,20 @@ pub enum View<M: Clone + Debug> {
         width: u32,
         height: u32,
         quality: u8,
+        /// Object-fit policy used by the shared surface renderer.
+        fit: String,
+        /// Interactive transform state.  These values are deliberately
+        /// scalar so they can be resolved by both VM and generated paths.
+        zoom: f32,
+        offset_x: f32,
+        offset_y: f32,
+        rotation: i32,
+        filter: String,
         on_error: Option<M>,
         on_loaded: Option<M>,
+        on_wheel: Option<M>,
+        on_pan: Option<M>,
+        on_double_click: Option<M>,
         style: Option<Style>,
     },
 
@@ -1281,8 +1293,17 @@ impl<M: Clone + Debug> View<M> {
             width: 0,
             height: 0,
             quality: 90,
+            fit: "contain".to_string(),
+            zoom: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            rotation: 0,
+            filter: "high".to_string(),
             on_error: None,
             on_loaded: None,
+            on_wheel: None,
+            on_pan: None,
+            on_double_click: None,
             style: None,
         }
     }
@@ -1827,14 +1848,23 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
-            View::ImageSurface { src, alt, width, height, quality, on_error, on_loaded, style } => View::ImageSurface {
+            View::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => View::ImageSurface {
                 src,
                 alt,
                 width,
                 height,
                 quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
                 on_error: on_error.map(|m| f(m)),
                 on_loaded: on_loaded.map(|m| f(m)),
+                on_wheel: on_wheel.map(|m| f(m)),
+                on_pan: on_pan.map(|m| f(m)),
+                on_double_click: on_double_click.map(|m| f(m)),
                 style,
             },
             View::WindowThumbnail { wid, fallback_icon, style } => {
@@ -3864,10 +3894,14 @@ mod tests {
         let view = View::<u8>::image_surface("/api/__auto/media/asset/1");
         let mapped = view.map_msg(|value| value + 1);
         match mapped {
-            View::ImageSurface { src, width, height, quality, on_error, on_loaded, .. } => {
+            View::ImageSurface { src, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, .. } => {
                 assert_eq!(src, "/api/__auto/media/asset/1");
                 assert_eq!((width, height, quality), (0, 0, 90));
+                assert_eq!(fit, "contain");
+                assert_eq!((zoom, offset_x, offset_y, rotation), (1.0, 0.0, 0.0, 0));
+                assert_eq!(filter, "high");
                 assert!(on_error.is_none() && on_loaded.is_none());
+                assert!(on_wheel.is_none() && on_pan.is_none() && on_double_click.is_none());
             }
             _ => panic!("expected ImageSurface"),
         }
