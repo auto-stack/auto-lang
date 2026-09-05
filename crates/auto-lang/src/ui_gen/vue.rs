@@ -15032,6 +15032,29 @@ export function cn(...inputs: ClassValue[]) {
             let fns = importable_fns.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
             code.push_str(&format!("import {{ {} }} from '@/lib/api'\n", fns));
         }
+        // Plan 559 W2: sibling store facades. Each `use <other>_store: <Name>`
+        // referenced by this store's bodies gets a composable import (stores
+        // sit in the same stores/ dir → relative path) + a reactive facade
+        // const; the ctx's store_facades map below routes qualified call
+        // heads (`Collection.Init(...)`) onto it. Self-qualification stays a
+        // bare local call via store_facade_from (vm A1 contract, mirrors the
+        // regen.sh deploy sed this replaces).
+        for sibling in &store.sibling_stores {
+            code.push_str(&format!(
+                "import {{ use{}Store }} from './use{}Store'\n",
+                sibling, sibling
+            ));
+        }
+        if !store.sibling_stores.is_empty() {
+            code.push_str("import { reactive } from 'vue'\n");
+            for sibling in &store.sibling_stores {
+                code.push_str(&format!(
+                    "const {} = reactive(use{}Store())\n",
+                    facade_var_for(sibling),
+                    sibling
+                ));
+            }
+        }
         code.push('\n');
 
         // Module-level ref declarations (singleton state).
@@ -15065,9 +15088,22 @@ export function cn(...inputs: ClassValue[]) {
             }
         }
         // Pass API imports so ts_adapter adds `await` to API calls.
+        // Plan 559 W2: self-qualified heads emit bare (store_bare_heads —
+        // a composable has no `store` const; the sibling's action is a
+        // local fn); sibling store heads map onto their reactive facade
+        // consts (store_facades), matching the imports emitted above.
+        let mut sibling_facades: std::collections::HashMap<String, String> =
+            Default::default();
+        for sibling in &store.sibling_stores {
+            sibling_facades.insert(sibling.clone(), facade_var_for(sibling));
+        }
+        let mut self_bare: std::collections::HashSet<String> = Default::default();
+        self_bare.insert(store.name.clone());
         let ctx = AuraTsContext::new(state_names)
             .with_props(std::collections::HashSet::new())
             .with_api_functions(store.api_imports.clone())
+            .with_store_bare_heads(self_bare)
+            .with_store_facades(sibling_facades)
             .with_typed_collections(typed_arrays, typed_strings)
             .with_typed_ints(typed_ints);
 
@@ -22572,6 +22608,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22645,6 +22682,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22720,6 +22758,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22794,6 +22833,7 @@ store PlainStore {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);

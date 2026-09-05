@@ -411,6 +411,53 @@ fn collect_use_module_actions(
     None
 }
 
+/// Plan 559 W2: sibling store discovery for a store file. Scans the file's
+/// `use <module>: <Alias>` imports (non-c/rust), resolves each module like
+/// the vm loader does, and records the store name of every module that
+/// declares a `store { ... }` block. The vue store composable generator
+/// consumes these to emit cross-store facade imports/consts and to map
+/// qualified call heads (`Collection.Init(...)`) onto the sibling's facade
+/// variable — previously they emitted bare and failed vue-tsc (TS2304,
+/// os-config modules_store → Collection/DesktopCfg).
+pub fn collect_store_siblings(at_path: &std::path::Path, code: &str) -> Vec<String> {
+    let base_dir = at_path.parent().unwrap_or(std::path::Path::new("."));
+    let mut out: Vec<String> = Vec::new();
+    for use_stmt in crate::use_scanner::scan_use_statements(code) {
+        if use_stmt.is_c_import || use_stmt.is_rust_import {
+            continue;
+        }
+        let module_path = match crate::resolve_use_module(base_dir, &use_stmt) {
+            crate::UseModuleResolution::Module(p) => p,
+            _ => continue,
+        };
+        let Ok(module_code) = std::fs::read_to_string(&module_path) else {
+            continue;
+        };
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(module_code.as_str()).with_session(session);
+        let Ok(mod_ast) = parser.parse() else {
+            continue;
+        };
+        for stmt in &mod_ast.stmts {
+            if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+                // The call head in bodies is the import item alias when one
+                // is given (os-config: `use collection_store: Collection`),
+                // else the store's own name. Both coincide in this codebase's
+                // convention; prefer the alias when present.
+                let head = if use_stmt.items.len() == 1 {
+                    use_stmt.items[0].trim().to_string()
+                } else {
+                    store_decl.name.as_str().to_string()
+                };
+                if !head.is_empty() && !out.contains(&head) {
+                    out.push(head);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Plan 522: collect the module-level plain-fn pool from `use`-imported
 /// modules + the bare names the items lists import. Mirrors the vm loader's
 /// full-module load: ALL fns of each resolved module enter the pool (an
@@ -547,6 +594,7 @@ pub fn generate_component_from_file(
             store.api_imports = api_imports.clone();
             store.stream_endpoints = opts.stream_endpoints.clone().unwrap_or_default();
             store.module_fns = module_fns.clone();
+            store.sibling_stores = collect_store_siblings(at_path, &code);
             let (composable, warnings) = VueGenerator::generate_store_composable_full(&store);
             store_warnings.extend(warnings);
             let filename = format!("stores/use{}Store.ts", store.name);
@@ -1705,6 +1753,78 @@ store TagsStore {
     // wire-value → action-name variant map. Nested variant bodies
     // (e.g. `Delta { text str }`) must NOT truncate parsing.
     // ====================================================================
+
+    /// Plan 559 W2: cross-store qualified calls inside store bodies. A store
+    /// file referencing a sibling store (`use inventory_store: Inventory` →
+    /// `Inventory.Add(...)`) previously emitted the head bare → TS2304 in the
+    /// generated composable (os-config modules_store → Collection/DesktopCfg).
+    /// The composable now imports the sibling composable, declares a reactive
+    /// facade const, and routes qualified heads onto it; self-qualification
+    /// (`Cart.Sync()` inside Cart itself, vm A1 contract) emits a bare local
+    /// call.
+    #[test]
+    fn test_store_cross_store_calls_map_to_facades() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let sibling = r#"
+store Inventory {
+    model { var items []str = [] }
+    msg Msg { Add }
+    on {
+        .Add(name str) -> { .items.push(name) }
+    }
+}
+"#;
+        let consumer = r#"
+use inventory_store: Inventory
+
+store Cart {
+    model { var total int = 0 }
+    msg Msg { Sync, SelfCheck }
+    on {
+        .Sync -> { Inventory.Add("widget") }
+        .SelfCheck -> { Cart.Sync() }
+    }
+}
+"#;
+        let dir = std::env::temp_dir().join("p559_cross_store_probe");
+        let _ = std::fs::create_dir_all(&dir);
+        let sibling_path = dir.join("inventory_store.at");
+        let consumer_path = dir.join("cart_store.at");
+        std::fs::write(&sibling_path, sibling).expect("write sibling store");
+        std::fs::write(&consumer_path, consumer).expect("write consumer store");
+
+        let result = generate_component_from_file(&consumer_path, ComponentGenOptions::default())
+            .expect("consumer store must generate");
+        crate::drain_store_extra_files(); // keep thread-local clean for other tests
+
+        assert_eq!(result.store_composables.len(), 1);
+        let (_, code) = &result.store_composables[0];
+        assert!(
+            code.contains("import { useInventoryStore } from './useInventoryStore'"),
+            "sibling composable import must be emitted, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("const inventoryStore = reactive(useInventoryStore())"),
+            "sibling facade const must be emitted, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("inventoryStore.Add("),
+            "qualified sibling call must route onto the facade var, got:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("Cart.Sync()"),
+            "self-qualified call must emit bare (vm A1 contract), got:\n{}",
+            code
+        );
+
+        let _ = std::fs::remove_file(&consumer_path);
+        let _ = std::fs::remove_file(&sibling_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
 
     #[test]
     fn test_resolve_stream_variants_snake_case_tag() {
