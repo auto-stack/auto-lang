@@ -54,6 +54,10 @@ const DOC_EXCLUDE: &[&str] = &[
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +
     // schema/aura.at element 描述。
     "windowthumbnail",
+    // Plan 563:状态驱动画布(引擎原语,能力样板轨道——不设 gallery 页);
+    // 场景数据契约与双端映射规约文档化于
+    // examples/capability-tests/031-canvas-paint/SPEC.md + schema 描述。
+    "canvas",
     // Plan 482 nav 家族子件,随 nav 页(nav-item/nav-link)文档化
     "navgroup",
     // form 家族件(form 页文档化)

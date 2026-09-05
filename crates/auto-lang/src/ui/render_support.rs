@@ -263,11 +263,10 @@ fn get_support_details(tag: &str) -> TagSupport {
             "navigation component not implemented — renders as Column",
         ),
         // Plan 484: 原生 chart tag 退役(裸名由 official 包 Auto 组件承接,
-        // 不再落到此表);canvas 保留 fallback 待 v2。
-        "canvas" => TagSupport::fallback(
-            &["style", "data", "type"],
-            "canvas not implemented (v2 canvas bridge pending)",
-        ),
+        // 不再落到此表);Plan 563: canvas 升 full——状态驱动画布
+        // (AbstractView::Canvas → iced canvas::Program 直绘,场景数据
+        // 契约见 schema 描述)。
+        "canvas" => TagSupport::full(),
         // Plan 484: hover 命中区——iced mouse_area 事件转发,与 col/row 同级
         "mouse-area" => TagSupport::full(),
         "video" | "audio" | "media" => TagSupport::fallback(

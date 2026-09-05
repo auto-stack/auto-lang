@@ -299,6 +299,24 @@ A clickable button element
 
 ---
 
+### `canvas`
+
+`builtin_widget` · `canvas` · web: `native` · iced: `full` · category: `media`
+
+State-driven drawing canvas (Plan 563). Content renders from the scene state binding - a parallel-string-list stroke model (B12-style: pts list \
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `scene` | `state_ref` | — | Stroke-scene state binding (list of polylines; the canvas content is fully derived from this state - render is a pure function of it) |
+| `coords` | `string` | — | Logical extent \ |
+| `clear` | `string` | — | Optional background color (CSS color syntax); eraser strokes render as background-color strokes in v1 (no true compositing removal) |
+| `onpenstart` | `msg_ref` | — | Pen down on the canvas; handler receives (x, y) float logical coords |
+| `onpenmove` | `msg_ref` | — | Pen drag while pressed - dispatched only during pen-down (gating lives in the engine, <=30Hz throttled like mouse-area onmousemove); handler receives (x, y) |
+| `onpenend` | `msg_ref` | — | Pen up or pen leaving the canvas bounds (leaving-the-bounds ends the stroke on both backends); handler receives (x, y) |
+| `class` | `union: string|class_binding` | — | CSS class(es) (size/border/rounded land on the canvas frame) |
+
+---
+
 ### `center`
 
 `builtin_widget` · `center` · web: `component` · iced: `full` · category: `content`
@@ -1232,16 +1250,6 @@ Block quotation
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
-
----
-
-### `canvas`
-
-`native_html` · `canvas` · web: `none` · iced: `fallback` · category: `content`
-
-P1 extracted from production tables; props TBD
-
-_props 待声明_
 
 ---
 
