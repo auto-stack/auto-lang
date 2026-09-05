@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-cli]   # 受影响的 specs 路径
-current_step: 6
+current_step: 8
 total_steps: 11
 ---
 
@@ -237,11 +237,13 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
       方法表臂 + `vm/codegen.rs` 注册面（`interop.*` 家族）
       （验证：py 句柄/Auto 值双通道探针绿）
       [✅ 已完成] 组合子 1860-1865（catalog 限定名+裸名双注册，惰性命中）；发射=CALL_PY 传输形态（is_py_ffi_call 复用为"带实参数字节"约定，与 py 零耦合）；Auto 臂=str[i]//list[i]（含负索引+IndexError 对标 550）/map["k"] 读写/ARRAY_LEN 语义/array 通道迭代回推/容器 type_name；外对象臂经协议分派。p6 Auto 全矩阵（list/str/map/迭代 139）+ p7 torch 同函数名（len/sum=15/transpose/setattr/next）双探针绿；obj_call 栈布局 bug（pending 计数含 receiver）当场修复
-- [ ] T07 s2s 骨架：`trans/` 模块 `--to auto` 目标 + 规则表 + identity
+- [x] T07 s2s 骨架：`trans/` 模块 `--to auto` 目标 + 规则表 + identity
       改写 + per-rule 单测框架（验证：测试规则注入单测 + identity
       round-trip 稳定单测绿）
-- [ ] T08 `--dump-lowered`：run/trans 双入口 flag + 产物渲染
+      [✅ 已完成] trans/auto_s2s.rs（LoweringRule{id:A1..F4, rewrite}+builtin_rules 空表+lower_source 管线：词法→语法验证→单遍首中→发射）；Lexer::tokenize_all 公开词法面；三单测绿（identity 幂等逐字节/TEST-1 规则注入即生效且产物可解析/非法源拒绝）；CLI `auto trans --path x auto [-o]`（-o 落盘 round-trip 字节级同实证）
+- [x] T08 `--dump-lowered`：run/trans 双入口 flag + 产物渲染
       （验证：`auto x.as --dump-lowered` 输出留档探针）
+      [✅ 已完成] run 入口全局 flag（先于执行拦截=纯审查面）；lib.rs dump_lowered 渲染=模式头+改写产物（模式按扩展名档位：.as→script/.at→normal，头行留档探针在案）；trans auto 入口共用 trans_auto_s2s 产物源
 - [ ] T09 单测汇总挂档：T02/T04/T05/T06/T07 单测并入 `cargo t vm`
       可见（验证：`cargo t vm` 含全部新增用例绿）
 - [ ] T10 门禁：`cargo tv` + `cargo tt` + py 五套件三方（零回归红线）
