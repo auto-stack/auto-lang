@@ -1417,6 +1417,20 @@ impl<'a> Lexer<'a> {
         Ok(Token::eof(self.pos(0)))
     }
 
+    /// Plan 555 T07: s2s 改写器的词法面——全量 token 收集（EOF 截断）。
+    /// 与测试用 tokens() 同型，公开给 trans::auto_s2s（token 粒度改写面）。
+    pub fn tokenize_all(&mut self) -> AutoResult<Vec<Token>> {
+        let mut tokens = Vec::new();
+        loop {
+            let token = self.next()?;
+            if token.kind == TokenKind::EOF {
+                break;
+            }
+            tokens.push(token);
+        }
+        Ok(tokens)
+    }
+
     #[cfg(test)]
     fn tokens(&mut self) -> AutoResult<Vec<Token>> {
         let mut tokens = Vec::new();

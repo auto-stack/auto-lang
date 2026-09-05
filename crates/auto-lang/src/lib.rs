@@ -4010,6 +4010,34 @@ pub fn run_file(path: &str) -> AutoResult<String> {
     run_file_with_args(path, Vec::new())
 }
 
+/// Plan 555 T07: s2s 改写——Auto 脚本糖源 → 正常模式桥源
+/// （W1 规则表空置=identity passthrough；W2 糖批逐条落
+/// trans::auto_s2s::builtin_rules）。
+pub fn trans_auto_s2s(path: &str) -> AutoResult<String> {
+    let src = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    crate::trans::auto_s2s::lower_source(&src)
+}
+
+/// Plan 555 T08: `--dump-lowered` 渲染——模式头 + 改写产物（run/trans
+/// 双入口共用）。W1 产物 = passthrough 源；模式头按扩展名解析
+/// （pragma 属解析期信号，离线 dump 按扩展名档位）。
+pub fn dump_lowered(path: &str) -> AutoResult<String> {
+    let lowered = trans_auto_s2s(path)?;
+    let ext = path.rsplit('.').next().unwrap_or("");
+    let mode = crate::mode::resolve_script_mode(Some(ext), false, false);
+    let header = format!(
+        "// lowered (Plan 555 W1 passthrough) mode={} src={}
+",
+        match mode {
+            crate::mode::ScriptMode::Script => "script",
+            crate::mode::ScriptMode::Normal => "normal",
+        },
+        path
+    );
+    Ok(header + &lowered)
+}
+
 /// Plan 524: run a script with CLI pass-through args (`auto <file> [args...]`
 /// 直跑透传形态)。Args land in the process-wide `process.args()` 表 =
 /// [程序路径] + args。每次调用覆盖前值（同进程串行多次运行不残留）。
