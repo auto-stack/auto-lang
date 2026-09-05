@@ -76,12 +76,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
                 .map(|b| String::from_utf8_lossy(b).to_string())
                 .unwrap_or_default();
             let obj = self.obj.bind(py);
-            let result = obj.getattr(&attr_name).map_err(|e| {
-                VMError::FFI(format!(
-                    "Python getattr({}.{}) failed: {}",
-                    self.type_name, attr_name, e
-                ))
-            })?;
+            let result = obj.getattr(&attr_name).map_err(|e| py_exc(py, &e))?;
             py_auto_marshal_return(&result, task, vm)
         })?;
         Ok(())
@@ -112,12 +107,8 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
                 VMError::FFI(format!("py obj_set attr name not string: {}", e))
             })?;
             let obj = self.obj.bind(py);
-            obj.setattr(&attr_name, (&value)).map_err(|e| {
-                VMError::FFI(format!(
-                    "Python setattr({}.{}) failed: {}",
-                    self.type_name, attr_name, e
-                ))
-            })?;
+            obj.setattr(&attr_name, (&value))
+                .map_err(|e| py_exc(py, &e))?;
             // 语句形态推 null 保栈平衡（py_setitem 约定）。
             task.ram.push_nv(auto_val::encode_null());
             Ok::<(), VMError>(())
@@ -132,9 +123,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
     ) -> Result<(), VMError> {
         Python::attach(|py| {
             let obj = self.obj.bind(py);
-            let len = obj.len().map_err(|e| {
-                VMError::FFI(format!("Python len({}) failed: {}", self.type_name, e))
-            })?;
+            let len = obj.len().map_err(|e| py_exc(py, &e))?;
             task.ram.push_i32(len as i32);
             Ok::<(), VMError>(())
         })?;
@@ -172,22 +161,14 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
             })?;
             let obj = self.obj.bind(py);
             let result = if method_args.is_empty() {
-                obj.call_method0(&method_name).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python method {}.{}() failed: {}",
-                        self.type_name, method_name, e
-                    ))
-                })?
+                obj.call_method0(&method_name)
+                    .map_err(|e| py_exc(py, &e))?
             } else {
                 let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
                     VMError::FFI(format!("py obj_call args tuple: {}", e))
                 })?;
-                obj.call_method1(&method_name, args_tuple).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python method {}.{}() failed: {}",
-                        self.type_name, method_name, e
-                    ))
-                })?
+                obj.call_method1(&method_name, args_tuple)
+                    .map_err(|e| py_exc(py, &e))?
             };
             py_auto_marshal_return(&result, task, vm)
         })?;
@@ -419,9 +400,7 @@ impl PyFfiBridge {
         let shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
                 let mod_ref = module.bind(py);
-                let func = mod_ref.getattr(&func_name).map_err(|e| {
-                    VMError::FFI(format!("Python function '{}' not found: {}", func_name, e))
-                })?;
+                let func = mod_ref.getattr(&func_name).map_err(|e| py_exc(py, &e))?;
 
                 // Build Python argument tuple by popping from stack in reverse.
                 // Plan 369 Task 10: use the ACTUAL call-site arg count stashed on
@@ -446,34 +425,24 @@ impl PyFfiBridge {
                 let args_tuple = PyTuple::new(py, bound_args).map_err(|e| {
                     VMError::FFI(format!("Failed to create Python args tuple: {}", e))
                 })?;
-                let py_result = func.call1(args_tuple).map_err(|e| {
-                    VMError::FFI(format!("Python call {}() failed: {}", func_name, e))
-                })?;
+                let py_result = func.call1(args_tuple).map_err(|e| py_exc(py, &e))?;
 
                 // Marshal return value to VM stack
                 match return_type {
                     PyType::Int => {
-                        let val: i32 = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not int: {}", e))
-                        })?;
+                        let val: i32 = py_result.extract().map_err(|e| py_exc(py, &e))?;
                         task.ram.push_i32(val);
                     }
                     PyType::Float => {
-                        let val: f64 = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not float: {}", e))
-                        })?;
+                        let val: f64 = py_result.extract().map_err(|e| py_exc(py, &e))?;
                         task.ram.push_f64(val);
                     }
                     PyType::Bool => {
-                        let val: bool = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not bool: {}", e))
-                        })?;
+                        let val: bool = py_result.extract().map_err(|e| py_exc(py, &e))?;
                         task.ram.push_i32(if val { 1 } else { 0 });
                     }
                     PyType::String => {
-                        let val: String = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not string: {}", e))
-                        })?;
+                        let val: String = py_result.extract().map_err(|e| py_exc(py, &e))?;
                         // Plan 510 G1-2: 走 add_string + 配平入栈
                         // (裸推无 dedup 无 rc,消费侧 POP 即多扣)。
                         let idx = vm.add_string(val.into_bytes());
@@ -530,9 +499,7 @@ impl PyFfiBridge {
         let shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
                 let mod_ref = module.bind(py);
-                let py_val = mod_ref.getattr(&const_name).map_err(|e| {
-                    VMError::FFI(format!("Python constant '{}' not found: {}", const_name, e))
-                })?;
+                let py_val = mod_ref.getattr(&const_name).map_err(|e| py_exc(py, &e))?;
                 // Zero-arg constant: no args to pop. pending_native_arg_count is 0.
                 py_auto_marshal_return(&py_val, task, vm)?;
                 Ok::<(), VMError>(())
@@ -594,12 +561,9 @@ impl PyFfiBridge {
                 let obj_py = pop_auto_py_arg(task, vm, py)?;
 
                 let result = if method_args.is_empty() {
-                    obj_py.call_method0(&method_name).map_err(|e| {
-                        VMError::FFI(format!(
-                            "Python method {}.{}() failed: {}",
-                            safe_type_name(&obj_py), method_name, e
-                        ))
-                    })?
+                    obj_py
+                        .call_method0(&method_name)
+                        .map_err(|e| py_exc(py, &e))?
                 } else {
                     // pyo3 0.29: call_method1 takes a PyCallArgs tuple. Build a
                     // PyTuple from the collected args so variadic method calls
@@ -609,12 +573,7 @@ impl PyFfiBridge {
                     })?;
                     obj_py
                         .call_method1(&method_name, args_tuple)
-                        .map_err(|e| {
-                            VMError::FFI(format!(
-                                "Python method {}.{}() failed: {}",
-                                safe_type_name(&obj_py), method_name, e
-                            ))
-                        })?
+                        .map_err(|e| py_exc(py, &e))?
                 };
 
                 py_auto_marshal_return(&result, task, vm)?;
@@ -701,12 +660,7 @@ impl PyFfiBridge {
 
                 let result = obj_py
                     .call_method(&method_name, args_tuple, Some(&kwargs))
-                    .map_err(|e| {
-                        VMError::FFI(format!(
-                            "Python method {}.{}(**kw) failed: {}",
-                            safe_type_name(&obj_py), method_name, e
-                        ))
-                    })?;
+                    .map_err(|e| py_exc(py, &e))?;
 
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
@@ -885,9 +839,7 @@ impl PyFfiBridge {
                 }
                 let b = pop_auto_py_arg(task, vm, py)?;
                 let a = pop_auto_py_arg(task, vm, py)?;
-                let result = a.call_method1("__matmul__", (b,)).map_err(|e| {
-                    VMError::FFI(format!("Python __matmul__ failed: {}", e))
-                })?;
+                let result = a.call_method1("__matmul__", (b,)).map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -921,12 +873,7 @@ impl PyFfiBridge {
                         .map_err(|e| VMError::FFI(format!("py_getitem key tuple: {}", e)))?
                         .into_any()
                 };
-                let result = obj.get_item(&key).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python getitem on {} failed: {}",
-                        safe_type_name(&obj), e
-                    ))
-                })?;
+                let result = obj.get_item(&key).map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -958,12 +905,7 @@ impl PyFfiBridge {
                         .map_err(|e| VMError::FFI(format!("py_setitem key tuple: {}", e)))?
                         .into_any()
                 };
-                obj.set_item(&key, value).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python setitem on {} failed: {}",
-                        safe_type_name(&obj), e
-                    ))
-                })?;
+                obj.set_item(&key, value).map_err(|e| py_exc(py, &e))?;
                 // Statement form: push a nil so the stack stays balanced for
                 // CALL_NAT_COUNTED's dead-zone accounting.
                 task.ram.push_nv(auto_val::encode_null());
@@ -1043,12 +985,7 @@ impl PyFfiBridge {
                 let func = pop_auto_py_arg(task, vm, py)?;
                 let args_tuple = PyTuple::new(py, &args)
                     .map_err(|e| VMError::FFI(format!("py_call0 args tuple: {}", e)))?;
-                let result = func.call(args_tuple, None).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python call {}() failed: {}",
-                        safe_type_name(&func), e
-                    ))
-                })?;
+                let result = func.call(args_tuple, None).map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -1082,12 +1019,7 @@ impl PyFfiBridge {
                 // stake vs closure frame unwind, canary-fired), and the common
                 // contexts (no_grad) don't need it — the ctx is already in
                 // the enclosing scope.
-                ctx.call_method0("__enter__").map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python __enter__ on {} failed: {}",
-                        safe_type_name(&ctx), e
-                    ))
-                })?;
+                ctx.call_method0("__enter__").map_err(|e| py_exc(py, &e))?;
 
                 let body = vm.call_closure(task, closure_id, 0);
                 // Pop the closure's return value (dead value; keep balance).
@@ -1099,12 +1031,7 @@ impl PyFfiBridge {
                         (py.None(), py.None(), py.None()),
                         None::<&Bound<'_, PyDict>>,
                     )
-                    .map_err(|e| {
-                        VMError::FFI(format!(
-                            "Python __exit__ on {} failed: {}",
-                            safe_type_name(&ctx), e
-                        ))
-                    })?;
+                    .map_err(|e| py_exc(py, &e))?;
                 if let Ok(true) = exit_result.extract::<bool>() {
                     // __exit__ returned True — the context suppresses errors:
                     // clear any body error (Python with-semantics).
@@ -1139,12 +1066,7 @@ impl PyFfiBridge {
                     )));
                 }
                 let ctx = pop_auto_py_arg(task, vm, py)?;
-                ctx.call_method0("__enter__").map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python __enter__ on {} failed: {}",
-                        safe_type_name(&ctx), e
-                    ))
-                })?;
+                ctx.call_method0("__enter__").map_err(|e| py_exc(py, &e))?;
                 task.ram.push_nv(auto_val::encode_null());
                 Ok::<(), VMError>(())
             })?;
@@ -1168,12 +1090,7 @@ impl PyFfiBridge {
                     (py.None(), py.None(), py.None()),
                     None::<&Bound<'_, PyDict>>,
                 )
-                .map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python __exit__ on {} failed: {}",
-                        safe_type_name(&ctx), e
-                    ))
-                })?;
+                .map_err(|e| py_exc(py, &e))?;
                 task.ram.push_nv(auto_val::encode_null());
                 Ok::<(), VMError>(())
             })?;
@@ -1227,9 +1144,9 @@ impl PyFfiBridge {
                         module_name, func_name, e
                     ))
                 })?;
-                let result = func.call(args_tuple, Some(&kwargs)).map_err(|e| {
-                    VMError::FFI(format!("Python call {}.{}(**kw) failed: {}", module_name, func_name, e))
-                })?;
+                let result = func
+                    .call(args_tuple, Some(&kwargs))
+                    .map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -1360,12 +1277,7 @@ impl PyFfiBridge {
                     )));
                 }
                 let obj = pop_auto_py_arg(task, vm, py)?;
-                let len = obj.len().map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python len({}) failed: {}",
-                        safe_type_name(&obj), e
-                    ))
-                })?;
+                let len = obj.len().map_err(|e| py_exc(py, &e))?;
                 task.ram.push_i32(len as i32);
                 Ok::<(), VMError>(())
             })?;
@@ -1768,15 +1680,14 @@ fn py_dunder_dispatch<'py>(
                     if reflect.is_empty() {
                         Ok(r)
                     } else {
-                        rhs.call_method1(reflect, (lhs.clone(),)).map_err(|e| {
-                            VMError::FFI(format!("Python {} / {} failed: {}", dunder, reflect, e))
-                        })
+                        rhs.call_method1(reflect, (lhs.clone(),))
+                            .map_err(|e| py_exc(py, &e))
                     }
                 }
                 None => Ok(r),
             }
         }
-        Err(e) => Err(VMError::FFI(format!("Python {} failed: {}", dunder, e))),
+        Err(e) => Err(py_exc(py, &e)),
     }
 }
 
@@ -1817,9 +1728,7 @@ pub(crate) fn py_dunder_cmp(
 pub(crate) fn py_dunder_neg(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Python::attach(|py| {
         let val = pop_auto_py_arg(task, vm, py)?;
-        let result = val.call_method0("__neg__").map_err(|e| {
-            VMError::FFI(format!("Python __neg__ failed: {}", e))
-        })?;
+        let result = val.call_method0("__neg__").map_err(|e| py_exc(py, &e))?;
         py_auto_marshal_return(&result, task, vm)?;
         Ok::<(), VMError>(())
     })
@@ -2242,6 +2151,25 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Boun
 
 /// Auto-detect Python return type and marshal to VM stack.
 /// Plan 300: Enhanced with dict→Obj and nested structure support.
+/// Plan 567 T05（P560-D3）: py 桥错误统一 `PyException <Type>: <msg>` 前缀。
+/// `<Type>`/`<msg>` 从 PyErr 本体取（与 py_call_may 的 Err 载荷构造同源，
+/// engine FFI→RuntimeError 转换后 catch 绑定/传播两侧载荷形态一致）。
+/// 仅用于"Python 操作失败"类站点；桥内部组参/弹栈类错误保留描述形态。
+fn py_exc(py: Python<'_>, e: &pyo3::PyErr) -> VMError {
+    let type_name = e
+        .value(py)
+        .get_type()
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|_| "UnknownException".to_string());
+    let msg = e
+        .value(py)
+        .str()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    VMError::FFI(format!("PyException {}: {}", type_name, msg))
+}
+
 fn py_auto_marshal_return(
     py_val: &Bound<'_, PyAny>,
     task: &mut AutoTask,

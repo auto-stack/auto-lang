@@ -7700,7 +7700,12 @@ impl AutoVM {
                         crate::vm::ffi::stdlib::shim_task_send_vm(task, self)?;
                     } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         let pre_call_ip = task.ip;
-                        shim(task, self)?;
+                        // Plan 567 T05：对齐 CALL_NAT_COUNTED 的 560 T11 通道
+                        // 统一——py 桥 FFI 错误转 RuntimeError，两条 native
+                        // 分发路径 catch 载荷一致（P560-D3 半件）。
+                        if let Err(VMError::FFI(msg)) = shim(task, self) {
+                            return Err(VMError::RuntimeError(msg));
+                        }
                         // Plan 349 step 7: if HTTP json native yielded (async
                         // request pending), back up IP to retry CALL_NAT.
                         if task.waiting_http_request_id.is_some() {
