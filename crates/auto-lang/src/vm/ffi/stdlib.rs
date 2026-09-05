@@ -28,6 +28,42 @@ macro_rules! vm_debug {
     };
 }
 
+#[cfg(test)]
+mod image_pipeline_vm_http_tests {
+    use super::*;
+    use crate::ui::image_pipeline::{
+        MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec,
+    };
+    use std::sync::Arc;
+
+    #[test]
+    fn image_media_route_has_priority_without_changing_user_routes() {
+        assert!(media_response_for_vm_request("GET", "/api/user", None).is_none());
+        let registry = crate::ui::image_pipeline::global_media_registry();
+        let ticket = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "vm-fixture".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        let path = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+        let response = media_response_for_vm_request("GET", &path, None).unwrap();
+        assert_eq!(response.status, 503);
+
+        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry.publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([7, 255])).unwrap();
+        let mut wire = Vec::new();
+        assert!(write_media_response(&mut wire, "GET", &path, None));
+        assert!(String::from_utf8_lossy(&wire).starts_with("HTTP/1.1 200 OK"));
+        assert!(wire.ends_with(&[7, 255]));
+    }
+}
+
 // ============================================================================
 // Native Function IDs (1000-4999 for built-in stdlib)
 // ============================================================================
@@ -3736,6 +3772,59 @@ pub fn shim_http_server_static(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 ///
 /// The listen loop is identical to shim_http_server_listen but creates its own
 /// handler tasks internally, avoiding the need for a caller-provided task.
+fn media_response_for_vm_request(
+    method: &str,
+    path: &str,
+    if_none_match: Option<&str>,
+) -> Option<crate::ui::image_pipeline::MediaHttpResponse> {
+    if !path.starts_with("/api/__auto/media/") {
+        return None;
+    }
+    let path = path.split_once('?').map(|(path, _)| path).unwrap_or(path);
+    Some(crate::ui::image_pipeline::media_http_response(
+        crate::ui::image_pipeline::global_media_registry(),
+        method,
+        path,
+        if_none_match,
+    ))
+}
+
+fn write_media_response(
+    stream: &mut impl std::io::Write,
+    method: &str,
+    path: &str,
+    if_none_match: Option<&str>,
+) -> bool {
+    let Some(response) = media_response_for_vm_request(method, path, if_none_match) else {
+        return false;
+    };
+    let reason = match response.status {
+        200 => "OK",
+        304 => "Not Modified",
+        404 => "Not Found",
+        410 => "Gone",
+        422 => "Unprocessable Entity",
+        503 => "Service Unavailable",
+        _ => "Error",
+    };
+    let body = response.body.map(|bytes| bytes.to_vec()).unwrap_or_default();
+    let mut wire = format!(
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+        response.status,
+        reason,
+        response.headers.get("content-length").map(String::as_str).unwrap_or("0"),
+    );
+    for (name, value) in response.headers {
+        wire.push_str(&format!("{}: {}\r\n", name, value));
+    }
+    wire.push_str("\r\n");
+    let _ = stream.write_all(wire.as_bytes());
+    if method == "GET" {
+        let _ = stream.write_all(&body);
+    }
+    true
+}
+
 /// Must be called from a non-tokio thread (std::thread::spawn), because it
 /// uses blocking_lock() on handler tasks.
 pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
@@ -3778,6 +3867,7 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
 
         // Read headers
         let mut content_length = 0usize;
+        let mut if_none_match = None;
         loop {
             let mut header = String::new();
             if reader.read_line(&mut header).is_err() { break; }
@@ -3785,6 +3875,9 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
             if header.is_empty() { break; }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
+            }
+            if header.to_lowercase().starts_with("if-none-match:") {
+                if_none_match = Some(header[14..].trim().to_string());
             }
         }
 
@@ -3796,6 +3889,10 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
         } else {
             String::new()
         };
+        drop(reader);
+        if write_media_response(&mut stream, &req_method, &req_path, if_none_match.as_deref()) {
+            continue;
+        }
 
         // Route matching
         let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
@@ -3904,6 +4001,7 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
         // Read remaining headers (until empty line)
         let mut content_length = 0usize;
+        let mut if_none_match = None;
         loop {
             let mut header = String::new();
             if reader.read_line(&mut header).is_err() { break; }
@@ -3911,6 +4009,9 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             if header.is_empty() { break; }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
+            }
+            if header.to_lowercase().starts_with("if-none-match:") {
+                if_none_match = Some(header[14..].trim().to_string());
             }
         }
 
@@ -3922,6 +4023,10 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         } else {
             String::new()
         };
+        drop(reader);
+        if write_media_response(&mut stream, &req_method, &req_path, if_none_match.as_deref()) {
+            continue;
+        }
 
         // Route matching: find (method, path) match with :param support
         let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
