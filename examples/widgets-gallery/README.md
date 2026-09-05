@@ -16,17 +16,20 @@ shadcn widgets：每个组件一个页面，含示例预览（`preview-card`）�
 - **内容区** — `outlet`，每个路由是一个组件文档页
 - **移动端** — 底部导航栏 + drawer
 
-## Widgets / 路由（62）
+## Widgets / 路由（60）
 
 accordion, alert, alertdialog, aspectratio, avatar, badge, breadcrumb, button,
 calendar, card, carousel, checkbox, collapsible, combobox, command, contextmenu,
 datatable, datepicker, dialog, drawer, dropdownmenu, form, grid, hovercard,
-input, label, menubar, navigationmenu, navlink, pagination, popover, progress,
+input, label, menubar, navigationmenu, pagination, popover, progress,
 radiogroup, scrollarea, select, separator, sheet, sidebar, skeleton, slider,
 sonner, switch, table, tabs, textarea, toast, toggle, togglegroup, tooltip +
 `/` index；**Layout 分组（Plan 412，sky 色）**：row, col, center, flex,
 alignment, spacing, sizing, scroll, position, responsive, grid（重写迁入）,
 grid-span。
+
+> Plan 562：nav 族（nav/nav-group/nav-item/nav-link）已退役（superseded_by
+> sidebar 族），nav-item/nav-link 两页随之删除；分组导航外壳见 `/sidebar`。
 
 ## Plan 408 §9 修复在这里验证
 
@@ -36,10 +39,10 @@ grid-span。
 | `/slider` | #3 — Slider `value` int → `number[]`（`:default-value`） |
 | `/drawer` | #4 — Drawer 需要 `vaul-vue` 依赖 |
 | `/toast` | #5 — toast 标签 → `ui/sonner` 脚手架（`<Toaster/>`） |
-| `/navlink` | #6 — NavLink `href` → `router-link` `to` |
 | `/pagination` | #7 — shadcn-vue 正确导出名（PaginationContent…） |
 
-（修复 #2 — Rust 模式 `outlet`/`link` 占位 — 属 codegen 层，无 vue 可见面。）
+（修复 #2 — Rust 模式 `outlet`/`link` 占位 — 属 codegen 层，无 vue 可见面；
+#6 `/navlink` 页随 Plan 562 nav 族退役删除，修复记录仅作历史留存。）
 
 ## 运行
 
