@@ -14,6 +14,8 @@ pub mod tscn;
 pub mod escape;
 pub mod auto_s2s; // Plan 555 T07: s2s 改写器（脚本糖 → 正常模式桥）
 pub mod emit; // Plan 560 T02: AST → Auto 源发射器（s2s 产物面）
+pub mod py_known; // Plan 560 T05: 静态 py-known 分析（规则/窥孔共用）
+pub mod s2s_rules; // Plan 560 T05+: s2s lowering 规则批
 
 /// A single entry in the source map, mapping a source line to an output line.
 /// Both line numbers are 1-based.

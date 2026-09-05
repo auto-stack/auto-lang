@@ -28,7 +28,14 @@ pub struct LoweringRule {
 /// 内置规则表。W2 各批任务（T05-T11）逐条注册；每条配
 /// source-to-source 单测（§9 纪律）。
 pub fn builtin_rules() -> Vec<LoweringRule> {
-    Vec::new()
+    vec![
+        // Plan 560 T05: A/B 族访问糖（obj_call 双通道 / py-known B 族 /
+        // kwargs→py_call）。链式序：后续 C/E 族规则在其后注册。
+        LoweringRule {
+            id: "A1/A2+B1-B4",
+            transform: crate::trans::s2s_rules::rule_ab_family,
+        },
+    ]
 }
 
 /// 对源码应用规则表（parse → 链式规则 → AST 发射）。
@@ -155,6 +162,42 @@ fn main() {
                 _ => {}
             }
         }
+    }
+
+    /// Plan 560 T05: A/B 族规则 source-to-source 断言（§9 纪律）。
+    #[test]
+    fn test_s2s_rule_ab_family() {
+        let src = r#"use.py torch: arange
+fn main() {
+    var t = arange(6)
+    print(t.sum())
+    var w = t.shape
+    var v = t[0]
+    t.note = "hi"
+    t[0] = 9
+    var s = "plain"
+    var n = s.len()
+    var arr = [1, 2]
+    var e0 = arr[0]
+}
+"#;
+        let out = lower_source(src).unwrap();
+        // A1 方法调用（py-known 接收者）→ py_call
+        assert!(out.contains("py_call(t, \"sum\")"), "{}", out);
+        // B1 属性（arange 结果 py-known）→ py_getattr
+        assert!(out.contains("py_getattr(t, \"shape\")"), "{}", out);
+        // B3 索引 → py_getitem
+        assert!(out.contains("py_getitem(t, 0)"), "{}", out);
+        // B2 属性赋值 → py_setattr
+        assert!(out.contains("py_setattr(t, \"note\", \"hi\")"), "{}", out);
+        // B4 索引赋值 → py_setitem
+        assert!(out.contains("py_setitem(t, 0, 9)"), "{}", out);
+        // Auto 接收者零打扰：字符串 .len() 与数组索引保持原样
+        assert!(out.contains("s.len()"), "{}", out);
+        assert!(out.contains("arr[0]"), "{}", out);
+        // 产物可再解析（幂等性由 corpus 测试全局钉）
+        let mut p = crate::parser::Parser::new(&out);
+        assert!(p.parse().is_ok(), "{}", out);
     }
 
     /// 非法源拒绝：语法验证兜底。
