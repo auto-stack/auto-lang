@@ -14474,6 +14474,26 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 i += 1;
                 continue;
             }
+            // Plan 559 W2: VM-track change-payload syntax written in the .at
+            // source (`onchange: .ApplyEntry(e.key, $event.target.value)`).
+            // Vue's EventTarget carries neither member and `target` is
+            // nullable — narrow to the concrete element type so the gen tree
+            // passes vue-tsc (TS2339/TS18047, os-config collection_browser /
+            // config_editor family).
+            if c == b'$'
+                && (i == 0 || !matches!(b[i - 1], b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_'))
+            {
+                if b[i..].starts_with(b"$event.target.value") {
+                    out.extend_from_slice(b"($event.target as HTMLInputElement).value");
+                    i += b"$event.target.value".len();
+                    continue;
+                }
+                if b[i..].starts_with(b"$event.target.checked") {
+                    out.extend_from_slice(b"($event.target as HTMLInputElement).checked");
+                    i += b"$event.target.checked".len();
+                    continue;
+                }
+            }
             if c == b't'
                 && b[i..].starts_with(b"this.")
                 && (i == 0
@@ -20402,6 +20422,53 @@ widget NestedArgProbe {
         assert!(
             sfc.contains("@blur=\"Store({ outer: { inner: raw } })\""),
             "state field in nested map must emit the bare binding:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 559 W2: `$event.target.value` / `$event.target.checked` written in
+    /// the .at source is VM-track change-payload syntax (os-config
+    /// collection_browser.at `ApplyEntry(e.key, $event.target.value)` family).
+    /// Vue's `EventTarget` carries neither member, and `target` is nullable —
+    /// the raw passthrough fails vue-tsc with TS2339/TS18047. Every handler
+    /// arg flows through `vue_event_param`, so the narrowing lives there.
+    #[test]
+    fn test_event_arg_target_payload_narrowed() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget TargetPayloadProbe {
+    msg Msg { ApplyEntry, MsToggle }
+    model { var active str = "" }
+    view {
+        col {
+            input (value: "x", "type": "text") {
+                onchange: .ApplyEntry(.active, $event.target.value)
+            }
+            input ("type": "checkbox", checked: false) {
+                onchange: .MsToggle(.active, $event.target.checked)
+            }
+        }
+    }
+    on {
+        .ApplyEntry(k, v) -> { .active = k }
+        .MsToggle(k, c) -> { .active = k }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("ApplyEntry((.active), ($event.target as HTMLInputElement).value)")
+                || sfc.contains("ApplyEntry(.active, ($event.target as HTMLInputElement).value)")
+                || sfc.contains("ApplyEntry(active, ($event.target as HTMLInputElement).value)"),
+            "target.value in handler args must narrow to HTMLInputElement:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("($event.target as HTMLInputElement).checked"),
+            "target.checked in handler args must narrow to HTMLInputElement:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("$event.target.value") && !sfc.contains("$event.target.checked"),
+            "raw $event.target payloads must not survive into the template:\n{}",
             sfc
         );
     }
