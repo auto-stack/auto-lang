@@ -14882,6 +14882,9 @@ fn dynamic_view(
         let converted = convert_view_messages(view);
         *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
         *state.app.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+        // PLAN-062 F2: 新缓存已写回——换代提交帧账本（释放上一脏帧经
+        // retain_heap_result 拿下的宿主份额；旧缓存树同帧淘汰，无悬挂）。
+        state.component.commit_dirty_frame();
         (converted, debug_id_map)
     } else {
         // Cache miss on non-dirty frame: rebuild from cached AbstractView (cheaper than template rebuild)
@@ -14895,7 +14898,7 @@ fn dynamic_view(
         } else {
             drop(cached);
             // Plan 307 Task 18: gate the probe by debug_mode (same as the dirty
-            // branch above). When F12 off, probe is disabled + live_probe None.
+            // branch above). When F12 off the probe is disabled + live_probe None.
             let (mut view, debug_id_map, probe) =
                 state.component.view_with_debug_gated(capture_debug);
             let debug_id_map = Some(debug_id_map);
@@ -14911,6 +14914,8 @@ fn dynamic_view(
             let converted = convert_view_messages(view);
             *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
             *state.app.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+            // PLAN-062 F2: 首帧构建同契约换代提交（与 dirty 分支一致）。
+            state.component.commit_dirty_frame();
             (converted, debug_id_map)
         }
     };

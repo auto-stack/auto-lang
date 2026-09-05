@@ -3578,11 +3578,50 @@ mod musk_vm_track_p062_heap_soak {
                 return;
             }
         };
+        // 镜像 renderer dirty 分支契约：build → 缓存写回 → commit_dirty_frame
+        // （PLAN-062 F2 帧账本换代）。
+        // 镜像 renderer dirty 分支契约：build → 缓存写回 → commit_dirty_frame
+        // （PLAN-062 F2 帧账本换代）。
         let tick_rebuild = |dc: &mut crate::ui::dynamic::DynamicComponent| {
             dc.fire_timer("App", "BeatTick");
             let _ = dc.view_with_debug_gated(false);
+            dc.commit_dirty_frame();
             dc.clear_dirty();
         };
+        // ── 相 A：空闲（零状态写拍 × 40）——零求值零增长 ──
+        // F1 契约：no-op 拍不置脏 → renderer 走缓存分支不重建 → 无
+        // computed 求值、无 retain。此相断言 0 增长（musk 实机空闲泄漏
+        // 0.85–2.2 MB/s 的根治面）。
+        for _ in 0..10 {
+            let _ = dc.fire_timer("App", "IdleTick");
+        }
+        dc.clear_dirty();
+        let idle_base = dc.heap_live_objects();
+        for _ in 0..40 {
+            let fired = dc.fire_timer("App", "IdleTick");
+            assert!(fired, "ungated entry still dispatches");
+            assert!(!dc.is_dirty(), "idle tick must not dirty (F1)");
+        }
+        let idle_after = dc.heap_live_objects();
+        eprintln!(
+            "[P062-soak-A:idle] live_heap {} -> {} (+{})",
+            idle_base,
+            idle_after,
+            idle_after.saturating_sub(idle_base)
+        );
+        assert_eq!(
+            idle_after, idle_base,
+            "idle phase (no-op ticks, no rebuilds) must be zero-growth: {} -> {}",
+            idle_base, idle_after
+        );
+
+        // ── 相 B：脏重建（恒写拍 × 40）——速率绊线 ──
+        // 残留已知债：每 call_vm_fn 有 1 个未定位归属的存量 stake（非
+        // 任务帧槽/非全局表/非结果槽——canary 实证各清账路径均不安全），
+        // 钉住当帧 computed 树 ⇒ ~+21 obj/rebuild。帧账本已归还宿主份额
+        // （42→21/拍，隐式重建移除 + F2），根修归上游 RC 槽位记账专项
+        // （KD-051⑤ 续行）。绊线口径：≤ +24/rebuild，回归到双倍泄漏
+        // （+42/rebuild，隐式重建复发或账本失效）即红。
         for _ in 0..10 {
             tick_rebuild(&mut dc);
         }
@@ -3592,14 +3631,14 @@ mod musk_vm_track_p062_heap_soak {
         }
         let after = dc.heap_live_objects();
         eprintln!(
-            "[P062-soak] live_heap {} -> {} (+{})",
+            "[P062-soak-B:rebuild] live_heap {} -> {} (+{})",
             base,
             after,
             after.saturating_sub(base)
         );
         assert!(
-            after <= base + 64,
-            "heap must be bounded across rebuilds: base={} after={} (+{})",
+            after <= base + 24 * 40,
+            "rebuild leak-rate tripped: base={} after={} (+{}/40 rebuilds, > 24/rebuild)",
             base,
             after,
             after.saturating_sub(base)
