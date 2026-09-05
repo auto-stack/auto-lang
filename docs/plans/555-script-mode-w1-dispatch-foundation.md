@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-cli]   # 受影响的 specs 路径
-current_step: 3
+current_step: 6
 total_steps: 11
 ---
 
@@ -230,11 +230,13 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
       [✅ 已完成] CLI 位置参数本不过滤扩展名（T01 考古），扩展名经 run_file_with_args→run_with_path→execute_autovm_with_path(path) 已入 T02 解析；p4 探针（递归+数组+for-in+拼接）：同内容 .at/.as 程序输出 diff 为空（仅 Running 横幅文件名行差异）——passthrough 语义实证
 - [ ] T04 py 三桥：`py_ffi.rs` py_setattr 467 / py_len 468 /
       py_type_name 469（539 桥型）（验证：新增 py_ffi 单测绿）
-- [ ] T05 ForeignObject 协议：协议 trait（七操作面）+ PyObjectHandle
+- [x] T05 ForeignObject 协议：协议 trait（七操作面）+ PyObjectHandle
       首实现适配（send/contains 协议位空置）（验证：协议单测绿）
-- [ ] T06 分发组合子：`vm/interop.rs` 新模块六组合子 + Auto 值原生
+      [✅ 已完成] vm/interop.rs 定义 ForeignObject（六操作方法面 get/set/call/len/iter/type_name + send/contains 注释预留位）；接入机制=HeapObject::as_foreign_object 默认钩子（None 默认，宿主句柄覆写——as_any 无法跨 trait downcast 的解法）；PyObjectHandle 首实现六臂（协议单测绿：downcast+foreign_kind=="py"）
+- [x] T06 分发组合子：`vm/interop.rs` 新模块六组合子 + Auto 值原生
       方法表臂 + `vm/codegen.rs` 注册面（`interop.*` 家族）
       （验证：py 句柄/Auto 值双通道探针绿）
+      [✅ 已完成] 组合子 1860-1865（catalog 限定名+裸名双注册，惰性命中）；发射=CALL_PY 传输形态（is_py_ffi_call 复用为"带实参数字节"约定，与 py 零耦合）；Auto 臂=str[i]//list[i]（含负索引+IndexError 对标 550）/map["k"] 读写/ARRAY_LEN 语义/array 通道迭代回推/容器 type_name；外对象臂经协议分派。p6 Auto 全矩阵（list/str/map/迭代 139）+ p7 torch 同函数名（len/sum=15/transpose/setattr/next）双探针绿；obj_call 栈布局 bug（pending 计数含 receiver）当场修复
 - [ ] T07 s2s 骨架：`trans/` 模块 `--to auto` 目标 + 规则表 + identity
       改写 + per-rule 单测框架（验证：测试规则注入单测 + identity
       round-trip 稳定单测绿）
