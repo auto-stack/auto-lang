@@ -67,6 +67,8 @@ auto run --theme light --accent ocean   # 同时指定主题主色
   由 [PLAN-552](../../docs/plans/552-desktop-app-curation.md) 整体迁至
   [`examples/capability-tests/`](../capability-tests/)——本目录回归"只放应用
   性质"契约；042 空洞恢复可填。
+- **031**：2026-09-05 由 Plan 553 像素画板回填（capability-tests 侧旧
+  031-dyn-component-watch 同号共存，全路径引用无歧义）。
 
 ## 示例总览
 
@@ -109,6 +111,7 @@ opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 
 | 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✓ | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |
 | 029 | photo-gallery | 图库（macOS 相册风：侧边栏相册导航 + 搜索/排序/密度工具栏 + 缩略图网格 + 大图查看器 prev/next/收藏；picsum 固定 seed 网络真实图片，image widget 首个应用级双端示范） | 4029 | ✓ | ✅ [Plan 537](../../docs/plans/537-photo-gallery.md)（vue+vm+ui_desktop） |
 | 030 | video-player | 原生视频播放器（chromeless 视口 + OSD 控制 + 播放列表，vue/vm 双端） | 3030 | ✓ | ✅ [Plan 542](../../docs/plans/542-030-video-player.md) |
+| 031 | paint | 像素画板（16×16 格染色 + 铅笔/橡皮/油漆桶/吸管 + undo/redo + storage 存取；AutoOS「画图」v1，真画布原语远期见 Plan 553 待澄清） | — | ✓ | ✅ [Plan 553](../../docs/plans/553-pixel-paint.md)（desktop_mcp VM 轨 30P/0F/1S + vue playwright 冒烟；P553-D1 VM 债登记） |
 | 038 | minesweeper | 经典扫雷（双后端） | 4038 | ✓ | 🎯 严肃应用，持续扩展 |
 | 041 | auto-edit | 文本编辑器 | 4041 | ✓ | 🎯 严肃应用，持续扩展 |
 | 043 | clipboard-bridge | 原生剪贴板三族互通（text 418 对照 / files CF_HDROP / image DIBV5+PNG；Plan 485） | 4043 | — | ✅ [Plan 485](../../docs/plans/485-vm-native-clipboard.md)（实机 T4 五项 PASS） |
