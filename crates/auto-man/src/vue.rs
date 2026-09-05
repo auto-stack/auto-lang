@@ -73,6 +73,26 @@ fn are_shadcn_components_installed(output_path: &Path, components: &[String]) ->
     true
 }
 
+/// PLAN-063 Phase B T14 (KD 061 D12): 清理 CLI 时代的嵌套冗余组件目录。
+/// 旧版 shadcn-vue CLI 对多文件组件(alert-dialog 族)曾把文件写进
+/// `ui/<comp>/<comp>/` 嵌套目录;PLAN-457 捆绑快照为平铺布局,且
+/// write-if-missing 语义令嵌套残壳永不清除(字节级重复,唯一危害是
+/// 双份体积/误 import 混淆)。平铺 index.ts 在场时嵌套目录即冗余,
+/// 安装期一并移除。
+fn dedupe_nested_component_dirs(output_path: &Path, components: &[String]) -> Vec<String> {
+    let mut removed = Vec::new();
+    for comp in components {
+        let flat = output_path.join("src/components/ui").join(comp);
+        let nested = flat.join(comp);
+        if nested.is_dir() && flat.join("index.ts").exists() {
+            if fs::remove_dir_all(&nested).is_ok() {
+                removed.push(comp.clone());
+            }
+        }
+    }
+    removed
+}
+
 /// PLAN-457: every shadcn-vue component import marker the generator emits,
 /// with the component (bundle/folder) name. Single source of truth for
 /// [`detect_shadcn_components`] and the bundle-catalog sync test.
@@ -138,6 +158,32 @@ const COMPONENT_PATTERNS: &[(&str, &str)] = &[
     ("@/components/ui/resizable", "resizable"),
     ("@/components/ui/auto-complete", "auto-complete"),
 ];
+
+/// PLAN-063 Phase B T12 (KD 061 D27): shadcn 检测语料并入 ext 手写件。
+/// ext_file_set 收集的项目本地 .vue/.ts(use { component X from "..." } 与
+/// .at 端口的 web 目标,如 musk DeleteConfirmDialog.vue)可 import
+/// `@/components/ui/*` 家族——此前语料只含 .at 生成代码,冷检出重生成后
+/// 脚手架缺失(vue-tsc TS2307;058 手工步"regen 后需重装"的根因)。
+fn detect_ext_shadcn_components(
+    root_dir: &Path,
+    ext_files: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    let mut found = HashSet::new();
+    for rel in ext_files {
+        let ext = Path::new(rel).extension().and_then(|e| e.to_str());
+        if ext != Some("vue") && ext != Some("ts") {
+            continue;
+        }
+        if let Ok(body) = fs::read_to_string(root_dir.join(rel)) {
+            for comp in detect_shadcn_components(&body) {
+                found.insert(comp);
+            }
+        }
+    }
+    let mut out: Vec<String> = found.into_iter().collect();
+    out.sort();
+    out
+}
 
 /// Detect which shadcn-vue components are needed from generated Vue code
 fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
@@ -420,6 +466,31 @@ fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Res
 }
 
 // Template generators
+
+/// PLAN-063 Phase B T12 (KD 061 D27): 重生成 package.json 时保留既有
+/// 未知 devDependencies(模板只发射固定脚手架组——会话级 `pnpm add -D
+/// vitest` 等用户安装项此前被整写抹除;058 ⑪④ 工具债根因)。解析失败
+/// (手改坏 JSON)防御性回退 generated 原文。
+fn merge_unknown_devdeps(existing: &str, generated: String) -> String {
+    let Ok(old) = serde_json::from_str::<serde_json::Value>(existing) else {
+        return generated;
+    };
+    let Ok(mut new) = serde_json::from_str::<serde_json::Value>(&generated) else {
+        return generated;
+    };
+    let (Some(old_dev), Some(new_dev)) = (
+        old.get("devDependencies").and_then(|v| v.as_object()),
+        new.get_mut("devDependencies").and_then(|v| v.as_object_mut()),
+    ) else {
+        return generated;
+    };
+    for (k, v) in old_dev {
+        if !new_dev.contains_key(k) {
+            new_dev.insert(k.clone(), v.clone());
+        }
+    }
+    serde_json::to_string_pretty(&new).unwrap_or(generated)
+}
 
 fn generate_package_json(
     name: &str,
@@ -901,7 +972,7 @@ fn generate_postcss_config() -> String {
 "#.to_string()
 }
 
-fn generate_index_html(name: &str) -> String {
+fn generate_index_html(name: &str, title: Option<&str>) -> String {
     // Plan 043 M5: the shadcn template ships fully-populated `.dark` tokens
     // in index.css; the handwritten ash-gui (and the shadcn default) render
     // dark. Without `class="dark"` on <html> the app falls back to the light
@@ -961,7 +1032,48 @@ fn generate_index_html(name: &str) -> String {
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-"#, dark_attr, name, accent_bootstrap)
+"#, dark_attr, title.unwrap_or(name), accent_bootstrap)
+}
+
+/// PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。此前 createI18n
+/// 内联在 main.ts 且实例未导出——应用侧(如 musk useT.ts)在 setup 外无法
+/// 触达实例,语言切换只能走 useI18n() 组合式(出 setup 即失效,locale 不
+/// 翻转)。独立模块 + `export const i18n` 后,应用可
+/// `import { i18n } from '@/i18n-instance'` 直写 i18n.global.locale。
+fn generate_i18n_instance_ts(i18n: &I18nConfig, locale_files: &[String]) -> String {
+    if !i18n.enabled {
+        return String::new();
+    }
+    let locale_imports: String = locale_files
+        .iter()
+        .map(|f| {
+            let stem = std::path::Path::new(f)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("locale");
+            format!("import {} from './locales/{}'\n", stem, basename(f))
+        })
+        .collect();
+    let messages_entries: String = locale_files
+        .iter()
+        .map(|f| {
+            let stem = std::path::Path::new(f)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("locale");
+            format!("  {},\n", stem)
+        })
+        .collect();
+    let default_locale = locale_files
+        .first()
+        .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
+        .unwrap_or("en");
+    format!(
+        "// i18n-instance.ts — generated (PLAN-063 Phase B T13b, KD 061 D29).\n// 全局 i18n 实例独立持有:main.ts 与应用侧桥(语言切换在 setup 外)\n// 共同 import;i18n.global.locale.value 可直写。\n\nimport {{ createI18n }} from 'vue-i18n'\n{locale_imports}\nexport const i18n = createI18n({{\n  legacy: false,\n  locale: '{default_locale}',\n  messages: {{\n{messages_entries}  }},\n}})\n",
+        locale_imports = locale_imports,
+        default_locale = default_locale,
+        messages_entries = messages_entries,
+    )
 }
 
 fn generate_main_ts(
@@ -1008,17 +1120,11 @@ fn generate_main_ts(
                 format!("    {},\n", stem)
             })
             .collect();
-        let setup = format!(
-            "\nimport {{ createI18n }} from 'vue-i18n'{locale_imports}\n\n\
-const i18n = createI18n({{\n  legacy: false,\n  locale: {default_locale:?},\n\
-  messages: {{\n{messages_entries}  }},\n}})\n",
-            locale_imports = locale_imports,
-            default_locale = locale_files
-                .first()
-                .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
-                .unwrap_or("en"),
-            messages_entries = messages_entries,
-        );
+        // PLAN-063 Phase B T13b (KD 061 D29): 实例移 src/i18n-instance.ts
+        //(generate_i18n_instance_ts 导出,应用侧 setup 外可直写
+        // i18n.global.locale),main.ts 只 import。
+        let setup = "\nimport { i18n } from './i18n-instance'".to_string();
+        let _ = (locale_imports, messages_entries);
         (String::new(), setup)
     } else {
         (String::new(), String::new())
@@ -1320,6 +1426,7 @@ fn ensure_pnpm_build_approvals(dir: &Path) -> bool {
 fn write_project_files(
     output_path: &Path,
     name: &str,
+    index_title: Option<&str>,
     vue_code: &str,
     usage: &VueDependencyUsage,
     has_routes: bool,
@@ -1399,7 +1506,7 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write postcss.config.cjs: {}", e))?;
 
     // index.html
-    let index_html = generate_index_html(name);
+    let index_html = generate_index_html(name, index_title);
     fs::write(output_path.join("index.html"), index_html)
         .map_err(|e| format!("Failed to write index.html: {}", e))?;
 
@@ -1408,6 +1515,12 @@ fn write_project_files(
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
     let main_ts = generate_main_ts(has_routes, uses_autodown, style_files, i18n, locale_files);
+    // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块随 main.ts 落盘。
+    let i18n_instance_ts = generate_i18n_instance_ts(i18n, locale_files);
+    if !i18n_instance_ts.is_empty() {
+        fs::write(output_path.join("src/i18n-instance.ts"), i18n_instance_ts)
+            .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+    }
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
 
@@ -1476,6 +1589,25 @@ fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
 }
 
 /// Parse project name from pac.at content
+/// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` 字段——
+/// document.title 展示名(回退 name;name 是包标识不宜作展示标题)。
+fn parse_pac_title(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("title:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 fn parse_pac_name(content: &str) -> Option<String> {
     for line in content.lines() {
         let line = line.trim();
@@ -1954,6 +2086,9 @@ pub struct VueProject {
     pub output_dir: std::path::PathBuf,
     /// Project name
     pub name: String,
+    /// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` —
+    /// document.title 展示名(None 回退 name)。
+    pub index_title: Option<String>,
     /// Front source directory
     pub front_dir: std::path::PathBuf,
     /// Public assets source directory
@@ -2181,6 +2316,8 @@ export default router
         // Get project name
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "aura-app".to_string());
+        // PLAN-063 Phase B T13 (KD 061 D28): 展示名 title 可选透传。
+        let index_title = parse_pac_title(&pac_content);
 
         // Plan 013: shadcn-vue mapping toggle (`shadcn: off` in pac.at).
         let shadcn = parse_shadcn(&pac_content);
@@ -2737,7 +2874,6 @@ export default router
             }
         }
 
-        let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
         let has_routes = !all_routes.is_empty();
 
         // Get App.vue code
@@ -2748,10 +2884,16 @@ export default router
 
         // PLAN-037 Phase 5: pull port-file (.at fn module) web targets in.
         expand_at_module_web_imports(root_dir, &mut ext_file_set);
+        // PLAN-063 Phase B T12 (KD 061 D27): ext 手写件语料并入检测。
+        for comp in detect_ext_shadcn_components(root_dir, &ext_file_set) {
+            all_shadcn_components.insert(comp);
+        }
+        let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
             output_dir,
             name,
+            index_title,
             front_dir,
             public_dir,
             shadcn_components,
@@ -3069,6 +3211,7 @@ export default router
         write_project_files(
             &self.output_dir,
             &self.name,
+            self.index_title.as_deref(),
             &self.app_vue_code,
             &self.dependency_usage(),
             self.has_routes,
@@ -3220,6 +3363,7 @@ export default router
         write_project_files(
             output_path,
             &self.name,
+            self.index_title.as_deref(),
             &self.app_vue_code,
             &self.dependency_usage(),
             self.has_routes,
@@ -3240,6 +3384,13 @@ export default router
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+        // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
+        let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
+        if !i18n_instance_content.is_empty() {
+            let p = src_dir.join("i18n-instance.ts");
+            fs::write(&p, &i18n_instance_content)
+                .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+        }
         fs::write(src_dir.join("main.ts"), &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
 
@@ -3288,6 +3439,13 @@ export default router
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+        // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
+        let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
+        if !i18n_instance_content.is_empty() {
+            let p = src_dir.join("i18n-instance.ts");
+            fs::write(&p, &i18n_instance_content)
+                .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+        }
         let main_ts_path = src_dir.join("main.ts");
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
@@ -3315,7 +3473,7 @@ export default router
         // app renders light). Previously only written on the initial scaffold,
         // so a fresh index.html (or a generator fix) never took effect.
         let index_html_path = self.output_dir.join("index.html");
-        let index_html = generate_index_html(&self.name);
+        let index_html = generate_index_html(&self.name, self.index_title.as_deref());
         fs::write(&index_html_path, &index_html)
             .map_err(|e| format!("Failed to write index.html: {}", e))?;
         println!("{}", "  ✓ Regenerated index.html".bright_green());
@@ -3334,7 +3492,11 @@ export default router
                 || needs_i18n
                 || package_json_deps_drifted(&existing_pkg, &usage, &self.npm_deps)
             {
-                let new_pkg = generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage);
+                // PLAN-063 Phase B T12 (KD 061 D27): 保留既有未知 devDeps。
+                let new_pkg = merge_unknown_devdeps(
+                    &existing_pkg,
+                    generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage),
+                );
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
                 println!("{}", "  ✓ Updated package.json".bright_green());
@@ -3942,6 +4104,12 @@ export default router
 
         // Fix known compatibility issues regardless of whether components are already installed
         self.fix_shadcn_compatibility_issues();
+
+        // PLAN-063 Phase B T14 (KD 061 D12): 移除 CLI 时代嵌套冗余目录。
+        let deduped = dedupe_nested_component_dirs(&self.output_dir, &self.shadcn_components);
+        if !deduped.is_empty() {
+            println!("{}", format!("  ✓ Removed duplicate nested dirs: {}", deduped.join(", ")).bright_green());
+        }
 
         // Only names still absent from disk need the registry round trip;
         // bundled ones landed during materialization.
@@ -4763,7 +4931,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     {
         let index_html_path = project.output_dir.join("index.html");
         if index_html_path.parent().map(|p| p.exists()).unwrap_or(false) {
-            let index_html = generate_index_html(&project.name);
+            let index_html = generate_index_html(&project.name, project.index_title.as_deref());
             if let Err(e) = fs::write(&index_html_path, index_html) {
                 println!("  ⚠ index.html refresh skipped: {}", e);
             }
@@ -5507,6 +5675,95 @@ onMounted(() => {
 mod tests {
     use super::*;
 
+    /// PLAN-063 Phase B T14 (KD 061 D12): 嵌套冗余目录被移除;
+    /// 无平铺 index.ts 时(纯 CLI 形态)不动;无嵌套时幂等。
+    #[test]
+    fn nested_duplicate_component_dirs_are_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ui = tmp.path().join("src/components/ui/alert-dialog");
+        std::fs::create_dir_all(ui.join("alert-dialog")).unwrap();
+        std::fs::write(ui.join("index.ts"), "export {}
+").unwrap();
+        std::fs::write(ui.join("AlertDialog.vue"), "<template/>
+").unwrap();
+        std::fs::write(ui.join("alert-dialog/AlertDialog.vue"), "<template/>
+").unwrap();
+        let removed = dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]);
+        assert_eq!(removed, vec!["alert-dialog".to_string()]);
+        assert!(!ui.join("alert-dialog").exists());
+        assert!(ui.join("index.ts").exists());
+        // 幂等 + 纯嵌套形态(无平铺 index.ts)不误删
+        assert!(dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]).is_empty());
+        let cli_only = tmp.path().join("src/components/ui/foo/foo");
+        std::fs::create_dir_all(&cli_only).unwrap();
+        std::fs::write(cli_only.join("Foo.vue"), "<template/>
+").unwrap();
+        assert!(dedupe_nested_component_dirs(tmp.path(), &["foo".to_string()]).is_empty());
+        assert!(cli_only.exists());
+    }
+
+    /// PLAN-063 Phase B T13 (KD 061 D28): pac title 解析+index.html 优先。
+    #[test]
+    fn pac_title_overrides_document_title() {
+        let pac = "name: \"auto-musk\"
+title: \"Auto Musk\"
+";
+        assert_eq!(parse_pac_title(pac).as_deref(), Some("Auto Musk"));
+        assert_eq!(parse_pac_title("name: \"x\"
+"), None);
+        let html = generate_index_html("auto-musk", Some("Auto Musk"));
+        assert!(html.contains("<title>Auto Musk</title>"));
+        let fallback = generate_index_html("auto-musk", None);
+        assert!(fallback.contains("<title>auto-musk</title>"));
+    }
+
+    /// PLAN-063 Phase B T12 (KD 061 D27): ext 手写 .vue 的 ui 家族导入
+    /// 必须进入 shadcn 检测语料(冷检出脚手架缺失根修)。
+    #[test]
+    fn ext_handwritten_vue_imports_enter_shadcn_corpus() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src/front/components")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/front/components/DeleteConfirmDialog.vue"),
+            "<script setup>
+import { AlertDialogAction } from '@/components/ui/alert-dialog'
+</script>
+",
+        )
+        .unwrap();
+        // 无关 ts 不误报;.vue 内空 trigger 家族命中 alert-dialog。
+        std::fs::write(tmp.path().join("src/front/plain.ts"), "export const x = 1
+").unwrap();
+        let mut set = std::collections::BTreeSet::new();
+        set.insert("src/front/components/DeleteConfirmDialog.vue".to_string());
+        set.insert("src/front/plain.ts".to_string());
+        let found = detect_ext_shadcn_components(tmp.path(), &set);
+        assert!(found.contains(&"alert-dialog".to_string()), "found={:?}", found);
+    }
+
+    /// PLAN-063 Phase B T12 (KD 061 D27): 重生成保留会话级 devDeps
+    /// (vitest 抹除根修);模板自带组不重复、dependencies 不受影响。
+    #[test]
+    fn regen_preserves_unknown_devdeps() {
+        let existing = r#"{ "name": "auto-musk", "devDependencies": { "vite": "^5.0.0", "vitest": "^2.1.9" }, "dependencies": { "vue": ">=3.4.0" } }"#;
+        let generated = r#"{
+  "name": "auto-musk",
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}"#
+        .to_string();
+        let merged = merge_unknown_devdeps(existing, generated);
+        let v: serde_json::Value = serde_json::from_str(&merged).unwrap();
+        let dev = v["devDependencies"].as_object().unwrap();
+        assert_eq!(dev.get("vitest").and_then(|x| x.as_str()), Some("^2.1.9"));
+        assert!(dev.contains_key("@vitejs/plugin-vue"));
+        assert!(dev.contains_key("vite"));
+        // 坏 JSON 防御:回退 generated 原文
+        assert!(merge_unknown_devdeps("{oops", "{\"a\":1}".to_string()).contains("\"a\":1"));
+    }
+
     /// Trailing commas in pac.at values must be stripped BEFORE quote
     /// stripping — the old order (quotes, then comma) left a stray `"` on
     /// `"^3.34.0",`, emitting `"^3.34.0""` into the generated package.json
@@ -6065,16 +6322,21 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
         };
         let locales = vec!["en.json".to_string(), "zh.json".to_string()];
         let main_ts = generate_main_ts(false, false, &[], &cfg, &locales);
-        // createI18n + vue-i18n import.
-        assert!(main_ts.contains("import { createI18n } from 'vue-i18n'"), "main.ts:\n{}", main_ts);
-        assert!(main_ts.contains("const i18n = createI18n("), "main.ts:\n{}", main_ts);
-        // Locale imports keyed by filename stem.
-        assert!(main_ts.contains("import en from './locales/en.json'"), "main.ts:\n{}", main_ts);
-        assert!(main_ts.contains("import zh from './locales/zh.json'"), "main.ts:\n{}", main_ts);
-        // messages object includes both locales.
-        assert!(main_ts.contains("messages: {"), "main.ts:\n{}", main_ts);
+        // PLAN-063 Phase B T13b (KD 061 D29): 实例移独立模块,main.ts 只 import。
+        assert!(main_ts.contains("import { i18n } from './i18n-instance'"), "main.ts:\n{}", main_ts);
+        assert!(!main_ts.contains("createI18n("), "main.ts 不再内联 createI18n:\n{}", main_ts);
         // app.use(i18n) before mount.
         assert!(main_ts.contains("app.use(i18n)"), "main.ts:\n{}", main_ts);
+        // 实例模块:export const i18n + locale imports + 默认 locale=首文件 stem。
+        let instance = generate_i18n_instance_ts(&cfg, &locales);
+        assert!(instance.contains("export const i18n = createI18n("), "instance:\n{}", instance);
+        assert!(instance.contains("import en from './locales/en.json'"), "instance:\n{}", instance);
+        assert!(instance.contains("import zh from './locales/zh.json'"), "instance:\n{}", instance);
+        assert!(instance.contains("locale: 'en'"), "instance:\n{}", instance);
+        // 未启用 i18n:模块空,main.ts 无 import。
+        assert!(generate_i18n_instance_ts(&I18nConfig::default(), &[]).is_empty());
+        let plain = generate_main_ts(false, false, &[], &I18nConfig::default(), &[]);
+        assert!(!plain.contains("i18n-instance"));
     }
 
     #[test]
@@ -6113,6 +6375,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: front.clone(),
             public_dir: front.join("public"),
             shadcn_components: vec![],
@@ -6145,6 +6408,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.clone(),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -6255,6 +6519,7 @@ widget App {
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.join("src/front"),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -6285,6 +6550,7 @@ widget App {
             root_dir: root.clone(),
             output_dir: root.join("gen/front/vue"),
             name: "demo".to_string(),
+            index_title: None,
             front_dir: root.clone(),
             public_dir: root.join("public"),
             shadcn_components: vec![],
@@ -6364,11 +6630,11 @@ store BetaStore {
         let changed = incremental_compile_changed(root).expect("first pass must succeed");
         assert!(changed > 0);
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "alpha composable after first pass"
         );
         assert!(
-            stores_dir.join("useBetaStoreStore.ts").exists(),
+            stores_dir.join("useBetaStore.ts").exists(),
             "beta composable after first pass"
         );
 
@@ -6388,11 +6654,11 @@ store BetaStore {
 
         incremental_compile_changed(root).expect("second pass must succeed");
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "alpha composable re-emitted by incremental pass"
         );
         assert!(
-            stores_dir.join("useBetaStoreStore.ts").exists(),
+            stores_dir.join("useBetaStore.ts").exists(),
             "beta composable re-emitted by incremental pass"
         );
     }
@@ -6421,11 +6687,11 @@ store BetaStore {
         assert!(ok.is_ok(), "non-strict build must continue: {:?}", ok.err());
         let stores_dir = root.join("gen").join("front").join("vue").join("src").join("stores");
         assert!(
-            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            stores_dir.join("useAlphaStore.ts").exists(),
             "healthy store still emitted"
         );
         assert!(
-            !stores_dir.join("useBetaStoreStore.ts").exists(),
+            !stores_dir.join("useBetaStore.ts").exists(),
             "broken store must not emit a composable"
         );
 

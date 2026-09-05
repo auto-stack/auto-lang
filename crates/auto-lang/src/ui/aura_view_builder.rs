@@ -12933,7 +12933,12 @@ mod tests {
         let v = AuraViewBuilder::new(&bridge, "Test").build(&node);
         let classes = nav_style_classes(&v);
         assert!(classes_contain(&classes, nc::ITEM_ACTIVE), "命中应有 active 块");
-        assert!(!hover_classes_contain(&nav_hover_classes(&v), nc::ITEM_HOVER), "选中不再挂 hover");
+        assert!(!hover_classes_contain(&nav_hover_classes(&v), nc::ITEM_HOVER), "选中不再挂完整 hover 组");
+        // PLAN-063 Phase B T19 (KD 061 D23): active 自带中性灰 hover。
+        assert!(
+            hover_classes_contain(&nav_hover_classes(&v), "hover:bg-accent"),
+            "选中项应自带 hover:bg-accent(契约放宽)"
+        );
 
         // 前缀段命中（/chats 对 /chats/1 生效）；exact 收紧。
         let node = AuraNode::element("nav-item").with_prop("to", Expr::Str("/chats".into()));

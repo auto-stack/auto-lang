@@ -19,12 +19,14 @@ pub const ITEM_BASE_MD: &str = "nav-item flex w-full items-center justify-start 
 pub const ITEM_BASE_LG: &str = "nav-item flex w-full items-start justify-start gap-3 rounded-md px-3 py-[10px] text-sm text-left text-foreground select-none cursor-pointer transition-colors";
 /// Compact single-line item (h-7 = 28px).
 pub const ITEM_BASE_SM: &str = "nav-item flex w-full items-center justify-start gap-2 rounded-md px-2 h-7 text-xs text-left text-foreground select-none cursor-pointer transition-colors";
-/// Hover feedback — attached ONLY when the item is not active (build-time
-/// either/or, mirroring NavItem.vue, so hover can never override the selected
-/// background regardless of Tailwind stylesheet order).
+/// Hover feedback — attached when the item is not active (build-time
+/// either/or with ITEM_ACTIVE, mirroring NavItem.vue).
 pub const ITEM_HOVER: &str = "hover:bg-accent hover:text-accent-foreground";
 /// Selected state — primary-tinted block (user requirement: 选中态符合主色调).
-pub const ITEM_ACTIVE: &str = "bg-primary/10 text-primary font-medium";
+/// PLAN-063 Phase B T19 (KD 061 D23): 放宽 Plan 482 "active 无 hover" 契约
+/// ——active 项自带 hover:bg-accent(用户裁定 2026-09-04:选中态悬停=中性灰,
+/// 与非选中一致;hover 语义只覆盖 bg 不动 text,D17/D20 兜底可撤)。
+pub const ITEM_ACTIVE: &str = "bg-primary/10 text-primary font-medium hover:bg-accent";
 /// Disabled (web); the VM goes through the Button disabled gray-text path.
 pub const ITEM_DISABLED: &str = "opacity-60 cursor-default";
 /// Right-side badge pill.
