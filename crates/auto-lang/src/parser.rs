@@ -8500,7 +8500,11 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::LSquare) {
                 self.next(); // skip [
 
-                while self.is_kind(TokenKind::Ident) {
+                while self.is_kind(TokenKind::Ident)
+                    // Plan 560 T09：`with` 关键字化后 #[with(...)] 注解名
+                    // 撞位（§10"零冲突"假设漏了注解名位）——此处同Ident 收。
+                    || self.is_kind(TokenKind::With)
+                {
                     let annot = self.cur.text.clone();
 
                     // Plan 364 W1: dotted annotation path — `#[zbus.interface]`.

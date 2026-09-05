@@ -248,11 +248,11 @@ fn main() {
     #[test]
     fn test_s2s_py_suite_corpus_roundtrip() {
         let corpus = [
-            "parity/libs/python/py_math/tests/auto/math.at",
-            "parity/libs/python/py_torch_infer/tests/auto/infer.at",
-            "parity/libs/python/py_torch_train/tests/auto/train.at",
-            "parity/libs/python/py_numpy/tests/auto/numpy.at",
-            "parity/libs/python/py_torch/tests/auto/torch.at",
+            "parity/libs/python/py_math/tests/auto/math.as",
+            "parity/libs/python/py_torch_infer/tests/auto/infer.as",
+            "parity/libs/python/py_torch_train/tests/auto/train.as",
+            "parity/libs/python/py_numpy/tests/auto/numpy.as",
+            "parity/libs/python/py_torch/tests/auto/torch.as",
         ];
         let manifest = env!("CARGO_MANIFEST_DIR");
         for rel in corpus {
