@@ -1901,6 +1901,9 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
+    // PLAN-062: 列表元素突变（入口计——多成功出口统一覆盖，错误路径
+    // 多 bump 一次是保守安全方向）。
+    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
     let elem_nv = task.ram.pop_nv();
     let elem_val = if auto_val::is_i32(elem_nv) {
         Value::Int(auto_val::decode_i32(elem_nv))
@@ -2000,6 +2003,8 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
+    // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
+    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
     let list_id = crate::vm::native::pop_arg_i32(task) as u64;
 
 
@@ -2336,6 +2341,8 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
+    // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
+    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
     let elem_nv = task.ram.pop_nv();
     let elem_val = nv_to_value(elem_nv);
     let index = task.ram.pop_i32() as usize;

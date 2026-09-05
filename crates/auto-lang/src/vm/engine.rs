@@ -344,6 +344,11 @@ pub struct AutoVM {
     pub rc_created_total: AtomicU64,
     pub rc_freed_total: AtomicU64,
     pub rc_traffic: AtomicU64,
+    // PLAN-062: 状态突变序号——堆/状态**写点**统一 bump（insert_heap_object/
+    // SET_FIELD/list 元素突变/字符串池新内容），读与 dedup 命中不 bump。
+    // 用途：fire_timer 派发前后对比判定"本拍是否零状态写"（空转拍不置脏，
+    // 不触发整树重建）。保守方向：多 bump 至多多一次重建，漏 bump 才丢更新。
+    pub state_mutation_seq: AtomicU64,
     // Plan 419 Phase 2: 字符串池并行状态(rc/pinned/freelist,见 rc.rs)。
     pub pool_state: std::sync::RwLock<crate::vm::rc::PoolState>,
 
@@ -606,6 +611,7 @@ impl AutoVM {
             rc_created_total: AtomicU64::new(0),
             rc_freed_total: AtomicU64::new(0),
             rc_traffic: AtomicU64::new(0),
+            state_mutation_seq: AtomicU64::new(0),
             pool_state: std::sync::RwLock::new(crate::vm::rc::PoolState::new()),
             // Plan 121: Task/Msg registry for Actor model
             task_registry: Arc::new(TaskRegistry::new()),
@@ -1042,6 +1048,8 @@ impl AutoVM {
                     if crate::pool_log_all() {
                         eprintln!("[POOLLOG #{:>4}] intern-freelist {} content={:?}", crate::pool_log_seq(), slot, String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>());
                     }
+                    // PLAN-062: 槽位写入新内容 = 状态面突变（dedup 命中不算）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     return slot;
                 }
                 // strings 与 freelist 长度异常时兜底:还回槽位走追加。
@@ -1057,6 +1065,8 @@ impl AutoVM {
         if crate::pool_log_all() {
             eprintln!("[POOLLOG #{:>4}] intern-append {} (pool len {})", crate::pool_log_seq(), idx, idx + 1);
         }
+        // PLAN-062: 追加新槽 = 状态面突变（dedup 命中不算）。
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
         idx
     }
 
@@ -1111,7 +1121,15 @@ impl AutoVM {
         // Plan 419: RC 不在此建条目 —— 对象出世时尚无 owned slot,
         // 首次 rc_push/rc_retain 建条目(计数语义见 rc.rs 模块注释)。
         self.rc_created_total.fetch_add(1, Ordering::Relaxed);
+        // PLAN-062: 任何堆对象出世都算状态面突变（列表/对象字面量、JSON
+        // 解析中间体、桥接实参物化等）。
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
         id
+    }
+
+    /// PLAN-062: 状态突变序号只读访问（fire_timer 空转判定 + 测试断言）。
+    pub fn state_mutation_seq(&self) -> u64 {
+        self.state_mutation_seq.load(Ordering::Relaxed)
     }
 
     /// Get a heap object by ID, returning a read guard
@@ -4572,6 +4590,8 @@ impl AutoVM {
                     self.rc_release_id(instance_id);
                 }
                 OpCode::LIST_PUSH_INT => {
+                    // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, value:int]
                     // Pop value first (top of stack), then list_id
@@ -4609,6 +4629,8 @@ impl AutoVM {
                     self.rc_release_id(list_id);
                 }
                 OpCode::LIST_POP_INT => {
+                    // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id]
                     // Pop list_id, get list, pop element, push result
@@ -4681,6 +4703,8 @@ impl AutoVM {
                     self.rc_release_id(list_id);
                 }
                 OpCode::LIST_SET_INT => {
+                    // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, index:int, value:int]
                     // Pop value first, then index, then list_id
@@ -5191,6 +5215,9 @@ impl AutoVM {
                 }
                 // Plan 075: Object field assignment (obj.field = value)
                 OpCode::SET_FIELD => {
+                    // PLAN-062: 字段写算状态面突变（arm 入口计——错误路径
+                    // 多 bump 一次是保守安全方向）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     use crate::vm::generic_registry::GenericInstanceData;
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)

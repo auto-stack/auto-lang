@@ -1,0 +1,43 @@
+// app.at — PLAN-062 内存泄漏语料（两拍型 timer + 表达式体 computed）：
+//  - IdleTick：守卫写（running=false 时空转拍零状态写——fire_timer
+//    无条件置脏缺陷的最小现场，musk PollStream deadman 早退同构）。
+//  - BeatTick：恒写拍（每拍置脏驱动整树重建——retain 泄漏 soak 现场）。
+//  - items：表达式体 computed 经 helper 每求值新建 list+20 obj
+//    （call_vm_fn → retain_heap_result 保留路径，musk filteredMessages 同构）。
+use item_helpers: build_items
+
+widget App {
+    msg { IdleTick, BeatTick, MuskTick, SetRunning }
+    model {
+        var running bool = false
+        var count int = 0
+        var poll_window []Value = []
+    }
+    timer {
+        IdleTick (every_ms: 40)
+        BeatTick (every_ms: 50)
+        MuskTick (every_ms: 60)
+    }
+    computed {
+        items => build_items(20)
+    }
+    view {
+        col {
+            for it in .items {
+                text "row"
+            }
+        }
+    }
+    on {
+        .IdleTick -> { if .running { .count = .count + 1 } }
+        // musk PollStream 早退形态的精确复刻（let 绑定 + .length 调用）。
+        .MuskTick -> {
+            let wins = .poll_window
+            if wins.length == 0 { return }
+            let started = wins[wins.length - 1]
+            if Date.now() - started > 120000 { return }
+        }
+        .BeatTick -> { .count = .count + 1 }
+        .SetRunning(v) -> { .running = v }
+    }
+}

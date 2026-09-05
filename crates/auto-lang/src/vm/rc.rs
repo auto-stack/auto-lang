@@ -350,6 +350,11 @@ impl AutoVM {
     /// 结果,故只应在"不再有人读该任务栈"时调用。
     pub fn rc_release_task_stack(&self, task: &mut AutoTask) {
         let sp = task.ram.sp;
+        // PLAN-062 注记:只清 [0, sp)。曾试帧范围扩展（max(sp, 局部+实参+2))
+        // 清 bp==0 主任务 RET 未扫的局部槽——被 STORE_GLOBAL 转移语义否决:
+        // pop 的 stake 转入全局表而槽内留陈旧字节,扩域清扫即双重释放
+        // (global_keeps_alive 实证全局对象被误杀)。局部槽滞留份额归上游
+        // RC 槽位记账专项(KD-051⑤ 续行,每 call 1 个、钉住当帧返回树)。
         self.rc_release_slot_range(&mut task.ram, 0, sp);
         task.ram.sp = 0;
         for i in 0..task.state_vars.len() {
