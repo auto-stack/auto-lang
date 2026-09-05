@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-560
-status: execution_done      # drafting → executing → execution_done → reviewed → archived
+status: reviewed            # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w2-sugar-batch
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -319,7 +319,7 @@ fork 95cf3fa32，13 commits；diff 38 文件 +1894/−91：18 代码文件 + 20 
 | 1 | §3 规则表全列糖形态探针 + s2s 每规则单测 + dump 真产物 | **PASS** | p01 复跑（sum=15 双形态）/p08（B 族 6-15-1-0）/p09（切片 10-3-4+dump 直达产物 6 处 py_*）/p10（**1024**/134/8）/p11（falsy-0/truthy-2/is true-false）/w7 no_grad **gflag=0**/p13（3-3-true）；tests_s2s 6/6；dump 抽查在案 |
 | 2 | Err 通道六条 | **PASS（最小面+双债案）** | p14 复跑：null 值 true/caught+IndexError 载荷全文/fallback（May 通道）/未捕获 exit=1；隐式自动化+严格前缀=P560-D2/D3 债在案 |
 | 3 | py 套件三方（.as 载体）+ tv/tt/tvm 全绿 | **PASS（附随迁红注记）** | 五套件 64/64 复跑（新二进制）+14 补迁套件 17/19 全绿——py_sys 0/5/py_list 7/8 为 **master 既有红**（原 .at 在 master 二进制同形失败实证，P560-D6）；tv 3595/3596+tt 3782/3783+tvm 801/801（唯一红=charts 既有甄别） |
-| 4 | 550 门控硬化生效 + P550-D4 探针面激活 | **PARTIAL-FAIL→待用户裁决** | **硬化未实施**（T14 部分完成）：实测影响面超计划前提（vm 语料存量撞击——aavm2 词法 2+null 语义 1+keyword_map，需裁定语料迁移/标注+tv 框架 glob，待澄清#5/P560-D4）；py 套件前提已备（19 全 .as）。P550-D4 期望面再更新归 W3（P560 注记）而非本波激活 |
+| 4 | 550 门控硬化生效 + P550-D4 探针面激活 | **PASS（裁定后补完重验）** | 用户裁定 a+b（2026-09-05）：硬化落地=auto_gate_E5501 诊断错误+文件上下文限定+tv 带 path 通道+json_is_null 迁 .as；**四态矩阵复验**（.at+null=拒/.as=豁/#[rust]=压回拒/#[script]=豁）+sys 原 .at 拒绝；tv 3595/3596+tt 3782/3783 零残留。P550-D4：编译期 E0401 静态拦维持+VM 动态守卫单测钉，端到端糖态面归 W3（注记在案） |
 | 5 | 窥孔直达 + CALL_NAT_COUNTED 改名 | **PASS** | dump 直达产物（py-known 糖直落 py_call/py_getitem/py_slice——A1 直呼形态）；CALL_PY 全仓零残留（grep 复核）；tvm 801+infer 17/17 改名后复验 |
 | 6 | P555-D2/D5 销号 + 本波债务登记 | **PASS** | P555-D2 于 T02 落地（AST 帧形）/D5 于 T13 改名；KNOWN-DEBT P560 节 D1-D6 六条在案（grep=6） |
 
@@ -346,13 +346,17 @@ P555-D4 甄别在案：555 复审已证 diff-无关；本波 diff 18 代码文�
 4. T11 最小面+双债（隐式传播/严格前缀）。
 5. T12 扩全量 19 套件（计划原文五套件——硬化前提倒逼扩量）。
 
-### 路由
+### 路由（重审更新，2026-09-05）
 
-标准 4 部分完成（硬化未落，阻塞于**用户裁定**待澄清#5：vm 语料存量如何
-处置）→ **status 保持 execution_done，不置 reviewed**。修复路径二选一：
-(a) 用户裁定语料处置→独立小批补硬化→重审标准 4；(b) 计划范围修订
-（硬化半面裁出至后续计划）→ 本审按修订面重路由。其余五标准全 PASS 且
-全量门禁绿（唯一红=甄别在案既有）。
+首轮路由：标准 4 PARTIAL→保持 execution_done 待裁定。**用户裁定 a+b**
+（语料改 .as + 本计划内补完再复审）→ T14 补完落地（门控硬化收口提交+
+计划回写），标准 4 重验 PASS（四态矩阵+tv/tt 零残留+五套件 64/64 复跑）。
+
+**终裁：六项验收全 PASS，无阻断债 → status: reviewed，可入 /auto-plan:merge。**
+
+重审增量证据：硬化矩阵四态（p3 系 1/0/1/0）+sys 原 .at 拒绝=1；
+tv 3595/3596（唯一红=既有 charts）+tt 3782/3783+五套件 64/64+tests_s2s 全绿；
+门控影响面实证修正记录于 T14 标记（内联通道不门/文件通道受门）。
 
 ## 执行注记
 
