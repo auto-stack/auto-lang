@@ -400,6 +400,25 @@ KD-047（SSE 桥专项,存量）。重开段目标"尾债就地清偿"按此口�
   state-scope/RC 专项解释,但不再阻塞直显链路）。
 - musk deadman 窗为 KD P536-D2 修正前的绕行,留存无害(2 分钟窗自愈)。
 
+### 正式复审（2026-09-05,用户显式要求 /auto-plan:review）
+
+- **全量门禁（Plan 466 tf 档,--no-fail-fast 完整跑）**: 4016 跑 4008 绿
+  （8 slow）,8 红=7×book_listing（ch02_05/ch03_08/ch06_05/06/08/09/ch09_02,
+  书册 listing 解析错——书仓 D:/autostack/book 为独立仓,内容系并行书稿
+  工作（tapl 章节+ch08 未提交 WIP）,与本计划改动面零重叠）+1×
+  test_charts_gallery_compiles（master 存量,T10 期已在基线复核）。**零
+  本计划引入回归**。Phase 2 触及 VM 文件（engine.rs 追踪面）已由本 tf
+  覆盖（tf 档含 test-vm-files feature）。
+- **验收判据复核**: 重开段 D1/D2/D4 + Phase 2 T13-T15 逐项维持原判
+  （证据链: p536 探针 20/20、围栏三套绿、POLLTRACE 定罪序列、实机 E2E
+  状态时序——均已在本记录与 T13 条目留档,本次 tf 为终局门禁补跑）。
+- **spec-impact 元数据**: 已补 Phase 2 条目（POLLTRACE 设施/D2 定性修正/
+  deadman 理由随定案更新）,merge 可直接消费。
+- **状态路由**: reviewed 确认,archived 维持（终态,三次关闭）。后续动作
+  两件,均不在本计划内: ①musk 061 D25 落地后以 p536_t13_polltrace.py 跑
+  T15 直显终验;②KD P536-D1 生成器振荡 + 书仓 book listing 解析错（新外来
+  发现,归书仓/并行书稿会话）留待各自归属方。
+
 ### 判定（Phase 2 段）
 
 **reviewed**——T13 定位达成,T14/T15 以证据支持的改判移交 061;Phase 2
