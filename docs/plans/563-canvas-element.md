@@ -272,8 +272,11 @@ undo（弹尾笔）、清空、storage 存取。**放 capability-tests 轨道**�
 
 ## 待澄清事项
 
-1. **后续消费 app 队列**（本计划只交地基）：经典 MSPaint（032+ 空号正式
-   应用轨道）、白板、签名板、截图标注、557 打砖块类——各自另立 plan。
+1. **后续消费 app 队列**（本计划只交地基）：**031-paint 双模式升级**
+   （用户 2026-09-05 裁定：Paint 是单一应用——031 即 Paint 本体，v1 像素
+   版已随 Plan 553 落地；本计划合入后另立 plan 给 031 长出流线模式，
+   pixel/流线双模式并存，共享调色板/undo/存取外壳）、白板、签名板、
+   截图标注、557 打砖块类——各自另立 plan。
 2. scene 的 v2 形态（shapes 家族：rect/circle/text 图元、eraser 真挖除、
    变换）远期——v1 只做笔画点列，契约预留 `stroke_meta` 第三位扩展。
 3. **远程宿主画布化**：`desktop_protocol::DrawOp` v1 无路径 op（quad/text/
