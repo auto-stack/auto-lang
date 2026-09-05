@@ -2168,6 +2168,11 @@ mod tests {
         assert_eq!(StyleClass::parse_single("text-base"), Ok(StyleClass::TextBase));
         assert_eq!(StyleClass::parse_single("text-lg"), Ok(StyleClass::TextLg));
         assert_eq!(StyleClass::parse_single("text-xl"), Ok(StyleClass::TextXl));
+        // PLAN-053 T14: 任意字号通道（既有 TextArbitrary）
+        assert_eq!(
+            StyleClass::parse_single("text-[25.3px]"),
+            Ok(StyleClass::TextArbitrary(25.3))
+        );
         assert_eq!(StyleClass::parse_single("text-2xl"), Ok(StyleClass::Text2Xl));
         assert_eq!(StyleClass::parse_single("text-3xl"), Ok(StyleClass::Text3Xl));
     }

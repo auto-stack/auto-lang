@@ -201,25 +201,44 @@ pub fn callout_kind_classes(kind: &str) -> (&'static str, &'static str) {
 }
 
 /// heading 视图类表（从 autodown_render::heading_style 搬家；h1..h6）。
+/// PLAN-053 T14（§7.3/§7.2 收敛，VM 排版对齐 W2.6）：h1-h3 字号=§7.3
+/// rem 投影（1.58/1.33/1.18rem × 16 = 25.3/21.3/18.9px，text-[<n>px]
+/// 任意字号通道），全 700（h3 semibold→bold 对齐 vue），色=§7.2 indigo
+/// strong 双档（light #4338ca=indigo-700 / dark #818cf8=indigo-400，
+/// `dark:` 前缀主题门控——VM document accent 为 PARITY #17 豁免，靛蓝
+/// 静态合规）。h4-h6 维持应用级档位（§7.3 未定义）。
 pub fn heading_classes(level: i64) -> &'static str {
     match level.clamp(1, 6) {
-        1 => "text-4xl font-bold text-primary mb-4",
-        2 => "text-3xl font-bold text-primary mt-8 mb-4",
-        3 => "text-xl font-semibold text-primary mb-3",
+        1 => "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mb-4",
+        2 => "text-[21.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-8 mb-4",
+        3 => "text-[18.9px] font-bold text-indigo-700 dark:text-indigo-400 mb-3",
         4 => "text-lg font-semibold mb-2",
         5 => "text-base font-semibold mb-1",
         _ => "text-sm font-semibold mb-1",
     }
 }
 
+/// PLAN-053 T14：heading accent-strong 绘色（§7.2 indigo strong 双档：
+/// light #4338ca=indigo-700 / dark #818cf8=indigo-400）——编辑壳 heading
+/// buffer 的默认前景覆盖（只读臂走同类串 `text-indigo-700 dark:...`）。
+/// VM document accent 为 PARITY #17 豁免，靛蓝静态合规。
+pub fn heading_strong_rgb() -> (u8, u8, u8) {
+    let dark = crate::ui::style::theme::dark_mode();
+    if dark { (129, 140, 248) } else { (67, 56, 202) }
+}
+
 /// heading 编辑壳字号表（从 autodown_editor::core::kind_font_size 搬家）。
+/// PLAN-053 T14：与 heading_classes 同源收敛 §7.3（25.3/21.3/18.9），
+/// h4-h6 级联对齐只读臂（18/16/14，h6 原 BODY_SIZE 16 与 text-sm 差
+/// 2px——两臂 h6 字号分叉一并销号）。
 pub fn heading_size(level: i64) -> f32 {
     match level.clamp(1, 6) {
-        1 => 30.0,
-        2 => 24.0,
-        3 => 20.0,
+        1 => 25.3,
+        2 => 21.3,
+        3 => 18.9,
         4 => 18.0,
-        _ => BODY_SIZE,
+        5 => 16.0,
+        _ => 14.0,
     }
 }
 
@@ -436,13 +455,17 @@ mod tests {
     /// heading 两张表（view 类串 / 编辑字号）同源于此。
     #[test]
     fn heading_tables_single_sourced() {
-        assert_eq!(heading_classes(1), "text-4xl font-bold text-primary mb-4");
+        assert_eq!(
+            heading_classes(1),
+            "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mb-4"
+        );
         assert_eq!(heading_classes(6), "text-sm font-semibold mb-1");
         assert_eq!(heading_classes(0), heading_classes(1), "clamp 到 1");
         assert_eq!(heading_classes(9), heading_classes(6), "clamp 到 6");
-        assert_eq!(heading_size(1), 30.0);
-        assert_eq!(heading_size(3), 20.0);
-        assert_eq!(heading_size(5), BODY_SIZE);
+        assert_eq!(heading_size(1), 25.3);
+        assert_eq!(heading_size(3), 18.9);
+        assert_eq!(heading_size(5), 16.0);
+        assert_eq!(heading_size(6), 14.0);
         assert_eq!(heading_size(-2), heading_size(1));
     }
 
