@@ -49,7 +49,7 @@ use crate::ui::code_editor::theme::Rgba;
 pub const BODY_SIZE: f32 = autodown_blocks::BODY_SIZE;
 const LINE_H_MULT: f32 = 1.45;
 /// 块间垂直间距（观感对齐只读轨 Column spacing=8 + 标题边距感）。
-pub const BLOCK_GAP: f32 = 10.0;
+pub const BLOCK_GAP: f32 = 8.0; // PLAN-053 T15：与只读臂文档列 spacing 8 对齐（两臂基础节奏同值）
 /// 光标宽（对齐 413 CARET_WIDTH）。
 pub const CARET_WIDTH: f32 = 2.0;
 /// 多击窗口（对齐 413 CLICK_TIMING）。
@@ -1269,6 +1269,13 @@ impl AutodownEditorCore {
             let b = &mut blocks[bi];
             let size = leaf_size(b.kind);
             let line_h = size * LINE_H_MULT;
+            // PLAN-053 T15：heading 额外块距（§7.3 vue margins 19.2/17.6 与
+            // 25.6/14.4 扣两臂共同基础节奏 8px）——与只读臂 mt-[]/mb-[] 类
+            // 同值，两臂逐块 pitch 一致即左右对齐。
+            let (extra_top, extra_bottom) = match b.kind {
+                LeafKind::Heading(l) => autodown_blocks::heading_extra_margins(l),
+                _ => (0.0, 0.0),
+            };
             let mono_all = matches!(b.kind, LeafKind::Fence);
             let styled_ok = {
                 let snapshot_eq = SendEdit::of(b).text() == b.snapshot;
@@ -1291,7 +1298,7 @@ impl AutodownEditorCore {
             } else {
                 viewport_w.max(1.0)
             };
-            let text_y = y + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
+            let text_y = y + extra_top + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
             let ed = &mut b.editor.0;
 
             ed.with_buffer_mut(|buf| {
@@ -1363,7 +1370,7 @@ impl AutodownEditorCore {
                 });
                 full.h
             } else {
-                block_h.max(line_h)
+                block_h.max(line_h) + extra_top + extra_bottom
             };
 
             if !view_inst {

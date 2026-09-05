@@ -895,7 +895,7 @@ mod tests {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "标题");
                 let expected = Style::parse(
-                    "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mb-4",
+                    "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
                 )
                 .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes)
