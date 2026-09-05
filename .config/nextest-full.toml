@@ -1,4 +1,25 @@
 # Plan 466: full 档 nextest 配置(cargo tf / cargo ta 经 --config-file 指定)。
 # --config-file 是整体替换而非合并:本文件不设 default-filter → 全部测试
-# (含 str_churn_bounded_large 1M 大档)都会运行 —— review / fold 前的
-# 全量门禁专用。本文件需自成一体。
+# (含 str_churn_bounded_large 1M 大档与 XL 重内存档)都会运行 ——
+# review / fold 前的全量门禁专用。本文件需自成一体。
+#
+# Plan 564: 全量档同样受三组内存限流(XL 不排除,靠组内串行控峰值,
+# 最坏 = 单 XL 峰值 + LG 串行 + MD×2 + 轻池 ≤2GB 预算,A4 实测验收)。
+# 名单与档位数据:.config/test-mem-weights.md(单一事实来源)。
+
+[test-groups]
+mem-xl = { max-threads = 1 }
+mem-lg = { max-threads = 1 }
+mem-md = { max-threads = 2 }
+
+[[profile.default.overrides]]
+filter = "test(test_aavm2_p532_lib_static_diff) or test(test_aavm2_fourpath_runner) or test(test_aavm2_a2r_is_corpus) or test(test_aavm2_m4_codegen_corpus) or test(test_aavm2_m5_engine_corpus) or test(test_aavm2_m2_parser_corpus) or test(test_aavm2_m5_use_corpus) or test(test_aavm2_m4_use_corpus) or test(test_aavm2_m3_typeinfo_corpus) or test(test_aavm2_m1_lexer_corpus) or test(test_aavm2_m3_milestone_fib) or test(test_aavm2_a2r_probe_smoke)"
+test-group = "mem-xl"
+
+[[profile.default.overrides]]
+filter = "test(test_aavm2_m5_use_errors) or test(test_aavm2_001_smoke) or test(test_aavm2_compile_corpus) or test(test_aavm2_compile_use_corpus)"
+test-group = "mem-lg"
+
+[[profile.default.overrides]]
+filter = "test(test_aavm2_goldens_check) or test(test_aavm2_a2r_main_dump_print) or test(test_aavm2_a2r_corpus_rustc) or test(test_aavm2_002_hello_compile)"
+test-group = "mem-md"

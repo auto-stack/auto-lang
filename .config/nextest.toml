@@ -5,6 +5,38 @@
 #   默认(本文件):   排除 str_churn_bounded_large(1M) —— cargo t/tv/tt/tb/th 日常档;
 #                   其 100k 日常版 str_churn_bounded 照常运行
 #   full(nextest-full.toml): 不设过滤 —— cargo tf/ta 全量门禁,1M 大档照跑
-# 裸 cargo test 不经 nextest,两档都会运行(全量语义)。
+# 裸 cargo test 不经 nextest,两档都会运行(全量语义;重内存测试另有
+# Plan 564 heavy_gate 体内守门,裸路径秒退)。
+#
+# Plan 564: 重内存测试分层与并发限流(数据:.config/test-mem-weights.md,
+# 2026-09-05 实测)。三组按内存档位限流——重测试占用整组线程配额:
+#   mem-xl(max=1): ≥800MB 单测,串行;且从日常档 default-filter 排除
+#                  ("不能经常跑":仅 tf/ta 全量档运行;其中 #[ignore] 三件
+#                  static_diff/fourpath/probe_smoke 本就不在日常语义内)
+#   mem-lg(max=1): 300-800MB 单测,保留日常档但组内串行
+#   mem-md(max=2): 100-300MB 单测,并发 2
+# lg 并发 2 被实测否决(931+2×~780≈2.5GB 破 2GB 预算);全部并发下的
+# 档峰值预算 ≤2GB:A4 实测验收(cargo tf aavm2_)。
 [profile.default]
-default-filter = "not test(str_churn_bounded_large)"
+default-filter = "not test(str_churn_bounded_large) and not (test(test_aavm2_a2r_is_corpus) or test(test_aavm2_m4_codegen_corpus) or test(test_aavm2_m5_engine_corpus) or test(test_aavm2_m2_parser_corpus) or test(test_aavm2_m5_use_corpus) or test(test_aavm2_m4_use_corpus) or test(test_aavm2_m3_typeinfo_corpus) or test(test_aavm2_m1_lexer_corpus) or test(test_aavm2_m3_milestone_fib) or test(test_aavm2_p532_lib_static_diff) or test(test_aavm2_fourpath_runner) or test(test_aavm2_a2r_probe_smoke))"
+
+[test-groups]
+mem-xl = { max-threads = 1 }
+mem-lg = { max-threads = 1 }
+mem-md = { max-threads = 2 }
+
+# XL(≥800MB)——实测名单见 .config/test-mem-weights.md;新增重测试三步登记:
+# 测量(scripts/measure_test_mem.py) → 权重表定级 → 此处 overrides/守门
+[[profile.default.overrides]]
+filter = "test(test_aavm2_p532_lib_static_diff) or test(test_aavm2_fourpath_runner) or test(test_aavm2_a2r_is_corpus) or test(test_aavm2_m4_codegen_corpus) or test(test_aavm2_m5_engine_corpus) or test(test_aavm2_m2_parser_corpus) or test(test_aavm2_m5_use_corpus) or test(test_aavm2_m4_use_corpus) or test(test_aavm2_m3_typeinfo_corpus) or test(test_aavm2_m1_lexer_corpus) or test(test_aavm2_m3_milestone_fib) or test(test_aavm2_a2r_probe_smoke)"
+test-group = "mem-xl"
+
+# LG(300-800MB)
+[[profile.default.overrides]]
+filter = "test(test_aavm2_m5_use_errors) or test(test_aavm2_001_smoke) or test(test_aavm2_compile_corpus) or test(test_aavm2_compile_use_corpus)"
+test-group = "mem-lg"
+
+# MD(100-300MB)
+[[profile.default.overrides]]
+filter = "test(test_aavm2_goldens_check) or test(test_aavm2_a2r_main_dump_print) or test(test_aavm2_a2r_corpus_rustc) or test(test_aavm2_002_hello_compile)"
+test-group = "mem-md"
