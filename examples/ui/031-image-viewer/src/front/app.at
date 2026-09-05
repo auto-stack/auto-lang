@@ -1,8 +1,6 @@
 // 031-image-viewer front UI (Plan 547 Tasks 29 and 33).
 // The model is metadata and transform state only; pixels stay behind the
 // shared media route and ImageSurface renderer.
-use image_viewport: ImageViewport
-
 widget App {
     msg {
         Init,
@@ -83,7 +81,7 @@ widget App {
                     if .image_count == 0 {
                         text "No images yet" { style: "text-xs text-muted-foreground p-2" }
                     } else {
-                        scroll {
+                        col {
                             style: "flex-1 min-h-0"
                             col {
                                 style: "gap-1"
@@ -129,20 +127,21 @@ widget App {
                                 button "Retry" { onclick: .OpenFile, style: "px-3 py-1.5 text-xs" }
                             }
                         } else {
-                            ImageViewport(
+                            image_surface (
                                 src: .media_src,
                                 alt: .media_alt,
-                                fit_mode: .fit_mode,
+                                fit: .fit_mode,
                                 zoom: .zoom,
                                 offset_x: .offset_x,
                                 offset_y: .offset_y,
                                 rotation: .rotation,
-                                on_loaded: .ImageLoaded,
-                                on_error: .ImageFailed,
-                                on_wheel: .Wheel,
-                                on_pan: .Pan,
-                                on_double_click: .DoubleClick
-                            )
+                                onload: .ImageLoaded,
+                                onerror: .ImageFailed,
+                                onwheel: .Wheel,
+                                onpan: .Pan,
+                                ondblclick: .DoubleClick,
+                                style: "w-full h-full"
+                            ) {}
                         }
                     }
 
