@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 3
+current_step: 5
 total_steps: 9
 ---
 
@@ -187,10 +187,20 @@ P551-D1..D5，2026-09-05）
   useDesktopCfgStore。
 - T4 W3：generate_desktop_host 守卫放开（api-client 类）+ 粘合层
   注入 + extra roots（crates/auto-man/src/vue.rs）→ desktop-host
-  嵌入 os-config 实机（Playwright）。
+  嵌入 os-config 实机（Playwright）。[✅ 已完成] 守卫放开（gen 粘合
+  /项目 src/back/api.ts 择先，run 内先到先得每次覆写）+ extra roots
+  （默认探测 ../auto-os-config/auto，id=os-config 对齐 vm 轨，
+  AUTO_DESKTOP_APPS_EXTRA 可覆）；实机：组目录 scratch 宿主项目
+  desktop-host，39 扫描/32 嵌入/os-config 粘合安装，Playwright
+  summon→search→launch 全链，窗口渲染 System Overview+真实 daemon
+  数据（AUTO_HTTP_PROXY 代理 :17701；注：auto run 的 vite 子进程不吃
+  该 env，实证用产物目录裸 vite 等价服务）。
 - T5 W4：Taskbar.vue ⚙️ 按钮 + wm store launch 接线
   （crates/auto-man/assets/wm/Taskbar.vue + store.ts）→ Playwright
-  点击验证。
+  点击验证。[✅ 已完成] ⚙️ 按钮（emit settings，os-config 条目在场
+  性门控）+ 宿主 App launchSettings 聚焦既有窗否则启动（vm 551 T2
+  对齐）；Playwright 两次点击实证：首击开窗（daemon 数据）、再击单窗
+  聚焦。
 - T6 W5：Desktop 页双端对拍三 shots（vm: p551 驱动复用；vue:
   Playwright）→ 对拍判读（autoui-verifier）。
 - T7 W6：ConfigEditor widgets 缓存 + entryAt 覆盖 + picker 渲染分支
