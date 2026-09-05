@@ -3475,6 +3475,18 @@ export default router
             .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
         println!("{}", "  ✓ Regenerated src/assets/index.css".bright_green());
 
+        // PLAN-063 Phase B T22 (KD 061 D27 同族): 冷重生成自愈——增量路径
+        // write-if-missing src/lib/utils.ts(常态靠粘性存在;冷删 src/ 后
+        // 脚手架 ui 组件的 @/lib/utils 导入断链,冷脉冲实测咬中)。
+        let utils_path = src_dir.join("lib").join("utils.ts");
+        if !utils_path.exists() {
+            fs::create_dir_all(src_dir.join("lib"))
+                .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+            fs::write(&utils_path, generate_utils_ts())
+                .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
+            println!("{}", "  ✓ Restored src/lib/utils.ts (cold regen self-heal)".bright_green());
+        }
+
         // Regenerate tsconfig.json
         let tsconfig_path = self.output_dir.join("tsconfig.json");
         let tsconfig = generate_tsconfig();
