@@ -1688,7 +1688,7 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
-            "imagesurface" | "image-surface" | "ImageSurface" => {
+            "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
@@ -3136,7 +3136,7 @@ impl<'a> AuraViewBuilder<'a> {
             // ImageSurface / Image / Icon.  ImageSurface keeps all dynamic
             // transform props and normalizes its five event hooks into the
             // same DynamicMessage shape consumed by the renderer.
-            "imagesurface" | "image-surface" | "ImageSurface" => {
+            "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
