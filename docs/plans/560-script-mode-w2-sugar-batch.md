@@ -287,9 +287,10 @@ total_steps: 15
       parity runner glob（`.at|.as`）+ a2py 接受 `.as`（验证：五套件
       三方逐套件全绿）
       [✅ 已完成] 五套件 git mv + runner 四发现门双扩展名；**顺修 trans_python pyname 原地覆写 bug**（path.replace(".at",".py") 对 .as 不命中→产物写回源文件，py_math 被覆写实证后从暂存区恢复+扩展名感知修正）；五套件三方 64/64 全绿（math 20+torch 7+infer 17+train 10+numpy 10）
-- [ ] T13 窥孔+改名：use.py 静态已知调用点 s2s 产物直呼 py_xxx +
+- [x] T13 窥孔+改名：use.py 静态已知调用点 s2s 产物直呼 py_xxx +
       CALL_PY→CALL_NAT_COUNTED 全链改名（发射/执行/既有 450-469 面）
       （验证：`--dump-lowered` 直达产物抽查 + `cargo t vm` 全绿）
+      [✅ 已完成] 窥孔由 A1 直呼形态满足（py-known 方法糖直接落 py_call——设计默认组合子+窥孔，实现取直呼优先，p09 dump 直证）；CALL_PY→CALL_NAT_COUNTED 31 处 8 文件（P555-D5 销号）；cargo t vm 801/801 + infer 17/17 复验
 - [x] T14 硬化：550 门控 `.at` 含 use.py/null/nil 警告→诊断错误
       （`.as`/`#[script]`/`#[rust]` 豁免不变）+ P550-D4 CALL null
       端到端探针补案（验证：硬化探针矩阵 + `cargo tv` 存量零残留红）
