@@ -10166,7 +10166,7 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     .component
                     .write_state("__desktop_cmd", auto_val::Value::str(&joined));
             }
-            DesktopInject::Handler { app: which, handler, arg } => {
+            DesktopInject::Handler { app: which, handler, arg, widget } => {
                 let app_id = match which {
                     "shell" => state.desktop.shell_app,
                     "notification" => state.desktop.notification_app,
@@ -10192,7 +10192,19 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                 let args = arg
                     .map(|a| vec![auto_val::Value::str(&a)])
                     .unwrap_or_default();
-                let _ = sess.component.bridge_mut().call_handler(&handler, &args);
+                match &widget {
+                    // Plan 559 W7: (app, widget) targeting — dispatch into
+                    // the named sub-widget's handler context (namespaced
+                    // call_handler_for, the onclick pipeline), falling back
+                    // to the root bare-name dispatch when the widget has no
+                    // live state object.
+                    Some(w) => {
+                        let _ = sess.component.call_widget_handler(w, &handler, &args);
+                    }
+                    None => {
+                        let _ = sess.component.bridge_mut().call_handler(&handler, &args);
+                    }
+                }
                 *sess.state.view_dirty.borrow_mut() = true;
             }
         }
@@ -20980,6 +20992,7 @@ mod tests {
             app: "shell",
             handler: "OpenSettingsPanel".to_string(),
             arg: None,
+            widget: None,
         });
         apply_desktop_injects(&mut ds);
         let cmds = ds.drain_desktop_commands();

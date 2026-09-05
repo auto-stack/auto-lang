@@ -1929,7 +1929,15 @@ pub enum DesktopInject {
     Bus(String),
     /// 特权 App handler 直呼（shell/settings/notification/launcher 的
     /// onclick 同名 handler——比动词更贴按钮的一步）。
-    Handler { app: &'static str, handler: String, arg: Option<String> },
+    /// Plan 559 W7：`widget` 可选——按 (app, widget) 定位 DynamicComponent
+    /// 子实例的 handler 上下文（namespaced call_handler_for，onclick 同一
+    /// 管线）；None 保持根级裸名派发（551 语义不变）。
+    Handler {
+        app: &'static str,
+        handler: String,
+        arg: Option<String>,
+        widget: Option<String>,
+    },
 }
 
 static DESKTOP_INJECT_QUEUE: Mutex<Vec<DesktopInject>> = Mutex::new(Vec::new());

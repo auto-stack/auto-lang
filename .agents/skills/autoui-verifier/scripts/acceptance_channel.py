@@ -120,6 +120,17 @@ class DesktopSession:
         self.settle()
         return out
 
+    def handler_widget(self, app: str, widget: str, handler: str, arg: str = None):
+        """Plan 559 W7: (app, widget) sub-component targeting — the inject
+        layer dispatches into the named DynamicComponent's handler context
+        (namespaced call_handler_for, the onclick pipeline)."""
+        payload = {"action": "handler", "app": app, "widget": widget, "handler": handler}
+        if arg is not None:
+            payload["arg"] = arg
+        out = self.mcp.text("autoui_desktop", payload)
+        self.settle()
+        return out
+
     def settle(self, ticks: int = 3):
         """ServiceTick cadence is ≤400ms; a few ticks cover inject → drain →
         render → screenshot-request round trip."""
@@ -193,11 +204,60 @@ def run_scenario(name: str, out_dir: str):
         elif name == "p515":
             # Plan 515 G4 C3 (P504-3): real-launch e2e — DesktopBus `launch`
             # record (same drain/execute arm as real shell.at writes; the
-            # synthetic-input-cannot-reach-winit blocker bypassed by the
+            # synthetic-input-cannot-reach-winner blocker bypassed by the
             # channel's MCP injection arm, per 505 acceptance-channel report).
             s.bus("launch\u001f011-calculator")
             s.settle(8)
             shots.append(s.shot("p515-01-calculator-launched"))
+        elif name == "p559":
+            # Plan 559 T8 (W7): picker click-through e2e. The W6 drop-in
+            # fixture module (widgets-declared, no view_name) renders in the
+            # GENERIC ConfigEditor; W7 (app, widget) targeting drives the
+            # WallpaperPicker's Pick directly; the write lands in the daemon
+            # config store (config.at) and the desktop host hot-applies it
+            # (551-10/11 wallpaper hot-apply 对照).
+            import json as _json
+            import urllib.request as _ur
+
+            def _cfg(mid):
+                with _ur.urlopen(f"http://127.0.0.1:17701/api/config/{mid}") as r:
+                    return _json.load(r)["value"]
+
+            s.handler("shell", "OpenSettingsPanel")
+            s.settle(8)  # os-config spawn + vm merged load settle
+            s.handler("settings", "SelectModule", "p559-fixture")
+            s.settle(3)
+            shots.append(s.shot("p559-01-fixture-editor-picker"))
+            # Idempotent baseline: reset the fixture to aqua via the daemon
+            # before the Pick, so the plum write-through is provable on every
+            # re-run (execution-time first run proved aqua→plum change; a
+            # persisted plum state would otherwise make before==after).
+            _reset = _ur.Request(
+                "http://127.0.0.1:17701/api/config/p559-fixture",
+                data=_json.dumps({
+                    "value": {
+                        "cfg_wallpaper": "C:/Users/zhaop/.config/autoos/p559-wallpapers\\aqua.png",
+                        "cfg_wallpapers_dir": "C:/Users/zhaop/.config/autoos/p559-wallpapers",
+                    }
+                }).encode(),
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+            )
+            with _ur.urlopen(_reset) as r:
+                r.read()
+            s.settle(2)
+            before = _cfg("p559-fixture").get("cfg_wallpaper", "")
+            s.handler_widget(
+                "settings", "WallpaperPicker", "Pick",
+                "C:/Users/zhaop/.config/autoos/p559-wallpapers\\plum.png",
+            )
+            s.settle(5)  # fresh GET → editField → PUT → host 400ms poll → apply
+            after = _cfg("p559-fixture").get("cfg_wallpaper", "")
+            assert "aqua.png" in before, f"p559: baseline reset failed (before={before!r})"
+            assert after != before and "plum.png" in after, (
+                f"p559: Pick must write through to config.at (before={before!r} after={after!r})"
+            )
+            shots.append(s.shot("p559-02-pick-hot-apply"))
         else:
             raise SystemExit(f"unknown scenario: {name}")
         print(f"[{name}] PASS — {len(shots)} shot(s):")
@@ -211,7 +271,7 @@ def run_scenario(name: str, out_dir: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True,
-                    choices=["drill", "p487", "p496", "p501", "p515"])
+                    choices=["drill", "p487", "p496", "p501", "p515", "p559"])
     ap.add_argument("--out-dir", default=None)
     args = ap.parse_args()
     if not os.path.isfile(DESKTOP_EXE):

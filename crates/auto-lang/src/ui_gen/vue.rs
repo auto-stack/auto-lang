@@ -14666,6 +14666,26 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 i += 1;
                 continue;
             }
+            // Plan 559 W2: VM-track change-payload syntax written in the .at
+            // source (`onchange: .ApplyEntry(e.key, $event.target.value)`).
+            // Vue's EventTarget carries neither member and `target` is
+            // nullable — narrow to the concrete element type so the gen tree
+            // passes vue-tsc (TS2339/TS18047, os-config collection_browser /
+            // config_editor family).
+            if c == b'$'
+                && (i == 0 || !matches!(b[i - 1], b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_'))
+            {
+                if b[i..].starts_with(b"$event.target.value") {
+                    out.extend_from_slice(b"($event.target as HTMLInputElement).value");
+                    i += b"$event.target.value".len();
+                    continue;
+                }
+                if b[i..].starts_with(b"$event.target.checked") {
+                    out.extend_from_slice(b"($event.target as HTMLInputElement).checked");
+                    i += b"$event.target.checked".len();
+                    continue;
+                }
+            }
             if c == b't'
                 && b[i..].starts_with(b"this.")
                 && (i == 0
@@ -15204,6 +15224,29 @@ export function cn(...inputs: ClassValue[]) {
             let fns = importable_fns.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
             code.push_str(&format!("import {{ {} }} from '@/lib/api'\n", fns));
         }
+        // Plan 559 W2: sibling store facades. Each `use <other>_store: <Name>`
+        // referenced by this store's bodies gets a composable import (stores
+        // sit in the same stores/ dir → relative path) + a reactive facade
+        // const; the ctx's store_facades map below routes qualified call
+        // heads (`Collection.Init(...)`) onto it. Self-qualification stays a
+        // bare local call via store_facade_from (vm A1 contract, mirrors the
+        // regen.sh deploy sed this replaces).
+        for sibling in &store.sibling_stores {
+            code.push_str(&format!(
+                "import {{ use{}Store }} from './use{}Store'\n",
+                sibling, sibling
+            ));
+        }
+        if !store.sibling_stores.is_empty() {
+            code.push_str("import { reactive } from 'vue'\n");
+            for sibling in &store.sibling_stores {
+                code.push_str(&format!(
+                    "const {} = reactive(use{}Store())\n",
+                    facade_var_for(sibling),
+                    sibling
+                ));
+            }
+        }
         code.push('\n');
 
         // Module-level ref declarations (singleton state).
@@ -15237,9 +15280,22 @@ export function cn(...inputs: ClassValue[]) {
             }
         }
         // Pass API imports so ts_adapter adds `await` to API calls.
+        // Plan 559 W2: self-qualified heads emit bare (store_bare_heads —
+        // a composable has no `store` const; the sibling's action is a
+        // local fn); sibling store heads map onto their reactive facade
+        // consts (store_facades), matching the imports emitted above.
+        let mut sibling_facades: std::collections::HashMap<String, String> =
+            Default::default();
+        for sibling in &store.sibling_stores {
+            sibling_facades.insert(sibling.clone(), facade_var_for(sibling));
+        }
+        let mut self_bare: std::collections::HashSet<String> = Default::default();
+        self_bare.insert(store.name.clone());
         let ctx = AuraTsContext::new(state_names)
             .with_props(std::collections::HashSet::new())
             .with_api_functions(store.api_imports.clone())
+            .with_store_bare_heads(self_bare)
+            .with_store_facades(sibling_facades)
             .with_typed_collections(typed_arrays, typed_strings)
             .with_typed_ints(typed_ints);
 
@@ -20599,6 +20655,53 @@ widget NestedArgProbe {
         );
     }
 
+    /// Plan 559 W2: `$event.target.value` / `$event.target.checked` written in
+    /// the .at source is VM-track change-payload syntax (os-config
+    /// collection_browser.at `ApplyEntry(e.key, $event.target.value)` family).
+    /// Vue's `EventTarget` carries neither member, and `target` is nullable —
+    /// the raw passthrough fails vue-tsc with TS2339/TS18047. Every handler
+    /// arg flows through `vue_event_param`, so the narrowing lives there.
+    #[test]
+    fn test_event_arg_target_payload_narrowed() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget TargetPayloadProbe {
+    msg Msg { ApplyEntry, MsToggle }
+    model { var active str = "" }
+    view {
+        col {
+            input (value: "x", "type": "text") {
+                onchange: .ApplyEntry(.active, $event.target.value)
+            }
+            input ("type": "checkbox", checked: false) {
+                onchange: .MsToggle(.active, $event.target.checked)
+            }
+        }
+    }
+    on {
+        .ApplyEntry(k, v) -> { .active = k }
+        .MsToggle(k, c) -> { .active = k }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("ApplyEntry((.active), ($event.target as HTMLInputElement).value)")
+                || sfc.contains("ApplyEntry(.active, ($event.target as HTMLInputElement).value)")
+                || sfc.contains("ApplyEntry(active, ($event.target as HTMLInputElement).value)"),
+            "target.value in handler args must narrow to HTMLInputElement:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("($event.target as HTMLInputElement).checked"),
+            "target.checked in handler args must narrow to HTMLInputElement:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("$event.target.value") && !sfc.contains("$event.target.checked"),
+            "raw $event.target payloads must not survive into the template:\n{}",
+            sfc
+        );
+    }
+
     /// Global (window/document) listener args go through a separate codegen
     /// path (`try_register_global_listener`) — same `this.` constraint applies.
     #[test]
@@ -22698,6 +22801,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22771,6 +22875,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22846,6 +22951,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22920,6 +23026,7 @@ store PlainStore {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
