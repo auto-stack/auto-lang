@@ -287,6 +287,10 @@ pub struct Parser<'a> {
     /// 仅登记（→ CompileSession.script_marked），不改变任何编译/运行
     /// 行为；.as 扩展名与模式管线归 W1。
     pub script_pragma: bool,
+    /// Plan 555 T02: 文件级 `#[rust]` pragma——脚本模式的显式压回通道
+    /// （.as 文件标注 #[rust] 即回正常模式；设计 §2 pragma 覆盖）。
+    /// 优先序：#[rust] > #[script] > 扩展名（见 mode.rs resolve_script_mode）。
+    pub rust_pragma: bool,
     /// Plan 550 T10: 文件含裸 null/nil 字面量（生产者门控三信号之一；
     /// None/Some 是 Option 构造器，不计入）。
     pub saw_bare_null: bool,
@@ -427,6 +431,7 @@ impl<'a> Parser<'a> {
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
             script_pragma: false, // Plan 550 T10
+            rust_pragma: false, // Plan 555 T02
             saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
@@ -499,6 +504,7 @@ impl<'a> Parser<'a> {
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
             script_pragma: false, // Plan 550 T10
+            rust_pragma: false, // Plan 555 T02
             saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
@@ -554,6 +560,7 @@ impl<'a> Parser<'a> {
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
             script_pragma: false, // Plan 550 T10
+            rust_pragma: false, // Plan 555 T02
             saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
@@ -8504,6 +8511,13 @@ impl<'a> Parser<'a> {
                         "single" => {
                             // Plan 121: #[single] annotation for singleton tasks
                             // This is handled by the caller, just skip here
+                        }
+                        "rust" => {
+                            // Plan 555 T02: #[rust] 文件级 pragma——脚本模式
+                            // 显式压回通道（.as + #[rust] → Normal）。仅登记
+                            // parser.rust_pragma，不改变既有 rust/rs 注解的
+                            // 逐声明语义。不自行 skip——循环尾部统一 next()。
+                            self.rust_pragma = true;
                         }
                         "script" => {
                             // Plan 550 T10: #[script] 文件级 pragma——脚本模式

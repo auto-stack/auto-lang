@@ -192,3 +192,74 @@ mod tests {
         assert!(ExecutionMode::from_str("invalid").is_none());
     }
 }
+
+// Plan 555 T02: 文件级脚本模式信号（与 ExecutionMode 正交——那是执行
+// 后端选择，这是语言方言：正常模式 .at / 脚本模式 .as AutoScript）。
+// 设计源 script-mode-interop §2：扩展名为主 + pragma 覆盖。
+// W1 语义 = passthrough（脚本语义激活在 W2 lowering 规则批）。
+
+// Plan 555 T02: 文件级脚本模式信号（与 ExecutionMode 正交——那是执行
+// 后端选择，这是语言方言：正常模式 .at / 脚本模式 .as AutoScript）。
+// 设计源 script-mode-interop §2：扩展名为主 + pragma 覆盖。
+// W1 语义 = passthrough（脚本语义激活在 W2 lowering 规则批）。
+
+/// 文件的脚本方言模式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ScriptMode {
+    /// 正常模式（.at 存量默认）：静态类型、null 禁令、显式 .?()
+    #[default]
+    Normal,
+    /// 脚本模式（AutoScript，.as）：动态分派糖、隐式 Err 传播、null 是值
+    /// ——W1 仅立信号通道，语义 passthrough。
+    Script,
+}
+
+/// 解析文件级脚本模式。优先序：`#[rust]` 压回 > `#[script]` 提升 >
+/// 扩展名（`.as` ≡ 隐式 `#[script]`）。extension 传小写不带点形式
+/// （"at"/"as"），无扩展名信息（stdin/eval）传 None。
+pub fn resolve_script_mode(
+    extension: Option<&str>,
+    script_pragma: bool,
+    rust_pragma: bool,
+) -> ScriptMode {
+    if rust_pragma {
+        return ScriptMode::Normal;
+    }
+    if script_pragma {
+        return ScriptMode::Script;
+    }
+    match extension {
+        Some("as") => ScriptMode::Script,
+        _ => ScriptMode::Normal,
+    }
+}
+
+#[cfg(test)]
+mod tests_script_mode {
+    use super::*;
+
+    /// 八格矩阵（Plan 555 详细设计 T02 契约表）。
+    /// 优先序：#[rust] 压回 > #[script] 提升 > 扩展名（.as ≡ 隐式 script）。
+    #[test]
+    fn test_script_mode_matrix_eight_cells() {
+        use super::resolve_script_mode;
+        use super::ScriptMode;
+        // .at 无 pragma → Normal（550 门控 lint 照常）
+        assert_eq!(resolve_script_mode(Some("at"), false, false), ScriptMode::Normal);
+        // .at + #[script] → Script（550 已落通道）
+        assert_eq!(resolve_script_mode(Some("at"), true, false), ScriptMode::Script);
+        // .at + #[rust] → Normal（既有 rust pragma 语义不动）
+        assert_eq!(resolve_script_mode(Some("at"), false, true), ScriptMode::Normal);
+        // .as 无 pragma → Script（隐式）
+        assert_eq!(resolve_script_mode(Some("as"), false, false), ScriptMode::Script);
+        // .as + #[script] → Script（幂等）
+        assert_eq!(resolve_script_mode(Some("as"), true, false), ScriptMode::Script);
+        // .as + #[rust] → Normal（显式压回通道）
+        assert_eq!(resolve_script_mode(Some("as"), false, true), ScriptMode::Normal);
+        // 双 pragma → #[rust] 胜（压回优先，保守取向）
+        assert_eq!(resolve_script_mode(Some("as"), true, true), ScriptMode::Normal);
+        // 无扩展名信息（stdin/eval 场景）→ 仅 pragma 决定
+        assert_eq!(resolve_script_mode(None, false, false), ScriptMode::Normal);
+        assert_eq!(resolve_script_mode(None, true, false), ScriptMode::Script);
+    }
+}
