@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 1
+current_step: 2
 total_steps: 15
 ---
 
@@ -240,9 +240,10 @@ total_steps: 15
       现状 `.as`（passthrough）下的行为逐条记录（验证：探针可复跑，
       基线入执行注记）
       [✅ 已完成] 2026-09-05 六探针矩阵在案（p01-p06）：A 族方法糖=运行期 CALL_SPEC 错（PyObj 无 sum）；B1 属性=GET_FIELD 垃圾 `<obj:...>`；B3 handle 索引疑似已通（zeros(3)[0]→0）；B6 len=链接错 E0401；B5 切片可解析（len 先拦）；E3 for-in over tensor **今日已工作**（539 array 通道 GIL len+getitem，0/1/2）；Err：py IndexError 可 try-catch 但 e 绑定裸 FFI 串（非 PyException 载荷）、无隐式传播。详见执行注记 T01
-- [ ] T02 s2s 升级：AST 发射器（`trans/emit.rs` 新模块，AST→Auto 源
+- [x] T02 s2s 升级：AST 发射器（`trans/emit.rs` 新模块，AST→Auto 源
       打印）+ 链式规则语义（规则表有序全过+产物再解析）——P555-D2
       裁定落地（验证：identity round-trip 稳定单测 + 链式注入单测绿）
+      [✅ 已完成] emit.rs（Op/Type 符号表直渲——两者 Display 均为 S-expr 调试形态，语料靶场实证；脚本子集+未覆盖响亮报错；Store 类型标注省略=推断回填；while=Iter::Cond/Destructured/Indexed 臂）；链式规则 LoweringRule{id,transform} 有序单遍（空表=规范化 identity）；四单测绿——含**五套件语料逐文件 parse→emit→re-parse→emit 幂等**（T12 迁移面实弹靶场：math/infer/train/numpy/torch 全过）
 - [ ] T03 管线激活：`lib.rs` execute_autovm_with_path 对
       `ScriptMode::Script` 源走 `lower_source` 产物编译；
       `--dump-lowered` 翻转真产物（验证：`.as` 空规则=行为与 W1 逐
