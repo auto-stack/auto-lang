@@ -228,6 +228,24 @@ def run_scenario(name: str, out_dir: str):
             s.handler("settings", "SelectModule", "p559-fixture")
             s.settle(3)
             shots.append(s.shot("p559-01-fixture-editor-picker"))
+            # Idempotent baseline: reset the fixture to aqua via the daemon
+            # before the Pick, so the plum write-through is provable on every
+            # re-run (execution-time first run proved aqua→plum change; a
+            # persisted plum state would otherwise make before==after).
+            _reset = _ur.Request(
+                "http://127.0.0.1:17701/api/config/p559-fixture",
+                data=_json.dumps({
+                    "value": {
+                        "cfg_wallpaper": "C:/Users/zhaop/.config/autoos/p559-wallpapers\\aqua.png",
+                        "cfg_wallpapers_dir": "C:/Users/zhaop/.config/autoos/p559-wallpapers",
+                    }
+                }).encode(),
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+            )
+            with _ur.urlopen(_reset) as r:
+                r.read()
+            s.settle(2)
             before = _cfg("p559-fixture").get("cfg_wallpaper", "")
             s.handler_widget(
                 "settings", "WallpaperPicker", "Pick",
@@ -235,6 +253,7 @@ def run_scenario(name: str, out_dir: str):
             )
             s.settle(5)  # fresh GET → editField → PUT → host 400ms poll → apply
             after = _cfg("p559-fixture").get("cfg_wallpaper", "")
+            assert "aqua.png" in before, f"p559: baseline reset failed (before={before!r})"
             assert after != before and "plum.png" in after, (
                 f"p559: Pick must write through to config.at (before={before!r} after={after!r})"
             )
