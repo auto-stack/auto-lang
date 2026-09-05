@@ -410,7 +410,7 @@ element imagesurface {
     tag: "imagesurface"
     category: "media"
     tier: "builtin_widget"
-    aliases: ["ImageSurface", "image-surface"]
+    aliases: ["ImageSurface", "image-surface", "image_surface"]
     backends: { web: "component", iced: "component", gpui: "unknown" }
     vue: { component: "ImageSurface" }
     props: [
