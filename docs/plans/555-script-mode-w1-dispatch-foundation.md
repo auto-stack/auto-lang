@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-cli]   # 受影响的 specs 路径
-current_step: 0
+current_step: 1
 total_steps: 11
 ---
 
@@ -216,9 +216,10 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
 
 ## 执行步骤
 
-- [ ] T01 探针基线：`scratch/p555/` 三探针（`auto x.as` 现状/组合子
+- [x] T01 探针基线：`scratch/p555/` 三探针（`auto x.as` 现状/组合子
       缺席/`auto trans` 输出形态）+ 模式面考古注记（mode.rs/multi_mode.rs
       现状）（验证：探针逐条可复跑，现状入执行注记）
+      [✅ 已完成] 2026-09-05 worktree master HEAD 干净构建探针：p1 `.as` 直跑**已然可跑**（CLI 位置参数不过滤扩展名，输出与 .at 逐字节同）——但无任何脚本模式信号（T03 的行为增量=模式信号可观测：.as 文件的 550 门控豁免）；p2 组合子缺席实证（E0401 obj_len）；p3 `auto trans --path <p> <TARGET>` 子命令形态（C/Rust/R2a/Python/JavaScript/GDScript——s2s 落位=新 TransTarget::Auto 变体）。考古：mode.rs=ExecutionMode（AutoVM/Evaluator/C/Rust，执行后端，194 行含测试模块）；multi_mode.rs=Plan 081 依赖编译模式管线（与脚本模式正交）。详见执行注记 T01
 - [ ] T02 模式解析矩阵：`mode.rs` 扩展（`.as`≡隐式 script + `#[rust]`
       覆盖）→ `compile.rs` session 联动（兼容 550 `script_marked`）
       （验证：模式矩阵八格单测 `cargo t mode` 绿）
@@ -247,6 +248,20 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
 ## 复审记录
 
 （/auto-plan:review 填写）
+
+## 执行注记
+
+### T01 探针基线（2026-09-05，worktree master HEAD e1429a0ef 干净构建）
+
+| 探针 | 现状 | 判读 |
+|---|---|---|
+| p1 `auto p1_as_direct.as` | `Running Auto … / hello-as`（与 .at 逐字节同） | CLI 位置参数不过滤扩展名——`.as` "能跑"但零模式信号；T03 行为增量=script 模式可观测（.as + null 字面量不出 550 门控警告） |
+| p2 `obj_len(xs)` | E0401 Undefined symbol | 组合子缺席实证 |
+| p3 `auto trans` | `--path <PATH> <COMMAND>` 子命令形态（C/Rust/R2a/Python/JavaScript/GDScript/A2cStdlib） | s2s 落位=新 `TransTarget::Auto` 变体（`auto trans --path x.as auto`） |
+
+模式面考古：`mode.rs` 仅有 `ExecutionMode`（执行后端选择，Plan 081）——脚本
+模式（语言方言信号）为正交新概念；`multi_mode.rs` 是依赖编译模式管线，
+设计 §1"折进 multi_mode"归 W2+。
 
 ## 待澄清事项
 
