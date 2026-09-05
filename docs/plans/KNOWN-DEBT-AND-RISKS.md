@@ -1128,12 +1128,13 @@
 
 ### P539（2026-09-04，Plan 539 PyTorch FFI——执行期存量红/缺口登记）
 
-- **P539-D1 py_list `test_sorted_getitem` master 存量红**（非本计划引入，
-  master 二进制同形复现：`[P053-8] phantom freelist entry dropped: slot 41
-  (live holders, rc=4294967295)` + `got d`）。py_list 属 p7 相位，近期
-  各计划门禁只跑 p5/p8/p9 相邻相，从未显形。疑与 ADD 字符串拼接臂的
-  双重 rc_release（engine.rs ADD string-concat 分支两对 release）或
-  Plan 510 G 系池工作交互有关——待专项排查（rc 配平 forensics）。
+- **~~P539-D1 py_list `test_sorted_getitem` master 存量红~~ ✅ 已清偿（2026-09-05,
+  Plan 567 T01/T02）**:根因比原疑点深一层——ADD string-concat 臂除 add_string 前
+  双重 release（rc 下溢回绕 u32::MAX = P053-8 幻影）外,**release 还在读之前**:
+  左结合链中间结果槽被 FREE+tombstone 后 strings.get 归空,`a+b+c+d` 只剩末项
+  （池日志实证:retain"ab"0→1→release 1→0→FREE→intern"cd"）。修复=先读后放
+  （对齐 STR_CAT 纪律）+删第二对 release;engine tests_add_concat_rc 回归 ×2
+  （underflow==0 && phantom==0 断言）;py_list 8/8 三方绿,p7 全相位 55/55。
 - **P539-D2 `.len()`/方法分派对 py 返回值不可靠（存量，类型谎言）**：
   py 调用返回被 codegen 谎记类型（fn_return_types=StrFixed 等），`.len()`
   静态路由到 str.len，把句柄/列表 id 解码为字符串池索引（垃圾但常在
@@ -1494,6 +1495,10 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
 - **P560-D5 s2s 规则覆盖面**：py_known 分析为保守单遍（分支不敏感、
   闭包不内视）；D7 print 包裹限裸名（嵌套形态走 print shim 运行期
   臂）；f-string 插值语法语言本身无此形态（拼接走 ADD dunder）。
-- **P560-D6 既有双红随迁在案**：py_sys（version_info 元组→list 封送
-  =P539-D1/D5 债族）与 py_list test_sorted_getitem（"got d"）为
-  master 既有红——原 .at 在 master 二进制同形失败实证，非本波回归。
+- **~~P560-D6 既有双红随迁在案~~ ✅ 已清偿（2026-09-05, Plan 567 T03/T04）**:
+  py_sys 根因=version_info 是 PyStructSequence（实测无 `_fields` 有
+  `n_sequence_fields`），被 tuple 拍平臂吞成 List 后 `py_getattr(vi,"major")`
+  转回 Python list 而 AttributeError；修复=带属性面 tuple（namedtuple
+  `_fields` + structseq `n_sequence_fields`）分流 opaque 句柄，普通 tuple
+  拍平裁定不动（三分支封送单测在案）；py_list 红归 P539-D1 同批清偿。
+  p7 全相位 8 套件 55/55 三方绿（2026-09-05 实证）。
