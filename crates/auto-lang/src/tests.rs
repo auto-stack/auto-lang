@@ -78,6 +78,8 @@ mod aavm2_m4; // Plan 432 S4: M4 codegen 字节码结构一致性闸门
 #[cfg(feature = "test-vm-files")]
 mod aavm2_m5; // Plan 432 S5: M3 主里程碑 —— 全管线行为一致性闸门
 #[cfg(feature = "test-vm-files")]
+mod aavm2_t3; // Plan 532: t3 里程碑档——嵌套塔解释栈零漂移最终验收(大版本升级专用)
+#[cfg(feature = "test-vm-files")]
 mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
 #[cfg(feature = "test-vm-files")]
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/
