@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 7
+current_step: 8
 total_steps: 15
 ---
 
@@ -266,9 +266,10 @@ total_steps: 15
       py_matmul lowering；`a ** b`→Math.pow/`__pow__`（py_ffi dunder
       表 POW 臂）（验证：单测 + `a @ b`/`a ** 2` 探针）
       [✅ 已完成] 实现位前移：lexer Power(**) token + parser infix 臂**直产桥调用**（a@b→py_matmul 456、a**b→py_pow 473 新桥=GIL operator.pow，数字/__pow__ 通用即"POW 臂"语义）——免新增 auto_val::Op 变量的全仓 exhaustive-match 波及（设计分歧注记：语义等价，发射形态从 s2s 规则前移到解析层，@T 类型位零影响实证）。探针 1024/134/8 绿；语料 round-trip 保持
-- [ ] T08 C 族（二）：`a is b`→GIL is（py_is 471）+ C3/C4 句柄真值
+- [x] T08 C 族（二）：`a is b`→GIL is（py_is 471）+ C3/C4 句柄真值
       （s2s lower 到显式 GIL bool 调用，多元素张量按 Python 抛）
       （验证：单测 + `if t:`/`a is None` 探针）
+      [✅ 已完成] py_truthy 474 + py_is 475（占号顺移：py_str/py_pow 先占 472/473）；C3/C4=待澄清#4 裁定形态（s2s 显式调用零热臂）；parser Is 中缀臂（is 系既有保留 token——词位判别无需 Ident hack）；探针 falsy-0/truthy-2/is 同柄 true/异柄 false；语料 round-trip 保持
 - [ ] T09 E2 with：parser `with` 关键字（`with expr {}`/`with expr
       as x {}`）+ s2s 语句规则 → py_enter + try-finally + py_exit
       （异常抑制不做）（验证：单测 + no_grad 探针——infer 套件 14 例
