@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-cli]   # 受影响的 specs 路径
-current_step: 1
+current_step: 3
 total_steps: 11
 ---
 
@@ -220,12 +220,14 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
       缺席/`auto trans` 输出形态）+ 模式面考古注记（mode.rs/multi_mode.rs
       现状）（验证：探针逐条可复跑，现状入执行注记）
       [✅ 已完成] 2026-09-05 worktree master HEAD 干净构建探针：p1 `.as` 直跑**已然可跑**（CLI 位置参数不过滤扩展名，输出与 .at 逐字节同）——但无任何脚本模式信号（T03 的行为增量=模式信号可观测：.as 文件的 550 门控豁免）；p2 组合子缺席实证（E0401 obj_len）；p3 `auto trans --path <p> <TARGET>` 子命令形态（C/Rust/R2a/Python/JavaScript/GDScript——s2s 落位=新 TransTarget::Auto 变体）。考古：mode.rs=ExecutionMode（AutoVM/Evaluator/C/Rust，执行后端，194 行含测试模块）；multi_mode.rs=Plan 081 依赖编译模式管线（与脚本模式正交）。详见执行注记 T01
-- [ ] T02 模式解析矩阵：`mode.rs` 扩展（`.as`≡隐式 script + `#[rust]`
+- [x] T02 模式解析矩阵：`mode.rs` 扩展（`.as`≡隐式 script + `#[rust]`
       覆盖）→ `compile.rs` session 联动（兼容 550 `script_marked`）
       （验证：模式矩阵八格单测 `cargo t mode` 绿）
-- [ ] T03 CLI `.as` 直跑：`lib.rs` run 路径 + `crates/auto/src/main.rs`
+      [✅ 已完成] TDD：八格单测先行红→`ScriptMode`+`resolve_script_mode`（优先序 #[rust]>#[script]>扩展名）绿；parser `rust_pragma`（annotation "rust" 臂，尾部统一 next 约定）；`CompileSession.script_mode`+`set_script_mode`（script_marked 派生兼容）；lib.rs 解析（path 扩展名 at/as 归一）+550 门控改按 ScriptMode 判定。可观测矩阵四探针：.at+null→警告 / .as+null→豁免 / .as+#[rust]→警告（压回）/ .at+#[script]→豁免，全符合契约表
+- [x] T03 CLI `.as` 直跑：`lib.rs` run 路径 + `crates/auto/src/main.rs`
       接受 `.as`（passthrough 语义）（验证：同内容 .at/.as 输出 diff
       为空探针）
+      [✅ 已完成] CLI 位置参数本不过滤扩展名（T01 考古），扩展名经 run_file_with_args→run_with_path→execute_autovm_with_path(path) 已入 T02 解析；p4 探针（递归+数组+for-in+拼接）：同内容 .at/.as 程序输出 diff 为空（仅 Running 横幅文件名行差异）——passthrough 语义实证
 - [ ] T04 py 三桥：`py_ffi.rs` py_setattr 467 / py_len 468 /
       py_type_name 469（539 桥型）（验证：新增 py_ffi 单测绿）
 - [ ] T05 ForeignObject 协议：协议 trait（七操作面）+ PyObjectHandle
