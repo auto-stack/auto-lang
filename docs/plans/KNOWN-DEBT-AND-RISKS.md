@@ -1355,3 +1355,23 @@
   is_py_ffi_call→CALL_PY（实为"带实参数字节的通用原生调用"约定），
   命名与 py 耦合是历史包袱；W2 顺手重构为中性命名（如
   CALL_NAT_COUNTED）属低风险清理。
+
+### P548（2026-09-05，sidebar Vue 端 shadcn 1:1 接线）
+
+- **P548-D1 schema.rs 与手写 aura.at 双侧分化**：`schema/aura.at` 的
+  sidebar_* 23 元素 props 为 Plan 548 手写扩全（对齐 shadcn），但
+  `crates/auto-lang/src/schema.rs`（Rust ElementDef 真源）仍是旧简版
+  props。`SCHEMA_DRIFT_GENERATE_AT=1` 会从 schema.rs 重写 aura.at 并
+  冲掉手写 props——正确开关是 `SCHEMA_DRIFT_UPDATE_BASELINE=1`（只更
+  基线不重生成）。双侧同步或"生成器改从 aura.at 取 props"的方向待
+  裁定，随后续 schema 治理计划收口。
+- **P548-D2 `sidebar_menu_button.tooltip` 登记未实现**：prop 已入
+  schema/docs，但 icon-collapsed 态悬浮提示未接线（Vue/VM 双侧）。
+  随 P2（VM 契约子集）或独立小计划再定。
+- **P548-D3 vue.rs 旧臂死代码**：`crates/auto-lang/src/gen/vue.rs:11930`
+  附近旧 `generate_shadcn_attrs` 的 sidebar_menu_button 臂被新臂遮蔽，
+  留作非拦截路径兜底；清理时机随 P3（nav-* 退役）计划。
+- **后续计划未立项**：P2（VM 端 sidebar 契约子集渲染）、P3（示例迁移
+  nav-group/nav-item → sidebar_* 并退役 nav 族）均待 `/auto-plan:new`
+  立项；设计文档已入库
+  `docs/design/autoui/sidebar-family-and-nav-retirement.md`。
