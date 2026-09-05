@@ -3063,6 +3063,7 @@ mod tests {
         // 预热：吸收首调惰性物化（一次性）。
         let _ = dc.on_with_input_for("App", "IdleTick", None);
         let _ = dc.on_with_input_for("App", "BeatTick", None);
+        let _ = dc.on_with_input_for("App", "MuskTick", None);
 
         // 纯读：bridge 状态读不 bump。
         let s0 = dc.state_mutation_seq();
@@ -3075,6 +3076,11 @@ mod tests {
         let _ = dc.on_with_input_for("App", "IdleTick", None);
         let s2 = dc.state_mutation_seq();
         assert_eq!(s1, s2, "warm no-op tick must not bump mutation seq");
+
+        // musk PollStream 早退形态（let 绑定 + .length + 索引读）也不 bump。
+        let _ = dc.on_with_input_for("App", "MuskTick", None);
+        let s2b = dc.state_mutation_seq();
+        assert_eq!(s2, s2b, "musk-shaped no-op tick (let + .length + index read) must not bump");
 
         // 状态写拍：bump。
         let _ = dc.on_with_input_for("App", "BeatTick", None);

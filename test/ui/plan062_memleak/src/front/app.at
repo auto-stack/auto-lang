@@ -7,14 +7,16 @@
 use item_helpers: build_items
 
 widget App {
-    msg { IdleTick, BeatTick, SetRunning }
+    msg { IdleTick, BeatTick, MuskTick, SetRunning }
     model {
         var running bool = false
         var count int = 0
+        var poll_window []Value = []
     }
     timer {
         IdleTick (every_ms: 40)
         BeatTick (every_ms: 50)
+        MuskTick (every_ms: 60)
     }
     computed {
         items => build_items(20)
@@ -28,6 +30,13 @@ widget App {
     }
     on {
         .IdleTick -> { if .running { .count = .count + 1 } }
+        // musk PollStream 早退形态的精确复刻（let 绑定 + .length 调用）。
+        .MuskTick -> {
+            let wins = .poll_window
+            if wins.length == 0 { return }
+            let started = wins[wins.length - 1]
+            if Date.now() - started > 120000 { return }
+        }
         .BeatTick -> { .count = .count + 1 }
         .SetRunning(v) -> { .running = v }
     }
