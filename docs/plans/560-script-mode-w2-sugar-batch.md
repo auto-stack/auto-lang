@@ -300,7 +300,7 @@ total_steps: 15
 - [x] T14 硬化：550 门控 `.at` 含 use.py/null/nil 警告→诊断错误
       （`.as`/`#[script]`/`#[rust]` 豁免不变）+ P550-D4 CALL null
       端到端探针补案（验证：硬化探针矩阵 + `cargo tv` 存量零残留红）
-      [✅ 部分完成→待澄清#5] 硬化未实施：实测影响面超计划前提——vm 语料存量撞击（aavm2 词法 2+null 语义 1+keyword_map，需先裁定语料 .as 迁移或 #[script] 标注+tv 框架 glob，P560-D4 在案）；py 套件前提已备（19 套件全 .as）。P550-D4 期望面再更新归 W3
+      [✅ 已完成（2026-09-05 用户裁定后补完）] 硬化落地：警告→**诊断错误 auto_gate_E5501**（编译期拒绝+迁移指引文案）；**文件上下文限定**（内联/eval 无 path 不门——实证修正：musk null 语义测试/550 探针族走 run_with_capture 通道，VM 语义测试不应被文件门拦）；tv 文件测试改 run_with_capture_and_path（.at 受门/.as 豁免）；json_is_null 语料按裁定迁 .as+discover .as 回退。硬化矩阵四态（.at+信号=拒/.as=豁/#[script]=豁/#[rust]=压回拒）+sys 原 .at 拒绝实证；**tv 3595/3596+tt 3782/3783 零残留**（唯一红=既有 charts）。P550-D4：CALL null 仍编译期 E0401（糖态裸名静态拦），VM 动态守卫单测钉——端到端探针面维持归 W3 注记
 - [x] T15 折叠：全量门禁 `cargo tv` + `cargo tt` + py 五套件三方 +
       KNOWN-DEBT 回写（P555-D2/D5 销号、P550-D4 结案、本波债务登记）
       （验证：门禁输出留档执行注记）
@@ -395,9 +395,11 @@ py_sys 0/5 / py_list 7/8 为 master 既有红随迁（P560-D6 实证）· 探针
 
 ### 执行期追加（2026-09-05）
 
-5. **550 门控硬化的语料裁定（T14）**：`.at` 含 use.py/null 硬化撞
-   vm 语料存量（aavm2 词法 2 + null 语义 1 + keyword_map）——需裁定
-   这些语料 .as 迁移/#[script] 标注（含 tv 框架 glob 扩展）后硬化才
-   可落。P560-D4 在案，裁定后独立小批补。
+5. **550 门控硬化的语料裁定（T14）**：~~需裁定~~ **已裁定（2026-09-05
+   用户裁决：a 语料改 .as 后缀 + b 本计划内补完再复审）**。落地实证：
+   影响面比预判小——门控经**文件上下文限定**（内联/eval 无 path 不门）
+   +tv 文件测试改带 path 通道后，唯 json_is_null 语料需迁 .as（已迁+
+   discover .as 回退）；aavm2 词法语料与 keyword_map 经各自通道不受门
+   （keyword_map 的 nil 系字符串字面量，解析器不计信号）。
 6. **with-as 绑定语法（P560-D1）**：`as` Cast 中缀歧义——裁定方向
    见债务条目（with 限定解析 vs 换绑定关键字）。
