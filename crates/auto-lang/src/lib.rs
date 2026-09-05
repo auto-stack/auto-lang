@@ -1007,6 +1007,20 @@ async fn execute_autovm_with_path(
     capture: bool,
     path: Option<&str>,
 ) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
+    // Plan 560 T03: 脚本模式管线激活——`.as` 源经 s2s lowering（糖→桥，
+    // W2 规则表自 T05 起逐条入住）后走正常编译管线；`#[rust]` 行首
+    // pragma 预检保留原源（显式压回，555 八格矩阵的压回通道）。
+    // 注：pragma 预检为行首前缀启发式（#[rust] 文件级标注形态），
+    // 完整解析期判定在下方 session 解析段——罕见面在案（P560 债）。
+    let _lowered_owned;
+    let code: &str = if path.map(|p| p.ends_with(".as")).unwrap_or(false)
+        && !code.lines().any(|l| l.trim_start().starts_with("#[rust]"))
+    {
+        _lowered_owned = crate::trans::auto_s2s::lower_source(code)?;
+        &_lowered_owned
+    } else {
+        code
+    };
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
@@ -4027,7 +4041,7 @@ pub fn dump_lowered(path: &str) -> AutoResult<String> {
     let ext = path.rsplit('.').next().unwrap_or("");
     let mode = crate::mode::resolve_script_mode(Some(ext), false, false);
     let header = format!(
-        "// lowered (Plan 555 W1 passthrough) mode={} src={}
+        "// lowered (Plan 560 W2 s2s) mode={} src={}
 ",
         match mode {
             crate::mode::ScriptMode::Script => "script",
