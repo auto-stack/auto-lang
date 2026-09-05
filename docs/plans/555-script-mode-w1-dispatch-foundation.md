@@ -1,15 +1,22 @@
 ---
 plan_id: PLAN-555
-status: execution_done      # drafting → executing → execution_done → reviewed → archived
+status: reviewed            # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w1-dispatch-foundation
 author: [zhaopuming]
 created_at: 2026-09-05
 updated_at: 2026-09-05
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "specs/auto-lang/vm/overview.md: 修改 —— 现状节补 Plan 555：ForeignObject 协议（HeapObject::as_foreign_object 默认钩子 + PyObjectHandle 六操作臂首实现）与分发组合子六件（interop.rs，ID 1860-1865，运行期 tag 分派 py 桥/Auto 原生方法表）"
+  - "specs/auto-lang/frontend/overview.md: 修改 —— 现状节补 Plan 555：ScriptMode 八格矩阵（.as≡隐式 #[script]，#[rust] 显式压回，优先序 rust>script>扩展名）+ parser rust_pragma 文件级 pragma + CompileSession.script_mode 回填"
+  - "specs/auto-lang/trans/overview.md: 修改 —— 现状节补 Plan 555：auto_s2s 改写器骨架（LoweringRule 规则表 W1 空置/词法 tokenize_all 改写面/identity 逐字节发射/三单测）"
+  - "specs/auto-cli/project.md: 修改 —— `auto trans --path x auto [-o]` 子命令 + `--dump-lowered` 全局 flag（模式头渲染）"
+new_spec_components:
+  - "specs/auto-lang/vm/design/interop-dispatch.md: 新增 —— 互操作分发契约：ForeignObject 协议六操作面（send/contains 预留位）+ 组合子语义表（六操作×py/Auto 双通道）+ CALL_PY 计数传输形态（1860-1865 ID 段）+ py 三桥 467-469"
+touched_goals:
+  - "GOAL-005: W1 动态分派地基——组合子+py 三桥让 .as 管线可消费 539 桥族；py 五套件三方 64/64 零回归"
+  - "GOAL-006: Consumer-mode parity——分发组合子即消费者模式对象协议雏形（§8 跨语言矩阵承接位）"
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-cli]   # 受影响的 specs 路径
 current_step: 11
@@ -256,7 +263,52 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审人**：zhaopuming（/auto-plan:review，2026-09-05）
+**验证场所**：worktree `D:/autostack/.wt/lang-555/auto-lang`（branch plan-555-dev，
+fork 点 e1429a0ef，5+1 commits——含 vm.rs 补提交；代码 diff 15 文件 +1251/−9：
+mode/parser/compile/lib/lexer/vm.rs + vm/{interop 新,heap_object,engine,codegen,
+native_catalog} + py_ffi + trans/{rs,auto_s2s 新} + auto/main.rs）
+
+### 逐条验收裁定
+
+| # | 验收标准 | 裁定 | 证据（复跑） |
+|---|---|---|---|
+| 1 | `.as` 直跑 passthrough + 八格矩阵 + `#[rust]` 覆盖 | **PASS** | p4 同内容 .at/.as 输出 diff 空；可观测矩阵 warn=1/0/1/0（.at+null 警/.as 豁免/.as+#[rust] 压回警告/.at+#[script] 豁免）；tests_script_mode 1/1 |
+| 2 | 六组合子双通道 + 协议位 + 首实现 | **PASS** | p6 Auto 全矩阵（3/20/99/30/4/list/str/int/2/1/3/139 含负索引与迭代）；p7 py 句柄同函数名（6/Tensor/sum=15/transpose/setattr/next）；协议测试 1/1（downcast+kind="py"）；send/contains 预留位在 diff 注释可查 |
+| 3 | py 三桥 539 同型单测 + torch 系零回归 | **PASS** | p5 端到端（6/Tensor/2/str）；python 档 test_w1_* 3/3（bridges+protocol+539 idiom 回归）；py_torch 7/7 + infer 17/17 + train 10/10 |
+| 4 | s2s 可扩展 + identity 稳定 + dump 双入口 | **PASS** | tests_s2s 3/3（注入即生效/幂等逐字节/非法源拒绝）；run 入口 `--dump-lowered` 头行 `mode=script` 在案；trans auto 输出 passthrough 源 |
+| 5 | 门禁全绿 + py 五套件零回归 | **PASS（附既有红甄别）** | `cargo tf` **3428/3429**（唯一红=test_charts_gallery_compiles，master 既有——branch diff 零 ui 文件，输入逐字节同 fork 点；550 期的 schema 两红已被并行提交修复，本期 tf 更干净）；tv 3588/3589 + tt 3775/3776（同一既有红）；py 五套件 64/64；cargo t vm 800/800 |
+| 6 | P550-D6 销号 + P550-D4 期望面更新 | **PASS** | KNOWN-DEBT P555 节两条处置在案（grep 命中=2）；P555-D1..D5 债登记齐 |
+
+### 遗漏 / 延后 / workaround 扫描
+
+- **遗漏**：无——diff 内无 TODO/HACK/FIXME（复扫确认）；4 处"协议位预留/归 W2"
+  命中均为计划文本明文授权的边界（非目标清单在草案确认时过目）。
+- **延后**：无未经批准延期。Err 值通道/窥孔直达/B8 裸模块/跨模式 import/
+  W2 糖批均在计划"非目标"节（用户确认草案时批准的波次切分）。
+- **Workaround**：两项披露在案——CALL_PY 传输形态复用（命名误导，P555-D5，
+  W2 顺手清理）；ForeignObject.obj_set 借道 push/pop 封送（裸 f64 罕见面，
+  P555-D3）。均为有根因记录的取舍而非遮蔽。
+
+### 计划文 vs 实现分歧清单（均在执行注记/债在案）
+
+1. T05"七操作面"→ 实装 6 方法 + send/contains 注释预留位（计划文同节将
+   二者列为"协议位预留"，6+2 为忠实读法）。
+2. obj_call 的 Auto 臂=响亮拒绝（Auto 闭包动态调用面归 W2）——计划验证
+   措词的 Auto 值面（list/str/map）无一是 callable，语义一致（P555-D1）。
+3. s2s W1 帧=token 粒度单遍首中——计划"取 round-trip 稳定者"授权的择优；
+   AST 级发射器归 W2 裁定（P555-D2）。
+4. 执行事故自愈：vm.rs（interop 声明）漏出 T05/T06 提交清单，bisect 操作
+   暴露后当场补提交（T09 标记留痕，工作树终态 clean）。
+
+### 门禁读数汇总（终态）
+
+`cargo tf` 3428/3429（1 红=master 既有 charts，diff-independent 甄别）·
+`cargo tv` 3588/3589 · `cargo tt` 3775/3776（同一既有红）· `cargo t vm` 800/800 ·
+python 档 test_w1_* 3/3 · tests_script_mode 1/1 · tests_s2s 3/3 ·
+py 五套件三方 64/64 · 探针 p1-p7 复跑矩阵在案。
+
+**裁定：六项验收全 PASS，无阻断债 → status: reviewed，可入 /auto-plan:merge。**
 
 ## 执行注记
 
