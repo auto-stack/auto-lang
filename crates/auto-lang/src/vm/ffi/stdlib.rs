@@ -3721,9 +3721,10 @@ pub fn shim_http_server(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 // Plan 547: VM handles contain only the opaque ticket id; decoded pixels stay
 // in the shared registry and are never pushed onto the VM stack.
 #[cfg(feature = "ui-iced")]
+const IMAGE_TICKET_HANDLE_CAPACITY: usize = 256;
 static IMAGE_TICKET_HANDLES: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<u64, crate::ui::image_pipeline::MediaAssetTicket>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    std::sync::Mutex<std::collections::VecDeque<(u64, crate::ui::image_pipeline::MediaAssetTicket)>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::VecDeque::new()));
 #[cfg(feature = "ui-iced")]
 static IMAGE_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "ui-iced")]
@@ -3734,27 +3735,26 @@ pub const IMAGE_NATIVE_NAMES: &[&str] = &[
 
 #[cfg(feature = "ui-iced")]
 fn image_ticket_from_handle(handle: u64) -> Option<crate::ui::image_pipeline::MediaAssetTicket> {
-    IMAGE_TICKET_HANDLES.lock().ok()?.get(&handle).cloned()
+    IMAGE_TICKET_HANDLES.lock().ok()?.iter().find(|(id, _)| *id == handle).map(|(_, ticket)| *ticket)
+}
+
+fn insert_image_ticket_handle(handle: u64, ticket: crate::ui::image_pipeline::MediaAssetTicket) {
+    let mut handles = IMAGE_TICKET_HANDLES.lock().expect("image handle lock poisoned");
+    if handles.len() >= IMAGE_TICKET_HANDLE_CAPACITY {
+        if let Some((_, evicted)) = handles.pop_front() {
+            crate::ui::image_pipeline::global_media_registry().release(evicted.id);
+        }
+    }
+    handles.push_back((handle, ticket));
 }
 
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_queue(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let bytes = std::fs::read(&path).map_err(|_| VMError::RuntimeError("image read failed".into()))?;
-    let metadata = crate::ui::image_pipeline::inspect_image_metadata(&bytes)
-        .map_err(|error| VMError::RuntimeError(error.to_string()))?;
-    let ticket = crate::ui::image_pipeline::global_media_registry().queue(
-        crate::ui::image_pipeline::MediaAssetKey {
-            source_fingerprint: path,
-            orientation: metadata.orientation,
-            rendition: crate::ui::image_pipeline::RenditionSpec::original(),
-            revision: 1,
-        },
-        metadata,
-    );
+    let ticket = crate::ui::image_pipeline::queue_media_path(path, crate::ui::image_pipeline::MediaPriority::Current);
     let handle = IMAGE_HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    IMAGE_TICKET_HANDLES.lock().unwrap().insert(handle, ticket);
+    insert_image_ticket_handle(handle, ticket);
     task.ram.push_i64(handle as i64);
     Ok(())
 }
@@ -3789,7 +3789,12 @@ pub fn shim_image_release(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = task.ram.pop_i64() as u64;
-    if let Some(ticket) = IMAGE_TICKET_HANDLES.lock().unwrap().remove(&handle) {
+    let ticket = {
+        let mut handles = IMAGE_TICKET_HANDLES.lock().unwrap();
+        handles.iter().position(|(id, _)| *id == handle)
+            .and_then(|index| handles.remove(index).map(|(_, ticket)| ticket))
+    };
+    if let Some(ticket) = ticket {
         crate::ui::image_pipeline::global_media_registry().release(ticket.id);
     }
     Ok(())
@@ -3806,8 +3811,9 @@ pub fn shim_image_request(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_scan(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    crate::ui::image_pipeline::scan_media_directory(path);
     task.ram.push_i64(0);
     Ok(())
 }

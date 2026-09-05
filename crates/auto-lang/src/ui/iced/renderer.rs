@@ -2806,10 +2806,10 @@ fn render_image_surface<M: Clone + Debug + 'static>(
     height: u32,
     quality: u8,
     fit: String,
-    _zoom: f32,
-    _offset_x: f32,
-    _offset_y: f32,
-    _rotation: i32,
+    zoom: f32,
+    offset_x: f32,
+    offset_y: f32,
+    rotation: i32,
     _filter: String,
     style: Option<Style>,
 ) -> iced::Element<'static, M> {
@@ -2838,24 +2838,29 @@ fn render_image_surface<M: Clone + Debug + 'static>(
         iced::widget::image::FilterMethod::Linear
     };
 
-    // ImageSurface's contract is an opaque media URI. Do not call the legacy
-    // load_image_bytes helper here: non-media values remain an explicit
-    // placeholder rather than reintroducing synchronous I/O.
-    let bytes = if src.starts_with("/api/__auto/media/") {
-        crate::ui::image_pipeline::resolve_media_uri(&src)
+    // ImageSurface's contract is an opaque media URI. Consume only pixels
+    // that a background resize lane has already decoded and cached; this path
+    // never opens a file or decodes encoded bytes on the UI thread.
+    let pixels = if src.starts_with("/api/__auto/media/") {
+        crate::ui::image_pipeline::resolve_media_pixels(&src)
     } else {
         None
     };
-    let mut inner: iced::Element<'static, M> = if let Some(bytes) = bytes {
-        let mut image = iced::widget::image(iced::widget::image::Handle::from_bytes(bytes))
+    let mut inner: iced::Element<'static, M> = if let Some((source_width, source_height, rgba)) = pixels {
+        let zoom = zoom.clamp(0.05, 64.0);
+        let quarter_turn = rotation.rem_euclid(360) / 90;
+        let (display_width, display_height) = if quarter_turn % 2 == 1 {
+            (source_height as f32 * zoom, source_width as f32 * zoom)
+        } else {
+            (source_width as f32 * zoom, source_height as f32 * zoom)
+        };
+        let mut image = iced::widget::image(iced::widget::image::Handle::from_rgba(source_width, source_height, rgba.to_vec()))
             .content_fit(object_fit)
             .filter_method(filter_method);
-        if let Some(w) = width_hint {
-            image = image.width(w);
-        }
-        if let Some(h) = height_hint {
-            image = image.height(h);
-        }
+        if width > 0 { image = image.width(iced::Length::Fixed(display_width.max(width as f32 + offset_x.abs()))); }
+        else if let Some(w) = width_hint { image = image.width(w); }
+        if height > 0 { image = image.height(iced::Length::Fixed(display_height.max(height as f32 + offset_y.abs()))); }
+        else if let Some(h) = height_hint { image = image.height(h); }
         image.into()
     } else {
         let label = if alt.is_empty() {

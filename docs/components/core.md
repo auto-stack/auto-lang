@@ -425,7 +425,7 @@ Image display
 
 Asynchronous image viewer surface
 
-别名:`ImageSurface` `image-surface`
+别名:`ImageSurface` `image-surface` `image_surface`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
