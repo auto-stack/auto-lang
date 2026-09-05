@@ -99,7 +99,7 @@ x.foo / x[i] / x[a..b] ─改写──▶  py_getattr / py_getitem / py_slice
 | # | 规则 | 状态 |
 |---|---|---|
 | E1 | **错误模型**（见 §4） | 定案 |
-| E2 | `with expr { }` / `with expr as x { }` → `py_enter + try-finally + py_exit`；**异常抑制默认不做**（py_exit 固定传 None×3；需要时显式 try-catch） | 定案；`with` 关键字零冲突（仅 `#[with(...)]` 注解参数位，方括号封闭） |
+| E2 | `with expr { }` / `with expr as x { }` → `py_enter + try-finally + py_exit`；**异常抑制默认不做**（py_exit 固定传 None×3；需要时显式 try-catch） | 定案；`with` 关键字零冲突（仅 `#[with(...)]` 注解参数位，方括号封闭）。无 as 形态已落地（Plan 560 T09，parser 直产 py_with）；as 绑定归 Plan 567 Phase C |
 | E3 | for-in 双通道：有 `__getitem__`+len 走索引（快），否则 `__iter__/__next__`；`py_iter()` 强制迭代器语义 | 定案 |
 
 ### F. 生命周期
@@ -121,6 +121,13 @@ F1 导入（B8 补裸模块）；F2 句柄 rc（债务区非语法面）；F3 �
 5. main 边界：未捕获传播 → 脚本带错退出（= Python traceback）；
 6. a2py 映射：隐式传播零代码（Python 原生）、`.?(d)`→`x if x is not None else d`、
    catch→except。
+
+> **落地现状（2026-09-05，Plan 567 T05-T10）**：上述 1-6 已全部落地——may 变体桥
+> 453/476/477/478（call/getattr/getitem/kwargs）；s2s `rule_err_propagate` 在 `.as`
+> 内自动补 `.?`（桥调用 may 化；用户函数调用点；无 use.py 文件零改写）；引擎
+> ERROR_PROPAGATE 值通道拦截（Err 遇当前帧 try → catch_pc 绑 `PyException <Type>:
+> <msg>`；null 是值不进 catch）；主边界未捕获 Err 带错退出（exit 1）。已知遗留：
+> `.?(d)` 表达式位链式消费缺陷（存量，567 待澄清⑥）。
 
 ## 5. Null 体系（定案）
 

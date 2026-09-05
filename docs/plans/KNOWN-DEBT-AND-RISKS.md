@@ -1481,12 +1481,18 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
   expr as x` 被 parse_expr 整吞为 Cast、块体又入单元构造语法歧义；
   现状响亮拒绝（错误消息含指引）。裁定方向：with 上下文限定解析
   （pratt 截断）或换绑定关键字（`with expr -> x` / `let x =`）。
-- **P560-D2 隐式 !T 传播自动化**：ERROR_PROPAGATE 是 May 值通道，
-  py 错误走 VMError 异常通道——两通道汇合需桥出口产 Err 值（473+
-  shim 面深集成）。现状=显式 py_call_may+.? 通道可表达（p14 探针）。
-- **P560-D3 Err 载荷前缀精化**：py 桥错误现统一 RuntimeError（原文
-  含 Python 类型字样）；严格 "PyException <Type>:" 前缀随 D2 通道
-  汇合同批。
+- **~~P560-D2 隐式 !T 传播自动化~~ ✅ 已清偿（2026-09-05, Plan 567
+  T06-T10）**：两通道已汇合——476/477/478 may 变体桥（getattr/getitem/
+  kwargs×call）+ s2s rule_err_propagate（`.as` 桥调用→may+.?、用户函数
+  调用+.?，无 use.py 零改写）+ 引擎 ERROR_PROPAGATE 值通道拦截（Err 传播
+  遇当前帧 try handler 跳 catch_pc 绑 PyException 载荷；null 是值不进
+  catch）+ 主边界未捕获 Err 带错退出（exit 1）。19 py 套件 127/127 三方绿
+  （隐式传播激活态）；tv 99_script_err 语料三例。遗留子面：`.?(d)` 表达式
+  位链式消费缺陷（存量，453 同形复现）见 567 待澄清⑥。
+- **~~P560-D3 Err 载荷前缀精化~~ ✅ 已清偿（2026-09-05, Plan 567 T05）**：
+  py_exc helper 统一 `PyException <Type>: <msg>`（~20 站点迁移，与
+  py_call_may Err 载荷同源）；CALL_NAT/COUNTED 双臂 FFI→RuntimeError
+  通道一致化（顺修非 FFI 静默吞错）。catch 绑定/传播/未捕获三面同前缀。
 - **P560-D4 门控硬化影响面超计划前提**：`.at` 含 use.py/null 诊断
   硬化的存量撞击=vm 语料（aavm2 词法语料 2 文件 + null 语义测试
   1 文件 + keyword_map）——需先裁定这些语料的 .as 迁移或 #[script]
