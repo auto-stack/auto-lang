@@ -66,6 +66,13 @@ All AI coding assistants working in this repository must strictly adhere to the 
     - VM 模式：`auto run -r vm`
     - 自动化双端一致性：调用 `autoui-verifier` 技能 (`.agents/skills/autoui-verifier`)。
 
+#### Heavy-Mem Test Tiering (Plan 564)
+
+- Per-test peak weights live in `.config/test-mem-weights.md` (single source of truth; measured by `python scripts/measure_test_mem.py <filter>`, nextest `--jobs=1` serial + per-process peak polling).
+- Tiers: XL ≥800MB (excluded from daily tier via default-filter; run only in `tf`/`ta`), LG 300-800MB (daily, serialized), MD 100-300MB (concurrency 2). nextest `[test-groups]` in `.config/nextest.toml` + `nextest-full.toml` enforce xl/lg/md = 1/1/2 threads.
+- XL/LG tests carry an in-body `heavy_gate` guard (`crates/auto-lang/src/tests/heavy_gate.rs`): under bare `cargo test` (no `NEXTEST` env) they SKIP instantly — the 2026-09-05 incident (bare run, 12 threads, 9.78GB peak) cannot recur. SKIP guidance is visible with `--nocapture`; force-run with `AUTO_LANG_HEAVY_MEM=1`.
+- Registering a new heavy test (3 steps): measure → classify in the weights file → add to nextest overrides + wire `heavy_gate` at the test's first line.
+
 #### Cargo Test Aliases Reference (from `.cargo/config.toml`)
 - `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel; 1M churn tier excluded, Plan 466)
 - `cargo tf` - Full-scale daily tests (all tests incl. 1M churn tier) — the review / pre-fold full-suite gate (Plan 466)
