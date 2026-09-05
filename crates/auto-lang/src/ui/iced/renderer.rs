@@ -2795,6 +2795,113 @@ fn wrap_layout_onclick<'a, M: Clone + 'static>(
     }
 }
 
+/// Render an ImageSurface without entering the legacy Image loader/cache.
+/// Media tickets are resolved only through the process-local registry; a
+/// pending/expired ticket therefore renders a stable placeholder instead of
+/// performing synchronous file or HTTP I/O on the UI thread.
+fn render_image_surface<M: Clone + Debug + 'static>(
+    src: String,
+    alt: String,
+    width: u32,
+    height: u32,
+    quality: u8,
+    fit: String,
+    _zoom: f32,
+    _offset_x: f32,
+    _offset_y: f32,
+    _rotation: i32,
+    _filter: String,
+    style: Option<Style>,
+) -> iced::Element<'static, M> {
+    use crate::ui::iced::image_surface::ImageSurfaceFit;
+
+    let is = style.as_ref().map(IcedStyle::from_style);
+    let width_hint = if width > 0 {
+        Some(iced::Length::Fixed(width as f32))
+    } else {
+        is.as_ref().and_then(|s| s.width.as_ref().map(iced_length))
+    };
+    let height_hint = if height > 0 {
+        Some(iced::Length::Fixed(height as f32))
+    } else {
+        is.as_ref().and_then(|s| s.height.as_ref().map(iced_length))
+    };
+    let object_fit = match ImageSurfaceFit::parse(&fit) {
+        ImageSurfaceFit::Contain => iced::ContentFit::Contain,
+        ImageSurfaceFit::Width => iced::ContentFit::Contain,
+        ImageSurfaceFit::OneToOne => iced::ContentFit::None,
+        ImageSurfaceFit::Free => iced::ContentFit::None,
+    };
+    let filter_method = if quality < 80 {
+        iced::widget::image::FilterMethod::Nearest
+    } else {
+        iced::widget::image::FilterMethod::Linear
+    };
+
+    // ImageSurface's contract is an opaque media URI. Do not call the legacy
+    // load_image_bytes helper here: non-media values remain an explicit
+    // placeholder rather than reintroducing synchronous I/O.
+    let bytes = if src.starts_with("/api/__auto/media/") {
+        crate::ui::image_pipeline::resolve_media_uri(&src)
+    } else {
+        None
+    };
+    let mut inner: iced::Element<'static, M> = if let Some(bytes) = bytes {
+        let mut image = iced::widget::image(iced::widget::image::Handle::from_bytes(bytes))
+            .content_fit(object_fit)
+            .filter_method(filter_method);
+        if let Some(w) = width_hint {
+            image = image.width(w);
+        }
+        if let Some(h) = height_hint {
+            image = image.height(h);
+        }
+        image.into()
+    } else {
+        let label = if alt.is_empty() {
+            "Image unavailable".to_string()
+        } else {
+            alt
+        };
+        let mut placeholder = container(text(label).size(14))
+            .center_x(iced::Length::Fill)
+            .center_y(iced::Length::Fill);
+        if let Some(w) = width_hint {
+            placeholder = placeholder.width(w);
+        }
+        if let Some(h) = height_hint {
+            placeholder = placeholder.height(h);
+        }
+        placeholder.into()
+    };
+
+    let mut surface = container(inner).clip(true);
+    if let Some(w) = width_hint {
+        surface = surface.width(w);
+    }
+    if let Some(h) = height_hint {
+        surface = surface.height(h);
+    }
+    if let Some(ref style) = is {
+        let background = style.background_color.map(iced::Background::Color);
+        let border_color = style
+            .border_color
+            .unwrap_or(iced::Color::TRANSPARENT);
+        let border_width = style.border_width.unwrap_or(0.0);
+        let border_radius = style.border_radius.unwrap_or(0.0);
+        surface = surface.style(move |_theme| container::Style {
+            background,
+            border: iced::Border::default()
+                .rounded(border_radius.min(9999.0))
+                .width(border_width)
+                .color(border_color),
+            ..Default::default()
+        });
+    }
+    inner = surface.into();
+    inner
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -4756,10 +4863,49 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::ImageSurface { src, style, .. } => {
-                // Until the dedicated widget lands, reuse Image's native
-                // loader while preserving the backend-neutral node contract.
-                AbstractView::Image { src, style }.into_iced()
+            AbstractView::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error,
+                on_loaded,
+                on_wheel,
+                on_pan,
+                on_double_click,
+                style,
+            } => {
+                // Callback messages are retained in the View contract and
+                // consumed by the input adapter (Task 25); this paint pass
+                // must not synthesize duplicate notifications.
+                let _ = (
+                    on_error,
+                    on_loaded,
+                    on_wheel,
+                    on_pan,
+                    on_double_click,
+                );
+                render_image_surface(
+                    src,
+                    alt,
+                    width,
+                    height,
+                    quality,
+                    fit,
+                    zoom,
+                    offset_x,
+                    offset_y,
+                    rotation,
+                    filter,
+                    style,
+                )
             }
         }
     }
@@ -19563,6 +19709,37 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 547 Task 26: ImageSurface uses the dedicated renderer path,
+    /// accepts the media URI contract, and builds a clipped element without
+    /// invoking the legacy synchronous Image loader.
+    #[test]
+    fn image_surface_renderer() {
+        let view = AbstractView::<()>::ImageSurface {
+            src: "/api/__auto/media/opaque/1".into(),
+            alt: "preview".into(),
+            width: 640,
+            height: 480,
+            quality: 90,
+            fit: "contain".into(),
+            zoom: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            rotation: 0,
+            filter: "high".into(),
+            on_error: None,
+            on_loaded: None,
+            on_wheel: None,
+            on_pan: None,
+            on_double_click: None,
+            style: None,
+        };
+        let _element = view.into_iced();
+        assert_eq!(
+            crate::ui::iced::image_surface::ImageSurfaceFit::parse("fit-width"),
+            crate::ui::iced::image_surface::ImageSurfaceFit::Width
+        );
+    }
 
     #[test]
     fn native_media_uri_resolves_registry_before_http_fallback() {
