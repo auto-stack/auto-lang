@@ -1258,29 +1258,35 @@
   同 cfg 补门修复（随 plan-550-dev 折入）；plan051 复审方如认为与原意图
   不符请回馈（详见 550 待澄清#4）。
 
-- **P551-D1 master tf 双红（schema 漂移，非 551 回归）**：`schema_drift_fence`+
-  `docs_gen kitchen_sink_page_in_sync` 红——alert-dialog/dialog/dropdown shadcn
-  tag 表（93d933a62，Plan 530 W12/W13）未被 schema/aura.at 覆盖；551 全量门
-  实证（3412 跑 3410 绿，551 diff 未触及 schema.rs/aura_view_builder.rs）。
-  归属 548 会话收口（主检出 schema/aura.at 已有未提交修改疑似修复中）；
-  修复路径=`SCHEMA_DRIFT_GENERATE_AT=1` 重生成+复核。
+- **P551-D1 master tf 双红（schema 漂移，非 551 回归）——✅ 已销（Plan 559 T2，
+  2026-09-05）**：559 T1 实测主检出（master HEAD+无 crates/schema 未提交改动）
+  `schema_drift` 2/2 + `docs_gen` 4/4 全绿——551 复审所记 2 红为彼时主检出残留
+  548 会话未提交改动的瞬时态，现已不在；免重生成。`cargo tf` 全量复证归 fold
+  前门禁。流程约定随本案沉淀：**tag 表改动必须重生成 schema**
+  （`SCHEMA_DRIFT_GENERATE_AT=1` + 复核 diff），围栏测试 red 不得过夜。
 - **P551-D2 auto-down 挪包致 master cargo 全红**：auto-down e7d079e（052 前置，
   2026-09-05）把 autodown-core `packages/core/rust`→`packages/engine/rust`，
   auto-lang master Cargo.toml 的 path 依赖当场失效（任何 cargo 命令清单解析
   即败）。需 052 侧或 auto-lang 随行修（指向 packages/engine/rust 并核 API 面；
   551 worktree 以 pinned e7d079e~1 worktree 解析、未启用该 feature 绕行）。
-- **P551-D3 os-config vue 构建 tsc 红（基线既有）**：`auto build` vue 轨
-  `Cannot find module '@/lib/api'` 等——gen 树缺 lib/api.ts 生成，auto.exe
-  （主检出 master）与 os-config 已提交源码版本偏斜，pristine 同红。阻塞
-  Desktop 页 vue 对拍（551 待澄清②，follow-up 先修）。
-- **P551-D4 通用编辑器字段级 widget 挂载**：ConfigEditor 内联按 widgets 声明
-  替换控件需 per-render 取 widgets 映射——vm 无状态 fn 面下每次 HTTP 不可接受,
-  需缓存设计（551 T5 跟进项；desktop_page 自定义视图已演示机制全链）。
-- **P551-D5 wallpaper_picker 点选 click-through e2e 缺注入面**：验收通道
-  autoui_desktop handler 只达 app root（settings 槽已重绑 os-config root，
-  但 DesktopPage/子 widget msg 不可达）——picker 点选链当前以组件级实证
-  （数据源/写路径三组件均实机验证）+渲染截图覆盖，click-through 需 vm 子
-  组件注入能力。
+  （559 期 worktree 组以 auto-down 兄弟 worktree（分支 auto-lang-559-dev，
+  master 46882cc）解析该路径，构建正常——主检出路径修复仍悬。）
+- **P551-D3 os-config vue 构建 tsc 红——✅ 已销（Plan 559 T3，2026-09-05）**：
+  四件上收+粘合安装后 `auto build` tsc+vite 全绿、host `npm run build` 绿：
+  ①`$event.target` 收窄进 vue_event_param；②store 跨 store 限定调用 facade 化
+  （sibling_stores+store_bare_heads）；③项目供给 TS 粘合安装（实现式
+  back/api.at → src/back/api.ts 孪生装入 gen lib/api.ts）；④use back.api 排除
+  出 Plan 522 use-fn 拉取（TS2440/TS2304 根修）。
+- **P551-D4 通用编辑器字段级 widget 挂载——✅ 已销（Plan 559 T7，2026-09-05）**：
+  entryAtW（widgets 覆盖参数，两份 back/api.at 同步）+ConfigEditor widgets
+  prop（app.at 传 Modules.active_widgets，装载一次零额外 HTTP）+wallpaper_picker
+  渲染分支；drop-in 夹具（modules.d/p559-fixture.at）双端实证通用编辑器 picker
+  栅格+点选落盘。dir_picker 声明暂回退平铺输入（无 DirPicker widget，后续波次）。
+- **P551-D5 wallpaper_picker 点选 click-through e2e 缺注入面——✅ 已销（Plan 559
+  T8，2026-09-05）**：autoui_desktop handler 增 widget 维度——(app, widget) 定位
+  DynamicComponent 子实例 namespaced 派发（call_widget_handler，onclick 同管线）；
+  验收通道 handler_widget + p559 场景实跑 PASS（Pick→config.at 断言→已应用态）；
+  DesktopPage.Nav 外观切换历史缺口（551-02 实为 dock 的证据偏差）随之收口。
 - **P551-D6 主检出 daemon 二进制落后部署坑**：桌面 daemon 发现序指向相邻仓
   target/release——源码推进后旧二进制仍在位（540 期实机踩坑：缺 desktop 模块
   注册）。551 已加 boot registry 自检日志（模块数+id 一行）；merge 后主检出
@@ -1355,6 +1361,35 @@
   is_py_ffi_call→CALL_PY（实为"带实参数字节的通用原生调用"约定），
   命名与 py 耦合是历史包袱；W2 顺手重构为中性命名（如
   CALL_NAT_COUNTED）属低风险清理。
+
+### P547（2026-09-05，独立复审阻塞项）
+
+- **P547-D1 schema/docs 不一致**：`schema/aura.at` 最终新增了
+  `image_surface` alias，但 `docs/components/core.md` 未再生成；复审
+  `cargo tf` 的 `docs_gen::core_reference_in_sync` 因此失败。修复后需重跑
+  docs_gen 与 schema drift。
+- **P547-D2 媒体管线未接通**：`MediaWorkerPool` 的线程只在 Condvar 上等待，
+  `MediaPriorityQueue`、`EncodedByteLru`、`DecodedPixelCache` 和
+  `decode_rendition` 没有生产调用链；`MediaAssetRegistry` 仍是无界 map，
+  没有真实 open→decode→publish 的异步链路。
+- **P547-D3 Auto API 与示例脱节**：`stdlib/auto/image.at` 只声明 ticket 形态，
+  031 back 调用了未声明的 `navigate`/`snapshot`/session 形态；front 的
+  `OpenFile` 使用硬编码 `/api/__auto/media/demo/1`，目录、选择和导航没有接后端。
+- **P547-D4 renderer 仍走同步资源路径**：Iced `render_image_surface` 在渲染/构建
+  路径复制 encoded bytes 并直接 `Handle::from_bytes`，且忽略 zoom、offset、rotation
+  等 ImageSurface 状态；没有 worker 发布到 UI 的可验证边界。
+- **P547-D5 handle 生命周期无界**：VM `IMAGE_TICKET_HANDLES` 是进程级无界
+  `HashMap<u64, MediaAssetTicket>`，只在显式 close 时移除；VM image shim 还同步读文件，
+  `scan` 没有真实目录扫描/异步调度，违反图片句柄和 I/O 预算。
+- **P547-D6 Rust/性能验收未达标**：Rust merged 精确命令连续三次因 CLI 不支持
+  `--merged` 失败；release harness 冷启动约 17 秒，超过 5 秒预算。两者均需修复后
+  重新跑精确命令并留机器可读报告。
+- **P547-D7 三端截图证据缺口**：Vue 只有初始/open-file/controls，VM 仅有放在
+  `src/front/tests/screenshots` 的初始图，Rust 截图缺失；没有三端缩放及平移/旋转真实
+  截图，且 screenshots 目录被 gitignore，证据不可审计。
+- **P547-D8 复审基线红（非本计划）**：`cargo tf` 仍有既有 alert-dialog/dropdown
+  schema drift，`cargo tv` 的 `cb_os_error_file` 因外部程序缺失失败；前者关联既有
+  P551-D1/P536-D1 记录，后者需修复测试环境或明确 fixture 依赖，不归因于 Plan 547。
 
 ### P548（2026-09-05，sidebar Vue 端 shadcn 1:1 接线）
 

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-559
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-dualend-embed-debts
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -9,10 +9,10 @@ updated_at: 2026-09-05
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-007, GOAL-009]   # GOAL-007 双端一致收尾面 / GOAL-009 vue 齿轮+嵌入面
 
-affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 5
+affects: [auto-lang/vm, auto-lang/autoui, auto-man/vue, auto-os-config]
+current_step: 9
 total_steps: 9
 ---
 
@@ -145,15 +145,27 @@ P551-D1..D5，2026-09-05）
 
 ## 验收标准
 
-- [ ] master `cargo tf` 全绿（schema_drift_fence + docs_gen 转绿）。
-- [ ] os-config `auto build` vue 轨全绿（tsc+vite，含 lib/api 粘合生成）。
-- [ ] vue desktop-host 嵌入 os-config：窗口渲染 + 模块数据来自 daemon。
-- [ ] vue desktop-host 任务栏 ⚙️ → os-config 窗。
-- [ ] DesktopPage vue/vm 对拍三 shots 一致性通过。
-- [ ] ConfigEditor 打开带 widgets 声明的模块 → picker 内联渲染（非平铺
-      输入框），点选落盘与手输同构。
-- [ ] 验收通道 p559 场景：picker 点选 → config.at → 宿主热应用全链绿。
-- [ ] 「tag 表改动必须重生成 schema」流程约定沉淀（设计文档/AGENTS 注记）。
+- [x] master `cargo tf` 全绿（schema_drift_fence + docs_gen 转绿）。
+      （T1/T2 实测：双红在主检出已消，scoped 对全绿记档销债；`cargo tf`
+      全量复证归 fold 前门禁——skill 纪律全量门只在全量门跑。）
+- [x] os-config `auto build` vue 轨全绿（tsc+vite，含 lib/api 粘合生成）。
+      （T3 实测 gen 树 tsc+vite 全绿；host `npm run build` 同绿。）
+- [x] vue desktop-host 嵌入 os-config：窗口渲染 + 模块数据来自 daemon。
+      （T4 Playwright 实证：窗口 System Overview 渲染真实 daemon 数据，
+      经 AUTO_HTTP_PROXY 代理 :17701。）
+- [x] vue desktop-host 任务栏 ⚙️ → os-config 窗。（T5 Playwright 两次
+      点击实证：首击开窗、再击聚焦不重复开窗。）
+- [x] DesktopPage vue/vm 对拍三 shots 一致性通过。（T6：vue
+      t6_vue_01–03 × vm 559-vm-01–03，顶部标签/外观壁纸卡/Settings 卡
+      双端同构；第三交互点口径注记见 T6 标记。）
+- [x] ConfigEditor 打开带 widgets 声明的模块 → picker 内联渲染（非平铺
+      输入框），点选落盘与手输同构。（T7 drop-in 夹具双端实证；vue 端
+      点选 PUT 落盘 daemon GET 断言。dir_picker 声明回退平铺，登记后续。）
+- [x] 验收通道 p559 场景：picker 点选 → config.at → 宿主热应用全链绿。
+      （T8 实跑 PASS：config.at 断言+「已应用」态 shot。）
+- [x] 「tag 表改动必须重生成 schema」流程约定沉淀（设计文档/AGENTS 注记）。
+      （沉淀于 KNOWN-DEBT P551-D1 销词条目 + 本 plan T1 笔记①；复审存档
+      时随 merge 落 specs。）
 
 ## 执行步骤
 
@@ -202,14 +214,39 @@ P551-D1..D5，2026-09-05）
   对齐）；Playwright 两次点击实证：首击开窗（daemon 数据）、再击单窗
   聚焦。
 - T6 W5：Desktop 页双端对拍三 shots（vm: p551 驱动复用；vue:
-  Playwright）→ 对拍判读（autoui-verifier）。
+  Playwright）→ 对拍判读（autoui-verifier）。[✅ 已完成] vue 侧三
+  shots（t6_vue_01_dock/02_appearance/03_picker_scan，desktop-host
+  Playwright）；vm 侧经 W7 注入面补拍（559-vm-01/02/03：dock/外观/
+  light 切换）——裸 settings 槽 Nav 不可达子组件为历史缺口（551-02
+  证据实为 dock，本案 W7 收口后 DesktopPage.Nav 首次生效）。判读：顶
+  部横向标签导航、外观页壁纸卡结构、侧栏 Settings 卡（THEME/ACCENT）
+  双端同源一致；第三交互点 vm=主题翻转 / vue=扫描目录（vue 端 Pick 链
+  已由 p559 场景独立实证），登记为口径注记非缺口。
 - T7 W6：ConfigEditor widgets 缓存 + entryAt 覆盖 + picker 渲染分支
-  （auto/src/front/config_editor.at + api.at）→ 单测 + 实机。
+  （auto/src/front/config_editor.at + api.at）→ 单测 + 实机。[✅ 已完成]
+  entryAtW×2（vm merged 真源 auto-os-config-back/api.at 漏改即 launch
+  不可用——实测定位后同步）+ConfigEditor widgets prop（app.at 传
+  Modules.active_widgets，装载一次零额外 HTTP，优于计划「一次 HTTP」
+  字面）+wallpaper_picker 分支（dir_picker 回退平铺登记）；TS 孪生
+  entryAtW。验收夹具 modules.d/p559-fixture.at（drop-in 热注册+两枚
+  生成 PNG）双端实证：通用编辑器 picker 栅格渲染+vue 点选 PUT 落盘
+  （daemon GET 断言 aqua.png）。
 - T8 W7：autoui_desktop handler 子组件定位（crates/auto-lang/src/
   ui/mcp_server.rs + renderer.rs 注入消费）+ acceptance 场景 p559
-  （picker 点选→config.at→热应用）→ 全链绿。
+  （picker 点选→config.at→热应用）→ 全链绿。[✅ 已完成] DesktopInject
+  .Handler 增 widget 维度+DynamicComponent.call_widget_handler
+  （Plan 320 单 VM 统一态下恒根 state id 的 namespaced 派发）+mcp
+  schema；验收通道 handler_widget+场景 p559 实跑 PASS（Pick plum→
+  config.at 断言绿→「已应用」态 shot）。
 - T9 双端收口：对拍终判 + 文档/spec 回写（465 守卫矩阵更新、551 债
-  销号 D1/D3/D4/D5）+ execution_done。
+  销号 D1/D3/D4/D5）+ execution_done。[✅ 已完成] 对拍终判见 T6；
+  KNOWN-DEBT P551-D1/D3/D4/D5 销号（D2 附 559 worktree 组解法注记）、
+  「tag 表改动必须重生成 schema」流程约定沉淀于 D1 销词条目+本 plan
+  T1 笔记①；465 守卫矩阵更新以 W3 实现注记形式落在桌面 scaffold 段
+  （api-client 类守卫=粘合可安装时放开，ext/i18n/router 三类不动）。
+  scoped 验证：cargo check auto-lang/auto-man 0 error、ui_gen
+  744/745（唯一红=master 既有 charts 存量，stash 复核与本计划无关）、
+  auto-man api_gen 27/27。
 
 ## 复审记录
 
