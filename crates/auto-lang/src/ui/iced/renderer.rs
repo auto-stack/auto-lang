@@ -4047,8 +4047,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     clear: clear.clone(),
                     extent: logical_extent,
                 };
-                let canvas_el: iced::Element<'static, M> =
-                    iced::widget::canvas(painter).into();
+                // iced canvas 默认 Fixed(DEFAULT_SIZE) 方块——显式 Fill
+                // 随外层 container(承载 style 尺寸类 w-/h-)撑满。
+                let canvas_el: iced::Element<'static, M> = iced::widget::canvas(painter)
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .into();
                 let wrapped: iced::Element<'static, M> =
                     if !inspect_capture_active() && (on_pen_start.is_some() || on_pen_move.is_some() || on_pen_end.is_some()) {
                         let mut pa = crate::ui::iced::pen_area::PenArea::new(canvas_el);
@@ -5895,6 +5899,32 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                     })
                 }),
                 logical_extent,
+                style,
+            }
+        }
+
+        // Plan 563: 画布 —— 显式臂(缺臂落 Empty 兜底,496 MouseArea
+        // 同坑);pen handler 包装同 on_move。
+        AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, style } => {
+            AbstractView::Canvas {
+                scene,
+                logical_extent,
+                clear,
+                on_pen_start: on_pen_start.map(|h| {
+                    crate::ui::view::PointerMoveHandler::new(move |x, y| {
+                        IcedMessage::from_dynamic(&h.call(x, y))
+                    })
+                }),
+                on_pen_move: on_pen_move.map(|h| {
+                    crate::ui::view::PointerMoveHandler::new(move |x, y| {
+                        IcedMessage::from_dynamic(&h.call(x, y))
+                    })
+                }),
+                on_pen_end: on_pen_end.map(|h| {
+                    crate::ui::view::PointerMoveHandler::new(move |x, y| {
+                        IcedMessage::from_dynamic(&h.call(x, y))
+                    })
+                }),
                 style,
             }
         }

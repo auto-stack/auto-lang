@@ -115,6 +115,9 @@ pub enum VNodeKind {
 
     /// 导航栏
     NavigationRail,
+
+    /// 画布（状态驱动的自由笔迹面，Plan 563——检视层可见的 leaf）
+    Canvas,
 }
 
 impl fmt::Display for VNodeKind {
@@ -140,6 +143,7 @@ impl fmt::Display for VNodeKind {
             VNodeKind::Sidebar => write!(f, "Sidebar"),
             VNodeKind::Tabs => write!(f, "Tabs"),
             VNodeKind::NavigationRail => write!(f, "NavigationRail"),
+            VNodeKind::Canvas => write!(f, "Canvas"),
         }
     }
 }
@@ -174,6 +178,7 @@ pub fn kind_keyword(k: VNodeKind) -> &'static str {
         VNodeKind::Sidebar => "sidebar",
         VNodeKind::Tabs => "tabs",
         VNodeKind::NavigationRail => "navrail",
+        VNodeKind::Canvas => "canvas",
     }
 }
 
