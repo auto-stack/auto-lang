@@ -335,6 +335,11 @@ pub const NATIVE_PY_STR: u16 = 472;
 /// Plan 560 T07 (C6): `py_pow(a, b)` — GIL operator.pow（数字与
 /// `__pow__` 对象通用）；糖 `a ** b` 的解析直落目标。
 pub const NATIVE_PY_POW: u16 = 473;
+/// Plan 560 T08 (C3/C4): `py_truthy(x)` — GIL bool()（多元素张量按
+/// Python 抛）；句柄在 if/and/or/not 位的真值通道。
+pub const NATIVE_PY_TRUTHY: u16 = 474;
+/// Plan 560 T08 (C7): `py_is(a, b)` — GIL `a is b`；糖 `a is b` 直落目标。
+pub const NATIVE_PY_IS: u16 = 475;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -1508,6 +1513,53 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_POW, pow_shim);
+
+        // ---- py_truthy(x) / py_is(a, b) ----
+        // Plan 560 T08 (C3/C4/C7)：句柄真值与同一性判定的 GIL 通道。
+        let truthy_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_truthy needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let x = pop_auto_py_arg(task, vm, py)?;
+                use pyo3::types::PyAnyMethods;
+                let b = x.is_truthy().map_err(|e| {
+                    VMError::FFI(format!(
+                        "py_truthy on {} failed: {}",
+                        safe_type_name(&x), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_bool(b));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_TRUTHY, truthy_shim);
+
+        let is_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_is needs 2 args (a, b), got {}",
+                        n
+                    )));
+                }
+                let b = pop_auto_py_arg(task, vm, py)?;
+                let a = pop_auto_py_arg(task, vm, py)?;
+                let same = a.is(&b);
+                task.ram.push_nv(auto_val::encode_bool(same));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_IS, is_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type

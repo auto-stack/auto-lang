@@ -40,6 +40,11 @@ pub fn builtin_rules() -> Vec<LoweringRule> {
             id: "B5/B6/A5/D7",
             transform: crate::trans::s2s_rules::rule_b5_b6_a5_d7,
         },
+        // Plan 560 T08: C3/C4 句柄真值（if/while/and/or/not → py_truthy）。
+        LoweringRule {
+            id: "C3/C4",
+            transform: crate::trans::s2s_rules::rule_c34_truthy,
+        },
     ]
 }
 

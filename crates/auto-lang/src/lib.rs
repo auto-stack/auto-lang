@@ -764,6 +764,9 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_str", crate::py_ffi::NATIVE_PY_STR);
         // Plan 560 T07 (C6)：幂。
         registry.register_with_id("py.py_pow", crate::py_ffi::NATIVE_PY_POW);
+        // Plan 560 T08 (C3/C4/C7)。
+        registry.register_with_id("py.py_truthy", crate::py_ffi::NATIVE_PY_TRUTHY);
+        registry.register_with_id("py.py_is", crate::py_ffi::NATIVE_PY_IS);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();

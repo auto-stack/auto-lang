@@ -2598,6 +2598,15 @@ impl<'a> Parser<'a> {
                 // Plan 560 T07 (C5/C6)：`a @ b` / `a ** b` 脚本糖——直接
                 // 解析为桥调用（免新增 Op 变量的全仓波及；@T 引用类型
                 // 在类型位不受影响——此臂仅在表达式 infix 位命中）。
+                // Plan 560 T08 (C7)：`a is b` 同一性糖——词位判别（is 为
+                // 普通标识符 token，非保留字；仅 infix 位命中，变量名
+                // is 的常规用法在 atom 位不受影响）。
+                TokenKind::Is => {
+                    self.next(); // skip `is`
+                    let rhs = self.atom()?;
+                    lhs = mk_infix_sugar_call("py_is", lhs, rhs);
+                    continue;
+                }
                 TokenKind::At | TokenKind::Power => {
                     let is_matmul = matches!(self.cur.kind, TokenKind::At);
                     self.next(); // skip @ / **

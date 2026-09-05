@@ -439,3 +439,86 @@ fn build_slice_call(start: Expr, end: Expr, step: Option<Expr>) -> Expr {
     }
     mk_call("py_slice", args)
 }
+
+/// Plan 560 T08 (C3/C4)：py-known 句柄在真值位（if/while 条件、
+/// `!`/`&&`/`||` 操作数）→ py_truthy 包裹（GIL bool——多元素张量按
+/// Python 抛；Auto 值真值语义零打扰）。
+pub fn rule_c34_truthy(code: &mut Code) -> AutoResult<bool> {
+    let k = crate::trans::py_known::analyze(code);
+    let mut changed = false;
+    for stmt in code.stmts.iter_mut() {
+        if let Stmt::Fn(f) = stmt {
+            let fname = f.name.as_str().to_string();
+            truthy_body(&mut f.body.stmts, &k, &fname, &mut changed);
+        }
+    }
+    Ok(changed)
+}
+
+fn truthy_body(stmts: &mut [Stmt], k: &PyKnowledge, fname: &str, changed: &mut bool) {
+    for stmt in stmts.iter_mut() {
+        match stmt {
+            Stmt::If(i) => {
+                for b in i.branches.iter_mut() {
+                    wrap_truthy(&mut b.cond, k, fname, changed);
+                    truthy_body(&mut b.body.stmts, k, fname, changed);
+                }
+                if let Some(e) = i.else_.as_mut() {
+                    truthy_body(&mut e.stmts, k, fname, changed);
+                }
+            }
+            Stmt::For(f) => {
+                if matches!(f.iter, crate::ast::Iter::Cond) {
+                    wrap_truthy(&mut f.range, k, fname, changed);
+                }
+                truthy_body(&mut f.body.stmts, k, fname, changed);
+            }
+            Stmt::Try(t) => {
+                truthy_body(&mut t.body.stmts, k, fname, changed);
+                truthy_body(&mut t.catch_body.stmts, k, fname, changed);
+            }
+            Stmt::Block(b) => truthy_body(&mut b.stmts, k, fname, changed),
+            Stmt::Store(s) => wrap_truthy_operands(&mut s.expr, k, fname, changed),
+            Stmt::Expr(e) => wrap_truthy_operands(e, k, fname, changed),
+            Stmt::Return(e) => wrap_truthy_operands(e, k, fname, changed),
+            _ => {}
+        }
+    }
+}
+
+fn wrap_truthy(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) {
+    // 条件位整体是 py-known → 整体包裹（底层 Bool 结果比较式不包——
+    // recv_is_py 只认 handle 形态，Call(py_==) 不在其中）。
+    if recv_is_py(e, k, fname) {
+        let taken = std::mem::replace(e, Expr::Null);
+        *e = mk_call("py_truthy", vec![Arg::Pos(taken)]);
+        *changed = true;
+    }
+}
+
+fn wrap_truthy_operands(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) {
+    use auto_val::Op;
+    match e {
+        Expr::Unary(op, inner) if *op == Op::Not => {
+            if recv_is_py(inner, k, fname) {
+                let taken = *std::mem::replace(inner, Box::new(Expr::Null));
+                *inner = Box::new(mk_call("py_truthy", vec![Arg::Pos(taken)]));
+                *changed = true;
+            } else {
+                wrap_truthy_operands(inner, k, fname, changed);
+            }
+        }
+        Expr::Bina(l, op, r) if *op == Op::And || *op == Op::Or => {
+            for side in [l, r] {
+                if recv_is_py(side, k, fname) {
+                    let taken = *std::mem::replace(side, Box::new(Expr::Null));
+                    **side = mk_call("py_truthy", vec![Arg::Pos(taken)]);
+                    *changed = true;
+                } else {
+                    wrap_truthy_operands(side, k, fname, changed);
+                }
+            }
+        }
+        _ => {}
+    }
+}

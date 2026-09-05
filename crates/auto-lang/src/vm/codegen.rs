@@ -5359,6 +5359,9 @@ impl Codegen {
             // Plan 560 T06 (D7) + T07 (C6)。
             "py_str",
             "py_pow",
+            // Plan 560 T08。
+            "py_truthy",
+            "py_is",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
