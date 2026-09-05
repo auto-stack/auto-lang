@@ -1262,6 +1262,14 @@ pub fn resolve_media_pixels(uri: &str) -> Option<(u32, u32, Arc<[u8]>)> {
     global_media_worker_pool().decoded_pixels(id)
 }
 
+/// Resolve a media URI for rendering, also returning the asset id (the
+/// renderer keys its texture-Handle cache on it — see renderer.rs).
+pub fn resolve_media_render(uri: &str) -> Option<(MediaAssetId, u32, u32, Arc<[u8]>)> {
+    if !uri.starts_with("/api/__auto/media/") { return None; }
+    let (id, _) = parse_media_path(uri)?;
+    global_media_worker_pool().decoded_pixels(id).map(|(w, h, px)| (id, w, h, px))
+}
+
 fn parse_media_path(path: &str) -> Option<(MediaAssetId, u64)> {
     let route = path.strip_prefix("/api/__auto/media/")?;
     let (id, revision) = route.split_once('/')?;

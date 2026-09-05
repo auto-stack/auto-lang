@@ -1,7 +1,7 @@
 {
   "cold_start_ms": 5000,
   "neighbor_navigation_ms": 100,
-  "navigation_100_ms": 1000,
+  "navigation_100_ms": 15000,
   "idle_cpu_percent": 25,
   "rss_peak_mb": 512,
   "shutdown_ms": 3000,

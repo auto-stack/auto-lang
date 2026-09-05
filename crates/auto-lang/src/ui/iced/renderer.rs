@@ -2795,6 +2795,41 @@ fn wrap_layout_onclick<'a, M: Clone + 'static>(
     }
 }
 
+/// Per-asset iced image::Handle cache (P547 flicker fix).
+///
+/// `Handle::from_rgba` mints a fresh `Id::unique()` on every call, so a new
+/// Handle per frame makes iced treat the image as brand-new: texture cache
+/// misses and re-uploads race the frame clock — the picture visibly
+/// disappears and reappears (mean-luma flicker reproduced with sequential
+/// screenshots). Keyed by media asset id; the pixel `Arc` identity gates
+/// reuse, so a re-published rendition still swaps the texture. Bounded:
+/// beyond 128 entries the table is dropped (viewer sessions hold a handful
+/// of renditions; eviction semantics live in the pipeline caches above).
+fn cached_media_handle(
+    asset: crate::ui::image_pipeline::MediaAssetId,
+    width: u32,
+    height: u32,
+    rgba: std::sync::Arc<[u8]>,
+) -> iced::widget::image::Handle {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<u128, (std::sync::Arc<[u8]>, iced::widget::image::Handle)>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().expect("media handle cache poisoned");
+    if let Some((prev, handle)) = guard.get(&asset.0) {
+        if std::sync::Arc::ptr_eq(prev, &rgba) {
+            return handle.clone();
+        }
+    }
+    let handle = iced::widget::image::Handle::from_rgba(width, height, rgba.to_vec());
+    if guard.len() >= 128 {
+        guard.clear();
+    }
+    guard.insert(asset.0, (rgba, handle.clone()));
+    handle
+}
+
 /// Render an ImageSurface without entering the legacy Image loader/cache.
 /// Media tickets are resolved only through the process-local registry; a
 /// pending/expired ticket therefore renders a stable placeholder instead of
@@ -2842,11 +2877,11 @@ fn render_image_surface<M: Clone + Debug + 'static>(
     // that a background resize lane has already decoded and cached; this path
     // never opens a file or decodes encoded bytes on the UI thread.
     let pixels = if src.starts_with("/api/__auto/media/") {
-        crate::ui::image_pipeline::resolve_media_pixels(&src)
+        crate::ui::image_pipeline::resolve_media_render(&src)
     } else {
         None
     };
-    let mut inner: iced::Element<'static, M> = if let Some((source_width, source_height, rgba)) = pixels {
+    let mut inner: iced::Element<'static, M> = if let Some((asset_id, source_width, source_height, rgba)) = pixels {
         let zoom = zoom.clamp(0.05, 64.0);
         let viewport = iced::Rectangle {
             x: 0.0,
@@ -2866,7 +2901,7 @@ fn render_image_surface<M: Clone + Debug + 'static>(
         let display_width = geometry.rotated_bounds.width.max(1.0);
         let display_height = geometry.rotated_bounds.height.max(1.0);
         let radians = (rotation.rem_euclid(360) as f32).to_radians();
-        let mut image = iced::widget::image(iced::widget::image::Handle::from_rgba(source_width, source_height, rgba.to_vec()))
+        let mut image = iced::widget::image(cached_media_handle(asset_id, source_width, source_height, rgba))
             .content_fit(object_fit)
             .filter_method(filter_method)
             .rotation(iced::Radians::from(radians));
