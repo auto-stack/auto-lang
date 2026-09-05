@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-553
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done           # drafting → executing → execution_done → reviewed → archived
 feature_name: pixel-paint
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-man]   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -144,39 +144,55 @@ window: "fit"
   `onmousemove` 拖画是否双端可用（可用则 T4 加拖画，不可用 v1 纯点击）。
   产物：探针结论写回本节。
   验证：探针脚本输出归档（scratch/p553/）
+  [✅ 已完成] scratch/p553/probes.md 四结论：storage 两侧无上限直存整串；lucide 无 brush 有 pencil（pac icon=pencil）；拖画无按压门控 v1 点击画；Str.split/List.join 可用（044 先例）
 - [ ] **T2 目录与 pac 骨架**
   `examples/ui/031-paint/pac.at` + 空 `src/front/app.at`（可编译的最小
   widget）+ `SPEC.md` 骨架。
   验证：`cd examples/ui/031-paint && auto build`（0 错误）
+  [✅ 已完成] pac.at(pencil/tool/desktop fit)+最小 app.at+SPEC.md 骨架；auto build 绿（vue-tsc+vite 0 错误，401ms）
 - [ ] **T3 model + view 主体**
   `src/front/app.at`：model 全量状态 + 三栏 view（工具列/画布 grid/调色板）
   + 底部按钮行；Init 全白。
   验证：`auto run` 手画冒烟（截图 scratch/p553/）
+  [✅ 已完成] 三栏 view+基础绘制链路绿；两处生成器交互根因实测修复：①颜色改完整类串字面量进源（Tailwind JIT 扫描面）②画布 cols 改表达式绑定（字面量 16 超 grid-cols-N 刻度→内联 style，038 同型）；截图 vue_painted.png 像素校验红格/白格在位
 - [ ] **T4 handler 家族**
   `.Paint/.Fill/.SetTool/.SetCur/.Undo/.Redo/.Clear`（BFS 显式队列；快照
   join/split；T1c 结论决定是否含拖画）。
-  验证：`auto run` 四工具 + undo/redo 手测
+  验证：`auto run` 手测四工具 + undo/redo
+  [✅ 已完成] handler 家族全落地；VM 实测发现下标写失效（str 状态列表）→ 改"本地构建→整体赋值"纪律（SetPx/seen-单趟重建）；四工具手测全通（MCP 探针：擦除 2→0、泛洪 0→256）
 - [ ] **T5 storage 存取**
   `.Save/.Load` + Init 恢复（`paint.canvas.v1`；T1a 结论定编码形态）。
   验证：`auto run` 存→重开→恢复
+  [✅ 已完成] Save/Load 落地（storage paint.canvas.v1 整串）；**null 防御下沉 lowering 层**：ts_adapter storage.get 产物补 `?? ''` 对齐 VM ""缺省（028 头注 TS18047 陷阱收口，单元测试 storage_get_emits_null_coalescing 绿）；vue 轨 Save→New→Load 像素回环验证
 - [ ] **T6 desktop_mcp 测试**
   `tests/desktop_mcp.py` 五断言组（测试设计节）。
   验证：`python tests/desktop_mcp.py`（vue 轨）+ vm 轨同套
-- [ ] **T7 vm 端对拍**
+  [✅ 已完成] desktop_mcp.py 八组断言（结构/初始/染格/橡皮/泛洪/撤销重做/吸管/存取）VM 轨 30 PASS + 1 SKIP（P553-D1 债引用式，013 audit-B12 惯例）；harvest 三教训：stdout DEVNULL（管道阻塞）/vnode id 重渲染失效→每次交互前 refresh/树解析寻址（快照 v2 无绑定文本）
+  （vue 轨经 playwright 冒烟覆盖——scratch/p553/ 截图族）
+- [x] **T7 vm 端对拍**
   `auto run -r vm` 全流程手测 + mcp vm 轨绿；差异登记 SPEC.md「双端注记」。
   验证：vm 轨 mcp 全绿
+  [✅ 已完成] VM 轨全流程实机：套件绿（30P/0F/1S）+ 手绘笑脸+角填充截图像素验证（scratch/p553/vm_paint.png，837×1085 fit 窗，红 1673/蓝 597 采样在位）；SPEC 双端注记补 VM 两发现（变更纪律/P553-D1 塌缩债）
 - [ ] **T8 画廊分类与文档回写**
   `crates/auto-man/src/vue.rs` 分类 if 链：`031` → "03-apps"；`examples/
   ui/README.md` 总览表补 031 行 + 空洞注记。
   验证：`cargo check -p auto-lang && cargo check -p auto-man`
+  [✅ 已完成] vue.rs 03-apps 臂补 031 前缀；README 总览表 031 行 + 编号注记（capability-tests 同号共存说明）；终检三绿：最终 vue build 0 错误 / cargo check（auto-lang+ui-iced、auto-man）0 错误 / storage_get 单测 1P
 
 ## 复审记录
 
 ## 待澄清事项
 
-1. 真画布原语（连续笔迹/pointer 事件路径/freehand canvas）建议另立
+1. **VM 债 P553-D1（执行期发现，需 VM 侧后续计划）**：`Str.split` 产物重建
+   的**全同串列表**经本地构建→整体赋值（`.px = np`）后塌缩为单元素（uniform
+   快照恢复 px len=1；`+""` 新鲜句柄无效、逐格 SetPx 恢复触 handler 预算
+   截断均不能绕开）。影响 031 的全同盘 Redo/Load 恢复（已按 013 惯例债引用
+   式 SKIP）；混合内容不受影响。证据链见 scratch/p553/ 探针记录与 SPEC
+   双端注记。附带发现（app 侧已绕开，登记备查）：**运行时 str 状态列表
+   下标写静默失效**（`.px[i]=v`）。
+2. 真画布原语（连续笔迹/pointer 事件路径/freehand canvas）建议另立
    design 文档（docs/design/autoui/ 下），可带出白板/签名板/截图标注——
    本计划不阻塞。
-2. 拖画（onmousemove 连续染格）双端可用性未知——T1c 探针定 v1 范围。
-3. 导出 PNG：storage 串 → 图片文件需要宿主 FFI 面，v1 不做（Save/Load
+3. 拖画（onmousemove 连续染格）双端可用性未知——T1c 探针定 v1 范围。
+4. 导出 PNG：storage 串 → 图片文件需要宿主 FFI 面，v1 不做（Save/Load
    仅 storage 内）。
