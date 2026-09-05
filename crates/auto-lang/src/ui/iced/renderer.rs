@@ -10798,17 +10798,28 @@ fn compare_pngs(
                     // Plan 501：多扫描根聚合——examples 主根 + 外部仓自含根
                     //（storage `shell.apps.extra_dirs` + 相邻仓探测缺省
                     // `../auto-os-config/auto` → id `os-config`；去重主根优先）。
-                    let entries = crate::ui::app_registry::aggregate_scan(
+                    let full = crate::ui::app_registry::aggregate_scan(
                         apps_dir,
                         &crate::ui::app_registry::host_extra_roots(),
                         &crate::ui::app_registry::ScanOptions::default(),
                     );
+                    // PLAN-552：boot 两分——启动解析器（app_resolver）保留
+                    // 全量（按名启动/自定义图标按 id 经全量 resolver 解析，
+                    // 不受策展限制）；展示清单（registry_entries：launcher/
+                    // 图标格/dock 消费）过滤为策展集（pac `desktop:` 字段；
+                    // 主根缺省 false=opt-in，外部自含根缺省 true=opt-out）。
+                    let curated: Vec<_> = full
+                        .iter()
+                        .filter(|e| e.desktop_visible)
+                        .cloned()
+                        .collect();
                     eprintln!(
-                        "[session] app registry: {} entries from {}",
-                        entries.len(),
+                        "[session] app registry: {} entries ({} desktop-visible) from {}",
+                        full.len(),
+                        curated.len(),
                         apps_dir.display()
                     );
-                    let resolver_entries = entries.clone();
+                    let resolver_entries = full;
                     session.desktop.app_resolver =
                         Some(std::sync::Arc::new(move |name: &str| {
                             resolver_entries.iter()
@@ -10843,7 +10854,8 @@ fn compare_pngs(
                     // Plan 464 T4：launcher 入口 + 注册表快照（召唤注入用）。
                     // 入口匹配：id "launcher" 或 "-launcher" 结尾（441 预订
                     // 028-launcher；459 回退形态同名规则）。
-                    session.desktop.registry_entries = entries;
+                    // PLAN-552：快照换 curated（028 属 C 档，字段加齐后无回归）。
+                    session.desktop.registry_entries = curated;
                     // PLAN-526 T6：boot 直挂窗注册表对齐——回填 registry_id
                     // 并 armed `window: "fit"`（计算器等直挂 App 窗随内容
                     // 收缩；462 固定 60% 初值 blanks 的实测反馈根治）。
@@ -20571,6 +20583,7 @@ mod tests {
             daemon: None,
             back_root: None,
             fit: false,
+            desktop_visible: true,
         }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
@@ -21853,6 +21866,7 @@ mod tests {
             daemon: None,
             back_root: None,
             fit: false,
+            desktop_visible: true,
         }];
         inject_dock_pinned(&mut ds);
         {
@@ -22509,6 +22523,7 @@ mod tests {
     daemon: None,
     back_root: None,
     fit: false,
+    desktop_visible: true,
             },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
@@ -22521,6 +22536,7 @@ mod tests {
     daemon: None,
     back_root: None,
     fit: false,
+    desktop_visible: true,
             },
         ];
         // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
@@ -22839,6 +22855,7 @@ mod tests {
             daemon: None,
             back_root: None,
             fit: false,
+            desktop_visible: true,
         };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
