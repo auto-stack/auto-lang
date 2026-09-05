@@ -217,6 +217,14 @@ pub struct MediaAssetRegistry {
     inner: Arc<RegistryInner>,
 }
 
+/// Process-wide registry shared by generated servers and native renderers.
+/// It exposes opaque tickets only; no source path enters the HTTP-facing API.
+pub fn global_media_registry() -> &'static MediaAssetRegistry {
+    static REGISTRY: std::sync::LazyLock<MediaAssetRegistry> =
+        std::sync::LazyLock::new(|| MediaAssetRegistry::new(Duration::from_secs(30)));
+    &REGISTRY
+}
+
 impl MediaAssetRegistry {
     pub const DEFAULT_TTL: Duration = Duration::from_secs(2);
 

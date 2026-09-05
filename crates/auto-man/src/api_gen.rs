@@ -720,8 +720,9 @@ futures = \"0.3\"" } else { "" };
     // Plan 405: db.at 字符串操作(+ 拼接/contains)会让 a2r 生成 `use a2r_std`
     // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
+    let runtime_deps = "
+auto-lang.workspace = true";
     let db_deps = if has_db { "
-auto-lang.workspace = true
 once_cell = \"1\"" } else { "" };
     format!(
         r#"[package]
@@ -734,9 +735,9 @@ axum.workspace = true
 tokio = {{ version = "1", features = ["full"] }}
 serde.workspace = true
 serde_json.workspace = true
-tower-http.workspace = true{}{}
+tower-http.workspace = true{}{}{}
 "#,
-        safe_name, db_deps, sse_deps
+        safe_name, runtime_deps, db_deps, sse_deps
     )
 }
 
@@ -1231,6 +1232,26 @@ const META_JSON_HELPER: &str = r#"fn meta_json(headers: &axum::http::HeaderMap) 
         .unwrap_or("")
         .replace('"', "\\\"");
     format!("{{\"cookies\":{},\"auth\":\"{}\"}}", cookies, auth)
+}"#;
+
+const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
+    method: axum::http::Method,
+    uri: axum::http::Uri,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    let response = auto_lang::ui::image_pipeline::media_http_response(
+        auto_lang::ui::image_pipeline::global_media_registry(),
+        method.as_str(),
+        uri.path(),
+        headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
+    );
+    let mut builder = axum::response::Response::builder().status(response.status);
+    for (name, value) in response.headers {
+        builder = builder.header(name, value);
+    }
+    builder
+        .body(axum::body::Body::from(response.body.map(|bytes| bytes.to_vec()).unwrap_or_default()))
+        .expect("media response is valid")
 }"#;
 
 fn generate_api_rs(
@@ -2110,6 +2131,7 @@ fn generate_main_rs(
     if has_db {
         s.push_str("mod db;\n");
     }
+    s.push_str(MEDIA_HTTP_HANDLER);
     s.push_str("\n");
     if !db_full_cover {
         // Legacy seed-state path: handlers take State<Db>, main injects the seed.
@@ -2138,6 +2160,7 @@ fn generate_main_rs(
         s.push_str("        .allow_headers(Any);\n\n");
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
+        s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
         s.push_str("        .with_state(data)\n");
         s.push_str("        .layer(cors);\n\n");
     } else {
@@ -2158,6 +2181,7 @@ fn generate_main_rs(
         s.push_str("        .allow_headers(Any);\n\n");
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
+        s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
         s.push_str("        .layer(cors);\n\n");
     }
     s.push_str("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();\n");
@@ -3148,5 +3172,22 @@ pub fn get_item(id int) Item {
             "AUTO_A2R_BODY=0 should use CRUD template:\n{}",
             api_rs
         );
+    }
+
+    #[test]
+    fn media_route_is_emitted_for_stateful_and_full_cover_servers() {
+        let api = r#"
+#[api(method = "GET", path = "/api/items")]
+pub fn list_items() []str { return [] }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let stateful = generate_main_rs(&module, None, false);
+        let full_cover = generate_main_rs(&module, Some("pub fn list_items() []str { return [] }"), true);
+        for generated in [&stateful, &full_cover] {
+            assert!(generated.contains("/api/__auto/media/{id}/{revision}"), "route missing: {generated}");
+            assert!(generated.contains("get(auto_media).head(auto_media)"), "GET/HEAD missing: {generated}");
+            assert!(generated.contains("global_media_registry"), "runtime bridge missing: {generated}");
+        }
+        assert!(generate_cargo_toml("media-back", false, false).contains("auto-lang.workspace = true"));
     }
 }
