@@ -152,23 +152,32 @@ widget App {
             .status = "cleared"
         }
 
-        // ---- storage(点列内含 |,序列化 join ~;两区 # 分隔)----
+        // ---- storage(点列内含 |,序列化 join ~;两区以 ; 分隔——点列/
+        // 元数据内均无 ~ 与 ;,色值 #hex 不能作分隔符)----
         .Save -> {
-            storage.set("canvaspaint.strokes.v1", .strokes_pts.join("~") + "#" + .strokes_meta.join("~"))
+            storage.set("canvaspaint.strokes.v1", .strokes_pts.join("~") + ";" + .strokes_meta.join("~"))
             .status = "saved"
         }
 
         .Load -> {
             var snap = storage.get("canvaspaint.strokes.v1")
             if snap != "" {
-                var halves = snap.split("#")
+                var halves = snap.split(";")
                 if halves.len() == 2 {
                     var pts = halves[0].split("~")
                     var metas = halves[1].split("~")
                     if pts.len() == metas.len() {
-                        .strokes_pts = pts
-                        .strokes_meta = metas
-                        .stroke_count = pts.len().to_string()
+                        // split 产物整体赋值塌缩(B12 家族,P553-D1 同族)
+                        // → 清空后逐笔 push(状态列表 push 已证可靠)。
+                        .strokes_pts = []
+                        .strokes_meta = []
+                        var i int = 0
+                        while i < pts.len() {
+                            .strokes_pts.push(pts[i])
+                            .strokes_meta.push(metas[i])
+                            i = i + 1
+                        }
+                        .stroke_count = .strokes_pts.len().to_string()
                         .status = "loaded"
                     } else {
                         .status = "bad save data"
