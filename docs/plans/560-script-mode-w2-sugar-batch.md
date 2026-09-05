@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 2
+current_step: 3
 total_steps: 15
 ---
 
@@ -244,10 +244,11 @@ total_steps: 15
       打印）+ 链式规则语义（规则表有序全过+产物再解析）——P555-D2
       裁定落地（验证：identity round-trip 稳定单测 + 链式注入单测绿）
       [✅ 已完成] emit.rs（Op/Type 符号表直渲——两者 Display 均为 S-expr 调试形态，语料靶场实证；脚本子集+未覆盖响亮报错；Store 类型标注省略=推断回填；while=Iter::Cond/Destructured/Indexed 臂）；链式规则 LoweringRule{id,transform} 有序单遍（空表=规范化 identity）；四单测绿——含**五套件语料逐文件 parse→emit→re-parse→emit 幂等**（T12 迁移面实弹靶场：math/infer/train/numpy/torch 全过）
-- [ ] T03 管线激活：`lib.rs` execute_autovm_with_path 对
+- [x] T03 管线激活：`lib.rs` execute_autovm_with_path 对
       `ScriptMode::Script` 源走 `lower_source` 产物编译；
       `--dump-lowered` 翻转真产物（验证：`.as` 空规则=行为与 W1 逐
       字节同回归探针 + dump 留档）
+      [✅ 已完成] .as 扩展名预检 + #[rust] 行首压回（启发式预检，完整判定在 session 解析段——罕见面 P560 债）；p05 行为等价探针（0 1 2 同 W1）；dump 真产物（规范化源+W2 头）留档。**分歧注记**：原验证措词"逐字节同"系 W1 token 帧假设——AST 发射器规范化布局，等价判据修正为**行为等价**（输出逐字节同），源级为规范化重排（语料 round-trip 幂等已钉）
 - [ ] T04 B7/B8 桥补：`py_ffi.rs` py_contains(470) + 裸模块句柄
       （B8，use.py torch 绑模块对象）+ B9 dotted 递归（验证：桥单测
       + `use.py torch` 后 `torch.nn.Linear` 可达探针）
