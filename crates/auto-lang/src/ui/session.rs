@@ -62,6 +62,9 @@ pub struct AppState {
     /// computed/bounds 仍由 live_cache 经 from_live 合并（id 为 path 派生，
     /// 结构稳定时两树 id 一致）。
     pub mcp_sync_vtree: RefCell<Option<crate::ui::vnode::VTree>>,
+    /// PLAN-062 Phase2 T11：MCP 同步块上次同步时的窗口尺寸（0,0=从未
+    /// 同步——门控比对用，resize 不依赖 view_dirty 路径）。
+    pub mcp_synced_ws: RefCell<(f32, f32)>,
     /// VNode→View 转换管线缓存。
     pub view_dirty: RefCell<bool>,
     pub cached_converted_view: RefCell<Option<crate::ui::view::View<IcedMessage>>>,
@@ -85,6 +88,7 @@ impl AppState {
             live_probe: RefCell::new(None),
             live_cache: RefCell::new(None),
             mcp_sync_vtree: RefCell::new(None),
+            mcp_synced_ws: RefCell::new((0.0, 0.0)),
             // boot 同款初值：首帧必须重建转换缓存（renderer.rs:5928）。
             view_dirty: RefCell::new(true),
             cached_converted_view: RefCell::new(None),

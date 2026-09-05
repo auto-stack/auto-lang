@@ -349,6 +349,13 @@ pub struct AutoVM {
     // 用途：fire_timer 派发前后对比判定"本拍是否零状态写"（空转拍不置脏，
     // 不触发整树重建）。保守方向：多 bump 至多多一次重建，漏 bump 才丢更新。
     pub state_mutation_seq: AtomicU64,
+    // PLAN-062 T12: 宽限窗延迟回收——rc 归零对象先进 dying 队列（记录入队
+    // 时的解释步计数），DYING_GRACE_STEPS 步后续期仍未被复活才真回收。
+    // 帧内/近邻的 raw 别名（无份额拷贝）在窗口内安全；长期零累积（窗口
+    // 有界）。复活（窗口内再 retain）即出队。canary 的 tombstone 只在真
+    // 回收后落——窗口内 ACCESS 探测仍见活对象。
+    pub dying_heap: std::sync::Mutex<Vec<(u64, u64)>>,
+    pub interp_steps: AtomicU64,
     // Plan 419 Phase 2: 字符串池并行状态(rc/pinned/freelist,见 rc.rs)。
     pub pool_state: std::sync::RwLock<crate::vm::rc::PoolState>,
 
@@ -612,6 +619,8 @@ impl AutoVM {
             rc_freed_total: AtomicU64::new(0),
             rc_traffic: AtomicU64::new(0),
             state_mutation_seq: AtomicU64::new(0),
+            dying_heap: std::sync::Mutex::new(Vec::new()),
+            interp_steps: AtomicU64::new(0),
             pool_state: std::sync::RwLock::new(crate::vm::rc::PoolState::new()),
             // Plan 121: Task/Msg registry for Actor model
             task_registry: Arc::new(TaskRegistry::new()),
@@ -1132,6 +1141,19 @@ impl AutoVM {
         self.state_mutation_seq.load(Ordering::Relaxed)
     }
 
+    /// PLAN-062 T12: 槽旧值释放——堆份额按影子、字符串按内容（Plan 510
+    /// 池语义稳定面）。STORE_* 覆盖赋值的统一旧值清账点。
+    fn release_slot_old_value(&self, task: &mut AutoTask, addr: usize) {
+        let old_stake = task.ram.take_stake_at(addr);
+        if old_stake != 0 {
+            self.rc_release_id(old_stake);
+        }
+        let old_nv = task.ram.read_nv(addr);
+        if auto_val::is_string(old_nv) {
+            self.rc_release(old_nv);
+        }
+    }
+
     /// Get a heap object by ID, returning a read guard
     ///
     /// Returns `None` if the object doesn't exist.
@@ -1295,9 +1317,10 @@ impl AutoVM {
                 vm.rc_push_str_idx(task, idx);
             }
             Value::VmRef(vmref) => {
-                // Plan 419: 堆引用入栈 +1(咽喉点)。
+                // Plan 419: 堆引用入栈 +1(咽喉点)。PLAN-062 T12: 记影子。
                 vm.rc_retain_id(vmref.id as u64);
                 ram.push_nv(auto_val::encode_object(vmref.id as u32));
+                ram.mark_top_stake(vmref.id as u64);
             }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
@@ -2514,6 +2537,11 @@ impl AutoVM {
             return Ok(StepResult::Terminated);
         }
 
+        // PLAN-062 T12: 解释步计数 + 周期性收割宽限窗到期的 dying 对象。
+        let step = self.interp_steps.fetch_add(1, Ordering::Relaxed);
+        if step & 0x3FF == 0 {
+            self.reap_dying(step);
+        }
         let op_byte = self.flash.read_u8(task.ip);
         task.ip += 1;
         if !OpCode::is_valid(op_byte) {
@@ -2565,16 +2593,31 @@ impl AutoVM {
                 OpCode::POP => {
                     // Plan 419: 弹出的值若为引用 → 计数 -1(协议 §1 POP 行);
                     // 槽位清零防双重释放(嵌套执行外层可能再扫死区)。
+                    // PLAN-062 T12: 堆份额按影子释放(裸副本零释放),字符串
+                    // 沿内容;影子随取随清。
                     let nv = task.ram.pop_nv();
-                    self.rc_release(nv);
+                    let stake = task.ram.take_stake_at(task.ram.sp);
+                    if stake != 0 {
+                        self.rc_release_id(stake);
+                    }
+                    if auto_val::is_string(nv) {
+                        self.rc_release(nv);
+                    }
                     task.ram.raw_nv[task.ram.sp] = 0;
                 }
                 OpCode::POP_N => {
                     let n = self.flash.read_u8(task.ip);
                     task.ip += 1;
                     for _ in 0..n {
+                        // PLAN-062 T12: 同 POP——影子释放 + 字符串内容释放。
                         let nv = task.ram.pop_nv();
-                        self.rc_release(nv);
+                        let stake = task.ram.take_stake_at(task.ram.sp);
+                        if stake != 0 {
+                            self.rc_release_id(stake);
+                        }
+                        if auto_val::is_string(nv) {
+                            self.rc_release(nv);
+                        }
                         task.ram.raw_nv[task.ram.sp] = 0;
                     }
                 }
@@ -4203,6 +4246,8 @@ impl AutoVM {
                         if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
+                    // PLAN-062 T12: 取走弹出槽份额(随值转移到回推栈顶)。
+                    let instance_stake = task.ram.take_stake_at(task.ram.sp);
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
                         instance_id
                     );
@@ -4345,6 +4390,8 @@ impl AutoVM {
                         instance_id
                     );
                     task.ram.push_nv(auto_val::encode_object(instance_id as u32));
+                    // PLAN-062 T12: 份额随值转移回栈顶。
+                    task.ram.mark_top_stake(instance_stake);
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}",
                         task.ram.sp
                     );
@@ -7701,6 +7748,9 @@ impl AutoVM {
 
                     // Under nanbox: preserve NanoValue type tag for string/bool/etc.
                     let result_nv = task.ram.pop_nv();
+                    // PLAN-062 T12: 结果份额读走——帧清扫(按影子)后随值
+                    // 回落调用方槽位(write_nv 清影子后重新标记)。
+                    let result_stake = task.ram.take_stake_at(task.ram.sp);
 
                     let old_bp = task.ram.read_i32(task.bp) as usize;
                     let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
@@ -7732,6 +7782,7 @@ impl AutoVM {
                         task.ram.write_nv(new_sp - 1, result_nv);
                         task.ram.sp = new_sp;
                         task.ram.write_nv(new_sp - 1, result_nv);
+                        task.ram.mark_stake_at(new_sp - 1, result_stake);
                     }
 
                     task.bp = old_bp;
@@ -8490,6 +8541,9 @@ impl AutoVM {
                         eprintln!("[VMOP] STORE_LOCAL idx=0x{:02x}", idx);
                     }
                     let val_nv = task.ram.pop_nv();
+                    // PLAN-062 T12: 份额随值转移——读走弹出槽影子,写槽
+                    // 重新标记;旧槽值按其影子释放(内容判定废除)。
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
 
                     // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
                     if idx >= 0x80 {
@@ -8499,13 +8553,15 @@ impl AutoVM {
                         let actual_offset = offset + 1;
                         // Plan 419: 槽内旧值 -1;新值自栈转移进槽(计数不变)。
                         let addr = task.bp - actual_offset;
-                        self.rc_release(task.ram.read_nv(addr));
+                        self.release_slot_old_value(task, addr);
                         task.ram.write_nv(addr, val_nv);
+                        task.ram.mark_stake_at(addr, transferred);
                     } else {
                         let addr = task.bp + 1 + idx;
                         // Plan 419: 覆盖赋值旧值 -1(overwrite_drop 语义)。
-                        self.rc_release(task.ram.read_nv(addr));
+                        self.release_slot_old_value(task, addr);
                         task.ram.write_nv(addr, val_nv);
+                        task.ram.mark_stake_at(addr, transferred);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
@@ -8533,6 +8589,15 @@ impl AutoVM {
                         // Grow state_vars if needed (safety; normally pre-sized at spawn).
                         if field_idx >= task.state_vars.len() {
                             task.state_vars.resize(field_idx + 1, 0);
+                        }
+                        // PLAN-062 T12: 弹出槽影子随值转移;state_vars 条目
+                        // 恒持一份(无影子的裸堆引用防御性补持)。
+                        let transferred = task.ram.take_stake_at(task.ram.sp);
+                        let _ = transferred;
+                        if crate::vm::rc::is_heap_ref_nv(val_nv) {
+                            if let Some(id) = crate::vm::rc::heap_ref_id(val_nv) {
+                                self.rc_retain_id(id);
+                            }
                         }
                         // Plan 419: 旧 state 字段值 -1;新值转移进槽。
                         self.rc_release(task.state_vars[field_idx]);
@@ -8563,6 +8628,16 @@ impl AutoVM {
                         .map(|b| String::from_utf8_lossy(b).to_string())
                         .unwrap_or_default();
                     let nv = task.ram.pop_nv();
+                    // PLAN-062 T12: 读走弹出槽影子(转移语义);无份额的裸堆
+                    // 引用入全局表前防御性补一份(全局表条目恒持有——保守
+                    // 方向:多持至多延后回收,不持有即悬垂)。
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
+                    let _ = transferred;
+                    if crate::vm::rc::is_heap_ref_nv(nv) {
+                        if let Some(id) = crate::vm::rc::heap_ref_id(nv) {
+                            self.rc_retain_id(id);
+                        }
+                    }
                     // Plan 419: 旧全局值 -1;新值自栈转移进全局表。
                     if let Some(old) = self.globals.get(&name) {
                         let old_nv = *old;
@@ -8580,24 +8655,39 @@ impl AutoVM {
                     self.rc_push(task, task.ram.read_nv(task.bp + 3));
                 }
                 OpCode::STORE_LOC_0 => {
-                    // Plan 419: 覆盖旧值 -1;新值转移。
+                    // Plan 419: 覆盖旧值 -1;新值转移。PLAN-062 T12: 影子随值
+                    // 转移,旧槽按影子释放。
                     let v = task.ram.pop_nv();
-                    self.rc_release(task.ram.read_nv(task.bp + 1));
-                    task.ram.write_nv(task.bp + 1, v);
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
+                    let addr = task.bp + 1;
+                    self.release_slot_old_value(task, addr);
+                    task.ram.write_nv(addr, v);
+                    task.ram.mark_stake_at(addr, transferred);
                 }
                 OpCode::STORE_LOC_1 => {
-                    // Plan 419: 覆盖旧值 -1;新值转移。
+                    // Plan 419: 覆盖旧值 -1;新值转移。PLAN-062 T12: 影子随值
+                    // 转移,旧槽按影子释放。
                     let v = task.ram.pop_nv();
-                    self.rc_release(task.ram.read_nv(task.bp + 2));
-                    task.ram.write_nv(task.bp + 2, v);
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
+                    let addr = task.bp + 2;
+                    self.release_slot_old_value(task, addr);
+                    task.ram.write_nv(addr, v);
+                    task.ram.mark_stake_at(addr, transferred);
                 }
 
                 // === Stack ===
                 OpCode::DROP => {
                     // Plan 419: DROP 兑现 RAII 承诺 —— 弹出并释放 owned value
                     // (引用值计数 -1,归零则真回收);槽位清零。
+                    // PLAN-062 T12: 堆份额按影子释放;字符串沿内容释放。
                     let nv = task.ram.pop_nv();
-                    self.rc_release(nv);
+                    let stake = task.ram.take_stake_at(task.ram.sp);
+                    if stake != 0 {
+                        self.rc_release_id(stake);
+                    }
+                    if auto_val::is_string(nv) {
+                        self.rc_release(nv);
+                    }
                     task.ram.raw_nv[task.ram.sp] = 0;
                 }
                 // Plan 088 Phase 4: Function Prologue

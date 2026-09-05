@@ -620,8 +620,67 @@ impl VmBridge {
                 "state object is not a GenericInstanceData".to_string()
             ))?;
 
+        // PLAN-062 T12: Rust 侧直写绕过 VM 栈——容器字段获得持有时必须
+        // 显式记账（rc.rs §2.3 协议）：新值（含 Array 内层 VmRef）+1，
+        // 旧值对称 -1。旧内容保活模型的最后一块拼图（pkg 子态 props
+        // 种子路径 UAF 根因）。
+        let old = instance.get_field(field_index).cloned();
+        if let Some(old_v) = old {
+            self.release_state_value(&old_v);
+        }
+        self.stake_state_value(&value);
         instance.set_field(field_index, value)
             .map_err(|e| VmBridgeError::InvalidState(e))
+    }
+
+    /// PLAN-062 T12: state 值获得持有——顶层堆引用 + Array 内层各 +1。
+    fn stake_state_value(&self, v: &Value) {
+        match v {
+            Value::Int(id) if *id >= 4_000_000 => {
+                self.vm.rc_retain_id(*id as u64);
+            }
+            Value::VmRef(r) => {
+                self.vm.rc_retain_id(r.id as u64);
+            }
+            Value::Array(arr) => {
+                for el in arr.values.iter() {
+                    if let Value::VmRef(r) = el {
+                        self.vm.rc_retain_id(r.id as u64);
+                    }
+                    if let Value::Int(id) = el {
+                        if *id >= 4_000_000 {
+                            self.vm.rc_retain_id(*id as u64);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// PLAN-062 T12: state 值释放持有——stake 的对称面。
+    fn release_state_value(&self, v: &Value) {
+        match v {
+            Value::Int(id) if *id >= 4_000_000 => {
+                self.vm.rc_release_id(*id as u64);
+            }
+            Value::VmRef(r) => {
+                self.vm.rc_release_id(r.id as u64);
+            }
+            Value::Array(arr) => {
+                for el in arr.values.iter() {
+                    if let Value::VmRef(r) = el {
+                        self.vm.rc_release_id(r.id as u64);
+                    }
+                    if let Value::Int(id) = el {
+                        if *id >= 4_000_000 {
+                            self.vm.rc_release_id(*id as u64);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Read a state field that holds an array_id and return the actual Vec<Value>.
@@ -737,6 +796,15 @@ impl VmBridge {
                 if let Some(obj) = self.vm.get_heap_object(arr_id) {
                     let mut guard = obj.write().unwrap();
                     if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<Value>>() {
+                        // PLAN-062 T12: 元素整体替换——旧元素释放、新元素
+                        // 获得（容器持有协议,同 write_state）。
+                        for old_el in list.elems.iter() {
+                            self.release_state_value(old_el);
+                        }
+                        let values_ref = &values;
+                        for new_el in values_ref.iter() {
+                            self.stake_state_value(new_el);
+                        }
                         list.elems = values;
                         Ok(())
                     } else {
@@ -757,6 +825,14 @@ impl VmBridge {
                 if let Some(obj) = self.vm.get_heap_object(arr_id) {
                     let mut guard = obj.write().unwrap();
                     if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<Value>>() {
+                        // PLAN-062 T12: 同 Int 臂——旧释放新获得。
+                        for old_el in list.elems.iter() {
+                            self.release_state_value(old_el);
+                        }
+                        let values_ref = &values;
+                        for new_el in values_ref.iter() {
+                            self.stake_state_value(new_el);
+                        }
                         list.elems = values;
                         Ok(())
                     } else {
@@ -1172,13 +1248,11 @@ impl VmBridge {
             .call_fn_by_name(&mut task, &fn_name, args.len())
             .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
         let nv = task.ram.pop_nv();
-        // PLAN-062 F2 配套: 主任务边界 RET(bp==0)不做帧清扫——帧内引用槽
-        // stake 滞留(钉住返回树)。结果已复制到本地 nv(裸 pop,槽内为无
-        // 份额原始副本——canary 实证清账它会过度释放),清零弹出槽后按
-        // 帧范围清账局部/临时槽。
-        if task.ram.sp < task.ram.raw_nv.len() {
-            task.ram.raw_nv[task.ram.sp] = 0;
-        }
+        // PLAN-062 T12: 结果槽份额**接管**（取走不释放）——bp==0 主任务
+        // RET 不做帧清扫,结果值压栈携带的份额直接转为宿主持有（避免
+        // 释放→瞬时归零→retain 复活的 canary 竞态）;裸拷贝（无份额）由
+        // takeover_heap_result 退回普通 retain。随后整栈按影子清账。
+        let result_stake = task.ram.take_stake_at(task.ram.sp);
         self.vm.rc_release_task_stack(&mut task);
         // PLAN-053 P-053-6: 字符串结果必须解码为 Value::Str——
         // nv_to_pub_value 的 is_string 臂把字符串降格为池索引
@@ -1186,11 +1260,11 @@ impl VmBridge {
         // （musk msgTimeLabel/render_mentions_default/html 转义链）落到
         // builder 后被当作整数显示/判空，正文整体丢失。
         let out = self.decode_task_result_nv(nv);
-        // PLAN-051 C3: 返回值为堆引用(ListData/VmRef)时 retain——RET 弹栈
-        // 即释放引用,Rust 侧持有的裸 id 会被 RC 回收成悬挂(实机:chatSearchFilter
-        // 返回的列表在 for 回退解引用前对象已消失→rows=0)。PLAN-062 F2:
-        // 份额记入帧账本,由 commit_dirty_frame 在下一脏帧换代配平释放。
-        self.retain_heap_result(&out);
+        // PLAN-051 C3: 返回值为堆引用(ListData/VmRef)时 retain（裸拷贝
+        // 形态）。PLAN-062 T12: result_stake 接管形态优先（VM 栈份额直接
+        // 转为宿主持有,跳过 +1）。份额记入帧账本,由 commit_dirty_frame
+        // 在下一脏帧换代配平释放。
+        self.takeover_heap_result(&out, result_stake);
         if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
             eprintln!("[VM-CALLFN] {} args={:?} -> {:?}", fn_name, args, out);
         }
@@ -1226,6 +1300,31 @@ impl VmBridge {
                 self.record_frame_retain(r.id as u64);
             }
             _ => {}
+        }
+    }
+
+    /// PLAN-062 T12: 接管形态的 retain——result_stake 即该 id 时跳过 +1
+    /// （份额从 VM 栈转移到宿主），只入帧账本；不匹配（裸拷贝/异值）时
+    /// 退回普通 retain（并归还错配的接管份额）。
+    fn takeover_heap_result(&self, out: &Value, result_stake: u64) {
+        let id = match out {
+            Value::Int(id) if *id >= 4_000_000 => *id as u64,
+            Value::VmRef(r) => r.id as u64,
+            _ => {
+                if result_stake != 0 {
+                    self.vm.rc_release_id(result_stake);
+                }
+                return;
+            }
+        };
+        if result_stake == id {
+            self.record_frame_retain(id);
+        } else {
+            if result_stake != 0 {
+                self.vm.rc_release_id(result_stake);
+            }
+            self.vm.rc_retain_id(id);
+            self.record_frame_retain(id);
         }
     }
 
@@ -1283,13 +1382,12 @@ impl VmBridge {
             .call_fn_by_name(&mut task, &fn_name, 1)
             .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
         let nv = task.ram.pop_nv();
-        // PLAN-062 F2 配套: 同 call_vm_fn——清零弹出槽 + 帧范围清账。
-        if task.ram.sp < task.ram.raw_nv.len() {
-            task.ram.raw_nv[task.ram.sp] = 0;
-        }
+        // PLAN-062 T12: 同 call_vm_fn——结果槽份额接管（取走不释放）。
+        let result_stake = task.ram.take_stake_at(task.ram.sp);
         self.vm.rc_release_task_stack(&mut task);
         let out = self.decode_task_result_nv(nv);
-        self.retain_heap_result(&out);
+        // PLAN-062 T12: 同 call_vm_fn——接管形态 retain。
+        self.takeover_heap_result(&out, result_stake);
         Ok(out)
     }
 

@@ -14704,6 +14704,23 @@ fn dynamic_view(
     if sync_mcp && !p530_nomcp {
     if let Some(ref mcp_handle) = state.desktop.mcp_shared {
         let mut mcp = mcp_handle.lock().unwrap();
+        // PLAN-062 Phase2 T11：MCP 同步块此前**每帧**全量模板重建
+        // （view_with_debug_gated + vtree 快照 + read_all_state）——三个
+        // 500ms 消息泵（__hot_reload/PollStream/__bounds_collected）每条
+        // 消息都过 view()，实机 ~6 重建/s 定罪（AUTO_DEBUG_KEYS 计数 ×
+        // 每重建 446-U7 WARN 3.4 条 = 实测 855/45s 吻合），叠加 retain
+        // 泄漏即空闲斜率主驱动。快照语义只需与视图同步：仅当视图真变
+        // （view_dirty——boot 首帧恒 true）、窗口尺寸变化、或尚未同步过
+        // 时才重建；静止视图零重建，快照仍然准确（视图未变）。update
+        // 间隙的异步脏写经 hot_reload 500ms 泵桥接（12095），MCP 快照
+        // 至多 500ms 陈旧——与既有异步语义一致。
+        let ws_now = *state.window_size.borrow();
+        let gate_dirty = *state.app.view_dirty.borrow();
+        let gate_ws = ws_now.width > 0.0
+            && *state.app.mcp_synced_ws.borrow() != (ws_now.width, ws_now.height);
+        if !gate_dirty && !gate_ws && mcp.has_view() {
+            drop(mcp);
+        } else {
         if !mcp.has_view() {
             eprintln!("AutoUI MCP: first state sync in view()");
         }
@@ -14750,7 +14767,9 @@ fn dynamic_view(
         let iced::Size { width, height } = *ws;
         if width > 0.0 && height > 0.0 {
             mcp.set_window_size(width, height);
+            *state.app.mcp_synced_ws.borrow_mut() = (width, height);
         }
+        } // PLAN-062 T11 gate_dirty/gate_ws 门控结束
     }
     } // sync_mcp 门控（459：仅 primary App 视图执行 MCP 同步）
 
