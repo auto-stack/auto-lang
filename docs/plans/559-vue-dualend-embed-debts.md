@@ -1,15 +1,22 @@
 ---
 plan_id: PLAN-559
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-dualend-embed-debts
 author: [zhaopuming]
 created_at: 2026-09-05
 updated_at: 2026-09-05
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: [GOAL-007, GOAL-009]   # GOAL-007 双端一致收尾面 / GOAL-009 vue 齿轮+嵌入面
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: vue desktop-host v1 守卫契约修订——api-client 类守卫在粘合可安装时放开（gen 树生成粘合或项目 src/back/api.ts 择先，run 内先到先得+每次覆写）；extra roots 兄弟探测（../auto-os-config/auto，id=os-config 与 vm extra_roots_from 对齐，AUTO_DESKTOP_APPS_EXTRA 可覆）"
+  - "docs/specs/auto-lang/ui/overview.md: vue codegen 三契约——事件参数 $event.target.{value,checked} 收窄（vue_event_param 单点）；store 组合式跨 store 限定调用 facade 化（AuraStore.sibling_stores+ts_adapter store_bare_heads 自限定裸发）；use back.api 只发 @/lib/api import 行（排除 Plan 522 use-fn 拉取）"
+  - "docs/specs/auto-lang/ui/architecture.md: 验收通道 autoui_desktop handler 增 (app, widget) 子组件定位维度——namespaced call_handler_for onclick 同管线（Plan 320 单 VM 统一态下恒根 state id），DesktopPage/WallpaperPicker 等子组件可直驱"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 项目供给 TS 粘合安装（auto-man api_gen install_project_api_glue）——契约抽取零端点且项目带 src/back/api.ts 手写 web 实现时装入 gen/front/vue/src/lib/api.ts+dist（os-config 首试点，孪生 88+6 导出签入 auto/src/back/api.ts 为真源，regen.sh 镜像 host）"
+  - "docs/specs/auto-lang/ui/overview.md: 验收场景 p559——W6 夹具模块（modules.d drop-in，widgets 声明无 view_name）通用编辑器挂载 WallpaperPicker，(app,widget) 直驱 Pick→config.at 断言→已应用态；场景幂等（daemon PUT 基线重置）"
+touched_goals:
+  - "GOAL-007: 双端一致收尾面——os-config vue 轨构建全绿+Desktop 页/WallpaperPicker/通用编辑器字段级挂载双端同源，Desktop 页双端三 shots 对拍"
+  - "GOAL-009: 桌面 Shell——vue 桌面任务栏 ⚙️ 直开 os-config（聚焦-或-启动，vm 551 T2 对齐）+api-client app 以普通窗嵌入 desktop-host（daemon 数据经代理全链）"
 
 affects: [auto-lang/vm, auto-lang/autoui, auto-man/vue, auto-os-config]
 current_step: 9
@@ -249,6 +256,62 @@ P551-D1..D5，2026-09-05）
   auto-man api_gen 27/27。
 
 ## 复审记录
+
+- **复审人**：ZCode（/auto-plan:review，独立复验——verify, don't trust）
+- **复审时间**：2026-09-05
+- **复审基点**：worktree `.wt/lang-559/auto-lang`@plan-559-dev（merge-base
+  5ff92f364，7 提交 +640/−17，13 文件）与 `.wt/lang-559/auto-os-config`
+  @auto-lang-dev（2 提交 +2346/−108，15 文件）。注：执行期间 master 前进
+  （548/552/555/062 折叠+560/561/562 立项），两-dot diff 会混入 master 反向
+  ——真实 diff 以 merge-base 口径为准；本分支与 folds 无交叠冲突。
+
+### 逐条验收复验
+
+| # | 验收 | 判定 | 复验证据 |
+|---|---|---|---|
+| 1 | master tf 全绿（双红收口） | **PASS** | 复审全量门禁 `cargo tf`（worktree）：**3427 跑 3426 绿**，唯一红=`test_charts_gallery_compiles`=master 存量甄别（552/555 复审同判；执行期 stash 对照证实与本计划无关）。首轮 tf 因 nextest fail-fast 少跑 838，已 `--no-fail-fast` 补全量读数 |
+| 2 | os-config `auto build` vue 轨全绿 | **PASS** | 执行期 gen 树 tsc+vite 全绿 + host `npm run build` 绿；工作树此后未变更，读数有效 |
+| 3 | desktop-host 嵌入 os-config（daemon 数据） | **PASS** | 复审活体重演：daemon :17701 + desktop-host + 代理 vite，⚙️→窗口 System Overview 渲染真实 daemon 数据（r_vue_gear_window.png） |
+| 4 | 任务栏 ⚙️ → os-config 窗 | **PASS** | 同上活体重演；按钮在场性门控+聚焦-或-启动语义见代码 Taskbar.vue/generate_host_app_vue |
+| 5 | Desktop 页双端三 shots 一致 | **PASS** | vue 复审新证 r_vue_desktop_dock.png（dock 段真实数据）+ 执行期 t6_vue_01–03 × vm 559-vm-01–03；结构判读：顶部标签/外观壁纸卡/Settings 卡双端同源。口径注记：第三交互点 vm=主题翻转、vue=扫描目录（vue 端 Pick 链由 p559 独立覆盖） |
+| 6 | ConfigEditor picker 内联渲染+落盘同构 | **PASS（口径注记）** | p559-01 shot：夹具模块通用编辑器内 WallpaperPicker 栅格（非平铺）；Pick→PUT 落盘 daemon GET 断言。注①：W6「单测」腿——entryAtW 为 .at 层代码无 rust 单测面，以 p559 e2e+双端夹具覆盖替代；注②：dir_picker 声明回退平铺（无 DirPicker widget，登记后续波次） |
+| 7 | p559 场景全链绿 | **PASS** | 复审重跑 PASS（含幂等修复：场景先经 daemon PUT 重置基线再 Pick，修复了复跑 before==after 假绿——该缺陷为本复审发现并当场修复） |
+| 8 | 「tag 表改动必须重生成 schema」约定沉淀 | **PASS** | KNOWN-DEBT P551-D1 销词条目+本 plan T1 笔记① 在案（主检出 9804a388b） |
+
+### 补充门禁（改动面专项）
+
+- `cargo t desktop_protocol --features ui-iced`（Plan 507/531 复审清单项，
+  W7 触碰 renderer/session/dynamic）：**120/120 绿**。
+- `cargo nextest run -p auto-man`（api_gen 粘合安装+vue.rs 守卫/extra roots）：
+  **245/245 绿**。
+- ui_gen 家族（T3a/T3b 新测试在内）：tf 全量内全绿；唯一红 charts 与本计划
+  改动面（ui/layout、icons、strip_html、c2_param、d8）零交集。
+
+### 遗漏/延后/workaround 猎查
+
+- **遗漏**：无。13+15 文件 diff 与 9 任务逐一对应；无任务丢子项。
+- **延后（已登记，无未授权项）**：①ext/i18n/router 三守卫类放开——计划文字
+  明示范围外（待澄清第 2 条）；②DirPicker widget——计划未承诺，夹具的
+  dir_picker 声明按回退平铺处理并在 T7 标记登记；③013/015 等 Notes 族
+  api-client app 因无粘合诚实跳过（T4 日志在案）。
+- **workaround/债候**：
+  - **P559-D1（新债候）**：`auto run` 在 Windows 上不把 AUTO_HTTP_PROXY 透传
+    给其 vite 子进程——desktop-host 嵌入 api-client app 后数据面开箱需手动
+    以 env 裸起 vite（复审活体复验即此形态）。上游属 env 注入臂缺口，建议
+    后续波次收口（vm 轨有 AUTOOS_DAEMON 注入先例）。
+  - **P559-D2（债候）**：regen.sh 部署侧 sed 中事件 cast/Collection.Init
+    重写两族已被 codegen 上收，现冗余（幂等无害）；建议下轮 os-config 清理。
+  - p559 场景幂等缺陷（before==after 假绿）——本复审发现即修（PUT 基线
+    重置），非遗留。
+
+### 结论
+
+七验收 + 补充专项全 PASS（第 6 条带两条口径注记、第 1 条以 scoped+全量门禁
+复合判定），零未授权延后、零本计划引入回归；两债候（P559-D1/D2）均为
+非阻断上游/清理项。**路由：`reviewed`** —— 可交 `/auto-plan:merge`。
+（fold 提示：master 已前进（548/552/555/062 折叠），merge 时需先同步
+master 再折，预计无实质冲突；tf 基线唯一红=charts 存量与 555 复审读数
+3428/3429 同源。）
 
 ## 待澄清事项
 

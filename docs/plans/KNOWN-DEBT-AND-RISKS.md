@@ -1291,6 +1291,16 @@
   target/release——源码推进后旧二进制仍在位（540 期实机踩坑：缺 desktop 模块
   注册）。551 已加 boot registry 自检日志（模块数+id 一行）；merge 后主检出
   侧 daemon 需重建。
+- **P559-D1（新，Plan 559 复审）**：`auto run` 不把 AUTO_HTTP_PROXY（及
+  AUTO_HTTP_PORT 类运行期 env）透传给其 vite 子进程（Windows 实测）——
+  desktop-host 嵌入 api-client app 后，开箱 `auto run --desktop` 的数据面
+  404，需手动以 env 裸起 vite（复审活体复验即此形态）。上游属 env 注入臂
+  缺口，vm 轨有 AUTOOS_DAEMON 注入先例，建议后续波次收口。
+- **P559-D2（新，Plan 559 复审）**：os-config auto/gen/regen.sh 部署侧 sed
+  中事件 cast（$event.target）与 Collection.Init 跨 store 重写两族已被 559
+  codegen 上收，现为冗余（幂等无害）；建议下轮 os-config 清理顺带删除。
+  另：p559 验收场景初版缺幂等基线（复跑 before==after 假绿）——复审发现
+  即修（daemon PUT 基线重置），非遗留。
 - **P536-D1 schema/aura.at 再生成 canonical 形态振荡**（2026-09-05，PLAN-536
   T11 实录）：`SCHEMA_DRIFT_GENERATE_AT=1` 连续四次重生成，nav-destination/
   swiper 两元素在 kebab 小写形态与 NavDestination/Swiper Pascal 形态间
