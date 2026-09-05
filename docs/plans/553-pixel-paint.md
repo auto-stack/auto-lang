@@ -144,33 +144,33 @@ window: "fit"
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T1 能力探针**
+- [x] **T1 能力探针**
   a) storage 值长度上限（256×"|#rrggbb" ≈1.8KB 写读回环）；b) lucide
   `brush` 是否在 VM 闭集（`lucide_icon_coverage` 测试面）；c) 格级
   `onmousemove` 拖画是否双端可用（可用则 T4 加拖画，不可用 v1 纯点击）。
   产物：探针结论写回本节。
   验证：探针脚本输出归档（scratch/p553/）
   [✅ 已完成] scratch/p553/probes.md 四结论：storage 两侧无上限直存整串；lucide 无 brush 有 pencil（pac icon=pencil）；拖画无按压门控 v1 点击画；Str.split/List.join 可用（044 先例）
-- [ ] **T2 目录与 pac 骨架**
+- [x] **T2 目录与 pac 骨架**
   `examples/ui/031-paint/pac.at` + 空 `src/front/app.at`（可编译的最小
   widget）+ `SPEC.md` 骨架。
   验证：`cd examples/ui/031-paint && auto build`（0 错误）
   [✅ 已完成] pac.at(pencil/tool/desktop fit)+最小 app.at+SPEC.md 骨架；auto build 绿（vue-tsc+vite 0 错误，401ms）
-- [ ] **T3 model + view 主体**
+- [x] **T3 model + view 主体**
   `src/front/app.at`：model 全量状态 + 三栏 view（工具列/画布 grid/调色板）
   + 底部按钮行；Init 全白。
   验证：`auto run` 手画冒烟（截图 scratch/p553/）
   [✅ 已完成] 三栏 view+基础绘制链路绿；两处生成器交互根因实测修复：①颜色改完整类串字面量进源（Tailwind JIT 扫描面）②画布 cols 改表达式绑定（字面量 16 超 grid-cols-N 刻度→内联 style，038 同型）；截图 vue_painted.png 像素校验红格/白格在位
-- [ ] **T4 handler 家族**
+- [x] **T4 handler 家族**
   `.Paint/.Fill/.SetTool/.SetCur/.Undo/.Redo/.Clear`（BFS 显式队列；快照
   join/split；T1c 结论决定是否含拖画）。
   验证：`auto run` 手测四工具 + undo/redo
   [✅ 已完成] handler 家族全落地；VM 实测发现下标写失效（str 状态列表）→ 改"本地构建→整体赋值"纪律（SetPx/seen-单趟重建）；四工具手测全通（MCP 探针：擦除 2→0、泛洪 0→256）
-- [ ] **T5 storage 存取**
+- [x] **T5 storage 存取**
   `.Save/.Load` + Init 恢复（`paint.canvas.v1`；T1a 结论定编码形态）。
   验证：`auto run` 存→重开→恢复
   [✅ 已完成] Save/Load 落地（storage paint.canvas.v1 整串）；**null 防御下沉 lowering 层**：ts_adapter storage.get 产物补 `?? ''` 对齐 VM ""缺省（028 头注 TS18047 陷阱收口，单元测试 storage_get_emits_null_coalescing 绿）；vue 轨 Save→New→Load 像素回环验证
-- [ ] **T6 desktop_mcp 测试**
+- [x] **T6 desktop_mcp 测试**
   `tests/desktop_mcp.py` 五断言组（测试设计节）。
   验证：`python tests/desktop_mcp.py`（vue 轨）+ vm 轨同套
   [✅ 已完成] desktop_mcp.py 八组断言（结构/初始/染格/橡皮/泛洪/撤销重做/吸管/存取）VM 轨 30 PASS + 1 SKIP（P553-D1 债引用式，013 audit-B12 惯例）；harvest 三教训：stdout DEVNULL（管道阻塞）/vnode id 重渲染失效→每次交互前 refresh/树解析寻址（快照 v2 无绑定文本）
@@ -179,7 +179,7 @@ window: "fit"
   `auto run -r vm` 全流程手测 + mcp vm 轨绿；差异登记 SPEC.md「双端注记」。
   验证：vm 轨 mcp 全绿
   [✅ 已完成] VM 轨全流程实机：套件绿（30P/0F/1S）+ 手绘笑脸+角填充截图像素验证（scratch/p553/vm_paint.png，837×1085 fit 窗，红 1673/蓝 597 采样在位）；SPEC 双端注记补 VM 两发现（变更纪律/P553-D1 塌缩债）
-- [ ] **T8 画廊分类与文档回写**
+- [x] **T8 画廊分类与文档回写**
   `crates/auto-man/src/vue.rs` 分类 if 链：`031` → "03-apps"；`examples/
   ui/README.md` 总览表补 031 行 + 空洞注记。
   验证：`cargo check -p auto-lang && cargo check -p auto-man`
