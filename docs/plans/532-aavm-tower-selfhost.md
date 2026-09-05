@@ -253,21 +253,8 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
      镜像宿主 {:?};⑥b cg_is_arm_body 包块作用域(tokenize locals
      34→16)。差分首分歧单调前移 1498→2047→2846;门禁 m4/m5/use_
      corpus/goldens 全绿(大套件并行 flake 重跑即绿)。
-   - **残留③末段(⑥c,2026-09-05 两轮收窄)**:根修⑦ is 多模式测序
-     swap_remove 镜像 + ⑧ serialize 字段/全局名池解析渲染(双侧一致
-     升级,commit e622d1675);根修⑥c pop_scope/pop_scope_silent 游标
-     恢复改存活集现算 max_alive_idx(原 scope_saves 恢复陈旧游标烧槽:
-     doc=12 后 ctext=14/宿主 13;首版 off-by-one 已纠,commit bfe8ed60d)。
-     语义等价口径(.line 剔除/jmp-call 抽象/帧容量豁免/字段全局名解析)
-     下指令流唯一残余=**tokenize 注释臂绝对槽号 +4**——两侧作用域推入
-     结构层级不同(宿主 while=For push+体 Block 双层嵌套更深 d5/d6/d8
-     vs aavm 单层 d4/d5/d6),完全镜像需作用域架构专项对齐(非热修);
-     帧多预留 2 槽自洽且零语义。差分测试(test_aavm2_p532_lib_static_diff,
-     语义口径定型)留 worktree 未提交(红=该已知差),对齐落地后转绿
-     随闸门提交。诊断资产:scratch532/libdiff/、%TEMP%/p532_{rust,aavm}.txt、
-     scratch/p532/diff_dumps.py、双侧 add_var 插桩方法论([HV]/[AV] 槽位
-     对照+离线分配模拟器)。
-   - **残留③末段(⑥c,2026-09-05 两轮收窄)**:根修⑦ is 多模式测序
+   - **残留③末段(⑥c/⑥d/⑥f,2026-09-05 三修落地;语义等价口径下
+     指令流唯一残余=注释臂绝对槽号 +4,KNOWN-DEBT 挂账)**:根修⑦ is 多模式测序
      swap_remove 镜像 + ⑧ serialize 字段/全局名池解析渲染(双侧一致
      升级,commit e622d1675);根修⑥c pop_scope/pop_scope_silent 游标
      恢复改存活集现算 max_alive_idx(原 scope_saves 恢复陈旧游标烧槽:
