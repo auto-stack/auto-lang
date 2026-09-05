@@ -65,7 +65,7 @@ mod image_pipeline_vm_http_tests {
 
     #[test]
     fn image_natives_register_opaque_ticket_operations() {
-        assert_eq!(IMAGE_NATIVE_NAMES.len(), 8);
+        assert_eq!(IMAGE_NATIVE_NAMES.len(), 16);
         assert!(IMAGE_NATIVE_NAMES.iter().all(|name| name.starts_with("auto.image.")));
     }
 }
@@ -3722,6 +3722,7 @@ pub fn shim_http_server(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 // in the shared registry and are never pushed onto the VM stack.
 #[cfg(feature = "ui-iced")]
 const IMAGE_TICKET_HANDLE_CAPACITY: usize = 256;
+#[cfg(feature = "ui-iced")]
 static IMAGE_TICKET_HANDLES: std::sync::LazyLock<
     std::sync::Mutex<std::collections::VecDeque<(u64, crate::ui::image_pipeline::MediaAssetTicket)>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::VecDeque::new()));
@@ -3731,6 +3732,8 @@ static IMAGE_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub const IMAGE_NATIVE_NAMES: &[&str] = &[
     "auto.image.queue", "auto.image.open", "auto.image.scan", "auto.image.request",
     "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
+    "auto.image.open_session", "auto.image.snapshot", "auto.image.current_uri", "auto.image.names", "auto.image.navigate",
+    "auto.image.request_view", "auto.image.close_session", "auto.image.session_stats",
 ];
 
 #[cfg(feature = "ui-iced")]
@@ -3738,6 +3741,7 @@ fn image_ticket_from_handle(handle: u64) -> Option<crate::ui::image_pipeline::Me
     IMAGE_TICKET_HANDLES.lock().ok()?.iter().find(|(id, _)| *id == handle).map(|(_, ticket)| *ticket)
 }
 
+#[cfg(feature = "ui-iced")]
 fn insert_image_ticket_handle(handle: u64, ticket: crate::ui::image_pipeline::MediaAssetTicket) {
     let mut handles = IMAGE_TICKET_HANDLES.lock().expect("image handle lock poisoned");
     if handles.len() >= IMAGE_TICKET_HANDLE_CAPACITY {
@@ -3822,6 +3826,70 @@ pub fn shim_image_scan(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 pub fn shim_image_stats(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     task.ram.push_i64(crate::ui::image_pipeline::global_media_registry().stats().completed as i64);
     Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_open_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let root: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::open_media_session(root))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_snapshot(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::media_session_snapshot(&session))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_current_uri(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::media_session_uri(&session))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_names(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    crate::ui::image_pipeline::media_session_names(&session)
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_navigate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let delta = task.ram.pop_i32();
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::navigate_media_session(&session, delta))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_request_view(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let quality = task.ram.pop_i32();
+    let viewport_height = task.ram.pop_i32();
+    let viewport_width = task.ram.pop_i32();
+    let index = task.ram.pop_i32();
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::request_media_view(&session, index, viewport_width, viewport_height, quality))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_close_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let closed = crate::ui::image_pipeline::close_media_session(&session);
+    closed.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_session_stats(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::media_session_stats(&session))
 }
 
 /// Add GET route (placeholder)
@@ -7595,6 +7663,14 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
         natives.register_shim_by_name("auto.image.release", shim_image_release);
         natives.register_shim_by_name("auto.image.close", shim_image_close);
         natives.register_shim_by_name("auto.image.stats", shim_image_stats);
+        natives.register_shim_by_name("auto.image.open_session", shim_image_open_session);
+        natives.register_shim_by_name("auto.image.snapshot", shim_image_snapshot);
+        natives.register_shim_by_name("auto.image.current_uri", shim_image_current_uri);
+        natives.register_shim_by_name("auto.image.names", shim_image_names);
+        natives.register_shim_by_name("auto.image.navigate", shim_image_navigate);
+        natives.register_shim_by_name("auto.image.request_view", shim_image_request_view);
+        natives.register_shim_by_name("auto.image.close_session", shim_image_close_session);
+        natives.register_shim_by_name("auto.image.session_stats", shim_image_session_stats);
     }
     natives.register_shim_by_name("auto.http.response", shim_http_response);
     natives.register_shim_by_name("auto.http.response_status", shim_http_response_status);

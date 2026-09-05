@@ -25,3 +25,14 @@ pub fn retain(ticket ImageTicket) ImageTicket;
 pub fn release(ticket ImageTicket) void;
 pub fn close(ticket ImageTicket) void;
 pub fn stats() ImageStats;
+
+/// Metadata-only viewer control plane.  Session ids are opaque strings; the
+/// host keeps paths, ticket ownership, and decoded bytes outside Auto state.
+pub fn open_session(root str) str;
+pub fn snapshot(session str) str;
+pub fn current_uri(session str) str;
+pub fn names(session str) []str;
+pub fn navigate(session str, delta int) str;
+pub fn request_view(session str, index int, viewport_width int, viewport_height int, quality int) str;
+pub fn close_session(session str) bool;
+pub fn session_stats(session str) str;

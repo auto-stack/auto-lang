@@ -434,6 +434,12 @@ Asynchronous image viewer surface
 | `width` | `int` | 0 | Viewport width |
 | `height` | `int` | 0 | Viewport height |
 | `quality` | `int` | 90 | Rendition quality |
+| `fit` | `one_of: contain|width|one-to-one|free` | contain | Viewport fit policy |
+| `zoom` | `float` | 1.0 | Viewport zoom |
+| `offset_x` | `float` | 0.0 | Horizontal pan offset |
+| `offset_y` | `float` | 0.0 | Vertical pan offset |
+| `rotation` | `int` | 0 | Clockwise rotation in degrees |
+| `filter` | `string` | none | Sampling filter |
 
 ---
 

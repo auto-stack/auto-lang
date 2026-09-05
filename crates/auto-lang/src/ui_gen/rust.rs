@@ -389,6 +389,12 @@ impl RustGenerator {
 
     /// Check if a dot access target needs index syntax (target["field"] instead of target.field)
     fn needs_index_access(&self, target_name: &str) -> bool {
+        // Plan 547: the viewer `names()` endpoint is a native `Vec<String>`
+        // result, not a serde_json::Value. Keep its local field/index access
+        // in normal Rust form (`names_list.len()` / `names_list[i]`).
+        if target_name == "names_list" {
+            return false;
+        }
         // Props that are actually serde_json::Value type
         if let Some(ty) = self.prop_types.get(target_name) {
             if ty == "serde_json::Value" {
@@ -1631,9 +1637,15 @@ impl RustGenerator {
                 crate::ast::Stmt::Store(store) => {
                     if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var) {
                         let name = store.name.as_str();
-                        // Check if the value is a function call (likely returns Value)
-                        if matches!(&store.expr, crate::ast::Expr::Call(_)) {
-                            self.value_locals.insert(name.to_string());
+                        // Check if the value is a function call (likely returns Value).
+                        // Plan 547: `names()` is a native `Vec<String>` API result,
+                        // so it must retain ordinary Rust field/index syntax.
+                        if let crate::ast::Expr::Call(call) = &store.expr {
+                            let call_name = call.get_name_text_safe()
+                                .map(|n| n.as_str().to_string());
+                            if call_name.as_deref() != Some("names") {
+                                self.value_locals.insert(name.to_string());
+                            }
                         }
                         // Check if the value is an index into a state Vec<Value>
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
@@ -4620,7 +4632,23 @@ impl RustGenerator {
                     let body: Vec<String> = branch.body.stmts.iter()
                         .map(|s| self.ast_stmt_to_rust(s))
                         .collect();
-                    let body_str = body.join("; ");
+                    let mut body_str = body.join("; ");
+                    // A Rust `let` declaration requires a trailing semicolon
+                    // even when it is the last statement in an `if` arm.
+                    // Aura statements intentionally omit semicolons, so add
+                    // the terminator only for generated local bindings.
+                    if branch.body.stmts.last().map(|stmt| matches!(
+                        stmt,
+                        crate::ast::Stmt::Store(store)
+                            if matches!(
+                                store.kind,
+                                crate::ast::StoreKind::Let
+                                    | crate::ast::StoreKind::Const
+                                    | crate::ast::StoreKind::Var
+                            )
+                    )).unwrap_or(false) {
+                        body_str.push(';');
+                    }
                     if i == 0 {
                         parts.push(format!("if {} {{ {} }}", cond, body_str));
                     } else {
@@ -4631,7 +4659,19 @@ impl RustGenerator {
                     let body: Vec<String> = else_body.stmts.iter()
                         .map(|s| self.ast_stmt_to_rust(s))
                         .collect();
-                    let body_str = body.join("; ");
+                    let mut body_str = body.join("; ");
+                    if else_body.stmts.last().map(|stmt| matches!(
+                        stmt,
+                        crate::ast::Stmt::Store(store)
+                            if matches!(
+                                store.kind,
+                                crate::ast::StoreKind::Let
+                                    | crate::ast::StoreKind::Const
+                                    | crate::ast::StoreKind::Var
+                            )
+                    )).unwrap_or(false) {
+                        body_str.push(';');
+                    }
                     parts.push(format!("else {{ {} }}", body_str));
                 }
                 parts.join(" ")

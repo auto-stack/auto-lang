@@ -5,7 +5,7 @@
 //! identities and lifetimes.  Task 1 deliberately provides only the module
 //! seam; its types and behavior are added in the following tasks.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
@@ -923,6 +923,249 @@ pub fn scan_media_directory(path: impl Into<PathBuf>) {
     }).ok();
 }
 
+// ---------------------------------------------------------------------------
+// Metadata-only viewer sessions
+// ---------------------------------------------------------------------------
+
+/// A viewer session is deliberately host-owned.  The public value is only the
+/// stable session id; paths and tickets remain in this bounded table and are
+/// never serialized into Auto state or media URLs.
+const MAX_MEDIA_SESSIONS: usize = 32;
+const MAX_SESSION_ENTRIES: usize = 256;
+
+#[derive(Debug)]
+struct MediaSessionEntry {
+    path: PathBuf,
+    ticket: MediaAssetTicket,
+    name: String,
+}
+
+#[derive(Debug)]
+struct MediaSession {
+    id: String,
+    root: PathBuf,
+    entries: Vec<MediaSessionEntry>,
+    selected: usize,
+    generation: u64,
+}
+
+static MEDIA_SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
+static MEDIA_SESSIONS: std::sync::LazyLock<Mutex<VecDeque<MediaSession>>> =
+    std::sync::LazyLock::new(|| Mutex::new(VecDeque::new()));
+
+fn media_uri(ticket: MediaAssetTicket) -> String {
+    format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision)
+}
+
+fn supported_media_path(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase())
+            .as_deref(),
+        Some("jpg" | "jpeg" | "png" | "webp")
+    )
+}
+
+fn append_session_entry(session_id: &str, path: PathBuf) {
+    if !supported_media_path(&path) {
+        return;
+    }
+    let ticket = queue_media_path(path.clone(), MediaPriority::Thumbnail);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("image")
+        .to_owned();
+    let mut sessions = match MEDIA_SESSIONS.lock() {
+        Ok(sessions) => sessions,
+        Err(_) => {
+            global_media_registry().release(ticket.id);
+            return;
+        }
+    };
+    let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
+        global_media_registry().release(ticket.id);
+        return;
+    };
+    if session.entries.len() >= MAX_SESSION_ENTRIES {
+        global_media_registry().release(ticket.id);
+        return;
+    }
+    session.entries.push(MediaSessionEntry { path, ticket, name });
+}
+
+fn populate_media_session(session_id: String, root: PathBuf) {
+    // All filesystem work happens on this detached worker, never on a VM/UI
+    // handler thread.  Sorting makes directory navigation deterministic.
+    let mut paths = Vec::new();
+    if root.is_file() {
+        paths.push(root);
+    } else if root.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&root) {
+            paths.extend(entries.flatten().map(|entry| entry.path()).filter(|path| path.is_file()));
+            paths.sort();
+        }
+    }
+    for path in paths {
+        append_session_entry(&session_id, path);
+    }
+}
+
+/// Open a file or directory without blocking the caller on filesystem I/O.
+/// The returned id is safe to keep in Auto model state.
+pub fn open_media_session(root: impl Into<PathBuf>) -> String {
+    let root = root.into();
+    let id = format!("image-session-{}", MEDIA_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed));
+    if let Ok(mut sessions) = MEDIA_SESSIONS.lock() {
+        if sessions.len() >= MAX_MEDIA_SESSIONS {
+            if let Some(evicted) = sessions.pop_front() {
+                for entry in evicted.entries {
+                    global_media_registry().release(entry.ticket.id);
+                }
+            }
+        }
+        sessions.push_back(MediaSession { id: id.clone(), root: root.clone(), entries: Vec::new(), selected: 0, generation: 1 });
+    }
+    let worker_id = id.clone();
+    thread::Builder::new()
+        .name("media-session-open".into())
+        .spawn(move || populate_media_session(worker_id, root))
+        .ok();
+    id
+}
+
+fn session_snapshot_locked(session: &MediaSession) -> String {
+    let uri = session
+        .entries
+        .get(session.selected)
+        .map(|entry| media_uri(entry.ticket))
+        .unwrap_or_default();
+    let name = session
+        .entries
+        .get(session.selected)
+        .map(|entry| entry.name.as_str())
+        .unwrap_or("");
+    // `id`, `uri`, and `name` are generated/filename values.  Escape the two
+    // user-visible strings so this metadata response remains valid JSON.
+    let escape = |value: &str| value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "{{\"session\":\"{}\",\"selected\":{},\"count\":{},\"generation\":{},\"name\":\"{}\",\"uri\":\"{}\"}}",
+        escape(&session.id), session.selected, session.entries.len(), session.generation, escape(name), escape(&uri)
+    )
+}
+
+/// Return a metadata-only snapshot for a session.
+pub fn media_session_snapshot(session_id: &str) -> String {
+    MEDIA_SESSIONS
+        .lock()
+        .ok()
+        .and_then(|sessions| sessions.iter().find(|session| session.id == session_id).map(session_snapshot_locked))
+        .unwrap_or_else(|| "{\"error\":\"unknown_session\"}".into())
+}
+
+/// Return only the currently selected opaque media URI. This lets a front
+/// model bind `ImageSurface.src` without parsing JSON or receiving paths.
+pub fn media_session_uri(session_id: &str) -> String {
+    MEDIA_SESSIONS
+        .lock()
+        .ok()
+        .and_then(|sessions| sessions.iter().find(|session| session.id == session_id).and_then(|session| session.entries.get(session.selected).map(|entry| media_uri(entry.ticket))))
+        .unwrap_or_default()
+}
+
+/// Return bounded display names for the current directory session. Names are
+/// metadata only; the corresponding media URI is still resolved by index.
+pub fn media_session_names(session_id: &str) -> Vec<String> {
+    MEDIA_SESSIONS
+        .lock()
+        .ok()
+        .and_then(|sessions| sessions.iter().find(|session| session.id == session_id).map(|session| session.entries.iter().map(|entry| entry.name.clone()).collect()))
+        .unwrap_or_default()
+}
+
+/// Move the selection while preserving a bounded, host-side session table.
+pub fn navigate_media_session(session_id: &str, delta: i32) -> String {
+    let Ok(mut sessions) = MEDIA_SESSIONS.lock() else {
+        return "{\"error\":\"session_lock\"}".into();
+    };
+    let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
+        return "{\"error\":\"unknown_session\"}".into();
+    };
+    if !session.entries.is_empty() {
+        let len = session.entries.len() as i32;
+        session.selected = (session.selected as i32 + delta).rem_euclid(len) as usize;
+        session.generation = session.generation.saturating_add(1);
+    }
+    session_snapshot_locked(session)
+}
+
+/// Queue a viewport rendition for the selected asset.  The original ticket is
+/// retained until the replacement is published, so a stale request cannot
+/// invalidate the currently displayed media.
+pub fn request_media_view(session_id: &str, index: i32, width: i32, height: i32, quality: i32) -> String {
+    let (path, generation) = {
+        let Ok(mut sessions) = MEDIA_SESSIONS.lock() else {
+            return "{\"error\":\"session_lock\"}".into();
+        };
+        let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
+            return "{\"error\":\"unknown_session\"}".into();
+        };
+        if session.entries.is_empty() {
+            return session_snapshot_locked(session);
+        }
+        session.selected = index.clamp(0, session.entries.len() as i32 - 1) as usize;
+        session.generation = session.generation.saturating_add(1);
+        (session.entries[session.selected].path.clone(), session.generation)
+    };
+    let spec = RenditionSpec { width: width.max(0) as u32, height: height.max(0) as u32, rotation_degrees: 0, quality: quality.clamp(1, 100) as u8, original_pixels: false };
+    let ticket = queue_media_rendition(path, spec, MediaPriority::SettledCurrent, generation);
+    if let Ok(mut sessions) = MEDIA_SESSIONS.lock() {
+        if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
+            let old_ticket = session.entries[session.selected].ticket;
+            session.entries[session.selected].ticket = ticket;
+            // The session owns exactly one reference per entry. Release the
+            // superseded ticket after swapping it so repeated view requests
+            // cannot grow the registry indefinitely while queued work settles.
+            if old_ticket.id != ticket.id {
+                global_media_registry().release(old_ticket.id);
+            }
+            return session_snapshot_locked(session);
+        }
+    }
+    global_media_registry().release(ticket.id);
+    "{\"error\":\"unknown_session\"}".into()
+}
+
+/// Release all tickets held by a session.  Returns false for an already closed
+/// or unknown id, allowing generated APIs to report deterministic close state.
+pub fn close_media_session(session_id: &str) -> bool {
+    let Some(session) = MEDIA_SESSIONS.lock().ok().and_then(|mut sessions| sessions.iter().position(|session| session.id == session_id).and_then(|index| sessions.remove(index))) else {
+        return false;
+    };
+    for entry in session.entries {
+        global_media_registry().release(entry.ticket.id);
+    }
+    true
+}
+
+pub fn media_session_stats(_session_id: &str) -> String {
+    let stats = global_media_registry().stats();
+    format!(
+        "{{\"queued\":{},\"running\":{},\"completed\":{},\"dropped\":{},\"encoded_bytes\":{},\"decoded_bytes\":{},\"cache_hits\":{},\"cache_misses\":{}}}",
+        stats.queued, stats.running, stats.completed, stats.dropped, stats.encoded_bytes, stats.decoded_bytes, stats.cache_hits, stats.cache_misses
+    )
+}
+
+fn queue_media_rendition(path: PathBuf, spec: RenditionSpec, priority: MediaPriority, revision: u64) -> MediaAssetTicket {
+    let key = MediaAssetKey { source_fingerprint: path.to_string_lossy().into_owned(), orientation: MediaOrientation::Normal, rendition: spec.clone(), revision };
+    let ticket = global_media_registry().queue(key, MediaMetadata::default());
+    if !global_media_worker_pool().submit_path(ticket, path, spec, priority, revision, revision) {
+        let _ = global_media_registry().fail(ticket.id, MediaAssetError::Rejected("media queue is full".into()));
+    }
+    ticket
+}
+
 impl Drop for MediaWorkerPool { fn drop(&mut self) { self.shutdown(); } }
 
 pub const MAX_IMAGE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
@@ -1197,6 +1440,27 @@ mod tests {
         assert_eq!(registry.wait_for_terminal(ticket.id, Duration::from_secs(2)), Some(MediaAssetState::Ready));
         assert!(matches!(registry.lookup(ticket.id, ticket.revision), MediaLookup::Ready(_)));
         workers.shutdown();
+    }
+
+    #[test]
+    fn viewer_session_opens_directory_and_exposes_only_metadata() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures");
+        let session = super::open_media_session(root);
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while super::media_session_names(&session).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let names = super::media_session_names(&session);
+        assert!(names.iter().any(|name| name == "rgb-1x1.png"));
+        let snapshot = super::media_session_snapshot(&session);
+        assert!(snapshot.contains("\"count\":"));
+        assert!(!snapshot.contains("fixtures"), "snapshot must not leak source paths");
+        let _ = super::request_media_view(&session, 0, 32, 32, 90);
+        let uri = super::media_session_uri(&session);
+        assert!(uri.is_empty() || uri.starts_with("/api/__auto/media/"));
+        assert!(super::close_media_session(&session));
+        assert!(!super::close_media_session(&session));
     }
 
     #[test]

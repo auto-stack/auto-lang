@@ -1,16 +1,16 @@
 [
-  { "action": "screenshot", "path": "examples/ui/031-image-viewer/tests/screenshots/vue-initial.png" },
+  { "action": "screenshot", "path": "examples/ui/031-image-viewer/src/front/tests/screenshots/vue-initial.png" },
   { "action": "click", "selector": "button:has-text('Open File')" },
   { "action": "wait", "ms": 120 },
-  { "action": "screenshot", "path": "examples/ui/031-image-viewer/tests/screenshots/vue-open-file.png" },
+  { "action": "screenshot", "path": "examples/ui/031-image-viewer/src/front/tests/screenshots/vue-open-file.png" },
   { "action": "click", "selector": "button:has-text('+')" },
   { "action": "click", "selector": "button:has-text('Fit')" },
   { "action": "click", "selector": "button:has-text('Width')" },
   { "action": "click", "selector": "button:has-text('1:1')" },
   { "action": "click", "selector": "button:has-text('↻')" },
   { "action": "drag", "from": [700, 420], "to": [760, 460], "steps": 6 },
-  { "action": "dblclick", "selector": "div.w-full.h-full" },
+  { "action": "dblclick", "selector": "div.relative.overflow-hidden.w-full.h-full" },
   { "action": "press", "key": "Escape" },
   { "action": "click", "selector": "button:has-text('Open Directory')" },
-  { "action": "screenshot", "path": "examples/ui/031-image-viewer/tests/screenshots/vue-controls.png" }
+  { "action": "screenshot", "path": "examples/ui/031-image-viewer/src/front/tests/screenshots/vue-controls.png" }
 ]

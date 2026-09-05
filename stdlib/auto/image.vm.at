@@ -23,3 +23,27 @@ fn close(ticket ImageTicket) void
 
 #[vm]
 fn stats() ImageStats
+
+#[vm]
+fn open_session(root str) str
+
+#[vm]
+fn snapshot(session str) str
+
+#[vm]
+fn current_uri(session str) str
+
+#[vm]
+fn names(session str) []str
+
+#[vm]
+fn navigate(session str, delta int) str
+
+#[vm]
+fn request_view(session str, index int, viewport_width int, viewport_height int, quality int) str
+
+#[vm]
+fn close_session(session str) bool
+
+#[vm]
+fn session_stats(session str) str

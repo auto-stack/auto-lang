@@ -1,6 +1,8 @@
 // 031-image-viewer front UI (Plan 547 Tasks 29 and 33).
 // The model is metadata and transform state only; pixels stay behind the
 // shared media route and ImageSurface renderer.
+use back.api: open_file, open_directory, current_uri, names, request_view, close_session
+
 widget App {
     msg {
         Init,
@@ -174,22 +176,41 @@ widget App {
         .OpenFile -> {
             .view_state = "loading"
             .status = "Reading image metadata…"
-            .media_src = "/api/__auto/media/demo/1"
+            if .session_id != "" {
+                let _closed = close_session(.session_id)
+            }
+            let session = open_file("examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png")
+            .session_id = session
+            .media_src = current_uri(session)
             .media_alt = "Selected image"
-            .selected_name = "demo-image"
-            .selected_path = "demo-image"
+            .selected_name = "rgb-1x1.png"
+            .selected_path = "tests/fixtures"
             .image_count = 1
+            .thumbnails = [{ id: 0, name: "rgb-1x1.png", src: "" }]
             .selected_index = 0
             .revision = .revision + 1
         }
         .OpenDirectory -> {
             .view_state = "loading"
             .status = "Indexing directory…"
-            .image_count = 1
+            if .session_id != "" {
+                let _closed = close_session(.session_id)
+            }
+            let session = open_directory("examples/ui/031-image-viewer/tests/fixtures")
+            .session_id = session
+            .media_src = current_uri(session)
+            .media_alt = "Selected image"
+            .selected_name = "Opening directory…"
+            .selected_path = "tests/fixtures"
             .revision = .revision + 1
         }
         .SelectImage(i) -> {
             .selected_index = i
+            if .session_id != "" {
+                request_view(.session_id, i, 1024, 768, 90)
+                .media_src = current_uri(.session_id)
+                .status = "Queued rendition"
+            }
             .view_state = "loading"
             .revision = .revision + 1
         }
@@ -208,16 +229,42 @@ widget App {
         .RotateRight -> { .rotation = (.rotation + 90) % 360 }
         .ToggleFullscreen -> { .is_fullscreen = !.is_fullscreen }
         .ImageLoaded -> { .view_state = "ready"; .status = "Ready" }
-        .ImageFailed -> { .view_state = "error"; .status = "Image failed to load" }
+        // A media ticket can briefly be 503 while the bounded worker publishes
+        // its rendition. Keep the viewport mounted so the browser can retry
+        // the opaque URI; only an empty URI is a terminal error.
+        .ImageFailed -> {
+            .status = "Waiting for image worker…"
+            if .media_src == "" { .view_state = "error"; .status = "Image failed to load" }
+        }
         .Wheel -> { .zoom = .zoom + 0.1; .fit_mode = "free" }
         .Pan -> { .offset_x = .offset_x + 8.0; .offset_y = .offset_y + 4.0 }
         .DoubleClick -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
         .SettleTick -> {
-            if .view_state == "loading" { .view_state = "ready"; .status = "Ready" }
+            if .view_state == "loading" {
+                if .session_id != "" {
+                    .media_src = current_uri(.session_id)
+                    let names_list = names(.session_id)
+                    .image_count = names_list.len()
+                    var thumb_list = []
+                    var j int = 0
+                    for j < names_list.len() {
+                        thumb_list.push({ id: j, name: names_list[j], src: "" })
+                        j = j + 1
+                    }
+                    if names_list.len() > 0 { .thumbnails = thumb_list }
+                }
+                .view_state = "ready"
+                .status = "Ready"
+            }
         }
         .Close -> {
+            if .session_id != "" {
+                let _closed = close_session(.session_id)
+            }
             .view_state = "empty"
             .media_src = ""
+            .session_id = ""
+            .image_count = 0
             .selected_name = ""
             .selected_path = ""
             .status = "Closed"

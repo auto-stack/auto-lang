@@ -1054,6 +1054,56 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
             .filter(|p| !endpoint.path().contains(&format!(":{}", p.name)))
             .collect();
 
+        // Plan 547: the image viewer's merged Rust arm shares the host-owned
+        // media control plane with VM instead of manufacturing JSON CRUD
+        // records. Keep the generated signatures strongly typed so the Rust
+        // UI can use session ids, URI strings, and name vectors directly.
+        if endpoint.path().starts_with("/api/viewer/") {
+            let sig = body_params.iter()
+                .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let body = match fn_name.as_str() {
+                "open_file" | "open_directory" | "open_path" => format!(
+                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::open_media_session(path) }}\n\n",
+                    fn_name, sig
+                ),
+                "snapshot" => format!(
+                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::media_session_snapshot(&session) }}\n\n",
+                    fn_name, sig
+                ),
+                "current_uri" => format!(
+                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::media_session_uri(&session) }}\n\n",
+                    fn_name, sig
+                ),
+                "names" => format!(
+                    "fn {}({}) -> Vec<String> {{ auto_lang::ui::image_pipeline::media_session_names(&session) }}\n\n",
+                    fn_name, sig
+                ),
+                "navigate" => format!(
+                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::navigate_media_session(&session, delta) }}\n\n",
+                    fn_name, sig
+                ),
+                "request_view" => format!(
+                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::request_media_view(&session, index, viewport_width, viewport_height, quality) }}\n\n",
+                    fn_name, sig
+                ),
+                "close_session" => format!(
+                    "fn {}({}) -> bool {{ auto_lang::ui::image_pipeline::close_media_session(&session) }}\n\n",
+                    fn_name, sig
+                ),
+                "image_stats" => format!(
+                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::media_session_stats(&session) }}\n\n",
+                    fn_name, sig
+                ),
+                _ => String::new(),
+            };
+            if !body.is_empty() {
+                code.push_str(&body);
+                continue;
+            }
+        }
+
         match method.as_str() {
             "GET" => {
                 if params.is_empty() {

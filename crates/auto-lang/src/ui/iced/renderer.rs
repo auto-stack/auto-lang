@@ -2848,20 +2848,43 @@ fn render_image_surface<M: Clone + Debug + 'static>(
     };
     let mut inner: iced::Element<'static, M> = if let Some((source_width, source_height, rgba)) = pixels {
         let zoom = zoom.clamp(0.05, 64.0);
-        let quarter_turn = rotation.rem_euclid(360) / 90;
-        let (display_width, display_height) = if quarter_turn % 2 == 1 {
-            (source_height as f32 * zoom, source_width as f32 * zoom)
-        } else {
-            (source_width as f32 * zoom, source_height as f32 * zoom)
+        let viewport = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: width.max(source_width) as f32,
+            height: height.max(source_height) as f32,
         };
+        let geometry = crate::ui::iced::image_surface::image_surface_geometry(
+            viewport,
+            iced::Size::new(source_width as f32, source_height as f32),
+            ImageSurfaceFit::parse(&fit),
+            zoom,
+            offset_x,
+            offset_y,
+            rotation as f32,
+        );
+        let display_width = geometry.rotated_bounds.width.max(1.0);
+        let display_height = geometry.rotated_bounds.height.max(1.0);
+        let radians = (rotation.rem_euclid(360) as f32).to_radians();
         let mut image = iced::widget::image(iced::widget::image::Handle::from_rgba(source_width, source_height, rgba.to_vec()))
             .content_fit(object_fit)
-            .filter_method(filter_method);
+            .filter_method(filter_method)
+            .rotation(iced::Radians::from(radians));
         if width > 0 { image = image.width(iced::Length::Fixed(display_width.max(width as f32 + offset_x.abs()))); }
         else if let Some(w) = width_hint { image = image.width(w); }
         if height > 0 { image = image.height(iced::Length::Fixed(display_height.max(height as f32 + offset_y.abs()))); }
         else if let Some(h) = height_hint { image = image.height(h); }
-        image.into()
+        // Keep the translation in the clipping layout as well as in the
+        // geometry calculation. This makes pan state observable without ever
+        // moving decode or filesystem work onto the render thread.
+        container(image)
+            .padding(iced::Padding {
+                top: offset_y.max(0.0),
+                right: (-offset_x).max(0.0),
+                bottom: (-offset_y).max(0.0),
+                left: offset_x.max(0.0),
+            })
+            .into()
     } else {
         let label = if alt.is_empty() {
             "Image unavailable".to_string()

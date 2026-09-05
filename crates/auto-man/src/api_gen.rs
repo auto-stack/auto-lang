@@ -1038,6 +1038,38 @@ fn extract_db_fn_from_body(
     None
 }
 
+/// Plan 547: detect the metadata-only image control-plane delegation used by
+/// the 031 image viewer.  These calls are host runtime primitives rather than
+/// CRUD/db functions, so they must bypass the generic Default-return scaffold.
+fn extract_image_fn_from_body(endpoint: &ApiEndpoint) -> Option<String> {
+    use auto_lang::ast::{Expr, Stmt};
+    let body = endpoint.body.as_ref()?;
+    for stmt in &body.stmts {
+        if let Stmt::Return(expr) = stmt {
+            if let Expr::Call(call) = expr.as_ref() {
+                if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    // `use auto.image` binds the module as `image` in VM
+                    // handler synthesis; accept the fully-qualified AST
+                    // form too for callers that still use auto.image.*.
+                    if let Expr::Ident(root) = receiver.as_ref() {
+                        if root.as_ref() == "image" {
+                            return Some(method.as_ref().to_string());
+                        }
+                    }
+                    if let Expr::Dot(namespace, group) = receiver.as_ref() {
+                        if let Expr::Ident(root) = namespace.as_ref() {
+                            if root.as_ref() == "auto" && group == "image" {
+                                return Some(method.as_ref().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Resolve an endpoint to a db.rs function call, or `None` if no candidate name
 /// exists in `db_fns`. When matched, builds the argument list by mapping each
 /// endpoint param to its extractor binding:
@@ -1239,12 +1271,24 @@ const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
     uri: axum::http::Uri,
     headers: axum::http::HeaderMap,
 ) -> axum::response::Response {
-    let response = auto_lang::ui::image_pipeline::media_http_response(
+    let mut response = auto_lang::ui::image_pipeline::media_http_response(
         auto_lang::ui::image_pipeline::global_media_registry(),
         method.as_str(),
         uri.path(),
         headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
     );
+    // A freshly queued rendition is expected to be pending for a short time.
+    // Give the bounded worker a small grace window so browser <img> loads do
+    // not turn a transient 503 into a terminal error callback.
+    if response.status == 503 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        response = auto_lang::ui::image_pipeline::media_http_response(
+            auto_lang::ui::image_pipeline::global_media_registry(),
+            method.as_str(),
+            uri.path(),
+            headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
+        );
+    }
     let mut builder = axum::response::Response::builder().status(response.status);
     for (name, value) in response.headers {
         builder = builder.header(name, value);
@@ -1569,6 +1613,53 @@ fn generate_api_rs(
             params.join(", "),
             ret_type
         ));
+
+        // Plan 547: `auto.image.*` is a host-side control plane.  It carries
+        // only opaque media URIs and metadata, so emit direct runtime calls
+        // instead of falling through to the generic CRUD Default scaffold.
+        if let Some(image_fn) = extract_image_fn_from_body(endpoint) {
+            match image_fn.as_str() {
+                "open_session" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::open_media_session(input.path.clone()))"
+                        .to_string(),
+                ),
+                "snapshot" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_snapshot(&query.session))"
+                        .to_string(),
+                ),
+                "current_uri" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_uri(&query.session))"
+                        .to_string(),
+                ),
+                "names" => lines.push(
+                    "    JsonResponse::<Vec<String>>(auto_lang::ui::image_pipeline::media_session_names(&query.session))"
+                        .to_string(),
+                ),
+                "navigate" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::navigate_media_session(&input.session, input.delta as i32))"
+                        .to_string(),
+                ),
+                "request_view" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::request_media_view(&input.session, input.index as i32, input.viewport_width as i32, input.viewport_height as i32, input.quality as i32))"
+                        .to_string(),
+                ),
+                "close_session" => lines.push(
+                    "    JsonResponse::<bool>(auto_lang::ui::image_pipeline::close_media_session(&input.session))"
+                        .to_string(),
+                ),
+                "session_stats" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_stats(&query.session))"
+                        .to_string(),
+                ),
+                other => {
+                    eprintln!("  ⚠ unsupported auto.image function `{}` in `{}`", other, fn_name);
+                    lines.push("    JsonResponse::<String>(String::new())".to_string());
+                }
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
 
         // Plan 400 Phase 2: a2r body transpilation. Non-thin bodies with real
         // logic get transpiled via a2r instead of CRUD template. Disable: AUTO_A2R_BODY=0.

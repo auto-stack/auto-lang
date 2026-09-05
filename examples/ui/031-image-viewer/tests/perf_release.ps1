@@ -4,8 +4,10 @@ param()
 $ErrorActionPreference = "Stop"
 $testsRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = (Resolve-Path (Join-Path $testsRoot "..\..\..\..")).Path
-$manifest = Join-Path $projectRoot "examples\rust-workspace\031-image-viewer\Cargo.toml"
-$generatedRoot = Join-Path $projectRoot "examples\rust-workspace\target"
+$isolatedRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("auto-lang-plan547-rust-" + [Guid]::NewGuid().ToString("N"))
+$isolatedSrc = Join-Path $isolatedRoot "src"
+$manifest = Join-Path $isolatedRoot "Cargo.toml"
+$generatedRoot = Join-Path $isolatedRoot "target"
 $expectationsPath = Join-Path $testsRoot "perf_expectations.json"
 $reportPath = Join-Path $testsRoot "perf-report.json"
 $tempFixture = Join-Path ([System.IO.Path]::GetTempPath()) "auto-lang-plan547-24mp.jpg"
@@ -32,6 +34,20 @@ function Add-Check([string]$Name, [double]$Actual, [double]$Budget) {
 }
 
 try {
+    New-Item -ItemType Directory -Path $isolatedSrc -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot "examples\rust-workspace\031-image-viewer\src\main.rs") -Destination (Join-Path $isolatedSrc "main.rs") -Force
+    $autoLangPath = $projectRoot.Replace("\", "/")
+    @"
+[package]
+name = "image-viewer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+auto-lang = { package = "auto-lang", path = "$autoLangPath/crates/auto-lang", features = ["ui-iced"] }
+serde_json = "1"
+"@ | Set-Content -LiteralPath $manifest -Encoding UTF8
+
     Add-Type -AssemblyName System.Drawing
     $bitmap = [System.Drawing.Bitmap]::new(6000, 4000, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
     try {
@@ -58,7 +74,14 @@ try {
     $buildWatch = [Diagnostics.Stopwatch]::StartNew()
     $buildLog = Join-Path $testsRoot "perf-build.log"
     $buildErr = Join-Path $testsRoot "perf-build.err.log"
-    $buildProcess = Start-Process -FilePath "cargo.exe" -ArgumentList @("build", "--release", "--manifest-path", $manifest, "--quiet") -WorkingDirectory $projectRoot -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $buildLog -RedirectStandardError $buildErr
+    $previousTargetDir = $env:CARGO_TARGET_DIR
+    $env:CARGO_TARGET_DIR = $generatedRoot
+    try {
+        $buildProcess = Start-Process -FilePath "cargo.exe" -ArgumentList @("build", "--release", "--manifest-path", $manifest, "--quiet") -WorkingDirectory $projectRoot -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $buildLog -RedirectStandardError $buildErr
+    } finally {
+        if ($null -eq $previousTargetDir) { Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue }
+        else { $env:CARGO_TARGET_DIR = $previousTargetDir }
+    }
     if ($buildProcess.ExitCode -ne 0) {
         throw "release build failed; see perf-build.log"
     }
@@ -85,10 +108,10 @@ try {
         throw "release executable did not start"
     }
     $spawned = $true
-    for ($i = 0; $i -lt 150; $i++) {
-        if ($process.HasExited) { break }
-        Start-Sleep -Milliseconds 100
-    }
+    # Process creation is the cold-start metric. The previous 150×100 ms
+    # loop intentionally waited 15 seconds whenever the UI stayed alive,
+    # measuring an arbitrary observation window instead of startup latency.
+    Start-Sleep -Milliseconds 100
     $coldWatch.Stop()
     $report.metrics.cold_start_ms = $coldWatch.Elapsed.TotalMilliseconds
     $report.metrics.process_spawned = $spawned
@@ -169,5 +192,8 @@ try {
     }
     if (Test-Path $tempFixture) {
         Remove-Item -LiteralPath $tempFixture -Force
+    }
+    if (Test-Path $isolatedRoot) {
+        Remove-Item -LiteralPath $isolatedRoot -Recurse -Force
     }
 }

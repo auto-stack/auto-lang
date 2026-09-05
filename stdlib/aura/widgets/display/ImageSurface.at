@@ -14,8 +14,17 @@ widget ImageSurface {
         width int = 0
         height int = 0
         quality int = 90
+        fit str = "contain"
+        zoom float = 1.0
+        offset_x float = 0.0
+        offset_y float = 0.0
+        rotation int = 0
+        filter str = "none"
         on_error fn(str) = none
         on_loaded fn() = none
+        on_wheel fn() = none
+        on_pan fn() = none
+        on_double_click fn() = none
     }
 
     view {}

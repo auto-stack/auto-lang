@@ -3729,10 +3729,10 @@ impl VueGenerator {
 
             if has_running {
                 // Timer starts/stops based on `running` state — use watch to manage interval
-                script.push_str(&format!("watch(running, (val) => {{\n  if (val === 'true' && tickTimer.value === null) {{\n    tickTimer.value = setInterval(() => {{\n      {}\n    }}, {})\n  }} else if (val !== 'true' && tickTimer.value !== null) {{\n    clearInterval(tickTimer.value)\n    tickTimer.value = null\n  }}\n}})\n\n", tick_body, interval));
+                script.push_str(&format!("watch(running, (val) => {{\n  if (val === 'true' && tickTimer.value === null) {{\n    tickTimer.value = setInterval(async () => {{\n      {}\n    }}, {})\n  }} else if (val !== 'true' && tickTimer.value !== null) {{\n    clearInterval(tickTimer.value)\n    tickTimer.value = null\n  }}\n}})\n\n", tick_body, interval));
             } else {
                 // No running gate — start timer immediately on mount
-                script.push_str(&format!("onMounted(() => {{\n  tickTimer.value = setInterval(() => {{\n    {}\n  }}, {})\n}})\n\n", tick_body, interval));
+                script.push_str(&format!("onMounted(() => {{\n  tickTimer.value = setInterval(async () => {{\n    {}\n  }}, {})\n}})\n\n", tick_body, interval));
             }
 
             // If the widget has both `elapsed` and `time_display`/`ms_display`,
@@ -3776,7 +3776,7 @@ impl VueGenerator {
                 };
                 script.push_str(&format!(
                     "let {var}: any = null
-const __t51_on_{ev} = () => {{ if ({guard}) {{ {body} }} }}
+const __t51_on_{ev} = async () => {{ if ({guard}) {{ {body} }} }}
 onMounted(() => {{ {var} = setInterval(__t51_on_{ev}, {ms}) }})
 onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }} }})
 
@@ -5084,7 +5084,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         let rotation = bound_prop("rotation", "0");
         let filter = bound_prop("filter", "'none'");
         let transform = format!(
-            "'translate(' + ({}) + 'px, ' + ({}) + 'px) rotate(' + ({}) + 'deg) scale({})",
+            "'translate(' + ({}) + 'px, ' + ({}) + 'px) rotate(' + ({}) + 'deg) scale(' + ({}) + ')'",
             offset_x, offset_y, rotation, zoom
         );
         image_attrs.push(format!(
