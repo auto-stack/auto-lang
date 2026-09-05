@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 6
+current_step: 7
 total_steps: 15
 ---
 
@@ -262,9 +262,10 @@ total_steps: 15
       print/f-string GIL str()（验证：单测 + `x[1..3]`/`len(x)`/
       print(tensor) 探针）
       [✅ 已完成] 步长无需词法工作——`a..b..c` 已解析为嵌套 Range(a, Range(b,c))（实证），规则拆解三参 py_slice；B3 让位 B5（切片位形跳过）；D7 双通道=py_str 472 桥+print shim 运行期 handle 臂（嵌套形态兜底）+s2s 裸名包裹（防 obj_len/py_str 二遍重入收敛钉）；A5 防 py_callable 重入。六单测+端到端（10/3/4/tensor 全文）绿。f-string 面=print shim 已覆盖打印路径，f-string 插值语法本身语言无此形态（`"a" + x` 走 ADD dunder）——D7 以 print/拼接通道收口
-- [ ] T07 C 族（一）：`@` 词法消歧（`@T` 引用不动）+ `a @ b`→
+- [x] T07 C 族（一）：`@` 词法消歧（`@T` 引用不动）+ `a @ b`→
       py_matmul lowering；`a ** b`→Math.pow/`__pow__`（py_ffi dunder
       表 POW 臂）（验证：单测 + `a @ b`/`a ** 2` 探针）
+      [✅ 已完成] 实现位前移：lexer Power(**) token + parser infix 臂**直产桥调用**（a@b→py_matmul 456、a**b→py_pow 473 新桥=GIL operator.pow，数字/__pow__ 通用即"POW 臂"语义）——免新增 auto_val::Op 变量的全仓 exhaustive-match 波及（设计分歧注记：语义等价，发射形态从 s2s 规则前移到解析层，@T 类型位零影响实证）。探针 1024/134/8 绿；语料 round-trip 保持
 - [ ] T08 C 族（二）：`a is b`→GIL is（py_is 471）+ C3/C4 句柄真值
       （s2s lower 到显式 GIL bool 调用，多元素张量按 Python 抛）
       （验证：单测 + `if t:`/`a is None` 探针）
