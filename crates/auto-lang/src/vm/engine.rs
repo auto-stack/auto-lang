@@ -3409,6 +3409,9 @@ impl AutoVM {
                     // Determine if this is an error case that should propagate
                     let should_propagate;
                     let mut propagate_value = 0;
+                    // Plan 567 T08（P560-D2）: Err 值传播可被当前帧的 try
+                    // handler 拦截（值通道 catch）；None/null 是值不进 catch。
+                    let mut interceptable_err = false;
 
                     // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
                     let is_none = if auto_val::is_null(may_nv) {
@@ -3456,6 +3459,7 @@ impl AutoVM {
                                     // caller via early return (stack stake 转移)。
                                     should_propagate = true;
                                     propagate_value = may_bits;
+                                    interceptable_err = true;
                                 }
                                 MayKind::WithInner(field) => {
                                     // Unwrap the inner value (continue execution)。
@@ -3486,6 +3490,51 @@ impl AutoVM {
 
                     // Perform early return if propagating error
                     if should_propagate {
+                        // Plan 567 T08（P560-D2）: 值通道拦截——Err 传播遇到
+                        // 当前帧的 try handler 时改跳 catch_pc 绑定载荷（设计
+                        // §4.3「catch 拦值传播」——两通道在此汇合；对齐
+                        // intercept_error 的异常通道行为：栈回卷到 try 入口 +
+                        // 载荷串入栈）。None/null 传播不经此（值不进 catch）。
+                        if interceptable_err {
+                            if let Some(handler) = task.handler_stack.last().copied() {
+                                if handler.bp == task.bp {
+                                    task.handler_stack.pop();
+                                    let payload = self
+                                        .get_heap_object(propagate_value as u64)
+                                        .and_then(|obj| {
+                                            let guard = obj.read().unwrap();
+                                            guard
+                                                .as_any()
+                                                .downcast_ref::<GenericInstanceData>()
+                                                .and_then(|inst| match inst.fields.first() {
+                                                    Some(auto_val::Value::Str(s)) => {
+                                                        Some(s.as_str().to_string())
+                                                    }
+                                                    _ => Some(format!(
+                                                        "Result.Err {}",
+                                                        propagate_value
+                                                    )),
+                                                })
+                                        })
+                                        .unwrap_or_else(|| {
+                                            format!("Result.Err {}", propagate_value)
+                                        });
+                                    // 容器 stake 死亡（消费于 catch）。
+                                    self.rc_release_id(propagate_value as u64);
+                                    let sp_at_unwind = task.ram.sp;
+                                    self.rc_release_slot_range(
+                                        &mut task.ram,
+                                        handler.sp,
+                                        sp_at_unwind,
+                                    );
+                                    task.ram.sp = handler.sp;
+                                    let idx = self.add_string(payload.into_bytes());
+                                    self.rc_push_str_idx(task, idx);
+                                    task.ip = handler.catch_pc;
+                                    return Ok(StepResult::Continue);
+                                }
+                            }
+                        }
                         if task.bp == 0 {
                             // Main task: just push the error value and terminate
                             task.ram.push_i32(propagate_value);
@@ -9963,5 +10012,107 @@ mod tests_add_concat_rc {
         let h = vm.pool_health();
         assert_eq!(h.underflow_events, 0);
         assert_eq!(h.phantom_drops, 0);
+    }
+}
+
+mod tests_err_value_channel {
+    use super::*;
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn push_result_instance(vm: &AutoVM, task: &mut AutoTask, kind: &str, field: auto_val::Value) {
+        let inst = GenericInstanceData::new(kind.to_string(), vec![field]);
+        let id = vm.insert_heap_object(inst);
+        vm.rc_push(task, auto_val::encode_object(id as u32));
+    }
+
+    /// Plan 567 T08（P560-D2）: Err 值传播被当前帧 try handler 拦截——
+    /// 改跳 catch_pc + 载荷串入栈（与 intercept_error 异常通道汇合）。
+    /// 布局：PUSH_HANDLER(rel=2) → ERROR_PROPAGATE(n=0) → catch: CONST_I32 77。
+    #[test]
+    fn test_error_propagate_value_channel_catch_hit() {
+        let mut code = Vec::new();
+        code.push(OpCode::PUSH_HANDLER as u8);
+        code.extend_from_slice(&2i16.to_le_bytes());
+        code.push(OpCode::ERROR_PROPAGATE as u8);
+        code.push(0u8); // n_args
+        code.push(OpCode::CONST_I32 as u8);
+        code.extend_from_slice(&77i32.to_le_bytes());
+
+        let vm = vm_with(code);
+        let mut task = AutoTask::new(1, 256, 0);
+        vm.run_one_instruction(&mut task).unwrap(); // PUSH_HANDLER
+        assert_eq!(task.handler_stack.len(), 1);
+
+        push_result_instance(
+            &vm,
+            &mut task,
+            "Result.Err",
+            auto_val::Value::Str("PyException AttributeError: boom".to_string().into()),
+        );
+        vm.run_one_instruction(&mut task).unwrap(); // ERROR_PROPAGATE → intercept
+
+        assert!(task.handler_stack.is_empty(), "handler consumed by catch");
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "payload bound for catch");
+        let idx = auto_val::decode_string(nv) as usize;
+        let payload = vm.strings.read().unwrap().get(idx).cloned().unwrap();
+        assert_eq!(payload, b"PyException AttributeError: boom".to_vec());
+        assert_eq!(
+            task.ip, 5,
+            "ip redirected to catch_pc (right after ERROR_PROPAGATE)"
+        );
+
+        vm.run_one_instruction(&mut task).unwrap(); // catch body
+        assert_eq!(task.ram.pop_i32(), 77);
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0);
+        assert_eq!(h.phantom_drops, 0);
+    }
+
+    /// null 是值不进 catch：None 传播走原 May 帧展开路径（main 帧 = Terminate），
+    /// handler 不被消费。
+    #[test]
+    fn test_error_propagate_null_not_intercepted() {
+        let mut code = Vec::new();
+        code.push(OpCode::PUSH_HANDLER as u8);
+        code.extend_from_slice(&2i16.to_le_bytes());
+        code.push(OpCode::ERROR_PROPAGATE as u8);
+        code.push(0u8);
+
+        let vm = vm_with(code);
+        let mut task = AutoTask::new(1, 256, 0);
+        vm.run_one_instruction(&mut task).unwrap(); // PUSH_HANDLER
+        task.ram.push_nv(auto_val::encode_null());
+        let step = vm.run_one_instruction(&mut task).unwrap();
+        assert!(
+            matches!(step, StepResult::Terminated),
+            "null propagation in main frame terminates, got {:?}",
+            step
+        );
+        assert_eq!(task.handler_stack.len(), 1, "handler untouched by null path");
+    }
+
+    /// Result.Ok 解包继续执行——不进 catch、handler 保持。
+    #[test]
+    fn test_error_propagate_ok_unwraps_no_interception() {
+        let mut code = Vec::new();
+        code.push(OpCode::PUSH_HANDLER as u8);
+        code.extend_from_slice(&2i16.to_le_bytes());
+        code.push(OpCode::ERROR_PROPAGATE as u8);
+        code.push(0u8);
+
+        let vm = vm_with(code);
+        let mut task = AutoTask::new(1, 256, 0);
+        vm.run_one_instruction(&mut task).unwrap(); // PUSH_HANDLER
+        push_result_instance(&vm, &mut task, "Result.Ok", auto_val::Value::Int(42));
+        vm.run_one_instruction(&mut task).unwrap(); // ERROR_PROPAGATE → unwrap
+        assert_eq!(task.ram.pop_i32(), 42);
+        assert_eq!(task.handler_stack.len(), 1, "handler untouched by Ok path");
     }
 }
