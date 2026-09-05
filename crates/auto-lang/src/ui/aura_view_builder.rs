@@ -8728,19 +8728,28 @@ let tabs_inner = View::Row {
         }
     }
 
-    /// scene prop(`scene: .strokes` → Expr::Ident("strokes"))→ 读
-    /// `<name>_pts` / `<name>_meta` 双表并解析。非 Ident 形态(字面量等)
-    /// → None(空画布)。
+    /// scene prop(`scene: .strokes`)→ 读 `<name>_pts` / `<name>_meta`
+    /// 双表并解析。`.field` 在 parser 层解析为 Dot(Ident("self"|"."),
+    /// field),legacy 裸名/点整体 Ident 兼收;其余形态 → None(空画布)。
     fn extract_canvas_scene(
         &self,
         props: &HashMap<String, AuraPropValue>,
         bindings: &Bindings,
     ) -> Option<crate::ui::view::CanvasScene> {
-        let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = props.get("scene")?
-        else {
-            return None;
+        let prefix = match props.get("scene")? {
+            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                name.trim_start_matches('.').to_string()
+            }
+            AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) => match obj.as_ref() {
+                crate::ast::Expr::Ident(base)
+                    if base.as_str() == "self" || base.as_str() == "." =>
+                {
+                    field.to_string()
+                }
+                _ => return None,
+            },
+            _ => return None,
         };
-        let prefix = name.trim_start_matches('.');
         let pts = self
             .read_state_as_vec(&format!("{prefix}_pts"))
             .ok()?;

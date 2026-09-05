@@ -644,6 +644,9 @@ pub struct VueGenerator {
     /// Composables from `use { composable: ... }` to call once at
     /// `<script setup>` top level: (local const name, callee name).
     ext_composables: Vec<(String, String, String)>,
+    /// Plan 563: canvas 元素登记(node_to_html 模板臂收集,generate_script
+    /// 消费——redraw/pen 包装/全局监听/resize 重绘)。
+    canvas_specs: Vec<CanvasSpec>,
     /// Plan 408 P12 §10.4: composable ref 字段标注——`use { composable: useX(refs: [a, b]) }`
     /// → key = local name（"x"），value = 标注为 ref 的字段名集合。script 表达式
     /// 访问这些字段时加 `.value`（composable 返回普通对象时 ref 不自动 unwrap）。
@@ -746,9 +749,31 @@ struct CodeBlockData {
     lang: String,
 }
 
+/// Plan 563: canvas 元素登记(模板臂收集,script 臂消费)——一个 canvas
+/// 元素 = 一条 spec:模板出 `<canvas ref>`,script 出 redraw(watch deep
+/// + onMounted 初绘)、pen 三包装函数(mousedown 内联;document
+/// mousemove/mouseup 经 global_listeners 挂载——出界即收笔与 iced
+/// PenArea 同语义)、window resize 重绘。
+#[derive(Debug, Clone)]
+struct CanvasSpec {
+    /// 模板 ref 名(__canvas_ref_N,进 template_refs)。
+    ref_name: String,
+    /// scene 状态前缀(strokes → strokes_pts/strokes_meta 两 ref)。
+    prefix: String,
+    /// coords "WxH" 逻辑幅面(None = raw px)。
+    extent: Option<(f32, f32)>,
+    /// 背景色(CSS 串;None = 透明,eraser 笔画取白)。
+    clear: Option<String>,
+    /// onpenstart/onpenmove/onpenend 的 handler 函数名(裸名,包装函数
+    /// 里以 (x, y) 逻辑坐标实参调用;None = 该事件未声明)。
+    on_start: Option<String>,
+    on_move: Option<String>,
+    on_end: Option<String>,
+}
+
 /// Result of evaluating a style/class `if`-branch body.
 /// `Leaf(s)` is a plain string literal → emitted as `'s'`.
-/// `Nested(t)` is an inner `if` expression → emitted as `(t)` (a ternary).
+/// `Nested(t)` is an inner if expression → emitted as `(t)` (a ternary).
 /// (DF-1: nested if in style binding was previously flattened to empty string.)
 enum StyleBranch {
     Leaf(String),
@@ -831,6 +856,7 @@ impl VueGenerator {
             component_ref_names: HashSet::new(),
             scroll_auto_scroll: Vec::new(),
             pending_scroll_sentinel: None,
+            canvas_specs: Vec::new(),
             ext_components: HashMap::new(),
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
@@ -1180,6 +1206,7 @@ impl VueGenerator {
         self.needs_vm_only_helper = false;
         self.global_listeners.clear();
         self.template_refs.clear();
+        self.canvas_specs.clear();
         self.ext_components.clear();
         self.ext_import_lines.clear();
         self.ext_composables.clear();
@@ -2521,6 +2548,23 @@ impl VueGenerator {
                 imports.push("nextTick");
             }
         }
+        // Plan 563: canvas specs need watch + nextTick + onMounted for the
+        // redraw effect (deep watch on the stroke tables); document-level
+        // move/up listeners bring onUnmounted along (global listener pair).
+        if !self.canvas_specs.is_empty() {
+            if !imports.contains(&"watch") {
+                imports.push("watch");
+            }
+            if !imports.contains(&"nextTick") {
+                imports.push("nextTick");
+            }
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+            if !imports.contains(&"onUnmounted") {
+                imports.push("onUnmounted");
+            }
+        }
         // Plan 051 C7: timer 块需要 onMounted + onUnmounted（发射点晚于
         // import 语句生成，须在此声明需求）。
         if !widget.timers.is_empty() {
@@ -3003,12 +3047,30 @@ impl VueGenerator {
         for ref_name in &self.template_refs {
             if self.component_ref_names.contains(ref_name) {
                 script.push_str(&format!("const {} = ref<any>(null)\n", ref_name));
+            } else if ref_name.starts_with("__canvas_ref_") {
+                // Plan 563: canvas ref 按真元素类型声明(width/height 属性
+                // 在 HTMLElement 上不存在,vue-tsc 门禁)。
+                script.push_str(&format!(
+                    "const {} = ref<HTMLCanvasElement | null>(null)\n",
+                    ref_name
+                ));
             } else {
                 script.push_str(&format!("const {} = ref<HTMLElement | null>(null)\n", ref_name));
             }
         }
         if !self.template_refs.is_empty() {
             script.push('\n');
+        }
+
+        // Plan 563: canvas —— redraw + pen 包装 + watch deep(T1b 复用
+        // 先例)。clone 后逐块生成(canvas_script_block 内 push
+        // global_listeners,与 self.canvas_specs 迭代解耦)。
+        if !self.canvas_specs.is_empty() {
+            let specs = self.canvas_specs.clone();
+            for (i, spec) in specs.iter().enumerate() {
+                script.push_str(&self.canvas_script_block(i, spec));
+                script.push('\n');
+            }
         }
 
         // Dark mode: detect system preference on mount (only for isDark pattern)
@@ -4644,6 +4706,288 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         style
     }
 
+    /// Plan 563: canvas 元素 → `<canvas ref>`(状态驱动画布,vue 原生 2D
+    /// context;与 iced canvas::Program 双端独立实现,共享场景数据契约)。
+    /// 模板臂只出 ref + class 并登记 canvas_specs;redraw(watch deep +
+    /// onMounted 初绘 + resize 重绘)与 pen 三包装(mousedown 内联;
+    /// document mousemove/mouseup 挂载——出界即收笔,T1d 双端统一语义)
+    /// 在 generate_script 消费时生成。
+    fn generate_canvas_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        // scene 前缀(scene: .strokes → "strokes")。`.field` 在 parser 层
+        // 解析为 Dot(Ident("self"|"."), field),legacy 裸名/点整体 Ident
+        // 兼收;其余形态退化空画布。
+        let prefix = match props.get("scene") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
+                name.trim_start_matches('.').to_string()
+            }
+            Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
+                match obj.as_ref() {
+                    crate::ast::Expr::Ident(base)
+                        if base.as_str() == "self" || base.as_str() == "." =>
+                    {
+                        field.to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            _ => {
+                self.warn(
+                    "R561",
+                    crate::ui_gen::validators::Severity::Warning,
+                    "canvas scene prop 应绑定状态前缀(scene: .strokes → \
+                     strokes_pts/strokes_meta 双表);当前形态退化为空画布"
+                        .to_string(),
+                );
+                String::new()
+            }
+        };
+        let extent = props
+            .get("coords")
+            .and_then(|v| self.extract_string_value(v))
+            .and_then(|s| {
+                let s = s.trim();
+                let (w, h) = s.split_once(['x', 'X'])?;
+                let w: f32 = w.trim().parse().ok()?;
+                let h: f32 = h.trim().parse().ok()?;
+                (w > 0.0 && h > 0.0).then_some((w, h))
+            });
+        let clear = props
+            .get("clear")
+            .and_then(|v| self.extract_string_value(v))
+            .map(|s| s.to_string());
+        let handler_name = |key: &str| {
+            events
+                .get(key)
+                .map(|e| self.handler_to_function_call(&e.handler))
+        };
+        let on_start = handler_name("onpenstart");
+        let on_move = handler_name("onpenmove");
+        let on_end = handler_name("onpenend");
+        let idx = self.canvas_specs.len();
+        let ref_name = format!("__canvas_ref_{idx}");
+        self.template_refs.push(ref_name.clone());
+        let has_start = on_start.is_some();
+        self.canvas_specs.push(CanvasSpec {
+            ref_name: ref_name.clone(),
+            prefix,
+            extent,
+            clear,
+            on_start,
+            on_move,
+            on_end,
+        });
+        let (class_str, _, _) = self.extract_classes("canvas", props);
+        let class_attr = if class_str.is_empty() {
+            String::new()
+        } else {
+            format!(" class=\"{class_str}\"")
+        };
+        // 起笔走元素内联 mousedown(走笔/收笔在 script 臂挂 document 级)。
+        let down_attr = if has_start {
+            format!(" @mousedown=\"__canvasDown_{idx}\"")
+        } else {
+            String::new()
+        };
+        Ok(format!(
+            "{ind}<canvas ref=\"{ref_name}\"{class_attr}{down_attr}></canvas>\n"
+        ))
+    }
+
+    /// Plan 563: canvas script 块 —— redraw(场景双表 → 2D 绘制,场景
+    /// 数据契约的 vue 侧独立映射:逻辑→px extent 缩放/round 线帽拐角/
+    /// 单点=直径线宽圆点/eraser=clear 色缺省白——与 iced CanvasPainter
+    /// 同规约不共享代码)+ pen 三包装(mousedown 起笔;document
+    /// mousemove buttons&1 门控 + 33ms 时间闸 + 出界即收笔;document
+    /// mouseup 收笔——与 iced PenArea 同语义)+ watch deep + onMounted/
+    /// resize 初绘重绘。
+    fn canvas_script_block(&mut self, i: usize, spec: &CanvasSpec) -> String {
+        let refn = &spec.ref_name;
+        let prefix = &spec.prefix;
+        let mut s = String::new();
+
+        // ---- redraw:场景契约 → 2D(状态 ref 引用为 <prefix>_pts/_meta)。
+        let pts_ref = format!("{prefix}_pts");
+        let meta_ref = format!("{prefix}_meta");
+        let scale_decl = match spec.extent {
+            Some((w, h)) => format!("  const sx = r.width / {w}, sy = r.height / {h}\n"),
+            None => "  const sx = 1, sy = 1\n".to_string(),
+        };
+        let clear_fill = match &spec.clear {
+            Some(c) => format!("  ctx.fillStyle = '{c}'\n  ctx.fillRect(0, 0, r.width, r.height)\n"),
+            None => String::new(),
+        };
+        let eraser_color = spec.clear.clone().unwrap_or_else(|| "#ffffff".to_string());
+        s.push_str(&format!(
+"function __canvasRedraw_{i}() {{
+  const el = {refn}.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+  const bw = Math.max(1, Math.round(r.width * dpr)), bh = Math.max(1, Math.round(r.height * dpr))
+  if (el.width !== bw) el.width = bw
+  if (el.height !== bh) el.height = bh
+  const ctx = el.getContext('2d')
+  if (!ctx) return
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, r.width, r.height)
+{clear_fill}{scale_decl}  const pts = {pts_ref}.value, metas = {meta_ref}.value
+  for (let k = 0; k < pts.length; k++) {{
+    const parts = String(pts[k]).split('|')
+    if (!parts[0]) continue
+    const m = String(metas[k] || '').split(',')
+    const color = m[0] || '#111827'
+    const lw = parseFloat(m[1]) || 3
+    const er = m[2] === '1'
+    ctx.strokeStyle = er ? '{eraser_color}' : color
+    ctx.fillStyle = ctx.strokeStyle
+    ctx.lineWidth = lw
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    if (parts.length === 1) {{
+      const c = parts[0].split(',')
+      ctx.beginPath()
+      ctx.arc(parseFloat(c[0]) * sx, parseFloat(c[1]) * sy, lw / 2, 0, Math.PI * 2)
+      ctx.fill()
+      continue
+    }}
+    ctx.beginPath()
+    for (let j = 0; j < parts.length; j++) {{
+      const p = parts[j].split(',')
+      const px = parseFloat(p[0]) * sx, py = parseFloat(p[1]) * sy
+      if (j === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }}
+    ctx.stroke()
+  }}
+}}
+"
+        ));
+
+        // ---- pen 三包装(仅在有任一事件时生成)。
+        if spec.on_start.is_some() || spec.on_move.is_some() || spec.on_end.is_some() {
+            let to_logical = match spec.extent {
+                Some((w, h)) => format!(
+                    "const x = (e.clientX - r.left) / r.width * {w}, y = (e.clientY - r.top) / r.height * {h}"
+                ),
+                None => "const x = e.clientX - r.left, y = e.clientY - r.top".to_string(),
+            };
+            // 出界判定/clamp 需要 W/H 字面量(raw px 模式退化为 bounds 内恒真)。
+            let bounds_check = match spec.extent {
+                Some((w, h)) => format!(
+                    "if (x < 0 || y < 0 || x > {w} || y > {h}) return true\n  return false"
+                ),
+                None => "return false".to_string(),
+            };
+            let clamp_decl = match spec.extent {
+                Some((w, h)) => format!(
+                    "const cx = Math.min(Math.max(x, 0), {w}), cy = Math.min(Math.max(y, 0), {h})"
+                ),
+                None => "const cx = x, cy = y".to_string(),
+            };
+            let start_invoke = spec.on_start.as_ref().map(|h| format!("  {h}(x, y)\n")).unwrap_or_default();
+            let move_invoke = spec.on_move.as_ref().map(|h| format!("  {h}(x, y)\n")).unwrap_or_default();
+            let end_invoke_out = spec
+                .on_end
+                .as_ref()
+                .map(|h| format!("    {h}(cx, cy)\n"))
+                .unwrap_or_default();
+            let end_invoke_up = spec
+                .on_end
+                .as_ref()
+                .map(|h| format!("  {h}(cx, cy)\n"))
+                .unwrap_or_default();
+            s.push_str(&format!(
+"let __canvas_down_{i} = false
+let __canvas_last_{i} = 0
+function __canvasDown_{i}(e: MouseEvent) {{
+  const el = {refn}.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  {to_logical}
+  __canvas_down_{i} = true
+  __canvas_last_{i} = 0
+{start_invoke}}}
+function __canvasIsOut_{i}(e: MouseEvent, r: DOMRect): boolean {{
+  {to_logical}
+  {bounds_check}
+}}
+function __canvasMove_{i}(e: MouseEvent) {{
+  if (!__canvas_down_{i}) return
+  if (!(e.buttons & 1)) {{ __canvas_down_{i} = false; return }}
+  const el = {refn}.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  if (__canvasIsOut_{i}(e, r)) {{
+    // 出界即收笔(T1d 双端统一语义;坐标 clamp 到值域边界)。
+    __canvas_down_{i} = false
+    {to_logical}
+    {clamp_decl}
+{end_invoke_out}    return
+  }}
+  const now = performance.now()
+  if (now - __canvas_last_{i} < 33) return
+  __canvas_last_{i} = now
+  {to_logical}
+{move_invoke}}}
+function __canvasUp_{i}(e: MouseEvent) {{
+  if (!__canvas_down_{i}) return
+  __canvas_down_{i} = false
+  const el = {refn}.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  {to_logical}
+  {clamp_decl}
+{end_invoke_up}}}
+"
+            ));
+            // document 级 move/up(移出画布仍收事件)+ resize 重绘。
+            if spec.on_move.is_some() || spec.on_end.is_some() {
+                if spec.on_move.is_some() {
+                    self.global_listeners.push(GlobalListener {
+                        target: "document".to_string(),
+                        event: "mousemove".to_string(),
+                        listener: format!("__canvasMove_{i}"),
+                        capture: false,
+                        passive: None,
+                        wrapper: None,
+                    });
+                }
+                if spec.on_end.is_some() {
+                    self.global_listeners.push(GlobalListener {
+                        target: "document".to_string(),
+                        event: "mouseup".to_string(),
+                        listener: format!("__canvasUp_{i}"),
+                        capture: false,
+                        passive: None,
+                        wrapper: None,
+                    });
+                }
+            }
+            self.global_listeners.push(GlobalListener {
+                target: "window".to_string(),
+                event: "resize".to_string(),
+                listener: format!("__canvasRedraw_{i}"),
+                capture: false,
+                passive: None,
+                wrapper: None,
+            });
+        }
+
+        // ---- 状态驱动重绘:watch deep(T1b 复用先例)+ onMounted 初绘。
+        s.push_str(&format!(
+"watch([{pts_ref}, {meta_ref}], () => {{ nextTick(__canvasRedraw_{i}) }}, {{ deep: true }})
+onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
+"
+        ));
+        s
+    }
+
     /// Dynamic component: `dyn (.item.icon) { size: 16, class: "..." }` →
     /// `<component :is="item.icon" :size="16" class="..." />`.
     ///
@@ -5245,6 +5589,12 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // <component :is="item.icon" :size="16" class="..." />
                 if tag == "dyn" {
                     return self.generate_dyn_component_html(props, events, children, indent);
+                }
+
+                // Plan 563: canvas 元素 —— 状态驱动画布(原生 <canvas> 2D;
+                // 场景契约双表渲染,redraw/pen 包装由 script 臂消费生成)。
+                if tag == "canvas" {
+                    return self.generate_canvas_html(props, events, indent);
                 }
 
                 // Plan 451 P2: `menubar {}` / `toolbar {}` placeholder tags.
@@ -19538,8 +19888,56 @@ widget NavDemo {
 {sfc}");
     }
 
+    /// Plan 563 T6: canvas 元素生成 —— `<canvas ref>` + pen 三包装
+    /// (mousedown 内联 + document mousemove/mouseup)+ redraw(watch
+    /// deep + onMounted)+ 坐标换算(coords 逻辑幅面)。
+    #[test]
+    fn plan563_canvas_element_sfc() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget Sketch {
+    msg { PenStart(float, float), PenMove(float, float), PenEnd(float, float) }
+    model {
+        var strokes_pts = ["10,20|30,40"]
+        var strokes_meta = ["#111827,3,0"]
+    }
+    on {
+        .PenStart(x, y) -> { }
+        .PenMove(x, y) -> { }
+        .PenEnd(x, y) -> { }
+    }
+    view {
+        canvas (scene: .strokes, coords: "400x300", clear: "#ffffff", onpenstart: .PenStart, onpenmove: .PenMove, onpenend: .PenEnd) {
+            style: "w-[400px] h-[300px] border"
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("<canvas ref=\"__canvas_ref_0\""), "<canvas ref> 模板:\n{sfc}");
+        assert!(sfc.contains("@mousedown=\"__canvasDown_0\""), "mousedown 内联起笔:\n{sfc}");
+        assert!(sfc.contains("function __canvasRedraw_0()"), "redraw 函数:\n{sfc}");
+        assert!(sfc.contains("strokes_pts.value"), "redraw 读 pts 双表:\n{sfc}");
+        assert!(sfc.contains("/ r.width * 400"), "coords 逻辑换算(400x300):\n{sfc}");
+        assert!(sfc.contains("ctx.lineCap = 'round'"), "round 线帽规约:\n{sfc}");
+        assert!(sfc.contains("__canvasIsOut_0"), "出界即收笔检查:\n{sfc}");
+        assert!(sfc.contains("e.buttons & 1"), "buttons&1 按下门控:\n{sfc}");
+        assert!(
+            sfc.contains("document.addEventListener('mousemove', __canvasMove_0)"),
+            "document mousemove 挂载:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("document.addEventListener('mouseup', __canvasUp_0)"),
+            "document mouseup 挂载:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("watch([strokes_pts, strokes_meta],"),
+            "watch deep 双表(T1b 先例):\n{sfc}"
+        );
+        assert!(sfc.contains("PenStart(x, y)"), "penstart 坐标实参调用:\n{sfc}");
+        assert!(sfc.contains("ref<HTMLCanvasElement | null>"), "canvas ref 真类型:\n{sfc}");
+    }
+
     /// Plan 482: 非 shadcn 模式（os-config 形态）—— 内联契约标记 + active
-    /// 三元 + emoji icon + desc 双行 + 折叠组绑定 open/ontoggle。
+    /// 三元 + emoji icon + desc 行 + 折叠组绑定 open/ontoggle。
     #[test]
     fn test_nav_family_inline_sfc() {
         let sfc = gen_sfc_from_widget_src(r##"
