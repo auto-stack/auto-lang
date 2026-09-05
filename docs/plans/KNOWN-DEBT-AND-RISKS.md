@@ -65,6 +65,7 @@
 | 525-3 | 生成器 yield 与 `??` NullCoalesce 延后 | 生成器:W0 盘点 lib 用量=0,按待澄清③裁定延后(宿主 Plan 321 在位);`??` 已入 Pratt 表但无语料面(未实现码 gen)。May 最小面(?T/Some/None/is 臂)已交付(g34)。 | `auto/lib/codegen.at`(?? 臂缺);宿主 `vm/codegen.rs` | 后续波次按需领取。**531 实测注记(2026-09-03)**:主 a2r 已支持 `??`→`unwrap_or`;原生 VM codegen 无臂(`auto run` 静默空输出——比报错更隐蔽,值得独立观察项)+自举 lib 三件(codegen.at/engine.at/a2r.at)全无臂;非便宜量级,Plan 531 显式维持延后。 |
 | ~~525-4~~ ✅ 已清偿(2026-09-03,Plan 531) | 宿主 May 裸值 return 发射不编译——?T fn 内裸标量 return 包裹 Some(...)(主 a2r return 位+AA2R ar_return 镜像[Ar 增 cur_ret];仅裸标量形,Some/Ok/None/Unknown 不动);g34 补裸值语料 find_bare 臂(金样 30/none/30/none)。原描述: | `fn f() ?int { return n*10 }`(无 Some 包裹)主 a2r 发 `return n * 10;` 于 Option<T> fn——rustc E0308。525 语料取显式 Some 构造规避(g34);宿主发射修复(裸值自动包 Some)待后续。 | `crates/auto-lang/src/trans/rust.rs` | 语料已规避;宿主修复后可补裸值语料 |
 | 525-5 | ⑤腿塔顶程序 rc=1 快死(P517-1 族再现,W2-W5 折叠点) | 折叠②起矩阵两次+手动塔顶均 rc=1 快速返回无输出(P517-1 文档形态一致);lib 增长至 ~879KB 后贴线加剧。折叠①时点矩阵 46/46(10m4.6s)健康;各折叠点四路全绿+语料腿全绿为替代证据链(517 折叠①先例)。恢复后终局复跑一次成功(13m56s 全程无 error,W1 基线 10m4.6s 的 +39%,健康带);紧接确认性复跑又快死——**间歇性**实锤。 | `parity/crates/auto-parity/src/aavm.rs`(build_aa2r_bin);环境负载 | 维持 P517-1 观察项;复现则独立分诊(非 525 改动引入——语料腿/四路全绿) |
+| 561 | 工具链风险（schema 生成器非确定性） | schema/aura.at 生成器（`SCHEMA_DRIFT_GENERATE_AT=1`）对 committed 文件有既存格式漂移（master 空跑 +151/−195，411→416 元素）且逐次输出非确定（同代码两次 188721/188921 bytes，NavDestination/Swiper 规范化名随表迭代序随机）——全量重生成会裹挟无关 churn 并诱发 queue_coverage 假红；561 复审修复被迫改走定向别名路线。根治=生成器键序稳定化 + committed 文件与生成输出格式对齐（专项候选）。 | `crates/auto-lang/tests/schema_drift.rs:1822` 生成器臂；Plan 561 复审修复轮记录 |
 ## 🟢 已知限制（设计决策，非 bug）
 
 | 526 | 视觉 | window_thumbnail 快照懒捕获前显示空（fallback icon 兜底；命中预抓已在 summon 链）| 526 T18 记录（KNOWN-DEBT 候选） |
@@ -1422,11 +1423,14 @@
   rotation/filter 几何状态传给 ImageSurface；不再在渲染路径读文件或解码。
 - **P547-D5 已修复**：VM ticket handle 表改为 256 项有界队列，session close/eviction
   释放引用；queue/scan 走异步媒体 worker，不在 handler 线程同步读文件。
-- **P547-D6 已修复**：Rust CLI 增加显式 `--merged` 选择并不再透传 Cargo；release
-  harness 使用隔离 workspace，报告 `passed: true` 且 cold start 349.584ms。
-- **P547-D7 已修复**：Vue 标准 runner 14 动作通过，保存 initial/open-file/controls/
-  directory-ready；VM MCP 首帧与 OpenFile/ZoomIn 交互通过，保存 `vm-initial`/
-  `vm-open-file-controls`，均位于 canonical ignored screenshot 目录。
+- **P547-D6 已修复**：Rust CLI 增加显式 `--merged` 选择并不再透传 Cargo；精确
+  `auto run -r rust --server rust --merged` 在独立 MCP 端口完成生成、编译和启动；
+  release harness 使用隔离 workspace，报告 `passed: true` 且 cold start 349.584ms。
+- **P547-D7 已修复（功能证据）**：Vue 标准 runner 14 动作通过，保存
+  initial/open-file/controls/directory-ready；VM MCP 首帧与 OpenFile/ZoomIn 交互通过，
+  保存 `vm-initial`/`vm-open-file-controls`，均位于 canonical ignored screenshot 目录；
+  Rust merged MCP snapshot/OpenFile/ZoomIn 交互也通过。当前无窗口沙箱下 Rust Iced
+  screenshot 请求不返回像素文件，未用 VM 截图冒充 Rust 截图，留待有窗口环境补采。
 - **P547-D8 保留为基线说明**：本批未修改既有 alert-dialog/dropdown schema drift 或
   `cb_os_error_file` 外部程序依赖；它们仍应由既有计划/测试环境治理处理。
 

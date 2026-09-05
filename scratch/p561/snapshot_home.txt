@@ -1,0 +1,1393 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  container #vnode_12642422519345821663 {
+    row #vnode_4305065243889594349 {
+      row #vnode_4321691031005245367 {
+        text #vnode_15876414090542715893 "[Image]"
+        text #vnode_15876396498356671042 "Auto UI"
+      }
+      row #vnode_4321673438819200516 {
+        button #vnode_15861108888683884748 "Docs" {
+          text #vnode_13401981148859722404 "Docs"
+        }
+        button #vnode_15861126480869929599 "Widgets" {
+          text #vnode_13417286350718553549 "Widgets"
+        }
+      }
+      row #vnode_4321726215377335069 {
+        button #vnode_15907024494260378183 "search"
+        button #vnode_15907006902074333332 "palette"
+      }
+    }
+  }
+  row #vnode_12642404927159776812 {
+    col #vnode_4289760042030763204 {
+      scrollable #vnode_12781790891868631308 {
+        col #vnode_15900409796501198692 {
+          text #vnode_8766178259980025580 "Overview"
+          button #vnode_8766195852166070431 "Home" {
+            row #vnode_9233488399530102317 {
+              text #vnode_11958449586866722423 "[Image]"
+              col #vnode_11958431994680677572 {
+                text #vnode_13288206263992043788 "Home"
+              }
+            }
+          }
+          text #vnode_8766213444352115282 "Layout"
+          button #vnode_8766231036538160133 "Row" {
+            row #vnode_9264098803247764607 {
+              text #vnode_13484993938849502157 "[Image]"
+              col #vnode_13484976346663457306 {
+                text #vnode_13240214852075078190 "Row"
+              }
+            }
+          }
+          button #vnode_8766107891235846176 "Column" {
+            row #vnode_9156962390235946592 {
+              text #vnode_17365460743764548896 "[Image]"
+              col #vnode_17365478335950593747 {
+                text #vnode_13438795197502120073 "Column"
+              }
+            }
+          }
+          button #vnode_8766125483421891027 "Center" {
+            row #vnode_9172267592094777737 {
+              text #vnode_8905360882901162955 "[Image]"
+              col #vnode_8905343290715118104 {
+                text #vnode_13384189087825974984 "Center"
+              }
+            }
+          }
+          button #vnode_8766143075607935878 "Flex" {
+            row #vnode_9187572793953608882 {
+              text #vnode_445261022037777014 "[Image]"
+              col #vnode_445278614223821865 {
+                text #vnode_13390803785585154475 "Flex"
+              }
+            }
+          }
+          button #vnode_8766160667793980729 "Alignment" {
+            row #vnode_9202877995812440027 {
+              text #vnode_10431905234883942689 "[Image]"
+              col #vnode_10431887642697897838 {
+                text #vnode_13336197675909009386 "Alignment"
+              }
+            }
+          }
+          button #vnode_8766318997468384388 "Absolute" {
+            row #vnode_9340624812541920332 {
+              text #vnode_8077982781951675684 "[Image]"
+              col #vnode_8078000374137720535 {
+                text #vnode_13150846726000326485 "Absolute"
+              }
+            }
+          }
+          button #vnode_8766336589654429239 "Spacing" {
+            row #vnode_9355930014400751477 {
+              text #vnode_18064626994797841359 "[Image]"
+              col #vnode_18064609402611796508 {
+                text #vnode_13096240616324181396 "Spacing"
+              }
+            }
+          }
+          button #vnode_8766354181840474090 "Sizing" {
+            row #vnode_9371235216259582622 {
+              text #vnode_9604527133934455418 "[Image]"
+              col #vnode_9604544726120500269 {
+                text #vnode_13102855314083360887 "Sizing"
+              }
+            }
+          }
+          button #vnode_8766371774026518941 "Scroll" {
+            row #vnode_9386540418118413767 {
+              text #vnode_1144427273071069477 "[Image]"
+              col #vnode_1144409680885024626 {
+                text #vnode_13048249204407215798 "Scroll"
+              }
+            }
+          }
+          button #vnode_8766248628724204984 "Position" {
+            row #vnode_9279404005106595752 {
+              text #vnode_5024894077986116216 "[Image]"
+              col #vnode_5024911670172161067 {
+                text #vnode_13246829549834257681 "Position"
+              }
+            }
+          }
+          button #vnode_8766266220910249835 "Responsive" {
+            row #vnode_9294709206965426897 {
+              text #vnode_15011538290832281891 "[Image]"
+              col #vnode_15011520698646237040 {
+                text #vnode_13192223440158112592 "Responsive"
+              }
+            }
+          }
+          button #vnode_8766283813096294686 "Grid" {
+            row #vnode_9310014408824258042 {
+              text #vnode_6551438429968895950 "[Image]"
+              col #vnode_6551456022154940801 {
+                text #vnode_13198838137917292083 "Grid"
+              }
+            }
+          }
+          button #vnode_8766301405282339537 "GridSpan" {
+            row #vnode_9325319610683089187 {
+              text #vnode_16538082642815061625 "[Image]"
+              col #vnode_16538065050629016774 {
+                text #vnode_13144232028241146994 "GridSpan"
+              }
+            }
+          }
+          text #vnode_8766459734956743196 "Form"
+          button #vnode_8766477327142788047 "Button" {
+            row #vnode_9478371629271400637 {
+              text #vnode_5724060329019408679 "[Image]"
+              col #vnode_5724042736833363828 {
+                text #vnode_12904274968656319004 "Button"
+              }
+            }
+          }
+          button #vnode_8766494919328832898 "Calendar" {
+            row #vnode_9493676831130231782 {
+              text #vnode_15710704541865574354 "[Image]"
+              col #vnode_15710722134051619205 {
+                text #vnode_12910889666415498495 "Calendar"
+              }
+            }
+          }
+          button #vnode_8766512511514877749 "Checkbox" {
+            row #vnode_9508982032989062927 {
+              text #vnode_7250604681002188413 "[Image]"
+              col #vnode_7250587088816143562 {
+                text #vnode_12856283556739353406 "Checkbox"
+              }
+            }
+          }
+          button #vnode_8766389366212563792 "CodeEditor" {
+            row #vnode_9401845619977244912 {
+              text #vnode_11131071485917235152 "[Image]"
+              col #vnode_11131089078103280003 {
+                text #vnode_13054863902166395289 "CodeEditor"
+              }
+            }
+          }
+          button #vnode_8766406958398608643 "Combobox" {
+            row #vnode_9417150821836076057 {
+              text #vnode_2670971625053849211 "[Image]"
+              col #vnode_2670954032867804360 {
+                text #vnode_13000257792490250200 "Combobox"
+              }
+            }
+          }
+          button #vnode_8766424550584653494 "DatePicker" {
+            row #vnode_9432456023694907202 {
+              text #vnode_12657615837900014886 "[Image]"
+              col #vnode_12657633430086059737 {
+                text #vnode_13006872490249429691 "DatePicker"
+              }
+            }
+          }
+          button #vnode_8766442142770698345 "Form" {
+            row #vnode_9447761225553738347 {
+              text #vnode_4197515977036628945 "[Image]"
+              col #vnode_4197498384850584094 {
+                text #vnode_12952266380573284602 "Form"
+              }
+            }
+          }
+          button #vnode_8766600472445102004 "Input" {
+            row #vnode_9585508042283218652 {
+              text #vnode_1843593524104361940 "[Image]"
+              col #vnode_1843611116290406791 {
+                text #vnode_12766915430664601701 "Input"
+              }
+            }
+          }
+          button #vnode_8766618064631146855 "Label" {
+            row #vnode_9600813244142049797 {
+              text #vnode_11830237736950527615 "[Image]"
+              col #vnode_11830220144764482764 {
+                text #vnode_12712309320988456612 "Label"
+              }
+            }
+          }
+          button #vnode_8766635656817191706 "RadioGroup" {
+            row #vnode_9616118446000880942 {
+              text #vnode_3370137876087141674 "[Image]"
+              col #vnode_3370155468273186525 {
+                text #vnode_12718924018747636103 "RadioGroup"
+              }
+            }
+          }
+          button #vnode_8766653249003236557 "Select" {
+            row #vnode_9631423647859712087 {
+              text #vnode_13356782088933307349 "[Image]"
+              col #vnode_13356764496747262498 {
+                text #vnode_12664317909071491014 "Select"
+              }
+            }
+          }
+          button #vnode_8766530103700922600 "Slider" {
+            row #vnode_9524287234847894072 {
+              text #vnode_17237248893848354088 "[Image]"
+              col #vnode_17237266486034398939 {
+                text #vnode_12862898254498532897 "Slider"
+              }
+            }
+          }
+          button #vnode_8766547695886967451 "Switch" {
+            row #vnode_9539592436706725217 {
+              text #vnode_8777149032984968147 "[Image]"
+              col #vnode_8777131440798923296 {
+                text #vnode_12808292144822387808 "Switch"
+              }
+            }
+          }
+          button #vnode_8766565288073012302 "Textarea" {
+            row #vnode_9554897638565556362 {
+              text #vnode_317049172121582206 "[Image]"
+              col #vnode_317066764307627057 {
+                text #vnode_12814906842581567299 "Textarea"
+              }
+            }
+          }
+          button #vnode_8766582880259057153 "Toggle" {
+            row #vnode_9570202840424387507 {
+              text #vnode_10303693384967747881 "[Image]"
+              col #vnode_10303675792781703030 {
+                text #vnode_12760300732905422210 "Toggle"
+              }
+            }
+          }
+          button #vnode_8765615310026590348 "ToggleGroup" {
+            row #vnode_8728416738188674532 {
+              text #vnode_14440583889715184236 "[Image]"
+              col #vnode_14440601481901229087 {
+                text #vnode_14110674964339638445 "ToggleGroup"
+              }
+            }
+          }
+          text #vnode_8765632902212635199 "Charts"
+          button #vnode_8765650494398680050 "LineChart" {
+            row #vnode_8759027141906336822 {
+              text #vnode_15967128241697963970 "[Image]"
+              col #vnode_15967145833884008821 {
+                text #vnode_14062683552422672847 "LineChart"
+              }
+            }
+          }
+          button #vnode_8765668086584724901 "BarChart" {
+            row #vnode_8774332343765167967 {
+              text #vnode_7507028380834578029 "[Image]"
+              col #vnode_7507010788648533178 {
+                text #vnode_14008077442746527758 "BarChart"
+              }
+            }
+          }
+          button #vnode_8765544941282410944 "AreaChart" {
+            row #vnode_8667195930753349952 {
+              text #vnode_11387495185749624768 "[Image]"
+              col #vnode_11387512777935669619 {
+                text #vnode_14206657788173569641 "AreaChart"
+              }
+            }
+          }
+          button #vnode_8765562533468455795 "DonutChart" {
+            row #vnode_8682501132612181097 {
+              text #vnode_2927395324886238827 "[Image]"
+              col #vnode_2927377732700193976 {
+                text #vnode_14152051678497424552 "DonutChart"
+              }
+            }
+          }
+          text #vnode_8765580125654500646 "Diagrams"
+          button #vnode_8765597717840545497 "FlowDiagram" {
+            row #vnode_8713111536329843387 {
+              text #vnode_4453939676869018561 "[Image]"
+              col #vnode_4453922084682973710 {
+                text #vnode_14104060266580458954 "FlowDiagram"
+              }
+            }
+          }
+          text #vnode_8765756047514949156 "Display"
+          button #vnode_8765773639700994007 "AspectRatio" {
+            row #vnode_8866163554918154837 {
+              text #vnode_12086661436782917231 "[Image]"
+              col #vnode_12086643844596872380 {
+                text #vnode_13864103206995630964 "AspectRatio"
+              }
+            }
+          }
+          button #vnode_8765791231887038858 "Avatar" {
+            row #vnode_8881468756776985982 {
+              text #vnode_3626561575919531290 "[Image]"
+              col #vnode_3626579168105576141 {
+                text #vnode_13870717904754810455 "Avatar"
+              }
+            }
+          }
+          button #vnode_8765808824073083709 "Badge" {
+            row #vnode_8896773958635817127 {
+              text #vnode_13613205788765696965 "[Image]"
+              col #vnode_13613188196579652114 {
+                text #vnode_13816111795078665366 "Badge"
+              }
+            }
+          }
+          button #vnode_8765685678770769752 "Card" {
+            row #vnode_8789637545623999112 {
+              text #vnode_17493672593680743704 "[Image]"
+              col #vnode_17493690185866788555 {
+                text #vnode_14014692140505707249 "Card"
+              }
+            }
+          }
+          button #vnode_8765703270956814603 "Carousel" {
+            row #vnode_8804942747482830257 {
+              text #vnode_9033572732817357763 "[Image]"
+              col #vnode_9033555140631312912 {
+                text #vnode_13960086030829562160 "Carousel"
+              }
+            }
+          }
+          button #vnode_8765720863142859454 "DataTable" {
+            row #vnode_8820247949341661402 {
+              text #vnode_573472871953971822 "[Image]"
+              col #vnode_573490464140016673 {
+                text #vnode_13966700728588741651 "DataTable"
+              }
+            }
+          }
+          button #vnode_8765738455328904305 "Skeleton" {
+            row #vnode_8835553151200492547 {
+              text #vnode_10560117084800137497 "[Image]"
+              col #vnode_10560099492614092646 {
+                text #vnode_13912094618912596562 "Skeleton"
+              }
+            }
+          }
+          button #vnode_8765896785003307964 "Table" {
+            row #vnode_8973299967929972852 {
+              text #vnode_8206194631867870492 "[Image]"
+              col #vnode_8206212224053915343 {
+                text #vnode_13726743669003913661 "Table"
+              }
+            }
+          }
+          text #vnode_8765914377189352815 "Feedback"
+          button #vnode_8765931969375397666 "Alert" {
+            row #vnode_9003910371647635142 {
+              text #vnode_9732738983850650226 "[Image]"
+              col #vnode_9732756576036695077 {
+                text #vnode_13678752257086948063 "Alert"
+              }
+            }
+          }
+          button #vnode_8765949561561442517 "Progress" {
+            row #vnode_9019215573506466287 {
+              text #vnode_1272639122987264285 "[Image]"
+              col #vnode_1272621530801219434 {
+                text #vnode_13624146147410802974 "Progress"
+              }
+            }
+          }
+          button #vnode_8765826416259128560 "Sonner" {
+            row #vnode_8912079160494648272 {
+              text #vnode_5153105927902311024 "[Image]"
+              col #vnode_5153123520088355875 {
+                text #vnode_13822726492837844857 "Sonner"
+              }
+            }
+          }
+          button #vnode_8765844008445173411 "Toast" {
+            row #vnode_8927384362353479417 {
+              text #vnode_15139750140748476699 "[Image]"
+              col #vnode_15139732548562431848 {
+                text #vnode_13768120383161699768 "Toast"
+              }
+            }
+          }
+          button #vnode_8765861600631218262 "Tooltip" {
+            row #vnode_8942689564212310562 {
+              text #vnode_6679650279885090758 "[Image]"
+              col #vnode_6679667872071135609 {
+                text #vnode_13774735080920879259 "Tooltip"
+              }
+            }
+          }
+          text #vnode_8765879192817263113 "Navigation"
+          button #vnode_8766037522491666772 "Breadcrumb" {
+            row #vnode_9095741582800622012 {
+              text #vnode_14312372039798989428 "[Image]"
+              col #vnode_14312389631985034279 {
+                text #vnode_13534778021336051269 "Breadcrumb"
+              }
+            }
+          }
+          button #vnode_8766055114677711623 "Command" {
+            row #vnode_9111046784659453157 {
+              text #vnode_5852272178935603487 "[Image]"
+              col #vnode_5852254586749558636 {
+                text #vnode_13480171911659906180 "Command"
+              }
+            }
+          }
+          button #vnode_8766072706863756474 "Menubar" {
+            row #vnode_9126351986518284302 {
+              text #vnode_15838916391781769162 "[Image]"
+              col #vnode_15838933983967814013 {
+                text #vnode_13486786609419085671 "Menubar"
+              }
+            }
+          }
+          button #vnode_8766090299049801325 "NavigationMenu" {
+            row #vnode_9141657188377115447 {
+              text #vnode_7378816530918383221 "[Image]"
+              col #vnode_7378798938732338370 {
+                text #vnode_13432180499742940582 "NavigationMenu"
+              }
+            }
+          }
+          button #vnode_8765967153747487368 "NavLink" {
+            row #vnode_9034520775365297432 {
+              text #vnode_11259283335833429960 "[Image]"
+              col #vnode_11259300928019474811 {
+                text #vnode_13630760845169982465 "NavLink"
+              }
+            }
+          }
+          button #vnode_8765984745933532219 "NavItem" {
+            row #vnode_9049825977224128577 {
+              text #vnode_2799183474970044019 "[Image]"
+              col #vnode_2799165882783999168 {
+                text #vnode_13576154735493837376 "NavItem"
+              }
+            }
+          }
+          button #vnode_8766002338119577070 "Pagination" {
+            row #vnode_9065131179082959722 {
+              text #vnode_12785827687816209694 "[Image]"
+              col #vnode_12785845280002254545 {
+                text #vnode_13582769433253016867 "Pagination"
+              }
+            }
+          }
+          button #vnode_8766019930305621921 "ScrollArea" {
+            row #vnode_9080436380941790867 {
+              text #vnode_4325727826952823753 "[Image]"
+              col #vnode_4325710234766778902 {
+                text #vnode_13528163323576871778 "ScrollArea"
+              }
+            }
+          }
+          button #vnode_8765052360073155116 "Separator" {
+            row #vnode_8238650278706077892 {
+              text #vnode_8462618331700260108 "[Image]"
+              col #vnode_8462635923886304959 {
+                text #vnode_14878537555011088013 "Separator"
+              }
+            }
+          }
+          button #vnode_8765069952259199967 "Sidebar" {
+            row #vnode_8253955480564909037 {
+              text #vnode_2518470836874167 "[Image]"
+              col #vnode_2500878650829316 {
+                text #vnode_14823931445334942924 "Sidebar"
+              }
+            }
+          }
+          button #vnode_8765087544445244818 "Tabs" {
+            row #vnode_8269260682423740182 {
+              text #vnode_9989162683683039842 "[Image]"
+              col #vnode_9989180275869084693 {
+                text #vnode_14830546143094122415 "Tabs"
+              }
+            }
+          }
+          text #vnode_8765105136631289669 "Overlay"
+          button #vnode_8764981991328975712 "Accordion" {
+            row #vnode_8177429471270753312 {
+              text #vnode_5409529627734700640 "[Image]"
+              col #vnode_5409547219920745491 {
+                text #vnode_14974520378845019209 "Accordion"
+              }
+            }
+          }
+          button #vnode_8764999583515020563 "AlertDialog" {
+            row #vnode_8192734673129584457 {
+              text #vnode_15396173840580866315 "[Image]"
+              col #vnode_15396156248394821464 {
+                text #vnode_14919914269168874120 "AlertDialog"
+              }
+            }
+          }
+          button #vnode_8765017175701065414 "Collapsible" {
+            row #vnode_8208039874988415602 {
+              text #vnode_6936073979717480374 "[Image]"
+              col #vnode_6936091571903525225 {
+                text #vnode_14926528966928053611 "Collapsible"
+              }
+            }
+          }
+          button #vnode_8765034767887110265 "ContextMenu" {
+            row #vnode_8223345076847246747 {
+              text #vnode_16922718192563646049 "[Image]"
+              col #vnode_16922700600377601198 {
+                text #vnode_14871922857251908522 "ContextMenu"
+              }
+            }
+          }
+          button #vnode_8765193097561513924 "Dialog" {
+            row #vnode_8361091893576727052 {
+              text #vnode_14568795739631379044 "[Image]"
+              col #vnode_14568813331817423895 {
+                text #vnode_14686571907343225621 "Dialog"
+              }
+            }
+          }
+          button #vnode_8765210689747558775 "Drawer" {
+            row #vnode_8376397095435558197 {
+              text #vnode_6108695878767993103 "[Image]"
+              col #vnode_6108678286581948252 {
+                text #vnode_14631965797667080532 "Drawer"
+              }
+            }
+          }
+          button #vnode_8765228281933603626 "DropdownMenu" {
+            row #vnode_8391702297294389342 {
+              text #vnode_16095340091614158778 "[Image]"
+              col #vnode_16095357683800203629 {
+                text #vnode_14638580495426260023 "DropdownMenu"
+              }
+            }
+          }
+          button #vnode_8765245874119648477 "HoverCard" {
+            row #vnode_8407007499153220487 {
+              text #vnode_7635240230750772837 "[Image]"
+              col #vnode_7635222638564727986 {
+                text #vnode_14583974385750114934 "HoverCard"
+              }
+            }
+          }
+          button #vnode_8765122728817334520 "Popover" {
+            row #vnode_8299871086141402472 {
+              text #vnode_11515707035665819576 "[Image]"
+              col #vnode_11515724627851864427 {
+                text #vnode_14782554731177156817 "Popover"
+              }
+            }
+          }
+          button #vnode_8765140321003379371 "Sheet" {
+            row #vnode_8315176288000233617 {
+              text #vnode_3055607174802433635 "[Image]"
+              col #vnode_3055589582616388784 {
+                text #vnode_14727948621501011728 "Sheet"
+              }
+            }
+          }
+        }
+      }
+    }
+    container #vnode_4289777634216808055 {
+      scrollable #vnode_12797096093727462453 {
+        col #vnode_7440309935637812751 {
+          container #vnode_8742182554021542781 {
+            col #vnode_5393886225687582055 {
+              col #vnode_16382534950997810693 {
+                col #vnode_12147525081098011263 {
+                  row #vnode_6974694722826960333 {
+                    text #vnode_13904418711349085015 "[Image]"
+                    text #vnode_13904401119163040164 "v1.0 — 61 Widgets"
+                  }
+                  text #vnode_6974677130640915482 "Auto UI"
+                  text #vnode_6974659538454870631 "A collection of beautifully designed, fully responsive components."
+                  text #vnode_6974641946268825780 "Built with Auto language, styled with Tailwind CSS, powered by Reka UI."
+                  row #vnode_6974624354082780929 {
+                    button #vnode_13843197903913760435 "Get Started" {
+                      row #vnode_15316392581993001513 {
+                        text #vnode_2140911938045311915 "Get Started"
+                        text #vnode_2140894345859267064 "[Image]"
+                      }
+                    }
+                    button #vnode_13843180311727715584 "Browse Widgets"
+                  }
+                }
+              }
+              container #vnode_16382517358811765842 {
+                row #vnode_12132219879239180118 {
+                  text #vnode_15434794583690346274 "[Image]"
+                  input #vnode_15434812175876391125 {
+                    placeholder: "Search widgets..."
+                    value: ""
+                  }
+                }
+              }
+              col #vnode_16382499766625720991 {
+                col #vnode_12116914677380348973 {
+                  row #vnode_5448150370844180599 {
+                    container #vnode_13952410123266050613 {
+                    }
+                    text #vnode_13952392531080005762 "Layout"
+                    text #vnode_13952374938893960911 "(12)"
+                  }
+                  col #vnode_5448132778658135748 {
+                    row #vnode_13937104921407219468 {
+                      button #vnode_16031431017079773540 "Row" {
+                        row #vnode_10140953813634458860 {
+                          container #vnode_6168121170719128836 {
+                            text #vnode_17276519805501189580 "[Image]"
+                          }
+                          col #vnode_6168138762905173687 {
+                            text #vnode_17291825007360020725 "Row"
+                            text #vnode_17291807415173975874 "Horizontal stacks"
+                          }
+                        }
+                      }
+                      button #vnode_16031448609265818391 "Column" {
+                        row #vnode_10156259015493290005 {
+                          container #vnode_16154765383565294511 {
+                            text #vnode_17252524099542706781 "[Image]"
+                          }
+                          col #vnode_16154747791379249660 {
+                            text #vnode_17237218897683875636 "Column"
+                            text #vnode_17237236489869920487 "Vertical stacks"
+                          }
+                        }
+                      }
+                      button #vnode_16031466201451863242 "Center" {
+                        row #vnode_10171564217352121150 {
+                          container #vnode_7694665522701908570 {
+                            text #vnode_17228528393584223982 "[Image]"
+                          }
+                          col #vnode_7694683114887953421 {
+                            text #vnode_17243833595443055127 "Center"
+                            text #vnode_17243816003257010276 "Centered content"
+                          }
+                        }
+                      }
+                      button #vnode_16031483793637908093 "Flex" {
+                        row #vnode_10186869419210952295 {
+                          container #vnode_17681309735548074245 {
+                            text #vnode_17204532687625741183 "[Image]"
+                          }
+                          col #vnode_17681292143362029394 {
+                            text #vnode_17189227485766910038 "Flex"
+                            text #vnode_17189245077952954889 "Flexible sizing"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_13937122513593264319 {
+                      button #vnode_16046736218938604685 "Alignment" {
+                        row #vnode_1680853952771072919 {
+                          container #vnode_6144125464760646037 {
+                            text #vnode_13452222833517500463 "[Image]"
+                          }
+                          col #vnode_6144107872574601186 {
+                            text #vnode_13436917631658669318 "Alignment"
+                            text #vnode_13436935223844714169 "Items × justify"
+                          }
+                        }
+                      }
+                      button #vnode_16046718626752559834 "Spacing" {
+                        row #vnode_1665548750912241774 {
+                          container #vnode_14604225325624031978 {
+                            text #vnode_13476218539475983262 "[Image]"
+                          }
+                          col #vnode_14604242917810076829 {
+                            text #vnode_13491523741334814407 "Spacing"
+                            text #vnode_13491506149148769556 "Padding, margin, gap"
+                          }
+                        }
+                      }
+                      button #vnode_16046701034566514983 "Sizing" {
+                        row #vnode_1650243549053410629 {
+                          container #vnode_4617581112777866303 {
+                            text #vnode_13500214245434466061 "[Image]"
+                          }
+                          col #vnode_4617563520591821452 {
+                            text #vnode_13484909043575634916 "Sizing"
+                            text #vnode_13484926635761679767 "Width & height"
+                          }
+                        }
+                      }
+                      button #vnode_16046683442380470132 "Scroll" {
+                        row #vnode_1634938347194579484 {
+                          container #vnode_13077680973641252244 {
+                            text #vnode_13524209951392948860 "[Image]"
+                          }
+                          col #vnode_13077698565827297095 {
+                            text #vnode_13539515153251780005 "Scroll"
+                            text #vnode_13539497561065735154 "Overflow regions"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_13937140105779309170 {
+                      button #vnode_16062041420797435830 "Position" {
+                        row #vnode_11667498165617238594 {
+                          container #vnode_6120129758802163238 {
+                            text #vnode_9627925861533811346 "[Image]"
+                          }
+                          col #vnode_6120147350988208089 {
+                            text #vnode_9643231063392642491 "Position"
+                            text #vnode_9643213471206597640 "Stacking & layers"
+                          }
+                        }
+                      }
+                      button #vnode_16062059012983480681 "Responsive" {
+                        row #vnode_11682803367476069739 {
+                          container #vnode_16106773971648328913 {
+                            text #vnode_9603930155575328547 "[Image]"
+                          }
+                          col #vnode_16106756379462284062 {
+                            text #vnode_9588624953716497402 "Responsive"
+                            text #vnode_9588642545902542253 "Breakpoint classes"
+                          }
+                        }
+                      }
+                      button #vnode_16062006236425346128 "Grid" {
+                        row #vnode_11636887761899576304 {
+                          container #vnode_4593585406819383504 {
+                            text #vnode_9675917273450776944 "[Image]"
+                          }
+                          col #vnode_4593602999005428355 {
+                            text #vnode_9691222475309608089 "Grid"
+                            text #vnode_9691204883123563238 "CSS grid tracks"
+                          }
+                        }
+                      }
+                      button #vnode_16062023828611390979 "GridSpan" {
+                        row #vnode_11652192963758407449 {
+                          container #vnode_14580229619665549179 {
+                            text #vnode_9651921567492294145 "[Image]"
+                          }
+                          col #vnode_14580212027479504328 {
+                            text #vnode_9636616365633463000 "GridSpan"
+                            text #vnode_9636633957819507851 "Column spans"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                col #vnode_12116897085194304122 {
+                  row #vnode_5432845168985349454 {
+                    container #vnode_3965765910419884938 {
+                    }
+                    text #vnode_3965783502605929789 "Form"
+                    text #vnode_3965730726047795236 "(15)"
+                  }
+                  col #vnode_5432862761171394305 {
+                    row #vnode_3981071112278716083 {
+                      button #vnode_17581971075021036073 "Button" {
+                        row #vnode_13917259373701182379 {
+                          container #vnode_2555541723484048273 {
+                            text #vnode_10384472902747940707 "[Image]"
+                          }
+                          col #vnode_2555524131298003422 {
+                            text #vnode_10369167700889109562 "Button"
+                            text #vnode_10369185293075154413 "Clickable actions"
+                          }
+                        }
+                      }
+                      button #vnode_17581953482834991222 "Input" {
+                        row #vnode_13901954171842351234 {
+                          container #vnode_11015641584347434214 {
+                            text #vnode_10408468608706423506 "[Image]"
+                          }
+                          col #vnode_11015659176533479065 {
+                            text #vnode_10423773810565254651 "Input"
+                            text #vnode_10423756218379209800 "Text fields"
+                          }
+                        }
+                      }
+                      button #vnode_17581935890648946371 "Textarea" {
+                        row #vnode_13886648969983520089 {
+                          container #vnode_1028997371501268539 {
+                            text #vnode_10432464314664906305 "[Image]"
+                          }
+                          col #vnode_1028979779315223688 {
+                            text #vnode_10417159112806075160 "Textarea"
+                            text #vnode_10417176704992120011 "Multi-line text"
+                          }
+                        }
+                      }
+                      button #vnode_17581918298462901520 "Checkbox" {
+                        row #vnode_13871343768124688944 {
+                          container #vnode_9489097232364654480 {
+                            text #vnode_10456460020623389104 "[Image]"
+                          }
+                          col #vnode_9489114824550699331 {
+                            text #vnode_10471765222482220249 "Checkbox"
+                            text #vnode_10471747630296175398 "Boolean toggles"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_3981053520092671232 {
+                      button #vnode_17566665873162204928 "Switch" {
+                        row #vnode_3930615160855016704 {
+                          container #vnode_2579537429442531072 {
+                            text #vnode_14208769874731629824 "[Image]"
+                          }
+                          col #vnode_2579555021628575923 {
+                            text #vnode_14224075076590460969 "Switch"
+                            text #vnode_14224057484404416118 "Slide toggles"
+                          }
+                        }
+                      }
+                      button #vnode_17566683465348249779 "Select" {
+                        row #vnode_3945920362713847849 {
+                          container #vnode_12566181642288696747 {
+                            text #vnode_14184774168773147025 "[Image]"
+                          }
+                          col #vnode_12566164050102651896 {
+                            text #vnode_14169468966914315880 "Select"
+                            text #vnode_14169486559100360731 "Dropdown choices"
+                          }
+                        }
+                      }
+                      button #vnode_17566701057534294630 "Combobox" {
+                        row #vnode_3961225564572678994 {
+                          container #vnode_4106081781425310806 {
+                            text #vnode_14160778462814664226 "[Image]"
+                          }
+                          col #vnode_4106099373611355657 {
+                            text #vnode_14176083664673495371 "Combobox"
+                            text #vnode_14176066072487450520 "Searchable select"
+                          }
+                        }
+                      }
+                      button #vnode_17566718649720339481 "Label" {
+                        row #vnode_3976530766431510139 {
+                          container #vnode_14092725994271476481 {
+                            text #vnode_14136782756856181427 "[Image]"
+                          }
+                          col #vnode_14092708402085431630 {
+                            text #vnode_14121477554997350282 "Label"
+                            text #vnode_14121495147183395133 "Form labels"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_3981106296650805785 {
+                      button #vnode_17612581478738698363 "Form" {
+                        row #vnode_15443803725683962113 {
+                          container #vnode_2507550311567082675 {
+                            text #vnode_2735878958780562473 "[Image]"
+                          }
+                          col #vnode_2507532719381037824 {
+                            text #vnode_2720573756921731328 "Form"
+                            text #vnode_2720591349107776179 "Form layouts"
+                          }
+                        }
+                      }
+                      button #vnode_17612563886552653512 "Slider" {
+                        row #vnode_15428498523825130968 {
+                          container #vnode_10967650172430468616 {
+                            text #vnode_2759874664739045272 "[Image]"
+                          }
+                          col #vnode_10967667764616513467 {
+                            text #vnode_2775179866597876417 "Slider"
+                            text #vnode_2775162274411831566 "Range values"
+                          }
+                        }
+                      }
+                      button #vnode_17612616663110788065 "Calendar" {
+                        row #vnode_15474414129401624403 {
+                          container #vnode_4034094663549862409 {
+                            text #vnode_2687887546863596875 "[Image]"
+                          }
+                          col #vnode_4034077071363817558 {
+                            text #vnode_2672582345004765730 "Calendar"
+                            text #vnode_2672599937190810581 "Date display"
+                          }
+                        }
+                      }
+                      button #vnode_17612599070924743214 "DatePicker" {
+                        row #vnode_15459108927542793258 {
+                          container #vnode_12494194524413248350 {
+                            text #vnode_2711883252822079674 "[Image]"
+                          }
+                          col #vnode_12494212116599293201 {
+                            text #vnode_2727188454680910819 "DatePicker"
+                            text #vnode_2727170862494865968 "Date selection"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_3981088704464760934 {
+                      button #vnode_17597276276879867218 "RadioGroup" {
+                        row #vnode_5457159512837796438 {
+                          container #vnode_2531546017525565474 {
+                            text #vnode_6560175930764251590 "[Image]"
+                          }
+                          col #vnode_2531563609711610325 {
+                            text #vnode_6575481132623082735 "RadioGroup"
+                            text #vnode_6575463540437037884 "Single-choice options"
+                          }
+                        }
+                      }
+                      button #vnode_17597293869065912069 "Toggle" {
+                        row #vnode_5472464714696627583 {
+                          container #vnode_12518190230371731149 {
+                            text #vnode_6536180224805768791 "[Image]"
+                          }
+                          col #vnode_12518172638185686298 {
+                            text #vnode_6520875022946937646 "Toggle"
+                            text #vnode_6520892615132982497 "Toggle buttons"
+                          }
+                        }
+                      }
+                      button #vnode_17597241092507777516 "ToggleGroup" {
+                        row #vnode_5426549109120134148 {
+                          container #vnode_1005001665542785740 {
+                            text #vnode_6608167342681217188 "[Image]"
+                          }
+                          col #vnode_1005019257728830591 {
+                            text #vnode_6623472544540048333 "ToggleGroup"
+                            text #vnode_6623454952354003482 "Toggle groups"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                col #vnode_12116879493008259271 {
+                  row #vnode_5417539967126518309 {
+                    container #vnode_12425865771283270879 {
+                    }
+                    text #vnode_12425848179097226028 "Display"
+                    text #vnode_12425900955655360581 "(8)"
+                  }
+                  col #vnode_5417522374940473458 {
+                    row #vnode_12410560569424439734 {
+                      button #vnode_16079422428996739138 "Card" {
+                        row #vnode_17789547757601837094 {
+                          container #vnode_14240150164183724178 {
+                            text #vnode_1189739913214330902 "[Image]"
+                          }
+                          col #vnode_14240167756369769029 {
+                            text #vnode_1205045115073162047 "Card"
+                            text #vnode_1205027522887117196 "Content containers"
+                          }
+                        }
+                      }
+                      button #vnode_16079440021182783989 "Badge" {
+                        row #vnode_17804852959460668239 {
+                          container #vnode_5780050303320338237 {
+                            text #vnode_1165744207255848103 "[Image]"
+                          }
+                          col #vnode_5780032711134293386 {
+                            text #vnode_1150439005397016958 "Badge"
+                            text #vnode_1150456597583061809 "Status labels"
+                          }
+                        }
+                      }
+                      button #vnode_16079387244624649436 "Avatar" {
+                        row #vnode_17758937353884174804 {
+                          container #vnode_12713605812200944444 {
+                            text #vnode_1237731325131296500 "[Image]"
+                          }
+                          col #vnode_12713623404386989295 {
+                            text #vnode_1253036526990127645 "Avatar"
+                            text #vnode_1253018934804082794 "User pictures"
+                          }
+                        }
+                      }
+                      button #vnode_16079404836810694287 "Skeleton" {
+                        row #vnode_17774242555743005949 {
+                          container #vnode_4253505951337558503 {
+                            text #vnode_1213735619172813701 "[Image]"
+                          }
+                          col #vnode_4253488359151513652 {
+                            text #vnode_1198430417313982556 "Skeleton"
+                            text #vnode_1198448009500027407 "Loading states"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_12410578161610484585 {
+                      button #vnode_16094727630855570283 "AspectRatio" {
+                        row #vnode_9329447896738451153 {
+                          container #vnode_14216154458225241379 {
+                            text #vnode_15812187014940193401 "[Image]"
+                          }
+                          col #vnode_14216136866039196528 {
+                            text #vnode_15796881813081362256 "AspectRatio"
+                            text #vnode_15796899405267407107 "Media ratios"
+                          }
+                        }
+                      }
+                      button #vnode_16094710038669525432 "Carousel" {
+                        row #vnode_9314142694879620008 {
+                          container #vnode_4229510245379075704 {
+                            text #vnode_15836182720898676200 "[Image]"
+                          }
+                          col #vnode_4229527837565120555 {
+                            text #vnode_15851487922757507345 "Carousel"
+                            text #vnode_15851470330571462494 "Slideshows"
+                          }
+                        }
+                      }
+                      button #vnode_16094762815227659985 "Table" {
+                        row #vnode_9360058300456113443 {
+                          container #vnode_15742698810208021113 {
+                            text #vnode_15764195603023227803 "[Image]"
+                          }
+                          col #vnode_15742681218021976262 {
+                            text #vnode_15748890401164396658 "Table"
+                            text #vnode_15748907993350441509 "Data grids"
+                          }
+                        }
+                      }
+                      button #vnode_16094745223041615134 "DataTable" {
+                        row #vnode_9344753098597282298 {
+                          container #vnode_5756054597361855438 {
+                            text #vnode_15788191308981710602 "[Image]"
+                          }
+                          col #vnode_5756072189547900289 {
+                            text #vnode_15803496510840541747 "DataTable"
+                            text #vnode_15803478918654496896 "Advanced tables"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                col #vnode_12116861900822214420 {
+                  row #vnode_5402234765267687164 {
+                    container #vnode_2439221558437105204 {
+                    }
+                    text #vnode_2439239150623150055 "Feedback"
+                    text #vnode_2439256742809194906 "(5)"
+                  }
+                  col #vnode_5402252357453732015 {
+                    row #vnode_2454526760295936349 {
+                      button #vnode_17629962486938001671 "Alert" {
+                        row #vnode_3119109243959008997 {
+                          container #vnode_10627570716948643615 {
+                            text #vnode_12744437084170633645 "[Image]"
+                          }
+                          col #vnode_10627553124762598764 {
+                            text #vnode_12729131882311802500 "Alert"
+                            text #vnode_12729149474497847351 "Callout messages"
+                          }
+                        }
+                      }
+                      button #vnode_17629944894751956820 "Progress" {
+                        row #vnode_3103804042100177852 {
+                          container #vnode_640926504102477940 {
+                            text #vnode_12768432790129116444 "[Image]"
+                          }
+                          col #vnode_640944096288522791 {
+                            text #vnode_12783737991987947589 "Progress"
+                            text #vnode_12783720399801902738 "Progress bars"
+                          }
+                        }
+                      }
+                      button #vnode_17629997671310091373 "Sonner" {
+                        row #vnode_3149719647676671287 {
+                          container #vnode_12154115068931423349 {
+                            text #vnode_12696445672253668047 "[Image]"
+                          }
+                          col #vnode_12154097476745378498 {
+                            text #vnode_12681140470394836902 "Sonner"
+                            text #vnode_12681158062580881753 "Toast notifications"
+                          }
+                        }
+                      }
+                      button #vnode_17629980079124046522 "Toast" {
+                        row #vnode_3134414445817840142 {
+                          container #vnode_2167470856085257674 {
+                            text #vnode_12720441378212150846 "[Image]"
+                          }
+                          col #vnode_2167488448271302525 {
+                            text #vnode_12735746580070981991 "Toast"
+                            text #vnode_12735728987884937140 "Brief alerts"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_2454509168109891498 {
+                      button #vnode_17614657285079170526 "Tooltip" {
+                        row #vnode_11579209104822394938 {
+                          container #vnode_10651566422907126414 {
+                            text #vnode_16568734056154322762 "[Image]"
+                          }
+                          col #vnode_10651584015093171265 {
+                            text #vnode_16584039258013153907 "Tooltip"
+                            text #vnode_16584021665827109056 "Context hints"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                col #vnode_12116844308636169569 {
+                  row #vnode_5386929563408856019 {
+                    container #vnode_10899321419300491145 {
+                    }
+                    text #vnode_10899303827114446294 "Navigation"
+                    text #vnode_10899286234928401443 "(10)"
+                  }
+                  col #vnode_5386911971222811168 {
+                    row #vnode_10884016217441660000 {
+                      button #vnode_16127413840913704736 "Breadcrumb" {
+                        row #vnode_6991397627859663712 {
+                          container #vnode_3865435083938767904 {
+                            text #vnode_3549704094637023840 "[Image]"
+                          }
+                          col #vnode_3865452676124812755 {
+                            text #vnode_3565009296495854985 "Breadcrumb"
+                            text #vnode_3564991704309810134 "Path navigation"
+                          }
+                        }
+                      }
+                      button #vnode_16127431433099749587 "Tabs" {
+                        row #vnode_7006702829718494857 {
+                          container #vnode_13852079296784933579 {
+                            text #vnode_3525708388678541041 "[Image]"
+                          }
+                          col #vnode_13852061704598888728 {
+                            text #vnode_3510403186819709896 "Tabs"
+                            text #vnode_3510420779005754747 "Tab panels"
+                          }
+                        }
+                      }
+                      button #vnode_16127449025285794438 "Menubar" {
+                        row #vnode_7022008031577326002 {
+                          container #vnode_5391979435921547638 {
+                            text #vnode_3501712682720058242 "[Image]"
+                          }
+                          col #vnode_5391997028107592489 {
+                            text #vnode_3517017884578889387 "Menubar"
+                            text #vnode_3517000292392844536 "Menu bars"
+                          }
+                        }
+                      }
+                      button #vnode_16127466617471839289 "Pagination" {
+                        row #vnode_7037313233436157147 {
+                          container #vnode_15378623648767713313 {
+                            text #vnode_3477716976761575443 "[Image]"
+                          }
+                          col #vnode_15378606056581668462 {
+                            text #vnode_3462411774902744298 "Pagination"
+                            text #vnode_3462429367088789149 "Page controls"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_10884033809627704851 {
+                      button #vnode_16142719042772535881 "NavigationMenu" {
+                        row #vnode_16978041840705829387 {
+                          container #vnode_3841439377980285105 {
+                            text #vnode_18172151196362886339 "[Image]"
+                          }
+                          col #vnode_3841421785794240254 {
+                            text #vnode_18156845994504055194 "NavigationMenu"
+                            text #vnode_18156863586690100045 "Site navigation"
+                          }
+                        }
+                      }
+                      button #vnode_16142701450586491030 "Sidebar" {
+                        row #vnode_16962736638846998242 {
+                          container #vnode_12301539238843671046 {
+                            text #vnode_18196146902321369138 "[Image]"
+                          }
+                          col #vnode_12301556831029715897 {
+                            text #vnode_18211452104180200283 "Sidebar"
+                            text #vnode_18211434511994155432 "Side panels"
+                          }
+                        }
+                      }
+                      button #vnode_16142683858400446179 "Command" {
+                        row #vnode_16947431436988167097 {
+                          container #vnode_2314895025997505371 {
+                            text #vnode_18220142608279851937 "[Image]"
+                          }
+                          col #vnode_2314877433811460520 {
+                            text #vnode_18204837406421020792 "Command"
+                            text #vnode_18204854998607065643 "Command palettes"
+                          }
+                        }
+                      }
+                      button #vnode_16142666266214401328 "ScrollArea" {
+                        row #vnode_16932126235129335952 {
+                          container #vnode_10774994886860891312 {
+                            text #vnode_18244138314238334736 "[Image]"
+                          }
+                          col #vnode_10775012479046936163 {
+                            text #vnode_18259443516097165881 "ScrollArea"
+                            text #vnode_18259425923911121030 "Scrollable regions"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_10884051401813749702 {
+                      button #vnode_16158024244631367026 "Separator" {
+                        row #vnode_8517941979842443446 {
+                          container #vnode_3817443672021802306 {
+                            text #vnode_14347854224379197222 "[Image]"
+                          }
+                          col #vnode_3817461264207847157 {
+                            text #vnode_14363159426238028367 "Separator"
+                            text #vnode_14363141834051983516 "Dividers"
+                          }
+                        }
+                      }
+                      button #vnode_16158041836817411877 "NavLink" {
+                        row #vnode_8533247181701274591 {
+                          container #vnode_13804087884867967981 {
+                            text #vnode_14323858518420714423 "[Image]"
+                          }
+                          col #vnode_13804070292681923130 {
+                            text #vnode_14308553316561883278 "NavLink"
+                            text #vnode_14308570908747928129 "Navigation links"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                col #vnode_12116826716450124718 {
+                  row #vnode_5371624361550024874 {
+                    container #vnode_912677206454325470 {
+                    }
+                    text #vnode_912694798640370321 "Overlay"
+                    text #vnode_912642022082235768 "(10)"
+                  }
+                  col #vnode_5371641953736069725 {
+                    row #vnode_927982408313156615 {
+                      button #vnode_17677953898854967269 "Dialog" {
+                        row #vnode_10767703187926387231 {
+                          container #vnode_252855636703687341 {
+                            text #vnode_15104401265593326583 "[Image]"
+                          }
+                          col #vnode_252838044517642490 {
+                            text #vnode_15089096063734495438 "Dialog"
+                            text #vnode_15089113655920540289 "Modal windows"
+                          }
+                        }
+                      }
+                      button #vnode_17677936306668922418 "AlertDialog" {
+                        row #vnode_10752397986067556086 {
+                          container #vnode_8712955497567073282 {
+                            text #vnode_15128396971551809382 "[Image]"
+                          }
+                          col #vnode_8712973089753118133 {
+                            text #vnode_15143702173410640527 "AlertDialog"
+                            text #vnode_15143684581224595676 "Alert modals"
+                          }
+                        }
+                      }
+                      button #vnode_17677918714482877567 "Drawer" {
+                        row #vnode_10737092784208724941 {
+                          container #vnode_17173055358430459223 {
+                            text #vnode_15152392677510292181 "[Image]"
+                          }
+                          col #vnode_17173037766244414372 {
+                            text #vnode_15137087475651461036 "Drawer"
+                            text #vnode_15137105067837505887 "Slide panels"
+                          }
+                        }
+                      }
+                      button #vnode_17677901122296832716 "Sheet" {
+                        row #vnode_10721787582349893796 {
+                          container #vnode_7186411145584293548 {
+                            text #vnode_15176388383468774980 "[Image]"
+                          }
+                          col #vnode_7186428737770338399 {
+                            text #vnode_15191693585327606125 "Sheet"
+                            text #vnode_15191675993141561274 "Bottom sheets"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_927964816127111764 {
+                      button #vnode_17662648696996136124 "Popover" {
+                        row #vnode_781058975080221556 {
+                          container #vnode_276851342662170140 {
+                            text #vnode_481954163867464084 "[Image]"
+                          }
+                          col #vnode_276868934848214991 {
+                            text #vnode_497259365726295229 "Popover"
+                            text #vnode_497241773540250378 "Floating panels"
+                          }
+                        }
+                      }
+                      button #vnode_17662666289182180975 "DropdownMenu" {
+                        row #vnode_796364176939052701 {
+                          container #vnode_10263495555508335815 {
+                            text #vnode_457958457908981285 "[Image]"
+                          }
+                          col #vnode_10263477963322290964 {
+                            text #vnode_442653256050150140 "DropdownMenu"
+                            text #vnode_442670848236194991 "Context menus"
+                          }
+                        }
+                      }
+                      button #vnode_17662683881368225826 "ContextMenu" {
+                        row #vnode_811669378797883846 {
+                          container #vnode_1803395694644949874 {
+                            text #vnode_433962751950498486 "[Image]"
+                          }
+                          col #vnode_1803413286830994725 {
+                            text #vnode_449267953809329631 "ContextMenu"
+                            text #vnode_449250361623284780 "Right-click menus"
+                          }
+                        }
+                      }
+                      button #vnode_17662701473554270677 "Collapsible" {
+                        row #vnode_826974580656714991 {
+                          container #vnode_11790039907491115549 {
+                            text #vnode_409967045992015687 "[Image]"
+                          }
+                          col #vnode_11790022315305070698 {
+                            text #vnode_394661844133184542 "Collapsible"
+                            text #vnode_394679436319229393 "Expand/collapse"
+                          }
+                        }
+                      }
+                    }
+                    row #vnode_928017592685246317 {
+                      button #vnode_17708564302572629559 "Accordion" {
+                        row #vnode_12294247539909166965 {
+                          container #vnode_204864224786721743 {
+                            text #vnode_7455807321625948349 "[Image]"
+                          }
+                          col #vnode_204846632600676892 {
+                            text #vnode_7440502119767117204 "Accordion"
+                            text #vnode_7440519711953162055 "Collapsible sections"
+                          }
+                        }
+                      }
+                      button #vnode_17708546710386584708 "HoverCard" {
+                        row #vnode_12278942338050335820 {
+                          container #vnode_8664964085650107684 {
+                            text #vnode_7479803027584431148 "[Image]"
+                          }
+                          col #vnode_8664981677836152535 {
+                            text #vnode_7495108229443262293 "HoverCard"
+                            text #vnode_7495090637257217442 "Hover popovers"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              col #vnode_16382482174439676140 {
+                text #vnode_12101609475521517828 "Auto UI Component Gallery — Built with Auto Language"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

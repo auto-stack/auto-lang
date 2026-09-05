@@ -75,9 +75,19 @@ collapsed_size 等，`SCHEMA_DRIFT_UPDATE_BASELINE=1` 更基线）+ Vue 端逐�
 （gen/vue.rs shadcn 发射臂，脚手架组件模板对齐 shadcn 原版）+ `to:`/`active` D2
 扩展（免 RouterLink 手写）+ sidebar 裸用自动包 Provider + widgets-gallery sidebar
 页重写；设计/退役路线见 [design/autoui/sidebar-family-and-nav-retirement.md](../../design/autoui/sidebar-family-and-nav-retirement.md)。
-VM 端契约子集归后续 P2 计划，nav-item/nav-group 迁移与退役归 P3；债务
-P548-D1..D3（schema.rs 双侧分化/tooltip 未实现/vue.rs 旧臂死代码）台账
-KNOWN-DEBT。
+VM 端契约子集已由 plan-561 落地（见下条）；nav-item/nav-group 迁移与退役归 P3
+（plan-562）；债务 P548-D1..D3（schema.rs 双侧分化/tooltip 未实现/vue.rs 旧臂
+死代码）台账 KNOWN-DEBT。
+
+**sidebar VM 契约子集（plan-561 落地，结构等价口径）**：`ui_gen/sidebar_contract.rs`
+契约模块（28 常量 VM 可解析子集 + VM_ADAPTED 适配清单 + 逐 token 锚 shadcn
+scaffold 资产的防漂移测试）+ aura_view_builder 全族构建臂（容器/分区/分组折叠
+复用 nav_group_states 通道/menu_button 三态 + `to:` 路由自动探测，双拼写 tag
+分发）+ color.rs sidebar 语义色板 8 映射 + render_support 37 臂与 aura.at
+aliases/backends.iced 四表同步（baseline +52/−13，nav-item 先例）。子集外
+（rail/trigger/input/skeleton、collapsible=icon 轨道、side 放置）按设计 §3.3
+不做；widgets-gallery sidebar 页 VM 实跑与 Vue 端结构等价对拍证据
+`scratch/p561/`。
 
 **slot 替换（plan-476 落地）**：VM 轨 widget 插座/填充与 vue 轨语义对齐——调用位
 `slot(name:X){..}`/裸子节点渲染到子 widget outlet，父作用域求值+父事件路由+逐帧重求值；

@@ -1,0 +1,1590 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  container #vnode_12642422519345821663 {
+    row #vnode_4305065243889594349 {
+      row #vnode_4321691031005245367 {
+        text #vnode_15876414090542715893 "[Image]"
+        text #vnode_15876396498356671042 "Auto UI"
+      }
+      row #vnode_4321673438819200516 {
+        button #vnode_15861108888683884748 "Docs" {
+          text #vnode_13401981148859722404 "Docs"
+        }
+        button #vnode_15861126480869929599 "Widgets" {
+          text #vnode_13417286350718553549 "Widgets"
+        }
+      }
+      row #vnode_4321726215377335069 {
+        button #vnode_15907024494260378183 "search"
+        button #vnode_15907006902074333332 "palette"
+      }
+    }
+  }
+  row #vnode_12642404927159776812 {
+    col #vnode_4289760042030763204 {
+      scrollable #vnode_12781790891868631308 {
+        col #vnode_15900409796501198692 {
+          text #vnode_8766178259980025580 "Overview"
+          button #vnode_8766195852166070431 "Home" {
+            row #vnode_9233488399530102317 {
+              text #vnode_11958449586866722423 "[Image]"
+              col #vnode_11958431994680677572 {
+                text #vnode_13288206263992043788 "Home"
+              }
+            }
+          }
+          text #vnode_8766213444352115282 "Layout"
+          button #vnode_8766231036538160133 "Row" {
+            row #vnode_9264098803247764607 {
+              text #vnode_13484993938849502157 "[Image]"
+              col #vnode_13484976346663457306 {
+                text #vnode_13240214852075078190 "Row"
+              }
+            }
+          }
+          button #vnode_8766107891235846176 "Column" {
+            row #vnode_9156962390235946592 {
+              text #vnode_17365460743764548896 "[Image]"
+              col #vnode_17365478335950593747 {
+                text #vnode_13438795197502120073 "Column"
+              }
+            }
+          }
+          button #vnode_8766125483421891027 "Center" {
+            row #vnode_9172267592094777737 {
+              text #vnode_8905360882901162955 "[Image]"
+              col #vnode_8905343290715118104 {
+                text #vnode_13384189087825974984 "Center"
+              }
+            }
+          }
+          button #vnode_8766143075607935878 "Flex" {
+            row #vnode_9187572793953608882 {
+              text #vnode_445261022037777014 "[Image]"
+              col #vnode_445278614223821865 {
+                text #vnode_13390803785585154475 "Flex"
+              }
+            }
+          }
+          button #vnode_8766160667793980729 "Alignment" {
+            row #vnode_9202877995812440027 {
+              text #vnode_10431905234883942689 "[Image]"
+              col #vnode_10431887642697897838 {
+                text #vnode_13336197675909009386 "Alignment"
+              }
+            }
+          }
+          button #vnode_8766318997468384388 "Absolute" {
+            row #vnode_9340624812541920332 {
+              text #vnode_8077982781951675684 "[Image]"
+              col #vnode_8078000374137720535 {
+                text #vnode_13150846726000326485 "Absolute"
+              }
+            }
+          }
+          button #vnode_8766336589654429239 "Spacing" {
+            row #vnode_9355930014400751477 {
+              text #vnode_18064626994797841359 "[Image]"
+              col #vnode_18064609402611796508 {
+                text #vnode_13096240616324181396 "Spacing"
+              }
+            }
+          }
+          button #vnode_8766354181840474090 "Sizing" {
+            row #vnode_9371235216259582622 {
+              text #vnode_9604527133934455418 "[Image]"
+              col #vnode_9604544726120500269 {
+                text #vnode_13102855314083360887 "Sizing"
+              }
+            }
+          }
+          button #vnode_8766371774026518941 "Scroll" {
+            row #vnode_9386540418118413767 {
+              text #vnode_1144427273071069477 "[Image]"
+              col #vnode_1144409680885024626 {
+                text #vnode_13048249204407215798 "Scroll"
+              }
+            }
+          }
+          button #vnode_8766248628724204984 "Position" {
+            row #vnode_9279404005106595752 {
+              text #vnode_5024894077986116216 "[Image]"
+              col #vnode_5024911670172161067 {
+                text #vnode_13246829549834257681 "Position"
+              }
+            }
+          }
+          button #vnode_8766266220910249835 "Responsive" {
+            row #vnode_9294709206965426897 {
+              text #vnode_15011538290832281891 "[Image]"
+              col #vnode_15011520698646237040 {
+                text #vnode_13192223440158112592 "Responsive"
+              }
+            }
+          }
+          button #vnode_8766283813096294686 "Grid" {
+            row #vnode_9310014408824258042 {
+              text #vnode_6551438429968895950 "[Image]"
+              col #vnode_6551456022154940801 {
+                text #vnode_13198838137917292083 "Grid"
+              }
+            }
+          }
+          button #vnode_8766301405282339537 "GridSpan" {
+            row #vnode_9325319610683089187 {
+              text #vnode_16538082642815061625 "[Image]"
+              col #vnode_16538065050629016774 {
+                text #vnode_13144232028241146994 "GridSpan"
+              }
+            }
+          }
+          text #vnode_8766459734956743196 "Form"
+          button #vnode_8766477327142788047 "Button" {
+            row #vnode_9478371629271400637 {
+              text #vnode_5724060329019408679 "[Image]"
+              col #vnode_5724042736833363828 {
+                text #vnode_12904274968656319004 "Button"
+              }
+            }
+          }
+          button #vnode_8766494919328832898 "Calendar" {
+            row #vnode_9493676831130231782 {
+              text #vnode_15710704541865574354 "[Image]"
+              col #vnode_15710722134051619205 {
+                text #vnode_12910889666415498495 "Calendar"
+              }
+            }
+          }
+          button #vnode_8766512511514877749 "Checkbox" {
+            row #vnode_9508982032989062927 {
+              text #vnode_7250604681002188413 "[Image]"
+              col #vnode_7250587088816143562 {
+                text #vnode_12856283556739353406 "Checkbox"
+              }
+            }
+          }
+          button #vnode_8766389366212563792 "CodeEditor" {
+            row #vnode_9401845619977244912 {
+              text #vnode_11131071485917235152 "[Image]"
+              col #vnode_11131089078103280003 {
+                text #vnode_13054863902166395289 "CodeEditor"
+              }
+            }
+          }
+          button #vnode_8766406958398608643 "Combobox" {
+            row #vnode_9417150821836076057 {
+              text #vnode_2670971625053849211 "[Image]"
+              col #vnode_2670954032867804360 {
+                text #vnode_13000257792490250200 "Combobox"
+              }
+            }
+          }
+          button #vnode_8766424550584653494 "DatePicker" {
+            row #vnode_9432456023694907202 {
+              text #vnode_12657615837900014886 "[Image]"
+              col #vnode_12657633430086059737 {
+                text #vnode_13006872490249429691 "DatePicker"
+              }
+            }
+          }
+          button #vnode_8766442142770698345 "Form" {
+            row #vnode_9447761225553738347 {
+              text #vnode_4197515977036628945 "[Image]"
+              col #vnode_4197498384850584094 {
+                text #vnode_12952266380573284602 "Form"
+              }
+            }
+          }
+          button #vnode_8766600472445102004 "Input" {
+            row #vnode_9585508042283218652 {
+              text #vnode_1843593524104361940 "[Image]"
+              col #vnode_1843611116290406791 {
+                text #vnode_12766915430664601701 "Input"
+              }
+            }
+          }
+          button #vnode_8766618064631146855 "Label" {
+            row #vnode_9600813244142049797 {
+              text #vnode_11830237736950527615 "[Image]"
+              col #vnode_11830220144764482764 {
+                text #vnode_12712309320988456612 "Label"
+              }
+            }
+          }
+          button #vnode_8766635656817191706 "RadioGroup" {
+            row #vnode_9616118446000880942 {
+              text #vnode_3370137876087141674 "[Image]"
+              col #vnode_3370155468273186525 {
+                text #vnode_12718924018747636103 "RadioGroup"
+              }
+            }
+          }
+          button #vnode_8766653249003236557 "Select" {
+            row #vnode_9631423647859712087 {
+              text #vnode_13356782088933307349 "[Image]"
+              col #vnode_13356764496747262498 {
+                text #vnode_12664317909071491014 "Select"
+              }
+            }
+          }
+          button #vnode_8766530103700922600 "Slider" {
+            row #vnode_9524287234847894072 {
+              text #vnode_17237248893848354088 "[Image]"
+              col #vnode_17237266486034398939 {
+                text #vnode_12862898254498532897 "Slider"
+              }
+            }
+          }
+          button #vnode_8766547695886967451 "Switch" {
+            row #vnode_9539592436706725217 {
+              text #vnode_8777149032984968147 "[Image]"
+              col #vnode_8777131440798923296 {
+                text #vnode_12808292144822387808 "Switch"
+              }
+            }
+          }
+          button #vnode_8766565288073012302 "Textarea" {
+            row #vnode_9554897638565556362 {
+              text #vnode_317049172121582206 "[Image]"
+              col #vnode_317066764307627057 {
+                text #vnode_12814906842581567299 "Textarea"
+              }
+            }
+          }
+          button #vnode_8766582880259057153 "Toggle" {
+            row #vnode_9570202840424387507 {
+              text #vnode_10303693384967747881 "[Image]"
+              col #vnode_10303675792781703030 {
+                text #vnode_12760300732905422210 "Toggle"
+              }
+            }
+          }
+          button #vnode_8765615310026590348 "ToggleGroup" {
+            row #vnode_8728416738188674532 {
+              text #vnode_14440583889715184236 "[Image]"
+              col #vnode_14440601481901229087 {
+                text #vnode_14110674964339638445 "ToggleGroup"
+              }
+            }
+          }
+          text #vnode_8765632902212635199 "Charts"
+          button #vnode_8765650494398680050 "LineChart" {
+            row #vnode_8759027141906336822 {
+              text #vnode_15967128241697963970 "[Image]"
+              col #vnode_15967145833884008821 {
+                text #vnode_14062683552422672847 "LineChart"
+              }
+            }
+          }
+          button #vnode_8765668086584724901 "BarChart" {
+            row #vnode_8774332343765167967 {
+              text #vnode_7507028380834578029 "[Image]"
+              col #vnode_7507010788648533178 {
+                text #vnode_14008077442746527758 "BarChart"
+              }
+            }
+          }
+          button #vnode_8765544941282410944 "AreaChart" {
+            row #vnode_8667195930753349952 {
+              text #vnode_11387495185749624768 "[Image]"
+              col #vnode_11387512777935669619 {
+                text #vnode_14206657788173569641 "AreaChart"
+              }
+            }
+          }
+          button #vnode_8765562533468455795 "DonutChart" {
+            row #vnode_8682501132612181097 {
+              text #vnode_2927395324886238827 "[Image]"
+              col #vnode_2927377732700193976 {
+                text #vnode_14152051678497424552 "DonutChart"
+              }
+            }
+          }
+          text #vnode_8765580125654500646 "Diagrams"
+          button #vnode_8765597717840545497 "FlowDiagram" {
+            row #vnode_8713111536329843387 {
+              text #vnode_4453939676869018561 "[Image]"
+              col #vnode_4453922084682973710 {
+                text #vnode_14104060266580458954 "FlowDiagram"
+              }
+            }
+          }
+          text #vnode_8765756047514949156 "Display"
+          button #vnode_8765773639700994007 "AspectRatio" {
+            row #vnode_8866163554918154837 {
+              text #vnode_12086661436782917231 "[Image]"
+              col #vnode_12086643844596872380 {
+                text #vnode_13864103206995630964 "AspectRatio"
+              }
+            }
+          }
+          button #vnode_8765791231887038858 "Avatar" {
+            row #vnode_8881468756776985982 {
+              text #vnode_3626561575919531290 "[Image]"
+              col #vnode_3626579168105576141 {
+                text #vnode_13870717904754810455 "Avatar"
+              }
+            }
+          }
+          button #vnode_8765808824073083709 "Badge" {
+            row #vnode_8896773958635817127 {
+              text #vnode_13613205788765696965 "[Image]"
+              col #vnode_13613188196579652114 {
+                text #vnode_13816111795078665366 "Badge"
+              }
+            }
+          }
+          button #vnode_8765685678770769752 "Card" {
+            row #vnode_8789637545623999112 {
+              text #vnode_17493672593680743704 "[Image]"
+              col #vnode_17493690185866788555 {
+                text #vnode_14014692140505707249 "Card"
+              }
+            }
+          }
+          button #vnode_8765703270956814603 "Carousel" {
+            row #vnode_8804942747482830257 {
+              text #vnode_9033572732817357763 "[Image]"
+              col #vnode_9033555140631312912 {
+                text #vnode_13960086030829562160 "Carousel"
+              }
+            }
+          }
+          button #vnode_8765720863142859454 "DataTable" {
+            row #vnode_8820247949341661402 {
+              text #vnode_573472871953971822 "[Image]"
+              col #vnode_573490464140016673 {
+                text #vnode_13966700728588741651 "DataTable"
+              }
+            }
+          }
+          button #vnode_8765738455328904305 "Skeleton" {
+            row #vnode_8835553151200492547 {
+              text #vnode_10560117084800137497 "[Image]"
+              col #vnode_10560099492614092646 {
+                text #vnode_13912094618912596562 "Skeleton"
+              }
+            }
+          }
+          button #vnode_8765896785003307964 "Table" {
+            row #vnode_8973299967929972852 {
+              text #vnode_8206194631867870492 "[Image]"
+              col #vnode_8206212224053915343 {
+                text #vnode_13726743669003913661 "Table"
+              }
+            }
+          }
+          text #vnode_8765914377189352815 "Feedback"
+          button #vnode_8765931969375397666 "Alert" {
+            row #vnode_9003910371647635142 {
+              text #vnode_9732738983850650226 "[Image]"
+              col #vnode_9732756576036695077 {
+                text #vnode_13678752257086948063 "Alert"
+              }
+            }
+          }
+          button #vnode_8765949561561442517 "Progress" {
+            row #vnode_9019215573506466287 {
+              text #vnode_1272639122987264285 "[Image]"
+              col #vnode_1272621530801219434 {
+                text #vnode_13624146147410802974 "Progress"
+              }
+            }
+          }
+          button #vnode_8765826416259128560 "Sonner" {
+            row #vnode_8912079160494648272 {
+              text #vnode_5153105927902311024 "[Image]"
+              col #vnode_5153123520088355875 {
+                text #vnode_13822726492837844857 "Sonner"
+              }
+            }
+          }
+          button #vnode_8765844008445173411 "Toast" {
+            row #vnode_8927384362353479417 {
+              text #vnode_15139750140748476699 "[Image]"
+              col #vnode_15139732548562431848 {
+                text #vnode_13768120383161699768 "Toast"
+              }
+            }
+          }
+          button #vnode_8765861600631218262 "Tooltip" {
+            row #vnode_8942689564212310562 {
+              text #vnode_6679650279885090758 "[Image]"
+              col #vnode_6679667872071135609 {
+                text #vnode_13774735080920879259 "Tooltip"
+              }
+            }
+          }
+          text #vnode_8765879192817263113 "Navigation"
+          button #vnode_8766037522491666772 "Breadcrumb" {
+            row #vnode_9095741582800622012 {
+              text #vnode_14312372039798989428 "[Image]"
+              col #vnode_14312389631985034279 {
+                text #vnode_13534778021336051269 "Breadcrumb"
+              }
+            }
+          }
+          button #vnode_8766055114677711623 "Command" {
+            row #vnode_9111046784659453157 {
+              text #vnode_5852272178935603487 "[Image]"
+              col #vnode_5852254586749558636 {
+                text #vnode_13480171911659906180 "Command"
+              }
+            }
+          }
+          button #vnode_8766072706863756474 "Menubar" {
+            row #vnode_9126351986518284302 {
+              text #vnode_15838916391781769162 "[Image]"
+              col #vnode_15838933983967814013 {
+                text #vnode_13486786609419085671 "Menubar"
+              }
+            }
+          }
+          button #vnode_8766090299049801325 "NavigationMenu" {
+            row #vnode_9141657188377115447 {
+              text #vnode_7378816530918383221 "[Image]"
+              col #vnode_7378798938732338370 {
+                text #vnode_13432180499742940582 "NavigationMenu"
+              }
+            }
+          }
+          button #vnode_8765967153747487368 "NavLink" {
+            row #vnode_9034520775365297432 {
+              text #vnode_11259283335833429960 "[Image]"
+              col #vnode_11259300928019474811 {
+                text #vnode_13630760845169982465 "NavLink"
+              }
+            }
+          }
+          button #vnode_8765984745933532219 "NavItem" {
+            row #vnode_9049825977224128577 {
+              text #vnode_2799183474970044019 "[Image]"
+              col #vnode_2799165882783999168 {
+                text #vnode_13576154735493837376 "NavItem"
+              }
+            }
+          }
+          button #vnode_8766002338119577070 "Pagination" {
+            row #vnode_9065131179082959722 {
+              text #vnode_12785827687816209694 "[Image]"
+              col #vnode_12785845280002254545 {
+                text #vnode_13582769433253016867 "Pagination"
+              }
+            }
+          }
+          button #vnode_8766019930305621921 "ScrollArea" {
+            row #vnode_9080436380941790867 {
+              text #vnode_4325727826952823753 "[Image]"
+              col #vnode_4325710234766778902 {
+                text #vnode_13528163323576871778 "ScrollArea"
+              }
+            }
+          }
+          button #vnode_8765052360073155116 "Separator" {
+            row #vnode_8238650278706077892 {
+              text #vnode_8462618331700260108 "[Image]"
+              col #vnode_8462635923886304959 {
+                text #vnode_14878537555011088013 "Separator"
+              }
+            }
+          }
+          button #vnode_8765069952259199967 "Sidebar" {
+            row #vnode_8253955480564909037 {
+              text #vnode_2518470836874167 "[Image]"
+              col #vnode_2500878650829316 {
+                text #vnode_14823931445334942924 "Sidebar"
+              }
+            }
+          }
+          button #vnode_8765087544445244818 "Tabs" {
+            row #vnode_8269260682423740182 {
+              text #vnode_9989162683683039842 "[Image]"
+              col #vnode_9989180275869084693 {
+                text #vnode_14830546143094122415 "Tabs"
+              }
+            }
+          }
+          text #vnode_8765105136631289669 "Overlay"
+          button #vnode_8764981991328975712 "Accordion" {
+            row #vnode_8177429471270753312 {
+              text #vnode_5409529627734700640 "[Image]"
+              col #vnode_5409547219920745491 {
+                text #vnode_14974520378845019209 "Accordion"
+              }
+            }
+          }
+          button #vnode_8764999583515020563 "AlertDialog" {
+            row #vnode_8192734673129584457 {
+              text #vnode_15396173840580866315 "[Image]"
+              col #vnode_15396156248394821464 {
+                text #vnode_14919914269168874120 "AlertDialog"
+              }
+            }
+          }
+          button #vnode_8765017175701065414 "Collapsible" {
+            row #vnode_8208039874988415602 {
+              text #vnode_6936073979717480374 "[Image]"
+              col #vnode_6936091571903525225 {
+                text #vnode_14926528966928053611 "Collapsible"
+              }
+            }
+          }
+          button #vnode_8765034767887110265 "ContextMenu" {
+            row #vnode_8223345076847246747 {
+              text #vnode_16922718192563646049 "[Image]"
+              col #vnode_16922700600377601198 {
+                text #vnode_14871922857251908522 "ContextMenu"
+              }
+            }
+          }
+          button #vnode_8765193097561513924 "Dialog" {
+            row #vnode_8361091893576727052 {
+              text #vnode_14568795739631379044 "[Image]"
+              col #vnode_14568813331817423895 {
+                text #vnode_14686571907343225621 "Dialog"
+              }
+            }
+          }
+          button #vnode_8765210689747558775 "Drawer" {
+            row #vnode_8376397095435558197 {
+              text #vnode_6108695878767993103 "[Image]"
+              col #vnode_6108678286581948252 {
+                text #vnode_14631965797667080532 "Drawer"
+              }
+            }
+          }
+          button #vnode_8765228281933603626 "DropdownMenu" {
+            row #vnode_8391702297294389342 {
+              text #vnode_16095340091614158778 "[Image]"
+              col #vnode_16095357683800203629 {
+                text #vnode_14638580495426260023 "DropdownMenu"
+              }
+            }
+          }
+          button #vnode_8765245874119648477 "HoverCard" {
+            row #vnode_8407007499153220487 {
+              text #vnode_7635240230750772837 "[Image]"
+              col #vnode_7635222638564727986 {
+                text #vnode_14583974385750114934 "HoverCard"
+              }
+            }
+          }
+          button #vnode_8765122728817334520 "Popover" {
+            row #vnode_8299871086141402472 {
+              text #vnode_11515707035665819576 "[Image]"
+              col #vnode_11515724627851864427 {
+                text #vnode_14782554731177156817 "Popover"
+              }
+            }
+          }
+          button #vnode_8765140321003379371 "Sheet" {
+            row #vnode_8315176288000233617 {
+              text #vnode_3055607174802433635 "[Image]"
+              col #vnode_3055589582616388784 {
+                text #vnode_14727948621501011728 "Sheet"
+              }
+            }
+          }
+        }
+      }
+    }
+    container #vnode_4289777634216808055 {
+      scrollable #vnode_12797096093727462453 {
+        col #vnode_7440309935637812751 {
+          container #vnode_8742182554021542781 {
+            col #vnode_5393886225687582055 {
+              text #vnode_16382534950997810693 "Sidebar"
+              text #vnode_16382517358811765842 "Sidebar is a composable navigation shell (1:1 shadcn-vue port, desktop web). A sidebar_provider owns the open/collapsed state; sidebar hosts sidebar_header / sidebar_content / sidebar_footer; content holds sidebar_group sections and sidebar_menu trees. sidebar_menu_button supports router mode (to:) with as-child RouterLink polymorphism and automatic active detection from the current route (Plan 548 D2)."
+              text #vnode_16382499766625720991 "Installation"
+              container #vnode_16382482174439676140 {
+                col #vnode_12101609475521517828 {
+                  container #vnode_13908250231707566540 {
+                    text #vnode_13976405829224533412 "bash"
+                  }
+                  container #vnode_13908267823893611391 {
+                    text #vnode_13991711031083364557 "npx shadcn-vue@latest add sidebar"
+                  }
+                }
+              }
+              text #vnode_16382464582253631289 "Simple"
+              container #vnode_16382446990067586438 {
+                col #vnode_12070999071803855538 {
+                  container #vnode_12381705879724786806 {
+                    container #vnode_14024397241141499010 {
+                      col #vnode_597477998457903334 {
+                        col #vnode_3778257524163317458 {
+                          text #vnode_5883770470869479126 "Acme Inc"
+                        }
+                        scrollable #vnode_3778275116349362309 {
+                          col #vnode_5899075672728310271 {
+                            col #vnode_352156335383647309 {
+                              col #vnode_8011322902296690391 {
+                                button #vnode_8285440477858072405 "Home" {
+                                  row #vnode_6508073275800876399 {
+                                    text #vnode_12071209346390231965 "[Image]"
+                                    text #vnode_12071191754204187114 "Home"
+                                  }
+                                }
+                              }
+                              col #vnode_8011305310110645540 {
+                                button #vnode_8270135275999241260 "Settings" {
+                                  row #vnode_14968173136664262340 {
+                                    text #vnode_12095205052348714764 "[Image]"
+                                    text #vnode_12095222644534759615 "Settings"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        col #vnode_3778222339791227756 {
+                          text #vnode_5853160067151816836 "v1.0.0"
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_12381723471910831657 {
+                    row #vnode_14039702443000330155 {
+                      col #vnode_10584122211304069009 {
+                        button #vnode_3754261818204834659 "Auto"
+                        container #vnode_3754244226018789808 {
+                        }
+                      }
+                      col #vnode_10584104619118024158 {
+                        button #vnode_3738956616346003514 "Vue"
+                        container #vnode_3738974208532048365 {
+                        }
+                      }
+                    }
+                    row #vnode_14039684850814285304 {
+                      button #vnode_10568817009445237864 "copy"
+                      button #vnode_10568834601631282715 "chevron-down"
+                    }
+                  }
+                  container #vnode_12381670695352697104 {
+                    text #vnode_13993786837423836720 "div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar {
+            sidebar_header {
+                text "Acme Inc" (style: "font-semibold") {}
+            }
+            sidebar_content {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button {
+                            icon (name: "home") {}
+                            text "Home" {}
+                        }
+                    }
+                    sidebar_menu_item {
+                        sidebar_menu_button {
+                            icon (name: "settings") {}
+                            text "Settings" {}
+                        }
+                    }
+                }
+            }
+            sidebar_footer {
+                text "v1.0.0" (style: "text-xs text-muted-foreground") {}
+            }
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382429397881541587 "Group"
+              container #vnode_16382411805695496736 {
+                col #vnode_12040388668086193248 {
+                  container #vnode_10855161527742007072 {
+                    container #vnode_14072388653058464608 {
+                      col #vnode_8246071942425281568 {
+                        scrollable #vnode_11850286517627912800 {
+                          col #vnode_8243734652292172064 {
+                            col #vnode_12009004812468978016 {
+                              text #vnode_16753310316668704288 "Workspace"
+                              col #vnode_16753327908854749139 {
+                                col #vnode_16040775162965179273 {
+                                  col #vnode_8018362296662534603 {
+                                    button #vnode_6929334686317315057 "Inbox" {
+                                      row #vnode_3423829782969987715 {
+                                        text #vnode_18856197638706329 "[Image]"
+                                        text #vnode_18838605452661478 "Inbox"
+                                      }
+                                    }
+                                  }
+                                  col #vnode_8018344704476489752 {
+                                    button #vnode_6914029484458483912 "Drafts" {
+                                      row #vnode_11883929643833373656 {
+                                        text #vnode_42851903597189128 "[Image]"
+                                        text #vnode_42869495783233979 "Drafts"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            col #vnode_12009022404655022867 {
+                              text #vnode_16768615518527535433 "Projects"
+                              col #vnode_16768597926341490582 {
+                                col #vnode_7550064898384131042 {
+                                  col #vnode_6467822238721272070 {
+                                    button #vnode_3153029126250591538 "Design" {
+                                      row #vnode_7036409230205068278 {
+                                        text #vnode_6910903100391955202 "[Image]"
+                                        text #vnode_6910920692578000053 "Design"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_10855179119928051923 {
+                    row #vnode_14087693854917295753 {
+                      col #vnode_18232716155271447243 {
+                        button #vnode_11826290811669430001 "Auto"
+                        container #vnode_11826273219483385150 {
+                        }
+                      }
+                      col #vnode_18232698563085402392 {
+                        button #vnode_11810985609810598856 "Vue"
+                        container #vnode_11811003201996643707 {
+                        }
+                      }
+                    }
+                    row #vnode_14087676262731250902 {
+                      button #vnode_18217410953412616098 "copy"
+                      button #vnode_18217428545598660949 "chevron-down"
+                    }
+                  }
+                  container #vnode_10855196712114096774 {
+                    text #vnode_14102999056776126898 "div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar {
+            sidebar_content {
+                sidebar_group {
+                    sidebar_group_label {
+                        text "Workspace" {}
+                    }
+                    sidebar_group_content {
+                        sidebar_menu {
+                            sidebar_menu_item {
+                                sidebar_menu_button {
+                                    icon (name: "inbox") {}
+                                    text "Inbox" {}
+                                }
+                            }
+                            sidebar_menu_item {
+                                sidebar_menu_button {
+                                    icon (name: "file") {}
+                                    text "Drafts" {}
+                                }
+                            }
+                        }
+                    }
+                }
+                sidebar_group {
+                    sidebar_group_label {
+                        text "Projects" {}
+                    }
+                    sidebar_group_content {
+                        sidebar_menu {
+                            sidebar_menu_item {
+                                sidebar_menu_button {
+                                    icon (name: "folder") {}
+                                    text "Design" {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382675688486169501 "Group Action"
+              container #vnode_16382658096300124650 {
+                col #vnode_12254661494109829278 {
+                  container #vnode_3094227917911913594 {
+                    container #vnode_13736448769639705422 {
+                      col #vnode_10046146555782288778 {
+                        scrollable #vnode_10686315784504400254 {
+                          col #vnode_10170729456042873114 {
+                            col #vnode_8078508572624916270 {
+                              text #vnode_11067600578902641450 "Projects"
+                              button #vnode_11067618171088686301 "" {
+                                text #vnode_7077391657822624647 "[Image]"
+                              }
+                              col #vnode_11067565394530551748 {
+                                col #vnode_7031476052246131212 {
+                                  col #vnode_10304785258013018724 {
+                                    button #vnode_14192860970554124268 "Design" {
+                                      row #vnode_15455867098793154052 {
+                                        text #vnode_16280484485236058316 "[Image]"
+                                        text #vnode_16280502077422103167 "Design"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_3094245510097958445 {
+                    row #vnode_13751753971498536567 {
+                      col #vnode_1586046694918902837 {
+                        button #vnode_10662320078545917455 "Auto"
+                        container #vnode_10662302486359872604 {
+                        }
+                      }
+                      col #vnode_1586029102732857986 {
+                        button #vnode_10647014876687086310 "Vue"
+                        container #vnode_10647032468873131161 {
+                        }
+                      }
+                    }
+                    row #vnode_13751736379312491716 {
+                      button #vnode_1570741493060071692 "copy"
+                      button #vnode_1570759085246116543 "chevron-down"
+                    }
+                  }
+                  container #vnode_3094192733539823892 {
+                    text #vnode_13705838365922043132 "div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar {
+            sidebar_content {
+                sidebar_group {
+                    sidebar_group_label {
+                        text "Projects" {}
+                    }
+                    sidebar_group_action (onclick: .AddProject) {
+                        icon (name: "plus") {}
+                    }
+                    sidebar_group_content {
+                        sidebar_menu {
+                            sidebar_menu_item {
+                                sidebar_menu_button {
+                                    icon (name: "folder") {}
+                                    text "Design" {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382640504114079799 "Collapsible Group"
+              container #vnode_16382622911928034948 {
+                col #vnode_12224051090392166988 {
+                  container #vnode_1567683565929133860 {
+                    container #vnode_13784440181556671020 {
+                      col #vnode_17694740499749667012 {
+                        scrollable #vnode_311600704259443980 {
+                          col #vnode_12530693637465566052 {
+                            col #vnode_11275257188846861036 {
+                              row #vnode_1338848213606620932 {
+                                text #vnode_10977818967228380108 "Projects"
+                                text #vnode_10977836559414424959 "▸"
+                              }
+                              col #vnode_1338865805792665783 {
+                                col #vnode_10993124169087211253 {
+                                  col #vnode_9305604134125158991 {
+                                    button #vnode_7823012807852895293 "Design" {
+                                      row #vnode_17079343892652895143 {
+                                        text #vnode_14120068351815986373 "[Image]"
+                                        text #vnode_14120050759629941522 "Design"
+                                      }
+                                    }
+                                  }
+                                  col #vnode_9305586541939114140 {
+                                    button #vnode_7807707605994064148 "Engine" {
+                                      row #vnode_7092699679806729468 {
+                                        text #vnode_14144064057774469172 "[Image]"
+                                        text #vnode_14144081649960514023 "Engine"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_1567701158115178711 {
+                    row #vnode_13799745383415502165 {
+                      col #vnode_9234640638886281071 {
+                        button #vnode_287604998300961181 "Auto"
+                        container #vnode_287587406114916330 {
+                        }
+                      }
+                      col #vnode_9234623046700236220 {
+                        button #vnode_272299796442130036 "Vue"
+                        container #vnode_272317388628174887 {
+                        }
+                      }
+                    }
+                    row #vnode_13799727791229457314 {
+                      button #vnode_9219335437027449926 "copy"
+                      button #vnode_9219353029213494777 "chevron-down"
+                    }
+                  }
+                  container #vnode_1567718750301223562 {
+                    text #vnode_13815050585274333310 "div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar {
+            sidebar_content {
+                collapsible (open: .self.projOpen) {
+                    sidebar_group {
+                        row (style: "flex items-center justify-between pr-2") {
+                            sidebar_group_label {
+                                text "Projects" {}
+                            }
+                            collapsible-trigger (style: "transition-transform duration-200") {
+                                text "▸" {}
+                            }
+                        }
+                        collapsible-content {
+                            sidebar_group_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "folder") {}
+                                            text "Design" {}
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "folder") {}
+                                            text "Engine" {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382605319741990097 "Menu Badge and Action"
+              container #vnode_16382587727555945246 {
+                col #vnode_12193440686674504698 {
+                  container #vnode_41139213946354126 {
+                    container #vnode_13832431593473636618 {
+                      col #vnode_6896590370007493630 {
+                        scrollable #vnode_8383629697724039322 {
+                          col #vnode_14890657818888258990 {
+                            col #vnode_14472005805068805802 {
+                              col #vnode_10056839922020152030 {
+                                button #vnode_14893551478492966714 "Notifications" {
+                                  row #vnode_5253334306271739790 {
+                                    text #vnode_1549147468985597514 "[Image]"
+                                    text #vnode_1549165061171642365 "Notifications"
+                                  }
+                                }
+                                text #vnode_14893569070679011565 "24"
+                              }
+                              col #vnode_10056857514206196881 {
+                                button #vnode_14908856680351797859 "Messages" {
+                                  row #vnode_15239978519117905465 {
+                                    text #vnode_1525151763027114715 "[Image]"
+                                    text #vnode_1525134170841069864 "Messages"
+                                  }
+                                }
+                                button #vnode_14908839088165753008 "" {
+                                  text #vnode_15224673317259074320 "[Image]"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_41156806132398977 {
+                    row #vnode_13847736795332467763 {
+                      col #vnode_16883234582853659305 {
+                        button #vnode_8359633991765556523 "Auto"
+                        container #vnode_8359616399579511672 {
+                        }
+                      }
+                      col #vnode_16883216990667614454 {
+                        button #vnode_8344328789906725378 "Vue"
+                        container #vnode_8344346382092770229 {
+                        }
+                      }
+                    }
+                    row #vnode_13847719203146422912 {
+                      button #vnode_16867929380994828160 "copy"
+                      button #vnode_16867946973180873011 "chevron-down"
+                    }
+                  }
+                  container #vnode_41104029574264424 {
+                    text #vnode_13801821189755974328 "div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar {
+            sidebar_content {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button {
+                            icon (name: "bell") {}
+                            text "Notifications" {}
+                        }
+                        sidebar_menu_badge {
+                            text "24" {}
+                        }
+                    }
+                    sidebar_menu_item {
+                        sidebar_menu_button {
+                            icon (name: "mail") {}
+                            text "Messages" {}
+                        }
+                        sidebar_menu_action (onclick: .MessageMore) {
+                            icon (name: "more-horizontal") {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382570135369900395 "Menu Sub"
+              container #vnode_16382552543183855544 {
+                col #vnode_12162830282956842408 {
+                  container #vnode_16961338935673126008 {
+                    container #vnode_13880423005390602216 {
+                      col #vnode_14545184313974871864 {
+                        scrollable #vnode_16455658691188634664 {
+                          col #vnode_17250622000310951928 {
+                            col #vnode_17668754421290750568 {
+                              col #vnode_328087556724131512 {
+                                button #vnode_362539916048001704 "Settings" {
+                                  row #vnode_11187708691264486264 {
+                                    text #vnode_13698030497869368552 "[Image]"
+                                    text #vnode_13698048090055413403 "Settings"
+                                  }
+                                }
+                                col #vnode_362557508234046555 {
+                                  button #vnode_11203013893123317409 "General" {
+                                    text #vnode_5237930637005982611 "General"
+                                  }
+                                  button #vnode_11202996300937272558 "Billing" {
+                                    text #vnode_5222625435147151466 "Billing"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_16961356527859170859 {
+                    row #vnode_13895728207249433361 {
+                      col #vnode_6085084453111485923 {
+                        button #vnode_16431662985230151865 "Auto"
+                        container #vnode_16431645393044107014 {
+                        }
+                      }
+                      col #vnode_6085066860925441072 {
+                        button #vnode_16416357783371320720 "Vue"
+                        container #vnode_16416375375557365571 {
+                        }
+                      }
+                    }
+                    row #vnode_13895710615063388510 {
+                      button #vnode_6069779251252654778 "copy"
+                      button #vnode_6069796843438699629 "chevron-down"
+                    }
+                  }
+                  container #vnode_16961374120045215710 {
+                    text #vnode_13911033409108264506 "div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar {
+            sidebar_content {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button {
+                            icon (name: "settings") {}
+                            text "Settings" {}
+                        }
+                        sidebar_menu_sub {
+                            sidebar_menu_sub_item {
+                                sidebar_menu_sub_button {
+                                    text "General" {}
+                                }
+                            }
+                            sidebar_menu_sub_item {
+                                sidebar_menu_sub_button {
+                                    text "Billing" {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382816425974528309 "Router mode (to:)"
+              container #vnode_16382798833788483458 {
+                col #vnode_12377103108980478438 {
+                  container #vnode_9200405325843032530 {
+                    container #vnode_13544483121971843030 {
+                      col #vnode_16345258927331879074 {
+                        scrollable #vnode_15291687958065122118 {
+                          col #vnode_730872730352101362 {
+                            col #vnode_13738258181446688822 {
+                              col #vnode_13089121892667620290 {
+                                button #vnode_9845900484614998694 "Button" {
+                                  row #vnode_6540576143734364178 {
+                                    text #vnode_2442825590521177750 "[Image]"
+                                    text #vnode_2442843182707222601 "Button"
+                                  }
+                                }
+                              }
+                              col #vnode_13089139484853665141 {
+                                button #vnode_9861205686473829839 "Card" {
+                                  row #vnode_16527220356580529853 {
+                                    text #vnode_2418829884562694951 "[Image]"
+                                    text #vnode_2418812292376650100 "Card"
+                                  }
+                                }
+                              }
+                              col #vnode_13089086708295530588 {
+                                button #vnode_9815290080897336404 "Sidebar (this page)" {
+                                  row #vnode_5014031791751584444 {
+                                    text #vnode_2490817002438143348 "[Image]"
+                                    text #vnode_2490834594624188199 "Sidebar (this page)"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_9200422918029077381 {
+                    row #vnode_13559788323830674175 {
+                      col #vnode_7885159066468493133 {
+                        button #vnode_15267692252106639319 "Auto"
+                        container #vnode_15267674659920594468 {
+                        }
+                      }
+                      col #vnode_7885141474282448282 {
+                        button #vnode_15252387050247808174 "Vue"
+                        container #vnode_15252404642433853025 {
+                        }
+                      }
+                    }
+                    row #vnode_13559770731644629324 {
+                      button #vnode_7869853864609661988 "copy"
+                      button #vnode_7869871456795706839 "chevron-down"
+                    }
+                  }
+                  container #vnode_9200370141470942828 {
+                    text #vnode_13513872718254180740 "div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar {
+            sidebar_content {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button (to: "/button") {
+                            icon (name: "mouse-pointer-click") {}
+                            text "Button" {}
+                        }
+                    }
+                    sidebar_menu_item {
+                        sidebar_menu_button (to: "/card") {
+                            icon (name: "square-stack") {}
+                            text "Card" {}
+                        }
+                    }
+                    sidebar_menu_item {
+                        sidebar_menu_button (to: "/sidebar") {
+                            icon (name: "layout-grid") {}
+                            text "Sidebar (this page)" {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382781241602438607 "Trigger and explicit Provider"
+              container #vnode_16382763649416393756 {
+                col #vnode_12346492705262816148 {
+                  container #vnode_7673860973860252796 {
+                    row #vnode_13592474533888808628 {
+                      col #vnode_5547108797589705692 {
+                        col #vnode_4916972877820165844 {
+                          scrollable #vnode_3090836911774794300 {
+                            col #vnode_16935006797668633588 {
+                              col #vnode_3360369527371599772 {
+                                col #vnode_13761632995879585300 {
+                                  button #vnode_12474950528727110652 "Home" {
+                                    row #vnode_14591708619404948788 {
+                                      text #vnode_5411658172812453724 "[Image]"
+                                      text #vnode_5411675764998498575 "Home"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        container #vnode_4916990470006210695 {
+                          text #vnode_3106142113633625445 "Click the trigger to collapse the sidebar to an icon rail."
+                        }
+                      }
+                    }
+                  }
+                  row #vnode_7673878566046297647 {
+                    row #vnode_13607779735747639773 {
+                      col #vnode_15533753010435871367 {
+                        button #vnode_4892977171861683045 "Auto"
+                        container #vnode_4892959579675638194 {
+                        }
+                      }
+                      col #vnode_15533735418249826516 {
+                        button #vnode_4877671970002851900 "Vue"
+                        container #vnode_4877689562188896751 {
+                        }
+                      }
+                    }
+                    row #vnode_13607762143561594922 {
+                      button #vnode_15518447808577040222 "copy"
+                      button #vnode_15518465400763085073 "chevron-down"
+                    }
+                  }
+                  container #vnode_7673896158232342498 {
+                    text #vnode_13623084937606470918 "div (style: "relative flex h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+    sidebar_provider {
+        sidebar (collapsible: "icon") {
+            sidebar_content {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button {
+                            icon (name: "home") {}
+                            text "Home" {}
+                        }
+                    }
+                }
+            }
+        }
+        div (style: "flex-1 p-2") {
+            sidebar_trigger {}
+            text "Click the trigger to collapse the sidebar to an icon rail." (style: "text-sm text-muted-foreground") {}
+        }
+    }
+}
+"
+                  }
+                }
+              }
+              text #vnode_16382746057230348905 "Properties"
+              col #vnode_16382728465044304054 {
+                col #vnode_12315882301545153858 {
+                  row #vnode_6147316621877473062 {
+                    container #vnode_13640465945805774226 {
+                      text #vnode_13195702741557083926 "Property"
+                    }
+                    container #vnode_13640483537991819077 {
+                      text #vnode_13211007943415915071 "Type"
+                    }
+                    container #vnode_13640430761433684524 {
+                      text #vnode_13165092337839421636 "Default"
+                    }
+                    container #vnode_13640448353619729375 {
+                      text #vnode_13180397539698252781 "Values"
+                    }
+                    container #vnode_13640395577061594822 {
+                      text #vnode_13134481934121759346 "Description"
+                    }
+                  }
+                }
+                col #vnode_12315899893731198709 {
+                  row #vnode_6162621823736304207 {
+                    container #vnode_5180366084942388285 {
+                      text #vnode_13171707035598601127 "side"
+                    }
+                    container #vnode_5180348492756343434 {
+                      text #vnode_13156401833739769982 "string"
+                    }
+                    container #vnode_5180330900570298583 {
+                      text #vnode_13141096631880938837 ""left""
+                    }
+                    container #vnode_5180313308384253732 {
+                      text #vnode_13125791430022107692 ""left", "right""
+                    }
+                    container #vnode_5180295716198208881 {
+                      text #vnode_13110486228163276547 "Which side of the layout the sidebar is pinned to"
+                    }
+                  }
+                  row #vnode_6162604231550259356 {
+                    container #vnode_5165060883083557140 {
+                      text #vnode_3185062822752435452 "variant"
+                    }
+                    container #vnode_5165078475269601991 {
+                      text #vnode_3200368024611266597 "string"
+                    }
+                    container #vnode_5165096067455646842 {
+                      text #vnode_3215673226470097742 ""sidebar""
+                    }
+                    container #vnode_5165113659641691693 {
+                      text #vnode_3230978428328928887 ""sidebar", "floating", "inset""
+                    }
+                    container #vnode_5164990514339377736 {
+                      text #vnode_3123842015317110872 "Visual variant (inset pairs with sidebar_inset)"
+                    }
+                  }
+                  row #vnode_6162657008108393909 {
+                    container #vnode_5210976488660050575 {
+                      text #vnode_14698251387581380861 "collapsible"
+                    }
+                    container #vnode_5210958896474005724 {
+                      text #vnode_14682946185722549716 "string"
+                    }
+                    container #vnode_5211011673032140277 {
+                      text #vnode_14728861791299043151 ""offcanvas""
+                    }
+                    container #vnode_5210994080846095426 {
+                      text #vnode_14713556589440212006 ""offcanvas", "icon", "none""
+                    }
+                    container #vnode_5210906119915871171 {
+                      text #vnode_14637030580146056281 "Collapse behavior: slide off-canvas, icon rail, or never"
+                    }
+                  }
+                }
+              }
+              text #vnode_16382710872858259203 "SidebarProvider Properties"
+              col #vnode_16382693280672214352 {
+                col #vnode_12285271897827491568 {
+                  row #vnode_4620772269894693328 {
+                    container #vnode_13688457357722739824 {
+                      text #vnode_2397552611814910544 "Property"
+                    }
+                    container #vnode_13688474949908784675 {
+                      text #vnode_2412857813673741689 "Type"
+                    }
+                    container #vnode_13688492542094829526 {
+                      text #vnode_2428163015532572834 "Default"
+                    }
+                    container #vnode_13688510134280874377 {
+                      text #vnode_2443468217391403979 "Description"
+                    }
+                  }
+                }
+                col #vnode_12285289490013536419 {
+                  row #vnode_4636077471753524473 {
+                    container #vnode_5228357496859353883 {
+                      text #vnode_2373556905856427745 "default_open"
+                    }
+                    container #vnode_5228339904673309032 {
+                      text #vnode_2358251703997596600 "bool"
+                    }
+                    container #vnode_5228392681231443585 {
+                      text #vnode_2404167309574090035 "true"
+                    }
+                    container #vnode_5228375089045398734 {
+                      text #vnode_2388862107715258890 "Initial open state when uncontrolled"
+                    }
+                  }
+                  row #vnode_4636059879567479622 {
+                    container #vnode_5213052295000522738 {
+                      text #vnode_10833656766719813686 "open"
+                    }
+                    container #vnode_5213069887186567589 {
+                      text #vnode_10848961968578644831 "expr(bool)"
+                    }
+                    container #vnode_5213017110628433036 {
+                      text #vnode_10803046363002151396 "—"
+                    }
+                    container #vnode_5213034702814477887 {
+                      text #vnode_10818351564860982541 "Controlled open state (v-model:open); unbound falls back to default_open"
+                    }
+                  }
+                  row #vnode_4636042287381434771 {
+                    container #vnode_5197747093141691593 {
+                      text #vnode_847012553873648011 "onopenchange"
+                    }
+                    container #vnode_5197729500955646742 {
+                      text #vnode_831707352014816866 "msg_ref"
+                    }
+                    container #vnode_5197711908769601891 {
+                      text #vnode_816402150155985721 "—"
+                    }
+                    container #vnode_5197694316583557040 {
+                      text #vnode_801096948297154576 "Message on open-state change (update:open)"
+                    }
+                  }
+                }
+              }
+              text #vnode_16382957163462887117 "SidebarMenuButton Properties"
+              col #vnode_16382939571276842266 {
+                col #vnode_12499544723851127598 {
+                  row #vnode_15306582733774151466 {
+                    container #vnode_13352517474303980638 {
+                      text #vnode_4197627225171917754 "Property"
+                    }
+                    container #vnode_13352535066490025489 {
+                      text #vnode_4212932427030748899 "Type"
+                    }
+                    container #vnode_13352482289931890936 {
+                      text #vnode_4167016821454255464 "Default"
+                    }
+                    container #vnode_13352499882117935787 {
+                      text #vnode_4182322023313086609 "Description"
+                    }
+                  }
+                }
+                col #vnode_12499562316037172449 {
+                  row #vnode_15321887935632982611 {
+                    container #vnode_4892417613440594697 {
+                      text #vnode_4173631519213434955 "to"
+                    }
+                    container #vnode_4892400021254549846 {
+                      text #vnode_4158326317354603810 "string"
+                    }
+                    container #vnode_4892382429068504995 {
+                      text #vnode_4143021115495772665 "—"
+                    }
+                    container #vnode_4892364836882460144 {
+                      text #vnode_4127715913636941520 "Route address: RouterLink via as-child; active auto-detected from route (Plan 548 D2)"
+                    }
+                  }
+                  row #vnode_15321870343446937760 {
+                    container #vnode_4877112411581763552 {
+                      text #vnode_12633731380076820896 "active"
+                    }
+                    container #vnode_4877130003767808403 {
+                      text #vnode_12649036581935652041 "expr(bool)"
+                    }
+                    container #vnode_4877147595953853254 {
+                      text #vnode_12664341783794483186 "auto"
+                    }
+                    container #vnode_4877165188139898105 {
+                      text #vnode_12679646985653314331 "Selected state (shadcn isActive); with to: auto-detected when unbound"
+                    }
+                  }
+                  row #vnode_15321923120005072313 {
+                    container #vnode_4923028017158256987 {
+                      text #vnode_5700175871196214689 "variant"
+                    }
+                    container #vnode_4923010424972212136 {
+                      text #vnode_5684870669337383544 "default|outline"
+                    }
+                    container #vnode_4923063201530346689 {
+                      text #vnode_5730786274913876979 "default"
+                    }
+                    container #vnode_4923045609344301838 {
+                      text #vnode_5715481073055045834 "Visual variant"
+                    }
+                  }
+                  row #vnode_15321905527819027462 {
+                    container #vnode_4907722815299425842 {
+                      text #vnode_14160275732059600630 "size"
+                    }
+                    container #vnode_4907740407485470693 {
+                      text #vnode_14175580933918431775 "default|sm|lg"
+                    }
+                    container #vnode_4907687630927336140 {
+                      text #vnode_14129665328341938340 "default"
+                    }
+                    container #vnode_4907705223113380991 {
+                      text #vnode_14144970530200769485 "default=h-8, sm=h-7, lg=h-12"
+                    }
+                  }
+                  row #vnode_15321958304377162015 {
+                    container #vnode_4953638420875919277 {
+                      text #vnode_7226720223178994423 "tooltip"
+                    }
+                    container #vnode_4953620828689874426 {
+                      text #vnode_7211415021320163278 "string"
+                    }
+                    container #vnode_4953603236503829575 {
+                      text #vnode_7196109819461332133 "—"
+                    }
+                    container #vnode_4953585644317784724 {
+                      text #vnode_7180804617602500988 "Tooltip text (declared; functional wiring deferred)"
+                    }
+                  }
+                  row #vnode_15321940712191117164 {
+                    container #vnode_4938333219017088132 {
+                      text #vnode_15686820084042380364 "text"
+                    }
+                    container #vnode_4938350811203132983 {
+                      text #vnode_15702125285901211509 "string"
+                    }
+                    container #vnode_4938368403389177834 {
+                      text #vnode_15717430487760042654 "—"
+                    }
+                    container #vnode_4938385995575222685 {
+                      text #vnode_15732735689618873799 "Label text shorthand (children take precedence)"
+                    }
+                  }
+                  row #vnode_15321993488749251717 {
+                    container #vnode_4984248824593581567 {
+                      text #vnode_8753264575161774157 "onclick"
+                    }
+                    container #vnode_4984231232407536716 {
+                      text #vnode_8737959373302943012 "msg_ref"
+                    }
+                    container #vnode_4984284008965671269 {
+                      text #vnode_8783874978879436447 "—"
+                    }
+                    container #vnode_4984266416779626418 {
+                      text #vnode_8768569777020605302 "Click message (state mode); to wins when both given"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

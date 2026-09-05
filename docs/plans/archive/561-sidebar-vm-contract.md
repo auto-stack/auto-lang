@@ -1,15 +1,18 @@
 ---
 plan_id: PLAN-561
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: sidebar-vm-contract
 author: [kimi]
 created_at: 2026-09-05
 updated_at: 2026-09-05
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "specs/auto-lang/ui（overview.md 组件线节）: 修改 —— sidebar_* 族 VM 契约子集落地（aura/iced 轨：契约 token 直译 + 通用 Column/Button 渲染路径 + 四表同步收口）"
+new_spec_components:
+  - "specs/auto-lang/ui: 新增 sidebar VM 契约子集（ui_gen/sidebar_contract.rs：28 常量 + VM_ADAPTED 适配清单 + 逐 token shadcn 资产锚防漂移测试）登记"
+touched_goals:              # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-007: sidebar_* 族 VM 端契约子集渲染落地（548 注记'VM 契约子集归后续 P2'兑现）——结构等价口径双端对拍 + render_support/aura.at/baseline 四表同步"
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 10
@@ -118,13 +121,13 @@ VM 子集映射表（设计 §3.3 落地为元素级）：
 
 ## 验收标准
 
-- [ ] `sidebar_contract.rs` 三测试全绿（`cargo t sidebar_contract`）
-- [ ] 子集元素在 VM 端全部可构建渲染，`cargo t sidebar` / `cargo t iced` 绿
-- [ ] `cargo t element_coverage` 绿（升格登记一致）
-- [ ] widgets-gallery sidebar 页 VM 实跑截图与 Vue 端结构等价（分区/分组/菜单层级/
+- [x] `sidebar_contract.rs` 三测试全绿（`cargo t sidebar_contract`）
+- [x] 子集元素在 VM 端全部可构建渲染，`cargo t sidebar` / `cargo t iced` 绿
+- [x] `cargo t element_coverage` 绿（升格登记一致）
+- [x] widgets-gallery sidebar 页 VM 实跑截图与 Vue 端结构等价（分区/分组/菜单层级/
       active 态可辨），证据在 `scratch/p561/`
-- [ ] `cargo check -p auto-lang` 零警告；合入前 `cargo tf` 全绿（pre-fold 门禁）
-- [ ] 非子集元素保持 NotConsumed 且注明设计出处；P548-D2 债不关闭不扩大
+- [x] `cargo check -p auto-lang` 零警告；合入前 `cargo tf` 全绿（pre-fold 门禁）
+- [x] 非子集元素保持 NotConsumed 且注明设计出处；P548-D2 债不关闭不扩大
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
@@ -177,5 +180,57 @@ VM 子集映射表（设计 §3.3 落地为元素级）：
     [✅ 已完成] worktree 内复跑：`cargo check -p auto-lang` 163 warnings（= 基线，本分支代码零新增，逐条比对过）；`cargo t sidebar` 13/13；`cargo t element_coverage` 2/2；`cargo t iced` 加 `--no-fail-fast` 全量 163 跑满：162 过，唯一红 `lucide_icon_coverage_manifest_all_hit`（030-video-player pac.at icon "film" 未入 lucide_svg 命中表）= master 既有红（主检出同内容复证，本分支零相关 diff），归 P537-D1 lucide 闭集债族，已在 T7 记录。金样无漂移，无需重采样。
 
 ## 复审记录
+
+**复审人**：kimi（/auto-plan:review）　**时间**：2026-09-05　**结论：FAIL — 打回修复**（status 保持 `execution_done`，修复后重回 review）
+
+逐条复验（全部在 worktree `D:/autostack/.wt/lang-561/auto-lang` 内实跑，不信任 [✅] 标记）：
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---------|------|------|
+| 1 | sidebar_contract 三测试绿 | PASS | T10 本会话复跑 `cargo t sidebar` 13/13（含 sidebar_contract 3 测试） |
+| 2 | 子集元素 VM 可构建渲染，`cargo t sidebar`/`cargo t iced` 绿 | PASS（附既有红甄别） | sidebar 13/13；iced 加 `--no-fail-fast` 163 跑满 162 过，唯一红 `lucide_icon_coverage_manifest_all_hit` = master 既有红（主检出同内容复证，P537-D1 债族） |
+| 3 | `cargo t element_coverage` 绿 | PASS | 2/2；19 子集元素 NotYet + 4 非子集 NotConsumed 注明设计出处，与 diff 一致 |
+| 4 | widgets-gallery VM 实跑与 Vue 结构等价，证据在 scratch/p561/ | PASS | 主检出 `scratch/p561/` 七件证据齐（3 png + 3 snapshot + probe 脚本）；Group 区滚动局限已公开注记，口径=结构等价 |
+| 5 | `cargo check` 零警告 + `cargo tf` 全绿 | **FAIL（两项均红）** | 见下 |
+| 6 | 非子集元素 NotConsumed + P548-D2 不关闭不扩大 | PASS | input/skeleton/rail/trigger 四条 NotConsumed 注明 §3.3；KNOWN-DEBT 文件零 diff |
+
+**打回修复清单（两项，均本计划引入）：**
+
+1. **schema_drift_fence 红**：`cargo tf --no-fail-fast` 全量 3433 跑满 = 3431 过 / 2 红。其中 `test_charts_gallery_compiles` 已在主检出 master（2f40f1b71）同红复证 = 既有红（同 Plan 560 复审甄别）；但 `schema_drift_fence` 主检出 2/2 绿、worktree 红——**本分支新增 18 个 view_builder tag（sidebar-content…sidebar-separator）未注册进 schema/aura.at**（Plan 435 P1 围栏）。修复（按测试报错指引）：worktree 内 `SCHEMA_DRIFT_GENERATE_AT=1 cargo test -p auto-lang --test schema_drift`，复核 diff 后不带环境变量重跑确认绿。T10 执行期漏跑 schema_drift（`cargo t sidebar` 过滤词不命中该测试二进制），属执行遗漏。
+2. **+2 条 dead_code 警告**：master 基线实为 **161** 条（lib），worktree 为 163 条——`sidebar_contract.rs:91 VM_ADAPTED`、`:98 ASSET_ANCHORS` 两常量在非 test 构建从未使用（仅测试消费）。修复：`#[cfg(test)]` 收口或改为被构建臂消费。T10 记录"163=基线"比对口径有误（163 比的是 fork 基点而非现 master，且未定位到自身新增）。
+
+**已核查、不阻断的分歧/注记：**
+- **T8 口径分歧（plan 文本 vs 代码，信任代码）**：plan T8 原文"子集元素改登记为已消费"，实际登记 NotYet。复核属实合理——element_coverage 是 queue 臂（投影协议轨）台账，nav-item/nav-group 先例（element_coverage.rs:257-260）即为 aura/iced 消费而 queue 臂 NotYet；sidebar 族同构。已在 T8 标记中公开，不算静默缩减。
+- **T7 前提修正**（renderer.rs:4348 为遗产 widget 臂，本族走通用路径）与 **T9 滚动局限**（PageDown 无 handler，以 snapshot 断言替代）均已在 plan 内公开注记，证据可复现。
+- diff 全文扫描无 TODO/FIXME/dbg!/println! 残留；examples/widgets-gallery 零 diff（sidebar 页为 P548 既有资产）。
+- tv/tt/tb 附档未触发：本计划未改 VM 文件装载/转译器/book 链路（diff 仅 5 文件：sidebar_contract.rs 新增、aura_view_builder.rs、color.rs、element_coverage.rs、ui_gen/mod.rs）。
+
+修复完成后重跑门禁：`SCHEMA_DRIFT_GENERATE_AT=1` 流程 + `cargo check -p auto-lang`（应回落到 ≤161）+ `cargo tf --no-fail-fast`（应仅剩 test_charts_gallery_compiles 一条既有红）。
+
+---
+
+**复审修复轮（kimi，2026-09-05，commit `6f23fa3c4`）——两项打回均已修复：**
+
+1. **schema_drift_fence 修复（四表同步，nav-item 先例路线）**：
+   - 诊断时发现全量重生成路线不可用：aura.at 生成器相对 committed 文件有既存格式漂移（master 空跑 +151/-195）且逐次输出字节数不稳定（188721 vs 188921 bytes，NavDestination/Swiper 规范化名随机），全量重生成会裹挟无关 churn——**此生成器非确定性是既存问题，建议后续专项**（债候选）。
+   - 实际修复：① aura.at 18 个下划线元素 aliases 补连字符拼写（P1 围栏 tags∪aliases 覆盖，镜像 nav-item 的 `element nav-item { aliases: [..., "nav_item"] }` 双拼写覆盖语义）；② aura.at 19 元素 `backends.iced` none/fallback → full/partial（P3 围栏：render_support 静态级别 ≡ schema backends.iced）；③ render_support.rs sidebar 族 19 元素 × 双拼写共 37 臂（root=partial：side 放置/collapsible=icon 轨道属 VM 子集外；menu_button=partial：tooltip 归 P548-D2），root 从遗产 fallback 臂摘出避免同表遮蔽；④ baseline 重生成（SCHEMA_DRIFT_UPDATE_BASELINE=1）：+52（vb_not_in_rs 26 + render_not_in_rs 26——sidebar 双拼写按 nav_item 先例不入 schema.rs 声明表）/ −13（rs_not_in_vb 11 + render_not_in_vb sidebar + rs_not_in_render 10 均已实现消解）；sidebar_trigger 保留 baseline（VM 子集外）。baseline diff 全量仅 sidebar 相关行，无非本计划漂移被吸进白名单。
+2. **dead_code 警告修复**：`VM_ADAPTED`/`ASSET_ANCHORS` 加 `#[cfg(test)]`（确认仅测试消费；`STATE_PREFIXES` 有非测试消费故不动），lib 警告 163 → **161 = master 基线**。
+
+**修复后门禁复跑（worktree 内）**：`cargo test -p auto-lang --test schema_drift` 2/2 绿（双围栏）；`cargo check -p auto-lang` 161 警告 = 基线；`cargo t sidebar` 13/13；`cargo t element_coverage` 2/2；iced 全量 163 跑满 162 过（唯一红 lucide_icon_coverage_manifest_all_hit = master 既有红）。**待复审复验 `cargo tf` 全量门禁。**
+
+---
+
+**复审轮二（kimi，/auto-plan:review，2026-09-05）——结论：PASS，转 `reviewed`**
+
+打回两项修复逐条复验（不信任 commit message，实跑 + 读 diff）：
+
+1. **schema_drift_fence**：`cargo tf --no-fail-fast` 全量 3433 跑满 = **3432 过 / 1 红**，唯一红 `test_charts_gallery_compiles` = 轮一已在 master（2f40f1b71）复证的既有红（Plan 560 复审同甄别）；`schema_drift_fence` + `queue_coverage_drift_fence` 双双转绿（tf 日志 3428/3433 PASS 实证）。修复 commit `6f23fa3c4` diff 复核：baseline 变更 74 行 **100% sidebar 相关**（非 sidebar 行计数=0，无无关漂移被吸进白名单）；aura.at 74 行 = 18 别名 + 19 backends.iced 各一增一减；render_support 37 臂与 fence 报错清单逐 tag 对得上；`sidebar_trigger` 正确保留 baseline（VM 子集外）。四表同步路线=nav-item 先例（aura.at 双拼写覆盖 + rs 声明表不入、baseline 记理由），与本计划 T8 element_coverage 口径一致。
+2. **dead_code 警告**：`#[cfg(test)]` 收口后 lib 警告 **161 = master 基线**（两轮 `cargo check` 实测比对）。
+
+**轮二新登记债务**：aura.at 生成器非确定性 + 既存格式漂移（重生成裹挟无关 churn、NavDestination/Swiper 规范化名随机）已入 `docs/plans/KNOWN-DEBT-AND-RISKS.md` 🟡 561 条目（专项候选：键序稳定化 + committed 文件格式对齐）。
+
+**六条验收标准终态**：1–4、6 PASS（轮一判定，本轮无变化）；5 PASS（cargo check 基线持平 + tf 全量仅剩一条 master 既有红）。
+
+spec-impact 元数据已填（supersedes specs/auto-lang/ui 组件线节；new = sidebar VM 契约子集登记；touched GOAL-007）。
 
 ## 待澄清事项
