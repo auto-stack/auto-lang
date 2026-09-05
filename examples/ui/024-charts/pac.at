@@ -11,3 +11,4 @@ scene: "ui"
 render: "vue"
 title: "Charts"
 front_port: 4024
+desktop: "true"

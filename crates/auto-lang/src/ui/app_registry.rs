@@ -364,6 +364,46 @@ mod tests {
         assert!(calc.fit, "011 pac window: \"fit\" → 条目 fit=true");
     }
 
+    /// PLAN-552：真实 examples/ui 策展集恰等断言——`desktop_visible == true`
+    /// 的 id 集必须恰好等于 C 档清单：多一个 = 新 demo 悄悄上架桌面（opt-in
+    /// 缺省下仅显式 `desktop: "true"` 才入列）；少一个 = C 档目录掉了字段
+    /// （pac 被覆写/字段误删），双向 fail。045-desktop-settings 已由
+    /// Plan 551 T7 退役（cfcd534ff），C 档 20→19（计划起草时 045 尚在）。
+    #[test]
+    fn scan_examples_ui_curation_set() {
+        let apps = scan_apps(&repo_examples_ui(), &ScanOptions::default());
+        let curated: Vec<&str> = apps
+            .iter()
+            .filter(|a| a.desktop_visible)
+            .map(|a| a.id.as_str())
+            .collect();
+        let want = [
+            "011-calculator",
+            "012-stopwatch",
+            "013-todo",
+            "014-weather",
+            "015-notes",
+            "016-calendar",
+            "017-chat",
+            "018-book-reader",
+            "020-music-player",
+            "022-kanban",
+            "024-charts",
+            "025-dashboard",
+            "026-database",
+            "027-file-manager",
+            "028-launcher",
+            "029-photo-gallery",
+            "030-video-player",
+            "038-minesweeper",
+            "041-auto-edit",
+        ];
+        assert_eq!(
+            curated, want,
+            "策展集（desktop_visible）应恰为 C 档 19 id（PLAN-552 三档清单；045 已退役）"
+        );
+    }
+
     #[test]
     fn render_filter_keeps_only_matching() {
         let opts = ScanOptions { render: Some("vm".to_string()) };

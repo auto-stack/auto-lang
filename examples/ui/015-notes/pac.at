@@ -12,3 +12,4 @@ npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/edito
 dep settings {
     path: "../common/settings"
 }
+desktop: "true"
