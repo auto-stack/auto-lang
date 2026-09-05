@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-560
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing             # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w2-sugar-batch
 author: [zhaopuming]
 created_at: 2026-09-05
