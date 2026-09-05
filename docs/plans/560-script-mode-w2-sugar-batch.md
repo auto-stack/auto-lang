@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 4
+current_step: 5
 total_steps: 15
 ---
 
@@ -253,9 +253,10 @@ total_steps: 15
       （B8，use.py torch 绑模块对象）+ B9 dotted 递归（验证：桥单测
       + `use.py torch` 后 `torch.nn.Linear` 可达探针）
       [✅ 已完成] py_contains 470 + py_module 471（py.import 模块缓存，PyObjectHandle("module")）；注册单测 + p07 探针：py_module("torch")→"module"、getattr 链 nn/device、contains hit/miss 双态全绿。注：`var torch = use.py torch` 糖形态的 **s2s 规则**归 T05（本任务落桥半——计划文"绑模块对象"即 py_module 通道）；B9 递归经 py_getattr 链实证
-- [ ] T05 A/B 族规则（一）：A1-A4 调用 + B1/B9 属性 + B2/B3/B4 赋值
+- [x] T05 A/B 族规则（一）：A1-A4 调用 + B1/B9 属性 + B2/B3/B4 赋值
       索引 lowering 规则 + 单测（验证：source-to-source 单测 + torch
       探针 `t.sum(dim: 0)`/`w.shape`/`x[i]`）
+      [✅ 已完成] py_known.rs 静态分析（items/裸模块/桥与组合子调用/导入项调用流+Ident 直传，分支不敏感保守单遍）+ rule_ab_family；**设计修正**：A1/A2 只对 py-known 接收者改写→py_call（盲改会让 obj_call Auto 臂拒绝 `s.len()`——Auto 方法分派保持糖态，实证钉）；B 族同门。考古减负：A4 item-kwargs 已由 codegen（539 T17）覆盖无需规则；A3 裸名调用流型归 T13。探针：p01 复跑翻绿（sum=15/kw=15——T01 基线病灶根除）+p08（shape/索引）；语料 round-trip 幂等保持（规则激活态）
 - [ ] T06 A/B 族规则（二）：B5 切片族（含步长 `a..b..c` 实现——词法
       步长位落地）+ B6 len + A5 闭包自动 py_callable + D7 句柄
       print/f-string GIL str()（验证：单测 + `x[1..3]`/`len(x)`/
