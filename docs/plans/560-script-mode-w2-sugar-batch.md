@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 3
+current_step: 4
 total_steps: 15
 ---
 
@@ -249,9 +249,10 @@ total_steps: 15
       `--dump-lowered` 翻转真产物（验证：`.as` 空规则=行为与 W1 逐
       字节同回归探针 + dump 留档）
       [✅ 已完成] .as 扩展名预检 + #[rust] 行首压回（启发式预检，完整判定在 session 解析段——罕见面 P560 债）；p05 行为等价探针（0 1 2 同 W1）；dump 真产物（规范化源+W2 头）留档。**分歧注记**：原验证措词"逐字节同"系 W1 token 帧假设——AST 发射器规范化布局，等价判据修正为**行为等价**（输出逐字节同），源级为规范化重排（语料 round-trip 幂等已钉）
-- [ ] T04 B7/B8 桥补：`py_ffi.rs` py_contains(470) + 裸模块句柄
+- [x] T04 B7/B8 桥补：`py_ffi.rs` py_contains(470) + 裸模块句柄
       （B8，use.py torch 绑模块对象）+ B9 dotted 递归（验证：桥单测
       + `use.py torch` 后 `torch.nn.Linear` 可达探针）
+      [✅ 已完成] py_contains 470 + py_module 471（py.import 模块缓存，PyObjectHandle("module")）；注册单测 + p07 探针：py_module("torch")→"module"、getattr 链 nn/device、contains hit/miss 双态全绿。注：`var torch = use.py torch` 糖形态的 **s2s 规则**归 T05（本任务落桥半——计划文"绑模块对象"即 py_module 通道）；B9 递归经 py_getattr 链实证
 - [ ] T05 A/B 族规则（一）：A1-A4 调用 + B1/B9 属性 + B2/B3/B4 赋值
       索引 lowering 规则 + 单测（验证：source-to-source 单测 + torch
       探针 `t.sum(dim: 0)`/`w.shape`/`x[i]`）
