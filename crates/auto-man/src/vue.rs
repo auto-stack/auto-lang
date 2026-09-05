@@ -1015,6 +1015,47 @@ fn generate_index_html(name: &str, title: Option<&str>) -> String {
 "#, dark_attr, title.unwrap_or(name), accent_bootstrap)
 }
 
+/// PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。此前 createI18n
+/// 内联在 main.ts 且实例未导出——应用侧(如 musk useT.ts)在 setup 外无法
+/// 触达实例,语言切换只能走 useI18n() 组合式(出 setup 即失效,locale 不
+/// 翻转)。独立模块 + `export const i18n` 后,应用可
+/// `import { i18n } from '@/i18n-instance'` 直写 i18n.global.locale。
+fn generate_i18n_instance_ts(i18n: &I18nConfig, locale_files: &[String]) -> String {
+    if !i18n.enabled {
+        return String::new();
+    }
+    let locale_imports: String = locale_files
+        .iter()
+        .map(|f| {
+            let stem = std::path::Path::new(f)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("locale");
+            format!("import {} from './locales/{}'\n", stem, basename(f))
+        })
+        .collect();
+    let messages_entries: String = locale_files
+        .iter()
+        .map(|f| {
+            let stem = std::path::Path::new(f)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("locale");
+            format!("  {},\n", stem)
+        })
+        .collect();
+    let default_locale = locale_files
+        .first()
+        .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
+        .unwrap_or("en");
+    format!(
+        "// i18n-instance.ts — generated (PLAN-063 Phase B T13b, KD 061 D29).\n// 全局 i18n 实例独立持有:main.ts 与应用侧桥(语言切换在 setup 外)\n// 共同 import;i18n.global.locale.value 可直写。\n\nimport {{ createI18n }} from 'vue-i18n'\n{locale_imports}\nexport const i18n = createI18n({{\n  legacy: false,\n  locale: '{default_locale}',\n  messages: {{\n{messages_entries}  }},\n}})\n",
+        locale_imports = locale_imports,
+        default_locale = default_locale,
+        messages_entries = messages_entries,
+    )
+}
+
 fn generate_main_ts(
     has_routes: bool,
     uses_autodown: bool,
@@ -1059,17 +1100,11 @@ fn generate_main_ts(
                 format!("    {},\n", stem)
             })
             .collect();
-        let setup = format!(
-            "\nimport {{ createI18n }} from 'vue-i18n'{locale_imports}\n\n\
-const i18n = createI18n({{\n  legacy: false,\n  locale: {default_locale:?},\n\
-  messages: {{\n{messages_entries}  }},\n}})\n",
-            locale_imports = locale_imports,
-            default_locale = locale_files
-                .first()
-                .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
-                .unwrap_or("en"),
-            messages_entries = messages_entries,
-        );
+        // PLAN-063 Phase B T13b (KD 061 D29): 实例移 src/i18n-instance.ts
+        //(generate_i18n_instance_ts 导出,应用侧 setup 外可直写
+        // i18n.global.locale),main.ts 只 import。
+        let setup = "\nimport { i18n } from './i18n-instance'".to_string();
+        let _ = (locale_imports, messages_entries);
         (String::new(), setup)
     } else {
         (String::new(), String::new())
@@ -1460,6 +1495,12 @@ fn write_project_files(
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
     let main_ts = generate_main_ts(has_routes, uses_autodown, style_files, i18n, locale_files);
+    // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块随 main.ts 落盘。
+    let i18n_instance_ts = generate_i18n_instance_ts(i18n, locale_files);
+    if !i18n_instance_ts.is_empty() {
+        fs::write(output_path.join("src/i18n-instance.ts"), i18n_instance_ts)
+            .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+    }
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
 
@@ -3323,6 +3364,13 @@ export default router
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+        // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
+        let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
+        if !i18n_instance_content.is_empty() {
+            let p = src_dir.join("i18n-instance.ts");
+            fs::write(&p, &i18n_instance_content)
+                .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+        }
         fs::write(src_dir.join("main.ts"), &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
 
@@ -3371,6 +3419,13 @@ export default router
         .iter()
         .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+        // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
+        let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
+        if !i18n_instance_content.is_empty() {
+            let p = src_dir.join("i18n-instance.ts");
+            fs::write(&p, &i18n_instance_content)
+                .map_err(|e| format!("Failed to write i18n-instance.ts: {}", e))?;
+        }
         let main_ts_path = src_dir.join("main.ts");
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
@@ -6214,16 +6269,21 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
         };
         let locales = vec!["en.json".to_string(), "zh.json".to_string()];
         let main_ts = generate_main_ts(false, false, &[], &cfg, &locales);
-        // createI18n + vue-i18n import.
-        assert!(main_ts.contains("import { createI18n } from 'vue-i18n'"), "main.ts:\n{}", main_ts);
-        assert!(main_ts.contains("const i18n = createI18n("), "main.ts:\n{}", main_ts);
-        // Locale imports keyed by filename stem.
-        assert!(main_ts.contains("import en from './locales/en.json'"), "main.ts:\n{}", main_ts);
-        assert!(main_ts.contains("import zh from './locales/zh.json'"), "main.ts:\n{}", main_ts);
-        // messages object includes both locales.
-        assert!(main_ts.contains("messages: {"), "main.ts:\n{}", main_ts);
+        // PLAN-063 Phase B T13b (KD 061 D29): 实例移独立模块,main.ts 只 import。
+        assert!(main_ts.contains("import { i18n } from './i18n-instance'"), "main.ts:\n{}", main_ts);
+        assert!(!main_ts.contains("createI18n("), "main.ts 不再内联 createI18n:\n{}", main_ts);
         // app.use(i18n) before mount.
         assert!(main_ts.contains("app.use(i18n)"), "main.ts:\n{}", main_ts);
+        // 实例模块:export const i18n + locale imports + 默认 locale=首文件 stem。
+        let instance = generate_i18n_instance_ts(&cfg, &locales);
+        assert!(instance.contains("export const i18n = createI18n("), "instance:\n{}", instance);
+        assert!(instance.contains("import en from './locales/en.json'"), "instance:\n{}", instance);
+        assert!(instance.contains("import zh from './locales/zh.json'"), "instance:\n{}", instance);
+        assert!(instance.contains("locale: 'en'"), "instance:\n{}", instance);
+        // 未启用 i18n:模块空,main.ts 无 import。
+        assert!(generate_i18n_instance_ts(&I18nConfig::default(), &[]).is_empty());
+        let plain = generate_main_ts(false, false, &[], &I18nConfig::default(), &[]);
+        assert!(!plain.contains("i18n-instance"));
     }
 
     #[test]
