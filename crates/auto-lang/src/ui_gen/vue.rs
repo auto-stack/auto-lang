@@ -4997,7 +4997,150 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         Ok(html)
     }
 
-    /// Convert AuraNode to HTML string
+    /// Generate the media-only Vue representation of an ImageSurface.
+    ///
+    /// ImageSurface is deliberately emitted as a small template primitive,
+    /// rather than a generic registry component: the browser receives only a
+    /// media URI and the template applies the interactive transform. File
+    /// access, decoding, prefetching and caching remain backend concerns.
+    fn generate_image_surface_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+
+        // The wrapper is the crop/viewport boundary. User class/style
+        // bindings stay on it so they control the viewport without replacing
+        // the image transform style below.
+        let (static_classes, dynamic_class, dynamic_style) =
+            self.extract_classes("imagesurface", props);
+        let class_str = if static_classes.trim().is_empty() {
+            "relative overflow-hidden".to_string()
+        } else {
+            format!("relative overflow-hidden {}", static_classes.trim())
+        };
+        let mut wrapper_attrs = vec![format!("class=\"{}\"", Self::escape_html_attr(&class_str))];
+        if let Some(class_expr) = dynamic_class {
+            wrapper_attrs.push(format!(":class=\"{}\"", class_expr));
+        }
+        if let Some(style_expr) = dynamic_style {
+            wrapper_attrs.push(format!(":style=\"{}\"", style_expr));
+        }
+
+        // String literals are ordinary HTML attributes; all other expression
+        // forms use Vue bound attribute syntax and the shared AST renderer.
+        let image_attr = |key: &str, value: Option<&AuraPropValue>| -> GenResult<Option<String>> {
+            let Some(value) = value else { return Ok(None) };
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s))
+                | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) if key == "src" => Ok(Some(
+                    format!(":{}=\"'{}'\"", key, Self::escape_js_string(s.as_str()))
+                )),
+                AuraPropValue::Expr(crate::ast::Expr::Str(s))
+                | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Ok(Some(format!(
+                    "{}=\"{}\"",
+                    key,
+                    Self::escape_html_attr(s.as_str())
+                ))),
+                AuraPropValue::Expr(expr) => Ok(Some(format!(
+                    ":{}=\"{}\"",
+                    key,
+                    self.bound_value_or_warn(expr, &format!("ImageSurface {} prop", key), "null")
+                ))),
+                AuraPropValue::StyleBinding(_) => Ok(None),
+            }
+        };
+
+        let mut image_attrs = vec![
+            "class=\"max-w-full max-h-full select-none\"".to_string(),
+            "draggable=\"false\"".to_string(),
+        ];
+        for key in ["src", "alt", "width", "height", "quality"] {
+            if let Some(attr) = image_attr(key, props.get(key))? {
+                image_attrs.push(attr);
+            }
+        }
+
+        let bound_prop = |key: &str, default_value: &str| -> String {
+            props
+                .get(key)
+                .and_then(|value| match value {
+                    AuraPropValue::Expr(expr) => Some(self.bound_value_or_warn(
+                        expr,
+                        &format!("ImageSurface {} prop", key),
+                        default_value,
+                    )),
+                    AuraPropValue::StyleBinding(_) => None,
+                })
+                .unwrap_or_else(|| default_value.to_string())
+        };
+        let fit = bound_prop("fit", "'contain'");
+        let zoom = bound_prop("zoom", "1");
+        let offset_x = bound_prop("offset_x", "0");
+        let offset_y = bound_prop("offset_y", "0");
+        let rotation = bound_prop("rotation", "0");
+        let filter = bound_prop("filter", "'none'");
+        let transform = format!(
+            "'translate(' + ({}) + 'px, ' + ({}) + 'px) rotate(' + ({}) + 'deg) scale({})",
+            offset_x, offset_y, rotation, zoom
+        );
+        image_attrs.push(format!(
+            ":style=\"{{ transform: {}, objectFit: {}, filter: {} }}\"",
+            transform, fit, filter
+        ));
+
+        // Normalize the five ImageSurface event aliases explicitly. This is
+        // independent of the shadcn registry so all spellings produce the
+        // same DOM events.
+        let mut sorted_events: Vec<(&String, &AuraEvent)> = events.iter().collect();
+        sorted_events.sort_by(|a, b| a.0.cmp(b.0));
+        for (event, aura_event) in sorted_events {
+            if self.try_register_global_listener(event, aura_event) {
+                continue;
+            }
+            let (base, modifiers) = Self::split_event_key(event);
+            let event_name = match base.to_ascii_lowercase().as_str() {
+                "onerror" | "on_error" | "error" => "@error",
+                "onload" | "onloaded" | "on_loaded" | "loaded" => "@load",
+                "onwheel" | "wheel" => "@wheel",
+                "onpan" | "pan" => "@pan",
+                "ondblclick" | "on_double_click" | "dblclick" | "doubleclick" => "@dblclick",
+                _ => continue,
+            };
+            let mut vue_event = event_name.to_string();
+            for modifier in modifiers {
+                vue_event.push('.');
+                vue_event.push_str(Self::vue_modifier(modifier));
+            }
+            let mut handler_fn =
+                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let handler_name = self.handler_to_function_call(&aura_event.handler);
+            if let Some(ref loop_var) = self.current_loop_var {
+                if aura_event.params.is_empty() {
+                    handler_fn = format!("{}({})", handler_fn, loop_var);
+                    self.loop_param_handlers
+                        .insert(handler_name.clone(), loop_var.clone());
+                }
+            }
+            self.used_handlers.insert(handler_name);
+            image_attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+        }
+
+        let mut html = format!("{}<div {}>\n", ind, wrapper_attrs.join(" "));
+        html.push_str(&format!("{}  <img {} />\n", ind, image_attrs.join(" ")));
+        // ImageSurface normally has no children, but preserving them keeps the
+        // generator total for hand-built Aura trees and mirrors other elements.
+        for child in children {
+            html.push_str(&self.node_to_html(child, indent + 1)?);
+        }
+        html.push_str(&format!("{}</div>\n", ind));
+        Ok(html)
+    }
+
+    /// Convert an AuraNode to its Vue template representation.
     pub(crate) fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
         let ind = "  ".repeat(indent);
 
@@ -5028,6 +5171,16 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // Special handling for codeblock element (with copy button)
                 if tag == "codeblock" || tag == "code-block" {
                     return self.generate_codeblock_html(props, events, children, indent);
+                }
+
+                // ImageSurface is a backend-neutral media primitive. Keep its
+                // Vue output as a URI-bound crop container instead of routing
+                // it through a generic shadcn/custom component.
+                let image_surface_tag = tag.replace('-', "_");
+                if image_surface_tag.eq_ignore_ascii_case("imagesurface")
+                    || image_surface_tag.eq_ignore_ascii_case("image_surface")
+                {
+                    return self.generate_image_surface_html(props, events, children, indent);
                 }
 
                 // Special handling for icon element - render as Lucide Vue component
@@ -24303,6 +24456,60 @@ widget NullProbe {
     /// Plan 498 M0：mouse-area onclick → vue `@click` 生成断言（与 496
     /// `@dblclick` 同族；chart legend 点击切换显隐的 vue 通路——事件名经
     /// 通用 base_event_to_dom 映射，mouse-area 本体仍走 div 直通）。
+    /// Plan 547 Task 23: ImageSurface is emitted as a URI-bound crop
+    /// container with an interactive transform and normalized DOM events.
+    #[test]
+    fn image_surface_vue_codegen() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget ImageViewer {
+    model {
+        var asset_src str = "/api/__auto/media/demo/1"
+        var fit_mode str = "contain"
+        var zoom float = 1.0
+        var offset_x float = 0.0
+        var offset_y float = 0.0
+        var rotation int = 0
+    }
+    view {
+        image_surface (
+            src: .asset_src,
+            fit: .fit_mode,
+            zoom: .zoom,
+            offset_x: .offset_x,
+            offset_y: .offset_y,
+            rotation: .rotation,
+            filter: "none",
+            alt: "hero",
+            onload: .ImageLoaded,
+            onerror: .ImageFailed,
+            onwheel: .ZoomAt,
+            onpan: .PanBy,
+            ondblclick: .ToggleFit
+        ) {}
+    }
+    on {
+        .ImageLoaded -> { }
+        .ImageFailed -> { }
+        .ZoomAt -> { }
+        .PanBy -> { }
+        .ToggleFit -> { }
+    }
+}
+"#);
+        assert!(sfc.contains("class=\"relative overflow-hidden\""), "crop wrapper:\n{sfc}");
+        assert!(sfc.contains(":src=\"asset_src\""), "URI source binding:\n{sfc}");
+        assert!(sfc.contains(":style=\"{ transform:"), "interactive transform:\n{sfc}");
+        assert!(sfc.contains("objectFit: fit_mode"), "fit binding:\n{sfc}");
+        assert!(sfc.contains("@load=\"ImageLoaded\""), "onload normalization:\n{sfc}");
+        assert!(sfc.contains("@error=\"ImageFailed\""), "onerror normalization:\n{sfc}");
+        assert!(sfc.contains("@wheel=\"ZoomAt\""), "onwheel normalization:\n{sfc}");
+        assert!(sfc.contains("@pan=\"PanBy\""), "onpan normalization:\n{sfc}");
+        assert!(sfc.contains("@dblclick=\"ToggleFit\""), "ondblclick normalization:\n{sfc}");
+        for forbidden in ["FileReader", "decodeImage", "prefetch", "imageCache", "cache.put"] {
+            assert!(!sfc.to_ascii_lowercase().contains(&forbidden.to_ascii_lowercase()), "forbidden browser-side media implementation {forbidden}:\n{sfc}");
+        }
+    }
+
     #[test]
     fn test_a2vue_mouse_area_onclick() {
         let sfc = gen_sfc_from_widget_src(r#"
