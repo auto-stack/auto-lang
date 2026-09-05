@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-536
-status: reviewed             # 2026-09-05 Phase 2 复审通过(定位+定罪+移交),待合并归档
+status: archived        # 2026-09-05 Phase 2 复审通过,三次关闭(终态);T14/T15 移交 musk 061 D25
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
