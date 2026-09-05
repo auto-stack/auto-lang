@@ -327,6 +327,9 @@ pub const NATIVE_PY_GETATTR_MAY: u16 = 476;
 /// Plan 567 T06: `py_getitem_may(obj, key)` — getitem 的 May 值通道变体
 /// （KeyError/IndexError 落 `Result.Err` 值）。
 pub const NATIVE_PY_GETITEM_MAY: u16 = 477;
+/// Plan 567 T07 (P539-D5): `py_call_kw_may` — kwargs 5 槽约定的 May 值通道
+/// 变体（与 py_call_kw 同 ABI；异常落 `Result.Err` 值）。
+pub const NATIVE_PY_CALL_KW_MAY: u16 = 478;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -675,6 +678,56 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALL_KW, call_kw_shim);
+
+        // ---- py_call_kw_may(obj, method_name, posargs, kw_names, kw_vals) ----
+        // Plan 567 T07 (P539-D5): kwargs×may 组合——与 py_call_kw 同 5 槽 ABI，
+        // 异常落 Result.Err 值（s2s 隐式传播规则的 kwargs 调用形态出口）。
+        let call_kw_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
+            Python::attach(|py| {
+                // Layout (TOS → bottom): kw_vals, kw_names, posargs, method_name, obj
+                let n = task.pending_native_arg_count as usize;
+                if n != 5 {
+                    return Err(VMError::FFI(format!(
+                        "py_call_kw_may needs 5 slots (obj, method, posargs, kw_names, kw_vals), got {}",
+                        n
+                    )));
+                }
+
+                let kw_vals_py = pop_auto_py_arg(task, vm, py)?;
+                let kw_names_py = pop_auto_py_arg(task, vm, py)?;
+                let posargs_py = pop_auto_py_arg(task, vm, py)?;
+                let method_py = pop_auto_py_arg(task, vm, py)?;
+                let method_name: String = method_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_call_kw_may method name not string: {}", e))
+                })?;
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+
+                let kwargs = build_kwargs(&kw_names_py, &kw_vals_py)
+                    .map_err(|e| VMError::FFI(format!("py_call_kw_may kwargs build failed: {}", e)))?;
+
+                let pos_vec: Vec<Bound<'_, PyAny>> = posargs_py
+                    .try_iter()
+                    .map_err(|e| VMError::FFI(format!("py_call_kw_may posargs not iterable: {}", e)))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| VMError::FFI(format!("py_call_kw_may posargs iteration failed: {}", e)))?;
+                let args_tuple = PyTuple::new(py, &pos_vec).map_err(|e| {
+                    VMError::FFI(format!("Failed to build method args tuple: {}", e))
+                })?;
+
+                match obj_py.call_method(&method_name, args_tuple, Some(&kwargs)) {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CALL_KW_MAY, call_kw_may_shim);
 
         // ---- py_call_may(obj, method_name, ...args) ----
         // Plan 539 W0 (DIV-PY-EXCEPT-1): same variadic convention as py_call,
@@ -3153,6 +3206,94 @@ mod tests {
                 assert_eq!(inst.fields[0], auto_val::Value::Int(10));
             });
         }
+    }
+
+    #[test]
+    fn test_py_call_kw_may_kwargs_combo() {
+        // Plan 567 T07 (P539-D5): kwargs 5 槽 ABI × may 出口——
+        // "abc".split(sep="b") → Result.Ok；sep=123 → TypeError 落
+        // Result.Err（PyException 前缀）。
+        use crate::vm::native::NativeInterface;
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.import_module("math").unwrap();
+        bridge.register_object_shims();
+        let shim = bridge.native_interface().get(NATIVE_PY_CALL_KW_MAY).unwrap();
+
+        fn push_str_arg(vm: &AutoVM, task: &mut crate::vm::task::AutoTask, s: &str) {
+            let idx = vm.add_string(s.as_bytes().to_vec());
+            vm.rc_push_str_idx(task, idx);
+        }
+        fn push_list_arg(
+            vm: &AutoVM,
+            task: &mut crate::vm::task::AutoTask,
+            vals: Vec<auto_val::Value>,
+        ) {
+            let list = crate::vm::types::ListData::<auto_val::Value> {
+                elems: vals,
+                storage: None,
+            };
+            let id = vm.insert_heap_object(list);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+        }
+
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            // Ok path: "abc".split(sep="b") == ["a", "c"]
+            let s = py.eval(c"'abc'", None, None).unwrap();
+            let handle = PyObjectHandle::new("str".to_string(), s.into_any().unbind());
+            let id = vm.insert_heap_object(handle);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            push_str_arg(&vm, &mut task, "split");
+            push_list_arg(&vm, &mut task, vec![]);
+            push_list_arg(
+                &vm,
+                &mut task,
+                vec![auto_val::Value::Str("sep".to_string().into())],
+            );
+            push_list_arg(&vm, &mut task, vec![auto_val::Value::Str("b".to_string().into())]);
+            task.pending_native_arg_count = 5;
+            shim(&mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Ok");
+
+            // Err path: "abc".split(sep=123) -> TypeError
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            push_str_arg(&vm, &mut task, "split");
+            push_list_arg(&vm, &mut task, vec![]);
+            push_list_arg(
+                &vm,
+                &mut task,
+                vec![auto_val::Value::Str("sep".to_string().into())],
+            );
+            push_list_arg(&vm, &mut task, vec![auto_val::Value::Int(123)]);
+            task.pending_native_arg_count = 5;
+            shim(&mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Err");
+            match &inst.fields[0] {
+                auto_val::Value::Str(s) => {
+                    assert!(s.as_str().starts_with("PyException TypeError"), "got {}", s.as_str());
+                }
+                other => panic!("expected Str payload, got {:?}", other),
+            }
+        });
     }
 
     #[test]

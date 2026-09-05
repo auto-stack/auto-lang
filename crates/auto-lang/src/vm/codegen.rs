@@ -5294,6 +5294,8 @@ impl Codegen {
         // Plan 567 T06 (P560-D2): may 值通道变体。
         const NATIVE_PY_GETATTR_MAY: u16 = 476;
         const NATIVE_PY_GETITEM_MAY: u16 = 477;
+        // Plan 567 T07 (P539-D5): kwargs×may 组合。
+        const NATIVE_PY_CALL_KW_MAY: u16 = 478;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5325,6 +5327,7 @@ impl Codegen {
                 // Plan 567 T06: may 值通道变体。
                 reg.register_with_id("py.py_getattr_may", NATIVE_PY_GETATTR_MAY);
                 reg.register_with_id("py.py_getitem_may", NATIVE_PY_GETITEM_MAY);
+                reg.register_with_id("py.py_call_kw_may", NATIVE_PY_CALL_KW_MAY);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5371,6 +5374,7 @@ impl Codegen {
             // Plan 567 T06 (P560-D2): may 值通道变体。
             "py_getattr_may",
             "py_getitem_may",
+            "py_call_kw_may",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
