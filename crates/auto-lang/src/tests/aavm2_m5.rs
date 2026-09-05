@@ -47,6 +47,12 @@ fn test_m5_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 
 #[test]
 fn test_aavm2_m5_engine_corpus() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m5_engine_corpus") {
+        return;
+    }
     let dir = corpus_dir();
     let mut entries: Vec<_> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("corpus dir {}: {e}", dir.display()))
@@ -85,6 +91,12 @@ fn main() {{
 /// Linker 全链)输出 vs aavm ev_run_files。
 #[test]
 fn test_aavm2_m5_use_corpus() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m5_use_corpus") {
+        return;
+    }
     let dir = corpus_use_dir_m5();
     let mut cases: Vec<_> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("corpus_use dir {}: {e}", dir.display()))
@@ -128,6 +140,12 @@ fn test_aavm2_m5_use_corpus() {
 /// 信息一致(错误文本以宿主为规范;use.rs 拒绝/未声明模块/use.py)。
 #[test]
 fn test_aavm2_m5_use_errors() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m5_use_errors") {
+        return;
+    }
     let dir = corpus_use_dir_m5().join("errors");
     let mut cases: Vec<_> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("errors dir {}: {e}", dir.display()))
@@ -171,6 +189,12 @@ fn test_aavm2_m5_use_errors() {
 /// fib,输出正确(fib(10) = 55)。
 #[test]
 fn test_aavm2_m3_milestone_fib() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m3_milestone_fib") {
+        return;
+    }
     let dir = corpus_dir();
     let hello = std::fs::read_to_string(dir.join("b01_hello.at")).unwrap();
     let fib = std::fs::read_to_string(dir.join("b07_fib.at")).unwrap();

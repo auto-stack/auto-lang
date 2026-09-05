@@ -76,6 +76,12 @@ fn collect_corpus(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[test]
 fn test_aavm2_a2r_is_corpus() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_a2r_is_corpus") {
+        return;
+    }
     let dir = corpus_dir();
     let entries = collect_corpus(&dir);
     assert!(!entries.is_empty(), "no corpus files under {}", dir.display());
@@ -112,6 +118,12 @@ fn test_aavm2_a2r_main_dump_print() {
 #[test]
 #[ignore = "shells out to rustc; on-demand AA2R compile-level guard (Plan 447)"]
 fn test_aavm2_a2r_probe_smoke() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_a2r_probe_smoke") {
+        return;
+    }
     let probes = [
         "p01_is_string",
         "p02b_enum_or_arm",
@@ -346,6 +358,12 @@ fn test_aavm2_goldens_check() {
 #[test]
 #[ignore = "shells cargo/rustc; on-demand four-path acceptance runner (Plan 523)"]
 fn test_aavm2_fourpath_runner() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_fourpath_runner") {
+        return;
+    }
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let lib_code = crate::aavm2_lib_source(&root).unwrap();
     // 内容寻址缓存复用:compile corpus 的 build_aavm_rust_bin

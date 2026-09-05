@@ -210,6 +210,12 @@ fn test_m4_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 
 #[test]
 fn test_aavm2_m4_codegen_corpus() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m4_codegen_corpus") {
+        return;
+    }
     let dir = corpus_dir();
     let mut entries: Vec<_> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("corpus dir {}: {e}", dir.display()))
@@ -424,6 +430,12 @@ fn test_aavm2_m4_use_harness_selfcheck() {
 #[ignore = "P532 ⑥c 作用域层级差待对齐(见 plan 532 残留③);对齐后转正"]
 #[test]
 fn test_aavm2_p532_lib_static_diff() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_p532_lib_static_diff") {
+        return;
+    }
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let case_dir = root.join("scratch532").join("libdiff");
     std::fs::create_dir_all(&case_dir).expect("case dir");
@@ -597,6 +609,12 @@ fn test_aavm2_p532_lib_static_diff() {
 /// 以运行期错误形态转红(W3 实现启动条件)。
 #[test]
 fn test_aavm2_m4_use_corpus() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m4_use_corpus") {
+        return;
+    }
     let dir = corpus_use_dir();
     let mut cases: Vec<_> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("corpus_use dir {}: {e}", dir.display()))

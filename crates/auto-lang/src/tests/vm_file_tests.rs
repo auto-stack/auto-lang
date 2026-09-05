@@ -751,7 +751,13 @@ edition = \"2021\"
 }
 
 #[test]
-fn test_aavm2_001_smoke() { test_aavm2("aavm2/001_smoke").unwrap(); }
+fn test_aavm2_001_smoke() {
+    // Plan 564: 重内存测试守门(755MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_001_smoke") {
+        return;
+    }
+    test_aavm2("aavm2/001_smoke").unwrap();
+}
 
 #[test] #[ignore]
 fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwrap(); }
@@ -922,6 +928,10 @@ fn main() {
 /// `-- test_aavm2` 默认即覆盖本腿。
 #[test]
 fn test_aavm2_compile_corpus() {
+    // Plan 564: 重内存测试守门(745MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_compile_corpus") {
+        return;
+    }
     let exe = build_aavm_rust_bin();
     let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/vm/aavm2/corpus_m4");
@@ -973,6 +983,10 @@ fn test_aavm2_compile_corpus() {
 /// 内容寻址缓存)。
 #[test]
 fn test_aavm2_compile_use_corpus() {
+    // Plan 564: 重内存测试守门(744MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_compile_use_corpus") {
+        return;
+    }
     let exe = build_aavm_rust_bin();
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/vm/aavm2/corpus_use");

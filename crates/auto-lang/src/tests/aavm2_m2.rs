@@ -56,6 +56,12 @@ fn test_m2_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 
 #[test]
 fn test_aavm2_m2_parser_corpus() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m2_parser_corpus") {
+        return;
+    }
     let mut checked = 0;
     for dir in corpus_dirs() {
         let mut entries: Vec<_> = std::fs::read_dir(&dir)
