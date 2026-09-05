@@ -882,6 +882,10 @@ mod tests {
 
     #[test]
     fn renders_heading_paragraph_inline_marks() {
+        // PLAN-053 T14：heading 类表随 §7.3 收敛（text-[25.3px] + indigo
+        // strong 双档）；dark: 变体按主题态分流，测试固定浅档使 base 仅
+        // 含 indigo-700。
+        crate::ui::style::theme::set_dark_mode(false);
         let doc = render_document::<()>("# 标题\n\n世界 **粗** 与 *斜* 和 `码`\n", true);
         let View::Column { children, .. } = doc else {
             panic!("expected column")
@@ -890,8 +894,11 @@ mod tests {
         match &children[0] {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "标题");
-                let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
-                assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+                let expected = Style::parse(
+                    "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mb-4",
+                )
+                .unwrap();
+                assert_eq!(style.as_ref().unwrap().classes, expected.classes)
             }
             _ => panic!("heading"),
         }

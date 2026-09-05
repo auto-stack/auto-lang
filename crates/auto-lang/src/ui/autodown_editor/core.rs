@@ -1314,12 +1314,16 @@ impl AutodownEditorCore {
             }
 
             // 共享绘制段：&Buffer → 样式化段（mark 区间 × 语法着色合并）。
+            let heading = matches!(b.kind, LeafKind::Heading(l) if (1..=3).contains(&l));
+            let (sr, sg, sb) = autodown_blocks::heading_strong_rgb();
             let ctx = BlockDrawCtx {
                 marks: &b.intervals,
                 styled_ok,
                 mono_all,
                 syntax: fenced,
                 base,
+                heading,
+                heading_color: Rgba { r: sr as f32 / 255.0, g: sg as f32 / 255.0, b: sb as f32 / 255.0, a: 1.0 },
             };
             let block_h =
                 ed.with_buffer(|buf| buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs));
@@ -1501,6 +1505,10 @@ pub struct BlockDrawCtx<'a> {
     pub syntax: bool,
     /// 基础前景色。
     pub base: Rgba,
+    /// PLAN-053 T14：heading 块（h1-h3）——默认前景改 accent-strong、
+    /// 字重恒 700（§7.3/§7.2，与只读臂类表同源）。
+    pub heading: bool,
+    pub heading_color: Rgba,
 }
 
 /// 单个已布局 Buffer → 样式化 DocRun 段。**纯函数**：只读 layout_runs，
@@ -1640,6 +1648,7 @@ fn push_styled_pieces(
                 a: c.a() as f32 / 255.0,
             },
             None if st.link => LINK_COLOR,
+            None if ctx.heading => ctx.heading_color,
             None => ctx.base,
         };
         out.push(DocRun {
@@ -1649,7 +1658,7 @@ fn push_styled_pieces(
             size,
             line_height: line_h,
             color,
-            bold: st.strong,
+            bold: st.strong || ctx.heading,
             italic: st.em,
             mono: ctx.mono_all || st.code,
             strike: st.del,
@@ -3438,6 +3447,8 @@ mod tests {
                 mono_all: fenced,
                 syntax: fenced,
                 base: WHITE,
+                heading: false,
+                heading_color: WHITE,
             };
             let _ = b.editor.ed().with_buffer(|buf| {
                 buffer_block_runs(
