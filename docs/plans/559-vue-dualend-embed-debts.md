@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-559
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-dualend-embed-debts
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
-total_steps: 0
+current_step: 2
+total_steps: 9
 ---
 
 # [PLAN-559] vue-dualend-embed-debts
@@ -162,10 +162,17 @@ P551-D1..D5，2026-09-05）
 - T1 复核与定位：master tf 双红现状复核（548 是否已修）；vue codegen
   back.api 粘合缺失环节定位（resolve_back_api / codegen.rs import
   处理）；desktop_apps_dir/extra roots 现状盘点。产出：三份定位笔记
-  回填本 plan 待澄清。
+  回填本 plan 待澄清。[✅ 已完成] 三笔记已回填待澄清节：双红已消
+  （schema_drift 2/2+docs_gen 4/4 主检出实测）/粘合缺失=api_gen
+  lenient 抽取零端点（os-config api.at 为 VM 实现式）+形态修正为项目
+  供给 TS 粘合/extra roots=aggregate_scan 可复用+auto-down 第三兄弟
+  仓实建。
 - T2 W1：schema 重生成（SCHEMA_DRIFT_GENERATE_AT=1）+ 复核 diff +
   `cargo tf` 双红转绿（与 548 协调，冲突则降级为仅 docs_gen 侧修复
-  + schema 漂移挂账移交）。
+  + schema 漂移挂账移交）。[✅ 已完成] 按 D1 判定「已绿则记档销债」：
+  双红在主检出已绿（schema_drift 2/2+docs_gen 4/4，无 crates/schema
+  未提交改动），免重生成；cargo tf 全量复证归 fold 前门禁（skill 纪律：
+  全量门只在全量门跑）。
 - T3 W2：vue 轨 lib/api 粘合层生成（crates/auto-man/src/vue.rs 或
   auto-lang codegen 相应环节）+ os-config gen 树再生成 →
   `auto build` tsc+vite 绿。
@@ -194,3 +201,42 @@ P551-D1..D5，2026-09-05）
 - W3 守卫放开仅限 api-client 类——ext/i18n/router 三类仍跳过（后续
   波次），需确认无异议。
 - daemonBase 注入形态（构建期常量 vs 运行期 env）T1 定稿。
+
+### T1 定位笔记（2026-09-05 实测回填）
+
+1. **W1 双红现状：已消，记档销债。** 主检出（master HEAD 5ff92f364 +
+   无 crates/schema 未提交改动）`cargo test -p auto-lang --test
+   schema_drift --test docs_gen` 全绿（schema_drift 2/2、docs_gen 4/4）。
+   551 复审档 5428d7f2b 所记 tf 2 红为当时主检出残留 548 会话未提交
+   改动的瞬时态；现 548 分支（plan-548-dev，未合 master）工作树亦无
+   schema 改动。W1 缩为验证销债；cargo tf 全量复证归 fold 前门禁。
+2. **W2 粘合缺失确切环节 + 形态修正。** `auto build -d . --gen-only`
+   实证：API client 生成跑了但 `⚠ No API endpoints or types found`
+   （api_gen.rs generate_vue_api → extract_api_lenient 在 os-config
+   back/api.at 上抽出零端点——该文件是 **VM 实现式**（80 个 fn、
+   http/json/Env 内建配方），非 015-notes 式契约式），故
+   gen/front/vue/src/lib/api.ts 未写入，gen 树 tsc 8 处
+   `Cannot find module '@/lib/api'`。**形态修正**：方案要点 2 的
+   「签名提取 + fetch 映射」不足以覆盖 35+ 个纯文本/JSON 逻辑 fn；
+   改为**项目供给 TS 粘合**：vue 轨在契约抽取为空但 front 有 back.api
+   导入时，安装 `<auto>/src/back/api.ts`（项目手写 TS 孪生）到 gen 树
+   lib/api.ts。os-config 的孪生已存在 88 导出（host src/lib/api.ts,
+   1094 行），仅缺 551 壁纸面 5 fn（fetchDesktopCfgSafe/cfgField/
+   listImagesSafe/imageCount/imageAt，VM 体均为配方形，人工移植）。
+   同轮 upstream 三件（gen 树 tsc 其余红）：①`$event.target` 未收窄
+   （TS2339/TS18047，regen.sh 部署侧 sed 既有补偿→上收 codegen）；
+   ②跨 store 裸名调用（TS2552/TS2304，Collection/DesktopCfg，部署侧
+   sed 同族→上收 codegen）；③粘合安装机制本身。daemonBase 定稿：
+   粘合 TS 内 base=相对 `/api`（vite proxy 同源）+ `AUTOOS_DAEMON`
+   构建期常量覆盖（desktop-host 注入用，515 G3 同款）。
+3. **desktop-host/extra roots 盘点。** `generate_desktop_host`
+   （auto-man/vue.rs:3406）守卫四类：api-client（`@/lib/api`、
+   `from '@/api`）/router/ext/i18n，首类即本 plan 放开对象；
+   `desktop_apps_dir`（:5134）= AUTO_DESKTOP_APPS env → examples/ui
+   单根；scan_apps 单目录扫描；vm 轨已有 `aggregate_scan`+
+   `host_extra_roots`（app_registry.rs:247，主根 examples 优先 id
+   去重，`../auto-os-config/auto` 探测）可同构复用到 vue 轨。
+   Taskbar.vue（auto-man/assets/wm/）按钮族 summon/窗控/布局/alt-tab，
+   ⚙️ 槽位清晰，store.ts launchWindow(appId,title,comp) 动态 import
+   即落点。worktree 组实建需第三兄弟仓 auto-down（workspace 成员
+   a2r-actor-tests→autodown-core 路径解析），分支 auto-lang-559-dev。
