@@ -7,8 +7,8 @@
 //!   入口（459-dual-app 形态），render 记 `"vm"`（手写 demo 默认 vm 兼容）。
 //!
 //! pac.at 解析：**轻量平铺 `key: value` 行读**。auto-man 的完整 `Pac` 解析
-//! 依赖方向不可用（auto-man → auto-lang），注册表只读 5 个展示/启动字段
-//! （title/name/icon/category/render），不引入 .at 全量解析。
+//! 依赖方向不可用（auto-man → auto-lang），注册表只读 6 个展示/启动字段
+//! （title/name/icon/category/render/desktop），不引入 .at 全量解析。
 //!
 //! render 过滤：`ScanOptions::render = Some("vm")` 时只保留 vm 兼容 App
 //! （vm 桌面默认；README 总览表为准的声明字段）。
@@ -51,6 +51,10 @@ pub struct AppRegistryEntry {
     /// Plan 504：pac `window: "fit"` 自适应窗口声明（虚拟桌面窗随内容
     /// 首帧测量尺寸收缩）；false = 默认布局尺寸。
     pub fit: bool,
+    /// PLAN-552：桌面展示可见性（pac `desktop:`；主根缺省 false=opt-in，
+    /// 外部自含根缺省 true=opt-out）。仅过滤展示清单（boot 期
+    /// `registry_entries`），不影响启动解析（`app_resolver` 全量）。
+    pub desktop_visible: bool,
 }
 
 /// 扫描选项。
@@ -77,7 +81,7 @@ pub fn scan_apps(dir: &Path, opts: &ScanOptions) -> Vec<AppRegistryEntry> {
         let Some(id) = d.file_name().map(|n| n.to_string_lossy().to_string()) else {
             continue;
         };
-        if let Some(entry) = entry_for_dir(&d, id, opts) {
+        if let Some(entry) = entry_for_dir(&d, id, opts, false) {
             out.push(entry);
         }
     }
@@ -86,7 +90,15 @@ pub fn scan_apps(dir: &Path, opts: &ScanOptions) -> Vec<AppRegistryEntry> {
 
 /// Plan 501：单目录条目构造（scan_apps 每目录臂与外部仓自含根共用）。
 /// 无入口 .at → None；render 过滤在此统一应用。
-fn entry_for_dir(dir: &Path, id: String, opts: &ScanOptions) -> Option<AppRegistryEntry> {
+/// PLAN-552：`default_visible` 按扫描根区分缺省可见性——主根（混合目录）
+/// 传 false（opt-in），外部自含根传 true（opt-out）；pac `desktop:` 显式
+/// 值覆盖缺省（"true"/"false" 大小写不敏感，坏值静默回退缺省）。
+fn entry_for_dir(
+    dir: &Path,
+    id: String,
+    opts: &ScanOptions,
+    default_visible: bool,
+) -> Option<AppRegistryEntry> {
     let pac = std::fs::read_to_string(dir.join("pac.at")).ok();
     let fields = pac.as_deref().map(parse_pac_fields).unwrap_or_default();
     let entry = probe_entry(dir)?;
@@ -118,6 +130,11 @@ fn entry_for_dir(dir: &Path, id: String, opts: &ScanOptions) -> Option<AppRegist
         fit: fields
             .get("window")
             .is_some_and(|w| w.eq_ignore_ascii_case("fit")),
+        desktop_visible: match fields.get("desktop").map(|v| v.to_ascii_lowercase()) {
+            Some(v) if v == "true" => true,
+            Some(v) if v == "false" => false,
+            _ => default_visible,
+        },
     })
 }
 
@@ -184,7 +201,7 @@ fn strip_chain<'a>(mut s: &'a str, parts: &[&str]) -> Option<&'a str> {
 /// 入口探测同 scan_apps 单目录臂），条目 id 显式给定（`id=path` 语法或
 /// 相邻仓探测缺省 `os-config`；目录名 `auto` 无桌面语义，不采）。
 pub fn scan_app_root(dir: &Path, id: &str, opts: &ScanOptions) -> Option<AppRegistryEntry> {
-    entry_for_dir(dir, id.to_string(), opts)
+    entry_for_dir(dir, id.to_string(), opts, true)
 }
 
 /// Plan 501：storage `shell.apps.extra_dirs` 值解析（纯函数）。
@@ -327,17 +344,14 @@ mod tests {
     fn scan_examples_ui_finds_at_least_27_apps() {
         let opts = ScanOptions::default();
         let apps = scan_apps(&repo_examples_ui(), &opts);
+        // PLAN-552：8 个测试探针迁出 examples/ui → examples/capability-tests
+        //（459-dual-app 回退形态断言随之移除；无 pac.at 回退路径的覆盖由
+        // scan_temp_dir_full_shape_with_new_fields 的 bare-app 臂保留）。
         assert!(
-            apps.len() >= 27,
-            "examples/ui 扫描数应 ≥27（27 个 pac.at + 459-dual-app 回退），实际 {}",
+            apps.len() >= 34,
+            "examples/ui 扫描数应 ≥34（43 - 8 探针迁出，PLAN-552），实际 {}",
             apps.len()
         );
-        // 459-dual-app：无 pac.at 回退形态。
-        let dual = apps.iter().find(|a| a.id == "459-dual-app").expect("459 回退条目");
-        assert_eq!(dual.title, "459-dual-app");
-        assert_eq!(dual.entry.file_name().unwrap(), "app.at");
-        assert_eq!(dual.icon, "app-window", "icon 缺省回退");
-        assert_eq!(dual.category, "app", "category 缺省回退");
         // 011-calculator：pac.at 形态，render=vue；Plan 504 起 title 字段
         // 上移 pac（"Calculator"）+ window: "fit" → 条目 fit=true。
         let calc = apps
@@ -348,6 +362,46 @@ mod tests {
         assert_eq!(calc.render, "vue");
         assert_eq!(calc.entry.file_name().unwrap(), "app.at");
         assert!(calc.fit, "011 pac window: \"fit\" → 条目 fit=true");
+    }
+
+    /// PLAN-552：真实 examples/ui 策展集恰等断言——`desktop_visible == true`
+    /// 的 id 集必须恰好等于 C 档清单：多一个 = 新 demo 悄悄上架桌面（opt-in
+    /// 缺省下仅显式 `desktop: "true"` 才入列）；少一个 = C 档目录掉了字段
+    /// （pac 被覆写/字段误删），双向 fail。045-desktop-settings 已由
+    /// Plan 551 T7 退役（cfcd534ff），C 档 20→19（计划起草时 045 尚在）。
+    #[test]
+    fn scan_examples_ui_curation_set() {
+        let apps = scan_apps(&repo_examples_ui(), &ScanOptions::default());
+        let curated: Vec<&str> = apps
+            .iter()
+            .filter(|a| a.desktop_visible)
+            .map(|a| a.id.as_str())
+            .collect();
+        let want = [
+            "011-calculator",
+            "012-stopwatch",
+            "013-todo",
+            "014-weather",
+            "015-notes",
+            "016-calendar",
+            "017-chat",
+            "018-book-reader",
+            "020-music-player",
+            "022-kanban",
+            "024-charts",
+            "025-dashboard",
+            "026-database",
+            "027-file-manager",
+            "028-launcher",
+            "029-photo-gallery",
+            "030-video-player",
+            "038-minesweeper",
+            "041-auto-edit",
+        ];
+        assert_eq!(
+            curated, want,
+            "策展集（desktop_visible）应恰为 C 档 19 id（PLAN-552 三档清单；045 已退役）"
+        );
     }
 
     #[test]
@@ -399,6 +453,49 @@ mod tests {
         // Plan 504 S7：pac `name:` 透传（os-config 配置查找键）。
         let name = |id: &str| apps.iter().find(|a| a.id == id).and_then(|a| a.name.clone());
         assert_eq!(name("a-fit").as_deref(), Some("a"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// PLAN-552：pac `desktop:` 字段解析矩阵——主根（scan_apps）缺席 =
+    /// false（opt-in）；外部自含根（scan_app_root）缺席 = true（opt-out）；
+    /// 显式 "true"/"false"（大小写不敏感）两种扫描根下都覆盖缺省；
+    /// 坏值静默回退缺省（与 `window:` 容错风格一致）。
+    #[test]
+    fn desktop_field_parse_matrix() {
+        let root = std::env::temp_dir().join(format!(
+            "auto552-desktop-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mk = |name: &str, pac: &str| {
+            let d = root.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("app.at"), "col { }").unwrap();
+            std::fs::write(d.join("pac.at"), pac).unwrap();
+        };
+        mk("a-true", "name: \"a\"\ndesktop: \"true\"\n");
+        mk("b-false", "name: \"b\"\ndesktop: \"false\"\n");
+        mk("c-absent", "name: \"c\"\n");
+        mk("d-bad", "name: \"d\"\ndesktop: \"yes\"\n");
+        mk("e-TRUE", "name: \"e\"\ndesktop: \"TRUE\"\n");
+        // 主根（examples 形态）：缺席 → false（opt-in，新 demo 默认不上桌面）。
+        let main = scan_apps(&root, &ScanOptions::default());
+        let vis = |id: &str| main.iter().find(|a| a.id == id).map(|a| a.desktop_visible);
+        assert_eq!(vis("a-true"), Some(true), "主根显式 true");
+        assert_eq!(vis("b-false"), Some(false), "主根显式 false");
+        assert_eq!(vis("c-absent"), Some(false), "主根缺席 → 缺省 false（opt-in）");
+        assert_eq!(vis("d-bad"), Some(false), "坏值回退主根缺省 false");
+        assert_eq!(vis("e-TRUE"), Some(true), "大小写不敏感");
+        // 外部自含根（os-config 形态）：缺席 → true（opt-out，显式注册即上架）；
+        // 显式值覆盖缺省。
+        for (id, want) in [("a-true", true), ("b-false", false), ("c-absent", true)] {
+            let e = scan_app_root(&root.join(id), id, &ScanOptions::default())
+                .unwrap_or_else(|| panic!("外部根 {id} 条目"));
+            assert_eq!(e.desktop_visible, want, "外部根 {id}（缺席 = true）");
+        }
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -606,8 +703,9 @@ mod tests {
         ds.register_window(win, primary, iced::Size::new(1280.0, 800.0));
         ds.desktop.app_resolver = Some(resolver);
 
-        // 验收 §5.1 的 vm 已验证集取三个不同 App（声明 render 混合 vue/vm）。
-        for id in ["011-calculator", "013-todo", "459-dual-app"] {
+        // 验收 §5.1 的 vm 已验证集取三个不同 App（声明 render 混合 vue/vm；
+        // PLAN-552：459-dual-app 迁 capability-tests 后第三 App 换 041）。
+        for id in ["011-calculator", "013-todo", "041-auto-edit"] {
             ds.launch_app(id)
                 .unwrap_or_else(|e| panic!("launch {id} failed: {e}"));
         }
@@ -622,7 +720,7 @@ mod tests {
         assert!(titles.contains(&"Calculator"), "titles = {titles:?}");
         // Plan 512 S5：013 pac.at 补 title "Todo"（原缺省小写 id）。
         assert!(titles.contains(&"Todo"), "titles = {titles:?}");
-        assert!(titles.contains(&"459-dual-app"), "titles = {titles:?}");
+        assert!(titles.contains(&"AutoEdit"), "titles = {titles:?}");
         assert_eq!(host.wm.focused, Some(crate::ui::session::Wid(3)), "新窗即焦点");
     }
 }

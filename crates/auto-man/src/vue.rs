@@ -3633,7 +3633,7 @@ export default router
 
             let category = if e.id.starts_with("001") || e.id.starts_with("002") || e.id.starts_with("003") || e.id.starts_with("004") || e.id.starts_with("005") || e.id.starts_with("006") {
                 "01-basic".to_string()
-            } else if e.id.starts_with("007") || e.id.starts_with("008") || e.id.starts_with("009") || e.id.starts_with("010") || e.id.starts_with("011") || e.id.starts_with("012") || e.id.starts_with("016") || e.id.starts_with("042") {
+            } else if e.id.starts_with("007") || e.id.starts_with("008") || e.id.starts_with("009") || e.id.starts_with("010") || e.id.starts_with("011") || e.id.starts_with("012") || e.id.starts_with("016") {
                 "02-components".to_string()
             } else if e.id.starts_with("013") || e.id.starts_with("014") || e.id.starts_with("015") || e.id.starts_with("017") || e.id.starts_with("018") || e.id.starts_with("019") || e.id.starts_with("020") || e.id.starts_with("021") || e.id.starts_with("022") || e.id.starts_with("023") {
                 "03-apps".to_string()
