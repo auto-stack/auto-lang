@@ -68,3 +68,4 @@
 | 448 | autoui-syntax-improvements | 🟡（A/B1/B2 实施待合并） | plans/ | msg 去名+内联 lambda；铸名 mint_inline_event_handlers 进 parser |
 | 470 | use-rs-alias | ✅ | archive/ | `use.rs` 现行拼写（与 use.py 对齐）+use.rust W0005 deprecation；双拼写同 UseKind::Rust，仓内 134 .at+文档全量迁移（外部仓批次三顺延 DEBT） |
 | 550 | null-family-audit（frontend 侧） | ✅（reviewed→archived） | archive/550-null-family-audit.md | nil 拼写退役：literal/atom 双臂 W0005 DeprecatedFeature（语义不变，同落 PUSH_NIL）+CLI 直跑路径 parser 警告可见化（stderr 按名去重）；#[script] 文件级 pragma（script_pragma→CompileSession.script_marked）；生产者门控 lint：无 pragma 含 use.py/null/nil→迁移提示（只警告不拒绝，.as 指引归 W1） |
+| 555 | script-mode-w1-dispatch-foundation（frontend 侧） | ✅（reviewed→archived） | archive/555-script-mode-w1-dispatch-foundation.md | ScriptMode 八格矩阵（.as≡隐式 #[script]，#[rust] 文件级 pragma 压回，优先序 rust>script>扩展名）+CompileSession.script_mode 回填（550 script_marked 派生兼容）+门控 lint 按 ScriptMode 统一判定（.as 自动豁免）；W1 passthrough，语义激活归 W2 |

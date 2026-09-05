@@ -125,7 +125,7 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| main | clap 子命令定义、脚本执行/REPL 分发、JSON 错误格式化、转译子命令 | active |
+| main | clap 子命令定义、脚本执行/REPL 分发、JSON 错误格式化、转译子命令；`.as` 直跑（plan-555 passthrough）、`trans auto` s2s 子命令与 `--dump-lowered` 全局 flag（模式头渲染，不执行纯审查面） | active |
 | cmd_ui | `auto ui` 系列（list/select/install 等 UI 工程命令） | active |
 | cmd_block | `auto block list/show/add/check`：blocks 目录浏览、参考实现拷贝、校验 | active |
 | cmd_a2c_stdlib | `auto a2c-stdlib`：生成 a2c 标准库 | active |

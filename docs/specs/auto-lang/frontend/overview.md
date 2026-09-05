@@ -30,6 +30,12 @@
   行为）；生产者门控 lint——无 pragma 文件含 `use.py`/null/nil 字面量
   （`parser.saw_bare_null`，None/Some 不计入）→ stderr 迁移提示（.as 指
   引，只警告不拒绝）。`.as` 扩展名与模式管线归 W1。
+- 脚本方言模式解析（plan-555 W1）：`mode.rs` `ScriptMode` +
+  `resolve_script_mode` 八格矩阵——`.as` ≡ 隐式 `#[script]`，`#[rust]`
+  文件级 pragma 显式压回（parser `rust_pragma`，annotation "rust" 臂），
+  优先序 `#[rust]` > `#[script]` > 扩展名；`CompileSession.script_mode`
+  回填（550 `script_marked` 派生兼容），门控 lint 按 ScriptMode 统一判定
+  （.as 自动豁免）。W1 语义 passthrough（脚本语义激活在 W2 lowering 批）。
 
 ## 关键入口
 
