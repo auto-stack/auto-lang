@@ -1317,3 +1317,12 @@
   **偿还方向**：VM codegen/engine 的跨模块调用 self 绑定统一到根态
   （merged 模型下子件 state 即根态,Plan 370 D-GAP-4 语义收口）,需
   state-scope 专项立项（engine.rs/codegen.rs 调用帧与 rc 语义联动,非小修）。
+  **【2026-09-05 Phase 2 T13 定性修正】**：仪器化复跑（AUTO_DEBUG_POLLTRACE）
+  实证**全部 handler 帧（含跨模块调用产生的执行）均绑根态单对象**
+  （VM_EXEC state_obj_id=4000030 全量一致）,`.streaming=true` 等 SET_FIELD
+  在四修后代码下**可达根态**（autoui_state +3s 实证 true）——"重绑定不可达
+  根态"的旧定性系四修前代码（when 门+头部 StopStream）复合症状的误读;
+  "列表突变可见 vs 标量重绑定不可见"的同帧分裂现象**不再复现**,残余疑点
+  （RC/同步时序）降级为观察项不阻塞直显链路。真最后一里=musk 画布投影
+  chatActivePath 链（KD-057④ 族,061 D25 在修）。POLLTRACE 诊断设施留存
+  （env 门控,auto-lang master）。
