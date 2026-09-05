@@ -353,19 +353,23 @@ fn emit_for(f: &For, depth: usize, out: &mut String) -> AutoResult<()> {
 }
 
 fn emit_try(t: &Try, depth: usize, out: &mut String) -> AutoResult<()> {
-    if t.finally_body.is_some() {
-        // W2 E2 规则自身组装 try-finally 目标形态时直接构造 Try AST；
-        // 发射器直发 finally 暂缓（py 套件语料不含——迁移面实证）。
-        return Err(unsupported("try-finally emit（E2 规则内组装）"));
-    }
+    // Plan 560 T09：finally 发射（with-as 的出口保证形态）。
+    // 空 catch 体省略 catch 子句（with-as 构造形态）。
     out.push_str("try");
     emit_body(&t.body, depth, out)?;
-    out.push_str(" catch");
-    if let Some(param) = &t.catch_param {
-        out.push(' ');
-        out.push_str(param);
+    if !t.catch_body.stmts.is_empty() {
+        out.push_str(" catch");
+        if let Some(param) = &t.catch_param {
+            out.push(' ');
+            out.push_str(param);
+        }
+        emit_body(&t.catch_body, depth, out)?;
     }
-    emit_body(&t.catch_body, depth, out)
+    if let Some(fb) = &t.finally_body {
+        out.push_str(" finally");
+        emit_body(fb, depth, out)?;
+    }
+    Ok(())
 }
 
 fn emit_expr(e: &Expr, depth: usize, out: &mut String) -> AutoResult<()> {

@@ -1244,6 +1244,56 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Plan 560 T09 (E2)：`with expr { body }` / `with expr as x { body }`。
+    ///
+    /// 无 as：直产 `py_with(expr, () => { body })`——全复用 539 通道
+    /// （host __enter__/闭包体/__exit__；异常抑制默认不做，§10 裁决）。
+    /// as x：`{ var __w = expr; var x = py_enter(__w); try { body }
+    /// finally { py_exit(__w) } }`——块形态（绑定 + 出口保证）。
+    fn with_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `with`
+        let ctx = self.parse_expr()?;
+        // `as` 是既有中缀（Cast）——with-as 绑定语法与其歧义未决
+        //（P560 债）：响亮拒绝，不静默错解。
+        if matches!(ctx, Expr::Cast { .. }) {
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic {
+                message: "with-as binding is not yet supported (as-infix cast "
+                    .to_string()
+                    + "ambiguity, P560 债); use py_enter/py_exit explicitly",
+                span,
+            }
+            .into());
+        }
+        self.skip_empty_lines();
+        let body = self.body()?;
+        // 直产 `py_with(ctx, () => { body })` 调用（Stmt::Expr——非
+        // Block：body 尾块的 convert_last_block 会把 Block 末语句转
+        // 对象字面量，T09 实证）。539 py_with 通道：host __enter__/体/
+        // __exit__；异常抑制默认不做（§10 裁决）。A5 规则（T06）随后
+        // 自动包 py_callable。
+        let closure = crate::ast::Closure {
+            params: vec![],
+            ret: None,
+            body: Box::new(Expr::Block(body)),
+            is_move: false,
+        };
+        let call = crate::ast::Call {
+            name: Box::new(Expr::Ident("py_with".into())),
+            args: crate::ast::Args {
+                args: vec![
+                    crate::ast::Arg::Pos(ctx),
+                    crate::ast::Arg::Pos(Expr::Closure(closure)),
+                ],
+            },
+            ret: crate::ast::Type::Unknown,
+            type_args: Vec::new(),
+            generic_args: Vec::new(),
+            pos: None,
+        };
+        Ok(Stmt::Expr(Expr::Call(call)))
+    }
+
     /// Plan 010 (MS3-A): `while (cond) { body }` — desugars to a conditional
     /// `for` (Iter::Cond), identical semantics to `for cond { body }`.
     fn while_stmt(&mut self) -> AutoResult<Stmt> {
@@ -4802,6 +4852,8 @@ impl<'a> Parser<'a> {
             TokenKind::For => self.for_stmt()?,
             TokenKind::Loop => self.loop_stmt()?, // Plan 200 Task 1.1
             TokenKind::While => self.while_stmt()?, // Plan 010 (MS3-A)
+            // Plan 560 T09 (E2)：with 上下文管理器糖。
+            TokenKind::With => self.with_stmt()?,
             TokenKind::Try => self.try_stmt()?,    // Plan 010 (MS3-A)
             TokenKind::Is => self.is_stmt()?,
             // Plan 095: Compile-time execution statements

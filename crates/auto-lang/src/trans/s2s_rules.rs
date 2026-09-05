@@ -301,9 +301,14 @@ fn rewrite2_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool)
                     }
                 }
                 // A5：py_* 调用的闭包实参自动包 py_callable
-                // py_callable 自身排除（已包裹形防二遍重入）
+                // py_callable 自身排除（防二遍重入）；py_with 排除——
+                // 其 codegen 内联形态要求**裸闭包**实参（539 inline
+                // bracket），包裹会落 shim 的 closure-id 通道翻车
+                //（T09 实证 Invalid closure ID）。
                 Expr::Ident(n)
-                    if n.as_str().starts_with("py_") && n.as_str() != "py_callable" =>
+                    if n.as_str().starts_with("py_")
+                        && n.as_str() != "py_callable"
+                        && n.as_str() != "py_with" =>
                 {
                     for a in c.args.args.iter_mut() {
                         if let Arg::Pos(inner) = a {

@@ -222,8 +222,7 @@ fn main() {
     var d = x[1..9..2]
     var n = len(x)
     print(x)
-    var ng = x
-    py_with(ng, () => { print(1) })
+    py_map(x, () => { print(1) })
 }
 "#;
         let out = lower_source(src).unwrap();
