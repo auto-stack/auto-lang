@@ -1,0 +1,6 @@
+// Image service seam for 031-image-viewer (Plan 547 Task 29).
+// Directory/session/cache behavior is implemented in Tasks 30–32.
+
+pub fn image_service_status() str {
+    return "Ready"
+}

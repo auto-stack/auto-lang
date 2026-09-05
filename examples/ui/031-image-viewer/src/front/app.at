@@ -1,0 +1,38 @@
+// 031-image-viewer front shell (Plan 547 Task 29).
+// The model contains metadata only; image bytes are served by the media route.
+use back.api: viewer_health
+
+widget App {
+    msg { Refresh }
+
+    model {
+        var status str = "Ready"
+        var media_src str = ""
+    }
+
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-background p-4 gap-4"
+            row {
+                style: "items-center justify-between"
+                h1 "Image Viewer" { style: "text-2xl font-bold" }
+                button "Refresh" { onclick: .Refresh }
+            }
+            col {
+                style: "flex-1 items-center justify-center rounded-xl border border-border bg-card"
+                text .status { style: "text-sm text-muted-foreground" }
+                image_surface (
+                    src: .media_src,
+                    alt: "No image selected",
+                    fit: "contain",
+                    zoom: 1.0,
+                    rotation: 0
+                ) {}
+            }
+        }
+    }
+
+    on {
+        .Refresh -> { .status = viewer_health() }
+    }
+}
