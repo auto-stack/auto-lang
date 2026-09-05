@@ -8,7 +8,7 @@
 | 轨道 | 位置 | 内容 |
 |---|---|---|
 | **App 轨道**（本目录） | `examples/ui/` | 应用示例与孵化器，未来可升级为真正的应用 |
-| 能力样板（fixture） | [`examples/capability-tests/`](../capability-tests/) | 单特性 e2e 钉子（原 021-block-static、026–040），随特性测试化而退役 |
+| 能力样板（fixture） | [`examples/capability-tests/`](../capability-tests/) | 单特性 e2e 钉子（原 021-block-static、026–040；2026-09-05 起 8 个测试探针自本目录迁入，PLAN-552），随特性测试化而退役 |
 | 组件画廊 | [`examples/widgets-gallery/`](../widgets-gallery/) | 全部 shadcn widgets 的文档画廊（原 024） |
 
 ## 运行方式
@@ -62,43 +62,57 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 - **021-block-static、026–040**：能力样板，迁至 [`examples/capability-tests/`](../capability-tests/)（同号共存，引用带全路径即无歧义）。
 - **029**：原能力样板 external-imports 已迁 [`examples/capability-tests/029-external-imports/`](../capability-tests/029-external-imports/)；2026-09-04 由 Plan 537 图库应用回填（同号共存）。
 - **038/041 保留**：撞号的 038-vshow 已随迁移离开，038 现在专指扫雷。
+- **042-two-inputs-child、459-dual-app、overlay-probe、p051/p493/p507/p515/
+  p518**：8 个测试探针（裸 id、无教程价值，连画廊都不该收录），2026-09-05
+  由 [PLAN-552](../../docs/plans/552-desktop-app-curation.md) 整体迁至
+  [`examples/capability-tests/`](../capability-tests/)——本目录回归"只放应用
+  性质"契约；042 空洞恢复可填。
 
 ## 示例总览
 
-| 编号 | 名称 | 一句话 | 端口 | 状态 |
-|---|---|---|---|---|
-| 001 | helloworld | 最简静态文本 | — | 基础 |
-| 002 | counter | 加减计数器（Elm 架构入门） | — | 基础 |
-| 003 | converter | 双向温度换算（7GUIs #2） | — | 基础 |
-| 004 | profile-card | 静态资料卡 | — | 基础 |
-| 005 | login | 登录表单 | — | 基础 |
-| 006 | hero-section | 落地页 hero | — | 基础 |
-| 007 | stats-board | 指标仪表卡 | — | 基础 |
-| 008 | pricing-table | 三档定价表 | — | 基础 |
-| 009 | article-feed | 文章卡片流 | — | 基础 |
-| 010 | contact-form | 联系表单 + 提交反馈 | — | 基础 |
-| 011 | calculator | 四则计算器 | — | 🔀 升级拆出（Plan 401） |
-| 012 | stopwatch | 秒表 + 计圈 | — | 基础 |
-| 013 | todo | TodoMVC 完整实现 | — | ✅ 有 MCP 测试 |
-| 014 | weather | 天气仪表盘 | — | 基础 |
-| 015 | notes | 两栏笔记（真实应用形态） | — | ✅ Plan 354 升级 |
-| 016 | calendar | 月历 + 事件高亮 | — | 基础 |
-| 017 | chat | 微信风即时聊天 | — | ✅ 有 playwright/ATD 验收 |
-| 018 | book-reader | 多页电子书阅读器 | 3018/8018 | ✅ Plan 401 升级（playwright 10/10） |
-| 019 | video-app | 视频浏览（B 站风） | — | ⬜ 待升级 |
-| 020 | music-player | 迷你音乐播放器 | — | ⬜ 待升级 |
-| 021 | blog-viewer | 博客列表 + 详情 | — | ⬜ 待升级 |
-| 022 | kanban | Trello 风看板 | 3022/8022 | ✅ Plan 401 升级（playwright 6/6） |
-| 023 | realworld | Conduit（Medium 克隆） | 3023/8023 | ✅ Plan 405（playwright 14/14） |
-| 024 | charts | 图表工坊（四类图 + 系列开关 + 流式 + Reset 双模式；Y 轴刻度/图例） | 4024 | ✅ [Plan 445](../../docs/plans/archive/445-024-charts.md)（vue+vm 双轨全链路，desktop_mcp 19/19） |
-| 025 | dashboard | 系统监视器（KPI 卡 + 三实时面积曲线 + 可排序进程表 + 配置持久化；mock 随机游走，API 形状见 SPEC） | 4025 | ✅ [Plan 438](../../docs/plans/archive/438-025-dashboard.md)（M1 vue 实机 6/6 + M1-fix 双生成器缺口根治 + M2 vm desktop_mcp 26/26） |
-| 026 | database | SQLite 可视化客户端 | 4026/8026 | 📋 [Plan 439](../../docs/plans/439-026-database.md) 立项中 |
-| 027 | file-manager | 文件管理器（双栏布局 + 目录面包屑 + 列表/网格双视图 + 排序搜索 + Plan 422 popover 右键/新建/删除确认 + 剪贴板 + 配置持久化） | 4027 | ✅ [Plan 440](../../docs/plans/archive/440-027-file-manager.md)（vue 实机 build 0 错误 + vm desktop_mcp 49/49） |
-| 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |
-| 029 | photo-gallery | 图库（macOS 相册风：侧边栏相册导航 + 搜索/排序/密度工具栏 + 缩略图网格 + 大图查看器 prev/next/收藏；picsum 固定 seed 网络真实图片，image widget 首个应用级双端示范） | 4029 | ✅ [Plan 537](../../docs/plans/537-photo-gallery.md)（vue+vm+ui_desktop） |
-| 038 | minesweeper | 经典扫雷（双后端） | 4038 | 🎯 严肃应用，持续扩展 |
-| 041 | auto-edit | 文本编辑器 | 4041 | 🎯 严肃应用，持续扩展 |
-| 043 | clipboard-bridge | 原生剪贴板三族互通（text 418 对照 / files CF_HDROP / image DIBV5+PNG；Plan 485） | 4043 | ✅ [Plan 485](../../docs/plans/485-vm-native-clipboard.md)（实机 T4 五项 PASS） |
+**桌面可见性（[PLAN-552](../../docs/plans/552-desktop-app-curation.md)，2026-09-05）**
+——"桌面"列 ✓ = C 档策展集：pac.at 带 `desktop: "true"`，虚拟桌面
+（图标格 / launcher / dock）默认上架；— = 仅画廊收录不上桌面。主根为
+opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 等）相反
+（缺席即上架，opt-out）。按名启动与自定义图标走全量 resolver，不受策展
+限制；用户级 `shell.desktop.hidden`（右键移除图标）与策展正交。
+
+| 编号 | 名称 | 一句话 | 端口 | 桌面 | 状态 |
+|---|---|---|---|---|---|
+| 001 | helloworld | 最简静态文本 | — | — | 基础 |
+| 002 | counter | 加减计数器（Elm 架构入门） | — | — | 基础 |
+| 003 | converter | 双向温度换算（7GUIs #2） | — | — | 基础 |
+| 004 | profile-card | 静态资料卡 | — | — | 基础 |
+| 005 | login | 登录表单 | — | — | 基础 |
+| 006 | hero-section | 落地页 hero | — | — | 基础 |
+| 007 | stats-board | 指标仪表卡 | — | — | 基础 |
+| 008 | pricing-table | 三档定价表 | — | — | 基础 |
+| 009 | article-feed | 文章卡片流 | — | — | 基础 |
+| 010 | contact-form | 联系表单 + 提交反馈 | — | — | 基础 |
+| 011 | calculator | 四则计算器 | — | ✓ | 🔀 升级拆出（Plan 401） |
+| 012 | stopwatch | 秒表 + 计圈 | — | ✓ | 基础 |
+| 013 | todo | TodoMVC 完整实现 | — | ✓ | ✅ 有 MCP 测试 |
+| 014 | weather | 天气仪表盘 | — | ✓ | 基础 |
+| 015 | notes | 两栏笔记（真实应用形态） | — | ✓ | ✅ Plan 354 升级 |
+| 016 | calendar | 月历 + 事件高亮 | — | ✓ | 基础 |
+| 017 | chat | 微信风即时聊天 | — | ✓ | ✅ 有 playwright/ATD 验收 |
+| 018 | book-reader | 多页电子书阅读器 | 3018/8018 | ✓ | ✅ Plan 401 升级（playwright 10/10） |
+| 019 | video-app | 视频浏览（B 站风） | — | — | ⬜ 待升级 |
+| 020 | music-player | 迷你音乐播放器 | — | ✓ | ⬜ 待升级 |
+| 021 | blog-viewer | 博客列表 + 详情 | — | — | ⬜ 待升级 |
+| 022 | kanban | Trello 风看板 | 3022/8022 | ✓ | ✅ Plan 401 升级（playwright 6/6） |
+| 023 | realworld | Conduit（Medium 克隆） | 3023/8023 | — | ✅ Plan 405（playwright 14/14） |
+| 024 | charts | 图表工坊（四类图 + 系列开关 + 流式 + Reset 双模式；Y 轴刻度/图例） | 4024 | ✓ | ✅ [Plan 445](../../docs/plans/archive/445-024-charts.md)（vue+vm 双轨全链路，desktop_mcp 19/19） |
+| 025 | dashboard | 系统监视器（KPI 卡 + 三实时面积曲线 + 可排序进程表 + 配置持久化；mock 随机游走，API 形状见 SPEC） | 4025 | ✓ | ✅ [Plan 438](../../docs/plans/archive/438-025-dashboard.md)（M1 vue 实机 6/6 + M1-fix 双生成器缺口根治 + M2 vm desktop_mcp 26/26） |
+| 026 | database | SQLite 可视化客户端 | 4026/8026 | ✓ | 📋 [Plan 439](../../docs/plans/439-026-database.md) 立项中 |
+| 027 | file-manager | 文件管理器（双栏布局 + 目录面包屑 + 列表/网格双视图 + 排序搜索 + Plan 422 popover 右键/新建/删除确认 + 剪贴板 + 配置持久化） | 4027 | ✓ | ✅ [Plan 440](../../docs/plans/archive/440-027-file-manager.md)（vue 实机 build 0 错误 + vm desktop_mcp 49/49） |
+| 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✓ | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |
+| 029 | photo-gallery | 图库（macOS 相册风：侧边栏相册导航 + 搜索/排序/密度工具栏 + 缩略图网格 + 大图查看器 prev/next/收藏；picsum 固定 seed 网络真实图片，image widget 首个应用级双端示范） | 4029 | ✓ | ✅ [Plan 537](../../docs/plans/537-photo-gallery.md)（vue+vm+ui_desktop） |
+| 030 | video-player | 原生视频播放器（chromeless 视口 + OSD 控制 + 播放列表，vue/vm 双端） | 3030 | ✓ | ✅ [Plan 542](../../docs/plans/542-030-video-player.md) |
+| 038 | minesweeper | 经典扫雷（双后端） | 4038 | ✓ | 🎯 严肃应用，持续扩展 |
+| 041 | auto-edit | 文本编辑器 | 4041 | ✓ | 🎯 严肃应用，持续扩展 |
+| 043 | clipboard-bridge | 原生剪贴板三族互通（text 418 对照 / files CF_HDROP / image DIBV5+PNG；Plan 485） | 4043 | — | ✅ [Plan 485](../../docs/plans/485-vm-native-clipboard.md)（实机 T4 五项 PASS） |
+| 044 | dnd-bridge | OLE 拖放双向互通冒烟（拖出 text/files/虚拟文件 + 拖入/Ctrl+V 事件面） | 4044 | — | ✅ Plan 488 T6 载具 |
 
 ---
 

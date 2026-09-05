@@ -52,6 +52,27 @@ unit/integration test that subsumes it.
 Verify the same way as a canary (`auto build` + `vue-tsc --noEmit`, or the
 fixture's own README).
 
+## Test probes (migrated from `examples/ui/`, 2026-09-05, PLAN-552)
+
+App-shaped test corpora that never belonged in the app track — bare ids, no
+tutorial value, not even gallery material. The desktop registry and the
+ui-gallery both scan `examples/ui/` only, so probes living here are invisible
+to both (by design). p507/p515 are still consumed by the queue e2e suite via
+`crates/auto-lang/src/ui/desktop_protocol/stage3.rs` (`example_source`
+resolves `examples/ui` → this directory); 459-dual-app remains embedded by
+`crates/auto-lang/examples/ui_desktop.rs` / `ui_dual_app.rs` via `include_str!`.
+
+| Probe | Role | Origin |
+|---|---|---|
+| `overlay-probe/` | alert-dialog 模态浮层解释模式探针 | Plan 533 T2 |
+| `p051-min-ta/` | textarea 分层二分诊断语料（absolute 分层技巧先例） | Plan 051 Phase 2 |
+| `p493-color-check/` | `@assistant` 字形颜色检查器具（根 + 子部件两形态） | Plan 493 |
+| `p507-tier-coverage/` | Tier1+2 全家福构造示例（实机 queue e2e 语料） | Plan 507 T3/T10 |
+| `p515-scroll-overflow/` | scrollable 溢出裁剪构造示例（scissor 栈 e2e 语料） | Plan 515 G1 |
+| `p518-glass-sample/` | backdrop 毛玻璃样张（双端对拍已知分歧白名单，KNOWN-DEBT P518） | Plan 518 G8 |
+| `459-dual-app/` | 无 pac.at 回退形态载具（同源双实例双窗 demo） | Plan 459 |
+| `042-two-inputs-child/` | 双输入子 widget 焦点 / Tab 遍历语料 | Plan 483 |
+
 ## Verify a canary
 
 ```bash
