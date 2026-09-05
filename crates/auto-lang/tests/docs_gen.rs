@@ -54,8 +54,10 @@ const DOC_EXCLUDE: &[&str] = &[
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +
     // schema/aura.at element 描述。
     "windowthumbnail",
-    // Plan 482 nav 家族子件,随 nav 页(nav-item/nav-link)文档化
-    "navgroup",
+    // Plan 562:nav 家族已退役(superseded_by sidebar 族,见 schema/aura.at
+    // 标注与 docs/plans/562-nav-to-sidebar-migration.md),gallery 页
+    // (nav-item/nav-link)随退役删除;实现移除留观察期,期间进白名单。
+    "navgroup", "navitem", "navlink",
     // form 家族件(form 页文档化)
     "formcontrol", "formdescription", "formfield", "formlabel", "formmessage",
     // 家族子件随家族页文档化

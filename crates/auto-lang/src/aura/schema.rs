@@ -248,6 +248,9 @@ pub struct ElementMeta {
     pub sub_widgets: Vec<&'static str>,
     /// Plan 435 P4-4:vue BackendMapping(registry.rs 派生源)
     pub vue: Option<VueBackendSpec>,
+    /// Plan 562:退役标注(如 nav 族 → sidebar 族)。仅作文档/生成器信号,
+    /// 解析与渲染不受影响(观察期内实现保留)。
+    pub superseded_by: Option<String>,
 }
 
 impl Default for ElementMeta {
@@ -262,6 +265,7 @@ impl Default for ElementMeta {
             },
             sub_widgets: Vec::new(),
             vue: None,
+            superseded_by: None,
         }
     }
 }

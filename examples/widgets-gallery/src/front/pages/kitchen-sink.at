@@ -1,6 +1,6 @@
 // Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)
 // 再生成:auto docs gen(测试内等价 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen)
-// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 38 个)。
+// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 35 个)。
 
 widget KitchenSinkPage {
     msg { Go }
@@ -154,43 +154,6 @@ widget KitchenSinkPage {
             row (style: "gap-2 flex-wrap items-center") {
                 native_button "sample" {}
                 native_button (disabled: true) {}
-            }
-
-            // Plan 562: nav 族三节退役，改演示 sidebar 族（1:1 shadcn-vue 移植）。
-            // 完整矩阵见 /sidebar 专页，此处保留最小组合 smoke。
-            h2 "sidebar"
-            row (style: "gap-2 flex-wrap items-center") {
-                sidebar_provider {
-                    sidebar {
-                        sidebar_header {
-                            text "Acme" (style: "font-semibold") {}
-                        }
-                        sidebar_content {
-                            sidebar_group {
-                                sidebar_group_label { text "Workspace" }
-                                sidebar_group_content {
-                                    sidebar_menu {
-                                        sidebar_menu_item {
-                                            sidebar_menu_button {
-                                                icon (name: "home") {}
-                                                text "Home"
-                                            }
-                                        }
-                                        sidebar_menu_item {
-                                            sidebar_menu_button (to: "/kitchen-sink", exact: true) {
-                                                icon (name: "settings") {}
-                                                text "Sink"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        sidebar_footer {
-                            text "v1" (style: "text-xs text-muted-foreground") {}
-                        }
-                    }
-                }
             }
 
             h2 "p"

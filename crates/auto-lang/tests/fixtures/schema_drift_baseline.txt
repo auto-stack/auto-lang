@@ -954,6 +954,9 @@ vue_mt0_not_in_rs	radiogroup
 vue_mt0_not_in_rs	rect
 vue_mt0_not_in_rs	section
 vue_mt0_not_in_rs	select
+vue_mt0_not_in_rs	sidebar-menu-button
+vue_mt0_not_in_rs	sidebar-menu-sub-button
+vue_mt0_not_in_rs	sidebar_menu_sub_button
 vue_mt0_not_in_rs	slider
 vue_mt0_not_in_rs	spinner
 vue_mt0_not_in_rs	square
