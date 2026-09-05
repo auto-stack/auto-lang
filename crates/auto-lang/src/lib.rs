@@ -5242,7 +5242,13 @@ pub fn trans_python(path: &str) -> AutoResult<String> {
         .map_err(|e| format!("Failed to read file: {}", e))
         .unwrap();
 
-    let pyname = path.replace(".at", ".py");
+    // Plan 560 T12：.as 输入防原地覆写（replace(".at") 对 .as 不命中
+    // → pyname==源路径，转译产物写回源文件——py_math 实证）。
+    let pyname = if path.ends_with(".at") || path.ends_with(".as") {
+        path[..path.len() - 3].to_string() + ".py"
+    } else {
+        path.replace(".at", ".py")
+    };
     let fname = AutoPath::new(path).filename();
 
     // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
