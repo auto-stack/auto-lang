@@ -7669,7 +7669,7 @@ impl AutoVM {
                 // the task so the Python shim pops the ACTUAL number of args pushed
                 // at this call site (count cannot be baked into the shim because
                 // C builtins defeat inspect.signature and struct.pack is variadic).
-                OpCode::CALL_PY => {
+                OpCode::CALL_NAT_COUNTED => {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
                     let arg_count = self.flash.read_u8(task.ip);

@@ -260,7 +260,7 @@ impl<'a> Disassembler<'a> {
                 (format!("nat#{}", v), 2)
             }
             // Plan 369 Task 10: py-FFI call: native_id:u16 + arg_count:u8
-            OpCode::CALL_PY => {
+            OpCode::CALL_NAT_COUNTED => {
                 let v = self.flash.read_u16(ip);
                 let n = self.flash.read_u8(ip + 2);
                 (format!("py.nat#{}/{}", v, n), 3)

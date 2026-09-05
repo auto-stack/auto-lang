@@ -194,7 +194,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
 
         OpCode::CREATE_OBJ => 5,
 
-        OpCode::CALL_PY => 3,
+        OpCode::CALL_NAT_COUNTED => 3,
 
         OpCode::CREATE_NODE => 9,
 
@@ -433,7 +433,7 @@ fn emit_operands(
         }
 
         // Plan 369 Task 10: py-FFI call: u16 native_id + u8 arg_count
-        OpCode::CALL_PY => {
+        OpCode::CALL_NAT_COUNTED => {
             let native_id = operand_u16(&instr.operands, 0)?;
             let arg_count = operand_u8(&instr.operands, 1)?;
             bytecode.extend_from_slice(&native_id.to_le_bytes());

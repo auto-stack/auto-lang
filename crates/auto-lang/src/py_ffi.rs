@@ -268,7 +268,7 @@ pub const NATIVE_PY_CALL: u16 = 450;
 pub const NATIVE_PY_GETATTR: u16 = 451;
 /// Plan 539 W0 (DIV-PY-KWARGS-1): keyword-argument method-call channel.
 /// Codegen lowers `py_call(obj, "m", pos..., k=v...)` into this shim's fixed
-/// 5-slot convention so the CALL_PY arg-count byte stays a plain slot count
+/// 5-slot convention so the CALL_NAT_COUNTED arg-count byte stays a plain slot count
 /// (no sentinel sniffing inside the variadic py_call convention).
 pub const NATIVE_PY_CALL_KW: u16 = 452;
 /// Plan 539 W0 (DIV-PY-EXCEPT-1): May-valued method call. Success wraps the
@@ -425,14 +425,14 @@ impl PyFfiBridge {
 
                 // Build Python argument tuple by popping from stack in reverse.
                 // Plan 369 Task 10: use the ACTUAL call-site arg count stashed on
-                // the task by the CALL_PY handler, rather than the param_types count
+                // the task by the CALL_NAT_COUNTED handler, rather than the param_types count
                 // baked in at registration. The registration-time count comes from
                 // inspect.signature(), which fails for C builtins (datetime.date,
                 // struct.pack) and is wrong for variadics (struct.pack). All py-FFI
                 // params use Auto-type marshalling (NanoValue tag detection), so each
                 // arg is popped via pop_auto_py_arg regardless of the declared type.
                 let n = task.pending_native_arg_count as usize;
-                // Fallback for shims registered before CALL_PY existed (param count
+                // Fallback for shims registered before CALL_NAT_COUNTED existed (param count
                 // was baked into param_types). Prefer the runtime count when > 0.
                 let n = if n > 0 { n } else { param_types.len() };
                 let mut bound_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n);
@@ -506,7 +506,7 @@ impl PyFfiBridge {
     /// Plan 369 Task 11: Register a module-level constant (non-callable attribute)
     /// as a zero-arg native. The emitted shim performs `getattr(module, name)` and
     /// marshals the resulting Python object to the VM stack via the auto path.
-    /// Returns the assigned native_id. Pair with codegen that emits CALL_PY with
+    /// Returns the assigned native_id. Pair with codegen that emits CALL_NAT_COUNTED with
     /// arg_count=0 for the bare identifier reference.
     pub fn register_constant(
         &mut self,
@@ -550,7 +550,7 @@ impl PyFfiBridge {
     /// (wrapped as `PyObjectHandle` in the VM heap).
     ///
     /// Both shims use runtime arg-count detection (via `pending_native_arg_count`,
-    /// same mechanism as `CALL_PY`) so `py_call` can accept a variable number of
+    /// same mechanism as `CALL_NAT_COUNTED`) so `py_call` can accept a variable number of
     /// positional method args.
     ///
     /// Calling convention (args pushed left-to-right, popped TOS-first):
@@ -965,7 +965,7 @@ impl PyFfiBridge {
                     ))
                 })?;
                 // Statement form: push a nil so the stack stays balanced for
-                // CALL_PY's dead-zone accounting.
+                // CALL_NAT_COUNTED's dead-zone accounting.
                 task.ram.push_nv(auto_val::encode_null());
                 Ok::<(), VMError>(())
             })?;
