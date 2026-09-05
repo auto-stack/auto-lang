@@ -457,11 +457,34 @@ pub type CG {
             }
         }
         self.depth = self.depth - 1
-        // W2:恢复槽位分配游标(本层槽号可复用;hi_idx 高水位不受影响)
-        if self.scope_saves.len() >= self.depth + 1 {
-            self.max_idx = self.scope_saves.get(self.depth)
-        }
+        // P532 W2 根修⑥c:游标恢复改存活集现算——原 scope_saves 恢复
+        // 陈旧游标(早先深状态写入的 saves[d] 在后续同深 pop 时被再次
+        // 读取,游标跳高于存活 max,烧槽;实证 doc=12 后 ctext=14,宿主
+        // 同位=13 复用 10/11)。宿主语义=分配位由存活集决定(pop 后
+        // next=max alive+1),故 pop 后游标直接取存活 max idx;scope_saves
+        // 机制退役(写路径保留,读路径全部改现算)。max_idx 仍=游标
+        //(add_var 取 +1),参数槽约定(idx<n_args→128 寻址)不受影响
+        //(fn 入口 max_idx=-1 重置保留,参数 0..n-1 顺序不变)。
+        self.max_idx = self.max_alive_idx()
     }
+}
+
+    // P532 W2 根修⑥c:存活作用域(0..depth)最大槽 idx(空=-1)
+    fn max_alive_idx() int {
+    var mx = -1
+    var si = 0
+    while si < self.depth {
+        var sc = self.scopes.get(si)
+        var vi = 0
+        while vi < sc.len() {
+            if sc.get(vi).idx > mx {
+                mx = sc.get(vi).idx
+            }
+            vi = vi + 1
+        }
+        si = si + 1
+    }
+    return mx
 }
 
     // W2:静默弹出(无释放组)——Call 迭代器协议通道专用:宿主 2747-2829
@@ -469,9 +492,8 @@ pub type CG {
     fn pop_scope_silent() {
     if self.depth > 1 {
         self.depth = self.depth - 1
-        if self.scope_saves.len() >= self.depth + 1 {
-            self.max_idx = self.scope_saves.get(self.depth)
-        }
+        // P532 W2 根修⑥c:游标恢复改存活集现算(同 pop_scope)
+        self.max_idx = self.max_alive_idx()
     }
 }
 
