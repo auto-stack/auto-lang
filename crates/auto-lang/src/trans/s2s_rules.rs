@@ -119,11 +119,15 @@ fn rewrite_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) 
                 *changed = true;
             }
         }
-        // ---- 索引位（B3）：py-known 接收者 ----
+        // ---- 索引位（B3）：py-known 接收者（切片位形让位 B5 规则）----
         Expr::Index(recv, idx) => {
             rewrite_expr(recv, k, fname, changed);
             rewrite_expr(idx, k, fname, changed);
-            if recv_is_py(recv, k, fname) {
+            let is_slice_shape = matches!(
+                idx.as_ref(),
+                Expr::Range(_) | Expr::Bina(_, _, _)
+            );
+            if recv_is_py(recv, k, fname) && !is_slice_shape {
                 let recv = *std::mem::replace(recv, Box::new(Expr::Null));
                 let idx = *std::mem::replace(idx, Box::new(Expr::Null));
                 *e = mk_call("py_getitem", vec![Arg::Pos(recv), Arg::Pos(idx)]);
@@ -218,4 +222,220 @@ fn mk_call(name: &str, args: Vec<Arg>) -> Expr {
         generic_args: Vec::new(),
         pos: None,
     })
+}
+
+/// Plan 560 T06: B5 切片族 + B6 len + A5 闭包包裹 + D7 句柄 print。
+pub fn rule_b5_b6_a5_d7(code: &mut Code) -> AutoResult<bool> {
+    let k = crate::trans::py_known::analyze(code);
+    let mut changed = false;
+    for stmt in code.stmts.iter_mut() {
+        if let Stmt::Fn(f) = stmt {
+            let fname = f.name.as_str().to_string();
+            rewrite2_body(&mut f.body.stmts, &k, &fname, &mut changed);
+        }
+    }
+    Ok(changed)
+}
+
+fn rewrite2_body(stmts: &mut [Stmt], k: &PyKnowledge, fname: &str, changed: &mut bool) {
+    for stmt in stmts.iter_mut() {
+        match stmt {
+            Stmt::Store(s) => rewrite2_expr(&mut s.expr, k, fname, changed),
+            Stmt::Expr(e) => rewrite2_expr(e, k, fname, changed),
+            Stmt::Return(e) => rewrite2_expr(e, k, fname, changed),
+            Stmt::If(i) => {
+                for b in i.branches.iter_mut() {
+                    rewrite2_expr(&mut b.cond, k, fname, changed);
+                    rewrite2_body(&mut b.body.stmts, k, fname, changed);
+                }
+                if let Some(e) = i.else_.as_mut() {
+                    rewrite2_body(&mut e.stmts, k, fname, changed);
+                }
+            }
+            Stmt::For(f) => {
+                rewrite2_expr(&mut f.range, k, fname, changed);
+                rewrite2_body(&mut f.body.stmts, k, fname, changed);
+            }
+            Stmt::Try(t) => {
+                rewrite2_body(&mut t.body.stmts, k, fname, changed);
+                rewrite2_body(&mut t.catch_body.stmts, k, fname, changed);
+            }
+            Stmt::Block(b) => rewrite2_body(&mut b.stmts, k, fname, changed),
+            _ => {}
+        }
+    }
+}
+
+fn rewrite2_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) {
+    // 子节点先改（自底向上）——通用递归借 rule_ab_family 的容器面
+    match e {
+        Expr::Call(c) => {
+            for a in c.args.args.iter_mut() {
+                if let Arg::Pos(inner) = a {
+                    rewrite2_expr(inner, k, fname, changed);
+                }
+            }
+            match c.name.as_ref() {
+                // B6：len(x) → obj_len(x)（双通道组合子；len 非保留字，
+                // 用户自定义 fn len 的遮蔽面由链接序兜底——W2 罕见注记）
+                Expr::Ident(n) if n.as_str() == "len" && c.args.args.len() == 1 => {
+                    *e = mk_call("obj_len", vec![std::mem::replace(
+                        &mut c.args.args[0],
+                        Arg::Pos(Expr::Null),
+                    )]);
+                    *changed = true;
+                }
+                // D7：print(x) 中 x 为 py-known 裸名 → py_str 包裹。
+                // 收敛边界：仅 Ident 形态（嵌套 handle 表达式由 print shim
+                // 的运行期 PyObjectHandle→GIL str() 臂兜底——T06 实证：
+                // 盲包会在二遍重入 obj_len/py_str 产物）。
+                Expr::Ident(n) if n.as_str() == "print" => {
+                    for a in c.args.args.iter_mut() {
+                        if let Arg::Pos(inner) = a {
+                            if matches!(inner, Expr::Ident(_)) && recv_is_py(inner, k, fname) {
+                                let taken = std::mem::replace(inner, Expr::Null);
+                                *inner = mk_call("py_str", vec![Arg::Pos(taken)]);
+                                *changed = true;
+                            }
+                        }
+                    }
+                }
+                // A5：py_* 调用的闭包实参自动包 py_callable
+                // py_callable 自身排除（已包裹形防二遍重入）
+                Expr::Ident(n)
+                    if n.as_str().starts_with("py_") && n.as_str() != "py_callable" =>
+                {
+                    for a in c.args.args.iter_mut() {
+                        if let Arg::Pos(inner) = a {
+                            if matches!(inner, Expr::Closure(_)) {
+                                let taken = std::mem::replace(inner, Expr::Null);
+                                *inner = mk_call("py_callable", vec![Arg::Pos(taken)]);
+                                *changed = true;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        // B5：切片族——py-known 接收者的 Range/步长索引 → py_getitem(x, py_slice(...))
+        Expr::Index(recv, idx) => {
+            rewrite2_expr(recv, k, fname, changed);
+            rewrite2_expr(idx, k, fname, changed);
+            let is_slice = matches!(
+                idx.as_ref(),
+                Expr::Range(_) | Expr::Bina(_, _, _)
+            );
+            if recv_is_py(recv, k, fname) && is_slice {
+                // 先探形（借用），命中才取走
+                if lower_slice_probe(idx) {
+                    let recv_v = *std::mem::replace(recv, Box::new(Expr::Null));
+                    let idx_v = *std::mem::replace(idx, Box::new(Expr::Null));
+                    if let Some(slice_expr) = lower_slice(idx_v) {
+                        *e = mk_call(
+                            "py_getitem",
+                            vec![Arg::Pos(recv_v), Arg::Pos(slice_expr)],
+                        );
+                        *changed = true;
+                    }
+                }
+            }
+        }
+        _ => {
+            // 借 A/B 族的递归骨架改写其余容器位（规则本体不再触发——
+            // 已在链式前序处理过 A/B 面，此处仅为子表达式下钻）。
+            rewrite_expr_shallow(e, k, fname, changed);
+        }
+    }
+}
+
+fn rewrite_expr_shallow(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) {
+    match e {
+        Expr::Bina(l, _, r) => {
+            rewrite2_expr(l, k, fname, changed);
+            rewrite2_expr(r, k, fname, changed);
+        }
+        Expr::Array(elems) => {
+            for el in elems.iter_mut() {
+                rewrite2_expr(el, k, fname, changed);
+            }
+        }
+        Expr::Some(i) | Expr::Ok(i) | Expr::Err(i) => rewrite2_expr(i, k, fname, changed),
+        Expr::To { expr, .. } | Expr::Cast { expr, .. } => {
+            rewrite2_expr(expr, k, fname, changed)
+        }
+        _ => {}
+    }
+}
+
+/// 切片位形探针（借用判定，命中后由 lower_slice 取走构造）。
+fn lower_slice_probe(idx: &Expr) -> bool {
+    match idx {
+        Expr::Range(_) => true,
+        Expr::Bina(l, op, _)
+            if std::mem::discriminant(op) == std::mem::discriminant(&auto_val::Op::Range)
+                && matches!(l.as_ref(), Expr::Range(_)) =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
+/// `x[a..b]`/`x[..b]`/`x[a..]`/`x[a..=b]`/`x[a..b..c]` → `py_slice(a', b'[, c])`。
+/// 开端 Nil/Null → null；`..=` → end+1；步长形三参。
+fn lower_slice(idx: Expr) -> Option<Expr> {
+    match idx {
+        Expr::Range(r) => {
+            let start = unwrap_range_arm(&r.start);
+            // 步长位形（T06 实证）：a..b..c 解析为嵌套 Range(a, Range(b, c))
+            if let Expr::Range(inner) = r.end.as_ref() {
+                return Some(build_slice_call(
+                    start,
+                    unwrap_range_arm(&inner.start),
+                    Some(unwrap_range_arm(&inner.end)),
+                ));
+            }
+            let end = if r.eq {
+                Expr::Bina(
+                    Box::new(unwrap_range_arm(&r.end)),
+                    auto_val::Op::Add,
+                    Box::new(Expr::Int(1)),
+                )
+            } else {
+                unwrap_range_arm(&r.end)
+            };
+            Some(build_slice_call(start, end, None))
+        }
+        Expr::Bina(l, op, r)
+            if std::mem::discriminant(&op) == std::mem::discriminant(&auto_val::Op::Range) =>
+        {
+            // a..b..c：左 Range(a,b) + 步长 c
+            match *l {
+                Expr::Range(inner) => {
+                    let start = unwrap_range_arm(&inner.start);
+                    let end = unwrap_range_arm(&inner.end);
+                    Some(build_slice_call(start, end, Some(*r)))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn unwrap_range_arm(e: &Expr) -> Expr {
+    match e {
+        // 开端 Nil/Null → null 字面（py_slice 的 None 端）
+        Expr::Nil | Expr::Null => Expr::Null,
+        other => other.clone(),
+    }
+}
+
+fn build_slice_call(start: Expr, end: Expr, step: Option<Expr>) -> Expr {
+    let mut args = vec![Arg::Pos(start), Arg::Pos(end)];
+    if let Some(s) = step {
+        args.push(Arg::Pos(s));
+    }
+    mk_call("py_slice", args)
 }

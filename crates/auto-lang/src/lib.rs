@@ -760,6 +760,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         // Plan 560 T04: B7 contains + B8 裸模块句柄。
         registry.register_with_id("py.py_contains", crate::py_ffi::NATIVE_PY_CONTAINS);
         registry.register_with_id("py.py_module", crate::py_ffi::NATIVE_PY_MODULE);
+        // Plan 560 T06 (D7): GIL str()。
+        registry.register_with_id("py.py_str", crate::py_ffi::NATIVE_PY_STR);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();

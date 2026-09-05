@@ -1359,6 +1359,25 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     vm_print(vm, &format_rust_stdlib_obj(rust_obj));
                 } else {
+                    // Plan 560 T06 (D7)：py 句柄 print 保真——GIL str()。
+                    #[cfg(feature = "python")]
+                    {
+                        let pyh = guard
+                            .as_any()
+                            .downcast_ref::<crate::py_ffi::PyObjectHandle>();
+                        if let Some(pyh) = pyh {
+                            let s = pyo3::Python::attach(|py| {
+                                use pyo3::types::PyAnyMethods;
+                                pyh.obj
+                                    .bind(py)
+                                    .str()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|e| format!("<py str failed: {}>", e))
+                            });
+                            vm_print(vm, &s);
+                            return Ok(());
+                        }
+                    }
                     vm_print(vm, &format!("<obj:{}>", handle));
                 }
             } else {

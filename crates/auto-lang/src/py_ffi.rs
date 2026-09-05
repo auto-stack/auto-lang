@@ -329,6 +329,9 @@ pub const NATIVE_PY_CONTAINS: u16 = 470;
 /// Plan 560 T04 (B8): `py_module("torch")` — 裸模块绑句柄（重做 Plan 300
 /// 腐烂面）；糖 `var torch = use.py torch` 的桥半，B9 dotted 递归的地基。
 pub const NATIVE_PY_MODULE: u16 = 471;
+/// Plan 560 T06 (D7): `py_str(obj)` — GIL str() 归 Auto 字符串；
+/// 句柄 print/f-string 保真通道。
+pub const NATIVE_PY_STR: u16 = 472;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -1446,6 +1449,33 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_MODULE, module_shim);
+
+        // ---- py_str(obj) ----
+        // Plan 560 T06 (D7): GIL str() → Auto 字符串（print/f-string 保真）。
+        let str_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_str needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let s = obj
+                    .str()
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_str on {} failed: {}", safe_type_name(&obj), e))
+                    })?
+                    .to_string();
+                let idx = vm.add_string(s.into_bytes());
+                vm.rc_push_str_idx(task, idx);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_STR, str_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type

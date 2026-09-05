@@ -35,6 +35,11 @@ pub fn builtin_rules() -> Vec<LoweringRule> {
             id: "A1/A2+B1-B4",
             transform: crate::trans::s2s_rules::rule_ab_family,
         },
+        // Plan 560 T06: B5 切片族 + B6 len + A5 闭包包裹 + D7 句柄 print。
+        LoweringRule {
+            id: "B5/B6/A5/D7",
+            transform: crate::trans::s2s_rules::rule_b5_b6_a5_d7,
+        },
     ]
 }
 
@@ -196,6 +201,34 @@ fn main() {
         assert!(out.contains("s.len()"), "{}", out);
         assert!(out.contains("arr[0]"), "{}", out);
         // 产物可再解析（幂等性由 corpus 测试全局钉）
+        let mut p = crate::parser::Parser::new(&out);
+        assert!(p.parse().is_ok(), "{}", out);
+    }
+
+    /// Plan 560 T06: B5/B6/A5/D7 规则 source-to-source 断言。
+    #[test]
+    fn test_s2s_rule_b5_b6_a5_d7() {
+        let src = r#"use.py torch: arange
+fn main() {
+    var x = arange(10)
+    var a = x[2..5]
+    var b = x[..5]
+    var c = x[2..]
+    var d = x[1..9..2]
+    var n = len(x)
+    print(x)
+    var ng = x
+    py_with(ng, () => { print(1) })
+}
+"#;
+        let out = lower_source(src).unwrap();
+        assert!(out.contains("py_getitem(x, py_slice(2, 5))"), "{}", out);
+        assert!(out.contains("py_slice(null, 5)"), "{}", out);
+        assert!(out.contains("py_slice(2, null)"), "{}", out);
+        assert!(out.contains("py_slice(1, 9, 2)"), "{}", out);
+        assert!(out.contains("obj_len(x)"), "{}", out);
+        assert!(out.contains("print(py_str(x))"), "{}", out);
+        assert!(out.contains("py_callable("), "A5 闭包包裹: {}", out);
         let mut p = crate::parser::Parser::new(&out);
         assert!(p.parse().is_ok(), "{}", out);
     }
