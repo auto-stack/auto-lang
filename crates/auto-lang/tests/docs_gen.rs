@@ -107,7 +107,9 @@ const DOC_EXCLUDE: &[&str] = &[
 const DOC_TODO_BASELINE: &[&str] = &[
     "autodowneditor", "box", "chart", "chatmessage",
     "chip", "container", "date", "datetime", "datetimeinput", "divider",
-    "griditem", "icon", "image", "img", "list",
+    "griditem", "icon", "image", "imagesurface", "img", "list",
+    // Plan 547: ImageSurface 的可运行文档在 031-image-viewer（媒体 ticket
+    // 需要后端会话），不在无后端 widgets-gallery 中伪造 demo。
     // plan 040 主名翻转 markdown→autodown（同一条文档债随元素改名；
     // 实装文档在 auto-down 仓 demo/auto/README.md）。
     "autodown",

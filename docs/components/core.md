@@ -419,6 +419,24 @@ Image display
 
 ---
 
+### `imagesurface`
+
+`builtin_widget` · `imagesurface` · web: `component` · iced: `component` · category: `media`
+
+Asynchronous image viewer surface
+
+别名:`ImageSurface` `image-surface`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `src` | `string` | — | Media ticket URI |
+| `alt` | `string` |  | Alt text |
+| `width` | `int` | 0 | Viewport width |
+| `height` | `int` | 0 | Viewport height |
+| `quality` | `int` | 90 | Rendition quality |
+
+---
+
 ### `img`
 
 `builtin_widget` · `img` · web: `native` · iced: `partial` · category: `content`

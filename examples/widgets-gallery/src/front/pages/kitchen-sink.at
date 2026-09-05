@@ -1,6 +1,6 @@
 // Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)
 // 再生成:auto docs gen(测试内等价 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen)
-// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 31 个)。
+// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 32 个)。
 
 widget KitchenSinkPage {
     msg { Go }
@@ -19,9 +19,7 @@ widget KitchenSinkPage {
             h2 "avatar"
             row (style: "gap-2 flex-wrap items-center") {
                 avatar {}
-                // PLAN-528 W6: src 指向 public/icon.png——裸词 "sample" 会被
-                // vue 生成器当静态资源 import，vite 解析不到整页 500
-                avatar (src: "/icon.png") {}
+                avatar (src: "sample") {}
                 avatar (alt: "sample") {}
                 avatar (fallback: "sample") {}
             }
@@ -85,11 +83,19 @@ widget KitchenSinkPage {
             h2 "image"
             row (style: "gap-2 flex-wrap items-center") {
                 image {}
-                // PLAN-528 W6: 同 avatar——src 裸词会被当静态资源 import 致 500
-                image (src: "/icon.png") {}
+                image (src: "sample") {}
                 image (alt: "sample") {}
                 image (fit: "cover") {}
                 image (fit: "contain") {}
+            }
+
+            h2 "imagesurface"
+            row (style: "gap-2 flex-wrap items-center") {
+                imagesurface {}
+                imagesurface (src: "sample") {}
+                imagesurface (alt: "sample") {}
+                imagesurface (width: 1) {}
+                imagesurface (height: 1) {}
             }
 
             h2 "input"
@@ -224,9 +230,10 @@ widget KitchenSinkPage {
                 toaster (position: "top-center") {}
             }
 
-            // PLAN-528 W6: window_thumbnail 属桌面壳（Plan 526）专属 widget，
-            // 其 @/wm/* 脚手架在 web 画廊工程不存在——移入桌面壳 demo 页，
-            // 不在 web gallery 展示。
+            h2 "window_thumbnail"
+            row (style: "gap-2 flex-wrap items-center") {
+                window_thumbnail {}
+            }
         }
     }
 }
