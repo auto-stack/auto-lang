@@ -62,6 +62,7 @@ mod book_listing_tests;
 // Plan 289: VM file tests gated behind test-vm-files feature
 #[cfg(feature = "test-vm-files")]
 mod vm_file_tests; // Plan 177: VM file-based test framework
+mod heavy_gate; // Plan 564: 重内存测试守门(NEXTEST/AUTO_LANG_HEAVY_MEM 双通道,防裸 cargo test 全并发)
 #[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 #[cfg(feature = "test-vm-files")]
