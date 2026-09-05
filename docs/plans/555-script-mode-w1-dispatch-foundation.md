@@ -235,8 +235,9 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
       接受 `.as`（passthrough 语义）（验证：同内容 .at/.as 输出 diff
       为空探针）
       [✅ 已完成] CLI 位置参数本不过滤扩展名（T01 考古），扩展名经 run_file_with_args→run_with_path→execute_autovm_with_path(path) 已入 T02 解析；p4 探针（递归+数组+for-in+拼接）：同内容 .at/.as 程序输出 diff 为空（仅 Running 横幅文件名行差异）——passthrough 语义实证
-- [ ] T04 py 三桥：`py_ffi.rs` py_setattr 467 / py_len 468 /
+- [x] T04 py 三桥：`py_ffi.rs` py_setattr 467 / py_len 468 /
       py_type_name 469（539 桥型）（验证：新增 py_ffi 单测绿）
+      [✅ 已完成] 三桥 467-469（setattr 语句形态推 null 保栈平衡同 setitem 约）+ register_py_object_builtins 名单 + init_py_ffi 注册；注册单测绿 + p5 torch 端到端探针（len=6/Tensor/setattr+getattr 回读 str）。（终扫补记：T04 完成当时漏加本标记，工作与验证均在案——复审标准 3 复跑 PASS；merge 终扫修正）
 - [x] T05 ForeignObject 协议：协议 trait（七操作面）+ PyObjectHandle
       首实现适配（send/contains 协议位空置）（验证：协议单测绿）
       [✅ 已完成] vm/interop.rs 定义 ForeignObject（六操作方法面 get/set/call/len/iter/type_name + send/contains 注释预留位）；接入机制=HeapObject::as_foreign_object 默认钩子（None 默认，宿主句柄覆写——as_any 无法跨 trait downcast 的解法）；PyObjectHandle 首实现六臂（协议单测绿：downcast+foreign_kind=="py"）
