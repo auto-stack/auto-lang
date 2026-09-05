@@ -371,6 +371,25 @@ impl MediaAssetRegistry {
             .map(|entry| entry.metadata.clone())
     }
 
+    pub fn stats(&self) -> MediaPipelineStats {
+        let state = self.inner.state.lock().expect("media registry lock poisoned");
+        let mut stats = MediaPipelineStats::default();
+        for entry in state.entries.values() {
+            match entry.state {
+                MediaAssetState::Queued => stats.queued += 1,
+                MediaAssetState::Reading
+                | MediaAssetState::Decoding
+                | MediaAssetState::Transforming => stats.running += 1,
+                MediaAssetState::Ready => stats.completed += 1,
+                _ => {}
+            }
+            if let Some(bytes) = &entry.encoded {
+                stats.encoded_bytes += bytes.len();
+            }
+        }
+        stats
+    }
+
     pub fn retain(&self, id: MediaAssetId) -> bool {
         let mut state = self.inner.state.lock().expect("media registry lock poisoned");
         let Some(entry) = state.entries.get_mut(&id) else {

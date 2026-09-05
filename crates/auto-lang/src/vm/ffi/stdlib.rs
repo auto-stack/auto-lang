@@ -62,6 +62,12 @@ mod image_pipeline_vm_http_tests {
         assert!(String::from_utf8_lossy(&wire).starts_with("HTTP/1.1 200 OK"));
         assert!(wire.ends_with(&[7, 255]));
     }
+
+    #[test]
+    fn image_natives_register_opaque_ticket_operations() {
+        assert_eq!(IMAGE_NATIVE_NAMES.len(), 8);
+        assert!(IMAGE_NATIVE_NAMES.iter().all(|name| name.starts_with("auto.image.")));
+    }
 }
 
 // ============================================================================
@@ -3709,6 +3715,106 @@ pub fn shim_http_server(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     // Full implementation would store route handlers
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     task.ram.push_i64(handle as i64);
+    Ok(())
+}
+
+// Plan 547: VM handles contain only the opaque ticket id; decoded pixels stay
+// in the shared registry and are never pushed onto the VM stack.
+#[cfg(feature = "ui-iced")]
+static IMAGE_TICKET_HANDLES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<u64, crate::ui::image_pipeline::MediaAssetTicket>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+#[cfg(feature = "ui-iced")]
+static IMAGE_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "ui-iced")]
+pub const IMAGE_NATIVE_NAMES: &[&str] = &[
+    "auto.image.queue", "auto.image.open", "auto.image.scan", "auto.image.request",
+    "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
+];
+
+#[cfg(feature = "ui-iced")]
+fn image_ticket_from_handle(handle: u64) -> Option<crate::ui::image_pipeline::MediaAssetTicket> {
+    IMAGE_TICKET_HANDLES.lock().ok()?.get(&handle).cloned()
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_queue(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let bytes = std::fs::read(&path).map_err(|_| VMError::RuntimeError("image read failed".into()))?;
+    let metadata = crate::ui::image_pipeline::inspect_image_metadata(&bytes)
+        .map_err(|error| VMError::RuntimeError(error.to_string()))?;
+    let ticket = crate::ui::image_pipeline::global_media_registry().queue(
+        crate::ui::image_pipeline::MediaAssetKey {
+            source_fingerprint: path,
+            orientation: metadata.orientation,
+            rendition: crate::ui::image_pipeline::RenditionSpec::original(),
+            revision: 1,
+        },
+        metadata,
+    );
+    let handle = IMAGE_HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    IMAGE_TICKET_HANDLES.lock().unwrap().insert(handle, ticket);
+    task.ram.push_i64(handle as i64);
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_open(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i64() as u64;
+    task.ram.push_i64(if image_ticket_from_handle(handle).is_some() { handle as i64 } else { 0 });
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_retain(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i64() as u64;
+    if let Some(ticket) = image_ticket_from_handle(handle) {
+        let _ = crate::ui::image_pipeline::global_media_registry().retain(ticket.id);
+        task.ram.push_i64(handle as i64);
+    } else {
+        task.ram.push_i64(0);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_release(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(ticket) = image_ticket_from_handle(task.ram.pop_i64() as u64) {
+        crate::ui::image_pipeline::global_media_registry().release(ticket.id);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i64() as u64;
+    if let Some(ticket) = IMAGE_TICKET_HANDLES.lock().unwrap().remove(&handle) {
+        crate::ui::image_pipeline::global_media_registry().release(ticket.id);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_request(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _height = task.ram.pop_i32();
+    let _width = task.ram.pop_i32();
+    let handle = task.ram.pop_i64();
+    task.ram.push_i64(handle);
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_scan(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    task.ram.push_i64(0);
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_stats(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_i64(crate::ui::image_pipeline::global_media_registry().stats().completed as i64);
     Ok(())
 }
 
@@ -7462,6 +7568,17 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.server_delete", shim_http_server_delete);
     natives.register_shim_by_name("auto.http.server_static", shim_http_server_static);
     natives.register_shim_by_name("auto.http.server_listen", shim_http_server_listen);
+    #[cfg(feature = "ui-iced")]
+    {
+        natives.register_shim_by_name("auto.image.queue", shim_image_queue);
+        natives.register_shim_by_name("auto.image.open", shim_image_open);
+        natives.register_shim_by_name("auto.image.scan", shim_image_scan);
+        natives.register_shim_by_name("auto.image.request", shim_image_request);
+        natives.register_shim_by_name("auto.image.retain", shim_image_retain);
+        natives.register_shim_by_name("auto.image.release", shim_image_release);
+        natives.register_shim_by_name("auto.image.close", shim_image_close);
+        natives.register_shim_by_name("auto.image.stats", shim_image_stats);
+    }
     natives.register_shim_by_name("auto.http.response", shim_http_response);
     natives.register_shim_by_name("auto.http.response_status", shim_http_response_status);
     natives.register_shim_by_name("auto.http.response_header", shim_http_response_header);
