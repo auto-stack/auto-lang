@@ -1449,3 +1449,20 @@
   nav-group/nav-item → sidebar_* 并退役 nav 族）均待 `/auto-plan:new`
   立项；设计文档已入库
   `docs/design/autoui/sidebar-family-and-nav-retirement.md`。
+
+
+### P553（2026-09-05，031-paint 像素画板——VM 运行时两发现登记）
+
+**P553-D1｜全同串列表整体赋值塌缩（VM 运行时，中）**
+`Str.split` 产物重建的**全同串列表**经本地构建→整体赋值（`.px = np`）后塌缩为
+单元素：uniform 快照恢复 px len=1（mixed 内容不受影响）；`+""` 新鲜句柄无效、
+逐格 SetPx 恢复触 handler 预算截断，两绕法均不可用。影响：031 全同盘（整盘
+单色）的 Redo/Load 恢复——desktop_mcp T6-redo 按债引用式 SKIP（013
+audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端注记」。
+处置建议：VM 侧修复计划（与 B12 家族同审）。
+
+**P553-D2｜运行时 str 状态列表下标写静默失效（VM 运行时，低）**
+`.px[i] = v` 在 handler 内对运行时构建的 str 状态列表静默不生效（saved 翻转
+证 if 分支执行、px 不变实证；038 的下标写是 Obj 列表+store 形态、028 从不
+下标写——两先例均不覆盖此面）。app 侧已按「本地构建→整体赋值」纪律绕开并
+成文（031 SPEC）；登记备 VM 侧统一裁定（与 P553-D1 同族排查）。

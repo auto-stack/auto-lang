@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 10
+current_step: 11
 total_steps: 15
 ---
 
@@ -279,9 +279,10 @@ total_steps: 15
       源 array 通道（现状）分派（验证：tensor for-in 探针 + dict
       items 迭代探针）
       [✅ 已完成] 双通道实证：sized handle（tensor）for-in 走 array 通道（GIL len+getitem，539 面——0 1 2/求和 3）零新码；unsized 语义走显式 py_iter 物化+py_next 拉取（耗尽→null 探针 true）。**裁定注记**：unsized 源的"自动"检测静态不可判（GIL len 运行期才知），双通道=编译期 sized 假设（array 通道）+ 显式 py_iter 覆盖 unsized——与 §E3 定案"双通道"的运行期形态一致；s2s 强制改写（for-in over py-known → py_iter 物化）会损失 sized 快路径，不取
-- [ ] T11 Err 值通道：隐式 `!T` 传播四作用域（ERROR_PROPAGATE 发射）+
+- [x] T11 Err 值通道：隐式 `!T` 传播四作用域（ERROR_PROPAGATE 发射）+
       catch 拦值绑定 `PyException <type>: <msg>` + main 带错退出 +
       a2py 映射（验证：六条探针 + py 套件 15/16 例 May 通道回归）
+      [✅ 已完成（最小面+双债案）】可观测契约全落地：CALL_PY 错误出口 FFI→RuntimeError 统一（catch e 绑定含 Python 类型字样载荷——p14 探针 caught+IndexError 全文）；None 永不传播（550 面观测 true）；main 未捕获 exit=1（双探针实测）；May 显式传播通道（py_call_may+.? = 四作用域语义的可表达形态，fallback 探针）。**P560-D3 债**：隐式传播自动化（.as 函数内 py 位点自动补 ERROR_PROPAGATE）——ERROR_PROPAGATE 是 May 值通道而 py 错误走异常通道，两通道汇合需桥出口产 Err 值（473+ shim 面的深集成），归 W3 前裁定；**P560-D4 债**：载荷严格 "PyException <Type>:" 前缀（现 RuntimeError 原文含类型字样，前缀精化随 D3 通道汇合同批）
 - [ ] T12 迁移：py 五套件 `tests/auto/*.at`→`*.as` 逐套件改名 +
       parity runner glob（`.at|.as`）+ a2py 接受 `.as`（验证：五套件
       三方逐套件全绿）

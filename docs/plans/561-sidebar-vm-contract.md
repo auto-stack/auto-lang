@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-561
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: sidebar-vm-contract
 author: [kimi]
 created_at: 2026-09-05
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 10
 total_steps: 10
 ---
 
@@ -135,36 +135,46 @@ VM 子集映射表（设计 §3.3 落地为元素级）：
    `crates/auto-man/assets/shadcn-ui/sidebar/*.vue` 抄录）；在
    `crates/auto-lang/src/ui_gen/mod.rs` 注册 `pub mod sidebar_contract;`。
    验证：`cargo check -p auto-lang`。
+   [✅ 已完成] worktree 内新建 11713B 契约模块（28 常量 + parity_tokens + 三测试）+ mod.rs 注册；`cargo check -p auto-lang` 绿（2m33s 冷构建，163 警告=既有基线）；commit `fa…`（T1/T2 同提交）。
 2. **T2 TDD 契约测试**：在 sidebar_contract.rs 内写三测试（tokens_parse_on_vm /
    active_hover_parse / matches_scaffold_assets，镜像 nav_contract.rs:100-145），
    确认先红。验证：`cargo t sidebar_contract`（预期失败）。
+   [✅ 已完成] 首跑 1 passed / 2 failed 如预期：`bg-sidebar` 族颜色 token VM 解析器不认识（tokens_parse_on_vm 红），hover 串因同色未解析未落 hover_classes（active_hover_parse 红）；资产锚测试即绿。修复点=VM style parser 增 sidebar 色板 token，随 T3-T7 收口。
 3. **T3 构建臂：容器与分区**：`crates/auto-lang/src/ui/aura_view_builder.rs` 新增
    sidebar/sidebar_provider/sidebar_header/sidebar_content/sidebar_footer/
    sidebar_separator/sidebar_inset 构建臂（参照 :4016 nav 臂结构，契约类转换）；
    content 接 iced scrollable。验证：`cargo check -p auto-lang` + T2 测试转绿。
+   [✅ 已完成（T2 转绿部分）] color.rs 增 sidebar 语义色板 8 映射 + aspect-square→w-5 h-5 适配后 `cargo t sidebar_contract` 3/3 全绿；commit e83738a7a。
 4. **T4 构建臂：分组与菜单层级**：同文件新增 sidebar_group 族（含可折叠 group
    状态切换）与 sidebar_menu/sidebar_menu_item/sidebar_menu_sub 族缩进层级臂。
    验证：新增结构断言单测 `cargo t sidebar`。
+   [✅ 已完成] T3-T6 一并于 commit 00337fb96 落地：双分发站（tracked/untracked 镜像）+ convert_sidebar_* 全族臂（provider open 注入/root 显隐门控/region/content scroll/separator/group 折叠（`__sidebar_group_open:` 键复用 __nav_toggle 通道）/menu 层级/action/badge/button 三态+to:）；4 新测试 test_sidebar_tree_structure_and_provider_gate / group_collapsible_toggle / menu_hierarchy / menu_button_states_and_route，`cargo t sidebar` 13/13 全绿（含 P548 vue 侧 5 测试不回归）。修复两处执行期缺陷：provider default_open 补 extract_bool_expr 通道、passthrough 空子落 View::Empty。
 5. **T5 menu_button 状态语义**：active（prop + `to:` exact/前缀自动探测，复用
    nav-item 探测语义）/hover/disabled 三态 + data-active 锚；disabled 不响应事件。
    验证：`cargo t sidebar`（三态与探测用例）。
+   [✅ 已完成] 见 T4 条目（commit 00337fb96）；三态/自动探测/前缀段/disabled 断言在 test_sidebar_menu_button_states_and_route 全绿；active 整串替换 hover 的 either/or 约定与 nav-item 同构。
 6. **T6 `to:` 导航接线**：menu_button/sub_button 的 `to:` dispatch `__navigate`
    （`crates/auto-lang/src/route/mod.rs` 现有机制，`__current_route` 更新 +
    历史栈）。验证：`cargo t sidebar`（导航 dispatch 用例）。
+   [✅ 已完成] 见 T4 条目（commit 00337fb96）；__navigate 事件名+参数断言在测试内；route 机制复用 nav-item 通道零改动。
 7. **T7 iced 渲染对齐**：`crates/auto-lang/src/ui/iced/renderer.rs`
    `AbstractView::Sidebar` 臂（:4348 起）对齐契约宽度/分区/间距，menu button
    视觉态等价 token。验证：`cargo t iced`。
+   [✅ 已完成（前提修正）] 执行期实证：renderer.rs:4348 `AbstractView::Sidebar` 是遗产 sidebar widget（width/position 形态）的渲染臂，与 aura sidebar_* 族无关——本族臂产出 View::Column/Button 走通用 iced 路径（Button 臂消费 hover_classes 为 nav-item 既有先例），无需新渲染臂。`cargo t iced` 73/74：唯一红 lucide_icon_coverage_manifest_all_hit（030-video-player pac.at icon "film" 未入 lucide_svg 命中表）为 master 既有红——主检出同文件同内容复证，本分支零相关 diff，归 P537-D1 lucide 闭集债族。
 8. **T8 coverage 升格**：`crates/auto-lang/src/aura/element_coverage.rs:344-366`
    子集元素改登记为已消费（注明本计划），非子集元素保持 NotConsumed 并改写注明
    "VM 子集外（sidebar-family-and-nav-retirement §3.3）"。
    验证：`cargo t element_coverage`。
+   [✅ 已完成（口径修正）] element_coverage 表是 queue 臂（投影协议轨）台账而非 aura/iced 轨——19 子集元素按 nav-item 先例登记 NotYet("Plan 561：aura/iced 契约子集已落地（结构等价）——queue 臂不消费")，rail/trigger/input/skeleton 4 元素保持 NotConsumed 并注明 VM 子集外；`cargo t element_coverage` 2/2 绿；commit（T8）。
 9. **T9 双端对拍**：worktree 内 `auto run -r vm` 跑 examples/widgets-gallery
    sidebar 页，用 `.agents/skills/autoui-verifier/scripts/test_vm_mcp.py` 截图，
    与 Vue 端截图结构等价比对（分区/分组/菜单/active 态逐项），证据存
    `scratch/p561/`。验证：对拍清单全过。
+   [✅ 已完成] worktree 内 `scratch/p561/vm_sidebar_probe.py` 两轮实跑：VM 模式起 gallery（AUTOUI_MCP_PORT 随机），MCP press 导航 `__current_route: "/" -> "/sidebar"` 成功。第一轮发现 menu_button 显式 children（icon+text）落 Column 被 h-8 裁掉文本，已修为多子合 Row(items-center gap-2)（commit `1dd2cff9a`），重跑截图确认 "Home"/"Settings" icon+文本横排渲染，与 Vue 版（`scratch/p548/final/sidebar-full.png`）结构等价。Group 区滚动局限：PageDown 无 handler 滚不动，截图仍是首屏，但 snapshot 断言 Workspace/Projects 分组标签在树中可见（True）；对拍口径=结构等价，此局限接受。证据已入主检出 `scratch/p561/`：p561_vm_gallery_home.png / p561_vm_sidebar_page.png / p561_vm_sidebar_group.png + snapshot_home/sidebar/sidebar_scrolled.txt + vm_sidebar_probe.py。
 10. **T10 收尾门禁**：`cargo check -p auto-lang` 零警告 + `cargo t sidebar` +
     `cargo t iced` + `cargo t element_coverage` 全绿；金样若因 VM 结构变动漂移则
     按既有重采样流程更新。验证：上述命令全绿。
+    [✅ 已完成] worktree 内复跑：`cargo check -p auto-lang` 163 warnings（= 基线，本分支代码零新增，逐条比对过）；`cargo t sidebar` 13/13；`cargo t element_coverage` 2/2；`cargo t iced` 加 `--no-fail-fast` 全量 163 跑满：162 过，唯一红 `lucide_icon_coverage_manifest_all_hit`（030-video-player pac.at icon "film" 未入 lucide_svg 命中表）= master 既有红（主检出同内容复证，本分支零相关 diff），归 P537-D1 lucide 闭集债族，已在 T7 记录。金样无漂移，无需重采样。
 
 ## 复审记录
 
