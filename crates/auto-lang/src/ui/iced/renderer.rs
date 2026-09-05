@@ -4763,6 +4763,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 /// Results are cached in memory so each URL is only fetched once.
 /// Returns None on failure.
 fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
+    // Process-local media tickets are resolved before the legacy URL/file
+    // cache. A pending ticket must be retried on the next frame rather than
+    // being cached as a permanent miss.
+    if url.starts_with("/api/__auto/media/") {
+        return crate::ui::image_pipeline::resolve_media_uri(url);
+    }
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -19517,6 +19523,30 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn native_media_uri_resolves_registry_before_http_fallback() {
+        let registry = crate::ui::image_pipeline::global_media_registry();
+        let ticket = registry.queue(
+            crate::ui::image_pipeline::MediaAssetKey {
+                source_fingerprint: "renderer-fixture".into(),
+                orientation: Default::default(),
+                rendition: crate::ui::image_pipeline::RenditionSpec::original(),
+                revision: 1,
+            },
+            crate::ui::image_pipeline::MediaMetadata::default(),
+        );
+        let uri = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+        assert!(load_image_bytes(&uri).is_none(), "pending ticket should not fall back to a file");
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Transforming).unwrap();
+        registry.publish_ready(ticket.id, ticket.revision, std::sync::Arc::<[u8]>::from([0, 255, 2])).unwrap();
+        assert_eq!(load_image_bytes(&uri), Some(vec![0, 255, 2]));
+        assert!(load_image_bytes("relative/path.png").is_none(), "ordinary file fallback remains available");
+    }
+
     /// PLAN-530 步骤5 回归（B 内存崩塌主源）：lucide_svg 同名 icon 必须命中
     /// 去重缓存（同一 &'static str），不得每次调用 Box::leak 一份新 16×16
     /// 文档——每帧每图标 ~350B 的无界泄漏随重建频率线性增长（homepage 实测

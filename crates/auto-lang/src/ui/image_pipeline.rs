@@ -726,6 +726,18 @@ pub fn media_http_response(
     }
 }
 
+/// Resolves a process-local media URI for native renderers.  Non-media URLs
+/// and pending/expired tickets deliberately return `None`, allowing callers
+/// to retain their normal file or network fallback behavior.
+pub fn resolve_media_uri(uri: &str) -> Option<Vec<u8>> {
+    if !uri.starts_with("/api/__auto/media/") {
+        return None;
+    }
+    media_http_response(global_media_registry(), "GET", uri, None)
+        .body
+        .map(|bytes| bytes.to_vec())
+}
+
 fn parse_media_path(path: &str) -> Option<(MediaAssetId, u64)> {
     let route = path.strip_prefix("/api/__auto/media/")?;
     let (id, revision) = route.split_once('/')?;
@@ -962,5 +974,29 @@ mod tests {
         registry.release(ticket.id);
         registry.collect_expired();
         assert_eq!(super::media_http_response(&registry, "GET", &path, None).status, 410);
+    }
+
+    #[test]
+    fn native_uri_resolves_registry_before_http_fallback() {
+        let registry = super::global_media_registry();
+        let ticket = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "native-uri-fixture".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        let uri = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+        assert_eq!(super::resolve_media_uri(&uri), None);
+        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry
+            .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([0, 255, 2]))
+            .unwrap();
+        assert_eq!(super::resolve_media_uri(&uri), Some(vec![0, 255, 2]));
+        assert_eq!(super::resolve_media_uri("relative/path.png"), None);
     }
 }
