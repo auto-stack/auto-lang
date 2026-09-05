@@ -12,13 +12,15 @@ supersedes_spec_components:
   - "ui timer 通道(PLAN-051 C7): 失效广播契约强化——handler 执行中崩(≠HandlerNotFound)置 dirty+热重载拍早退口脏桥接(500ms 兜底)"
   - "ui 子件生命周期(PLAN-437 Phase 2): Init 挂载语义收敛(每组件一次,child_inits_fired 记账)+子件字段缺字段播种守卫"
   - "native Date.format(PLAN-054 A7): epoch 秒/毫秒双口径归一(1e11 阈值),vue/ts_adapter 同款守卫"
-  - "【重开段 T12】ui timer 门控: musk PollStream when: .streaming 摘除改 deadman 2 分钟窗(poll_window 列表承载窗戳)——跨模块 SET_FIELD 不可达根态(KD P536-D2)下 when 门恒假,deadman 为框架缺陷绕行定型(完成启发式带回合增长守卫)"
+  - "【重开段 T12】ui timer 门控: musk PollStream when: .streaming 摘除改 deadman 2 分钟窗(poll_window 列表承载窗戳)——when 门恒假+头部 StopStream 系四修前复合症状(Phase 2 T13 定性修正:全帧根态实证,写入可达);deadman 留作稳健门控(完成启发式带回合增长守卫)"
 new_spec_components:
   - "ui absolute 定位原语: hoist 臂挂 tracked col/row 主渲染路径+gallery /absolute 探针页;Button{content:Overlay} 画布空壳限制登记"
   - "ui slot-fill x hoist 限制: slot-fill for 循环体内 col-arm hoist 不生效(x 渲染旁路,build_floating_layer 0 调用实证)——T9 收尾"
   - "【重开段 T10】悬浮机制统一: renderer 动态路径(Column/Row abs 拆分层)消费偏移(dynamic_abs_layer_position:非零 top/right/left→build_floating_layer 同款几何,零偏移 ghost 族保持落原点)+fold_floats 多浮层全保留(四处 hoist 臂,嵌套 Overlay 源序=栈序,废除 .next() 丢弃)"
   - "【重开段 T11】schema 围栏清偿: aura.at 再生成(dialog/dropdown 家族)+element_coverage 双向登记+baseline 更新(vb 侧家族有意漂移 128 条登记);kitchen-sink 生成器固化 PLAN-528 W6 两规则(src 资源占位/桌面壳专属排除);schema.rs 补 autodown.table_col_widths 事实源"
   - "【重开段 立案】KD P536-D1: aura.at 再生成 canonical 形态振荡(反不动点,围栏生成器专项);KD P536-D2: 跨模块 store handler 帧内 SET_FIELD 重绑定不可达根态(state-scope 专项,实机证据链完整)——057④/c13c250 家族引擎级根因候选"
+  - "【Phase 2 T13】AUTO_DEBUG_POLLTRACE 诊断设施: engine SET_FIELD GenericInstanceData 臂 store 字段写入追踪(值+vmref 长度)/dynamic timer_guard_passes 门控读值/resolve_iterable filteredMessages 行数(env 门控零开销,常驻定位工具)"
+  - "【Phase 2 立案修正】KD P536-D2 定性修正: 仪器化实证全帧根态、四修后写入可达,不可达根态旧定性系四修前复合症状误读;真最后一里=chatActivePath 投影链(057④ 族,musk 061 D25 在修)"
 touched_goals:
   - "GOAL-007: VM 轨反应性修复——timer 写入触发视图失效/Init 重入收敛/时间标签时区正确(musk KD 059-FU1 三题);重开段补:发送链零崩(493① 收敛)+PollStream 兜底链恢复,直显最后一里归 KD-057④+P536-D2"
 
