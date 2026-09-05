@@ -12,10 +12,19 @@
 
 ## 状态模型（单组件内聚，028/025 形态）
 
-- `px`：256 长度颜色串列表（平行字符串列表规避 B12——VM handler 对 Obj
-  数组字段读的失效面）。
+- **颜色表示**：颜色一律以完整 Tailwind 类串存状态（`" bg-[#ef4444] "`，
+  前后各一空格）——字面量随 handler 源进 vue 生成码命中 Tailwind JIT 扫描
+  （运行时拼接的任意值类不可见，T3 实测）；段间空格编进值本身，绕开生成器
+  `${}` 段接 `+` 拼接丢边界空白的问题（gen App.vue 实证）；VM 侧同机制
+  （028 launcher chip 先例）。
+- `px`：256 长度**类串**平行列表（B12 规避——VM handler 对 Obj 数组字段读
+  的失效面）。
 - `cells`：handler 自建行对象 `{i, chip}`（view 侧读自建 Obj 数组已证可用，
   028 `ranked` 先例），每次变更后 `RebuildCells` 全量重建。
+- 画布 grid 用**表达式 cols**（`cols: .canvas_cols` → 内联
+  `grid-template-columns: repeat(16,…)`）——字面量 int 走 `grid-cols-N` 类，
+  N=16 超 Tailwind 默认刻度(≤12)不生成（ui_gen/vue.rs 10289 注记；038 动态
+  列同型）。
 - undo/redo 栈：`px.join("|")` 快照串列表（044 `.join` / `Str.split` 实存）。
 
 ## 双端注记
