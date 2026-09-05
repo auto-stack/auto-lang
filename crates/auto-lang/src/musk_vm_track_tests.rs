@@ -3615,13 +3615,11 @@ mod musk_vm_track_p062_heap_soak {
             idle_base, idle_after
         );
 
-        // ── 相 B：脏重建（恒写拍 × 40）——速率绊线 ──
-        // 残留已知债：每 call_vm_fn 有 1 个未定位归属的存量 stake（非
-        // 任务帧槽/非全局表/非结果槽——canary 实证各清账路径均不安全），
-        // 钉住当帧 computed 树 ⇒ ~+21 obj/rebuild。帧账本已归还宿主份额
-        // （42→21/拍，隐式重建移除 + F2），根修归上游 RC 槽位记账专项
-        // （KD-051⑤ 续行）。绊线口径：≤ +24/rebuild，回归到双倍泄漏
-        // （+42/rebuild，隐式重建复发或账本失效）即红。
+        // ── 相 B：脏重建（恒写拍 × 40）——零增长（Phase2 T12 影子账本后）──
+        // Phase1 终态曾为 +21 obj/rebuild（每 call 1 个未归属 phantom stake
+        // 钉住当帧 computed 树）；T12 stake 影子账本（槽位显式持有/转移/
+        // 按影子清扫 + 桥接结果槽份额接管）根修后收紧为稳态零增长
+        // （+64 容差吸收字符串池/注册表常数级残差）。
         for _ in 0..10 {
             tick_rebuild(&mut dc);
         }
@@ -3637,8 +3635,8 @@ mod musk_vm_track_p062_heap_soak {
             after.saturating_sub(base)
         );
         assert!(
-            after <= base + 24 * 40,
-            "rebuild leak-rate tripped: base={} after={} (+{}/40 rebuilds, > 24/rebuild)",
+            after <= base + 64,
+            "rebuild phase must be zero-growth post T12: base={} after={} (+{})",
             base,
             after,
             after.saturating_sub(base)
