@@ -1,0 +1,25 @@
+/// Rust-target declarations for the process-local image pipeline (Plan 547).
+/// The Rust generator replaces these calls with the shared runtime bridge.
+#[rs]
+pub fn queue(path str) ImageTicket
+
+#[rs]
+pub fn open(ticket ImageTicket) ImageTicket
+
+#[rs]
+pub fn scan(path str) []ImageTicket
+
+#[rs]
+pub fn request(ticket ImageTicket, width int, height int) ImageTicket
+
+#[rs]
+pub fn retain(ticket ImageTicket) ImageTicket
+
+#[rs]
+pub fn release(ticket ImageTicket) void
+
+#[rs]
+pub fn close(ticket ImageTicket) void
+
+#[rs]
+pub fn stats() ImageStats

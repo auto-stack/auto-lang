@@ -28,7 +28,7 @@ macro_rules! vm_debug {
     };
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "ui-iced"))]
 mod image_pipeline_vm_http_tests {
     use super::*;
     use crate::ui::image_pipeline::{
@@ -3772,6 +3772,7 @@ pub fn shim_http_server_static(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 ///
 /// The listen loop is identical to shim_http_server_listen but creates its own
 /// handler tasks internally, avoiding the need for a caller-provided task.
+#[cfg(feature = "ui-iced")]
 fn media_response_for_vm_request(
     method: &str,
     path: &str,
@@ -3789,6 +3790,7 @@ fn media_response_for_vm_request(
     ))
 }
 
+#[cfg(feature = "ui-iced")]
 fn write_media_response(
     stream: &mut impl std::io::Write,
     method: &str,
@@ -3823,6 +3825,16 @@ fn write_media_response(
         let _ = stream.write_all(&body);
     }
     true
+}
+
+#[cfg(not(feature = "ui-iced"))]
+fn write_media_response(
+    _stream: &mut impl std::io::Write,
+    _method: &str,
+    _path: &str,
+    _if_none_match: Option<&str>,
+) -> bool {
+    false
 }
 
 /// Must be called from a non-tokio thread (std::thread::spawn), because it

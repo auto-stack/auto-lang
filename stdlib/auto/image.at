@@ -1,0 +1,27 @@
+/// Process-local image pipeline API (Plan 547).
+///
+/// Calls return opaque ticket/record values and never expose decoded pixels.
+type ImageTicket {
+    id str
+    revision int
+    state str
+    uri str
+}
+
+type ImageStats {
+    queued int
+    running int
+    completed int
+    dropped int
+    encoded_bytes int
+    decoded_bytes int
+}
+
+pub fn queue(path str) ImageTicket;
+pub fn open(ticket ImageTicket) ImageTicket;
+pub fn scan(path str) []ImageTicket;
+pub fn request(ticket ImageTicket, width int, height int) ImageTicket;
+pub fn retain(ticket ImageTicket) ImageTicket;
+pub fn release(ticket ImageTicket) void;
+pub fn close(ticket ImageTicket) void;
+pub fn stats() ImageStats;
