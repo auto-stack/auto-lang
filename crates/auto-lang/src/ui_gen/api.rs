@@ -485,6 +485,17 @@ pub fn collect_use_module_fns(
         {
             continue;
         }
+        // Plan 559 W2: `use back.api: ...` is NOT a plain module on the vue
+        // track — its resolution is the `@/lib/api` import line the SFC
+        // already emits (the project-provided or generated TS client).
+        // Feeding back/api.at into the fn-pull transpiles the VM-dialect
+        // bodies (Env/http/json builtins) into the SFC, colliding with the
+        // import (TS2440) and referencing undefined runtime globals (TS2304,
+        // os-config App.vue). The vm interpreter keeps resolving this line
+        // to back/api.at in-process.
+        if use_stmt.module == "back.api" || use_stmt.module.starts_with("back.") {
+            continue;
+        }
         imported_names.extend(use_stmt.items.iter().cloned());
         let module_path = match crate::resolve_use_module(base_dir, &use_stmt) {
             crate::UseModuleResolution::Module(p) => p,
