@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-536
-status: archived        # 2026-09-05 重开段复审通过,二次关闭（终态）
+status: executing       # 2026-09-05 第二次破例重开（Phase 2 直显收尾,用户裁定）
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
-updated_at: 2026-09-05T02:00:00+08:00
+updated_at: 2026-09-05T04:30:00+08:00
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
@@ -23,8 +23,8 @@ touched_goals:
   - "GOAL-007: VM 轨反应性修复——timer 写入触发视图失效/Init 重入收敛/时间标签时区正确(musk KD 059-FU1 三题);重开段补:发送链零崩(493① 收敛)+PollStream 兜底链恢复,直显最后一里归 KD-057④+P536-D2"
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 10
-total_steps: 12
+current_step: 13
+total_steps: 15
 ---
 
 # [PLAN-536] VM 运行时修复批(反应性 + prop 约束 + absolute 原语 + 家族 open 绑定)
@@ -203,6 +203,37 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   vmref 突变可见——两种写可见性分裂）,属 state-scope 专项（KD 在案,
   偿还方向已写明）;KD-047 handler-as-value（Sse 实参抛点）仍归上游
   SSE 专项,musk 已绕行（日志噪音级）。
+
+## Phase 2：直显收尾（2026-09-05 第二次重开,用户裁定）
+
+> T12 后实测：发送链零崩、turn 落库、agent 回复生成、PollStream 恢复派发,
+> 但画布投影仍不显示新回合——"免重选直显"最后一里。Phase 2 = 定位并根修。
+> （第二次破例重开,用户裁定"不用单独立项,直接在计划536加一个 phase"。）
+
+**未决矛盾（静态分析已穷尽,需仪器化定案）**：
+1. 同帧可见性分裂——SendInput 帧（VM_EXEC 实证 state_obj_id=4000030
+   全根态单对象）内 `store.Send/store.StartStream` 的 `.messages.push`
+   （vmref 突变）与 `.pre_stream_len = .messages.length`（重绑定,
+   autoui_state 曾读得 18）可达,而 `.streaming = true` 在 when 门
+   104 拍读侧恒 false;
+2. PollStream（timer 派发,VM_EXEC 实证 4000030）258 拍全 OK,
+   `.messages = resp.session.messages` 回填却无投影效果——`resp.session`
+   嵌套读（__json_object,KD-057① 嵌套面）是否恒 None 走静默 return 待证;
+3. 画布消息列表 `for msg in .filteredMessages`（chats_view:291;computed
+   链:chatSearchFilter(chatActivePath(.store.messages,...)),chats_view:109）
+   ——KD-057④ "computed 内 VmRef 域读取"在 refill 后的刷新行为待证
+   （eval_computed 无缓存,每次 rebuild 重求值,表达式形态走 resolve 链,
+   `.store.X` flatten 直读根态——静态看应新鲜,矛盾待解）。
+
+- [ ] **T13** 实机仪器化定位：auto-lang 侧加 AUTO_DEBUG_POLLTRACE 环境门控
+  追踪面（timer when 门逐拍读值/StartStream 写后回读/PollStream 每拍:
+  sid+resp 判型+resp.session 判型+messages 长度/回填写后回读/computed
+  求值入参出参），musk 实机复跑发送→轮询序列,产出定罪陈述（哪一层断）。
+- [ ] **T14** 根修：以 T13 定罪为准（候选:__json_object 嵌套字段读
+  （KD-057① 嵌套面）/SET_FIELD 可见性异常/computed 投影刷新）;组件层
+  探针先行（RED→GREEN）,全量门禁不劣于基线。
+- [ ] **T15** musk E2E 直显终验：发送→回复到达→免重选直显全绿
+  （059-FU1 验收配方,deadman 窗内）;通过后 Phase 2 关闭,计划三次归档。
 
 ## 重开与尾债清偿（2026-09-05,用户裁定）
 
