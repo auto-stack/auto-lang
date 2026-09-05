@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-555
-status: executing             # drafting → executing → execution_done → reviewed → archived
+status: execution_done      # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w1-dispatch-foundation
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-cli]   # 受影响的 specs 路径
-current_step: 8
+current_step: 11
 total_steps: 11
 ---
 
@@ -244,18 +244,28 @@ obj_type_name(x)         ──▶  py? py_type_name(469 新) : nv_py_type_name 
 - [x] T08 `--dump-lowered`：run/trans 双入口 flag + 产物渲染
       （验证：`auto x.as --dump-lowered` 输出留档探针）
       [✅ 已完成] run 入口全局 flag（先于执行拦截=纯审查面）；lib.rs dump_lowered 渲染=模式头+改写产物（模式按扩展名档位：.as→script/.at→normal，头行留档探针在案）；trans auto 入口共用 trans_auto_s2s 产物源
-- [ ] T09 单测汇总挂档：T02/T04/T05/T06/T07 单测并入 `cargo t vm`
+- [x] T09 单测汇总挂档：T02/T04/T05/T06/T07 单测并入 `cargo t vm`
       可见（验证：`cargo t vm` 含全部新增用例绿）
-- [ ] T10 门禁：`cargo tv` + `cargo tt` + py 五套件三方（零回归红线）
+      [✅ 已完成] cargo t vm 800/800（tests_script_mode 含）；python 档 test_w1_* 3 例绿（bridges+protocol+539 idiom 回归）；精确过滤 tests_script_mode 1/1 + tests_s2s 3/3。注：py_ffi 系 cfg(python) 不入 cargo t vm 档（特性分档在案）；`cargo t mode` 过滤撞名 d8_toggle_dark_mode=master 既有红（revert 双侧复跑证实，P555-D4）。bisect 操作暴露 vm.rs 漏提交（interop 声明）当场补 commit
+- [x] T10 门禁：`cargo tv` + `cargo tt` + py 五套件三方（零回归红线）
       （验证：门禁输出留档执行注记）
-- [ ] T11 折叠：KNOWN-DEBT 回写（P550-D6 销号注记 + P550-D4 期望面
+      [✅ 已完成] tv 3588/3589 + tt 3775/3776——唯一红=test_charts_gallery_compiles（master 既有，branch diff 零 ui 文件，输入逐字节同 fork 点，P555-D4 甄别）；py 五套件三方 64/64（math 20+torch 7+infer 17+train 10+numpy 10）零回归红线成立
+- [x] T11 折叠：KNOWN-DEBT 回写（P550-D6 销号注记 + P550-D4 期望面
       更新 + W1 自身债务登记）（验证：KNOWN-DEBT diff 在案）
+      [✅ 已完成] KNOWN-DEBT P555 节登记：P550-D6 销号（八格矩阵裁定）、P550-D4 期望面更新（归 W2 语义激活）、P555-D1..D5（obj_call Auto 臂/s2s 帧形约定/obj_set 封送罕见面/master 双既有红甄别/CALL_PY 命名清理）
 
 ## 复审记录
 
 （/auto-plan:review 填写）
 
 ## 执行注记
+
+### 终态门禁读数（2026-09-05，11/11 任务落地）
+
+`cargo tv` 3588/3589 · `cargo tt` 3775/3776（唯一红 = master 既有
+test_charts_gallery_compiles，P555-D4 甄别在案）· `cargo t vm` 800/800 ·
+py 五套件三方 64/64（零回归红线成立）· python 档 test_w1_* 3/3 ·
+tests_script_mode 1/1 · tests_s2s 3/3。
 
 ### T01 探针基线（2026-09-05，worktree master HEAD e1429a0ef 干净构建）
 

@@ -1326,3 +1326,30 @@
   （RC/同步时序）降级为观察项不阻塞直显链路。真最后一里=musk 画布投影
   chatActivePath 链（KD-057④ 族,061 D25 在修）。POLLTRACE 诊断设施留存
   （env 门控,auto-lang master）。
+
+### P555（2026-09-05，脚本模式 W1 动态分派地基）
+
+- **P550-D6 销号**：`#[script]` pragma 位置语义与 `.as` 扩展名联动已由
+  PLAN-555 T02 裁定——文件级信号，任意位置的 `#[script]` 标记整文件；
+  `.as` ≡ 隐式 `#[script]`；`#[rust]` 显式压回；优先序 `#[rust]` >
+  `#[script]` > 扩展名；八格矩阵单测钉死（mode.rs tests_script_mode）。
+- **P550-D4 期望面更新**：CALL null 守卫的端到端探针面仍归 W2——W1 落地
+  的是模式信号管线（passthrough），动态分派**语义**（.as 糖激活）在
+  W2 lowering 批，届时 null callee 可经动态路径到达 VM 守卫。
+- **P555-D1 obj_call 的 Auto 臂仅响亮拒绝**：组合子 obj_call 对 Auto 值
+  报 "object is not callable"（对标 550 守卫语义）；Auto 闭包经组合子的
+  动态调用面（fn 值/闭包 id 分派）归 W2 糖批接线。
+- **P555-D2 s2s W1 帧形约定**：规则表 token 粒度、单遍首中、identity
+  逐字节发射。W2 需裁定：链式多规则语义、AST 级发射器（token 面对
+  表达式重排类规则（如 E2 with 展开）表达力不足）。
+- **P555-D3 ForeignObject.obj_set 借道弹栈封送**：value nv 经
+  push/pop_auto_py_arg 转换——裸 f64 单槽 nv 会被当 TAG_NULL→None
+  （2-slot padding 是调用方约定；组合子通道罕见面，在案知悉）。
+- **P555-D4 master 双既有红（非本计划）**：d8_toggle_dark_mode
+  （plan370_015，示例 015 在途工作）与 test_charts_gallery_compiles
+  （vue 图表生成）——branch diff 零相关文件 + 输入逐字节同 fork 点
+  甄别在案（前者另经 revert 双侧复跑证实）；归并行会话收口。
+- **P555-D5 CALL_PY 传输形态命名误导**：组合子发射复用
+  is_py_ffi_call→CALL_PY（实为"带实参数字节的通用原生调用"约定），
+  命名与 py 耦合是历史包袱；W2 顺手重构为中性命名（如
+  CALL_NAT_COUNTED）属低风险清理。
