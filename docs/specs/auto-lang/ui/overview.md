@@ -242,6 +242,8 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 入口，P487-1/P496-1/P501-2 三债实机照补拍归档；D P488-D4 on_dnd_finished
 发起方锚定 + 壁纸热切换定案（天然支持）。债项 P505-1/2 见 KNOWN-DEBT。
 
+**559 vue 双端嵌入债并案已落地（GOAL-007/009 收尾面）**：W2 四件上收——①`vue_event_param` 单点收窄 `$event.target.{value,checked}`（gen 树 TS2339/18047 清零）②store 组合式跨 store 限定调用 facade 化（`AuraStore.sibling_stores` + 组合式发 sibling 导入/reactive facade 常量 + ts_adapter `store_bare_heads` 自限定裸发——vm A1 契约）③项目供给 TS 粘合安装 `install_project_api_glue`（契约抽取零端点=实现式 back/api.at 时 src/back/api.ts 孪生装入 gen lib/api.ts+dist；os-config 首试点：孪生真源签入 auto/src/back/api.ts，regen.sh 镜像 host）④`use back.api` 排除出 Plan 522 use-fn 拉取（TS2440/TS2304 根修）。W3 desktop-host api-client 守卫放开（gen 粘合/项目孪生择先，run 内先到先得+每次覆写防陈旧属主）+`desktop_extra_app_roots`（默认探测 `../auto-os-config/auto`，id=os-config 与 vm `extra_roots_from` 对齐，`AUTO_DESKTOP_APPS_EXTRA` 可覆）。W4 Taskbar ⚙️（emit settings，registry 在场性门控）+宿主 `launchSettings` 聚焦-或-启动（vm 551 T2 对齐）。W6 通用编辑器字段级挂载（`entryAtW`×2——vm merged 真源 auto-os-config-back/api.at 同步，漏改即 launch 不可用——+ConfigEditor `widgets` prop（Modules.active_widgets 装载一次零额外 HTTP）+wallpaper_picker 渲染分支；drop-in 夹具 p559-fixture 双端实证点选落盘）。W7 `autoui_desktop` handler 增 (app,widget) 子组件定位维度（`DesktopInject::Handler.widget` + `DynamicComponent.call_widget_handler` namespaced 派发 onclick 同管线——Plan 320 单 VM 统一态恒根 state id）+验收场景 p559（Pick→config.at 断言→已应用，幂等基线 PUT 重置）。对拍 Desktop 页双端三 shots（顶部标签/外观壁纸卡/Settings 卡同源）。门禁 tf 3426/3427（唯一红=charts 存量甄别）+desktop_protocol ui-iced 120/120+auto-man 245/245。债 P559-D1 证伪（AUTO_HTTP_PROXY 实际透传正常——404 系陈旧 vite 占港+auto-increment 漂移假象）/P559-D2 regen.sh 两族已上游化 sed 已清；P559-1..6 台账。
+
 ## 蒸馏来源
 
 - 本模块 spec 于 2026-08-28 由 Plan 471 刷新：蒸馏 437–465 活跃计划 + 4xx 归档计划 + 365–428 早期 UI 计划。
