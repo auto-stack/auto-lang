@@ -1,0 +1,18 @@
+// app.at — 031-paint 像素画板（Plan 553 T2 骨架）。
+widget App {
+    msg { Init }
+
+    model {
+        var tool str = "pencil"
+    }
+
+    view {
+        col {
+            text "Paint"
+        }
+    }
+
+    on {
+        .Init -> { }
+    }
+}
