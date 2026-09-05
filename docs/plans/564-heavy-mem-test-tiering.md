@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-564
-status: executing                  # drafting → executing → execution_done → reviewed → archived
+status: execution_done              # drafting → executing → execution_done → reviewed → archived
 feature_name: heavy-mem-test-tiering
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径（测试基建，review 时定）
-current_step: 6
+current_step: 7
 total_steps: 7
 ---
 
@@ -298,6 +298,14 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   防线复跑一次。
   验证: 三项实测数据记入"复审记录"前的执行证据区（9.78GB → 实测值，
   须 ≤2GB）。
+  [✅ 已完成] 2026-09-05 实测:① tf aavm2_(full 档+组限流) 22/22 全绿,
+  837s,并发树峰值 **1674MB ≤2GB**(单进程最大 925MB;t3 塔测试经自身
+  env 守门秒过);② 裸防线:19s/测试段 2.01s/峰值 149MB(对照事发
+  15+min/9.78GB);③ cargo t 日常档存在**预存失败**(plan370 d8/plan492
+  c2/ui::layout grid 族/ui::iced lucide/aura strip_html 等 15+ 处)——
+  基点归因探测(f3032c3a8,先于本 plan 全部代码提交)同样失败,证实与
+  564 无关,登记 Q6 转告。收口附记:T5 曾漏提交 tests.rs 注册行(add
+  目录误漏同名文件),基点探测暴露后已补提交。
 
 ## 复审记录
 
@@ -323,3 +331,9 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   T3_MILESTONE env 守门，风险低）。同因：主检出 `.cargo/config.toml`/
   `.config/nextest*.toml`/`AGENTS.md` 存在 532 未提交改动，plan-564-dev
   合并时须与其协调（本 plan 的配置提交均在 worktree 分支，无覆盖）。
+- **Q6（master 预存红转告）**: cargo t 日常档在本 plan 基点(f3032c3a8
+  = plan-532-dev tip + master 合并态)即有 15+ 预存失败(plan370 d8 暗色
+  断言/plan492 c2/ui::layout grid 全族/ui::iced lucide manifest/
+  aura strip_html),与 564 改动无关(基点探测实证),疑似 master 近期
+  合入(561 sidebar/536 send_chain 等)或 015-notes 在途未提交修改所致
+  ——转告维护者;564 的 A4 验收以 tf aavm2_ 22/22 绿+树峰值 1674MB 为准。
