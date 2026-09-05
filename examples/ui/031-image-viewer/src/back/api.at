@@ -1,6 +1,13 @@
 // 031-image-viewer control-plane API skeleton (Plan 547 Task 29).
 // Pixel payloads are intentionally excluded; media bytes use the shared route.
 
+// The generated Rust server uses the first public API type as its legacy
+// fallback state.  Viewer responses remain metadata-only; image bytes never
+// enter this control-plane record.
+pub type ViewerControl = {
+    status: str
+}
+
 #[api(method = "GET", path = "/api/viewer/health")]
 pub fn viewer_health() str {
     return "Ready"
