@@ -406,6 +406,24 @@ element image {
     description: "Image display"
 }
 
+element imagesurface {
+    tag: "imagesurface"
+    category: "media"
+    tier: "builtin_widget"
+    aliases: ["ImageSurface", "image-surface"]
+    backends: { web: "component", iced: "component", gpui: "unknown" }
+    vue: { component: "ImageSurface" }
+    props: [
+        { name: "src", type: "string", required: true, description: "Media ticket URI" }
+        { name: "alt", type: "string", default: "", description: "Alt text" }
+        { name: "width", type: "int", default: "0", description: "Viewport width" }
+        { name: "height", type: "int", default: "0", description: "Viewport height" }
+        { name: "quality", type: "int", default: "90", description: "Rendition quality" }
+    ]
+    allows_children: false
+    description: "Asynchronous image viewer surface"
+}
+
 element img {
     tag: "img"
     category: "unknown"
@@ -5087,4 +5105,3 @@ element virtual_window {
     allows_children: true
     description: "Plan 465 shell leaf; Plan 488 native interop event surface - on_native_drop(OLE drop payload record), on_native_paste(Ctrl+V clipboard record), on_dnd_finished(drag-out effect). Host-injected (renderer), no widget-level dispatch."
 }
-
