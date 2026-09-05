@@ -3348,6 +3348,20 @@ export default router
         fs::create_dir_all(&assets_dir)
             .map_err(|e| format!("Failed to create src/assets: {}", e))?;
 
+        // PLAN-063 Phase B T22 (KD 061 D27 同族): 冷重生成自愈——增量路径
+        // 此前不写 src/lib/utils.ts 与 src/assets/index.css(常态靠粘性存在;
+        // 冷删 src/ 后脚手架 ui 组件的 @/lib/utils 导入即断链)。write-if-missing。
+        let utils_path = self.output_dir.join("src/lib/utils.ts");
+        if !utils_path.exists() {
+            fs::write(&utils_path, generate_utils_ts())
+                .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
+        }
+        let css_path = self.output_dir.join("src/assets/index.css");
+        if !css_path.exists() {
+            fs::write(&css_path, generate_index_css())
+                .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
+        }
+
         // Copy pac.at `styles:` CSS files (byte-for-byte) so main.ts can
         // import them.
         let style_copies = self.copy_style_files()?;
