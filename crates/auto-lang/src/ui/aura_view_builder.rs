@@ -1529,6 +1529,9 @@ impl<'a> AuraViewBuilder<'a> {
             "mouse-area" => {
                 self.convert_mouse_area(props, events, children, path, id_map, probe, bindings)
             }
+            // Plan 563: 状态驱动画布 —— scene 双表 → 结构化场景快照
+            // + pen 事件三件套(无子元素 leaf,tracked/untracked 共用)。
+            "canvas" => self.convert_canvas(props, events, bindings),
             // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
             "window_thumbnail" => {
@@ -2812,6 +2815,9 @@ impl<'a> AuraViewBuilder<'a> {
             "mouse-area" => {
                 self.convert_mouse_area_untracked(props, events, children, bindings)
             }
+            // Plan 563: 状态驱动画布 —— 与 tracked 层同名臂镜像(D-GAP;
+            // leaf 无 probing 面,共用 convert_canvas)。
+            "canvas" => self.convert_canvas(props, events, bindings),
             // Plan 497: popover —— 与 tracked 层同名臂镜像(D-GAP 规则)。
             // tracked 兜底(taskbar 等无专门臂的容器)会整体 delegate 到本
             // untracked 实现,此前缺臂导致 popover 落 fallback 容器直通
@@ -8662,6 +8668,89 @@ let tabs_inner = View::Row {
         (on_move, extent)
     }
 
+    /// Plan 563: pen 事件 → PointerMoveHandler(mouse_area_move_arm 的
+    /// on_move 同型:调用现场把逻辑坐标 (x, y) 追加为 Float 实参,含
+    /// +0.001 分数化——auto_val nanbox 整值 float 实参绑定腐坏绕道)。
+    fn pen_handler(
+        &self,
+        event: &AuraEvent,
+        bindings: &Bindings,
+    ) -> crate::ui::view::PointerMoveHandler<DynamicMessage> {
+        let base = self.event_to_message_with(event, bindings);
+        crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| match &base {
+            DynamicMessage::Typed { widget_name, event_name, args } => {
+                let mut new_args = args.clone();
+                new_args.push(Value::Float(x as f64 + 0.001));
+                new_args.push(Value::Float(y as f64 + 0.001));
+                DynamicMessage::Typed {
+                    widget_name: widget_name.clone(),
+                    event_name: event_name.clone(),
+                    args: new_args,
+                }
+            }
+            other => other.clone(),
+        })
+    }
+
+    /// Plan 563: canvas 元素 → View::Canvas(tracked/untracked 共用——
+    /// 无子元素 leaf,无 text probing 面)。scene prop 绑定场景前缀名,
+    /// 帧内读平行字符串双表 `<前缀>_pts` / `<前缀>_meta`(B12 规避形态,
+    /// 028 先例)解析为结构化场景快照;缺 pts 表 = 空画布(初始态)。
+    /// meta 项/位缺失宽容:默认 #111827/3px/非 eraser。
+    fn convert_canvas(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let scene = self
+            .extract_canvas_scene(props, bindings)
+            .unwrap_or_default();
+        let logical_extent = self
+            .extract_string_with(props, "coords", bindings)
+            .and_then(|s| parse_coords_extent(&s));
+        let clear = self.extract_string_with(props, "clear", bindings);
+        let on_pen_start = aura_events_get_base(events, "onpenstart")
+            .map(|e| self.pen_handler(e, bindings));
+        let on_pen_move = aura_events_get_base(events, "onpenmove")
+            .map(|e| self.pen_handler(e, bindings));
+        let on_pen_end = aura_events_get_base(events, "onpenend")
+            .map(|e| self.pen_handler(e, bindings));
+        let style = self.extract_style_with(props, bindings);
+        View::Canvas {
+            scene,
+            logical_extent,
+            clear,
+            on_pen_start,
+            on_pen_move,
+            on_pen_end,
+            style,
+        }
+    }
+
+    /// scene prop(`scene: .strokes` → Expr::Ident("strokes"))→ 读
+    /// `<name>_pts` / `<name>_meta` 双表并解析。非 Ident 形态(字面量等)
+    /// → None(空画布)。
+    fn extract_canvas_scene(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<crate::ui::view::CanvasScene> {
+        let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = props.get("scene")?
+        else {
+            return None;
+        };
+        let prefix = name.trim_start_matches('.');
+        let pts = self
+            .read_state_as_vec(&format!("{prefix}_pts"))
+            .ok()?;
+        let meta = self
+            .read_state_as_vec(&format!("{prefix}_meta"))
+            .unwrap_or_default();
+        let _ = bindings;
+        Some(parse_canvas_scene(&pts, &meta))
+    }
+
     /// Plan 484: hover 命中区 untracked 臂(convert_mouse_area 的镜像)。
     /// 无 text probing 需求,children 走 untracked 拼接展开。
     fn convert_mouse_area_untracked(
@@ -9451,6 +9540,63 @@ fn parse_coords_extent(s: &str) -> Option<(f32, f32)> {
         None
     }
 }
+
+/// Plan 563: 场景数据契约解析(纯函数,双端映射规约的 Rust 侧)——
+/// pts 项 "x1,y1|x2,y2|..." / meta 项 "color,width,eraser"(逗号分隔,
+/// eraser 位 "0"/"1")。宽容解析:坏点/坏 meta 位跳过或取默认,不炸。
+fn parse_canvas_scene(
+    pts: &[Value],
+    meta: &[Value],
+) -> crate::ui::view::CanvasScene {
+    let val_str = |v: &Value| -> String {
+        match v {
+            Value::Str(s) => s.as_str().to_string(),
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Bool(b) => b.to_string(),
+            _ => String::new(),
+        }
+    };
+    let mut strokes = Vec::with_capacity(pts.len());
+    for (i, pts_item) in pts.iter().enumerate() {
+        let pts_s = val_str(pts_item);
+        if pts_s.is_empty() {
+            continue;
+        }
+        let points: Vec<(f32, f32)> = pts_s
+            .split('|')
+            .filter_map(|pair| {
+                let (x, y) = pair.split_once(',')?;
+                let x: f32 = x.trim().parse().ok()?;
+                let y: f32 = y.trim().parse().ok()?;
+                Some((x, y))
+            })
+            .collect();
+        if points.is_empty() {
+            continue;
+        }
+        // meta 项 "color,width,eraser";缺表/缺项宽容取默认。
+        let meta_s = meta.get(i).map(val_str).unwrap_or_default();
+        let mut meta_parts = meta_s.split(',');
+        let color = meta_parts
+            .next()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "#111827".to_string());
+        let width: f32 = meta_parts
+            .next()
+            .and_then(|s| s.trim().parse().ok())
+            .filter(|w| *w > 0.0)
+            .unwrap_or(3.0);
+        let eraser = meta_parts
+            .next()
+            .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        strokes.push(crate::ui::view::CanvasStroke { points, color, width, eraser });
+    }
+    crate::ui::view::CanvasScene { strokes }
+}
+
 
 /// Extract a clean handler name from an event pattern.
 ///
@@ -10783,6 +10929,98 @@ mod tests {
                 assert!(on_move.is_some(), "onmousemove 臂仍接线");
             }
             other => panic!("Expected View::MouseArea, got: {:?}", other),
+        }
+    }
+
+    // ========================================================================
+    // Plan 563 — canvas 场景契约解析 + builder 链
+    // ========================================================================
+
+    #[test]
+    fn plan563_parse_canvas_scene_pure() {
+        use crate::ui::view::CanvasScene;
+        // 正常双表:两笔画,meta 全位。
+        let pts = vec![
+            Value::Str("10,20|30,40|50,60".into()),
+            Value::Str("1,2".into()),
+        ];
+        let meta = vec![
+            Value::Str("#111827,3,0".into()),
+            Value::Str("#ef4444,5.5,1".into()),
+        ];
+        let scene = parse_canvas_scene(&pts, &meta);
+        assert_eq!(scene.strokes.len(), 2);
+        assert_eq!(scene.strokes[0].points, vec![(10.0, 20.0), (30.0, 40.0), (50.0, 60.0)]);
+        assert_eq!(scene.strokes[0].color, "#111827");
+        assert!((scene.strokes[0].width - 3.0).abs() < f32::EPSILON);
+        assert!(!scene.strokes[0].eraser);
+        assert!((scene.strokes[1].width - 5.5).abs() < 1e-6);
+        assert!(scene.strokes[1].eraser, "eraser 位 '1'");
+
+        // meta 缺表/缺项宽容:默认 #111827/3px/非 eraser。
+        let scene = parse_canvas_scene(&pts[..1], &[]);
+        assert_eq!(scene.strokes.len(), 1);
+        assert_eq!(scene.strokes[0].color, "#111827");
+        assert!((scene.strokes[0].width - 3.0).abs() < f32::EPSILON);
+        assert!(!scene.strokes[0].eraser);
+
+        // 坏点宽容:坏对跳过;全坏/空串笔画丢弃。
+        let pts = vec![
+            Value::Str("10,20|bad|30,".into()),
+            Value::Str("nope".into()),
+            Value::Str("".into()),
+        ];
+        let scene = parse_canvas_scene(&pts, &[]);
+        assert_eq!(scene.strokes.len(), 1, "仅第一笔存活(单好点)");
+        assert_eq!(scene.strokes[0].points, vec![(10.0, 20.0)]);
+
+        // 空表 → 空场景(初始态)。
+        let empty: CanvasScene = parse_canvas_scene(&[], &[]);
+        assert!(empty.strokes.is_empty());
+    }
+
+    #[test]
+    fn plan563_canvas_builder_leaf_events_and_coords() {
+        let widget = make_test_widget("Sketch", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Sketch");
+
+        let mut node = AuraNode::element("canvas")
+            .with_prop("scene", Expr::Ident("strokes".into()))
+            .with_prop("coords", Expr::Str("400x300".into()))
+            .with_prop("clear", Expr::Str("#ffffff".into()));
+        if let AuraNode::Element { events, .. } = &mut node {
+            events.insert("onpenstart".to_string(), AuraEvent {
+                handler: ".PenStart".to_string(),
+                params: vec![],
+            });
+            events.insert("onpenmove".to_string(), AuraEvent {
+                handler: ".PenMove".to_string(),
+                params: vec![],
+            });
+            events.insert("onpenend".to_string(), AuraEvent {
+                handler: ".PenEnd".to_string(),
+                params: vec![],
+            });
+        }
+        match builder.build(&node) {
+            View::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, .. } => {
+                // 无 strokes_pts 状态 → 空场景降级(初始态)。
+                assert!(scene.strokes.is_empty(), "缺状态表 = 空画布");
+                assert_eq!(logical_extent, Some((400.0, 300.0)));
+                assert_eq!(clear.as_deref(), Some("#ffffff"));
+                // pen handler 坐标追加(mouse_area_move_arm 同型,+0.001 分数化)。
+                match on_pen_start.expect("onpenstart 必须接线").call(12.0, 34.0) {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "PenStart");
+                        assert!(matches!(args[0], Value::Float(f) if (f - 12.001).abs() < 1e-9));
+                        assert!(matches!(args[1], Value::Float(f) if (f - 34.001).abs() < 1e-9));
+                    }
+                    other => panic!("Expected Typed message, got: {:?}", other),
+                }
+                let _ = (on_pen_move, on_pen_end);
+            }
+            other => panic!("Expected View::Canvas, got: {:?}", other),
         }
     }
 

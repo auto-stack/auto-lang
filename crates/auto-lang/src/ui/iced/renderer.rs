@@ -4037,6 +4037,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
+            // Plan 563: 状态驱动画布 —— T4 落地 canvas::Program 直绘 +
+            // pen 事件层;此处先占位(style 承载尺寸),保证 exhaustive。
+            AbstractView::Canvas { style, .. } => {
+                build_container(
+                    iced::widget::text("").into(),
+                    0,
+                    None,
+                    None,
+                    false,
+                    false,
+                    style.as_ref(),
+                    None,
+                )
+            }
+
             // Plan 422: 锚定弹层 —— wrapper widget(Tooltip 同型),open 时
             // 经 iced overlay 机制置顶;chrome 由 content 自带。inspect 捕获
             // 模式下丢 on_dismiss(与其余 handler 同规则)。
@@ -17516,6 +17531,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Popover { .. } => None,
         // Plan 484: MouseArea 的 style(尺寸/定位类)参与 absolute/z 判定。
         AbstractView::MouseArea { style, .. } => style.as_ref(),
+        // Plan 563: Canvas 的 style(尺寸类)同 MouseArea 参与定位判定。
+        AbstractView::Canvas { style, .. } => style.as_ref(),
         AbstractView::Text { style, .. } => style.as_ref(),
         AbstractView::Button { style, .. } => style.as_ref(),
         AbstractView::Checkbox { style, .. } => style.as_ref(),
@@ -17595,6 +17612,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Overlay { .. } => "overlay",
         AbstractView::Popover { .. } => "popover",
         AbstractView::MouseArea { .. } => "mouse_area",
+        AbstractView::Canvas { .. } => "canvas",
         AbstractView::Text { .. } => "text",
         AbstractView::Button { .. } => "button",
         AbstractView::Checkbox { .. } => "checkbox",

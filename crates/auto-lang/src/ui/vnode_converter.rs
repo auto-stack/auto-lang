@@ -211,6 +211,9 @@ where
         // Plan 484: MouseArea 命中区对 VNode 检视层不可见(事件转发原语,
         // 无内容语义),同 Overlay 降级 Text/Empty。
         View::MouseArea { .. } => (VNodeKind::Text, VNodeProps::Empty),
+        // Plan 563: 画布内容 = scene 状态纯函数渲染,VNode 检视层无结构
+        // 语义,同 MouseArea 降级(MCP 断言走 autoui_state 状态面)。
+        View::Canvas { .. } => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 422: 弹层在 VNode 里作为容器节点(anchor/content 为子)。
         View::Popover { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
 
