@@ -5,3 +5,43 @@
 pub fn viewer_health() str {
     return "Ready"
 }
+
+#[api(method = "POST", path = "/api/viewer/open-file")]
+pub fn open_file(path str) str {
+    return auto.image.open(path)
+}
+
+#[api(method = "POST", path = "/api/viewer/open-directory")]
+pub fn open_directory(path str) str {
+    return auto.image.open(path)
+}
+
+#[api(method = "POST", path = "/api/viewer/open-path")]
+pub fn open_path(path str) str {
+    return auto.image.open(path)
+}
+
+#[api(method = "GET", path = "/api/viewer/snapshot")]
+pub fn snapshot(session str) str {
+    return auto.image.snapshot(session)
+}
+
+#[api(method = "POST", path = "/api/viewer/navigate")]
+pub fn navigate(session str, delta int) str {
+    return auto.image.navigate(session, delta)
+}
+
+#[api(method = "POST", path = "/api/viewer/request-view")]
+pub fn request_view(session str, index int, viewport_width int, viewport_height int, quality int) str {
+    return auto.image.request(session, index, viewport_width, viewport_height, quality)
+}
+
+#[api(method = "POST", path = "/api/viewer/close")]
+pub fn close_session(session str) bool {
+    return auto.image.close(session)
+}
+
+#[api(method = "GET", path = "/api/viewer/stats")]
+pub fn image_stats(session str) str {
+    return auto.image.stats(session)
+}

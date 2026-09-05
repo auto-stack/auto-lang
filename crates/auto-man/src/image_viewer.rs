@@ -49,6 +49,14 @@ pub struct ViewTicket {
     pub revision: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageViewerApiResponse {
+    pub session_id: Option<String>,
+    pub snapshot: Option<ViewerSnapshot>,
+    pub ticket: Option<ViewTicket>,
+    pub stats: ImageViewerStats,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ImageViewerStats {
     pub open_sessions: usize,
@@ -337,5 +345,51 @@ mod tests {
         assert_eq!(service.stats().settled, 1);
         assert!(service.close(&session));
         assert_eq!(service.stats().open_sessions, 0);
+    }
+
+    #[test]
+    fn image_viewer_api_returns_metadata_and_opaque_tickets_only() {
+        let response = ImageViewerApiResponse {
+            session_id: Some("session-1".to_string()),
+            snapshot: Some(ViewerSnapshot {
+                root: String::new(),
+                entries: vec![ImageEntry {
+                    id: "asset-1".to_string(),
+                    name: "one.png".to_string(),
+                    relative_path: "one.png".to_string(),
+                    extension: "png".to_string(),
+                    bytes: 12,
+                }],
+                selected: 0,
+                generation: 1,
+            }),
+            ticket: Some(ViewTicket {
+                session_id: "session-1".to_string(),
+                entry_id: "asset-1".to_string(),
+                generation: 1,
+                revision: 1,
+            }),
+            stats: ImageViewerStats::default(),
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["session_id"], "session-1");
+        assert_eq!(json["snapshot"]["entries"][0]["bytes"], 12);
+        assert_eq!(json["ticket"]["entry_id"], "asset-1");
+        assert!(json.get("pixels").is_none());
+        assert!(json.get("data").is_none());
+        assert!(json.get("encoded").is_none());
+        assert!(json.to_string().find("89504e47").is_none());
+
+        let api_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/src/back/api.at");
+        let api = std::fs::read_to_string(api_path).unwrap();
+        for endpoint in [
+            "open_file", "open_directory", "open_path", "snapshot",
+            "navigate", "request_view", "close_session", "image_stats",
+        ] {
+            assert!(api.contains(&format!("fn {endpoint}")), "missing API endpoint {endpoint}");
+        }
+        assert!(api.contains("auto.image"), "API must delegate media work to auto.image");
+        assert!(!api.contains("pixels"), "API contract must not carry pixel payloads");
     }
 }
