@@ -5348,6 +5348,11 @@ impl Codegen {
             "py_item_kw",
             "py_float",
             "py_callable",
+            // Plan 555 T04: 分发组合子配套三桥（B2 桥半/B6/D8）——
+            // 固定 id 注册见 lib.rs init_py_ffi（467-469）。
+            "py_setattr",
+            "py_len",
+            "py_type_name",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(

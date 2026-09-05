@@ -110,6 +110,15 @@ pub const NATIVE_PY_EXIT: u16 = 463;
 /// the thread-local task slot (valid only inside a host py shim window —
 /// the T02 constraint: GIL thread == VM thread, num_workers=0).
 pub const NATIVE_PY_CALLABLE: u16 = 466;
+/// Plan 555 T04 (B2 桥半): `py_setattr(obj, attr_name, value)` — 属性写
+/// 通道，分发组合子 obj_set 的 py 臂（糖 `m.weight = w` 归 W2 lowering）。
+pub const NATIVE_PY_SETATTR: u16 = 467;
+/// Plan 555 T04 (B6): `py_len(obj)` — GIL len()（动态分派），组合子
+/// obj_len 的 py 臂。无 len 的对象按 Python 抛（TypeError 归 FFI 错）。
+pub const NATIVE_PY_LEN: u16 = 468;
+/// Plan 555 T04 (D8): `py_type_name(obj)` — GIL type(x).__name__ 字符串，
+/// 组合子 obj_type_name 的 py 臂。
+pub const NATIVE_PY_TYPE_NAME: u16 = 469;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -1084,6 +1093,92 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALLABLE, callable_shim);
+
+        // ---- py_setattr(obj, attr_name, value) ----
+        // Plan 555 T04 (B2 桥半): 属性写通道——obj_set 组合子的 py 臂。
+        let setattr_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 3 {
+                    return Err(VMError::FFI(format!(
+                        "py_setattr needs 3 args (obj, attr, value), got {}",
+                        n
+                    )));
+                }
+                // TOS → bottom: value, attr_name, obj
+                let value = pop_auto_py_arg(task, vm, py)?;
+                let attr_py = pop_auto_py_arg(task, vm, py)?;
+                let attr_name: String = attr_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_setattr attr name not string: {}", e))
+                })?;
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                obj.setattr(&attr_name, (&value)).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python setattr({}.{}) failed: {}",
+                        safe_type_name(&obj), attr_name, e
+                    ))
+                })?;
+                // 与 py_setitem 同约：语句形态推 null 保栈平衡。
+                task.ram.push_nv(auto_val::encode_null());
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_SETATTR, setattr_shim);
+
+        // ---- py_len(obj) ----
+        // Plan 555 T04 (B6): GIL len()——obj_len 组合子的 py 臂。
+        let len_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_len needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let len = obj.len().map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python len({}) failed: {}",
+                        safe_type_name(&obj), e
+                    ))
+                })?;
+                task.ram.push_i32(len as i32);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_LEN, len_shim);
+
+        // ---- py_type_name(obj) ----
+        // Plan 555 T04 (D8): GIL type(x).__name__——obj_type_name 组合子的
+        // py 臂。返回字符串入池（add_string + rc 配平，Plan 423/510 咽喉）。
+        let type_name_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_type_name needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let ty = obj.get_type();
+                let name = ty.name().map_err(|e| {
+                    VMError::FFI(format!("py_type_name: type name failed: {}", e))
+                })?;
+                let name = name.to_string();
+                let idx = vm.add_string(name.into_bytes());
+                vm.rc_push_str_idx(task, idx);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_TYPE_NAME, type_name_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -2402,6 +2497,18 @@ mod tests {
             let err = run_closure_bridged(py, 0, &arg).unwrap_err();
             assert!(err.to_string().contains("outside a host py shim window"));
         });
+    }
+
+    #[test]
+    fn test_w1_dispatch_bridges_registered() {
+        // Plan 555 T04: 分发组合子配套三桥在固定 id 注册
+        // （setattr=len=type_name，B2 桥半/B6/D8）。
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_SETATTR).is_some(), "py_setattr");
+        assert!(ni.get(NATIVE_PY_LEN).is_some(), "py_len");
+        assert!(ni.get(NATIVE_PY_TYPE_NAME).is_some(), "py_type_name");
     }
 
     #[test]

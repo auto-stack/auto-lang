@@ -753,6 +753,10 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_float", crate::py_ffi::NATIVE_PY_FLOAT);
         // Plan 539 W3 (T21): Auto closure as Python callable.
         registry.register_with_id("py.py_callable", crate::py_ffi::NATIVE_PY_CALLABLE);
+        // Plan 555 T04: 分发组合子配套三桥（B2 桥半/B6/D8）。
+        registry.register_with_id("py.py_setattr", crate::py_ffi::NATIVE_PY_SETATTR);
+        registry.register_with_id("py.py_len", crate::py_ffi::NATIVE_PY_LEN);
+        registry.register_with_id("py.py_type_name", crate::py_ffi::NATIVE_PY_TYPE_NAME);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
