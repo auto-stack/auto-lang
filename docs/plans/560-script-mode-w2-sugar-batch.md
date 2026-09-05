@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 9
+current_step: 10
 total_steps: 15
 ---
 
@@ -275,9 +275,10 @@ total_steps: 15
       （异常抑制不做）（验证：单测 + no_grad 探针——infer 套件 14 例
       形态）
       [✅ 已完成] 无 as 形态直产 `py_with(ctx, () => { body })` 调用（全复用 539 内联通道；Stmt::Expr 形态避开 convert_last_block 尾块转对象坑）；**with-as 债案（P560-D2）**：`as` 系既有 Cast 中缀，parse_expr 整吞 `expr as name` 为 Cast、块体又被单元构造语法吞——绑定语法歧义响亮拒绝待后续裁定（py_enter/py_exit 显式形态可用）；顺修两枚执行期bug：lexer 双星探测（arm c 未消费惯例·peek 恒见 c·单星全误翻 Power——单测钉）+A5 豁免 py_with（内联要裸闭包）；no_grad 探针 gflag=0（= infer 套件 test_with_no_grad 同语义）
-- [ ] T10 E3 for-in 双通道：handle 源 `py_iter()` 强制迭代器 + Auto
+- [x] T10 E3 for-in 双通道：handle 源 `py_iter()` 强制迭代器 + Auto
       源 array 通道（现状）分派（验证：tensor for-in 探针 + dict
       items 迭代探针）
+      [✅ 已完成] 双通道实证：sized handle（tensor）for-in 走 array 通道（GIL len+getitem，539 面——0 1 2/求和 3）零新码；unsized 语义走显式 py_iter 物化+py_next 拉取（耗尽→null 探针 true）。**裁定注记**：unsized 源的"自动"检测静态不可判（GIL len 运行期才知），双通道=编译期 sized 假设（array 通道）+ 显式 py_iter 覆盖 unsized——与 §E3 定案"双通道"的运行期形态一致；s2s 强制改写（for-in over py-known → py_iter 物化）会损失 sized 快路径，不取
 - [ ] T11 Err 值通道：隐式 `!T` 传播四作用域（ERROR_PROPAGATE 发射）+
       catch 拦值绑定 `PyException <type>: <msg>` + main 带错退出 +
       a2py 映射（验证：六条探针 + py 套件 15/16 例 May 通道回归）
