@@ -395,12 +395,14 @@ mod tests {
             "028-launcher",
             "029-photo-gallery",
             "030-video-player",
+            // PLAN-553：031-paint 上架（C 档 19→20；像素画板，desktop: true）。
+            "031-paint",
             "038-minesweeper",
             "041-auto-edit",
         ];
         assert_eq!(
             curated, want,
-            "策展集（desktop_visible）应恰为 C 档 19 id（PLAN-552 三档清单；045 已退役）"
+            "策展集（desktop_visible）应恰为 C 档 20 id（PLAN-552 三档清单；045 已退役；PLAN-553 增 031-paint）"
         );
     }
 
