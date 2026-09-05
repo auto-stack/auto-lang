@@ -1466,3 +1466,30 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
 证 if 分支执行、px 不变实证；038 的下标写是 Obj 列表+store 形态、028 从不
 下标写——两先例均不覆盖此面）。app 侧已按「本地构建→整体赋值」纪律绕开并
 成文（031 SPEC）；登记备 VM 侧统一裁定（与 P553-D1 同族排查）。
+
+### P560（2026-09-05，脚本模式 W2 语法糖批）
+
+- **P550-D4 期望面再更新**：CALL null 端到端探针面仍归 W3——W2 落地
+  了 lowering 管线与糖批，但 null callee 动态分派语义（.as 糖激活后
+  的 callable 通道）仍以 555 的 CALL_CLOSURE 守卫+单测钉住形态存在。
+- **P560-D1 with-as 绑定语法歧义**：`as` 系既有 Cast 中缀——`with
+  expr as x` 被 parse_expr 整吞为 Cast、块体又入单元构造语法歧义；
+  现状响亮拒绝（错误消息含指引）。裁定方向：with 上下文限定解析
+  （pratt 截断）或换绑定关键字（`with expr -> x` / `let x =`）。
+- **P560-D2 隐式 !T 传播自动化**：ERROR_PROPAGATE 是 May 值通道，
+  py 错误走 VMError 异常通道——两通道汇合需桥出口产 Err 值（473+
+  shim 面深集成）。现状=显式 py_call_may+.? 通道可表达（p14 探针）。
+- **P560-D3 Err 载荷前缀精化**：py 桥错误现统一 RuntimeError（原文
+  含 Python 类型字样）；严格 "PyException <Type>:" 前缀随 D2 通道
+  汇合同批。
+- **P560-D4 门控硬化影响面超计划前提**：`.at` 含 use.py/null 诊断
+  硬化的存量撞击=vm 语料（aavm2 词法语料 2 文件 + null 语义测试
+  1 文件 + keyword_map）——需先裁定这些语料的 .as 迁移或 #[script]
+  标注（含 tv 测试框架 glob 扩展）。py 套件面已全量 .as（19 套件），
+  硬化的 py 前提已备。
+- **P560-D5 s2s 规则覆盖面**：py_known 分析为保守单遍（分支不敏感、
+  闭包不内视）；D7 print 包裹限裸名（嵌套形态走 print shim 运行期
+  臂）；f-string 插值语法语言本身无此形态（拼接走 ADD dunder）。
+- **P560-D6 既有双红随迁在案**：py_sys（version_info 元组→list 封送
+  =P539-D1/D5 债族）与 py_list test_sorted_getitem（"got d"）为
+  master 既有红——原 .at 在 master 二进制同形失败实证，非本波回归。
