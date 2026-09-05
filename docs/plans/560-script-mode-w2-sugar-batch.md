@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 11
+current_step: 12
 total_steps: 15
 ---
 
@@ -283,9 +283,10 @@ total_steps: 15
       catch 拦值绑定 `PyException <type>: <msg>` + main 带错退出 +
       a2py 映射（验证：六条探针 + py 套件 15/16 例 May 通道回归）
       [✅ 已完成（最小面+双债案）】可观测契约全落地：CALL_PY 错误出口 FFI→RuntimeError 统一（catch e 绑定含 Python 类型字样载荷——p14 探针 caught+IndexError 全文）；None 永不传播（550 面观测 true）；main 未捕获 exit=1（双探针实测）；May 显式传播通道（py_call_may+.? = 四作用域语义的可表达形态，fallback 探针）。**P560-D3 债**：隐式传播自动化（.as 函数内 py 位点自动补 ERROR_PROPAGATE）——ERROR_PROPAGATE 是 May 值通道而 py 错误走异常通道，两通道汇合需桥出口产 Err 值（473+ shim 面的深集成），归 W3 前裁定；**P560-D4 债**：载荷严格 "PyException <Type>:" 前缀（现 RuntimeError 原文含类型字样，前缀精化随 D3 通道汇合同批）
-- [ ] T12 迁移：py 五套件 `tests/auto/*.at`→`*.as` 逐套件改名 +
+- [x] T12 迁移：py 五套件 `tests/auto/*.at`→`*.as` 逐套件改名 +
       parity runner glob（`.at|.as`）+ a2py 接受 `.as`（验证：五套件
       三方逐套件全绿）
+      [✅ 已完成] 五套件 git mv + runner 四发现门双扩展名；**顺修 trans_python pyname 原地覆写 bug**（path.replace(".at",".py") 对 .as 不命中→产物写回源文件，py_math 被覆写实证后从暂存区恢复+扩展名感知修正）；五套件三方 64/64 全绿（math 20+torch 7+infer 17+train 10+numpy 10）
 - [ ] T13 窥孔+改名：use.py 静态已知调用点 s2s 产物直呼 py_xxx +
       CALL_PY→CALL_NAT_COUNTED 全链改名（发射/执行/既有 450-469 面）
       （验证：`--dump-lowered` 直达产物抽查 + `cargo t vm` 全绿）
