@@ -187,7 +187,7 @@ pub enum OpCode {
     // arg count so the Python shim pops the ACTUAL number of args — needed
     // because C builtins (datetime.date, struct.pack) defeat inspect.signature
     // and struct.pack is variadic. Only emitted for py-FFI natives.
-    CALL_PY = 0x5F,
+    CALL_NAT_COUNTED = 0x5F,
 
     // === Concurrency ===
     SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32
@@ -497,7 +497,7 @@ impl OpCode {
             Self::RET => "ret",
             Self::CALL_NAT => "call.nat",
             Self::CALL_SPEC => "call.spec",
-            Self::CALL_PY => "call.py",
+            Self::CALL_NAT_COUNTED => "call.py",
             Self::SPAWN => "spawn",
             Self::TASK_ID => "task.id",
             Self::YIELD_TASK => "yield.task",
@@ -698,7 +698,7 @@ impl OpCode {
             "ret" => Some(Self::RET),
             "call.nat" => Some(Self::CALL_NAT),
             "call.spec" => Some(Self::CALL_SPEC),
-            "call.py" => Some(Self::CALL_PY),
+            "call.py" => Some(Self::CALL_NAT_COUNTED),
             "spawn" => Some(Self::SPAWN),
             "task.id" => Some(Self::TASK_ID),
             "yield.task" => Some(Self::YIELD_TASK),
@@ -845,7 +845,7 @@ impl OpCode {
             Self::PUSH_ACCUM => Some(4),
 
             // 3-byte operand (u16 + u8)
-            Self::CREATE_OBJ | Self::CALL_PY => Some(3),
+            Self::CREATE_OBJ | Self::CALL_NAT_COUNTED => Some(3),
 
             // 2-byte operand (FN_PROLOG: n_args:u8, n_locals:u8)
             Self::FN_PROLOG => Some(2),

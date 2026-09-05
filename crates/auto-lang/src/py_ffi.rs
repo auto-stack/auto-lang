@@ -268,7 +268,7 @@ pub const NATIVE_PY_CALL: u16 = 450;
 pub const NATIVE_PY_GETATTR: u16 = 451;
 /// Plan 539 W0 (DIV-PY-KWARGS-1): keyword-argument method-call channel.
 /// Codegen lowers `py_call(obj, "m", pos..., k=v...)` into this shim's fixed
-/// 5-slot convention so the CALL_PY arg-count byte stays a plain slot count
+/// 5-slot convention so the CALL_NAT_COUNTED arg-count byte stays a plain slot count
 /// (no sentinel sniffing inside the variadic py_call convention).
 pub const NATIVE_PY_CALL_KW: u16 = 452;
 /// Plan 539 W0 (DIV-PY-EXCEPT-1): May-valued method call. Success wraps the
@@ -323,6 +323,23 @@ pub const NATIVE_PY_LEN: u16 = 468;
 /// Plan 555 T04 (D8): `py_type_name(obj)` — GIL type(x).__name__ 字符串，
 /// 组合子 obj_type_name 的 py 臂。
 pub const NATIVE_PY_TYPE_NAME: u16 = 469;
+/// Plan 560 T04 (B7): `py_contains(obj, key)` — `__contains__` 归 bool，
+/// 糖 `k in d` 的桥半。
+pub const NATIVE_PY_CONTAINS: u16 = 470;
+/// Plan 560 T04 (B8): `py_module("torch")` — 裸模块绑句柄（重做 Plan 300
+/// 腐烂面）；糖 `var torch = use.py torch` 的桥半，B9 dotted 递归的地基。
+pub const NATIVE_PY_MODULE: u16 = 471;
+/// Plan 560 T06 (D7): `py_str(obj)` — GIL str() 归 Auto 字符串；
+/// 句柄 print/f-string 保真通道。
+pub const NATIVE_PY_STR: u16 = 472;
+/// Plan 560 T07 (C6): `py_pow(a, b)` — GIL operator.pow（数字与
+/// `__pow__` 对象通用）；糖 `a ** b` 的解析直落目标。
+pub const NATIVE_PY_POW: u16 = 473;
+/// Plan 560 T08 (C3/C4): `py_truthy(x)` — GIL bool()（多元素张量按
+/// Python 抛）；句柄在 if/and/or/not 位的真值通道。
+pub const NATIVE_PY_TRUTHY: u16 = 474;
+/// Plan 560 T08 (C7): `py_is(a, b)` — GIL `a is b`；糖 `a is b` 直落目标。
+pub const NATIVE_PY_IS: u16 = 475;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -408,14 +425,14 @@ impl PyFfiBridge {
 
                 // Build Python argument tuple by popping from stack in reverse.
                 // Plan 369 Task 10: use the ACTUAL call-site arg count stashed on
-                // the task by the CALL_PY handler, rather than the param_types count
+                // the task by the CALL_NAT_COUNTED handler, rather than the param_types count
                 // baked in at registration. The registration-time count comes from
                 // inspect.signature(), which fails for C builtins (datetime.date,
                 // struct.pack) and is wrong for variadics (struct.pack). All py-FFI
                 // params use Auto-type marshalling (NanoValue tag detection), so each
                 // arg is popped via pop_auto_py_arg regardless of the declared type.
                 let n = task.pending_native_arg_count as usize;
-                // Fallback for shims registered before CALL_PY existed (param count
+                // Fallback for shims registered before CALL_NAT_COUNTED existed (param count
                 // was baked into param_types). Prefer the runtime count when > 0.
                 let n = if n > 0 { n } else { param_types.len() };
                 let mut bound_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n);
@@ -489,7 +506,7 @@ impl PyFfiBridge {
     /// Plan 369 Task 11: Register a module-level constant (non-callable attribute)
     /// as a zero-arg native. The emitted shim performs `getattr(module, name)` and
     /// marshals the resulting Python object to the VM stack via the auto path.
-    /// Returns the assigned native_id. Pair with codegen that emits CALL_PY with
+    /// Returns the assigned native_id. Pair with codegen that emits CALL_NAT_COUNTED with
     /// arg_count=0 for the bare identifier reference.
     pub fn register_constant(
         &mut self,
@@ -533,7 +550,7 @@ impl PyFfiBridge {
     /// (wrapped as `PyObjectHandle` in the VM heap).
     ///
     /// Both shims use runtime arg-count detection (via `pending_native_arg_count`,
-    /// same mechanism as `CALL_PY`) so `py_call` can accept a variable number of
+    /// same mechanism as `CALL_NAT_COUNTED`) so `py_call` can accept a variable number of
     /// positional method args.
     ///
     /// Calling convention (args pushed left-to-right, popped TOS-first):
@@ -948,7 +965,7 @@ impl PyFfiBridge {
                     ))
                 })?;
                 // Statement form: push a nil so the stack stays balanced for
-                // CALL_PY's dead-zone accounting.
+                // CALL_NAT_COUNTED's dead-zone accounting.
                 task.ram.push_nv(auto_val::encode_null());
                 Ok::<(), VMError>(())
             })?;
@@ -1383,6 +1400,166 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_TYPE_NAME, type_name_shim);
+
+        // ---- py_contains(obj, key) ----
+        // Plan 560 T04 (B7): `k in d` 桥半——__contains__ 归 bool。
+        let contains_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_contains needs 2 args (obj, key), got {}",
+                        n
+                    )));
+                }
+                let key = pop_auto_py_arg(task, vm, py)?;
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let contained = obj.contains(&key).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python contains on {} failed: {}",
+                        safe_type_name(&obj), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_bool(contained));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CONTAINS, contains_shim);
+
+        // ---- py_module("torch") ----
+        // Plan 560 T04 (B8): 裸模块句柄——py.import（Python 模块缓存，
+        // 同名同对象）；B9 dotted 递归的地基（py_getattr 链）。
+        let module_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_module needs 1 arg (name), got {}",
+                        n
+                    )));
+                }
+                let name_py = pop_auto_py_arg(task, vm, py)?;
+                let name: String = name_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_module name not string: {}", e))
+                })?;
+                let module = py.import(&name).map_err(|e| {
+                    VMError::FFI(format!("py_module import '{}' failed: {}", name, e))
+                })?;
+                let owned: Py<PyAny> = module.into_pyobject(py).unwrap().into_any().unbind();
+                let handle = PyObjectHandle::new("module".to_string(), owned);
+                let id = vm.insert_heap_object(handle);
+                vm.rc_push(task, auto_val::encode_object(id as u32));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_MODULE, module_shim);
+
+        // ---- py_str(obj) ----
+        // Plan 560 T06 (D7): GIL str() → Auto 字符串（print/f-string 保真）。
+        let str_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_str needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let s = obj
+                    .str()
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_str on {} failed: {}", safe_type_name(&obj), e))
+                    })?
+                    .to_string();
+                let idx = vm.add_string(s.into_bytes());
+                vm.rc_push_str_idx(task, idx);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_STR, str_shim);
+
+        // ---- py_pow(a, b) ----
+        // Plan 560 T07 (C6)：GIL operator.pow——数字幂与 __pow__ 通用。
+        let pow_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_pow needs 2 args (a, b), got {}",
+                        n
+                    )));
+                }
+                let b = pop_auto_py_arg(task, vm, py)?;
+                let a = pop_auto_py_arg(task, vm, py)?;
+                let op_mod = py.import("operator").map_err(|e| {
+                    VMError::FFI(format!("py_pow: operator import failed: {}", e))
+                })?;
+                let pow_fn = op_mod.getattr("pow").map_err(|e| {
+                    VMError::FFI(format!("py_pow: operator.pow missing: {}", e))
+                })?;
+                let result = pow_fn
+                    .call1((a, b))
+                    .map_err(|e| VMError::FFI(format!("py_pow failed: {}", e)))?;
+                py_auto_marshal_return(&result, task, vm)
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_POW, pow_shim);
+
+        // ---- py_truthy(x) / py_is(a, b) ----
+        // Plan 560 T08 (C3/C4/C7)：句柄真值与同一性判定的 GIL 通道。
+        let truthy_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_truthy needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let x = pop_auto_py_arg(task, vm, py)?;
+                use pyo3::types::PyAnyMethods;
+                let b = x.is_truthy().map_err(|e| {
+                    VMError::FFI(format!(
+                        "py_truthy on {} failed: {}",
+                        safe_type_name(&x), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_bool(b));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_TRUTHY, truthy_shim);
+
+        let is_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_is needs 2 args (a, b), got {}",
+                        n
+                    )));
+                }
+                let b = pop_auto_py_arg(task, vm, py)?;
+                let a = pop_auto_py_arg(task, vm, py)?;
+                let same = a.is(&b);
+                task.ram.push_nv(auto_val::encode_bool(same));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_IS, is_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -2718,6 +2895,16 @@ mod tests {
             let fo: &dyn ForeignObject = &handle;
             assert_eq!(fo.foreign_kind(), "py");
         });
+    }
+
+    #[test]
+    fn test_w2_b7_b8_bridges_registered() {
+        // Plan 560 T04: py_contains(470) + py_module(471) 注册在位。
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CONTAINS).is_some(), "py_contains");
+        assert!(ni.get(NATIVE_PY_MODULE).is_some(), "py_module");
     }
 
     #[test]

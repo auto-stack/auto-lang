@@ -89,8 +89,8 @@ pub struct AutoTask {
     // the catch handler's absolute instruction pointer; when a runtime error
     // is raised, the top frame is popped and execution jumps to its pc.
     pub handler_stack: Vec<HandlerFrame>,
-    // Plan 369 Task 10: Number of args pushed for the in-progress CALL_PY.
-    // Set by the engine's CALL_PY handler from the call-site arg-count byte so
+    // Plan 369 Task 10: Number of args pushed for the in-progress CALL_NAT_COUNTED.
+    // Set by the engine's CALL_NAT_COUNTED handler from the call-site arg-count byte so
     // the Python shim pops the ACTUAL number of args at runtime — the count
     // cannot be baked into the shim because C builtins (datetime.date,
     // struct.pack) defeat inspect.signature and struct.pack is variadic.

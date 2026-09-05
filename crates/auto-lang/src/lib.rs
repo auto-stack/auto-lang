@@ -757,6 +757,16 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_setattr", crate::py_ffi::NATIVE_PY_SETATTR);
         registry.register_with_id("py.py_len", crate::py_ffi::NATIVE_PY_LEN);
         registry.register_with_id("py.py_type_name", crate::py_ffi::NATIVE_PY_TYPE_NAME);
+        // Plan 560 T04: B7 contains + B8 裸模块句柄。
+        registry.register_with_id("py.py_contains", crate::py_ffi::NATIVE_PY_CONTAINS);
+        registry.register_with_id("py.py_module", crate::py_ffi::NATIVE_PY_MODULE);
+        // Plan 560 T06 (D7): GIL str()。
+        registry.register_with_id("py.py_str", crate::py_ffi::NATIVE_PY_STR);
+        // Plan 560 T07 (C6)：幂。
+        registry.register_with_id("py.py_pow", crate::py_ffi::NATIVE_PY_POW);
+        // Plan 560 T08 (C3/C4/C7)。
+        registry.register_with_id("py.py_truthy", crate::py_ffi::NATIVE_PY_TRUTHY);
+        registry.register_with_id("py.py_is", crate::py_ffi::NATIVE_PY_IS);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
@@ -1007,6 +1017,20 @@ async fn execute_autovm_with_path(
     capture: bool,
     path: Option<&str>,
 ) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
+    // Plan 560 T03: 脚本模式管线激活——`.as` 源经 s2s lowering（糖→桥，
+    // W2 规则表自 T05 起逐条入住）后走正常编译管线；`#[rust]` 行首
+    // pragma 预检保留原源（显式压回，555 八格矩阵的压回通道）。
+    // 注：pragma 预检为行首前缀启发式（#[rust] 文件级标注形态），
+    // 完整解析期判定在下方 session 解析段——罕见面在案（P560 债）。
+    let _lowered_owned;
+    let code: &str = if path.map(|p| p.ends_with(".as")).unwrap_or(false)
+        && !code.lines().any(|l| l.trim_start().starts_with("#[rust]"))
+    {
+        _lowered_owned = crate::trans::auto_s2s::lower_source(code)?;
+        &_lowered_owned
+    } else {
+        code
+    };
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
@@ -1082,21 +1106,27 @@ async fn execute_autovm_with_path(
     );
     session.set_script_mode(script_mode);
 
-    // Plan 550 T10: 生产者门控（lint 级）——脚本模式（555 起统一为
-    // ScriptMode 判定：.as 扩展名与 #[script] pragma 皆豁免）之外的三
-    // 信号（use.py / null / nil 字面量）→ 疑似脚本内容迁移提示。只警告
-    // 不拒绝（硬拒会打断现有 py parity 套件；硬化归 W2 迁移批）。
-    if !matches!(script_mode, crate::mode::ScriptMode::Script) {
+    // Plan 550 T10 / Plan 560 T14: 生产者门控**硬化**——正常模式（.as
+    // 扩展名与 #[script] pragma 豁免；#[rust] 压回）含三信号（use.py /
+    // null / nil 字面量）→ **诊断错误**（编译期拒绝）。用户裁定在案
+    //（2026-09-05，待澄清#5）：py 套件已全量 .as（19 套件），vm 语料
+    // 走 run_with_capture 框架不经本路径（实证 tv 零撞击），CLI 直跑
+    // .at 信号的存量面按设计拒绝并指引迁移。
+    // 门控仅对**文件上下文**生效（设计 §2 = 文件级信号；内联/eval
+    // 源码无扩展名档位，T14 实证：musk null 语义测试与 550 探针族
+    // 走 run_with_capture 无 path 通道——VM 语义测试不应被文件门拦）。
+    if path.is_some() && !matches!(script_mode, crate::mode::ScriptMode::Script) {
         let py_signal = !session.py_imports().is_empty();
         let null_signal = parser.saw_bare_null;
         if py_signal || null_signal {
             let mut signals = Vec::new();
             if py_signal { signals.push("use.py"); }
             if null_signal { signals.push("null/nil 字面量"); }
-            eprintln!(
-                "warning: 疑似脚本内容（{}）——正常模式不鼓励裸 null/use.py；                 W1 起建议改名 .as 或标注 #[script]（Plan 550）",
+            return Err(format!(
+                "auto_gate_E5501: 正常模式 .at 含脚本内容信号（{}）——                 改名为 .as 或标注 #[script]（#[rust] 可压回）；                 参见脚本模式设计 script-mode-interop.md §2",
                 signals.join(" + ")
-            );
+            )
+            .into());
         }
     }
 
@@ -1771,7 +1801,10 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
     }
 
     // Normal execution with capture
-    let (result, stdout) = match run_with_capture(&src) {
+    // Plan 560 T14：文件测试走带 path 通道（硬化门控对 .at 文件生效、
+    // .as 豁免——内联 run_with_capture 不门控，见 execute 段注记）。
+    let src_path_str = case.source_file.to_string_lossy().to_string();
+    let (result, stdout) = match run_with_capture_and_path(&src, &src_path_str) {
         Ok(r) => r,
         Err(e) => {
             return test_runner::FileTestReport {
@@ -4027,7 +4060,7 @@ pub fn dump_lowered(path: &str) -> AutoResult<String> {
     let ext = path.rsplit('.').next().unwrap_or("");
     let mode = crate::mode::resolve_script_mode(Some(ext), false, false);
     let header = format!(
-        "// lowered (Plan 555 W1 passthrough) mode={} src={}
+        "// lowered (Plan 560 W2 s2s) mode={} src={}
 ",
         match mode {
             crate::mode::ScriptMode::Script => "script",
@@ -5218,7 +5251,13 @@ pub fn trans_python(path: &str) -> AutoResult<String> {
         .map_err(|e| format!("Failed to read file: {}", e))
         .unwrap();
 
-    let pyname = path.replace(".at", ".py");
+    // Plan 560 T12：.as 输入防原地覆写（replace(".at") 对 .as 不命中
+    // → pyname==源路径，转译产物写回源文件——py_math 实证）。
+    let pyname = if path.ends_with(".at") || path.ends_with(".as") {
+        path[..path.len() - 3].to_string() + ".py"
+    } else {
+        path.replace(".at", ".py")
+    };
     let fname = AutoPath::new(path).filename();
 
     // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it

@@ -1325,6 +1325,24 @@ impl<'a> Lexer<'a> {
                     return Ok(self.minus_or_arrow(c));
                 }
                 '*' => {
+                    // Plan 560 T07 (C6)：`**` 幂算子。arm 惯例：c 尚未
+                    // 消费（with_equal 自行 next）——双星探测用迭代器
+                    // 快照越过 c 看第二位（首版误用 peek() 恒见 c 自身，
+                    // 单星全数误翻 Power，单测钉）。
+                    let two_stars = {
+                        let mut it = self.chars.clone();
+                        it.next(); // c
+                        it.next() == Some('*')
+                    };
+                    if two_stars {
+                        self.chars.next(); // c
+                        self.chars.next(); // 第二星
+                        return Ok(Token::new(
+                            TokenKind::Power,
+                            self.pos(2),
+                            "**".into(),
+                        ));
+                    }
                     return Ok(self.with_equal(TokenKind::Star, TokenKind::MulEq, c));
                 }
                 '/' => {
@@ -2056,5 +2074,20 @@ mod tests {
             tokens,
             "<fstrs><fstrp:obj: {><$><{><ident:x><}><fstrp:}><fstre>"
         );
+    }
+}
+
+
+#[cfg(test)]
+mod tests_w2_power {
+    use super::*;
+
+    #[test]
+    fn test_star_vs_power_lex() {
+        // Plan 560 T07：单星=Star、双星=Power。
+        let toks = Lexer::new("3 * 2").tokenize_all().unwrap();
+        assert!(toks.iter().any(|t| matches!(t.kind, TokenKind::Star)), "{:?}", toks.iter().map(|t| &t.kind).collect::<Vec<_>>());
+        let toks2 = Lexer::new("3 ** 2").tokenize_all().unwrap();
+        assert!(toks2.iter().any(|t| matches!(t.kind, TokenKind::Power)), "{:?}", toks2.iter().map(|t| &t.kind).collect::<Vec<_>>());
     }
 }
