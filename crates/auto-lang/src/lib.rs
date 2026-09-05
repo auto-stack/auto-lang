@@ -767,6 +767,9 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         // Plan 560 T08 (C3/C4/C7)。
         registry.register_with_id("py.py_truthy", crate::py_ffi::NATIVE_PY_TRUTHY);
         registry.register_with_id("py.py_is", crate::py_ffi::NATIVE_PY_IS);
+        // Plan 567 T06 (P560-D2): may 值通道变体。
+        registry.register_with_id("py.py_getattr_may", crate::py_ffi::NATIVE_PY_GETATTR_MAY);
+        registry.register_with_id("py.py_getitem_may", crate::py_ffi::NATIVE_PY_GETITEM_MAY);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();

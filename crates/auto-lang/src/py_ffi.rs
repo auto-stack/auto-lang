@@ -321,6 +321,12 @@ pub const NATIVE_PY_POW: u16 = 473;
 pub const NATIVE_PY_TRUTHY: u16 = 474;
 /// Plan 560 T08 (C7): `py_is(a, b)` — GIL `a is b`；糖 `a is b` 直落目标。
 pub const NATIVE_PY_IS: u16 = 475;
+/// Plan 567 T06 (P560-D2): `py_getattr_may(obj, attr)` — getattr 的 May 值
+/// 通道变体（AttributeError 落 `Result.Err` 值，s2s 隐式传播规则消费）。
+pub const NATIVE_PY_GETATTR_MAY: u16 = 476;
+/// Plan 567 T06: `py_getitem_may(obj, key)` — getitem 的 May 值通道变体
+/// （KeyError/IndexError 落 `Result.Err` 值）。
+pub const NATIVE_PY_GETITEM_MAY: u16 = 477;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -712,27 +718,7 @@ impl PyFfiBridge {
                         py_auto_marshal_return(&result, task, vm)?;
                         wrap_tos_as_result_ok(task, vm);
                     }
-                    Err(py_err) => {
-                        // Carry str(e) + type name per the DIV-PY-EXCEPT-1 brief.
-                        let type_name = py_err
-                            .value(py)
-                            .get_type()
-                            .name()
-                            .map(|n| n.to_string())
-                            .unwrap_or_else(|_| "UnknownException".to_string());
-                        let msg = py_err
-                            .value(py)
-                            .str()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        let text = format!("PyException {}: {}", type_name, msg);
-                        let instance = crate::vm::generic_registry::GenericInstanceData::new(
-                            "Result.Err".to_string(),
-                            vec![auto_val::Value::Str(text.into())],
-                        );
-                        let id = vm.insert_heap_object(instance);
-                        vm.rc_push(task, auto_val::encode_object(id as u32));
-                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
                 }
                 Ok::<(), VMError>(())
             })?;
@@ -740,6 +726,66 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALL_MAY, call_may_shim);
+
+        // ---- py_getattr_may(obj, attr_name) ----
+        // Plan 567 T06 (P560-D2): may 值通道变体——Ok 走 Result.Ok 包裹，
+        // AttributeError 落 Result.Err 值（载荷与 py_exc 同源）。
+        let getattr_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_getattr_may needs 2 args (obj, attr), got {}",
+                        n
+                    )));
+                }
+                let attr_py = pop_auto_py_arg(task, vm, py)?;
+                let attr_name: String = attr_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_getattr_may attr name not string: {}", e))
+                })?;
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+                match obj_py.getattr(&attr_name) {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_GETATTR_MAY, getattr_may_shim);
+
+        // ---- py_getitem_may(obj, key) ----
+        // Plan 567 T06 (P560-D2): KeyError/IndexError 落 Result.Err 值。
+        let getitem_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_getitem_may needs 2 args (obj, key), got {}",
+                        n
+                    )));
+                }
+                let key = pop_auto_py_arg(task, vm, py)?;
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                match obj.get_item(&key) {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_GETITEM_MAY, getitem_may_shim);
 
         // ---- py_iter(handle) -> iterator handle ----
         // Plan 539 W0 (DIV-PY-ITER-1): Python iteration protocol entry. The
@@ -2170,6 +2216,34 @@ fn py_exc(py: Python<'_>, e: &pyo3::PyErr) -> VMError {
     VMError::FFI(format!("PyException {}: {}", type_name, msg))
 }
 
+/// Plan 567 T06 (P560-D2): may 变体公共 Err 出口——Python 异常落
+/// `Result.Err` 值（载荷构造与 py_exc 同源；py_call_may 原地内联版收编）。
+fn push_py_exception_err_value(
+    py: Python<'_>,
+    e: &pyo3::PyErr,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) {
+    let type_name = e
+        .value(py)
+        .get_type()
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|_| "UnknownException".to_string());
+    let msg = e
+        .value(py)
+        .str()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let text = format!("PyException {}: {}", type_name, msg);
+    let instance = crate::vm::generic_registry::GenericInstanceData::new(
+        "Result.Err".to_string(),
+        vec![auto_val::Value::Str(text.into())],
+    );
+    let id = vm.insert_heap_object(instance);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
+}
+
 fn py_auto_marshal_return(
     py_val: &Bound<'_, PyAny>,
     task: &mut AutoTask,
@@ -2986,6 +3060,99 @@ mod tests {
                 other => panic!("expected Double payload, got {:?}", other),
             }
         });
+    }
+
+    #[test]
+    fn test_may_variant_shims_err_payload_prefix() {
+        // Plan 567 T06: 476/477 may 变体——Err 载荷 `PyException <Type>: <msg>`
+        // 前缀 + Result.Ok 包裹形态（对齐 py_call_may 家族契约）。
+        use crate::vm::native::NativeInterface;
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.import_module("math").unwrap();
+        bridge.register_object_shims();
+
+        // getattr_may: math has no attribute "no_such" -> Result.Err
+        {
+            let shim = bridge.native_interface().get(NATIVE_PY_GETATTR_MAY).unwrap();
+            let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+            Python::attach(|py| {
+                let math_mod: Py<PyModule> = py.import("math").unwrap().into();
+                let handle = PyObjectHandle::new("module".to_string(), math_mod.into_any());
+                let id = vm.insert_heap_object(handle);
+                task.ram.push_nv(auto_val::encode_object(id as u32));
+                let m_idx = vm.add_string(b"no_such".to_vec());
+                vm.rc_push_str_idx(&mut task, m_idx);
+                task.pending_native_arg_count = 2;
+                shim(&mut task, &vm).unwrap();
+
+                let nv = task.ram.pop_nv();
+                assert!(auto_val::is_object(nv), "Err should be a heap Result");
+                let heap_obj = vm
+                    .get_heap_object(auto_val::decode_object(nv) as u64)
+                    .unwrap();
+                let guard = heap_obj.read().unwrap();
+                let inst = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                    .unwrap();
+                assert_eq!(inst.mono_name, "Result.Err");
+                match &inst.fields[0] {
+                    auto_val::Value::Str(s) => {
+                        assert!(s.as_str().starts_with("PyException AttributeError"));
+                    }
+                    other => panic!("expected Str payload, got {:?}", other),
+                }
+            });
+        }
+
+        // getitem_may: list index out of range -> Result.Err; in-range -> Result.Ok
+        {
+            let shim = bridge.native_interface().get(NATIVE_PY_GETITEM_MAY).unwrap();
+            let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+            Python::attach(|py| {
+                let lst = py.eval(c"[10, 20]", None, None).unwrap();
+                let handle = PyObjectHandle::new("list".to_string(), lst.clone().unbind());
+                let id = vm.insert_heap_object(handle);
+                task.ram.push_nv(auto_val::encode_object(id as u32));
+                task.ram.push_i32(5);
+                task.pending_native_arg_count = 2;
+                shim(&mut task, &vm).unwrap();
+                let nv = task.ram.pop_nv();
+                let heap_obj = vm
+                    .get_heap_object(auto_val::decode_object(nv) as u64)
+                    .unwrap();
+                let guard = heap_obj.read().unwrap();
+                let inst = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                    .unwrap();
+                assert_eq!(inst.mono_name, "Result.Err");
+                match &inst.fields[0] {
+                    auto_val::Value::Str(s) => {
+                        assert!(s.as_str().starts_with("PyException IndexError"));
+                    }
+                    other => panic!("expected Str payload, got {:?}", other),
+                }
+
+                // In-range: Result.Ok(10)
+                task.ram.push_nv(auto_val::encode_object(id as u32));
+                task.ram.push_i32(0);
+                task.pending_native_arg_count = 2;
+                shim(&mut task, &vm).unwrap();
+                let nv = task.ram.pop_nv();
+                let heap_obj = vm
+                    .get_heap_object(auto_val::decode_object(nv) as u64)
+                    .unwrap();
+                let guard = heap_obj.read().unwrap();
+                let inst = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                    .unwrap();
+                assert_eq!(inst.mono_name, "Result.Ok");
+                assert_eq!(inst.fields[0], auto_val::Value::Int(10));
+            });
+        }
     }
 
     #[test]

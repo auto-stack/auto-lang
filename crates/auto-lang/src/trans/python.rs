@@ -1053,6 +1053,35 @@ impl PythonTrans {
                     sink.body.write(b"), None)")?;
                     return Ok(());
                 }
+                // Plan 567 T06 (P560-D2): may 变体家族——异常落 _auto_may 的
+                // None 哨兵（`.?` 直落 None / `.?(d)` 走 NullCoalesce 回退），
+                // 与 py_call_may 同通道。
+                "py_getattr_may" if call.args.args.len() == 2 => {
+                    self.needs_may_helper = true;
+                    sink.body.write(b"_auto_may(lambda: getattr(")?;
+                    if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
+                        self.expr(obj_expr, sink)?;
+                    }
+                    sink.body.write(b", ")?;
+                    if let Some(arg) = call.args.args.get(1) {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b"), None)")?;
+                    return Ok(());
+                }
+                "py_getitem_may" if call.args.args.len() == 2 => {
+                    self.needs_may_helper = true;
+                    sink.body.write(b"_auto_may(lambda: (")?;
+                    if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
+                        self.expr(obj_expr, sink)?;
+                    }
+                    sink.body.write(b")[")?;
+                    if let Some(arg) = call.args.args.get(1) {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b"], None)")?;
+                    return Ok(());
+                }
                 // Plan 539 W0 (DIV-PY-ITER-1): py_iter(x) → iter(x);
                 // py_next(x) → next(x, None) — the None sentinel mirrors the
                 // AutoVM's StopIteration→null marshalling.
