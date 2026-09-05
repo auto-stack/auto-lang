@@ -30,11 +30,12 @@ const MIN_INTERVAL_MS: u64 = 33;
 /// 量化步长:逻辑坐标按 0.5px 量化后比较,静止/亚像素移动不发布。
 const QUANTIZE_STEP: f32 = 0.5;
 
-/// PointerArea 的本地状态(tree::Tag 标识)。
+/// PointerArea 的本地状态(tree::Tag 标识)。last_pub/last_logical 由
+/// pen_area(P563)复用记账(penmove 限频 + 出界收笔最后已知坐标)。
 #[derive(Debug, Default)]
 pub struct State {
-    last_pub: Option<Instant>,
-    last_logical: Option<(f32, f32)>,
+    pub(crate) last_pub: Option<Instant>,
+    pub(crate) last_logical: Option<(f32, f32)>,
 }
 
 /// 限频决策核心(纯函数,便于单测):给定量化后的逻辑坐标与上次发布记录,

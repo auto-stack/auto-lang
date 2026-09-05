@@ -9,6 +9,9 @@ pub mod popover;
 // Plan 499 M2: 指针移动限频 widget(mouse-area onmousemove 臂承载,
 // 坐标换算 + ≤30Hz 限频 + 量化去重)。
 pub mod pointer_area;
+// Plan 563: pen 事件层 widget(canvas onpenstart/onpenmove/onpenend 承载,
+// 按下门控 + ≤30Hz 限频 + 出界收笔,PointerArea 同型扩展)。
+pub mod pen_area;
 pub mod renderer;
 // Plan 045 T3: 表格列宽拖拽 widget（View::Table::on_col_resize 的 iced
 // 承载——自持网格布局 + Drag 态临时宽实时重排 + 松手落定消息）。

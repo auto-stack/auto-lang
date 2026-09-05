@@ -595,7 +595,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_action",
             "title": "Perform Action",
-            "description": "Perform an action on a UI element.\n\n## Workflow\n1. Use autoui_snapshot to find element IDs and available actions\n2. Call this with element_id, action type, and optional value\n3. Use autoui_snapshot again to verify the result\n\n## Actions\n- press: Click a button\n- type_text: Type into an input/textarea (requires 'value')\n- toggle: Toggle a checkbox\n- select_option: Select from dropdown/radio (requires 'value')\n- set_value: Adjust a slider (requires numeric 'value')\n- clear: Clear an input/textarea\n- scroll: Scroll a Scrollable to a y offset (requires numeric 'value')\n- drag: Drag a MouseArea widget via its handlers (requires 'value' = \"Widget␟Down␟Move␟Up␟x0,y0;x1,y1;...\")",
+            "description": "Perform an action on a UI element.\n\n## Workflow\n1. Use autoui_snapshot to find element IDs and available actions\n2. Call this with element_id, action type, and optional value\n3. Use autoui_snapshot again to verify the result\n\n## Actions\n- press: Click a button\n- type_text: Type into an input/textarea (requires 'value')\n- toggle: Toggle a checkbox\n- select_option: Select from dropdown/radio (requires 'value')\n- set_value: Adjust a slider (requires numeric 'value')\n- clear: Clear an input/textarea\n- scroll: Scroll a Scrollable to a y offset (requires numeric 'value')\n- drag: Drag a MouseArea widget via its handlers (requires 'value' = \"Widget␟Down␟Move␟Up␟x0,y0;x1,y1;...\")\n- pen: Synthesize a canvas pen stroke via onpenstart/onpenmove/onpenend handlers (requires 'value' = \"Widget␟Start␟Move␟End␟x0,y0;x1,y1;...\"; logical coords in the canvas coords extent)",
             "inputSchema": {
                 "type": "object",
                 "required": ["element_id", "action"],
@@ -606,7 +606,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear", "scroll", "drag", "resize_col"],
+                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear", "scroll", "drag", "pen", "resize_col"],
                         "description": "Action to perform"
                     },
                     "value": {
@@ -1224,6 +1224,10 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         // 合成事件，走 core hit_test 真路径）。映射 Press 仅为枚举载体，
         // 下方前分支拦截，不入 handler 提取通道。
         "click" => UiActionType::Press,
+        // Plan 563 T5: pen——canvas 笔画序列合成（__mcp_pen 合成事件，
+        // onpenstart/move/end 坐标实参派发）。映射 Drag 仅为枚举载体，
+        // 下方前分支拦截（drag 同型）。
+        "pen" => UiActionType::Drag,
         _ => return error_result(format!("Unknown action: '{}'", action_str)),
     };
 
@@ -1345,8 +1349,9 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
     // "W␟Down␟Move␟Up␟x0,y0;x1,y1;..."）在 update_inner 连发
     // on_with_input_for：与 PointerArea 闭包产出的消息同构（真实 .at 拖拽数
     // 学 / emit / fast-path / 写臂 scroll_to）。element_id 仅作格式校验
-    // （约定传根件），路由由 value 承担。
-    if action_type == UiActionType::Drag {
+    // （约定传根件），路由由 value 承担。pen(P563)与 drag 共用 Drag 枚举
+    // 载体,此处按 action_str 区分。
+    if action_type == UiActionType::Drag && action_str == "drag" {
         let spec = match value.as_ref() {
             Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
             _ => return error_result(
@@ -1382,6 +1387,49 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         return text_result(format!(
             "Dragged {} via {} (down={} move={} up={}) (status: ok)",
             w, element_id_str, down, mv, up
+        ));
+    }
+
+    // Plan 563 T5: pen——canvas 笔画序列合成(drag 同型,penstart/penend 带
+    // 坐标)。value = "Widget␟StartHandler␟MoveHandler␟EndHandler␟x0,y0;x1,y1;..."
+    // (逻辑坐标,coords 值域)。首点 → onpenstart(x,y),中继点逐段
+    // onpenmove(x,y),尾点 → onpenend(x,y);经 __mcp_pen 合成事件走
+    // on_with_input_for 真实派发管道(PenArea 消息同构)。
+    if action_str == "pen" {
+        let spec = match value.as_ref() {
+            Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
+            _ => return error_result(
+                "Action 'pen' requires a string 'value' = \"Widget␟Start␟Move␟End␟x0,y0;x1,y1;...\"",
+            ),
+        };
+        let parts: Vec<&str> = spec.split(crate::ui::iced::renderer::PAYLOAD_SEP).collect();
+        if parts.len() != 5 || parts.iter().any(|p| p.is_empty()) {
+            return error_result(
+                "Action 'pen' value must be 5 payload fields: widget, start, move, end, points",
+            );
+        }
+        let pts_ok = parts[4].split(';').filter(|s| !s.is_empty()).all(|pair| {
+            let mut it = pair.split(',');
+            it.next().and_then(|s| s.parse::<f64>().ok()).is_some()
+                && it.next().and_then(|s| s.parse::<f64>().ok()).is_some()
+        });
+        if !pts_ok {
+            return error_result("Action 'pen' points must be 'x,y' float pairs joined by ';'");
+        }
+        let msg = ActionMessage {
+            target: ActionTarget::Event { widget: String::new(), event: "__mcp_pen".to_string() },
+            action: UiActionType::Drag,
+            value: Some(spec.clone()),
+        };
+        {
+            let shared = shared_handle.lock().unwrap();
+            if let Err(e) = shared.send_action(msg) {
+                return error_result(e);
+            }
+        }
+        return text_result(format!(
+            "Pen stroke on {} via {} (start={} move={} end={}) (status: ok)",
+            parts[0], element_id_str, parts[1], parts[2], parts[3]
         ));
     }
 

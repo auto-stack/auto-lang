@@ -4037,11 +4037,42 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            // Plan 563: 状态驱动画布 —— T4 落地 canvas::Program 直绘 +
-            // pen 事件层;此处先占位(style 承载尺寸),保证 exhaustive。
-            AbstractView::Canvas { style, .. } => {
+            // Plan 563: 状态驱动画布 —— CanvasPainter(canvas::Program 直绘,
+            // DrawListPainter 形态参考但独立实现:不经 DrawOp 线协议,v1
+            // 无路径 op)+ PenArea 事件层(pen 三件套,按下门控/限频/出界
+            // 收笔)。inspect 捕获态丢事件臂(与其余 handler 同规则)。
+            AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, style } => {
+                let painter = CanvasPainter {
+                    scene: scene.clone(),
+                    clear: clear.clone(),
+                    extent: logical_extent,
+                };
+                let canvas_el: iced::Element<'static, M> =
+                    iced::widget::canvas(painter).into();
+                let wrapped: iced::Element<'static, M> =
+                    if !inspect_capture_active() && (on_pen_start.is_some() || on_pen_move.is_some() || on_pen_end.is_some()) {
+                        let mut pa = crate::ui::iced::pen_area::PenArea::new(canvas_el);
+                        if let Some((w, h)) = logical_extent {
+                            pa = pa.extent(w, h);
+                        }
+                        if let Some(h) = on_pen_start {
+                            let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
+                            pa = pa.on_pen_start(f);
+                        }
+                        if let Some(h) = on_pen_move {
+                            let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
+                            pa = pa.on_pen_move(f);
+                        }
+                        if let Some(h) = on_pen_end {
+                            let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
+                            pa = pa.on_pen_end(f);
+                        }
+                        pa.into()
+                    } else {
+                        canvas_el
+                    };
                 build_container(
-                    iced::widget::text("").into(),
+                    wrapped,
                     0,
                     None,
                     None,
@@ -6113,12 +6144,98 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
         .into()
 }
 
+/// Plan 563: CSS 色串 → iced Color(场景契约的色值形态;坏值回退黑)。
+fn canvas_css_color(s: &str) -> iced::Color {
+    crate::ui::style::Color::from_hex(s)
+        .map(|c| {
+            let (r, g, b) = c.to_rgb8();
+            iced::Color::from_rgb8(r, g, b)
+        })
+        .unwrap_or(iced::Color::BLACK)
+}
+
+/// Plan 563: 画布渲染程序 —— 场景数据契约的 iced 侧独立映射(与 vue 2D
+/// 端不共享代码,共享映射规约):strokes → Path stroke;逻辑坐标 → px 按
+/// extent 线性缩放(coords "WxH" 值域,bounds 尺寸对齐);线帽/拐角 round;
+/// 单点笔画 = 直径线宽圆点(零长线 round cap 不可见,双端同规约);eraser
+/// v1 = clear 色笔画(缺省白,不真挖除)。View 每帧重建 → Program 随之
+/// 重建,draw 每帧重放(DrawListPainter 同形态,无缓存债)。
+#[derive(Clone)]
+struct CanvasPainter {
+    scene: crate::ui::view::CanvasScene,
+    clear: Option<String>,
+    extent: Option<(f32, f32)>,
+}
+
+impl<M: Clone + 'static> iced::widget::canvas::Program<M> for CanvasPainter {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        use iced::widget::canvas::{Frame, LineCap, LineJoin, Path, Stroke};
+        let mut frame = Frame::new(renderer, bounds.size());
+        if let Some(clear) = &self.clear {
+            frame.fill_rectangle(
+                iced::Point::ORIGIN,
+                bounds.size(),
+                canvas_css_color(clear),
+            );
+        }
+        let (sx, sy) = match self.extent {
+            Some((w, h)) if bounds.width > 0.0 && bounds.height > 0.0 => {
+                (bounds.width / w, bounds.height / h)
+            }
+            _ => (1.0, 1.0),
+        };
+        let eraser_color = self.clear.as_deref().unwrap_or("#ffffff");
+        for stroke in &self.scene.strokes {
+            if stroke.points.is_empty() {
+                continue;
+            }
+            let pts: Vec<iced::Point> = stroke
+                .points
+                .iter()
+                .map(|(x, y)| iced::Point::new(x * sx, y * sy))
+                .collect();
+            let color = if stroke.eraser {
+                canvas_css_color(eraser_color)
+            } else {
+                canvas_css_color(&stroke.color)
+            };
+            if pts.len() == 1 {
+                frame.fill(&Path::circle(pts[0], stroke.width / 2.0), color);
+                continue;
+            }
+            let path = Path::new(|b| {
+                b.move_to(pts[0]);
+                for p in &pts[1..] {
+                    b.line_to(*p);
+                }
+            });
+            frame.stroke(
+                &path,
+                Stroke::default()
+                    .with_color(color)
+                    .with_width(stroke.width)
+                    .with_line_cap(LineCap::Round)
+                    .with_line_join(LineJoin::Round),
+            );
+        }
+        vec![frame.into_geometry()]
+    }
+}
+
 /// Plan 412 续(toast 堆叠视觉):探出条的自绘 painter —— 三边描边 + 露出侧
 /// 圆角 + 半透明填充,贴卡侧直角无边线(canvas 实现,iced Border 无法表达
 /// 单边无边框,clip 也只是矩形裁剪)。
 #[derive(Clone)]
-struct ToastPeekPainter {
-    line: iced::Color,
+struct ToastPeekPainter {    line: iced::Color,
     body: iced::Color,
     /// 露出侧(圆角所在)在顶部?
     round_top: bool,
@@ -11262,6 +11379,52 @@ fn compare_pngs(
                         }
                     }
                     state.component.on_with_input_for(w, up, None);
+                    *state.app.view_dirty.borrow_mut() = true;
+                }
+            }
+            return iced::Task::none();
+        }
+        // Plan 563 T5: MCP pen action——canvas 笔画序列合成(input_value =
+        // "W␟Start␟Move␟End␟x0,y0;x1,y1;...")。penstart 带首点 (x,y) 尾参
+        // (PenArea onpenstart 消息同构,+1e-3 分数化同 drag);中继点逐段
+        // penmove;penend 带尾点坐标。widget 层门控/限频/出界收笔是真实
+        // 事件语义(pen_area.rs),不由本合成通道覆盖。
+        if msg.event == "__mcp_pen" {
+            if let Some(spec) = msg.input_value.as_deref() {
+                let parts: Vec<&str> = spec.split(PAYLOAD_SEP).collect();
+                if parts.len() == 5 {
+                    let (w, start, mv, end, pts) = (parts[0], parts[1], parts[2], parts[3], parts[4]);
+                    let pairs: Vec<(f64, f64)> = pts
+                        .split(';')
+                        .filter(|s| !s.is_empty())
+                        .filter_map(|pair| {
+                            let mut it = pair.split(',');
+                            let x = it.next().and_then(|s| s.parse::<f64>().ok())?;
+                            let y = it.next().and_then(|s| s.parse::<f64>().ok())?;
+                            Some((x, y))
+                        })
+                        .collect();
+                    if let Some(&(x, y)) = pairs.first() {
+                        let ev = encode_payload(
+                            start,
+                            &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                        );
+                        state.component.on_with_input_for(w, &ev, None);
+                    }
+                    for &(x, y) in pairs.iter().skip(1) {
+                        let ev = encode_payload(
+                            mv,
+                            &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                        );
+                        state.component.on_with_input_for(w, &ev, None);
+                    }
+                    if let Some(&(x, y)) = pairs.last() {
+                        let ev = encode_payload(
+                            end,
+                            &[auto_val::Value::Double(x + 0.001), auto_val::Value::Double(y + 0.001)],
+                        );
+                        state.component.on_with_input_for(w, &ev, None);
+                    }
                     *state.app.view_dirty.borrow_mut() = true;
                 }
             }
