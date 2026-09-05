@@ -40,6 +40,7 @@ pub enum TokenKind {
     Add,              // +
     Sub,              // -
     Star,             // *
+    Power,           // ** (Plan 560 T07: 幂算子)
     Div,              // /
     Mod,              // %
     Not,              // !

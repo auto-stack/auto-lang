@@ -2595,6 +2595,20 @@ impl<'a> Parser<'a> {
                 | TokenKind::Ge => self.op(),
                 TokenKind::And | TokenKind::Or => self.op(),
                 TokenKind::QuestionQuestion => self.op(),
+                // Plan 560 T07 (C5/C6)：`a @ b` / `a ** b` 脚本糖——直接
+                // 解析为桥调用（免新增 Op 变量的全仓波及；@T 引用类型
+                // 在类型位不受影响——此臂仅在表达式 infix 位命中）。
+                TokenKind::At | TokenKind::Power => {
+                    let is_matmul = matches!(self.cur.kind, TokenKind::At);
+                    self.next(); // skip @ / **
+                    let rhs = self.atom()?;
+                    lhs = mk_infix_sugar_call(
+                        if is_matmul { "py_matmul" } else { "py_pow" },
+                        lhs,
+                        rhs,
+                    );
+                    continue;
+                }
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
                 _ => {
@@ -20104,4 +20118,18 @@ fn main() {
     }
 
 
+}
+
+
+/// Plan 560 T07：中缀糖直产桥调用（`a @ b`→py_matmul、`a ** b`→py_pow）。
+fn mk_infix_sugar_call(name: &str, l: crate::ast::Expr, r: crate::ast::Expr) -> crate::ast::Expr {
+    use crate::ast::{Arg, Args, Call, Expr, Type};
+    Expr::Call(Call {
+        name: Box::new(Expr::Ident(name.into())),
+        args: Args { args: vec![Arg::Pos(l), Arg::Pos(r)] },
+        ret: Type::Unknown,
+        type_args: Vec::new(),
+        generic_args: Vec::new(),
+        pos: None,
+    })
 }

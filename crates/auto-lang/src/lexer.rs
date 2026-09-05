@@ -1325,6 +1325,12 @@ impl<'a> Lexer<'a> {
                     return Ok(self.minus_or_arrow(c));
                 }
                 '*' => {
+                    // Plan 560 T07 (C6)：`**` 幂算子（在 *= 判别前截获——
+                    // 双星优先）。单星回落 Star/MulEq。
+                    if self.chars.peek() == Some(&'*') {
+                        self.chars.next();
+                        return Ok(self.single(TokenKind::Power, c));
+                    }
                     return Ok(self.with_equal(TokenKind::Star, TokenKind::MulEq, c));
                 }
                 '/' => {

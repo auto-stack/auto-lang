@@ -332,6 +332,9 @@ pub const NATIVE_PY_MODULE: u16 = 471;
 /// Plan 560 T06 (D7): `py_str(obj)` — GIL str() 归 Auto 字符串；
 /// 句柄 print/f-string 保真通道。
 pub const NATIVE_PY_STR: u16 = 472;
+/// Plan 560 T07 (C6): `py_pow(a, b)` — GIL operator.pow（数字与
+/// `__pow__` 对象通用）；糖 `a ** b` 的解析直落目标。
+pub const NATIVE_PY_POW: u16 = 473;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -1476,6 +1479,35 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_STR, str_shim);
+
+        // ---- py_pow(a, b) ----
+        // Plan 560 T07 (C6)：GIL operator.pow——数字幂与 __pow__ 通用。
+        let pow_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_pow needs 2 args (a, b), got {}",
+                        n
+                    )));
+                }
+                let b = pop_auto_py_arg(task, vm, py)?;
+                let a = pop_auto_py_arg(task, vm, py)?;
+                let op_mod = py.import("operator").map_err(|e| {
+                    VMError::FFI(format!("py_pow: operator import failed: {}", e))
+                })?;
+                let pow_fn = op_mod.getattr("pow").map_err(|e| {
+                    VMError::FFI(format!("py_pow: operator.pow missing: {}", e))
+                })?;
+                let result = pow_fn
+                    .call1((a, b))
+                    .map_err(|e| VMError::FFI(format!("py_pow failed: {}", e)))?;
+                py_auto_marshal_return(&result, task, vm)
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_POW, pow_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
