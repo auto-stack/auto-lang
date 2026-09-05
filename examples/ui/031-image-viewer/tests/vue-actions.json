@@ -1,0 +1,10 @@
+{
+  "actions": [
+    { "type": "click", "text": "Open File" },
+    { "type": "click", "text": "+" },
+    { "type": "click", "text": "Width" },
+    { "type": "click", "text": "↻" },
+    { "type": "click", "text": "Fullscreen" },
+    { "type": "click", "text": "Open Directory" }
+  ]
+}
