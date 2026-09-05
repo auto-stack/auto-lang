@@ -3405,12 +3405,39 @@ export default router
     /// (registered limitation; see plan §3.3 known-limits approach).
     pub fn generate_desktop_host(&self) -> AutoResult<()> {
         let apps_dir = desktop_apps_dir(&self.root_dir)?;
-        let entries = auto_lang::ui::app_registry::scan_apps(
-            &apps_dir,
-            &auto_lang::ui::app_registry::ScanOptions {
-                render: Some("vue".to_string()),
-            },
-        );
+        let scan_opts = auto_lang::ui::app_registry::ScanOptions {
+            render: Some("vue".to_string()),
+        };
+        let mut entries = auto_lang::ui::app_registry::scan_apps(&apps_dir, &scan_opts);
+        // Plan 559 W3: sibling extra roots — single-app dirs carrying their
+        // own pac.at (id = the sibling dir name; primary-root ids win). Env
+        // override AUTO_DESKTOP_APPS_EXTRA (path list), else the Plan 501
+        // sibling probe `../auto-os-config/auto` — vue-track parity with
+        // app_registry::host_extra_roots/aggregate_scan; the Plan 529 group
+        // worktree layout resolves it in dev too.
+        let mut extra_roots: HashMap<String, PathBuf> = HashMap::new();
+        for (id, root) in desktop_extra_app_roots(&self.root_dir) {
+            if entries.iter().any(|e| e.id == id) {
+                continue;
+            }
+            match auto_lang::ui::app_registry::scan_app_root(&root, &id, &scan_opts) {
+                Some(entry) => {
+                    println!(
+                        "  {} extra root: {} (from {})",
+                        "✓".bright_green(),
+                        id,
+                        root.display()
+                    );
+                    entries.push(entry);
+                    extra_roots.insert(id, root);
+                }
+                None => println!(
+                    "  {} extra root {} skipped: no entry .at",
+                    "⚠".bright_yellow(),
+                    id
+                ),
+            }
+        }
         println!(
             "{} {} (from {}, render: vue)",
             "  Desktop apps:".bright_cyan(),
@@ -3431,9 +3458,16 @@ export default router
         let mut claimed_stores: HashSet<String> = HashSet::new();
         let mut claimed_components: HashSet<String> = HashSet::new();
         let mut app_corpus_total = String::new();
+        // Plan 559 W3: the api glue winner of this run — installed after the
+        // scan so a re-run rewrites src/lib/api.ts from the deterministic
+        // first claimant instead of keeping a stale file.
+        let mut api_glue_source: Option<PathBuf> = None;
 
         for e in &entries {
-            let app_root = apps_dir.join(&e.id);
+            let app_root = extra_roots
+                .get(&e.id)
+                .cloned()
+                .unwrap_or_else(|| apps_dir.join(&e.id));
             let vp = match VueProject::from_workspace(&app_root) {
                 Ok(v) => v,
                 Err(err) => {
@@ -3451,9 +3485,56 @@ export default router
             for (_, code) in &vp.store_files {
                 corpus.push_str(code);
             }
-            let skip = if corpus.contains("@/lib/api") || corpus.contains("from '@/api") {
-                Some("needs API client (v1 desktop is front-only)")
-            } else if vp.has_routes {
+            // Plan 559 W3: the api-client guard class opens when the app
+            // ships an installable glue (src/back/api.ts — the project-provided
+            // web implementation; contract-style projects get theirs generated
+            // by api_gen into their own gen tree, which we copy verbatim).
+            // Apps needing an API client WITHOUT an installable glue still
+            // skip. The glue lands in the shared src/lib/api.ts namespace —
+            // first api-client app of THIS run claims it (deterministic scan
+            // order), the file is rewritten from the winner every run so
+            // stale state can't survive an owner change; later api-client
+            // apps skip with a collision warning (v1: one api surface per
+            // desktop).
+            let needs_api_client = corpus.contains("@/lib/api") || corpus.contains("from '@/api");
+            if needs_api_client {
+                let generated = app_root
+                    .join("gen")
+                    .join("front")
+                    .join("vue")
+                    .join("src")
+                    .join("lib")
+                    .join("api.ts");
+                let project_glue = app_root.join("src").join("back").join("api.ts");
+                let source = if generated.exists() {
+                    generated
+                } else if project_glue.exists() {
+                    project_glue
+                } else {
+                    println!(
+                        "  {} app {} skipped: needs API client (no src/back/api.ts glue)",
+                        "⚠".bright_yellow(),
+                        e.id
+                    );
+                    continue;
+                };
+                match &api_glue_source {
+                    Some(existing) if existing != &source => {
+                        println!(
+                            "  {} app {} skipped: API client namespace claimed by {}",
+                            "⚠".bright_yellow(),
+                            e.id,
+                            existing.display()
+                        );
+                        continue;
+                    }
+                    _ => {}
+                }
+                if api_glue_source.as_ref() != Some(&source) {
+                    api_glue_source = Some(source.clone());
+                }
+            }
+            let skip = if vp.has_routes {
                 Some("has router pages (v1 desktop is single-view)")
             } else if corpus.contains("@/ext/") {
                 Some("needs ext files")
@@ -3523,6 +3604,19 @@ export default router
         // App-referenced shadcn components are absent from the host's own
         // detection set — materialize them directly (idempotent, skips
         // existing files).
+        if let Some(source) = &api_glue_source {
+            let lib_dir = src_dir.join("lib");
+            fs::create_dir_all(&lib_dir)
+                .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+            let target = lib_dir.join("api.ts");
+            fs::copy(source, &target)
+                .map_err(|e| format!("Failed to install api glue: {}", e))?;
+            println!(
+                "  {} api glue installed ← {}",
+                "✓".bright_green(),
+                source.display()
+            );
+        }
         if !shadcn_needed.is_empty() {
             let report = crate::vue_shadcn::materialize(&self.output_dir, &shadcn_needed)?;
             if report.written > 0 {
@@ -5144,6 +5238,41 @@ fn desktop_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
         default.display()
     )
     .into())
+}
+
+/// Plan 559 W3: sibling extra app roots for the desktop registry. Each entry
+/// is a single-app dir carrying its own pac.at; the registry id is the dir's
+/// own file name. `AUTO_DESKTOP_APPS_EXTRA` (a path list, `std::env::
+/// split_paths` semantics) wins; the default probes the Plan 501 sibling
+/// `../auto-os-config/auto` relative to the project root — under the Plan 529
+/// group worktree layout (`.wt/lang-NNN/{auto-lang,auto-os-config}`) and on
+/// the default checkout alike the sibling resolves. Missing siblings are
+/// silently skipped (desktop-host must keep working in solo checkouts).
+fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    let mut push_root = |p: PathBuf, out: &mut Vec<(String, PathBuf)>| {
+        if p.is_dir() {
+            if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                out.push((name.to_string(), p));
+            }
+        }
+    };
+    if let Some(extra) = std::env::var_os("AUTO_DESKTOP_APPS_EXTRA") {
+        for p in std::env::split_paths(&extra) {
+            push_root(p, &mut out);
+        }
+        return out;
+    }
+    if let Some(parent) = root_dir.parent() {
+        let sibling = parent.join("auto-os-config").join("auto");
+        // vm-track parity (app_registry::extra_roots_from): the Plan 501
+        // sibling registers as id `os-config` — Taskbar ⚙️/launch and the
+        // acceptance channel key on this id on both tracks.
+        if sibling.is_dir() {
+            out.push(("os-config".to_string(), sibling));
+        }
+    }
+    out
 }
 
 /// Plan 516 G4: `remote-apps.json` 条目（声明式远程窗配置）。
