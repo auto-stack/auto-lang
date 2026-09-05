@@ -312,3 +312,14 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
 - **Q3（ stacked worktree）**: lang-564 从 plan-532-dev tip 派生（偏离
   AGENTS.md 默认从 master 建）。若 532 在 564 执行期间 fold，564 分支
   rebase 到 master 即可（机制文件无冲突）。
+- **Q4（P532 债转告）**: T3 测量期（2026-09-05，nextest ignored 档）实测
+  `test_aavm2_p532_lib_static_diff` FAILED（683s，rust=32545 行 vs
+  aavm=33213 行，canon line 4506 首分歧：`get.field field["kind"]` vs
+  `get.generic.field field=0`）。该测试为 Plan 532 已知挂账债（W2 提交注记
+  "语义等价口径下唯一残余=注释臂绝对槽号+4"），非本 plan 范围——转告 532
+  会话知悉（另：其峰值 1232MB 为全仓最高，532 修复后需复测更新权重表）。
+- **Q5（t3 档组配置与主检出未提交态）**: `nextest-t3.toml` 现为 532 在主检
+  出的未提交态，本 plan 不代笔，待 532 提交后合流补组配置（塔测试自带
+  T3_MILESTONE env 守门，风险低）。同因：主检出 `.cargo/config.toml`/
+  `.config/nextest*.toml`/`AGENTS.md` 存在 532 未提交改动，plan-564-dev
+  合并时须与其协调（本 plan 的配置提交均在 worktree 分支，无覆盖）。
