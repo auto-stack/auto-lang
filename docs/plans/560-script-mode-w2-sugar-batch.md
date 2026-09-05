@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/frontend, auto-lang/trans, auto-cli]   # 受影响的 specs 路径
-current_step: 8
+current_step: 9
 total_steps: 15
 ---
 
@@ -270,10 +270,11 @@ total_steps: 15
       （s2s lower 到显式 GIL bool 调用，多元素张量按 Python 抛）
       （验证：单测 + `if t:`/`a is None` 探针）
       [✅ 已完成] py_truthy 474 + py_is 475（占号顺移：py_str/py_pow 先占 472/473）；C3/C4=待澄清#4 裁定形态（s2s 显式调用零热臂）；parser Is 中缀臂（is 系既有保留 token——词位判别无需 Ident hack）；探针 falsy-0/truthy-2/is 同柄 true/异柄 false；语料 round-trip 保持
-- [ ] T09 E2 with：parser `with` 关键字（`with expr {}`/`with expr
+- [x] T09 E2 with：parser `with` 关键字（`with expr {}`/`with expr
       as x {}`）+ s2s 语句规则 → py_enter + try-finally + py_exit
       （异常抑制不做）（验证：单测 + no_grad 探针——infer 套件 14 例
       形态）
+      [✅ 已完成] 无 as 形态直产 `py_with(ctx, () => { body })` 调用（全复用 539 内联通道；Stmt::Expr 形态避开 convert_last_block 尾块转对象坑）；**with-as 债案（P560-D2）**：`as` 系既有 Cast 中缀，parse_expr 整吞 `expr as name` 为 Cast、块体又被单元构造语法吞——绑定语法歧义响亮拒绝待后续裁定（py_enter/py_exit 显式形态可用）；顺修两枚执行期bug：lexer 双星探测（arm c 未消费惯例·peek 恒见 c·单星全误翻 Power——单测钉）+A5 豁免 py_with（内联要裸闭包）；no_grad 探针 gflag=0（= infer 套件 test_with_no_grad 同语义）
 - [ ] T10 E3 for-in 双通道：handle 源 `py_iter()` 强制迭代器 + Auto
       源 array 通道（现状）分派（验证：tensor for-in 探针 + dict
       items 迭代探针）
