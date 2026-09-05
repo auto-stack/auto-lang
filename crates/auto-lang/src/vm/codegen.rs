@@ -8458,6 +8458,20 @@ impl Codegen {
                             reg.resolve_qualified(name)
                         }; // guard dropped here
                         if let Some(id) = natives_id {
+                            // Plan 555 T06: 分发组合子走 CALL_PY 传输形态
+                            // （携带调用点实参数字节——组合子 shim 按
+                            // pending_native_arg_count 弹参；is_py_ffi_call
+                            // 在此仅是"带计数字节的原生调用"发射约定，
+                            // 与 py 无耦合）。限定名/裸名皆可命中。
+                            if id == crate::vm::interop::NATIVE_INTEROP_OBJ_GET
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_SET
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_CALL
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_LEN
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_ITER
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_TYPE_NAME
+                            {
+                                is_py_ffi_call = true;
+                            }
                             Some(id)
                         } else if let Some(qualified) = self.import_scope.get(name) {
                             // Plan 347: a user-loaded Auto library must shadow a

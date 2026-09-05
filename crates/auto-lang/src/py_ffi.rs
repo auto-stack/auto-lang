@@ -43,9 +43,213 @@ impl PyObjectHandle {
     }
 }
 
+// ============================================================================
+// Plan 555 T05: ForeignObject 协议首实现——PyObjectHandle 适配器。
+// 组合子层（vm/interop.rs）经 dyn ForeignObject 分派（宿主无关），跨语言
+// 矩阵（设计 §8）的承接点：JS/ArkTS 等宿主换 ForeignObject 实现即可接入。
+// ============================================================================
+
+impl crate::vm::interop::ForeignObject for PyObjectHandle {
+    fn foreign_kind(&self) -> &'static str {
+        "py"
+    }
+
+    fn obj_get(
+        &self,
+        key_nv: auto_val::NanoValue,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            if !auto_val::is_string(key_nv) {
+                return Err(VMError::FFI(format!(
+                    "py obj_get attr name must be a string (tag {})",
+                    auto_val::tag_of(key_nv)
+                )));
+            }
+            let idx = auto_val::decode_string(key_nv) as usize;
+            let attr_name = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_default();
+            let obj = self.obj.bind(py);
+            let result = obj.getattr(&attr_name).map_err(|e| {
+                VMError::FFI(format!(
+                    "Python getattr({}.{}) failed: {}",
+                    self.type_name, attr_name, e
+                ))
+            })?;
+            py_auto_marshal_return(&result, task, vm)
+        })?;
+        Ok(())
+    }
+
+    fn obj_set(
+        &self,
+        key_nv: auto_val::NanoValue,
+        value_nv: auto_val::NanoValue,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            if !auto_val::is_string(key_nv) {
+                return Err(VMError::FFI(format!(
+                    "py obj_set attr name must be a string (tag {})",
+                    auto_val::tag_of(key_nv)
+                )));
+            }
+            // 借道现有弹栈封送（pop_auto_py_arg 的 nv→Py 转换全家桶，
+            // 含 ObjectData→dict / ListData→list 嵌套臂）：压入后按
+            // setattr 约定逆序弹出（TOS → bottom: value, key）。
+            task.ram.push_nv(key_nv);
+            task.ram.push_nv(value_nv);
+            let value = pop_auto_py_arg(task, vm, py)?;
+            let attr_py = pop_auto_py_arg(task, vm, py)?;
+            let attr_name: String = attr_py.extract().map_err(|e| {
+                VMError::FFI(format!("py obj_set attr name not string: {}", e))
+            })?;
+            let obj = self.obj.bind(py);
+            obj.setattr(&attr_name, (&value)).map_err(|e| {
+                VMError::FFI(format!(
+                    "Python setattr({}.{}) failed: {}",
+                    self.type_name, attr_name, e
+                ))
+            })?;
+            // 语句形态推 null 保栈平衡（py_setitem 约定）。
+            task.ram.push_nv(auto_val::encode_null());
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+
+    fn obj_len(
+        &self,
+        task: &mut AutoTask,
+        _vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            let obj = self.obj.bind(py);
+            let len = obj.len().map_err(|e| {
+                VMError::FFI(format!("Python len({}) failed: {}", self.type_name, e))
+            })?;
+            task.ram.push_i32(len as i32);
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+
+    fn obj_call(
+        &self,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        // Plan 555 T06: 方法调用臂——receiver 已由组合子消费（self 即
+        // receiver），方法名+实参按 shim 约定弹出（镜像 py_call 臂）。
+        // 桥窗口让 py_callable 回调可重入本 task（539 T21 约束）。
+        let _bridge = BridgeGuard::enter(task, vm);
+        Python::attach(|py| {
+            // pending_native_arg_count 含已被组合子消费的 receiver——
+            // 方法名+实参共 n-1 项（TOS → bottom: argN ... arg1, method）。
+            let n = task.pending_native_arg_count as usize;
+            if n < 2 {
+                return Err(VMError::FFI(format!(
+                    "py obj_call needs at least 2 args (obj, method), got {}",
+                    n
+                )));
+            }
+            let extra = n - 2;
+            let mut method_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(extra);
+            for _ in 0..extra {
+                method_args.push(pop_auto_py_arg(task, vm, py)?);
+            }
+            method_args.reverse();
+            let method_py = pop_auto_py_arg(task, vm, py)?;
+            let method_name: String = method_py.extract().map_err(|e| {
+                VMError::FFI(format!("py obj_call method name not string: {}", e))
+            })?;
+            let obj = self.obj.bind(py);
+            let result = if method_args.is_empty() {
+                obj.call_method0(&method_name).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python method {}.{}() failed: {}",
+                        self.type_name, method_name, e
+                    ))
+                })?
+            } else {
+                let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
+                    VMError::FFI(format!("py obj_call args tuple: {}", e))
+                })?;
+                obj.call_method1(&method_name, args_tuple).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python method {}.{}() failed: {}",
+                        self.type_name, method_name, e
+                    ))
+                })?
+            };
+            py_auto_marshal_return(&result, task, vm)
+        })?;
+        Ok(())
+    }
+
+    fn obj_iter(
+        &self,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        // Plan 555 T06: 迭代器物化臂——镜像 py_iter 臂（receiver=self）。
+        Python::attach(|py| {
+            let obj = self.obj.bind(py);
+            let it = obj
+                .try_iter()
+                .map_err(|e| {
+                    VMError::FFI(format!(
+                        "py obj_iter: {} is not iterable: {}",
+                        self.type_name, e
+                    ))
+                })?
+                .into_any();
+            let type_name = safe_type_name(&it);
+            let owned = it.clone().unbind();
+            let handle = PyObjectHandle::new(type_name, owned);
+            let id = vm.insert_heap_object(handle);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+
+    fn obj_type_name(
+        &self,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            let obj = self.obj.bind(py);
+            let ty = obj.get_type();
+            let name = ty
+                .name()
+                .map_err(|e| VMError::FFI(format!("py obj_type_name failed: {}", e)))?
+                .to_string();
+            let idx = vm.add_string(name.into_bytes());
+            vm.rc_push_str_idx(task, idx);
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+}
+
 impl HeapObject for PyObjectHandle {
     fn type_tag(&self) -> TypeTag {
         TypeTag::RustStdlib(format!("PyObj({})", self.type_name))
+    }
+
+    // Plan 555 T05: ForeignObject 协议接入——组合子层经 HeapObject::
+    // as_foreign_object 取协议面（宿主无关分派）。
+    fn as_foreign_object(&self) -> Option<&dyn crate::vm::interop::ForeignObject> {
+        Some(self)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -2496,6 +2700,23 @@ mod tests {
             .unwrap();
             let err = run_closure_bridged(py, 0, &arg).unwrap_err();
             assert!(err.to_string().contains("outside a host py shim window"));
+        });
+    }
+
+    #[test]
+    fn test_w1_foreign_object_protocol_adapter() {
+        // Plan 555 T05: PyObjectHandle 是 ForeignObject 协议首实现——
+        // 组合子层经 dyn ForeignObject 分派（宿主无关），不再 isinstance
+        // 式硬编码 downcast 具体类型。
+        use crate::vm::interop::ForeignObject;
+        Python::attach(|py| {
+            let owned: pyo3::Py<pyo3::PyAny> = py
+                .eval(&std::ffi::CString::new("[1, 2, 3]").unwrap(), None, None)
+                .unwrap()
+                .clone().unbind();
+            let handle = PyObjectHandle::new("list".to_string(), owned);
+            let fo: &dyn ForeignObject = &handle;
+            assert_eq!(fo.foreign_kind(), "py");
         });
     }
 

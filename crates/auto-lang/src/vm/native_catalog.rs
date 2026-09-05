@@ -1723,6 +1723,20 @@ pub static NATIVE_RET_ENTRIES: &[(&str, crate::vm::native_registry::NativeRetTyp
 // Used by resolve_qualified() for lazy registration.
 // IDs must match NATIVE_* constants in for_each_native! (shim bindings).
 pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
+    // Plan 555 T06: 分发组合子（interop.* 限定名 + 裸名别名——裸名
+    // resolve_qualified 经 NATIVE_ID_MAP 惰性注册命中）。
+    ("interop.obj_get", 1860),
+    ("obj_get", 1860),
+    ("interop.obj_set", 1861),
+    ("obj_set", 1861),
+    ("interop.obj_call", 1862),
+    ("obj_call", 1862),
+    ("interop.obj_len", 1863),
+    ("obj_len", 1863),
+    ("interop.obj_iter", 1864),
+    ("obj_iter", 1864),
+    ("interop.obj_type_name", 1865),
+    ("obj_type_name", 1865),
     ("auto.list.new", 100),
     ("auto.list.push", 101),
     ("auto.list.pop", 102),
