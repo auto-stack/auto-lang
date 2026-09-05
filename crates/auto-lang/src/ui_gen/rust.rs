@@ -2655,6 +2655,78 @@ impl RustGenerator {
                     }
                 }
 
+                // Plan 547 Task 22: ImageSurface is emitted through the
+                // backend-neutral constructor so literal, state-ref and
+                // conditional expressions all remain live in generated Rust.
+                // Runtime event payloads are appended by the Iced surface;
+                // the typed message variant and declared Aura arguments are
+                // captured here as Option<M> values.
+                if matches!(tag.as_str(), "imagesurface" | "image-surface" | "ImageSurface") {
+                    let expr_for = |key: &str, default: &str| -> String {
+                        props
+                            .get(key)
+                            .and_then(|v| match v {
+                                AuraPropValue::Expr(expr) => Some(self.ast_expr_to_rust(expr)),
+                                AuraPropValue::StyleBinding(_) => None,
+                            })
+                            .unwrap_or_else(|| default.to_string())
+                    };
+                    let owned_expr = |expr: String| -> String {
+                        if expr.starts_with("self.") {
+                            format!("{}.clone()", expr)
+                        } else {
+                            expr
+                        }
+                    };
+                    let src = owned_expr(expr_for("src", "\"\".to_string()"));
+                    let alt = owned_expr(expr_for("alt", "\"\".to_string()"));
+                    let width = format!("({}) as u32", expr_for("width", "0"));
+                    let height = format!("({}) as u32", expr_for("height", "0"));
+                    let quality = format!("({}).clamp(0, 100) as u8", expr_for("quality", "90"));
+                    let fit = owned_expr(expr_for("fit", "\"contain\".to_string()"));
+                    let zoom = format!("({}) as f32", expr_for("zoom", "1.0"));
+                    let offset_x = format!("({}) as f32", expr_for("offset_x", "0.0"));
+                    let offset_y = format!("({}) as f32", expr_for("offset_y", "0.0"));
+                    let rotation = format!("({}) as i32", expr_for("rotation", "0"));
+                    let filter = owned_expr(expr_for("filter", "\"high\".to_string()"));
+                    let event_expr = |names: &[&str]| -> String {
+                        events
+                            .iter()
+                            .find(|(name, _)| names.iter().any(|candidate| *candidate == name.as_str()))
+                            .map(|(_, event)| {
+                                format!(
+                                    "Some({})",
+                                    self.handler_to_rust_direct_msg(&event.handler, &event.params)
+                                )
+                            })
+                            .unwrap_or_else(|| "None".to_string())
+                    };
+                    let mut surface = format!(
+                        "View::image_surface({src}).image_surface_props({alt}, {width}, {height}, {quality}, {fit}, {zoom}, {offset_x}, {offset_y}, {rotation}, {filter})",
+                    );
+                    surface = format!(
+                        "{}.image_surface_events({}, {}, {}, {}, {})",
+                        surface,
+                        event_expr(&["onerror", "on_error", "error"]),
+                        event_expr(&["onload", "onloaded", "on_loaded", "loaded"]),
+                        event_expr(&["onwheel", "wheel"]),
+                        event_expr(&["onpan", "pan"]),
+                        event_expr(&["ondblclick", "dblclick", "doubleclick"]),
+                    );
+                    if let Some(style) = props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                            _ => None,
+                        })
+                        .filter(|s| !s.is_empty())
+                    {
+                        surface = format!("{}.image_surface_style(\"{}\")", surface, style);
+                    }
+                    return surface;
+                }
+
                 // Handle spacer — returns View directly, no builder
                 if tag == "spacer" {
                     return "View::spacer()".to_string();
@@ -3891,7 +3963,7 @@ impl RustGenerator {
             "slider", "radio", "radiogroup",
             "progress", "badge", "spinner",
             "card", "avatar",
-            "image", "icon",
+            "image", "icon", "imagesurface", "image-surface", "ImageSurface",
             "divider", "spacer",
             "for", "if",
         ];
@@ -5836,6 +5908,71 @@ mod tests {
         assert!(gen.current_widget.is_none());
     }
 
+    /// Plan 547 Task 22: Rust generator preserves ImageSurface props and all
+    /// five typed event hooks, including state-backed values.
+    #[cfg(feature = "ui-iced")]
+    #[test]
+    fn image_surface_rust_codegen() {
+        let msg = |name: &str| AuraMsgVariant {
+            payload_names: vec![],
+            name: name.to_string(),
+            quoted: false,
+            payload: vec![],
+        };
+        let widget = AuraWidget {
+            actions: None,
+            timers: Vec::new(),
+            name: "ImageViewer".to_string(),
+            state_vars: vec![
+                AuraStateDef { name: "asset_src".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("/media/a".into()), decorators: vec![] },
+                AuraStateDef { name: "viewport_width".to_string(), type_info: Type::Int, initial: crate::ast::Expr::Int(640), decorators: vec![] },
+                AuraStateDef { name: "fit_mode".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("contain".into()), decorators: vec![] },
+                AuraStateDef { name: "zoom".to_string(), type_info: Type::Float, initial: crate::ast::Expr::Float(1.0, "1.0".into()), decorators: vec![] },
+            ],
+            messages: vec![AuraMessage { variants: vec![
+                msg("ImageLoaded"), msg("ImageFailed"), msg("ZoomAt"), msg("PanBy"), msg("ToggleOneToOne"),
+            ] }],
+            view_tree: AuraNode::element("imagesurface")
+                .with_prop("src", crate::ast::Expr::Ident(".asset_src".into()))
+                .with_prop("width", crate::ast::Expr::Ident(".viewport_width".into()))
+                .with_prop("fit", crate::ast::Expr::Ident(".fit_mode".into()))
+                .with_prop("zoom", crate::ast::Expr::Ident(".zoom".into()))
+                .with_prop("alt", crate::ast::Expr::Str("hero".into()))
+                .with_event("onload", ".ImageLoaded")
+                .with_event("onerror", ".ImageFailed")
+                .with_event("onwheel", ".ZoomAt")
+                .with_event("onpan", ".PanBy")
+                .with_event("ondblclick", ".ToggleOneToOne"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        };
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).expect("rust generation");
+        assert!(code.contains("View::image_surface("), "missing constructor:\n{code}");
+        assert!(code.contains("self.asset_src.clone()"), "src state binding lost:\n{code}");
+        assert!(code.contains("self.viewport_width"), "width state binding lost:\n{code}");
+        assert!(code.contains("self.fit_mode.clone()"), "fit state binding lost:\n{code}");
+        assert!(code.contains("image_surface_props"), "scalar props missing:\n{code}");
+        assert!(code.contains("image_surface_events(Some(ImageViewerMsg::ImageFailed)"), "error event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ImageLoaded)"), "load event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ZoomAt)"), "wheel event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::PanBy)"), "pan event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ToggleOneToOne)"), "double-click event missing:\n{code}");
+    }
+
     /// Plan 436 T1(决策 1-A):带 setup 前导槽的 widget 在 Rust 目标显式
     /// 报错(PLAN-037 T7 哲学),不再静默丢弃 setup 语义。
     #[test]
@@ -7063,4 +7200,3 @@ fn main() {{}}
         );
     }
 }
-

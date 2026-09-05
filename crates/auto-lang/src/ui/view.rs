@@ -1308,6 +1308,83 @@ impl<M: Clone + Debug> View<M> {
         }
     }
 
+    /// Configure the scalar ImageSurface properties emitted by generators.
+    pub fn image_surface_props(
+        mut self,
+        alt: impl Into<String>,
+        width: u32,
+        height: u32,
+        quality: u8,
+        fit: impl Into<String>,
+        zoom: f32,
+        offset_x: f32,
+        offset_y: f32,
+        rotation: i32,
+        filter: impl Into<String>,
+    ) -> Self {
+        if let View::ImageSurface {
+            alt: current_alt,
+            width: current_width,
+            height: current_height,
+            quality: current_quality,
+            fit: current_fit,
+            zoom: current_zoom,
+            offset_x: current_offset_x,
+            offset_y: current_offset_y,
+            rotation: current_rotation,
+            filter: current_filter,
+            ..
+        } = &mut self
+        {
+            *current_alt = alt.into();
+            *current_width = width;
+            *current_height = height;
+            *current_quality = quality;
+            *current_fit = fit.into();
+            *current_zoom = zoom;
+            *current_offset_x = offset_x;
+            *current_offset_y = offset_y;
+            *current_rotation = rotation;
+            *current_filter = filter.into();
+        }
+        self
+    }
+
+    /// Attach the five normalized ImageSurface event handlers.
+    pub fn image_surface_events(
+        mut self,
+        on_error: Option<M>,
+        on_loaded: Option<M>,
+        on_wheel: Option<M>,
+        on_pan: Option<M>,
+        on_double_click: Option<M>,
+    ) -> Self {
+        if let View::ImageSurface {
+            on_error: current_error,
+            on_loaded: current_loaded,
+            on_wheel: current_wheel,
+            on_pan: current_pan,
+            on_double_click: current_double_click,
+            ..
+        } = &mut self
+        {
+            *current_error = on_error;
+            *current_loaded = on_loaded;
+            *current_wheel = on_wheel;
+            *current_pan = on_pan;
+            *current_double_click = on_double_click;
+        }
+        self
+    }
+
+    /// Apply a Tailwind style string to an ImageSurface node.
+    pub fn image_surface_style(mut self, style_str: &str) -> Self {
+        if let View::ImageSurface { style, .. } = &mut self {
+            *style = Style::parse(style_str).ok();
+        }
+        self
+    }
+
     /// Create styled image view
     pub fn image_styled(src: impl Into<String>, style_str: &str) -> Self {
         View::Image {
