@@ -73,6 +73,26 @@ fn are_shadcn_components_installed(output_path: &Path, components: &[String]) ->
     true
 }
 
+/// PLAN-063 Phase B T14 (KD 061 D12): 清理 CLI 时代的嵌套冗余组件目录。
+/// 旧版 shadcn-vue CLI 对多文件组件(alert-dialog 族)曾把文件写进
+/// `ui/<comp>/<comp>/` 嵌套目录;PLAN-457 捆绑快照为平铺布局,且
+/// write-if-missing 语义令嵌套残壳永不清除(字节级重复,唯一危害是
+/// 双份体积/误 import 混淆)。平铺 index.ts 在场时嵌套目录即冗余,
+/// 安装期一并移除。
+fn dedupe_nested_component_dirs(output_path: &Path, components: &[String]) -> Vec<String> {
+    let mut removed = Vec::new();
+    for comp in components {
+        let flat = output_path.join("src/components/ui").join(comp);
+        let nested = flat.join(comp);
+        if nested.is_dir() && flat.join("index.ts").exists() {
+            if fs::remove_dir_all(&nested).is_ok() {
+                removed.push(comp.clone());
+            }
+        }
+    }
+    removed
+}
+
 /// PLAN-457: every shadcn-vue component import marker the generator emits,
 /// with the component (bundle/folder) name. Single source of truth for
 /// [`detect_shadcn_components`] and the bundle-catalog sync test.
@@ -4085,6 +4105,12 @@ export default router
         // Fix known compatibility issues regardless of whether components are already installed
         self.fix_shadcn_compatibility_issues();
 
+        // PLAN-063 Phase B T14 (KD 061 D12): 移除 CLI 时代嵌套冗余目录。
+        let deduped = dedupe_nested_component_dirs(&self.output_dir, &self.shadcn_components);
+        if !deduped.is_empty() {
+            println!("{}", format!("  ✓ Removed duplicate nested dirs: {}", deduped.join(", ")).bright_green());
+        }
+
         // Only names still absent from disk need the registry round trip;
         // bundled ones landed during materialization.
         let remaining: Vec<String> = self
@@ -5648,6 +5674,33 @@ onMounted(() => {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-063 Phase B T14 (KD 061 D12): 嵌套冗余目录被移除;
+    /// 无平铺 index.ts 时(纯 CLI 形态)不动;无嵌套时幂等。
+    #[test]
+    fn nested_duplicate_component_dirs_are_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ui = tmp.path().join("src/components/ui/alert-dialog");
+        std::fs::create_dir_all(ui.join("alert-dialog")).unwrap();
+        std::fs::write(ui.join("index.ts"), "export {}
+").unwrap();
+        std::fs::write(ui.join("AlertDialog.vue"), "<template/>
+").unwrap();
+        std::fs::write(ui.join("alert-dialog/AlertDialog.vue"), "<template/>
+").unwrap();
+        let removed = dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]);
+        assert_eq!(removed, vec!["alert-dialog".to_string()]);
+        assert!(!ui.join("alert-dialog").exists());
+        assert!(ui.join("index.ts").exists());
+        // 幂等 + 纯嵌套形态(无平铺 index.ts)不误删
+        assert!(dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]).is_empty());
+        let cli_only = tmp.path().join("src/components/ui/foo/foo");
+        std::fs::create_dir_all(&cli_only).unwrap();
+        std::fs::write(cli_only.join("Foo.vue"), "<template/>
+").unwrap();
+        assert!(dedupe_nested_component_dirs(tmp.path(), &["foo".to_string()]).is_empty());
+        assert!(cli_only.exists());
+    }
 
     /// PLAN-063 Phase B T13 (KD 061 D28): pac title 解析+index.html 优先。
     #[test]
