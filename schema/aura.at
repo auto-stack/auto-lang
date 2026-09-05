@@ -4489,7 +4489,7 @@ element sidebar {
     category: "navigation"
     tier: "web_component"
     aliases: ["Sidebar"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "Sidebar", import: "@/components/ui/sidebar" }
     sub_widgets: ["sidebar_content", "sidebar_footer", "sidebar_group", "sidebar_header", "sidebar_input", "sidebar_menu", "sidebar_rail", "sidebar_separator"]
     props: [
@@ -4506,8 +4506,8 @@ element sidebar_content {
     tag: "sidebar_content"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarContent", "sidebarcontent"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarContent", "sidebarcontent", "sidebar-content"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarContent", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4520,8 +4520,8 @@ element sidebar_footer {
     tag: "sidebar_footer"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarFooter", "sidebarfooter"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarFooter", "sidebarfooter", "sidebar-footer"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarFooter", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4534,8 +4534,8 @@ element sidebar_group {
     tag: "sidebar_group"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarGroup", "sidebargroup"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarGroup", "sidebargroup", "sidebar-group"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarGroup", import: "@/components/ui/sidebar" }
     sub_widgets: ["sidebar_group_action", "sidebar_group_content", "sidebar_group_label"]
     props: [
@@ -4549,8 +4549,8 @@ element sidebar_group_action {
     tag: "sidebar_group_action"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarGroupAction", "sidebargroupaction"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarGroupAction", "sidebargroupaction", "sidebar-group-action"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarGroupAction", import: "@/components/ui/sidebar" }
     props: [
         { name: "onclick", type: "msg_ref", description: "Click message (state mode)" }
@@ -4565,8 +4565,8 @@ element sidebar_group_content {
     tag: "sidebar_group_content"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarGroupContent", "sidebargroupcontent"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarGroupContent", "sidebargroupcontent", "sidebar-group-content"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarGroupContent", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4579,8 +4579,8 @@ element sidebar_group_label {
     tag: "sidebar_group_label"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarGroupLabel", "sidebargrouplabel"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarGroupLabel", "sidebargrouplabel", "sidebar-group-label"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarGroupLabel", import: "@/components/ui/sidebar" }
     props: [
         { name: "text", type: "string", description: "Label text (shorthand; becomes slot content)" }
@@ -4595,8 +4595,8 @@ element sidebar_header {
     tag: "sidebar_header"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarHeader", "sidebarheader"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarHeader", "sidebarheader", "sidebar-header"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarHeader", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4623,8 +4623,8 @@ element sidebar_inset {
     tag: "sidebar_inset"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarInset", "sidebarinset"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarInset", "sidebarinset", "sidebar-inset"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarInset", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4637,8 +4637,8 @@ element sidebar_menu {
     tag: "sidebar_menu"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenu", "sidebarmenu"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenu", "sidebarmenu", "sidebar-menu"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarMenu", import: "@/components/ui/sidebar" }
     sub_widgets: ["sidebar_menu_action", "sidebar_menu_badge", "sidebar_menu_button", "sidebar_menu_item", "sidebar_menu_skeleton", "sidebar_menu_sub"]
     props: [
@@ -4652,8 +4652,8 @@ element sidebar_menu_action {
     tag: "sidebar_menu_action"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenuAction", "sidebarmenuaction"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenuAction", "sidebarmenuaction", "sidebar-menu-action"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarMenuAction", import: "@/components/ui/sidebar" }
     props: [
         { name: "onclick", type: "msg_ref", description: "Click message (state mode)" }
@@ -4669,8 +4669,8 @@ element sidebar_menu_badge {
     tag: "sidebar_menu_badge"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenuBadge", "sidebarmenubadge"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenuBadge", "sidebarmenubadge", "sidebar-menu-badge"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarMenuBadge", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4683,8 +4683,8 @@ element sidebar_menu_button {
     tag: "sidebar_menu_button"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenuButton", "sidebarmenubutton"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenuButton", "sidebarmenubutton", "sidebar-menu-button"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "SidebarMenuButton", import: "@/components/ui/sidebar" }
     props: [
         { name: "to", type: "string", description: "Route address: vue renders RouterLink via as-child polymorphism; auto-detects active from $route.path (exact or prefix-segment match)" }
@@ -4705,8 +4705,8 @@ element sidebar_menu_item {
     tag: "sidebar_menu_item"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenuItem", "sidebarmenuitem"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenuItem", "sidebarmenuitem", "sidebar-menu-item"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarMenuItem", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4734,8 +4734,8 @@ element sidebar_menu_sub {
     tag: "sidebar_menu_sub"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenuSub", "sidebarmenusub"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenuSub", "sidebarmenusub", "sidebar-menu-sub"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarMenuSub", import: "@/components/ui/sidebar" }
     sub_widgets: ["sidebar_menu_sub_button", "sidebar_menu_sub_item"]
     props: [
@@ -4749,8 +4749,8 @@ element sidebar_menu_sub_button {
     tag: "sidebar_menu_sub_button"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenuSubButton", "sidebarmenusubbutton"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenuSubButton", "sidebarmenusubbutton", "sidebar-menu-sub-button"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarMenuSubButton", import: "@/components/ui/sidebar" }
     props: [
         { name: "to", type: "string", description: "Route address: vue renders RouterLink via as-child polymorphism; auto-detects active from $route.path (exact or prefix-segment match)" }
@@ -4768,8 +4768,8 @@ element sidebar_menu_sub_item {
     tag: "sidebar_menu_sub_item"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarMenuSubItem", "sidebarmenusubitem"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarMenuSubItem", "sidebarmenusubitem", "sidebar-menu-sub-item"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarMenuSubItem", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4782,8 +4782,8 @@ element sidebar_provider {
     tag: "sidebar_provider"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarProvider", "sidebarprovider"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarProvider", "sidebarprovider", "sidebar-provider"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarProvider", import: "@/components/ui/sidebar" }
     sub_widgets: ["sidebar", "sidebar_inset", "sidebar_trigger"]
     props: [
@@ -4814,8 +4814,8 @@ element sidebar_separator {
     tag: "sidebar_separator"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarSeparator", "sidebarseparator"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["SidebarSeparator", "sidebarseparator", "sidebar-separator"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarSeparator", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }

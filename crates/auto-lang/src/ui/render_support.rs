@@ -169,6 +169,35 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["exact", "disabled"],
             "DEPRECATED (Plan 482): renders as a link-styled button (label + optional icon); use nav-item instead",
         ),
+        // Plan 561: sidebar 组件族（shadcn 契约子集）—— 走 aura_view_builder
+        // 契约类构建臂 + 通用 Column/Button 渲染路径；分区/分组折叠/菜单层级/
+        // menu_button 三态 + to: 路由全支持。root 的 side 放置与
+        // collapsible=icon 折叠轨道属 VM 子集外（sidebar-family-and-nav-retirement §3.3）。
+        "sidebar" => TagSupport::partial(
+            &["side"],
+            "Plan 561: contract subset — renders via contract Column (w-64); side placement and collapsible=icon rail flatten (VM subset)",
+        ),
+        "sidebar_provider" | "sidebar-provider" => TagSupport::full(),
+        "sidebar_header" | "sidebar-header" => TagSupport::full(),
+        "sidebar_footer" | "sidebar-footer" => TagSupport::full(),
+        "sidebar_content" | "sidebar-content" => TagSupport::full(),
+        "sidebar_separator" | "sidebar-separator" => TagSupport::full(),
+        "sidebar_inset" | "sidebar-inset" => TagSupport::full(),
+        "sidebar_group" | "sidebar-group" => TagSupport::full(),
+        "sidebar_group_label" | "sidebar-group-label" => TagSupport::full(),
+        "sidebar_group_content" | "sidebar-group-content" => TagSupport::full(),
+        "sidebar_group_action" | "sidebar-group-action" => TagSupport::full(),
+        "sidebar_menu" | "sidebar-menu" => TagSupport::full(),
+        "sidebar_menu_item" | "sidebar-menu-item" => TagSupport::full(),
+        "sidebar_menu_action" | "sidebar-menu-action" => TagSupport::full(),
+        "sidebar_menu_badge" | "sidebar-menu-badge" => TagSupport::full(),
+        "sidebar_menu_button" | "sidebar-menu-button" => TagSupport::partial(
+            &["tooltip"],
+            "Plan 561: contract subset — active/hover/disabled states + to: routing; tooltip deferred (P548-D2 debt)",
+        ),
+        "sidebar_menu_sub" | "sidebar-menu-sub" => TagSupport::full(),
+        "sidebar_menu_sub_item" | "sidebar-menu-sub-item" => TagSupport::full(),
+        "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => TagSupport::full(),
         "badge" | "chip" => TagSupport::partial(
             &["class"],
             "shadcn-style badge with variant colors; custom class limited",
@@ -258,7 +287,7 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["open", "style", "placement"],
             "modal/dialog not implemented — renders as Column",
         ),
-        "sidebar" | "navigation" | "breadcrumb" => TagSupport::fallback(
+        "navigation" | "breadcrumb" => TagSupport::fallback(
             &["style", "items"],
             "navigation component not implemented — renders as Column",
         ),
