@@ -203,19 +203,19 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
 
 ## 验收标准
 
-- [ ] A1: `scripts/measure_test_mem.py` 可用，产出 aavm2 全套 + str_churn
+- [x] A1: `scripts/measure_test_mem.py` 可用，产出 aavm2 全套 + str_churn
       两档的逐测峰值权重表，入库 `.config/test-mem-weights.md`。
-- [ ] A2: `.config/nextest.toml`（含 full/t3）三组配置生效：
+- [x] A2: `.config/nextest.toml`（含 full/t3）三组配置生效：
       `cargo nextest show-config test-groups` 显示组与匹配数非零；
       default-filter 排除 XL 名单。
-- [ ] A3: 裸 `cargo test --features test-vm-files aavm2_`（12 线程）秒级
+- [x] A3: 裸 `cargo test --features test-vm-files aavm2_`（12 线程）秒级
       秒退 + SKIP 指引，进程峰值 <500MB（实测前后对比记入 plan：
       9.78GB → <0.5GB）。
-- [ ] A4: `cargo tf aavm2_`（nextest 全量语义）全绿，运行期进程树峰值
+- [x] A4: `cargo tf aavm2_`（nextest 全量语义）全绿，运行期进程树峰值
       ≤2GB（轮询实测记录）；`cargo t` 基线不回归。
-- [ ] A5: XL/LG 单测清单与权重表一致（review 时人工核对 overrides 名单
+- [x] A5: XL/LG 单测清单与权重表一致（review 时人工核对 overrides 名单
       与权重表档位列逐条对应）。
-- [ ] A6: AGENTS.md 测试档表更新（新增重内存分层说明 + 测量复测方法 +
+- [x] A6: AGENTS.md 测试档表更新（新增重内存分层说明 + 测量复测方法 +
       新增重测试登记路径）。
 
 ## 执行步骤
@@ -306,6 +306,17 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   基点归因探测(f3032c3a8,先于本 plan 全部代码提交)同样失败,证实与
   564 无关,登记 Q6 转告。收口附记:T5 曾漏提交 tests.rs 注册行(add
   目录误漏同名文件),基点探测暴露后已补提交。
+
+## merge 前置（2026-09-05 merge 会话登记）
+
+- **fold 排队约束**: plan-564-dev 为 stacked 分支（基于 plan-532-dev tip），
+  master..plan-564-dev 含 8 个未复审的 P532 提交——**532 未 fold 前不可
+  merge 564 入 master**（否则绕过 532 评审门禁）。532 会话截至本注记仍
+  active（executing，测试进程在跑）。
+- **恢复路径**: 532 完成 execution_done → review → merge 后，重跑
+  `/auto-plan:merge 564`（本 plan 已 reviewed 且 A1-A6 全勾，届时 fold +
+  沉淀 + 归档一次完成；worktree/分支保留至彼时）。
+- worktree 组：D:/autostack/.wt/lang-564/{auto-lang, auto-down(只读 detached@1b3e4bc)}。
 
 ## 复审记录
 
