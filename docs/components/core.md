@@ -303,7 +303,7 @@ A clickable button element
 
 `builtin_widget` · `canvas` · web: `native` · iced: `full` · category: `media`
 
-State-driven drawing canvas (Plan 563). Content renders from the scene state binding - a parallel-string-list stroke model (B12-style: pts list \
+State-driven drawing canvas (Plan 563). Content renders from the scene state binding - scene: .strokes binds a state PREFIX; the engine reads the parallel-string-list stroke model from <prefix>_pts (per-stroke point list \
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
