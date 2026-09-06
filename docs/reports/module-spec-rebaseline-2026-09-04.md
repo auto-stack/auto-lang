@@ -147,15 +147,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `trans.rs`（244 行 trait 层）+ `trans/` 17 文件：{rust, c, python, javascript, gdscript, typescript+ts_×4, tscn, r2a, auto_s2s, s2s_rules, py_known, emit, escape/}；CLI 枚举 `crates/auto/src/main.rs:TransTarget` |
+| 生产入口 | `Trans` trait + `Sink`/`MultiSink`（trans.rs:158/32/200）；各后端 `*Trans` + `transpile_*`；lib.rs 库级 `trans_c(:4839)/trans_rust(:4847)/trans_c_legacy/trans_rust_legacy/trans_*_with_session/trans_rust_merged(:5236)/trans_python(:5304)` 等（快照行号）；CLI `auto trans -i x.at {rust,c,ts,python,js,gd,tscn,godot}` |
+| 公共 API / 关键数据流 | AST → `Trans::trans(ast, sink)` → 目标源码 + source map；a2r 特有：逃逸分析（escape/analyzer.rs）→ 借用/clone/Rc 分层 + post_process 正则清理；s2s：`.as` 脚本糖 token/AST 双帧形改写（plan-555/560/567） |
+| 当前能力 | 八后端家族（a2c/a2r/a2p/a2j/a2ts/a2gd/tscn/r2a）+ s2s 改写器；W1/W2/收官波三批已落地（auto_s2s 骨架→A/B/C/E1 规则→W3 注解预言机）；A1 `.len()` 双通道（plan-569）；a2r 自举线扩容（plan-532） |
+| 实验能力 | s2s AST 发射器链式语义（P555-D2 登记债）；a2j 维护态（a2ts 迁移后） |
+| 未实现/计划项 | a2r async/await 转译（plan-355 已归档未实施）、`#[api]` Axum server（plan-328 已归档待实施）、COSMIC 复制缺口（plan-364 已归档）——plans.md 已标"已归档"，不称 current |
+| 测试证据 | 约定式发现（plan-263）：`src/tests/{a2c,a2r,a2ts}_tests.rs` + FFI `Test.run_*_dir` 扫 `test/a2*/`；`.at` 用例快照：a2c 123/a2p 97/a2r 262/a2ts 85/a2j 10/a2gd 69/cookbook 163（find 复现）；`cargo tt` 档 3786 测（AGENTS 资源表） |
+| 与旧文档的差异 | ①行数表全列漂移：rust.rs 13842→23792（plan-532 扩容）、c 4533→4534、python 2702→3031、gdscript 2072→2091、ts 2274→2320、tscn 675→688（附 wc 复现+快照）；②用例计数漂移：a2c 144→123、a2p 23→97、a2r 23→262、a2ts 16→85（附 find 复现）；③plans.md 328/355/364/400/442 标 plans/ 活跃实已归档→改 archive/；④plans.md/design 36 处 `old/`→`archive/` |
+| 本次修改文件 | `docs/specs/auto-lang/trans/{overview, plans}.md` + `design/sink-and-source-map.md`（其余 design 无冲突） |
 
 ## runtime
 
