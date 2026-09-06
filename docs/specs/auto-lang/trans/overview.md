@@ -34,6 +34,10 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   出口（GIL float()/int()，撒谎注解退回 Python 行为）。a2py：may 变体
   `_auto_may` 家族反映射、with-as 规范序列回译 `with e as x:`、py_int→
   int(x)；parity runner PYTHONPATH 绝对路径注入（本地注解模块载体）。
+- A1 `.len()` 特判（plan-569，P539-D2 根治）：py-known 接收者的方法糖
+  `.len()`（无实参）不再改写 `py_call(recv, "len")`（py 无 `.len` 方法，
+  恒 AttributeError）而改发 **obj_len 双通道组合子**——与 codegen
+  py-类型侧表路径（.at 直跑）殊途同归，`.as`/`.at` 双模式同值。
 规模与成熟度（按代码行数，`crates/auto-lang/src/trans/`）：
 
 | 后端 | 文件 | 行数 | 状态 |

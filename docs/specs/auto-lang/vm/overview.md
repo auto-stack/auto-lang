@@ -29,6 +29,21 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   string-concat **先读后放**池纪律（P053-8 幻影+"got d"双根因，P539-D1
   销号）；namedtuple/structseq 封送 opaque 句柄（version_info 病灶，
   P560-D6 销号）；wrap_tos TAG_LIST/null 补臂。
+- py 返回值方法分派动态化（plan-569，P539-D2 根治）：**codegen py-类型侧表**
+  三件（`last_expr_may_py` 粘性位 / `py_typed_vars` 变量落盘 /
+  `fn_may_py_returns` 单层流型回填）——方法分派决策核（`Expr::Dot` 臂首
+  `receiver_may_py`）在 infer_object_type→"str.len" 限定名 peek 静态路由
+  **之前**插队：py 可能接收者 `.len()` 改发 obj_len(1863)、其余方法改发
+  obj_call(1862)（栈序 `[recv, method, args...]`，与 s2s A1 产物同构），
+  运行期 tag 双通道（PyObjectHandle→GIL / Auto 值→原生语义）；类型谎言
+  本体保留（顶层结果格式化依赖），侧表只覆盖"路由到哪"。三源传导=py-ffi
+  调用点（py_native_map+py_modules 点调）/Ident 加载镜像成员资格/用户 fn
+  调用点限定名双查；重置纪律四处（compile_expr 顶/函数体首/原生追踪链块首/
+  Store 边界）。`shim_str_len` PyObjectHandle 兜底臂恒 0→GIL len（存量编译
+  产物加固）；obj_call Auto 臂=TypeError 硬臂（550 守卫口径，可 catch）。
+  回归载具 `tests/plan569_py_dispatch_tests.rs` ×6 + `test/vm/99_py_dispatch/`
+  ×2 + `99_script_err/05`；rust 侧同族谎言与 .as lowering 括号重绑为登记债
+  P569-D1/P569-R1。
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
 ## 关键入口

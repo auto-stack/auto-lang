@@ -1,18 +1,23 @@
 ---
 plan_id: PLAN-569
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: py-ret-dynamic-dispatch
 author: [zhaopuming]
 created_at: 2026-09-06
-updated_at: 2026-09-06
+updated_at: 2026-09-06   # reviewed（/auto-plan:review PASS，worktree D:/autostack/.wt/lang-569/auto-lang, branch plan-569-dev 尾 commit 301197672）
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "auto-lang/vm/overview.md: 方法分派决策核 py-类型侧表插队——py 可能接收者 .len()→obj_len(1863)/其余方法→obj_call(1862) 组合子（str.* 限定名 peek 静态路由优先权让位）；shim_str_len PyObjectHandle 兜底臂恒 0→GIL len"
+  - "auto-lang/trans/overview.md: s2s A1 规则 .len() 特判——py-known 接收者改发 obj_len（原改写 py_call(recv,\"len\") 在 py 侧恒 AttributeError，py 无 .len 方法）"
+new_spec_components:
+  - "auto-lang/vm: py-类型侧表三件（last_expr_may_py 粘性位/py_typed_vars 变量落盘/fn_may_py_returns 单层流型回填）与三源传导（py-ffi 调用点含 py_modules 点调/Ident 加载镜像/用户 fn 调用点限定名双查）+ 重置纪律（compile_expr 顶/函数体首/原生追踪链块首/Store 边界）"
+  - "parity/python: py_list 去规避示范（py_call __len__ ×4→.len() 直发，PLAN-569 起 README 惯用法表更新）+ tv 语料 99_py_dispatch（双通道两臂）+ 99_script_err/05（obj_call Auto 臂 TypeError 可 catch）"
+touched_goals:
+  - "GOAL-005: Python parity 第三维度——P539-D2 根治（py 返回值方法分派动态化：.at/.as 双模式 obj_* 组合子路由），py_list 去规避 8/8 三方一致，p5-p9 五相位 20 套件零回归"
 
 affects: [auto-lang/vm, auto-lang/trans]   # 受影响的 specs 路径
-current_step: 0
+current_step: 13
 total_steps: 13
 ---
 
@@ -187,46 +192,136 @@ P539-D2 → ✅ 已清偿（本计划链接 + 套件实证）；use.rs 谎言面
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T01** codegen 侧表三字段 + 写入点：`crates/auto-lang/src/vm/codegen.rs`
+- [✅ 已完成] **T01** codegen 侧表三字段 + 写入点：`crates/auto-lang/src/vm/codegen.rs`
   Codegen 结构体加 `last_expr_may_py/py_typed_vars/fn_may_py_returns`；py_native_map
   命中臂置位；last_expr_type 显式赋值处对照审计重置。
   验证：`cargo check -p auto-lang`（零新错误）。
-- [ ] **T02** Store/fn 返回传导：Store 落盘邻域（:2093 附近）py_typed_vars 写入；
+  证据：`cargo check` 绿（codegen.rs/native.rs 零告警）；重置纪律落点=compile_expr
+  顶（与 last_was_native_void 同位）/函数体首（:1253 邻域）/原生追踪链块首
+  （:8999 邻域）——py_native_map+py_modules 双臂置 true（commit e32279e48）。
+- [✅ 已完成] **T02** Store/fn 返回传导：Store 落盘邻域（:2093 附近）py_typed_vars 写入；
   FnDecl 尾表达式回填 fn_may_py_returns；调用点（:11535 邻域）查表传导。
   验证：`cargo check` + fn 流型传导单测。
-- [ ] **T03** 决策核插队：方法分派决策（:7889 前）may_py → obj_len/obj_call 发射
+  证据：单测 `fn_return_py_propagates_to_obj_len` 绿（fn_may_py_returns 含 mk →
+  py_typed_vars 含 t → obj_len 发射）；传导落点=全局路径 :1716 后 + 局部路径
+  :2089 推断链前 + Ident 加载镜像 + reloc 调用点限定名/裸名双查。
+- [✅ 已完成] **T03** 决策核插队：方法分派决策（:7889 前）may_py → obj_len/obj_call 发射
   （len 特判 obj_len；其余 obj_call 与 s2s A1 产物同构）。
   验证：`cargo t` codegen 新单测 ×4（py-len/py-method/auto-str/auto-fn）。
-- [ ] **T04** shim 兜底：`vm/native.rs` shim_str_len PyObjectHandle 臂 0 → GIL len。
+  证据：plan569_py_dispatch_tests 6/6 绿（含 py_var_len→1863、py_var_method→1862
+  且 u 续传侧表、auto_str/auto_fn 零变化红线）；stash 撤实现即编译红（红绿验证）。
+- [✅ 已完成] **T04** shim 兜底：`vm/native.rs` shim_str_len PyObjectHandle 臂 0 → GIL len。
   验证：`cargo t` str_len 相关既有测试绿。
-- [ ] **T05** a2py `.len()` 反映射核对/补臂：`trans/python.rs` 方法调用发射核对
+  证据：`cargo t str_len` 6/6 绿（as_foreign_object 臂返 fo.obj_len）。
+- [✅ 已完成] **T05** a2py `.len()` 反映射核对/补臂：`trans/python.rs` 方法调用发射核对
   `.len()→len(x)`；缺则补。验证：`cargo tt`。
-- [ ] **T06** tv 语料：`crates/auto-lang/test/vm/99_py_dispatch/`（01_dual_len/
+  证据：映射已在位（python.rs method_call "len" 臂 → `len(recv)`，无需补）；
+  `cargo tt` 3807/3807 绿（test_charts_gallery_compiles=计划文内记载既有红，
+  --skip 后全绿）。
+- [✅ 已完成] **T06** tv 语料：`crates/auto-lang/test/vm/99_py_dispatch/`（01_dual_len/
   02_auto_str_unchanged 两例 .as + expected.out + 测试函数）。
   验证：`cargo test -p auto-lang --lib --features test-vm-files,python test_99_py_dispatch`。
-- [ ] **T07** obj_call Auto 臂可 catch 断言：99_script_err 增例（Auto 值误入
+  证据：2/2 绿——t.len()=6（py 臂 GIL）+ s.len()=3（Auto 臂不变）；顺修 s2s A1
+  len 特判（py-known 接收者 .len() 原改写 py_call("len") 恒 AttributeError——py
+  无 .len 方法，改发 obj_len 与 codegen 侧表殊途同归）。
+- [✅ 已完成] **T07** obj_call Auto 臂可 catch 断言：99_script_err 增例（Auto 值误入
   obj_call → TypeError catch 载荷）。验证同 T06。
-- [ ] **T08** py_list 去规避：`parity/libs/python/py_list/tests/auto/list.as`
+  证据：05_obj_call_auto_catch 绿（分支不敏感保守正报：pick 尾 py 调用 → fn 返回
+  Auto str 仍标记 → .upper() 路由 obj_call → "caught: TypeError: object is not
+  callable" 可 catch 续行）；01/02 为 master 预存红（MissingNative(503)，stash
+  基线复现实证），非本批引入。
+- [✅ 已完成] **T08** py_list 去规避：`parity/libs/python/py_list/tests/auto/list.as`
   `py_call(lst,"__len__")` ×4 → `lst.len()`；README 映射表更新。
   验证：`cd parity && cargo run -- run py_list` 8/8。
-- [ ] **T09** train.as 文件头注记更新（P539-D2 已清偿口径）+ 其余套件 README
+  证据：8/8 (100.0%) 三方一致（worktree auto.exe 经 AUTO_BINARY 注入——parity
+  新鲜度闸门拒绝主检出陈旧产物）；README 三处同步（映射表/测试表/读取说明）。
+- [✅ 已完成] **T09** train.as 文件头注记更新（P539-D2 已清偿口径）+ 其余套件 README
   惯用法行统一注记（不改测试体）。验证：grep 注记在位。
-- [ ] **T10** 全 parity 复跑：p5-p9 五相位零回归。验证：parity 报告全 100%。
-- [ ] **T11** 门禁：`cargo t --no-fail-fast` 对照基线零新增 + `cargo tv` + `cargo tt`。
-- [ ] **T12** 债务核销：KNOWN-DEBT P539-D2 ✅（附链接）；use.rs 谎言族新条目登记。
-- [ ] **T13** 合入前 `cargo tf` 全量 + roadmap §7.4-③ 状态回写。
+  证据：train.as:17-19 已清偿口径（for-in 惯例沿用）；py_os/py_re/py_json/
+  py_string/py_configparser/py_torch_train README `__len__` 惯用法行统一注记
+  （"PLAN-569 起可用，规避仍正确，去规避留待自然触碰"），测试体零改动。
+- [✅ 已完成] **T10** 全 parity 复跑：p5-p9 五相位零回归。验证：parity 报告全 100%。
+  证据：p5 33/33、p6 20/20、p7 61/61（含去规避后 py_list 8/8）、p8 28/28、
+  p9 28/28——20 套件 170 用例全 100.0%（commit 6093c19bf）。
+- [✅ 已完成] **T11** 门禁：`cargo t --no-fail-fast` 对照基线零新增 + `cargo tv` + `cargo tt`。
+  证据：cargo t 21 红与 master 基线**逐一同名**（环境相关预存族，comm 差集空）；
+  cargo tv 1 红=charts 既有（master 同形）+3601 绿（含新增 7 测）；cargo tt
+  3807/3807 绿（charts 既有红 --skip）；三档全部零新增红。
+- [✅ 已完成] **T12** 债务核销：KNOWN-DEBT P539-D2 ✅（附链接）；use.rs 谎言族新条目登记。
+  证据：KNOWN-DEBT P539-D2 划线核销（侧表方案+实证清单）；新债 P569-D1
+  （handle_rust_import :4963-4991 未知签名 StrFixed——rust-ffi 承载面，不适用
+  py 侧表，独立偿还路径）。
+- [✅ 已完成] **T13** 合入前 `cargo tf` 全量 + roadmap §7.4-③ 状态回写。
+  证据：cargo tf 3460/3461（唯一红=charts，master 基线 3454/3455 同形——零新增）；
+  roadmap §7.4-③ 已交付划线（链接本计划 + P569-D1 顺登记注记）（commit a6c6b2ac8）。
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审人**：zhaopuming（/auto-plan:review，2026-09-06）；worktree
+`D:/autostack/.wt/lang-569/auto-lang`（branch `plan-569-dev`，复审尾 commit
+`301197672`）。
+
+**复审前 resync**：master 执行期前移两批（plan-547/auto-down-054 折叠 +
+547 归档），与本计划改动面两次 diff **零文件交集**；`git merge master`
+干净并入（b1b87c0cf），全部门禁在集成态复跑。
+
+**逐验收标准裁定**：
+
+1. **PASS**——`#[script] .at` 直跑实测：`var t = arange(6)` 后 `t.len()`=6、
+   `t.sum()`=15（obj_call → GIL call_method numpy sum，方法链照常）、
+   `fn mk()->str{return arange(6)}` 返回传导 `u.len()`=6、Auto `s.len()`=3；
+   .as lowered 形态语料 99_py_dispatch/01 同值（双模式闭环）。
+2. **PASS**——跨函数流型传导：编译期单测 `fn_return_py_propagates_to_obj_len`
+   （fn_may_py_returns 含 mk→py_typed_vars 含 t→obj_len 发射）+ 上述运行期
+   `u.len()`=6 双实证。
+3. **PASS**——py_list 去规避 8/8 三方一致（复审集成态二进制复跑）；p5-p9
+   五相位 20 套件 170 用例执行期全 100%；复审 p7 九套件（含 py_list）集成态
+   复抽全 100%。
+4. **PASS**——集成态四档：cargo t 21 红=master 基线**逐一同名**（comm 差集
+   空，环境相关预存族）；cargo tv 3601/3602、cargo tt 3807/3808、cargo tf
+   3460/3461——唯一红均 `test_charts_gallery_compiles`（master 同形既有红，
+   计划文内明示排除）；plan569 单测 6/6、99_py_dispatch 2/2、
+   99_script_err 05 通过（01/02 为 master 预存 MissingNative(503) 族，
+   执行期 stash 基线复现实证）。
+5. **PASS**——KNOWN-DEBT P539-D2 划线核销（附本计划链接+实证清单）；use.rs
+   同族谎言新债 P569-D1 登记（rust-ffi 承载面，独立偿还路径）；py_list/README
+   惯用法表 + 5 套件 README 统一注记在案；roadmap §7.4-③ 已交付回写。
+
+**遗漏/延后/workaround 扫描**：
+
+- **计划内裁定项**（非静默延后）：其余 7 套件去规避不做（计划 C 节明文，
+  README 注记"留待自然触碰"）；fn_may_py_returns 单层（待澄清①推荐口径，
+  已裁决注记）；obj_call Auto 臂维持硬臂（待澄清②推荐口径，可 catch 实证）。
+- **计划文本偏差**（代码为正）：A2 节 obj_call 误写 id 1860（1860 是 obj_get；
+  实际 obj_call=1862）——实现用具名常量 `NATIVE_INTEROP_OBJ_CALL` 规避。
+- **复审修正**：codegen.rs 两初始化器 `c_ffi_functions` 注释被执行期编辑误缩
+  （C FFI function mappings→C FFI mappings）——纯噪音，已还原（301197672）。
+- **复审发现的预存缺陷**（非本计划引入，in-process 二分实证——569 s2s 改动
+  灭活后复现，merge-base 预存）：`.as` lowering 对括号复合接收者方法调用
+  重绑（`("x"+s).len()`→`"x"+s.len()`；.at 裸路径正确）——登记 P569-R1
+  （规避=中间变量，99_py_dispatch/02 即此形态）。
+- **归因注记**：主检出 auto.exe 曾为陈旧产物（9/5 构建 vs 9/6 HEAD）误导
+  CLI 对照一次；parity 新鲜度闸门教训适用于手工探针。复审期一次误弹并行
+  会话共享 stash（多 worktree 共享 refs/stash）已 hard reset 复原，他人
+  stash 条目无损。
+
+**裁定：全部验收标准通过，无阻断债（P569-D1/P569-R1 为低风险、偿还路径
+明确的登记债）→ status: reviewed，可入 /auto-plan:merge。**
 
 ## 待澄清事项
 
 1. **fn_may_py_returns 跨层深度**：首批只做单层（fn 尾表达式直呼 py-ffi），
    fnA→fnB→py 的两层链是否传导？推荐首批单层（保守漏报=维持规避，安全），
    多层流型按需求另批。
+   ——执行裁决（2026-09-06）：按推荐**首批单层**落地（FnDecl 尾表达式回填 +
+   调用点查表，不递归展开嵌套 fn 调用链）。
 2. **obj_call Auto 臂语义**：Auto 值误入（保守正报）现报 TypeError "not callable"
    ——是否扩为"回落 CALL_SPEC 动态分派"的软臂？推荐维持硬臂（响亮优于静默，
    与 550 守卫一致），软臂留待实证误报频率后再议。
+   ——执行裁决（2026-09-06）：按推荐**维持硬臂**；可 catch 已实证
+   （99_script_err/05：分支不敏感误标场景 catch 载荷 "TypeError: object is
+   not callable" 后续行）。
 3. **行为变化公告**：`.len()` 等在误标 py 的 Auto str 上从"读垃圾"变"TypeError
    正报"（或正确分派）——推荐随计划提交信息公告即可，正报优于垃圾读。
+   ——执行裁决（2026-09-06）：随 worktree 提交 e32279e48 信息公告
+   （"响亮正报优于静默垃圾读"口径）。

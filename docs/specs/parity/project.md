@@ -18,7 +18,9 @@
 - **Python parity 线（Plans 369/461/539）**：py_* 三方套件（AutoVM vs
   a2py vs 原生 Python，tests/python/ 自动识别）+ phase p5-p7（stdlib）
   p8（sci-compute）p9（torch 惯用法——py_torch_infer 16 例 +
-  py_torch_train 10 例 seed 化收敛，Plan 539）。
+  py_torch_train 10 例 seed 化收敛，Plan 539）。py_list 去规避示范
+  （`py_call(lst,"__len__")` ×4 → `lst.len()` 直发，PLAN-569 P539-D2
+  根治起可用；其余套件 README 惯用法行已统一注记，去规避留待自然触碰）。
 - 不做：不修复编译器分歧本身（修复在 auto-lang）；不纳入主 workspace（独立 Cargo.toml/lock）。
 
 ## 模块架构
