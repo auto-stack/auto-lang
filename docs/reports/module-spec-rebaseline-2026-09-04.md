@@ -119,15 +119,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `interpreter/`（mod.rs 379 行 + vm_interpreter.rs 247 行）+ `execution_engine.rs`（102 行）+ `vm.rs`（844 行，VM 外观/任务定义）。旧 `eval.rs`/`interp.rs` 已物理删除（plan-091，commit `6862bb45f` 实测存在） |
+| 生产入口 | `AutoInterpreter::{eval, eval_template, merge_atom}`；`VmInterpreter::{run, call, set_global, get_global}`；`ExecutionEngine::{default_engine, from_env, get}`；`execute_with_engine(_capture)`；lib.rs 高层 `run`(:336)/`run_with_capture`(:346)/`run_autovm`(:446)/`get_global_runtime`(:23)（快照行号） |
+| 公共 API / 关键数据流 | 字符串 → Parser → Codegen（ABC 字节码）→ 重定位 → VirtualFlash → AutoVM 任务执行 → 栈顶提取 `Value`（nanbox 标记 + 对象 ID 区间解码）；引擎选择层全部落到 `run_autovm(_capture)` |
+| 当前能力 | AutoVM 薄封装编程式求值（auto-gen 模板/auto-man 资产/UI 桥/编译期求值消费）；stdout 捕获（plan-177）；`AUTO_EXECUTION_ENGINE` env 覆盖（evaluator 等值仅告警重定向） |
+| 实验能力 | 结果提取部分覆盖（int/f32/f64/string/object/array；test_simple_eval/test_string_eval 仍 `#[ignore="Result extraction not yet implemented"]`） |
+| 未实现/计划项 | `VmInterpreter::call()`（:211 TODO 恒返 Nil；test_function_call `#[ignore]`）；globals 侧表不注入 VM 执行环境；持久 session/增量编译归 CompileSession（compile.rs）不在此 |
+| 测试证据 | execution_engine.rs 内联 2 测试；interpreter/mod.rs 测试（3 ignore + test_eval_succeeds/test_merge_atom_obj/test_global_scalar_visible_in_eval/test_for_over_injected_global_array/test_mold_template_for_over_node_array 等活跃） |
+| 与旧文档的差异 | ①"use-evaluator feature 路径在代码中已不存在"表述不精确——Cargo.toml:37 仍有空声明 `use-evaluator = []`（零 cfg 引用），已改述（overview + design/engine-selection.md 两处）；②call() 行号 170→211；③"3 个测试因此 #[ignore]"细化为 2 结果提取 + 1 函数调用；④plans.md `old/`→`archive/`。TreeWalker/Evaluator 历史化叙事（ADR-01/02、design/vm-backed-interpreter.md "不做 TreeWalker"）复核成立，维持 |
+| 本次修改文件 | `docs/specs/auto-lang/interpreter/{overview, plans}.md` + `design/engine-selection.md`（architecture/template-evaluation/vm-backed-interpreter 无冲突） |
 
 ## vm
 
