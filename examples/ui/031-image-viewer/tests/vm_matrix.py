@@ -35,12 +35,17 @@ PROJECT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 SHOTS = os.path.join(os.path.dirname(__file__), "screenshots")
 
 
-def free_port(start=9570):
-    for p in range(start, start + 50):
+def free_port(start=11570):
+    # bind-based probe: connect_ex reports Windows excluded port ranges
+    # (Hyper-V reservations, os error 10013) as "free" while bind() fails.
+    for p in range(start, start + 200):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(("127.0.0.1", p)) != 0:
+            try:
+                s.bind(("127.0.0.1", p))
                 return p
-    raise RuntimeError("no free port")
+            except OSError:
+                continue
+    raise RuntimeError("no bindable port in range")
 
 
 class Mcp:
