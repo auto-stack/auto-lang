@@ -37,8 +37,9 @@ graph LR
 要点：
 
 - `TypeStore` 是所有类型信息的单一数据源；parser/codegen 共享 `Arc<RwLock<TypeStore>>`
-  （infer/context.rs:73）。`infer/registry.rs:TypeRegistry` 已 DEPRECATED 但仍被
-  `type_registry.rs`、`parser.rs`、`vm/codegen.rs` 引用，迁移未收尾。
+  （infer/context.rs:79 `type_store` 字段）。`infer/registry.rs:TypeRegistry` 已 DEPRECATED，
+  且已无生产消费者（2026-09-07 实测 `rg -rn "infer::registry" crates/` 零命中，仅
+  types.rs 头注释提及）——迁移收尾只剩删除孤儿模块本身。
 - `infer/` 是推断与检查主体；`typeck/` 目前只有 `ParamChecker` 且未接入任何调用方。
 - `ownership/` 提供编译期借用/生命周期分析；`trans/escape/`（plan-310）在 a2r 转译期
   做逃逸分析并决定借用 vs 智能指针回退，与 `ownership/` 是互补而非替代关系
@@ -46,8 +47,9 @@ graph LR
 
 ## 文档与代码分歧记录
 
-1. design/02 称推断引擎"未接入 parser"——已过时，`parser.rs:6598-6654` 调用 `infer_expr`，
-   `parser.rs:8246` 起调用 `TraitChecker::check_conformance`。
+1. design/02 称推断引擎"未接入 parser"——已过时，`parser.rs` 调用 `infer_expr`
+   （2026-09-07 快照首中 8329 行，`rg -n "infer::infer_expr" crates/auto-lang/src/parser.rs`）
+   并调用 `TraitChecker::check_conformance`（快照 10279/10327 行）。
 2. design/02 设想 `#[with(...)]` 泛型约束注解——实际 plan-061 实现为内联 `<T: Spec>`
    （ast/types.rs:372 `TypeParam.constraint`，Display 输出 `: {constraint}`）。见 ADR-08。
 3. design/03 错误码表称 TypeError 为 E0101-E0105——实际 error.rs 中 TypeError 到 E0106，

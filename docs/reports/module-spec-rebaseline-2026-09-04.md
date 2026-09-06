@@ -91,15 +91,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `crates/auto-lang/src/{types.rs, type_registry.rs, typeck.rs, typeck/, infer/（10 文件）, ownership/（borrow/cfa/lifetime）, trait_checker.rs, symbols.rs}`；类型表示本体在 `ast/types.rs`（frontend 目录，跨引用） |
+| 生产入口 | `types.rs:TypeStore`（单一数据源）；`infer/context.rs:InferenceContext`（`type_store: Arc<RwLock<TypeStore>>` :79）；`infer/{expr:infer_expr, stmt:check_stmt, functions:check_fn, unification:unify}`；`trait_checker.rs:TraitChecker`（spec 符合性，parser 快照 10279/10327 调用）；`ownership/{BorrowChecker, LifetimeContext, LastUseAnalyzer}`；`symbols.rs:{SymbolLocation, CodePak}` |
+| 公共 API / 关键数据流 | parser → `infer_expr`（快照首中 8329 行）→ TypeStore 注册/查询；`impl X as Spec` → `TraitChecker::check_conformance`；`type_registry.rs:TypeRegistry`（100 行，REPL 持久化侧，`SharedTypeRegistry` 为 lib.rs 再导出） |
+| 当前能力 | 39 变体 Type 枚举（awk 实测）；HM/Robinson 统一（occurs check）；spec/vtable 符合性检查；泛型（模板+单态分发）；所有权三阶段（mod.rs 头注：move ✅/owned str ✅/borrow 🔄）；Plan 514 W1 fn 体作用域索引栈（`fn_scope_idxs`）；错误码 E0101-E0106+E0201-E0204 |
+| 实验能力 | `ParamChecker`（typeck/param_check.rs）已实现但零外部调用点（typeck/ 之外无引用——与 overview 原文一致，复核维持）；借检查 Phase 3 in-progress（头注 🔄） |
+| 未实现/计划项 | storage-injection（plan-055 ⏳ 未落地，plans.md 已如实标注）；`infer/registry.rs` DEPRECATED 孤儿模块待删除（新发现的清理项，非能力缺口） |
+| 测试证据 | 内联 `mod tests` 14 文件（infer/ 9 + ownership/ 3 + trait_checker/types）；`src/tests/{infer_tests, ownership_tests, may_tests, generic_spec_tests, const_generic_tests, const_generic_integration_tests}.rs` |
+| 与旧文档的差异 | ①"约 35 变体"→实测 39；②parser 行号 6598-6654/8246 漂移→8329/10279（附 rg 复现+快照日期）；③registry 消费方声称（type_registry/parser/vm::codegen/autovm_persistent 引用）已不成立——实测 `rg -rn "infer::registry" crates/` 零生产命中，模块孤儿化；④infer/context.rs:73→:79；⑤plans.md `old/` 归档引用→`archive/` |
+| 本次修改文件 | `docs/specs/auto-lang/types/{overview, architecture, plans}.md` + `design/{type-representation, type-inference, typestore}.md`（error-types/ownership/type-inference 其余部分无冲突） |
 
 ## comptime
 
