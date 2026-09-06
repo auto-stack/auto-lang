@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     list.push(30);
 
 
-    let first = list[0].clone()?;
-    let second = list[1].clone()?;
+    let first = list.get((0) as usize).cloned().ok_or("index out of bounds")?;
+    let second = list.get((1) as usize).cloned().ok_or("index out of bounds")?;
     Ok(())
 }

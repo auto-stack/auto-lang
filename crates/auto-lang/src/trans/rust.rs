@@ -219,6 +219,12 @@ pub struct RustTrans {
     /// emit `let mut` so the mutation compiles. Populated by scanning the fn
     /// body at fn_decl entry (scan_mutated_bindings).
     mutated_let_bindings: std::collections::HashSet<AutoStr>,
+    /// PLAN-010 T2: idents read by statements AFTER the current one in the
+    /// enclosing body(). Gates the unconstrained-List.new/None type defaults
+    /// in store() — a later read can pin the real element/Option type via
+    /// inference (`return Ok(messages)`), and a forced `Vec<i64>`/`Option<i64>`
+    /// annotation would override it (E0308).
+    later_used_locals: std::collections::HashSet<AutoStr>,
     /// Plan 376D: Shared TypeStore from all modules (for type inference).
     /// When Some, `run_type_inference` uses this instead of building a local one.
     shared_type_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
@@ -458,6 +464,7 @@ impl RustTrans {
             by_value_iter_bindings: std::collections::HashSet::new(),
             str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
+            later_used_locals: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -552,6 +559,7 @@ impl RustTrans {
             by_value_iter_bindings: std::collections::HashSet::new(),
             str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
+            later_used_locals: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -682,12 +690,32 @@ impl RustTrans {
         }
         self.mutated_let_bindings.clear();
         self.mutated_let_bindings = Self::scan_mutated_bindings(body);
+        self.later_used_locals.clear();
+        // PLAN-010 T2: per-statement later-read sets (see the field doc).
+        // A None from the collector (unwalked variant) means "assume used".
+        let body_stmt_reads: Vec<Option<std::collections::HashSet<AutoStr>>> =
+            body.stmts.iter().map(Self::stmt_read_idents).collect();
         // Plan 447 H5: same per-function is-scrutinee counts for the
         // body-only transpile path (used by UI/excerpt pipelines).
         self.fn_is_scrutinee_counts = Self::scan_is_scrutinee_uses(body);
         self.current_scope_depth = 0;
         let mut result = Vec::new();
-        for stmt in &body.stmts {
+        for (stmt_i, stmt) in body.stmts.iter().enumerate() {
+            self.later_used_locals = body_stmt_reads[stmt_i + 1..]
+                .iter()
+                .fold(std::collections::HashSet::new(), |mut acc, s| {
+                    match s {
+                        Some(names) => {
+                            acc.extend(names.iter().cloned());
+                        }
+                        // Unwalkable stmt later in the body — assume everything
+                        // might be referenced; suppress the type defaults.
+                        None => {
+                            acc.insert(AutoStr::from("\u{0}unwalkable"));
+                        }
+                    }
+                    acc
+                });
             let mut sink = Sink::new(AutoStr::from("body_stmt"));
             self.stmt(stmt, &mut sink)?;
             let raw = String::from_utf8(sink.done()?.to_vec())
@@ -2588,26 +2616,21 @@ impl RustTrans {
                 // add .to_string() to convert &str -> String
                 if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
                     if let Some(ref ret) = self.current_fn_ret_type {
-                        // Plan 384: helper — does this return type (possibly
-                        // wrapped in Future/async) boil down to Result<String,...>?
-                        fn ret_is_result_string(ty: &Type) -> bool {
-                            match ty {
-                                Type::Result(inner) => matches!(inner.as_ref(),
-                                    Type::StrSlice | Type::StrOwned | Type::StrFixed(_)),
-                                Type::GenericInstance(inst) => {
-                                    if inst.base_name == "Result" {
-                                        inst.args.first().map(|i| matches!(i,
-                                            Type::StrSlice | Type::StrOwned | Type::StrFixed(_))).unwrap_or(false)
-                                    } else {
-                                        // Future<Result<String,_>> / other wrapper: recurse into first arg
-                                        inst.args.first().map(ret_is_result_string).unwrap_or(false)
-                                    }
-                                }
-                                _ => false,
-                            }
-                        }
-                        if ret_is_result_string(ret) {
+                        if Self::ret_is_result_string(ret) {
                             write!(out, ".to_string()")?;
+                        }
+                    }
+                }
+                // PLAN-010 T2 (009 ledger 032_fn_result_enum): Ok(str-param)
+                // into Result<String, _> — the param renders as &str and needs
+                // the same materialization Some(...) already applies
+                // (E0308 expected String, found &str otherwise).
+                if let Expr::Ident(name) = e.as_ref() {
+                    if self.current_fn_str_params.contains(name) {
+                        if let Some(ref ret) = self.current_fn_ret_type {
+                            if Self::ret_is_result_string(ret) {
+                                write!(out, ".to_string()")?;
+                            }
                         }
                     }
                 }
@@ -4308,6 +4331,34 @@ impl RustTrans {
                 // (E0507) — clone the Option before unwrapping.
                 let lhs_needs_clone = matches!(lhs.as_ref(), Expr::Dot(obj, _)
                     if matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n)));
+                // PLAN-010 T2: type-aware lowering. A non-optional receiver can
+                // never be nil in Auto — `x ?? d` (x: int) is just `x`
+                // (`.unwrap_or` on i64 is E0599). An index receiver lowers to
+                // nil-safe `.get(idx)` (Auto indexing is nil-safe; `[]` panics).
+                match lhs.as_ref() {
+                    Expr::Index(base, idx)
+                        if self.expr_type_is_option_like(base).map(|o| !o).unwrap_or(false) =>
+                    {
+                        self.expr(base, out)?;
+                        write!(out, ".get((")?;
+                        self.expr(idx, out)?;
+                        write!(out, ") as usize)")?;
+                        write!(out, ".cloned().unwrap_or(")?;
+                        self.expr(rhs, out)?;
+                        if matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                            write!(out, ".to_string()")?;
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    Expr::Ident(n) if self.expr_type_is_known_scalar(lhs)
+                        && !self.borrowed_iter_vars.contains(n)
+                        && !self.by_value_iter_bindings.contains(n) => {
+                        self.expr(lhs, out)?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
                 self.expr(lhs, out)?;
                 if lhs_needs_clone {
                     write!(out, ".clone()")?;
@@ -4324,6 +4375,40 @@ impl RustTrans {
             Expr::ErrorPropagate(expr) => {
                 // Error propagation: expr.?
                 // Plan 067: May system support
+                // PLAN-010 T2: type-aware lowering. `.?` on a non-optional,
+                // non-Result receiver is the value itself (`x.?` with x: int —
+                // `x?` in Rust is E0277). An index receiver lowers to nil-safe
+                // `.get(idx)` + ok_or (Auto `list[i].?` propagates out-of-bounds
+                // as an error; `list[i]?` on a bare index is E0277).
+                match expr.as_ref() {
+                    Expr::Index(base, idx)
+                        if self.expr_type_is_option_like(base).map(|o| !o).unwrap_or(false) =>
+                    {
+                        self.expr(base, out)?;
+                        write!(out, ".get((")?;
+                        self.expr(idx, out)?;
+                        write!(out, ") as usize)")?;
+                        write!(out, ".cloned().ok_or(\"index out of bounds\")?")?;
+                        return Ok(());
+                    }
+                    Expr::Ident(n) if {
+                        if std::env::var("A2R_DEBUG_EP").is_ok() {
+                            eprintln!("[a2r-ep] receiver={} ty={:?} scalar={}",
+                                n, self.local_var_types.get(n.as_str()),
+                                self.expr_type_is_known_scalar(expr));
+                        }
+                        self.expr_type_is_known_scalar(expr)
+                            // Iter-var bindings may carry Rust-side Result items
+                            // (read_dir loops) even when Auto types them as
+                            // scalars — their `?` is real propagation.
+                            && !self.borrowed_iter_vars.contains(n)
+                            && !self.by_value_iter_bindings.contains(n)
+                    } => {
+                        self.expr(expr, out)?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
                 self.expr(expr, out)?;
                 write!(out, "?")?;
                 Ok(())
@@ -8060,6 +8145,24 @@ impl RustTrans {
             // Check for type name static method: Type.method(args) -> Type::method(args)
             // (stdlib modules already handled by the early check above)
             if let Expr::Ident(type_name) = object.as_ref() {
+                // PLAN-010 T2: Auto's optional-type constructors. `May.val(v)`
+                // lowered verbatim emits `May::val(v)` — unresolved in a
+                // standalone product (May lives in a2r_std; 009 ledger E0433).
+                // May IS Rust Option: lower to the bare constructors.
+                if type_name.as_str() == "May" {
+                    if method_name.as_str() == "val" || method_name.as_str() == "some" {
+                        write!(out, "Some(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    if matches!(method_name.as_str(), "nil" | "none") {
+                        write!(out, "None")?;
+                        return Ok(());
+                    }
+                }
                 let is_type = type_name
                     .chars()
                     .next()
@@ -9981,6 +10084,63 @@ impl RustTrans {
             matches!(expr, Expr::Str(_) | Expr::CStr(_))
         } else {
             false
+        }
+    }
+
+    /// PLAN-010 T2: is this expression's type a known VALUE scalar (int/
+    /// float/bool/char/byte)? Only such receivers can never be Option/Result
+    /// in the generated Rust, so `x.?` / `x ?? d` lower to the bare value.
+    /// Str-family is deliberately excluded: a str-typed iter var materializes
+    /// as `Result<DirEntry, io::Error>` in read_dir loops (cookbook/file),
+    /// where `entry?` is real propagation. Unknown/composite types keep the
+    /// legacy untyped lowering.
+    fn expr_type_is_known_scalar(&self, e: &Expr) -> bool {
+        let ty = match e {
+            Expr::Ident(n) => match self.local_var_types.get(n.as_str()) {
+                Some(t) => t.clone(),
+                None => return false,
+            },
+            _ => self.infer_type_from_expr(e),
+        };
+        matches!(ty, Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte)
+    }
+
+    /// Plan 384: does this return type (possibly wrapped in Future/async)
+    /// boil down to Result<String, ...>? (PLAN-010 T2: hoisted from the
+    /// Expr::Ok emission arm for reuse by the Ok(str-param) coercion.)
+    fn ret_is_result_string(ty: &Type) -> bool {
+        match ty {
+            Type::Result(inner) => matches!(inner.as_ref(),
+                Type::StrSlice | Type::StrOwned | Type::StrFixed(_)),
+            Type::GenericInstance(inst) => {
+                if inst.base_name == "Result" {
+                    inst.args.first().map(|i| matches!(i,
+                        Type::StrSlice | Type::StrOwned | Type::StrFixed(_))).unwrap_or(false)
+                } else {
+                    // Future<Result<String,_>> / other wrapper: recurse into first arg
+                    inst.args.first().map(Self::ret_is_result_string).unwrap_or(false)
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// PLAN-010 T2: best-effort Option/Result-ness of an expression's type.
+    /// Some(true) = Option/Result; Some(false) = known non-optional type;
+    /// None = unknown (callers fall back to the legacy untyped lowering).
+    fn expr_type_is_option_like(&self, e: &Expr) -> Option<bool> {
+        let ty = match e {
+            Expr::Ident(n) => match self.local_var_types.get(n.as_str()) {
+                Some(t) => t.clone(),
+                None => self.infer_type_from_expr(e),
+            },
+            _ => self.infer_type_from_expr(e),
+        };
+        match ty {
+            Type::Option(_) | Type::Result(_) => Some(true),
+            Type::Unknown => None,
+            _ => Some(false),
         }
     }
 
@@ -12302,7 +12462,7 @@ impl RustTrans {
         };
         // Skip type annotation for: Unknown types, error propagation (?), closures, or unknown placeholders
         let is_error_propagate = matches!(&store.expr, Expr::ErrorPropagate(_));
-        let has_unknown = matches!(store.ty, Type::Unknown) || ty_name.contains("/* unknown */") || is_error_propagate;
+        let mut has_unknown = matches!(store.ty, Type::Unknown) || ty_name.contains("/* unknown */") || is_error_propagate;
 
         // Check if the expression is a closure - closures should not have explicit type annotations
         // because Rust infers closure types automatically
@@ -12344,7 +12504,7 @@ impl RustTrans {
             None => (false, false),
         };
 
-        let ty_name = if is_borrow && matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
+        let mut ty_name = if is_borrow && matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
             "&str".to_string()
         } else if is_mut_borrow && matches!(store.ty, Type::StrOwned | Type::StrFixed(_)) {
             "&mut str".to_string()
@@ -12367,6 +12527,51 @@ impl RustTrans {
                 spec_name.map(|sn| format!("Vec<Box<dyn {}>>", sn))
             } else { None }
         } else { None };
+
+        // PLAN-010 T2 (009 ledger 026_list_basic): `let list = List.new()`
+        // with no element type anywhere in scope renders `let list = Vec::new()`
+        // — E0282 (unconstrained Vec<_>). Auto would infer from usage; with no
+        // usage to infer from, default the element to i64 (Auto's int-default,
+        // same rule as `let x = 42` → i64) and annotate explicitly. Skipped
+        // when the binding is read later — that read may pin the real element
+        // type via inference (`return Ok(messages)` over Vec<Message>;
+        // 08_generics/007), and a forced annotation would override it.
+        let init_is_bare_list_new = matches!(&store.expr, Expr::Call(c)
+            if c.args.args.is_empty()
+                && matches!(c.name.as_ref(),
+                    Expr::Dot(obj, m)
+                        if m.as_str() == "new"
+                            && matches!(obj.as_ref(),
+                                Expr::Ident(n) | Expr::GenName(n) if n.as_str() == "List")));
+        let list_ty_unconstrained = match &store.ty {
+            Type::Unknown => true,
+            Type::List(inner) => matches!(inner.as_ref(), Type::Unknown),
+            _ => false,
+        };
+        if init_is_bare_list_new && list_ty_unconstrained
+            && !self.later_used_locals.contains(store.name.as_str())
+        {
+            ty_name = "Vec<i64>".to_string();
+            has_unknown = false;
+        }
+        // PLAN-010 T2 (009 ledger 002_option_construct): `let b = None` with
+        // no constrained type — E0282. Default to Option<i64> (Auto's
+        // int-default rule; the Option twin of the List.new default above).
+        // Only the literal `None` form: bare `nil` placeholders keep Rust's
+        // inference from later uses (annotating them would override a
+        // differently-typed constraint elsewhere).
+        let init_is_bare_none = matches!(&store.expr, Expr::None);
+        let none_ty_unconstrained = match &store.ty {
+            Type::Unknown => true,
+            Type::Option(inner) => matches!(inner.as_ref(), Type::Unknown),
+            _ => false,
+        };
+        if init_is_bare_none && none_ty_unconstrained
+            && !self.later_used_locals.contains(store.name.as_str())
+        {
+            ty_name = "Option<i64>".to_string();
+            has_unknown = false;
+        }
 
         // Skip type annotation if: Unknown type, type contains unknown, or closure expression
         // Exception: spec array expressions need explicit type annotation for dyn Trait
@@ -12820,6 +13025,77 @@ impl RustTrans {
             visit_stmt(stmt, &mut out, &mutating_methods);
         }
         out
+    }
+
+    /// PLAN-010 T2: idents READ anywhere in a statement (best effort).
+    /// None = statement shape this walker doesn't understand — callers must
+    /// treat the statement as potentially reading every local.
+    fn stmt_read_idents(stmt: &Stmt) -> Option<std::collections::HashSet<AutoStr>> {
+        match stmt {
+            Stmt::Expr(e) => Self::expr_read_idents(e),
+            Stmt::Store(s) => Self::expr_read_idents(&s.expr),
+            Stmt::Return(e) => Self::expr_read_idents(e),
+            // Blank-line placeholders and loop control carry no reads.
+            Stmt::EmptyLine(_) | Stmt::Break | Stmt::Continue => Some(Default::default()),
+            _ => None,
+        }
+    }
+
+    fn expr_read_idents(e: &Expr) -> Option<std::collections::HashSet<AutoStr>> {
+        let mut out = std::collections::HashSet::new();
+        if Self::expr_read_idents_into(e, &mut out) {
+            Some(out)
+        } else {
+            None
+        }
+    }
+
+    /// false = hit an unwalked shape (conservative: caller assumes "used").
+    fn expr_read_idents_into(e: &Expr, out: &mut std::collections::HashSet<AutoStr>) -> bool {
+        match e {
+            Expr::Ident(n) => {
+                out.insert(n.clone());
+                true
+            }
+            Expr::Call(c) => {
+                if !Self::expr_read_idents_into(c.name.as_ref(), out) {
+                    return false;
+                }
+                for arg in &c.args.args {
+                    match arg {
+                        Arg::Pos(x) | Arg::Pair(_, x) => {
+                            if !Self::expr_read_idents_into(x, out) {
+                                return false;
+                            }
+                        }
+                        Arg::Name(_) => {}
+                    }
+                }
+                true
+            }
+            Expr::Bina(l, _, r) => {
+                Self::expr_read_idents_into(l, out) && Self::expr_read_idents_into(r, out)
+            }
+            Expr::Dot(o, _) => Self::expr_read_idents_into(o, out),
+            Expr::Index(b, i) => {
+                Self::expr_read_idents_into(b, out) && Self::expr_read_idents_into(i, out)
+            }
+            Expr::Some(x) | Expr::Ok(x) | Expr::Err(x) | Expr::ErrorPropagate(x)
+            | Expr::View(x) => Self::expr_read_idents_into(x, out),
+            Expr::NullCoalesce(l, r) => {
+                Self::expr_read_idents_into(l, out) && Self::expr_read_idents_into(r, out)
+            }
+            Expr::Array(xs) => xs.iter().all(|x| Self::expr_read_idents_into(x, out)),
+            Expr::Cast { expr, .. } | Expr::To { expr, .. } => {
+                Self::expr_read_idents_into(expr, out)
+            }
+            // Leaves with no idents (all literal kinds + nil family).
+            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_) | Expr::I64(_)
+            | Expr::U64(_) | Expr::Byte(_) | Expr::Float(_, _) | Expr::Double(_, _)
+            | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_) | Expr::CStr(_)
+            | Expr::Nil | Expr::Null | Expr::None => true,
+            _ => false,
+        }
     }
 
     /// Plan 447 H5: count `is` statements per identifier scrutinee across one
@@ -17045,8 +17321,28 @@ impl RustTrans {
         // guard right after the is-stmt when it isn't used later in the body.
         let mut lock_guards: std::collections::HashSet<AutoStr> = std::collections::HashSet::new();
 
+        // PLAN-010 T2: per-statement later-read sets (see the field doc).
+        // A None from the collector (unwalked variant) means "assume used".
+        let stmt_reads: Vec<Option<std::collections::HashSet<AutoStr>>> =
+            body.stmts.iter().map(Self::stmt_read_idents).collect();
+
         // Process statements
         for (i, stmt) in body.stmts.iter().enumerate() {
+            self.later_used_locals = stmt_reads[i + 1..]
+                .iter()
+                .fold(std::collections::HashSet::new(), |mut acc, s| {
+                    match s {
+                        Some(names) => {
+                            acc.extend(names.iter().cloned());
+                        }
+                        // Unwalkable stmt later in the body — assume everything
+                        // might be referenced; suppress the type defaults.
+                        None => {
+                            acc.insert(AutoStr::from("\u{0}unwalkable"));
+                        }
+                    }
+                    acc
+                });
             // W2: record guard bindings from `var g = ...lock().unwrap()`
             if let Stmt::Store(store) = stmt {
                 if Self::store_is_lock_guard(store)
@@ -17065,11 +17361,40 @@ impl RustTrans {
 
             let is_last = i == body.stmts.len() - 1;
 
-            if is_last && has_return && self.is_returnable(stmt) {
+            // PLAN-010 T2: `fn f() ?T { nil }` — a Nil tail in an
+            // Option-returning fn IS the return value (None), it must not fall
+            // to the statement path where `None;` types the block as `()`.
+            let is_option_nil_tail = is_last
+                && matches!(ret_type, Type::Option(_))
+                && matches!(stmt, Stmt::Expr(Expr::Nil | Expr::Null));
+
+            if is_last && has_return && (self.is_returnable(stmt) || is_option_nil_tail) {
                 // Last statement in a non-void function: expression position (no semicolon)
                 match stmt {
                     Stmt::Expr(expr) => {
-                        self.expr(expr, &mut sink.body)?;
+                        // PLAN-010 T2: bare-scalar tail of an Option-returning fn
+                        // is Auto's implicit Some(value) — mirror write_return_expr's
+                        // Plan 531 P525-4 wrap so `fn f() ?int { x }` typechecks
+                        // (E0308 otherwise). Option-shaped exprs are untouched.
+                        let may_wrap_some = matches!(ret_type, Type::Option(_))
+                            && !matches!(expr, Expr::Nil | Expr::Null)
+                            && !Self::expr_is_option_shaped(expr)
+                            && (matches!(self.infer_type_from_expr(expr),
+                                    Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
+                                    | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+                                    | Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+                                // `g()?` tail in a `?T` fn: the `?` unwraps to
+                                // the bare inner value — re-wrap as the Option
+                                // the fn returns (009 ledger 011/019).
+                                || matches!(expr, Expr::ErrorPropagate(_)));
+                        if may_wrap_some {
+                            sink.body.write(b"Some(")?;
+                        }
+                        if matches!(expr, Expr::Nil | Expr::Null) {
+                            sink.body.write(b"None")?;
+                        } else {
+                            self.expr(expr, &mut sink.body)?;
+                        }
                         // If return type is String and expr produces &str, add .to_string()
                         let needs_to_string = self.ret_type_needs_string_coercion()
                             && self.expr_needs_string_coercion(expr);
@@ -17084,6 +17409,9 @@ impl RustTrans {
                             && self.ret_type_is_owned_noncopy()
                         {
                             sink.body.write(b".clone()")?;
+                        }
+                        if may_wrap_some {
+                            sink.body.write(b")")?;
                         }
                         sink.body.write(b"\n")?;
                     }
@@ -17197,6 +17525,20 @@ impl RustTrans {
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}")?;
         Ok(())
+    }
+
+    /// PLAN-010 T2: is this expression already an Option/Result constructor
+    /// shape (Some/None/Ok/Err)? Mirrors write_return_expr's
+    /// already_option_shaped predicate — such exprs must never get an
+    /// additional implicit `Some(...)` tail wrap.
+    fn expr_is_option_shaped(expr: &Expr) -> bool {
+        match expr {
+            Expr::Some(_) | Expr::None | Expr::Ok(_) => true,
+            Expr::Call(c) => matches!(c.name.as_ref(),
+                Expr::Ident(n) if matches!(n.as_str(), "Some" | "Ok" | "None" | "Err")),
+            Expr::Ident(n) => matches!(n.as_str(), "Some" | "None" | "Ok" | "Err"),
+            _ => false,
+        }
     }
 
     fn is_returnable(&self, stmt: &Stmt) -> bool {

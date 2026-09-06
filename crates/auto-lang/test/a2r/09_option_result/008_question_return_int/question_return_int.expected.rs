@@ -2,11 +2,11 @@
 
 fn get_value() -> Option<i64> {
     let x: i64 = 42;
-    x
+    Some(x)
 }
 
 fn get_nil() -> Option<i64> {
-    None;
+    None
 }
 
 fn main() {

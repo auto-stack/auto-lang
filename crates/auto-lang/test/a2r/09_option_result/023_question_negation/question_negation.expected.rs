@@ -3,7 +3,7 @@
 fn negate_value() -> Option<i64> {
     let x: i64 = 10;
     let neg: i64 = -x;
-    May::val(neg)
+    Some(neg)
 }
 
 fn main() {

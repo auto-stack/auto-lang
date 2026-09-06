@@ -11,5 +11,5 @@ pub fn execute(input: &str) -> Result<String, ToolError> {
     if input == "" {
         return Err(ToolError::InvalidInput("empty".to_string()));
     }
-    return Ok(input);
+    return Ok(input.to_string());
 }

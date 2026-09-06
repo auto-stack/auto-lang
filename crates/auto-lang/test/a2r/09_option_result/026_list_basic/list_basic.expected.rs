@@ -2,5 +2,5 @@
 
 fn main() {
 
-    let list = Vec::new();
+    let list: Vec<i64> = Vec::new();
 }

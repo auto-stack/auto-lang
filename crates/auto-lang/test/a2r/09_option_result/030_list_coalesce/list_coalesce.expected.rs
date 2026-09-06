@@ -6,6 +6,6 @@ fn main() {
     list.push(200);
 
 
-    let val1: i64 = list[0].clone().unwrap_or(0);
-    let val2: i64 = list[5].clone().unwrap_or(999);
+    let val1: i64 = list.get((0) as usize).cloned().unwrap_or(0);
+    let val2: i64 = list.get((5) as usize).cloned().unwrap_or(999);
 }

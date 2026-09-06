@@ -2,7 +2,7 @@
 
 fn test_propagate() -> i64 {
     let x: i64 = 10;
-    let y = x?;
+    let y = x;
     y
 }
 
