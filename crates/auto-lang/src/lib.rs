@@ -5195,7 +5195,9 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // in void fns, double semicolons after `static` decls), so a2r test
     // binaries built from CLI-transpiled sources failed to compile while the
     // identical code compiled fine when transpiled via `transpile_rust()`.
-    crate::trans::rust::RustTrans::post_process(&mut sink.body);
+    // PLAN-009 T1 (F1): thread the restricted-name set so fix_non_ord_derives
+    // never re-widens AST-restricted derives on the CLI path either.
+    crate::trans::rust::RustTrans::post_process_with(&mut sink.body, &trans.ord_restricted_names());
 
     // Write output file
     let source_bytes = sink.done()?;

@@ -1627,6 +1627,8 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
+            // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
+            "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
             // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
             // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
             "autodown_editor" | "autodowneditor" => {
@@ -3107,6 +3109,8 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
+            // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
+            "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
             // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
             // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
             "autodown_editor" | "autodowneditor" => {
@@ -7877,6 +7881,58 @@ let tabs_inner = View::Row {
         );
 
         builder.build()
+    }
+
+    /// PLAN-009 P1: convert a `terminal` element(auto-term 引擎网格视口)。
+    /// Props: `key`/`id`(状态存储键),`cols`/`rows`(cell 几何,默认
+    /// 80×24),`lines`(行文本数组,数据面甲 props-feed)。交互事件随 T4
+    /// 迁入(004/005 交互套件)。
+    fn convert_terminal(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let key = self
+            .extract_string_with(props, "key", bindings)
+            .or_else(|| self.extract_string_with(props, "id", bindings))
+            .unwrap_or_else(|| "term".to_owned());
+        let cols = self.extract_u16(props, "cols").unwrap_or(80);
+        let rows = self.extract_u16(props, "rows").unwrap_or(24);
+
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(AuraPropValue::Expr(expr)) = props.get("lines") {
+            if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
+                let array = val.as_array();
+                for item in array.values.iter() {
+                    lines.push(item.as_str().to_owned());
+                }
+            }
+        }
+
+        let style = self.extract_style_with(props, bindings);
+        let scroll_offset = self.extract_u16(props, "scroll_offset").unwrap_or(0);
+        let preedit = self
+            .extract_string_with(props, "preedit", bindings)
+            .filter(|s| !s.is_empty());
+        let on_select = aura_events_get_base(events, "onselect")
+            .or_else(|| aura_events_get_base(events, "select"))
+            .map(|event| self.event_to_message(&event.handler));
+        let on_menu = aura_events_get_base(events, "oncontextmenu")
+            .or_else(|| aura_events_get_base(events, "contextmenu"))
+            .or_else(|| aura_events_get_base(events, "onmenu"))
+            .map(|event| self.event_to_message(&event.handler));
+        View::Terminal {
+            key,
+            cols,
+            rows,
+            lines,
+            scroll_offset,
+            preedit,
+            on_select,
+            on_menu,
+            style,
+        }
     }
 
     /// Plan 413: convert a `code_editor` element. Sub-element properties:

@@ -21,6 +21,9 @@ pub mod image_pipeline;
 // enabled by default under `ui-iced`).
 #[cfg(feature = "code-editor")]
 pub mod code_editor;
+// PLAN-009 P1: native `terminal` component (auto-term engine grid; core is
+// iced-free, `iced/` is the only iced point — code_editor layering).
+pub mod terminal;
 // Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard;

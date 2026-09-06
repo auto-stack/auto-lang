@@ -402,6 +402,7 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("tabscontent", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("tabslist", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("tabstrigger", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
+        ("terminal", QueueStatus::NotYet("PLAN-009 P1：native terminal 组件（auto-term 引擎网格视口）刚落地——queue 臂不消费，行为对拍在 auto-term 侧")),
         ("tag", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("tags_input", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("tags_input_delete", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),

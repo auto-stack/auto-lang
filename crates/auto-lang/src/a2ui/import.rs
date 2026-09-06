@@ -436,6 +436,37 @@ fn import_component_body(
             span: None,
             debug_id: None,
         },
+        // PLAN-009 P1: terminal — 几何/行文本 → terminal 元素 props
+        // (数据面甲;view-builder 侧 convert_terminal 消费)。
+        A2UIComponentBody::Terminal { cols, rows, lines } => {
+            let mut props = HashMap::new();
+            props.insert(
+                "cols".to_string(),
+                AuraPropValue::Expr(Expr::Int(*cols as i32)),
+            );
+            props.insert(
+                "rows".to_string(),
+                AuraPropValue::Expr(Expr::Int(*rows as i32)),
+            );
+            if !lines.is_empty() {
+                let items: Vec<Expr> = lines
+                    .iter()
+                    .map(|l| Expr::Str(l.clone().into()))
+                    .collect();
+                props.insert(
+                    "lines".to_string(),
+                    AuraPropValue::Expr(Expr::Array(items)),
+                );
+            }
+            AuraNode::Element {
+                tag: "terminal".to_string(),
+                props,
+                events: HashMap::new(),
+                children: vec![],
+                span: None,
+                debug_id: None,
+            }
+        },
         A2UIComponentBody::List { items, template } => {
             let (items_expr, mut sv) = import_value(items);
             state_vars.append(&mut sv);

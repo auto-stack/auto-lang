@@ -210,6 +210,17 @@ impl SnapshotBuilder {
                 UiNode { id, kind: "CodeEditor".to_string(), props, actions, children: vec![] }
             },
 
+            // PLAN-009 P1: terminal snapshot — 几何 + 喂入行数(MCP 检视面)。
+            View::Terminal { key, cols, rows, lines, .. } => {
+                let props = vec![
+                    ("key".to_string(), key.clone()),
+                    ("cols".to_string(), cols.to_string()),
+                    ("rows".to_string(), rows.to_string()),
+                    ("lines".to_string(), lines.len().to_string()),
+                ];
+                UiNode { id, kind: "Terminal".to_string(), props, actions: vec![], children: vec![] }
+            },
+
             // Plan 019 Phase 3: autodown 文档编辑器 snapshot — key/value +
             // live 全文（编辑态对 MCP 探针可见）。
             View::AutodownEditor { key, value, on_change, .. } => {

@@ -49,6 +49,10 @@ const DOC_EXCLUDE: &[&str] = &[
     // Plan 484:透明 hover 命中区(无视觉、事件转发原语,不设独立页);
     // 契约与用法文档化于 specs/auto-lang/ui/design/chart-components.md
     "mousearea",
+    // PLAN-009 P1:native terminal 组件(auto-term 引擎网格视口)——
+    // 契约文档化于 auto-term 仓 docs/plans/009(组件真身迁移计划)+
+    // kitchen-sink 生成页;kitchen-sink 的 terminal demo 即最小用法。
+    "terminal",
     // Plan 497:每窗口真缩略(桌面 shell 专用消费面——switcher 行/dock
     // hover/pager 分区;单 App gallery 无虚拟窗可缩略,恒 fallback 形态,
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +

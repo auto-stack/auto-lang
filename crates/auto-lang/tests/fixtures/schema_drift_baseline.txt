@@ -40,6 +40,7 @@ a2ui_import_not_in_rs	select
 a2ui_import_not_in_rs	slider
 a2ui_import_not_in_rs	tab
 a2ui_import_not_in_rs	table
+a2ui_import_not_in_rs	terminal
 parser_not_in_rs	Alert
 parser_not_in_rs	AlertDialog
 parser_not_in_rs	Audio
@@ -126,6 +127,7 @@ parser_not_in_rs	td
 parser_not_in_rs	th
 parser_not_in_rs	video
 render_not_in_rs	ImageSurface
+render_not_in_rs	Terminal
 render_not_in_rs	accordion-content
 render_not_in_rs	accordion-item
 render_not_in_rs	accordion-trigger
@@ -225,6 +227,7 @@ render_not_in_rs	tabs-list
 render_not_in_rs	tabs-trigger
 render_not_in_rs	tbody
 render_not_in_rs	td
+render_not_in_rs	terminal
 render_not_in_rs	tfoot
 render_not_in_rs	th
 render_not_in_rs	thead
@@ -717,6 +720,7 @@ vb_not_in_rs	DropdownMenu
 vb_not_in_rs	ImageSurface
 vb_not_in_rs	Select
 vb_not_in_rs	Slot
+vb_not_in_rs	Terminal
 vb_not_in_rs	a
 vb_not_in_rs	alert-dialog
 vb_not_in_rs	alert-dialog-action
@@ -838,6 +842,7 @@ vb_not_in_rs	small
 vb_not_in_rs	square
 vb_not_in_rs	strong
 vb_not_in_rs	svg
+vb_not_in_rs	terminal
 vb_not_in_rs	toggle-group
 vb_not_in_rs	toggle-group-item
 vb_not_in_rs	togglegroup

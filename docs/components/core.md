@@ -1045,6 +1045,27 @@ Desktop shell taskbar (bottom bar)
 
 ---
 
+### `terminal`
+
+`builtin_widget` · `terminal` · web: `unknown` · iced: `full` · category: `content`
+
+PLAN-009 native terminal component (auto-term engine grid viewport: damage-gated rows, cursor shapes, selection, scroll badge, right-click menu)
+
+别名:`Terminal`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `key` | `string` | \ | Stable state key (registry + engine adapter session) |
+| `cols` | `int` | 80 | Grid width in cells |
+| `rows` | `int` | 24 | Grid height in cells |
+| `lines` | `string` | — | Fed grid rows (props-feed data plane, per frame) |
+| `scroll_offset` | `int` | 0 | Scrollback display offset (badge indicator) |
+| `preedit` | `string` | — | IME composition string (self-drawn overlay at cursor) |
+| `onselect` | `msg_ref` | — | Selection released; payload via terminal_selected_text(key) |
+| `oncontextmenu` | `msg_ref` | — | Menu item activated; payload via terminal_take_menu_item(key) |
+
+---
+
 ### `text`
 
 `builtin_widget` · `text` · web: `component` · iced: `full` · category: `typography`

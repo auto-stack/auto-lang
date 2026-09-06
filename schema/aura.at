@@ -353,6 +353,26 @@ element code_editor {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element terminal {
+    tag: "terminal"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Terminal"]
+    backends: { web: "unknown", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "key", type: "string", default: "\"term\"", description: "Stable state key (registry + engine adapter session)" }
+        { name: "cols", type: "int", default: "80", description: "Grid width in cells" }
+        { name: "rows", type: "int", default: "24", description: "Grid height in cells" }
+        { name: "lines", type: "list<string>", description: "Fed grid rows (props-feed data plane, per frame)" }
+        { name: "scroll_offset", type: "int", default: "0", description: "Scrollback display offset (badge indicator)" }
+        { name: "preedit", type: "string", description: "IME composition string (self-drawn overlay at cursor)" }
+        { name: "onselect", type: "msg_ref", description: "Selection released; payload via terminal_selected_text(key)" }
+        { name: "oncontextmenu", type: "msg_ref", description: "Menu item activated; payload via terminal_take_menu_item(key)" }
+    ]
+    allows_children: false
+    description: "PLAN-009 native terminal component (auto-term engine grid viewport: damage-gated rows, cursor shapes, selection, scroll badge, right-click menu)"
+}
+
 element col {
     tag: "col"
     category: "layout"

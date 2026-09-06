@@ -278,6 +278,22 @@ where
             },
         ),
 
+        // PLAN-009 P1: terminal 组件——检视层暴露为带几何标签的 Text
+        // 占位(headless 断言据此识别 terminal 节点;真渲染在 iced 侧)。
+        View::Terminal { key, cols, rows, lines, .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: format!(
+                    "terminal key={} cols={} rows={} lines={}",
+                    key,
+                    cols,
+                    rows,
+                    lines.len()
+                ),
+                selectable: false,
+            },
+        ),
+
         View::Textarea {
             placeholder,
             value,
