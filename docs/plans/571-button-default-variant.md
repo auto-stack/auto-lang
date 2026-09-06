@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-571
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: button-default-variant
 author: []
 created_at: 2026-09-06
@@ -13,7 +13,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/ui_gen, docs/design/autoui]
 current_step: 9
-total_steps: 9
+total_steps: 10
 ---
 
 # [PLAN-571] button-default-variant
@@ -215,9 +215,69 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
       check -p auto-man` 0 error；plan571 全族 7/7（auto-lang）+8/8（auto-man）+
       variants 18/18 绿）
 
+- [ ] T10（复审 F1 修复）CSS 变量层 `--secondary` 分档收敛剩余三源：
+      `crates/auto-man/src/vue.rs:1225/:1266`、`crates/auto/src/cmd_vue.rs:1642/:1682/:1841`、
+      `crates/auto/src/cmd_tauri.rs:760/:794`——light→`40 24% 85.5%`、dark→
+      `215 25% 27%`（与 theme.rs/ui_gen 已落值一致）；删 031 `gen/` 重生成并 grep
+      产物 css 断言新值；Vue 端 secondary 探针截图补双端证据；加 css 互锁断言测试
+      防"第四源"。验证：`cargo t -p auto-man plan571` + 重生成产物 grep + 截图。
+
 ## 复审记录
 
-（review 时填写）
+- 复审人：ZCode（/auto-plan:review，2026-09-06）
+- 复审基线：worktree `D:/autostack/.wt/lang-571/auto-lang` @ plan-571-dev（merge-base
+  b0d430349），diff 恰含计划声称的 10 文件、无夹带（+561/-29）。
+
+### 验收标准逐条复验
+
+1. **双端缺省按钮 = muted 填充+发丝描边、dark 可辨** — ✅ pass。plan571 VM 臂测试
+   3/3（BackgroundColor(Muted)+Border+BorderColor(Border)、无 Primary）；
+   `vm_031_imageviewer.png`/`vue_002_counter.png`（重生成后）均中性 chip。
+2. **variant:"primary"/"submit" 两端主题色填充** — ✅ pass。codegen 产物断言
+   `explicit_primary_variant_keeps_accent_fill` + 资产互锁测试（primary/submit 键
+   三源在册）。
+3. **secondary/default/outline 同屏可辨** — ✅ pass（VM 端视觉实证）。探针 app
+   五档同屏截图 `scratch/p571/vm_variant_probe.png`：五 variant 两两可辨、secondary
+   强一档无描边清晰。Vue 端 cva 层一致（互锁测试）；但**令牌层发现缺口 → 见下**。
+4. **Rust transpile 臂与 VM 同观感** — ✅ pass。`plain_button_gets_default_neutral_preset`
+   断言生成串逐类一致。
+5. **Design 22 §3/§1.2 与实现一致** — ✅ pass（b73fc5e4f）。
+6. **cargo check 零新警告 + cargo t ui 全绿 + 既有断言更新** — ⚠️ pass（带预存红
+   注记）。check 双配置 0 error；`cargo tf` 3460/3461 唯一红 charts gallery
+   （master 同红）；`cargo t`（ui-iced 档）21 红 = 17 与 master 对拍相同 + 3 直接
+   master 复红（plan370 d2/d8、plan492 c2）+ 1 flaky 环境红（osconfig
+   resolve_all_miss_is_none，隔离重跑 4/4 绿）。零新增红。
+7. **存量 examples 抽查 3 例无布局破坏** — ✅ pass（6 截图 + 005 蓝系为 demo 显式
+   bg-blue-500 覆盖、语义正确）。
+
+### 发现（fail 依据）
+
+**[F1] CSS 变量层 `--secondary` 分档漏了第三类源（判 fail 的唯一项）**：T5 收敛了
+`ui_gen/vue.rs` 模板，但 `auto run` Vue 管线实际物化的 `gen/front/vue/src/index.css`
+来自 **auto-man/src/vue.rs 内嵌模板**——031 重生成产物 `--secondary` 仍为
+`210 40% 96.1%`/`217.2 32.6% 17.5%`（== muted，未分档）。即 **web 端 secondary 按钮
+皮肤（cva 类）已分档、但语义色令牌未分档**，Vue 端 secondary 观感退回与 muted 同灰，
+与 VM 端（theme.rs 已分档）不一致。另两处同族模板一并修：
+- `crates/auto-man/src/vue.rs:1225`（light `210 40% 96.1%` → `40 24% 85.5%`）、
+  `:1266`（dark `217.2 32.6% 17.5%` → `215 25% 27%`）
+- `crates/auto/src/cmd_vue.rs:1642`（light 同上）、`:1682`（`217 33% 17%` →
+  `215 25% 27%`）、`:1841`（`217.2 32.6% 17.5%` → `215 25% 27%`）
+- `crates/auto/src/cmd_tauri.rs:760`（light）、`:794`（dark）同口径
+修后须：删 031 的 `gen/` 重生成 → grep 产物 css 断言新值 → Vue 端重截 secondary
+探针图（补双端一致性证据）。互锁测试建议顺手加：assert 生成/模板 css 含
+`--secondary: 40 24% 85.5%` 与 `215 25% 27%`（防第四源）。
+
+### 遗漏/延后/workaround 猎查
+
+- 无计划任务被静默丢弃；T6 为"验证性 no-op"（grep 证实无测试锁死旧行为），非回避。
+- 既有分歧/债务如实入账：ghost hover accent vs secondary（VM 无 Accent token）、
+  动态 class 不注入 preset（codegen 臂，行为同前）、Vue cva 双真源（已收敛+互锁，
+  维护面+1）。均为记录在案的债务候选，非本 plan 引入。
+
+### 判定
+
+**fail** → 回 `/auto-plan:work`，修复项 = T10（F1，预计小改：3 文件 6 行 + 重生成
+验证 + 互锁断言）。状态回滚 `executing`。
 
 ## 待澄清事项
 
