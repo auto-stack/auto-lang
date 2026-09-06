@@ -49,6 +49,26 @@ thread_local! {
     // symbol at link time). Set per-widget in synthesize_from_decl.
     static CURRENT_WIDGET_NAME: RefCell<String> = RefCell::new(String::new());
     static CURRENT_MSG_VARIANTS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    // Plan 576 (D3): 当前件的 handler/生命周期名集合（与 CURRENT_MSG_VARIANTS
+    // 的并集成分对照——"msg 变体且无同名 handler"即引号 emit 的改写条件，
+    // 有同名 handler 的 `.Name()` 仍走 Plan 398 sibling 内联臂）。
+    static CURRENT_HANDLER_NAMES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    // Plan 576 (D3): 改写期收集的引号 emit 桥函数需求 (widget, msg, argc)。
+    // 各 widget 的 handler 编译循环结束后 drain 并合成 `__emit_<W>_<msg>`
+    // 桥函数（体内写 __emit_msg/__emit_payload 状态对，派发侧收尾路由）。
+    static PENDING_EMIT_SYNTH: RefCell<Vec<(String, String, usize)>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+/// Plan 576: set the current widget's handler/lifecycle name set (emit 改写
+/// 消歧用——与 set_current_widget 的合并集对照)。
+pub fn set_current_widget_handlers(handler_names: HashSet<String>) {
+    CURRENT_HANDLER_NAMES.with(|s| *s.borrow_mut() = handler_names);
+}
+
+/// Plan 576: drain pending quoted-emit bridge requests collected during rewrite.
+fn take_pending_emit_synths() -> Vec<(String, String, usize)> {
+    PENDING_EMIT_SYNTH.with(|p| std::mem::take(&mut *p.borrow_mut()))
 }
 
 /// Plan 398: set the current widget (name + msg variants) for handler rewrite.
@@ -62,6 +82,45 @@ pub fn set_current_widget(name: &str, msg_variants: HashSet<String>) {
 pub fn clear_current_widget() {
     CURRENT_WIDGET_NAME.with(|s| s.borrow_mut().clear());
     CURRENT_MSG_VARIANTS.with(|s| s.borrow_mut().clear());
+    CURRENT_HANDLER_NAMES.with(|s| s.borrow_mut().clear());
+}
+
+// Plan 576 (D2): 当前合成件的 computed 字段 → 隐藏函数名表。handler/
+// computed 体内引用本件 computed（裸 Ident 或 .name/self.name 形态）改写为
+// `__computed_<W>_<name>(__state)` 调用——此前改写只认 state_vars，computed
+// 引用落 generic self-dot 臂变 `__state.<name>`，字段不存在 → Nil 传播/
+// RuntimeError（043②①）。与 STORE_FIELDS 同 thread-local 模式，per-widget 设置。
+thread_local! {
+    static COMPUTED_FN_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// Plan 576: set the current widget's computed field → hidden-fn-name map.
+pub fn set_computed_refs(map: HashMap<String, String>) {
+    COMPUTED_FN_NAMES.with(|s| *s.borrow_mut() = map);
+}
+
+/// Plan 576: clear the computed context after a widget's synthesis.
+pub fn clear_computed_refs() {
+    COMPUTED_FN_NAMES.with(|s| s.borrow_mut().clear());
+}
+
+/// Plan 576: bare 名是否命中当前件的 computed 字段，命中返回隐藏函数名。
+fn computed_fn_for(name: &str) -> Option<String> {
+    COMPUTED_FN_NAMES.with(|m| m.borrow().get(name).cloned())
+}
+
+/// Plan 576: `__computed_<W>_<p>(__state)` 调用表达式。
+fn computed_call_expr(fn_name: &str) -> Expr {
+    Expr::Call(crate::ast::Call {
+        name: Box::new(Expr::Ident(Name::from(fn_name))),
+        args: crate::ast::Args {
+            args: vec![Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))],
+        },
+        ret: Type::Unknown,
+        type_args: Vec::new(),
+        generic_args: Vec::new(),
+        pos: None,
+    })
 }
 
 /// Set the store context for the current synthesis pass.
@@ -480,6 +539,67 @@ fn rewrite_expr_with_locals(
             }
         }
     }
+    // Plan 576 (D3): 子件体内引号 emit（带计算实参）——`.Name(args)` 且 Name
+    // 是本件 msg 变体而本件无同名 handler → 改写为 `__emit_<W>_<Name>(__state,
+    // args)` 桥函数调用（桥函数体内把 msg 名与实参值写进 __emit_msg /
+    // __emit_payload 状态对；dynamic.rs on_with_input_for 在 handler 返回后
+    // 读出并经 child_emit ROUTES 走 dispatch_parent_route——toast/__toast、
+    // router.push 同款「handler 写状态、update 侧消费」模式）。此前落 Plan
+    // 398 sibling 臂内联直调 `handler_<W>_<Name>`——纯变体无同名 handler 时
+    // 链接失败（043②②：带计算实参的子件 emit 平台性不通，demo 被迫 is_vm
+    // 双轨）。v1 限度：单 pending 槽（同 handler 多次 emit 末次生效）；多实参
+    // 取首个位置实参。
+    if let Expr::Call(call) = e {
+        if let Expr::Dot(obj, field) = call.name.as_ref() {
+            let self_receiver = matches!(
+                obj.as_ref(),
+                Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self" || n.as_str().is_empty()
+            );
+            if self_receiver {
+                let fname = field.as_str();
+                let is_variant =
+                    CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(fname));
+                let is_handler =
+                    CURRENT_HANDLER_NAMES.with(|s| s.borrow().contains(fname));
+                if is_variant && !is_handler {
+                    let widget_name = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
+                    if !widget_name.is_empty() {
+                        let argc = call
+                            .args
+                            .args
+                            .iter()
+                            .filter(|a| matches!(a, Arg::Pos(_)))
+                            .count();
+                        let emit_fn = emit_bridge_fn_name(&widget_name, fname);
+                        PENDING_EMIT_SYNTH.with(|p| {
+                            p.borrow_mut().push((widget_name.clone(), fname.to_string(), argc))
+                        });
+                        let mut new_args =
+                            vec![Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                        for arg in &call.args.args {
+                            let mut cloned = arg.clone();
+                            match &mut cloned {
+                                Arg::Pos(ex) | Arg::Pair(_, ex) => {
+                                    rewrite_expr_with_locals(ex, state_fields, locals);
+                                }
+                                Arg::Name(_) => {}
+                            }
+                            new_args.push(cloned);
+                        }
+                        *e = Expr::Call(crate::ast::Call {
+                            name: Box::new(Expr::Ident(Name::from(emit_fn.as_str()))),
+                            args: crate::ast::Args { args: new_args },
+                            ret: Type::Void,
+                            type_args: Vec::new(),
+                            generic_args: Vec::new(),
+                            pos: None,
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+    }
     // Plan 398 §2/§3 (BUG-B + BUG-C) + Plan 053 P-053-7: sibling-handler call rewriting.
     // `.Sibling(args)` (self/dot receiver) or bare `Sibling(args)` where
     // `Sibling` is a msg variant of the CURRENT widget → rewrite to
@@ -579,6 +699,30 @@ fn rewrite_expr_with_locals(
             Box::new(Expr::Ident(Name::from(STATE_PARAM))),
             name.clone(),
         )),
+        // Plan 576 (D2): computed 裸名 → 隐藏函数调用（state 字段优先于
+        // computed 同名；局部形参遮蔽同规则）。
+        Expr::Ident(name)
+            if !state_fields.contains(name.as_str())
+                && !locals.contains(name.as_str())
+                && computed_fn_for(name.as_str()).is_some() =>
+        {
+            let fn_name = computed_fn_for(name.as_str()).unwrap();
+            Some(computed_call_expr(&fn_name))
+        }
+        // Plan 576 (D2): `.name` / `self.name` 形态的 computed 引用——必须在
+        // 下方 generic self-dot 臂之前拦截（该臂会改成 __state.<name>，字段
+        // 不存在 → Nil/RuntimeError）。
+        Expr::Dot(obj, field)
+            if matches!(
+                obj.as_ref(),
+                Expr::Ident(n)
+                    if (n.as_str() == "self" || n.as_str() == "." || n.as_str().is_empty())
+                        && computed_fn_for(field.as_str()).is_some()
+            ) =>
+        {
+            let fn_name = computed_fn_for(field.as_str()).unwrap();
+            Some(computed_call_expr(&fn_name))
+        }
         Expr::Dot(obj, field)
             if matches!(
                 obj.as_ref(),
@@ -661,7 +805,16 @@ fn rewrite_expr_with_locals(
             }
         }
         Expr::Call(c) => {
-            rewrite_expr_with_locals(&mut c.name, state_fields, locals);
+            // Plan 576: 裸 computed 名作调用名（`thumb_h(x)`——computed 非函数，
+            // 病态形态）不改写——改写会产出 Call-in-name 非法 AST；留原样让
+            // codegen 报未解析符号（可见失败优于静默 Nil）。
+            let name_is_bare_computed = matches!(
+                c.name.as_ref(),
+                Expr::Ident(n) if computed_fn_for(n.as_str()).is_some()
+            );
+            if !name_is_bare_computed {
+                rewrite_expr_with_locals(&mut c.name, state_fields, locals);
+            }
             for arg in &mut c.args.args {
                 match arg {
                     Arg::Pos(ex) | Arg::Pair(_, ex) => rewrite_expr_with_locals(ex, state_fields, locals),
@@ -740,6 +893,69 @@ pub fn computed_fn_name(widget_name: &str, computed_name: &str) -> String {
     format!("__computed_{}_{}", widget_name, computed_name)
 }
 
+/// Plan 576 (D3): 引号 emit 桥函数名——msg 名可含引号专字符（`update:
+/// scrollTop`、`hover-change`），fn 名按非字母数字折叠 `_`。
+fn emit_bridge_fn_name(widget_name: &str, msg: &str) -> String {
+    let safe: String = msg
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    format!("__emit_{}_{}", widget_name, safe)
+}
+
+/// Plan 576 (D3): 合成一个引号 emit 桥函数：
+/// `fn __emit_<W>_<msg>(__state <W>_State [, v0])`，体内
+/// `__state.__emit_msg = "<msg>"` + `__state.__emit_payload = v0`（0 实参
+/// 只写 msg，载荷留注入初值 Nil）。字段在 vm_bridge 状态实例注入
+/// （__toast 同点）；dispatch 侧（dynamic.rs）在子 handler 返回后读出
+/// 并清账，经 child_emit ROUTES 派发到父 on<msg> 绑定。
+fn synthesize_emit_bridge_fn(
+    widget_name: &str,
+    state_type: &TypeDecl,
+    msg: &str,
+    argc: usize,
+) -> Stmt {
+    let mut params: Vec<Param> = vec![Param::new(
+        Name::from(STATE_PARAM),
+        Type::User(state_type.clone()),
+        None,
+    )];
+    if argc >= 1 {
+        params.push(Param::new(Name::from("v0"), Type::StrSlice, None));
+    }
+    let state_dot = |field: &str| {
+        Box::new(Expr::Dot(
+            Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+            Name::from(field),
+        ))
+    };
+    let mut stmts = vec![Stmt::Expr(Expr::Bina(
+        state_dot("__emit_msg"),
+        auto_val::Op::Asn,
+        Box::new(Expr::Str(auto_val::AutoStr::from(msg))),
+    ))];
+    if argc >= 1 {
+        stmts.push(Stmt::Expr(Expr::Bina(
+            state_dot("__emit_payload"),
+            auto_val::Op::Asn,
+            Box::new(Expr::Ident(Name::from("v0"))),
+        )));
+    }
+    let body = Body {
+        stmts,
+        has_new_line: false,
+        source_lines: Vec::new(),
+    };
+    Stmt::Fn(Fn::new(
+        FnKind::Function,
+        Name::from(emit_bridge_fn_name(widget_name, msg).as_str()),
+        None,
+        params,
+        body,
+        Type::Void,
+    ))
+}
+
 /// Plan 448 H2: synthesize one hidden fn per BLOCK-bodied computed:
 /// `fn __computed_<W>_<p>(__state <W>_State) { stmts…; return tail }`.
 /// Statement bodies need real execution semantics (let scoping, sequencing)
@@ -747,8 +963,10 @@ pub fn computed_fn_name(widget_name: &str, computed_name: &str) -> String {
 /// VM functions, mirroring handler synthesis (state receiver param + state
 /// ref rewriting). The trailing expression statement becomes `Stmt::Return`
 /// (same tail rule as the Vue path's `transpile_body_as_return`); a block
-/// already ending in an explicit `return` is left unchanged. Expression-form
-/// computeds stay on the inline resolver — nothing is synthesized for them.
+/// already ending in an explicit `return` is left unchanged.
+/// Plan 576 (D2): 表达式形态同样合成（单条 `return <expr>`）——handler 体
+/// 的 computed 引用改写为隐藏函数调用后，两种形态都必须有函数体；视图侧
+/// inline resolver 不受影响（仍直读 computed 表）。
 fn synthesize_computed_fns(
     widget_name: &str,
     state_type: &TypeDecl,
@@ -757,10 +975,13 @@ fn synthesize_computed_fns(
 ) -> Vec<Stmt> {
     let mut out = Vec::new();
     for (name, expr) in computeds {
-        let crate::ast::Expr::Block(body) = expr else {
-            continue;
+        // Plan 576: 表达式形态同样合成隐藏函数——handler 体改写（D2）把
+        // computed 引用改写为 `__computed_<W>_<p>(__state)` 调用，两种形态
+        // 都必须有函数体。表达式形态 = 单条 `return <expr>`。
+        let mut stmts = match expr {
+            crate::ast::Expr::Block(body) => body.stmts.clone(),
+            other => vec![Stmt::Return(Box::new(other.clone()))],
         };
-        let mut stmts = body.stmts.clone();
         let mut locals = HashSet::new();
         rewrite_state_refs_stmts_with_locals(&mut stmts, state_fields, &mut locals);
         // Tail expression → return (explicit trailing Return renders unchanged).
@@ -1150,13 +1371,18 @@ pub fn synthesize_widget_module(
             .iter()
             .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
             .collect();
+        let mut w_handler_names: HashSet<String> = HashSet::new();
         for (pattern, _) in &w.handlers {
-            w_msg_variants.insert(bare_handler_name(pattern).to_string());
+            let bare = bare_handler_name(pattern).to_string();
+            w_msg_variants.insert(bare.clone());
+            w_handler_names.insert(bare);
         }
         for lc in &w.lifecycle {
             w_msg_variants.insert(lc.name.clone());
+            w_handler_names.insert(lc.name.clone());
         }
         set_current_widget(&w.name, w_msg_variants);
+        set_current_widget_handlers(w_handler_names);
 
         // State type declaration.
         if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(w_state_type.clone())) {
@@ -1170,6 +1396,13 @@ pub fn synthesize_widget_module(
             .iter()
             .map(|c| (c.name.clone(), c.expr.clone()))
             .collect();
+        // Plan 576 (D2): handler/computed 体的 computed 引用改写上下文。
+        set_computed_refs(
+            w_computeds
+                .iter()
+                .map(|(n, _)| (n.clone(), computed_fn_name(&w.name, n)))
+                .collect(),
+        );
         for cfn in synthesize_computed_fns(&w.name, &w_state_type, &w_state_fields, &w_computeds) {
             if let Err(e) = codegen.compile_stmt(&cfn) {
                 record_synth_failure(format!("{}.computed: {}", w.name, e));
@@ -1205,6 +1438,19 @@ pub fn synthesize_widget_module(
                 record_synth_failure(format!("{}.{}: {}", w.name, event_pattern, e));
             }
         }
+
+        // Plan 576 (D3): 合成本件 handler 体内收集到的引号 emit 桥函数
+        //（去重后编译——同 (msg, argc) 多调用点共享一个桥）。
+        let mut seen_emits = std::collections::HashSet::new();
+        for (ew, emsg, eargc) in take_pending_emit_synths() {
+            if ew != w.name || !seen_emits.insert((emsg.clone(), eargc)) {
+                continue;
+            }
+            let bridge = synthesize_emit_bridge_fn(&w.name, &w_state_type, &emsg, eargc);
+            if let Err(e) = codegen.compile_stmt(&bridge) {
+                record_synth_failure(format!("{}.emit {}: {}", w.name, emsg, e));
+            }
+        }
     }
 
     // Plan 318: return the codegen's populated generic_registry along with the
@@ -1215,6 +1461,7 @@ pub fn synthesize_widget_module(
     let registry = std::mem::take(&mut codegen.generic_registry);
     clear_store_context();
     clear_current_widget();
+    clear_computed_refs();
     // Plan 446 批二 A1: 消歧失败升级为 synthesis 失败 → boot 致命
     // （与 C1-3 同哲学：显式报错优于静默错路由）。
     let disambig_errors = take_store_disambig_errors();
@@ -1779,15 +2026,20 @@ pub fn synthesize_from_decl(
             .iter()
             .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
             .collect();
+        let mut d_handler_names: HashSet<String> = HashSet::new();
         if let Some(on) = &d.on {
             for h in &on.handlers {
-                d_msg_variants.insert(bare_handler_name(&h.pattern).to_string());
+                let bare = bare_handler_name(&h.pattern).to_string();
+                d_msg_variants.insert(bare.clone());
+                d_handler_names.insert(bare);
             }
         }
         for lc in &d.lifecycle {
             d_msg_variants.insert(lc.name.clone());
+            d_handler_names.insert(lc.name.clone());
         }
         set_current_widget(d.name.to_string().as_str(), d_msg_variants);
+        set_current_widget_handlers(d_handler_names);
 
         let d_state_type = synthesize_state_type_from_decl(d, d_tick);
 
@@ -1805,6 +2057,13 @@ pub fn synthesize_from_decl(
                     .map(|p| (p.name.to_string(), p.expr.clone()))
             })
             .collect();
+        // Plan 576 (D2): handler/computed 体的 computed 引用改写上下文。
+        set_computed_refs(
+            d_computeds
+                .iter()
+                .map(|(n, _)| (n.clone(), computed_fn_name(&d.name.to_string(), n)))
+                .collect(),
+        );
         for cfn in synthesize_computed_fns(&d.name.to_string(), &d_state_type, &d_state_fields, &d_computeds) {
             if let Err(e) = codegen.compile_stmt(&cfn) {
                 record_synth_failure(format!("{}.computed: {}", d.name, e));
@@ -1846,11 +2105,25 @@ pub fn synthesize_from_decl(
                 record_synth_failure(format!("{}.{}: {}", d.name, event_pattern, e));
             }
         }
+
+        // Plan 576 (D3): 合成本件 handler 体内收集到的引号 emit 桥函数
+        //（去重后编译——同 (msg, argc) 多调用点共享一个桥）。
+        let mut seen_emits = std::collections::HashSet::new();
+        for (ew, emsg, eargc) in take_pending_emit_synths() {
+            if ew != d.name.to_string() || !seen_emits.insert((emsg.clone(), eargc)) {
+                continue;
+            }
+            let bridge = synthesize_emit_bridge_fn(&d.name.to_string(), &d_state_type, &emsg, eargc);
+            if let Err(e) = codegen.compile_stmt(&bridge) {
+                record_synth_failure(format!("{}.emit {}: {}", d.name, emsg, e));
+            }
+        }
     }
 
     let registry = std::mem::take(&mut codegen.generic_registry);
     clear_store_context();
     clear_current_widget();
+    clear_computed_refs();
     // Plan 446 批二 A1: 消歧失败升级为 synthesis 失败 → boot 致命。
     let disambig_errors = take_store_disambig_errors();
     if !disambig_errors.is_empty() {
@@ -2107,6 +2380,8 @@ mod tests {
             "PromptBar",
             ["Exit", "OnCtrlD"].iter().map(|s| s.to_string()).collect(),
         );
+        // Plan 576 (D3): `.Exit()` 有同名 handler → sibling 内联臂（非引号 emit）。
+        set_current_widget_handlers(["Exit", "OnCtrlD"].iter().map(|s| s.to_string()).collect());
         rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
         clear_current_widget();
         match &stmt {
@@ -2131,6 +2406,7 @@ mod tests {
             "ShellStore",
             ["Refresh", "Init"].iter().map(|s| s.to_string()).collect(),
         );
+        set_current_widget_handlers(["Refresh", "Init"].iter().map(|s| s.to_string()).collect());
         rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
         clear_current_widget();
         match &stmt {

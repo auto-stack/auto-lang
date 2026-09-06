@@ -444,6 +444,19 @@ fn nanbox_single_to_f64(nv: auto_val::NanoValue) -> f64 {
     }
 }
 
+/// Plan 576: 单槽 nanbox 值按 tag 解码为 f32（f32 按位、int 按值）——
+/// ADD/SUB/MUL/DIV 的 f32×int 混算臂用（nanbox_single_to_f64 的 f32 域
+/// 形态，pop_f32_operand 同哲学）。原 else 臂 decode_i32 把整值/任意
+/// f32 位型当整数（240.0 + 1 → 1131413505，DEBTS 043 家族）。
+#[inline(always)]
+fn nanbox_single_to_f32(nv: auto_val::NanoValue) -> f32 {
+    if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv)
+    } else {
+        auto_val::decode_i32(nv) as f32
+    }
+}
+
 /// Plan 437: f32 算术的 tag 驱动操作数弹出——动态来源（Index/Dot/Call 等
 /// 推断不可知处）的 int 操作数按**值**转 f32，f32/f64 按 tag 解码。
 /// 盲 pop_f32 会把 int 位模式重解释成 denormal（int 80 → 1.12e-43），
@@ -1533,6 +1546,18 @@ impl AutoVM {
         } else {
             auto_val::decode_i32(nv) as f64
         }
+    }
+
+    /// Plan 576: 有序比较（LT/GT/LE/GE）的"至少一侧 float"路由条件——
+    /// 双侧数值且一侧 f32/f64 时走 nv_as_f64 按值比较；纯 int 对与
+    /// object/string 走各自既有臂不变。
+    fn nv_pair_is_float_numeric(a: auto_val::NanoValue, b: auto_val::NanoValue) -> bool {
+        Self::nv_is_numeric(a)
+            && Self::nv_is_numeric(b)
+            && (auto_val::is_f32(a)
+                || auto_val::is_f32(b)
+                || auto_val::is_f64(a)
+                || auto_val::is_f64(b))
     }
 
     fn nv_is_null_family(nv: auto_val::NanoValue) -> bool {
@@ -5830,6 +5855,11 @@ impl AutoVM {
                         task.ram.push_f64(a + b);
                     } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
                         task.ram.push_f32(auto_val::decode_f32(a_bits) + auto_val::decode_f32(b_bits));
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        task.ram.push_f32(a + b);
                     } else if auto_val::is_string(a_bits) || auto_val::is_string(b_bits) {
                         // String concatenation: decode both as strings, concatenate, push new string
                         // Plan 567 T01（P539-D1 双症状收口）: 先读后放——对齐
@@ -5888,6 +5918,11 @@ impl AutoVM {
                         task.ram.push_f64(a - b);
                     } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
                         task.ram.push_f32(auto_val::decode_f32(a_bits) - auto_val::decode_f32(b_bits));
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        task.ram.push_f32(a - b);
                     } else {
                         let a = auto_val::decode_i32(a_bits);
                         let b = auto_val::decode_i32(b_bits);
@@ -5915,6 +5950,11 @@ impl AutoVM {
                         task.ram.push_f64(a * b);
                     } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
                         task.ram.push_f32(auto_val::decode_f32(a_bits) * auto_val::decode_f32(b_bits));
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        task.ram.push_f32(a * b);
                     } else {
                         let a = auto_val::decode_i32(a_bits);
                         let b = auto_val::decode_i32(b_bits);
@@ -5947,6 +5987,12 @@ impl AutoVM {
                         let b = auto_val::decode_f32(b_bits);
                         if b == 0.0 { return Err(VMError::DivisionByZero); }
                         task.ram.push_f32(auto_val::decode_f32(a_bits) / b);
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        if b == 0.0 { return Err(VMError::DivisionByZero); }
+                        task.ram.push_f32(a / b);
                     } else {
                         let a = auto_val::decode_i32(a_bits);
                         let b = auto_val::decode_i32(b_bits);
@@ -8924,6 +8970,10 @@ self.rc_release(a_nv);
                             }
                             _ => false,
                         }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较——原 else 臂
+                        // decode_i32 把 f32/raw-f64 位型当整数（043 比较守卫假）。
+                        Self::nv_as_f64(a_nv) < Self::nv_as_f64(b_nv)
                     } else {
                         // Plan 390 §15 H3b: heap refs are TAG_OBJECT — decode
                         // explicitly (same id value as the old low-32 trick).
@@ -8992,6 +9042,11 @@ self.rc_release(a_nv);
                             }
                             _ => false,
                         }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较——GT fallback
+                        // 注记承认的 decode_i32 位型误读（f64 落 GT 时取低
+                        // 32 位、f32 取 payload 位型）就此收口。
+                        Self::nv_as_f64(a_nv) > Self::nv_as_f64(b_nv)
                     } else {
                         // Fallback: decode as i32 (covers f64 values that land in GT
                         // instead of GT_D when type inference misses the double type)
@@ -9025,6 +9080,9 @@ self.rc_release(a_nv);
                             }
                             _ => true,
                         }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较（同 LT 注记）。
+                        Self::nv_as_f64(a_nv) <= Self::nv_as_f64(b_nv)
                     } else {
                         let a = auto_val::decode_i32(a_nv);
                         let b = auto_val::decode_i32(b_nv);
@@ -9056,6 +9114,9 @@ self.rc_release(a_nv);
                             }
                             _ => true,
                         }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较（同 LT 注记）。
+                        Self::nv_as_f64(a_nv) >= Self::nv_as_f64(b_nv)
                     } else {
                         let a = auto_val::decode_i32(a_nv);
                         let b = auto_val::decode_i32(b_nv);

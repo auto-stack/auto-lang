@@ -1177,10 +1177,23 @@ impl DynamicComponent {
         // ID: 0」）。按父 handler 声明参数数对齐帧;未知 arity 保持
         // legacy（塞载荷）。
         let declared_params = self.bridge.handler_param_count(&route.parent_widget, &route.handler);
-        let args: Vec<auto_val::Value> = if declared_params.unwrap_or(1) > 0 {
-            vec![payload]
-        } else {
-            Vec::new()
+        // PLAN-576 G4 (D4): 参数数对齐升级——0 形参不塞载荷（T9 语义保留）、
+        // 1 形参塞载荷、**≥2 形参此前也只塞 1 载荷**（调用帧错位、函数体不
+        // 执行——043②③「合成派发 0 参/少参」病灶）→ 现响亮告警 + 跳过；
+        // 未知 arity 保持 legacy（塞载荷）。
+        let args: Vec<auto_val::Value> = match declared_params {
+            Some(0) => Vec::new(),
+            Some(1) => vec![payload],
+            Some(n) => {
+                let msg = format!(
+                    "[VM-ARITY] {}.{} declares {} param(s) but emit dispatch supplies 1 — skipping dispatch (plan-576 D4)",
+                    route.parent_widget, route.handler, n
+                );
+                log::warn!("{}", msg);
+                record_arity_mismatch(msg);
+                return;
+            }
+            None => vec![payload],
         };
         match self.bridge.call_handler_for(&route.parent_widget, &route.handler, state_id, &args) {
             Ok(()) => {
@@ -1348,6 +1361,24 @@ impl DynamicComponent {
         if !clean_name.starts_with("__") {
             eprintln!("[VM_HANDLER_CALL] widget={} event={} args={:?}", widget_name, clean_name, args);
         }
+        // PLAN-576 G4 (D4): 派发实参数与 handler 形参数失配诊断——此前静默
+        // 错位执行（调用帧 [__state, args…] 与形参槽错位，函数体读垃圾或
+        // 不执行，043 T10 的「handler 哑」病灶之一）。两侧参数数已知且不等
+        // → log::warn 响亮输出（件名/handler 名/两侧参数数）+ 跳过本次调用；
+        // 未知 arity（无声明记录）保持 legacy 不拦。
+        if let Some(declared) = self.bridge.handler_param_count(widget_name, &clean_name) {
+            if declared != args.len() {
+                let disp_widget =
+                    if widget_name.is_empty() { self.widget_name.clone() } else { widget_name.to_string() };
+                let msg = format!(
+                    "[VM-ARITY] {}.{} declares {} param(s) but dispatch supplies {} — skipping dispatch (plan-576 D4)",
+                    disp_widget, clean_name, declared, args.len()
+                );
+                log::warn!("{}", msg);
+                record_arity_mismatch(msg);
+                return;
+            }
+        }
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => {
                 if !clean_name.starts_with("__") {
@@ -1358,6 +1389,39 @@ impl DynamicComponent {
                     let _post_idx = self.bridge.read_state("active_index").ok();
                 }
                 self.dirty = true;
+                // PLAN-576 G3 (D3): 子件体内引号 emit（带计算实参）的派发
+                // 路由。handler 合成期把 `."msg"(v)` 改写为 __emit_<W>_<msg>
+                // 桥函数，桥函数把 (msg, v) 写入 __emit_msg/__emit_payload
+                // 状态对（router.push 写 __current_route 同款"handler 写
+                // 状态、派发器收尾"模式）。此处读出并清账，走 C2① 同一
+                // lookup_route/dispatch_parent_route 链——此前该形态编译为
+                // 对子件自身 handler 的内联直调，父侧 on<msg> 路由不触发
+                // （043②②）。v1 限度：单 pending 槽（同 handler 多次 emit
+                // 末次生效）；多实参取首个位置实参（桥函数侧截取）。
+                if let Ok(auto_val::Value::Str(pending_msg)) = self.bridge.read_state("__emit_msg") {
+                    if !pending_msg.is_empty() {
+                        let payload = self
+                            .bridge
+                            .read_state("__emit_payload")
+                            .unwrap_or(auto_val::Value::Nil);
+                        let _ = self.bridge.write_state("__emit_msg", auto_val::Value::str(""));
+                        let emit_key = format!("on{}", pending_msg);
+                        match crate::ui::child_emit::lookup_route(&emit_widget, &emit_key) {
+                            Some(route) => {
+                                if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                                    eprintln!(
+                                        "[VM-EMIT] {}.{} -> {}.{} (quoted, in-body) payload={:?}",
+                                        emit_widget, pending_msg, route.parent_widget, route.handler, payload
+                                    );
+                                }
+                                self.dispatch_parent_route(&emit_widget, &pending_msg, &route, payload);
+                            }
+                            None => {
+                                // 非错：未绑定回调的 emit 不回送（vue 同语义）。
+                            }
+                        }
+                    }
+                }
                 // PLAN-051 C2 ①: 声明式——子 msg 变体派发后回送宿主
                 // `on<name>` 绑定（musk `send(str)` + `onsend: .SendInput($event)`
                 // 形态；载荷 = 子 handler 收到的首实参，无实参回落输入值）。
@@ -1555,6 +1619,23 @@ pub(crate) fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>)
         rest = after_val;
     }
     (name.to_string(), args)
+}
+
+// PLAN-576 G4 (D4): 派发参数数失配诊断的测试镜像——log::warn 之外把
+// 最近一条警告文本存 thread-local，directed 单测可断言（日志本身在测试
+// 运行器里不可捕获）。
+thread_local! {
+    static LAST_ARITY_MISMATCH: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// PLAN-576 G4: 取走最近一条派发参数数失配警告（None = 无告警）。
+pub fn take_last_arity_mismatch() -> Option<String> {
+    LAST_ARITY_MISMATCH.with(|w| w.borrow_mut().take())
+}
+
+fn record_arity_mismatch(msg: String) {
+    LAST_ARITY_MISMATCH.with(|w| *w.borrow_mut() = Some(msg));
 }
 
 /// Parse a string input value into the best-matching Value type.
@@ -3128,5 +3209,280 @@ mod tests {
         let _ = dc.on_with_input_for("App", "BeatTick", None);
         let s3 = dc.state_mutation_seq();
         assert!(s3 > s2, "state-writing tick must bump mutation seq ({} -> {})", s2, s3);
+    }
+
+    /// PLAN-576 G1 定向测试（TDD 红）：nanbox 整值 float 位型保真——
+    /// VM 实参绑定路径的混合类型算术/比较。043 期「VM handler 哑」家族
+    /// 的实测存活根因：TAG_F32 操作数（handler float 实参）与 TAG_I32
+    /// 字面量混算/比较时，ADD/SUB/MUL/DIV else 臂与 LT/GT/LE/GE fallback
+    /// 臂按位型 decode_i32——240.0 的 f32 位 0x43700000 被当整数
+    /// 1131413504 运算/比较（`240.0 + 1` → Int(1131413505)、
+    /// `50.0 > 100` 恒真——043「比较守卫静默假」同源）。
+    /// 纯 encode/decode 往返（实参绑定/write_state 写读回）经 Plan
+    /// 437/474 tag 驱动修复已恒等，此处一并钉死防回归。
+    #[test]
+    fn plan576_integer_float_mixed_arith_and_cmp() {
+        let src = concat!(
+            "widget P576 {\n",
+            "    model {\n",
+            "        var top float = 0.0\n",
+            "        var acc float = 0.0\n",
+            "        var flag float = 0.0\n",
+            "    }\n",
+            "    view { col { text \"x\" } }\n",
+            "    on {\n",
+            "        .Bind(t: float) -> { .top = t }\n",
+            "        .MixInt(t: float) -> { .acc = t + 1 }\n",
+            "        .MixSub(t: float) -> { .acc = t - 1 }\n",
+            "        .MixMul(t: float) -> { .acc = t * 2 }\n",
+            "        .MixDiv(t: float) -> { .acc = t / 2 }\n",
+            "        .CmpGt(t: float) -> { if t > 100 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .CmpLt(t: float) -> { if t < 100 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .CmpGe(t: float) -> { if t >= 240 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .CmpLe(t: float) -> { if t <= 239 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .ReadBack -> { .acc = .top }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+
+        let dispatch_f = |comp: &mut DynamicComponent, handler: &str, val: &str| {
+            comp.on_with_input_for("P576", &format!("{}\u{1F}f\u{1F}{}", handler, val), None);
+        };
+        let read_f = |comp: &DynamicComponent, field: &str| -> f64 {
+            match comp.read_state(field).expect(field) {
+                auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+                other => panic!("{} 应为 float，实得 {:?}", field, other),
+            }
+        };
+
+        // ① 实参绑定恒等（钉契约：整值/零值/分数/负值 float 原样落 state）
+        for (sent, want) in [("240.0", 240.0), ("0.0", 0.0), ("240.5", 240.5), ("-1.5", -1.5)] {
+            dispatch_f(&mut comp, "Bind", sent);
+            let got = read_f(&comp, "top");
+            assert!((got - want).abs() < 1e-6, "实参绑定 {} -> top = {}，期望 {}", sent, got, want);
+        }
+
+        // ② 混合类型算术：float 实参 × int 字面量，按值运算（红点）
+        for (sent, want) in [("240.0", 241.0), ("240.5", 241.5), ("0.0", 1.0)] {
+            dispatch_f(&mut comp, "MixInt", sent);
+            let got = read_f(&comp, "acc");
+            assert!((got - want).abs() < 1e-4, "{} + 1 = {}，期望 {}", sent, got, want);
+        }
+        dispatch_f(&mut comp, "MixSub", "240.0");
+        assert!((read_f(&comp, "acc") - 239.0).abs() < 1e-4, "240.0 - 1 应为 239.0");
+        dispatch_f(&mut comp, "MixMul", "240.0");
+        assert!((read_f(&comp, "acc") - 480.0).abs() < 1e-4, "240.0 * 2 应为 480.0");
+        dispatch_f(&mut comp, "MixDiv", "240.0");
+        assert!((read_f(&comp, "acc") - 120.0).abs() < 1e-4, "240.0 / 2 应为 120.0");
+
+        // ③ 混合类型比较：float 实参 vs int 字面量，按值比较（红点）
+        dispatch_f(&mut comp, "CmpGt", "240.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "240.0 > 100 应走真分支");
+        dispatch_f(&mut comp, "CmpGt", "50.0");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "50.0 > 100 应走假分支");
+        dispatch_f(&mut comp, "CmpLt", "240.0");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "240.0 < 100 应走假分支");
+        dispatch_f(&mut comp, "CmpLt", "50.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "50.0 < 100 应走真分支");
+        dispatch_f(&mut comp, "CmpGe", "240.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "240.0 >= 240 应走真分支");
+        dispatch_f(&mut comp, "CmpGe", "239.5");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "239.5 >= 240 应走假分支");
+        dispatch_f(&mut comp, "CmpLe", "240.0");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "240.0 <= 239 应走假分支");
+        dispatch_f(&mut comp, "CmpLe", "239.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "239.0 <= 239 应走真分支");
+
+        // ④ write_state 写读回（钉契约：Rust 侧 Double 直写 → script 读）
+        for v in [240.0f64, 240.5, 0.0] {
+            comp.write_state("top", auto_val::Value::Double(v)).unwrap();
+            comp.on_with_input_for("P576", "ReadBack", None);
+            let got = read_f(&comp, "acc");
+            assert!((got - v).abs() < 1e-6, "write_state Double({}) 读回 {} 失真", v, got);
+        }
+    }
+
+    /// PLAN-576 G2 定向测试（TDD 红）：use 子件 handler 体内的 computed 引用
+    /// 解析。043②①：handler_codegen 状态引用改写只认本件 state_vars——
+    /// computed 引用（.half_h）不被改写，编译后 Nil 传播、数值守卫静默假。
+    #[test]
+    fn plan576_child_computed_resolves_in_handler() {
+        let src = concat!(
+            "widget P576p {
+",
+            "    model { var got float = 0.0 }
+",
+            "    view { col { Bar576() } }
+",
+            "}
+",
+            "widget Bar576 {
+",
+            "    model {
+",
+            "        var track_h float = 240.0
+",
+            "        var out float = 0.0
+",
+            "    }
+",
+            "    computed {
+",
+            "        half_h => .track_h * 0.5
+",
+            "        quarter_h => .half_h * 0.5
+",
+            "    }
+",
+            "    view { col { text \"bar\" } }
+",
+            "    on {
+",
+            "        .Move -> { if .half_h > 100.0 { .out = .quarter_h } else { .out = -1.0 } }
+",
+            "    }
+",
+            "}
+",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        comp.on_with_input_for("Bar576", "Move", None);
+        let got = match comp.read_state("out").expect("out") {
+            auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+            other => panic!("out 应为 float，实得 {:?}", other),
+        };
+        // half_h = 240.0*0.5 = 120 > 100 → 真分支；quarter_h = 120*0.5 = 60
+        assert!((got - 60.0).abs() < 1e-4, "子件 computed 引用应解析（half=120 守卫真，quarter=60），实得 {}", got);
+    }
+
+    /// PLAN-576 G3 定向测试（TDD 红）：子件体内引号 emit（带计算实参）的
+    /// 派发路由。043②②：`."msg"(v)` 编译为子件自身 handler 内联直调，不经
+    /// on_with_input_for 派发器——PLAN-051 C2① 的 on<name> 路由回送不触发
+    /// （带计算实参的子件 emit 平台性不通，demo 被迫 is_vm 双轨）。
+    #[test]
+    fn plan576_child_quoted_emit_routes_with_payload() {
+        let src = concat!(
+            "widget P576e {
+",
+            "    model { var got float = 0.0 }
+",
+            "    view { col { Bar576e(onmoved: .Moved) } }
+",
+            "    on { .Moved(v: float) -> { .got = v } }
+",
+            "}
+",
+            "widget Bar576e {
+",
+            "    model { var track_h float = 240.0 }
+",
+            "    msg { moved(float) }
+",
+            "    view { col { text \"bar\" } }
+",
+            "    on {\n",
+            "        .Move -> {\n",
+            "            let v = .track_h * 0.5\n",
+            "            let _ = .\"moved\"(v)\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        comp.on_with_input_for("Bar576e", "Move", None);
+        let got = match comp.read_state("got").expect("got") {
+            auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+            other => panic!("got 应为 float，实得 {:?}", other),
+        };
+        assert!((got - 120.0).abs() < 1e-4,
+            "引号 emit 应携带计算实参经派发器路由到父 onmoved（v=track_h*0.5=120），实得 {}", got);
+    }
+
+    /// PLAN-576 G4 定向测试（TDD 红）：派发实参数与 handler 形参数失配的
+    /// 响亮诊断 + 跳过。043②③：handler 声明参数而合成派发 0 参/少参时调用
+    /// 帧静默错位、函数体不执行（T10 以 $event 冻结标记实参绕过）。
+    #[test]
+    fn plan576_dispatch_arity_mismatch_diagnosed_and_skipped() {
+        let src = concat!(
+            "widget P576f {\n",
+            "    model { var touched float = 0.0 }\n",
+            "    view { col { text \"x\" } }\n",
+            "    on {\n",
+            "        .Two(a: float, b: float) -> { .touched = 1.0 }\n",
+            "        .One(a: float) -> { .touched = 2.0 }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+
+        // 失配：.Two 声明 2 形参，派发仅 1 实参 → 响亮警告 + 跳过不执行
+        comp.on_with_input_for("P576f", "Two\u{1F}f\u{1F}1.0", None);
+        let warn = crate::ui::dynamic::take_last_arity_mismatch();
+        assert!(
+            warn.as_deref()
+                .is_some_and(|w| w.contains("Two") && w.contains("2") && w.contains("1")),
+            "失配应有响亮诊断（件名/两侧参数数），实得 {:?}",
+            warn
+        );
+        assert!(
+            !matches!(comp.read_state("touched"), Ok(auto_val::Value::Float(f)) if f == 1.0),
+            "失配派发必须跳过（不静默错位执行）"
+        );
+
+        // 对照：参数数吻合照常执行
+        comp.on_with_input_for("P576f", "One\u{1F}f\u{1F}5.0", None);
+        assert_eq!(
+            crate::ui::dynamic::take_last_arity_mismatch(),
+            None,
+            "吻合派发不告警"
+        );
+        let touched = match comp.read_state("touched").expect("touched") {
+            auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+            other => panic!("touched 应为 float，实得 {:?}", other),
+        };
+        assert!((touched - 2.0).abs() < 1e-6, "吻合派发应执行，实得 {}", touched);
     }
 }

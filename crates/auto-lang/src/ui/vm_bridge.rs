@@ -495,6 +495,20 @@ impl VmBridge {
             field_values.push(auto_val::Value::str(""));
         }
 
+        // Plan 576 (D3): 子件体内引号 emit 的挂载字段对。handler 里的
+        // `."msg"(v)` 调用被 handler_codegen 重写为 __emit_<W>_<msg> 桥函数
+        // （体内写 msg 名 + 载荷值），on_with_input_for 在子 handler 返回后
+        // 读出并清账，经 child_emit ROUTES 派发到父 on<msg> 绑定（__toast
+        // 同型"handler 写状态、update 侧消费"管线）。
+        if !field_names.iter().any(|n| n == "__emit_msg") {
+            field_names.push("__emit_msg".to_string());
+            field_values.push(auto_val::Value::str(""));
+        }
+        if !field_names.iter().any(|n| n == "__emit_payload") {
+            field_names.push("__emit_payload".to_string());
+            field_values.push(auto_val::Value::Nil);
+        }
+
         let mono_name = format!("{}_State", widget_name);
         let instance = GenericInstanceData::new_with_names(
             mono_name,

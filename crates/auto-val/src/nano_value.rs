@@ -352,4 +352,31 @@ mod tests {
         assert!(is_i64(i64_nv) && !is_u64(i64_nv));
         assert!(is_u64(u64_nv) && !is_i64(u64_nv));
     }
+
+    // Plan 576: 整值 float 位型保真对照集（DEBTS 043 债的 encode→decode
+    // 契约钉）。任意 f64——含整值 240.0/0.0/-0.0——编码后 float 标签不丢
+    // （tag_of == TAG_F64 即非 nanbox 直存位型）且解码恒等；f32 同口径。
+    #[test]
+    fn test_f64_integer_valued_roundtrip_tags() {
+        let vals = [240.0f64, 0.0, -0.0, 1.0, -1.5, f64::MAX, f64::MIN_POSITIVE];
+        for v in vals {
+            let nv = encode_f64(v);
+            assert_eq!(tag_of(nv), TAG_F64, "f64 {} 的 float 标签丢失", v);
+            assert!(is_f64(nv), "f64 {} 应识别为 f64", v);
+            assert_eq!(decode_f64(nv).to_bits(), v.to_bits(), "f64 {} 位型往返失真", v);
+        }
+        // -0.0 与 0.0 必须按位可区分（符号位保真）
+        assert_ne!(encode_f64(0.0), encode_f64(-0.0));
+    }
+
+    #[test]
+    fn test_f32_integer_valued_roundtrip_tags() {
+        let vals = [240.0f32, 0.0, -0.0, 1.0, -1.5, f32::MAX];
+        for v in vals {
+            let nv = encode_f32(v);
+            assert_eq!(tag_of(nv), 7, "f32 {} 的 float 标签丢失", v);
+            assert!(is_f32(nv), "f32 {} 应识别为 f32", v);
+            assert_eq!(decode_f32(nv).to_bits(), v.to_bits(), "f32 {} 位型往返失真", v);
+        }
+    }
 }
