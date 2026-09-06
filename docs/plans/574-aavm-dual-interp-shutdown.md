@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-574
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-dual-interp-shutdown
 author: [zhaopuming]
 created_at: 2026-09-06
@@ -138,9 +138,20 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
    统一引用"572 待澄清②裁定(2026-09-06)"。
 3. [ ] T3 门禁验证:裸 taa 失败集 13→1;tf 3460/3461;保留锚全
    PASS;⑤腿 compile_corpus 58/58 复跑确认零波及。
-4. [ ] T4 文档结算:AGENTS AAVM 档注记 + KNOWN-DEBT 572 条目结算
-   + 本计划复审留档;顺手修 a2r_at_mode 测试文档头 feature 标注
-   (test-vm-files → test-aavm,572 待澄清④结案余项)。
+4. [ ] T4 文档与规约结算:
+   - **`docs/specs/aavm/project.md` 验证矩阵(2×2)节裁定注记**:
+     VM 内解释两格(aavm×VM=③腿族 / a2r.at×VM=corpus_a2r)降格为
+     "最小正确性锚(浅递归件),重型全量语料验证只走②/⑤腿(转译+
+     编译+运行)";注记引用 2026-09-06 用户裁定与理由(双重解释器
+     路径非真实需求;真实自举=a2r 转译+编译+运行,同 Rust 自举);
+     `test_aavm2_fourpath_runner` 的 VM 内解释腿同款注记。
+   - AGENTS.md AAVM/AA2R Test Tier 注记:avm+aavm/avm+aa2r 重型测试
+     已裁定关闭,新计划/新能力验收避免该路径重型化(最小锚除外);
+     能力同步规约的"VM 闸/corpus_a2r 闸"按最小锚口径执行。
+   - KNOWN-DEBT 572 条目结算;
+   - a2r_at_mode 测试文档头 feature 标注顺手修(test-vm-files →
+     test-aavm,572 待澄清④结案余项);
+   - 本计划复审留档。
 
 ## 复审记录
 
