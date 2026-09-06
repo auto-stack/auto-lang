@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-564
-status: reviewed                    # drafting → executing → execution_done → reviewed → archived
+status: archived                    # drafting → executing → execution_done → reviewed → archived
 feature_name: heavy-mem-test-tiering
 author: [zhaopuming]
 created_at: 2026-09-05
