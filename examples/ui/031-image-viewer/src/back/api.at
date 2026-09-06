@@ -1,0 +1,66 @@
+// 031-image-viewer control-plane API skeleton (Plan 547 Task 29).
+// Pixel payloads are intentionally excluded; media bytes use the shared route.
+
+// The generated Rust server uses the first public API type as its legacy
+// fallback state.  Viewer responses remain metadata-only; image bytes never
+// enter this control-plane record.
+use auto.image
+
+pub type ViewerControl = {
+    status: str
+}
+
+#[api(method = "GET", path = "/api/viewer/health")]
+pub fn viewer_health() str {
+    return "Ready"
+}
+
+#[api(method = "POST", path = "/api/viewer/open-file")]
+pub fn open_file(path str) str {
+    return image.open_session(path)
+}
+
+#[api(method = "POST", path = "/api/viewer/open-directory")]
+pub fn open_directory(path str) str {
+    return image.open_session(path)
+}
+
+#[api(method = "POST", path = "/api/viewer/open-path")]
+pub fn open_path(path str) str {
+    return image.open_session(path)
+}
+
+#[api(method = "GET", path = "/api/viewer/snapshot")]
+pub fn snapshot(session str) str {
+    return image.snapshot(session)
+}
+
+#[api(method = "GET", path = "/api/viewer/current-uri")]
+pub fn current_uri(session str) str {
+    return image.current_uri(session)
+}
+
+#[api(method = "GET", path = "/api/viewer/names")]
+pub fn names(session str) []str {
+    return image.names(session)
+}
+
+#[api(method = "POST", path = "/api/viewer/navigate")]
+pub fn navigate(session str, delta int) str {
+    return image.navigate(session, delta)
+}
+
+#[api(method = "POST", path = "/api/viewer/request-view")]
+pub fn request_view(session str, index int, viewport_width int, viewport_height int, quality int) str {
+    return image.request_view(session, index, viewport_width, viewport_height, quality)
+}
+
+#[api(method = "POST", path = "/api/viewer/close")]
+pub fn close_session(session str) bool {
+    return image.close_session(session)
+}
+
+#[api(method = "GET", path = "/api/viewer/stats")]
+pub fn image_stats(session str) str {
+    return image.session_stats(session)
+}

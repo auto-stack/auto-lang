@@ -1,0 +1,41 @@
+// Plan 547 Task 28: one fixture consumed by the VM, Rust and Vue generators.
+widget ImageViewer {
+    msg { ImageLoaded, ImageFailed, ZoomAt, PanBy, ToggleFit }
+
+    model {
+        var asset_src str = "/api/__auto/media/demo/7"
+        var zoom float = 1.25
+        var offset_x float = 12.5
+        var offset_y float = -4.0
+        var rotation int = 90
+    }
+
+    view {
+        image_surface (
+            src: .asset_src,
+            alt: "hero",
+            width: 640,
+            height: 480,
+            quality: 80,
+            fit: "width",
+            zoom: .zoom,
+            offset_x: .offset_x,
+            offset_y: .offset_y,
+            rotation: .rotation,
+            filter: "linear",
+            onload: .ImageLoaded,
+            onerror: .ImageFailed,
+            onwheel: .ZoomAt,
+            onpan: .PanBy,
+            ondblclick: .ToggleFit
+        ) {}
+    }
+
+    on {
+        .ImageLoaded -> { }
+        .ImageFailed -> { }
+        .ZoomAt -> { }
+        .PanBy -> { }
+        .ToggleFit -> { }
+    }
+}

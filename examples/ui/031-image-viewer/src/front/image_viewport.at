@@ -1,0 +1,31 @@
+// Reusable ImageSurface viewport (Plan 547 Task 33).
+// Callback props are message channels; no image bytes are stored here.
+widget ImageViewport(src: str, alt: str, fit_mode: str, zoom: float, offset_x: float, offset_y: float, rotation: int, on_loaded: msg, on_error: msg, on_wheel: msg, on_pan: msg, on_double_click: msg) {
+    msg { Loaded, Failed, Wheel, Pan, DoubleClick }
+
+    view {
+        image_surface (
+            src: .src,
+            alt: .alt,
+            fit: .fit_mode,
+            zoom: .zoom,
+            offset_x: .offset_x,
+            offset_y: .offset_y,
+            rotation: .rotation,
+            onload: .Loaded,
+            onerror: .Failed,
+            onwheel: .Wheel,
+            onpan: .Pan,
+            ondblclick: .DoubleClick,
+            style: "w-full h-full"
+        ) {}
+    }
+
+    on {
+        .Loaded -> { on_loaded() }
+        .Failed -> { on_error() }
+        .Wheel -> { on_wheel() }
+        .Pan -> { on_pan() }
+        .DoubleClick -> { on_double_click() }
+    }
+}

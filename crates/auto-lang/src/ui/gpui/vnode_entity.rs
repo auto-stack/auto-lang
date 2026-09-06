@@ -119,7 +119,7 @@ impl VNodeEntity {
     /// 渲染文本节点
     fn render_text(&self, node: &crate::ui::vnode::VNode) -> AnyElement {
         let content = match &node.props {
-            VNodeProps::Text { content } => content.clone(),
+            VNodeProps::Text { content, .. } => content.clone(),
             VNodeProps::Empty => String::new(),
             _ => String::from("(无效的文本属性)"),
         };
@@ -133,7 +133,7 @@ impl VNodeEntity {
     /// 渲染按钮节点
     fn render_button(&self, node: &crate::ui::vnode::VNode, _cx: &mut Context<Self>) -> AnyElement {
         let label = match &node.props {
-            VNodeProps::Button { label } => label.clone(),
+            VNodeProps::Button { label, .. } => label.clone(),
             _ => String::from("Button"),
         };
 

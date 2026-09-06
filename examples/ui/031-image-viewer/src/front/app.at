@@ -1,0 +1,290 @@
+// 031-image-viewer front UI (Plan 547 Tasks 29 and 33).
+// The model is metadata and transform state only; pixels stay behind the
+// shared media route and ImageSurface renderer.
+use back.api: open_file, open_directory, current_uri, names, request_view, close_session, image_stats
+
+widget App {
+    msg {
+        Init,
+        OpenFile,
+        OpenDirectory,
+        SelectImage(int),
+        ZoomIn,
+        ZoomOut,
+        FitContain,
+        FitWidth,
+        OneToOne,
+        RotateLeft,
+        RotateRight,
+        PanLeft,
+        PanRight,
+        RefreshStats,
+        ToggleFullscreen,
+        ImageLoaded,
+        ImageFailed,
+        Wheel,
+        Pan,
+        DoubleClick,
+        SettleTick,
+        Close
+    }
+
+    model {
+        var view_state str = "empty"
+        var status str = "Open a file or directory to begin"
+        var stats str = ""
+        var session_id str = ""
+        var media_src str = ""
+        var media_alt str = ""
+        var selected_name str = ""
+        var selected_path str = ""
+        var image_count int = 0
+        var selected_index int = 0
+        var zoom float = 1.0
+        var offset_x float = 0.0
+        var offset_y float = 0.0
+        var rotation int = 0
+        var fit_mode str = "contain"
+        var is_fullscreen bool = false
+        var revision int = 0
+        var thumbnails = [
+            { id: 0, name: "No images", src: "" }
+        ]
+    }
+
+    timer {
+        SettleTick (every_ms: 80)
+    }
+
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-background text-foreground overflow-hidden"
+            row {
+                style: "h-12 shrink-0 items-center justify-between px-4 border-b border-border bg-card"
+                row {
+                    style: "items-center gap-2"
+                    text "🖼️" { style: "text-lg" }
+                    h1 "Image Viewer" { style: "text-lg font-semibold" }
+                    text .status { style: "text-xs text-muted-foreground ml-2 truncate max-w-sm" }
+                }
+                row {
+                    style: "items-center gap-1"
+                    button "Open File" { onclick: .OpenFile, style: "px-2.5 py-1.5 text-xs" }
+                    button "Open Directory" { onclick: .OpenDirectory, style: "px-2.5 py-1.5 text-xs" }
+                    button "Fullscreen" { onclick: .ToggleFullscreen, style: "px-2.5 py-1.5 text-xs" }
+                }
+            }
+
+            row {
+                style: "flex-1 min-h-0"
+                col {
+                    style: "w-52 shrink-0 border-r border-border bg-card p-3 gap-2 overflow-hidden"
+                    row {
+                        style: "items-center justify-between"
+                        text "Images" { style: "text-xs font-semibold" }
+                        text .image_count { style: "text-xs text-muted-foreground" }
+                    }
+                    if .image_count == 0 {
+                        text "No images yet" { style: "text-xs text-muted-foreground p-2" }
+                    } else {
+                        col {
+                            style: "flex-1 min-h-0"
+                            col {
+                                style: "gap-1"
+                                for item in .thumbnails {
+                                    button item.name {
+                                        onclick: .SelectImage(item.id),
+                                        style: "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-muted"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                col {
+                    style: "flex-1 min-w-0 min-h-0"
+                    row {
+                        style: "h-10 shrink-0 items-center justify-center gap-1 border-b border-border"
+                        button "−" { onclick: .ZoomOut, style: "w-8 h-7" }
+                        text "Zoom" { style: "text-xs text-muted-foreground px-2" }
+                        button "+" { onclick: .ZoomIn, style: "w-8 h-7" }
+                        button "Fit" { onclick: .FitContain, style: "px-2 text-xs" }
+                        button "Width" { onclick: .FitWidth, style: "px-2 text-xs" }
+                        button "1:1" { onclick: .OneToOne, style: "px-2 text-xs" }
+                        button "↺" { onclick: .RotateLeft, style: "w-8 h-7" }
+                        button "↻" { onclick: .RotateRight, style: "w-8 h-7" }
+                    }
+
+                    col {
+                        style: "flex-1 min-h-0 items-center justify-center p-3 bg-muted/20"
+                        if .view_state == "empty" {
+                            col {
+                                style: "items-center justify-center gap-2"
+                                text "🖼️" { style: "text-5xl opacity-40" }
+                                text "Choose an image file or directory" { style: "text-sm text-muted-foreground" }
+                            }
+                        } else if .view_state == "loading" {
+                            text "Loading image…" { style: "text-sm text-muted-foreground" }
+                        } else if .view_state == "error" {
+                            col {
+                                style: "items-center justify-center gap-2"
+                                text "Unable to load image" { style: "text-sm text-destructive" }
+                                button "Retry" { onclick: .OpenFile, style: "px-3 py-1.5 text-xs" }
+                            }
+                        } else {
+                            image_surface (
+                                src: .media_src,
+                                alt: .media_alt,
+                                fit: .fit_mode,
+                                zoom: .zoom,
+                                offset_x: .offset_x,
+                                offset_y: .offset_y,
+                                rotation: .rotation,
+                                onload: .ImageLoaded,
+                                onerror: .ImageFailed,
+                                onwheel: .Wheel,
+                                onpan: .Pan,
+                                ondblclick: .DoubleClick,
+                                style: "w-full h-full"
+                            ) {}
+                        }
+                    }
+
+                    row {
+                        style: "h-9 shrink-0 items-center justify-between px-3 border-t border-border bg-card"
+                        text .selected_name { style: "text-xs font-medium truncate" }
+                        text .selected_path { style: "text-[11px] text-muted-foreground truncate max-w-md" }
+                    }
+                }
+            }
+        }
+    }
+
+    bind {
+        "ArrowLeft" -> .RotateLeft
+        "ArrowRight" -> .RotateRight
+        "a" -> .PanLeft
+        "A" -> .PanLeft
+        "d" -> .PanRight
+        "D" -> .PanRight
+        "s" -> .RefreshStats
+        "S" -> .RefreshStats
+        "+" -> .ZoomIn
+        "-" -> .ZoomOut
+        "0" -> .FitContain
+        "1" -> .OneToOne
+        "F" -> .ToggleFullscreen
+        "Escape" -> .Close
+    }
+
+    on {
+        .Init -> {
+            .view_state = "empty"
+            .status = "Open a file or directory to begin"
+        }
+        .OpenFile -> {
+            .view_state = "loading"
+            .status = "Reading image metadata…"
+            if .session_id != "" {
+                let _closed = close_session(.session_id)
+            }
+            let session = open_file("../../tests/fixtures/rgb-1x1.png")
+            .session_id = session
+            .media_src = current_uri(session)
+            .media_alt = "Selected image"
+            .selected_name = "rgb-1x1.png"
+            .selected_path = "tests/fixtures"
+            .image_count = 1
+            .thumbnails = [{ id: 0, name: "rgb-1x1.png", src: "" }]
+            .selected_index = 0
+            .revision = .revision + 1
+        }
+        .OpenDirectory -> {
+            .view_state = "loading"
+            .status = "Indexing directory…"
+            if .session_id != "" {
+                let _closed = close_session(.session_id)
+            }
+            let session = open_directory("../../tests/fixtures")
+            .session_id = session
+            .media_src = current_uri(session)
+            .media_alt = "Selected image"
+            .selected_name = "Opening directory…"
+            .selected_path = "tests/fixtures"
+            .revision = .revision + 1
+        }
+        .SelectImage(i) -> {
+            .selected_index = i
+            if .session_id != "" {
+                request_view(.session_id, i, 1024, 768, 90)
+                .media_src = current_uri(.session_id)
+                .status = "Queued rendition"
+            }
+            .view_state = "loading"
+            .revision = .revision + 1
+        }
+        .ZoomIn -> {
+            .zoom = .zoom + 0.1
+            .fit_mode = "free"
+        }
+        .ZoomOut -> {
+            if .zoom > 0.2 { .zoom = .zoom - 0.1 }
+            .fit_mode = "free"
+        }
+        .FitContain -> { .fit_mode = "contain"; .zoom = 1.0; .offset_x = 0.0; .offset_y = 0.0 }
+        .FitWidth -> { .fit_mode = "width"; .zoom = 1.0 }
+        .OneToOne -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
+        .RotateLeft -> { .rotation = (.rotation + 270) % 360 }
+        .RotateRight -> { .rotation = (.rotation + 90) % 360 }
+        .RefreshStats -> { if .session_id != "" { .stats = image_stats(.session_id) } }
+        .PanLeft -> { .offset_x = .offset_x - 40.0; .fit_mode = "free" }
+        .PanRight -> { .offset_x = .offset_x + 40.0; .fit_mode = "free" }
+        .ToggleFullscreen -> { .is_fullscreen = !.is_fullscreen }
+        .ImageLoaded -> { .view_state = "ready"; .status = "Ready" }
+        // A media ticket can briefly be 503 while the bounded worker publishes
+        // its rendition. Keep the viewport mounted so the browser can retry
+        // the opaque URI; only an empty URI is a terminal error.
+        .ImageFailed -> {
+            .status = "Waiting for image worker…"
+            if .media_src == "" { .view_state = "error"; .status = "Image failed to load" }
+        }
+        .Wheel -> { .zoom = .zoom + 0.1; .fit_mode = "free" }
+        .Pan -> { .offset_x = .offset_x + 8.0; .offset_y = .offset_y + 4.0 }
+        .DoubleClick -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
+        .SettleTick -> {
+            if .view_state == "loading" {
+                if .session_id != "" {
+                    .media_src = current_uri(.session_id)
+                    let names_list = names(.session_id)
+                    .image_count = names_list.len()
+                    var thumb_list = []
+                    var j int = 0
+                    for j < names_list.len() {
+                        thumb_list.push({ id: j, name: names_list[j], src: "" })
+                        j = j + 1
+                    }
+                    if names_list.len() > 0 {
+                        .thumbnails = thumb_list
+                        .media_src = current_uri(.session_id)
+                        if .selected_name == "Opening directory…" { .selected_name = names_list[0] }
+                        .view_state = "ready"
+                        .status = "Ready"
+                    }
+                }
+            }
+        }
+        .Close -> {
+            if .session_id != "" {
+                let _closed = close_session(.session_id)
+            }
+            .view_state = "empty"
+            .media_src = ""
+            .session_id = ""
+            .image_count = 0
+            .selected_name = ""
+            .selected_path = ""
+            .status = "Closed"
+        }
+    }
+}

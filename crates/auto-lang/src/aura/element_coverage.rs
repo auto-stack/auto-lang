@@ -38,6 +38,9 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("h5", QueueStatus::Covered),
         ("h6", QueueStatus::Covered),
         ("image", QueueStatus::Covered),
+        // Plan 547: ImageSurface is consumed by the dedicated media queue and
+        // renderer rather than the legacy image loader/cache path.
+        ("imagesurface", QueueStatus::Covered),
         ("input", QueueStatus::Covered),
         ("label", QueueStatus::Covered),
         ("p", QueueStatus::Covered),

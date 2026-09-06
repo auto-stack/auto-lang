@@ -167,3 +167,6 @@ node_modules
 tmpb/
 target-412/
 examples/widgets-gallery/src/front/tests/
+
+# auto CLI writes a local am.at cache into the run directory; keep generated copies out of the tree (assets copy is tracked explicitly)
+examples/**/am.at

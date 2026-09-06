@@ -759,7 +759,7 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let client: iced::Element<'_, crate::ui::session::DesktopMessage> =
         iced::widget::text("WINCLIENT").into();
     let win_el: iced::Element<'static, ()> =
-        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, false, client)
+        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, false, 0.95, client)
             .map(|_| ());
 
     // Stack push 序 = view() 装配序（surface 先于虚拟窗 = 底序）。

@@ -405,6 +405,8 @@ enum Commands {
         gallery: bool,
         #[arg(long, help = "Plan 465: apps directory for the desktop registry (default <workspace>/examples/ui)")]
         apps: Option<String>,
+        #[arg(long, action = clap::ArgAction::SetTrue, help = "Plan 547: explicitly select Rust merged in-process mode (already the default for --render=rust)")]
+        merged: bool,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -891,7 +893,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, gallery, apps, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, gallery, apps, merged, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -955,6 +957,13 @@ fn real_main(cli: Cli) -> Result<()> {
             // #[api] calls to HTTP requests against the separate backend.
             let merge_mode = !no_merge;
             std::env::set_var("AUTO_VM_MERGE", if merge_mode { "1" } else { "0" });
+            if merged {
+                // The Rust UI runner already uses AUTO_VM_MERGE=1 by default;
+                // retaining this explicit switch makes the documented command
+                // (`auto run --render rust --server rust --merged`) parse as a
+                // mode flag instead of leaking `--merged` to Cargo.
+                std::env::set_var("AUTO_VM_MERGE", "1");
+            }
             if !merge_mode {
                 let backend = server.as_deref().unwrap_or("vm");
                 let frontend = render.as_deref().unwrap_or("vm");

@@ -614,6 +614,30 @@ Image display
 
 ---
 
+### `imagesurface`
+
+`builtin_widget` · `imagesurface` · web: `component` · iced: `full` · category: `media`
+
+Asynchronous image viewer surface
+
+别名:`ImageSurface` `image-surface` `image_surface`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `src` | `string` | — | Media ticket URI |
+| `alt` | `string` |  | Alt text |
+| `width` | `int` | 0 | Viewport width |
+| `height` | `int` | 0 | Viewport height |
+| `quality` | `int` | 90 | Rendition quality |
+| `fit` | `one_of: contain|width|one-to-one|free` | contain | Viewport fit policy |
+| `zoom` | `float` | 1.0 | Viewport zoom |
+| `offset_x` | `float` | 0.0 | Horizontal pan offset |
+| `offset_y` | `float` | 0.0 | Vertical pan offset |
+| `rotation` | `int` | 0 | Clockwise rotation in degrees |
+| `filter` | `string` | none | Sampling filter |
+
+---
+
 ### `img`
 
 `builtin_widget` · `img` · web: `native` · iced: `partial` · category: `content`

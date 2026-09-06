@@ -389,6 +389,12 @@ impl RustGenerator {
 
     /// Check if a dot access target needs index syntax (target["field"] instead of target.field)
     fn needs_index_access(&self, target_name: &str) -> bool {
+        // Plan 547: the viewer `names()` endpoint is a native `Vec<String>`
+        // result, not a serde_json::Value. Keep its local field/index access
+        // in normal Rust form (`names_list.len()` / `names_list[i]`).
+        if target_name == "names_list" {
+            return false;
+        }
         // Props that are actually serde_json::Value type
         if let Some(ty) = self.prop_types.get(target_name) {
             if ty == "serde_json::Value" {
@@ -544,11 +550,24 @@ impl RustGenerator {
             // (See generate_msg_enum for the direct string injection.)
         }
 
-        // If widget has a tick_interval, add Tick variant to message enum
+        // If widget has a tick_interval, add Tick variant to message enum.
+        // Timer-block entries already name their message variants, but keep a
+        // defensive insertion here so generated Rust remains total even when a
+        // hand-built AuraWidget omits the declaration from `msg { ... }`.
         if widget.tick_interval.is_some() {
             if !self.message_variants.iter().any(|v| v.name == "Tick") {
                 self.message_variants.push(AuraMsgVariant {
                     name: "Tick".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                    payload_names: vec![],
+                });
+            }
+        }
+        for timer in &widget.timers {
+            if !self.message_variants.iter().any(|v| v.name == timer.event) {
+                self.message_variants.push(AuraMsgVariant {
+                    name: timer.event.clone(),
                     quoted: false,
                     payload: vec![],
                     payload_names: vec![],
@@ -1033,16 +1052,26 @@ impl RustGenerator {
         }
 
         // Plan 407: tick_msg() + tick_interval_ms() — for run_app subscription.
-        if widget.tick_interval.is_some() {
+        // Plan 051 C7: the standalone Rust/Iced runner has one generic
+        // periodic subscription, so expose the first `timer { ... }` entry
+        // through that hook. Desktop/VM mode supports all entries via its
+        // dynamic timer registry; this keeps the Rust path useful for the
+        // common single-settle-timer case without changing Component's API.
+        let periodic_timer = widget.timers.first().map(|timer| {
+            let interval = u32::try_from(timer.every_ms).unwrap_or(u32::MAX);
+            (interval, timer.event.as_str())
+        });
+        if let Some((interval, event)) = periodic_timer.or_else(|| {
+            widget.tick_interval.map(|interval| (interval, "Tick"))
+        }) {
             let msg_name = self.current_msg_name();
-            let interval = widget.tick_interval.unwrap();
             code.push_str(&format!(
                 "    fn tick_interval_ms(&self) -> Option<u32> {{ Some({}) }}\n",
                 interval
             ));
             code.push_str(&format!(
-                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::Tick) }}\n",
-                msg_name, msg_name
+                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::{}) }}\n",
+                msg_name, msg_name, event
             ));
         }
 
@@ -1631,9 +1660,15 @@ impl RustGenerator {
                 crate::ast::Stmt::Store(store) => {
                     if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var) {
                         let name = store.name.as_str();
-                        // Check if the value is a function call (likely returns Value)
-                        if matches!(&store.expr, crate::ast::Expr::Call(_)) {
-                            self.value_locals.insert(name.to_string());
+                        // Check if the value is a function call (likely returns Value).
+                        // Plan 547: `names()` is a native `Vec<String>` API result,
+                        // so it must retain ordinary Rust field/index syntax.
+                        if let crate::ast::Expr::Call(call) = &store.expr {
+                            let call_name = call.get_name_text_safe()
+                                .map(|n| n.as_str().to_string());
+                            if call_name.as_deref() != Some("names") {
+                                self.value_locals.insert(name.to_string());
+                            }
                         }
                         // Check if the value is an index into a state Vec<Value>
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
@@ -2653,6 +2688,78 @@ impl RustGenerator {
                     } else {
                         return format!("View::image_styled({}, \"{}\")", src, style_str);
                     }
+                }
+
+                // Plan 547 Task 22: ImageSurface is emitted through the
+                // backend-neutral constructor so literal, state-ref and
+                // conditional expressions all remain live in generated Rust.
+                // Runtime event payloads are appended by the Iced surface;
+                // the typed message variant and declared Aura arguments are
+                // captured here as Option<M> values.
+                if matches!(tag.as_str(), "imagesurface" | "image-surface" | "image_surface" | "ImageSurface") {
+                    let expr_for = |key: &str, default: &str| -> String {
+                        props
+                            .get(key)
+                            .and_then(|v| match v {
+                                AuraPropValue::Expr(expr) => Some(self.ast_expr_to_rust(expr)),
+                                AuraPropValue::StyleBinding(_) => None,
+                            })
+                            .unwrap_or_else(|| default.to_string())
+                    };
+                    let owned_expr = |expr: String| -> String {
+                        if expr.starts_with("self.") {
+                            format!("{}.clone()", expr)
+                        } else {
+                            expr
+                        }
+                    };
+                    let src = owned_expr(expr_for("src", "\"\".to_string()"));
+                    let alt = owned_expr(expr_for("alt", "\"\".to_string()"));
+                    let width = format!("({}) as u32", expr_for("width", "0"));
+                    let height = format!("({}) as u32", expr_for("height", "0"));
+                    let quality = format!("({}).clamp(0, 100) as u8", expr_for("quality", "90"));
+                    let fit = owned_expr(expr_for("fit", "\"contain\".to_string()"));
+                    let zoom = format!("({}) as f32", expr_for("zoom", "1.0"));
+                    let offset_x = format!("({}) as f32", expr_for("offset_x", "0.0"));
+                    let offset_y = format!("({}) as f32", expr_for("offset_y", "0.0"));
+                    let rotation = format!("({}) as i32", expr_for("rotation", "0"));
+                    let filter = owned_expr(expr_for("filter", "\"high\".to_string()"));
+                    let event_expr = |names: &[&str]| -> String {
+                        events
+                            .iter()
+                            .find(|(name, _)| names.iter().any(|candidate| *candidate == name.as_str()))
+                            .map(|(_, event)| {
+                                format!(
+                                    "Some({})",
+                                    self.handler_to_rust_direct_msg(&event.handler, &event.params)
+                                )
+                            })
+                            .unwrap_or_else(|| "None".to_string())
+                    };
+                    let mut surface = format!(
+                        "View::image_surface({src}).image_surface_props({alt}, {width}, {height}, {quality}, {fit}, {zoom}, {offset_x}, {offset_y}, {rotation}, {filter})",
+                    );
+                    surface = format!(
+                        "{}.image_surface_events({}, {}, {}, {}, {})",
+                        surface,
+                        event_expr(&["onerror", "on_error", "error"]),
+                        event_expr(&["onload", "onloaded", "on_loaded", "loaded"]),
+                        event_expr(&["onwheel", "wheel"]),
+                        event_expr(&["onpan", "pan"]),
+                        event_expr(&["ondblclick", "dblclick", "doubleclick"]),
+                    );
+                    if let Some(style) = props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                            _ => None,
+                        })
+                        .filter(|s| !s.is_empty())
+                    {
+                        surface = format!("{}.image_surface_style(\"{}\")", surface, style);
+                    }
+                    return surface;
                 }
 
                 // Handle spacer — returns View directly, no builder
@@ -3891,7 +3998,7 @@ impl RustGenerator {
             "slider", "radio", "radiogroup",
             "progress", "badge", "spinner",
             "card", "avatar",
-            "image", "icon",
+            "image", "icon", "imagesurface", "image-surface", "image_surface", "ImageSurface",
             "divider", "spacer",
             "for", "if",
         ];
@@ -4548,7 +4655,23 @@ impl RustGenerator {
                     let body: Vec<String> = branch.body.stmts.iter()
                         .map(|s| self.ast_stmt_to_rust(s))
                         .collect();
-                    let body_str = body.join("; ");
+                    let mut body_str = body.join("; ");
+                    // A Rust `let` declaration requires a trailing semicolon
+                    // even when it is the last statement in an `if` arm.
+                    // Aura statements intentionally omit semicolons, so add
+                    // the terminator only for generated local bindings.
+                    if branch.body.stmts.last().map(|stmt| matches!(
+                        stmt,
+                        crate::ast::Stmt::Store(store)
+                            if matches!(
+                                store.kind,
+                                crate::ast::StoreKind::Let
+                                    | crate::ast::StoreKind::Const
+                                    | crate::ast::StoreKind::Var
+                            )
+                    )).unwrap_or(false) {
+                        body_str.push(';');
+                    }
                     if i == 0 {
                         parts.push(format!("if {} {{ {} }}", cond, body_str));
                     } else {
@@ -4559,7 +4682,19 @@ impl RustGenerator {
                     let body: Vec<String> = else_body.stmts.iter()
                         .map(|s| self.ast_stmt_to_rust(s))
                         .collect();
-                    let body_str = body.join("; ");
+                    let mut body_str = body.join("; ");
+                    if else_body.stmts.last().map(|stmt| matches!(
+                        stmt,
+                        crate::ast::Stmt::Store(store)
+                            if matches!(
+                                store.kind,
+                                crate::ast::StoreKind::Let
+                                    | crate::ast::StoreKind::Const
+                                    | crate::ast::StoreKind::Var
+                            )
+                    )).unwrap_or(false) {
+                        body_str.push(';');
+                    }
                     parts.push(format!("else {{ {} }}", body_str));
                 }
                 parts.join(" ")
@@ -5836,6 +5971,103 @@ mod tests {
         assert!(gen.current_widget.is_none());
     }
 
+    /// Plan 547 Task 22: Rust generator preserves ImageSurface props and all
+    /// five typed event hooks, including state-backed values.
+    #[cfg(feature = "ui-iced")]
+    #[test]
+    fn image_surface_rust_codegen() {
+        let msg = |name: &str| AuraMsgVariant {
+            payload_names: vec![],
+            name: name.to_string(),
+            quoted: false,
+            payload: vec![],
+        };
+        let widget = AuraWidget {
+            actions: None,
+            timers: Vec::new(),
+            name: "ImageViewer".to_string(),
+            state_vars: vec![
+                AuraStateDef { name: "asset_src".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("/media/a".into()), decorators: vec![] },
+                AuraStateDef { name: "viewport_width".to_string(), type_info: Type::Int, initial: crate::ast::Expr::Int(640), decorators: vec![] },
+                AuraStateDef { name: "fit_mode".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("contain".into()), decorators: vec![] },
+                AuraStateDef { name: "zoom".to_string(), type_info: Type::Float, initial: crate::ast::Expr::Float(1.0, "1.0".into()), decorators: vec![] },
+            ],
+            messages: vec![AuraMessage { variants: vec![
+                msg("ImageLoaded"), msg("ImageFailed"), msg("ZoomAt"), msg("PanBy"), msg("ToggleOneToOne"),
+            ] }],
+            view_tree: AuraNode::element("imagesurface")
+                .with_prop("src", crate::ast::Expr::Ident(".asset_src".into()))
+                .with_prop("width", crate::ast::Expr::Ident(".viewport_width".into()))
+                .with_prop("fit", crate::ast::Expr::Ident(".fit_mode".into()))
+                .with_prop("zoom", crate::ast::Expr::Ident(".zoom".into()))
+                .with_prop("alt", crate::ast::Expr::Str("hero".into()))
+                .with_event("onload", ".ImageLoaded")
+                .with_event("onerror", ".ImageFailed")
+                .with_event("onwheel", ".ZoomAt")
+                .with_event("onpan", ".PanBy")
+                .with_event("ondblclick", ".ToggleOneToOne"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        };
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).expect("rust generation");
+        assert!(code.contains("View::image_surface("), "missing constructor:\n{code}");
+        assert!(code.contains("self.asset_src.clone()"), "src state binding lost:\n{code}");
+        assert!(code.contains("self.viewport_width"), "width state binding lost:\n{code}");
+        assert!(code.contains("self.fit_mode.clone()"), "fit state binding lost:\n{code}");
+        assert!(code.contains("image_surface_props"), "scalar props missing:\n{code}");
+        assert!(code.contains("image_surface_events(Some(ImageViewerMsg::ImageFailed)"), "error event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ImageLoaded)"), "load event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ZoomAt)"), "wheel event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::PanBy)"), "pan event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ToggleOneToOne)"), "double-click event missing:\n{code}");
+    }
+
+    /// Plan 547 desktop validation: a declarative `timer { ... }` entry must
+    /// become the named periodic message used by the standalone Rust/Iced
+    /// runner. Without this bridge the image viewer remains stuck in loading
+    /// because its async media session is never polled for readiness.
+    #[test]
+    fn timer_block_rust_codegen_emits_named_tick_subscription() {
+        let src = r#"
+widget App {
+    msg { SettleTick }
+    model { var status str = "loading" }
+    timer { SettleTick (every_ms: 80) }
+    view { text .status }
+    on { .SettleTick -> { .status = "ready" } }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let code = RustGenerator::new().generate(&widget).expect("generate");
+
+        assert!(
+            code.contains("fn tick_interval_ms(&self) -> Option<u32> { Some(80) }")
+                && code.contains("fn tick_msg(&self) -> Option<AppMsg> { Some(AppMsg::SettleTick) }")
+        );
+        assert!(!code.contains("AppMsg::Tick"), "timer entry must retain its message name");
+    }
+
     /// Plan 436 T1(决策 1-A):带 setup 前导槽的 widget 在 Rust 目标显式
     /// 报错(PLAN-037 T7 哲学),不再静默丢弃 setup 语义。
     #[test]
@@ -7063,4 +7295,3 @@ fn main() {{}}
         );
     }
 }
-

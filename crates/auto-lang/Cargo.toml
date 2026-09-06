@@ -46,7 +46,11 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard"]
+# Shared asynchronous media loading, decoding, rendition, and cache runtime.
+# Kept independent of a renderer so services and native renderers share one
+# asset registry without making the default build pull image dependencies.
+image-pipeline = ["dep:image", "dep:kamadak-exif"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
@@ -183,6 +187,7 @@ rfd = { version = "0.15", optional = true }
 # version-locked with rfd/iced so the handle traits line up).
 raw-window-handle = { version = "0.6", optional = true }
 image = { version = "0.25", optional = true }
+kamadak-exif = { version = "0.6", optional = true }
 # Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
 # iced 0.14.0's pin (0.15) — a second copy would break the Weak<Buffer>
 # handoff into fill_raw. syntect/two-face unify to a single 5.x instance.
