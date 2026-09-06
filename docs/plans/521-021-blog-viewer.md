@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-521
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: 021-blog-viewer 升级为完整 App
 author: [zhaopuming]
 created_at: 2026-09-02
-updated_at: 2026-09-02
+updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 示例升级不预定改 specs；过程性 codegen 修复按实际改动补记
-current_step: 0
+current_step: 10
 total_steps: 10
 ---
 
@@ -197,31 +197,31 @@ curl -s -X DELETE http://localhost:8021/api/posts/2            # 删除
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
 1. **pac.at 端口与后端声明**：`examples/ui/021-blog-viewer/pac.at` 追加 `api: "rust"`、
-   `front_port: 3021`、`back_port: 8021`。验证：`cat pac.at` 三行齐。
+   `front_port: 3021`、`back_port: 8021`。验证：`cat pac.at` 三行齐。[✅ 已完成] pac.at 追加 api: "rust"、front_port: 3021、back_port: 8021 齐备
 2. **新增 `.gitignore`**：`examples/ui/021-blog-viewer/.gitignore`，内容对齐 018
    （`!vue/` + `!tests/package.json` + 生成物忽略）。验证：`git status` 确认
-   tests/package.json 不被吞。
+   tests/package.json 不被吞。[✅ 已完成] .gitignore 创建完成，git check-ignore 验证 tests/package.json 放行未被吞
 3. **后端数据层**：新建 `examples/ui/021-blog-viewer/src/back/db.at`：Article 内存表 +
    6 篇种子 + `filter_posts/find_post/create_post/delete_post/toggle_clap`。
-   验证：`cargo check -p auto-lang`。
+   验证：`cargo check -p auto-lang`。[✅ 已完成] db.at 创建完成，含 6 篇种子覆盖 Rust/AutoUI/WASM 与 5 个数据函数，cargo check -p auto-lang 绿
 4. **后端 API 层**：新建 `examples/ui/021-blog-viewer/src/back/api.at`：5 个 `#[api]`
-   端点委托 db（query 参数名避开保留字）。验证：`auto gen` 生成 rust workspace 无报错。
+   端点委托 db（query 参数名避开保留字）。验证：`auto gen` 生成 rust workspace 无报错。[✅ 已完成] api.at 声明 5 端点委托 db，auto build 生成 021-blog-viewer-back，Query 增加 Default 支持，cargo check 021-blog-viewer-back 编译通过。
 5. **前端 store**：新建 `examples/ui/021-blog-viewer/src/front/blog_store.at`
-   （articles/category/current）。验证：`cargo check -p auto-lang`。
+   （articles/category/current）。验证：`cargo check -p auto-lang`。[✅ 已完成] blog_store.at 共享 store 创建完成，涵盖 articles/category/current/loading 状态及 6 个 action，cargo check 与 auto gen 均通过。
 6. **首页页**：新建 `examples/ui/021-blog-viewer/src/front/pages/home.at`（chips +
-   卡片列表 + Write 按钮 + TagChanged handler）。验证：`auto gen` 产物含 home 组件。
+   卡片列表 + Write 按钮 + TagChanged handler）。验证：`auto gen` 产物含 home 组件。[✅ 已完成] home.at 创建完成，涵盖标签过滤 chips、文章卡片列表、文章数计数及 Write 导航，auto gen 成功生成 src/pages/home.vue。
 7. **详情页 + 写作页**：新建 `src/front/pages/{detail,editor}.at`（详情/clap/删除确认；
-   表单/校验/发布）。验证：`auto gen` 产物含两页组件。
+   表单/校验/发布）。验证：`auto gen` 产物含两页组件。[✅ 已完成] detail.at（文章元数据/分段正文/点赞clap/二次确认删除）与 editor.at（受控输入/必填校验/分类切换/发布）创建完成，auto gen 成功生成 detail.vue 与 editor.vue。
 8. **路由壳**：重写 `examples/ui/021-blog-viewer/src/front/app.at`（routes 3 条 + 顶栏 +
    outlet + 计数），删除原散装 model。验证：`auto gen` 后 `router/index.ts` 含三条
-   路由；`auto run` 双服务起、三页可 navigATE。
+   路由；`auto run` 双服务起、三页可 navigate。[✅ 已完成] app.at 路由壳重写完成，含 3 条路由、顶栏品牌、文章计数与 outlet；auto gen 产物 router/index.ts 验证 3 路由，pnpm run build 成功，后端 axum 独立编译运行并通过全部 6 个 curl 接口冒烟测试。
 9. **测试四件套**：新建 `examples/ui/021-blog-viewer/tests/{package.json,
    playwright.config.ts,smoke.spec.ts,acceptance.atd}`（config 抄 018 改 baseURL 3021）。
-   验证：`cd tests && pnpm install && pnpm exec playwright test` 全绿。
+   验证：`cd tests && pnpm install && pnpm exec playwright test` 全绿。[✅ 已完成] tests 四件套齐备，Playwright 7/7 冒烟用例（T1-T7）全部通过，干净态复跑两次验证无状态残留（第 1 轮 23.6s 全绿，第 2 轮 22.5s 全绿）。
 10. **README 与纲领回写**：重写 `examples/ui/021-blog-viewer/README.md`（Concepts/
     Source/How to Run/Tests）；Plan 401 总表 021 行翻 ✅ + 提交历史补一行 + 状态段
     收尾注记（018-027 全示例升级完成，纲领可议归档）。验证：
-    `grep -n "021" docs/plans/401-autoui-examples-upgrade.md` 命中刷新行。
+    `grep -n "021" docs/plans/401-autoui-examples-upgrade.md` 命中刷新行。[✅ 已完成] 021-blog-viewer/README.md 重写完成（Concepts/Source/How to Run/Tests）；Plan 401 总表 020/021 均翻 ✅ 完成，提交历史补齐，状态段注记 018-027 全线告竣，Select-String 验证命中全部刷新行。
 
 ## 复审记录
 
