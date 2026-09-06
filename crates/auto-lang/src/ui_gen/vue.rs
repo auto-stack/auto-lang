@@ -15203,7 +15203,9 @@ export function cn(...inputs: ClassValue[]) {
     --popover-foreground: 222.2 84% 4.9%;
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
+    /* PLAN-571: secondary 与 muted 分档（≠210 40% 96.1% 暖纸 muted）——暖灰一档深 #e3ddd1，
+       与 Rust 侧 theme.rs Color::Secondary 互锁（改任一须同步）。 */
+    --secondary: 40 24% 85.5%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
@@ -15229,7 +15231,8 @@ export function cn(...inputs: ClassValue[]) {
     --popover-foreground: 210 40% 98%;
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    /* PLAN-571: secondary 分档——slate-700 #334155（muted 保持 217.2 32.6% 17.5% 不动）。 */
+    --secondary: 215 25% 27%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
