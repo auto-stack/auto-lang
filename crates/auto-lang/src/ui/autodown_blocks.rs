@@ -133,7 +133,9 @@ pub const FENCE_CHROME_LIGHT: ChromeSpec = ChromeSpec {
 
 /// quote 家族 chrome（从 blockquote 臂搬家）。
 pub const QUOTE_CHROME: ChromeSpec = ChromeSpec {
-    outer: "border-l-4 pl-4 py-2 w-full text-muted-foreground",
+    // PLAN-053 T17（§7.4：左边 3px·字 muted）：border-l(border-3 宽) 走单侧
+    // 边框条机制；muted=§7.1:194 gray-500/zinc-400 双档（dark: 变体）。
+    outer: "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
     header: None,
     header_label: "",
     body: "",
@@ -233,6 +235,13 @@ pub fn heading_extra_margins(level: i64) -> (f32, f32) {
 /// light #4338ca=indigo-700 / dark #818cf8=indigo-400）——编辑壳 heading
 /// buffer 的默认前景覆盖（只读臂走同类串 `text-indigo-700 dark:...`）。
 /// VM document accent 为 PARITY #17 豁免，靛蓝静态合规。
+/// PLAN-053 T17：quote 文字 muted 色（§7.1:194：light gray-500
+/// #6b7280 / dark zinc-400 #a1a1aa）——编辑壳 quote 块前景覆盖。
+pub fn quote_muted_rgb() -> (u8, u8, u8) {
+    let dark = crate::ui::style::theme::dark_mode();
+    if dark { (161, 161, 170) } else { (107, 114, 128) }
+}
+
 pub fn heading_strong_rgb() -> (u8, u8, u8) {
     let dark = crate::ui::style::theme::dark_mode();
     if dark { (129, 140, 248) } else { (67, 56, 202) }
@@ -458,7 +467,10 @@ mod tests {
             FENCE_CHROME.body_text,
             "font-mono text-sm text-zinc-50 whitespace-pre-wrap"
         );
-        assert_eq!(QUOTE_CHROME.outer, "border-l-4 pl-4 py-2 w-full text-muted-foreground");
+        assert_eq!(
+            QUOTE_CHROME.outer,
+            "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400"
+        );
         assert_eq!(BREAK_CHROME.outer, "border-t w-full my-2");
         assert_eq!(family_of(BlockType::Table).chrome.outer, "w-full text-sm");
     }
