@@ -152,6 +152,17 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
    - KNOWN-DEBT 572 条目结算(✅已结算)✓;
    - at_mode 文档头 feature 标注修正(test-aavm)✓;
    - 复审留档(本节)。
+5. [✅ 已完成] T5 机制定量调查(用户问询触发,2026-09-06):爆栈精确
+   机制探针测定。
+   ——证据:commit fccca72bf;探针(临时,用后即删)直接调
+   execute_autovm 于可控栈线程:**4MB 爆 / 5MB 过 / 8MB 2.7s 跑通**;
+   基点 f2ae1cb29 同阈值(515KB lib);对照组(无 lib)22ms。
+   真因 = `run_autovm_capture`(lib.rs:451,`run_with_capture` 底层;
+   `run_with_capture_and_path` L357 同款)**硬编码 4MB 执行线程**,
+   显式 stack_size 绕过 Plan 423 的 RUST_MIN_STACK=16MB 护栏;外层
+   测试线程栈(libtest/nextest)与执行栈无关——解释了双路径同爆与
+   "16MB 也不够"假象。递归**有限且浅**,需求随 lib 规模线性增长;
+   "路径级必然爆栈"表述已证伪并全面修正(裁定战略结论不变)。
 
 ## 复审记录
 
@@ -160,4 +171,10 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
 1. **m4_use/m5_use_errors 等的语料语义**:这些语料(错误路径/多文件
    use)在正统路径的对等物是 compile_use_corpus(⑤腿)——T1 对账
    确认粒度差异是否可接受(最小锚保留诊断粒度即可,重型逐件对等
-   不再保留)。
+   不再保留)。〔T1 已按对账表了结:全量关闭,Linux/CI 保留〕
+2. **`run_autovm_capture` 族硬编码 4MB 执行线程是否顺手修**(T5 发现,
+   2026-09-06 登记):真因即此(lib.rs:451 + L357;RUST_MIN_STACK
+   护栏被绕过=Plan 423 意图失效点)。一行改 16/32MB 可恢复护栏意图,
+   使**其余**走 run_autovm_capture 的常规 VM 语料测试(vm_file_tests
+   等)获得 lib/语料增长余量(它们现未爆但同理可越阈);**不重开**
+   已关闭的 12 个双重解释器测试(裁定不变)。裁定:修/不修/修多少。
