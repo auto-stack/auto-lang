@@ -108,7 +108,7 @@ const PLAIN: ChromeSpec = ChromeSpec {
 /// 上不可见 → 塌成游离黑块）。
 pub const FENCE_CHROME: ChromeSpec = ChromeSpec {
     outer: "rounded-lg border bg-zinc-950 overflow-hidden w-full",
-    header: Some("w-full px-4 py-2 border-b bg-zinc-800 text-zinc-400"),
+    header: Some("w-full h-[28px] px-4 border-b bg-zinc-800 text-zinc-400"),
     header_label: "text-xs font-medium text-zinc-400",
     body: "p-4",
     body_text: "font-mono text-sm text-zinc-50 whitespace-pre-wrap",
@@ -123,7 +123,7 @@ pub const FENCE_CHROME: ChromeSpec = ChromeSpec {
 /// 选取同读一处——修复浅色 hljs 基色标点画 zinc 暗底不可见的分叉）。
 pub const FENCE_CHROME_LIGHT: ChromeSpec = ChromeSpec {
     outer: "rounded-lg border bg-gray-50 border-gray-200 overflow-hidden w-full",
-    header: Some("w-full px-4 py-2 border-b bg-gray-200 text-gray-700"),
+    header: Some("w-full h-[28px] px-4 border-b bg-gray-200 text-gray-700"),
     header_label: "text-xs font-medium text-gray-700",
     body: "p-4",
     body_text: "font-mono text-sm text-gray-800 whitespace-pre-wrap",
