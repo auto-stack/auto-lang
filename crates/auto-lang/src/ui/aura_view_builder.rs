@@ -6446,6 +6446,18 @@ let tabs_inner = View::Row {
                         | "dropdown-menu-trigger"
                         | "dropdown_menu_trigger"
                         | "dropdownmenutrigger"
+                        // PLAN-534: sheet/drawer/hovercard trigger 全形态
+                        // （kebab/snake/连写;hover-card 另有 hovercard- 混合形）。
+                        | "sheet-trigger"
+                        | "sheet_trigger"
+                        | "sheettrigger"
+                        | "drawer-trigger"
+                        | "drawer_trigger"
+                        | "drawertrigger"
+                        | "hover-card-trigger"
+                        | "hover_card_trigger"
+                        | "hovercard-trigger"
+                        | "hovercardtrigger"
                 ) && trigger.is_none()
                 {
                     trigger = Some(c);
@@ -6460,6 +6472,17 @@ let tabs_inner = View::Row {
                         | "dropdown-menu-content"
                         | "dropdown_menu_content"
                         | "dropdownmenucontent"
+                        // PLAN-534: sheet/drawer/hovercard content 全形态。
+                        | "sheet-content"
+                        | "sheet_content"
+                        | "sheetcontent"
+                        | "drawer-content"
+                        | "drawer_content"
+                        | "drawercontent"
+                        | "hover-card-content"
+                        | "hover_card_content"
+                        | "hovercard-content"
+                        | "hovercardcontent"
                 ) && content.is_none()
                 {
                     content = Some(c);
