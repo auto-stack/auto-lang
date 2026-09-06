@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-521
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: 021-blog-viewer 升级为完整 App
 author: [zhaopuming]
 created_at: 2026-09-02
@@ -8,8 +8,10 @@ updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - "examples/ui/021-blog-viewer: Medium-Style Blog Viewer 完整应用（多路由+Pinia store+强类型Rust后端+Playwright测试套件）"
+touched_goals:
+  - "GOAL-010: 示例应用轨道（021-blog-viewer 升级为完整 App，Plan 401 018-027 矩阵全面收官）"
 
 affects: []                   # 示例升级不预定改 specs；过程性 codegen 修复按实际改动补记
 current_step: 10
@@ -225,7 +227,27 @@ curl -s -X DELETE http://localhost:8021/api/posts/2            # 删除
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审时间**：2026-09-06  
+**复审人**：Antigravity AI (`/auto-plan:review`)  
+**复审结论**：PASS（全部验收标准 100% 达成，无阻断性技术债务）
+
+### 验收标准逐项复验
+
+| 验收标准 | 复验结果 | 证据与说明 |
+|---|---|---|
+| 1. Plan 401 四硬指标全满足 | ✅ PASS | 多模块前端（`app.at` + `blog_store.at` + `pages/{home,detail,editor}.at`）；强类型 Rust 后端（`api.at` + `db.at` 内存表 + 6 篇种子）；端到端验证（Playwright 7/7 + curl 6 端点）；README 全面更新。 |
+| 2. Playwright 全绿（干净态复跑两次） | ✅ PASS | `pnpm exec playwright test` 独立复跑两轮：第 1 轮 7 passed (22.8s)，第 2 轮 7 passed (22.5s)，首尾状态对称（6 篇 → 加 1 篇 → 删 1 篇 → 恢复 6 篇），零残留。 |
+| 3. curl 冒烟六条全部返回预期 JSON | ✅ PASS | 实测复验：`GET /api/posts` (6)、`GET /api/posts?category=Rust` (2)、`GET /api/posts/1` (High Performance WASI)、`POST /api/posts/1/clap` (4)、`POST /api/posts` (id 7)、`DELETE /api/posts/2` (True)。 |
+| 4. `auto gen` / `auto check` 无 error | ✅ PASS | `cargo run -p auto -- gen` 成功生成 3 路由前端项目，0 error；codegen 修复单独成 commit `49b8b31d6`（增加 backend ui 特征与 Query Default derive），auto-man 单元测试 28 passed。 |
+| 5. 无临时调试打印、无未说明 workaround | ✅ PASS | `git diff` 检索 `console.log` / `println!` / `dbg!` 命中 0；无未说明的临时 hack。 |
+
+### 遗漏 / 延后 / 规避（Lazy-Convergence）排查
+
+- **遗漏（Dropped items）**：无。计划书所列 10 个执行步骤及 T1-T7 验收用例均全量交付。
+- **延后（Deferred items）**：无。未向后续计划延后任何功能。
+- **Workaround 与环境说明**：
+  - Windows Hyper-V 动态排他端口段（7954-8353）占用 8021，端口平移至 `front_port: 3021`, `back_port: 8421`（正常架构参数配置，已在 pac.at、README、测试配置中统一注明）。
+  - Axum Query 提取器要求 Query 结构体具备 Default，已在 `crates/auto-man/src/api_gen.rs` 根治并补全测试。
 
 ## 待澄清事项
 

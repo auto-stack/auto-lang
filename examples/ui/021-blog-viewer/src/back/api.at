@@ -1,0 +1,47 @@
+// api.at — Blog Viewer API.
+// CRUD over articles + claps + category filter. All endpoints delegate to
+// db.at (Plan 399 route B: full coverage, no State<Db> fallback).
+// Frontend consumes Article via `use back.api`.
+
+pub type Article = {
+    id: int
+    title: str
+    author: str
+    date: str
+    category: str
+    summary: str
+    body: str
+    claps: int
+}
+
+use db
+
+/// GET /api/posts — list articles, optionally filtered by category.
+#[api(method = "GET", path = "/api/posts")]
+pub fn list_posts(category str) []Article {
+    return db.filter_posts(category)
+}
+
+/// GET /api/posts/:id — get a single article by id.
+#[api(method = "GET", path = "/api/posts/:id")]
+pub fn get_post(id int) ?Article {
+    return db.find_post(id)
+}
+
+/// POST /api/posts — publish a new article.
+#[api(method = "POST", path = "/api/posts")]
+pub fn create_post(title str, author str, category str, summary str, body str) Article {
+    return db.create_post(title, author, category, summary, body)
+}
+
+/// DELETE /api/posts/:id — delete an article by id.
+#[api(method = "DELETE", path = "/api/posts/:id")]
+pub fn delete_post(id int) bool {
+    return db.delete_post(id)
+}
+
+/// POST /api/posts/:id/clap — toggle clap for an article.
+#[api(method = "POST", path = "/api/posts/:id/clap")]
+pub fn clap_post(id int) int {
+    return db.toggle_clap(id)
+}

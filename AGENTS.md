@@ -71,6 +71,8 @@ All AI coding assistants working in this repository must strictly adhere to the 
 
 **概念**："改 VM/编译器后的回归"（`cargo tv`，纯 .at 语料 golden）与"AAVM 自举展示"（`cargo taa`）是两个独立概念。AAVM（auto/lib/*.at 自举 + a2r.at 发射对齐）目前无实用面，平时改 VM/编译器**不需要**测 aavm（守护=CI `vm-files-ci.yml` push/PR + `cargo ta` 全量档 + fold 前裸 `taa`）。
 
+**双重解释器路径裁定（2026-09-06 用户，Plan 574 落地）**：avm+aavm / avm+aa2r 进程内双重解释路径（宿主 VM `run_with_capture` 拼 470KB lib 形态）**非真实需求**（2×2 对称性产物）；其进程内执行栈需求随 lib 规模增长，已越过 `run_autovm_capture` 硬编码 4MB 执行线程栈（探针定量 4MB 爆/5MB 过，RUST_MIN_STACK 护栏被显式 stack_size 绕过），与用例规模无关。12 个该路径语料测试已 `#[cfg_attr(windows, ignore)]`（Linux/CI 保留全量）。**新计划/新能力验收避免该路径重型化**——重型对拍一律走转译+编译+运行形态（⑤腿 compile corpus / at_mode / gen2 管道）；规约注记见 `docs/specs/aavm/project.md` 验证矩阵节，对账表 `scratch/p574/coverage-map.md`。
+
 **触发条件（只有这些路径的改动才跑 `taa`）**：`auto/lib/*.at`、`test/vm/aavm2/**`、`parity/**`、`crates/auto-lang/src/tests/aavm2_*.rs` / `aavm_runner_tests.rs`、`lib.rs` 的 `aavm2_lib_source`/`AUTO_LIB_FILES*`。其余改动零触发。
 
 **作用域映射（改什么 → 跑哪个闸门；耗时为 2026-09-05 实测）**：
@@ -98,7 +100,7 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 | `cargo tv` | 改 VM/编译器后——纯 .at 语料 golden（**不含 aavm**，Plan 568） | 3578 | 19.7s（墙钟 30.5s，2026-09-06 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
 | `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
-| `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长） | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
+| `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
 | `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7） | 轻（真 TCP 端口） |
 

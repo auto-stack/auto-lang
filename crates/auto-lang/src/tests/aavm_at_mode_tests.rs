@@ -7,7 +7,8 @@
 //!   RUNTIME-ERROR:no field x in Point 红)。
 //!
 //! `#[ignore]`(shells cargo),按需:
-//! `cargo test -p auto-lang --lib --features test-vm-files aavm_at_mode -- --ignored --nocapture`
+//! `cargo test -p auto-lang --lib --features test-aavm aavm_at_mode -- --ignored --nocapture`
+//! (Plan 568 迁档后模块门=test-aavm;572 待澄清④结案余项,Plan 574 修)
 
 use std::path::PathBuf;
 

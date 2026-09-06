@@ -348,13 +348,25 @@ pub fn run_with_capture(code: &str) -> AutoResult<(String, String)> {
     execution_engine::execute_with_engine_capture(engine, code)
 }
 
+/// P574 T6:VM 执行线程栈。历史硬编码 4MB 已被 516KB aavm lib 拼合源的
+/// 解释栈需求越过(探针定量:4MB 爆/5MB 过,递归有限);且显式 stack_size
+/// 会绕过 RUST_MIN_STACK——Plan 423 抬测试线程栈护栏的本意对此失效。
+/// 改为 RUST_MIN_STACK 可覆盖(字节),缺省 16MB,下限保底 4MB。
+fn vm_thread_stack_size() -> usize {
+    std::env::var("RUST_MIN_STACK")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n >= 4 * 1024 * 1024)
+        .unwrap_or(16 * 1024 * 1024)
+}
+
 /// Run AutoLang code with stdout capture, using the source file path for
 /// module resolution (so `use db` resolves `db.at` next to the source file).
 pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, String)> {
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| (r, stdout)) })
@@ -380,7 +392,7 @@ pub fn run_with_capture_and_bytecode_with_meta(
 )> {
     let code = code.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm(&code, true).await })
@@ -410,7 +422,7 @@ pub fn run_with_capture_and_path_and_bytecode_with_meta(
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await })
@@ -436,7 +448,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
     // (default main thread stack is only 1MB on Windows)
     let code = code.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _, _, _)| r) })
@@ -449,7 +461,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
 pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
     let code = code.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm(&code, true).await.map(|(r, stdout, _, _)| (r, stdout)) })

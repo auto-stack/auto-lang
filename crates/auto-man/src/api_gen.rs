@@ -770,7 +770,7 @@ futures = \"0.3\"" } else { "" };
     // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
     let runtime_deps = "
-auto-lang.workspace = true";
+auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }";
     let db_deps = if has_db { "
 once_cell = \"1\"" } else { "" };
     format!(
@@ -1484,7 +1484,8 @@ fn generate_api_rs(
         let query_params = endpoint_query_params(endpoint);
         if !query_params.is_empty() {
             let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
-            lines.push("#[derive(serde::Deserialize)]".to_string());
+            lines.push("#[derive(serde::Deserialize, Default)]".to_string());
+            lines.push("#[serde(default)]".to_string());
             lines.push(format!("pub struct {} {{", struct_name));
             for param in &query_params {
                 let rust_type = auto_type_to_rust(&param.ty);
@@ -3360,7 +3361,7 @@ pub fn list_items() []str { return [] }
             assert!(generated.contains("get(auto_media).head(auto_media)"), "GET/HEAD missing: {generated}");
             assert!(generated.contains("global_media_registry"), "runtime bridge missing: {generated}");
         }
-        assert!(generate_cargo_toml("media-back", false, false).contains("auto-lang.workspace = true"));
+        assert!(generate_cargo_toml("media-back", false, false).contains("auto-lang = { workspace = true"));
     }
 
     #[test]
@@ -3368,7 +3369,7 @@ pub fn list_items() []str { return [] }
         let rs_api = include_str!("../../../stdlib/auto/image.rs.at");
         assert!(rs_api.contains("pub fn queue") && rs_api.contains("pub fn stats"));
         let cargo = crate::api_gen::generate_cargo_toml("image-back", false, false);
-        assert!(cargo.contains("auto-lang.workspace = true"));
+        assert!(cargo.contains("auto-lang = { workspace = true"));
         let ui_cargo = crate::rust_ui::generate_cargo_toml("image-ui", Path::new("."));
         assert!(ui_cargo.contains("auto-lang/ui-iced"));
     }

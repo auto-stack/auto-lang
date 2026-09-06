@@ -1,0 +1,189 @@
+// editor.at — "/new" article editor page.
+// Allows users to create a new article with title, author, category, summary,
+// and body. Includes validation for required fields.
+use store: BlogStore
+
+widget editor {
+    msg {
+        Init,
+        Back,
+        TitleChanged,
+        AuthorChanged,
+        SummaryChanged,
+        BodyChanged,
+        SelectCategory(str),
+        PublishClicked,
+    }
+
+    model {
+        var title str = ""
+        var author str = ""
+        var category str = "Rust"
+        var summary str = ""
+        var body str = ""
+        var error_message str = ""
+        var show_error bool = false
+    }
+
+    view {
+        col {
+            style: "max-w-3xl mx-auto px-4 py-8 gap-6 w-full"
+
+            // Header banner
+            row {
+                style: "items-center justify-between gap-4 pb-2 border-b border-border"
+                button {
+                    onclick: .Back
+                    style: "inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    text "← Cancel" {}
+                }
+                h1 "Write a Story" { style: "text-xl font-bold text-foreground" }
+                button {
+                    onclick: .PublishClicked
+                    style: "px-5 py-2 rounded-full bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
+                    text "Publish" {}
+                }
+            }
+
+            // Error banner if validation fails
+            if .show_error {
+                row {
+                    style: "p-3.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium items-center gap-2"
+                    text "⚠️ " + .error_message {}
+                }
+            }
+
+            // Form Fields
+            col {
+                style: "gap-5"
+
+                // Title input
+                col {
+                    style: "gap-1.5"
+                    text "Title" { style: "text-sm font-medium text-foreground" }
+                    input {
+                        value: .title
+                        oninput: .TitleChanged
+                        placeholder: "Title of your story..."
+                        style: "px-4 py-2.5 bg-card border border-border rounded-lg text-lg font-bold text-foreground outline-none focus:border-primary transition-colors"
+                    }
+                }
+
+                // Author input & Category selector
+                row {
+                    style: "gap-4 flex-col sm:flex-row"
+
+                    col {
+                        style: "gap-1.5 flex-1"
+                        text "Author" { style: "text-sm font-medium text-foreground" }
+                        input {
+                            value: .author
+                            oninput: .AuthorChanged
+                            placeholder: "Your name (e.g. Jane Doe)"
+                            style: "px-3.5 py-2 bg-card border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary transition-colors"
+                        }
+                    }
+
+                    col {
+                        style: "gap-1.5"
+                        text "Category" { style: "text-sm font-medium text-foreground" }
+                        row {
+                            style: "gap-2"
+                            button {
+                                onclick: .SelectCategory("Rust")
+                                style: if .category == "Rust" {
+                                    "px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground cursor-pointer"
+                                } else {
+                                    "px-3 py-2 rounded-lg text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 cursor-pointer"
+                                }
+                                text "Rust" {}
+                            }
+                            button {
+                                onclick: .SelectCategory("AutoUI")
+                                style: if .category == "AutoUI" {
+                                    "px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground cursor-pointer"
+                                } else {
+                                    "px-3 py-2 rounded-lg text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 cursor-pointer"
+                                }
+                                text "AutoUI" {}
+                            }
+                            button {
+                                onclick: .SelectCategory("WASM")
+                                style: if .category == "WASM" {
+                                    "px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground cursor-pointer"
+                                } else {
+                                    "px-3 py-2 rounded-lg text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 cursor-pointer"
+                                }
+                                text "WASM" {}
+                            }
+                        }
+                    }
+                }
+
+                // Summary input
+                col {
+                    style: "gap-1.5"
+                    text "Short Summary" { style: "text-sm font-medium text-foreground" }
+                    input {
+                        value: .summary
+                        oninput: .SummaryChanged
+                        placeholder: "Brief subtitle or lead summary..."
+                        style: "px-3.5 py-2 bg-card border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary transition-colors"
+                    }
+                }
+
+                // Story Body textarea
+                col {
+                    style: "gap-1.5"
+                    text "Content" { style: "text-sm font-medium text-foreground" }
+                    textarea {
+                        value: .body
+                        oninput: .BodyChanged
+                        placeholder: "Write your story here... Separate paragraphs with blank lines."
+                        style: "w-full h-64 px-4 py-3 bg-card border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary transition-colors resize-y leading-relaxed font-sans"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> { }
+        .Back -> {
+            router.push("/")
+        }
+        .TitleChanged -> {
+            .show_error = false
+        }
+        .AuthorChanged -> { }
+        .SummaryChanged -> { }
+        .BodyChanged -> {
+            .show_error = false
+        }
+        .SelectCategory(c str) -> {
+            .category = c
+        }
+        .PublishClicked -> {
+            if .title == "" {
+                .error_message = "Title cannot be empty"
+                .show_error = true
+            } else {
+                if .body == "" {
+                    .error_message = "Content cannot be empty"
+                    .show_error = true
+                } else {
+                    var a = .author
+                    if a == "" {
+                        a = "Anonymous"
+                    }
+                    var s = .summary
+                    if s == "" {
+                        s = .title
+                    }
+                    store.AddPost(.title, a, .category, s, .body)
+                    router.push("/")
+                }
+            }
+        }
+    }
+}
