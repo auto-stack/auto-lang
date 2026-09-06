@@ -18669,8 +18669,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "grid", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        // Plan 413: code editor (VM path) — INPUT_TEXT carries the editor
-        // text so oninput handlers bind values exactly like input/textarea.
+        // Plan 413: code editor (VM path) — on_change 发布携带全文的新消息
+        // （input_value: Some，PLAN-057 textarea 先例同款）。
         AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => {
             let dbg_props = debug_style_props(style.as_ref());
             use crate::ui::code_editor as ce;
@@ -18698,10 +18698,15 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let mut widget = ce::iced::CodeEditor::<IcedMessage>::new(&storage_key, &config);
             if let Some(msg) = on_change.clone() {
                 let sk = storage_key.clone();
+                // PLAN-057: DocEditor dynamic 臂同款同修——发布携带全文的新消息
+                // （input_value: Some），INPUT_TEXT 写入移除（零读者）。
                 widget = widget.on_change(move || {
                     let text = ce::code_editor_text(&sk).unwrap_or_default();
-                    INPUT_TEXT.with(|t| *t.borrow_mut() = text);
-                    msg.clone()
+                    IcedMessage {
+                        widget: msg.widget.clone(),
+                        event: msg.event.clone(),
+                        input_value: Some(text),
+                    }
                 });
             }
             if let Some(msg) = on_cursor.clone() {
@@ -18731,8 +18736,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        // Plan 019 Phase 3: autodown doc editor (VM path) — INPUT_TEXT carries
-        // the live document on edit (同 code editor 的 payload 通道惯例)。
+        // Plan 019 Phase 3: autodown doc editor (VM path) — on_change 发布携带
+        // 全文的新消息（input_value: Some，PLAN-057 textarea 先例同款）。
         AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
             let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
             #[cfg(all(feature = "autodown", feature = "code-editor"))]
@@ -18753,9 +18758,17 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 }
                 if let Some(msg) = on_change.clone() {
                     let sk2 = sk.clone();
+                    // PLAN-057: textarea 先例——发布携带全文的新消息（input_value:
+                    // Some），解释器 on_with_input_for 才能把文本作 handler 首实参
+                    // （.Edit(str)），修复真实键盘回写 state.content 断链（048）。
+                    // INPUT_TEXT 写入移除：解释器路径零读者（generic 臂保持原样）。
                     widget = widget.on_change(move || {
-                        INPUT_TEXT.with(|t| *t.borrow_mut() = ade::autodown_editor_text(&sk2).unwrap_or_default());
-                        msg.clone()
+                        let text = ade::autodown_editor_text(&sk2).unwrap_or_default();
+                        IcedMessage {
+                            widget: msg.widget.clone(),
+                            event: msg.event.clone(),
+                            input_value: Some(text),
+                        }
                     });
                 }
                 // Plan 044 T2：VM 轨块聚焦读出——FocusMetrics 载荷直挂
