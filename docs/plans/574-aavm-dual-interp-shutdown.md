@@ -1,15 +1,17 @@
 ---
 plan_id: PLAN-574
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-dual-interp-shutdown
 author: [zhaopuming]
 created_at: 2026-09-06
 updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/aavm/project.md: 修改——验证矩阵(2×2)节新增路径地位裁定注记(VM 内解释两格=双重解释器路径非真实需求,重型验证只走②/⑤腿转译+编译+运行;新计划避免该路径重型化)"
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals:                # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-017: 自举——验证矩阵路径地位修订落地(双重解释器列 Windows 关闭/Linux-CI 保留),VM 执行线程栈护栏修复(RUST_MIN_STACK 恢复生效)" 
 
 affects: [aavm]               # 测试基建:crates/auto-lang/src/tests/aavm2_*
 current_step: 6
@@ -124,6 +126,10 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
 1. 12 个双重解释器爆栈测试全部消失于默认门禁(最小锚化 PASS 或
    `#[ignore]` 带裁定注记),失败集 13 → 1。
 2. 每路径 ≥1 最小正确性锚保留且 PASS。
+   〔修订 2026-09-06 T1 实证:最小锚不可行(路径级阈值,与用例规模无关)
+   → 裁定原案二选一取"关闭"支;复核口径=12 测试保留编译体+Linux/CI
+   全量运行(每路径锚=CI 侧原测试),Windows 按 cfg_attr 关闭;T6 栈
+   修复后 Windows 已可跑(001_smoke 2.29s 实证)但按裁定维持关闭〕
 3. 覆盖对账表留档(关闭面 × 正统替代路径)。
 4. tf 零变化;⑤腿/at_mode/gen2 零改动。
 5. KNOWN-DEBT 572 条目结算;AGENTS 测试档注记更新。
@@ -171,6 +177,30 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
    "路径级必然爆栈"表述已证伪并全面修正(裁定战略结论不变)。
 
 ## 复审记录
+
+**复审人**:zhaopuming(auto-plan:review,2026-09-06 18:0x;worktree
+`.wt/lang-574/auto-lang`@fa030f3f2,分支基点 2fc544511,4 commits)
+
+**逐条验收复验(现跑)**:
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 12 爆栈测试消失于默认门禁,失败集 13→1 | **PASS** | 复审现跑裸 taa:3612/3613,**唯一失败=charts_gallery 预存**,607 skipped;cfg_attr 计数 12/12(m1/m2/m3 各1+m4 三+m5 四+a2r/runner 各1) |
+| 2 | 每路径 ≥1 最小正确性锚(修订口径见上注记) | **PASS(修订)** | 12 测试全部保留编译体(diff 仅 +属性行零删除)→ Linux/CI 全量运行=每路径锚;Windows 关闭系裁定原文二选一的"关闭"支,T1 实证驱动,非静默缩面 |
+| 3 | 覆盖对账表留档 | **PASS** | scratch/p574/coverage-map.md(52 行,12 测试×正统替代路径逐行+机制定量修正段,branch 内) |
+| 4 | tf 零变化;⑤腿/at_mode/gen2 零改动 | **PASS** | tf 现跑 3460/3461 与基点恒;compile_corpus 含于 taa 绿中零波及;diff 不触 ⑤腿/at_mode/gen2 任何文件(仅 lib.rs 栈helper+tests 属性+文档) |
+| 5 | KNOWN-DEBT 572 结算+AGENTS 注记 | **PASS** | KNOWN-DEBT ✅已结算(master 66f156013 链);AGENTS AAVM 档裁定注记+资源表 taa 行新态(fa030f3f2);at_mode 文档头修正(in branch) |
+| T6 | 栈护栏修复红→绿 | **PASS** | lib.rs 五处硬编码 4MB→vm_thread_stack_size()(RUST_MIN_STACK 可覆盖/缺省 16MB/下限 4MB),残留硬编码 0;红→绿:001_smoke 摘 ignore 2.29s 通过(修复前爆栈);复审门禁双绿 |
+
+**遗漏/延后/workaround 猎查**:无未批准延后;无 workaround(cfg_attr=裁定
+落地形态)。发现并已处理:①验收#2 原文按"最小锚"预设书写,T1 实证
+转向"关闭"支——已注记(非静默);②AGENTS 资源表 taa 行陈旧——已补
+P574 后新态(fa030f3f2)。pre-existing 余项:charts_gallery(564-Q6 域,
+非本计划范围)。健康:diff 12 文件 +101/-6,零 debug 残留,注释全带
+依据;Rust 改动仅 lib.rs 栈 helper(cargo check 零错)。
+
+**结论:6/6 验收 PASS(其中#2 按裁定修订口径),零未批准延后 →
+status: reviewed,可入 /auto-plan:merge。**
 
 ## 待澄清事项
 
