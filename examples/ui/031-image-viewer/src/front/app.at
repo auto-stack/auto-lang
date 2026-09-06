@@ -189,7 +189,7 @@ widget App {
             if .session_id != "" {
                 let _closed = close_session(.session_id)
             }
-            let session = open_file("../../tests/fixtures/rgb-1x1.png")
+            let session = open_file("../../tests/fixtures/scenic-320x240.png")
             .session_id = session
             .media_src = current_uri(session)
             .media_alt = "Selected image"
