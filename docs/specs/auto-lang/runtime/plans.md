@@ -36,7 +36,7 @@
 | 312 | autovm-api-routing-http-server | ✅ Phase 1-4 Delivered（2026-06-16） | archive/ | AutoVM 一等 #[api] 路由 + 可用 HTTP server |
 | 313 | autovm-tcp-flush-sse-server | ✅ Phase 1-2 Delivered；Phase 3 留待后续 | archive/ | TCP flush + 服务端 SSE 推送（sse_server.at） |
 | 316 | fix-312-server-panic | ✅ 已修复（2026-06-16 合并） | archive/ | #[api] server 自动启动 panic 修复 |
-| 317 | vm-async-scheduling-investigation | 调研完成；Phase 1 已合并，Phase 2-4 待实施 | archive/ | 敲定 yield/~Iter、await、Task/Msg 三套异步机制在 AutoVM 的真实状态（原号 327 改来） |
+| 317 | vm-async-scheduling-investigation | ✅ Phase 1-4 全部完成（2026-08-06 归档核查回填） | archive/ | 敲定 yield/~Iter、await、Task/Msg 三套异步机制在 AutoVM 的真实状态（原号 327 改来） |
 | 318 | list-struct-id-corruption | 未标注（诊断已确认，含验收标准） | archive/ | List\<Struct\> 元素 ID nanbox tagging 损坏修复（文件自述原号 336 改 318） |
 | 321 | generator-runtime-yield-iter-stream | ✅ Phase 1-6 Delivered（2026-06-17） | archive/ | Generator 运行时：yield + 统一 ~Iter/~Stream |
 | 322 | list-struct-runtime-diagnosis | 排查总结（1 测试仍 ❌，待 generic constructor 修复） | archive/ | CALL_NAT/CALL_SPEC 多路径分发排查经验（原号 338 改来） |

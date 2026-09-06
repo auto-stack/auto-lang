@@ -94,8 +94,8 @@ The compiler's error reporting is implemented using `miette` and `thiserror`, pr
 | Category | Code Range | Examples |
 |----------|-----------|----------|
 | SyntaxError | E0001-E0007 | UnexpectedToken, InvalidExpression, UnterminatedString |
-| TypeError | E0101-E0105 | TypeMismatch, InvalidOperation, NotCallable |
-| NameError | E0201-E0204 | UndefinedVariable, DuplicateDefinition, ImmutableAssignment |
+| TypeError | E0101-E0106, plus E0201-E0204 under the `auto_type_` prefix (audit 2026-09-07: `auto_type_E0201..E0204` coexist with name errors under a different prefix) | TypeMismatch, InvalidOperation, NotCallable |
+| NameError | E0201-E0204 (`auto_name_` prefix) | UndefinedVariable, DuplicateDefinition, ImmutableAssignment |
 | RuntimeError | E0301-E0305 | DivisionByZero, ModuloByZero, IndexOutOfBounds |
 
 Each error includes: error code, file location (line:column), source code snippet with labeled span, and help text. The `AutoError` enum wraps all error types and manually implements the `Diagnostic` trait to properly delegate `source_code()` and `labels()` to inner errors.

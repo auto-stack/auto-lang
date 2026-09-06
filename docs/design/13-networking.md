@@ -2,15 +2,19 @@
 
 ## Status
 
-**Designed:**
-- HTTP server standard library architecture (async, net, http, json, url, log, env modules)
-- Module dependency hierarchy and API surface
-- Dual-mode execution: AutoVM (FFI to Rust) and a2r (direct Rust transpilation)
+**Implemented** (current-state audit 2026-09-07, PLAN-546):
+- The standard-library network modules exist in `stdlib/auto/` as the designed
+  dual-file pattern: `http.at`+`http.vm.at`+`http_stream.at`, `net.at`+`net.vm.at`,
+  `async.at`+`async.vm.at`, `json`, `url`, `log`, `env`, `sse` (reproduce with
+  `ls stdlib/auto/`).
+- Tokio-based async scheduling is the AutoVM's production concurrency model;
+  the async HTTP server `serve_async` is wired into the `lib.rs` live path
+  (plan-317 Phase 4).
+- Dual-mode execution holds: AutoVM (FFI to Rust natives) and a2r (direct Rust
+  transpilation); SSE streaming ships `sse/` parser + `sse.at`/`sse_server.at`.
 
 **Planned:**
-- Module implementation in `stdlib/auto/` with `.at` + `.vm.at` / `.rs.at` dual files
-- Tokio-based async runtime integration
-- WebSocket support
+- WebSocket support (plan-350 archived design)
 - TLS/HTTPS support
 
 ## Design

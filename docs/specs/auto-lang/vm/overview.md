@@ -15,7 +15,9 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   `docs/design/05` 已同批修正）。
 - 值表示为 NaN-boxing u64（`NanoValue`，plan-221 引入、plan-298 移除非 nanbox 路径）；design/05 的"32 位栈槽"描述已在 PLAN-546（2026-09-07）修正为 NaN-boxed 64 位。
 - 泛型走单态化 + 类型擦除存储（plan-076/087），堆对象统一进 `heap_objects` 注册表（plan-077，旧 list 注册表已在 Phase 6 移除）。
-- 并发为 Tokio M:N 调度 + actor 消息（plan-121/127）；plan-317 Phase 1（actor handler 执行引擎）已合并，Phase 2-4 待实施。
+- 并发为 Tokio M:N 调度 + actor 消息（plan-121/127）；plan-317 四相位异步机制
+  Phase 1-4 已全部完成（归档 plan 2026-08-06 核查回填：Phase 1+3 于 2026-06-18、
+  Phase 2 经 plan-348 Task 22、Phase 4 serve_async 接入 lib.rs 活路径）。
 - 文件测试框架已落地：`tests/vm_file_tests.rs`（907 行）+ `test/vm/` 分类目录（plan-177，plan-index 仍标 Planned，属索引滞后）。
 - stdlib 静态分发扩充（plan-504）：`Math.pow`（`f64::powf`）与 `Str.is_digit`（单字符 ASCII 数字谓词，多字符恒 false）Rust shim 入 `vm/ffi/stdlib.rs`，native_registry 自动扫描注册；Vue 端 ts_adapter 映射（`math.*`→`Math.*` 通配 / `is_digit`→`/^[0-9]$/.test`）；文件测试 `test/vm/18_ffi/056_math_pow`、`057_str_is_digit`。
 - 字符串池记账自持（plan-510）：over-release 注入源全仓清偿——19 处无计数池引用统一收口 `add_string`/`intern_runtime_str`/`rc_push_str_idx` 咽喉（http_server 裸写/native 返回串/ffi/py_ffi），over-retain 家族配平（BUILD_FSTR/pop_tagged 6 消费点先拷贝后释放/StakeGuard 增池份额）；不变量=每条引用恰一次 retain/release、freelist 槽恒 rc==0，防线三层（dedup 内容校验/墓碑先行/弹出清扫）降级纵深防御、健康态不触发。可观测：`PoolHealth` 快照（underflow_events/phantom_drops/live_shares，rc.rs）+ soak 双档 `pool_soak_churn_short`（日常门禁 800 轮）/`pool_soak_churn_long`（`P510_SOAK_ITERS` 显式档；复审 2M 轮幻影 0/下溢 0/live_shares 归零）。顺手清偿 P499-6/7（Log 族 native ID 移段 1805-1808 脱撞 Shell 1800-1803；kitchen-sink 生成器对 link/tag/use 视图关键字名禁发标签简写）。

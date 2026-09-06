@@ -6,17 +6,19 @@
 - Task keyword parsing and AST representation (`ast/task.rs`)
 - Basic task compilation to AutoVM bytecode with handler registration
 - `task` block syntax with `on` message handlers
-
-**Designed (4-Phase Architecture):**
-- Phase 1: Actor base with TaskSystem bootstrap — `task` blocks, `enum` message protocol, `TaskSystem.start()` ignition
-- Phase 2: State machine suspension — `~T` async type, `.await`, `ask/reply` bidirectional RPC, `TaskSystem.run` sync bridge
-- Phase 3: Polymorphic routing — implicit union synthesis, `MessageContext` explicit context, omnipotent pattern matcher
-- Phase 4: Micro-concurrency — `.go` operator for lightweight fork, structured concurrency
+- The 4-phase async architecture (plan-317, current-state audit 2026-09-07
+  per the archived plan's verification notes): Phase 1 actor handler execution
+  engine + Phase 3 lazy yield/SSE (2026-06-18, `actor_tests`/`actor_state_tests`
+  13 green); Phase 2 `~{}.await` out-of-line bytecode (plan-348 Task 22,
+  `plan348_concurrency_tests::test_task22_*`); Phase 4 async HTTP server
+  `serve_async` (wired into `lib.rs` live path). Tokio M:N scheduling +
+  actor mailboxes are the VM's production concurrency model (`vm/scheduler.rs`,
+  `vm/task_system.rs`).
 
 **Planned:**
-- Full AutoVM task scheduler integration
 - a2c state machine generation for embedded targets
-- Tokio-based runtime for a2r backend
+- Tokio-based async runtime for the a2r backend (a2r async/await transpilation,
+  plan-355 archived design, not yet implemented)
 
 ## Design
 
