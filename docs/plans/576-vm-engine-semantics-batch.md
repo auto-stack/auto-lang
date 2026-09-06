@@ -1,15 +1,20 @@
 ---
 plan_id: PLAN-576
-status: execution_done
+status: reviewed
 feature_name: VM 引擎语义修复批（nanbox 整值 float 位型保真 + use 子件三缺口）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-06
 updated_at: 2026-09-07
 
-# Leave these EMPTY here — /auto-plan:review fills them:
-supersedes_spec_components: []
+# Filled by /auto-plan:review (2026-09-07):
+supersedes_spec_components:
+  - "docs/specs/auto-lang/vm/design/bytecode-engine.md: 修改——算术/比较 opcode 混类型 tag 驱动解码（ADD/SUB/MUL/DIV f32×int 混算臂 nanbox_single_to_f32 + LT/GT/LE/GE nv_pair_is_float_numeric 有序比较 float 路由）"
+  - "docs/specs/auto-lang/ui/design/aura-pipeline.md: 修改——handler 合成与派发链三点点修（改写集合扩 computed=COMPUTED_FN_NAMES；子件体内引号 emit 改 __emit_<W>_<msg> 桥派发路由=handler_codegen 改写+vm_bridge __emit_msg/__emit_payload 注入+dynamic 收尾；派发参数数失配 warn+跳过两守卫点）"
+  - "docs/specs/auto-val/project.md: 修改——nano_value encode/decode 整值 float 位型保真对照契约钉（f64/f32 含 0.0/-0.0 按位可分对照集）"
 new_spec_components: []
-touched_goals: []
+touched_goals:
+  - "GOAL-003: VM 数值语义正确性收口——f32×int 混算/比较按值正确（043「VM handler 哑」家族存活根因清偿）"
+  - "GOAL-007: VM 轨与 vue 轨行为对齐——子件 computed 解析/引号 emit 派发路由/失配诊断（043 滚动同步家族引擎缺口关闭）"
 
 current_step: 6
 total_steps: 6
@@ -203,7 +208,47 @@ dynamic.rs 派发点：实参数 ≠ 形参数时 log::warn 响亮输出（件�
 
 ## 复审记录
 
-（待 /auto-plan:review 填写）
+- **复审人**：ZCode（/auto-plan:review，2026-09-07）
+- **方法**：worktree（.wt/lang-576/auto-lang，HEAD=501b35c25，工作区 clean）实跑全部门禁；diff 全量核对（6 文件 +749/-15）；DEBTS/KNOWN-DEBT 文本核对。
+- **逐条验收判定**：
+  1. **nanbox 对照集全恒等（G1）——PASS**：`cargo test -p auto-val` 147+27 全绿（含
+     `test_f64_integer_valued_roundtrip_tags`/`test_f32_…`：240.0/0.0/-0.0/1.0/
+     -1.5/f64::MAX/f64::MIN_POSITIVE tag==Float+位型恒等+0.0/-0.0 按位可分）。
+  2. **子件三 directed 单测绿（G2/G3/G4）——PASS**：`plan576_` 过滤 4/4 绿
+     （mixed_arith_and_cmp / child_computed_resolves / child_quoted_emit_routes /
+     dispatch_arity_mismatch）。
+  3. **vm 全量 + tf 唯一红=charts——PASS（带环境红注记）**：tv 3608/3609
+     （唯一红=charts_gallery，口径精确成立）；tf（tf 别名全口径+ui-iced+
+     no-fail-fast）4669 测 4658 绿 / 11 红，**零红归因本计划**：9×ui::layout
+     （本机显示几何环境红，master 主检出自跑复现 14 红，数量随会话 6↔9
+     浮动）+ 1×osconfig_daemon::resolve_order_sibling_target_then_path
+     （复审新发现：sibling_fixture 固定共享临时目录+remove_dir_all 开场的
+     并行竞态——单测隔离复跑绿，该文件 Plan 505 期产物本计划零触及，
+     已登记 KNOWN-DEBT）+ 1×charts_gallery（G5 既有口径）。字面口径
+     「唯一红=charts」在本机不成立系环境红族（master 同在），意图口径
+     （本计划零新增红）成立。
+  4. **DEBTS 043 两行销号 + 退役评估入复审——PASS**：两行均已 ✅销号并
+     互链 plan 576 T1/T2、T3/T4/T5（grep 核对）；041 argstr 行附带销号
+     （待澄清#3 复核失效）；绕道退役评估结论在执行注记 2。
+- **懒收敛排查（遗漏/延后/workaround）**：
+  - **遗漏**：无——D1-D4 全落地（engine.rs 混算/比较臂 9+5 处、
+    COMPUTED_FN_NAMES×4、__emit 注入×2、take_last_arity_mismatch×3、
+    PENDING_EMIT_SYNTH×3 均在 diff 中核对）；6 新测全数在册；diff 无新增
+    TODO/FIXME/HACK/临时标记。
+  - **延后**：绕道退役不当轮=计划待澄清#2 预设默认（用户签认非静默），
+    已入 KNOWN-DEBT 跟进行；C2② on_* 局部实参快照限制为 PLAN-051 v1
+    既有范围（G1-G4 字面之外），复审登记为相邻债不阻塞。
+  - **workaround**：无新增隐藏性绕道；__emit 桥 v1 限度（单槽/首参）为
+    显式登记的设计限度（代码注记+执行注记 5+KNOWN-DEBT）。
+- **偏差登记（code over plan）**：①修复落点 engine.rs 消费臂而非
+  nano_value.rs encode（执行偏差①，实测证伪计划理论，D1 语义等价实现）；
+  ②技术栈清单所列 child_emit.rs 未改——emit 路由经 handler_codegen 改写+
+  dynamic 收尾实现，child_emit ROUTES 表被原样消费（T4 证据已记录）。
+- **债候选登记**：KNOWN-DEBT-AND-RISKS.md 🟡 节新增 4 行（576 v1 限度 /
+  576 相邻债 C2② / 576 绕道退役跟进 / 576-复审 osconfig_daemon+layout
+  测试隔离防误归因）。
+- **裁定**：四条验收全 PASS、无阻塞债 → **status: reviewed**，可入
+  /auto-plan:merge。
 
 ### 执行注记（/auto-plan:work 收口，供复审与 merge 参考）
 
