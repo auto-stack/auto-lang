@@ -12,7 +12,7 @@ new_spec_components: []       # 无 module spec 新增：知识沉淀于 AGENTS.
 touched_goals: ["GOAL-016: 构建与测试基础设施——AAVM/AA2R 测试域独立成档（tv 拆耦），反射性 tv 不再触发自举重测试"]
 
 affects: ["crates/auto-lang/Cargo.toml", "crates/auto-lang/src/tests.rs", "crates/auto-lang/src/tests/vm_file_tests.rs", "crates/auto-lang/src/tests/aavm_runner_tests.rs(新)", ".cargo/config.toml", ".github/workflows/vm-files-ci.yml", "AGENTS.md", "docs/plans/KNOWN-DEBT-AND-RISKS.md"]
-current_step: 1
+current_step: 4
 total_steps: 8
 ---
 
@@ -291,17 +291,33 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
   文件: `crates/auto-lang/Cargo.toml`。操作: 按 D1 在 test-book 行后加
   `test-aavm = ["test-vm-files"]` + 注释。
   验证: `cargo check -p auto-lang --features test-aavm` 零错。
+  [✅ 已完成] 2026-09-06 feature `test-aavm = ["test-vm-files"]` 入
+  crates/auto-lang/Cargo.toml；check 零错（注：本机 sccache 抖动一次
+  STATUS_ACCESS_VIOLATION，后续构建统一 RUSTC_WRAPPER= 绕开）。
 - **T3** 模块门翻转（tests.rs）。
   文件: `crates/auto-lang/src/tests.rs`。操作: 按 D2 翻 7 个模块门 + m1 加门
   + 注册 aavm_runner_tests。
   验证: `cargo nextest list -p auto-lang --lib --features test-vm-files
   -E 'test(aavm) or test(aa2r)'` = 0 行；`cargo check -p auto-lang` 零错。
+  [✅ 已完成] 2026-09-06 九模块门翻转（m1 原无门入档、m2-m5/a2r/at_mode/
+  t3塔/repro）；check 零错；模块级清零（tv 集残 3 = vm_file_tests 内嵌腿，
+  T4 搬移后归零——见 T4 证据）。
 - **T4** runner 搬移。
   文件: `crates/auto-lang/src/tests/vm_file_tests.rs`（删）、
   `crates/auto-lang/src/tests/aavm_runner_tests.rs`（新）。操作: 按 D3 搬移，
   heavy_gate 接线逐行保留。
   验证: `cargo check -p auto-lang --features test-aavm` 零错；
   `cargo nextest list -p auto-lang --lib --features test-aavm aavm` 名单 ≥21。
+  [✅ 已完成] 2026-09-06 vm_file_tests.rs -589 行 → tests/aavm_runner_tests.rs
+  （v1 runner/v2 基建/compile 腿/build_aavm_rust_bin/001_smoke 等三测/
+  100 行 ignored v1 一行测/build_aavm_rust_bin_pub；564 heavy_gate 三处
+  接线随迁）；VmTestData+get_cached_test 升 pub(crate)；aavm2_a2r.rs 调用
+  点改指。验证：check 零错；tv 集 aavm=0 行；full 档 aavm 名单 **22 测**
+  （含迁入的 aavm_runner_tests 三测；对齐 564 "tf aavm_ 22/22" 口径）。
+  > 执行注记（t3 别名协调）: 564 tip 分支上无 t3 别名与 nextest-t3.toml
+  > （532 主检出未提交态，564 Q5 在案同因）——本分支不代笔；532→564→568
+  > 全部 fold 后须在 master 把 t3 别名 feature 列表改 test-aavm（一行，
+  > T7 登记 KNOWN-DEBT 转告 merge 会话）。
 - **T5** 别名 + CI + 文档。
   文件: `.cargo/config.toml`、`.github/workflows/vm-files-ci.yml`、
   `AGENTS.md`。操作: 按 D4/D5——含 D6 触发条件与作用域映射表成文入
