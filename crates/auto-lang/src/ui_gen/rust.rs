@@ -2208,6 +2208,32 @@ impl RustGenerator {
                     );
                 }
 
+                // PLAN-534: hovercard 家族 → MouseArea 包锚 + Bottom 非模态
+                // Popover（根臂）;组外兜底 trigger/content 透传。
+                if let Some(hrole) = Self::hover_card_role(tag) {
+                    match hrole {
+                        "root" => return self.generate_hover_card_popover(props, children),
+                        "trigger" | "content" => {
+                            let views: Vec<String> = children
+                                .iter()
+                                .map(|c| self.generate_view_tree(c))
+                                .collect();
+                            return match views.len() {
+                                0 => "auto_lang::ui::view::View::Empty".to_string(),
+                                1 => views.into_iter().next().unwrap(),
+                                _ => {
+                                    let mut b = "View::row()".to_string();
+                                    for v in views {
+                                        b = format!("{}.child({})", b, v);
+                                    }
+                                    format!("{}.build()", b)
+                                }
+                            };
+                        }
+                        _ => {}
+                    }
+                }
+
                 // PLAN-533 T3: 模态对话框家族（alert-dialog/dialog）→
                 // View::Popover 模态构造（与解释器侧 PLAN-530 W13 臂同形态,
                 // 双轨视觉一致）。根臂拆解 trigger/content;组外兜底子件按
@@ -3278,19 +3304,45 @@ impl RustGenerator {
             .collect::<String>()
             .to_lowercase();
         match norm.as_str() {
-            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
-            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
-            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
-            "alertdialogtitle" | "dialogtitle" => Some("title"),
-            "alertdialogdescription" | "dialogdescription" => Some("description"),
-            "alertdialogheader" | "dialogheader" => Some("header"),
-            "alertdialogfooter" | "dialogfooter" => Some("footer"),
+            "alertdialog" | "dialog" | "dropdownmenu"
+            // PLAN-534: sheet/drawer 并入同表（可关闭族,同 dialog 语义）。
+            | "sheet" | "drawer" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger"
+            | "sheettrigger" | "drawertrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent"
+            | "sheetcontent" | "drawercontent" => Some("content"),
+            "alertdialogtitle" | "dialogtitle"
+            | "sheettitle" | "drawertitle" => Some("title"),
+            "alertdialogdescription" | "dialogdescription"
+            | "sheetdescription" | "drawerdescription" => Some("description"),
+            "alertdialogheader" | "dialogheader"
+            | "sheetheader" | "drawerheader" => Some("header"),
+            "alertdialogfooter" | "dialogfooter"
+            | "sheetfooter" | "drawerfooter" => Some("footer"),
             "alertdialogcancel" => Some("cancel"),
             "alertdialogaction" => Some("action"),
-            "alertdialogclose" | "dialogclose" => Some("close"),
+            "alertdialogclose" | "dialogclose"
+            | "sheetclose" | "drawerclose" => Some("close"),
             "dropdownmenuitem" => Some("item"),
             "dropdownmenulabel" => Some("label"),
             "dropdownmenuseparator" => Some("separator"),
+            _ => None,
+        }
+    }
+
+    /// PLAN-534 D4: hovercard 根/子件角色（归一化同上）。不并入
+    /// modal_dialog_tag_role——hover 走 MouseArea 包锚 + Bottom 非模态,
+    /// 发射面与模态族不同。
+    fn hover_card_role(tag: &str) -> Option<&'static str> {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "hovercard" => Some("root"),
+            "hovercardtrigger" => Some("trigger"),
+            "hovercardcontent" => Some("content"),
             _ => None,
         }
     }
@@ -3305,15 +3357,158 @@ impl RustGenerator {
         norm == "dropdownmenu"
     }
 
+    /// PLAN-534: sheet 根（贴边面板族）。
+    fn sheet_root(tag: &str) -> bool {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        norm == "sheet"
+    }
+
+    /// PLAN-534: drawer 根（贴边面板族）。
+    fn drawer_root(tag: &str) -> bool {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        norm == "drawer"
+    }
+
+    /// PLAN-534: sheet/drawer 发射表——side/direction 值 → (chrome,
+    /// placement 构造串)。chrome 与解释器臂 side_panel_chrome 同串（双轨
+    /// 一致断言的锚点）:横条 w-96 定宽 + h-full 拉满,纵条 w-full 拉满;
+    /// drawer 竖向追加贴缘圆角（bottom rounded-t / top rounded-b）。
+    fn side_panel_emission(side_val: &str, is_drawer: bool) -> (&'static str, &'static str) {
+        const EDGE_LEFT: &str = "auto_lang::ui::view::PopoverPlacement::EdgeLeft";
+        const EDGE_RIGHT: &str = "auto_lang::ui::view::PopoverPlacement::EdgeRight";
+        const EDGE_TOP: &str = "auto_lang::ui::view::PopoverPlacement::EdgeTop";
+        const EDGE_BOTTOM: &str = "auto_lang::ui::view::PopoverPlacement::EdgeBottom";
+        const H_CHROME: &str = "w-96 bg-background border shadow-lg p-6 gap-4 h-full";
+        const V_CHROME: &str = "bg-background border shadow-lg p-6 gap-4 w-full";
+        match side_val {
+            "left" => (H_CHROME, EDGE_LEFT),
+            "top" => (
+                if is_drawer {
+                    "bg-background border shadow-lg p-6 gap-4 w-full rounded-b-lg"
+                } else {
+                    V_CHROME
+                },
+                EDGE_TOP,
+            ),
+            "bottom" => (
+                if is_drawer {
+                    "bg-background border shadow-lg p-6 gap-4 w-full rounded-t-lg"
+                } else {
+                    V_CHROME
+                },
+                EDGE_BOTTOM,
+            ),
+            _ => (H_CHROME, EDGE_RIGHT),
+        }
+    }
+
+    /// PLAN-534: drawer 竖向装饰把手发射串——全宽容器内居中的 w-8 h-1
+    /// 圆角条（与解释器臂 drawer_handle_view 同构:纯视觉无手势）。
+    fn drawer_handle_emission() -> String {
+        "View::container(View::container(auto_lang::ui::view::View::Empty).style(\"w-8 h-1 rounded-full bg-muted\").build()).center_x().style(\"w-full py-2\").build()".to_string()
+    }
+
+    /// PLAN-534 D4: hovercard 根臂——trigger 包 View::MouseArea（hover
+    /// 进/出驱动铸造 `__dlg_enter_N/leave_N` 或用户显式绑定）,content 装
+    /// 非模态面板（chrome 与解释器臂 convert_hovercard 同串）,
+    /// placement=Bottom,on_dismiss=None（关闭只靠 leave）。
+    fn generate_hover_card_popover(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+    ) -> String {
+        let mut trigger: Option<&AuraNode> = None;
+        let mut panel_nodes: Vec<&AuraNode> = Vec::new();
+        for c in children {
+            if let AuraNode::Element { tag, .. } = c {
+                match Self::hover_card_role(tag) {
+                    Some("trigger") if trigger.is_none() => {
+                        trigger = Some(c);
+                        continue;
+                    }
+                    Some("content") => {
+                        if let AuraNode::Element { children: inner, .. } = c {
+                            panel_nodes.extend(inner.iter());
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let (anchor_code, on_enter, on_exit) = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                let enter = ["onmouseenter", "onhover"]
+                    .iter()
+                    .find_map(|k| t_events.get(*k))
+                    .map(|h| format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params)))
+                    .unwrap_or_else(|| "None".to_string());
+                let exit = ["onmouseleave", "onhoverout"]
+                    .iter()
+                    .find_map(|k| t_events.get(*k))
+                    .map(|h| format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params)))
+                    .unwrap_or_else(|| "None".to_string());
+                let inner = if t_children.len() == 1 {
+                    self.generate_view_tree(&t_children[0])
+                } else if t_children.is_empty() {
+                    let label = Self::modal_child_label(t_props, t_children);
+                    if label.is_empty() {
+                        "auto_lang::ui::view::View::Empty".to_string()
+                    } else {
+                        format!("View::text_styled(\"{}\".to_string(), \"\")", label)
+                    }
+                } else {
+                    let mut b = "View::row()".to_string();
+                    for c in t_children {
+                        b = format!("{}.child({})", b, self.generate_view_tree(c));
+                    }
+                    format!("{}.build()", b)
+                };
+                (inner, enter, exit)
+            }
+            _ => (
+                "auto_lang::ui::view::View::Empty".to_string(),
+                "None".to_string(),
+                "None".to_string(),
+            ),
+        };
+        let mut panel = "View::col()".to_string();
+        for c in panel_nodes {
+            panel = format!("{}.child({})", panel, self.generate_view_tree(c));
+        }
+        let panel = format!(
+            "{}.style(\"w-80 bg-popover border rounded-lg shadow-md p-4\").build()",
+            panel
+        );
+        let open_expr = match props.get("open") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => b.to_string(),
+            Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
+            _ => "false".to_string(),
+        };
+        format!(
+            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::MouseArea {{ content: Box::new({}), on_enter: {}, on_exit: {}, on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }})), content: Box::new({}), placement: auto_lang::ui::view::PopoverPlacement::Bottom, open: {}, on_dismiss: None }}",
+            anchor_code, on_enter, on_exit, panel, open_expr
+        )
+    }
+
     /// PLAN-533 T6: 可关闭模态根（dialog 族）——非 alert 族。shadcn 语义：
     /// dialog 的 ESC/外点/锚点关闭经 on_dismiss 回流;alert-dialog 不关。
+    /// PLAN-534: sheet/drawer 均可关闭族,同 dialog。
     fn dismissable_dialog_root(tag: &str) -> bool {
         let norm: String = tag
             .chars()
             .filter(|c| *c != '-' && *c != '_')
             .collect::<String>()
             .to_lowercase();
-        norm == "dialog" || norm == "dropdownmenu"
+        norm == "dialog" || norm == "dropdownmenu" || norm == "sheet" || norm == "drawer"
     }
 
     /// 家族子件的文字内容：text prop → label prop → 首 Text 子节点。
@@ -3419,15 +3614,38 @@ impl RustGenerator {
             _ => "auto_lang::ui::view::View::Empty".to_string(),
         };
         let mut panel = "View::col()".to_string();
+        // PLAN-534: sheet/drawer 贴边族——drawer 竖向装饰把手为首子
+        // （与解释器臂 convert_side_panel 同序）。
+        let is_drawer = Self::drawer_root(tag);
+        let side_val = if is_drawer || Self::sheet_root(tag) {
+            Some(match props.get(if is_drawer { "direction" } else { "side" }) {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                _ => "right".to_string(),
+            })
+        } else {
+            None
+        };
+        if let Some(side) = side_val.as_deref() {
+            if is_drawer && matches!(side, "top" | "bottom") {
+                panel = format!("{}.child({})", panel, Self::drawer_handle_emission());
+            }
+        }
         for c in panel_nodes {
             panel = format!("{}.child({})", panel, self.generate_view_tree(c));
         }
         // PLAN-533 T7: dropdown-menu 族锚定菜单 chrome（shadcn
         // DropdownMenuContent 同款 p-1 紧凑档）;对话框族保持 w-96 模态卡。
-        let panel_chrome = if Self::dropdown_menu_root(tag) {
-            "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1"
-        } else {
-            "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"
+        // PLAN-534: sheet/drawer 贴边族 chrome 与解释器臂 side_panel_chrome
+        // 同串（横条 w-96 h-full / 纵条 w-full;drawer 竖向贴缘圆角）。
+        let panel_chrome: String = match side_val.as_deref() {
+            Some(side) => Self::side_panel_emission(side, is_drawer).0.to_string(),
+            None => {
+                if Self::dropdown_menu_root(tag) {
+                    "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1".to_string()
+                } else {
+                    "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4".to_string()
+                }
+            }
         };
         panel = format!("{}.style(\"{}\").build()", panel, panel_chrome);
         let open_expr = match props.get("open") {
@@ -3460,10 +3678,12 @@ impl RustGenerator {
         } else {
             "None".to_string()
         };
-        let placement_path = if Self::dropdown_menu_root(tag) {
-            "auto_lang::ui::view::PopoverPlacement::BottomStart"
-        } else {
-            "auto_lang::ui::view::PopoverPlacement::Modal"
+        let placement_path: String = match side_val.as_deref() {
+            Some(side) => Self::side_panel_emission(side, is_drawer).1.to_string(),
+            None if Self::dropdown_menu_root(tag) => {
+                "auto_lang::ui::view::PopoverPlacement::BottomStart".to_string()
+            }
+            None => "auto_lang::ui::view::PopoverPlacement::Modal".to_string(),
         };
         format!(
             "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
@@ -6468,6 +6688,103 @@ widget Demo {
         );
         assert!(code.contains("DemoMsg::openDialog"), "trigger onclick dispatch:\n{}", code);
         assert!(code.contains("DemoMsg::cancelAction"), "cancel onclick dispatch:\n{}", code);
+    }
+
+    /// PLAN-534 T9: sheet/drawer/hovercard 经真实管线发射——placement/
+    /// chrome 与解释器臂同串（双轨一致断言）:sheet 缺省 EdgeRight + 横条
+    /// chrome + 铸造 dismiss 折算;drawer bottom → EdgeBottom + 贴缘圆角 +
+    /// 装饰把手;hovercard → MouseArea 包锚 + Bottom 非模态 + enter 接线。
+    #[test]
+    fn test_side_panels_codegen_matches_interpreter_chrome() {
+        let src = r#"
+widget Panels {
+    view {
+        col {
+            sheet (side: "right") {
+                sheet-trigger {
+                    button (text: "Open", variant: "outline") {}
+                }
+                sheet-content {
+                    sheet-title "Edit Profile"
+                }
+            }
+            drawer (direction: "bottom") {
+                drawer-trigger "Open Drawer"
+                drawer-content {
+                    drawer-title "Settings"
+                }
+            }
+            hovercard {
+                hover-card-trigger {
+                    text "@mentor"
+                }
+                hover-card-content {
+                    text "bio"
+                }
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        // sheet: 缺省 right → EdgeRight;横条 chrome 同串;铸造 dismiss 折算。
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::EdgeRight"),
+            "sheet default EdgeRight:\n{}", code
+        );
+        assert!(
+            code.contains("w-96 bg-background border shadow-lg p-6 gap-4 h-full"),
+            "sheet chrome matches interpreter side_panel_chrome:\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: Some(PanelsMsg::__dlg_close_1)"),
+            "sheet minted dismiss folding:\n{}", code
+        );
+        // drawer: bottom → EdgeBottom;贴缘圆角;装饰把手。
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::EdgeBottom"),
+            "drawer bottom EdgeBottom:\n{}", code
+        );
+        assert!(
+            code.contains("bg-background border shadow-lg p-6 gap-4 w-full rounded-t-lg"),
+            "drawer bottom chrome with rounded-t:\n{}", code
+        );
+        assert!(
+            code.contains("w-8 h-1 rounded-full bg-muted"),
+            "drawer handle emission:\n{}", code
+        );
+        // hovercard: MouseArea 包锚 + Bottom 非模态 + chrome 同串 + enter 接线。
+        assert!(
+            code.contains("View::MouseArea { content: Box::new("),
+            "hovercard anchor wrapped in MouseArea:\n{}", code
+        );
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::Bottom"),
+            "hovercard Bottom placement:\n{}", code
+        );
+        assert!(
+            code.contains("w-80 bg-popover border rounded-lg shadow-md p-4"),
+            "hovercard chrome matches interpreter arm:\n{}", code
+        );
+        assert!(
+            code.contains("on_enter: Some(PanelsMsg::__dlg_enter_3)"),
+            "hovercard enter wiring from minted handler:\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: None"),
+            "hovercard non-modal (no dismiss):\n{}", code
+        );
     }
 
     /// PLAN-533 T3/T6: dialog 家族（可关闭模态，schema sub_widgets 无连字符
