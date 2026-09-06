@@ -18710,29 +18710,112 @@ where
 ///
 /// This is the unified entry point for running UI applications with Iced.
 /// Wires up the component's `subscription()` for periodic events (e.g., .Tick).
+/// 002 §4 E0080 顺手修(PLAN-009 T8,R4 预授权 ≤1 人日):iced 0.14 的
+/// `Subscription::map` 在 const 期检查闭包零尺寸(`check_zero_sized`),
+/// 原 tick 实现 `move |_| msg.clone()` 捕获运行时消息必然编译炸(任何
+/// 带 tick 的 rust-mode 应用均触发,即"两示例同炸")。改走内部包装:
+/// 订阅以**枚举变体构造器**(零捕获)发 `Tick`,update 侧再经
+/// `tick_msg()` 在运行时铸造真实消息。
 pub fn run_app<C>() -> AppResult<()>
 where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    iced::application(C::default, C::update, view)
-        .subscription(|c| {
-            // Plan 407: build tick subscription from tick_interval_ms + tick_msg.
-            if let (Some(ms), Some(msg)) = (c.tick_interval_ms(), c.tick_msg()) {
-                iced::time::every(std::time::Duration::from_millis(ms as u64))
-                    .map(move |_| msg.clone())
-            } else {
-                iced::Subscription::none()
+    iced::application(
+        TickWrap::<C>::default,
+        TickWrap::<C>::update,
+        view_wrapped::<C>,
+    )
+    .subscription(|c: &TickWrap<C>| {
+        // Plan 407: tick 订阅(修复后形态,见上注)。
+        if let Some(ms) = c.inner.tick_interval_ms() {
+            iced::time::every(std::time::Duration::from_millis(ms as u64))
+                .map(|_| TickWrapMsg::<C::Msg>::Tick)
+        } else {
+            iced::Subscription::none()
+        }
+    })
+    .window_size(startup_window_size())
+    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+    .font(INTER_FONT_REGULAR)
+    .font(INTER_FONT_MEDIUM)
+    .font(INTER_FONT_SEMIBOLD)
+    .default_font(INTER_FONT)
+    .run()
+    .map_err(|e| e.into())
+}
+
+/// 包装组件的 view 转发(HRTB 由具名 fn 承载,闭包推断不过)。
+fn view_wrapped<'a, C>(component: &'a TickWrap<C>) -> iced::Element<'a, TickWrapMsg<C::Msg>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    view(&component.inner).map(TickWrapMsg::Inner)
+}
+
+/// run_app 的内部消息包装:Tick 由订阅发射,update 时转铸真实 tick 消息。
+#[derive(Clone, Debug)]
+enum TickWrapMsg<M: Clone + Debug> {
+    Inner(M),
+    Tick,
+}
+
+/// run_app 的内部组件包装(DevToolsWrapper 同款手法,不动 VM 轨)。
+#[derive(Debug)]
+struct TickWrap<C: Component> {
+    inner: C,
+}
+
+impl<C: Component + 'static> TickWrap<C>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    fn update(&mut self, msg: TickWrapMsg<C::Msg>) {
+        match msg {
+            TickWrapMsg::Inner(m) => self.inner.on(m),
+            // 运行时铸造真实 tick 消息(此处的值不进任何 const 上下文)。
+            TickWrapMsg::Tick => {
+                if let Some(m) = self.inner.tick_msg() {
+                    self.inner.on(m);
+                }
             }
-        })
-        .window_size(startup_window_size())
-        // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
-        .font(INTER_FONT_REGULAR)
-        .font(INTER_FONT_MEDIUM)
-        .font(INTER_FONT_SEMIBOLD)
-        .default_font(INTER_FONT)
-        .run()
-        .map_err(|e| e.into())
+        }
+    }
+}
+
+impl<C: Component + Default> Default for TickWrap<C> {
+    fn default() -> Self {
+        Self { inner: C::default() }
+    }
+}
+
+impl<C: Component + 'static> Component for TickWrap<C>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    type Msg = TickWrapMsg<C::Msg>;
+
+    fn on(&mut self, msg: Self::Msg) {
+        TickWrap::update(self, msg);
+    }
+
+    fn tick_interval_ms(&self) -> Option<u32> {
+        self.inner.tick_interval_ms()
+    }
+
+    /// 订阅侧用变体构造器发 `TickMsg`(见 run_app),本方法不再提供载荷。
+    fn tick_msg(&self) -> Option<Self::Msg> {
+        None
+    }
+
+    fn view(&self) -> crate::ui::view::View<Self::Msg> {
+        self.inner.view().map_msg(TickWrapMsg::Inner)
+    }
+
+    fn state_snapshot(&self) -> std::collections::HashMap<String, auto_val::Value> {
+        self.inner.state_snapshot()
+    }
 }
 
 /// Run an auto-ui Component with Iced, dispatching an initial Task after the window appears.
