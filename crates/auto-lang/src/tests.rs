@@ -71,6 +71,8 @@ mod aavm_runner_tests;
 mod heavy_gate;
 #[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
+#[cfg(feature = "test-aavm")] // Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
+mod aavm2_corpus_runner;
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_a2r; // Plan 447 部分② Phase 7: AA2R is 发射对齐主 a2r 闸门
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)

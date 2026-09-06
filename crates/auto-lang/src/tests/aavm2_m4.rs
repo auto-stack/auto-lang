@@ -10,9 +10,11 @@
 // (push.nil+store)按槽位排序 —— Rust pop_scope 按 HashMap 迭代序发射,
 // 跨进程不定。
 // 格式规格:docs/specs/aavm/m4-bytecode-format.md(S4 前置考古落盘)。
+// Plan 565 L1:主语料闸门(test_aavm2_m4_codegen_corpus)AAVM 侧走
+// once-compiled runner(编译一次+File.read_text 注入,见
+// aavm2_corpus_runner.rs);use 腿/静态差分腿仍逐程序 run_with_capture。
 
 use crate::error::AutoResult;
-use crate::run_with_capture;
 use crate::vm::codegen::Codegen;
 use crate::vm::loader::{Linker, Module};
 use crate::vm::opcode::OpCode;
@@ -175,37 +177,11 @@ fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/vm/aavm2/corpus_m4")
 }
 
-fn test_m4_corpus_file(path: &std::path::Path) -> AutoResult<()> {
-    let code = std::fs::read_to_string(path)?;
-    let (linked, strings) = compile_and_link(&code)?;
+/// Rust 参考侧期望 dump + 链接产物（失败现场 RAW 诊断用）。
+fn m4_expected(code: &str) -> AutoResult<(String, Vec<u8>)> {
+    let (linked, strings) = compile_and_link(code)?;
     let expected = normalized_dump(&linked, &strings);
-    // 前置拼接 AAVM v2 lib(AUTO_LIB_FILES_V2,单一事实源)
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let lib_code = crate::aavm2_lib_source(&root)?;
-    let program = format!(
-        "{}\nfn main() {{\n    print(codegen_dump(\"{}\"))\n}}\n",
-        lib_code,
-        escape_for_at_literal(&code)
-    );
-    let (_r, stdout) = run_with_capture(&program)?;
-    if stdout.trim_end() != expected.trim_end() {
-        // 失败现场:打印原始(未归一)反汇编,定位组形态
-        let flash = crate::vm::virt_memory::VirtualFlash::new_with_code(linked.clone());
-        let dis = crate::vm::disasm::Disassembler::new(&flash);
-        eprintln!("=== RAW {} ===", path.display());
-        for l in dis.disassemble_range(0x30, linked.len()) {
-            eprintln!("RAW {:04x}  {} {}", l.offset, l.mnemonic, l.operands);
-        }
-    }
-    assert_eq!(
-        stdout.trim_end(),
-        expected.trim_end(),
-        "M4 bytecode mismatch for {}\n--- rust ---\n{}\n--- aavm ---\n{}",
-        path.display(),
-        expected,
-        stdout
-    );
-    Ok(())
+    Ok((expected, linked))
 }
 
 #[test]
@@ -226,12 +202,40 @@ fn test_aavm2_m4_codegen_corpus() {
         .collect();
     entries.sort();
     assert!(!entries.is_empty(), "no corpus files under {}", dir.display());
+    // Plan 565 L1:AAVM 侧走 once-compiled runner(编译一次+File.read_text
+    // 注入,见 aavm2_corpus_runner.rs);判据断言原样保留。
+    let cases: Vec<crate::tests::aavm2_corpus_runner::CorpusCase> = entries
+        .into_iter()
+        .map(|p| crate::tests::aavm2_corpus_runner::CorpusCase {
+            code: std::fs::read_to_string(&p).unwrap(),
+            path: p,
+        })
+        .collect();
+    let outs = crate::tests::aavm2_corpus_runner::run_corpus_once_compiled("m4", "codegen_dump", &cases)
+        .unwrap_or_else(|e| panic!("M4 corpus runner: {e}"));
     let mut checked = 0;
-    for p in entries {
-        test_m4_corpus_file(&p).unwrap();
+    for (case, stdout) in cases.iter().zip(&outs) {
+        let (expected, linked) = m4_expected(&case.code).unwrap();
+        if stdout.trim_end() != expected.trim_end() {
+            // 失败现场:打印原始(未归一)反汇编,定位组形态
+            let flash = crate::vm::virt_memory::VirtualFlash::new_with_code(linked.clone());
+            let dis = crate::vm::disasm::Disassembler::new(&flash);
+            eprintln!("=== RAW {} ===", case.path.display());
+            for l in dis.disassemble_range(0x30, linked.len()) {
+                eprintln!("RAW {:04x}  {} {}", l.offset, l.mnemonic, l.operands);
+            }
+        }
+        assert_eq!(
+            stdout.trim_end(),
+            expected.trim_end(),
+            "M4 bytecode mismatch for {}\n--- rust ---\n{}\n--- aavm ---\n{}",
+            case.path.display(),
+            expected,
+            stdout
+        );
         checked += 1;
     }
-    eprintln!("M4 corpus: {checked} files, bytecode identical");
+    eprintln!("M4 corpus: {checked} files, bytecode identical (once-compiled runner)");
 }
 
 

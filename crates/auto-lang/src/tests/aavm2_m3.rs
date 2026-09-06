@@ -4,44 +4,16 @@
 // 判据:Rust 侧 run_with_capture 的 stdout(真 VM + infer_expr_type)与
 // AAVM 侧 auto/lib/{token,lexer,parser,typeinfo}.at 的 typecheck_dump(source)
 // 逐行相等。格式规格:docs/specs/aavm/m3-typecheck-format.md。
+// Plan 565 L1:AAVM 侧语料走 once-compiled runner(编译一次+File.read_text
+//       注入,见 aavm2_corpus_runner.rs);判据断言原样保留在本闸门
+//       (Rust 参考侧仍逐语料 run_with_capture,量级可忽略)。
 
-use crate::error::AutoResult;
-use crate::run_with_capture;
 use std::path::PathBuf;
 
-fn escape_for_at_literal(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
+use crate::tests::aavm2_corpus_runner::{run_corpus_once_compiled, CorpusCase};
 
 fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/vm/aavm2/corpus_m3")
-}
-
-fn test_m3_corpus_file(path: &std::path::Path) -> AutoResult<()> {
-    let code = std::fs::read_to_string(path)?;
-    let (_r, expected) = crate::run_with_capture(&code)?;
-    // 前置拼接 AAVM v2 lib(AUTO_LIB_FILES_V2,单一事实源)
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let lib_code = crate::aavm2_lib_source(&root)?;
-    let program = format!(
-        "{}\nfn main() {{\n    print(typecheck_dump(\"{}\"))\n}}\n",
-        lib_code,
-        escape_for_at_literal(&code)
-    );
-    let (_r, stdout) = run_with_capture(&program)?;
-    assert_eq!(
-        stdout.trim_end(),
-        expected.trim_end(),
-        "M3 type-inference mismatch for {}\n--- rust(vm) ---\n{}\n--- aavm ---\n{}",
-        path.display(),
-        expected,
-        stdout
-    );
-    Ok(())
 }
 
 #[test]
@@ -62,10 +34,27 @@ fn test_aavm2_m3_typeinfo_corpus() {
         .collect();
     entries.sort();
     assert!(!entries.is_empty(), "no corpus files under {}", dir.display());
+    let cases: Vec<CorpusCase> = entries
+        .into_iter()
+        .map(|p| CorpusCase {
+            code: std::fs::read_to_string(&p).unwrap(),
+            path: p,
+        })
+        .collect();
+    let outs = run_corpus_once_compiled("m3", "typecheck_dump", &cases)
+        .unwrap_or_else(|e| panic!("M3 corpus runner: {e}"));
     let mut checked = 0;
-    for p in entries {
-        test_m3_corpus_file(&p).unwrap();
+    for (case, stdout) in cases.iter().zip(&outs) {
+        let (_r, expected) = crate::run_with_capture(&case.code).unwrap();
+        assert_eq!(
+            stdout.trim_end(),
+            expected.trim_end(),
+            "M3 type-inference mismatch for {}\n--- rust(vm) ---\n{}\n--- aavm ---\n{}",
+            case.path.display(),
+            expected,
+            stdout
+        );
         checked += 1;
     }
-    eprintln!("M3 corpus: {checked} files, type tables identical");
+    eprintln!("M3 corpus: {checked} files, type tables identical (once-compiled runner)");
 }
