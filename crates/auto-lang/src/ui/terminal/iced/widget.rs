@@ -184,6 +184,19 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         Node::new(limits.resolve(self.width, self.height, Size::default()))
     }
 
+    // PLAN-010 T8: expose the widget's layout bounds to test Operations —
+    // the iced_test selector traversal only sees widgets that forward
+    // `operation.container(..)`; canvas-style widgets default to invisible.
+    fn operate(
+        &mut self,
+        _tree: &mut Tree,
+        layout: Layout<'_>,
+        _renderer: &iced::Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        operation.container(None, layout.bounds());
+    }
+
     fn update(
         &mut self,
         tree: &mut Tree,
