@@ -1,4 +1,4 @@
-async function get_value(): Future<number> {
+export async function get_value(): Future<number> {
     return 42;
 }
 

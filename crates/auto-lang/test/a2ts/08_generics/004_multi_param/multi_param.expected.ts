@@ -1,4 +1,4 @@
-class Triple {
+export class Triple {
     a: number;
     b: number;
     c: number;
@@ -11,7 +11,7 @@ class Triple {
 }
 
 function main(): void {
-    const t = Triple(1, 2, 3);
+    const t = new Triple(1, 2, 3);
     console.log(t.a, t.b, t.c);
 }
 

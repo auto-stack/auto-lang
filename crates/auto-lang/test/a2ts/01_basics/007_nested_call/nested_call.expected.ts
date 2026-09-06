@@ -1,5 +1,5 @@
-function double(x: number): number {
-    x * 2;
+export function double(x: number): number {
+    return x * 2;
 }
 
 function main(): void {

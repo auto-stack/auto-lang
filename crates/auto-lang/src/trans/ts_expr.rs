@@ -56,6 +56,20 @@ impl TypeScriptTrans {
                         return Ok(());
                     }
                 }
+                // Plan 577 T1 rider: a bare factory-enum unit-variant
+                // reference invokes the zero-arg factory (`Op.Nil` →
+                // `Op.Nil()`); scalar enum member access stays as-is.
+                if let Expr::Ident(base) = object.as_ref() {
+                    if let Some(units) = self.enum_unit_variants.get(base.as_str()) {
+                        if units.iter().any(|u| u == field) {
+                            self.expr(object, sink)?;
+                            sink.body.write_all(b".")?;
+                            sink.body.write_all(field.as_bytes())?;
+                            sink.body.write_all(b"()")?;
+                            return Ok(());
+                        }
+                    }
+                }
                 // TypeScript uses . for all field access
                 self.expr(object, sink)?;
                 sink.body.write_all(b".")?;
@@ -454,9 +468,17 @@ impl TypeScriptTrans {
         let out = &mut sink.body;
         // Check if this is a print call and convert to console.log
         let is_print = matches!(&*call.name, Expr::Ident(name) if name == "print");
+        // Plan 577 T4a: struct constructor calls need `new` — class
+        // constructors are not callable without it (TS2348; previously
+        // papered over at return/let positions by gen.mjs post-fix B1).
+        let is_struct_ctor = matches!(&*call.name, Expr::Ident(name)
+            if self.struct_names.contains(name));
 
         if is_print {
             sink.body.write(b"console.log")?;
+        } else if is_struct_ctor {
+            sink.body.write(b"new ")?;
+            self.expr(&call.name, sink)?;
         } else {
             self.expr(&call.name, sink)?;
         }

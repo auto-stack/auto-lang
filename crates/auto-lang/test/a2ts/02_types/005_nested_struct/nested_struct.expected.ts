@@ -1,4 +1,4 @@
-class Inner {
+export class Inner {
     val: number;
 
     constructor(val: number) {
@@ -6,7 +6,7 @@ class Inner {
     }
 }
 
-class Outer {
+export class Outer {
     inner: Inner;
     name: string;
 
@@ -17,8 +17,8 @@ class Outer {
 }
 
 function main(): void {
-    const i = Inner(42);
-    const o = Outer(i, "test");
+    const i = new Inner(42);
+    const o = new Outer(i, "test");
     console.log(o.inner.val);
 }
 

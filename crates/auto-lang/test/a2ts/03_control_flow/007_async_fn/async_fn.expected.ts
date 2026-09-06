@@ -1,4 +1,4 @@
-async function fetch_data(): Future<number> {
+export async function fetch_data(): Future<number> {
     const result = (await 42);
     return result;
 }

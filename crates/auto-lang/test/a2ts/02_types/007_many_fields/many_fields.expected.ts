@@ -1,4 +1,4 @@
-class Record {
+export class Record {
     id: number;
     name: string;
     active: boolean;
@@ -13,7 +13,7 @@ class Record {
 }
 
 function main(): void {
-    const r = Record(1, "test", true, 95.5);
+    const r = new Record(1, "test", true, 95.5);
     console.log(r.name);
 }
 

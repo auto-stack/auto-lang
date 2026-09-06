@@ -1,15 +1,20 @@
-class WarpDrive {
+export interface Engine { {
+    start(): void;
+}
+
+
+export class WarpDrive {
 
     start(): void {
         console.log("WarpDrive engaging");
     }
 }
 
-class Starship {
+export class Starship {
 }
 
 function main(): void {
-    const ship = Starship();
+    const ship = new Starship();
     ship.start();
 }
 

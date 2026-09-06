@@ -1,5 +1,5 @@
-function identity(x: number): number {
-    x;
+export function identity(x: number): number {
+    return x;
 }
 
 function main(): void {

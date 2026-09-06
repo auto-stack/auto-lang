@@ -1,4 +1,4 @@
-class Point {
+export class Point {
     x: number;
     y: number;
 
@@ -8,12 +8,12 @@ class Point {
     }
 
     modulus(): number {
-        return this.x * this.x + this.y * this.y;
+        return x * x + y * y;
     }
 }
 
 function main(): void {
-    const p = Point(3, 4);
+    const p = new Point(3, 4);
     const m: number = p.modulus();
     console.log("Modulus:", m);
 }

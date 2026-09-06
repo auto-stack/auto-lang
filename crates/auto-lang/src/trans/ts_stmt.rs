@@ -565,13 +565,25 @@ impl TypeScriptTrans {
         self.expr(&is_stmt.target, sink)?;
         sink.body.write(b";")?;
 
-        for (i, branch) in is_stmt.branches.iter().enumerate() {
+        // Plan 577 T2: prefix must be decided per-branch AFTER skipping the
+        // ElseBranch — the old code wrote `else if (` before matching the
+        // branch kind and the ElseBranch `continue` left a dangling fragment
+        // (TS1109, auto-down DEBTS 016 T2). A leading-skip flag (not the
+        // enumerate index) keeps `if` on the first EMITTED branch even when
+        // trivia reorders the branch list.
+        let mut emitted_cond = false;
+        for branch in is_stmt.branches.iter() {
+            if matches!(branch, IsBranch::ElseBranch(_)) {
+                // 'else' has no condition; this arm is handled after the loop.
+                continue;
+            }
             sink.body.write(b"\n")?;
             self.print_indent(sink)?;
-            if i == 0 {
+            if !emitted_cond {
                 sink.body.write(b"if (")?;
+                emitted_cond = true;
             } else {
-                sink.body.write(b"else if (")?;
+                sink.body.write(b" else if (")?;
             }
 
             match branch {
@@ -585,7 +597,7 @@ impl TypeScriptTrans {
                     self.expr(expr, sink)?;
                 }
                 IsBranch::ElseBranch(_) => {
-                    // 'else' has no condition; this arm is handled after the loop.
+                    // Unreachable — skipped above.
                     continue;
                 }
             }
@@ -705,6 +717,21 @@ impl TypeScriptTrans {
                 sink.body.write(target_var.as_bytes())?;
                 sink.body.write(b" === null")?;
             }
+            // Plan 577 T3: Option patterns on optional scrutinees must test
+            // null-ness — the generic `_` fallback renders the pattern as an
+            // object literal (`=== { _tag: "Some", value: v }`), a always-
+            // false reference comparison with an unbound `v` (TS2367/TS2839/
+            // TS2304, auto-down DEBTS 016 T3).
+            Expr::OptionPattern(cover) => match cover.variant {
+                crate::ast::cover::OptionVariant::Some => {
+                    sink.body.write(target_var.as_bytes())?;
+                    sink.body.write(b" !== null")?;
+                }
+                crate::ast::cover::OptionVariant::None => {
+                    sink.body.write(target_var.as_bytes())?;
+                    sink.body.write(b" === null")?;
+                }
+            },
             _ => {
                 sink.body.write(target_var.as_bytes())?;
                 sink.body.write(b" === ")?;
@@ -721,6 +748,22 @@ impl TypeScriptTrans {
         sink: &mut Sink,
     ) -> AutoResult<()> {
         let out = &mut sink.body;
+        // Plan 577 T3: `Some(x)` binds the scrutinee itself (an optional maps
+        // to `T | null` — no wrapper to unwrap).
+        if let Expr::OptionPattern(cover) = pat {
+            if let Some(binding) = &cover.binding {
+                if cover.variant == crate::ast::cover::OptionVariant::Some {
+                    sink.body.write(b"\n")?;
+                    self.print_indent(sink)?;
+                    sink.body.write(b"const ")?;
+                    sink.body.write_all(binding.as_bytes())?;
+                    sink.body.write(b" = ")?;
+                    sink.body.write(target_var.as_bytes())?;
+                    sink.body.write(b";")?;
+                }
+            }
+            return Ok(());
+        }
         let cover = match pat {
             Expr::Cover(cover) => cover,
             _ => return Ok(()),
@@ -779,6 +822,8 @@ impl TypeScriptTrans {
     /// Generate TypeScript class for type declaration
     pub fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
+        // Plan 577 T4a: register the class so call sites emit `new P(...)`.
+        self.struct_names.insert(type_decl.name.clone().into());
         if self.emit_export {
             sink.body.write(b"export ")?;
         }
@@ -1018,9 +1063,12 @@ impl TypeScriptTrans {
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
                 self.scalar_enums.insert(enum_decl.name.clone().into());
-                // C-style scalar enum: emit TypeScript const enum
+                // C-style scalar enum: emit a plain TypeScript enum.
+                // Plan 577 T4b (B2 retirement): was `const enum` — unusable
+                // under --isolatedModules (the jade/engine consumers);
+                // plain enum per 待澄清#2 default (no tree-shaking consumer).
                 sink.body.write(export)?;
-                sink.body.write(b"const enum ")?;
+                sink.body.write(b"enum ")?;
                 sink.body.write_all(enum_decl.name.as_bytes())?;
                 self.open_block(sink)?;
 
@@ -1042,6 +1090,16 @@ impl TypeScriptTrans {
                 self.close_block(sink)?;
             }
             EnumKind::Homogeneous { .. } | EnumKind::Heterogeneous { .. } => {
+                // Plan 577 T1 rider: record zero-payload variants so bare
+                // references `Op.Nil` emit as factory invocations `Op.Nil()`.
+                let units: Vec<AutoStr> = enum_decl.items.iter()
+                    .filter(|it| !it.has_tuple_payload()
+                        && it.payload_type.is_none() && !it.has_fields())
+                    .map(|it| it.name.clone().into())
+                    .collect();
+                if !units.is_empty() {
+                    self.enum_unit_variants.insert(enum_decl.name.clone().into(), units);
+                }
                 // Generate TS discriminated union: type Name = { _tag: "V1", value: T } | ...
                 sink.body.write(export)?;
                 sink.body.write(b"type ")?;
@@ -1074,7 +1132,19 @@ impl TypeScriptTrans {
                     sink.body.write_all(item.name.as_bytes())?;
                     sink.body.write(b": ")?;
                     if let Some(ty) = Self::enum_item_payload_type(item) {
-                        sink.body.write(b"(value: ")?;
+                        // Plan 577 T1: TUPLE payloads take a rest-tuple
+                        // parameter so call sites pass payloads spread
+                        // (`Op.Add("x", 1)`) — the old single-tuple-param
+                        // factory made every call an arity error (TS2554;
+                        // auto-down DEBTS 016 T1, dodged via the single-
+                        // payload-struct discipline). Single payloads keep
+                        // the plain one-parameter form (a rest parameter
+                        // must be an array type, TS2370).
+                        if item.has_tuple_payload() {
+                            sink.body.write(b"(...value: ")?;
+                        } else {
+                            sink.body.write(b"(value: ")?;
+                        }
                         sink.body.write_all(ty.as_bytes())?;
                         sink.body.write(b") => ({ _tag: \"")?;
                         sink.body.write_all(item.name.as_bytes())?;

@@ -1,4 +1,4 @@
-const enum Color {
+export enum Color {
     Red,
     Green = 1,
     Blue = 2
