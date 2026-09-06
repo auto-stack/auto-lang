@@ -118,60 +118,68 @@ widget App {
             row {
                 style: "flex-1 overflow-hidden"
 
-                // 左侧导航侧边栏
+                // 左侧导航侧边栏 (Plan 573: 手搓 aside+button+style-if → sidebar 族;
+                // aside 只留布局外壳,active/hover 由 menu_button 契约承载)
                 aside {
-                    style: "w-72 border-r border-border bg-card/40 flex-col shrink-0 overflow-y-auto p-4 gap-4"
+                    style: "w-72 border-r border-border bg-card/40 flex-col shrink-0"
 
-                    // 分类筛选 Pills
-                    row {
-                        style: "gap-1 flex-wrap pb-2 border-b border-border/50 text-xs"
-                        button "全部" {
-                            style: if .active_category == "all" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
-                            onclick: () => { .active_category = "all" }
-                        }
-                        button "基础" {
-                            style: if .active_category == "01-basic" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
-                            onclick: () => { .active_category = "01-basic" }
-                        }
-                        button "组件" {
-                            style: if .active_category == "02-components" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
-                            onclick: () => { .active_category = "02-components" }
-                        }
-                        button "应用" {
-                            style: if .active_category == "03-apps" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
-                            onclick: () => { .active_category = "03-apps" }
-                        }
-                        button "系统" {
-                            style: if .active_category == "04-systems" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
-                            onclick: () => { .active_category = "04-systems" }
-                        }
-                    }
-
-                    // 示例列表
-                    col {
-                        style: "gap-1.5"
-                        for demo in .filteredDemos {
-                            button {
-                                style: if .selected_id == demo.id {
-                                    "w-full text-left p-2.5 rounded-lg bg-primary/10 border border-primary/40 text-primary font-medium flex-col gap-1 transition-all"
-                                } else {
-                                    "w-full text-left p-2.5 rounded-lg hover:bg-muted/60 border border-transparent text-foreground flex-col gap-1 transition-all"
+                    sidebar_provider (class: "w-full min-h-0 flex-1 flex-col") {
+                        // 分类筛选 Pills (是筛选器不是导航项,平移进 header 原样保留)
+                        sidebar_header (style: "px-3 pt-4") {
+                            row {
+                                style: "gap-1 flex-wrap pb-2 border-b border-border/50 text-xs"
+                                button "全部" {
+                                    style: if .active_category == "all" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                                    onclick: () => { .active_category = "all" }
                                 }
-                                onclick: () => {
-                                    .selected_id = demo.id
-                                    .reload_key = 0
+                                button "基础" {
+                                    style: if .active_category == "01-basic" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                                    onclick: () => { .active_category = "01-basic" }
                                 }
+                                button "组件" {
+                                    style: if .active_category == "02-components" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                                    onclick: () => { .active_category = "02-components" }
+                                }
+                                button "应用" {
+                                    style: if .active_category == "03-apps" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                                    onclick: () => { .active_category = "03-apps" }
+                                }
+                                button "系统" {
+                                    style: if .active_category == "04-systems" { "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold" } else { "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground" }
+                                    onclick: () => { .active_category = "04-systems" }
+                                }
+                            }
+                        }
 
-                                row {
-                                    style: "items-center justify-between w-full"
-                                    text demo.title { style: "text-xs font-semibold truncate flex-1" }
-                                    if demo.loadable {
-                                        text "可交互" { style: "text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-mono" }
-                                    } else {
-                                        text "独立" { style: "text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono" }
+                        // 示例列表 (双行卡片: menu_button 内单 col 孩子 + h-auto 覆盖契约 h-8)
+                        scroll (style: "flex-1 min-h-0 px-3 py-4") {
+                            sidebar_menu {
+                                for demo in .filteredDemos {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            active: .selected_id == demo.id
+                                            onclick: () => {
+                                                .selected_id = demo.id
+                                                .reload_key = 0
+                                            }
+                                            style: "h-auto py-1.5"
+
+                                            col {
+                                                style: "flex-1 min-w-0 items-start gap-1"
+                                                row {
+                                                    style: "items-center justify-between w-full"
+                                                    text demo.title { style: "text-xs font-semibold truncate flex-1" }
+                                                    if demo.loadable {
+                                                        text "可交互" { style: "text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-mono" }
+                                                    } else {
+                                                        text "独立" { style: "text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono" }
+                                                    }
+                                                }
+                                                text demo.description { style: "text-[11px] text-muted-foreground line-clamp-1" }
+                                            }
+                                        }
                                     }
                                 }
-                                text demo.description { style: "text-[11px] text-muted-foreground line-clamp-1" }
                             }
                         }
                     }
