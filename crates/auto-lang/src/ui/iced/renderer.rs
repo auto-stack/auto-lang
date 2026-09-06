@@ -2036,7 +2036,9 @@ fn apply_side_borders<M: Clone + Debug + 'static>(
         let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
         iced::Color::from_rgb8(r, g, b)
     });
-    let border_w = is.border_width.unwrap_or(1.0);
+    // PLAN-054 T1: 单侧宽度档优先（border-l-N → side_border_width）；
+    // 缺省回落整圈 border_width（border-N）再 1px。
+    let border_w = is.side_border_width.or(is.border_width).unwrap_or(1.0);
     let line_style = move |_: &_| iced::widget::container::Style {
         background: Some(iced::Background::Color(border_col)),
         ..Default::default()

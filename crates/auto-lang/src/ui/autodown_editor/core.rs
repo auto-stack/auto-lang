@@ -2341,6 +2341,13 @@ fn walk_skeleton_attribution(
                 let a = attrib.entry(*i).or_default();
                 a.in_quote |= in_quote;
                 a.x = x_base;
+                if in_quote {
+                    // PLAN-054 T1（两臂同款 py-2，§7.4）：编辑壳 quote 叶补
+                    // 垂直 padding，与只读臂 QUOTE_CHROME 的 py-2（8px 上下）
+                    // 同值——两臂 quote 块高/pitch 一致。
+                    a.cont_extra_top += 8.0;
+                    a.cont_extra_bottom += 8.0;
+                }
                 items.push(DrawItem::Leaf(*i));
             }
             Seg::Quote(inner) => {

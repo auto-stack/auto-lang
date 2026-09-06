@@ -411,9 +411,12 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 width: None,
                 height: None,
                 center_x: false,
-                // PLAN-054 T2：28px 定高 header 内标签垂直居中（与编辑臂
-                // (h_h-12)/2 同视觉——五截图根因②a：false 曾顶对齐）。
-                center_y: true,
+                // PLAN-054 T2：28px 定高 header 内标签垂直居中——py-2（8px
+                // 上 padding，12px 标签 → 中心 14 = 带中心）与编辑臂
+                // (h_h-12)/2=8 同值。center_y 不可用：iced 臂 center_y=true
+                // 强制 height(Fill)（renderer.rs:1995），会顶掉 h-[28px] 定高
+                // （实测带高 +2px/块，两臂 pitch 累积漂移）。
+                center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
                 onclick: None,
             };
@@ -1123,24 +1126,34 @@ mod tests {
     }
 
     /// PLAN-054 T2（五截图根因②a）：fence header 标签垂直居中——header
-    /// 容器 center_y=true（28px 定高内居中，与编辑臂 (h_h-12)/2 同视觉；
-    /// false 曾顶对齐）。
+    /// 类串带 py-2（8px 上 padding = (28-12)/2，与编辑臂标签 y 同值）。
+    /// center_y 容器旗标不可用：iced 臂 true 强制 height(Fill)，顶掉
+    /// h-[28px] 定高（实测 +2px/块 pitch 漂移），恒 false 锁定。
     #[test]
     fn fence_header_label_vertically_centered() {
         let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
         let View::Column { children, .. } = doc else {
             panic!("expected column")
         };
-        let View::Container { child, .. } = &children[0] else {
+        let View::Container { center_y, child, .. } = &children[0] else {
             panic!("fence outer container")
         };
+        assert!(!*center_y, "center_y must stay off (Fill-height override)");
         let View::Column { children: parts, .. } = child.as_ref() else {
             panic!("fence parts column")
         };
-        let View::Container { center_y, child: h, .. } = &parts[0] else {
+        let View::Container { center_y: h_cy, style, child: h, .. } = &parts[0] else {
             panic!("fence header container")
         };
-        assert!(*center_y, "fence header label must be vertically centered");
+        assert!(!*h_cy, "header container center_y stays off");
+        let classes = &style.as_ref().expect("header style").classes;
+        assert!(
+            classes.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::PaddingY(crate::ui::style::SizeValue::Fixed(2))
+            )),
+            "header must carry py-2 (vertical centering), got {classes:?}"
+        );
         assert_eq!(text_of(h), "rust");
     }
 
