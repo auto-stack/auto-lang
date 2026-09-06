@@ -59,6 +59,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
     - 快速语法/类型检查：`cargo check -p auto-lang`
     - 局部模块验证：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
     - 涉及编译器/VM/核心协议重构时，才在最终合入前运行一次 `cargo tf`（full 档，含 1M churn；Plan 466）。
+    - **AAVM 专项（Plan 568）**：改 VM/编译器 → `cargo tv`（纯 .at 语料 golden，**不含 aavm**——aavm 无实用面，不需要关心是否被改坏，守护=CI+`ta`）；只有 diff 触及 aavm 代码（`auto/lib/*.at`、`test/vm/aavm2/**`、`parity/**`、aavm2 测试基建）才跑 `cargo taa`，且按 §AAVM/AA2R Test Tier 作用域映射缩小范围，不全量跑。
   - **Category C: Docs / Schema Changes (文档与元数据改动)**:
     - **仅当**修改了文档生成器、Schema 定义文件或语法参考时，才运行 `cargo test -p auto-lang --test docs_gen`。
   - **AutoUI 跨端验证（双端模式）**:
@@ -66,13 +67,49 @@ All AI coding assistants working in this repository must strictly adhere to the 
     - VM 模式：`auto run -r vm`
     - 自动化双端一致性：调用 `autoui-verifier` 技能 (`.agents/skills/autoui-verifier`)。
 
+#### AAVM/AA2R Test Tier (Plan 568)
+
+**概念**："改 VM/编译器后的回归"（`cargo tv`，纯 .at 语料 golden）与"AAVM 自举展示"（`cargo taa`）是两个独立概念。AAVM（auto/lib/*.at 自举 + a2r.at 发射对齐）目前无实用面，平时改 VM/编译器**不需要**测 aavm（守护=CI `vm-files-ci.yml` push/PR + `cargo ta` 全量档 + fold 前裸 `taa`）。
+
+**触发条件（只有这些路径的改动才跑 `taa`）**：`auto/lib/*.at`、`test/vm/aavm2/**`、`parity/**`、`crates/auto-lang/src/tests/aavm2_*.rs` / `aavm_runner_tests.rs`、`lib.rs` 的 `aavm2_lib_source`/`AUTO_LIB_FILES*`。其余改动零触发。
+
+**作用域映射（改什么 → 跑哪个闸门；耗时为 2026-09-05 实测）**：
+
+| 改动位置 | 跑什么 | 耗时 |
+|---|---|---|
+| `corpus_m1/**` | `cargo taa aavm2_m1` | 31s |
+| `corpus_m2/**` | `cargo taa aavm2_m2` | 172s |
+| `corpus_m3/**` | `cargo taa aavm2_m3` | 47s |
+| `corpus_m4/**` | `cargo taa aavm2_m4` | ~315s |
+| `corpus_use/**` | `cargo taa aavm2_m4 aavm2_m5` | ~127s |
+| `corpus_a2r/**` | `cargo taa aavm2_a2r` | ~185s |
+| `auto/lib/engine.at`（终段执行器） | `cargo taa aavm2_m5` | ~350s |
+| `auto/lib/a2r.at`（终段发射器） | `cargo taa aavm2_a2r aavm_at_mode` | ~260s |
+| `auto/lib/{token,lexer,parser,typeinfo,codegen}.at`（上游共享） | 全管线级联，直接裸 `cargo taa` | ~10min 量级 |
+
+review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜底。闸门粒度=测试目录级（单语料文件由所属闸门整体覆盖）。compile 腿（`compile_corpus`/`compile_use_corpus`）现场 cargo build 产物按内容 hash 缓存，二次运行秒级。
+
+**全档资源表**（测试数/耗时/内存；"待实测"由 Plan 568 T7 回填）：
+
+| 档位 | 适用场景 | 测试数 | 实测耗时 | 内存 |
+|---|---|---|---|---|
+| `cargo t` | 日常快速回归（1M churn 排除） | 4304 | ~46s（Plan 507） | 轻池 <50MB/测 |
+| `cargo tf` | review/折叠前全量门禁（含 1M churn） | 3441 | 77.2s（Plan 564） | ≤2GB 预算 |
+| `cargo tv` | 改 VM/编译器后——纯 .at 语料 golden（**不含 aavm**，Plan 568） | ~3579 | 待实测 | 同日常档 |
+| `cargo tt` | 改 transpiler 后 | ~373（非 ignore） | 待实测 | 未测 |
+| `cargo tb` | 改 book/文档后（每测 5-7s） | 69 | 待实测 | 未测 |
+| `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 21 + 日常面 | 待实测 | 重测试已知 0.8-1.2GB/个 |
+| `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | ~4400 | 待实测 | 同 tf 预算 |
+| `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | 待实测 | 未测 |
+
 #### Cargo Test Aliases Reference (from `.cargo/config.toml`)
 - `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel; 1M churn tier excluded, Plan 466)
 - `cargo tf` - Full-scale daily tests (all tests incl. 1M churn tier) — the review / pre-fold full-suite gate (Plan 466)
-- `cargo tv` - VM file tests (`--features test-vm-files`)
+- `cargo tv` - VM file tests (`--features test-vm-files`)——纯 .at 语料 golden，**不含 aavm**（Plan 568；aavm 在 `taa` 档）
 - `cargo tt` - Transpiler tests (`--features test-trans`)
 - `cargo tb` - Book listing tests (`--features test-book`)
-- `cargo ta` - All test suites combined (`--features test-vm-files,test-trans,test-book`; full scale)
+- `cargo taa` - AAVM/AA2R self-hosting tier (`--features test-aavm`, implies vm-files)——**仅 aavm 改动后使用**，裸跑=全集兜底、追加滤串缩小作用域（如 `cargo taa aavm2_m5`）；触发条件/作用域映射/资源表见 §AAVM/AA2R Test Tier
+- `cargo ta` - All test suites combined (`--features test-aavm,test-trans,test-book`; full scale)
 
 
 ---

@@ -61,23 +61,26 @@ mod actor_state_tests; // Plan 327: actor state field persistence
 mod book_listing_tests;
 // Plan 289: VM file tests gated behind test-vm-files feature
 #[cfg(feature = "test-vm-files")]
-mod vm_file_tests; // Plan 177: VM file-based test framework
+mod vm_file_tests; // Plan 177: VM file-based test framework(Plan 568: 纯 .at 语料 golden 档,aavm 腿已迁出)
+#[cfg(feature = "test-aavm")] // Plan 568: vm_file_tests 内嵌 aavm 腿整体迁入
+mod aavm_runner_tests;
 #[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
-#[cfg(feature = "test-vm-files")]
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_a2r; // Plan 447 部分② Phase 7: AA2R is 发射对齐主 a2r 闸门
-#[cfg(feature = "test-vm-files")]
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验收锚
+#[cfg(feature = "test-aavm")] // Plan 568: 原无门(日常档在跑),随 aavm 系入独立档
 mod aavm2_m1; // Plan 432 S1: M1 lexer token 流一致性闸门
-#[cfg(feature = "test-vm-files")]
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_m2; // Plan 432 S2: M2 parser AST dump 一致性闸门
-#[cfg(feature = "test-vm-files")]
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_m3; // Plan 432 S3: M3 typeinfo .type 一致性闸门
-#[cfg(feature = "test-vm-files")]
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_m4; // Plan 432 S4: M4 codegen 字节码结构一致性闸门
-#[cfg(feature = "test-vm-files")]
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_m5; // Plan 432 S5: M3 主里程碑 —— 全管线行为一致性闸门
-#[cfg(feature = "test-vm-files")]
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
 #[cfg(feature = "test-vm-files")]
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/
