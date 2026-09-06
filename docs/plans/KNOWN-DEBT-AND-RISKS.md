@@ -1176,6 +1176,14 @@
   是 rust-ffi（返回值经 marshal 通道，句柄语义与 py 桥不同），**不适用** Plan 569
   的 py-类型侧表方案。错路由面待实证（rust 桥返回值上的 `.len()` 等）；偿还
   路径=rust 侧表或签名缺失时 Unknown 化 + 运行期 tag 分派（独立计划）。
+- **P569-R1 .as lowering 括号复合接收者方法调用重绑（存量，复审发现非本计划
+  引入）**：`print(("x" + s).len())` 经 lower_source 产出 `print("x" + s.len())`
+  ——方法后缀重绑到括号内尾操作数（.at 裸解析路径行为正确输出 7，仅 .as
+  lowering 管道重绑）。in-process 二分实证（569 s2s 改动灭活后复现，merge-base
+  预存）。规避=中间变量（`var t = "x" + s; t.len()`，99_py_dispatch/02 语料
+  即此形态）。偿还路径=emit/降低遍历对非初级接收者的括号保形（独立小批）。
+  归因注记：主检出 auto.exe 曾为陈旧产物（9/5 构建 vs 9/6 HEAD），CLI 对照
+  被误导一次——parity 新鲜度闸门教训同样适用于手工 CLI 探针。
 
 ### P567（2026-09-06，Plan 567 脚本模式收官波——复审登记）
 

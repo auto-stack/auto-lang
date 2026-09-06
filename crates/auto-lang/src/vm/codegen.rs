@@ -606,7 +606,7 @@ impl Codegen {
             api_funcs: HashMap::new(), // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
-            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI mappings
+            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
@@ -976,7 +976,7 @@ impl Codegen {
             api_funcs: HashMap::new(), // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
-            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI mappings
+            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
