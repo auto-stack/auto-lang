@@ -1,18 +1,22 @@
 ---
 plan_id: PLAN-571
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: button-default-variant
 author: []
 created_at: 2026-09-06
 updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/design/autoui/base-styles-and-visual-parity.md: 修改（Design 22 §1.2 default=UA-stylesheet 等价物声明；§3 button default/primary 分行 + secondary/muted 分档）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改（ui 样式子系——button 缺省变体语义与 --secondary 令牌分档沉淀）"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/architecture.md: 新增——button variant/size preset 单源契约（ui::style::variants 单源 + ui_gen 模板/auto-man 烘焙资产/auto CLI 模板 + CSS 变量层四方互锁测试锚）"
+touched_goals:
+  - "goal-007: AutoUI 跨端视觉一致——button 三臂缺省皮肤与 CSS 变量层收敛（default 中性基线/primary 显式 CTA/secondary 深一档），VM 与 Vue 截图同屏实证"
 
 affects: [auto-lang/ui, auto-lang/ui_gen, docs/design/autoui]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -221,6 +225,13 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
       `215 25% 27%`（与 theme.rs/ui_gen 已落值一致）；删 031 `gen/` 重生成并 grep
       产物 css 断言新值；Vue 端 secondary 探针截图补双端证据；加 css 互锁断言测试
       防"第四源"。验证：`cargo t -p auto-man plan571` + 重生成产物 grep + 截图。
+      [✅ 已完成]（三源 6 处收敛：auto-man/vue.rs:1227/:1269（活源）、cmd_vue.rs
+      :1644/:1684/:1844、cmd_tauri.rs:762/:797——后两文件系未挂线死文件顺手对齐防
+      复活带旧值；三 crate 各挂 `generate_index_css` 互锁断言（auto-man plan571
+      9/9 绿、auto bin 8/8 绿、check 0 error）；031 删 gen 重生成产物 css 实证新值
+      （:21 light/:63 dark）；`vue_variant_probe.png` 与 `vm_variant_probe.png`
+      五档同屏双端一致；`cargo t -p auto` 24 红逐一对拍 master 同红（clipboard 族
+      OS 并发 flaky+预存）零新增；commit 350414c12）
 
 ## 复审记录
 
@@ -278,6 +289,22 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
 
 **fail** → 回 `/auto-plan:work`，修复项 = T10（F1，预计小改：3 文件 6 行 + 重生成
 验证 + 互锁断言）。状态回滚 `executing`。
+
+### 复审第二轮（2026-09-06，T10 修复后）
+
+- **F1 已闭合**：三源 6 处收敛（auto-man/vue.rs:1227/:1269 活源 + cmd_vue.rs 3 处 +
+  cmd_tauri.rs 2 处死文件防复活对齐）；031 删 `gen/` 重生成，产物
+  `gen/front/vue/src/assets/index.css:21`（light `40 24% 85.5%`）与 `:63`
+  （dark `215 25% 27%`）实证新值落盘；`vue_variant_probe.png` 与 `vm_variant_probe.png`
+  五档（default/secondary/outline/ghost/primary）同屏双端两两可辨。
+- **防回潮**：三个 crate 各挂 `generate_index_css` 互锁断言
+  （`plan571_css_secondary_interlock_tests`）——auto-man 1/1 绿；auto bin 8/8 绿
+  （cmd_* 系未挂线死文件，断言随文件复活自动生效）。
+- **回归面**：`cargo t -p auto` 24 红逐一对拍 master 的 `-p auto` 全量失败集——
+  全部 master 同红（clipboard 族 OS 并发 flaky + 预存行为红），零新增；
+  `cargo check -p auto` 0 error；auto-man plan571 9/9 绿。
+- **判定：pass** → `status: reviewed`，待 `/auto-plan:merge`（fold + specs 六节
+  存款 + KNOWN-DEBT 记账：iced Accent token no-op、Vue cva 多真源维护面）。
 
 ## 待澄清事项
 
