@@ -175,7 +175,10 @@ widget App {
                 // Desktop sidebar (hidden on mobile)
                 aside (style: "hidden md:flex w-64 lg:w-72 border-r bg-background flex-col shrink-0") {
                     sidebar_provider (class: "w-full min-h-0 flex-1 flex-col") {
-                        sidebar_content (style: "flex-1 px-3 py-4") {
+                        // 2026-09-05: sidebar_content(内置 overflow-auto 原生
+                        // 滚动条) → scroll(AutoUI 组件,Vue=shadcn ScrollArea
+                        // 主题化滚动条,VM=Scrollable)——用户裁定。
+                        scroll (style: "flex-1 min-h-0 px-3 py-4") {
                         // Overview group
                         sidebar_group {
                             sidebar_group_label { text "Overview" }
