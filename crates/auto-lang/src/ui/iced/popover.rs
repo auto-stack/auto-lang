@@ -329,7 +329,17 @@ where
             renderer,
             &layout::Limits::new(
                 Size::ZERO,
-                if self.snap_within_viewport {
+                // PLAN-534：Edge 贴边族尺寸上限恒取 viewport（全高/全宽由
+                // placement 几何保证，内容超视口被钳制），不随 snap 开关放宽。
+                if self.snap_within_viewport
+                    || matches!(
+                        self.placement,
+                        PopoverPlacement::EdgeLeft
+                            | PopoverPlacement::EdgeRight
+                            | PopoverPlacement::EdgeTop
+                            | PopoverPlacement::EdgeBottom
+                    )
+                {
                     viewport.size()
                 } else {
                     Size::INFINITE
@@ -387,11 +397,36 @@ where
                 ),
                 size,
             ),
+            // PLAN-534：viewport 贴边族（sheet/drawer）——与锚位无关。
+            // EdgeLeft/EdgeRight 全高（y/h 取 viewport），x 贴左/右缘，宽=内容；
+            // EdgeTop/EdgeBottom 全宽（x/w 取 viewport），y 贴上/下缘，高=内容。
+            PopoverPlacement::EdgeLeft => Rectangle::new(
+                Point::new(viewport.x, viewport.y),
+                Size::new(size.width, viewport.height),
+            ),
+            PopoverPlacement::EdgeRight => Rectangle::new(
+                Point::new(
+                    viewport.x + viewport.width - size.width,
+                    viewport.y,
+                ),
+                Size::new(size.width, viewport.height),
+            ),
+            PopoverPlacement::EdgeTop => Rectangle::new(
+                Point::new(viewport.x, viewport.y),
+                Size::new(viewport.width, size.height),
+            ),
+            PopoverPlacement::EdgeBottom => Rectangle::new(
+                Point::new(
+                    viewport.x,
+                    viewport.y + viewport.height - size.height,
+                ),
+                Size::new(viewport.width, size.height),
+            ),
         };
 
-        // Modal 居中即终位，不做越界翻转/钳制（面板尺寸被 viewport 上限
-        // 钳制后天然在视口内）。
-        if self.snap_within_viewport && self.placement != PopoverPlacement::Modal {
+        // Modal 居中 / Edge 贴边即终位，不做越界翻转/钳制（面板尺寸被
+        // viewport 上限钳制后天然在视口内）。
+        if self.snap_within_viewport && !self.placement.is_modal_chrome() {
             // PLAN-528 W9 续:越界翻转(垂直)——下方放不下且上方放得下时翻到
             // 锚上方,反之亦然。x 规则 Bottom/Top 共用,翻转只改 y;剩余越界
             // 交给下方 snap 钳制。

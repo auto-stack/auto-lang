@@ -849,6 +849,18 @@ pub enum PopoverPlacement {
     EdgeBottom,
 }
 
+impl PopoverPlacement {
+    /// PLAN-534：模态 chrome 判定（单一事实源）——Modal（视口居中）与
+    /// Edge*（贴边）均挂 scrim + 面板外点击整吞，且不做翻转钳制
+    /// （on_dismiss 为 Some 时外点/Esc 发布关闭，shadcn Dialog/Sheet 语义）。
+    pub fn is_modal_chrome(&self) -> bool {
+        matches!(
+            self,
+            Self::Modal | Self::EdgeLeft | Self::EdgeRight | Self::EdgeTop | Self::EdgeBottom
+        )
+    }
+}
+
 /// Plan 409 §10 续 5: Overlay 浮层的窗口相对定位(从 style 的 absolute +
 /// right-N/top-N/left-N/bottom-N 解析;iced_adapter 已解析但之前忽略)。
 #[derive(Debug, Clone, Copy, Default)]
