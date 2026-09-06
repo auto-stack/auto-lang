@@ -7,7 +7,7 @@
 #   cargo tv         - VM file tests (pure .at corpus goldens; NO aavm since
 #                      Plan 568 - aavm moved to its own taa tier)
 #   cargo tt         - transpiler tests
-#   cargo tb         - book listing tests (slow: ~5-7s each)
+#   cargo tb         - book listing tests (fast now: <0.4s each, Plan 568 measure)
 #   cargo taa        - AAVM/AA2R self-hosting tier (auto/lib + aavm2 + a2r).
 #                      Run ONLY when aavm code changed - trigger conditions &
 #                      scope map in AGENTS.md. Bare = full set; append a filter
