@@ -74,6 +74,7 @@ widget App {
                     button "Open File" { onclick: .OpenFile, style: "px-2.5 py-1.5 text-xs" }
                     button "Open Directory" { onclick: .OpenDirectory, style: "px-2.5 py-1.5 text-xs" }
                     button "Fullscreen" { onclick: .ToggleFullscreen, style: "px-2.5 py-1.5 text-xs" }
+                        button "Stats" { onclick: .RefreshStats, style: "px-2.5 py-1.5 text-xs" }
                 }
             }
 

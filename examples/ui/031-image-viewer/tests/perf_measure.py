@@ -288,12 +288,15 @@ def main():
         report["metrics"]["navigation_100_ms"] = round(nav_ms, 1)
         add("navigation_100_ms", nav_ms, exp["navigation_100_ms"])
 
-        # ---- real pipeline stats from the app model: the app refreshes its
-        # `stats` field on demand (S key -> RefreshStats -> back image_stats)
-        out = mcp.call("autoui_keyboard", key="s")
-        assert "sent" in out.lower() or "ok" in out.lower(), out
+        # ---- real pipeline stats from the app model: the Stats toolbar
+        # button triggers RefreshStats -> back image_stats (the MCP keyboard
+        # channel is dead on the rust track — P547-D9 — so buttons it is)
+        press_button(mcp, "Stats")
         time.sleep(0.5)
-        stats = state_field(mcp, "stats") or ""
+        # stats holds a JSON string with escaped quotes — grab to end of line
+        raw = mcp.call("autoui_state", widget="App")
+        sm = re.search(r'stats: "(.*)"', raw)
+        stats = sm.group(1).replace('\\\\"', '"') if sm else ""
         report["evidence"]["stats_raw"] = stats[:400]
         for key, pattern in {
             "queue_depth": r'"queue_depth":\s*(\d+)',
@@ -303,6 +306,7 @@ def main():
             m = re.search(pattern, stats)
             if m:
                 report["metrics"][key] = int(m.group(1))
+        assert "queued" in stats, f"pipeline stats not collected (got: {stats[:80]!r})"
         qd = report["metrics"].get("queue_depth", 0)
         add("queue_depth", qd, exp["queue_depth"])
 
