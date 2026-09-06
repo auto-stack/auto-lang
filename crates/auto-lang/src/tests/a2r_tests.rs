@@ -485,6 +485,23 @@ enum CacheEvent {
     );
 }
 
+
+/// PLAN-009 T8 throwaway: regenerate the at-gen transpiled product
+/// (in-process API; CLI hangs — see 待澄清9). Deleted after at-gen lands.
+#[test]
+fn temp_plan009_t8_transpile_at_app() {
+    let src = read_to_string(
+        "D:/autostack/.wt/auto-009/auto-term/at/autoterm.at",
+    )
+    .unwrap();
+    let mut rcode = transpile_rust("autoterm", &src).unwrap();
+    std::fs::write(
+        "D:/autostack/.wt/auto-009/auto-term/at-gen/src/app_logic.rs",
+        rcode.done().unwrap(),
+    )
+    .unwrap();
+}
+
 // =============================================================================
 // PLAN-009 T1: rustc 实编门 over the whole a2r snapshot corpus.
 //
