@@ -315,6 +315,15 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
    裁定:调查另立)**——PLAN-572(aavr-trans-superlinear,AA2R 转译
    超线性根修)立项承接:根因定位+根修+本计划步骤 9 解锁(其 T5);
    本步骤挂起,待 PLAN-572 T5 完成后恢复收口。
+   **〔572 T5b 回执·终,2026-09-06〕**5+1 缺陷已由 572 T5b 续修清偿
+   (用户裁定;a2r.at 四臂+管道三处,master 211a12f21)。**步骤 9 两判据
+   全过**:一代 8/8+exe² 构建绿(514856B)+二代 8/8+**转译固定点 PASS**
+   (exe¹ --trans == exe² --trans,自编译转译≥两代一致=自举闭合);
+   判定表 scratch/p572/gen2/native_gen_table.md。产品形态修订:exe²
+   构建输入=lib 七文件(去 aavm.at,镜像⑤腿 lib-only+harness main;
+   aavm.at 入口面由 aavm_at_mode 测试覆盖)。**本步骤判定面收口,
+   步骤 9 待 P532 会话翻牌归档**(执行细节与修复清单见
+   scratch/p572/gen2/t5_unlock.md)。
 10. [ ] ⑤腿稳定化处置（按 W0 定案落地;或替代判据升级登记）——裁定后
     ⑤腿升格为主判据通道,常态绿为硬要求。
 11. [ ] 折叠点③：代际判定表+⑤腿处置留档 → 合入。

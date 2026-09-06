@@ -42,11 +42,12 @@ if [ "${1:-}" != "--skip-gen1" ]; then
         test_aavm2_compile_corpus -- --test-threads=1 >/dev/null 2>&1) \
         || { echo "[gen] leg-5 test FAILED (see cargo output)"; exit 1; }
 fi
-EXE1="$(ls -t "$TMPROOT" 2>/dev/null; true)"
-EXE1="$(find "${TMP:-/tmp}" "$TEMP" -maxdepth 4 -path '*aavm2-bin-*' -name aavm2_bin.exe 2>/dev/null | head -1)"
 # mktemp -d 已占 TMP;直接在系统临时目录里找最新的 aavm2_bin
+# P572 T5b:exe¹ 选取改按 mtime 最新(⑤腿内容寻址缓存可能同时存在多个
+# 新于 codegen.at 的目录——旧 find|head-1 按目录遍历序取首个,不确定,
+# 曾取到修复前旧版致固定点误判;ls -t 确定取最新构建)。
 SYS_TMP="$(dirname "$TMP")"
-EXE1="$(find "$SYS_TMP" -maxdepth 4 -path '*aavm2-bin-*' -name 'aavm2_bin.exe' -newer "$ROOT/auto/lib/codegen.at" 2>/dev/null | head -1)"
+EXE1="$(find "$SYS_TMP" -maxdepth 4 -path '*aavm2-bin-*' -name 'aavm2_bin.exe' -newer "$ROOT/auto/lib/codegen.at" 2>/dev/null | xargs ls -t 2>/dev/null | head -1)"
 [ -n "$EXE1" ] || EXE1="$(find "$SYS_TMP" -maxdepth 4 -path '*aavm2-bin-*' -name 'aavm2_bin.exe' 2>/dev/null | xargs ls -t 2>/dev/null | head -1)"
 [ -n "$EXE1" ] && [ -f "$EXE1" ] || { echo "[gen] exe1 (aavm2_bin) not found — run leg-5 first"; exit 2; }
 echo "[gen] exe1 = $EXE1"
@@ -79,8 +80,13 @@ for c in $REP; do
 done
 [ $gen1_fail -eq 0 ] && echo "一代代表集:8/8 PASS" >> "$TABLE" || echo "一代代表集:存在 FAIL" >> "$TABLE"
 
-# ── exe²:exe¹ 转译 aavm.at+lib → cargo ─────────────────────────
+# ── exe²:exe¹ 转译 lib → cargo ─────────────────────────────────
 echo "[gen] building exe2 (exe1 --trans self-compile)..."
+# P572 T5b:拼合源改为 lib 七文件(剥 use)——aavm.at 不入 exe² 构建输入。
+# 原因:aavm.at 全部内容即 CLI main,拼入则与 harness 追加的 main 重复
+# (E0428;⑤腿 exe¹ 同款=lib-only+harness main,此处镜像);aavm.at 的
+# IO.read_line 入口面由 aavm_at_mode 测试(531 形态,宿主)覆盖。转译
+# 固定点用同一拼合源(exe² 体==exe¹ --trans(本文件)的自再现闭环)。
 python - "$ROOT" "$TMP" <<'PYEOF'
 import sys, os
 root, tmp = sys.argv[1], sys.argv[2]
@@ -92,10 +98,6 @@ for f in files:
             continue
         out.append(line)
     out.append('\n')
-for line in open(os.path.join(root, 'auto/aavm.at'), encoding='utf-8'):
-    if line.lstrip().startswith('use auto.lib.'):
-        continue
-    out.append(line)
 open(os.path.join(tmp, 'concat.at'), 'w', encoding='utf-8', newline='\n').write(''.join(out))
 PYEOF
 if [ "${2:-}" = "--skip-gen2" ] && [ -s "$TEMP/p532_gen2_main.rs" ]; then
@@ -149,6 +151,12 @@ RS
 cat > "$TMP/gen2_harness.rs" <<'RS'
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // P572 T5b:三模式完整镜像 ⑤腿 exe¹ harness(--files/--trans/单文件)。
+    if args.len() >= 3 && &args[1] == "--files" {
+        let out = ev_run_files(&args[2]);
+        print!("{}", out);
+        return;
+    }
     if args.len() >= 3 && &args[1] == "--trans" {
         let source = match std::fs::read_to_string(&args[2]) {
             Ok(s) => s,

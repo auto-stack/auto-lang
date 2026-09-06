@@ -29,6 +29,8 @@
 ## 🟡 一致性遗漏（功能正确但代码不干净）
 
 | 526 | 一致性 | 布局件级 hover/右键公共基建（wrap_layout_onclick）未做——launcher 用 button、桌面右键用 mouse-area 替代挂点，逐点特设；任意 .at 布局件要 hover/右键仍需逐个特设 | 526 待澄清③（用户核准延后，独立立项候选） |
+| 572 | AA2R/host 发射对齐缺口: push 容器实参克隆 | AA2R push 臂克隆规则窄化为「用户 struct/enum 裸 ident」；宿主（trans/rust.rs:8659 auto-clone）对**所有非 Copy**（含 `List<T>`/Vec 容器 ident）实参克隆——AA2R 遇容器 ident 入 push 仍裸 move（语料+lib 现零形状,非阻塞;真出现时为 E0382 家族）。对齐另案小改。 | `auto/lib/a2r.at` push 臂 P572 T5b 注释 |
+| 572 | ~~at_mode b34_struct 宿主侧红~~ + 文档头过时 | **b34 红已结案(2026-09-06 独立调查,用户裁定执行):5 跑 3 态全绿不可复现**(基点 f2ae1cb29/当前 master×2/失败观测精确 lib 状态重构),判⑤腿重载构建期环境瞬态,非代码态缺陷——未复现-关闭观察。余项:at_mode 测试文件文档头 feature 标注过时(写 test-vm-files,实际门=test-aavm),Plan 574 顺手修。 | `crates/auto-lang/src/tests/aavm_at_mode_tests.rs:9`;572 待澄清④结案段 |
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
@@ -70,6 +72,8 @@
 ## 🟢 已知限制（设计决策，非 bug）
 
 | 526 | 视觉 | window_thumbnail 快照懒捕获前显示空（fallback icon 兜底；命中预抓已在 summon 链）| 526 T18 记录（KNOWN-DEBT 候选） |
+| 572 | Windows 环境限制: aavm 进程内语料测试栈溢出族(12) | 裸 `cargo taa` 12 测试 STATUS_STACK_OVERFLOW(001_smoke/m1/m2/m3/m4×3/m5×4/p532_lib_static_diff/a2r_is_corpus)——进程内双层解释(宿主 VM 跑 aavm.at+lib)递归深;基点 f2ae1cb29 即红、主检出/worktree/nextest+libtest 四路径同签名,**非 572 回归**(两态失败集 13/13 逐名一致)。`.cargo/config.toml [env] RUST_MIN_STACK=16MB` 只抬 libtest 测试线程栈,nextest 进程主线程不受控。**〔2026-09-06 用户裁定〕根因=avm+aavm/avm+aa2r 双重解释器路径非真实需求(2×2 对称性设计产物;真实自举=a2r 转译+编译+运行)——关闭重型双重解释器测试,仅留最小正确性锚;正统重型验证=⑤腿/at_mode/gen2(已在位)。Plan 574 承接执行。** | `scratch/p572/t4_gate.md`;572 待澄清②;Plan 574 |
+| 572 | gen2 产品形态: exe² 构建输入不含 aavm.at | P532 步骤 9 的 exe²=lib 七文件+harness main(镜像⑤腿 exe¹ 形态)——aavm.at(全部内容即 CLI main)不入构建输入,否则与 harness main 重复(E0428);aavm.at 入口面由 aavm_at_mode 测试(531 形态,宿主)覆盖,exe² 的 --trans 固定点用同一 lib 拼合源(自再现闭环)。若未来需要「含 aavm.at 的 form-B exe²」(其 main 即产品 main,无 --trans),形态已验证可另立。 | `scripts/aavm_native_gen_check.sh` P572 T5b 注释;P532 步骤 9 回执 |
 | 526 | 视觉 | Popover 首次打开横向锚点偏左（任务栏菜单/icon 菜单同族；功能与消失正常，497 hover 缩略同族先例）| 526 波间回归记录（KNOWN-DEBT 候选） |
 | 540 | 兼容: 旧 storage 配置键只读回退保留一个版本 | 桌面配置单源迁至 `~/.config/autoos/apps/desktop/config.at`（8 键：dock.position/enabled/pinned、desktop.wallpaper/wallpapers_dir、appearance.theme、desktop.transparency、notes.enabled），boot 一次性迁移后旧键**不再读不再写但未删除**——按 D4 定案保留一个版本防回滚双源，下一版本随清理 plan 删键（届时旧版桌面回滚将丢设置,属预期）。 | `ui/desktop_config.rs` LEGACY_STORAGE_KEYS + `docs/plans/540-desktop-settings-osconfig-unify.md` D4 |
 | 540 | 范围边界: shell.desktop.hidden/icons 键留 storage | 桌面图标面可见性（`shell.desktop.hidden`/`shell.desktop.icons`）不属本期 8 键单源范围，仍走 storage 直写（desktop.at 右键隐藏链）——与 config.at 并存双轨；若未来图标面配置也要进 os-config 插件体系，随通用"桌面面配置"扩展再迁。 | `assets/desktop.at:174`；`docs/plans/540-desktop-settings-osconfig-unify.md` T2 勘察注 |
@@ -1562,3 +1566,13 @@ release/rust 生成轨(031 merged exe)的键盘 bind 块完全不生效——MCP
 DesktopMessage 与 WrapperMsg<C> 不兼容,需泛型版)。VM 轨正常(bind 表
 由 run_dynamic 填)。绕法(本批已落):031 工具栏 ◀/▶ 无参按钮(MCP
 press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划。
+
+**P573-D1｜ui-gallery registry 数据源 Vue-only（VM 端列表空,低）**
+`examples/ui-gallery/src/front/app.at:4` 的 demo 数据源
+（`filterDemosBy`/`getDemoTitle`/`getDemoDesc` 等 8 件）全部是 TS extern fn
+（`src/front/utils/demos.ts`），VM/iced 端无从执行——`filteredDemos` 恒空，
+侧栏列表与右栏标题/描述在 VM 上为空（Plan 573 T3 实证，master 基线同败，
+对照证据 `scratch/p573/master-baseline/`）。549 落地时即如此的预存限制，
+非 573 迁移回归。修复方向（另立小计划）：registry 元数据迁回 .at 静态表
+（或 VM 侧 extern fn 桥），迁回后 573 待澄清事项②的 menu_button for 内
+active/onclick VM 实证随之可补。
