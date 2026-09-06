@@ -7,9 +7,9 @@ front/components/combobox.at	4152	846e504bf467f7ae
 front/components/command.at	4778	b79d10b155c422b6
 front/components/copy_button.at	2640	cccf52d84f3e1abe
 front/components/datepicker.at	3459	9a790c6c3f89284b
-front/components/donut_chart.at	11688	539de5e7a7aa5abf
+front/components/donut_chart.at	11694	174f6919d108c535
 front/components/flow_diagram.at	14161	43d91e96c036c7e6
-front/components/line_chart.at	22652	8249dcd16f0b7c3e
+front/components/line_chart.at	22658	01ce7755a16cf35f
 front/components/settings.at	4916	db350548f8bafe3a
 front/components/toggle.at	1706	c66ffd55db9868db
 front/components/togglegroup.at	2860	4d73cd43839fa840
@@ -50,7 +50,7 @@ front/pages/grid.at	29791	ddbdbe8ed1a6e966
 front/pages/hovercard.at	12180	f1fa65f34b9105cc
 front/pages/index.at	66450	95db46aa7a79ebfc
 front/pages/input.at	28240	2cf646939fde14f3
-front/pages/kitchen-sink.at	12283	af52fae2c2441836
+front/pages/kitchen-sink.at	14062	619860437e590652
 front/pages/label.at	13276	378c7d9a69235176
 front/pages/line-chart.at	14657	3e25b0f59a1eac47
 front/pages/menubar.at	8947	717c321af1d86722
@@ -81,4 +81,4 @@ front/pages/toast.at	38169	05657deebd2a290c
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	18665	2aae5b01cc2fb0e2
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1600513	7e5004d6853c1c7d
+TOTAL	1602304	e74d0c6c6eb2bd0b
