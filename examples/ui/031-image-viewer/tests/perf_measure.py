@@ -40,12 +40,17 @@ REPORT = os.path.join(HERE, "perf-report.json")
 AUTO_BIN = os.path.join(REPO, "target", "debug", "auto.exe")
 
 
-def free_port(start=9710):
-    for p in range(start, start + 60):
+def free_port(start=11570):
+    # bind-based probe: connect_ex reports Windows excluded port ranges
+    # (Hyper-V reservations, os error 10013) as "free" while bind() fails.
+    for p in range(start, start + 200):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(("127.0.0.1", p)) != 0:
+            try:
+                s.bind(("127.0.0.1", p))
                 return p
-    raise RuntimeError("no free port")
+            except OSError:
+                continue
+    raise RuntimeError("no bindable port in range")
 
 
 def release_exe():
@@ -199,9 +204,10 @@ def main():
     env = dict(os.environ)
     env["AUTOUI_MCP_PORT"] = str(port)
     t0 = time.perf_counter()
-    # cwd = the 031 project dir (same as the VM track) so the app's
-    # relative fixture paths ("../../tests/fixtures") resolve identically.
-    proc = subprocess.Popen([exe], cwd=PROJECT, env=env,
+    # cwd = src/front (the VM track's working dir) so the app's relative
+    # fixture paths ("../../tests/fixtures") resolve identically on both
+    # tracks; the release exe is cwd-agnostic otherwise.
+    proc = subprocess.Popen([exe], cwd=os.path.join(PROJECT, "src", "front"), env=env,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
     mcp = Mcp(port)
@@ -240,37 +246,30 @@ def main():
         assert state_field(mcp, "view_state") == "ready", "directory not ready"
 
         # ---- neighbor navigation: 4 real thumbnail presses
-        def thumb_ids():
-            snap = mcp.call("autoui_snapshot")
-            known = {"Open File", "Open Directory", "Fullscreen", "−",
-                     "+", "Fit", "Width", "1:1", "↺", "↻", "Retry"}
-            ids = [b for b, lbl in re.findall(r'button #(vnode_\d+) "([^"]+)"', snap)
-                   if lbl not in known]
-            return ids or None
-
-        ids = thumb_ids()
-        assert ids, "thumbnail buttons not found in snapshot"
-
         def selected():
             return state_field(mcp, "selected_index")
 
-        # Warm the prefetch: visit both neighbors once before timing.
-        mcp.call("autoui_action", element_id=ids[0], action="press")
-        time.sleep(0.3)
-        mcp.call("autoui_action", element_id=ids[1], action="press")
-        time.sleep(0.3)
+        def nav_key(k):
+            # Navigation is driven by the toolbar prev/next buttons (the
+            # rust track's MCP keyboard channel is not wired — P547-D9).
+            press_button(mcp, k)
+
+        # Warm the prefetch: visit both directions once before timing.
+        nav_key("▶"); time.sleep(0.3)
+        nav_key("◀"); time.sleep(0.3)
+        # Timing = the synchronous press round-trip (the handler runs to
+        # completion inside it — verified: selected_index is already updated
+        # in the very next state read). Assertions run OUTSIDE the timed
+        # window. The figure includes the MCP channel (~60ms).
         total = 0.0
         steps = []
-        for i in (0, 1, 0, 1):
-            t0 = time.perf_counter()
-            out = mcp.call("autoui_action", element_id=ids[i], action="press")
-            assert "ok" in out, out
+        for k in ("▶", "◀", "▶", "◀"):
             before = selected()
-            for _ in range(300):
-                if selected() != before:
-                    break
-                time.sleep(0.01)
+            t0 = time.perf_counter()
+            nav_key(k)
             dt = time.perf_counter() - t0
+            after = selected()
+            assert after != before, f"nav {k} did not move selection ({before})"
             steps.append(round(dt * 1000, 1))
             total += dt
         report["evidence"]["neighbor_steps_ms"] = steps
@@ -283,13 +282,8 @@ def main():
         # ---- 100 navigations: fire 100 presses, then wait for stability
         t0 = time.perf_counter()
         for i in range(100):
-            out = mcp.call("autoui_action", element_id=ids[i % len(ids)],
-                           action="press")
-            assert "ok" in out, out
-        for _ in range(120):
-            if state_field(mcp, "view_state") == "ready":
-                break
-            time.sleep(0.1)
+            nav_key("▶" if i % 2 == 0 else "◀")
+        time.sleep(1.0)  # settle outside nothing — presses are synchronous
         nav_ms = (time.perf_counter() - t0) * 1000
         report["metrics"]["navigation_100_ms"] = round(nav_ms, 1)
         add("navigation_100_ms", nav_ms, exp["navigation_100_ms"])

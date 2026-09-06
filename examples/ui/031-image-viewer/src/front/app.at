@@ -1,7 +1,7 @@
 // 031-image-viewer front UI (Plan 547 Tasks 29 and 33).
 // The model is metadata and transform state only; pixels stay behind the
 // shared media route and ImageSurface renderer.
-use back.api: open_file, open_directory, current_uri, names, request_view, close_session, image_stats
+use back.api: open_file, open_directory, current_uri, names, request_view, close_session, image_stats, navigate
 
 widget App {
     msg {
@@ -18,6 +18,8 @@ widget App {
         RotateRight,
         PanLeft,
         PanRight,
+        NextImage,
+        PrevImage,
         RefreshStats,
         ToggleFullscreen,
         ImageLoaded,
@@ -106,6 +108,8 @@ widget App {
                     style: "flex-1 min-w-0 min-h-0"
                     row {
                         style: "h-10 shrink-0 items-center justify-center gap-1 border-b border-border"
+                        button "◀" { onclick: .PrevImage, style: "w-8 h-7" }
+                        button "▶" { onclick: .NextImage, style: "w-8 h-7" }
                         button "−" { onclick: .ZoomOut, style: "w-8 h-7" }
                         text "Zoom" { style: "text-xs text-muted-foreground px-2" }
                         button "+" { onclick: .ZoomIn, style: "w-8 h-7" }
@@ -170,6 +174,8 @@ widget App {
         "D" -> .PanRight
         "s" -> .RefreshStats
         "S" -> .RefreshStats
+        "n" -> .NextImage
+        "p" -> .PrevImage
         "+" -> .ZoomIn
         "-" -> .ZoomOut
         "0" -> .FitContain
@@ -237,6 +243,26 @@ widget App {
         .OneToOne -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
         .RotateLeft -> { .rotation = (.rotation + 270) % 360 }
         .RotateRight -> { .rotation = (.rotation + 90) % 360 }
+        .NextImage -> {
+            if .session_id != "" {
+                if .selected_index + 1 < .image_count {
+                    let _nav = navigate(.session_id, 1)
+                    .selected_index = .selected_index + 1
+                    .media_src = current_uri(.session_id)
+                    .status = "Next"
+                }
+            }
+        }
+        .PrevImage -> {
+            if .session_id != "" {
+                if .selected_index > 0 {
+                    let _nav = navigate(.session_id, -1)
+                    .selected_index = .selected_index - 1
+                    .media_src = current_uri(.session_id)
+                    .status = "Prev"
+                }
+            }
+        }
         .RefreshStats -> { if .session_id != "" { .stats = image_stats(.session_id) } }
         .PanLeft -> { .offset_x = .offset_x - 40.0; .fit_mode = "free" }
         .PanRight -> { .offset_x = .offset_x + 40.0; .fit_mode = "free" }
