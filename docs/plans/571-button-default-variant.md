@@ -152,56 +152,56 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
 
 ## 验收标准
 
-- [ ] Vue 与 VM 两端：未声明 variant 的 button 渲染为"muted 填充 + 发丝描边"，双端观感一致；dark 主题下置于 background/card 上轮廓可辨。
-- [ ] `variant:"primary"` 两端均主题色填充；`variant:"submit"` 同 primary。
-- [ ] `variant:"secondary"`（深填充、无边框）与 default（浅填充、有边框）、outline（边框无填充）同屏三者可辨，双端一致。
-- [ ] Rust transpile 臂缺省按钮与 VM 臂同观感（三臂收敛）。
-- [ ] Design 22 §3 与实现一致，含 default=UA-stylesheet-等价物的设计说明与 secondary/muted 分档声明。
-- [ ] `cargo check -p auto-lang` 零新警告；`cargo t ui` 全绿；受影响既有断言已更新。
-- [ ] 存量 examples 抽查 3 例无布局破坏（双端截图入证据）。
+- [x] Vue 与 VM 两端：未声明 variant 的 button 渲染为"muted 填充 + 发丝描边"，双端观感一致；dark 主题下置于 background/card 上轮廓可辨。
+- [x] `variant:"primary"` 两端均主题色填充；`variant:"submit"` 同 primary。
+- [x] `variant:"secondary"`（深填充、无边框）与 default（浅填充、有边框）、outline（边框无填充）同屏三者可辨，双端一致。
+- [x] Rust transpile 臂缺省按钮与 VM 臂同观感（三臂收敛）。
+- [x] Design 22 §3 与实现一致，含 default=UA-stylesheet-等价物的设计说明与 secondary/muted 分档声明。
+- [x] `cargo check -p auto-lang` 零新警告；`cargo t ui` 全绿；受影响既有断言已更新。
+- [x] 存量 examples 抽查 3 例无布局破坏（双端截图入证据）。
 
 ## 执行步骤
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T1 新建 `crates/auto-lang/src/ui/style/variants.rs`：variant/size 两张 preset 表
+- [x] T1 新建 `crates/auto-lang/src/ui/style/variants.rs`：variant/size 两张 preset 表
       + 单测；`style/mod.rs` 导出。验证：`cargo t variants`。 [✅ 已完成]
       （TDD 红→绿：stub 7 失败→实现后 `cargo t variants` 17/17 绿；commit 243a5064c；
       auto-down 兄弟 worktree 已入组建 `D:/autostack/.wt/lang-571/auto-down`@lang-571-dev）
-- [ ] T2 VM 臂接线：`aura_view_builder.rs::convert_button` preset match 改调共享表。
+- [x] T2 VM 臂接线：`aura_view_builder.rs::convert_button` preset match 改调共享表。
       验证：`cargo t aura_view_builder`（或所属测试模块）。 [✅ 已完成]
       （`cargo t plan571_button` 3/3 绿；`cargo t button` 46/46 绿；`cargo t
       aura_view_builder` 83/84——唯一红 plan055_strip_html 在 master 同样红，预存红
       与本 plan 无关；commit d0a825357）
-- [ ] T3 Vue 臂：`ui_gen/vue.rs` cva 模板 default 改中性、新增 primary/submit 键。
+- [x] T3 Vue 臂：`ui_gen/vue.rs` cva 模板 default 改中性、新增 primary/submit 键。
       验证：`cargo t ui_gen`。 [✅ 已完成]
       （plan571 互锁测试 1/1 绿——顺带实证 ghost hover 双端既有分歧（VM bg-secondary
       vs web bg-accent，iced 无 Accent token）；`cargo t ui_gen` 531/532，唯一红
       test_charts_gallery_compiles 在 master 同红属预存；commit 9f4d973c0）
-- [ ] T4 Rust codegen 臂：`ui_gen/rust.rs` 三处 button 生成点注入 preset（variant/size
+- [x] T4 Rust codegen 臂：`ui_gen/rust.rs` 三处 button 生成点注入 preset（variant/size
       prop 解析 + 前置拼接）+ 生成断言测试。验证：`cargo t ui_gen`。 [✅ 已完成]
       （实现收敛为单点注入：generate_view_tree Element 臂 with_button_preset 前置
       合并，覆盖全部三处 `View::button` 生成点；plan571 codegen 测试 3/3 绿；
       `cargo t ui_gen` 530/531 唯一红为 charts gallery 预存红；`cargo check` 无
       feature 与 --features ui 双配置 0 error；commit d22cb5f7a）
-- [ ] T5 secondary token 分档：`theme.rs` Secondary 臂改新值（dark #334155 / light
+- [x] T5 secondary token 分档：`theme.rs` Secondary 臂改新值（dark #334155 / light
       #e3ddd1）+ 相关断言更新；`ui_gen/vue.rs` index.css 模板 `--secondary` light/dark
       两段同步。验证：`cargo t theme` + `cargo t ui_gen`；grep `bg-secondary` 盘点面
       记录入本节。 [✅ 已完成]
       （theme 19/19 绿含新增双主题 secondary≠muted 断言；plan449 style_parity 2/2——
       `bg-secondary` 仅登记可解析性、与值无关；ui_gen 533/534 唯一红 charts gallery
       预存红；commit 043ed68b9）
-- [ ] T6 断言/golden 清理：全仓 grep `hover:bg-primary/90`、`bg-muted` 冲突点、renderer
+- [x] T6 断言/golden 清理：全仓 grep `hover:bg-primary/90`、`bg-muted` 冲突点、renderer
       快照相关 golden，逐个更新。验证：`cargo t ui`。 [✅ 已完成]
       （grep 余留引用均为合法：modal action preset（显式 action 语义，保持填充）、
       musk/vm_bridge 的 .at 源码自带类、cva base；`cargo t ui` 1830/1848，失败 18 例
       与 master 同过滤失败集合逐一相等（comm 双向空集）——全部预存红，零新增；
       本任务无代码改动）
-- [ ] T7 Design 22 文档更新（§3 表 + §1.2 说明段 + secondary/muted 分档声明）。
+- [x] T7 Design 22 文档更新（§3 表 + §1.2 说明段 + secondary/muted 分档声明）。
       [✅ 已完成]（§1.2 增"default variant = UA stylesheet 等价物"设计声明段；
       §3 表拆 default/primary 两行 + secondary 行补分档与无边框说明；
       commit b73fc5e4f）
-- [ ] T8 examples 盘点 + 双端 spot check（002/005/031，autoui-verifier 截图入
+- [x] T8 examples 盘点 + 双端 spot check（002/005/031，autoui-verifier 截图入
       scratch/p571/）。 [✅ 已完成]
       （盘点：examples/ui 405 处 button 引用、61 处显式 variant、涉及 38 个 demo——
       缺省按钮全面转中性为预期回归面。**执行期发现 Vue 臂有第二真源**：`auto run`
@@ -211,7 +211,7 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
       双端截图 6 张入 scratch/p571/{vm,vue}\_{002,005,031}\_\*.png：002 与 031 双端
       均中性 chip 观感一致；005 双端仍蓝系（demo 自带 bg-blue-500 显式类，后类胜
       语义正确非回归）；commit a14bba3b0）
-- [ ] T9 review 前全量门禁：`cargo tf`。 [✅ 已完成]
+- [x] T9 review 前全量门禁：`cargo tf`。 [✅ 已完成]
       （执行期适配两处：ui_gen 互锁/产物级测试在 tf 档（无 ui-iced，Plan 507）随
       `cfg(all(test, feature = "ui"))` 关闭——preset 注入本体亦 ui 门控，该档按设计
       退化透传；终跑 `cargo tf --no-fail-fast` 失败集合 = {test_charts_gallery_compiles}
@@ -219,7 +219,7 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
       check -p auto-man` 0 error；plan571 全族 7/7（auto-lang）+8/8（auto-man）+
       variants 18/18 绿）
 
-- [ ] T10（复审 F1 修复）CSS 变量层 `--secondary` 分档收敛剩余三源：
+- [x] T10（复审 F1 修复）CSS 变量层 `--secondary` 分档收敛剩余三源：
       `crates/auto-man/src/vue.rs:1225/:1266`、`crates/auto/src/cmd_vue.rs:1642/:1682/:1841`、
       `crates/auto/src/cmd_tauri.rs:760/:794`——light→`40 24% 85.5%`、dark→
       `215 25% 27%`（与 theme.rs/ui_gen 已落值一致）；删 031 `gen/` 重生成并 grep
