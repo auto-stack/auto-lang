@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-568
-status: reviewed                    # drafting → executing → execution_done → reviewed → archived
+status: archived                     # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-aa2r-test-tier
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -261,19 +261,19 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
 
 ## 验收标准
 
-- [ ] A1: tv 零 aavm——`nextest list --features test-vm-files -E 'test(aavm)
+- [x] A1: tv 零 aavm——`nextest list --features test-vm-files -E 'test(aavm)
       or test(aa2r)'` 输出 0 行；`cargo tv` 全绿。
-- [ ] A2: 裸 `cargo taa` 全绿（名单含 aavm 全集 21 测 + 日常面），nextest
+- [x] A2: 裸 `cargo taa` 全绿（名单含 aavm 全集 21 测 + 日常面），nextest
       full 档组限流生效（`show-config test-groups` 三组非零）。
-- [ ] A3: `cargo t` 日常档 m1 消失（计数 -1），基线无新增红。
-- [ ] A4: `cargo ta` feature 集编译通过且 list 含 aavm 全集（全量门禁不缩水）。
-- [ ] A5: CI vm-files-ci.yml 四步骤 feature/滤串核对无误（yaml 解析过 +
+- [x] A3: `cargo t` 日常档 m1 消失（计数 -1），基线无新增红。
+- [x] A4: `cargo ta` feature 集编译通过且 list 含 aavm 全集（全量门禁不缩水）。
+- [x] A5: CI vm-files-ci.yml 四步骤 feature/滤串核对无误（yaml 解析过 +
       滤串对名单复核），aavm2 步骤换 test-aavm。
-- [ ] A6: AGENTS.md（档表/Category B/Heavy-Mem 节/D6 触发条件与作用域
+- [x] A6: AGENTS.md（档表/Category B/Heavy-Mem 节/D6 触发条件与作用域
       映射/全档资源表）与 KNOWN-DEBT 覆盖差两条登记完成。
-- [ ] A7: tv 前后墙钟实测对比 + tt/tb/th/ta 补测耗时记入复审记录区与
+- [x] A7: tv 前后墙钟实测对比 + tt/tb/th/ta 补测耗时记入复审记录区与
       AGENTS.md 资源表。
-- [ ] A8: 作用域缩小实证——`cargo taa aavm2_m5` 只运行 M5 闸门测试
+- [x] A8: 作用域缩小实证——`cargo taa aavm2_m5` 只运行 M5 闸门测试
       （不放大到 aavm 全集）。
 
 ## 执行步骤
@@ -419,6 +419,17 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
 frontmatter 已填：touched_goals=GOAL-016（含实测收口数据）；无 specs/modules/* 触达——知识沉淀于 AGENTS.md（档表/AAVM 档节/资源表）+ KNOWN-DEBT 三条，merge 时 overview 活跃线提及即可。
 
 **结论**: 八项验收全 PASS（两处附注均为提前落地的已知后果且已登记），门禁仅存量红 → **status: reviewed**。merge 注意双落点结构（上文）。
+
+## merge 后记（2026-09-06 merge 会话）
+
+- **worktree 保留（偏离 skill 默认清理，复审记录"双落点结构"裁定）**：
+  `D:/autostack/.wt/lang-568/auto-lang` + 分支 `plan-568-dev` **不删不合**——
+  其基线含 532 未复审提交 8 个，整体合入将绕过 532/564 评审门；分支保留
+  作 564 fold 时 heavy_gate 三处接线向 `tests/aavm_runner_tests.rs` 新位置
+  移植的参照（KNOWN-DEBT 568-③）。564 fold 完成后该组即可 wt-guard 后
+  清退。组内只读兄弟 auto-down@1b3e4bc 于本会话先行移除。
+- master 直落五提交（c825e989f 功能 / d88cae48d 债务 / 32152e000 资源表 /
+  0e0eb8408 复审）即为本 plan 的全部生效改动。
 
 ## 待澄清事项
 
