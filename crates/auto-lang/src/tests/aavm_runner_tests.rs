@@ -196,7 +196,13 @@ edition = \"2021\"
 
 #[test]
 #[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
-fn test_aavm2_001_smoke() { test_aavm2("aavm2/001_smoke").unwrap(); }
+fn test_aavm2_001_smoke() {
+    // Plan 564: 重内存测试守门(755MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_001_smoke") {
+        return;
+    }
+    test_aavm2("aavm2/001_smoke").unwrap();
+}
 
 #[test] #[ignore]
 fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwrap(); }
@@ -367,6 +373,10 @@ fn main() {
 /// `-- test_aavm2` 默认即覆盖本腿。
 #[test]
 fn test_aavm2_compile_corpus() {
+    // Plan 564: 重内存测试守门(745MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_compile_corpus") {
+        return;
+    }
     let exe = build_aavm_rust_bin();
     let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/vm/aavm2/corpus_m4");
@@ -418,6 +428,10 @@ fn test_aavm2_compile_corpus() {
 /// 内容寻址缓存)。
 #[test]
 fn test_aavm2_compile_use_corpus() {
+    // Plan 564: 重内存测试守门(744MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_compile_use_corpus") {
+        return;
+    }
     let exe = build_aavm_rust_bin();
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/vm/aavm2/corpus_use");

@@ -103,6 +103,12 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 | `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
 | `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7） | 轻（真 TCP 端口） |
+#### Heavy-Mem Test Tiering (Plan 564)
+
+- Per-test peak weights live in `.config/test-mem-weights.md` (single source of truth; measured by `python scripts/measure_test_mem.py <filter>`, nextest `--jobs=1` serial + per-process peak polling).
+- Tiers: XL ≥800MB, LG 300-800MB, MD 100-300MB. nextest `[test-groups]` in `.config/nextest.toml` + `nextest-full.toml` + `nextest-t3.toml` enforce xl/lg/md = 1/1/2 threads. Since Plan 568's feature split, aavm heavy tests run under `taa`/`ta` (full config) and `t3` — the daily tier never includes them (structural exclusion via `test-aavm` feature); groups in the daily config remain as a guard for ad-hoc `cargo nextest run --features test-aavm` without `--config-file`.
+- XL/LG tests carry an in-body `heavy_gate` guard (`crates/auto-lang/src/tests/heavy_gate.rs`): under bare `cargo test` (no `NEXTEST` env) they SKIP instantly — the 2026-09-05 incident (bare run, 12 threads, 9.78GB peak) cannot recur. SKIP guidance is visible with `--nocapture`; force-run with `AUTO_LANG_HEAVY_MEM=1`.
+- Registering a new heavy test (3 steps): measure → classify in the weights file → add to nextest overrides (all three configs) + wire `heavy_gate` at the test's first line.
 
 #### Cargo Test Aliases Reference (from `.cargo/config.toml`)
 - `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel; 1M churn tier excluded, Plan 466)

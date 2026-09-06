@@ -47,6 +47,12 @@ fn test_m3_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 #[test]
 #[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m3_typeinfo_corpus() {
+    // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
+    // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
+    // test-groups 组内限流,详见 .config/test-mem-weights.md。
+    if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m3_typeinfo_corpus") {
+        return;
+    }
     let dir = corpus_dir();
     let mut entries: Vec<_> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("corpus dir {}: {e}", dir.display()))
