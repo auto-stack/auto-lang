@@ -1,0 +1,789 @@
+// AutoDown Core — unified block model (plan 016, Phase 1).
+//
+// Single Auto source for the document kernel: block tree + selection +
+// operation sequence, dual-emittable (a2ts acceptance now, a2r per
+// tmp/dsl-probes/plan016/REPORT.md discipline).
+//
+// Dual-emission discipline applied here (all verified by probes):
+// - enum payloads use paren form `Variant(T, U)` (space form is a parse error)
+// - no `else ->` arm in `is` (a2ts emits broken `else if (`); enumerate all
+//   variants and put a fallback return after the `is` block
+// - no `is` match on optionals (a2ts emits broken identity compare); consume
+//   `T?` via `??` on a plain identifier (never `f(x) ?? dflt` — a2r misses the
+//   arg clone inside `??` and the value is moved)
+// - struct field names avoid Rust keywords (`kind`, not `type`; a2r does not
+//   emit `r#` escapes)
+// - attrs are `List<Attr>` and marks are `List<Mark>`, NOT Map/Set: a2ts maps
+//   `Map` to Record but passes `.contains` through unmapped (broken JS), and
+//   a2r cannot index maps natively (probe A3); list scan is O(n) over tiny
+//   sets and is 100% portable. This deviates from docs/designs/09 §5.1's schematic
+//   `Map<str, Value>`/`Set<Mark>` deliberately.
+// - string ops limited to `.slice(a, b)` / `.slice(a)` / `.length` / `+` /
+//   `==` (verified dual-safe); no char indexing `s[i]` (broken in a2r, B5)
+// - `.length.to(int)` when the length feeds arithmetic or `<` comparisons
+//   (a2r drops the `as i64` cast in those contexts — probes A5/B10/t_len2)
+// - find-by-id helpers use index loops, not `for x in xs` + `return Some(x)`
+//   (a2r misses the deref-clone on the loop binding)
+// - when a value is needed twice (e.g. split copies attrs into both halves),
+//   route through dupAttrs/dupSpans/dupNodes — a2r is move semantics and has
+//   no portable `.clone()` spelling
+//
+// Semantics notes (MVP):
+// - New ids are supplied by the caller (op payloads), keeping the model pure
+//   and deterministic; the BlockId generation/reuse strategy lands in Phase 3.
+// - splitBlock copies the target's attrs into both halves; source ranges are
+//   split at the text offset (approximate for nested blocks).
+// - mergeBlocks concatenates inline spans without merging boundary spans.
+// - liftBlock of a multi-child wrapper: the before-part keeps the wrapper id,
+//   the after-part gets `<id>-l` (deterministic, documented).
+// - replaceRange across blocks requires anchor/head to share the same parent
+//   (siblings); deeper cross-hierarchy ranges are a no-op (MVP limit).
+// - invertOp is exact for same-block edits and sole-child lift/wrap; for
+//   cross-block replaceRange it restores the flattened text (structure loss
+//   is a documented MVP limit, to be revisited with op-sequence undo).
+
+// ------------------------------------------------------------------ ranges
+
+pub type SourceRange {
+    start int
+    end int
+}
+
+pub fn rng(s int, e int) SourceRange {
+    return SourceRange(s, e)
+}
+
+// ------------------------------------------------------------------ values
+
+// Null covers IAL-style "auto"/absent values (e.g. table cols spec) that are
+// distinct from a zero/empty value.
+pub enum Value {
+    Null
+    Str(str)
+    Int(int)
+    Bool(bool)
+    ListV(List<Value>)
+    AttrsV(List<Attr>)
+}
+
+pub type Attr {
+    key str
+    value Value
+}
+
+pub fn attrGet(attrs List<Attr>, key str) Value? {
+    for i in 0..attrs.length.to(int) {
+        if attrs[i].key == key { return Some(attrs[i].value) }
+    }
+    return None
+}
+
+pub fn attrGetStr(attrs List<Attr>, key str, dflt str) str {
+    let found = attrGet(attrs, key)
+    let v = found ?? Value.Str(dflt)
+    is v {
+        Value.Null -> return dflt
+        Value.Str(s) -> return s
+        Value.Int(i) -> return dflt
+        Value.Bool(b) -> return dflt
+        Value.ListV(l) -> return dflt
+        Value.AttrsV(m) -> return dflt
+    }
+    return dflt
+}
+
+pub fn attrGetInt(attrs List<Attr>, key str, dflt int) int {
+    let found = attrGet(attrs, key)
+    let v = found ?? Value.Int(dflt)
+    is v {
+        Value.Null -> return dflt
+        Value.Str(s) -> return dflt
+        Value.Int(i) -> return i
+        Value.Bool(b) -> return dflt
+        Value.ListV(l) -> return dflt
+        Value.AttrsV(m) -> return dflt
+    }
+    return dflt
+}
+
+pub fn attrGetBool(attrs List<Attr>, key str, dflt bool) bool {
+    let found = attrGet(attrs, key)
+    let v = found ?? Value.Bool(dflt)
+    is v {
+        Value.Null -> return dflt
+        Value.Str(s) -> return dflt
+        Value.Int(i) -> return dflt
+        Value.Bool(b) -> return b
+        Value.ListV(l) -> return dflt
+        Value.AttrsV(m) -> return dflt
+    }
+    return dflt
+}
+
+pub fn attrSet(attrs List<Attr>, key str, value Value) List<Attr> {
+    // Index-then-write shape: moving `value` inside a for-in loop is rejected
+    // by a2r (move in loop), so the replacement happens exactly once via a
+    // list index write or a tail push.
+    var out List<Attr> = []
+    var idx int = -1
+    for i in 0..attrs.length.to(int) {
+        if attrs[i].key == key { idx = i }
+        out.push(attrs[i])
+    }
+    if idx >= 0 {
+        out[idx] = Attr(key, value)
+    } else {
+        out.push(Attr(key, value))
+    }
+    return out
+}
+
+pub fn attrDel(attrs List<Attr>, key str) List<Attr> {
+    var out List<Attr> = []
+    for a in attrs {
+        if a.key != key { out.push(a) }
+    }
+    return out
+}
+
+pub fn dupAttrs(attrs List<Attr>) List<Attr> {
+    var out List<Attr> = []
+    for a in attrs { out.push(a) }
+    return out
+}
+
+// ------------------------------------------------------------------ marks
+
+pub enum Mark {
+    Strong
+    Em
+    Code
+    Link
+    Image
+    Del
+    Underline
+}
+
+// Mark ops use index loops, not for-in: a2r iterates Vec by reference and
+// does not deref-clone the binding in `==` position (probe: E0277 &Mark vs
+// Mark).
+pub fn hasMark(marks List<Mark>, m Mark) bool {
+    for i in 0..marks.length.to(int) {
+        if marks[i] == m { return true }
+    }
+    return false
+}
+
+pub fn addMark(marks List<Mark>, m Mark) List<Mark> {
+    var out List<Mark> = []
+    var found bool = false
+    for i in 0..marks.length.to(int) {
+        if marks[i] == m { found = true }
+        out.push(marks[i])
+    }
+    if !found { out.push(m) }
+    return out
+}
+
+pub fn delMark(marks List<Mark>, m Mark) List<Mark> {
+    var out List<Mark> = []
+    for i in 0..marks.length.to(int) {
+        if marks[i] != m { out.push(marks[i]) }
+    }
+    return out
+}
+
+// ------------------------------------------------------------------ spans
+
+// attrs carries mark payloads that don't fit the unit Mark enum: link
+// href/title, image src/alt/title (Phase 2 parser wiring).
+pub type InlineSpan {
+    text str
+    marks List<Mark>
+    attrs List<Attr>
+}
+
+pub fn span(text str) InlineSpan {
+    return InlineSpan(text, [], [])
+}
+
+pub fn markedSpan(text str, marks List<Mark>) InlineSpan {
+    return InlineSpan(text, marks, [])
+}
+
+pub fn spanWith(text str, marks List<Mark>, attrs List<Attr>) InlineSpan {
+    return InlineSpan(text, marks, attrs)
+}
+
+pub fn spansText(spans List<InlineSpan>) str {
+    var t str = ""
+    for s in spans { t = t + s.text }
+    return t
+}
+
+pub fn dupSpans(spans List<InlineSpan>) List<InlineSpan> {
+    var out List<InlineSpan> = []
+    for s in spans { out.push(s) }
+    return out
+}
+
+// Insert text at a flattened-text offset. The offset lands inside the span
+// that contains it (extending that span's marks); an offset at a span
+// boundary goes into the left span. Offset beyond the end appends a plain
+// span at the tail.
+pub fn spansInsert(spans List<InlineSpan>, offset int, text str) List<InlineSpan> {
+    var out List<InlineSpan> = []
+    var pos int = 0
+    var done bool = false
+    for s in spans {
+        if done {
+            out.push(s)
+        } else {
+            let sLen = s.text.length.to(int)
+            if offset <= pos + sLen {
+                let at = offset - pos
+                let nt = s.text.slice(0, at) + text + s.text.slice(at)
+                out.push(InlineSpan(nt, s.marks, s.attrs))
+                done = true
+            } else {
+                out.push(s)
+            }
+            pos = pos + sLen
+        }
+    }
+    if !done { out.push(span(text)) }
+    return out
+}
+
+// Delete the flattened-text range [lo, hi). Spans left empty are dropped.
+// Keep-branches push the span as-is (a2r cannot move `s.text` out of the
+// for-in reference binding; pushing the whole span gets an auto-clone).
+pub fn spansDelete(spans List<InlineSpan>, lo int, hi int) List<InlineSpan> {
+    var out List<InlineSpan> = []
+    var pos int = 0
+    for s in spans {
+        let sLen = s.text.length.to(int)
+        let sEnd = pos + sLen
+        var overlapped bool = true
+        if sEnd <= lo { overlapped = false }
+        if pos >= hi { overlapped = false }
+        if overlapped {
+            var nt str = ""
+            if lo > pos { nt = s.text.slice(0, lo - pos) }
+            if hi < sEnd { nt = nt + s.text.slice(hi - pos) }
+            if nt.length.to(int) > 0 { out.push(InlineSpan(nt, s.marks, s.attrs)) }
+        } else {
+            out.push(s)
+        }
+        pos = sEnd
+    }
+    return out
+}
+
+pub type SpanSplit {
+    before List<InlineSpan>
+    after List<InlineSpan>
+}
+
+// Split a span list at a flattened-text offset; a split inside a span divides
+// it into two spans with the same marks (empty halves are dropped).
+pub fn spansSplitAt(spans List<InlineSpan>, offset int) SpanSplit {
+    var before List<InlineSpan> = []
+    var after List<InlineSpan> = []
+    var pos int = 0
+    var done bool = false
+    for s in spans {
+        if done {
+            after.push(s)
+        } else {
+            let sLen = s.text.length.to(int)
+            let sEnd = pos + sLen
+            if offset <= pos {
+                after.push(s)
+                done = true
+            } else {
+                if offset >= sEnd {
+                    before.push(s)
+                } else {
+                    let lt = s.text.slice(0, offset - pos)
+                    let rt = s.text.slice(offset - pos)
+                    if lt.length.to(int) > 0 { before.push(InlineSpan(lt, s.marks, s.attrs)) }
+                    if rt.length.to(int) > 0 { after.push(InlineSpan(rt, s.marks, s.attrs)) }
+                    done = true
+                }
+            }
+            pos = sEnd
+        }
+    }
+    return SpanSplit(before, after)
+}
+
+// ------------------------------------------------------------------ blocks
+
+pub enum BlockType {
+    Heading
+    Paragraph
+    Fence
+    Blockquote
+    ListBlock
+    ListItem
+    Table
+    TableRow
+    TableCell
+    ThematicBreak
+    Callout
+    Details
+    WikilinkBlock
+    QueryBlock
+    BlockEmbed
+    Mermaid
+    MathBlock
+}
+
+pub type BlockNode {
+    id str
+    kind BlockType
+    attrs List<Attr>
+    children List<BlockNode>
+    inlines List<InlineSpan>
+    source SourceRange
+}
+
+pub fn block(id str, kind BlockType) BlockNode {
+    return BlockNode(id, kind, [], [], [], rng(0, 0))
+}
+
+// Full-field constructor (plan 019 Phase 1): cross-module constructions of
+// BlockNode fall back to call syntax in a2r (the emitter only knows the
+// field list of same-file structs) — importing modules construct through
+// these factories instead.
+pub fn blockFull(id str, kind BlockType, attrs List<Attr>, children List<BlockNode>, inlines List<InlineSpan>, source SourceRange) BlockNode {
+    return BlockNode(id, kind, attrs, children, inlines, source)
+}
+
+pub fn attrOf(key str, value Value) Attr {
+    return Attr(key, value)
+}
+
+pub fn leafBlock(id str, kind BlockType, text str) BlockNode {
+    return BlockNode(id, kind, [], [], [span(text)], rng(0, text.length.to(int)))
+}
+
+pub fn blockText(node BlockNode) str {
+    return spansText(node.inlines)
+}
+
+pub fn withInlines(node BlockNode, spans List<InlineSpan>) BlockNode {
+    return BlockNode(node.id, node.kind, node.attrs, node.children, spans, node.source)
+}
+
+pub fn withKind(node BlockNode, kind BlockType) BlockNode {
+    return BlockNode(node.id, kind, node.attrs, node.children, node.inlines, node.source)
+}
+
+pub fn withChildren(node BlockNode, kids List<BlockNode>) BlockNode {
+    return BlockNode(node.id, node.kind, node.attrs, kids, node.inlines, node.source)
+}
+
+pub fn dupNodes(nodes List<BlockNode>) List<BlockNode> {
+    var out List<BlockNode> = []
+    for n in nodes { out.push(n) }
+    return out
+}
+
+// ------------------------------------------------------------------ lookup
+
+// The block's PERSISTENT anchor (`^token` in the .ad text), lifted by
+// applyAnchorsDeep at parse time and re-emitted by withIdSuffix. Engine
+// fallback ids (`block-<i>`, `b-xxxxxx`) carry no anchor attr -> "".
+pub fn anchorOf(node BlockNode) str {
+    return attrGetStr(node.attrs, "anchor", "")
+}
+
+pub fn withBlockAnchor(node BlockNode, newId str) BlockNode {
+    return BlockNode(newId, node.kind, attrSet(node.attrs, "anchor", Value.Str(newId)), node.children, node.inlines, node.source)
+}
+
+// Direct-struct-literal form (a2r-safe): the id field init borrows newId
+// BEFORE the attrs arg moves it, so one str feeds both positions without a
+// double-move — unlike going through blockFull whose &str borrow spans the call.
+pub fn withIdAndAnchor(node BlockNode, newId str) BlockNode {
+    return BlockNode(newId, node.kind, attrSet(node.attrs, "anchor", Value.Str(newId)), node.children, node.inlines, node.source)
+}
+
+pub fn hasIdDeep(tree BlockNode, id str) bool {
+    if tree.id == id { return true }
+    for i in 0..tree.children.length.to(int) {
+        if hasIdDeep(tree.children[i], id) { return true }
+    }
+    return false
+}
+
+// Assign a persistent anchor to the block with engine-internal `id`
+// (on-demand anchoring, e.g. copy-block-link). Returns the tree unchanged
+// when the id is absent so applyTree callers can no-op safely.
+pub fn retargetAnchor(tree BlockNode, id str, newId str) BlockNode {
+    if !hasIdDeep(tree, id) { return tree }
+    if tree.id == id { return withBlockAnchor(tree, newId) }
+    if tree.children.length.to(int) == 0 { return tree }
+    var out List<BlockNode> = []
+    for i in 0..tree.children.length.to(int) {
+        out.push(retargetAnchor(tree.children[i], id, newId))
+    }
+    return BlockNode(tree.id, tree.kind, tree.attrs, out, tree.inlines, tree.source)
+}
+
+pub fn findBlock(node BlockNode, id str) BlockNode? {
+    if node.id == id { return Some(node) }
+    for i in 0..node.children.length.to(int) {
+        let r = findBlock(node.children[i], id)
+        if r != None { return r }
+    }
+    return None
+}
+
+pub fn parentOf(node BlockNode, id str) BlockNode? {
+    for i in 0..node.children.length.to(int) {
+        if node.children[i].id == id { return Some(node) }
+        let r = parentOf(node.children[i], id)
+        if r != None { return r }
+    }
+    return None
+}
+
+// Ids from the given node down to the target (inclusive); empty when absent.
+pub fn pathOf(node BlockNode, id str) List<str> {
+    if node.id == id { return [node.id] }
+    for i in 0..node.children.length.to(int) {
+        let sub = pathOf(node.children[i], id)
+        if sub.length.to(int) > 0 {
+            var out List<str> = [node.id]
+            for s in sub { out.push(s) }
+            return out
+        }
+    }
+    return []
+}
+
+pub fn childIndex(node BlockNode, id str) int {
+    for i in 0..node.children.length.to(int) {
+        if node.children[i].id == id { return i }
+    }
+    return -1
+}
+
+// ------------------------------------------------------------- tree surgery
+
+// Replace the child with the given id (anywhere in the subtree) by a list of
+// zero or more replacement blocks. Pure: returns a rebuilt spine.
+pub fn spliceChildren(node BlockNode, id str, repl List<BlockNode>) BlockNode {
+    let idx = childIndex(node, id)
+    if idx >= 0 {
+        var kids List<BlockNode> = []
+        for i in 0..node.children.length.to(int) {
+            if i == idx {
+                for r in repl { kids.push(r) }
+            } else {
+                kids.push(node.children[i])
+            }
+        }
+        return withChildren(node, kids)
+    }
+    var kids2 List<BlockNode> = []
+    for c in node.children { kids2.push(spliceChildren(c, id, repl)) }
+    return withChildren(node, kids2)
+}
+
+// Same, plus the degenerate case where the target is the node itself (only a
+// single replacement node is meaningful there; an empty list is a no-op).
+pub fn replaceNode(node BlockNode, id str, repl List<BlockNode>) BlockNode {
+    if node.id == id {
+        if repl.length.to(int) > 0 { return repl[0] }
+        return node
+    }
+    return spliceChildren(node, id, repl)
+}
+
+// Replace children [lo, hi) of the node with the given parent id.
+pub fn spliceRange(node BlockNode, parentId str, lo int, hi int, repl List<BlockNode>) BlockNode {
+    if node.id == parentId {
+        var kids List<BlockNode> = []
+        for i in 0..node.children.length.to(int) {
+            if i < lo { kids.push(node.children[i]) }
+            if i == lo {
+                for r in repl { kids.push(r) }
+            }
+            if i >= hi { kids.push(node.children[i]) }
+        }
+        return withChildren(node, kids)
+    }
+    var kids2 List<BlockNode> = []
+    for c in node.children { kids2.push(spliceRange(c, parentId, lo, hi, repl)) }
+    return withChildren(node, kids2)
+}
+
+// ------------------------------------------------------------------ selection
+
+pub type BlockPos {
+    blockId str
+    offset int
+}
+
+pub type Selection {
+    anchor BlockPos
+    head BlockPos
+}
+
+pub fn collapsedSel(blockId str, offset int) Selection {
+    return Selection(BlockPos(blockId, offset), BlockPos(blockId, offset))
+}
+
+pub fn pos(blockId str, offset int) BlockPos {
+    return BlockPos(blockId, offset)
+}
+
+// ------------------------------------------------------------------ ops
+
+// Op payloads are single-field structs (NOT multi-payload variants):
+// a2ts defines multi-payload variant constructors as single-tuple lambdas but
+// emits multi-arg calls at construction sites (TS2554) — probe t_ts2. Single
+// struct payloads construct and destructure cleanly on both targets.
+
+pub type InsertTextOp {
+    pos BlockPos
+    text str
+}
+
+pub type SplitBlockOp {
+    pos BlockPos
+    newId str
+}
+
+pub type MergeBlocksOp {
+    aId str
+    bId str
+}
+
+pub type SetBlockTypeOp {
+    id str
+    kind BlockType
+}
+
+pub type LiftBlockOp {
+    id str
+}
+
+pub type WrapBlockOp {
+    id str
+    kind BlockType
+    newId str
+}
+
+pub type ReplaceRangeOp {
+    sel Selection
+    text str
+}
+
+pub enum Op {
+    InsertText(InsertTextOp)
+    SplitBlock(SplitBlockOp)
+    MergeBlocks(MergeBlocksOp)
+    SetBlockType(SetBlockTypeOp)
+    LiftBlock(LiftBlockOp)
+    WrapBlock(WrapBlockOp)
+    ReplaceRange(ReplaceRangeOp)
+}
+
+pub type EditResult {
+    tree BlockNode
+    selection Selection
+}
+
+pub fn missingBlock() BlockNode {
+    return block("", BlockType.Paragraph)
+}
+
+pub fn applyOp(tree BlockNode, selection Selection, op Op) EditResult {
+    is op {
+        Op.InsertText(a) -> {
+            let found = findBlock(tree, a.pos.blockId)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let spans2 = spansInsert(target.inlines, a.pos.offset, a.text)
+            let tree2 = replaceNode(tree, target.id, [withInlines(target, spans2)])
+            return EditResult(tree2, collapsedSel(a.pos.blockId, a.pos.offset + a.text.length.to(int)))
+        }
+        Op.SplitBlock(a) -> {
+            let found = findBlock(tree, a.pos.blockId)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let split = spansSplitAt(target.inlines, a.pos.offset)
+            let left = BlockNode(target.id, target.kind, dupAttrs(target.attrs), dupNodes(target.children), split.before, rng(target.source.start, target.source.start + a.pos.offset))
+            let right = BlockNode(a.newId, target.kind, dupAttrs(target.attrs), dupNodes(target.children), split.after, rng(target.source.start + a.pos.offset, target.source.end))
+            let tree2 = replaceNode(tree, target.id, [left, right])
+            return EditResult(tree2, collapsedSel(a.newId, 0))
+        }
+        Op.MergeBlocks(a) -> {
+            let foundA = findBlock(tree, a.aId)
+            let nodeA = foundA ?? missingBlock()
+            let foundB = findBlock(tree, a.bId)
+            let nodeB = foundB ?? missingBlock()
+            if nodeA.id == "" { return EditResult(tree, selection) }
+            if nodeB.id == "" { return EditResult(tree, selection) }
+            let junction = blockText(nodeA).length.to(int)
+            var merged List<InlineSpan> = []
+            for s in nodeA.inlines { merged.push(s) }
+            for s in nodeB.inlines { merged.push(s) }
+            var kids List<BlockNode> = []
+            for c in nodeA.children { kids.push(c) }
+            for c in nodeB.children { kids.push(c) }
+            let a2 = BlockNode(nodeA.id, nodeA.kind, nodeA.attrs, kids, merged, rng(nodeA.source.start, nodeB.source.end))
+            let tree1 = replaceNode(tree, a.bId, [])
+            let tree2 = replaceNode(tree1, a.aId, [a2])
+            return EditResult(tree2, collapsedSel(a.aId, junction))
+        }
+        Op.SetBlockType(a) -> {
+            let found = findBlock(tree, a.id)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let tree2 = replaceNode(tree, a.id, [withKind(target, a.kind)])
+            return EditResult(tree2, selection)
+        }
+        Op.LiftBlock(a) -> {
+            let foundT = findBlock(tree, a.id)
+            let target = foundT ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let foundP = parentOf(tree, a.id)
+            let parent = foundP ?? missingBlock()
+            if parent.id == "" { return EditResult(tree, selection) }
+            if parent.id == tree.id { return EditResult(tree, selection) }
+            let idx = childIndex(parent, a.id)
+            var beforeKids List<BlockNode> = []
+            var afterKids List<BlockNode> = []
+            for i in 0..parent.children.length.to(int) {
+                if i < idx { beforeKids.push(parent.children[i]) }
+                if i > idx { afterKids.push(parent.children[i]) }
+            }
+            var repl List<BlockNode> = []
+            if beforeKids.length.to(int) > 0 {
+                repl.push(BlockNode(parent.id, parent.kind, dupAttrs(parent.attrs), beforeKids, parent.inlines, parent.source))
+            }
+            repl.push(target)
+            if afterKids.length.to(int) > 0 {
+                repl.push(BlockNode(parent.id + "-l", parent.kind, dupAttrs(parent.attrs), afterKids, parent.inlines, parent.source))
+            }
+            let tree2 = replaceNode(tree, parent.id, repl)
+            return EditResult(tree2, selection)
+        }
+        Op.WrapBlock(a) -> {
+            let found = findBlock(tree, a.id)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let wrapper = BlockNode(a.newId, a.kind, [], [target], [], rng(target.source.start, target.source.end))
+            let tree2 = replaceNode(tree, a.id, [wrapper])
+            return EditResult(tree2, selection)
+        }
+        Op.ReplaceRange(a) -> {
+            let sel = a.sel
+            if sel.anchor.blockId == sel.head.blockId {
+                let found = findBlock(tree, sel.anchor.blockId)
+                let target = found ?? missingBlock()
+                if target.id == "" { return EditResult(tree, selection) }
+                var lo = sel.anchor.offset
+                var hi = sel.head.offset
+                if lo > hi {
+                    let tmp = lo
+                    lo = hi
+                    hi = tmp
+                }
+                let spans2 = spansInsert(spansDelete(target.inlines, lo, hi), lo, a.text)
+                let tree2 = replaceNode(tree, target.id, [withInlines(target, spans2)])
+                return EditResult(tree2, collapsedSel(sel.anchor.blockId, lo + a.text.length.to(int)))
+            }
+            let foundPA = parentOf(tree, sel.anchor.blockId)
+            let pa = foundPA ?? missingBlock()
+            let foundPH = parentOf(tree, sel.head.blockId)
+            let ph = foundPH ?? missingBlock()
+            if pa.id == "" { return EditResult(tree, selection) }
+            if ph.id == "" { return EditResult(tree, selection) }
+            if pa.id != ph.id { return EditResult(tree, selection) }
+            let ai = childIndex(pa, sel.anchor.blockId)
+            let hi2 = childIndex(pa, sel.head.blockId)
+            if ai < 0 { return EditResult(tree, selection) }
+            if hi2 < 0 { return EditResult(tree, selection) }
+            if ai > hi2 { return EditResult(tree, selection) }
+            let aBlock = pa.children[ai]
+            let hBlock = pa.children[hi2]
+            let mergedText = blockText(aBlock).slice(0, sel.anchor.offset) + a.text + blockText(hBlock).slice(sel.head.offset)
+            var kids3 List<BlockNode> = []
+            for c in aBlock.children { kids3.push(c) }
+            for c in hBlock.children { kids3.push(c) }
+            let merged = BlockNode(aBlock.id, aBlock.kind, aBlock.attrs, kids3, [span(mergedText)], rng(aBlock.source.start, hBlock.source.end))
+            let tree2 = spliceRange(tree, pa.id, ai, hi2 + 1, [merged])
+            return EditResult(tree2, collapsedSel(sel.anchor.blockId, sel.anchor.offset + a.text.length.to(int)))
+        }
+    }
+    return EditResult(tree, selection)
+}
+
+// Text covered by a selection (for undo inversion). Exact within one block;
+// cross-block returns the concatenated full texts of anchor and head blocks
+// (documented MVP approximation).
+pub fn textInRange(tree BlockNode, sel Selection) str {
+    if sel.anchor.blockId == sel.head.blockId {
+        let found = findBlock(tree, sel.anchor.blockId)
+        let target = found ?? missingBlock()
+        if target.id == "" { return "" }
+        var lo = sel.anchor.offset
+        var hi = sel.head.offset
+        if lo > hi {
+            let tmp = lo
+            lo = hi
+            hi = tmp
+        }
+        return blockText(target).slice(lo, hi)
+    }
+    let foundA = findBlock(tree, sel.anchor.blockId)
+    let a = foundA ?? missingBlock()
+    let foundH = findBlock(tree, sel.head.blockId)
+    let h = foundH ?? missingBlock()
+    return blockText(a) + blockText(h)
+}
+
+// Invert an op against the pre-op tree; applying the result to the post-op
+// tree undoes the edit (with the documented cross-block caveat above).
+pub fn invertOp(tree BlockNode, op Op) Op {
+    is op {
+        Op.InsertText(a) -> {
+            return Op.ReplaceRange(ReplaceRangeOp(Selection(a.pos, BlockPos(a.pos.blockId, a.pos.offset + a.text.length.to(int))), ""))
+        }
+        Op.SplitBlock(a) -> {
+            return Op.MergeBlocks(MergeBlocksOp(a.pos.blockId, a.newId))
+        }
+        Op.MergeBlocks(a) -> {
+            let foundA = findBlock(tree, a.aId)
+            let nodeA = foundA ?? missingBlock()
+            return Op.SplitBlock(SplitBlockOp(BlockPos(a.aId, blockText(nodeA).length.to(int)), a.bId))
+        }
+        Op.SetBlockType(a) -> {
+            let found = findBlock(tree, a.id)
+            let target = found ?? missingBlock()
+            return Op.SetBlockType(SetBlockTypeOp(a.id, target.kind))
+        }
+        Op.LiftBlock(a) -> {
+            let foundP = parentOf(tree, a.id)
+            let parent = foundP ?? missingBlock()
+            if parent.id == "" { return Op.SetBlockType(SetBlockTypeOp(a.id, BlockType.Paragraph)) }
+            if parent.id == tree.id { return Op.SetBlockType(SetBlockTypeOp(a.id, BlockType.Paragraph)) }
+            return Op.WrapBlock(WrapBlockOp(a.id, parent.kind, parent.id))
+        }
+        Op.WrapBlock(a) -> {
+            return Op.LiftBlock(LiftBlockOp(a.id))
+        }
+        Op.ReplaceRange(a) -> {
+            let oldText = textInRange(tree, a.sel)
+            return Op.ReplaceRange(ReplaceRangeOp(Selection(a.sel.anchor, BlockPos(a.sel.anchor.blockId, a.sel.anchor.offset + a.text.length.to(int))), oldText))
+        }
+    }
+    return Op.SetBlockType(SetBlockTypeOp("", BlockType.Paragraph))
+}

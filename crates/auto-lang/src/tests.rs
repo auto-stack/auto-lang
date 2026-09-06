@@ -5,6 +5,9 @@ mod a2c_tests;
 mod a2r_tests;
 #[cfg(feature = "test-trans")]
 mod a2ts_tests;
+// Plan 577: a2ts directed compile-level probes (.at → tsc --noEmit)
+#[cfg(feature = "test-trans")]
+mod a2ts_directed_probes;
 mod atom_tests;
 // Plan 075: Unified API tests
 mod unified_api_tests;

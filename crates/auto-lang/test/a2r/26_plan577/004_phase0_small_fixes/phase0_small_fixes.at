@@ -1,0 +1,45 @@
+// PLAN-577 Phase 0 (D3) five small emitter fixes — directed probe.
+// ① empty map literal ② map index by container type ③ enum derive(Hash)
+// ④ self-field `.length` as i64 cast ⑤ `final` reserved-word escape.
+type Holder {
+    items List<int>
+}
+
+enum Kind {
+    Alpha
+    Beta
+}
+
+fn pick(kind Kind, m Map<Kind, int>) int {
+    // ② map index by container dispatch (map key, not list position)
+    if m.contains(kind) {
+        return m[kind]
+    }
+    return -1
+}
+
+fn total(h Holder) int {
+    // ④ self/param field `.length` feeding arithmetic — needs the i64 cast
+    return h.items.length + 1
+}
+
+fn esc() int {
+    // ⑤ local ident colliding with a Rust 2024 reserved word
+    let final int = 7
+    return final
+}
+
+fn main() {
+    // ① empty map literal for a declared Map type
+    var empty Map<str, int> = {}
+    print(empty.length.to(str))
+
+    var m Map<Kind, int> = {}
+    m[Kind.Alpha] = 1
+    print(pick(Kind.Alpha, m).to(str))
+    print(pick(Kind.Beta, m).to(str))
+
+    let h = Holder([1, 2, 3])
+    print(total(h).to(str))
+    print(esc().to(str))
+}

@@ -792,6 +792,11 @@ unexpected failures:
 #[test] fn test_25_lifecycle_002_non_escaping_stays_plain() { test_a2r("25_lifecycle/002_non_escaping_stays_plain").unwrap(); }
 #[test] fn test_25_lifecycle_003_copy_type_write_capture() { test_a2r("25_lifecycle/003_copy_type_write_capture").unwrap(); }
 #[test] fn test_25_lifecycle_004_read_capture_stays_plain() { test_a2r("25_lifecycle/004_read_capture_stays_plain").unwrap(); }
+// === 26_plan577 (emitter gap batch: R1 dot-chain str borrow / R4 loop
+// owned-Vec move / Phase 0 five small fixes — DEBTS 016 directed probes) ===
+#[test] fn test_26_plan577_001_block_model() { test_a2r("26_plan577/001_block_model").unwrap(); }
+#[test] fn test_26_plan577_002_r1_dot_chain() { test_a2r("26_plan577/002_r1_dot_chain").unwrap(); }
+#[test] fn test_26_plan577_003_r4_loop_move() { test_a2r("26_plan577/003_r4_loop_move").unwrap(); }
 #[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
 #[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
 #[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }

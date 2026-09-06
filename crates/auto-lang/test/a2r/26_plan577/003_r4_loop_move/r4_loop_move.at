@@ -1,0 +1,29 @@
+// PLAN-577 R4 (D2): owned Vec/List argument consumed inside a loop —
+// per-iteration move (E0382×2 family from auto-down DEBTS 016 R4).
+// The callee takes the list by value; the loop re-uses the same owned
+// argument every iteration — emitter must clone (or borrow when the
+// param type allows).
+fn consume(xs List<int>) int {
+    var total int = 0
+    for x in xs {
+        total = total + x
+    }
+    return total
+}
+
+fn sumGroups(groups List<List<int>>) int {
+    var acc int = 0
+    var flat List<int> = [1, 2, 3]
+    for g in groups {
+        // flat moved into consume on every iteration — needs .clone()
+        acc = acc + consume(flat)
+        // g is the loop binding itself (borrowed) — must stay raw
+        acc = acc + consume(g)
+    }
+    return acc
+}
+
+fn main() {
+    var groups List<List<int>> = [[10], [20]]
+    print(sumGroups(groups).to(str))
+}
