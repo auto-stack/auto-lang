@@ -64,6 +64,44 @@ pub fn clear_current_widget() {
     CURRENT_MSG_VARIANTS.with(|s| s.borrow_mut().clear());
 }
 
+// Plan 576 (D2): 当前合成件的 computed 字段 → 隐藏函数名表。handler/
+// computed 体内引用本件 computed（裸 Ident 或 .name/self.name 形态）改写为
+// `__computed_<W>_<name>(__state)` 调用——此前改写只认 state_vars，computed
+// 引用落 generic self-dot 臂变 `__state.<name>`，字段不存在 → Nil 传播/
+// RuntimeError（043②①）。与 STORE_FIELDS 同 thread-local 模式，per-widget 设置。
+thread_local! {
+    static COMPUTED_FN_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// Plan 576: set the current widget's computed field → hidden-fn-name map.
+pub fn set_computed_refs(map: HashMap<String, String>) {
+    COMPUTED_FN_NAMES.with(|s| *s.borrow_mut() = map);
+}
+
+/// Plan 576: clear the computed context after a widget's synthesis.
+pub fn clear_computed_refs() {
+    COMPUTED_FN_NAMES.with(|s| s.borrow_mut().clear());
+}
+
+/// Plan 576: bare 名是否命中当前件的 computed 字段，命中返回隐藏函数名。
+fn computed_fn_for(name: &str) -> Option<String> {
+    COMPUTED_FN_NAMES.with(|m| m.borrow().get(name).cloned())
+}
+
+/// Plan 576: `__computed_<W>_<p>(__state)` 调用表达式。
+fn computed_call_expr(fn_name: &str) -> Expr {
+    Expr::Call(crate::ast::Call {
+        name: Box::new(Expr::Ident(Name::from(fn_name))),
+        args: crate::ast::Args {
+            args: vec![Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))],
+        },
+        ret: Type::Unknown,
+        type_args: Vec::new(),
+        generic_args: Vec::new(),
+        pos: None,
+    })
+}
+
 /// Set the store context for the current synthesis pass.
 pub fn set_store_context(fields: HashMap<String, Vec<String>>, names: HashMap<String, String>) {
     STORE_FIELDS.with(|s| *s.borrow_mut() = fields);
@@ -579,6 +617,30 @@ fn rewrite_expr_with_locals(
             Box::new(Expr::Ident(Name::from(STATE_PARAM))),
             name.clone(),
         )),
+        // Plan 576 (D2): computed 裸名 → 隐藏函数调用（state 字段优先于
+        // computed 同名；局部形参遮蔽同规则）。
+        Expr::Ident(name)
+            if !state_fields.contains(name.as_str())
+                && !locals.contains(name.as_str())
+                && computed_fn_for(name.as_str()).is_some() =>
+        {
+            let fn_name = computed_fn_for(name.as_str()).unwrap();
+            Some(computed_call_expr(&fn_name))
+        }
+        // Plan 576 (D2): `.name` / `self.name` 形态的 computed 引用——必须在
+        // 下方 generic self-dot 臂之前拦截（该臂会改成 __state.<name>，字段
+        // 不存在 → Nil/RuntimeError）。
+        Expr::Dot(obj, field)
+            if matches!(
+                obj.as_ref(),
+                Expr::Ident(n)
+                    if (n.as_str() == "self" || n.as_str() == "." || n.as_str().is_empty())
+                        && computed_fn_for(field.as_str()).is_some()
+            ) =>
+        {
+            let fn_name = computed_fn_for(field.as_str()).unwrap();
+            Some(computed_call_expr(&fn_name))
+        }
         Expr::Dot(obj, field)
             if matches!(
                 obj.as_ref(),
@@ -661,7 +723,16 @@ fn rewrite_expr_with_locals(
             }
         }
         Expr::Call(c) => {
-            rewrite_expr_with_locals(&mut c.name, state_fields, locals);
+            // Plan 576: 裸 computed 名作调用名（`thumb_h(x)`——computed 非函数，
+            // 病态形态）不改写——改写会产出 Call-in-name 非法 AST；留原样让
+            // codegen 报未解析符号（可见失败优于静默 Nil）。
+            let name_is_bare_computed = matches!(
+                c.name.as_ref(),
+                Expr::Ident(n) if computed_fn_for(n.as_str()).is_some()
+            );
+            if !name_is_bare_computed {
+                rewrite_expr_with_locals(&mut c.name, state_fields, locals);
+            }
             for arg in &mut c.args.args {
                 match arg {
                     Arg::Pos(ex) | Arg::Pair(_, ex) => rewrite_expr_with_locals(ex, state_fields, locals),
@@ -747,8 +818,10 @@ pub fn computed_fn_name(widget_name: &str, computed_name: &str) -> String {
 /// VM functions, mirroring handler synthesis (state receiver param + state
 /// ref rewriting). The trailing expression statement becomes `Stmt::Return`
 /// (same tail rule as the Vue path's `transpile_body_as_return`); a block
-/// already ending in an explicit `return` is left unchanged. Expression-form
-/// computeds stay on the inline resolver — nothing is synthesized for them.
+/// already ending in an explicit `return` is left unchanged.
+/// Plan 576 (D2): 表达式形态同样合成（单条 `return <expr>`）——handler 体
+/// 的 computed 引用改写为隐藏函数调用后，两种形态都必须有函数体；视图侧
+/// inline resolver 不受影响（仍直读 computed 表）。
 fn synthesize_computed_fns(
     widget_name: &str,
     state_type: &TypeDecl,
@@ -757,10 +830,13 @@ fn synthesize_computed_fns(
 ) -> Vec<Stmt> {
     let mut out = Vec::new();
     for (name, expr) in computeds {
-        let crate::ast::Expr::Block(body) = expr else {
-            continue;
+        // Plan 576: 表达式形态同样合成隐藏函数——handler 体改写（D2）把
+        // computed 引用改写为 `__computed_<W>_<p>(__state)` 调用，两种形态
+        // 都必须有函数体。表达式形态 = 单条 `return <expr>`。
+        let mut stmts = match expr {
+            crate::ast::Expr::Block(body) => body.stmts.clone(),
+            other => vec![Stmt::Return(Box::new(other.clone()))],
         };
-        let mut stmts = body.stmts.clone();
         let mut locals = HashSet::new();
         rewrite_state_refs_stmts_with_locals(&mut stmts, state_fields, &mut locals);
         // Tail expression → return (explicit trailing Return renders unchanged).
@@ -1170,6 +1246,13 @@ pub fn synthesize_widget_module(
             .iter()
             .map(|c| (c.name.clone(), c.expr.clone()))
             .collect();
+        // Plan 576 (D2): handler/computed 体的 computed 引用改写上下文。
+        set_computed_refs(
+            w_computeds
+                .iter()
+                .map(|(n, _)| (n.clone(), computed_fn_name(&w.name, n)))
+                .collect(),
+        );
         for cfn in synthesize_computed_fns(&w.name, &w_state_type, &w_state_fields, &w_computeds) {
             if let Err(e) = codegen.compile_stmt(&cfn) {
                 record_synth_failure(format!("{}.computed: {}", w.name, e));
@@ -1215,6 +1298,7 @@ pub fn synthesize_widget_module(
     let registry = std::mem::take(&mut codegen.generic_registry);
     clear_store_context();
     clear_current_widget();
+    clear_computed_refs();
     // Plan 446 批二 A1: 消歧失败升级为 synthesis 失败 → boot 致命
     // （与 C1-3 同哲学：显式报错优于静默错路由）。
     let disambig_errors = take_store_disambig_errors();
@@ -1805,6 +1889,13 @@ pub fn synthesize_from_decl(
                     .map(|p| (p.name.to_string(), p.expr.clone()))
             })
             .collect();
+        // Plan 576 (D2): handler/computed 体的 computed 引用改写上下文。
+        set_computed_refs(
+            d_computeds
+                .iter()
+                .map(|(n, _)| (n.clone(), computed_fn_name(&d.name.to_string(), n)))
+                .collect(),
+        );
         for cfn in synthesize_computed_fns(&d.name.to_string(), &d_state_type, &d_state_fields, &d_computeds) {
             if let Err(e) = codegen.compile_stmt(&cfn) {
                 record_synth_failure(format!("{}.computed: {}", d.name, e));
@@ -1851,6 +1942,7 @@ pub fn synthesize_from_decl(
     let registry = std::mem::take(&mut codegen.generic_registry);
     clear_store_context();
     clear_current_widget();
+    clear_computed_refs();
     // Plan 446 批二 A1: 消歧失败升级为 synthesis 失败 → boot 致命。
     let disambig_errors = take_store_disambig_errors();
     if !disambig_errors.is_empty() {

@@ -3231,4 +3231,68 @@ mod tests {
             assert!((got - v).abs() < 1e-6, "write_state Double({}) 读回 {} 失真", v, got);
         }
     }
+
+    /// PLAN-576 G2 定向测试（TDD 红）：use 子件 handler 体内的 computed 引用
+    /// 解析。043②①：handler_codegen 状态引用改写只认本件 state_vars——
+    /// computed 引用（.half_h）不被改写，编译后 Nil 传播、数值守卫静默假。
+    #[test]
+    fn plan576_child_computed_resolves_in_handler() {
+        let src = concat!(
+            "widget P576p {
+",
+            "    model { var got float = 0.0 }
+",
+            "    view { col { Bar576() } }
+",
+            "}
+",
+            "widget Bar576 {
+",
+            "    model {
+",
+            "        var track_h float = 240.0
+",
+            "        var out float = 0.0
+",
+            "    }
+",
+            "    computed {
+",
+            "        half_h => .track_h * 0.5
+",
+            "        quarter_h => .half_h * 0.5
+",
+            "    }
+",
+            "    view { col { text \"bar\" } }
+",
+            "    on {
+",
+            "        .Move -> { if .half_h > 100.0 { .out = .quarter_h } else { .out = -1.0 } }
+",
+            "    }
+",
+            "}
+",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        comp.on_with_input_for("Bar576", "Move", None);
+        let got = match comp.read_state("out").expect("out") {
+            auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+            other => panic!("out 应为 float，实得 {:?}", other),
+        };
+        // half_h = 240.0*0.5 = 120 > 100 → 真分支；quarter_h = 120*0.5 = 60
+        assert!((got - 60.0).abs() < 1e-4, "子件 computed 引用应解析（half=120 守卫真，quarter=60），实得 {}", got);
+    }
 }
