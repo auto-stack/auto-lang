@@ -1576,3 +1576,18 @@ press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划�
 非 573 迁移回归。修复方向（另立小计划）：registry 元数据迁回 .at 静态表
 （或 VM 侧 extern fn 桥），迁回后 573 待澄清事项②的 menu_button for 内
 active/onclick VM 实证随之可补。
+
+## P571 债务（button-default-variant，2026-09-06 复审登记）
+
+- **P571-D1 iced `Color::Accent` 无解析臂**：`resolve_semantic_rgb`（theme.rs）无
+  `Accent` 分支——ghost/outline preset 的 `hover:bg-accent` 在 VM/iced 端 no-op
+  （Vue 端 index.css 有 `--accent`），两 variant 的 hover 反馈缺失（PLAN-571 互锁
+  测试实证 cva `hover:bg-accent` vs VM `hover:bg-secondary` 既有分歧）。建议后续
+  独立 plan：theme.rs 补 Accent 解析（随 accent 预设联动）+ preset 统一回
+  `hover:bg-accent`。
+- **P571-D2 button preset 多真源维护面**：同一 variant 语义现有四方真源——
+  `ui::style::variants.rs`（Rust 单源）、`ui_gen/vue.rs` cva 模板、
+  `auto-man/assets/shadcn-ui/button/index.ts` 烘焙资产、`auto-man/vue.rs`
+  `generate_index_css` CSS 变量层（另有未挂线的 auto/cmd_vue.rs、cmd_tauri.rs
+  死文件模板已顺手对齐）。已全部挂互锁断言防漂移，但演进 variant 时需四处同步；
+  长期可考虑生成端单点（assets 由 Rust 表生成）。
