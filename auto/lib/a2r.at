@@ -2279,13 +2279,13 @@ fn ar_fstr_parse(mut a Ar, mut p P) {
                 i = k2
             }
         } else {
-            if c == 123 {
-                fmt = f"${fmt}{{{{"
-            } else if c == 125 {
-                fmt = f"${fmt}}}}}"
-            } else {
-                fmt = fmt + content.slice(i, i + 1)
-            }
+            // P572 T5b:字面大括号直通(镜像主 a2r fstr 字面语义)——源内
+            // 括号已是 format 转义形({{}}→渲染 {});旧实现按原始字符再
+            // 转义({{}}→{{{{}}}}),自举链固定点逐代漂移(a2r.at 自身
+            // 占位符追加行 f"${fmt}{{}}" 经 exe¹ 转译后语义翻倍,exe²
+            // --trans 输出 {{}},⑤腿代际对拍实证)。语料顶层字面括号
+            // 零形状(仅 ${...} 插值),零 golden 漂移。
+            fmt = fmt + content.slice(i, i + 1)
             i = i + 1
         }
     }
@@ -2450,6 +2450,27 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
             return "std::fs::metadata(" + ea + ").is_ok()"
         }
     }
+    // P572 T5b:process.args() = List<str> 契约(镜像主 a2r 10075 P523-2①;
+    // a2r 侧由宿主/harness shim 的 const process 实例承载点号发射)。
+    // 此前无臂 → argv 落 Unknown,.get(1) 元素型哑火 → &str 实参强转
+    // (.as_str())不触发,aavm.at 入口 E0308(⑤腿 exe² 构建实证)。
+    if recv == "process" && word == "args" {
+        a.infer = 0
+        a.ty = "List<str>"
+        a.strk = 0
+        a.lenflag = 0
+        return "process.args()"
+    }
+    // P572 T5b:IO.read_line() → IO::read_line()(镜像主 a2r 531 at_mode
+    // 形态;mod IO 关联函数路径——点号形在 mod 上是 E0423,⑤腿 exe²
+    // 构建实证)。返回 owned String(strk=3)。
+    if recv == "IO" && word == "read_line" {
+        a.infer = 0
+        a.ty = "str"
+        a.strk = 3
+        a.lenflag = 0
+        return "IO::read_line()"
+    }
     // A1:方法名词法分派 is 化(对齐 Rust 377 处 match name.as_str();
     // 复合条件臂 new&&List/set&&ctx 的 word 不与模式臂重叠,落 else)
     is word {
@@ -2580,6 +2601,19 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
                 // Plan 514 W1(⑤腿 E0382):owned str 标识 push 后复用会被
                 // move——借用式克隆 .to_string()(镜像主 a2r push(gk.to_string()))
                 v = f"${v}.to_string()"
+            } else if e_is_simple_ident(v) == 1 {
+                // P572 T5b:非 Copy(用户 struct/enum)ident 实参入 .push()
+                // 一律 .clone()(镜像主 a2r 8659 auto-clone 规则;push 取
+                // 所有权,裸 ident move 后续用即 E0382——codegen.at
+                // cgs.push(mc) ⑤腿 exe² 构建实证)。List<T> 等容器实参
+                // 暂不在列(语料零形状,宿主全量对齐另案)。
+                var pv572 = a.vty(v)
+                if pv572 != "" {
+                    var pb572 = ar_base_ty(pv572)
+                    if a.ty_find(pb572) >= 0 || a.enum_find(pb572) >= 0 {
+                        v = f"${v}.clone()"
+                    }
+                }
             }
             return recv + ".push(" + v + ")"
         }
