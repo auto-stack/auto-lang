@@ -330,6 +330,10 @@ pub const NATIVE_PY_GETITEM_MAY: u16 = 477;
 /// Plan 567 T07 (P539-D5): `py_call_kw_may` — kwargs 5 槽约定的 May 值通道
 /// 变体（与 py_call_kw 同 ABI；异常落 `Result.Err` 值）。
 pub const NATIVE_PY_CALL_KW_MAY: u16 = 478;
+/// Plan 567 T12（P560-D1）: `py_raise(payload)` — with-as 块形态 catch 臂的
+/// 再抛通道：载荷串（PyException 前缀）→ VMError::RuntimeError。值通道 Err
+/// 被 T08 拦截进 catch 后经此还原为异常通道继续外传（载荷不变）。
+pub const NATIVE_PY_RAISE: u16 = 479;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -1165,8 +1169,11 @@ impl PyFfiBridge {
                     )));
                 }
                 let ctx = pop_auto_py_arg(task, vm, py)?;
-                ctx.call_method0("__enter__").map_err(|e| py_exc(py, &e))?;
-                task.ram.push_nv(auto_val::encode_null());
+                // Plan 567 T13（P560-D1）: with-as 块形态绑定值——`__enter__`
+                // 结果封送入栈（原 encode_null 丢弃；with_shim 通道不受影响，
+                // 其闭包以 0 参跑、entered value 留 Python 侧）。
+                let entered = ctx.call_method0("__enter__").map_err(|e| py_exc(py, &e))?;
+                py_auto_marshal_return(&entered, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
             Ok(())
@@ -1197,6 +1204,34 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_EXIT, exit_shim);
+
+        // ---- py_raise(payload) ----
+        // Plan 567 T12（P560-D1）: with-as 块形态 catch 臂的再抛通道
+        //（载荷串原样转 RuntimeError——T08 拦下的值通道 Err 由此还原）。
+        let raise_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n != 1 {
+                return Err(VMError::FFI(format!(
+                    "py_raise needs 1 arg (payload), got {}",
+                    n
+                )));
+            }
+            let nv = task.ram.pop_nv();
+            let payload = if auto_val::is_string(nv) {
+                let idx = auto_val::decode_string(nv) as usize;
+                let s = vm
+                    .get_string(idx as u32)
+                    .map(|b| String::from_utf8_lossy(&b).to_string())
+                    .unwrap_or_default();
+                vm.pool_release(idx);
+                s
+            } else {
+                format!("{}", auto_val::decode_i32(nv))
+            };
+            Err(VMError::RuntimeError(payload))
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_RAISE, raise_shim);
 
         // ---- py_item_kw(module, func, posargs, kw_names, kw_vals) ----
         // Plan 539 W2 (T17): item-import direct call with keyword args.

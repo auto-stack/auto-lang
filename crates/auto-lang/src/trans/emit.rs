@@ -145,6 +145,18 @@ fn emit_stmt(stmt: &Stmt, depth: usize, out: &mut String) -> AutoResult<()> {
             emit_expr(e, depth, out)?;
         }
         Stmt::Expr(e) => {
+            // Plan 567 T12: 多语句块（with-as 块形态产物）以 `if true {` 恒真
+            // 包装发射——裸 `{` 语句在尾位命中 convert_last_block/UI 单元
+            // 构造歧义、前驱 `)`+单换行+`{` 命中 E0007；恒真 If 三者皆免疫
+            // 且再解析幂等（If(true) 再发射同形）。单表达式块维持原样。
+            if let crate::ast::Expr::Block(b) = e {
+                if b.stmts.len() > 1 {
+                    indent(depth, out);
+                    out.push_str("if true");
+                    emit_body(b, depth, out)?;
+                    return Ok(());
+                }
+            }
             indent(depth, out);
             emit_expr(e, depth, out)?;
         }

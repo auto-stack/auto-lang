@@ -1393,3 +1393,5 @@ pub(crate) fn build_aavm_rust_bin_pub() -> PathBuf {
 #[test] fn test_99_script_err_02_catch_value() { test_vm("99_script_err/02_catch_value").unwrap(); }
 #[cfg(feature = "python")]
 #[test] fn test_99_script_err_03_uncaught() { test_vm("99_script_err/03_uncaught").unwrap(); }
+#[cfg(feature = "python")]
+#[test] fn test_99_script_err_04_with_as_propagate() { test_vm("99_script_err/04_with_as_propagate").unwrap(); }

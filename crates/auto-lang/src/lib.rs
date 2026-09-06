@@ -772,6 +772,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_getitem_may", crate::py_ffi::NATIVE_PY_GETITEM_MAY);
         // Plan 567 T07 (P539-D5): kwargs×may 组合。
         registry.register_with_id("py.py_call_kw_may", crate::py_ffi::NATIVE_PY_CALL_KW_MAY);
+        // Plan 567 T12 (P560-D1): with-as catch 臂再抛通道。
+        registry.register_with_id("py.py_raise", crate::py_ffi::NATIVE_PY_RAISE);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
