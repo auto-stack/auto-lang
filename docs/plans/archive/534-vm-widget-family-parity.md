@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-534
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # 终态：drafting → executing → execution_done → reviewed → archived
 feature_name: VM overlay 家族余量补齐（sheet/drawer/hovercard,双轨）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
