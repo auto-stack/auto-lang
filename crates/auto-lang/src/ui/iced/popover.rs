@@ -461,7 +461,21 @@ where
             }
         }
 
-        layout::Node::with_children(size, vec![content_layout])
+        // PLAN-534：Edge 族面板节点取全高/全宽矩形（命中/绘制域=整条贴边
+        // 面板），content 子节点锚在面板原点（贴边面板内容从缘起排）；其余
+        // 放置仍是内容尺寸节点。
+        let node_size = if matches!(
+            self.placement,
+            PopoverPlacement::EdgeLeft
+                | PopoverPlacement::EdgeRight
+                | PopoverPlacement::EdgeTop
+                | PopoverPlacement::EdgeBottom
+        ) {
+            panel_bounds.size()
+        } else {
+            size
+        };
+        layout::Node::with_children(node_size, vec![content_layout])
             .move_to(panel_bounds.position())
     }
 
