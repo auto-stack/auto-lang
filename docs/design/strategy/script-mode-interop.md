@@ -174,6 +174,16 @@ F1 导入（B8 补裸模块）；F2 句柄 rc（债务区非语法面）；F3 �
   Python 行为；覆盖率 torch 约半数，typeshed 补 stdlib）；
 - 对标：TS 的 `.d.ts` / C# 程序集元数据——跨语言无缝感的来源是元数据。
 
+> **落地现状（2026-09-06，Plan 567 T16-T19）**：注册期 `typing.get_type_hints`
+> 内省已落地（`inspect_return_annotation`，恒等标量 + `T | None`/`Optional[T]`
+> 剥 None 双形态）；知识灌 `PySignature.returns` + 全局 `PY_RETURN_ANNOTATIONS`
+> 表（py_ffi_types，无 pyo3 依赖）→ codegen `py_return_types` 同源灌注。
+> D4 授权强制：`-> float/int` 的 shim 出口走 GIL `float()/int()`（撒谎注解
+> 退回 Python 行为——fakey 用例实证）；`-> T | None`：None 封 null 值 +
+> W0010 py-nullable-unguarded lint（log::warn + 收集器，语句位裸消费形态）。
+> 显式通道补 `py_int`（480，对齐 py_float 465）。无注解路径零变化
+> （20 个 py 套件全量回归面）。
+
 ## 8. 跨语言矩阵（预留）
 
 | 维度 | Python（首） | JS | GDScript | ArkTS |
@@ -195,6 +205,11 @@ F1 导入（B8 补裸模块）；F2 句柄 rc（债务区非语法面）；F3 �
 3. **W2 语法糖批**（A1-A5/B1-B9/C3-C7/D7/E2-E3 lowering 全表 + 迁移
    py 套件改名 .as）;
 4. **W3 注解预言机**（D4 授权强制 + nullability lint）。
+
+> **收官注记（2026-09-06，Plan 567）**：W0-W3 四波全部落地——W2.5 收尾
+> 批（p7 双红清偿 / Err 通道汇合 D2+D3 / with-as 绑定 D1）与 W3（注解
+> 预言机）由 Plan 567 收束，设计线闭环。遗留子面见 KNOWN-DEBT（567
+> 执行期新登记：`.?(d)` 表达式位链式消费存量缺陷等）。
 
 每波独立折叠（539 先例）；改写器每条规则配 source-to-source 单测，
 产出跑现有三方门禁。

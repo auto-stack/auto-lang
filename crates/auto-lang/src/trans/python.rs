@@ -1189,6 +1189,15 @@ impl PythonTrans {
                     sink.body.write(b")")?;
                     return Ok(());
                 }
+                // Plan 567 T18（W3 D4）: py_int(x) → int(x)。
+                "py_int" if call.args.args.len() == 1 => {
+                    sink.body.write(b"int(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
                 // Plan 539 W1 (T11-T14): inference idiom lowerings.
                 // py_matmul(a, b) → a.matmul(b) — the torch-idiomatic surface,
                 // avoiding the @ infix (annotation-prefix lexer territory).

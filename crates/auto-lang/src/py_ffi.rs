@@ -334,6 +334,9 @@ pub const NATIVE_PY_CALL_KW_MAY: u16 = 478;
 /// 再抛通道：载荷串（PyException 前缀）→ VMError::RuntimeError。值通道 Err
 /// 被 T08 拦截进 catch 后经此还原为异常通道继续外传（载荷不变）。
 pub const NATIVE_PY_RAISE: u16 = 479;
+/// Plan 567 T18（W3 D4）: `py_int(x)` — GIL int() 显式标量提取（int 承诺
+/// 的用户侧强制通道；对齐 py_float 465 形态）。
+pub const NATIVE_PY_INT: u16 = 480;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -441,13 +444,19 @@ impl PyFfiBridge {
                 let py_result = func.call1(args_tuple).map_err(|e| py_exc(py, &e))?;
 
                 // Marshal return value to VM stack
-                match return_type {
+                match &return_type {
                     PyType::Int => {
-                        let val: i32 = py_result.extract().map_err(|e| py_exc(py, &e))?;
+                        // Plan 567 T17（W3 D4 授权强制）: 注解承诺的 int 走
+                        // GIL int() 强制（Python 注解契约语义——int-able 返回
+                        // 均接受）；无注解路径不受影响（Auto 动态封送）。
+                        let val: i32 = coerce_scalar_i32(py, &py_result)?;
                         task.ram.push_i32(val);
                     }
                     PyType::Float => {
-                        let val: f64 = py_result.extract().map_err(|e| py_exc(py, &e))?;
+                        // Plan 567 T17（W3 D4 授权强制）: 同上——GIL float()
+                        // 强制（int 返回值照收，修复"注解 float 实返 int 即
+                        // 炸"的严格 extract 缺口）。
+                        let val: f64 = coerce_scalar_f64(py, &py_result)?;
                         task.ram.push_f64(val);
                     }
                     PyType::Bool => {
@@ -469,6 +478,27 @@ impl PyFfiBridge {
                             py_list_to_vm_heap(list, task, vm)?;
                         } else {
                             return Err(VMError::FFI("Python return not list".to_string()));
+                        }
+                    }
+                    // Plan 567 T16（W3）: `T | None` 注解——None 是值封 null，
+                    // 非 None 内型走 D4 强制/动态封送。
+                    PyType::Nullable(inner) => {
+                        if py_result.is_none() {
+                            task.ram.push_nv(auto_val::encode_null());
+                        } else {
+                            match inner.as_ref() {
+                                PyType::Int => {
+                                    let val: i32 = coerce_scalar_i32(py, &py_result)?;
+                                    task.ram.push_i32(val);
+                                }
+                                PyType::Float => {
+                                    let val: f64 = coerce_scalar_f64(py, &py_result)?;
+                                    task.ram.push_f64(val);
+                                }
+                                _ => {
+                                    py_auto_marshal_return(&py_result, task, vm)?;
+                                }
+                            }
                         }
                     }
                     PyType::Auto => {
@@ -1318,6 +1348,35 @@ impl PyFfiBridge {
         self.native_interface
             .register_static(NATIVE_PY_FLOAT, float_shim);
 
+        // ---- py_int(x) ----
+        // Plan 567 T18（W3 D4）: int(x) —— 镜像 py_float 形态。
+        let int_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!("py_int needs 1 arg, got {}", n)));
+                }
+                let val = pop_auto_py_arg(task, vm, py)?;
+                let builtins = py.import("builtins").map_err(|e| {
+                    VMError::FFI(format!("py_int: builtins import failed: {}", e))
+                })?;
+                let int_fn = builtins.getattr("int").map_err(|e| {
+                    VMError::FFI(format!("py_int: builtins.int missing: {}", e))
+                })?;
+                let result = int_fn
+                    .call1((val,))
+                    .map_err(|e| py_exc(py, &e))?;
+                let i: i32 = result
+                    .extract()
+                    .map_err(|e| py_exc(py, &e))?;
+                task.ram.push_i32(i);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_INT, int_shim);
+
         // ---- py_callable(closure_id) -> callable handle ----
         // Plan 539 W3 (T21): wrap an Auto closure as a Python callable. The
         // PyCFunction routes back into the CURRENT task through the
@@ -1684,6 +1743,37 @@ impl PyFfiBridge {
                 }
             }
             if count == 0 { default_count } else { count }
+        })
+    }
+
+    /// Plan 567 T16（W3 注解预言机）: 读函数返回类型注解
+    /// （`typing.get_type_hints` 的 `return` 项）→ PyType 知识。
+    /// builtins/无注解/复杂形态 → None（无知识，保守 Auto 不变）。
+    /// 定位：优化与糖的授权，不是正确性地基（§7——注解撒谎最坏退回
+    /// Python 行为）。
+    pub fn inspect_return_annotation(&self, module_name: &str, func_name: &str) -> Option<PyType> {
+        Python::attach(|py| {
+            let mod_ref = self.modules.get(module_name)?;
+            let func = mod_ref.bind(py).getattr(func_name).ok()?;
+            classify_return_annotation(py, &func)
+        })
+    }
+
+    /// Plan 567 T16: 常量通道同法——模块级 `x: float = ...` 的注解
+    /// （get_type_hints(module) 可读）。
+    pub fn inspect_constant_annotation(&self, module_name: &str, const_name: &str) -> Option<PyType> {
+        Python::attach(|py| {
+            let mod_ref = self.modules.get(module_name)?;
+            let module = mod_ref.bind(py);
+            // get_type_hints(module) 的 dict 里查常量名
+            let typing = py.import("typing").ok()?;
+            let hints = typing
+                .call_method1("get_type_hints", (module,))
+                .ok()?
+                .extract::<std::collections::HashMap<String, pyo3::Py<pyo3::PyAny>>>()
+                .ok()?;
+            let ann = hints.get(const_name)?;
+            classify_annotation_value(py, &ann.bind(py))
         })
     }
 
@@ -2294,6 +2384,97 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Boun
 
 /// Auto-detect Python return type and marshal to VM stack.
 /// Plan 300: Enhanced with dict→Obj and nested structure support.
+/// Plan 567 T16（W3 注解预言机）: 函数返回注解 → PyType。
+/// `typing.get_type_hints(func)` 取 `return` 项再分类；无注解/失败 → None。
+fn classify_return_annotation(py: Python<'_>, func: &Bound<'_, PyAny>) -> Option<PyType> {
+    let typing = py.import("typing").ok()?;
+    let hints = typing
+        .call_method1("get_type_hints", (func,))
+        .ok()?;
+    let ann = hints.get_item("return").ok()?;
+    classify_annotation_value(py, &ann)
+}
+
+/// 注解值分类：标量恒等 + Union/Optional 剥 None（`T | None` 与
+/// `Optional[T]` 两形态，get_origin 判别）。未识别 → None。
+fn classify_annotation_value(py: Python<'_>, ann: &Bound<'_, PyAny>) -> Option<PyType> {
+    let builtins = py.import("builtins").ok()?;
+    let scalar = |t: &Bound<'_, PyAny>| -> Option<PyType> {
+        let int_t = builtins.getattr("int").ok()?;
+        let float_t = builtins.getattr("float").ok()?;
+        let str_t = builtins.getattr("str").ok()?;
+        let bool_t = builtins.getattr("bool").ok()?;
+        if t.is(&int_t) {
+            Some(PyType::Int)
+        } else if t.is(&float_t) {
+            Some(PyType::Float)
+        } else if t.is(&str_t) {
+            Some(PyType::String)
+        } else if t.is(&bool_t) {
+            Some(PyType::Bool)
+        } else {
+            None
+        }
+    };
+    if let Some(t) = scalar(ann) {
+        return Some(t);
+    }
+    // Union 家族：typing.Union（Optional[X]）与 types.UnionType（X | None）
+    let typing = py.import("typing").ok()?;
+    let origin = typing.call_method1("get_origin", (ann,)).ok()?;
+    let is_union = {
+        let union_t = typing.getattr("Union").ok()?;
+        let types_mod = py.import("types").ok()?;
+        let union_type_t = types_mod.getattr("UnionType").ok()?;
+        origin.is(&union_t) || origin.is(&union_type_t)
+    };
+    if is_union {
+        let args = typing.call_method1("get_args", (ann,)).ok()?;
+        let none_type = {
+            let builtins_none = builtins.getattr("None").ok()?;
+            builtins_none
+                .get_type()
+                .into_any()
+        };
+        let mut members = Vec::new();
+        let n = args.len().unwrap_or(0);
+        for i in 0..n {
+            if let Some(arg) = args.get_item(i).ok() {
+                if arg.is(&none_type) {
+                    continue;
+                }
+                members.push(arg);
+            }
+        }
+        if members.len() == 1 {
+            if let Some(inner) = scalar(&members[0]) {
+                return Some(PyType::Nullable(Box::new(inner)));
+            }
+        }
+    }
+    None
+}
+
+/// Plan 567 T17（W3 D4）: GIL float() 标量强制（注解授权路径）。
+fn coerce_scalar_f64(py: Python<'_>, val: &Bound<'_, PyAny>) -> Result<f64, VMError> {
+    let float_fn = py
+        .import("builtins")
+        .and_then(|b| b.getattr("float"))
+        .map_err(|e| py_exc(py, &e))?;
+    let coerced = float_fn.call1((val,)).map_err(|e| py_exc(py, &e))?;
+    coerced.extract::<f64>().map_err(|e| py_exc(py, &e))
+}
+
+/// Plan 567 T17（W3 D4）: GIL int() 标量强制。
+fn coerce_scalar_i32(py: Python<'_>, val: &Bound<'_, PyAny>) -> Result<i32, VMError> {
+    let int_fn = py
+        .import("builtins")
+        .and_then(|b| b.getattr("int"))
+        .map_err(|e| py_exc(py, &e))?;
+    let coerced = int_fn.call1((val,)).map_err(|e| py_exc(py, &e))?;
+    coerced.extract::<i32>().map_err(|e| py_exc(py, &e))
+}
+
 /// Plan 567 T05（P560-D3）: py 桥错误统一 `PyException <Type>: <msg>` 前缀。
 /// `<Type>`/`<msg>` 从 PyErr 本体取（与 py_call_may 的 Err 载荷构造同源，
 /// engine FFI→RuntimeError 转换后 catch 绑定/传播两侧载荷形态一致）。
@@ -3337,6 +3518,71 @@ mod tests {
                 }
                 other => panic!("expected Str payload, got {:?}", other),
             }
+        });
+    }
+
+    /// Plan 567 T16（W3 注解预言机）: 返回注解分类器——float/int/str/bool
+    /// 恒等、`T | None` 与 `Optional[T]` 双形态剥 None、无注解/builtins → None。
+    #[test]
+    fn test_inspect_return_annotation_classifiers() {
+        Python::attach(|py| {
+            let ns = PyDict::new(py);
+            py.run(
+                c"def _a_scale(x: float) -> float:
+    return x * 2
+def _a_find(x: int) -> 'float | None':
+    return None
+def _a_no_anno(x):
+    return x",
+                Some(&ns),
+                Some(&ns),
+            )
+            .unwrap();
+            let scale = ns.get_item("_a_scale").unwrap().unwrap();
+            assert_eq!(classify_return_annotation(py, &scale), Some(PyType::Float));
+            let find = ns.get_item("_a_find").unwrap().unwrap();
+            assert_eq!(
+                classify_return_annotation(py, &find),
+                Some(PyType::Nullable(Box::new(PyType::Float)))
+            );
+            let no_anno = ns.get_item("_a_no_anno").unwrap().unwrap();
+            assert_eq!(classify_return_annotation(py, &no_anno), None);
+
+            let ns2 = PyDict::new(py);
+            py.run(
+                c"from typing import Optional
+def _a_opt() -> Optional[int]:
+    return 1",
+                Some(&ns2),
+                Some(&ns2),
+            )
+            .unwrap();
+            let opt = ns2.get_item("_a_opt").unwrap().unwrap();
+            assert_eq!(
+                classify_return_annotation(py, &opt),
+                Some(PyType::Nullable(Box::new(PyType::Int)))
+            );
+
+            // builtins（无 __annotations__）→ None（保守回退）
+            let len_fn = py.import("builtins").unwrap().getattr("len").unwrap();
+            assert_eq!(classify_return_annotation(py, &len_fn), None);
+        });
+    }
+
+    /// Plan 567 T18（W3 D4）: 标量强制 helper——int→float、str→float、
+    /// float→int 截断、不可转 → PyException 错误。
+    #[test]
+    fn test_d4_scalar_coercion() {
+        Python::attach(|py| {
+            let int_val = py.eval(c"7", None, None).unwrap();
+            assert_eq!(coerce_scalar_f64(py, &int_val).unwrap(), 7.0);
+            let str_val = py.eval(c"'3.5'", None, None).unwrap();
+            assert_eq!(coerce_scalar_f64(py, &str_val).unwrap(), 3.5);
+            let f_val = py.eval(c"2.9", None, None).unwrap();
+            assert_eq!(coerce_scalar_i32(py, &f_val).unwrap(), 2);
+            let bad = py.eval(c"'x'", None, None).unwrap();
+            let err = coerce_scalar_f64(py, &bad).unwrap_err();
+            assert!(format!("{:?}", err).contains("PyException"), "got {:?}", err);
         });
     }
 

@@ -1652,6 +1652,10 @@ impl Codegen {
                 self.patch_jump(jump_over);
             }
             Stmt::Store(store) => {
+                // Plan 567 T19（W3 nullability lint）: 已知 `T | None` 返回的
+                // py 调用直接赋值未判空（W 级提示，不阻断；判空=.?/==null/
+                // NullCoalesce 形态由表达式层自带）。
+                self.check_nullable_unguarded(&store.expr);
                 // Variable declaration: let/mut/var name = expr
                 //
                 // Immutability checking:
@@ -4991,6 +4995,27 @@ impl Codegen {
     ///
     /// Plan 300: For bare `use.py module` (no items), records the module name
     /// in `py_modules` so dot-calls like `module.method()` can be resolved.
+    /// Plan 567 T19: 语句根裸消费 nullable 返回的 py 调用 → lint 记录
+    ///（仅 Ident 直呼形态；`.?`/`??` 包装后的节点不再是裸 Call）。
+    fn check_nullable_unguarded(&self, e: &Expr) {
+        if let Expr::Call(c) = e {
+            if let Expr::Ident(n) = c.name.as_ref() {
+                let name = n.as_str();
+                if self.py_native_map.contains_key(name)
+                    && matches!(
+                        self.py_return_types.get(name),
+                        Some(crate::py_ffi_types::PyType::Nullable(_))
+                    )
+                {
+                    crate::py_ffi_types::record_nullable_lint(format!(
+                        "var = {}(...)",
+                        name
+                    ));
+                }
+            }
+        }
+    }
+
     fn handle_py_import(&mut self, use_stmt: &crate::ast::Use) {
         let module_path = if let Some(ref mp) = use_stmt.module_path {
             mp.display()
@@ -5010,7 +5035,12 @@ impl Codegen {
                 );
                 // Plan 300: Auto return type for dynamic marshalling
                 self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
-                self.py_return_types.insert(local_name.to_string(), crate::py_ffi_types::PyType::Auto);
+                // Plan 567 T17（W3 注解预言机）: 有返回注解知识则灌注
+                //（Float/Int → shim 出口 D4 强制；Nullable → T19 lint 消费）；
+                // 无知识 = Auto 零变化。
+                let anno_type = crate::py_ffi_types::lookup_return_annotation(local_name)
+                    .unwrap_or(crate::py_ffi_types::PyType::Auto);
+                self.py_return_types.insert(local_name.to_string(), anno_type);
             }
         } else {
             // Plan 300: Bare module import (`use.py math`) — record for dot-call resolution
@@ -5303,6 +5333,8 @@ impl Codegen {
         const NATIVE_PY_CALL_KW_MAY: u16 = 478;
         // Plan 567 T12 (P560-D1): with-as catch 臂再抛通道。
         const NATIVE_PY_RAISE: u16 = 479;
+        // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
+        const NATIVE_PY_INT: u16 = 480;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5336,6 +5368,7 @@ impl Codegen {
                 reg.register_with_id("py.py_getitem_may", NATIVE_PY_GETITEM_MAY);
                 reg.register_with_id("py.py_call_kw_may", NATIVE_PY_CALL_KW_MAY);
                 reg.register_with_id("py.py_raise", NATIVE_PY_RAISE);
+                reg.register_with_id("py.py_int", NATIVE_PY_INT);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5388,6 +5421,7 @@ impl Codegen {
             "py_getitem_may",
             "py_call_kw_may",
             "py_raise",
+            "py_int",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
@@ -9060,6 +9094,9 @@ impl Codegen {
                                 PyType::Bool => ObjectType::Bool,
                                 PyType::List => ObjectType::Array,
                                 PyType::None => ObjectType::Void,
+                                // Plan 567 T16: nullable 值可为 null——
+                                // 非确定标量（消费面自判空）。
+                                PyType::Nullable(_) => ObjectType::Void,
                                 // Auto and String both use string pool
                                 PyType::Auto | PyType::String => ObjectType::String,
                             };
