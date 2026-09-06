@@ -157,6 +157,16 @@ VM 侧静默空输出观察项)/OOP 完整面(远期)/532 W0 硬闸可拆补缺�
 > 缺省暂缓**(511 待澄清①的处置方式自此作废)。主 a2r(Rust 写)是
 > 发射 oracle,不在同步义务内;AA2R 的同步面=aavm 目标语言子集。
 
+> **〔AA2R 终止性与发射修复,Plan 572,2026-09-06〕**a2r.at
+> `ar_fixpoint_mutates` mutates 位翻转改显式写回(D25 范式)——链式写回
+> 落值拷贝临时致 `while grew` 死循环(type CG"零写方法调用突变方法"
+> 组合触发,codegen.at/拼合源 --trans 挂死级,572 定量:27→28 方法
+> 悬崖=首个该形态方法);另增四发射臂(process.args List<str> 契约/
+> IO::read_line/push 非 Copy ident 克隆/fstr 字面大括号直通)。
+> 自举代际对拍闭合:P532 步骤 9 一代 8/8+exe² 构建绿+二代 8/8+
+> **转译固定点 PASS**(exe¹ --trans == exe² --trans)。修复不改变任何
+> 完成过源的字节产物(corpus 76/76 锚)。
+
 **验证矩阵(2×2)**:两组件(aavm 编译器 / a2r.at 转译器)×两执行形态
 (VM 解释 / 转译成 Rust)= 四条路径,闸门基建全覆盖:
 
