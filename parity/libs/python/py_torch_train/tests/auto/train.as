@@ -15,7 +15,9 @@
 // - 0-dim scalars assert via `.to(int)` on the marshalled f64 (floats
 //   print without ".0" — use int asserts or exact fractional strings).
 // - tuple returns flatten to Auto Lists (index via `x[0]`, count via
-//   for-in — `.len()` on py values is unreliable, DIV-PY / P539-D2).
+//   for-in — `.len()` on py values was unreliable pre-PLAN-569 (DIV-PY /
+//   P539-D2, 已清偿：py-类型侧表+组合子双通道路由)；本套件沿用 for-in
+//   计数惯例，去规避留待各套件自然触碰)。
 use.py torch: manual_seed, arange, randn, tensor, zeros
 use.py torch.nn: Linear
 use.py torch.optim: SGD

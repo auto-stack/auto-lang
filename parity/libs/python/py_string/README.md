@@ -34,7 +34,8 @@ So `py_call("hello", "upper")` -> `"HELLO"`, and `py_call(s, "startswith",
 prefix)` -> `1`/`0`. A method that returns a list (e.g. `split`) yields a
 handle that cannot be stringified directly; it is probed via `__len__` /
 `__getitem__` (exercised in the `test_split_join` case, and more thoroughly in
-the `py_list` library).
+the `py_list` library). (`__len__` 规避自 PLAN-569 起可换 `.len()` 直发——
+规避仍正确，去规避留待自然触碰。)
 
 ### Linking requirement
 
