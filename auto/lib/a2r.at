@@ -1079,9 +1079,16 @@ fn ar_fixpoint_mutates(mut a Ar, mut p P, ti int) {
             if ms.get(k2).mutates == 0 {
                 p.pos = ms.get(k2).pos
                 if ar_scan_self_calls(p, names) == 1 {
-                    var m3 = a.tys.get(ti).methods.get(k2)
+                    // P572:显式写回(D25 范式,镜像 ar_prescan_ext)——
+                    // 链式 `a.tys.get(ti).methods.set` 落在值拷贝临时上,
+                    // mutates 位永不持久 → 本循环逐轮重翻同一方法,
+                    // `while grew` 死循环(type CG emit_store→emit 实证,
+                    // codegen.at/拼合源 --trans 挂死的根因)。
+                    var mty = a.tys.get(ti)
+                    var m3 = mty.methods.get(k2)
                     m3.mutates = 1
-                    a.tys.get(ti).methods.set(k2, m3)
+                    mty.methods.set(k2, m3)
+                    a.tys.set(ti, mty)
                     grew = 1
                 }
             }

@@ -1,0 +1,44 @@
+# P572 T1 复现器基准(修复前红基线,2026-09-06 14:37:59)
+
+## 阶梯矩阵 N=1..28(timeout=90s)
+[ladder] codegen.at 方法布局漂移:快照 [168, 194, 209, 222, 230, 242, 254, 271, 291, 302, 314, 356, 376, 398, 415, 428, 435, 444, 467, 493, 512, 528, 563, 591, 608, 625, 643, 659, 677, 694, 715, 729, 737, 773, 834]
+[ladder] 实际 [168, 194, 209, 222, 230, 242, 254, 271, 291, 302, 314, 356, 376, 398, 415, 428, 435, 444, 467, 493, 512, 528, 563, 591, 608, 625, 643, 659, 677, 694, 715, 729, 737, 773]
+[ladder] (修复后行号变动属预期——按实际值更新 STARTS 快照即可)
+[ladder] exe1 = C:\Users\zhaop\AppData\Local\Temp\aavm2-bin-106d6ff148612181-e800322fbc0bcb59\target\release\aavm2_bin.exe
+[ladder] out = C:\Users\zhaop\AppData\Local\Temp\p572_ladder  timeout = 90.0s
+  N last_method       src_KB       sec  status
+  1 import_symbol          5      0.01  OK
+  2 is_module              5      0.02  OK
+  3 gkey                   5      0.02  OK
+  4 is_global              6      0.02  OK
+  5 tys_lookup             6      0.02  OK
+  6 field_idx              6      0.02  OK
+  7 field_ty               7      0.02  OK
+  8 const_lookup           7      0.02  OK
+  9 ctor_lookup            7      0.02  OK
+ 10 link_symbol            8      0.03  OK
+ 11 loop_enter             9      0.04  OK
+ 12 loop_exit              9      0.05  OK
+ 13 loop_jump             10      0.05  OK
+ 14 fail                  10      0.05  OK
+ 15 emit                  11      0.06  OK
+ 16 line                  11      0.06  OK
+ 17 push_scope            11      0.07  OK
+ 18 pop_scope             12      0.08  OK
+ 19 max_alive_idx         13      0.08  OK
+ 20 pop_scope_silent      13      0.08  OK
+ 21 add_var_reuse         14      0.09  OK
+ 22 add_var               15      0.09  OK
+ 23 var_arr               15      0.12  OK
+ 24 var_ty                16      0.12  OK
+ 25 var_ty2               16      0.12  OK
+ 26 var_gtor              17      0.13  OK
+ 27 lookup                17      0.13  OK
+ 28 emit_store            17     90.01  TIMEOUT
+exit=3
+
+## 两形态基准
+codegen.at                   176KB     90.00s  TIMEOUT  out=0B
+codegen exit=3
+p532_gen2_concat.at          504KB     90.00s  TIMEOUT  out=0B
+concat exit=3

@@ -1,0 +1,13 @@
+ABORT [   5.252s] (1437/3625) auto-lang tests::aavm2_m3::test_aavm2_m3_typeinfo_corpus
+ABORT [   5.353s] (1438/3625) auto-lang tests::aavm2_m2::test_aavm2_m2_parser_corpus
+ABORT [   5.358s] (1439/3625) auto-lang tests::aavm2_m1::test_aavm2_m1_lexer_corpus
+ABORT [   5.371s] (1442/3625) auto-lang tests::aavm2_m5::test_aavm2_m3_milestone_fib
+ABORT [   5.393s] (1444/3625) auto-lang tests::aavm2_m4::test_aavm2_m4_use_corpus
+ABORT [   5.404s] (1449/3625) auto-lang tests::aavm2_m5::test_aavm2_m5_use_corpus
+ABORT [   5.419s] (1448/3625) auto-lang tests::aavm2_m4::test_aavm2_m4_codegen_corpus
+ABORT [   5.475s] (1461/3625) auto-lang tests::aavm2_m5::test_aavm2_m5_engine_corpus
+ABORT [   5.475s] (1462/3625) auto-lang tests::aavm2_m5::test_aavm2_m5_use_errors
+ABORT [   5.533s] (1471/3625) auto-lang tests::aavm_runner_tests::test_aavm2_001_smoke
+ABORT [   6.534s] (1673/3625) auto-lang tests::aavm2_a2r::test_aavm2_a2r_is_corpus
+ABORT [  10.116s] (2651/3625) auto-lang tests::aavm2_m4::test_aavm2_p532_lib_static_diff
+FAIL [   0.314s] (2758/3625) auto-lang ui_gen::vue::tests::test_charts_gallery_compiles
