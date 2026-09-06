@@ -19,6 +19,8 @@ pub(crate) struct VmTestData {
     pub(crate) expected_out: Option<String>,
     pub(crate) expected_result: Option<String>,
     pub(crate) expected_error: bool,
+    /// Plan 567 T10: 语料为 `.as`（脚本糖源）——执行前先过 s2s lower。
+    pub(crate) is_script: bool,
 }
 
 /// Global cache for VM file test data. Loaded once per test process.
@@ -53,12 +55,18 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                     let case = format!("{}/{}", category, case_dir_name);
 
                     // Find the .at file inside the case directory
+                    // Plan 567 T10: `.as` 脚本糖语料支持（.at 优先，缺位回落）。
                     let at_path = case_entry.path().join(format!("{}.at", name));
-                    if !at_path.is_file() {
+                    let as_path = case_entry.path().join(format!("{}.as", name));
+                    let (src_path, is_script) = if at_path.is_file() {
+                        (at_path, false)
+                    } else if as_path.is_file() {
+                        (as_path, true)
+                    } else {
                         continue;
-                    }
+                    };
 
-                    let source = read_to_string(&at_path).unwrap_or_default();
+                    let source = read_to_string(&src_path).unwrap_or_default();
                     let expected_out = {
                         let p = case_entry.path().join(format!("{}.expected.out", name));
                         if p.is_file() { read_to_string(&p).ok() } else { None }
@@ -77,6 +85,7 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                         expected_out,
                         expected_result,
                         expected_error,
+                        is_script,
                     });
                 }
             }
@@ -96,9 +105,16 @@ fn test_vm(case: &str) -> AutoResult<()> {
     let data = get_cached_test(case)
         .unwrap_or_else(|| panic!("Test case '{}' not found in cache. Check test/vm/ directory.", case));
 
+    // Plan 567 T10: `.as` 语料先过 s2s lower（与 CLI 的 .as 路径同构）。
+    let source = if data.is_script {
+        crate::trans::auto_s2s::lower_source(&data.source)?
+    } else {
+        data.source.clone()
+    };
+
     // Check .expected.error — expect runtime error
     if data.expected_error {
-        let result = run(&data.source);
+        let result = run(&source);
         assert!(
             result.is_err(),
             "Expected error but got: {:?}",
@@ -108,7 +124,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
     }
 
     // Execute with stdout capture
-    let (result, stdout) = run_with_capture(&data.source)?;
+    let (result, stdout) = run_with_capture(&source)?;
 
     // Check .expected.out — stdout output
     if let Some(ref expected_out) = data.expected_out {
@@ -806,3 +822,12 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_99_idiom2_d01b_nested_fn_capture() { test_vm("99_idiom2/d01b_nested_fn_capture").unwrap(); }
 #[test] fn test_99_idiom2_d02_struct_misuse() { test_vm("99_idiom2/d02_struct_misuse").unwrap(); }
 #[test] fn test_99_idiom2_m10_pipe() { test_vm("99_idiom2/m10_pipe").unwrap(); }
+// === 99_script_err（Plan 567 T10：.as 隐式传播语料——py feature 门控） ===
+#[cfg(feature = "python")]
+#[test] fn test_99_script_err_01_propagate() { test_vm("99_script_err/01_propagate").unwrap(); }
+#[cfg(feature = "python")]
+#[test] fn test_99_script_err_02_catch_value() { test_vm("99_script_err/02_catch_value").unwrap(); }
+#[cfg(feature = "python")]
+#[test] fn test_99_script_err_03_uncaught() { test_vm("99_script_err/03_uncaught").unwrap(); }
+#[cfg(feature = "python")]
+#[test] fn test_99_script_err_04_with_as_propagate() { test_vm("99_script_err/04_with_as_propagate").unwrap(); }

@@ -676,7 +676,18 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         if functions.is_empty() {
             let discovered = bridge.discover_module_callables(module_name);
             for (func_name, param_count) in discovered {
-                let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                // Plan 567 T17: 裸模块发现面同法灌注定预言机知识。
+                let ret_anno = bridge.inspect_return_annotation(module_name, &func_name);
+                let sig = {
+                    let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                    if let Some(t) = &ret_anno {
+                        sig.returns = t.clone();
+                    }
+                    sig
+                };
+                if let Some(t) = &ret_anno {
+                    crate::py_ffi_types::record_return_annotation(&func_name, t.clone());
+                }
                 if let Ok(native_id) = bridge.register_function(module_name, &func_name, sig) {
                     // Register with module-qualified name so codegen can find it
                     let qualified = format!("py.{}.{}", module_name, func_name);
@@ -693,6 +704,10 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         for func_name in functions {
             // Plan 369 Task 11: constants are non-callable module attributes.
             if !bridge.is_callable(module_name, &func_name) {
+                // Plan 567 T17: 常量通道注解（模块级 `x: float = ...`）。
+                if let Some(t) = bridge.inspect_constant_annotation(module_name, &func_name) {
+                    crate::py_ffi_types::record_return_annotation(&func_name, t);
+                }
                 match bridge.register_constant(module_name, &func_name) {
                     Ok(native_id) => {
                         log::info!("Registered Python const: {}.{} (native_id={})", module_name, func_name, native_id);
@@ -708,7 +723,24 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
                 continue;
             }
             let param_count = bridge.inspect_param_count(module_name, &func_name, 1);
-            let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+            // Plan 567 T17（W3 注解预言机）: 读返回注解——有承诺则签名带
+            // 类型（shim 出口 D4 强制），并登记全局知识表（codegen 消费：
+            // py_return_types 灌注 + nullable lint）。无注解 = Auto 零变化。
+            let ret_anno = bridge.inspect_return_annotation(module_name, &func_name);
+            let sig = {
+                let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                if let Some(t) = &ret_anno {
+                    sig.returns = t.clone();
+                }
+                sig
+            };
+            if let Some(t) = &ret_anno {
+                crate::py_ffi_types::record_return_annotation(&func_name, t.clone());
+                log::info!(
+                    "PyOracle: {}.{} -> {:?} (annotated)",
+                    module_name, func_name, t
+                );
+            }
             match bridge.register_function(module_name, func_name, sig) {
                 Ok(native_id) => {
                     log::info!("Registered Python FFI: {}.{} (native_id={}, params={})", module_name, func_name, native_id, param_count);
@@ -767,6 +799,15 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         // Plan 560 T08 (C3/C4/C7)。
         registry.register_with_id("py.py_truthy", crate::py_ffi::NATIVE_PY_TRUTHY);
         registry.register_with_id("py.py_is", crate::py_ffi::NATIVE_PY_IS);
+        // Plan 567 T06 (P560-D2): may 值通道变体。
+        registry.register_with_id("py.py_getattr_may", crate::py_ffi::NATIVE_PY_GETATTR_MAY);
+        registry.register_with_id("py.py_getitem_may", crate::py_ffi::NATIVE_PY_GETITEM_MAY);
+        // Plan 567 T07 (P539-D5): kwargs×may 组合。
+        registry.register_with_id("py.py_call_kw_may", crate::py_ffi::NATIVE_PY_CALL_KW_MAY);
+        // Plan 567 T12 (P560-D1): with-as catch 臂再抛通道。
+        registry.register_with_id("py.py_raise", crate::py_ffi::NATIVE_PY_RAISE);
+        // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
+        registry.register_with_id("py.py_int", crate::py_ffi::NATIVE_PY_INT);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();

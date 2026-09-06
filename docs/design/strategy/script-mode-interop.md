@@ -99,7 +99,7 @@ x.foo / x[i] / x[a..b] ─改写──▶  py_getattr / py_getitem / py_slice
 | # | 规则 | 状态 |
 |---|---|---|
 | E1 | **错误模型**（见 §4） | 定案 |
-| E2 | `with expr { }` / `with expr as x { }` → `py_enter + try-finally + py_exit`；**异常抑制默认不做**（py_exit 固定传 None×3；需要时显式 try-catch） | 定案；`with` 关键字零冲突（仅 `#[with(...)]` 注解参数位，方括号封闭） |
+| E2 | `with expr { }` / `with expr as x { }` → `py_enter + try-finally + py_exit`；**异常抑制默认不做**（py_exit 固定传 None×3；需要时显式 try-catch） | 定案；`with` 关键字零冲突（仅 `#[with(...)]` 注解参数位，方括号封闭）。无 as 形态已落地（Plan 560 T09，parser 直产 py_with）；as 绑定归 Plan 567 Phase C |
 | E3 | for-in 双通道：有 `__getitem__`+len 走索引（快），否则 `__iter__/__next__`；`py_iter()` 强制迭代器语义 | 定案 |
 
 ### F. 生命周期
@@ -121,6 +121,13 @@ F1 导入（B8 补裸模块）；F2 句柄 rc（债务区非语法面）；F3 �
 5. main 边界：未捕获传播 → 脚本带错退出（= Python traceback）；
 6. a2py 映射：隐式传播零代码（Python 原生）、`.?(d)`→`x if x is not None else d`、
    catch→except。
+
+> **落地现状（2026-09-05，Plan 567 T05-T10）**：上述 1-6 已全部落地——may 变体桥
+> 453/476/477/478（call/getattr/getitem/kwargs）；s2s `rule_err_propagate` 在 `.as`
+> 内自动补 `.?`（桥调用 may 化；用户函数调用点；无 use.py 文件零改写）；引擎
+> ERROR_PROPAGATE 值通道拦截（Err 遇当前帧 try → catch_pc 绑 `PyException <Type>:
+> <msg>`；null 是值不进 catch）；主边界未捕获 Err 带错退出（exit 1）。已知遗留：
+> `.?(d)` 表达式位链式消费缺陷（存量，567 待澄清⑥）。
 
 ## 5. Null 体系（定案）
 
@@ -167,6 +174,16 @@ F1 导入（B8 补裸模块）；F2 句柄 rc（债务区非语法面）；F3 �
   Python 行为；覆盖率 torch 约半数，typeshed 补 stdlib）；
 - 对标：TS 的 `.d.ts` / C# 程序集元数据——跨语言无缝感的来源是元数据。
 
+> **落地现状（2026-09-06，Plan 567 T16-T19）**：注册期 `typing.get_type_hints`
+> 内省已落地（`inspect_return_annotation`，恒等标量 + `T | None`/`Optional[T]`
+> 剥 None 双形态）；知识灌 `PySignature.returns` + 全局 `PY_RETURN_ANNOTATIONS`
+> 表（py_ffi_types，无 pyo3 依赖）→ codegen `py_return_types` 同源灌注。
+> D4 授权强制：`-> float/int` 的 shim 出口走 GIL `float()/int()`（撒谎注解
+> 退回 Python 行为——fakey 用例实证）；`-> T | None`：None 封 null 值 +
+> W0010 py-nullable-unguarded lint（log::warn + 收集器，语句位裸消费形态）。
+> 显式通道补 `py_int`（480，对齐 py_float 465）。无注解路径零变化
+> （20 个 py 套件全量回归面）。
+
 ## 8. 跨语言矩阵（预留）
 
 | 维度 | Python（首） | JS | GDScript | ArkTS |
@@ -188,6 +205,11 @@ F1 导入（B8 补裸模块）；F2 句柄 rc（债务区非语法面）；F3 �
 3. **W2 语法糖批**（A1-A5/B1-B9/C3-C7/D7/E2-E3 lowering 全表 + 迁移
    py 套件改名 .as）;
 4. **W3 注解预言机**（D4 授权强制 + nullability lint）。
+
+> **收官注记（2026-09-06，Plan 567）**：W0-W3 四波全部落地——W2.5 收尾
+> 批（p7 双红清偿 / Err 通道汇合 D2+D3 / with-as 绑定 D1）与 W3（注解
+> 预言机）由 Plan 567 收束，设计线闭环。遗留子面见 KNOWN-DEBT（567
+> 执行期新登记：`.?(d)` 表达式位链式消费存量缺陷等）。
 
 每波独立折叠（539 先例）；改写器每条规则配 source-to-source 单测，
 产出跑现有三方门禁。

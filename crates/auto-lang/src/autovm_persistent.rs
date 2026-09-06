@@ -179,7 +179,19 @@ impl AutovmReplSession {
                 // Bare module: discover all callables, register with module-qualified name
                 let discovered = bridge.discover_module_callables(&stmt.module);
                 for (func_name, param_count) in discovered {
-                    let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                    // Plan 567 T17 补（复审遗漏 B）：REPL 路径同法灌注定
+                    // 预言机知识（与 lib.rs init_py_ffi 对齐）。
+                    let ret_anno = bridge.inspect_return_annotation(&stmt.module, &func_name);
+                    let sig = {
+                        let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                        if let Some(t) = &ret_anno {
+                            sig.returns = t.clone();
+                        }
+                        sig
+                    };
+                    if let Some(t) = &ret_anno {
+                        crate::py_ffi_types::record_return_annotation(&func_name, t.clone());
+                    }
                     if let Ok(native_id) = bridge.register_function(&stmt.module, &func_name, sig) {
                         let qualified = format!("py.{}.{}", stmt.module, func_name);
                         if let Ok(mut reg) = BIGVM_NATIVES.lock() {
@@ -202,7 +214,18 @@ impl AutovmReplSession {
                         continue;
                     }
                     let param_count = bridge.inspect_param_count(&stmt.module, func_name, 1);
-                    let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                    // Plan 567 T17 补（复审遗漏 B）：同 lib.rs——注解签名 + 知识表。
+                    let ret_anno = bridge.inspect_return_annotation(&stmt.module, func_name);
+                    let sig = {
+                        let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                        if let Some(t) = &ret_anno {
+                            sig.returns = t.clone();
+                        }
+                        sig
+                    };
+                    if let Some(t) = &ret_anno {
+                        crate::py_ffi_types::record_return_annotation(func_name, t.clone());
+                    }
                     if let Ok(native_id) = bridge.register_function(&stmt.module, func_name, sig) {
                         let qualified = format!("py.{}", func_name);
                         if let Ok(mut reg) = BIGVM_NATIVES.lock() {

@@ -39,6 +39,55 @@ pub struct PythonTrans {
     name: AutoStr,
 }
 
+/// Plan 567 T14（P560-D1）: with-as 块形态识别——parser with_stmt 产出的
+/// 规范序列（var __w = e; var x = py_enter(__w); try/catch/finally）。
+/// 命中返回 (ctx_expr, 绑定名, with 体)。
+fn match_with_as_block(
+    block: &crate::ast::Body,
+) -> Option<(&Expr, String, &crate::ast::Body)> {
+    if block.stmts.len() != 3 {
+        return None;
+    }
+    // var __w = <ctx>
+    let ctx_expr = match &block.stmts[0] {
+        Stmt::Store(s) if s.name.as_ref() == "__w" => &s.expr,
+        _ => return None,
+    };
+    // var <binding> = py_enter(__w)
+    let binding = match &block.stmts[1] {
+        Stmt::Store(s) => {
+            let is_enter = matches!(&s.expr, Expr::Call(c)
+                if matches!(c.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_enter")
+                    && matches!(c.args.args.first(), Some(Arg::Pos(Expr::Ident(w))) if w.as_ref() == "__w"));
+            if !is_enter {
+                return None;
+            }
+            s.name.as_ref().to_string()
+        }
+        _ => return None,
+    };
+    // try { body } catch (__we) { py_exit(__w); py_raise(__we) }
+    // finally { py_exit(__w) }
+    match &block.stmts[2] {
+        Stmt::Try(t) => {
+            let catch_ok = t.catch_body.stmts.len() == 2
+                && matches!(&t.catch_body.stmts[1], Stmt::Expr(Expr::Call(c))
+                    if matches!(c.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_raise"))
+                && matches!(&t.catch_body.stmts[0], Stmt::Expr(Expr::Call(c))
+                    if matches!(c.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_exit"));
+            let finally_ok = matches!(&t.finally_body, Some(f) if f.stmts.len() == 1
+                && matches!(&f.stmts[0], Stmt::Expr(Expr::Call(c))
+                    if matches!(c.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_exit")));
+            if catch_ok && finally_ok {
+                Some((ctx_expr, binding, &t.body))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 impl PythonTrans {
     pub fn new(name: AutoStr) -> Self {
         Self {
@@ -395,6 +444,26 @@ impl PythonTrans {
         match stmt {
             // Expression statements
             Stmt::Expr(expr) => {
+                // Plan 567 T14（P560-D1）: with-as 块形态回译——识别 parser
+                // 产出的规范序列 { var __w = e; var x = py_enter(__w);
+                // try { b } catch (__we) { py_exit; py_raise }
+                // finally { py_exit } } → `with e as x:`（三方一致）。
+                if let Expr::Block(block) = expr {
+                    if let Some((ctx_expr, binding, body)) = match_with_as_block(block) {
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"with ")?;
+                        self.expr(ctx_expr, sink)?;
+                        sink.body.write(b" as ")?;
+                        sink.body.write_all(binding.as_bytes())?;
+                        sink.body.write(b":\n")?;
+                        self.indent();
+                        for st in &body.stmts {
+                            self.stmt(st, sink)?;
+                        }
+                        self.dedent();
+                        return Ok(true);
+                    }
+                }
                 // Plan 539 W1 (T14): a bare `py_with(ctx, closure)` statement
                 // lowers to a native `with ctx as p:` block — the closure
                 // body's statements indent under it (lambda bodies cannot
@@ -1053,6 +1122,35 @@ impl PythonTrans {
                     sink.body.write(b"), None)")?;
                     return Ok(());
                 }
+                // Plan 567 T06 (P560-D2): may 变体家族——异常落 _auto_may 的
+                // None 哨兵（`.?` 直落 None / `.?(d)` 走 NullCoalesce 回退），
+                // 与 py_call_may 同通道。
+                "py_getattr_may" if call.args.args.len() == 2 => {
+                    self.needs_may_helper = true;
+                    sink.body.write(b"_auto_may(lambda: getattr(")?;
+                    if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
+                        self.expr(obj_expr, sink)?;
+                    }
+                    sink.body.write(b", ")?;
+                    if let Some(arg) = call.args.args.get(1) {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b"), None)")?;
+                    return Ok(());
+                }
+                "py_getitem_may" if call.args.args.len() == 2 => {
+                    self.needs_may_helper = true;
+                    sink.body.write(b"_auto_may(lambda: (")?;
+                    if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
+                        self.expr(obj_expr, sink)?;
+                    }
+                    sink.body.write(b")[")?;
+                    if let Some(arg) = call.args.args.get(1) {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b"], None)")?;
+                    return Ok(());
+                }
                 // Plan 539 W0 (DIV-PY-ITER-1): py_iter(x) → iter(x);
                 // py_next(x) → next(x, None) — the None sentinel mirrors the
                 // AutoVM's StopIteration→null marshalling.
@@ -1085,6 +1183,15 @@ impl PythonTrans {
                 // scalar extraction (tensor scalars stay opaque in AutoVM).
                 "py_float" if call.args.args.len() == 1 => {
                     sink.body.write(b"float(")?;
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
+                // Plan 567 T18（W3 D4）: py_int(x) → int(x)。
+                "py_int" if call.args.args.len() == 1 => {
+                    sink.body.write(b"int(")?;
                     if let Some(arg) = call.args.args.first() {
                         self.arg(arg, sink)?;
                     }
@@ -2905,6 +3012,8 @@ mod tests {
     // Plan 283 Task 1.3: Collection method mapping tests
     #[test]
     fn test_16_002_method_map() {
+        // Plan 567 T14: with-as 块形态回译（parser 规范序列 → with e as x:）。
+        test_a2p("567_with_as/001_with_as").unwrap();
         test_a2p("16_python_std/002_method_map").unwrap();
     }
 

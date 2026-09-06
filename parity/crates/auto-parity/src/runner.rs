@@ -195,9 +195,29 @@ pub fn run_vm(config: &RunConfig) -> Result<Vec<TapResult>, String> {
         let abs_path = path.canonicalize().unwrap_or_else(|_| path.clone());
 
         // Run from the lib directory so `use auto.<lib>` resolves against `./auto/`.
-        let output = Command::new(&config.auto_binary)
-            .arg(&abs_path)
-            .current_dir(config.lib_dir())
+        // Plan 567 T20: Python-mode suites carry local modules in tests/python/
+        // (annotated oracle fixtures) — expose via PYTHONPATH so the embedded
+        // interpreter's compile-time `use.py <local_mod>` import resolves.
+        let mut vm_cmd = Command::new(&config.auto_binary);
+        vm_cmd.arg(&abs_path).current_dir(config.lib_dir());
+        if config.lib_dir().join("tests").join("python").is_dir() {
+            // 绝对路径——子进程 cwd 已是 lib_dir，相对 PYTHONPATH 会被
+            // 按子 cwd 二次解析而指错（相对根 ./libs/... × lib_dir）。
+            let py_dir = config
+                .lib_dir()
+                .join("tests")
+                .join("python")
+                .canonicalize()
+                .unwrap_or_else(|_| config.lib_dir().join("tests").join("python"));
+            let existing = std::env::var("PYTHONPATH").unwrap_or_default();
+            let joined = if existing.is_empty() {
+                py_dir.to_string_lossy().to_string()
+            } else {
+                format!("{};{}", py_dir.to_string_lossy(), existing)
+            };
+            vm_cmd.env("PYTHONPATH", joined);
+        }
+        let output = vm_cmd
             .output()
             .map_err(|e| format!("failed to run auto: {}", e))?;
 
@@ -966,6 +986,23 @@ pub fn run_a2py(config: &RunConfig) -> Result<Vec<TapResult>, String> {
             .arg("-P")
             .arg(&abs_py)
             .current_dir(config.lib_dir())
+            // Plan 567 T20: local module fixtures importable (同 run_vm 注入)。
+            .env(
+                "PYTHONPATH",
+                {
+                    let raw = config.lib_dir().join("tests").join("python");
+                    // 绝对路径（同 run_vm 注——相对路径按子 cwd 二次解析）。
+                    let py_dir = raw.canonicalize().unwrap_or(raw);
+                    let existing = std::env::var("PYTHONPATH").unwrap_or_default();
+                    if py_dir.is_dir() && !existing.is_empty() {
+                        format!("{};{}", py_dir.to_string_lossy(), existing)
+                    } else if py_dir.is_dir() {
+                        py_dir.to_string_lossy().to_string()
+                    } else {
+                        existing
+                    }
+                },
+            )
             .output()
             .map_err(|e| {
                 format!(

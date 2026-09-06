@@ -216,6 +216,10 @@ pub struct Parser<'a> {
     /// store declaration when it's actually a variable reference (store.action()).
     pub(crate) in_on_body: bool,
     pub(crate) in_fn_body: bool,
+    /// Plan 567 T12（P560-D1）: with 头部窗口旗标——置位期间 `as` Cast 臂
+    /// 截断（`with e as x` 的绑定位由 with_stmt 消费，不被 parse_expr
+    /// 整吞为 Cast）。仅语句头部窗口生效，正常模式 Cast 语义零变化。
+    with_header: bool,
     /// Plan 043 M5: true while parsing the RHS of a Dot expression
     /// (`obj.field`). The struct-literal widening in atom() (any PascalCase
     /// ident + `{` → construction) must NOT fire here — `text cell.Text { }`
@@ -408,6 +412,7 @@ impl<'a> Parser<'a> {
             in_on_body: false,
             in_fn_body: false,
             in_dot_rhs: false,
+            with_header: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -481,6 +486,7 @@ impl<'a> Parser<'a> {
             in_on_body: false,
             in_fn_body: false,
             in_dot_rhs: false,
+            with_header: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -537,6 +543,7 @@ impl<'a> Parser<'a> {
             in_on_body: false,
             in_fn_body: false,
             in_dot_rhs: false,
+            with_header: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -1248,50 +1255,136 @@ impl<'a> Parser<'a> {
     ///
     /// 无 as：直产 `py_with(expr, () => { body })`——全复用 539 通道
     /// （host __enter__/闭包体/__exit__；异常抑制默认不做，§10 裁决）。
-    /// as x：`{ var __w = expr; var x = py_enter(__w); try { body }
-    /// finally { py_exit(__w) } }`——块形态（绑定 + 出口保证）。
+    /// as x（Plan 567 T12/T13，P560-D1 清偿）：`{ var __w = expr; var x =
+    /// py_enter(__w); try { body } catch (__we) { py_exit(__w); py_raise(__we) }
+    /// finally { py_exit(__w) } }`——块形态（绑定 + 出口保证）。绑定值 =
+    /// py_enter 返回的 `__enter__` 结果；出口保证 = 正常路径走 finally，
+    /// body 的 Err 值传播被 T08 值通道拦截进 catch（py_exit + py_raise
+    /// 再抛外传；py_raise 报错即外传、按 Plan 012 P2 语义跳过 finally——
+    /// `__exit__` 恰好一次）。
     fn with_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `with`
-        let ctx = self.parse_expr()?;
-        // `as` 是既有中缀（Cast）——with-as 绑定语法与其歧义未决
-        //（P560 债）：响亮拒绝，不静默错解。
-        if matches!(ctx, Expr::Cast { .. }) {
-            let span = pos_to_span(self.cur.pos);
-            return Err(SyntaxError::Generic {
-                message: "with-as binding is not yet supported (as-infix cast "
-                    .to_string()
-                    + "ambiguity, P560 债); use py_enter/py_exit explicitly",
-                span,
+        // P560-D1/567-T12: with 头部窗口内 `as` Cast 臂截断——绑定位由本
+        // 函数消费（`with x as T {}` 的 T 不再被误吞为 Cast 类型位）。
+        self.with_header = true;
+        let ctx_res = self.parse_expr();
+        self.with_header = false;
+        let ctx = ctx_res?;
+        let binding = if self.is_kind(TokenKind::As) {
+            self.next(); // skip `as`
+            if !matches!(self.cur.kind, TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: "with-as binding expects an identifier after 'as'".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
-            .into());
-        }
+            let name = self.cur.text.clone();
+            self.next();
+            Some(name)
+        } else {
+            None
+        };
         self.skip_empty_lines();
         let body = self.body()?;
-        // 直产 `py_with(ctx, () => { body })` 调用（Stmt::Expr——非
-        // Block：body 尾块的 convert_last_block 会把 Block 末语句转
-        // 对象字面量，T09 实证）。539 py_with 通道：host __enter__/体/
-        // __exit__；异常抑制默认不做（§10 裁决）。A5 规则（T06）随后
-        // 自动包 py_callable。
-        let closure = crate::ast::Closure {
-            params: vec![],
-            ret: None,
-            body: Box::new(Expr::Block(body)),
-            is_move: false,
-        };
-        let call = crate::ast::Call {
-            name: Box::new(Expr::Ident("py_with".into())),
-            args: crate::ast::Args {
-                args: vec![
-                    crate::ast::Arg::Pos(ctx),
-                    crate::ast::Arg::Pos(Expr::Closure(closure)),
-                ],
-            },
-            ret: crate::ast::Type::Unknown,
-            type_args: Vec::new(),
-            generic_args: Vec::new(),
-            pos: None,
-        };
-        Ok(Stmt::Expr(Expr::Call(call)))
+        match binding {
+            None => {
+                // 直产 `py_with(ctx, () => { body })` 调用（Stmt::Expr——非
+                // Block：body 尾块的 convert_last_block 会把 Block 末语句转
+                // 对象字面量，T09 实证）。539 py_with 通道：host __enter__/体/
+                // __exit__；异常抑制默认不做（§10 裁决）。A5 规则（T06）随后
+                // 自动包 py_callable。
+                let closure = crate::ast::Closure {
+                    params: vec![],
+                    ret: None,
+                    body: Box::new(Expr::Block(body)),
+                    is_move: false,
+                };
+                let call = crate::ast::Call {
+                    name: Box::new(Expr::Ident("py_with".into())),
+                    args: crate::ast::Args {
+                        args: vec![
+                            crate::ast::Arg::Pos(ctx),
+                            crate::ast::Arg::Pos(Expr::Closure(closure)),
+                        ],
+                    },
+                    ret: crate::ast::Type::Unknown,
+                    type_args: Vec::new(),
+                    generic_args: Vec::new(),
+                    pos: None,
+                };
+                Ok(Stmt::Expr(Expr::Call(call)))
+            }
+            Some(name) => {
+                // 块形态：绑定 + 出口保证（规范序列，a2py 回译 `with e as x:`）。
+                let mk_store = |n: &str, e: Expr| {
+                    Stmt::Store(crate::ast::Store {
+                        kind: crate::ast::StoreKind::Var,
+                        name: n.into(),
+                        ty: crate::ast::Type::Unknown,
+                        expr: e,
+                        attrs: Vec::new(),
+                        is_pub: false,
+                    })
+                };
+                let mk_bridge = |n: &str, arg: Expr| {
+                    Expr::Call(crate::ast::Call {
+                        name: Box::new(Expr::Ident(n.into())),
+                        args: crate::ast::Args {
+                            args: vec![crate::ast::Arg::Pos(arg)],
+                        },
+                        ret: crate::ast::Type::Unknown,
+                        type_args: Vec::new(),
+                        generic_args: Vec::new(),
+                        pos: None,
+                    })
+                };
+                let w = "__w".to_string();
+                let exit_call = || {
+                    Stmt::Expr(mk_bridge(
+                        "py_exit",
+                        Expr::Ident("__w".into()),
+                    ))
+                };
+                let mut catch_stmts = vec![exit_call()];
+                catch_stmts.push(Stmt::Expr(mk_bridge(
+                    "py_raise",
+                    Expr::Ident("__we".into()),
+                )));
+                let try_stmt = Stmt::Try(crate::ast::Try {
+                    body,
+                    catch_param: Some("__we".to_string()),
+                    catch_body: crate::ast::Body {
+                        stmts: catch_stmts,
+                        has_new_line: true,
+                        source_lines: Vec::new(),
+                    },
+                    // 正常路径的出口收口（Plan 012 P2：body/after 与 catch 两
+                    // 路都汇入 finally——catch 臂内 py_raise 报错即外传、跳过
+                    // finally，__exit__ 恰好一次）。
+                    finally_body: Some(crate::ast::Body {
+                        stmts: vec![exit_call()],
+                        has_new_line: true,
+                        source_lines: Vec::new(),
+                    }),
+                    new_line: true,
+                });
+                let block = crate::ast::Body {
+                    stmts: vec![
+                        mk_store("__w", ctx),
+                        mk_store(&name, mk_bridge("py_enter", Expr::Ident("__w".into()))),
+                        try_stmt,
+                    ],
+                    has_new_line: true,
+                    source_lines: Vec::new(),
+                };
+                // Stmt::Expr(Expr::Block) 而非 Stmt::Block——convert_last_block
+                // 会把函数体尾部的 Stmt::Block 转对象字面量（560 T09 同款坑，
+                // "Last block must be an object!"）；块表达式走语句序编译且
+                // 尾语句值 pop 语义正确（codegen Expr::Block 臂）。
+                Ok(Stmt::Expr(Expr::Block(block)))
+            }
+        }
     }
 
     /// Plan 010 (MS3-A): `while (cond) { body }` — desugars to a conditional
@@ -1916,10 +2009,19 @@ impl<'a> Parser<'a> {
         let last = stmts.last();
         if let Some(st) = last {
             match st {
+                // Plan 567 T12: 尾块仅在**纯 pair 形**时转对象（UI 单元构造
+                // 语义）；含语句（Store/Try 等）的块是作用域块（with-as 块
+                // 形态产物等），保留原样——原实现一律 body_to_obj，非 pair
+                // 尾块报 "Last block must be an object!" 挡死块语句收尾。
                 Stmt::Block(body) => {
-                    let obj = self.body_to_obj(body)?;
-                    stmts.pop();
-                    stmts.push(Stmt::Expr(Expr::Object(obj)))
+                    let all_pairs = body.stmts.iter().all(|s| {
+                        matches!(s, Stmt::Expr(Expr::Pair(_)))
+                    });
+                    if all_pairs && !body.stmts.is_empty() {
+                        let obj = self.body_to_obj(body)?;
+                        stmts.pop();
+                        stmts.push(Stmt::Expr(Expr::Object(obj)))
+                    }
                 }
                 _ => {}
             }
@@ -2581,6 +2683,9 @@ impl<'a> Parser<'a> {
                 | TokenKind::Arrow
                 | TokenKind::DoubleArrow
                 | TokenKind::VBar => break,
+                // Plan 567 T12（P560-D1）: with 头部窗口内 `as` 是绑定位——
+                // 表达式在此终止，由 with_stmt 消费。
+                TokenKind::As if self.with_header => break,
                 TokenKind::Add
                 | TokenKind::Sub
                 | TokenKind::Star
@@ -2602,7 +2707,7 @@ impl<'a> Parser<'a> {
                     // These are postfix operators with same precedence as dot
                     self.op()
                 }
-                TokenKind::As => {
+                TokenKind::As if !self.with_header => {
                     // Infix `as` type cast: expr as Type
                     self.next(); // consume 'as'
                     let target_type = self.parse_type()?;
@@ -16710,6 +16815,53 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 567 T12（P560-D1）: with-as 绑定解析——pratt 截断 + 块形态产物。
+    #[test]
+    fn test_with_as_binding_parses_to_block_form() {
+        let mut parser = Parser::new("fn main() {
+    var ctx = 1
+    with ctx as g {
+        print(1)
+    }
+}
+");
+        let code = parser.parse().expect("with-as must parse");
+        let src = format!("{:?}", code);
+        // 块形态锚点：__w 存储 + py_enter 绑定 + try/catch（py_exit + py_raise）+ finally
+        assert!(src.contains("__w"), "with-as block form binds __w: {}", src);
+        assert!(src.contains("py_enter"), "{}", src);
+        assert!(src.contains("py_raise"), "{}", src);
+        assert!(src.contains("finally_body: Some"), "{}", src);
+    }
+
+    /// `with x as T {}`（T 是类型名形态）不被 Cast 臂误吞——绑定消费优先。
+    #[test]
+    fn test_with_as_type_shaped_name_not_swallowed() {
+        let mut parser = Parser::new("fn main() {
+    var ctx = 1
+    with ctx as T {
+        print(1)
+    }
+}
+");
+        let code = parser.parse().expect("type-shaped as-name must bind, not Cast");
+        let src = format!("{:?}", code);
+        assert!(src.contains("py_enter"), "as T consumed as binding: {}", src);
+    }
+
+    /// 正常模式 Cast 语义零回归：`a as int` 仍为 Cast。
+    #[test]
+    fn test_cast_outside_with_header_unchanged() {
+        let mut parser = Parser::new("fn main() {
+    var y = 1 as int
+    print(y)
+}
+");
+        let code = parser.parse().expect("plain cast must parse");
+        let src = format!("{:?}", code);
+        assert!(src.contains("Cast"), "cast preserved outside with header: {}", src);
+    }
 
     /// Plan 451: actions 块解析——注册表/menubar/toolbar 全字段。
     #[test]

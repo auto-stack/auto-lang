@@ -1652,6 +1652,10 @@ impl Codegen {
                 self.patch_jump(jump_over);
             }
             Stmt::Store(store) => {
+                // Plan 567 T19（W3 nullability lint）: 已知 `T | None` 返回的
+                // py 调用直接赋值未判空（W 级提示，不阻断；判空=.?/==null/
+                // NullCoalesce 形态由表达式层自带）。
+                self.check_nullable_unguarded(&store.expr);
                 // Variable declaration: let/mut/var name = expr
                 //
                 // Immutability checking:
@@ -4991,6 +4995,27 @@ impl Codegen {
     ///
     /// Plan 300: For bare `use.py module` (no items), records the module name
     /// in `py_modules` so dot-calls like `module.method()` can be resolved.
+    /// Plan 567 T19: 语句根裸消费 nullable 返回的 py 调用 → lint 记录
+    ///（仅 Ident 直呼形态；`.?`/`??` 包装后的节点不再是裸 Call）。
+    fn check_nullable_unguarded(&self, e: &Expr) {
+        if let Expr::Call(c) = e {
+            if let Expr::Ident(n) = c.name.as_ref() {
+                let name = n.as_str();
+                if self.py_native_map.contains_key(name)
+                    && matches!(
+                        self.py_return_types.get(name),
+                        Some(crate::py_ffi_types::PyType::Nullable(_))
+                    )
+                {
+                    crate::py_ffi_types::record_nullable_lint(format!(
+                        "var = {}(...)",
+                        name
+                    ));
+                }
+            }
+        }
+    }
+
     fn handle_py_import(&mut self, use_stmt: &crate::ast::Use) {
         let module_path = if let Some(ref mp) = use_stmt.module_path {
             mp.display()
@@ -5010,7 +5035,12 @@ impl Codegen {
                 );
                 // Plan 300: Auto return type for dynamic marshalling
                 self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
-                self.py_return_types.insert(local_name.to_string(), crate::py_ffi_types::PyType::Auto);
+                // Plan 567 T17（W3 注解预言机）: 有返回注解知识则灌注
+                //（Float/Int → shim 出口 D4 强制；Nullable → T19 lint 消费）；
+                // 无知识 = Auto 零变化。
+                let anno_type = crate::py_ffi_types::lookup_return_annotation(local_name)
+                    .unwrap_or(crate::py_ffi_types::PyType::Auto);
+                self.py_return_types.insert(local_name.to_string(), anno_type);
             }
         } else {
             // Plan 300: Bare module import (`use.py math`) — record for dot-call resolution
@@ -5205,7 +5235,10 @@ impl Codegen {
     /// py_call builtin, >=3 args, obj/method positional, and at least one
     /// named arg in the tail.
     fn is_py_call_kw_form(&self, call: &crate::ast::Call) -> bool {
-        matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call")
+        // Plan 567 T09: py_call_may + Pair 实参同走 5 槽 kwargs 约定
+        // （native id 由 compile_py_call_kw_form 按 may 名路由 478）。
+        matches!(call.name.as_ref(), Expr::Ident(n)
+            if n.as_ref() == "py_call" || n.as_ref() == "py_call_may")
             && call.args.args.len() >= 3
             && matches!(call.args.args.first(), Some(crate::ast::Arg::Pos(_)))
             && matches!(call.args.args.get(1), Some(crate::ast::Arg::Pos(_)))
@@ -5262,9 +5295,11 @@ impl Codegen {
         }
         self.emit(OpCode::CREATE_ARRAY);
         self.code.push(kw_names.len() as u8);
-        // The fixed 5-slot convention of py_call_kw (id 452).
+        // The fixed 5-slot convention of py_call_kw (id 452); the may variant
+        // (Plan 567 T09) routes py_call_kw_may (id 478) — same ABI, Err value out.
+        let is_may = matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call_may");
         self.emit(OpCode::CALL_NAT_COUNTED);
-        self.emit_u16(452);
+        self.emit_u16(if is_may { 478 } else { 452 });
         self.code.push(5u8);
         Ok(())
     }
@@ -5291,6 +5326,15 @@ impl Codegen {
         const NATIVE_PY_ENTER: u16 = 462;
         const NATIVE_PY_EXIT: u16 = 463;
         const NATIVE_PY_ITEM_KW: u16 = 464;
+        // Plan 567 T06 (P560-D2): may 值通道变体。
+        const NATIVE_PY_GETATTR_MAY: u16 = 476;
+        const NATIVE_PY_GETITEM_MAY: u16 = 477;
+        // Plan 567 T07 (P539-D5): kwargs×may 组合。
+        const NATIVE_PY_CALL_KW_MAY: u16 = 478;
+        // Plan 567 T12 (P560-D1): with-as catch 臂再抛通道。
+        const NATIVE_PY_RAISE: u16 = 479;
+        // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
+        const NATIVE_PY_INT: u16 = 480;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5319,6 +5363,12 @@ impl Codegen {
                 reg.register_with_id("py.py_enter", NATIVE_PY_ENTER);
                 reg.register_with_id("py.py_exit", NATIVE_PY_EXIT);
                 reg.register_with_id("py.py_item_kw", NATIVE_PY_ITEM_KW);
+                // Plan 567 T06: may 值通道变体。
+                reg.register_with_id("py.py_getattr_may", NATIVE_PY_GETATTR_MAY);
+                reg.register_with_id("py.py_getitem_may", NATIVE_PY_GETITEM_MAY);
+                reg.register_with_id("py.py_call_kw_may", NATIVE_PY_CALL_KW_MAY);
+                reg.register_with_id("py.py_raise", NATIVE_PY_RAISE);
+                reg.register_with_id("py.py_int", NATIVE_PY_INT);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5345,6 +5395,10 @@ impl Codegen {
             "py_slice",
             "py_call0",
             "py_with",
+            // Plan 567 T12: with-as 块形态的桥半（原仅内联 codegen 通道，
+            // 源级调用不可解析——E0401）。
+            "py_enter",
+            "py_exit",
             "py_item_kw",
             "py_float",
             "py_callable",
@@ -5362,6 +5416,12 @@ impl Codegen {
             // Plan 560 T08。
             "py_truthy",
             "py_is",
+            // Plan 567 T06 (P560-D2): may 值通道变体。
+            "py_getattr_may",
+            "py_getitem_may",
+            "py_call_kw_may",
+            "py_raise",
+            "py_int",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
@@ -9034,6 +9094,9 @@ impl Codegen {
                                 PyType::Bool => ObjectType::Bool,
                                 PyType::List => ObjectType::Array,
                                 PyType::None => ObjectType::Void,
+                                // Plan 567 T16: nullable 值可为 null——
+                                // 非确定标量（消费面自判空）。
+                                PyType::Nullable(_) => ObjectType::Void,
                                 // Auto and String both use string pool
                                 PyType::Auto | PyType::String => ObjectType::String,
                             };

@@ -125,6 +125,13 @@ fn collect_fn(stmts: &[Stmt], k: &PyKnowledge, locals: &mut HashSet<String>) {
                 collect_fn(&t.catch_body.stmts, k, locals);
             }
             Stmt::Block(b) => collect_fn(&b.stmts, k, locals),
+            // Plan 567 T12: with-as 块形态产物是 Stmt::Expr(Expr::Block)
+            // ——绑定变量（__w/f）的 py-known 收录需下钻块表达式体。
+            Stmt::Expr(e) => {
+                if let Expr::Block(b) = e {
+                    collect_fn(&b.stmts, k, locals);
+                }
+            }
             _ => {}
         }
     }

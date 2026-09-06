@@ -1136,24 +1136,25 @@
 
 ### P539（2026-09-04，Plan 539 PyTorch FFI——执行期存量红/缺口登记）
 
-- **P539-D1 py_list `test_sorted_getitem` master 存量红**（非本计划引入，
-  master 二进制同形复现：`[P053-8] phantom freelist entry dropped: slot 41
-  (live holders, rc=4294967295)` + `got d`）。py_list 属 p7 相位，近期
-  各计划门禁只跑 p5/p8/p9 相邻相，从未显形。疑与 ADD 字符串拼接臂的
-  双重 rc_release（engine.rs ADD string-concat 分支两对 release）或
-  Plan 510 G 系池工作交互有关——待专项排查（rc 配平 forensics）。
+- **~~P539-D1 py_list `test_sorted_getitem` master 存量红~~ ✅ 已清偿（2026-09-05,
+  Plan 567 T01/T02）**:根因比原疑点深一层——ADD string-concat 臂除 add_string 前
+  双重 release（rc 下溢回绕 u32::MAX = P053-8 幻影）外,**release 还在读之前**:
+  左结合链中间结果槽被 FREE+tombstone 后 strings.get 归空,`a+b+c+d` 只剩末项
+  （池日志实证:retain"ab"0→1→release 1→0→FREE→intern"cd"）。修复=先读后放
+  （对齐 STR_CAT 纪律）+删第二对 release;engine tests_add_concat_rc 回归 ×2
+  （underflow==0 && phantom==0 断言）;py_list 8/8 三方绿,p7 全相位 55/55。
 - **P539-D2 `.len()`/方法分派对 py 返回值不可靠（存量，类型谎言）**：
   py 调用返回被 codegen 谎记类型（fn_return_types=StrFixed 等），`.len()`
   静态路由到 str.len，把句柄/列表 id 解码为字符串池索引（垃圾但常在
   界内，读到池内真串长度——实测"20"）。规避：for-in 计数、`x[0]` 索引
   （GET_ELEM tag 分派）、`py_call(x, "__len__")`。RuntimeArray 谎言翻转
   试验无效已回退。根治需动态分派（独立计划）。
-- **P539-D5 py_call_may 仅位置实参**：kwargs 与 May 通道组合未支持
-  （py_call_kw 是 strict 语义；py_call_may 弹参走位置约定）。需要时用
-  `py_call_may(py_call_kw 形态兼容路径)` 前先以探针定 ABI；影响面小
-  （训练循环捕获路径用 try-catch 或 `.?` 兜底即可）。关联存量：
-  a2py 语句体闭包降级为 set 字面量（`(x) => { x * 2 }` → Python set），
-  表达式体必需——见 libs/python README 回调节。
+- **~~P539-D5 py_call_may 仅位置实参~~ ✅ 已清偿（2026-09-06, Plan 567
+  T06/T07）**：may 值通道变体族落地——453 py_call_may 原位、新增 476
+  py_getattr_may / 477 py_getitem_may / **478 py_call_kw_may（kwargs 5 槽
+  ABI × may 出口，Ok/Err 双路单测）**；s2s rule_err_propagate 在 `.as` 内
+  自动 may 化（含 kwargs 形态经 codegen 路由 478）。a2py 走糖源不受影响；
+  闭包降级 set 字面量子面（DIV-PY-CLOSURE-1）维持独立在案。
 - **P539-D3 a2py 复合接收者无括号**（存量）：`py_call(t == t, "sum")`
   发射 `t == t.sum()`（优先级错）；套件用中间变量规避。
 - **P539-D4 py_subclass 类派生延期（计划内预案路径）**：自定义
@@ -1163,6 +1164,19 @@
   但类工厂的方法绑定面 + GIL/生存期约束审查超 W3 预算。组合式
   替代金样 = py_torch_train（Linear 裸栈 + seed 化收敛）已在案。
   调研节落 python-parity-roadmap.md §7.3。
+
+### P567（2026-09-06，Plan 567 脚本模式收官波——复审登记）
+
+- **P567-R1 W0010 lint 未挂 error.rs W 码体系**：nullability lint 以
+  log::warn + 收集器落地（计划文本写 error.rs 新 W 码——该体系挂 parser
+  面，codegen 接线超收口预算）。可见性等价、有单测；偿还路径=W 码发射
+  通道向 codegen 开放后迁移（顺带 CLI 呈现）。
+- **P567-R2 CLI 错误路径丢已缓冲 stdout（存量，master 同形实证）**：脚本
+  出错退出时已 print 的内容不落盘/不落管（错误路径跳过 stdout flush）。
+  影响：错误复现时缺前段输出。偿还路径=错误退出前 flush stdout 捕获缓冲。
+- （minor）with-as 出口保证的 tv 语料只断言 catch 还原链路（99_script_err/
+  04），文件 flush 可观测断言留在 scratch 探针 + infer test18 行为面——
+  语料化升级随 R2 一并考虑。
 
 ### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
 
@@ -1484,16 +1498,25 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
 - **P550-D4 期望面再更新**：CALL null 端到端探针面仍归 W3——W2 落地
   了 lowering 管线与糖批，但 null callee 动态分派语义（.as 糖激活后
   的 callable 通道）仍以 555 的 CALL_CLOSURE 守卫+单测钉住形态存在。
-- **P560-D1 with-as 绑定语法歧义**：`as` 系既有 Cast 中缀——`with
-  expr as x` 被 parse_expr 整吞为 Cast、块体又入单元构造语法歧义；
-  现状响亮拒绝（错误消息含指引）。裁定方向：with 上下文限定解析
-  （pratt 截断）或换绑定关键字（`with expr -> x` / `let x =`）。
-- **P560-D2 隐式 !T 传播自动化**：ERROR_PROPAGATE 是 May 值通道，
-  py 错误走 VMError 异常通道——两通道汇合需桥出口产 Err 值（473+
-  shim 面深集成）。现状=显式 py_call_may+.? 通道可表达（p14 探针）。
-- **P560-D3 Err 载荷前缀精化**：py 桥错误现统一 RuntimeError（原文
-  含 Python 类型字样）；严格 "PyException <Type>:" 前缀随 D2 通道
-  汇合同批。
+- **~~P560-D1 with-as 绑定语法歧义~~ ✅ 已清偿（2026-09-06, Plan 567
+  T12-T15）**：with_header 窗口旗标 pratt 截断（`as` 为绑定位终止符，正常
+  模式 Cast 零变化）；块形态降低 = py_enter 绑定 + try-catch-finally 出口
+  保证（Err 路径 T08 拦截→py_exit+py_raise 479 再抛，`__exit__` 恰一次）；
+  a2py 规范序列回译 `with e as x:`；emit `if true` 块包装免疫 E0007/尾块
+  歧义（幂等）；convert_last_block 收窄纯 pair 块。三方实证：py_torch_infer
+  test18（18/18）+ tv 04 语料 + open 句柄 flush 探针（正常/错误双路径）。
+- **~~P560-D2 隐式 !T 传播自动化~~ ✅ 已清偿（2026-09-05, Plan 567
+  T06-T10）**：两通道已汇合——476/477/478 may 变体桥（getattr/getitem/
+  kwargs×call）+ s2s rule_err_propagate（`.as` 桥调用→may+.?、用户函数
+  调用+.?，无 use.py 零改写）+ 引擎 ERROR_PROPAGATE 值通道拦截（Err 传播
+  遇当前帧 try handler 跳 catch_pc 绑 PyException 载荷；null 是值不进
+  catch）+ 主边界未捕获 Err 带错退出（exit 1）。19 py 套件 127/127 三方绿
+  （隐式传播激活态）；tv 99_script_err 语料三例。遗留子面：`.?(d)` 表达式
+  位链式消费缺陷（存量，453 同形复现）见 567 待澄清⑥。
+- **~~P560-D3 Err 载荷前缀精化~~ ✅ 已清偿（2026-09-05, Plan 567 T05）**：
+  py_exc helper 统一 `PyException <Type>: <msg>`（~20 站点迁移，与
+  py_call_may Err 载荷同源）；CALL_NAT/COUNTED 双臂 FFI→RuntimeError
+  通道一致化（顺修非 FFI 静默吞错）。catch 绑定/传播/未捕获三面同前缀。
 - **P560-D4 门控硬化影响面超计划前提**：`.at` 含 use.py/null 诊断
   硬化的存量撞击=vm 语料（aavm2 词法语料 2 文件 + null 语义测试
   1 文件 + keyword_map）——需先裁定这些语料的 .as 迁移或 #[script]
@@ -1502,6 +1525,10 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
 - **P560-D5 s2s 规则覆盖面**：py_known 分析为保守单遍（分支不敏感、
   闭包不内视）；D7 print 包裹限裸名（嵌套形态走 print shim 运行期
   臂）；f-string 插值语法语言本身无此形态（拼接走 ADD dunder）。
-- **P560-D6 既有双红随迁在案**：py_sys（version_info 元组→list 封送
-  =P539-D1/D5 债族）与 py_list test_sorted_getitem（"got d"）为
-  master 既有红——原 .at 在 master 二进制同形失败实证，非本波回归。
+- **~~P560-D6 既有双红随迁在案~~ ✅ 已清偿（2026-09-05, Plan 567 T03/T04）**:
+  py_sys 根因=version_info 是 PyStructSequence（实测无 `_fields` 有
+  `n_sequence_fields`），被 tuple 拍平臂吞成 List 后 `py_getattr(vi,"major")`
+  转回 Python list 而 AttributeError；修复=带属性面 tuple（namedtuple
+  `_fields` + structseq `n_sequence_fields`）分流 opaque 句柄，普通 tuple
+  拍平裁定不动（三分支封送单测在案）；py_list 红归 P539-D1 同批清偿。
+  p7 全相位 8 套件 55/55 三方绿（2026-09-05 实证）。
