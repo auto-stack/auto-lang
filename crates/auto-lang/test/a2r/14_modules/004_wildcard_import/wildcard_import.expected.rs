@@ -7,5 +7,5 @@ use a2r_std::*;
 
 use a2r_std::io::*;
 fn main() {
-    say("hello from wildcard");
+    println!("{}", "hello from wildcard");
 }

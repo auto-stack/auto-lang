@@ -8,5 +8,5 @@ use a2r_std::*;
 use a2r_std::io::{say};
 pub use a2r_std::io::{say};
 fn main() {
-    say("hello from pub use");
+    println!("{}", "hello from pub use");
 }

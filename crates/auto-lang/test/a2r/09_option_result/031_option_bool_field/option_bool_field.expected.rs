@@ -8,6 +8,6 @@ pub struct Settings {
 
 impl Settings {
     pub fn default() -> Settings {
-        return Settings { env: {}, provider: None };
+        return Settings { env: std::collections::HashMap::new(), provider: None };
     }
 }

@@ -5,10 +5,10 @@ fn main() {
     let count: i64 = 3;
 
 
-    let f = move |n: i64| { println!("{}", n); };
+    let f = move |n: i64| { println!("{}", n)};
     f(count);
 
 
-    let g = move || { println!("{}", name); };
+    let g = move || { println!("{}", name)};
     g();
 }

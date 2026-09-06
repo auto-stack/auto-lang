@@ -7,7 +7,7 @@ const APP_NAME: &str = "AutoLang";
 const VERSION: &str = "0.1.0";
 
 fn main() {
-    say(APP_NAME);
-    say(VERSION);
-    say(MAX_SIZE);
+    println!("{}", APP_NAME);
+    println!("{}", VERSION);
+    println!("{}", MAX_SIZE);
 }

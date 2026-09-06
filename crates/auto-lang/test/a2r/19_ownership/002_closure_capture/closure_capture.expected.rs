@@ -2,6 +2,6 @@
 
 fn main() {
     let x: i64 = 10;
-    let f = || { let y: i64 = x; y; };
+    let f = || { let y: i64 = x; y};
     println!("closure");
 }

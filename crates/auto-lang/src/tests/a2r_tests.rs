@@ -701,6 +701,13 @@ fn a2r_rustc_real_compile_gate() {
     if !skips.is_empty() {
         message.push_str(&format!("\n\nskipped (external deps):\n  {}", skips.join("\n  ")));
     }
+    if !fails.is_empty() {
+        message.push_str(&format!("
+
+unexpected failures:
+  {}", fails.join("
+  ")));
+    }
     assert!(fails.is_empty() && ledger_now_green.is_empty(), "{}", message);
 }
 

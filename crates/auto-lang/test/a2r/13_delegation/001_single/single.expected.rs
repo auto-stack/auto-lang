@@ -26,6 +26,6 @@ impl Engine for Starship {
 }
 
 fn main() {
-    let ship = Starship {};
+    let ship = Starship { core: WarpDrive {} };
     ship.start();
 }

@@ -10,6 +10,6 @@ fn sink(p: &str) {
 
 fn main() {
 
-    let f = |ev: String| { helper(ev.as_str(), sink); };
+    let f = |ev: String| { helper(ev.as_str(), sink)};
     f("hi");
 }

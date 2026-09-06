@@ -11,5 +11,5 @@ fn main() {
     let r1: Result<i64, Box<dyn std::error::Error>> = Ok(42);
     let r2 = Err("bad value".into());
     let a = process(r1.clone());
-    let b = process(r2.clone());
+    let b = process(r2);
 }

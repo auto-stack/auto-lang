@@ -225,6 +225,15 @@ pub struct RustTrans {
     /// inference (`return Ok(messages)`), and a forced `Vec<i64>`/`Option<i64>`
     /// annotation would override it (E0308).
     later_used_locals: std::collections::HashSet<AutoStr>,
+    /// PLAN-010 T2: delegation component fields per struct type
+    /// (`has core WarpDrive for Engine` → `("core", WarpDrive)`). Struct
+    /// literals that omit them must default-initialize the component
+    /// (`Starship {}` → `Starship { core: WarpDrive {} }`; E0063 otherwise).
+    struct_delegation_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>,
+    /// PLAN-010 T2: every `mut fn` method name seen so far (transitive set
+    /// per type, unioned across types). `let x = ...; x.mutMethod()` needs
+    /// `let mut x` — the scan_mutated_bindings pass consults this set.
+    all_mut_method_names: std::collections::HashSet<AutoStr>,
     /// Plan 376D: Shared TypeStore from all modules (for type inference).
     /// When Some, `run_type_inference` uses this instead of building a local one.
     shared_type_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
@@ -465,6 +474,8 @@ impl RustTrans {
             str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
             later_used_locals: std::collections::HashSet::new(),
+            struct_delegation_types: HashMap::new(),
+            all_mut_method_names: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -560,6 +571,8 @@ impl RustTrans {
             str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
             later_used_locals: std::collections::HashSet::new(),
+            struct_delegation_types: HashMap::new(),
+            all_mut_method_names: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -689,7 +702,7 @@ impl RustTrans {
             self.local_var_types.insert(name.clone(), ty.clone());
         }
         self.mutated_let_bindings.clear();
-        self.mutated_let_bindings = Self::scan_mutated_bindings(body);
+        self.mutated_let_bindings = Self::scan_mutated_bindings(body, &self.all_mut_method_names);
         self.later_used_locals.clear();
         // PLAN-010 T2: per-statement later-read sets (see the field doc).
         // A None from the collector (unwalked variant) means "assume used".
@@ -1363,6 +1376,10 @@ impl RustTrans {
     fn expr_needs_string_coercion(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Str(_) | Expr::CStr(_) => true,
+            // PLAN-010 T2 (009 ledger 017): `#{...}` comptime embeds evaluate
+            // to raw literals (&str) — in a String-returning fn they need the
+            // same materialization as plain string literals (E0308).
+            Expr::Comptime(_) => true,
             Expr::Index(_, idx) => matches!(idx.as_ref(), Expr::Range(_)),
             Expr::Ident(name) => self.current_fn_str_params.contains(name),
             // x.slice(...) is transpiled to x[n..] which produces &str
@@ -1522,6 +1539,28 @@ impl RustTrans {
                             if add_semi { out.write(b";")?; }
                             return Ok(());
                         }
+                    }
+                }
+            }
+        }
+        // PLAN-010 T2 (009 ledger 008_arc_dyn_spec): `return map.get(k)` in a
+        // fn returning Option<T> (owned, non-Copy inner) yields Option<&T> —
+        // E0308. Clone the inner (Arc/struct/enum payload: Clone-derived).
+        if let Expr::Call(call) = expr {
+            if matches!(call.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get")
+                && call.args.args.len() == 1
+            {
+                if let Some(Type::Option(inner)) = &self.current_fn_ret_type {
+                    if !Self::is_primitive_copy(inner)
+                        && !matches!(inner.as_ref(), Type::Unknown | Type::Void)
+                    {
+                        out.write(b"return ")?;
+                        self.expr(expr, out)?;
+                        out.write(b".cloned()")?;
+                        if add_semi {
+                            out.write(b";")?;
+                        }
+                        return Ok(());
                     }
                 }
             }
@@ -4059,11 +4098,20 @@ impl RustTrans {
             // Block expression: { stmt1; stmt2; expr }
             Expr::Block(body) => {
                 write!(out, "{{ ")?;
-                for stmt in &body.stmts {
+                let block_len = body.stmts.len();
+                for (bi, stmt) in body.stmts.iter().enumerate() {
+                    let block_is_last = bi == block_len - 1;
                     match stmt {
-                        Stmt::Expr(expr) => {
+                        // PLAN-010 T2 (009 ledger 25_lifecycle 001/004): the
+                        // LAST expr of a block used as a value (closure body)
+                        // is the block's VALUE — a trailing `;` types the
+                        // closure as returning `()` (E0277 when printed).
+                        Stmt::Expr(expr) if !block_is_last => {
                             self.expr(expr, out)?;
                             write!(out, "; ")?;
+                        }
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, out)?;
                         }
                         Stmt::Store(store) => {
                             self.store(store, out)?;
@@ -4391,19 +4439,12 @@ impl RustTrans {
                         write!(out, ".cloned().ok_or(\"index out of bounds\")?")?;
                         return Ok(());
                     }
-                    Expr::Ident(n) if {
-                        if std::env::var("A2R_DEBUG_EP").is_ok() {
-                            eprintln!("[a2r-ep] receiver={} ty={:?} scalar={}",
-                                n, self.local_var_types.get(n.as_str()),
-                                self.expr_type_is_known_scalar(expr));
-                        }
-                        self.expr_type_is_known_scalar(expr)
-                            // Iter-var bindings may carry Rust-side Result items
-                            // (read_dir loops) even when Auto types them as
-                            // scalars — their `?` is real propagation.
-                            && !self.borrowed_iter_vars.contains(n)
-                            && !self.by_value_iter_bindings.contains(n)
-                    } => {
+                    Expr::Ident(n) if self.expr_type_is_known_scalar(expr)
+                        // Iter-var bindings may carry Rust-side Result items
+                        // (read_dir loops) even when Auto types them as
+                        // scalars — their `?` is real propagation.
+                        && !self.borrowed_iter_vars.contains(n)
+                        && !self.by_value_iter_bindings.contains(n) => {
                         self.expr(expr, out)?;
                         return Ok(());
                     }
@@ -4986,6 +5027,19 @@ impl RustTrans {
             }
             if name == "write" {
                 return self.output_call(call, out, false);
+            }
+            // PLAN-010 T2 (009 ledger 006/007/009): Auto `say(x)` is the
+            // print-with-newline builtin — previously emitted verbatim as an
+            // unresolved `say(...)` call (E0425). Lower to println! with a
+            // Display placeholder (works for str and value scalars alike).
+            if name == "say" {
+                write!(out, "println!(\"{{}}\"")?;
+                for arg in &call.args.args {
+                    write!(out, ", ")?;
+                    self.arg(arg, out)?;
+                }
+                write!(out, ")")?;
+                return Ok(());
             }
             // Convert printf(fmt, args...) -> print!(fmt, args...)
             if name == "printf" {
@@ -9367,6 +9421,23 @@ impl RustTrans {
                 // Pass them by value (move) instead.
                 && !(if let Arg::Pos(Expr::Ident(name)) = arg {
                     self.spec_bound_idents.contains(name)
+                } else { false })
+                // PLAN-010 T2 (009 ledger 033): Result<_, Box<dyn Error>>
+                // locals — Box<dyn Error> is not Clone, so the safety clone is
+                // E0599 ("trait bounds not satisfied"). Pass by value.
+                && !(if let Arg::Pos(Expr::Ident(name)) = arg {
+                    let err_not_clone = |err: &Type| matches!(err,
+                        Type::GenericInstance(g) if g.base_name.as_str() == "Box")
+                        || matches!(err, Type::Unknown);
+                    match self.local_var_types.get(name) {
+                        Some(Type::Result(err)) => err_not_clone(err),
+                        // `Result<i64, Box<dyn Error>>` annotates as a
+                        // GenericInstance (base "Result"), not Type::Result.
+                        Some(Type::GenericInstance(inst))
+                            if inst.base_name.as_str() == "Result" && inst.args.len() == 2 =>
+                            err_not_clone(&inst.args[1]),
+                        _ => false,
+                    }
                 } else { false });
 
             // Auto-box when passing a value to a function that takes a spec param
@@ -10624,6 +10695,34 @@ impl RustTrans {
         Ok(())
     }
 
+    /// PLAN-010 T2: Auto `{}` as a Map/List field initializer means "empty
+    /// collection". Rendered verbatim it becomes a unit-struct literal
+    /// (`env: {}`), which is E0308 against a HashMap/Vec field type. Emit the
+    /// typed constructor instead. Returns false when `expr` is not an empty
+    /// literal or the field type is unknown/non-collection (caller falls back
+    /// to the normal value path).
+    fn write_collection_default_for_empty_node(
+        expr: &Expr,
+        field_ty: Option<&Type>,
+        out: &mut impl Write,
+    ) -> AutoResult<bool> {
+        let is_empty_node = matches!(expr, Expr::Node(n)
+            if n.args.args.is_empty() && n.body.stmts.is_empty())
+            || matches!(expr, Expr::Object(pairs) if pairs.is_empty());
+        if !is_empty_node {
+            return Ok(false);
+        }
+        let Some(ty) = field_ty else {
+            return Ok(false);
+        };
+        match ty {
+            Type::Map(..) => write!(out, "std::collections::HashMap::new()")?,
+            Type::List(_) => write!(out, "Vec::new()")?,
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
     fn struct_init(
         &mut self,
         type_name: &AutoStr,
@@ -10659,6 +10758,23 @@ impl RustTrans {
 
         // Generate struct initialization: Type { field1: value1, field2: value2 }
         if args.args.is_empty() {
+            // PLAN-010 T2 (009 ledger 13_delegation 族): a struct with
+            // delegation component fields (`has core WarpDrive for Engine`)
+            // must default-initialize them in every literal — `Starship {}`
+            // alone is E0063 (missing field `core`).
+            if let Some(deleg) = self.struct_delegation_types.get(type_name) {
+                if !deleg.is_empty() {
+                    write!(out, "{} {{ ", type_name)?;
+                    for (i, (fname, fty)) in deleg.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ")?;
+                        }
+                        write!(out, "{}: {} {{}}", fname, self.rust_type_name(fty))?;
+                    }
+                    write!(out, " }}")?;
+                    return Ok(());
+                }
+            }
             // Empty struct: Type {}
             write!(out, "{} {{}}", type_name)?;
             return Ok(());
@@ -10750,7 +10866,21 @@ impl RustTrans {
             write!(out, "{}: ", Self::rust_ident(field_name.as_str()))?;
             match arg {
                 Arg::Pos(expr) | Arg::Pair(_, expr) => {
-                    self.write_expr_for_struct_field(expr, out)?;
+                    // PLAN-010 T2 (009 ledger 031/008/009): Auto `{}` as a
+                    // Map/List field initializer means "empty collection".
+                    // Rendered verbatim it's a unit-struct literal (`env: {}`)
+                    // — E0308 against the HashMap/Vec field type.
+                    let empty_node_field_ty = match arg {
+                        Arg::Pos(_) => field_types.get(i).map(|(_, t)| t.clone()),
+                        Arg::Pair(k, _) => field_types.iter()
+                            .find(|(n, _)| n == k).map(|(_, t)| t.clone()),
+                        Arg::Name(_) => None,
+                    };
+                    if !Self::write_collection_default_for_empty_node(
+                        expr, empty_node_field_ty.as_ref(), out,
+                    )? {
+                        self.write_expr_for_struct_field(expr, out)?;
+                    }
                 }
                 Arg::Name(name) => {
                     // Plan 399 Phase 11.2: shorthand `Type { field }` → `field: field`.
@@ -11296,6 +11426,25 @@ impl RustTrans {
                         write!(sink.body, "{}.to_string()", name)?;
                         sink.body.write(b";")?;
                         return Ok(true);
+                    }
+                }
+                // PLAN-010 T2 (009 ledger 008_arc_dyn_spec): `return
+                // map.get(k)` in a fn returning Option<T> (owned, non-Copy
+                // inner) yields Option<&T> — E0308. Clone the inner.
+                if let Expr::Call(call) = expr.as_ref() {
+                    if matches!(call.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get")
+                        && call.args.args.len() == 1
+                    {
+                        if let Some(Type::Option(inner)) = &self.current_fn_ret_type {
+                            if !Self::is_primitive_copy(inner)
+                                && !matches!(inner.as_ref(), Type::Unknown | Type::Void)
+                            {
+                                // stmt() has already written `return ` here.
+                                self.expr(expr, &mut sink.body)?;
+                                sink.body.write(b".cloned();")?;
+                                return Ok(true);
+                            }
+                        }
                     }
                 }
                 // If return type is String and expr produces &str, add .to_string()
@@ -12970,15 +13119,22 @@ impl RustTrans {
         found.unwrap_or(Type::Unknown)
     }
 
-    fn scan_mutated_bindings(body: &crate::ast::Body) -> std::collections::HashSet<AutoStr> {
+    fn scan_mutated_bindings(
+        body: &crate::ast::Body,
+        mut_method_names: &std::collections::HashSet<AutoStr>,
+    ) -> std::collections::HashSet<AutoStr> {
         let mut out = std::collections::HashSet::new();
-        let mutating_methods = ["push", "insert", "extend", "pop", "remove", "retain", "next",
-            "clear", "sort_by", "sort", "swap", "truncate", "drain", "splice", "resize"];
-        fn visit_expr(expr: &crate::ast::Expr, out: &mut std::collections::HashSet<AutoStr>, methods: &[&str]) {
+        let mut methods: std::collections::HashSet<AutoStr> = mut_method_names.clone();
+        methods.extend(["push", "insert", "extend", "pop", "remove", "retain", "next",
+            "clear", "sort_by", "sort", "swap", "truncate", "drain", "splice", "resize"]
+            .iter().map(|m| AutoStr::from(*m)));
+        // methods now carries the built-in mutating methods PLUS every user
+        // `mut fn` name (PLAN-010 T2: `x.mutFn()` needs `let mut x`, E0596).
+        fn visit_expr(expr: &crate::ast::Expr, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>) {
             // `name.push(...)` etc → name is mutated
             if let crate::ast::Expr::Call(call) = expr {
                 if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
-                    if methods.contains(&method.as_str()) {
+                    if methods.contains(method.as_str()) {
                         if let crate::ast::Expr::Ident(name) = obj.as_ref() {
                             out.insert(name.clone());
                         }
@@ -13007,7 +13163,7 @@ impl RustTrans {
                 }
             }
         }
-        fn visit_stmt(stmt: &Stmt, out: &mut std::collections::HashSet<AutoStr>, methods: &[&str]) {
+        fn visit_stmt(stmt: &Stmt, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>) {
             match stmt {
                 Stmt::Expr(expr) => visit_expr(expr, out, methods),
                 Stmt::Store(store) => visit_expr(&store.expr, out, methods),
@@ -13022,7 +13178,7 @@ impl RustTrans {
             }
         }
         for stmt in &body.stmts {
-            visit_stmt(stmt, &mut out, &mutating_methods);
+            visit_stmt(stmt, &mut out, &methods);
         }
         out
     }
@@ -13207,7 +13363,8 @@ impl RustTrans {
         // Plan 399 Phase 11.5: scan the fn body for `let` bindings that are
         // later mutated (push/insert/extend/assign) — those need `let mut`.
         self.mutated_let_bindings.clear();
-        self.mutated_let_bindings = Self::scan_mutated_bindings(&fn_decl.body);
+        self.mutated_let_bindings =
+            Self::scan_mutated_bindings(&fn_decl.body, &self.all_mut_method_names);
         // Plan 447 H5: per-function is-scrutinee use counts drive the narrow
         // `match &v` emission (>= 2 uses of the same ident only).
         self.fn_is_scrutinee_counts = Self::scan_is_scrutinee_uses(&fn_decl.body);
@@ -15621,6 +15778,12 @@ impl RustTrans {
 
         // Add delegation members to seen_fields and generate them separately
         for delegation in &type_decl.delegations {
+            // PLAN-010 T2: cache delegation component fields for struct-literal
+            // default-init (E0063 missing-field debt, 13_delegation 族).
+            self.struct_delegation_types
+                .entry(type_decl.name.clone())
+                .or_default()
+                .push((delegation.member_name.clone(), delegation.member_type.clone()));
             seen_fields.insert(delegation.member_name.clone());
         }
 
@@ -16106,6 +16269,9 @@ impl RustTrans {
 
             // Plan 514 W3: 预计算传递性可变方法集,供 fn_decl 接收者判定。
             self.current_type_mut_methods = Some(Self::compute_type_mut_methods(&own_methods));
+        if let Some(s) = &self.current_type_mut_methods {
+            self.all_mut_method_names.extend(s.iter().cloned());
+        }
             self.current_impl_type = Some(type_decl.name.clone());
             for method in &own_methods {
                 self.fn_decl(method, sink)?;
@@ -17035,6 +17201,9 @@ impl RustTrans {
         // Plan 514 W3: ext 方法同款传递性可变方法集预计算。
         let ext_methods: Vec<&Fn> = ext.methods.iter().collect();
         self.current_type_mut_methods = Some(Self::compute_type_mut_methods(&ext_methods));
+        if let Some(s) = &self.current_type_mut_methods {
+            self.all_mut_method_names.extend(s.iter().cloned());
+        }
         self.current_impl_type = Some(ext.target.clone());
         for method in &ext.methods {
             self.fn_decl(method, sink)?;
@@ -21719,6 +21888,55 @@ impl Trans for RustTrans {
             sink.body.write(b"}\n")?;
         }
 
+        // PLAN-010 T2 (009 ledger 12_specs Arc 族): products referencing std
+        // smart pointers (Arc/Mutex/Rc/RefCell/Cell) must resolve standalone —
+        // inject the prelude imports once at file header. Skipped per line when
+        // a use.rs import already brings the same name in (E0252).
+        if !self.merge_mode {
+            let text = String::from_utf8_lossy(&sink.body);
+            // Text-level duplicate guard: the body may already carry explicit
+            // or brace-grouped std imports emitted from use.rs statements or
+            // global-var codegen (which don't register in self.uses).
+            let has_text_use = |path: &str, names: &[&str]| {
+                if text.contains(&format!("use {}::{{", path)) {
+                    return true;
+                }
+                names.iter().any(|n| text.contains(&format!("use {}::{};", path, n)))
+            };
+            let mut imports = String::new();
+            if (text.contains("Arc") || text.contains("Mutex::"))
+                && !has_text_use("std::sync", &["Arc", "Mutex"])
+            {
+                imports.push_str("#[allow(unused_imports)]\nuse std::sync::{Arc, Mutex};\n");
+            }
+            if text.contains("Rc::") || text.contains("Rc<") {
+                if !has_text_use("std::rc", &["Rc"]) {
+                    imports.push_str("#[allow(unused_imports)]\nuse std::rc::Rc;\n");
+                }
+            }
+            if text.contains("RefCell") || text.contains("Cell::") || text.contains("Cell<") {
+                if !has_text_use("std::cell", &["RefCell", "Cell"]) {
+                    imports.push_str("#[allow(unused_imports)]\nuse std::cell::{RefCell, Cell};\n");
+                }
+            }
+            if !imports.is_empty() {
+                let import = imports.into_bytes();
+                let body = &sink.body;
+                let mut insert_pos = 0;
+                for (i, line) in body.split(|&b| b == b'\n').enumerate() {
+                    insert_pos += line.len() + 1;
+                    if line.is_empty() && i > 0 {
+                        break;
+                    }
+                }
+                let mut new_body = Vec::with_capacity(sink.body.len() + import.len());
+                new_body.extend_from_slice(&sink.body[..insert_pos]);
+                new_body.extend_from_slice(&import);
+                new_body.extend_from_slice(&sink.body[insert_pos..]);
+                sink.body = new_body;
+            }
+        }
+
         // Add final newline only if not already ending with one
         if !sink.body.is_empty() && !sink.body.ends_with(b"\n") {
             sink.body.write(b"\n")?;
@@ -22445,6 +22663,18 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                             .map(|m| (m.name.clone(), m.ty.clone())).collect();
                         if !field_types.is_empty() {
                             transpiler.struct_field_types.insert(td.name.clone(), field_types);
+                        }
+                        // PLAN-010 T2: delegation component fields for literal
+                        // default-init (E0063 missing-field debt).
+                        if !td.delegations.is_empty()
+                            && !transpiler.struct_delegation_types.contains_key(&td.name)
+                        {
+                            transpiler.struct_delegation_types.insert(
+                                td.name.clone(),
+                                td.delegations.iter()
+                                    .map(|d| (d.member_name.clone(), d.member_type.clone()))
+                                    .collect(),
+                            );
                         }
                     }
                 }
@@ -23185,6 +23415,18 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                             .map(|m| (m.name.clone(), m.ty.clone())).collect();
                         if !field_types.is_empty() {
                             transpiler.struct_field_types.insert(td.name.clone(), field_types);
+                        }
+                        // PLAN-010 T2: delegation component fields for literal
+                        // default-init (E0063 missing-field debt).
+                        if !td.delegations.is_empty()
+                            && !transpiler.struct_delegation_types.contains_key(&td.name)
+                        {
+                            transpiler.struct_delegation_types.insert(
+                                td.name.clone(),
+                                td.delegations.iter()
+                                    .map(|d| (d.member_name.clone(), d.member_type.clone()))
+                                    .collect(),
+                            );
                         }
                     }
                 }
