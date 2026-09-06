@@ -359,8 +359,19 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
 14. [✅ 已完成 2026-09-06] 折叠点④+复审（/auto-plan:review）→ tf → status: reviewed。
     ——复审记录见下节;tf 3465/3466+taa 3617/3618(唯一红=charts_gallery
     预存,559/575 在案基线);代际判定链现场复跑 ALL PASS。
-15. [ ] merge 沉淀归档。
-16. [ ] （里程碑广播）自举达成口径汇总：双目标+塔顶+AA2R 自译全景。
+15. [✅ 已完成 2026-09-06] merge 沉淀归档。——specs 六节存款 P532-1..6
+    (本地台账)+goals.md GOAL-017→已达成(收尾 plan 532)+git mv
+    archive/+status:archived 终态;worktree/分支/组目录已清(双
+    wt-guard clean)。commit d4fe4ae48。
+16. [✅ 已完成 2026-09-06] （里程碑广播）自举达成口径汇总：双目标+塔顶+AA2R 自译全景。
+    ——**自举达成(2026-09-06,GOAL-017 终点)**:①双目标(VM 模式
+    ev_run 族+a2r 模式⑤腿 58/58 全量常态绿);②塔顶(aavm 编译含自身
+    的 lib:W1 19 族 gap 清零七文件全链+残留③静态差分清零=编译面与
+    宿主 SEMANTICALLY IDENTICAL);③原生自编译代际闭合(exe¹=a2r(lib)
+    一代 8/8==宿主;exe²=exe¹ --trans(lib) 自编译构建绿,二代 8/8==
+    一代+转译固定点 PASS=≥两代一致固定点);④AA2R 自译(434 自举+
+    572 挂死根修后自转译常态可用)。全景注记同步入 project.md 收官
+    口径与 goals.md GOAL-017 行。
 
 ## 复审记录
 

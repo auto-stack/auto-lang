@@ -865,6 +865,26 @@ pub enum PopoverPlacement {
     /// 发布）。alert-dialog 臂专用（shadcn AlertDialog 语义：外点/Esc 不关，
     /// 仅 cancel/action 操作钮经 VM 状态翻转关闭）。
     Modal,
+    /// PLAN-534：viewport 贴边变体（sheet/drawer 专用）——面板贴 viewport
+    /// 四缘之一（EdgeLeft/EdgeRight 全高，EdgeTop/EdgeBottom 全宽），
+    /// 锚无关；挂 scrim + 面板外点击整吞（on_dismiss 为 Some 时同时发布，
+    /// shadcn Sheet 语义：外点/Esc 关闭）。不做翻转钳制（贴边即终位）。
+    EdgeLeft,
+    EdgeRight,
+    EdgeTop,
+    EdgeBottom,
+}
+
+impl PopoverPlacement {
+    /// PLAN-534：模态 chrome 判定（单一事实源）——Modal（视口居中）与
+    /// Edge*（贴边）均挂 scrim + 面板外点击整吞，且不做翻转钳制
+    /// （on_dismiss 为 Some 时外点/Esc 发布关闭，shadcn Dialog/Sheet 语义）。
+    pub fn is_modal_chrome(&self) -> bool {
+        matches!(
+            self,
+            Self::Modal | Self::EdgeLeft | Self::EdgeRight | Self::EdgeTop | Self::EdgeBottom
+        )
+    }
 }
 
 /// Plan 409 §10 续 5: Overlay 浮层的窗口相对定位(从 style 的 absolute +

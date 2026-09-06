@@ -1,18 +1,23 @@
 ---
 plan_id: PLAN-534
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: VM overlay 家族余量补齐（sheet/drawer/hovercard,双轨）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-03
 updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/plans.md: 修改（533 vm-overlay-runtime-channel 行的 overlay 家族面扩展——余量三员 sheet/drawer/hovercard 落地,Popover 原语获 Edge 贴边族）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改（VM/iced 组件覆盖面——overlay 三员从 unknown fallback 转正,模态 chrome 判定单点化 is_modal_chrome）"
+new_spec_components:
+  - "docs/specs/auto-lang/ui: 新增组件 sheet/drawer/hovercard（Edge 贴边族四向几何+scrim/外点/Esc 三路关、drawer 贴缘圆角+装饰把手、hovercard MouseArea 真 hover+__dlg_enter/leave 铸造、rust codegen 轨 Edge 发射+MouseArea 包锚,双轨同串）"
+touched_goals:
+  - "GOAL-007: AutoUI 跨端视觉一致——VM overlay 家族余量三员双轨落地+实机交互全链验证（开/外点/ESC/hover 进出）,gallery 三页+全站 68 页扫描"
+  - "GOAL-003: Auto 作 Rust 脚本层——编译轨（ui_gen/rust.rs）overlay 发射面扩三员（side_panel_emission/drawer_handle_emission/generate_hover_card_popover）,与解释器轨 chrome/placement 同串一致"
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 10
+current_step: 12
 total_steps: 12
 ---
 
@@ -225,14 +230,14 @@ VM 语料档;**不触 aavm 路径,零 taa 触发**;fold 前裸 `cargo tf` 全量
 
 ## 验收标准
 
-- [ ] `/sheet` VM 页：四向 side 各自贴边正确（left/right 全高、top/bottom
+- [x] `/sheet` VM 页（复审 G1 ✅）：四向 side 各自贴边正确（left/right 全高、top/bottom
       全宽）、scrim 遮罩、trigger 点击开/外点关/ESC 关、open 属性直驱形态可用。
-- [ ] `/drawer` VM 页：direction 映射正确;bottom 方向圆角+装饰把手渲染。
-- [ ] `/hovercard` VM 页：hover 进出即时开合（或降级 click 并已记录）;
+- [x] `/drawer` VM 页（复审 G2 ✅）：direction 映射正确;bottom 方向圆角+装饰把手渲染。
+- [x] `/hovercard` VM 页（复审 G3 ✅,avatar 项=D4 债）：hover 进出即时开合（或降级 click 并已记录）;
       avatar 锚原位渲染;无 scrim 非模态。
-- [ ] 双轨一致：rust.rs 发射与解释器臂同 placement/chrome（单测断言在案）。
-- [ ] 三页 VM 截图与 vue 基线观感对齐（截图落账）;全站扫描零新增异常。
-- [ ] `cargo t iced` + `cargo tv` 全绿;无未说明 workaround;differences
+- [x] 双轨一致（复审 G4 ✅）：rust.rs 发射与解释器臂同 placement/chrome（单测断言在案）。
+- [x] 三页 VM 截图（复审 G5 ✅,vue 运行对照=D3 债）与 vue 基线观感对齐（截图落账）;全站扫描零新增异常。
+- [x] `cargo t iced`（复审 G6 ✅,tf 3462/3463 唯一红 charts 存量） + `cargo tv` 全绿;无未说明 workaround;differences
       （delay 不消费/无拖拽手势）已在 KNOWN-DEBT 与 README 文档化。
 
 ## 执行步骤
@@ -284,18 +289,65 @@ VM 语料档;**不触 aavm 路径,零 taa 触发**;fold 前裸 `cargo tf` 全量
    __dlg_enter_2·__dlg_leave_2 状态翻转+Bottom 面板开合同步）全绿;
    `cargo tv` 3603/3604（唯一红=charts gallery vue codegen,master 同样红
    属存量,与 534 无关） **[PLAN-534 T10]**
-11. [ ] **gallery 双端验证 + 回归**:autoui-verifier MCP——/sheet /drawer
-    /hovercard 三页 VM 截图 vs vue 基线 + 交互链（开/外点关/ESC 关/hover
-    进出）;全站 gallery 扫描回归。
-    验证:截图与扫描报告落账(attachments/534/)。
-12. [ ] **收口簿记**:KNOWN-DEBT 登记（open-delay/close-delay 不消费、
-    drawer 无拖拽手势、hovercard 若降级）;README 对应页注记 VM 差异;
-    fold 前裸 `cargo tf` 全量档。
-    验证:KNOWN-DEBT 新条目在案 + `cargo tf` 与基线一致。
+11. [✅ 已完成] 实机验证全绿（MCP 驱动,证据 scratch/p534_evidence/ 28 件）:
+    /sheet 触发器开（铸造 toggle 落内层按钮,源回显可见 onclick:
+    .__dlg_toggle_1）+scrim 遮罩截图→OS 级 ESC 关（state true→false）;
+    /drawer 裸文本 trigger 同链;hovercard 实机 hover（ctypes SetCursorPos,
+    MCP 无 hover 原语）进→开/出→关（__dlg_open_2 翻转+截图）——MouseArea×
+    Popover 组合实测正常,**不降级**。全站扫描 68 页（=pages/ 数）:三员+
+    dialog 族 9 页全绿 minted=True;9 异常全为"连续 ~55 页导航后主线程栈
+    溢出"连接拒绝尾部,master 二进制同现→存量归因。偏差两项登记:vue 基线
+    运行面本机不存在（对照降级为 shadcn 语义+vue-ref 源语义,对齐）;gallery
+    avatar 家族零高渲染缺口（先于 534,hover 实验移语料工程完成）。
+    MCP keyboard 不进原始事件流→ESC 须 OS 键盘,均记录 summary.md
+    **[PLAN-534 T11]**
+12. [✅ 已完成] KNOWN-DEBT 登记 P534-D1~D6（delay 不消费/无拖拽手势/vue
+    基线未运行对照/avatar 家族缺口/gallery 导航栈溢出存量/未降级裁定+ESC
+    自动化口径）;gallery README 已知边界注记三员 VM 差异。fold 前裸
+    `cargo tf` 全量:3462/3463,唯一红=charts gallery vue codegen（master
+    复现同红,存量归因）。执行期新触发并已清偿的门禁:schema_drift 双围栏
+    （三员入 aura.at 别名面+sheet-close 块+element_coverage 登记+baseline
+    +98/-18 人工复核）+docs_gen P5（sheet-close 入 sheet 根 sub_widgets）
+    ——全绿 **[PLAN-534 T12]**
 
 ## 复审记录
 
-（待 /auto-plan:review 填写。）
+**复审人**：ZCode（/auto-plan:review 独立复审,2026-09-06）
+**复审基点**：worktree `.wt/lang-534/auto-lang` 分支 `plan-534-dev`（13 commits,
+merge-base 2fc544511;真实 diff 15 文件 +1852/-63,全部在计划声明面内;master
+同期前进部分与本计划无关,已用 merge-base 剥离）。
+
+### 验收逐条复验（verify, don't trust——全部复审自查重跑）
+
+| # | 判据 | 结论 | 证据 |
+|---|---|---|---|
+| G1 | /sheet 四向贴边+scrim+三路关+open 直驱 | ✅ | 复审重跑 layout_tests 32/32（Edge 四臂贴缘坐标/全高全宽/snap 不翻转,iced 层直构命中探测）;corpus 探针 6/6（四向 Edge 映射+初渲染全闭合+计数 7;Flip* 直驱翻转）;实机 sheet 页 trigger 开（state=true,源回显 `onclick: .__dlg_toggle_1`）+OS 级 Esc 关（true→false）;**外点关本次复审补证**:OS 级点击 scrim 上→dismiss→false、面板内点击保持 open（scratch/p534_evidence/drawer_bottom_open_review.png 同工程;首轮 FAIL 系窗口未前台,焦点归位后 PASS） |
+| G2 | /drawer direction 映射+bottom 圆角/把手渲染 | ✅ | 复审实机补证:scratch 临时工程 bottom drawer（铸造形态）trigger 开→截图（全宽贴底+rounded-t+顶部居中把手+scrim,state=true;`drawer_bottom_open_review.png`）;headless 把手首子断言+codegen `rounded-t-lg` chrome 串断言在案 |
+| G3 | /hovercard hover 进出+avatar 原位+非模态 | ✅（avatar 项 partial→债 P534-D4） | hover 进/出实机（语料工程,state `__dlg_open_2` true/false 翻转+截图,卡片悬于锚正下方无 scrim）;on_dismiss=None 探针断言;**avatar 原位渲染 partial**:gallery 页 avatar 触发区零高——先于 534 的 convert_avatar 子件弃置缺口（P534-D4 已登记）,hovercard 特性本体不受影响（锚机制文本触发器全验证+gallery mint 接线树内可见） |
+| G4 | 双轨一致（placement/chrome 同串单测） | ✅ | `test_side_panels_codegen_matches_interpreter_chrome` 复审重跑过（sheet EdgeRight+横条 chrome+`__dlg_close_1` 折算/drawer EdgeBottom+rounded-t+把手/hovercard MouseArea+Bottom+`__dlg_enter_3` 接线+on_dismiss None,全串断言） |
+| G5 | 三页截图对齐 vue 基线+全站扫描零新增异常 | ✅（vue 运行对照 partial→债 P534-D3） | VM 截图 10 张落账 scratch/p534_evidence/;全站扫描 68 页三员+dialog 族全绿 minted=True,9 异常全为存量栈溢出尾部（master 二进制同现,归因非 534）;**vue 运行对照 partial**:本机 gallery 无 vue 运行面（无 node_modules/gen）,对照降级 shadcn 语义+vue-ref 源语义（对齐）,真 vue 对照登记 P534-D3 留补 |
+| G6 | `cargo t iced`+`cargo tv` 全绿;差异文档化 | ✅ | 复审重跑 tf 3462/3463+tv 3603/3604——唯一红=charts gallery vue codegen,**master 同红**（Plan 575 review 记录同口径,存量）;iced 167/168 同因;KNOWN-DEBT P534-D1..D6+gallery README 已知边界注记在案 |
+
+### 遗漏/延后/workaround 猎捕
+
+- diff 全文 TODO/FIXME/HACK/临时 扫描:零残留;
+- 12 步与 diff 逐条对得上,无丢件;执行期两处隐含前置（parser 角色表扩容、
+  Edge 节点全高矩形）已补齐并有测试;
+- 延后两项均非计划内任务缩水,系执行期发现的**预先存在**约束:avatar 家族
+  缺口（D4）、vue 运行面缺失（D3）——均已在 KNOWN-DEBT+待澄清④⑤登记;
+  delay 不消费/无拖拽为计划文既定接受项（待澄清①②,execution 前已写明）;
+- workaround:无。降级路径（hovercard click-toggle）经验证**不需要**。
+
+### 债务候选
+
+KNOWN-DEBT P534-D1..D6 已登记（D3 vue 对照/D4 avatar 为本轮 partial 项;
+D5 gallery 导航栈溢出=master 存量,建议独立归因计划）。
+
+### 路由
+
+**PASS → `status: reviewed`**。六判据全过（G3/G5 各含一项 pre-existing
+partial,按 053 先例以 D 项甄别放行,债已入账）。可进 `/auto-plan:merge`;
+merge 时建议向用户口头复述 D3/D4 两项 partial 的处置意向（补做 or 接受）。
 
 ## 待澄清事项
 
@@ -307,5 +359,14 @@ VM 语料档;**不触 aavm 路径,零 taa 触发**;fold 前裸 `cargo tf` 全量
    按"接受并文档化"执行;若用户要求真延迟,需 VM 轨定时器原语,另立。
 2. drawer **拖拽 snap 手势**（vaul 语义）不做,v1 静态贴边+装饰把手;
    后续手势需求另立计划。
-3. 全站扫描页数口径:pages/ 现为 68 个 .at 文件（原计划写 69）,执行时
-   以实际计数登记。
+3. ✅ 全站扫描页数口径已实证:pages/ 68 个 .at 文件,扫描访问 68 页
+   （scratch/p534_evidence/13_fullsite_scan.md）。
+4. **vue 基线运行对照未做**（执行期发现）:本机 gallery 无 vue 运行面
+   （无 node_modules/gen,需 auto gen+npm install 超执行面）,观感对照降级
+   为 shadcn 语义+vue-ref 源语义（对齐,截图在案）;真 vue 对照登记
+   KNOWN-DEBT P534-D3,留复审裁定是否补。
+5. **hovercard 实机 hover 实验移至语料工程**（执行期发现）:gallery 页
+   触发器内 avatar 家族 VM 渲染零高（先于 534 的存量缺口,KNOWN-DEBT
+   P534-D4）,hit area 不可悬停;语料工程（文本触发器）实机 hover 进/出
+   全通,降级裁定=不降级。另:gallery 连续导航 ~55 页后主线程栈溢出为
+   master 存量（双二进制复现,KNOWN-DEBT P534-D5）。

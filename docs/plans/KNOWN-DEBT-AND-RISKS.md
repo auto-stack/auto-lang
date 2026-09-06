@@ -1259,6 +1259,31 @@
   （gallery 壳层 openSidebar 形态）枚举注入零参变体与派发带参闭包不匹配
   →编译响亮失败（payload 类型无法从 on 块推断,保持显式失败不静默）。
 
+### P534（2026-09-06，Plan 534 VM overlay 家族余量补齐 sheet/drawer/hovercard——执行登记）
+
+- **P534-D1 hovercard open-delay/close-delay v1 不消费**：VM 轨无定时器原语,
+  hover 进出即时开合（plan 待澄清①既定接受）。真延迟需 VM 定时器原语,另立。
+  位置:`parser.rs` hovercard mint 分支+`aura_view_builder.rs` convert_hovercard。
+- **P534-D2 drawer 拖拽 snap 手势不做**：vaul 语义的拖拽/速度 snap 未做,v1
+  静态贴边+装饰把手（纯视觉,无手势;plan 待澄清②既定）。手势需求另立。
+- **P534-D3 vue 基线运行对照未做**：本机 gallery 无 vue 运行面（无
+  node_modules/gen 产物,需 auto gen+npm install 超执行面）,观感对照降级为
+  shadcn 语义描述+vue-ref 手写源语义（全对齐,截图 scratch/p534_evidence/）；
+  真 vue 运行对照留待环境齐备补做（复审注意项）。
+- **P534-D4 gallery avatar 家族 VM 渲染缺口（先于 534 存量）**：
+  `aura_view_builder.rs` convert_avatar 仅渲染裸 avatar 标签（灰圆占位）,
+  avatar-image/avatar-fallback 子件整体弃置→/hovercard 页触发器 hit area
+  零高、/avatar 页观感缺图。hovercard 触发器语义本身不受影响（语料工程
+  文本触发器实机 hover 进/出全通）。avatar 家族补齐另立。
+- **P534-D5 gallery 连续导航栈溢出（master 存量）**：widgets-gallery VM 模式
+  连续 ~55 次页导航后主线程栈溢出崩退（worktree 与 master 二进制 1:1 复现,
+  `attachments/534/app_stderr*.log` 同报 overflowed its stack;直接单页导航
+  正常）——疑视图重建/快照累积深度问题,与本计划无关,归因另立。
+- **P534-D6 hovercard 未降级裁定**：MouseArea×Popover 组合实机验证通过
+  （语料工程 hover 进→开/出→关+截图）,D4 降级路径（click-toggle）未启用;
+  MCP keyboard 不进 iced 原始事件流（P533-D2 同源）,overlay ESC 自动化须
+  OS 级键盘事件——验收脚本 scratch/p534_gallery_verify.py 已沉淀。
+
 ### P543（2026-09-04，知识库同步基线独立复审登记）
 
 - **P543-D1 源码数量缺少 canonical 计数口径**：PLAN-543 文档将核心 Rust 文件写为

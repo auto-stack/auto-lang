@@ -3181,6 +3181,7 @@ element drawer {
 
 element drawer_close {
     tag: "drawer_close"
+    aliases: ["drawer-close", "drawerclose"]
     category: "overlay"
     tier: "web_component"
     backends: { web: "none", iced: "none", gpui: "unknown" }
@@ -3197,7 +3198,7 @@ element drawer_content {
     tag: "drawer_content"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawercontent"]
+    aliases: ["drawercontent", "drawer-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerContent", import: "@/components/ui/drawer" }
     props: [
@@ -3211,7 +3212,7 @@ element drawer_description {
     tag: "drawer_description"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawerdescription"]
+    aliases: ["drawerdescription", "drawer-description"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerDescription", import: "@/components/ui/drawer" }
     props: [
@@ -3226,7 +3227,7 @@ element drawer_footer {
     tag: "drawer_footer"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawerfooter"]
+    aliases: ["drawerfooter", "drawer-footer"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerFooter", import: "@/components/ui/drawer" }
     props: [
@@ -3240,7 +3241,7 @@ element drawer_header {
     tag: "drawer_header"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawerheader"]
+    aliases: ["drawerheader", "drawer-header"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerHeader", import: "@/components/ui/drawer" }
     props: [
@@ -3254,7 +3255,7 @@ element drawer_title {
     tag: "drawer_title"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawertitle"]
+    aliases: ["drawertitle", "drawer-title"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerTitle", import: "@/components/ui/drawer" }
     props: [
@@ -3269,7 +3270,7 @@ element drawer_trigger {
     tag: "drawer_trigger"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawertrigger"]
+    aliases: ["drawertrigger", "drawer-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerTrigger", import: "@/components/ui/drawer" }
     props: [
@@ -3535,7 +3536,7 @@ element hover_card {
     tag: "hover_card"
     category: "overlay"
     tier: "web_component"
-    aliases: ["hovercard"]
+    aliases: ["hovercard", "HoverCard", "hover-card"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "HoverCard", import: "@/components/ui/hover-card" }
     sub_widgets: ["hover_card_content", "hover_card_trigger"]
@@ -3552,7 +3553,7 @@ element hover_card_content {
     tag: "hover_card_content"
     category: "overlay"
     tier: "web_component"
-    aliases: ["hovercardcontent"]
+    aliases: ["hovercardcontent", "hover-card-content", "hovercard-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "HoverCardContent", import: "@/components/ui/hover-card" }
     props: [
@@ -3567,7 +3568,7 @@ element hover_card_trigger {
     tag: "hover_card_trigger"
     category: "overlay"
     tier: "web_component"
-    aliases: ["hovercardtrigger"]
+    aliases: ["hovercardtrigger", "hover-card-trigger", "hovercard-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "HoverCardTrigger", import: "@/components/ui/hover-card" }
     props: [
@@ -4440,7 +4441,7 @@ element sheet {
     aliases: ["Sheet"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Sheet", import: "@/components/ui/sheet" }
-    sub_widgets: ["sheet_content", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger", "sheetdescription"]
+    sub_widgets: ["sheet_content", "sheet-close", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger", "sheetdescription"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4453,7 +4454,7 @@ element sheet_content {
     tag: "sheet_content"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheetcontent"]
+    aliases: ["sheetcontent", "sheet-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetContent", import: "@/components/ui/sheet" }
     props: [
@@ -4468,7 +4469,7 @@ element sheet_footer {
     tag: "sheet_footer"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheetfooter"]
+    aliases: ["sheetfooter", "sheet-footer"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetFooter", import: "@/components/ui/sheet" }
     props: [
@@ -4482,7 +4483,7 @@ element sheet_header {
     tag: "sheet_header"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheetheader"]
+    aliases: ["sheetheader", "sheet-header"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetHeader", import: "@/components/ui/sheet" }
     props: [
@@ -4496,7 +4497,7 @@ element sheet_title {
     tag: "sheet_title"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheettitle"]
+    aliases: ["sheettitle", "sheet-title"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetTitle", import: "@/components/ui/sheet" }
     props: [
@@ -4511,7 +4512,7 @@ element sheet_trigger {
     tag: "sheet_trigger"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheettrigger"]
+    aliases: ["sheettrigger", "sheet-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetTrigger", import: "@/components/ui/sheet" }
     props: [
@@ -4522,8 +4523,24 @@ element sheet_trigger {
     description: "Sheet trigger"
 }
 
+element sheet-close {
+    tag: "sheet-close"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["sheet_close", "sheetclose"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Close button text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet close button"
+}
+
 element sheetdescription {
     tag: "sheetdescription"
+    aliases: ["sheet-description", "sheet_description"]
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }

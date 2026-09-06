@@ -343,6 +343,7 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("sheet_header", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("sheet_title", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("sheet_trigger", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
+        ("sheet-close", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("sheetdescription", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("sidebar", QueueStatus::NotYet("Plan 561：aura/iced 契约子集已落地（结构等价）——queue 臂不消费，同 nav-item 先例")),
         ("sidebar_content", QueueStatus::NotYet("Plan 561：aura/iced 契约子集已落地（结构等价）——queue 臂不消费，同 nav-item 先例")),

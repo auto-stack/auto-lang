@@ -727,3 +727,161 @@ fn p536_t8_child_widget_root_alert_dialog_resolves_open() {
     );
 }
 }
+
+/// PLAN-534 集成探针：sheet/drawer/hovercard 语料
+/// （test/ui/plan534_side_panels/）三组断言——side/direction → Edge
+/// placement 解析、open 直驱 + 铸造 toggle、hover enter/leave 状态翻转。
+#[cfg(test)]
+mod plan534_side_panel_probe_tests {
+    use crate::ui::view::{PopoverPlacement, View};
+
+    fn locate_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan534_side_panels/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(format!("../../{}", rel))),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    fn build() -> crate::ui::dynamic::DynamicComponent {
+        let corpus = match locate_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("plan534: SKIPPED — corpus not found");
+                unreachable!();
+            }
+        };
+        crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan534_side_panels component")
+    }
+
+    fn collect_popovers(
+        view: &View<crate::ui::interpreter::DynamicMessage>,
+        out: &mut Vec<(PopoverPlacement, bool)>,
+    ) {
+        if let View::Popover { placement, open, .. } = view {
+            out.push((*placement, *open));
+        }
+        match view {
+            View::Row { children, .. } | View::Column { children, .. } => {
+                for c in children {
+                    collect_popovers(c, out);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                collect_popovers(child, out)
+            }
+            View::Overlay { base, content, .. } => {
+                collect_popovers(base, out);
+                collect_popovers(content, out);
+            }
+            View::Button { content: Some(c), .. } => collect_popovers(c, out),
+            View::MouseArea { content: c, .. } => collect_popovers(c, out),
+            _ => {}
+        }
+    }
+
+    /// side/direction prop → Edge placement 解析（四向 sheet + 两向 drawer
+    /// + hovercard Bottom）,初渲染全闭合。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn plan534_side_props_resolve_to_edge_placements() {
+        let dc = build();
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        let mut pops = Vec::new();
+        collect_popovers(&view, &mut pops);
+        let has = |p: PopoverPlacement| pops.iter().any(|(q, _)| *q == p);
+        assert!(has(PopoverPlacement::EdgeRight), "sheet right + drawer right → EdgeRight: {pops:?}");
+        assert!(has(PopoverPlacement::EdgeLeft), "sheet left → EdgeLeft: {pops:?}");
+        assert!(has(PopoverPlacement::EdgeTop), "sheet top → EdgeTop: {pops:?}");
+        assert!(has(PopoverPlacement::EdgeBottom), "sheet/drawer bottom → EdgeBottom: {pops:?}");
+        assert!(has(PopoverPlacement::Bottom), "hovercard → Bottom: {pops:?}");
+        assert!(pops.iter().all(|(_, open)| !open), "初渲染全闭合: {pops:?}");
+        assert_eq!(pops.len(), 7, "四向 sheet + 两向 drawer + hovercard: {pops:?}");
+    }
+
+    /// open 直驱（Flip* handler 翻转显式绑定）+ 铸造 toggle（drawer right
+    /// 无显式 open → __dlg_open_1/__dlg_toggle_1）。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn plan534_open_bindings_and_minted_toggle_drive_panels() {
+        let mut dc = build();
+        dc.on_with_input_for("App", "FlipRight", None);
+        dc.on_with_input_for("App", "FlipTop", None);
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        let mut pops = Vec::new();
+        collect_popovers(&view, &mut pops);
+        assert!(
+            pops.contains(&(PopoverPlacement::EdgeRight, true)),
+            "FlipRight 后 EdgeRight 面板开启: {pops:?}"
+        );
+        assert!(
+            pops.contains(&(PopoverPlacement::EdgeTop, true)),
+            "FlipTop 后 EdgeTop 面板开启: {pops:?}"
+        );
+        // 铸造 toggle：drawer（right）无显式 open → parser 铸 __dlg_open_1。
+        assert_eq!(
+            dc.read_state("__dlg_open_1"),
+            Ok(auto_val::Value::Bool(false)),
+            "铸造 state 初值 false"
+        );
+        dc.on_with_input_for("App", "__dlg_toggle_1", None);
+        assert_eq!(
+            dc.read_state("__dlg_open_1"),
+            Ok(auto_val::Value::Bool(true)),
+            "铸造 toggle 翻转 true"
+        );
+        let (view2, _, _) = dc.view_with_debug_gated(false);
+        let mut pops2 = Vec::new();
+        collect_popovers(&view2, &mut pops2);
+        assert!(
+            pops2.iter().filter(|(p, open)| *p == PopoverPlacement::EdgeRight && *open).count() >= 2,
+            "显式 right + 铸造 right 两面板均开: {pops2:?}"
+        );
+    }
+
+    /// hovercard 铸造 hover 进/出：__dlg_enter_2 置 true / __dlg_leave_2
+    /// 置 false（即时开合,渲染树 Bottom 面板同步开合）。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn plan534_hover_enter_leave_flips_minted_open() {
+        let mut dc = build();
+        assert_eq!(
+            dc.read_state("__dlg_open_2"),
+            Ok(auto_val::Value::Bool(false)),
+            "hovercard 铸造 state 初值 false（drawer right 先占 __dlg_open_1）"
+        );
+        dc.on_with_input_for("App", "__dlg_enter_2", None);
+        assert_eq!(
+            dc.read_state("__dlg_open_2"),
+            Ok(auto_val::Value::Bool(true)),
+            "enter → true"
+        );
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        let mut pops = Vec::new();
+        collect_popovers(&view, &mut pops);
+        assert!(
+            pops.contains(&(PopoverPlacement::Bottom, true)),
+            "enter 后 Bottom 面板开启: {pops:?}"
+        );
+        dc.on_with_input_for("App", "__dlg_leave_2", None);
+        assert_eq!(
+            dc.read_state("__dlg_open_2"),
+            Ok(auto_val::Value::Bool(false)),
+            "leave → false"
+        );
+        let (view2, _, _) = dc.view_with_debug_gated(false);
+        let mut pops2 = Vec::new();
+        collect_popovers(&view2, &mut pops2);
+        assert!(
+            !pops2.iter().any(|(p, open)| *p == PopoverPlacement::Bottom && *open),
+            "leave 后 Bottom 面板关闭: {pops2:?}"
+        );
+    }
+}
