@@ -1562,3 +1562,13 @@ release/rust 生成轨(031 merged exe)的键盘 bind 块完全不生效——MCP
 DesktopMessage 与 WrapperMsg<C> 不兼容,需泛型版)。VM 轨正常(bind 表
 由 run_dynamic 填)。绕法(本批已落):031 工具栏 ◀/▶ 无参按钮(MCP
 press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划。
+
+**P573-D1｜ui-gallery registry 数据源 Vue-only（VM 端列表空,低）**
+`examples/ui-gallery/src/front/app.at:4` 的 demo 数据源
+（`filterDemosBy`/`getDemoTitle`/`getDemoDesc` 等 8 件）全部是 TS extern fn
+（`src/front/utils/demos.ts`），VM/iced 端无从执行——`filteredDemos` 恒空，
+侧栏列表与右栏标题/描述在 VM 上为空（Plan 573 T3 实证，master 基线同败，
+对照证据 `scratch/p573/master-baseline/`）。549 落地时即如此的预存限制，
+非 573 迁移回归。修复方向（另立小计划）：registry 元数据迁回 .at 静态表
+（或 VM 侧 extern fn 桥），迁回后 573 待澄清事项②的 menu_button for 内
+active/onclick VM 实证随之可补。
