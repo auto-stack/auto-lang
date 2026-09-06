@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-572
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: aavr-trans-superlinear
 author: [zhaopuming]
 created_at: 2026-09-06
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]      # 自举(P532 步骤 9 的 exe² 代际对拍依赖本修复)
 
 affects: [aavm]                # auto/lib/a2r.at 为主;消费面 ⑤腿 harness
-current_step: 0
+current_step: 4
 total_steps: 5
 ---
 
@@ -148,16 +148,46 @@ scratch 阶梯脚本  →   27 方法群逐一减一    →   定位点修复
 （原子任务;调查在 master 纯探针可做,修复 in worktree
 `D:/autostack/.wt/lang-572/auto-lang`;折叠点(T4 后)矩阵+CI 绿后合入）
 
-1. [ ] T1 复现器固化:scratch 阶梯脚本(N=1..28 矩阵+计时)入库
+1. [✅ 已完成] T1 复现器固化:scratch 阶梯脚本(N=1..28 矩阵+计时)入库
    `scratch/p572/`;codegen.at/拼合源两形态基准耗时留档。
-2. [ ] T2 最小触发集二分:27 方法群逐一减一,锁定最小引爆组合;
+   ——证据:`scratch/p572/ladder.py`+`baseline_predoc.txt`(commit 237d8443b);
+   N=1..27 全绿 0.01-0.13s 平滑、N=28(emit_store)90s 超时红、
+   codegen.at(176KB)/拼合源(504KB)均 90s 超时红——悬崖复现与 P532 实测一致。
+2. [✅ 已完成] T2 最小触发集二分:27 方法群逐一减一,锁定最小引爆组合;
    token 形态归因(调用图/字段写/方法名);根因单点指认留档。
-3. [ ] T3 根修:定位点修复(in worktree);红(超时)→绿(<60s);
+   ——证据:scratch/p572/t2_findings.md(commit bf34d4873)。最小引爆集
+   ={emit, emit_store} 二方法;触发面=A(mutates=1,任意 self 写)+
+   B(自身零写)调用 self.A(B 自带 self 写即 OK——g 变体);根因=
+   **a2r.at L1084 ar_fixpoint_mutates 链式写回落值拷贝临时**(D25 范式
+   违例,同坑 ar_prescan_ext L1288 注释在案,全文件唯一)→ mutates 位
+   永不持久 → `while grew` 死循环(实为无限循环,非有限超线性)。
+3. [✅ 已完成] T3 根修:定位点修复(in worktree);红(超时)→绿(<60s);
    小源 golden 产物不变锚。
-4. [ ] T4 闸门回归:⑤腿 58/58+use_corpus+goldens+`cargo taa
+   ——证据:commit 237839ffe(a2r.at L1082-1090 显式写回)。红→绿:
+   N=28 阶梯 90s 超时→**0.15s**;codegen.at 176KB→**7.38s**(<10s 量级
+   达标);拼合源 504KB→**61.29s**(P532 实测 3h+ 被杀,验收"小时内"✓)。
+   golden 锚:旧 exe¹(106d6ff)vs 新 exe¹(ce20d8ee)corpus_a2r
+   18/18 + corpus_m4 58/58 `--trans` 输出逐字节一致(corpus_use 多文件
+   形态归 T4 测试档覆盖)。
+4. [✅ 已完成] T4 闸门回归:⑤腿 58/58+use_corpus+goldens+`cargo taa
    aavm2_a2r aavm_at_mode`;折叠点合入。
-5. [ ] T5 P532 步骤 9 解锁:exe¹ --trans 拼合源完成→exe² 构建→
+   ——证据:scratch/p572/t4_gate.md(commit 40fd69a5d)。⑤腿
+   compile_corpus 58/58 ✓;compile_use_corpus ✓;aavm2_a2r 2/2
+   (goldens_check+main_dump;is_corpus 预存红剔除此时尚未判明,后由
+   全量对拍覆盖);golden 76/76 逐字节。裸 taa 基点(f2ae1cb29)vs
+   修复态:失败集 13/13 **逐名一致**(12 Windows 栈溢出环境族+
+   charts_gallery 预存)——零回归;tf 两态 3460/3461 逐同款。
+   折叠:master 8a21073c4(merge --no-ff),worktree 已回灌。
+5. [▶ 阻塞登记 2026-09-06] T5 P532 步骤 9 解锁:exe¹ --trans 拼合源完成→exe² 构建→
    二代对拍执行(结果回 P532 步骤 9 记录;判定收口归 P532)。
+   ——已完成:拼合源转译 **61.29s**(470KB→514979B,修复版 exe¹);
+   一代判定表 **8/8 PASS**;管道推进至 exe² 段(此前不可达);结果已
+   回写 P532 步骤 9 记录。证据:scratch/p572/gen2/t5_unlock.md
+   (branch plan-572-dev@d17f3623d;主检出折叠遇 573 会话在途簿记,
+   T5 资产由终态 fold 补入)。
+   ——阻塞:exe² cargo build 5 错(2 AA2R 发射缺口 E0308/E0382+3 gen2
+   harness 项 IO×2/双 main);非 572 回归(新旧 exe¹ 7 lib 单文件+
+   aavm.at 逐字节一致)。二代对拍待 5 缺陷清偿→处置见待澄清③。
 
 ## 复审记录
 
@@ -166,3 +196,22 @@ scratch 阶梯脚本  →   27 方法群逐一减一    →   定位点修复
 1. **量级口径**(T5):拼合源转译"有限时间"的可接受上限(分钟/
    小时级)——影响是否需要额外性能优化(非本计划范围,超线性质
    级改善后按实测裁定)。
+   ——〔2026-09-06 实测回填:61.29s,分钟级,远优于"小时内"判据;
+   额外性能优化不触发。本条可结。〕
+2. **Windows 栈溢出环境族**(T4 发现,基点即红,非 572 回归):裸
+   `cargo taa` 12 测试 STATUS_STACK_OVERFLOW(001_smoke/m1/m2/m3/
+   m4/m5 语料族+p532_lib_static_diff)——nextest 与 libtest 双路径、
+   主检出/基点/修复态三处同签名;[env] RUST_MIN_STACK=16MB 只抬
+   libtest 线程栈,nextest 进程主线程不受控;CI(Linux)守护。
+   另 `test_charts_gallery_compiles`(tf 唯一红,564-Q6 邻接族)。
+   两态失败集 13/13 逐一致(scratch/p572/t4_gate.md)。处置:需
+   维护者归因(环境栈上限 vs 语料增长),复审时登 KNOWN-DEBT。
+3. **exe² 5 缺陷处置归属**(T5 阻塞,2026-09-06 登记):拼合源转译
+   首次可达后 exe² 构建露 5 错——2 个 AA2R 发射缺口(E0308 实参
+   &str 强转缺@ev_run_files(argv[1])、E0382 mc clone 注入缺@
+   engine.at 切片)+3 个 gen2 harness 项(prelude `mod IO` 与
+   `IO.read_line()` 点号发射形态×2、aavm.at main 与 harness 追加
+   main 重复)。**裁定:本计划续修(增补 T5b)还是回 P532 步骤 9
+   自收?**(P532 计划原文"判定收口归 P532"倾向后者;但 2 个
+   AA2R 发射缺口与 572 根修同域,续修成本低。)见
+   scratch/p572/gen2/t5_unlock.md。
