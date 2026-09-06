@@ -41,6 +41,9 @@ pub mod gpui_adapter;
 /// compile — iced_adapter re-exports it).
 pub mod theme;
 
+/// PLAN-571: button variant/size preset 单一事实源（default 一等化）。
+pub mod variants;
+
 #[cfg(feature = "ui-gpui")]
 pub use gpui_adapter::GpuiStyle; // Re-export for backend adapters
 

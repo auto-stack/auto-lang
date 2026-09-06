@@ -1222,7 +1222,9 @@ fn generate_index_css() -> String {
     --primary: 239 84% 67%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
+    /* PLAN-571: secondary 与 muted 分档（≠--muted 210 40% 96.1%）——暖灰一档深 #e3ddd1，
+       与 theme.rs / ui_gen 互锁（40 24% 85.5% ≈ #e3ddd1）。 */
+    --secondary: 40 24% 85.5%;
     --secondary-foreground: 222.2 47.4% 11.2%;
 
     --muted: 210 40% 96.1%;
@@ -1263,7 +1265,8 @@ fn generate_index_css() -> String {
     --primary: 239 84% 77%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
-    --secondary: 217.2 32.6% 17.5%;
+    /* PLAN-571: secondary 分档——slate-700 #334155（--muted 保持 217.2 32.6% 17.5%）。 */
+    --secondary: 215 25% 27%;
     --secondary-foreground: 210 40% 98%;
 
     --muted: 217.2 32.6% 15%;
@@ -7152,3 +7155,32 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
     assert!(normal_pkg.contains(r#""build": "vue-tsc && vite build""#), "normal app uses vue-tsc:\n{normal_pkg}");
 }
 
+
+// ── PLAN-571 T10: css 变量层 --secondary 分档互锁（防"第四源"回潮）────
+#[cfg(test)]
+mod plan571_css_secondary_interlock_tests {
+    /// 生成的 index.css 必须携带分档后的 --secondary（light 40 24% 85.5% /
+    /// dark 215 25% 27%），且不得再现 light 下与 --muted 同值的旧写法。
+    /// 与 theme.rs / ui_gen::vue / 烘焙资产四方互锁——改任一处须全链同步。
+    #[test]
+    fn index_css_secondary_is_differentiated_from_muted() {
+        let css = super::generate_index_css();
+        assert!(
+            css.contains("--secondary: 40 24% 85.5%"),
+            "light --secondary 应为 40 24% 85.5% (#e3ddd1 暖灰一档深)"
+        );
+        assert!(
+            css.contains("--secondary: 215 25% 27%"),
+            "dark --secondary 应为 215 25% 27% (#334155 slate-700)"
+        );
+        for line in css.lines() {
+            if line.trim_start().starts_with("--secondary:") {
+                assert!(
+                    !line.contains("210 40% 96.1%") && !line.contains("217.2 32.6% 17.5%"),
+                    "--secondary 不得回退为与 --muted 同值的旧写法: {}",
+                    line.trim()
+                );
+            }
+        }
+    }
+}

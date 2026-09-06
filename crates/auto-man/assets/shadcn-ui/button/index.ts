@@ -8,9 +8,13 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        // PLAN-571: default = UA-stylesheet equivalent baseline (neutral muted
+        // fill + hairline border). Interlocked with Rust ui/style/variants.rs
+        // button_variant_preset("default") and ui_gen/vue.rs cva — keep in sync.
+        default: "bg-muted border border-border text-foreground hover:bg-muted/70",
+        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+        submit: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
           "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary:

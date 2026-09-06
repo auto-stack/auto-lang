@@ -2042,6 +2042,10 @@ impl RustGenerator {
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
+                // PLAN-571: button 注入 variant/size preset（单源 ui::style::variants，
+                // 与 VM 臂同表）；preset 前置、user class 后置（后类胜，与 VM 臂同语义）。
+                let props = self.with_button_preset(tag, props);
+                let props: &std::collections::HashMap<String, AuraPropValue> = props.as_ref();
                 // Handle custom widget references (e.g., EditorPanel, Sidebar)
                 if self.is_custom_widget(tag) {
                     return self.generate_child_component(tag, props);
@@ -3474,6 +3478,75 @@ impl RustGenerator {
     /// PLAN-533 T3: cancel/action/close 子件 → 按钮。variant 预设与解释器
     /// convert_button 同表（outline/primary + h-10 px-4 尺寸档）;onclick 走
     /// 既有消息派发形态（Msg::Variant 闭包），缺省 no-op 防恐慌。
+    /// PLAN-571: button 的 variant/size preset 注入。单源 = ui::style::variants
+    /// （VM 解释器臂共用）；user class 为字面量时前置合并，动态表达式无法静态
+    /// 合并则不注入（与本臂此前行为一致，无回归）。非 button 原样返回。
+    /// `ui` feature 关闭时无 preset 表可依，由文件尾部恒等孪生接管（调用点无条件编译）。
+    #[cfg(feature = "ui")]
+    fn with_button_preset<'a>(
+        &self,
+        tag: &str,
+        props: &'a std::collections::HashMap<String, AuraPropValue>,
+    ) -> std::borrow::Cow<'a, std::collections::HashMap<String, AuraPropValue>> {
+        if tag != "button" {
+            return std::borrow::Cow::Borrowed(props);
+        }
+        fn prop_str(v: Option<&AuraPropValue>) -> Option<&str> {
+            match v {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s),
+                _ => None,
+            }
+        }
+        let variant = prop_str(props.get("variant")).unwrap_or_default();
+        let size = prop_str(props.get("size")).unwrap_or_default();
+        let mut preset = crate::ui::style::variants::button_variant_preset(variant).to_string();
+        // Plan 414 R13: variant=icon 自带方形尺寸；缺省 size preset 会覆盖它并把
+        // svg 内容区挤没 —— 未显式给 size 时置空。
+        let size_preset = if variant == "icon" && size.is_empty() {
+            String::new()
+        } else {
+            crate::ui::style::variants::button_size_preset(size).to_string()
+        };
+        if !size_preset.is_empty() {
+            preset.push(' ');
+            preset.push_str(&size_preset);
+        }
+        if preset.is_empty() {
+            return std::borrow::Cow::Borrowed(props);
+        }
+        // 动态 class/style（非字面量）：无法静态合并，保持现状不注入。
+        let literal_class = |v: Option<&AuraPropValue>| -> Option<String> {
+            match v {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s.to_string()),
+                _ => None,
+            }
+        };
+        if props.get("style").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
+            || props.get("class").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
+        {
+            return std::borrow::Cow::Borrowed(props);
+        }
+        let mut merged = props.clone();
+        let key = if merged.contains_key("style") { "style" } else { "class" };
+        let user = literal_class(merged.get(key)).unwrap_or_default();
+        let combined = if user.trim().is_empty() { preset } else { format!("{} {}", preset, user) };
+        merged.insert(
+            key.to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str(auto_val::AutoStr::from(combined))),
+        );
+        std::borrow::Cow::Owned(merged)
+    }
+
+    /// `ui` feature 关闭时的恒等孪生（保持调用点无条件编译）。
+    #[cfg(not(feature = "ui"))]
+    fn with_button_preset<'a>(
+        &self,
+        _tag: &str,
+        props: &'a std::collections::HashMap<String, AuraPropValue>,
+    ) -> std::borrow::Cow<'a, std::collections::HashMap<String, AuraPropValue>> {
+        std::borrow::Cow::Borrowed(props)
+    }
+
     fn generate_modal_button(
         &mut self,
         props: &std::collections::HashMap<String, AuraPropValue>,
@@ -7291,6 +7364,105 @@ fn main() {{}}
         assert!(
             code.contains("    SetTag(String),\n"),
             "single-param SetTag stays one field, got:\n{}",
+            code
+        );
+    }
+}
+
+// ── PLAN-571: codegen 臂 button preset 注入（产物级断言）────────────
+// preset 注入本体 cfg(feature="ui")（见 with_button_preset）；tf 档不带 ui-iced
+// （Plan 507），断言随门关闭——日常档 cargo t（带 ui-iced）承接。
+#[cfg(all(test, feature = "ui"))]
+mod plan571_button_preset_codegen_tests {
+    use super::*;
+
+    fn gen_button_view(widget_src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(widget_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut codes = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                let widget = crate::aura::extract::extract_widget_from_decl(decl)
+                    .unwrap_or_else(|e| panic!("extract: {e:?}"));
+                let mut gen = RustGenerator::new();
+                codes.push(gen.generate(&widget).expect("generate"));
+            }
+        }
+        codes.join("\n")
+    }
+
+    #[test]
+    fn plain_button_gets_default_neutral_preset() {
+        let src = r#"
+widget Demo {
+    msg { Tap }
+    view {
+        col {
+            button "Save" { onclick: .Tap }
+        }
+    }
+}
+"#;
+        let code = gen_button_view(src);
+        assert!(
+            code.contains("bg-muted border border-border"),
+            "缺省 button 注入 UA 等价中性 preset:\n{}",
+            code
+        );
+        assert!(
+            code.contains("h-10 px-4"),
+            "缺省 size preset 前置:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("bg-primary"),
+            "缺省 button 不得再落主题色填充:\n{}",
+            code
+        );
+    }
+
+    #[test]
+    fn user_class_stays_after_preset() {
+        let src = r#"
+widget Demo {
+    msg { Tap }
+    view {
+        col {
+            button "Save" { onclick: .Tap, style: "px-2.5 py-1.5 text-xs" }
+        }
+    }
+}
+"#;
+        let code = gen_button_view(src);
+        assert!(
+            code.contains("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 px-2.5 py-1.5 text-xs"),
+            "preset 前置 + user class 后置（后类胜）:\n{}",
+            code
+        );
+    }
+
+    #[test]
+    fn explicit_primary_variant_keeps_accent_fill() {
+        let src = r#"
+widget Demo {
+    msg { Tap }
+    view {
+        col {
+            button "Save" { onclick: .Tap, variant: "primary" }
+        }
+    }
+}
+"#;
+        let code = gen_button_view(src);
+        assert!(
+            code.contains("bg-primary text-primary-foreground"),
+            "variant=primary 保持主题色填充:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("bg-muted border"),
+            "primary 不带中性基线:\n{}",
             code
         );
     }
