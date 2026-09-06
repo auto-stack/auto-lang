@@ -23,6 +23,15 @@ pub struct CorpusCase {
     pub code: String,
 }
 
+/// .at 字符串字面量中的路径转义（复审补丁）：.at lexer 对已识别转义序列
+/// （\n \t \r \0 \\ \"）做变换、未知序列原样透传——Windows 路径含
+/// `\t`/`\n` 等段首（如 TEMP=C:\tmp、用户名 tom）时未转义路径会被改写、
+/// File.read_text 读错文件。反斜杠全量双写即可令所有 `\x` 序列惰性化
+/// （同 aavm2_m4 use 腿 escape_for_at_literal(main_path) 先例）。
+fn escape_at_path(s: &str) -> String {
+    s.replace('\\', "\\\\")
+}
+
 /// 单闸门语料批跑：编译一次，逐语料换注入文件重跑 main。
 ///
 /// * `gate` —— 闸门标识（临时文件名去重 + 日志前缀，如 "m1"/"m2"）。
@@ -46,7 +55,7 @@ pub fn run_corpus_once_compiled(
         "{}\nfn main() {{\n    print({}(File.read_text(\"{}\")))\n}}\n",
         lib_code,
         dump_fn,
-        tmp.display()
+        escape_at_path(&tmp.display().to_string())
     );
 
     let cases = cases.to_vec();
