@@ -165,3 +165,29 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 }
+
+// ── PLAN-571: 烘焙资产 button cva 与 Rust 侧 variants.rs 互锁锚 ─────
+#[cfg(test)]
+mod plan571_button_asset_interlock_tests {
+    /// 烘焙快照 button/index.ts 的 cva 与 ui::style::variants 单源表一致性：
+    /// default = UA 等价中性基线（muted 填充+发丝描边）；primary/submit 键在册
+    /// （主题色填充）。改任一侧须同步（ui_gen/vue.rs 同款互锁测试）。
+    #[test]
+    fn button_asset_cva_matches_plan571_variant_table() {
+        let ts = crate::vue_shadcn::ShadcnUiAssets::get("button/index.ts")
+            .expect("button/index.ts 在烘焙包内")
+            .data;
+        let ts = std::str::from_utf8(&ts).expect("utf8");
+        for (key, needle) in [
+            ("default", "bg-muted border border-border text-foreground hover:bg-muted/70"),
+            ("primary", "bg-primary text-primary-foreground hover:bg-primary/90"),
+            ("submit", "bg-primary text-primary-foreground hover:bg-primary/90"),
+        ] {
+            let line = ts
+                .lines()
+                .find(|l| l.trim_start().starts_with(&format!("{}:", key)))
+                .unwrap_or_else(|| panic!("cva 缺 {} 键", key));
+            assert!(line.contains(needle), "cva[{}] = {} 缺 {:?}", key, line.trim(), needle);
+        }
+    }
+}
