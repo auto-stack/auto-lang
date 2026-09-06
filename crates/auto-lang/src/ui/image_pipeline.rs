@@ -1582,7 +1582,9 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(root.join("manifest.json")).unwrap())
                 .unwrap();
         let fixtures = manifest["fixtures"].as_array().unwrap();
-        assert_eq!(fixtures.len(), 6);
+        // Plan 547 渲染修复批次:+scenic-320x240.png(可辨识风景图,
+        // Open File 默认;肉眼可辨"真图上屏",纯函数生成无版权负担)。
+        assert_eq!(fixtures.len(), 7);
         for fixture in fixtures {
             let name = fixture["file"].as_str().unwrap();
             let bytes = std::fs::read(root.join(name)).unwrap();
