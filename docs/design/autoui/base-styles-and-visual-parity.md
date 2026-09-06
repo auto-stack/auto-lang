@@ -24,6 +24,8 @@ Modern application design systems (Tailwind CSS, Shadcn UI, Apple HIG, Material 
 
 To achieve **Visual Parity** across all targets, AutoUI establishes a standard typography and base element scale. All backends (Vue, VM, Rust, Jet, Ark) adhere to this unified specification.
 
+**PLAN-571 (2026-09-06): The `default` variant is the UA-stylesheet equivalent.** Traditional web does not need an explicit "default" skin because the browser UA stylesheet pre-fills bare `<button>` elements (neutral fill + border + radius). The VM/Iced target has no such layer — so AutoUI defines the `default` button variant explicitly, and every backend applies the same preset from a single source (`crates/auto-lang/src/ui/style/variants.rs`; the Vue-side `variants.ts` cva is text-locked to it by interlock tests). `primary` is the *explicit* accent-filled CTA variant — an unspecified button is never primary-filled.
+
 ---
 
 ## 2. Typography Scale Specification (h1 ~ h6)
@@ -48,8 +50,9 @@ When no custom `style` or `class` is specified in AutoUI source files, form elem
 | :--- | :--- | :--- |
 | **`input`** | `border border-input bg-background rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground` | Border: 1px `resolve_border_rgb()`; Radius: 6px; Bg: `Color::Background`; Text: `Color::OnBackground`; Placeholder: `Color::OnSurface`; Padding: 12px H, 8px V |
 | **`textarea`** | `border border-input bg-background rounded-md px-3 py-2 text-sm text-foreground min-h-[80px]` | Border: 1px `resolve_border_rgb()`; Radius: 6px; Bg: `Color::Background`; Text: `Color::OnBackground`; Min-Height: 80px |
-| **`button` (default/primary)** | `bg-primary text-primary-foreground font-medium rounded-md h-10 px-4 text-sm` | Bg: `Color::Primary` (accent-driven); Text: `Color::OnPrimary`; Radius: 6px; Height: 40px; Padding: 16px H |
-| **`button` (secondary)** | `bg-secondary text-secondary-foreground font-medium rounded-md h-10 px-4 text-sm` | Bg: `Color::Secondary`; Text: `Color::OnSecondary`; Radius: 6px; Height: 40px |
+| **`button` (default, unspecified)** | `bg-muted border border-border text-foreground font-medium rounded-md h-10 px-4 text-sm hover:bg-muted/70` | **UA-stylesheet equivalent baseline** (PLAN-571); Bg: `Color::Muted`; Border: 1px `Color::Border` (hairline — keeps the button legible on any surface, incl. dark low-contrast ones); Text: `Color::OnBackground`; Radius: 6px; Height: 40px |
+| **`button` (primary / submit)** | `bg-primary text-primary-foreground font-medium rounded-md h-10 px-4 text-sm hover:bg-primary/90` | Explicit accent CTA; Bg: `Color::Primary` (accent-driven); Text: `Color::OnPrimary`; Radius: 6px; Height: 40px; Padding: 16px H |
+| **`button` (secondary)** | `bg-secondary text-secondary-foreground font-medium rounded-md h-10 px-4 text-sm hover:bg-secondary/80` | One step *stronger* muted fill, **no border** ("bordered" is outline's signature); Bg: `Color::Secondary` (PLAN-571: differentiated from Muted — dark slate-700 `#334155`, light warm-gray `#e3ddd1`); Text: `Color::OnSecondary`; Radius: 6px; Height: 40px |
 | **`button` (destructive)** | `bg-destructive text-destructive-foreground font-medium rounded-md h-10 px-4 text-sm` | Bg: `Color::Error` (red-600); Text: White; Radius: 6px; Height: 40px |
 | **`button` (outline)** | `border border-input bg-background text-foreground rounded-md h-10 px-4 text-sm` | Border: 1px `resolve_border_rgb()`; Bg: `Color::Background`; Radius: 6px; Height: 40px |
 | **`button` (ghost)** | `rounded-md h-10 px-4 text-sm hover:bg-accent` | Transparent bg; Radius: 6px; Height: 40px |
