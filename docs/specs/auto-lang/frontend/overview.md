@@ -6,8 +6,10 @@
 
 源码 → AST：词法分析（含 f-string 插值 `$var`/`${expr}`）、递归下降语法分析、
 方言（dialect）场景化关键字派发、`use` 语句快速扫描与模块路径解析。
-产出 `Code`/`Stmt`/`Expr` 树，供求值器、AutoVM、C/Rust 转译器四类后端消费
-（docs/design/01 §Compilation Pipeline）。
+产出 `Code`/`Stmt`/`Expr` 树，供 AutoVM、trans 多目标转译（C/Rust/TypeScript/
+Python/JavaScript/GDScript 等）与 aura/a2ui UI 管线消费——旧 TreeWalker 求值器
+不是消费方（Plan 091 起 `ExecutionEngine::Evaluator` 仅重定向 AutoVM，
+execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 
 ## 现状
 
@@ -19,8 +21,9 @@
 - `use` 体系两层：预处理用 `scan_use_statements`（字符串级，免解析）；
   解析后用 `ModulePath`（`pac`/`super` 前缀）+ `ModuleResolver`/`FilesystemResolver` 落盘。
 - AST 序列化三件套 `ToNode`/`ToAtom`/`AtomWriter` 覆盖全部 AST 类型（S 表达式文本）。
-- `.as` / `.to` 点属性已在 parser 实现（`Expr::Cast`/`Expr::To`，parser.rs:1979/2257），
-  早于 docs/design/10 的"未实现"描述（见分歧记录）。
+- `.as` / `.to` 点属性已在 parser 实现（`Expr::Cast`/`Expr::To`；复现：
+  `rg -n "Expr::Cast|Expr::To" crates/auto-lang/src/parser.rs`，2026-09-07 快照命中
+  2714/3027/3037 行），早于 docs/design/10 的"未实现"描述（见分歧记录）。
 - null 术语统一与生产者门控（plan-550，脚本模式 W0）：`nil` 拼写退役为
   `null` 的 deprecated 别名（literal/atom 双臂发 W0005 DeprecatedFeature，
   语义不变——运行期同落 PUSH_NIL/encode_null；CLI 直跑路径在
@@ -60,7 +63,8 @@
 - `crates/auto-lang/src/dialect.rs:Dialect`、`dialect/ui.rs:UiDialect`
 - `crates/auto-lang/src/use_scanner.rs:scan_use_statements`、`use_scanner.rs:UseStatement`
 - `crates/auto-lang/src/resolver.rs:ModuleResolver`、`resolver.rs:FilesystemResolver`
-- 一键入口：`crates/auto-lang/src/lib.rs:parse`（`parse(code) -> AutoResult<Code>`，lib.rs:2114）
+- 一键入口：`crates/auto-lang/src/lib.rs:parse`（`parse(code) -> AutoResult<Code>`；
+  复现：`rg -n "pub fn parse\(" crates/auto-lang/src/lib.rs`，2026-09-07 快照 2490 行）
 
 ## 使用示例
 
@@ -78,8 +82,10 @@ let path = resolver.resolve_with_prefix(&module_path, current_file)?;
 
 ## 已知坑
 
-- `parser.rs` 超 13k 行，语句/表达式/类型解析高度集中，改动需跑全量测试。
-- 方言派发用 `mem::take` 移出方言表规避自引用借用（parser.rs:434 注释），新增方言照此模式。
+- `parser.rs` 超 20k 行（`wc -l crates/auto-lang/src/parser.rs` = 20562，2026-09-07 快照），
+  语句/表达式/类型解析高度集中，改动需跑全量测试。
+- 方言派发用 `mem::take` 移出方言表规避自引用借用（复现：`rg -n "mem::take" crates/auto-lang/src/parser.rs`，
+  2026-09-07 快照 611-634 行），新增方言照此模式。
 - `view` 在 Core 语言是参数模式关键字、在 UI 场景是语句关键字——同一 TokenKind 两义，
   由 `try_parse_token_stmt` 按 session 场景分派。
 - `scan_use_statements` 是字符串匹配：字符串字面量内的 "use xxx" 行、条件编译分支中的

@@ -77,15 +77,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `crates/auto-lang/src/{lexer,token,parser,parser_helpers,ast,ast/,dialect,dialect/,use_scanner,resolver}.rs`；`macro_/`（UI 宏）与 `mode.rs` 脚本方言判定相邻。执行/类型检查/转译在边界外 |
+| 生产入口 | `lib.rs` `pub fn parse`（快照 2490 行）；`Parser`（`Parser::parse/parse_stmt/parse_expr/build_dialects/try_dialect_stmt`）；`use_scanner::scan_use_statements`；`resolver::{ModuleResolver, FilesystemResolver}`；`dialect::Dialect` trait + `UiDialect`；`mode.rs::resolve_script_mode`（plan-555 八格矩阵） |
+| 公共 API / 关键数据流 | 源码 → `Lexer`（内部模块，f-string `$var`/`${expr}` 插值，`fstr_note '$'`）→ `TokenKind/Token/Pos` → `Parser`（持 `TypeStore`/`InferenceContext`/`ModuleTracker`/方言表）→ `Code/Stmt/Expr`（`ast.rs` + `ast/` 33 文件）→ `ToNode/ToAtom/AtomWriter` 序列化（166 impls，`rg -c` ast.rs+ast/*.rs） |
+| 当前能力 | 递归下降全语法解析；方言派发（`Dialect` trait，UiDialect 接管 widget/msg/model/view/on，mem::take 模式 611-634 行）；`.as/.to` Cast/To（2714/3027/3037 行）；`super/pac` ModulePath 解析；use 两层扫描（字符串级 + ModuleResolver）；W2 语法糖批（plan-560：with/Power `**`/`@`/`is` 中缀）；with-as 绑定（plan-567，`with_header` pratt 截断）；ScriptMode 八格矩阵（plan-555） |
+| 实验能力 | s2s lower 管线经 `auto_s2s` 消费 parser 产物（`.as` 执行翻转 lower→compile，plan-560——成熟度归 trans 节裁定） |
+| 未实现/计划项 | 符号属性 `.?`/`.*`/`.@`、位操作、Auto Flow `Iter<T>`（ADR-08 设计层 active、实现 planned）——overview Status 行已如实标注 |
+| 测试证据 | 内联 `mod tests`：lexer.rs/parser.rs/token.rs/resolver.rs（`rg -l "mod tests"`）；`src/tests/{test_generic_parse,widget_macro_tests,conformance_tests}.rs` 等；plan550/555/560/567 验收测试在对应归档 plan 有账 |
+| 与旧文档的差异 | ①overview/architecture "求值器…四类后端消费/后端：evaluator"——Evaluator 仅重定向 AutoVM（execution_engine.rs:3 头注 Plan 091），已改述；②行号断言漂移（parser.rs 1979/2257→2714+/3027+、lib.rs 2114→2490、mem::take 434→611），已附 rg 复现+快照日期；③"parser.rs 超 13k 行"→实测 20562 行；④plans.md "活跃 plan" 325/332/367/448 实均已归档（status 以归档文件为准），`old/` 归档引用已统一为 `archive/`；⑤ADR-06 引 parser.rs:188 注释已失效（现为 Plan 306 GDScript 注解），改引 dialect.rs |
+| 本次修改文件 | `docs/specs/auto-lang/frontend/{overview,architecture,plans}.md`（design/ 四文件无证据冲突，未动） |
 
 ## types
 
