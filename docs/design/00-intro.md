@@ -53,7 +53,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 二、应用框架与生态 | 5（11–15） | Shell / 并发 / 网络 / 开发工具 / AI 基础设施 |
 | 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blocks/`（4） |
 | 四、流程与知识体系 | 1 个域级章 + 2 个根级专题 | Knowledge Lifecycle、AutoPlan 账本、Plan+Spec v1 |
-| 五、战略路线图 `strategy/` | 6 | Rust 脚本层 / 消费者 parity / C 生态 / Python parity / Rust 库复刻 |
+| 五、战略路线图 `strategy/` | 13 | 生态版图伞形（三市场框架）/ Rust 脚本层 / 消费者 parity / C·Web·鸿蒙·Mobile·ROS2·Native·第三代互联网(Godot) 生态 / Python parity / Rust 库复刻 |
 | 六、专题诊断（根级） | 4 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题）、[管道算子 `|>`](pipe-operator.md)（讨论稿，Plan 514 衍生） |
 | 七、附录 `forge/` | 5 | AutoForge（已迁 auto-os 生态） |
 | 八、历史素材 `raw/` | 67 | 早期原始设计草稿（只读参考） |
@@ -129,11 +129,18 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 文档 | 主题 | 状态 |
 |------|------|------|
+| [ecosystem-portfolio-strategy](strategy/ecosystem-portfolio-strategy.md) | **生态版图伞形总战略**：动静结合第一优势（全生态设计原点）+ 三大市场（需求侧 3 + 供给侧 1）+ 寄生期合作层原则 + 优先级总表与不做清单（各分战略入口） | 📝 Draft（2026-09-06） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
 | [python-parity-roadmap](strategy/python-parity-roadmap.md) | Python parity 第三维度（use.py + a2py） | ✅ 现行（Plan 369 首批落地） |
 | [consumer-parity-strategy](strategy/consumer-parity-strategy.md) | Auto 作为库消费者（consumer-mode） | 📝 Draft |
-| [c-ecosystem-strategy](strategy/c-ecosystem-strategy.md) | C 生态战略：一个底座、三个消费面（系统库消费者/嵌入式/内核） | 📝 Draft（2026-09-06，待终审后作 GOAL-013/006 拆 plan 锚） |
+| [c-ecosystem-strategy](strategy/c-ecosystem-strategy.md) | C 生态战略：一个底座、三个消费面（系统库消费者/嵌入式/内核） | 📝 Draft（2026-09-06，暂缓启动裁决与三重启触发条件在 §11） |
+| [web-ecosystem-strategy](strategy/web-ecosystem-strategy.md) | Web 生态：契约独立 + Vue 主臂 + React 发射臂扩展时序 | 📝 Draft 骨架（2026-09-06，待扩充） |
+| [harmonyos-ecosystem-strategy](strategy/harmonyos-ecosystem-strategy.md) | 鸿蒙：ArkTS 主线（仓颉/ABC/机器码不做）+ OpenHarmony OS 终态方向 | 📝 Draft 骨架（2026-09-06，待扩充；a2ark rebaseline 为该线首个 plan） |
+| [mobile-jetpack-strategy](strategy/mobile-jetpack-strategy.md) | 移动：Android+iOS 统一 Jetpack Compose（不做 SwiftUI），排鸿蒙后 | 📝 Draft 骨架（2026-09-06，待扩充） |
+| [ros2-ecosystem-strategy](strategy/ros2-ecosystem-strategy.md) | ROS2：C 消费面生态绑定包（rcl 纯 C + IDL 生成），C 轨重启触发条件之一 | 📝 Draft 骨架（2026-09-06，待扩充） |
+| [native-backend-strategy](strategy/native-backend-strategy.md) | Native 编译：终局必做的自主执行底座（LLVM/自研/cranelift/MIR + GPU/NPU 选型待析） | 📝 Draft 骨架（2026-09-06，待扩充） |
+| [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR，曾用名"元宇宙/WEB3.0"）：三大市场之三，Godot/3D 引擎为入口（双形态优势 + 引擎侧静态缝合前提） | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
 
 ## 六、专题诊断（根级）

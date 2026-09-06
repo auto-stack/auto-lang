@@ -2,7 +2,8 @@
 
 **日期**: 2026-09-06
 **状态**: Draft（战略纲领，作为 GOAL-013 / GOAL-006 后续拆 plan 的锚）
-**关联**: [GOAL-013](../../specs/goals.md)（C 生态与嵌入式）、[GOAL-006](../../specs/goals.md)（consumer-mode parity）、
+**关联**: [ecosystem-portfolio-strategy](ecosystem-portfolio-strategy.md)（伞形总战略，本文档为
+其 §2.6 消费面）、[GOAL-013](../../specs/goals.md)（C 生态与嵌入式）、[GOAL-006](../../specs/goals.md)（consumer-mode parity）、
 [consumer-parity-strategy](consumer-parity-strategy.md)（消费者 parity 母篇）、
 [auto-as-rust-script-strategy](auto-as-rust-script-strategy.md)（a2r 轨母纲）、
 [Design 06](../06-code-generation.md)（a2c/FFI 现状）、`raw/a2c-lvgl-analysis.md`（LVGL 素材）、
@@ -73,8 +74,10 @@
    checkpatch 审查。**这是 Auto 相对 Rust 在内核场景的结构性优势**。
 3. **可读 C 是采用桥梁**：嵌入式团队可逐行检查产出、在仓库混放 `.auto` 与 `.c` 渐进采用。
    与 a2r 在 Rust 生态"脚本迭代、Rust 发布"的打法完全同构，组织记忆可复用。
-4. **不建 LLVM 后端**：C 就是 IR，一个发射后端换整个目标矩阵；优化交给 C 编译器，Auto 只
-   对发射质量（可读性/确定性/调试信息）负责。
+4. **寄生期不建 LLVM 后端**：C 就是 IR，一个发射后端换整个目标矩阵；优化交给 C 编译器，
+   Auto 只对发射质量（可读性/确定性/调试信息）负责。（阶段裁决——终局 native 直发必做，
+   见 [ecosystem-portfolio-strategy](ecosystem-portfolio-strategy.md) §2.9 与
+   [native-backend-strategy](native-backend-strategy.md)。）
 
 ---
 
