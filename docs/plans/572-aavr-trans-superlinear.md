@@ -1,15 +1,17 @@
 ---
 plan_id: PLAN-572
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavr-trans-superlinear
 author: [zhaopuming]
 created_at: 2026-09-06
 updated_at: 2026-09-06(T5b 收口,execution_done)
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/aavm/project.md: 修改——AA2R(a2r.at)终止性根修(ar_fixpoint_mutates mutates 位显式写回,死循环根除)与发射规则增补四臂(process.args List<str> 契约/IO::read_line/push 非 Copy ident 克隆/fstr 字面大括号直通);自举代际对拍(exe¹/exe²)两判据全过"
 new_spec_components: []
-touched_goals: [GOAL-017]      # 自举(P532 步骤 9 的 exe² 代际对拍依赖本修复)
+touched_goals:                  # 自举(P532 步骤 9 的 exe² 代际对拍依赖本修复)
+  - "GOAL-017: 自举——P532 步骤 9 解锁并收口判据面(一代 8/8+exe² 构建绿+二代 8/8+转译固定点 PASS=自举闭合);AA2R 转译挂死根除(codegen.at 5.4s/拼合源 46.3s)"
 
 affects: [aavm]                # auto/lib/a2r.at 为主;消费面 ⑤腿 harness
 current_step: 6
@@ -202,6 +204,37 @@ scratch 阶梯脚本  →   27 方法群逐一减一    →   定位点修复
    scratch/p572/gen2/t5_unlock.md。
 
 ## 复审记录
+
+**复审人**:zhaopuming(auto-plan:review,2026-09-06 17:0x;worktree
+`.wt/lang-572/auto-lang`@211a12f21 与 master 同步复核)
+
+**逐条验收复验(verify, don't trust;关键项现跑)**:
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 根因单点指认留档 | **PASS** | scratch/p572/t2_findings.md:根因=a2r.at L1084 ar_fixpoint_mutates 链式写回落值拷贝临时(D25 违例,全文件唯一)→ mutates 位永不持久 → `while grew` 死循环;触发面=A(mutates=1)+B(零写)调 self.A(变体矩阵 16 组);"超线性"实为无限循环 |
+| 2 | codegen.at <60s;拼合源有限时间 | **PASS** | 复审现跑:codegen.at 176KB=**5.42s**(out 162636B);lib 拼合源 505KB=**46.31s**(out 515046B;修复前 3h+ 挂死) |
+| 3 | 小源 golden 逐字节不变+⑤腿+作用域 taa | **PASS** | 复审现跑端到端锚:**572 前 exe¹(106d6ff)vs 终态(71b25d8)corpus_a2r 18+corpus_m4 58=76/76 逐字节一致**;⑤腿 compile_corpus 58/58(T5b 终码后);compile_use_corpus ✓;`taa aavm2_a2r aavm_at_mode` 2/2(is_corpus 预存红在案) |
+| 4 | P532 步骤 9 解锁实证 | **PASS** | 判定表 scratch/p572/gen2/native_gen_table.md:一代 8/8+exe² 构建绿(514856B)+二代 8/8+**转译固定点 PASS**;终版回执已写 P532 步骤 9(翻牌归 P532) |
+| 5 | 无静默丢弃;债项登记 | **PASS** | 复审门禁现跑:tf **3460/3461**(唯一红=charts_gallery 基点同款);裸 taa **3612/3625**(13 失败与基点 f2ae1cb29 **逐名一致**——见下债项);KNOWN-DEBT 登记 4 条(见下);无 debug 残留/diff 全注释依据 |
+
+**遗漏/延后/workaround 猎查**:无未批准延后;T5b 实修 5+1 缺陷(第 6=固定点
+判据暴露的 fstr 大括号自举转义翻倍)。发现并登记:
+- 🟢 Windows 栈溢出环境族(12 taa 测试,基点即红四路径同签名,CI Linux
+  守护,归因待维护者)+ charts_gallery(564-Q6 邻接);
+- 🟢 gen2 产品形态:exe² 输入不含 aavm.at(镜像⑤腿;at_mode 测试覆盖
+  aavm.at 面;form-B 另立可行);
+- 🟡 push 克隆规则窄化(容器 ident 宿主有克隆 AA2R 未对齐,语料零形状);
+- 🟡 at_mode b34_struct 宿主侧红+文档头 feature 过时。
+- 有意边界(非债):aavm.at 单文件 --trans 中未定义 fn 的实参无强转
+  (无类型信息可用,语义正确;merge 形态由 process.args 臂修复覆盖)。
+
+**健康检查**:diff 仅触 auto/lib/a2r.at(+5 区块)、
+scripts/aavm_native_gen_check.sh(+3 处)、scratch/p572/(资产)——零 Rust
+改动,无新增编译告警面;无 TODO/FIXME/debug 残留(逐 hunk 目检)。
+
+**结论:5/5 验收 PASS,零未批准延后 → status: reviewed,可入
+/auto-plan:merge。**
 
 ## 待澄清事项
 
