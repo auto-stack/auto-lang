@@ -12,7 +12,7 @@ new_spec_components: []       # 无 module spec 新增：知识沉淀于 AGENTS.
 touched_goals: ["GOAL-016: 构建与测试基础设施——AAVM/AA2R 测试域独立成档（tv 拆耦），反射性 tv 不再触发自举重测试"]
 
 affects: ["crates/auto-lang/Cargo.toml", "crates/auto-lang/src/tests.rs", "crates/auto-lang/src/tests/vm_file_tests.rs", "crates/auto-lang/src/tests/aavm_runner_tests.rs(新)", ".cargo/config.toml", ".github/workflows/vm-files-ci.yml", "AGENTS.md", "docs/plans/KNOWN-DEBT-AND-RISKS.md"]
-current_step: 4
+current_step: 5
 total_steps: 8
 ---
 
@@ -325,6 +325,21 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
   验证: `cargo taa`（裸跑，全绿）；`cargo taa aavm2_m5` 只出 M5 测；
   `grep -n taa .cargo/config.toml AGENTS.md`；yaml 解析（python
   yaml.safe_load）通过。
+  [✅ 已完成] 2026-09-06 分支侧：配置/CI/AGENTS.md 落地并提交；
+  `cargo taa aavm2_m5` 实测只跑 M5 四测（250s，4194 skipped）——A8 作用域
+  缩小成立；裸 `cargo taa` 2775/3603 时被唯一红 test_charts_gallery_compiles
+  （P555-D4 在案存量红）fail-fast 截断，aavm 段已跑部分全绿（compile 腿
+  17.3s 证明内容寻址缓存命中、a2r_is_corpus 78s）。
+  > **提前落地（2026-09-06 用户裁定）**：因多 agent 反射性 `cargo tv` 持续
+  > 被拖，T2-T5 功能改动**剥离 heavy_gate 依赖后提前合入 master**（提交
+  > c825e989f，master 验证：tv 集 aavm=0 / 日常档 3425（m1 -1）/ taa 档
+  > 21 测 / `cargo taa repro_242` 冒烟 2/2 绿）。532 主检出未提交改动
+  > （t3 别名等）经 blob 分离暂存未卷入；工作区 t3 别名 feature 已同步改
+  > test-aavm（留 532 会话收口）。**fold 队列更新**：master 已含 568 核心，
+  > 532/564 后续 fold 时其 aavm 测试文件改动（heavy_gate 接线/塔模块）须
+  > 向 master 的 aavm_runner_tests.rs 新位置移植 reconciling——本 plan
+  > worktree 分支保留 gate 版本作参照，fold 会话用。T6/T7 验证与文档回填
+  > 改以 master 为准执行。
 - **T6** 档验证矩阵。
   操作: ①`cargo tv` 全绿计时（拆档后）；②`cargo nextest list --features
   test-aavm,test-trans,test-book`（ta 集）含 aavm 全集；③`cargo t` 计数-1、
