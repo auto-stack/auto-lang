@@ -150,6 +150,9 @@
 
 | 445 | .Tick 跨轨语义分歧 | vue 轨=setInterval 级 running 门控，VM 轨=Plan 402 handler 无条件派发自决——应用需在 handler 内自查 running 兼顾两轨（024 已如此），平台级统一待后续裁定。 | `ui/iced/renderer.rs:6650` / `ui_gen/vue.rs:3228` |
 | 445 | svgdoc 流式性能样本有限 | v1 SVG vs v2 canvas 裁决数据仅 12 点窗口/400ms 实测（2.49/s 无积压）；更大窗口/更高频（16ms/百点级）未测，v2 触发条件留待真实负载。 | `examples/ui/024-charts/tests/golden/stream_perf_sample.txt` |
+| 568 | 覆盖差: tv/t 日常面不再含任何 aavm 闸门 | AAVM/AA2R 全系测试迁入 `test-aavm` feature（`cargo taa` 专属档，Plan 568，master 提前落地 c825e989f）——`cargo tv`/`cargo t` 编译期零 aavm（tv 实测 4m24s 级→20s 级）。改 VM/编译器破坏 aavm 的发现点后移：CI `vm-files-ci.yml` push/PR（六闸门步骤已换 test-aavm）+ `cargo ta` 全量档 + fold 前裸 `taa`。概念裁定（用户 2026-09-05）：aavm 无实用面（秀肌肉），非 aavm 改动不需要关心是否改坏。 | `docs/plans/568-aavm-aa2r-test-tier.md` D6；AGENTS.md §AAVM/AA2R Test Tier |
+| 568 | 覆盖差: m1 lexer parity 离开日常档 | `aavm2_m1`（lexer token 流一致性，31s/次）原**无 feature 门**每天随 `cargo t` 跑——568 入 test-aavm 档（日常档 3426→3425）。lexer 双侧 parity 日常早警移除，守护转 CI+`cargo taa aavm2_m1`（作用域映射：改 token/lexer.at 或 corpus_m1 → 该闸门）。 | `crates/auto-lang/src/tests.rs` m1 注册行 Plan 568 注 |
+| 568 | fold 协调: 532/564 后续 fold 须向新位置移植 | ①564 的 heavy_gate 接线（vm_file_tests 内 3 处 + m1-m5/a2r 文件内）落点已在 master 上整体迁至 `tests/aavm_runner_tests.rs`——564 fold 时须把 3 夞接线移植到新位置（m1-m5/a2r 文件本体不变，直接合入）；②532 的 t3 别名 feature 列表已在 master 工作区改对 `test-aavm`（未提交，532 提交 .cargo/config.toml 时保留该形态）+ aavm2_t3 塔模块注册行挂 `test-vm-files` 门——532 fold 时应改挂 `test-aavm`。 | plan 568 T5 提前落地注记；`.cargo/config.toml` 工作区 t3 行 |
 
 ## 📋 未来增强（非风险，记录为后续优化方向）
 
