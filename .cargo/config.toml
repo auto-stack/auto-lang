@@ -14,6 +14,9 @@
 #                      to scope down (e.g. cargo taa aavm2_m5)
 #   cargo ta         - all tests (VM + aavm + trans + book; full scale)
 #   cargo th         - HTTP e2e tests (real TCP servers; serial only)
+#   cargo t3         - milestone tier (大版本升级专用,Plan 532):全量 + 嵌套塔
+#                      最终验收。塔测试体 env 自守门:须 T3_MILESTONE=1 前缀
+#                      (裸 cargo test / tf / ta 均不会误触发小时级运行)
 #
 # Requires: cargo install cargo-nextest
 
@@ -75,6 +78,12 @@ ta = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book -
 # nextest runs each test in its own process, which is ideal here — each test's
 # detached server thread is reaped on process exit, giving full isolation.
 th = "nextest run -p auto-lang --lib --features test-http-e2e http_e2e"
+# Plan 532: milestone tier——大版本升级最终验收(频率最稀少档)。全量
+# (ta 语义,含 1M churn)+ 嵌套塔解释栈零漂移验收。塔测试体内 env
+# 自守门(T3_MILESTONE=1 才真正运行,否则秒退),default/full 两档
+# filter 亦显式排除——三重防误触发。运行形态(大版本时人工执行):
+#   T3_MILESTONE=1 cargo t3
+t3 = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book --config-file .config/nextest-t3.toml"
 
 # Plan 423 P5: VM 行为测试(015-notes 组件 build/dispatch 等)的 Rust 递归
 # 深度超过 libtest 默认 2MB 线程栈(STATUS_STACK_OVERFLOW)。仓库级抬高

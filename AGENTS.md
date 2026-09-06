@@ -110,6 +110,10 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 - `cargo tb` - Book listing tests (`--features test-book`)
 - `cargo taa` - AAVM/AA2R self-hosting tier (`--features test-aavm`, implies vm-files)——**仅 aavm 改动后使用**，裸跑=全集兜底、追加滤串缩小作用域（如 `cargo taa aavm2_m5`）；触发条件/作用域映射/资源表见 §AAVM/AA2R Test Tier
 - `cargo ta` - All test suites combined (`--features test-aavm,test-trans,test-book`; full scale)
+- `cargo t3` - Milestone tier (大版本升级专用,Plan 532;频率最稀少档):全量
+  (ta 语义含 1M churn)+ 嵌套塔解释栈零漂移最终验收。塔测试体内
+  `T3_MILESTONE` env 自守门(未设秒退,防裸 cargo test / tf / ta 误触发
+  小时级运行),完整里程碑形态:`T3_MILESTONE=1 cargo t3`
 
 
 ---

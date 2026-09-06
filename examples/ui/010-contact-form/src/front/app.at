@@ -1,13 +1,13 @@
 // app.at — Contact Form.
-// Plan 506: in-app title bar / Settings panel removed (common header widget
-// retired) — title/theme/accent live in pac.at + os-config, host chrome carries them.
-// Default theme: Dark mode.
+use settings: SettingsPopover
+
 widget App {
-    msg { Submit }
+    msg { Submit, ToggleSettings, SetTheme(str), SetAccent(str) }
 
     model {
         var dark_mode bool = true
         var accent_color str = "indigo"   // declared for os-config/env seeding (Plan 504 idiom)
+        var settings_open bool = false
 
         var name str = ""
         var email str = ""
@@ -20,23 +20,45 @@ widget App {
             { q: "What are your business hours?", a: "Our support team is available Monday through Friday, 9am to 6pm EST. For urgent matters outside these hours, please email urgent@company.com." },
             { q: "How long does it take to get a response?", a: "Our team typically responds to all inquiries within 24 hours during business days." },
             { q: "Do you offer phone support?", a: "Phone support is available for Enterprise plan subscribers. Free and Starter plans receive email and community support." },
-            { q: "Can I schedule a demo?", a: "Yes! Contact our sales team using the form and select demo request to schedule a live 30-minute walkthrough." },
-            { q: "What information should I include in my message?", a: "Please provide your project context, current stack, expected timeline, and any specific requirements or questions." }
+            { q: "Can I schedule a demo?", a: "Yes! Contact our sales team using the form and select demo request to schedule a live 30-minute walkthrough." }
         ]
     }
 
     view {
         col {
+            // ── 顶栏: 右上角 Theme Settings 触发按钮 + 弹出面板 ──
+            col {
+                row {
+                    style: "w-full justify-end px-8 pt-4 relative z-30"
+                    button "⚙ Theme" {
+                        onclick: .ToggleSettings
+                        style: if .dark_mode {
+                            "px-3 py-1.5 text-xs rounded-full bg-zinc-800 text-zinc-100 hover:bg-zinc-700 transition-colors cursor-pointer border border-zinc-700"
+                        } else {
+                            "px-3 py-1.5 text-xs rounded-full bg-white text-gray-800 hover:bg-gray-100 transition-colors cursor-pointer border border-gray-200 shadow-sm"
+                        }
+                    }
+                }
+                col {
+                    SettingsPopover(
+                        open: .settings_open,
+                        dark_mode: .dark_mode,
+                        accent_color: .accent_color,
+                        on_close: .ToggleSettings,
+                        on_set_theme: .SetTheme,
+                        on_set_accent: .SetAccent
+                    )
+                    style: "absolute right-8 top-10 z-40"
+                }
+                style: "w-full relative"
+            }
+
             // ── Main Contact Form & FAQ Content ──
             col {
                 // Section Header
                 col {
-                    h2 "How can we help?" {
-                        style: if .dark_mode {
-                            "text-3xl font-extrabold text-zinc-100 tracking-tight text-center"
-                        } else {
-                            "text-3xl font-extrabold text-gray-900 tracking-tight text-center"
-                        }
+                    h1 "How can we help?" {
+                        style: "text-3xl font-extrabold text-primary tracking-tight text-center"
                     }
                     span "Check our FAQ for quick answers or send us a message." {
                         style: if .dark_mode {
@@ -175,9 +197,9 @@ widget App {
             }
 
             style: if .dark_mode {
-                "w-full min-h-screen bg-zinc-950 text-zinc-100"
+                "w-full min-h-screen bg-zinc-950 text-zinc-100 relative"
             } else {
-                "w-full min-h-screen bg-gray-50 text-gray-900"
+                "w-full min-h-screen bg-gray-50 text-gray-900 relative"
             }
         }
     }
@@ -186,5 +208,15 @@ widget App {
         .Submit -> {
             .submitted = true
         }
+        .ToggleSettings -> { .settings_open = !.settings_open }
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(name) -> { .accent_color = name }
     }
 }

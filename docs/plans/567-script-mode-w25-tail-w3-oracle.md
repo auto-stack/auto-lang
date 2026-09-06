@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-567
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done            # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w25-tail-w3-oracle
 author: [zhaopuming]
 created_at: 2026-09-05
-updated_at: 2026-09-05
+updated_at: 2026-09-05   # executing 起算（worktree D:/autostack/.wt/lang-567/auto-lang, branch plan-567-dev）
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-lang/trans, auto-lang/frontend]   # 受影响的 specs 路径
-current_step: 0
+current_step: 20
 total_steps: 20
 ---
 
@@ -296,69 +296,91 @@ int 强制、nullable 返回（判空路径 + lint 触发样例）、无注解�
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T01** py_list ADD 双重释放修复：`crates/auto-lang/src/vm/engine.rs` 删除
-  :5814-5815 第二对 release（保留 :5796-5797），旁注对照 STR_CAT :3950-3951 单次纪律。
-  验证：`cargo check -p auto-lang` && `cargo t vm` && `cd parity && cargo run -- run py_list`（8/8、无 P053-8）。
-- [ ] **T02** ADD rc 配平回归单测：engine 测试模块加 string-concat rc=1 操作数用例
-  （断言 phantom_drops==0、拼接值完整）。验证：`cargo t engine`（或最小模块名）。
-- [ ] **T03** py_sys namedtuple opaque 分流：`crates/auto-lang/src/py_ffi.rs` tuple 拍平臂
-  :2273-2292 入口判 `_fields` → PyObjectHandle encode。验证：`cd parity && cargo run --
-  run py_sys`（5/5）&& `cargo run -- run py_list`（无回归）。
-- [ ] **T04** p7 全相位归零 + 登记核销：`cd parity && cargo run -- phase p7` 全绿；
-  `docs/plans/KNOWN-DEBT-AND-RISKS.md` P539-D1、P560-D6 标记 resolved→PLAN-567。
-- [ ] **T05** D3 前缀 helper 与迁移：`py_ffi.rs` 新 `py_exc_msg`（对齐 :774 构造），
-  全部 `VMError::FFI("Python … failed: …")` 构造点迁移（:81/:117/:136/:177/:450/:599/
-  :650/:706/:926/:963/:1087 等逐点）；`vm/engine.rs` CALL_NAT 臂 :7696-7698 补
-  FFI→RuntimeError 转换（对齐 :7732-7734）。验证：`cargo t py_ffi` + 既有 catch
-  语料载荷断言更新后绿。
-- [ ] **T06** may 变体补桥：`py_ffi.rs` 新 476 py_getattr_may / 477 py_getitem_may
-  （照 :761-781 范式）+ `lib.rs` BIGVM_NATIVES 注册 + `vm/codegen.rs`:5279-5293 常量
-  镜像 + `trans/python.rs` `_auto_may` 反映射（对齐 :1028-1050）。验证：`cargo t
-  py_ffi` + 新 shim 单测（Err 载荷 `PyException AttributeError:` 前缀断言）。
-- [ ] **T07** P539-D5 kwargs×may：探针定 ABI 后 py_call_kw 形态可走 may 出口（最小：
-  kwargs 5 槽约定下复用 Err 出口）；scratch 探针 + py_ffi 单测。验证：`cargo t py_ffi`。
-- [ ] **T08** 引擎值通道拦截：`vm/engine.rs` ERROR_PROPAGATE Result.Err 分支
-  （:3454-3458）帧展开前查 handler_stack → 跳 catch_pc 绑载荷（对齐 intercept_error
-  :9486-9489 取原文）；null 分支不进 catch。验证：`cargo t engine`（新增 try 体内
-  Err 传播 → catch 命中单测 ×2：命中/null 不命中）。
-- [ ] **T09** s2s 隐式传播规则：`trans/s2s_rules.rs` 新 `rule_err_propagate`（桥调用→
-  may+.?、同文件/use 导入 fn 调用→+.?；分支不敏感单遍）+ `trans/auto_s2s.rs`
-  builtin_rules 注册 + 改写快照单测（含 `.at` 不改写反例）。验证：`cargo t trans`。
-- [ ] **T10** .as 语料与 main 边界：vm file 语料新增（隐式传播穿透 / catch 拦值 /
-  未捕获带错退出）；核对退出码非零。验证：`cargo tv`。
+- [✅ 已完成] **T01**（2026-09-05）py_list ADD 修复：根因比计划预判深一层——双重释放之外，
+  ADD 臂 release 在读之前，左结合链中间结果槽被 FREE+tombstone 后 read 归空（池日志实证
+  retain"ab"0→1→release1→0→FREE→intern"cd"）。修复=先读后放（对齐 STR_CAT 纪律）+删第二对
+  release。证据：`parity run py_list` 8/8（commit 83ae4e9a6）；探针 scratch/p567/t01_probe*.as
+  j2 "cd"→"abcd"。
+- [✅ 已完成] **T02**（2026-09-05）回归单测：engine.rs 新 tests_add_concat_rc 模块 ×2
+  （rc1_operands / chain_intermediate_survives，断言 underflow==0 && phantom==0）。
+  证据：`cargo t tests_add_concat_rc` 2/2 PASS。
+- [✅ 已完成] **T03**（2026-09-05）namedtuple opaque 分流：判别式修正为"带属性面 tuple"
+  ——`_fields`（namedtuple）+ `n_sequence_fields`（PyStructSequence；sys.version_info 实测
+  无 `_fields`）双探测，普通 tuple 维持拍平。证据：py_sys 5/5、py_list 8/8；三分支封送单测
+  `test_marshal_structseq_namedtuple_opaque_plain_tuple_list` PASS（`cargo test -p auto-lang
+  --lib --features python`，py_ffi 测试需 python feature）。commit 056eabd7a。
+- [✅ 已完成] **T04**（2026-09-05）p7 全相位归零：8 套件 55/55 三方全绿（configparser 5/
+  hashlib 5/json 5/list 8/os 8/re 8/string 8/sys 5）；KNOWN-DEBT P539-D1、P560-D6 核销
+  （worktree e69f865b8）；known-divergences.md DIV-PY-TUPLE-1 补注带属性面 tuple 不拍平裁定。
+- [✅ 已完成] **T05**（2026-09-05）D3 前缀统一：py_exc helper + ~20 站点迁移（桥内部组参类
+  保留描述形态）+ CALL_NAT 臂 FFI→RuntimeError 补齐。证据：探针 catch 载荷
+  `PyException ValueError:`/`PyException IndexError:` 前缀；`cargo test --features python
+  py_ffi::` 32/32。commit（T05 批）。
+- [✅ 已完成] **T06**（2026-09-05）may 变体补桥：476/477 + 共享 Err 出口 helper（py_call_may
+  原地版同源化）+ 三处注册镜像 + a2py `_auto_may` 反映射 ×2 + 前缀单测。证据：
+  test_may_variant_shims_err_payload_prefix PASS。
+- [✅ 已完成] **T07**（2026-09-05）kwargs×may：478 py_call_kw_may（同 py_call_kw 5 槽 ABI，
+  a2py 无臂对齐 py_call_kw 现状——a2py 走糖源）+ Ok/Err 双路单测 + 端到端探针（Err→fallback
+  通）。P539-D5 核销。注：`.?(d)` 表达式位链式消费为存量缺陷（453 同形复现）→ 待澄清⑥。
+- [✅ 已完成] **T06**（2026-09-05）may 变体补桥：476 py_getattr_may / 477 py_getitem_may
+  + 共享 Err 出口 helper（push_py_exception_err_value，py_call_may 原地版同源化）+ 三处
+  注册镜像 + a2py `_auto_may` 反映射 ×2 + Err 载荷前缀单测（test_may_variant_shims_
+  err_payload_prefix PASS，含 477 的 Ok 包裹形态）。
+- [✅ 已完成] **T07**（2026-09-05）P539-D5 kwargs×may：478 py_call_kw_may（与 py_call_kw
+  同 5 槽 ABI；a2py 无臂对齐 py_call_kw 现状——a2py 走糖源）+ Ok/Err 双路单测
+  （test_py_call_kw_may_kwargs_combo PASS）+ scratch 端到端探针（Err→`.?` fallback 通；
+  var 中转形态 Ok 正确）。`.?(d)` 表达式位链式消费为存量缺陷（453 同形复现）→ 待澄清⑥。
+- [✅ 已完成] **T08**（2026-09-05）引擎值通道拦截：ERROR_PROPAGATE Err 分支查
+  handler_stack（bp 匹配）→ 弹 handler、栈回卷 handler.sp、载荷串入栈、跳 catch_pc；
+  null/None 不进 catch。证据：tests_err_value_channel 3/3（命中/null 不命中/Ok 解包）。
+- [✅ 已完成] **T09**（2026-09-05）s2s 隐式传播规则：rule_err_propagate（MAY_RENAMES
+  py_call/getattr/getitem→may+.?；同文件用户函数调用+.?；无 use.py 零改写保 legacy -1
+  哨兵面）+ codegen is_py_call_kw_form 收 py_call_may→478 + wrap_tos_as_result_ok 补
+  TAG_LIST/null 臂（`.?` 解包 list 归 Int 垃圾的 p7 四套件中止根因）。证据：tests_s2s
+  8/8（含语料幂等）；**全部 19 py 套件 127/127 三方绿（隐式传播激活态）**。
+- [✅ 已完成] **T10**（2026-09-05）主边界 + 语料：未捕获 Err → RuntimeError(PyException
+  载荷) 退出码 1（master 对照原为静默 Terminated）；tv 框架 .as 语料支持（.at 优先回落）
+  + 99_script_err 三例（传播穿透/catch 拦值/未捕获带错，python feature 门控）3/3；
+  顺修 CALL_NAT/COUNTED 臂 `if let Err(FFI)` 静默吞非 FFI 错误回归（alloc_array/
+  Config.parse 二例实证，master 对照定位）。证据：`cargo tv --no-fail-fast` 3606/3607
+  （唯一红=charts master 既有）。
 - [ ] **T11** D2/D3 债务核销 + 设计回写：KNOWN-DEBT P560-D2、P560-D3 resolved→
   PLAN-567；`docs/design/strategy/script-mode-interop.md` §3-E/§4 现状注记。
   验证：文档 diff 自查。
-- [ ] **T12** parser with-as：`parser.rs` `with_header` 旗标 + Cast 臂 :2605-2611
-  截断 + with_stmt 消费 `as Ident`（:1258-1267 拒绝臂删除）+ 单测（接受/as-类型名
-  歧义/正常模式 Cast 回归）。验证：`cargo t parser`。
-- [ ] **T13** py_enter 返回值 + 块形态：`py_ffi.rs` enter_shim :1146 encode_null →
-  `py_auto_marshal_return`；`parser.rs` with_stmt as 形态直产 `var __w/py_enter/try/
-  finally/py_exit` 块。验证：`cargo t py_ffi` + `cargo t parser`（产物快照）。
-- [ ] **T14** a2py 回译：`trans/python.rs` 规范块序列模式匹配 → `with e as x:`
-  （py_with 1 参映射保留）+ 快照单测。验证：`cargo tt`。
-- [ ] **T15** with-as 三方用例：`parity/libs/python/py_torch_infer/tests/auto/infer.as`
-  增 as 形态用例（no_grad as g 或 open 句柄模拟）+ oracle 对拍件同步；vm file 语料
-  加"体内 Err 传播后 py_exit 必执行"可观测用例。验证：`cd parity && cargo run --
-  run py_torch_infer` && `cargo tv`。KNOWN-DEBT P560-D1 核销。
-- [ ] **T16** PyType 扩展 + 内省：`py_ffi_types.rs` PyType 增 Float/Int/Nullable；
-  `py_ffi.rs` 新 `inspect_return_annotation()`（get_type_hints + Union/Optional 解析，
-  失败回退 None）+ 单测（注解模块命中/builtins 空/`T | None`/`Optional[T]`）。
-  验证：`cargo t py_ffi`。
-- [ ] **T17** 注册接线：`lib.rs` init_py_ffi :677/:710 两路径 + `autovm_persistent.rs`
-  :180/:204 升级 PySignature.returns；常量通道 :511-545 同法。验证：`cargo t`（注册
-  相关单测 + 全量快测无回归）。
-- [ ] **T18** D4 授权强制：shim 出口 coercer（Float→GIL float()；新 478 py_int 三处
-  注册镜像 + a2py `int(x)` 反映射）；无注解路径零变化断言。验证：`cargo t py_ffi`
-  + `cargo tt`。
-- [ ] **T19** nullability lint：`error.rs` 新 W 码（W0010 py-nullable-unguarded）+
-  codegen 消费（nullable 返回未判空直入二元运算/方法调用告警）+ 触发/不触发单测。
-  验证：`cargo t vm_codegen`（或最小模块）。
-- [ ] **T20** py_anno parity 套件 + 收官回写：`parity/libs/python/py_anno/`（本地
-  anno_mod.py 6-8 用例 + anno.as + README）+ `parity/crates/auto-parity/src/main.rs`
-  p7 相位表注册；`cd parity && cargo run -- phase p7` 全绿；script-mode-interop.md
-  §9 波次状态收官注记 + specs 沉淀准备（review 阶段填 frontmatter）。验证：
-  parity 三方报告 + `cargo tf`（合入前一次）。
+- [✅ 已完成] **T12**（2026-09-06）parser with-as：with_header 旗标 + As 终止符 + Cast 臂截断
+  + `as Ident` 消费 + 单测 ×3（块形态/as 类型名不误吞/正常模式 Cast 零回归）。实现注记：块语句
+  以 Stmt::Expr(Expr::Block) 承载（躲 convert_last_block 尾块转换）；convert_last_block 收窄为
+  纯 pair 块才转对象（语句块保留）；emit 以 `if true` 恒真包装多语句块（E0007 `)`+换行+`{`
+  歧义与 UI 尾块歧义全免疫，幂等实证）。479 py_raise 再抛通道配套。
+- [✅ 已完成] **T13**（2026-09-06）py_enter 返 `__enter__` 值 + 块形态降低落地：try-catch-finally
+  出口保证（正常路径 finally、Err 路径 T08 拦截→catch py_exit+py_raise 再抛、`__exit__` 恰一次）。
+  端到端实证：open 句柄正常写 flush（f1）+ 错误路径部分写 flush（f2）+ exit 1 + PyException
+  ValueError 外传（scratch/p567/t13_with_as.as）。
+- [✅ 已完成] **T14**（2026-09-06）a2py 回译：match_with_as_block 规范序列识别 → `with e as x:`
+  （transpile 产物逐字对齐 Python 原生）+ a2p golden 567_with_as/001_with_as（test_16_002 绿）。
+- [✅ 已完成] **T15**（2026-09-06）三方用例：py_torch_infer test18（with-as 糖形态 no_grad）18/18
+  三方绿；tv 99_script_err/04_with_as_propagate 语料（catch 还原链路）绿。执行注记：master 同步
+  折入 Plan 568 测试拆档（merge 58fd18229，vm_file_tests 冲突双并解），合并后 cargo t 零新增红
+  （19=基线）、tv/tt 唯一红=charts 基线、p7/p9 全绿。P560-D1 核销（worktree 侧 KNOWN-DEBT）。
+- [✅ 已完成] **T16**（2026-09-06）PyType 增 Nullable(Box) + 全局 PY_RETURN_ANNOTATIONS
+  表/lint 收集器（py_ffi_types，无 pyo3 依赖，无 python feature 恒空）+ inspect_return_
+  annotation（classify_return_annotation：标量恒等 + T|None/Optional[T] 双形态剥 None）+
+  常量通道 inspect_constant_annotation + 单测（分类器 4 断言组全过）。
+- [✅ 已完成] **T17**（2026-09-06）注册接线：init_py_ffi 三路径（命名导入/裸模块发现/常量）
+  灌注定签名 + record_return_annotation；codegen handle_py_import 按 oracle 表灌注
+  py_return_types（无知识=Auto 零变化）。
+- [✅ 已完成] **T18**（2026-09-06）D4 授权强制：shim 出口 Float/Int 臂改 GIL float()/int()
+  强制（coerce_scalar_* helper + 单测：int→float/str→float/float→int/不可转 PyException）
+  + Nullable 臂（None=null 值；内型走强制/动态）+ 480 py_int 桥（三镜像 + a2py int(x)）。
+  注：478/479 已被 kw_may/py_raise 占用，py_int 顺延 480。
+- [✅ 已完成] **T19**（2026-09-06）nullability lint：W0010 py-nullable-unguarded——语句位
+  裸消费（Store 根裸 Call）形态匹配 → log::warn + 收集器去重（单测过）。实现注记：error.rs
+  W 码体系挂 parser 面，567 以 log+收集器落地（等价可见性，review 时可议挂 W 码）。
+- [✅ 已完成] **T20**（2026-09-06）py_anno 套件：本地注解模块 anno_mod.py（含撒谎注解
+  fakey）+ anno.as/test_anno.py 九用例 + parity runner PYTHONPATH 注入（**绝对路径**——
+  相对路径被子进程 cwd 二次解析的坑，双后端）+ p7 相位注册。证据：py_anno 9/9 三方绿；
+  p7 九套件 64/64；fakey 用例实证撒谎注解退回 Python 行为；设计 §7/§9 收官注记
+  （commit 11b8946ad）。
 
 ## 复审记录
 
@@ -379,3 +401,9 @@ int 强制、nullable 返回（判空路径 + lint 触发样例）、无注解�
 5. **py_call_may kwargs（T07/P539-D5）**：最小实现（kwargs 5 槽复用 Err 出口）若
    ABI 探针发现不兼容，允许降级为"py_call_kw 严格 + 文档规避"并保留债务（需用户
    确认降级案）。
+6. **（执行期新登记，2026-09-05）`.?(default)` 表达式位链式消费缺陷（存量）**：
+   `j.?(-1).to(str)`（及加括号形态）在表达式位置返回 Result 容器原 bits 的 i32 解码
+   （如 4000001），var 中转（`var d = j.?(-1)`）则正确——py_call_may(453) 同形复现，
+   **非 567 引入**。规避：var 中转（539 套件既有惯例）。病面：NULL_COALESCE 的
+   codegen 发射顺序或 `.?(` 解析歧义，待专项排查；本波 s2s 隐式传播用纯 `.?`
+   （ERROR_PROPAGATE）形态不受影响（B 探针实证 `j.?` 正确）。

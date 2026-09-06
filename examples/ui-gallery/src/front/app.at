@@ -1,10 +1,12 @@
-// src/front/app.at - AutoUI Gallery Main Application (Plan 549)
-// 对齐 widgets-gallery 体验的官方 UI 示例交互画廊与教程中心
-
 widget App {
     use {
         component: AppViewport from "src/gallery/AppViewport.vue"
         fn: getAllDemos, getDemoTitle, getDemoDesc, getDemoDoc, getDemoSource, getDemoPac, isDemoLoadable, filterDemosBy from "src/front/utils/demos.ts"
+    }
+
+    msg {
+        SetTheme(str),
+        SetAccent(str),
     }
 
     model {
@@ -14,6 +16,7 @@ widget App {
         var active_tab str = "tutorial"
         var viewport_mode str = "full"
         var dark_mode bool = true
+        var accent_color str = "indigo"
         var reload_key int = 0
     }
 
@@ -33,7 +36,7 @@ widget App {
 
             // 1. 顶部导航栏 (Header)
             header {
-                style: "h-14 border-b border-border px-6 flex items-center justify-between shrink-0 bg-card/60 backdrop-blur"
+                style: "h-14 border-b border-border px-6 flex items-center justify-between shrink-0 bg-card/60 backdrop-blur relative z-20"
 
                 row {
                     style: "items-center gap-3"
@@ -52,9 +55,61 @@ widget App {
                         placeholder: "搜索示例 (按名称或标签)..."
                         style: "w-64 h-8 text-xs rounded-md bg-muted/50 border-input px-3"
                     }
-                    button "🌓 主题" {
-                        style: "h-8 px-3 text-xs rounded-md border border-input hover:bg-muted font-medium"
-                        onclick: () => { .dark_mode = !.dark_mode }
+                    popover {
+                        popover-trigger {
+                            button "⚙ 设置" {
+                                style: "h-8 px-3 text-xs rounded-md border border-input hover:bg-muted font-medium"
+                            }
+                        }
+                        popover-content (align: "end", style: "w-64 p-3.5 bg-card border border-border rounded-xl gap-3 shadow-lg") {
+                            col {
+                                style: "gap-3"
+                                row {
+                                    style: "items-center justify-between"
+                                    text "设置" { style: "text-xs font-semibold text-foreground uppercase tracking-wider" }
+                                }
+                                col {
+                                    style: "gap-1.5"
+                                    text "主题模式" { style: "text-xs text-muted-foreground font-medium" }
+                                    row {
+                                        style: "gap-2"
+                                        if .dark_mode {
+                                            button "🌙 暗色" {
+                                                onclick: .SetTheme("dark")
+                                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                            }
+                                            button "☀ 亮色" {
+                                                onclick: .SetTheme("light")
+                                                variant: "ghost"
+                                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                                            }
+                                        } else {
+                                            button "🌙 暗色" {
+                                                onclick: .SetTheme("dark")
+                                                variant: "ghost"
+                                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                                            }
+                                            button "☀ 亮色" {
+                                                onclick: .SetTheme("light")
+                                                style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                            }
+                                        }
+                                    }
+                                }
+                                col {
+                                    style: "gap-1.5"
+                                    text "主题主色" { style: "text-xs text-muted-foreground font-medium" }
+                                    row {
+                                        style: "items-center gap-3 py-1"
+                                        button "" { onclick: .SetAccent("indigo"), style: if .accent_color == "indigo" { "w-6 h-6 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
+                                        button "" { onclick: .SetAccent("coral"), style: if .accent_color == "coral" { "w-6 h-6 p-0 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
+                                        button "" { onclick: .SetAccent("ocean"), style: if .accent_color == "ocean" { "w-6 h-6 p-0 rounded-full bg-sky-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-sky-500 hover:scale-110 transition-transform" } }
+                                        button "" { onclick: .SetAccent("sage"), style: if .accent_color == "sage" { "w-6 h-6 p-0 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
+                                        button "" { onclick: .SetAccent("amber"), style: if .accent_color == "amber" { "w-6 h-6 p-0 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -176,10 +231,6 @@ widget App {
                                             style: if .viewport_mode == "tablet" { "px-2 py-1 rounded bg-background shadow-xs text-foreground font-bold" } else { "px-2 py-1 text-muted-foreground" }
                                             onclick: () => { .viewport_mode = "tablet" }
                                         }
-                                        button "手机 (375)" {
-                                            style: if .viewport_mode == "mobile" { "px-2 py-1 rounded bg-background shadow-xs text-foreground font-bold" } else { "px-2 py-1 text-muted-foreground" }
-                                            onclick: () => { .viewport_mode = "mobile" }
-                                        }
                                     }
 
                                     // 重置状态按钮
@@ -190,9 +241,9 @@ widget App {
                                 }
                             }
 
-                            // 内嵌容器挂载点
+                            // 内嵌容器挂载点 (外层画布舞台，充裕包容三种屏幕尺寸)
                             col {
-                                style: "h-[540px] w-full relative bg-muted/10 items-center justify-center overflow-hidden"
+                                style: "w-full relative bg-muted/10 items-center justify-center p-6 md:p-8 transition-all duration-300"
 
                                 AppViewport {
                                     app: .selected_id
@@ -256,5 +307,17 @@ widget App {
                 }
             }
         }
+    }
+
+    on {
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(name) -> { .accent_color = name }
     }
 }

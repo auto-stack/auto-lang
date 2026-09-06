@@ -4,7 +4,11 @@
 # "default-filter 排除 + full 配置整体替换"双文件实现双档:
 #   默认(本文件):   排除 str_churn_bounded_large(1M) —— cargo t/tv/tt/tb/th 日常档;
 #                   其 100k 日常版 str_churn_bounded 照常运行
-#   full(nextest-full.toml): 不设过滤 —— cargo tf/ta 全量门禁,1M 大档照跑
-# 裸 cargo test 不经 nextest,两档都会运行(全量语义)。
+#   full(nextest-full.toml): 排除嵌套塔里程碑测试 —— cargo tf/ta 全量门禁
+#   t3(nextest-t3.toml):    不设过滤 —— cargo t3 大版本里程碑档,塔照跑
+# 裸 cargo test 不经 nextest,两档都会运行(全量语义;塔测试体另有
+# T3_MILESTONE env 自守门,误触发秒退)。
+# Plan 532: 嵌套塔里程碑测试(aavm2_t3_tower_milestone,小时级)在日
+# 常档排除——仅 cargo t3(大版本升级,附录 B 二次裁定)运行。
 [profile.default]
-default-filter = "not test(str_churn_bounded_large)"
+default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone)"
