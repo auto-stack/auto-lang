@@ -18728,7 +18728,20 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    iced::application(
+    run_app_with_title::<C>(None)
+}
+
+/// PLAN-010 T5: run_app with an explicit window title. iced's application
+/// builder otherwise falls back to its default title ("Auto Lang - Iced"),
+/// which leaks into replicated apps (at-gen). `None` keeps the historical
+/// default. This is the application-chain title surface (待澄清④: 最小改,
+/// 不动 VM 轨).
+pub fn run_app_with_title<C>(title: Option<&str>) -> AppResult<()>
+where
+    C: Component + Default + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    let app = iced::application(
         TickWrap::<C>::default,
         TickWrap::<C>::update,
         view_wrapped::<C>,
@@ -18747,8 +18760,13 @@ where
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
     .font(INTER_FONT_SEMIBOLD)
-    .default_font(INTER_FONT)
-    .run()
+    .default_font(INTER_FONT);
+    let app = if let Some(t) = title {
+        app.title(t.to_string())
+    } else {
+        app
+    };
+    app.run()
     .map_err(|e| e.into())
 }
 

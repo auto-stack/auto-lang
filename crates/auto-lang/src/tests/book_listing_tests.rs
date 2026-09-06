@@ -8,13 +8,34 @@ use crate::{
 };
 use std::fs;
 
+
+/// PLAN-010 T4 (worktree usability, 452cdf57c precedent): the book lives
+/// OUTSIDE this repo as a sibling of the workspace (`D:/autostack/book`).
+/// The legacy `../../../book` path only resolves in the main checkout —
+/// in `.wt/<group>/<repo>` worktrees it points at `.wt/book` (missing).
+/// Resolution order: $AUTO_BOOK_LISTINGS → legacy sibling → workspace-group
+/// sibling.
+fn book_listings_root() -> std::path::PathBuf {
+    if let Ok(root) = std::env::var("AUTO_BOOK_LISTINGS") {
+        return std::path::PathBuf::from(root);
+    }
+    let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for ancestor in d.ancestors() {
+        let candidate = ancestor.join("book/rust/listings");
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+    legacy_fallback()
+}
+
+fn legacy_fallback() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../book/rust/listings")
+}
+
 fn test_book_listing(chapter: &str, listing: &str) -> AutoResult<()> {
     let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // Navigate from auto-lang/crates/auto-lang to book/rust/listings
-    let listing_dir = d
-        .join("../../../book/rust/listings")
-        .join(chapter)
-        .join(listing);
+    let listing_dir = book_listings_root().join(chapter).join(listing);
 
     let at_path = listing_dir.join("main.at");
     let exp_path = listing_dir.join("main.expected.rs");
@@ -47,7 +68,7 @@ fn test_book_listing(chapter: &str, listing: &str) -> AutoResult<()> {
 #[test]
 fn generate_book_expected() -> AutoResult<()> {
     let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let listings_base = d.join("../../../book/rust/listings");
+    let listings_base = book_listings_root();
 
     let chapters = ["ch01", "ch02", "ch03", "ch04", "ch05", "ch06", "ch07", "ch08", "ch09"];
     let mut generated = 0;
