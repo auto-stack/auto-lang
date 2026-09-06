@@ -68,7 +68,7 @@ let merged = RouteMerger::merge(discovered, config_routes);
 - `libs/std.rs` 是 0 行空文件，仅占模块位。
 - `database/mod.rs` 头注 "Plan 134: UI Artifact" 实为 plan-135（134 是 jet-generator-view-body）。
 - `docs/plans/archive/114-hybrid-routing.md` 文件内标题写作 "Plan 119"；代码注释按文件名引 plan-114。
-- plan 重号：`old/` 下有两个 152（SSE 与 a2ts 各一）；355 在 archive/（session 递归修复）
+- plan 重号：`archive/` 下有两个 152（SSE 与 a2ts 各一，历史 `old/` 已并入）；355 在 archive/（session 递归修复）
   与 plans/（a2r async-await 转译）各一，引用须带归档位置区分。
 - docs/design/05-vm-runtime.md 的 "Status" 描述的是 `vm/` 子系统，不是本目录这些文件；
   本模块的 VM 字节码细节见 vm 模块 spec。

@@ -161,15 +161,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `runtime.rs`（ExecutionEngine/StackFrame）+ `scope.rs`（Sid/SymbolTable/DEPRECATED Scope）+ `scope_manager.rs` + `session.rs`（CompilerSession/Scenario）+ `host.rs`（ShellHost）+ `ffi.rs`（CFfiBridge）+ `py_ffi{,_types}.rs`（PyFfiBridge/PySignature）+ `libs/` + `a2r_std.rs` + `database/` + `sse/` + `route/` + `stdlib/auto/`（Auto 源码标准库） |
+| 生产入口 | `runtime.rs:ExecutionEngine`(:126)/`StackFrame`(:51)；`scope.rs:Sid/SymbolTable`；`session.rs:CompilerSession`(:84)/`Scenario`(:28)；`libs/builtin.rs:builtins()`；`ffi.rs:CFfiBridge`；`py_ffi.rs:PyFfiBridge`；`database/mod.rs:Database/FileId/FragId`；`sse/parser.rs:SSEParser`；`route/`：RouteDiscovery/Merger/Def；`a2r_std.rs:List`（快照行号） |
+| 公共 API / 关键数据流 | Universe 拆分（plan-064）：Database（编译期持久）+ ExecutionEngine（运行期 ephemeral）；`StackFrame.scope_sid → SymbolTable.sid` 单向链接；内建函数经 builtins() 装配；网络栈在 stdlib/auto/（http.at+http.vm.at+http_stream.at/net.at+net.vm.at/async.at+async.vm.at/json/url/log/env/sse 双文件模式实测在码） |
+| 当前能力 | C FFI（CFfiBridge，CALL_NAT 桥）+ Python FFI（PyO3 嵌入，py_call/py_getattr 450/451，plan-560/567 扩至 480）+ Rust FFI（vm/NativeInterface）；AIE 增量存储+UI 产物缓存（UIArtifact/UICache）；SSE 解析；约定+配置混合路由；ShellHost（system/exit/export） |
+| 实验能力 | Plan 064 分层迁移未收尾：`Scope` DEPRECATED 仍在码，`get_val` 恒返 None 桩（scope.rs:300 TODO 自述——复核成立） |
+| 未实现/计划项 | WebSocket（plan-350 归档设计）、中间件/session/SSR/OpenAPI（plan-352 归档设计）——plans.md 现均标 archive/ 不称 current |
+| 测试证据 | `libs/` 内联测试；`src/tests/{ffi_tests, ffi_dual_tests, mode_tests, stdlib_tests, storage_tests, storage_integration_tests, default_storage_tests}.rs`；HTTP 真栈测试 `cargo th` 档 20 测 |
+| 与旧文档的差异 | ①plans.md 严重漂移：标 `plans/` 活跃的 300/317/318/322/328/329/334/335/341/344/349/350/352/353/355/442/458 共 18 行实已全部归档→归档列整体校正+头注复核记录；②`old/` 引用→`archive/`（plans.md+overview.md 重号注记）；③其余现状断言（Scope 桩/libs/std.rs 0 行/Plan 134 注记/stdlib 双文件）全部复核成立，维持 |
+| 本次修改文件 | `docs/specs/auto-lang/runtime/{overview, plans}.md`（architecture/design 四文件无冲突未动） |
 
 ## ui
 
