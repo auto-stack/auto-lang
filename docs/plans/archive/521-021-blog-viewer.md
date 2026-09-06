@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-521
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: 021-blog-viewer 升级为完整 App
 author: [zhaopuming]
 created_at: 2026-09-02
