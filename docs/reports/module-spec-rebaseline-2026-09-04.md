@@ -189,12 +189,12 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `mcp/` 5 文件 838 行（mod/protocol/server/session_manager/tests）；AutoUI MCP（`ui/mcp_server.rs`，plan-278/299/314）属 ui 模块——overview 边界声明与代码一致 |
+| 生产入口 | `server.rs:McpServer`（:10）+ `dispatch_tool`（7 工具表）+ `patch_replace_definition`；`protocol.rs:read_message/write_response`（JSON-RPC 2.0 over stdio，握手子集，协议版本 2024-11-05）；`session_manager.rs:SessionManager`（:19，daemon 复用）；CLI `auto mcp`（crates/auto/src/main.rs:2010 快照） |
+| 公共 API / 关键数据流 | AI agent → stdio 行分隔 JSON-RPC → McpServer 分发 → SessionManager（AutovmReplSession 持久 VM 会话）→ 7 工具（session_create/evaluate/reset/inspect/typecheck/patch/snapshot） |
+| 当前能力 | 7 工具全可用（plan-265）；与人类 REPL 共享 AutovmReplSession（dual-mode）；SessionManager 被 autovm_daemon 复用 |
+| 实验能力 | 无 |
+| 未实现/计划项 | sandbox 策略（标志 #[allow(dead_code)] session_manager.rs:28——复核成立）；auto_typecheck 实为 parse+符号清单（infer 未接）；stdio 模式无会话 GC（cleanup_expired 仅 daemon 调用）；诊断结构 severity+message（无 code/span/suggestions）——overview 已知坑节全部复核维持 |
+| 测试证据 | `mcp/tests.rs` 1 行占位注释（复核：模块确无单测——维持原判）；间接覆盖经 autovm_daemon/REPL 测试 |
+| 与旧文档的差异 | ①CLI 入口行号 ~1547→2010（附快照）；②plans.md 6 处 `old/`→`archive/`。其余断言（7 工具/边界声明/坑清单）全部复核成立 |
+| 本次修改文件 | `docs/specs/auto-lang/mcp/{overview, plans}.md`（architecture/design 无冲突） |

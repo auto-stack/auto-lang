@@ -6,12 +6,12 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
-| 265 | autovm-mcp-server | ✅ Complete | old/ | 本模块奠基：stdio JSON-RPC + 会话管理 + 7 工具（define 合入 evaluate，sandbox/GC/建议诊断未落地） |
-| 269 | autovm-daemon-cli | ✅ Done | old/ | `auto serve`/`auto req` 命名管道 daemon，复用本模块 SessionManager 实现跨进程会话 |
-| 278 | autoui-mcp-desktop | ✅ 已完成（Phase 1） | old/ | 第二个 MCP server 嵌入 iced 进程（HTTP :9247，SharedState），确立双 server 分工 |
-| 279 | aura-style-mcp-snapshot | ✅ Completed | old/ | `autoui_snapshot`：build-time AURA 模板快照（后被 vtree 取代为主信道） |
-| 280 | mcp-render-check | ✅ 已完成 | old/ | `autoui_render_check` 渲染诊断（FALLBACK/PARTIAL 标注） |
-| 285 | screenshot-mcp-tool | ✅ Implemented | old/ | `autoui_screenshot` 像素级次信道 |
+| 265 | autovm-mcp-server | ✅ Complete | archive/ | 本模块奠基：stdio JSON-RPC + 会话管理 + 7 工具（define 合入 evaluate，sandbox/GC/建议诊断未落地） |
+| 269 | autovm-daemon-cli | ✅ Done | archive/ | `auto serve`/`auto req` 命名管道 daemon，复用本模块 SessionManager 实现跨进程会话 |
+| 278 | autoui-mcp-desktop | ✅ 已完成（Phase 1） | archive/ | 第二个 MCP server 嵌入 iced 进程（HTTP :9247，SharedState），确立双 server 分工 |
+| 279 | aura-style-mcp-snapshot | ✅ Completed | archive/ | `autoui_snapshot`：build-time AURA 模板快照（后被 vtree 取代为主信道） |
+| 280 | mcp-render-check | ✅ 已完成 | archive/ | `autoui_render_check` 渲染诊断（FALLBACK/PARTIAL 标注） |
+| 285 | screenshot-mcp-tool | ✅ Implemented | archive/ | `autoui_screenshot` 像素级次信道 |
 | 299 | autoui-mcp-v2 | ✅ 已完成（Phase 1-3） | archive/ | AutoUI MCP V2 协议全面改进 |
 | 314 | autoui-mcp-styled-vtree | ✅ COMPLETED | archive/ | `autoui_vtree`：实时 VTree→Atom（1:1 + 盒模型），解耦 F12 门控，确立主感知信道 |
 | 446 | vm-backend-os-config-field-report | ✅ Archived | archive/ | AutoUI MCP 通道五批加固:消歧显式报错/HTTP natives 真值/builder 同步 drain/json.parse 物化+双态/渲染层 U1-U7(截图冻结根修=textarea >64KB 降级预览;快照回退自标识) |

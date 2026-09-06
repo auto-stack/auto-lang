@@ -23,7 +23,7 @@ stdio 上的 JSON-RPC 2.0 创建隔离 VM 会话、执行/校验 Auto 代码、�
   `auto_session_create` / `auto_evaluate` / `auto_session_reset` /
   `auto_inspect` / `auto_typecheck` / `auto_patch` / `auto_snapshot`。
 - CLI 入口：`auto mcp`（`crates/auto/src/main.rs` 的 `Commands::Mcp` 分支，
-  ~1547 行），构造 `McpServer` 后阻塞在 stdin 循环。
+  2026-09-07 快照 2010 行），构造 `McpServer` 后阻塞在 stdin 循环。
 - `SessionManager` 同时被 `autovm_daemon`（plan-269）复用——会话 GC
   （`cleanup_expired`）目前只有 daemon 路径会调用。
 - 测试：`src/mcp/tests.rs` 只有占位注释，模块无单测。
@@ -37,7 +37,7 @@ stdio 上的 JSON-RPC 2.0 创建隔离 VM 会话、执行/校验 Auto 代码、�
 - `crates/auto-lang/src/mcp/protocol.rs:ToolResult` — 工具结果 schema（text ContentBlock）
 - `crates/auto-lang/src/mcp/session_manager.rs:SessionManager` — 会话生命周期 + 源码累积
 - `crates/auto-lang/src/autovm_persistent.rs:AutovmReplSession` — 底层持久 VM 会话（复用核心）
-- `crates/auto/src/main.rs`（`Commands::Mcp` 分支，~1547 行）— `auto mcp` CLI 入口
+- `crates/auto/src/main.rs`（`Commands::Mcp` 分支，2026-09-07 快照 2010 行）— `auto mcp` CLI 入口
 
 ## 使用示例
 
