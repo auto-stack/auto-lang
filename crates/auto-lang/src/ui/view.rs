@@ -839,6 +839,14 @@ pub enum PopoverPlacement {
     /// 发布）。alert-dialog 臂专用（shadcn AlertDialog 语义：外点/Esc 不关，
     /// 仅 cancel/action 操作钮经 VM 状态翻转关闭）。
     Modal,
+    /// PLAN-534：viewport 贴边变体（sheet/drawer 专用）——面板贴 viewport
+    /// 四缘之一（EdgeLeft/EdgeRight 全高，EdgeTop/EdgeBottom 全宽），
+    /// 锚无关；挂 scrim + 面板外点击整吞（on_dismiss 为 Some 时同时发布，
+    /// shadcn Sheet 语义：外点/Esc 关闭）。不做翻转钳制（贴边即终位）。
+    EdgeLeft,
+    EdgeRight,
+    EdgeTop,
+    EdgeBottom,
 }
 
 /// Plan 409 §10 续 5: Overlay 浮层的窗口相对定位(从 style 的 absolute +
