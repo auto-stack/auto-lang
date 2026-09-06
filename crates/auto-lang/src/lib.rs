@@ -5042,19 +5042,55 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // Plan 376D: Build a shared TypeStore from ALL sibling .at files (including
     // subdirectories) so the type inference engine can resolve cross-module types.
     {
-        let src_root = std::path::Path::new(path)
+        // PLAN-010 T3: only treat the two-levels-up directory as the "crate
+        // src root" when it IS literally named `src` (the repo layout this
+        // heuristic was built for). For arbitrary CLI paths the old
+        // unconditional parent().parent() walked unrelated trees (a sample
+        // in $TMP scanned the entire temp dir) — the `auto trans` hang.
+        let file_dir = std::path::Path::new(path)
             .parent()
-            .and_then(|p| p.parent()) // go up from file's dir to crate src root
-            .unwrap_or(std::path::Path::new("."));
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let src_root = match file_dir.parent() {
+            Some(pp) if pp.file_name().and_then(|n| n.to_str()) == Some("src") => pp.to_path_buf(),
+            _ => file_dir.clone(),
+        };
         let mut type_store = crate::types::TypeStore::new();
         // Scan the source root recursively for .at files
-        fn scan_at_files(dir: &std::path::Path, store: &mut crate::types::TypeStore) {
+        // PLAN-010 T3: the scan MUST be bounded. The two-levels-up "crate
+        // src root" assumption makes arbitrary CLI paths (e.g. a sample in
+        // $TMP) walk enormous unrelated trees parsing every .at file — the
+        // `auto trans` multi-minute hang (009 DEBTS obs. #3). Bound depth,
+        // file count, and skip build/VC litter.
+        const SCAN_MAX_DEPTH: usize = 6;
+        const SCAN_MAX_FILES: usize = 400;
+        const SCAN_SKIP_DIRS: &[&str] = &[".git", "target", "node_modules", ".wt",
+            ".worktrees", ".cargo", "dist", "build", ".venv", "__pycache__"];
+        fn scan_at_files(
+            dir: &std::path::Path,
+            store: &mut crate::types::TypeStore,
+            depth: usize,
+            budget: &mut usize,
+        ) {
+            if depth > SCAN_MAX_DEPTH || *budget == 0 {
+                return;
+            }
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
+                    if *budget == 0 {
+                        return;
+                    }
                     let entry_path = entry.path();
+                    let skipped_dir = entry_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| SCAN_SKIP_DIRS.contains(&n))
+                        .unwrap_or(false);
                     if entry_path.is_dir() {
-                        scan_at_files(&entry_path, store);
+                        if !skipped_dir {
+                            scan_at_files(&entry_path, store, depth + 1, budget);
+                        }
                     } else if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
+                        *budget -= 1;
                         if let Ok(code) = std::fs::read_to_string(&entry_path) {
                             let mut p = crate::parser::Parser::from(code.as_str());
                             p.set_dest(crate::parser::CompileDest::TransRust);
@@ -5077,7 +5113,7 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                 }
             }
         }
-        scan_at_files(src_root, &mut type_store);
+        scan_at_files(&src_root, &mut type_store, 0, &mut SCAN_MAX_FILES);
         trans.set_shared_type_store(Some(std::sync::Arc::new(std::sync::RwLock::new(type_store))));
     }
 
@@ -5091,22 +5127,52 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
         // fn_ret_types so the spec-bound-ident / .await heuristics see
         // cross-module return types on the single-file CLI path.
         let mut at_files: Vec<std::path::PathBuf> = Vec::new();
-        let mut stack: Vec<std::path::PathBuf> = vec![parent.to_path_buf()];
-        while let Some(dir) = stack.pop() {
+        let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(parent.to_path_buf(), 0)];
+        // PLAN-010 T3: same bounded-scan policy as the crate-root scan —
+        // unbounded recursion over arbitrary CLI paths is the trans hang.
+        const SIB_SCAN_MAX_DEPTH: usize = 6;
+        const SIB_SCAN_MAX_FILES: usize = 400;
+        const SIB_SCAN_SKIP_DIRS: &[&str] = &[".git", "target", "node_modules", ".wt",
+            ".worktrees", ".cargo", "dist", "build", ".venv", "__pycache__"];
+        while let Some((dir, depth)) = stack.pop() {
+            if depth > SIB_SCAN_MAX_DEPTH || at_files.len() >= SIB_SCAN_MAX_FILES {
+                continue;
+            }
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let ep = entry.path();
+                    let skipped_dir = ep.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| SIB_SCAN_SKIP_DIRS.contains(&n))
+                        .unwrap_or(false);
                     if ep.is_dir() {
-                        stack.push(ep);
+                        if !skipped_dir {
+                            stack.push((ep, depth + 1));
+                        }
                     } else if ep.extension().map(|e| e == "at").unwrap_or(false) {
                         at_files.push(ep);
+                        if at_files.len() >= SIB_SCAN_MAX_FILES {
+                            break;
+                        }
                     }
                 }
             }
         }
+        // PLAN-010 T3: cap the number and size of parsed siblings — parsing
+        // hundreds of large stray .at files (e.g. in a temp dir) is the
+        // multi-minute `auto trans` hang.
+        const SIB_PARSE_MAX: usize = 50;
+        const SIB_PARSE_MAX_BYTES: u64 = 1_000_000;
+        let mut sib_parsed = 0usize;
         for entry_path in at_files {
+            if sib_parsed >= SIB_PARSE_MAX { break; }
             if entry_path == std::path::Path::new(path) { continue; }
+            let too_big = std::fs::metadata(&entry_path)
+                .map(|m| m.len() > SIB_PARSE_MAX_BYTES)
+                .unwrap_or(true);
+            if too_big { continue; }
             if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
+                sib_parsed += 1;
                 let mut sib_parser = Parser::from(sibling_code.as_str());
                 sib_parser.set_dest(crate::parser::CompileDest::TransRust);
                 sib_parser.skip_check = true;
@@ -5167,12 +5233,22 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
         // to catch enums/specs defined in sibling directories (e.g. error.at in
         // src/ when transpiling orchestration/driver.at in src/orchestration/).
         if let Some(grandparent) = parent.parent() {
+            // PLAN-010 T3: same parse budget/size guard as the sibling scan.
+            const GP_PARSE_MAX: usize = 20;
+            const GP_PARSE_MAX_BYTES: u64 = 1_000_000;
+            let mut gp_parsed = 0usize;
             if let Ok(entries) = std::fs::read_dir(grandparent) {
                 for entry in entries.flatten() {
+                    if gp_parsed >= GP_PARSE_MAX { break; }
                     let entry_path = entry.path();
                     if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
                         if entry_path == std::path::Path::new(path) { continue; }
+                        let too_big = std::fs::metadata(&entry_path)
+                            .map(|m| m.len() > GP_PARSE_MAX_BYTES)
+                            .unwrap_or(true);
+                        if too_big { continue; }
                         if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
+                            gp_parsed += 1;
                             let mut sib_parser = Parser::from(sibling_code.as_str());
                             sib_parser.set_dest(crate::parser::CompileDest::TransRust);
                             sib_parser.skip_check = true;
@@ -6570,4 +6646,5 @@ mod plan492_m5_tests;
 // computed+helper 链)。
 #[cfg(test)]
 mod musk_vm_track_tests;
+
 

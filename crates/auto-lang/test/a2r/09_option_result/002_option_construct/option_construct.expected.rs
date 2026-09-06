@@ -16,7 +16,7 @@ fn divide(a: i64, b: i64) -> Result<i64, Box<dyn std::error::Error>> {
 
 fn main() {
     let a: Option<i64> = Some(42);
-    let b = None;
+    let b: Option<i64> = None;
     let c: Result<i64, Box<dyn std::error::Error>> = Ok(100);
     let d = Err("something went wrong".into());
 

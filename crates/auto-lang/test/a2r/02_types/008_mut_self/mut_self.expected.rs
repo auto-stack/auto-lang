@@ -18,7 +18,7 @@ impl Counter {
 }
 
 fn main() {
-    let c = Counter::new();
+    let mut c = Counter::new();
     c.increment();
     c.increment();
     println!("{}", c.get_count());

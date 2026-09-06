@@ -3,7 +3,7 @@
 fn check_value() -> Option<bool> {
     let x: i64 = 42;
     let is_positive: bool = x > 0;
-    May::val(is_positive)
+    Some(is_positive)
 }
 
 fn main() {

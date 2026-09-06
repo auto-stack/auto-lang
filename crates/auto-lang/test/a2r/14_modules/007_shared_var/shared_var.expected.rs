@@ -8,6 +8,6 @@ static APP_NAME: Mutex<&str> = Mutex::new("AutoLang");
 
 fn main() {
     { let __a2r_gv = 1; *COUNTER.lock().unwrap() += __a2r_gv; };
-    say(*APP_NAME.lock().unwrap());
-    say(*COUNTER.lock().unwrap());
+    println!("{}", *APP_NAME.lock().unwrap());
+    println!("{}", *COUNTER.lock().unwrap());
 }

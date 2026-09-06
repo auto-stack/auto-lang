@@ -2,11 +2,11 @@
 
 fn check_value() -> Option<bool> {
     let result: bool = true;
-    result
+    Some(result)
 }
 
 fn check_nil() -> Option<bool> {
-    None;
+    None
 }
 
 fn main() {

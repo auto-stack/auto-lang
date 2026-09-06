@@ -2,6 +2,6 @@
 
 fn main() {
     let base: i64 = 10;
-    let add_base = |x: i64| { x + base; };
+    let add_base = |x: i64| { x + base};
     println!("{}", add_base(5));
 }

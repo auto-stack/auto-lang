@@ -47,7 +47,7 @@ impl Weapon for Starship {
 }
 
 fn main() {
-    let ship = Starship {};
+    let ship = Starship { core: WarpDrive {}, weapon: LaserCannon {} };
     ship.start();
     ship.fire();
 }

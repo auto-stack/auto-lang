@@ -14,7 +14,7 @@ impl Sink {
     pub fn new() -> Self {
         Self {
             log: "",
-            cb: Box::new(move |e: String| { println!("cb:{e}"); }),
+            cb: Box::new(move |e: String| { println!("cb:{e}")}),
         }
     }
 

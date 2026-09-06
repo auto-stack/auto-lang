@@ -2,7 +2,7 @@
 
 fn test_coalesce_int() -> i64 {
     let x: i64 = 10;
-    let y: i64 = x.unwrap_or(0);
+    let y: i64 = x;
     y
 }
 

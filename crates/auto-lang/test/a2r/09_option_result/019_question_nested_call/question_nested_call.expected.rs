@@ -2,11 +2,11 @@
 
 fn get_value() -> Option<i64> {
     let x: i64 = 42;
-    May::val(x)
+    Some(x)
 }
 
 fn use_value() -> Option<i64> {
-    get_value()?
+    Some(get_value()?)
 }
 
 fn main() {

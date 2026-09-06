@@ -18940,13 +18940,51 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
+    run_app_with_title::<C>(None)
+}
+
+/// PLAN-010 T5: run_app with an explicit window title. iced's application
+/// builder otherwise falls back to its default title ("Auto Lang - Iced"),
+/// which leaks into replicated apps (at-gen). `None` keeps the historical
+/// default. This is the application-chain title surface (待澄清④: 最小改,
+/// 不动 VM 轨).
+pub fn run_app_with_title<C>(title: Option<&str>) -> AppResult<()>
+where
+    C: Component + Default + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    if let Some(t) = title {
+        let t: String = t.to_string();
+        return iced::application(
+            TickWrap::<C>::default,
+            TickWrap::<C>::update,
+            view_wrapped::<C>,
+        )
+        .subscription(|c: &TickWrap<C>| {
+            // Plan 407: tick 订阅(修复后形态,见上注)。
+            if let Some(ms) = c.inner.tick_interval_ms() {
+                iced::time::every(std::time::Duration::from_millis(ms as u64))
+                    .map(|_| TickWrapMsg::<C::Msg>::Tick)
+            } else {
+                iced::Subscription::none()
+            }
+        })
+        .window_size(startup_window_size())
+        // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+        .font(INTER_FONT_REGULAR)
+        .font(INTER_FONT_MEDIUM)
+        .font(INTER_FONT_SEMIBOLD)
+        .default_font(INTER_FONT)
+        .title(title_fn::<C>(t))
+        .run()
+        .map_err(|e| e.into());
+    }
     iced::application(
         TickWrap::<C>::default,
         TickWrap::<C>::update,
         view_wrapped::<C>,
     )
     .subscription(|c: &TickWrap<C>| {
-        // Plan 407: tick 订阅(修复后形态,见上注)。
         if let Some(ms) = c.inner.tick_interval_ms() {
             iced::time::every(std::time::Duration::from_millis(ms as u64))
                 .map(|_| TickWrapMsg::<C::Msg>::Tick)
@@ -18955,13 +18993,17 @@ where
         }
     })
     .window_size(startup_window_size())
-    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
     .font(INTER_FONT_SEMIBOLD)
     .default_font(INTER_FONT)
     .run()
     .map_err(|e| e.into())
+}
+
+/// PLAN-010 T5: 标题闭包(HRTB 由具名 fn 承载,闭包推断不过——同 view_wrapped)。
+fn title_fn<C: Component>(t: String) -> impl Fn(&TickWrap<C>) -> String {
+    move |_| t.clone()
 }
 
 /// 包装组件的 view 转发(HRTB 由具名 fn 承载,闭包推断不过)。

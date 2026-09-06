@@ -2,7 +2,7 @@
 
 fn precise_value() -> Option<f64> {
     let e: f64 = 2.718281828;
-    e
+    Some(e)
 }
 
 fn main() {

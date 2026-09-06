@@ -33,7 +33,7 @@ impl Calculator for Computer {
 }
 
 fn main() {
-    let comp = Computer {};
+    let comp = Computer { engine: MathEngine {} };
 
     let result1 = comp.add(5, 3);
     let result2 = comp.multiply(4, 7);

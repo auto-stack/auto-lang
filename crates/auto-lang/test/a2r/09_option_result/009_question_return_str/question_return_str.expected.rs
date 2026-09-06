@@ -2,11 +2,11 @@
 
 fn get_string() -> Option<String> {
     let s: String = "hello".to_string();
-    s
+    Some(s)
 }
 
 fn get_nil_string() -> Option<String> {
-    None;
+    None
 }
 
 fn main() {

@@ -2,7 +2,7 @@
 
 fn get_double() -> Option<f64> {
     let x: f64 = 3.14;
-    x
+    Some(x)
 }
 
 fn main() {

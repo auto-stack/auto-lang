@@ -2,7 +2,7 @@
 
 fn get_letter() -> Option<char> {
     let letter: char = 'Z';
-    letter
+    Some(letter)
 }
 
 fn main() {

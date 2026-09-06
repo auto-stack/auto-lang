@@ -2,7 +2,7 @@
 
 fn get_uint() -> Option<u32> {
     let u: u32 = 100;
-    u
+    Some(u)
 }
 
 fn main() {

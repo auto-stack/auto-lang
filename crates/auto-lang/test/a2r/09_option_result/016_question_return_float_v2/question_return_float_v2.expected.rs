@@ -2,7 +2,7 @@
 
 fn calculate() -> Option<f64> {
     let pi: f64 = 3.14159;
-    pi
+    Some(pi)
 }
 
 fn main() {

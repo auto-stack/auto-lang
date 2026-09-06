@@ -26,8 +26,8 @@ const MAX_RETRIES: i64 = 3;
 /// Top-level private const.
 /// Top-level private const.
 fn main() {
-    say(Registry::DEFAULT);
-    say(Registry::MAX_MODES);
-    say(APP_NAME);
-    say(MAX_RETRIES);
+    println!("{}", Registry::DEFAULT);
+    println!("{}", Registry::MAX_MODES);
+    println!("{}", APP_NAME);
+    println!("{}", MAX_RETRIES);
 }

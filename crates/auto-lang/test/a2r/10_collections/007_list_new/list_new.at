@@ -1,0 +1,18 @@
+// PLAN-010 T1: List.new() must lower to bare Vec::new() — never qualified
+// with a use.rs symbol (009 T8 evidence: engine_write_line::Vec::new()).
+// `std::process::{exit}` brace-expansion seeds the lowercase `exit` symbol
+// into the use table — the exact precondition that mis-qualified the ctor.
+
+use.rs std::process::{exit}
+
+type Buffer {
+    items List<int>
+}
+
+fn main() {
+    var b = Buffer(items: List.new())
+    b.items.push(42)
+    var bare = List.new()
+    bare.push(7)
+    let n = b.items.len()
+}
