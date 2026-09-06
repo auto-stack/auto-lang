@@ -1358,6 +1358,39 @@ impl DynamicComponent {
                     let _post_idx = self.bridge.read_state("active_index").ok();
                 }
                 self.dirty = true;
+                // PLAN-576 G3 (D3): 子件体内引号 emit（带计算实参）的派发
+                // 路由。handler 合成期把 `."msg"(v)` 改写为 __emit_<W>_<msg>
+                // 桥函数，桥函数把 (msg, v) 写入 __emit_msg/__emit_payload
+                // 状态对（router.push 写 __current_route 同款"handler 写
+                // 状态、派发器收尾"模式）。此处读出并清账，走 C2① 同一
+                // lookup_route/dispatch_parent_route 链——此前该形态编译为
+                // 对子件自身 handler 的内联直调，父侧 on<msg> 路由不触发
+                // （043②②）。v1 限度：单 pending 槽（同 handler 多次 emit
+                // 末次生效）；多实参取首个位置实参（桥函数侧截取）。
+                if let Ok(auto_val::Value::Str(pending_msg)) = self.bridge.read_state("__emit_msg") {
+                    if !pending_msg.is_empty() {
+                        let payload = self
+                            .bridge
+                            .read_state("__emit_payload")
+                            .unwrap_or(auto_val::Value::Nil);
+                        let _ = self.bridge.write_state("__emit_msg", auto_val::Value::str(""));
+                        let emit_key = format!("on{}", pending_msg);
+                        match crate::ui::child_emit::lookup_route(&emit_widget, &emit_key) {
+                            Some(route) => {
+                                if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                                    eprintln!(
+                                        "[VM-EMIT] {}.{} -> {}.{} (quoted, in-body) payload={:?}",
+                                        emit_widget, pending_msg, route.parent_widget, route.handler, payload
+                                    );
+                                }
+                                self.dispatch_parent_route(&emit_widget, &pending_msg, &route, payload);
+                            }
+                            None => {
+                                // 非错：未绑定回调的 emit 不回送（vue 同语义）。
+                            }
+                        }
+                    }
+                }
                 // PLAN-051 C2 ①: 声明式——子 msg 变体派发后回送宿主
                 // `on<name>` 绑定（musk `send(str)` + `onsend: .SendInput($event)`
                 // 形态；载荷 = 子 handler 收到的首实参，无实参回落输入值）。
@@ -3294,5 +3327,59 @@ mod tests {
         };
         // half_h = 240.0*0.5 = 120 > 100 → 真分支；quarter_h = 120*0.5 = 60
         assert!((got - 60.0).abs() < 1e-4, "子件 computed 引用应解析（half=120 守卫真，quarter=60），实得 {}", got);
+    }
+
+    /// PLAN-576 G3 定向测试（TDD 红）：子件体内引号 emit（带计算实参）的
+    /// 派发路由。043②②：`."msg"(v)` 编译为子件自身 handler 内联直调，不经
+    /// on_with_input_for 派发器——PLAN-051 C2① 的 on<name> 路由回送不触发
+    /// （带计算实参的子件 emit 平台性不通，demo 被迫 is_vm 双轨）。
+    #[test]
+    fn plan576_child_quoted_emit_routes_with_payload() {
+        let src = concat!(
+            "widget P576e {
+",
+            "    model { var got float = 0.0 }
+",
+            "    view { col { Bar576e(onmoved: .Moved) } }
+",
+            "    on { .Moved(v: float) -> { .got = v } }
+",
+            "}
+",
+            "widget Bar576e {
+",
+            "    model { var track_h float = 240.0 }
+",
+            "    msg { moved(float) }
+",
+            "    view { col { text \"bar\" } }
+",
+            "    on {\n",
+            "        .Move -> {\n",
+            "            let v = .track_h * 0.5\n",
+            "            let _ = .\"moved\"(v)\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        comp.on_with_input_for("Bar576e", "Move", None);
+        let got = match comp.read_state("got").expect("got") {
+            auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+            other => panic!("got 应为 float，实得 {:?}", other),
+        };
+        assert!((got - 120.0).abs() < 1e-4,
+            "引号 emit 应携带计算实参经派发器路由到父 onmoved（v=track_h*0.5=120），实得 {}", got);
     }
 }
