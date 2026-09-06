@@ -285,12 +285,12 @@ fn new_leaf_buffer(
     let arc = Arc::new(buffer);
     let system = ce_highlight::syntax_system();
     // PLAN-041 T4：fence 家族（带语言）走 hljs 主题——跨轨 token 映射表
-    // （autodown-core 单源）烘焙的 syntect 主题，观感与 vue lowlight 对齐；
-    // 无语言保持不染色（区间叠加层独走）。
-    let theme = match lang {
-        Some(_) => ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode()),
-        None => "base16-eighties.dark".to_string(),
-    };
+    // （autodown-core 单源）烘焙的 syntect 主题，观感与 vue lowlight 对齐。
+    // PLAN-054 T3（五截图根因②b）：无语言 fence 同走 hljs_theme_name
+    // (dark_mode())——硬编码 base16-eighties.dark 的默认前景是浅灰，浅色
+    // 档下 plain fence 文字不可读；有/无语言主题档同源后浅档默认前景
+    // 转深色可读（无语言仍不染色：syntax_by_extension 只对 Some(lang)）。
+    let theme = ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode());
     let mut se = SyntaxEditor::new(arc, system, &theme)
         .expect("bootstrap syntax theme must exist");
     if let Some(lang) = lang {
@@ -601,13 +601,14 @@ impl AutodownEditorCore {
     }
 
     /// PLAN-051 T10：本核的 fence 叶 buffer 换到当前 dark_mode 档的 hljs
-    /// 主题（retheme_all_fence_buffers 的单核臂；带语言 fence 才染，
-    /// 无语言 fence 不染色保持）。
+    /// 主题（retheme_all_fence_buffers 的单核臂）。PLAN-054 T3：无语言
+    /// fence 也换——T3 后其 buffer 同样携带 hljs 主题（基色前景随档），
+    /// 翻转不换会复现「浅档浅灰字不可读」。
     pub fn retheme_fence_buffers(&self) {
         let theme = ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode());
         let mut blocks = self.blocks.lock().unwrap();
         for b in blocks.iter_mut() {
-            if b.kind == LeafKind::Fence && b.syntax.is_some() {
+            if b.kind == LeafKind::Fence {
                 b.editor.ed_mut().update_theme(&theme);
             }
         }
@@ -3971,6 +3972,34 @@ fn main() { let s = \"hi\"; }
             let fg = blocks[0].editor.ed().theme().settings.foreground.expect("light fg");
             assert_eq!((fg.r, fg.g, fg.b), (9, 9, 11), "light retheme base fg");
         }
+    }
+
+    /// PLAN-054 T3（五截图根因②b）：无语言 fence 主题档与有语言同源——
+    /// 硬编码 base16-eighties.dark（暗主题默认前景=浅灰）曾令浅色档
+    /// plain fence 文字不可读；现在 None 臂同走 hljs_theme_name(dark_mode())
+    /// ——浅档基色前景=深色 (9,9,11) 可读，暗档=(250,250,250)。
+    #[test]
+    fn fence_no_lang_theme_follows_dark_mode() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let c = core_for("t054a", "```\nplain text\n```\n");
+        {
+            let blocks = c.blocks.lock().unwrap();
+            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("light no-lang fg");
+            assert_eq!(
+                (fg.r, fg.g, fg.b),
+                (9, 9, 11),
+                "light no-lang fence base fg must be dark (readable)"
+            );
+        }
+        // 运行时翻转：retheme 换挡后暗档基色前景转浅（retheme 臂含无语言）。
+        crate::ui::style::theme::set_dark_mode(true);
+        retheme_all_fence_buffers();
+        {
+            let blocks = c.blocks.lock().unwrap();
+            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("dark no-lang fg");
+            assert_eq!((fg.r, fg.g, fg.b), (250, 250, 250), "dark no-lang fence base fg");
+        }
+        crate::ui::style::theme::set_dark_mode(false); // 还原默认档
     }
 
     /// PLAN-050 F4：段落行内 code 区间以 mono 家族测宽——render_frame 后

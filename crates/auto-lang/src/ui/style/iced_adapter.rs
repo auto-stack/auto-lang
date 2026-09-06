@@ -786,6 +786,12 @@ impl IcedStyle {
                 self.border = true;
                 self.border_width = Some(*width);
             }
+            // PLAN-054 T1: 左条宽度档——只供 apply_side_borders 的左条宽
+            // （border_left=true），不置 border（四边整圈边框，quote 去框根因）。
+            StyleClass::BorderLeftWidth(width) => {
+                self.border_left = true;
+                self.border_width = Some(*width);
+            }
             StyleClass::BorderColor(color) => {
                 self.border_color = Some(convert_color(color));
             }

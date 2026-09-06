@@ -411,7 +411,9 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 width: None,
                 height: None,
                 center_x: false,
-                center_y: false,
+                // PLAN-054 T2：28px 定高 header 内标签垂直居中（与编辑臂
+                // (h_h-12)/2 同视觉——五截图根因②a：false 曾顶对齐）。
+                center_y: true,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
                 onclick: None,
             };
@@ -1031,11 +1033,12 @@ mod tests {
             },
             _ => panic!("fence"),
         }
-        // quote：border-l 容器（PLAN-053 T17：§7.4 左边 3px + muted 双档）
+        // quote：border-l 容器（PLAN-053 T17：§7.4 左边 3px + muted 双档；
+        // PLAN-054 T1：border-l-3 单侧宽度档——去四边整圈边框）
         match &children[1] {
             View::Container { style, child, .. } => {
                 let expected = Style::parse(
-                    "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
+                    "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
                 )
                 .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
@@ -1107,6 +1110,28 @@ mod tests {
             )),
             "label must carry explicit color class, got {lclasses:?}"
         );
+    }
+
+    /// PLAN-054 T2（五截图根因②a）：fence header 标签垂直居中——header
+    /// 容器 center_y=true（28px 定高内居中，与编辑臂 (h_h-12)/2 同视觉；
+    /// false 曾顶对齐）。
+    #[test]
+    fn fence_header_label_vertically_centered() {
+        let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
+        let View::Column { children, .. } = doc else {
+            panic!("expected column")
+        };
+        let View::Container { child, .. } = &children[0] else {
+            panic!("fence outer container")
+        };
+        let View::Column { children: parts, .. } = child.as_ref() else {
+            panic!("fence parts column")
+        };
+        let View::Container { center_y, child: h, .. } = &parts[0] else {
+            panic!("fence header container")
+        };
+        assert!(*center_y, "fence header label must be vertically centered");
+        assert_eq!(text_of(h), "rust");
     }
 
     #[test]
