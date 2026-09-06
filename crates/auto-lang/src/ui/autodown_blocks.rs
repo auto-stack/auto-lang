@@ -17,7 +17,8 @@
 use autodown_core::block_model::BlockType;
 
 /// 正文字号（逻辑 px；编辑壳 `BODY_SIZE` 的单源）。
-pub const BODY_SIZE: f32 = 16.0;
+/// PLAN-053 T18：§7.3 正文 0.95rem×16 = 15.2（原 16 偏离规约）。
+pub const BODY_SIZE: f32 = 15.2;
 /// fence 代码体字号（对齐 view 轨 `text-sm` = 14px；两态同源）。
 pub const FENCE_SIZE: f32 = 14.0;
 /// fence 编辑壳 header 栏高（px）。
@@ -211,9 +212,9 @@ pub fn callout_kind_classes(kind: &str) -> (&'static str, &'static str) {
 /// 静态合规）。h4-h6 维持应用级档位（§7.3 未定义）。
 pub fn heading_classes(level: i64) -> &'static str {
     match level.clamp(1, 6) {
-        1 => "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
-        2 => "text-[21.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
-        3 => "text-[18.9px] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
+        1 => "text-[25.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
+        2 => "text-[21.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
+        3 => "text-[18.9px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
         4 => "text-lg font-semibold mb-2",
         5 => "text-base font-semibold mb-1",
         _ => "text-sm font-semibold mb-1",
@@ -480,7 +481,7 @@ mod tests {
     fn heading_tables_single_sourced() {
         assert_eq!(
             heading_classes(1),
-            "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]"
+            "text-[25.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]"
         );
         assert_eq!(heading_classes(6), "text-sm font-semibold mb-1");
         assert_eq!(heading_classes(0), heading_classes(1), "clamp 到 1");

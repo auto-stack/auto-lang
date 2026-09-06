@@ -47,7 +47,17 @@ use crate::ui::code_editor::theme::Rgba;
 /// （autodown_blocks）——两臂同源；fence 叶随之对齐家族 FENCE_SIZE（14，
 /// 与只读轨 text-sm 一致，编辑壳 16→14 的观感统一）。
 pub const BODY_SIZE: f32 = autodown_blocks::BODY_SIZE;
-const LINE_H_MULT: f32 = 1.45;
+// PLAN-053 T18：行高分档（§7.3：heading 1.3 / 正文 1.6 / fence 1.5）。
+const LINE_H_HEADING: f32 = 1.3;
+const LINE_H_PARA: f32 = 1.6;
+const LINE_H_FENCE: f32 = 1.5;
+fn line_h_mult(kind: LeafKind) -> f32 {
+    match kind {
+        LeafKind::Fence => LINE_H_FENCE,
+        LeafKind::Heading(_) => LINE_H_HEADING,
+        LeafKind::Paragraph => LINE_H_PARA,
+    }
+}
 /// 块间垂直间距（观感对齐只读轨 Column spacing=8 + 标题边距感）。
 pub const BLOCK_GAP: f32 = 8.0; // PLAN-053 T15：与只读臂文档列 spacing 8 对齐（两臂基础节奏同值）
 /// 光标宽（对齐 413 CARET_WIDTH）。
@@ -262,9 +272,10 @@ fn new_leaf_buffer(
     mono: bool,
     size: f32,
     lang: Option<&str>,
+    lh_mult: f32,
 ) -> ViEditor<'static, 'static> {
     let attrs = Attrs::new().family(if mono { mono_family() } else { sans_family() });
-    let mut buffer = Buffer::new(font_system, Metrics::new(size, size * LINE_H_MULT));
+    let mut buffer = Buffer::new(font_system, Metrics::new(size, size * lh_mult));
     buffer.set_text(font_system, text, &attrs, Shaping::Advanced, None);
     buffer.set_wrap(font_system, Wrap::Word);
     // PLAN-050 F4 注：段落行内 code 区间的 mono 测宽不在此落——cosmic
@@ -561,7 +572,7 @@ impl AutodownEditorCore {
         build_walk(&root.children.iter().collect::<Vec<_>>(), &mut segs, &mut blocks, font_system);
         if segs.is_empty() {
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None)),
+                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None, LINE_H_PARA)),
                 kind: LeafKind::Paragraph,
                 syntax: None,
                 snapshot: String::new(),
@@ -1294,7 +1305,7 @@ impl AutodownEditorCore {
         for &bi in render_order.iter() {
             let b = &mut blocks[bi];
             let size = leaf_size(b.kind);
-            let line_h = size * LINE_H_MULT;
+            let line_h = size * line_h_mult(b.kind);
             // PLAN-053 T15：heading 额外块距（§7.3 vue margins 19.2/17.6 与
             // 25.6/14.4 扣两臂共同基础节奏 8px）——与只读臂 mt-[]/mb-[] 类
             // 同值，两臂逐块 pitch 一致即左右对齐。
@@ -1502,7 +1513,7 @@ impl AutodownEditorCore {
                     x: 4.0,
                     y: 4.0,
                     size: BODY_SIZE,
-                    line_height: BODY_SIZE * LINE_H_MULT,
+                    line_height: BODY_SIZE * LINE_H_PARA,
                     color: dim,
                     bold: false,
                     italic: false,
@@ -1812,7 +1823,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 };
                 let (text, ivs) = flatten_inlines(&node.inlines);
                 blocks.push(BlockBuf {
-                    editor: SendEditor(new_leaf_buffer(fs, &text, false, leaf_size(kind), None)),
+                    editor: SendEditor(new_leaf_buffer(fs, &text, false, leaf_size(kind), None, line_h_mult(kind))),
                     kind,
                     syntax: None,
                     snapshot: text,
@@ -1839,6 +1850,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                         true,
                         autodown_blocks::FENCE_SIZE,
                         syntax.as_deref(),
+                        LINE_H_FENCE,
                     )),
                     kind: LeafKind::Fence,
                     syntax,
@@ -1871,7 +1883,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
             _ => {
                 let (text, ivs) = flatten_inlines(&node.inlines);
                 blocks.push(BlockBuf {
-                    editor: SendEditor(new_leaf_buffer(fs, &text, false, BODY_SIZE, None)),
+                    editor: SendEditor(new_leaf_buffer(fs, &text, false, BODY_SIZE, None, LINE_H_PARA)),
                     kind: LeafKind::Paragraph,
                     syntax: None,
                     snapshot: text,
@@ -2284,6 +2296,7 @@ impl AutodownEditorCore {
             mono,
             leaf_size(buf.kind),
             syntax.as_deref(),
+            line_h_mult(buf.kind),
         ));
         buf.snapshot = text;
         buf.intervals.clear();
@@ -2437,7 +2450,7 @@ impl AutodownEditorCore {
             let mono = matches!(kind, LeafKind::Fence);
             let size = leaf_size(kind);
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, &right, mono, size, None)),
+                editor: SendEditor(new_leaf_buffer(font_system, &right, mono, size, None, if mono { LINE_H_FENCE } else { LINE_H_PARA })),
                 kind,
                 syntax: None,
                 snapshot: right,
@@ -2520,7 +2533,7 @@ impl AutodownEditorCore {
             let mut blocks = self.blocks.lock().unwrap();
             let id = blocks.len();
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None)),
+                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None, LINE_H_PARA)),
                 kind: LeafKind::Paragraph,
                 syntax: None,
                 snapshot: String::new(),
@@ -3499,7 +3512,7 @@ mod tests {
             });
             let fenced = matches!(b.kind, LeafKind::Fence);
             let size = leaf_size(b.kind);
-            let line_h = size * LINE_H_MULT;
+            let line_h = size * line_h_mult(b.kind);
             let ctx = BlockDrawCtx {
                 marks: &b.intervals,
                 styled_ok: true,
