@@ -839,6 +839,66 @@ mod tests {
         terminal_dispose("t4-menu-1");
     }
 
+    /// PLAN-009 T2: 最小 `.at` 示例挂载 + headless 断言。
+    ///
+    /// `test/ui/terminal_min/src/front/app.at` 挂 `<terminal/>`(占位矩形);
+    /// 本测沿 view-builder 全链(parse → extract → VmBridge → build)断言
+    /// 产出 `View::Terminal`,再经 headless 管线(view_to_vtree)断言占位
+    /// 节点存在(几何/键入 prop 可见)。
+    #[test]
+    fn minimal_at_example_mounts_terminal_placeholder() {
+        use crate::aura::extract::extract_widget_from_decl;
+        use crate::ast::Stmt;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        use crate::ui::vm_bridge::VmBridge;
+        use crate::ui::vnode_converter::view_to_vtree;
+        use crate::ui::View;
+
+        let at = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test/ui/terminal_min/src/front/app.at");
+        let src = std::fs::read_to_string(&at)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", at.display()));
+
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = extract_widget_from_decl(decl).expect("extract");
+
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "TermApp");
+        let view = builder.build(&widget.view_tree);
+
+        // The tree must carry the terminal element with its geometry.
+        fn find_terminal<M: Clone + std::fmt::Debug>(v: &View<M>) -> Option<String> {
+            match v {
+                View::Terminal { key, cols, rows, lines, .. } => {
+                    Some(format!("{key}/{cols}/{rows}/{}", lines.len()))
+                }
+                _ => None,
+            }
+        }
+        let hit = find_terminal(&view).expect("View::Terminal missing from built view tree");
+        assert_eq!(hit, "main/40/10/0", "terminal geometry props must round-trip");
+
+        // Headless: the placeholder node exists in the VTree (占位矩形在案)。
+        let vtree = view_to_vtree(view);
+        let dump = format!("{vtree:?}");
+        assert!(
+            dump.contains("terminal key=main cols=40 rows=10"),
+            "headless VTree must expose the terminal placeholder node, got:\n{dump}"
+        );
+    }
+
     /// T3 acceptance: 2000-line streaming feed — dirty-row computation and
     /// text conversion within the frame budget. The measured wall time is
     /// recorded in the plan execution record (形态甲 ruling evidence).
