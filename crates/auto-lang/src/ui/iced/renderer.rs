@@ -10816,6 +10816,9 @@ fn run_session(
     mode: RunMode,
     opts: DesktopOptions,
 ) -> AppResult<String> {
+    // PLAN-575 D1 挂点②：main 装配处（run_session 唯一管线，I3）装全局
+    // panic 审计 hook——只追加日志，不改 panic 语义（G3 零行为变更）。
+    crate::vm::ffi::stdlib::install_exit_audit_panic_hook();
     if components.is_empty() {
         // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
         return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
@@ -14964,6 +14967,10 @@ fn compare_pngs(
         })
         .run()?;
 
+    // PLAN-575 D1 挂点③：正常返回路径（iced::exit() 关窗/电源键确认退出
+    // 都落到这里）——区分"走到正常退出"与"被外界终止"（外界 TerminateProcess
+    // 三挂点均不落笔 = 审计零记录 ⇒ 外部击杀实锤）。
+    crate::vm::ffi::stdlib::exit_audit(0, "main_return");
     Ok("UI closed".to_string())
 }
 

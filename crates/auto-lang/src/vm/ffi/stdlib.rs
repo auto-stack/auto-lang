@@ -720,10 +720,166 @@ pub fn shim_time_now() -> String {
 // Process Functions
 // ============================================================================
 
+/// PLAN-575 D1 退出审计路径：env `AUTO_DESKTOP_EXIT_LOG` 优先（空串视为未
+/// 设），缺省 `%LOCALAPPDATA%/auto-desktop/exit-audit.log`（无 LOCALAPPDATA
+/// 的平台退回系统临时目录）。
+pub fn exit_audit_path() -> StdPathBuf {
+    if let Ok(p) = std::env::var("AUTO_DESKTOP_EXIT_LOG") {
+        if !p.is_empty() {
+            return StdPathBuf::from(p);
+        }
+    }
+    let base = std::env::var("LOCALAPPDATA")
+        .map(StdPathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+    base.join("auto-desktop").join("exit-audit.log")
+}
+
+/// PLAN-575 D1 退出审计核心：向 `path` 追加一行 `{ts} pid={pid} code={code}
+/// site={site}`。写失败静默吞掉——审计绝不引入新退出路径、绝不 panic
+/// （G3 零行为变更）。父目录不存在则尝试创建（同样失败即放弃）。
+pub(crate) fn exit_audit_to(path: &Path, code: i32, site: &str) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let line = format!("{ts} pid={} code={code} site={site}\n", std::process::id());
+    let _ = fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut f| f.write_all(line.as_bytes()));
+}
+
+/// PLAN-575 D1 退出审计入口：落到审计路径（见 `exit_audit_path`）。
+pub fn exit_audit(code: i32, site: &str) {
+    exit_audit_to(&exit_audit_path(), code, site);
+}
+
+/// PLAN-575 D1 挂点②：全局 panic hook——先落一行审计（code=101 = Rust
+/// panic 惯例退出码；site=panic，尽力携带消息+位置）再调既有 hook。被
+/// catch_unwind 捕获的 panic 同样落笔（进程未退时审计行与存活事实并存，
+/// 归因时以"审计行 + 进程死亡"组合判读）。
+pub fn install_exit_audit_panic_hook() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "non-str payload".to_string());
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_default();
+        let one_line = format!("panic msg={} loc={}", msg.replace('\n', " "), loc);
+        exit_audit(101, &one_line);
+        prev(info);
+    }));
+}
+
 /// Exit the process with a code
 #[auto_macros::rust_fn("Process.exit")]
 pub fn shim_process_exit(code: i32) {
+    // PLAN-575 D1 挂点①：裸 exit 前落审计（site=vm_process_exit），
+    // 退出码与语义零变化（G3）。
+    exit_audit(code, "vm_process_exit");
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod exit_audit_tests {
+    use super::*;
+
+    /// 临时审计路径注入（PLAN-575 测试设计：不碰全局 env）。
+    fn tmp_audit_path(tag: &str) -> StdPathBuf {
+        std::env::temp_dir().join(format!(
+            "p575-exit-audit-{}-{}.log",
+            tag,
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn exit_audit_to_appends_one_line_per_call() {
+        let path = tmp_audit_path("append");
+        let _ = fs::remove_file(&path);
+        exit_audit_to(&path, 0, "main_return");
+        exit_audit_to(&path, 7, "vm_process_exit");
+        let content = fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 2, "每次调用恰一行，实得: {content:?}");
+        assert!(lines[0].contains("code=0") && lines[0].contains("site=main_return"));
+        assert!(lines[1].contains("code=7") && lines[1].contains("site=vm_process_exit"));
+        assert!(lines[0].contains("pid=") && lines[1].contains("pid="));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn exit_audit_to_creates_missing_parent_dir() {
+        let path = tmp_audit_path("mkdir").with_file_name(format!(
+            "sub-{}",
+            std::process::id()
+        )).join("audit.log");
+        let _ = fs::remove_file(&path);
+        exit_audit_to(&path, 0, "main_return");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("site=main_return"), "实得: {content:?}");
+        let _ = fs::remove_file(&path);
+    }
+
+    /// 挂点②：panic hook 落审计（env 注入临时路径；先装 hook 再 catch_unwind
+    /// 触发 panic，链式调用保留既有 hook——G3 零行为变更）。
+    #[test]
+    fn panic_hook_writes_audit_line_before_prev_hook() {
+        let path = tmp_audit_path("panic");
+        let _ = fs::remove_file(&path);
+        std::env::set_var("AUTO_DESKTOP_EXIT_LOG", &path);
+        install_exit_audit_panic_hook();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            panic!("p575 audit probe");
+        }));
+        assert!(result.is_err(), "panic 应照常 unwind（仅追加审计）");
+        std::env::remove_var("AUTO_DESKTOP_EXIT_LOG");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("code=101") && content.contains("site=panic msg=p575 audit probe"),
+            "审计行应含 code=101 与 panic 消息，实得: {content:?}"
+        );
+        let _ = fs::remove_file(&path);
+    }
+
+    /// 探针子进程模式：env 置位时真调 shim_process_exit(7)——进程在
+    /// harness 上报前以码 7 退出（见父测试）。
+    #[test]
+    fn p575_probe_child() {
+        if std::env::var("P575_PROBE_EXIT").is_ok() {
+            shim_process_exit(7);
+        }
+    }
+
+    /// 挂点①+②组合：shim_process_exit 落审计后退出码不变（子进程探针，
+    /// PLAN-575 测试设计第 2 行）。过滤串 `p575_probe_child` 与本测试名
+    /// 无子串关系，子进程里只命中探针测试本身（防递归 spawn）。
+    #[test]
+    fn p575_exit_code_survives_probe() {
+        let exe = std::env::current_exe().unwrap();
+        let path = tmp_audit_path("probe");
+        let _ = fs::remove_file(&path);
+        let status = std::process::Command::new(exe)
+            .args(["p575_probe_child", "--nocapture"])
+            .env("P575_PROBE_EXIT", "1")
+            .env("AUTO_DESKTOP_EXIT_LOG", &path)
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(7), "退出码必须保持 7（G3）");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("code=7") && content.contains("site=vm_process_exit"),
+            "探针审计行缺失，实得: {content:?}"
+        );
+        let _ = fs::remove_file(&path);
+    }
 }
 
 /// Real argv as a List of strings: [程序路径] + CLI 透传参数（无透传时仅
