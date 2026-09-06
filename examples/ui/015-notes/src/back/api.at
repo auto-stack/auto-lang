@@ -22,7 +22,7 @@ pub type Note = {
 
 use db
 
-/// List all notes (pinned first, then by time desc)
+/// List all notes (most recently created first)
 /// GET /api/notes
 #[api(method = "GET", path = "/api/notes")]
 pub fn list_notes() []Note {

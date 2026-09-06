@@ -19,6 +19,9 @@
 
 use auto.io: say
 
+// Process-local image tickets and bounded-pipeline metrics (Plan 547).
+use auto.image: ImageTicket, ImageStats, queue, open, scan, request, retain, release, close, stats
+
 
 // ============================================================================
 // Collections

@@ -302,7 +302,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
         match self {
             View::Empty => div().into_any(),
 
-            View::Text { content, style } => {
+            View::Text { content, style, .. } => {
                 let mut text_div = div().child(content);
                 // Apply unified styling if present
                 if let Some(style) = style {
@@ -311,7 +311,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 text_div.into_any()
             }
 
-            View::Button { label, content, onclick, style, on_right_click: _ } => {
+            View::Button { label, content, onclick, style, on_right_click: _, .. } => {
                 let msg = onclick;
                 let handle_msg_clone = handle_msg.clone();
                 // Create a 'static string for the button ID
@@ -335,7 +335,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 .into_any_element()
             }
 
-            View::Row { children, spacing, padding, style } => {
+            View::Row { children, spacing, padding, style, .. } => {
                 let mut row_div = div().h_flex();
 
                 // Apply unified styling if present (takes priority over legacy fields)
@@ -352,7 +352,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 row_div.into_any()
             }
 
-            View::Column { children, spacing, padding, style } => {
+            View::Column { children, spacing, padding, style, .. } => {
                 let mut col_div = div().v_flex();
 
                 // Apply unified styling if present (takes priority over legacy fields)
@@ -404,7 +404,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 checkbox_div.into_any()
             }
 
-            View::Container { child, padding, width, height, center_x, center_y, style } => {
+            View::Container { child, padding, width, height, center_x, center_y, style, .. } => {
                 let handle_msg_clone = handle_msg.clone();
                 let mut container_div = div();
 
@@ -431,7 +431,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 container_div.child(child.clone().into_gpui_impl(handle_msg_clone)).into_any()
             }
 
-            View::Scrollable { child, width, height, style } => {
+            View::Scrollable { child, width, height, style, .. } => {
                 let handle_msg_clone = handle_msg.clone();
                 let child_element = child.clone().into_gpui_impl(handle_msg_clone);
 
@@ -792,6 +792,21 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 }
                 d.into_any()
             }
+            // ImageSurface is intentionally a backend-neutral media node. GPUI
+            // does not have the shared image pipeline yet, so retain the node
+            // as a visible, styled placeholder instead of dropping it.
+            View::ImageSurface { src, alt, style, .. } => {
+                let label = if alt.is_empty() {
+                    format!("[img: {}]", src)
+                } else {
+                    format!("[img: {}]", alt)
+                };
+                let mut d = div().child(label);
+                if let Some(ref s) = style {
+                    d = apply_style_to_div(d, s);
+                }
+                d.into_any()
+            }
             View::Grid { cols, cells, gap, style } => {
                 // Decompose into rows of `cols` columns (mirror the iced approach).
                 let mut col = div().flex().flex_col().gap(px(gap as f32));
@@ -807,6 +822,9 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 }
                 col.into_any()
             }
+            // GPUI does not yet implement every newer View variant. Render a
+            // diagnostic placeholder so the tree remains visible and debuggable.
+            other => div().child(format!("[unsupported view: {:?}]", other)).into_any(),
         }
     }
 
@@ -825,7 +843,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
         match self {
             View::Empty => div().into_any(),
 
-            View::Text { content, style } => {
+            View::Text { content, style, .. } => {
                 let mut text_div = div().child(content);
                 // Apply unified styling if present
                 if let Some(style) = style {
@@ -834,7 +852,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 text_div.into_any()
             }
 
-            View::Button { label, content: _, onclick, style, on_right_click: _ } => {
+            View::Button { label, content: _, onclick, style, on_right_click: _, .. } => {
                 let msg = onclick.clone();
                 // Create a 'static string for the button ID
                 let label_static: &'static str = Box::leak(label.clone().into_boxed_str());
@@ -858,7 +876,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 .into_any_element()
             }
 
-            View::Row { children, spacing, padding, style } => {
+            View::Row { children, spacing, padding, style, .. } => {
                 let mut row_div = div().h_flex();
 
                 // Apply unified styling if present (takes priority over legacy fields)
@@ -875,7 +893,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 row_div.into_any()
             }
 
-            View::Column { children, spacing, padding, style } => {
+            View::Column { children, spacing, padding, style, .. } => {
                 let mut col_div = div().v_flex();
 
                 // Apply unified styling if present (takes priority over legacy fields)
@@ -927,7 +945,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 checkbox_div.into_any()
             }
 
-            View::Container { child, padding, width, height, center_x, center_y, style } => {
+            View::Container { child, padding, width, height, center_x, center_y, style, .. } => {
                 let mut container_div = div();
 
                 // Apply unified styling if present (takes priority over legacy fields)
@@ -953,7 +971,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 container_div.child(child.clone().into_gpui_impl_with_context(state, cx)).into_any()
             }
 
-            View::Scrollable { child, width, height, style } => {
+            View::Scrollable { child, width, height, style, .. } => {
                 let child_element = child.clone().into_gpui_impl_with_context(state, cx);
 
                 // Apply styling before wrapping in scrollable
@@ -1367,6 +1385,20 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 }
                 d.into_any()
             }
+            // Keep ImageSurface visible on GPUI while the native media
+            // pipeline is unavailable. The alt text is the useful fallback.
+            View::ImageSurface { src, alt, style, .. } => {
+                let label = if alt.is_empty() {
+                    format!("[img: {}]", src)
+                } else {
+                    format!("[img: {}]", alt)
+                };
+                let mut d = div().child(label);
+                if let Some(ref s) = style {
+                    d = apply_style_to_div(d, s);
+                }
+                d.into_any()
+            }
             View::Grid { cols, cells, gap, style } => {
                 let mut col = div().flex().flex_col().gap(px(gap as f32));
                 for chunk in cells.chunks(cols) {
@@ -1381,6 +1413,9 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 }
                 col.into_any()
             }
+            // Preserve visibility for variants not yet modeled by this GPUI
+            // adapter instead of silently dropping their nodes.
+            other => div().child(format!("[unsupported view: {:?}]", other)).into_any(),
         }
     }
 }

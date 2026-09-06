@@ -125,6 +125,7 @@ parser_not_in_rs	tag
 parser_not_in_rs	td
 parser_not_in_rs	th
 parser_not_in_rs	video
+render_not_in_rs	ImageSurface
 render_not_in_rs	accordion-content
 render_not_in_rs	accordion-item
 render_not_in_rs	accordion-trigger
@@ -161,6 +162,8 @@ render_not_in_rs	h2
 render_not_in_rs	h3
 render_not_in_rs	header
 render_not_in_rs	hr
+render_not_in_rs	image-surface
+render_not_in_rs	image_surface
 render_not_in_rs	img
 render_not_in_rs	list-item
 render_not_in_rs	loading
@@ -711,6 +714,7 @@ vb_not_in_render	togglegroup-item
 vb_not_in_render	toolbar
 vb_not_in_rs	Dialog
 vb_not_in_rs	DropdownMenu
+vb_not_in_rs	ImageSurface
 vb_not_in_rs	Select
 vb_not_in_rs	Slot
 vb_not_in_rs	a
@@ -790,6 +794,8 @@ vb_not_in_rs	h6
 vb_not_in_rs	header
 vb_not_in_rs	hr
 vb_not_in_rs	i
+vb_not_in_rs	image-surface
+vb_not_in_rs	image_surface
 vb_not_in_rs	img
 vb_not_in_rs	main
 vb_not_in_rs	markdown

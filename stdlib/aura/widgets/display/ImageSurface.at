@@ -1,0 +1,31 @@
+// stdlib/aura/widgets/display/ImageSurface.at — Plan 547
+
+#[spec(category = Display, primary_prop = "src")]
+#[backend(ark, component = "ImageSurface")]
+#[backend(iced, component = "ImageSurface")]
+#[backend(vue, component = "ImageSurface")]
+
+/// Asynchronous image viewer surface backed by the shared media pipeline.
+widget ImageSurface {
+    model {
+        #[primary]
+        src str = ""
+        alt str = ""
+        width int = 0
+        height int = 0
+        quality int = 90
+        fit str = "contain"
+        zoom float = 1.0
+        offset_x float = 0.0
+        offset_y float = 0.0
+        rotation int = 0
+        filter str = "none"
+        on_error fn(str) = none
+        on_loaded fn() = none
+        on_wheel fn() = none
+        on_pan fn() = none
+        on_double_click fn() = none
+    }
+
+    view {}
+}

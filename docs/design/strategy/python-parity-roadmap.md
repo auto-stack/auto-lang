@@ -339,3 +339,28 @@ Plan 539 定案：`*` 保持逐元素语义（torch/numpy 同义），矩阵乘�
 探针实证），但类工厂的方法绑定面 + GIL/生存期约束审查超出 W3 预算，
 **显式延期**——组合式替代（`nn.Sequential`/裸 Linear 栈）已由
 py_torch_train 套件覆盖为金样。见 KNOWN-DEBT P539-D4。
+
+### 7.4 PyTorch 后续计划队列（2026-09-04，Plan 539 归档后登记）
+
+> Plan 539 已归档（22/22 步，W3 类派生按 7.3 延期）。以下为 539 明确
+> 划出范围或执行中实证的后续方向，立项时直接引用本节，避免重新考古。
+> 立项纪律：跟着需求与 539 折叠结论逐个立项，不预建；每个计划沿用
+> 三方 parity 方法论（AutoVM ≡ a2py ≡ 原生 Python）+ README 惯用法
+> 固化 + phase 表注册。
+
+| # | 方向 | 范围 / 动机 | 前置与关联 |
+|---|------|------------|-----------|
+| ① | 中缀 `@` / `**` 运算符 | 本节 7.1/7.2 调研定案后的语法落地（纯 parser/lexer 层，语义面 539 已交付） | 7.1/7.2；独立小计划 |
+| ② | `use.py` 别名/子模块语法 | 539 T08 裁定别名语法**不做**（importlib 句柄通道覆盖需求面：`use.py importlib: import_module` → 句柄 + py_getattr）；子模块项导入（`use.py torch.nn: Linear`）可用但同名项跨模块静默后者胜——别名语法消除该摩擦与静默覆盖风险 | 539 T08 四形态探针（待澄清②核销位） |
+| ③ | py 返回值方法分派动态化 | P539-D2 根治：py 调用返回被 codegen 谎记类型，`.len()` 静态路由到 str.len 读垃圾；规避面（for-in 计数/索引/`py_call(x,"__len__")`）已成惯例，根治需动态分派 | KNOWN-DEBT P539-D2（独立计划） |
+| ④ | Auto 原生 struct 运算符重载 | 539 dunder 路由只服务 `PyObjectHandle`；Auto 自己的 `type T` 上重载 `+ * ==` 需 trait 体系——与 Plan 525 延后的 trait/动态分发同一条语言线，宜合并立项 | 525 非目标清单；W1 dunder 路由为语义对照 |
+| ⑤ | bulk ndarray buffer 封送 | 训练批数据 Auto 侧持有时的必要件（缓冲协议/零拷贝）；539 靠"数据活 Python 侧"约定绕开，批输入规模化后绕不开 | 539 非目标清单；需求驱动 |
+| ⑥ | for-in tuple 解包 | DIV-PY-TUPLE-1：tuple→List 拍平后多变量循环解包在 a2py 侧 unpack 报错，W2 套件用单变量+索引规避；语法级解包或 Auto tuple 值类型二选一 | 539 T07 执行注记；DIV-PY-TUPLE-1 |
+| ⑦ | a2py 语义修补批 | P539-D3 复合接收者无括号（`py_call(t==t,"sum")` 优先级错）+ DIV-PY-CLOSURE-1 语句体闭包降级 set 字面量 + P539-D5 py_call_may×kwargs 组合——小项集中清偿（531 式债批） | KNOWN-DEBT P539-D3/D5 |
+| ⑧ | 条件立项 | GPU/CUDA device 路径验证专项（539 只断言确定性 CPU）；transformers/datasets 上层生态套件（沿用 461/539 三方方法论） | 需求触发 |
+
+### 7.5 长期方向：Auto→C（libtorch）替代热路径
+
+`use.py torch` 的热路径（matmul/conv/reduction）有 C 底层（libtorch），
+§4.5 调研线的延伸：`use.c` + libtorch 绑定可作 PyFFI 之外的免-GIL 高
+性能替代路径——与 §6-D 数据分析类同轨，暂不立项，需求驱动再调研。

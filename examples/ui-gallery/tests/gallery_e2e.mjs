@@ -71,16 +71,16 @@ async function main() {
     await page.screenshot({ path: shotCalc, fullPage: true });
     console.log(`  ✓ Captured calculator screenshot: ${shotCalc}`);
 
-    // 3. Test Viewport Mode: Mobile
-    console.log('▶ Switching viewport to Mobile (375px)...');
-    const mobileBtn = page.locator('button:has-text("手机 (375)")').first();
-    if (await mobileBtn.count() > 0) {
-      await mobileBtn.click();
+    // 3. Test Viewport Mode: Tablet
+    console.log('▶ Switching viewport to Tablet (768px)...');
+    const tabletBtn = page.locator('button:has-text("平板 (768)")').first();
+    if (await tabletBtn.count() > 0) {
+      await tabletBtn.click();
       await page.waitForTimeout(500);
     }
-    const shotMobile = path.resolve(__dirname, 'gallery_mobile_mode.png');
-    await page.screenshot({ path: shotMobile, fullPage: true });
-    console.log(`  ✓ Captured mobile mode screenshot: ${shotMobile}`);
+    const shotTablet = path.resolve(__dirname, 'gallery_tablet_mode.png');
+    await page.screenshot({ path: shotTablet, fullPage: true });
+    console.log(`  ✓ Captured tablet mode screenshot: ${shotTablet}`);
 
     // 4. Test Source tab
     console.log('▶ Switching to Source tab...');

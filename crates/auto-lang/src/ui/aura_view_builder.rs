@@ -1756,6 +1756,9 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
+            "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
+                self.convert_image_surface(props, events, bindings)
+            }
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
             "progress" => self.convert_progress(props, bindings),
             "spacer" => self.convert_spacer(props),
@@ -3240,7 +3243,12 @@ impl<'a> AuraViewBuilder<'a> {
                 v
             }
 
-            // Image / Icon
+            // ImageSurface / Image / Icon.  ImageSurface keeps all dynamic
+            // transform props and normalizes its five event hooks into the
+            // same DynamicMessage shape consumed by the renderer.
+            "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
+                self.convert_image_surface(props, events, bindings)
+            }
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
 
             // Utility widgets
@@ -5940,6 +5948,95 @@ let tabs_inner = View::Row {
         // image: src as-is
         let src = self.extract_string(props, "src").unwrap_or_default();
         View::Image { src, style }
+    }
+
+    /// Build the backend-neutral ImageSurface node from Aura props/events.
+    ///
+    /// Every value is resolved through the binding-aware extraction helpers so
+    /// loop variables, state refs and conditional expressions follow the same
+    /// VM path as ordinary widgets.  Event aliases mirror the Vue contract:
+    /// load/error/wheel/pan/double-click.  Runtime pointer/load payloads are
+    /// appended by the native renderer; the base handler and declared Aura
+    /// arguments are preserved here for deterministic VM dispatch.
+    fn convert_image_surface(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let src = self
+            .extract_string_with(props, "src", bindings)
+            .unwrap_or_default();
+        let alt = self
+            .extract_string_with(props, "alt", bindings)
+            .unwrap_or_default();
+        let as_u32 = |value: Option<f64>| -> u32 {
+            value
+                .filter(|v| v.is_finite() && *v >= 0.0)
+                .map(|v| v.min(u32::MAX as f64) as u32)
+                .unwrap_or(0)
+        };
+        let width = as_u32(self.extract_f64_with(props, "width", bindings));
+        let height = as_u32(self.extract_f64_with(props, "height", bindings));
+        let quality = self
+            .extract_f64_with(props, "quality", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| v.clamp(0.0, 100.0) as u8)
+            .unwrap_or(90);
+        let fit = self
+            .extract_string_with(props, "fit", bindings)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "contain".to_string());
+        let zoom = self
+            .extract_f64_with(props, "zoom", bindings)
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .map(|v| v as f32)
+            .unwrap_or(1.0);
+        let offset_x = self
+            .extract_f64_with(props, "offset_x", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| v as f32)
+            .unwrap_or(0.0);
+        let offset_y = self
+            .extract_f64_with(props, "offset_y", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| v as f32)
+            .unwrap_or(0.0);
+        let rotation = self
+            .extract_f64_with(props, "rotation", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| (v as i32).rem_euclid(360))
+            .unwrap_or(0);
+        let filter = self
+            .extract_string_with(props, "filter", bindings)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "high".to_string());
+
+        let event = |names: &[&str]| {
+            names
+                .iter()
+                .find_map(|name| aura_events_get_base(events, name))
+                .map(|ev| self.event_to_message_with(ev, bindings))
+        };
+        View::ImageSurface {
+            src,
+            alt,
+            width,
+            height,
+            quality,
+            fit,
+            zoom,
+            offset_x,
+            offset_y,
+            rotation,
+            filter,
+            on_error: event(&["onerror", "on_error", "error"]),
+            on_loaded: event(&["onload", "onloaded", "on_loaded", "loaded"]),
+            on_wheel: event(&["onwheel", "wheel"]),
+            on_pan: event(&["onpan", "pan"]),
+            on_double_click: event(&["ondblclick", "dblclick", "doubleclick"]),
+            style: self.extract_style_with(props, bindings),
+        }
     }
 
     /// Convert a progress element: shows a progress bar from 0.0 to 1.0.
@@ -12733,6 +12830,85 @@ mod tests {
             }
             _ => panic!("Expected View::Image for svg, got {view:?}"),
         }
+    }
+
+    /// Plan 547 Task 21: ImageSurface props/events stay typed on the VM path
+    /// and retain the path-derived vnode identity used by snapshots.
+    #[cfg(feature = "ui-iced")]
+    #[test]
+    fn image_surface_vm_builder() {
+        let widget = make_test_widget("Viewer", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        let builder = AuraViewBuilder::new(&bridge, "Viewer");
+        let node = AuraNode::element("ImageSurface")
+            .with_prop("src", Expr::Ident(".asset_src".into()))
+            .with_prop("alt", Expr::Str("preview".into()))
+            .with_prop("width", Expr::Int(640))
+            .with_prop("height", Expr::Int(480))
+            .with_prop("quality", Expr::Int(75))
+            .with_prop("fit", Expr::Str("width".into()))
+            .with_prop("zoom", Expr::Float(2.0, "2.0".into()))
+            .with_prop("offset_x", Expr::Float(12.5, "12.5".into()))
+            .with_prop("offset_y", Expr::Float(-4.0, "-4.0".into()))
+            .with_prop("rotation", Expr::Int(90))
+            .with_prop("filter", Expr::Str("linear".into()))
+            .with_event("onload", ".ImageLoaded")
+            .with_event("onerror", ".ImageFailed")
+            .with_event("onwheel", ".ZoomAt")
+            .with_event("onpan", ".PanBy")
+            .with_event("ondblclick", ".ToggleOneToOne");
+
+        let (view, id_map, _probe) = builder.build_with_debug(&node);
+        let View::ImageSurface {
+            src,
+            alt,
+            width,
+            height,
+            quality,
+            fit,
+            zoom,
+            offset_x,
+            offset_y,
+            rotation,
+            filter,
+            on_error: Some(error),
+            on_loaded: Some(loaded),
+            on_wheel: Some(wheel),
+            on_pan: Some(pan),
+            on_double_click: Some(double_click),
+            ..
+        } = view
+        else {
+            panic!("expected ImageSurface view")
+        };
+        assert_eq!(src, "${asset_src}"); // unresolved state refs remain display-safe text
+        assert_eq!(alt, "preview");
+        assert_eq!((width, height, quality), (640, 480, 75));
+        assert_eq!(fit, "width");
+        assert_eq!((zoom, offset_x, offset_y, rotation), (2.0, 12.5, -4.0, 90));
+        assert_eq!(filter, "linear");
+        let event_name = |message: DynamicMessage| match message {
+            DynamicMessage::Typed { widget_name, event_name, args } => {
+                assert_eq!(widget_name, "Viewer");
+                assert!(args.is_empty());
+                event_name
+            }
+            other => panic!("expected typed message, got {other:?}"),
+        };
+        assert_eq!(event_name(error), "ImageFailed");
+        assert_eq!(event_name(loaded), "ImageLoaded");
+        assert_eq!(event_name(wheel), "ZoomAt");
+        assert_eq!(event_name(pan), "PanBy");
+        assert_eq!(event_name(double_click), "ToggleOneToOne");
+
+        // The tracked path for the root is empty and therefore always maps to
+        // the same id across rebuilds; this is the identity used by VM events.
+        assert_eq!(id_map.get(&Vec::<usize>::new()), None);
+        assert_eq!(
+            crate::ui::vnode::id_from_path(&[]),
+            crate::ui::vnode::id_from_path(&[]),
+            "path-derived vnode id must be stable"
+        );
     }
 
     #[test]

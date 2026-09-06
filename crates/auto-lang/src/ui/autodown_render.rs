@@ -143,11 +143,15 @@ pub struct StreamCache<M: Clone + std::fmt::Debug> {
     /// 每块重建代数（1 起；复用不增）。测试/探针观测口。
     pub gens: Vec<u32>,
     last_final: Option<bool>,
+    /// 构建时主题代数（theme::theme_epoch()）——结构键无主题维度，代数
+    /// 不符即全量重建（PLAN-053 T12：fence 静态档随主题翻转，051-候选
+    /// 首帧取档/翻转不重建双根因的失效机制）。
+    theme_epoch: u32,
 }
 
 impl<M: Clone + std::fmt::Debug> Default for StreamCache<M> {
     fn default() -> Self {
-        Self { keys: Vec::new(), blocks: Vec::new(), gens: Vec::new(), last_final: None }
+        Self { keys: Vec::new(), blocks: Vec::new(), gens: Vec::new(), last_final: None, theme_epoch: 0 }
     }
 }
 
@@ -200,6 +204,11 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     let root = autodown_core::markdown_parser::parse_blocks(src, is_final);
     let final_flip = cache.last_final != Some(is_final);
     cache.last_final = Some(is_final);
+    // PLAN-053 T12：主题代数不符即全量重建——fence 静态档在 render_block
+    // 构建期读 theme::dark_mode，翻转/首帧 D-GAP 同步都会经 set_dark_mode
+    // 值变化自增代数，缓存 clone 旧块的短路在此被击穿。
+    let epoch = crate::ui::style::theme::theme_epoch();
+    let theme_flip = cache.theme_epoch != epoch;
     let n = root.children.len();
     let mut children: Vec<View<M>> = Vec::with_capacity(n);
     let mut raw_blocks: Vec<View<M>> = Vec::with_capacity(n);
@@ -212,6 +221,7 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
         // col_widths（表内容未变而 DSL 列宽 state 已变：拖拽松手 → state
         // → 绑定回传需进下一帧）。只对 Table 块生效，其余块零开销。
         let reuse = !final_flip
+            && !theme_flip
             && !is_dangling_tail
             && cache.keys.get(i) == Some(&key)
             && !cached_table_widths_stale(cache.blocks.get(i), key, table_widths);
@@ -230,6 +240,7 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     cache.blocks = raw_blocks;
     cache.keys = keys;
     cache.gens = gens;
+    cache.theme_epoch = epoch;
     View::Column {
         children,
         spacing: 8,
@@ -871,6 +882,10 @@ mod tests {
 
     #[test]
     fn renders_heading_paragraph_inline_marks() {
+        // PLAN-053 T14：heading 类表随 §7.3 收敛（text-[25.3px] + indigo
+        // strong 双档）；dark: 变体按主题态分流，测试固定浅档使 base 仅
+        // 含 indigo-700。
+        crate::ui::style::theme::set_dark_mode(false);
         let doc = render_document::<()>("# 标题\n\n世界 **粗** 与 *斜* 和 `码`\n", true);
         let View::Column { children, .. } = doc else {
             panic!("expected column")
@@ -879,8 +894,11 @@ mod tests {
         match &children[0] {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "标题");
-                let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
-                assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+                let expected = Style::parse(
+                    "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
+                )
+                .unwrap();
+                assert_eq!(style.as_ref().unwrap().classes, expected.classes)
             }
             _ => panic!("heading"),
         }
@@ -958,6 +976,38 @@ mod tests {
         assert_eq!(cache.gens, vec![1, 1], "second frame reuses despite ghost wrap");
     }
 
+    /// PLAN-053 T12（051-候选修复，转介单①收回自修）：主题代数翻转必须
+    /// 击穿内容键复用——fence 静态档在构建期读 `theme::dark_mode`，缓存
+    /// 键无主题维度时翻转帧 clone 旧块（首帧取档错 + 翻转不重建双根因）。
+    /// 同值写入（渲染器每帧回写）不得扰动缓存。
+    #[test]
+    fn theme_flip_invalidates_stream_cache() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let mut cache = StreamCache::<()>::default();
+        let src = "```js\nconst a = 1\n```\n\npara\n";
+        let _v1 = render_document_streamed(&mut cache, src, true);
+        let gens_light = cache.gens.clone();
+        assert_eq!(gens_light, vec![1, 1], "first build rebuilds both blocks");
+
+        // 值翻转 → 代数自增 → 下一帧内容键虽同也必须重建（gen 增加）。
+        crate::ui::style::theme::set_dark_mode(true);
+        let _v2 = render_document_streamed(&mut cache, src, true);
+        assert!(
+            cache.gens[0] > gens_light[0] && cache.gens[1] > gens_light[1],
+            "theme flip must rebuild cached blocks, gens={:?} (was {:?})",
+            cache.gens,
+            gens_light
+        );
+
+        // 同值回写（D-GAP 每帧同步臂）→ 代数不动 → 复用零重建。
+        let gens_dark = cache.gens.clone();
+        crate::ui::style::theme::set_dark_mode(true);
+        let _v3 = render_document_streamed(&mut cache, src, true);
+        assert_eq!(cache.gens, gens_dark, "same-value write must keep cache");
+
+        crate::ui::style::theme::set_dark_mode(false); // 还原默认档
+    }
+
     #[test]
     fn renders_fence_quote_list_ordered_start() {
         let src = "```rust\nfn x() {}\n```\n\n> 引用\n\n3. 三\n4. 四\n";
@@ -980,10 +1030,13 @@ mod tests {
             },
             _ => panic!("fence"),
         }
-        // quote：border-l 容器
+        // quote：border-l 容器（PLAN-053 T17：§7.4 左边 3px + muted 双档）
         match &children[1] {
             View::Container { style, child, .. } => {
-                let expected = Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").unwrap();
+                let expected = Style::parse(
+                    "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
+                )
+                .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
                 assert_eq!(text_of(child), "引用");
             }

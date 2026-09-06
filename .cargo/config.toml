@@ -4,11 +4,19 @@
 #                      excluded via .config/nextest.toml default-filter, Plan 466)
 #   cargo tf         - full-scale daily tests (all tests incl. 1M churn, via
 #                      .config/nextest-full.toml) — review/pre-fold gate (Plan 466)
-#   cargo tv         - VM file tests
+#   cargo tv         - VM file tests (pure .at corpus goldens; NO aavm since
+#                      Plan 568 - aavm moved to its own taa tier)
 #   cargo tt         - transpiler tests
-#   cargo tb         - book listing tests (slow: ~5-7s each)
-#   cargo ta         - all tests (VM + trans + book; full scale)
+#   cargo tb         - book listing tests (fast now: <0.4s each, Plan 568 measure)
+#   cargo taa        - AAVM/AA2R self-hosting tier (auto/lib + aavm2 + a2r).
+#                      Run ONLY when aavm code changed - trigger conditions &
+#                      scope map in AGENTS.md. Bare = full set; append a filter
+#                      to scope down (e.g. cargo taa aavm2_m5)
+#   cargo ta         - all tests (VM + aavm + trans + book; full scale)
 #   cargo th         - HTTP e2e tests (real TCP servers; serial only)
+#   cargo t3         - milestone tier (大版本升级专用,Plan 532):全量 + 嵌套塔
+#                      最终验收。塔测试体 env 自守门:须 T3_MILESTONE=1 前缀
+#                      (裸 cargo test / tf / ta 均不会误触发小时级运行)
 #
 # Requires: cargo install cargo-nextest
 
@@ -52,14 +60,30 @@ t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test c
 # (Plan 531 注:tf 亦不含 test-trans(tt 档)——a2r/cookbook 文本金样 28 件曾
 # 因此脱离门禁烂了一年(444/514/523 三期累积);复审清单同样须另跑 cargo tt)
 tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
+# Plan 568: tv = 纯 .at 语料 golden 档(改 VM/编译器后的回归)。AAVM/AA2R
+# 自举测试已迁出(test-aavm feature)——"改 VM/编译器的回归"与"AAVM 展示"
+# 不是同一概念,aavm 无实用面,反射性 tv 不再触发三重解释/现场 cargo build
+# 重测试(实测 21 测 Σ≈1163s、单测峰值 0.8-1.2GB)。aavm 系守护=taa+CI+ta。
 tv = "nextest run -p auto-lang --lib --features test-vm-files"
 tt = "nextest run -p auto-lang --lib --features test-trans"
 tb = "nextest run -p auto-lang --lib --features test-book"
-ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans,test-book --config-file .config/nextest-full.toml"
+# Plan 568: AAVM/AA2R 专属档(implies test-vm-files;full 配置含 1M churn 与
+# 全部重测试,无 XL 排除——裸跑=aavm 全集兜底,附带日常面)。仅当改动触及
+# aavm 代码时使用(触发条件与作用域映射见 AGENTS.md);追加滤串缩小作用域
+# (同 cargo t <module> 习惯),如 cargo taa aavm2_m5 只跑 M5。刻意不带固定
+# 尾滤串:nextest 位置滤串是 OR 语义,固定串会废掉作用域缩小。
+taa = "nextest run -p auto-lang --lib --features test-aavm --config-file .config/nextest-full.toml"
+ta = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book --config-file .config/nextest-full.toml"
 # Plan 317 §11 Phase 11: HTTP e2e tests (real TCP servers; serial only).
 # nextest runs each test in its own process, which is ideal here — each test's
 # detached server thread is reaped on process exit, giving full isolation.
 th = "nextest run -p auto-lang --lib --features test-http-e2e http_e2e"
+# Plan 532: milestone tier——大版本升级最终验收(频率最稀少档)。全量
+# (ta 语义,含 1M churn)+ 嵌套塔解释栈零漂移验收。塔测试体内 env
+# 自守门(T3_MILESTONE=1 才真正运行,否则秒退),default/full 两档
+# filter 亦显式排除——三重防误触发。运行形态(大版本时人工执行):
+#   T3_MILESTONE=1 cargo t3
+t3 = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book --config-file .config/nextest-t3.toml"
 
 # Plan 423 P5: VM 行为测试(015-notes 组件 build/dispatch 等)的 Rust 递归
 # 深度超过 libtest 默认 2MB 线程栈(STATUS_STACK_OVERFLOW)。仓库级抬高

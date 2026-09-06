@@ -708,6 +708,30 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// Plan 547: asynchronous image surface backed by an opaque media URI.
+    ImageSurface {
+        src: String,
+        alt: String,
+        width: u32,
+        height: u32,
+        quality: u8,
+        /// Object-fit policy used by the shared surface renderer.
+        fit: String,
+        /// Interactive transform state.  These values are deliberately
+        /// scalar so they can be resolved by both VM and generated paths.
+        zoom: f32,
+        offset_x: f32,
+        offset_y: f32,
+        rotation: i32,
+        filter: String,
+        on_error: Option<M>,
+        on_loaded: Option<M>,
+        on_wheel: Option<M>,
+        on_pan: Option<M>,
+        on_double_click: Option<M>,
+        style: Option<Style>,
+    },
+
     /// Plan 497: per-window live thumbnail — renders the host-side snapshot
     /// cache for `wid` (real downsampled pixels); falls back to
     /// `fallback_icon` (lucide glyph) when no fresh snapshot exists.
@@ -1262,6 +1286,105 @@ impl<M: Clone + Debug> View<M> {
         View::Image { src: src.into(), style: None }
     }
 
+    pub fn image_surface(src: impl Into<String>) -> Self {
+        View::ImageSurface {
+            src: src.into(),
+            alt: String::new(),
+            width: 0,
+            height: 0,
+            quality: 90,
+            fit: "contain".to_string(),
+            zoom: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            rotation: 0,
+            filter: "high".to_string(),
+            on_error: None,
+            on_loaded: None,
+            on_wheel: None,
+            on_pan: None,
+            on_double_click: None,
+            style: None,
+        }
+    }
+
+    /// Configure the scalar ImageSurface properties emitted by generators.
+    pub fn image_surface_props(
+        mut self,
+        alt: impl Into<String>,
+        width: u32,
+        height: u32,
+        quality: u8,
+        fit: impl Into<String>,
+        zoom: f32,
+        offset_x: f32,
+        offset_y: f32,
+        rotation: i32,
+        filter: impl Into<String>,
+    ) -> Self {
+        if let View::ImageSurface {
+            alt: current_alt,
+            width: current_width,
+            height: current_height,
+            quality: current_quality,
+            fit: current_fit,
+            zoom: current_zoom,
+            offset_x: current_offset_x,
+            offset_y: current_offset_y,
+            rotation: current_rotation,
+            filter: current_filter,
+            ..
+        } = &mut self
+        {
+            *current_alt = alt.into();
+            *current_width = width;
+            *current_height = height;
+            *current_quality = quality;
+            *current_fit = fit.into();
+            *current_zoom = zoom;
+            *current_offset_x = offset_x;
+            *current_offset_y = offset_y;
+            *current_rotation = rotation;
+            *current_filter = filter.into();
+        }
+        self
+    }
+
+    /// Attach the five normalized ImageSurface event handlers.
+    pub fn image_surface_events(
+        mut self,
+        on_error: Option<M>,
+        on_loaded: Option<M>,
+        on_wheel: Option<M>,
+        on_pan: Option<M>,
+        on_double_click: Option<M>,
+    ) -> Self {
+        if let View::ImageSurface {
+            on_error: current_error,
+            on_loaded: current_loaded,
+            on_wheel: current_wheel,
+            on_pan: current_pan,
+            on_double_click: current_double_click,
+            ..
+        } = &mut self
+        {
+            *current_error = on_error;
+            *current_loaded = on_loaded;
+            *current_wheel = on_wheel;
+            *current_pan = on_pan;
+            *current_double_click = on_double_click;
+        }
+        self
+    }
+
+    /// Apply a Tailwind style string to an ImageSurface node.
+    pub fn image_surface_style(mut self, style_str: &str) -> Self {
+        if let View::ImageSurface { style, .. } = &mut self {
+            *style = Style::parse(style_str).ok();
+        }
+        self
+    }
+
     /// Create styled image view
     pub fn image_styled(src: impl Into<String>, style_str: &str) -> Self {
         View::Image {
@@ -1802,6 +1925,25 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
+            View::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => View::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error: on_error.map(|m| f(m)),
+                on_loaded: on_loaded.map(|m| f(m)),
+                on_wheel: on_wheel.map(|m| f(m)),
+                on_pan: on_pan.map(|m| f(m)),
+                on_double_click: on_double_click.map(|m| f(m)),
+                style,
+            },
             View::WindowThumbnail { wid, fallback_icon, style } => {
                 View::WindowThumbnail { wid, fallback_icon, style }
             }
@@ -3821,6 +3963,24 @@ mod tests {
                 }
             }
             _ => panic!("Expected View::Grid after map_msg"),
+        }
+    }
+
+    #[test]
+    fn image_surface_view_constructor_and_map_callbacks() {
+        let view = View::<u8>::image_surface("/api/__auto/media/asset/1");
+        let mapped = view.map_msg(|value| value + 1);
+        match mapped {
+            View::ImageSurface { src, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, .. } => {
+                assert_eq!(src, "/api/__auto/media/asset/1");
+                assert_eq!((width, height, quality), (0, 0, 90));
+                assert_eq!(fit, "contain");
+                assert_eq!((zoom, offset_x, offset_y, rotation), (1.0, 0.0, 0.0, 0));
+                assert_eq!(filter, "high");
+                assert!(on_error.is_none() && on_loaded.is_none());
+                assert!(on_wheel.is_none() && on_pan.is_none() && on_double_click.is_none());
+            }
+            _ => panic!("expected ImageSurface"),
         }
     }
 }

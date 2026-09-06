@@ -53,7 +53,7 @@ pub fn find_note(id int) ?Note {
     return None
 }
 
-/// Get all notes (pinned first, then by id desc)
+/// Get all notes (most recently created first)
 pub fn all_notes() []Note {
     return notes
 }
@@ -70,7 +70,13 @@ pub fn create_note(title str, body str, folder str) Note {
         folder: folder,
     }
     nextid = nextid + 1
-    notes.push(note)
+    // Prepend so the newest note comes first (Recent/list order).
+    var new_notes List<Note> = List<Note>.new([])
+    new_notes.push(note)
+    for n in notes {
+        new_notes.push(n)
+    }
+    notes = new_notes
     return note
 }
 

@@ -1,0 +1,19 @@
+// pac.at — 031-image-viewer (Plan 547).
+//
+// Full-stack media viewer shell. The initial skeleton deliberately keeps the
+// front/back contracts small; later tasks add indexing, sessions, controls and
+// deterministic verification fixtures.
+name: "image-viewer"
+version: "0.1.0"
+description: "AutoOS Image Viewer - asynchronous media surface and directory browsing"
+
+scene: "ui"
+render: "vue"
+api: "rust"
+front_port: 3031
+back_port: 8031
+icon: "image"
+title: "Image Viewer"
+category: "media"
+theme: "dark"
+accent: "indigo"

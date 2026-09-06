@@ -593,6 +593,31 @@ element image {
     description: "Image display"
 }
 
+element imagesurface {
+    tag: "imagesurface"
+    category: "media"
+    tier: "builtin_widget"
+    aliases: ["ImageSurface", "image-surface", "image_surface"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "ImageSurface" }
+    props: [
+        { name: "src", type: "string", required: true, description: "Media ticket URI" }
+        { name: "alt", type: "string", default: "", description: "Alt text" }
+        { name: "width", type: "int", default: "0", description: "Viewport width" }
+        { name: "height", type: "int", default: "0", description: "Viewport height" }
+        { name: "quality", type: "int", default: "90", description: "Rendition quality" }
+        { name: "fit", type: "one_of:contain,width,one-to-one,free", default: "contain", description: "Viewport fit policy" }
+        { name: "zoom", type: "float", default: "1.0", description: "Viewport zoom" }
+        { name: "offset_x", type: "float", default: "0.0", description: "Horizontal pan offset" }
+        { name: "offset_y", type: "float", default: "0.0", description: "Vertical pan offset" }
+        { name: "rotation", type: "int", default: "0", description: "Clockwise rotation in degrees" }
+        { name: "filter", type: "string", default: "none", description: "Sampling filter" }
+    ]
+    events: ["onload", "onerror", "onwheel", "onpan", "ondblclick"]
+    allows_children: false
+    description: "Asynchronous image viewer surface"
+}
+
 element img {
     tag: "img"
     category: "unknown"
@@ -5414,4 +5439,3 @@ element virtual_window {
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
-

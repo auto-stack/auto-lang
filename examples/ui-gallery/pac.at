@@ -12,3 +12,10 @@ front_port: 3049
 window: "1440x900"
 
 npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/editor", "@autodown/core:link:D:/autostack/auto-down/autodown/packages/core", "@autodown/engine:link:D:/autostack/auto-down/autodown/packages/engine"]
+
+theme: "dark"
+accent: "indigo"
+
+dep settings {
+    path: "../ui/common/settings"
+}

@@ -1,0 +1,27 @@
+// Metadata-only backend contract for 031-image-viewer (Plan 547 Task 30).
+pub type ImageEntry = {
+    id: str
+    name: str
+    relative_path: str
+    extension: str
+    bytes: int
+}
+
+pub type ImageAsset = {
+    entry: ImageEntry
+    revision: int
+}
+
+pub type ViewerSnapshot = {
+    root: str
+    entries: []ImageEntry
+    selected: int
+    generation: int
+}
+
+pub type ViewRequest = {
+    index: int
+    viewport_width: int
+    viewport_height: int
+    quality: int
+}

@@ -2820,6 +2820,176 @@ fn wrap_layout_onclick<'a, M: Clone + 'static>(
     }
 }
 
+/// Per-asset iced image::Handle cache (P547 flicker fix).
+///
+/// `Handle::from_rgba` mints a fresh `Id::unique()` on every call, so a new
+/// Handle per frame makes iced treat the image as brand-new: texture cache
+/// misses and re-uploads race the frame clock — the picture visibly
+/// disappears and reappears (mean-luma flicker reproduced with sequential
+/// screenshots). Keyed by media asset id; the pixel `Arc` identity gates
+/// reuse, so a re-published rendition still swaps the texture. Bounded:
+/// beyond 128 entries the table is dropped (viewer sessions hold a handful
+/// of renditions; eviction semantics live in the pipeline caches above).
+fn cached_media_handle(
+    asset: crate::ui::image_pipeline::MediaAssetId,
+    width: u32,
+    height: u32,
+    rgba: std::sync::Arc<[u8]>,
+) -> iced::widget::image::Handle {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<u128, (std::sync::Arc<[u8]>, iced::widget::image::Handle)>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().expect("media handle cache poisoned");
+    if let Some((prev, handle)) = guard.get(&asset.0) {
+        if std::sync::Arc::ptr_eq(prev, &rgba) {
+            return handle.clone();
+        }
+    }
+    let handle = iced::widget::image::Handle::from_rgba(width, height, rgba.to_vec());
+    if guard.len() >= 128 {
+        guard.clear();
+    }
+    guard.insert(asset.0, (rgba, handle.clone()));
+    handle
+}
+
+/// Render an ImageSurface without entering the legacy Image loader/cache.
+/// Media tickets are resolved only through the process-local registry; a
+/// pending/expired ticket therefore renders a stable placeholder instead of
+/// performing synchronous file or HTTP I/O on the UI thread.
+fn render_image_surface<M: Clone + Debug + 'static>(
+    src: String,
+    alt: String,
+    width: u32,
+    height: u32,
+    quality: u8,
+    fit: String,
+    zoom: f32,
+    offset_x: f32,
+    offset_y: f32,
+    rotation: i32,
+    _filter: String,
+    style: Option<Style>,
+) -> iced::Element<'static, M> {
+    use crate::ui::iced::image_surface::ImageSurfaceFit;
+
+    let is = style.as_ref().map(IcedStyle::from_style);
+    let width_hint = if width > 0 {
+        Some(iced::Length::Fixed(width as f32))
+    } else {
+        is.as_ref().and_then(|s| s.width.as_ref().map(iced_length))
+    };
+    let height_hint = if height > 0 {
+        Some(iced::Length::Fixed(height as f32))
+    } else {
+        is.as_ref().and_then(|s| s.height.as_ref().map(iced_length))
+    };
+    let object_fit = match ImageSurfaceFit::parse(&fit) {
+        ImageSurfaceFit::Contain => iced::ContentFit::Contain,
+        ImageSurfaceFit::Width => iced::ContentFit::Contain,
+        ImageSurfaceFit::OneToOne => iced::ContentFit::None,
+        ImageSurfaceFit::Free => iced::ContentFit::None,
+    };
+    let filter_method = if quality < 80 {
+        iced::widget::image::FilterMethod::Nearest
+    } else {
+        iced::widget::image::FilterMethod::Linear
+    };
+
+    // ImageSurface's contract is an opaque media URI. Consume only pixels
+    // that a background resize lane has already decoded and cached; this path
+    // never opens a file or decodes encoded bytes on the UI thread.
+    let pixels = if src.starts_with("/api/__auto/media/") {
+        crate::ui::image_pipeline::resolve_media_render(&src)
+    } else {
+        None
+    };
+    let mut inner: iced::Element<'static, M> = if let Some((asset_id, source_width, source_height, rgba)) = pixels {
+        let zoom = zoom.clamp(0.05, 64.0);
+        let viewport = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: width.max(source_width) as f32,
+            height: height.max(source_height) as f32,
+        };
+        let geometry = crate::ui::iced::image_surface::image_surface_geometry(
+            viewport,
+            iced::Size::new(source_width as f32, source_height as f32),
+            ImageSurfaceFit::parse(&fit),
+            zoom,
+            offset_x,
+            offset_y,
+            rotation as f32,
+        );
+        let display_width = geometry.rotated_bounds.width.max(1.0);
+        let display_height = geometry.rotated_bounds.height.max(1.0);
+        let radians = (rotation.rem_euclid(360) as f32).to_radians();
+        let mut image = iced::widget::image(cached_media_handle(asset_id, source_width, source_height, rgba))
+            .content_fit(object_fit)
+            .filter_method(filter_method)
+            .rotation(iced::Radians::from(radians));
+        if width > 0 { image = image.width(iced::Length::Fixed(display_width.max(width as f32 + offset_x.abs()))); }
+        else if let Some(w) = width_hint { image = image.width(w); }
+        if height > 0 { image = image.height(iced::Length::Fixed(display_height.max(height as f32 + offset_y.abs()))); }
+        else if let Some(h) = height_hint { image = image.height(h); }
+        // Keep the translation in the clipping layout as well as in the
+        // geometry calculation. This makes pan state observable without ever
+        // moving decode or filesystem work onto the render thread.
+        container(image)
+            .padding(iced::Padding {
+                top: offset_y.max(0.0),
+                right: (-offset_x).max(0.0),
+                bottom: (-offset_y).max(0.0),
+                left: offset_x.max(0.0),
+            })
+            .into()
+    } else {
+        let label = if alt.is_empty() {
+            "Image unavailable".to_string()
+        } else {
+            alt
+        };
+        let mut placeholder = container(text(label).size(14))
+            .center_x(iced::Length::Fill)
+            .center_y(iced::Length::Fill);
+        if let Some(w) = width_hint {
+            placeholder = placeholder.width(w);
+        }
+        if let Some(h) = height_hint {
+            placeholder = placeholder.height(h);
+        }
+        placeholder.into()
+    };
+
+    let mut surface = container(inner).clip(true);
+    if let Some(w) = width_hint {
+        surface = surface.width(w);
+    }
+    if let Some(h) = height_hint {
+        surface = surface.height(h);
+    }
+    if let Some(ref style) = is {
+        let background = style.background_color.map(iced::Background::Color);
+        let border_color = style
+            .border_color
+            .unwrap_or(iced::Color::TRANSPARENT);
+        let border_width = style.border_width.unwrap_or(0.0);
+        let border_radius = style.border_radius.unwrap_or(0.0);
+        surface = surface.style(move |_theme| container::Style {
+            background,
+            border: iced::Border::default()
+                .rounded(border_radius.min(9999.0))
+                .width(border_width)
+                .color(border_color),
+            ..Default::default()
+        });
+    }
+    inner = surface.into();
+    inner
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -4780,6 +4950,51 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     cont.into()
                 }
             }
+
+            AbstractView::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error,
+                on_loaded,
+                on_wheel,
+                on_pan,
+                on_double_click,
+                style,
+            } => {
+                // Callback messages are retained in the View contract and
+                // consumed by the input adapter (Task 25); this paint pass
+                // must not synthesize duplicate notifications.
+                let _ = (
+                    on_error,
+                    on_loaded,
+                    on_wheel,
+                    on_pan,
+                    on_double_click,
+                );
+                render_image_surface(
+                    src,
+                    alt,
+                    width,
+                    height,
+                    quality,
+                    fit,
+                    zoom,
+                    offset_x,
+                    offset_y,
+                    rotation,
+                    filter,
+                    style,
+                )
+            }
         }
     }
 }
@@ -4788,6 +5003,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 /// Results are cached in memory so each URL is only fetched once.
 /// Returns None on failure.
 fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
+    // Process-local media tickets are resolved before the legacy URL/file
+    // cache. A pending ticket must be retried on the next frame rather than
+    // being cached as a permanent miss.
+    if url.starts_with("/api/__auto/media/") {
+        return crate::ui::image_pipeline::resolve_media_uri(url);
+    }
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -4920,6 +5141,16 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
         // `bg-primary text-primary-foreground { Send{} }` 的图标此前落
         // OnBackground 回退,亮色主题下白钮白标不可见。
         AbstractView::Image { style, .. } => {
+            let has_explicit_color = style.as_ref().map_or(false, |s| {
+                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+            });
+            if !has_explicit_color {
+                let mut inherited = style.take().unwrap_or_default();
+                inherited.classes.push(StyleClass::TextColor(color));
+                *style = Some(inherited);
+            }
+        }
+        AbstractView::ImageSurface { style, .. } => {
             let has_explicit_color = style.as_ref().map_or(false, |s| {
                 s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
             });
@@ -5791,6 +6022,27 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
 
         AbstractView::Image { src, style } => {
             AbstractView::Image { src, style }
+        }
+        AbstractView::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => {
+            AbstractView::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error: on_error.map(|m| IcedMessage::from_dynamic(&m)),
+                on_loaded: on_loaded.map(|m| IcedMessage::from_dynamic(&m)),
+                on_wheel: on_wheel.map(|m| IcedMessage::from_dynamic(&m)),
+                on_pan: on_pan.map(|m| IcedMessage::from_dynamic(&m)),
+                on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
+                style,
+            }
         }
 
         // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`
@@ -17405,6 +17657,11 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
         };
         props.push(("font".into(), format!("{}px", px)));
     }
+    // PLAN-053 T14: 任意字号（text-[<n>px] → font_size_arbitrary）也进
+    // vtree 转储——heading §7.3 档（25.3px 等）的检验面。
+    if let Some(px) = is.font_size_arbitrary {
+        props.push(("font".into(), format!("{}px", px as u16)));
+    }
     if let Some(r) = is.border_radius { props.push(("radius".into(), format!("{}", r as u16))); }
     if let Some(w) = is.border_width { props.push(("border".into(), format!("{}", w as u16))); }
     if let Some(ref a) = is.align_items {
@@ -17534,6 +17791,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Slider { style, .. } => style.as_ref(),
         AbstractView::ProgressBar { style, .. } => style.as_ref(),
         AbstractView::Image { style, .. } => style.as_ref(),
+        AbstractView::ImageSurface { style, .. } => style.as_ref(),
         AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
@@ -17613,6 +17871,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Slider { .. } => "slider",
         AbstractView::ProgressBar { .. } => "progress",
         AbstractView::Image { .. } => "image",
+        AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
@@ -19710,6 +19969,61 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Plan 547 Task 26: ImageSurface uses the dedicated renderer path,
+    /// accepts the media URI contract, and builds a clipped element without
+    /// invoking the legacy synchronous Image loader.
+    #[test]
+    fn image_surface_renderer() {
+        let view = AbstractView::<()>::ImageSurface {
+            src: "/api/__auto/media/opaque/1".into(),
+            alt: "preview".into(),
+            width: 640,
+            height: 480,
+            quality: 90,
+            fit: "contain".into(),
+            zoom: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            rotation: 0,
+            filter: "high".into(),
+            on_error: None,
+            on_loaded: None,
+            on_wheel: None,
+            on_pan: None,
+            on_double_click: None,
+            style: None,
+        };
+        let _element = view.into_iced();
+        assert_eq!(
+            crate::ui::iced::image_surface::ImageSurfaceFit::parse("fit-width"),
+            crate::ui::iced::image_surface::ImageSurfaceFit::Width
+        );
+    }
+
+    #[test]
+    fn native_media_uri_resolves_registry_before_http_fallback() {
+        let registry = crate::ui::image_pipeline::global_media_registry();
+        let ticket = registry.queue(
+            crate::ui::image_pipeline::MediaAssetKey {
+                source_fingerprint: "renderer-fixture".into(),
+                orientation: Default::default(),
+                rendition: crate::ui::image_pipeline::RenditionSpec::original(),
+                revision: 1,
+            },
+            crate::ui::image_pipeline::MediaMetadata::default(),
+        );
+        let uri = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+        assert!(load_image_bytes(&uri).is_none(), "pending ticket should not fall back to a file");
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Transforming).unwrap();
+        registry.publish_ready(ticket.id, ticket.revision, std::sync::Arc::<[u8]>::from([0, 255, 2])).unwrap();
+        assert_eq!(load_image_bytes(&uri), Some(vec![0, 255, 2]));
+        assert!(load_image_bytes("relative/path.png").is_none(), "ordinary file fallback remains available");
+    }
+
     /// PLAN-530 步骤5 回归（B 内存崩塌主源）：lucide_svg 同名 icon 必须命中
     /// 去重缓存（同一 &'static str），不得每次调用 Box::leak 一份新 16×16
     /// 文档——每帧每图标 ~350B 的无界泄漏随重建频率线性增长（homepage 实测
