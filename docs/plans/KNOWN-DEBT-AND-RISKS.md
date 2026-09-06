@@ -9,8 +9,6 @@
 
 ## 🔴 高风险（可能在特定场景导致 UB 或数据损坏）
 
-| 526 | 崩溃（复现 2/2，2026-09-03/04） | 任务栏铃铛二次开合通知中心 → 桌面进程静默退出 code 1（无 panic 输出）。疑似 VM 层 `Process.exit`（stdlib.rs shim_process_exit）或未打印的 abort；RUST_BACKTRACE=full 复现实例仍无栈——进程性退出非 panic。跟踪于 535 D 项 | renderer.rs:8176 toggle_notification_center；stdlib.rs:683 shim_process_exit |
-
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
 | 385 | 逃逸风险 | 闭包 capture_slots 记录 creator_bp，若闭包逃逸（存入全局变量、在创建者函数返回后调用），creator_bp 指向已释放栈帧 → UB。当前无逃逸检测。常见用例（forEach 回调、直接调用）安全，因为创建者仍在栈上。 | `vm/engine.rs` Closure.capture_slots + `vm/codegen.rs:10971 compile_closure` |
@@ -27,6 +25,8 @@
 ---
 
 ## 🟡 一致性遗漏（功能正确但代码不干净）
+
+| 526 | 崩溃观察降档：未能复现（疑外部击杀，049 同族；2026-09-06 PLAN-575 归因） | 任务栏铃铛二次开合通知中心 → 桌面进程静默退出 code 1（原复现 2/2，2026-09-03/04；第二例即验收通道 handler 双调）。PLAN-575 独占环境归因未复现：退出审计三挂点（shim_process_exit/panic hook/main_return，env `AUTO_DESKTOP_EXIT_LOG`，零行为变更）在案前提下 N=20 轮二次开合（MCP bus 注入 notes_toggle×2，与真实铃铛点击同一 records→DesktopCommand::NotesToggle→toggle_notification_center 路径；逐轮 stderr handler 证据在册）20/20 进程存活零退出、审计文件零记录——该负载下"开关路径内源性退出"（Process.exit/panic/正常返回）被证伪。按 535 D 归因备注（本机并行会话 taskkill /F 强杀 ui_desktop：退出码恰 1、无输出，与静默退出同 signature），与 PLAN-049（auto-down）外部击杀定因同族。降档出口（575 待澄清①计划默认接受）：退出审计机制常驻，一轮真实复现即重启归因——审计有记录=产品缺陷分支（site 直接指认），审计零记录+进程死亡=外部击杀实锤。 | renderer.rs toggle_notification_center；stdlib.rs exit_audit（PLAN-575 T1）；scratch/p575/ledger.jsonl（575 T3）；535 D 项；049 定因记录 |
 
 | 526 | 一致性 | 布局件级 hover/右键公共基建（wrap_layout_onclick）未做——launcher 用 button、桌面右键用 mouse-area 替代挂点，逐点特设；任意 .at 布局件要 hover/右键仍需逐个特设 | 526 待澄清③（用户核准延后，独立立项候选） |
 | 572 | AA2R/host 发射对齐缺口: push 容器实参克隆 | AA2R push 臂克隆规则窄化为「用户 struct/enum 裸 ident」；宿主（trans/rust.rs:8659 auto-clone）对**所有非 Copy**（含 `List<T>`/Vec 容器 ident）实参克隆——AA2R 遇容器 ident 入 push 仍裸 move（语料+lib 现零形状,非阻塞;真出现时为 E0382 家族）。对齐另案小改。 | `auto/lib/a2r.at` push 臂 P572 T5b 注释 |
