@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-572
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: aavr-trans-superlinear
 author: [zhaopuming]
 created_at: 2026-09-06
-updated_at: 2026-09-06
+updated_at: 2026-09-06(T5b 收口,execution_done)
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: [GOAL-017]      # 自举(P532 步骤 9 的 exe² 代际对拍依赖本修复)
 
 affects: [aavm]                # auto/lib/a2r.at 为主;消费面 ⑤腿 harness
-current_step: 4
-total_steps: 5
+current_step: 6
+total_steps: 6
 ---
 
 # [PLAN-572] AA2R 转译超线性根修(P532 步骤 9 阻塞解除)
@@ -178,16 +178,28 @@ scratch 阶梯脚本  →   27 方法群逐一减一    →   定位点修复
    修复态:失败集 13/13 **逐名一致**(12 Windows 栈溢出环境族+
    charts_gallery 预存)——零回归;tf 两态 3460/3461 逐同款。
    折叠:master 8a21073c4(merge --no-ff),worktree 已回灌。
-5. [▶ 阻塞登记 2026-09-06] T5 P532 步骤 9 解锁:exe¹ --trans 拼合源完成→exe² 构建→
+5b. [✅ 已完成] T5b exe² 5 缺陷续修(2026-09-06 用户裁定:本计划续修):AA2R
+   发射缺口 2(E0308 实参 &str 强转缺@ev_run_files(argv[1])、E0382
+   mc clone 注入缺@engine.at 切片)+ gen2 harness 3(prelude `mod IO`
+   点号形态×2、双 main)→ exe² 构建绿→二代对拍执行(结果回 P532
+   步骤 9);a2r.at 再改→作用域闸门+golden 锚复跑。
+   ——证据:commit 7b4ca6052(fold master 211a12f21)。实际修 5+1 缺陷:
+   a2r.at 四臂(process.args List<str> 契约/IO::read_line/push 非 Copy
+   ident 克隆/fstr 字面大括号直通——第 6 缺陷为固定点判据暴露的自举
+   转义逐代翻倍)+ 管道三处(concat 去 aavm.at 镜像⑤腿 lib-only/
+   harness 补 --files/exe¹ 选取按 mtime 确定化)。红→绿:t5b_repro
+   3/3;**P532 步骤 9 两判据全过:一代 8/8+exe² 构建绿+二代 8/8+
+   转译固定点 PASS(自举闭合)**;golden corpus 76/76 逐字节不变
+   (每刀双验);裸 taa 3612/3625 与基点 13 失败逐名一致、tf
+   3460/3461(charts_gallery 预存同款)——零回归。留档:
+   scratch/p572/gen2/(t5_unlock.md 追记+native_gen_table.md+
+   errors_short.txt)。
+5. [✅ 已完成] T5 P532 步骤 9 解锁:exe¹ --trans 拼合源完成→exe² 构建→
    二代对拍执行(结果回 P532 步骤 9 记录;判定收口归 P532)。
-   ——已完成:拼合源转译 **61.29s**(470KB→514979B,修复版 exe¹);
-   一代判定表 **8/8 PASS**;管道推进至 exe² 段(此前不可达);结果已
-   回写 P532 步骤 9 记录。证据:scratch/p572/gen2/t5_unlock.md
-   (branch plan-572-dev@d17f3623d;主检出折叠遇 573 会话在途簿记,
-   T5 资产由终态 fold 补入)。
-   ——阻塞:exe² cargo build 5 错(2 AA2R 发射缺口 E0308/E0382+3 gen2
-   harness 项 IO×2/双 main);非 572 回归(新旧 exe¹ 7 lib 单文件+
-   aavm.at 逐字节一致)。二代对拍待 5 缺陷清偿→处置见待澄清③。
+   ——解锁面(572 修复直效):拼合源转译 **61.29s**(470KB,修复前
+   3h+ 挂死);一代判定表 8/8;管道推进至 exe² 段;回执已写 P532
+   步骤 9(T5b 终版回执=判据全过,待 P532 翻牌归档)。证据:
+   scratch/p572/gen2/t5_unlock.md。
 
 ## 复审记录
 
@@ -211,7 +223,10 @@ scratch 阶梯脚本  →   27 方法群逐一减一    →   定位点修复
    &str 强转缺@ev_run_files(argv[1])、E0382 mc clone 注入缺@
    engine.at 切片)+3 个 gen2 harness 项(prelude `mod IO` 与
    `IO.read_line()` 点号发射形态×2、aavm.at main 与 harness 追加
-   main 重复)。**裁定:本计划续修(增补 T5b)还是回 P532 步骤 9
-   自收?**(P532 计划原文"判定收口归 P532"倾向后者;但 2 个
-   AA2R 发射缺口与 572 根修同域,续修成本低。)见
-   scratch/p572/gen2/t5_unlock.md。
+   main 重复)。**〔2026-09-06 用户裁定:本计划续修→T5b(步骤 5b);
+   已清偿〕**见 scratch/p572/gen2/t5_unlock.md。
+4. **aavm_at_mode_b34_struct 宿主侧红**(T5b 期间发现):`--ignored`
+   档实测 b07 PASS/b34 FAIL(host transpiler 自建 aavm_at 跑 b34
+   结构语料不过;该测试为 `#[ignore]`昂贵档,不在任何标准门禁内;
+   572 未触宿主 transpiler,与本计划改动无关的表象成立,但基点
+   未对拍——复审时裁定归置(host 侧 struct 字段表,P523-2② 域)。
