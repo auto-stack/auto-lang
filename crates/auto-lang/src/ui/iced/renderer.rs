@@ -3966,6 +3966,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
+            // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
+            // feed 数据面甲(props)经 iced widget 每帧消费。T2 占位矩形,
+            // T3 真网格渲染。
+            AbstractView::Terminal { key, cols, rows, lines, style } => {
+                let core = crate::ui::terminal::terminal(&key, cols, rows);
+                crate::ui::terminal::terminal_feed(core, &lines);
+                let el: iced::Element<'static, M> =
+                    crate::ui::terminal::iced::Terminal::new(&key, cols, rows).into();
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    wrap_with_margin(el, &is)
+                } else {
+                    el
+                }
+            }
+
             AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
                 build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus, placeholder)
             }
@@ -17787,6 +17803,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Popover { .. } => None,
         // Plan 484: MouseArea 的 style(尺寸/定位类)参与 absolute/z 判定。
         AbstractView::MouseArea { style, .. } => style.as_ref(),
+        // PLAN-009 P1: terminal 的 style 参与常规定位/边距判定。
+        AbstractView::Terminal { style, .. } => style.as_ref(),
         AbstractView::Text { style, .. } => style.as_ref(),
         AbstractView::Button { style, .. } => style.as_ref(),
         AbstractView::Checkbox { style, .. } => style.as_ref(),
@@ -17882,6 +17900,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Table { .. } => "table",
         AbstractView::Textarea { .. } => "textarea",
         AbstractView::CodeEditor { .. } => "code_editor",
+        AbstractView::Terminal { .. } => "terminal",
         AbstractView::AutodownEditor { .. } => "autodown_editor",
         AbstractView::Input { .. } => "input",
         AbstractView::Accordion { .. } => "accordion",

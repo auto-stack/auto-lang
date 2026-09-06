@@ -538,6 +538,22 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// PLAN-009 P1: native terminal component(auto-term 引擎网格视口)。
+    /// 数据面甲(props-feed):app 每帧把引擎网格行喂进 `lines`,组件
+    /// 纯渲染 + 输入事件上抛(T4)。状态(几何/缓冲/损伤代)存全局注册表
+    /// `crate::ui::terminal::terminal(key, …)`;真身迁移自 auto-term
+    /// widget.rs(Rust 版冻结为参考 oracle)。
+    Terminal {
+        /// 稳定身份,状态存储键(与引擎 adapter session 对齐)。
+        key: String,
+        /// 网格几何(列×行,cell 单位)。
+        cols: u16,
+        rows: u16,
+        /// app 每帧喂入的网格行文本(≤rows 行,短行右填充;超出截断)。
+        lines: Vec<String>,
+        style: Option<Style>,
+    },
+
     /// Plan 019 Phase 3: autodown 文档编辑器（markdown 块粒度编辑）。
     /// 状态存于全局注册表（`autodown_editor(key)`，keyed by `key`）；
     /// value 差分回写（与 CodeEditor 同 §5.4 口径）。payload 读取走
@@ -1870,6 +1886,13 @@ impl<M: Clone + Debug> View<M> {
                 on_cursor: on_cursor.map(|m| f(m)),
                 on_context_menu: on_context_menu.map(|m| f(m)),
                 search,
+                style,
+            },
+            View::Terminal { key, cols, rows, lines, style } => View::Terminal {
+                key,
+                cols,
+                rows,
+                lines,
                 style,
             },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {

@@ -131,6 +131,18 @@ pub enum A2UIComponentBody {
     #[serde(rename = "Spacer")]
     Spacer {},
 
+    /// PLAN-009 P1: terminal component(auto-term 引擎网格视口)。几何 +
+    /// 喂入行(数据面甲 props-feed);JSON 面只携带标量与字符串数组。
+    #[serde(rename = "Terminal")]
+    Terminal {
+        #[serde(default)]
+        cols: u16,
+        #[serde(default)]
+        rows: u16,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        lines: Vec<String>,
+    },
+
     // --- Data ---
     #[serde(rename = "List")]
     List {
