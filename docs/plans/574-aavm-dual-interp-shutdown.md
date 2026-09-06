@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-574
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-dual-interp-shutdown
 author: [zhaopuming]
 created_at: 2026-09-06
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [aavm]               # 测试基建:crates/auto-lang/src/tests/aavm2_*
-current_step: 0
+current_step: 4
 total_steps: 4
 ---
 
@@ -131,27 +131,27 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
 ## 执行步骤
 （原子任务;代码改动 in worktree `D:/autostack/.wt/lang-574/auto-lang`）
 
-1. [ ] T1 路径对账:逐一确认 12 测试(及同路径未爆同胞)的执行形态
+1. [✅ 已完成] T1 路径对账:逐一确认 12 测试(及同路径未爆同胞)的执行形态
    与最小锚选件;覆盖对账表落 scratch/p574/coverage-map.md。
-2. [ ] T2 最小锚化+关闭:按 T1 对账改造 6 个测试文件
+   ——关键实证:12/12 均为 `run_with_capture(470KB lib 拼合)` 进程内形态;
+   **001_smoke 用例本体单行 print 仍爆栈 → 路径级爆栈,最小锚裁剪
+   不可行**(原预案"最小锚化"否决,收敛为 cfg_attr 关闭,覆盖零损失)。
+2. [✅ 已完成] T2 最小锚化+关闭:按 T1 对账改造 6 个测试文件
    (aavm2_m1/m2/m3/m4/m5/a2r + aavm_runner_tests),`#[ignore]` 注记
    统一引用"572 待澄清②裁定(2026-09-06)"。
-3. [ ] T3 门禁验证:裸 taa 失败集 13→1;tf 3460/3461;保留锚全
+   ——落地:12 测试 `#[cfg_attr(windows, ignore = "...裁定...")]`
+   (commit 2e0bc22ba);Windows 关闭/Linux+CI 保留全量。
+3. [✅ 已完成] T3 门禁验证:裸 taa 失败集 13→1;tf 3460/3461;保留锚全
    PASS;⑤腿 compile_corpus 58/58 复跑确认零波及。
-4. [ ] T4 文档与规约结算:
-   - **`docs/specs/aavm/project.md` 验证矩阵(2×2)节裁定注记**:
-     VM 内解释两格(aavm×VM=③腿族 / a2r.at×VM=corpus_a2r)降格为
-     "最小正确性锚(浅递归件),重型全量语料验证只走②/⑤腿(转译+
-     编译+运行)";注记引用 2026-09-06 用户裁定与理由(双重解释器
-     路径非真实需求;真实自举=a2r 转译+编译+运行,同 Rust 自举);
-     `test_aavm2_fourpath_runner` 的 VM 内解释腿同款注记。
-   - AGENTS.md AAVM/AA2R Test Tier 注记:avm+aavm/avm+aa2r 重型测试
-     已裁定关闭,新计划/新能力验收避免该路径重型化(最小锚除外);
-     能力同步规约的"VM 闸/corpus_a2r 闸"按最小锚口径执行。
-   - KNOWN-DEBT 572 条目结算;
-   - a2r_at_mode 测试文档头 feature 标注顺手修(test-vm-files →
-     test-aavm,572 待澄清④结案余项);
-   - 本计划复审留档。
+   ——实测:taa 3612 通过/1 失败(charts_gallery 预存)/607 skipped;
+   tf 3460/3461 恒;compile_corpus PASS(17.41s)。
+4. [✅ 已完成] T4 文档与规约结算:
+   - aavm/project.md 验证矩阵 2×2 节裁定注记(VM 内解释两格降格,
+     重型只走②/⑤腿,新计划避免该路径重型化)✓;
+   - AGENTS.md AAVM 档裁定注记 ✓;
+   - KNOWN-DEBT 572 条目结算(✅已结算)✓;
+   - at_mode 文档头 feature 标注修正(test-aavm)✓;
+   - 复审留档(本节)。
 
 ## 复审记录
 
