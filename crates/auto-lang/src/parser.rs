@@ -13023,12 +13023,18 @@ impl<'a> Parser<'a> {
             .collect::<String>()
             .to_lowercase();
         match norm.as_str() {
-            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
-            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
-            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
+            "alertdialog" | "dialog" | "dropdownmenu"
+            // PLAN-534: sheet/drawer 并入自管开合铸造机器（可关闭族,同
+            // dialog 语义——gallery 页无显式 open,靠铸造 toggle 开合）。
+            | "sheet" | "drawer" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger"
+            | "sheettrigger" | "drawertrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent"
+            | "sheetcontent" | "drawercontent" => Some("content"),
             "alertdialogcancel" => Some("cancel"),
             "alertdialogaction" => Some("action"),
-            "alertdialogclose" | "dialogclose" => Some("close"),
+            "alertdialogclose" | "dialogclose"
+            | "sheetclose" | "drawerclose" => Some("close"),
             "dropdownmenuitem" => Some("item"),
             "dropdownmenulabel" => Some("label"),
             "dropdownmenuseparator" => Some("separator"),

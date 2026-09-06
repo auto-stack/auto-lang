@@ -1400,6 +1400,69 @@ impl<'a> AuraViewBuilder<'a> {
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
                 self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Alert)
             }
+            // PLAN-534: sheet/drawer → 贴边 Popover（Edge 族:scrim+外点/Esc
+            // 关,shadcn Sheet 语义）。side/direction prop 四向,缺省 right。
+            "sheet" | "Sheet" => {
+                let placement = self.side_panel_placement(props, "side", bindings);
+                self.convert_side_panel_tracked_ctx(props, children, path, id_map, probe, bindings, placement, false)
+            }
+            "drawer" | "Drawer" => {
+                let placement = self.side_panel_placement(props, "direction", bindings);
+                self.convert_side_panel_tracked_ctx(props, children, path, id_map, probe, bindings, placement, true)
+            }
+            // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
+            // 透传（root 臂已分区;组外裸渲染,镜像 dialog 先例）。
+            "sheet-trigger" | "sheet_trigger" | "sheettrigger"
+            | "drawer-trigger" | "drawer_trigger" | "drawertrigger"
+            | "hover-card-trigger" | "hover_card_trigger" | "hovercard-trigger" | "hovercardtrigger"
+            | "sheet-content" | "sheet_content" | "sheetcontent"
+            | "drawer-content" | "drawer_content" | "drawercontent"
+            | "hover-card-content" | "hover_card_content" | "hovercard-content" | "hovercardcontent" => {
+                let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                for (i, c) in children.iter().enumerate() {
+                    path.push(i);
+                    views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                    path.pop();
+                }
+                match views.len() {
+                    0 => View::Empty,
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                }
+            }
+            // PLAN-534: sheet/drawer styled 子臂（镜像 dialog 同名臂）。
+            "sheet-title" | "sheet_title" | "sheettitle"
+            | "drawer-title" | "drawer_title" | "drawertitle" => {
+                let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-description" | "sheet_description" | "sheetdescription"
+            | "drawer-description" | "drawer_description" | "drawerdescription" => {
+                let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-header" | "sheet_header" | "sheetheader"
+            | "drawer-header" | "drawer_header" | "drawerheader" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
+                self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
+            }
+            "sheet-footer" | "sheet_footer" | "sheetfooter"
+            | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
+                let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
+                let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            "sheet-close" | "sheet_close" | "sheetclose"
+            | "drawer-close" | "drawer_close" | "drawerclose" => {
+                // 镜像 dialog-close:outline 按钮,onclick 取铸造 close。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
             | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
             | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
@@ -2936,6 +2999,67 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
                 self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Alert)
+            }
+            // PLAN-534: sheet/drawer → 贴边 Popover（untracked 镜像臂,
+            // D-GAP 规则）。见 convert_side_panel。
+            "sheet" | "Sheet" => {
+                let placement = self.side_panel_placement(props, "side", bindings);
+                self.convert_side_panel(props, children, bindings, placement, false)
+            }
+            "drawer" | "Drawer" => {
+                let placement = self.side_panel_placement(props, "direction", bindings);
+                self.convert_side_panel(props, children, bindings, placement, true)
+            }
+            // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
+            // 透传（untracked 镜像,镜像 dialog 先例）。
+            "sheet-trigger" | "sheet_trigger" | "sheettrigger"
+            | "drawer-trigger" | "drawer_trigger" | "drawertrigger"
+            | "hover-card-trigger" | "hover_card_trigger" | "hovercard-trigger" | "hovercardtrigger"
+            | "sheet-content" | "sheet_content" | "sheetcontent"
+            | "drawer-content" | "drawer_content" | "drawercontent"
+            | "hover-card-content" | "hover_card_content" | "hovercard-content" | "hovercardcontent" => {
+                let views: Vec<View<DynamicMessage>> = children
+                    .iter()
+                    .map(|c| self.convert_node_with(c, bindings))
+                    .collect();
+                match views.len() {
+                    0 => View::Empty,
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                }
+            }
+            // PLAN-534: sheet/drawer styled 子臂（untracked 镜像）。
+            "sheet-title" | "sheet_title" | "sheettitle"
+            | "drawer-title" | "drawer_title" | "drawertitle" => {
+                let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-description" | "sheet_description" | "sheetdescription"
+            | "drawer-description" | "drawer_description" | "drawerdescription" => {
+                let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-header" | "sheet_header" | "sheetheader"
+            | "drawer-header" | "drawer_header" | "drawerheader" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
+                self.convert_column(&p, children, bindings)
+            }
+            "sheet-footer" | "sheet_footer" | "sheetfooter"
+            | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
+                let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
+                let mut v = self.convert_row(&p, children, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            "sheet-close" | "sheet_close" | "sheetclose"
+            | "drawer-close" | "drawer_close" | "drawerclose" => {
+                // 镜像 dialog-close:outline 按钮,onclick 取铸造 close。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
             }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
             | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
@@ -6688,6 +6812,253 @@ let tabs_inner = View::Row {
         } else {
             None
         };
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement,
+            open,
+            on_dismiss,
+        }
+    }
+
+    /// PLAN-534 D2: sheet 的 `side` / drawer 的 `direction` prop → Edge
+    /// 贴边 placement。字符串字面优先,非字面经 resolve_expr_to_value 取
+    /// str;非法值落缺省 right 并打日志（构建期一次裁定）。
+    fn side_panel_placement(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> crate::ui::view::PopoverPlacement {
+        use crate::ui::view::PopoverPlacement;
+        let raw = match props.get(key) {
+            Some(AuraPropValue::Expr(Expr::Str(s))) => Some(s.to_string()),
+            Some(AuraPropValue::Expr(e)) => self
+                .resolve_expr_to_value(e, bindings)
+                .and_then(|v| match v {
+                    Value::Str(s) => Some(s.to_string()),
+                    _ => None,
+                }),
+            _ => None,
+        };
+        match raw.as_deref() {
+            Some("left") => PopoverPlacement::EdgeLeft,
+            Some("top") => PopoverPlacement::EdgeTop,
+            Some("bottom") => PopoverPlacement::EdgeBottom,
+            Some("right") | None => PopoverPlacement::EdgeRight,
+            Some(other) => {
+                eprintln!("[PLAN-534] invalid {key}={other:?}, falling back to right");
+                PopoverPlacement::EdgeRight
+            }
+        }
+    }
+
+    /// PLAN-534 D2: sheet/drawer 面板 chrome（与 rust.rs 轨同串,保双轨
+    /// 视觉一致）。横向（L/R）w-96 定宽 + h-full 拉满;纵向（T/B）w-full
+    /// 拉满;drawer 竖向追加贴缘圆角（bottom rounded-t / top rounded-b）。
+    fn side_panel_chrome(
+        placement: crate::ui::view::PopoverPlacement,
+        is_drawer: bool,
+    ) -> String {
+        use crate::ui::view::PopoverPlacement;
+        let base = match placement {
+            PopoverPlacement::EdgeLeft | PopoverPlacement::EdgeRight => {
+                "w-96 bg-background border shadow-lg p-6 gap-4 h-full".to_string()
+            }
+            _ => "bg-background border shadow-lg p-6 gap-4 w-full".to_string(),
+        };
+        if is_drawer {
+            match placement {
+                PopoverPlacement::EdgeBottom => return format!("{base} rounded-t-lg"),
+                PopoverPlacement::EdgeTop => return format!("{base} rounded-b-lg"),
+                _ => {}
+            }
+        }
+        base
+    }
+
+    /// PLAN-534 D2: drawer 竖向装饰把手——全宽容器内居中的 w-8 h-1 圆角
+    /// 条（vaul 视觉;纯装饰无手势,差异登记 KNOWN-DEBT）。
+    fn drawer_handle_view() -> View<DynamicMessage> {
+        View::Container {
+            child: Box::new(View::Container {
+                child: Box::new(View::Empty),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                onclick: None,
+                style: Style::parse("w-8 h-1 rounded-full bg-muted").ok(),
+            }),
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: true,
+            center_y: false,
+            onclick: None,
+            style: Style::parse("w-full py-2").ok(),
+        }
+    }
+
+    /// PLAN-534 D2: sheet/drawer 贴边面板转换（side 参数化,双标签共用;
+    /// untracked 镜像臂）。trigger/content 拆解 + 裸文本 trigger→Button +
+    /// 铸造 dismiss 折算,与 dialog 族同构;placement 为 Edge 族（scrim +
+    /// 面板外/Esc 关,shadcn Sheet 语义）。
+    fn convert_side_panel(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        placement: crate::ui::view::PopoverPlacement,
+        is_drawer: bool,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::PopoverAnchor;
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        // 锚:trigger 子件原位渲染（裸文本 trigger → Button,同 dialog 族）。
+        let anchor_view = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let views: Vec<View<DynamicMessage>> = t_children
+                        .iter()
+                        .map(|c| self.convert_node_with(c, bindings))
+                        .collect();
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                }
+            }
+            _ => View::Empty,
+        };
+        let mut panel_children: Vec<View<DynamicMessage>> = match content {
+            Some(AuraNode::Element { children: c_children, .. }) => c_children
+                .iter()
+                .map(|c| self.convert_node_with(c, bindings))
+                .collect(),
+            _ => Vec::new(),
+        };
+        // drawer 竖向装饰把手:bottom 首子前插 / top 末子追加。
+        if is_drawer {
+            match placement {
+                crate::ui::view::PopoverPlacement::EdgeBottom => {
+                    panel_children.insert(0, Self::drawer_handle_view())
+                }
+                crate::ui::view::PopoverPlacement::EdgeTop => {
+                    panel_children.push(Self::drawer_handle_view())
+                }
+                _ => {}
+            }
+        }
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        // sheet/drawer 均可关闭族:铸造形态 ESC/外点/锚点 dismiss 折算
+        // __dlg_close_N;显式绑定自管形态返回 None 不接管（同 dialog）。
+        let on_dismiss = Self::minted_dismiss_msg(&self.widget_name, props);
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement,
+            open,
+            on_dismiss,
+        }
+    }
+
+    /// convert_side_panel 的 tracked 镜像（D-GAP 规则）：trigger/content
+    /// 子件经 path 追踪递归,inspector/MCP 快照可定位面板内节点。
+    fn convert_side_panel_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+        placement: crate::ui::view::PopoverPlacement,
+        is_drawer: bool,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::PopoverAnchor;
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        let anchor_view = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                    for (i, c) in t_children.iter().enumerate() {
+                        path.push(i);
+                        views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                        path.pop();
+                    }
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                }
+            }
+            _ => View::Empty,
+        };
+        let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
+        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+            for (i, c) in c_children.iter().enumerate() {
+                path.push(i);
+                panel_children
+                    .push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                path.pop();
+            }
+        }
+        if is_drawer {
+            match placement {
+                crate::ui::view::PopoverPlacement::EdgeBottom => {
+                    panel_children.insert(0, Self::drawer_handle_view())
+                }
+                crate::ui::view::PopoverPlacement::EdgeTop => {
+                    panel_children.push(Self::drawer_handle_view())
+                }
+                _ => {}
+            }
+        }
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        let on_dismiss = Self::minted_dismiss_msg(&self.widget_name, props);
         View::Popover {
             anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
             content: Box::new(panel),
