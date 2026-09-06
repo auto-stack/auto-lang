@@ -209,6 +209,7 @@ fn test_m4_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m4_codegen_corpus() {
     let dir = corpus_dir();
     let mut entries: Vec<_> = std::fs::read_dir(&dir)
@@ -426,6 +427,7 @@ fn test_aavm2_m4_use_harness_selfcheck() {
 /// native 直连,判定面非镜像对象——行为由 M5+⑤腿兜底,KNOWN-DEBT
 /// 登记)/fn.prolog args 保留。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_p532_lib_static_diff() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let case_dir = root.join("scratch532").join("libdiff");
@@ -613,6 +615,7 @@ fn test_aavm2_p532_lib_static_diff() {
 /// codegen_dump_files)。aavm 侧 ev_run_files/codegen_dump_files 未实现时
 /// 以运行期错误形态转红(W3 实现启动条件)。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m4_use_corpus() {
     let dir = corpus_use_dir();
     let mut cases: Vec<_> = std::fs::read_dir(&dir)

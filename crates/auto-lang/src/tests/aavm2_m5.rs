@@ -46,6 +46,7 @@ fn test_m5_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m5_engine_corpus() {
     let dir = corpus_dir();
     let mut entries: Vec<_> = std::fs::read_dir(&dir)
@@ -84,6 +85,7 @@ fn main() {{
 /// corpus_use 成功用例:Rust 侧 execute 管线(带路径,镜像 resolve_uses+
 /// Linker 全链)输出 vs aavm ev_run_files。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m5_use_corpus() {
     let dir = corpus_use_dir_m5();
     let mut cases: Vec<_> = std::fs::read_dir(&dir)
@@ -127,6 +129,7 @@ fn test_aavm2_m5_use_corpus() {
 /// corpus_use 错误用例通道:aavm2 闸门的 .expected.error 等价物——两侧错误
 /// 信息一致(错误文本以宿主为规范;use.rs 拒绝/未声明模块/use.py)。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m5_use_errors() {
     let dir = corpus_use_dir_m5().join("errors");
     let mut cases: Vec<_> = std::fs::read_dir(&dir)
@@ -170,6 +173,7 @@ fn test_aavm2_m5_use_errors() {
 /// M3 主里程碑演示:一条命令在 AutoVM 内经 AAVM 编译运行 helloworld 与
 /// fib,输出正确(fib(10) = 55)。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m3_milestone_fib() {
     let dir = corpus_dir();
     let hello = std::fs::read_to_string(dir.join("b01_hello.at")).unwrap();

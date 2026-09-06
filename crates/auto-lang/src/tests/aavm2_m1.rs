@@ -68,6 +68,7 @@ fn test_m1_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):Windows 进程内双层解释递归路径级爆栈(与用例规模无关,001_smoke 单行 print 实证);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m1_lexer_corpus() {
     let dir = corpus_dir();
     let mut checked = 0;
