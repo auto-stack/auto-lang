@@ -7333,29 +7333,15 @@ let tabs_inner = View::Row {
         // shadcn-vue Button 一致);secondary/destructive = 对应填充色;outline =
         // 边框;ghost/link = 透明。user class 追加在后,可覆盖 preset(如主题色板
         // 的 bg-xxx-500 覆盖 bg-primary,因 IcedStyle 后解析的 BackgroundColor 覆盖前者)。
-        let preset: &str = match variant.as_str() {
-            // "submit" 是行为语义（form submit 布线,extract 层已消费该
-            // 标记接线 input Enter）,视觉上取 default primary 预设。
-            "" | "default" | "primary" | "submit" => "bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90",
-            "secondary" => "bg-secondary text-secondary-foreground font-medium rounded-md hover:bg-secondary/80",
-            "destructive" => "bg-destructive text-destructive-foreground font-medium rounded-md hover:bg-destructive/90",
-            "outline" => "border border-input bg-background text-foreground rounded-md hover:bg-secondary hover:text-secondary-foreground",
-            "ghost" => "rounded-md hover:bg-secondary hover:text-secondary-foreground",
-            // Plan 414 R13: icon button - chromeless SQUARE (w follows h).
-            "icon" => "h-7 w-7 px-0 py-0",
-            "link" => "text-primary",
-            // "text" 及未知 variant:无 preset — chromeless(由 user class 主导)。
-            _ => "",
-        };
+        // PLAN-571: preset 表收敛到 ui::style::variants 单一事实源——default
+        // 一等化（UA 预填等价基线：muted 填充+发丝描边，任意表面可辨），
+        // primary|submit 显式醒目档，secondary 深一档纯填充。本臂与 rust
+        // codegen 臂共用同表；Vue 臂 cva 由 ui_gen 的互锁测试锚定。
+        let preset: &str = crate::ui::style::variants::button_variant_preset(variant.as_str());
         // Plan 409 §10 续 17: size → shadcn 对齐的尺寸 preset(h/px)。button 默认
         // Shrink,需显式 height 才能区分 sm/default/lg(renderer button 分支读 height)。
         let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
-        let size_preset: &str = match size.as_str() {
-            "sm" => "h-9 px-3",
-            "lg" => "h-11 px-8",
-            "icon" => "h-10 w-10",
-            _ => "h-10 px-4",  // default
-        };
+        let size_preset: &str = crate::ui::style::variants::button_size_preset(size.as_str());
         // Plan 414 R13 fix: variant=icon carries its own square sizing in the
         // variant preset (h-7 w-7); the default "h-10 px-4" size preset would
         // override it (later classes win) AND its px-4 starves the 14px svg
@@ -14306,5 +14292,123 @@ mod plan055_strip_html_tests {
         assert_eq!(strip_html_tags("a &amp; b &lt;c&gt;"), "a & b <c>");
         assert_eq!(strip_html_tags("plain"), "plain");
         assert_eq!(strip_html_tags("unclosed <b>text"), " text");
+    }
+}
+
+// ── PLAN-571: button default variant 一等化（VM 臂行为锁定）────────
+#[cfg(test)]
+mod plan571_button_default_variant_tests {
+    use super::*;
+    use crate::aura::AuraWidget;
+    use crate::ui::style::Color;
+
+    fn make_test_widget(name: &str) -> AuraWidget {
+        AuraWidget {
+            actions: None,
+            name: name.to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    fn build_button(variant: Option<&str>) -> View<DynamicMessage> {
+        let widget = make_test_widget("Counter");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Counter");
+        let mut props = HashMap::from([
+            ("label".to_string(), AuraPropValue::Expr(Expr::Str("Save".into()))),
+        ]);
+        if let Some(v) = variant {
+            props.insert("variant".to_string(), AuraPropValue::Expr(Expr::Str(v.into())));
+        }
+        let node = AuraNode::Element {
+            tag: "button".to_string(),
+            props,
+            events: HashMap::from([
+                ("onclick".to_string(), AuraEvent {
+                    handler: "Msg::Reset".to_string(),
+                    params: vec![],
+                }),
+            ]),
+            span: None,
+            debug_id: None,
+            children: vec![],
+        };
+        builder.build(&node)
+    }
+
+    fn has_class(view: &View<DynamicMessage>, pred: &dyn Fn(&StyleClass) -> bool) -> bool {
+        match view {
+            View::Button { style: Some(s), .. } => s.classes.iter().any(|c| pred(c)),
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn default_variant_is_neutral_baseline_with_hairline_border() {
+        for v in [None, Some("default")] {
+            let view = build_button(v);
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Muted))),
+                "缺省按钮基线 = muted 中性填充 (variant={v:?})"
+            );
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::Border)),
+                "缺省按钮必须有发丝描边（UA 预填等价）(variant={v:?})"
+            );
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::BorderColor(Color::Border))),
+                "描边色 = border 语义色 (variant={v:?})"
+            );
+            assert!(
+                !has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
+                "缺省按钮不得再用主题色填充 (variant={v:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn primary_and_submit_are_explicit_accent_fill() {
+        for v in ["primary", "submit"] {
+            let view = build_button(Some(v));
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
+                "{v} = 主题色填充"
+            );
+            assert!(
+                !has_class(&view, &|c| matches!(c, StyleClass::Border)),
+                "{v} 填充档无边框"
+            );
+        }
+    }
+
+    #[test]
+    fn secondary_is_deeper_fill_without_border() {
+        let view = build_button(Some("secondary"));
+        assert!(
+            has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Secondary))),
+            "secondary = 纯填充"
+        );
+        assert!(
+            !has_class(&view, &|c| matches!(c, StyleClass::Border)),
+            "secondary 无边框（outline 专属）"
+        );
     }
 }
