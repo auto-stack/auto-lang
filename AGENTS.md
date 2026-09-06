@@ -100,7 +100,7 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 | `cargo tv` | 改 VM/编译器后——纯 .at 语料 golden（**不含 aavm**，Plan 568） | 3578 | 19.7s（墙钟 30.5s，2026-09-06 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
 | `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
-| `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长） | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
+| `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
 | `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7） | 轻（真 TCP 端口） |
 
