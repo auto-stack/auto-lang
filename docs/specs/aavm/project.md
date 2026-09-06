@@ -169,6 +169,22 @@ VM 侧静默空输出观察项)/OOP 完整面(远期)/532 W0 硬闸可拆补缺�
 > 深度差=谁执笔转译(主 a2r vs AA2R 自身);更深一步"aavm 编译含自身的
 > lib"= VM 侧自举塔顶,见队列③缓议项。
 
+> **〔路径地位裁定,2026-09-06 用户,572 待澄清②→Plan 574 落地〕**
+> "VM 内解释执行"列(avm+aavm / avm+aa2r,进程内 `run_with_capture`
+> 拼 470KB lib 形态)是 2×2 对称性设计产物,**非真实需求**——绝无
+> 真实场景用 Rust 版 AutoVM 解释 aavm.at 再当解释器跑真实程序;真实
+> 自举路径 = **转译成 Rust 后执行**列(②/⑤腿,a2r 转译+编译+运行,
+> 同 Rust 自举"编译器跑编译器")。进程内解释的栈需求随 lib 规模增长,现(基点 515KB 起)已越过
+> `run_autovm_capture` 硬编码的 4MB 执行线程栈(探针定量:4MB 爆/
+> 5MB 过,有限递归;RUST_MIN_STACK=16MB 护栏被该显式 stack_size
+> 绕过——Plan 423 意图失效点),与用例规模无关(001_smoke 单行
+> print 实证)。落地:
+> 12 个该路径语料测试 `#[cfg_attr(windows, ignore)]`(Windows 关闭,
+> Linux/CI 保留全量);**新计划/新能力验收避免该路径重型化**——重型
+> 对拍一律走②/⑤腿;上节能力同步规约的"VM 闸/corpus_a2r 闸"自 574
+> 起按此口径(Linux/CI 执行,Windows 本地跳过)。对账表:
+> `scratch/p574/coverage-map.md`。
+
 **单用例全闭环(理想判据,队列①落统一 runner)**:同一 .at 用例四途径
 两族产物三重对拍——①path1/path3(执行输出)互拍且等于 oracle(参考实现/
 golden);②path2/path4(Rust 译文)互拍且等于主 a2r;③**译文回链**:
