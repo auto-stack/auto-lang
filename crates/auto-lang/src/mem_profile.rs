@@ -135,3 +135,105 @@ unsafe impl GlobalAlloc for CountingAlloc {
         new_ptr
     }
 }
+
+// ---------------------------------------------------------------------------
+// 采样与报告（Plan 565 T2）
+// ---------------------------------------------------------------------------
+
+/// 所有计数器的时点快照（用于阶段差值归因）。
+#[derive(Clone, Copy, Debug)]
+pub struct Snapshot {
+    pub total_bytes: u64,
+    pub alloc_count: u64,
+    pub free_count: u64,
+    pub current_live: u64,
+    pub peak_live: u64,
+    pub bucket_bytes: [u64; 6],
+    pub bucket_count: [u64; 6],
+}
+
+impl Snapshot {
+    pub fn take() -> Self {
+        Snapshot {
+            total_bytes: STATS.total_bytes.load(Ordering::Relaxed),
+            alloc_count: STATS.alloc_count.load(Ordering::Relaxed),
+            free_count: STATS.free_count.load(Ordering::Relaxed),
+            current_live: STATS.current_live.load(Ordering::Relaxed),
+            peak_live: STATS.peak_live.load(Ordering::Relaxed),
+            bucket_bytes: core::array::from_fn(|i| STATS.bucket_bytes[i].load(Ordering::Relaxed)),
+            bucket_count: core::array::from_fn(|i| STATS.bucket_count[i].load(Ordering::Relaxed)),
+        }
+    }
+
+    /// 本快照相对更早快照的逐字段差值（单调计数器饱和减；
+    /// `current_live` 可下降，保留符号）。
+    pub fn delta_since(&self, earlier: &Snapshot) -> Delta {
+        Delta {
+            alloc_bytes: self.total_bytes.saturating_sub(earlier.total_bytes),
+            allocs: self.alloc_count.saturating_sub(earlier.alloc_count),
+            frees: self.free_count.saturating_sub(earlier.free_count),
+            live_change: self.current_live as i64 - earlier.current_live as i64,
+            bucket_bytes: core::array::from_fn(|i| {
+                self.bucket_bytes[i].saturating_sub(earlier.bucket_bytes[i])
+            }),
+            bucket_allocs: core::array::from_fn(|i| {
+                self.bucket_count[i].saturating_sub(earlier.bucket_count[i])
+            }),
+        }
+    }
+}
+
+/// 两快照间的差值：阶段内分配量/次数/释放次数/留存变化/分桶。
+#[derive(Clone, Copy, Debug)]
+pub struct Delta {
+    pub alloc_bytes: u64,
+    pub allocs: u64,
+    pub frees: u64,
+    pub live_change: i64,
+    pub bucket_bytes: [u64; 6],
+    pub bucket_allocs: [u64; 6],
+}
+
+fn mib(bytes: u64) -> String {
+    format!("{:.1}MiB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+fn signed_mib(delta: i64) -> String {
+    let sign = if delta < 0 { "-" } else { "+" };
+    format!("{sign}{:.1}MiB", delta.unsigned_abs() as f64 / (1024.0 * 1024.0))
+}
+
+/// 一条阶段归因报告行（D1 格式：MEMPROFILE 前缀，可 grep）。
+pub fn report_delta_line(tag: &str, d: &Delta) -> String {
+    format!(
+        "MEMPROFILE phase={tag} alloc_bytes={} ({}) allocs={} frees={} live_change={} ({}) bucket_bytes={:?} bucket_allocs={:?}",
+        d.alloc_bytes,
+        mib(d.alloc_bytes),
+        d.allocs,
+        d.frees,
+        d.live_change,
+        signed_mib(d.live_change),
+        d.bucket_bytes,
+        d.bucket_allocs,
+    )
+}
+
+/// 进程全程总计行：total/peak_live/live/分配次数 + 分桶
+/// （桶序 = BUCKET_LABELS：<=64B/<=256B/<=1K/<=4K/<=64K/>64K）。
+pub fn report_total_line() -> String {
+    let s = Snapshot::take();
+    format!(
+        "MEMPROFILE total total_bytes={} ({}) peak_live={} ({}) live={} ({}) allocs={} frees={} bucket_bytes={:?} bucket_allocs={:?} labels={:?}",
+        s.total_bytes,
+        mib(s.total_bytes),
+        s.peak_live,
+        mib(s.peak_live),
+        s.current_live,
+        mib(s.current_live),
+        s.alloc_count,
+        s.free_count,
+        s.bucket_bytes,
+        s.bucket_count,
+        BUCKET_LABELS,
+    )
+}

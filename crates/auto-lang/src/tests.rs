@@ -28,6 +28,9 @@ mod list_growth_tests;
 mod list_tests; // Comprehensive List operation tests (Plan 051)
 mod may_tests;
 mod mem_tests;
+// Plan 565 P0: mem-profile 归因报告（#[ignore] 诊断，仅 mem-profile feature）
+#[cfg(feature = "mem-profile")]
+mod mem_profile_report_tests;
 mod memory_quick_test;
 mod memory_tests;
 mod ownership_tests;
