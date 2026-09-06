@@ -1,15 +1,23 @@
 ---
 plan_id: PLAN-567
-status: execution_done            # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w25-tail-w3-oracle
 author: [zhaopuming]
 created_at: 2026-09-05
 updated_at: 2026-09-05   # executing 起算（worktree D:/autostack/.wt/lang-567/auto-lang, branch plan-567-dev）
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "auto-lang/trans/design/s2s-lowering.md: 规则表新增 E1 隐式传播（桥调用 may 化+.?）与 with-as 块形态回译契约"
+  - "auto-lang/frontend/overview.md: with 条目扩展（as 绑定形态/pratt 截断）"
+  - "auto-lang/vm/overview.md: Err 值通道拦截 catch/主边界带错退出/ADD 先读后放池纪律/PyException 前缀族"
+new_spec_components:
+  - "auto-lang/trans: W3 注解预言机（inspect_return_annotation/PY_RETURN_ANNOTATIONS 表/D4 授权强制/W0010 lint）"
+  - "auto-lang/vm: py 桥 may 变体族 453/476/477/478 + py_raise 479 + py_int 480 + py_enter 返 __enter__ 值"
+  - "parity/python: py_anno 套件（本地注解模块 + runner PYTHONPATH 绝对路径注入）"
+touched_goals:
+  - "GOAL-005: Python parity 第三维度——脚本模式 W2.5 收尾+W3 收官，P539-D1/D5、P560-D1/D2/D3/D6 六债清偿，20 套件 173 用例三方全绿"
+  - "GOAL-001: 语言核心成熟——字符串池 rc 先读后放纪律修复（P053-8 幻影根因）+ CALL_NAT/COUNTED 非 FFI 错误传播加固"
 
 affects: [auto-lang/vm, auto-lang/trans, auto-lang/frontend]   # 受影响的 specs 路径
 current_step: 20
@@ -384,7 +392,44 @@ int 强制、nullable 返回（判空路径 + lint 触发样例）、无注解�
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审人/时间**：ZCode（auto-plan:review）· 2026-09-06 · worktree `D:/autostack/.wt/lang-567/auto-lang`（branch `plan-567-dev`，复审期新增 3 提交）
+
+**逐条验收裁定**（verify, don't trust——全部复审期重跑实证）：
+
+1. **p7 三方全绿**：✅ PASS——复审重跑 p7 相位 9 套件（含 py_anno）全 100%；py_list 8/8、
+   py_sys 5/5；`P053-8/phantom` 在 py_list 直跑中零出现。
+2. **零回归门禁**：✅ PASS——`cargo tf` 3449/3450、`cargo tv` 3589/3590、`cargo tt` 3796/3797
+   （三者唯一红 = charts，master 既有基线红，master 同形复现）；`cargo t` 失败集与 master
+   环境基线族零差（d2/d8 为 plan370 环境闪断，双向漂移）；p5/p6/p8/p9 四相位 20 套件
+   三方全绿（173 用例）。
+3. **Err 通道**：✅ PASS——catch 载荷 `PyException ValueError:`/`PyException IndexError:`
+   双前缀探针实证；未捕获 Err exit=1 + PyException 消息；`.at` 含 use.py 仍被 E5501
+   硬门拒绝（门禁不放松实证）。
+4. **with-as 三方一致**：✅ PASS——open 句柄探针：正常路径 finally flush（f1=
+   hello-with-as）、错误路径 catch flush（f2=partial）、exit=1；infer test18 18/18
+   三方；`a as int` 正常模式 Cast 零回归（parser 单测）。
+5. **注解预言机**：✅ PASS——py_anno 9/9 三方（含 fakey 撒谎注解退回 Python 行为）；
+   分类器/强制 helper/lint 去重单测全过。
+6. **债务核销与回写**：✅ PASS（复审修复后）——P539-D1/D5、P560-D1/D2/D3/D6 六条
+   全部 ✅ 已清偿；known-divergences DIV-PY-TUPLE-1 补注；script-mode-interop §4/§7/§9
+   收官注记。
+
+**遗漏/延后/workaround 猎查**（Step 3 显式猎查结果）：
+
+- **遗漏 ×2（复审当场修复，commit "复审遗漏双修" + a0a9dda8e）**：
+  ① P539-D5 债务条目未核销（T07 已交付 478 py_call_kw_may 但登记漏做）——已补核销；
+  ② `autovm_persistent` REPL 两注册路径未接预言机（T17 计划文本点名 :180/:204，
+  执行只接了 lib.rs 三路径）——已补齐（注解签名 + 知识表记录，与 init_py_ffi 对齐），
+  修复后 cargo t 零新增红 + p7/p9 复跑全绿。
+- **偏差（已登记 P567-R1/R2 债务候选）**：T19 lint 走 log::warn+收集器而非 error.rs
+  W 码体系（计划文本写 error.rs——该体系挂 parser 面，codegen 接线超收口预算，
+  可见性等价 + 单测在案）；CLI 错误路径丢已缓冲 stdout（存量，master 同形实证）。
+- **号位偏差**：py_int 落 480（计划写 478——478/479 被 kw_may/py_raise 顺延占用），
+  执行注记在案。
+- **存量缺陷登记**：`.?(d)` 表达式位链式消费缺陷（453 同形复现）——计划待澄清⑥。
+
+**裁定：PASS → status: reviewed**。无阻断债；P567-R1/R2 为低风险偿还路径明确的
+登记债。
 
 ## 待澄清事项
 
