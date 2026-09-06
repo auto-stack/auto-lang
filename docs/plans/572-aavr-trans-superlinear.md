@@ -249,8 +249,13 @@ scripts/aavm_native_gen_check.sh(+3 处)、scratch/p572/(资产)——零 Rust
    主检出/基点/修复态三处同签名;[env] RUST_MIN_STACK=16MB 只抬
    libtest 线程栈,nextest 进程主线程不受控;CI(Linux)守护。
    另 `test_charts_gallery_compiles`(tf 唯一红,564-Q6 邻接族)。
-   两态失败集 13/13 逐一致(scratch/p572/t4_gate.md)。处置:需
-   维护者归因(环境栈上限 vs 语料增长),复审时登 KNOWN-DEBT。
+   两态失败集 13/13 逐一致(scratch/p572/t4_gate.md)。
+   ——〔2026-09-06 用户裁定〕**根因定性 = avm+aavm/avm+aa2r 双重
+   解释器路径本身非真实需求**(2×2 四路径对称性设计产物;真实自举
+   路径 = a2r 转译+编译+运行,同 Rust 自举"编译器跑编译器");进程内
+   双层解释的递归累积爆栈是结构性必然。处置 = **关闭重型双重解释器
+   测试,仅保留最小正确性锚(简单表达式/单层调用)**;正统重型验证
+   路径 = ⑤腿/at_mode/gen2(已在位)。执行另立计划承接(Plan 574)。
 3. **exe² 5 缺陷处置归属**(T5 阻塞,2026-09-06 登记):拼合源转译
    首次可达后 exe² 构建露 5 错——2 个 AA2R 发射缺口(E0308 实参
    &str 强转缺@ev_run_files(argv[1])、E0382 mc clone 注入缺@
