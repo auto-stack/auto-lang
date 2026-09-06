@@ -831,3 +831,9 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_99_script_err_03_uncaught() { test_vm("99_script_err/03_uncaught").unwrap(); }
 #[cfg(feature = "python")]
 #[test] fn test_99_script_err_04_with_as_propagate() { test_vm("99_script_err/04_with_as_propagate").unwrap(); }
+#[cfg(feature = "python")]
+#[test] fn test_99_script_err_05_obj_call_auto_catch() { test_vm("99_script_err/05_obj_call_auto_catch").unwrap(); }
+// === 99_py_dispatch（Plan 569 D2：py 返回值方法分派动态化——py feature 门控） ===
+#[cfg(feature = "python")]
+#[test] fn test_99_py_dispatch_01_dual_len() { test_vm("99_py_dispatch/01_dual_len").unwrap(); }
+#[test] fn test_99_py_dispatch_02_auto_str_unchanged() { test_vm("99_py_dispatch/02_auto_str_unchanged").unwrap(); }
