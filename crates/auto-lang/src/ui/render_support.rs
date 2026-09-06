@@ -198,6 +198,8 @@ fn get_support_details(tag: &str) -> TagSupport {
         "sidebar_menu_sub" | "sidebar-menu-sub" => TagSupport::full(),
         "sidebar_menu_sub_item" | "sidebar-menu-sub-item" => TagSupport::full(),
         "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => TagSupport::full(),
+        // PLAN-009 P1: native terminal component (auto-term engine grid).
+        "terminal" | "Terminal" => TagSupport::full(),
         "badge" | "chip" => TagSupport::partial(
             &["class"],
             "shadcn-style badge with variant colors; custom class limited",
