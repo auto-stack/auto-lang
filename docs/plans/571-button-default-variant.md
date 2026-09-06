@@ -36,7 +36,9 @@ secondary 必须拉开一档，否则 default/secondary 两 variant 视觉坍缩
 
 ## 目标
 
-1. `default`（缺省）= 中性基线按钮：muted 填充 + 正常前景色，不抢视觉焦点。
+1. `default`（缺省）= 中性基线按钮：muted 填充 + `border-border` 发丝描边——即 Web UA
+   预填裸 button 的完整形态（灰底+边框+圆角），在任意表面（含 dark 的 background/
+   card，对比度仅 ~1.15:1 的场景）都保有按钮可辨识度。
 2. `primary` = 显式醒目 variant：主题色填充（即现缺省观感），留给 CTA/主操作。
 3. 三臂 variant preset 同源同观感：Vue（cva）、VM（解释器）、Rust（transpile codegen）。
 4. preset 表单一事实源 + Design 22 §3 规约表同步修订。
@@ -55,10 +57,10 @@ Rust 代码，以注释互锁 + 单测断言三表字符串一致（防漂移）
 
 | variant | preset 类 | 观感 |
 |---|---|---|
-| 缺省 / `"default"` | `bg-muted text-foreground font-medium rounded-md hover:bg-muted/70` | 中性灰 chip（新基线） |
-| `"primary"` | `bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90` | 主题色填充（现缺省观感） |
+| 缺省 / `"default"` | `bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70` | 中性填充+发丝描边（UA 预填等价形态，任何表面可辨） |
+| `"primary"` | `bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90` | 主题色填充（现缺省观感），留给 CTA |
 | `"submit"` | 同 primary | 行为语义：表单主操作应醒目 |
-| `"secondary"` | `bg-secondary text-secondary-foreground font-medium rounded-md hover:bg-secondary/80` | 不变（但 secondary token 本身分档，见下） |
+| `"secondary"` | `bg-secondary text-secondary-foreground font-medium rounded-md hover:bg-secondary/80` | 深一档纯填充、**无边框**（边框是 outline 的专属语言） |
 | `"destructive"` / `"outline"` / `"ghost"` / `"link"` / `"icon"` | 现状保留 | 不变 |
 | `"text"` / 未知 | 无 preset（chromeless，由 user class 主导） | 不变 |
 
@@ -104,9 +106,10 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
 
 ## 详细设计
 
-1. **variants.rs**（新）：两张 `match` 表 + 单测（default 不含 `bg-primary`、primary
-   含 `bg-primary`、未知 variant 返回空串）。函数带文档注释：说明"default 承载 Web UA
-   stylesheet 等价物"的设计语义，指向 Design 22 §3。
+1. **variants.rs**（新）：两张 `match` 表 + 单测（default 含 `bg-muted` 与 `border`、
+   不含 `bg-primary`；primary 含 `bg-primary`、不含 `border`；secondary 含
+   `bg-secondary`、不含 `border`；未知 variant 返回空串）。函数带文档注释：说明
+   "default 承载 Web UA stylesheet 等价物"的设计语义，指向 Design 22 §3。
 2. **VM 臂** `aura_view_builder.rs::convert_button`：删除内联 preset match，改调
    variants.rs；`""|"default"` 中性、`"primary"|"submit"` 醒目，其余透传。
 3. **Vue 臂** `ui_gen/vue.rs`：variants.ts cva 模板——`default` 值改为中性类，新增
@@ -139,12 +142,15 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
   数量与所在 demo，作为回归面清单入 plan 执行证据。
 - theme.rs 既有断言（如 `assert_eq!(rgb(Color::Muted), ...)` 一族）核对 Secondary
   相关断言并更新。
+- 可辨识度检查（T8 截图判定项）：dark 主题下 default 按钮（muted 填充 #1e293b +
+  border #283146）置于 background #141a29 与 card #1a2235 上轮廓清晰可辨；若发丝
+  描边仍不足，升级方案为 default 提用 secondary 深填充（执行期与用户确认）。
 
 ## 验收标准
 
-- [ ] Vue 与 VM 两端：未声明 variant 的 button 渲染为中性填充（非主题色、非裸文本），双端观感一致。
+- [ ] Vue 与 VM 两端：未声明 variant 的 button 渲染为"muted 填充 + 发丝描边"，双端观感一致；dark 主题下置于 background/card 上轮廓可辨。
 - [ ] `variant:"primary"` 两端均主题色填充；`variant:"submit"` 同 primary。
-- [ ] `variant:"secondary"` 与 default 同屏可辨（secondary 深一档），双端一致。
+- [ ] `variant:"secondary"`（深填充、无边框）与 default（浅填充、有边框）、outline（边框无填充）同屏三者可辨，双端一致。
 - [ ] Rust transpile 臂缺省按钮与 VM 臂同观感（三臂收敛）。
 - [ ] Design 22 §3 与实现一致，含 default=UA-stylesheet-等价物的设计说明与 secondary/muted 分档声明。
 - [ ] `cargo check -p auto-lang` 零新警告；`cargo t ui` 全绿；受影响既有断言已更新。
