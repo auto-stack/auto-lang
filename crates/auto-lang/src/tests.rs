@@ -66,7 +66,6 @@ mod vm_file_tests; // Plan 177: VM file-based test framework(Plan 568: 纯 .at �
 mod aavm_runner_tests;
 #[cfg(feature = "test-aavm")] // Plan 564: 重内存测试守门(NEXTEST/AUTO_LANG_HEAVY_MEM 双通道,防裸 cargo test 全并发;aavm 系迁入 test-aavm 后随系门控)
 mod heavy_gate;
->>>>>>> master
 #[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
