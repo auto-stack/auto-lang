@@ -67,6 +67,16 @@ type CGVar {
     // 447-③ 11.2a:build.fstr 段类型 tag 用(""=int/未知,宿主默认同;
     // "str" → tag 1;仅 str 需显式识别,其余值域 tag 0)
     ty str
+    // P532 ⑥e:构造字面量/位置参构造来源旗标(1=宿主 var_types 的
+    // GenericInstance 可观察面——LHS 字段赋值发 set.generic.field;
+    // 注解/参数/self/fn 返回=Type::User → load.str+set.field。
+    // b35(无注解构造)vs lib(self/注解)两形态实证)
+    gtor int
+    // P532 ⑥e:宿主视角类型(段 tag 判定专用)——注解/str 字面量/
+    // fn 返回型记;容器 get 元素型不记(宿主 infer 对 List.get 返回
+    // unknown,hint 兜底 Int——parser.at 2207 {ek} 段宿主 0/aavm
+    // vty="str" 误 1 实证;vty 本体保留,aavm 自身方法解析依赖)
+    ty2 str
 }
 
 pub type CG {
@@ -139,6 +149,16 @@ pub type CG {
     // W2(525):fn_rets——c.fns 平行表(方法/函数返回类型名;链式
     // 调用接收者类型解析:Box.new(7) 的结果类型)
     fn_rets List<str>
+    // P532 ⑥e:语句值弹出块尾豁免通道(镜像宿主 should_pop_expr_result
+    // 的 Block 继承语义,codegen.rs 1109/1126-1141)——fn 体进入=0
+    // (尾语句留值),for/while 循环体进入=1(2620 族恒 true),if 分支
+    // 体继承;非尾语句恒弹。pending_pop=表达式语句的延迟弹出旗标
+    // (流式编译在 cg_eos 后看到下一 token 才知是否块尾)
+    should_pop int
+    pending_pop int
+    // P532 ⑥e:主式结果型来自容器 get(元素型回传)旗标——var 语句
+    // 的 ty2(宿主视角)不记该来源;cg_expr 入口清零,get 臂置 1
+    inst_get int
 
     // ── Plan 514 W3-15(γ4):CG 自有操作族入 type 体 ──
     // 映射:cg_* c-only 操作族(产生式 cg_expr/stmt/if/while/fn 族
@@ -166,7 +186,7 @@ pub type CG {
     var bases_l List<int> = List.new()
     var fmods_l List<str> = List.new()
     var frets_l List<str> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l, uses_l, "", defers_l, bases_l, fmods_l, "", 0, 0, "", "", frets_l)
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l, uses_l, "", defers_l, bases_l, fmods_l, "", 0, 0, "", "", frets_l, 0, 0, 0)
 }
 
     // W3:裸名 → 导入符号(遍历 uses:定向 items 命中或通配;返回 "mod.name",
@@ -326,12 +346,29 @@ pub type CG {
 
     // P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
     // 与 a2r 值语义两可;镜像 ev_arr_write 写回注释)
+    // P532 W2 根修②:帧槽位深度对齐写——原无条件 push 而按 loop_depth
+    // 索引读,首循环退出后帧列表只增不删,后续同层循环永远读写 brk_js[0]
+    // (首循环的残帧):旧洞被逐次重patch,末位循环的 end 覆盖全部历史
+    // break 跳(实证:cg_expr pratt break 跳进 cg_compile_mod_seeded 循环尾,
+    // get.field on non-instance;洞 4215 被 59 次重patch)。修法镜像
+    // engine.at args_stack 根修①:深度对齐 set-else-push,重入即整帧
+    // 置新,残洞无从残留
     fn loop_enter(cont_target int) {
-    var bl List<int> = List.new()
-    self.brk_js.push(bl)
-    var cl List<int> = List.new()
-    self.cont_js.push(cl)
-    self.cont_tg.push(cont_target)
+    if self.brk_js.len() > self.loop_depth {
+        self.brk_js.set(self.loop_depth, List.new())
+    } else {
+        self.brk_js.push(List.new())
+    }
+    if self.cont_js.len() > self.loop_depth {
+        self.cont_js.set(self.loop_depth, List.new())
+    } else {
+        self.cont_js.push(List.new())
+    }
+    if self.cont_tg.len() > self.loop_depth {
+        self.cont_tg.set(self.loop_depth, cont_target)
+    } else {
+        self.cont_tg.push(cont_target)
+    }
     self.loop_depth = self.loop_depth + 1
 }
 
@@ -440,11 +477,34 @@ pub type CG {
             }
         }
         self.depth = self.depth - 1
-        // W2:恢复槽位分配游标(本层槽号可复用;hi_idx 高水位不受影响)
-        if self.scope_saves.len() >= self.depth + 1 {
-            self.max_idx = self.scope_saves.get(self.depth)
-        }
+        // P532 W2 根修⑥c:游标恢复改存活集现算——原 scope_saves 恢复
+        // 陈旧游标(早先深状态写入的 saves[d] 在后续同深 pop 时被再次
+        // 读取,游标跳高于存活 max,烧槽;实证 doc=12 后 ctext=14,宿主
+        // 同位=13 复用 10/11)。宿主语义=分配位由存活集决定(pop 后
+        // next=max alive+1),故 pop 后游标直接取存活 max idx;scope_saves
+        // 机制退役(写路径保留,读路径全部改现算)。max_idx 仍=游标
+        //(add_var 取 +1),参数槽约定(idx<n_args→128 寻址)不受影响
+        //(fn 入口 max_idx=-1 重置保留,参数 0..n-1 顺序不变)。
+        self.max_idx = self.max_alive_idx()
     }
+}
+
+    // P532 W2 根修⑥c:存活作用域(0..depth)最大槽 idx(空=-1)
+    fn max_alive_idx() int {
+    var mx = -1
+    var si = 0
+    while si < self.depth {
+        var sc = self.scopes.get(si)
+        var vi = 0
+        while vi < sc.len() {
+            if sc.get(vi).idx > mx {
+                mx = sc.get(vi).idx
+            }
+            vi = vi + 1
+        }
+        si = si + 1
+    }
+    return mx
 }
 
     // W2:静默弹出(无释放组)——Call 迭代器协议通道专用:宿主 2747-2829
@@ -452,13 +512,55 @@ pub type CG {
     fn pop_scope_silent() {
     if self.depth > 1 {
         self.depth = self.depth - 1
-        if self.scope_saves.len() >= self.depth + 1 {
-            self.max_idx = self.scope_saves.get(self.depth)
-        }
+        // P532 W2 根修⑥c:游标恢复改存活集现算(同 pop_scope)
+        self.max_idx = self.max_alive_idx()
     }
 }
 
-    fn add_var(name str, arr int, ty str) int {
+    // P532 W2 根修⑥f:var 语句跨层槽复用——镜像宿主 Store 路径
+    // (codegen.rs 2197-2218:StoreKind::Var 按名全存活作用域查找,命中
+    // 即复用既有槽;let/const 才开新槽;aavm 语法面 lib 源全为 var,统一
+    // 按 var 语义)。原版同名无条件新槽——tokenize 注释臂 q/ctext/scanning
+    // 跨臂重声明实证 +4(宿主 q=9/scanning=10 复用,aavm q=13/scanning=15
+    // 新槽)。查找仅扫存活层(0..depth;表只增不减,死层不可见=宿主弹栈
+    // 语义)。注意:_is_target/参数/for 临时走 add_var(恒新槽,镜像宿主
+    // is-target/params/Iter::Named 的裸 add_var),不走本路径。
+    fn add_var_reuse(name str, arr int, ty str, gtor int, ty2 str) int {
+    var hit = -1
+    var si = 0
+    while si < self.depth {
+        var sc = self.scopes.get(si)
+        var vi = 0
+        while vi < sc.len() {
+            if sc.get(vi).name == name {
+                hit = sc.get(vi).idx
+            }
+            vi = vi + 1
+        }
+        si = si + 1
+    }
+    if hit >= 0 {
+        // 复用既有槽(var 语义):当前层登记 name→hit 供后续解析
+        var sc = self.scopes.get(self.depth - 1)
+        var replaced = false
+        var ri = 0
+        while ri < sc.len() {
+            if sc.get(ri).name == name {
+                sc.set(ri, CGVar(name, hit, arr, ty, gtor, ty2))
+                replaced = true
+            }
+            ri = ri + 1
+        }
+        if !replaced {
+            sc.push(CGVar(name, hit, arr, ty, gtor, ty2))
+        }
+        self.scopes.set(self.depth - 1, sc)
+        return hit
+    }
+    return self.add_var(name, arr, ty, gtor, ty2)
+    }
+
+    fn add_var(name str, arr int, ty str, gtor int, ty2 str) int {
     var next = self.max_idx + 1
     self.max_idx = next
     if next > self.hi_idx {
@@ -473,13 +575,13 @@ pub type CG {
     var ri = 0
     while ri < sc.len() {
         if sc.get(ri).name == name {
-            sc.set(ri, CGVar(name, next, arr, ty))
+            sc.set(ri, CGVar(name, next, arr, ty, gtor, ty2))
             replaced = true
         }
         ri = ri + 1
     }
     if !replaced {
-        sc.push(CGVar(name, next, arr, ty))
+        sc.push(CGVar(name, next, arr, ty, gtor, ty2))
     }
     self.scopes.set(self.depth - 1, sc)
     return next
@@ -517,7 +619,42 @@ pub type CG {
         s = s - 1
     }
     return ""
-}
+    }
+
+    // P532 ⑥e:按名查宿主视角型(段 tag 判定用——get 元素来源不记)
+    fn var_ty2(name str) str {
+    var s = self.depth - 1
+    while s >= 0 {
+        var sc = self.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).ty2
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return ""
+    }
+
+    // P532 ⑥e:按名查构造来源旗标(宿主 ASSIGN 臂 var_types matches
+    // GenericInstance 判定的镜像——仅构造字面量/位置参构造绑定记 1)
+    fn var_gtor(name str) int {
+    var s = self.depth - 1
+    while s >= 0 {
+        var sc = self.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).gtor
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return 0
+    }
 
     fn lookup(name str) int {
     var s = self.depth - 1
@@ -594,6 +731,45 @@ pub type CG {
     return self.pool.len() - 1
 }
 
+    // P532 W2 根修⑤:serialize 的字符串操作数转义镜像宿主 normalized_dump
+    // (Rust {:?} 语义:\n \r \t \\ \" ;原版裸打原文——池串含真实换行时
+    // 单条指令被拆成多行,静态差分/M4 对拍行对齐即断)
+    fn esc_disasm(s str) str {
+    var out = ""
+    var i = 0
+    while i < s.len() {
+        var c = s.char_at(i)
+        if c == 10 {
+            out = out + "\\n"
+        } else if c == 13 {
+            out = out + "\\r"
+        } else if c == 9 {
+            out = out + "\\t"
+        } else if c == 92 {
+            out = out + "\\\\"
+        } else if c == 34 {
+            out = out + "\\\""
+        } else if c == 0 {
+            out = out + "\\0"
+        } else if c < 32 || c == 127 {
+            // 其余控制字符:Rust {:?} 形态 \u{小写hex}(无补零)
+            var hexchars = "0123456789abcdef"
+            var h = ""
+            var v = c
+            while v > 0 {
+                var d = v % 16
+                h = hexchars.slice(d, d + 1) + h
+                v = v / 16
+            }
+            out = out + "\\u{" + h + "}"
+        } else {
+            out = out + s.slice(i, i + 1)
+        }
+        i = i + 1
+    }
+    return out
+}
+
     fn serialize() str {
     var offs List<int> = List.new()
     var acc = 0
@@ -618,12 +794,15 @@ pub type CG {
                 var fe = self.fns.get(ins.n)
                 ops = f"0x${hex4(offs.get(fe.ins))}"
             } else if ins.op == OpCode.LoadStr {
-                ops = "\"" + self.pool.get(ins.n) + "\""
+                ops = "\"" + self.esc_disasm(self.pool.get(ins.n)) + "\""
+            } else if ins.op == OpCode.GetField {
+                // P532 W2 根修⑧:GetField/全局操作数经池解析为名字(镜像
+                // 宿主 normalized_dump 的 load.str 内容替换哲学)——池布局
+                // 两侧不同,下标比较误报字段错位;名字才是语义
+                ops = "field[\"" + self.esc_disasm(self.pool.get(ins.n)) + "\"]"
             } else if ins.op == OpCode.LoadGlobal || ins.op == OpCode.StoreGlobal {
                 // W3:链接后 ins.n 为合并池索引(s 为模块本地旧值,弃用)
-                ops = ins.n.str()
-            } else if ins.op == OpCode.GetField {
-                ops = "field[" + ins.n.str() + "]"
+                ops = "\"" + self.esc_disasm(self.pool.get(ins.n)) + "\""
             }
             if out != "" {
                 out = out + "\n"
@@ -969,13 +1148,17 @@ fn cg_fstr(mut c CG, mut p P) {
     while i < n {
         var ch = content.char_at(i)
         if ch == 36 {
-            if lit != "" {
-                var pi = c.pool_add(lit)
-                c.emit(OpCode.LoadStr, "", pi)
-                tags = f"${tags}1"
-                n_parts = n_parts + 1
-                lit = ""
-            }
+            // P532 W2 根修③:fstr 空字面段镜像宿主——lexer fstr() 每遇 $
+            // 无条件发射累积 FStrPart(空也发,lexer.rs 623-627 无条件
+            // push;仅末尾空文本抑制,lexer.rs 600 行 !text.is_empty())。
+            // 原版 if lit != "" 跳过空段→parts 计数与字节序双分歧
+            // (lexer.at f"${digits}0" 实证 aavm parts=2 vs 宿主 3,首个
+            // lib 静态差分分歧点;M4 语料未覆盖空段 f-string 故漏网)
+            var pi = c.pool_add(lit)
+            c.emit(OpCode.LoadStr, "", pi)
+            tags = f"${tags}1"
+            n_parts = n_parts + 1
+            lit = ""
             if i + 1 < n && content.char_at(i + 1) == 123 {
                 var depth = 1
                 var j = i + 2
@@ -999,11 +1182,91 @@ fn cg_fstr(mut c CG, mut p P) {
                 if c.err != "" || subp.err != "" {
                     return
                 }
+                // P532 ⑥e:段 tag 判定镜像宿主 expr_type_hint 的窄静态面
+                // ——str 字面量/单 Ident(var_ty)/单跳字段访问(字段声明
+                // 型)→ 1;方法调用/复杂表达式 → 0(hint 的 Call 兜底 Int)。
+                // 原版仅 Ident 面漏单跳字段(X.dump 17 处尾段差);升格为
+                // recv_ty 动态通道则过宽(方法返回 str 段误 1——join() 段
+                // 宿主 0 实证)。以 subtoks 静态形态三态判定。
                 var tg = 0
-                if subp.pos < subtoks.len() {
-                    var ftk = subtoks.get(0)
-                    if ftk.kind == TokenKind.Ident && c.var_ty(ftk.text) == "str" {
-                        tg = 1
+                var t0 = subtoks.get(0)
+                // 实质 token 定位(tokenize 尾带 Newline/EOF——len 判定
+                // 不可靠,lexer.at 75 f"${digits}0" 实证尾 EOF 使纯 Ident
+                // 段漏判):i1/i2=首两个非空隔 token——无 i1=纯 Ident
+                // (var_ty);i1=Dot 且有 i2(字段名)无 i3=纯单跳字段
+                // (字段声明型);其余(运算/调用)→0(宿主 hint 兜底 Int)
+                var i1 = -1
+                var i2 = -1
+                var has_i3 = false
+                var si = 1
+                while si < subtoks.len() {
+                    var k1 = subtoks.get(si).kind
+                    if k1 != TokenKind.Newline && k1 != TokenKind.EOF {
+                        if i1 < 0 {
+                            i1 = si
+                        } else if i2 < 0 {
+                            i2 = si
+                        } else {
+                            has_i3 = true
+                            break
+                        }
+                    }
+                    si = si + 1
+                }
+                if t0.kind == TokenKind.Str {
+                    tg = 1
+                } else if t0.kind == TokenKind.Ident {
+                    if i1 < 0 {
+                        // P532 ⑥e:纯 Ident 段查 ty2(宿主视角)——容器
+                        // get 元素绑定(var ek=segs.get(..))宿主 infer
+                        // unknown/hint 兜底 Int,vty 面会误 1
+                        if c.var_ty2(t0.text) == "str" {
+                            tg = 1
+                        }
+                    } else if i2 >= 0 && subtoks.get(i1).kind == TokenKind.Dot {
+                        // X.f 形态二分:后随 ( → 方法调用段(宿主 hint 的
+                        // Call{Dot} 分支按 fn_return_types 限定名
+                        // "Type.method" 判 str→1,aavm 对应 fnret 侧车);
+                        // 否则纯字段访问(声明型,has_i3=false 门)
+                        var vt6 = c.var_ty(t0.text)
+                        var fname6 = subtoks.get(i2).text
+                        var call_form = i2 + 1 < subtoks.len() && subtoks.get(i2 + 1).kind == TokenKind.LParen
+                        if call_form {
+                            if vt6 != "" {
+                                var sym7 = vt6 + "." + fname6
+                                var mret7 = ""
+                                // 模块内先查 fns/fn_rets 平行表(fnret 侧车
+                                // 是链接期 dep→主通道,模块内编译时未播种
+                                // ——parser.at 1376 {p.text()} 实证)
+                                var fr9 = -1
+                                var fi9 = 0
+                                while fi9 < c.fns.len() {
+                                    if c.fns.get(fi9).name == sym7 {
+                                        fr9 = fi9
+                                        fi9 = c.fns.len()
+                                    }
+                                    fi9 = fi9 + 1
+                                }
+                                if fr9 >= 0 && fr9 < c.fn_rets.len() {
+                                    mret7 = c.fn_rets.get(fr9)
+                                } else {
+                                    var mri7 = 0
+                                    while mri7 < c.consts.len() {
+                                        var mk7 = c.consts.get(mri7).key
+                                        if find_sub(mk7, "fnret:" + sym7 + "=>") == 0 {
+                                            mret7 = mk7.slice(("fnret:" + sym7 + "=>").len(), mk7.len())
+                                            mri7 = c.consts.len()
+                                        }
+                                        mri7 = mri7 + 1
+                                    }
+                                }
+                                if mret7 == "str" {
+                                    tg = 1
+                                }
+                            }
+                        } else if !has_i3 && vt6 != "" && c.tys_lookup(vt6) >= 0 && c.field_ty(vt6, fname6) == "str" {
+                            tg = 1
+                        }
                     }
                 }
                 tags = tags + tg.str()
@@ -1186,13 +1449,13 @@ fn cg_closure(mut c CG, mut p P, single bool) {
     var ci2 = 0
     while ci2 < captured.len() {
         var cty = c.var_ty(captured.get(ci2))
-        c.add_var(captured.get(ci2), 0, cty)
+        c.add_var(captured.get(ci2), 0, cty, 0, "")
         n_total = n_total + 1
         ci2 = ci2 + 1
     }
     var pi2 = 0
     while pi2 < names.len() {
-        c.add_var(names.get(pi2), 0, "")
+        c.add_var(names.get(pi2), 0, "", 0, "")
         n_total = n_total + 1
         pi2 = pi2 + 1
     }
@@ -1256,6 +1519,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
     c.inst_ty = ""
     c.recv_ty = ""
     c.primary_tyname = ""
+    c.inst_get = 0
     // C3(Plan 447):p_kind 链 is 化——镜像宿主 match 臂形
     is k {
         TokenKind.Not -> {
@@ -1672,6 +1936,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 if mname2 == "get" {
                                     if find_sub(recv_ty2, "<") >= 0 && recv_ty2.len() > 5 {
                                         c.inst_ty = recv_ty2.slice(5, recv_ty2.len() - 1)
+                                        c.inst_get = 1
                                     } else {
                                         c.inst_ty = ""
                                     }
@@ -1849,18 +2114,58 @@ fn cg_expr(mut c CG, mut p P, min int) {
                                 c.recv_ty = c.field_ty(hop_recv_ty, fname2)
                             }
                         } else {
-                            // 链式后续跳(接收者已是表达式,宿主 untyped
-                            // fallback):get.generic.field field=0 + 3 幽灵 nop
-                            c.emit(OpCode.GetGenericField, "field=0", 0)
-                            c.emit(OpCode.Nop, "", 0)
-                            c.emit(OpCode.Nop, "", 0)
-                            c.emit(OpCode.Nop, "", 0)
-                            // P532 W1 G17:链式跳类型续传——recv 为已知
-                            // struct 型时按 ftys 查字段型(否则陈旧型污染
-                            // 后续方法分派:CGType.get/CGEnum.slice 链接错
-                            // 两族实证)
-                            if c.recv_ty != "" && c.tys_lookup(c.recv_ty) >= 0 {
+                            // P532 ⑥e(残留③末段·⑨ 挂账正式清偿):链式
+                            // 后续跳镜像宿主 Regular 分支判定面(codegen.rs
+                            // 5985):is_heap_object = last_expr_type ==
+                            // NestedObject → get.generic.field(注册表查
+                            // 字段下标);否则 get.field(名字池)。aavm 对应
+                            // 物=recv_ty(首跳字段型/方法返回型/中缀清零的
+                            // 演化通道):已知 struct 型 → NestedObject 等价
+                            // → GENERIC(真下标,弃原 field=0 占位——b36
+                            // .first.v 恰字段 0 掩蔽的执行期错址);标量/
+                            // str/未知 → FIELD(宿主 untyped fallback)。
+                            // ⑨ 的 typed→direct 失败根因=试图让 FIELD 形态
+                            // 吞并全部链式跳,现按宿主两面判定各归其位。
+                            // 宿主 last_expr_type 两可观察面:a) 字段访问后
+                            // =字段声明型映射(6068)→GENERIC(b36 .first.v);
+                            // b) 方法调用后=陈旧保持(编译实参的标量残留,
+                            // "plain get returns unknown")→FIELD(lib 91 处
+                            // call.nat 接收全 FIELD)。aavm 的 recv_ty 比 b)
+                            // 面更聪明(List.get 回传元素型,链式容器方法
+                            // 解析依赖)——判定加接收者形态闸:上一条发射
+                            // 是 Call/CallNat(方法调用接收)→ 按宿主陈旧
+                            // ≈标量近似走 FIELD;其余(字段链)按 recv_ty
+                            // 判 struct → GENERIC(真下标,弃 field=0 占位
+                            // ——b36 恰字段 0 掩蔽的执行期错址)。
+                            var li5 = c.ins.get(c.ins.len() - 1)
+                            var recv_is_call5 = li5.op == OpCode.Call || li5.op == OpCode.CallNat
+                            if !recv_is_call5 && c.recv_ty != "" && c.tys_lookup(c.recv_ty) >= 0 {
+                                var gf5 = c.field_idx(c.recv_ty, fname2)
+                                if gf5 < 0 {
+                                    // 宿主 warning 形态:类型在册但字段缺
+                                    c.emit(OpCode.GetGenericField, "field=0", 0)
+                                } else {
+                                    c.emit(OpCode.GetGenericField, "field=" + gf5.str(), gf5)
+                                }
+                                c.emit(OpCode.Nop, "", 0)
+                                c.emit(OpCode.Nop, "", 0)
+                                c.emit(OpCode.Nop, "", 0)
+                                // P532 W1 G17:链式跳类型续传
                                 c.recv_ty = c.field_ty(c.recv_ty, fname2)
+                            } else {
+                                // 宿主 untyped fallback:get.field 名字池
+                                // (GET_FIELD 分支不设 last_expr_type——
+                                // 发射形态由形态闸近似宿主陈旧语义)
+                                var fidx5 = c.pool_push(fname2)
+                                c.emit(OpCode.GetField, "field[" + fidx5.str() + "]", fidx5)
+                                // 解析通道续传(与发射形态解耦):recv_ty
+                                // 兼任 aavm 方法解析通道须保持准确——
+                                // vk18=c.consts.get(vri).key 的 str 续传
+                                // (后续 .slice 解析)依赖;镜像宿主的只是
+                                // 发射选择,不把解析通道搞陈旧
+                                if c.recv_ty != "" && c.tys_lookup(c.recv_ty) >= 0 {
+                                    c.recv_ty = c.field_ty(c.recv_ty, fname2)
+                                }
                             }
                         }
                         dot_seq = dot_seq + 1
@@ -2062,8 +2367,17 @@ fn cg_enum_decl(mut c CG, mut p P) {
 // 臂体:{...} 块(compile_body_inline,不推作用域);return 单语句;
 // 其余单表达式(无 pop,镜像 Stmt::Expr 语句)
 fn cg_is_arm_body(mut c CG, mut p P) {
+    // P532 W2 根修⑥b:is 臂体包块作用域——镜像宿主臂体编译路径
+    // Stmt::Block(push_scope/pop_scope):臂内变量随作用域消亡,兄弟臂
+    // 复用槽号(pop 释放组仅 depth>2 发射,与宿主 scope_stack.len()>2
+    // 同判)。原版臂体 inline 无 scope,臂内变量全数进 fn 级作用域单调
+    // 烧槽(tokenize locals 34 vs 宿主 14;静态差分首分歧)。注意:绑定
+    // 变量(_is_target/解构绑定)在宿主注册于 Block 之外,仍由调用点
+    // 事先 add_var,不在本包裹内。
+    c.push_scope()
     if p.kind() == TokenKind.LBrace {
-        cg_body_inline(c, p)
+        cg_body_inline(c, p, -1)
+        c.pop_scope()
         return
     }
     // Plan 495: 非块体 arm 体镜像宿主 parse_expr_or_body 的 stmt_line——
@@ -2071,13 +2385,16 @@ fn cg_is_arm_body(mut c CG, mut p P) {
     c.line(p.line())
     if p.kind() == TokenKind.Return {
         cg_stmt(c, p)
+        c.pop_scope()
         return
     }
     if p.kind() == TokenKind.Break || p.kind() == TokenKind.Continue {
         cg_stmt(c, p)
+        c.pop_scope()
         return
     }
     cg_expr(c, p, 0)
+    c.pop_scope()
 }
 
 // 单模式比较发射:load t;<pattern 表达式>;eq —— 标量枚举判别值直接
@@ -2399,7 +2716,7 @@ fn cg_is_pattern_expr(mut c CG, pat E) {
 fn cg_is(mut c CG, mut p P) {
     p.next()
     cg_expr(c, p, 0)
-    var t = c.add_var("_is_target", 0, "")
+    var t = c.add_var("_is_target", 0, "", 0, "")
     c.emit_store(t)
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
@@ -2452,7 +2769,7 @@ fn cg_is(mut c CG, mut p P) {
                 c.emit(OpCode.Ne, "", 0)
                 var sjz = c.emit(OpCode.JmpZ, "", -1)
                 if bname != "_" {
-                    var svidx = c.add_var(bname, 0, "")
+                    var svidx = c.add_var(bname, 0, "", 0, "")
                     c.emit_load(t)
                     c.emit_store(svidx)
                 }
@@ -2501,7 +2818,7 @@ fn cg_is(mut c CG, mut p P) {
                         c.emit_load(t)
                         var fidx5 = c.pool_push(fld3)
                         c.emit(OpCode.GetField, "field[" + fidx5.str() + "]", fidx5)
-                        var bidx5 = c.add_var(alias3, 0, "")
+                        var bidx5 = c.add_var(alias3, 0, "", 0, "")
                         c.emit_store(bidx5)
                     }
                     wi3 = wi3 + 1
@@ -2573,7 +2890,7 @@ fn cg_is(mut c CG, mut p P) {
                             }
                             vri = vri + 1
                         }
-                        var bidx = c.add_var(binds2.get(si), 0, bty18)
+                        var bidx = c.add_var(binds2.get(si), 0, bty18, 0, "")
                         c.emit_store(bidx)
                     }
                     si = si + 1
@@ -2596,16 +2913,26 @@ fn cg_is(mut c CG, mut p P) {
                     c.emit(OpCode.Eq, "", 0)
                 } else {
                     // ③b or 链:逐模式 eq + jmp.nz 匹配标号;全落空 jmp next
+                    // P532 W2 根修⑦:多模式测试顺序镜像宿主 parser 的
+                    // patterns.swap_remove(0)(parser.rs 7766)——取首位后
+                    // 末位搬到表首,宿主有效测试序=pat,extras[末],extras[0..n-2]
+                    // (实证:lexer ' ' | '\t' | '\r' 宿主测序 ' ','\r','\t';
+                    // aavm 原按源码序 ' ','\t','\r'→静态差分体内首分歧)
                     var nz_jmps List<int> = List.new()
+                    var en7 = extras.len()
                     c.emit_load(t)
                     cg_is_pattern_expr(c, pat)
                     c.emit(OpCode.Eq, "", 0)
                     var nz = c.emit(OpCode.JmpNz, "", -1)
                     nz_jmps.push(nz)
                     var ei = 0
-                    while ei < extras.len() {
+                    while ei < en7 {
+                        var idx7 = en7 - 1
+                        if ei > 0 {
+                            idx7 = ei - 1
+                        }
                         c.emit_load(t)
-                        cg_is_pattern_expr(c, extras.get(ei))
+                        cg_is_pattern_expr(c, extras.get(idx7))
                         c.emit(OpCode.Eq, "", 0)
                         var nz2 = c.emit(OpCode.JmpNz, "", -1)
                         nz_jmps.push(nz2)
@@ -2672,6 +2999,8 @@ fn cg_stmt(mut c CG, mut p P) {
         var name = p.text()
         p.next()
         var vty = ""
+        var gtor = 0
+        var ty2v = ""
         if is_type_name(p) {
             // P532 W1 G9 注:注解类型入 vty——裸名形态(parse_type 对
             // 用户类型返回声明快照/占位串,污染 var_ty→字段型断链,
@@ -2683,6 +3012,8 @@ fn cg_stmt(mut c CG, mut p P) {
             } else {
                 vty = bare_ty
             }
+            // P532 ⑥e:注解基线入 ty2(无 init 形态宿主 var_types=注解)
+            ty2v = vty
         }
         var is_arr = 0
         // W2(Plan 511):全局路径(镜像宿主 Plan 317/322——顶层 var/const
@@ -2719,6 +3050,10 @@ fn cg_stmt(mut c CG, mut p P) {
                 c.emit(OpCode.StoreGlobal, gidx2.str(), gidx2)
                 return
             }
+            // P532 ⑥e:构造来源判定(init 首 token 形态——与构造臂
+            // 同款条件:Ident+紧随 {/( 且已注册类型;cg_expr 已消费,
+            // 故在消费前记 init 起位)
+            var init_start = p.pos
             cg_expr(c, p, 0)
             is_arr = c.arr_flag
             if c.str_flag == 1 {
@@ -2737,8 +3072,34 @@ fn cg_stmt(mut c CG, mut p P) {
                     vty = c.recv_ty
                 }
             }
+            // P532 ⑥e:仅构造字面量 { 记 gtor(宿主 var_types 对字面量
+            // 推 GenericInstance→set.generic.field,b35 实证);位置参
+            // 构造 T(...) 推 User→set.field(parser.at 252 var p=P(...)
+            // 后 p.pos= 宿主 FIELD 实证);fn 调用返回型同不记
+            var it0 = p.toks.get(init_start)
+            if it0.kind == TokenKind.Ident {
+                var it1 = p.toks.get(init_start + 1)
+                if it1.kind == TokenKind.LBrace && c.tys_lookup(it0.text) >= 0 {
+                    gtor = 1
+                }
+            }
+            // P532 ⑥e:ty2(宿主视角型)三源——str 字面量(str_flag)/
+            // 非 get 的 inst_ty(fn 返回;容器 get 元素型宿主 infer 为
+            // unknown→不记,{ek} 段宿主 0 实证)/注解基线(recv_ty 裸
+            // ident 兜底不记——serialize {ops} 段 var ops=ins.s 宿主
+            // 0 实证,aavm recv_ty 推断面比宿主 store 宽)
+            if c.str_flag == 1 {
+                ty2v = "str"
+            } else if c.inst_ty != "" {
+                if c.inst_get == 0 {
+                    ty2v = c.inst_ty
+                } else {
+                    ty2v = ""
+                }
+            }
         }
-        var idx = c.add_var(name, is_arr, vty)
+        // P532 W2 根修⑥f:var 语句走跨层复用分配
+        var idx = c.add_var_reuse(name, is_arr, vty, gtor, ty2v)
         c.emit_store(idx)
         }
         TokenKind.Return -> {
@@ -2933,10 +3294,14 @@ fn cg_stmt(mut c CG, mut p P) {
             cg_expr(c, p, 0)
             var end_pos3 = p.pos
             var recv_ty = c.var_ty(recv2)
-            if fields3.len() == 1 && c.tys_lookup(recv_ty) >= 0 {
-                // 构造字面量源变量(宿主 GenericInstance 路径):
-                // value,instance_id → set.generic.field <u32 字段下标>
-                // (+3 幽灵 nop,镜像宿主 disasm u8 读宽形态)
+            if fields3.len() == 1 && c.var_gtor(recv2) == 1 && c.tys_lookup(recv_ty) >= 0 {
+                // 构造字面量源变量(宿主 var_types=GenericInstance 路径,
+                // codegen.rs ASSIGN 臂 6368 判定):value,instance_id →
+                // set.generic.field <u32 字段下标>(+3 幽灵 nop,镜像宿主
+                // disasm u8 读宽形态)。P532 ⑥e:原判定 tys_lookup>=0 过宽
+                // ——注解/self/参数(宿主 Type::User)也误入此臂,与 lib
+                // dump 177 处形态分歧;收紧为 gtor(构造来源)判定,
+                // b35(无注解构造)与 lib(self/注解)两形态各归其位。
                 var fidx3 = c.field_idx(recv_ty, fields3.get(0))
                 if fidx3 < 0 {
                     c.fail("unknown field: " + recv_ty + "." + fields3.get(0))
@@ -3031,60 +3396,135 @@ fn cg_stmt(mut c CG, mut p P) {
     // Stmt::Expr 的非 void 结果丢弃;call.nat print 为 void 无 pop)。
     // W3(525):容器方法 call.nat 同理(nat#10 print void 除外;b46
     // m4 对拍:push/set 语句位 pop)
+    // P532 ⑥e:pop 延迟发射(块尾豁免)——宿主 Stmt::Block 的
+    // should_pop_expr_result 继承语义(codegen.rs 1126-1141):非尾
+    // 语句恒弹;尾语句按进入块的值(fn 体=0 留值/循环体=1/if 分支
+    // 继承)。流式编译在 cg_eos 后看到下一 token 才能判定,故此处
+    // 仅置 pending_pop,cg_stmts 消化。
     var before_len = c.ins.len()
     cg_expr(c, p, 0)
     if c.err == "" && c.depth > 1 && c.ins.len() > before_len {
         var last_i = c.ins.get(c.ins.len() - 1)
         if last_i.op == OpCode.Call {
-            c.emit(OpCode.Pop, "", 0)
+            c.pending_pop = 1
         } else if last_i.op == OpCode.CallNat && last_i.n != 10 {
-            c.emit(OpCode.Pop, "", 0)
+            c.pending_pop = 1
         }
     }
         }
     }
 }
 
+// P532 ⑥e:语句位块尾前瞻——从语句起点扫深度 0 的分隔(Newline/Semi),
+// 跳过连续分隔后看下一实 token 是否本块 RBrace/EOF(尾语句)。
+// 支撑宿主 Stmt::Block 的 should_pop_expr_result 传播语义:非尾语句
+// 编译时恒 true(codegen.rs 1138),嵌套块(if 分支/循环体)入口读的
+// 就是这个语句位值——流式编译不知语句后是否还有语句,以浅前瞻补足。
+fn cg_is_block_tail(mut p P) int {
+    var d = 0
+    var i = p.pos
+    while i < p.toks.len() {
+        var k = p.toks.get(i).kind
+        if k == TokenKind.LBrace || k == TokenKind.LParen || k == TokenKind.LSquare {
+            d = d + 1
+        } else if k == TokenKind.RBrace {
+            if d == 0 {
+                return 1
+            }
+            d = d - 1
+        } else if k == TokenKind.RParen || k == TokenKind.RSquare {
+            d = d - 1
+        } else if d == 0 && (k == TokenKind.Newline || k == TokenKind.Semi) {
+            var j = i
+            while j < p.toks.len() {
+                var kj = p.toks.get(j).kind
+                if kj == TokenKind.Newline || kj == TokenKind.Semi {
+                    j = j + 1
+                } else {
+                    break
+                }
+            }
+            if j >= p.toks.len() {
+                return 1
+            }
+            var kn = p.toks.get(j).kind
+            if kn == TokenKind.RBrace || kn == TokenKind.EOF {
+                return 1
+            }
+            return 0
+        } else if k == TokenKind.EOF {
+            return 1
+        }
+        i = i + 1
+    }
+    return 1
+}
+
 fn cg_stmts(mut c CG, mut p P) {
     while c.err == "" && p.kind() != TokenKind.EOF && p.kind() != TokenKind.RBrace {
         c.line(p.line())
+        // P532 ⑥e:语句位 should_pop 传播——非尾语句恒 1(嵌套块入口
+        // 读到,镜像宿主 Block 循环的语句位设置);尾语句保持块入口值
+        var saved_stmt_sp = c.should_pop
+        if cg_is_block_tail(p) == 0 {
+            c.should_pop = 1
+        }
         cg_stmt(c, p)
+        c.should_pop = saved_stmt_sp
         if c.err == "" {
             cg_eos(c, p)
+            // P532 ⑥e:pending_pop 消化——非尾语句(RBrace/EOF 之外
+            // 还有后续)恒弹;块尾语句按 c.should_pop(进入块时的
+            // 继承值:fn 体=0/循环体=1/if 分支=外层)
+            if c.pending_pop == 1 {
+                c.pending_pop = 0
+                if p.kind() != TokenKind.RBrace && p.kind() != TokenKind.EOF {
+                    c.emit(OpCode.Pop, "", 0)
+                } else {
+                    if c.should_pop == 1 {
+                        c.emit(OpCode.Pop, "", 0)
+                    }
+                }
+            }
         }
     }
 }
 
 // if/else-if/else:每分支 cond,jz→下一;体;jmp→end(含 return 后死 jmp)
 fn cg_if(mut c CG, mut p P) {
-    var jzs List<int> = List.new()
+    // P532 W2 根修④:else-if 语义修复——镜像宿主 codegen.rs 1156-1185
+    // (每分支 cond 的 JmpZ 立即回填到"下一分支 cond 求值起点"
+    // patch_jump(jump_to_next);仅各分支体尾真跳 Jmp 留到链尾统一回填)。
+    // 原版把全部 JmpZ 累积到链尾/else 定靶——else if 的中间分支永不可达
+    // (静态字节差分首语义分歧:lexer.lex_number 内层 if 'x' else if 'b',
+    // aavm JmpZ 直跳链尾跳过 'b' 检查→0b/0x 字面量错词法;aavm2 语料
+    // 断言未踩 else-if 路径故 M5 漏网)。pending_jz 单槽即可:链上任一
+    // 时刻至多一个未定靶 JmpZ。
     var jends List<int> = List.new()
+    var pending_jz = -1
     var more = true
     while more {
+        if pending_jz >= 0 {
+            c.ins.get(pending_jz).n = c.ins.len()
+            pending_jz = -1
+        }
         p.next()
         cg_expr(c, p, 0)
-        var jz = c.emit(OpCode.JmpZ, "", -1)
-        jzs.push(jz)
-        cg_body_inline(c, p)
+        pending_jz = c.emit(OpCode.JmpZ, "", -1)
+        cg_body_inline(c, p, -1)
         var je = c.emit(OpCode.Jmp, "", -1)
         jends.push(je)
         if p.kind() == TokenKind.Else {
             p.next()
             if p.kind() != TokenKind.If {
-                var z = 0
-                while z < jzs.len() {
-                    c.ins.get(jzs.get(z)).n = c.ins.len()
-                    z = z + 1
-                }
-                cg_body_inline(c, p)
+                c.ins.get(pending_jz).n = c.ins.len()
+                pending_jz = -1
+                cg_body_inline(c, p, -1)
                 more = false
             }
         } else {
-            var z2 = 0
-            while z2 < jzs.len() {
-                c.ins.get(jzs.get(z2)).n = c.ins.len()
-                z2 = z2 + 1
-            }
+            c.ins.get(pending_jz).n = c.ins.len()
+            pending_jz = -1
             more = false
         }
     }
@@ -3096,10 +3536,17 @@ fn cg_if(mut c CG, mut p P) {
 }
 
 // 分支/循环体(compile_body_inline:不推作用域)
-fn cg_body_inline(mut c CG, mut p P) {
+// P532 ⑥e:sp 参数——体语句值弹出的块尾继承值(-1=继承外层,if 分支;
+// 1=恒弹,循环体 for/while;宿主 codegen.rs 1126-1141/2620 族语义)
+fn cg_body_inline(mut c CG, mut p P, sp int) {
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
+    var saved_sp = c.should_pop
+    if sp >= 0 {
+        c.should_pop = sp
+    }
     cg_stmts(c, p)
+    c.should_pop = saved_sp
     p.expect(TokenKind.RBrace)
 }
 
@@ -3124,12 +3571,18 @@ fn cg_while(mut c CG, mut p P) {
     // for 同构(体内变量每迭代释放,cg_pop_scope depth>2 发释放组)
     c.push_scope()
     c.loop_enter(top)
-    cg_body_inline(c, p)
-    // 宿主布局:体 → 体内变量释放组 → 回跳;break 越过释放组直达 end
+    // P532 W2 根修⑥d:体包 Stmt::Block 作用域——宿主 while 脱糖为
+    // Stmt::For(Iter::Cond)(parser.rs 1227-1255),体经 Stmt::Block
+    // 编译(codegen.rs 3366;For 自身 push 于 3344)→ 双层结构;原版
+    // 单层,体内变量存活层级与宿主差一级
+    c.push_scope()
+    cg_body_inline(c, p, 1)
     c.pop_scope()
+    // 宿主布局:体 → 体内变量释放组 → 回跳;break 越过释放组直达 end
     c.emit(OpCode.Jmp, "", top)
     var end = c.ins.len()
     c.ins.get(jz).n = end
+    c.pop_scope()
     c.loop_exit(end)
 }
 
@@ -3159,10 +3612,10 @@ fn cg_for(mut c CG, mut p P) {
     // 镜像宿主 add_var 序(m4 字节码闸)。m5 行为闸走同一字节码自洽。
     if p.kind() == TokenKind.Ident && p.peek(1) == TokenKind.LParen {
         cg_expr(c, p, 0)
-        var t_arr = c.add_var("_iterarr", 0, "")
+        var t_arr = c.add_var("_iterarr", 0, "", 0, "")
         c.emit_store(t_arr)
-        var t_v = c.add_var(name, 0, "")
-        var t_idx = c.add_var("_iteridx", 0, "")
+        var t_v = c.add_var(name, 0, "", 0, "")
+        var t_idx = c.add_var("_iteridx", 0, "", 0, "")
         c.emit(OpCode.ConstI32, "0", 0)
         c.emit_store(t_idx)
         var t_top = c.ins.len()
@@ -3176,7 +3629,7 @@ fn cg_for(mut c CG, mut p P) {
         c.emit(OpCode.GetElem, "", 0)
         c.emit_store(t_v)
         c.loop_enter(0)
-        cg_body_inline(c, p)
+        cg_body_inline(c, p, 1)
         c.cont_tg.set(c.loop_depth - 1, c.ins.len())
         c.emit_load(t_idx)
         c.emit(OpCode.ConstI32, "1", 1)
@@ -3200,13 +3653,13 @@ fn cg_for(mut c CG, mut p P) {
         c.emit(OpCode.Dup, "", 0)
         c.emit(OpCode.ArrLen, "", 0)
         c.emit(OpCode.Const0, "", 0)
-        var cnt = c.add_var("_counter", 0, "")
+        var cnt = c.add_var("_counter", 0, "", 0, "")
         c.emit_store(cnt)
-        var aln = c.add_var("_array_len", 0, "")
+        var aln = c.add_var("_array_len", 0, "", 0, "")
         c.emit_store(aln)
-        var aref = c.add_var("_array_ref", 0, "")
+        var aref = c.add_var("_array_ref", 0, "", 0, "")
         c.emit_store(aref)
-        var av = c.add_var(name, 0, "")
+        var av = c.add_var(name, 0, "", 0, "")
         var atop = c.ins.len()
         c.emit_load(cnt)
         c.emit_load(aln)
@@ -3217,7 +3670,7 @@ fn cg_for(mut c CG, mut p P) {
         c.emit(OpCode.GetElem, "", 0)
         c.emit_store(av)
         c.loop_enter(0)
-        cg_body_inline(c, p)
+        cg_body_inline(c, p, 1)
         c.cont_tg.set(c.loop_depth - 1, c.ins.len())
         c.emit_load(cnt)
         c.emit(OpCode.ConstI32, "1", 1)
@@ -3230,7 +3683,7 @@ fn cg_for(mut c CG, mut p P) {
         c.pop_scope()
         return
     }
-    var idx = c.add_var(name, 0, "")
+    var idx = c.add_var(name, 0, "", 0, "")
     c.emit_store(idx)
     var top = c.ins.len()
     c.emit_load(idx)
@@ -3239,7 +3692,7 @@ fn cg_for(mut c CG, mut p P) {
     var jz = c.emit(OpCode.JmpZ, "", -1)
     // P2:continue 落点 = 步进位(循环变量自增;宿主 range-for 同口径)
     c.loop_enter(0)
-    cg_body_inline(c, p)
+    cg_body_inline(c, p, 1)
     c.cont_tg.set(c.loop_depth - 1, c.ins.len())
     c.emit_load(idx)
     c.emit(OpCode.ConstI32, "1", 1)
@@ -3358,7 +3811,7 @@ fn cg_fn(mut c CG, mut p P) {
     // W2(525):非 static 方法注入 self 首参(idx=0,镜像宿主 2321 参数
     // 注入 ParamMode::View;ty=方法所属类型名——.field 简写与方法解析用)
     if self_inject == 1 {
-        c.add_var("self", 0, name_dot_head(name))
+        c.add_var("self", 0, name_dot_head(name), 0, "")
         n_args = 1
     }
     var running = true
@@ -3398,7 +3851,10 @@ fn cg_fn(mut c CG, mut p P) {
                 p.next()
                 expr_pratt(p, 0)
             }
-            c.add_var(pname, parr, pty_s)
+            // P532 ⑥e:参数 ty2=注解(宿主 var_types[参数]=注解型,
+            // hint Ident 段按它判——parser.at 999 ctor_node 的
+            // {name} 段宿主 1 实证)
+            c.add_var(pname, parr, pty_s, 0, pty_s)
             n_args = n_args + 1
             if p.kind() == TokenKind.Comma {
                 p.next()
@@ -3459,7 +3915,12 @@ fn cg_fn(mut c CG, mut p P) {
     c.push_scope()
     p.expect(TokenKind.LBrace)
     p.skip_empty_lines()
+    // P532 ⑥e:fn 体=表达式上下文,尾语句留值(宿主 Block 继承
+    // should_pop=false)——save/restore 包裹
+    var saved_sp_fn = c.should_pop
+    c.should_pop = 0
     cg_stmts(c, p)
+    c.should_pop = saved_sp_fn
     p.expect(TokenKind.RBrace)
     c.pop_scope()
     // epilogue RET
@@ -4207,6 +4668,9 @@ fn cg_compile_mod_seeded(source str, mod_name str, seed List<CGType>, seed_const
             expect_eos(p)
             p.skip_empty_lines()
         }
+    }
+    if p.err != "" && c.err == "" {
+        c.err = "P532SWEEP:" + p.err
     }
     if c.err != "" || p.err != "" {
         return c

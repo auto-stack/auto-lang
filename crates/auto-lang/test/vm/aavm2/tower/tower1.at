@@ -1,0 +1,20 @@
+// tower1.at —— P532 W2 一阶自持语料(附录 B 形态)
+//
+// 形态 A 塔顶第 1 阶:本文件经 `auto auto/aavm.at <本文件>` 运行时,
+// 宿主解释的 aavm(auto/lib,Auto 写的编译器)编译本文件并执行——
+// 本文件读 corpus 代表集逐件 ev_run 编译+执行,输出 O1。
+// 宿主 oracle:同一文件 `auto <本文件>` 直跑 = R0(宿主为规范)。
+// 代表集:hello/fib/strcat/logic/数组字面量/数组循环/List 基础/
+// str 方法族(532 新增面)b01/b07/b08/b13/b27/b30/b46/b58 八件。
+use auto.lib.engine: ev_run
+
+fn main() {
+    var cases = ["b01_hello", "b07_fib", "b08_strcat", "b13_eval_print_true", "b27_arr_literal", "b30_arr_loop", "b46_list_basic", "b58_str_methods"]
+    var i = 0
+    while i < cases.len() {
+        var src = File.read_text("crates/auto-lang/test/vm/aavm2/corpus_m4/" + cases.get(i) + ".at")
+        print("== " + cases.get(i))
+        print(ev_run(src))
+        i = i + 1
+    }
+}

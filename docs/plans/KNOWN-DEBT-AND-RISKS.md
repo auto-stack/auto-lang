@@ -1532,3 +1532,13 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
   `_fields` + structseq `n_sequence_fields`）分流 opaque 句柄，普通 tuple
   拍平裁定不动（三分支封送单测在案）；py_list 红归 P539-D1 同批清偿。
   p7 全相位 8 套件 55/55 三方绿（2026-09-05 实证）。
+
+**P547-D9｜rust 编译轨 keyboard 全断链(生成器三层缺,中)**
+release/rust 生成轨(031 merged exe)的键盘 bind 块完全不生效——MCP
+`autoui_keyboard` 查空 key_bindings 表,真键盘也无订阅。三层缺口:
+①`auto-man/src/rust_ui.rs` 生成器无 bind 发射面(main.rs 不产 key 表);
+②`ui::Component` trait 无 `key_bindings()/key_msg()` 面;③`run_app_devtools`
+的 subscription 只挂 devtools+tick,无 keyboard_subscription(且其消息系
+DesktopMessage 与 WrapperMsg<C> 不兼容,需泛型版)。VM 轨正常(bind 表
+由 run_dynamic 填)。绕法(本批已落):031 工具栏 ◀/▶ 无参按钮(MCP
+press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划。
