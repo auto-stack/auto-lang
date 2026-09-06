@@ -24,7 +24,7 @@
 | GOAL-015 | Agent 生态：CodingAgent、嵌入式综合 Agent、Harness 架构（与 auto-os 协同） | 规划中 | roadmap Agent 节、Design [15](../design/15-ai-daemon-infrastructure.md) |
 | GOAL-016 | 构建与测试基础设施：sccache、cargo t ≤30s、全量门禁收敛到 review、CI 闸门 | 部分达成 | plan-466、`.github/workflows/vm-files-ci.yml` |
 | GOAL-017 | 自举：用 Auto 写 Auto 编译器（aavm，auto/ 目录 .at 实现，六道闸门） | 已达成（2026-09-06，收尾 plan 532） | [aavm](aavm/project.md)、plans 429–434、523（a2r 模式中阶覆盖+同步规约基建，四路 runner/三件套金样）、572（AA2R 转译挂死根修+自举代际对拍闭合：转译固定点 PASS）、574（双重解释器路径裁定关闭+VM 执行线程栈护栏修复）、532（塔顶自举终点：W1 19 族 gap 清零+七文件全链+残留③静态差分清零（编译面全等）+原生代际对拍闭合（一代 8/8+exe² 构建绿+二代 8/8+转译固定点 PASS）——GOAL-017 终点形态达成，aavm 转入用塔阶段） |
-| GOAL-018 | 开发范式与知识账本运转：auto-plan 四技能 + specs v2 账本，每计划完成即沉淀 | 进行中 | Design [26](../design/autoplan-spec-ledger.md)、[README v2](README.md)、plan-467 |
+| GOAL-018 | 开发范式与知识账本运转：auto-plan 四技能 + specs v2 账本，每计划完成即沉淀 | 进行中 | Design [26](../design/autoplan-spec-ledger.md)、[README v2](README.md)、plan-467、546（九模块 spec 代码证据 rebaseline——532/536 折返后全量校准：evaluator 退役叙事/VM 194 opcode+NaN-box 64 位可复现计数/28 伪活跃 plan 行归档化/design 02·03·05·06·08·10·12·13·20 当前态修正/plan-536 plans.md 缺席补录+归档回写流程缺口曝光 KNOWN-DEBT 546-③，报告 [module-spec-rebaseline-2026-09-04](../reports/module-spec-rebaseline-2026-09-04.md)） |
 
 > 状态取值：`规划中 / 进行中 / 部分达成 / 已达成（可关闭）`。
 > 一个 GOAL 关闭时保留行并标注达成日期与收尾 plan。
