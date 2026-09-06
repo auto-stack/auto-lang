@@ -26,6 +26,29 @@ pub const FENCE_HEADER_H: f32 = 28.0;
 /// fence 正文内边距（px；对齐 view 轨 `p-4`）。
 pub const FENCE_PAD: f32 = 16.0;
 
+/// PLAN-055：编辑臂表格 chrome 常量（对齐只读臂 table 词汇；px）。
+/// cell padding = px-3 py-2（文字 x = cell.x + PAD_X，wrap 宽 = w − 2×PAD_X）。
+pub const TABLE_PAD_X: f32 = 12.0;
+pub const TABLE_PAD_Y: f32 = 8.0;
+/// 行/列分隔线宽（1px border 色）。
+pub const TABLE_RULE: f32 = 1.0;
+/// 列宽拖拽下限（px）。
+pub const TABLE_MIN_COL_W: f32 = 48.0;
+/// 列边界命中带（±px；先于文本 caret 命中）。
+pub const TABLE_HIT_BAND: f32 = 4.0;
+/// 表头行底色 muted 档（随主题）：light zinc-100 / dark zinc-800。
+pub const TABLE_HEADER_BG: (u8, u8, u8) = (244, 244, 245); // zinc-100
+pub const TABLE_HEADER_BG_DARK: (u8, u8, u8) = (39, 39, 42); // zinc-800
+
+/// PLAN-055：表头行底色随主题取用。
+pub fn table_header_rgb() -> (u8, u8, u8) {
+    if crate::ui::style::theme::dark_mode() {
+        TABLE_HEADER_BG_DARK
+    } else {
+        TABLE_HEADER_BG
+    }
+}
+
 /// fence 编辑壳配色（tailwind zinc 常量；view 轨类串 bg-zinc-950/800、
 /// text-zinc-400/50 的取值镜像——两轨观感同源）。
 pub const FENCE_BG: (u8, u8, u8) = (9, 9, 11); // zinc-950
