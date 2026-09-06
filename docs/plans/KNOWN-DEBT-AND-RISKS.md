@@ -1483,10 +1483,13 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
 - **P550-D4 期望面再更新**：CALL null 端到端探针面仍归 W3——W2 落地
   了 lowering 管线与糖批，但 null callee 动态分派语义（.as 糖激活后
   的 callable 通道）仍以 555 的 CALL_CLOSURE 守卫+单测钉住形态存在。
-- **P560-D1 with-as 绑定语法歧义**：`as` 系既有 Cast 中缀——`with
-  expr as x` 被 parse_expr 整吞为 Cast、块体又入单元构造语法歧义；
-  现状响亮拒绝（错误消息含指引）。裁定方向：with 上下文限定解析
-  （pratt 截断）或换绑定关键字（`with expr -> x` / `let x =`）。
+- **~~P560-D1 with-as 绑定语法歧义~~ ✅ 已清偿（2026-09-06, Plan 567
+  T12-T15）**：with_header 窗口旗标 pratt 截断（`as` 为绑定位终止符，正常
+  模式 Cast 零变化）；块形态降低 = py_enter 绑定 + try-catch-finally 出口
+  保证（Err 路径 T08 拦截→py_exit+py_raise 479 再抛，`__exit__` 恰一次）；
+  a2py 规范序列回译 `with e as x:`；emit `if true` 块包装免疫 E0007/尾块
+  歧义（幂等）；convert_last_block 收窄纯 pair 块。三方实证：py_torch_infer
+  test18（18/18）+ tv 04 语料 + open 句柄 flush 探针（正常/错误双路径）。
 - **~~P560-D2 隐式 !T 传播自动化~~ ✅ 已清偿（2026-09-05, Plan 567
   T06-T10）**：两通道已汇合——476/477/478 may 变体桥（getattr/getitem/
   kwargs×call）+ s2s rule_err_propagate（`.as` 桥调用→may+.?、用户函数
