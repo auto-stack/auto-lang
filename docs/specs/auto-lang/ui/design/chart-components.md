@@ -7,6 +7,11 @@
 > v2 canvas Program 桥接后置。载体：`examples/widgets-gallery/src/front/components/
 > {line,bar,area,donut}_chart.at`（widget 名去 Auto 前缀，见"命名与退役"）。
 
+> **plan-563 修订（2026-09-07）**：canvas v2 桥接已由 PLAN-563 落地（§7/§104/§177 的「后置」
+> 表述作废）——形态自「Auto 图元列表→iced canvas」修订为「scene 前缀双表契约→vue/iced
+> 双端独立渲染」；对拍锁定 IoU 0.9793/RGB 距 3.0。详规：schema/aura.at canvas 条目 +
+> examples/capability-tests/043-canvas-paint/SPEC.md。
+
 ## 范围
 
 四类图（line/bar/area/donut）的组件契约、几何算法与双轨渲染路径、hover tooltip
