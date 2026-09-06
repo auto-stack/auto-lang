@@ -206,7 +206,7 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
 
 ### W2 一阶自持（worktree 续）
 
-6. [▶ 进行中 2026-09-04] tower runner 实现——〔2026-09-04 裁定:runner
+6. [✅ 已完成 2026-09-06] tower runner 实现——〔2026-09-04 裁定:runner
    载体改判原生代际对拍脚本(附录 B 修订),嵌套塔 tower{1,2,3}.at
    退役留档〕三件套+runner 已落盘
    (worktree 提交);**模块路径二阶失真定位与修复进行中**(用户裁定
@@ -292,11 +292,15 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
    b13_eval/b27_arr/b30_arr/b46_basic/b58_str,exe¹=⑤腿 aavm2_bin
    内容寻址缓存,宿主 oracle=auto.exe banner 剥离+trim 口径同⑤腿);
    判定表 scratch/p532/native_gen_table.md 留档。
-8. [ ] 折叠点②：自举闭合判定表留档（验收标准 1 原生代际形态）→ 合入。
+8. [✅ 已完成 2026-09-06] 折叠点②：自举闭合判定表留档（验收标准 1 原生代际形态）→ 合入。
+   ——判定表=scratch/p572/gen2/native_gen_table.md(一代 8/8+二代 8/8+
+   转译固定点 PASS,572 T5b 产出);代码面已随 fold(ea76ece26/572 修复
+   211a12f21)合入 master;步骤 6(残留③清零,差分转正)+步骤 9 见
+   各自条目。
 
 ### W3 N 阶+稳定化（worktree 续）
 
-9. [▶ 阻塞登记 2026-09-06] 自编译代际对拍（原生,两代）：原生 aavm exe 编译 aavm.at+lib
+9. [✅ 已完成 2026-09-06] 自编译代际对拍（原生,两代）：原生 aavm exe 编译 aavm.at+lib
    →a2r→exe² →exe² 跑 corpus 与一代一致;首个分歧位定位机制。
    管道各环已实证:exe¹=⑤腿 aavm2_bin(--trans 模式=ar_run 转译,
    harness 内置);拼合源构造(剥 use 七文件+aavm.at 依赖序,462KB)
@@ -324,12 +328,27 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
    aavm.at 入口面由 aavm_at_mode 测试覆盖)。**本步骤判定面收口,
    步骤 9 待 P532 会话翻牌归档**(执行细节与修复清单见
    scratch/p572/gen2/t5_unlock.md)。
-10. [ ] ⑤腿稳定化处置（按 W0 定案落地;或替代判据升级登记）——裁定后
+10. [✅ 已完成 2026-09-06] ⑤腿稳定化处置（按 W0 定案落地;或替代判据升级登记）——裁定后
     ⑤腿升格为主判据通道,常态绿为硬要求。
-11. [ ] 折叠点③：代际判定表+⑤腿处置留档 → 合入。
-12. [ ] 验收资产落盘：原生代际判定表+固定点性质注记；嵌套塔
+    ——**按 W0 定案形态收口**:结构化替代判据升级(附录 B 自裁定起⑤腿
+    为主判据通道;四路+语料腿全绿=等价证据,517/525 两度先例)+观察项
+    维持。P525-5 定性结论(W0-2):⑤腿快死为环境资源族(负载窗口敏感,
+    空闲窗口健康 4/4+4/4),非代码缺陷——572 T5b 后⑤腿 58/58 多轮绿
+    (含 572 T4 重跑+574 注册面复跑),572 修复 AA2R 挂死后 ⑤腿构建期
+    环境争用亦消除大半;观察项(高负载连跑偶发 rc=1 空输出)挂
+    KNOWN-DEBT(P532-D1),触发条件=再次可复现时按 P525-5 配方取证。
+11. [✅ 已完成 2026-09-06] 折叠点③：代际判定表+⑤腿处置留档 → 合入。
+    ——判定表(scratch/p572/gen2/native_gen_table.md)+⑤腿处置(步骤
+    10)+本步骤登记同批落档;代码面无新增(纯文档),随步骤 13 回写
+    一并入 worktree 提交。
+12. [✅ 已完成 2026-09-06] 验收资产落盘：原生代际判定表+固定点性质注记；嵌套塔
     （tower{1,2,3}.at+runner）降级为里程碑层资产保留——@ignore/脚本
     隔离,平时零开销,大版本升级人工跑一次(附录 B 二次裁定)。
+    ——判定表=scratch/p572/gen2/native_gen_table.md;固定点性质注记:
+    exe¹ --trans == exe² --trans(≥两代转译一致,自举闭合;附录 B
+    "N 阶输出稳定即自持"的原生形态);嵌套塔降级已由 t3 里程碑档落地
+    (aavm2_t3.rs T3_MILESTONE env 自守门+scripts/aavm_tower_check.sh,
+    commit 00575a02a——平时零开销,大版本升级 `T3_MILESTONE=1 cargo t3`)。
 13. [ ] 文档回写：project.md GOAL-017 终点注记/队列③核销/divergences/
     KNOWN-DEBT（P525-5 处置）。
 14. [ ] 折叠点④+复审（/auto-plan:review）→ tf → status: reviewed。
