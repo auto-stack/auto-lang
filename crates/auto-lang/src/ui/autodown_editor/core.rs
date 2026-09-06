@@ -1366,7 +1366,7 @@ impl AutodownEditorCore {
         {
             let segs = self.segs.lock().unwrap();
             walk_skeleton_attribution(
-                &segs, false, 0.0, 0, BLOCK_GAP, viewport_w, &widths_snap,
+                &segs, false, 0.0, BLOCK_GAP, font_system, viewport_w, &widths_snap,
                 &mut attrib, &mut render_items,
             );
         }
@@ -2722,8 +2722,38 @@ fn dfs_leaf_order(segs: &[Seg], out: &mut Vec<usize>) {
 
 /// PLAN-054 编辑壳布局常量（§7.4 族同档；px）。
 const QUOTE_X: f32 = 19.0; // quote 缩进（PLAN-053 T17 值）
-const LIST_INDENT: f32 = 16.0; // 每层嵌套缩进
-const LIST_GUTTER: f32 = 26.0; // marker 槽宽（容纳 "• "/"✔ "/"10. "）
+
+/// PLAN-055 复审反馈（两臂列表缩进同款）：marker 槽流宽 = marker run
+/// 自然宽（只读臂 Row[marker, body] spacing 2 的流式词表——子级 marker
+/// 落父级文字 x，弃原 LIST_GUTTER 26/LIST_INDENT 16 固定档）。测宽=
+/// 画宽（054 复审钉 Inter 同族 + 共享 iced 全局 FontSystem）；marker
+/// 串为有限集，进程级缓存。
+fn marker_slot_width(fs: &mut FontSystem, marker: &str) -> f32 {
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, f32>>> = std::sync::OnceLock::new();
+    if let Some(w) = CACHE
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap()
+        .get(marker)
+    {
+        return *w;
+    }
+    let attrs = Attrs::new().family(sans_family());
+    let mut buf = Buffer::new(fs, Metrics::new(BODY_SIZE, BODY_SIZE * LINE_H_PARA));
+    buf.set_text(fs, marker, &attrs, Shaping::Advanced, None);
+    buf.shape_until_scroll(fs, true);
+    let mut w = 1.0f32;
+    for run in buf.layout_runs() {
+        if let Some(g) = run.glyphs.last() {
+            w = w.max(g.x + g.w);
+        }
+    }
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap()
+        .insert(marker.to_string(), w);
+    w
+}
 const CONT_PAD_X: f32 = 16.0; // callout/details 内容边距（px-4）
 const CONT_TITLE_H: f32 = 29.0; // callout 标题行高（15.2px×1.6 行盒 24.3 + 上边距 4）
 const CONT_SUMMARY_H: f32 = 29.0; // details 摘要行高（同上）
@@ -2795,17 +2825,17 @@ fn callout_icon(kind: &str) -> &'static str {
 
 /// 骨架归因 DFS（PLAN-053 T17 walk_quote 扩体）：一次遍历产出渲染序列
 /// （叶 + 只读 Raw）与逐叶容器归属。`x_base` 为外层容器累计的内容 x 基；
-/// `list_depth` 为当前所在列表嵌套层数（外层列表首层 = 0）；`sibling_gap`
-/// 为本层容器内相邻叶的间距（只读臂同值：list 2 / quote·容器 4 / 顶层 8）。
-/// `frame_w` 为视口宽（PLAN-055 T3：表格等分缺省列宽的可用宽基）；
-/// `widths` 为表格列宽状态快照（table_key → 列宽 px，缺省等分）。
+/// `sibling_gap` 为本层容器内相邻叶的间距（只读臂同值：list 2 /
+/// quote·容器 4 / 顶层 8）。`frame_w` 为视口宽（PLAN-055 T3：表格等分
+/// 缺省列宽的可用宽基）；`widths` 为表格列宽状态快照（table_key → 列宽
+/// px，缺省等分）。`fs` 供 marker 槽流宽测量（两臂缩进同款，复审反馈）。
 /// 返回本段触达的最后一个叶 id（供宿主层补兄弟间距）。
 fn walk_skeleton_attribution(
     segs: &[Seg],
     in_quote: bool,
     x_base: f32,
-    list_depth: usize,
     sibling_gap: f32,
+    fs: &mut FontSystem,
     frame_w: f32,
     widths: &HashMap<u64, Vec<f32>>,
     attrib: &mut HashMap<usize, LeafAttrib>,
@@ -2813,7 +2843,7 @@ fn walk_skeleton_attribution(
 ) -> Option<usize> {
     let mut prev: Option<usize> = None;
     for seg in segs {
-        let last = walk_seg(seg, in_quote, x_base, list_depth, frame_w, widths, attrib, items);
+        let last = walk_seg(seg, in_quote, x_base, fs, frame_w, widths, attrib, items);
         // 复审反馈④：prev 叶之后（跨过 Raw 等无叶段）仍有同容器后继叶
         // → prev 的尾间距取本容器 spacing（只读臂同值）。
         if let (Some(p), true) = (prev, last.is_some()) {
@@ -2845,7 +2875,7 @@ fn walk_seg(
     seg: &Seg,
     in_quote: bool,
     x_base: f32,
-    list_depth: usize,
+    fs: &mut FontSystem,
     frame_w: f32,
     widths: &HashMap<u64, Vec<f32>>,
     attrib: &mut HashMap<usize, LeafAttrib>,
@@ -2868,33 +2898,35 @@ fn walk_seg(
             Some(*i)
         }
         Seg::Quote(inner) => walk_skeleton_attribution(
-            inner, true, x_base + QUOTE_X, list_depth, 4.0, frame_w, widths, attrib, items,
+            inner, true, x_base + QUOTE_X, 4.0, fs, frame_w, widths, attrib, items,
         ),
         Seg::List { ordered, start, checked, items: list_items } => {
             let mut last = None;
             let mut prev_item_leaf: Option<usize> = None;
             for (ii, item) in list_items.iter().enumerate() {
-                // marker 画在 gutter 左缘；内容 x = 基 + 深度缩进 + gutter。
-                let content_x = x_base + list_depth as f32 * LIST_INDENT + LIST_GUTTER;
-                let marker_x = content_x - LIST_GUTTER;
+                // PLAN-055 复审反馈（两臂缩进同款）：只读臂流式词表——
+                // Row[marker, body] spacing 2，marker 槽 = marker run 自然
+                // 宽 + 2；嵌套列表挂在 body 列 → 子级 marker 落父级文字 x。
+                // 本层 marker 列即 x_base，弃固定 gutter/深度缩进档。
                 let marker = match checked.get(ii).copied().flatten() {
-                    Some(true) => Some(("\u{2714} ".to_string(), true)), // ✔
-                    Some(false) => Some(("\u{25A1} ".to_string(), false)), // □
-                    None if *ordered => Some((format!("{}. ", start + ii as i64), false)),
-                    None => Some(("\u{2022} ".to_string(), false)), // •
+                    Some(true) => ("\u{2714} ".to_string(), true), // ✔
+                    Some(false) => ("\u{25A1} ".to_string(), false), // □
+                    None if *ordered => (format!("{}. ", start + ii as i64), false),
+                    None => ("\u{2022} ".to_string(), false), // •
                 };
+                let marker_x = x_base;
+                let content_x = marker_x + marker_slot_width(fs, &marker.0) + 2.0;
                 let mut leaves = Vec::new();
                 dfs_leaf_order(item, &mut leaves);
                 for (li, leaf) in leaves.iter().enumerate() {
                     let a = attrib.entry(*leaf).or_default();
                     if li == 0 {
-                        if let Some((m, acc)) = &marker {
-                            a.list_marker = Some((m.clone(), *acc, marker_x));
-                        }
+                        let (m, acc) = &marker;
+                        a.list_marker = Some((m.clone(), *acc, marker_x));
                     }
                 }
                 let item_last = walk_skeleton_attribution(
-                    item, in_quote, content_x, list_depth + 1, 2.0, frame_w, widths, attrib, items,
+                    item, in_quote, content_x, 2.0, fs, frame_w, widths, attrib, items,
                 );
                 // 复审反馈④：项与项之间同为 spacing 2（只读臂 items 列）。
                 if let (Some(p), true) = (prev_item_leaf, item_last.is_some()) {
@@ -2939,7 +2971,7 @@ fn walk_seg(
                 }
             }
             walk_skeleton_attribution(
-                inner, in_quote, x_base + CONT_PAD_X, list_depth, 4.0, frame_w, widths, attrib, items,
+                inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
             )
         }
         Seg::Details { summary, inner, .. } => {
@@ -2957,7 +2989,7 @@ fn walk_seg(
                 }
             }
             walk_skeleton_attribution(
-                inner, in_quote, x_base + CONT_PAD_X, list_depth, 4.0, frame_w, widths, attrib, items,
+                inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
             )
         }
         Seg::Table { key, rows } => {
@@ -5023,8 +5055,9 @@ fn main() { let s = \"hi\"; }
 
     // ── PLAN-054 W2：编辑壳块家族可见化 ──
 
-    /// PLAN-054 T5：列表 marker/缩进——圆点/序号以独立 run 画在 gutter
-    /// 左缘（x = 深度×16），项内容 x 递增（五截图根因③）。
+    /// PLAN-054 T5：列表 marker/缩进——圆点/序号以独立 run 画在槽左缘；
+    /// PLAN-055 复审反馈（两臂缩进同款）：槽宽 = marker run 流宽 + 2
+    /// （只读臂 Row[marker, body] spacing 2 流式词表，弃固定 gutter 档）。
     #[test]
     fn list_markers_and_indent_drawn() {
         let c = core_for("t054l", "- 甲\n- 乙\n\n2. 一\n3. 二\n");
@@ -5033,11 +5066,12 @@ fn main() { let s = \"hi\"; }
         assert_eq!(texts.iter().filter(|t| **t == "\u{2022} ").count(), 2, "两个圆点 marker：{texts:?}");
         assert!(texts.contains(&"2. "), "有序 marker 按start：{texts:?}");
         assert!(texts.contains(&"3. "), "有序 marker 递增：{texts:?}");
-        // 项内容 x = gutter（26），marker x = 0。
+        // 项内容 x = marker 槽流宽 + 2；marker x = 0。
+        let slot = run_fs(|fs| marker_slot_width(fs, "\u{2022} ")) + 2.0;
         let body = frame.list.runs.iter().find(|r| r.text == "甲").expect("item body run");
-        assert!(body.x >= LIST_GUTTER, "项内容在 marker 槽右侧，got x={}", body.x);
+        assert!((body.x - slot).abs() < 0.5, "项内容 x = marker 槽流宽+2（{} vs {slot}）", body.x);
         let marker = frame.list.runs.iter().find(|r| r.text == "\u{2022} ").expect("bullet marker");
-        assert!((marker.x - (body.x - LIST_GUTTER)).abs() < 0.5, "marker 对齐 gutter 左缘");
+        assert!((marker.x - (body.x - slot)).abs() < 0.5, "marker 对齐槽左缘");
         // PLAN-054 复审反馈④：列表内相邻叶间距 = 只读臂 spacing 2（非
         // BLOCK_GAP 8）——两 marker y 差 = 行高 24.32 + 2。
         let bullets: Vec<&DocRun> =
@@ -5051,6 +5085,49 @@ fn main() { let s = \"hi\"; }
             expect,
             pitch
         );
+    }
+
+    /// PLAN-055 复审反馈（两臂缩进同款）：嵌套列表流式缩进——子级
+    /// marker 落父级文字 x（只读臂 Row[marker, body] 嵌套语汇），子级
+    /// 文字 = 父级文字 + 子级槽宽 + 2；序号宽 marker（"10. "）逐项流宽。
+    #[test]
+    fn nested_list_indent_follows_readonly_flow() {
+        let c = core_for(
+            "t055ni",
+            "- 甲\n- 乙\n  - 子一\n  - 子二\n- 丙\n\n10. 拾\n11. 拾壹\n",
+        );
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let slot_bullet = run_fs(|fs| marker_slot_width(fs, "\u{2022} ")) + 2.0;
+        // 父级（顶层）文字 x = 圆点槽；子级 marker x = 父级文字 x。
+        let jia = frame.list.runs.iter().find(|r| r.text == "甲").expect("顶层 body");
+        let sub_marker = frame
+            .list
+            .runs
+            .iter()
+            .filter(|r| r.text == "\u{2022} ")
+            .nth(2)
+            .expect("子级圆点 marker（第 3 个圆点）");
+        assert!(
+            (sub_marker.x - jia.x).abs() < 0.5,
+            "子级 marker 落父级文字 x（{} vs {}）",
+            sub_marker.x,
+            jia.x
+        );
+        // 子级文字 x = 子级 marker + 槽宽。
+        let sub_body = frame.list.runs.iter().find(|r| r.text == "子一").expect("子级 body");
+        assert!(
+            (sub_body.x - (sub_marker.x + slot_bullet)).abs() < 0.5,
+            "子级文字 = 子级 marker + 槽宽（{} vs {}）",
+            sub_body.x,
+            sub_marker.x + slot_bullet
+        );
+        // 顶层 marker x 恒 0（槽随层基不随项宽）。
+        let first_marker = frame.list.runs.iter().find(|r| r.text == "\u{2022} ").expect("首圆点");
+        assert!(first_marker.x.abs() < 0.5, "顶层 marker x = 0");
+        // 宽序号项：body x = "10. " 槽流宽（逐项流式，非固定 gutter）。
+        let slot_10 = run_fs(|fs| marker_slot_width(fs, "10. ")) + 2.0;
+        let shi = frame.list.runs.iter().find(|r| r.text == "拾").expect("宽序号 body");
+        assert!((shi.x - slot_10).abs() < 0.5, "宽序号 body x = 其槽流宽（{} vs {slot_10}）", shi.x);
     }
 
     /// PLAN-054 T6：task 两态编辑臂呈现——✔(accent)/□(muted)，emit 往返
