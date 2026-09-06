@@ -23,7 +23,7 @@
 | GOAL-014 | 开发者工具：LSP 现代化（TS 迁移/semantic tokens/CI）、Playground、MCP、调试器 | 进行中 | Design [14](../design/14-developer-tools.md)、plans 243/416 |
 | GOAL-015 | Agent 生态：CodingAgent、嵌入式综合 Agent、Harness 架构（与 auto-os 协同） | 规划中 | roadmap Agent 节、Design [15](../design/15-ai-daemon-infrastructure.md) |
 | GOAL-016 | 构建与测试基础设施：sccache、cargo t ≤30s、全量门禁收敛到 review、CI 闸门 | 部分达成 | plan-466、`.github/workflows/vm-files-ci.yml` |
-| GOAL-017 | 自举：用 Auto 写 Auto 编译器（aavm，auto/ 目录 .at 实现，六道闸门） | 进行中 | [aavm](aavm/project.md)、plans 429–434、523（a2r 模式中阶覆盖+同步规约基建，四路 runner/三件套金样） |
+| GOAL-017 | 自举：用 Auto 写 Auto 编译器（aavm，auto/ 目录 .at 实现，六道闸门） | 进行中 | [aavm](aavm/project.md)、plans 429–434、523（a2r 模式中阶覆盖+同步规约基建，四路 runner/三件套金样）、572（AA2R 转译挂死根修+自举代际对拍闭合：转译固定点 PASS）、574（双重解释器路径裁定关闭+VM 执行线程栈护栏修复） |
 | GOAL-018 | 开发范式与知识账本运转：auto-plan 四技能 + specs v2 账本，每计划完成即沉淀 | 进行中 | Design [26](../design/autoplan-spec-ledger.md)、[README v2](README.md)、plan-467 |
 
 > 状态取值：`规划中 / 进行中 / 部分达成 / 已达成（可关闭）`。
