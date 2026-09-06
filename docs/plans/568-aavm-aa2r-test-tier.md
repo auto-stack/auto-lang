@@ -345,6 +345,18 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
   test-aavm,test-trans,test-book`（ta 集）含 aavm 全集；③`cargo t` 计数-1、
   无新增红（预存红 Q6 在案基线对照）。
   验证: 三项输出记入本文件证据行。
+  [✅ 已完成] 2026-09-06 master 实测：①tv 全绿 3578/3578（排除存量红
+  charts 后）run 段 19.7s/墙钟 30.5s——对照拆档前仅 aavm 子集即 4m24s；
+  ②ta 集验证并入 T7 ta 实跑；③lib 名单 3426→3425（m1 -1）；`cargo t`
+  全量 fail-fast 于 plan370 d2/d8（564 Q6 在案预存红，非 aavm 面）。
+  > 事故登记（2026-09-06）：T7 的 KNOWN-DEBT 登记脚本犯低级错——
+  > `open(p,'w')` 先于读取求值，把主检出工作区 KNOWN-DEBT 截断为 0 字节。
+  > 恢复：已提交内容自 d88cae48d 全量恢复 + 回填截断前捕获的 562 未提交
+  > 行 2 条；**残余损失**：562 会话另有 ~22 行未提交增量（疑似 P562 子节）
+  > 无法复原，须 562 会话自行补登（其 worktree 分支无此内容，实证过）。
+  > 根因教训：对脏工作区文件做"blob 分离暂存"时，读与写必须分两句（本
+  > 会话 config/AGENTS 两文件用 head() 先读独立来源故未踩坑，KNOWN-DEBT
+  > 直接 read 同路径踩中）。
 - **T7** 资源表补测 + 覆盖差登记收口。
   文件: `docs/plans/KNOWN-DEBT-AND-RISKS.md`、`AGENTS.md`、本文件。
   操作: 补测 `cargo tt`/`tb`/`th`/`ta` 墙钟（全档资源表缺口数据）填入
