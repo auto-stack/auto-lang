@@ -445,7 +445,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
 const BODY_MIN_H: f32 = 24.0;
 
 fn run_font(mono: bool, bold: bool, italic: bool) -> Font {
-    let family = if mono { mono_iced_font() } else { Font::default() };
+    // PLAN-054 复审反馈（两臂同字形）：sans 钉 Inter——只读臂全轨默认
+    // Inter（应用 .font(INTER_FONT_*) 注册），编辑臂共享同一 iced 全局
+    // FontSystem（install_font_system_source），buffer 测量侧
+    // sans_family()=Name("Inter") 同步。原先 Font::default() 落系统
+    // sans，✔/□/•/数字字形与只读臂不同（用户截图①②③根因）。
+    let family = if mono { mono_iced_font() } else { Font::with_name("Inter") };
     let family = if bold {
         Font { weight: iced::font::Weight::Bold, ..family }
     } else {

@@ -209,7 +209,13 @@ impl SendEditor {
 }
 
 fn sans_family() -> Family<'static> {
-    Family::SansSerif
+    // PLAN-054 复审反馈（两臂 marker/正文同字形）：只读臂全轨默认 Inter
+    // （应用 .font(INTER_FONT_*) 注册进 iced 全局 fontdb）；编辑臂共享同
+    // - FontSystem（widget.rs install_font_system_source = iced 全局），
+    // buffer 测量 Family::Name("Inter") 可解析 → 测宽=画宽（PLAN-050
+    // fence 同例）。原先 SansSerif 落系统 sans，✔/□/•/数字字形与 Inter
+    // 不同（用户截图①②③根因）。
+    Family::Name("Inter")
 }
 fn mono_family() -> Family<'static> {
     // PLAN-050：与绘制侧 widget.rs mono_iced_font 同源——Windows 用
@@ -1273,7 +1279,9 @@ impl AutodownEditorCore {
         let mut attrib: HashMap<usize, LeafAttrib> = HashMap::new();
         {
             let segs = self.segs.lock().unwrap();
-            walk_skeleton_attribution(&segs, false, 0.0, 0, &mut attrib, &mut render_items);
+            walk_skeleton_attribution(
+                &segs, false, 0.0, 0, BLOCK_GAP, &mut attrib, &mut render_items,
+            );
         }
         {
             // 防御：不在骨架的块按 id 补尾（正常建树/结构操作后不发生）。
@@ -1472,8 +1480,8 @@ impl AutodownEditorCore {
                         text: ttext.clone(),
                         x: at.x,
                         y: y + extra_top - CONT_TITLE_H + 4.0,
-                        size: 14.0,
-                        line_height: 18.0,
+                        size: BODY_SIZE,
+                        line_height: BODY_SIZE * LINE_H_PARA,
                         color: t_rgb,
                         bold: false,
                         italic: false,
@@ -1599,7 +1607,9 @@ impl AutodownEditorCore {
                 font_size: size,
                 line_height: line_h,
             });
-            y += total_h + BLOCK_GAP;
+            // PLAN-054 复审反馈④：容器内相邻叶间距随只读臂（list 2/容器
+            // 4），顶层维持 BLOCK_GAP 8（归因 DFS 按兄弟关系补齐）。
+            y += total_h + at.inner_gap;
         }
         // PLAN-048 T7（W4）：空态占位——content 空 && 非聚焦时浅灰文案
         //（视图实例只读轨豁免；聚焦即隐；空白文案跳过；基色按 0.55 调光
@@ -2282,8 +2292,8 @@ const QUOTE_X: f32 = 19.0; // quote 缩进（PLAN-053 T17 值）
 const LIST_INDENT: f32 = 16.0; // 每层嵌套缩进
 const LIST_GUTTER: f32 = 26.0; // marker 槽宽（容纳 "• "/"✔ "/"10. "）
 const CONT_PAD_X: f32 = 16.0; // callout/details 内容边距（px-4）
-const CONT_TITLE_H: f32 = 26.0; // callout 标题行高（含 py 上边距）
-const CONT_SUMMARY_H: f32 = 24.0; // details 摘要行高
+const CONT_TITLE_H: f32 = 29.0; // callout 标题行高（15.2px×1.6 行盒 24.3 + 上边距 4）
+const CONT_SUMMARY_H: f32 = 29.0; // details 摘要行高（同上）
 const CONT_PAD_B_CALLOUT: f32 = 12.0; // callout 底 pad（py-3）
 const CONT_PAD_B_DETAILS: f32 = 8.0; // details 底 pad（py-2）
 
@@ -2309,6 +2319,9 @@ struct LeafAttrib {
     /// 容器首叶标题行高 / 末叶底部 pad。
     cont_extra_top: f32,
     cont_extra_bottom: f32,
+    /// 本叶与下一叶的间距（复审反馈④：容器内随只读臂 spacing——list 2/
+    /// quote·callout·details 4；顶层 = BLOCK_GAP 8）。
+    inner_gap: f32,
     /// 内容 x 总偏移（外层容器累计）。
     x: f32,
 }
@@ -2326,115 +2339,155 @@ fn callout_icon(kind: &str) -> &'static str {
 
 /// 骨架归因 DFS（PLAN-053 T17 walk_quote 扩体）：一次遍历产出渲染序列
 /// （叶 + 只读 Raw）与逐叶容器归属。`x_base` 为外层容器累计的内容 x 基；
-/// `list_depth` 为当前所在列表嵌套层数（外层列表首层 = 0）。
+/// `list_depth` 为当前所在列表嵌套层数（外层列表首层 = 0）；`sibling_gap`
+/// 为本层容器内相邻叶的间距（只读臂同值：list 2 / quote·容器 4 / 顶层 8）。
+/// 返回本段触达的最后一个叶 id（供宿主层补兄弟间距）。
 fn walk_skeleton_attribution(
     segs: &[Seg],
     in_quote: bool,
     x_base: f32,
     list_depth: usize,
+    sibling_gap: f32,
     attrib: &mut HashMap<usize, LeafAttrib>,
     items: &mut Vec<DrawItem>,
-) {
+) -> Option<usize> {
+    let mut prev: Option<usize> = None;
     for seg in segs {
-        match seg {
-            Seg::Leaf(i) => {
-                let a = attrib.entry(*i).or_default();
-                a.in_quote |= in_quote;
-                a.x = x_base;
-                if in_quote {
-                    // PLAN-054 T1（两臂同款 py-2，§7.4）：编辑壳 quote 叶补
-                    // 垂直 padding，与只读臂 QUOTE_CHROME 的 py-2（8px 上下）
-                    // 同值——两臂 quote 块高/pitch 一致。
-                    a.cont_extra_top += 8.0;
-                    a.cont_extra_bottom += 8.0;
-                }
-                items.push(DrawItem::Leaf(*i));
+        let last = walk_seg(seg, in_quote, x_base, list_depth, attrib, items);
+        // 复审反馈④：prev 叶之后（跨过 Raw 等无叶段）仍有同容器后继叶
+        // → prev 的尾间距取本容器 spacing（只读臂同值）。
+        if let (Some(p), true) = (prev, last.is_some()) {
+            attrib.entry(p).or_default().inner_gap = sibling_gap;
+        }
+        prev = last.or(prev);
+    }
+    prev
+}
+
+fn walk_seg(
+    seg: &Seg,
+    in_quote: bool,
+    x_base: f32,
+    list_depth: usize,
+    attrib: &mut HashMap<usize, LeafAttrib>,
+    items: &mut Vec<DrawItem>,
+) -> Option<usize> {
+    match seg {
+        Seg::Leaf(i) => {
+            let a = attrib.entry(*i).or_default();
+            a.in_quote |= in_quote;
+            a.x = x_base;
+            a.inner_gap = BLOCK_GAP;
+            if in_quote {
+                // PLAN-054 T1（两臂同款 py-2，§7.4）：编辑壳 quote 叶补
+                // 垂直 padding，与只读臂 QUOTE_CHROME 的 py-2（8px 上下）
+                // 同值——两臂 quote 块高/pitch 一致。
+                a.cont_extra_top += 8.0;
+                a.cont_extra_bottom += 8.0;
             }
-            Seg::Quote(inner) => {
-                walk_skeleton_attribution(inner, true, x_base + QUOTE_X, list_depth, attrib, items);
-            }
-            Seg::List { ordered, start, checked, items: list_items } => {
-                for (ii, item) in list_items.iter().enumerate() {
-                    // marker 画在 gutter 左缘；内容 x = 基 + 深度缩进 + gutter。
-                    let content_x = x_base + list_depth as f32 * LIST_INDENT + LIST_GUTTER;
-                    let marker_x = content_x - LIST_GUTTER;
-                    let marker = match checked.get(ii).copied().flatten() {
-                        Some(true) => Some(("\u{2714} ".to_string(), true)), // ✔
-                        Some(false) => Some(("\u{25A1} ".to_string(), false)), // □
-                        None if *ordered => Some((format!("{}. ", start + ii as i64), false)),
-                        None => Some(("\u{2022} ".to_string(), false)), // •
-                    };
-                    let mut leaves = Vec::new();
-                    dfs_leaf_order(item, &mut leaves);
-                    for (li, leaf) in leaves.iter().enumerate() {
-                        let a = attrib.entry(*leaf).or_default();
-                        if li == 0 {
-                            if let Some((m, acc)) = &marker {
-                                a.list_marker = Some((m.clone(), *acc, marker_x));
-                            }
+            items.push(DrawItem::Leaf(*i));
+            Some(*i)
+        }
+        Seg::Quote(inner) => walk_skeleton_attribution(
+            inner, true, x_base + QUOTE_X, list_depth, 4.0, attrib, items,
+        ),
+        Seg::List { ordered, start, checked, items: list_items } => {
+            let mut last = None;
+            let mut prev_item_leaf: Option<usize> = None;
+            for (ii, item) in list_items.iter().enumerate() {
+                // marker 画在 gutter 左缘；内容 x = 基 + 深度缩进 + gutter。
+                let content_x = x_base + list_depth as f32 * LIST_INDENT + LIST_GUTTER;
+                let marker_x = content_x - LIST_GUTTER;
+                let marker = match checked.get(ii).copied().flatten() {
+                    Some(true) => Some(("\u{2714} ".to_string(), true)), // ✔
+                    Some(false) => Some(("\u{25A1} ".to_string(), false)), // □
+                    None if *ordered => Some((format!("{}. ", start + ii as i64), false)),
+                    None => Some(("\u{2022} ".to_string(), false)), // •
+                };
+                let mut leaves = Vec::new();
+                dfs_leaf_order(item, &mut leaves);
+                for (li, leaf) in leaves.iter().enumerate() {
+                    let a = attrib.entry(*leaf).or_default();
+                    if li == 0 {
+                        if let Some((m, acc)) = &marker {
+                            a.list_marker = Some((m.clone(), *acc, marker_x));
                         }
                     }
-                    walk_skeleton_attribution(item, in_quote, content_x, list_depth + 1, attrib, items);
+                }
+                let item_last = walk_skeleton_attribution(
+                    item, in_quote, content_x, list_depth + 1, 2.0, attrib, items,
+                );
+                // 复审反馈④：项与项之间同为 spacing 2（只读臂 items 列）。
+                if let (Some(p), true) = (prev_item_leaf, item_last.is_some()) {
+                    attrib.entry(p).or_default().inner_gap = 2.0;
+                }
+                prev_item_leaf = item_last.or(prev_item_leaf);
+                last = item_last.or(last);
+            }
+            last
+        }
+        Seg::Callout { kind, title, inner } => {
+            let mut leaves = Vec::new();
+            dfs_leaf_order(inner, &mut leaves);
+            let (strip, tcolor) = match autodown_blocks::callout_kind_rgb(kind) {
+                Some((s, t)) => (Some(s), Some(t)),
+                None => {
+                    // 未知 kind：accent（theme 语义 primary）。
+                    let acc = crate::ui::style::theme::resolve_semantic_rgb(
+                        &crate::ui::style::Color::Primary,
+                    )
+                    .unwrap_or((59, 130, 246));
+                    (Some(acc), Some(acc))
+                }
+            };
+            let label = if !title.is_empty() {
+                title.clone()
+            } else if !kind.is_empty() {
+                kind.clone()
+            } else {
+                "note".to_string()
+            };
+            let ttext = format!("{} {}", callout_icon(kind), label);
+            for (li, leaf) in leaves.iter().enumerate() {
+                let a = attrib.entry(*leaf).or_default();
+                a.cont_strip = strip;
+                if li == 0 {
+                    a.cont_title = Some((ttext.clone(), tcolor));
+                    a.cont_extra_top = CONT_TITLE_H;
+                }
+                if li + 1 == leaves.len() {
+                    a.cont_extra_bottom = CONT_PAD_B_CALLOUT;
                 }
             }
-            Seg::Callout { kind, title, inner } => {
-                let mut leaves = Vec::new();
-                dfs_leaf_order(inner, &mut leaves);
-                let (strip, tcolor) = match autodown_blocks::callout_kind_rgb(kind) {
-                    Some((s, t)) => (Some(s), Some(t)),
-                    None => {
-                        // 未知 kind：accent（theme 语义 primary）。
-                        let acc = crate::ui::style::theme::resolve_semantic_rgb(
-                            &crate::ui::style::Color::Primary,
-                        )
-                        .unwrap_or((59, 130, 246));
-                        (Some(acc), Some(acc))
-                    }
-                };
-                let label = if !title.is_empty() {
-                    title.clone()
-                } else if !kind.is_empty() {
-                    kind.clone()
-                } else {
-                    "note".to_string()
-                };
-                let ttext = format!("{} {}", callout_icon(kind), label);
-                for (li, leaf) in leaves.iter().enumerate() {
-                    let a = attrib.entry(*leaf).or_default();
-                    a.cont_strip = strip;
-                    if li == 0 {
-                        a.cont_title = Some((ttext.clone(), tcolor));
-                        a.cont_extra_top = CONT_TITLE_H;
-                    }
-                    if li + 1 == leaves.len() {
-                        a.cont_extra_bottom = CONT_PAD_B_CALLOUT;
-                    }
+            walk_skeleton_attribution(
+                inner, in_quote, x_base + CONT_PAD_X, list_depth, 4.0, attrib, items,
+            )
+        }
+        Seg::Details { summary, inner, .. } => {
+            let mut leaves = Vec::new();
+            dfs_leaf_order(inner, &mut leaves);
+            let ttext = format!("\u{25B8} {summary}"); // ▸
+            for (li, leaf) in leaves.iter().enumerate() {
+                let a = attrib.entry(*leaf).or_default();
+                if li == 0 {
+                    a.cont_title = Some((ttext.clone(), None));
+                    a.cont_extra_top = CONT_SUMMARY_H;
                 }
-                walk_skeleton_attribution(inner, in_quote, x_base + CONT_PAD_X, list_depth, attrib, items);
-            }
-            Seg::Details { summary, inner, .. } => {
-                let mut leaves = Vec::new();
-                dfs_leaf_order(inner, &mut leaves);
-                let ttext = format!("\u{25B8} {summary}"); // ▸
-                for (li, leaf) in leaves.iter().enumerate() {
-                    let a = attrib.entry(*leaf).or_default();
-                    if li == 0 {
-                        a.cont_title = Some((ttext.clone(), None));
-                        a.cont_extra_top = CONT_SUMMARY_H;
-                    }
-                    if li + 1 == leaves.len() {
-                        a.cont_extra_bottom = CONT_PAD_B_DETAILS;
-                    }
-                }
-                walk_skeleton_attribution(inner, in_quote, x_base + CONT_PAD_X, list_depth, attrib, items);
-            }
-            Seg::Raw(text) => {
-                if text == "---" {
-                    items.push(DrawItem::RawBreak);
-                } else {
-                    items.push(DrawItem::RawText(text.clone()));
+                if li + 1 == leaves.len() {
+                    a.cont_extra_bottom = CONT_PAD_B_DETAILS;
                 }
             }
+            walk_skeleton_attribution(
+                inner, in_quote, x_base + CONT_PAD_X, list_depth, 4.0, attrib, items,
+            )
+        }
+        Seg::Raw(text) => {
+            if text == "---" {
+                items.push(DrawItem::RawBreak);
+            } else {
+                items.push(DrawItem::RawText(text.clone()));
+            }
+            None
         }
     }
 }
@@ -4407,6 +4460,19 @@ fn main() { let s = \"hi\"; }
         assert!(body.x >= LIST_GUTTER, "项内容在 marker 槽右侧，got x={}", body.x);
         let marker = frame.list.runs.iter().find(|r| r.text == "\u{2022} ").expect("bullet marker");
         assert!((marker.x - (body.x - LIST_GUTTER)).abs() < 0.5, "marker 对齐 gutter 左缘");
+        // PLAN-054 复审反馈④：列表内相邻叶间距 = 只读臂 spacing 2（非
+        // BLOCK_GAP 8）——两 marker y 差 = 行高 24.32 + 2。
+        let bullets: Vec<&DocRun> =
+            frame.list.runs.iter().filter(|r| r.text == "\u{2022} ").collect();
+        let pitch = bullets[1].y - bullets[0].y;
+        let expect = BODY_SIZE * LINE_H_PARA + 2.0;
+        assert!(
+            (pitch - expect).abs() < 1.0,
+            "列表行距随只读臂（{} ≈ {}），got {}",
+            expect,
+            expect,
+            pitch
+        );
     }
 
     /// PLAN-054 T6：task 两态编辑臂呈现——✔(accent)/□(muted)，emit 往返
@@ -4441,7 +4507,7 @@ fn main() { let s = \"hi\"; }
     fn table_pipe_lines_visible_in_edit_arm() {
         let src = "| Name | Value | Note |\n| --- | --- | --- |\n| Foo | 1 | A |\n";
         let c = core_for("t054tb", src);
-        let frame = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+        let frame = run_fs(|fs| c.render_frame(fs, 990.0, WHITE, None));
         let joined: String = frame.list.runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>().join("");
         for cell in ["| Name ", "| Value ", "| Note ", "| --- ", "| Foo "] {
             assert!(joined.contains(cell), "管道行含 {cell:?}：{joined:?}");

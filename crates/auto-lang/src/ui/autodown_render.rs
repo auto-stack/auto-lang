@@ -518,14 +518,26 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     _ => None,
                 };
                 // PLAN-054 T4（五截图根因④，待澄清①裁定方案 A）：两态
-                // marker 同风格对 ✔(U+2714)/□(U+25A1)——☑(带色变体)与 ☐(素
-                // 框) 的混排观感退役；done 态 accent 色（theme primary，
-                // text-primary 双档感知）。
+                // marker 同风格对 ✔(U+2714)/□(U+25A1)；done 态 accent 色。
+                // PLAN-054 复审反馈①：marker 显式正文号（15.2px/1.6）——
+                // 无 size 类曾落渲染默认 16px，与编辑臂 15.2 不同（一大一小）。
                 let (marker, marker_cls) = match task_state {
-                    Some(true) => ("\u{2714} ".to_string(), "text-primary shrink-0"),
-                    Some(false) => ("\u{25A1} ".to_string(), "text-muted-foreground shrink-0"),
-                    None if ordered => (format!("{}. ", start + i as i64), "text-muted-foreground shrink-0"),
-                    None => ("\u{2022} ".to_string(), "text-muted-foreground shrink-0"),
+                    Some(true) => (
+                        "\u{2714} ".to_string(),
+                        "text-[15.2px] leading-[1.6] text-primary shrink-0",
+                    ),
+                    Some(false) => (
+                        "\u{25A1} ".to_string(),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
+                    None if ordered => (
+                        format!("{}. ", start + i as i64),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
+                    None => (
+                        "\u{2022} ".to_string(),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
                 };
                 let body = block_children(item, is_final, details_onclick, table_widths, on_col_resize);
                 items.push(View::Row {
@@ -613,8 +625,15 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             };
             let title_row = View::Row {
                 children: vec![
-                    styled_text(marker.to_string(), "shrink-0"),
-                    styled_text(label.clone(), title_cls),
+                    // PLAN-054 复审反馈①：标题行 icon/label 显式正文号。
+                    styled_text(
+                        marker.to_string(),
+                        "text-[15.2px] leading-[1.6] shrink-0",
+                    ),
+                    styled_text(
+                        label.clone(),
+                        &format!("text-[15.2px] leading-[1.6]{}", title_cls),
+                    ),
                 ],
                 spacing: 2,
                 padding: 0,
@@ -665,8 +684,15 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             let details_msg = details_onclick.map(|f| f(block_key(b)));
             let summary_row = View::Row {
                 children: vec![
-                    styled_text(marker.to_string(), "text-muted-foreground shrink-0"),
-                    styled_text(summary.clone(), "font-medium"),
+                    // PLAN-054 复审反馈①：summary 行显式正文号。
+                    styled_text(
+                        marker.to_string(),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
+                    styled_text(
+                        summary.clone(),
+                        "text-[15.2px] leading-[1.6] font-medium",
+                    ),
                 ],
                 spacing: 2,
                 padding: 0,
