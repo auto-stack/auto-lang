@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-575
-status: execution_done
+status: reviewed
 feature_name: 桌面进程静默退出归因与修复（通知中心二次开合，526 高风险债）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-06
@@ -8,8 +8,10 @@ updated_at: 2026-09-06
 
 # Leave these EMPTY here — /auto-plan:review fills them:
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+new_spec_components:
+  - "docs/specs/auto-lang/vm/architecture.md: 新增——stdlib 退出审计三挂点（exit_audit/exit_audit_path/install_exit_audit_panic_hook，挂点=shim_process_exit/全局 panic hook/run_session 正常返回，env AUTO_DESKTOP_EXIT_LOG 缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log，写失败静默=零行为变更）"
+touched_goals:
+  - "goal-009: 虚拟桌面与桌面 Shell——526 静默退出债归因收口：退出审计机制常驻 + N=20 不可复现降档（疑外部击杀 049 同族），KNOWN-DEBT 526 行降档🟡 + 535 D 项销账"
 
 current_step: 6
 total_steps: 6
@@ -202,7 +204,41 @@ node 脚本（desktop MCP JSON-RPC，vm-smoke 协议复用）：initialize → f
 - `cargo tv --no-fail-fast`：3607 run / 3606 passed / 1 failed（同一 charts 既有红）。
 - aavm：改动零触发（无 auto/lib/*.at、test/vm/aavm2、parity、aavm2 基建触碰）。
 
-（待 /auto-plan:review 填写）
+### 复审记录（/auto-plan:review，2026-09-06，ZCode）
+
+**结论：PASS（4/4 验收全过，无阻塞债）→ `status: reviewed`。验证方式=全部复跑，不采信勾选框。**
+
+| # | 验收标准 | 判定 | 复验证据 |
+|---|---|---|---|
+| 1 | 退出审计落地且零行为变更，三挂点各出审计证据 | **pass** | ①`shim_process_exit`：子进程探针单测——退出码 7 保持不变 + `code=7 site=vm_process_exit` 审计行（`p575_exit_code_survives_probe`）；②panic hook：单测 `panic_hook_writes_audit_line_before_prev_hook`——`code=101 site=panic msg=…` + 既有 hook 链式保留；③main_return：**实机端到端**——bus 注入 shutdown，进程 0.6s 优雅退出 code 0，审计文件恰一行 `pid=25928 code=0 site=main_return`。复跑 `cargo test -p auto-lang --lib exit_audit` 5/5 过 |
+| 2 | 归因结论落档：N=20 逐轮台账 + 分支判据 + 复审记录 | **pass** | ledger.jsonl 20 轮/20 独立 PID/verdict 全 alive/逐轮 toggle_evidence（NotificationCenter handler 行）在册（commit d9290f26a）；分支判据=不可复现（第三支），结论已写入本文件复审记录节 |
+| 3 | 分支收口（T4b 登记降级 + 535 D 销账） | **pass** | KNOWN-DEBT 🔴 节已无 526 行、🟡 节新增降档行（结论+049 互链+复现即启）；535 D 项 `- [x]` + ✅销账注记（含 PLAN-575 指针）。两 diff 落 becb8d581 |
+| 4 | 回归绿：cargo tf 唯一红=charts 既有 | **pass** | 复跑 `cargo tf --no-fail-fast` 3466 run/3465 pass，唯一红 `ui_gen::vue::tests::test_charts_gallery_compiles`；`cargo tv --no-fail-fast` 3607/3606 唯一红同。charts 红预存基线由 571 T9 提交（53259c4da，先于本计划）在案；aavm 触发面零命中 |
+
+**遗漏/延后/Workaround 扫描**（无阻塞发现）：
+
+- **机制偏注一（非阻塞）**：计划 D2 写"find 铃铛 → press×2"，实测铃铛为宿主
+  dock 渲染不在组件 VTree（autoui_find NOT FOUND，截图/探针双证），改走
+  `autoui_desktop` bus 注入 notes_toggle×2——与真实点击共用
+  records→DesktopCommand::NotesToggle→toggle_notification_center 全路径；
+  且原 2/2"复现"之第二例本就是验收通道 handler 双调（535 D 原文），通道
+  等价。驱动逐轮仍尝试 find 并记录 bell=false，非静默换道。
+- **机制偏注二（非阻塞）**：挂点②③装于 `run_session`（I3 唯一装配管线），
+  覆盖面为 desktop∪Standalone 超集——审计零行为变更（G3），覆盖面扩大无
+  语义影响，已在代码注释与归因结论中写明。
+- **证据载体**：逐轮 stderr 原始日志受仓级 `*.log` gitignore 约定不入库，
+  台账 ledger.jsonl 的 `toggle_evidence` 字段逐轮引用 handler 行为证——
+  台账即证据正本（scratch/p575/ledger.jsonl）。
+- **T4a 未执行=分支未命中**（计划 W2"走其一"语义），非延后；无 TODO/
+  FIXME/dbg! 新增；无新编译警告。
+- **复审卫生修复**：exit_audit 新增代码两处链式调用 rustfmt 规整
+  （d8fdf98fa；stdlib.rs 余量 drift 为预存不动），修复后单测复跑 5/5 过。
+
+**债候选**：无新增（审计机制常驻系计划设计本身；降档出口为待澄清①预授权）。
+
+**spec-impact 元数据**：已回填 frontmatter（new_spec_components=vm
+architecture 退出审计三挂点；touched_goals=goal-009；supersedes=空）。
+交接 `/auto-plan:merge`。
 
 ## 待澄清事项
 
