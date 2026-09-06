@@ -219,4 +219,28 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 ## Verification log (Step 23)
 
-Filled in the final gate section below.
+| Gate | Result | Notes |
+|---|---|---|
+| `python scripts/spec-index.py` | pass | `docs/specs/INDEX.md` regenerated, 26 projects, zero broken index links |
+| `python scripts/spec-lint.py --stale-days 7` | pass (no new findings) | 1 pre-existing error (`.next-id=575` < max active 577 — plan-577 立项未走 `new-plan.sh`，非本计划引入，master 同报)；warnings reduced 10→5 vs master：本计划刷新 comptime/interpreter/mcp/runtime/types 五个 overview 消除其 stale 警告，余 5 条断链均为预存（aavm/project.md→523/525/532 归档路径、ui overview sidebar 相对深度、goals autoshell.md 缺失——归属：各自 merge 会话回写时未同步，挂账于流程债 546-③） |
+| 旧断言扫描 `rg "TreeWalker\|Evaluator\|32-bit\|120 opcode"` | pass | 全部余量命中均为合法历史语境：interpreter ADR/归档路线图行、raw/ 历史设计归档（本计划明示不改写）、vm/architecture 的 NaN-boxing "4-bit tag + 32-bit payload"（u64 内部位域描述，非栈位宽断言）；"约 120 opcode"/"32 位栈槽"作为 current 态的表述已清零 |
+| `git diff --check` | pass | 仅 INDEX.md CRLF 归一化提示（脚本产物），无空白错误 |
+| `git status --short` 范围 | pass | 修改仅 `docs/specs/INDEX.md`（门禁 23 再生）；历史提交链全部限于 docs/specs、docs/design、docs/plans(KNOWN-DEBT)、docs/reports——零 `crates/`、`packages/`、`examples/`、清单文件 |
+
+## Acceptance recap
+
+| 验收项 | 判定 |
+|---|---|
+| 532/536 已合并或明确裁定 | ✅ 均已折返归档（2026-09-06/05），报告 Baseline gate 节存证 |
+| 九模块证据表+状态分类+漂移裁定+修改清单 | ✅ 报告九节全填 |
+| 无证据计划项不再陈述为 current | ✅（trans 328/355/364/400/442、runtime 300-458、frontend 325/332/367/448 校正；parity 未实施路线均标已归档） |
+| interpreter 明确统一走 AutoVM，旧引擎仅历史 | ✅（overview/architecture/design 复核成立+补强） |
+| VM 栈位宽/指令集以当前代码为准，计数可复现 | ✅（NanoValue u64、194 opcode awk 复现、design/05 三处修正） |
+| trans/UI/runtime 对 532/536 折返后状态有证据 | ✅（trans 计数/归档态；ui 补录 536 行+post-536 现状；runtime 18 行校正） |
+| 顶层 design/project.md/overview 不与 module spec 冲突 | ✅（design 02/03/05/06/08/10/12/13/20 + project/overview 回写） |
+| 新实现债务入 KNOWN-DEBT，未顺手改代码 | ✅（三条 546 债；零 crates/ 改动） |
+| spec-index 成功无断链 | ✅ |
+| spec-lint 不新增 error/warning，既有有归属 | ✅（错误预存有归属；警告净减 5） |
+| git diff --check 通过，diff 仅 docs/spec 投影 | ✅ |
+
+Commit chain (plan-546-dev): `7a6410290` rebase → `d5cbf983c` resume gate → `969503987` skeleton → `fae421c14` frontend → `160322d50` types → `e2d5d62a0` comptime → `f8f15cbd5` interpreter → `646ea54b0` vm+design05 → `b8e2d6561` trans → `c04c01a1e` runtime → `068054dea` ui+design08/20 → `a09670a12` mcp → `d97f52f27` design alignment → `3a07b0856` entry+debts → (final) INDEX regen.
