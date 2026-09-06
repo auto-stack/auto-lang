@@ -3129,4 +3129,106 @@ mod tests {
         let s3 = dc.state_mutation_seq();
         assert!(s3 > s2, "state-writing tick must bump mutation seq ({} -> {})", s2, s3);
     }
+
+    /// PLAN-576 G1 定向测试（TDD 红）：nanbox 整值 float 位型保真——
+    /// VM 实参绑定路径的混合类型算术/比较。043 期「VM handler 哑」家族
+    /// 的实测存活根因：TAG_F32 操作数（handler float 实参）与 TAG_I32
+    /// 字面量混算/比较时，ADD/SUB/MUL/DIV else 臂与 LT/GT/LE/GE fallback
+    /// 臂按位型 decode_i32——240.0 的 f32 位 0x43700000 被当整数
+    /// 1131413504 运算/比较（`240.0 + 1` → Int(1131413505)、
+    /// `50.0 > 100` 恒真——043「比较守卫静默假」同源）。
+    /// 纯 encode/decode 往返（实参绑定/write_state 写读回）经 Plan
+    /// 437/474 tag 驱动修复已恒等，此处一并钉死防回归。
+    #[test]
+    fn plan576_integer_float_mixed_arith_and_cmp() {
+        let src = concat!(
+            "widget P576 {\n",
+            "    model {\n",
+            "        var top float = 0.0\n",
+            "        var acc float = 0.0\n",
+            "        var flag float = 0.0\n",
+            "    }\n",
+            "    view { col { text \"x\" } }\n",
+            "    on {\n",
+            "        .Bind(t: float) -> { .top = t }\n",
+            "        .MixInt(t: float) -> { .acc = t + 1 }\n",
+            "        .MixSub(t: float) -> { .acc = t - 1 }\n",
+            "        .MixMul(t: float) -> { .acc = t * 2 }\n",
+            "        .MixDiv(t: float) -> { .acc = t / 2 }\n",
+            "        .CmpGt(t: float) -> { if t > 100 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .CmpLt(t: float) -> { if t < 100 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .CmpGe(t: float) -> { if t >= 240 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .CmpLe(t: float) -> { if t <= 239 { .flag = 1.0 } else { .flag = 2.0 } }\n",
+            "        .ReadBack -> { .acc = .top }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+
+        let dispatch_f = |comp: &mut DynamicComponent, handler: &str, val: &str| {
+            comp.on_with_input_for("P576", &format!("{}\u{1F}f\u{1F}{}", handler, val), None);
+        };
+        let read_f = |comp: &DynamicComponent, field: &str| -> f64 {
+            match comp.read_state(field).expect(field) {
+                auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+                other => panic!("{} 应为 float，实得 {:?}", field, other),
+            }
+        };
+
+        // ① 实参绑定恒等（钉契约：整值/零值/分数/负值 float 原样落 state）
+        for (sent, want) in [("240.0", 240.0), ("0.0", 0.0), ("240.5", 240.5), ("-1.5", -1.5)] {
+            dispatch_f(&mut comp, "Bind", sent);
+            let got = read_f(&comp, "top");
+            assert!((got - want).abs() < 1e-6, "实参绑定 {} -> top = {}，期望 {}", sent, got, want);
+        }
+
+        // ② 混合类型算术：float 实参 × int 字面量，按值运算（红点）
+        for (sent, want) in [("240.0", 241.0), ("240.5", 241.5), ("0.0", 1.0)] {
+            dispatch_f(&mut comp, "MixInt", sent);
+            let got = read_f(&comp, "acc");
+            assert!((got - want).abs() < 1e-4, "{} + 1 = {}，期望 {}", sent, got, want);
+        }
+        dispatch_f(&mut comp, "MixSub", "240.0");
+        assert!((read_f(&comp, "acc") - 239.0).abs() < 1e-4, "240.0 - 1 应为 239.0");
+        dispatch_f(&mut comp, "MixMul", "240.0");
+        assert!((read_f(&comp, "acc") - 480.0).abs() < 1e-4, "240.0 * 2 应为 480.0");
+        dispatch_f(&mut comp, "MixDiv", "240.0");
+        assert!((read_f(&comp, "acc") - 120.0).abs() < 1e-4, "240.0 / 2 应为 120.0");
+
+        // ③ 混合类型比较：float 实参 vs int 字面量，按值比较（红点）
+        dispatch_f(&mut comp, "CmpGt", "240.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "240.0 > 100 应走真分支");
+        dispatch_f(&mut comp, "CmpGt", "50.0");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "50.0 > 100 应走假分支");
+        dispatch_f(&mut comp, "CmpLt", "240.0");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "240.0 < 100 应走假分支");
+        dispatch_f(&mut comp, "CmpLt", "50.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "50.0 < 100 应走真分支");
+        dispatch_f(&mut comp, "CmpGe", "240.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "240.0 >= 240 应走真分支");
+        dispatch_f(&mut comp, "CmpGe", "239.5");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "239.5 >= 240 应走假分支");
+        dispatch_f(&mut comp, "CmpLe", "240.0");
+        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "240.0 <= 239 应走假分支");
+        dispatch_f(&mut comp, "CmpLe", "239.0");
+        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "239.0 <= 239 应走真分支");
+
+        // ④ write_state 写读回（钉契约：Rust 侧 Double 直写 → script 读）
+        for v in [240.0f64, 240.5, 0.0] {
+            comp.write_state("top", auto_val::Value::Double(v)).unwrap();
+            comp.on_with_input_for("P576", "ReadBack", None);
+            let got = read_f(&comp, "acc");
+            assert!((got - v).abs() < 1e-6, "write_state Double({}) 读回 {} 失真", v, got);
+        }
+    }
 }
