@@ -139,7 +139,8 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
 3. [ ] T3 门禁验证:裸 taa 失败集 13→1;tf 3460/3461;保留锚全
    PASS;⑤腿 compile_corpus 58/58 复跑确认零波及。
 4. [ ] T4 文档结算:AGENTS AAVM 档注记 + KNOWN-DEBT 572 条目结算
-   + 本计划复审留档。
+   + 本计划复审留档;顺手修 a2r_at_mode 测试文档头 feature 标注
+   (test-vm-files → test-aavm,572 待澄清④结案余项)。
 
 ## 复审记录
 

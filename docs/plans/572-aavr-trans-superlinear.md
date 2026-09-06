@@ -268,3 +268,12 @@ scripts/aavm_native_gen_check.sh(+3 处)、scratch/p572/(资产)——零 Rust
    结构语料不过;该测试为 `#[ignore]`昂贵档,不在任何标准门禁内;
    572 未触宿主 transpiler,与本计划改动无关的表象成立,但基点
    未对拍——复审时裁定归置(host 侧 struct 字段表,P523-2② 域)。
+   ——〔2026-09-06 用户裁定:独立小调查基点对拍,已执行结案〕
+   **5 跑 3 态全绿,不可复现**:基点 f2ae1cb29(lang-532 worktree)
+   PASS=24s;当前 master PASS×2(b34 单跑 24.28s+b07/b34 对 25.02s);
+   worktree@master 同步态换入 T3 态 a2r.at(失败观测时的精确 lib 状态)
+   复跑 PASS=24s。唯一失败观测(T5b 取证时 ~16:05,worktree,输出被
+   截断未留失败模式)处于⑤腿/pipeline 重载构建期,判**环境瞬态**
+   (cargo/temp 争用族),非任何代码态缺陷。债项条目按"未复现-关闭
+   观察"结算;文档头 feature 标注过时(test-vm-files→test-aavm)并入
+   Plan 574 顺手修。

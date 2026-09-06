@@ -30,7 +30,7 @@
 
 | 526 | 一致性 | 布局件级 hover/右键公共基建（wrap_layout_onclick）未做——launcher 用 button、桌面右键用 mouse-area 替代挂点，逐点特设；任意 .at 布局件要 hover/右键仍需逐个特设 | 526 待澄清③（用户核准延后，独立立项候选） |
 | 572 | AA2R/host 发射对齐缺口: push 容器实参克隆 | AA2R push 臂克隆规则窄化为「用户 struct/enum 裸 ident」；宿主（trans/rust.rs:8659 auto-clone）对**所有非 Copy**（含 `List<T>`/Vec 容器 ident）实参克隆——AA2R 遇容器 ident 入 push 仍裸 move（语料+lib 现零形状,非阻塞;真出现时为 E0382 家族）。对齐另案小改。 | `auto/lib/a2r.at` push 臂 P572 T5b 注释 |
-| 572 | at_mode b34_struct 宿主侧红 + 文档头过时 | `aavm_at_mode_b34_struct`（#[ignore] 昂贵档）实跑 FAIL：宿主 transpiler 自建 aavm_at 跑 b34 结构语料不过（P523-2② struct 字段表域）；b07 PASS。同文件文档头 feature 标注过时（写 test-vm-files,实际门=test-aavm）。572 未触宿主 transpiler,表象与本计划无关;基点未对拍,归因待裁。 | `crates/auto-lang/src/tests/aavm_at_mode_tests.rs:158`;572 待澄清④ |
+| 572 | ~~at_mode b34_struct 宿主侧红~~ + 文档头过时 | **b34 红已结案(2026-09-06 独立调查,用户裁定执行):5 跑 3 态全绿不可复现**(基点 f2ae1cb29/当前 master×2/失败观测精确 lib 状态重构),判⑤腿重载构建期环境瞬态,非代码态缺陷——未复现-关闭观察。余项:at_mode 测试文件文档头 feature 标注过时(写 test-vm-files,实际门=test-aavm),Plan 574 顺手修。 | `crates/auto-lang/src/tests/aavm_at_mode_tests.rs:9`;572 待澄清④结案段 |
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
