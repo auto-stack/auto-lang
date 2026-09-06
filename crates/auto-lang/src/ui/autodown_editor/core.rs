@@ -49,7 +49,7 @@ use crate::ui::code_editor::theme::Rgba;
 pub const BODY_SIZE: f32 = autodown_blocks::BODY_SIZE;
 const LINE_H_MULT: f32 = 1.45;
 /// 块间垂直间距（观感对齐只读轨 Column spacing=8 + 标题边距感）。
-pub const BLOCK_GAP: f32 = 10.0;
+pub const BLOCK_GAP: f32 = 8.0; // PLAN-053 T15：与只读臂文档列 spacing 8 对齐（两臂基础节奏同值）
 /// 光标宽（对齐 413 CARET_WIDTH）。
 pub const CARET_WIDTH: f32 = 2.0;
 /// 多击窗口（对齐 413 CLICK_TIMING）。
@@ -1269,6 +1269,13 @@ impl AutodownEditorCore {
             let b = &mut blocks[bi];
             let size = leaf_size(b.kind);
             let line_h = size * LINE_H_MULT;
+            // PLAN-053 T15：heading 额外块距（§7.3 vue margins 19.2/17.6 与
+            // 25.6/14.4 扣两臂共同基础节奏 8px）——与只读臂 mt-[]/mb-[] 类
+            // 同值，两臂逐块 pitch 一致即左右对齐。
+            let (extra_top, extra_bottom) = match b.kind {
+                LeafKind::Heading(l) => autodown_blocks::heading_extra_margins(l),
+                _ => (0.0, 0.0),
+            };
             let mono_all = matches!(b.kind, LeafKind::Fence);
             let styled_ok = {
                 let snapshot_eq = SendEdit::of(b).text() == b.snapshot;
@@ -1291,7 +1298,7 @@ impl AutodownEditorCore {
             } else {
                 viewport_w.max(1.0)
             };
-            let text_y = y + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
+            let text_y = y + extra_top + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
             let ed = &mut b.editor.0;
 
             ed.with_buffer_mut(|buf| {
@@ -1314,12 +1321,16 @@ impl AutodownEditorCore {
             }
 
             // 共享绘制段：&Buffer → 样式化段（mark 区间 × 语法着色合并）。
+            let heading = matches!(b.kind, LeafKind::Heading(l) if (1..=3).contains(&l));
+            let (sr, sg, sb) = autodown_blocks::heading_strong_rgb();
             let ctx = BlockDrawCtx {
                 marks: &b.intervals,
                 styled_ok,
                 mono_all,
                 syntax: fenced,
                 base,
+                heading,
+                heading_color: Rgba { r: sr as f32 / 255.0, g: sg as f32 / 255.0, b: sb as f32 / 255.0, a: 1.0 },
             };
             let block_h =
                 ed.with_buffer(|buf| buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs));
@@ -1359,7 +1370,7 @@ impl AutodownEditorCore {
                 });
                 full.h
             } else {
-                block_h.max(line_h)
+                block_h.max(line_h) + extra_top + extra_bottom
             };
 
             if !view_inst {
@@ -1501,6 +1512,10 @@ pub struct BlockDrawCtx<'a> {
     pub syntax: bool,
     /// 基础前景色。
     pub base: Rgba,
+    /// PLAN-053 T14：heading 块（h1-h3）——默认前景改 accent-strong、
+    /// 字重恒 700（§7.3/§7.2，与只读臂类表同源）。
+    pub heading: bool,
+    pub heading_color: Rgba,
 }
 
 /// 单个已布局 Buffer → 样式化 DocRun 段。**纯函数**：只读 layout_runs，
@@ -1640,6 +1655,7 @@ fn push_styled_pieces(
                 a: c.a() as f32 / 255.0,
             },
             None if st.link => LINK_COLOR,
+            None if ctx.heading => ctx.heading_color,
             None => ctx.base,
         };
         out.push(DocRun {
@@ -1649,7 +1665,7 @@ fn push_styled_pieces(
             size,
             line_height: line_h,
             color,
-            bold: st.strong,
+            bold: st.strong || ctx.heading,
             italic: st.em,
             mono: ctx.mono_all || st.code,
             strike: st.del,
@@ -3438,6 +3454,8 @@ mod tests {
                 mono_all: fenced,
                 syntax: fenced,
                 base: WHITE,
+                heading: false,
+                heading_color: WHITE,
             };
             let _ = b.editor.ed().with_buffer(|buf| {
                 buffer_block_runs(

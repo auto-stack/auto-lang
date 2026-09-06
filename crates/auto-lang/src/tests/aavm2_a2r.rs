@@ -349,7 +349,7 @@ fn test_aavm2_fourpath_runner() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let lib_code = crate::aavm2_lib_source(&root).unwrap();
     // 内容寻址缓存复用:compile corpus 的 build_aavm_rust_bin
-    let bin = crate::tests::vm_file_tests::build_aavm_rust_bin_pub();
+    let bin = crate::tests::aavm_runner_tests::build_aavm_rust_bin_pub();
     let cases = golden_cases();
     assert!(!cases.is_empty());
 

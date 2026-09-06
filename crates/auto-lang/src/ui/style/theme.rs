@@ -17,16 +17,32 @@ use super::Color;
 thread_local! {
     static DARK_MODE: std::cell::Cell<bool> = std::cell::Cell::new(true);
     static ACCENT_NAME: std::cell::RefCell<String> = std::cell::RefCell::new("indigo".to_string());
+    /// PLAN-053 T12（051-候选修复，转介单①收回自修）：主题代数——
+    /// `dark_mode` 每次值变化自增。内容寻址视图缓存
+    /// （autodown_render::StreamCache 的结构键无主题维度）构建期记录
+    /// 代数、与本值不符即全量重建——否则翻转帧 clone 旧块，fence 静态
+    /// 档滞留构建时主题（首帧 D-GAP 同步前取档与翻转不重建双根因）。
+    static THEME_EPOCH: std::cell::Cell<u32> = std::cell::Cell::new(0);
 }
 
 /// Set the global dark mode flag (called by renderer before rendering).
 pub fn set_dark_mode(dark: bool) {
-    DARK_MODE.with(|d| d.set(dark));
+    let changed = DARK_MODE.with(|d| d.replace(dark)) != dark;
+    if changed {
+        THEME_EPOCH.with(|e| e.set(e.get().wrapping_add(1)));
+    }
 }
 
 /// Read the global dark mode flag (Plan 413: code editor theme bridge).
 pub fn dark_mode() -> bool {
     DARK_MODE.with(|d| d.get())
+}
+
+/// Current theme epoch: bump-on-change counter over `dark_mode` writes.
+/// Content-keyed view caches compare their build epoch against this to
+/// invalidate theme-dependent chrome (StreamCache 消费).
+pub fn theme_epoch() -> u32 {
+    THEME_EPOCH.with(|e| e.get())
 }
 
 /// Read the current accent name (Plan 413: code editor theme bridge).

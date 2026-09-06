@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-564
-status: executing                  # drafting → executing → execution_done → reviewed → archived
+status: reviewed                    # drafting → executing → execution_done → reviewed → archived
 feature_name: heavy-mem-test-tiering
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -8,11 +8,11 @@ updated_at: 2026-09-05
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: []       # 无 module spec 新增：知识沉淀于 AGENTS.md(Heavy-Mem Tiering 节)+.config/test-mem-weights.md(单一事实来源),merge 时 overview 活跃线+GOAL-016 行提及即可
+touched_goals: ["GOAL-016: 构建与测试基础设施——重内存测试分层/nextest 组限流/裸跑守门(9.78GB→tf 树峰 1674MB≤2GB,裸跑 149MB)"]  # 引用 docs/specs/goals.md 的 GOAL-NNN
 
-affects: []                   # 受影响的 specs 路径（测试基建，review 时定）
-current_step: 6
+affects: [".config/nextest.toml", ".config/nextest-full.toml", ".config/test-mem-weights.md(新)", "AGENTS.md", "scripts/measure_test_mem.py(新)", "crates/auto-lang/src/tests/heavy_gate.rs(新)"]  # 测试基建,无 specs/modules/* 触达
+current_step: 7
 total_steps: 7
 ---
 
@@ -203,19 +203,19 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
 
 ## 验收标准
 
-- [ ] A1: `scripts/measure_test_mem.py` 可用，产出 aavm2 全套 + str_churn
+- [x] A1: `scripts/measure_test_mem.py` 可用，产出 aavm2 全套 + str_churn
       两档的逐测峰值权重表，入库 `.config/test-mem-weights.md`。
-- [ ] A2: `.config/nextest.toml`（含 full/t3）三组配置生效：
+- [x] A2: `.config/nextest.toml`（含 full/t3）三组配置生效：
       `cargo nextest show-config test-groups` 显示组与匹配数非零；
       default-filter 排除 XL 名单。
-- [ ] A3: 裸 `cargo test --features test-vm-files aavm2_`（12 线程）秒级
+- [x] A3: 裸 `cargo test --features test-vm-files aavm2_`（12 线程）秒级
       秒退 + SKIP 指引，进程峰值 <500MB（实测前后对比记入 plan：
       9.78GB → <0.5GB）。
-- [ ] A4: `cargo tf aavm2_`（nextest 全量语义）全绿，运行期进程树峰值
+- [x] A4: `cargo tf aavm2_`（nextest 全量语义）全绿，运行期进程树峰值
       ≤2GB（轮询实测记录）；`cargo t` 基线不回归。
-- [ ] A5: XL/LG 单测清单与权重表一致（review 时人工核对 overrides 名单
+- [x] A5: XL/LG 单测清单与权重表一致（review 时人工核对 overrides 名单
       与权重表档位列逐条对应）。
-- [ ] A6: AGENTS.md 测试档表更新（新增重内存分层说明 + 测量复测方法 +
+- [x] A6: AGENTS.md 测试档表更新（新增重内存分层说明 + 测量复测方法 +
       新增重测试登记路径）。
 
 ## 执行步骤
@@ -298,8 +298,56 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   防线复跑一次。
   验证: 三项实测数据记入"复审记录"前的执行证据区（9.78GB → 实测值，
   须 ≤2GB）。
+  [✅ 已完成] 2026-09-05 实测:① tf aavm2_(full 档+组限流) 22/22 全绿,
+  837s,并发树峰值 **1674MB ≤2GB**(单进程最大 925MB;t3 塔测试经自身
+  env 守门秒过);② 裸防线:19s/测试段 2.01s/峰值 149MB(对照事发
+  15+min/9.78GB);③ cargo t 日常档存在**预存失败**(plan370 d8/plan492
+  c2/ui::layout grid 族/ui::iced lucide/aura strip_html 等 15+ 处)——
+  基点归因探测(f3032c3a8,先于本 plan 全部代码提交)同样失败,证实与
+  564 无关,登记 Q6 转告。收口附记:T5 曾漏提交 tests.rs 注册行(add
+  目录误漏同名文件),基点探测暴露后已补提交。
+
+## merge 前置（2026-09-05 merge 会话登记）
+
+- **fold 排队约束**: plan-564-dev 为 stacked 分支（基于 plan-532-dev tip），
+  master..plan-564-dev 含 8 个未复审的 P532 提交——**532 未 fold 前不可
+  merge 564 入 master**（否则绕过 532 评审门禁）。532 会话截至本注记仍
+  active（executing，测试进程在跑）。
+- **恢复路径**: 532 完成 execution_done → review → merge 后，重跑
+  `/auto-plan:merge 564`（本 plan 已 reviewed 且 A1-A6 全勾，届时 fold +
+  沉淀 + 归档一次完成；worktree/分支保留至彼时）。
+- worktree 组：D:/autostack/.wt/lang-564/{auto-lang, auto-down(只读 detached@1b3e4bc)}。
 
 ## 复审记录
+
+**复审人**: ZCode (GLM-5.3) 独立复审会话 | **时间**: 2026-09-05 | **方式**: 净 diff 审查 + 验收逐条重验 + 门禁全量套件(tf+tv) + 基点归因探测
+
+### 净 diff 审查
+plan-564-dev 净改动 = 13 文件/268 行(scripts/measure_test_mem.py 新 180 行、.config 三件、AGENTS.md、heavy_gate.rs 新 47 行、7 个测试文件 16 处守门插入、tests.rs 注册 1 行)——与 T1-T7 任务清单一一对应,无计划外改动、无遗留未提交(执行期漏提交 tests.rs 注册行已暴露并补收 3f0d21c72)。
+
+### 验收逐条判定
+| 条 | 判定 | 证据 |
+|---|---|---|
+| A1 脚本+权重表 | **PASS** | T2 双跑稳定(str_churn_bounded 20MB×2);T3 三段链式产出 20 测峰值表入库(12XL/4LG/4MD/LT);期间修两测量缺陷(单位/兄弟会话误采) |
+| A2 三组配置+排除 | **PASS** | show-config:mem-lg 4/4、mem-md 2/4+2 ignored(override 对 --run-ignored 生效)、mem-xl full 档 9/9;list:m2_parser 日常档 0 行/001_smoke 保留 1 行 |
+| A3 裸跑防线 | **PASS** | 复验 19s(测试段 2.01s)/22 passed 0 failed/峰值 149MB(事发 15+min/9.78GB);SKIP 指引 --nocapture 实证 |
+| A4 全量档+预算+基线 | **PASS** | tf aavm2_(full+组限流):22/22 绿/837s/**并发树峰 1674MB ≤2GB**;复审门禁:tf 3440/3441、tv 3592/3593,唯一红=test_charts_gallery_compiles=plan560 注记既有红("唯一红=既有 charts");cargo t 的 15+ 红(含 Q6)经基点 f3032c3a8(先于本 plan 全部代码提交)归因实证为预存,非 564 回归 |
+| A5 名单一致 | **PASS** | overrides xl/lg/md=12/4/4 与权重表逐档一致(计数+show-config 双验) |
+| A6 文档 | **PASS** | AGENTS.md Heavy-Mem Test Tiering 节(权重表来源/三组/守门/三步登记) |
+
+### 遗漏/延后/workaround 猎取
+- 遗漏: 无(净 diff 对照清;漏提交已自纠)。
+- 延后(登记 KNOWN-DEBT): ① t3 档组配置悬置(Q5,依据=532 未提交态+塔测试 env 自守门低风险);② 无其他。
+- Workaround/已知限制(登记 KNOWN-DEBT): SKIP 指引 libtest 捕获下默认不可见;测量脚本 PowerShell 轮询为 Windows 实现(跨平台增强留 565+)。
+- 转告非本 plan 事项: static_diff FAILED+1232MB(Q4→P532);master 预存红 15+(Q6,基点实证,维护者排查)。
+
+### spec-impact
+见 frontmatter(已填):touched_goals=GOAL-016;无 module spec 触达(知识沉淀 AGENTS.md+权重表)。
+
+### 门禁数据
+tf 77.2s(3441 测)/tv 95.9s(3593 测)——tv 时长反推证实 LG 组内串行真实运行(轻池并行重叠);测量期 147s/m2 为 static_diff 并发抢 CPU 的膨胀值,无碍权重定级(峰值不受 CPU 竞争影响)。
+
+**结论**: 六项验收全 PASS,债务三条已登记,门禁仅剩既有红 → **status: reviewed**,可入 /auto-plan:merge。
 
 ## 待澄清事项
 
@@ -323,3 +371,9 @@ pub(crate) fn heavy_gate(name: &str) -> bool {
   T3_MILESTONE env 守门，风险低）。同因：主检出 `.cargo/config.toml`/
   `.config/nextest*.toml`/`AGENTS.md` 存在 532 未提交改动，plan-564-dev
   合并时须与其协调（本 plan 的配置提交均在 worktree 分支，无覆盖）。
+- **Q6（master 预存红转告）**: cargo t 日常档在本 plan 基点(f3032c3a8
+  = plan-532-dev tip + master 合并态)即有 15+ 预存失败(plan370 d8 暗色
+  断言/plan492 c2/ui::layout grid 全族/ui::iced lucide manifest/
+  aura strip_html),与 564 改动无关(基点探测实证),疑似 master 近期
+  合入(561 sidebar/536 send_chain 等)或 015-notes 在途未提交修改所致
+  ——转告维护者;564 的 A4 验收以 tf aavm2_ 22/22 绿+树峰值 1674MB 为准。
