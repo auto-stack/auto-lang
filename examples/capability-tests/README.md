@@ -72,6 +72,7 @@ resolves `examples/ui` → this directory); 459-dual-app remains embedded by
 | `p518-glass-sample/` | backdrop 毛玻璃样张（双端对拍已知分歧白名单，KNOWN-DEBT P518） | Plan 518 G8 |
 | `459-dual-app/` | 无 pac.at 回退形态载具（同源双实例双窗 demo） | Plan 459 |
 | `042-two-inputs-child/` | 双输入子 widget 焦点 / Tab 遍历语料 | Plan 483 |
+| `043-canvas-paint/` | canvas 元素能力样板（状态驱动画布 + pen 三件套事件；场景数据契约见其 SPEC.md） | Plan 563 |
 
 ## Verify a canary
 

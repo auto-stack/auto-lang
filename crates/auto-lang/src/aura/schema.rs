@@ -2340,6 +2340,24 @@ impl AuraSchema {
             description: "Backend-neutral image surface (Plan 547): media ticket URI + interactive transform state; renders published renditions only (vue img + pointer synthesis / iced widget), never does file I/O or decode on the UI thread.",
         });
 
+        // Plan 563: 状态驱动画布(scene 前缀双表契约;详规见 schema/aura.at
+        // canvas 条目与 043-canvas-paint SPEC.md)。
+        elements.insert("canvas", ElementDef {
+            tag: "canvas",
+            category: ElementCategory::Media,
+            props: vec![
+                PropDef { name: "scene", type_: PropType::StateRef, required: false, default: None, description: "Stroke-scene state PREFIX binding (engine reads <prefix>_pts + <prefix>_meta parallel string lists)" },
+                PropDef { name: "coords", type_: PropType::String, required: false, default: None, description: "Logical extent \"WxH\" for pen-event coordinates (mouse-area coords same form; default = raw px)" },
+                PropDef { name: "clear", type_: PropType::String, required: false, default: None, description: "Optional background color (CSS hex); eraser strokes render as background-color strokes in v1" },
+                PropDef { name: "onpenstart", type_: PropType::MsgRef, required: false, default: None, description: "Pen down; handler receives (x, y) float logical coords" },
+                PropDef { name: "onpenmove", type_: PropType::MsgRef, required: false, default: None, description: "Pen drag while pressed (engine-gated, <=30Hz); handler receives (x, y)" },
+                PropDef { name: "onpenend", type_: PropType::MsgRef, required: false, default: None, description: "Pen up or leaving the canvas bounds; handler receives (x, y)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "State-driven drawing canvas (Plan 563). Content renders from the scene state binding (parallel-string-list stroke model, B12-style); both backends render independently (vue <canvas> 2D / iced canvas::Program) sharing only the scene data contract. Pen trio fires with logical coords; leaving the bounds ends the stroke on both backends.",
+        });
+
         // === Collapsible ===
         elements.insert("collapsible", ElementDef {
             tag: "collapsible",

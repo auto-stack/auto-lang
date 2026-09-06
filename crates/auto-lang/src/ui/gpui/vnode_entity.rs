@@ -113,6 +113,8 @@ impl VNodeEntity {
             VNodeKind::Accordion | VNodeKind::Sidebar | VNodeKind::Tabs | VNodeKind::NavigationRail => {
                 self.render_placeholder(node)
             }
+            // Plan 563: 画布(gpui 后端 unknown,占位 leaf)
+            VNodeKind::Canvas => self.render_placeholder(node),
         }
     }
 

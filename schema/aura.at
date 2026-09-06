@@ -1230,12 +1230,20 @@ element blockquote {
 
 element canvas {
     tag: "canvas"
-    category: "unknown"
-    tier: "native_html"
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    category: "media"
+    tier: "builtin_widget"
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "scene", type: "state_ref", description: "Stroke-scene state binding (list of polylines; the canvas content is fully derived from this state - render is a pure function of it)" }
+        { name: "coords", type: "string", description: "Logical extent \"WxH\" for pen-event coordinates (engine-side screen->logical conversion, mouse-area coords same form; default = raw px)" }
+        { name: "clear", type: "string", description: "Optional background color (CSS color syntax); eraser strokes render as background-color strokes in v1 (no true compositing removal)" }
+        { name: "onpenstart", type: "msg_ref", description: "Pen down on the canvas; handler receives (x, y) float logical coords" }
+        { name: "onpenmove", type: "msg_ref", description: "Pen drag while pressed - dispatched only during pen-down (gating lives in the engine, <=30Hz throttled like mouse-area onmousemove); handler receives (x, y)" }
+        { name: "onpenend", type: "msg_ref", description: "Pen up or pen leaving the canvas bounds (leaving-the-bounds ends the stroke on both backends); handler receives (x, y)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es) (size/border/rounded land on the canvas frame)" }
+    ]
+    allows_children: false
+    description: "State-driven drawing canvas (Plan 563). Content renders from the scene state binding - scene: .strokes binds a state PREFIX; the engine reads the parallel-string-list stroke model from <prefix>_pts (per-stroke point list \"x,y|x,y|...\") + <prefix>_meta (\"color,width,eraser\"; B12-style, defaults #111827,3,0), no imperative draw API. Scene data contract shared by both backends (each renders independently: web = native <canvas> 2D context, iced = canvas::Program Path stroke; line cap/join round on both; single-point stroke = dot of stroke width). Pen event trio onpenstart/onpenmove/onpenend fires with logical coords per coords prop; move is gated to pen-down and throttled <=30Hz. Leaving the canvas bounds ends the stroke (both backends; iced mouse events stop at bounds, vue document-mousemove bounds-check). Complements the chart/diagram family (derived geometry -> svgdoc rendering for structured graphics); canvas covers freehand strokes / high-frequency point streams. Storage persists for free (strokes are plain string state)."
 }
 
 element circle {

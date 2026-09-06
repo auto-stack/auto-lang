@@ -1,0 +1,238 @@
+// app.at — 043-canvas-paint 自由画板(Plan 563 样板)。
+//
+// canvas 元素能力样板:状态驱动画布(scene 双表)+ pen 三件套事件 +
+// 颜色/线宽/eraser + undo/清空/storage 存取。经典 Paint 的流线模式地基
+// (031-paint 像素模式的姊妹形态,正式升级另立 plan)。
+//
+// 场景数据契约(schema/aura.at canvas 条目):
+//   .strokes_pts  = ["x1,y1|x2,y2|...", ...]   每笔画点列(| 分隔)
+//   .strokes_meta = ["#rrggbb,width,eraser", ...]  颜色,线宽,eraser 位
+//
+// VM 变更纪律(031 SPEC 同款,B12 家族):pen 事件/undo 一律本地构建新表
+// → 整体赋值(状态 str 列表禁止下标写);penstart 走 push(031 undo_stack
+// 先例)。storage 序列化 join("~")/split("~")(点列内含 |,不能用 | 连接;
+// 两区以 # 分隔——点列/元数据内均无 # 与 ~)。
+
+widget App {
+    msg {
+        Init, SetTool(str), SetColor(str), SetWidth(int),
+        PenStart(float, float), PenMove(float, float), PenEnd(float, float),
+        Undo, Clear, Save, Load
+    }
+
+    model {
+        // ---- 画布(scene 前缀 strokes → strokes_pts/strokes_meta)----
+        var strokes_pts = []
+        var strokes_meta = []
+        var cur_pts str = ""
+        var cur_meta str = ""
+        var stroke_count str = "0"
+
+        // ---- 工具 ----
+        var tool str = "pencil"          // pencil | eraser
+        var cur_color str = "#111827"
+        var cur_width int = 4
+        var status str = "ready"
+
+        // ---- 工具/颜色/线宽选中态类串(完整字面量,Tailwind JIT 面;
+        // 031 ToolClasses 同型)----
+        var pencil_class str = ""
+        var eraser_class str = ""
+        var c_dark str = ""
+        var c_red str = ""
+        var c_blue str = ""
+        var c_green str = ""
+        var c_orange str = ""
+        var w2_class str = ""
+        var w4_class str = ""
+        var w8_class str = ""
+    }
+
+    on {
+        .Init -> {
+            .strokes_pts = []
+            .strokes_meta = []
+            .stroke_count = "0"
+            .status = "ready"
+            .SetTool("pencil")
+            .SetColor("#111827")
+            .SetWidth(4)
+        }
+
+        // ---- 工具/颜色/线宽 ----
+        .SetTool(t) -> {
+            .tool = t
+            if t == "pencil" {
+                .pencil_class = " border-2 border-primary "
+                .eraser_class = " border "
+            } else {
+                .pencil_class = " border "
+                .eraser_class = " border-2 border-primary "
+            }
+        }
+
+        .SetColor(c) -> {
+            .cur_color = c
+            var sel str = " ring-2 ring-primary ring-offset-2 "
+            var unsel str = " "
+            .c_dark = " w-7 h-7 rounded-full bg-[#111827] " + (c == "#111827" ? sel : unsel)
+            .c_red = " w-7 h-7 rounded-full bg-[#ef4444] " + (c == "#ef4444" ? sel : unsel)
+            .c_blue = " w-7 h-7 rounded-full bg-[#3b82f6] " + (c == "#3b82f6" ? sel : unsel)
+            .c_green = " w-7 h-7 rounded-full bg-[#22c55e] " + (c == "#22c55e" ? sel : unsel)
+            .c_orange = " w-7 h-7 rounded-full bg-[#f97316] " + (c == "#f97316" ? sel : unsel)
+        }
+
+        .SetWidth(w) -> {
+            .cur_width = w
+            var sel str = " border-2 border-primary "
+            var unsel str = " border "
+            .w2_class = " px-2 py-1 text-xs rounded " + (w == 2 ? sel : unsel)
+            .w4_class = " px-2 py-1 text-xs rounded " + (w == 4 ? sel : unsel)
+            .w8_class = " px-2 py-1 text-xs rounded " + (w == 8 ? sel : unsel)
+        }
+
+        // ---- pen 三件套 ----
+        .PenStart(x, y) -> {
+            .cur_pts = x.to_string() + "," + y.to_string()
+            .cur_meta = .cur_color + "," + .cur_width.to_string() + "," + (.tool == "eraser" ? "1" : "0")
+            .strokes_pts.push(.cur_pts)
+            .strokes_meta.push(.cur_meta)
+            .stroke_count = .strokes_pts.len().to_string()
+        }
+
+        .PenMove(x, y) -> {
+            .cur_pts = .cur_pts + "|" + x.to_string() + "," + y.to_string()
+            var pts = []
+            var metas = []
+            var n int = .strokes_pts.len()
+            var i int = 0
+            while i < n {
+                if i == n - 1 {
+                    pts.push(.cur_pts)
+                    metas.push(.cur_meta)
+                } else {
+                    pts.push(.strokes_pts[i])
+                    metas.push(.strokes_meta[i])
+                }
+                i = i + 1
+            }
+            .strokes_pts = pts
+            .strokes_meta = metas
+        }
+
+        .PenEnd(x, y) -> {
+            .status = "stroke done"
+        }
+
+        // ---- 历史/画布 ----
+        .Undo -> {
+            var n int = .strokes_pts.len()
+            if n > 0 {
+                var pts = []
+                var metas = []
+                var i int = 0
+                while i < n - 1 {
+                    pts.push(.strokes_pts[i])
+                    metas.push(.strokes_meta[i])
+                    i = i + 1
+                }
+                .strokes_pts = pts
+                .strokes_meta = metas
+                .stroke_count = pts.len().to_string()
+                .status = "undo"
+            } else {
+                .status = "nothing to undo"
+            }
+        }
+
+        .Clear -> {
+            .strokes_pts = []
+            .strokes_meta = []
+            .stroke_count = "0"
+            .status = "cleared"
+        }
+
+        // ---- storage(点列内含 |,序列化 join ~;两区以 ; 分隔——点列/
+        // 元数据内均无 ~ 与 ;,色值 #hex 不能作分隔符)----
+        .Save -> {
+            storage.set("canvaspaint.strokes.v1", .strokes_pts.join("~") + ";" + .strokes_meta.join("~"))
+            .status = "saved"
+        }
+
+        .Load -> {
+            var snap = storage.get("canvaspaint.strokes.v1")
+            if snap != "" {
+                var halves = snap.split(";")
+                if halves.len() == 2 {
+                    var pts = halves[0].split("~")
+                    var metas = halves[1].split("~")
+                    if pts.len() == metas.len() {
+                        // split 产物整体赋值塌缩(B12 家族,P553-D1 同族)
+                        // → 清空后逐笔 push(状态列表 push 已证可靠)。
+                        .strokes_pts = []
+                        .strokes_meta = []
+                        var i int = 0
+                        while i < pts.len() {
+                            .strokes_pts.push(pts[i])
+                            .strokes_meta.push(metas[i])
+                            i = i + 1
+                        }
+                        .stroke_count = .strokes_pts.len().to_string()
+                        .status = "loaded"
+                    } else {
+                        .status = "bad save data"
+                    }
+                } else {
+                    .status = "bad save data"
+                }
+            } else {
+                .status = "no save"
+            }
+        }
+    }
+
+    view {
+        col {
+            style: "w-full max-w-2xl bg-card border rounded-2xl shadow-2xl p-4 gap-3"
+
+            // ---- 标题 + 状态 ----
+            row {
+                style: "items-center gap-2"
+                text "Canvas Paint" { style: "text-base font-semibold text-foreground" }
+                text .status { style: "text-xs text-muted-foreground" }
+            }
+
+            // ---- 工具行 ----
+            row {
+                style: "items-center gap-2 flex-wrap"
+                button "✏ Pencil" { onclick: .SetTool("pencil"), style: .pencil_class }
+                button "◻ Eraser" { onclick: .SetTool("eraser"), style: .eraser_class }
+                button "↶ Undo" { onclick: .Undo, style: " border " }
+                button "Clear" { onclick: .Clear, style: " border " }
+                button "Save" { onclick: .Save, style: " border " }
+                button "Load" { onclick: .Load, style: " border " }
+            }
+
+            // ---- 颜色 + 线宽 ----
+            row {
+                style: "items-center gap-2 flex-wrap"
+                button "" { onclick: .SetColor("#111827"), style: .c_dark }
+                button "" { onclick: .SetColor("#ef4444"), style: .c_red }
+                button "" { onclick: .SetColor("#3b82f6"), style: .c_blue }
+                button "" { onclick: .SetColor("#22c55e"), style: .c_green }
+                button "" { onclick: .SetColor("#f97316"), style: .c_orange }
+                text "|" { style: "text-muted-foreground" }
+                button "2" { onclick: .SetWidth(2), style: .w2_class }
+                button "4" { onclick: .SetWidth(4), style: .w4_class }
+                button "8" { onclick: .SetWidth(8), style: .w8_class }
+            }
+
+            // ---- 画布(coords 逻辑幅面 560x360;出界即收笔)----
+            canvas (scene: .strokes, coords: "560x360", clear: "#ffffff", onpenstart: .PenStart, onpenmove: .PenMove, onpenend: .PenEnd) {
+                style: "w-full h-[360px] border rounded-lg cursor-crosshair"
+            }
+
+            text .stroke_count { style: "text-xs text-muted-foreground" }
+        }
+    }
+}

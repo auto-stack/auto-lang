@@ -94,6 +94,15 @@ impl SnapshotBuilder {
                 actions: vec![],
                 children: vec![],
             },
+            // Plan 563: 画布在 snapshot 里为占位 leaf(内容 = scene 状态
+            // 纯函数渲染,无子树;带笔画数 props 供 MCP 检视定位)。
+            View::Canvas { scene, .. } => UiNode {
+                id,
+                kind: "Canvas".to_string(),
+                props: vec![("strokes".to_string(), scene.strokes.len().to_string())],
+                actions: vec![],
+                children: vec![],
+            },
 
             // Plan 422: 弹层完整展开 —— MCP 需要看见面板项才能点击。
             // 子序与 render_dynamic_view / BuildProbe 对齐:anchor = 0,

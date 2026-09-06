@@ -835,6 +835,46 @@ pub enum View<M: Clone + Debug> {
         logical_extent: Option<(f32, f32)>,
         style: Option<Style>,
     },
+
+    /// Plan 563: 状态驱动画布 —— scene(scene prop 绑定的状态前缀,双表
+    /// `<前缀>_pts` / `<前缀>_meta` 的平行字符串列表)是唯一事实源,渲染
+    /// = 它的纯函数;双端各自独立绘制(iced canvas::Program / vue
+    /// `<canvas>` 2D),不共享绘制代码,共享的是场景数据契约(schema 描述)。
+    /// pen 事件三件套 (x, y) 逻辑坐标(coords prop "WxH" 声明值域,499 同型);
+    /// move 仅 pen-down 期派发,门控 + ≤30Hz 限频在底层承载;离开画布
+    /// bounds 即收笔(双端统一语义,T1d 裁定)。allows_children = false。
+    Canvas {
+        /// builder 帧内已解析的场景快照(pts/meta 双表 → 结构化笔画)。
+        scene: CanvasScene,
+        /// coords "WxH" 逻辑幅面(None = raw px)。
+        logical_extent: Option<(f32, f32)>,
+        /// 背景色(CSS 色串,可选);eraser 笔画按背景色绘制(v1 不挖除)。
+        clear: Option<String>,
+        on_pen_start: Option<PointerMoveHandler<M>>,
+        on_pen_move: Option<PointerMoveHandler<M>>,
+        on_pen_end: Option<PointerMoveHandler<M>>,
+        style: Option<Style>,
+    },
+}
+
+/// Plan 563: 单笔画 —— 平行字符串双表解析后的结构化形态
+/// (pts 项 "x1,y1|x2,y2|..." + meta 项 "color,width,eraser")。
+#[derive(Debug, Clone)]
+pub struct CanvasStroke {
+    pub points: Vec<(f32, f32)>,
+    /// CSS 色串(如 "#111827")。
+    pub color: String,
+    /// 线宽(px)。
+    pub width: f32,
+    /// v1 = 背景色笔画(不真挖除,规约见 schema 描述)。
+    pub eraser: bool,
+}
+
+/// Plan 563: 画布场景快照 —— builder 每帧从 VM 状态求值解析;
+/// 双端渲染都是它的纯函数(线帽/拐角 round 为映射规约一部分)。
+#[derive(Debug, Clone, Default)]
+pub struct CanvasScene {
+    pub strokes: Vec<CanvasStroke>,
 }
 
 /// Plan 422: 弹层锚定方式。
@@ -1834,6 +1874,26 @@ impl<M: Clone + Debug> View<M> {
                     PointerMoveHandler::new(move |x, y| f(h.call(x, y)))
                 }),
                 logical_extent,
+                style,
+            },
+            // Plan 563: Canvas 无子视图;三个 pen handler 复合映射
+            // (handler 产出 M 经 f 转 N,MouseArea.on_move 同型)。
+            View::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, style } => View::Canvas {
+                scene,
+                logical_extent,
+                clear,
+                on_pen_start: on_pen_start.map(|h| {
+                    let f = std::sync::Arc::clone(f);
+                    PointerMoveHandler::new(move |x, y| f(h.call(x, y)))
+                }),
+                on_pen_move: on_pen_move.map(|h| {
+                    let f = std::sync::Arc::clone(f);
+                    PointerMoveHandler::new(move |x, y| f(h.call(x, y)))
+                }),
+                on_pen_end: on_pen_end.map(|h| {
+                    let f = std::sync::Arc::clone(f);
+                    PointerMoveHandler::new(move |x, y| f(h.call(x, y)))
+                }),
                 style,
             },
             // Plan 422: Popover 递归映射 anchor/widget + content + on_dismiss。
