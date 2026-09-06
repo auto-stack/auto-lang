@@ -77,22 +77,24 @@
 | frontend | lexer/token/parser/AST/dialect/resolver/宏 | 448 语法改进、442 跨平台闭包 |
 | types | infer/typeck/ownership/trait_checker | 453 W5 ext impl 库方法 |
 | comptime | 编译期求值 | 稳定 |
-| interpreter | VM-based execution facade（旧 TreeWalker/evaluator 已移除） | 公共执行统一走 AutoVM；待 module rebaseline |
+| interpreter | VM-based execution facade（旧 TreeWalker/evaluator 已移除） | 公共执行统一走 AutoVM；module rebaseline 已完成（PLAN-546，2026-09-07） |
 | vm | AutoVM：abt/codegen/engine/debugger/ffi/generic | 446 渲染后端薄弱点清偿、466 测试提速 |
 | trans | 转译后端：C/Rust/JS/TS/Python/GDScript/r2a | 400/415 a2r 深化、417/427 parity 修复线 |
 | runtime | runtime/scope/session/libs/ffi | 442 平台桥 natives |
 | ui | aura/ + ui/（渲染/编辑器/主题）+ 桌面运行时（session/wm/VirtualWindow）+ ui_gen/ + a2ui/ | 桌面基础与后续多轮 parity/UX 计划已落地；当前变化以 module spec 和 active Plan 为准 |
 | mcp | MCP server 集成 | 稳定 |
 
-## 活跃开发线（2026-09-04 快照）
+## 活跃开发线（2026-09-07 快照）
 
-1. **AAVM/self-host**：PLAN-532 正在推进自举 tower 与覆盖收敛；Rust compiler 仍是
-   canonical reference，`auto/lib/` 为 active experimental implementation。
-2. **VM/AutoUI reactive runtime**：PLAN-536 正在修复 VM reactive runtime 与跨端行为；
-   桌面基础、launcher、virtual desktop 和多轮 parity/UX 计划已在此前落地。
+1. **AAVM/self-host**：PLAN-532 已折返归档（2026-09-06，塔顶自举终点，GOAL-017 达成）；
+   Rust compiler 仍是 canonical reference，`auto/lib/` 为 active experimental
+   implementation（知识沉淀在 [aavm/project.md](aavm/project.md)）。
+2. **VM/AutoUI reactive runtime**：PLAN-536 已折返归档（2026-09-05，反应性修复批）；
+   桌面基础、launcher、virtual desktop 和多轮 parity/UX 计划已落地。
 3. **多目标与生态**：a2r/parity、LSP、Playground、标准库与示例继续按各 module spec 演进。
 4. 并行任务变化频繁，不再在本页复制全部 active Plan；权威状态以 `docs/plans/` frontmatter
-   和 `git worktree list` 为准。
+   和 `git worktree list` 为准。九模块 spec 已于 2026-09-07 经 PLAN-546 代码证据
+   rebaseline（报告：[module-spec-rebaseline-2026-09-04](../reports/module-spec-rebaseline-2026-09-04.md)）。
 
 ## 入口索引
 

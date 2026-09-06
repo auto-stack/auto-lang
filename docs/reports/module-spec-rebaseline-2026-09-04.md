@@ -198,3 +198,25 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 | 测试证据 | `mcp/tests.rs` 1 行占位注释（复核：模块确无单测——维持原判）；间接覆盖经 autovm_daemon/REPL 测试 |
 | 与旧文档的差异 | ①CLI 入口行号 ~1547→2010（附快照）；②plans.md 6 处 `old/`→`archive/`。其余断言（7 工具/边界声明/坑清单）全部复核成立 |
 | 本次修改文件 | `docs/specs/auto-lang/mcp/{overview, plans}.md`（architecture/design 无冲突） |
+
+## Entry-point write-back & debt cross-links (Step 22)
+
+- `docs/specs/auto-lang/project.md`: mermaid `interpreter TreeWalker` node corrected to
+  the AutoVM facade; module table's interpreter row and status column realigned with
+  each module overview's Status line (frontend/vm/trans/mcp implemented; types core
+  usable; comptime/interpreter/runtime partial; ui active); Phase-0-skeleton footer
+  replaced with the rebaseline note.
+- `docs/specs/overview.md`: interpreter row's "待 module rebaseline" resolved; the
+  2026-09-04 active-lines snapshot updated — PLAN-532 folded+archived 2026-09-06
+  (GOAL-017 reached, knowledge in aavm/project.md) and PLAN-536 folded+archived
+  2026-09-05; report link added.
+- New debt registered in `docs/plans/KNOWN-DEBT-AND-RISKS.md` (source `546`):
+  1. `infer/registry.rs` DEPRECATED orphan module awaiting deletion.
+  2. `use-evaluator = []` empty feature declaration left in `crates/auto-lang/Cargo.toml:37`.
+  3. Process: module-spec `plans.md` write-back gap at archive time (plan-536 row was
+     absent entirely — restored by this plan into ui/plans.md; batch stale "active"
+     rows in frontend/trans/runtime corrected).
+
+## Verification log (Step 23)
+
+Filled in the final gate section below.
