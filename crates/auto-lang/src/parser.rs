@@ -13042,6 +13042,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// PLAN-534 D4: hovercard 根/触发器判定（归一化同 modal_dialog_tag_role:
+    /// 去 -/_ 小写）。不并入该表——hover 走 enter/leave 而非 toggle/close,
+    /// 复用同一条铸造机器但接线面不同。
+    fn hover_card_role(tag: &str) -> Option<&'static str> {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "hovercard" => Some("root"),
+            "hovercardtrigger" => Some("trigger"),
+            _ => None,
+        }
+    }
+
     /// PLAN-533 T5: 模态对话框自管开合铸造。
     ///
     /// alert-dialog/dialog 根无 `open` prop 时（vue 风格内建开合——
@@ -13071,6 +13087,67 @@ impl<'a> Parser<'a> {
     ) -> AutoResult<()> {
         match node {
             ViewNode::Element { tag, props, events, children, .. } => {
+                // PLAN-534 D4: hovercard 根——同一 __dlg_open_N 铸造机器,
+                // 但 trigger 无显式事件时补 hover 进/出（onmouseenter→置
+                // true / onmouseleave→置 false）而非 onclick toggle/close
+                // （非模态即时开合;open/close-delay v1 不消费,KNOWN-DEBT）。
+                // 显式绑定不覆盖（逐事件判定,同 toggle 规则）。事件落
+                // trigger 自身节点——转换臂（convert_hovercard）从 trigger
+                // events 读进 MouseArea,落内层会丢（与 toggle 的包裹规则
+                // 相反,因渲染面是 MouseArea 包转换后的 anchor）。
+                if Self::hover_card_role(tag) == Some("root")
+                    && !props.iter().any(|p| p.name == "open")
+                {
+                    *counter += 1;
+                    let n = *counter;
+                    let state_name = format!("__dlg_open_{n}");
+                    let enter = format!("__dlg_enter_{n}");
+                    let leave = format!("__dlg_leave_{n}");
+                    let state_ref = |name: &str| {
+                        Expr::Dot(Box::new(Expr::Ident(Name::from("self"))), Name::from(name))
+                    };
+                    props.push(ViewProp {
+                        name: "open".to_string(),
+                        value: ViewPropValue::Expr(state_ref(&state_name)),
+                    });
+                    // enter 体：`.__dlg_open_<n> = true`
+                    let enter_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Bool(true)),
+                    ));
+                    // leave 体：`.__dlg_open_<n> = false`
+                    let leave_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Bool(false)),
+                    ));
+                    minted.push((format!(".{enter}"), vec![enter_body]));
+                    minted.push((format!(".{leave}"), vec![leave_body]));
+                    states.push(state_name);
+                    for c in children.iter_mut() {
+                        if let ViewNode::Element { tag: ctag, events: cev, .. } = c {
+                            if Self::hover_card_role(ctag) == Some("trigger") {
+                                if !cev.iter().any(|e| matches!(e.name.as_str(), "onmouseenter" | "onhover")) {
+                                    cev.push(ViewEvent {
+                                        name: "onmouseenter".to_string(),
+                                        handler: format!(".{enter}"),
+                                        params: Vec::new(),
+                                        inline: None,
+                                    });
+                                }
+                                if !cev.iter().any(|e| matches!(e.name.as_str(), "onmouseleave" | "onhoverout")) {
+                                    cev.push(ViewEvent {
+                                        name: "onmouseleave".to_string(),
+                                        handler: format!(".{leave}"),
+                                        params: Vec::new(),
+                                        inline: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
                 if Self::modal_dialog_tag_role(tag) == Some("root")
                     && !props.iter().any(|p| p.name == "open")
                 {
@@ -19083,6 +19160,133 @@ exe hello {
             ViewNode::Element { props, .. } => props,
             _ => &[],
         }
+    }
+
+    /// PLAN-534 T7: hovercard 自管开合铸造（hover 形态）。无 `open` prop
+    /// 的 hovercard 根铸造同一 `__dlg_open_<n>` state + open 绑定,但
+    /// trigger 无显式事件时补 onmouseenter/onmouseleave（体:置 true/false）
+    /// 而非 onclick toggle;显式绑定不覆盖（负例）。
+    #[test]
+    fn test_hover_card_mints_hover_enter_leave() {
+        let code = concat!(
+            "widget App {\n",
+            "    view {\n",
+            "        hover-card {\n",
+            "            hover-card-trigger {\n",
+            "                text \"@mentor\"\n",
+            "            }\n",
+            "            hover-card-content {\n",
+            "                text \" Mentor bio \"\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("unbound hovercard must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+
+        // 铸造 state：`var __dlg_open_1 bool = false`（与 dialog 机器同槽）。
+        let model = w.model.as_ref().expect("model block minted");
+        let field = model.fields.iter().find(|f| f.name.as_str() == "__dlg_open_1")
+            .expect("minted state var");
+        assert!(matches!(field.init, Expr::Bool(false)), "init false");
+
+        // 根节点补 open 绑定。
+        fn find_tag<'a>(node: &'a ViewNode, tag: &str) -> Option<&'a ViewNode> {
+            match node {
+                ViewNode::Element { tag: t, children, .. } => {
+                    if t == tag { return Some(node); }
+                    children.iter().find_map(|c| find_tag(c, tag))
+                }
+                _ => None,
+            }
+        }
+        let root_node = &w.view.as_ref().unwrap().root;
+        let hc = find_tag(root_node, "hover-card").expect("hover-card root");
+        let open = dlg_element_props(hc).iter().find(|p| p.name == "open")
+            .expect("open prop minted");
+        let ViewPropValue::Expr(mint_expr) = &open.value else {
+            panic!("minted open prop must be an expr");
+        };
+        assert!(
+            format!("{mint_expr:?}").contains("__dlg_open_1"),
+            "open binding must reference minted state: {mint_expr:?}"
+        );
+
+        // trigger 补 hover 进/出（非 onclick toggle）。
+        fn events_of<'a>(node: &'a ViewNode, tag: &str) -> Vec<(String, String)> {
+            fn walk<'a>(node: &'a ViewNode, tag: &str, out: &mut Vec<(String, String)>) {
+                if let ViewNode::Element { tag: t, events, children, .. } = node {
+                    if t == tag {
+                        for e in events {
+                            out.push((e.name.clone(), e.handler.clone()));
+                        }
+                    }
+                    for c in children { walk(c, tag, out); }
+                }
+            }
+            let mut out = Vec::new();
+            walk(node, tag, &mut out);
+            out
+        }
+        let trig = events_of(root_node, "hover-card-trigger");
+        assert!(
+            trig.iter().any(|(n, h)| n == "onmouseenter" && h == ".__dlg_enter_1"),
+            "trigger onmouseenter minted: {trig:?}"
+        );
+        assert!(
+            trig.iter().any(|(n, h)| n == "onmouseleave" && h == ".__dlg_leave_1"),
+            "trigger onmouseleave minted: {trig:?}"
+        );
+        assert!(
+            !trig.iter().any(|(n, _)| n == "onclick"),
+            "hover form must NOT mint onclick toggle: {trig:?}"
+        );
+
+        // 折叠进 on + msg。
+        let on = w.on.as_ref().expect("on block injected");
+        let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
+        assert!(patterns.contains(&".__dlg_enter_1"), "enter handler folded: {patterns:?}");
+        assert!(patterns.contains(&".__dlg_leave_1"), "leave handler folded: {patterns:?}");
+
+        // 负例：显式 hover 绑定不覆盖。
+        let bound_code = concat!(
+            "widget B {\n",
+            "    model { var opened bool = false }\n",
+            "    view {\n",
+            "        hover-card (open: .opened) {\n",
+            "            hover-card-trigger (onmouseenter: .opened) {\n",
+            "                text \"@mentor\"\n",
+            "            }\n",
+            "            hover-card-content { text \"bio\" }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let mut p2 = Parser::from(bound_code).with_session(crate::session::CompilerSession::ui());
+        let ast2 = p2.parse().expect("bound hovercard parses");
+        let w2 = ast2.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget 2");
+        let trig2 = events_of(&w2.view.as_ref().unwrap().root, "hover-card-trigger");
+        assert!(
+            trig2.iter().any(|(n, h)| n == "onmouseenter" && h == ".opened"),
+            "explicit onmouseenter preserved: {trig2:?}"
+        );
+        assert!(
+            !trig2.iter().any(|(n, _)| n == "onmouseleave"),
+            "bound form mints no extra hover events: {trig2:?}"
+        );
+        assert!(
+            !w2.model.as_ref().map(|m| m.fields.iter().any(|f| f.name.as_str().starts_with("__dlg_"))).unwrap_or(false),
+            "bound form mints no state"
+        );
     }
 
     #[test]
