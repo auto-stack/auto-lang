@@ -411,6 +411,11 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 width: None,
                 height: None,
                 center_x: false,
+                // PLAN-054 T2：28px 定高 header 内标签垂直居中——py-2（8px
+                // 上 padding，12px 标签 → 中心 14 = 带中心）与编辑臂
+                // (h_h-12)/2=8 同值。center_y 不可用：iced 臂 center_y=true
+                // 强制 height(Fill)（renderer.rs:1995），会顶掉 h-[28px] 定高
+                // （实测带高 +2px/块，两臂 pitch 累积漂移）。
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
                 onclick: None,
@@ -512,16 +517,20 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     Some(Value::Bool(c)) => Some(c),
                     _ => None,
                 };
-                let marker = match task_state {
-                    Some(true) => "\u{2611} ".to_string(),  // ☑
-                    Some(false) => "\u{2610} ".to_string(), // ☐
-                    None if ordered => format!("{}. ", start + i as i64),
-                    None => "\u{2022} ".to_string(),        // •
+                // PLAN-054 T4（五截图根因④，待澄清①裁定方案 A）：两态
+                // marker 同风格对 ✔(U+2714)/□(U+25A1)——☑(带色变体)与 ☐(素
+                // 框) 的混排观感退役；done 态 accent 色（theme primary，
+                // text-primary 双档感知）。
+                let (marker, marker_cls) = match task_state {
+                    Some(true) => ("\u{2714} ".to_string(), "text-primary shrink-0"),
+                    Some(false) => ("\u{25A1} ".to_string(), "text-muted-foreground shrink-0"),
+                    None if ordered => (format!("{}. ", start + i as i64), "text-muted-foreground shrink-0"),
+                    None => ("\u{2022} ".to_string(), "text-muted-foreground shrink-0"),
                 };
                 let body = block_children(item, is_final, details_onclick, table_widths, on_col_resize);
                 items.push(View::Row {
                     children: vec![
-                        styled_text(marker.to_string(), "text-muted-foreground shrink-0"),
+                        styled_text(marker, marker_cls),
                         View::Column {
                             children: body,
                             spacing: 2,
@@ -592,11 +601,14 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             } else {
                 title
             };
+            // PLAN-054 T4（五截图根因⑦，待澄清①方案 A）：callout 图标同族
+            // 统一——✓(2713)/✕(2715) 细体换 ✔(2714)/✖(2716) 重体（与 ⚠/ℹ
+            // 观感粗细一致）；ℹ/⚠ 无重体变体保持。
             let marker = match kind.as_str() {
                 "info" => "\u{2139}",      // ℹ
-                "tip" | "success" => "\u{2713}", // ✓
+                "tip" | "success" => "\u{2714}", // ✔
                 "warning" | "warn" | "caution" => "\u{26A0}", // ⚠
-                "danger" | "error" => "\u{2715}", // ✕
+                "danger" | "error" => "\u{2716}", // ✖
                 _ => "\u{270E}",           // ✎ (note/未知)
             };
             let title_row = View::Row {
@@ -624,7 +636,10 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     children: parts,
                     spacing: 4,
                     padding: 0,
-                    style: None,
+                    // PLAN-054 T4（五截图根因⑦）：chrome.body（px-4 py-3）
+                    // 此前在视图臂无消费面——右栏 callout 内容贴边紧凑；
+                    // 家族 pad 单源落到内层列，观感与 chrome 声明一致。
+                    style: Style::parse(chrome.body).ok(),
                     onclick: None,
                 }),
                 padding: 0,
@@ -1031,11 +1046,12 @@ mod tests {
             },
             _ => panic!("fence"),
         }
-        // quote：border-l 容器（PLAN-053 T17：§7.4 左边 3px + muted 双档）
+        // quote：border-l 容器（PLAN-053 T17：§7.4 左边 3px + muted 双档；
+        // PLAN-054 T1：border-l-3 单侧宽度档——去四边整圈边框）
         match &children[1] {
             View::Container { style, child, .. } => {
                 let expected = Style::parse(
-                    "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
+                    "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
                 )
                 .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
@@ -1107,6 +1123,38 @@ mod tests {
             )),
             "label must carry explicit color class, got {lclasses:?}"
         );
+    }
+
+    /// PLAN-054 T2（五截图根因②a）：fence header 标签垂直居中——header
+    /// 类串带 py-2（8px 上 padding = (28-12)/2，与编辑臂标签 y 同值）。
+    /// center_y 容器旗标不可用：iced 臂 true 强制 height(Fill)，顶掉
+    /// h-[28px] 定高（实测 +2px/块 pitch 漂移），恒 false 锁定。
+    #[test]
+    fn fence_header_label_vertically_centered() {
+        let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
+        let View::Column { children, .. } = doc else {
+            panic!("expected column")
+        };
+        let View::Container { center_y, child, .. } = &children[0] else {
+            panic!("fence outer container")
+        };
+        assert!(!*center_y, "center_y must stay off (Fill-height override)");
+        let View::Column { children: parts, .. } = child.as_ref() else {
+            panic!("fence parts column")
+        };
+        let View::Container { center_y: h_cy, style, child: h, .. } = &parts[0] else {
+            panic!("fence header container")
+        };
+        assert!(!*h_cy, "header container center_y stays off");
+        let classes = &style.as_ref().expect("header style").classes;
+        assert!(
+            classes.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::PaddingY(crate::ui::style::SizeValue::Fixed(2))
+            )),
+            "header must carry py-2 (vertical centering), got {classes:?}"
+        );
+        assert_eq!(text_of(h), "rust");
     }
 
     #[test]
@@ -1280,6 +1328,11 @@ mod tests {
         assert_eq!(style.as_ref().unwrap().classes, expected.classes, "kind=info 配色");
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("callout col") };
         assert_eq!(parts.len(), 2, "title 行 + 正文列");
+        // PLAN-054 T4（五截图根因⑦）：chrome.body（px-4 py-3）落到内层列
+        // ——此前视图臂无消费面，右栏内容贴边紧凑。
+        let View::Column { style: body_style, .. } = child.as_ref() else { panic!("callout col") };
+        let want_body = Style::parse(family_of(BlockType::Callout).chrome.body).unwrap();
+        assert_eq!(body_style.as_ref().unwrap().classes, want_body.classes, "chrome.body 单源内边距");
         let View::Row { children: title_row, .. } = &parts[0] else { panic!("title row") };
         assert_eq!(text_of(&title_row[1]), "info", "无 title 时回落 kind 名");
         let View::Column { children: body, .. } = &parts[1] else { panic!("body col") };
@@ -1372,19 +1425,29 @@ mod tests {
     }
 
     /// PLAN-041 T6：任务列表 checkbox——checked attr 存在时复选格替代圆点。
+    /// PLAN-054 T4（五截图根因④，待澄清①方案 A）：两态同风格对
+    /// ✔(U+2714)/□(U+25A1)；done 态 marker 整 run accent 色（text-primary）。
     #[test]
     fn renders_task_list_checkbox() {
         let doc = render_document::<()>("- [x] 完成\n- [ ] 待办\n- 普通项\n", true);
         let View::Column { children, .. } = doc else { panic!("col") };
         let View::Column { children: items, .. } = &children[0] else { panic!("list") };
         assert_eq!(items.len(), 3);
-        let marker_of = |item: &View<()>| -> String {
+        let marker_of = |item: &View<()>| -> (String, bool) {
             let View::Row { children: r, .. } = item else { panic!("item row") };
-            text_of(&r[0])
+            let View::Text { content, style, .. } = &r[0] else { panic!("marker text") };
+            let accent = style.as_ref().is_some_and(|s| {
+                s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::TextColor(crate::ui::style::Color::Primary)))
+            });
+            (content.clone(), accent)
         };
-        assert_eq!(marker_of(&items[0]), "\u{2611} ", "勾选 ☑");
-        assert_eq!(marker_of(&items[1]), "\u{2610} ", "未勾 ☐");
-        assert_eq!(marker_of(&items[2]), "\u{2022} ", "普通项维持圆点");
+        let (done, done_accent) = marker_of(&items[0]);
+        assert_eq!(done, "\u{2714} ", "勾选 ✔（同风格对）");
+        assert!(done_accent, "done 态 marker accent 色（text-primary）");
+        let (todo, todo_accent) = marker_of(&items[1]);
+        assert_eq!(todo, "\u{25A1} ", "未勾 □（同风格对）");
+        assert!(!todo_accent, "未勾态保持 muted");
+        assert_eq!(marker_of(&items[2]).0, "\u{2022} ", "普通项维持圆点");
     }
 
     /// PLAN-041 T6：行内图片——Image mark span → View::Image（src 现成）。
