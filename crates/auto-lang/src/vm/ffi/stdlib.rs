@@ -747,7 +747,11 @@ pub(crate) fn exit_audit_to(path: &Path, code: i32, site: &str) {
         let _ = fs::create_dir_all(parent);
     }
     let line = format!("{ts} pid={} code={code} site={site}\n", std::process::id());
-    let _ = fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut f| f.write_all(line.as_bytes()));
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut f| f.write_all(line.as_bytes()));
 }
 
 /// PLAN-575 D1 退出审计入口：落到审计路径（见 `exit_audit_path`）。
@@ -817,10 +821,9 @@ mod exit_audit_tests {
 
     #[test]
     fn exit_audit_to_creates_missing_parent_dir() {
-        let path = tmp_audit_path("mkdir").with_file_name(format!(
-            "sub-{}",
-            std::process::id()
-        )).join("audit.log");
+        let path = tmp_audit_path("mkdir")
+            .with_file_name(format!("sub-{}", std::process::id()))
+            .join("audit.log");
         let _ = fs::remove_file(&path);
         exit_audit_to(&path, 0, "main_return");
         let content = fs::read_to_string(&path).unwrap();
