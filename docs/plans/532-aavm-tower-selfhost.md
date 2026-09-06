@@ -1,18 +1,23 @@
 ---
 plan_id: PLAN-532
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-tower-selfhost
 author: [zhaopuming]
 created_at: 2026-09-03
 updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: [GOAL-017]     # 自举（终点形态:塔顶自持回路）
+supersedes_spec_components:
+  - "docs/specs/aavm/project.md: 修改——GOAL-017 终点注记(自举达成口径四件)+队列③缓议项核销(塔顶已达成)+收官口径用塔阶段注记(572 的修复注记之外的本计划增量)"
+new_spec_components:
+  - "scripts/aavm_native_gen_check.sh: 新增——原生代际对拍 runner(一代/二代/转译固定点三判据,--skip-gen1/--skip-gen2 分段复跑)"
+  - "crates/auto-lang/src/tests/aavm2_m4.rs#test_aavm2_p532_lib_static_diff: 新增——lib 静态字节差分闸门(语义等价口径,转正常态档)"
+  - "crates/auto-lang/src/tests/aavm2_t3.rs+scripts/aavm_tower_check.sh: 新增——t3 里程碑档(嵌套塔解释栈零漂移最终验收,T3_MILESTONE 自守门,大版本升级专用)"
+touched_goals:
+  - "GOAL-017: 自举——终点形态达成(双目标常态绿+W1 七文件全链/残留③静态差分清零=编译面全等+原生代际闭合:一代 8/8+exe² 构建绿+二代 8/8+转译固定点 PASS)"
 
 affects: [aavm]
-current_step: 7
+current_step: 14
 total_steps: 16
 ---
 
@@ -351,11 +356,63 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
     commit 00575a02a——平时零开销,大版本升级 `T3_MILESTONE=1 cargo t3`)。
 13. [ ] 文档回写：project.md GOAL-017 终点注记/队列③核销/divergences/
     KNOWN-DEBT（P525-5 处置）。
-14. [ ] 折叠点④+复审（/auto-plan:review）→ tf → status: reviewed。
+14. [✅ 已完成 2026-09-06] 折叠点④+复审（/auto-plan:review）→ tf → status: reviewed。
+    ——复审记录见下节;tf 3465/3466+taa 3617/3618(唯一红=charts_gallery
+    预存,559/575 在案基线);代际判定链现场复跑 ALL PASS。
 15. [ ] merge 沉淀归档。
 16. [ ] （里程碑广播）自举达成口径汇总：双目标+塔顶+AA2R 自译全景。
 
 ## 复审记录
+
+**复审人**:zhaopuming(/auto-plan:review,2026-09-06;worktree
+`.wt/lang-532/auto-lang`@c891dc8a9 与 master 同步复核)
+
+**收尾执行(本会话先补齐后复审)**:步骤 6/8/9 翻牌(证据:差分转正
+ea76ece26/572 T5b 两判据);步骤 10-12 登记(⑤腿 W0 定案收口+判定表
+落档确认+嵌套塔 t3 降级确认);步骤 13 回写(project.md GOAL-017 终点
+注记+队列③核销+KNOWN-DEBT P532-D1..D3,worktree 提交 9cdcc6af4 合入)。
+清理:worktree 残留 p574_probe 注册(他计划临时探针,"用后即删"且文件
+缺失会破编译)已弃置;主检出并行 P534 会话在途改动按仓惯例 stash 隔离
+后恢复。
+
+**逐条验收复验(verify, don't trust;关键项现跑)**:
+
+1. **自举闭合——PASS(现场复跑)**:`bash scripts/aavm_native_gen_check.sh
+   --skip-gen1` 于 worktree 现跑 **ALL PASS**——一代 8/8(exe¹==宿主
+   oracle)/exe² 构建绿(exe¹ --trans 自编译 514856B→cargo)/二代 8/8
+   (exe²==exe¹)/**转译固定点 PASS**(exe¹ --trans==exe² --trans,≥两代
+   转译一致);判定表 scratch/p532/native_gen_table.md(本轮刷新)与
+   scratch/p572/gen2/native_gen_table.md(572 T5b 终版)双档。aavm 编译器
+   主判据(模块路径语料+M4 字节对拍+lib 静态字节差分):`cargo taa`
+   3617/3618 现跑,含 test_aavm2_p532_lib_static_diff(转正差分,
+   SEMANTICALLY IDENTICAL)PASS。
+2. **gap 清单 100% 处置——PASS**:附录 A 6 类(W0 盘点)+W1 19 族
+   (G0-G19,步骤 4)逐项裁定留档(扩语法/改写/豁免+理由),无未处置项。
+3. **⑤腿——PASS**:结构化替代判据升级(附录 B 自裁定⑤腿为主判据
+   通道)+P525-5 定性结论留档(W0-2:环境资源族,空闲窗口 4/4+4/4);
+   572 根修后多轮 58/58(本轮 taa compile_corpus 32.8s PASS 现证);
+   观察项挂 P532-D1(触发条件+取证配方在案)。
+4. **tower 三件套+保护网+tf——PASS(口径注记)**:tower{1,2,3}.at+
+   runner 落盘;原三件套 expected.out/hash 锚形态经 2026-09-04 二次
+   裁定(嵌套塔降级里程碑层,044b12c64)由**运行期 R0 oracle 形态**
+   (aavm_tower_check.sh R0==O1==O2==O3 互拍+T3_MILESTONE 自守门,
+   00575a02a)取代——裁定演进留档,非遗漏;折叠验收不依赖塔(裁定
+   原文)。保护网:tf 3465/3466+taa 3617/3618,唯一红=
+   test_charts_gallery_compiles(master 存量,Plan 559/575 复审在案
+   同款,非 P532 归属);607 skipped=P574 双解释器 Windows 跳过(574
+   在案)。
+5. **GOAL-017 注记+无静默丢弃——PASS**:project.md 终点注记(自举
+   达成口径四件:双目标/塔顶静态差分全等/原生代际闭合/AA2R 自译)+
+   队列③缓议项核销(9cdcc6af4);遗漏/延后/workaround 扫描:无静默
+   丢弃——债 P532-D1(⑤腿观察)/D2(差分 canon 分派机制豁免:
+   call.spec↔call.nat+jmp.far,行为由 M5+⑤腿兜底)/D3(拼接→模块
+   加载默认化,架构指令另立跟进);待澄清①-⑥全部结案(⑥由
+   PLAN-572 承接并已归档);步骤 16(里程碑广播)归 merge 阶段执行。
+
+**结论:5/5 验收 PASS,零未批准延后 → status: reviewed,可入
+/auto-plan:merge。**worktree(.wt/lang-532)与分支 plan-532-dev 保持
+在位,终态折叠归 merge;组内 auto-down 兄弟 worktree 已于 569 归档时
+清理(本组仅剩 auto-lang)。
 
 ## 附录 B:W0-2 塔顶判据设计定案(2026-09-04)
 
