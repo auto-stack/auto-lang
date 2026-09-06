@@ -296,15 +296,23 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
 
 ### W3 N 阶+稳定化（worktree 续）
 
-9. [▶ 进行中 2026-09-06] 自编译代际对拍（原生,两代）：原生 aavm exe 编译 aavm.at+lib
+9. [▶ 阻塞登记 2026-09-06] 自编译代际对拍（原生,两代）：原生 aavm exe 编译 aavm.at+lib
    →a2r→exe² →exe² 跑 corpus 与一代一致;首个分歧位定位机制。
    管道各环已实证:exe¹=⑤腿 aavm2_bin(--trans 模式=ar_run 转译,
    harness 内置);拼合源构造(剥 use 七文件+aavm.at 依赖序,462KB)
    落盘;exe² 构建=exe¹ --trans 输出+prelude/shims(⑤腿+531 同款)
    +harness→cargo build;二代判据脚本(scripts/aavm_native_gen_check.sh
    尾段:exe² 跑代表集==exe¹ + 转译固定点 exe¹ --trans==exe² --trans)。
-   **当前卡点**:exe¹ --trans 拼合源为解释执行(小时级;旧 exe 实测
-   2.5h 未完成被回收)——转译慢路径后台运行中,完成后 exe² 构建即收口。
+   **〔阻塞:AA2R 转译超线性,待澄清⑥〕**exe¹ --trans 吃含 codegen.at
+   的拼合源挂死级慢(单文件 codegen.at 219KB>7min 不完;同量级
+   a2r.at 152KB 仅 4.3s/parser.at 83KB 1.0s——非纯规模)。阶梯定位:
+   type CG 重建(fields+static new+方法群)逐方法递增,**27 方法 0.1s /
+   28 方法(+)emit_store)>7min 悬崖**;单方法/三角(fields+new+
+   emit_store)不挂——方法群组合触发(嫌疑:prescan/fixpoint 族
+   ar_scan_mutations/ar_fixpoint_mutates/ar_scan_self_calls 的组合
+   复杂度,未定位到单点)。⑤腿 58/58 不含此形态故未暴露。复现:
+   exe¹ --trans <type CG 前 28 方法重建源>。**处置:待澄清⑥升级
+   用户裁定**(修 AA2R 超线性 vs 步骤 9 降级判据)。
 10. [ ] ⑤腿稳定化处置（按 W0 定案落地;或替代判据升级登记）——裁定后
     ⑤腿升格为主判据通道,常态绿为硬要求。
 11. [ ] 折叠点③：代际判定表+⑤腿处置留档 → 合入。
@@ -437,3 +445,13 @@ lib 源 use 声明完备不受影响;塔顶语料需遵守显式导入约定。
    "11.11.11"(疑字段错位)+静默空输出 flake 仍在(净 lib 3 连跑
    rc=0 空/rc=1 空/rc=124 各一)。每层根因独立,同"深度索引 vs
    append-only"疑族待下一层核。
+6. **AA2R 转译超线性(2026-09-06 登记,步骤 9 阻塞)**:exe¹(AA2R)
+   转译含 codegen.at 的源时方法群 27→28(emit_store 加入)呈 0.1s→
+   >7min 悬崖(疑似指数/死循环族);单方法/三角不挂,组合触发。
+   嫌疑面:ar_prescan_fn/ar_scan_mutations/ar_fixpoint_mutates 族
+   组合复杂度。**需用户裁定**:W3 内根修 AA2R 超线性(定位+修,量级
+   未知)vs 步骤 9 判据降级(exe² 构建留债,代际对拍以管道就绪+
+   一代 8/8 形态部分留档)。注:待澄清⑤的残留③三项(print 调用臂/
+   cg_use_scan 字段错位/静默空输出 flake)随静态差分清零已部分或
+   全部消解(差分全等=编译面一致;执行面 flake 待模块路径默认化后
+   复测),⑤条目历史留档。
