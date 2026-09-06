@@ -616,7 +616,7 @@ Image display
 
 ### `imagesurface`
 
-`builtin_widget` · `imagesurface` · web: `component` · iced: `component` · category: `media`
+`builtin_widget` · `imagesurface` · web: `component` · iced: `full` · category: `media`
 
 Asynchronous image viewer surface
 

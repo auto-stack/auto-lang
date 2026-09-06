@@ -598,7 +598,7 @@ element imagesurface {
     category: "media"
     tier: "builtin_widget"
     aliases: ["ImageSurface", "image-surface", "image_surface"]
-    backends: { web: "component", iced: "component", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "ImageSurface" }
     props: [
         { name: "src", type: "string", required: true, description: "Media ticket URI" }
