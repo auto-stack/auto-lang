@@ -2439,6 +2439,8 @@ fn reindex_table_keys(segs: &mut [Seg]) {
 
 /// PLAN-055 T2：cell 内 segs → 单行文本（叶 live text 串联；软换行折叠
 /// 空格、`|` → `\|`——spans_flat 口径，emit 往返保结构）。
+/// PLAN-056 D2：反斜杠先于管道转义（GFM 序）——cell 含 `\` 时 emit 后
+/// 重解析文本恒等（尾反斜杠不再塌进分隔符）。
 fn cell_live_text(cell: &[Seg], blocks: &[BlockBuf]) -> String {
     let mut t = String::new();
     for s in cell {
@@ -2448,7 +2450,9 @@ fn cell_live_text(cell: &[Seg], blocks: &[BlockBuf]) -> String {
             }
         }
     }
-    t.replace('\n', " ").replace('|', "\\|")
+    t.replace('\n', " ")
+        .replace('\\', "\\\\")
+        .replace('|', "\\|")
 }
 
 fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
@@ -5228,10 +5232,22 @@ fn main() { let s = \"hi\"; }
         });
         let out = c.emit_document();
         assert!(out.contains("| a\\|b | 1 |"), "cell 竖线 emit 转义：{out:?}");
-        // 重解析结构一致（无转义内容的普通文本往返）。
+        // PLAN-056：重解析闭环——转义 cell 经 parser 反转义回 `a|b`，结构
+        // +文本双稳定（055 期因 parser 无转义感知收敛掉，D1 清偿后回桩）。
         let c2 = core_for("t055te2", &out);
         let out2 = c2.emit_document();
-        assert_eq!(out.lines().count(), out2.lines().count(), "往返行数稳定");
+        assert_eq!(out, out2, "转义 cell 重解析往返恒等");
+        // 反斜杠硬化：cell 文本 "a\b" → emit "a\\b"，重解析回 "a\b"。
+        run_fs(|fs| {
+            let mut blocks = c.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(2) {
+                c.overwrite_block_text(fs, b, "a\\b".to_string());
+            }
+        });
+        let out3 = c.emit_document();
+        assert!(out3.contains("| a\\\\b | 1 |"), "cell 反斜杠 emit 转义：{out3:?}");
+        let c3 = core_for("t055te3", &out3);
+        assert_eq!(c3.emit_document(), out3, "反斜杠 cell 重解析往返恒等");
     }
 
     /// PLAN-055 T3：网格几何归因——cell 文字 x/w 按列宽（缺省等分）、
