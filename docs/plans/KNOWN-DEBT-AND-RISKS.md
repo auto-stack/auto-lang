@@ -1163,6 +1163,19 @@
   替代金样 = py_torch_train（Linear 裸栈 + seed 化收敛）已在案。
   调研节落 python-parity-roadmap.md §7.3。
 
+### P567（2026-09-06，Plan 567 脚本模式收官波——复审登记）
+
+- **P567-R1 W0010 lint 未挂 error.rs W 码体系**：nullability lint 以
+  log::warn + 收集器落地（计划文本写 error.rs 新 W 码——该体系挂 parser
+  面，codegen 接线超收口预算）。可见性等价、有单测；偿还路径=W 码发射
+  通道向 codegen 开放后迁移（顺带 CLI 呈现）。
+- **P567-R2 CLI 错误路径丢已缓冲 stdout（存量，master 同形实证）**：脚本
+  出错退出时已 print 的内容不落盘/不落管（错误路径跳过 stdout flush）。
+  影响：错误复现时缺前段输出。偿还路径=错误退出前 flush stdout 捕获缓冲。
+- （minor）with-as 出口保证的 tv 语料只断言 catch 还原链路（99_script_err/
+  04），文件 flush 可观测断言留在 scratch 探针 + infer test18 行为面——
+  语料化升级随 R2 一并考虑。
+
 ### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
 
 - **P537-D1 VM lucide 图标闭集缺口**:`iced/renderer.rs lucide_svg(name)` 为
