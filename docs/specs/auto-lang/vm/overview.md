@@ -46,6 +46,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   P569-D1/P569-R1。
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
+- 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。
 ## 关键入口
 
 - `crates/auto-lang/src/lib.rs:run_autovm` / `run_with_capture` — 执行入口

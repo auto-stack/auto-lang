@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-575
-status: reviewed
+status: archived
 feature_name: 桌面进程静默退出归因与修复（通知中心二次开合，526 高风险债）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-06
@@ -124,7 +124,7 @@ node 脚本（desktop MCP JSON-RPC，vm-smoke 协议复用）：initialize → f
 
 ### W1 审计与复现基座
 
-- [ ] **T1** 退出审计：`stdlib.rs` 增 `exit_audit(code, site)`（env
+- [x] **T1** 退出审计：`stdlib.rs` 增 `exit_audit(code, site)`（env
       `AUTO_DESKTOP_EXIT_LOG`，缺省 %LOCALAPPDATA%/auto-desktop/exit-
       audit.log；写失败静默）+ `shim_process_exit` 挂点 + 全局 panic hook
       （main 装配处）+ main_return 挂点。验证：`cargo test -p auto-lang
@@ -135,7 +135,7 @@ node 脚本（desktop MCP JSON-RPC，vm-smoke 协议复用）：initialize → f
       `.run()?` 后正常返回路径）；5 测试过（含子进程探针：退出码 7 不变 +
       审计行 site=vm_process_exit），`cargo test -p auto-lang --lib
       exit_audit` 5 passed。
-- [ ] **T2** 复现驱动脚本 `notes_toggle_repro.mjs`（desktop MCP：find 铃
+- [x] **T2** 复现驱动脚本 `notes_toggle_repro.mjs`（desktop MCP：find 铃
       铛 → press×2 → 存活轮询 → 台账行；异名二进制启动；MCP 不可达走
       t5_smoke 原生驱动回退）。验证：实机跑通 ≥5 轮台账。
       [✅ 已完成] scratch/p575/notes_toggle_repro.mjs（零依赖 node，异名
@@ -146,7 +146,7 @@ node 脚本（desktop MCP JSON-RPC，vm-smoke 协议复用）：initialize → f
       notification_center 路径（stderr 证据：NotificationCenter Init/
       RebuildNotes handler 各轮命中；截图证面板开）。5 轮台账全存活零退出
       （scratch/p575/ledger.jsonl，T2 commit c51218f7b）。
-- [ ] **T3** 独占环境 N=20 轮归因运行：逐轮台账 + 审计文件留档，产出分支
+- [x] **T3** 独占环境 N=20 轮归因运行：逐轮台账 + 审计文件留档，产出分支
       判据结论（D3 三分支其一）。验证：台账 + 结论行入计划复审记录。
       [✅ 已完成] N=20 轮（异名副本独占运行，20 个独立进程）：20/20
       存活零退出，逐轮 toggle 执行证据（NotificationCenter Init/
@@ -156,18 +156,18 @@ node 脚本（desktop MCP JSON-RPC，vm-smoke 协议复用）：initialize → f
 
 ### W2 分支收口（按 T3 结论走其一）
 
-- [ ] **T4a** （产品缺陷分支）按审计 site 定位修复 `renderer.rs`
+- [x] **T4a** （产品缺陷分支）按审计 site 定位修复 `renderer.rs`
       notes_toggle 双击路径/涉及面；修复后复跑 20 轮零退出 + 双击回归断言
       入 desktop e2e/驱动脚本。验证：20 轮台账零退出 + 断言过。
       [✅ 已完成—分支未命中] T3 审计零记录+零退出，产品缺陷分支不成立，
       T4a 不启动（无归因证据不作猜测性修复——计划变更摘要红线）。
-- [ ] **T4b** （外部击杀分支）KNOWN-DEBT 526 行降级改写（结论+049 互链）
+- [x] **T4b** （外部击杀分支）KNOWN-DEBT 526 行降级改写（结论+049 互链）
       + 535 D 项销账注记（或不可复现降档 🟡）。验证：两处账本 diff。
       [✅ 已完成] 不可复现降档出口（575 待澄清①预授权）：KNOWN-DEBT
       526 行自 🔴 移 🟡 改写"未能复现（疑外部击杀，049 同族）"+审计常驻
       复现即启；535 D 项勾销 + ✅销账注记（PLAN-575 结论+台账指针）。
       两处 diff 落 plan-575-dev。
-- [ ] **T5** 回归与折回：`cargo tf --no-fail-fast`（唯一红=charts 既有）
+- [x] **T5** 回归与折回：`cargo tf --no-fail-fast`（唯一红=charts 既有）
       + 折回 auto-lang master + 簿记。验证：计数落复审记录。
       [✅ 已完成] `cargo tf --no-fail-fast`：3466 测 3465 过，唯一红=
       ui_gen::vue::tests::test_charts_gallery_compiles（基线已坏 charts
