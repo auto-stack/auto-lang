@@ -1,0 +1,14 @@
+# Allow vue/ and playwright test manifest
+!vue/
+!tests/package.json
+
+# Generated / runtime artifacts (still ignored)
+gen/
+.auto/
+dist/
+build/
+examples/
+.am/
+tests/node_modules/
+tests/test-results/
+tests/playwright-report/

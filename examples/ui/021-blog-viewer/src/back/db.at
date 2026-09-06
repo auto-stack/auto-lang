@@ -1,0 +1,242 @@
+// db.at — Blog Viewer data service (in-memory).
+// Seeds 6 articles covering Rust, AutoUI, and WASM categories.
+// Reuses original 021-blog-viewer articles with expanded 3-paragraph bodies.
+// NOTE: seed strings ASCII-only (field-splitter limitation).
+
+use api: Article
+
+// ═══════════════════════════════════════════════════════════
+// In-memory storage & Seed Data
+// ═══════════════════════════════════════════════════════════
+
+var articles List<Article> = List<Article>.new([
+    Article {
+        id: 6,
+        title: "Getting Started with Rust",
+        author: "Alice Chen",
+        date: "Apr 15, 2026",
+        category: "Rust",
+        summary: "An introduction to Rust programming language and its unique features for systems programming.",
+        body: "Rust is a systems programming language that runs blazingly fast, prevents segfaults, and guarantees thread safety.\n\nIt has been voted the most loved programming language for years. Its type system and memory model eliminate whole classes of common bugs at compile time without requiring a garbage collector.\n\nIn this article, we explore ownership, borrowing, and lifetimes, showing how zero-cost abstractions make systems programming accessible and safe.",
+        claps: 12,
+    },
+    Article {
+        id: 5,
+        title: "Building UIs with Auto Language",
+        author: "Bob Wang",
+        date: "Apr 12, 2026",
+        category: "AutoUI",
+        summary: "How Auto Language simplifies UI development with its declarative widget system.",
+        body: "The Auto Language widget system allows developers to describe UIs declaratively using a simple syntax.\n\nWith the AURA framework, you can build cross-platform applications that compile to Vue, ArkTS, and Jetpack Compose without rewriting business logic.\n\nState management is unified through stores and pure messages, providing predictable updates and effortless testing across desktop and web targets.",
+        claps: 24,
+    },
+    Article {
+        id: 4,
+        title: "WebAssembly in 2026",
+        author: "Carol Li",
+        date: "Apr 10, 2026",
+        category: "WASM",
+        summary: "The state of WebAssembly ecosystem and what is new this year.",
+        body: "WebAssembly has matured significantly over the past decade into a standard portable compilation target.\n\nWith component model support and garbage collection, WASM is now viable for complex fullstack applications and microservices.\n\nThis article covers the latest runtime developments and practical use cases across browsers, edge workers, and embedded devices.",
+        claps: 0,
+    },
+    Article {
+        id: 3,
+        title: "Advanced Systems with Rust",
+        author: "David Zhang",
+        date: "Apr 8, 2026",
+        category: "Rust",
+        summary: "Diving deep into type-level concurrency primitives and fearless parallel patterns.",
+        body: "Writing concurrent code has traditionally been error-prone due to data races and deadlocks.\n\nRust Send and Sync traits transform threading bugs into compile-time errors, enabling developers to build fearless multithreaded systems.\n\nWe examine channels, atomic operations, and lock-free data structures that maximize hardware utilization without sacrificing memory safety.",
+        claps: 5,
+    },
+    Article {
+        id: 2,
+        title: "Reactive Architecture in AutoUI",
+        author: "Emma Liu",
+        date: "Apr 5, 2026",
+        category: "AutoUI",
+        summary: "A practical guide to the Model-Msg-View pattern powering modern AutoUI web applications.",
+        body: "The Elm architecture has proven to be one of the most reliable paradigms for front-end interface construction.\n\nAutoUI brings Elm-style purity to multi-backend development, pairing declarative layouts with predictable state transitions.\n\nIn this walkthrough, we build an interactive real-time dashboard and demonstrate how store subscriptions keep views completely synchronized.",
+        claps: 8,
+    },
+    Article {
+        id: 1,
+        title: "High Performance WASI",
+        author: "Frank Wu",
+        date: "Apr 2, 2026",
+        category: "WASM",
+        summary: "Best practices for optimizing WebAssembly bundle size and execution efficiency.",
+        body: "As web applications grow more complex, compiling performance-critical components to WebAssembly becomes essential.\n\nModern toolchains like wasm-pack and wasm-opt can strip unused code and reduce binary footprints by up to sixty percent.\n\nWe benchmark real-world workloads and show how to seamlessly bridge JavaScript and WASM using typed memory buffers.",
+        claps: 3,
+    },
+])
+
+var nextid int = 7
+
+type ClapRecord = {
+    post_id: int
+}
+
+var clapped_ids List<ClapRecord> = List<ClapRecord>.new([])
+
+// ═══════════════════════════════════════════════════════════
+// Article operations
+// ═══════════════════════════════════════════════════════════
+
+pub fn filter_posts(category str) []Article {
+    if category == "" || category == "All" {
+        return articles
+    }
+    var filtered List<Article> = List<Article>.new([])
+    for a in articles {
+        if a.category == category {
+            let item = Article {
+                id: a.id,
+                title: a.title,
+                author: a.author,
+                date: a.date,
+                category: a.category,
+                summary: a.summary,
+                body: a.body,
+                claps: a.claps,
+            }
+            filtered.push(item)
+        }
+    }
+    return filtered
+}
+
+pub fn find_post(id int) ?Article {
+    for a in articles {
+        if a.id == id {
+            let item = Article {
+                id: a.id,
+                title: a.title,
+                author: a.author,
+                date: a.date,
+                category: a.category,
+                summary: a.summary,
+                body: a.body,
+                claps: a.claps,
+            }
+            return Some(item)
+        }
+    }
+    return None
+}
+
+pub fn create_post(title str, author str, category str, summary str, body str) Article {
+    let id int = nextid
+    nextid = nextid + 1
+    let post = Article {
+        id: id,
+        title: title,
+        author: author,
+        date: "Sep 6, 2026",
+        category: category,
+        summary: summary,
+        body: body,
+        claps: 0,
+    }
+    var new_articles List<Article> = List<Article>.new([])
+    new_articles.push(post)
+    for a in articles {
+        let kept = Article {
+            id: a.id,
+            title: a.title,
+            author: a.author,
+            date: a.date,
+            category: a.category,
+            summary: a.summary,
+            body: a.body,
+            claps: a.claps,
+        }
+        new_articles.push(kept)
+    }
+    articles = new_articles
+    return post
+}
+
+pub fn delete_post(id int) bool {
+    var found bool = false
+    var new_articles List<Article> = List<Article>.new([])
+    for a in articles {
+        if a.id == id {
+            found = true
+        } else {
+            let kept = Article {
+                id: a.id,
+                title: a.title,
+                author: a.author,
+                date: a.date,
+                category: a.category,
+                summary: a.summary,
+                body: a.body,
+                claps: a.claps,
+            }
+            new_articles.push(kept)
+        }
+    }
+    articles = new_articles
+    return found
+}
+
+pub fn toggle_clap(id int) int {
+    var already_clapped bool = false
+    var new_clapped List<ClapRecord> = List<ClapRecord>.new([])
+    for rec in clapped_ids {
+        if rec.post_id == id {
+            already_clapped = true
+        } else {
+            let item = ClapRecord { post_id: rec.post_id }
+            new_clapped.push(item)
+        }
+    }
+
+    var delta int = 1
+    if already_clapped {
+        delta = -1
+        clapped_ids = new_clapped
+    } else {
+        let item = ClapRecord { post_id: id }
+        clapped_ids.push(item)
+    }
+
+    var new_articles List<Article> = List<Article>.new([])
+    var result_claps int = 0
+    for a in articles {
+        if a.id == id {
+            var updated_claps int = a.claps + delta
+            if updated_claps < 0 {
+                updated_claps = 0
+            }
+            result_claps = updated_claps
+            let updated = Article {
+                id: a.id,
+                title: a.title,
+                author: a.author,
+                date: a.date,
+                category: a.category,
+                summary: a.summary,
+                body: a.body,
+                claps: updated_claps,
+            }
+            new_articles.push(updated)
+        } else {
+            let kept = Article {
+                id: a.id,
+                title: a.title,
+                author: a.author,
+                date: a.date,
+                category: a.category,
+                summary: a.summary,
+                body: a.body,
+                claps: a.claps,
+            }
+            new_articles.push(kept)
+        }
+    }
+    articles = new_articles
+    return result_claps
+}

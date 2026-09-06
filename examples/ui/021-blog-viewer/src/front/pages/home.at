@@ -1,0 +1,144 @@
+// home.at — "/" Blog home page.
+// Displays category filter chips, article list, and a write button.
+// Clicking an article navigates to /post/:id.
+use store: BlogStore
+
+widget home {
+    msg {
+        Init,
+        TagChanged(str),
+        OpenPost(int),
+        WritePost,
+    }
+
+    model {
+    }
+
+    view {
+        col {
+            style: "max-w-4xl mx-auto px-4 py-8 gap-6 w-full"
+
+            // Header banner with title, article count, and Write button
+            row {
+                style: "items-center justify-between gap-4 pb-2"
+                col {
+                    h1 "Stories & Ideas" { style: "text-2xl md:text-3xl font-bold text-foreground" }
+                    text f"${.store.articles.len()} articles" { style: "text-sm text-muted-foreground mt-1" }
+                }
+                button {
+                    onclick: .WritePost
+                    style: "inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
+                    text "✍️ Write" {}
+                }
+            }
+
+            // Category chips
+            row {
+                style: "items-center gap-2 border-b border-border pb-4 flex-wrap"
+                button {
+                    onclick: .TagChanged("All")
+                    style: if .store.category == "All" {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+                    }
+                    text "All" {}
+                }
+                button {
+                    onclick: .TagChanged("Rust")
+                    style: if .store.category == "Rust" {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+                    }
+                    text "Rust" {}
+                }
+                button {
+                    onclick: .TagChanged("AutoUI")
+                    style: if .store.category == "AutoUI" {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+                    }
+                    text "AutoUI" {}
+                }
+                button {
+                    onclick: .TagChanged("WASM")
+                    style: if .store.category == "WASM" {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-primary text-primary-foreground shadow-sm transition-colors cursor-pointer"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+                    }
+                    text "WASM" {}
+                }
+            }
+
+            // Article list
+            if .store.loading {
+                col {
+                    style: "items-center justify-center py-16 gap-3 text-muted-foreground"
+                    text "Loading articles..." {}
+                }
+            } else {
+                if .store.articles.len() == 0 {
+                    col {
+                        style: "items-center justify-center py-16 gap-3 text-muted-foreground"
+                        text "No articles found in this category" { style: "font-medium" }
+                    }
+                } else {
+                    col {
+                        style: "divide-y divide-border/60"
+                        for article in .store.articles {
+                            col {
+                                onclick: .OpenPost(article.id)
+                                style: "py-6 gap-2.5 cursor-pointer group"
+                                row {
+                                    style: "items-center gap-2 text-xs text-muted-foreground"
+                                    text article.author { style: "font-medium text-foreground" }
+                                    text "·" {}
+                                    text article.date {}
+                                    text "·" {}
+                                    text article.category {
+                                        style: "px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium text-xs"
+                                    }
+                                }
+                                text article.title {
+                                    style: "text-xl font-bold text-foreground group-hover:text-primary transition-colors"
+                                }
+                                text article.summary {
+                                    style: "text-sm text-muted-foreground leading-relaxed line-clamp-2"
+                                }
+                                row {
+                                    style: "items-center justify-between text-xs text-muted-foreground mt-1"
+                                    row {
+                                        style: "items-center gap-1.5"
+                                        text "👏" {}
+                                        text f"${article.claps} claps" {}
+                                    }
+                                    text "Read more →" {
+                                        style: "text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+        }
+        .TagChanged(cat str) -> {
+            store.SetCategory(cat)
+        }
+        .OpenPost(id int) -> {
+            router.push("/post/" + id.to_string())
+        }
+        .WritePost -> {
+            router.push("/new")
+        }
+    }
+}

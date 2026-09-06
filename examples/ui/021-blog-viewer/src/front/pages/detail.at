@@ -1,0 +1,170 @@
+// detail.at — "/post/:id" article detail page.
+// Shows full article metadata, multi-paragraph body, clap action,
+// and two-step delete flow.
+use back.api: get_post, Article
+use store: BlogStore
+
+widget detail {
+    msg {
+        Init,
+        Back,
+        Clap,
+        AskDelete,
+        CancelDelete,
+        ConfirmDelete,
+    }
+
+    model {
+        var post_id int = 0
+        var article ?Article = None
+        var paragraphs []str = []
+        var show_delete_confirm bool = false
+        var loaded bool = false
+    }
+
+    view {
+        col {
+            style: "max-w-3xl mx-auto px-4 py-8 gap-6 w-full"
+
+            // Back button
+            button {
+                onclick: .Back
+                style: "inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit cursor-pointer"
+                text "← Back to Stories" {}
+            }
+
+            if .loaded {
+                if .article == None {
+                    col {
+                        style: "items-center justify-center py-20 gap-3 text-muted-foreground"
+                        text "Article not found" { style: "font-medium text-lg" }
+                        button {
+                            onclick: .Back
+                            style: "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm mt-2 cursor-pointer"
+                            text "Go back home" {}
+                        }
+                    }
+                } else {
+                    col {
+                        style: "gap-6"
+
+                        // Category tag & publication date
+                        row {
+                            style: "items-center gap-2 text-sm text-muted-foreground"
+                            text .article.category {
+                                style: "px-3 py-1 rounded-full bg-secondary text-secondary-foreground font-semibold text-xs"
+                            }
+                            text "·" {}
+                            text .article.date {}
+                        }
+
+                        // Article Title
+                        h1 .article.title {
+                            style: "text-3xl md:text-4xl font-extrabold text-foreground tracking-tight leading-tight"
+                        }
+
+                        // Author information banner
+                        row {
+                            style: "items-center gap-3 py-3 border-y border-border"
+                            text "👤" { style: "text-2xl" }
+                            col {
+                                style: "gap-0.5"
+                                text .article.author { style: "font-semibold text-sm text-foreground" }
+                                text "Writer & Contributor" { style: "text-xs text-muted-foreground" }
+                            }
+                        }
+
+                        // Action Bar: Claps & Delete
+                        row {
+                            style: "items-center justify-between py-2 border-b border-border"
+                            button {
+                                onclick: .Clap
+                                style: "inline-flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-full text-sm font-medium hover:bg-secondary/80 transition-colors cursor-pointer"
+                                text "👏" {}
+                                text f"${.article.claps} claps" {}
+                            }
+                            button {
+                                onclick: .AskDelete
+                                style: "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
+                                text "🗑️ Delete" {}
+                            }
+                        }
+
+                        // Delete Confirmation Banner
+                        if .show_delete_confirm {
+                            col {
+                                style: "p-4 rounded-xl border border-destructive/30 bg-destructive/5 gap-3"
+                                text "Delete this article?" { style: "font-semibold text-destructive text-sm" }
+                                text "This action cannot be undone. Are you sure you want to permanently remove this article?" {
+                                    style: "text-xs text-muted-foreground"
+                                }
+                                row {
+                                    style: "gap-2 justify-end"
+                                    button {
+                                        onclick: .CancelDelete
+                                        style: "px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-accent cursor-pointer"
+                                        text "Cancel" {}
+                                    }
+                                    button {
+                                        onclick: .ConfirmDelete
+                                        style: "px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-medium hover:bg-destructive/90 cursor-pointer"
+                                        text "Yes, Delete" {}
+                                    }
+                                }
+                            }
+                        }
+
+                        // Summary lead paragraph
+                        text .article.summary {
+                            style: "text-lg text-muted-foreground italic font-medium leading-relaxed"
+                        }
+
+                        // Multi-paragraph body
+                        col {
+                            style: "gap-4 mt-2"
+                            for p in .paragraphs {
+                                text p {
+                                    style: "text-base md:text-lg text-foreground/90 leading-relaxed"
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                col {
+                    style: "items-center justify-center py-20 text-muted-foreground"
+                    text "Loading article..." {}
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .post_id = router.param("id").to_int()
+            .article = get_post(.post_id)
+            if .article != None {
+                .paragraphs = .article.body.split("\n\n")
+            }
+            store.LoadArticle(.post_id)
+            .loaded = true
+        }
+        .Back -> {
+            router.push("/")
+        }
+        .Clap -> {
+            store.ClapPost(.post_id)
+            .article = get_post(.post_id)
+        }
+        .AskDelete -> {
+            .show_delete_confirm = true
+        }
+        .CancelDelete -> {
+            .show_delete_confirm = false
+        }
+        .ConfirmDelete -> {
+            store.RemovePost(.post_id)
+            router.push("/")
+        }
+    }
+}
