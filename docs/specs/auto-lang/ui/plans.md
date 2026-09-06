@@ -7,27 +7,28 @@
 |------|------|------|------|-----------|
 | 533 | vm-overlay-runtime-channel | ✅（reviewed→archived） | archive/ | VM(a2r) 悬浮层运行时通道（GOAL-007/003）：编译轨 overlay 家族从零臂到三族落地——codegen alert_dialog/dialog/dropdown_menu 家族臂发射 View::Popover（Modal/BottomStart+双 chrome 同串双轨一致）+on-only handler 枚举注入修复（type Msg=() 悬垂断点）;parser 自管开合铸造 __dlg_open/toggle/close 三件套（无 open 绑定 vue 风格源三轨同源,trigger 包裹形态落内层按钮）;解释器 ModalDialogFamily 三族分流+dismiss 折算（dialog/dropdown ESC/外点经 on_dismiss=__dlg_close_N 回流,alert 族循 shadcn 不关）;child_emit 两表键大小写折叠（跨 widget 派发断点,musk 059 T2）;实机——探针+gallery 三页双态差分（71.6%/71.7%/3.7% 锚定）+真 ESC/外点/按钮三路关闭+编译轨原生窗口 MCP 状态环;schema 26 条 iced 回填 native;债 P533-D1..D8（Phase2 家族/MCP 合成键盘/snapshot 口径/gallery rust 存量红等）;P533-1..6 台账 |
 | 534 | vm-widget-family-parity | ✅（reviewed→archived） | archive/ | VM overlay 家族余量三员 sheet/drawer/hovercard 双轨收官（GOAL-007/003，533 直续）：PopoverPlacement 增 Edge 贴边四变体（viewport 相对全高/全宽+snap 排除+layout 节点全高矩形）+模态 chrome 判定单点化 is_modal_chrome（Modal∪Edge* 共享 scrim/外点整吞/dismiss）；convert_side_panel 双镜像（side/direction 四向缺省 right+横条 w-96 h-full/纵条 w-full+drawer 贴缘圆角/装饰把手）+子标签族 split_children/styled 全形态；parser 铸造角色表扩 sheet/drawer（gallery 无显式 open 靠铸造 toggle）+hover_card_role hover 铸造（__dlg_enter/leave 替代 toggle,事件落 trigger 自身节点——MouseArea 包锚从 trigger events 读,与 toggle 包裹落内层规则相反）；rust 轨 side_panel_emission 同串发射表+generate_hover_card_popover（MouseArea 包锚+direct-msg 接线）；实机——sheet/drawer 开+外点关+OS 级 Esc 关（autoui_keyboard 不进原始事件流,overlay ESC 须真键盘）、hovercard 真 hover 进/出（SetCursorPos,MCP 无 hover 原语）全通**未降级**；全站 68 页扫描三员+dialog 族 minted=True（9 异常=master 存量导航栈溢出尾部,双二进制复现）；schema 三员入 aura.at+element_coverage+漂移 baseline +98/-18（533 dialog 同型）；tf 3462/3463+tv 3603/3604 唯一红 charts 存量（master 同红）；债 P534-D1..D6（delay 不消费/无拖拽/vue 对照未运行/avatar 家族缺口/导航栈溢出存量/未降级裁定）；P534-1..6 台账 |
+| 536 | vm-reactive-runtime-fixes | ✅（reviewed→archived，2026-09-05 三次关闭；2026-09-07 PLAN-546 复核补录——归档时未回写本表） | archive/ | VM 运行时反应性修复批（GOAL-007，533/534 直续；frontmatter affects=auto-lang/vm）：反应性三题（timer 写入触发视图失效/Init 重入收敛〔child_inits_fired 每组件一次记账+缺字段播种守卫〕/Date.format epoch 秒毫秒双口径归一 1e11 阈值）+子件 prop 约束+**absolute 定位原语**（absolute+偏移+z→父容器 overlay 层/无 z 留流内分层，hoist 臂挂 tracked col/row 主渲染路径+gallery /absolute 探针页；px 偏移模型边界 bottom-full/百分比不支持）+悬浮机制统一（renderer 动态路径 Column/Row abs 拆分层消费偏移 dynamic_abs_layer_position+fold_floats 多浮层全保留四处 hoist 臂,嵌套 Overlay 源序=栈序）+timer 失效广播契约强化（handler 执行中崩≠HandlerNotFound 置 dirty+热重载拍早退口脏桥接 500ms 兜底）+PollStream deadman 2 分钟窗（when 门恒假四修复合症状）+schema 围栏清偿（aura.at 再生成 dialog/dropdown 家族+element_coverage 双向登记+vb 侧有意漂移 128 条登记）+AUTO_DEBUG_POLLTRACE 诊断设施（env 门控零开销常驻）；slot-fill×hoist 限制登记（for 循环体内 col-arm hoist 不生效）；债 KD P536-D1（aura.at 再生成反不动点振荡）/P536-D2（定性修正:全帧根态写入可达,真最后一里=chatActivePath 投影链移交 musk 061 D25——T14/T15 同批移交） |
 | 537 | photo-gallery | ✅（reviewed→archived） | archive/ | 029 图库应用填洞（GOAL-007/010）：macOS 相册风图片浏览器——相册导航/搜索排序密度/缩略网格/大图查看器 prev-next-收藏；image widget 首个应用级双端示范（picsum 固定 seed 网络图源，缩略 cover/查看 contain）；单组件+平行列表数据流+计数文案 handler 预拼（025/027/028 第四例）；三形态实机——vue playwright 十项/vm 断言 14/14+密度 2/4 列实机/ui_desktop 图标+LaunchApp 实拍+app_registry 11/11；实测沉淀——VM lucide 闭集 84 项缺口（相册图标 emoji 绕开）/语义 grid cols·class 状态绑定不解析（三臂静态 grid 绕开）/view 关键字撞名/button 变体三默认类压制；债 P537-D1/D2；P537-1..6 台账 |
 | 530 | vm-mobile-paint-crash | ✅（reviewed→archived） | archive/ | VM mobile 断点双份绘制+721GB 启动崩溃专项（GOAL-007）：A 根因=Column 前缀 overlay 双渲染(472 立场退役,73/75 id 双布局实证)→叠层仅 absolute 脱流(column_layer_partition);B=每帧 Box::leak 无界泄漏(lucide_svg ~350B/图标/帧,+120MB/min)→按内容去重缓存(浸泡 262MB 持平,10/10 启动回归)+OBS-1 721GB=gutter 光栅 ∞ 视口饱和(42×u32::MAX×4 逐位一致)→非 finite 门卫+4096 上限;W12 toggle_group 横排连体组/W13 alert-dialog 模态 Popover 落地;P530_TRACE/NOMCP 诊断门控留档;67 页双宽扫描零失败;债 P530-D1..D4(breadcrumb 栈溢出=存量 master 缺陷归因在案) |
 | 527 | vm-tailwind-parity | ✅（reviewed→archived） | archive/ | VM 轨 Tailwind 全量覆盖契约（GOAL-007,plan-512 刻度口径机制上游）：v3.4 core 清单 vendor（8861 类×15 families+零依赖再生器 tools/gen_tailwind_manifest.py）+parse_reported 报告通道（静默丢弃关闭）+对拍审计台 style_parity 常驻 cargo t（白名单外零 missing+三家族〔布局 1582/视觉 1901/文本 308〕iced applied 门+PARSED_ONLY 台账+coverage 表 docs/style-coverage.md 同源再生）+四色板补全+950 真值行+渐变三 stop/彩色阴影/object-fit/全字重/leading 双轨/line-clamp/Fraction 分数 Fill-ratio 口径+隐性假映射三处顺修+Variant 管道（hover/focus/active/disabled 按钮状态面+responsive 五断点 window_width 解析期门控+dark 主题态门控,未命中登记不静默）+KNOWN-DEBT P527-1..5;复审 tf 3397/3398（唯一红=schema_drift 在案存量）零新增红 |
-| 096 | scenario-ui | ⏳（index 口径） | old/ | UI 场景架构：保留 View/Model/Msg 三元骨架 |
-| 098 | aura-schema | ⏳（index 口径） | old/ | AURA schema：校验 + LSP 补全 + 诊断，落地为 schema/aura.at |
-| 099 | shadcn-vue-migration | 🔧（index 口径） | old/ | Vue 生成器迁 shadcn-vue，组件覆盖分批推进 |
-| 105 | auto-router | 被 106 取代 | old/ | 路由初版：`"/" => Component {}` 静态 import |
-| 106 | router-use-syntax | 现行推荐 | old/ | `use module` 约定 + 懒加载 + 小写文件名（ADR-04） |
-| 135 | ui-incremental-compilation | ✅（index 口径） | old/ | UI 增量编译复用 AIE 基建（UICache） |
-| 138 | arkts-backend | ✅（index 口径） | old/ | ArkTS 后端全量落地，DevEco Studio 验证 |
-| 140 | aura-widget-library | ⏳（index 口径） | old/ | 硬编码组件定义迁 .at widget 文件 + WidgetRegistry |
-| 142 | aura-arkts-transpilation | ⏳（index 口径） | old/ | 54 个 AURA widget 到 ArkTS 的转译 |
-| 143 | stdlib-widget-library | Approved（plan 自述） | old/ | ~45 组件从 component-gallery 迁入 stdlib/aura/widgets |
-| 180 | a2rust-ui-generator | ⏳（index 口径） | old/ | RustGenerator 接入 auto gen（GPUI 路径） |
-| 205 | dynamic-component-vm-ui | ✅ | old/ | VM 驱动动态 UI：VmBridge + AuraViewBuilder + iced |
-| 217 | a2ui-composer-implementation | ✅ | old/ | 三栏 composer（palette/canvas/inspector），Vue 3 构建 |
-| 227 | dynamic-ui-iced | ✅ | old/ | `run_file()` 自动检测 widget/app 起 iced 窗口 |
+| 096 | scenario-ui | ⏳（index 口径） | archive/ | UI 场景架构：保留 View/Model/Msg 三元骨架 |
+| 098 | aura-schema | ⏳（index 口径） | archive/ | AURA schema：校验 + LSP 补全 + 诊断，落地为 schema/aura.at |
+| 099 | shadcn-vue-migration | 🔧（index 口径） | archive/ | Vue 生成器迁 shadcn-vue，组件覆盖分批推进 |
+| 105 | auto-router | 被 106 取代 | archive/ | 路由初版：`"/" => Component {}` 静态 import |
+| 106 | router-use-syntax | 现行推荐 | archive/ | `use module` 约定 + 懒加载 + 小写文件名（ADR-04） |
+| 135 | ui-incremental-compilation | ✅（index 口径） | archive/ | UI 增量编译复用 AIE 基建（UICache） |
+| 138 | arkts-backend | ✅（index 口径） | archive/ | ArkTS 后端全量落地，DevEco Studio 验证 |
+| 140 | aura-widget-library | ⏳（index 口径） | archive/ | 硬编码组件定义迁 .at widget 文件 + WidgetRegistry |
+| 142 | aura-arkts-transpilation | ⏳（index 口径） | archive/ | 54 个 AURA widget 到 ArkTS 的转译 |
+| 143 | stdlib-widget-library | Approved（plan 自述） | archive/ | ~45 组件从 component-gallery 迁入 stdlib/aura/widgets |
+| 180 | a2rust-ui-generator | ⏳（index 口径） | archive/ | RustGenerator 接入 auto gen（GPUI 路径） |
+| 205 | dynamic-component-vm-ui | ✅ | archive/ | VM 驱动动态 UI：VmBridge + AuraViewBuilder + iced |
+| 217 | a2ui-composer-implementation | ✅ | archive/ | 三栏 composer（palette/canvas/inspector），Vue 3 构建 |
+| 227 | dynamic-ui-iced | ✅ | archive/ | `run_file()` 自动检测 widget/app 起 iced 窗口 |
 | 234 | a3ui-a2vue-replica | ✅ | archive/ | a2ui composer 的 a2vue 复刻，7 页全阶段完成 |
-| 235 | a2vue-transpiler-gaps | ✅ | old/ | ts_adapter 修复 + storage/event/json/router 内建 |
-| 274 | aura-stable-node-id | ✅ | old/ | VNodeId 稳定 ID 体系（ui/vnode.rs） |
-| 287 | auto-to-vue-mapping-rules | ✅ | old/ | Auto→Vue 映射规则固化进 ui_gen/vue.rs（含 shadcn） |
+| 235 | a2vue-transpiler-gaps | ✅ | archive/ | ts_adapter 修复 + storage/event/json/router 内建 |
+| 274 | aura-stable-node-id | ✅ | archive/ | VNodeId 稳定 ID 体系（ui/vnode.rs） |
+| 287 | auto-to-vue-mapping-rules | ✅ | archive/ | Auto→Vue 映射规则固化进 ui_gen/vue.rs（含 shadcn） |
 | 288 | notes-fullstack-api | Phase 1 ✅ | plans/ | 015-notes Vue 前端对接 `#[api]` 后端，API 函数自动检测 |
 | 299 | autoui-mcp-v2 | ✅（Phase 1-3） | archive/ | AutoUI MCP 调试服务 v2（ui/mcp_server.rs 前身） |
 | 307 | autoui-devtools-inspector | 主体已合并 | archive/ | AutoUI devtools 检查器并入 master |
@@ -47,7 +48,7 @@
 | 343 | block-tier-phase-b-generator-and-cli | 设计待确认，实施未开始 | plans/ | `auto block add` 双模式 + 静态 acceptance check |
 | 351 | shared-store-rung4 | 设计待确认，实施未开始 | plans/ | Rung 4：跨 widget/跨路由共享状态 store |
 | 354 | 015-notes-real-app | 实施中 | plans/ | 015-notes 从 CRUD demo 到真实笔记 app（标签/搜索/三列/AutoDown 编辑器） |
-| 356 | vue-generator-oom-recursion-fix | ✅ | old/ | 修复 parser OOM + 软关键字递归，015-notes sidebar 完整再生成 |
+| 356 | vue-generator-oom-recursion-fix | ✅ | archive/ | 修复 parser OOM + 软关键字递归，015-notes sidebar 完整再生成 |
 | 357 | 015-notes-pin-folder-tag-ux | 实施中 | plans/ | pin/目录/tag/dark mode/主题色的 UX 迭代 |
 | 358 | auto-lang-generator-defects-fix | 待评审 | archive/ | 生成器/编译器缺陷系统性清单与修复 |
 | 360 | notes-ui-redesign-and-accent-theming | ✅ | archive/ | 015-notes UI 现代化 + 主题色切换（P0-P5 问题清单） |

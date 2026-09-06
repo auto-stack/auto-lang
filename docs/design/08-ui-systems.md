@@ -2,16 +2,22 @@
 
 ## Status
 
-UI system components are at varying stages of implementation:
+UI system components are at varying stages of implementation (current-state
+audit 2026-09-07, PLAN-546):
 
-- **AURA** (`crates/auto-lang/src/aura/`): Schema and type definitions implemented (7 modules: atom, extract, schema, schema_loader, types, validate, mod). The core extraction pipeline from widget declarations to AURA IR is in progress.
+- **AURA** (`crates/auto-lang/src/aura/`): Implemented — schema/type definitions
+  plus the production extraction pipeline (`extract.rs`: `extract_view_tree` /
+  `extract_type` / `extract_store_from_decl`), validated against
+  `schema/aura.at` (the single contract source, plan-435).
 - **a2ark** (ArkTS backend): Complete with 12+ widget tests covering layout, form, display, navigation, and dialog components.
 - **a2jet** (Jetpack Compose backend): Complete with 11 modules and full project generation capability.
 - **a2vue** (Vue backend): Implemented in `ui_gen/vue.rs`.
 - **Shared UI gen** (`ui_gen/shared/`): Widget registry, state converter, style system, and Tailwind utilities.
-- **Design Token Compiler**: Design defined (`crates/auto-lang/src/tokens/` planned), not yet implemented.
-- **Frontend-backend communication**: Architecture defined, `#[api]` annotation support is planned.
-- **AutoDown**: Conceptual design complete, no implementation yet.
+- **Design Token Compiler**: Design defined (`crates/auto-lang/src/tokens/` planned), not yet implemented (confirmed absent at audit).
+- **Frontend-backend communication**: The `#[api]` contract layer is implemented in `crates/auto-lang/src/api/` (mod/types/targets + integration tests); see the ui module spec for the a2ui protocol.
+- **AutoDown**: Implemented — `ui/autodown_render.rs`, `ui/autodown_blocks.rs`,
+  and the `ui/autodown_editor/` widget family are in production (ui-gallery
+  tutorial pane consumes it, plan-549).
 
 ## Design
 

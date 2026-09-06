@@ -175,15 +175,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `aura/`（7 文件：atom/element_coverage/extract/schema/schema_loader/types/validate）+ `ui/`（~50 文件：widget_registry/render_support/event_router/aura_view_builder/session/iced//gpui//headless//desktop_protocol//native_dock/code_editor//autodown_editor/style/…）+ `ui_gen/`（vue/api/widget 契约/sidebar_contract/ts_adapter）+ `a2ui/` + `api/`（#[api] 契约层：mod/types/targets/integration_tests） |
+| 生产入口 | `dialect/ui.rs:UiDialect`；`aura/extract.rs:extract_view_tree(:135)/extract_type(:523)/extract_store_from_decl(:552)`；`ui_gen/vue.rs:VueGenerator`；`ui/session.rs:DesktopSession/AppSession`；`ui/iced/virtual_window.rs:VirtualWindow`；`ui/style/`（Plan 527 v3.4 清单契约）；`a2ui/schema.rs:A2UIMessage` |
+| 公共 API / 关键数据流 | UI 方言 parse → WidgetDecl → AURA 提取（视图/状态/事件三元 IR）→ schema/aura.at 校验 → 双轨消费（a2vue codegen / VM 渲染 run_dynamic_iced_multi）；桌面线 DesktopBus+投影协议 v1.5+路线 B 桌面协议 v1.3 |
+| 当前能力 | vue 轨 codegen 成熟化（571 button variant/559 双端嵌入/522 use-fn/516 远程窗）；VM 轨视觉 parity（527 Tailwind v3.4 全量契约/534 overlay 家族/536 反应性修复批——2026-09-05 折返）；桌面运行时（472-501 shell-track M1-M5+386/480/500/507/508 路线 B 六段）；ui-gallery（549/573） |
+| 实验能力 | AppProjector Tier1+2 69/388=17.8%（plan-507 覆盖爬坡）；live-iced 渲染器换接（归后续） |
+| 未实现/计划项 | Design Token Compiler（tokens/ 目录确认不存在）；a2j 维护态；chatActivePath 投影链（移交 musk 061 D25）；KD P536-D1 aura.at 再生成振荡 |
+| 测试证据 | `cargo t --features ui-iced` 日常档（tf 盲区收口，plan-507）；`tests/style_parity.rs` 常驻对拍审计台；`tests/osconfig_integration.rs`；desktop_protocol ui-iced 120 测；autoui-verifier 技能双端（test_vm_mcp.py/test_vue_playwright.mjs）；examples/ui 43 示例+widgets-gallery 68 页扫描 |
+| 与旧文档的差异 | ①**plan-536 知识链缺口**：归档（2026-09-05）未回写任何 plans.md——补录 ui/plans.md 行（533/534 直续位，含复核注记），实质（absolute 定位原语/悬浮机制统一/timer 契约/POLLTRACE）由行内沉淀；②design/08 四处过时现状：AURA "extraction in progress"→已实现（extract.rs 生产路径）、`#[api]` "planned"→src/api/ 已在码、AutoDown "no implementation"→autodown_render/blocks/editor 生产在用、tokens/ 未实现复核维持；③ui/plans.md 18 处 `old/`→`archive/`；④design/20 失效 plan 路径 364→archive/（该文档自带 2026-08-26 修订横幅，维护良好）；⑤ui overview 本体 2026-09-03 已刷新（571/573 merge 回写），零冲突 |
+| 本次修改文件 | `docs/specs/auto-lang/ui/plans.md` + `docs/design/08-ui-systems.md` + `docs/design/20-autoui-separation-architecture.md`（overview/architecture/design 十文件无冲突未动） |
 
 ## mcp
 
