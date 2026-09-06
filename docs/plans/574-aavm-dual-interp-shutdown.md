@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [aavm]               # 测试基建:crates/auto-lang/src/tests/aavm2_*
-current_step: 4
-total_steps: 4
+current_step: 6
+total_steps: 6
 ---
 
 # [PLAN-574] avm+aavm 双重解释器测试路径关闭/瘦身(572 待澄清②裁定承接)
@@ -152,6 +152,12 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
    - KNOWN-DEBT 572 条目结算(✅已结算)✓;
    - at_mode 文档头 feature 标注修正(test-aavm)✓;
    - 复审留档(本节)。
+6. [✅ 已完成] T6 执行线程栈护栏修复(2026-09-06 用户裁定:修):lib.rs 五处
+   VM 执行线程硬编码 4MB → `vm_thread_stack_size()`(RUST_MIN_STACK
+   可覆盖/缺省 16MB/下限 4MB),恢复 Plan 423 护栏意图。
+   ——证据:commit 37fae7959;红→绿:001_smoke 摘 ignore 后 **2.29s
+   通过**(修复前 4MB 爆栈);12 测试 ignore 维持(裁定不重开);
+   taa 3612/3613(仅 charts 预存)+tf 3460/3461 恒。
 5. [✅ 已完成] T5 机制定量调查(用户问询触发,2026-09-06):爆栈精确
    机制探针测定。
    ——证据:commit fccca72bf;探针(临时,用后即删)直接调
@@ -172,8 +178,7 @@ avm+aa2r       aavm2_a2r_is_corpus(18 件)                   a2r+aa2r:⑤腿 har
    use)在正统路径的对等物是 compile_use_corpus(⑤腿)——T1 对账
    确认粒度差异是否可接受(最小锚保留诊断粒度即可,重型逐件对等
    不再保留)。〔T1 已按对账表了结:全量关闭,Linux/CI 保留〕
-2. **`run_autovm_capture` 族硬编码 4MB 执行线程是否顺手修**(T5 发现,
-   2026-09-06 登记):真因即此(lib.rs:451 + L357;RUST_MIN_STACK
+2. **〔已裁定并执行:修→T6(2026-09-06 用户 OK)〕原 `run_autovm_capture` 族硬编码 4MB 执行线程是否顺手修**(T5 发现,真因即此(lib.rs:451 + L357;RUST_MIN_STACK
    护栏被绕过=Plan 423 意图失效点)。一行改 16/32MB 可恢复护栏意图,
    使**其余**走 run_autovm_capture 的常规 VM 语料测试(vm_file_tests
    等)获得 lib/语料增长余量(它们现未爆但同理可越阈);**不重开**
