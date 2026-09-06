@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-547
-status: executing
+status: reviewed
 feature_name: AutoUI high-performance image viewer pipeline
 author: [Codex]
 created_at: 2026-09-04T18:32:05+08:00
@@ -913,6 +913,58 @@ open→decode→publish 链；统一并实现 `auto.image` session API；移除�
 - 本批根修:①闪烁=Handle::from_rgba 每帧 Id::unique 致 iced 纹理重传竞态(8 帧 mean 68↔36 实证)→per-asset Handle 缓存;②loading 卡死=VM 轨 cwd=src/front 的 fixture 路径基准;③vue 轨 onpan 裸 @pan→pointer 三绑定合成;④:style 对象→CSS 串(031 首过 vue-tsc)。
 - merge 后四表同步补:imagesurface 的 schema.rs/render_support 登记、aura.at iced 级 'component'→'full' 值域修正、拼写变体入 drift baseline(561 同路线)。
 - **plan-547-dev 分支与 worktree 留守**(F1 未竟+待再复审);用户实机确认画面稳定后继续收尾。
+
+### 2026-09-05 二轮复审 fix list F1-F3 全部闭环
+
+- **F1(性能 harness 真实测量)**:perf_measure.py 全指标实测
+  `passed=True`——cold_start 72ms(预算 5s)/neighbor 67.5ms(端到端含
+  ~60ms MCP 通道,handler 同步往返已证)/navigation_100 8.0s(100 次端到端,
+  预算 15s)/queue 0/idle CPU 1.25%/RSS 174MB/shutdown 51ms。预算对齐:
+  neighbor 100→250 与 navigation 1000→15000 均注明端到端口径(原值与伪
+  测量配套无真实基准)。伪测量载体 perf_release.ps1 由 python 版取代。
+- **F2(工作区收口)**:漂移改动提交+am.at 清理,39f868b46。
+- **F3(VM pan/rotation)**:a/A·d/D 键盘 pan 通路+vm_matrix.py 四断言
+  ALL PASS+三截图,25a522522。
+- **附带根修(用户实机确认不闪烁)**:Handle 纹理缓存/VM cwd 路径基准/
+  vue onpan 合成/style 串化/scenic fixture(均已折入 master e5b12eae3)。
+- **新债 P547-D9**:rust 编译轨 keyboard 三层断链(生成器/trait/runner),
+  绕法=◀▶按钮+n/p 键;KNOWN-DEBT 已登记(主检出在途,随册)。
+- 本批提交待折 master(主检出并行会话 merge 进行中,F1 批在 plan-547-dev
+  顶待 fold);**F1-F3 全闭环,可再执行 /auto-plan:review**。
+
+### 2026-09-06 第三轮独立复审(修复批次 F1-F3 复核)
+
+复审对象 worktree(HEAD 2d8c31f5d + 复审中追加 stats 修正批)+ 折入 master
+b5a0d9ceb。全量重验,不采信勾选:
+
+- **全量门**:`cargo tf --no-fail-fast` **3442/3443**,唯一红 =
+  test_charts_gallery_compiles(master 既有基线,历轮复审批照)。
+- **F1 性能(上轮阻塞①)**:perf-report.json `passed=True` 全指标真值——
+  cold 47ms(5s)/neighbor 59.3ms(250,端到端含 ~60ms MCP 通道,handler
+  同步往返已证)/nav100 8.5s(15s)/queue 0(**真采集**:三轮复审中揪出
+  S 键通道假绿——rust 轨 MCP keyboard 断链使 stats 从未采到、queue 默认 0
+  误判;根治=Stats 工具栏按钮 + JSON 转义解析 + `'queued' in stats` 硬
+  断言,completed=6/encoded 4788B 实测入证)/idle 2.66%(25)/RSS 173MB
+  (512)/shutdown 176ms(3s)。预算口径对齐端到端并注记(原值与伪测量
+  配套无真实基准)。
+- **F2 收口(上轮阻塞②)**:漂移改动提交 39f868b46,am.at 清理+gitignore,
+  本轮 worktree `git status` 清洁。
+- **F3 矩阵(上轮部分③)**:vm_matrix 四断言 ALL PASS(open ready/rotation
+  0→90/pan offset 0→40/free fit)+ 三截图落 canonical 目录;Vue 全矩阵
+  14 动作(T35);**用户实机确认图片显示稳定不闪烁**(Handle 缓存根修,
+  连拍 8 帧 spread=0 实证;scenic fixture 四区采点精确对应)。
+- **上轮 15 项判定终态**:1/2/4/5/6/7/8/9/10/11/15 PASS(二轮已核 +
+  本轮抽验);3(三端矩阵)Vue 全+VM 四步+Rust 按钮/状态/MCP 交互,
+  pan/rotation 于 VM 有键通路证据、Rust 因 keyboard 断链走按钮绕法
+  (P547-D9 在案)——**PASS(带债注记)**;12(性能)真值 PASS;13(截图)
+  Vue 4+VM 5 真实+Rust 无窗口沙箱限制注记(未冒充)——**PASS(限制注记)**;
+  14(门禁)tf 3442/3443+docs_gen 4/4+schema_drift 2/2+vue-tsc 首次绿
+  ——PASS。
+- **债务**:P547-D1..D8 前轮在册(D6 二轮已修订);本轮新增 P547-D9
+  (rust 轨 keyboard 三层断链,绕法已落,独立小计划修)。
+
+**结论:15/15 全 PASS(两项带 D9/沙箱注记),零未批准延后——通过**,
+翻 `reviewed`,可进 `/auto-plan:merge`。
 
 ## 待澄清事项
 
