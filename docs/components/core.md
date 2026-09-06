@@ -614,6 +614,30 @@ Image display
 
 ---
 
+### `imagesurface`
+
+`builtin_widget` · `imagesurface` · web: `component` · iced: `full` · category: `media`
+
+Asynchronous image viewer surface
+
+别名:`ImageSurface` `image-surface` `image_surface`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `src` | `string` | — | Media ticket URI |
+| `alt` | `string` |  | Alt text |
+| `width` | `int` | 0 | Viewport width |
+| `height` | `int` | 0 | Viewport height |
+| `quality` | `int` | 90 | Rendition quality |
+| `fit` | `one_of: contain|width|one-to-one|free` | contain | Viewport fit policy |
+| `zoom` | `float` | 1.0 | Viewport zoom |
+| `offset_x` | `float` | 0.0 | Horizontal pan offset |
+| `offset_y` | `float` | 0.0 | Vertical pan offset |
+| `rotation` | `int` | 0 | Clockwise rotation in degrees |
+| `filter` | `string` | none | Sampling filter |
+
+---
+
 ### `img`
 
 `builtin_widget` · `img` · web: `native` · iced: `partial` · category: `content`
@@ -764,80 +788,6 @@ Native HTML button escape (bypasses button-to-Button mapping)
 | `onclick` | `msg_ref` | — | Message to send when clicked |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 | `disabled` | `bool` | false | Whether button is disabled |
-
----
-
-### `nav`
-
-`builtin_widget` · `nav` · web: `native` · iced: `unknown` · category: `content`
-
-P1 extracted from production tables; props TBD
-
-别名:`Nav`
-
-_props 待声明_
-
----
-
-### `nav-group`
-
-`builtin_widget` · `nav-group` · web: `component` · iced: `full` · category: `navigation`
-
-Navigation group: label header + item column, optionally collapsible (Plan 482)
-
-别名:`NavGroup` `nav_group` `navgroup`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `label` | `string` | — | Group header label |
-| `collapsible` | `bool` | false | Header is clickable to fold/unfold (chevron indicator) |
-| `open` | `expr` | — | Fold state binding; defaults true. Unbound + collapsible uses built-in per-group state |
-| `ontoggle` | `msg_ref` | — | Message on header click (when bound); otherwise built-in state toggles |
-| `indent` | `bool` | false | Indent member items (tree feel, pl-3) |
-| `class` | `union: string|class_binding` | — | CSS class(es) |
-
----
-
-### `nav-item`
-
-`builtin_widget` · `nav-item` · web: `component` · iced: `full` · category: `navigation`
-
-[demo →](/examples/widgets-gallery/navitem)
-
-Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link
-
-别名:`NavItem` `nav_item` `navitem`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `to` | `string` | — | Route address (router mode): vue RouterLink updates the hash URL; VM dispatches __navigate to __current_route. Wins over onclick when both given |
-| `onclick` | `msg_ref` | — | Click message (state mode) for store-driven switching |
-| `active` | `expr` | — | Selected-state override; with to: auto-detected (exact or prefix-segment match, exact: tightens) |
-| `exact` | `bool` | false | Route auto-detection uses exact match only |
-| `icon` | `string` | — | Left icon: lucide name (svg both ends) or literal emoji text |
-| `label` | `string` | — | Primary text |
-| `desc` | `string` | — | Secondary line (two-line layout) |
-| `badge` | `string` | — | Right-side badge pill |
-| `disabled` | `bool` | false | Grayed out, not clickable |
-| `size` | `one_of: sm|md|lg` | md | md=h-9 single line; lg=py-[10px] two-line; sm=h-7 |
-| `class` | `union: string|class_binding` | — | Extra classes appended after the built-in nav-item classes (escape hatch) |
-
----
-
-### `nav-link`
-
-`builtin_widget` · `nav-link` · web: `component` · iced: `partial` · category: `content`
-
-[demo →](/examples/widgets-gallery/navlink)
-
-P1 extracted from production tables; props TBD
-
-别名:`nav_link` `navlink`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `text` | `one_of: href` | Link label text | string |
-| `icon` | `one_of: badge` | Lucide icon name | string |
 
 ---
 
@@ -1092,6 +1042,27 @@ Desktop shell taskbar (bottom bar)
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | Bar chrome classes (h-/w-/bg-/border- land on the bar) |
+
+---
+
+### `terminal`
+
+`builtin_widget` · `terminal` · web: `unknown` · iced: `full` · category: `content`
+
+PLAN-009 native terminal component (auto-term engine grid viewport: damage-gated rows, cursor shapes, selection, scroll badge, right-click menu)
+
+别名:`Terminal`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `key` | `string` | \ | Stable state key (registry + engine adapter session) |
+| `cols` | `int` | 80 | Grid width in cells |
+| `rows` | `int` | 24 | Grid height in cells |
+| `lines` | `string` | — | Fed grid rows (props-feed data plane, per frame) |
+| `scroll_offset` | `int` | 0 | Scrollback display offset (badge indicator) |
+| `preedit` | `string` | — | IME composition string (self-drawn overlay at cursor) |
+| `onselect` | `msg_ref` | — | Selection released; payload via terminal_selected_text(key) |
+| `oncontextmenu` | `msg_ref` | — | Menu item activated; payload via terminal_take_menu_item(key) |
 
 ---
 

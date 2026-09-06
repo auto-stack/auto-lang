@@ -116,4 +116,17 @@ fn main() {
     // null arm + print shim render the same "None").
     var nv = null
     if nv.to(str) == "None" { tap_ok(17, "test_print_none") } else { tap_not_ok(17, "test_print_none", "got " + nv.to(str)) }
+
+    // 18. with-as sugar (Plan 567 T15, P560-D1): no_grad as bound context
+    // manager — block-form lowering (py_enter binding + try/catch/finally
+    // exit guarantee), three-way parity with Python `with ... as`.
+    var ng2 = py_call0(py_getattr(torch, "no_grad"))
+    var ygrad2 = 1
+    with ng2 as g2c {
+        var x2 = arange(3) / 1
+        py_call(x2, "requires_grad_", true)
+        var y2 = x2 * 2
+        ygrad2 = py_getattr(y2, "requires_grad").to(int)
+    }
+    if ygrad2 == 0 { tap_ok(18, "test_with_as_sugar") } else { tap_not_ok(18, "test_with_as_sugar", "got " + ygrad2.to(str)) }
 }

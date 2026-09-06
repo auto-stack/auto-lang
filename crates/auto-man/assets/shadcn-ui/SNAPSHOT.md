@@ -11,6 +11,11 @@
   `registryDependencies` 一并落地，可直接物化。
 - **Transitive**: `toggle`、`chart` 目录由依赖闭包带入（toggle-group /
   chart-* 在运行时互相 import），非冗余。
+- **Baked patch (PLAN-571, 2026-09-06)**: `button/index.ts` cva `default` 改为
+  UA-stylesheet 等价中性基线（`bg-muted border border-border text-foreground
+  hover:bg-muted/70`），新增 `primary`/`submit` 键（主题色填充）——与 Rust 侧
+  `ui/style/variants.rs` 及 `ui_gen/vue.rs` cva 互锁，语义见
+  docs/design/autoui/base-styles-and-visual-parity.md §1.2/§3。
 - **Baked patch**: `sonner/Sonner.vue` 已把 `CircleCheckIcon → CheckCircle`、
   `OctagonXIcon → XOctagon`、`TriangleAlertIcon → AlertTriangle`
   改名烘焙（对应 `fix_shadcn_compatibility_issues` 的兼容性改写；该函数

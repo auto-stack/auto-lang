@@ -5363,6 +5363,11 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                     list.len() as i32
                 } else if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
                     list.len() as i32
+                } else if let Some(fo) = guard.as_foreign_object() {
+                    // Plan 569 D2: py 句柄误入 str.len（存量编译产物/侧表漏报
+                    // 兜底）——GIL len（与 obj_len 组合子外对象臂同语义）。
+                    // 根治归侧表分派，此臂为兜底加固。
+                    return fo.obj_len(task, vm);
                 } else {
                     // 堆上非列表（对象/实例）：按 0 走（.length 对非数组无 JS 语义）
                     0

@@ -64,10 +64,16 @@ widget App {
                         }
                     }
 
-                    // Navigation items
-                    col {
-                        style: "gap-1 mt-2"
-                        nav-item (to: "/", exact: true, icon: "🏠", label: "Home")
+                    // Navigation items (Plan 562: nav-item → sidebar 族 menu_button)
+                    sidebar_provider (class: "w-auto min-h-0 flex flex-col") {
+                        sidebar_menu (style: "mt-2") {
+                            sidebar_menu_item {
+                                sidebar_menu_button (to: "/", exact: true) {
+                                    text "🏠" {}
+                                    text "Home" {}
+                                }
+                            }
+                        }
                     }
                 }
 

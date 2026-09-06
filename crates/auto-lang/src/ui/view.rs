@@ -538,6 +538,32 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// PLAN-009 P1: native terminal component(auto-term 引擎网格视口)。
+    /// 数据面甲(props-feed):app 每帧把引擎网格行喂进 `lines`,组件
+    /// 纯渲染 + 输入事件上抛(T4)。状态(几何/缓冲/损伤代)存全局注册表
+    /// `crate::ui::terminal::terminal(key, …)`;真身迁移自 auto-term
+    /// widget.rs(Rust 版冻结为参考 oracle)。载荷读取走注册表访问器
+    /// (`terminal_selected_text(key)` / `terminal_scroll_offset(key)`,
+    /// code_editor §5.4 同款)。
+    Terminal {
+        /// 稳定身份,状态存储键(与引擎 adapter session 对齐)。
+        key: String,
+        /// 网格几何(列×行,cell 单位)。
+        cols: u16,
+        rows: u16,
+        /// app 每帧喂入的网格行文本(≤rows 行,短行右填充;超出截断)。
+        lines: Vec<String>,
+        /// 回滚显示偏移(badge 指示;滚轮经 on_scroll 回环由 app 更新)。
+        scroll_offset: u16,
+        /// IME 自绘 preedit(#11 绕行;输入法组合串覆盖层)。
+        preedit: Option<String>,
+        /// 选中释放信号(payload 读 `terminal_selected_text(key)`)。
+        on_select: Option<M>,
+        /// 菜单项动作信号(payload 读 `terminal_menu_item(key)`)。
+        on_menu: Option<M>,
+        style: Option<Style>,
+    },
+
     /// Plan 019 Phase 3: autodown 文档编辑器（markdown 块粒度编辑）。
     /// 状态存于全局注册表（`autodown_editor(key)`，keyed by `key`）；
     /// value 差分回写（与 CodeEditor 同 §5.4 口径）。payload 读取走
@@ -708,6 +734,30 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// Plan 547: asynchronous image surface backed by an opaque media URI.
+    ImageSurface {
+        src: String,
+        alt: String,
+        width: u32,
+        height: u32,
+        quality: u8,
+        /// Object-fit policy used by the shared surface renderer.
+        fit: String,
+        /// Interactive transform state.  These values are deliberately
+        /// scalar so they can be resolved by both VM and generated paths.
+        zoom: f32,
+        offset_x: f32,
+        offset_y: f32,
+        rotation: i32,
+        filter: String,
+        on_error: Option<M>,
+        on_loaded: Option<M>,
+        on_wheel: Option<M>,
+        on_pan: Option<M>,
+        on_double_click: Option<M>,
+        style: Option<Style>,
+    },
+
     /// Plan 497: per-window live thumbnail — renders the host-side snapshot
     /// cache for `wid` (real downsampled pixels); falls back to
     /// `fallback_icon` (lucide glyph) when no fresh snapshot exists.
@@ -815,6 +865,26 @@ pub enum PopoverPlacement {
     /// 发布）。alert-dialog 臂专用（shadcn AlertDialog 语义：外点/Esc 不关，
     /// 仅 cancel/action 操作钮经 VM 状态翻转关闭）。
     Modal,
+    /// PLAN-534：viewport 贴边变体（sheet/drawer 专用）——面板贴 viewport
+    /// 四缘之一（EdgeLeft/EdgeRight 全高，EdgeTop/EdgeBottom 全宽），
+    /// 锚无关；挂 scrim + 面板外点击整吞（on_dismiss 为 Some 时同时发布，
+    /// shadcn Sheet 语义：外点/Esc 关闭）。不做翻转钳制（贴边即终位）。
+    EdgeLeft,
+    EdgeRight,
+    EdgeTop,
+    EdgeBottom,
+}
+
+impl PopoverPlacement {
+    /// PLAN-534：模态 chrome 判定（单一事实源）——Modal（视口居中）与
+    /// Edge*（贴边）均挂 scrim + 面板外点击整吞，且不做翻转钳制
+    /// （on_dismiss 为 Some 时外点/Esc 发布关闭，shadcn Dialog/Sheet 语义）。
+    pub fn is_modal_chrome(&self) -> bool {
+        matches!(
+            self,
+            Self::Modal | Self::EdgeLeft | Self::EdgeRight | Self::EdgeTop | Self::EdgeBottom
+        )
+    }
 }
 
 /// Plan 409 §10 续 5: Overlay 浮层的窗口相对定位(从 style 的 absolute +
@@ -1260,6 +1330,105 @@ impl<M: Clone + Debug> View<M> {
     /// Create image view
     pub fn image(src: impl Into<String>) -> Self {
         View::Image { src: src.into(), style: None }
+    }
+
+    pub fn image_surface(src: impl Into<String>) -> Self {
+        View::ImageSurface {
+            src: src.into(),
+            alt: String::new(),
+            width: 0,
+            height: 0,
+            quality: 90,
+            fit: "contain".to_string(),
+            zoom: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            rotation: 0,
+            filter: "high".to_string(),
+            on_error: None,
+            on_loaded: None,
+            on_wheel: None,
+            on_pan: None,
+            on_double_click: None,
+            style: None,
+        }
+    }
+
+    /// Configure the scalar ImageSurface properties emitted by generators.
+    pub fn image_surface_props(
+        mut self,
+        alt: impl Into<String>,
+        width: u32,
+        height: u32,
+        quality: u8,
+        fit: impl Into<String>,
+        zoom: f32,
+        offset_x: f32,
+        offset_y: f32,
+        rotation: i32,
+        filter: impl Into<String>,
+    ) -> Self {
+        if let View::ImageSurface {
+            alt: current_alt,
+            width: current_width,
+            height: current_height,
+            quality: current_quality,
+            fit: current_fit,
+            zoom: current_zoom,
+            offset_x: current_offset_x,
+            offset_y: current_offset_y,
+            rotation: current_rotation,
+            filter: current_filter,
+            ..
+        } = &mut self
+        {
+            *current_alt = alt.into();
+            *current_width = width;
+            *current_height = height;
+            *current_quality = quality;
+            *current_fit = fit.into();
+            *current_zoom = zoom;
+            *current_offset_x = offset_x;
+            *current_offset_y = offset_y;
+            *current_rotation = rotation;
+            *current_filter = filter.into();
+        }
+        self
+    }
+
+    /// Attach the five normalized ImageSurface event handlers.
+    pub fn image_surface_events(
+        mut self,
+        on_error: Option<M>,
+        on_loaded: Option<M>,
+        on_wheel: Option<M>,
+        on_pan: Option<M>,
+        on_double_click: Option<M>,
+    ) -> Self {
+        if let View::ImageSurface {
+            on_error: current_error,
+            on_loaded: current_loaded,
+            on_wheel: current_wheel,
+            on_pan: current_pan,
+            on_double_click: current_double_click,
+            ..
+        } = &mut self
+        {
+            *current_error = on_error;
+            *current_loaded = on_loaded;
+            *current_wheel = on_wheel;
+            *current_pan = on_pan;
+            *current_double_click = on_double_click;
+        }
+        self
+    }
+
+    /// Apply a Tailwind style string to an ImageSurface node.
+    pub fn image_surface_style(mut self, style_str: &str) -> Self {
+        if let View::ImageSurface { style, .. } = &mut self {
+            *style = Style::parse(style_str).ok();
+        }
+        self
     }
 
     /// Create styled image view
@@ -1749,6 +1918,17 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => View::Terminal {
+                key,
+                cols,
+                rows,
+                lines,
+                scroll_offset,
+                preedit,
+                on_select: on_select.map(|m| f(m)),
+                on_menu: on_menu.map(|m| f(m)),
+                style,
+            },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {
                 key,
                 value,
@@ -1802,6 +1982,25 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
+            View::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => View::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error: on_error.map(|m| f(m)),
+                on_loaded: on_loaded.map(|m| f(m)),
+                on_wheel: on_wheel.map(|m| f(m)),
+                on_pan: on_pan.map(|m| f(m)),
+                on_double_click: on_double_click.map(|m| f(m)),
+                style,
+            },
             View::WindowThumbnail { wid, fallback_icon, style } => {
                 View::WindowThumbnail { wid, fallback_icon, style }
             }
@@ -3821,6 +4020,24 @@ mod tests {
                 }
             }
             _ => panic!("Expected View::Grid after map_msg"),
+        }
+    }
+
+    #[test]
+    fn image_surface_view_constructor_and_map_callbacks() {
+        let view = View::<u8>::image_surface("/api/__auto/media/asset/1");
+        let mapped = view.map_msg(|value| value + 1);
+        match mapped {
+            View::ImageSurface { src, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, .. } => {
+                assert_eq!(src, "/api/__auto/media/asset/1");
+                assert_eq!((width, height, quality), (0, 0, 90));
+                assert_eq!(fit, "contain");
+                assert_eq!((zoom, offset_x, offset_y, rotation), (1.0, 0.0, 0.0, 0));
+                assert_eq!(filter, "high");
+                assert!(on_error.is_none() && on_loaded.is_none());
+                assert!(on_wheel.is_none() && on_pan.is_none() && on_double_click.is_none());
+            }
+            _ => panic!("expected ImageSurface"),
         }
     }
 }

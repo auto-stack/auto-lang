@@ -5,3 +5,7 @@ render: "vue"
 title: "Contact Form"
 theme: "dark"
 accent: "indigo"
+
+dep settings {
+    path: "../common/settings"
+}

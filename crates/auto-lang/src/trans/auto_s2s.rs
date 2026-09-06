@@ -45,6 +45,13 @@ pub fn builtin_rules() -> Vec<LoweringRule> {
             id: "C3/C4",
             transform: crate::trans::s2s_rules::rule_c34_truthy,
         },
+        // Plan 567 T09（P560-D2）: 隐式 !T 传播（桥调用→may+.?、用户
+        // 函数调用点+.?；无 use.py 文件零改写）。链尾注册——看见前序
+        // 规则的全部桥改写产物。
+        LoweringRule {
+            id: "E1",
+            transform: crate::trans::s2s_rules::rule_err_propagate,
+        },
     ]
 }
 
@@ -192,15 +199,16 @@ fn main() {
 }
 "#;
         let out = lower_source(src).unwrap();
-        // A1 方法调用（py-known 接收者）→ py_call
-        assert!(out.contains("py_call(t, \"sum\")"), "{}", out);
-        // B1 属性（arange 结果 py-known）→ py_getattr
-        assert!(out.contains("py_getattr(t, \"shape\")"), "{}", out);
-        // B3 索引 → py_getitem
-        assert!(out.contains("py_getitem(t, 0)"), "{}", out);
-        // B2 属性赋值 → py_setattr
+        // A1 方法调用（py-known 接收者）→ py_call；Plan 567 T09 后桥调用
+        // 隐式传播为 may 变体 + `.?`。
+        assert!(out.contains("py_call_may(t, \"sum\").?"), "{}", out);
+        // B1 属性（arange 结果 py-known）→ py_getattr_may + `.?`
+        assert!(out.contains("py_getattr_may(t, \"shape\").?"), "{}", out);
+        // B3 索引 → py_getitem_may + `.?`
+        assert!(out.contains("py_getitem_may(t, 0).?"), "{}", out);
+        // B2 属性赋值 → py_setattr（无 may 变体，不传播）
         assert!(out.contains("py_setattr(t, \"note\", \"hi\")"), "{}", out);
-        // B4 索引赋值 → py_setitem
+        // B4 索引赋值 → py_setitem（同上）
         assert!(out.contains("py_setitem(t, 0, 9)"), "{}", out);
         // Auto 接收者零打扰：字符串 .len() 与数组索引保持原样
         assert!(out.contains("s.len()"), "{}", out);
@@ -226,7 +234,7 @@ fn main() {
 }
 "#;
         let out = lower_source(src).unwrap();
-        assert!(out.contains("py_getitem(x, py_slice(2, 5))"), "{}", out);
+        assert!(out.contains("py_getitem_may(x, py_slice(2, 5)).?"), "{}", out);
         assert!(out.contains("py_slice(null, 5)"), "{}", out);
         assert!(out.contains("py_slice(2, null)"), "{}", out);
         assert!(out.contains("py_slice(1, 9, 2)"), "{}", out);
@@ -241,6 +249,57 @@ fn main() {
     #[test]
     fn test_s2s_rejects_invalid_source() {
         assert!(lower_source("fn broken {{{{").is_err());
+    }
+
+    /// Plan 567 T09（P560-D2）: 隐式 !T 传播——桥调用 may 化 + `.?`、
+    /// 用户函数调用点 `.?`、kwargs 形态保持 Pair 由 codegen 路由 478。
+    #[test]
+    fn test_s2s_rule_err_propagate() {
+        let src = r#"use.py torch: arange
+fn double(n int) -> int {
+    return n * 2
+}
+fn main() {
+    var t = arange(6)
+    var s = t.sum()
+    var w = t.shape
+    var v = t[0]
+    var k = t.sum(dim: 0)
+    var d = double(3)
+    t.note = "hi"
+}
+"#;
+        let out = lower_source(src).unwrap();
+        // 桥调用 → may + `.?`（kwargs 形态保持 Pair 实参）
+        assert!(out.contains("py_call_may(t, \"sum\").?"), "{}", out);
+        assert!(out.contains("py_getattr_may(t, \"shape\").?"), "{}", out);
+        assert!(out.contains("py_getitem_may(t, 0).?"), "{}", out);
+        assert!(out.contains("dim: 0"), "kwargs 形态保留: {}", out);
+        // 用户函数调用点 → `.?`
+        assert!(out.contains("double(3).?"), "{}", out);
+        // setter 无 may 变体不传播
+        assert!(out.contains("py_setattr(t, \"note\", \"hi\")"), "{}", out);
+        // 产物可再解析 + 幂等（corpus 测试全局钉）
+        let mut p = crate::parser::Parser::new(&out);
+        assert!(p.parse().is_ok(), "{}", out);
+    }
+
+    /// Plan 567 T09 反例：无 use.py 的源零传播改写（纯 Auto `.as` 不受扰
+    /// ——legacy -1 哨兵语义保护）。
+    #[test]
+    fn test_s2s_err_propagate_no_py_noop() {
+        let src = r#"fn double(n int) -> int {
+    return n * 2
+}
+fn main() {
+    var d = double(3)
+    var arr = [1, 2]
+    var e0 = arr[0]
+}
+"#;
+        let out = lower_source(src).unwrap();
+        assert!(!out.contains(".?"), "无 py 导入零传播改写: {}", out);
+        assert!(out.contains("double(3)"), "{}", out);
     }
 
     /// 真实语料 round-trip：py parity 套件源（T12 迁移目标面）逐文件

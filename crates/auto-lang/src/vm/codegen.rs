@@ -356,6 +356,22 @@ pub struct Codegen {
     /// Used to format output correctly (e.g., byte as hex, uint with suffix)
     pub last_expr_type: ObjectType,
 
+    /// Plan 569 D2 (P539 根治): py-类型侧表——last_expr_type 的 py-可能伴随位。
+    /// py-ffi 调用点置位；方法分派决策核优先消费（py 接收者的 `.len()` 等
+    /// 改发 obj_len/obj_call 组合子，不再静态路由 str.* 把句柄 id 读成
+    /// 字符串池索引）。重置纪律：compile_expr 顶 / 函数体首 / 原生调用
+    /// 返回类型追踪链对照置 false（仅 py 臂置 true）。
+    pub last_expr_may_py: bool,
+
+    /// Plan 569 D2: py 可能变量名集（`var x = <py-ffi 调用>` 落盘传导）。
+    /// 与 var_types 平行共存——StrFixed 谎言保留（顶层结果格式化依赖），
+    /// 侧表只覆盖"路由到哪"，不影响"打印成什么"。
+    pub py_typed_vars: HashSet<String>,
+
+    /// Plan 569 D2: fn 名 → 尾表达式 may_py（用户 fn 返回 py 桥值的跨函数
+    /// 传导，单层流型保守正报——错报代价=obj_call 组合子 Auto 臂照常分派）。
+    pub fn_may_py_returns: HashSet<String>,
+
     /// Track whether the last compiled expression was a native call (CALL_NAT).
     /// CALL_NAT void shims don't push return values, but CALL+RET always does.
     /// This lets Stmt::Expr emit POP only when needed.
@@ -577,6 +593,9 @@ impl Codegen {
             config_accum_depth: 0, // Plan 375
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
+            last_expr_may_py: false, // Plan 569 D2: py-类型侧表粘性位
+            py_typed_vars: HashSet::new(), // Plan 569 D2
+            fn_may_py_returns: HashSet::new(), // Plan 569 D2
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             task_variants: HashMap::new(), // Plan 390 §14 L3
             current_type_members: None, // Plan 087 Phase 3: No type context initially
@@ -944,6 +963,9 @@ impl Codegen {
             config_accum_depth: 0, // Plan 375
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
+            last_expr_may_py: false, // Plan 569 D2: py-类型侧表粘性位
+            py_typed_vars: HashSet::new(), // Plan 569 D2
+            fn_may_py_returns: HashSet::new(), // Plan 569 D2
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             task_variants: HashMap::new(), // Plan 390 §14 L3
             current_type_members: None, // Plan 087 Phase 3: No type context initially
@@ -1251,6 +1273,7 @@ impl Codegen {
             Stmt::Fn(fn_decl) => {
                 // Reset last_expr_type for each function to avoid stale type from previous compilation
                 self.last_expr_type = ObjectType::Void;
+                self.last_expr_may_py = false; // Plan 569 D2: 侧表粘性位同幅重置
 
                 // #[vm] functions are implemented by native Rust shims, not VM bytecode.
                 // If the native registry doesn't have a matching entry, the codegen will
@@ -1496,6 +1519,13 @@ impl Codegen {
                     // Function has explicit return type — record it for callers
                     self.fn_return_types.insert(fn_decl.name.to_string(), fn_decl.ret.clone());
                 }
+                // Plan 569 D2: fn 尾表达式 may_py 回填——fn 体编译后粘性位
+                // 反映尾表达式；命中记 fn_may_py_returns，调用点查表传导
+                // （单层流型保守正报：错报=obj_* 组合子 Auto 臂照常分派，安全；
+                // 漏报=维持现状规避）。
+                if self.last_expr_may_py {
+                    self.fn_may_py_returns.insert(fn_decl.name.to_string());
+                }
 
                 // 6. Get number of locals and INSERT stack reservation at function entry
                 let n_args = fn_decl.params.len();
@@ -1652,6 +1682,13 @@ impl Codegen {
                 self.patch_jump(jump_over);
             }
             Stmt::Store(store) => {
+                // Plan 567 T19（W3 nullability lint）: 已知 `T | None` 返回的
+                // py 调用直接赋值未判空（W 级提示，不阻断；判空=.?/==null/
+                // NullCoalesce 形态由表达式层自带）。
+                self.check_nullable_unguarded(&store.expr);
+                // Plan 569 D2: Store 边界重置粘性位——数组分配等无 compile_expr
+                // 的路径不得残留上一语句的 may_py；RHS 编译后按新鲜值落盘。
+                self.last_expr_may_py = false;
                 // Variable declaration: let/mut/var name = expr
                 //
                 // Immutability checking:
@@ -1711,6 +1748,12 @@ impl Codegen {
                     // same name as a global is a local shadow, not a global store.
                     self.compile_expr(&store.expr)?;
                     self.emit_global_store(&name_str);
+                    // Plan 569 D2: 全局路径的侧表落盘（与下方局部路径同款）。
+                    if self.last_expr_may_py {
+                        self.py_typed_vars.insert(name_str.clone());
+                    } else {
+                        self.py_typed_vars.remove(&name_str);
+                    }
                     // Plan 377: 记录 global 的类型到 var_types，使后续 LOAD_GLOBAL 的
                     // `Expr::Ident` 路径能设对 last_expr_type（U64/Double → PRINT_U64/F64）。
                     // 否则全局 u64/f64 变量在 print 时会被当作 Int 路由到 PRINT_I32 而截断。
@@ -2077,6 +2120,15 @@ impl Codegen {
                     } else {
                         // Compile the RHS expression (pushes result on stack)
                         self.compile_expr(&store.expr)?;
+                    }
+
+                    // Plan 569 D2: 局部路径的侧表落盘——RHS 编译后的新鲜粘性位
+                    // 传导进 py_typed_vars（方法分派决策核消费）。重赋值为非 py
+                    // 表达式时移除（零回归红线：Auto 变量回到原生静态路由）。
+                    if self.last_expr_may_py {
+                        self.py_typed_vars.insert(name_str.clone());
+                    } else {
+                        self.py_typed_vars.remove(&name_str);
                     }
 
                     // Infer 2-slot type from last_expr_type when store.ty is Unknown or narrower
@@ -4991,6 +5043,27 @@ impl Codegen {
     ///
     /// Plan 300: For bare `use.py module` (no items), records the module name
     /// in `py_modules` so dot-calls like `module.method()` can be resolved.
+    /// Plan 567 T19: 语句根裸消费 nullable 返回的 py 调用 → lint 记录
+    ///（仅 Ident 直呼形态；`.?`/`??` 包装后的节点不再是裸 Call）。
+    fn check_nullable_unguarded(&self, e: &Expr) {
+        if let Expr::Call(c) = e {
+            if let Expr::Ident(n) = c.name.as_ref() {
+                let name = n.as_str();
+                if self.py_native_map.contains_key(name)
+                    && matches!(
+                        self.py_return_types.get(name),
+                        Some(crate::py_ffi_types::PyType::Nullable(_))
+                    )
+                {
+                    crate::py_ffi_types::record_nullable_lint(format!(
+                        "var = {}(...)",
+                        name
+                    ));
+                }
+            }
+        }
+    }
+
     fn handle_py_import(&mut self, use_stmt: &crate::ast::Use) {
         let module_path = if let Some(ref mp) = use_stmt.module_path {
             mp.display()
@@ -5010,7 +5083,12 @@ impl Codegen {
                 );
                 // Plan 300: Auto return type for dynamic marshalling
                 self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
-                self.py_return_types.insert(local_name.to_string(), crate::py_ffi_types::PyType::Auto);
+                // Plan 567 T17（W3 注解预言机）: 有返回注解知识则灌注
+                //（Float/Int → shim 出口 D4 强制；Nullable → T19 lint 消费）；
+                // 无知识 = Auto 零变化。
+                let anno_type = crate::py_ffi_types::lookup_return_annotation(local_name)
+                    .unwrap_or(crate::py_ffi_types::PyType::Auto);
+                self.py_return_types.insert(local_name.to_string(), anno_type);
             }
         } else {
             // Plan 300: Bare module import (`use.py math`) — record for dot-call resolution
@@ -5205,7 +5283,10 @@ impl Codegen {
     /// py_call builtin, >=3 args, obj/method positional, and at least one
     /// named arg in the tail.
     fn is_py_call_kw_form(&self, call: &crate::ast::Call) -> bool {
-        matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call")
+        // Plan 567 T09: py_call_may + Pair 实参同走 5 槽 kwargs 约定
+        // （native id 由 compile_py_call_kw_form 按 may 名路由 478）。
+        matches!(call.name.as_ref(), Expr::Ident(n)
+            if n.as_ref() == "py_call" || n.as_ref() == "py_call_may")
             && call.args.args.len() >= 3
             && matches!(call.args.args.first(), Some(crate::ast::Arg::Pos(_)))
             && matches!(call.args.args.get(1), Some(crate::ast::Arg::Pos(_)))
@@ -5262,9 +5343,11 @@ impl Codegen {
         }
         self.emit(OpCode::CREATE_ARRAY);
         self.code.push(kw_names.len() as u8);
-        // The fixed 5-slot convention of py_call_kw (id 452).
+        // The fixed 5-slot convention of py_call_kw (id 452); the may variant
+        // (Plan 567 T09) routes py_call_kw_may (id 478) — same ABI, Err value out.
+        let is_may = matches!(call.name.as_ref(), Expr::Ident(n) if n.as_ref() == "py_call_may");
         self.emit(OpCode::CALL_NAT_COUNTED);
-        self.emit_u16(452);
+        self.emit_u16(if is_may { 478 } else { 452 });
         self.code.push(5u8);
         Ok(())
     }
@@ -5291,6 +5374,15 @@ impl Codegen {
         const NATIVE_PY_ENTER: u16 = 462;
         const NATIVE_PY_EXIT: u16 = 463;
         const NATIVE_PY_ITEM_KW: u16 = 464;
+        // Plan 567 T06 (P560-D2): may 值通道变体。
+        const NATIVE_PY_GETATTR_MAY: u16 = 476;
+        const NATIVE_PY_GETITEM_MAY: u16 = 477;
+        // Plan 567 T07 (P539-D5): kwargs×may 组合。
+        const NATIVE_PY_CALL_KW_MAY: u16 = 478;
+        // Plan 567 T12 (P560-D1): with-as catch 臂再抛通道。
+        const NATIVE_PY_RAISE: u16 = 479;
+        // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
+        const NATIVE_PY_INT: u16 = 480;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5319,6 +5411,12 @@ impl Codegen {
                 reg.register_with_id("py.py_enter", NATIVE_PY_ENTER);
                 reg.register_with_id("py.py_exit", NATIVE_PY_EXIT);
                 reg.register_with_id("py.py_item_kw", NATIVE_PY_ITEM_KW);
+                // Plan 567 T06: may 值通道变体。
+                reg.register_with_id("py.py_getattr_may", NATIVE_PY_GETATTR_MAY);
+                reg.register_with_id("py.py_getitem_may", NATIVE_PY_GETITEM_MAY);
+                reg.register_with_id("py.py_call_kw_may", NATIVE_PY_CALL_KW_MAY);
+                reg.register_with_id("py.py_raise", NATIVE_PY_RAISE);
+                reg.register_with_id("py.py_int", NATIVE_PY_INT);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5345,6 +5443,10 @@ impl Codegen {
             "py_slice",
             "py_call0",
             "py_with",
+            // Plan 567 T12: with-as 块形态的桥半（原仅内联 codegen 通道，
+            // 源级调用不可解析——E0401）。
+            "py_enter",
+            "py_exit",
             "py_item_kw",
             "py_float",
             "py_callable",
@@ -5362,6 +5464,12 @@ impl Codegen {
             // Plan 560 T08。
             "py_truthy",
             "py_is",
+            // Plan 567 T06 (P560-D2): may 值通道变体。
+            "py_getattr_may",
+            "py_getitem_may",
+            "py_call_kw_may",
+            "py_raise",
+            "py_int",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
@@ -5376,6 +5484,7 @@ impl Codegen {
 
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
         self.last_was_native_void = false; // reset for each expression
+        self.last_expr_may_py = false; // Plan 569 D2: 粘性位随表达式边界重置（仅 py 臂/Ident 镜像置位）
         match expr {
             Expr::Int(i) => {
                 self.last_expr_type = ObjectType::Int;
@@ -5905,6 +6014,11 @@ impl Codegen {
                 } else {
                     // No type tracked — default to Int for untyped variables
                     self.last_expr_type = ObjectType::Int;
+                }
+                // Plan 569 D2: Ident 加载镜像侧表成员资格——`var u = t` 的 RHS
+                // 传播（粘性位在 compile_expr 顶已重置，此处按变量名补回）。
+                if self.py_typed_vars.contains(&name_str) {
+                    self.last_expr_may_py = true;
                 }
 
                 // Plan 317: actor state field read (inside task hooks/handlers).
@@ -7527,6 +7641,46 @@ impl Codegen {
                     Expr::Ident(name) => Some(name.to_string()),
                     Expr::Dot(obj, method) => {
                         // Method call: Type.method (static) or obj.method (instance)
+                        // Plan 569 D2: py-类型侧表插队——接收者 py 可能（py-ffi
+                        // 调用点 / 变量落盘 / 用户 fn 返回传导三源）时，方法调用
+                        // 改发 obj_len/obj_call 组合子（运行期 tag 双通道：
+                        // PyObjectHandle → GIL 通道，Auto 值 → 原生语义），
+                        // 不再进下方 infer_object_type → "str.len" 限定名 peek
+                        // 的静态路由（P539-D2 病灶：py 句柄被谎记 String 后
+                        // str.len 把堆 id 当字符串池索引读到垃圾）。
+                        if self.receiver_may_py(obj.as_ref()) {
+                            if method.as_str() == "len" && call.args.args.is_empty() {
+                                self.compile_expr(obj)?;
+                                self.emit(OpCode::CALL_NAT_COUNTED);
+                                self.code.extend_from_slice(
+                                    &crate::vm::interop::NATIVE_INTEROP_OBJ_LEN.to_le_bytes());
+                                self.code.push(1u8);
+                                self.last_expr_type = ObjectType::Int;
+                                self.last_expr_may_py = false; // len 结果为 Int
+                                return Ok(());
+                            }
+                            // 其余方法 → obj_call(recv, "method", args...)——与
+                            // s2s A1 产物同构；结果可能为 py 值（侧表续传）。
+                            self.compile_expr(obj)?;
+                            let method_idx = self.add_string(method.as_str());
+                            self.emit(OpCode::LOAD_STR);
+                            self.code.extend_from_slice(&method_idx.to_le_bytes());
+                            for arg in &call.args.args {
+                                if let crate::ast::Arg::Pos(a) = arg {
+                                    self.compile_expr(a)?;
+                                }
+                            }
+                            let n_args = 2 + call.args.args.len() as u8; // recv + method + args
+                            self.emit(OpCode::CALL_NAT_COUNTED);
+                            self.code.extend_from_slice(
+                                &crate::vm::interop::NATIVE_INTEROP_OBJ_CALL.to_le_bytes());
+                            self.code.push(n_args);
+                            // py 结果沿用既有谎言口径（Auto|String → String），
+                            // 顶层格式化照常；may_py 续传供链式 Store 落盘。
+                            self.last_expr_type = ObjectType::String;
+                            self.last_expr_may_py = true;
+                            return Ok(());
+                        }
                         // Plan 087 Phase 3: Support generic instance method calls
                         match obj.as_ref() {
                             Expr::Ident(obj_name) => {
@@ -8937,6 +9091,9 @@ impl Codegen {
 
                     // Track return type for type-aware dispatch (e.g., print choosing STR vs I32)
                     if let Some(ref name) = func_name {
+                        // Plan 569 D2: 重置纪律——原生调用结果的 may_py 默认 false
+                        // （实参编译的粘性位不得泄漏到调用结果），py 臂下方对照置 true。
+                        self.last_expr_may_py = false;
                         if name.starts_with("print") || name == "write" || name == "say" || name.starts_with("assert") {
                             self.last_expr_type = ObjectType::Void;
                             self.last_was_native_void = true;
@@ -9034,9 +9191,21 @@ impl Codegen {
                                 PyType::Bool => ObjectType::Bool,
                                 PyType::List => ObjectType::Array,
                                 PyType::None => ObjectType::Void,
+                                // Plan 567 T16: nullable 值可为 null——
+                                // 非确定标量（消费面自判空）。
+                                PyType::Nullable(_) => ObjectType::Void,
                                 // Auto and String both use string pool
                                 PyType::Auto | PyType::String => ObjectType::String,
                             };
+                            // Plan 569 D2: py-ffi 调用点置位（侧表源①）——py 桥
+                            // 结果按运行期 tag 分派，不进 str.* 静态路由。
+                            self.last_expr_may_py = true;
+                        } else if name.contains('.')
+                            && name.split('.').next().map(|p| self.py_modules.contains(p)).unwrap_or(false)
+                        {
+                            // Plan 569 D2: py 模块点调（`use.py math` 后 math.sqrt）
+                            // 结果同置 may_py——py_modules 臂不经 py_native_map。
+                            self.last_expr_may_py = true;
                         }
                     }
 
@@ -9600,6 +9769,15 @@ impl Codegen {
                         self.last_expr_type = self.infer_native_return_type(&reloc_name);
                         self.last_was_native_void = matches!(self.last_expr_type, ObjectType::Void);
                     }
+                    // Plan 569 D2: 用户 fn 返回 py 桥值传导——调用点查
+                    // fn_may_py_returns（限定名/裸名双查，镜像上方 ret_ty 回退序）。
+                    self.last_expr_may_py = self.fn_may_py_returns.contains(reloc_name.as_str())
+                        || reloc_name
+                            .rsplit('.')
+                            .next()
+                            .filter(|bare| !bare.is_empty() && *bare != reloc_name.as_str())
+                            .map(|bare| self.fn_may_py_returns.contains(bare))
+                            .unwrap_or(false);
                     } // close else (non-generator CALL)
                 }
             }
@@ -11453,6 +11631,33 @@ impl Codegen {
             // Array methods returning Array (chained)
             (ObjectType::Array, "map" | "filter" | "slice" | "reverse") => ObjectType::Array,
             _ => ObjectType::NestedObject,
+        }
+    }
+
+    /// Plan 569 D2: 接收者 py-可能判定（py-类型侧表三源静态查表）。
+    /// - Ident 接收者 → py_typed_vars（`var x = <py-ffi 调用>` 落盘传导）
+    /// - Call 接收者 → 被调名 ∈ py_native_map（py-ffi 调用点）/ py_modules
+    ///   前缀（模块点调）/ fn_may_py_returns（用户 fn 返回传播）
+    /// - 其余窄形态 → last_expr_may_py 粘性位（保守：错报=obj_* 组合子
+    ///   Auto 臂照常分派，漏报=维持现状规避）。
+    fn receiver_may_py(&self, obj: &Expr) -> bool {
+        match obj {
+            Expr::Ident(name) => self.py_typed_vars.contains(name.as_str()),
+            Expr::Call(call) => match call.name.as_ref() {
+                Expr::Ident(callee) => {
+                    self.py_native_map.contains_key(callee.as_str())
+                        || self.fn_may_py_returns.contains(callee.as_str())
+                        || (callee.as_str().contains('.')
+                            && callee
+                                .as_str()
+                                .split('.')
+                                .next()
+                                .map(|p| self.py_modules.contains(p))
+                                .unwrap_or(false))
+                }
+                _ => false,
+            },
+            _ => self.last_expr_may_py,
         }
     }
 

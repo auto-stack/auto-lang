@@ -1,0 +1,46 @@
+{
+  "fixtures": [
+    {
+      "file": "rgb-1x1.jpg",
+      "kind": "jpeg",
+      "orientation": 1,
+      "alpha": false
+    },
+    {
+      "file": "rgb-1x1.png",
+      "kind": "png",
+      "orientation": 1,
+      "alpha": false
+    },
+    {
+      "file": "rgb-1x1.webp",
+      "kind": "webp",
+      "orientation": 1,
+      "alpha": false
+    },
+    {
+      "file": "orientation-6.jpg",
+      "kind": "jpeg",
+      "orientation": 6,
+      "alpha": false
+    },
+    {
+      "file": "alpha-2x1.png",
+      "kind": "png",
+      "orientation": 1,
+      "alpha": true
+    },
+    {
+      "file": "corrupt.bin",
+      "kind": "corrupt",
+      "orientation": 1,
+      "alpha": false
+    },
+    {
+      "file": "scenic-320x240.png",
+      "kind": "png",
+      "orientation": 1,
+      "alpha": false
+    }
+  ]
+}

@@ -125,6 +125,27 @@ pub struct RustTrans {
     // `use.rust <crate>` import is present. Mirrors tag_types/known_enum_names.
     local_struct_types: HashSet<AutoStr>,
 
+    // PLAN-009 T1 (F1, 006 S2): explicit derive traits per locally declared
+    // type (struct/enum that carries `#[derive(...)]` attrs). Auto-derived
+    // containers intersect their comparison-trait set with these, so a field
+    // whose type explicitly derives only `Clone, Copy, Debug` no longer makes
+    // the container emit `PartialEq, Eq, PartialOrd, Ord` (rustc E0369).
+    explicit_derive_traits: HashMap<AutoStr, Vec<AutoStr>>,
+
+    // PLAN-009 T1 (F1): shape info for locally AUTO-derived types (no attrs):
+    // (comparison-trait mask the shape heuristics would grant, local field/
+    // payload type names). Lets the restriction propagate through chains
+    // (Wrapper → Inner → Grid) with order-independent memoized recursion.
+    local_auto_shapes: HashMap<AutoStr, (u8, Vec<AutoStr>)>,
+
+    // PLAN-009 T1 (F1): memo for auto_cmp_mask recursion (cycle-guarded).
+    auto_cmp_mask_memo: HashMap<AutoStr, u8>,
+
+    // PLAN-009 T1 (F1): type names whose auto-derived comparison set was
+    // restricted by explicit-derive surfaces. The fix_non_ord_derives upgrade
+    // pass must never re-widen them (it only sees text, so we hand it names).
+    ord_restricted_names: HashSet<AutoStr>,
+
     // Plan 013 (B16): identifiers bound inside `is` patterns for bridge-crate
     // enum variants (e.g. `auto_val.Kid.Node(child)` binds `child: Box<Node>`).
     // When such an ident is auto-cloned at a call site, emit `(*x).clone()` so
@@ -441,6 +462,10 @@ impl RustTrans {
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
+            explicit_derive_traits: HashMap::new(),
+            local_auto_shapes: HashMap::new(),
+            auto_cmp_mask_memo: HashMap::new(),
+            ord_restricted_names: HashSet::new(),
             bridge_pattern_bound_idents: HashSet::new(),
             spec_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
@@ -531,6 +556,10 @@ impl RustTrans {
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
+            explicit_derive_traits: HashMap::new(),
+            local_auto_shapes: HashMap::new(),
+            auto_cmp_mask_memo: HashMap::new(),
+            ord_restricted_names: HashSet::new(),
             bridge_pattern_bound_idents: HashSet::new(),
             spec_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
@@ -15127,68 +15156,56 @@ impl RustTrans {
         // T6: Add Eq, PartialOrd, Ord if no float/HashMap fields present
         if type_decl.attrs.is_empty() {
             // Recursively check field types for float/map/enum
-            fn type_has_float(ty: &Type) -> bool {
-                match ty {
-                    Type::Float | Type::Double => true,
-                    Type::List(inner) | Type::Result(inner) | Type::Option(inner) => type_has_float(inner),
-                    _ => false,
-                }
-            }
-            let has_float_field = type_decl.members.iter().any(|m| type_has_float(&m.ty));
-            let has_map_field = type_decl.members.iter().any(|m| {
-                matches!(&m.ty, Type::Map(_, _)) || matches!(&m.ty, Type::Rust(source) if {
-                    let name = source.short_name();
-                    name.starts_with("HashMap") || name.starts_with("BTreeMap")
-                })
-            });
+            let has_float_field = type_decl.members.iter().any(|m| Self::type_has_float(&m.ty));
+            let has_map_field = type_decl.members.iter().any(|m| Self::type_has_map(&m.ty));
             // Enums don't derive Eq, so struct fields containing enum types can't derive Eq either
             // Also check nested types: List<EnumType>, Option<EnumType>, etc.
-            fn type_contains_enum(ty: &Type) -> bool {
-                match ty {
-                    Type::Tag(_) | Type::Enum(_) => true,
-                    // Type::User with empty members is a generic type param (T), not a concrete type
-                    Type::User(td) if !td.members.is_empty() || !td.generic_params.is_empty() => true,
-                    Type::GenericInstance(inst) => inst.args.iter().any(|arg| type_contains_enum(arg)),
-                    Type::List(inner) | Type::Result(inner) | Type::Option(inner) => type_contains_enum(inner),
-                    _ => false,
-                }
-            }
-            let has_enum_field = type_decl.members.iter().any(|m| type_contains_enum(&m.ty));
+            let has_enum_field = type_decl.members.iter().any(|m| Self::type_contains_enum(&m.ty));
             // Plan 384 A5: detect `dyn Trait` fields (incl. inside Arc<dyn T> /
             // Box<dyn T>). `dyn Trait` does not implement PartialEq/Eq/Ord, so
             // structs containing such fields must derive only Clone, Debug.
-            fn type_contains_dyn(ty: &Type) -> bool {
-                match ty {
-                    Type::User(td) => td.name.starts_with("dyn "),
-                    Type::GenericInstance(inst) => {
-                        inst.args.iter().any(|arg| type_contains_dyn(arg))
-                    }
-                    Type::List(inner) | Type::Result(inner) | Type::Option(inner)
-                    | Type::Reference(inner) => type_contains_dyn(inner),
-                    _ => false,
-                }
-            }
-            let has_dyn_field = type_decl.members.iter().any(|m| type_contains_dyn(&m.ty));
+            let has_dyn_field = type_decl.members.iter().any(|m| Self::type_contains_dyn(&m.ty));
             // Plan 387 follow-up: a `TaskRef<T>` field is move-only (RAII sole
             // owner — not Clone/Debug/PartialEq/Eq/Ord), so structs containing
             // one can only derive Debug.
-            fn type_is_taskref(ty: &Type) -> bool {
-                matches!(ty, Type::GenericInstance(inst) if inst.base_name == "TaskRef")
+            let has_taskref_field = type_decl.members.iter().any(|m| Self::type_is_taskref(&m.ty));
+            // PLAN-009 T1 (F1, 006 S2): the shape heuristics above grant a
+            // comparison-trait set; intersect it with what the field types'
+            // own derive surfaces actually provide. A field type that
+            // explicitly derives only `Clone, Copy, Debug` must not end up
+            // inside a container deriving `PartialEq, Eq, PartialOrd, Ord`
+            // (rustc E0369). External/unknown field types impose no
+            // constraint (unchanged behavior).
+            let field_types: Vec<&Type> = type_decl.members.iter().map(|m| &m.ty).collect();
+            let mask = self.field_cmp_mask(&field_types);
+            let want = if has_taskref_field || has_dyn_field {
+                0
+            } else if has_float_field || has_map_field || has_enum_field {
+                Self::D_PE
+            } else {
+                Self::D_FULL
+            };
+            let cmp = want & mask;
+            if cmp != want {
+                self.ord_restricted_names.insert(type_decl.name.clone());
             }
-            let has_taskref_field = type_decl.members.iter().any(|m| type_is_taskref(&m.ty));
             if has_taskref_field {
                 writeln!(sink.body, "#[derive(Debug)]")?;
-            } else if has_dyn_field {
-                writeln!(sink.body, "#[derive(Clone, Debug)]")?;
-            } else if has_float_field || has_map_field || has_enum_field {
-                // Structs containing enum fields are conservatively downgraded
-                // to PartialEq here; fix_non_ord_derives (post-pass) refines:
-                // it restores Eq/Ord when the enum is actually Ord-safe (e.g.
-                // fieldless ModelTier), and propagates non-Ord-ness from enums
-                // containing JsonValue/dyn to their containing structs.
-                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
             } else {
-                writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")?;
+                let mut traits = String::from("Clone, Debug");
+                if cmp & Self::D_PE != 0 {
+                    traits.push_str(", PartialEq");
+                }
+                if cmp & Self::D_EQ != 0 {
+                    traits.push_str(", Eq");
+                }
+                if cmp & Self::D_PO != 0 {
+                    traits.push_str(", PartialOrd");
+                }
+                if cmp & Self::D_OR != 0 {
+                    traits.push_str(", Ord");
+                }
+                writeln!(sink.body, "#[derive({})]", traits)?;
             }
         } else {
             for attr in &type_decl.attrs {
@@ -16159,32 +16176,9 @@ impl RustTrans {
             }
         }
 
-        fn ty_has_float(ty: &Type) -> bool {
-            match ty {
-                Type::Float | Type::Double => true,
-                Type::List(inner) | Type::Result(inner) | Type::Option(inner) => ty_has_float(inner),
-                _ => false,
-            }
-        }
-        fn ty_has_map(ty: &Type) -> bool {
-            matches!(ty, Type::Map(_, _))
-                || matches!(ty, Type::Rust(source) if {
-                    let name = source.short_name();
-                    name.starts_with("HashMap") || name.starts_with("BTreeMap")
-                })
-        }
-        fn ty_has_enum(ty: &Type) -> bool {
-            match ty {
-                Type::Tag(_) | Type::Enum(_) => true,
-                Type::User(td) if !td.members.is_empty() || !td.generic_params.is_empty() => true,
-                Type::GenericInstance(inst) => inst.args.iter().any(ty_has_enum),
-                Type::List(inner) | Type::Result(inner) | Type::Option(inner) => ty_has_enum(inner),
-                _ => false,
-            }
-        }
         let payload_is_eq_safe = payload_types
             .iter()
-            .all(|ty| !ty_has_float(ty) && !ty_has_map(ty) && !ty_has_enum(ty));
+            .all(|ty| !Self::type_has_float(ty) && !Self::type_has_map(ty) && !Self::type_contains_enum(ty));
 
         let derive_attrs = match &enum_decl.kind {
             EnumKind::Scalar { repr_type: Some(_) } if payload_is_eq_safe => {
@@ -16216,7 +16210,19 @@ impl RustTrans {
                 write!(sink.body, "#[{}]\n", attr)?;
             }
         } else {
-            writeln!(sink.body, "{}", derive_attrs)?;
+            // PLAN-009 T1 (F1, 006 S2): restrict comparison traits by the
+            // payload types' explicit derive surfaces (E0369 guard; mirrors
+            // the TypeDecl handler).
+            let mask = self.field_cmp_mask(&payload_types);
+            if mask != Self::D_FULL {
+                let filtered = Self::filter_cmp_traits(derive_attrs, mask);
+                if filtered != derive_attrs && filtered.contains("PartialEq") {
+                    self.ord_restricted_names.insert(enum_decl.name.clone());
+                }
+                writeln!(sink.body, "{}", filtered)?;
+            } else {
+                writeln!(sink.body, "{}", derive_attrs)?;
+            }
         }
 
         // Plan 163: Output pub prefix
@@ -18108,7 +18114,22 @@ impl RustTrans {
         }
     }
 
+    /// PLAN-009 T1 (F1): names whose auto-derived comparison set was
+    /// restricted; callers thread this into `post_process_with`. (Read-only
+    /// accessor; the field itself stays private.)
+    pub fn ord_restricted_names(&self) -> &HashSet<AutoStr> {
+        &self.ord_restricted_names
+    }
+
     pub fn post_process(output: &mut Vec<u8>) {
+        Self::post_process_with(output, &HashSet::new());
+    }
+
+    /// PLAN-009 T1 (F1): post-processing that knows which type names had
+    /// their auto-derived comparison set restricted (explicit-derive
+    /// surfaces), so fix_non_ord_derives never re-widens them. Entry points
+    /// holding a RustTrans pass `transpiler.ord_restricted_names`.
+    pub fn post_process_with(output: &mut Vec<u8>, ord_restricted: &HashSet<AutoStr>) {
         let mut content = String::from_utf8(std::mem::take(output)).unwrap_or_default();
 
         // B3: Remove duplicate `use self::X;` when `pub mod X;` exists
@@ -18203,7 +18224,18 @@ impl RustTrans {
         Self::fix_counted(&mut content, "fix_residual_error_box", Self::fix_residual_error_box);
         Self::fix_counted(&mut content, "fix_result_none_unit", Self::fix_result_none_unit);
         Self::fix_counted(&mut content, "fix_fn_field_calls", Self::fix_fn_field_calls);
-        Self::fix_counted(&mut content, "fix_non_ord_derives", Self::fix_non_ord_derives);
+        // fix_non_ord_derives carries PLAN-009 F1 state (restricted type
+        // names), so it can't go through the fn-pointer fix_counted helper;
+        // count inline with the same convention.
+        {
+            let before = content.len();
+            Self::fix_non_ord_derives(&mut content, ord_restricted);
+            if content.len() != before {
+                if let Ok(mut m) = FIX_COUNTS.lock() {
+                    *m.entry("fix_non_ord_derives".to_string()).or_insert(0) += 1;
+                }
+            }
+        }
         Self::fix_counted(&mut content, "fix_missing_trait_impl_uses", Self::fix_missing_trait_impl_uses);
         Self::fix_counted(&mut content, "fix_string_literal_enum_args", Self::fix_string_literal_enum_args);
         // Plan 376: Type-flow analysis post_process passes
@@ -20029,7 +20061,226 @@ impl RustTrans {
     /// fails to compile (E0277). Downgrade those to `Clone, Debug, PartialEq`.
     /// (No transpiled type is ever used as a BTreeMap key or sort key, so
     /// dropping Ord/PartialOrd/Eq is always safe here.)
-    fn fix_non_ord_derives(content: &mut String) {
+    // ========================================================================
+    // PLAN-009 T1 (F1, 006 S2): auto-derive restriction machinery.
+    //
+    // a2r auto-adds comparison derives to types without explicit attrs. When
+    // such a container references a type whose EXPLICIT derive set lacks a
+    // trait (e.g. `#[derive(Clone, Copy, Debug)] struct GridSize`), the
+    // emitted derive fails rustc with E0369. The handlers intersect the
+    // shape-derived candidate set with the constraint masks below.
+    // ========================================================================
+
+    const D_PE: u8 = 1; // PartialEq
+    const D_EQ: u8 = 2; // Eq
+    const D_PO: u8 = 4; // PartialOrd
+    const D_OR: u8 = 8; // Ord
+    const D_FULL: u8 = Self::D_PE | Self::D_EQ | Self::D_PO | Self::D_OR;
+
+    /// Trait names listed in a type's explicit `#[derive(...)]` attrs.
+    /// Attrs without a derive(...) contribute nothing (empty Vec).
+    fn derive_traits_from_attrs(attrs: &[AutoStr]) -> Vec<AutoStr> {
+        let mut out: Vec<AutoStr> = Vec::new();
+        for attr in attrs {
+            let a = attr.as_str().trim();
+            let Some(inner) = a.strip_prefix("derive(") else { continue };
+            let Some(inner) = inner.strip_suffix(')') else { continue };
+            for t in inner.split(',') {
+                let t = t.trim();
+                if t.is_empty() {
+                    continue;
+                }
+                // Path-qualified traits (std::fmt::Debug) count by last segment.
+                let name = t.rsplit("::").next().unwrap_or(t);
+                if !out.iter().any(|e| e.as_str() == name) {
+                    out.push(name.into());
+                }
+            }
+        }
+        out
+    }
+
+    fn mask_from_traits(traits: &[AutoStr]) -> u8 {
+        let mut mask = 0;
+        for t in traits {
+            match t.as_str() {
+                "PartialEq" => mask |= Self::D_PE,
+                "Eq" => mask |= Self::D_EQ,
+                "PartialOrd" => mask |= Self::D_PO,
+                "Ord" => mask |= Self::D_OR,
+                _ => {}
+            }
+        }
+        mask
+    }
+
+    /// Comparison-trait mask the shape heuristics (TaskRef/dyn/float/map/
+    /// enum-field downgrades — same branches as the TypeDecl handler) would
+    /// grant a type with these field/payload types, before explicit-derive
+    /// intersection.
+    fn shape_base_cmp_mask(field_types: &[&Type]) -> u8 {
+        let has_taskref = field_types.iter().any(|ty| Self::type_is_taskref(ty));
+        let has_dyn = field_types.iter().any(|ty| Self::type_contains_dyn(ty));
+        let has_eq_unsafe = field_types.iter().any(|ty| {
+            Self::type_has_float(ty) || Self::type_has_map(ty) || Self::type_contains_enum(ty)
+        });
+        if has_taskref || has_dyn {
+            0
+        } else if has_eq_unsafe {
+            Self::D_PE
+        } else {
+            Self::D_FULL
+        }
+    }
+
+    /// Names of locally declared types reachable inside `ty` (through
+    /// List/Option/Result/Reference/Map/GenericInstance wrappers).
+    fn collect_local_type_names(ty: &Type, locals: &HashSet<AutoStr>, out: &mut Vec<AutoStr>) {
+        match ty {
+            Type::User(td) => {
+                let n = td.name.clone();
+                if locals.contains(&n) && !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+            Type::GenericInstance(inst) => {
+                for arg in &inst.args {
+                    Self::collect_local_type_names(arg, locals, out);
+                }
+            }
+            Type::List(inner)
+            | Type::Option(inner)
+            | Type::Result(inner)
+            | Type::Reference(inner) => {
+                Self::collect_local_type_names(inner, locals, out);
+            }
+            Type::Map(k, v) => {
+                Self::collect_local_type_names(k, locals, out);
+                Self::collect_local_type_names(v, locals, out);
+            }
+            _ => {}
+        }
+    }
+
+    /// Constraint mask imposed by a referenced type name: its explicit
+    /// derive surface if declared with attrs, otherwise its (recursively
+    /// computed) auto-derived set; unknown/external types impose none.
+    fn type_cmp_mask(&mut self, name: &str) -> u8 {
+        if let Some(traits) = self.explicit_derive_traits.get(name) {
+            return Self::mask_from_traits(traits);
+        }
+        if self.local_auto_shapes.contains_key(name) {
+            return self.auto_cmp_mask(name);
+        }
+        Self::D_FULL
+    }
+
+    /// Memoized, cycle-guarded recursion: the comparison mask an auto-derived
+    /// local type ends up with (shape base ∩ referenced types' masks).
+    fn auto_cmp_mask(&mut self, name: &str) -> u8 {
+        if let Some(m) = self.auto_cmp_mask_memo.get(name) {
+            return *m;
+        }
+        // Cycle guard: assume unconstrained until proven otherwise.
+        self.auto_cmp_mask_memo.insert(name.into(), Self::D_FULL);
+        let mut mask = Self::D_FULL;
+        if let Some((base, refs)) = self.local_auto_shapes.get(name).map(|(b, r)| (*b, r.clone())) {
+            mask = base;
+            for r in refs {
+                mask &= self.type_cmp_mask(&r);
+            }
+        }
+        self.auto_cmp_mask_memo.insert(name.into(), mask);
+        mask
+    }
+
+    /// Intersect the candidate mask with the constraints of every local type
+    /// referenced inside `field_types` (struct members / enum payloads).
+    fn field_cmp_mask(&mut self, field_types: &[&Type]) -> u8 {
+        let mut mask = Self::D_FULL;
+        let mut names: Vec<AutoStr> = Vec::new();
+        for ty in field_types {
+            Self::collect_local_type_names(ty, &self.local_struct_types, &mut names);
+        }
+        for n in names {
+            mask &= self.type_cmp_mask(&n);
+        }
+        mask
+    }
+
+    /// Rebuild a `#[derive(...)]` attribute keeping only the comparison
+    /// traits `mask` allows (other traits and canonical order preserved).
+    fn filter_cmp_traits(derive_attr: &str, mask: u8) -> String {
+        let inner = derive_attr
+            .trim_start_matches("#[derive(")
+            .trim_end_matches(")]");
+        let mut out = String::from("#[derive(");
+        let mut first = true;
+        for t in inner.split(',') {
+            let t = t.trim();
+            let keep = match t {
+                "PartialEq" => mask & Self::D_PE != 0,
+                "Eq" => mask & Self::D_EQ != 0,
+                "PartialOrd" => mask & Self::D_PO != 0,
+                "Ord" => mask & Self::D_OR != 0,
+                _ => true,
+            };
+            if keep {
+                if !first {
+                    out.push_str(", ");
+                }
+                out.push_str(t);
+                first = false;
+            }
+        }
+        out.push_str(")]");
+        out
+    }
+
+    fn type_has_float(ty: &Type) -> bool {
+        match ty {
+            Type::Float | Type::Double => true,
+            Type::List(inner) | Type::Result(inner) | Type::Option(inner) => Self::type_has_float(inner),
+            _ => false,
+        }
+    }
+
+    fn type_has_map(ty: &Type) -> bool {
+        matches!(ty, Type::Map(_, _))
+            || matches!(ty, Type::Rust(source) if {
+                let name = source.short_name();
+                name.starts_with("HashMap") || name.starts_with("BTreeMap")
+            })
+    }
+
+    fn type_contains_enum(ty: &Type) -> bool {
+        match ty {
+            Type::Tag(_) | Type::Enum(_) => true,
+            // Type::User with empty members is a generic type param (T), not a concrete type
+            Type::User(td) if !td.members.is_empty() || !td.generic_params.is_empty() => true,
+            Type::GenericInstance(inst) => inst.args.iter().any(|arg| Self::type_contains_enum(arg)),
+            Type::List(inner) | Type::Result(inner) | Type::Option(inner) => Self::type_contains_enum(inner),
+            _ => false,
+        }
+    }
+
+    fn type_contains_dyn(ty: &Type) -> bool {
+        match ty {
+            Type::User(td) => td.name.starts_with("dyn "),
+            Type::GenericInstance(inst) => {
+                inst.args.iter().any(|arg| Self::type_contains_dyn(arg))
+            }
+            Type::List(inner) | Type::Result(inner) | Type::Option(inner)
+            | Type::Reference(inner) => Self::type_contains_dyn(inner),
+            _ => false,
+        }
+    }
+
+    fn type_is_taskref(ty: &Type) -> bool {
+        matches!(ty, Type::GenericInstance(inst) if inst.base_name == "TaskRef")
+    }
+
+    fn fix_non_ord_derives(content: &mut String, ord_restricted: &HashSet<AutoStr>) {
         // Markers that indicate a non-Ord payload. If any appears between a
         // derive line and the end of the type body, downgrade the derive.
         // We scan the two lines that often follow the derive: the type kind line
@@ -20118,6 +20369,12 @@ impl RustTrans {
             let all_markers: Vec<String> = non_ord_markers.iter()
                 .map(|s| s.to_string())
                 .chain(derived_markers.iter().cloned())
+                // PLAN-009 T1 (F1): types whose comparison derives were
+                // restricted at the AST level (explicit-derive surfaces) are
+                // non-Eq/Ord by construction — treat them as markers so the
+                // upgrade pass never re-widens them nor anything referencing
+                // them.
+                .chain(ord_restricted.iter().map(|s| s.as_str().to_string()))
                 .collect();
 
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
@@ -20695,6 +20952,56 @@ impl Trans for RustTrans {
             }
         }
 
+        // PLAN-009 T1 (F1, 006 S2): pre-scan explicit derive surfaces of
+        // locally declared types and the shape info of auto-derived ones, so
+        // the auto-derive restriction at the TypeDecl/EnumDecl handlers is
+        // order-independent and propagates through reference chains
+        // (Wrapper → Inner → Grid). See type_cmp_mask/auto_cmp_mask below.
+        for stmt in &ast.stmts {
+            let (name, attrs, field_types): (AutoStr, &Vec<AutoStr>, Vec<&Type>) = match stmt {
+                Stmt::TypeDecl(td) => (
+                    td.name.clone(),
+                    &td.attrs,
+                    td.members.iter().map(|m| &m.ty).collect(),
+                ),
+                Stmt::EnumDecl(ed) => {
+                    let mut payload_types: Vec<&Type> = Vec::new();
+                    if let EnumKind::Homogeneous { payload_type } = &ed.kind {
+                        payload_types.push(payload_type);
+                    }
+                    for item in &ed.items {
+                        if let Some(pt) = &item.payload_type {
+                            payload_types.push(pt);
+                        }
+                        for pt in &item.payload_types {
+                            payload_types.push(pt);
+                        }
+                        for f in &item.fields {
+                            payload_types.push(&f.field_type);
+                        }
+                    }
+                    (ed.name.clone(), &ed.attrs, payload_types)
+                }
+                _ => continue,
+            };
+            let traits = Self::derive_traits_from_attrs(attrs);
+            if !traits.is_empty() {
+                // Explicit #[derive(...)] surface: verbatim passthrough at
+                // emission; here it becomes the constraint set for containers
+                // referencing this type. (Attrs WITHOUT a derive(...) attr are
+                // treated as auto-shaped: manual trait impls, if any, are not
+                // visible to the transpiler.)
+                self.explicit_derive_traits.insert(name, traits);
+            } else {
+                let base = Self::shape_base_cmp_mask(&field_types);
+                let mut refs: Vec<AutoStr> = Vec::new();
+                for ty in &field_types {
+                    Self::collect_local_type_names(ty, &self.local_struct_types, &mut refs);
+                }
+                self.local_auto_shapes.insert(name, (base, refs));
+            }
+        }
+
         // Pre-scan all function signatures for auto-borrow/auto-clone at call sites
         // Without this, functions declared after their callers won't have param type info
         for stmt in &ast.stmts {
@@ -21166,7 +21473,7 @@ pub fn transpile_rust_with_siblings(
     transpiler.trans(ast, &mut out)?;
 
     // Apply post-processing fixes (replaces fix_transpiled.py)
-    RustTrans::post_process(&mut out.body);
+    RustTrans::post_process_with(&mut out.body, &transpiler.ord_restricted_names);
 
     Ok(out)
 }
@@ -21665,6 +21972,9 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
     // Phase 3: Transpile each module into its own Sink
     let mut multi_sink = MultiSink::new();
+    // PLAN-009 T1 (F1): restricted-name accumulator across per-module
+    // transpilers (see drain inside the loop).
+    let mut ord_restricted_acc: HashSet<AutoStr> = HashSet::new();
     for (module, ast) in &parsed_modules {
         let sink = multi_sink.add(&module.output_name);
         sink.source_file = module.source_path.file_name()
@@ -21940,11 +22250,15 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         }
 
         transpiler.trans(ast.clone(), sink)?;
+        // PLAN-009 T1 (F1): transpiler is per-module here; drain its
+        // restricted-name set into the function-level accumulator so the
+        // post-processing loop below sees all modules' restrictions.
+        ord_restricted_acc.extend(transpiler.ord_restricted_names.drain());
     }
 
     // Phase 3.4: Apply post-processing to each sink's body
     for (_, sink) in &mut multi_sink.files {
-        RustTrans::post_process(&mut sink.body);
+        RustTrans::post_process_with(&mut sink.body, &ord_restricted_acc);
     }
 
     // Phase 3.5: Generate Cargo.toml
@@ -22439,6 +22753,9 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     let mut sink = Sink::new(AutoStr::from("merged"));
     let mut seen_structs: HashSet<String> = HashSet::new();
     let mut seen_enums: HashSet<String> = HashSet::new();
+    // PLAN-009 T1 (F1): restricted-name accumulator across per-module
+    // transpilers (see drain inside the loop).
+    let mut ord_restricted_acc: HashSet<AutoStr> = HashSet::new();
 
     for (idx, (module, ast)) in parsed_modules.iter().enumerate() {
         let mut transpiler = RustTrans::new(AutoStr::from("merged"));
@@ -22538,10 +22855,13 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         }
 
         transpiler.trans(deduped_ast, &mut sink)?;
+        // PLAN-009 T1 (F1): transpiler is per-module here; drain its
+        // restricted-name set into the function-level accumulator.
+        ord_restricted_acc.extend(transpiler.ord_restricted_names.drain());
     }
 
     // Phase 3.4: Apply post-processing
-    RustTrans::post_process(&mut sink.body);
+    RustTrans::post_process_with(&mut sink.body, &ord_restricted_acc);
     post_process_merged(&mut sink.body);
     apply_merged_regex_fixes(&mut sink.body);
 

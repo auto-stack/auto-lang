@@ -209,6 +209,7 @@ fn test_m4_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m4_codegen_corpus() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -422,13 +423,17 @@ fn test_aavm2_m4_use_harness_selfcheck() {
     eprintln!("M4 use-harness selfcheck: {checked} single-file corpus identical");
 }
 
-/// P532 W2:lib 五文件静态字节差分闸门(语义等价口径)——同一 probe 经
+/// P532 W2/⑥e:lib 静态字节差分闸门(语义等价口径)——同一 probe 经
 /// 宿主 compile_and_link_multi 与 aavm codegen_dump_files 编译,归一化
-/// 逐行对拍(.line 剔除/jmp-call 目标抽象/帧容量豁免/字段全局名池解析)。
-/// 当前红:tokenize 注释臂绝对槽号 +4(作用域推入结构层级差,KNOWN-DEBT
-/// 候选)——作用域架构对齐落地后转绿,届时移除 #[ignore] 入正式闸门。
-#[ignore = "P532 ⑥c 作用域层级差待对齐(见 plan 532 残留③);对齐后转正"]
+/// 逐行对拍。转正(2026-09-05):⑥c-⑥f 作用域层级/pop 块尾豁免/链式跳
+/// 指令选择/getter 构造旗标/f-string 段 tag 静态面五族对齐后双侧
+/// SEMANTICALLY IDENTICAL(33452 canon 行)。canon 口径:.line 剔除/
+/// jmp-call 目标抽象/帧容量豁免/jmp.far 编码宽度归一/call.spec↔call.nat
+/// 分派机制归一(宿主类型解析 miss 的运行期 spec 分派 vs aavm 编译期
+/// native 直连,判定面非镜像对象——行为由 M5+⑤腿兜底,KNOWN-DEBT
+/// 登记)/fn.prolog args 保留。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_p532_lib_static_diff() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -538,13 +543,23 @@ fn test_aavm2_p532_lib_static_diff() {
     let tmp = std::env::temp_dir();
     std::fs::write(tmp.join("p532_rust.txt"), &rust_dump).unwrap();
     std::fs::write(tmp.join("p532_aavm.txt"), &aavm_dump).unwrap();
-    // 语义等价口径(P532 W2 残留③收口裁定):
+    // 语义等价口径(P532 W2 残留③收口裁定;⑥e 转正补全):
     //  1) .line 指令整行剔除——纯调试元数据,两侧行号体系不同(宿主
     //     parser source_lines 对 inline is-else 臂归闭括号行/if 汇合点
     //     双标记,实测 .line 326+331 连发 vs aavm 单发),零执行语义;
     //     已登记 KNOWN-DEBT 候选。
     //  2) jmp/call 目标抽象化——.line 插入差使绝对字节目标平移,控制流
     //     结构由助记符序列+patch 模式保证。
+    //  3) jmp.far 归一为 jmp(⑥e)——宿主对回跳距离 >32765 的循环尾
+    //     跳发 JMP_FAR(u32 编码形态,codegen.rs 3373);aavm 指令列表
+    //     (ins.n=下标)无字节宽度约束,serialize 无 far 形态。纯编码
+    //     宽度差异,跳转语义等价(目标本已抽象)。
+    //  4) call.spec/call.nat 归一为 call.disp(⑥e)——宿主 CALL_SPEC=
+    //     类型解析 miss 时的运行期 spec 分派兜底(方法名+argc,
+    //     codegen.rs 9157);aavm=编译期静态解析 native id。同一调用
+    //     的两种分派机制,宿主 miss 面(类型推断覆盖面)非镜像对象
+    //     (⑨ 回退实证);行为等价由 M5 引擎语料闸门+⑤腿原生闸门
+    //     兜底(本差分只保指令流结构)。KNOWN-DEBT 登记。
     //  其余指令(助记符+操作数,含 store/load 槽号、fn.prolog locals)
     //  严格逐条相等。
     let canon = |s: &str| -> Vec<String> {
@@ -557,8 +572,12 @@ fn test_aavm2_p532_lib_static_diff() {
                     return None;
                 }
                 let ops = parts.next().unwrap_or("").trim();
-                if (mn == "jmp" || mn == "jmp.z" || mn == "jmp.nz") && ops.starts_with("-> 0x") {
-                    Some(format!("{mn} -> *"))
+                if (mn == "jmp" || mn == "jmp.z" || mn == "jmp.nz" || mn == "jmp.far")
+                    && ops.starts_with("-> 0x")
+                {
+                    Some(format!("{} -> *", mn.trim_end_matches(".far")))
+                } else if mn == "call.spec" || mn == "call.nat" {
+                    Some("call.disp *".to_string())
                 } else if mn == "call" && ops.starts_with("0x") {
                     Some(format!("{mn} *"))
                 } else if mn == "fn.prolog" || mn == "reserve" {
@@ -608,6 +627,7 @@ fn test_aavm2_p532_lib_static_diff() {
 /// codegen_dump_files)。aavm 侧 ev_run_files/codegen_dump_files 未实现时
 /// 以运行期错误形态转红(W3 实现启动条件)。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m4_use_corpus() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -707,3 +727,4 @@ fn test_aavm2_m4_rust_disasm_print() {
         }
     }
 }
+

@@ -61,13 +61,15 @@ resvg 原生栅格化——svg 无 text 约束自此解除）+ hover emphasis/�
 line dash/thick。契约见 [design/diagram-components.md](design/diagram-components.md)；
 group 平铺/focus 模型归 Phase 2a，DSL 静态糖归 Phase 3。
 
-**导航组件线（plan-482 落地）**：nav-item/nav-group/nav(search:) 组件族——
-class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGroup 镜像，
-单测锁死双端不可漂移）；hover/active/disabled 三态、icon（lucide svg/emoji 双
-通道）/label+desc/badge 槽、路由 to:（vue RouterLink / VM `__navigate`+历史栈
-`router.back()`）与 onclick 状态双模式、data-active 与 nav-name/nav-desc 语义
-锚；顺修 lucide_svg 裸片段缺陷（此前全部 VM lucide 图标空渲染）。三 app 落地：
-015-notes/018-book-reader/widgets-gallery + 外部 auto-musk(052)/auto-os-config(012)。
+**导航组件线（plan-482 落地，✅ plan-562 退役）**：nav/nav-group/nav-item/nav-link
+族已全部迁移至 sidebar_* 族并退役——仓内 015-notes/018-book-reader/019-video-app +
+widgets-gallery 外壳与 navitem/navlink 两页 + 外仓 auto-musk(052)/auto-os-config(012)
+零残留；schema/aura.at 四元素加 `superseded_by` 标注（schema_loader/ElementMeta
+新增该字段解析，docs_gen 生成物 core.md/kitchen-sink.at 过滤带标注元素，本机制
+首个应用即本族）；gallery 侧栏滚动随 562 增补改 AutoUI `scroll` 组件（ScrollArea/
+Scrollable 双端）。nav 族实现（nav_contract.rs/脚手架 Nav*.vue/渲染臂）保留一个
+观察期，移除小计划要点（含 P548-D3 清理、Plain 臂 type="button" 补全、
+sidebar_input VM 缺口裁定）登记 KNOWN-DEBT。原 482 契约细节见归档计划。
 
 **sidebar 组件族（plan-548 落地，Vue 端先行）**：shadcn-vue Sidebar 1:1 复刻的
 sidebar_* 23 元素族——schema/aura.at 手写扩全 props（collapsible/variant/side/
@@ -75,9 +77,19 @@ collapsed_size 等，`SCHEMA_DRIFT_UPDATE_BASELINE=1` 更基线）+ Vue 端逐�
 （gen/vue.rs shadcn 发射臂，脚手架组件模板对齐 shadcn 原版）+ `to:`/`active` D2
 扩展（免 RouterLink 手写）+ sidebar 裸用自动包 Provider + widgets-gallery sidebar
 页重写；设计/退役路线见 [design/autoui/sidebar-family-and-nav-retirement.md](../../design/autoui/sidebar-family-and-nav-retirement.md)。
-VM 端契约子集归后续 P2 计划，nav-item/nav-group 迁移与退役归 P3；债务
-P548-D1..D3（schema.rs 双侧分化/tooltip 未实现/vue.rs 旧臂死代码）台账
-KNOWN-DEBT。
+VM 端契约子集已由 plan-561 落地（见下条）；nav 族迁移与退役已由 plan-562
+完成（见上条）；债务 P548-D1..D3（schema.rs 双侧分化/tooltip 未实现/vue.rs 旧臂
+死代码）台账 KNOWN-DEBT。
+
+**sidebar VM 契约子集（plan-561 落地，结构等价口径）**：`ui_gen/sidebar_contract.rs`
+契约模块（28 常量 VM 可解析子集 + VM_ADAPTED 适配清单 + 逐 token 锚 shadcn
+scaffold 资产的防漂移测试）+ aura_view_builder 全族构建臂（容器/分区/分组折叠
+复用 nav_group_states 通道/menu_button 三态 + `to:` 路由自动探测，双拼写 tag
+分发）+ color.rs sidebar 语义色板 8 映射 + render_support 37 臂与 aura.at
+aliases/backends.iced 四表同步（baseline +52/−13，nav-item 先例）。子集外
+（rail/trigger/input/skeleton、collapsible=icon 轨道、side 放置）按设计 §3.3
+不做；widgets-gallery sidebar 页 VM 实跑与 Vue 端结构等价对拍证据
+`scratch/p561/`。
 
 **slot 替换（plan-476 落地）**：VM 轨 widget 插座/填充与 vue 轨语义对齐——调用位
 `slot(name:X){..}`/裸子节点渲染到子 widget outlet，父作用域求值+父事件路由+逐帧重求值；
@@ -244,6 +256,8 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 
 **559 vue 双端嵌入债并案已落地（GOAL-007/009 收尾面）**：W2 四件上收——①`vue_event_param` 单点收窄 `$event.target.{value,checked}`（gen 树 TS2339/18047 清零）②store 组合式跨 store 限定调用 facade 化（`AuraStore.sibling_stores` + 组合式发 sibling 导入/reactive facade 常量 + ts_adapter `store_bare_heads` 自限定裸发——vm A1 契约）③项目供给 TS 粘合安装 `install_project_api_glue`（契约抽取零端点=实现式 back/api.at 时 src/back/api.ts 孪生装入 gen lib/api.ts+dist；os-config 首试点：孪生真源签入 auto/src/back/api.ts，regen.sh 镜像 host）④`use back.api` 排除出 Plan 522 use-fn 拉取（TS2440/TS2304 根修）。W3 desktop-host api-client 守卫放开（gen 粘合/项目孪生择先，run 内先到先得+每次覆写防陈旧属主）+`desktop_extra_app_roots`（默认探测 `../auto-os-config/auto`，id=os-config 与 vm `extra_roots_from` 对齐，`AUTO_DESKTOP_APPS_EXTRA` 可覆）。W4 Taskbar ⚙️（emit settings，registry 在场性门控）+宿主 `launchSettings` 聚焦-或-启动（vm 551 T2 对齐）。W6 通用编辑器字段级挂载（`entryAtW`×2——vm merged 真源 auto-os-config-back/api.at 同步，漏改即 launch 不可用——+ConfigEditor `widgets` prop（Modules.active_widgets 装载一次零额外 HTTP）+wallpaper_picker 渲染分支；drop-in 夹具 p559-fixture 双端实证点选落盘）。W7 `autoui_desktop` handler 增 (app,widget) 子组件定位维度（`DesktopInject::Handler.widget` + `DynamicComponent.call_widget_handler` namespaced 派发 onclick 同管线——Plan 320 单 VM 统一态恒根 state id）+验收场景 p559（Pick→config.at 断言→已应用，幂等基线 PUT 重置）。对拍 Desktop 页双端三 shots（顶部标签/外观壁纸卡/Settings 卡同源）。门禁 tf 3426/3427（唯一红=charts 存量甄别）+desktop_protocol ui-iced 120/120+auto-man 245/245。债 P559-D1 证伪（AUTO_HTTP_PROXY 实际透传正常——404 系陈旧 vite 占港+auto-increment 漂移假象）/P559-D2 regen.sh 两族已上游化 sed 已清；P559-1..6 台账。
 
+**573 ui-gallery 左栏 sidebar 族化（GOAL-010/007）**：549 示例画廊左侧导航从手搓 `aside+button+style-if` 迁移 sidebar 族（provider/header 包 pills 筛选器 + scroll(ScrollArea) 包 menu/menu_button(active: 契约)），双行卡片按 015-notes 惯用法（menu_button 内单 col 孩子 + h-auto 覆盖契约 h-8），手搓 active/hover 类串零残留；执行期根修一处约束链缺口——aside 只写 `flex-col` 无 display:flex（Tailwind `flex-col` 不隐含 display）→ provider flex-1 塌缩、ScrollArea 不受约束窗口级滚动，对齐 widgets-gallery `md:flex` 先例补 `flex min-h-0`（**惯用法：aside 外壳挂 sidebar_provider 时必须带 display:flex + min-h-0**）；VM 端结构树/pill press 正常，demo 列表空为预存限制（registry 全系 Vue-only TS extern fn `demos.ts`，master 基线同败）——跨端化留待后续立项。
+
 ## 蒸馏来源
 
 - 本模块 spec 于 2026-08-28 由 Plan 471 刷新：蒸馏 437–465 活跃计划 + 4xx 归档计划 + 365–428 早期 UI 计划。
@@ -251,3 +265,4 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
   [Design 16（App 生成战略）](../../../design/16-app-generation-and-ai-authoring.md)、
   [design/autoui/](../../../design/autoui/README.md)（虚拟桌面三部曲）。
 - 过程记录：`docs/plans/plans.md 索引表` + `docs/plans/KNOWN-DEBT-AND-RISKS.md`（445/449/414/422/444 条目）。
+**571 button 缺省 variant 一等化（GOAL-007，Design 22 §1.2/§3 修订）**：`button` 缺省从"primary 填充别名"升一等 `default` variant——UA stylesheet 显式等价物（Web 裸 `<button>` 有浏览器预填兜底，VM(iced) 无此层，故以 variant 表显式承载）：中性填充 `bg-muted` + `border-border` 发丝描边（dark 下 muted 对 background 对比度 ~1.15:1，纯填充不可辨）；`primary`（+行为语义 `submit`）为显式醒目 CTA 档；`secondary` 深一档纯填充无边框（"有边框"归 outline 专属），token 与 muted 分档（dark slate-700 #334155 / light 暖灰 #e3ddd1）。单源 `ui/style/variants.rs`（VM 臂 convert_button 与 rust codegen 臂 with_button_preset 共用；preset 前置、user class 后类胜；动态 class 不注入无回归；ui feature 门控）——Vue 侧三源（ui_gen cva 模板、auto-man 烘焙资产 button/index.ts〔PLAN-457 烘焙补丁先例〕、auto CLI 内嵌模板）与 CSS 变量层（auto-man generate_index_css 等）逐源互锁测试锚定，复审首轮 fail 抓出 CSS 变量层第三源未分档（T10 收敛）。顺修 web 端 `variant:"primary"` 落空（cva 无 primary 键）。specs.json P571-1..6；债：iced `Color::Accent` 无解析臂（ghost/outline `hover:bg-accent` VM no-op）、Vue cva 多真源维护面（互锁已防漂移）。

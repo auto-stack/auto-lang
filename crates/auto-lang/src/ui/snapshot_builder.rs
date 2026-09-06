@@ -210,6 +210,17 @@ impl SnapshotBuilder {
                 UiNode { id, kind: "CodeEditor".to_string(), props, actions, children: vec![] }
             },
 
+            // PLAN-009 P1: terminal snapshot — 几何 + 喂入行数(MCP 检视面)。
+            View::Terminal { key, cols, rows, lines, .. } => {
+                let props = vec![
+                    ("key".to_string(), key.clone()),
+                    ("cols".to_string(), cols.to_string()),
+                    ("rows".to_string(), rows.to_string()),
+                    ("lines".to_string(), lines.len().to_string()),
+                ];
+                UiNode { id, kind: "Terminal".to_string(), props, actions: vec![], children: vec![] }
+            },
+
             // Plan 019 Phase 3: autodown 文档编辑器 snapshot — key/value +
             // live 全文（编辑态对 MCP 探针可见）。
             View::AutodownEditor { key, value, on_change, .. } => {
@@ -288,6 +299,38 @@ impl SnapshotBuilder {
                 id,
                 kind: "Image".to_string(),
                 props: vec![("src".to_string(), src.clone())],
+                actions: vec![],
+                children: vec![],
+            },
+            View::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                ..
+            } => UiNode {
+                id,
+                kind: "ImageSurface".to_string(),
+                props: vec![
+                    ("src".to_string(), src.clone()),
+                    ("alt".to_string(), alt.clone()),
+                    ("width".to_string(), width.to_string()),
+                    ("height".to_string(), height.to_string()),
+                    ("quality".to_string(), quality.to_string()),
+                    ("fit".to_string(), fit.clone()),
+                    ("zoom".to_string(), zoom.to_string()),
+                    ("offset_x".to_string(), offset_x.to_string()),
+                    ("offset_y".to_string(), offset_y.to_string()),
+                    ("rotation".to_string(), rotation.to_string()),
+                    ("filter".to_string(), filter.clone()),
+                ],
                 actions: vec![],
                 children: vec![],
             },

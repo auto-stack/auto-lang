@@ -46,6 +46,7 @@ fn test_m5_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m5_engine_corpus() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -90,6 +91,7 @@ fn main() {{
 /// corpus_use 成功用例:Rust 侧 execute 管线(带路径,镜像 resolve_uses+
 /// Linker 全链)输出 vs aavm ev_run_files。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m5_use_corpus() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -139,6 +141,7 @@ fn test_aavm2_m5_use_corpus() {
 /// corpus_use 错误用例通道:aavm2 闸门的 .expected.error 等价物——两侧错误
 /// 信息一致(错误文本以宿主为规范;use.rs 拒绝/未声明模块/use.py)。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m5_use_errors() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -188,6 +191,7 @@ fn test_aavm2_m5_use_errors() {
 /// M3 主里程碑演示:一条命令在 AutoVM 内经 AAVM 编译运行 helloworld 与
 /// fib,输出正确(fib(10) = 55)。
 #[test]
+#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m3_milestone_fib() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受

@@ -714,6 +714,106 @@ fn popover_modal_view() -> View<PopMsg> {
             }
 }
 
+// ── PLAN-534 T3: Edge 贴边族几何断言（sheet/drawer 底座）──────────────────
+// iced 层直构 Popover（不经 into_iced 的模态 chrome 注入 → modal=false、
+// 无 scrim），使命中探测只反映面板矩形本身：贴缘坐标用文本 bounds 断言，
+// 全高/全宽用"面板内容之外的矩形内点击仍被捕获"证明（面板内点击兜底
+// 捕获、面板外放行+dismiss——非模态分支语义）。锚按钮统一放左上角：
+// EdgeRight/EdgeBottom 仍精确贴右/下缘 = snap 翻转/钳制排除的直接反证。
+
+fn edge_popover_ui(
+    placement: PopoverPlacement,
+) -> iced_test::Simulator<'static, PopMsg, iced::Theme, iced::Renderer> {
+    use crate::ui::iced::popover::Popover as PopoverWidget;
+    let anchor: iced::Element<'static, PopMsg> =
+        iced::widget::button("TRIGBTN").on_press(PopMsg::Trig).into();
+    let content: iced::Element<'static, PopMsg> = iced::widget::text("EDGEPANEL").into();
+    let pop = PopoverWidget::new(anchor, content)
+        .placement(placement)
+        .open(true)
+        .on_dismiss(PopMsg::Dismiss);
+    let el: iced::Element<'static, PopMsg, iced::Theme, iced::Renderer> = pop.into();
+    simulator(el)
+}
+
+/// 面板矩形内、内容之外的点击必被捕获（面板覆盖到该点 = 全高/全宽证据），
+/// 且不发布 dismiss。
+fn assert_panel_hit(ui: &mut iced_test::Simulator<'_, PopMsg, iced::Theme, iced::Renderer>, x: f32, y: f32, what: &str) {
+    ui.point_at(iced::Point::new(x, y));
+    let statuses = ui.simulate(iced_test::simulator::click());
+    assert!(
+        statuses.iter().any(|s| *s == iced::event::Status::Captured),
+        "{what}: panel-area click at ({x},{y}) must be captured: {statuses:?}"
+    );
+}
+
+/// 面板矩形之外的点击必放行（非模态无 scrim）且发布 dismiss。
+fn assert_outside_passes_through(
+    mut ui: iced_test::Simulator<'_, PopMsg, iced::Theme, iced::Renderer>,
+    x: f32,
+    y: f32,
+    what: &str,
+) {
+    ui.point_at(iced::Point::new(x, y));
+    let statuses = ui.simulate(iced_test::simulator::click());
+    assert!(
+        !statuses.iter().any(|s| *s == iced::event::Status::Captured),
+        "{what}: click outside panel at ({x},{y}) must pass through (no scrim): {statuses:?}"
+    );
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(
+        msgs.contains(&PopMsg::Dismiss),
+        "{what}: outside click must publish dismiss: {msgs:?}"
+    );
+}
+
+#[test]
+fn popover_edge_left_snaps_and_spans_full_height() {
+    let mut ui = edge_popover_ui(PopoverPlacement::EdgeLeft);
+    let (tx, ty, tw, _th) = bounds_of(&mut ui, "EDGEPANEL");
+    assert!(tx <= 1.0, "EdgeLeft must snap to viewport left edge: x {tx}");
+    assert!(ty <= 1.0, "EdgeLeft panel must start at viewport top: y {ty}");
+    assert_panel_hit(&mut ui, tx + tw / 2.0, 700.0, "EdgeLeft full-height");
+    assert_outside_passes_through(ui, 512.0, 700.0, "EdgeLeft no-scrim");
+}
+
+#[test]
+fn popover_edge_right_snaps_and_spans_full_height() {
+    let mut ui = edge_popover_ui(PopoverPlacement::EdgeRight);
+    let (tx, ty, tw, _th) = bounds_of(&mut ui, "EDGEPANEL");
+    assert!(
+        (tx + tw - 1024.0).abs() <= 1.0,
+        "EdgeRight must snap to viewport right edge (anchor is top-left, no flip): x+w {tx}+{tw}"
+    );
+    assert!(ty <= 1.0, "EdgeRight panel must start at viewport top: y {ty}");
+    assert_panel_hit(&mut ui, tx + tw / 2.0, 700.0, "EdgeRight full-height");
+    assert_outside_passes_through(ui, 512.0, 700.0, "EdgeRight no-scrim");
+}
+
+#[test]
+fn popover_edge_top_snaps_and_spans_full_width() {
+    let mut ui = edge_popover_ui(PopoverPlacement::EdgeTop);
+    let (tx, ty, _tw, th) = bounds_of(&mut ui, "EDGEPANEL");
+    assert!(tx <= 1.0, "EdgeTop panel must start at viewport left: x {tx}");
+    assert!(ty <= 1.0, "EdgeTop must snap to viewport top edge: y {ty}");
+    // 内容右缘之外、内容高度带内的点击 → 全宽证据。
+    assert_panel_hit(&mut ui, 512.0, ty + th / 2.0, "EdgeTop full-width");
+    assert_outside_passes_through(ui, 512.0, 400.0, "EdgeTop no-scrim");
+}
+
+#[test]
+fn popover_edge_bottom_snaps_and_spans_full_width() {
+    let mut ui = edge_popover_ui(PopoverPlacement::EdgeBottom);
+    let (tx, ty, _tw, th) = bounds_of(&mut ui, "EDGEPANEL");
+    assert!(tx <= 1.0, "EdgeBottom panel must start at viewport left: x {tx}");
+    assert!(
+        (ty + th - 768.0).abs() <= 1.0,
+        "EdgeBottom must snap to viewport bottom edge (anchor is top-left, no flip): y+h {ty}+{th}"
+    );
+    assert_panel_hit(&mut ui, 512.0, 760.0, "EdgeBottom full-width");
+    assert_outside_passes_through(ui, 512.0, 400.0, "EdgeBottom no-scrim");
+}
+
 /// Plan 496 M5 T3：桌面层 z 槽——App 虚拟窗覆盖桌面图标的装配几何断言。
 /// 复刻 view() 的 Stack 装配序（壁纸层[省略，纯底] → 桌面图标面 → 虚拟窗
 /// z_order），断言首枚图标格落在虚拟窗矩形内（Stack 底序绘制 → 窗口
@@ -759,7 +859,7 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let client: iced::Element<'_, crate::ui::session::DesktopMessage> =
         iced::widget::text("WINCLIENT").into();
     let win_el: iced::Element<'static, ()> =
-        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, false, client)
+        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, false, 0.95, client)
             .map(|_| ());
 
     // Stack push 序 = view() 装配序（surface 先于虚拟窗 = 底序）。

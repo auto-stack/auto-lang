@@ -143,11 +143,15 @@ pub struct StreamCache<M: Clone + std::fmt::Debug> {
     /// 每块重建代数（1 起；复用不增）。测试/探针观测口。
     pub gens: Vec<u32>,
     last_final: Option<bool>,
+    /// 构建时主题代数（theme::theme_epoch()）——结构键无主题维度，代数
+    /// 不符即全量重建（PLAN-053 T12：fence 静态档随主题翻转，051-候选
+    /// 首帧取档/翻转不重建双根因的失效机制）。
+    theme_epoch: u32,
 }
 
 impl<M: Clone + std::fmt::Debug> Default for StreamCache<M> {
     fn default() -> Self {
-        Self { keys: Vec::new(), blocks: Vec::new(), gens: Vec::new(), last_final: None }
+        Self { keys: Vec::new(), blocks: Vec::new(), gens: Vec::new(), last_final: None, theme_epoch: 0 }
     }
 }
 
@@ -200,6 +204,11 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     let root = autodown_core::markdown_parser::parse_blocks(src, is_final);
     let final_flip = cache.last_final != Some(is_final);
     cache.last_final = Some(is_final);
+    // PLAN-053 T12：主题代数不符即全量重建——fence 静态档在 render_block
+    // 构建期读 theme::dark_mode，翻转/首帧 D-GAP 同步都会经 set_dark_mode
+    // 值变化自增代数，缓存 clone 旧块的短路在此被击穿。
+    let epoch = crate::ui::style::theme::theme_epoch();
+    let theme_flip = cache.theme_epoch != epoch;
     let n = root.children.len();
     let mut children: Vec<View<M>> = Vec::with_capacity(n);
     let mut raw_blocks: Vec<View<M>> = Vec::with_capacity(n);
@@ -212,6 +221,7 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
         // col_widths（表内容未变而 DSL 列宽 state 已变：拖拽松手 → state
         // → 绑定回传需进下一帧）。只对 Table 块生效，其余块零开销。
         let reuse = !final_flip
+            && !theme_flip
             && !is_dangling_tail
             && cache.keys.get(i) == Some(&key)
             && !cached_table_widths_stale(cache.blocks.get(i), key, table_widths);
@@ -230,6 +240,7 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     cache.blocks = raw_blocks;
     cache.keys = keys;
     cache.gens = gens;
+    cache.theme_epoch = epoch;
     View::Column {
         children,
         spacing: 8,
@@ -269,7 +280,8 @@ fn styled_text<M: Clone + std::fmt::Debug>(content: String, class: &str) -> View
 /// 行内 span → mark 类名叠加（Strong/Em/Code/Del/Link；Image 罕见于正文，
 /// 与 Link 同色弱化）。
 fn span_class(span: &InlineSpan) -> String {
-    let mut cls = String::from("text-base");
+    // PLAN-053 T18：正文档 §7.3（0.95rem=15.2px / lh 1.6）。
+    let mut cls = String::from("text-[15.2px] leading-[1.6]");
     for m in &span.marks {
         match m {
             Mark::Strong => cls.push_str(" font-bold"),
@@ -399,6 +411,11 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 width: None,
                 height: None,
                 center_x: false,
+                // PLAN-054 T2：28px 定高 header 内标签垂直居中——py-2（8px
+                // 上 padding，12px 标签 → 中心 14 = 带中心）与编辑臂
+                // (h_h-12)/2=8 同值。center_y 不可用：iced 臂 center_y=true
+                // 强制 height(Fill)（renderer.rs:1995），会顶掉 h-[28px] 定高
+                // （实测带高 +2px/块，两臂 pitch 累积漂移）。
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
                 onclick: None,
@@ -500,16 +517,32 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     Some(Value::Bool(c)) => Some(c),
                     _ => None,
                 };
-                let marker = match task_state {
-                    Some(true) => "\u{2611} ".to_string(),  // ☑
-                    Some(false) => "\u{2610} ".to_string(), // ☐
-                    None if ordered => format!("{}. ", start + i as i64),
-                    None => "\u{2022} ".to_string(),        // •
+                // PLAN-054 T4（五截图根因④，待澄清①裁定方案 A）：两态
+                // marker 同风格对 ✔(U+2714)/□(U+25A1)；done 态 accent 色。
+                // PLAN-054 复审反馈①：marker 显式正文号（15.2px/1.6）——
+                // 无 size 类曾落渲染默认 16px，与编辑臂 15.2 不同（一大一小）。
+                let (marker, marker_cls) = match task_state {
+                    Some(true) => (
+                        "\u{2714} ".to_string(),
+                        "text-[15.2px] leading-[1.6] text-primary shrink-0",
+                    ),
+                    Some(false) => (
+                        "\u{25A1} ".to_string(),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
+                    None if ordered => (
+                        format!("{}. ", start + i as i64),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
+                    None => (
+                        "\u{2022} ".to_string(),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
                 };
                 let body = block_children(item, is_final, details_onclick, table_widths, on_col_resize);
                 items.push(View::Row {
                     children: vec![
-                        styled_text(marker.to_string(), "text-muted-foreground shrink-0"),
+                        styled_text(marker, marker_cls),
                         View::Column {
                             children: body,
                             spacing: 2,
@@ -580,17 +613,27 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             } else {
                 title
             };
+            // PLAN-054 T4（五截图根因⑦，待澄清①方案 A）：callout 图标同族
+            // 统一——✓(2713)/✕(2715) 细体换 ✔(2714)/✖(2716) 重体（与 ⚠/ℹ
+            // 观感粗细一致）；ℹ/⚠ 无重体变体保持。
             let marker = match kind.as_str() {
                 "info" => "\u{2139}",      // ℹ
-                "tip" | "success" => "\u{2713}", // ✓
+                "tip" | "success" => "\u{2714}", // ✔
                 "warning" | "warn" | "caution" => "\u{26A0}", // ⚠
-                "danger" | "error" => "\u{2715}", // ✕
+                "danger" | "error" => "\u{2716}", // ✖
                 _ => "\u{270E}",           // ✎ (note/未知)
             };
             let title_row = View::Row {
                 children: vec![
-                    styled_text(marker.to_string(), "shrink-0"),
-                    styled_text(label.clone(), title_cls),
+                    // PLAN-054 复审反馈①：标题行 icon/label 显式正文号。
+                    styled_text(
+                        marker.to_string(),
+                        "text-[15.2px] leading-[1.6] shrink-0",
+                    ),
+                    styled_text(
+                        label.clone(),
+                        &format!("text-[15.2px] leading-[1.6]{}", title_cls),
+                    ),
                 ],
                 spacing: 2,
                 padding: 0,
@@ -612,7 +655,10 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     children: parts,
                     spacing: 4,
                     padding: 0,
-                    style: None,
+                    // PLAN-054 T4（五截图根因⑦）：chrome.body（px-4 py-3）
+                    // 此前在视图臂无消费面——右栏 callout 内容贴边紧凑；
+                    // 家族 pad 单源落到内层列，观感与 chrome 声明一致。
+                    style: Style::parse(chrome.body).ok(),
                     onclick: None,
                 }),
                 padding: 0,
@@ -638,8 +684,15 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             let details_msg = details_onclick.map(|f| f(block_key(b)));
             let summary_row = View::Row {
                 children: vec![
-                    styled_text(marker.to_string(), "text-muted-foreground shrink-0"),
-                    styled_text(summary.clone(), "font-medium"),
+                    // PLAN-054 复审反馈①：summary 行显式正文号。
+                    styled_text(
+                        marker.to_string(),
+                        "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
+                    ),
+                    styled_text(
+                        summary.clone(),
+                        "text-[15.2px] leading-[1.6] font-medium",
+                    ),
                 ],
                 spacing: 2,
                 padding: 0,
@@ -871,6 +924,10 @@ mod tests {
 
     #[test]
     fn renders_heading_paragraph_inline_marks() {
+        // PLAN-053 T14：heading 类表随 §7.3 收敛（text-[25.3px] + indigo
+        // strong 双档）；dark: 变体按主题态分流，测试固定浅档使 base 仅
+        // 含 indigo-700。
+        crate::ui::style::theme::set_dark_mode(false);
         let doc = render_document::<()>("# 标题\n\n世界 **粗** 与 *斜* 和 `码`\n", true);
         let View::Column { children, .. } = doc else {
             panic!("expected column")
@@ -879,8 +936,11 @@ mod tests {
         match &children[0] {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "标题");
-                let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
-                assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+                let expected = Style::parse(
+                    "text-[25.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
+                )
+                .unwrap();
+                assert_eq!(style.as_ref().unwrap().classes, expected.classes)
             }
             _ => panic!("heading"),
         }
@@ -890,14 +950,14 @@ mod tests {
         };
         assert_eq!(spans.len(), 6);
         assert_eq!(text_of(&spans[1]), "粗");
-        let bold = Style::parse("text-base font-bold").unwrap();
+        let bold = Style::parse("text-[15.2px] leading-[1.6] font-bold").unwrap();
         match &spans[1] {
             View::Text { style, .. } => assert_eq!(style.as_ref().unwrap().classes, bold.classes),
             _ => panic!("span"),
         }
         match &spans[5] {
             View::Text { style, .. } => {
-                let code = Style::parse("text-base font-mono text-sm bg-muted rounded px-1").unwrap();
+                let code = Style::parse("text-[15.2px] leading-[1.6] font-mono text-sm bg-muted rounded px-1").unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, code.classes);
             }
             _ => panic!("span"),
@@ -958,6 +1018,38 @@ mod tests {
         assert_eq!(cache.gens, vec![1, 1], "second frame reuses despite ghost wrap");
     }
 
+    /// PLAN-053 T12（051-候选修复，转介单①收回自修）：主题代数翻转必须
+    /// 击穿内容键复用——fence 静态档在构建期读 `theme::dark_mode`，缓存
+    /// 键无主题维度时翻转帧 clone 旧块（首帧取档错 + 翻转不重建双根因）。
+    /// 同值写入（渲染器每帧回写）不得扰动缓存。
+    #[test]
+    fn theme_flip_invalidates_stream_cache() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let mut cache = StreamCache::<()>::default();
+        let src = "```js\nconst a = 1\n```\n\npara\n";
+        let _v1 = render_document_streamed(&mut cache, src, true);
+        let gens_light = cache.gens.clone();
+        assert_eq!(gens_light, vec![1, 1], "first build rebuilds both blocks");
+
+        // 值翻转 → 代数自增 → 下一帧内容键虽同也必须重建（gen 增加）。
+        crate::ui::style::theme::set_dark_mode(true);
+        let _v2 = render_document_streamed(&mut cache, src, true);
+        assert!(
+            cache.gens[0] > gens_light[0] && cache.gens[1] > gens_light[1],
+            "theme flip must rebuild cached blocks, gens={:?} (was {:?})",
+            cache.gens,
+            gens_light
+        );
+
+        // 同值回写（D-GAP 每帧同步臂）→ 代数不动 → 复用零重建。
+        let gens_dark = cache.gens.clone();
+        crate::ui::style::theme::set_dark_mode(true);
+        let _v3 = render_document_streamed(&mut cache, src, true);
+        assert_eq!(cache.gens, gens_dark, "same-value write must keep cache");
+
+        crate::ui::style::theme::set_dark_mode(false); // 还原默认档
+    }
+
     #[test]
     fn renders_fence_quote_list_ordered_start() {
         let src = "```rust\nfn x() {}\n```\n\n> 引用\n\n3. 三\n4. 四\n";
@@ -980,10 +1072,14 @@ mod tests {
             },
             _ => panic!("fence"),
         }
-        // quote：border-l 容器
+        // quote：border-l 容器（PLAN-053 T17：§7.4 左边 3px + muted 双档；
+        // PLAN-054 T1：border-l-3 单侧宽度档——去四边整圈边框）
         match &children[1] {
             View::Container { style, child, .. } => {
-                let expected = Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").unwrap();
+                let expected = Style::parse(
+                    "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
+                )
+                .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
                 assert_eq!(text_of(child), "引用");
             }
@@ -1053,6 +1149,38 @@ mod tests {
             )),
             "label must carry explicit color class, got {lclasses:?}"
         );
+    }
+
+    /// PLAN-054 T2（五截图根因②a）：fence header 标签垂直居中——header
+    /// 类串带 py-2（8px 上 padding = (28-12)/2，与编辑臂标签 y 同值）。
+    /// center_y 容器旗标不可用：iced 臂 true 强制 height(Fill)，顶掉
+    /// h-[28px] 定高（实测 +2px/块 pitch 漂移），恒 false 锁定。
+    #[test]
+    fn fence_header_label_vertically_centered() {
+        let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
+        let View::Column { children, .. } = doc else {
+            panic!("expected column")
+        };
+        let View::Container { center_y, child, .. } = &children[0] else {
+            panic!("fence outer container")
+        };
+        assert!(!*center_y, "center_y must stay off (Fill-height override)");
+        let View::Column { children: parts, .. } = child.as_ref() else {
+            panic!("fence parts column")
+        };
+        let View::Container { center_y: h_cy, style, child: h, .. } = &parts[0] else {
+            panic!("fence header container")
+        };
+        assert!(!*h_cy, "header container center_y stays off");
+        let classes = &style.as_ref().expect("header style").classes;
+        assert!(
+            classes.iter().any(|c| matches!(
+                c,
+                crate::ui::style::StyleClass::PaddingY(crate::ui::style::SizeValue::Fixed(2))
+            )),
+            "header must carry py-2 (vertical centering), got {classes:?}"
+        );
+        assert_eq!(text_of(h), "rust");
     }
 
     #[test]
@@ -1200,7 +1328,7 @@ mod tests {
         assert_eq!(spans.len(), 3);
         match &spans[1] {
             View::Text { style, .. } => {
-                let link = Style::parse("text-base text-primary underline").unwrap();
+                let link = Style::parse("text-[15.2px] leading-[1.6] text-primary underline").unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, link.classes);
             }
             _ => panic!("link span"),
@@ -1226,6 +1354,11 @@ mod tests {
         assert_eq!(style.as_ref().unwrap().classes, expected.classes, "kind=info 配色");
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("callout col") };
         assert_eq!(parts.len(), 2, "title 行 + 正文列");
+        // PLAN-054 T4（五截图根因⑦）：chrome.body（px-4 py-3）落到内层列
+        // ——此前视图臂无消费面，右栏内容贴边紧凑。
+        let View::Column { style: body_style, .. } = child.as_ref() else { panic!("callout col") };
+        let want_body = Style::parse(family_of(BlockType::Callout).chrome.body).unwrap();
+        assert_eq!(body_style.as_ref().unwrap().classes, want_body.classes, "chrome.body 单源内边距");
         let View::Row { children: title_row, .. } = &parts[0] else { panic!("title row") };
         assert_eq!(text_of(&title_row[1]), "info", "无 title 时回落 kind 名");
         let View::Column { children: body, .. } = &parts[1] else { panic!("body col") };
@@ -1318,19 +1451,29 @@ mod tests {
     }
 
     /// PLAN-041 T6：任务列表 checkbox——checked attr 存在时复选格替代圆点。
+    /// PLAN-054 T4（五截图根因④，待澄清①方案 A）：两态同风格对
+    /// ✔(U+2714)/□(U+25A1)；done 态 marker 整 run accent 色（text-primary）。
     #[test]
     fn renders_task_list_checkbox() {
         let doc = render_document::<()>("- [x] 完成\n- [ ] 待办\n- 普通项\n", true);
         let View::Column { children, .. } = doc else { panic!("col") };
         let View::Column { children: items, .. } = &children[0] else { panic!("list") };
         assert_eq!(items.len(), 3);
-        let marker_of = |item: &View<()>| -> String {
+        let marker_of = |item: &View<()>| -> (String, bool) {
             let View::Row { children: r, .. } = item else { panic!("item row") };
-            text_of(&r[0])
+            let View::Text { content, style, .. } = &r[0] else { panic!("marker text") };
+            let accent = style.as_ref().is_some_and(|s| {
+                s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::TextColor(crate::ui::style::Color::Primary)))
+            });
+            (content.clone(), accent)
         };
-        assert_eq!(marker_of(&items[0]), "\u{2611} ", "勾选 ☑");
-        assert_eq!(marker_of(&items[1]), "\u{2610} ", "未勾 ☐");
-        assert_eq!(marker_of(&items[2]), "\u{2022} ", "普通项维持圆点");
+        let (done, done_accent) = marker_of(&items[0]);
+        assert_eq!(done, "\u{2714} ", "勾选 ✔（同风格对）");
+        assert!(done_accent, "done 态 marker accent 色（text-primary）");
+        let (todo, todo_accent) = marker_of(&items[1]);
+        assert_eq!(todo, "\u{25A1} ", "未勾 □（同风格对）");
+        assert!(!todo_accent, "未勾态保持 muted");
+        assert_eq!(marker_of(&items[2]).0, "\u{2022} ", "普通项维持圆点");
     }
 
     /// PLAN-041 T6：行内图片——Image mark span → View::Image（src 现成）。

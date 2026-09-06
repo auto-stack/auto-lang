@@ -17,16 +17,32 @@ use super::Color;
 thread_local! {
     static DARK_MODE: std::cell::Cell<bool> = std::cell::Cell::new(true);
     static ACCENT_NAME: std::cell::RefCell<String> = std::cell::RefCell::new("indigo".to_string());
+    /// PLAN-053 T12（051-候选修复，转介单①收回自修）：主题代数——
+    /// `dark_mode` 每次值变化自增。内容寻址视图缓存
+    /// （autodown_render::StreamCache 的结构键无主题维度）构建期记录
+    /// 代数、与本值不符即全量重建——否则翻转帧 clone 旧块，fence 静态
+    /// 档滞留构建时主题（首帧 D-GAP 同步前取档与翻转不重建双根因）。
+    static THEME_EPOCH: std::cell::Cell<u32> = std::cell::Cell::new(0);
 }
 
 /// Set the global dark mode flag (called by renderer before rendering).
 pub fn set_dark_mode(dark: bool) {
-    DARK_MODE.with(|d| d.set(dark));
+    let changed = DARK_MODE.with(|d| d.replace(dark)) != dark;
+    if changed {
+        THEME_EPOCH.with(|e| e.set(e.get().wrapping_add(1)));
+    }
 }
 
 /// Read the global dark mode flag (Plan 413: code editor theme bridge).
 pub fn dark_mode() -> bool {
     DARK_MODE.with(|d| d.get())
+}
+
+/// Current theme epoch: bump-on-change counter over `dark_mode` writes.
+/// Content-keyed view caches compare their build epoch against this to
+/// invalidate theme-dependent chrome (StreamCache 消费).
+pub fn theme_epoch() -> u32 {
+    THEME_EPOCH.with(|e| e.get())
 }
 
 /// Read the current accent name (Plan 413: code editor theme bridge).
@@ -180,8 +196,12 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
             let l_adjusted = if is_dark { (l + 10).min(85) } else { l };
             Some(hsl_to_rgb(h, s, l_adjusted))
         }
+        // PLAN-571: secondary 与 muted 分档——shadcn 默认主题原样继承的
+        // secondary==muted 在 default(variant) 落 muted 后令 default/secondary
+        // 两 variant 视觉坍缩。secondary 定为"比 muted 强一档"：
+        // dark slate-700 #334155 (215 25% 27%) / light 暖灰一档深 #e3ddd1 (40 24% 85.5%)。
         Color::Secondary => {
-            if is_dark { Some((30, 41, 59)) } else { Some((240, 235, 226)) }
+            if is_dark { Some((51, 65, 85)) } else { Some((227, 221, 209)) }
         }
         // Plan 448 对齐批:暗色语义色从 Tailwind gray 系改为生成端 shadcn
         // 令牌(index.css .dark)的精确 HSL 换算值 —— 此前 VM 用 gray-900/800
@@ -265,6 +285,8 @@ mod tests {
         assert_eq!(rgb(Color::OnBackground), (42, 39, 35)); // 墨色 #2a2723
         assert_eq!(rgb(Color::Border), (227, 221, 209)); // 暖灰 #e3ddd1
         assert_eq!(rgb(Color::Muted), (240, 235, 226)); // 暖 muted #f0ebe2
+        // PLAN-571: secondary 分档（≠muted）——light 暖灰一档深 #e3ddd1。
+        assert_eq!(rgb(Color::Secondary), (227, 221, 209));
         assert_eq!(rgb(Color::OnSurface), (125, 119, 109)); // 暖次级文本 #7d776d
         assert_eq!(resolve_border_rgb(), (227, 221, 209));
     }
@@ -276,6 +298,9 @@ mod tests {
         assert_eq!(rgb(Color::Surface), (26, 34, 53)); // #1a2235 面板
         assert_eq!(rgb(Color::Border), (40, 49, 70)); // 低对比 #283146
         assert_eq!(resolve_border_rgb(), (40, 49, 70));
+        // PLAN-571: secondary 分档（≠muted）——dark slate-700 #334155。
+        assert_eq!(rgb(Color::Secondary), (51, 65, 85));
+        assert_ne!(rgb(Color::Secondary), rgb(Color::Muted));
     }
 
     /// 待澄清②裁定:stella 玫瑰粉 = 既有 coral 预设(503 已校准 light

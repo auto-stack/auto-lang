@@ -1,6 +1,6 @@
 # AutoUI 高性能 Image Viewer 与后端媒体管线设计
 
-> 状态：Draft（PLAN-547 设计输入）
+> 状态：Implemented（PLAN-547 execution complete; independent review pending）
 > 日期：2026-09-04
 > 范围：`examples/ui/031-image-viewer`、Auto 后端图片服务、AutoUI 媒体资产传输、
 > Vue/VM/Rust 三运行形态
@@ -400,7 +400,14 @@ PLAN-547 作为一个 L2 实施计划依次完成：
 若实施中发现“非阻塞 Back API 调用”无法通过现有 queue/ticket 模式表达，必须回写计划的
 待澄清事项并停止扩大范围；不得临时在 Rust 生成产物或 Vue 源中手写旁路。
 
-## 15. 后续演进
+## 15. Plan 547 实现映射
+
+当前实现位于 examples/ui/031-image-viewer，并覆盖 ImageSurface 的 View、Vue、VM、
+Rust/Iced 与 GPUI fallback 链路；公共 image_pipeline 提供媒体格式识别、注册表、
+HTTP 语义和调度/缓存测试。应用级 fixtures、Vue/VM runner、控制 API 与 release
+性能 harness 的证据保存在该示例的 tests/ 目录和 Plan 547 复跑记录中。
+
+## 16. 后续演进
 
 - `029-photo-gallery` 可在后续计划中复用 `ImageSurface`，但不迁入本计划。
 - 动画、RAW/HEIF/AVIF/JXL、色彩管理、瓦片金字塔、编辑和文件操作单独立项。

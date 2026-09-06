@@ -42,7 +42,7 @@ with it via the `py_call(handle, "method", ...args)` built-in:
 
 | Auto (PyFFI)                          | Python equivalent   |
 |---------------------------------------|----------------------|
-| `py_call(lst, "__len__")`             | `len(lst)`           |
+| `py_call(lst, "__len__")`             | `len(lst)` — `lst.len()` 直发自 PLAN-569 起可用（规避仍正确，去规避留待自然触碰） |
 | `py_call(lst, "__getitem__", i)`      | `lst[i]`             |
 | `py_call(m, "group", n)`              | `m.group(n)`         |
 | `py_call(m, "start")`                 | `m.start()`          |

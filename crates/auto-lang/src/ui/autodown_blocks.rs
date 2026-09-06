@@ -17,13 +17,37 @@
 use autodown_core::block_model::BlockType;
 
 /// 正文字号（逻辑 px；编辑壳 `BODY_SIZE` 的单源）。
-pub const BODY_SIZE: f32 = 16.0;
+/// PLAN-053 T18：§7.3 正文 0.95rem×16 = 15.2（原 16 偏离规约）。
+pub const BODY_SIZE: f32 = 15.2;
 /// fence 代码体字号（对齐 view 轨 `text-sm` = 14px；两态同源）。
 pub const FENCE_SIZE: f32 = 14.0;
 /// fence 编辑壳 header 栏高（px）。
 pub const FENCE_HEADER_H: f32 = 28.0;
 /// fence 正文内边距（px；对齐 view 轨 `p-4`）。
 pub const FENCE_PAD: f32 = 16.0;
+
+/// PLAN-055：编辑臂表格 chrome 常量（对齐只读臂 table 词汇；px）。
+/// cell padding = px-3 py-2（文字 x = cell.x + PAD_X，wrap 宽 = w − 2×PAD_X）。
+pub const TABLE_PAD_X: f32 = 12.0;
+pub const TABLE_PAD_Y: f32 = 8.0;
+/// 行/列分隔线宽（1px border 色）。
+pub const TABLE_RULE: f32 = 1.0;
+/// 列宽拖拽下限（px）。
+pub const TABLE_MIN_COL_W: f32 = 48.0;
+/// 列边界命中带（±px；先于文本 caret 命中）。
+pub const TABLE_HIT_BAND: f32 = 4.0;
+/// 表头行底色 muted 档（随主题）：light zinc-100 / dark zinc-800。
+pub const TABLE_HEADER_BG: (u8, u8, u8) = (244, 244, 245); // zinc-100
+pub const TABLE_HEADER_BG_DARK: (u8, u8, u8) = (39, 39, 42); // zinc-800
+
+/// PLAN-055：表头行底色随主题取用。
+pub fn table_header_rgb() -> (u8, u8, u8) {
+    if crate::ui::style::theme::dark_mode() {
+        TABLE_HEADER_BG_DARK
+    } else {
+        TABLE_HEADER_BG
+    }
+}
 
 /// fence 编辑壳配色（tailwind zinc 常量；view 轨类串 bg-zinc-950/800、
 /// text-zinc-400/50 的取值镜像——两轨观感同源）。
@@ -107,8 +131,11 @@ const PLAIN: ChromeSpec = ChromeSpec {
 /// 的 flex 拉伸）；标签自带色（容器色类不达子 Text，曾默认黑画 zinc-800
 /// 上不可见 → 塌成游离黑块）。
 pub const FENCE_CHROME: ChromeSpec = ChromeSpec {
+    // PLAN-054 T2：header 增 py-2——28px 定高带内 12px 标签垂直居中（上
+    // padding 8 = (28-12)/2，与编辑臂标签 y 同值）；center_y 类通道在 iced
+    // 臂强制 height(Fill) 不可用（见 autodown_render fence 臂注）。
     outer: "rounded-lg border bg-zinc-950 overflow-hidden w-full",
-    header: Some("w-full px-4 py-2 border-b bg-zinc-800 text-zinc-400"),
+    header: Some("w-full h-[28px] px-4 py-2 border-b bg-zinc-800 text-zinc-400"),
     header_label: "text-xs font-medium text-zinc-400",
     body: "p-4",
     body_text: "font-mono text-sm text-zinc-50 whitespace-pre-wrap",
@@ -123,7 +150,7 @@ pub const FENCE_CHROME: ChromeSpec = ChromeSpec {
 /// 选取同读一处——修复浅色 hljs 基色标点画 zinc 暗底不可见的分叉）。
 pub const FENCE_CHROME_LIGHT: ChromeSpec = ChromeSpec {
     outer: "rounded-lg border bg-gray-50 border-gray-200 overflow-hidden w-full",
-    header: Some("w-full px-4 py-2 border-b bg-gray-200 text-gray-700"),
+    header: Some("w-full h-[28px] px-4 py-2 border-b bg-gray-200 text-gray-700"),
     header_label: "text-xs font-medium text-gray-700",
     body: "p-4",
     body_text: "font-mono text-sm text-gray-800 whitespace-pre-wrap",
@@ -133,7 +160,12 @@ pub const FENCE_CHROME_LIGHT: ChromeSpec = ChromeSpec {
 
 /// quote 家族 chrome（从 blockquote 臂搬家）。
 pub const QUOTE_CHROME: ChromeSpec = ChromeSpec {
-    outer: "border-l-4 pl-4 py-2 w-full text-muted-foreground",
+    // PLAN-053 T17（§7.4：左边 3px·字 muted）：muted=§7.1:194
+    // gray-500/zinc-400 双档（dark: 变体）。PLAN-054 T1（用户裁定：两臂
+    // 同款左条无整圈边框）：border-3 曾展开为 BorderWidth(3)+border=true
+    // ——iced 容器四边整圈边框（五截图根因①）；改 border-l-3（单侧宽度
+    // 档，PLAN-054 T1 类 IR 微扩）只画 3px 左条。
+    outer: "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
     header: None,
     header_label: "",
     body: "",
@@ -200,26 +232,77 @@ pub fn callout_kind_classes(kind: &str) -> (&'static str, &'static str) {
     }
 }
 
+/// PLAN-054 T8：callout kind 的编辑壳 RGB（五截图根因⑥——编辑臂可见化）。
+/// 与 `callout_kind_classes` 的 -500（左条）/ -400（标题）档同源取值；
+/// 未知 kind 回 None（accent 色由调用方经 theme 语义色解析）。
+/// 返回 (左条 rgb, 标题 rgb)。
+pub fn callout_kind_rgb(kind: &str) -> Option<((u8, u8, u8), (u8, u8, u8))> {
+    match kind {
+        "info" => Some(((59, 130, 246), (96, 165, 250))), // blue-500 / blue-400
+        "tip" | "success" => Some(((16, 185, 129), (52, 211, 153))), // emerald-500/400
+        "warning" | "warn" | "caution" => Some(((245, 158, 11), (251, 191, 36))), // amber
+        "danger" | "error" => Some(((239, 68, 68), (248, 113, 113))), // red-500/400
+        _ => None,
+    }
+}
+
 /// heading 视图类表（从 autodown_render::heading_style 搬家；h1..h6）。
+/// PLAN-053 T14（§7.3/§7.2 收敛，VM 排版对齐 W2.6）：h1-h3 字号=§7.3
+/// rem 投影（1.58/1.33/1.18rem × 16 = 25.3/21.3/18.9px，text-[<n>px]
+/// 任意字号通道），全 700（h3 semibold→bold 对齐 vue），色=§7.2 indigo
+/// strong 双档（light #4338ca=indigo-700 / dark #818cf8=indigo-400，
+/// `dark:` 前缀主题门控——VM document accent 为 PARITY #17 豁免，靛蓝
+/// 静态合规）。h4-h6 维持应用级档位（§7.3 未定义）。
 pub fn heading_classes(level: i64) -> &'static str {
     match level.clamp(1, 6) {
-        1 => "text-4xl font-bold text-primary mb-4",
-        2 => "text-3xl font-bold text-primary mt-8 mb-4",
-        3 => "text-xl font-semibold text-primary mb-3",
+        1 => "text-[25.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
+        2 => "text-[21.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
+        3 => "text-[18.9px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[17.6px] mb-[6.4px]",
         4 => "text-lg font-semibold mb-2",
         5 => "text-base font-semibold mb-1",
         _ => "text-sm font-semibold mb-1",
     }
 }
 
+/// PLAN-053 T15：heading 额外块距（§7.3 vue margins 19.2/17.6 与
+/// 25.6/14.4 减去两臂共同基础节奏 8px 后的额外量）。编辑壳布局循环按
+/// 此在块前后加空；只读臂经 heading_classes 的 mt-[]/mb-[] 类同值表达
+/// ——两臂逐块 pitch 一致，左右 block 对齐（用户验收面）。
+pub fn heading_extra_margins(level: i64) -> (f32, f32) {
+    match level.clamp(1, 3) {
+        1 => (11.2, 9.6),
+        _ => (17.6, 6.4),
+    }
+}
+
+/// PLAN-053 T14：heading accent-strong 绘色（§7.2 indigo strong 双档：
+/// light #4338ca=indigo-700 / dark #818cf8=indigo-400）——编辑壳 heading
+/// buffer 的默认前景覆盖（只读臂走同类串 `text-indigo-700 dark:...`）。
+/// VM document accent 为 PARITY #17 豁免，靛蓝静态合规。
+/// PLAN-053 T17：quote 文字 muted 色（§7.1:194：light gray-500
+/// #6b7280 / dark zinc-400 #a1a1aa）——编辑壳 quote 块前景覆盖。
+pub fn quote_muted_rgb() -> (u8, u8, u8) {
+    let dark = crate::ui::style::theme::dark_mode();
+    if dark { (161, 161, 170) } else { (107, 114, 128) }
+}
+
+pub fn heading_strong_rgb() -> (u8, u8, u8) {
+    let dark = crate::ui::style::theme::dark_mode();
+    if dark { (129, 140, 248) } else { (67, 56, 202) }
+}
+
 /// heading 编辑壳字号表（从 autodown_editor::core::kind_font_size 搬家）。
+/// PLAN-053 T14：与 heading_classes 同源收敛 §7.3（25.3/21.3/18.9），
+/// h4-h6 级联对齐只读臂（18/16/14，h6 原 BODY_SIZE 16 与 text-sm 差
+/// 2px——两臂 h6 字号分叉一并销号）。
 pub fn heading_size(level: i64) -> f32 {
     match level.clamp(1, 6) {
-        1 => 30.0,
-        2 => 24.0,
-        3 => 20.0,
+        1 => 25.3,
+        2 => 21.3,
+        3 => 18.9,
         4 => 18.0,
-        _ => BODY_SIZE,
+        5 => 16.0,
+        _ => 14.0,
     }
 }
 
@@ -420,7 +503,7 @@ mod tests {
         assert_eq!(FENCE_CHROME.outer, "rounded-lg border bg-zinc-950 overflow-hidden w-full");
         assert_eq!(
             FENCE_CHROME.header.unwrap(),
-            "w-full px-4 py-2 border-b bg-zinc-800 text-zinc-400"
+            "w-full h-[28px] px-4 py-2 border-b bg-zinc-800 text-zinc-400"
         );
         assert_eq!(FENCE_CHROME.header_label, "text-xs font-medium text-zinc-400");
         assert_eq!(FENCE_CHROME.body, "p-4");
@@ -428,7 +511,12 @@ mod tests {
             FENCE_CHROME.body_text,
             "font-mono text-sm text-zinc-50 whitespace-pre-wrap"
         );
-        assert_eq!(QUOTE_CHROME.outer, "border-l-4 pl-4 py-2 w-full text-muted-foreground");
+        // PLAN-054 T1（用户裁定：左条无整圈边框）：border-3 退役，左条
+        // 走 border-l-3 单侧宽度档（3px，无四边边框）。
+        assert_eq!(
+            QUOTE_CHROME.outer,
+            "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400"
+        );
         assert_eq!(BREAK_CHROME.outer, "border-t w-full my-2");
         assert_eq!(family_of(BlockType::Table).chrome.outer, "w-full text-sm");
     }
@@ -436,13 +524,17 @@ mod tests {
     /// heading 两张表（view 类串 / 编辑字号）同源于此。
     #[test]
     fn heading_tables_single_sourced() {
-        assert_eq!(heading_classes(1), "text-4xl font-bold text-primary mb-4");
+        assert_eq!(
+            heading_classes(1),
+            "text-[25.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]"
+        );
         assert_eq!(heading_classes(6), "text-sm font-semibold mb-1");
         assert_eq!(heading_classes(0), heading_classes(1), "clamp 到 1");
         assert_eq!(heading_classes(9), heading_classes(6), "clamp 到 6");
-        assert_eq!(heading_size(1), 30.0);
-        assert_eq!(heading_size(3), 20.0);
-        assert_eq!(heading_size(5), BODY_SIZE);
+        assert_eq!(heading_size(1), 25.3);
+        assert_eq!(heading_size(3), 18.9);
+        assert_eq!(heading_size(5), 16.0);
+        assert_eq!(heading_size(6), 14.0);
         assert_eq!(heading_size(-2), heading_size(1));
     }
 

@@ -28,6 +28,48 @@ macro_rules! vm_debug {
     };
 }
 
+#[cfg(all(test, feature = "ui-iced"))]
+mod image_pipeline_vm_http_tests {
+    use super::*;
+    use crate::ui::image_pipeline::{
+        MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec,
+    };
+    use std::sync::Arc;
+
+    #[test]
+    fn image_media_route_has_priority_without_changing_user_routes() {
+        assert!(media_response_for_vm_request("GET", "/api/user", None).is_none());
+        let registry = crate::ui::image_pipeline::global_media_registry();
+        let ticket = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "vm-fixture".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        let path = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+        let response = media_response_for_vm_request("GET", &path, None).unwrap();
+        assert_eq!(response.status, 503);
+
+        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry.publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([7, 255])).unwrap();
+        let mut wire = Vec::new();
+        assert!(write_media_response(&mut wire, "GET", &path, None));
+        assert!(String::from_utf8_lossy(&wire).starts_with("HTTP/1.1 200 OK"));
+        assert!(wire.ends_with(&[7, 255]));
+    }
+
+    #[test]
+    fn image_natives_register_opaque_ticket_operations() {
+        assert_eq!(IMAGE_NATIVE_NAMES.len(), 16);
+        assert!(IMAGE_NATIVE_NAMES.iter().all(|name| name.starts_with("auto.image.")));
+    }
+}
+
 // ============================================================================
 // Native Function IDs (1000-4999 for built-in stdlib)
 // ============================================================================
@@ -678,10 +720,169 @@ pub fn shim_time_now() -> String {
 // Process Functions
 // ============================================================================
 
+/// PLAN-575 D1 退出审计路径：env `AUTO_DESKTOP_EXIT_LOG` 优先（空串视为未
+/// 设），缺省 `%LOCALAPPDATA%/auto-desktop/exit-audit.log`（无 LOCALAPPDATA
+/// 的平台退回系统临时目录）。
+pub fn exit_audit_path() -> StdPathBuf {
+    if let Ok(p) = std::env::var("AUTO_DESKTOP_EXIT_LOG") {
+        if !p.is_empty() {
+            return StdPathBuf::from(p);
+        }
+    }
+    let base = std::env::var("LOCALAPPDATA")
+        .map(StdPathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+    base.join("auto-desktop").join("exit-audit.log")
+}
+
+/// PLAN-575 D1 退出审计核心：向 `path` 追加一行 `{ts} pid={pid} code={code}
+/// site={site}`。写失败静默吞掉——审计绝不引入新退出路径、绝不 panic
+/// （G3 零行为变更）。父目录不存在则尝试创建（同样失败即放弃）。
+pub(crate) fn exit_audit_to(path: &Path, code: i32, site: &str) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let line = format!("{ts} pid={} code={code} site={site}\n", std::process::id());
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut f| f.write_all(line.as_bytes()));
+}
+
+/// PLAN-575 D1 退出审计入口：落到审计路径（见 `exit_audit_path`）。
+pub fn exit_audit(code: i32, site: &str) {
+    exit_audit_to(&exit_audit_path(), code, site);
+}
+
+/// PLAN-575 D1 挂点②：全局 panic hook——先落一行审计（code=101 = Rust
+/// panic 惯例退出码；site=panic，尽力携带消息+位置）再调既有 hook。被
+/// catch_unwind 捕获的 panic 同样落笔（进程未退时审计行与存活事实并存，
+/// 归因时以"审计行 + 进程死亡"组合判读）。
+pub fn install_exit_audit_panic_hook() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "non-str payload".to_string());
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_default();
+        let one_line = format!("panic msg={} loc={}", msg.replace('\n', " "), loc);
+        exit_audit(101, &one_line);
+        prev(info);
+    }));
+}
+
 /// Exit the process with a code
 #[auto_macros::rust_fn("Process.exit")]
 pub fn shim_process_exit(code: i32) {
+    // PLAN-575 D1 挂点①：裸 exit 前落审计（site=vm_process_exit），
+    // 退出码与语义零变化（G3）。
+    exit_audit(code, "vm_process_exit");
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod exit_audit_tests {
+    use super::*;
+
+    /// 临时审计路径注入（PLAN-575 测试设计：不碰全局 env）。
+    fn tmp_audit_path(tag: &str) -> StdPathBuf {
+        std::env::temp_dir().join(format!(
+            "p575-exit-audit-{}-{}.log",
+            tag,
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn exit_audit_to_appends_one_line_per_call() {
+        let path = tmp_audit_path("append");
+        let _ = fs::remove_file(&path);
+        exit_audit_to(&path, 0, "main_return");
+        exit_audit_to(&path, 7, "vm_process_exit");
+        let content = fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 2, "每次调用恰一行，实得: {content:?}");
+        assert!(lines[0].contains("code=0") && lines[0].contains("site=main_return"));
+        assert!(lines[1].contains("code=7") && lines[1].contains("site=vm_process_exit"));
+        assert!(lines[0].contains("pid=") && lines[1].contains("pid="));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn exit_audit_to_creates_missing_parent_dir() {
+        let path = tmp_audit_path("mkdir")
+            .with_file_name(format!("sub-{}", std::process::id()))
+            .join("audit.log");
+        let _ = fs::remove_file(&path);
+        exit_audit_to(&path, 0, "main_return");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.contains("site=main_return"), "实得: {content:?}");
+        let _ = fs::remove_file(&path);
+    }
+
+    /// 挂点②：panic hook 落审计（env 注入临时路径；先装 hook 再 catch_unwind
+    /// 触发 panic，链式调用保留既有 hook——G3 零行为变更）。
+    #[test]
+    fn panic_hook_writes_audit_line_before_prev_hook() {
+        let path = tmp_audit_path("panic");
+        let _ = fs::remove_file(&path);
+        std::env::set_var("AUTO_DESKTOP_EXIT_LOG", &path);
+        install_exit_audit_panic_hook();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            panic!("p575 audit probe");
+        }));
+        assert!(result.is_err(), "panic 应照常 unwind（仅追加审计）");
+        std::env::remove_var("AUTO_DESKTOP_EXIT_LOG");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("code=101") && content.contains("site=panic msg=p575 audit probe"),
+            "审计行应含 code=101 与 panic 消息，实得: {content:?}"
+        );
+        let _ = fs::remove_file(&path);
+    }
+
+    /// 探针子进程模式：env 置位时真调 shim_process_exit(7)——进程在
+    /// harness 上报前以码 7 退出（见父测试）。
+    #[test]
+    fn p575_probe_child() {
+        if std::env::var("P575_PROBE_EXIT").is_ok() {
+            shim_process_exit(7);
+        }
+    }
+
+    /// 挂点①+②组合：shim_process_exit 落审计后退出码不变（子进程探针，
+    /// PLAN-575 测试设计第 2 行）。过滤串 `p575_probe_child` 与本测试名
+    /// 无子串关系，子进程里只命中探针测试本身（防递归 spawn）。
+    #[test]
+    fn p575_exit_code_survives_probe() {
+        let exe = std::env::current_exe().unwrap();
+        let path = tmp_audit_path("probe");
+        let _ = fs::remove_file(&path);
+        let status = std::process::Command::new(exe)
+            .args(["p575_probe_child", "--nocapture"])
+            .env("P575_PROBE_EXIT", "1")
+            .env("AUTO_DESKTOP_EXIT_LOG", &path)
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(7), "退出码必须保持 7（G3）");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("code=7") && content.contains("site=vm_process_exit"),
+            "探针审计行缺失，实得: {content:?}"
+        );
+        let _ = fs::remove_file(&path);
+    }
 }
 
 /// Real argv as a List of strings: [程序路径] + CLI 透传参数（无透传时仅
@@ -3676,6 +3877,180 @@ pub fn shim_http_server(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+// Plan 547: VM handles contain only the opaque ticket id; decoded pixels stay
+// in the shared registry and are never pushed onto the VM stack.
+#[cfg(feature = "ui-iced")]
+const IMAGE_TICKET_HANDLE_CAPACITY: usize = 256;
+#[cfg(feature = "ui-iced")]
+static IMAGE_TICKET_HANDLES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::VecDeque<(u64, crate::ui::image_pipeline::MediaAssetTicket)>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::VecDeque::new()));
+#[cfg(feature = "ui-iced")]
+static IMAGE_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "ui-iced")]
+pub const IMAGE_NATIVE_NAMES: &[&str] = &[
+    "auto.image.queue", "auto.image.open", "auto.image.scan", "auto.image.request",
+    "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
+    "auto.image.open_session", "auto.image.snapshot", "auto.image.current_uri", "auto.image.names", "auto.image.navigate",
+    "auto.image.request_view", "auto.image.close_session", "auto.image.session_stats",
+];
+
+#[cfg(feature = "ui-iced")]
+fn image_ticket_from_handle(handle: u64) -> Option<crate::ui::image_pipeline::MediaAssetTicket> {
+    IMAGE_TICKET_HANDLES.lock().ok()?.iter().find(|(id, _)| *id == handle).map(|(_, ticket)| *ticket)
+}
+
+#[cfg(feature = "ui-iced")]
+fn insert_image_ticket_handle(handle: u64, ticket: crate::ui::image_pipeline::MediaAssetTicket) {
+    let mut handles = IMAGE_TICKET_HANDLES.lock().expect("image handle lock poisoned");
+    if handles.len() >= IMAGE_TICKET_HANDLE_CAPACITY {
+        if let Some((_, evicted)) = handles.pop_front() {
+            crate::ui::image_pipeline::global_media_registry().release(evicted.id);
+        }
+    }
+    handles.push_back((handle, ticket));
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_queue(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let ticket = crate::ui::image_pipeline::queue_media_path(path, crate::ui::image_pipeline::MediaPriority::Current);
+    let handle = IMAGE_HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    insert_image_ticket_handle(handle, ticket);
+    task.ram.push_i64(handle as i64);
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_open(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i64() as u64;
+    task.ram.push_i64(if image_ticket_from_handle(handle).is_some() { handle as i64 } else { 0 });
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_retain(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i64() as u64;
+    if let Some(ticket) = image_ticket_from_handle(handle) {
+        let _ = crate::ui::image_pipeline::global_media_registry().retain(ticket.id);
+        task.ram.push_i64(handle as i64);
+    } else {
+        task.ram.push_i64(0);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_release(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(ticket) = image_ticket_from_handle(task.ram.pop_i64() as u64) {
+        crate::ui::image_pipeline::global_media_registry().release(ticket.id);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = task.ram.pop_i64() as u64;
+    let ticket = {
+        let mut handles = IMAGE_TICKET_HANDLES.lock().unwrap();
+        handles.iter().position(|(id, _)| *id == handle)
+            .and_then(|index| handles.remove(index).map(|(_, ticket)| ticket))
+    };
+    if let Some(ticket) = ticket {
+        crate::ui::image_pipeline::global_media_registry().release(ticket.id);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_request(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _height = task.ram.pop_i32();
+    let _width = task.ram.pop_i32();
+    let handle = task.ram.pop_i64();
+    task.ram.push_i64(handle);
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_scan(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    crate::ui::image_pipeline::scan_media_directory(path);
+    task.ram.push_i64(0);
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_stats(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_i64(crate::ui::image_pipeline::global_media_registry().stats().completed as i64);
+    Ok(())
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_open_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let root: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::open_media_session(root))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_snapshot(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::media_session_snapshot(&session))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_current_uri(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::media_session_uri(&session))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_names(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    crate::ui::image_pipeline::media_session_names(&session)
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_navigate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let delta = task.ram.pop_i32();
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::navigate_media_session(&session, delta))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_request_view(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let quality = task.ram.pop_i32();
+    let viewport_height = task.ram.pop_i32();
+    let viewport_width = task.ram.pop_i32();
+    let index = task.ram.pop_i32();
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::request_media_view(&session, index, viewport_width, viewport_height, quality))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_close_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let closed = crate::ui::image_pipeline::close_media_session(&session);
+    closed.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_session_stats(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::media_session_stats(&session))
+}
+
 /// Add GET route (placeholder)
 pub fn shim_http_server_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop handler and path (we'll ignore them for now)
@@ -3736,6 +4111,71 @@ pub fn shim_http_server_static(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 ///
 /// The listen loop is identical to shim_http_server_listen but creates its own
 /// handler tasks internally, avoiding the need for a caller-provided task.
+#[cfg(feature = "ui-iced")]
+fn media_response_for_vm_request(
+    method: &str,
+    path: &str,
+    if_none_match: Option<&str>,
+) -> Option<crate::ui::image_pipeline::MediaHttpResponse> {
+    if !path.starts_with("/api/__auto/media/") {
+        return None;
+    }
+    let path = path.split_once('?').map(|(path, _)| path).unwrap_or(path);
+    Some(crate::ui::image_pipeline::media_http_response(
+        crate::ui::image_pipeline::global_media_registry(),
+        method,
+        path,
+        if_none_match,
+    ))
+}
+
+#[cfg(feature = "ui-iced")]
+fn write_media_response(
+    stream: &mut impl std::io::Write,
+    method: &str,
+    path: &str,
+    if_none_match: Option<&str>,
+) -> bool {
+    let Some(response) = media_response_for_vm_request(method, path, if_none_match) else {
+        return false;
+    };
+    let reason = match response.status {
+        200 => "OK",
+        304 => "Not Modified",
+        404 => "Not Found",
+        410 => "Gone",
+        422 => "Unprocessable Entity",
+        503 => "Service Unavailable",
+        _ => "Error",
+    };
+    let body = response.body.map(|bytes| bytes.to_vec()).unwrap_or_default();
+    let mut wire = format!(
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+        response.status,
+        reason,
+        response.headers.get("content-length").map(String::as_str).unwrap_or("0"),
+    );
+    for (name, value) in response.headers {
+        wire.push_str(&format!("{}: {}\r\n", name, value));
+    }
+    wire.push_str("\r\n");
+    let _ = stream.write_all(wire.as_bytes());
+    if method == "GET" {
+        let _ = stream.write_all(&body);
+    }
+    true
+}
+
+#[cfg(not(feature = "ui-iced"))]
+fn write_media_response(
+    _stream: &mut impl std::io::Write,
+    _method: &str,
+    _path: &str,
+    _if_none_match: Option<&str>,
+) -> bool {
+    false
+}
+
 /// Must be called from a non-tokio thread (std::thread::spawn), because it
 /// uses blocking_lock() on handler tasks.
 pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
@@ -3778,6 +4218,7 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
 
         // Read headers
         let mut content_length = 0usize;
+        let mut if_none_match = None;
         loop {
             let mut header = String::new();
             if reader.read_line(&mut header).is_err() { break; }
@@ -3785,6 +4226,9 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
             if header.is_empty() { break; }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
+            }
+            if header.to_lowercase().starts_with("if-none-match:") {
+                if_none_match = Some(header[14..].trim().to_string());
             }
         }
 
@@ -3796,6 +4240,10 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
         } else {
             String::new()
         };
+        drop(reader);
+        if write_media_response(&mut stream, &req_method, &req_path, if_none_match.as_deref()) {
+            continue;
+        }
 
         // Route matching
         let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
@@ -3904,6 +4352,7 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
         // Read remaining headers (until empty line)
         let mut content_length = 0usize;
+        let mut if_none_match = None;
         loop {
             let mut header = String::new();
             if reader.read_line(&mut header).is_err() { break; }
@@ -3911,6 +4360,9 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             if header.is_empty() { break; }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
+            }
+            if header.to_lowercase().starts_with("if-none-match:") {
+                if_none_match = Some(header[14..].trim().to_string());
             }
         }
 
@@ -3922,6 +4374,10 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         } else {
             String::new()
         };
+        drop(reader);
+        if write_media_response(&mut stream, &req_method, &req_path, if_none_match.as_deref()) {
+            continue;
+        }
 
         // Route matching: find (method, path) match with :param support
         let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
@@ -7345,6 +7801,36 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.server_delete", shim_http_server_delete);
     natives.register_shim_by_name("auto.http.server_static", shim_http_server_static);
     natives.register_shim_by_name("auto.http.server_listen", shim_http_server_listen);
+    #[cfg(feature = "ui-iced")]
+    {
+        // Package unit tests and embedded callers run with the crate directory
+        // as cwd, so native_registry's relative stdlib scan cannot be relied on
+        // to discover image.vm.at.  Seed these eight names explicitly before
+        // resolving the shims; the declaration file remains the source of the
+        // public signatures for normal workspace builds.
+        {
+            let mut registry = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+            for name in IMAGE_NATIVE_NAMES {
+                registry.register(name);
+            }
+        }
+        natives.register_shim_by_name("auto.image.queue", shim_image_queue);
+        natives.register_shim_by_name("auto.image.open", shim_image_open);
+        natives.register_shim_by_name("auto.image.scan", shim_image_scan);
+        natives.register_shim_by_name("auto.image.request", shim_image_request);
+        natives.register_shim_by_name("auto.image.retain", shim_image_retain);
+        natives.register_shim_by_name("auto.image.release", shim_image_release);
+        natives.register_shim_by_name("auto.image.close", shim_image_close);
+        natives.register_shim_by_name("auto.image.stats", shim_image_stats);
+        natives.register_shim_by_name("auto.image.open_session", shim_image_open_session);
+        natives.register_shim_by_name("auto.image.snapshot", shim_image_snapshot);
+        natives.register_shim_by_name("auto.image.current_uri", shim_image_current_uri);
+        natives.register_shim_by_name("auto.image.names", shim_image_names);
+        natives.register_shim_by_name("auto.image.navigate", shim_image_navigate);
+        natives.register_shim_by_name("auto.image.request_view", shim_image_request_view);
+        natives.register_shim_by_name("auto.image.close_session", shim_image_close_session);
+        natives.register_shim_by_name("auto.image.session_stats", shim_image_session_stats);
+    }
     natives.register_shim_by_name("auto.http.response", shim_http_response);
     natives.register_shim_by_name("auto.http.response_status", shim_http_response_status);
     natives.register_shim_by_name("auto.http.response_header", shim_http_response_header);

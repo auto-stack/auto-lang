@@ -18,14 +18,12 @@ const activeDemo = computed(() => findDemo(props.app))
 const viewportStyle = computed(() => {
   switch (props.viewportMode) {
     case 'desktop':
-      return { width: '1024px', maxWidth: '100%' }
+      return { width: '1024px', height: '720px', maxWidth: '100%' }
     case 'tablet':
-      return { width: '768px', maxWidth: '100%' }
-    case 'mobile':
-      return { width: '375px', maxWidth: '100%' }
+      return { width: '768px', height: '1024px', maxWidth: '100%' }
     case 'full':
     default:
-      return { width: '100%' }
+      return { width: '100%', height: '720px' }
   }
 })
 
@@ -90,14 +88,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-viewport-wrapper w-full h-full flex flex-col items-center justify-center relative bg-muted/20">
+  <div class="app-viewport-wrapper w-full flex flex-col items-center justify-center relative">
     <div
-      class="app-viewport-frame relative transition-all duration-300 overflow-hidden flex flex-col bg-background rounded-lg border shadow-sm"
+      class="app-viewport-frame relative transition-all duration-300 overflow-hidden flex flex-col bg-background rounded-xl border border-border shadow-md"
       :style="viewportStyle"
-      :class="{
-        'h-full': !viewportMode || viewportMode === 'full',
-        'h-[560px] my-auto': viewportMode && viewportMode !== 'full'
-      }"
     >
       <!-- Loading State -->
       <div v-if="isLoading" class="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -140,3 +134,15 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.demo-mount-root :deep(.h-screen) {
+  height: 100% !important;
+}
+.demo-mount-root :deep(.min-h-screen) {
+  min-height: 100% !important;
+}
+.demo-mount-root :deep(.w-screen) {
+  width: 100% !important;
+}
+</style>

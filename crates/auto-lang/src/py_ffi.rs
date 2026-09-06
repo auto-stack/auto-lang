@@ -76,12 +76,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
                 .map(|b| String::from_utf8_lossy(b).to_string())
                 .unwrap_or_default();
             let obj = self.obj.bind(py);
-            let result = obj.getattr(&attr_name).map_err(|e| {
-                VMError::FFI(format!(
-                    "Python getattr({}.{}) failed: {}",
-                    self.type_name, attr_name, e
-                ))
-            })?;
+            let result = obj.getattr(&attr_name).map_err(|e| py_exc(py, &e))?;
             py_auto_marshal_return(&result, task, vm)
         })?;
         Ok(())
@@ -112,12 +107,8 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
                 VMError::FFI(format!("py obj_set attr name not string: {}", e))
             })?;
             let obj = self.obj.bind(py);
-            obj.setattr(&attr_name, (&value)).map_err(|e| {
-                VMError::FFI(format!(
-                    "Python setattr({}.{}) failed: {}",
-                    self.type_name, attr_name, e
-                ))
-            })?;
+            obj.setattr(&attr_name, (&value))
+                .map_err(|e| py_exc(py, &e))?;
             // 语句形态推 null 保栈平衡（py_setitem 约定）。
             task.ram.push_nv(auto_val::encode_null());
             Ok::<(), VMError>(())
@@ -132,9 +123,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
     ) -> Result<(), VMError> {
         Python::attach(|py| {
             let obj = self.obj.bind(py);
-            let len = obj.len().map_err(|e| {
-                VMError::FFI(format!("Python len({}) failed: {}", self.type_name, e))
-            })?;
+            let len = obj.len().map_err(|e| py_exc(py, &e))?;
             task.ram.push_i32(len as i32);
             Ok::<(), VMError>(())
         })?;
@@ -172,22 +161,14 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
             })?;
             let obj = self.obj.bind(py);
             let result = if method_args.is_empty() {
-                obj.call_method0(&method_name).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python method {}.{}() failed: {}",
-                        self.type_name, method_name, e
-                    ))
-                })?
+                obj.call_method0(&method_name)
+                    .map_err(|e| py_exc(py, &e))?
             } else {
                 let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
                     VMError::FFI(format!("py obj_call args tuple: {}", e))
                 })?;
-                obj.call_method1(&method_name, args_tuple).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python method {}.{}() failed: {}",
-                        self.type_name, method_name, e
-                    ))
-                })?
+                obj.call_method1(&method_name, args_tuple)
+                    .map_err(|e| py_exc(py, &e))?
             };
             py_auto_marshal_return(&result, task, vm)
         })?;
@@ -340,6 +321,22 @@ pub const NATIVE_PY_POW: u16 = 473;
 pub const NATIVE_PY_TRUTHY: u16 = 474;
 /// Plan 560 T08 (C7): `py_is(a, b)` — GIL `a is b`；糖 `a is b` 直落目标。
 pub const NATIVE_PY_IS: u16 = 475;
+/// Plan 567 T06 (P560-D2): `py_getattr_may(obj, attr)` — getattr 的 May 值
+/// 通道变体（AttributeError 落 `Result.Err` 值，s2s 隐式传播规则消费）。
+pub const NATIVE_PY_GETATTR_MAY: u16 = 476;
+/// Plan 567 T06: `py_getitem_may(obj, key)` — getitem 的 May 值通道变体
+/// （KeyError/IndexError 落 `Result.Err` 值）。
+pub const NATIVE_PY_GETITEM_MAY: u16 = 477;
+/// Plan 567 T07 (P539-D5): `py_call_kw_may` — kwargs 5 槽约定的 May 值通道
+/// 变体（与 py_call_kw 同 ABI；异常落 `Result.Err` 值）。
+pub const NATIVE_PY_CALL_KW_MAY: u16 = 478;
+/// Plan 567 T12（P560-D1）: `py_raise(payload)` — with-as 块形态 catch 臂的
+/// 再抛通道：载荷串（PyException 前缀）→ VMError::RuntimeError。值通道 Err
+/// 被 T08 拦截进 catch 后经此还原为异常通道继续外传（载荷不变）。
+pub const NATIVE_PY_RAISE: u16 = 479;
+/// Plan 567 T18（W3 D4）: `py_int(x)` — GIL int() 显式标量提取（int 承诺
+/// 的用户侧强制通道；对齐 py_float 465 形态）。
+pub const NATIVE_PY_INT: u16 = 480;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -419,9 +416,7 @@ impl PyFfiBridge {
         let shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
                 let mod_ref = module.bind(py);
-                let func = mod_ref.getattr(&func_name).map_err(|e| {
-                    VMError::FFI(format!("Python function '{}' not found: {}", func_name, e))
-                })?;
+                let func = mod_ref.getattr(&func_name).map_err(|e| py_exc(py, &e))?;
 
                 // Build Python argument tuple by popping from stack in reverse.
                 // Plan 369 Task 10: use the ACTUAL call-site arg count stashed on
@@ -446,34 +441,30 @@ impl PyFfiBridge {
                 let args_tuple = PyTuple::new(py, bound_args).map_err(|e| {
                     VMError::FFI(format!("Failed to create Python args tuple: {}", e))
                 })?;
-                let py_result = func.call1(args_tuple).map_err(|e| {
-                    VMError::FFI(format!("Python call {}() failed: {}", func_name, e))
-                })?;
+                let py_result = func.call1(args_tuple).map_err(|e| py_exc(py, &e))?;
 
                 // Marshal return value to VM stack
-                match return_type {
+                match &return_type {
                     PyType::Int => {
-                        let val: i32 = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not int: {}", e))
-                        })?;
+                        // Plan 567 T17（W3 D4 授权强制）: 注解承诺的 int 走
+                        // GIL int() 强制（Python 注解契约语义——int-able 返回
+                        // 均接受）；无注解路径不受影响（Auto 动态封送）。
+                        let val: i32 = coerce_scalar_i32(py, &py_result)?;
                         task.ram.push_i32(val);
                     }
                     PyType::Float => {
-                        let val: f64 = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not float: {}", e))
-                        })?;
+                        // Plan 567 T17（W3 D4 授权强制）: 同上——GIL float()
+                        // 强制（int 返回值照收，修复"注解 float 实返 int 即
+                        // 炸"的严格 extract 缺口）。
+                        let val: f64 = coerce_scalar_f64(py, &py_result)?;
                         task.ram.push_f64(val);
                     }
                     PyType::Bool => {
-                        let val: bool = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not bool: {}", e))
-                        })?;
+                        let val: bool = py_result.extract().map_err(|e| py_exc(py, &e))?;
                         task.ram.push_i32(if val { 1 } else { 0 });
                     }
                     PyType::String => {
-                        let val: String = py_result.extract().map_err(|e| {
-                            VMError::FFI(format!("Python return not string: {}", e))
-                        })?;
+                        let val: String = py_result.extract().map_err(|e| py_exc(py, &e))?;
                         // Plan 510 G1-2: 走 add_string + 配平入栈
                         // (裸推无 dedup 无 rc,消费侧 POP 即多扣)。
                         let idx = vm.add_string(val.into_bytes());
@@ -487,6 +478,27 @@ impl PyFfiBridge {
                             py_list_to_vm_heap(list, task, vm)?;
                         } else {
                             return Err(VMError::FFI("Python return not list".to_string()));
+                        }
+                    }
+                    // Plan 567 T16（W3）: `T | None` 注解——None 是值封 null，
+                    // 非 None 内型走 D4 强制/动态封送。
+                    PyType::Nullable(inner) => {
+                        if py_result.is_none() {
+                            task.ram.push_nv(auto_val::encode_null());
+                        } else {
+                            match inner.as_ref() {
+                                PyType::Int => {
+                                    let val: i32 = coerce_scalar_i32(py, &py_result)?;
+                                    task.ram.push_i32(val);
+                                }
+                                PyType::Float => {
+                                    let val: f64 = coerce_scalar_f64(py, &py_result)?;
+                                    task.ram.push_f64(val);
+                                }
+                                _ => {
+                                    py_auto_marshal_return(&py_result, task, vm)?;
+                                }
+                            }
                         }
                     }
                     PyType::Auto => {
@@ -530,9 +542,7 @@ impl PyFfiBridge {
         let shim = move |task: &mut AutoTask, vm: &AutoVM| {
             Python::attach(|py| {
                 let mod_ref = module.bind(py);
-                let py_val = mod_ref.getattr(&const_name).map_err(|e| {
-                    VMError::FFI(format!("Python constant '{}' not found: {}", const_name, e))
-                })?;
+                let py_val = mod_ref.getattr(&const_name).map_err(|e| py_exc(py, &e))?;
                 // Zero-arg constant: no args to pop. pending_native_arg_count is 0.
                 py_auto_marshal_return(&py_val, task, vm)?;
                 Ok::<(), VMError>(())
@@ -594,12 +604,9 @@ impl PyFfiBridge {
                 let obj_py = pop_auto_py_arg(task, vm, py)?;
 
                 let result = if method_args.is_empty() {
-                    obj_py.call_method0(&method_name).map_err(|e| {
-                        VMError::FFI(format!(
-                            "Python method {}.{}() failed: {}",
-                            safe_type_name(&obj_py), method_name, e
-                        ))
-                    })?
+                    obj_py
+                        .call_method0(&method_name)
+                        .map_err(|e| py_exc(py, &e))?
                 } else {
                     // pyo3 0.29: call_method1 takes a PyCallArgs tuple. Build a
                     // PyTuple from the collected args so variadic method calls
@@ -609,12 +616,7 @@ impl PyFfiBridge {
                     })?;
                     obj_py
                         .call_method1(&method_name, args_tuple)
-                        .map_err(|e| {
-                            VMError::FFI(format!(
-                                "Python method {}.{}() failed: {}",
-                                safe_type_name(&obj_py), method_name, e
-                            ))
-                        })?
+                        .map_err(|e| py_exc(py, &e))?
                 };
 
                 py_auto_marshal_return(&result, task, vm)?;
@@ -701,12 +703,7 @@ impl PyFfiBridge {
 
                 let result = obj_py
                     .call_method(&method_name, args_tuple, Some(&kwargs))
-                    .map_err(|e| {
-                        VMError::FFI(format!(
-                            "Python method {}.{}(**kw) failed: {}",
-                            safe_type_name(&obj_py), method_name, e
-                        ))
-                    })?;
+                    .map_err(|e| py_exc(py, &e))?;
 
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
@@ -715,6 +712,56 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALL_KW, call_kw_shim);
+
+        // ---- py_call_kw_may(obj, method_name, posargs, kw_names, kw_vals) ----
+        // Plan 567 T07 (P539-D5): kwargs×may 组合——与 py_call_kw 同 5 槽 ABI，
+        // 异常落 Result.Err 值（s2s 隐式传播规则的 kwargs 调用形态出口）。
+        let call_kw_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
+            Python::attach(|py| {
+                // Layout (TOS → bottom): kw_vals, kw_names, posargs, method_name, obj
+                let n = task.pending_native_arg_count as usize;
+                if n != 5 {
+                    return Err(VMError::FFI(format!(
+                        "py_call_kw_may needs 5 slots (obj, method, posargs, kw_names, kw_vals), got {}",
+                        n
+                    )));
+                }
+
+                let kw_vals_py = pop_auto_py_arg(task, vm, py)?;
+                let kw_names_py = pop_auto_py_arg(task, vm, py)?;
+                let posargs_py = pop_auto_py_arg(task, vm, py)?;
+                let method_py = pop_auto_py_arg(task, vm, py)?;
+                let method_name: String = method_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_call_kw_may method name not string: {}", e))
+                })?;
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+
+                let kwargs = build_kwargs(&kw_names_py, &kw_vals_py)
+                    .map_err(|e| VMError::FFI(format!("py_call_kw_may kwargs build failed: {}", e)))?;
+
+                let pos_vec: Vec<Bound<'_, PyAny>> = posargs_py
+                    .try_iter()
+                    .map_err(|e| VMError::FFI(format!("py_call_kw_may posargs not iterable: {}", e)))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| VMError::FFI(format!("py_call_kw_may posargs iteration failed: {}", e)))?;
+                let args_tuple = PyTuple::new(py, &pos_vec).map_err(|e| {
+                    VMError::FFI(format!("Failed to build method args tuple: {}", e))
+                })?;
+
+                match obj_py.call_method(&method_name, args_tuple, Some(&kwargs)) {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CALL_KW_MAY, call_kw_may_shim);
 
         // ---- py_call_may(obj, method_name, ...args) ----
         // Plan 539 W0 (DIV-PY-EXCEPT-1): same variadic convention as py_call,
@@ -758,27 +805,7 @@ impl PyFfiBridge {
                         py_auto_marshal_return(&result, task, vm)?;
                         wrap_tos_as_result_ok(task, vm);
                     }
-                    Err(py_err) => {
-                        // Carry str(e) + type name per the DIV-PY-EXCEPT-1 brief.
-                        let type_name = py_err
-                            .value(py)
-                            .get_type()
-                            .name()
-                            .map(|n| n.to_string())
-                            .unwrap_or_else(|_| "UnknownException".to_string());
-                        let msg = py_err
-                            .value(py)
-                            .str()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        let text = format!("PyException {}: {}", type_name, msg);
-                        let instance = crate::vm::generic_registry::GenericInstanceData::new(
-                            "Result.Err".to_string(),
-                            vec![auto_val::Value::Str(text.into())],
-                        );
-                        let id = vm.insert_heap_object(instance);
-                        vm.rc_push(task, auto_val::encode_object(id as u32));
-                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
                 }
                 Ok::<(), VMError>(())
             })?;
@@ -786,6 +813,66 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALL_MAY, call_may_shim);
+
+        // ---- py_getattr_may(obj, attr_name) ----
+        // Plan 567 T06 (P560-D2): may 值通道变体——Ok 走 Result.Ok 包裹，
+        // AttributeError 落 Result.Err 值（载荷与 py_exc 同源）。
+        let getattr_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_getattr_may needs 2 args (obj, attr), got {}",
+                        n
+                    )));
+                }
+                let attr_py = pop_auto_py_arg(task, vm, py)?;
+                let attr_name: String = attr_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_getattr_may attr name not string: {}", e))
+                })?;
+                let obj_py = pop_auto_py_arg(task, vm, py)?;
+                match obj_py.getattr(&attr_name) {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_GETATTR_MAY, getattr_may_shim);
+
+        // ---- py_getitem_may(obj, key) ----
+        // Plan 567 T06 (P560-D2): KeyError/IndexError 落 Result.Err 值。
+        let getitem_may_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let _bridge = BridgeGuard::enter(task, vm);
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_getitem_may needs 2 args (obj, key), got {}",
+                        n
+                    )));
+                }
+                let key = pop_auto_py_arg(task, vm, py)?;
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                match obj.get_item(&key) {
+                    Ok(result) => {
+                        py_auto_marshal_return(&result, task, vm)?;
+                        wrap_tos_as_result_ok(task, vm);
+                    }
+                    Err(py_err) => push_py_exception_err_value(py, &py_err, task, vm),
+                }
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_GETITEM_MAY, getitem_may_shim);
 
         // ---- py_iter(handle) -> iterator handle ----
         // Plan 539 W0 (DIV-PY-ITER-1): Python iteration protocol entry. The
@@ -885,9 +972,7 @@ impl PyFfiBridge {
                 }
                 let b = pop_auto_py_arg(task, vm, py)?;
                 let a = pop_auto_py_arg(task, vm, py)?;
-                let result = a.call_method1("__matmul__", (b,)).map_err(|e| {
-                    VMError::FFI(format!("Python __matmul__ failed: {}", e))
-                })?;
+                let result = a.call_method1("__matmul__", (b,)).map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -921,12 +1006,7 @@ impl PyFfiBridge {
                         .map_err(|e| VMError::FFI(format!("py_getitem key tuple: {}", e)))?
                         .into_any()
                 };
-                let result = obj.get_item(&key).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python getitem on {} failed: {}",
-                        safe_type_name(&obj), e
-                    ))
-                })?;
+                let result = obj.get_item(&key).map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -958,12 +1038,7 @@ impl PyFfiBridge {
                         .map_err(|e| VMError::FFI(format!("py_setitem key tuple: {}", e)))?
                         .into_any()
                 };
-                obj.set_item(&key, value).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python setitem on {} failed: {}",
-                        safe_type_name(&obj), e
-                    ))
-                })?;
+                obj.set_item(&key, value).map_err(|e| py_exc(py, &e))?;
                 // Statement form: push a nil so the stack stays balanced for
                 // CALL_NAT_COUNTED's dead-zone accounting.
                 task.ram.push_nv(auto_val::encode_null());
@@ -1043,12 +1118,7 @@ impl PyFfiBridge {
                 let func = pop_auto_py_arg(task, vm, py)?;
                 let args_tuple = PyTuple::new(py, &args)
                     .map_err(|e| VMError::FFI(format!("py_call0 args tuple: {}", e)))?;
-                let result = func.call(args_tuple, None).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python call {}() failed: {}",
-                        safe_type_name(&func), e
-                    ))
-                })?;
+                let result = func.call(args_tuple, None).map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -1082,12 +1152,7 @@ impl PyFfiBridge {
                 // stake vs closure frame unwind, canary-fired), and the common
                 // contexts (no_grad) don't need it — the ctx is already in
                 // the enclosing scope.
-                ctx.call_method0("__enter__").map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python __enter__ on {} failed: {}",
-                        safe_type_name(&ctx), e
-                    ))
-                })?;
+                ctx.call_method0("__enter__").map_err(|e| py_exc(py, &e))?;
 
                 let body = vm.call_closure(task, closure_id, 0);
                 // Pop the closure's return value (dead value; keep balance).
@@ -1099,12 +1164,7 @@ impl PyFfiBridge {
                         (py.None(), py.None(), py.None()),
                         None::<&Bound<'_, PyDict>>,
                     )
-                    .map_err(|e| {
-                        VMError::FFI(format!(
-                            "Python __exit__ on {} failed: {}",
-                            safe_type_name(&ctx), e
-                        ))
-                    })?;
+                    .map_err(|e| py_exc(py, &e))?;
                 if let Ok(true) = exit_result.extract::<bool>() {
                     // __exit__ returned True — the context suppresses errors:
                     // clear any body error (Python with-semantics).
@@ -1139,13 +1199,11 @@ impl PyFfiBridge {
                     )));
                 }
                 let ctx = pop_auto_py_arg(task, vm, py)?;
-                ctx.call_method0("__enter__").map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python __enter__ on {} failed: {}",
-                        safe_type_name(&ctx), e
-                    ))
-                })?;
-                task.ram.push_nv(auto_val::encode_null());
+                // Plan 567 T13（P560-D1）: with-as 块形态绑定值——`__enter__`
+                // 结果封送入栈（原 encode_null 丢弃；with_shim 通道不受影响，
+                // 其闭包以 0 参跑、entered value 留 Python 侧）。
+                let entered = ctx.call_method0("__enter__").map_err(|e| py_exc(py, &e))?;
+                py_auto_marshal_return(&entered, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
             Ok(())
@@ -1168,12 +1226,7 @@ impl PyFfiBridge {
                     (py.None(), py.None(), py.None()),
                     None::<&Bound<'_, PyDict>>,
                 )
-                .map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python __exit__ on {} failed: {}",
-                        safe_type_name(&ctx), e
-                    ))
-                })?;
+                .map_err(|e| py_exc(py, &e))?;
                 task.ram.push_nv(auto_val::encode_null());
                 Ok::<(), VMError>(())
             })?;
@@ -1181,6 +1234,34 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_EXIT, exit_shim);
+
+        // ---- py_raise(payload) ----
+        // Plan 567 T12（P560-D1）: with-as 块形态 catch 臂的再抛通道
+        //（载荷串原样转 RuntimeError——T08 拦下的值通道 Err 由此还原）。
+        let raise_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n != 1 {
+                return Err(VMError::FFI(format!(
+                    "py_raise needs 1 arg (payload), got {}",
+                    n
+                )));
+            }
+            let nv = task.ram.pop_nv();
+            let payload = if auto_val::is_string(nv) {
+                let idx = auto_val::decode_string(nv) as usize;
+                let s = vm
+                    .get_string(idx as u32)
+                    .map(|b| String::from_utf8_lossy(&b).to_string())
+                    .unwrap_or_default();
+                vm.pool_release(idx);
+                s
+            } else {
+                format!("{}", auto_val::decode_i32(nv))
+            };
+            Err(VMError::RuntimeError(payload))
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_RAISE, raise_shim);
 
         // ---- py_item_kw(module, func, posargs, kw_names, kw_vals) ----
         // Plan 539 W2 (T17): item-import direct call with keyword args.
@@ -1227,9 +1308,9 @@ impl PyFfiBridge {
                         module_name, func_name, e
                     ))
                 })?;
-                let result = func.call(args_tuple, Some(&kwargs)).map_err(|e| {
-                    VMError::FFI(format!("Python call {}.{}(**kw) failed: {}", module_name, func_name, e))
-                })?;
+                let result = func
+                    .call(args_tuple, Some(&kwargs))
+                    .map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -1266,6 +1347,35 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_FLOAT, float_shim);
+
+        // ---- py_int(x) ----
+        // Plan 567 T18（W3 D4）: int(x) —— 镜像 py_float 形态。
+        let int_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!("py_int needs 1 arg, got {}", n)));
+                }
+                let val = pop_auto_py_arg(task, vm, py)?;
+                let builtins = py.import("builtins").map_err(|e| {
+                    VMError::FFI(format!("py_int: builtins import failed: {}", e))
+                })?;
+                let int_fn = builtins.getattr("int").map_err(|e| {
+                    VMError::FFI(format!("py_int: builtins.int missing: {}", e))
+                })?;
+                let result = int_fn
+                    .call1((val,))
+                    .map_err(|e| py_exc(py, &e))?;
+                let i: i32 = result
+                    .extract()
+                    .map_err(|e| py_exc(py, &e))?;
+                task.ram.push_i32(i);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_INT, int_shim);
 
         // ---- py_callable(closure_id) -> callable handle ----
         // Plan 539 W3 (T21): wrap an Auto closure as a Python callable. The
@@ -1360,12 +1470,7 @@ impl PyFfiBridge {
                     )));
                 }
                 let obj = pop_auto_py_arg(task, vm, py)?;
-                let len = obj.len().map_err(|e| {
-                    VMError::FFI(format!(
-                        "Python len({}) failed: {}",
-                        safe_type_name(&obj), e
-                    ))
-                })?;
+                let len = obj.len().map_err(|e| py_exc(py, &e))?;
                 task.ram.push_i32(len as i32);
                 Ok::<(), VMError>(())
             })?;
@@ -1641,6 +1746,37 @@ impl PyFfiBridge {
         })
     }
 
+    /// Plan 567 T16（W3 注解预言机）: 读函数返回类型注解
+    /// （`typing.get_type_hints` 的 `return` 项）→ PyType 知识。
+    /// builtins/无注解/复杂形态 → None（无知识，保守 Auto 不变）。
+    /// 定位：优化与糖的授权，不是正确性地基（§7——注解撒谎最坏退回
+    /// Python 行为）。
+    pub fn inspect_return_annotation(&self, module_name: &str, func_name: &str) -> Option<PyType> {
+        Python::attach(|py| {
+            let mod_ref = self.modules.get(module_name)?;
+            let func = mod_ref.bind(py).getattr(func_name).ok()?;
+            classify_return_annotation(py, &func)
+        })
+    }
+
+    /// Plan 567 T16: 常量通道同法——模块级 `x: float = ...` 的注解
+    /// （get_type_hints(module) 可读）。
+    pub fn inspect_constant_annotation(&self, module_name: &str, const_name: &str) -> Option<PyType> {
+        Python::attach(|py| {
+            let mod_ref = self.modules.get(module_name)?;
+            let module = mod_ref.bind(py);
+            // get_type_hints(module) 的 dict 里查常量名
+            let typing = py.import("typing").ok()?;
+            let hints = typing
+                .call_method1("get_type_hints", (module,))
+                .ok()?
+                .extract::<std::collections::HashMap<String, pyo3::Py<pyo3::PyAny>>>()
+                .ok()?;
+            let ann = hints.get(const_name)?;
+            classify_annotation_value(py, &ann.bind(py))
+        })
+    }
+
     /// Plan 300: Discover all public callable functions in a module.
     /// Returns a list of (func_name, param_count) pairs.
     pub fn discover_module_callables(&self, module_name: &str) -> Vec<(String, usize)> {
@@ -1768,15 +1904,14 @@ fn py_dunder_dispatch<'py>(
                     if reflect.is_empty() {
                         Ok(r)
                     } else {
-                        rhs.call_method1(reflect, (lhs.clone(),)).map_err(|e| {
-                            VMError::FFI(format!("Python {} / {} failed: {}", dunder, reflect, e))
-                        })
+                        rhs.call_method1(reflect, (lhs.clone(),))
+                            .map_err(|e| py_exc(py, &e))
                     }
                 }
                 None => Ok(r),
             }
         }
-        Err(e) => Err(VMError::FFI(format!("Python {} failed: {}", dunder, e))),
+        Err(e) => Err(py_exc(py, &e)),
     }
 }
 
@@ -1817,9 +1952,7 @@ pub(crate) fn py_dunder_cmp(
 pub(crate) fn py_dunder_neg(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Python::attach(|py| {
         let val = pop_auto_py_arg(task, vm, py)?;
-        let result = val.call_method0("__neg__").map_err(|e| {
-            VMError::FFI(format!("Python __neg__ failed: {}", e))
-        })?;
+        let result = val.call_method0("__neg__").map_err(|e| py_exc(py, &e))?;
         py_auto_marshal_return(&result, task, vm)?;
         Ok::<(), VMError>(())
     })
@@ -2115,6 +2248,15 @@ fn wrap_tos_as_result_ok(task: &mut AutoTask, vm: &AutoVM) {
         auto_val::Value::VmRef(auto_val::VmRef {
             id: auto_val::decode_object(nv) as usize,
         })
+    } else if auto_val::is_null(nv) {
+        // Plan 567 T09: null 是值——Ok(null)（`sort()` 等 None 返回形态）。
+        auto_val::Value::Nil
+    } else if auto_val::is_list(nv) {
+        // Plan 567 T09: py list 返回走 TAG_LIST 通道（461）——同 payload
+        // 异标签，未覆盖时落 Int 垃圾解码（p7 四套件中止根因）。
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_list(nv) as usize,
+        })
     } else {
         auto_val::Value::Int(auto_val::decode_i32(nv))
     };
@@ -2242,6 +2384,144 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Boun
 
 /// Auto-detect Python return type and marshal to VM stack.
 /// Plan 300: Enhanced with dict→Obj and nested structure support.
+/// Plan 567 T16（W3 注解预言机）: 函数返回注解 → PyType。
+/// `typing.get_type_hints(func)` 取 `return` 项再分类；无注解/失败 → None。
+fn classify_return_annotation(py: Python<'_>, func: &Bound<'_, PyAny>) -> Option<PyType> {
+    let typing = py.import("typing").ok()?;
+    let hints = typing
+        .call_method1("get_type_hints", (func,))
+        .ok()?;
+    let ann = hints.get_item("return").ok()?;
+    classify_annotation_value(py, &ann)
+}
+
+/// 注解值分类：标量恒等 + Union/Optional 剥 None（`T | None` 与
+/// `Optional[T]` 两形态，get_origin 判别）。未识别 → None。
+fn classify_annotation_value(py: Python<'_>, ann: &Bound<'_, PyAny>) -> Option<PyType> {
+    let builtins = py.import("builtins").ok()?;
+    let scalar = |t: &Bound<'_, PyAny>| -> Option<PyType> {
+        let int_t = builtins.getattr("int").ok()?;
+        let float_t = builtins.getattr("float").ok()?;
+        let str_t = builtins.getattr("str").ok()?;
+        let bool_t = builtins.getattr("bool").ok()?;
+        if t.is(&int_t) {
+            Some(PyType::Int)
+        } else if t.is(&float_t) {
+            Some(PyType::Float)
+        } else if t.is(&str_t) {
+            Some(PyType::String)
+        } else if t.is(&bool_t) {
+            Some(PyType::Bool)
+        } else {
+            None
+        }
+    };
+    if let Some(t) = scalar(ann) {
+        return Some(t);
+    }
+    // Union 家族：typing.Union（Optional[X]）与 types.UnionType（X | None）
+    let typing = py.import("typing").ok()?;
+    let origin = typing.call_method1("get_origin", (ann,)).ok()?;
+    let is_union = {
+        let union_t = typing.getattr("Union").ok()?;
+        let types_mod = py.import("types").ok()?;
+        let union_type_t = types_mod.getattr("UnionType").ok()?;
+        origin.is(&union_t) || origin.is(&union_type_t)
+    };
+    if is_union {
+        let args = typing.call_method1("get_args", (ann,)).ok()?;
+        let none_type = {
+            let builtins_none = builtins.getattr("None").ok()?;
+            builtins_none
+                .get_type()
+                .into_any()
+        };
+        let mut members = Vec::new();
+        let n = args.len().unwrap_or(0);
+        for i in 0..n {
+            if let Some(arg) = args.get_item(i).ok() {
+                if arg.is(&none_type) {
+                    continue;
+                }
+                members.push(arg);
+            }
+        }
+        if members.len() == 1 {
+            if let Some(inner) = scalar(&members[0]) {
+                return Some(PyType::Nullable(Box::new(inner)));
+            }
+        }
+    }
+    None
+}
+
+/// Plan 567 T17（W3 D4）: GIL float() 标量强制（注解授权路径）。
+fn coerce_scalar_f64(py: Python<'_>, val: &Bound<'_, PyAny>) -> Result<f64, VMError> {
+    let float_fn = py
+        .import("builtins")
+        .and_then(|b| b.getattr("float"))
+        .map_err(|e| py_exc(py, &e))?;
+    let coerced = float_fn.call1((val,)).map_err(|e| py_exc(py, &e))?;
+    coerced.extract::<f64>().map_err(|e| py_exc(py, &e))
+}
+
+/// Plan 567 T17（W3 D4）: GIL int() 标量强制。
+fn coerce_scalar_i32(py: Python<'_>, val: &Bound<'_, PyAny>) -> Result<i32, VMError> {
+    let int_fn = py
+        .import("builtins")
+        .and_then(|b| b.getattr("int"))
+        .map_err(|e| py_exc(py, &e))?;
+    let coerced = int_fn.call1((val,)).map_err(|e| py_exc(py, &e))?;
+    coerced.extract::<i32>().map_err(|e| py_exc(py, &e))
+}
+
+/// Plan 567 T05（P560-D3）: py 桥错误统一 `PyException <Type>: <msg>` 前缀。
+/// `<Type>`/`<msg>` 从 PyErr 本体取（与 py_call_may 的 Err 载荷构造同源，
+/// engine FFI→RuntimeError 转换后 catch 绑定/传播两侧载荷形态一致）。
+/// 仅用于"Python 操作失败"类站点；桥内部组参/弹栈类错误保留描述形态。
+fn py_exc(py: Python<'_>, e: &pyo3::PyErr) -> VMError {
+    let type_name = e
+        .value(py)
+        .get_type()
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|_| "UnknownException".to_string());
+    let msg = e
+        .value(py)
+        .str()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    VMError::FFI(format!("PyException {}: {}", type_name, msg))
+}
+
+/// Plan 567 T06 (P560-D2): may 变体公共 Err 出口——Python 异常落
+/// `Result.Err` 值（载荷构造与 py_exc 同源；py_call_may 原地内联版收编）。
+fn push_py_exception_err_value(
+    py: Python<'_>,
+    e: &pyo3::PyErr,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) {
+    let type_name = e
+        .value(py)
+        .get_type()
+        .name()
+        .map(|n| n.to_string())
+        .unwrap_or_else(|_| "UnknownException".to_string());
+    let msg = e
+        .value(py)
+        .str()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let text = format!("PyException {}: {}", type_name, msg);
+    let instance = crate::vm::generic_registry::GenericInstanceData::new(
+        "Result.Err".to_string(),
+        vec![auto_val::Value::Str(text.into())],
+    );
+    let id = vm.insert_heap_object(instance);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
+}
+
 fn py_auto_marshal_return(
     py_val: &Bound<'_, PyAny>,
     task: &mut AutoTask,
@@ -2270,7 +2550,16 @@ fn py_auto_marshal_return(
         // Plan 539 W2 (T18): None marshals to the Auto null family (was
         // i32 0). `x != null` guards and py_next exhaustion now agree.
         task.ram.push_nv(auto_val::encode_null());
-    } else if py_val.is_instance_of::<PyTuple>() {
+    } else if py_val.is_instance_of::<PyTuple>()
+        // Plan 567 T03（P560-D6 py_sys 红）: 带属性面的 tuple 走下方 opaque
+        // 句柄分支——namedtuple（`_fields`）与 PyStructSequence
+        // （`n_sequence_fields`，如 sys.version_info——实测无 `_fields`）。
+        // 拍平成 List 后 `py_getattr(vi, "major")` 的 TAG_OBJECT 臂会把
+        // ListData 转回 Python list 而 AttributeError；普通 tuple 维持
+        // 拍平裁定（DIV-PY-TUPLE-1）。
+        && py_val.getattr("_fields").is_err()
+        && py_val.getattr("n_sequence_fields").is_err()
+    {
         // Plan 539 W2 (T18): top-level tuple returns flatten to an Auto
         // List (tuple-as-List mapping; immutability/hashability divergence
         // registered in known-divergences).
@@ -3048,6 +3337,314 @@ mod tests {
                 auto_val::Value::Double(d) => assert_eq!(*d, 2.0),
                 other => panic!("expected Double payload, got {:?}", other),
             }
+        });
+    }
+
+    #[test]
+    fn test_may_variant_shims_err_payload_prefix() {
+        // Plan 567 T06: 476/477 may 变体——Err 载荷 `PyException <Type>: <msg>`
+        // 前缀 + Result.Ok 包裹形态（对齐 py_call_may 家族契约）。
+        use crate::vm::native::NativeInterface;
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.import_module("math").unwrap();
+        bridge.register_object_shims();
+
+        // getattr_may: math has no attribute "no_such" -> Result.Err
+        {
+            let shim = bridge.native_interface().get(NATIVE_PY_GETATTR_MAY).unwrap();
+            let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+            Python::attach(|py| {
+                let math_mod: Py<PyModule> = py.import("math").unwrap().into();
+                let handle = PyObjectHandle::new("module".to_string(), math_mod.into_any());
+                let id = vm.insert_heap_object(handle);
+                task.ram.push_nv(auto_val::encode_object(id as u32));
+                let m_idx = vm.add_string(b"no_such".to_vec());
+                vm.rc_push_str_idx(&mut task, m_idx);
+                task.pending_native_arg_count = 2;
+                shim(&mut task, &vm).unwrap();
+
+                let nv = task.ram.pop_nv();
+                assert!(auto_val::is_object(nv), "Err should be a heap Result");
+                let heap_obj = vm
+                    .get_heap_object(auto_val::decode_object(nv) as u64)
+                    .unwrap();
+                let guard = heap_obj.read().unwrap();
+                let inst = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                    .unwrap();
+                assert_eq!(inst.mono_name, "Result.Err");
+                match &inst.fields[0] {
+                    auto_val::Value::Str(s) => {
+                        assert!(s.as_str().starts_with("PyException AttributeError"));
+                    }
+                    other => panic!("expected Str payload, got {:?}", other),
+                }
+            });
+        }
+
+        // getitem_may: list index out of range -> Result.Err; in-range -> Result.Ok
+        {
+            let shim = bridge.native_interface().get(NATIVE_PY_GETITEM_MAY).unwrap();
+            let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+            Python::attach(|py| {
+                let lst = py.eval(c"[10, 20]", None, None).unwrap();
+                let handle = PyObjectHandle::new("list".to_string(), lst.clone().unbind());
+                let id = vm.insert_heap_object(handle);
+                task.ram.push_nv(auto_val::encode_object(id as u32));
+                task.ram.push_i32(5);
+                task.pending_native_arg_count = 2;
+                shim(&mut task, &vm).unwrap();
+                let nv = task.ram.pop_nv();
+                let heap_obj = vm
+                    .get_heap_object(auto_val::decode_object(nv) as u64)
+                    .unwrap();
+                let guard = heap_obj.read().unwrap();
+                let inst = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                    .unwrap();
+                assert_eq!(inst.mono_name, "Result.Err");
+                match &inst.fields[0] {
+                    auto_val::Value::Str(s) => {
+                        assert!(s.as_str().starts_with("PyException IndexError"));
+                    }
+                    other => panic!("expected Str payload, got {:?}", other),
+                }
+
+                // In-range: Result.Ok(10)
+                task.ram.push_nv(auto_val::encode_object(id as u32));
+                task.ram.push_i32(0);
+                task.pending_native_arg_count = 2;
+                shim(&mut task, &vm).unwrap();
+                let nv = task.ram.pop_nv();
+                let heap_obj = vm
+                    .get_heap_object(auto_val::decode_object(nv) as u64)
+                    .unwrap();
+                let guard = heap_obj.read().unwrap();
+                let inst = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                    .unwrap();
+                assert_eq!(inst.mono_name, "Result.Ok");
+                assert_eq!(inst.fields[0], auto_val::Value::Int(10));
+            });
+        }
+    }
+
+    #[test]
+    fn test_py_call_kw_may_kwargs_combo() {
+        // Plan 567 T07 (P539-D5): kwargs 5 槽 ABI × may 出口——
+        // "abc".split(sep="b") → Result.Ok；sep=123 → TypeError 落
+        // Result.Err（PyException 前缀）。
+        use crate::vm::native::NativeInterface;
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.import_module("math").unwrap();
+        bridge.register_object_shims();
+        let shim = bridge.native_interface().get(NATIVE_PY_CALL_KW_MAY).unwrap();
+
+        fn push_str_arg(vm: &AutoVM, task: &mut crate::vm::task::AutoTask, s: &str) {
+            let idx = vm.add_string(s.as_bytes().to_vec());
+            vm.rc_push_str_idx(task, idx);
+        }
+        fn push_list_arg(
+            vm: &AutoVM,
+            task: &mut crate::vm::task::AutoTask,
+            vals: Vec<auto_val::Value>,
+        ) {
+            let list = crate::vm::types::ListData::<auto_val::Value> {
+                elems: vals,
+                storage: None,
+            };
+            let id = vm.insert_heap_object(list);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+        }
+
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        Python::attach(|py| {
+            // Ok path: "abc".split(sep="b") == ["a", "c"]
+            let s = py.eval(c"'abc'", None, None).unwrap();
+            let handle = PyObjectHandle::new("str".to_string(), s.into_any().unbind());
+            let id = vm.insert_heap_object(handle);
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            push_str_arg(&vm, &mut task, "split");
+            push_list_arg(&vm, &mut task, vec![]);
+            push_list_arg(
+                &vm,
+                &mut task,
+                vec![auto_val::Value::Str("sep".to_string().into())],
+            );
+            push_list_arg(&vm, &mut task, vec![auto_val::Value::Str("b".to_string().into())]);
+            task.pending_native_arg_count = 5;
+            shim(&mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Ok");
+
+            // Err path: "abc".split(sep=123) -> TypeError
+            task.ram.push_nv(auto_val::encode_object(id as u32));
+            push_str_arg(&vm, &mut task, "split");
+            push_list_arg(&vm, &mut task, vec![]);
+            push_list_arg(
+                &vm,
+                &mut task,
+                vec![auto_val::Value::Str("sep".to_string().into())],
+            );
+            push_list_arg(&vm, &mut task, vec![auto_val::Value::Int(123)]);
+            task.pending_native_arg_count = 5;
+            shim(&mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let inst = guard
+                .as_any()
+                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .unwrap();
+            assert_eq!(inst.mono_name, "Result.Err");
+            match &inst.fields[0] {
+                auto_val::Value::Str(s) => {
+                    assert!(s.as_str().starts_with("PyException TypeError"), "got {}", s.as_str());
+                }
+                other => panic!("expected Str payload, got {:?}", other),
+            }
+        });
+    }
+
+    /// Plan 567 T16（W3 注解预言机）: 返回注解分类器——float/int/str/bool
+    /// 恒等、`T | None` 与 `Optional[T]` 双形态剥 None、无注解/builtins → None。
+    #[test]
+    fn test_inspect_return_annotation_classifiers() {
+        Python::attach(|py| {
+            let ns = PyDict::new(py);
+            py.run(
+                c"def _a_scale(x: float) -> float:
+    return x * 2
+def _a_find(x: int) -> 'float | None':
+    return None
+def _a_no_anno(x):
+    return x",
+                Some(&ns),
+                Some(&ns),
+            )
+            .unwrap();
+            let scale = ns.get_item("_a_scale").unwrap().unwrap();
+            assert_eq!(classify_return_annotation(py, &scale), Some(PyType::Float));
+            let find = ns.get_item("_a_find").unwrap().unwrap();
+            assert_eq!(
+                classify_return_annotation(py, &find),
+                Some(PyType::Nullable(Box::new(PyType::Float)))
+            );
+            let no_anno = ns.get_item("_a_no_anno").unwrap().unwrap();
+            assert_eq!(classify_return_annotation(py, &no_anno), None);
+
+            let ns2 = PyDict::new(py);
+            py.run(
+                c"from typing import Optional
+def _a_opt() -> Optional[int]:
+    return 1",
+                Some(&ns2),
+                Some(&ns2),
+            )
+            .unwrap();
+            let opt = ns2.get_item("_a_opt").unwrap().unwrap();
+            assert_eq!(
+                classify_return_annotation(py, &opt),
+                Some(PyType::Nullable(Box::new(PyType::Int)))
+            );
+
+            // builtins（无 __annotations__）→ None（保守回退）
+            let len_fn = py.import("builtins").unwrap().getattr("len").unwrap();
+            assert_eq!(classify_return_annotation(py, &len_fn), None);
+        });
+    }
+
+    /// Plan 567 T18（W3 D4）: 标量强制 helper——int→float、str→float、
+    /// float→int 截断、不可转 → PyException 错误。
+    #[test]
+    fn test_d4_scalar_coercion() {
+        Python::attach(|py| {
+            let int_val = py.eval(c"7", None, None).unwrap();
+            assert_eq!(coerce_scalar_f64(py, &int_val).unwrap(), 7.0);
+            let str_val = py.eval(c"'3.5'", None, None).unwrap();
+            assert_eq!(coerce_scalar_f64(py, &str_val).unwrap(), 3.5);
+            let f_val = py.eval(c"2.9", None, None).unwrap();
+            assert_eq!(coerce_scalar_i32(py, &f_val).unwrap(), 2);
+            let bad = py.eval(c"'x'", None, None).unwrap();
+            let err = coerce_scalar_f64(py, &bad).unwrap_err();
+            assert!(format!("{:?}", err).contains("PyException"), "got {:?}", err);
+        });
+    }
+
+    #[test]
+    fn test_marshal_structseq_namedtuple_opaque_plain_tuple_list() {
+        // Plan 567 T03（P560-D6 py_sys 红）: 带属性面的 tuple 封送 opaque
+        // 句柄——PyStructSequence（sys.version_info，无 `_fields` 有
+        // `n_sequence_fields`）与 namedtuple（`_fields`）；普通 tuple 维持
+        // List 拍平（DIV-PY-TUPLE-1）。句柄形态下 py_getattr(vi,"major")
+        // 才可达（拍平会把 TAG_OBJECT 臂转回 Python list 而 AttributeError）。
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+
+        Python::attach(|py| {
+            // PyStructSequence: sys.version_info
+            let vi = py.import("sys").unwrap().getattr("version_info").unwrap();
+            py_auto_marshal_return(&vi, &mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "structseq should be a heap value");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            assert!(
+                guard.as_any().downcast_ref::<PyObjectHandle>().is_some(),
+                "structseq should marshal to an opaque PyObjectHandle"
+            );
+
+            // namedtuple: collections.namedtuple instance (has _fields)
+            let collections = py.import("collections").unwrap();
+            let p_type = collections
+                .getattr("namedtuple")
+                .unwrap()
+                .call(("P", "x y"), None)
+                .unwrap();
+            let nt = p_type.call((1, 2), None).unwrap();
+            py_auto_marshal_return(&nt, &mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "namedtuple should be a heap value");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            assert!(
+                guard.as_any().downcast_ref::<PyObjectHandle>().is_some(),
+                "namedtuple should marshal to an opaque PyObjectHandle"
+            );
+
+            // plain tuple: flattens to ListData (DIV-PY-TUPLE-1 unchanged)
+            let tup = py.eval(c"(1, 2)", None, None).unwrap();
+            py_auto_marshal_return(&tup, &mut task, &vm).unwrap();
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_object(nv), "plain tuple should be a heap value");
+            let heap_obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = heap_obj.read().unwrap();
+            let list = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                .expect("plain tuple should flatten to ListData");
+            assert_eq!(list.elems.len(), 2);
         });
     }
 }

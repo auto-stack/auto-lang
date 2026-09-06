@@ -17,6 +17,10 @@ default = ["with-file-history"]
 test-vm-files = []
 test-trans = []
 test-book = []
+# Plan 568: AAVM/AA2R 自举测试独立档（implies test-vm-files：runner 复用
+# vm_file_tests 语料缓存 loader）。cargo tv 从此不含 aavm（纯 .at 语料
+# golden）；aavm 专属档 = cargo taa（触发条件与作用域映射见 AGENTS.md）。
+test-aavm = ["test-vm-files"]
 # Plan 317 §11 Phase 11: HTTP e2e tests (start real TCP servers; run serially).
 # Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
 # `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.
@@ -42,7 +46,11 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard"]
+# Shared asynchronous media loading, decoding, rendition, and cache runtime.
+# Kept independent of a renderer so services and native renderers share one
+# asset registry without making the default build pull image dependencies.
+image-pipeline = ["dep:image", "dep:kamadak-exif"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
@@ -179,6 +187,7 @@ rfd = { version = "0.15", optional = true }
 # version-locked with rfd/iced so the handle traits line up).
 raw-window-handle = { version = "0.6", optional = true }
 image = { version = "0.25", optional = true }
+kamadak-exif = { version = "0.6", optional = true }
 # Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
 # iced 0.14.0's pin (0.15) — a second copy would break the Weak<Buffer>
 # handoff into fill_raw. syntect/two-face unify to a single 5.x instance.

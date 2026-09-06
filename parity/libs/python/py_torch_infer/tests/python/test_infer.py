@@ -153,6 +153,17 @@ def main():
     else:
         tap_not_ok(17, "test_print_none", f"got {None}")
 
+    # 18. with-as sugar parity (Plan 567 T15, P560-D1)
+    with torch.no_grad() as g2c:
+        x2 = torch.arange(3) / 1
+        x2.requires_grad_(True)
+        y2 = x2 * 2
+        ygrad2 = y2.requires_grad
+    if ygrad2 == False:
+        tap_ok(18, "test_with_as_sugar")
+    else:
+        tap_not_ok(18, "test_with_as_sugar", f"got {ygrad2}")
+
 
 if __name__ == "__main__":
     main()

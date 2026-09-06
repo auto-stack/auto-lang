@@ -41,6 +41,11 @@
   as 形态与 Cast 中缀歧义响亮拒绝 P560-D1）；`**` Power token + `@`/`**`
   中缀直产 py_matmul/py_pow 桥调用；`is` 中缀→py_is；`#[with(...)]` 注解名
   撞 With 关键字收位修复。
+- 收官波 with-as 绑定（plan-567，P560-D1 销号）：with 头部窗口旗标
+  `with_header`——pratt 循环内 `as` 为终止符、Cast 臂截断（`with e as x`
+  绑定位由 with_stmt 消费；正常模式 Cast 语义零变化）；as 形态直产块形态
+  `Stmt::Expr(Expr::Block)`（绑定+出口保证，躲 convert_last_block 尾块
+  转换）；convert_last_block 收窄为纯 pair 块才转对象。
 
 ## 关键入口
 

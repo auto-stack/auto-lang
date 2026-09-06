@@ -1,0 +1,15 @@
+// PLAN-009 T2: minimal `<terminal/>` mount example (native terminal
+// component — auto-term engine grid viewport, placeholder-rect stage).
+//
+// Headless assertion: ui::terminal::minimal_at_example_mounts_terminal_placeholder
+// drives this through parse → extract → VmBridge → AuraViewBuilder →
+// View::Terminal → VTree and asserts the placeholder node exists.
+//
+// Real grid rendering (glyphs/damage/cursor) lands in T3; interaction
+// (selection/IME/scroll/menu) in T4.
+
+widget TermApp {
+    view {
+        terminal (key: "main", cols: 40, rows: 10) {}
+    }
+}

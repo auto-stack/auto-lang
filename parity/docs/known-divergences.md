@@ -392,13 +392,18 @@ bug is worked around in-source:
 ### DIV-PY-TUPLE-1: Python tuple flattens to Auto List
 
 - **库**: py_torch_train（W2 生效面）
-- **状态**: documented (2026-09-04, Plan 539 W2 裁定)
+- **状态**: documented (2026-09-04, Plan 539 W2 裁定；2026-09-05 Plan 567 T03 补注)
 - **映射**: Python tuple（顶层返回与嵌套）→ Auto （拍平为
   TAG_OBJECT ListData，与数组字面量同编码，可索引/for-in）。divergence：
   Python tuple 不可变、可哈希；Auto List 可变——哈希键用途与不可变性
   依赖不受支持。是否引入 Auto tuple 值类型不在本计划（待澄清③）。
   注意：Python **list** 返回仍走 461 TAG_LIST 通道（py_call 消费面），
   与 tuple 通道刻意不同——统一需先清 py_list 存量红（P539-D1）。
+- **Plan 567 T03 补注**: 带属性面的 tuple **不拍平**——namedtuple
+  （`_fields`）与 PyStructSequence（`n_sequence_fields`，如
+  `sys.version_info`）封送为 opaque PyObjectHandle（`py_getattr`
+  属性面可达；py_sys 套件依赖此通道）。拍平会把这些值转回 Python
+  list 而失去属性访问。普通 tuple 维持本条拍平裁定。
 
 ### DIV-PY-CLOSURE-1: py 句柄在闭包局部/捕获中退化为裸 id
 

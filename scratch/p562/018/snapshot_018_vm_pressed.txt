@@ -1,0 +1,85 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+row #vnode_14695981039346656037 {
+  style: "min-h-screen bg-background text-foreground"
+  col #vnode_12642422519345821663 {
+    style: "w-60 border-r border-border bg-card hidden md:flex flex-col fixed inset-y-0 z-40"
+    row #vnode_4305065243889594349 {
+      style: "items-center gap-2 p-5 border-b border-border"
+      text #vnode_4321691031005245367 "📖" {
+        style: "text-xl"
+      }
+      text #vnode_4321673438819200516 "AutoRead" {
+        style: "font-bold text-lg text-foreground"
+      }
+    }
+    col #vnode_4305047651703549498 {
+      style: "w-auto min-h-0 flex flex-1 min-h-0 flex-col"
+      col #vnode_4306385829146414222 {
+        button #vnode_5889769877696550218 "📚
+Library" {
+          row #vnode_4965876993954819262 {
+            text #vnode_9006465672922662618 "📚"
+            text #vnode_9006483265108707469 "Library"
+          }
+        }
+      }
+      col #vnode_4306403421332459073 {
+        button #vnode_5905075079555381363 "⚙️
+Settings" {
+          row #vnode_14952521206800984937 {
+            text #vnode_8982469966964179819 "⚙️"
+            text #vnode_8982452374778134968 "Settings"
+          }
+        }
+      }
+    }
+    row #vnode_4305030059517504647 {
+      style: "p-4 border-t border-border justify-end"
+    }
+  }
+  col #vnode_12642404927159776812 {
+    style: "flex-1 md:ml-60"
+    col #vnode_4289760042030763204 {
+      style: "h-14 border-b border-border bg-card items-center px-4 gap-4 md:hidden"
+      col #vnode_12781790891868631308 {
+        text #vnode_15900409796501198692 "Settings"
+        text #vnode_15900427388687243543 "Customize your reading experience"
+      }
+      col #vnode_12781808484054676159 {
+        col #vnode_15915714998360029837 {
+          text #vnode_306078399116639639 "Font Size"
+          text #vnode_306060806930594788 "Affects the reading view text size."
+          row #vnode_306113583488729341 {
+            button #vnode_9224797895430450663 "A  Small" {
+              text #vnode_18120796827729198981 "A  Small"
+            }
+            button #vnode_9224780303244405812 "A  Medium" {
+              text #vnode_18105491625870367836 "A  Medium"
+            }
+            button #vnode_9224833079802540365 "A  Large" {
+              text #vnode_18151407231446861271 "A  Large"
+            }
+          }
+        }
+        col #vnode_15915697406173984986 {
+          text #vnode_290773197257808494 "Theme"
+          text #vnode_290790789443853345 "Use the sun/moon toggle (top of the sidebar or reading bar) to switch between light and dark."
+          row #vnode_290738012885718792 {
+            text #vnode_17623676948858512024 "☀️"
+            text #vnode_17623694541044556875 "Light"
+            text #vnode_17623712133230601726 "⇄"
+            text #vnode_17623729725416646577 "🌙"
+            text #vnode_17623747317602691428 "Dark"
+          }
+        }
+        col #vnode_15915679813987940135 {
+          text #vnode_275467995398977349 "About"
+          text #vnode_275450403212932498 "AutoRead — a multi-page e-book reader built with AutoUI: routes, a rust backend, and a runtime theme toggle."
+        }
+      }
+    }
+  }
+}

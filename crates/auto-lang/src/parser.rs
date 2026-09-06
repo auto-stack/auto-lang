@@ -216,6 +216,10 @@ pub struct Parser<'a> {
     /// store declaration when it's actually a variable reference (store.action()).
     pub(crate) in_on_body: bool,
     pub(crate) in_fn_body: bool,
+    /// Plan 567 T12（P560-D1）: with 头部窗口旗标——置位期间 `as` Cast 臂
+    /// 截断（`with e as x` 的绑定位由 with_stmt 消费，不被 parse_expr
+    /// 整吞为 Cast）。仅语句头部窗口生效，正常模式 Cast 语义零变化。
+    with_header: bool,
     /// Plan 043 M5: true while parsing the RHS of a Dot expression
     /// (`obj.field`). The struct-literal widening in atom() (any PascalCase
     /// ident + `{` → construction) must NOT fire here — `text cell.Text { }`
@@ -408,6 +412,7 @@ impl<'a> Parser<'a> {
             in_on_body: false,
             in_fn_body: false,
             in_dot_rhs: false,
+            with_header: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -481,6 +486,7 @@ impl<'a> Parser<'a> {
             in_on_body: false,
             in_fn_body: false,
             in_dot_rhs: false,
+            with_header: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -537,6 +543,7 @@ impl<'a> Parser<'a> {
             in_on_body: false,
             in_fn_body: false,
             in_dot_rhs: false,
+            with_header: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -1248,50 +1255,136 @@ impl<'a> Parser<'a> {
     ///
     /// 无 as：直产 `py_with(expr, () => { body })`——全复用 539 通道
     /// （host __enter__/闭包体/__exit__；异常抑制默认不做，§10 裁决）。
-    /// as x：`{ var __w = expr; var x = py_enter(__w); try { body }
-    /// finally { py_exit(__w) } }`——块形态（绑定 + 出口保证）。
+    /// as x（Plan 567 T12/T13，P560-D1 清偿）：`{ var __w = expr; var x =
+    /// py_enter(__w); try { body } catch (__we) { py_exit(__w); py_raise(__we) }
+    /// finally { py_exit(__w) } }`——块形态（绑定 + 出口保证）。绑定值 =
+    /// py_enter 返回的 `__enter__` 结果；出口保证 = 正常路径走 finally，
+    /// body 的 Err 值传播被 T08 值通道拦截进 catch（py_exit + py_raise
+    /// 再抛外传；py_raise 报错即外传、按 Plan 012 P2 语义跳过 finally——
+    /// `__exit__` 恰好一次）。
     fn with_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `with`
-        let ctx = self.parse_expr()?;
-        // `as` 是既有中缀（Cast）——with-as 绑定语法与其歧义未决
-        //（P560 债）：响亮拒绝，不静默错解。
-        if matches!(ctx, Expr::Cast { .. }) {
-            let span = pos_to_span(self.cur.pos);
-            return Err(SyntaxError::Generic {
-                message: "with-as binding is not yet supported (as-infix cast "
-                    .to_string()
-                    + "ambiguity, P560 债); use py_enter/py_exit explicitly",
-                span,
+        // P560-D1/567-T12: with 头部窗口内 `as` Cast 臂截断——绑定位由本
+        // 函数消费（`with x as T {}` 的 T 不再被误吞为 Cast 类型位）。
+        self.with_header = true;
+        let ctx_res = self.parse_expr();
+        self.with_header = false;
+        let ctx = ctx_res?;
+        let binding = if self.is_kind(TokenKind::As) {
+            self.next(); // skip `as`
+            if !matches!(self.cur.kind, TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: "with-as binding expects an identifier after 'as'".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
-            .into());
-        }
+            let name = self.cur.text.clone();
+            self.next();
+            Some(name)
+        } else {
+            None
+        };
         self.skip_empty_lines();
         let body = self.body()?;
-        // 直产 `py_with(ctx, () => { body })` 调用（Stmt::Expr——非
-        // Block：body 尾块的 convert_last_block 会把 Block 末语句转
-        // 对象字面量，T09 实证）。539 py_with 通道：host __enter__/体/
-        // __exit__；异常抑制默认不做（§10 裁决）。A5 规则（T06）随后
-        // 自动包 py_callable。
-        let closure = crate::ast::Closure {
-            params: vec![],
-            ret: None,
-            body: Box::new(Expr::Block(body)),
-            is_move: false,
-        };
-        let call = crate::ast::Call {
-            name: Box::new(Expr::Ident("py_with".into())),
-            args: crate::ast::Args {
-                args: vec![
-                    crate::ast::Arg::Pos(ctx),
-                    crate::ast::Arg::Pos(Expr::Closure(closure)),
-                ],
-            },
-            ret: crate::ast::Type::Unknown,
-            type_args: Vec::new(),
-            generic_args: Vec::new(),
-            pos: None,
-        };
-        Ok(Stmt::Expr(Expr::Call(call)))
+        match binding {
+            None => {
+                // 直产 `py_with(ctx, () => { body })` 调用（Stmt::Expr——非
+                // Block：body 尾块的 convert_last_block 会把 Block 末语句转
+                // 对象字面量，T09 实证）。539 py_with 通道：host __enter__/体/
+                // __exit__；异常抑制默认不做（§10 裁决）。A5 规则（T06）随后
+                // 自动包 py_callable。
+                let closure = crate::ast::Closure {
+                    params: vec![],
+                    ret: None,
+                    body: Box::new(Expr::Block(body)),
+                    is_move: false,
+                };
+                let call = crate::ast::Call {
+                    name: Box::new(Expr::Ident("py_with".into())),
+                    args: crate::ast::Args {
+                        args: vec![
+                            crate::ast::Arg::Pos(ctx),
+                            crate::ast::Arg::Pos(Expr::Closure(closure)),
+                        ],
+                    },
+                    ret: crate::ast::Type::Unknown,
+                    type_args: Vec::new(),
+                    generic_args: Vec::new(),
+                    pos: None,
+                };
+                Ok(Stmt::Expr(Expr::Call(call)))
+            }
+            Some(name) => {
+                // 块形态：绑定 + 出口保证（规范序列，a2py 回译 `with e as x:`）。
+                let mk_store = |n: &str, e: Expr| {
+                    Stmt::Store(crate::ast::Store {
+                        kind: crate::ast::StoreKind::Var,
+                        name: n.into(),
+                        ty: crate::ast::Type::Unknown,
+                        expr: e,
+                        attrs: Vec::new(),
+                        is_pub: false,
+                    })
+                };
+                let mk_bridge = |n: &str, arg: Expr| {
+                    Expr::Call(crate::ast::Call {
+                        name: Box::new(Expr::Ident(n.into())),
+                        args: crate::ast::Args {
+                            args: vec![crate::ast::Arg::Pos(arg)],
+                        },
+                        ret: crate::ast::Type::Unknown,
+                        type_args: Vec::new(),
+                        generic_args: Vec::new(),
+                        pos: None,
+                    })
+                };
+                let w = "__w".to_string();
+                let exit_call = || {
+                    Stmt::Expr(mk_bridge(
+                        "py_exit",
+                        Expr::Ident("__w".into()),
+                    ))
+                };
+                let mut catch_stmts = vec![exit_call()];
+                catch_stmts.push(Stmt::Expr(mk_bridge(
+                    "py_raise",
+                    Expr::Ident("__we".into()),
+                )));
+                let try_stmt = Stmt::Try(crate::ast::Try {
+                    body,
+                    catch_param: Some("__we".to_string()),
+                    catch_body: crate::ast::Body {
+                        stmts: catch_stmts,
+                        has_new_line: true,
+                        source_lines: Vec::new(),
+                    },
+                    // 正常路径的出口收口（Plan 012 P2：body/after 与 catch 两
+                    // 路都汇入 finally——catch 臂内 py_raise 报错即外传、跳过
+                    // finally，__exit__ 恰好一次）。
+                    finally_body: Some(crate::ast::Body {
+                        stmts: vec![exit_call()],
+                        has_new_line: true,
+                        source_lines: Vec::new(),
+                    }),
+                    new_line: true,
+                });
+                let block = crate::ast::Body {
+                    stmts: vec![
+                        mk_store("__w", ctx),
+                        mk_store(&name, mk_bridge("py_enter", Expr::Ident("__w".into()))),
+                        try_stmt,
+                    ],
+                    has_new_line: true,
+                    source_lines: Vec::new(),
+                };
+                // Stmt::Expr(Expr::Block) 而非 Stmt::Block——convert_last_block
+                // 会把函数体尾部的 Stmt::Block 转对象字面量（560 T09 同款坑，
+                // "Last block must be an object!"）；块表达式走语句序编译且
+                // 尾语句值 pop 语义正确（codegen Expr::Block 臂）。
+                Ok(Stmt::Expr(Expr::Block(block)))
+            }
+        }
     }
 
     /// Plan 010 (MS3-A): `while (cond) { body }` — desugars to a conditional
@@ -1916,10 +2009,19 @@ impl<'a> Parser<'a> {
         let last = stmts.last();
         if let Some(st) = last {
             match st {
+                // Plan 567 T12: 尾块仅在**纯 pair 形**时转对象（UI 单元构造
+                // 语义）；含语句（Store/Try 等）的块是作用域块（with-as 块
+                // 形态产物等），保留原样——原实现一律 body_to_obj，非 pair
+                // 尾块报 "Last block must be an object!" 挡死块语句收尾。
                 Stmt::Block(body) => {
-                    let obj = self.body_to_obj(body)?;
-                    stmts.pop();
-                    stmts.push(Stmt::Expr(Expr::Object(obj)))
+                    let all_pairs = body.stmts.iter().all(|s| {
+                        matches!(s, Stmt::Expr(Expr::Pair(_)))
+                    });
+                    if all_pairs && !body.stmts.is_empty() {
+                        let obj = self.body_to_obj(body)?;
+                        stmts.pop();
+                        stmts.push(Stmt::Expr(Expr::Object(obj)))
+                    }
                 }
                 _ => {}
             }
@@ -2581,6 +2683,9 @@ impl<'a> Parser<'a> {
                 | TokenKind::Arrow
                 | TokenKind::DoubleArrow
                 | TokenKind::VBar => break,
+                // Plan 567 T12（P560-D1）: with 头部窗口内 `as` 是绑定位——
+                // 表达式在此终止，由 with_stmt 消费。
+                TokenKind::As if self.with_header => break,
                 TokenKind::Add
                 | TokenKind::Sub
                 | TokenKind::Star
@@ -2602,7 +2707,7 @@ impl<'a> Parser<'a> {
                     // These are postfix operators with same precedence as dot
                     self.op()
                 }
-                TokenKind::As => {
+                TokenKind::As if !self.with_header => {
                     // Infix `as` type cast: expr as Type
                     self.next(); // consume 'as'
                     let target_type = self.parse_type()?;
@@ -12918,15 +13023,37 @@ impl<'a> Parser<'a> {
             .collect::<String>()
             .to_lowercase();
         match norm.as_str() {
-            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
-            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
-            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
+            "alertdialog" | "dialog" | "dropdownmenu"
+            // PLAN-534: sheet/drawer 并入自管开合铸造机器（可关闭族,同
+            // dialog 语义——gallery 页无显式 open,靠铸造 toggle 开合）。
+            | "sheet" | "drawer" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger"
+            | "sheettrigger" | "drawertrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent"
+            | "sheetcontent" | "drawercontent" => Some("content"),
             "alertdialogcancel" => Some("cancel"),
             "alertdialogaction" => Some("action"),
-            "alertdialogclose" | "dialogclose" => Some("close"),
+            "alertdialogclose" | "dialogclose"
+            | "sheetclose" | "drawerclose" => Some("close"),
             "dropdownmenuitem" => Some("item"),
             "dropdownmenulabel" => Some("label"),
             "dropdownmenuseparator" => Some("separator"),
+            _ => None,
+        }
+    }
+
+    /// PLAN-534 D4: hovercard 根/触发器判定（归一化同 modal_dialog_tag_role:
+    /// 去 -/_ 小写）。不并入该表——hover 走 enter/leave 而非 toggle/close,
+    /// 复用同一条铸造机器但接线面不同。
+    fn hover_card_role(tag: &str) -> Option<&'static str> {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "hovercard" => Some("root"),
+            "hovercardtrigger" => Some("trigger"),
             _ => None,
         }
     }
@@ -12960,6 +13087,67 @@ impl<'a> Parser<'a> {
     ) -> AutoResult<()> {
         match node {
             ViewNode::Element { tag, props, events, children, .. } => {
+                // PLAN-534 D4: hovercard 根——同一 __dlg_open_N 铸造机器,
+                // 但 trigger 无显式事件时补 hover 进/出（onmouseenter→置
+                // true / onmouseleave→置 false）而非 onclick toggle/close
+                // （非模态即时开合;open/close-delay v1 不消费,KNOWN-DEBT）。
+                // 显式绑定不覆盖（逐事件判定,同 toggle 规则）。事件落
+                // trigger 自身节点——转换臂（convert_hovercard）从 trigger
+                // events 读进 MouseArea,落内层会丢（与 toggle 的包裹规则
+                // 相反,因渲染面是 MouseArea 包转换后的 anchor）。
+                if Self::hover_card_role(tag) == Some("root")
+                    && !props.iter().any(|p| p.name == "open")
+                {
+                    *counter += 1;
+                    let n = *counter;
+                    let state_name = format!("__dlg_open_{n}");
+                    let enter = format!("__dlg_enter_{n}");
+                    let leave = format!("__dlg_leave_{n}");
+                    let state_ref = |name: &str| {
+                        Expr::Dot(Box::new(Expr::Ident(Name::from("self"))), Name::from(name))
+                    };
+                    props.push(ViewProp {
+                        name: "open".to_string(),
+                        value: ViewPropValue::Expr(state_ref(&state_name)),
+                    });
+                    // enter 体：`.__dlg_open_<n> = true`
+                    let enter_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Bool(true)),
+                    ));
+                    // leave 体：`.__dlg_open_<n> = false`
+                    let leave_body = Stmt::Expr(Expr::Bina(
+                        Box::new(state_ref(&state_name)),
+                        Op::Asn,
+                        Box::new(Expr::Bool(false)),
+                    ));
+                    minted.push((format!(".{enter}"), vec![enter_body]));
+                    minted.push((format!(".{leave}"), vec![leave_body]));
+                    states.push(state_name);
+                    for c in children.iter_mut() {
+                        if let ViewNode::Element { tag: ctag, events: cev, .. } = c {
+                            if Self::hover_card_role(ctag) == Some("trigger") {
+                                if !cev.iter().any(|e| matches!(e.name.as_str(), "onmouseenter" | "onhover")) {
+                                    cev.push(ViewEvent {
+                                        name: "onmouseenter".to_string(),
+                                        handler: format!(".{enter}"),
+                                        params: Vec::new(),
+                                        inline: None,
+                                    });
+                                }
+                                if !cev.iter().any(|e| matches!(e.name.as_str(), "onmouseleave" | "onhoverout")) {
+                                    cev.push(ViewEvent {
+                                        name: "onmouseleave".to_string(),
+                                        handler: format!(".{leave}"),
+                                        params: Vec::new(),
+                                        inline: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
                 if Self::modal_dialog_tag_role(tag) == Some("root")
                     && !props.iter().any(|p| p.name == "open")
                 {
@@ -16711,6 +16899,53 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
 
+    /// Plan 567 T12（P560-D1）: with-as 绑定解析——pratt 截断 + 块形态产物。
+    #[test]
+    fn test_with_as_binding_parses_to_block_form() {
+        let mut parser = Parser::new("fn main() {
+    var ctx = 1
+    with ctx as g {
+        print(1)
+    }
+}
+");
+        let code = parser.parse().expect("with-as must parse");
+        let src = format!("{:?}", code);
+        // 块形态锚点：__w 存储 + py_enter 绑定 + try/catch（py_exit + py_raise）+ finally
+        assert!(src.contains("__w"), "with-as block form binds __w: {}", src);
+        assert!(src.contains("py_enter"), "{}", src);
+        assert!(src.contains("py_raise"), "{}", src);
+        assert!(src.contains("finally_body: Some"), "{}", src);
+    }
+
+    /// `with x as T {}`（T 是类型名形态）不被 Cast 臂误吞——绑定消费优先。
+    #[test]
+    fn test_with_as_type_shaped_name_not_swallowed() {
+        let mut parser = Parser::new("fn main() {
+    var ctx = 1
+    with ctx as T {
+        print(1)
+    }
+}
+");
+        let code = parser.parse().expect("type-shaped as-name must bind, not Cast");
+        let src = format!("{:?}", code);
+        assert!(src.contains("py_enter"), "as T consumed as binding: {}", src);
+    }
+
+    /// 正常模式 Cast 语义零回归：`a as int` 仍为 Cast。
+    #[test]
+    fn test_cast_outside_with_header_unchanged() {
+        let mut parser = Parser::new("fn main() {
+    var y = 1 as int
+    print(y)
+}
+");
+        let code = parser.parse().expect("plain cast must parse");
+        let src = format!("{:?}", code);
+        assert!(src.contains("Cast"), "cast preserved outside with header: {}", src);
+    }
+
     /// Plan 451: actions 块解析——注册表/menubar/toolbar 全字段。
     #[test]
     fn test_actions_block_parse() {
@@ -18925,6 +19160,133 @@ exe hello {
             ViewNode::Element { props, .. } => props,
             _ => &[],
         }
+    }
+
+    /// PLAN-534 T7: hovercard 自管开合铸造（hover 形态）。无 `open` prop
+    /// 的 hovercard 根铸造同一 `__dlg_open_<n>` state + open 绑定,但
+    /// trigger 无显式事件时补 onmouseenter/onmouseleave（体:置 true/false）
+    /// 而非 onclick toggle;显式绑定不覆盖（负例）。
+    #[test]
+    fn test_hover_card_mints_hover_enter_leave() {
+        let code = concat!(
+            "widget App {\n",
+            "    view {\n",
+            "        hover-card {\n",
+            "            hover-card-trigger {\n",
+            "                text \"@mentor\"\n",
+            "            }\n",
+            "            hover-card-content {\n",
+            "                text \" Mentor bio \"\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("unbound hovercard must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+
+        // 铸造 state：`var __dlg_open_1 bool = false`（与 dialog 机器同槽）。
+        let model = w.model.as_ref().expect("model block minted");
+        let field = model.fields.iter().find(|f| f.name.as_str() == "__dlg_open_1")
+            .expect("minted state var");
+        assert!(matches!(field.init, Expr::Bool(false)), "init false");
+
+        // 根节点补 open 绑定。
+        fn find_tag<'a>(node: &'a ViewNode, tag: &str) -> Option<&'a ViewNode> {
+            match node {
+                ViewNode::Element { tag: t, children, .. } => {
+                    if t == tag { return Some(node); }
+                    children.iter().find_map(|c| find_tag(c, tag))
+                }
+                _ => None,
+            }
+        }
+        let root_node = &w.view.as_ref().unwrap().root;
+        let hc = find_tag(root_node, "hover-card").expect("hover-card root");
+        let open = dlg_element_props(hc).iter().find(|p| p.name == "open")
+            .expect("open prop minted");
+        let ViewPropValue::Expr(mint_expr) = &open.value else {
+            panic!("minted open prop must be an expr");
+        };
+        assert!(
+            format!("{mint_expr:?}").contains("__dlg_open_1"),
+            "open binding must reference minted state: {mint_expr:?}"
+        );
+
+        // trigger 补 hover 进/出（非 onclick toggle）。
+        fn events_of<'a>(node: &'a ViewNode, tag: &str) -> Vec<(String, String)> {
+            fn walk<'a>(node: &'a ViewNode, tag: &str, out: &mut Vec<(String, String)>) {
+                if let ViewNode::Element { tag: t, events, children, .. } = node {
+                    if t == tag {
+                        for e in events {
+                            out.push((e.name.clone(), e.handler.clone()));
+                        }
+                    }
+                    for c in children { walk(c, tag, out); }
+                }
+            }
+            let mut out = Vec::new();
+            walk(node, tag, &mut out);
+            out
+        }
+        let trig = events_of(root_node, "hover-card-trigger");
+        assert!(
+            trig.iter().any(|(n, h)| n == "onmouseenter" && h == ".__dlg_enter_1"),
+            "trigger onmouseenter minted: {trig:?}"
+        );
+        assert!(
+            trig.iter().any(|(n, h)| n == "onmouseleave" && h == ".__dlg_leave_1"),
+            "trigger onmouseleave minted: {trig:?}"
+        );
+        assert!(
+            !trig.iter().any(|(n, _)| n == "onclick"),
+            "hover form must NOT mint onclick toggle: {trig:?}"
+        );
+
+        // 折叠进 on + msg。
+        let on = w.on.as_ref().expect("on block injected");
+        let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
+        assert!(patterns.contains(&".__dlg_enter_1"), "enter handler folded: {patterns:?}");
+        assert!(patterns.contains(&".__dlg_leave_1"), "leave handler folded: {patterns:?}");
+
+        // 负例：显式 hover 绑定不覆盖。
+        let bound_code = concat!(
+            "widget B {\n",
+            "    model { var opened bool = false }\n",
+            "    view {\n",
+            "        hover-card (open: .opened) {\n",
+            "            hover-card-trigger (onmouseenter: .opened) {\n",
+            "                text \"@mentor\"\n",
+            "            }\n",
+            "            hover-card-content { text \"bio\" }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let mut p2 = Parser::from(bound_code).with_session(crate::session::CompilerSession::ui());
+        let ast2 = p2.parse().expect("bound hovercard parses");
+        let w2 = ast2.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget 2");
+        let trig2 = events_of(&w2.view.as_ref().unwrap().root, "hover-card-trigger");
+        assert!(
+            trig2.iter().any(|(n, h)| n == "onmouseenter" && h == ".opened"),
+            "explicit onmouseenter preserved: {trig2:?}"
+        );
+        assert!(
+            !trig2.iter().any(|(n, _)| n == "onmouseleave"),
+            "bound form mints no extra hover events: {trig2:?}"
+        );
+        assert!(
+            !w2.model.as_ref().map(|m| m.fields.iter().any(|f| f.name.as_str().starts_with("__dlg_"))).unwrap_or(false),
+            "bound form mints no state"
+        );
     }
 
     #[test]

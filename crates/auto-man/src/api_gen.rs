@@ -769,8 +769,9 @@ futures = \"0.3\"" } else { "" };
     // Plan 405: db.at 字符串操作(+ 拼接/contains)会让 a2r 生成 `use a2r_std`
     // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
+    let runtime_deps = "
+auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }";
     let db_deps = if has_db { "
-auto-lang.workspace = true
 once_cell = \"1\"" } else { "" };
     format!(
         r#"[package]
@@ -783,9 +784,9 @@ axum.workspace = true
 tokio = {{ version = "1", features = ["full"] }}
 serde.workspace = true
 serde_json.workspace = true
-tower-http.workspace = true{}{}
+tower-http.workspace = true{}{}{}
 "#,
-        safe_name, db_deps, sse_deps
+        safe_name, runtime_deps, db_deps, sse_deps
     )
 }
 
@@ -1086,6 +1087,38 @@ fn extract_db_fn_from_body(
     None
 }
 
+/// Plan 547: detect the metadata-only image control-plane delegation used by
+/// the 031 image viewer.  These calls are host runtime primitives rather than
+/// CRUD/db functions, so they must bypass the generic Default-return scaffold.
+fn extract_image_fn_from_body(endpoint: &ApiEndpoint) -> Option<String> {
+    use auto_lang::ast::{Expr, Stmt};
+    let body = endpoint.body.as_ref()?;
+    for stmt in &body.stmts {
+        if let Stmt::Return(expr) = stmt {
+            if let Expr::Call(call) = expr.as_ref() {
+                if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    // `use auto.image` binds the module as `image` in VM
+                    // handler synthesis; accept the fully-qualified AST
+                    // form too for callers that still use auto.image.*.
+                    if let Expr::Ident(root) = receiver.as_ref() {
+                        if root.as_ref() == "image" {
+                            return Some(method.as_ref().to_string());
+                        }
+                    }
+                    if let Expr::Dot(namespace, group) = receiver.as_ref() {
+                        if let Expr::Ident(root) = namespace.as_ref() {
+                            if root.as_ref() == "auto" && group == "image" {
+                                return Some(method.as_ref().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Resolve an endpoint to a db.rs function call, or `None` if no candidate name
 /// exists in `db_fns`. When matched, builds the argument list by mapping each
 /// endpoint param to its extractor binding:
@@ -1282,6 +1315,38 @@ const META_JSON_HELPER: &str = r#"fn meta_json(headers: &axum::http::HeaderMap) 
     format!("{{\"cookies\":{},\"auth\":\"{}\"}}", cookies, auth)
 }"#;
 
+const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
+    method: axum::http::Method,
+    uri: axum::http::Uri,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    let mut response = auto_lang::ui::image_pipeline::media_http_response(
+        auto_lang::ui::image_pipeline::global_media_registry(),
+        method.as_str(),
+        uri.path(),
+        headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
+    );
+    // A freshly queued rendition is expected to be pending for a short time.
+    // Give the bounded worker a small grace window so browser <img> loads do
+    // not turn a transient 503 into a terminal error callback.
+    if response.status == 503 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        response = auto_lang::ui::image_pipeline::media_http_response(
+            auto_lang::ui::image_pipeline::global_media_registry(),
+            method.as_str(),
+            uri.path(),
+            headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
+        );
+    }
+    let mut builder = axum::response::Response::builder().status(response.status);
+    for (name, value) in response.headers {
+        builder = builder.header(name, value);
+    }
+    builder
+        .body(axum::body::Body::from(response.body.map(|bytes| bytes.to_vec()).unwrap_or_default()))
+        .expect("media response is valid")
+}"#;
+
 fn generate_api_rs(
     api_module: &auto_lang::api::ApiModule,
     db_fns: Option<&std::collections::HashSet<String>>,
@@ -1419,7 +1484,8 @@ fn generate_api_rs(
         let query_params = endpoint_query_params(endpoint);
         if !query_params.is_empty() {
             let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
-            lines.push("#[derive(serde::Deserialize)]".to_string());
+            lines.push("#[derive(serde::Deserialize, Default)]".to_string());
+            lines.push("#[serde(default)]".to_string());
             lines.push(format!("pub struct {} {{", struct_name));
             for param in &query_params {
                 let rust_type = auto_type_to_rust(&param.ty);
@@ -1597,6 +1663,53 @@ fn generate_api_rs(
             params.join(", "),
             ret_type
         ));
+
+        // Plan 547: `auto.image.*` is a host-side control plane.  It carries
+        // only opaque media URIs and metadata, so emit direct runtime calls
+        // instead of falling through to the generic CRUD Default scaffold.
+        if let Some(image_fn) = extract_image_fn_from_body(endpoint) {
+            match image_fn.as_str() {
+                "open_session" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::open_media_session(input.path.clone()))"
+                        .to_string(),
+                ),
+                "snapshot" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_snapshot(&query.session))"
+                        .to_string(),
+                ),
+                "current_uri" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_uri(&query.session))"
+                        .to_string(),
+                ),
+                "names" => lines.push(
+                    "    JsonResponse::<Vec<String>>(auto_lang::ui::image_pipeline::media_session_names(&query.session))"
+                        .to_string(),
+                ),
+                "navigate" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::navigate_media_session(&input.session, input.delta as i32))"
+                        .to_string(),
+                ),
+                "request_view" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::request_media_view(&input.session, input.index as i32, input.viewport_width as i32, input.viewport_height as i32, input.quality as i32))"
+                        .to_string(),
+                ),
+                "close_session" => lines.push(
+                    "    JsonResponse::<bool>(auto_lang::ui::image_pipeline::close_media_session(&input.session))"
+                        .to_string(),
+                ),
+                "session_stats" => lines.push(
+                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_stats(&query.session))"
+                        .to_string(),
+                ),
+                other => {
+                    eprintln!("  ⚠ unsupported auto.image function `{}` in `{}`", other, fn_name);
+                    lines.push("    JsonResponse::<String>(String::new())".to_string());
+                }
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
 
         // Plan 400 Phase 2: a2r body transpilation. Non-thin bodies with real
         // logic get transpiled via a2r instead of CRUD template. Disable: AUTO_A2R_BODY=0.
@@ -2159,6 +2272,7 @@ fn generate_main_rs(
     if has_db {
         s.push_str("mod db;\n");
     }
+    s.push_str(MEDIA_HTTP_HANDLER);
     s.push_str("\n");
     if !db_full_cover {
         // Legacy seed-state path: handlers take State<Db>, main injects the seed.
@@ -2187,6 +2301,7 @@ fn generate_main_rs(
         s.push_str("        .allow_headers(Any);\n\n");
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
+        s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
         s.push_str("        .with_state(data)\n");
         s.push_str("        .layer(cors);\n\n");
     } else {
@@ -2207,6 +2322,7 @@ fn generate_main_rs(
         s.push_str("        .allow_headers(Any);\n\n");
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
+        s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
         s.push_str("        .layer(cors);\n\n");
     }
     s.push_str("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();\n");
@@ -3229,5 +3345,32 @@ pub fn get_item(id int) Item {
             "AUTO_A2R_BODY=0 should use CRUD template:\n{}",
             api_rs
         );
+    }
+
+    #[test]
+    fn media_route_is_emitted_for_stateful_and_full_cover_servers() {
+        let api = r#"
+#[api(method = "GET", path = "/api/items")]
+pub fn list_items() []str { return [] }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let stateful = generate_main_rs(&module, None, false);
+        let full_cover = generate_main_rs(&module, Some("pub fn list_items() []str { return [] }"), true);
+        for generated in [&stateful, &full_cover] {
+            assert!(generated.contains("/api/__auto/media/{id}/{revision}"), "route missing: {generated}");
+            assert!(generated.contains("get(auto_media).head(auto_media)"), "GET/HEAD missing: {generated}");
+            assert!(generated.contains("global_media_registry"), "runtime bridge missing: {generated}");
+        }
+        assert!(generate_cargo_toml("media-back", false, false).contains("auto-lang = { workspace = true"));
+    }
+
+    #[test]
+    fn image_stdlib_codegen_uses_shared_runtime_feature() {
+        let rs_api = include_str!("../../../stdlib/auto/image.rs.at");
+        assert!(rs_api.contains("pub fn queue") && rs_api.contains("pub fn stats"));
+        let cargo = crate::api_gen::generate_cargo_toml("image-back", false, false);
+        assert!(cargo.contains("auto-lang = { workspace = true"));
+        let ui_cargo = crate::rust_ui::generate_cargo_toml("image-ui", Path::new("."));
+        assert!(ui_cargo.contains("auto-lang/ui-iced"));
     }
 }

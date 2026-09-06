@@ -463,6 +463,8 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
                 "py_re",
                 "py_string",
                 "py_sys",
+                // Plan 567 T20（W3 注解预言机）。
+                "py_anno",
             ],
         ),
         // Plan 461 (Python sci-compute parity): numpy/pandas/matplotlib/torch

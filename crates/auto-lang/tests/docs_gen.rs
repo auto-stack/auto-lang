@@ -49,13 +49,19 @@ const DOC_EXCLUDE: &[&str] = &[
     // Plan 484:透明 hover 命中区(无视觉、事件转发原语,不设独立页);
     // 契约与用法文档化于 specs/auto-lang/ui/design/chart-components.md
     "mousearea",
+    // PLAN-009 P1:native terminal 组件(auto-term 引擎网格视口)——
+    // 契约文档化于 auto-term 仓 docs/plans/009(组件真身迁移计划)+
+    // kitchen-sink 生成页;kitchen-sink 的 terminal demo 即最小用法。
+    "terminal",
     // Plan 497:每窗口真缩略(桌面 shell 专用消费面——switcher 行/dock
     // hover/pager 分区;单 App gallery 无虚拟窗可缩略,恒 fallback 形态,
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +
     // schema/aura.at element 描述。
     "windowthumbnail",
-    // Plan 482 nav 家族子件,随 nav 页(nav-item/nav-link)文档化
-    "navgroup",
+    // Plan 562:nav 家族已退役(superseded_by sidebar 族,见 schema/aura.at
+    // 标注与 docs/plans/562-nav-to-sidebar-migration.md),gallery 页
+    // (nav-item/nav-link)随退役删除;实现移除留观察期,期间进白名单。
+    "navgroup", "navitem", "navlink",
     // form 家族件(form 页文档化)
     "formcontrol", "formdescription", "formfield", "formlabel", "formmessage",
     // 家族子件随家族页文档化
@@ -114,7 +120,9 @@ const DOC_EXCLUDE: &[&str] = &[
 const DOC_TODO_BASELINE: &[&str] = &[
     "autodowneditor", "box", "chart", "chatmessage",
     "chip", "container", "date", "datetime", "datetimeinput", "divider",
-    "griditem", "icon", "image", "img", "list",
+    "griditem", "icon", "image", "imagesurface", "img", "list",
+    // Plan 547: ImageSurface 的可运行文档在 031-image-viewer（媒体 ticket
+    // 需要后端会话），不在无后端 widgets-gallery 中伪造 demo。
     // plan 040 主名翻转 markdown→autodown（同一条文档债随元素改名；
     // 实装文档在 auto-down 仓 demo/auto/README.md）。
     "autodown",

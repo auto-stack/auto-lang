@@ -776,6 +776,15 @@ impl DynamicComponent {
         builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
 
+    /// Return the deterministic VNode id used by the debug/snapshot pipeline
+    /// for a view path.  ImageSurface events use this same path identity, so a
+    /// late load/error/pointer message cannot be associated with a recycled
+    /// node after a sibling changes.  Keeping the helper on DynamicComponent
+    /// makes the VM contract explicit without introducing per-frame counters.
+    pub fn stable_vnode_id_for_path(&self, path: &[u16]) -> crate::ui::vnode::VNodeId {
+        crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path))
+    }
+
     /// Plan 401/VM-routing: set the current route (from a `link` click) and
     /// re-resolve its params. Called by the iced renderer when it intercepts a
     /// `__navigate` message carrying the target path.

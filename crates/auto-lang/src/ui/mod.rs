@@ -12,10 +12,18 @@ pub use auto_val;
 
 pub mod component;
 
+// Plan 547: backend-neutral media runtime.  Concrete registries and worker
+// machinery are feature-gated so default language builds stay image-free.
+#[cfg(feature = "image-pipeline")]
+pub mod image_pipeline;
+
 // Plan 413: cross-platform code editor widget (feature `code-editor`,
 // enabled by default under `ui-iced`).
 #[cfg(feature = "code-editor")]
 pub mod code_editor;
+// PLAN-009 P1: native `terminal` component (auto-term engine grid; core is
+// iced-free, `iced/` is the only iced point — code_editor layering).
+pub mod terminal;
 // Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard;

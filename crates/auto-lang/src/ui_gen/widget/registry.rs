@@ -734,6 +734,18 @@ impl WidgetRegistry {
         });
         self.register(image);
 
+        // ImageSurface — asynchronous shared media-pipeline viewer.
+        let mut image_surface = WidgetSpec::new("ImageSurface", WidgetCategory::Display)
+            .with_alias("image-surface");
+        image_surface.primary_prop = Some("src".to_string());
+        for backend in ["ark", "iced", "vue"] {
+            image_surface.backends.insert(
+                backend.to_string(),
+                BackendMapping::new("ImageSurface", None),
+            );
+        }
+        self.register(image_surface);
+
         // Badge
         let mut badge = WidgetSpec::new("Badge", WidgetCategory::Display)
             .with_alias("badge");
@@ -2484,6 +2496,16 @@ mod tests {
         for tag in ["button", "input"] {
             assert!(registry.contains(tag), "Missing form widget: {}", tag);
         }
+    }
+
+    #[test]
+    fn image_surface_schema_is_registered_without_replacing_image() {
+        let registry = WidgetRegistry::with_defaults();
+        let surface = registry.get("image-surface").unwrap();
+        assert_eq!(surface.name, "ImageSurface");
+        assert_eq!(surface.primary_prop.as_deref(), Some("src"));
+        assert!(surface.backend("iced").is_some());
+        assert_eq!(registry.get("image").unwrap().name, "Image");
     }
 
     #[test]

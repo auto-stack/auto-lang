@@ -1,0 +1,4 @@
+// Plan 547 parity fixture: the VM and Rust targets consume the same sequence.
+fn image_pipeline_sequence() str {
+    return "queue -> request -> retain -> release -> stats"
+}

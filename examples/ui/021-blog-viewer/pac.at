@@ -3,3 +3,6 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Blog Viewer"
+api: "rust"
+front_port: 3021
+back_port: 8421

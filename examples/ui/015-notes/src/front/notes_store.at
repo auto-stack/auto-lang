@@ -54,13 +54,13 @@ store NotesStore {
         .NewNote -> {
             create_note("", "", "")
             .notes = list_notes()
-            .active_id = .notes.len() - 1
+            .active_id = 0
         }
 
         .NewNoteInFolder(folder) -> {
             create_note("", "", folder)
             .notes = list_notes()
-            .active_id = .notes.len() - 1
+            .active_id = 0
         }
 
         .DeleteNote(id) -> {

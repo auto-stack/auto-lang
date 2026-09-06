@@ -610,6 +610,10 @@ pub struct VueGenerator {
     /// Populated during template generation, consumed during script generation
     /// to emit `const menuEl = ref<HTMLElement | null>(null)` declarations.
     template_refs: Vec<String>,
+    /// Plan 547: ImageSurface onpan 合成登记(pointer down/move/up 三绑定,
+    /// script 臂发包装函数——DOM 无 pan 事件,裸 @pan 既不触发也过不了
+    /// vue-tsc)。
+    surface_pans: Vec<(String, bool)>,
 
     /// Subset of `template_refs` attached to child components (not DOM
     /// elements) via `ref: "canvasRef"` on a sub-widget instantiation.
@@ -828,6 +832,7 @@ impl VueGenerator {
             explicit_api_imports: false,
             global_listeners: Vec::new(),
             template_refs: Vec::new(),
+            surface_pans: Vec::new(),
             component_ref_names: HashSet::new(),
             scroll_auto_scroll: Vec::new(),
             pending_scroll_sentinel: None,
@@ -1180,6 +1185,7 @@ impl VueGenerator {
         self.needs_vm_only_helper = false;
         self.global_listeners.clear();
         self.template_refs.clear();
+        self.surface_pans.clear();
         self.ext_components.clear();
         self.ext_import_lines.clear();
         self.ext_composables.clear();
@@ -3011,6 +3017,49 @@ impl VueGenerator {
             script.push('\n');
         }
 
+        // Plan 547: ImageSurface onpan 合成包装(pointer 三绑定的函数体;
+        // buttons&1 门控 + start/move/end 相位,handler 收 (dx, dy, phase))。
+        if !self.surface_pans.is_empty() {
+            for (i, (call, with_args)) in self.surface_pans.iter().enumerate() {
+                // 按事件声明参数个数决定调用形态:空声明 -> 无参(vue-tsc
+                // 严格匹配);声明了参数 -> (dx, dy, phase) 全参。
+                let (start_call, move_call, end_call) = if *with_args {
+                    (
+                        format!("{call}(0, 0, 'start')"),
+                        format!("{call}(dx, dy, 'move')"),
+                        format!("{call}(0, 0, 'end')"),
+                    )
+                } else {
+                    (format!("{call}()"), format!("{call}()"), format!("{call}()"))
+                };
+                script.push_str(&format!(
+                    concat!(
+                        "let __surfPanLast_{i}: [number, number] | null = null\n",
+                        "function __surfPanD_{i}(e: PointerEvent) {{\n",
+                        "  __surfPanLast_{i} = [e.clientX, e.clientY]\n",
+                        "  {start_call}\n",
+                        "}}\n",
+                        "function __surfPanM_{i}(e: PointerEvent) {{\n",
+                        "  if (!__surfPanLast_{i} || !(e.buttons & 1)) return\n",
+                        "  const dx = e.clientX - __surfPanLast_{i}[0], dy = e.clientY - __surfPanLast_{i}[1]\n",
+                        "  __surfPanLast_{i} = [e.clientX, e.clientY]\n",
+                        "  {move_call}\n",
+                        "}}\n",
+                        "function __surfPanU_{i}(_e: PointerEvent) {{\n",
+                        "  if (!__surfPanLast_{i}) return\n",
+                        "  __surfPanLast_{i} = null\n",
+                        "  {end_call}\n",
+                        "}}\n"
+                    ),
+                    i = i,
+                    start_call = start_call,
+                    move_call = move_call,
+                    end_call = end_call
+                ));
+            }
+            script.push('\n');
+        }
+
         // Dark mode: detect system preference on mount (only for isDark pattern)
         if self.has_dark_mode && self.dark_mode_var.as_deref() != Some("dark_mode") {
             script.push_str("onMounted(() => {\n");
@@ -3898,10 +3947,10 @@ impl VueGenerator {
 
             if has_running {
                 // Timer starts/stops based on `running` state — use watch to manage interval
-                script.push_str(&format!("watch(running, (val) => {{\n  if (val === 'true' && tickTimer.value === null) {{\n    tickTimer.value = setInterval(() => {{\n      {}\n    }}, {})\n  }} else if (val !== 'true' && tickTimer.value !== null) {{\n    clearInterval(tickTimer.value)\n    tickTimer.value = null\n  }}\n}})\n\n", tick_body, interval));
+                script.push_str(&format!("watch(running, (val) => {{\n  if (val === 'true' && tickTimer.value === null) {{\n    tickTimer.value = setInterval(async () => {{\n      {}\n    }}, {})\n  }} else if (val !== 'true' && tickTimer.value !== null) {{\n    clearInterval(tickTimer.value)\n    tickTimer.value = null\n  }}\n}})\n\n", tick_body, interval));
             } else {
                 // No running gate — start timer immediately on mount
-                script.push_str(&format!("onMounted(() => {{\n  tickTimer.value = setInterval(() => {{\n    {}\n  }}, {})\n}})\n\n", tick_body, interval));
+                script.push_str(&format!("onMounted(() => {{\n  tickTimer.value = setInterval(async () => {{\n    {}\n  }}, {})\n}})\n\n", tick_body, interval));
             }
 
             // If the widget has both `elapsed` and `time_display`/`ms_display`,
@@ -3945,7 +3994,7 @@ impl VueGenerator {
                 };
                 script.push_str(&format!(
                     "let {var}: any = null
-const __t51_on_{ev} = () => {{ if ({guard}) {{ {body} }} }}
+const __t51_on_{ev} = async () => {{ if ({guard}) {{ {body} }} }}
 onMounted(() => {{ {var} = setInterval(__t51_on_{ev}, {ms}) }})
 onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }} }})
 
@@ -5180,7 +5229,171 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         Ok(html)
     }
 
-    /// Convert AuraNode to HTML string
+    /// Generate the media-only Vue representation of an ImageSurface.
+    ///
+    /// ImageSurface is deliberately emitted as a small template primitive,
+    /// rather than a generic registry component: the browser receives only a
+    /// media URI and the template applies the interactive transform. File
+    /// access, decoding, prefetching and caching remain backend concerns.
+    fn generate_image_surface_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+
+        // The wrapper is the crop/viewport boundary. User class/style
+        // bindings stay on it so they control the viewport without replacing
+        // the image transform style below.
+        let (static_classes, dynamic_class, dynamic_style) =
+            self.extract_classes("imagesurface", props);
+        let class_str = if static_classes.trim().is_empty() {
+            "relative overflow-hidden".to_string()
+        } else {
+            format!("relative overflow-hidden {}", static_classes.trim())
+        };
+        let mut wrapper_attrs = vec![format!("class=\"{}\"", Self::escape_html_attr(&class_str))];
+        if let Some(class_expr) = dynamic_class {
+            wrapper_attrs.push(format!(":class=\"{}\"", class_expr));
+        }
+        if let Some(style_expr) = dynamic_style {
+            wrapper_attrs.push(format!(":style=\"{}\"", style_expr));
+        }
+
+        // String literals are ordinary HTML attributes; all other expression
+        // forms use Vue bound attribute syntax and the shared AST renderer.
+        let image_attr = |key: &str, value: Option<&AuraPropValue>| -> GenResult<Option<String>> {
+            let Some(value) = value else { return Ok(None) };
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s))
+                | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) if key == "src" => Ok(Some(
+                    format!(":{}=\"'{}'\"", key, Self::escape_js_string(s.as_str()))
+                )),
+                AuraPropValue::Expr(crate::ast::Expr::Str(s))
+                | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Ok(Some(format!(
+                    "{}=\"{}\"",
+                    key,
+                    Self::escape_html_attr(s.as_str())
+                ))),
+                AuraPropValue::Expr(expr) => Ok(Some(format!(
+                    ":{}=\"{}\"",
+                    key,
+                    self.bound_value_or_warn(expr, &format!("ImageSurface {} prop", key), "null")
+                ))),
+                AuraPropValue::StyleBinding(_) => Ok(None),
+            }
+        };
+
+        let mut image_attrs = vec![
+            "class=\"max-w-full max-h-full select-none\"".to_string(),
+            "draggable=\"false\"".to_string(),
+        ];
+        for key in ["src", "alt", "width", "height", "quality"] {
+            if let Some(attr) = image_attr(key, props.get(key))? {
+                image_attrs.push(attr);
+            }
+        }
+
+        let bound_prop = |key: &str, default_value: &str| -> String {
+            props
+                .get(key)
+                .and_then(|value| match value {
+                    AuraPropValue::Expr(expr) => Some(self.bound_value_or_warn(
+                        expr,
+                        &format!("ImageSurface {} prop", key),
+                        default_value,
+                    )),
+                    AuraPropValue::StyleBinding(_) => None,
+                })
+                .unwrap_or_else(|| default_value.to_string())
+        };
+        let fit = bound_prop("fit", "'contain'");
+        let zoom = bound_prop("zoom", "1");
+        let offset_x = bound_prop("offset_x", "0");
+        let offset_y = bound_prop("offset_y", "0");
+        let rotation = bound_prop("rotation", "0");
+        let filter = bound_prop("filter", "'none'");
+        let transform = format!(
+            "'translate(' + ({}) + 'px, ' + ({}) + 'px) rotate(' + ({}) + 'deg) scale(' + ({}) + ')'",
+            offset_x, offset_y, rotation, zoom
+        );
+        // Plan 547: 字符串形态的 :style 绑定——对象形态(嵌套括号拼接
+        // 表达式)在 vue-tsc 的模板检查下类型收窄失败(StyleValue 被解析
+        // 为 undefined,TS2345 实证);CSS 声明串语义等价且类型稳定。
+        image_attrs.push(format!(
+            ":style=\"'transform:' + ({}) + ';object-fit:' + ({}) + ';filter:' + ({}) + ';'\"",
+            transform, fit, filter
+        ));
+
+        // Normalize the five ImageSurface event aliases explicitly. This is
+        // independent of the shadcn registry so all spellings produce the
+        // same DOM events.
+        let mut sorted_events: Vec<(&String, &AuraEvent)> = events.iter().collect();
+        sorted_events.sort_by(|a, b| a.0.cmp(b.0));
+        for (event, aura_event) in sorted_events {
+            if self.try_register_global_listener(event, aura_event) {
+                continue;
+            }
+            let (base, modifiers) = Self::split_event_key(event);
+            // Plan 547 修复:DOM 没有 pan 事件——裸 @pan 从不触发且被
+            // vue-tsc 拒绝(ImgHTMLAttributes 无 onPan)。onpan 改为
+            // pointer 三绑定 + script 合成包装(buttons&1 门控,start/
+            // move/end 相位,handler 收 (dx, dy, phase))。
+            if matches!(base.to_ascii_lowercase().as_str(), "onpan" | "pan") {
+                let handler_fn =
+                    self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                self.used_handlers
+                    .insert(self.handler_to_function_call(&aura_event.handler));
+                let idx = self.surface_pans.len();
+                // 按事件声明参数个数决定调用形态(空声明 -> 无参调用,
+                // vue-tsc 严格匹配;声明了参数 -> (dx, dy, phase) 全参)。
+                let with_args = !aura_event.params.is_empty();
+                self.surface_pans.push((handler_fn.clone(), with_args));
+                image_attrs.push(format!("@pointerdown=\"__surfPanD_{idx}\""));
+                image_attrs.push(format!("@pointermove=\"__surfPanM_{idx}\""));
+                image_attrs.push(format!("@pointerup=\"__surfPanU_{idx}\""));
+                continue;
+            }
+            let event_name = match base.to_ascii_lowercase().as_str() {
+                "onerror" | "on_error" | "error" => "@error",
+                "onload" | "onloaded" | "on_loaded" | "loaded" => "@load",
+                "onwheel" | "wheel" => "@wheel",
+                "ondblclick" | "on_double_click" | "dblclick" | "doubleclick" => "@dblclick",
+                _ => continue,
+            };
+            let mut vue_event = event_name.to_string();
+            for modifier in modifiers {
+                vue_event.push('.');
+                vue_event.push_str(Self::vue_modifier(modifier));
+            }
+            let mut handler_fn =
+                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let handler_name = self.handler_to_function_call(&aura_event.handler);
+            if let Some(ref loop_var) = self.current_loop_var {
+                if aura_event.params.is_empty() {
+                    handler_fn = format!("{}({})", handler_fn, loop_var);
+                    self.loop_param_handlers
+                        .insert(handler_name.clone(), loop_var.clone());
+                }
+            }
+            self.used_handlers.insert(handler_name);
+            image_attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+        }
+
+        let mut html = format!("{}<div {}>\n", ind, wrapper_attrs.join(" "));
+        html.push_str(&format!("{}  <img {} />\n", ind, image_attrs.join(" ")));
+        // ImageSurface normally has no children, but preserving them keeps the
+        // generator total for hand-built Aura trees and mirrors other elements.
+        for child in children {
+            html.push_str(&self.node_to_html(child, indent + 1)?);
+        }
+        html.push_str(&format!("{}</div>\n", ind));
+        Ok(html)
+    }
+
+    /// Convert an AuraNode to its Vue template representation.
     pub(crate) fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
         let ind = "  ".repeat(indent);
 
@@ -5211,6 +5424,16 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // Special handling for codeblock element (with copy button)
                 if tag == "codeblock" || tag == "code-block" {
                     return self.generate_codeblock_html(props, events, children, indent);
+                }
+
+                // ImageSurface is a backend-neutral media primitive. Keep its
+                // Vue output as a URI-bound crop container instead of routing
+                // it through a generic shadcn/custom component.
+                let image_surface_tag = tag.replace('-', "_");
+                if image_surface_tag.eq_ignore_ascii_case("imagesurface")
+                    || image_surface_tag.eq_ignore_ascii_case("image_surface")
+                {
+                    return self.generate_image_surface_html(props, events, children, indent);
                 }
 
                 // Special handling for icon element - render as Lucide Vue component
@@ -7425,6 +7648,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             "textarea" | "Textarea" => "textarea".to_string(),
             "checkbox" | "Checkbox" => "input".to_string(),
             "toggle" | "Toggle" => "button".to_string(),
+            // Plan 562 T6: Plain 模式（pac.at shadcn:off）sidebar_menu_button
+            // 保 button 原生语义——否则坍缩为 div 丢键盘/类型语义（auto-os-config
+            // 迁移实测）。契约类不内联：Plain 哲学 = 项目自带样式，shadcn 组件
+            // 类与 sidebar 令牌在此模式均为死类（os-config tailwind 令牌表无
+            // sidebar-accent/accent 条目）。active/size 等 props 走通用属性
+            // 透传（:active 落为原生属性，兼作测试锚）。
+            "sidebar_menu_button" | "sidebar-menu-button" | "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => "button".to_string(),
             "select" | "Select" => "select".to_string(),
             "option" | "Option" => "option".to_string(),
             "link" | "Link" => "a".to_string(),
@@ -14973,7 +15203,9 @@ export function cn(...inputs: ClassValue[]) {
     --popover-foreground: 222.2 84% 4.9%;
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
+    /* PLAN-571: secondary 与 muted 分档（≠210 40% 96.1% 暖纸 muted）——暖灰一档深 #e3ddd1，
+       与 Rust 侧 theme.rs Color::Secondary 互锁（改任一须同步）。 */
+    --secondary: 40 24% 85.5%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
@@ -14999,7 +15231,8 @@ export function cn(...inputs: ClassValue[]) {
     --popover-foreground: 210 40% 98%;
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    /* PLAN-571: secondary 分档——slate-700 #334155（muted 保持 217.2 32.6% 17.5% 不动）。 */
+    --secondary: 215 25% 27%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
@@ -16230,7 +16463,13 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        // PLAN-571: default = UA 预填等价基线（中性填充+发丝描边），与 Rust 侧
+        // ui/style/variants.rs button_variant_preset("default") 互锁——改任一须同步
+        // （ui_gen::vue::tests plan571 互锁测试锚定）。base 已含 rounded-md/font-medium，
+        // variant 值只写差量类。
+        default: 'bg-muted border border-border text-foreground hover:bg-muted/70',
+        primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        submit: 'bg-primary text-primary-foreground hover:bg-primary/90',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
         outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
@@ -23852,6 +24091,34 @@ widget SidebarAutoActiveProbe {
         );
     }
 
+    /// Plan 562 T6: Plain 模式（pac.at shadcn:off）sidebar_menu_button 落
+    /// 原生 <button>（不坍缩 div），active/class/事件经通用属性透传。
+    #[test]
+    fn test_sidebar_menu_button_plain_mode_button_semantics() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget SidebarPlainProbe {
+    model { var flag bool = true }
+    view {
+        col {
+            sidebar_provider {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button (active: .flag, size: "lg", class: "my-item") {
+                            text "会话"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("<button"), "Plain 模式保 button 语义:\n{sfc}");
+        assert!(!sfc.contains("SidebarMenuButton"), "Plain 模式不引 shadcn 组件:\n{sfc}");
+        assert!(sfc.contains("my-item"), "用户 class 透传:\n{sfc}");
+        assert!(sfc.contains(":active="), "active 通用属性透传（测试锚）:\n{sfc}");
+    }
+
     /// Plan 548 T7: 含 sidebar 且无 sidebar_provider → 模板根自动包
     /// <SidebarProvider>(useSidebar() inject 缺祖先白屏,同 TooltipProvider
     /// 教训);显式写了 provider 的不重复包裹;非 shadcn 模式不动。
@@ -24851,6 +25118,67 @@ widget NullProbe {
     /// Plan 498 M0：mouse-area onclick → vue `@click` 生成断言（与 496
     /// `@dblclick` 同族；chart legend 点击切换显隐的 vue 通路——事件名经
     /// 通用 base_event_to_dom 映射，mouse-area 本体仍走 div 直通）。
+    /// Plan 547 Task 23: ImageSurface is emitted as a URI-bound crop
+    /// container with an interactive transform and normalized DOM events.
+    #[test]
+    fn image_surface_vue_codegen() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget ImageViewer {
+    model {
+        var asset_src str = "/api/__auto/media/demo/1"
+        var fit_mode str = "contain"
+        var zoom float = 1.0
+        var offset_x float = 0.0
+        var offset_y float = 0.0
+        var rotation int = 0
+    }
+    view {
+        image_surface (
+            src: .asset_src,
+            fit: .fit_mode,
+            zoom: .zoom,
+            offset_x: .offset_x,
+            offset_y: .offset_y,
+            rotation: .rotation,
+            filter: "none",
+            alt: "hero",
+            onload: .ImageLoaded,
+            onerror: .ImageFailed,
+            onwheel: .ZoomAt,
+            onpan: .PanBy,
+            ondblclick: .ToggleFit
+        ) {}
+    }
+    on {
+        .ImageLoaded -> { }
+        .ImageFailed -> { }
+        .ZoomAt -> { }
+        .PanBy -> { }
+        .ToggleFit -> { }
+    }
+}
+"#);
+        assert!(sfc.contains("class=\"relative overflow-hidden\""), "crop wrapper:\n{sfc}");
+        assert!(sfc.contains(":src=\"asset_src\""), "URI source binding:\n{sfc}");
+        assert!(sfc.contains(":style=\"'transform:' +"), "interactive transform (string style):\n{sfc}");
+        assert!(sfc.contains("object-fit:' + (fit_mode)"), "fit binding (string style):\n{sfc}");
+        assert!(sfc.contains("@load=\"ImageLoaded\""), "onload normalization:\n{sfc}");
+        assert!(sfc.contains("@error=\"ImageFailed\""), "onerror normalization:\n{sfc}");
+        assert!(sfc.contains("@wheel=\"ZoomAt\""), "onwheel normalization:\n{sfc}");
+        // Plan 547: onpan -> pointer 三绑定 + script 合成包装(DOM 无 pan 事件)
+        assert!(sfc.contains("@pointerdown=\"__surfPanD_0\""), "onpan pointer down:\n{sfc}");
+        assert!(sfc.contains("@pointermove=\"__surfPanM_0\""), "onpan pointer move:\n{sfc}");
+        assert!(sfc.contains("@pointerup=\"__surfPanU_0\""), "onpan pointer up:\n{sfc}");
+        assert!(sfc.contains("function __surfPanM_0(e: PointerEvent)"), "pan wrapper fn:\n{sfc}");
+        assert!(sfc.contains("e.buttons & 1"), "pan buttons gate:\n{sfc}");
+        assert!(sfc.contains("PanBy()"), "pan handler arity-0 call:
+{sfc}");
+        assert!(sfc.contains("@dblclick=\"ToggleFit\""), "ondblclick normalization:\n{sfc}");
+        for forbidden in ["FileReader", "decodeImage", "prefetch", "imageCache", "cache.put"] {
+            assert!(!sfc.to_ascii_lowercase().contains(&forbidden.to_ascii_lowercase()), "forbidden browser-side media implementation {forbidden}:\n{sfc}");
+        }
+    }
+
     #[test]
     fn test_a2vue_mouse_area_onclick() {
         let sfc = gen_sfc_from_widget_src(r#"
@@ -26132,4 +26460,52 @@ fn use_fn_body_unsupported(stmts: &[crate::ast::Stmt]) -> Option<&'static str> {
     }
 
     stmts_unsupported(stmts)
+}
+
+// ── PLAN-571: Vue 臂 cva 表与 Rust 侧 variants.rs 互锁锚定 ──────────
+// ui feature 关闭时 crate::ui 不存在，互锁无意义——整模块随门关闭。
+#[cfg(all(test, feature = "ui"))]
+mod plan571_variants_cva_interlock_tests {
+    use super::library_template;
+    use crate::ui::style::variants::button_variant_preset;
+
+    /// cva variant 值与 Rust preset 的核心类逐 token 一致（rounded-md/font-medium
+    /// 由 cva base 承担，跳过）。改任一侧须同步另一侧。
+    #[test]
+    fn button_cva_variant_values_match_rust_presets() {
+        let tpl = library_template("button").expect("button 模板在册");
+        let variants_ts = tpl
+            .extra_support_files
+            .iter()
+            .find(|(name, _)| *name == "variants.ts")
+            .map(|(_, body)| *body)
+            .expect("variants.ts 在册");
+        // 严格互锁范围 = PLAN-571 触碰的键 + destructive（串面完全一致）。
+        // ghost 不入strict集：VM 臂 hover:bg-secondary vs web hover:bg-accent
+        // 是既有分歧（iced 无 Accent token，KNOWN-DEBT），待独立 plan 收口。
+        for key in ["default", "primary", "submit", "secondary", "destructive"] {
+            let line = variants_ts
+                .lines()
+                .find(|l| l.trim_start().starts_with(&format!("{}:", key)))
+                .unwrap_or_else(|| panic!("cva 缺 {} 键", key));
+            let value = line.split('\'').nth(1).expect("cva 值带引号");
+            for class in button_variant_preset(key).split_whitespace() {
+                if class == "rounded-md" || class == "font-medium" {
+                    continue; // cva base 类承担
+                }
+                assert!(
+                    value.split_whitespace().any(|c| c == class),
+                    "cva[{}]={:?} 缺 Rust preset 类 {:?}",
+                    key,
+                    value,
+                    class
+                );
+            }
+        }
+        // defaultVariants 仍为 'default'（语义变更不改缺省键名）。
+        assert!(
+            variants_ts.contains("variant: 'default'"),
+            "defaultVariants.variant 应保持 'default'"
+        );
+    }
 }

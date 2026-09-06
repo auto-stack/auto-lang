@@ -198,6 +198,8 @@ fn get_support_details(tag: &str) -> TagSupport {
         "sidebar_menu_sub" | "sidebar-menu-sub" => TagSupport::full(),
         "sidebar_menu_sub_item" | "sidebar-menu-sub-item" => TagSupport::full(),
         "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => TagSupport::full(),
+        // PLAN-009 P1: native terminal component (auto-term engine grid).
+        "terminal" | "Terminal" => TagSupport::full(),
         "badge" | "chip" => TagSupport::partial(
             &["class"],
             "shadcn-style badge with variant colors; custom class limited",
@@ -299,6 +301,9 @@ fn get_support_details(tag: &str) -> TagSupport {
         ),
         // Plan 484: hover 命中区——iced mouse_area 事件转发,与 col/row 同级
         "mouse-area" => TagSupport::full(),
+        // Plan 547: 后端中立图片面——iced ImageSurface widget 直渲(媒体
+        // 票据只查 worker 已发布 rendition,几何/事件齐备)。
+        "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => TagSupport::full(),
         "video" | "audio" | "media" => TagSupport::fallback(
             &["src", "controls", "autoplay", "style"],
             "media component not implemented",

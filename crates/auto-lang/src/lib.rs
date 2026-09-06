@@ -348,13 +348,25 @@ pub fn run_with_capture(code: &str) -> AutoResult<(String, String)> {
     execution_engine::execute_with_engine_capture(engine, code)
 }
 
+/// P574 T6:VM 执行线程栈。历史硬编码 4MB 已被 516KB aavm lib 拼合源的
+/// 解释栈需求越过(探针定量:4MB 爆/5MB 过,递归有限);且显式 stack_size
+/// 会绕过 RUST_MIN_STACK——Plan 423 抬测试线程栈护栏的本意对此失效。
+/// 改为 RUST_MIN_STACK 可覆盖(字节),缺省 16MB,下限保底 4MB。
+fn vm_thread_stack_size() -> usize {
+    std::env::var("RUST_MIN_STACK")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n >= 4 * 1024 * 1024)
+        .unwrap_or(16 * 1024 * 1024)
+}
+
 /// Run AutoLang code with stdout capture, using the source file path for
 /// module resolution (so `use db` resolves `db.at` next to the source file).
 pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, String)> {
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| (r, stdout)) })
@@ -380,7 +392,7 @@ pub fn run_with_capture_and_bytecode_with_meta(
 )> {
     let code = code.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm(&code, true).await })
@@ -410,7 +422,7 @@ pub fn run_with_capture_and_path_and_bytecode_with_meta(
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await })
@@ -436,7 +448,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
     // (default main thread stack is only 1MB on Windows)
     let code = code.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _, _, _)| r) })
@@ -449,7 +461,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
 pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
     let code = code.to_string();
     let handle = std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
+        .stack_size(vm_thread_stack_size())
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async { execute_autovm(&code, true).await.map(|(r, stdout, _, _)| (r, stdout)) })
@@ -676,7 +688,18 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         if functions.is_empty() {
             let discovered = bridge.discover_module_callables(module_name);
             for (func_name, param_count) in discovered {
-                let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                // Plan 567 T17: 裸模块发现面同法灌注定预言机知识。
+                let ret_anno = bridge.inspect_return_annotation(module_name, &func_name);
+                let sig = {
+                    let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                    if let Some(t) = &ret_anno {
+                        sig.returns = t.clone();
+                    }
+                    sig
+                };
+                if let Some(t) = &ret_anno {
+                    crate::py_ffi_types::record_return_annotation(&func_name, t.clone());
+                }
                 if let Ok(native_id) = bridge.register_function(module_name, &func_name, sig) {
                     // Register with module-qualified name so codegen can find it
                     let qualified = format!("py.{}.{}", module_name, func_name);
@@ -693,6 +716,10 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         for func_name in functions {
             // Plan 369 Task 11: constants are non-callable module attributes.
             if !bridge.is_callable(module_name, &func_name) {
+                // Plan 567 T17: 常量通道注解（模块级 `x: float = ...`）。
+                if let Some(t) = bridge.inspect_constant_annotation(module_name, &func_name) {
+                    crate::py_ffi_types::record_return_annotation(&func_name, t);
+                }
                 match bridge.register_constant(module_name, &func_name) {
                     Ok(native_id) => {
                         log::info!("Registered Python const: {}.{} (native_id={})", module_name, func_name, native_id);
@@ -708,7 +735,24 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
                 continue;
             }
             let param_count = bridge.inspect_param_count(module_name, &func_name, 1);
-            let sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+            // Plan 567 T17（W3 注解预言机）: 读返回注解——有承诺则签名带
+            // 类型（shim 出口 D4 强制），并登记全局知识表（codegen 消费：
+            // py_return_types 灌注 + nullable lint）。无注解 = Auto 零变化。
+            let ret_anno = bridge.inspect_return_annotation(module_name, &func_name);
+            let sig = {
+                let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                if let Some(t) = &ret_anno {
+                    sig.returns = t.clone();
+                }
+                sig
+            };
+            if let Some(t) = &ret_anno {
+                crate::py_ffi_types::record_return_annotation(&func_name, t.clone());
+                log::info!(
+                    "PyOracle: {}.{} -> {:?} (annotated)",
+                    module_name, func_name, t
+                );
+            }
             match bridge.register_function(module_name, func_name, sig) {
                 Ok(native_id) => {
                     log::info!("Registered Python FFI: {}.{} (native_id={}, params={})", module_name, func_name, native_id, param_count);
@@ -767,6 +811,15 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         // Plan 560 T08 (C3/C4/C7)。
         registry.register_with_id("py.py_truthy", crate::py_ffi::NATIVE_PY_TRUTHY);
         registry.register_with_id("py.py_is", crate::py_ffi::NATIVE_PY_IS);
+        // Plan 567 T06 (P560-D2): may 值通道变体。
+        registry.register_with_id("py.py_getattr_may", crate::py_ffi::NATIVE_PY_GETATTR_MAY);
+        registry.register_with_id("py.py_getitem_may", crate::py_ffi::NATIVE_PY_GETITEM_MAY);
+        // Plan 567 T07 (P539-D5): kwargs×may 组合。
+        registry.register_with_id("py.py_call_kw_may", crate::py_ffi::NATIVE_PY_CALL_KW_MAY);
+        // Plan 567 T12 (P560-D1): with-as catch 臂再抛通道。
+        registry.register_with_id("py.py_raise", crate::py_ffi::NATIVE_PY_RAISE);
+        // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
+        registry.register_with_id("py.py_int", crate::py_ffi::NATIVE_PY_INT);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
@@ -5154,7 +5207,9 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // in void fns, double semicolons after `static` decls), so a2r test
     // binaries built from CLI-transpiled sources failed to compile while the
     // identical code compiled fine when transpiled via `transpile_rust()`.
-    crate::trans::rust::RustTrans::post_process(&mut sink.body);
+    // PLAN-009 T1 (F1): thread the restricted-name set so fix_non_ord_derives
+    // never re-widens AST-restricted derives on the CLI path either.
+    crate::trans::rust::RustTrans::post_process_with(&mut sink.body, &trans.ord_restricted_names());
 
     // Write output file
     let source_bytes = sink.done()?;

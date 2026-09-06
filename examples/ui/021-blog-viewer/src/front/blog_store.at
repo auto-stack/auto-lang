@@ -1,0 +1,57 @@
+// blog_store.at — BlogStore: articles/category/current shared store (k1 pattern).
+use back.api: list_posts, get_post, create_post, delete_post, clap_post, Article
+
+store BlogStore {
+    model {
+        var articles []Article = []
+        var category str = "All"
+        var current ?Article = None
+        var loading bool = false
+    }
+
+    msg {
+        Init,
+        SetCategory(str),
+        LoadArticle(int),
+        AddPost(str, str, str, str, str),
+        RemovePost(int),
+        ClapPost(int),
+    }
+
+    on {
+        .Init -> {
+            .loading = true
+            let cat = if .category == "All" { "" } else { .category }
+            .articles = list_posts(cat)
+            .loading = false
+        }
+        .SetCategory(c str) -> {
+            .category = c
+            let cat = if c == "All" { "" } else { c }
+            .articles = list_posts(cat)
+        }
+        .LoadArticle(id int) -> {
+            .current = get_post(id)
+        }
+        .AddPost(title str, author str, post_category str, summary str, body str) -> {
+            create_post(title, author, post_category, summary, body)
+            let cat = if .category == "All" { "" } else { .category }
+            .articles = list_posts(cat)
+        }
+        .RemovePost(id int) -> {
+            delete_post(id)
+            let cat = if .category == "All" { "" } else { .category }
+            .articles = list_posts(cat)
+        }
+        .ClapPost(id int) -> {
+            let new_claps = clap_post(id)
+            if .current != None {
+                if .current.id == id {
+                    .current.claps = new_claps
+                }
+            }
+            let cat = if .category == "All" { "" } else { .category }
+            .articles = list_posts(cat)
+        }
+    }
+}

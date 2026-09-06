@@ -1400,6 +1400,74 @@ impl<'a> AuraViewBuilder<'a> {
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
                 self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Alert)
             }
+            // PLAN-534: sheet/drawer → 贴边 Popover（Edge 族:scrim+外点/Esc
+            // 关,shadcn Sheet 语义）。side/direction prop 四向,缺省 right。
+            "sheet" | "Sheet" => {
+                let placement = self.side_panel_placement(props, "side", bindings);
+                self.convert_side_panel_tracked_ctx(props, children, path, id_map, probe, bindings, placement, false)
+            }
+            "drawer" | "Drawer" => {
+                let placement = self.side_panel_placement(props, "direction", bindings);
+                self.convert_side_panel_tracked_ctx(props, children, path, id_map, probe, bindings, placement, true)
+            }
+            // PLAN-534: hovercard → 非模态 Popover（Bottom 锚定 + MouseArea
+            // hover 触发;on_dismiss=None,关闭只靠 leave）。
+            "hovercard" | "hover-card" | "hover_card" | "HoverCard" => {
+                self.convert_hovercard_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
+            // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
+            // 透传（root 臂已分区;组外裸渲染,镜像 dialog 先例）。
+            "sheet-trigger" | "sheet_trigger" | "sheettrigger"
+            | "drawer-trigger" | "drawer_trigger" | "drawertrigger"
+            | "hover-card-trigger" | "hover_card_trigger" | "hovercard-trigger" | "hovercardtrigger"
+            | "sheet-content" | "sheet_content" | "sheetcontent"
+            | "drawer-content" | "drawer_content" | "drawercontent"
+            | "hover-card-content" | "hover_card_content" | "hovercard-content" | "hovercardcontent" => {
+                let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                for (i, c) in children.iter().enumerate() {
+                    path.push(i);
+                    views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                    path.pop();
+                }
+                match views.len() {
+                    0 => View::Empty,
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                }
+            }
+            // PLAN-534: sheet/drawer styled 子臂（镜像 dialog 同名臂）。
+            "sheet-title" | "sheet_title" | "sheettitle"
+            | "drawer-title" | "drawer_title" | "drawertitle" => {
+                let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-description" | "sheet_description" | "sheetdescription"
+            | "drawer-description" | "drawer_description" | "drawerdescription" => {
+                let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-header" | "sheet_header" | "sheetheader"
+            | "drawer-header" | "drawer_header" | "drawerheader" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
+                self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
+            }
+            "sheet-footer" | "sheet_footer" | "sheetfooter"
+            | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
+                let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
+                let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            "sheet-close" | "sheet_close" | "sheetclose"
+            | "drawer-close" | "drawer_close" | "drawerclose" => {
+                // 镜像 dialog-close:outline 按钮,onclick 取铸造 close。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
             | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
             | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
@@ -1627,6 +1695,8 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
+            // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
+            "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
             // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
             // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
             "autodown_editor" | "autodowneditor" => {
@@ -1756,6 +1826,9 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
+            "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
+                self.convert_image_surface(props, events, bindings)
+            }
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
             "progress" => self.convert_progress(props, bindings),
             "spacer" => self.convert_spacer(props),
@@ -2934,6 +3007,72 @@ impl<'a> AuraViewBuilder<'a> {
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
                 self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Alert)
             }
+            // PLAN-534: sheet/drawer → 贴边 Popover（untracked 镜像臂,
+            // D-GAP 规则）。见 convert_side_panel。
+            "sheet" | "Sheet" => {
+                let placement = self.side_panel_placement(props, "side", bindings);
+                self.convert_side_panel(props, children, bindings, placement, false)
+            }
+            "drawer" | "Drawer" => {
+                let placement = self.side_panel_placement(props, "direction", bindings);
+                self.convert_side_panel(props, children, bindings, placement, true)
+            }
+            // PLAN-534: hovercard → 非模态 Popover（untracked 镜像臂,
+            // D-GAP 规则）。见 convert_hovercard。
+            "hovercard" | "hover-card" | "hover_card" | "HoverCard" => {
+                self.convert_hovercard(props, children, bindings)
+            }
+            // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
+            // 透传（untracked 镜像,镜像 dialog 先例）。
+            "sheet-trigger" | "sheet_trigger" | "sheettrigger"
+            | "drawer-trigger" | "drawer_trigger" | "drawertrigger"
+            | "hover-card-trigger" | "hover_card_trigger" | "hovercard-trigger" | "hovercardtrigger"
+            | "sheet-content" | "sheet_content" | "sheetcontent"
+            | "drawer-content" | "drawer_content" | "drawercontent"
+            | "hover-card-content" | "hover_card_content" | "hovercard-content" | "hovercardcontent" => {
+                let views: Vec<View<DynamicMessage>> = children
+                    .iter()
+                    .map(|c| self.convert_node_with(c, bindings))
+                    .collect();
+                match views.len() {
+                    0 => View::Empty,
+                    1 => views.into_iter().next().unwrap(),
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                }
+            }
+            // PLAN-534: sheet/drawer styled 子臂（untracked 镜像）。
+            "sheet-title" | "sheet_title" | "sheettitle"
+            | "drawer-title" | "drawer_title" | "drawertitle" => {
+                let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-description" | "sheet_description" | "sheetdescription"
+            | "drawer-description" | "drawer_description" | "drawerdescription" => {
+                let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
+                self.convert_text_element(tag, &p, events, children, bindings)
+            }
+            "sheet-header" | "sheet_header" | "sheetheader"
+            | "drawer-header" | "drawer_header" | "drawerheader" => {
+                let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
+                self.convert_column(&p, children, bindings)
+            }
+            "sheet-footer" | "sheet_footer" | "sheetfooter"
+            | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
+                let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
+                let mut v = self.convert_row(&p, children, bindings);
+                self.set_layout_onclick(&mut v, events, bindings);
+                v
+            }
+            "sheet-close" | "sheet_close" | "sheetclose"
+            | "drawer-close" | "drawer_close" | "drawerclose" => {
+                // 镜像 dialog-close:outline 按钮,onclick 取铸造 close。
+                let mut p = props.clone();
+                p.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+                );
+                self.convert_button(&p, events, children, bindings)
+            }
             "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
             | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
             | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
@@ -3104,6 +3243,8 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
+            // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
+            "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
             // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
             // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
             "autodown_editor" | "autodowneditor" => {
@@ -3240,7 +3381,12 @@ impl<'a> AuraViewBuilder<'a> {
                 v
             }
 
-            // Image / Icon
+            // ImageSurface / Image / Icon.  ImageSurface keeps all dynamic
+            // transform props and normalizes its five event hooks into the
+            // same DynamicMessage shape consumed by the renderer.
+            "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
+                self.convert_image_surface(props, events, bindings)
+            }
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
 
             // Utility widgets
@@ -5942,6 +6088,95 @@ let tabs_inner = View::Row {
         View::Image { src, style }
     }
 
+    /// Build the backend-neutral ImageSurface node from Aura props/events.
+    ///
+    /// Every value is resolved through the binding-aware extraction helpers so
+    /// loop variables, state refs and conditional expressions follow the same
+    /// VM path as ordinary widgets.  Event aliases mirror the Vue contract:
+    /// load/error/wheel/pan/double-click.  Runtime pointer/load payloads are
+    /// appended by the native renderer; the base handler and declared Aura
+    /// arguments are preserved here for deterministic VM dispatch.
+    fn convert_image_surface(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let src = self
+            .extract_string_with(props, "src", bindings)
+            .unwrap_or_default();
+        let alt = self
+            .extract_string_with(props, "alt", bindings)
+            .unwrap_or_default();
+        let as_u32 = |value: Option<f64>| -> u32 {
+            value
+                .filter(|v| v.is_finite() && *v >= 0.0)
+                .map(|v| v.min(u32::MAX as f64) as u32)
+                .unwrap_or(0)
+        };
+        let width = as_u32(self.extract_f64_with(props, "width", bindings));
+        let height = as_u32(self.extract_f64_with(props, "height", bindings));
+        let quality = self
+            .extract_f64_with(props, "quality", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| v.clamp(0.0, 100.0) as u8)
+            .unwrap_or(90);
+        let fit = self
+            .extract_string_with(props, "fit", bindings)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "contain".to_string());
+        let zoom = self
+            .extract_f64_with(props, "zoom", bindings)
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .map(|v| v as f32)
+            .unwrap_or(1.0);
+        let offset_x = self
+            .extract_f64_with(props, "offset_x", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| v as f32)
+            .unwrap_or(0.0);
+        let offset_y = self
+            .extract_f64_with(props, "offset_y", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| v as f32)
+            .unwrap_or(0.0);
+        let rotation = self
+            .extract_f64_with(props, "rotation", bindings)
+            .filter(|v| v.is_finite())
+            .map(|v| (v as i32).rem_euclid(360))
+            .unwrap_or(0);
+        let filter = self
+            .extract_string_with(props, "filter", bindings)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "high".to_string());
+
+        let event = |names: &[&str]| {
+            names
+                .iter()
+                .find_map(|name| aura_events_get_base(events, name))
+                .map(|ev| self.event_to_message_with(ev, bindings))
+        };
+        View::ImageSurface {
+            src,
+            alt,
+            width,
+            height,
+            quality,
+            fit,
+            zoom,
+            offset_x,
+            offset_y,
+            rotation,
+            filter,
+            on_error: event(&["onerror", "on_error", "error"]),
+            on_loaded: event(&["onload", "onloaded", "on_loaded", "loaded"]),
+            on_wheel: event(&["onwheel", "wheel"]),
+            on_pan: event(&["onpan", "pan"]),
+            on_double_click: event(&["ondblclick", "dblclick", "doubleclick"]),
+            style: self.extract_style_with(props, bindings),
+        }
+    }
+
     /// Convert a progress element: shows a progress bar from 0.0 to 1.0.
     fn convert_progress(
         &self,
@@ -6349,6 +6584,18 @@ let tabs_inner = View::Row {
                         | "dropdown-menu-trigger"
                         | "dropdown_menu_trigger"
                         | "dropdownmenutrigger"
+                        // PLAN-534: sheet/drawer/hovercard trigger 全形态
+                        // （kebab/snake/连写;hover-card 另有 hovercard- 混合形）。
+                        | "sheet-trigger"
+                        | "sheet_trigger"
+                        | "sheettrigger"
+                        | "drawer-trigger"
+                        | "drawer_trigger"
+                        | "drawertrigger"
+                        | "hover-card-trigger"
+                        | "hover_card_trigger"
+                        | "hovercard-trigger"
+                        | "hovercardtrigger"
                 ) && trigger.is_none()
                 {
                     trigger = Some(c);
@@ -6363,6 +6610,17 @@ let tabs_inner = View::Row {
                         | "dropdown-menu-content"
                         | "dropdown_menu_content"
                         | "dropdownmenucontent"
+                        // PLAN-534: sheet/drawer/hovercard content 全形态。
+                        | "sheet-content"
+                        | "sheet_content"
+                        | "sheetcontent"
+                        | "drawer-content"
+                        | "drawer_content"
+                        | "drawercontent"
+                        | "hover-card-content"
+                        | "hover_card_content"
+                        | "hovercard-content"
+                        | "hovercardcontent"
                 ) && content.is_none()
                 {
                     content = Some(c);
@@ -6574,6 +6832,442 @@ let tabs_inner = View::Row {
             placement,
             open,
             on_dismiss,
+        }
+    }
+
+    /// PLAN-534 D2: sheet 的 `side` / drawer 的 `direction` prop → Edge
+    /// 贴边 placement。字符串字面优先,非字面经 resolve_expr_to_value 取
+    /// str;非法值落缺省 right 并打日志（构建期一次裁定）。
+    fn side_panel_placement(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> crate::ui::view::PopoverPlacement {
+        use crate::ui::view::PopoverPlacement;
+        let raw = match props.get(key) {
+            Some(AuraPropValue::Expr(Expr::Str(s))) => Some(s.to_string()),
+            Some(AuraPropValue::Expr(e)) => self
+                .resolve_expr_to_value(e, bindings)
+                .and_then(|v| match v {
+                    Value::Str(s) => Some(s.to_string()),
+                    _ => None,
+                }),
+            _ => None,
+        };
+        match raw.as_deref() {
+            Some("left") => PopoverPlacement::EdgeLeft,
+            Some("top") => PopoverPlacement::EdgeTop,
+            Some("bottom") => PopoverPlacement::EdgeBottom,
+            Some("right") | None => PopoverPlacement::EdgeRight,
+            Some(other) => {
+                eprintln!("[PLAN-534] invalid {key}={other:?}, falling back to right");
+                PopoverPlacement::EdgeRight
+            }
+        }
+    }
+
+    /// PLAN-534 D2: sheet/drawer 面板 chrome（与 rust.rs 轨同串,保双轨
+    /// 视觉一致）。横向（L/R）w-96 定宽 + h-full 拉满;纵向（T/B）w-full
+    /// 拉满;drawer 竖向追加贴缘圆角（bottom rounded-t / top rounded-b）。
+    fn side_panel_chrome(
+        placement: crate::ui::view::PopoverPlacement,
+        is_drawer: bool,
+    ) -> String {
+        use crate::ui::view::PopoverPlacement;
+        let base = match placement {
+            PopoverPlacement::EdgeLeft | PopoverPlacement::EdgeRight => {
+                "w-96 bg-background border shadow-lg p-6 gap-4 h-full".to_string()
+            }
+            _ => "bg-background border shadow-lg p-6 gap-4 w-full".to_string(),
+        };
+        if is_drawer {
+            match placement {
+                PopoverPlacement::EdgeBottom => return format!("{base} rounded-t-lg"),
+                PopoverPlacement::EdgeTop => return format!("{base} rounded-b-lg"),
+                _ => {}
+            }
+        }
+        base
+    }
+
+    /// PLAN-534 D2: drawer 竖向装饰把手——全宽容器内居中的 w-8 h-1 圆角
+    /// 条（vaul 视觉;纯装饰无手势,差异登记 KNOWN-DEBT）。
+    fn drawer_handle_view() -> View<DynamicMessage> {
+        View::Container {
+            child: Box::new(View::Container {
+                child: Box::new(View::Empty),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                onclick: None,
+                style: Style::parse("w-8 h-1 rounded-full bg-muted").ok(),
+            }),
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: true,
+            center_y: false,
+            onclick: None,
+            style: Style::parse("w-full py-2").ok(),
+        }
+    }
+
+    /// PLAN-534 D2: sheet/drawer 贴边面板转换（side 参数化,双标签共用;
+    /// untracked 镜像臂）。trigger/content 拆解 + 裸文本 trigger→Button +
+    /// 铸造 dismiss 折算,与 dialog 族同构;placement 为 Edge 族（scrim +
+    /// 面板外/Esc 关,shadcn Sheet 语义）。
+    fn convert_side_panel(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        placement: crate::ui::view::PopoverPlacement,
+        is_drawer: bool,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::PopoverAnchor;
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        // 锚:trigger 子件原位渲染（裸文本 trigger → Button,同 dialog 族）。
+        let anchor_view = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let views: Vec<View<DynamicMessage>> = t_children
+                        .iter()
+                        .map(|c| self.convert_node_with(c, bindings))
+                        .collect();
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                }
+            }
+            _ => View::Empty,
+        };
+        let mut panel_children: Vec<View<DynamicMessage>> = match content {
+            Some(AuraNode::Element { children: c_children, .. }) => c_children
+                .iter()
+                .map(|c| self.convert_node_with(c, bindings))
+                .collect(),
+            _ => Vec::new(),
+        };
+        // drawer 竖向装饰把手:bottom 首子前插 / top 末子追加。
+        if is_drawer {
+            match placement {
+                crate::ui::view::PopoverPlacement::EdgeBottom => {
+                    panel_children.insert(0, Self::drawer_handle_view())
+                }
+                crate::ui::view::PopoverPlacement::EdgeTop => {
+                    panel_children.push(Self::drawer_handle_view())
+                }
+                _ => {}
+            }
+        }
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        // sheet/drawer 均可关闭族:铸造形态 ESC/外点/锚点 dismiss 折算
+        // __dlg_close_N;显式绑定自管形态返回 None 不接管（同 dialog）。
+        let on_dismiss = Self::minted_dismiss_msg(&self.widget_name, props);
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement,
+            open,
+            on_dismiss,
+        }
+    }
+
+    /// convert_side_panel 的 tracked 镜像（D-GAP 规则）：trigger/content
+    /// 子件经 path 追踪递归,inspector/MCP 快照可定位面板内节点。
+    fn convert_side_panel_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+        placement: crate::ui::view::PopoverPlacement,
+        is_drawer: bool,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::PopoverAnchor;
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        let anchor_view = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                    for (i, c) in t_children.iter().enumerate() {
+                        path.push(i);
+                        views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                        path.pop();
+                    }
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                }
+            }
+            _ => View::Empty,
+        };
+        let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
+        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+            for (i, c) in c_children.iter().enumerate() {
+                path.push(i);
+                panel_children
+                    .push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                path.pop();
+            }
+        }
+        if is_drawer {
+            match placement {
+                crate::ui::view::PopoverPlacement::EdgeBottom => {
+                    panel_children.insert(0, Self::drawer_handle_view())
+                }
+                crate::ui::view::PopoverPlacement::EdgeTop => {
+                    panel_children.push(Self::drawer_handle_view())
+                }
+                _ => {}
+            }
+        }
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        let on_dismiss = Self::minted_dismiss_msg(&self.widget_name, props);
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement,
+            open,
+            on_dismiss,
+        }
+    }
+
+    /// PLAN-534 D4: hovercard 转换（untracked 镜像臂）——trigger 包
+    /// View::MouseArea 接 hover 进/出（parser 铸造 `__dlg_enter_N/leave_N`
+    /// 或用户显式绑定,经通用事件解析同槽读取）;trigger 已有 onclick 的经
+    /// 子件自身转换保留并存。content 装 col 挂非模态 chrome,
+    /// placement=Bottom（锚相对,悬于锚下）;on_dismiss=None（无 scrim、
+    /// 无外点整吞/Esc——关闭只靠 leave;open/close-delay v1 不消费,
+    /// KNOWN-DEBT 登记）。降级切换点:MouseArea×overlay 实测异常（如
+    /// leave 被 overlay 拦截）→ parser 改铸 toggle + 去本臂 MouseArea
+    /// 包裹（差异记录 README）。
+    fn convert_hovercard(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        let (anchor_inner, on_enter, on_exit) = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                let on_enter = aura_events_get_base(t_events, "onmouseenter")
+                    .or_else(|| aura_events_get_base(t_events, "onhover"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let on_exit = aura_events_get_base(t_events, "onmouseleave")
+                    .or_else(|| aura_events_get_base(t_events, "onhoverout"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let inner = if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let views: Vec<View<DynamicMessage>> = t_children
+                        .iter()
+                        .map(|c| self.convert_node_with(c, bindings))
+                        .collect();
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                };
+                (inner, on_enter, on_exit)
+            }
+            _ => (View::Empty, None, None),
+        };
+        // 锚包 MouseArea:命中区=trigger 渲染面,hover 进/出驱动铸造 state。
+        let anchor_view = View::MouseArea {
+            content: Box::new(anchor_inner),
+            on_enter,
+            on_exit,
+            on_double_click: None,
+            on_click: None,
+            on_context_menu: None,
+            on_release: None,
+            on_move: None,
+            logical_extent: None,
+            style: match trigger {
+                Some(AuraNode::Element { props: t_props, .. }) => {
+                    self.extract_style_with(t_props, bindings)
+                }
+                _ => None,
+            },
+        };
+        let panel_children: Vec<View<DynamicMessage>> = match content {
+            Some(AuraNode::Element { children: c_children, .. }) => c_children
+                .iter()
+                .map(|c| self.convert_node_with(c, bindings))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement: PopoverPlacement::Bottom,
+            open,
+            on_dismiss: None,
+        }
+    }
+
+    /// convert_hovercard 的 tracked 镜像（D-GAP 规则）：trigger/content
+    /// 子件经 path 追踪递归。
+    fn convert_hovercard_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        let (anchor_inner, on_enter, on_exit) = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                let on_enter = aura_events_get_base(t_events, "onmouseenter")
+                    .or_else(|| aura_events_get_base(t_events, "onhover"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let on_exit = aura_events_get_base(t_events, "onmouseleave")
+                    .or_else(|| aura_events_get_base(t_events, "onhoverout"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let inner = if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                    for (i, c) in t_children.iter().enumerate() {
+                        path.push(i);
+                        views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                        path.pop();
+                    }
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                };
+                (inner, on_enter, on_exit)
+            }
+            _ => (View::Empty, None, None),
+        };
+        let anchor_view = View::MouseArea {
+            content: Box::new(anchor_inner),
+            on_enter,
+            on_exit,
+            on_double_click: None,
+            on_click: None,
+            on_context_menu: None,
+            on_release: None,
+            on_move: None,
+            logical_extent: None,
+            style: match trigger {
+                Some(AuraNode::Element { props: t_props, .. }) => {
+                    self.extract_style_with(t_props, bindings)
+                }
+                _ => None,
+            },
+        };
+        let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
+        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+            for (i, c) in c_children.iter().enumerate() {
+                path.push(i);
+                panel_children
+                    .push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                path.pop();
+            }
+        }
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement: PopoverPlacement::Bottom,
+            open,
+            on_dismiss: None,
         }
     }
 
@@ -7236,29 +7930,15 @@ let tabs_inner = View::Row {
         // shadcn-vue Button 一致);secondary/destructive = 对应填充色;outline =
         // 边框;ghost/link = 透明。user class 追加在后,可覆盖 preset(如主题色板
         // 的 bg-xxx-500 覆盖 bg-primary,因 IcedStyle 后解析的 BackgroundColor 覆盖前者)。
-        let preset: &str = match variant.as_str() {
-            // "submit" 是行为语义（form submit 布线,extract 层已消费该
-            // 标记接线 input Enter）,视觉上取 default primary 预设。
-            "" | "default" | "primary" | "submit" => "bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90",
-            "secondary" => "bg-secondary text-secondary-foreground font-medium rounded-md hover:bg-secondary/80",
-            "destructive" => "bg-destructive text-destructive-foreground font-medium rounded-md hover:bg-destructive/90",
-            "outline" => "border border-input bg-background text-foreground rounded-md hover:bg-secondary hover:text-secondary-foreground",
-            "ghost" => "rounded-md hover:bg-secondary hover:text-secondary-foreground",
-            // Plan 414 R13: icon button - chromeless SQUARE (w follows h).
-            "icon" => "h-7 w-7 px-0 py-0",
-            "link" => "text-primary",
-            // "text" 及未知 variant:无 preset — chromeless(由 user class 主导)。
-            _ => "",
-        };
+        // PLAN-571: preset 表收敛到 ui::style::variants 单一事实源——default
+        // 一等化（UA 预填等价基线：muted 填充+发丝描边，任意表面可辨），
+        // primary|submit 显式醒目档，secondary 深一档纯填充。本臂与 rust
+        // codegen 臂共用同表；Vue 臂 cva 由 ui_gen 的互锁测试锚定。
+        let preset: &str = crate::ui::style::variants::button_variant_preset(variant.as_str());
         // Plan 409 §10 续 17: size → shadcn 对齐的尺寸 preset(h/px)。button 默认
         // Shrink,需显式 height 才能区分 sm/default/lg(renderer button 分支读 height)。
         let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
-        let size_preset: &str = match size.as_str() {
-            "sm" => "h-9 px-3",
-            "lg" => "h-11 px-8",
-            "icon" => "h-10 w-10",
-            _ => "h-10 px-4",  // default
-        };
+        let size_preset: &str = crate::ui::style::variants::button_size_preset(size.as_str());
         // Plan 414 R13 fix: variant=icon carries its own square sizing in the
         // variant preset (h-7 w-7); the default "h-10 px-4" size preset would
         // override it (later classes win) AND its px-4 starves the 14px svg
@@ -7780,6 +8460,58 @@ let tabs_inner = View::Row {
         );
 
         builder.build()
+    }
+
+    /// PLAN-009 P1: convert a `terminal` element(auto-term 引擎网格视口)。
+    /// Props: `key`/`id`(状态存储键),`cols`/`rows`(cell 几何,默认
+    /// 80×24),`lines`(行文本数组,数据面甲 props-feed)。交互事件随 T4
+    /// 迁入(004/005 交互套件)。
+    fn convert_terminal(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let key = self
+            .extract_string_with(props, "key", bindings)
+            .or_else(|| self.extract_string_with(props, "id", bindings))
+            .unwrap_or_else(|| "term".to_owned());
+        let cols = self.extract_u16(props, "cols").unwrap_or(80);
+        let rows = self.extract_u16(props, "rows").unwrap_or(24);
+
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(AuraPropValue::Expr(expr)) = props.get("lines") {
+            if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
+                let array = val.as_array();
+                for item in array.values.iter() {
+                    lines.push(item.as_str().to_owned());
+                }
+            }
+        }
+
+        let style = self.extract_style_with(props, bindings);
+        let scroll_offset = self.extract_u16(props, "scroll_offset").unwrap_or(0);
+        let preedit = self
+            .extract_string_with(props, "preedit", bindings)
+            .filter(|s| !s.is_empty());
+        let on_select = aura_events_get_base(events, "onselect")
+            .or_else(|| aura_events_get_base(events, "select"))
+            .map(|event| self.event_to_message(&event.handler));
+        let on_menu = aura_events_get_base(events, "oncontextmenu")
+            .or_else(|| aura_events_get_base(events, "contextmenu"))
+            .or_else(|| aura_events_get_base(events, "onmenu"))
+            .map(|event| self.event_to_message(&event.handler));
+        View::Terminal {
+            key,
+            cols,
+            rows,
+            lines,
+            scroll_offset,
+            preedit,
+            on_select,
+            on_menu,
+            style,
+        }
     }
 
     /// Plan 413: convert a `code_editor` element. Sub-element properties:
@@ -12735,6 +13467,85 @@ mod tests {
         }
     }
 
+    /// Plan 547 Task 21: ImageSurface props/events stay typed on the VM path
+    /// and retain the path-derived vnode identity used by snapshots.
+    #[cfg(feature = "ui-iced")]
+    #[test]
+    fn image_surface_vm_builder() {
+        let widget = make_test_widget("Viewer", vec![]);
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        let builder = AuraViewBuilder::new(&bridge, "Viewer");
+        let node = AuraNode::element("ImageSurface")
+            .with_prop("src", Expr::Ident(".asset_src".into()))
+            .with_prop("alt", Expr::Str("preview".into()))
+            .with_prop("width", Expr::Int(640))
+            .with_prop("height", Expr::Int(480))
+            .with_prop("quality", Expr::Int(75))
+            .with_prop("fit", Expr::Str("width".into()))
+            .with_prop("zoom", Expr::Float(2.0, "2.0".into()))
+            .with_prop("offset_x", Expr::Float(12.5, "12.5".into()))
+            .with_prop("offset_y", Expr::Float(-4.0, "-4.0".into()))
+            .with_prop("rotation", Expr::Int(90))
+            .with_prop("filter", Expr::Str("linear".into()))
+            .with_event("onload", ".ImageLoaded")
+            .with_event("onerror", ".ImageFailed")
+            .with_event("onwheel", ".ZoomAt")
+            .with_event("onpan", ".PanBy")
+            .with_event("ondblclick", ".ToggleOneToOne");
+
+        let (view, id_map, _probe) = builder.build_with_debug(&node);
+        let View::ImageSurface {
+            src,
+            alt,
+            width,
+            height,
+            quality,
+            fit,
+            zoom,
+            offset_x,
+            offset_y,
+            rotation,
+            filter,
+            on_error: Some(error),
+            on_loaded: Some(loaded),
+            on_wheel: Some(wheel),
+            on_pan: Some(pan),
+            on_double_click: Some(double_click),
+            ..
+        } = view
+        else {
+            panic!("expected ImageSurface view")
+        };
+        assert_eq!(src, "${asset_src}"); // unresolved state refs remain display-safe text
+        assert_eq!(alt, "preview");
+        assert_eq!((width, height, quality), (640, 480, 75));
+        assert_eq!(fit, "width");
+        assert_eq!((zoom, offset_x, offset_y, rotation), (2.0, 12.5, -4.0, 90));
+        assert_eq!(filter, "linear");
+        let event_name = |message: DynamicMessage| match message {
+            DynamicMessage::Typed { widget_name, event_name, args } => {
+                assert_eq!(widget_name, "Viewer");
+                assert!(args.is_empty());
+                event_name
+            }
+            other => panic!("expected typed message, got {other:?}"),
+        };
+        assert_eq!(event_name(error), "ImageFailed");
+        assert_eq!(event_name(loaded), "ImageLoaded");
+        assert_eq!(event_name(wheel), "ZoomAt");
+        assert_eq!(event_name(pan), "PanBy");
+        assert_eq!(event_name(double_click), "ToggleOneToOne");
+
+        // The tracked path for the root is empty and therefore always maps to
+        // the same id across rebuilds; this is the identity used by VM events.
+        assert_eq!(id_map.get(&Vec::<usize>::new()), None);
+        assert_eq!(
+            crate::ui::vnode::id_from_path(&[]),
+            crate::ui::vnode::id_from_path(&[]),
+            "path-derived vnode id must be stable"
+        );
+    }
+
     #[test]
     fn test_extract_handler_name() {
         assert_eq!(extract_handler_name(".Inc"), "Inc");
@@ -14130,5 +14941,266 @@ mod plan055_strip_html_tests {
         assert_eq!(strip_html_tags("a &amp; b &lt;c&gt;"), "a & b <c>");
         assert_eq!(strip_html_tags("plain"), "plain");
         assert_eq!(strip_html_tags("unclosed <b>text"), " text");
+    }
+}
+
+// ── PLAN-571: button default variant 一等化（VM 臂行为锁定）────────
+#[cfg(test)]
+mod plan571_button_default_variant_tests {
+    use super::*;
+    use crate::aura::AuraWidget;
+    use crate::ui::style::Color;
+
+    fn make_test_widget(name: &str) -> AuraWidget {
+        AuraWidget {
+            actions: None,
+            name: name.to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    fn build_button(variant: Option<&str>) -> View<DynamicMessage> {
+        let widget = make_test_widget("Counter");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Counter");
+        let mut props = HashMap::from([
+            ("label".to_string(), AuraPropValue::Expr(Expr::Str("Save".into()))),
+        ]);
+        if let Some(v) = variant {
+            props.insert("variant".to_string(), AuraPropValue::Expr(Expr::Str(v.into())));
+        }
+        let node = AuraNode::Element {
+            tag: "button".to_string(),
+            props,
+            events: HashMap::from([
+                ("onclick".to_string(), AuraEvent {
+                    handler: "Msg::Reset".to_string(),
+                    params: vec![],
+                }),
+            ]),
+            span: None,
+            debug_id: None,
+            children: vec![],
+        };
+        builder.build(&node)
+    }
+
+    fn has_class(view: &View<DynamicMessage>, pred: &dyn Fn(&StyleClass) -> bool) -> bool {
+        match view {
+            View::Button { style: Some(s), .. } => s.classes.iter().any(|c| pred(c)),
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn default_variant_is_neutral_baseline_with_hairline_border() {
+        for v in [None, Some("default")] {
+            let view = build_button(v);
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Muted))),
+                "缺省按钮基线 = muted 中性填充 (variant={v:?})"
+            );
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::Border)),
+                "缺省按钮必须有发丝描边（UA 预填等价）(variant={v:?})"
+            );
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::BorderColor(Color::Border))),
+                "描边色 = border 语义色 (variant={v:?})"
+            );
+            assert!(
+                !has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
+                "缺省按钮不得再用主题色填充 (variant={v:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn primary_and_submit_are_explicit_accent_fill() {
+        for v in ["primary", "submit"] {
+            let view = build_button(Some(v));
+            assert!(
+                has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
+                "{v} = 主题色填充"
+            );
+            assert!(
+                !has_class(&view, &|c| matches!(c, StyleClass::Border)),
+                "{v} 填充档无边框"
+            );
+        }
+    }
+
+    #[test]
+    fn secondary_is_deeper_fill_without_border() {
+        let view = build_button(Some("secondary"));
+        assert!(
+            has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Secondary))),
+            "secondary = 纯填充"
+        );
+        assert!(
+            !has_class(&view, &|c| matches!(c, StyleClass::Border)),
+            "secondary 无边框（outline 专属）"
+        );
+    }
+}
+
+/// PLAN-534: sheet/drawer/hovercard 转换探针（全管线:parse 含铸造机器 →
+/// DynamicComponent view 构建 → View 树断言）。
+#[cfg(test)]
+mod plan534_side_panel_tests {
+    use crate::ui::view::{PopoverAnchor, PopoverPlacement, View};
+    use crate::ui::interpreter::DynamicMessage;
+
+    fn build_view(src: &str) -> View<DynamicMessage> {
+        let dc = crate::build_dynamic_component(src, None).expect("build component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        view
+    }
+
+    fn find_popover(view: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
+        match view {
+            View::Popover { .. } => Some(view),
+            View::Row { children, .. } | View::Column { children, .. } => {
+                children.iter().find_map(find_popover)
+            }
+            View::Container { child, .. }
+            | View::Scrollable { child, .. }
+            | View::MouseArea { content: child, .. } => find_popover(child),
+            _ => None,
+        }
+    }
+
+    /// sheet 缺省 side → EdgeRight;铸造形态 dismiss 折算 __dlg_close_1。
+    #[test]
+    fn plan534_sheet_default_edge_right_with_minted_dismiss() {
+        let view = build_view(
+            "widget App {
+             model { activeTab str = \"preview\" }
+             view {
+             col {
+             sheet (side: \"right\") {
+             sheet-trigger {
+             button (text: \"Open\", variant: \"outline\") {}
+             }
+             sheet-content {
+             sheet-title \"Edit Profile\"
+             }
+             }
+             }
+             }
+             }
+",
+        );
+        let pop = find_popover(&view).expect("树内应有 View::Popover");
+        match pop {
+            View::Popover { placement, open, on_dismiss, .. } => {
+                assert_eq!(placement, &PopoverPlacement::EdgeRight, "side 缺省 right → EdgeRight");
+                assert!(!open, "初渲染 open=false");
+                match on_dismiss {
+                    Some(DynamicMessage::Typed { event_name, .. }) => {
+                        assert_eq!(event_name, "__dlg_close_1", "铸造 dismiss 折算 __dlg_close_N");
+                    }
+                    other => panic!("sheet 为可关闭族,铸造形态必有 dismiss,得到 {other:?}"),
+                }
+            }
+            other => panic!("应定位到 Popover,得到 {other:?}"),
+        }
+    }
+
+    /// drawer direction=bottom → EdgeBottom;面板首子为装饰把手 Container。
+    #[test]
+    fn plan534_drawer_bottom_edgebottom_with_handle_first_child() {
+        let view = build_view(
+            "widget App {
+             model { activeTab str = \"preview\" }
+             view {
+             col {
+             drawer (direction: \"bottom\") {
+             drawer-trigger \"Open Drawer\"
+             drawer-content {
+             drawer-title \"Settings\"
+             }
+             }
+             }
+             }
+             }
+",
+        );
+        let pop = find_popover(&view).expect("树内应有 View::Popover");
+        match pop {
+            View::Popover { content, placement, on_dismiss, .. } => {
+                assert_eq!(placement, &PopoverPlacement::EdgeBottom, "direction=bottom → EdgeBottom");
+                assert!(on_dismiss.is_some(), "drawer 同 sheet 为可关闭族");
+                match content.as_ref() {
+                    View::Column { children, .. } => {
+                        assert!(
+                            matches!(children.first(), Some(View::Container { .. })),
+                            "bottom 把手须为首子 Container"
+                        );
+                    }
+                    other => panic!("面板应为 Column,得到 {other:?}"),
+                }
+            }
+            other => panic!("应定位到 Popover,得到 {other:?}"),
+        }
+    }
+
+    /// hovercard → MouseArea 包锚 + Bottom 非模态（on_dismiss=None）。
+    #[test]
+    fn plan534_hovercard_mousearea_wrapped_bottom_nonmodal() {
+        let view = build_view(
+            "widget App {
+             model { activeTab str = \"preview\" }
+             view {
+             col {
+             hovercard {
+             hover-card-trigger {
+             text \"@mentor\"
+             }
+             hover-card-content {
+             text \"bio\"
+             }
+             }
+             }
+             }
+             }
+",
+        );
+        let pop = find_popover(&view).expect("树内应有 View::Popover");
+        match pop {
+            View::Popover { anchor, placement, on_dismiss, .. } => {
+                assert_eq!(placement, &PopoverPlacement::Bottom, "hover 卡悬于锚下");
+                assert!(on_dismiss.is_none(), "非模态:无 dismiss 折算");
+                match anchor {
+                    PopoverAnchor::Widget(inner) => match inner.as_ref() {
+                        View::MouseArea { on_enter, on_exit, .. } => {
+                            assert!(on_enter.is_some(), "铸造 enter 须接进 MouseArea");
+                            assert!(on_exit.is_some(), "铸造 leave 须接进 MouseArea");
+                        }
+                        other => panic!("锚应被 MouseArea 包裹,得到 {other:?}"),
+                    },
+                    other => panic!("hovercard 锚应为 widget 锚,得到 {other:?}"),
+                }
+            }
+            other => panic!("应定位到 Popover,得到 {other:?}"),
+        }
     }
 }

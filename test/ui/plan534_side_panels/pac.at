@@ -1,0 +1,5 @@
+name: "plan534sidepanels"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+window: "1440x900"

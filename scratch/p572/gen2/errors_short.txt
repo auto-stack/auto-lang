@@ -1,0 +1,5 @@
+14245:1: error[E0428]: the name `main` is defined multiple times: `main` redefined here
+14186:20: error[E0423]: expected value, found module `IO`
+14191:20: error[E0423]: expected value, found module `IO`
+14183:39: error[E0308]: mismatched types: expected `&str`, found `String`
+8576:26: error[E0382]: borrow of moved value: `mc`: value borrowed here after move

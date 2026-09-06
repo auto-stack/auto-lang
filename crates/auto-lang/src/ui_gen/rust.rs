@@ -389,6 +389,12 @@ impl RustGenerator {
 
     /// Check if a dot access target needs index syntax (target["field"] instead of target.field)
     fn needs_index_access(&self, target_name: &str) -> bool {
+        // Plan 547: the viewer `names()` endpoint is a native `Vec<String>`
+        // result, not a serde_json::Value. Keep its local field/index access
+        // in normal Rust form (`names_list.len()` / `names_list[i]`).
+        if target_name == "names_list" {
+            return false;
+        }
         // Props that are actually serde_json::Value type
         if let Some(ty) = self.prop_types.get(target_name) {
             if ty == "serde_json::Value" {
@@ -544,11 +550,24 @@ impl RustGenerator {
             // (See generate_msg_enum for the direct string injection.)
         }
 
-        // If widget has a tick_interval, add Tick variant to message enum
+        // If widget has a tick_interval, add Tick variant to message enum.
+        // Timer-block entries already name their message variants, but keep a
+        // defensive insertion here so generated Rust remains total even when a
+        // hand-built AuraWidget omits the declaration from `msg { ... }`.
         if widget.tick_interval.is_some() {
             if !self.message_variants.iter().any(|v| v.name == "Tick") {
                 self.message_variants.push(AuraMsgVariant {
                     name: "Tick".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                    payload_names: vec![],
+                });
+            }
+        }
+        for timer in &widget.timers {
+            if !self.message_variants.iter().any(|v| v.name == timer.event) {
+                self.message_variants.push(AuraMsgVariant {
+                    name: timer.event.clone(),
                     quoted: false,
                     payload: vec![],
                     payload_names: vec![],
@@ -1033,16 +1052,26 @@ impl RustGenerator {
         }
 
         // Plan 407: tick_msg() + tick_interval_ms() — for run_app subscription.
-        if widget.tick_interval.is_some() {
+        // Plan 051 C7: the standalone Rust/Iced runner has one generic
+        // periodic subscription, so expose the first `timer { ... }` entry
+        // through that hook. Desktop/VM mode supports all entries via its
+        // dynamic timer registry; this keeps the Rust path useful for the
+        // common single-settle-timer case without changing Component's API.
+        let periodic_timer = widget.timers.first().map(|timer| {
+            let interval = u32::try_from(timer.every_ms).unwrap_or(u32::MAX);
+            (interval, timer.event.as_str())
+        });
+        if let Some((interval, event)) = periodic_timer.or_else(|| {
+            widget.tick_interval.map(|interval| (interval, "Tick"))
+        }) {
             let msg_name = self.current_msg_name();
-            let interval = widget.tick_interval.unwrap();
             code.push_str(&format!(
                 "    fn tick_interval_ms(&self) -> Option<u32> {{ Some({}) }}\n",
                 interval
             ));
             code.push_str(&format!(
-                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::Tick) }}\n",
-                msg_name, msg_name
+                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::{}) }}\n",
+                msg_name, msg_name, event
             ));
         }
 
@@ -1631,9 +1660,15 @@ impl RustGenerator {
                 crate::ast::Stmt::Store(store) => {
                     if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var) {
                         let name = store.name.as_str();
-                        // Check if the value is a function call (likely returns Value)
-                        if matches!(&store.expr, crate::ast::Expr::Call(_)) {
-                            self.value_locals.insert(name.to_string());
+                        // Check if the value is a function call (likely returns Value).
+                        // Plan 547: `names()` is a native `Vec<String>` API result,
+                        // so it must retain ordinary Rust field/index syntax.
+                        if let crate::ast::Expr::Call(call) = &store.expr {
+                            let call_name = call.get_name_text_safe()
+                                .map(|n| n.as_str().to_string());
+                            if call_name.as_deref() != Some("names") {
+                                self.value_locals.insert(name.to_string());
+                            }
                         }
                         // Check if the value is an index into a state Vec<Value>
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
@@ -2007,6 +2042,10 @@ impl RustGenerator {
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
+                // PLAN-571: button 注入 variant/size preset（单源 ui::style::variants，
+                // 与 VM 臂同表）；preset 前置、user class 后置（后类胜，与 VM 臂同语义）。
+                let props = self.with_button_preset(tag, props);
+                let props: &std::collections::HashMap<String, AuraPropValue> = props.as_ref();
                 // Handle custom widget references (e.g., EditorPanel, Sidebar)
                 if self.is_custom_widget(tag) {
                     return self.generate_child_component(tag, props);
@@ -2171,6 +2210,32 @@ impl RustGenerator {
                         "View::container(View::text_styled(format!(\"↪ {{}}\", {}), \"text-sm text-muted-foreground\")).style(\"rounded-lg border bg-muted p-3 w-full\").build()",
                         target
                     );
+                }
+
+                // PLAN-534: hovercard 家族 → MouseArea 包锚 + Bottom 非模态
+                // Popover（根臂）;组外兜底 trigger/content 透传。
+                if let Some(hrole) = Self::hover_card_role(tag) {
+                    match hrole {
+                        "root" => return self.generate_hover_card_popover(props, children),
+                        "trigger" | "content" => {
+                            let views: Vec<String> = children
+                                .iter()
+                                .map(|c| self.generate_view_tree(c))
+                                .collect();
+                            return match views.len() {
+                                0 => "auto_lang::ui::view::View::Empty".to_string(),
+                                1 => views.into_iter().next().unwrap(),
+                                _ => {
+                                    let mut b = "View::row()".to_string();
+                                    for v in views {
+                                        b = format!("{}.child({})", b, v);
+                                    }
+                                    format!("{}.build()", b)
+                                }
+                            };
+                        }
+                        _ => {}
+                    }
                 }
 
                 // PLAN-533 T3: 模态对话框家族（alert-dialog/dialog）→
@@ -2653,6 +2718,78 @@ impl RustGenerator {
                     } else {
                         return format!("View::image_styled({}, \"{}\")", src, style_str);
                     }
+                }
+
+                // Plan 547 Task 22: ImageSurface is emitted through the
+                // backend-neutral constructor so literal, state-ref and
+                // conditional expressions all remain live in generated Rust.
+                // Runtime event payloads are appended by the Iced surface;
+                // the typed message variant and declared Aura arguments are
+                // captured here as Option<M> values.
+                if matches!(tag.as_str(), "imagesurface" | "image-surface" | "image_surface" | "ImageSurface") {
+                    let expr_for = |key: &str, default: &str| -> String {
+                        props
+                            .get(key)
+                            .and_then(|v| match v {
+                                AuraPropValue::Expr(expr) => Some(self.ast_expr_to_rust(expr)),
+                                AuraPropValue::StyleBinding(_) => None,
+                            })
+                            .unwrap_or_else(|| default.to_string())
+                    };
+                    let owned_expr = |expr: String| -> String {
+                        if expr.starts_with("self.") {
+                            format!("{}.clone()", expr)
+                        } else {
+                            expr
+                        }
+                    };
+                    let src = owned_expr(expr_for("src", "\"\".to_string()"));
+                    let alt = owned_expr(expr_for("alt", "\"\".to_string()"));
+                    let width = format!("({}) as u32", expr_for("width", "0"));
+                    let height = format!("({}) as u32", expr_for("height", "0"));
+                    let quality = format!("({}).clamp(0, 100) as u8", expr_for("quality", "90"));
+                    let fit = owned_expr(expr_for("fit", "\"contain\".to_string()"));
+                    let zoom = format!("({}) as f32", expr_for("zoom", "1.0"));
+                    let offset_x = format!("({}) as f32", expr_for("offset_x", "0.0"));
+                    let offset_y = format!("({}) as f32", expr_for("offset_y", "0.0"));
+                    let rotation = format!("({}) as i32", expr_for("rotation", "0"));
+                    let filter = owned_expr(expr_for("filter", "\"high\".to_string()"));
+                    let event_expr = |names: &[&str]| -> String {
+                        events
+                            .iter()
+                            .find(|(name, _)| names.iter().any(|candidate| *candidate == name.as_str()))
+                            .map(|(_, event)| {
+                                format!(
+                                    "Some({})",
+                                    self.handler_to_rust_direct_msg(&event.handler, &event.params)
+                                )
+                            })
+                            .unwrap_or_else(|| "None".to_string())
+                    };
+                    let mut surface = format!(
+                        "View::image_surface({src}).image_surface_props({alt}, {width}, {height}, {quality}, {fit}, {zoom}, {offset_x}, {offset_y}, {rotation}, {filter})",
+                    );
+                    surface = format!(
+                        "{}.image_surface_events({}, {}, {}, {}, {})",
+                        surface,
+                        event_expr(&["onerror", "on_error", "error"]),
+                        event_expr(&["onload", "onloaded", "on_loaded", "loaded"]),
+                        event_expr(&["onwheel", "wheel"]),
+                        event_expr(&["onpan", "pan"]),
+                        event_expr(&["ondblclick", "dblclick", "doubleclick"]),
+                    );
+                    if let Some(style) = props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                            _ => None,
+                        })
+                        .filter(|s| !s.is_empty())
+                    {
+                        surface = format!("{}.image_surface_style(\"{}\")", surface, style);
+                    }
+                    return surface;
                 }
 
                 // Handle spacer — returns View directly, no builder
@@ -3171,19 +3308,45 @@ impl RustGenerator {
             .collect::<String>()
             .to_lowercase();
         match norm.as_str() {
-            "alertdialog" | "dialog" | "dropdownmenu" => Some("root"),
-            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger" => Some("trigger"),
-            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent" => Some("content"),
-            "alertdialogtitle" | "dialogtitle" => Some("title"),
-            "alertdialogdescription" | "dialogdescription" => Some("description"),
-            "alertdialogheader" | "dialogheader" => Some("header"),
-            "alertdialogfooter" | "dialogfooter" => Some("footer"),
+            "alertdialog" | "dialog" | "dropdownmenu"
+            // PLAN-534: sheet/drawer 并入同表（可关闭族,同 dialog 语义）。
+            | "sheet" | "drawer" => Some("root"),
+            "alertdialogtrigger" | "dialogtrigger" | "dropdownmenutrigger"
+            | "sheettrigger" | "drawertrigger" => Some("trigger"),
+            "alertdialogcontent" | "dialogcontent" | "dropdownmenucontent"
+            | "sheetcontent" | "drawercontent" => Some("content"),
+            "alertdialogtitle" | "dialogtitle"
+            | "sheettitle" | "drawertitle" => Some("title"),
+            "alertdialogdescription" | "dialogdescription"
+            | "sheetdescription" | "drawerdescription" => Some("description"),
+            "alertdialogheader" | "dialogheader"
+            | "sheetheader" | "drawerheader" => Some("header"),
+            "alertdialogfooter" | "dialogfooter"
+            | "sheetfooter" | "drawerfooter" => Some("footer"),
             "alertdialogcancel" => Some("cancel"),
             "alertdialogaction" => Some("action"),
-            "alertdialogclose" | "dialogclose" => Some("close"),
+            "alertdialogclose" | "dialogclose"
+            | "sheetclose" | "drawerclose" => Some("close"),
             "dropdownmenuitem" => Some("item"),
             "dropdownmenulabel" => Some("label"),
             "dropdownmenuseparator" => Some("separator"),
+            _ => None,
+        }
+    }
+
+    /// PLAN-534 D4: hovercard 根/子件角色（归一化同上）。不并入
+    /// modal_dialog_tag_role——hover 走 MouseArea 包锚 + Bottom 非模态,
+    /// 发射面与模态族不同。
+    fn hover_card_role(tag: &str) -> Option<&'static str> {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        match norm.as_str() {
+            "hovercard" => Some("root"),
+            "hovercardtrigger" => Some("trigger"),
+            "hovercardcontent" => Some("content"),
             _ => None,
         }
     }
@@ -3198,15 +3361,158 @@ impl RustGenerator {
         norm == "dropdownmenu"
     }
 
+    /// PLAN-534: sheet 根（贴边面板族）。
+    fn sheet_root(tag: &str) -> bool {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        norm == "sheet"
+    }
+
+    /// PLAN-534: drawer 根（贴边面板族）。
+    fn drawer_root(tag: &str) -> bool {
+        let norm: String = tag
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        norm == "drawer"
+    }
+
+    /// PLAN-534: sheet/drawer 发射表——side/direction 值 → (chrome,
+    /// placement 构造串)。chrome 与解释器臂 side_panel_chrome 同串（双轨
+    /// 一致断言的锚点）:横条 w-96 定宽 + h-full 拉满,纵条 w-full 拉满;
+    /// drawer 竖向追加贴缘圆角（bottom rounded-t / top rounded-b）。
+    fn side_panel_emission(side_val: &str, is_drawer: bool) -> (&'static str, &'static str) {
+        const EDGE_LEFT: &str = "auto_lang::ui::view::PopoverPlacement::EdgeLeft";
+        const EDGE_RIGHT: &str = "auto_lang::ui::view::PopoverPlacement::EdgeRight";
+        const EDGE_TOP: &str = "auto_lang::ui::view::PopoverPlacement::EdgeTop";
+        const EDGE_BOTTOM: &str = "auto_lang::ui::view::PopoverPlacement::EdgeBottom";
+        const H_CHROME: &str = "w-96 bg-background border shadow-lg p-6 gap-4 h-full";
+        const V_CHROME: &str = "bg-background border shadow-lg p-6 gap-4 w-full";
+        match side_val {
+            "left" => (H_CHROME, EDGE_LEFT),
+            "top" => (
+                if is_drawer {
+                    "bg-background border shadow-lg p-6 gap-4 w-full rounded-b-lg"
+                } else {
+                    V_CHROME
+                },
+                EDGE_TOP,
+            ),
+            "bottom" => (
+                if is_drawer {
+                    "bg-background border shadow-lg p-6 gap-4 w-full rounded-t-lg"
+                } else {
+                    V_CHROME
+                },
+                EDGE_BOTTOM,
+            ),
+            _ => (H_CHROME, EDGE_RIGHT),
+        }
+    }
+
+    /// PLAN-534: drawer 竖向装饰把手发射串——全宽容器内居中的 w-8 h-1
+    /// 圆角条（与解释器臂 drawer_handle_view 同构:纯视觉无手势）。
+    fn drawer_handle_emission() -> String {
+        "View::container(View::container(auto_lang::ui::view::View::Empty).style(\"w-8 h-1 rounded-full bg-muted\").build()).center_x().style(\"w-full py-2\").build()".to_string()
+    }
+
+    /// PLAN-534 D4: hovercard 根臂——trigger 包 View::MouseArea（hover
+    /// 进/出驱动铸造 `__dlg_enter_N/leave_N` 或用户显式绑定）,content 装
+    /// 非模态面板（chrome 与解释器臂 convert_hovercard 同串）,
+    /// placement=Bottom,on_dismiss=None（关闭只靠 leave）。
+    fn generate_hover_card_popover(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+    ) -> String {
+        let mut trigger: Option<&AuraNode> = None;
+        let mut panel_nodes: Vec<&AuraNode> = Vec::new();
+        for c in children {
+            if let AuraNode::Element { tag, .. } = c {
+                match Self::hover_card_role(tag) {
+                    Some("trigger") if trigger.is_none() => {
+                        trigger = Some(c);
+                        continue;
+                    }
+                    Some("content") => {
+                        if let AuraNode::Element { children: inner, .. } = c {
+                            panel_nodes.extend(inner.iter());
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let (anchor_code, on_enter, on_exit) = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                let enter = ["onmouseenter", "onhover"]
+                    .iter()
+                    .find_map(|k| t_events.get(*k))
+                    .map(|h| format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params)))
+                    .unwrap_or_else(|| "None".to_string());
+                let exit = ["onmouseleave", "onhoverout"]
+                    .iter()
+                    .find_map(|k| t_events.get(*k))
+                    .map(|h| format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params)))
+                    .unwrap_or_else(|| "None".to_string());
+                let inner = if t_children.len() == 1 {
+                    self.generate_view_tree(&t_children[0])
+                } else if t_children.is_empty() {
+                    let label = Self::modal_child_label(t_props, t_children);
+                    if label.is_empty() {
+                        "auto_lang::ui::view::View::Empty".to_string()
+                    } else {
+                        format!("View::text_styled(\"{}\".to_string(), \"\")", label)
+                    }
+                } else {
+                    let mut b = "View::row()".to_string();
+                    for c in t_children {
+                        b = format!("{}.child({})", b, self.generate_view_tree(c));
+                    }
+                    format!("{}.build()", b)
+                };
+                (inner, enter, exit)
+            }
+            _ => (
+                "auto_lang::ui::view::View::Empty".to_string(),
+                "None".to_string(),
+                "None".to_string(),
+            ),
+        };
+        let mut panel = "View::col()".to_string();
+        for c in panel_nodes {
+            panel = format!("{}.child({})", panel, self.generate_view_tree(c));
+        }
+        let panel = format!(
+            "{}.style(\"w-80 bg-popover border rounded-lg shadow-md p-4\").build()",
+            panel
+        );
+        let open_expr = match props.get("open") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => b.to_string(),
+            Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
+            _ => "false".to_string(),
+        };
+        format!(
+            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::MouseArea {{ content: Box::new({}), on_enter: {}, on_exit: {}, on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }})), content: Box::new({}), placement: auto_lang::ui::view::PopoverPlacement::Bottom, open: {}, on_dismiss: None }}",
+            anchor_code, on_enter, on_exit, panel, open_expr
+        )
+    }
+
     /// PLAN-533 T6: 可关闭模态根（dialog 族）——非 alert 族。shadcn 语义：
     /// dialog 的 ESC/外点/锚点关闭经 on_dismiss 回流;alert-dialog 不关。
+    /// PLAN-534: sheet/drawer 均可关闭族,同 dialog。
     fn dismissable_dialog_root(tag: &str) -> bool {
         let norm: String = tag
             .chars()
             .filter(|c| *c != '-' && *c != '_')
             .collect::<String>()
             .to_lowercase();
-        norm == "dialog" || norm == "dropdownmenu"
+        norm == "dialog" || norm == "dropdownmenu" || norm == "sheet" || norm == "drawer"
     }
 
     /// 家族子件的文字内容：text prop → label prop → 首 Text 子节点。
@@ -3312,15 +3618,38 @@ impl RustGenerator {
             _ => "auto_lang::ui::view::View::Empty".to_string(),
         };
         let mut panel = "View::col()".to_string();
+        // PLAN-534: sheet/drawer 贴边族——drawer 竖向装饰把手为首子
+        // （与解释器臂 convert_side_panel 同序）。
+        let is_drawer = Self::drawer_root(tag);
+        let side_val = if is_drawer || Self::sheet_root(tag) {
+            Some(match props.get(if is_drawer { "direction" } else { "side" }) {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                _ => "right".to_string(),
+            })
+        } else {
+            None
+        };
+        if let Some(side) = side_val.as_deref() {
+            if is_drawer && matches!(side, "top" | "bottom") {
+                panel = format!("{}.child({})", panel, Self::drawer_handle_emission());
+            }
+        }
         for c in panel_nodes {
             panel = format!("{}.child({})", panel, self.generate_view_tree(c));
         }
         // PLAN-533 T7: dropdown-menu 族锚定菜单 chrome（shadcn
         // DropdownMenuContent 同款 p-1 紧凑档）;对话框族保持 w-96 模态卡。
-        let panel_chrome = if Self::dropdown_menu_root(tag) {
-            "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1"
-        } else {
-            "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"
+        // PLAN-534: sheet/drawer 贴边族 chrome 与解释器臂 side_panel_chrome
+        // 同串（横条 w-96 h-full / 纵条 w-full;drawer 竖向贴缘圆角）。
+        let panel_chrome: String = match side_val.as_deref() {
+            Some(side) => Self::side_panel_emission(side, is_drawer).0.to_string(),
+            None => {
+                if Self::dropdown_menu_root(tag) {
+                    "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1".to_string()
+                } else {
+                    "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4".to_string()
+                }
+            }
         };
         panel = format!("{}.style(\"{}\").build()", panel, panel_chrome);
         let open_expr = match props.get("open") {
@@ -3353,10 +3682,12 @@ impl RustGenerator {
         } else {
             "None".to_string()
         };
-        let placement_path = if Self::dropdown_menu_root(tag) {
-            "auto_lang::ui::view::PopoverPlacement::BottomStart"
-        } else {
-            "auto_lang::ui::view::PopoverPlacement::Modal"
+        let placement_path: String = match side_val.as_deref() {
+            Some(side) => Self::side_panel_emission(side, is_drawer).1.to_string(),
+            None if Self::dropdown_menu_root(tag) => {
+                "auto_lang::ui::view::PopoverPlacement::BottomStart".to_string()
+            }
+            None => "auto_lang::ui::view::PopoverPlacement::Modal".to_string(),
         };
         format!(
             "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
@@ -3367,6 +3698,75 @@ impl RustGenerator {
     /// PLAN-533 T3: cancel/action/close 子件 → 按钮。variant 预设与解释器
     /// convert_button 同表（outline/primary + h-10 px-4 尺寸档）;onclick 走
     /// 既有消息派发形态（Msg::Variant 闭包），缺省 no-op 防恐慌。
+    /// PLAN-571: button 的 variant/size preset 注入。单源 = ui::style::variants
+    /// （VM 解释器臂共用）；user class 为字面量时前置合并，动态表达式无法静态
+    /// 合并则不注入（与本臂此前行为一致，无回归）。非 button 原样返回。
+    /// `ui` feature 关闭时无 preset 表可依，由文件尾部恒等孪生接管（调用点无条件编译）。
+    #[cfg(feature = "ui")]
+    fn with_button_preset<'a>(
+        &self,
+        tag: &str,
+        props: &'a std::collections::HashMap<String, AuraPropValue>,
+    ) -> std::borrow::Cow<'a, std::collections::HashMap<String, AuraPropValue>> {
+        if tag != "button" {
+            return std::borrow::Cow::Borrowed(props);
+        }
+        fn prop_str(v: Option<&AuraPropValue>) -> Option<&str> {
+            match v {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s),
+                _ => None,
+            }
+        }
+        let variant = prop_str(props.get("variant")).unwrap_or_default();
+        let size = prop_str(props.get("size")).unwrap_or_default();
+        let mut preset = crate::ui::style::variants::button_variant_preset(variant).to_string();
+        // Plan 414 R13: variant=icon 自带方形尺寸；缺省 size preset 会覆盖它并把
+        // svg 内容区挤没 —— 未显式给 size 时置空。
+        let size_preset = if variant == "icon" && size.is_empty() {
+            String::new()
+        } else {
+            crate::ui::style::variants::button_size_preset(size).to_string()
+        };
+        if !size_preset.is_empty() {
+            preset.push(' ');
+            preset.push_str(&size_preset);
+        }
+        if preset.is_empty() {
+            return std::borrow::Cow::Borrowed(props);
+        }
+        // 动态 class/style（非字面量）：无法静态合并，保持现状不注入。
+        let literal_class = |v: Option<&AuraPropValue>| -> Option<String> {
+            match v {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s.to_string()),
+                _ => None,
+            }
+        };
+        if props.get("style").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
+            || props.get("class").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
+        {
+            return std::borrow::Cow::Borrowed(props);
+        }
+        let mut merged = props.clone();
+        let key = if merged.contains_key("style") { "style" } else { "class" };
+        let user = literal_class(merged.get(key)).unwrap_or_default();
+        let combined = if user.trim().is_empty() { preset } else { format!("{} {}", preset, user) };
+        merged.insert(
+            key.to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str(auto_val::AutoStr::from(combined))),
+        );
+        std::borrow::Cow::Owned(merged)
+    }
+
+    /// `ui` feature 关闭时的恒等孪生（保持调用点无条件编译）。
+    #[cfg(not(feature = "ui"))]
+    fn with_button_preset<'a>(
+        &self,
+        _tag: &str,
+        props: &'a std::collections::HashMap<String, AuraPropValue>,
+    ) -> std::borrow::Cow<'a, std::collections::HashMap<String, AuraPropValue>> {
+        std::borrow::Cow::Borrowed(props)
+    }
+
     fn generate_modal_button(
         &mut self,
         props: &std::collections::HashMap<String, AuraPropValue>,
@@ -3891,7 +4291,7 @@ impl RustGenerator {
             "slider", "radio", "radiogroup",
             "progress", "badge", "spinner",
             "card", "avatar",
-            "image", "icon",
+            "image", "icon", "imagesurface", "image-surface", "image_surface", "ImageSurface",
             "divider", "spacer",
             "for", "if",
         ];
@@ -4548,7 +4948,23 @@ impl RustGenerator {
                     let body: Vec<String> = branch.body.stmts.iter()
                         .map(|s| self.ast_stmt_to_rust(s))
                         .collect();
-                    let body_str = body.join("; ");
+                    let mut body_str = body.join("; ");
+                    // A Rust `let` declaration requires a trailing semicolon
+                    // even when it is the last statement in an `if` arm.
+                    // Aura statements intentionally omit semicolons, so add
+                    // the terminator only for generated local bindings.
+                    if branch.body.stmts.last().map(|stmt| matches!(
+                        stmt,
+                        crate::ast::Stmt::Store(store)
+                            if matches!(
+                                store.kind,
+                                crate::ast::StoreKind::Let
+                                    | crate::ast::StoreKind::Const
+                                    | crate::ast::StoreKind::Var
+                            )
+                    )).unwrap_or(false) {
+                        body_str.push(';');
+                    }
                     if i == 0 {
                         parts.push(format!("if {} {{ {} }}", cond, body_str));
                     } else {
@@ -4559,7 +4975,19 @@ impl RustGenerator {
                     let body: Vec<String> = else_body.stmts.iter()
                         .map(|s| self.ast_stmt_to_rust(s))
                         .collect();
-                    let body_str = body.join("; ");
+                    let mut body_str = body.join("; ");
+                    if else_body.stmts.last().map(|stmt| matches!(
+                        stmt,
+                        crate::ast::Stmt::Store(store)
+                            if matches!(
+                                store.kind,
+                                crate::ast::StoreKind::Let
+                                    | crate::ast::StoreKind::Const
+                                    | crate::ast::StoreKind::Var
+                            )
+                    )).unwrap_or(false) {
+                        body_str.push(';');
+                    }
                     parts.push(format!("else {{ {} }}", body_str));
                 }
                 parts.join(" ")
@@ -5836,6 +6264,103 @@ mod tests {
         assert!(gen.current_widget.is_none());
     }
 
+    /// Plan 547 Task 22: Rust generator preserves ImageSurface props and all
+    /// five typed event hooks, including state-backed values.
+    #[cfg(feature = "ui-iced")]
+    #[test]
+    fn image_surface_rust_codegen() {
+        let msg = |name: &str| AuraMsgVariant {
+            payload_names: vec![],
+            name: name.to_string(),
+            quoted: false,
+            payload: vec![],
+        };
+        let widget = AuraWidget {
+            actions: None,
+            timers: Vec::new(),
+            name: "ImageViewer".to_string(),
+            state_vars: vec![
+                AuraStateDef { name: "asset_src".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("/media/a".into()), decorators: vec![] },
+                AuraStateDef { name: "viewport_width".to_string(), type_info: Type::Int, initial: crate::ast::Expr::Int(640), decorators: vec![] },
+                AuraStateDef { name: "fit_mode".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("contain".into()), decorators: vec![] },
+                AuraStateDef { name: "zoom".to_string(), type_info: Type::Float, initial: crate::ast::Expr::Float(1.0, "1.0".into()), decorators: vec![] },
+            ],
+            messages: vec![AuraMessage { variants: vec![
+                msg("ImageLoaded"), msg("ImageFailed"), msg("ZoomAt"), msg("PanBy"), msg("ToggleOneToOne"),
+            ] }],
+            view_tree: AuraNode::element("imagesurface")
+                .with_prop("src", crate::ast::Expr::Ident(".asset_src".into()))
+                .with_prop("width", crate::ast::Expr::Ident(".viewport_width".into()))
+                .with_prop("fit", crate::ast::Expr::Ident(".fit_mode".into()))
+                .with_prop("zoom", crate::ast::Expr::Ident(".zoom".into()))
+                .with_prop("alt", crate::ast::Expr::Str("hero".into()))
+                .with_event("onload", ".ImageLoaded")
+                .with_event("onerror", ".ImageFailed")
+                .with_event("onwheel", ".ZoomAt")
+                .with_event("onpan", ".PanBy")
+                .with_event("ondblclick", ".ToggleOneToOne"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        };
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).expect("rust generation");
+        assert!(code.contains("View::image_surface("), "missing constructor:\n{code}");
+        assert!(code.contains("self.asset_src.clone()"), "src state binding lost:\n{code}");
+        assert!(code.contains("self.viewport_width"), "width state binding lost:\n{code}");
+        assert!(code.contains("self.fit_mode.clone()"), "fit state binding lost:\n{code}");
+        assert!(code.contains("image_surface_props"), "scalar props missing:\n{code}");
+        assert!(code.contains("image_surface_events(Some(ImageViewerMsg::ImageFailed)"), "error event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ImageLoaded)"), "load event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ZoomAt)"), "wheel event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::PanBy)"), "pan event missing:\n{code}");
+        assert!(code.contains("Some(ImageViewerMsg::ToggleOneToOne)"), "double-click event missing:\n{code}");
+    }
+
+    /// Plan 547 desktop validation: a declarative `timer { ... }` entry must
+    /// become the named periodic message used by the standalone Rust/Iced
+    /// runner. Without this bridge the image viewer remains stuck in loading
+    /// because its async media session is never polled for readiness.
+    #[test]
+    fn timer_block_rust_codegen_emits_named_tick_subscription() {
+        let src = r#"
+widget App {
+    msg { SettleTick }
+    model { var status str = "loading" }
+    timer { SettleTick (every_ms: 80) }
+    view { text .status }
+    on { .SettleTick -> { .status = "ready" } }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let code = RustGenerator::new().generate(&widget).expect("generate");
+
+        assert!(
+            code.contains("fn tick_interval_ms(&self) -> Option<u32> { Some(80) }")
+                && code.contains("fn tick_msg(&self) -> Option<AppMsg> { Some(AppMsg::SettleTick) }")
+        );
+        assert!(!code.contains("AppMsg::Tick"), "timer entry must retain its message name");
+    }
+
     /// Plan 436 T1(决策 1-A):带 setup 前导槽的 widget 在 Rust 目标显式
     /// 报错(PLAN-037 T7 哲学),不再静默丢弃 setup 语义。
     #[test]
@@ -6236,6 +6761,103 @@ widget Demo {
         );
         assert!(code.contains("DemoMsg::openDialog"), "trigger onclick dispatch:\n{}", code);
         assert!(code.contains("DemoMsg::cancelAction"), "cancel onclick dispatch:\n{}", code);
+    }
+
+    /// PLAN-534 T9: sheet/drawer/hovercard 经真实管线发射——placement/
+    /// chrome 与解释器臂同串（双轨一致断言）:sheet 缺省 EdgeRight + 横条
+    /// chrome + 铸造 dismiss 折算;drawer bottom → EdgeBottom + 贴缘圆角 +
+    /// 装饰把手;hovercard → MouseArea 包锚 + Bottom 非模态 + enter 接线。
+    #[test]
+    fn test_side_panels_codegen_matches_interpreter_chrome() {
+        let src = r#"
+widget Panels {
+    view {
+        col {
+            sheet (side: "right") {
+                sheet-trigger {
+                    button (text: "Open", variant: "outline") {}
+                }
+                sheet-content {
+                    sheet-title "Edit Profile"
+                }
+            }
+            drawer (direction: "bottom") {
+                drawer-trigger "Open Drawer"
+                drawer-content {
+                    drawer-title "Settings"
+                }
+            }
+            hovercard {
+                hover-card-trigger {
+                    text "@mentor"
+                }
+                hover-card-content {
+                    text "bio"
+                }
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        // sheet: 缺省 right → EdgeRight;横条 chrome 同串;铸造 dismiss 折算。
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::EdgeRight"),
+            "sheet default EdgeRight:\n{}", code
+        );
+        assert!(
+            code.contains("w-96 bg-background border shadow-lg p-6 gap-4 h-full"),
+            "sheet chrome matches interpreter side_panel_chrome:\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: Some(PanelsMsg::__dlg_close_1)"),
+            "sheet minted dismiss folding:\n{}", code
+        );
+        // drawer: bottom → EdgeBottom;贴缘圆角;装饰把手。
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::EdgeBottom"),
+            "drawer bottom EdgeBottom:\n{}", code
+        );
+        assert!(
+            code.contains("bg-background border shadow-lg p-6 gap-4 w-full rounded-t-lg"),
+            "drawer bottom chrome with rounded-t:\n{}", code
+        );
+        assert!(
+            code.contains("w-8 h-1 rounded-full bg-muted"),
+            "drawer handle emission:\n{}", code
+        );
+        // hovercard: MouseArea 包锚 + Bottom 非模态 + chrome 同串 + enter 接线。
+        assert!(
+            code.contains("View::MouseArea { content: Box::new("),
+            "hovercard anchor wrapped in MouseArea:\n{}", code
+        );
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::Bottom"),
+            "hovercard Bottom placement:\n{}", code
+        );
+        assert!(
+            code.contains("w-80 bg-popover border rounded-lg shadow-md p-4"),
+            "hovercard chrome matches interpreter arm:\n{}", code
+        );
+        assert!(
+            code.contains("on_enter: Some(PanelsMsg::__dlg_enter_3)"),
+            "hovercard enter wiring from minted handler:\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: None"),
+            "hovercard non-modal (no dismiss):\n{}", code
+        );
     }
 
     /// PLAN-533 T3/T6: dialog 家族（可关闭模态，schema sub_widgets 无连字符
@@ -7064,3 +7686,101 @@ fn main() {{}}
     }
 }
 
+// ── PLAN-571: codegen 臂 button preset 注入（产物级断言）────────────
+// preset 注入本体 cfg(feature="ui")（见 with_button_preset）；tf 档不带 ui-iced
+// （Plan 507），断言随门关闭——日常档 cargo t（带 ui-iced）承接。
+#[cfg(all(test, feature = "ui"))]
+mod plan571_button_preset_codegen_tests {
+    use super::*;
+
+    fn gen_button_view(widget_src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(widget_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut codes = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                let widget = crate::aura::extract::extract_widget_from_decl(decl)
+                    .unwrap_or_else(|e| panic!("extract: {e:?}"));
+                let mut gen = RustGenerator::new();
+                codes.push(gen.generate(&widget).expect("generate"));
+            }
+        }
+        codes.join("\n")
+    }
+
+    #[test]
+    fn plain_button_gets_default_neutral_preset() {
+        let src = r#"
+widget Demo {
+    msg { Tap }
+    view {
+        col {
+            button "Save" { onclick: .Tap }
+        }
+    }
+}
+"#;
+        let code = gen_button_view(src);
+        assert!(
+            code.contains("bg-muted border border-border"),
+            "缺省 button 注入 UA 等价中性 preset:\n{}",
+            code
+        );
+        assert!(
+            code.contains("h-10 px-4"),
+            "缺省 size preset 前置:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("bg-primary"),
+            "缺省 button 不得再落主题色填充:\n{}",
+            code
+        );
+    }
+
+    #[test]
+    fn user_class_stays_after_preset() {
+        let src = r#"
+widget Demo {
+    msg { Tap }
+    view {
+        col {
+            button "Save" { onclick: .Tap, style: "px-2.5 py-1.5 text-xs" }
+        }
+    }
+}
+"#;
+        let code = gen_button_view(src);
+        assert!(
+            code.contains("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 px-2.5 py-1.5 text-xs"),
+            "preset 前置 + user class 后置（后类胜）:\n{}",
+            code
+        );
+    }
+
+    #[test]
+    fn explicit_primary_variant_keeps_accent_fill() {
+        let src = r#"
+widget Demo {
+    msg { Tap }
+    view {
+        col {
+            button "Save" { onclick: .Tap, variant: "primary" }
+        }
+    }
+}
+"#;
+        let code = gen_button_view(src);
+        assert!(
+            code.contains("bg-primary text-primary-foreground"),
+            "variant=primary 保持主题色填充:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("bg-muted border"),
+            "primary 不带中性基线:\n{}",
+            code
+        );
+    }
+}

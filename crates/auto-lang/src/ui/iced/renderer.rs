@@ -2036,7 +2036,9 @@ fn apply_side_borders<M: Clone + Debug + 'static>(
         let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
         iced::Color::from_rgb8(r, g, b)
     });
-    let border_w = is.border_width.unwrap_or(1.0);
+    // PLAN-054 T1: 单侧宽度档优先（border-l-N → side_border_width）；
+    // 缺省回落整圈 border_width（border-N）再 1px。
+    let border_w = is.side_border_width.or(is.border_width).unwrap_or(1.0);
     let line_style = move |_: &_| iced::widget::container::Style {
         background: Some(iced::Background::Color(border_col)),
         ..Default::default()
@@ -2818,6 +2820,176 @@ fn wrap_layout_onclick<'a, M: Clone + 'static>(
         Some(msg) if !inspect_capture_active() => mouse_area(el).on_release(msg).into(),
         _ => el,
     }
+}
+
+/// Per-asset iced image::Handle cache (P547 flicker fix).
+///
+/// `Handle::from_rgba` mints a fresh `Id::unique()` on every call, so a new
+/// Handle per frame makes iced treat the image as brand-new: texture cache
+/// misses and re-uploads race the frame clock — the picture visibly
+/// disappears and reappears (mean-luma flicker reproduced with sequential
+/// screenshots). Keyed by media asset id; the pixel `Arc` identity gates
+/// reuse, so a re-published rendition still swaps the texture. Bounded:
+/// beyond 128 entries the table is dropped (viewer sessions hold a handful
+/// of renditions; eviction semantics live in the pipeline caches above).
+fn cached_media_handle(
+    asset: crate::ui::image_pipeline::MediaAssetId,
+    width: u32,
+    height: u32,
+    rgba: std::sync::Arc<[u8]>,
+) -> iced::widget::image::Handle {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<u128, (std::sync::Arc<[u8]>, iced::widget::image::Handle)>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().expect("media handle cache poisoned");
+    if let Some((prev, handle)) = guard.get(&asset.0) {
+        if std::sync::Arc::ptr_eq(prev, &rgba) {
+            return handle.clone();
+        }
+    }
+    let handle = iced::widget::image::Handle::from_rgba(width, height, rgba.to_vec());
+    if guard.len() >= 128 {
+        guard.clear();
+    }
+    guard.insert(asset.0, (rgba, handle.clone()));
+    handle
+}
+
+/// Render an ImageSurface without entering the legacy Image loader/cache.
+/// Media tickets are resolved only through the process-local registry; a
+/// pending/expired ticket therefore renders a stable placeholder instead of
+/// performing synchronous file or HTTP I/O on the UI thread.
+fn render_image_surface<M: Clone + Debug + 'static>(
+    src: String,
+    alt: String,
+    width: u32,
+    height: u32,
+    quality: u8,
+    fit: String,
+    zoom: f32,
+    offset_x: f32,
+    offset_y: f32,
+    rotation: i32,
+    _filter: String,
+    style: Option<Style>,
+) -> iced::Element<'static, M> {
+    use crate::ui::iced::image_surface::ImageSurfaceFit;
+
+    let is = style.as_ref().map(IcedStyle::from_style);
+    let width_hint = if width > 0 {
+        Some(iced::Length::Fixed(width as f32))
+    } else {
+        is.as_ref().and_then(|s| s.width.as_ref().map(iced_length))
+    };
+    let height_hint = if height > 0 {
+        Some(iced::Length::Fixed(height as f32))
+    } else {
+        is.as_ref().and_then(|s| s.height.as_ref().map(iced_length))
+    };
+    let object_fit = match ImageSurfaceFit::parse(&fit) {
+        ImageSurfaceFit::Contain => iced::ContentFit::Contain,
+        ImageSurfaceFit::Width => iced::ContentFit::Contain,
+        ImageSurfaceFit::OneToOne => iced::ContentFit::None,
+        ImageSurfaceFit::Free => iced::ContentFit::None,
+    };
+    let filter_method = if quality < 80 {
+        iced::widget::image::FilterMethod::Nearest
+    } else {
+        iced::widget::image::FilterMethod::Linear
+    };
+
+    // ImageSurface's contract is an opaque media URI. Consume only pixels
+    // that a background resize lane has already decoded and cached; this path
+    // never opens a file or decodes encoded bytes on the UI thread.
+    let pixels = if src.starts_with("/api/__auto/media/") {
+        crate::ui::image_pipeline::resolve_media_render(&src)
+    } else {
+        None
+    };
+    let mut inner: iced::Element<'static, M> = if let Some((asset_id, source_width, source_height, rgba)) = pixels {
+        let zoom = zoom.clamp(0.05, 64.0);
+        let viewport = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: width.max(source_width) as f32,
+            height: height.max(source_height) as f32,
+        };
+        let geometry = crate::ui::iced::image_surface::image_surface_geometry(
+            viewport,
+            iced::Size::new(source_width as f32, source_height as f32),
+            ImageSurfaceFit::parse(&fit),
+            zoom,
+            offset_x,
+            offset_y,
+            rotation as f32,
+        );
+        let display_width = geometry.rotated_bounds.width.max(1.0);
+        let display_height = geometry.rotated_bounds.height.max(1.0);
+        let radians = (rotation.rem_euclid(360) as f32).to_radians();
+        let mut image = iced::widget::image(cached_media_handle(asset_id, source_width, source_height, rgba))
+            .content_fit(object_fit)
+            .filter_method(filter_method)
+            .rotation(iced::Radians::from(radians));
+        if width > 0 { image = image.width(iced::Length::Fixed(display_width.max(width as f32 + offset_x.abs()))); }
+        else if let Some(w) = width_hint { image = image.width(w); }
+        if height > 0 { image = image.height(iced::Length::Fixed(display_height.max(height as f32 + offset_y.abs()))); }
+        else if let Some(h) = height_hint { image = image.height(h); }
+        // Keep the translation in the clipping layout as well as in the
+        // geometry calculation. This makes pan state observable without ever
+        // moving decode or filesystem work onto the render thread.
+        container(image)
+            .padding(iced::Padding {
+                top: offset_y.max(0.0),
+                right: (-offset_x).max(0.0),
+                bottom: (-offset_y).max(0.0),
+                left: offset_x.max(0.0),
+            })
+            .into()
+    } else {
+        let label = if alt.is_empty() {
+            "Image unavailable".to_string()
+        } else {
+            alt
+        };
+        let mut placeholder = container(text(label).size(14))
+            .center_x(iced::Length::Fill)
+            .center_y(iced::Length::Fill);
+        if let Some(w) = width_hint {
+            placeholder = placeholder.width(w);
+        }
+        if let Some(h) = height_hint {
+            placeholder = placeholder.height(h);
+        }
+        placeholder.into()
+    };
+
+    let mut surface = container(inner).clip(true);
+    if let Some(w) = width_hint {
+        surface = surface.width(w);
+    }
+    if let Some(h) = height_hint {
+        surface = surface.height(h);
+    }
+    if let Some(ref style) = is {
+        let background = style.background_color.map(iced::Background::Color);
+        let border_color = style
+            .border_color
+            .unwrap_or(iced::Color::TRANSPARENT);
+        let border_width = style.border_width.unwrap_or(0.0);
+        let border_radius = style.border_radius.unwrap_or(0.0);
+        surface = surface.style(move |_theme| container::Style {
+            background,
+            border: iced::Border::default()
+                .rounded(border_radius.min(9999.0))
+                .width(border_width)
+                .color(border_color),
+            ..Default::default()
+        });
+    }
+    inner = surface.into();
+    inner
 }
 
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
@@ -3794,6 +3966,32 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
+            // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
+            // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
+            // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => {
+                let core = crate::ui::terminal::terminal(&key, cols, rows);
+                crate::ui::terminal::terminal_feed(core, &lines);
+                crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                let el: iced::Element<'static, M> = crate::ui::terminal::iced::Terminal {
+                    core,
+                    key,
+                    scroll_offset,
+                    preedit: preedit.clone(),
+                    on_select: on_select.clone(),
+                    on_menu: on_menu.clone(),
+                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::CELL_W + 2.0),
+                    height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0),
+                }
+                .into();
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    wrap_with_margin(el, &is)
+                } else {
+                    el
+                }
+            }
+
             AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style: _ } => {
                 build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus, placeholder)
             }
@@ -4057,7 +4255,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .open(open)
                     // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
                     // + 面板外点击整吞），alert-dialog 臂专用。
-                    .modal(placement == crate::ui::view::PopoverPlacement::Modal);
+                    .modal(placement.is_modal_chrome());
                 if let Some((x, y)) = anchor_point {
                     p = p.at_point(x, y);
                 }
@@ -4780,6 +4978,51 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     cont.into()
                 }
             }
+
+            AbstractView::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error,
+                on_loaded,
+                on_wheel,
+                on_pan,
+                on_double_click,
+                style,
+            } => {
+                // Callback messages are retained in the View contract and
+                // consumed by the input adapter (Task 25); this paint pass
+                // must not synthesize duplicate notifications.
+                let _ = (
+                    on_error,
+                    on_loaded,
+                    on_wheel,
+                    on_pan,
+                    on_double_click,
+                );
+                render_image_surface(
+                    src,
+                    alt,
+                    width,
+                    height,
+                    quality,
+                    fit,
+                    zoom,
+                    offset_x,
+                    offset_y,
+                    rotation,
+                    filter,
+                    style,
+                )
+            }
         }
     }
 }
@@ -4788,6 +5031,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 /// Results are cached in memory so each URL is only fetched once.
 /// Returns None on failure.
 fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
+    // Process-local media tickets are resolved before the legacy URL/file
+    // cache. A pending ticket must be retried on the next frame rather than
+    // being cached as a permanent miss.
+    if url.starts_with("/api/__auto/media/") {
+        return crate::ui::image_pipeline::resolve_media_uri(url);
+    }
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -4920,6 +5169,16 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
         // `bg-primary text-primary-foreground { Send{} }` 的图标此前落
         // OnBackground 回退,亮色主题下白钮白标不可见。
         AbstractView::Image { style, .. } => {
+            let has_explicit_color = style.as_ref().map_or(false, |s| {
+                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+            });
+            if !has_explicit_color {
+                let mut inherited = style.take().unwrap_or_default();
+                inherited.classes.push(StyleClass::TextColor(color));
+                *style = Some(inherited);
+            }
+        }
+        AbstractView::ImageSurface { style, .. } => {
             let has_explicit_color = style.as_ref().map_or(false, |s| {
                 s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
             });
@@ -5791,6 +6050,27 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
 
         AbstractView::Image { src, style } => {
             AbstractView::Image { src, style }
+        }
+        AbstractView::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => {
+            AbstractView::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error: on_error.map(|m| IcedMessage::from_dynamic(&m)),
+                on_loaded: on_loaded.map(|m| IcedMessage::from_dynamic(&m)),
+                on_wheel: on_wheel.map(|m| IcedMessage::from_dynamic(&m)),
+                on_pan: on_pan.map(|m| IcedMessage::from_dynamic(&m)),
+                on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
+                style,
+            }
         }
 
         // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`
@@ -10536,6 +10816,9 @@ fn run_session(
     mode: RunMode,
     opts: DesktopOptions,
 ) -> AppResult<String> {
+    // PLAN-575 D1 挂点②：main 装配处（run_session 唯一管线，I3）装全局
+    // panic 审计 hook——只追加日志，不改 panic 语义（G3 零行为变更）。
+    crate::vm::ffi::stdlib::install_exit_audit_panic_hook();
     if components.is_empty() {
         // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
         return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
@@ -14684,6 +14967,10 @@ fn compare_pngs(
         })
         .run()?;
 
+    // PLAN-575 D1 挂点③：正常返回路径（iced::exit() 关窗/电源键确认退出
+    // 都落到这里）——区分"走到正常退出"与"被外界终止"（外界 TerminateProcess
+    // 三挂点均不落笔 = 审计零记录 ⇒ 外部击杀实锤）。
+    crate::vm::ffi::stdlib::exit_audit(0, "main_return");
     Ok("UI closed".to_string())
 }
 
@@ -17405,6 +17692,11 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
         };
         props.push(("font".into(), format!("{}px", px)));
     }
+    // PLAN-053 T14: 任意字号（text-[<n>px] → font_size_arbitrary）也进
+    // vtree 转储——heading §7.3 档（25.3px 等）的检验面。
+    if let Some(px) = is.font_size_arbitrary {
+        props.push(("font".into(), format!("{}px", px as u16)));
+    }
     if let Some(r) = is.border_radius { props.push(("radius".into(), format!("{}", r as u16))); }
     if let Some(w) = is.border_width { props.push(("border".into(), format!("{}", w as u16))); }
     if let Some(ref a) = is.align_items {
@@ -17528,12 +17820,15 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Popover { .. } => None,
         // Plan 484: MouseArea 的 style(尺寸/定位类)参与 absolute/z 判定。
         AbstractView::MouseArea { style, .. } => style.as_ref(),
+        // PLAN-009 P1: terminal 的 style 参与常规定位/边距判定。
+        AbstractView::Terminal { style, .. } => style.as_ref(),
         AbstractView::Text { style, .. } => style.as_ref(),
         AbstractView::Button { style, .. } => style.as_ref(),
         AbstractView::Checkbox { style, .. } => style.as_ref(),
         AbstractView::Slider { style, .. } => style.as_ref(),
         AbstractView::ProgressBar { style, .. } => style.as_ref(),
         AbstractView::Image { style, .. } => style.as_ref(),
+        AbstractView::ImageSurface { style, .. } => style.as_ref(),
         AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
@@ -17613,6 +17908,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Slider { .. } => "slider",
         AbstractView::ProgressBar { .. } => "progress",
         AbstractView::Image { .. } => "image",
+        AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
@@ -17621,6 +17917,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Table { .. } => "table",
         AbstractView::Textarea { .. } => "textarea",
         AbstractView::CodeEditor { .. } => "code_editor",
+        AbstractView::Terminal { .. } => "terminal",
         AbstractView::AutodownEditor { .. } => "autodown_editor",
         AbstractView::Input { .. } => "input",
         AbstractView::Accordion { .. } => "accordion",
@@ -18017,9 +18314,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let mut p = PopoverWidget::new(anchor_el, content_el)
                 .placement(placement)
                 .open(open)
-                // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
-                // + 面板外点击整吞），与 into_iced 臂同口径。
-                .modal(placement == crate::ui::view::PopoverPlacement::Modal);
+                // PLAN-530 步骤8（W13）+ PLAN-534：Modal（居中）与 Edge*
+                // （贴边，sheet/drawer）放置 = 模态形态（全屏遮罩 + 面板外
+                // 点击整吞），与 into_iced 臂同口径。
+                .modal(placement.is_modal_chrome());
             if let Some((x, y)) = anchor_point {
                 p = p.at_point(x, y);
             }
@@ -18420,29 +18718,112 @@ where
 ///
 /// This is the unified entry point for running UI applications with Iced.
 /// Wires up the component's `subscription()` for periodic events (e.g., .Tick).
+/// 002 §4 E0080 顺手修(PLAN-009 T8,R4 预授权 ≤1 人日):iced 0.14 的
+/// `Subscription::map` 在 const 期检查闭包零尺寸(`check_zero_sized`),
+/// 原 tick 实现 `move |_| msg.clone()` 捕获运行时消息必然编译炸(任何
+/// 带 tick 的 rust-mode 应用均触发,即"两示例同炸")。改走内部包装:
+/// 订阅以**枚举变体构造器**(零捕获)发 `Tick`,update 侧再经
+/// `tick_msg()` 在运行时铸造真实消息。
 pub fn run_app<C>() -> AppResult<()>
 where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    iced::application(C::default, C::update, view)
-        .subscription(|c| {
-            // Plan 407: build tick subscription from tick_interval_ms + tick_msg.
-            if let (Some(ms), Some(msg)) = (c.tick_interval_ms(), c.tick_msg()) {
-                iced::time::every(std::time::Duration::from_millis(ms as u64))
-                    .map(move |_| msg.clone())
-            } else {
-                iced::Subscription::none()
+    iced::application(
+        TickWrap::<C>::default,
+        TickWrap::<C>::update,
+        view_wrapped::<C>,
+    )
+    .subscription(|c: &TickWrap<C>| {
+        // Plan 407: tick 订阅(修复后形态,见上注)。
+        if let Some(ms) = c.inner.tick_interval_ms() {
+            iced::time::every(std::time::Duration::from_millis(ms as u64))
+                .map(|_| TickWrapMsg::<C::Msg>::Tick)
+        } else {
+            iced::Subscription::none()
+        }
+    })
+    .window_size(startup_window_size())
+    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+    .font(INTER_FONT_REGULAR)
+    .font(INTER_FONT_MEDIUM)
+    .font(INTER_FONT_SEMIBOLD)
+    .default_font(INTER_FONT)
+    .run()
+    .map_err(|e| e.into())
+}
+
+/// 包装组件的 view 转发(HRTB 由具名 fn 承载,闭包推断不过)。
+fn view_wrapped<'a, C>(component: &'a TickWrap<C>) -> iced::Element<'a, TickWrapMsg<C::Msg>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    view(&component.inner).map(TickWrapMsg::Inner)
+}
+
+/// run_app 的内部消息包装:Tick 由订阅发射,update 时转铸真实 tick 消息。
+#[derive(Clone, Debug)]
+enum TickWrapMsg<M: Clone + Debug> {
+    Inner(M),
+    Tick,
+}
+
+/// run_app 的内部组件包装(DevToolsWrapper 同款手法,不动 VM 轨)。
+#[derive(Debug)]
+struct TickWrap<C: Component> {
+    inner: C,
+}
+
+impl<C: Component + 'static> TickWrap<C>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    fn update(&mut self, msg: TickWrapMsg<C::Msg>) {
+        match msg {
+            TickWrapMsg::Inner(m) => self.inner.on(m),
+            // 运行时铸造真实 tick 消息(此处的值不进任何 const 上下文)。
+            TickWrapMsg::Tick => {
+                if let Some(m) = self.inner.tick_msg() {
+                    self.inner.on(m);
+                }
             }
-        })
-        .window_size(startup_window_size())
-        // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
-        .font(INTER_FONT_REGULAR)
-        .font(INTER_FONT_MEDIUM)
-        .font(INTER_FONT_SEMIBOLD)
-        .default_font(INTER_FONT)
-        .run()
-        .map_err(|e| e.into())
+        }
+    }
+}
+
+impl<C: Component + Default> Default for TickWrap<C> {
+    fn default() -> Self {
+        Self { inner: C::default() }
+    }
+}
+
+impl<C: Component + 'static> Component for TickWrap<C>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    type Msg = TickWrapMsg<C::Msg>;
+
+    fn on(&mut self, msg: Self::Msg) {
+        TickWrap::update(self, msg);
+    }
+
+    fn tick_interval_ms(&self) -> Option<u32> {
+        self.inner.tick_interval_ms()
+    }
+
+    /// 订阅侧用变体构造器发 `TickMsg`(见 run_app),本方法不再提供载荷。
+    fn tick_msg(&self) -> Option<Self::Msg> {
+        None
+    }
+
+    fn view(&self) -> crate::ui::view::View<Self::Msg> {
+        self.inner.view().map_msg(TickWrapMsg::Inner)
+    }
+
+    fn state_snapshot(&self) -> std::collections::HashMap<String, auto_val::Value> {
+        self.inner.state_snapshot()
+    }
 }
 
 /// Run an auto-ui Component with Iced, dispatching an initial Task after the window appears.
@@ -19710,6 +20091,61 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Plan 547 Task 26: ImageSurface uses the dedicated renderer path,
+    /// accepts the media URI contract, and builds a clipped element without
+    /// invoking the legacy synchronous Image loader.
+    #[test]
+    fn image_surface_renderer() {
+        let view = AbstractView::<()>::ImageSurface {
+            src: "/api/__auto/media/opaque/1".into(),
+            alt: "preview".into(),
+            width: 640,
+            height: 480,
+            quality: 90,
+            fit: "contain".into(),
+            zoom: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            rotation: 0,
+            filter: "high".into(),
+            on_error: None,
+            on_loaded: None,
+            on_wheel: None,
+            on_pan: None,
+            on_double_click: None,
+            style: None,
+        };
+        let _element = view.into_iced();
+        assert_eq!(
+            crate::ui::iced::image_surface::ImageSurfaceFit::parse("fit-width"),
+            crate::ui::iced::image_surface::ImageSurfaceFit::Width
+        );
+    }
+
+    #[test]
+    fn native_media_uri_resolves_registry_before_http_fallback() {
+        let registry = crate::ui::image_pipeline::global_media_registry();
+        let ticket = registry.queue(
+            crate::ui::image_pipeline::MediaAssetKey {
+                source_fingerprint: "renderer-fixture".into(),
+                orientation: Default::default(),
+                rendition: crate::ui::image_pipeline::RenditionSpec::original(),
+                revision: 1,
+            },
+            crate::ui::image_pipeline::MediaMetadata::default(),
+        );
+        let uri = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+        assert!(load_image_bytes(&uri).is_none(), "pending ticket should not fall back to a file");
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Reading).unwrap();
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Decoding).unwrap();
+        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Transforming).unwrap();
+        registry.publish_ready(ticket.id, ticket.revision, std::sync::Arc::<[u8]>::from([0, 255, 2])).unwrap();
+        assert_eq!(load_image_bytes(&uri), Some(vec![0, 255, 2]));
+        assert!(load_image_bytes("relative/path.png").is_none(), "ordinary file fallback remains available");
+    }
+
     /// PLAN-530 步骤5 回归（B 内存崩塌主源）：lucide_svg 同名 icon 必须命中
     /// 去重缓存（同一 &'static str），不得每次调用 Box::leak 一份新 16×16
     /// 文档——每帧每图标 ~350B 的无界泄漏随重建频率线性增长（homepage 实测

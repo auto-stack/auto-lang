@@ -1,11 +1,14 @@
-# Plan 466: full 档 nextest 配置(cargo tf / cargo ta 经 --config-file 指定)。
-# --config-file 是整体替换而非合并:本文件不设 default-filter → 全部测试
-# (含 str_churn_bounded_large 1M 大档与 XL 重内存档)都会运行 ——
-# review / fold 前的全量门禁专用。本文件需自成一体。
+# Plan 466: full 档 nextest 配置(cargo tf / ta / taa 经 --config-file 指定)。
+# --config-file 是整体替换而非合并,本文件需自成一体。
+# Plan 532: 排除嵌套塔里程碑测试(aavm2_t3_tower_milestone)——塔仅 t3 档跑。
+# Plan 568: taa(aavm 档)/ta(全量)均经本配置——aavm 重测试(XL/LG)的
+# 主运行档即在此,组限流为 2GB 预算的执行机制。
 #
-# Plan 564: 全量档同样受三组内存限流(XL 不排除,靠组内串行控峰值,
-# 最坏 = 单 XL 峰值 + LG 串行 + MD×2 + 轻池 ≤2GB 预算,A4 实测验收)。
-# 名单与档位数据:.config/test-mem-weights.md(单一事实来源)。
+# Plan 564: 三组内存限流(实测数据:.config/test-mem-weights.md)。
+# 最坏并发 = XL(1×~931MB) + LG(1×~797MB) + MD(2×~138MB) + 轻池
+# ≈ 2GB 预算内(A4 实测 tf aavm2_ 树峰 1674MB)。lg=2 曾被预算否决。
+[profile.default]
+default-filter = "not test(aavm2_t3_tower_milestone)"
 
 [test-groups]
 mem-xl = { max-threads = 1 }

@@ -1,0 +1,11 @@
+{
+  "cold_start_ms": 5000,
+  "neighbor_navigation_ms": 250,
+  "navigation_100_ms": 15000,
+  "idle_cpu_percent": 25,
+  "rss_peak_mb": 512,
+  "shutdown_ms": 3000,
+  "queue_depth": 0,
+  "cache_hits": 0,
+  "cache_misses": 0
+}

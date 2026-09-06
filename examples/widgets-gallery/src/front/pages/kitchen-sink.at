@@ -1,6 +1,6 @@
 // Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)
 // 再生成:auto docs gen(测试内等价 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen)
-// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 38 个)。
+// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 37 个)。
 
 widget KitchenSinkPage {
     msg { Go }
@@ -123,6 +123,15 @@ widget KitchenSinkPage {
                 image (fit: "contain") {}
             }
 
+            h2 "imagesurface"
+            row (style: "gap-2 flex-wrap items-center") {
+                imagesurface {}
+                imagesurface (src: "/icon.png") {}
+                imagesurface (alt: "sample") {}
+                imagesurface (width: 1) {}
+                imagesurface (height: 1) {}
+            }
+
             h2 "input"
             row (style: "gap-2 flex-wrap items-center") {
                 input {}
@@ -154,29 +163,6 @@ widget KitchenSinkPage {
             row (style: "gap-2 flex-wrap items-center") {
                 native_button "sample" {}
                 native_button (disabled: true) {}
-            }
-
-            h2 "nav-group"
-            row (style: "gap-2 flex-wrap items-center") {
-                nav-group {}
-                nav-group (label: "sample") {}
-                nav-group (collapsible: true) {}
-                nav-group (indent: true) {}
-            }
-
-            h2 "nav-item"
-            row (style: "gap-2 flex-wrap items-center") {
-                nav-item {}
-                nav-item (to: "sample") {}
-                nav-item (exact: true) {}
-                nav-item (icon: "sample") {}
-                nav-item (label: "sample") {}
-            }
-
-            h2 "nav-link"
-            row (style: "gap-2 flex-wrap items-center") {
-                nav-link "sample" {}
-                nav-link (icon: "badge") {}
             }
 
             h2 "p"
@@ -244,6 +230,15 @@ widget KitchenSinkPage {
             h2 "span"
             row (style: "gap-2 flex-wrap items-center") {
                 span "sample" {}
+            }
+
+            h2 "terminal"
+            row (style: "gap-2 flex-wrap items-center") {
+                terminal {}
+                terminal (key: "sample") {}
+                terminal (cols: 1) {}
+                terminal (rows: 1) {}
+                terminal (lines: "sample") {}
             }
 
             h2 "text"

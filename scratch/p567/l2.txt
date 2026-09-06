@@ -1,0 +1,176 @@
+use.py torch: arange, randn
+use.py importlib: import_module
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn main() {
+    var torch = import_module("torch")
+    var t = arange(6)
+    
+    var a1 = t + 1
+    if py_float(py_call_may(a1, "sum").?) == 21 {
+        tap_ok(1, "test_add_scalar").?
+    } else {
+        tap_not_ok(1, "test_add_scalar", "got " + py_float(py_call_may(a1, "sum").?).to(str)).?
+    }
+    
+    var a2 = t * 2
+    if py_float(py_call_may(a2, "sum").?) == 30 {
+        tap_ok(2, "test_mul_scalar").?
+    } else {
+        tap_not_ok(2, "test_mul_scalar", "got " + py_float(py_call_may(a2, "sum").?).to(str)).?
+    }
+    
+    var base = t + 10
+    var a3 = base - t
+    if py_float(py_call_may(a3, "sum").?) == 60 {
+        tap_ok(3, "test_sub_tensors").?
+    } else {
+        tap_not_ok(3, "test_sub_tensors", "got " + py_float(py_call_may(a3, "sum").?).to(str)).?
+    }
+    
+    var a4 = t / 2
+    if py_float(py_call_may(a4, "sum").?) == 7.5 {
+        tap_ok(4, "test_div_scalar").?
+    } else {
+        tap_not_ok(4, "test_div_scalar", "got " + py_float(py_call_may(a4, "sum").?).to(str)).?
+    }
+    
+    var a5 = -t
+    if py_float(py_call_may(a5, "sum").?) == -15 {
+        tap_ok(5, "test_neg").?
+    } else {
+        tap_not_ok(5, "test_neg", "got " + py_float(py_call_may(a5, "sum").?).to(str)).?
+    }
+    
+    var a6 = t * t
+    if py_float(py_call_may(a6, "sum").?) == 55 {
+        tap_ok(6, "test_mul_elementwise").?
+    } else {
+        tap_not_ok(6, "test_mul_elementwise", "got " + py_float(py_call_may(a6, "sum").?).to(str)).?
+    }
+    
+    var a7 = 2 * t
+    if py_float(py_call_may(a7, "sum").?) == 30 {
+        tap_ok(7, "test_reflect_mul").?
+    } else {
+        tap_not_ok(7, "test_reflect_mul", "got " + py_float(py_call_may(a7, "sum").?).to(str)).?
+    }
+    
+    var a8 = t == t
+    if py_float(py_call_may(a8, "sum").?) == 6 {
+        tap_ok(8, "test_eq_elementwise").?
+    } else {
+        tap_not_ok(8, "test_eq_elementwise", "got " + py_float(py_call_may(a8, "sum").?).to(str)).?
+    }
+    
+    var ma = py_call_may(arange(6), "reshape", 2, 3).?
+    var mb = py_call_may(arange(6), "reshape", 3, 2).?
+    var mm = py_matmul(ma, mb)
+    var mm00 = py_getitem_may(py_getitem_may(mm, 0).?, 1).?
+    if py_float(mm00) == 13 {
+        tap_ok(9, "test_matmul").?
+    } else {
+        tap_not_ok(9, "test_matmul", "got " + py_float(mm00).to(str)).?
+    }
+    
+    var sl = py_slice(null, 1)
+    var row0 = py_getitem_may(mm, sl).?
+    var row1 = py_getitem_may(mm, 1).?
+    if py_float(py_call_may(row0, "sum").?) == 23 {
+        tap_ok(10, "test_getitem_slice").?
+    } else {
+        tap_not_ok(10, "test_getitem_slice", "got " + py_float(py_call_may(row0, "sum").?).to(str)).?
+    }
+    
+    py_setitem(ma, 0, 0, 100)
+    if py_float(py_call_may(ma, "sum").?) == 115 {
+        tap_ok(11, "test_setitem").?
+    } else {
+        tap_not_ok(11, "test_setitem", "got " + py_float(py_call_may(ma, "sum").?).to(str)).?
+    }
+    
+    var tensor_cls = py_getattr_may(torch, "tensor").?
+    var t12 = py_call0(tensor_cls, [1, 2, 3])
+    if py_float(py_call_may(t12, "sum").?) == 6 {
+        tap_ok(12, "test_call0").?
+    } else {
+        tap_not_ok(12, "test_call0", "got " + py_float(py_call_may(t12, "sum").?).to(str)).?
+    }
+    
+    var g2 = py_call_may(arange(6), "reshape", 2, 3).?
+    var cols = py_call_may(g2, "sum", dim: 0).?
+    if py_float(py_call_may(cols, "sum").?) == 15 {
+        tap_ok(13, "test_kwargs_dim").?
+    } else {
+        tap_not_ok(13, "test_kwargs_dim", "got " + py_float(py_call_may(cols, "sum").?).to(str)).?
+    }
+    
+    var ng = py_call0(py_getattr_may(torch, "no_grad").?)
+    var ygrad = 1
+    py_with(ng, () => {
+        var x = arange(3) / 1
+        py_call_may(x, "requires_grad_", true).?
+        var y = x * 2
+        ygrad = py_getattr_may(y, "requires_grad").?.to(int)
+    })
+    if ygrad == 0 {
+        tap_ok(14, "test_with_no_grad").?
+    } else {
+        tap_not_ok(14, "test_with_no_grad", "got " + ygrad.to(str)).?
+    }
+    
+    var bad = py_call_may(t, "no_such_method")
+    var msg = bad ?? "fallback"
+    if msg.to(str) == "fallback" {
+        tap_ok(15, "test_may_exception").?
+    } else {
+        tap_not_ok(15, "test_may_exception", "got " + msg.to(str)).?
+    }
+    
+    var good = py_call_may(t, "sum")
+    var total = good ?? -1
+    if py_float(total) == 15 {
+        tap_ok(16, "test_may_ok").?
+    } else {
+        tap_not_ok(16, "test_may_ok", "got " + py_float(total).to(str)).?
+    }
+    
+    var nv = null
+    if nv.to(str) == "None" {
+        tap_ok(17, "test_print_none").?
+    } else {
+        tap_not_ok(17, "test_print_none", "got " + nv.to(str)).?
+    }
+    
+    var ng2 = py_call0(py_getattr_may(torch, "no_grad").?)
+    var ygrad2 = 1
+    if true {
+        var __w = ng2
+        var g2c = py_enter(__w)
+        try {
+            var x2 = arange(3) / 1
+            py_call_may(x2, "requires_grad_", true).?
+            var y2 = x2 * 2
+            ygrad2 = py_getattr_may(y2, "requires_grad").?.to(int)
+        } catch __we {
+            py_exit(__w)
+            py_raise(__we)
+        } finally {
+            py_exit(__w)
+        }
+    }
+    if ygrad2 == 0 {
+        tap_ok(18, "test_with_as_sugar").?
+    } else {
+        tap_not_ok(18, "test_with_as_sugar", "got " + ygrad2.to(str)).?
+    }
+}
+
+

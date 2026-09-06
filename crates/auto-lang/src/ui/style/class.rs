@@ -305,6 +305,10 @@ pub enum StyleClass {
     /// Border width: border-N (numeric pixels) - L2
     BorderWidth(f32),
 
+    /// PLAN-054 T1: 单侧宽度档 border-l-N（左条 N px，不置四边整圈边框）。
+    /// quote 家族 §7.4 左条 3px 的通道：apply_side_borders 取该宽画左条。
+    BorderLeftWidth(f32),
+
     /// Border color: border-{color} - L2
     BorderColor(Color),
 
@@ -1446,6 +1450,16 @@ impl StyleClass {
             return Ok(StyleClass::BorderRight);
         }
 
+        // PLAN-054 T1: 单侧宽度档 border-l-N（§7.4 quote 左条 3px）。只置
+        // 左条宽（border_left=true + border_width），不置四边整圈边框
+        // （border=false——border-3 曾令 quote 出整圈边框的根因）。须在
+        // border-N/border-{color} 前缀分支之前。
+        if let Some(rest) = class.strip_prefix("border-l-") {
+            if let Ok(width) = rest.parse::<f32>() {
+                return Ok(StyleClass::BorderLeftWidth(width));
+            }
+        }
+
         // Parse border-N (numeric width, e.g. border-2, border-4)
         if let Some(rest) = class.strip_prefix("border-") {
             if let Ok(width) = rest.parse::<f32>() {
@@ -2168,6 +2182,11 @@ mod tests {
         assert_eq!(StyleClass::parse_single("text-base"), Ok(StyleClass::TextBase));
         assert_eq!(StyleClass::parse_single("text-lg"), Ok(StyleClass::TextLg));
         assert_eq!(StyleClass::parse_single("text-xl"), Ok(StyleClass::TextXl));
+        // PLAN-053 T14: 任意字号通道（既有 TextArbitrary）
+        assert_eq!(
+            StyleClass::parse_single("text-[25.3px]"),
+            Ok(StyleClass::TextArbitrary(25.3))
+        );
         assert_eq!(StyleClass::parse_single("text-2xl"), Ok(StyleClass::Text2Xl));
         assert_eq!(StyleClass::parse_single("text-3xl"), Ok(StyleClass::Text3Xl));
     }
@@ -2236,6 +2255,10 @@ mod tests {
         assert_eq!(StyleClass::parse_single("border-l"), Ok(StyleClass::BorderLeft));
         assert_eq!(StyleClass::parse_single("border-r"), Ok(StyleClass::BorderRight));
         assert_eq!(StyleClass::parse_single("border-0"), Ok(StyleClass::Border0));
+        // PLAN-054 T1: 单侧宽度档（§7.4 quote 左条 3px 通道）
+        assert_eq!(StyleClass::parse_single("border-l-3"), Ok(StyleClass::BorderLeftWidth(3.0)));
+        assert_eq!(StyleClass::parse_single("border-l-4"), Ok(StyleClass::BorderLeftWidth(4.0)));
+        assert_eq!(StyleClass::parse_single("border-l-0"), Ok(StyleClass::BorderLeftWidth(0.0)));
         assert!(matches!(StyleClass::parse_single("border-white"), Ok(StyleClass::BorderColor(_))));
         assert!(matches!(StyleClass::parse_single("border-red-500"), Ok(StyleClass::BorderColor(_))));
     }

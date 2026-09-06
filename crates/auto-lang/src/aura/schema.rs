@@ -248,6 +248,9 @@ pub struct ElementMeta {
     pub sub_widgets: Vec<&'static str>,
     /// Plan 435 P4-4:vue BackendMapping(registry.rs 派生源)
     pub vue: Option<VueBackendSpec>,
+    /// Plan 562:退役标注(如 nav 族 → sidebar 族)。仅作文档/生成器信号,
+    /// 解析与渲染不受影响(观察期内实现保留)。
+    pub superseded_by: Option<String>,
 }
 
 impl Default for ElementMeta {
@@ -262,6 +265,7 @@ impl Default for ElementMeta {
             },
             sub_widgets: Vec::new(),
             vue: None,
+            superseded_by: None,
         }
     }
 }
@@ -2311,6 +2315,29 @@ impl AuraSchema {
             ],
             allows_children: true,
             description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite). Plan 499: onmousemove -> logical-coordinate move stream (engine-side screen->logical conversion + <=30Hz throttle on VM arm; handler receives (x, y) float args; coords prop declares the logical extent).",
+        });
+
+        // Plan 547: 后端中立图片面(src 媒体票据 URI;详规见 schema/aura.at
+        // imagesurface 条目与 docs/design/autoui/image-viewer-pipeline.md)。
+        elements.insert("imagesurface", ElementDef {
+            tag: "imagesurface",
+            category: ElementCategory::Media,
+            props: vec![
+                PropDef { name: "src", type_: PropType::String, required: true, default: None, description: "Media ticket URI (/api/__auto/media/{id}/{revision})" },
+                PropDef { name: "alt", type_: PropType::String, required: false, default: Some(""), description: "Alt text" },
+                PropDef { name: "width", type_: PropType::Int, required: false, default: Some("0"), description: "Viewport width" },
+                PropDef { name: "height", type_: PropType::Int, required: false, default: Some("0"), description: "Viewport height" },
+                PropDef { name: "quality", type_: PropType::Int, required: false, default: Some("90"), description: "Rendition quality" },
+                PropDef { name: "fit", type_: PropType::String, required: false, default: Some("contain"), description: "contain|width|one-to-one|free" },
+                PropDef { name: "zoom", type_: PropType::Float, required: false, default: Some("1"), description: "Zoom factor (0.05-64)" },
+                PropDef { name: "offset_x", type_: PropType::Float, required: false, default: Some("0"), description: "Pan offset x" },
+                PropDef { name: "offset_y", type_: PropType::Float, required: false, default: Some("0"), description: "Pan offset y" },
+                PropDef { name: "rotation", type_: PropType::Int, required: false, default: Some("0"), description: "Display rotation degrees" },
+                PropDef { name: "filter", type_: PropType::String, required: false, default: Some("none"), description: "Render filter" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Backend-neutral image surface (Plan 547): media ticket URI + interactive transform state; renders published renditions only (vue img + pointer synthesis / iced widget), never does file I/O or decode on the UI thread.",
         });
 
         // === Collapsible ===

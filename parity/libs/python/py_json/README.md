@@ -43,7 +43,7 @@ via `py_call`:
 |-------------------------------------------|--------------------------|
 | `py_call(d, "__getitem__", key)`          | `d[key]`                 |
 | `py_call(d, "__contains__", key)`         | `key in d` (bool -> int) |
-| `py_call(lst, "__len__")`                 | `len(lst)`               |
+| `py_call(lst, "__len__")`                 | `len(lst)` — `lst.len()` 直发自 PLAN-569 起可用（规避仍正确，去规避留待自然触碰） |
 | `py_call(d, "keys")` + `list()`           | `list(d.keys())`         |
 | `py_call(d, "get", key, default)`         | `d.get(key, default)`    |
 | `dumps(handle)`                           | `json.dumps(obj)`        |

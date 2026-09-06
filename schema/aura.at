@@ -353,6 +353,26 @@ element code_editor {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element terminal {
+    tag: "terminal"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Terminal"]
+    backends: { web: "unknown", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "key", type: "string", default: "\"term\"", description: "Stable state key (registry + engine adapter session)" }
+        { name: "cols", type: "int", default: "80", description: "Grid width in cells" }
+        { name: "rows", type: "int", default: "24", description: "Grid height in cells" }
+        { name: "lines", type: "list<string>", description: "Fed grid rows (props-feed data plane, per frame)" }
+        { name: "scroll_offset", type: "int", default: "0", description: "Scrollback display offset (badge indicator)" }
+        { name: "preedit", type: "string", description: "IME composition string (self-drawn overlay at cursor)" }
+        { name: "onselect", type: "msg_ref", description: "Selection released; payload via terminal_selected_text(key)" }
+        { name: "oncontextmenu", type: "msg_ref", description: "Menu item activated; payload via terminal_take_menu_item(key)" }
+    ]
+    allows_children: false
+    description: "PLAN-009 native terminal component (auto-term engine grid viewport: damage-gated rows, cursor shapes, selection, scroll badge, right-click menu)"
+}
+
 element col {
     tag: "col"
     category: "layout"
@@ -593,6 +613,31 @@ element image {
     description: "Image display"
 }
 
+element imagesurface {
+    tag: "imagesurface"
+    category: "media"
+    tier: "builtin_widget"
+    aliases: ["ImageSurface", "image-surface", "image_surface"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "ImageSurface" }
+    props: [
+        { name: "src", type: "string", required: true, description: "Media ticket URI" }
+        { name: "alt", type: "string", default: "", description: "Alt text" }
+        { name: "width", type: "int", default: "0", description: "Viewport width" }
+        { name: "height", type: "int", default: "0", description: "Viewport height" }
+        { name: "quality", type: "int", default: "90", description: "Rendition quality" }
+        { name: "fit", type: "one_of:contain,width,one-to-one,free", default: "contain", description: "Viewport fit policy" }
+        { name: "zoom", type: "float", default: "1.0", description: "Viewport zoom" }
+        { name: "offset_x", type: "float", default: "0.0", description: "Horizontal pan offset" }
+        { name: "offset_y", type: "float", default: "0.0", description: "Vertical pan offset" }
+        { name: "rotation", type: "int", default: "0", description: "Clockwise rotation in degrees" }
+        { name: "filter", type: "string", default: "none", description: "Sampling filter" }
+    ]
+    events: ["onload", "onerror", "onwheel", "onpan", "ondblclick"]
+    allows_children: false
+    description: "Asynchronous image viewer surface"
+}
+
 element img {
     tag: "img"
     category: "unknown"
@@ -746,6 +791,7 @@ element nav {
     backends: { web: "native", iced: "unknown", gpui: "unknown" }
     props: []
     allows_children: true
+    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "P1 extracted from production tables; props TBD"
 }
 
@@ -765,6 +811,7 @@ element nav-group {
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
+    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "Navigation group: label header + item column, optionally collapsible (Plan 482)"
 }
 
@@ -789,6 +836,7 @@ element nav-item {
         { name: "class", type: "union:string,class_binding", description: "Extra classes appended after the built-in nav-item classes (escape hatch)" }
     ]
     allows_children: true
+    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link"
 }
 
@@ -804,6 +852,7 @@ element nav-link {
         { name: "icon", type: "one_of:badge", default: "Lucide icon name", description: "string" }
     ]
     allows_children: true
+    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "P1 extracted from production tables; props TBD"
 }
 
@@ -3132,6 +3181,7 @@ element drawer {
 
 element drawer_close {
     tag: "drawer_close"
+    aliases: ["drawer-close", "drawerclose"]
     category: "overlay"
     tier: "web_component"
     backends: { web: "none", iced: "none", gpui: "unknown" }
@@ -3148,7 +3198,7 @@ element drawer_content {
     tag: "drawer_content"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawercontent"]
+    aliases: ["drawercontent", "drawer-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerContent", import: "@/components/ui/drawer" }
     props: [
@@ -3162,7 +3212,7 @@ element drawer_description {
     tag: "drawer_description"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawerdescription"]
+    aliases: ["drawerdescription", "drawer-description"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerDescription", import: "@/components/ui/drawer" }
     props: [
@@ -3177,7 +3227,7 @@ element drawer_footer {
     tag: "drawer_footer"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawerfooter"]
+    aliases: ["drawerfooter", "drawer-footer"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerFooter", import: "@/components/ui/drawer" }
     props: [
@@ -3191,7 +3241,7 @@ element drawer_header {
     tag: "drawer_header"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawerheader"]
+    aliases: ["drawerheader", "drawer-header"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerHeader", import: "@/components/ui/drawer" }
     props: [
@@ -3205,7 +3255,7 @@ element drawer_title {
     tag: "drawer_title"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawertitle"]
+    aliases: ["drawertitle", "drawer-title"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerTitle", import: "@/components/ui/drawer" }
     props: [
@@ -3220,7 +3270,7 @@ element drawer_trigger {
     tag: "drawer_trigger"
     category: "overlay"
     tier: "web_component"
-    aliases: ["drawertrigger"]
+    aliases: ["drawertrigger", "drawer-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DrawerTrigger", import: "@/components/ui/drawer" }
     props: [
@@ -3486,7 +3536,7 @@ element hover_card {
     tag: "hover_card"
     category: "overlay"
     tier: "web_component"
-    aliases: ["hovercard"]
+    aliases: ["hovercard", "HoverCard", "hover-card"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "HoverCard", import: "@/components/ui/hover-card" }
     sub_widgets: ["hover_card_content", "hover_card_trigger"]
@@ -3503,7 +3553,7 @@ element hover_card_content {
     tag: "hover_card_content"
     category: "overlay"
     tier: "web_component"
-    aliases: ["hovercardcontent"]
+    aliases: ["hovercardcontent", "hover-card-content", "hovercard-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "HoverCardContent", import: "@/components/ui/hover-card" }
     props: [
@@ -3518,7 +3568,7 @@ element hover_card_trigger {
     tag: "hover_card_trigger"
     category: "overlay"
     tier: "web_component"
-    aliases: ["hovercardtrigger"]
+    aliases: ["hovercardtrigger", "hover-card-trigger", "hovercard-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "HoverCardTrigger", import: "@/components/ui/hover-card" }
     props: [
@@ -4391,7 +4441,7 @@ element sheet {
     aliases: ["Sheet"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Sheet", import: "@/components/ui/sheet" }
-    sub_widgets: ["sheet_content", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger", "sheetdescription"]
+    sub_widgets: ["sheet_content", "sheet-close", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger", "sheetdescription"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4404,7 +4454,7 @@ element sheet_content {
     tag: "sheet_content"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheetcontent"]
+    aliases: ["sheetcontent", "sheet-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetContent", import: "@/components/ui/sheet" }
     props: [
@@ -4419,7 +4469,7 @@ element sheet_footer {
     tag: "sheet_footer"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheetfooter"]
+    aliases: ["sheetfooter", "sheet-footer"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetFooter", import: "@/components/ui/sheet" }
     props: [
@@ -4433,7 +4483,7 @@ element sheet_header {
     tag: "sheet_header"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheetheader"]
+    aliases: ["sheetheader", "sheet-header"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetHeader", import: "@/components/ui/sheet" }
     props: [
@@ -4447,7 +4497,7 @@ element sheet_title {
     tag: "sheet_title"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheettitle"]
+    aliases: ["sheettitle", "sheet-title"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetTitle", import: "@/components/ui/sheet" }
     props: [
@@ -4462,7 +4512,7 @@ element sheet_trigger {
     tag: "sheet_trigger"
     category: "overlay"
     tier: "web_component"
-    aliases: ["sheettrigger"]
+    aliases: ["sheettrigger", "sheet-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "SheetTrigger", import: "@/components/ui/sheet" }
     props: [
@@ -4473,8 +4523,24 @@ element sheet_trigger {
     description: "Sheet trigger"
 }
 
+element sheet-close {
+    tag: "sheet-close"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["sheet_close", "sheetclose"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Close button text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet close button"
+}
+
 element sheetdescription {
     tag: "sheetdescription"
+    aliases: ["sheet-description", "sheet_description"]
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
@@ -5410,4 +5476,3 @@ element virtual_window {
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
-

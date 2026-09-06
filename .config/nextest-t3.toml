@@ -1,0 +1,30 @@
+# Plan 532: t3 里程碑档 nextest 配置(cargo t3 经 --config-file 指定)。
+# --config-file 是整体替换而非合并:本文件不设 default-filter → 全部
+# 测试(含 str_churn_bounded_large 1M 大档 + aavm2_t3_tower_milestone
+# 嵌套塔)都会运行 —— 大版本升级最终验收专用(频率最稀少档)。
+# 塔测试体另有 T3_MILESTONE env 自守门:完整里程碑形态为
+#   T3_MILESTONE=1 cargo t3
+# (无 env 时塔测试秒退,其余测试照跑——防误触发小时级运行)。
+# 本文件需自成一体。
+#
+# Plan 564(Q5 债收口): 补三组内存限流(数据 .config/test-mem-weights.md)。
+# 本文件本体此前在主检出为未提交悬空态(t3 alias 已提交而配置文件缺失,
+# 新检出/worktree 中 cargo t3 不可用)——564 merge 期落盘收口。
+# 附记:564 落盘时将 master 未提交内容一并收讫(此为本体首提交)。
+
+[test-groups]
+mem-xl = { max-threads = 1 }
+mem-lg = { max-threads = 1 }
+mem-md = { max-threads = 2 }
+
+[[profile.default.overrides]]
+filter = "test(test_aavm2_p532_lib_static_diff) or test(test_aavm2_fourpath_runner) or test(test_aavm2_a2r_is_corpus) or test(test_aavm2_m4_codegen_corpus) or test(test_aavm2_m5_engine_corpus) or test(test_aavm2_m2_parser_corpus) or test(test_aavm2_m5_use_corpus) or test(test_aavm2_m4_use_corpus) or test(test_aavm2_m3_typeinfo_corpus) or test(test_aavm2_m1_lexer_corpus) or test(test_aavm2_m3_milestone_fib) or test(test_aavm2_a2r_probe_smoke)"
+test-group = "mem-xl"
+
+[[profile.default.overrides]]
+filter = "test(test_aavm2_m5_use_errors) or test(test_aavm2_001_smoke) or test(test_aavm2_compile_corpus) or test(test_aavm2_compile_use_corpus)"
+test-group = "mem-lg"
+
+[[profile.default.overrides]]
+filter = "test(test_aavm2_goldens_check) or test(test_aavm2_a2r_main_dump_print) or test(test_aavm2_a2r_corpus_rustc) or test(test_aavm2_002_hello_compile)"
+test-group = "mem-md"

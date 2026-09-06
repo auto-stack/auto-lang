@@ -50,7 +50,7 @@ Auto interacts with it via the `py_call(handle, "method", ...args)` built-in:
 | Auto (PyFFI)                         | Python equivalent |
 |--------------------------------------|--------------------|
 | `py_call(sp, "__getitem__", i)`      | `sp[i]`            |
-| `py_call(lst, "__len__")`            | `len(lst)`         |
+| `py_call(lst, "__len__")`            | `len(lst)` — `lst.len()` 直发自 PLAN-569 起可用（规避仍正确，去规避留待自然触碰） |
 
 A handle does not stringify in Auto (`to(str)` yields a raw handle marker),
 so every assertion goes through element access, length, or a primitive-returning

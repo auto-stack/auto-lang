@@ -9,8 +9,6 @@
 
 ## 🔴 高风险（可能在特定场景导致 UB 或数据损坏）
 
-| 526 | 崩溃（复现 2/2，2026-09-03/04） | 任务栏铃铛二次开合通知中心 → 桌面进程静默退出 code 1（无 panic 输出）。疑似 VM 层 `Process.exit`（stdlib.rs shim_process_exit）或未打印的 abort；RUST_BACKTRACE=full 复现实例仍无栈——进程性退出非 panic。跟踪于 535 D 项 | renderer.rs:8176 toggle_notification_center；stdlib.rs:683 shim_process_exit |
-
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
 | 385 | 逃逸风险 | 闭包 capture_slots 记录 creator_bp，若闭包逃逸（存入全局变量、在创建者函数返回后调用），creator_bp 指向已释放栈帧 → UB。当前无逃逸检测。常见用例（forEach 回调、直接调用）安全，因为创建者仍在栈上。 | `vm/engine.rs` Closure.capture_slots + `vm/codegen.rs:10971 compile_closure` |
@@ -28,7 +26,11 @@
 
 ## 🟡 一致性遗漏（功能正确但代码不干净）
 
+| 526 | 崩溃观察降档：未能复现（疑外部击杀，049 同族；2026-09-06 PLAN-575 归因） | 任务栏铃铛二次开合通知中心 → 桌面进程静默退出 code 1（原复现 2/2，2026-09-03/04；第二例即验收通道 handler 双调）。PLAN-575 独占环境归因未复现：退出审计三挂点（shim_process_exit/panic hook/main_return，env `AUTO_DESKTOP_EXIT_LOG`，零行为变更）在案前提下 N=20 轮二次开合（MCP bus 注入 notes_toggle×2，与真实铃铛点击同一 records→DesktopCommand::NotesToggle→toggle_notification_center 路径；逐轮 stderr handler 证据在册）20/20 进程存活零退出、审计文件零记录——该负载下"开关路径内源性退出"（Process.exit/panic/正常返回）被证伪。按 535 D 归因备注（本机并行会话 taskkill /F 强杀 ui_desktop：退出码恰 1、无输出，与静默退出同 signature），与 PLAN-049（auto-down）外部击杀定因同族。降档出口（575 待澄清①计划默认接受）：退出审计机制常驻，一轮真实复现即重启归因——审计有记录=产品缺陷分支（site 直接指认），审计零记录+进程死亡=外部击杀实锤。 | renderer.rs toggle_notification_center；stdlib.rs exit_audit（PLAN-575 T1）；scratch/p575/ledger.jsonl（575 T3）；535 D 项；049 定因记录 |
+
 | 526 | 一致性 | 布局件级 hover/右键公共基建（wrap_layout_onclick）未做——launcher 用 button、桌面右键用 mouse-area 替代挂点，逐点特设；任意 .at 布局件要 hover/右键仍需逐个特设 | 526 待澄清③（用户核准延后，独立立项候选） |
+| 572 | AA2R/host 发射对齐缺口: push 容器实参克隆 | AA2R push 臂克隆规则窄化为「用户 struct/enum 裸 ident」；宿主（trans/rust.rs:8659 auto-clone）对**所有非 Copy**（含 `List<T>`/Vec 容器 ident）实参克隆——AA2R 遇容器 ident 入 push 仍裸 move（语料+lib 现零形状,非阻塞;真出现时为 E0382 家族）。对齐另案小改。 | `auto/lib/a2r.at` push 臂 P572 T5b 注释 |
+| 572 | ~~at_mode b34_struct 宿主侧红~~ + 文档头过时 | **b34 红已结案(2026-09-06 独立调查,用户裁定执行):5 跑 3 态全绿不可复现**(基点 f2ae1cb29/当前 master×2/失败观测精确 lib 状态重构),判⑤腿重载构建期环境瞬态,非代码态缺陷——未复现-关闭观察。余项:at_mode 测试文件文档头 feature 标注过时(写 test-vm-files,实际门=test-aavm),Plan 574 顺手修。 | `crates/auto-lang/src/tests/aavm_at_mode_tests.rs:9`;572 待澄清④结案段 |
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
@@ -57,6 +59,7 @@
 | 484 ✅ | f-string 含字面量 `[`/`]` 时 `${}` 插值破坏组件编译（静默）—— **已闭环（误归因,用户裁定 2026-08-30）：Plan 492 M1**。五层验证不可复现:①词法 token 探针 ②parser/单 VM 链 ③生产包链（charts-gallery 真源+load_package,bar Init 存活） ④Vue SFC ⑤金丝雀负对照（未定义变量补丁确实杀死 bar Init,证明夹具有检出力）。真因同"prop 字符串比较"行——同 Init 内裸 prop 名 RHS 解析错致文件静默丢弃,误归因到 f-string 形态;且 484 绕开形态 `f"w-[{slot}px]"` 的 `{slot}` 实为纯字面量不插值（无害垃圾类,布局靠 flex-1 意外生效）。M6 已恢复 dollar 形态 `f"w-[${slot}px]"` 并全回归绿;若后续发现 484 时另一复现路径,凭路径重开本条。原文存档： | `f"w-[${slot}px] h-full"`（dollar-brace 插值 + 字面量方括号）使包组件整体失效（静默形态同上）;同语义 `f"w-[{slot}px] h-full"`（brace 插值）正常。437 时代 donut `bg-[{color}]` 一直用 brace 形式故未触雷。疑点:lexer f-string 模式对 `${` 的 fstr_expr 消费与字面量 `[` 的交互（lexer.rs:629/724 两处 FStrNote 分支）。绕开（已落地）:含字面量 `[]` 的 f-string 一律用 `{}` 插值（bar/line/area band 样式 + tooltip 锚点 style 全部改造）。根治:f-string lexer 最小复现单测（`f"w-[${x}px]"` 解析层即可触发,无需 VM）。回归锚同上 | `components/{line,bar,area}_chart.at`（band 样式/tooltip style）;`crates/auto-lang/src/lexer.rs:615-745`;plan 484 M1 记录;docs/plans/492-engine-view-text-fixes.md M1/M6+待澄清③ |
 | 446-R2 | merged 模式链接面双 api.at 无诊断（2026-08-29 下游回传） | back.api 符号链接以**外部 back 工程**（如 auto-os-config-back/api.at）的导出清单为准，in-project auto/src/back/api.at 只供实现体——改名/增删 fn 须两份同步，只改一侧即 boot 崩 `Undefined symbol: api.X in module App`，报错不指向第二份文件（下游实测定位成本高）。修法：诊断信息补"检查外部 back 的 api.at 导出清单"提示（或文档化双文件契约）。 | VM linker/merged 装载诊断（Undefined symbol 发射点）；docs/plans/reports/446-downstream-settlement.md §五.2 |
 | 492-R1 | text 内容位置引用循环变量记录字段的 **VM 轨**渲染缺口（492 复审入账） | `for li in .items` 内 `text (text: li["name"])` 类"文本内容=Index 表达式"形态:vue 轨 Plan 492 M3 已修（Index 字符串键保留引号+不支持形式 R046 告警）;**VM/iced 轨仍不渲染**（43956041e 实证两轨均不渲染,M3 只补 vue 臂）。后果:chart 组件刻度/图例维持 yTick0..4/legendColor·Text0..3 槽位字段形态（484 后续 R006 绕开,M6 按计划范围明确保留）。根治:iced 侧文本内容表达式求值补 Index 臂（对齐 M3 的 vue 语义）;根治后 chart 组件可再摘槽位字段改直写 for+text。回归锚:plan492_m3_tests.rs（vue 侧）+ 需新增 VM 侧锚 | `crates/auto-lang/src/ui/iced/renderer.rs` 文本内容求值;`components/*_chart.at` 槽位字段;docs/plans/492-engine-view-text-fixes.md M3/M6 |
+| 564 | master 预存红（基点实证 2026-09-05,复审发现） | cargo t 日常档在 plan-564 基点（f3032c3a8,先于 564 全部代码提交）即有 15+ 失败:plan370 d8_toggle_dark_mode/plan492 c2_param_msg/ui::layout grid 与 master_stack 全族/ui::iced lucide manifest/aura strip_html——疑与 015-notes 在途未提交修改或近期 master 合入相关。非 564 回归（基点探测实证）;564 A4 验收以 tf aavm2_ 22/22 绿+树峰值 1674MB 为准。需维护者排查归位。 | plan 564 Q6/复审记录;基点探测输出 |
 
 ---
 
@@ -65,9 +68,12 @@
 | 525-3 | 生成器 yield 与 `??` NullCoalesce 延后 | 生成器:W0 盘点 lib 用量=0,按待澄清③裁定延后(宿主 Plan 321 在位);`??` 已入 Pratt 表但无语料面(未实现码 gen)。May 最小面(?T/Some/None/is 臂)已交付(g34)。 | `auto/lib/codegen.at`(?? 臂缺);宿主 `vm/codegen.rs` | 后续波次按需领取。**531 实测注记(2026-09-03)**:主 a2r 已支持 `??`→`unwrap_or`;原生 VM codegen 无臂(`auto run` 静默空输出——比报错更隐蔽,值得独立观察项)+自举 lib 三件(codegen.at/engine.at/a2r.at)全无臂;非便宜量级,Plan 531 显式维持延后。 |
 | ~~525-4~~ ✅ 已清偿(2026-09-03,Plan 531) | 宿主 May 裸值 return 发射不编译——?T fn 内裸标量 return 包裹 Some(...)(主 a2r return 位+AA2R ar_return 镜像[Ar 增 cur_ret];仅裸标量形,Some/Ok/None/Unknown 不动);g34 补裸值语料 find_bare 臂(金样 30/none/30/none)。原描述: | `fn f() ?int { return n*10 }`(无 Some 包裹)主 a2r 发 `return n * 10;` 于 Option<T> fn——rustc E0308。525 语料取显式 Some 构造规避(g34);宿主发射修复(裸值自动包 Some)待后续。 | `crates/auto-lang/src/trans/rust.rs` | 语料已规避;宿主修复后可补裸值语料 |
 | 525-5 | ⑤腿塔顶程序 rc=1 快死(P517-1 族再现,W2-W5 折叠点) | 折叠②起矩阵两次+手动塔顶均 rc=1 快速返回无输出(P517-1 文档形态一致);lib 增长至 ~879KB 后贴线加剧。折叠①时点矩阵 46/46(10m4.6s)健康;各折叠点四路全绿+语料腿全绿为替代证据链(517 折叠①先例)。恢复后终局复跑一次成功(13m56s 全程无 error,W1 基线 10m4.6s 的 +39%,健康带);紧接确认性复跑又快死——**间歇性**实锤。 | `parity/crates/auto-parity/src/aavm.rs`(build_aa2r_bin);环境负载 | 维持 P517-1 观察项;复现则独立分诊(非 525 改动引入——语料腿/四路全绿) |
+| 561 | 工具链风险（schema 生成器非确定性） | schema/aura.at 生成器（`SCHEMA_DRIFT_GENERATE_AT=1`）对 committed 文件有既存格式漂移（master 空跑 +151/−195，411→416 元素）且逐次输出非确定（同代码两次 188721/188921 bytes，NavDestination/Swiper 规范化名随表迭代序随机）——全量重生成会裹挟无关 churn 并诱发 queue_coverage 假红；561 复审修复被迫改走定向别名路线。根治=生成器键序稳定化 + committed 文件与生成输出格式对齐（专项候选）。 | `crates/auto-lang/tests/schema_drift.rs:1822` 生成器臂；Plan 561 复审修复轮记录 |
 ## 🟢 已知限制（设计决策，非 bug）
 
 | 526 | 视觉 | window_thumbnail 快照懒捕获前显示空（fallback icon 兜底；命中预抓已在 summon 链）| 526 T18 记录（KNOWN-DEBT 候选） |
+| 572 | ✅已结算(Plan 574,2026-09-06): Windows 环境限制 aavm 进程内语料测试栈溢出族(12) | 裸 `cargo taa` 12 测试 STATUS_STACK_OVERFLOW——进程内双层解释(宿主 VM 跑 aavm.at+lib)栈需求越过 `run_autovm_capture` **硬编码 4MB 执行线程**(lib.rs:451;RUST_MIN_STACK 护栏被显式 stack_size 绕过——Plan 423 意图失效点;574 T5 探针:4MB 爆/5MB 过/8MB 2.7s,递归有限,与用例规模无关,基点同阈值);非 572 回归(两态失败集 13/13 逐名一致)。**〔2026-09-06 用户裁定→Plan 574 落地〕根因=avm+aavm/avm+aa2r 双重解释器路径非真实需求(2×2 对称性产物;真实自举=a2r 转译+编译+运行)。处置=12 测试 `#[cfg_attr(windows, ignore)]`(Windows 关闭,Linux/CI 保留全量);Windows 裸 taa 失败集 13→1(仅 charts_gallery 564-Q6 邻接);规约注记=aavm/project.md 验证矩阵节+AGENTS AAVM 档;对账表=scratch/p574/coverage-map.md。** | `scratch/p574/coverage-map.md`;572 待澄清②;Plan 574 |
+| 572 | gen2 产品形态: exe² 构建输入不含 aavm.at | P532 步骤 9 的 exe²=lib 七文件+harness main(镜像⑤腿 exe¹ 形态)——aavm.at(全部内容即 CLI main)不入构建输入,否则与 harness main 重复(E0428);aavm.at 入口面由 aavm_at_mode 测试(531 形态,宿主)覆盖,exe² 的 --trans 固定点用同一 lib 拼合源(自再现闭环)。若未来需要「含 aavm.at 的 form-B exe²」(其 main 即产品 main,无 --trans),形态已验证可另立。 | `scripts/aavm_native_gen_check.sh` P572 T5b 注释;P532 步骤 9 回执 |
 | 526 | 视觉 | Popover 首次打开横向锚点偏左（任务栏菜单/icon 菜单同族；功能与消失正常，497 hover 缩略同族先例）| 526 波间回归记录（KNOWN-DEBT 候选） |
 | 540 | 兼容: 旧 storage 配置键只读回退保留一个版本 | 桌面配置单源迁至 `~/.config/autoos/apps/desktop/config.at`（8 键：dock.position/enabled/pinned、desktop.wallpaper/wallpapers_dir、appearance.theme、desktop.transparency、notes.enabled），boot 一次性迁移后旧键**不再读不再写但未删除**——按 D4 定案保留一个版本防回滚双源，下一版本随清理 plan 删键（届时旧版桌面回滚将丢设置,属预期）。 | `ui/desktop_config.rs` LEGACY_STORAGE_KEYS + `docs/plans/540-desktop-settings-osconfig-unify.md` D4 |
 | 540 | 范围边界: shell.desktop.hidden/icons 键留 storage | 桌面图标面可见性（`shell.desktop.hidden`/`shell.desktop.icons`）不属本期 8 键单源范围，仍走 storage 直写（desktop.at 右键隐藏链）——与 config.at 并存双轨；若未来图标面配置也要进 os-config 插件体系，随通用"桌面面配置"扩展再迁。 | `assets/desktop.at:174`；`docs/plans/540-desktop-settings-osconfig-unify.md` T2 勘察注 |
@@ -131,6 +137,8 @@
 | 417-E3-P4 | 延期/已知限制 | ❤✅ 已实施(2026-08-22 同日补齐):codegen 新增 fn_type_param_bounds + check_generic_call_bounds,调用点按参数声明类型映射到带 bound 类型参数,实参静态类型(User/GenericInstance) 可确定未实现 bound 时编译期拒绝;保守策略——非 Ident 实参/类型未知/调用者自身泛型参数透传/非 spec 约束/类型不可解析均放行(留给运行时 CALL_SPEC 报错)。trait_vm_tests +3(违规拒绝/合法通过/透传不误报) | `vm/codegen.rs` check_generic_call_bounds | 2026-08-22 |
 | 410 | Expr::Dot 不查符号 | `x = a.b` 中 `a` 未定义今天仍通过（Expr::Dot 不经 check_symbol；Bina(Op::Dot) 分支源码不可达）。Phase 2 立项时须一并纳入。 | `parser.rs check_symbol` |
 | 381 | v1 限制 | Node::deserialize 只处理 props（标量字段），不含 kids（命名子块）。嵌套块反序列化留给 v2（需 field-level resolver）。覆盖 role_config 等全部用例（字段全是标量/数组）。 | `auto-val/src/de.rs:79` |
+| 564 | 已知限制（t3 档组配置悬置） | nextest-t3.toml（大版本里程碑档）尚无 Plan 564 的 mem-xl/lg/md 组限流——该文件为 Plan 532 在主检出的未提交态，564 不代笔；塔测试自带 T3_MILESTONE env 守门（误触发秒退），实际风险低。532 提交后须合流补组配置并复测。 | `.config/nextest-t3.toml`（未提交）；plan 564 Q5 |
+| 564 | 已知限制（SKIP 指引默认不可见） | heavy_gate 的 SKIP eprintln 指引在裸 cargo test 下被 libtest 输出捕获吞掉（仅 --nocapture/失败时可见）——防护本体（秒退+低内存）不受影响，仅提示可见性受限；AGENTS.md 已注明查看方式。 | `crates/auto-lang/src/tests/heavy_gate.rs`；plan 564 T5 证据 |
 
 ---
 
@@ -146,6 +154,11 @@
 
 | 445 | .Tick 跨轨语义分歧 | vue 轨=setInterval 级 running 门控，VM 轨=Plan 402 handler 无条件派发自决——应用需在 handler 内自查 running 兼顾两轨（024 已如此），平台级统一待后续裁定。 | `ui/iced/renderer.rs:6650` / `ui_gen/vue.rs:3228` |
 | 445 | svgdoc 流式性能样本有限 | v1 SVG vs v2 canvas 裁决数据仅 12 点窗口/400ms 实测（2.49/s 无积压）；更大窗口/更高频（16ms/百点级）未测，v2 触发条件留待真实负载。 | `examples/ui/024-charts/tests/golden/stream_perf_sample.txt` |
+| 568 | 覆盖差: tv/t 日常面不再含任何 aavm 闸门 | AAVM/AA2R 全系测试迁入 `test-aavm` feature（`cargo taa` 专属档，Plan 568，master 提前落地 c825e989f）——`cargo tv`/`cargo t` 编译期零 aavm（tv 实测 4m24s 级→20s 级）。改 VM/编译器破坏 aavm 的发现点后移：CI `vm-files-ci.yml` push/PR（六闸门步骤已换 test-aavm）+ `cargo ta` 全量档 + fold 前裸 `taa`。概念裁定（用户 2026-09-05）：aavm 无实用面（秀肌肉），非 aavm 改动不需要关心是否改坏。 | `docs/plans/568-aavm-aa2r-test-tier.md` D6；AGENTS.md §AAVM/AA2R Test Tier |
+| 568 | 覆盖差: m1 lexer parity 离开日常档 | `aavm2_m1`（lexer token 流一致性，31s/次）原**无 feature 门**每天随 `cargo t` 跑——568 入 test-aavm 档（日常档 3426→3425）。lexer 双侧 parity 日常早警移除，守护转 CI+`cargo taa aavm2_m1`（作用域映射：改 token/lexer.at 或 corpus_m1 → 该闸门）。 | `crates/auto-lang/src/tests.rs` m1 注册行 Plan 568 注 |
+| 568 | fold 协调: 532/564 后续 fold 须向新位置移植 | ①564 的 heavy_gate 接线（vm_file_tests 内 3 处 + m1-m5/a2r 文件内）落点已在 master 上整体迁至 `tests/aavm_runner_tests.rs`——564 fold 时须把 3 夞接线移植到新位置（m1-m5/a2r 文件本体不变，直接合入）；②532 的 t3 别名 feature 列表已在 master 工作区改对 `test-aavm`（未提交，532 提交 .cargo/config.toml 时保留该形态）+ aavm2_t3 塔模块注册行挂 `test-vm-files` 门——532 fold 时应改挂 `test-aavm`。 | plan 568 T5 提前落地注记；`.cargo/config.toml` 工作区 t3 行 |
+| 562 | nav 族实现移除观察期 | nav/nav-group/nav-item/nav-link 已退役（schema `superseded_by` 标注 + docs_gen 生成物过滤，core.md/kitchen-sink 已除名），但**实现保留一个观察期**：schema 元素定义、Vue 548 生成臂、VM 渲染臂仍在（存量外部引用若漏网不致硬崩）。后续移除小计划要点：① 删 schema 四元素 + vue.rs nav 生成臂 + VM nav 渲染臂 + 相关回归测试改断言；② 连带清理 P548-D3（sidebar 族过渡期兼容残件）；③ Plain 模式 sidebar_menu_button/sub_button 通用属性透传不补 `type="button"`（562 T6 已知形态差，Plain 哲学下可接受，移除批一并裁定）；④ sidebar_input 不在 561 VM 契约子集（迁移惯用法用 sidebar_header + 原生 input 平移，VM 端缺口补不补随移除批裁定）。触发条件：观察期内三仓零 nav 族新增引用 + 用户裁定。 | `schema/aura.at` superseded_by 四处标注；`docs/plans/562-nav-to-sidebar-migration.md` T8/T9；`crates/auto-lang/src/ui_gen/docs_gen.rs` 过滤注释 |
+| 562 | 潜伏 bug（原样保留，非本计划引入） | 015-notes `onclick: .SelectNote(i)` —— `i` 不在该作用域（迁移前即如此，nav-item→sidebar_menu_button 平移时逐字保留未修）；点击便签项的选择链在该形态下是否真触发待独立排查（若 handler 未声明参数可能静默 no-op）。 | `examples/ui/015-notes/src/front/sidebar.at`（迁移注记行）；`docs/plans/562-nav-to-sidebar-migration.md` T2 |
 
 ## 📋 未来增强（非风险，记录为后续优化方向）
 
@@ -1127,24 +1140,28 @@
 
 ### P539（2026-09-04，Plan 539 PyTorch FFI——执行期存量红/缺口登记）
 
-- **P539-D1 py_list `test_sorted_getitem` master 存量红**（非本计划引入，
-  master 二进制同形复现：`[P053-8] phantom freelist entry dropped: slot 41
-  (live holders, rc=4294967295)` + `got d`）。py_list 属 p7 相位，近期
-  各计划门禁只跑 p5/p8/p9 相邻相，从未显形。疑与 ADD 字符串拼接臂的
-  双重 rc_release（engine.rs ADD string-concat 分支两对 release）或
-  Plan 510 G 系池工作交互有关——待专项排查（rc 配平 forensics）。
-- **P539-D2 `.len()`/方法分派对 py 返回值不可靠（存量，类型谎言）**：
-  py 调用返回被 codegen 谎记类型（fn_return_types=StrFixed 等），`.len()`
-  静态路由到 str.len，把句柄/列表 id 解码为字符串池索引（垃圾但常在
-  界内，读到池内真串长度——实测"20"）。规避：for-in 计数、`x[0]` 索引
-  （GET_ELEM tag 分派）、`py_call(x, "__len__")`。RuntimeArray 谎言翻转
-  试验无效已回退。根治需动态分派（独立计划）。
-- **P539-D5 py_call_may 仅位置实参**：kwargs 与 May 通道组合未支持
-  （py_call_kw 是 strict 语义；py_call_may 弹参走位置约定）。需要时用
-  `py_call_may(py_call_kw 形态兼容路径)` 前先以探针定 ABI；影响面小
-  （训练循环捕获路径用 try-catch 或 `.?` 兜底即可）。关联存量：
-  a2py 语句体闭包降级为 set 字面量（`(x) => { x * 2 }` → Python set），
-  表达式体必需——见 libs/python README 回调节。
+- **~~P539-D1 py_list `test_sorted_getitem` master 存量红~~ ✅ 已清偿（2026-09-05,
+  Plan 567 T01/T02）**:根因比原疑点深一层——ADD string-concat 臂除 add_string 前
+  双重 release（rc 下溢回绕 u32::MAX = P053-8 幻影）外,**release 还在读之前**:
+  左结合链中间结果槽被 FREE+tombstone 后 strings.get 归空,`a+b+c+d` 只剩末项
+  （池日志实证:retain"ab"0→1→release 1→0→FREE→intern"cd"）。修复=先读后放
+  （对齐 STR_CAT 纪律）+删第二对 release;engine tests_add_concat_rc 回归 ×2
+  （underflow==0 && phantom==0 断言）;py_list 8/8 三方绿,p7 全相位 55/55。
+- **~~P539-D2 `.len()`/方法分派对 py 返回值不可靠（存量，类型谎言）~~ ✅ 已清偿
+  （2026-09-06, [Plan 569](569-py-ret-dynamic-dispatch.md)）**：codegen py-类型侧表
+  （`last_expr_may_py`/`py_typed_vars`/`fn_may_py_returns` 三件）+ 方法分派决策核
+  插队——py 可能接收者 `.len()` 改发 obj_len(1863)、其余方法改发 obj_call(1862)
+  组合子（运行期 tag 双通道：PyObjectHandle → GIL，Auto 值 → 原生语义）；shim_str_len
+  PyObjectHandle 臂 0→GIL len 兜底；s2s A1 len 特判（py-known 接收者 `.len()` 原改写
+  py_call("len") 恒 AttributeError）。类型谎言本体保留（顶层结果格式化依赖），
+  只覆盖"路由到哪"。实证：`var t = arange(6)` 后 `t.len()==6`（.at/.as 双模式）、
+  py_list 套件去规避 8/8 三方一致、p5-p9 五相位 20 套件零回归。
+- **~~P539-D5 py_call_may 仅位置实参~~ ✅ 已清偿（2026-09-06, Plan 567
+  T06/T07）**：may 值通道变体族落地——453 py_call_may 原位、新增 476
+  py_getattr_may / 477 py_getitem_may / **478 py_call_kw_may（kwargs 5 槽
+  ABI × may 出口，Ok/Err 双路单测）**；s2s rule_err_propagate 在 `.as` 内
+  自动 may 化（含 kwargs 形态经 codegen 路由 478）。a2py 走糖源不受影响；
+  闭包降级 set 字面量子面（DIV-PY-CLOSURE-1）维持独立在案。
 - **P539-D3 a2py 复合接收者无括号**（存量）：`py_call(t == t, "sum")`
   发射 `t == t.sum()`（优先级错）；套件用中间变量规避。
 - **P539-D4 py_subclass 类派生延期（计划内预案路径）**：自定义
@@ -1154,6 +1171,36 @@
   但类工厂的方法绑定面 + GIL/生存期约束审查超 W3 预算。组合式
   替代金样 = py_torch_train（Linear 裸栈 + seed 化收敛）已在案。
   调研节落 python-parity-roadmap.md §7.3。
+
+### P569（2026-09-06，Plan 569 执行登记——P539-D2 根治顺带的同族谎言面）
+
+- **P569-D1 handle_rust_import 未知签名 StrFixed 谎言（存量，use.rs 同族）**：
+  `use.rust` 导入项无已知签名时 fn_return_types 落 `StrFixed(0)`（codegen.rs
+  handle_rust_import 邻域，:4963-4991）——与 P539-D2 同族的类型谎言，但承载面
+  是 rust-ffi（返回值经 marshal 通道，句柄语义与 py 桥不同），**不适用** Plan 569
+  的 py-类型侧表方案。错路由面待实证（rust 桥返回值上的 `.len()` 等）；偿还
+  路径=rust 侧表或签名缺失时 Unknown 化 + 运行期 tag 分派（独立计划）。
+- **P569-R1 .as lowering 括号复合接收者方法调用重绑（存量，复审发现非本计划
+  引入）**：`print(("x" + s).len())` 经 lower_source 产出 `print("x" + s.len())`
+  ——方法后缀重绑到括号内尾操作数（.at 裸解析路径行为正确输出 7，仅 .as
+  lowering 管道重绑）。in-process 二分实证（569 s2s 改动灭活后复现，merge-base
+  预存）。规避=中间变量（`var t = "x" + s; t.len()`，99_py_dispatch/02 语料
+  即此形态）。偿还路径=emit/降低遍历对非初级接收者的括号保形（独立小批）。
+  归因注记：主检出 auto.exe 曾为陈旧产物（9/5 构建 vs 9/6 HEAD），CLI 对照
+  被误导一次——parity 新鲜度闸门教训同样适用于手工 CLI 探针。
+
+### P567（2026-09-06，Plan 567 脚本模式收官波——复审登记）
+
+- **P567-R1 W0010 lint 未挂 error.rs W 码体系**：nullability lint 以
+  log::warn + 收集器落地（计划文本写 error.rs 新 W 码——该体系挂 parser
+  面，codegen 接线超收口预算）。可见性等价、有单测；偿还路径=W 码发射
+  通道向 codegen 开放后迁移（顺带 CLI 呈现）。
+- **P567-R2 CLI 错误路径丢已缓冲 stdout（存量，master 同形实证）**：脚本
+  出错退出时已 print 的内容不落盘/不落管（错误路径跳过 stdout flush）。
+  影响：错误复现时缺前段输出。偿还路径=错误退出前 flush stdout 捕获缓冲。
+- （minor）with-as 出口保证的 tv 语料只断言 catch 还原链路（99_script_err/
+  04），文件 flush 可观测断言留在 scratch 探针 + infer test18 行为面——
+  语料化升级随 R2 一并考虑。
 
 ### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
 
@@ -1211,6 +1258,31 @@
 - **P533-D8 on-only 带参 handler 悬垂**：rust 轨 on-only 带参 handler
   （gallery 壳层 openSidebar 形态）枚举注入零参变体与派发带参闭包不匹配
   →编译响亮失败（payload 类型无法从 on 块推断,保持显式失败不静默）。
+
+### P534（2026-09-06，Plan 534 VM overlay 家族余量补齐 sheet/drawer/hovercard——执行登记）
+
+- **P534-D1 hovercard open-delay/close-delay v1 不消费**：VM 轨无定时器原语,
+  hover 进出即时开合（plan 待澄清①既定接受）。真延迟需 VM 定时器原语,另立。
+  位置:`parser.rs` hovercard mint 分支+`aura_view_builder.rs` convert_hovercard。
+- **P534-D2 drawer 拖拽 snap 手势不做**：vaul 语义的拖拽/速度 snap 未做,v1
+  静态贴边+装饰把手（纯视觉,无手势;plan 待澄清②既定）。手势需求另立。
+- **P534-D3 vue 基线运行对照未做**：本机 gallery 无 vue 运行面（无
+  node_modules/gen 产物,需 auto gen+npm install 超执行面）,观感对照降级为
+  shadcn 语义描述+vue-ref 手写源语义（全对齐,截图 scratch/p534_evidence/）；
+  真 vue 运行对照留待环境齐备补做（复审注意项）。
+- **P534-D4 gallery avatar 家族 VM 渲染缺口（先于 534 存量）**：
+  `aura_view_builder.rs` convert_avatar 仅渲染裸 avatar 标签（灰圆占位）,
+  avatar-image/avatar-fallback 子件整体弃置→/hovercard 页触发器 hit area
+  零高、/avatar 页观感缺图。hovercard 触发器语义本身不受影响（语料工程
+  文本触发器实机 hover 进/出全通）。avatar 家族补齐另立。
+- **P534-D5 gallery 连续导航栈溢出（master 存量）**：widgets-gallery VM 模式
+  连续 ~55 次页导航后主线程栈溢出崩退（worktree 与 master 二进制 1:1 复现,
+  `attachments/534/app_stderr*.log` 同报 overflowed its stack;直接单页导航
+  正常）——疑视图重建/快照累积深度问题,与本计划无关,归因另立。
+- **P534-D6 hovercard 未降级裁定**：MouseArea×Popover 组合实机验证通过
+  （语料工程 hover 进→开/出→关+截图）,D4 降级路径（click-toggle）未启用;
+  MCP keyboard 不进 iced 原始事件流（P533-D2 同源）,overlay ESC 自动化须
+  OS 级键盘事件——验收脚本 scratch/p534_gallery_verify.py 已沉淀。
 
 ### P543（2026-09-04，知识库同步基线独立复审登记）
 
@@ -1422,11 +1494,14 @@
   rotation/filter 几何状态传给 ImageSurface；不再在渲染路径读文件或解码。
 - **P547-D5 已修复**：VM ticket handle 表改为 256 项有界队列，session close/eviction
   释放引用；queue/scan 走异步媒体 worker，不在 handler 线程同步读文件。
-- **P547-D6 已修复**：Rust CLI 增加显式 `--merged` 选择并不再透传 Cargo；release
-  harness 使用隔离 workspace，报告 `passed: true` 且 cold start 349.584ms。
-- **P547-D7 已修复**：Vue 标准 runner 14 动作通过，保存 initial/open-file/controls/
-  directory-ready；VM MCP 首帧与 OpenFile/ZoomIn 交互通过，保存 `vm-initial`/
-  `vm-open-file-controls`，均位于 canonical ignored screenshot 目录。
+- **P547-D6 已修复**：Rust CLI 增加显式 `--merged` 选择并不再透传 Cargo；精确
+  `auto run -r rust --server rust --merged` 在独立 MCP 端口完成生成、编译和启动；
+  release harness 使用隔离 workspace，报告 `passed: true` 且 cold start 349.584ms。
+- **P547-D7 已修复（功能证据）**：Vue 标准 runner 14 动作通过，保存
+  initial/open-file/controls/directory-ready；VM MCP 首帧与 OpenFile/ZoomIn 交互通过，
+  保存 `vm-initial`/`vm-open-file-controls`，均位于 canonical ignored screenshot 目录；
+  Rust merged MCP snapshot/OpenFile/ZoomIn 交互也通过。当前无窗口沙箱下 Rust Iced
+  screenshot 请求不返回像素文件，未用 VM 截图冒充 Rust 截图，留待有窗口环境补采。
 - **P547-D8 保留为基线说明**：本批未修改既有 alert-dialog/dropdown schema drift 或
   `cb_os_error_file` 外部程序依赖；它们仍应由既有计划/测试环境治理处理。
 
@@ -1472,16 +1547,25 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
 - **P550-D4 期望面再更新**：CALL null 端到端探针面仍归 W3——W2 落地
   了 lowering 管线与糖批，但 null callee 动态分派语义（.as 糖激活后
   的 callable 通道）仍以 555 的 CALL_CLOSURE 守卫+单测钉住形态存在。
-- **P560-D1 with-as 绑定语法歧义**：`as` 系既有 Cast 中缀——`with
-  expr as x` 被 parse_expr 整吞为 Cast、块体又入单元构造语法歧义；
-  现状响亮拒绝（错误消息含指引）。裁定方向：with 上下文限定解析
-  （pratt 截断）或换绑定关键字（`with expr -> x` / `let x =`）。
-- **P560-D2 隐式 !T 传播自动化**：ERROR_PROPAGATE 是 May 值通道，
-  py 错误走 VMError 异常通道——两通道汇合需桥出口产 Err 值（473+
-  shim 面深集成）。现状=显式 py_call_may+.? 通道可表达（p14 探针）。
-- **P560-D3 Err 载荷前缀精化**：py 桥错误现统一 RuntimeError（原文
-  含 Python 类型字样）；严格 "PyException <Type>:" 前缀随 D2 通道
-  汇合同批。
+- **~~P560-D1 with-as 绑定语法歧义~~ ✅ 已清偿（2026-09-06, Plan 567
+  T12-T15）**：with_header 窗口旗标 pratt 截断（`as` 为绑定位终止符，正常
+  模式 Cast 零变化）；块形态降低 = py_enter 绑定 + try-catch-finally 出口
+  保证（Err 路径 T08 拦截→py_exit+py_raise 479 再抛，`__exit__` 恰一次）；
+  a2py 规范序列回译 `with e as x:`；emit `if true` 块包装免疫 E0007/尾块
+  歧义（幂等）；convert_last_block 收窄纯 pair 块。三方实证：py_torch_infer
+  test18（18/18）+ tv 04 语料 + open 句柄 flush 探针（正常/错误双路径）。
+- **~~P560-D2 隐式 !T 传播自动化~~ ✅ 已清偿（2026-09-05, Plan 567
+  T06-T10）**：两通道已汇合——476/477/478 may 变体桥（getattr/getitem/
+  kwargs×call）+ s2s rule_err_propagate（`.as` 桥调用→may+.?、用户函数
+  调用+.?，无 use.py 零改写）+ 引擎 ERROR_PROPAGATE 值通道拦截（Err 传播
+  遇当前帧 try handler 跳 catch_pc 绑 PyException 载荷；null 是值不进
+  catch）+ 主边界未捕获 Err 带错退出（exit 1）。19 py 套件 127/127 三方绿
+  （隐式传播激活态）；tv 99_script_err 语料三例。遗留子面：`.?(d)` 表达式
+  位链式消费缺陷（存量，453 同形复现）见 567 待澄清⑥。
+- **~~P560-D3 Err 载荷前缀精化~~ ✅ 已清偿（2026-09-05, Plan 567 T05）**：
+  py_exc helper 统一 `PyException <Type>: <msg>`（~20 站点迁移，与
+  py_call_may Err 载荷同源）；CALL_NAT/COUNTED 双臂 FFI→RuntimeError
+  通道一致化（顺修非 FFI 静默吞错）。catch 绑定/传播/未捕获三面同前缀。
 - **P560-D4 门控硬化影响面超计划前提**：`.at` 含 use.py/null 诊断
   硬化的存量撞击=vm 语料（aavm2 词法语料 2 文件 + null 语义测试
   1 文件 + keyword_map）——需先裁定这些语料的 .as 迁移或 #[script]
@@ -1490,6 +1574,68 @@ audit-B12 惯例）。证据链：scratch/p553/ 探针记录 + 031 SPEC「双端
 - **P560-D5 s2s 规则覆盖面**：py_known 分析为保守单遍（分支不敏感、
   闭包不内视）；D7 print 包裹限裸名（嵌套形态走 print shim 运行期
   臂）；f-string 插值语法语言本身无此形态（拼接走 ADD dunder）。
-- **P560-D6 既有双红随迁在案**：py_sys（version_info 元组→list 封送
-  =P539-D1/D5 债族）与 py_list test_sorted_getitem（"got d"）为
-  master 既有红——原 .at 在 master 二进制同形失败实证，非本波回归。
+- **~~P560-D6 既有双红随迁在案~~ ✅ 已清偿（2026-09-05, Plan 567 T03/T04）**:
+  py_sys 根因=version_info 是 PyStructSequence（实测无 `_fields` 有
+  `n_sequence_fields`），被 tuple 拍平臂吞成 List 后 `py_getattr(vi,"major")`
+  转回 Python list 而 AttributeError；修复=带属性面 tuple（namedtuple
+  `_fields` + structseq `n_sequence_fields`）分流 opaque 句柄，普通 tuple
+  拍平裁定不动（三分支封送单测在案）；py_list 红归 P539-D1 同批清偿。
+  p7 全相位 8 套件 55/55 三方绿（2026-09-05 实证）。
+
+**P547-D9｜rust 编译轨 keyboard 全断链(生成器三层缺,中)**
+release/rust 生成轨(031 merged exe)的键盘 bind 块完全不生效——MCP
+`autoui_keyboard` 查空 key_bindings 表,真键盘也无订阅。三层缺口:
+①`auto-man/src/rust_ui.rs` 生成器无 bind 发射面(main.rs 不产 key 表);
+②`ui::Component` trait 无 `key_bindings()/key_msg()` 面;③`run_app_devtools`
+的 subscription 只挂 devtools+tick,无 keyboard_subscription(且其消息系
+DesktopMessage 与 WrapperMsg<C> 不兼容,需泛型版)。VM 轨正常(bind 表
+由 run_dynamic 填)。绕法(本批已落):031 工具栏 ◀/▶ 无参按钮(MCP
+press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划。
+
+**P573-D1｜ui-gallery registry 数据源 Vue-only（VM 端列表空,低）**
+`examples/ui-gallery/src/front/app.at:4` 的 demo 数据源
+（`filterDemosBy`/`getDemoTitle`/`getDemoDesc` 等 8 件）全部是 TS extern fn
+（`src/front/utils/demos.ts`），VM/iced 端无从执行——`filteredDemos` 恒空，
+侧栏列表与右栏标题/描述在 VM 上为空（Plan 573 T3 实证，master 基线同败，
+对照证据 `scratch/p573/master-baseline/`）。549 落地时即如此的预存限制，
+非 573 迁移回归。修复方向（另立小计划）：registry 元数据迁回 .at 静态表
+（或 VM 侧 extern fn 桥），迁回后 573 待澄清事项②的 menu_button for 内
+active/onclick VM 实证随之可补。
+
+## P571 债务（button-default-variant，2026-09-06 复审登记）
+
+- **P571-D1 iced `Color::Accent` 无解析臂**：`resolve_semantic_rgb`（theme.rs）无
+  `Accent` 分支——ghost/outline preset 的 `hover:bg-accent` 在 VM/iced 端 no-op
+  （Vue 端 index.css 有 `--accent`），两 variant 的 hover 反馈缺失（PLAN-571 互锁
+  测试实证 cva `hover:bg-accent` vs VM `hover:bg-secondary` 既有分歧）。建议后续
+  独立 plan：theme.rs 补 Accent 解析（随 accent 预设联动）+ preset 统一回
+  `hover:bg-accent`。
+- **P571-D2 button preset 多真源维护面**：同一 variant 语义现有四方真源——
+  `ui::style::variants.rs`（Rust 单源）、`ui_gen/vue.rs` cva 模板、
+  `auto-man/assets/shadcn-ui/button/index.ts` 烘焙资产、`auto-man/vue.rs`
+  `generate_index_css` CSS 变量层（另有未挂线的 auto/cmd_vue.rs、cmd_tauri.rs
+  死文件模板已顺手对齐）。已全部挂互锁断言防漂移，但演进 variant 时需四处同步；
+  长期可考虑生成端单点（assets 由 Rust 表生成）。
+
+## P532 债务（aavm-tower-selfhost,2026-09-06 复审登记）
+
+- **P532-D1 ⑤腿高负载连跑观察项（P525-5 处置收口）**：⑤腿（compile_corpus
+  58/58）为环境资源族敏感——空闲窗口稳定绿（572 T4/T5b 多轮），高负载
+  多套件并行连跑时偶发 rc=1 空输出快速返回（P525-5 定性：~879KB 拼接
+  程序连跑内存/提交峰值贴线，进程级资源分配失败，非 panic 非 assert；
+  P532 W0 复现配方连跑×2 空闲窗口 4/4+4/4 健康）。处置=W0 定案：结构化
+  替代判据（⑤腿为主判据通道+四路/语料腿全绿等价证据）+观察项维持。
+  触发条件=再次可复现时按 `scratch/p532/m5_repro.log` 配方取证。
+  572 修复 AA2R 挂死后⑤腿构建期环境争用已消除大半，观察频率预期下降。
+- **P532-D2 静态差分 canon 分派机制豁免**：test_aavm2_p532_lib_static_diff
+  的语义等价口径将 `call.spec↔call.nat` 归一为 `call.disp *`——宿主
+  CALL_SPEC=类型解析 miss 时的运行期 spec 分派兜底，aavm=编译期静态
+  native 直连；同一调用的两种分派机制，判定面（宿主类型推断失败面）
+  非镜像对象（⑨ 回退实证）。行为等价由 M5 引擎语料+⑤腿原生闸门兜底。
+  同族豁免：`jmp.far`（>32765 回跳的编码宽度形态）归一为 `jmp`。
+- **P532-D3 拼接→模块加载默认化（架构指令,超出本计划立项跟进）**：
+  2026-09-04 用户架构指令——拼接方式是早期 AI 误解造成的错误实现，
+  多 .at 文件应为独立模块、由 VM 正常模块加载；模块路径失真修复
+  （P532 残留③清零达成）后，aavm2_lib_source 族与 M4/M5 harness 的
+  拼接消费面切换为默认模块加载——超出 P532 范围，另立计划跟进
+  （http.at/http.vm.at/http.rust.at 平台分歧适配链除外）。

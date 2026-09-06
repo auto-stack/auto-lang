@@ -66,9 +66,22 @@ AutoScript（`.as`）糖源 → 正常模式桥源的 source-to-source 改写：
   （parse→emit→re-parse→emit 逐文件幂等，19 套件 .as 载体）。
 - 探针 `scratch/p560/p01-p14`；三方门禁=parity runner 双扩展名 glob。
 
-## 已知边界（债务 P560-D1..D6）
+## Plan 567 增量契约
 
-with-as 与 Cast 中缀歧义（响亮拒绝）/ 隐式 !T 传播自动化（May 值通道与
-异常通道汇合）/ Err 载荷前缀精化 / 门控语料裁定后续（json_is_null 已迁，
-aavm2 词法语料经自有通道不受门）/ py_known 保守面 / py_sys·py_list
-master 既有红随迁。
+- **E1 隐式传播规则**（builtin_rules 链尾注册）：`MAY_RENAMES` =
+  py_call→py_call_may(453)/py_getattr→476/py_getitem→477；kwargs 形态
+  保持 Pair 由 codegen `is_py_call_kw_form` 路由 478。改写产物追加
+  `.?`（ERROR_PROPAGATE）；幂等纪律：`Expr::ErrorPropagate` 臂 no-op。
+- **with-as 块形态**（parser with_stmt 产）：`Stmt::Expr(Expr::Block[
+  var __w = e; var x = py_enter(__w); try{b} catch(__we){py_exit;py_raise}
+  finally{py_exit}])`——a2py `match_with_as_block` 回译 `with e as x:`；
+  emit 以 `if true` 包装（裸 `{` 语句命中 E0007/convert_last_block 双歧义，
+  恒真 If 免疫且幂等）；convert_last_block 收窄纯 pair 块。
+- **tv .as 语料**：vm_file_tests 扫描 `.at` 优先回落 `.as`，is_script 标记
+  先过 lower_source（99_script_err 四例，python feature 门控）。
+
+## 已知边界
+
+P560-D1/D2/D3/D6 已清偿（567）；P560-D4/D5 面随 567 收口（门控语料/
+kwargs×may）；py_known 保守面维持（P560-D5 in案）；`.?(d)` 表达式位链式
+消费缺陷（存量，453 同形复现——567 待澄清⑥/P567-R 族债外独立登记）。

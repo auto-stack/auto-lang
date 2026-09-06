@@ -16,17 +16,20 @@ shadcn widgets：每个组件一个页面，含示例预览（`preview-card`）�
 - **内容区** — `outlet`，每个路由是一个组件文档页
 - **移动端** — 底部导航栏 + drawer
 
-## Widgets / 路由（62）
+## Widgets / 路由（60）
 
 accordion, alert, alertdialog, aspectratio, avatar, badge, breadcrumb, button,
 calendar, card, carousel, checkbox, collapsible, combobox, command, contextmenu,
 datatable, datepicker, dialog, drawer, dropdownmenu, form, grid, hovercard,
-input, label, menubar, navigationmenu, navlink, pagination, popover, progress,
+input, label, menubar, navigationmenu, pagination, popover, progress,
 radiogroup, scrollarea, select, separator, sheet, sidebar, skeleton, slider,
 sonner, switch, table, tabs, textarea, toast, toggle, togglegroup, tooltip +
 `/` index；**Layout 分组（Plan 412，sky 色）**：row, col, center, flex,
 alignment, spacing, sizing, scroll, position, responsive, grid（重写迁入）,
 grid-span。
+
+> Plan 562：nav 族（nav/nav-group/nav-item/nav-link）已退役（superseded_by
+> sidebar 族），nav-item/nav-link 两页随之删除；分组导航外壳见 `/sidebar`。
 
 ## Plan 408 §9 修复在这里验证
 
@@ -36,10 +39,10 @@ grid-span。
 | `/slider` | #3 — Slider `value` int → `number[]`（`:default-value`） |
 | `/drawer` | #4 — Drawer 需要 `vaul-vue` 依赖 |
 | `/toast` | #5 — toast 标签 → `ui/sonner` 脚手架（`<Toaster/>`） |
-| `/navlink` | #6 — NavLink `href` → `router-link` `to` |
 | `/pagination` | #7 — shadcn-vue 正确导出名（PaginationContent…） |
 
-（修复 #2 — Rust 模式 `outlet`/`link` 占位 — 属 codegen 层，无 vue 可见面。）
+（修复 #2 — Rust 模式 `outlet`/`link` 占位 — 属 codegen 层，无 vue 可见面；
+#6 `/navlink` 页随 Plan 562 nav 族退役删除，修复记录仅作历史留存。）
 
 ## 运行
 
@@ -76,3 +79,10 @@ widgets-gallery/
 - **Layout 分组的降级矩阵**（flex-wrap / absolute 定位 / order / self-* /
   row-span / fixed / sticky 在 VM 的行为对照）见 `/position` 页内表格与
   `docs/plans/412-layout-gallery.md` §5。
+- **overlay 三员 VM 差异（PLAN-534）**：`/sheet`（side 四向贴边+scrim+外点/
+  ESC 关）、`/drawer`（direction 同 sheet 通道;bottom/top 贴缘圆角+装饰
+  把手,**无拖拽手势**）、`/hovercard`（MouseArea 真 hover 触发,Bottom 锚定
+  非模态）VM 轨已实现（解释器+rust codegen 双轨）。VM 与 shadcn 语义差异:
+  hovercard 的 open-delay/close-delay 不消费（即时开合）;drawer 无拖拽。
+  本页示例触发器含 avatar 组合,VM 的 avatar 家族暂只渲染占位（缺口见
+  KNOWN-DEBT P534-D4）,hover 交互可在触发器为普通元素的页面验证。

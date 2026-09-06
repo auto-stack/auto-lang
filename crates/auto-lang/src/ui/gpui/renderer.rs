@@ -71,7 +71,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 div().into_any()
             }
 
-            AbstractView::Text { content, style } => {
+            AbstractView::Text { content, style, .. } => {
                 // Direct text rendering with optional styling
                 let mut text_div = div().child(content);
                 if let Some(style) = style {
@@ -80,7 +80,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 text_div.into_any()
             }
 
-            AbstractView::Button { label, onclick: _, style, on_right_click: _, content: _ } => {
+            AbstractView::Button { label, onclick: _, style, on_right_click: _, content: _, .. } => {
                 // Button with click handler - note: we can't directly handle messages
                 // in GPUI's Button without proper context. This is a simplified version.
                 // Plan 409 §6: `content` (link children) is not rendered by the gpui
@@ -102,7 +102,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 button.into_any_element()
             }
 
-            AbstractView::Row { children, spacing, padding, style } => {
+            AbstractView::Row { children, spacing, padding, style, .. } => {
                 let mut row_div = div().h_flex();
 
                 // Apply unified styling if present (takes priority over legacy fields)
@@ -122,7 +122,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 row_div.into_any()
             }
 
-            AbstractView::Column { children, spacing, padding, style } => {
+            AbstractView::Column { children, spacing, padding, style, .. } => {
                 let mut col_div = div().v_flex();
 
                 // Apply unified styling if present (takes priority over legacy fields)
@@ -200,6 +200,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 on_change: _,
                 height: _,
                 style,
+                ..
             } => {
                 let mut textarea_div = div().child(if value.is_empty() {
                     placeholder.clone()
@@ -267,6 +268,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 center_x,
                 center_y,
                 style,
+                ..
             } => {
                 let mut container_div = div();
 
@@ -309,6 +311,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 width,
                 height,
                 style,
+                ..
             } => {
                 let handle_msg_clone = handle_msg.clone();
                 let child_element = child.into_gpui(handle_msg_clone);
@@ -696,6 +699,24 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 }
                 d.into_any()
             }
+            // GPUI currently has no native ImageSurface widget. Preserve the
+            // node and its styling as a deterministic placeholder so media
+            // nodes are never silently omitted.
+            AbstractView::ImageSurface { src, alt, style, .. } => {
+                let label = if alt.is_empty() {
+                    format!("[img: {}]", src)
+                } else {
+                    format!("[img: {}]", alt)
+                };
+                let mut d = div().child(label);
+                if let Some(style) = style {
+                    d = apply_gpui_style_to_div(d, &style);
+                }
+                d.into_any()
+            }
+            // Keep newly introduced view variants observable until GPUI has
+            // native implementations for them; never silently drop a node.
+            other => div().child(format!("[unsupported view: {:?}]", other)).into_any(),
         }
     }
 }

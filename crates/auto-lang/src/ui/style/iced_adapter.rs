@@ -128,6 +128,10 @@ pub struct IcedStyle {
     pub border_top: bool,
     pub border_left: bool,
     pub border_right: bool,
+    /// PLAN-054 T1: 单侧宽度档（border-l-N）——只供 apply_side_borders 的
+    /// 条宽，不进 border_width（否则 build_container_style 的 border_width>0
+    /// 条件会再画四边整圈边框——quote 去框根因的次生面）。
+    pub side_border_width: Option<f32>,
 
     // Typography (L2)
     pub font_size: Option<IcedFontSize>,
@@ -378,6 +382,7 @@ impl IcedStyle {
             border_top: false,
             border_left: false,
             border_right: false,
+            side_border_width: None,
             font_size: None,
             font_weight: None,
             font_family: None,
@@ -785,6 +790,13 @@ impl IcedStyle {
             StyleClass::BorderWidth(width) => {
                 self.border = true;
                 self.border_width = Some(*width);
+            }
+            // PLAN-054 T1: 左条宽度档——只供 apply_side_borders 的左条宽
+            // （side_border_width），不进 border_width（build_container_style
+            // 的 border_width>0 条件会画四边整圈边框），也不置 border。
+            StyleClass::BorderLeftWidth(width) => {
+                self.border_left = true;
+                self.side_border_width = Some(*width);
             }
             StyleClass::BorderColor(color) => {
                 self.border_color = Some(convert_color(color));
