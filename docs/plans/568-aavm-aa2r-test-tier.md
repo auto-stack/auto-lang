@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-568
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done           # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-aa2r-test-tier
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -12,7 +12,7 @@ new_spec_components: []       # 无 module spec 新增：知识沉淀于 AGENTS.
 touched_goals: ["GOAL-016: 构建与测试基础设施——AAVM/AA2R 测试域独立成档（tv 拆耦），反射性 tv 不再触发自举重测试"]
 
 affects: ["crates/auto-lang/Cargo.toml", "crates/auto-lang/src/tests.rs", "crates/auto-lang/src/tests/vm_file_tests.rs", "crates/auto-lang/src/tests/aavm_runner_tests.rs(新)", ".cargo/config.toml", ".github/workflows/vm-files-ci.yml", "AGENTS.md", "docs/plans/KNOWN-DEBT-AND-RISKS.md"]
-current_step: 5
+current_step: 8
 total_steps: 8
 ---
 
@@ -363,6 +363,22 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
   AGENTS.md；登记两条覆盖差；tv 前后墙钟对比写入复审记录区。
   验证: `grep -n "568" docs/plans/KNOWN-DEBT-AND-RISKS.md` 命中；
   AGENTS.md 资源表无"未测"空洞。
+  [✅ 已完成] 2026-09-06 master 全档实测（-j6 限并发，564 组限流未合前
+  自限；排除 8 个存量红 charts×1+book×7）：**t=65s/4575 测（7 预存红=
+  564-Q6 清单逐一命中）·tv=19.7s/3578·tt=43s/3786·tb=24s/3494（单测
+  <0.4s，旧"5-7s/测"注释过时已修）·th≈50s/20（≥3 环境相关红，本机真
+  TCP 归因待复审，568 零 http 触面）·taa=182s/3600（aavm 21 全绿，XL
+  78-303s/个）·ta=407s/4023（除存量红全绿）**。AGENTS.md 表已回填
+  （blob 分离暂存，532 行未卷入）；KNOWN-DEBT 三条已登（d88cae48d，
+  含 562 截断事故残余注记）。tv 前后对比：4m24s 级（仅 aavm 子集）→
+  19.7s。
+- **T8** 收口自检（worktree 内零 warning 增量、无 debug 残留、格式
+  `cargo fmt --check` 于触达文件），status → execution_done。
+  [✅ 已完成] 2026-09-06 触达文件零警告（check 输出无指向
+  aavm_runner_tests/vm_file_tests/tests.rs 的 warning）；零 println!/dbg!
+  残留（eprintln 为原代码 SKIP 指引，随迁保留）；rustfmt --check：基线
+  （564 tip 的 vm_file_tests/tests.rs）本就不 clean，搬移平移同款漂移、
+  非新增。分支保留作 564 fold 移植参照（T4 注记）。
 - **T8** 收口自检（worktree 内零 warning 增量、无 debug 残留、格式
   `cargo fmt --check` 于触达文件），status → execution_done。
 
@@ -381,3 +397,10 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
 - **Q3（烟雾金丝雀）**: `test_aavm2_001_smoke`（6.4s）是否例外留在 tv 作
   "auto/lib 没烂透"金丝雀？默认**不留**（口径纯粹性优先，tv 编译期零 aavm
   是本 plan 的核心承诺；CI push/PR 仍是快速网）。
+- **Q4（用户 2026-09-06 新目标，转后续 plan）**: t ≤30s（现 65s，瓶颈
+  gallery 编译测 19.7s/ui-iced 面/集成三件套链接）、非 aavm 全集 ≤60s
+  （tf 现 77.2s，主体 1M churn 可再上提至 ta/t3 专属）——候选路径已在
+  AGENTS 资源表落地数据支撑下可立项；tv ≤50s 已达标（19.7s）。
+- **Q5（th 红归因）**: 本机 th ≥3 红（e2e_struct_handler_returns_json/
+  e2e_notes_crud/e2e_sse_chain，~50s/20 测）——真 TCP 环境相关或 master
+  存量，复审时基点归因；568 零 http 触面。
