@@ -925,6 +925,28 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // PLAN-057（055 D2）: 编辑器核心只读探针（逐键/拖拽合成通道的观测面）。
+        json!({
+            "name": "autoui_editor_state",
+            "title": "Editor Core Probe",
+            "description": "Read the autodown editor shell's live core state: current text, focused block, table geometry (runtime layout — locate column boundaries before an editor_drag), and settled column-width overrides (assert drag effects). Read-only; pairs with the key_press / editor_drag actions.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["element_id"],
+                "properties": {
+                    "element_id": {
+                        "type": "string",
+                        "description": "The editor element ID (its vnode_N from autoui_snapshot)"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            }
+        }),
         // Plan 505 C: acceptance-channel desktop-surface injection.
         json!({
             "name": "autoui_desktop",
@@ -992,8 +1014,60 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_find" => tool_find(shared, args),
         "autoui_exists" => tool_exists(shared, args),
         "autoui_press_sequence" => tool_press_sequence(shared, args),
+        "autoui_editor_state" => tool_editor_state(shared, args),
         "autoui_desktop" => tool_desktop(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
+    }
+}
+
+/// PLAN-057（055 D2）: 编辑器核心只读探针。element_id（编辑壳 vnode_N）→
+/// storage key → 实时读 core：live 文本/焦点块/表格几何（渲染期布局，拖前
+/// 定位列边界用）/列宽覆盖（拖拽落定断言用）。逐键/拖拽合成通道的配套
+/// 观测面——.at state 零改动（不占声明位，ghost_* 先例的声明面绕开）。
+/// 线程安全：core 各字段 Mutex 守护，MCP 线程读与渲染线程写互斥安全；
+/// 探针轮询至读数稳定（vm-smoke 口径）。
+fn tool_editor_state(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let element_id_str = match args.get("element_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return error_result("Missing required parameter: element_id (the editor's vnode_N)"),
+    };
+    let element_id = match parse_element_id(&element_id_str) {
+        Some(id) => id,
+        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
+    };
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    {
+        let key = match resolve_editor_target(shared_handle, element_id, &element_id_str) {
+            Ok((k, _, _)) => k,
+            Err(e) => return error_result(e),
+        };
+        use crate::ui::autodown_editor as ade;
+        let sk = ade::storage_key(&key);
+        let core = ade::autodown_editor(&sk);
+        let tables: Vec<serde_json::Value> = core
+            .table_geometry_snapshot()
+            .into_iter()
+            .map(|(k, x0, y0, y1, widths)| {
+                serde_json::json!({ "key": k, "x0": x0, "y0": y0, "y1": y1, "widths": widths })
+            })
+            .collect();
+        let widths: serde_json::Map<String, serde_json::Value> = core
+            .table_widths_snapshot()
+            .into_iter()
+            .map(|(k, w)| (k.to_string(), serde_json::json!(w)))
+            .collect();
+        let payload = serde_json::json!({
+            "text": ade::autodown_editor_text(&sk).unwrap_or_default(),
+            "focus": core.focused_block(),
+            "tables": tables,
+            "col_widths": widths,
+        });
+        text_result(payload.to_string())
+    }
+    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+    {
+        let _ = element_id;
+        error_result("autoui_editor_state requires the autodown + code-editor features".to_string())
     }
 }
 

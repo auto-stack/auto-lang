@@ -498,6 +498,10 @@ pub struct AutodownEditorCore {
     col_drag: Mutex<Option<(u64, usize)>>,
     /// PLAN-055 T6：单表几何快照（render_frame 写、列边界命中读）。
     table_geom: Mutex<HashMap<u64, TableGeom>>,
+    /// PLAN-057：近期 emit 过的全文回声集（发布链每次 autodown_editor_text
+    /// 读全文即记录）——逐键连发时中途落地的旧自回显据此甄别（回声绝
+    /// 不 rebuild，见 sync_external 回声守卫）。有界环形，容量 32。
+    emitted_echo: Mutex<std::collections::VecDeque<String>>,
     layout: Mutex<DocLayout>,
     revision: AtomicU64,
     external_dirty: AtomicBool,
@@ -523,6 +527,7 @@ impl AutodownEditorCore {
             table_widths: Mutex::new(HashMap::new()),
             col_drag: Mutex::new(None),
             table_geom: Mutex::new(HashMap::new()),
+            emitted_echo: Mutex::new(std::collections::VecDeque::new()),
             layout: Mutex::new(DocLayout { blocks: Vec::new() }),
             revision: AtomicU64::new(0),
             external_dirty: AtomicBool::new(false),
@@ -599,6 +604,21 @@ impl AutodownEditorCore {
                 return false;
             }
         }
+        // PLAN-057 回声守卫：逐键连发（真实键盘按住重复/合成逐键）时，
+        // 中途的旧自回显（曾 emit 过、此刻已被后续按键超越）晚到 sync 若
+        // 误判为外部真变化，会整树 rebuild 清焦点 → 后续按键全哑（连打
+        // 丢键）。曾 emit 过的值一律按回声处理：只推进差分基准，不重建
+        //（状态由下一次发布追平）。
+        if self
+            .emitted_echo
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s == content)
+        {
+            *self.last_external.lock().unwrap() = Some(content.to_owned());
+            return false;
+        }
         crate::ui::code_editor::core::with_font_system(|fs| self.rebuild(content, fs))
     }
 
@@ -665,6 +685,17 @@ impl AutodownEditorCore {
         }
         while out.ends_with('\n') {
             out.pop();
+        }
+        // PLAN-057：发布链读全文即记回声集（发布 → .at 状态 → view 回推
+        // sync 的值必然在此集内——回声守卫的甄别数据源）。
+        {
+            let mut echo = self.emitted_echo.lock().unwrap();
+            if echo.back().map(|s| s.as_str()) != Some(out.as_str()) {
+                echo.push_back(out.clone());
+                if echo.len() > 32 {
+                    echo.pop_front();
+                }
+            }
         }
         out
     }
@@ -3900,6 +3931,24 @@ mod tests {
                 &mut NullClipboard,
             )
         })
+    }
+
+    /// PLAN-057 回声守卫：逐键连发时，被后续按键超越的旧自回显晚到
+    /// sync_external 不得整树 rebuild（清焦点 → 连打丢键）。曾 emit 过的
+    /// 值按回声处理：焦点保全，后续键继续入核。
+    #[test]
+    fn plan057_stale_self_echo_sync_keeps_focus_mid_typing() {
+        let c = core_for("p57echo", "k9");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::End);
+        press(c, EditorKey::Char('a')); // core "k9a"
+        let _ = c.emit_document(); // "k9a" 进回声集（发布链读全文口径）
+        press(c, EditorKey::Char('b')); // core "k9ab"（领先于外部）
+        // 旧自回显 "k9a" 此刻才落地 sync —— 回声：不重建（rebuild=true 是红）
+        assert!(!c.sync_external("k9a", true), "stale self-echo must not rebuild");
+        assert_eq!(c.focused_block(), Some(0), "echo sync must keep block focus");
+        press(c, EditorKey::Char('c'));
+        assert_eq!(c.emit_document(), "k9abc");
     }
 
     /// 空文档核心（core_for 对 "" 走自回显快路径不建块表——强制 rebuild

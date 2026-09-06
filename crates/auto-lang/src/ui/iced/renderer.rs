@@ -5620,38 +5620,6 @@ fn write_ghost_state(component: &mut crate::ui::dynamic::DynamicComponent, id: i
     }
 }
 
-/// PLAN-057：编辑器表格合成读数（__mcp_click/__mcp_key/__mcp_drag_ade 拦截臂
-/// 共用——ghost_id/ghost_height 同款占位 state 写入先例）。editor_table_geom
-/// = 渲染期表格几何 JSON（拖前定位列边界用），editor_col_widths = 拖拽落定
-/// 的列宽覆盖 JSON（vm-smoke 断言列宽变化用）。字符串形态便于 autoui_state
-/// 匹配。
-#[cfg(all(feature = "autodown", feature = "code-editor"))]
-fn write_editor_table_readout(
-    component: &mut crate::ui::dynamic::DynamicComponent,
-    core: &crate::ui::autodown_editor::AutodownEditorCore,
-) {
-    let geom: Vec<serde_json::Value> = core
-        .table_geometry_snapshot()
-        .into_iter()
-        .map(|(key, x0, y0, y1, widths)| {
-            serde_json::json!({ "key": key, "x0": x0, "y0": y0, "y1": y1, "widths": widths })
-        })
-        .collect();
-    let widths: serde_json::Map<String, serde_json::Value> = core
-        .table_widths_snapshot()
-        .into_iter()
-        .map(|(key, w)| (key.to_string(), serde_json::json!(w)))
-        .collect();
-    let _ = component.write_state(
-        "editor_table_geom",
-        auto_val::Value::Str(serde_json::to_string(&geom).unwrap_or_default().into()),
-    );
-    let _ = component.write_state(
-        "editor_col_widths",
-        auto_val::Value::Str(serde_json::to_string(&widths).unwrap_or_default().into()),
-    );
-}
-
 /// PLAN-057：editor_drag 坐标序列解析（"x0,y0;x1,y1;..." → (x, y) 对）。
 /// 纯字符串面（拦截臂与单测共用）；mcp_server 侧已整体校验，此处坏段
 /// 防御跳过。
@@ -11681,8 +11649,6 @@ fn compare_pngs(
                                 &mut crate::ui::code_editor::core::NullClipboard,
                             )
                         });
-                        // PLAN-057：编辑器表格读数随每次拦截刷新（key/drag 臂同款）。
-                        write_editor_table_readout(&mut state.component, core);
                         if out.focus_changed {
                             let block = core.focused_block();
                             let h = block
@@ -11766,8 +11732,7 @@ fn compare_pngs(
                                 input_value: Some(text),
                             }));
                         }
-                        write_editor_table_readout(&mut state.component, core);
-                        tasks.push(iced::Task::done(IcedMessage::from_dynamic(
+                                                tasks.push(iced::Task::done(IcedMessage::from_dynamic(
                             &DynamicMessage::String("__noop".to_string()),
                         )));
                         return iced::Task::batch(tasks);
@@ -11856,8 +11821,7 @@ fn compare_pngs(
                                 input_value: Some(text),
                             }));
                         }
-                        write_editor_table_readout(&mut state.component, core);
-                        tasks.push(iced::Task::done(IcedMessage::from_dynamic(
+                                                tasks.push(iced::Task::done(IcedMessage::from_dynamic(
                             &DynamicMessage::String("__noop".to_string()),
                         )));
                         return iced::Task::batch(tasks);
