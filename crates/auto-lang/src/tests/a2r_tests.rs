@@ -356,6 +356,335 @@ ext Store {
     );
 }
 
+// =============================================================================
+// PLAN-009 T1 (F1, 006 S2): auto-derive × explicit-derive combination.
+// A container type with NO explicit attrs gets comparison derives auto-added;
+// when a field's type carries explicit derives lacking those traits
+// (GridSize: Clone, Copy, Debug), the emitted derive fails rustc with E0369.
+// The auto-derive must intersect its comparison-trait set with the explicit
+// derive surface of the field types (and propagate through chains).
+// =============================================================================
+
+/// Grab the `#[derive(...)]` line immediately preceding `struct <name>` /
+/// `enum <name>` in emitted code ("" when not found).
+fn derive_line_before(code: &str, decl: &str) -> String {
+    let mut last_derive = String::new();
+    let struct_kw = format!("struct {}", decl);
+    let enum_kw = format!("enum {}", decl);
+    for line in code.lines() {
+        let t = line.trim_start();
+        if t.starts_with("#[derive(") {
+            last_derive = t.to_string();
+        }
+        if t.starts_with(&struct_kw) || t.starts_with(&enum_kw) {
+            return last_derive;
+        }
+    }
+    String::new()
+}
+
+#[test]
+fn test_a2r_f1_auto_derive_respects_field_explicit_derives() {
+    let src = "\
+enum Damage {
+    Full
+    Lines(List<int>)
+}
+
+#[derive(Clone, Copy, Debug)]
+type GridSize {
+    cols int
+    rows int
+}
+
+type TermSession {
+    size GridSize
+    exited bool
+    damage Damage
+}
+";
+    let mut rcode = transpile_rust("f1_derives", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+
+    // Explicit derive passthrough must stay 1:1 (006 verified behavior).
+    let gs = derive_line_before(&code, "GridSize");
+    assert_eq!(
+        gs, "#[derive(Clone, Copy, Debug)]",
+        "explicit derive passthrough broke, got:\n{}", code
+    );
+    // TermSession (no attrs) auto-derive must not demand comparison traits
+    // that GridSize's explicit derive set lacks — that is exactly the E0369
+    // breakage from the 006 S2 spike.
+    let ts = derive_line_before(&code, "TermSession");
+    assert_eq!(
+        ts, "#[derive(Clone, Debug)]",
+        "auto-derive must drop comparison traits absent from the field \
+         type's explicit derives (E0369), got:\n{}", code
+    );
+}
+
+#[test]
+fn test_a2r_f1_derive_restriction_propagates_through_chain() {
+    // Chain: Wrapper (auto) → Inner (auto) → Grid (explicit Clone, Copy only).
+    // Wrapper's derive must not keep traits the chain cannot provide, and the
+    // fix_non_ord_derives upgrade pass must NOT re-widen them.
+    let src = "\
+#[derive(Clone, Copy)]
+type Grid {
+    w int
+    h int
+}
+
+type Inner {
+    grid Grid
+}
+
+type Wrapper {
+    inner Inner
+}
+";
+    let mut rcode = transpile_rust("f1_chain", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+
+    let inner = derive_line_before(&code, "Inner");
+    assert_eq!(
+        inner, "#[derive(Clone, Debug)]",
+        "Inner must drop comparison traits absent on Grid, got:\n{}", code
+    );
+    let wrapper = derive_line_before(&code, "Wrapper");
+    assert_eq!(
+        wrapper, "#[derive(Clone, Debug)]",
+        "restriction must propagate Wrapper ← Inner ← Grid and survive \
+         post-processing, got:\n{}", code
+    );
+}
+
+#[test]
+fn test_a2r_f1_enum_payload_explicit_derive_respected() {
+    // Enum with a payload whose type has explicit derives lacking PartialEq:
+    // the auto derive must not keep the comparison traits.
+    let src = "\
+#[derive(Clone, Debug)]
+type Handle {
+    raw int
+}
+
+enum CacheEvent {
+    Hit
+    Evict(Handle)
+}
+";
+    let mut rcode = transpile_rust("f1_enum_payload", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+
+    let ev = derive_line_before(&code, "CacheEvent");
+    assert_eq!(
+        ev, "#[derive(Clone, Debug)]",
+        "enum auto-derive must drop comparison traits absent from payload \
+         type's explicit derives, got:\n{}", code
+    );
+}
+
+// =============================================================================
+// PLAN-009 T1: rustc 实编门 over the whole a2r snapshot corpus.
+//
+// 006 S2 conclusion: text-compare goldens cannot catch compile-level
+// breakage — the F1 (E0369) products were snapshot-green for their era and
+// only rustc exposed them. Plan 427 added a hand-picked single-golden smoke
+// (`a2r_compile_smoke_str_param_borrow`); this gate generalizes it to every
+// discovered a2r case: fresh transpile → `rustc --crate-type=lib
+// --emit=metadata` (full type check, no link, no cargo/network).
+//
+// Explicit-skip policy (007/008 convention): products that reference
+// external crates (unresolved-import/crate errors) are counted as skipped,
+// never silently passed. Any other compile error fails the gate.
+// =============================================================================
+
+/// True when rustc stderr contains ONLY dependency-resolution errors
+/// (external crates the standalone product legitimately lacks).
+fn stderr_only_external_dep_errors(stderr: &str) -> bool {
+    let has_dep_error = stderr.contains("error[E0432]")
+        || stderr.contains("error[E0433]")
+        || stderr.contains("error[E0463]");
+    let has_other_error = stderr.split("error[").skip(1).any(|rest| {
+        let code = rest.split(']').next().unwrap_or("");
+        code != "E0432" && code != "E0433" && code != "E0463"
+    });
+    has_dep_error && !has_other_error
+}
+
+#[test]
+fn a2r_rustc_real_compile_gate() {
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dir = d.join("test/a2r");
+    let cases = crate::test_runner::discover_a2r_tests(&dir, "a2r");
+    assert!(
+        cases.len() > 50,
+        "a2r corpus suspiciously small ({} cases) — discovery broke?",
+        cases.len()
+    );
+
+    // Known-broken ledger: legacy compile debt from the text-golden era
+    // (006), explicit and auditable, per the 007/008 absent-dependency skip
+    // convention. New breakage (not listed) fails the gate; listed cases that
+    // start compiling again are reported obsolete so the ledger shrinks.
+    let ledger_path = dir.join("compile_gate_known_broken.txt");
+    let mut known_broken: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for line in read_to_string(&ledger_path).unwrap_or_default().lines() {
+        let entry = line.split('#').next().unwrap_or("").trim();
+        if !entry.is_empty() {
+            known_broken.insert(entry.to_string());
+        }
+    }
+
+    let failures: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let passed = std::sync::atomic::AtomicUsize::new(0);
+    let ledger_passed: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let skipped: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let known_broken_hits: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(8);
+    let chunk_size = cases.len().div_ceil(workers);
+
+    std::thread::scope(|scope| {
+        for chunk in cases.chunks(chunk_size) {
+            let failures = &failures;
+            let skipped = &skipped;
+            let passed = &passed;
+            let ledger_passed = &ledger_passed;
+            let known_broken_hits = &known_broken_hits;
+            let known_broken = &known_broken;
+            // Deep transpiler recursion (see test_a2r_deep) needs the same
+            // oversized stack the rest of the a2r suite uses.
+            let _ = std::thread::Builder::new()
+                .stack_size(16 * 1024 * 1024)
+                .spawn_scoped(scope, move || {
+                    for case in chunk {
+                        let src = match read_to_string(&case.source_file) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                failures.lock().unwrap().push(format!(
+                                    "{}: failed to read {}: {e}",
+                                    case.name,
+                                    case.source_file.display()
+                                ));
+                                continue;
+                            }
+                        };
+                        let mut rcode = match transpile_rust(&case.name, &src) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                failures.lock().unwrap().push(format!(
+                                    "{}: transpile failed: {e}",
+                                    case.name
+                                ));
+                                continue;
+                            }
+                        };
+                        let rs = match rcode.done() {
+                            Ok(b) => b,
+                            Err(e) => {
+                                failures.lock().unwrap().push(format!(
+                                    "{}: transpile finish failed: {e}",
+                                    case.name
+                                ));
+                                continue;
+                            }
+                        };
+                        let safe: String = case
+                            .name
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                            .collect();
+                        let rs_path = std::env::temp_dir().join(format!("a2r_gate_{safe}.rs"));
+                        if std::fs::write(&rs_path, &rs).is_err() {
+                            failures.lock().unwrap().push(format!(
+                                "{}: failed to write product to {}",
+                                case.name,
+                                rs_path.display()
+                            ));
+                            continue;
+                        }
+                        let rmeta = std::env::temp_dir().join(format!("a2r_gate_{safe}.rmeta"));
+                        let crate_name: String = format!("a2r_gate_{safe}")
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                            .collect();
+                        let out = std::process::Command::new("rustc")
+                            .arg("--edition=2021")
+                            .arg(format!("--crate-name={crate_name}"))
+                            .arg("--crate-type=lib")
+                            .arg("--emit=metadata")
+                            .arg("-A").arg("warnings")
+                            .arg("-o").arg(&rmeta)
+                            .arg(&rs_path)
+                            .output();
+                        match out {
+                            Err(e) => {
+                                failures.lock().unwrap().push(format!(
+                                    "{}: failed to spawn rustc (is a Rust \
+                                     toolchain on PATH?): {e}",
+                                    case.name
+                                ));
+                            }
+                            Ok(o) if o.status.success() => {
+                                passed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                if known_broken.contains(&case.name) {
+                                    ledger_passed.lock().unwrap().push(case.name.clone());
+                                }
+                            }
+                            Ok(o) => {
+                                let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+                                if stderr_only_external_dep_errors(&stderr) {
+                                    skipped.lock().unwrap().push(case.name.clone());
+                                } else if known_broken.contains(&case.name) {
+                                    known_broken_hits.lock().unwrap().push(case.name.clone());
+                                } else {
+                                    let tail: Vec<&str> =
+                                        stderr.lines().rev().take(30).collect();
+                                    failures.lock().unwrap().push(format!(
+                                        "{}: rustc typecheck failed\n{}",
+                                        case.name,
+                                        tail.join("\n")
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                });
+        }
+    });
+
+    let fails = failures.into_inner().unwrap();
+    let skips = skipped.into_inner().unwrap();
+    let ledger_hits = known_broken_hits.into_inner().unwrap();
+    let ledger_now_green = ledger_passed.into_inner().unwrap();
+    let ok = passed.load(std::sync::atomic::Ordering::Relaxed);
+    let mut message = String::new();
+    if !ledger_now_green.is_empty() {
+        message.push_str(&format!(
+            "obsolete ledger entries (case now compiles — remove the line \
+             from test/a2r/compile_gate_known_broken.txt):\n  {}\n\n",
+            ledger_now_green.join("\n  ")
+        ));
+    }
+    message.push_str(&format!(
+        "rustc 实编门: {} compiled, {} skipped (external deps), {} \
+         known-broken (ledger), {} unexpected failures",
+        ok,
+        skips.len(),
+        ledger_hits.len(),
+        fails.len()
+    ));
+    if !skips.is_empty() {
+        message.push_str(&format!("\n\nskipped (external deps):\n  {}", skips.join("\n  ")));
+    }
+    assert!(fails.is_empty() && ledger_now_green.is_empty(), "{}", message);
+}
+
 
 // === 01_basics ===
 #[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }
