@@ -1177,10 +1177,23 @@ impl DynamicComponent {
         // ID: 0」）。按父 handler 声明参数数对齐帧;未知 arity 保持
         // legacy（塞载荷）。
         let declared_params = self.bridge.handler_param_count(&route.parent_widget, &route.handler);
-        let args: Vec<auto_val::Value> = if declared_params.unwrap_or(1) > 0 {
-            vec![payload]
-        } else {
-            Vec::new()
+        // PLAN-576 G4 (D4): 参数数对齐升级——0 形参不塞载荷（T9 语义保留）、
+        // 1 形参塞载荷、**≥2 形参此前也只塞 1 载荷**（调用帧错位、函数体不
+        // 执行——043②③「合成派发 0 参/少参」病灶）→ 现响亮告警 + 跳过；
+        // 未知 arity 保持 legacy（塞载荷）。
+        let args: Vec<auto_val::Value> = match declared_params {
+            Some(0) => Vec::new(),
+            Some(1) => vec![payload],
+            Some(n) => {
+                let msg = format!(
+                    "[VM-ARITY] {}.{} declares {} param(s) but emit dispatch supplies 1 — skipping dispatch (plan-576 D4)",
+                    route.parent_widget, route.handler, n
+                );
+                log::warn!("{}", msg);
+                record_arity_mismatch(msg);
+                return;
+            }
+            None => vec![payload],
         };
         match self.bridge.call_handler_for(&route.parent_widget, &route.handler, state_id, &args) {
             Ok(()) => {
@@ -1347,6 +1360,24 @@ impl DynamicComponent {
         }
         if !clean_name.starts_with("__") {
             eprintln!("[VM_HANDLER_CALL] widget={} event={} args={:?}", widget_name, clean_name, args);
+        }
+        // PLAN-576 G4 (D4): 派发实参数与 handler 形参数失配诊断——此前静默
+        // 错位执行（调用帧 [__state, args…] 与形参槽错位，函数体读垃圾或
+        // 不执行，043 T10 的「handler 哑」病灶之一）。两侧参数数已知且不等
+        // → log::warn 响亮输出（件名/handler 名/两侧参数数）+ 跳过本次调用；
+        // 未知 arity（无声明记录）保持 legacy 不拦。
+        if let Some(declared) = self.bridge.handler_param_count(widget_name, &clean_name) {
+            if declared != args.len() {
+                let disp_widget =
+                    if widget_name.is_empty() { self.widget_name.clone() } else { widget_name.to_string() };
+                let msg = format!(
+                    "[VM-ARITY] {}.{} declares {} param(s) but dispatch supplies {} — skipping dispatch (plan-576 D4)",
+                    disp_widget, clean_name, declared, args.len()
+                );
+                log::warn!("{}", msg);
+                record_arity_mismatch(msg);
+                return;
+            }
         }
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => {
@@ -1588,6 +1619,23 @@ pub(crate) fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>)
         rest = after_val;
     }
     (name.to_string(), args)
+}
+
+// PLAN-576 G4 (D4): 派发参数数失配诊断的测试镜像——log::warn 之外把
+// 最近一条警告文本存 thread-local，directed 单测可断言（日志本身在测试
+// 运行器里不可捕获）。
+thread_local! {
+    static LAST_ARITY_MISMATCH: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// PLAN-576 G4: 取走最近一条派发参数数失配警告（None = 无告警）。
+pub fn take_last_arity_mismatch() -> Option<String> {
+    LAST_ARITY_MISMATCH.with(|w| w.borrow_mut().take())
+}
+
+fn record_arity_mismatch(msg: String) {
+    LAST_ARITY_MISMATCH.with(|w| *w.borrow_mut() = Some(msg));
 }
 
 /// Parse a string input value into the best-matching Value type.
@@ -3381,5 +3429,60 @@ mod tests {
         };
         assert!((got - 120.0).abs() < 1e-4,
             "引号 emit 应携带计算实参经派发器路由到父 onmoved（v=track_h*0.5=120），实得 {}", got);
+    }
+
+    /// PLAN-576 G4 定向测试（TDD 红）：派发实参数与 handler 形参数失配的
+    /// 响亮诊断 + 跳过。043②③：handler 声明参数而合成派发 0 参/少参时调用
+    /// 帧静默错位、函数体不执行（T10 以 $event 冻结标记实参绕过）。
+    #[test]
+    fn plan576_dispatch_arity_mismatch_diagnosed_and_skipped() {
+        let src = concat!(
+            "widget P576f {\n",
+            "    model { var touched float = 0.0 }\n",
+            "    view { col { text \"x\" } }\n",
+            "    on {\n",
+            "        .Two(a: float, b: float) -> { .touched = 1.0 }\n",
+            "        .One(a: float) -> { .touched = 2.0 }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &HashMap::new(),
+            false,
+        )
+        .expect("component");
+
+        // 失配：.Two 声明 2 形参，派发仅 1 实参 → 响亮警告 + 跳过不执行
+        comp.on_with_input_for("P576f", "Two\u{1F}f\u{1F}1.0", None);
+        let warn = crate::ui::dynamic::take_last_arity_mismatch();
+        assert!(
+            warn.as_deref()
+                .is_some_and(|w| w.contains("Two") && w.contains("2") && w.contains("1")),
+            "失配应有响亮诊断（件名/两侧参数数），实得 {:?}",
+            warn
+        );
+        assert!(
+            !matches!(comp.read_state("touched"), Ok(auto_val::Value::Float(f)) if f == 1.0),
+            "失配派发必须跳过（不静默错位执行）"
+        );
+
+        // 对照：参数数吻合照常执行
+        comp.on_with_input_for("P576f", "One\u{1F}f\u{1F}5.0", None);
+        assert_eq!(
+            crate::ui::dynamic::take_last_arity_mismatch(),
+            None,
+            "吻合派发不告警"
+        );
+        let touched = match comp.read_state("touched").expect("touched") {
+            auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
+            other => panic!("touched 应为 float，实得 {:?}", other),
+        };
+        assert!((touched - 2.0).abs() < 1e-6, "吻合派发应执行，实得 {}", touched);
     }
 }
