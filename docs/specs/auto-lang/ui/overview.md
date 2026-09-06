@@ -61,13 +61,15 @@ resvg 原生栅格化——svg 无 text 约束自此解除）+ hover emphasis/�
 line dash/thick。契约见 [design/diagram-components.md](design/diagram-components.md)；
 group 平铺/focus 模型归 Phase 2a，DSL 静态糖归 Phase 3。
 
-**导航组件线（plan-482 落地）**：nav-item/nav-group/nav(search:) 组件族——
-class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGroup 镜像，
-单测锁死双端不可漂移）；hover/active/disabled 三态、icon（lucide svg/emoji 双
-通道）/label+desc/badge 槽、路由 to:（vue RouterLink / VM `__navigate`+历史栈
-`router.back()`）与 onclick 状态双模式、data-active 与 nav-name/nav-desc 语义
-锚；顺修 lucide_svg 裸片段缺陷（此前全部 VM lucide 图标空渲染）。三 app 落地：
-015-notes/018-book-reader/widgets-gallery + 外部 auto-musk(052)/auto-os-config(012)。
+**导航组件线（plan-482 落地，✅ plan-562 退役）**：nav/nav-group/nav-item/nav-link
+族已全部迁移至 sidebar_* 族并退役——仓内 015-notes/018-book-reader/019-video-app +
+widgets-gallery 外壳与 navitem/navlink 两页 + 外仓 auto-musk(052)/auto-os-config(012)
+零残留；schema/aura.at 四元素加 `superseded_by` 标注（schema_loader/ElementMeta
+新增该字段解析，docs_gen 生成物 core.md/kitchen-sink.at 过滤带标注元素，本机制
+首个应用即本族）；gallery 侧栏滚动随 562 增补改 AutoUI `scroll` 组件（ScrollArea/
+Scrollable 双端）。nav 族实现（nav_contract.rs/脚手架 Nav*.vue/渲染臂）保留一个
+观察期，移除小计划要点（含 P548-D3 清理、Plain 臂 type="button" 补全、
+sidebar_input VM 缺口裁定）登记 KNOWN-DEBT。原 482 契约细节见归档计划。
 
 **sidebar 组件族（plan-548 落地，Vue 端先行）**：shadcn-vue Sidebar 1:1 复刻的
 sidebar_* 23 元素族——schema/aura.at 手写扩全 props（collapsible/variant/side/
@@ -75,8 +77,8 @@ collapsed_size 等，`SCHEMA_DRIFT_UPDATE_BASELINE=1` 更基线）+ Vue 端逐�
 （gen/vue.rs shadcn 发射臂，脚手架组件模板对齐 shadcn 原版）+ `to:`/`active` D2
 扩展（免 RouterLink 手写）+ sidebar 裸用自动包 Provider + widgets-gallery sidebar
 页重写；设计/退役路线见 [design/autoui/sidebar-family-and-nav-retirement.md](../../design/autoui/sidebar-family-and-nav-retirement.md)。
-VM 端契约子集已由 plan-561 落地（见下条）；nav-item/nav-group 迁移与退役归 P3
-（plan-562）；债务 P548-D1..D3（schema.rs 双侧分化/tooltip 未实现/vue.rs 旧臂
+VM 端契约子集已由 plan-561 落地（见下条）；nav 族迁移与退役已由 plan-562
+完成（见上条）；债务 P548-D1..D3（schema.rs 双侧分化/tooltip 未实现/vue.rs 旧臂
 死代码）台账 KNOWN-DEBT。
 
 **sidebar VM 契约子集（plan-561 落地，结构等价口径）**：`ui_gen/sidebar_contract.rs`

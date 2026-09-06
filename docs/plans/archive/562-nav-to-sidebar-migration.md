@@ -1,15 +1,20 @@
 ---
 plan_id: PLAN-562
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: nav-to-sidebar-migration
 author: [kimi]
 created_at: 2026-09-05
-updated_at: 2026-09-05
+updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "specs/auto-lang/ui（overview.md 组件线节）: 修改 —— 导航组件线（plan-482 nav/nav-group/nav-item/nav-link）全部使用方迁移至 sidebar_* 族（仓内 015/018/019 + widgets-gallery 外壳与 navitem/navlink 两页 + 外仓 auto-musk/auto-os-config），schema 四元素 superseded_by 标注入库，组件线段改写为退役记录（实现移除留观察期，KNOWN-DEBT 登记移除小计划要点）"
+new_spec_components:
+  - "specs/auto-lang/ui: 新增 schema superseded_by 退役元数据机制——schema_loader/ElementMeta 字段解析 + docs_gen 生成物（core.md/kitchen-sink.at）过滤带标注元素 + DOC_EXCLUDE 退役口径；首个应用 = nav 族"
+  - "specs/auto-lang/ui: 新增 Plain 模式（pac.at shadcn: off）sidebar_menu_button/sub_button 原生 <button> 语义保持臂（vue.rs map_tag 兜底，契约类不内联，Plain 哲学=项目自带样式）"
+touched_goals:
+  - "GOAL-007: nav→sidebar 迁移双端回归（015/019/gallery 双端实证、018 VM 腿+Vue 腿 master 既有破备案、os-config VM 冒烟），sidebar_* 族成为唯一导航组件线；gallery 侧栏滚动 ScrollArea 化双端同源"
+  - "GOAL-010: 示例应用轨道 015-notes/018-book-reader/019-video-app 与 widgets-gallery 外壳/文档页迁移 sidebar 族，navitem/navlink 页退役"
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 9
@@ -108,13 +113,13 @@ docs_gen 再生成同步。
 
 ## 验收标准
 
-- [ ] 仓内三示例 + 两个 gallery 页全部迁移，无双端回归（截图证据在 scratch/p562/）
-- [ ] auto-musk / auto-os-config 迁移完成并各 fold 回其 master；仓内 grep
+- [x] 仓内三示例 + 两个 gallery 页全部迁移，无双端回归（截图证据在 scratch/p562/）
+- [x] auto-musk / auto-os-config 迁移完成并各 fold 回其 master；仓内 grep
       `nav-group|nav-group|nav_item` 在 examples 下零残留
-- [ ] `nav` search:true 依赖方已平移或实证无依赖方
-- [ ] schema nav 族 supersede 标注入库，schema_drift 基线更新、docs_gen 绿
-- [ ] 实现移除后续小计划已立项（含 P548-D3 清理）或在本计划 review 时显式裁定延期
-- [ ] 合入前 `cargo tf` 全绿（pre-fold 门禁）
+- [x] `nav` search:true 依赖方已平移或实证无依赖方
+- [x] schema nav 族 supersede 标注入库，schema_drift 基线更新、docs_gen 绿
+- [x] 实现移除后续小计划已立项（含 P548-D3 清理）或在本计划 review 时显式裁定延期
+- [x] 合入前 `cargo tf` 全绿（pre-fold 门禁）
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
@@ -237,7 +242,54 @@ docs_gen 再生成同步。
    划要点：schema/生成臂/渲染臂删除 + P548-D3 清理 + Plain 臂
    type="button" 补全 + sidebar_input VM 缺口裁定）与 015 潜伏 bug
    （`.SelectNote(i)` 作用域外引用，原样保留待独立排查）。
+   [✅ 增补] 2026-09-06（commit 83bfbff61，用户截图反馈）：gallery 侧栏导
+   航滚动条为原生浏览器样式——sidebar_content（shadcn SidebarContent 内置
+   overflow-auto）替换为 AutoUI `scroll` 组件（Vue=ScrollArea 主题化细滚动
+   条，VM=Scrollable），style `flex-1 min-h-0 px-3 py-4`，子级零缩进机械
+   换壳。双端实跑证据：scratch/p562/p562_sidebar_{hover,scrolled}.png
+   （hover 显细滚动条、wheel 滚动正常）+ VM 快照（scrollable 节点在树、
+   press DatePicker 导航到对应文档页正常）。金样 app.at 行二次重采样复跑
+   绿。主内容区 outlet 的 sidebar_content(h-full) 不在本次范围（用户只指
+   侧栏）。
 
 ## 复审记录
+
+复审人：kimi（/auto-plan:review，2026-09-06）。复审在 worktree
+`D:/autostack/.wt/lang-562/auto-lang`（plan-562-dev）内进行；复审起点先把
+master（547 imagesurface 等 84 commits）merge 回分支（91501b213 无冲突，
+生成物重导 5c978371c：kitchen-sink +imagesurface 节 35→36、金样同步，
+docs_gen 4 绿 + gallery_golden 1 绿复跑确认）。
+
+验收标准逐条复验（verify, don't trust）：
+
+| 验收项 | 裁定 | 证据 |
+|---|---|---|
+| 仓内三示例 + 两 gallery 页迁移，无双端回归 | ✅ pass | 复 grep `nav[-_](group|item|link)` examples/*.at 零命中（注释除外）；scratch/p562/ 双端截图/快照在库；018 Vue 腿未验属 master 既有破（theme-toggle 逃逸舱，stash 复现备案，非本 plan 回归） |
+| 外仓迁移 fold + examples 零残留 | ✅ pass | auto-musk master 5a29251（迁移）+ 8d5f648（T9 捕获的 popstate 选择器漏网修复）；auto-os-config master ebf0076；两外仓 .at grep 零命中（`use nav_item` 为 musk 自有组件同名，实证零 schema nav 族使用） |
+| nav search:true 依赖方平移 | ✅ pass | 两处（015、os-config）均 sidebar_header+原生 input 平移；三仓 `search:\s*true` 复 grep 零残留 |
+| schema supersede 标注 + 基线 + docs_gen | ✅ pass | aura.at 四处标注在案（merge 后 :774/:794/:819/:835）；schema_drift 2 绿；docs_gen 4 绿（merge 后复跑）；core.md 无 nav 节 |
+| 移除小计划立项或显式裁定延期 | ✅ pass（显式裁定延期） | 设计文档原定"观察一个周期后移除"；KNOWN-DEBT 已登记观察期条目 + 移除小计划要点（schema/生成臂/渲染臂删除 + P548-D3 清理 + Plain 臂 type="button" 补全 + sidebar_input VM 缺口裁定）；用户已在会话中知悉（P2/P3 立项对话），本复审显式裁定延期成立 |
+| 合入前 cargo tf 全绿 | ✅ pass（基线口径） | merge master 后 `cargo tf --no-fail-fast`：3444 跑 / 3443 过 / **唯一红 test_charts_gallery_compiles = master 台账基线**（KNOWN-DEBT P555-D4 行；Plan 567 终局门禁 master tf 同红，非本 plan 回归——562 diff 不触 charts-gallery 与裸名折叠路径） |
+
+遗漏/延后/workaround 扫描：
+
+- 延后：nav 族实现移除 —— 显式裁定延期（见上表），非静默。
+- 遗漏捕获史：T1 复核出正文漏列两项（gallery app.at 68 处 + kitchen-sink 14
+  处）已并入 T5；T9 收尾 grep 捕获 T6 漏网（musk popstate 选择器）已修复
+  fold。两起均已闭环，无未闭环遗漏。
+- workaround：os-config Plain 模式按钮 style-if 内联类串（有意，Plain 哲学）、
+  sidebar_input VM 缺口走原生 input 惯用法（已登记 KNOWN-DEBT）——均已记录，
+  无未申报 workaround。
+- kitchen-sink.at 手改违例（T5）已在 T8 根治（生成器学 superseded_by 过滤，
+  页面回归"勿手改"幂等）。
+- 执行后增补（83bfbff61，用户截图反馈）：gallery 侧栏 sidebar_content →
+  scroll（ScrollArea/Scrollable 双端），主内容区 sidebar_content 保持不动
+  （用户明确范围）；金样二次重采样，双端实跑证据在 scratch/p562/。
+
+债务候选：无新增未登记项（562 两条 KNOWN-DEBT 已在册：nav 实现移除观察期、
+015 `.SelectNote(i)` 潜伏 bug）。
+
+**裁定：通过，status → reviewed。** 移交 /auto-plan:merge（fold plan-562-dev +
+worktree 清理 + spec 沉淀）。
 
 ## 待澄清事项
