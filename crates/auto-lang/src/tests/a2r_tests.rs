@@ -488,15 +488,17 @@ enum CacheEvent {
 
 /// PLAN-009 T8: at-gen 转译产物再生成入口(见 auto-term at-gen/README.md
 /// 「转译再生成规程」;in-process API,CLI trans 挂起——待澄清9)。
+/// PLAN-010 执行期指向 .wt/auto-010/auto-term 工作树(fold 前须改回主检出
+/// 路径——009 merge 前置同款约定)。
 #[test]
 fn temp_plan009_t8_transpile_at_app() {
     let src = read_to_string(
-        "D:/autostack/auto-term/at/autoterm.at",
+        "D:/autostack/.wt/auto-010/auto-term/at/autoterm.at",
     )
     .unwrap();
     let mut rcode = transpile_rust("autoterm", &src).unwrap();
     std::fs::write(
-        "D:/autostack/auto-term/at-gen/src/app_logic.rs",
+        "D:/autostack/.wt/auto-010/auto-term/at-gen/src/app_logic.rs",
         rcode.done().unwrap(),
     )
     .unwrap();
@@ -843,6 +845,7 @@ fn a2r_rustc_real_compile_gate() {
 #[test] fn test_10_collections_004_list_as_cast() { test_a2r("10_collections/004_list_as_cast").unwrap(); }
 #[test] fn test_10_collections_005_method_chain() { test_a2r("10_collections/005_method_chain").unwrap(); }
 #[test] fn test_10_collections_006_map_literal() { test_a2r("10_collections/006_map_literal").unwrap(); }
+#[test] fn test_10_collections_007_list_new() { test_a2r("10_collections/007_list_new").unwrap(); }
 
 // === 11_methods ===
 #[test] fn test_11_methods_001_method() { test_a2r("11_methods/001_method").unwrap(); }

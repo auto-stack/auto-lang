@@ -8099,25 +8099,35 @@ impl RustTrans {
                         // import must not leak onto local type construction.
                         rust_type_name.to_string()
                     } else if !self.uses.contains(type_name.as_str()) {
-                        // Type not in uses at all — qualify with the best matching
-                        // external crate. Prefer the most specific (longest named) crate.
-                        let source_crate = self.uses.iter()
-                            .filter(|u| {
-                                let u_str = u.as_str();
-                                !u_str.contains("::") && !u_str.contains('.') && u_str != "a2r_std"
-                                    && !u_str.starts_with("std")
-                                    && !u_str.starts_with("auto_lang")
-                                    && !Self::auto_type_to_rust(u_str).is_some()
-                                    && !self.glob_imported_modules.contains(u_str)
-                                    && u_str.chars().next().map_or(true, |c| c.is_lowercase())
-                            })
-                            .max_by_key(|u| u.as_str().len())
-                            .map(|u| u.as_str())
-                            .unwrap_or("");
-                        if !source_crate.is_empty() {
-                            format!("{}::{}", source_crate, rust_type_name)
-                        } else {
+                        // PLAN-010 T1: builtin collection/type mappings (List→Vec,
+                        // Map→HashMap, Set→HashSet) are never crate-qualified —
+                        // `Vec::new()` is std, and a lowercase use.rs item (e.g. a
+                        // brace-expanded fn import like `engine_write_line`) must
+                        // not be misread as its source crate (009 T8 evidence:
+                        // `engine_write_line::Vec::new()`).
+                        if Self::auto_type_to_rust(type_name.as_str()).is_some() {
                             rust_type_name.to_string()
+                        } else {
+                            // Type not in uses at all — qualify with the best matching
+                            // external crate. Prefer the most specific (longest named) crate.
+                            let source_crate = self.uses.iter()
+                                .filter(|u| {
+                                    let u_str = u.as_str();
+                                    !u_str.contains("::") && !u_str.contains('.') && u_str != "a2r_std"
+                                        && !u_str.starts_with("std")
+                                        && !u_str.starts_with("auto_lang")
+                                        && !Self::auto_type_to_rust(u_str).is_some()
+                                        && !self.glob_imported_modules.contains(u_str)
+                                        && u_str.chars().next().map_or(true, |c| c.is_lowercase())
+                                })
+                                .max_by_key(|u| u.as_str().len())
+                                .map(|u| u.as_str())
+                                .unwrap_or("");
+                            if !source_crate.is_empty() {
+                                format!("{}::{}", source_crate, rust_type_name)
+                            } else {
+                                rust_type_name.to_string()
+                            }
                         }
                     } else {
                         rust_type_name.to_string()
