@@ -4421,7 +4421,7 @@ element sheet {
     aliases: ["Sheet"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Sheet", import: "@/components/ui/sheet" }
-    sub_widgets: ["sheet_content", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger", "sheetdescription"]
+    sub_widgets: ["sheet_content", "sheet-close", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger", "sheetdescription"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
