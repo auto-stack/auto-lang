@@ -1,6 +1,9 @@
 // app.at — PLAN-536 T6 absolute 定位原语探针页语料。
 // 三断言形状：row 父容器 hoist / button 载体 hoist / 无 z 的 absolute
 // 分层技巧(textarea 叠加族,p051-min-ta 先例)保留流内。
+// PLAN-536 T10 增补两形状：col 双浮层全部保留(此前 .next() 丢弃首个
+// 之后的浮层) / 无 z 偏移浮层(× V2 形态,musk 0515c8e 实录)——builder
+// 不 hoist 留流内,渲染器动态路径分区接盘并消费偏移。
 widget App {
     msg { }
     model { }
@@ -26,6 +29,23 @@ widget App {
                 text "layer-flow"
                 text "layer-text" {
                     style: "absolute inset-0"
+                }
+            }
+            col {
+                style: "relative w-full"
+                text "multi-float-base"
+                button "float-a" {
+                    style: "absolute right-2 top-2 z-10"
+                }
+                button "float-b" {
+                    style: "absolute left-2 top-4 z-20"
+                }
+            }
+            col {
+                style: "relative w-full"
+                text "noz-float-base"
+                button "noz-x" {
+                    style: "absolute right-[6px] top-2"
                 }
             }
         }

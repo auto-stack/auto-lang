@@ -11,3 +11,4 @@ scene: "ui"
 render: "vue"
 title: "Database Studio"
 front_port: 4026
+desktop: "true"

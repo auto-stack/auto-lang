@@ -15,5 +15,6 @@ front_port: 3030
 icon: "film"
 title: "Video Player"
 category: "media"
+desktop: "true"
 theme: "dark"
 accent: "indigo"

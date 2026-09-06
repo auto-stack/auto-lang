@@ -1359,6 +1359,25 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     vm_print(vm, &format_rust_stdlib_obj(rust_obj));
                 } else {
+                    // Plan 560 T06 (D7)：py 句柄 print 保真——GIL str()。
+                    #[cfg(feature = "python")]
+                    {
+                        let pyh = guard
+                            .as_any()
+                            .downcast_ref::<crate::py_ffi::PyObjectHandle>();
+                        if let Some(pyh) = pyh {
+                            let s = pyo3::Python::attach(|py| {
+                                use pyo3::types::PyAnyMethods;
+                                pyh.obj
+                                    .bind(py)
+                                    .str()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|e| format!("<py str failed: {}>", e))
+                            });
+                            vm_print(vm, &s);
+                            return Ok(());
+                        }
+                    }
                     vm_print(vm, &format!("<obj:{}>", handle));
                 }
             } else {
@@ -1901,6 +1920,9 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
+    // PLAN-062: 列表元素突变（入口计——多成功出口统一覆盖，错误路径
+    // 多 bump 一次是保守安全方向）。
+    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
     let elem_nv = task.ram.pop_nv();
     let elem_val = if auto_val::is_i32(elem_nv) {
         Value::Int(auto_val::decode_i32(elem_nv))
@@ -2000,6 +2022,8 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
+    // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
+    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
     let list_id = crate::vm::native::pop_arg_i32(task) as u64;
 
 
@@ -2336,6 +2360,8 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
+    // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
+    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
     let elem_nv = task.ram.pop_nv();
     let elem_val = nv_to_value(elem_nv);
     let index = task.ram.pop_i32() as usize;
@@ -3164,6 +3190,16 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
     use crate::vm::engine::Iterator;
+
+    // Plan 550 T04: null 迭代源守卫——for-in 源为 TAG_NULL 时按 Python
+    // 风格报 TypeError（现状：位模式解码成垃圾 iterator id → 查表落空
+    // → 静默 -1 → 零迭代，p5 探针实证）。合法迭代器 id 永不与 TAG_NULL
+    // 重叠，守卫零误伤。
+    if auto_val::is_null(task.ram.peek_nv(0)) {
+        return Err(VMError::RuntimeError(
+            "TypeError: 'NoneType' object is not iterable".to_string(),
+        ));
+    }
 
     let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
 

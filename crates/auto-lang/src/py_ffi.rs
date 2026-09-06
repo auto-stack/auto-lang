@@ -43,9 +43,213 @@ impl PyObjectHandle {
     }
 }
 
+// ============================================================================
+// Plan 555 T05: ForeignObject 协议首实现——PyObjectHandle 适配器。
+// 组合子层（vm/interop.rs）经 dyn ForeignObject 分派（宿主无关），跨语言
+// 矩阵（设计 §8）的承接点：JS/ArkTS 等宿主换 ForeignObject 实现即可接入。
+// ============================================================================
+
+impl crate::vm::interop::ForeignObject for PyObjectHandle {
+    fn foreign_kind(&self) -> &'static str {
+        "py"
+    }
+
+    fn obj_get(
+        &self,
+        key_nv: auto_val::NanoValue,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            if !auto_val::is_string(key_nv) {
+                return Err(VMError::FFI(format!(
+                    "py obj_get attr name must be a string (tag {})",
+                    auto_val::tag_of(key_nv)
+                )));
+            }
+            let idx = auto_val::decode_string(key_nv) as usize;
+            let attr_name = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_default();
+            let obj = self.obj.bind(py);
+            let result = obj.getattr(&attr_name).map_err(|e| {
+                VMError::FFI(format!(
+                    "Python getattr({}.{}) failed: {}",
+                    self.type_name, attr_name, e
+                ))
+            })?;
+            py_auto_marshal_return(&result, task, vm)
+        })?;
+        Ok(())
+    }
+
+    fn obj_set(
+        &self,
+        key_nv: auto_val::NanoValue,
+        value_nv: auto_val::NanoValue,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            if !auto_val::is_string(key_nv) {
+                return Err(VMError::FFI(format!(
+                    "py obj_set attr name must be a string (tag {})",
+                    auto_val::tag_of(key_nv)
+                )));
+            }
+            // 借道现有弹栈封送（pop_auto_py_arg 的 nv→Py 转换全家桶，
+            // 含 ObjectData→dict / ListData→list 嵌套臂）：压入后按
+            // setattr 约定逆序弹出（TOS → bottom: value, key）。
+            task.ram.push_nv(key_nv);
+            task.ram.push_nv(value_nv);
+            let value = pop_auto_py_arg(task, vm, py)?;
+            let attr_py = pop_auto_py_arg(task, vm, py)?;
+            let attr_name: String = attr_py.extract().map_err(|e| {
+                VMError::FFI(format!("py obj_set attr name not string: {}", e))
+            })?;
+            let obj = self.obj.bind(py);
+            obj.setattr(&attr_name, (&value)).map_err(|e| {
+                VMError::FFI(format!(
+                    "Python setattr({}.{}) failed: {}",
+                    self.type_name, attr_name, e
+                ))
+            })?;
+            // 语句形态推 null 保栈平衡（py_setitem 约定）。
+            task.ram.push_nv(auto_val::encode_null());
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+
+    fn obj_len(
+        &self,
+        task: &mut AutoTask,
+        _vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            let obj = self.obj.bind(py);
+            let len = obj.len().map_err(|e| {
+                VMError::FFI(format!("Python len({}) failed: {}", self.type_name, e))
+            })?;
+            task.ram.push_i32(len as i32);
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+
+    fn obj_call(
+        &self,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        // Plan 555 T06: 方法调用臂——receiver 已由组合子消费（self 即
+        // receiver），方法名+实参按 shim 约定弹出（镜像 py_call 臂）。
+        // 桥窗口让 py_callable 回调可重入本 task（539 T21 约束）。
+        let _bridge = BridgeGuard::enter(task, vm);
+        Python::attach(|py| {
+            // pending_native_arg_count 含已被组合子消费的 receiver——
+            // 方法名+实参共 n-1 项（TOS → bottom: argN ... arg1, method）。
+            let n = task.pending_native_arg_count as usize;
+            if n < 2 {
+                return Err(VMError::FFI(format!(
+                    "py obj_call needs at least 2 args (obj, method), got {}",
+                    n
+                )));
+            }
+            let extra = n - 2;
+            let mut method_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(extra);
+            for _ in 0..extra {
+                method_args.push(pop_auto_py_arg(task, vm, py)?);
+            }
+            method_args.reverse();
+            let method_py = pop_auto_py_arg(task, vm, py)?;
+            let method_name: String = method_py.extract().map_err(|e| {
+                VMError::FFI(format!("py obj_call method name not string: {}", e))
+            })?;
+            let obj = self.obj.bind(py);
+            let result = if method_args.is_empty() {
+                obj.call_method0(&method_name).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python method {}.{}() failed: {}",
+                        self.type_name, method_name, e
+                    ))
+                })?
+            } else {
+                let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
+                    VMError::FFI(format!("py obj_call args tuple: {}", e))
+                })?;
+                obj.call_method1(&method_name, args_tuple).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python method {}.{}() failed: {}",
+                        self.type_name, method_name, e
+                    ))
+                })?
+            };
+            py_auto_marshal_return(&result, task, vm)
+        })?;
+        Ok(())
+    }
+
+    fn obj_iter(
+        &self,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        // Plan 555 T06: 迭代器物化臂——镜像 py_iter 臂（receiver=self）。
+        Python::attach(|py| {
+            let obj = self.obj.bind(py);
+            let it = obj
+                .try_iter()
+                .map_err(|e| {
+                    VMError::FFI(format!(
+                        "py obj_iter: {} is not iterable: {}",
+                        self.type_name, e
+                    ))
+                })?
+                .into_any();
+            let type_name = safe_type_name(&it);
+            let owned = it.clone().unbind();
+            let handle = PyObjectHandle::new(type_name, owned);
+            let id = vm.insert_heap_object(handle);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+
+    fn obj_type_name(
+        &self,
+        task: &mut AutoTask,
+        vm: &AutoVM,
+    ) -> Result<(), VMError> {
+        Python::attach(|py| {
+            let obj = self.obj.bind(py);
+            let ty = obj.get_type();
+            let name = ty
+                .name()
+                .map_err(|e| VMError::FFI(format!("py obj_type_name failed: {}", e)))?
+                .to_string();
+            let idx = vm.add_string(name.into_bytes());
+            vm.rc_push_str_idx(task, idx);
+            Ok::<(), VMError>(())
+        })?;
+        Ok(())
+    }
+}
+
 impl HeapObject for PyObjectHandle {
     fn type_tag(&self) -> TypeTag {
         TypeTag::RustStdlib(format!("PyObj({})", self.type_name))
+    }
+
+    // Plan 555 T05: ForeignObject 协议接入——组合子层经 HeapObject::
+    // as_foreign_object 取协议面（宿主无关分派）。
+    fn as_foreign_object(&self) -> Option<&dyn crate::vm::interop::ForeignObject> {
+        Some(self)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -64,7 +268,7 @@ pub const NATIVE_PY_CALL: u16 = 450;
 pub const NATIVE_PY_GETATTR: u16 = 451;
 /// Plan 539 W0 (DIV-PY-KWARGS-1): keyword-argument method-call channel.
 /// Codegen lowers `py_call(obj, "m", pos..., k=v...)` into this shim's fixed
-/// 5-slot convention so the CALL_PY arg-count byte stays a plain slot count
+/// 5-slot convention so the CALL_NAT_COUNTED arg-count byte stays a plain slot count
 /// (no sentinel sniffing inside the variadic py_call convention).
 pub const NATIVE_PY_CALL_KW: u16 = 452;
 /// Plan 539 W0 (DIV-PY-EXCEPT-1): May-valued method call. Success wraps the
@@ -110,6 +314,32 @@ pub const NATIVE_PY_EXIT: u16 = 463;
 /// the thread-local task slot (valid only inside a host py shim window —
 /// the T02 constraint: GIL thread == VM thread, num_workers=0).
 pub const NATIVE_PY_CALLABLE: u16 = 466;
+/// Plan 555 T04 (B2 桥半): `py_setattr(obj, attr_name, value)` — 属性写
+/// 通道，分发组合子 obj_set 的 py 臂（糖 `m.weight = w` 归 W2 lowering）。
+pub const NATIVE_PY_SETATTR: u16 = 467;
+/// Plan 555 T04 (B6): `py_len(obj)` — GIL len()（动态分派），组合子
+/// obj_len 的 py 臂。无 len 的对象按 Python 抛（TypeError 归 FFI 错）。
+pub const NATIVE_PY_LEN: u16 = 468;
+/// Plan 555 T04 (D8): `py_type_name(obj)` — GIL type(x).__name__ 字符串，
+/// 组合子 obj_type_name 的 py 臂。
+pub const NATIVE_PY_TYPE_NAME: u16 = 469;
+/// Plan 560 T04 (B7): `py_contains(obj, key)` — `__contains__` 归 bool，
+/// 糖 `k in d` 的桥半。
+pub const NATIVE_PY_CONTAINS: u16 = 470;
+/// Plan 560 T04 (B8): `py_module("torch")` — 裸模块绑句柄（重做 Plan 300
+/// 腐烂面）；糖 `var torch = use.py torch` 的桥半，B9 dotted 递归的地基。
+pub const NATIVE_PY_MODULE: u16 = 471;
+/// Plan 560 T06 (D7): `py_str(obj)` — GIL str() 归 Auto 字符串；
+/// 句柄 print/f-string 保真通道。
+pub const NATIVE_PY_STR: u16 = 472;
+/// Plan 560 T07 (C6): `py_pow(a, b)` — GIL operator.pow（数字与
+/// `__pow__` 对象通用）；糖 `a ** b` 的解析直落目标。
+pub const NATIVE_PY_POW: u16 = 473;
+/// Plan 560 T08 (C3/C4): `py_truthy(x)` — GIL bool()（多元素张量按
+/// Python 抛）；句柄在 if/and/or/not 位的真值通道。
+pub const NATIVE_PY_TRUTHY: u16 = 474;
+/// Plan 560 T08 (C7): `py_is(a, b)` — GIL `a is b`；糖 `a is b` 直落目标。
+pub const NATIVE_PY_IS: u16 = 475;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -195,14 +425,14 @@ impl PyFfiBridge {
 
                 // Build Python argument tuple by popping from stack in reverse.
                 // Plan 369 Task 10: use the ACTUAL call-site arg count stashed on
-                // the task by the CALL_PY handler, rather than the param_types count
+                // the task by the CALL_NAT_COUNTED handler, rather than the param_types count
                 // baked in at registration. The registration-time count comes from
                 // inspect.signature(), which fails for C builtins (datetime.date,
                 // struct.pack) and is wrong for variadics (struct.pack). All py-FFI
                 // params use Auto-type marshalling (NanoValue tag detection), so each
                 // arg is popped via pop_auto_py_arg regardless of the declared type.
                 let n = task.pending_native_arg_count as usize;
-                // Fallback for shims registered before CALL_PY existed (param count
+                // Fallback for shims registered before CALL_NAT_COUNTED existed (param count
                 // was baked into param_types). Prefer the runtime count when > 0.
                 let n = if n > 0 { n } else { param_types.len() };
                 let mut bound_args: Vec<Bound<'_, PyAny>> = Vec::with_capacity(n);
@@ -276,7 +506,7 @@ impl PyFfiBridge {
     /// Plan 369 Task 11: Register a module-level constant (non-callable attribute)
     /// as a zero-arg native. The emitted shim performs `getattr(module, name)` and
     /// marshals the resulting Python object to the VM stack via the auto path.
-    /// Returns the assigned native_id. Pair with codegen that emits CALL_PY with
+    /// Returns the assigned native_id. Pair with codegen that emits CALL_NAT_COUNTED with
     /// arg_count=0 for the bare identifier reference.
     pub fn register_constant(
         &mut self,
@@ -320,7 +550,7 @@ impl PyFfiBridge {
     /// (wrapped as `PyObjectHandle` in the VM heap).
     ///
     /// Both shims use runtime arg-count detection (via `pending_native_arg_count`,
-    /// same mechanism as `CALL_PY`) so `py_call` can accept a variable number of
+    /// same mechanism as `CALL_NAT_COUNTED`) so `py_call` can accept a variable number of
     /// positional method args.
     ///
     /// Calling convention (args pushed left-to-right, popped TOS-first):
@@ -735,7 +965,7 @@ impl PyFfiBridge {
                     ))
                 })?;
                 // Statement form: push a nil so the stack stays balanced for
-                // CALL_PY's dead-zone accounting.
+                // CALL_NAT_COUNTED's dead-zone accounting.
                 task.ram.push_nv(auto_val::encode_null());
                 Ok::<(), VMError>(())
             })?;
@@ -1084,6 +1314,252 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALLABLE, callable_shim);
+
+        // ---- py_setattr(obj, attr_name, value) ----
+        // Plan 555 T04 (B2 桥半): 属性写通道——obj_set 组合子的 py 臂。
+        let setattr_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n < 3 {
+                    return Err(VMError::FFI(format!(
+                        "py_setattr needs 3 args (obj, attr, value), got {}",
+                        n
+                    )));
+                }
+                // TOS → bottom: value, attr_name, obj
+                let value = pop_auto_py_arg(task, vm, py)?;
+                let attr_py = pop_auto_py_arg(task, vm, py)?;
+                let attr_name: String = attr_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_setattr attr name not string: {}", e))
+                })?;
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                obj.setattr(&attr_name, (&value)).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python setattr({}.{}) failed: {}",
+                        safe_type_name(&obj), attr_name, e
+                    ))
+                })?;
+                // 与 py_setitem 同约：语句形态推 null 保栈平衡。
+                task.ram.push_nv(auto_val::encode_null());
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_SETATTR, setattr_shim);
+
+        // ---- py_len(obj) ----
+        // Plan 555 T04 (B6): GIL len()——obj_len 组合子的 py 臂。
+        let len_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_len needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let len = obj.len().map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python len({}) failed: {}",
+                        safe_type_name(&obj), e
+                    ))
+                })?;
+                task.ram.push_i32(len as i32);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_LEN, len_shim);
+
+        // ---- py_type_name(obj) ----
+        // Plan 555 T04 (D8): GIL type(x).__name__——obj_type_name 组合子的
+        // py 臂。返回字符串入池（add_string + rc 配平，Plan 423/510 咽喉）。
+        let type_name_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_type_name needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let ty = obj.get_type();
+                let name = ty.name().map_err(|e| {
+                    VMError::FFI(format!("py_type_name: type name failed: {}", e))
+                })?;
+                let name = name.to_string();
+                let idx = vm.add_string(name.into_bytes());
+                vm.rc_push_str_idx(task, idx);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_TYPE_NAME, type_name_shim);
+
+        // ---- py_contains(obj, key) ----
+        // Plan 560 T04 (B7): `k in d` 桥半——__contains__ 归 bool。
+        let contains_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_contains needs 2 args (obj, key), got {}",
+                        n
+                    )));
+                }
+                let key = pop_auto_py_arg(task, vm, py)?;
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let contained = obj.contains(&key).map_err(|e| {
+                    VMError::FFI(format!(
+                        "Python contains on {} failed: {}",
+                        safe_type_name(&obj), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_bool(contained));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_CONTAINS, contains_shim);
+
+        // ---- py_module("torch") ----
+        // Plan 560 T04 (B8): 裸模块句柄——py.import（Python 模块缓存，
+        // 同名同对象）；B9 dotted 递归的地基（py_getattr 链）。
+        let module_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_module needs 1 arg (name), got {}",
+                        n
+                    )));
+                }
+                let name_py = pop_auto_py_arg(task, vm, py)?;
+                let name: String = name_py.extract().map_err(|e| {
+                    VMError::FFI(format!("py_module name not string: {}", e))
+                })?;
+                let module = py.import(&name).map_err(|e| {
+                    VMError::FFI(format!("py_module import '{}' failed: {}", name, e))
+                })?;
+                let owned: Py<PyAny> = module.into_pyobject(py).unwrap().into_any().unbind();
+                let handle = PyObjectHandle::new("module".to_string(), owned);
+                let id = vm.insert_heap_object(handle);
+                vm.rc_push(task, auto_val::encode_object(id as u32));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_MODULE, module_shim);
+
+        // ---- py_str(obj) ----
+        // Plan 560 T06 (D7): GIL str() → Auto 字符串（print/f-string 保真）。
+        let str_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_str needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let obj = pop_auto_py_arg(task, vm, py)?;
+                let s = obj
+                    .str()
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_str on {} failed: {}", safe_type_name(&obj), e))
+                    })?
+                    .to_string();
+                let idx = vm.add_string(s.into_bytes());
+                vm.rc_push_str_idx(task, idx);
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_STR, str_shim);
+
+        // ---- py_pow(a, b) ----
+        // Plan 560 T07 (C6)：GIL operator.pow——数字幂与 __pow__ 通用。
+        let pow_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_pow needs 2 args (a, b), got {}",
+                        n
+                    )));
+                }
+                let b = pop_auto_py_arg(task, vm, py)?;
+                let a = pop_auto_py_arg(task, vm, py)?;
+                let op_mod = py.import("operator").map_err(|e| {
+                    VMError::FFI(format!("py_pow: operator import failed: {}", e))
+                })?;
+                let pow_fn = op_mod.getattr("pow").map_err(|e| {
+                    VMError::FFI(format!("py_pow: operator.pow missing: {}", e))
+                })?;
+                let result = pow_fn
+                    .call1((a, b))
+                    .map_err(|e| VMError::FFI(format!("py_pow failed: {}", e)))?;
+                py_auto_marshal_return(&result, task, vm)
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_POW, pow_shim);
+
+        // ---- py_truthy(x) / py_is(a, b) ----
+        // Plan 560 T08 (C3/C4/C7)：句柄真值与同一性判定的 GIL 通道。
+        let truthy_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 1 {
+                    return Err(VMError::FFI(format!(
+                        "py_truthy needs 1 arg, got {}",
+                        n
+                    )));
+                }
+                let x = pop_auto_py_arg(task, vm, py)?;
+                use pyo3::types::PyAnyMethods;
+                let b = x.is_truthy().map_err(|e| {
+                    VMError::FFI(format!(
+                        "py_truthy on {} failed: {}",
+                        safe_type_name(&x), e
+                    ))
+                })?;
+                task.ram.push_nv(auto_val::encode_bool(b));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_TRUTHY, truthy_shim);
+
+        let is_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            Python::attach(|py| {
+                let n = task.pending_native_arg_count as usize;
+                if n != 2 {
+                    return Err(VMError::FFI(format!(
+                        "py_is needs 2 args (a, b), got {}",
+                        n
+                    )));
+                }
+                let b = pop_auto_py_arg(task, vm, py)?;
+                let a = pop_auto_py_arg(task, vm, py)?;
+                let same = a.is(&b);
+                task.ram.push_nv(auto_val::encode_bool(same));
+                Ok::<(), VMError>(())
+            })?;
+            Ok(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_IS, is_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -2402,6 +2878,45 @@ mod tests {
             let err = run_closure_bridged(py, 0, &arg).unwrap_err();
             assert!(err.to_string().contains("outside a host py shim window"));
         });
+    }
+
+    #[test]
+    fn test_w1_foreign_object_protocol_adapter() {
+        // Plan 555 T05: PyObjectHandle 是 ForeignObject 协议首实现——
+        // 组合子层经 dyn ForeignObject 分派（宿主无关），不再 isinstance
+        // 式硬编码 downcast 具体类型。
+        use crate::vm::interop::ForeignObject;
+        Python::attach(|py| {
+            let owned: pyo3::Py<pyo3::PyAny> = py
+                .eval(&std::ffi::CString::new("[1, 2, 3]").unwrap(), None, None)
+                .unwrap()
+                .clone().unbind();
+            let handle = PyObjectHandle::new("list".to_string(), owned);
+            let fo: &dyn ForeignObject = &handle;
+            assert_eq!(fo.foreign_kind(), "py");
+        });
+    }
+
+    #[test]
+    fn test_w2_b7_b8_bridges_registered() {
+        // Plan 560 T04: py_contains(470) + py_module(471) 注册在位。
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_CONTAINS).is_some(), "py_contains");
+        assert!(ni.get(NATIVE_PY_MODULE).is_some(), "py_module");
+    }
+
+    #[test]
+    fn test_w1_dispatch_bridges_registered() {
+        // Plan 555 T04: 分发组合子配套三桥在固定 id 注册
+        // （setattr=len=type_name，B2 桥半/B6/D8）。
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        let ni = bridge.native_interface();
+        assert!(ni.get(NATIVE_PY_SETATTR).is_some(), "py_setattr");
+        assert!(ni.get(NATIVE_PY_LEN).is_some(), "py_len");
+        assert!(ni.get(NATIVE_PY_TYPE_NAME).is_some(), "py_type_name");
     }
 
     #[test]

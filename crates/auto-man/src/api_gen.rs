@@ -58,6 +58,9 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
                 }
                 None => {
                     println!("  ⚠ Could not extract API definitions");
+                    if backend == "vue" {
+                        install_project_api_glue(root_dir);
+                    }
                     return Ok(());
                 }
             }
@@ -67,6 +70,16 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     // Check if any endpoints or types were extracted
     if api_module.endpoints.is_empty() && api_module.types.is_empty() {
         println!("  ⚠ No API endpoints or types found");
+        // Plan 559 W2: implementation-style back/api.at (VM-dialect bodies —
+        // os-config's 80 fn http/json surface) yields no contract endpoints.
+        // If the project ships the web implementation as a hand-written TS
+        // twin at src/back/api.ts (the "vue codegen → @/lib/api" arm of the
+        // same `use back.api` import line), install it as the gen tree's
+        // lib/api.ts so the vue track type-checks. Without a twin, the gen
+        // tree gets no glue (desktop-host v1 keeps skipping such apps).
+        if backend == "vue" {
+            install_project_api_glue(root_dir);
+        }
         return Ok(());
     }
 
@@ -88,6 +101,42 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     }
 
     Ok(())
+}
+
+/// Plan 559 W2: install a project-provided TS API glue (`src/back/api.ts`,
+/// the hand-written web implementation of the `use back.api` surface) into
+/// the vue gen tree (`gen/front/vue/src/lib/api.ts`) and the workspace dist
+/// copy, so generated `import { ... } from '@/lib/api'` resolve under the
+/// gen-side vue-tsc gate. Called only when contract extraction found no
+/// endpoints/types — contract-style projects (015-notes) keep their
+/// generated client. Returns true when a glue was installed.
+pub fn install_project_api_glue(root_dir: &Path) -> bool {
+    let glue = root_dir.join("src").join("back").join("api.ts");
+    if !glue.exists() {
+        return false;
+    }
+    let lib_dir = root_dir.join("gen").join("front").join("vue").join("src").join("lib");
+    let dist_lib_dir = root_dir.join("dist").join("src").join("lib");
+    let mut installed = false;
+    for dir in [&lib_dir, &dist_lib_dir] {
+        if std::fs::create_dir_all(dir).is_err() {
+            continue;
+        }
+        let target = dir.join("api.ts");
+        // Never copy a file onto itself (src/back/api.ts IS the source).
+        if std::fs::canonicalize(&target).ok().as_deref()
+            == std::fs::canonicalize(&glue).ok().as_deref()
+        {
+            continue;
+        }
+        if std::fs::copy(&glue, &target).is_ok() {
+            installed = true;
+        }
+    }
+    if installed {
+        println!("  ✓ Installed project API glue: src/back/api.ts → src/lib/api.ts");
+    }
+    installed
 }
 
 /// Try to parse API file with full AST parsing
@@ -2421,6 +2470,38 @@ fn parse_params(params_str: &str) -> Vec<ApiParam> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 559 W2: project-provided TS glue install. When the back/api.at is
+    /// implementation-style (no contract endpoints) but the project ships the
+    /// web implementation as src/back/api.ts, the vue gen tree and dist copy
+    /// receive it as lib/api.ts so `import { ... } from '@/lib/api'` resolve
+    /// under the gen-side vue-tsc gate. Absent glue = no-op (false).
+    #[test]
+    fn test_install_project_api_glue() {
+        let dir = std::env::temp_dir().join("p559_glue_install_probe");
+        let _ = std::fs::remove_dir_all(&dir);
+        let back_dir = dir.join("src").join("back");
+        std::fs::create_dir_all(&back_dir).expect("create back dir");
+        let marker = "export function probe_fn(): number { return 42 }\n";
+        std::fs::write(back_dir.join("api.ts"), marker).expect("write glue");
+
+        assert!(install_project_api_glue(&dir), "glue present → installed");
+        let gen_lib = dir.join("gen").join("front").join("vue").join("src").join("lib");
+        let installed = std::fs::read_to_string(gen_lib.join("api.ts")).expect("gen api.ts");
+        assert_eq!(installed, marker, "gen tree receives the glue verbatim");
+        let dist = std::fs::read_to_string(dir.join("dist").join("src").join("lib").join("api.ts"))
+            .expect("dist api.ts");
+        assert_eq!(dist, marker, "dist copy receives the glue verbatim");
+
+        // No glue → no-op.
+        let empty = std::env::temp_dir().join("p559_glue_install_probe_empty");
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).expect("create empty dir");
+        assert!(!install_project_api_glue(&empty), "no glue → no install");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&empty);
+    }
 
     #[test]
     fn test_extract_api_lenient_types() {

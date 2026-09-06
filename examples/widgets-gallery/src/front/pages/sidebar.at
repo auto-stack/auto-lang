@@ -1,49 +1,278 @@
-// pages/sidebar.at - Sidebar component documentation page
+// pages/sidebar.at - Sidebar component documentation page (Plan 548: full shadcn-vue sidebar family)
+//
+// Each demo wraps its sidebar in an explicit sidebar_provider (useSidebar
+// context isolation per card, same as the official shadcn-vue examples);
+// pages that omit it get an automatic root-level provider wrap from codegen
+// (Plan 548 T7).
 
 widget SidebarPage {
-    model { activeTab str = "preview" }
+    model {
+        activeTab str = "preview"
+        projOpen bool = true
+    }
 
     view {
         col {
             h1 "Sidebar"
-            text "Sidebar is a composable navigation component with support for grouped sections, collapsible categories, icons, and badges. Designed for dashboards, admin panels, and applications with deep navigation hierarchies. Each section can contain NavLinks with active states and external link indicators."
+            text "Sidebar is a composable navigation shell (1:1 shadcn-vue port, desktop web). A sidebar_provider owns the open/collapsed state; sidebar hosts sidebar_header / sidebar_content / sidebar_footer; content holds sidebar_group sections and sidebar_menu trees. sidebar_menu_button supports router mode (to:) with as-child RouterLink polymorphism and automatic active detection from the current route (Plan 548 D2)."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sidebar") {}
 
             h2 "Simple"
-            preview-card (id: "sidebar-basic") {
-                sidebar {
-                    sidebar-header {
-                        sidebar-menu {
-                            sidebar-menu-item {
-                                sidebar-menu-button {
-                                    text "Dashboard"
-                                }
+            preview-card (id: "sidebar-simple") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar {
+                            sidebar_header {
+                                text "Acme Inc" (style: "font-semibold") {}
                             }
-                        }
-                    }
-                    sidebar-content {
-                        div {
-                            text "Main" { style: "px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground" }
-                            div {
-                                sidebar-menu {
-                                    sidebar-menu-item {
-                                        sidebar-menu-button {
+                            sidebar_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "home") {}
                                             text "Home"
                                         }
                                     }
-                                    sidebar-menu-item {
-                                        sidebar-menu-button {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "settings") {}
                                             text "Settings"
                                         }
                                     }
                                 }
                             }
+                            sidebar_footer {
+                                text "v1.0.0" (style: "text-xs text-muted-foreground") {}
+                            }
                         }
                     }
-                    sidebar-footer {
-                        text "Footer"
+                }
+            }
+
+            h2 "Group"
+            preview-card (id: "sidebar-group") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar {
+                            sidebar_content {
+                                sidebar_group {
+                                    sidebar_group_label { text "Workspace" }
+                                    sidebar_group_content {
+                                        sidebar_menu {
+                                            sidebar_menu_item {
+                                                sidebar_menu_button {
+                                                    icon (name: "inbox") {}
+                                                    text "Inbox"
+                                                }
+                                            }
+                                            sidebar_menu_item {
+                                                sidebar_menu_button {
+                                                    icon (name: "file") {}
+                                                    text "Drafts"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                sidebar_group {
+                                    sidebar_group_label { text "Projects" }
+                                    sidebar_group_content {
+                                        sidebar_menu {
+                                            sidebar_menu_item {
+                                                sidebar_menu_button {
+                                                    icon (name: "folder") {}
+                                                    text "Design"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 "Group Action"
+            preview-card (id: "sidebar-group-action") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar {
+                            sidebar_content {
+                                sidebar_group {
+                                    sidebar_group_label { text "Projects" }
+                                    sidebar_group_action (onclick: .AddProject) {
+                                        icon (name: "plus") {}
+                                    }
+                                    sidebar_group_content {
+                                        sidebar_menu {
+                                            sidebar_menu_item {
+                                                sidebar_menu_button {
+                                                    icon (name: "folder") {}
+                                                    text "Design"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 "Collapsible Group"
+            preview-card (id: "sidebar-collapsible-group") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar {
+                            sidebar_content {
+                                collapsible (open: .projOpen) {
+                                    sidebar_group {
+                                        row (style: "flex items-center justify-between pr-2") {
+                                            sidebar_group_label { text "Projects" }
+                                            collapsible-trigger (style: "transition-transform duration-200") {
+                                                text "▸"
+                                            }
+                                        }
+                                        collapsible-content {
+                                            sidebar_group_content {
+                                                sidebar_menu {
+                                                    sidebar_menu_item {
+                                                        sidebar_menu_button {
+                                                            icon (name: "folder") {}
+                                                            text "Design"
+                                                        }
+                                                    }
+                                                    sidebar_menu_item {
+                                                        sidebar_menu_button {
+                                                            icon (name: "folder") {}
+                                                            text "Engine"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 "Menu Badge and Action"
+            preview-card (id: "sidebar-menu-extras") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar {
+                            sidebar_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "bell") {}
+                                            text "Notifications"
+                                        }
+                                        sidebar_menu_badge { text "24" }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "mail") {}
+                                            text "Messages"
+                                        }
+                                        sidebar_menu_action (onclick: .MessageMore) {
+                                            icon (name: "more-horizontal") {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 "Menu Sub"
+            preview-card (id: "sidebar-menu-sub") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar {
+                            sidebar_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "settings") {}
+                                            text "Settings"
+                                        }
+                                        sidebar_menu_sub {
+                                            sidebar_menu_sub_item {
+                                                sidebar_menu_sub_button { text "General" }
+                                            }
+                                            sidebar_menu_sub_item {
+                                                sidebar_menu_sub_button { text "Billing" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 "Router mode (to:)"
+            preview-card (id: "sidebar-router") {
+                div (style: "relative h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar {
+                            sidebar_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/button") {
+                                            icon (name: "mouse-pointer-click") {}
+                                            text "Button"
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/card") {
+                                            icon (name: "square-stack") {}
+                                            text "Card"
+                                        }
+                                    }
+                                    sidebar_menu_item {
+                                        sidebar_menu_button (to: "/sidebar") {
+                                            icon (name: "layout-grid") {}
+                                            text "Sidebar (this page)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 "Trigger and explicit Provider"
+            preview-card (id: "sidebar-provider") {
+                div (style: "relative flex h-80 w-full border rounded-md overflow-hidden [transform:translateZ(0)]") {
+                    sidebar_provider {
+                        sidebar (collapsible: "icon") {
+                            sidebar_content {
+                                sidebar_menu {
+                                    sidebar_menu_item {
+                                        sidebar_menu_button {
+                                            icon (name: "home") {}
+                                            text "Home"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        div (style: "flex-1 p-2") {
+                            sidebar_trigger {}
+                            text "Click the trigger to collapse the sidebar to an icon rail." (style: "text-sm text-muted-foreground") {}
+                        }
                     }
                 }
             }
@@ -65,24 +294,67 @@ widget SidebarPage {
                         td "string"
                         td (text: "\"left\"") {}
                         td (text: "\"left\", \"right\"") {}
-                        td "Which side the sidebar appears"
+                        td "Which side of the layout the sidebar is pinned to"
                     }
                     tr {
                         td "variant"
                         td "string"
                         td (text: "\"sidebar\"") {}
                         td (text: "\"sidebar\", \"floating\", \"inset\"") {}
-                        td "Sidebar style variant"
+                        td "Visual variant (inset pairs with sidebar_inset)"
                     }
                     tr {
                         td "collapsible"
                         td "string"
                         td (text: "\"offcanvas\"") {}
                         td (text: "\"offcanvas\", \"icon\", \"none\"") {}
-                        td "Collapsible behavior"
+                        td "Collapse behavior: slide off-canvas, icon rail, or never"
                     }
                 }
             }
+
+            h2 "SidebarProvider Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "default_open" td "bool" td "true" td "Initial open state when uncontrolled" }
+                    tr { td "open" td "expr(bool)" td "—" td "Controlled open state (v-model:open); unbound falls back to default_open" }
+                    tr { td "onopenchange" td "msg_ref" td "—" td "Message on open-state change (update:open)" }
+                }
+            }
+
+            h2 "SidebarMenuButton Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "to" td "string" td "—" td "Route address: RouterLink via as-child; active auto-detected from route (Plan 548 D2)" }
+                    tr { td "active" td "expr(bool)" td "auto" td "Selected state (shadcn isActive); with to: auto-detected when unbound" }
+                    tr { td "variant" td "default|outline" td "default" td "Visual variant" }
+                    tr { td "size" td "default|sm|lg" td "default" td "default=h-8, sm=h-7, lg=h-12" }
+                    tr { td "tooltip" td "string" td "—" td "Tooltip text (declared; functional wiring deferred)" }
+                    tr { td "text" td "string" td "—" td "Label text shorthand (children take precedence)" }
+                    tr { td "onclick" td "msg_ref" td "—" td "Click message (state mode); to wins when both given" }
+                }
+            }
         }
+    }
+
+    on {
+        .AddProject -> { }
+        .MessageMore -> { }
     }
 }

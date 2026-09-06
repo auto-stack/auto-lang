@@ -292,7 +292,8 @@ mod tests {
     const T3_W: f32 = 480.0;
     const T3_H: f32 = 900.0;
 
-    /// 001–005 示例名（与 examples/ui 目录一致）。
+    /// 001–005 示例名（examples/ui）+ p507/p515 构造语料（PLAN-552 探针
+    /// 清退起位于 examples/capability-tests，example_source 双根解析）。
     const T3_EXAMPLES: [&str; 7] = [
         "001-helloworld",
         "002-counter",
@@ -306,11 +307,14 @@ mod tests {
     ];
 
     fn example_source(dir: &str) -> String {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/ui/P/src/front/app.at"
-        )
-        .replace('P', dir);
+        // PLAN-552：构造语料双根——主根 examples/ui（001–005）优先，探针根
+        // examples/capability-tests 兜底（p507/p515 随探针清退迁出）。
+        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../");
+        let path = ["examples/ui", "examples/capability-tests"]
+            .iter()
+            .map(|root| format!("{base}{root}/{dir}/src/front/app.at"))
+            .find(|p| std::path::Path::new(p).is_file())
+            .unwrap_or_else(|| format!("{base}examples/ui/{dir}/src/front/app.at"));
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
     }
 

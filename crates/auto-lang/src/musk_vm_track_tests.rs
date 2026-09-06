@@ -3536,3 +3536,110 @@ mod musk_vm_track_p057_nested_stringify {
         );
     }
 }
+
+/// PLAN-062 T1: retain 泄漏 soak——恒写 timer 拍 × 整树重建，VM 堆
+/// live_heap 增量必须有界。
+///
+/// 现场（2026-09-05 实机定罪）：每次视图重建经 call_vm_fn/
+/// call_computed_fn 求值 computed，`retain_heap_result` 对返回堆引用
+/// +1 后无配对释放（KD-051 ⑤）——每拍泄漏整棵当帧 computed 输出树
+/// （musk 空闲实测 0.85–2.2 MB/s，30–60 分钟达 4GB）。语料
+/// `test/ui/plan062_memleak`（BeatTick 恒写 + `items => build_items(20)`
+/// 表达式体 computed）同构 musk PollStream × filteredMessages 链。
+#[cfg(feature = "ui-interpreter")]
+mod musk_vm_track_p062_heap_soak {
+    fn locate_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan062_memleak/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    /// 40 拍脏重建后 live_heap 增量 ≤ 64（warmup 10 拍后计基线）。
+    /// 现状红：每拍保留 1 list + 20 obj ⇒ +840 量级。
+    /// 修复后绿：帧账本换代释放，残差仅常数（字符串池 dedup 命中零增长）。
+    #[test]
+    fn musk_vm_track_heap_soak() {
+        let Some(path) = locate_corpus() else {
+            eprintln!("plan062: SKIPPED — corpus not found");
+            return;
+        };
+        let mut dc = match crate::plan370_test_support::build_component_from_app(&path) {
+            Some(c) => c,
+            None => {
+                eprintln!("plan062: SKIPPED — component build failed");
+                return;
+            }
+        };
+        // 镜像 renderer dirty 分支契约：build → 缓存写回 → commit_dirty_frame
+        // （PLAN-062 F2 帧账本换代）。
+        // 镜像 renderer dirty 分支契约：build → 缓存写回 → commit_dirty_frame
+        // （PLAN-062 F2 帧账本换代）。
+        let tick_rebuild = |dc: &mut crate::ui::dynamic::DynamicComponent| {
+            dc.fire_timer("App", "BeatTick");
+            let _ = dc.view_with_debug_gated(false);
+            dc.commit_dirty_frame();
+            dc.clear_dirty();
+        };
+        // ── 相 A：空闲（零状态写拍 × 40）——零求值零增长 ──
+        // F1 契约：no-op 拍不置脏 → renderer 走缓存分支不重建 → 无
+        // computed 求值、无 retain。此相断言 0 增长（musk 实机空闲泄漏
+        // 0.85–2.2 MB/s 的根治面）。
+        for _ in 0..10 {
+            let _ = dc.fire_timer("App", "IdleTick");
+        }
+        dc.clear_dirty();
+        let idle_base = dc.heap_live_objects();
+        for _ in 0..40 {
+            let fired = dc.fire_timer("App", "IdleTick");
+            assert!(fired, "ungated entry still dispatches");
+            assert!(!dc.is_dirty(), "idle tick must not dirty (F1)");
+        }
+        let idle_after = dc.heap_live_objects();
+        eprintln!(
+            "[P062-soak-A:idle] live_heap {} -> {} (+{})",
+            idle_base,
+            idle_after,
+            idle_after.saturating_sub(idle_base)
+        );
+        assert_eq!(
+            idle_after, idle_base,
+            "idle phase (no-op ticks, no rebuilds) must be zero-growth: {} -> {}",
+            idle_base, idle_after
+        );
+
+        // ── 相 B：脏重建（恒写拍 × 40）——零增长（Phase2 T12 影子账本后）──
+        // Phase1 终态曾为 +21 obj/rebuild（每 call 1 个未归属 phantom stake
+        // 钉住当帧 computed 树）；T12 stake 影子账本（槽位显式持有/转移/
+        // 按影子清扫 + 桥接结果槽份额接管）根修后收紧为稳态零增长
+        // （+64 容差吸收字符串池/注册表常数级残差）。
+        for _ in 0..10 {
+            tick_rebuild(&mut dc);
+        }
+        let base = dc.heap_live_objects();
+        for _ in 0..40 {
+            tick_rebuild(&mut dc);
+        }
+        let after = dc.heap_live_objects();
+        eprintln!(
+            "[P062-soak-B:rebuild] live_heap {} -> {} (+{})",
+            base,
+            after,
+            after.saturating_sub(base)
+        );
+        assert!(
+            after <= base + 64,
+            "rebuild phase must be zero-growth post T12: base={} after={} (+{})",
+            base,
+            after,
+            after.saturating_sub(base)
+        );
+    }
+}

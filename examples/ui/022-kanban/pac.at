@@ -6,3 +6,4 @@ title: "Kanban"
 api: "rust"
 front_port: 3022
 back_port: 8022
+desktop: "true"

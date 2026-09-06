@@ -240,6 +240,34 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
    - **静默空输出 flake 未根治**:净 lib 构建 3 连跑 rc=0 空输出/rc=1
      空输出/rc=124 超时各一,时长 348-574s 漂移——fix① 治愈声明
      (deptest2 12/12)不完整,与残留③并案查。
+   - **残留③清零进行中(2026-09-04 晚,方法学升级:静态字节差分取代
+     运行时 trace)**——新临时闸门 `test_aavm2_p532_lib_static_diff`
+     (aavm2_m4.rs,worktree 未提交):同一 probe(scratch532/libdiff/
+     main.at)宿主 compile_and_link_multi(加 root source dir)vs aavm
+     codegen_dump_files(拼接 harness 可信执行)归一化逐行对拍,.line
+     元数据脱敏计数。**四修已落盘(commit 828125e04)**:③ cg_fstr 空
+     字面段镜像宿主 lexer(每遇 $ 无条件发射,仅末尾空抑制;原跳空段
+     →parts/字节序双分歧);④ cg_if else-if 语义修复(JmpZ 立即回填
+     下一分支 cond 起点,仅真跳留链尾——原版 else if 中间分支永不可达
+     ,0b/0x 词法错,语料无 else-if 形态故漏网);⑤ serialize 字符串转义
+     镜像宿主 {:?};⑥b cg_is_arm_body 包块作用域(tokenize locals
+     34→16)。差分首分歧单调前移 1498→2047→2846;门禁 m4/m5/use_
+     corpus/goldens 全绿(大套件并行 flake 重跑即绿)。
+   - **残留③末段(⑥c/⑥d/⑥f,2026-09-05 三修落地;语义等价口径下
+     指令流唯一残余=注释臂绝对槽号 +4,KNOWN-DEBT 挂账)**:根修⑦ is 多模式测序
+     swap_remove 镜像 + ⑧ serialize 字段/全局名池解析渲染(双侧一致
+     升级,commit e622d1675);根修⑥c pop_scope/pop_scope_silent 游标
+     恢复改存活集现算 max_alive_idx(原 scope_saves 恢复陈旧游标烧槽:
+     doc=12 后 ctext=14/宿主 13;首版 off-by-one 已纠,commit bfe8ed60d)。
+     语义等价口径(.line 剔除/jmp-call 抽象/帧容量豁免/字段全局名解析)
+     下指令流唯一残余=**tokenize 注释臂绝对槽号 +4**——两侧作用域推入
+     结构层级不同(宿主 while=For push+体 Block 双层嵌套更深 d5/d6/d8
+     vs aavm 单层 d4/d5/d6),完全镜像需作用域架构专项对齐(非热修);
+     帧多预留 2 槽自洽且零语义。差分测试(test_aavm2_p532_lib_static_diff,
+     语义口径定型)留 worktree 未提交(红=该已知差),对齐落地后转绿
+     随闸门提交。诊断资产:scratch532/libdiff/、%TEMP%/p532_{rust,aavm}.txt、
+     scratch/p532/diff_dumps.py、双侧 add_var 插桩方法论([HV]/[AV] 槽位
+     对照+离线分配模拟器)。
    - 架构指令执行面(拼接→模块加载默认化)在残留③清零后启动
      (aavm2_lib_source 族消费面,超出本计划部分立项)。
 7. [ ] 原生一代对拍：a2r 原生 aavm exe 跑 corpus（代表集）与宿主一致

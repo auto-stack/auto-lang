@@ -288,7 +288,9 @@ fn uaf_canary_poisoned() {
     vm.rc_retain_id(id);
     assert_eq!(vm.rc_count(id), 1);
     vm.rc_release_id(id);
-    assert!(!vm.contains_heap_object(id), "freed at rc 0");
+    // PLAN-062 T12: 归零改入 dying 宽限队列——静止点 reap 后确定性释放。
+    vm.reap_all();
+    assert!(!vm.contains_heap_object(id), "freed at rc 0 (post-reap)");
     // UAF:访问已释放 id → 毒化 canary panic。
     let _ = vm.get_heap_object(id);
 }
@@ -329,6 +331,7 @@ fn rc_balance_unit() {
     let nv = task.ram.pop_nv();
     vm.rc_release(nv);
     assert_eq!(vm.rc_count(id), 0);
+    vm.reap_all(); // PLAN-062 T12: 静止点收割宽限队列。
     assert!(!vm.contains_heap_object(id), "freed when the only owner dies");
 
     // 无条目的 release(已释放 id 的重复释放)→ 安全跳过,不 panic。
@@ -344,6 +347,7 @@ fn rc_balance_unit() {
     assert!(vm.contains_heap_object(id2), "still alive with one owner");
     assert_eq!(vm.rc_count(id2), 1);
     vm.rc_release_id(id2);
+    vm.reap_all(); // PLAN-062 T12
     assert!(!vm.contains_heap_object(id2), "freed when rc transitions to 0");
 
     // ---- 嵌套图:父回收 → 子传递回收 ----
@@ -360,6 +364,7 @@ fn rc_balance_unit() {
     assert_eq!(vm2.rc_count(child), 1);
     assert_eq!(vm2.rc_count(parent_id), 1);
     vm2.rc_release_id(parent_id);
+    vm2.reap_all(); // PLAN-062 T12
     assert!(!vm2.contains_heap_object(parent_id), "parent freed");
     assert!(!vm2.contains_heap_object(child), "child cascade-freed with parent");
 }

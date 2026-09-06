@@ -1,0 +1,36 @@
+// app.at — PLAN-536 T12(D4) 发送链探针：musk 发送链最小同形面。
+// 链路：Composer(子件 msg Send(str),onsend 回调) → App.SendInput(一参
+// handler:清 .input + store.Send + store.StartStream,musk ChatsView 同形)
+// → ChatStore.Send(streaming=true)/.StartStream(StopStream→乐观 push→
+// streaming=true→Sse.open(handler 引用))。
+// 锁定契约：Sse.open 的 handler-as-value 实参在 VM 抛 Field not found
+// (KD-047/055-4②,根修归上游 SSE 专项)时,**streaming 置位必须先于抛点
+// 存活**——PollStream 兜底链(musk .streaming 门控,536 T2 失效根修)不得
+// 被 StartStream 中止打断,否则"AI 回复了但界面不动"复发（KD 059-FU1 题1
+// 的残余通路）。
+use composer: Composer
+use store: ChatStore
+
+widget App {
+    msg { }
+    model {
+        var input str = "init"
+    }
+    view {
+        col {
+            text f"input=${.input}"
+            text f"seq=${.store.stream_seq}"
+            text f"draft=${.store.current_draft}"
+            Composer {
+                onsend: .SendInput($event)
+            }
+        }
+    }
+    on {
+        .SendInput(text str) -> {
+            .input = ""
+            store.Send(text)
+            store.StartStream("s1", text)
+        }
+    }
+}

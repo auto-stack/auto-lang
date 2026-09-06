@@ -220,6 +220,29 @@ fn fold_eq(a: &str, b: &str) -> bool {
     f(a) == f(b)
 }
 
+/// Plan 548 T7: view 树折叠匹配(kebab/underscore/Pascal 同键)查找 tag,
+/// 递归 Element/ForLoop/Conditional/Component/Link 的全部子节点。
+fn view_tree_has_tag(node: &AuraNode, tag: &str) -> bool {
+    match node {
+        AuraNode::Element { tag: t, children, .. } => {
+            fold_eq(t, tag) || children.iter().any(|c| view_tree_has_tag(c, tag))
+        }
+        AuraNode::ForLoop { body, .. } => body.iter().any(|c| view_tree_has_tag(c, tag)),
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            then_body.iter().any(|c| view_tree_has_tag(c, tag))
+                || else_body
+                    .as_deref()
+                    .unwrap_or(&[])
+                    .iter()
+                    .any(|c| view_tree_has_tag(c, tag))
+        }
+        AuraNode::Component { children, .. } | AuraNode::Link { children, .. } => {
+            children.iter().any(|c| view_tree_has_tag(c, tag))
+        }
+        _ => false,
+    }
+}
+
 /// Plan 435 P4:tag 是否为内置(schema 三级折叠解析可命中)。
 /// 内置优先(Plan 408 推广):内置 tag 不参与子组件折叠桥接。
 fn tag_is_builtin(tag: &str) -> bool {
@@ -1696,6 +1719,143 @@ impl VueGenerator {
         Ok(html)
     }
 
+    /// Plan 548 T6: `<sidebar_menu_button>` / `<sidebar_menu_sub_button>` ——
+    /// shadcn SidebarMenuButton/SidebarMenuSubButton + to/active 扩展臂(D2)。
+    ///
+    /// 资产 props 真名(crates/auto-man/assets/shadcn-ui/sidebar/
+    /// SidebarMenuButtonChild.vue / SidebarMenuSubButton.vue 的 defineProps):
+    /// variant/size/isActive/asChild(class 之外);isActive 在模板发 kebab 形
+    /// `:is-active`,asChild 发 `as-child`。
+    ///
+    /// - `to:` → as-child 多态:RouterLink **内嵌**(button 套 a 是非法
+    ///   HTML),静态 `to="..."` / 绑定 `:to="..."`;置位 needs_router。
+    /// - `active` → `:is-active`;`to` 存在且 active 缺省时按 $route.path
+    ///   自动探测(exact 或前缀段匹配)。$route 由 vue-router 全局注入,
+    ///   模板内免 import。
+    /// - variant/size/tooltip/text/class/onclick 与通用 shadcn 臂同规透传。
+    fn generate_sidebar_menu_button_html(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        let comp = if fold_eq(tag, "sidebar_menu_sub_button") {
+            "SidebarMenuSubButton"
+        } else {
+            "SidebarMenuButton"
+        };
+        self.shadcn_components_used.insert(comp.to_string());
+
+        let mut attrs: Vec<String> = Vec::new();
+        // variant / size / tooltip —— 静态或绑定透传(资产 defineProps 真名)。
+        for key in ["variant", "size", "tooltip"] {
+            if let Some(value) = props.get(key) {
+                if let Some(frag) = self.nav_attr_fragment(key, value) {
+                    attrs.push(frag);
+                }
+            }
+        }
+        // active → :is-active;缺省且带 to 时 $route.path 自动探测。
+        let to_value = props.get("to");
+        if let Some(value) = props.get("active") {
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => {
+                    attrs.push(format!(":is-active=\"{}\"", b));
+                }
+                AuraPropValue::Expr(expr) => {
+                    let js =
+                        self.bound_value_or_warn(expr, "sidebar menu button `active`", "false");
+                    attrs.push(format!(":is-active=\"{}\"", js));
+                }
+                _ => {}
+            }
+        } else if let Some(to) = to_value {
+            let detect = match to {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s))
+                | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
+                    let p = Self::escape_js_string(s.as_str());
+                    format!("$route.path === '{0}' || $route.path.startsWith('{0}' + '/')", p)
+                }
+                AuraPropValue::Expr(expr) => {
+                    let js = self.bound_value_or_warn(expr, "sidebar menu button `to`", "''");
+                    format!("$route.path === ({0}) || $route.path.startsWith(({0}) + '/')", js)
+                }
+                _ => String::new(),
+            };
+            if !detect.is_empty() {
+                attrs.push(format!(":is-active=\"{}\"", detect));
+            }
+        }
+        if let Some(click) = self.nav_click_attr(events) {
+            attrs.push(click);
+        }
+        if let Some(cls) = self.nav_user_class_attr(props) {
+            attrs.push(cls);
+        }
+
+        // as-child 多态:to 存在(路由模式必须)或用户显式 as_child: true。
+        let explicit_as_child = props
+            .get("as_child")
+            .map(|v| self.extract_bool_value(v))
+            .unwrap_or(false);
+        let has_to = to_value.is_some();
+        let as_child = has_to || explicit_as_child;
+        if has_to {
+            self.needs_router = true;
+        }
+
+        // 内容:children 优先;否则 text prop 作 slot 文本。as-child 路由
+        // 模式下内容缩进再进一层(RouterLink 内)。
+        let inner_indent = if has_to { indent + 2 } else { indent + 1 };
+        let cind = "  ".repeat(inner_indent);
+        let mut content = String::new();
+        if !children.is_empty() {
+            for child in children {
+                content.push_str(&self.node_to_html(child, inner_indent)?);
+            }
+        } else if let Some(value) = props.get("text") {
+            content.push_str(&format!("{}{}\n", cind, self.prop_to_text_content(value)?));
+        }
+
+        let as_child_str = if as_child { " as-child" } else { "" };
+        let attr_str = if attrs.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", attrs.join(" "))
+        };
+
+        let mut html = String::new();
+        if has_to {
+            // <Comp as-child ...><RouterLink to="...">content</RouterLink></Comp>
+            let to_attr = match to_value {
+                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s)))
+                | Some(AuraPropValue::Expr(crate::ast::Expr::CStr(s))) => {
+                    format!("to=\"{}\"", Self::escape_html_attr(s.as_str()))
+                }
+                Some(value) => self
+                    .nav_attr_fragment("to", value)
+                    .unwrap_or_else(|| "to=\"\"".to_string()),
+                None => unreachable!("has_to checked"),
+            };
+            let ind1 = "  ".repeat(indent + 1);
+            html.push_str(&format!("{}<{}{}{}>\n", ind, comp, as_child_str, attr_str));
+            html.push_str(&format!("{}<RouterLink {}>\n", ind1, to_attr));
+            html.push_str(&content);
+            html.push_str(&format!("{}</RouterLink>\n", ind1));
+            html.push_str(&format!("{}</{}>\n", ind, comp));
+        } else if content.is_empty() {
+            html.push_str(&format!("{}<{}{}{} />\n", ind, comp, as_child_str, attr_str));
+        } else {
+            html.push_str(&format!("{}<{}{}{}>\n", ind, comp, as_child_str, attr_str));
+            html.push_str(&content);
+            html.push_str(&format!("{}</{}>\n", ind, comp));
+        }
+        Ok(html)
+    }
+
     /// Plan 482: `<nav-group>` → NavGroup 组件（shadcn）或内联折叠组。
     fn generate_nav_group_html(
         &mut self,
@@ -3066,22 +3226,31 @@ impl VueGenerator {
             for dep in &self.store_deps {
                 // Plan 446 批三 G1: 导入前缀可配（默认 @/stores），对齐
                 // 部署管线的实际生成位置（os-config: src/stores/auto/）。
+                // PLAN-063 Phase B T15 (KD 061 D13): 命名经归一助手
+                //(AuthStore → useAuthStore,无双后缀)。
+                let comp = store_composable_name(dep);
                 script.push_str(&format!(
-                    "import {{ use{}Store }} from '{}/use{}Store'\n",
-                    dep, self.store_import_prefix, dep
+                    "import {{ {comp} }} from '{}/{}'\n",
+                    self.store_import_prefix, comp
                 ));
             }
             // v1: single store → const store = reactive(useXxxStore())
             // reactive() auto-unwraps nested refs so templates can use store.notes directly
             let first = &self.store_deps[0];
             script.push_str(&format!("import {{ reactive }} from 'vue'\n"));
-            script.push_str(&format!("const store = reactive(use{}Store())\n\n", first));
+            script.push_str(&format!(
+                "const store = reactive({}())\n\n",
+                store_composable_name(first)
+            ));
             // PLAN-048 (auto-musk A 线): 跨 store 依赖(deps[1..])各发独立
             // facade(如 ForgeStore → forgeStore),配套 ts_adapter 的 Ident
             // 映射——此前第二个及以后的 store 调用裸发名字(TS2304)。
             for dep in self.store_deps.iter().skip(1) {
                 let var = facade_var_for(dep);
-                script.push_str(&format!("const {var} = reactive(use{}Store())\n\n", dep));
+                script.push_str(&format!(
+                    "const {var} = reactive({}())\n\n",
+                    store_composable_name(dep)
+                ));
             }
         }
 
@@ -4480,6 +4649,20 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             template.push_str(&root_html);
         }
 
+        // Plan 548 T7: SidebarProvider 自动包裹 —— SidebarMenuButton/
+        // SidebarRail 等资产注入 useSidebar() context(utils.ts),缺
+        // Provider 祖先会白屏(同 TooltipProvider 教训)。view 树含 sidebar
+        // 且无 sidebar_provider 时模板根自动包一层,并登记 import;用户
+        // 显式写了 sidebar_provider 则不重复包裹。仅 shadcn 模式。
+        if self.is_shadcn()
+            && view_tree_has_tag(root, "sidebar")
+            && !view_tree_has_tag(root, "sidebar_provider")
+        {
+            self.shadcn_components_used.insert("SidebarProvider".to_string());
+            let ind = "  ".repeat(2);
+            template = format!("{ind}<SidebarProvider>\n{template}{ind}</SidebarProvider>\n");
+        }
+
         Ok(template)
     }
 
@@ -5324,6 +5507,15 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // Special handling for category-section element
                 if tag == "category-section" || tag == "category_section" {
                     return self.generate_category_section_html(props, children, indent);
+                }
+
+                // Plan 548 T6: sidebar_menu_button/sidebar_menu_sub_button ——
+                // to/active 扩展臂(as-child 路由多态 + $route 自动探测)。
+                // 仅 shadcn 模式拦截;非 shadcn 走通用路径。
+                if self.is_shadcn()
+                    && (fold_eq(tag, "sidebar_menu_button") || fold_eq(tag, "sidebar_menu_sub_button"))
+                {
+                    return self.generate_sidebar_menu_button_html(tag, props, events, children, indent);
                 }
 
                 // Plan 482: nav 组件族 —— nav-item/nav-group 全量生成；
@@ -10568,6 +10760,28 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // show_actions → :showActions (bool). Defaults to true.
                 attrs.push(self.bool_prop_binding(props, "show_actions", "showActions", true));
 
+                // PLAN-051 T5: theme declaration entry — dark_mode → :dark-mode
+                // (bound .dark_mode state flips the editor pane's .is-dark);
+                // accent → :accent (string/state → data-accent). Defaults
+                // false/indigo = the pre-051 look, byte-for-byte.
+                attrs.push(self.bool_prop_binding(props, "dark_mode", "darkMode", false));
+                match props.get("accent") {
+                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                        attrs.push(format!("accent=\"{}\"", s));
+                    }
+                    Some(AuraPropValue::Expr(expr)) => {
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("autodown_editor `accent`: {}; prop not emitted", e),
+                            ),
+                        }
+                    }
+                    _ => {}
+                }
+
                 // style/class (editor chrome sizing).
                 self.push_style_class(&mut attrs, props);
                 // NOTE: events (onupdate/onsave/oncancel → @update/@save/@cancel)
@@ -10655,6 +10869,27 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 }
                 // scroll_sync → :scroll-sync（默认 true；VM v1 忽略）。
                 attrs.push(self.bool_prop_binding(props, "scroll_sync", "scrollSync", true));
+                // PLAN-051 T5: theme declaration entry — dark_mode → :dark-mode
+                // (bound .dark_mode state flips the render pane's .is-dark);
+                // accent → :accent (string/state → data-accent). Defaults
+                // false/indigo = the pre-051 look, byte-for-byte.
+                attrs.push(self.bool_prop_binding(props, "dark_mode", "darkMode", false));
+                match props.get("accent") {
+                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                        attrs.push(format!("accent=\"{}\"", s));
+                    }
+                    Some(AuraPropValue::Expr(expr)) => {
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("autodown `accent`: {}; prop not emitted", e),
+                            ),
+                        }
+                    }
+                    _ => {}
+                }
                 // style/class (wrapper sizing).
                 self.push_style_class(&mut attrs, props);
             }
@@ -14654,6 +14889,26 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 i += 1;
                 continue;
             }
+            // Plan 559 W2: VM-track change-payload syntax written in the .at
+            // source (`onchange: .ApplyEntry(e.key, $event.target.value)`).
+            // Vue's EventTarget carries neither member and `target` is
+            // nullable — narrow to the concrete element type so the gen tree
+            // passes vue-tsc (TS2339/TS18047, os-config collection_browser /
+            // config_editor family).
+            if c == b'$'
+                && (i == 0 || !matches!(b[i - 1], b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_'))
+            {
+                if b[i..].starts_with(b"$event.target.value") {
+                    out.extend_from_slice(b"($event.target as HTMLInputElement).value");
+                    i += b"$event.target.value".len();
+                    continue;
+                }
+                if b[i..].starts_with(b"$event.target.checked") {
+                    out.extend_from_slice(b"($event.target as HTMLInputElement).checked");
+                    i += b"$event.target.checked".len();
+                    continue;
+                }
+            }
             if c == b't'
                 && b[i..].starts_with(b"this.")
                 && (i == 0
@@ -15192,6 +15447,29 @@ export function cn(...inputs: ClassValue[]) {
             let fns = importable_fns.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
             code.push_str(&format!("import {{ {} }} from '@/lib/api'\n", fns));
         }
+        // Plan 559 W2: sibling store facades. Each `use <other>_store: <Name>`
+        // referenced by this store's bodies gets a composable import (stores
+        // sit in the same stores/ dir → relative path) + a reactive facade
+        // const; the ctx's store_facades map below routes qualified call
+        // heads (`Collection.Init(...)`) onto it. Self-qualification stays a
+        // bare local call via store_facade_from (vm A1 contract, mirrors the
+        // regen.sh deploy sed this replaces).
+        for sibling in &store.sibling_stores {
+            code.push_str(&format!(
+                "import {{ use{}Store }} from './use{}Store'\n",
+                sibling, sibling
+            ));
+        }
+        if !store.sibling_stores.is_empty() {
+            code.push_str("import { reactive } from 'vue'\n");
+            for sibling in &store.sibling_stores {
+                code.push_str(&format!(
+                    "const {} = reactive(use{}Store())\n",
+                    facade_var_for(sibling),
+                    sibling
+                ));
+            }
+        }
         code.push('\n');
 
         // Module-level ref declarations (singleton state).
@@ -15225,9 +15503,22 @@ export function cn(...inputs: ClassValue[]) {
             }
         }
         // Pass API imports so ts_adapter adds `await` to API calls.
+        // Plan 559 W2: self-qualified heads emit bare (store_bare_heads —
+        // a composable has no `store` const; the sibling's action is a
+        // local fn); sibling store heads map onto their reactive facade
+        // consts (store_facades), matching the imports emitted above.
+        let mut sibling_facades: std::collections::HashMap<String, String> =
+            Default::default();
+        for sibling in &store.sibling_stores {
+            sibling_facades.insert(sibling.clone(), facade_var_for(sibling));
+        }
+        let mut self_bare: std::collections::HashSet<String> = Default::default();
+        self_bare.insert(store.name.clone());
         let ctx = AuraTsContext::new(state_names)
             .with_props(std::collections::HashSet::new())
             .with_api_functions(store.api_imports.clone())
+            .with_store_bare_heads(self_bare)
+            .with_store_facades(sibling_facades)
             .with_typed_collections(typed_arrays, typed_strings)
             .with_typed_ints(typed_ints);
 
@@ -15307,7 +15598,8 @@ export function cn(...inputs: ClassValue[]) {
         let wire_sse = wire_sse && !active_stream_eps.is_empty();
 
         // Export function.
-        let fn_name = format!("use{}Store", store.name);
+        // PLAN-063 Phase B T15 (KD 061 D13): 归一命名(AuthStore→useAuthStore)。
+        let fn_name = store_composable_name(&store.name);
         // Module-level guard: every widget calls reactive(useXxxStore()), so
         // without a flag each call would open its own SSE connection. One guard
         // per endpoint (keyed by path) so multi-endpoint stores don't collapse.
@@ -17413,6 +17705,75 @@ widget DocStream {
         );
         assert!(sfc.contains("<StreamingRenderer"), "component tag:\n{}", sfc);
         assert!(!sfc.contains("MarkdownRender"), "MarkdownRender fully rebound:\n{}", sfc);
+    }
+
+    /// PLAN-051 T5：双轨组件主题声明入口——`dark_mode`/`accent` props 经
+    /// autodown_editor/autodown 两臂发射为 `:dark-mode`/`:accent`（绑定）；
+    /// 缺省 `:dark-mode="false"`（引擎默认档零差异）+ 无 accent 发射。
+    /// 排查路径锚：demo app.at 声明 → 本发射 → 引擎 darkMode/accent props。
+    #[test]
+    fn test_autodown_theme_props_emit() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget Themed {
+    model {
+        var body str = "# Welcome"
+        var dark_mode bool = false
+        var accent_color str = "indigo"
+    }
+    view {
+        col {
+            autodown_editor {
+                content: .body
+                dark_mode: .dark_mode
+                accent: .accent_color
+            }
+            autodown {
+                content: .body
+                dark_mode: .dark_mode
+                accent: .accent_color
+            }
+        }
+    }
+}
+"##);
+
+        assert_eq!(
+            sfc.matches(":dark-mode=\"dark_mode\"").count(),
+            2,
+            "editor + renderer arms each emit the bound dark_mode:\n{}",
+            sfc
+        );
+        assert_eq!(
+            sfc.matches(":accent=\"accent_color\"").count(),
+            2,
+            "both arms carry the bound accent:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains("R013"), "no warnings:\n{}", sfc);
+    }
+
+    #[test]
+    fn test_autodown_theme_props_defaults() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget Plain {
+    model { var body str = "# Welcome" }
+    view {
+        col {
+            autodown_editor { content: .body }
+            autodown { content: .body }
+        }
+    }
+}
+"##);
+
+        assert_eq!(
+            sfc.matches(":dark-mode=\"false\"").count(),
+            2,
+            "default light档 on both arms:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":accent"), "no accent attr when omitted:\n{}", sfc);
+        assert!(!sfc.contains("accent=\""), "no literal accent either:\n{}", sfc);
     }
 
     #[test]
@@ -20517,6 +20878,53 @@ widget NestedArgProbe {
         );
     }
 
+    /// Plan 559 W2: `$event.target.value` / `$event.target.checked` written in
+    /// the .at source is VM-track change-payload syntax (os-config
+    /// collection_browser.at `ApplyEntry(e.key, $event.target.value)` family).
+    /// Vue's `EventTarget` carries neither member, and `target` is nullable —
+    /// the raw passthrough fails vue-tsc with TS2339/TS18047. Every handler
+    /// arg flows through `vue_event_param`, so the narrowing lives there.
+    #[test]
+    fn test_event_arg_target_payload_narrowed() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget TargetPayloadProbe {
+    msg Msg { ApplyEntry, MsToggle }
+    model { var active str = "" }
+    view {
+        col {
+            input (value: "x", "type": "text") {
+                onchange: .ApplyEntry(.active, $event.target.value)
+            }
+            input ("type": "checkbox", checked: false) {
+                onchange: .MsToggle(.active, $event.target.checked)
+            }
+        }
+    }
+    on {
+        .ApplyEntry(k, v) -> { .active = k }
+        .MsToggle(k, c) -> { .active = k }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("ApplyEntry((.active), ($event.target as HTMLInputElement).value)")
+                || sfc.contains("ApplyEntry(.active, ($event.target as HTMLInputElement).value)")
+                || sfc.contains("ApplyEntry(active, ($event.target as HTMLInputElement).value)"),
+            "target.value in handler args must narrow to HTMLInputElement:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("($event.target as HTMLInputElement).checked"),
+            "target.checked in handler args must narrow to HTMLInputElement:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("$event.target.value") && !sfc.contains("$event.target.checked"),
+            "raw $event.target payloads must not survive into the template:\n{}",
+            sfc
+        );
+    }
+
     /// Global (window/document) listener args go through a separate codegen
     /// path (`try_register_global_listener`) — same `this.` constraint applies.
     #[test]
@@ -22340,7 +22748,7 @@ store ShellStore {
         );
         // The store composable function name follows the use{Name}Store convention.
         assert!(
-            code.contains("export function useShellStoreStore()"),
+            code.contains("export function useShellStore()"),
             "composable function name, got:\n{}",
             code
         );
@@ -22616,6 +23024,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22689,6 +23098,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22764,6 +23174,7 @@ store Files {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -22838,6 +23249,7 @@ store PlainStore {
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
+            sibling_stores: Vec::new(),
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -23585,6 +23997,142 @@ widget SidebarProbe {
         );
     }
 
+    /// Plan 548 T6: sidebar_menu_button to/active 臂 —— to 触发 as-child
+    /// 多态(RouterLink 内嵌,button 套 a 是非法 HTML),active 映射资产的
+    /// isActive prop(模板 kebab 形 is-active),variant/size 透传。
+    #[test]
+    fn test_sidebar_menu_button_to_active_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarMenuButtonProbe {
+    model { var flag bool = true }
+    view {
+        col {
+            sidebar {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button (to: "/dash", active: .flag, variant: "outline", size: "lg") {
+                            text "Dashboard"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("<SidebarMenuButton as-child"), "as-child 多态:\n{sfc}");
+        assert!(sfc.contains("<RouterLink to=\"/dash\">"), "内嵌 RouterLink:\n{sfc}");
+        assert!(sfc.contains(":is-active=\"flag\""), "active → :is-active:\n{sfc}");
+        assert!(sfc.contains("variant=\"outline\""), "variant 透传:\n{sfc}");
+        assert!(sfc.contains("size=\"lg\""), "size 透传:\n{sfc}");
+        assert!(sfc.contains("Dashboard"), "text slot 内容:\n{sfc}");
+        assert!(
+            sfc.contains("SidebarMenuButton") && sfc.contains("@/components/ui/sidebar"),
+            "sidebar 契约 import:\n{sfc}"
+        );
+        assert!(sfc.contains("useRouter"), "to 置位 needs_router:\n{sfc}");
+    }
+
+    /// Plan 548 T6: to 存在且 active 缺省 → $route.path 自动探测(exact 或
+    /// 前缀段匹配);sidebar_menu_sub_button 同款。
+    #[test]
+    fn test_sidebar_menu_button_route_autodetect_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarAutoActiveProbe {
+    view {
+        col {
+            sidebar {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button (to: "/settings") {
+                            text "Settings"
+                        }
+                        sidebar_menu_sub {
+                            sidebar_menu_sub_item {
+                                sidebar_menu_sub_button (to: "/settings/net") {
+                                    text "Network"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"##);
+        assert!(
+            sfc.contains(":is-active=\"$route.path === '/settings' || $route.path.startsWith('/settings' + '/')\""),
+            "静态 to 自动探测:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("<SidebarMenuSubButton as-child"),
+            "sub_button as-child 多态:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":is-active=\"$route.path === '/settings/net' || $route.path.startsWith('/settings/net' + '/')\""),
+            "sub_button 自动探测:\n{sfc}"
+        );
+    }
+
+    /// Plan 548 T7: 含 sidebar 且无 sidebar_provider → 模板根自动包
+    /// <SidebarProvider>(useSidebar() inject 缺祖先白屏,同 TooltipProvider
+    /// 教训);显式写了 provider 的不重复包裹;非 shadcn 模式不动。
+    #[test]
+    fn test_sidebar_provider_autowrap_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarAutowrapProbe {
+    view {
+        col {
+            sidebar {
+                sidebar_content { text "nav" }
+            }
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("<SidebarProvider>"), "模板根自动包裹:\n{sfc}");
+        assert!(sfc.contains("</SidebarProvider>"), "包裹闭合:\n{sfc}");
+        assert!(
+            sfc2_check_import(&sfc, "SidebarProvider"),
+            "SidebarProvider import 生成:\n{sfc}"
+        );
+
+        let explicit = gen_sfc_from_widget_src_shadcn(r##"
+widget SidebarExplicitProbe {
+    view {
+        sidebar_provider {
+            sidebar {
+                sidebar_content { text "nav" }
+            }
+        }
+    }
+}
+"##);
+        assert_eq!(
+            explicit.matches("<SidebarProvider").count(),
+            1,
+            "显式 sidebar_provider 不重复包裹:\n{explicit}"
+        );
+
+        let plain = gen_sfc_from_widget_src(r##"
+widget SidebarPlainProbe {
+    view {
+        col {
+            sidebar { text "nav" }
+        }
+    }
+}
+"##);
+        assert!(!plain.contains("SidebarProvider"), "非 shadcn 模式不包裹:\n{plain}");
+    }
+
+    /// T7 断言辅助:SFC 的 import 段含 sidebar 契约路径且点名组件。
+    fn sfc2_check_import(sfc: &str, component: &str) -> bool {
+        sfc.contains("@/components/ui/sidebar")
+            && sfc.lines().any(|l| l.contains("@/components/ui/sidebar") && l.contains(component))
+    }
+
     #[test]
     fn test_slider_forwards_class_shadcn() {
         let sfc = gen_sfc_from_widget_src_shadcn(r#"
@@ -23782,7 +24330,7 @@ widget A1Probe {
         let mut gen = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
         let sfc = gen.generate(&widget).expect("generate SFC");
         assert!(
-            sfc.contains("const store = reactive(useAuthStoreStore())"),
+            sfc.contains("const store = reactive(useAuthStore())"),
             "use store decl must yield the facade const:
 {sfc}"
         );
@@ -23816,7 +24364,7 @@ widget A1Probe {
         let mut gen_default = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
         let sfc_default = gen_default.generate(&widget).expect("generate SFC (default)");
         assert!(
-            sfc_default.contains("from '@/stores/useAuthStoreStore'"),
+            sfc_default.contains("from '@/stores/useAuthStore'"),
             "default prefix must stay @/stores:\n{sfc_default}"
         );
 
@@ -23826,11 +24374,11 @@ widget A1Probe {
             .with_store_import_prefix("@/stores/auto");
         let sfc_cfg = gen_cfg.generate(&widget).expect("generate SFC (configured)");
         assert!(
-            sfc_cfg.contains("from '@/stores/auto/useAuthStoreStore'"),
+            sfc_cfg.contains("from '@/stores/auto/useAuthStore'"),
             "configured prefix must reach the import line:\n{sfc_cfg}"
         );
         assert!(
-            !sfc_cfg.contains("from '@/stores/useAuthStoreStore'"),
+            !sfc_cfg.contains("from '@/stores/useAuthStore'"),
             "stale default-prefix import must not remain:\n{sfc_cfg}"
         );
     }
@@ -25585,6 +26133,17 @@ pub fn double(x int) int {
             sfc
         );
     }
+}
+
+/// PLAN-063 Phase B T15 (KD 061 D13): store 组合式命名归一——DSL store
+/// 名以 `Store` 结尾时(如 AuthStore)剥一层再补,消除 useAuthStoreStore
+/// 双后缀(文件名/导出 fn/消费 import 三面同源)。裸名(NotesLike)不变。
+pub fn store_composable_name(store_name: &str) -> String {
+    let stem = store_name
+        .strip_suffix("Store")
+        .filter(|s| !s.is_empty())
+        .unwrap_or(store_name);
+    format!("use{}Store", stem)
 }
 
 /// PLAN-048 (auto-musk A 线): 跨 store facade 变量名——`ForgeStore` →

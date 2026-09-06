@@ -164,3 +164,127 @@ Every visual parity change must be tested against:
 3. `examples/ui/001-helloworld` (Single heading smoke test)
 4. `examples/ui/003-converter` (Inputs, bidirectional binding, and card border)
 5. `examples/widgets-gallery` (Full typography & component catalog)
+
+---
+
+## 7. AutoDown Document Face Specification（引擎文档面规约，PLAN-051 立章，2026-09-04）
+
+> 来源：auto-down PLAN-051（vue 轨 view 正确性收口 + 主题规约化）。§4.5/§4.6
+> 先例的**引擎域**延伸：`.at` 视图与 markdown 渲染器都无法表达 autodown 引擎
+> 组件（EngineEditor / StreamingRenderer / 家族 widget）内部 DOM 的样式，本节
+> 为引擎文档面的默认样式规约——**取值单源于本节**，vue 侧实现锚点（engine
+> CSS）与 VM 侧实现锚点（`autodown_blocks.rs` 常量/类串、`hljs_scope_map.rs`
+> 生成物）都只做投影。排查纪律：VM/vue 分叉时**先对表**（本节行值），再查
+> 两侧锚点实现；无规约行对应的语义值出现在任一侧实现里即为违规（PARITY #13
+> 事故模式）。
+>
+> 主题状态入口（声明层）：`dark_mode`（bool，app model 状态，VM 轨经 D-GAP
+> 推 `theme::set_dark_mode`，vue 轨经引擎组件 `darkMode` prop）；`accent`
+> （§7.3 五色名，vue 轨经 `accent` prop；VM 轨 document accent 消费为
+> PARITY 豁免行，PLAN-051 待澄清 3）。
+
+### 7.1 中性色板（zinc/gray 系）
+
+浅色档=vue 现行实值（PLAN-039/042 对齐纪律的既成事实）；深色档=VM 现行
+zinc 实值（FENCE_CHROME 暗档/iced 深盘，VM 零改动，vue 深色档向其对齐）。
+
+| 语义 | CSS 变量 | 浅色 | 深色 | vue 锚点 | VM 锚点 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 正文 fg | `--ad-fg` | `#111827` (gray-900) | `#fafafa` (zinc-50) | autodown-editor.css `:55`、StreamingRenderer `:456` | FENCE_BODY_FG (250,250,250) |
+| muted fg | `--ad-muted` | `#6b7280` (gray-500) | `#a1a1aa` (zinc-400) | 同上 `:61` 等 | FENCE_HEADER_FG (161,161,166) |
+| 边框 | `--ad-border` | `#e5e7eb` (gray-200) | `#3f3f46` (zinc-700) | 同上 `:14`（fallback 值） | FENCE_BORDER (63,63,70) |
+| 面板面 surface | `--ad-surface` | `#ffffff` | `#09090b` (zinc-950) | 同上 `:16` | FENCE_BG (9,9,11) |
+| 面 muted 叠层 | — | `hsl(220 9% 46% / α)`，α∈{.02,.03,.06,.08,.1,.14,.15,.18} | zinc 同系 alpha 叠加 | 两文件多处 | PANEL_CHROME `bg-muted` |
+| 交互主色 fallback | `--ad-primary` | `220 90% 56%`（≈blue-600）/attr-host fallback `#3b82f6` | 同 hue 提亮（T4 定） | 同上 `:21` | theme token（`text-primary` 等） |
+
+### 7.2 Accent 五色盘（document 面）
+
+三件套 (accent / strong / soft)，浅色档 tailwind 600/700/50 步进；深色档
+strong 取 400 步（深底可读性，规约行内分档，非实现侧临场）、soft 取 accent
+@15% alpha 叠加。swatch 展示色=popover 钮（bg-*-500）。
+
+| 名 | swatch | accent | strong(浅/深) | soft(浅/深) |
+| :--- | :--- | :--- | :--- | :--- |
+| indigo | bg-indigo-500 | `#4f46e5` | `#4338ca` / `#818cf8` | `#eef2ff` / `#4f46e5`@15% |
+| coral | bg-rose-500 | `#e11d48` | `#be123c` / `#fb7185` | `#fff1f2` / `#e11d48`@15% |
+| ocean | bg-sky-500 | `#0284c7` | `#0369a1` / `#38bdf8` | `#f0f9ff` / `#0284c7`@15% |
+| sage | bg-emerald-500 | `#059669` | `#047857` / `#34d399` | `#ecfdf5` / `#059669`@15% |
+| amber | bg-amber-500 | `#d97706` | `#b45309` / `#fbbf24` | `#fffbeb` / `#d97706`@15% |
+
+vue 锚点：引擎 CSS `--ad-accent*` 定义（PLAN-051 T3 收敛为单源后）+
+`[data-accent='<名>']` 覆盖组；标题色=`--ad-accent-strong`（深色档自动随
+strong 深档值）。VM 锚点：➖（document accent 豁免，待澄清 3）。
+
+### 7.3 排版（引擎文档面档——区别于 §2 应用级标尺）
+
+引擎文档面用自档排版（vue 现行实值，两 pane 一致）：正文 `0.95rem`/
+line-height 1.6；h1 `1.58rem` / h2 `1.33rem` / h3 `1.18rem`，700、
+line-height 1.3，色=accent-strong；p `margin .5rem 0`；块间节奏引 §4.5
+（12px）。行内 code `0.85em` mono；fence code `0.88rem`/1.5 mono。
+**分叉登记**：VM 只读臂 heading 用 §2 应用级类表（text-4xl=36px 等），
+VM 编辑壳 `heading_size`=30/24/20px——vue 文档面 1.58rem(≈25.3px) 与两臂
+均不一致，系既有分叉（PARITY 十六项外新登记，PLAN-051 T11 落表）。
+
+### 7.4 块家族 chrome（浅 / 深）
+
+| 面 | 浅色 | 深色（VM zinc 基准） | vue 锚点 | VM 锚点 |
+| :--- | :--- | :--- | :--- | :--- |
+| fence 容器 | bg `#f9fafb`·border `#e5e7eb`·r8 | bg zinc-950·border zinc-700·r-lg | `.code-block-container`（editor css :908 / renderer :1001） | FENCE_CHROME(_LIGHT) |
+| fence header | bg `#e5e7eb`·字 `#374151`·下边 `#d1d5db` | bg zinc-800·字 zinc-400 | `.code-block-header`（:915/:1014） | 同上 header 类串 |
+| fence pre | bg `#f9fafb`·pad `.85em 1em` | 同容器深档 | `pre[data-language]`（:945/:1094） | 同上 body `p-4` |
+| header 动作钮 | 字 `#4b5563`·hover bg gray-500/14% | 深档同规则 | `.code-action-btn`（:962） | ➖（折叠/复制钮 VM 只读豁免，PARITY #15 注） |
+| 行内 code | bg gray-500/8%·字 `#111827`·r4 | bg zinc-400/12%·字 zinc-50 | `code`（:216/:980） | 段落 code span（core.rs mono 臂） |
+| blockquote | 左边 3px `#e5e7eb`·字 muted·pad-l 1rem | 左边 zinc-700·字 zinc-400 | `.blockquote`（:166） | QUOTE_CHROME |
+| 表格 | 边 `#e5e7eb`·th bg `--ad-accent-soft`·偶行 `#f9fafb`·pad `.9rem .6rem` | 边 zinc-700·th bg accent@15%·偶行 zinc-900 | `.table-node`（:173） | FAMILY_TABLE 类串 |
+| callout 容器 | 边 `#e5e7eb`·r12·pad `1.1rem 1rem 1rem` | r-lg + §下行语义色 | `.autodown-callout`（:486）/`.admonition`（renderer :495） | CALLOUT_CHROME |
+| callout 语义色（note/info/tip/warning/danger） | 三件 (bg/边/标题)×5：note `#eff6ff`/`#bfdbfe`/`#2563eb`·info `#f0f9ff`/`#7dd3fc`/`#0284c7`·tip `#f0fdf4`/`#86efac`/`#16a34a`·warning `#fffbeb`/`#fcd34d`/`#d97706`·danger `#fef2f2`/`#fca5a5`/`#dc2626` | VM 现行 alpha 档（`*-500/50` 边+`*-500/10` bg+`*-400` 字）——与 vue 浅色系**结构性分叉**，深色档规约值=VM alpha 档（vue 深色对齐之） | `:566-604`/renderer `:536-574` | callout_kind_classes |
+| details | 边 `#e5e7eb`·r8·summary bg gray-500/6%·开合箭头=accent | 边 zinc-700·summary zinc-400/10% | `.autodown-details`（:606）/`details`（renderer :577） | DETAILS_CHROME |
+| 分隔线 | 上边 1px `#e5e7eb` | 上边 zinc-700 | `hr`（:225/:1135） | BREAK_CHROME |
+| math | 边透明/`#e5e7eb`·r8·pad `.75rem 1rem` | 深档边 zinc-700 | `.autodown-math-block`（:788）/`.math-block`（renderer :847） | PANEL_CHROME（web-only 降级，PARITY #9） |
+| mermaid | 容器 `#ffffff`·header bg gray-500/8%·源码面 `#f8f9fa`·图主题参数（codeBlockLanguage.ts，Material 系）`#ffca28`/`#42a5f5`/`#ff7043`/`#0288d1`/`#fdd835` | 深档 zinc 系（图参数随 mermaid 深主题另定，web-only 面不阻） | `.mermaid-*`（renderer :861+） | PANEL_CHROME（web-only） |
+| 断图 fallback | bg gray-500/6%·边 `#e5e7eb`·字 `#9ca3af` | 深档 zinc 系 | `.autodown-image-fallback`（:257）/`.image-error`（:1111） | ➖ |
+| 任务勾选框 | checked=accent·unchecked `#9ca3af` | 同规则深档 | `.checkbox-icon`（renderer :1160） | List 家族 |
+
+### 7.5 hljs 语法色双档（选择器组级）
+
+**双轨单源**：`packages/core/rust/src/hljs_scope_map.rs` `hljs_group_rgb(group, dark)`
+（a2r 生成物）为唯一真值；vue 侧 light 规则组现值与其逐值相同（PLAN-041
+P041-4 镜像），vue 深色规则组（PLAN-051 T4 新增）与 VM syntect 主题
+（`autodown-hljs-dark`）同源取值。
+
+| 组（.hljs-* 类） | 浅色（github-light） | 深色（github-dark） |
+| :--- | :--- | :--- |
+| Keyword（keyword/selector-tag/doctag/section） | `#d73a49` | `#ff7b72` |
+| Title（title/title.function_/function>title） | `#6f42c1` | `#d2a8ff` |
+| String（string/regexp/addition） | `#032f62` | `#a5d6ff` |
+| Constant（number/literal/variable/template-variable/attr/attribute） | `#005cc5` | `#79c0ff` |
+| Comment（comment/quote/deletion，italic） | `#6a737d` | `#8b949a` |
+| Meta（meta/meta-keyword/meta-string） | `#176f2c` | `#7ee787` |
+| Tag（tag/name/built_in/type） | `#22863a` | `#7ee787` |
+| 基础 fg（无 token） | `#09090b` | `#fafafa` |
+
+vue 锚点：editor css `:1019-1074` / renderer `:789-844`（light 现行）+
+T4 新增 `.is-dark` 作用域同组深色规则。VM 锚点：hljs_scope_map 生成物 →
+`hljs_syntax_theme(dark)` 烘焙 `autodown-hljs-{dark,light}` 主题。
+**已知债**：VM buffer 主题构建期选定，运行时翻转不重刷（DEBTS 050，
+PLAN-051 T10 处置）。
+
+### 7.6 编辑壳交互面（vue-only，PARITY #12 长期线）
+
+斜杠菜单/气泡菜单/代码块语言菜单/表格菜单/块边界插入柄等编辑态交互 chrome
+（surface/边框/阴影 `0 4px 12px rgba(0,0,0,.15)` 系/hover 规则）为 vue 引擎
+独有面（VM 无对应交互，#12）；样式值从 §7.1 中性板取，深色档随组件根
+`.is-dark` 翻转，无独立规约行需求。编辑器内滚动条（`rgba(0,0,0,.15)` thumb）
+同属性（demo 级滚动条另有 PARITY #8）。
+
+### 7.7 盘点口径（零游离值核对方法）
+
+来源三文件：`engine/src/editor/styles/autodown-editor.css`（hex 出现 99 处，
+去重 34 值）、`engine/src/render/StreamingRenderer.vue` scoped 段（63 处，
+去重 33 值，与前者差集仅 `#3b82f6`——§7.1 已收）、家族 widget 组件
+（CodeBlock/MathBlock/TableBlock/MermaidBlockWidget.vue + codeBlockLanguage.ts，
+新增值仅 `#6366f1`（TableBlock 编辑态图标，indigo-500——随 §7.2 accent 语义
+收编）、`#92400e`/`#fef3c7`/`#b91c1c`（Math/Mermaid 降级面语义色，随 §7.4
+math/mermaid 行收）、其余均为已收值复用。核对命令：
+`grep -oE '#[0-9a-fA-F]{6}\b' <file> | sort -u` 逐值对表，任何表外值=盘点
+缺口。callout 15 语义值逐值见 vue 锚点行号段，以锚点为准。

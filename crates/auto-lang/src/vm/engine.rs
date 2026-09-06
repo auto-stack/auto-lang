@@ -5,7 +5,9 @@ use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
 use crate::vm::task_system::TaskRegistry;
-use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
+use crate::vm::virt_memory::{
+    null_binop_type_error, null_unop_type_error, VirtualFlash, VirtualRAM,
+};
 use auto_val::AutoStr;
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -342,6 +344,18 @@ pub struct AutoVM {
     pub rc_created_total: AtomicU64,
     pub rc_freed_total: AtomicU64,
     pub rc_traffic: AtomicU64,
+    // PLAN-062: 状态突变序号——堆/状态**写点**统一 bump（insert_heap_object/
+    // SET_FIELD/list 元素突变/字符串池新内容），读与 dedup 命中不 bump。
+    // 用途：fire_timer 派发前后对比判定"本拍是否零状态写"（空转拍不置脏，
+    // 不触发整树重建）。保守方向：多 bump 至多多一次重建，漏 bump 才丢更新。
+    pub state_mutation_seq: AtomicU64,
+    // PLAN-062 T12: 宽限窗延迟回收——rc 归零对象先进 dying 队列（记录入队
+    // 时的解释步计数），DYING_GRACE_STEPS 步后续期仍未被复活才真回收。
+    // 帧内/近邻的 raw 别名（无份额拷贝）在窗口内安全；长期零累积（窗口
+    // 有界）。复活（窗口内再 retain）即出队。canary 的 tombstone 只在真
+    // 回收后落——窗口内 ACCESS 探测仍见活对象。
+    pub dying_heap: std::sync::Mutex<Vec<(u64, u64)>>,
+    pub interp_steps: AtomicU64,
     // Plan 419 Phase 2: 字符串池并行状态(rc/pinned/freelist,见 rc.rs)。
     pub pool_state: std::sync::RwLock<crate::vm::rc::PoolState>,
 
@@ -447,6 +461,39 @@ fn pop_f32_operand(task: &mut AutoTask) -> f32 {
     }
 }
 
+/// Plan 550 T03: 定点算术槽（_F/_D/_U64/MOD 族）弹栈前的 null 窥视守卫。
+/// 这些臂的弹栈助手按 tag/位模式解码（TAG_NULL → 垃圾整数或 NaN 静默
+/// 传播），统一在弹栈前窥视拦截。peek(0)=右操作数，peek(1)=左操作数。
+#[inline(always)]
+fn null_guard_peek_pair(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    let b_nv = task.ram.peek_nv(0);
+    let a_nv = task.ram.peek_nv(1);
+    if auto_val::is_null(a_nv) || auto_val::is_null(b_nv) {
+        return Err(null_binop_type_error(
+            op,
+            (a_nv, !auto_val::is_nanboxed(a_nv)),
+            (b_nv, !auto_val::is_nanboxed(b_nv)),
+        ));
+    }
+    Ok(())
+}
+
+/// Plan 550 T03: 一元定点算术槽（NEG_F/NEG_D）弹栈前的 null 窥视守卫。
+#[inline(always)]
+fn null_guard_peek_unary(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    if auto_val::is_null(task.ram.peek_nv(0)) {
+        return Err(null_unop_type_error(op));
+    }
+    Ok(())
+}
+
+/// Plan 550 T05: GET_ELEM 越界消息（对标 Python IndexError；携带原始
+/// 索引值，负索引越界同报原值）。原先静默 push_i32(0) 哨兵（p8 探针）。
+#[cold]
+fn index_out_of_range_error(index: i32) -> VMError {
+    VMError::RuntimeError(format!("IndexError: index {} out of range", index))
+}
+
 /// Plan 406: unified condition truthiness. Tagged bools (TAG_BOOL) are
 /// authoritative; null is falsy; everything else falls back to legacy i32
 /// truthiness (0 / i32::MIN+1 sentinels) for values pushed by older code
@@ -471,6 +518,8 @@ impl AutoVM {
         native_interface.register_std_shims();
         // Plan 094: Register manual FFI shims (cannot use #[rust_fn])
         crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
+        // Plan 555 T06: 分发组合子（interop.obj_* 家族，1860-1865）。
+        crate::vm::interop::register_interop_natives(&mut native_interface);
         // Plan 198: Register #[rust_fn]-annotated shims via inventory
         native_interface.build_from_inventory();
 
@@ -569,6 +618,9 @@ impl AutoVM {
             rc_created_total: AtomicU64::new(0),
             rc_freed_total: AtomicU64::new(0),
             rc_traffic: AtomicU64::new(0),
+            state_mutation_seq: AtomicU64::new(0),
+            dying_heap: std::sync::Mutex::new(Vec::new()),
+            interp_steps: AtomicU64::new(0),
             pool_state: std::sync::RwLock::new(crate::vm::rc::PoolState::new()),
             // Plan 121: Task/Msg registry for Actor model
             task_registry: Arc::new(TaskRegistry::new()),
@@ -1005,6 +1057,8 @@ impl AutoVM {
                     if crate::pool_log_all() {
                         eprintln!("[POOLLOG #{:>4}] intern-freelist {} content={:?}", crate::pool_log_seq(), slot, String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>());
                     }
+                    // PLAN-062: 槽位写入新内容 = 状态面突变（dedup 命中不算）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     return slot;
                 }
                 // strings 与 freelist 长度异常时兜底:还回槽位走追加。
@@ -1020,6 +1074,8 @@ impl AutoVM {
         if crate::pool_log_all() {
             eprintln!("[POOLLOG #{:>4}] intern-append {} (pool len {})", crate::pool_log_seq(), idx, idx + 1);
         }
+        // PLAN-062: 追加新槽 = 状态面突变（dedup 命中不算）。
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
         idx
     }
 
@@ -1074,7 +1130,28 @@ impl AutoVM {
         // Plan 419: RC 不在此建条目 —— 对象出世时尚无 owned slot,
         // 首次 rc_push/rc_retain 建条目(计数语义见 rc.rs 模块注释)。
         self.rc_created_total.fetch_add(1, Ordering::Relaxed);
+        // PLAN-062: 任何堆对象出世都算状态面突变（列表/对象字面量、JSON
+        // 解析中间体、桥接实参物化等）。
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
         id
+    }
+
+    /// PLAN-062: 状态突变序号只读访问（fire_timer 空转判定 + 测试断言）。
+    pub fn state_mutation_seq(&self) -> u64 {
+        self.state_mutation_seq.load(Ordering::Relaxed)
+    }
+
+    /// PLAN-062 T12: 槽旧值释放——堆份额按影子、字符串按内容（Plan 510
+    /// 池语义稳定面）。STORE_* 覆盖赋值的统一旧值清账点。
+    fn release_slot_old_value(&self, task: &mut AutoTask, addr: usize) {
+        let old_stake = task.ram.take_stake_at(addr);
+        if old_stake != 0 {
+            self.rc_release_id(old_stake);
+        }
+        let old_nv = task.ram.read_nv(addr);
+        if auto_val::is_string(old_nv) {
+            self.rc_release(old_nv);
+        }
     }
 
     /// Get a heap object by ID, returning a read guard
@@ -1240,9 +1317,10 @@ impl AutoVM {
                 vm.rc_push_str_idx(task, idx);
             }
             Value::VmRef(vmref) => {
-                // Plan 419: 堆引用入栈 +1(咽喉点)。
+                // Plan 419: 堆引用入栈 +1(咽喉点)。PLAN-062 T12: 记影子。
                 vm.rc_retain_id(vmref.id as u64);
                 ram.push_nv(auto_val::encode_object(vmref.id as u32));
+                ram.mark_top_stake(vmref.id as u64);
             }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
@@ -2459,6 +2537,11 @@ impl AutoVM {
             return Ok(StepResult::Terminated);
         }
 
+        // PLAN-062 T12: 解释步计数 + 周期性收割宽限窗到期的 dying 对象。
+        let step = self.interp_steps.fetch_add(1, Ordering::Relaxed);
+        if step & 0x3FF == 0 {
+            self.reap_dying(step);
+        }
         let op_byte = self.flash.read_u8(task.ip);
         task.ip += 1;
         if !OpCode::is_valid(op_byte) {
@@ -2510,16 +2593,31 @@ impl AutoVM {
                 OpCode::POP => {
                     // Plan 419: 弹出的值若为引用 → 计数 -1(协议 §1 POP 行);
                     // 槽位清零防双重释放(嵌套执行外层可能再扫死区)。
+                    // PLAN-062 T12: 堆份额按影子释放(裸副本零释放),字符串
+                    // 沿内容;影子随取随清。
                     let nv = task.ram.pop_nv();
-                    self.rc_release(nv);
+                    let stake = task.ram.take_stake_at(task.ram.sp);
+                    if stake != 0 {
+                        self.rc_release_id(stake);
+                    }
+                    if auto_val::is_string(nv) {
+                        self.rc_release(nv);
+                    }
                     task.ram.raw_nv[task.ram.sp] = 0;
                 }
                 OpCode::POP_N => {
                     let n = self.flash.read_u8(task.ip);
                     task.ip += 1;
                     for _ in 0..n {
+                        // PLAN-062 T12: 同 POP——影子释放 + 字符串内容释放。
                         let nv = task.ram.pop_nv();
-                        self.rc_release(nv);
+                        let stake = task.ram.take_stake_at(task.ram.sp);
+                        if stake != 0 {
+                            self.rc_release_id(stake);
+                        }
+                        if auto_val::is_string(nv) {
+                            self.rc_release(nv);
+                        }
                         task.ram.raw_nv[task.ram.sp] = 0;
                     }
                 }
@@ -3006,6 +3104,15 @@ impl AutoVM {
                             } else {
                                 task.ram.push_i32(0);
                             }
+                        } else if auto_val::is_null(nv) {
+                            // Plan 550 T04: null 迭代源守卫。ARRAY_LEN 是
+                            // array 通道 for-in 的长度探针（codegen Plan 089），
+                            // 现状落此静默 push 0 → 零迭代（p5 探针实证）。
+                            // 同臂亦承接 .len() 发射点——null.len() 同翻为
+                            // TypeError（Python: None 无 len）。
+                            return Err(VMError::RuntimeError(
+                                "TypeError: 'NoneType' object is not iterable".to_string(),
+                            ));
                         } else {
                             task.ram.push_i32(0);
                         }
@@ -3562,6 +3669,15 @@ impl AutoVM {
                         // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
                         let str_idx = self.add_string(string_value.as_bytes().to_vec());
                         self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_null(nv) {
+                        // Plan 550 T07: null → "None"（a2py str(None) 三方
+                        // parity）。print shim（native.rs shim_print_i32）
+                        // 已然输出 "None"，本臂补齐 TYPE_TO_STR 同型——
+                        // 原落 i32 兜底臂把位模式解码成 -2147483647
+                        // （p7 探针病灶）。
+                        // Plan 423 P5 续修:入池收口 add_string。
+                        let str_idx = self.add_string(b"None".to_vec());
+                        self.rc_push_str_idx(task, str_idx);
                     } else {
                         let value_bits = auto_val::decode_i32(nv);
                         let string_value = format!("{}", value_bits);
@@ -3594,8 +3710,10 @@ impl AutoVM {
                     } else if auto_val::is_bool(nv) {
                         task.ram.push_i32(if auto_val::decode_bool(nv) { 1 } else { 0 });
                     } else if auto_val::is_null(nv) {
-                        // None (null nanbox) — old sentinel for backward compat.
-                        task.ram.push_i32(-1);
+                        // Plan 550 T06: null 静默 -1 臂翻案 → TypeError
+                        // （原臂为 539 T05 兼容自加；TYPE_TO_I32 仅由显式
+                        // .to(int) 发射，内部路径无依赖——T06 前置排查结论）。
+                        return Err(crate::vm::virt_memory::null_to_type_error("int"));
                     } else {
                         task.ram.push_i32(auto_val::decode_i32(nv));
                     }
@@ -3622,7 +3740,8 @@ impl AutoVM {
                     } else if auto_val::is_bool(nv) {
                         task.ram.push_f32(if auto_val::decode_bool(nv) { 1.0 } else { 0.0 });
                     } else if auto_val::is_null(nv) {
-                        task.ram.push_f32(-1.0);
+                        // Plan 550 T06: null 静默 -1.0 臂翻案 → TypeError。
+                        return Err(crate::vm::virt_memory::null_to_type_error("float"));
                     } else {
                         task.ram.push_f32(auto_val::decode_i32(nv) as f32);
                     }
@@ -3797,8 +3916,19 @@ impl AutoVM {
                 // Plan 075: Concatenate two strings
                 OpCode::STR_CAT => {
                     {
-                        let right_nv = task.ram.pop_nv();
-                        let left_nv = task.ram.pop_nv();
+                    let right_nv = task.ram.pop_nv();
+                    let left_nv = task.ram.pop_nv();
+                    // Plan 550 T03: null 拼接守卫（539 探针 2 病灶：
+                    // "a" + null → 垃圾数字入串）。字符串形态的 `+` 在
+                    // codegen 静态路由到本臂，守卫消息与算术族同格式
+                    // （op 报 '+'，null 方报 'NoneType'，另一方报 'str'）。
+                    if auto_val::is_null(left_nv) || auto_val::is_null(right_nv) {
+                        return Err(null_binop_type_error(
+                            "+",
+                            (left_nv, !auto_val::is_nanboxed(left_nv)),
+                            (right_nv, !auto_val::is_nanboxed(right_nv)),
+                        ));
+                    }
                         // Plan 419 Phase 2: 操作数 stake 在物化完成后释放(先读后放)。
                         let strings = self.strings.read().unwrap();
                         let left_str = if auto_val::is_string(left_nv) {
@@ -4116,6 +4246,8 @@ impl AutoVM {
                         if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
+                    // PLAN-062 T12: 取走弹出槽份额(随值转移到回推栈顶)。
+                    let instance_stake = task.ram.take_stake_at(task.ram.sp);
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
                         instance_id
                     );
@@ -4258,6 +4390,8 @@ impl AutoVM {
                         instance_id
                     );
                     task.ram.push_nv(auto_val::encode_object(instance_id as u32));
+                    // PLAN-062 T12: 份额随值转移回栈顶。
+                    task.ram.mark_top_stake(instance_stake);
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}",
                         task.ram.sp
                     );
@@ -4503,6 +4637,8 @@ impl AutoVM {
                     self.rc_release_id(instance_id);
                 }
                 OpCode::LIST_PUSH_INT => {
+                    // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, value:int]
                     // Pop value first (top of stack), then list_id
@@ -4540,6 +4676,8 @@ impl AutoVM {
                     self.rc_release_id(list_id);
                 }
                 OpCode::LIST_POP_INT => {
+                    // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id]
                     // Pop list_id, get list, pop element, push result
@@ -4612,6 +4750,8 @@ impl AutoVM {
                     self.rc_release_id(list_id);
                 }
                 OpCode::LIST_SET_INT => {
+                    // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, index:int, value:int]
                     // Pop value first, then index, then list_id
@@ -4783,6 +4923,15 @@ impl AutoVM {
                     // Pop array_id/list_id or str_id (tagged)
                     let obj_or_str_nv = task.ram.pop_nv();
 
+                    // Plan 550 T04: null 索引对象守卫（现状：null 位模式当
+                    // obj_id 解码 → 堆查找落空 → 静默 push 0）。Python 风格
+                    // TypeError，try-catch 可捕获。
+                    if auto_val::is_null(obj_or_str_nv) {
+                        return Err(VMError::RuntimeError(
+                            "TypeError: 'NoneType' object is not subscriptable".to_string(),
+                        ));
+                    }
+
                     // Helper function to convert negative index to actual index
                     // e.g., for array of length 3: -1 -> 2, -2 -> 1, -3 -> 0
                     let normalize_index = |idx: i32, len: usize| -> Option<usize> {
@@ -4900,8 +5049,8 @@ impl AutoVM {
                                         }
                                     }
                                 } else {
-                                    vm_debug!("DEBUG GET_ELEM: Index {} out of bounds", index_i32);
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<String>
@@ -4915,7 +5064,8 @@ impl AutoVM {
                                     let str_idx = self.add_string(elem.as_bytes().to_vec());
                                     self.rc_push_str_idx(task, str_idx);
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<bool>
@@ -4927,7 +5077,8 @@ impl AutoVM {
                                     // (print/to_string/EQ bit-compare) behave like bool literals.
                                     task.ram.push_nv(auto_val::encode_bool(elem));
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Try List<Value> (generic list of Values)
@@ -4967,7 +5118,8 @@ impl AutoVM {
                                         _ => { task.ram.push_i32(0); }
                                     }
                                 } else {
-                                    task.ram.push_i32(0); // Out of bounds
+                                    // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                    return Err(index_out_of_range_error(index_i32));
                                 }
                             }
                             // Plan 437: 动态 record 字段访问 —— d[field_name]，
@@ -5110,6 +5262,9 @@ impl AutoVM {
                 }
                 // Plan 075: Object field assignment (obj.field = value)
                 OpCode::SET_FIELD => {
+                    // PLAN-062: 字段写算状态面突变（arm 入口计——错误路径
+                    // 多 bump 一次是保守安全方向）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
                     use crate::vm::generic_registry::GenericInstanceData;
                     // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
                     // Pop field_name_idx first (top of stack)
@@ -5198,6 +5353,43 @@ impl AutoVM {
                                 self.decode_tagged_nv(value_nv)
                             });
                         } else if let Some(inst) = heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                            // PLAN-536 Phase 2 T13: PollStream 兜底链追踪面——
+                            // 环境门控(AUTO_DEBUG_POLLTRACE=1),观察跨模块调用帧
+                            // 内对 store 字段(合并根态 GenericInstanceData)的
+                            // SET_FIELD 实际落点与值(KD P536-D2 定罪)。
+                            if std::env::var("AUTO_DEBUG_POLLTRACE").is_ok()
+                                && matches!(
+                                    field_name.as_str(),
+                                    "streaming" | "pre_stream_len" | "messages" | "poll_window"
+                                )
+                            {
+                                let decoded = self.decode_tagged_nv(value_nv);
+                                let vdesc = match &decoded {
+                                    auto_val::Value::Bool(b) => format!("bool={b}"),
+                                    auto_val::Value::Int(i) => format!("int={i}"),
+                                    auto_val::Value::Str(_) => "str".to_string(),
+                                    auto_val::Value::Nil => "nil".to_string(),
+                                    auto_val::Value::VmRef(r) => {
+                                        let len = self
+                                            .heap_objects
+                                            .get(&(r.id as u64))
+                                            .map(|h| {
+                                                let g = h.read().unwrap();
+                                                g.as_any()
+                                                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                                                    .map(|l| l.len())
+                                                    .unwrap_or(usize::MAX)
+                                            })
+                                            .unwrap_or(usize::MAX);
+                                        format!("vmref={} len={len}", r.id)
+                                    }
+                                    other => format!("nv({:?})", std::mem::discriminant(other)),
+                                };
+                                eprintln!(
+                                    "[POLLTRACE][SET] obj={obj_id} .{field_name} = {vdesc} (ip=0x{:x})",
+                                    task.ip
+                                );
+                            }
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
                             if let Some(idx) = field_idx {
                                 old_field_ref = inst.fields.get(idx).and_then(|v| match v {
@@ -5584,8 +5776,11 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    // Plan 550 T03: 算术双操作数经 null 守卫弹出（TAG_NULL
+                    // 拒收，含下方字符串拼接臂——decode_i32(null) 垃圾入串
+                    // 的 539 探针 2 病灶在分派前拦截）。
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("+")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) + f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5638,8 +5833,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("-")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) - f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5665,8 +5860,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("*")?;
                     if a_is_f64 && b_is_f64 {
                         task.ram.push_f64(f64::from_bits(a_bits) * f64::from_bits(b_bits));
                     } else if a_is_f64 || b_is_f64 {
@@ -5692,8 +5887,8 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (b_bits, b_is_f64) = task.ram.pop_arith_operand();
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("/")?;
                     if a_is_f64 && b_is_f64 {
                         let b = f64::from_bits(b_bits);
                         if b == 0.0 { return Err(VMError::DivisionByZero); }
@@ -5725,7 +5920,7 @@ impl AutoVM {
                         return Ok(StepResult::Continue);
                     }
                     {
-                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand();
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand_non_null("-")?;
                     if a_is_f64 {
                         task.ram.push_f64(-f64::from_bits(a_bits));
                     } else if auto_val::is_f32(a_bits) {
@@ -5738,24 +5933,28 @@ impl AutoVM {
 
                 // Plan 073 Stage A: Floating-point arithmetic (f32)
                 OpCode::ADD_F => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a + b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::SUB_F => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a - b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::MUL_F => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(a * b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::DIV_F => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = pop_f32_operand(task);
                     let a = pop_f32_operand(task);
                     if b == 0.0 {
@@ -5765,6 +5964,7 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::NEG_F => {
+                    null_guard_peek_unary(task, "-")?;
                     let a = pop_f32_operand(task);
                     task.ram.push_f32(-a);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
@@ -5772,24 +5972,28 @@ impl AutoVM {
 
                 // Plan 073 Stage A: Double precision arithmetic (f64)
                 OpCode::ADD_D => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a + b);
                     task.last_result_type = ResultType::Float; // Plan 403-F: mark f64 result
                 }
                 OpCode::SUB_D => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a - b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::MUL_D => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a * b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::DIV_D => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     if b == 0.0 {
@@ -5807,6 +6011,7 @@ impl AutoVM {
                         crate::py_ffi::py_dunder_arith("__mod__", "__rmod__", task, self)?;
                         return Ok(StepResult::Continue);
                     }
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
                     if b == 0 {
@@ -5815,17 +6020,20 @@ impl AutoVM {
                     task.ram.push_i32(a % b);
                 }
                 OpCode::MOD_F => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_f32();
                     let a = task.ram.pop_f32();
                     task.ram.push_f32(a % b);
                 }
                 OpCode::MOD_D => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a % b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::NEG_D => {
+                    null_guard_peek_unary(task, "-")?;
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(-a);
                     task.last_result_type = ResultType::Float;
@@ -5833,21 +6041,25 @@ impl AutoVM {
 
                 // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot; heap-aware for full range)
                 OpCode::ADD_U64 => {
+                    null_guard_peek_pair(task, "+")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_add(b));
                 }
                 OpCode::SUB_U64 => {
+                    null_guard_peek_pair(task, "-")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_sub(b));
                 }
                 OpCode::MUL_U64 => {
+                    null_guard_peek_pair(task, "*")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     self.push_u64_vm(task, a.wrapping_mul(b));
                 }
                 OpCode::DIV_U64 => {
+                    null_guard_peek_pair(task, "/")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     if b == 0 {
@@ -5856,6 +6068,7 @@ impl AutoVM {
                     self.push_u64_vm(task, a / b);
                 }
                 OpCode::MOD_U64 => {
+                    null_guard_peek_pair(task, "%")?;
                     let b = self.pop_u64_vm(task);
                     let a = self.pop_u64_vm(task);
                     if b == 0 {
@@ -7503,7 +7716,7 @@ impl AutoVM {
                 // the task so the Python shim pops the ACTUAL number of args pushed
                 // at this call site (count cannot be baked into the shim because
                 // C builtins defeat inspect.signature and struct.pack is variadic).
-                OpCode::CALL_PY => {
+                OpCode::CALL_NAT_COUNTED => {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
                     let arg_count = self.flash.read_u8(task.ip);
@@ -7513,7 +7726,12 @@ impl AutoVM {
                     // Plan 419: 同 CALL_NAT 的死区结算。
                     let sp_before_native = task.ram.sp;
                     if let Some(shim) = self.native_interface.get(native_id).cloned() {
-                        shim(task, self)?;
+                        // Plan 560 T11（§4-3）：py 桥错误统一 RuntimeError
+                        // 通道（catch 拦值一致绑定——FFI 标签在载荷里保留
+                        // 上下文原文；PyException 前缀精化归 P560 债）。
+                        if let Err(VMError::FFI(msg)) = shim(task, self) {
+                            return Err(VMError::RuntimeError(msg));
+                        }
                     } else {
                         return Err(VMError::MissingNative(native_id));
                     }
@@ -7535,6 +7753,9 @@ impl AutoVM {
 
                     // Under nanbox: preserve NanoValue type tag for string/bool/etc.
                     let result_nv = task.ram.pop_nv();
+                    // PLAN-062 T12: 结果份额读走——帧清扫(按影子)后随值
+                    // 回落调用方槽位(write_nv 清影子后重新标记)。
+                    let result_stake = task.ram.take_stake_at(task.ram.sp);
 
                     let old_bp = task.ram.read_i32(task.bp) as usize;
                     let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
@@ -7566,6 +7787,7 @@ impl AutoVM {
                         task.ram.write_nv(new_sp - 1, result_nv);
                         task.ram.sp = new_sp;
                         task.ram.write_nv(new_sp - 1, result_nv);
+                        task.ram.mark_stake_at(new_sp - 1, result_stake);
                     }
 
                     task.bp = old_bp;
@@ -7816,6 +8038,16 @@ impl AutoVM {
                     // Immediate: arg_count (u8)
                     let _arg_count = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
+
+                    // Plan 550 T04: null callee 守卫。正常模式 null callee 被
+                    // 静态解析在编译期拦下（E0401，见 p4 探针），本守卫覆盖
+                    // 动态/脚本路径：现状 pop_i32 把 TAG_NULL 解码成垃圾 id，
+                    // 落到 "Invalid closure ID" 无类型语义错误。
+                    if auto_val::is_null(task.ram.peek_nv(0)) {
+                        return Err(VMError::RuntimeError(
+                            "TypeError: 'NoneType' object is not callable".to_string(),
+                        ));
+                    }
 
                     let closure_id = task.ram.pop_i32() as u32;
 
@@ -8314,6 +8546,9 @@ impl AutoVM {
                         eprintln!("[VMOP] STORE_LOCAL idx=0x{:02x}", idx);
                     }
                     let val_nv = task.ram.pop_nv();
+                    // PLAN-062 T12: 份额随值转移——读走弹出槽影子,写槽
+                    // 重新标记;旧槽值按其影子释放(内容判定废除)。
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
 
                     // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
                     if idx >= 0x80 {
@@ -8323,13 +8558,15 @@ impl AutoVM {
                         let actual_offset = offset + 1;
                         // Plan 419: 槽内旧值 -1;新值自栈转移进槽(计数不变)。
                         let addr = task.bp - actual_offset;
-                        self.rc_release(task.ram.read_nv(addr));
+                        self.release_slot_old_value(task, addr);
                         task.ram.write_nv(addr, val_nv);
+                        task.ram.mark_stake_at(addr, transferred);
                     } else {
                         let addr = task.bp + 1 + idx;
                         // Plan 419: 覆盖赋值旧值 -1(overwrite_drop 语义)。
-                        self.rc_release(task.ram.read_nv(addr));
+                        self.release_slot_old_value(task, addr);
                         task.ram.write_nv(addr, val_nv);
+                        task.ram.mark_stake_at(addr, transferred);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
@@ -8357,6 +8594,15 @@ impl AutoVM {
                         // Grow state_vars if needed (safety; normally pre-sized at spawn).
                         if field_idx >= task.state_vars.len() {
                             task.state_vars.resize(field_idx + 1, 0);
+                        }
+                        // PLAN-062 T12: 弹出槽影子随值转移;state_vars 条目
+                        // 恒持一份(无影子的裸堆引用防御性补持)。
+                        let transferred = task.ram.take_stake_at(task.ram.sp);
+                        let _ = transferred;
+                        if crate::vm::rc::is_heap_ref_nv(val_nv) {
+                            if let Some(id) = crate::vm::rc::heap_ref_id(val_nv) {
+                                self.rc_retain_id(id);
+                            }
                         }
                         // Plan 419: 旧 state 字段值 -1;新值转移进槽。
                         self.rc_release(task.state_vars[field_idx]);
@@ -8387,6 +8633,16 @@ impl AutoVM {
                         .map(|b| String::from_utf8_lossy(b).to_string())
                         .unwrap_or_default();
                     let nv = task.ram.pop_nv();
+                    // PLAN-062 T12: 读走弹出槽影子(转移语义);无份额的裸堆
+                    // 引用入全局表前防御性补一份(全局表条目恒持有——保守
+                    // 方向:多持至多延后回收,不持有即悬垂)。
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
+                    let _ = transferred;
+                    if crate::vm::rc::is_heap_ref_nv(nv) {
+                        if let Some(id) = crate::vm::rc::heap_ref_id(nv) {
+                            self.rc_retain_id(id);
+                        }
+                    }
                     // Plan 419: 旧全局值 -1;新值自栈转移进全局表。
                     if let Some(old) = self.globals.get(&name) {
                         let old_nv = *old;
@@ -8404,24 +8660,39 @@ impl AutoVM {
                     self.rc_push(task, task.ram.read_nv(task.bp + 3));
                 }
                 OpCode::STORE_LOC_0 => {
-                    // Plan 419: 覆盖旧值 -1;新值转移。
+                    // Plan 419: 覆盖旧值 -1;新值转移。PLAN-062 T12: 影子随值
+                    // 转移,旧槽按影子释放。
                     let v = task.ram.pop_nv();
-                    self.rc_release(task.ram.read_nv(task.bp + 1));
-                    task.ram.write_nv(task.bp + 1, v);
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
+                    let addr = task.bp + 1;
+                    self.release_slot_old_value(task, addr);
+                    task.ram.write_nv(addr, v);
+                    task.ram.mark_stake_at(addr, transferred);
                 }
                 OpCode::STORE_LOC_1 => {
-                    // Plan 419: 覆盖旧值 -1;新值转移。
+                    // Plan 419: 覆盖旧值 -1;新值转移。PLAN-062 T12: 影子随值
+                    // 转移,旧槽按影子释放。
                     let v = task.ram.pop_nv();
-                    self.rc_release(task.ram.read_nv(task.bp + 2));
-                    task.ram.write_nv(task.bp + 2, v);
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
+                    let addr = task.bp + 2;
+                    self.release_slot_old_value(task, addr);
+                    task.ram.write_nv(addr, v);
+                    task.ram.mark_stake_at(addr, transferred);
                 }
 
                 // === Stack ===
                 OpCode::DROP => {
                     // Plan 419: DROP 兑现 RAII 承诺 —— 弹出并释放 owned value
                     // (引用值计数 -1,归零则真回收);槽位清零。
+                    // PLAN-062 T12: 堆份额按影子释放;字符串沿内容释放。
                     let nv = task.ram.pop_nv();
-                    self.rc_release(nv);
+                    let stake = task.ram.take_stake_at(task.ram.sp);
+                    if stake != 0 {
+                        self.rc_release_id(stake);
+                    }
+                    if auto_val::is_string(nv) {
+                        self.rc_release(nv);
+                    }
                     task.ram.raw_nv[task.ram.sp] = 0;
                 }
                 // Plan 088 Phase 4: Function Prologue
@@ -9411,5 +9682,219 @@ self.rc_release(a_nv);
             };
             collector.record(ip, &op_name, line, task.ram.sp, task.call_stack.len());
         }
+    }
+}
+
+// ============================================================================
+// Plan 550 T08: null 家族守卫单测——直推 null 调 opcode，断言 VMError
+// 消息格式（539 py_ffi 单测同型：AutoVM::new(VirtualFlash::new_with_code)
+// + AutoTask::new，run_one_instruction 单步驱动）。
+// ============================================================================
+#[cfg(test)]
+mod tests_null_guards {
+    use super::*;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn runtime_err_of(res: Result<StepResult, VMError>) -> String {
+        match res {
+            Err(VMError::RuntimeError(msg)) => msg,
+            other => panic!("expected RuntimeError, got {:?}", other),
+        }
+    }
+
+    // ---- T03 算术族 ----
+
+    #[test]
+    fn test_null_add_none_left() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(1);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"
+        );
+    }
+
+    #[test]
+    fn test_null_add_none_right() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(1);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_null_sub_mul_div_mod() {
+        for (op, sym) in [
+            (OpCode::SUB, "-"),
+            (OpCode::MUL, "*"),
+            (OpCode::DIV, "/"),
+            (OpCode::MOD, "%"),
+        ] {
+            let vm = vm_with(vec![op as u8]);
+            let mut task = AutoTask::new(1, 256, 0);
+            task.ram.push_nv(auto_val::encode_null());
+            task.ram.push_i32(2);
+            let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+            assert_eq!(
+                msg,
+                format!("TypeError: unsupported operand type(s) for {}: 'NoneType' and 'int'", sym)
+            );
+        }
+    }
+
+    #[test]
+    fn test_null_neg_unary() {
+        let vm = vm_with(vec![OpCode::NEG as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: bad operand type for unary -: 'NoneType'");
+    }
+
+    #[test]
+    fn test_null_strcat_concat() {
+        // "a" + null：含 str 的 + 经 codegen 静态路由到 STR_CAT（539 探针 2
+        // 病灶实际落点）；守卫在解码前拦截，消息报 op='+' 类型 'str'。
+        let vm = vm_with(vec![OpCode::STR_CAT as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_string(0));
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'str' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_legit_minus_one_arithmetic_unaffected() {
+        // 合法 i32(-1) / i32::MIN+1 算术不得被守卫误伤（守卫只拒 TAG_NULL，
+        // 历史 i32 哨兵编码与真实整数不可区分，不在守卫范围）。
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(-1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 0);
+
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(i32::MIN + 1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), i32::MIN + 2);
+    }
+
+    // ---- T04 GET_ELEM / CALL_CLOSURE / 迭代源 ----
+
+    #[test]
+    fn test_null_getelem_not_subscriptable() {
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(0);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not subscriptable");
+    }
+
+    #[test]
+    fn test_null_callee_not_callable() {
+        // 正常模式 null callee 被静态解析在编译期拦下（p4 探针 E0401），
+        // .at 探针不可达 VM 路径——CALL_CLOSURE 守卫由此单测钉住。
+        let vm = vm_with(vec![OpCode::CALL_CLOSURE as u8, 0]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not callable");
+    }
+
+    #[test]
+    fn test_null_array_len_not_iterable() {
+        // array 通道 for-in 的长度探针（p5 探针病灶实际落点）；同臂承接
+        // null.len() 发射点。
+        let vm = vm_with(vec![OpCode::ARRAY_LEN as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not iterable");
+    }
+
+    // ---- T05 越界 ----
+
+    #[test]
+    fn test_oob_getelem_index_error() {
+        use crate::vm::types::ListData;
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let list_id = vm.insert_heap_object(ListData::<i32> { elems: vec![1, 2, 3], storage: None });
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_object(list_id as u32));
+        task.ram.push_i32(999);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "IndexError: index 999 out of range");
+    }
+
+    // ---- T06 TYPE_TO_I32/F64 翻案 + 合法回归 ----
+
+    #[test]
+    fn test_null_to_i32_f64_type_error() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: int() argument must be a string or a real number, not 'NoneType'"
+        );
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: float() argument must be a string or a real number, not 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_to_i32_f64_legit_paths_unaffected() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(7);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 7);
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_f64(2.5);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_f64(), 2.5);
+    }
+
+    // ---- T07 TYPE_TO_STR null → "None" ----
+
+    #[test]
+    fn test_null_to_str_renders_none() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_STR as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        vm.run_one_instruction(&mut task).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "expected string result");
+        let idx = auto_val::decode_string(nv) as usize;
+        let rendered = vm.strings.read().unwrap().get(idx).cloned().unwrap();
+        assert_eq!(rendered, b"None".to_vec());
     }
 }

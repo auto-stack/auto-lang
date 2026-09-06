@@ -80,6 +80,7 @@ pub mod task_handler;
 pub mod scheduler;
 pub mod types;
 pub mod virt_memory;
+pub mod interop; // Plan 555 T05/T06: ForeignObject 协议 + 分发组合子
 // Plan 091: Extracted from universe.rs
 pub mod object_data;
 

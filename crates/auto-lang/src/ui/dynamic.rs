@@ -522,7 +522,19 @@ impl DynamicComponent {
                 return false;
             }
         }
+        // PLAN-062 F1: 空转拍精确置脏——call_handler 的 Ok → dirty=true 是
+        // 无条件的（含 deadman 早退的零状态写拍），musk PollStream when 门
+        // 摘除后每 500ms 空转拍触发整树重建（×retain 泄漏 = 实机 0.85–2.2
+        // MB/s 的驱动源）。派发以状态突变序号（engine.rs 写点 bump）画界：
+        // seq 未变且原先不脏 → 撤销本拍置脏，视图走缓存分支零重建。
+        // 仅 timer 路径收窄；普通事件派发语义不动（vmref-push-only 的
+        // handler 仍靠派发置脏兜底）。
+        let seq_before = self.bridge.state_mutation_seq();
+        let was_dirty = self.dirty;
         self.on_with_input_for(widget, event, None);
+        if self.bridge.state_mutation_seq() == seq_before && !was_dirty {
+            self.dirty = false;
+        }
         true
     }
 
@@ -541,9 +553,10 @@ impl DynamicComponent {
                 tries.push((*last).to_string());
             }
         }
+        let polltrace = std::env::var("AUTO_DEBUG_POLLTRACE").is_ok();
         for t in tries {
             if let Ok(v) = self.read_state(&t) {
-                return match v {
+                let pass = match v {
                     auto_val::Value::Bool(b) => b,
                     auto_val::Value::Str(ref s) => {
                         matches!(s.as_str(), "true" | "1" | "on")
@@ -551,7 +564,15 @@ impl DynamicComponent {
                     auto_val::Value::Int(n) => n != 0,
                     _ => false,
                 };
+                // PLAN-536 Phase 2 T13: when 门逐拍读值追踪(KD P536-D2 定罪)。
+                if polltrace {
+                    eprintln!("[POLLTRACE][GATE] read .{t} -> pass={pass}");
+                }
+                return pass;
             }
+        }
+        if polltrace {
+            eprintln!("[POLLTRACE][GATE] read .{when} failed -> false");
         }
         false
     }
@@ -640,6 +661,22 @@ impl DynamicComponent {
         self.dirty = false;
     }
 
+    /// PLAN-062: VM 堆活跃对象数只读透传（retain 泄漏 soak 断言通道）。
+    pub fn heap_live_objects(&self) -> usize {
+        self.bridge.heap_live_objects()
+    }
+
+    /// PLAN-062: 状态突变序号只读透传（fire_timer 空转拍判定 + 测试）。
+    pub fn state_mutation_seq(&self) -> u64 {
+        self.bridge.state_mutation_seq()
+    }
+
+    /// PLAN-062 F2: 帧域 retain 账本换代提交（renderer dirty 分支缓存
+    /// 写回后调用；测试 soak 循环同契约镜像）。
+    pub fn commit_dirty_frame(&self) {
+        self.bridge.commit_dirty_frame();
+    }
+
     /// Get the widget name.
     pub fn widget_name(&self) -> &str {
         &self.widget_name
@@ -658,6 +695,30 @@ impl DynamicComponent {
     /// Get a mutable reference to the underlying VmBridge.
     pub fn bridge_mut(&mut self) -> &mut VmBridge {
         &mut self.bridge
+    }
+
+    /// Plan 559 W7: dispatch a handler into a named sub-widget's handler
+    /// context — the acceptance channel's (app, widget) targeting. Uses the
+    /// namespaced `call_handler_for` pipeline (same as onclick). Plan 320
+    /// single-VM unified state: `ensure_child_state` keeps all child state
+    /// in the ROOT state object, so the dispatch targets the root state id
+    /// unless the bridge tracks a dedicated child object (older multi-state
+    /// shape); instance props (module_id/field/dir…) are re-seeded into the
+    /// unified state on every render, so the mounted instance's context is
+    /// what the handler reads.
+    pub fn call_widget_handler(
+        &mut self,
+        widget: &str,
+        handler: &str,
+        args: &[auto_val::Value],
+    ) -> Result<(), String> {
+        let sid = self
+            .bridge
+            .get_child_state_id(widget)
+            .unwrap_or_else(|| self.bridge.state_obj_id());
+        self.bridge
+            .call_handler_for(widget, handler, sid, args)
+            .map_err(|e| e.to_string())
     }
 
     /// Get the tick interval in ms (if set).
@@ -1109,11 +1170,12 @@ impl DynamicComponent {
         payload: auto_val::Value,
     ) {
         let state_id = self.bridge.state_obj_id();
-        // PLAN-059 T9 依赖修正（musk DeleteConfirmDialog 实机:Cancel →
-        // ChatsView.CancelDelete 崩 Invalid object ID: 0）:零参父 handler
+        // 趋同修复汇流（PLAN-059 T9 musk DeleteConfirmDialog + auto-down
+        // PLAN-051 T11 demo SettingsPopover.Close 双实证）：零参父 handler
         // 不得塞 Nil 载荷——调用帧从 [self] 变 [self, Nil],handler 体内
-        // 首个字段写按错位帧解 self 即崩。按父 handler 声明参数数对齐帧;
-        // 未知 arity 保持 legacy（塞载荷）。
+        // 首个字段写按错位帧解 self 即崩（B12(b) 同款「Invalid object
+        // ID: 0」）。按父 handler 声明参数数对齐帧;未知 arity 保持
+        // legacy（塞载荷）。
         let declared_params = self.bridge.handler_param_count(&route.parent_widget, &route.handler);
         let args: Vec<auto_val::Value> = if declared_params.unwrap_or(1) > 0 {
             vec![payload]
@@ -1283,7 +1345,6 @@ impl DynamicComponent {
             let payload = eval_stripped_arg(&self.bridge, sc.arg.as_deref());
             stripped_payloads.push((sc.callback.clone(), payload));
         }
-        let t0 = std::time::Instant::now();
         if !clean_name.starts_with("__") {
             eprintln!("[VM_HANDLER_CALL] widget={} event={} args={:?}", widget_name, clean_name, args);
         }
@@ -1296,8 +1357,6 @@ impl DynamicComponent {
                     let _post_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);
                     let _post_idx = self.bridge.read_state("active_index").ok();
                 }
-                let handler_ms = t0.elapsed().as_millis();
-                let t1 = std::time::Instant::now();
                 self.dirty = true;
                 // PLAN-051 C2 ①: 声明式——子 msg 变体派发后回送宿主
                 // `on<name>` 绑定（musk `send(str)` + `onsend: .SendInput($event)`
@@ -1346,11 +1405,13 @@ impl DynamicComponent {
                 // Plan 482: router.back() rewrote to __nav_back_pending=true —
                 // consume it now that the handler finished writing state.
                 self.consume_nav_back_pending();
-                // Force a view rebuild to measure render time
-                let _ = self.view_with_debug_gated(false);
-                let render_ms = t1.elapsed().as_millis();
-                if handler_ms > 100 || render_ms > 100 {
-                }
+                // PLAN-062: 移除"Force a view rebuild to measure render time"
+                // 遗留插桩——每个 handler Ok 后强制全量视图构建（结果丢弃），
+                // 仅为测 render_ms。它是空转泄漏的第二放大器：musk timer 每
+                // 500ms 一拍 → 此处隐式重建（computed 全量求值 ×retain 泄漏）
+                // 叠加 renderer view_dirty 重建 = 双倍泄漏。视图重建的唯一
+                // 触发应是 renderer 的 dirty 分支（child Init 播种等构建期
+                // 副作用随该分支照常发生）。
             }
             Err(_e) => {
                 // Plan 057 (ash-gui 双执行修复): handler 错误此前被完全吞掉(静默中止,
@@ -1369,6 +1430,32 @@ impl DynamicComponent {
                 // 只能靠重选会话(handler 驱动)强行重渲染。失效广播必须照常。
                 if !matches!(_e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
                     self.dirty = true;
+                } else {
+                    // auto-down PLAN-051 T11 补面：纯 emit 子件——msg 声明了
+                    // 但子件无自有 handler（如 SettingsPopover.SetTheme，消息
+                    // 只面向父级 on 监听）。HandlerNotFound 在此形态不是错误：
+                    // 声明式父路由照派（Ok 臂 C2 形态① 同款；载荷 = 首实参
+                    // 回落输入值）。
+                    let emit_key = format!("on{}", clean_name);
+                    if let Some(route) =
+                        crate::ui::child_emit::lookup_route(&emit_widget, &emit_key)
+                    {
+                        let payload = args
+                            .first()
+                            .cloned()
+                            .or_else(|| {
+                                input_value.clone().map(|t| auto_val::Value::Str(t.into()))
+                            })
+                            .unwrap_or(auto_val::Value::Nil);
+                        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                            eprintln!(
+                                "[VM-EMIT] {}.{} -> {}.{} (handler-less declarative)",
+                                emit_widget, clean_name, route.parent_widget, route.handler
+                            );
+                        }
+                        self.dispatch_parent_route(&emit_widget, &clean_name, &route, payload);
+                        self.dirty = true;
+                    }
                 }
                 // Fallback: try legacy handler_<Event> on root state (backward compat).
                 // ⚠️ 仅当本消息本就属于根 widget 时才回退 —— 若给子 widget/store 的
@@ -2949,5 +3036,97 @@ mod tests {
         assert_eq!(state.len(), 2);
         assert_eq!(state.get("x"), Some(&auto_val::Value::Int(1)));
         assert_eq!(state.get("y"), Some(&auto_val::Value::Int(2)));
+    }
+
+    // ── PLAN-062 T1: timer 空转拍不应置脏 ─────────────────────────────
+    //
+    // 现场（2026-09-05 实机定罪）：musk PollStream when 门摘除后每 500ms
+    // 空转拍经 call_handler Ok → dirty=true 无条件置脏 → 整树重建 ×
+    // retain 泄漏。本测钉死"零状态写的拍不得失效视图"。
+
+    #[cfg(feature = "ui-interpreter")]
+    fn locate_plan062_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan062_memleak/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn fire_timer_noop_does_not_dirty() {
+        let Some(path) = locate_plan062_corpus() else {
+            eprintln!("plan062: SKIPPED — corpus not found");
+            return;
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path)
+            .expect("plan062 corpus builds");
+        // 基线：Init 写状态置脏 → 清掉，得到干净起点。
+        assert!(dc.is_dirty(), "Init populated state (dirty)");
+        dc.clear_dirty();
+
+        // 预热拍：合成 handler 首调有惰性单化/物化（实测 +41 堆对象、
+        // 一次性）——先吸收掉首拍 dirty，模拟运行期稳态。
+        assert!(dc.fire_timer("App", "IdleTick"));
+        dc.clear_dirty();
+
+        // 空转拍（稳态）：handler 执行成功但 running=false 守卫拦截，零状态写。
+        assert!(dc.fire_timer("App", "IdleTick"), "ungated entry dispatches");
+        assert!(
+            !dc.is_dirty(),
+            "no-op tick (handler Ok, zero state writes) must not dirty the view"
+        );
+
+        // 对照：恒写拍照常置脏（timer 活性回归锚）。
+        assert!(dc.fire_timer("App", "BeatTick"));
+        assert!(dc.is_dirty(), "state-writing tick still dirties");
+    }
+
+    /// PLAN-062 T2: 突变计数器口径——纯读拍不 bump，状态写拍 bump
+    /// （fire_timer 空转判定的地基：dispatch 机制本身不得虚增计数）。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn mutation_seq_bumps_on_write_not_read() {
+        let Some(path) = locate_plan062_corpus() else {
+            eprintln!("plan062: SKIPPED — corpus not found");
+            return;
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path)
+            .expect("plan062 corpus builds");
+        dc.clear_dirty();
+
+        // 预热：吸收首调惰性物化（一次性）。
+        let _ = dc.on_with_input_for("App", "IdleTick", None);
+        let _ = dc.on_with_input_for("App", "BeatTick", None);
+        let _ = dc.on_with_input_for("App", "MuskTick", None);
+
+        // 纯读：bridge 状态读不 bump。
+        let s0 = dc.state_mutation_seq();
+        let _ = dc.read_state("running");
+        let s1 = dc.state_mutation_seq();
+        assert_eq!(s0, s1, "pure bridge read must not bump mutation seq");
+
+        // 空转拍（稳态）：零状态写不 bump（隐式视图重建已在 PLAN-062
+        // 移除，dispatch 机制零分配）。
+        let _ = dc.on_with_input_for("App", "IdleTick", None);
+        let s2 = dc.state_mutation_seq();
+        assert_eq!(s1, s2, "warm no-op tick must not bump mutation seq");
+
+        // musk PollStream 早退形态（let 绑定 + .length + 索引读）也不 bump。
+        let _ = dc.on_with_input_for("App", "MuskTick", None);
+        let s2b = dc.state_mutation_seq();
+        assert_eq!(s2, s2b, "musk-shaped no-op tick (let + .length + index read) must not bump");
+
+        // 状态写拍：bump。
+        let _ = dc.on_with_input_for("App", "BeatTick", None);
+        let s3 = dc.state_mutation_seq();
+        assert!(s3 > s2, "state-writing tick must bump mutation seq ({} -> {})", s2, s3);
     }
 }

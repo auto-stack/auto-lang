@@ -180,7 +180,11 @@ pub fn run_vm(config: &RunConfig) -> Result<Vec<TapResult>, String> {
     {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("at") {
+        // Plan 560 T12：py 套件迁移 .as——glob 兼容双扩展名（.at 存量/.as 脚本）。
+        if !matches!(
+            path.extension().and_then(|s| s.to_str()),
+            Some("at") | Some("as")
+        ) {
             continue;
         }
 
@@ -246,7 +250,11 @@ pub fn run_a2r(config: &RunConfig) -> Result<Vec<TapResult>, String> {
     {
         let entry = entry.map_err(|e| e.to_string())?;
         let test_path = entry.path();
-        if test_path.extension().and_then(|s| s.to_str()) != Some("at") {
+        // Plan 560 T12：py 套件迁移 .as——glob 兼容双扩展名（.at 存量/.as 脚本）。
+        if !matches!(
+            test_path.extension().and_then(|s| s.to_str()),
+            Some("at") | Some("as")
+        ) {
             continue;
         }
         let test_stem = test_path
@@ -548,7 +556,11 @@ fn transpile_library(config: &RunConfig, lib_auto_dir: &Path) -> Result<String, 
 
     for entry in entries {
         let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("at") {
+        // Plan 560 T12：py 套件迁移 .as——glob 兼容双扩展名（.at 存量/.as 脚本）。
+        if !matches!(
+            path.extension().and_then(|s| s.to_str()),
+            Some("at") | Some("as")
+        ) {
             continue;
         }
         // Canonicalise so the path resolves after the child changes CWD.
@@ -852,7 +864,11 @@ pub fn run_a2py(config: &RunConfig) -> Result<Vec<TapResult>, String> {
     let mut entries: Vec<_> = std::fs::read_dir(&test_dir)
         .map_err(|e| format!("failed to read test dir {}: {}", test_dir.display(), e))?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("at"))
+        // Plan 560 T12：py 套件迁移 .as——a2py 面双扩展名。
+        .filter(|e| matches!(
+            e.path().extension().and_then(|s| s.to_str()),
+            Some("at") | Some("as")
+        ))
         .collect();
     entries.sort_by_key(|e| e.path());
 

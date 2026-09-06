@@ -110,4 +110,10 @@ fn main() {
     var good = py_call_may(t, "sum")
     var total = good.?(-1)
     if py_float(total) == 15 { tap_ok(16, "test_may_ok") } else { tap_not_ok(16, "test_may_ok", "got " + py_float(total).to(str)) }
+
+    // 17. null print/str fidelity: str(None) == "None" three-way
+    // (Plan 550 T07 — a2py lowers .to(str) to str(None); AutoVM TYPE_TO_STR
+    // null arm + print shim render the same "None").
+    var nv = null
+    if nv.to(str) == "None" { tap_ok(17, "test_print_none") } else { tap_not_ok(17, "test_print_none", "got " + nv.to(str)) }
 }

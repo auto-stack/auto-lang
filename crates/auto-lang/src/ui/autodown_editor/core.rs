@@ -49,7 +49,7 @@ use crate::ui::code_editor::theme::Rgba;
 pub const BODY_SIZE: f32 = autodown_blocks::BODY_SIZE;
 const LINE_H_MULT: f32 = 1.45;
 /// 块间垂直间距（观感对齐只读轨 Column spacing=8 + 标题边距感）。
-pub const BLOCK_GAP: f32 = 10.0;
+pub const BLOCK_GAP: f32 = 8.0; // PLAN-053 T15：与只读臂文档列 spacing 8 对齐（两臂基础节奏同值）
 /// 光标宽（对齐 413 CARET_WIDTH）。
 pub const CARET_WIDTH: f32 = 2.0;
 /// 多击窗口（对齐 413 CLICK_TIMING）。
@@ -587,6 +587,19 @@ impl AutodownEditorCore {
     fn live_text(&self, i: usize) -> String {
         let blocks = self.blocks.lock().unwrap();
         blocks.get(i).map(|b| SendEdit::of(b).text()).unwrap_or_default()
+    }
+
+    /// PLAN-051 T10：本核的 fence 叶 buffer 换到当前 dark_mode 档的 hljs
+    /// 主题（retheme_all_fence_buffers 的单核臂；带语言 fence 才染，
+    /// 无语言 fence 不染色保持）。
+    pub fn retheme_fence_buffers(&self) {
+        let theme = ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode());
+        let mut blocks = self.blocks.lock().unwrap();
+        for b in blocks.iter_mut() {
+            if b.kind == LeafKind::Fence && b.syntax.is_some() {
+                b.editor.ed_mut().update_theme(&theme);
+            }
+        }
     }
 
     /// 全文回读（native payload 与 on_change 回环共用口）。
@@ -1256,6 +1269,13 @@ impl AutodownEditorCore {
             let b = &mut blocks[bi];
             let size = leaf_size(b.kind);
             let line_h = size * LINE_H_MULT;
+            // PLAN-053 T15：heading 额外块距（§7.3 vue margins 19.2/17.6 与
+            // 25.6/14.4 扣两臂共同基础节奏 8px）——与只读臂 mt-[]/mb-[] 类
+            // 同值，两臂逐块 pitch 一致即左右对齐。
+            let (extra_top, extra_bottom) = match b.kind {
+                LeafKind::Heading(l) => autodown_blocks::heading_extra_margins(l),
+                _ => (0.0, 0.0),
+            };
             let mono_all = matches!(b.kind, LeafKind::Fence);
             let styled_ok = {
                 let snapshot_eq = SendEdit::of(b).text() == b.snapshot;
@@ -1278,7 +1298,7 @@ impl AutodownEditorCore {
             } else {
                 viewport_w.max(1.0)
             };
-            let text_y = y + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
+            let text_y = y + extra_top + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
             let ed = &mut b.editor.0;
 
             ed.with_buffer_mut(|buf| {
@@ -1301,12 +1321,16 @@ impl AutodownEditorCore {
             }
 
             // 共享绘制段：&Buffer → 样式化段（mark 区间 × 语法着色合并）。
+            let heading = matches!(b.kind, LeafKind::Heading(l) if (1..=3).contains(&l));
+            let (sr, sg, sb) = autodown_blocks::heading_strong_rgb();
             let ctx = BlockDrawCtx {
                 marks: &b.intervals,
                 styled_ok,
                 mono_all,
                 syntax: fenced,
                 base,
+                heading,
+                heading_color: Rgba { r: sr as f32 / 255.0, g: sg as f32 / 255.0, b: sb as f32 / 255.0, a: 1.0 },
             };
             let block_h =
                 ed.with_buffer(|buf| buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs));
@@ -1346,7 +1370,7 @@ impl AutodownEditorCore {
                 });
                 full.h
             } else {
-                block_h.max(line_h)
+                block_h.max(line_h) + extra_top + extra_bottom
             };
 
             if !view_inst {
@@ -1488,6 +1512,10 @@ pub struct BlockDrawCtx<'a> {
     pub syntax: bool,
     /// 基础前景色。
     pub base: Rgba,
+    /// PLAN-053 T14：heading 块（h1-h3）——默认前景改 accent-strong、
+    /// 字重恒 700（§7.3/§7.2，与只读臂类表同源）。
+    pub heading: bool,
+    pub heading_color: Rgba,
 }
 
 /// 单个已布局 Buffer → 样式化 DocRun 段。**纯函数**：只读 layout_runs，
@@ -1627,6 +1655,7 @@ fn push_styled_pieces(
                 a: c.a() as f32 / 255.0,
             },
             None if st.link => LINK_COLOR,
+            None if ctx.heading => ctx.heading_color,
             None => ctx.base,
         };
         out.push(DocRun {
@@ -1636,7 +1665,7 @@ fn push_styled_pieces(
             size,
             line_height: line_h,
             color,
-            bold: st.strong,
+            bold: st.strong || ctx.heading,
             italic: st.em,
             mono: ctx.mono_all || st.code,
             strike: st.del,
@@ -2648,6 +2677,21 @@ pub fn autodown_editor_sync(key: &str, content: &str, is_final: bool) -> bool {
     }
 }
 
+/// PLAN-051 T10（DEBTS 050 处置·实现分支）：运行时主题翻转的 fence buffer
+/// 重着色。DEBTS 050 登记的 wontfix 前提「直到运行时主题切换器存在」由
+/// settings 面（PLAN-051 T6）落地成立——本函数在 dark_mode 翻转后由
+/// renderer 两处翻转臂（Plan 370 D-GAP 值变化臂 + Plan 518 set_theme 执行
+/// 臂）调用，把全部注册编辑核的 fence 叶 buffer 换到新档 hljs 主题
+/// （ViEditor::update_theme：换主题+清高亮缓存+重置行 attrs；PLAN-050 的
+/// render_frame 帧内 ensure_code_family_spans 幂等机制自动补回被重置的
+/// family span，mono 测宽契约不受影响）。
+pub fn retheme_all_fence_buffers() {
+    let map = registry().lock().unwrap();
+    for core in map.values() {
+        core.retheme_fence_buffers();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 借封装：绕开 413 私有 EditorGuard，为 BlockBuf 提供只读方法面
 // ---------------------------------------------------------------------------
@@ -3410,6 +3454,8 @@ mod tests {
                 mono_all: fenced,
                 syntax: fenced,
                 base: WHITE,
+                heading: false,
+                heading_color: WHITE,
             };
             let _ = b.editor.ed().with_buffer(|buf| {
                 buffer_block_runs(
@@ -3831,6 +3877,33 @@ fn main() { let s = \"hi\"; }
             paren.color.g,
             paren.color.b
         );
+    }
+
+    /// PLAN-051 T10（DEBTS 050 处置·实现分支）：运行时主题翻转的 fence
+    /// buffer 重着色——hljs 主题在 buffer 构建期选定，set_dark_mode 本身
+    /// 不自换；retheme_all_fence_buffers 负责换挡：fence buffer 主题前景
+    /// 应随全局翻转 dark↔light（hljs 基色 light (9,9,11) / dark
+    /// (250,250,250)，hljs_syntax_theme 同源值）。
+    #[test]
+    fn fence_buffer_rethemes_on_runtime_flip() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let c = core_for("t51a", "```rust\nfn main() {}\n```\n");
+        // 暗 + 重着色：基色前景翻到 zinc-50。
+        crate::ui::style::theme::set_dark_mode(true);
+        retheme_all_fence_buffers();
+        {
+            let blocks = c.blocks.lock().unwrap();
+            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("dark fg");
+            assert_eq!((fg.r, fg.g, fg.b), (250, 250, 250), "dark retheme base fg");
+        }
+        // 回浅 + 重着色：基色前景回 zinc-950。
+        crate::ui::style::theme::set_dark_mode(false);
+        retheme_all_fence_buffers();
+        {
+            let blocks = c.blocks.lock().unwrap();
+            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("light fg");
+            assert_eq!((fg.r, fg.g, fg.b), (9, 9, 11), "light retheme base fg");
+        }
     }
 
     /// PLAN-050 F4：段落行内 code 区间以 mono 家族测宽——render_frame 后

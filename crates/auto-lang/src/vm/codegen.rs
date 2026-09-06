@@ -5018,7 +5018,7 @@ impl Codegen {
         }
 
         // Plan 369 Task 12: seed the py-object built-ins (py_call, py_getattr)
-        // so calls like `py_call(d, "isoformat")` route through CALL_PY with the
+        // so calls like `py_call(d, "isoformat")` route through CALL_NAT_COUNTED with the
         // correct arg count. These resolve to fixed native IDs registered by
         // init_py_ffi. Marking them in py_native_map also sets is_py_ffi_call,
         // so the runtime arg-count byte is emitted.
@@ -5138,8 +5138,8 @@ impl Codegen {
         }
         self.emit(OpCode::CREATE_ARRAY);
         self.code.push(kw_names.len() as u8);
-        // CALL_PY py_item_kw with count = 5
-        self.emit(OpCode::CALL_PY);
+        // CALL_NAT_COUNTED py_item_kw with count = 5
+        self.emit(OpCode::CALL_NAT_COUNTED);
         self.emit_u16(NATIVE_PY_ITEM_KW);
         self.code.push(5u8);
         Ok(())
@@ -5172,7 +5172,7 @@ impl Codegen {
         self.emit_store_loc(ctx_idx);
         // py_enter(ctx)
         self.emit_load_loc(ctx_idx);
-        self.emit(OpCode::CALL_PY);
+        self.emit(OpCode::CALL_NAT_COUNTED);
         self.emit_u16(NATIVE_PY_ENTER);
         self.code.push(1u8);
         // body statements inline (discard inner expression results)
@@ -5191,7 +5191,7 @@ impl Codegen {
         }
         // py_exit(ctx)
         self.emit_load_loc(ctx_idx);
-        self.emit(OpCode::CALL_PY);
+        self.emit(OpCode::CALL_NAT_COUNTED);
         self.emit_u16(NATIVE_PY_EXIT);
         self.code.push(1u8);
         self.pop_scope();
@@ -5263,14 +5263,14 @@ impl Codegen {
         self.emit(OpCode::CREATE_ARRAY);
         self.code.push(kw_names.len() as u8);
         // The fixed 5-slot convention of py_call_kw (id 452).
-        self.emit(OpCode::CALL_PY);
+        self.emit(OpCode::CALL_NAT_COUNTED);
         self.emit_u16(452);
         self.code.push(5u8);
         Ok(())
     }
 
     /// Plan 369 Task 12: register py_call / py_getattr in py_native_map so the
-    /// codegen treats them as py-FFI calls (emitting CALL_PY with runtime arg
+    /// codegen treats them as py-FFI calls (emitting CALL_NAT_COUNTED with runtime arg
     /// count). Idempotent.
     fn register_py_object_builtins(&mut self) {
         // Use fixed IDs directly to avoid importing py_ffi (which is feature-gated).
@@ -5348,6 +5348,20 @@ impl Codegen {
             "py_item_kw",
             "py_float",
             "py_callable",
+            // Plan 555 T04: 分发组合子配套三桥（B2 桥半/B6/D8）——
+            // 固定 id 注册见 lib.rs init_py_ffi（467-469）。
+            "py_setattr",
+            "py_len",
+            "py_type_name",
+            // Plan 560 T04: B7/B8。
+            "py_contains",
+            "py_module",
+            // Plan 560 T06 (D7) + T07 (C6)。
+            "py_str",
+            "py_pow",
+            // Plan 560 T08。
+            "py_truthy",
+            "py_is",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
@@ -5989,7 +6003,7 @@ impl Codegen {
                             // Plan 369 Task 11: bare reference to a py-imported name
                             // that is not a local/global/enum resolves to a zero-arg
                             // py-FFI native call (e.g. math.pi constant, or a no-arg
-                            // Python function). Resolve the native_id and emit CALL_PY
+                            // Python function). Resolve the native_id and emit CALL_NAT_COUNTED
                             // with arg_count=0. py_constants marks genuine constants;
                             // zero-arg callables also flow through here.
                             let qualified = format!("py.{}", name_str);
@@ -5998,7 +6012,7 @@ impl Codegen {
                                 reg.resolve_qualified(&qualified)
                                     .unwrap_or_else(|| reg.register(&qualified))
                             };
-                            self.emit(OpCode::CALL_PY);
+                            self.emit(OpCode::CALL_NAT_COUNTED);
                             self.code.extend_from_slice(&native_id.to_le_bytes());
                             self.code.push(0); // arg_count = 0
                             // py-FFI auto return marshals to string pool by default
@@ -8265,7 +8279,7 @@ impl Codegen {
 
                 // Check if it's a native function (either intrinsic or BIGVM_NATIVE)
                 // Plan 369 Task 10: track whether the resolved native is a py-FFI call,
-                // so the emit site can use CALL_PY (carrying runtime arg count) instead
+                // so the emit site can use CALL_NAT_COUNTED (carrying runtime arg count) instead
                 // of CALL_NAT. Set true in the py_native_map / py_modules branches below.
                 let mut is_py_ffi_call = false;
                 // Plan 454 E(§M 缺口③·路由半):动态接收者(obj/Object 注解)
@@ -8453,6 +8467,20 @@ impl Codegen {
                             reg.resolve_qualified(name)
                         }; // guard dropped here
                         if let Some(id) = natives_id {
+                            // Plan 555 T06: 分发组合子走 CALL_NAT_COUNTED 传输形态
+                            // （携带调用点实参数字节——组合子 shim 按
+                            // pending_native_arg_count 弹参；is_py_ffi_call
+                            // 在此仅是"带计数字节的原生调用"发射约定，
+                            // 与 py 无耦合）。限定名/裸名皆可命中。
+                            if id == crate::vm::interop::NATIVE_INTEROP_OBJ_GET
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_SET
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_CALL
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_LEN
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_ITER
+                                || id == crate::vm::interop::NATIVE_INTEROP_OBJ_TYPE_NAME
+                            {
+                                is_py_ffi_call = true;
+                            }
                             Some(id)
                         } else if let Some(qualified) = self.import_scope.get(name) {
                             // Plan 347: a user-loaded Auto library must shadow a
@@ -8894,12 +8922,12 @@ impl Codegen {
                         id
                     };
 
-                    // Plan 369 Task 10: py-FFI calls use CALL_PY which carries the
+                    // Plan 369 Task 10: py-FFI calls use CALL_NAT_COUNTED which carries the
                     // call-site arg count as an extra byte, so the Python shim pops
                     // the ACTUAL number of args (count cannot be introspected for
                     // C builtins like datetime.date, and struct.pack is variadic).
                     if is_py_ffi_call {
-                        self.emit(OpCode::CALL_PY);
+                        self.emit(OpCode::CALL_NAT_COUNTED);
                         self.code.extend_from_slice(&resolved_id.to_le_bytes());
                         self.code.push(call.args.args.len().min(255) as u8);
                     } else {

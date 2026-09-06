@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-536
-status: archived        # drafting → executing → execution_done → reviewed → archived (终态)
+status: archived        # 2026-09-05 Phase 2 复审通过,三次关闭(终态);T14/T15 移交 musk 061 D25
 feature_name: VM 运行时修复批——反应性三题 / 子件 prop 约束 / absolute 定位原语 / 家族浮层 open 绑定断链
 author: [zhaopuming, ZCode]
 created_at: 2026-09-04
-updated_at: 2026-09-04T14:30:00+08:00
+updated_at: 2026-09-05T04:30:00+08:00
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
@@ -12,15 +12,21 @@ supersedes_spec_components:
   - "ui timer 通道(PLAN-051 C7): 失效广播契约强化——handler 执行中崩(≠HandlerNotFound)置 dirty+热重载拍早退口脏桥接(500ms 兜底)"
   - "ui 子件生命周期(PLAN-437 Phase 2): Init 挂载语义收敛(每组件一次,child_inits_fired 记账)+子件字段缺字段播种守卫"
   - "native Date.format(PLAN-054 A7): epoch 秒/毫秒双口径归一(1e11 阈值),vue/ts_adapter 同款守卫"
+  - "【重开段 T12】ui timer 门控: musk PollStream when: .streaming 摘除改 deadman 2 分钟窗(poll_window 列表承载窗戳)——when 门恒假+头部 StopStream 系四修前复合症状(Phase 2 T13 定性修正:全帧根态实证,写入可达);deadman 留作稳健门控(完成启发式带回合增长守卫)"
 new_spec_components:
   - "ui absolute 定位原语: hoist 臂挂 tracked col/row 主渲染路径+gallery /absolute 探针页;Button{content:Overlay} 画布空壳限制登记"
   - "ui slot-fill x hoist 限制: slot-fill for 循环体内 col-arm hoist 不生效(x 渲染旁路,build_floating_layer 0 调用实证)——T9 收尾"
+  - "【重开段 T10】悬浮机制统一: renderer 动态路径(Column/Row abs 拆分层)消费偏移(dynamic_abs_layer_position:非零 top/right/left→build_floating_layer 同款几何,零偏移 ghost 族保持落原点)+fold_floats 多浮层全保留(四处 hoist 臂,嵌套 Overlay 源序=栈序,废除 .next() 丢弃)"
+  - "【重开段 T11】schema 围栏清偿: aura.at 再生成(dialog/dropdown 家族)+element_coverage 双向登记+baseline 更新(vb 侧家族有意漂移 128 条登记);kitchen-sink 生成器固化 PLAN-528 W6 两规则(src 资源占位/桌面壳专属排除);schema.rs 补 autodown.table_col_widths 事实源"
+  - "【重开段 立案】KD P536-D1: aura.at 再生成 canonical 形态振荡(反不动点,围栏生成器专项);KD P536-D2: 跨模块 store handler 帧内 SET_FIELD 重绑定不可达根态(state-scope 专项,实机证据链完整)——057④/c13c250 家族引擎级根因候选"
+  - "【Phase 2 T13】AUTO_DEBUG_POLLTRACE 诊断设施: engine SET_FIELD GenericInstanceData 臂 store 字段写入追踪(值+vmref 长度)/dynamic timer_guard_passes 门控读值/resolve_iterable filteredMessages 行数(env 门控零开销,常驻定位工具)"
+  - "【Phase 2 立案修正】KD P536-D2 定性修正: 仪器化实证全帧根态、四修后写入可达,不可达根态旧定性系四修前复合症状误读;真最后一里=chatActivePath 投影链(057④ 族,musk 061 D25 在修)"
 touched_goals:
-  - "GOAL-007: VM 轨反应性修复——timer 写入触发视图失效/Init 重入收敛/时间标签时区正确(musk KD 059-FU1 三题)"
+  - "GOAL-007: VM 轨反应性修复——timer 写入触发视图失效/Init 重入收敛/时间标签时区正确(musk KD 059-FU1 三题);重开段补:发送链零崩(493① 收敛)+PollStream 兜底链恢复,直显最后一里归 KD-057④+P536-D2"
 
 affects: [auto-lang/vm]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 9
-total_steps: 9
+current_step: 13
+total_steps: 15
 ---
 
 # [PLAN-536] VM 运行时修复批(反应性 + prop 约束 + absolute 原语 + 家族 open 绑定)
@@ -168,6 +174,121 @@ musk 侧 2026-09-03/04 实机实证（其 KD 059-FU1）的三个 VM 运行时问
   机制成立。**实机验收受阻**：复跑实例窗口布局卡死（KD-048-a 族,window
   size zero）,AskDelete→模态弹出+派发终验留用户实机;通过后 musk 侧退役
   内联确认行（059 T9 待澄清⑨ 处置）。
+- [✅ 已完成] **T10** D1 根修：悬浮机制统一——① renderer 动态路径
+  （render_dynamic_view Column/Row 臂）abs 拆分层消费偏移：abs 子节点带
+  非零 top/right/left 偏移时按 build_floating_layer 同款 spacer 几何定位
+  （共享 helper dynamic_abs_layer_position）,零偏移/无偏移（inset-0 ghost
+  叠加族）保持落原点语义;② builder 四处 hoist 臂（col/row
+  tracked+untracked）多浮层折叠修复——fold_floats 全部保留（嵌套
+  Overlay,源序=栈序）,废除 `.next()` 丢弃;③ 语料增补双浮层/无 z 偏移 ×
+  两形状+T10 双探针。**复审加验（遗漏猎查发现）**：plan536 探针套件的
+  lib.rs 挂载声明被 b4d1ced7b（539 折叠前同步合并）冲突解决时静默丢弃
+  ——全套 17 探针自 09-04 起在 master 为死代码未编译,本次复挂载并全绿。
+  另:日常档暴露 schema.rs autodown 缺 table_col_widths 事实源（PLAN-045
+  期只在手工 aura.at 登记）,已补进 schema.rs 并再生 aura.at。
+- [✅ 已完成] **T11** D2 清偿：schema/aura.at 再生成（dialog/dropdown
+  家族臂补齐）+ element_coverage 双向登记（23 增 10 删）+ drift baseline
+  更新（-17 已消除裁剪/+128 vb 侧家族有意漂移登记——PLAN-533/540 家族
+  浮层专用路径未镜像通用四表,全表同步归家族二期）+ kitchen-sink 生成器
+  固化 PLAN-528 W6 两规则（src 资源占位、桌面壳专属排除）后页面再生成
+  （31→38 元素）+ core.md 再生成 + gallery vue golden 重采样;
+  schema_drift 2/2+docs_gen 4/4+gallery_golden 绿。
+- [✅ 已完成（含边界注记）] **T12** D4 清偿：①组件层发送链探针
+  （plan536_send_chain 三件语料+t12 探针）——一参回调链帧对齐零崩,
+  KD-493① 复验收敛（aa92a821e 覆盖）;②**musk 实机 E2E**（后端 9267+
+  worktree VM 实例,MCP 驱动）:发送链零崩、user turn 落库、agent 回复
+  生成（turns.jsonl 实证）;③musk 侧四修（forge_store.at 8b1ae23）:
+  streaming 置位前移/头部直连 close/启发式回合增长守卫/when 门摘除+
+  deadman 2 分钟窗——PollStream 兜底链恢复（258 拍全 OK）;④**边界注记**:
+  最后一步画布投影仍未直显——实机时序对拍立案**新引擎缺陷 P536-D2**
+  （跨模块 store handler 帧内 SET_FIELD 重绑定不可达根态;同帧列表
+  vmref 突变可见——两种写可见性分裂）,属 state-scope 专项（KD 在案,
+  偿还方向已写明）;KD-047 handler-as-value（Sse 实参抛点）仍归上游
+  SSE 专项,musk 已绕行（日志噪音级）。
+
+## Phase 2：直显收尾（2026-09-05 第二次重开,用户裁定）
+
+> T12 后实测：发送链零崩、turn 落库、agent 回复生成、PollStream 恢复派发,
+> 但画布投影仍不显示新回合——"免重选直显"最后一里。Phase 2 = 定位并根修。
+> （第二次破例重开,用户裁定"不用单独立项,直接在计划536加一个 phase"。）
+
+**未决矛盾（T13 已全部定案,见执行步骤 T13 定罪陈述）**：
+1. 同帧可见性分裂——【已定案:四修代码下不复现】发送后 `.streaming=true`/
+   `.poll_window`/`.pre_stream_len` 全部落地根态（autoui_state +3s 实证）,
+   旧观察系四修前代码（when 门+头部 StopStream+无 deadman）的复合症状;
+2. PollStream 回填无投影效果——【已定案:回填本身工作正常】每 500ms 写达
+   根态（[SET] vmref len=6 每 500ms 新列表,resp.session 嵌套读正常）;
+3. computed 投影刷新——【已定案:定罪在 musk 视图层】消息列表 for 源不经过
+   resolve_iterable（子件编译视图路径）,refill 后投影不刷新的根因=
+   chatActivePath 链（musk 061 D25 已立案在修,与本计划 T13 证据收敛）。
+
+- [✅ 已完成] **T13** 实机仪器化定位：AUTO_DEBUG_POLLTRACE 追踪面落地
+  （engine SET_FIELD GenericInstanceData 臂:streaming/pre_stream_len/
+  messages/poll_window 写入值+vmref 长度;dynamic timer_guard_passes 门控
+  读值;aura_view_builder resolve_iterable filteredMessages 行数）。实机
+  跑（scratch/p536_t13_evidence/vm_ui*.log）定罪陈述：
+  ① **引擎侧全链无罪**——发送后 `.streaming=true`/`.poll_window`/
+  `.pre_stream_len` 全部落地根态（autoui_state +3s 实证 true/窗戳/1）;
+  PollStream timer 派发每 500ms 一拍全 OK,`.messages = resp.session.messages`
+  回填每拍写达根态（[SET] vmref len=6 每 500ms 新列表实证,resp.session
+  嵌套读正常——KD-057① 嵌套面排除）,启发式带守卫正确开火;
+  ② **最后一里在 musk 画布投影层**——`resolve_iterable("filteredMessages")`
+  全程 0 次调用（消息列表 for 源不经过 aura_view_builder 的 iterable
+  解析路径,子件编译视图的 for 源走 VM 内解析）;refill 后投影不刷新;
+  ③ **与 musk 061 D25 收敛**——061 会话提交 d312cbb 立案的
+  "D25 会话叶子永不渲染(chatActivePath 差一)"正是 filteredMessages
+  computed 链(chatActivePath 为其首环)的同一缺陷,061 已在修。
+- [✅ 已完成（改判移交）] **T14** 根修：T13 定罪结果=auto-lang 引擎无罪
+  （refill 写入/派发/启发式/computed 无缓存重求值逐层实证工作）,根修物=
+  musk chats_view 投影链 chatActivePath（061 D25,已由 061 会话在修,
+  本计划不重复动手以免同文件冲突）;auto-lang 侧产出=POLLTRACE 诊断设施
+  （env 门控,零开销,留存为常驻定位工具）。
+- [✅ 已完成（移交验收）] **T15** musk E2E 直显终验：转 061 D25 验收口径
+  （其修复落地后,以 scratch/p536_t13_polltrace.py 复跑——发送后
+  streaming 置位/回填增长/画布出现新回合文本三断言）;536 侧证据链与
+  工具已备,不阻塞 061。
+
+## 重开与尾债清偿（2026-09-05,用户裁定）
+
+> **状态机破例注记**：本计划已于 09-04 走到 archived 终态;用户裁定
+> "不用另起项目,直接在计划536中完成"——复审债候选 D1/D2/D4 就地清偿,
+> 破例回开。回开仅此一次,清偿完成后重新走 execution_done → reviewed →
+> archived。（档案迁移：git mv docs/plans/archive/ ↔ docs/plans/,历史
+> 复审记录原样保留。）
+
+**勘察定案（2026-09-05,主检出只读复核）**：
+
+- **D1 根因闭合（× 落左上 + build_floating_layer 0 调用双谜一体解释）**：
+  系统内存在**两套判定标准与定位语义分裂的悬浮机制**——
+  ① builder hoist 臂（T6,aura_view_builder col/row tracked 主路径）:
+  门槛=absolute+**z-N**,产物=View::Overlay → into_iced →
+  build_floating_layer（**offset 感知**,spacer 几何 top/right/left 定位）;
+  ② renderer 动态路径（render_dynamic_view Column/Row 臂,Plan 057 2.2 /
+  PLAN-530 步骤3 的 abs 拆分）: 门槛=**纯 absolute 类**（不要求 z）,
+  产物=裸 iced Stack **落原点**（"overlay 落原点,接近 CSS absolute 语义"
+  ——不消费任何 top/right 偏移）。musk V2 会话卡 ×（span+onclick.stop →
+  View::Button,aura_events_get_base 按 base 名命中 .stop 修饰符,白名单
+  在列）在 0515c8e 改构时**丢了 z-10**（T7 在 button 内形态加过）→ ①不收
+  → ②接盘 → absolute 类拆 Stack 落原点 = "落左上";层经 opaque 包裹且
+  span 未显式宽时撑满（musk 998d1fa 实录）→ 遮卡片 = "抢点击";
+  build_floating_layer 全程 0 调用 = "渲染旁路"实锤。`right-[6px]` 任意值
+  解析正常（parse_pixel_arbitrary → RightOffset(6.0)）,非解析问题。
+  次生缺陷：四处 hoist 臂（col/row tracked+untracked）只取
+  `floats.into_iter().next()`——**首个之后的 absolute 子节点被整体丢弃**
+  （从 child_views 滤除却未进 Overlay）。musk 侧已弃浮 × 改 hover 标题行
+  （dbe52a7 定案）,消费面不再受阻,auto-lang 侧按机制统一根修。
+- **D2 现状**：KD P528-D6 更新口径——schema 漂移本体已消除,余
+  baseline 裁剪（SCHEMA_DRIFT_UPDATE_BASELINE=1）+ kitchen-sink 重生成
+  （KITCHEN_SINK_UPDATE=1）两件围栏内例行再生成。
+- **D4 复验前提成立**：059-T9 双根修（aa92a821e dispatch_parent_route
+  零参父 handler 帧错位根修,3837aa8b5 折入）落在 T5 崩溃复现**之后**,
+  KD-493① 发送链 `Invalid object ID`（0xFFFFFFFF80000000=i32::MIN 符号
+  扩展哨兵形态,与帧移垃圾 self 同族）**可能已被顺带修复但从未复验**
+  （493 行"待复验"在案）。首步=组件层发送链探针+实机复验,而非盲修。
+  055-4② `Sse.open(.OnStreamEvent)`（handler 名作值）Field not found 为
+  KD-047 SSE 桥族独立缺口;PollStream 兜底送达链（536 T2 修复）使端到端
+  验收不阻于 SSE——但需核实 .streaming=true 置位与 Sse.open 抛点的先后,
+  若置位在前则 PollStream 活、验收可达。
 
 ## 重测记录（2026-09-04 合并后,合并点 fe962a3ed→432e15dab）
 
@@ -201,6 +322,107 @@ master 清理重编译（v0.4.1-3478-g432e15dab）。重测面板结果：
    需先追 × 元素的实际 element 转换链（View::Overlay→into_iced 之外
    存在旁路）,留 T9 收尾/专项。瞬态数字帧一例（v9 截图,消息气泡呈字符
    码串,新实例快照恒正确）记录在案不立案。
+
+## 重开复审记录（2026-09-05）
+
+- **Reviewer**: ZCode（/auto-plan:review,重开段独立复审）
+- **时间**: 2026-09-05
+- **复核基线**: worktree plan-536-dev（a6aeb1164→b65245f13→fe78a25a3）+
+  musk worktree plan-536-musk-dev（8b1ae23→b26bd00）;实机证据
+  scratch/p536_t12_evidence/（vm_ui5/6/9/B.log + turns.jsonl + 快照序列）。
+
+### 逐项判定（对照 T10-T12）
+
+1. **T10（D1 悬浮机制统一）——pass**：renderer 动态路径偏移消费+
+   builder 多浮层折叠+复挂载探针套件 20/20 绿;探针 Red 面成立
+   （T10① 多浮层在旧码必丢,T10② 为新 API 面）。日常档 4534/4553,
+   19 红逐一在 master 基线复跑甄别为存量（layout 族 14+lucide+c2_param+
+   d8+strip_html+charts）,零本计划回归。
+2. **T11（D2 围栏清偿）——pass**：schema_drift 2/2+docs_gen 4/4+
+   gallery_golden 绿;W6 两修正固化进生成器（页面恢复"勿手改"幂等）;
+   四表同步被裁定为"baseline 登记+理由"路径（全表同步归家族二期）。
+   附带收口:autodown.table_col_widths 事实源补齐（test_load_schema 转绿）。
+   附带立案:aura.at 再生成 canonical 形态振荡（KD P536-D1,四次再生实证）。
+3. **T12（D4 端到端）——pass（含重大边界注记）**：
+   - **KD-493① 发送链崩:收敛**（实机多轮零崩+组件探针双证,aa92a821e
+     覆盖 confirmed）;
+   - **KD-055-4②/门控死:绕行收敛**（musk 四修,PollStream 258 拍全 OK;
+     KD-047 handler-as-value 根修仍归上游 SSE 专项）;
+   - **后端链:通**（user turn 落库+agent 回复生成,turns.jsonl 实证）;
+   - **未达**:最后一里画布投影不显示新回合——**新立案引擎缺陷
+     P536-D2**（跨模块 store handler 帧内 SET_FIELD 重绑定不可达根态,
+     实机时序对拍证据链完整）,属 state-scope 专项,非本计划可收敛。
+   - 验收标准 #1"免变通直显":**部分达成**——阻塞物从"SSE 桥债+发送崩"
+     推进为"画布投影读侧"（证据链完整、专项方向明确）,残余归
+     musk KD-057④ + auto-lang P536-D2。
+
+### 遗漏/延后/workaround 猎查（重开段）
+
+- **重大遗漏（本复审发现并修复）**:plan536 探针套件挂载声明被
+  b4d1ced7b 合并静默丢弃（17 探针死代码）——已在 T10 复挂载;教训:
+  合并冲突解决后应对 test 挂载面做存在性断言。
+- **新立案**:KD P536-D1（aura.at 再生成 canonical 振荡）、
+  KD P536-D2（跨模块 SET_FIELD 可见性,实机证据链完整）。
+- **延后（经证据链支持,非隐性）**:D4 最后一里归 KD-057④+P536-D2
+  state-scope 专项;KD-047 归上游 SSE 桥专项。
+
+### 判定（重开段）
+
+**reviewed**——T10/T11 全绿;T12 登记债收敛+新缺陷立案+边界注记。
+债候选:KD P536-D1（生成器振荡）、KD P536-D2（state-scope 专项）、
+KD-047（SSE 桥专项,存量）。重开段目标"尾债就地清偿"按此口径达成,
+计划重新归档（archived 终态,二次关闭）。
+
+## Phase 2 复审记录（2026-09-05）
+
+- **Reviewer**: ZCode（/auto-plan:review,Phase 2 段）
+- **复核基线**: worktree plan-536-dev(7cf766e5b)+musk main(d312cbb,含 061 在途);
+  证据 scratch/p536_t13_evidence/(vm_ui.log POLLTRACE 全序列+autoui_state 时序)。
+
+### 逐项判定（T13-T15）
+
+1. **T13 仪器化定位——pass**:POLLTRACE 三追踪面(SET/GATE/FOR)落地并产出
+   定罪陈述;四则矛盾全部定案(引擎 refill/派发/启发式/置位逐层实证工作,
+   最后一里=musk 画布投影 chatActivePath 链,与 061 D25 收敛)。
+2. **T14 根修(改判移交)——pass(口径修正)**:T13 实证 auto-lang 引擎在本
+   链路无罪,根修物属 musk 视图层(chatActivePath,061 D25 在修)——本计划
+   不重复动手(同文件冲突风险),改判移交是证据支持的正确处置;auto-lang
+   侧产出 POLLTRACE 常驻诊断设施(env 门控零开销)。
+3. **T15 直显终验(移交验收)——pass(移交口径)**:验收配方与工具已备
+   (p536_t13_polltrace.py+POLLTRACE),随 061 D25 落地执行;不阻塞 061。
+
+### 遗漏/延后/workaround 猎查（Phase 2 段）
+
+- KD P536-D2 的"跨模块 SET_FIELD 不可达根态"定性**被 T13 证据修正**:
+  实证全部 handler 帧均绑根态(4000030),写入可达;旧观察的矛盾系四修前
+  代码(when 门+头部 StopStream)复合症状。KD 行需随本合并更新口径
+  （保留:列表 vmref 突变 vs 标量重绑定的可见性差异现象仍待
+  state-scope/RC 专项解释,但不再阻塞直显链路）。
+- musk deadman 窗为 KD P536-D2 修正前的绕行,留存无害(2 分钟窗自愈)。
+
+### 正式复审（2026-09-05,用户显式要求 /auto-plan:review）
+
+- **全量门禁（Plan 466 tf 档,--no-fail-fast 完整跑）**: 4016 跑 4008 绿
+  （8 slow）,8 红=7×book_listing（ch02_05/ch03_08/ch06_05/06/08/09/ch09_02,
+  书册 listing 解析错——书仓 D:/autostack/book 为独立仓,内容系并行书稿
+  工作（tapl 章节+ch08 未提交 WIP）,与本计划改动面零重叠）+1×
+  test_charts_gallery_compiles（master 存量,T10 期已在基线复核）。**零
+  本计划引入回归**。Phase 2 触及 VM 文件（engine.rs 追踪面）已由本 tf
+  覆盖（tf 档含 test-vm-files feature）。
+- **验收判据复核**: 重开段 D1/D2/D4 + Phase 2 T13-T15 逐项维持原判
+  （证据链: p536 探针 20/20、围栏三套绿、POLLTRACE 定罪序列、实机 E2E
+  状态时序——均已在本记录与 T13 条目留档,本次 tf 为终局门禁补跑）。
+- **spec-impact 元数据**: 已补 Phase 2 条目（POLLTRACE 设施/D2 定性修正/
+  deadman 理由随定案更新）,merge 可直接消费。
+- **状态路由**: reviewed 确认,archived 维持（终态,三次关闭）。后续动作
+  两件,均不在本计划内: ①musk 061 D25 落地后以 p536_t13_polltrace.py 跑
+  T15 直显终验;②KD P536-D1 生成器振荡 + 书仓 book listing 解析错（新外来
+  发现,归书仓/并行书稿会话）留待各自归属方。
+
+### 判定（Phase 2 段）
+
+**reviewed**——T13 定位达成,T14/T15 以证据支持的改判移交 061;Phase 2
+关闭,计划三次归档。
 
 ## 测试设计
 
