@@ -92,7 +92,7 @@ total_steps: 0
 - [ ] A2 thumbnail 空显兜底（snapshot.rs/渲染臂）。
 - [ ] B wrap_layout_onclick 设计草稿 + launcher/桌面试点。
 - [ ] C 用户复核七项逐项销账（T20/T24/T28/T31/T32/T37/T38）。
-- [ ] D 崩溃：铃铛二次开合通知中心 → 进程静默退出 code 1（复现 2/2：
+- [x] D 崩溃：铃铛二次开合通知中心 → 进程静默退出 code 1（复现 2/2：
       2026-09-03 21:38 用户实机 + 22:0x 验收通道 handler 双调；无 panic
       输出、无错误日志——疑似 VM 层 Process.exit 或未打印的 abort，
       需 RUST_BACKTRACE=full 实例复现取栈）。定位：`notes_toggle` →
@@ -101,6 +101,11 @@ total_steps: 0
       ui_desktop 的干扰源（强杀退出码恰为 1、无输出——与静默退出同
       signature），上述"复现"不能排除该干扰；复核时需先排除并行
       taskkill（或以 RUST_BACKTRACE=full + 独占环境复现）。
+      ✅ 销账（2026-09-06，PLAN-575 T4b）：独占环境 + 退出审计三挂点
+      （stdlib.rs exit_audit，零行为变更）下 N=20 轮二次开合归因运行
+      20/20 存活零退出、审计零记录——本项负载未复现，按 D3 判据走
+      不可复现分支：KNOWN-DEBT 526 行降档 🟡（疑外部击杀，049 同族），
+      审计机制常驻，真实复现再启。台账 scratch/p575/ledger.jsonl。
 - [ ] E 用户复核：通知中心开合（同 D 场景）确认修复。
 
 ## 复审记录
