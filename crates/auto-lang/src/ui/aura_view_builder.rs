@@ -1410,6 +1410,11 @@ impl<'a> AuraViewBuilder<'a> {
                 let placement = self.side_panel_placement(props, "direction", bindings);
                 self.convert_side_panel_tracked_ctx(props, children, path, id_map, probe, bindings, placement, true)
             }
+            // PLAN-534: hovercard → 非模态 Popover（Bottom 锚定 + MouseArea
+            // hover 触发;on_dismiss=None,关闭只靠 leave）。
+            "hovercard" | "hover-card" | "hover_card" | "HoverCard" => {
+                self.convert_hovercard_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
             // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
             // 透传（root 臂已分区;组外裸渲染,镜像 dialog 先例）。
             "sheet-trigger" | "sheet_trigger" | "sheettrigger"
@@ -3009,6 +3014,11 @@ impl<'a> AuraViewBuilder<'a> {
             "drawer" | "Drawer" => {
                 let placement = self.side_panel_placement(props, "direction", bindings);
                 self.convert_side_panel(props, children, bindings, placement, true)
+            }
+            // PLAN-534: hovercard → 非模态 Popover（untracked 镜像臂,
+            // D-GAP 规则）。见 convert_hovercard。
+            "hovercard" | "hover-card" | "hover_card" | "HoverCard" => {
+                self.convert_hovercard(props, children, bindings)
             }
             // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
             // 透传（untracked 镜像,镜像 dialog 先例）。
@@ -7065,6 +7075,195 @@ let tabs_inner = View::Row {
             placement,
             open,
             on_dismiss,
+        }
+    }
+
+    /// PLAN-534 D4: hovercard 转换（untracked 镜像臂）——trigger 包
+    /// View::MouseArea 接 hover 进/出（parser 铸造 `__dlg_enter_N/leave_N`
+    /// 或用户显式绑定,经通用事件解析同槽读取）;trigger 已有 onclick 的经
+    /// 子件自身转换保留并存。content 装 col 挂非模态 chrome,
+    /// placement=Bottom（锚相对,悬于锚下）;on_dismiss=None（无 scrim、
+    /// 无外点整吞/Esc——关闭只靠 leave;open/close-delay v1 不消费,
+    /// KNOWN-DEBT 登记）。降级切换点:MouseArea×overlay 实测异常（如
+    /// leave 被 overlay 拦截）→ parser 改铸 toggle + 去本臂 MouseArea
+    /// 包裹（差异记录 README）。
+    fn convert_hovercard(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        let (anchor_inner, on_enter, on_exit) = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                let on_enter = aura_events_get_base(t_events, "onmouseenter")
+                    .or_else(|| aura_events_get_base(t_events, "onhover"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let on_exit = aura_events_get_base(t_events, "onmouseleave")
+                    .or_else(|| aura_events_get_base(t_events, "onhoverout"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let inner = if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let views: Vec<View<DynamicMessage>> = t_children
+                        .iter()
+                        .map(|c| self.convert_node_with(c, bindings))
+                        .collect();
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                };
+                (inner, on_enter, on_exit)
+            }
+            _ => (View::Empty, None, None),
+        };
+        // 锚包 MouseArea:命中区=trigger 渲染面,hover 进/出驱动铸造 state。
+        let anchor_view = View::MouseArea {
+            content: Box::new(anchor_inner),
+            on_enter,
+            on_exit,
+            on_double_click: None,
+            on_click: None,
+            on_context_menu: None,
+            on_release: None,
+            on_move: None,
+            logical_extent: None,
+            style: match trigger {
+                Some(AuraNode::Element { props: t_props, .. }) => {
+                    self.extract_style_with(t_props, bindings)
+                }
+                _ => None,
+            },
+        };
+        let panel_children: Vec<View<DynamicMessage>> = match content {
+            Some(AuraNode::Element { children: c_children, .. }) => c_children
+                .iter()
+                .map(|c| self.convert_node_with(c, bindings))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement: PopoverPlacement::Bottom,
+            open,
+            on_dismiss: None,
+        }
+    }
+
+    /// convert_hovercard 的 tracked 镜像（D-GAP 规则）：trigger/content
+    /// 子件经 path 追踪递归。
+    fn convert_hovercard_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+        let (trigger, content) = Self::alert_dialog_split_children(children);
+        let (anchor_inner, on_enter, on_exit) = match trigger {
+            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+                let on_enter = aura_events_get_base(t_events, "onmouseenter")
+                    .or_else(|| aura_events_get_base(t_events, "onhover"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let on_exit = aura_events_get_base(t_events, "onmouseleave")
+                    .or_else(|| aura_events_get_base(t_events, "onhoverout"))
+                    .map(|event| self.event_to_message_with(event, bindings));
+                let inner = if t_children.is_empty() {
+                    self.bare_trigger_button_view(t_props, t_events, bindings)
+                } else {
+                    let mut views: Vec<View<DynamicMessage>> = Vec::new();
+                    for (i, c) in t_children.iter().enumerate() {
+                        path.push(i);
+                        views.push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                        path.pop();
+                    }
+                    match views.len() {
+                        1 => views.into_iter().next().unwrap(),
+                        _ => View::Row {
+                            children: views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                        },
+                    }
+                };
+                (inner, on_enter, on_exit)
+            }
+            _ => (View::Empty, None, None),
+        };
+        let anchor_view = View::MouseArea {
+            content: Box::new(anchor_inner),
+            on_enter,
+            on_exit,
+            on_double_click: None,
+            on_click: None,
+            on_context_menu: None,
+            on_release: None,
+            on_move: None,
+            logical_extent: None,
+            style: match trigger {
+                Some(AuraNode::Element { props: t_props, .. }) => {
+                    self.extract_style_with(t_props, bindings)
+                }
+                _ => None,
+            },
+        };
+        let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
+        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+            for (i, c) in c_children.iter().enumerate() {
+                path.push(i);
+                panel_children
+                    .push(self.convert_node_tracked_ctx(c, path, id_map, probe, bindings));
+                path.pop();
+            }
+        }
+        let panel = View::Column {
+            children: panel_children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
+            onclick: None,
+        };
+        let open = match props.get("open") {
+            Some(AuraPropValue::Expr(e)) => matches!(
+                self.resolve_expr_to_value(e, bindings),
+                Some(Value::Bool(true))
+            ),
+            _ => false,
+        };
+        View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(anchor_view)),
+            content: Box::new(panel),
+            placement: PopoverPlacement::Bottom,
+            open,
+            on_dismiss: None,
         }
     }
 
@@ -14700,5 +14899,148 @@ mod plan055_strip_html_tests {
         assert_eq!(strip_html_tags("a &amp; b &lt;c&gt;"), "a & b <c>");
         assert_eq!(strip_html_tags("plain"), "plain");
         assert_eq!(strip_html_tags("unclosed <b>text"), " text");
+    }
+}
+
+/// PLAN-534: sheet/drawer/hovercard 转换探针（全管线:parse 含铸造机器 →
+/// DynamicComponent view 构建 → View 树断言）。
+#[cfg(test)]
+mod plan534_side_panel_tests {
+    use crate::ui::view::{PopoverAnchor, PopoverPlacement, View};
+    use crate::ui::interpreter::DynamicMessage;
+
+    fn build_view(src: &str) -> View<DynamicMessage> {
+        let dc = crate::build_dynamic_component(src, None).expect("build component");
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        view
+    }
+
+    fn find_popover(view: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
+        match view {
+            View::Popover { .. } => Some(view),
+            View::Row { children, .. } | View::Column { children, .. } => {
+                children.iter().find_map(find_popover)
+            }
+            View::Container { child, .. }
+            | View::Scrollable { child, .. }
+            | View::MouseArea { content: child, .. } => find_popover(child),
+            _ => None,
+        }
+    }
+
+    /// sheet 缺省 side → EdgeRight;铸造形态 dismiss 折算 __dlg_close_1。
+    #[test]
+    fn plan534_sheet_default_edge_right_with_minted_dismiss() {
+        let view = build_view(
+            "widget App {
+             model { activeTab str = \"preview\" }
+             view {
+             col {
+             sheet (side: \"right\") {
+             sheet-trigger {
+             button (text: \"Open\", variant: \"outline\") {}
+             }
+             sheet-content {
+             sheet-title \"Edit Profile\"
+             }
+             }
+             }
+             }
+             }
+",
+        );
+        let pop = find_popover(&view).expect("树内应有 View::Popover");
+        match pop {
+            View::Popover { placement, open, on_dismiss, .. } => {
+                assert_eq!(placement, &PopoverPlacement::EdgeRight, "side 缺省 right → EdgeRight");
+                assert!(!open, "初渲染 open=false");
+                match on_dismiss {
+                    Some(DynamicMessage::Typed { event_name, .. }) => {
+                        assert_eq!(event_name, "__dlg_close_1", "铸造 dismiss 折算 __dlg_close_N");
+                    }
+                    other => panic!("sheet 为可关闭族,铸造形态必有 dismiss,得到 {other:?}"),
+                }
+            }
+            other => panic!("应定位到 Popover,得到 {other:?}"),
+        }
+    }
+
+    /// drawer direction=bottom → EdgeBottom;面板首子为装饰把手 Container。
+    #[test]
+    fn plan534_drawer_bottom_edgebottom_with_handle_first_child() {
+        let view = build_view(
+            "widget App {
+             model { activeTab str = \"preview\" }
+             view {
+             col {
+             drawer (direction: \"bottom\") {
+             drawer-trigger \"Open Drawer\"
+             drawer-content {
+             drawer-title \"Settings\"
+             }
+             }
+             }
+             }
+             }
+",
+        );
+        let pop = find_popover(&view).expect("树内应有 View::Popover");
+        match pop {
+            View::Popover { content, placement, on_dismiss, .. } => {
+                assert_eq!(placement, &PopoverPlacement::EdgeBottom, "direction=bottom → EdgeBottom");
+                assert!(on_dismiss.is_some(), "drawer 同 sheet 为可关闭族");
+                match content.as_ref() {
+                    View::Column { children, .. } => {
+                        assert!(
+                            matches!(children.first(), Some(View::Container { .. })),
+                            "bottom 把手须为首子 Container"
+                        );
+                    }
+                    other => panic!("面板应为 Column,得到 {other:?}"),
+                }
+            }
+            other => panic!("应定位到 Popover,得到 {other:?}"),
+        }
+    }
+
+    /// hovercard → MouseArea 包锚 + Bottom 非模态（on_dismiss=None）。
+    #[test]
+    fn plan534_hovercard_mousearea_wrapped_bottom_nonmodal() {
+        let view = build_view(
+            "widget App {
+             model { activeTab str = \"preview\" }
+             view {
+             col {
+             hovercard {
+             hover-card-trigger {
+             text \"@mentor\"
+             }
+             hover-card-content {
+             text \"bio\"
+             }
+             }
+             }
+             }
+             }
+",
+        );
+        let pop = find_popover(&view).expect("树内应有 View::Popover");
+        match pop {
+            View::Popover { anchor, placement, on_dismiss, .. } => {
+                assert_eq!(placement, &PopoverPlacement::Bottom, "hover 卡悬于锚下");
+                assert!(on_dismiss.is_none(), "非模态:无 dismiss 折算");
+                match anchor {
+                    PopoverAnchor::Widget(inner) => match inner.as_ref() {
+                        View::MouseArea { on_enter, on_exit, .. } => {
+                            assert!(on_enter.is_some(), "铸造 enter 须接进 MouseArea");
+                            assert!(on_exit.is_some(), "铸造 leave 须接进 MouseArea");
+                        }
+                        other => panic!("锚应被 MouseArea 包裹,得到 {other:?}"),
+                    },
+                    other => panic!("hovercard 锚应为 widget 锚,得到 {other:?}"),
+                }
+            }
+            other => panic!("应定位到 Popover,得到 {other:?}"),
+        }
     }
 }
