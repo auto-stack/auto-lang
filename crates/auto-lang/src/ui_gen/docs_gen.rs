@@ -26,6 +26,9 @@ pub struct ElemInfo {
     /// 命令式外壳(CodeEditor/AutoDownEditor/ChatMessage),props 不按
     /// 字面 prop 绑定,kitchen-sink 变体发射须跳过。
     pub vue_import: Option<String>,
+    /// Plan 562:退役标注(schema superseded_by)——带标注的元素不进
+    /// core.md / kitchen-sink 生成物(nav 族,实现移除留观察期)。
+    pub superseded_by: Option<String>,
 }
 
 pub fn prop_type_str(t: &PropType) -> String {
@@ -85,6 +88,7 @@ pub fn load_elements() -> Vec<ElemInfo> {
             web,
             iced,
             vue_import: meta.and_then(|m| m.vue.as_ref()).and_then(|v| v.import.clone()),
+            superseded_by: meta.and_then(|m| m.superseded_by.clone()),
         });
     }
     out
@@ -122,7 +126,11 @@ fn fold_str(s: &str) -> String {
 pub fn generate_core_reference(root: &std::path::Path) -> String {
     let demo_pages = gallery_page_stems(root);
     let mut elems = load_elements();
-    elems.retain(|e| e.tier == "builtin_widget" || e.tier == "native_html");
+    // Plan 562:带 superseded_by 标注的退役元素(nav 族)不进生成物——
+    // 标注本身即文档面记录,实现移除留观察期。
+    elems.retain(|e| {
+        (e.tier == "builtin_widget" || e.tier == "native_html") && e.superseded_by.is_none()
+    });
     elems.sort_by(|a, b| {
         let ra = if a.tier == "builtin_widget" { 0 } else { 1 };
         let rb = if b.tier == "builtin_widget" { 0 } else { 1 };
@@ -219,6 +227,8 @@ pub fn generate_kitchen_sink() -> String {
         const DESKTOP_SHELL_ONLY: &[&str] = &["window_thumbnail"];
         e.tier == "builtin_widget"
             && !DESKTOP_SHELL_ONLY.contains(&e.canonical.as_str())
+            // Plan 562:退役元素(superseded_by 标注,nav 族)不入生成页
+            && e.superseded_by.is_none()
             && e.props.iter().any(|pr| !literal_prop_variants(pr).is_empty())
     });
     elems.sort_by(|a, b| a.canonical.cmp(&b.canonical));

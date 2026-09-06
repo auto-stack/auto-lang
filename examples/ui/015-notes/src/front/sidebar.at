@@ -1,21 +1,28 @@
 // sidebar.at — NavTree widget (Plan 360: card-based modern UI).
 // Plan 367 P2: refactored with view fn + else-if (from 337 lines).
-// Plan 482: rebuilt on the nav component family — nav(search:) integrated
-// search row, nav-group folder sections, nav-item note entries with built-in
-// hover/active states (replaces hand-rolled button + if-style-string items).
+// Plan 562: nav 族迁移 sidebar 族（nav 退役，设计 sidebar-family-and-nav-retirement
+// §3.4）——搜索行平移为 sidebar_header + 原生 input（VM 端 sidebar_input 不在
+// 561 契约子集，原生 input 双端通吃）；nav-group 分组 → sidebar_group 三件套；
+// nav-item 条目 → sidebar_menu_item + sidebar_menu_button。
 
 use notes_store: NotesStore
 use settings: SettingsPopover
 
-// Plan 482: nav-item based note entry — hover/active styling comes from the
-// nav contract; desc renders the timestamp as the second line.
+// Plan 562: sidebar_menu_button based note entry — hover/active styling comes
+// from the sidebar contract; timestamp renders as a second line inside a
+// single col child (h-auto 覆盖契约 h-8，VM 端单子透传保持竖列)。
 view fn NoteNav(note: Note, active: bool) {
-    nav-item {
-        label: note.title
-        desc: note.time
-        active: active
-        onclick: .SelectNote(i)
-        style: "py-1"
+    sidebar_menu_item {
+        sidebar_menu_button {
+            active: active
+            onclick: .SelectNote(i)
+            style: "h-auto py-1.5"
+            col {
+                style: "flex-1 min-w-0 items-start"
+                text note.title { style: "text-sm truncate" }
+                text note.time { style: "text-xs text-muted-foreground" }
+            }
+        }
     }
 }
 
@@ -33,6 +40,9 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
     }
 
     view {
+        // Plan 562: provider 上移包裹外壳 col（独子直返，VM 端零布局介入；
+        // class 覆盖 min-h-svh/w-full 默认避免顶破卡片布局）
+        sidebar_provider (class: "w-auto min-h-0 flex") {
         col {
             style: "w-80 bg-card rounded-xl shadow-sm flex flex-col h-full overflow-hidden flex-shrink-0"
 
@@ -54,13 +64,16 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                 }
             }
 
-            // Plan 482: nav container with integrated search row (search: true)
-            // + collapsible folder groups + nav-item entries.
-            nav (search: true, search_placeholder: "Search notes...",
-                 search_value: .search, onsearch: .SearchChanged,
-                 style: "flex-1 min-h-0 overflow-y-auto flex flex-col px-2 pb-2") {
+            // Plan 562: nav(search:) 容器平移 —— 外壳 col 已承担 w-80 宽度/卡片
+            // 背景，故不用 sidebar root（契约 w-64 与卡片冲突）；搜索行 =
+            // sidebar_header + 原生 input；chips 行与分组进 sidebar_content
+            //（契约自带 flex-1 滚动）。
+            sidebar_header (style: "px-2 pt-2") {
+                    input { value: .search, oninput: .SearchChanged, placeholder: "Search notes...", style: "w-full text-sm px-2.5 py-1.5 rounded-md border border-border bg-background outline-none focus:border-primary transition-colors" }
+                }
+                sidebar_content (style: "px-2 pb-2") {
 
-                // Tag filters (chips row as a nav child)
+                // Tag filters (chips row as content's first child)
                 row {
                     style: "flex-wrap gap-1 px-1 mb-1"
                     for t in .store.all_tags {
@@ -72,63 +85,88 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                 }
 
                 if .store.active_folder == "all" {
-                    nav-group (label: "Notes") {
-                        for i, note in .store.notes {
-                            if note.folder == "" {
-                                if .store.active_tag == "" {
-                                    NoteNav(note: note, active: i == .store.active_id)
-                                } else if note.tags.contains(.store.active_tag) {
-                                    NoteNav(note: note, active: i == .store.active_id)
+                    sidebar_group {
+                        sidebar_group_label { text "Notes" }
+                        sidebar_group_content {
+                            sidebar_menu {
+                                for i, note in .store.notes {
+                                    if note.folder == "" {
+                                        if .store.active_tag == "" {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        } else if note.tags.contains(.store.active_tag) {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                    nav-group (label: "Work") {
-                        for i, note in .store.notes {
-                            if note.folder == "work" {
-                                if .store.active_tag == "" {
-                                    NoteNav(note: note, active: i == .store.active_id)
-                                } else if note.tags.contains(.store.active_tag) {
-                                    NoteNav(note: note, active: i == .store.active_id)
+                    sidebar_group {
+                        sidebar_group_label { text "Work" }
+                        sidebar_group_content {
+                            sidebar_menu {
+                                for i, note in .store.notes {
+                                    if note.folder == "work" {
+                                        if .store.active_tag == "" {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        } else if note.tags.contains(.store.active_tag) {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                    nav-group (label: "Personal") {
-                        for i, note in .store.notes {
-                            if note.folder == "personal" {
-                                if .store.active_tag == "" {
-                                    NoteNav(note: note, active: i == .store.active_id)
-                                } else if note.tags.contains(.store.active_tag) {
-                                    NoteNav(note: note, active: i == .store.active_id)
+                    sidebar_group {
+                        sidebar_group_label { text "Personal" }
+                        sidebar_group_content {
+                            sidebar_menu {
+                                for i, note in .store.notes {
+                                    if note.folder == "personal" {
+                                        if .store.active_tag == "" {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        } else if note.tags.contains(.store.active_tag) {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 } else if .store.active_folder == "pinned" {
-                    nav-group (label: "Pinned") {
-                        for i, note in .store.notes {
-                            if note.pinned {
-                                if .store.active_tag == "" {
-                                    NoteNav(note: note, active: i == .store.active_id)
-                                } else if note.tags.contains(.store.active_tag) {
-                                    NoteNav(note: note, active: i == .store.active_id)
+                    sidebar_group {
+                        sidebar_group_label { text "Pinned" }
+                        sidebar_group_content {
+                            sidebar_menu {
+                                for i, note in .store.notes {
+                                    if note.pinned {
+                                        if .store.active_tag == "" {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        } else if note.tags.contains(.store.active_tag) {
+                                            NoteNav(note: note, active: i == .store.active_id)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 } else if .store.active_folder == "recent" {
-                    nav-group (label: "Recent") {
-                        for i, note in .store.notes {
-                            if .store.active_tag == "" {
-                                NoteNav(note: note, active: i == .store.active_id)
-                            } else if note.tags.contains(.store.active_tag) {
-                                NoteNav(note: note, active: i == .store.active_id)
+                    sidebar_group {
+                        sidebar_group_label { text "Recent" }
+                        sidebar_group_content {
+                            sidebar_menu {
+                                for i, note in .store.notes {
+                                    if .store.active_tag == "" {
+                                        NoteNav(note: note, active: i == .store.active_id)
+                                    } else if note.tags.contains(.store.active_tag) {
+                                        NoteNav(note: note, active: i == .store.active_id)
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
+                }
 
             // Settings popup / panel when toggled
             SettingsPopover(
@@ -150,6 +188,7 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                 }
                 text "v1.0" { style: "text-xs text-muted-foreground/60 mr-1" }
             }
+        }
         }
     }
 

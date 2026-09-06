@@ -56,6 +56,8 @@ struct ElementDefData {
     sub_widgets: Vec<String>,
     /// P4-4:vue BackendMapping(单行 vue: { .. })
     vue: Option<crate::aura::schema::VueBackendSpec>,
+    /// Plan 562:退役标注(superseded_by: "...");缺省 None
+    superseded_by: Option<String>,
 }
 
 /// Plan 435 P4-4:解析 `vue: { component: "..", import: "..", extras: [..], npm: "pkg@ver" }`。
@@ -294,6 +296,7 @@ impl SchemaLoader {
         let mut backends: Option<(String, String, String)> = None;
         let mut sub_widgets: Vec<String> = Vec::new();
         let mut vue: Option<crate::aura::schema::VueBackendSpec> = None;
+        let mut superseded_by: Option<String> = None;
 
         // Simple key-value parsing
         for line in content.lines() {
@@ -318,6 +321,8 @@ impl SchemaLoader {
                 sub_widgets = list;
             } else if let Some(v) = parse_vue_line(line) {
                 vue = Some(v);
+            } else if let Some(value) = self.extract_string_value(line, "superseded_by:") {
+                superseded_by = Some(value);
             } else if line.starts_with("backends:") {
                 let web = self.extract_string_value(line, "web:").unwrap_or_default();
                 let iced = self.extract_string_value(line, "iced:").unwrap_or_default();
@@ -340,6 +345,7 @@ impl SchemaLoader {
             backends,
             sub_widgets,
             vue,
+            superseded_by,
         })
     }
 
@@ -711,6 +717,7 @@ impl SchemaLoader {
                     .map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str)
                     .collect(),
                 vue: elem_data.vue.clone(),
+                superseded_by: elem_data.superseded_by.clone(),
             };
             meta_map.insert(element_def.tag, meta);
 

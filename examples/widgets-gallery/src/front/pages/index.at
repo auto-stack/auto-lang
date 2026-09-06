@@ -107,7 +107,7 @@ widget IndexPage {
                 }
 
                 // Navigation category
-                category-section (name: "Navigation", color: "purple", count: 10) {
+                category-section (name: "Navigation", color: "purple", count: 9) {
                     component-card (to: "/breadcrumb", name: "Breadcrumb", desc: "Path navigation", icon: "navigation") {}
                     component-card (to: "/tabs", name: "Tabs", desc: "Tab panels", icon: "layout-grid") {}
                     component-card (to: "/menubar", name: "Menubar", desc: "Menu bars", icon: "layout-grid") {}
@@ -117,7 +117,6 @@ widget IndexPage {
                     component-card (to: "/command", name: "Command", desc: "Command palettes", icon: "command") {}
                     component-card (to: "/scrollarea", name: "ScrollArea", desc: "Scrollable regions", icon: "layout-grid") {}
                     component-card (to: "/separator", name: "Separator", desc: "Dividers", icon: "layout-grid") {}
-                    component-card (to: "/navlink", name: "NavLink", desc: "Navigation links", icon: "navigation") {}
                 }
 
                 // Overlay category

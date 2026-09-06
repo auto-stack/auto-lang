@@ -7648,6 +7648,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             "textarea" | "Textarea" => "textarea".to_string(),
             "checkbox" | "Checkbox" => "input".to_string(),
             "toggle" | "Toggle" => "button".to_string(),
+            // Plan 562 T6: Plain 模式（pac.at shadcn:off）sidebar_menu_button
+            // 保 button 原生语义——否则坍缩为 div 丢键盘/类型语义（auto-os-config
+            // 迁移实测）。契约类不内联：Plain 哲学 = 项目自带样式，shadcn 组件
+            // 类与 sidebar 令牌在此模式均为死类（os-config tailwind 令牌表无
+            // sidebar-accent/accent 条目）。active/size 等 props 走通用属性
+            // 透传（:active 落为原生属性，兼作测试锚）。
+            "sidebar_menu_button" | "sidebar-menu-button" | "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => "button".to_string(),
             "select" | "Select" => "select".to_string(),
             "option" | "Option" => "option".to_string(),
             "link" | "Link" => "a".to_string(),
@@ -24073,6 +24080,34 @@ widget SidebarAutoActiveProbe {
             sfc.contains(":is-active=\"$route.path === '/settings/net' || $route.path.startsWith('/settings/net' + '/')\""),
             "sub_button 自动探测:\n{sfc}"
         );
+    }
+
+    /// Plan 562 T6: Plain 模式（pac.at shadcn:off）sidebar_menu_button 落
+    /// 原生 <button>（不坍缩 div），active/class/事件经通用属性透传。
+    #[test]
+    fn test_sidebar_menu_button_plain_mode_button_semantics() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget SidebarPlainProbe {
+    model { var flag bool = true }
+    view {
+        col {
+            sidebar_provider {
+                sidebar_menu {
+                    sidebar_menu_item {
+                        sidebar_menu_button (active: .flag, size: "lg", class: "my-item") {
+                            text "会话"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("<button"), "Plain 模式保 button 语义:\n{sfc}");
+        assert!(!sfc.contains("SidebarMenuButton"), "Plain 模式不引 shadcn 组件:\n{sfc}");
+        assert!(sfc.contains("my-item"), "用户 class 透传:\n{sfc}");
+        assert!(sfc.contains(":active="), "active 通用属性透传（测试锚）:\n{sfc}");
     }
 
     /// Plan 548 T7: 含 sidebar 且无 sidebar_provider → 模板根自动包
