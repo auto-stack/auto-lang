@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-547
-status: reviewed
+status: archived
 feature_name: AutoUI high-performance image viewer pipeline
 author: [Codex]
 created_at: 2026-09-04T18:32:05+08:00
@@ -273,24 +273,24 @@ Schema/AURA 参考后才运行 `docs_gen`，本计划因新增 schema widget 必
 
 ## 验收标准
 
-- [ ] `examples/ui/031-image-viewer` 是独立 full-stack AutoUI app，`029-photo-gallery` 行为未变。
-- [ ] front/back 均为 Auto 源码，生成产物没有人工修改。
-- [ ] Vue、VM、Rust merged 三种模式启动并完成同一核心交互矩阵。
-- [ ] Vue 前端没有 File API、目录扫描、图片处理、预取队列或应用级图片 cache 实现。
-- [ ] 图片不经过 JSON/base64/`[]int`；Vue 使用 media GET，VM/Rust merged 命中进程内资产。
-- [ ] `/api/__auto/media/...` 通过 GET/HEAD/ETag、MIME、状态码和路径安全测试。
-- [ ] UI thread 上无文件 I/O、目录扫描、decode、encode 或 settled resize。
-- [ ] current-first、邻图预取、两个 decode worker、一个 resize lane、queue≤8、latest-wins
+- [x] `examples/ui/031-image-viewer` 是独立 full-stack AutoUI app，`029-photo-gallery` 行为未变。
+- [x] front/back 均为 Auto 源码，生成产物没有人工修改。
+- [x] Vue、VM、Rust merged 三种模式启动并完成同一核心交互矩阵。
+- [x] Vue 前端没有 File API、目录扫描、图片处理、预取队列或应用级图片 cache 实现。
+- [x] 图片不经过 JSON/base64/`[]int`；Vue 使用 media GET，VM/Rust merged 命中进程内资产。
+- [x] `/api/__auto/media/...` 通过 GET/HEAD/ETag、MIME、状态码和路径安全测试。
+- [x] UI thread 上无文件 I/O、目录扫描、decode、encode 或 settled resize。
+- [x] current-first、邻图预取、两个 decode worker、一个 resize lane、queue≤8、latest-wins
   和 80ms settle 均有自动化证据。
-- [ ] encoded/decoded/handle cache 有容量与生命周期，不新增进程级无界图片 HashMap。
-- [ ] JPEG/PNG/WebP 与 EXIF orientation 正确；损坏/超限/权限错误显示稳定错误态。
-- [ ] ImageSurface props/events 在 Vue generator、VM builder、Rust generator 和 Iced renderer
+- [x] encoded/decoded/handle cache 有容量与生命周期，不新增进程级无界图片 HashMap。
+- [x] JPEG/PNG/WebP 与 EXIF orientation 正确；损坏/超限/权限错误显示稳定错误态。
+- [x] ImageSurface props/events 在 Vue generator、VM builder、Rust generator 和 Iced renderer
   语义一致；GPUI feature 可编译降级。
-- [ ] Rust merged release 达到本计划性能预算并生成机器可读报告。
-- [ ] Vue/VM/Rust 各至少保存初始、缩放和平移/旋转后的真实截图。
-- [ ] `cargo check -p auto-lang`、scoped tests、`docs_gen` 和最终一次 `cargo tf` 通过；无新增
+- [x] Rust merged release 达到本计划性能预算并生成机器可读报告。
+- [x] Vue/VM/Rust 各至少保存初始、缩放和平移/旋转后的真实截图。
+- [x] `cargo check -p auto-lang`、scoped tests、`docs_gen` 和最终一次 `cargo tf` 通过；无新增
   warning、debug print、生成物或后台进程残留。
-- [ ] 设计索引、示例轨道、示例 SPEC/README 和媒体契约说明与实现一致。
+- [x] 设计索引、示例轨道、示例 SPEC/README 和媒体契约说明与实现一致。
 
 ## 执行步骤
 
