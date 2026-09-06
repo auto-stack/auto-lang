@@ -16,8 +16,10 @@
 #
 # 判定表落盘:scratch/p532/native_gen_table.md(stdout 同步打印)
 #
-# 用法:bash scripts/aavm_native_gen_check.sh [--skip-gen1](跳过⑤腿触发,
-#       直接用缓存最新 exe¹——⑤腿已跑过的快路径)
+# 用法:bash scripts/aavm_native_gen_check.sh [--skip-gen1] [--skip-gen2]
+#       --skip-gen1:跳过⑤腿触发,直接用缓存最新 exe¹(⑤腿已跑过的快路径)
+#       --skip-gen2:跳过 exe¹ --trans 慢路径(解释执行拼合源,小时级),
+#         直接用 $TEMP/p532_gen2_main.rs 既有产物跑二代判定段
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -96,8 +98,13 @@ for line in open(os.path.join(root, 'auto/aavm.at'), encoding='utf-8'):
     out.append(line)
 open(os.path.join(tmp, 'concat.at'), 'w', encoding='utf-8', newline='\n').write(''.join(out))
 PYEOF
+if [ "${2:-}" = "--skip-gen2" ] && [ -s "$TEMP/p532_gen2_main.rs" ]; then
+    cp "$TEMP/p532_gen2_main.rs" "$TMP/gen2_body.rs"
+    echo "[gen] reusing $TEMP/p532_gen2_main.rs (skip-gen2)"
+else
 "$EXE1" --trans "$TMP/concat.at" > "$TMP/gen2_body.rs" 2> "$TMP/gen2_err.txt" \
     || { echo "[gen] exe1 --trans FAILED:"; head -3 "$TMP/gen2_err.txt"; exit 1; }
+fi
 [ -s "$TMP/gen2_body.rs" ] || { echo "[gen] exe1 --trans EMPTY output"; exit 1; }
 echo "[gen] transpiled body: $(wc -c < "$TMP/gen2_body.rs") bytes"
 
