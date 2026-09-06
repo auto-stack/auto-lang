@@ -4,7 +4,7 @@ status: executing              # drafting → executing → execution_done → r
 feature_name: aavm-tower-selfhost
 author: [zhaopuming]
 created_at: 2026-09-03
-updated_at: 2026-09-04
+updated_at: 2026-09-06
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举（终点形态:塔顶自持回路）
 
 affects: [aavm]
-current_step: 5
+current_step: 7
 total_steps: 16
 ---
 
@@ -268,16 +268,43 @@ lib-modularization-map（DAG/双轨）、aavm.at CLI 入口（524 位置参数/
      随闸门提交。诊断资产:scratch532/libdiff/、%TEMP%/p532_{rust,aavm}.txt、
      scratch/p532/diff_dumps.py、双侧 add_var 插桩方法论([HV]/[AV] 槽位
      对照+离线分配模拟器)。
+   - **残留③清零(2026-09-06,commit ea76ece26)——差分闸门转正**:
+     ⑥d/⑥f(前会话)清 +4 后首分歧单调前移,本会话五族逐一根修至
+     **SEMANTICALLY IDENTICAL(33452 canon 行双侧全等)**,#[ignore]
+     移除入正式闸门:①链式跳指令选择(recv_ty 判 struct→generic 真下标,
+     弃 field=0 占位;方法调用接收按宿主陈旧语义走 field;解析通道续传
+     与发射形态解耦);②LHS 赋值 gtor 构造来源旗标(仅构造字面量{记,
+     b35 字面量/位置参构造两实证);③f-string 段 tag 四源静态判定
+     (var_ty2 宿主视角通道:get 元素型不记);④语句值弹出块尾豁免
+     (should_pop/pending_pop+cg_is_block_tail 浅前瞻,镜像宿主 Block
+     继承语义);⑤canon 归一补全(jmp.far 编码宽度/call.spec↔call.nat
+     分派机制——宿主类型解析 miss 的运行期分派 vs aavm 编译期直连,
+     判定面非镜像对象,行为由 M5+⑤腿兜底,KNOWN-DEBT 登记)。
+     门禁:m4 6/6(含转正差分)+m5 4/4+compile/compile_use(flake
+     重跑绿)单跑全绿;aavm2 全家 21 passed/2 flake(已知静默空输出
+     族,重跑即绿)。**⑥c 注释臂 +4 由 ⑥d(while 体包 Stmt::Block
+     双层)+⑥f(add_var_reuse 跨层槽复用)清偿,KNOWN-DEBT 撤销**。
    - 架构指令执行面(拼接→模块加载默认化)在残留③清零后启动
      (aavm2_lib_source 族消费面,超出本计划部分立项)。
-7. [ ] 原生一代对拍：a2r 原生 aavm exe 跑 corpus（代表集）与宿主一致
-   （⑤腿 58/58 已绿,补代表集判定表固化）。
+7. [✅ 已完成 2026-09-06] 原生一代对拍：a2r 原生 aavm exe 跑 corpus（代表集）与宿主一致
+   ——scripts/aavm_native_gen_check.sh 落盘(W3 步骤 7/9 原生代际对拍
+   runner,commit ea76ece26);**代表集 8/8 PASS**(b01/b07/b08/
+   b13_eval/b27_arr/b30_arr/b46_basic/b58_str,exe¹=⑤腿 aavm2_bin
+   内容寻址缓存,宿主 oracle=auto.exe banner 剥离+trim 口径同⑤腿);
+   判定表 scratch/p532/native_gen_table.md 留档。
 8. [ ] 折叠点②：自举闭合判定表留档（验收标准 1 原生代际形态）→ 合入。
 
 ### W3 N 阶+稳定化（worktree 续）
 
-9. [ ] 自编译代际对拍（原生,两代）：原生 aavm exe 编译 aavm.at+lib
+9. [▶ 进行中 2026-09-06] 自编译代际对拍（原生,两代）：原生 aavm exe 编译 aavm.at+lib
    →a2r→exe² →exe² 跑 corpus 与一代一致;首个分歧位定位机制。
+   管道各环已实证:exe¹=⑤腿 aavm2_bin(--trans 模式=ar_run 转译,
+   harness 内置);拼合源构造(剥 use 七文件+aavm.at 依赖序,462KB)
+   落盘;exe² 构建=exe¹ --trans 输出+prelude/shims(⑤腿+531 同款)
+   +harness→cargo build;二代判据脚本(scripts/aavm_native_gen_check.sh
+   尾段:exe² 跑代表集==exe¹ + 转译固定点 exe¹ --trans==exe² --trans)。
+   **当前卡点**:exe¹ --trans 拼合源为解释执行(小时级;旧 exe 实测
+   2.5h 未完成被回收)——转译慢路径后台运行中,完成后 exe² 构建即收口。
 10. [ ] ⑤腿稳定化处置（按 W0 定案落地;或替代判据升级登记）——裁定后
     ⑤腿升格为主判据通道,常态绿为硬要求。
 11. [ ] 折叠点③：代际判定表+⑤腿处置留档 → 合入。
