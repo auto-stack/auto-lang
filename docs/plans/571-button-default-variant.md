@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-571
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: button-default-variant
 author: []
 created_at: 2026-09-06
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/ui_gen, docs/design/autoui]
-current_step: 0
+current_step: 9
 total_steps: 9
 ---
 
@@ -161,23 +161,59 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
 - [ ] T1 新建 `crates/auto-lang/src/ui/style/variants.rs`：variant/size 两张 preset 表
-      + 单测；`style/mod.rs` 导出。验证：`cargo t variants`。
+      + 单测；`style/mod.rs` 导出。验证：`cargo t variants`。 [✅ 已完成]
+      （TDD 红→绿：stub 7 失败→实现后 `cargo t variants` 17/17 绿；commit 243a5064c；
+      auto-down 兄弟 worktree 已入组建 `D:/autostack/.wt/lang-571/auto-down`@lang-571-dev）
 - [ ] T2 VM 臂接线：`aura_view_builder.rs::convert_button` preset match 改调共享表。
-      验证：`cargo t aura_view_builder`（或所属测试模块）。
+      验证：`cargo t aura_view_builder`（或所属测试模块）。 [✅ 已完成]
+      （`cargo t plan571_button` 3/3 绿；`cargo t button` 46/46 绿；`cargo t
+      aura_view_builder` 83/84——唯一红 plan055_strip_html 在 master 同样红，预存红
+      与本 plan 无关；commit d0a825357）
 - [ ] T3 Vue 臂：`ui_gen/vue.rs` cva 模板 default 改中性、新增 primary/submit 键。
-      验证：`cargo t ui_gen`。
+      验证：`cargo t ui_gen`。 [✅ 已完成]
+      （plan571 互锁测试 1/1 绿——顺带实证 ghost hover 双端既有分歧（VM bg-secondary
+      vs web bg-accent，iced 无 Accent token）；`cargo t ui_gen` 531/532，唯一红
+      test_charts_gallery_compiles 在 master 同红属预存；commit 9f4d973c0）
 - [ ] T4 Rust codegen 臂：`ui_gen/rust.rs` 三处 button 生成点注入 preset（variant/size
-      prop 解析 + 前置拼接）+ 生成断言测试。验证：`cargo t ui_gen`。
+      prop 解析 + 前置拼接）+ 生成断言测试。验证：`cargo t ui_gen`。 [✅ 已完成]
+      （实现收敛为单点注入：generate_view_tree Element 臂 with_button_preset 前置
+      合并，覆盖全部三处 `View::button` 生成点；plan571 codegen 测试 3/3 绿；
+      `cargo t ui_gen` 530/531 唯一红为 charts gallery 预存红；`cargo check` 无
+      feature 与 --features ui 双配置 0 error；commit d22cb5f7a）
 - [ ] T5 secondary token 分档：`theme.rs` Secondary 臂改新值（dark #334155 / light
       #e3ddd1）+ 相关断言更新；`ui_gen/vue.rs` index.css 模板 `--secondary` light/dark
       两段同步。验证：`cargo t theme` + `cargo t ui_gen`；grep `bg-secondary` 盘点面
-      记录入本节。
+      记录入本节。 [✅ 已完成]
+      （theme 19/19 绿含新增双主题 secondary≠muted 断言；plan449 style_parity 2/2——
+      `bg-secondary` 仅登记可解析性、与值无关；ui_gen 533/534 唯一红 charts gallery
+      预存红；commit 043ed68b9）
 - [ ] T6 断言/golden 清理：全仓 grep `hover:bg-primary/90`、`bg-muted` 冲突点、renderer
-      快照相关 golden，逐个更新。验证：`cargo t ui`。
+      快照相关 golden，逐个更新。验证：`cargo t ui`。 [✅ 已完成]
+      （grep 余留引用均为合法：modal action preset（显式 action 语义，保持填充）、
+      musk/vm_bridge 的 .at 源码自带类、cva base；`cargo t ui` 1830/1848，失败 18 例
+      与 master 同过滤失败集合逐一相等（comm 双向空集）——全部预存红，零新增；
+      本任务无代码改动）
 - [ ] T7 Design 22 文档更新（§3 表 + §1.2 说明段 + secondary/muted 分档声明）。
+      [✅ 已完成]（§1.2 增"default variant = UA stylesheet 等价物"设计声明段；
+      §3 表拆 default/primary 两行 + secondary 行补分档与无边框说明；
+      commit b73fc5e4f）
 - [ ] T8 examples 盘点 + 双端 spot check（002/005/031，autoui-verifier 截图入
-      scratch/p571/）。
-- [ ] T9 review 前全量门禁：`cargo tf`。
+      scratch/p571/）。 [✅ 已完成]
+      （盘点：examples/ui 405 处 button 引用、61 处显式 variant、涉及 38 个 demo——
+      缺省按钮全面转中性为预期回归面。**执行期发现 Vue 臂有第二真源**：`auto run`
+      的 gen/front 管线用 `auto-man/assets/shadcn-ui/button/index.ts` 烘焙快照（非
+      ui_gen/vue.rs 模板），已同步收敛 + SNAPSHOT.md 烘焙补丁记录（循 PLAN-457
+      sonner 先例）+ vue_shadcn 互锁测试锚定（1/1 绿，plan_457 守卫 1/1 绿不受扰）。
+      双端截图 6 张入 scratch/p571/{vm,vue}\_{002,005,031}\_\*.png：002 与 031 双端
+      均中性 chip 观感一致；005 双端仍蓝系（demo 自带 bg-blue-500 显式类，后类胜
+      语义正确非回归）；commit a14bba3b0）
+- [ ] T9 review 前全量门禁：`cargo tf`。 [✅ 已完成]
+      （执行期适配两处：ui_gen 互锁/产物级测试在 tf 档（无 ui-iced，Plan 507）随
+      `cfg(all(test, feature = "ui"))` 关闭——preset 注入本体亦 ui 门控，该档按设计
+      退化透传；终跑 `cargo tf --no-fail-fast` 失败集合 = {test_charts_gallery_compiles}
+      唯一预存红（master 同红），3459/3461 通过；commit 53259c4da。终验：`cargo
+      check -p auto-man` 0 error；plan571 全族 7/7（auto-lang）+8/8（auto-man）+
+      variants 18/18 绿）
 
 ## 复审记录
 
@@ -185,12 +221,16 @@ token 分离"的表述作废——用户定调：secondary==muted 本身就是�
 
 ## 待澄清事项
 
-- default 的 hover 观感暂定 `hover:bg-muted/70`（变暗一档）；若双端截图观感不佳，
-  执行期可与用户确认改 `hover:bg-accent`（需先确认 iced 侧 Accent token 可解析）。
-- `"submit"` 跟随 primary 的语义（表单主操作醒目）如需改为跟随 default，在 T2 前提出。
+- ~~default 的 hover 观感暂定 `hover:bg-muted/70`~~ 已落（T1-T2 实现，双端截图观感
+  通过）；`hover:bg-accent` 备选方案仍受制于 iced 侧 Accent token 无解析臂（见下条）。
+- ~~`"submit"` 跟随 primary~~ 已按 primary 落（三臂一致 + 测试锁定）。
 - 调查中发现的相邻债务（不入本 plan，merge 时记 KNOWN-DEBT）：iced 侧
   `resolve_semantic_rgb` 无 `Color::Accent` 臂——ghost/outline preset 的
   `hover:bg-accent` 在 VM 端疑似 no-op（Vue 端有 `--accent`），两 variant 的 hover
   反馈缺失，建议后续独立 plan 收口。
 - secondary 新值（dark #334155 / light #e3ddd1）为提案值，T8 双端截图定稿；若用户
   对档位有偏好（更浅/更深）在 T5 前提出。
+- **执行期新录（T6/T8）**：① 预存红与 master 逐一对拍（`cargo t ui` 18 例、tf 档
+  charts gallery 1 例）均与本 plan 无关，review 时按在案预存红清单核对；② Vue 臂
+  存在**两套** cva 真源（ui_gen/vue.rs 模板 + auto-man 烘焙资产），已双双收敛并各
+  挂互锁测试，后续 variant 演进须三处（Rust 单源 + 两 Vue 源）同步。
