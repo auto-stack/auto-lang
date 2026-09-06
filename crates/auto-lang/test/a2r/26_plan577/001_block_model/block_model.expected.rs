@@ -117,7 +117,7 @@ pub fn dupAttrs(attrs: Vec<Attr>) -> Vec<Attr> {
     return out;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Mark {
     Strong = 0,
     Em = 1,
@@ -322,7 +322,7 @@ pub fn spansSplitAt(spans: Vec<InlineSpan>, offset: i64) -> SpanSplit {
     return SpanSplit { before: before, after: after };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BlockType {
     Heading = 0,
     Paragraph = 1,

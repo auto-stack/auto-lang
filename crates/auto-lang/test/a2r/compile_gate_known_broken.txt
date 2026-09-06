@@ -8,7 +8,6 @@ a2r/03_control_flow/010_is_non_exhaustive  # E0004 存量(006 时代)编译债
 a2r/05_expressions/012_turbofish  # E0425 存量(006 时代)编译债
 a2r/06_pattern_matching/007_is_in_ext  # E0308 存量(006 时代)编译债
 a2r/07_ownership/003_borrow_move  # E0425 存量(006 时代)编译债
-a2r/07_ownership/026_get_ref_binding  # E0599 存量(006 时代)编译债
 a2r/08_generics/001_type_alias  # E0391 存量(006 时代)编译债
 a2r/08_generics/002_const_generics  # E0308 存量(006 时代)编译债
 a2r/09_option_result/002_option_construct  # E0282 存量(006 时代)编译债

@@ -5,7 +5,7 @@
 use a2r_std;
 use a2r_std::*;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Event {
     A,
     B(String),

@@ -797,6 +797,7 @@ unexpected failures:
 #[test] fn test_26_plan577_001_block_model() { test_a2r("26_plan577/001_block_model").unwrap(); }
 #[test] fn test_26_plan577_002_r1_dot_chain() { test_a2r("26_plan577/002_r1_dot_chain").unwrap(); }
 #[test] fn test_26_plan577_003_r4_loop_move() { test_a2r("26_plan577/003_r4_loop_move").unwrap(); }
+#[test] fn test_26_plan577_004_phase0_small_fixes() { test_a2r("26_plan577/004_phase0_small_fixes").unwrap(); }
 #[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
 #[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
 #[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }
