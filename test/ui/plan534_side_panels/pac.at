@@ -1,0 +1,4 @@
+name: "plan534sidepanels"
+version: "1.0.0"
+scene: "ui"
+render: "vue"

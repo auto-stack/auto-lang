@@ -1,0 +1,88 @@
+// app.at — PLAN-534 探针语料：sheet 四向（side prop 直驱 open）+
+// drawer 两向（bottom 显式 open / right 走 parser 铸造 + 裸文本 trigger）+
+// hovercard（parser 铸造 hover enter/leave——全文件首个铸造根=drawer right
+// → __dlg_open_1,hovercard → __dlg_open_2）。
+widget App {
+    msg { FlipRight, FlipLeft, FlipTop, FlipBottom, FlipDrawerBottom }
+    model {
+        var activeTab str = "preview"
+        var right_open bool = false
+        var left_open bool = false
+        var top_open bool = false
+        var bottom_open bool = false
+        var drawer_bottom_open bool = false
+    }
+    view {
+        col {
+            sheet (side: "right", open: .right_open) {
+                sheet-trigger {
+                    button (text: "open right", variant: "outline") {}
+                }
+                sheet-content {
+                    sheet-header {
+                        sheet-title "right sheet"
+                        sheet-description "slides from the right edge"
+                    }
+                }
+            }
+            sheet (side: "left", open: .left_open) {
+                sheet-trigger {
+                    button (text: "open left") {}
+                }
+                sheet-content {
+                    sheet-title "left sheet"
+                }
+            }
+            sheet (side: "top", open: .top_open) {
+                sheet-trigger {
+                    button (text: "open top") {}
+                }
+                sheet-content {
+                    sheet-title "top sheet"
+                }
+            }
+            sheet (side: "bottom", open: .bottom_open) {
+                sheet-trigger {
+                    button (text: "open bottom") {}
+                }
+                sheet-content {
+                    sheet-title "bottom sheet"
+                }
+            }
+            drawer (direction: "bottom", open: .drawer_bottom_open) {
+                drawer-trigger {
+                    button (text: "open drawer") {}
+                }
+                drawer-content {
+                    drawer-header {
+                        drawer-title "bottom drawer"
+                    }
+                    drawer-footer {
+                        drawer-close "Close"
+                    }
+                }
+            }
+            drawer (direction: "right") {
+                drawer-trigger "Open Drawer"
+                drawer-content {
+                    drawer-title "right drawer"
+                }
+            }
+            hovercard {
+                hover-card-trigger {
+                    text "@mentor"
+                }
+                hover-card-content {
+                    text "mentor bio card"
+                }
+            }
+        }
+    }
+    on {
+        .FlipRight -> { .right_open = true }
+        .FlipLeft -> { .left_open = true }
+        .FlipTop -> { .top_open = true }
+        .FlipBottom -> { .bottom_open = true }
+        .FlipDrawerBottom -> { .drawer_bottom_open = true }
+    }
+}
