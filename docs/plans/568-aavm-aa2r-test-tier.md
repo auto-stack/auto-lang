@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-568
-status: execution_done           # drafting → executing → execution_done → reviewed → archived
+status: reviewed                    # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-aa2r-test-tier
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -9,7 +9,7 @@ updated_at: 2026-09-05
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: []       # 无 module spec 新增：知识沉淀于 AGENTS.md 测试档表（Heavy-Mem Tiering 节邻位）
-touched_goals: ["GOAL-016: 构建与测试基础设施——AAVM/AA2R 测试域独立成档（tv 拆耦），反射性 tv 不再触发自举重测试"]
+touched_goals: ["GOAL-016: 构建与测试基础设施——AAVM/AA2R 测试域独立成档（master 直落 c825e989f）：tv 4m24s 级→19.7s、日常档剥离 m1、taa 专属档 182s 全绿、全档资源表实测收口入 AGENTS.md"]
 
 affects: ["crates/auto-lang/Cargo.toml", "crates/auto-lang/src/tests.rs", "crates/auto-lang/src/tests/vm_file_tests.rs", "crates/auto-lang/src/tests/aavm_runner_tests.rs(新)", ".cargo/config.toml", ".github/workflows/vm-files-ci.yml", "AGENTS.md", "docs/plans/KNOWN-DEBT-AND-RISKS.md"]
 current_step: 8
@@ -383,6 +383,42 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
   `cargo fmt --check` 于触达文件），status → execution_done。
 
 ## 复审记录
+
+**复审人**: ZCode (GLM-5.3) 独立复审会话 | **时间**: 2026-09-06 | **方式**: 双落点净 diff 审查（master 提前落地 + worktree 564-stack 参照版）+ 验收逐条重验 + 全量门禁实跑（tf）+ 全档计时矩阵复用当日实测
+
+### 双落点结构（本 plan 特有，merge 必读）
+
+用户裁定提前落地后，实现分两处：**master 直落 5 提交**（c825e989f 功能 + d88cae48d 债务 + 32152e000 资源表回填 + 计划文档若干——现行生效版）；**worktree 分支 plan-568-dev** 5 提交（T2-T5 的 heavy_gate 随迁版，stacked 于 564 tip）。**merge 时不得整体合入 worktree 分支**（其基线含 532 未复审提交 8 个 + 内容与 master 重复）——分支保留作 564 fold 时 heavy_gate 接线向 `aavm_runner_tests.rs` 新位置移植的参照（KNOWN-DEBT 568-③ 在案）。
+
+### 验收逐条判定
+
+| 条 | 判定 | 证据 |
+|---|---|---|
+| A1 tv 零 aavm | **PASS** | master `nextest list --features test-vm-files -E 'test(aavm) or test(aa2r)'` = 0 行；tv 3578/3578 绿 19.7s（墙钟 30.5s） |
+| A2 裸 taa | **PASS**（附注） | master 3600/3600 绿 182s（-j6，排除 8 存量红后语义）；aavm 21 测全绿（XL 78-303s/个）。附注：组限流在 564-stack 配置（文件直读 + 564 自身 A2 实证），master 提前落地版暂无（564 fold 前用 jobs 自限，资源表已注明） |
+| A3 t 剥离 m1 | **PASS** | 日常 lib 名单 3426→3425；cargo t 全量 7 红全部命中 564-Q6 预存清单（plan370 d2/d8、plan492 c2、aura strip_html、lucide、ui::layout×2） |
+| A4 ta 不缩水 | **PASS** | ta 4023/4023 绿 407s（-j6），含 aavm 全集（engine/codegen corpus PASS 在列） |
+| A5 CI | **PASS** | vm-files-ci.yml 四步骤逐行核对：aavm 步骤 `--features test-aavm`（滤串 `test_aavm2` 按 fn 名子串命中迁后名单——fn 名未变）；其余三步 test-vm-files 不动；yaml.safe_load 过 |
+| A6 文档/债务 | **PASS**（附注） | AGENTS.md：档表（含资源表回填）/Category B 触发条件/AAVM 档节全落地；KNOWN-DEBT 三条（超计划的覆盖差×2+fold 协调×1）。附注：Heavy-Mem 节的 `-F test-aavm` 复测注在 564 分支侧，随其 fold 合流 |
+| A7 计时对比 | **PASS** | tv 4m24s 级（aavm 子集独占）→19.7s；tt 43s/tb 24s（旧"5-7s/测"注释过时已修）/th ~50s/ta 407s 全回填 AGENTS 资源表 |
+| A8 作用域 | **PASS** | 分支 `cargo taa aavm2_m5` = 4 测（4194 skipped）；master `cargo taa repro_242` = 2 测（4193 skipped）——追加滤串从不放大到全集 |
+
+### 全量门禁（review 档）
+
+`cargo tf`（master，no-fail-fast）: **3441/3443 绿，26s/墙钟 1m03s**（1M churn=str_churn_bounded_large 13.9s 在跑）。2 红：①test_charts_gallery_compiles=P555-D4 在案存量；②**docs_gen kitchen_sink_page_in_sync=存量**（schema 39 元素含 imagesurface vs 生成页 38——Plan 547 谱系 489a4b485 补 schema 时只再生 core.md 未同步 kitchen-sink 页；568 零 schema/docs 触面）→ 转告维护者。当日其余档位（t/tv/tt/tb/th/taa/ta）全数据见 T7 证据。
+
+### 遗漏/延后/workaround 猎取
+
+- 遗漏: 无（D1-D6 对照 master diff 全实现；CI/别名/文档/债务逐项在）。1 处 nit：`aavm_at_mode_tests.rs:19` 注释仍指 `vm_file_tests::build_aavm_rust_bin` 旧位置（应为 aavm_runner_tests）——注释级，随下个触达批顺手修。
+- 延后(均已登记/用户发起): t3 别名 feature 更新（fold 协调,KNOWN-DEBT 568-③）；Heavy-Mem `-F test-aavm` 注（随 564 fold）；用户 30s/60s 目标（Q4 转后续 plan）。
+- Workaround: 无新增；提前落地的 blob 分离暂存技术及 KNOWN-DEBT 截断事故（562 未提交 ~22 行损失）已在 T6 注记如实登记。
+- 转告非本 plan: kitchen_sink schema 漂移红（P547 谱系）；th 档 ≥3 环境红（Q5 基点归因待做）。
+
+### spec-impact
+
+frontmatter 已填：touched_goals=GOAL-016（含实测收口数据）；无 specs/modules/* 触达——知识沉淀于 AGENTS.md（档表/AAVM 档节/资源表）+ KNOWN-DEBT 三条，merge 时 overview 活跃线提及即可。
+
+**结论**: 八项验收全 PASS（两处附注均为提前落地的已知后果且已登记），门禁仅存量红 → **status: reviewed**。merge 注意双落点结构（上文）。
 
 ## 待澄清事项
 
