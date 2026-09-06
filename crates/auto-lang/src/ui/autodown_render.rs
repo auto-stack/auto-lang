@@ -280,7 +280,8 @@ fn styled_text<M: Clone + std::fmt::Debug>(content: String, class: &str) -> View
 /// 行内 span → mark 类名叠加（Strong/Em/Code/Del/Link；Image 罕见于正文，
 /// 与 Link 同色弱化）。
 fn span_class(span: &InlineSpan) -> String {
-    let mut cls = String::from("text-base");
+    // PLAN-053 T18：正文档 §7.3（0.95rem=15.2px / lh 1.6）。
+    let mut cls = String::from("text-[15.2px] leading-[1.6]");
     for m in &span.marks {
         match m {
             Mark::Strong => cls.push_str(" font-bold"),
@@ -895,7 +896,7 @@ mod tests {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "标题");
                 let expected = Style::parse(
-                    "text-[25.3px] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
+                    "text-[25.3px] leading-[1.3] font-bold text-indigo-700 dark:text-indigo-400 mt-[11.2px] mb-[9.6px]",
                 )
                 .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes)
@@ -908,14 +909,14 @@ mod tests {
         };
         assert_eq!(spans.len(), 6);
         assert_eq!(text_of(&spans[1]), "粗");
-        let bold = Style::parse("text-base font-bold").unwrap();
+        let bold = Style::parse("text-[15.2px] leading-[1.6] font-bold").unwrap();
         match &spans[1] {
             View::Text { style, .. } => assert_eq!(style.as_ref().unwrap().classes, bold.classes),
             _ => panic!("span"),
         }
         match &spans[5] {
             View::Text { style, .. } => {
-                let code = Style::parse("text-base font-mono text-sm bg-muted rounded px-1").unwrap();
+                let code = Style::parse("text-[15.2px] leading-[1.6] font-mono text-sm bg-muted rounded px-1").unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, code.classes);
             }
             _ => panic!("span"),
@@ -1253,7 +1254,7 @@ mod tests {
         assert_eq!(spans.len(), 3);
         match &spans[1] {
             View::Text { style, .. } => {
-                let link = Style::parse("text-base text-primary underline").unwrap();
+                let link = Style::parse("text-[15.2px] leading-[1.6] text-primary underline").unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, link.classes);
             }
             _ => panic!("link span"),
