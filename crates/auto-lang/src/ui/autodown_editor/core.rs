@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use autodown_core::block_model::{
-    attrGetBool, attrGetInt, attrGetStr, BlockNode, BlockType, InlineSpan, Mark,
+    attrGet, attrGetBool, attrGetInt, attrGetStr, BlockNode, BlockType, InlineSpan, Mark, Value,
 };
 use cosmic_text::{
     Action, Attrs, AttrsList, Buffer, Cursor, Edit, Family, FontSystem, Metrics, Motion, Selection,
@@ -161,7 +161,22 @@ enum Seg {
     List {
         ordered: bool,
         start: i64,
+        /// PLAN-054 T6：任务项 checked 态（与 items 同长同序；None=普通项
+        /// ——marker 圆点/序号，Some=task 项 ✔/□）。
+        checked: Vec<Option<bool>>,
         items: Vec<Vec<Seg>>,
+    },
+    /// PLAN-054 T8：callout 容器（kind 配色 + 标题行 + 内容）。
+    Callout {
+        kind: String,
+        title: String,
+        inner: Vec<Seg>,
+    },
+    /// PLAN-054 T8：details 容器（summary 行 + 内容）。
+    Details {
+        summary: String,
+        open: bool,
+        inner: Vec<Seg>,
     },
     /// 只读区段在建树时固化为文本（thematic break / 表格管道行）。
     Raw(String),
@@ -1251,42 +1266,27 @@ impl AutodownEditorCore {
         // 视觉序与文档序同源（块 id 创建序会让拆块新叶视觉落到文档尾）。
         // 布局矩形仍按块 id 索引，block_rects/on_focus 面不变。
         // PLAN-053 T17：quote 块归属（骨架 Quote 段的叶子 id 集）。
-        let mut quote_ids: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        // PLAN-054 T5/T7/T8：同一 DFS 扩产出——渲染序列（叶 + 只读 Raw）、
+        // 列表归属（marker/深度/x 基）、callout/details 容器归属（左条/
+        // 标题行/摘要行/首尾标注）。消费见下方布局循环。
+        let mut render_items: Vec<DrawItem> = Vec::new();
+        let mut attrib: HashMap<usize, LeafAttrib> = HashMap::new();
         {
             let segs = self.segs.lock().unwrap();
-            // 只收 Quote 包裹内的叶子（quote 内嵌 list 的叶子同属 quote）。
-            fn walk_quote(segs: &[Seg], in_quote: bool, out: &mut std::collections::HashSet<usize>) {
-                for seg in segs {
-                    match seg {
-                        Seg::Quote(inner) => walk_quote(inner, true, out),
-                        Seg::Leaf(i) => {
-                            if in_quote {
-                                out.insert(*i);
-                            }
-                        }
-                        Seg::List { items, .. } => {
-                            for it in items {
-                                walk_quote(it, in_quote, out);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            walk_quote(&segs, false, &mut quote_ids);
+            walk_skeleton_attribution(&segs, false, 0.0, 0, &mut attrib, &mut render_items);
         }
-        let mut render_order: Vec<usize> = {
-            let segs = self.segs.lock().unwrap();
-            let mut order = Vec::new();
-            dfs_leaf_order(&segs, &mut order);
-            order
-        };
-        if render_order.len() != blocks.len() {
+        {
             // 防御：不在骨架的块按 id 补尾（正常建树/结构操作后不发生）。
-            let known: std::collections::HashSet<usize> = render_order.iter().copied().collect();
+            let known: std::collections::HashSet<usize> = render_items
+                .iter()
+                .filter_map(|d| match d {
+                    DrawItem::Leaf(i) => Some(*i),
+                    _ => None,
+                })
+                .collect();
             for bi in 0..blocks.len() {
                 if !known.contains(&bi) {
-                    render_order.push(bi);
+                    render_items.push(DrawItem::Leaf(bi));
                 }
             }
         }
@@ -1302,15 +1302,60 @@ impl AutodownEditorCore {
             }
         }
         let mut layouts: Vec<Option<BlockLayout>> = vec![None; blocks.len()];
+        // PLAN-054 T5/T6：task done 态 accent 色（theme 语义 primary，双档
+        // 感知）——帧内一次解析。
+        let accent_rgb = crate::ui::style::theme::resolve_semantic_rgb(
+            &crate::ui::style::Color::Primary,
+        )
+        .unwrap_or((59, 130, 246));
         let mut y = 0.0f32;
-        for &bi in render_order.iter() {
+        for draw in render_items.iter() {
+            // PLAN-054 T7：只读固化段（表格管道行 / thematic break）——无
+            // 缓冲无布局槽（不聚焦不可编辑，PARITY #12 边界），直接出运行。
+            let bi = match draw {
+                DrawItem::RawText(text) => {
+                    let lh = BODY_SIZE * LINE_H_PARA;
+                    let mut ry = y;
+                    for line in text.split('\n') {
+                        list.runs.push(DocRun {
+                            text: line.to_string(),
+                            x: 0.0,
+                            y: ry,
+                            size: BODY_SIZE,
+                            line_height: lh,
+                            color: base,
+                            bold: false,
+                            italic: false,
+                            mono: false,
+                            strike: false,
+                            underline: false,
+                        });
+                        ry += lh;
+                    }
+                    let h = ry - y;
+                    y += h + BLOCK_GAP;
+                    continue;
+                }
+                DrawItem::RawBreak => {
+                    let h = 16.0;
+                    let (br, bg_, bb) = crate::ui::style::theme::resolve_border_rgb();
+                    list.fills.push((
+                        Rect::new(0.0, y + h / 2.0, viewport_w.max(1.0), 1.0),
+                        Rgba { r: br as f32 / 255.0, g: bg_ as f32 / 255.0, b: bb as f32 / 255.0, a: 1.0 },
+                    ));
+                    y += h + BLOCK_GAP;
+                    continue;
+                }
+                DrawItem::Leaf(bi) => *bi,
+            };
+            let at = attrib.get(&bi).cloned().unwrap_or_default();
             let b = &mut blocks[bi];
             let size = leaf_size(b.kind);
             let line_h = size * line_h_mult(b.kind);
             // PLAN-053 T15：heading 额外块距（§7.3 vue margins 19.2/17.6 与
             // 25.6/14.4 扣两臂共同基础节奏 8px）——与只读臂 mt-[]/mb-[] 类
             // 同值，两臂逐块 pitch 一致即左右对齐。
-            let (extra_top, extra_bottom) = match b.kind {
+            let (mut extra_top, mut extra_bottom) = match b.kind {
                 LeafKind::Heading(l) => autodown_blocks::heading_extra_margins(l),
                 _ => (0.0, 0.0),
             };
@@ -1329,22 +1374,22 @@ impl AutodownEditorCore {
             // View 树装配，不重复发射——readonly 门控的一半）。
             let fenced = matches!(b.kind, LeafKind::Fence);
             let fenced_chrome = fenced && !view_inst;
-            let in_quote = !fenced && quote_ids.contains(&bi);
+            // PLAN-053 T17：quote 块左条 3px + 文字缩进（§7.4）。PLAN-054
+            // T5/T8：x 偏移由骨架归因累计（quote 19 + 容器 16 + 列表缩进
+            // gutter）——fence chrome 维持自身 pad（容器内 fence v1 豁免）。
+            let in_quote = !fenced && at.in_quote;
             let pad = fam.chrome.pad;
-            // PLAN-053 T17：quote 块左条 3px + 文字缩进 16px（§7.4 pad-l 1rem）。
-            let x_off = if fenced_chrome {
-                pad
-            } else if in_quote {
-                19.0
-            } else {
-                0.0
-            };
+            let x_off = if fenced_chrome { pad } else { at.x };
+            if !fenced_chrome {
+                // PLAN-054 T8：容器首/末叶的标题行高与底部 pad（callout
+                // py-3 12px / details py-2 8px）。
+                extra_top += at.cont_extra_top;
+                extra_bottom += at.cont_extra_bottom;
+            }
             let buf_w = if fenced_chrome {
                 (viewport_w.max(1.0) - 2.0 * pad).max(1.0)
-            } else if in_quote {
-                (viewport_w.max(1.0) - x_off).max(1.0)
             } else {
-                viewport_w.max(1.0)
+                (viewport_w.max(1.0) - x_off).max(1.0)
             };
             let text_y = y + extra_top + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
             let ed = &mut b.editor.0;
@@ -1385,6 +1430,59 @@ impl AutodownEditorCore {
             };
             let block_h =
                 ed.with_buffer(|buf| buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs));
+
+            // PLAN-054 T5/T6：列表 marker（项首叶独立 run，画在 gutter 左
+            // 缘；task done 态 accent 色——五截图根因③④）。
+            if !fenced_chrome {
+                if let Some((mtext, maccent, mx)) = &at.list_marker {
+                    let mcolor = if *maccent {
+                        Rgba {
+                            r: accent_rgb.0 as f32 / 255.0,
+                            g: accent_rgb.1 as f32 / 255.0,
+                            b: accent_rgb.2 as f32 / 255.0,
+                            a: 1.0,
+                        }
+                    } else {
+                        Rgba { r: mr as f32 / 255.0, g: mg as f32 / 255.0, b: mb as f32 / 255.0, a: 1.0 }
+                    };
+                    list.runs.push(DocRun {
+                        text: mtext.clone(),
+                        x: *mx,
+                        y: text_y,
+                        size: BODY_SIZE,
+                        line_height: line_h,
+                        color: mcolor,
+                        bold: false,
+                        italic: false,
+                        mono: false,
+                        strike: false,
+                        underline: false,
+                    });
+                }
+                // PLAN-054 T8：callout/details 容器 chrome——首叶上方标题/
+                // 摘要行（五截图根因⑥）。
+                if let Some((ttext, tcolor)) = &at.cont_title {
+                    let t_rgb = tcolor.map(|(r, g, b)| Rgba {
+                        r: r as f32 / 255.0,
+                        g: g as f32 / 255.0,
+                        b: b as f32 / 255.0,
+                        a: 1.0,
+                    }).unwrap_or(base);
+                    list.runs.push(DocRun {
+                        text: ttext.clone(),
+                        x: at.x,
+                        y: y + extra_top - CONT_TITLE_H + 4.0,
+                        size: 14.0,
+                        line_height: 18.0,
+                        color: t_rgb,
+                        bold: false,
+                        italic: false,
+                        mono: false,
+                        strike: false,
+                        underline: false,
+                    });
+                }
+            }
 
             let total_h = if fenced_chrome {
                 let h_h = fam.chrome.header_h;
@@ -1430,6 +1528,15 @@ impl AutodownEditorCore {
                 list.fills.push((
                     Rect::new(0.0, y, 3.0, total_h),
                     Rgba { r: br as f32 / 255.0, g: bg_ as f32 / 255.0, b: bb as f32 / 255.0, a: 1.0 },
+                ));
+            }
+
+            // PLAN-054 T8：callout 左条（3px，kind 配色；每叶一段——与
+            // quote 条同点扩展；条在容器内容 x 基左缘）。
+            if let Some((cr, cg, cb)) = at.cont_strip {
+                list.fills.push((
+                    Rect::new((at.x - CONT_PAD_X).max(0.0), y, 3.0, total_h),
+                    Rgba { r: cr as f32 / 255.0, g: cg as f32 / 255.0, b: cb as f32 / 255.0, a: 1.0 },
                 ));
             }
 
@@ -1869,14 +1976,40 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
             BlockType::ListBlock => {
                 let ordered = attrGetBool(node.attrs.clone(), "ordered", false);
                 let start = attrGetInt(node.attrs.clone(), "start", 1);
+                let mut checked: Vec<Option<bool>> = Vec::new();
                 let mut items: Vec<Vec<Seg>> = Vec::new();
                 for item in &node.children {
+                    // PLAN-054 T6：任务项 checked 态随骨架保留（marker 推导
+                    // 与 emit "- [x] " 往返的数据源）。
+                    checked.push(match attrGet(item.attrs.clone(), "checked") {
+                        Some(Value::Bool(c)) => Some(c),
+                        _ => None,
+                    });
                     let kids: Vec<&BlockNode> = item.children.iter().collect();
                     let mut item_segs: Vec<Seg> = Vec::new();
                     build_walk(&kids, &mut item_segs, blocks, fs);
                     items.push(item_segs);
                 }
-                segs.push(Seg::List { ordered, start, items });
+                segs.push(Seg::List { ordered, start, checked, items });
+            }
+            BlockType::Callout => {
+                // PLAN-054 T8（五截图根因⑥）：callout 进骨架（原 catch-all
+                // 拍平空段——不可见且 emit 往返丢失）。
+                let kind = attrGetStr(node.attrs.clone(), "type", "");
+                let title = attrGetStr(node.attrs.clone(), "title", "");
+                let children: Vec<&BlockNode> = node.children.iter().collect();
+                let mut inner: Vec<Seg> = Vec::new();
+                build_walk(&children, &mut inner, blocks, fs);
+                segs.push(Seg::Callout { kind, title, inner });
+            }
+            BlockType::Details => {
+                // PLAN-054 T8：details 进骨架（summary/open 往返保留）。
+                let summary = attrGetStr(node.attrs.clone(), "summary", "");
+                let open = attrGetBool(node.attrs.clone(), "open", false);
+                let children: Vec<&BlockNode> = node.children.iter().collect();
+                let mut inner: Vec<Seg> = Vec::new();
+                build_walk(&children, &mut inner, blocks, fs);
+                segs.push(Seg::Details { summary, open, inner });
             }
             BlockType::ThematicBreak => segs.push(Seg::Raw("---".into())),
             BlockType::Table => segs.push(Seg::Raw(table_to_markdown(node))),
@@ -1969,16 +2102,21 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 }
             }
         }
-        Seg::List { ordered, start, items } => {
+        Seg::List { ordered, start, checked, items } => {
             for (ii, item) in items.iter().enumerate() {
                 if ii > 0 {
                     out.push_str("\n\n");
                 }
-                out.push_str(&if *ordered {
-                    format!("{}. ", start + ii as i64)
-                } else {
-                    "- ".to_string()
-                });
+                // PLAN-054 T6：task 项往返（checked 态随骨架，"- [x] " 形态
+                // 与 parser 消费同源）。
+                let task = checked.get(ii).copied().flatten();
+                let lead = match task {
+                    Some(true) => if *ordered { format!("{}. [x] ", start + ii as i64) } else { "- [x] ".to_string() },
+                    Some(false) => if *ordered { format!("{}. [ ] ", start + ii as i64) } else { "- [ ] ".to_string() },
+                    None if *ordered => format!("{}. ", start + ii as i64),
+                    None => "- ".to_string(),
+                };
+                out.push_str(&lead);
                 let mut body = String::new();
                 for (si, s) in item.iter().enumerate() {
                     if si > 0 {
@@ -1989,8 +2127,48 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 out.push_str(&body);
             }
         }
+        // PLAN-054 T8：callout/details 往返发射（attr 形态与 parser 消费
+        // 同源——renders_details_summary_then_open_order 证多 attr 可解析）。
+        Seg::Callout { kind, title, inner } => {
+            let mut attrs = String::new();
+            if !kind.is_empty() {
+                attrs.push_str(&format!("type:\"{kind}\""));
+            }
+            if !title.is_empty() {
+                if !attrs.is_empty() {
+                    attrs.push_str(", ");
+                }
+                attrs.push_str(&format!("title:\"{title}\""));
+            }
+            out.push_str(&format!("$callout({attrs}) {{\n"));
+            emit_inner_joined(inner, blocks, out);
+            out.push_str("\n}");
+        }
+        Seg::Details { summary, open, inner } => {
+            let mut attrs = vec![format!("summary:\"{summary}\"")];
+            if *open {
+                attrs.push("open:true".to_string());
+            }
+            out.push_str(&format!("$details({}) {{\n", attrs.join(", ")));
+            emit_inner_joined(inner, blocks, out);
+            out.push_str("\n}");
+        }
         Seg::Raw(text) => out.push_str(text),
     }
+}
+
+/// PLAN-054 T8：容器内段以空行连接发射（Quote body / Callout/Details
+/// inner 共用；尾部分隔整体摘除——PLAN-048 T4 同口径）。
+fn emit_inner_joined(inner: &[Seg], blocks: &[BlockBuf], out: &mut String) {
+    let mut body = String::new();
+    for s in inner {
+        emit_seg(s, blocks, &mut body);
+        body.push_str("\n\n");
+    }
+    while body.ends_with("\n\n") {
+        body.truncate(body.len() - 2);
+    }
+    out.push_str(&body);
 }
 
 // ---------------------------------------------------------------------------
@@ -2086,7 +2264,170 @@ fn dfs_leaf_order(segs: &[Seg], out: &mut Vec<usize>) {
                     dfs_leaf_order(item, out)
                 }
             }
+            // PLAN-054 T8：容器段叶子同入全序（发射/渲染/布局同源）。
+            Seg::Callout { inner, .. } | Seg::Details { inner, .. } => {
+                dfs_leaf_order(inner, out)
+            }
             Seg::Raw(_) => {}
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 骨架归因（PLAN-054 T5/T7/T8）——一次 DFS 产出渲染序列与容器归属
+// ---------------------------------------------------------------------------
+
+/// PLAN-054 编辑壳布局常量（§7.4 族同档；px）。
+const QUOTE_X: f32 = 19.0; // quote 缩进（PLAN-053 T17 值）
+const LIST_INDENT: f32 = 16.0; // 每层嵌套缩进
+const LIST_GUTTER: f32 = 26.0; // marker 槽宽（容纳 "• "/"✔ "/"10. "）
+const CONT_PAD_X: f32 = 16.0; // callout/details 内容边距（px-4）
+const CONT_TITLE_H: f32 = 26.0; // callout 标题行高（含 py 上边距）
+const CONT_SUMMARY_H: f32 = 24.0; // details 摘要行高
+const CONT_PAD_B_CALLOUT: f32 = 12.0; // callout 底 pad（py-3）
+const CONT_PAD_B_DETAILS: f32 = 8.0; // details 底 pad（py-2）
+
+/// 渲染序列项：可编辑叶 或 只读固化段（表格管道行 / thematic break）。
+#[derive(Clone, Debug)]
+enum DrawItem {
+    Leaf(usize),
+    RawText(String),
+    RawBreak,
+}
+
+/// 单叶渲染归属（骨架容器推导；HashMap 缺省 = 顶层裸叶）。
+#[derive(Clone, Default)]
+struct LeafAttrib {
+    /// Quote 包裹内（PLAN-053 T17 muted + 左条语义）。
+    in_quote: bool,
+    /// 列表项首叶 marker：(文本, accent=task done, 绘制 x)。
+    list_marker: Option<(String, bool, f32)>,
+    /// callout 左条色（kind 配色）。
+    cont_strip: Option<(u8, u8, u8)>,
+    /// 容器标题/摘要行（仅容器首叶）：(文本, 色；None=用基色)。
+    cont_title: Option<(String, Option<(u8, u8, u8)>)>,
+    /// 容器首叶标题行高 / 末叶底部 pad。
+    cont_extra_top: f32,
+    cont_extra_bottom: f32,
+    /// 内容 x 总偏移（外层容器累计）。
+    x: f32,
+}
+
+/// callout 图标（与只读臂 autodown_render 同表——T4 统一对）。
+fn callout_icon(kind: &str) -> &'static str {
+    match kind {
+        "info" => "\u{2139}",      // ℹ
+        "tip" | "success" => "\u{2714}", // ✔
+        "warning" | "warn" | "caution" => "\u{26A0}", // ⚠
+        "danger" | "error" => "\u{2716}", // ✖
+        _ => "\u{270E}",           // ✎ (note/未知)
+    }
+}
+
+/// 骨架归因 DFS（PLAN-053 T17 walk_quote 扩体）：一次遍历产出渲染序列
+/// （叶 + 只读 Raw）与逐叶容器归属。`x_base` 为外层容器累计的内容 x 基；
+/// `list_depth` 为当前所在列表嵌套层数（外层列表首层 = 0）。
+fn walk_skeleton_attribution(
+    segs: &[Seg],
+    in_quote: bool,
+    x_base: f32,
+    list_depth: usize,
+    attrib: &mut HashMap<usize, LeafAttrib>,
+    items: &mut Vec<DrawItem>,
+) {
+    for seg in segs {
+        match seg {
+            Seg::Leaf(i) => {
+                let a = attrib.entry(*i).or_default();
+                a.in_quote |= in_quote;
+                a.x = x_base;
+                items.push(DrawItem::Leaf(*i));
+            }
+            Seg::Quote(inner) => {
+                walk_skeleton_attribution(inner, true, x_base + QUOTE_X, list_depth, attrib, items);
+            }
+            Seg::List { ordered, start, checked, items: list_items } => {
+                for (ii, item) in list_items.iter().enumerate() {
+                    // marker 画在 gutter 左缘；内容 x = 基 + 深度缩进 + gutter。
+                    let content_x = x_base + list_depth as f32 * LIST_INDENT + LIST_GUTTER;
+                    let marker_x = content_x - LIST_GUTTER;
+                    let marker = match checked.get(ii).copied().flatten() {
+                        Some(true) => Some(("\u{2714} ".to_string(), true)), // ✔
+                        Some(false) => Some(("\u{25A1} ".to_string(), false)), // □
+                        None if *ordered => Some((format!("{}. ", start + ii as i64), false)),
+                        None => Some(("\u{2022} ".to_string(), false)), // •
+                    };
+                    let mut leaves = Vec::new();
+                    dfs_leaf_order(item, &mut leaves);
+                    for (li, leaf) in leaves.iter().enumerate() {
+                        let a = attrib.entry(*leaf).or_default();
+                        if li == 0 {
+                            if let Some((m, acc)) = &marker {
+                                a.list_marker = Some((m.clone(), *acc, marker_x));
+                            }
+                        }
+                    }
+                    walk_skeleton_attribution(item, in_quote, content_x, list_depth + 1, attrib, items);
+                }
+            }
+            Seg::Callout { kind, title, inner } => {
+                let mut leaves = Vec::new();
+                dfs_leaf_order(inner, &mut leaves);
+                let (strip, tcolor) = match autodown_blocks::callout_kind_rgb(kind) {
+                    Some((s, t)) => (Some(s), Some(t)),
+                    None => {
+                        // 未知 kind：accent（theme 语义 primary）。
+                        let acc = crate::ui::style::theme::resolve_semantic_rgb(
+                            &crate::ui::style::Color::Primary,
+                        )
+                        .unwrap_or((59, 130, 246));
+                        (Some(acc), Some(acc))
+                    }
+                };
+                let label = if !title.is_empty() {
+                    title.clone()
+                } else if !kind.is_empty() {
+                    kind.clone()
+                } else {
+                    "note".to_string()
+                };
+                let ttext = format!("{} {}", callout_icon(kind), label);
+                for (li, leaf) in leaves.iter().enumerate() {
+                    let a = attrib.entry(*leaf).or_default();
+                    a.cont_strip = strip;
+                    if li == 0 {
+                        a.cont_title = Some((ttext.clone(), tcolor));
+                        a.cont_extra_top = CONT_TITLE_H;
+                    }
+                    if li + 1 == leaves.len() {
+                        a.cont_extra_bottom = CONT_PAD_B_CALLOUT;
+                    }
+                }
+                walk_skeleton_attribution(inner, in_quote, x_base + CONT_PAD_X, list_depth, attrib, items);
+            }
+            Seg::Details { summary, inner, .. } => {
+                let mut leaves = Vec::new();
+                dfs_leaf_order(inner, &mut leaves);
+                let ttext = format!("\u{25B8} {summary}"); // ▸
+                for (li, leaf) in leaves.iter().enumerate() {
+                    let a = attrib.entry(*leaf).or_default();
+                    if li == 0 {
+                        a.cont_title = Some((ttext.clone(), None));
+                        a.cont_extra_top = CONT_SUMMARY_H;
+                    }
+                    if li + 1 == leaves.len() {
+                        a.cont_extra_bottom = CONT_PAD_B_DETAILS;
+                    }
+                }
+                walk_skeleton_attribution(inner, in_quote, x_base + CONT_PAD_X, list_depth, attrib, items);
+            }
+            Seg::Raw(text) => {
+                if text == "---" {
+                    items.push(DrawItem::RawBreak);
+                } else {
+                    items.push(DrawItem::RawText(text.clone()));
+                }
+            }
         }
     }
 }
@@ -2263,12 +2604,30 @@ fn remove_leaves_compact(blocks: &mut Vec<BlockBuf>, segs: &mut Vec<Seg>, dead: 
                     true
                 }
             }
-            Seg::List { items, .. } => {
-                items.retain_mut(|item| {
-                    prune(item, map);
-                    !item.is_empty()
-                });
+            Seg::List { checked, items, .. } => {
+                // PLAN-054 T6：checked 与 items 同步修剪（同下标对应）。
+                let mut kept_checked: Vec<Option<bool>> = Vec::new();
+                let mut kept_items: Vec<Vec<Seg>> = Vec::new();
+                for (item, ck) in items.drain(..).zip(checked.drain(..)) {
+                    let mut item = item;
+                    prune(&mut item, map);
+                    if !item.is_empty() {
+                        kept_items.push(item);
+                        kept_checked.push(ck);
+                    }
+                }
+                items.extend(kept_items);
+                checked.extend(kept_checked);
                 if items.is_empty() {
+                    changed = true;
+                    false
+                } else {
+                    true
+                }
+            }
+            Seg::Callout { inner, .. } | Seg::Details { inner, .. } => {
+                changed |= prune(inner, map);
+                if inner.is_empty() {
                     changed = true;
                     false
                 } else {
@@ -2365,7 +2724,7 @@ impl AutodownEditorCore {
             "- " | "* " | "+ " => {
                 let mut segs = self.segs.lock().unwrap();
                 replace_leaf_seg(&mut segs, bi, || {
-                    Seg::List { ordered: false, start: 1, items: vec![vec![Seg::Leaf(bi)]] }
+                    Seg::List { ordered: false, start: 1, checked: vec![None], items: vec![vec![Seg::Leaf(bi)]] }
                 });
             }
             _ => {
@@ -2465,8 +2824,9 @@ impl AutodownEditorCore {
             let mut segs = self.segs.lock().unwrap();
             if new_item_continuation {
                 if let LeafSlot::ListItem { list_pos, item_idx, .. } = slot {
-                    if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
+                    if let Some(Seg::List { items, checked, .. }) = segs.get_mut(list_pos) {
                         items.insert(item_idx + 1, vec![Seg::Leaf(new_id)]);
+                        checked.insert(item_idx + 1, None);
                     }
                 }
             } else {
@@ -2544,8 +2904,9 @@ impl AutodownEditorCore {
         };
         let insert_at = {
             let mut segs = self.segs.lock().unwrap();
-            if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
+            if let Some(Seg::List { items, checked, .. }) = segs.get_mut(list_pos) {
                 items.remove(item_idx);
+                checked.remove(item_idx);
             }
             match segs.get(list_pos) {
                 Some(Seg::List { items, .. }) if items.is_empty() => {
@@ -4020,5 +4381,95 @@ fn main() { let s = \"hi\"; }
                 .any(|(range, a)| range.start <= lo && lo < range.end && a.as_attrs().family != sans_family())
         });
         assert!(found, "inline code span must carry non-sans family for width measurement");
+    }
+
+    // ── PLAN-054 W2：编辑壳块家族可见化 ──
+
+    /// PLAN-054 T5：列表 marker/缩进——圆点/序号以独立 run 画在 gutter
+    /// 左缘（x = 深度×16），项内容 x 递增（五截图根因③）。
+    #[test]
+    fn list_markers_and_indent_drawn() {
+        let c = core_for("t054l", "- 甲\n- 乙\n\n2. 一\n3. 二\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let texts: Vec<&str> = frame.list.runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(texts.iter().filter(|t| **t == "\u{2022} ").count(), 2, "两个圆点 marker：{texts:?}");
+        assert!(texts.contains(&"2. "), "有序 marker 按start：{texts:?}");
+        assert!(texts.contains(&"3. "), "有序 marker 递增：{texts:?}");
+        // 项内容 x = gutter（26），marker x = 0。
+        let body = frame.list.runs.iter().find(|r| r.text == "甲").expect("item body run");
+        assert!(body.x >= LIST_GUTTER, "项内容在 marker 槽右侧，got x={}", body.x);
+        let marker = frame.list.runs.iter().find(|r| r.text == "\u{2022} ").expect("bullet marker");
+        assert!((marker.x - (body.x - LIST_GUTTER)).abs() < 0.5, "marker 对齐 gutter 左缘");
+    }
+
+    /// PLAN-054 T6：task 两态编辑臂呈现——✔(accent)/□(muted)，emit 往返
+    /// 保留 "- [x] "（五截图根因④）。
+    #[test]
+    fn task_checkboxes_drawn_and_roundtrip() {
+        let src = "- [x] 完成\n- [ ] 待办\n";
+        let c = core_for("t054t", src);
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let done = frame.list.runs.iter().find(|r| r.text == "\u{2714} ").expect("✔ marker");
+        let todo = frame.list.runs.iter().find(|r| r.text == "\u{25A1} ").expect("□ marker");
+        // accent = theme 语义 primary（蓝族饱和）；muted = 中性灰（近无色）。
+        assert!(
+            done.color.b - done.color.r > 0.2,
+            "done marker accent（蓝族饱和），done={:?}",
+            (done.color.r, done.color.g, done.color.b)
+        );
+        assert!(
+            (todo.color.b - todo.color.r).abs() < 0.05,
+            "todo marker 中性 muted，todo={:?}",
+            (todo.color.r, todo.color.g, todo.color.b)
+        );
+        // emit 往返：checked 态保留。
+        let out = c.emit_document();
+        assert!(out.contains("- [x] 完成"), "emit 保留 [x]：{out:?}");
+        assert!(out.contains("- [ ] 待办"), "emit 保留 [ ]：{out:?}");
+    }
+
+    /// PLAN-054 T7：表格编辑臂可见——管道行文本 run（含表头三格），emit
+    /// 往返不变（五截图根因⑤）。
+    #[test]
+    fn table_pipe_lines_visible_in_edit_arm() {
+        let src = "| Name | Value | Note |\n| --- | --- | --- |\n| Foo | 1 | A |\n";
+        let c = core_for("t054tb", src);
+        let frame = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+        let joined: String = frame.list.runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>().join("");
+        for cell in ["| Name ", "| Value ", "| Note ", "| --- ", "| Foo "] {
+            assert!(joined.contains(cell), "管道行含 {cell:?}：{joined:?}");
+        }
+        // 表头+分隔+数据行 = 3 个文本 run。
+        let pipe_runs = frame.list.runs.iter().filter(|r| r.text.starts_with('|')).count();
+        assert_eq!(pipe_runs, 3, "表头/分隔/数据三行，got {pipe_runs}");
+        let out = c.emit_document();
+        assert!(out.contains("| Name | Value | Note |"), "emit 往返保留表格：{out:?}");
+    }
+
+    /// PLAN-054 T8：callout/details 编辑臂可见——callout 左条（kind 配色）
+    /// + 标题行；details 摘要行；emit 往返保留容器（五截图根因⑥）。
+    #[test]
+    fn callout_details_drawn_with_chrome_and_roundtrip() {
+        let src = "$callout(type:\"info\", title:\"Info\") {\n正文。\n}\n\n$details(summary:\"展开\") {\n藏文。\n}\n";
+        let c = core_for("t054c", src);
+        let frame = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+        // 标题行 run（icon + label，kind 色）。
+        let title = frame.list.runs.iter().find(|r| r.text.contains("Info")).expect("callout 标题行");
+        assert!(title.text.starts_with('\u{2139}'), "info 图标：{:?}", title.text);
+        assert!(title.color.b > title.color.r, "kind 配色（blue 族 title）");
+        // callout 左条：3px 宽 fill，色 = blue-500。
+        let strip = frame.list.fills.iter().find(|(r, _)| (r.w - 3.0).abs() < 0.5 && r.h > 20.0);
+        assert!(strip.is_some(), "callout 左条 3px fill 在册：{:?}", frame.list.fills);
+        // details 摘要行。
+        assert!(
+            frame.list.runs.iter().any(|r| r.text.contains("\u{25B8} 展开")),
+            "details 摘要行 ▸ 在册：{:?}",
+            frame.list.runs.iter().map(|r| &r.text).collect::<Vec<_>>()
+        );
+        // emit 往返。
+        let out = c.emit_document();
+        assert!(out.contains("$callout(type:\"info\", title:\"Info\")"), "callout 往返：{out:?}");
+        assert!(out.contains("$details(summary:\"展开\")"), "details 往返：{out:?}");
+        assert!(out.contains("藏文。"), "details 内容往返：{out:?}");
     }
 }

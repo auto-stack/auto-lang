@@ -206,6 +206,20 @@ pub fn callout_kind_classes(kind: &str) -> (&'static str, &'static str) {
     }
 }
 
+/// PLAN-054 T8：callout kind 的编辑壳 RGB（五截图根因⑥——编辑臂可见化）。
+/// 与 `callout_kind_classes` 的 -500（左条）/ -400（标题）档同源取值；
+/// 未知 kind 回 None（accent 色由调用方经 theme 语义色解析）。
+/// 返回 (左条 rgb, 标题 rgb)。
+pub fn callout_kind_rgb(kind: &str) -> Option<((u8, u8, u8), (u8, u8, u8))> {
+    match kind {
+        "info" => Some(((59, 130, 246), (96, 165, 250))), // blue-500 / blue-400
+        "tip" | "success" => Some(((16, 185, 129), (52, 211, 153))), // emerald-500/400
+        "warning" | "warn" | "caution" => Some(((245, 158, 11), (251, 191, 36))), // amber
+        "danger" | "error" => Some(((239, 68, 68), (248, 113, 113))), // red-500/400
+        _ => None,
+    }
+}
+
 /// heading 视图类表（从 autodown_render::heading_style 搬家；h1..h6）。
 /// PLAN-053 T14（§7.3/§7.2 收敛，VM 排版对齐 W2.6）：h1-h3 字号=§7.3
 /// rem 投影（1.58/1.33/1.18rem × 16 = 25.3/21.3/18.9px，text-[<n>px]
