@@ -108,8 +108,11 @@ const PLAIN: ChromeSpec = ChromeSpec {
 /// 的 flex 拉伸）；标签自带色（容器色类不达子 Text，曾默认黑画 zinc-800
 /// 上不可见 → 塌成游离黑块）。
 pub const FENCE_CHROME: ChromeSpec = ChromeSpec {
+    // PLAN-054 T2：header 增 py-2——28px 定高带内 12px 标签垂直居中（上
+    // padding 8 = (28-12)/2，与编辑臂标签 y 同值）；center_y 类通道在 iced
+    // 臂强制 height(Fill) 不可用（见 autodown_render fence 臂注）。
     outer: "rounded-lg border bg-zinc-950 overflow-hidden w-full",
-    header: Some("w-full h-[28px] px-4 border-b bg-zinc-800 text-zinc-400"),
+    header: Some("w-full h-[28px] px-4 py-2 border-b bg-zinc-800 text-zinc-400"),
     header_label: "text-xs font-medium text-zinc-400",
     body: "p-4",
     body_text: "font-mono text-sm text-zinc-50 whitespace-pre-wrap",
@@ -124,7 +127,7 @@ pub const FENCE_CHROME: ChromeSpec = ChromeSpec {
 /// 选取同读一处——修复浅色 hljs 基色标点画 zinc 暗底不可见的分叉）。
 pub const FENCE_CHROME_LIGHT: ChromeSpec = ChromeSpec {
     outer: "rounded-lg border bg-gray-50 border-gray-200 overflow-hidden w-full",
-    header: Some("w-full h-[28px] px-4 border-b bg-gray-200 text-gray-700"),
+    header: Some("w-full h-[28px] px-4 py-2 border-b bg-gray-200 text-gray-700"),
     header_label: "text-xs font-medium text-gray-700",
     body: "p-4",
     body_text: "font-mono text-sm text-gray-800 whitespace-pre-wrap",
@@ -134,9 +137,12 @@ pub const FENCE_CHROME_LIGHT: ChromeSpec = ChromeSpec {
 
 /// quote 家族 chrome（从 blockquote 臂搬家）。
 pub const QUOTE_CHROME: ChromeSpec = ChromeSpec {
-    // PLAN-053 T17（§7.4：左边 3px·字 muted）：border-l(border-3 宽) 走单侧
-    // 边框条机制；muted=§7.1:194 gray-500/zinc-400 双档（dark: 变体）。
-    outer: "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
+    // PLAN-053 T17（§7.4：左边 3px·字 muted）：muted=§7.1:194
+    // gray-500/zinc-400 双档（dark: 变体）。PLAN-054 T1（用户裁定：两臂
+    // 同款左条无整圈边框）：border-3 曾展开为 BorderWidth(3)+border=true
+    // ——iced 容器四边整圈边框（五截图根因①）；改 border-l-3（单侧宽度
+    // 档，PLAN-054 T1 类 IR 微扩）只画 3px 左条。
+    outer: "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
     header: None,
     header_label: "",
     body: "",
@@ -200,6 +206,20 @@ pub fn callout_kind_classes(kind: &str) -> (&'static str, &'static str) {
         }
         "danger" | "error" => (" border-red-500/50 bg-red-500/10", " text-red-400"),
         _ => (" border-primary/50 bg-primary/10", " text-primary"),
+    }
+}
+
+/// PLAN-054 T8：callout kind 的编辑壳 RGB（五截图根因⑥——编辑臂可见化）。
+/// 与 `callout_kind_classes` 的 -500（左条）/ -400（标题）档同源取值；
+/// 未知 kind 回 None（accent 色由调用方经 theme 语义色解析）。
+/// 返回 (左条 rgb, 标题 rgb)。
+pub fn callout_kind_rgb(kind: &str) -> Option<((u8, u8, u8), (u8, u8, u8))> {
+    match kind {
+        "info" => Some(((59, 130, 246), (96, 165, 250))), // blue-500 / blue-400
+        "tip" | "success" => Some(((16, 185, 129), (52, 211, 153))), // emerald-500/400
+        "warning" | "warn" | "caution" => Some(((245, 158, 11), (251, 191, 36))), // amber
+        "danger" | "error" => Some(((239, 68, 68), (248, 113, 113))), // red-500/400
+        _ => None,
     }
 }
 
@@ -460,7 +480,7 @@ mod tests {
         assert_eq!(FENCE_CHROME.outer, "rounded-lg border bg-zinc-950 overflow-hidden w-full");
         assert_eq!(
             FENCE_CHROME.header.unwrap(),
-            "w-full h-[28px] px-4 border-b bg-zinc-800 text-zinc-400"
+            "w-full h-[28px] px-4 py-2 border-b bg-zinc-800 text-zinc-400"
         );
         assert_eq!(FENCE_CHROME.header_label, "text-xs font-medium text-zinc-400");
         assert_eq!(FENCE_CHROME.body, "p-4");
@@ -468,9 +488,11 @@ mod tests {
             FENCE_CHROME.body_text,
             "font-mono text-sm text-zinc-50 whitespace-pre-wrap"
         );
+        // PLAN-054 T1（用户裁定：左条无整圈边框）：border-3 退役，左条
+        // 走 border-l-3 单侧宽度档（3px，无四边边框）。
         assert_eq!(
             QUOTE_CHROME.outer,
-            "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400"
+            "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400"
         );
         assert_eq!(BREAK_CHROME.outer, "border-t w-full my-2");
         assert_eq!(family_of(BlockType::Table).chrome.outer, "w-full text-sm");

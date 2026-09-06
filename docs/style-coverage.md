@@ -6,7 +6,7 @@
 >
 > headless 金标 = mapped(解析成功即无渲染歧义);gpui 尽力对齐 iced 金标,差异登记台账(feature 不入默认门禁)。
 
-总计: 8861 类 — applied 3807 / parsed-only 276 / unsupported 4778 / missing 0
+总计: 8861 类 — applied 3811 / parsed-only 276 / unsupported 4774 / missing 0
 
 | 家族 | applied | parsed-only | unsupported | missing |
 |---|---|---|---|---|
@@ -17,7 +17,7 @@
 | └ sizing | 295 | 0 | 21 | 0 |
 | **视觉 (backgrounds/borders/effects/filters)** | | | | |
 | └ backgrounds | 1051 | 0 | 37 | 0 |
-| └ borders | 577 | 0 | 2288 | 0 |
+| └ borders | 581 | 0 | 2284 | 0 |
 | └ effects | 273 | 0 | 36 | 0 |
 | └ filters | 0 | 11 | 133 | 0 |
 | **文本 (typography)** | | | | |
@@ -191,7 +191,7 @@
 | `prefix border-t-` | 单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力 |
 | `prefix border-r-` | 单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力 |
 | `prefix border-b-` | 单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力 |
-| `prefix border-l-` | 单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力 |
+| `prefix border-l-` | 单侧颜色分档:色档未接(宽度档 border-l-N 已接,PLAN-054 T1) |
 | `shadow-inner` | 内阴影:iced shadow 无 inner |
 | `prefix mix-blend-` | 混合模式:无混合原语 |
 | `prefix bg-blend-` | 混合模式:无混合原语 |

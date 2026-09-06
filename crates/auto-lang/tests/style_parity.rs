@@ -202,7 +202,9 @@ const UNSUPPORTED: &[(&str, &str, &str)] = &[
     ("prefix:", "border-t-", "单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力"),
     ("prefix:", "border-r-", "单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力"),
     ("prefix:", "border-b-", "单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力"),
-    ("prefix:", "border-l-", "单侧宽度/颜色分档:renderer 1px 填充条模拟(PLAN-050 C2)无宽/色分档能力"),
+    // PLAN-054 T1: border-l- 宽度档(border-l-0/2/4/8)已接(左条单侧宽),
+    // 白名单仅余颜色分档(border-l-{color})。
+    ("prefix:", "border-l-", "单侧颜色分档:色档未接(宽度档 border-l-N 已接,PLAN-054 T1)"),
     // ---- effects:永久 ----
     ("=", "shadow-inner", "内阴影:iced shadow 无 inner"),
     ("prefix:", "mix-blend-", "混合模式:无混合原语"),
