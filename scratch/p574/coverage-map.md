@@ -9,15 +9,23 @@
 1. **12 个爆栈测试全部 = `run_with_capture(470KB 完整 lib 拼合 + 用例)`**
    进程内形态(宿主 VM 解释 merged 单元)。
 2. **001_smoke 用例本体 = 单行 `print("aavm2 smoke ok")` 仍爆栈** →
-   爆点在 merged lib 的编译/装载/解释启动,与用例深度无关——
-   **路径级爆栈,最小锚裁剪不可行**(裁剪语料零收益)。
+   与用例深度无关(用例差异 KB 级,裁剪语料零收益)。
+   **〔机制定量修正,2026-09-06 探针实证〕真因 = `run_autovm_capture`
+   (lib.rs:451,`run_with_capture` 底层)硬编码 4MB 执行线程——显式
+   stack_size 完全绕过 Plan 423 的 RUST_MIN_STACK=16MB 护栏;merged
+   lib(基点 515KB/现 518KB)解释递归**有限且浅**,栈需求恰落
+   **4-5MB 区间**(探针:4MB 爆/5MB 过/8MB 2.7s 跑通;基点 f2ae1cb29
+   同阈值——越阈早已发生,非近期 lib 增长)。外层测试线程栈
+   (libtest 16MB/nextest 主线程)与此无关——执行永远在内部 4MB
+   线程上,故 nextest/libtest 双路径同爆。非无限递归、非"加载即爆"。**
 3. 对照:`test_aavm2_a2r_main_dump_print`(曾误作"小用例可通过"反例)
    实为纯宿主转译打印,不合并 lib 不跑 VM——不构成反例。
 4. CI(Linux)长期绿(vm-files-ci 常态跑)→ 路径缺陷是 Windows 栈
    环境性,与裁定定性一致(路径非真实需求 + 双层解释递归结构性)。
 
 ## 处置(优于原预案)
-**12 测试统一 `#[cfg_attr(windows, ignore = "...")]`**:
+**12 测试统一 `#[cfg_attr(windows, ignore = "...")]`**(战略裁定不变:
+路径非真实需求,即便 4MB→16MB 一行可修也不为其重开重型跑):
 - Windows:关闭(裁定主诉;本地裸 taa 门禁 13 红 → 1);
 - Linux/CI:保留全量(零覆盖损失——优于语料裁剪);
 - 注记统一引用裁定。
