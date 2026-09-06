@@ -23,7 +23,7 @@ interacts with it via the `py_call(handle, "method", ...args)` and
 
 | Auto (PyFFI)                              | Python equivalent      |
 |-------------------------------------------|------------------------|
-| `py_call(lst, "__len__")`                 | `len(lst)`             |
+| `lst.len()`（PLAN-569 起可用）            | `len(lst)`             |
 | `py_call(lst, "__getitem__", i)`          | `lst[i]`               |
 | `py_call(lst, "__contains__", x)`         | `x in lst` (bool->int) |
 | `py_call(lst, "__add__", other)`          | `lst + other`          |
@@ -37,7 +37,8 @@ interacts with it via the `py_call(handle, "method", ...args)` and
 A list handle **cannot be printed directly**: Auto's `to(str)` on a list handle
 yields a raw handle marker (e.g. `"4000000"`), not the list contents. So every
 assertion in the suite goes through element access (`__getitem__`), length
-(`__len__`), or a method that returns a primitive (`count`, `index`,
+(`.len()`, PLAN-569 起直发——此前以 `__len__` py_call 规避), or a method that
+returns a primitive (`count`, `index`,
 `__contains__`). Strings of single characters returned by `__getitem__` compare
 equal to Auto string literals, so element-level equality checks work.
 
@@ -82,7 +83,7 @@ check is baked into pass/fail:
 
 | # | Name                          | Operation                                   |
 |---|-------------------------------|---------------------------------------------|
-| 1 | `test_sorted_returns_list_len`| `sorted("dcba")` -> `__len__` == 4          |
+| 1 | `test_sorted_returns_list_len`| `sorted("dcba")` -> `.len()` == 4 (PLAN-569 去规避) |
 | 2 | `test_sorted_getitem`         | `__getitem__(0..3)` joins to `"abcd"`       |
 | 3 | `test_list_from_string`       | `list("hello")` -> len 5, first `"h"`       |
 | 4 | `test_list_contains`          | `__contains__("l")` -> 1                    |

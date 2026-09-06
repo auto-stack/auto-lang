@@ -24,8 +24,9 @@ CPU-deterministic.
 - **Loss tensors must stay tensors**: only exact Python floats marshal to
   f64 eagerly (W2 rule); `.item()`/`float()` results are real floats.
   Extract scalars with `py_float(x)` — never assert on a tensor handle.
-- `.len()` on py values is unreliable (type-lie dispatch, P539-D2) —
-  count with `for x in v` and index with `v[0]`.
+- `.len()` on py values was unreliable pre-PLAN-569 (type-lie dispatch,
+  P539-D2 已清偿——py-类型侧表+组合子双通道路由)；本套件沿用
+  `for x in v` 计数 + `v[0]` 索引惯例，去规避留待自然触碰。
 - Float literals int-ify in a2py (`1.0` → `1`) — build float tensors via
   `arange(n).float()` or true division (`t / 2`), never
   `tensor([1.0, ...])` when dtype matters.

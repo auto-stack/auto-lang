@@ -9,7 +9,9 @@
 // A Python list returned through PyFFI is held as an opaque PyObjectHandle in
 // the AutoVM heap (the live object is kept, not stringified). Auto interacts
 // with it via method/dunder calls:
-//   py_call(lst, "__len__")           -> len(lst)
+//   lst.len()                        -> len(lst)   (PLAN-569 起可用：py-类型
+//                                        侧表+组合子双通道路由，此前以
+//                                        py_call(lst, "__len__") 规避)
 //   py_call(lst, "__getitem__", i)    -> lst[i]
 //   py_call(lst, "__contains__", x)   -> x in lst   (bool -> int)
 //   py_call(lst, "__add__", other)    -> lst + other
@@ -37,9 +39,10 @@ fn tap_not_ok(n int, name str, diag str) {
 }
 
 fn main() {
-    // 1. sorted() returns a list; __len__ gives its size.
+    // 1. sorted() returns a list; .len() gives its size (PLAN-569 起可用——
+    //    py-类型侧表/组合子双通道路由替代 py_call(lst, "__len__") 规避)。
     var lst = sorted("dcba")
-    var n1 = py_call(lst, "__len__")
+    var n1 = lst.len()
     if n1 == 4 {
         tap_ok(1, "test_sorted_returns_list_len")
     } else {
@@ -61,7 +64,7 @@ fn main() {
 
     // 3. list() builds a list from a string.
     var chars = list("hello")
-    var cn = py_call(chars, "__len__")
+    var cn = chars.len()
     var c0 = py_call(chars, "__getitem__", 0)
     if cn == 5 {
         if c0 == "h" {
@@ -83,7 +86,7 @@ fn main() {
 
     // 5. __add__ concatenates two lists.
     var ab = py_call(list("ab"), "__add__", list("cd"))
-    var abn = py_call(ab, "__len__")
+    var abn = ab.len()
     var ab0 = py_call(ab, "__getitem__", 0)
     var ab3 = py_call(ab, "__getitem__", 3)
     if abn == 4 {
@@ -102,7 +105,7 @@ fn main() {
 
     // 6. __mul__ repeats a list.
     var aaa = py_call(list("ab"), "__mul__", 3)
-    var aan = py_call(aaa, "__len__")
+    var aan = aaa.len()
     var aa0 = py_call(aaa, "__getitem__", 0)
     var aa5 = py_call(aaa, "__getitem__", 5)
     if aan == 6 {

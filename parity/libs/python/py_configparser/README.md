@@ -38,7 +38,7 @@ Parser instances are driven with `py_call(cfg, "method", ...args)`:
 | `py_call(cfg, "get", sec, key)`               | `cfg.get(sec, key)` -> str   |
 | `py_call(cfg, "getint", sec, key)`            | `cfg.getint(sec, key)` -> int|
 | `py_call(cfg, "getboolean", sec, key)`        | `cfg.getboolean(...)` -> int |
-| `py_call(cfg, "sections")` + `__len__`        | `len(cfg.sections())`        |
+| `py_call(cfg, "sections")` + `__len__`        | `len(cfg.sections())` — `sections().len()` 直发自 PLAN-569 起可用（规避仍正确，去规避留待自然触碰） |
 
 ## How Auto reads config values
 

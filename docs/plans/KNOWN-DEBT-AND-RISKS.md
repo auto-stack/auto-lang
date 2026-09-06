@@ -1143,12 +1143,15 @@
   （池日志实证:retain"ab"0→1→release 1→0→FREE→intern"cd"）。修复=先读后放
   （对齐 STR_CAT 纪律）+删第二对 release;engine tests_add_concat_rc 回归 ×2
   （underflow==0 && phantom==0 断言）;py_list 8/8 三方绿,p7 全相位 55/55。
-- **P539-D2 `.len()`/方法分派对 py 返回值不可靠（存量，类型谎言）**：
-  py 调用返回被 codegen 谎记类型（fn_return_types=StrFixed 等），`.len()`
-  静态路由到 str.len，把句柄/列表 id 解码为字符串池索引（垃圾但常在
-  界内，读到池内真串长度——实测"20"）。规避：for-in 计数、`x[0]` 索引
-  （GET_ELEM tag 分派）、`py_call(x, "__len__")`。RuntimeArray 谎言翻转
-  试验无效已回退。根治需动态分派（独立计划）。
+- **~~P539-D2 `.len()`/方法分派对 py 返回值不可靠（存量，类型谎言）~~ ✅ 已清偿
+  （2026-09-06, [Plan 569](569-py-ret-dynamic-dispatch.md)）**：codegen py-类型侧表
+  （`last_expr_may_py`/`py_typed_vars`/`fn_may_py_returns` 三件）+ 方法分派决策核
+  插队——py 可能接收者 `.len()` 改发 obj_len(1863)、其余方法改发 obj_call(1862)
+  组合子（运行期 tag 双通道：PyObjectHandle → GIL，Auto 值 → 原生语义）；shim_str_len
+  PyObjectHandle 臂 0→GIL len 兜底；s2s A1 len 特判（py-known 接收者 `.len()` 原改写
+  py_call("len") 恒 AttributeError）。类型谎言本体保留（顶层结果格式化依赖），
+  只覆盖"路由到哪"。实证：`var t = arange(6)` 后 `t.len()==6`（.at/.as 双模式）、
+  py_list 套件去规避 8/8 三方一致、p5-p9 五相位 20 套件零回归。
 - **~~P539-D5 py_call_may 仅位置实参~~ ✅ 已清偿（2026-09-06, Plan 567
   T06/T07）**：may 值通道变体族落地——453 py_call_may 原位、新增 476
   py_getattr_may / 477 py_getitem_may / **478 py_call_kw_may（kwargs 5 槽
@@ -1164,6 +1167,23 @@
   但类工厂的方法绑定面 + GIL/生存期约束审查超 W3 预算。组合式
   替代金样 = py_torch_train（Linear 裸栈 + seed 化收敛）已在案。
   调研节落 python-parity-roadmap.md §7.3。
+
+### P569（2026-09-06，Plan 569 执行登记——P539-D2 根治顺带的同族谎言面）
+
+- **P569-D1 handle_rust_import 未知签名 StrFixed 谎言（存量，use.rs 同族）**：
+  `use.rust` 导入项无已知签名时 fn_return_types 落 `StrFixed(0)`（codegen.rs
+  handle_rust_import 邻域，:4963-4991）——与 P539-D2 同族的类型谎言，但承载面
+  是 rust-ffi（返回值经 marshal 通道，句柄语义与 py 桥不同），**不适用** Plan 569
+  的 py-类型侧表方案。错路由面待实证（rust 桥返回值上的 `.len()` 等）；偿还
+  路径=rust 侧表或签名缺失时 Unknown 化 + 运行期 tag 分派（独立计划）。
+- **P569-R1 .as lowering 括号复合接收者方法调用重绑（存量，复审发现非本计划
+  引入）**：`print(("x" + s).len())` 经 lower_source 产出 `print("x" + s.len())`
+  ——方法后缀重绑到括号内尾操作数（.at 裸解析路径行为正确输出 7，仅 .as
+  lowering 管道重绑）。in-process 二分实证（569 s2s 改动灭活后复现，merge-base
+  预存）。规避=中间变量（`var t = "x" + s; t.len()`，99_py_dispatch/02 语料
+  即此形态）。偿还路径=emit/降低遍历对非初级接收者的括号保形（独立小批）。
+  归因注记：主检出 auto.exe 曾为陈旧产物（9/5 构建 vs 9/6 HEAD），CLI 对照
+  被误导一次——parity 新鲜度闸门教训同样适用于手工 CLI 探针。
 
 ### P567（2026-09-06，Plan 567 脚本模式收官波——复审登记）
 

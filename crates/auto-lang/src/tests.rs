@@ -86,3 +86,4 @@ mod aavm2_t3; // Plan 532: t3 里程碑档——嵌套塔解释栈零漂移最�
 mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
 #[cfg(feature = "test-vm-files")]
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/
+mod plan569_py_dispatch_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）

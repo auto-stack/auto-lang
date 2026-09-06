@@ -96,6 +96,15 @@ fn rewrite_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) 
                 // `s.len()`/`xs.push()` 保持糖态走原生通道——T05 实证：
                 // 盲改会让 obj_call 的 Auto 臂拒绝字符串方法）。
                 if recv_is_py(&recv, k, fname) {
+                    // Plan 569 D2: `.len()` 特判——py 无 .len 方法（len 是
+                    // 内置函数），py_call("len") 恒 AttributeError；改发
+                    // obj_len 双通道组合子（GIL len / Auto 原生 len），
+                    // 与 codegen 侧表路径（.at 直跑）殊途同归。
+                    if method.as_str() == "len" && c.args.args.is_empty() {
+                        *e = mk_call("obj_len", vec![Arg::Pos(*recv)]);
+                        *changed = true;
+                        return;
+                    }
                     // py_call：kwargs 形态由 codegen is_py_call_kw_form
                     // 落 5-slot py_call_kw（539）。
                     let mut args = vec![Arg::Pos(*recv), Arg::Pos(Expr::Str(method))];
