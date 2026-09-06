@@ -542,7 +542,9 @@ pub enum View<M: Clone + Debug> {
     /// 数据面甲(props-feed):app 每帧把引擎网格行喂进 `lines`,组件
     /// 纯渲染 + 输入事件上抛(T4)。状态(几何/缓冲/损伤代)存全局注册表
     /// `crate::ui::terminal::terminal(key, …)`;真身迁移自 auto-term
-    /// widget.rs(Rust 版冻结为参考 oracle)。
+    /// widget.rs(Rust 版冻结为参考 oracle)。载荷读取走注册表访问器
+    /// (`terminal_selected_text(key)` / `terminal_scroll_offset(key)`,
+    /// code_editor §5.4 同款)。
     Terminal {
         /// 稳定身份,状态存储键(与引擎 adapter session 对齐)。
         key: String,
@@ -551,6 +553,14 @@ pub enum View<M: Clone + Debug> {
         rows: u16,
         /// app 每帧喂入的网格行文本(≤rows 行,短行右填充;超出截断)。
         lines: Vec<String>,
+        /// 回滚显示偏移(badge 指示;滚轮经 on_scroll 回环由 app 更新)。
+        scroll_offset: u16,
+        /// IME 自绘 preedit(#11 绕行;输入法组合串覆盖层)。
+        preedit: Option<String>,
+        /// 选中释放信号(payload 读 `terminal_selected_text(key)`)。
+        on_select: Option<M>,
+        /// 菜单项动作信号(payload 读 `terminal_menu_item(key)`)。
+        on_menu: Option<M>,
         style: Option<Style>,
     },
 
@@ -1888,11 +1898,15 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::Terminal { key, cols, rows, lines, style } => View::Terminal {
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => View::Terminal {
                 key,
                 cols,
                 rows,
                 lines,
+                scroll_offset,
+                preedit,
+                on_select: on_select.map(|m| f(m)),
+                on_menu: on_menu.map(|m| f(m)),
                 style,
             },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {

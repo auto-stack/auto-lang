@@ -128,6 +128,27 @@ impl Default for CursorState {
     }
 }
 
+/// 选中类型(004/005 语义):Alt+拖 = Block(块选,Windows Terminal 惯例);
+/// 双击 = Semantic(词选);三击 = Lines(行选);单击拖 = Simple。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TermSelectionType {
+    Simple,
+    Semantic,
+    Lines,
+    Block,
+}
+
+/// 规范化后的选中区间;坐标为喂入缓冲的 (row, col),start ≤ end
+/// (行主序;Block 模式按列带逐行截取)。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TermSelection {
+    pub kind: TermSelectionType,
+    pub start: (usize, usize),
+    pub end: (usize, usize),
+    /// Finish 之后的区间保持可读(菜单 Copy 语义),直到下一次 Begin。
+    pub active: bool,
+}
+
 /// Backend-neutral terminal state, registered per `key` (mirrors
 /// CODE_EDITORS: leaked storage, interior mutability, widget rebuilt freely
 /// every frame).
@@ -146,6 +167,12 @@ pub struct TerminalCore {
     cursor: Mutex<CursorState>,
     /// Blink bookkeeping (last tick millis).
     blink_ms: Mutex<u64>,
+    selection: Mutex<Option<TermSelection>>,
+    /// Display offset into the fed buffer (scrollback lives engine-side;
+    /// the badge + selection mapping read this).
+    scroll_offset: AtomicU64,
+    /// 菜单动作载荷(Some(item) 待 app 读;0=Copy 1=Paste 2=SelectAll)。
+    menu_item: Mutex<Option<u8>>,
 }
 
 const BLINK_PERIOD_MS: u64 = 530;
@@ -164,6 +191,9 @@ impl TerminalCore {
             generation: AtomicU64::new(0),
             cursor: Mutex::new(CursorState::default()),
             blink_ms: Mutex::new(0),
+            selection: Mutex::new(None),
+            scroll_offset: AtomicU64::new(0),
+            menu_item: Mutex::new(None),
         }
     }
 
@@ -226,6 +256,10 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
             fresh.digests.lock().unwrap().clone_from(&core.digests.lock().unwrap());
             fresh.cursor.lock().unwrap().clone_from(&core.cursor.lock().unwrap());
             *fresh.blink_ms.lock().unwrap() = *core.blink_ms.lock().unwrap();
+            *fresh.selection.lock().unwrap() = core.selection.lock().unwrap().clone();
+            fresh
+                .scroll_offset
+                .store(core.scroll_offset.load(Ordering::Relaxed), Ordering::Relaxed);
             fresh.generation.store(core.generation() + 1, Ordering::Relaxed);
             *fresh.pending.lock().unwrap() = TerminalDamage::Full;
             map.insert(key.to_owned(), fresh);
@@ -345,6 +379,183 @@ pub fn terminal_blink_tick(core: &TerminalCore, now_ms: u64) -> bool {
         cursor.on = phase;
     }
     changed
+}
+
+// ============================================================================
+// T4 交互套件(004/005 迁移):选中三模式+块选 / 滚轮偏移 / 菜单载荷
+// ============================================================================
+
+/// Begin a selection at (row, col) with the given type (005 T2 纯函数口径
+/// 由 widget 侧的 begin_selection_type 承担:Alt→Block,双击→Semantic,
+/// 三击→Lines,单击拖→Simple)。同键重启(替换旧区间)。
+pub fn terminal_selection_begin(
+    core: &TerminalCore,
+    kind: TermSelectionType,
+    row: usize,
+    col: usize,
+) {
+    *core.selection.lock().unwrap() = Some(TermSelection {
+        kind,
+        start: (row, col),
+        end: (row, col),
+        active: true,
+    });
+}
+
+/// Extend the selection head to (row, col), normalizing start ≤ end
+/// (行主序)。无活跃区间时忽略。
+pub fn terminal_selection_extend(core: &TerminalCore, row: usize, col: usize) {
+    let mut sel = core.selection.lock().unwrap();
+    if let Some(sel) = sel.as_mut() {
+        let (sr, sc) = sel.start;
+        let forward = (row, col) >= (sr, sc);
+        let (start, end) = if forward { ((sr, sc), (row, col)) } else { ((row, col), (sr, sc)) };
+        sel.start = start;
+        sel.end = end;
+    }
+}
+
+/// Finish the drag: the range stays readable (menu Copy) but no longer
+/// extends. Returns the normalized range for publish bookkeeping.
+pub fn terminal_selection_finish(core: &TerminalCore) -> Option<TermSelection> {
+    let mut sel = core.selection.lock().unwrap();
+    if let Some(sel) = sel.as_mut() {
+        sel.active = false;
+    }
+    *sel
+}
+
+/// Current selection snapshot (iced highlight layer reads this).
+pub fn terminal_selection(core: &TerminalCore) -> Option<TermSelection> {
+    *core.selection.lock().unwrap()
+}
+
+/// Semantic(词选)锚点扩展:把 (row,col) 所在词的边界扩成选中区间
+/// (空白分词;无活跃区间时忽略)。
+pub fn terminal_selection_expand_word(core: &TerminalCore, row: usize, col: usize) {
+    let text = core.line(row).unwrap_or_default();
+    let chars: Vec<char> = text.chars().collect();
+    if col >= chars.len() {
+        // 词尾在行外:退化为单格词。
+        let mut sel = core.selection.lock().unwrap();
+        if let Some(sel) = sel.as_mut() {
+            sel.start = (row, col);
+            sel.end = (row, col);
+        }
+        return;
+    }
+    let is_word = |c: char| !c.is_whitespace();
+    if !is_word(chars[col]) {
+        let mut sel = core.selection.lock().unwrap();
+        if let Some(sel) = sel.as_mut() {
+            sel.start = (row, col);
+            sel.end = (row, col);
+        }
+        return;
+    }
+    let mut begin = col;
+    while begin > 0 && is_word(chars[begin - 1]) {
+        begin -= 1;
+    }
+    let mut end = col;
+    while end + 1 < chars.len() && is_word(chars[end + 1]) {
+        end += 1;
+    }
+    let mut sel = core.selection.lock().unwrap();
+    if let Some(sel) = sel.as_mut() {
+        sel.start = (row, begin);
+        sel.end = (row, end);
+    }
+}
+
+/// Extract the selected text from the fed buffer (菜单 Copy / 对拍取证面)。
+/// Simple: 首末行截段+中间整行;Lines: 全行;Semantic: start 单词;Block:
+/// 每行列带。空选 → None。
+pub fn terminal_selected_text(core: &TerminalCore) -> Option<String> {
+    let sel: Option<TermSelection> = { *core.selection.lock().unwrap() };
+    let sel = sel?;
+    let cells = core.cells.lock().unwrap();
+    let row_text = |r: usize| -> String {
+        cells.get(r).map(|row| row.iter().map(|c| c.ch).collect()).unwrap_or_default()
+    };
+    let (start, end) = (sel.start, sel.end);
+    let text = match sel.kind {
+        TermSelectionType::Simple => {
+            let mut out = Vec::new();
+            for r in start.0..=end.0 {
+                let line = row_text(r);
+                let chars: Vec<char> = line.chars().collect();
+                let begin_c = if r == start.0 { start.1 } else { 0 };
+                let end_c = if r == end.0 { end.1 + 1 } else { chars.len() };
+                let begin_c = begin_c.min(chars.len());
+                let end_c = end_c.min(chars.len());
+                out.push(chars[begin_c..end_c].iter().collect::<String>());
+            }
+            out.join("\n")
+        }
+        TermSelectionType::Lines => {
+            (start.0..=end.0).map(row_text).collect::<Vec<_>>().join("\n")
+        }
+        TermSelectionType::Semantic => {
+            // 词选锚点已在 expand 阶段写入 start;此处按 Simple 截段。
+            let line = row_text(end.0);
+            let chars: Vec<char> = line.chars().collect();
+            let begin_c = start.1.min(chars.len());
+            let end_c = (end.1 + 1).min(chars.len());
+            chars[begin_c..end_c].iter().collect::<String>()
+        }
+        TermSelectionType::Block => {
+            let (c0, c1) = (start.1.min(end.1), start.1.max(end.1));
+            (start.0..=end.0)
+                .map(|r| {
+                    let line = row_text(r);
+                    let chars: Vec<char> = line.chars().collect();
+                    let b = c0.min(chars.len());
+                    let e = (c1 + 1).min(chars.len());
+                    chars[b..e].iter().collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    };
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// Clear the selection (点击空白/Escape 等宿主策略)。
+pub fn terminal_selection_clear(core: &TerminalCore) {
+    *core.selection.lock().unwrap() = None;
+}
+
+/// Scroll offset (badge + engine read-back face).
+pub fn terminal_scroll_offset(core: &TerminalCore) -> usize {
+    core.scroll_offset.load(Ordering::Relaxed) as usize
+}
+
+/// Wheel/trackpad scroll: adjust the display offset (clamped at ≥0; the
+/// upper bound is the app's scrollback height, unenforced here).
+pub fn terminal_scroll(core: &TerminalCore, delta: i32) {
+    let current = core.scroll_offset.load(Ordering::Relaxed) as i64;
+    let next = (current + delta as i64).max(0) as u64;
+    core.scroll_offset.store(next, Ordering::Relaxed);
+}
+
+/// Explicit offset set (app round-trips the engine's scrollback position).
+pub fn terminal_set_scroll_offset(core: &TerminalCore, offset: usize) {
+    core.scroll_offset.store(offset as u64, Ordering::Relaxed);
+}
+
+/// 菜单动作载荷写入(widget 命中菜单项时;app 在收到 on_menu 后读取)。
+pub fn terminal_set_menu_item(core: &TerminalCore, item: u8) {
+    *core.menu_item.lock().unwrap() = Some(item);
+}
+
+/// 菜单动作载荷读取(0=Copy 1=Paste 2=SelectAll)。**读取即取走**(take)。
+pub fn terminal_take_menu_item(core: &TerminalCore) -> Option<u8> {
+    core.menu_item.lock().unwrap().take()
 }
 
 /// Display width of a character in cells (dependency-free compact table:
@@ -524,6 +735,108 @@ mod tests {
         assert_eq!(char_width('ﾊ'), 1); // halfwidth katakana
         assert_eq!(char_width('\u{0301}'), 0); // combining acute
         assert_eq!(row_width("ab中"), 4);
+    }
+
+    // ==== T4 交互:选中三模式+块选 / 文本抽取 / 滚动 / 菜单载荷 ====
+
+    fn feed_sample(core: &TerminalCore) {
+        terminal_feed(
+            core,
+            &[
+                "hello world".into(),
+                "second line".into(),
+                "third line".into(),
+            ],
+        );
+    }
+
+    #[test]
+    fn selection_simple_range_and_text() {
+        terminal_dispose("t4-sel-simple");
+        let core = terminal("t4-sel-simple", 40, 6);
+        feed_sample(core);
+        terminal_selection_begin(core, TermSelectionType::Simple, 0, 6);
+        terminal_selection_extend(core, 1, 3);
+        terminal_selection_finish(core);
+        assert_eq!(
+            terminal_selection(core).map(|s| (s.start, s.end)),
+            Some(((0, 6), (1, 3))),
+            "drag backward normalizes to start ≤ end"
+        );
+        // 端点格含包(与高亮列带一致):row1 取 chars[0..=3] = "seco"。
+        assert_eq!(terminal_selected_text(core).as_deref(), Some("world\nseco"));
+        terminal_dispose("t4-sel-simple");
+    }
+
+    #[test]
+    fn selection_lines_takes_full_rows() {
+        terminal_dispose("t4-sel-lines");
+        let core = terminal("t4-sel-lines", 40, 6);
+        feed_sample(core);
+        terminal_selection_begin(core, TermSelectionType::Lines, 0, 3);
+        terminal_selection_extend(core, 1, 8);
+        terminal_selection_finish(core);
+        assert_eq!(
+            terminal_selected_text(core).as_deref(),
+            Some("hello world\nsecond line")
+        );
+        terminal_dispose("t4-sel-lines");
+    }
+
+    #[test]
+    fn selection_semantic_expands_word() {
+        terminal_dispose("t4-sel-word");
+        let core = terminal("t4-sel-word", 40, 6);
+        feed_sample(core);
+        terminal_selection_begin(core, TermSelectionType::Semantic, 0, 8);
+        terminal_selection_expand_word(core, 0, 8);
+        terminal_selection_finish(core);
+        assert_eq!(terminal_selected_text(core).as_deref(), Some("world"));
+        terminal_dispose("t4-sel-word");
+    }
+
+    #[test]
+    fn selection_block_takes_column_band() {
+        terminal_dispose("t4-sel-block");
+        let core = terminal("t4-sel-block", 40, 6);
+        feed_sample(core);
+        terminal_selection_begin(core, TermSelectionType::Block, 0, 6);
+        terminal_selection_extend(core, 2, 10);
+        terminal_selection_finish(core);
+        // 列带 [6..=10]:row0 "world",row1 "second line"[6..=10]=" line",
+        // row2 "third line"[6..=10]="line"。
+        assert_eq!(
+            terminal_selected_text(core).as_deref(),
+            Some("world\n line\nline")
+        );
+        terminal_dispose("t4-sel-block");
+    }
+
+    #[test]
+    fn scroll_clamps_and_round_trips() {
+        terminal_dispose("t4-scroll-1");
+        let core = terminal("t4-scroll-1", 40, 6);
+        assert_eq!(terminal_scroll_offset(core), 0);
+        terminal_scroll(core, -10); // 上滚越界 → clamp 到 0
+        assert_eq!(terminal_scroll_offset(core), 0);
+        terminal_scroll(core, 25);
+        assert_eq!(terminal_scroll_offset(core), 25);
+        terminal_scroll(core, -5);
+        assert_eq!(terminal_scroll_offset(core), 20);
+        terminal_set_scroll_offset(core, 3);
+        assert_eq!(terminal_scroll_offset(core), 3);
+        terminal_dispose("t4-scroll-1");
+    }
+
+    #[test]
+    fn menu_payload_take_semantics() {
+        terminal_dispose("t4-menu-1");
+        let core = terminal("t4-menu-1", 40, 6);
+        assert_eq!(terminal_take_menu_item(core), None);
+        terminal_set_menu_item(core, 0); // Copy
+        assert_eq!(terminal_take_menu_item(core), Some(0));
+        assert_eq!(terminal_take_menu_item(core), None, "take 后不重放");
+        terminal_dispose("t4-menu-1");
     }
 
     /// T3 acceptance: 2000-line streaming feed — dirty-row computation and

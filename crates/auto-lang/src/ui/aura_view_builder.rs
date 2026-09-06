@@ -7890,7 +7890,7 @@ let tabs_inner = View::Row {
     fn convert_terminal(
         &self,
         props: &HashMap<String, AuraPropValue>,
-        _events: &HashMap<String, AuraEvent>,
+        events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let key = self
@@ -7911,11 +7911,26 @@ let tabs_inner = View::Row {
         }
 
         let style = self.extract_style_with(props, bindings);
+        let scroll_offset = self.extract_u16(props, "scroll_offset").unwrap_or(0);
+        let preedit = self
+            .extract_string_with(props, "preedit", bindings)
+            .filter(|s| !s.is_empty());
+        let on_select = aura_events_get_base(events, "onselect")
+            .or_else(|| aura_events_get_base(events, "select"))
+            .map(|event| self.event_to_message(&event.handler));
+        let on_menu = aura_events_get_base(events, "oncontextmenu")
+            .or_else(|| aura_events_get_base(events, "contextmenu"))
+            .or_else(|| aura_events_get_base(events, "onmenu"))
+            .map(|event| self.event_to_message(&event.handler));
         View::Terminal {
             key,
             cols,
             rows,
             lines,
+            scroll_offset,
+            preedit,
+            on_select,
+            on_menu,
             style,
         }
     }

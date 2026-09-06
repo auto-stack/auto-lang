@@ -3,4 +3,4 @@
 
 pub mod widget;
 
-pub use widget::{Terminal, TerminalState};
+pub use widget::{Terminal, TerminalState, CELL_H, CELL_W};

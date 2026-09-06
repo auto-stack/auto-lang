@@ -3967,13 +3967,23 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
-            // feed 数据面甲(props)经 iced widget 每帧消费。T2 占位矩形,
-            // T3 真网格渲染。
-            AbstractView::Terminal { key, cols, rows, lines, style } => {
+            // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
+            // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 crate::ui::terminal::terminal_feed(core, &lines);
-                let el: iced::Element<'static, M> =
-                    crate::ui::terminal::iced::Terminal::new(&key, cols, rows).into();
+                crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                let el: iced::Element<'static, M> = crate::ui::terminal::iced::Terminal {
+                    core,
+                    key,
+                    scroll_offset,
+                    preedit: preedit.clone(),
+                    on_select: on_select.clone(),
+                    on_menu: on_menu.clone(),
+                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::CELL_W + 2.0),
+                    height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0),
+                }
+                .into();
                 if let Some(ref s) = style {
                     let is = IcedStyle::from_style(s);
                     wrap_with_margin(el, &is)
