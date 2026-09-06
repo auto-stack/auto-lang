@@ -133,15 +133,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `vm/` 62 文件（engine/codegen/opcode/task/virt_memory/heap*/generic*/scheduler/task_system/native*/ffi/abt/debugger/disasm + tests_* 15 文件）+ `vm.rs`（844 行外观）+ `autovm_{persistent,repl,daemon,client}.rs` + `bigvm_repl.rs`；合计 ~62k 行（wc 实测） |
+| 生产入口 | `lib.rs:run_autovm/run_with_capture`；`vm/codegen.rs:Codegen`（AST→ABC）；`vm/opcode.rs:OpCode`（**194 个**，awk 快照复现）；`vm/engine.rs:AutoVM::run_task_loop/run_one_instruction`（10139 行快照）；`vm/task.rs:AutoTask`；`virt_memory.rs:VirtualFlash/VirtualRAM`；`heap_object.rs:HeapObject`；`monomorphize.rs + generic_registry.rs`；`scheduler.rs/task_system.rs`；`native_registry.rs`；`ffi/c_ffi.rs`；`debugger.rs`；`abt/` |
+| 公共 API / 关键数据流 | AST → Codegen（ABC 字节码）→ 重定位 → VirtualFlash → AutoTask 派发循环；栈槽=`NanoValue`（**u64 NaN-boxing**，auto-val/nano_value.rs:8 `pub type NanoValue = u64`；plan-221 引入/298 单路径）；堆对象统一 heap_objects 注册表（plan-077） |
+| 当前能力 | CALL_SPEC nanbox 对齐（plan-474）；字符串池记账自持（plan-510，PoolHealth+soak 双档）；null 家族守卫（plan-550，13 例单测）；互操作分发层 obj_get/set/call/len/iter/type_name（plan-555）；W2 糖批 CALL_NAT_COUNTED（plan-560）；Err 值通道拦截+py 桥 480（plan-567）；py 返回值方法分派动态化（plan-569）；退出审计三挂点（plan-575）；文件测试框架 tests/vm_file_tests.rs + test/vm/（plan-177） |
+| 实验能力 | AAVM 自举线（auto/lib/*.at）——独立档位 `cargo taa`，触发条件/作用域见 AGENTS §AAVM/AA2R Test Tier（plan-568 分层） |
+| 未实现/计划项 | AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions——overview:47 已如实标注）；双重解释器路径 12 测试 Windows cfg_attr 跳过（plan-574 裁定，非能力缺口） |
+| 测试证据 | `vm/tests_*.rs` 15 个内联测试模块（bigvm/channel/chart_geometry/clipboard/closures/closures_borrow_check/collections/concurrency/known_limits/loader/parser_stack/rc_lifecycle/string_pool/tag/types）；`tests/vm_file_tests.rs`（test/vm/ 语料 golden）；`cargo tv` 档 3578 测（AGENTS 资源表 2026-09-06 实测） |
+| 与旧文档的差异 | ①design/05 三处旧断言修正：opcode.rs "311 行/~120 opcodes"→880 行/194 个、engine 3515→10139、codegen 7079→14456（附复现）；②design/05 "32-bit stack-based execution/Each stack slot is 32 bits wide"→NaN-boxed 64-bit NanoValue（原 32 位设计降为 historical note）；③design/05 指令表 RET_D (2-slot return)→已删除（plan-377 §3.3 单槽化）；④vm overview "178 个 opcode/6882/11437 行"→194/10139/14456；⑤design/bytecode-engine.md 同步 194；⑥plans.md `old/`→`archive/`（含 212b/229a 行内引用） |
+| 本次修改文件 | `docs/design/05-vm-runtime.md` + `docs/specs/auto-lang/vm/{overview, plans}.md` + `design/bytecode-engine.md` |
 
 ## trans
 

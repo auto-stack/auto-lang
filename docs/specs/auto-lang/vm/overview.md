@@ -9,8 +9,11 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 ## 现状
 
 - CALL_SPEC 内联数学分发已 nanbox 对齐（plan-474，plan011④ 根因）：一元分支接收者/结果按 NanoValue 透传（原 read_i32/push_i32/pop_i32 i32 化石把裸 f64 读成低 32 位、TAG_F32 读成 payload 位型），二元分支原地调用（rust_fn 宏逆序弹参，CALL_SPEC `[recv, arg0..argN-1]` 布局天然对齐）；回归载具 `tests/vm_json_float_read_tests.rs`（脚本/位级/widget handler 三层）。
-- 核心规模：`engine.rs` 6882 行、`codegen.rs` 11437 行、`opcode.rs` 178 个 opcode（`docs/design/05` 中的行数与"约 120 个 opcode"已过时）。
-- 值表示为 NaN-boxing u64（`NanoValue`，plan-221 引入、plan-298 移除非 nanbox 路径）；design/05 的"32 位栈槽"描述已过时。
+- 核心规模：`engine.rs` 10139 行、`codegen.rs` 14456 行、`opcode.rs` 194 个 opcode
+  （2026-09-07 快照；复现：`wc -l crates/auto-lang/src/vm/{engine,codegen,opcode}.rs` +
+  `awk '/pub enum OpCode \{/,/^\}$/' crates/auto-lang/src/vm/opcode.rs | rg -c "^    [A-Z][A-Z_0-9]* ="`；
+  `docs/design/05` 已同批修正）。
+- 值表示为 NaN-boxing u64（`NanoValue`，plan-221 引入、plan-298 移除非 nanbox 路径）；design/05 的"32 位栈槽"描述已在 PLAN-546（2026-09-07）修正为 NaN-boxed 64 位。
 - 泛型走单态化 + 类型擦除存储（plan-076/087），堆对象统一进 `heap_objects` 注册表（plan-077，旧 list 注册表已在 Phase 6 移除）。
 - 并发为 Tokio M:N 调度 + actor 消息（plan-121/127）；plan-317 Phase 1（actor handler 执行引擎）已合并，Phase 2-4 待实施。
 - 文件测试框架已落地：`tests/vm_file_tests.rs`（907 行）+ `test/vm/` 分类目录（plan-177，plan-index 仍标 Planned，属索引滞后）。
