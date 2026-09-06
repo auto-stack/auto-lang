@@ -19,6 +19,16 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - null 家族守卫全景（plan-550，脚本模式 W0）：null 参与算术/拼接/索引/调用/迭代从静默位模式垃圾翻转为可 try-catch 捕获的 Python 风格 TypeError——算术族经 `virt_memory.rs` 共享弹栈助手 `pop_arith_pair_non_null`/`pop_arith_operand_non_null`（+`_F/_D/_U64/MOD` peek 前缀守卫）；拼接病灶在 STR_CAT 臂（codegen 对含 str 的 `+` 静态路由）；GET_ELEM null 对象 not subscriptable + 越界（ListData 四型）`IndexError: index N out of range`（负索引语义保留，tv 存量零撞击）；迭代病灶在 ARRAY_LEN 静默 0 臂（array 通道 for-in 长度探针，顺带翻 null.len()）；CALL_CLOSURE 动态 callee not callable（正常模式被编译期 E0401 先拦）；TYPE_TO_I32/F64 null 静默 -1/-1.0 臂翻案 TypeError（仅 Expr::To 显式转换发射，无内部哨兵依赖）；TYPE_TO_STR null → "None" + print shim（a2py str(None) 三方对齐）。守卫边界=TAG_NULL only（null/nil/None 三拼写经 PUSH_NIL 归一，PLAN-053；历史 i32 哨兵 -1/MIN+1 与真实整数不可区分不守卫，P550-D3）。单测 `engine.rs tests_null_guards` 13 例；语义契约见 [design/null-family.md](design/null-family.md)。
 - 互操作分发层（plan-555，脚本模式 W1）：`vm/interop.rs` 分发组合子六件（`obj_get/set/call/len/iter/type_name`，native ID 1860-1865，目录限定名+裸名双注册）——运行期 tag 分派：外对象经 `HeapObject::as_foreign_object` 默认钩子（None 默认，宿主覆写）取 `ForeignObject` 协议面（首实现=py_ffi PyObjectHandle 六操作臂，send/contains 预留位），Auto 值走原生方法表（str/list/map 索引与按名读写、ARRAY_LEN 语义、array 通道迭代回推、callable/iterable 守卫对标 550）；发射复用 CALL_PY 传输形态（带实参数字节，P555-D5 命名债）；py 三桥补齐 `py_setattr` 467/`py_len` 468/`py_type_name` 469（539 桥型）。契约见 [design/interop-dispatch.md](design/interop-dispatch.md)。
 - 脚本模式 W2 糖批（plan-560）：py 桥扩至 475（470 contains/471 module/472 str/473 pow/474 truthy/475 is——GIL 通道）；`CALL_PY→CALL_NAT_COUNTED` 改名（带计数字节通用原生调用传输形态）；CALL_PY 错误出口 FFI→RuntimeError 统一（catch 拦值一致）；print shim 运行期 PyObjectHandle→GIL str() 臂；550 生产者门控**硬化**为诊断错误 auto_gate_E5501（文件上下文限定——内联/eval 无 path 不门，tv 文件测试走 run_with_capture_and_path 受门，.as/#[script] 豁免/#[rust] 压回）。
+- 脚本模式收官波（plan-567）：**Err 值通道拦截**——ERROR_PROPAGATE 的
+  Result.Err 传播遇当前帧 try handler 改跳 catch_pc 绑 `PyException <Type>:
+  <msg>` 载荷（设计 §4.3 两通道汇合；null/None 是值不进 catch）；主边界
+  未捕获 Err 带错退出（exit 1）；py 桥扩至 **480**（476/477 getattr/getitem
+  may 变体、478 kwargs×may（P539-D5 销号）、479 py_raise 再抛、480 py_int；
+  py_enter 返 `__enter__` 值）；py 桥错误统一 PyException 前缀族（py_exc）；
+  CALL_NAT/COUNTED 非 FFI 错误原样传播加固（静默吞错回归修复）；ADD
+  string-concat **先读后放**池纪律（P053-8 幻影+"got d"双根因，P539-D1
+  销号）；namedtuple/structseq 封送 opaque 句柄（version_info 病灶，
+  P560-D6 销号）；wrap_tos TAG_LIST/null 补臂。
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
 ## 关键入口

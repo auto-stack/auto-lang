@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-567
-status: reviewed                 # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: script-mode-w25-tail-w3-oracle
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -352,9 +352,9 @@ int 强制、nullable 返回（判空路径 + lint 触发样例）、无注解�
   顺修 CALL_NAT/COUNTED 臂 `if let Err(FFI)` 静默吞非 FFI 错误回归（alloc_array/
   Config.parse 二例实证，master 对照定位）。证据：`cargo tv --no-fail-fast` 3606/3607
   （唯一红=charts master 既有）。
-- [ ] **T11** D2/D3 债务核销 + 设计回写：KNOWN-DEBT P560-D2、P560-D3 resolved→
-  PLAN-567；`docs/design/strategy/script-mode-interop.md` §3-E/§4 现状注记。
-  验证：文档 diff 自查。
+- [✅ 已完成] **T11**（2026-09-05）D2/D3 债务核销 + 设计回写：KNOWN-DEBT P560-D2、
+  P560-D3 标 ~~已清偿~~（Err 通道汇合落地实证）；script-mode-interop.md §4 落地现状
+  注记 + §3-E2 进度标注（worktree commit 546c9d275）。证据：grep 六债全 ✅。
 - [✅ 已完成] **T12**（2026-09-06）parser with-as：with_header 旗标 + As 终止符 + Cast 臂截断
   + `as Ident` 消费 + 单测 ×3（块形态/as 类型名不误吞/正常模式 Cast 零回归）。实现注记：块语句
   以 Stmt::Expr(Expr::Block) 承载（躲 convert_last_block 尾块转换）；convert_last_block 收窄为

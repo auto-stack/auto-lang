@@ -24,6 +24,16 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   方法零打扰；切片族含步长·嵌套 Range 位形；len→obj_len；闭包实参自动
   py_callable；print py-known→py_str；if/while/and/or/not 真值包裹）；
   `emit.rs` Str 再转义；py 五套件+14 补迁共 **19 套件 .as 载体**。
+- 收官波（plan-567）：s2s 规则表增 **E1 隐式 !T 传播**（`rule_err_propagate`
+  ——含 use.py 的 `.as` 内桥调用自动 may 化+`.?`、同文件用户函数调用点
+  `.?`；无 use.py 零改写保 legacy -1 哨兵面）；emit 多语句块以 `if true`
+  恒真包装（E0007/尾块歧义免疫，幂等）；**W3 注解预言机**——注册期
+  `typing.get_type_hints` 内省灌 `PY_RETURN_ANNOTATIONS`（py_ffi_types，
+  无 pyo3 依赖）→ codegen `py_return_types` 灌注 + W0010 nullable lint
+  （log::warn+收集器，R1 债=W 码体系迁移）；D4 授权强制在 py_ffi shim
+  出口（GIL float()/int()，撒谎注解退回 Python 行为）。a2py：may 变体
+  `_auto_may` 家族反映射、with-as 规范序列回译 `with e as x:`、py_int→
+  int(x)；parity runner PYTHONPATH 绝对路径注入（本地注解模块载体）。
 规模与成熟度（按代码行数，`crates/auto-lang/src/trans/`）：
 
 | 后端 | 文件 | 行数 | 状态 |
