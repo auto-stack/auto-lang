@@ -21,6 +21,10 @@ test-book = []
 # vm_file_tests 语料缓存 loader）。cargo tv 从此不含 aavm（纯 .at 语料
 # golden）；aavm 专属档 = cargo taa（触发条件与作用域映射见 AGENTS.md）。
 test-aavm = ["test-vm-files"]
+# Plan 565 P0: feature-gated counting global allocator (memory attribution).
+# Zero cost when off — the System allocator stays in place; when on, lib.rs
+# installs CountingAlloc as #[global_allocator] (lock-free AtomicU64 stats).
+mem-profile = []
 # Plan 317 §11 Phase 11: HTTP e2e tests (start real TCP servers; run serially).
 # Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
 # `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.

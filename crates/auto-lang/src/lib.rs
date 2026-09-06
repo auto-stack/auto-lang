@@ -1,6 +1,13 @@
 // Plan 249: unified native catalog macro expansion needs higher recursion limit
 #![recursion_limit = "512"]
 
+// Plan 565 P0: counting global allocator for memory attribution — installed
+// only with `--features mem-profile`; without the feature the System
+// allocator stays in place (zero cost, no extra symbols).
+#[cfg(feature = "mem-profile")]
+#[global_allocator]
+static MEM_PROFILE_ALLOC: mem_profile::CountingAlloc = mem_profile::CountingAlloc;
+
 // Global tokio runtime for VM execution
 // Using OnceLock to ensure thread-safe lazy initialization
 use std::sync::OnceLock;
@@ -97,6 +104,9 @@ mod lexer;
 pub mod libs;
 pub mod macro_;
 pub mod maker;
+// Plan 565 P0: counting allocator + stats (only with mem-profile feature)
+#[cfg(feature = "mem-profile")]
+pub mod mem_profile;
 pub mod ownership;
 pub mod parser;
 pub mod query;
