@@ -45,7 +45,7 @@ pub struct TypeStore {
 | 旧位置 | 状态 |
 |---|---|
 | `type_registry.rs`（REPL 持久化） | 仍存在，内部委托/并存于 TypeStore |
-| `infer/registry.rs:TypeRegistry` | 头注释标 DEPRECATED，但仍被 `type_registry.rs`、`parser.rs`、`vm/codegen.rs`、`autovm_persistent.rs` 引用 |
+| `infer/registry.rs:TypeRegistry` | 头注释标 DEPRECATED；2026-09-07 实测已无生产消费者（孤儿模块，仅 `pub mod registry` 导出） |
 | `Database.type_info_store` | 只剩方法名级别的残缺数据，由 TypeStore 取代 |
 
 即"合并"在数据结构上完成，调用方迁移未收尾（design/02 Open Question 仍成立）。

@@ -10,20 +10,24 @@ Robinson）、类型检查（字段、参数、spec 符合性）、所有权与�
 
 ## 现状
 
-- 类型表示完整：`Type` 枚举约 35 个变体（`ast/types.rs:24`），含 `Option`/`Result`（Plan 120）、
-  `Tuple`（Plan 200）、`Rust`（Plan 190）、`Handle`（Plan 121）；`May<T>` 已从 AST 移除。
-- 推断引擎已接入 parser：`parser.rs` 多处调用 `infer::infer_expr`（如 parser.rs:6598-6654），
-  `TraitChecker::check_conformance` 在 parser.rs:8246 起接入 spec 符合性检查。
-  （design/02 的"未接入 parser"说法已过时。）
+- 类型表示完整：`Type` 枚举 39 个变体（`ast/types.rs:24`；复现：
+  `awk '/^pub enum Type \{/,/^\}/' crates/auto-lang/src/ast/types.rs | rg -c "^    [A-Z]"`，
+  2026-09-07 快照），含 `Option`/`Result`（Plan 120）、`Tuple`（Plan 200）、
+  `Rust`（Plan 190）、`Handle`（Plan 121）；`May<T>` 已从 AST 移除。
+- 推断引擎已接入 parser：`parser.rs` 多处调用 `infer::infer_expr`（复现：
+  `rg -n "infer::infer_expr" crates/auto-lang/src/parser.rs`，2026-09-07 快照首中
+  8329 行），`TraitChecker::check_conformance` 接入 spec 符合性检查（快照
+  10279/10327 行）。（design/02 的"未接入 parser"说法已过时。）
 - TypeStore 为单一数据源，`InferenceContext` 通过 `Arc<RwLock<TypeStore>>` 共享
-  （infer/context.rs:73）；`infer/registry.rs` 标记 DEPRECATED 但仍被
-  `type_registry.rs`、`parser.rs`、`vm/codegen.rs`、`autovm_persistent.rs` 引用。
+  （infer/context.rs:79 `pub type_store` 字段）；`infer/registry.rs` 标记 DEPRECATED，
+  且已无生产消费者（2026-09-07 实测 `rg -rn "infer::registry" crates/` 仅剩
+  types.rs 头注释提及——为孤儿模块，仅 `pub mod registry` 仍导出）。
 - 所有权模块三阶段：move 语义 ✅、拥有型字符串 ✅、借检查 🔄（ownership/mod.rs 头注释）。
 - `ParamChecker` 已实现但在 `typeck/` 之外无任何调用点，未接入编译管线（plan-indices/04 遗留项）。
 
 ## 关键入口
 
-- `crates/auto-lang/src/ast/types.rs:Type` — 类型枚举（约 35 变体）
+- `crates/auto-lang/src/ast/types.rs:Type` — 类型枚举（39 变体，2026-09-07 快照）
 - `crates/auto-lang/src/ast/fun.rs:ParamMode` — View/Mut/Move 参数模式（Copy/Take 已废弃）
 - `crates/auto-lang/src/ast/enums.rs:EnumKind` — 统一 enum 三形态判别
 - `crates/auto-lang/src/types.rs:TypeStore` — 统一类型/函数/spec/enum/泛型存储

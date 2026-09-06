@@ -1,7 +1,7 @@
 # 20 - AutoUI 分离架构设计文档
 
 > 来源：前期在 DeepSeek 上的架构讨论成果，2026-07 整理入库。
-> 关联：docs/design/08-ui-systems.md（AURA IR）、docs/plans/364-a2r-cosmic-replication-readiness.md。
+> 关联：docs/design/08-ui-systems.md（AURA IR）、docs/plans/archive/364-a2r-cosmic-replication-readiness.md。
 > **修订（2026-08-26，Design 23 / Plan 452）**：窗口管理归属（§6.1）与桌面
 > 形态（§9.2）已由 docs/design/autoui/virtual-desktop.md 修订——窗口语义
 > （chrome/任务栏/焦点策略）归特权桌面 App、Win/Mac 改单 OS 窗口虚拟桌面、

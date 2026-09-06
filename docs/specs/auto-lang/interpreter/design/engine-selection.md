@@ -34,7 +34,9 @@ run(code) / run_with_capture(code)
 ## 显式非目标
 
 - **不再是多引擎抽象**：文档 `docs/execution-engine-selection.md` 描述的
-  "编译期 feature flag 双引擎"与"Evaluator fallback"均已从代码移除，该文档仅作历史参考。
+  "编译期 feature flag 双引擎"与"Evaluator fallback"的代码路径均已移除
+  （Cargo.toml 仅余空 `use-evaluator = []` 声明，2026-09-07 实测零 cfg 引用），
+  该文档仅作历史参考。
 - **不做按依赖选引擎**：plan-081 Phase 2（pac.at 中 per-dependency 执行模式）属
   auto-man / 构建侧职责，不在本文件。
 

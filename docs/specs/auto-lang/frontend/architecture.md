@@ -26,7 +26,7 @@ graph LR
 
   subgraph 外部依赖方
     RES["resolver.rs<br/>ModuleResolver / FilesystemResolver"]
-    BE["后端：evaluator / AutoVM / trans(c,rust)"]
+    BE["后端：AutoVM / trans(c,rust,ts,python,javascript,gdscript) / aura·a2ui"]
     MAC["auto-lang-macros crate<br/>value!/atom!/node!（经 AtomReader 复用 parser）"]
   end
 
@@ -126,7 +126,7 @@ graph LR
   `Stmt` 随方言膨胀，诊断文档 §1.1/§1.2）。
 - 后果：正面——核心 parser 无需改动即可注册新方言，方言产物仍是基础 `Stmt` 变体，
   下游签名不变；负面——派发需 `mem::take` 移出方言表规避自引用借用（实现上的已知折衷）。
-- 状态：active（PR-1 基建与 PR-2 UI 迁移均已落地，见 parser.rs:188 注释与 dialect/ui.rs）
+- 状态：active（PR-1 基建与 PR-2 UI 迁移均已落地，见 dialect.rs 与 dialect/ui.rs）
 
 ### ADR-07: 模块路径语法 super/pac + ModuleResolver trait
 

@@ -4,9 +4,9 @@
 
 The VM runtime is substantially implemented in `crates/auto-lang/src/vm/`. The core components are active:
 
-- **OpCode definitions** (`opcode.rs`, 311 lines): Full ABC instruction set with ~120 opcodes covering stack ops, constants, arithmetic, control flow, function calls, objects/arrays, closures, pattern matching, Option/Result types, and type conversions.
-- **Execution engine** (`engine.rs`, 3515 lines): Complete dispatch loop with heap management, closures, iterators, generic dispatch, and FFI integration.
-- **Bytecode compiler** (`codegen.rs`, 7079 lines): Full AST-to-bytecode compilation with type inference, monomorphization, and template codegen.
+- **OpCode definitions** (`opcode.rs`, 880 lines): Full ABC instruction set with 194 opcodes (2026-09-07 snapshot; reproduce with `awk '/pub enum OpCode \{/,/^\}$/' crates/auto-lang/src/vm/opcode.rs | rg -c "^    [A-Z][A-Z_0-9]* ="`) covering stack ops, constants, arithmetic, control flow, function calls, objects/arrays, closures, pattern matching, Option/Result types, and type conversions.
+- **Execution engine** (`engine.rs`, 10139 lines at the same snapshot): Complete dispatch loop with heap management, closures, iterators, generic dispatch, and FFI integration.
+- **Bytecode compiler** (`codegen.rs`, 14456 lines at the same snapshot): Full AST-to-bytecode compilation with type inference, monomorphization, and template codegen.
 - **Virtual memory** (`virt_memory.rs`): VirtualFlash + VirtualRAM implementing the "digital twin" MCU memory model.
 - **Task system** (`task.rs`, `scheduler.rs`, `task_system.rs`): Per-task stacks, Tokio-based M:N scheduling, actor-style message passing with mailboxes.
 
@@ -16,9 +16,16 @@ Not yet implemented: AutoLive hot-reload (GOT patching), MicroVM C implementatio
 
 ### AutoByteCode (ABC) Instruction Set
 
-ABC is the contract between the compiler backend and the VM. It targets 32-bit stack-based execution with variable-length encoding optimized for XIP (execute-in-place) on flash memory.
+ABC is the contract between the compiler backend and the VM. It is a stack-based
+bytecode format with variable-length encoding optimized for XIP (execute-in-place)
+on flash memory. (Historical note: the original design targeted 32-bit slots; the
+runtime migrated to NaN-boxed 64-bit values in plan-221, and plan-298 removed the
+non-nanbox path.)
 
-**Data model**: Each stack slot is 32 bits wide, holding i32, f32, pointer, or bool values. The instruction encoding uses 1-byte opcodes followed by variable-length operands, all little-endian.
+**Data model**: Each stack slot is a NaN-boxed 64-bit `NanoValue` (`u64`,
+`crates/auto-val/src/nano_value.rs`), holding i32/i64/u64, f32/f64, bool, null,
+or tagged heap-object references inline. The instruction encoding uses 1-byte
+opcodes followed by variable-length operands, all little-endian.
 
 **Instruction categories**:
 
@@ -31,7 +38,7 @@ ABC is the contract between the compiler backend and the VM. It targets 32-bit s
 | 0x50-0x5F | Comparison | EQ, NE, LT, GT, LE, GE |
 | 0x60-0x6F | Control Flow | JMP, JMP_IF_Z, JMP_IF_NZ, JMP_L (long jump) |
 | 0x70-0x7F | Calls + Data | CALL, RET, CALL_NAT, CREATE_RANGE, BUILD_FSTR, NULL_COALESCE, ERROR_PROPAGATE |
-| 0xE0-0xFF | Extended | Option/Result ops, type casts, conversions, RET_D (2-slot return) |
+| 0xE0-0xFF | Extended | Option/Result ops, type casts, conversions (RET_D was removed by plan-377 §3.3 — all values are single-slot, RET is universal) |
 
 **Design decisions**: RET uses callee-cleanup convention (RET takes n_args to clean the stack). All jumps use signed 16-bit relative offsets for position-independent code. CALL_NAT indexes into a native function table (up to 65535 entries).
 

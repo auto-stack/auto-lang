@@ -4,9 +4,15 @@
 
 **Implemented**: Postfix type modifiers (`T[]`, `T*`, `T&`, `T?`), `Type` enum with 20+ variants (in `ast/types.rs`), `Option(T)` and `Result(T)` as distinct AST types, unified enum system with three forms (scalar, homogeneous, heterogeneous) parsed in `parser.rs`, `TypeStore` with enum/type/spec/fn registries, Robinson unification in `infer/`, `GenericParam` with optional constraints.
 
-**Partial**: Type inference engine exists (`infer/` module) but is not integrated with the parser. Generic constraint syntax (`#[with(...)]`) is designed but not yet in the parser.
+**Partial** (current-state audit 2026-09-07, PLAN-546): the inference engine IS
+integrated with the parser (`parser.rs` calls `infer::infer_expr`; spec
+符合性经 `TraitChecker::check_conformance` 接入). Generic constraints are
+implemented as **inline `<T: Spec>` syntax** (plan-061, `TypeParam.constraint`)
+— the earlier `#[with(...)]` annotation design was superseded, see the
+design section below for the historical rationale.
 
-**Planned**: Union types, `#[with(...)]` annotation-based generic constraints, parser integration of type inference.
+**Planned**: Union types (implicit union synthesis exists in `implicit_union.rs`
+for actor routing; user-facing union type syntax not implemented).
 
 ## Design
 

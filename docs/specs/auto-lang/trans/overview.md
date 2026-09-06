@@ -38,23 +38,26 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   `.len()`（无实参）不再改写 `py_call(recv, "len")`（py 无 `.len` 方法，
   恒 AttributeError）而改发 **obj_len 双通道组合子**——与 codegen
   py-类型侧表路径（.at 直跑）殊途同归，`.as`/`.at` 双模式同值。
-规模与成熟度（按代码行数，`crates/auto-lang/src/trans/`）：
+规模与成熟度（按代码行数，`crates/auto-lang/src/trans/`，2026-09-07 快照，
+复现 `wc -l crates/auto-lang/src/trans/*.rs`）：
 
 | 后端 | 文件 | 行数 | 状态 |
 |------|------|------|------|
-| a2r | `rust.rs` | 13842 | 最复杂：字符串所有权映射 + 逃逸分析 + 20+ 后处理 pass |
-| a2c | `c.rs` | 4533 | 成熟，C99 输出，支持单态化泛型、`use c <header>` FFI |
-| a2p | `python.rs` | 2702 | 成熟，含 import 收集、PyDep 依赖跟踪 |
+| a2r | `rust.rs` | 23792 | 最复杂：字符串所有权映射 + 逃逸分析 + 20+ 后处理 pass；plan-532 AAVM 自举线扩容（a2r.at 发射对齐） |
+| a2c | `c.rs` | 4534 | 成熟，C99 输出，支持单态化泛型、`use c <header>` FFI |
+| a2p | `python.rs` | 3031 | 成熟，含 import 收集、PyDep 依赖跟踪；plan-560/567/569 脚本模式桥扩容 |
 | r2a | `r2a.rs` | 2633 | 逆翻译，`syn` 解析 Rust 源码生成 .at |
-| a2gd | `gdscript.rs` | 2072 | 完整（plan-290），Tab 缩进、preload 收集 |
-| a2ts | `typescript.rs` + `ts_*.rs` | 2274 | 按 ts_types/ts_expr/ts_stmt/ts_runtime 拆分（plan-152） |
+| a2gd | `gdscript.rs` | 2091 | 完整（plan-290），Tab 缩进、preload 收集 |
+| a2ts | `typescript.rs` + `ts_*.rs` | 2320 | 按 ts_types/ts_expr/ts_stmt/ts_runtime 拆分（plan-152） |
 | a2j | `javascript.rs` | 814 | 早期后端，a2ts 迁移后处于维护态 |
-| tscn | `tscn.rs` | 675 | Godot 场景文件生成（`SceneDecl` → .tscn） |
+| tscn | `tscn.rs` | 688 | Godot 场景文件生成（`SceneDecl` → .tscn） |
 | 逃逸分析 | `escape/` | — | 为 a2r 提供借用/clone/Rc 分层决策（plan-310） |
 
 测试采用约定式发现（plan-263）：`tests/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
 通过 FFI `Test.run_*_dir` 扫描 `crates/auto-lang/test/a2{ c,r,ts,p,j,gd}/` 下的
-`.at` → `.expected.*` 对。当前规模：a2c 144、a2p 23、a2r 23+cookbook、a2ts 16、a2j 10 个用例目录。
+`.at` → `.expected.*` 对。当前规模（2026-09-07 快照，复现
+`find crates/auto-lang/test/<dir> -name "*.at" | wc -l`）：a2c 123、a2p 97、
+a2r 262、a2ts 85、a2j 10、a2gd 69 个 `.at` 用例；cookbook 163 个 `.at` 文件（plan-240）。
 
 ## 关键入口
 

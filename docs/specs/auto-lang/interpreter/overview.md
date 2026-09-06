@@ -22,7 +22,9 @@ AutoVM 薄封装。模块名沿用了"interpreter"，语义已变为"解释器�
   VirtualFlash → AutoVM 任务执行 → 从任务栈顶提取 `Value`（vm_interpreter.rs `run()`）。
 - 引擎选择实质上是单引擎：`ExecutionEngine::Evaluator` 变体标记 `#[deprecated]`，
   选择后只打印警告并重定向到 AutoVM（plan-091）；`AUTO_EXECUTION_ENGINE=evaluator`
-  等值同样只告警。编译期 `use-evaluator` feature 路径在代码中已不存在。
+  等值同样只告警。编译期 `use-evaluator` feature 的代码路径已不存在——仅
+  `Cargo.toml` 留有空 feature 声明（`use-evaluator = []`，2026-09-07 实测零
+  `cfg` 引用）。
 - 每次 `eval` 都是独立编译执行（parse + codegen 全量重做）；`AutoInterpreter.cache`
   字段存在但未被 `eval` 使用。持久 session / 增量编译是 `CompileSession`
   （`crates/auto-lang/src/compile.rs`）的职责，不在本模块。
@@ -50,8 +52,10 @@ let (result, stdout) = auto_lang::run_with_capture(code)?;  // plan-177 捕获 s
 
 ## 已知坑
 
-- `VmInterpreter::call()` 未实现，恒返回 `Value::Nil`（vm_interpreter.rs:170）；
-  mod.rs 中 `test_function_call` 等 3 个测试因此 `#[ignore]`。
+- `VmInterpreter::call()` 未实现，恒返回 `Value::Nil`（vm_interpreter.rs:211，
+  2026-09-07 快照，内联 TODO 自述）；mod.rs 中 3 个测试 `#[ignore]`——
+  `test_function_call`（函数调用未实现）与 `test_simple_eval`/`test_string_eval`
+  （结果提取未实现）。
 - 结果提取只覆盖栈顶的 int/f32/f64/string/object/array（按 nanbox 标记与对象 ID
   区间 1M–3M 解码）；其余类型一律返回 `Value::Nil`。
 - `set_global` / `merge_atom` 写入的是 `VmInterpreter.globals` 侧表，**不会注入 VM

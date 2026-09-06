@@ -5,7 +5,11 @@
 Code generation is substantially implemented across multiple backends:
 
 - **C transpiler (a2c)** (`trans/c.rs`): Mature. Supports functions, structs, enums, imports via `use c <header>`, type mappings. Full test suite in `test/a2c/`.
-- **Rust transpiler (a2r)** (`trans/rust.rs`): Active. ~12000 lines. Maps Auto to idiomatic Rust with string ownership conversion, method remapping, and 20+ post-processing passes. Used for self-hosting compilation paths.
+- **Rust transpiler (a2r)** (`trans/rust.rs`): Active. 23792 lines at the
+  2026-09-07 snapshot (`wc -l crates/auto-lang/src/trans/rust.rs`; includes the
+  plan-532 AAVM self-hosting emitter work). Maps Auto to idiomatic Rust with
+  string ownership conversion, method remapping, and 20+ post-processing
+  passes. Used for self-hosting compilation paths.
 - **ArkTS generator (a2ark)** (`ui_gen/ark/`): Complete. 5 modules (generator, modifier, project, state, mod) with 12+ widget test cases. Maps AURA widgets to HarmonyOS ArkTS components.
 - **Jetpack Compose generator (a2jet)** (`ui_gen/jet/`): Complete. 11 modules (generator, components, form, layout, list, modifier, navigation, state, project, theme, mod) with full Material3 support and Android project generation.
 - **Vue generator** (`ui_gen/vue.rs`): Implemented for web target.
@@ -17,7 +21,7 @@ Not yet implemented: ASTL unified syntax tree, AutoGen template engine, a2c+LVGL
 
 ### Rust Transpiler (a2r)
 
-The Rust transpiler (`trans/rust.rs`, ~12000 lines) converts Auto source to idiomatic Rust code. The most complex aspect is string type handling — Auto's unified string model must map to Rust's `&str` / `String` ownership distinction.
+The Rust transpiler (`trans/rust.rs`, 23792 lines at the 2026-09-07 snapshot) converts Auto source to idiomatic Rust code. The most complex aspect is string type handling — Auto's unified string model must map to Rust's `&str` / `String` ownership distinction.
 
 #### String Type Mapping
 

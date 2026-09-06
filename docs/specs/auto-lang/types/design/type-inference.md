@@ -42,8 +42,8 @@
 
 ### 与 parser 的集成现状
 
-- `parser.rs:6598-6654` 多处调用 `infer::infer_expr`（已接入，design/02 的"未接入"过时）。
-- `parser.rs:8246` 起在 `impl X as Spec` 处调用 `TraitChecker::check_conformance`。
+- `parser.rs` 多处调用 `infer::infer_expr`（已接入，design/02 的"未接入"过时；2026-09-07 快照首中 8329 行）。
+- `parser.rs` 在 `impl X as Spec` 处调用 `TraitChecker::check_conformance`（2026-09-07 快照 10279/10327 行）。
 
 ### typeck/ 与 trait_checker
 

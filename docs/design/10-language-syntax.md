@@ -9,7 +9,11 @@
 - Basic parameter passing: `ref`, `mut` annotations on function parameters. Default is move/copy depending on type.
 
 **Partial / Planned:**
-- Unified dot-notation attributes (`.?`, `.*`, `.@`, `.as`, `.view`, `.mut`, `.take`) are designed but only basic `.field` access is implemented. The symbol-based properties (`.?`, `.*`, `.@`) and keyword properties (`.as`, `.to`, `.view`) are not yet in the parser.
+- Unified dot-notation attributes (audit 2026-09-07, PLAN-546): basic `.field`
+  access, keyword properties `.as`/`.to` (type conversion, `Expr::Cast`/`Expr::To`),
+  and `.view`/`.mut`/`.move` parameter-mode properties ARE implemented in the
+  parser (plan-026/plan-162). The symbol-based properties (`.?`, `.*`, `.@`)
+  remain designed-only and are not yet in the parser.
 - Bit operations: no bitfield view syntax (`bits()`, `bit()`), no declarative bitfield types, no `shl`/`shr`/`sar`/`rol`/`ror` methods. Only basic arithmetic is available.
 - Auto Flow (`|>` pipe operator, `Iter<T>` spec, `!` materialization) is fully designed but not implemented. No iterator adapters or `Iterable` trait exists.
 - Potential keywords: a large candidate list is curated but no decisions have been finalized on which additional keywords to adopt.
