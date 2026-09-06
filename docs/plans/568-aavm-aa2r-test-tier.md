@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-568
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-aa2r-test-tier
 author: [zhaopuming]
 created_at: 2026-09-05
@@ -12,7 +12,7 @@ new_spec_components: []       # 无 module spec 新增：知识沉淀于 AGENTS.
 touched_goals: ["GOAL-016: 构建与测试基础设施——AAVM/AA2R 测试域独立成档（tv 拆耦），反射性 tv 不再触发自举重测试"]
 
 affects: ["crates/auto-lang/Cargo.toml", "crates/auto-lang/src/tests.rs", "crates/auto-lang/src/tests/vm_file_tests.rs", "crates/auto-lang/src/tests/aavm_runner_tests.rs(新)", ".cargo/config.toml", ".github/workflows/vm-files-ci.yml", "AGENTS.md", "docs/plans/KNOWN-DEBT-AND-RISKS.md"]
-current_step: 0
+current_step: 1
 total_steps: 8
 ---
 
@@ -284,6 +284,9 @@ aavm2 专属基建            src/tests/aavm2_*.rs、aavm_runner_tests.rs、
   （532/564 未 fold 前不可改从 master 建——aavm 测试文件与 heavy_gate 接线
   在 564 分支；fold 序 532→564→568）。
   验证: `git -C D:/autostack/.wt/lang-568/auto-lang log --oneline -1` = 564 tip。
+  [✅ 已完成] 2026-09-06 worktree D:/autostack/.wt/lang-568/auto-lang 建于
+  plan-564-dev tip 3f0d21c72（log 验证一致）；组内补只读 detached 兄弟
+  auto-down@1b3e4bc（564 同款先例，autodown-core path 依赖解析用）。
 - **T2** feature 定义。
   文件: `crates/auto-lang/Cargo.toml`。操作: 按 D1 在 test-book 行后加
   `test-aavm = ["test-vm-files"]` + 注释。
