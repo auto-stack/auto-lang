@@ -105,15 +105,15 @@ Status vocabulary: `current` / `experimental` / `planned` / `historical` (PLAN-5
 
 | Field | Evidence |
 |---|---|
-| 边界 | 待取证 |
-| 生产入口 | 待取证 |
-| 公共 API / 关键数据流 | 待取证 |
-| 当前能力 | 待取证 |
-| 实验能力 | 待取证 |
-| 未实现/计划项 | 待取证 |
-| 测试证据 | 待取证 |
-| 与旧文档的差异 | 待取证 |
-| 本次修改文件 | 待取证 |
+| 边界 | `crates/auto-lang/src/comptime/`（mod.rs 30 行 + transformer.rs 383 行）+ `ast/comptime.rs`（401 行 AST 节点）+ `compile.rs`（3151 行 CompileSession 编排，跨模块共享） |
+| 生产入口 | `comptime/transformer.rs:CTEE`（内嵌 `VmInterpreter` + builtins OS/ARCH/DEBUG/VERSION）；`CTEE::transform`（:81，Stage-1 逐语句重写 `Code.stmts`）；七处管线集成点实测：lib.rs ×5（1188/1616/4198/4420/5027）+ trans/c.rs:4525 + trans/rust.rs:21433 |
+| 公共 API / 关键数据流 | parse 后 → `CTEE::transform`（#if 裁剪/#for 展开/#is 匹配/#{} 求值）→ type-check/codegen；AST 节点 `HashIf/HashFor/HashIs/HashBrace`（ast/comptime.rs）；`Expr::Comptime`（parser.rs:2337 快照）/`Stmt::HashBrace`（parser.rs:7908 快照） |
+| 当前能力 | 语句级 `#if/#for/#is/#{}` 全链路（token→AST→parser→变换→七处集成）；`compile_error()` 拦截；ComptimeError E0401-E0404（error.rs:1164 快照） |
+| 实验能力 | 无——边界清晰 |
+| 未实现/计划项 | 表达式级 `#{expr}` 编译期替换（vm/codegen.rs:10254 快照 TODO 自述运行时求值）；`comptime_mode` 标志（仅 mod.rs 文档注释提及，无字段）；确定性沙箱与 `CTEELimits` 资源限额（零命中确认未实现）；`#for` 仅整数上界（transformer.rs:299 "needs proper array iteration"） |
+| 测试证据 | transformer.rs 内联 mod tests（5 处 #[test]/tests 标记）；ast/comptime.rs 内联测试；`test/comptime/{01_basic,02_intermediate,03_advanced}` 三级语料（未接自动化运行器——plan-137 原状维持） |
+| 与旧文档的差异 | 仅行号漂移 4 处：parser.rs 1807→2337、6285→7908、error.rs 1148→1164、vm/codegen.rs 8115→10254（均附 2026-09-07 快照）；plans.md `old/`→`archive/`。限制性断言（表达式级不替换/comptime_mode 不存在/#for 限整数/builtins 裸标识符才命中/value_to_expr 五类型/I64 截断）全部复核成立，维持原文 |
+| 本次修改文件 | `docs/specs/auto-lang/comptime/{overview, plans}.md` + `design/{hash-syntax, ctee-pipeline, comptime-eval}.md`（determinism-sandbox 无冲突） |
 
 ## interpreter
 

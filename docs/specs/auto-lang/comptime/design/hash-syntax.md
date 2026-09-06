@@ -34,7 +34,7 @@ comptime 的语法表面（四种 `#` 构造）、lexer/parser 落点、AST 数�
 ## 解析落点
 
 - lexer.rs 对 `#` 前瞻消歧：`#if`/`#is`/`#for`/`#{` 各成独立 token，`#[` 仍归 `Hash` 注解（plan-095 Phase 1）。
-- parser.rs:1807 在 primary 表达式处产出 `Expr::Comptime`；parser.rs:6285 附近在语句位产出 `Stmt::HashBrace`。
+- parser.rs:2337（2026-09-07 快照）在 primary 表达式处产出 `Expr::Comptime`；parser.rs:7908（2026-09-07 快照）在语句位产出 `Stmt::HashBrace`。
 
 ## 作用域规则（设计规定）
 

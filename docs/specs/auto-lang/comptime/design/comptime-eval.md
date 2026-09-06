@@ -52,7 +52,7 @@
 
 ## 错误类型
 
-`ComptimeError`（error.rs:1148，miette 诊断）：
+`ComptimeError`（error.rs:1164，miette 诊断，2026-09-07 快照）：
 
 | 码 | 变体 | 触发 |
 |---|---|---|

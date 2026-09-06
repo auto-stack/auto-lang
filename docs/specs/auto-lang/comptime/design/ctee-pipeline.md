@@ -46,7 +46,7 @@ CTEE 在编译管线中的位置、变换算法、七处集成点，以及"下�
 ## 已知的管线缺口
 
 - **表达式位 `Expr::Comptime` 不经 CTEE**：`transform_stmt` 不下钻普通语句内部的表达式。
-  VM 后端在 codegen 兜底——直接编译内层表达式、运行时求值（vm/codegen.rs:8115 附近，代码内 TODO 自述）；
+  VM 后端在 codegen 兜底——直接编译内层表达式、运行时求值（vm/codegen.rs:10254 附近（2026-09-07 快照），代码内 TODO 自述）；
   `trans/c.rs`、`trans/rust.rs` 中未检索到 `Expr::Comptime` 专门分支。
 - **a2r 管线中的位置被外部依赖**：plan-310 把所有权逃逸分析锚定在 `CTEE::transform` 之后、
   `RustTrans::trans` 之前——调整 CTEE 调用位置时需同步检查该约束。

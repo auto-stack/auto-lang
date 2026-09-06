@@ -15,8 +15,8 @@
 - 七处管线集成点均在 parse 之后立即调用 `CTEE::transform`：AutoVM 执行、测试、调试、`create_vm_from_source`、
   a2r session 路径（lib.rs 五处），以及 `transpile_c`、`transpile_rust`（trans/ 两处）。
 - AST 节点在 `ast/comptime.rs`：`HashIf`/`HashFor`/`HashIs`/`HashBrace`；表达式级 `#{expr}` 解析为
-  `Expr::Comptime(Box<HashBrace>)`（parser.rs:1807）。
-- 错误类型 `ComptimeError`（error.rs:1148），诊断码 `auto_comptime_E0401`–`E0404` 等。
+  `Expr::Comptime(Box<HashBrace>)`（parser.rs:2337，2026-09-07 快照）。
+- 错误类型 `ComptimeError`（error.rs:1164，2026-09-07 快照），诊断码 `auto_comptime_E0401`–`E0404` 等。
 - 单元测试随 `transformer.rs` 内联（builtins、truthy、相等性、`compile_error`）；
   `test/comptime/` 为三级示例语料（plan-137），未接入自动化测试运行器。
 
@@ -29,7 +29,7 @@
 - 集成点：`crates/auto-lang/src/lib.rs:execute_autovm_with_path`、`lib.rs:test_code`、`lib.rs:debug_file`、
   `lib.rs:create_vm_from_source`、`lib.rs:trans_rust_with_session`、
   `crates/auto-lang/src/trans/c.rs:transpile_c`、`crates/auto-lang/src/trans/rust.rs:transpile_rust`
-- 表达式级 `#{}` 现状：`crates/auto-lang/src/vm/codegen.rs` 编译 `Expr::Comptime` 分支（8115 行附近，TODO 未做编译期替换）
+- 表达式级 `#{}` 现状：`crates/auto-lang/src/vm/codegen.rs` 编译 `Expr::Comptime` 分支（2026-09-07 快照 10254 行，TODO 未做编译期替换）
 
 ## 使用示例
 
@@ -52,7 +52,7 @@
 ## 已知坑
 
 - **表达式级 `#{expr}` 不做编译期替换**：CTEE 只处理语句级 `Stmt::HashBrace`；嵌在表达式里的
-  `Expr::Comptime` 由 codegen 直接编译内层表达式、运行时求值（vm/codegen.rs:8115 附近，代码内 TODO 自述）。
+  `Expr::Comptime` 由 codegen 直接编译内层表达式、运行时求值（vm/codegen.rs:10254 附近（2026-09-07 快照），代码内 TODO 自述）。
   结果数值正确，但"编译期算好"不成立；`test/comptime/` 多数示例因此实为运行时等价（plan-137 文中已注明）。
 - **`comptime_mode` 标志不存在**：`comptime/mod.rs` 文档注释声称用该标志区分编译期/运行时，
   但 `VmInterpreter` 源码中无此字段（plan-095 Task 4.1 设计未落地）；确定性沙箱、`CTEELimits` 资源限额同样未实现。
