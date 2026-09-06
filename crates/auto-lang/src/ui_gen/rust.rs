@@ -7370,7 +7370,9 @@ fn main() {{}}
 }
 
 // ── PLAN-571: codegen 臂 button preset 注入（产物级断言）────────────
-#[cfg(test)]
+// preset 注入本体 cfg(feature="ui")（见 with_button_preset）；tf 档不带 ui-iced
+// （Plan 507），断言随门关闭——日常档 cargo t（带 ui-iced）承接。
+#[cfg(all(test, feature = "ui"))]
 mod plan571_button_preset_codegen_tests {
     use super::*;
 

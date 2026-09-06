@@ -26463,7 +26463,8 @@ fn use_fn_body_unsupported(stmts: &[crate::ast::Stmt]) -> Option<&'static str> {
 }
 
 // ── PLAN-571: Vue 臂 cva 表与 Rust 侧 variants.rs 互锁锚定 ──────────
-#[cfg(test)]
+// ui feature 关闭时 crate::ui 不存在，互锁无意义——整模块随门关闭。
+#[cfg(all(test, feature = "ui"))]
 mod plan571_variants_cva_interlock_tests {
     use super::library_template;
     use crate::ui::style::variants::button_variant_preset;
