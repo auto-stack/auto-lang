@@ -1030,10 +1030,13 @@ mod tests {
             },
             _ => panic!("fence"),
         }
-        // quote：border-l 容器
+        // quote：border-l 容器（PLAN-053 T17：§7.4 左边 3px + muted 双档）
         match &children[1] {
             View::Container { style, child, .. } => {
-                let expected = Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").unwrap();
+                let expected = Style::parse(
+                    "border-l border-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
+                )
+                .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
                 assert_eq!(text_of(child), "引用");
             }
