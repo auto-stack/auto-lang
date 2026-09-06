@@ -16460,7 +16460,13 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        // PLAN-571: default = UA 预填等价基线（中性填充+发丝描边），与 Rust 侧
+        // ui/style/variants.rs button_variant_preset("default") 互锁——改任一须同步
+        // （ui_gen::vue::tests plan571 互锁测试锚定）。base 已含 rounded-md/font-medium，
+        // variant 值只写差量类。
+        default: 'bg-muted border border-border text-foreground hover:bg-muted/70',
+        primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        submit: 'bg-primary text-primary-foreground hover:bg-primary/90',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
         outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
@@ -26451,4 +26457,51 @@ fn use_fn_body_unsupported(stmts: &[crate::ast::Stmt]) -> Option<&'static str> {
     }
 
     stmts_unsupported(stmts)
+}
+
+// ── PLAN-571: Vue 臂 cva 表与 Rust 侧 variants.rs 互锁锚定 ──────────
+#[cfg(test)]
+mod plan571_variants_cva_interlock_tests {
+    use super::library_template;
+    use crate::ui::style::variants::button_variant_preset;
+
+    /// cva variant 值与 Rust preset 的核心类逐 token 一致（rounded-md/font-medium
+    /// 由 cva base 承担，跳过）。改任一侧须同步另一侧。
+    #[test]
+    fn button_cva_variant_values_match_rust_presets() {
+        let tpl = library_template("button").expect("button 模板在册");
+        let variants_ts = tpl
+            .extra_support_files
+            .iter()
+            .find(|(name, _)| *name == "variants.ts")
+            .map(|(_, body)| *body)
+            .expect("variants.ts 在册");
+        // 严格互锁范围 = PLAN-571 触碰的键 + destructive（串面完全一致）。
+        // ghost 不入strict集：VM 臂 hover:bg-secondary vs web hover:bg-accent
+        // 是既有分歧（iced 无 Accent token，KNOWN-DEBT），待独立 plan 收口。
+        for key in ["default", "primary", "submit", "secondary", "destructive"] {
+            let line = variants_ts
+                .lines()
+                .find(|l| l.trim_start().starts_with(&format!("{}:", key)))
+                .unwrap_or_else(|| panic!("cva 缺 {} 键", key));
+            let value = line.split('\'').nth(1).expect("cva 值带引号");
+            for class in button_variant_preset(key).split_whitespace() {
+                if class == "rounded-md" || class == "font-medium" {
+                    continue; // cva base 类承担
+                }
+                assert!(
+                    value.split_whitespace().any(|c| c == class),
+                    "cva[{}]={:?} 缺 Rust preset 类 {:?}",
+                    key,
+                    value,
+                    class
+                );
+            }
+        }
+        // defaultVariants 仍为 'default'（语义变更不改缺省键名）。
+        assert!(
+            variants_ts.contains("variant: 'default'"),
+            "defaultVariants.variant 应保持 'default'"
+        );
+    }
 }
