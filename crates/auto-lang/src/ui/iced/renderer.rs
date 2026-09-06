@@ -5620,6 +5620,54 @@ fn write_ghost_state(component: &mut crate::ui::dynamic::DynamicComponent, id: i
     }
 }
 
+/// PLAN-057：编辑器表格合成读数（__mcp_click/__mcp_key/__mcp_drag_ade 拦截臂
+/// 共用——ghost_id/ghost_height 同款占位 state 写入先例）。editor_table_geom
+/// = 渲染期表格几何 JSON（拖前定位列边界用），editor_col_widths = 拖拽落定
+/// 的列宽覆盖 JSON（vm-smoke 断言列宽变化用）。字符串形态便于 autoui_state
+/// 匹配。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+fn write_editor_table_readout(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    core: &crate::ui::autodown_editor::AutodownEditorCore,
+) {
+    let geom: Vec<serde_json::Value> = core
+        .table_geometry_snapshot()
+        .into_iter()
+        .map(|(key, x0, y0, y1, widths)| {
+            serde_json::json!({ "key": key, "x0": x0, "y0": y0, "y1": y1, "widths": widths })
+        })
+        .collect();
+    let widths: serde_json::Map<String, serde_json::Value> = core
+        .table_widths_snapshot()
+        .into_iter()
+        .map(|(key, w)| (key.to_string(), serde_json::json!(w)))
+        .collect();
+    let _ = component.write_state(
+        "editor_table_geom",
+        auto_val::Value::Str(serde_json::to_string(&geom).unwrap_or_default().into()),
+    );
+    let _ = component.write_state(
+        "editor_col_widths",
+        auto_val::Value::Str(serde_json::to_string(&widths).unwrap_or_default().into()),
+    );
+}
+
+/// PLAN-057：editor_drag 坐标序列解析（"x0,y0;x1,y1;..." → (x, y) 对）。
+/// 纯字符串面（拦截臂与单测共用）；mcp_server 侧已整体校验，此处坏段
+/// 防御跳过。
+fn parse_drag_points(pts: &str) -> Vec<(f32, f32)> {
+    pts.split(';')
+        .filter(|s| !s.is_empty())
+        .filter_map(|p| {
+            let mut it = p.split(',');
+            match (it.next()?.trim().parse::<f32>().ok(), it.next()?.trim().parse::<f32>().ok()) {
+                (Some(x), Some(y)) => Some((x, y)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 /// PLAN-045 T5/T7: 表格列宽 state 写入（OnColResize 拦截与 __mcp_resize_col
 /// 合成动作共用一条写入路径）。读-改-写保留其余表键；宽 +1e-3 防 nanbox
 /// 整值丢标签（write_ghost_state frac 同口径）。
@@ -11633,6 +11681,8 @@ fn compare_pngs(
                                 &mut crate::ui::code_editor::core::NullClipboard,
                             )
                         });
+                        // PLAN-057：编辑器表格读数随每次拦截刷新（key/drag 臂同款）。
+                        write_editor_table_readout(&mut state.component, core);
                         if out.focus_changed {
                             let block = core.focused_block();
                             let h = block
@@ -11656,6 +11706,166 @@ fn compare_pngs(
                     let _ = (sk, x, y);
                     return iced::Task::none();
                 }
+            }
+            return iced::Task::none();
+        }
+
+        // PLAN-057（055 D2）: MCP key_press——编辑壳逐键合成（input_value =
+        // "storage_key␟widget␟event␟keyspec"；mcp_server 侧已从 vnode path
+        // 解析 storage key 并取编辑壳 on_change 名——text_changed 发布步
+        // 需要）。keyspec → EditorKey（13 命名键 + c:X）后
+        // core.handle_input(KeyPressed) 直调——__mcp_click 同信任路径（真实
+        // 按键的同构 core 处理，物理键同路径代证口径）；text_changed 时构造
+        // on_change 同形态消息（input_value: Some(全文)——面 A 修复后的
+        // 发布形态）驱动 .Edit(str) → state.content；focus_changed 走
+        // write_ghost_state；表格读数落 editor_table_geom/editor_col_widths；
+        // __noop 回发驱动重绘（Plan 482 通道，click 臂同款）。
+        if msg.event == "__mcp_key" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(sk), Some(widget), Some(event), Some(keyspec)) = (
+                parts.next(),
+                parts.next(),
+                parts.next(),
+                parts.next(),
+            ) {
+                #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                {
+                    use crate::ui::autodown_editor as ade;
+                    use crate::ui::autodown_editor::DocInput;
+                    if let Some(key) = crate::ui::mcp_server::parse_editor_key_spec(keyspec) {
+                        let core = ade::autodown_editor(sk);
+                        let out = crate::ui::code_editor::core::with_font_system(|fs| {
+                            core.handle_input(
+                                fs,
+                                DocInput::KeyPressed {
+                                    key,
+                                    text: None,
+                                    modifiers: crate::ui::code_editor::core::EditorModifiers::none(),
+                                },
+                                &mut crate::ui::code_editor::core::NullClipboard,
+                            )
+                        });
+                        let mut tasks = Vec::new();
+                        if out.focus_changed {
+                            let block = core.focused_block();
+                            let h = block
+                                .and_then(|i| core.block_rects().get(i).map(|r| r.h))
+                                .unwrap_or(0.0);
+                            write_ghost_state(
+                                &mut state.component,
+                                block.map(|b| b as i32).unwrap_or(-1),
+                                h,
+                            );
+                            *state.app.view_dirty.borrow_mut() = true;
+                        }
+                        if out.text_changed && !event.is_empty() {
+                            let text = ade::autodown_editor_text(sk).unwrap_or_default();
+                            tasks.push(iced::Task::done(IcedMessage {
+                                widget: widget.to_string(),
+                                event: event.to_string(),
+                                input_value: Some(text),
+                            }));
+                        }
+                        write_editor_table_readout(&mut state.component, core);
+                        tasks.push(iced::Task::done(IcedMessage::from_dynamic(
+                            &DynamicMessage::String("__noop".to_string()),
+                        )));
+                        return iced::Task::batch(tasks);
+                    }
+                }
+                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                let _ = (sk, widget, event, keyspec);
+                return iced::Task::none();
+            }
+            return iced::Task::none();
+        }
+
+        // PLAN-057（055 D2）: MCP editor_drag——编辑壳拖拽序列合成（input_value
+        // = "storage_key␟widget␟event␟x0,y0;x1,y1;..."）。首点 MousePressed、
+        // 中段逐点 MouseDragged、末点 MouseReleased 各一次 core.handle_input
+        // 直调——055 列宽拖拽（边界命中建 col_drag → apply_col_drag 写
+        // table_widths → 松手落定）与 048 T3 拖选面同覆盖；输出位累积
+        // text_changed/focus_changed 处理同 __mcp_key；__noop 回发重绘。
+        if msg.event == "__mcp_drag_ade" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(sk), Some(widget), Some(event), Some(pts)) = (
+                parts.next(),
+                parts.next(),
+                parts.next(),
+                parts.next(),
+            ) {
+                #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                {
+                    use crate::ui::autodown_editor as ade;
+                    use crate::ui::autodown_editor::DocInput;
+                    let seq = parse_drag_points(pts);
+                    if !seq.is_empty() {
+                        let core = ade::autodown_editor(sk);
+                        let mut focus_changed = false;
+                        let mut text_changed = false;
+                        for (i, (x, y)) in seq.iter().enumerate() {
+                            let (px, py) = (*x, *y);
+                            let out = crate::ui::code_editor::core::with_font_system(|fs| {
+                                let input = if i == 0 {
+                                    DocInput::MousePressed {
+                                        button: crate::ui::code_editor::core::EditorButton::Left,
+                                        x: px,
+                                        y: py,
+                                    }
+                                } else {
+                                    DocInput::MouseDragged { x: px, y: py }
+                                };
+                                core.handle_input(
+                                    fs,
+                                    input,
+                                    &mut crate::ui::code_editor::core::NullClipboard,
+                                )
+                            });
+                            focus_changed |= out.focus_changed;
+                            text_changed |= out.text_changed;
+                        }
+                        let out = crate::ui::code_editor::core::with_font_system(|fs| {
+                            core.handle_input(
+                                fs,
+                                DocInput::MouseReleased {
+                                    button: crate::ui::code_editor::core::EditorButton::Left,
+                                },
+                                &mut crate::ui::code_editor::core::NullClipboard,
+                            )
+                        });
+                        focus_changed |= out.focus_changed;
+                        text_changed |= out.text_changed;
+                        let mut tasks = Vec::new();
+                        if focus_changed {
+                            let block = core.focused_block();
+                            let h = block
+                                .and_then(|i| core.block_rects().get(i).map(|r| r.h))
+                                .unwrap_or(0.0);
+                            write_ghost_state(
+                                &mut state.component,
+                                block.map(|b| b as i32).unwrap_or(-1),
+                                h,
+                            );
+                            *state.app.view_dirty.borrow_mut() = true;
+                        }
+                        if text_changed && !event.is_empty() {
+                            let text = ade::autodown_editor_text(sk).unwrap_or_default();
+                            tasks.push(iced::Task::done(IcedMessage {
+                                widget: widget.to_string(),
+                                event: event.to_string(),
+                                input_value: Some(text),
+                            }));
+                        }
+                        write_editor_table_readout(&mut state.component, core);
+                        tasks.push(iced::Task::done(IcedMessage::from_dynamic(
+                            &DynamicMessage::String("__noop".to_string()),
+                        )));
+                        return iced::Task::batch(tasks);
+                    }
+                }
+                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                let _ = (sk, widget, event, pts);
+                return iced::Task::none();
             }
             return iced::Task::none();
         }
@@ -20358,6 +20568,18 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-057：editor_drag 坐标序列解析——正常序列、坏段防御跳过、空串。
+    #[test]
+    fn plan057_parse_drag_points() {
+        assert_eq!(parse_drag_points("10,20;30,20;50,20"), vec![(10.0, 20.0), (30.0, 20.0), (50.0, 20.0)]);
+        // 单点序列（仅 MousePressed + Release，无 Dragged 段）。
+        assert_eq!(parse_drag_points("5,7"), vec![(5.0, 7.0)]);
+        // 坏段（缺 y / 非数字）防御跳过；空串 → 空。
+        assert_eq!(parse_drag_points("10,20;bad;30,40"), vec![(10.0, 20.0), (30.0, 40.0)]);
+        assert_eq!(parse_drag_points("1,2;oops"), vec![(1.0, 2.0)]);
+        assert!(parse_drag_points("").is_empty());
+    }
 
     /// Plan 547 Task 26: ImageSurface uses the dedicated renderer path,
     /// accepts the media URI contract, and builds a clipped element without

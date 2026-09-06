@@ -176,6 +176,14 @@ fn resolve_action_from_view(
                 component_kind: target.kind.clone(),
             });
         }
+        // PLAN-057: key_press/editor_drag 同为 mcp_server 前置分支处理的
+        // 编辑壳合成通道（__mcp_key/__mcp_drag_ade），不经 mapper。
+        UiActionType::KeyPress | UiActionType::EditorDrag => {
+            return Err(ActionError::InvalidAction {
+                action: action.clone(),
+                component_kind: target.kind.clone(),
+            });
+        }
         UiActionType::Press => {
             // Only valid for Button
             if target.kind != "Button" {

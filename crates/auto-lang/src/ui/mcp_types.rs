@@ -126,6 +126,18 @@ pub enum UiActionType {
     ///（input_value = "t{表键}␟col␟width"）走 OnColResize 拦截同一
     /// rust 直写快道。
     ResizeCol,
+    /// Synthesize a single key press into the autodown editor shell
+    /// (PLAN-057，055 D2)。经合成事件 `__mcp_key`（input_value =
+    /// "storage_key␟widget␟event␟keyspec"）直调 core.handle_input
+    /// (KeyPressed)——真实按键的同构 core 处理路径；text_changed 时按
+    /// 编辑壳 on_change 同形态发布（input_value: Some(全文)）。
+    KeyPress,
+    /// Synthesize a mouse drag sequence inside the autodown editor shell
+    /// (PLAN-057，055 D2)。经合成事件 `__mcp_drag_ade`（input_value =
+    /// "storage_key␟widget␟event␟x0,y0;x1,y1;..."）逐段直调
+    /// core.handle_input（MousePressed → MouseDragged×n →
+    /// MouseReleased）——列宽拖拽（055）与拖选（048 T3）面同覆盖。
+    EditorDrag,
 }
 
 impl fmt::Display for UiActionType {
@@ -141,6 +153,8 @@ impl fmt::Display for UiActionType {
             UiActionType::Scroll => write!(f, "scroll"),
             UiActionType::Drag => write!(f, "drag"),
             UiActionType::ResizeCol => write!(f, "resize_col"),
+            UiActionType::KeyPress => write!(f, "key_press"),
+            UiActionType::EditorDrag => write!(f, "editor_drag"),
         }
     }
 }

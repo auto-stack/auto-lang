@@ -1213,11 +1213,34 @@ impl AutodownEditorCore {
         out.captured()
     }
 
+    /// PLAN-057：表格几何快照读数（MCP 拦截臂合成 state 写入用——
+    /// key/drag 定位列边界、vm-smoke 断言几何；ghost_id 同款占位 state
+    /// 先例的数据源）。px，widget 本地；渲染期写、此处只读。
+    pub fn table_geometry_snapshot(&self) -> Vec<(u64, f32, f32, f32, Vec<f32>)> {
+        self.table_geom
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, g)| (*k, g.x0, g.y0, g.y1, g.widths.clone()))
+            .collect()
+    }
+
+    /// PLAN-057：列宽覆盖快照读数（拖拽落定的 table_widths——MCP 拦截臂
+    /// 写 editor_col_widths 合成 state，vm-smoke 断言列宽变化）。无拖拽
+    /// 覆盖时为空表。
+    pub fn table_widths_snapshot(&self) -> Vec<(u64, Vec<f32>)> {
+        self.table_widths
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, w)| (*k, w.clone()))
+            .collect()
+    }
+
     /// PLAN-055 T6：列边界命中（±TABLE_HIT_BAND 带，y ∈ 表格行区）。复用
     /// 只读臂 `view::col_boundary_hit`（右边界带命中、多命中取最近——两臂
     /// 拖拽手感同源）；x 换表局部坐标后按带宽 2×（±band/2 语义）判定。
-    fn table_boundary_hit(&self, x: f32, y: f32) -> Option<(u64, usize)> {
-        let geom = self.table_geom.lock().unwrap();
+    fn table_boundary_hit(&self, x: f32, y: f32) -> Option<(u64, usize)> {        let geom = self.table_geom.lock().unwrap();
         for (key, g) in geom.iter() {
             if y < g.y0 || y > g.y1 {
                 continue;
