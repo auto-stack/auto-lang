@@ -486,17 +486,17 @@ enum CacheEvent {
 }
 
 
-/// PLAN-009 T8 throwaway: regenerate the at-gen transpiled product
-/// (in-process API; CLI hangs — see 待澄清9). Deleted after at-gen lands.
+/// PLAN-009 T8: at-gen 转译产物再生成入口(见 auto-term at-gen/README.md
+/// 「转译再生成规程」;in-process API,CLI trans 挂起——待澄清9)。
 #[test]
 fn temp_plan009_t8_transpile_at_app() {
     let src = read_to_string(
-        "D:/autostack/.wt/auto-009/auto-term/at/autoterm.at",
+        "D:/autostack/auto-term/at/autoterm.at",
     )
     .unwrap();
     let mut rcode = transpile_rust("autoterm", &src).unwrap();
     std::fs::write(
-        "D:/autostack/.wt/auto-009/auto-term/at-gen/src/app_logic.rs",
+        "D:/autostack/auto-term/at-gen/src/app_logic.rs",
         rcode.done().unwrap(),
     )
     .unwrap();
