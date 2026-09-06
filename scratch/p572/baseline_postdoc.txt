@@ -1,0 +1,39 @@
+# P572 T3 修复后基准(2026-09-06 15:04:56,exe¹=ce20d8ee)
+
+## 阶梯 N=1..28
+[ladder] exe1 = C:/Users/zhaop/AppData/Local/Temp/aavm2-bin-ce20d8ee80770d41-e800322fbc0bcb59/target/release/aavm2_bin.exe
+[ladder] out = C:\Users\zhaop\AppData\Local\Temp\p572_ladder  timeout = 60.0s
+  N last_method       src_KB       sec  status
+  1 import_symbol          5      0.01  OK
+  2 is_module              5      0.01  OK
+  3 gkey                   5      0.01  OK
+  4 is_global              6      0.01  OK
+  5 tys_lookup             6      0.02  OK
+  6 field_idx              6      0.02  OK
+  7 field_ty               7      0.02  OK
+  8 const_lookup           7      0.02  OK
+  9 ctor_lookup            7      0.02  OK
+ 10 link_symbol            8      0.03  OK
+ 11 loop_enter             9      0.04  OK
+ 12 loop_exit              9      0.05  OK
+ 13 loop_jump             10      0.05  OK
+ 14 fail                  10      0.05  OK
+ 15 emit                  11      0.06  OK
+ 16 line                  11      0.06  OK
+ 17 push_scope            11      0.06  OK
+ 18 pop_scope             12      0.07  OK
+ 19 max_alive_idx         13      0.08  OK
+ 20 pop_scope_silent      13      0.08  OK
+ 21 add_var_reuse         14      0.09  OK
+ 22 add_var               15      0.09  OK
+ 23 var_arr               15      0.11  OK
+ 24 var_ty                16      0.12  OK
+ 25 var_ty2               16      0.12  OK
+ 26 var_gtor              17      0.13  OK
+ 27 lookup                17      0.13  OK
+ 28 emit_store            17      0.15  OK
+ladder exit=0
+
+## 两形态
+codegen.at                   176KB      7.38s  OK  out=162588B
+codegen exit=0
