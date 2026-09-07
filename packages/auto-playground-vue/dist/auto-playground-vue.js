@@ -5506,10 +5506,10 @@ var ji = /* @__PURE__ */ l({
 }, Pi = { class: "nx-search" }, Fi = ["value"], Ii = ["onClick"], Li = ["title"], Ri = { class: "nx-count" }, zi = { class: "nx-section-body" }, Bi = {
 	key: 0,
 	class: "nx-notes"
-}, Vi = ["title", "onClick"], Hi = ["onClick", "title"], Ui = { class: "nx-group-title" }, Wi = { class: "nx-count" }, Gi = { class: "nx-notes nx-notes-sub" }, Ki = ["title", "onClick"], qi = {
+}, Vi = ["title", "onClick"], Hi = ["onClick", "title"], Ui = { class: "nx-group-title" }, Wi = { class: "nx-count" }, Gi = { class: "nx-section-body nx-chapters" }, Ki = ["onClick", "title"], qi = { class: "nx-group-title" }, Ji = { class: "nx-count" }, Yi = { class: "nx-notes nx-notes-chapter" }, Xi = ["title", "onClick"], Zi = ["onClick", "title"], Qi = { class: "nx-group-title" }, $i = { class: "nx-count" }, ea = { class: "nx-notes nx-notes-sub" }, ta = ["title", "onClick"], na = {
 	key: 0,
 	class: "nx-empty"
-}, Ji = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}, ra = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "NotesSidebar",
 	props: /* @__PURE__ */ d({
 		groups: {},
@@ -5523,7 +5523,7 @@ var ji = /* @__PURE__ */ l({
 	emits: /* @__PURE__ */ d(["select"], ["update:query"]),
 	setup(n, { emit: o }) {
 		let s = n, l = T(n, "query"), u = o, d = t(() => {
-			let e = s.groups.filter((e) => e.id === "demo"), t = s.groups.filter((e) => e.id.startsWith("book-")), n = s.groups.filter((e) => e.id !== "demo" && !e.id.startsWith("book-")), r = [], i = (e, t, n) => {
+			let e = s.groups.filter((e) => e.id === "demo"), t = s.groups.filter((e) => e.id.startsWith("book-")).sort((e, t) => h(e.id) - h(t.id)), n = s.groups.filter((e) => e.id !== "demo" && !e.id.startsWith("book-")), r = [], i = (e, t, n) => {
 				n.length !== 0 && r.push({
 					id: e,
 					title: t,
@@ -5532,32 +5532,87 @@ var ji = /* @__PURE__ */ l({
 				});
 			};
 			return i("demo", "Playground Demo", e), i("books", "书籍示例", t), i("tests", "测试用例", n), r;
-		}), f = y(/* @__PURE__ */ new Set()), m = y(/* @__PURE__ */ new Set());
+		}), f = [
+			"book-tapl",
+			"book-rust",
+			"book-think-python",
+			"book-byte-of-python",
+			"book-typescript",
+			"book-typescript-deepdive",
+			"book-little-c",
+			"book-modern-c"
+		], m = {
+			"book-tapl": "TAPL（官方书籍）",
+			"book-rust": "Rust",
+			"book-think-python": "Think Python",
+			"book-byte-of-python": "Byte of Python",
+			"book-typescript": "Typescript",
+			"book-typescript-deepdive": "Typescript Deepdive",
+			"book-little-c": "Little C",
+			"book-modern-c": "Modern C"
+		};
 		function h(e) {
-			return s.searching || f.value.has(e);
+			let t = f.indexOf(e);
+			return t === -1 ? f.length : t;
 		}
 		function g(e) {
-			return s.searching || m.value.has(e);
+			return m[e] ?? e.replace(/^book-/, "");
 		}
 		function _(e, t) {
+			return t.slice(e.id.length + 1).replace(/-\d+$/, "");
+		}
+		function x(e) {
+			let t = /* @__PURE__ */ new Map();
+			for (let n of e.notes) {
+				let r = _(e, n.id);
+				t.has(r) || t.set(r, []), t.get(r).push(n);
+			}
+			return Array.from(t.entries()).sort(([e], [t]) => e.localeCompare(t, void 0, { numeric: !0 })).map(([t, n]) => ({
+				key: `${e.id}/${t}`,
+				stem: t,
+				notes: n
+			}));
+		}
+		function S(e, t) {
+			let n = `${t} · `;
+			return e.title.startsWith(n) ? e.title.slice(n.length) : e.title;
+		}
+		let E = y(/* @__PURE__ */ new Set()), j = y(/* @__PURE__ */ new Set()), M = y(/* @__PURE__ */ new Set());
+		function N(e) {
+			return s.searching || E.value.has(e);
+		}
+		function P(e) {
+			return s.searching || j.value.has(e);
+		}
+		function F(e) {
+			return s.searching || M.value.has(e);
+		}
+		function I(e, t) {
 			let n = new Set(e);
 			return n.has(t) ? n.delete(t) : n.add(t), n;
 		}
-		function x(e) {
-			f.value = _(f.value, e);
+		function L(e) {
+			E.value = I(E.value, e);
 		}
-		function S(e) {
-			m.value = _(m.value, e);
+		function R(e) {
+			j.value = I(j.value, e);
 		}
-		function E(e) {
+		function z(e) {
+			M.value = I(M.value, e);
+		}
+		function B(e) {
 			return e === "demo" ? "demo" : e.startsWith("book-") ? "books" : e ? "tests" : null;
 		}
 		return O(() => s.activeNoteId, (e) => {
 			if (!e) return;
 			let t = s.groups.find((t) => t.notes.some((t) => t.id === e));
 			if (!t) return;
-			let n = E(t.id);
-			n && !f.value.has(n) && (f.value = _(f.value, n)), n !== "demo" && !m.value.has(t.id) && (m.value = _(m.value, t.id)), requestAnimationFrame(() => {
+			let n = B(t.id);
+			if (n && !E.value.has(n) && (E.value = I(E.value, n)), n !== "demo" && !j.value.has(t.id) && (j.value = I(j.value, t.id)), n === "books") {
+				let n = _(t, e), r = `${t.id}/${n}`;
+				M.value.has(r) || (M.value = I(M.value, r));
+			}
+			requestAnimationFrame(() => {
 				document.querySelector(".nx-note-btn.active")?.scrollIntoView({ block: "nearest" });
 			});
 		}), (t, o) => (v(), i("aside", Mi, [
@@ -5578,11 +5633,11 @@ var ji = /* @__PURE__ */ l({
 					class: "nx-group"
 				}, [a("button", {
 					class: "nx-group-head",
-					onClick: (e) => x(t.id)
+					onClick: (e) => L(t.id)
 				}, [
 					c(w(he), {
 						size: 13,
-						class: p(["nx-chev", { open: h(t.id) }])
+						class: p(["nx-chev", { open: N(t.id) }])
 					}, null, 8, ["class"]),
 					a("span", {
 						class: "nx-group-title",
@@ -5593,33 +5648,65 @@ var ji = /* @__PURE__ */ l({
 					class: p(["nx-note-btn", { active: e.id === n.activeNoteId }]),
 					title: e.id,
 					onClick: (t) => u("select", e.id)
-				}, C(e.title), 11, Vi)]))), 128))])) : (v(!0), i(e, { key: 1 }, b(t.groups, (t) => (v(), i("section", {
+				}, C(e.title), 11, Vi)]))), 128))])) : t.id === "books" ? (v(!0), i(e, { key: 1 }, b(t.groups, (t) => (v(), i("section", {
 					key: t.id,
 					class: "nx-group nx-subgroup"
 				}, [a("button", {
 					class: "nx-group-head",
-					onClick: (e) => S(t.id),
+					onClick: (e) => R(t.id),
 					title: `${t.id} · ${t.source}`
 				}, [
 					c(w(he), {
 						size: 13,
-						class: p(["nx-chev", { open: g(t.id) }])
+						class: p(["nx-chev", { open: P(t.id) }])
 					}, null, 8, ["class"]),
-					a("span", Ui, C(t.title), 1),
+					a("span", Ui, C(g(t.id)), 1),
 					a("span", Wi, C(t.notes.length), 1)
-				], 8, Hi), A(a("ul", Gi, [(v(!0), i(e, null, b(t.notes, (e) => (v(), i("li", { key: e.id }, [a("button", {
+				], 8, Hi), A(a("div", Gi, [(v(!0), i(e, null, b(x(t), (t) => (v(), i("section", {
+					key: t.key,
+					class: "nx-group nx-subgroup nx-chapter"
+				}, [a("button", {
+					class: "nx-group-head",
+					onClick: (e) => z(t.key),
+					title: t.key
+				}, [
+					c(w(he), {
+						size: 13,
+						class: p(["nx-chev", { open: F(t.key) }])
+					}, null, 8, ["class"]),
+					a("span", qi, C(t.stem), 1),
+					a("span", Ji, C(t.notes.length), 1)
+				], 8, Ki), A(a("ul", Yi, [(v(!0), i(e, null, b(t.notes, (e) => (v(), i("li", { key: e.id }, [a("button", {
 					class: p(["nx-note-btn", { active: e.id === n.activeNoteId }]),
 					title: e.id,
 					onClick: (t) => u("select", e.id)
-				}, C(e.title), 11, Ki)]))), 128))], 512), [[D, g(t.id)]])]))), 128))], 512), [[D, h(t.id)]])]))), 128)), n.groups.length === 0 ? (v(), i("p", qi, "无匹配笔记")) : r("", !0)]),
+				}, C(S(e, t.stem)), 11, Xi)]))), 128))], 512), [[D, F(t.key)]])]))), 128))], 512), [[D, P(t.id)]])]))), 128)) : (v(!0), i(e, { key: 2 }, b(t.groups, (t) => (v(), i("section", {
+					key: t.id,
+					class: "nx-group nx-subgroup"
+				}, [a("button", {
+					class: "nx-group-head",
+					onClick: (e) => R(t.id),
+					title: `${t.id} · ${t.source}`
+				}, [
+					c(w(he), {
+						size: 13,
+						class: p(["nx-chev", { open: P(t.id) }])
+					}, null, 8, ["class"]),
+					a("span", Qi, C(t.title), 1),
+					a("span", $i, C(t.notes.length), 1)
+				], 8, Zi), A(a("ul", ea, [(v(!0), i(e, null, b(t.notes, (e) => (v(), i("li", { key: e.id }, [a("button", {
+					class: p(["nx-note-btn", { active: e.id === n.activeNoteId }]),
+					title: e.id,
+					onClick: (t) => u("select", e.id)
+				}, C(e.title), 11, ta)]))), 128))], 512), [[D, P(t.id)]])]))), 128))], 512), [[D, N(t.id)]])]))), 128)), n.groups.length === 0 ? (v(), i("p", na, "无匹配笔记")) : r("", !0)]),
 				_: 1
 			})
 		]));
 	}
-}), [["__scopeId", "data-v-d959301e"]]);
+}), [["__scopeId", "data-v-5f965e61"]]);
 //#endregion
 //#region src/composables/useNotes.ts
-function Yi(e = {}) {
+function ia(e = {}) {
 	let n = e.base ?? "/playground-data/notes.json", r = S(null), i = y(!1), a = y(null), o = t(() => r.value?.groups ?? []), s = t(() => o.value.flatMap((e) => e.notes.map((t) => ({
 		note: t,
 		group: e
@@ -5659,32 +5746,32 @@ function Yi(e = {}) {
 }
 //#endregion
 //#region src/components/NotesExplorer.vue?vue&type=script&setup=true&lang.ts
-var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
+var aa = { class: "notes-explorer" }, oa = { class: "nx-main" }, sa = {
 	key: 0,
 	class: "nx-state"
-}, $i = {
+}, ca = {
 	key: 1,
 	class: "nx-state nx-error"
-}, ea = {
+}, la = {
 	key: 2,
 	class: "nx-state"
-}, ta = {
+}, ua = {
 	key: 3,
 	class: "nx-state"
-}, na = {
+}, da = {
 	key: 4,
 	class: "nx-note"
-}, ra = { class: "nx-note-header" }, ia = { class: "nx-title-row" }, aa = { class: "nx-note-title" }, oa = {
+}, fa = { class: "nx-note-header" }, pa = { class: "nx-title-row" }, ma = { class: "nx-note-title" }, ha = {
 	key: 0,
 	class: "nx-kind-chip"
-}, sa = { class: "nx-meta-row" }, ca = ["href", "title"], la = { class: "nx-source-path" }, ua = {
+}, ga = { class: "nx-meta-row" }, _a = ["href", "title"], va = { class: "nx-source-path" }, ya = {
 	key: 0,
 	class: "nx-standalone-warn",
 	title: "含 import/use 顶层声明，不可独立运行"
-}, da = {
+}, ba = {
 	key: 0,
 	class: "nx-desc"
-}, fa = "#/notes/", pa = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}, xa = "#/notes/", Sa = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "NotesExplorer",
 	props: {
 		base: { default: "/playground-data/notes.json" },
@@ -5697,7 +5784,7 @@ var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 	},
 	emits: ["ide-mode"],
 	setup(e, { emit: o }) {
-		let l = e, u = o, { groups: d, flatNotes: f, byId: m, isLoading: _, error: b, fetchNotes: x, search: S } = Yi({ base: l.base }), T = y(""), E = y(null), D = y(null), k = t(() => E.value ? m.value.get(E.value) ?? null : null), A = t(() => {
+		let l = e, u = o, { groups: d, flatNotes: f, byId: m, isLoading: _, error: b, fetchNotes: x, search: S } = ia({ base: l.base }), T = y(""), E = y(null), D = y(null), k = t(() => E.value ? m.value.get(E.value) ?? null : null), A = t(() => {
 			if (!T.value.trim()) return d.value;
 			let e = /* @__PURE__ */ new Map();
 			for (let { note: t, group: n } of S(T.value)) e.has(n.id) || e.set(n.id, []), e.get(n.id).push(t);
@@ -5739,7 +5826,7 @@ var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 		function R() {
 			if (typeof window > "u") return null;
 			let e = window.location.hash;
-			if (!e.startsWith(fa)) return null;
+			if (!e.startsWith(xa)) return null;
 			try {
 				return decodeURIComponent(e.slice(8));
 			} catch {
@@ -5748,7 +5835,7 @@ var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 		}
 		function z(e) {
 			if (typeof window > "u") return;
-			let t = fa + encodeURIComponent(e).replace(/%2F/gi, "/");
+			let t = xa + encodeURIComponent(e).replace(/%2F/gi, "/");
 			window.location.hash !== t && window.history.replaceState(null, "", t);
 		}
 		O(f, (e) => {
@@ -5789,7 +5876,7 @@ var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 			window.addEventListener("hashchange", B), window.addEventListener("keydown", W);
 		}), h(() => {
 			window.removeEventListener("hashchange", B), window.removeEventListener("keydown", W);
-		}), (t, o) => (v(), i("div", Xi, [c(Ji, {
+		}), (t, o) => (v(), i("div", aa, [c(ra, {
 			class: "nx-side",
 			groups: A.value,
 			searching: !!T.value.trim(),
@@ -5802,16 +5889,16 @@ var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 			"searching",
 			"active-note-id",
 			"query"
-		]), a("main", Zi, [w(_) ? (v(), i("div", Qi, "正在加载笔记清单…")) : w(b) ? (v(), i("div", $i, [a("p", null, "笔记清单加载失败：" + C(w(b)), 1), a("button", {
+		]), a("main", oa, [w(_) ? (v(), i("div", sa, "正在加载笔记清单…")) : w(b) ? (v(), i("div", ca, [a("p", null, "笔记清单加载失败：" + C(w(b)), 1), a("button", {
 			class: "nx-retry",
 			onClick: o[1] ||= (e) => w(x)()
-		}, [c(w(Ee), { size: 13 }), o[2] ||= s(" 重试 ", -1)])])) : w(f).length === 0 ? (v(), i("div", ea, "笔记清单为空。")) : k.value ? (v(), i("article", na, [a("header", ra, [
-			a("div", ia, [
-				a("h2", aa, C(k.value.note.title), 1),
+		}, [c(w(Ee), { size: 13 }), o[2] ||= s(" 重试 ", -1)])])) : w(f).length === 0 ? (v(), i("div", la, "笔记清单为空。")) : k.value ? (v(), i("article", da, [a("header", fa, [
+			a("div", pa, [
+				a("h2", ma, C(k.value.note.title), 1),
 				a("span", { class: p(["nx-badge", `t-${k.value.note.sourceType}`]) }, C(k.value.note.sourceType), 3),
-				k.value.note.kind === "single" ? r("", !0) : (v(), i("span", oa, C(N.value), 1))
+				k.value.note.kind === "single" ? r("", !0) : (v(), i("span", ha, C(N.value), 1))
 			]),
-			a("div", sa, [a("a", {
+			a("div", ga, [a("a", {
 				class: "nx-source-chip",
 				href: j.value,
 				target: "_blank",
@@ -5819,10 +5906,10 @@ var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 				title: k.value.note.sourcePath
 			}, [
 				c(w(Se), { size: 12 }),
-				a("span", la, C(k.value.note.sourcePath), 1),
+				a("span", va, C(k.value.note.sourcePath), 1),
 				c(w(xe), { size: 11 })
-			], 8, ca), k.value.note.standalone ? r("", !0) : (v(), i("span", ua, " 依赖模块 "))]),
-			k.value.note.description ? (v(), i("details", da, [o[3] ||= a("summary", null, "说明", -1), a("p", null, C(k.value.note.description), 1)])) : r("", !0)
+			], 8, _a), k.value.note.standalone ? r("", !0) : (v(), i("span", ya, " 依赖模块 "))]),
+			k.value.note.description ? (v(), i("details", ba, [o[3] ||= a("summary", null, "说明", -1), a("p", null, C(k.value.note.description), 1)])) : r("", !0)
 		]), (v(), n(cr, {
 			ref_key: "card",
 			ref: D,
@@ -5846,8 +5933,8 @@ var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 			"files",
 			"project-dir",
 			"ide-mode"
-		]))])) : (v(), i("div", ta, "从左侧选择一条笔记开始浏览。"))])]));
+		]))])) : (v(), i("div", ua, "从左侧选择一条笔记开始浏览。"))])]));
 	}
 }), [["__scopeId", "data-v-73cf3f1f"]]);
 //#endregion
-export { lr as AutoPlayground, ji as AutoPlaygroundFull, qt as BytecodePanel, Ze as CodeEditor, yt as CodePreview, Tt as ConsoleOutput, Qt as ExampleSelector, vn as ExpectedOutputPanel, pa as NotesExplorer, Ji as NotesSidebar, cr as PlaygroundCard, Si as PlaygroundLayout, Qe as ScrollArea, Bt as SnippetRunner, Re as autoLanguage, ki as useDebugger, Yi as useNotes, Mt as usePlayground, Oi as usePlaygroundFull, Ai as useReplayPlayer };
+export { lr as AutoPlayground, ji as AutoPlaygroundFull, qt as BytecodePanel, Ze as CodeEditor, yt as CodePreview, Tt as ConsoleOutput, Qt as ExampleSelector, vn as ExpectedOutputPanel, Sa as NotesExplorer, ra as NotesSidebar, cr as PlaygroundCard, Si as PlaygroundLayout, Qe as ScrollArea, Bt as SnippetRunner, Re as autoLanguage, ki as useDebugger, ia as useNotes, Mt as usePlayground, Oi as usePlaygroundFull, Ai as useReplayPlayer };
