@@ -1,15 +1,17 @@
 ---
 plan_id: PLAN-580
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: automan-n2-fallback
 author: [zhaopuming]
 created_at: 2026-09-07
 updated_at: 2026-09-07
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/auto-man/project.md: builder 模块 ninja 后端——finish() 宿主探测链(AUTO_NINJA→PATH ninja→PATH n2→cargo install 兜底)+失败传播(spawn/status 双守)+MSVC Linker/Archiver 同目录优先与含空格路径加引号(修订)"
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals:             # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "goal-013: C 生态构建链可用性——ninja 二进制依赖消解(n2 兜底探测链)与 MSVC 工具链解析正确性(缺陷#3)"
 
 affects: [auto-man]           # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 7
@@ -210,6 +212,29 @@ if !status.success() {                                    // 消灭状态吞 #1
 - **验收 3 加测（全无形态）**：PATH 剥 ninja/n2/cargo → `resolve error: no build runner found: install ninja (https://ninja-build.org), or `cargo install --locked --git https://github.com/evmar/n2 --rev b1fead52`, or point AUTO_NINJA at a ninja-compatible executable`——含两条手动安装路径，无 panic，探针进程正常退出。
 
 ## 复审记录
+
+**复审人/时间**：zhaopuming（AI），2026-09-07，/auto-plan:review。
+**对象**：worktree `D:/autostack/.wt/lang-580/auto-lang`，`1af1ebb4e..686cf3f12`（4 文件 331+/9-，复审期补 1 修复提交）。
+
+**逐条验收裁决**：
+1. **pass**——探针复验（最终二进制重建后）：正常 PATH → `resolved ninja host: D:\soft\bin\ninja.exe`；剥 `D:\soft\bin` → `C:\Users\zhaop\.cargo\bin\n2.exe`；形态 A 端到端重跑 exit 0。
+2. **pass**——install-arm 探针实录：真实 `cargo install --locked --git ... --rev b1fead52`（Replaced package n2）→ `~/.cargo/bin` 复检命中。
+3. **pass**——all-none 探针：Err 指引文案含两条手动安装路径，无 panic，进程正常退出。
+4. **pass**——形态 C：cl exit 2 → `build runner ... failed: exit code: 2` → auto exit 1。
+5. **pass（带注）**——golden 副本重生成唯一差异 = 第 22 行 link 命令加引号（= 缺陷#3 修复本体），其余逐字节一致；"零变化"字面口径与 T5 修复互斥（待澄清①）。
+6. **pass**——msvc_linker_archiver_prefer_compiler_dir / msvc_sibling_tool_requires_located_compiler / quote_if_spaced_wraps_only_spaced + 复审回归锁全绿。
+7. **pass（等价口径，待澄清②）**——`cargo check -p auto-man` 零错误、触及文件零警告（crate 级 17=预存基线）；`cargo nextest run -p auto-man` 263/263。
+8. **pass**——缺陷#1→形态 C；#2→map_err+编译验证；#3→单测 4/4b+形态 A 生成物（四工具 MSVC 同目录加引号）+形态 D 修复行。
+
+**全量门禁**：`cargo tf --no-fail-fast`（worktree）3469 测试 3468 绿 1 红=`ui_gen::vue::tests::test_charts_gallery_compiles`——master 同测同红实证（预存在册，与本计划无关）。
+
+**复审发现并已修**（worktree 686cf3f12）：MSVC 同目录优先分支对 `CompilerLocation::Executable(非Compiler, _)` 钉定形态会把编译器解析引入 Executable 臂的预存同参自递归（栈溢出），该形态改动前可正常返回钉定路径——已加守卫+回归锁测试 `msvc_executable_pinned_linker_returns_pinned_path`。预存自递归本体（`Executable(Compiler,p)`+resolve(Linker) 形态自古死循环）登记 **P580-D1**。
+
+**遗漏/延后/workaround 扫描**：任务级无遗漏（T1-T7 与 diff 一一对应，`setup()`/`target()` 写出语句零改动已 diff 核对）；无未经批准的延后；无 workaround（#[ignore] 探针为显式手动取证面，CI 不跑，计划内文档化）。计划字面口径偏离 2 处已登待澄清②。预存债另登 **P580-D2**（srcs HashSet 扫描序）、**P580-D3**（auto-man 测试副作用写脏 examples/rust-workspace）、**P580-D4**（n2 钉 rev 无正式 release 跟进义务）。
+
+**环境事件**：复审期 aliyun 镜像撤下 find-msvc-tools 0.1.12/zstd-safe 7.3.0 致 worktree 自解析 lock 失效——按 master 既有处置对齐（复制 master lock，gitignore 文件不入库）；master 并行 PLAN-058 推进已并入 worktree（无文件冲突，与本计划 4 文件零交集）。
+
+**裁决**：验收 1-8 全 pass（5 带注、7 等价口径均已在案），无阻断债 → **status: reviewed**，可入 `/auto-plan:merge`。
 
 ## 待澄清事项
 

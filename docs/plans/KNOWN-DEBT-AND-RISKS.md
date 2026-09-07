@@ -67,6 +67,9 @@
 | 446-R2 | merged 模式链接面双 api.at 无诊断（2026-08-29 下游回传） | back.api 符号链接以**外部 back 工程**（如 auto-os-config-back/api.at）的导出清单为准，in-project auto/src/back/api.at 只供实现体——改名/增删 fn 须两份同步，只改一侧即 boot 崩 `Undefined symbol: api.X in module App`，报错不指向第二份文件（下游实测定位成本高）。修法：诊断信息补"检查外部 back 的 api.at 导出清单"提示（或文档化双文件契约）。 | VM linker/merged 装载诊断（Undefined symbol 发射点）；docs/plans/reports/446-downstream-settlement.md §五.2 |
 | 492-R1 | text 内容位置引用循环变量记录字段的 **VM 轨**渲染缺口（492 复审入账） | `for li in .items` 内 `text (text: li["name"])` 类"文本内容=Index 表达式"形态:vue 轨 Plan 492 M3 已修（Index 字符串键保留引号+不支持形式 R046 告警）;**VM/iced 轨仍不渲染**（43956041e 实证两轨均不渲染,M3 只补 vue 臂）。后果:chart 组件刻度/图例维持 yTick0..4/legendColor·Text0..3 槽位字段形态（484 后续 R006 绕开,M6 按计划范围明确保留）。根治:iced 侧文本内容表达式求值补 Index 臂（对齐 M3 的 vue 语义）;根治后 chart 组件可再摘槽位字段改直写 for+text。回归锚:plan492_m3_tests.rs（vue 侧）+ 需新增 VM 侧锚 | `crates/auto-lang/src/ui/iced/renderer.rs` 文本内容求值;`components/*_chart.at` 槽位字段;docs/plans/492-engine-view-text-fixes.md M3/M6 |
 | 564 | master 预存红（基点实证 2026-09-05,复审发现） | cargo t 日常档在 plan-564 基点（f3032c3a8,先于 564 全部代码提交）即有 15+ 失败:plan370 d8_toggle_dark_mode/plan492 c2_param_msg/ui::layout grid 与 master_stack 全族/ui::iced lucide manifest/aura strip_html——疑与 015-notes 在途未提交修改或近期 master 合入相关。非 564 回归（基点探测实证）;564 A4 验收以 tf aavm2_ 22/22 绿+树峰值 1674MB 为准。需维护者排查归位。 | plan 564 Q6/复审记录;基点探测输出 |
+| 566 | 验收判负:G2/A4（最重测试峰值 ≥3× 降幅）经 Value 装箱结构性不可达 | 三重证据（2026-09-07 复审复核）:①装箱前后（296B→40B）XL/LG 十测全落 784-836MB 噪声带（drift -3%~+4%）;②mem-profile 与 565 基线逐字节同（compile 7419.7MiB/8.8M allocs/peak_live 755.2MiB）——编译侧 AST（Code/Stmt/Expr 家族）零 Value 字段;③VM 堆=DashMap 逐对象 Arc<RwLock<dyn HeapObject>>（无密集 Value 槽）。~800MB 峰值本体=470KB 自举链进程内编译的编译器内部结构。**真杠杆=编译器 AST/token 瘦身（ast.rs/parser.rs 领地）,独立立项**。Value 密度收益（7.4×）落 VM 运行时栈/ListData 密集 Vec<Value> 面（本族测试 footprint ~2.9MiB 不显峰）。565 权重表"压缩属 566 Value/Node 领地"预判已由 566 权重表 566 版修正。 | plan 566 待澄清③/A4;`.config/test-mem-weights.md` 566 版;commit 76a40cf24 |
+| 566 | 预存红新归因:covered_elements_within_target_set（imagesurface 投影臂失配） | `ui::desktop_protocol::coverage::tests::covered_elements_within_target_set` 在 tag pre-value-slim（c2c90c452）即红:Plan 547 将 imagesurface 登记 element_coverage.rs:43 为 Covered（7a95e9b8c1,2026-09-05）但未同步 `Coverage::target_set()` kinds 表（coverage.rs:58）——登记与能力表脱钩,恰是该测试的围栏目标。与 566 无关（blame 实证早于 566 启动）。修复=target_set 增 imagesurface 臂或登记降级,属 desktop_protocol 领地。 | `crates/auto-lang/src/aura/element_coverage.rs:43`;`crates/auto-lang/src/ui/desktop_protocol/coverage.rs:630`;plan 566 待澄清① |
+| 566 | 预存红新归因:test_aavm2_goldens_check b13/b32（577 金样再生遗漏） | 裸 taa 下 `test_aavm2_a2r_goldens_check` 2/30 金样漂移（b13_is_enum/b32_is_break_continue,③ 主 a2r 产物漂移）——tag pre-value-slim 主检出同败（控制实验）,非 566 装箱回归（G4 完好）。归因:Plan 577 a2r Phase0 五小修（enum Hash 等）golden 再生只补了 test/cookbook 两例（7e936a922）,漏 test/a2r/ 下 b13/b32 两件 expected.rs。修复=两金样再生（bless）或 577 复审补漏。 | `crates/auto-lang/test/a2r/`;复现 `cargo taa test_aavm2_goldens_check`;plan 566 T6 证据 |
 
 ---
 
@@ -1649,3 +1652,27 @@ active/onclick VM 实证随之可补。
   （P532 残留③清零达成）后，aavm2_lib_source 族与 M4/M5 harness 的
   拼接消费面切换为默认模块加载——超出 P532 范围，另立计划跟进
   （http.at/http.vm.at/http.rust.at 平台分歧适配链除外）。
+
+## P580 债务（automan-n2-fallback,2026-09-07 复审登记）
+
+- **P580-D1 resolver Executable 臂同参自递归（预存栈溢出）**：
+  `CompilerResolver::resolve_executable`（auto-man
+  `builder/ninja/resolver.rs`）的 `CompilerLocation::Executable(e_type, _)`
+  分支对不匹配 exec_type 走 `Self::resolve_executable(config, exec_type)`
+  ——同参调用自身=无限递归。`Executable(Compiler,p)`+resolve(Linker) 形态
+  自古死循环（非本计划引入）。P580 的 MSVC 同目录分支曾使镜像形态
+  `Executable(Linker,p)`+resolve(Linker) 也进入该臂（回归），已加守卫
+  （686cf3f12）+回归锁测试；臂本体修复（else 改 PATH 兜底解析）另案。
+- **P580-D2 automan srcs 扫描序不稳定**：target srcs 经 HashSet 收集无序，
+  生成的 build.ninja link 输入对象序随机漂移（实测两轮 `main.obj util.obj`
+  vs `util.obj main.obj`）→ 链接产物字节级不可复现的根因之一（另一为
+  cl 内嵌时间戳）。宿主无关、预存行为；稳定化如需做另案立项。
+- **P580-D3 auto-man 测试套件副作用写脏 examples/rust-workspace**：每次
+  `cargo nextest run -p auto-man` 后 `examples/rust-workspace/Cargo.toml`
+  （剪除 worktree 缺席成员 021-blog-viewer-back）与 `015-notes/src/main.rs`
+  被 vue 测试再生成弄脏——worktree/CI 场景需手动 checkout 还原，测试应
+  只读或写临时目录，另案。
+- **P580-D4 n2 兜底钉 rev 跟进义务**：n2 未上 crates.io、无正式 release，
+  P580 钉 rev `b1fead52`（本机对拍验证过的 commit）保证复现性；上游演进
+  （行为变更/新缺失面）需人工复验更新。已知限制条目登账：未来生成端加
+  `deps`/`depfile` 时需先复验 n2 支持。
