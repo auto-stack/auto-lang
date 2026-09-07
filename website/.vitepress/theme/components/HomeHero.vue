@@ -202,10 +202,10 @@ const titleParts = computed(() => props.title.split('×'))
 }
 
 .title-x {
-  width: 0.72em;
-  height: 0.72em;
+  width: 0.66em;
+  height: 0.66em;
   display: inline-block;
-  vertical-align: 0.02em;
+  vertical-align: 0.05em;
   margin: 0 0.08em;
 }
 
