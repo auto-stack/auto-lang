@@ -27,9 +27,18 @@ impl CompilerResolver {
                 _ => None,
             };
             if let Some(tool_name) = tool_name {
-                let compiler = Self::resolve_executable(config, ExecutableType::Compiler);
-                if let Some(tool) = Self::msvc_sibling_tool(&compiler, tool_name) {
-                    return tool;
+                // Executable 钉定且钉的不是 Compiler 时，编译器解析会落入
+                // Executable 臂的预存同参自递归（栈溢出）——跳过同目录探测，
+                // 保持原行为（直接返回钉定路径）
+                let pinned_elsewhere = matches!(
+                    &config.location,
+                    CompilerLocation::Executable(t, _) if *t != ExecutableType::Compiler
+                );
+                if !pinned_elsewhere {
+                    let compiler = Self::resolve_executable(config, ExecutableType::Compiler);
+                    if let Some(tool) = Self::msvc_sibling_tool(&compiler, tool_name) {
+                        return tool;
+                    }
                 }
             }
         }
@@ -326,6 +335,18 @@ mod tests {
         let link2 = CompilerResolver::resolve_executable(&config, ExecutableType::Linker);
         let l2_norm = link2.to_astr().as_str().replace('\\', "/");
         assert!(!l2_norm.starts_with(&dir_norm), "linker should fall back to PATH, got {}", l2_norm);
+    }
+
+    // 复审补充（回归锁，Plan 580 review）：Executable 钉定 Linker 的 MSVC
+    // 配置解析 Linker 应直接返回钉定路径——同目录优先分支不得把编译器
+    // 解析引入 Executable 臂的预存同参自递归（栈溢出）
+    #[test]
+    fn msvc_executable_pinned_linker_returns_pinned_path() {
+        let mut config = CompilerConfig::msvc_default();
+        config.location =
+            CompilerLocation::Executable(ExecutableType::Linker, AutoPath::new("C:/tools/link.exe"));
+        let link = CompilerResolver::resolve_executable(&config, ExecutableType::Linker);
+        assert_eq!(link.to_astr().as_str(), "C:/tools/link.exe");
     }
 
     // 单测 4b（Plan 580 T5）：同目录查工具的裸名守门——编译器是裸名
