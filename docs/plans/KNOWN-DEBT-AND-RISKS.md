@@ -1731,6 +1731,11 @@ active/onclick VM 实证随之可补。
   余债=落点归属。修法=落点解析序（`AUTO_RUST_WORKSPACE` env → 项目仓内
   `<project>/rust-workspace/` → 框架默认，向后兼容）；执行=§7 P-2 小 plan
   （auto-os Design 01 §4-P2）。
+  **活实例（2026-09-07，PLAN-586 worktree 期）**：osconfig 全链/生成链在
+  lang-586 worktree 重写其 examples/rust-workspace/——主检出盘上未跟踪的
+  025-sys-monitor-back 目录（worktree 无此未跟踪产物）被摘 member +
+  015-notes 再生成；已回滚未随合入。跨检出共享工作区 + 落点硬编码的
+  复合病灶实证，P-2 落点解析序化必要性强化。
 - **P584-D2 Stage B 硬前置②：桌面注册表默认指向框架仓**：
   `crates/auto-lang/examples/ui_desktop.rs:17-37` 默认注册表目录编译期
   （CARGO_MANIFEST_DIR）锚定框架仓 `examples/ui`；`crates/auto-man/src/vue.rs:5480`
@@ -1741,6 +1746,10 @@ active/onclick VM 实证随之可补。
   repo 形态经 remote-apps.json 机制）。修法=extra roots 探测泛化 + manifest
   聚合 + vue/vm/iced 三轨 parity；执行=§7 P-3 小 plan（Design 01 §4-P3），
   第一验收用例 auto-kanban（583 vm 模式 586 卡对账基线）。
+  **✅ 已结案（2026-09-07，PLAN-586 / Stage B P-3）**：extra roots 容器泛化 +
+  manifest 框架侧直读聚合 + 三轨 parity 落地；vm 轨 37↔36 差值恰 kanban
+  实证。执行期修正：repo 条目 extra root 原生挂载（remote-apps 机制实测
+  WS-only 投影端点，装不下 http/原生形态——见 PLAN-586 复审记录）。
 - **P584-D3 VM 债族指引：字符串跨 fn 返回静默归零（搬迁回归前建议修复）**：
   583 台账残留债候选①——`meta.source_root` 经 fn 返回字符串静默归 0，m12/m16
   同族（CALL 结果内联作算术操作数 / 字符串跨 fn 返回特定形态；kanban 核心数据

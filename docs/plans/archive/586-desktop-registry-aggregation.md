@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-586
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B 清障二——桌面注册表三源聚合（extra roots 泛化 + apps.manifest 聚合 + 三轨 parity）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -8,8 +8,8 @@ updated_at: 2026-09-07
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: [reports/P586-1, architecture/P586-2, tests/P586-3, reviews/P586-4]
+touched_goals: [GOAL-010]     # 应用轨道出 examples——Stage B 桌面域三源聚合
 
 affects: [auto-man/vue, auto-lang/ui]  # 受影响的 specs 路径
 current_step: 6
@@ -161,8 +161,8 @@ auto-man -p auto-lang` + app_registry/vue 模块测试；折叠前 `cargo tf`。
 - [x] auto-kanban 第一验收用例：vm 模式注册表全量含 kanban（37↔36 差值
       +desktop-visible +1 +resolver 注册）；「远程窗呈现」措辞随执行期修正
       为「extra root 原生挂载呈现」，交互级启动验收归 P-5 V1/V2 实机批。
-- [ ] Design 01 §7 P-3 行状态注记回填（auto-os 侧小改随执行交付）。
-      （T7 收口中。）
+- [x] Design 01 §7 P-3 行状态注记回填 + §1-C schema 定稿 + §4-P3 执行期
+      修正注记（auto-os 侧随 merge 交付）。
 
 ## 执行步骤
 
@@ -218,12 +218,47 @@ master 基点，执行时以 grep 重新定位。worktree=
    auto-man lib 266/266、osconfig 21/21+全链 1/1（ui-iced feature）；折叠前
    `cargo tf` **2619/2620 绿，唯一红=test_charts_gallery_compiles（在册
    charts 存量，564-Q6 豁免）——与基线一致**。
-7. [ ] **收口簿记**：Design 01 §1-C schema 注记 + §7 P-3 行状态回填
-   （auto-os 侧）；KNOWN-DEBT 如有新登记。验证：两仓注记在案。
+7. [✅ 已完成] **收口簿记**：Design 01 §1-C schema 定稿注记 + §4-P3 执行期
+   修正注记 + §7 P-3 行状态回填（auto-os 侧随本 merge 交付）；KNOWN-DEBT
+   P584-D2 结案回写 + P584-D1 活实例注记（worktree 期 rust-workspace 被
+   测试链重写——025-sys-monitor-back member 摘除+015-notes 再生成，回滚
+   未随合入，P-2 病灶实证）；specs.json P586-1..4 沉淀 + ui/auto-man 两
+   plans.md 586 行回写 + INDEX 重生。
+   [✅ 已完成] 验证：两仓注记在案（见 merge 提交与 auto-os 随行提交）。
 
 ## 复审记录
 
-（待 /auto-plan:review 填写。）
+（2026-09-07 复审，verify-don't-trust 口径。）
+
+**验收对账（C1–C7）**：
+
+| # | 验收项 | 结果 | 证据 |
+|---|---|---|---|
+| C1 | extra roots 泛化 + solo 静默 | PASS | `extra_roots_apps_container_expansion` + `decision_matrix` 扩参；既有「Z:/nowhere 空」锚语义未动 |
+| C2 | manifest 聚合 + schema 定稿 | PASS | `manifest_repo_roots_aggregation`（六形态/坏 JSON/env 权威）；schema 注记入 Design 01 §1-C；**执行期修正：extra root 原生挂载替代 WS 远程窗**（依据：RemoteAppConfig.url 全 WS 投影端点，http/原生形态装不进；os-config 先例同型；kanban README VM 轨原生跑——§1-C「remote 窗或 extra root」两候选中后者落地） |
+| C3 | 三轨 parity + DesktopOptions | PASS | `extra_roots_three_track_parity`（同 fixture 同序同集）；`extra_app_roots` 沿 apps_dir 先例（用户裁定仅 API 层） |
+| C4 | 框架仓零回归 | PASS | vm 轨 36 基线对照不变；AUTO_DESKTOP_APPS/_EXTRA 语义全额保留（env 命中早返回未动）；osconfig 全链 1/1 |
+| C5 | V6 门档 | PASS | check 零错；app_registry 15/15 + auto-man lib 266/266 + osconfig 21/21+1/1；tf 2619/2620 唯红=charts 预存（564-Q6 豁免，与基线一致） |
+| C6 | auto-kanban 第一用例 | PASS | vm 轨 37↔36 差值恰 kanban（desktop-visible 21↔20 同步）；vue 轨 extra root 注册 + api glue 安装（入 apps-registry 受 vue 宿主 v1 单视图预存限制，Plan 465 注册限制非本批引入）；交互级启动验收归 P-5 V1/V2 |
+| C7 | Design 01 回填 | PASS | §1-C/§4-P3/§7 三处随 merge 交付 |
+
+**遗漏/延后/workaround 扫描**：
+
+- §3-a 包装脚本随 P-6（用户裁定）；交互级 LaunchApp 实机归 P-5 V1/V2——
+  均为裁定归属，非遗漏。
+- vue 轨 kanban 物化 v1 单视图限制 = Plan 465 v1 注册限制预存（router
+  pages 跳过为生成器既有行为），非本批 workaround；纯 web app iframe 嵌入
+  列 Stage C 候选（零新概念边界）。
+- **P584-D1 活实例**：worktree 期 osconfig 全链/生成链重写
+  `examples/rust-workspace/`（缺盘上未跟踪 025-sys-monitor-back 目录被摘
+  member + 015-notes 再生成）——已回滚未随合入；正是 P-2（rust 落点可配）
+  病灶的现场实证，KNOWN-DEBT P584-D1 追加实例注记。
+- 临时 vuehost 的 vite 组件依赖解析失败为 fixture 环境性（临时工程 deps
+  merge 面），不涉 P-3 通道，vue_gen.log 全量留档 scratch/p586/。
+
+**健康检查**：新代码零新增编译警告（auto-man 17/auto-lang 238 均基线量）；
+eprintln 三处为运维日志（[app-registry] 前缀，对齐 [session] 风格）非
+debug 残留；工作区合并前已清洁（rust-workspace 溅射回滚）。
 
 ## 待澄清事项
 
