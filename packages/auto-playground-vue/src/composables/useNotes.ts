@@ -74,6 +74,17 @@ export function useNotes(options: UseNotesOptions = {}) {
     void fetchNotes()
   }
 
+  /** 标题+tags includes 简易匹配（Playground 设计 §6.1）；空查询返回全集。 */
+  function search(q: string): NoteWithGroup[] {
+    const query = q.trim().toLowerCase()
+    if (!query) return flatNotes.value
+    return flatNotes.value.filter(
+      ({ note }) =>
+        note.title.toLowerCase().includes(query) ||
+        note.tags.some((tag) => tag.toLowerCase().includes(query)),
+    )
+  }
+
   return {
     /** 分组（manifest 序：order/id 已排序）。 */
     groups,
@@ -84,5 +95,6 @@ export function useNotes(options: UseNotesOptions = {}) {
     isLoading,
     error,
     fetchNotes,
+    search,
   }
 }
