@@ -1,0 +1,30 @@
+// child58.at — PLAN-058（auto-down）②-①/②-② 探针语料：use 导入子件的
+// computed 在 handler 体内解析 + 引号 emit（带计算实参）经派发器路由到父级
+// on "<name>" 绑定（custom_scrollbar.at T10 绕道的最小同构）。
+widget Child58(raw: f64 = 100.0) {
+    msg Msg {
+        "update:half"(f64),
+        Ping
+    }
+
+    model {
+        var last_half f64 = -1
+    }
+
+    computed {
+        half => .raw / 2
+    }
+
+    view {
+        col {}
+    }
+
+    on {
+        .Ping -> {
+            // ②-①：computed 引用出现在 use 导入子件的 handler 体内。
+            .last_half = .half
+            // ②-②：带计算实参的引号 emit——须路由到父级 on "update:half"。
+            let _ = ."update:half"(.half)
+        }
+    }
+}

@@ -6620,6 +6620,14 @@ mod plan499_engine_float_to_int_tests;
 #[cfg(test)]
 mod plan503_tests;
 
+// PLAN-058（auto-down）：转介单②三件引擎缺口探针/回归锁——nanbox 整值
+// float 保真（043 T6 债）+ use 子件 handler 体 computed 解析 + 引号 emit
+// 计算实参派发路由（语料 test/ui/plan058_child_emit_computed）。
+// 门与 musk p053_8 语料同款：探针走 DynamicComponent/VM 解释器，需
+// ui-iced（tv/tt 等 feature 贫集档不编译本模块）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan058_engine_gap_tests;
+
 // Plan 502 M1: diagram 标签发射——svg <text> 直通(vue 上下文分流 + VM
 // svgdoc 内容序列化)与 overlay 动态 arbitrary 值双轨对照回归。
 #[cfg(test)]

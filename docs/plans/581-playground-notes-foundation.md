@@ -13,7 +13,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [playground-vue, website]   # specs 路径
 current_step: 0
-total_steps: 8
+total_steps: 12
 ---
 
 # [PLAN-581] Playground 组件分层 + Notes Manifest 管线（Playground 设计 · Plan A）
@@ -41,7 +41,14 @@ total_steps: 8
 
 - §4 组件分层：`SnippetRunner`（核，无 chrome）⊂ `PlaygroundCard`（壳 + 可配置工具栏）⊂ `AutoPlaygroundFull`（IDE，不动）。本计划落前两层 + 兼容别名。
 - §5 数据管线：`scripts/build-playground-notes.mjs` → `website/public/playground-data/notes.json`（schema v1：groups/notes，含 expectedOutput/standalone/kind）。manifest **不提交**（gitignore），每次构建重新生成；`--check` = 内存二次生成幂等比对 + 计数断言（非磁盘 diff，因 books 为 gitignore 生成物）。
-- 后端 `/api/examples` 仍走目录扫描，582 T8 统一切到 manifest（本计划不动 `crates/`）。
+- 后端 `/api/examples` 仍走目录扫描，582 T13 统一切到 manifest（本计划不动 `crates/`）。
+
+## 技术栈
+
+- **组件**：Vue 3.5 `<script setup>` + TypeScript；CodeMirror 6（复用 `components/CodeEditor.vue`）；lucide-vue-next 图标。
+- **构建/类型门禁**：vite 8 + `vue-tsc -b`（`packages/auto-playground-vue` 的 `npm run build`）。
+- **采集脚本**：Node ESM（`.mjs`），与 `scripts/build-playground.mjs` 同栈，零新依赖（Node 内置 fs/path）。
+- **无 Rust 改动**：本计划不触 `crates/`（AGENTS.md Category A/B：纯前端资产 + 脚本）。
 
 ## 需求分析与背景调查
 
@@ -49,7 +56,7 @@ total_steps: 8
 
 - **[playground-vue](../specs/playground-vue/project.md)**（active）：入口组件 AutoPlayground（精简）/ AutoPlaygroundFull（完整）；composables `usePlayground`/`useDebugger`/`useReplayPlayer`；lang/ CodeMirror 语言支持。现状问题：精简组件不纯——工具栏常驻 `ExampleSelector`（拉后端 `/api/examples`），无法作单 snippet 拼图嵌入。
 - **[auto-playground](../specs/auto-playground/project.md)**（active）：axum 后端 `examples.rs` 仅扫 `examples/playground-demo/`（25 单文件 + 4 项目），语料面窄。
-- **[website](../specs/website/project.md)**（active）：VitePress 站；`playground.md` 内嵌 `<AutoPlayground>`；`public/playground/` 为全量 SPA 同步产物（`build-playground.mjs` 双路同步）。书籍内容由 `scripts/prepare-content.js` 从外仓 `../book` 物化到 `website/books/`（gitignore，构建期生成）。
+- **[website](../specs/website/project.md)**（active）：VitePress 站；`playground.md` 内嵌 `<AutoPlayground>`；`public/playground/` 为全量 SPA 同步产物（`build-playground.mjs` 双路同步）。书籍内容由 `scripts/prepare-content.js` 从外仓 `../book`（autostack/book）物化到 `website/books/`（gitignore，构建期生成；本地 `D:/autostack/book` 在位）。
 - **语料盘点（2026-09-07 实测，Playground 设计 §1.3）**：vm golden 42 组目录/322 个 `.at`+`.expected.out` 配对；aavm corpus 158 个 `.at`；书籍 ` ```auto ` 围栏 ~1282（双语重复）；playground-demo 25+4；parity 53 个 `.at`（多依赖环境）。
 
 ## 详细设计
@@ -86,13 +93,13 @@ interface PlaygroundCardProps extends SnippetRunnerProps {
   - **parity**：T1 勘察裁定后启用或后置（默认后置）。
 - 输出：`website/public/playground-data/notes.json`，schema 见 Playground 设计 §5.2；**确定性**：groups 按 `order`/`id` 排序、notes 按 `id` 排序，**不写 builtAt**（保证 byte-identical）。
 - `--check`：重新在内存生成第二遍与第一遍深比对 + 计数断言（见验收 3），失败非零退出。
-- 体积：单文件起步；若 >5MB 改按组分片（Playground 设计 §9-③，T6 实测后裁定并登记）。
+- 体积：单文件起步；若 >5MB 改按组分片（Playground 设计 §9-③，T12 实测后裁定并登记）。
 
 ### 3. 构建接线
 
-- `website/scripts/prepare-content.js` 末尾 `spawnSync(process.execPath, [REPO_ROOT/scripts/build-playground-notes.mjs])`（books 已物化后运行；book 仓缺失时跳过 books 源并打 warning，不失败）。
-- `website/public/playground-data/` 加入 `website/.gitignore`（或根 .gitignore 对应条目）。
-- deploy-website.yml 零改动（prepare-content 已在其构建链内）。
+- `website/scripts/prepare-content.js` 末尾 `spawnSync(process.execPath, [<REPO_ROOT>/scripts/build-playground-notes.mjs])`（books 已物化后运行；book 仓缺失时脚本内部跳过 books 源并打 warning，不失败）。
+- `website/public/playground-data/` 加入 gitignore。
+- `.github/workflows/deploy-website.yml` 零改动（prepare-content 已在其构建链内）。
 
 ## 测试设计
 
@@ -114,7 +121,7 @@ interface PlaygroundCardProps extends SnippetRunnerProps {
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
 - **T1 parity 语料勘察与收录裁定**
-  操作：对 `parity/libs/**/*.at`（53 个）逐个/抽样 `auto run` 探测 stdout 可跑性与外部依赖（C 库/文件系统），产出 `scratch/p581/parity-survey.md`（表：路径、依赖、可跑性、建议）；据此在本文"待澄清①"登记裁定（收录清单 / 后置）。
+  操作：对 `parity/libs/**/*.at`（53 个）逐个/抽样 `auto run`（或 `cargo run -p auto -- run`）探测 stdout 可跑性与外部依赖（C 库/文件系统），产出 `scratch/p581/parity-survey.md`（表：路径、依赖、可跑性、建议）；据此在本文"待澄清①"登记裁定（收录清单 / 后置）。
   验证：`test -f scratch/p581/parity-survey.md && grep -c "可跑性" scratch/p581/parity-survey.md`（>0）。
 
 - **T2 组件契约类型**
@@ -122,34 +129,54 @@ interface PlaygroundCardProps extends SnippetRunnerProps {
   操作：新增 `SnippetRunnerProps` / `PlaygroundCardProps` / `NoteMeta`（manifest 笔记元信息，582 复用）类型定义。
   验证：`cd packages/auto-playground-vue && npx vue-tsc -b && echo OK`。
 
-- **T3 SnippetRunner 组件**
+- **T3 SnippetRunner 结构骨架**
   文件：`packages/auto-playground-vue/src/components/SnippetRunner.vue`（新建）
-  操作：实现拼图层（props 见详细设计 §1；CodeEditor + ConsoleOutput 复用；`usePlayground` 驱动）。
-  验证：`cd packages/auto-playground-vue && npm run build`。
+  操作：模板骨架（容器 + CodeEditor 接入 + 单动作位 ▶）与 props 声明（`code/apiBase/autorun/target/height`）；本步不含运行逻辑。
+  验证：`cd packages/auto-playground-vue && npx vue-tsc -b && echo OK`。
 
-- **T4 PlaygroundCard 组件**
+- **T4 SnippetRunner 运行接线**
+  文件：`packages/auto-playground-vue/src/components/SnippetRunner.vue`
+  操作：接 `usePlayground`（run/trans 请求）、`autorun` 挂载触发、内联折叠输出区（ConsoleOutput 复用）、无后端报错提示（临时态，582 换降级卡）。
+  验证：`cd packages/auto-playground-vue && npm run build`；`npm run dev` + 本地后端人工冒烟（改代码→Run→输出）。
+
+- **T5 PlaygroundCard 工具栏迁移**
   文件：`packages/auto-playground-vue/src/components/PlaygroundCard.vue`（新建）
-  操作：卡片层 = SnippetRunner + 可配置工具栏（transpile/share/debug/live 条件渲染，样式从 `AutoPlayground.vue` 迁移）+ `exampleSelector`（默认 false）条件渲染 ExampleSelector。
+  操作：从 `AutoPlayground.vue` 迁移工具栏模板与样式（Run/转译下拉/Debug/Live/Share），按 `toolbar` 开关条件渲染；卡片内嵌 SnippetRunner 主体。
   验证：`cd packages/auto-playground-vue && npm run build`。
 
-- **T5 AutoPlayground 兼容薄包装与导出**
+- **T6 PlaygroundCard exampleSelector 与 noteId**
+  文件：`packages/auto-playground-vue/src/components/PlaygroundCard.vue`
+  操作：`exampleSelector`（默认 false）为真时渲染 `<ExampleSelector :api-base>`；`noteId` prop 预留透传（本期仅存值）。
+  验证：`cd packages/auto-playground-vue && npm run build`；dev 冒烟：不传 `example-selector` 时工具栏无选择器、传入时出现。
+
+- **T7 AutoPlayground 兼容薄包装与导出**
   文件：`packages/auto-playground-vue/src/AutoPlayground.vue`、`packages/auto-playground-vue/src/index.ts`
-  操作：AutoPlayground.vue 改为 PlaygroundCard 薄包装（旧 prop 名 `api-url`/`code`/`height` 透传映射）；index.ts 导出 `SnippetRunner`/`PlaygroundCard`，AutoPlayground 标 `@deprecated`。
-  验证：`cd packages/auto-playground-vue && npm run build && cd ../../website && npm run build`。
+  操作：AutoPlayground.vue 重写为 PlaygroundCard 薄包装（旧 prop 名 `api-url`/`code`/`height` 透传映射）；index.ts 导出 `SnippetRunner`/`PlaygroundCard`，`AutoPlayground` 标 `@deprecated`（注释指向 PlaygroundCard）。
+  验证：`cd packages/auto-playground-vue && npm run build && cd ../../website && npm run build`（website `/playground` 页编译不破）。
 
-- **T6 manifest 采集脚本**
+- **T8 采集脚本：vm-golden + playground-demo 源**
   文件：`scripts/build-playground-notes.mjs`（新建）
-  操作：实现四源采集（vm golden 配对 / aavm corpus / books 围栏 / playground-demo；parity 按 T1 裁定）+ 确定性输出 + `--check`（内存幂等比对 + 计数断言），输出 `website/public/playground-data/notes.json`；实测体积并在待澄清③登记单文件/分片裁定。
-  验证：`node scripts/build-playground-notes.mjs && node scripts/build-playground-notes.mjs --check && node -e "const m=require('./website/public/playground-data/notes.json');const c=t=>m.groups.filter(g=>g.id.startsWith(t)).reduce((s,g)=>s+g.notes.length,0);console.log('vm:'+c('vm-'),'aavm:'+c('aavm-'),'demo:'+c('demo'))"`。
+  操作：实现目录枚举、`.at`+`.expected.out` 配对、项目目录（`main.at`）采集、组名映射，产出含 `vm-*`/`demo` 组的 manifest（先落盘）。
+  验证：`node scripts/build-playground-notes.mjs && node -e "const m=require('./website/public/playground-data/notes.json');const c=p=>m.groups.filter(g=>g.id.startsWith(p)).reduce((s,g)=>s+g.notes.length,0);console.log('vm:'+c('vm-'),'demo:'+c('demo'))"`（vm ≥300、demo ≥29）。
 
-- **T7 website 构建接线**
-  文件：`website/scripts/prepare-content.js`、`website/.gitignore`（或仓库根 .gitignore）
-  操作：prepare-content 末尾 spawn 采集脚本（book 仓缺失时 warning 跳过 books）；`website/public/playground-data/` 入 gitignore。
+- **T9 采集脚本：aavm corpus + books 围栏源**
+  文件：`scripts/build-playground-notes.mjs`
+  操作：增 `corpus_*` 六组采集；books `ch*.md` 围栏提取（`.cn.md` 跳过、`import` 行 → `standalone:false`、book 仓缺失 warning 跳过）；parity 按 T1 裁定（默认不采）。
+  验证：`node scripts/build-playground-notes.mjs && node -e "const m=require('./website/public/playground-data/notes.json');const c=p=>m.groups.filter(g=>g.id.startsWith(p)).reduce((s,g)=>s+g.notes.length,0);console.log('aavm:'+c('aavm-'),'book:'+c('book-'))"`（aavm=158、book>0）。
+
+- **T10 采集脚本：确定性输出与 --check**
+  文件：`scripts/build-playground-notes.mjs`
+  操作：groups/notes 排序稳定、不写时间戳；实现 `--check`（内存二次生成深比对 + 计数断言，失败非零退出）。
+  验证：`node scripts/build-playground-notes.mjs && node scripts/build-playground-notes.mjs --check && cmp <(node scripts/build-playground-notes.mjs && cat website/public/playground-data/notes.json) website/public/playground-data/notes.json`（简化：连跑两次 `cmp` 产物）。
+
+- **T11 website 构建接线**
+  文件：`website/scripts/prepare-content.js`、`website/.gitignore`（无则新建）
+  操作：prepare-content 末尾 spawnSync 采集脚本（books 物化后）；gitignore 加 `public/playground-data/`。
   验证：`cd website && npm run build && test -f public/playground-data/notes.json && echo WIRED`。
 
-- **T8 验收清单执行**
-  操作：逐条跑"验收标准"1–6 命令并记录结果到本节。
-  验证：全绿；`cd packages/auto-playground-vue && npm run build && cd ../../website && npm run build && node scripts/../../scripts/build-playground-notes.mjs --check`（路径以仓库根执行为准）。
+- **T12 验收清单与裁定回填**
+  操作：实测 manifest 体积并在"待澄清③"登记单文件/分片裁定；逐条跑"验收标准"1–6 命令并记录结果到本节。
+  验证：全绿（`cd packages/auto-playground-vue && npm run build && cd ../../website && npm run build && node scripts/build-playground-notes.mjs --check`）。
 
 ## 复审记录
 
@@ -158,5 +185,5 @@ interface PlaygroundCardProps extends SnippetRunnerProps {
 ## 待澄清事项
 
 - **① parity 收录范围**（T1 勘察后回填）：默认后置；若可跑子集 ≥10 个且无环境依赖则收录为 `parity` 组。
-- **③ manifest 单文件 vs 分片**（T6 实测后回填）：默认单文件；阈值 5MB。
+- **③ manifest 单文件 vs 分片**（T12 实测后回填）：默认单文件；阈值 5MB。
 - **⑤ 人工 description overrides 机制**（Playground 设计 §9-⑤）：本期不做，582 或后续计划再议。

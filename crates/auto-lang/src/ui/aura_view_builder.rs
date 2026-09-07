@@ -1809,6 +1809,27 @@ impl<'a> AuraViewBuilder<'a> {
                         table_widths.as_ref(),
                         col_resize.as_ref(),
                     );
+                    // PLAN-058 T12（转介④）：元素 class 的观感段（py-*/px-*/
+                    // p-* 内边距 token）消费——内容侧 padded Container（vue
+                    // 的 padding 语义在滚动容器内壁）。混合类的结构段
+                    // （flex-1/min-h-0/overflow-hidden）仍不并入包装层
+                    //（Fill×Fill 视口语义由 Scrollable 自带，043 T6 炸布局
+                    // 注记维持）。
+                    let pad_class = self.autodown_padding_class(props, bindings);
+                    if !pad_class.is_empty() {
+                        if let Ok(st) = Style::parse(&pad_class) {
+                            doc = View::Container {
+                                child: Box::new(doc),
+                                padding: 0,
+                                width: None,
+                                height: None,
+                                center_x: false,
+                                center_y: false,
+                                style: Some(st),
+                                onclick: None,
+                            };
+                        }
+                    }
                     if scroll_sync {
                         // PLAN-043 T6：包装层取纯 w-full h-full 合成样式
                         //（Fill×Fill 视口约束——元素 class 混合样式实测炸
@@ -2829,6 +2850,23 @@ impl<'a> AuraViewBuilder<'a> {
                 },
             ) as crate::ui::view::TableColResizeFn<DynamicMessage>
         })
+    }
+
+    /// PLAN-058 T12（转介④）：autodown 元素 class 的观感段提取——仅
+    /// py-*/px-*/p-* 内边距 token（含 arbitrary 形态 py-[Npx]），供内容侧
+    /// padded Container 消费。结构段 token（flex/min/overflow）不取（043
+    /// T6 混合类挂 Scrollable 炸布局注记维持）。
+    fn autodown_padding_class(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> String {
+        self.extract_string_with(props, "class", bindings)
+            .unwrap_or_default()
+            .split_whitespace()
+            .filter(|t| t.starts_with("py-") || t.starts_with("px-") || t.starts_with("p-"))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// PLAN-044 T4：autodown ghost 占位消费——`placeholder_block_id`/

@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 本计划不改 auto-lang crates/ 代码；specs 沉淀目标为 auto-os 仓自身 ledger
-current_step: 0
+current_step: 8
 total_steps: 18
 ---
 
@@ -373,14 +373,16 @@ fake-lang/docs/plans/archive/
   先例改 `auto/pac.at` 形态（pac.at 移入 `auto/`，back 路径相应调整），并在本步
   证据行记录实测结论（此为形态适配，非 workaround 债）。
   验证：`auto gen` 退出码 0，产物目录（gen/ 或等价）生成。
-- [ ] **T7 后端类型与端点骨架**
+- [x] **T7 后端类型与端点骨架**
+  [✅ 已完成] api.at 四类型（BoardDef/泛化 Card/Meta/CardsResult，列表字段沿 015 `tags:[]str` 先例）+ 两端点（GET /api/boards、GET /api/boards/:id/cards）；registry/lang_plans 空壳。**结构适配**：后端平铺模块（boards_registry.at + lang_plans.at，031 先例）替代 sources/ 子目录（嵌套 back 目录无先例）；scan 直接返 CardsResult 消元组返回风险。auto gen exit=0 零 error。
   写 `src/back/api.at`：`pub type Card`（泛化）、`Meta`、`BoardDef`、
   `CardsResult`（字段见详细设计）；`#[api(GET /api/boards)] boards()` 与
   `#[api(GET /api/boards/:id/cards)] cards(id)` 骨架（暂返空）。写
   `src/back/boards_registry.at` 与 `src/back/sources/lang_plans.at` 空壳
   （仅模块头注释）。
   验证：`auto gen` 重跑退出码 0（类型/路由代码生成通过）。
-- [ ] **T8 boards 注册与 kind 分发**
+- [x] **T8 boards 注册与 kind 分发**
+  [✅ 已完成] `auto run --server vm`（VM HTTP 后端，a2r 路径被阻断后的一等公民替代）下 `curl :17101/api/boards` HTTP 200 返回 lang-plans；**配置驱动实测**：boards.json 加第二同 kind 条目即时返回两板（每请求读配置零重启），还原后回到一板；未知 id → meta.source_root 透传 "unknown board id"。VM 上下文三项适配（探针定案）：stdlib 显式 `use auto.*`、裸数组容器（无 List[T]，Undefined variable: List）、动态 JsonValue 导航替代 json.decode[T]（VM codegen 不支持泛型实例化调用）。提交 bf98b1d。
   写 `boards_registry.at`：`load_boards()`（读 boards.json——路径默认仓根、
   可被 `AUTO_KANBAN_BOARDS` env 覆盖；json 解析 + 字段校验）与
   `load_cards(def)`（kind 分发：v1 仅 `lang_plans`，未知 kind 错误透传）；
@@ -389,6 +391,15 @@ fake-lang/docs/plans/archive/
   临时改 boards.json 加第二条同 kind 条目 → curl 返回两条 → 还原（P2-T8
   将固化为测试）。
 - [ ] **T9 lang_plans 适配器（解析 + 扫描 + 映射）**
+  [⛔ 阻断于框架 bug，详见待澄清 #1/#2] 代码已按实测语义完成（raw 提取
+  `sub(ci+1, t.len())`——实测 (start,end) 语义与 master stdlib 文档 (start,len)
+  注记不符、json 元素 `""+name` 物化、五态映射/parked 徽章/stem 兜底），
+  提交 5d01bd3（WIP）。**验证结论**：fixture 体量（6 文件）扫描全通（探针
+  repro2：6 卡/4 active）；**真实语料（55 文件）100% 撞 VM heap_rc 体量触发
+  型 tombstone panic**（repro1，五种代码形态规避均败——详见
+  auto-kanban/docs/vm-bug-repro/README.md 归因）。T9 的"真实数据 PLAN-577
+  在列"验证在 VM bug 修复前无法达成；T10-T15 可降级走 fixture 先行
+  （选项 B，待用户裁决）。
   写 `sources/lang_plans.at`：`parse_frontmatter()`（详细设计算法：定界扫描/
   key: value/剥 ` #` 注释/`[` 列表跳过/缺省值）+ `resolve_lang_root(env_key)`
   （三级序 + exists 校验 + 错误串）+ `scan()`（read_dir 双目录/json 解析/
@@ -454,7 +465,23 @@ fake-lang/docs/plans/archive/
 
 ## 待澄清事项
 
-1. ~~app 仓命名~~ **已裁定（用户 2026-09-07）**：`auto-kanban`——定位为配置
+1. **[T8/T9 执行期发现·阻断 T9 真实数据验证] VM heap_rc 字符串池体量触发型 tombstone bug**
+   扫描真实语料（55 文件，~15 万池操作）100% 撞 `[RC canary] string tombstone
+   access`（engine.rs:1744，Plan 419 heap_rc canary）；6 文件 fixture 幸存。
+   已系统排除：struct 字段写/to_int/Card 构造累积/break/fn 返回 struct/模块级
+   var（db.at 同型也炸）/sub 语义误用（修正后仍炸）。二进制基线 ecc27c81e
+   含 Plan 567 83ae4e9a6 string-concat 修复且其后 vm/ 零变更 → master 现存。
+   **最小复现器×5 已入库** auto-kanban/docs/vm-bug-repro/（README 含完整归因
+   与修复建议）。**连带三发现**：① sub 语义文档 (start,len) vs 实测 (start,end)
+   不符（repro3）；② JsonValue 元素上直调 str 方法返回 None 语义（物化
+   `""+name` 规避）；③ 仓外 a2r rust-server 后端生成落 auto-lang 仓内（污染
+   框架仓）且 features=["ui",...] 撞 terminal/mod.rs:42 未门控 `pub use iced`
+   → E0432 必炸（原待澄清 #1 内容，1 行 cfg 门控 + 落点外移可解，越本计划
+   "不改 crates/"红线，移交裁决）。**两个处置选项待用户裁定**：
+   A=停 T9，先立 VM 修复微计划（repro1 即最小复现，顺修 ①③），修复后回本
+   计划续行（app 后端零改动即可全量跑通）；B=T10-T15 降级走 fixture 先行
+   （VM server + 6 文件已实测可用），C3 真实数据对账挂账待 A 落地。
+2. ~~app 仓命名~~ **已裁定（用户 2026-09-07）**：`auto-kanban`——定位为配置
    驱动的通用只读看板，计划（lang_plans）是首个看板类型；未来新看板类型 =
    新 source 模块 + boards.json 条目。
 2. **第二看板类型扩展契约**（v1 后）：kind 注册机制形态（模块命名/配置 schema
