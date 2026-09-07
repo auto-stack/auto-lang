@@ -7,10 +7,11 @@
 //! real `tsc`. `#[ignore]`d because they shell out to node/tsc; run on demand:
 //! `cargo test -p auto-lang --lib --features test-trans a2ts_directed -- --ignored --nocapture`
 //!
-//! tsc resolution order: `$AUTO_TSC` (path to tsc.js) → the widgets-gallery /
-//! 015-notes node_modules of the MAIN checkout (worktrees have no node_modules
-//! — red line: no junctions; read-only reference to the main checkout is the
-//! documented cross-repo resolution order) → skip loudly if none exists.
+//! tsc resolution order: `$AUTO_TSC` (path to tsc.js) → the widgets-gallery
+//! (auto-os, PLAN-590 迁址) / 015-notes node_modules of the MAIN checkout
+//! (worktrees have no node_modules — red line: no junctions; read-only
+//! reference to the main checkout is the documented cross-repo resolution
+//! order) → skip loudly if none exists.
 
 use crate::{
     error::AutoResult,
@@ -35,8 +36,10 @@ fn find_tsc() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
         let tsc = std::path::PathBuf::from(p);
         return Some((tsc.clone(), tsc));
     }
+    // PLAN-590:widgets-gallery 迁 auto-os 顶层(gen 产物随画廊;015-notes
+    // 仍留框架仓 examples/ui)。绝对主检出锚沿既有跨仓只读引用纪律。
     let candidates = [
-        "D:/autostack/auto-lang/examples/widgets-gallery/gen/front/vue/node_modules/typescript/lib/tsc.js",
+        "D:/autostack/auto-os/widgets-gallery/gen/front/vue/node_modules/typescript/lib/tsc.js",
         "D:/autostack/auto-lang/examples/ui/015-notes/gen/front/vue/node_modules/typescript/lib/tsc.js",
     ];
     for c in candidates {
