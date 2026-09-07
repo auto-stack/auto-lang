@@ -63,8 +63,8 @@ fn lib() -> Option<&'static Library> {
                 None
             }
         }
-    })
-    .as_ref()
+    });
+    LIB.get().and_then(|o| o.as_ref())
 }
 
 fn handles() -> std::sync::MutexGuard<'static, std::collections::HashMap<i64, i64>> {
