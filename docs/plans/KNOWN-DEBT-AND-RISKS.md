@@ -1780,3 +1780,10 @@ active/onclick VM 实证随之可补。
   process/sched/term/test/time 等未列入——若这些模块以 `mod.fn()` 形态在
   循环内联表达式中被调用，理论上与 file 同族（占位 receiver 漏 +1 槽）。
   未实证（现有语料零覆盖形态），证据驱动逐个补入；补入前不算回归面。
+## P589 债务（shell-pack-loader，2026-09-07 门档期发现登记）
+
+- **P589-D1 [预存红] lucide manifest 图标缺口（541 合并期引入，非 P-7 回归）**：
+  `lucide_icon_coverage_manifest_all_hit` 红——`manifest:025-sys-monitor:
+  activity` 与 `manifest:030-video-player:film` 两 pac icon 名未入
+  lucide_svg 命中表（master 同败实证 2026-09-07）。修法=补两 lucide_svg
+  臂（需 SVG 资产面），另案小修；不阻 Stage B。

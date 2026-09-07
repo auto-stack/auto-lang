@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-589
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B P-7——shell pack 路径化+权威翻转+hash-lock
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -8,11 +8,11 @@ updated_at: 2026-09-07
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: [reports/P589-1, reviews/P589-2]
+touched_goals: [GOAL-010]             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径
-current_step: 1
+current_step: 5
 total_steps: 5
 ---
 
@@ -73,24 +73,57 @@ parity（真布局）。V9 实机：ui_desktop 双轮 boot（无 pack/AUTO_SHELL
 
 ## 验收标准
 
-- [ ] 无 pack：getter==内嵌 const 字节一致；`cargo t iced` 零红零重锚。
-- [ ] pack 命中：四件从 pack 读到；缺件回退+警告；实机 boot 双面证据。
-- [ ] auto-os shell/ 四件就位（内容全等 pin 快照）；sync 脚本在案（红灯/
-      同步双模式）。
-- [ ] parity 测试绿（本机双源全等）。
-- [ ] `cargo tf` 与基线一致（charts 预存豁免）；Design 01 §7 P-7 行回填。
+- [x] 无 pack：getter==内嵌 const 字节一致（单测断言）；iced 169/169
+      零重锚（lucide manifest 红=预存 master 同败，P589-D1 在案）。
+- [x] pack 命中：四件从 pack 读到（fixture 断言）；缺件回退+警告；
+      实机双轮 boot 零警告零失败。
+- [x] auto-os shell/ 四件就位（sha256 全等）；sync 脚本三态实测
+      （0/1/0）。
+- [x] parity 测试绿（D3 后本机转活，双源全等）。
+- [x] tv/tf 唯红 charts 预存基线一致；Design 01 §1-A4/§7 已回填。
 
 ## 执行步骤
 
-1. [ ] D1+D2 加载器+override 接线+单测。
-2. [ ] D3 auto-os shell/ 四件迁移（全等副本）。
-3. [ ] D4 sync 脚本 + parity 测试。
-4. [ ] V9 实机双轮 boot 证据 + 门档（iced/tv/tf）。
-5. [ ] 收口：Design 01 §1-A4/§7 回填 + specs 沉淀 + 归档。
+1. [✅ 已完成] **D1+D2 加载器+override 接线+单测**：shell.rs
+   resolve_shell_pack_dir（override[OnceLock 首值胜]→env 设置即权威[指非
+   目录=关断]→兄弟→主检出→内嵌）+ shell_source（逐件回退+警告）+ 四 build
+   漏斗改线 + DesktopOptions.shell_pack + run_session 注入。
+   [✅ 已完成] p7_loader 测试 2/2（env 权威 fixture/缺件回退/未知件防御/
+   关断语义/hash parity）。
+2. [✅ 已完成] **D3 迁移**：auto-os shell/ 四件落位（sha256 与 pin 快照
+   全等：shell e7df723ab5/desktop 7b698bd0ae/switcher 8e54978c8f/
+   notification_center 2ad182c90f）。
+3. [✅ 已完成] **D4 hash-lock**：auto-os scripts/shell-pack-sync.py（校验
+   红灯/--sync 单向同步+pin 注记；全等/漂移/还原三态实测 exit 0/1/0）+
+   auto-lang parity 测试（pack 可解析时逐件 sha256 对比快照，solo 跳过——
+   D3 后本机已转活）。
+4. [✅ 已完成] **V9 实机+门档**：ui_desktop 双轮 boot（AUTO_SHELL_PACK=
+   auto-os/shell 命中 / 指非目录=关断回退）均零 "[shell-pack] fallback"
+   警告零 surface 失败、registry 37/21 两轮一致；iced 169/169 绿（唯
+   lucide manifest 预存红——master 同败实证，登记 P589-D1）；tv/tf 唯红
+   charts 预存基线一致。
+5. [✅ 已完成] **收口**：Design 01 §1-A4/§7 P-7 行回填（auto-os 随行提交）
+   + P589-1/2 沉淀 + ui/plans.md 589 行 + KNOWN-DEBT P589-D1 + INDEX 重生
+   + 归档。
 
 ## 复审记录
 
-（待 /auto-plan:review 填写。）
+（2026-09-07 复审，verify-don't-trust。）
+
+| # | 验收项 | 结果 | 证据 |
+|---|---|---|---|
+| C1 | 无 pack 逐字节一致 | PASS | 单测 env 关断臂 getter==const 断言；include_str! 编译期不动 |
+| C2 | pack 命中+回退 | PASS | fixture 单测（命中读文件/缺件回退/未知件空串）；V9 双轮 boot 零警告 |
+| C3 | 迁移全等+脚本 | PASS | sha256 四对全等；sync 三态 exit 0/1/0 |
+| C4 | parity | PASS | D3 后本机转活全等；solo 跳过语义 |
+| C5 | 门档+簿记 | PASS | iced 169/169（lucide 预存 master 同败）；tv/tf charts 预存基线；§1-A4/§7 回填 |
+
+遗漏/延后扫描：①lucide manifest 缺口（025-sys-monitor:activity/030-
+video-player:film）= 541 合并期预存、master 同败实证——登记 P589-D1
+（lucide_svg 补臂另案，非本批）；②override OnceLock 首值胜为进程内幂等
+防御（多 session 进程首宿主声明为准——语义注记在案）；③四 const 直用面
+（icon 契约测试/vue 金样）钉快照不动=设计内。健康：零新增警告；eprintln
+两处为运维警告（[shell-pack] 前缀）。
 
 ## 待澄清事项
 
