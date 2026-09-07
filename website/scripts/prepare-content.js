@@ -199,7 +199,51 @@ function listingToCodeView(bookDir, tag) {
   return `<CodeView ${props.join(' ')} />`
 }
 
+// P581-D1（master 预存红）:docs 文本里的裸泛型/占位符（Map<tableKey…>、<prefix>_pts、
+// N<slot> 等）落在表格/正文（非围栏非行内代码）时被 vue 模板编译器解析为未闭合标签，
+// 阻断 vitepress build。源头是 crates 侧 schema 描述文本未转义；上游修复前，在此对
+// 复制产物统一转义：围栏代码与行内代码由 markdown-it 自行转义（跳过），<Listing>/<Output>
+// 标签行交由既有管线（跳过），合法内联 HTML 走允许清单。转义只改 `<`，渲染文本不变。
+const SAFE_RAW_TAGS = new Set([
+  'a', 'abbr', 'b', 'big', 'blockquote', 'br', 'button', 'canvas', 'center', 'code',
+  'details', 'div', 'em', 'figcaption', 'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'hr', 'i', 'img', 'kbd', 'li', 'mark', 'ol', 'p', 'picture', 'pre', 'samp', 'small',
+  'span', 'strong', 'style', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'tfoot',
+  'th', 'thead', 'tr', 'u', 'ul', 'var', 'video', 'audio', 'source',
+  'CodeView', 'Output', 'Listing', 'Excalidraw',
+])
+
+function escapeDanglingAnglesOutsideCode(line) {
+  // 先摘出行内代码段（占位符保护——markdown-it 会自行转义其内容），对剩余
+  // 文本转义，再回填。跨行落单的反引号不构成代码段，按普通文本处理。
+  const spans = []
+  const masked = line.replace(/(`+)([^`]|[^`].*?[^`])\1/g, (m) => {
+    spans.push(m)
+    return `\u0000${spans.length - 1}\u0000`
+  })
+  const escaped = masked.replace(/<(\/?)([A-Za-z][A-Za-z0-9_-]*)/g, (m, slash, name) =>
+    SAFE_RAW_TAGS.has(name) ? m : `&lt;${slash}${name}`)
+  return escaped.replace(/\u0000(\d+)\u0000/g, (_, i) => spans[Number(i)])
+}
+
+function escapeRawAngleTags(content) {
+  const lines = content.split('\n')
+  let inFence = false
+  const out = lines.map((line) => {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence
+      return line
+    }
+    if (inFence) return line
+    const t = line.trim()
+    if (t.startsWith('<Listing') || t.startsWith('</Listing') || t.startsWith('<Output')) return line
+    return escapeDanglingAnglesOutsideCode(line)
+  })
+  return out.join('\n')
+}
+
 function preprocessMarkdown(content, bookDir = null) {
+  content = escapeRawAngleTags(content)
   const lines = content.split('\n')
   const result = []
   let i = 0

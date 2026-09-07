@@ -9,7 +9,7 @@ import OSHero from './components/OSHero.vue'
 import FeatureCard from './components/FeatureCard.vue'
 import StatCard from './components/StatCard.vue'
 import ShowcaseSection from './components/ShowcaseSection.vue'
-import { AutoPlayground } from 'auto-playground-vue'
+import { AutoPlayground, NotesExplorer } from 'auto-playground-vue'
 import CodeView from './components/CodeView.vue'
 import ScriptShipView from './components/ScriptShipView.vue'
 import UnifiedNavbar from './components/UnifiedNavbar.vue'
@@ -96,6 +96,7 @@ export default {
     app.component('StatCard', StatCard)
     app.component('ShowcaseSection', ShowcaseSection)
     app.component('AutoPlayground', AutoPlayground)
+    app.component('NotesExplorer', NotesExplorer)
     app.component('CodeView', CodeView)
     app.component('ScriptShipView', ScriptShipView)
   },

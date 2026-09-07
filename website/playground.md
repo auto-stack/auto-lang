@@ -3,23 +3,18 @@ layout: page
 sidebar: false
 ---
 
-<script setup>
-import { ref } from 'vue'
-const isLoading = ref(true)
-</script>
-
 <div class="playground-page">
   <div class="playground-header">
     <h1>Playground</h1>
-    <p>Write, run, and transpile Auto code in your browser. Requires a running playground server.</p>
+    <p>Browse runnable notes from the repo corpus — VM goldens, book fences, demos. Run and transpile need a local backend.</p>
   </div>
 
-  <AutoPlayground api-url="" height="700px" />
+  <NotesExplorer />
 
-  <div class="playground-note">
+  <div id="backend" class="playground-note">
     <p>
       <strong>Need a backend?</strong>
-      The playground requires a running Auto playground server. You can start one locally:
+      Browsing and editing notes works without one. To run or transpile code, start a local playground server:
     </p>
     <pre><code>cargo run -p auto-playground</code></pre>
     <p>
