@@ -1,0 +1,29 @@
+use auto.file
+fn f_split(text str) int { let lines = text.split("\n"); return lines.len() }
+fn f_find(text str) int { return text.find(":") }
+fn f_idlen(text str) int { return text.len() }
+
+fn main() {
+    let p str = "test/vm/99_p588debt/003_operand_shapes/operand_shapes.at"
+    var s int = 0
+    var i int = 0
+    while i < 4 {
+        s = s + f_split(file.read_text(p))
+        i = i + 1
+    }
+    print("S" + s)
+    var f int = 0
+    i = 0
+    while i < 4 {
+        f = f + f_find(file.read_text(p))
+        i = i + 1
+    }
+    print("F" + f)
+    var d int = 0
+    i = 0
+    while i < 4 {
+        d = d + f_idlen(file.read_text(p))
+        i = i + 1
+    }
+    print("D" + d)
+}

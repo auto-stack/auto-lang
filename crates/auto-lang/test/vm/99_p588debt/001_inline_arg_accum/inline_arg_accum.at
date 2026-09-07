@@ -1,0 +1,29 @@
+use auto.file
+fn count_colon(text str) int {
+    var n int = 0
+    let lines = text.split("\n")
+    for line in lines {
+        if line.find(":") > 0 { n = n + 1 }
+    }
+    return n
+}
+
+fn main() {
+    // PLAN-588 回归锚：模块式 native（file.read_text）结果内联作 fn 实参 +
+    // CALL 结果内联作算术操作数——8819 白名单缺 file 时占位槽每轮净漏 +1，
+    // ADD 吃 [占位 0, 结果] 而非 [累加变量, 结果]（583 残留债①/m12/m16 家族）。
+    let p str = "test/vm/99_p588debt/001_inline_arg_accum/inline_arg_accum.at"
+    var direct int = 0
+    var via_let int = 0
+    var i int = 0
+    while i < 8 {
+        direct = direct + count_colon(file.read_text(p))
+        let t str = file.read_text(p)
+        via_let = via_let + count_colon(t)
+        i = i + 1
+    }
+    print("direct:")
+    print(direct)
+    print("via-let:")
+    print(via_let)
+}
