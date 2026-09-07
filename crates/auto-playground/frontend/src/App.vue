@@ -1,7 +1,7 @@
 <template>
-  <AutoPlaygroundFull />
+  <NotesExplorer />
 </template>
 
 <script setup lang="ts">
-import { AutoPlaygroundFull } from 'auto-playground-vue';
+import { NotesExplorer } from 'auto-playground-vue';
 </script>

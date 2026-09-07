@@ -49,7 +49,7 @@ const props = defineProps<{
   activeNoteId: string | null
 }>()
 
-const query = defineModel<string>({ default: '' })
+const query = defineModel<string>('query', { default: '' })
 
 const emit = defineEmits<{
   select: [noteId: string]

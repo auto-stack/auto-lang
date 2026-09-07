@@ -362,6 +362,11 @@ function onBreakpointsChange(lines: number[]) {
 function onBytecodeOffsetClick(_offset: number) {
   // Could cross-highlight source line from bytecode offset
 }
+
+// 暴露给宿主（NotesExplorer 键盘 Ctrl+Enter 转发）。
+defineExpose({
+  run: runAction,
+})
 </script>
 
 <style scoped>

@@ -41,6 +41,7 @@
           </details>
         </header>
         <PlaygroundCard
+          ref="card"
           :key="active.note.id"
           :code="cardCode"
           :api-base="apiBase"
@@ -53,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { FileCode, ExternalLink, RefreshCw } from 'lucide-vue-next'
 import NotesSidebar from './NotesSidebar.vue'
 import PlaygroundCard from './PlaygroundCard.vue'
@@ -78,6 +79,8 @@ const { groups, flatNotes, byId, isLoading, error, fetchNotes, search } = useNot
 
 const query = ref('')
 const activeId = ref<string | null>(null)
+
+const card = ref<InstanceType<typeof PlaygroundCard> | null>(null)
 
 const active = computed(() => (activeId.value ? byId.value.get(activeId.value) ?? null : null))
 
@@ -119,11 +122,88 @@ function onSelect(noteId: string) {
   activeId.value = noteId
 }
 
-// 加载完成后默认选中首条笔记（深链初始定位在 T4 接入）。
-watch(flatNotes, (notes) => {
-  if (!activeId.value && notes.length > 0) {
-    activeId.value = notes[0].note.id
+// ── 深链 #/notes/<id>（hash 变化不触发 VitePress 路由——replaceState 不派发路由事件）──
+
+const HASH_PREFIX = '#/notes/'
+
+function noteIdFromHash(): string | null {
+  if (typeof window === 'undefined') return null
+  const h = window.location.hash
+  if (!h.startsWith(HASH_PREFIX)) return null
+  try {
+    return decodeURIComponent(h.slice(HASH_PREFIX.length))
+  } catch {
+    return null
   }
+}
+
+function writeHash(noteId: string) {
+  if (typeof window === 'undefined') return
+  // '/' 在 hash 内合法，保持 id 可读；其余特殊字符编码。
+  const want = HASH_PREFIX + encodeURIComponent(noteId).replace(/%2F/gi, '/')
+  if (window.location.hash !== want) {
+    window.history.replaceState(null, '', want)
+  }
+}
+
+watch(flatNotes, (notes) => {
+  if (activeId.value || notes.length === 0) return
+  const fromHash = noteIdFromHash()
+  activeId.value = fromHash && byId.value.has(fromHash) ? fromHash : notes[0].note.id
+})
+
+watch(activeId, (id) => {
+  if (id) writeHash(id)
+})
+
+function onHashChange() {
+  const id = noteIdFromHash()
+  if (id && byId.value.has(id) && id !== activeId.value) {
+    activeId.value = id
+  }
+}
+
+// ── 键盘导航：↑/↓ 切换当前笔记（搜索态沿命中列表），Ctrl+Enter 运行（转发 PlaygroundCard）──
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target instanceof HTMLElement ? target : null
+  if (!el) return false
+  return !!el.closest('input, textarea, select, [contenteditable="true"], .cm-editor')
+}
+
+function visibleNoteIds(): string[] {
+  return visibleGroups.value.flatMap((g) => g.notes.map((n) => n.id))
+}
+
+function moveSelection(delta: number) {
+  const ids = visibleNoteIds()
+  if (ids.length === 0) return
+  const idx = activeId.value ? ids.indexOf(activeId.value) : -1
+  const next = idx === -1 ? 0 : Math.min(ids.length - 1, Math.max(0, idx + delta))
+  activeId.value = ids[next]
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault()
+    void card.value?.run()
+    return
+  }
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    if (isEditableTarget(e.target)) return
+    e.preventDefault()
+    moveSelection(e.key === 'ArrowDown' ? 1 : -1)
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('hashchange', onHashChange)
+  window.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', onHashChange)
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
