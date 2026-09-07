@@ -5,6 +5,7 @@ import { defineConfig, type Plugin } from 'vitepress'
 import { shared } from './config/shared'
 import { en } from './config/en'
 import { zh } from './config/zh'
+import { autoFencePlugin } from './theme/auto-fence-md'
 
 // SPA pages (Gallery, Charts, A2UI, Blocks) are served from public/ui/*/index.html.
 // When the browser navigates to the directory URL, VitePress's SPA fallback
@@ -34,6 +35,12 @@ function spaRewrite(): Plugin {
 
 export default defineConfig({
   ...shared,
+  markdown: {
+    // ```auto 裸围栏后处理 → <AutoFence>（▶ Run 原地展开/收起还原；Plan 582 T15）。
+    config(md) {
+      md.use(autoFencePlugin)
+    },
+  },
   locales: {
     root: { label: 'English', ...en },
     zh: { label: '简体中文', ...zh },
