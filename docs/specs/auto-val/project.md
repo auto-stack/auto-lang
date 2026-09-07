@@ -16,7 +16,8 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| value / nano_value | 值表示（Value 枚举及紧凑变体）。plan-576 契约钉：encode→decode 位型恒等对照集（f64/f32 含整值 240.0/0.0/-0.0——tag 保真 + 0.0/-0.0 按位可分），encode/decode 纯往返不自证消费端正确性（043 期实锚在 engine 消费臂，见 auto-lang vm/bytecode-engine.md plan-576 注记） | active |
+| value / nano_value | 值表示（Value 枚举及紧凑变体）。plan-576 契约钉：encode→decode 位型恒等对照集（f64/f32 含整值 240.0/0.0/-0.0——tag 保真 + 0.0/-0.0 按位可分），encode/decode 纯往返不自证消费端正确性（043 期实锚在 engine 消费臂，见 auto-lang vm/bytecode-engine.md plan-576 注记）。Plan 566 装箱瘦身终态：13 胖变体（Node/Obj/Instance/Widget/Meta/Model/View/Grid/Method/Closure/FutureData/Fn/Type 等）Box 直通，Value 296B→40B（Node 296→112→72B 三段），≤48B 由 size_report 防回退断言锁死；Str 40B 为地板（热路径字符串不装箱，32B 否决） | active |
+| size_report | 尺寸审计（Plan 566 新增）：size_table 全变体载荷排名 + 防回退断言（`VALUE_SIZE_LIMIT`=48 const + 运行期 `assert!(size_of::<Value>() <= ...)`，超标即测试红） | active |
 | node | AST 节点结构 | active |
 | obj / pair | 对象与键值对结构 | active |
 | string / str_slice / owned_str / cstr | 字符串类型族（AutoStr 等） | active |
