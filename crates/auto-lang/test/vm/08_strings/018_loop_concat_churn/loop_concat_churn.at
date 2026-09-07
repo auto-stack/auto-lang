@@ -1,0 +1,10 @@
+// Plan 585: 循环内拼接链 + trim + found 累加——字符串池 churn 形态回归。
+// 下游 ash stale-copy 缺陷(Plan 585)在单发路径本就不可见(load_strings pinned
+// 正确);本语料锁定拼接链在该形态下的输出稳定性(每代内容不交叠)。
+var patterns = ["*.tmp", "*.bak", "*.log"]
+var found = ""
+for p in patterns {
+    var r = "res " + p + " \n "
+    if r.trim().len() > 0 { found = found + r.trim() + "|" }
+}
+print(found)
