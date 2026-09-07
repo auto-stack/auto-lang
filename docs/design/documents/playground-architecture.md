@@ -1,13 +1,15 @@
-# 28 - Playground 与在线文档体验架构
+# Playground 与在线文档体验架构
 
 > 状态：✅ Accepted（2026-09-07 用户设计讨论定稿）。
+> 归位：2026-09-07 曾短暂立为根级章 28，同日按「根级序号章=大块 + 需求级设计归模块子目录」
+> 裁定归位 `documents/`（slug 去号，28 号回退可用）；模块概要见 [documents/README.md](README.md)。
 > 来源：2026-09-07 两套 playground 入口差异调查（§1）与双层设计讨论。
-> 关联：[14-developer-tools.md](14-developer-tools.md)（Web Playground 条目归本章细化）、
-> specs 现状：[docs/specs/playground-vue/project.md](../specs/playground-vue/project.md)、
-> [docs/specs/auto-playground/project.md](../specs/auto-playground/project.md)；
+> 关联：[14-developer-tools.md](../14-developer-tools.md)（Web Playground 条目，细化见本文）、
+> specs 现状：[docs/specs/playground-vue/project.md](../../specs/playground-vue/project.md)、
+> [docs/specs/auto-playground/project.md](../../specs/auto-playground/project.md)；
 > 历史计划：archive/202（playground 设计）、219（source map）、225（交互调试器）、246（组件包抽出）。
-> 实施：分解为两个 Plan——[581 组件分层 + Notes manifest 管线](../plans/581-playground-notes-foundation.md)、
-> [582 Notes Explorer + 宿主合一 + 电子书嵌入](../plans/582-playground-notes-explorer.md)。
+> 实施：分解为两个 Plan——[581 组件分层 + Notes manifest 管线](../../plans/581-playground-notes-foundation.md)、
+> [582 Notes Explorer + 宿主合一 + 电子书嵌入](../../plans/582-playground-notes-explorer.md)。
 
 ## 1. 背景与问题
 
@@ -258,8 +260,8 @@ manifest `kind=project` 的笔记，PlaygroundCard 内以文件 tab 呈现（ent
 
 | Plan | 范围 | 关键交付 | 依赖 |
 |---|---|---|---|
-| [Plan 581](../plans/581-playground-notes-foundation.md)：组件分层 + Notes manifest 管线 | §4 组件三层收紧、§5 采集脚本与 manifest、语料源映射（含 ① 勘察） | `SnippetRunner`/`PlaygroundCard` 组件 + `build-playground-notes.mjs` + notes.json 产物 + `--check` 校验 | 无 |
-| [Plan 582](../plans/582-playground-notes-explorer.md)：Notes Explorer + 宿主合一 + 电子书嵌入 | §6 笔记站、§7 电子书 Run、§8 部署合一（含 ②④） | NotesExplorer 组件、website `/playground` 改造、旧静态页退役、后端 frontend 换宿主、主题层围栏后处理 | Plan 581 |
+| [Plan 581](../../plans/581-playground-notes-foundation.md)：组件分层 + Notes manifest 管线 | §4 组件三层收紧、§5 采集脚本与 manifest、语料源映射（含 ① 勘察） | `SnippetRunner`/`PlaygroundCard` 组件 + `build-playground-notes.mjs` + notes.json 产物 + `--check` 校验 | 无 |
+| [Plan 582](../../plans/582-playground-notes-explorer.md)：Notes Explorer + 宿主合一 + 电子书嵌入 | §6 笔记站、§7 电子书 Run、§8 部署合一（含 ②④） | NotesExplorer 组件、website `/playground` 改造、旧静态页退役、后端 frontend 换宿主、主题层围栏后处理 | Plan 581 |
 
 两个 Plan 串行（B 依赖 A 的组件与 manifest），各自可独立验收。
 

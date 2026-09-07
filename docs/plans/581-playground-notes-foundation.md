@@ -16,11 +16,11 @@ current_step: 0
 total_steps: 8
 ---
 
-# [PLAN-581] Playground 组件分层 + Notes Manifest 管线（Design 28 · Plan A）
+# [PLAN-581] Playground 组件分层 + Notes Manifest 管线（Playground 设计 · Plan A）
 
 ## 变更摘要
 
-按 [Design 28](../design/28-playground-architecture.md) §4/§5 落地 Playground 在线体验层的基础两件：
+按 [Playground 设计](../design/documents/playground-architecture.md) §4/§5 落地 Playground 在线体验层的基础两件：
 
 1. **组件三层收紧**：`packages/auto-playground-vue` 新增 `SnippetRunner`（拼图层，单 snippet 无工具栏）与 `PlaygroundCard`（卡片层，工具栏可配置、`exampleSelector` 默认关）；现有 `AutoPlayground.vue`（731 行）降级为兼容薄包装。编辑/运行逻辑复用 `usePlayground.ts`，不重写。
 2. **Notes manifest 管线**：新增 `scripts/build-playground-notes.mjs`，构建期从仓内语料源（vm golden、aavm corpus、书籍围栏、playground-demo；parity 勘察后裁定）采集生成 `website/public/playground-data/notes.json`（单一事实源，确定性输出），接入 website 构建链（`prepare-content.js`），并提供 `--check` 幂等校验。
@@ -30,14 +30,14 @@ total_steps: 8
 ## 目标
 
 - G1: `SnippetRunner` / `PlaygroundCard` 从 `auto-playground-vue` 包导出，类型检查与构建零错误。
-- G2: `AutoPlayground` 保留为向后兼容别名，website 构建通过（行为变化仅一处：工具栏不再默认显示 ExampleSelector——Design 28 §4.4 裁定）。
+- G2: `AutoPlayground` 保留为向后兼容别名，website 构建通过（行为变化仅一处：工具栏不再默认显示 ExampleSelector——Playground 设计 §4.4 裁定）。
 - G3: `notes.json` 生成覆盖全部仓内语料源，规模达到验收阈值（§验收标准 3），连续两次生成 byte-identical。
 - G4: manifest 生成内联进 `website/scripts/prepare-content.js`（dev/build/deploy 三态自动触发）；`--check` 模式供 CI 防采集规则回归。
-- G5: parity 语料收录范围完成勘察并登记裁定（Design 28 §9-①）。
+- G5: parity 语料收录范围完成勘察并登记裁定（Playground 设计 §9-①）。
 
 ## 架构方案
 
-对应 [Design 28](../design/28-playground-architecture.md)：
+对应 [Playground 设计](../design/documents/playground-architecture.md)：
 
 - §4 组件分层：`SnippetRunner`（核，无 chrome）⊂ `PlaygroundCard`（壳 + 可配置工具栏）⊂ `AutoPlaygroundFull`（IDE，不动）。本计划落前两层 + 兼容别名。
 - §5 数据管线：`scripts/build-playground-notes.mjs` → `website/public/playground-data/notes.json`（schema v1：groups/notes，含 expectedOutput/standalone/kind）。manifest **不提交**（gitignore），每次构建重新生成；`--check` = 内存二次生成幂等比对 + 计数断言（非磁盘 diff，因 books 为 gitignore 生成物）。
@@ -50,11 +50,11 @@ total_steps: 8
 - **[playground-vue](../specs/playground-vue/project.md)**（active）：入口组件 AutoPlayground（精简）/ AutoPlaygroundFull（完整）；composables `usePlayground`/`useDebugger`/`useReplayPlayer`；lang/ CodeMirror 语言支持。现状问题：精简组件不纯——工具栏常驻 `ExampleSelector`（拉后端 `/api/examples`），无法作单 snippet 拼图嵌入。
 - **[auto-playground](../specs/auto-playground/project.md)**（active）：axum 后端 `examples.rs` 仅扫 `examples/playground-demo/`（25 单文件 + 4 项目），语料面窄。
 - **[website](../specs/website/project.md)**（active）：VitePress 站；`playground.md` 内嵌 `<AutoPlayground>`；`public/playground/` 为全量 SPA 同步产物（`build-playground.mjs` 双路同步）。书籍内容由 `scripts/prepare-content.js` 从外仓 `../book` 物化到 `website/books/`（gitignore，构建期生成）。
-- **语料盘点（2026-09-07 实测，Design 28 §1.3）**：vm golden 42 组目录/322 个 `.at`+`.expected.out` 配对；aavm corpus 158 个 `.at`；书籍 ` ```auto ` 围栏 ~1282（双语重复）；playground-demo 25+4；parity 53 个 `.at`（多依赖环境）。
+- **语料盘点（2026-09-07 实测，Playground 设计 §1.3）**：vm golden 42 组目录/322 个 `.at`+`.expected.out` 配对；aavm corpus 158 个 `.at`；书籍 ` ```auto ` 围栏 ~1282（双语重复）；playground-demo 25+4；parity 53 个 `.at`（多依赖环境）。
 
 ## 详细设计
 
-### 1. 组件契约（Design 28 §4 表格为准）
+### 1. 组件契约（Playground 设计 §4 表格为准）
 
 ```ts
 // types.ts 新增
@@ -78,15 +78,15 @@ interface PlaygroundCardProps extends SnippetRunnerProps {
 
 ### 2. 采集脚本 `scripts/build-playground-notes.mjs`
 
-- 源与规则（Design 28 §5.1）：
+- 源与规则（Playground 设计 §5.1）：
   - **vm golden**：`crates/auto-lang/test/vm/[0-9][0-9]_*/`（不含 `aavm2/`）每 case 目录内 `.at` 与同名 `.expected.out` 配对，无配对跳过；组名=目录名语义段（`05_loops` → "循环"，沿用 `display_name_from_stem` 风格 + 内置目录号中文映射表，未命中回退目录名）。
   - **aavm corpus**：`crates/auto-lang/test/vm/aavm2/corpus_{m1,m2,m3,m4,use,a2r}/*.at`，每目录一组。
   - **books**：`website/books/*/ch*.md`（prepare-content 物化后采集；`.cn.md` 不重复采）；`kind=fence`；围栏内含 `import` 行 → `standalone:false`。
   - **playground-demo**：`examples/playground-demo/` 单文件 + 项目目录（`main.at` 判定，`kind=project`，采全部文件入 `files`）。
   - **parity**：T1 勘察裁定后启用或后置（默认后置）。
-- 输出：`website/public/playground-data/notes.json`，schema 见 Design 28 §5.2；**确定性**：groups 按 `order`/`id` 排序、notes 按 `id` 排序，**不写 builtAt**（保证 byte-identical）。
+- 输出：`website/public/playground-data/notes.json`，schema 见 Playground 设计 §5.2；**确定性**：groups 按 `order`/`id` 排序、notes 按 `id` 排序，**不写 builtAt**（保证 byte-identical）。
 - `--check`：重新在内存生成第二遍与第一遍深比对 + 计数断言（见验收 3），失败非零退出。
-- 体积：单文件起步；若 >5MB 改按组分片（Design 28 §9-③，T6 实测后裁定并登记）。
+- 体积：单文件起步；若 >5MB 改按组分片（Playground 设计 §9-③，T6 实测后裁定并登记）。
 
 ### 3. 构建接线
 
@@ -159,4 +159,4 @@ interface PlaygroundCardProps extends SnippetRunnerProps {
 
 - **① parity 收录范围**（T1 勘察后回填）：默认后置；若可跑子集 ≥10 个且无环境依赖则收录为 `parity` 组。
 - **③ manifest 单文件 vs 分片**（T6 实测后回填）：默认单文件；阈值 5MB。
-- **⑤ 人工 description overrides 机制**（Design 28 §9-⑤）：本期不做，582 或后续计划再议。
+- **⑤ 人工 description overrides 机制**（Playground 设计 §9-⑤）：本期不做，582 或后续计划再议。

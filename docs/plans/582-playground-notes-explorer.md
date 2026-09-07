@@ -16,13 +16,13 @@ current_step: 0
 total_steps: 10
 ---
 
-# [PLAN-582] Notes Explorer 笔记站 + 宿主合一 + 电子书 Run 嵌入（Design 28 · Plan B）
+# [PLAN-582] Notes Explorer 笔记站 + 宿主合一 + 电子书 Run 嵌入（Playground 设计 · Plan B）
 
 > 前置依赖：[PLAN-581](581-playground-notes-foundation.md)（SnippetRunner/PlaygroundCard 组件 + notes manifest 管线）已合入。
 
 ## 变更摘要
 
-按 [Design 28](../design/28-playground-architecture.md) §6/§7/§8 完成 Playground 在线体验层的呈现与部署合一：
+按 [Playground 设计](../design/documents/playground-architecture.md) §6/§7/§8 完成 Playground 在线体验层的呈现与部署合一：
 
 1. **Notes Explorer 笔记站**：`auto-playground-vue` 新增 `NotesExplorer` 组件（左分组树+搜索，右说明+PlaygroundCard+期望输出对照），vm-golden 笔记提供实际输出 vs `.expected.out` 行级对照高亮。
 2. **宿主合一**：website `/playground`（EN/ZH）升级为 Notes Explorer；`website/public/playground/` 旧静态 SPA 退役为重定向页；`crates/auto-playground/frontend` 宿主切换为 Notes Explorer（IDE 全功能经切换入口保留）；后端 `/api/examples` 改读 manifest（单一事实源，回退目录扫描）。
@@ -40,7 +40,7 @@ total_steps: 10
 
 ## 架构方案
 
-对应 [Design 28](../design/28-playground-architecture.md)：
+对应 [Playground 设计](../design/documents/playground-architecture.md)：
 
 - §6 Notes Explorer：`NotesExplorer.vue`（布局壳）+ `useNotes.ts`（manifest 加载/索引/搜索）+ `ExpectedOutputPanel.vue`（对照）；视觉消费 VitePress CSS 变量，包内提供 fallback token（SPA 宿主无 VitePress 变量时）。
 - §7 电子书：主题层 fence 后处理（`AutoFence.vue` 包裹 lang=auto 围栏），首版用围栏原文 + 启发式 `import` 检测，不接 manifest 索引。
@@ -54,7 +54,7 @@ total_steps: 10
 - **[playground-vue](../specs/playground-vue/project.md)**（active）：581 后已有 SnippetRunner/PlaygroundCard 三层；本计划在其上加 NotesExplorer 与 ExpectedOutputPanel，`lang/` CodeMirror 支持复用。
 - **[auto-playground](../specs/auto-playground/project.md)**（active）：`routes/examples.rs` 现扫 `examples/playground-demo/`；本计划改读 manifest（`Example` 响应结构不变）。`frontend/` 现渲染 `AutoPlaygroundFull`，换宿主 NotesExplorer。构建同步：`scripts/build-playground.mjs` 构建后同步 `frontend/dist` 与 `website/public/playground`——website 分支本期删除。
 - **[website](../specs/website/project.md)**（active）：VitePress 站，`playground.md`（EN/ZH）现内嵌 `<AutoPlayground>`；主题在 `website/.vitepress/theme/`（现有组件 AIHero/UIGallery 等，无围栏后处理）；e2e 走 Playwright（`npm run test:e2e`）。books 为 `prepare-content.js` 从外仓 `../book` 物化的 gitignore 生成物。
-- 历史：两入口并存源于 `95089c156`（全量 SPA 部署 website）+ `ebc43e7ac`（iframe 换内联组件但旧页未退役），Design 28 §1.1。
+- 历史：两入口并存源于 `95089c156`（全量 SPA 部署 website）+ `ebc43e7ac`（iframe 换内联组件但旧页未退役），Playground 设计 §1.1。
 
 ## 详细设计
 
@@ -64,7 +64,7 @@ total_steps: 10
 
 ### 2. NotesExplorer 组件
 
-布局（Design 28 §6.1）：左栏分组树（折叠态 + 计数徽章 + 搜索框）；右栏笔记头（标题、来源路径 chip → GitHub 链接 `<repo>/blob/master/<sourcePath>`、来源类型徽章 `vm-golden|aavm-corpus|book|demo|parity`）、说明折叠区、PlaygroundCard（`noteId` 驱动）。深链 `#/notes/<noteId>`（hash 变化不触发 VitePress 路由）；键盘 ↑/↓ 切换、Ctrl+Enter 运行。CSS：优先 `var(--vp-c-border)` 等 VitePress 变量，包内 `:root` fallback token。
+布局（Playground 设计 §6.1）：左栏分组树（折叠态 + 计数徽章 + 搜索框）；右栏笔记头（标题、来源路径 chip → GitHub 链接 `<repo>/blob/master/<sourcePath>`、来源类型徽章 `vm-golden|aavm-corpus|book|demo|parity`）、说明折叠区、PlaygroundCard（`noteId` 驱动）。深链 `#/notes/<noteId>`（hash 变化不触发 VitePress 路由）；键盘 ↑/↓ 切换、Ctrl+Enter 运行。CSS：优先 `var(--vp-c-border)` 等 VitePress 变量，包内 `:root` fallback token。
 
 ### 3. ExpectedOutputPanel
 
@@ -74,7 +74,7 @@ total_steps: 10
 
 PlaygroundCard 内文件 tab（entry 锁 `main.at`，多文件可切换编辑，运行走现有 run API 的 files 形态——`usePlaygroundFull` 已支持项目运行，复用其请求构造）；"在 IDE 中打开"按钮 → 同页切换 IDE 模式（SPA 宿主渲染 `AutoPlaygroundFull` 并 loadExample；VitePress 宿主无后端时禁用并提示）。
 
-### 5. 后端 /api/examples 单一事实源（Design 28 §9-④ 落地）
+### 5. 后端 /api/examples 单一事实源（Playground 设计 §9-④ 落地）
 
 - `scripts/build-playground-notes.mjs`：增加输出 `crates/auto-playground/notes.json`（同内容；两处均 gitignore）。
 - `examples.rs`：启动时探测 `CARGO_MANIFEST_DIR/notes.json`，存在→解析 manifest 映射为现有 `Example { name, source, example_type, project_dir, files }` 响应（保持 schema 兼容）；不存在→现有目录扫描。选择"文件探测+回退"而非 include_str!（生成时序与体积），CI/本地 `prepare-content` 链保证生成。
@@ -166,5 +166,5 @@ PlaygroundCard 内文件 tab（entry 锁 `main.at`，多文件可切换编辑，
 ## 待澄清事项
 
 - **② "在 IDE 中打开"的 VitePress 宿主形态**（T4 落地时定）：无后端时禁用+提示是底线方案；若后端与 website 同域部署则可直接链后端 UI。
-- **电子书围栏 ↔ manifest 笔记互链**（Design 28 §11 演进项）：本期不做，仅锁提示链接到笔记站。
+- **电子书围栏 ↔ manifest 笔记互链**（Playground 设计 §11 演进项）：本期不做，仅锁提示链接到笔记站。
 - **`/playground/` 旧 URL 的外部引用**（部署历史链接）：重定向页兜底；若 GitHub Pages 路由行为异常改 `_redirects`/404 兜底（T7 验证时裁定）。
