@@ -13,7 +13,7 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 <HomeHero
   badge="v0.5 现已发布"
   title=": AI × Lang × OS"
-  description="Auto 是一个全栈应用平台。用同一门语言编写脚本、后端、UI、AI Agent 和操作系统组件 —— 运行在 AutoVM 上，或转译为 Rust、Python 和 TypeScript。"
+  description="Auto 是一门动静结合的跨生态语言<br>Auto 由 AI 编写，为 OS 而生"
   primary-text="快速开始"
   primary-link="/zh/docs/"
   secondary-text="在线体验"
