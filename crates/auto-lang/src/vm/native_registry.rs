@@ -95,8 +95,16 @@ impl AutoVMNativeRegistry {
             return id; // Already registered
         }
 
-        let id = self.next_id;
-        self.next_id += 1;
+        let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(name) {
+            fixed_id
+        } else {
+            let id = self.next_id;
+            self.next_id += 1;
+            id
+        };
+        if id >= self.next_id {
+            self.next_id = id + 1;
+        }
         self.registry.insert(name.to_string(), id);
         id
     }

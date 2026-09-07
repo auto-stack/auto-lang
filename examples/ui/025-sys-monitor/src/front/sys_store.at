@@ -1,0 +1,510 @@
+// src/front/sys_store.at — SharedStore for System Monitor
+// Holds all monitor state, sliding windows, sorting, tabs, and API calls.
+
+use back.api: system_snapshot, kill_process
+
+store SysStore {
+    model {
+        // ---- System Summary ----
+        var cpu float = 0.0
+        var cpuCount int = 0
+        var cpuBrand str = ""
+        var memUsedMb int = 0
+        var memTotalMb int = 0
+        var netSentKbs float = 0.0
+        var netRecvKbs float = 0.0
+        var procCount int = 0
+        var osName str = ""
+        var osVersion str = ""
+        var kernel str = ""
+        var hostname str = ""
+        var uptimeS int = 0
+
+        // ---- Formatted Labels ----
+        var cpuLabel str = "0 %"
+        var memLabel str = "0 / 0 GB"
+        var diskLabel str = "0 KB/s"
+        var netLabel str = "0 KB/s"
+        var procLabel str = "0"
+        var uptimeLabel str = "0h 0m"
+
+        // ---- Lists ----
+        var procs []ProcInfo = []
+        var procsView []ProcInfo = []
+        var disks []DiskInfo = []
+        var cores []float = []
+        var users []str = []
+
+        // ---- Sliding Windows (30 points) ----
+        var cpuHist []float = []
+        var memHist []float = []
+        var diskHist []float = []
+        var netHist []float = []
+
+        // ---- SVG Geometries ----
+        var cpuLine str = ""
+        var cpuArea str = ""
+        var memLine str = ""
+        var memArea str = ""
+        var diskLine str = ""
+        var diskArea str = ""
+        var netLine str = ""
+        var netArea str = ""
+
+        // ---- Sorting & Selection ----
+        var sortColumn str = "cpu"
+        var sortDir str = "desc"
+        var selected_pid int = 0
+        var selected_proc_name str = ""
+
+        // ---- Process Kill Dialog State ----
+        var kill_target int = 0
+        var kill_target_name str = ""
+        var kill_dialog_open bool = false
+
+        // ---- Navigation & Tabs ----
+        var active_tab str = "processes"
+        var perf_tab str = "cpu"
+
+        // ---- Engine State ----
+        var speedDiv int = 4
+        var backend_ok str = "true"
+        var running str = "true"
+
+        // ---- Table Column Headers ----
+        var nameH str = "名称"
+        var cpuH str = "CPU % ↓"
+        var memH str = "内存"
+        var diskH str = "磁盘"
+        var netH str = "网络"
+        var pidH str = "PID"
+        var statusH str = "状态"
+        var userH str = "用户"
+    }
+
+    msg {
+        Init, Refresh, Play, Pause, SetSpeed(str),
+        SelectTab(str), SelectPerfTab(str),
+        SelectProc(int), RequestKill, CancelKill, ConfirmKill,
+        Sort(str), SortName, SortCpu, SortMem, SortDisk, SortNet, SortPid
+    }
+
+    on {
+        .Init -> {
+            // ---- Configuration Restoration (sysmon.* with dash.* fallback) ----
+            var sp = storage.get("sysmon.speed")
+            if sp == "" { sp = storage.get("dash.speed") }
+            if sp == "fast" { .speedDiv = 1 }
+            if sp == "normal" { .speedDiv = 4 }
+            if sp == "slow" { .speedDiv = 10 }
+
+            var scol = storage.get("sysmon.sort_column")
+            if scol == "" { scol = storage.get("dash.sort_column") }
+            if scol != "" { .sortColumn = scol }
+
+            var sdir = storage.get("sysmon.sort_dir")
+            if sdir == "" { sdir = storage.get("dash.sort_dir") }
+            if sdir != "" { .sortDir = sdir }
+
+            var atab = storage.get("sysmon.active_tab")
+            if atab != "" { .active_tab = atab }
+
+            var ptab = storage.get("sysmon.perf_tab")
+            if ptab != "" { .perf_tab = ptab }
+
+            // ---- Initialize 30-point sliding windows with zero ----
+            var c_init []float = []
+            var m_init []float = []
+            var d_init []float = []
+            var n_init []float = []
+            var zi = 0
+            while zi < 30 {
+                c_init.push(0.0)
+                m_init.push(0.0)
+                d_init.push(0.0)
+                n_init.push(0.0)
+                zi = zi + 1
+            }
+            .cpuHist = c_init
+            .memHist = m_init
+            .diskHist = d_init
+            .netHist = n_init
+
+            // Initial fetch
+            .Refresh()
+        }
+
+        .Play -> { .running = "true" }
+        .Pause -> { .running = "false" }
+
+        .SetSpeed(speed) -> {
+            if speed == "fast" { .speedDiv = 1 }
+            if speed == "normal" { .speedDiv = 4 }
+            if speed == "slow" { .speedDiv = 10 }
+            storage.set("sysmon.speed", speed)
+        }
+
+        .SelectTab(tab) -> {
+            .active_tab = tab
+            storage.set("sysmon.active_tab", tab)
+        }
+
+        .SelectPerfTab(tab) -> {
+            .perf_tab = tab
+            storage.set("sysmon.perf_tab", tab)
+        }
+
+        .SelectProc(pid) -> {
+            .selected_pid = pid
+            for p in .procs {
+                if p.pid == pid {
+                    .selected_proc_name = p.name
+                }
+            }
+        }
+
+        .RequestKill -> {
+            if .selected_pid > 0 {
+                .kill_target = .selected_pid
+                .kill_target_name = .selected_proc_name
+                .kill_dialog_open = true
+            }
+        }
+
+        .CancelKill -> {
+            .kill_dialog_open = false
+            .kill_target = 0
+            .kill_target_name = ""
+        }
+
+        .ConfirmKill -> {
+            if .kill_target > 0 {
+                kill_process(.kill_target)
+                .kill_dialog_open = false
+                .kill_target = 0
+                .kill_target_name = ""
+                .selected_pid = 0
+                .selected_proc_name = ""
+                .Refresh()
+            }
+        }
+
+        .SortName -> { .Sort("name") }
+        .SortCpu -> { .Sort("cpu") }
+        .SortMem -> { .Sort("mem") }
+        .SortDisk -> { .Sort("disk") }
+        .SortNet -> { .Sort("net") }
+        .SortPid -> { .Sort("pid") }
+
+        .Sort(col) -> {
+            if .sortColumn == col {
+                if .sortDir == "desc" {
+                    .sortDir = "asc"
+                } else {
+                    .sortDir = "desc"
+                }
+            } else {
+                .sortColumn = col
+                if col == "name" || col == "pid" {
+                    .sortDir = "asc"
+                } else {
+                    .sortDir = "desc"
+                }
+            }
+            storage.set("sysmon.sort_column", .sortColumn)
+            storage.set("sysmon.sort_dir", .sortDir)
+
+            // Update column header arrows
+            .nameH = "名称"
+            .cpuH = "CPU %"
+            .memH = "内存"
+            .diskH = "磁盘"
+            .netH = "网络"
+            .pidH = "PID"
+
+            var arrow = " ↓"
+            if .sortDir == "asc" { arrow = " ↑" }
+
+            if .sortColumn == "name" { .nameH = f"名称${arrow}" }
+            if .sortColumn == "cpu" { .cpuH = f"CPU %${arrow}" }
+            if .sortColumn == "mem" { .memH = f"内存${arrow}" }
+            if .sortColumn == "disk" { .diskH = f"磁盘${arrow}" }
+            if .sortColumn == "net" { .netH = f"网络${arrow}" }
+            if .sortColumn == "pid" { .pidH = f"PID${arrow}" }
+
+            // Rebuild procsView
+            var pv []ProcInfo = []
+            if .sortColumn == "cpu" && .sortDir == "desc" {
+                for p in .procs { pv.push(p) }
+            } else if .sortColumn == "cpu" && .sortDir == "asc" {
+                var ri = .procs.len() - 1
+                while ri >= 0 {
+                    pv.push(.procs[ri])
+                    ri = ri - 1
+                }
+            } else {
+                // Sorting for other columns: take procs
+                var remaining []ProcInfo = []
+                for p in .procs { remaining.push(p) }
+                var out []ProcInfo = []
+                var n = remaining.len()
+                if n > 120 { n = 120 }
+                var k = 0
+                while k < n {
+                    var bi = 0
+                    var first = true
+                    var bCpu float = 0.0
+                    var bMem = 0
+                    var bDisk float = 0.0
+                    var bNet float = 0.0
+                    var bPid = 0
+                    var bName = ""
+                    var idx = 0
+                    for q in remaining {
+                        var take = false
+                        if first {
+                            take = true
+                        } else {
+                            if .sortColumn == "mem" {
+                                if .sortDir == "desc" { if q.mem_mb > bMem { take = true } }
+                                else { if q.mem_mb < bMem { take = true } }
+                            }
+                            if .sortColumn == "pid" {
+                                if .sortDir == "desc" { if q.pid > bPid { take = true } }
+                                else { if q.pid < bPid { take = true } }
+                            }
+                            if .sortColumn == "disk" {
+                                if .sortDir == "desc" { if q.disk_kbs > bDisk { take = true } }
+                                else { if q.disk_kbs < bDisk { take = true } }
+                            }
+                            if .sortColumn == "net" {
+                                if .sortDir == "desc" { if q.net_kbs > bNet { take = true } }
+                                else { if q.net_kbs < bNet { take = true } }
+                            }
+                            if .sortColumn == "name" {
+                                if .sortDir == "desc" { if q.name > bName { take = true } }
+                                else { if q.name < bName { take = true } }
+                            }
+                        }
+                        if take {
+                            bi = idx
+                            bCpu = q.cpu
+                            bMem = q.mem_mb
+                            bDisk = q.disk_kbs
+                            bNet = q.net_kbs
+                            bPid = q.pid
+                            bName = q.name
+                            first = false
+                        }
+                        idx = idx + 1
+                    }
+                    out.push(remaining[bi])
+                    var r2 []ProcInfo = []
+                    var j = 0
+                    for q in remaining {
+                        if j != bi { r2.push(q) }
+                        j = j + 1
+                    }
+                    remaining = r2
+                    k = k + 1
+                }
+                pv = out
+            }
+            .procsView = pv
+        }
+
+        .Refresh -> {
+            let snap = system_snapshot()
+            if snap == nil || snap.summary == nil || snap.summary.cpu < 0.0 {
+                .backend_ok = "false"
+            } else {
+                .backend_ok = "true"
+                .cpu = snap.summary.cpu
+                .cpuCount = snap.summary.cpu_count
+                .cpuBrand = snap.summary.cpu_brand
+                .memUsedMb = snap.summary.mem_used_mb
+                .memTotalMb = snap.summary.mem_total_mb
+                .netSentKbs = snap.summary.net_sent_kbs
+                .netRecvKbs = snap.summary.net_recv_kbs
+                .procCount = snap.summary.proc_count
+                .osName = snap.summary.os_name
+                .osVersion = snap.summary.os_version
+                .kernel = snap.summary.kernel
+                .hostname = snap.summary.hostname
+                .uptimeS = snap.summary.uptime_s
+
+                .procs = snap.procs
+                .disks = snap.disks
+                .cores = snap.cores
+                .users = snap.users
+
+                // Format labels
+                var totalMemG float = .memTotalMb
+                var usedMemG float = .memUsedMb
+                var totalG_int = (.memTotalMb * 10) / 1024
+                var usedG_int = (.memUsedMb * 10) / 1024
+                var totalG_val float = totalG_int.as(float) / 10.0
+                var usedG_val float = usedG_int.as(float) / 10.0
+                .cpuLabel = f"${.cpu} %"
+                .memLabel = f"${usedG_val} / ${totalG_val} GB"
+                .procLabel = f"${.procCount}"
+                var netTotal = .netSentKbs + .netRecvKbs
+                var netTotal_int = (netTotal * 10.0).as(int)
+                var netTotal_val float = netTotal_int.as(float) / 10.0
+                .netLabel = f"${netTotal_val} KB/s"
+
+                var totalDiskKbs float = 0.0
+                for p in .procs {
+                    totalDiskKbs = totalDiskKbs + p.disk_kbs
+                }
+                var diskTotal_int = (totalDiskKbs * 10.0).as(int)
+                var diskTotal_val float = diskTotal_int.as(float) / 10.0
+                .diskLabel = f"${diskTotal_val} KB/s"
+
+                var upH = .uptimeS / 3600
+                var upM = (.uptimeS % 3600) / 60
+                .uptimeLabel = f"${upH}h ${upM}m"
+
+                // ---- Update 30-Point Sliding Windows ----
+                var new_cpu []float = []
+                var over_c = .cpuHist.len() >= 30
+                var first_c = true
+                for v in .cpuHist {
+                    if over_c && first_c {
+                        first_c = false
+                    } else {
+                        new_cpu.push(v)
+                    }
+                }
+                new_cpu.push(.cpu)
+                .cpuHist = new_cpu
+
+                var new_mem []float = []
+                var over_m = .memHist.len() >= 30
+                var first_m = true
+                for v in .memHist {
+                    if over_m && first_m {
+                        first_m = false
+                    } else {
+                        new_mem.push(v)
+                    }
+                }
+                new_mem.push(usedMemG)
+                .memHist = new_mem
+
+                var new_disk []float = []
+                var over_d = .diskHist.len() >= 30
+                var first_d = true
+                for v in .diskHist {
+                    if over_d && first_d {
+                        first_d = false
+                    } else {
+                        new_disk.push(v)
+                    }
+                }
+                new_disk.push(totalDiskKbs)
+                .diskHist = new_disk
+
+                var new_net []float = []
+                var over_n = .netHist.len() >= 30
+                var first_n = true
+                for v in .netHist {
+                    if over_n && first_n {
+                        first_n = false
+                    } else {
+                        new_net.push(v)
+                    }
+                }
+                new_net.push(netTotal)
+                .netHist = new_net
+
+                // ---- Rebuild SVG Paths (504 wide, 106 high) ----
+                var stepf float = 504.0 / 29.0
+
+                // CPU Curve (0-100%)
+                var pc = ""
+                var ic = 0
+                for v in .cpuHist {
+                    var xf float = 36.0 + ic * stepf
+                    var vf float = v
+                    var yf float = 120.0 - vf / 100.0 * 106.0
+                    if yf < 14.0 { yf = 14.0 }
+                    if yf > 120.0 { yf = 120.0 }
+                    if ic == 0 { pc = f"M ${xf} ${yf}" }
+                    else { pc = pc + f" L ${xf} ${yf}" }
+                    ic = ic + 1
+                }
+                .cpuLine = pc
+                .cpuArea = pc + " L 540 120 L 36 120 Z"
+
+                // Memory Curve (0-totalMemG)
+                var maxM = totalMemG
+                if maxM <= 0.0 { maxM = 32768.0 }
+                var pm = ""
+                var im = 0
+                for v in .memHist {
+                    var xf float = 36.0 + im * stepf
+                    var vf float = v
+                    var yf float = 120.0 - vf / maxM * 106.0
+                    if yf < 14.0 { yf = 14.0 }
+                    if yf > 120.0 { yf = 120.0 }
+                    if im == 0 { pm = f"M ${xf} ${yf}" }
+                    else { pm = pm + f" L ${xf} ${yf}" }
+                    im = im + 1
+                }
+                .memLine = pm
+                .memArea = pm + " L 540 120 L 36 120 Z"
+
+                // Disk Curve (adaptive max)
+                var maxD float = 1000.0
+                for v in .diskHist {
+                    if v > maxD { maxD = v }
+                }
+                var pd = ""
+                var id = 0
+                for v in .diskHist {
+                    var xf float = 36.0 + id * stepf
+                    var vf float = v
+                    var yf float = 120.0 - vf / maxD * 106.0
+                    if yf < 14.0 { yf = 14.0 }
+                    if yf > 120.0 { yf = 120.0 }
+                    if id == 0 { pd = f"M ${xf} ${yf}" }
+                    else { pd = pd + f" L ${xf} ${yf}" }
+                    id = id + 1
+                }
+                .diskLine = pd
+                .diskArea = pd + " L 540 120 L 36 120 Z"
+
+                // Network Curve (adaptive max)
+                var maxN float = 1000.0
+                for v in .netHist {
+                    if v > maxN { maxN = v }
+                }
+                var pn = ""
+                var in_ = 0
+                for v in .netHist {
+                    var xf float = 36.0 + in_ * stepf
+                    var vf float = v
+                    var yf float = 120.0 - vf / maxN * 106.0
+                    if yf < 14.0 { yf = 14.0 }
+                    if yf > 120.0 { yf = 120.0 }
+                    if in_ == 0 { pn = f"M ${xf} ${yf}" }
+                    else { pn = pn + f" L ${xf} ${yf}" }
+                    in_ = in_ + 1
+                }
+                .netLine = pn
+                .netArea = pn + " L 540 120 L 36 120 Z"
+
+                // ---- Update Procs View ----
+                if .sortColumn == "cpu" && .sortDir == "desc" {
+                    var pv []ProcInfo = []
+                    for p in .procs { pv.push(p) }
+                    .procsView = pv
+                } else {
+                    // Re-sort current view
+                    .Sort(.sortColumn)
+                }
+            }
+        }
+    }
+}

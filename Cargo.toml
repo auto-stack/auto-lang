@@ -70,6 +70,8 @@ glob-match = "0.2.1"
 chrono = "0.4"
 notify = "7.0"
 urlencoding = "2.1"
+# Plan 541: System monitor host & a2r native metrics
+sysinfo = "0.33"
 
 # AutoMan dependencies (Phase 1)
 tabled = "0.18"

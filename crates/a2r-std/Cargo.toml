@@ -12,3 +12,4 @@ ureq = { version = "2", features = ["tls"] }
 # current-thread tokio spawn). `full` is required by the workspace default
 # (Cargo.toml:56) and gives rt/sync/macros/time in one feature set.
 tokio = { workspace = true, features = ["full"] }
+sysinfo = { workspace = true }

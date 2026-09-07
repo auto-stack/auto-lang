@@ -295,9 +295,7 @@ impl VirtualRAM {
     // Plan 073 Stage A: Float support
     #[inline(always)]
     pub fn push_f32(&mut self, val: f32) {
-        if self.sp >= self.raw_nv.len() { panic!("Stack Overflow"); }
-        self.raw_nv[self.sp] = encode_f32(val);
-        self.sp += 1;
+        self.push_nv(encode_f32(val));
     }
 
     #[inline(always)]

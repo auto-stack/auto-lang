@@ -1,0 +1,10 @@
+// src/back/sys_info.at — System Monitor data assembly helper
+use api: SysSummary, ProcInfo, DiskInfo, Snapshot, system_snapshot, kill_process
+
+pub fn get_snapshot() Snapshot {
+    return system_snapshot()
+}
+
+pub fn kill_proc(pid int) bool {
+    return kill_process(pid)
+}

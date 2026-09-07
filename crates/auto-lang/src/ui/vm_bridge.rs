@@ -992,10 +992,10 @@ impl VmBridge {
     /// one that isn't a ListData, and stays untouched.
     pub fn read_all_state_materialized(&self) -> HashMap<String, Value> {
         let mut result = self.read_all_state();
-        for (_name, val) in result.iter_mut() {
+        for (name, val) in result.iter_mut() {
             let handle = match val {
                 Value::VmRef(r) => Some(r.id),
-                Value::Int(id) => Some(*id as usize),
+                Value::Int(id) if *id >= 4_000_000 => Some(*id as usize),
                 _ => None,
             };
             if let Some(id) = handle {
@@ -1608,6 +1608,10 @@ impl VmBridge {
         let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 1 + args.len());
         call_result.map_err(|e| {
             eprintln!("[CALL_HANDLER_ERR] {} error: {:?} at ip=0x{:x}", fn_name, e, task.ip);
+            eprintln!("[CALL_HANDLER_ERR] exports: {:?}", self.vm.flash.exports_by_name.keys().collect::<Vec<_>>());
+            let start = task.ip.saturating_sub(40);
+            let end = (task.ip + 40).min(self.vm.flash.memory.len());
+            eprintln!("[CALL_HANDLER_ERR] code around ip (0x{:x}..0x{:x}): {:?}", start, end, &self.vm.flash.memory[start..end]);
             VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
         })
     }

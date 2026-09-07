@@ -57,9 +57,7 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 即构建/复杂度顺序，详见 [Design 21 §2](../../docs/design/autoui/examples-app-track.md)）；
 填入时在本 README 加一行历史注记。历史去向：
 
-- **024**：原 widget-gallery，已升级为顶级 [`examples/widgets-gallery/`](../widgets-gallery/)。
-- **025**：原 notes 前端丰富度临时 fork，能力并入 015-notes 后删除（Plan 354 §7）；2026-08-26 由 Plan 438 系统监视器回填。
-- **021-block-static、026–040**：能力样板，迁至 [`examples/capability-tests/`](../capability-tests/)（同号共存，引用带全路径即无歧义）。
+- **025**：原 notes 前端丰富度临时 fork，能力并入 015-notes 后删除（Plan 354 §7）；2026-08-26 由 Plan 438 系统监视器回填（原名 dashboard，2026-09-07 由 Plan 541 升级为真 sysinfo 任务管理器并更名 sys-monitor）。
 - **029**：原能力样板 external-imports 已迁 [`examples/capability-tests/029-external-imports/`](../capability-tests/029-external-imports/)；2026-09-04 由 Plan 537 图库应用回填（同号共存）。
 - **038/041 保留**：撞号的 038-vshow 已随迁移离开，038 现在专指扫雷。
 - **042-two-inputs-child、459-dual-app、overlay-probe、p051/p493/p507/p515/
@@ -105,7 +103,7 @@ opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 
 | 022 | kanban | Trello 风看板 | 3022/8022 | ✓ | ✅ Plan 401 升级（playwright 6/6） |
 | 023 | realworld | Conduit（Medium 克隆） | 3023/8023 | — | ✅ Plan 405（playwright 14/14） |
 | 024 | charts | 图表工坊（四类图 + 系列开关 + 流式 + Reset 双模式；Y 轴刻度/图例） | 4024 | ✓ | ✅ [Plan 445](../../docs/plans/archive/445-024-charts.md)（vue+vm 双轨全链路，desktop_mcp 19/19） |
-| 025 | dashboard | 系统监视器（KPI 卡 + 三实时面积曲线 + 可排序进程表 + 配置持久化；mock 随机游走，API 形状见 SPEC） | 4025 | ✓ | ✅ [Plan 438](../../docs/plans/archive/438-025-dashboard.md)（M1 vue 实机 6/6 + M1-fix 双生成器缺口根治 + M2 vm desktop_mcp 26/26） |
+| 025 | sys-monitor | 系统监视器（Win11 任务管理器式：4页 进程/性能/详情/用户 + 4实时面积曲线 + 逻辑核 sparkline + 结束任务确认 + sysinfo 真后台） | 4025/8025 | ✓ | ✅ [Plan 541](../../docs/plans/541-025-sys-monitor.md)（前身 [438](../../docs/plans/archive/438-025-dashboard.md)；vue+vm 双轨对齐） |
 | 026 | database | SQLite 可视化客户端 | 4026/8026 | ✓ | 📋 [Plan 439](../../docs/plans/439-026-database.md) 立项中 |
 | 027 | file-manager | 文件管理器（双栏布局 + 目录面包屑 + 列表/网格双视图 + 排序搜索 + Plan 422 popover 右键/新建/删除确认 + 剪贴板 + 配置持久化） | 4027 | ✓ | ✅ [Plan 440](../../docs/plans/archive/440-027-file-manager.md)（vue 实机 build 0 错误 + vm desktop_mcp 49/49） |
 | 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✓ | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |

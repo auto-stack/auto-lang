@@ -7,7 +7,7 @@ members = [
     "015-notes",
     "015-notes-back",
     "016-calendar",
-    "021-blog-viewer-back",
+    "025-sys-monitor-back",
     "auto-musk-back",
     "contact-form",
     "converter",

@@ -1,15 +1,11 @@
-//! System operation functions for AutoLang
-//!
-//! Provides built-in functions for system-level operations and sysinfo-backed metrics (Plan 541).
+//! System operation functions for a2r (Auto-to-Rust Transpiler)
 
-use auto_val::{Args, Value};
-use lazy_static::lazy_static;
+use crate::list::List;
 use std::sync::Mutex;
 use std::time::Instant;
 use sysinfo::{Disks, Networks, Pid, System, Users};
 
-/// Process summary structure for sys.processes()
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProcData {
     pub pid: i32,
     pub name: String,
@@ -21,8 +17,7 @@ pub struct ProcData {
     pub user: String,
 }
 
-/// Disk summary structure for sys.disks()
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiskData {
     pub name: String,
     pub mount: String,
@@ -30,21 +25,20 @@ pub struct DiskData {
     pub avail_mb: i32,
 }
 
-/// User summary structure for sys.users()
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UserData {
     pub name: String,
 }
 
-pub struct SystemSampler {
-    pub sys: System,
-    pub networks: Networks,
-    pub disks: Disks,
-    pub users: Users,
-    pub last_net_sample: Instant,
-    pub last_disk_sample: Instant,
-    pub last_proc_sample: Instant,
-    pub last_cpu_sample: Instant,
+struct SystemSampler {
+    sys: System,
+    networks: Networks,
+    disks: Disks,
+    users: Users,
+    last_net_sample: Instant,
+    last_disk_sample: Instant,
+    last_proc_sample: Instant,
+    last_cpu_sample: Instant,
 }
 
 impl SystemSampler {
@@ -110,66 +104,62 @@ impl SystemSampler {
     }
 }
 
-lazy_static! {
-    static ref SAMPLER: Mutex<SystemSampler> = Mutex::new(SystemSampler::new());
-}
+static SAMPLER: std::sync::OnceLock<Mutex<SystemSampler>> = std::sync::OnceLock::new();
 
-/// Get process ID
-pub fn sys_getpid(_args: &Args) -> Value {
-    use std::process;
-    Value::Int(process::id() as i32)
+fn get_sampler() -> &'static Mutex<SystemSampler> {
+    SAMPLER.get_or_init(|| Mutex::new(SystemSampler::new()))
 }
 
 /// Global CPU usage (0.0 - 100.0)
 pub fn cpu_usage() -> f64 {
-    let mut s = SAMPLER.lock().unwrap();
+    let mut s = get_sampler().lock().unwrap();
     s.refresh_cpu_if_needed();
     ((s.sys.global_cpu_usage() as f64) * 10.0).round() / 10.0
 }
 
 /// Number of logical CPU cores
 pub fn cpu_count() -> i32 {
-    let s = SAMPLER.lock().unwrap();
+    let s = get_sampler().lock().unwrap();
     s.sys.cpus().len() as i32
 }
 
 /// Single CPU core usage (0.0 - 100.0)
-pub fn cpu_core_usage(core_idx: usize) -> f64 {
-    let mut s = SAMPLER.lock().unwrap();
+pub fn cpu_core_usage(core_idx: i32) -> f64 {
+    let mut s = get_sampler().lock().unwrap();
     s.refresh_cpu_if_needed();
-    s.sys.cpus().get(core_idx).map(|c| ((c.cpu_usage() as f64) * 10.0).round() / 10.0).unwrap_or(0.0)
+    s.sys.cpus().get(core_idx as usize).map(|c| ((c.cpu_usage() as f64) * 10.0).round() / 10.0).unwrap_or(0.0)
 }
 
 /// CPU brand string (e.g. "AMD Ryzen ...")
 pub fn cpu_brand() -> String {
-    let s = SAMPLER.lock().unwrap();
+    let s = get_sampler().lock().unwrap();
     s.sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default()
 }
 
 /// Total system memory in MB
 pub fn mem_total_mb() -> i32 {
-    let mut s = SAMPLER.lock().unwrap();
+    let mut s = get_sampler().lock().unwrap();
     s.refresh_memory();
     (s.sys.total_memory() / (1024 * 1024)) as i32
 }
 
 /// Used system memory in MB
 pub fn mem_used_mb() -> i32 {
-    let mut s = SAMPLER.lock().unwrap();
+    let mut s = get_sampler().lock().unwrap();
     s.refresh_memory();
     (s.sys.used_memory() / (1024 * 1024)) as i32
 }
 
 /// Sent network throughput (KB/s)
 pub fn net_sent_kbs() -> f64 {
-    let mut s = SAMPLER.lock().unwrap();
+    let mut s = get_sampler().lock().unwrap();
     let (sent, _) = s.refresh_networks();
     (sent * 10.0).round() / 10.0
 }
 
 /// Received network throughput (KB/s)
 pub fn net_recv_kbs() -> f64 {
-    let mut s = SAMPLER.lock().unwrap();
+    let mut s = get_sampler().lock().unwrap();
     let (_, recv) = s.refresh_networks();
     (recv * 10.0).round() / 10.0
 }
@@ -200,29 +190,31 @@ pub fn uptime_s() -> i32 {
 }
 
 /// Disks list
-pub fn disks() -> Vec<DiskData> {
-    let mut s = SAMPLER.lock().unwrap();
+pub fn disks() -> List<DiskData> {
+    let mut s = get_sampler().lock().unwrap();
     s.refresh_disks();
-    s.disks.iter().map(|d| DiskData {
+    let vec: Vec<DiskData> = s.disks.iter().map(|d| DiskData {
         name: d.name().to_string_lossy().into_owned(),
         mount: d.mount_point().to_string_lossy().into_owned(),
         total_mb: (d.total_space() / (1024 * 1024)) as i32,
         avail_mb: (d.available_space() / (1024 * 1024)) as i32,
-    }).collect()
+    }).collect();
+    List::from(vec)
 }
 
 /// Users list
-pub fn users() -> Vec<UserData> {
-    let mut s = SAMPLER.lock().unwrap();
+pub fn users() -> List<UserData> {
+    let mut s = get_sampler().lock().unwrap();
     s.refresh_users();
-    s.users.iter().map(|u| UserData {
+    let vec: Vec<UserData> = s.users.iter().map(|u| UserData {
         name: u.name().to_string(),
-    }).collect()
+    }).collect();
+    List::from(vec)
 }
 
 /// Process list: sorted by CPU descending, capped at 512 entries
-pub fn processes() -> Vec<ProcData> {
-    let mut s = SAMPLER.lock().unwrap();
+pub fn processes() -> List<ProcData> {
+    let mut s = get_sampler().lock().unwrap();
     let now = Instant::now();
     let elapsed = now.duration_since(s.last_proc_sample).as_secs_f64();
     let elapsed_sec = if elapsed < 0.05 { 0.05 } else { elapsed };
@@ -263,17 +255,16 @@ pub fn processes() -> Vec<ProcData> {
         });
     }
 
-    // Sort by CPU descending
     list.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
     if list.len() > 512 {
         list.truncate(512);
     }
-    list
+    List::from(list)
 }
 
 /// Kill process by PID
 pub fn kill(pid: i32) -> bool {
-    let mut s = SAMPLER.lock().unwrap();
+    let mut s = get_sampler().lock().unwrap();
     s.sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[Pid::from_u32(pid as u32)]), true);
     if let Some(proc_) = s.sys.process(Pid::from_u32(pid as u32)) {
         proc_.kill()

@@ -39,6 +39,7 @@ use std::sync::Mutex;
 #[cfg(feature = "ui-iced")]
 pub mod iced;
 
+#[cfg(feature = "ui-iced")]
 pub use iced::{Terminal, TerminalState};
 
 /// Cell color — scalar mirror of the engine's ANSI color surface.

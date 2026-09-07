@@ -57,17 +57,17 @@ widget App {
         var apps_names = [
             "011-calculator", "012-stopwatch", "013-todo", "014-weather",
             "015-notes", "017-chat", "018-book-reader", "020-music-player",
-            "024-charts", "025-dashboard", "038-minesweeper", "041-auto-edit"
+            "024-charts", "025-sys-monitor", "038-minesweeper", "041-auto-edit"
         ]
         var apps_titles = [
             "Calculator", "Stopwatch", "Todo", "Weather",
             "Notes", "Chat", "Books", "Music",
-            "Charts", "Dashboard", "Minesweeper", "Auto Edit"
+            "Charts", "系统监视器", "Minesweeper", "Auto Edit"
         ]
         var apps_icons = [
             "calculator", "timer", "check-square", "cloud-sun",
             "notebook-pen", "message-circle", "book-open", "music",
-            "bar-chart-3", "layout-dashboard", "bomb", "file-code"
+            "bar-chart-3", "activity", "bomb", "file-code"
         ]
         var apps_cats = [
             "tool", "tool", "task", "life",
@@ -82,12 +82,12 @@ widget App {
         var apps_lns = [
             "011-calculator", "012-stopwatch", "013-todo", "014-weather",
             "015-notes", "017-chat", "018-book-reader", "020-music-player",
-            "024-charts", "025-dashboard", "038-minesweeper", "041-auto-edit"
+            "024-charts", "025-sys-monitor", "038-minesweeper", "041-auto-edit"
         ]
         var apps_lts = [
             "calculator", "stopwatch", "todo", "weather",
             "notes", "chat", "books", "music",
-            "charts", "dashboard", "minesweeper", "auto edit"
+            "charts", "sys-monitor", "minesweeper", "auto edit"
         ]
         var recent = []             // 启动名记录，最近在前，上限 5（storage 持久化）
         var last str = ""           // 最近一次启动（演示/断言锚）
