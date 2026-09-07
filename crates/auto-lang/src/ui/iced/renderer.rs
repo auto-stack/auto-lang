@@ -11466,69 +11466,12 @@ fn compare_pngs(
         if !msg.event.starts_with("__") {
             eprintln!("[UI_EVENT] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
         }
-        // PLAN-043 T6: 滚动同步 rust 直写快道——VM handler 对 float 实参
-        // 绑定与算术写入存在引擎级腐坏（整值 float 实参恒丢/复合算式
-        // RHS 全哑，多形态实测；DEBTS 登记引擎 bug），onscroll 三测量记
-        // 录与比例级联改在 update 层经 write_state 直写（theme seeding
-        // 同信任路径）。app.at 的 OnLeft/OnRightScroll handler 保留为
-        // 契约面（vue 生成侧），VM 轨在此拦截不再向下分派。
-        if msg.event.starts_with("OnLeftScroll")
-            || msg.event.starts_with("OnRightScroll")
-            || msg.event.starts_with("SetScrollTop")
-        {
-            let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
-            // auto_val nanbox 根因：整值 float（240.0/0.0）编码丢失 float
-            // 标签——实参绑定读垃圾、state 写读回 0（贯穿本计划全部
-            // 「handler 哑」假象的单一根因；DEBTS 登记引擎 bug）。写入值
-            // 统一 +1e-3 强制分数形态（0.001px 误差不可见）。
-            let frac = |v: f64| auto_val::Value::Double(v + 0.001);
-            let getf = |i: usize| {
-                args.get(i).and_then(|v| match v {
-                    auto_val::Value::Float(f) => Some(*f as f32),
-                    auto_val::Value::Int(i2) => Some(*i2 as f32),
-                    auto_val::Value::Double(d) => Some(*d as f32),
-                    auto_val::Value::Str(s) => s.as_str().trim().parse::<f32>().ok(),
-                    _ => None,
-                })
-            };
-            if clean == "OnLeftScroll" || clean == "OnRightScroll" {
-                if let (Some(h), Some(c), Some(top)) = (getf(0), getf(1), getf(2)) {
-                    let left = clean == "OnLeftScroll";
-                    let (me_t, me_h, me_c, peer_t, peer_h, peer_c) = if left {
-                        ("left_top", "left_height", "left_client", "right_top", "right_height", "right_client")
-                    } else {
-                        ("right_top", "right_height", "right_client", "left_top", "left_height", "left_client")
-                    };
-                    let _ = state.component.write_state(me_t, frac(top as f64));
-                    let _ = state.component.write_state(me_h, frac(h as f64));
-                    let _ = state.component.write_state(me_c, frac(c as f64));
-                    let ph = match state.component.read_state(peer_h) {
-                        Ok(auto_val::Value::Double(f)) => f as f32,
-                        Ok(auto_val::Value::Float(f)) => f as f32,
-                        Ok(auto_val::Value::Int(i)) => i as f32,
-                        _ => 0.0,
-                    };
-                    let pc = match state.component.read_state(peer_c) {
-                        Ok(auto_val::Value::Double(f)) => f as f32,
-                        Ok(auto_val::Value::Float(f)) => f as f32,
-                        Ok(auto_val::Value::Int(i)) => i as f32,
-                        _ => 0.0,
-                    };
-                    let (my_range, peer_range) = (h - c, ph - pc);
-                    if my_range > 0.0 && peer_range > 0.0 {
-                        let target = top / my_range * peer_range;
-                        let _ = state.component.write_state(peer_t, frac(target as f64));
-                    }
-                    return iced::Task::none();
-                }
-            }
-            if clean == "SetScrollTop" {
-                if let Some(v) = getf(0) {
-                    let _ = state.component.write_state("left_top", frac(v as f64));
-                    return iced::Task::none();
-                }
-            }
-        }
+        // PLAN-058（auto-down）：043 T6 滚动同步 rust 直写快道退役——
+        // VM handler 对 float 实参绑定与算术写入的引擎腐坏（nanbox 整值
+        // float 丢标签）已由彼侧过渡计划清偿（回归锁 =
+        // plan058_engine_gap_tests），OnLeftScroll/OnRightScroll/
+        // SetScrollTop 现走解释器 handler 真消费（app.at 三 handler 补
+        // 齐快道同款对栏比例级联），不再在此拦截。
 
         // PLAN-044 T5: ghost 占位 rust 直写快道——onfocusblock 的 Typed 消息
         //（args = [Int block_index, Float height]，失焦 (Int -1, 0.0)；见
