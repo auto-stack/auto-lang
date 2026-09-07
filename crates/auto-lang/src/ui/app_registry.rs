@@ -235,39 +235,198 @@ pub fn parse_extra_dirs(value: &str) -> Vec<(String, PathBuf)> {
     out
 }
 
-/// Plan 501：extra 根聚合决策（纯函数，boot 期宿主包装消费）。
+/// Plan 501 + Stage B P-3：extra 根聚合决策（纯函数，boot 期宿主包装消费）。
 /// - `extra_dirs_value`：storage `shell.apps.extra_dirs` 原值（None/空 = 无）；
 /// - `scan_siblings_value`：storage `shell.apps.scan_siblings`（"false" = 关
-///   相邻仓探测缺省）；
+///   相邻仓探测缺省——apps 容器同属探测族，一并受控）；
 /// - `sibling_front`：相邻仓前端根缺省（`../auto-os-config/auto`），存在
-///   才产出 `("os-config", …)`。
+///   才产出 `("os-config", …)`；
+/// - `apps_container`：Stage B P-3 apps 容器缺省（`../auto-os/apps`），存在时
+///   每个含 pac.at 的直接子目录产出一个 local root（id = 子目录名）。
 /// 缺省探测与 storage 项同 id 时 storage 优先（先入表）。
 pub fn extra_roots_from(
     extra_dirs_value: Option<&str>,
     scan_siblings_value: Option<&str>,
     sibling_front: &Path,
+    apps_container: &Path,
 ) -> Vec<(String, PathBuf)> {
     let mut out: Vec<(String, PathBuf)> = extra_dirs_value
         .filter(|v| !v.trim().is_empty())
         .map(parse_extra_dirs)
         .unwrap_or_default();
-    if scan_siblings_value != Some("false") && sibling_front.is_dir() {
-        let id = "os-config".to_string();
-        if !out.iter().any(|(existing, _)| existing == &id) {
-            out.push((id, sibling_front.to_path_buf()));
+    if scan_siblings_value != Some("false") {
+        if sibling_front.is_dir() {
+            let id = "os-config".to_string();
+            if !out.iter().any(|(existing, _)| existing == &id) {
+                out.push((id, sibling_front.to_path_buf()));
+            }
         }
+        expand_apps_container(apps_container, &mut out);
     }
     out
 }
 
-/// Plan 501：boot 期宿主包装——storage 读 + 相邻仓探测缺省根。
+/// Stage B P-3：apps 容器展开——每个含 pac.at 的直接子目录 = 一个 local
+/// app root（id = 子目录名，排序保确定性；缺容器/无 pac.at 子目录静默
+/// 跳过——solo 检出不炸）。vue 轨同律镜像见 auto-man vue.rs
+/// `desktop_extra_app_roots`（三轨 parity）。
+fn expand_apps_container(container: &Path, out: &mut Vec<(String, PathBuf)>) {
+    if !container.is_dir() {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(container) else {
+        return;
+    };
+    let mut subdirs: Vec<std::fs::DirEntry> =
+        rd.flatten().filter(|e| e.path().is_dir()).collect();
+    subdirs.sort_by_key(|e| e.file_name());
+    for entry in subdirs {
+        let dir = entry.path();
+        if !dir.join("pac.at").is_file() {
+            continue;
+        }
+        let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !out.iter().any(|(existing, _)| existing == name) {
+            out.push((name.to_string(), dir));
+        }
+    }
+}
+
+/// Plan 501 + Stage B P-3：boot 期宿主包装——storage 读 + 相邻仓探测缺省根
+/// （`../auto-os-config/auto` 单根 + `../auto-os/apps` 容器）+ apps.manifest
+/// repo 条目聚合（策展意志，独立于 scan_siblings 探测开关）。
 pub fn host_extra_roots() -> Vec<(String, PathBuf)> {
     let front = PathBuf::from("..").join("auto-os-config").join("auto");
-    extra_roots_from(
+    let apps = PathBuf::from("..").join("auto-os").join("apps");
+    let mut roots = extra_roots_from(
         crate::vm::ffi::stdlib::storage_host_read("shell.apps.extra_dirs").as_deref(),
         crate::vm::ffi::stdlib::storage_host_read("shell.apps.scan_siblings").as_deref(),
         &front,
-    )
+        &apps,
+    );
+    if let Some(os_root) = resolve_os_manifest_root(Path::new("..")) {
+        for (id, root) in manifest_repo_roots(&os_root) {
+            if !roots.iter().any(|(existing, _)| existing == &id) {
+                roots.push((id, root));
+            }
+        }
+    }
+    roots
+}
+
+/// Stage B P-3：解析序定位 auto-os 根——`AUTO_OS_ROOT` env（**设置即权威**，
+/// 指空目录 = 显式关断聚合，不回落）→ 兄弟 `parent/auto-os` → 主检出兜底
+/// `D:/autostack/auto-os`。首个含 `apps.manifest` 的候选胜；全缺 → None
+/// （solo 检出静默不聚合）。
+pub fn resolve_os_manifest_root(parent: &Path) -> Option<PathBuf> {
+    if let Some(root) = std::env::var_os("AUTO_OS_ROOT") {
+        let p = PathBuf::from(root);
+        return p.join("apps.manifest").is_file().then_some(p);
+    }
+    [parent.join("auto-os"), PathBuf::from("D:/autostack/auto-os")]
+        .into_iter()
+        .find(|root| root.join("apps.manifest").is_file())
+}
+
+/// auto-os `apps.manifest` 条目（Stage B P-3 定稿 schema；宽容读取——
+/// 未知字段忽略，缺省 kind=repo / status=active，坏条目跳过不阻断启动）。
+#[derive(serde::Deserialize)]
+struct OsManifestApp {
+    id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    name: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default = "os_manifest_default_kind")]
+    kind: String,
+    #[serde(default = "os_manifest_default_status")]
+    #[allow(dead_code)]
+    status: String,
+}
+
+fn os_manifest_default_kind() -> String {
+    "repo".to_string()
+}
+
+fn os_manifest_default_status() -> String {
+    "active".to_string()
+}
+
+#[derive(serde::Deserialize)]
+struct OsManifestFile {
+    #[serde(default)]
+    apps: Vec<OsManifestApp>,
+}
+
+/// Stage B P-3：apps.manifest repo 条目聚合（框架侧直读，用户裁定
+/// 2026-09-07）。repo 形态：`repo` 相对 manifest 根解析，含 pac.at 才注册
+/// 为 extra root（id = manifest id）；local 形态由 apps/ 容器展开覆盖
+/// （D1），此处无动作；status 非 active / 未知 kind / 坏 JSON / 目标无
+/// pac.at → 跳过 + 警告，不阻断启动（solo/半配置检出不炸）。
+///
+/// 执行期修正（较 Design 01 §4-P3 草案「经 remote/URL 机制注册为远程窗」）：
+/// remote-apps.json 机制（Plan 516 G4）实测为 **WS 投影协议**端点
+/// （RemoteAppConfig.url 全 WS——连的是另一桌面实例的投影面），http/
+/// 原生 app 形态装不进；repo 仓本身即 pac.at + src/front/app.at 单 app
+/// 根（os-config 先例同型，kanban README VM 轨 `auto run -r vm` 原生跑），
+/// 故注册为 **extra root 原生挂载**。Design 01 §1-C 的「remote 窗或
+/// extra root」两候选中后者落地；非 AutoUI 纯 web app 的 iframe 嵌入
+/// 列 Stage C 候选（零新概念边界）。
+pub fn manifest_repo_roots(manifest_root: &Path) -> Vec<(String, PathBuf)> {
+    let path = manifest_root.join("apps.manifest");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let parsed: OsManifestFile = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(err) => {
+            eprintln!(
+                "[app-registry] apps.manifest parse failed (manifest aggregation skipped): {err}"
+            );
+            return Vec::new();
+        }
+    };
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    for app in parsed.apps {
+        if app.status != "active" {
+            continue;
+        }
+        match app.kind.as_str() {
+            // local 形态：apps/<id>/ 由容器展开（D1）覆盖，manifest 仅策展。
+            "local" => continue,
+            "repo" => {}
+            other => {
+                eprintln!(
+                    "[app-registry] apps.manifest entry `{}` skipped: unknown kind `{other}`",
+                    app.id
+                );
+                continue;
+            }
+        }
+        let Some(repo_rel) = app.repo else {
+            eprintln!(
+                "[app-registry] apps.manifest entry `{}` skipped: repo form missing `repo`",
+                app.id
+            );
+            continue;
+        };
+        let repo_dir = manifest_root.join(repo_rel);
+        if !repo_dir.join("pac.at").is_file() {
+            eprintln!(
+                "[app-registry] apps.manifest entry `{}` skipped: {} has no pac.at",
+                app.id,
+                repo_dir.display()
+            );
+            continue;
+        }
+        if !out.iter().any(|(existing, _)| existing == &app.id) {
+            out.push((app.id, repo_dir));
+        }
+    }
+    out
 }
 
 /// Plan 501：多根聚合（G4 去重——主根 examples 优先，extra 按 id 补齐）。
@@ -575,25 +734,172 @@ mod tests {
     #[test]
     fn extra_roots_decision_matrix() {
         let (main, extra) = multi_root_fixture("decision");
+        let no_container = main.join("nowhere-apps");
         // 缺省（无 storage）：探测存在 → 含 os-config。
-        let roots = extra_roots_from(None, None, &extra);
+        let roots = extra_roots_from(None, None, &extra, &no_container);
         assert_eq!(
             roots,
             vec![("os-config".to_string(), extra.clone())],
             "相邻仓探测缺省"
         );
-        // scan_siblings=false → 关探测（storage extra_dirs 仍可用）。
-        assert!(extra_roots_from(None, Some("false"), &extra).is_empty());
+        // scan_siblings=false → 关探测（storage extra_dirs 仍可用；apps 容器
+        // 同属探测族一并受控）。
+        assert!(extra_roots_from(None, Some("false"), &extra, &no_container).is_empty());
         // 探测根不存在 → 空表。
-        assert!(extra_roots_from(None, None, Path::new("Z:/nowhere")).is_empty());
+        assert!(
+            extra_roots_from(None, None, Path::new("Z:/nowhere"), &no_container).is_empty()
+        );
         // storage 项 + 探测共存；同 id storage 优先。
-        let roots = extra_roots_from(Some("os-config=D:/custom"), None, &extra);
+        let roots = extra_roots_from(Some("os-config=D:/custom"), None, &extra, &no_container);
         assert_eq!(
             roots,
             vec![("os-config".to_string(), PathBuf::from("D:/custom"))],
             "同 id 探测不覆盖 storage 项"
         );
         let _ = std::fs::remove_dir_all(main.parent().unwrap());
+    }
+
+    /// Stage B P-3：apps 容器 fixture——`<root>/apps/{alpha,beta,no-pac}`
+    /// （alpha/beta 带 pac.at，no-pac 不带）+ 同 id 冲突子目录探测。
+    fn apps_container_fixture(tag: &str) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!("autoui-586-container-{tag}"));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let container = root.join("auto-os").join("apps");
+        for (name, with_pac) in [("alpha", true), ("beta", true), ("no-pac", false)] {
+            let dir = container.join(name);
+            std::fs::create_dir_all(dir.join("src").join("front")).unwrap();
+            if with_pac {
+                std::fs::write(dir.join("pac.at"), "name: \"x\"\n").unwrap();
+            }
+            std::fs::write(dir.join("src").join("front").join("app.at"), "widget A {}").unwrap();
+        }
+        (project, container)
+    }
+
+    /// Stage B P-3：apps.manifest fixture——repo（含 pac.at）/ local / 非
+    /// active / 未知 kind / repo 缺 pac.at 五形态 + 解析序定位。
+    #[test]
+    fn manifest_repo_roots_aggregation() {
+        std::env::remove_var("AUTO_OS_ROOT");
+        let root = std::env::temp_dir().join(format!("autoui-586-manifest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let os_root = root.join("auto-os");
+        std::fs::create_dir_all(os_root.join("apps")).unwrap();
+        // repo 形态目标仓：pac.at + src/front/app.at（os-config 同型）。
+        let repo = root.join("auto-kanban-fake");
+        std::fs::create_dir_all(repo.join("src").join("front")).unwrap();
+        std::fs::write(repo.join("pac.at"), "name: \"fake-kanban\"\n").unwrap();
+        std::fs::write(repo.join("src").join("front").join("app.at"), "widget K {}").unwrap();
+        // 无 pac.at 的 repo 目标（跳过路径）。
+        let bare = root.join("bare-repo");
+        std::fs::create_dir_all(&bare).unwrap();
+        std::fs::write(
+            os_root.join("apps.manifest"),
+            format!(
+                r#"{{ "apps": [
+  {{ "id": "kanban", "name": "看板", "repo": "../auto-kanban-fake", "kind": "repo", "ports": [17100, 17101], "status": "active", "added": "2026-09-07" }},
+  {{ "id": "future-local", "kind": "local", "status": "active" }},
+  {{ "id": "paused", "repo": "../auto-kanban-fake", "kind": "repo", "status": "retired" }},
+  {{ "id": "weird", "kind": "submodule", "status": "active" }},
+  {{ "id": "bared", "repo": "../bare-repo", "kind": "repo", "status": "active" }},
+  {{ "id": "no-repo-field", "kind": "repo", "status": "active" }}
+] }}"#
+            ),
+        )
+        .unwrap();
+        // 解析序：兄弟 auto-os 含 manifest → 命中。
+        assert_eq!(
+            resolve_os_manifest_root(&root),
+            Some(os_root.clone()),
+            "兄弟候选命中"
+        );
+        // repo 聚合：仅合法 active repo 条目产出（canonicalize 消化 join
+        // 保留的 `..` 段）。
+        let roots = manifest_repo_roots(&os_root);
+        assert_eq!(roots.len(), 1, "local/非active/未知kind/无pac.at/缺repo 字段全部跳过");
+        assert_eq!(roots[0].0, "kanban");
+        assert_eq!(
+            std::fs::canonicalize(&roots[0].1).unwrap(),
+            std::fs::canonicalize(&repo).unwrap()
+        );
+        // 坏 JSON → 空表 + 不 panic。
+        std::fs::write(os_root.join("apps.manifest"), "{ not json").unwrap();
+        assert!(manifest_repo_roots(&os_root).is_empty());
+        // 兄弟 manifest 被破坏后回落主检出候选（本机存在）——只断言不
+        // panic；env 权威语义由下段覆盖。
+        let _ = resolve_os_manifest_root(&root);
+        // env 覆盖=设置即权威（不回落）：指向第二 manifest 根即胜，指向
+        // 空目录即关断。
+        let os_root2 = root.join("auto-os-2");
+        std::fs::create_dir_all(&os_root2).unwrap();
+        std::fs::write(
+            os_root2.join("apps.manifest"),
+            r#"{ "apps": [ { "id": "envy", "repo": "../auto-kanban-fake", "kind": "repo" } ] }"#,
+        )
+        .unwrap();
+        std::env::set_var("AUTO_OS_ROOT", &os_root2);
+        assert_eq!(resolve_os_manifest_root(&root), Some(os_root2.clone()));
+        let roots = manifest_repo_roots(&os_root2);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].0, "envy");
+        assert_eq!(
+            std::fs::canonicalize(&roots[0].1).unwrap(),
+            std::fs::canonicalize(&repo).unwrap()
+        );
+        let dead = root.join("no-manifest-here");
+        std::fs::create_dir_all(&dead).unwrap();
+        std::env::set_var("AUTO_OS_ROOT", &dead);
+        assert_eq!(
+            resolve_os_manifest_root(&root),
+            None,
+            "env 设置即权威：空目录显式关断，不回落主检出"
+        );
+        std::env::remove_var("AUTO_OS_ROOT");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Stage B P-3：apps 容器展开——pac.at 门控、排序、id 去重、缺容器静默、
+    /// scan_siblings 门控。
+    #[test]
+    fn extra_roots_apps_container_expansion() {
+        let (project, container) = apps_container_fixture("expansion");
+        let no_front = project.join("no-front");
+        let alpha = container.join("alpha");
+        let beta = container.join("beta");
+        // 容器存在 → alpha/beta 展开（排序），no-pac 被 pac.at 门控跳过。
+        let roots = extra_roots_from(None, None, &no_front, &container);
+        assert_eq!(
+            roots,
+            vec![
+                ("alpha".to_string(), alpha.clone()),
+                ("beta".to_string(), beta.clone()),
+            ],
+            "每个含 pac.at 的直接子目录 = 一个 local root，排序确定性"
+        );
+        // 单根探测与容器共存：os-config 在前，容器子目录随后（front 本身
+        // 在容器内且带 pac.at，同样被展开拾取）。
+        let front = container.join("front");
+        std::fs::create_dir_all(front.join("src").join("front")).unwrap();
+        std::fs::write(front.join("pac.at"), "name: \"f\"\n").unwrap();
+        let roots = extra_roots_from(None, None, &front, &container);
+        assert_eq!(roots.len(), 4, "os-config + alpha + beta + front");
+        assert_eq!(roots[0].0, "os-config");
+        // 同 id：storage 项优先（先入表），容器不覆盖。
+        let roots = extra_roots_from(Some("alpha=D:/custom"), None, &front, &container);
+        assert!(
+            roots.iter().any(|(id, p)| id == "alpha" && p == &PathBuf::from("D:/custom")),
+            "同 id 容器不覆盖 storage 项"
+        );
+        // scan_siblings=false → 容器探测一并关闭。
+        assert!(extra_roots_from(None, Some("false"), &front, &container).is_empty());
+        // 缺容器 → 静默空（solo 检出不炸）。
+        assert!(
+            extra_roots_from(None, None, &front, &project.join("nowhere")).len() == 1,
+            "缺容器仅单根探测产出"
+        );
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
     }
 
     #[test]

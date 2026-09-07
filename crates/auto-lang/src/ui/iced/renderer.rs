@@ -10951,6 +10951,12 @@ pub struct DesktopOptions {
     /// T7：应用注册表目录（扫描 `*/pac.at` → LaunchApp 目标）。None =
     /// 不装载注册表（LaunchApp 回 toast "registry unavailable"）。
     pub apps_dir: Option<std::path::PathBuf>,
+    /// Stage B P-3：extra 根显式覆盖（沿 `apps_dir` 先例；用户裁定
+    /// 2026-09-07 仅 API 层不加 CLI flag）。None = 缺省探测
+    /// （`app_registry::host_extra_roots`：storage + `../auto-os-config/auto`
+    /// 单根 + `../auto-os/apps` 容器 + apps.manifest repo 条目）；Some =
+    /// 全额替换（id 取路径末段，vue 轨 `AUTO_DESKTOP_APPS_EXTRA` 同语义）。
+    pub extra_app_roots: Option<Vec<std::path::PathBuf>>,
     /// Plan 494：真洞模式（docked 原生窗口垫桌面下方 + SetWindowRgn 洞
     /// 排除）。boot 期与 `shell.native.hole` storage 键取或（472 dock 配置
     /// 同型）；运行时失败自动回退 off。
@@ -11287,12 +11293,31 @@ fn compare_pngs(
                 // 是前端目标不是 vm 兼容性；真不兼容的由 panic 边界 + 占位页
                 // 兜底（T7）。`ScanOptions.render` 过滤开关留给 464 launcher。
                 if let Some(apps_dir) = &opts.apps_dir {
-                    // Plan 501：多扫描根聚合——examples 主根 + 外部仓自含根
-                    //（storage `shell.apps.extra_dirs` + 相邻仓探测缺省
-                    // `../auto-os-config/auto` → id `os-config`；去重主根优先）。
+                    // Plan 501 + Stage B P-3：多扫描根聚合——examples 主根 +
+                    // 外部仓自含根（storage `shell.apps.extra_dirs` + 相邻仓
+                    // 探测缺省 `../auto-os-config/auto` 单根 + `../auto-os/apps`
+                    // 容器 + apps.manifest repo 条目；去重主根优先）。
+                    // `DesktopOptions.extra_app_roots` Some = 全额替换探测
+                    //（vue 轨 AUTO_DESKTOP_APPS_EXTRA 同语义）。
+                    let extra_roots = match &opts.extra_app_roots {
+                        Some(roots) => roots
+                            .iter()
+                            .filter_map(|p| {
+                                p.is_dir().then(|| {
+                                    let id = p
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("extra")
+                                        .to_string();
+                                    (id, p.clone())
+                                })
+                            })
+                            .collect(),
+                        None => crate::ui::app_registry::host_extra_roots(),
+                    };
                     let full = crate::ui::app_registry::aggregate_scan(
                         apps_dir,
-                        &crate::ui::app_registry::host_extra_roots(),
+                        &extra_roots,
                         &crate::ui::app_registry::ScanOptions::default(),
                     );
                     // PLAN-552：boot 两分——启动解析器（app_resolver）保留
