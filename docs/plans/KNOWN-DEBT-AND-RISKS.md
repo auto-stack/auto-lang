@@ -1736,6 +1736,9 @@ active/onclick VM 实证随之可补。
   025-sys-monitor-back 目录（worktree 无此未跟踪产物）被摘 member +
   015-notes 再生成；已回滚未随合入。跨检出共享工作区 + 落点硬编码的
   复合病灶实证，P-2 落点解析序化必要性强化。
+  **✅ 已结案（2026-09-07，PLAN-587 / Stage B P-2）**：落点解析序化落地
+  （env 权威→框架内共享零变化→仓外 project-local）；V4 框架 ws 字节不变
+  +仓外生成链落位实证。
 - **P584-D2 Stage B 硬前置②：桌面注册表默认指向框架仓**：
   `crates/auto-lang/examples/ui_desktop.rs:17-37` 默认注册表目录编译期
   （CARGO_MANIFEST_DIR）锚定框架仓 `examples/ui`；`crates/auto-man/src/vue.rs:5480`
