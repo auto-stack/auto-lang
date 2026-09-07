@@ -9,6 +9,7 @@ pub mod templates;
 pub mod resolver;
 pub mod builder;
 pub mod compiler_store;
+pub mod runner;
 
 // 重新导出常用类型
 pub use config::{
