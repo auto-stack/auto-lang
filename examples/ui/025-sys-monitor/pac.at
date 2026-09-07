@@ -1,0 +1,19 @@
+// pac.at - 系统监视器（Plan 541）
+//
+// 任务管理器式系统监视器——真实系统数据（sysinfo 后端），vue/vm 双轨。
+// 4页：进程 / 性能 / 详细信息 / 用户，含结束任务 alert-dialog 二次确认。
+
+name: "sys-monitor"
+version: "0.2.0"
+description: "任务管理器式系统监视器——真实系统数据（sysinfo 后端），vue/vm 双轨"
+
+scene: "ui"
+render: "vue"
+title: "系统监视器"
+icon: "activity"
+category: "system"
+front_port: 4025
+back_port: 8425
+desktop: "true"
+theme: "dark"
+accent: "indigo"

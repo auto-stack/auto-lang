@@ -6107,7 +6107,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -8294,6 +8294,14 @@ impl Codegen {
                             ("url", "encode") => Some("auto.url.encode".to_string()),
                             ("url", "decode") => Some("auto.url.decode".to_string()),
                             ("url", "join_path") => Some("auto.url.join_path".to_string()),
+                            ("sys", method) => {
+                                let cand = format!("auto.sys.{}", method);
+                                if BIGVM_NATIVES.lock().unwrap().peek_qualified(&cand).is_some() {
+                                    Some(cand)
+                                } else {
+                                    None
+                                }
+                            }
                             _ => None,
                         };
                         if routed.is_some() {
@@ -8808,7 +8816,7 @@ impl Codegen {
                                     // Object/Math）补入——Array.isArray 走实例路径
                                     // 时类型名 receiver 被推栈，shim 弹到字符串
                                     // 索引（实测评价值 0..N 递增=类型名池位）。
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math"
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys"
                                         | "Array" | "Object" | "JSON" | "Math" | "Date")
                                         || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)
@@ -9238,7 +9246,7 @@ impl Codegen {
                                 false
                             } else {
                                 let lower = obj_name.as_ref();
-                                matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http" | "shell"
+                                matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "sys" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http" | "shell"
                                     | "env_logger" | "chrono" | "serde_json" | "csv" | "walkdir" | "clap" | "simplelog"
                                     | "crossbeam" | "rayon" | "num" | "percent_encoding" | "urlencoding"
                                     | "sha2" | "hmac" | "flate2" | "tar" | "semver" | "once_cell"
@@ -9319,7 +9327,7 @@ impl Codegen {
                                                     "serde_json","csv","walkdir","clap","simplelog","crossbeam",
                                                     "rayon","num","percent_encoding","urlencoding","sha2","hmac",
                                                     "flate2","tar","semver","once_cell","rand_distr","log",
-                                                    "time","math","rand","base64","hex","env_logger","process","path",
+                                                    "time","math","sys","rand","base64","hex","env_logger","process","path",
                                                 ];
                                                 CM.contains(&mn.as_ref())
                                                     && type_field.as_ref().chars().next().map(|c| c.is_uppercase()).unwrap_or(false)

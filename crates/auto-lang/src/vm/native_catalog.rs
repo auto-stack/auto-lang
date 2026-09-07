@@ -52,6 +52,24 @@ macro_rules! for_each_native {
             (2927, NATIVE_DIALOG_OPEN, shim_dialog_open, "auto.dialog.open"),
             (2928, NATIVE_DIALOG_SAVE, shim_dialog_save, "auto.dialog.save"),
             (2929, NATIVE_FILE_BASENAME, shim_file_basename, "auto.file.basename"),
+            // === Plan 541: System Monitor (auto.sys.*) ===
+            (2421, NATIVE_SYS_CPU_USAGE, shim_sys_cpu_usage, "auto.sys.cpu_usage"),
+            (2422, NATIVE_SYS_CPU_COUNT, shim_sys_cpu_count, "auto.sys.cpu_count"),
+            (2423, NATIVE_SYS_CPU_CORE_USAGE, shim_sys_cpu_core_usage, "auto.sys.cpu_core_usage"),
+            (2424, NATIVE_SYS_CPU_BRAND, shim_sys_cpu_brand, "auto.sys.cpu_brand"),
+            (2425, NATIVE_SYS_MEM_TOTAL_MB, shim_sys_mem_total_mb, "auto.sys.mem_total_mb"),
+            (2426, NATIVE_SYS_MEM_USED_MB, shim_sys_mem_used_mb, "auto.sys.mem_used_mb"),
+            (2427, NATIVE_SYS_NET_SENT_KBS, shim_sys_net_sent_kbs, "auto.sys.net_sent_kbs"),
+            (2428, NATIVE_SYS_NET_RECV_KBS, shim_sys_net_recv_kbs, "auto.sys.net_recv_kbs"),
+            (2429, NATIVE_SYS_PROCESSES, shim_sys_processes, "auto.sys.processes"),
+            (2431, NATIVE_SYS_KILL, shim_sys_kill, "auto.sys.kill"),
+            (2432, NATIVE_SYS_OS_NAME, shim_sys_os_name, "auto.sys.os_name"),
+            (2433, NATIVE_SYS_OS_VERSION, shim_sys_os_version, "auto.sys.os_version"),
+            (2434, NATIVE_SYS_KERNEL_VERSION, shim_sys_kernel_version, "auto.sys.kernel_version"),
+            (2435, NATIVE_SYS_HOSTNAME, shim_sys_hostname, "auto.sys.hostname"),
+            (2436, NATIVE_SYS_UPTIME_S, shim_sys_uptime_s, "auto.sys.uptime_s"),
+            (2437, NATIVE_SYS_DISKS, shim_sys_disks, "auto.sys.disks"),
+            (2438, NATIVE_SYS_USERS, shim_sys_users, "auto.sys.users"),
             // === Plan 428 P1: code folding (view state) ===
             (2932, NATIVE_CODE_EDITOR_FOLD_TOGGLE, shim_code_editor_fold_toggle, "auto.code_editor.fold_toggle"),
             (2933, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, shim_code_editor_fold_hidden_count, "auto.code_editor.fold_hidden_count"),
@@ -734,6 +752,24 @@ macro_rules! for_each_bigvm_native {
             ("auto.dialog.open", 2927, String),
             ("auto.dialog.save", 2928, String),
             ("auto.file.basename", 2929, String),
+            // === Plan 541: System Monitor (auto.sys.*) ===
+            ("auto.sys.cpu_usage", 2421, Float),
+            ("auto.sys.cpu_count", 2422, Int),
+            ("auto.sys.cpu_core_usage", 2423, Float),
+            ("auto.sys.cpu_brand", 2424, String),
+            ("auto.sys.mem_total_mb", 2425, Int),
+            ("auto.sys.mem_used_mb", 2426, Int),
+            ("auto.sys.net_sent_kbs", 2427, Float),
+            ("auto.sys.net_recv_kbs", 2428, Float),
+            ("auto.sys.processes", 2429, List),
+            ("auto.sys.kill", 2431, Bool),
+            ("auto.sys.os_name", 2432, String),
+            ("auto.sys.os_version", 2433, String),
+            ("auto.sys.kernel_version", 2434, String),
+            ("auto.sys.hostname", 2435, String),
+            ("auto.sys.uptime_s", 2436, Int),
+            ("auto.sys.disks", 2437, List),
+            ("auto.sys.users", 2438, List),
             // === Plan 428 P1: code folding ===
             ("auto.code_editor.fold_toggle", 2932, Bool),
             ("auto.code_editor.fold_hidden_count", 2933, Int),
@@ -2231,6 +2267,23 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.regex.test", 2403),
     ("auto.regex.match", 2410),
     ("auto.sys.exec", 2420),
+    ("auto.sys.cpu_usage", 2421),
+    ("auto.sys.cpu_count", 2422),
+    ("auto.sys.cpu_core_usage", 2423),
+    ("auto.sys.cpu_brand", 2424),
+    ("auto.sys.mem_total_mb", 2425),
+    ("auto.sys.mem_used_mb", 2426),
+    ("auto.sys.net_sent_kbs", 2427),
+    ("auto.sys.net_recv_kbs", 2428),
+    ("auto.sys.processes", 2429),
+    ("auto.sys.kill", 2431),
+    ("auto.sys.os_name", 2432),
+    ("auto.sys.os_version", 2433),
+    ("auto.sys.kernel_version", 2434),
+    ("auto.sys.hostname", 2435),
+    ("auto.sys.uptime_s", 2436),
+    ("auto.sys.disks", 2437),
+    ("auto.sys.users", 2438),
     ("auto.fs.is_binary", 2430),
     ("auto.re_opaque.new", 2450),
     ("auto.re_opaque.is_match", 2451),
@@ -2503,6 +2556,24 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_is_exited", 2948),
     ("auto.term.engine_free", 2949),
 
+    // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
+    ("auto.image.queue", 2960),
+    ("auto.image.open", 2961),
+    ("auto.image.scan", 2962),
+    ("auto.image.request", 2963),
+    ("auto.image.retain", 2964),
+    ("auto.image.release", 2965),
+    ("auto.image.close", 2966),
+    ("auto.image.stats", 2967),
+    ("auto.image.open_session", 2968),
+    ("auto.image.snapshot", 2969),
+    ("auto.image.current_uri", 2970),
+    ("auto.image.names", 2971),
+    ("auto.image.navigate", 2972),
+    ("auto.image.request_view", 2973),
+    ("auto.image.close_session", 2974),
+    ("auto.image.session_stats", 2975),
+
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),
     ("auto.hash.file_md5", 2815),
@@ -2652,6 +2723,29 @@ mod catalog_integrity_tests {
                     name, cat_id, id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn image_native_ids_unique_and_match_catalog() {
+        let image_names = [
+            "auto.image.queue", "auto.image.open", "auto.image.scan", "auto.image.request",
+            "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
+            "auto.image.open_session", "auto.image.snapshot", "auto.image.current_uri", "auto.image.names", "auto.image.navigate",
+            "auto.image.request_view", "auto.image.close_session", "auto.image.session_stats",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for name in image_names {
+            let id = crate::vm::native_registry::NATIVE_ID_MAP.get(name)
+                .unwrap_or_else(|| panic!("missing {} from NATIVE_ID_MAP", name));
+            assert!(seen.insert(*id), "duplicate image native id {} for {}", id, name);
+            // Ensure image native IDs do not collide with auto.sys.* IDs (2421..2438)
+            assert!(
+                *id < 2420 || *id > 2440,
+                "image native id {} for {} collides with auto.sys.* range",
+                id,
+                name
+            );
         }
     }
 }

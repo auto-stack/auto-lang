@@ -389,7 +389,7 @@ mod tests {
             "020-music-player",
             "022-kanban",
             "024-charts",
-            "025-dashboard",
+            "025-sys-monitor",
             "026-database",
             "027-file-manager",
             "028-launcher",

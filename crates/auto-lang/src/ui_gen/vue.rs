@@ -11729,6 +11729,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if let Some(value) = props.get("open") {
                     if let Some(model) = self.extract_state_ref(value) {
                         attrs.push(format!("v-model:open=\"{}\"", model));
+                    } else if let AuraPropValue::Expr(expr) = value {
+                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":open=\"{}\"", js_expr));
+                        }
                     }
                 }
             }
@@ -11917,6 +11921,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if let Some(value) = props.get("open") {
                     if let Some(model) = self.extract_state_ref(value) {
                         attrs.push(format!("v-model:open=\"{}\"", model));
+                    } else if let AuraPropValue::Expr(expr) = value {
+                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":open=\"{}\"", js_expr));
+                        }
                     }
                 }
                 // title for DialogTitle
@@ -14211,6 +14219,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 {
                     Some(field.to_string())
                 }
+                crate::ast::Expr::Ident(obj_name) => {
+                    let stripped = obj_name.as_str().strip_prefix('.').unwrap_or(obj_name.as_str());
+                    if stripped.is_empty() {
+                        Some(field.to_string())
+                    } else {
+                        Some(format!("{}.{}", stripped, field))
+                    }
+                }
+                crate::ast::Expr::Dot(..) => {
+                    let s = self.expr_to_vue_bound_value(match value {
+                        AuraPropValue::Expr(e) => e,
+                        _ => unreachable!(),
+                    }).ok()?;
+                    if s.is_empty() { None } else { Some(s) }
+                }
                 _ => None,
             },
             _ => None,
@@ -16412,6 +16435,7 @@ function getAccentNames(): string[] {
         use crate::ast::Expr;
         match expr {
             Expr::Int(n) => n.to_string(),
+            Expr::Float(f, _) | Expr::Double(f, _) => f.to_string(),
             Expr::Str(s) | Expr::CStr(s) => format!("'{}'", Self::escape_js_string(s.as_str())),
             Expr::Bool(b) => b.to_string(),
             Expr::Array(elems) => {

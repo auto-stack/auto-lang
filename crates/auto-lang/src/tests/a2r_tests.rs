@@ -1552,3 +1552,27 @@ fn test_312_codegen_collects_api_routes() {
 // worktree before its removal (013 there → 021 here to avoid number clash).
 #[test] fn test_22_actors_021_handle_struct_field() { test_a2r_deep("22_actors/021_handle_struct_field"); }
 #[test] fn test_22_actors_022_closure_cb() { test_a2r_deep("22_actors/022_closure_cb"); }
+
+// Plan 541: a2r transpile test for auto.sys / sys module calls
+#[test]
+fn test_a2r_sys_transpile() {
+    let src = r#"
+use auto.sys
+
+pub fn sample_system() {
+    let cpu = sys.cpu_usage()
+    let count = sys.cpu_count()
+    let brand = sys.cpu_brand()
+    let total = sys.mem_total_mb()
+    let used = sys.mem_used_mb()
+    let ok = sys.kill(1234)
+}
+"#;
+    let mut rcode = transpile_rust("sample_system", src).expect("transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs_code = String::from_utf8_lossy(rs_bytes);
+    assert!(rs_code.contains("a2r_std::sys"));
+    assert!(rs_code.contains("cpu_usage()"));
+    assert!(rs_code.contains("cpu_count()"));
+    assert!(rs_code.contains("mem_total_mb()"));
+}

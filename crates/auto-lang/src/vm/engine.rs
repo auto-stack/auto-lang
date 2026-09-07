@@ -5267,6 +5267,7 @@ impl AutoVM {
                     // Stack: value, array_id, index (compiled in this order by codegen)
                     // Pop index first (top of stack)
                     let index = task.ram.pop_i32() as usize;
+                    let _ = task.ram.take_stake_at(task.ram.sp);
                     // Pop array_id. arrays still push raw i32 (H3 will migrate),
                     // but accept TAG_OBJECT too in case a heap List id reaches here.
                     // Plan 419: receiver stake 在 arm 末尾释放;value 自栈转移
@@ -5274,6 +5275,7 @@ impl AutoVM {
                     let receiver_nv;
                     let array_id = {
                         let nv = task.ram.pop_nv();
+                        let _ = task.ram.take_stake_at(task.ram.sp);
                         receiver_nv = nv;
                         if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
@@ -5283,6 +5285,7 @@ impl AutoVM {
                     // float 位模式被当整数存入(f"84.0" 写入读回 1118306300
                     // 实锤)——与 SET_FIELD 的 decode_tagged_nv 同型修复。
                     let value_nv = task.ram.pop_nv();
+                    let _ = task.ram.take_stake_at(task.ram.sp);
                     let value = self.decode_tagged_nv(value_nv);
                     let mut old_elem_ref: Option<u64> = None;
 
@@ -5335,6 +5338,7 @@ impl AutoVM {
                     // Pop field_name_idx first (top of stack)
                     let field_idx = {
                         let nv = task.ram.pop_nv();
+                        let _ = task.ram.take_stake_at(task.ram.sp);
                         if auto_val::is_string(nv) { auto_val::decode_string(nv) as usize }
                         else { auto_val::decode_i32(nv) as usize }
                     };
@@ -5345,6 +5349,7 @@ impl AutoVM {
                     let receiver_nv;
                     let obj_id = {
                         let nv = task.ram.pop_nv();
+                        let _ = task.ram.take_stake_at(task.ram.sp);
                         receiver_nv = nv;
                         if auto_val::is_i32(nv) { auto_val::decode_i32(nv) as u64 }
                         else if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
@@ -5352,6 +5357,7 @@ impl AutoVM {
                     };
                     // Pop value (bottom of stack)
                     let value_nv = task.ram.pop_nv();
+                    let _ = task.ram.take_stake_at(task.ram.sp);
                     let mut old_field_ref: Option<u64> = None;
 
                     // Get field name from strings pool

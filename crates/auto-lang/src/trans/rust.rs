@@ -7320,7 +7320,7 @@ impl RustTrans {
                     let receiver_is_stdlib_module = matches!(object.as_ref(),
                         Expr::Ident(name) if matches!(name.as_str(),
                             "env" | "json" | "Json" | "fs" | "file" | "http" | "io"
-                            | "shell" | "regex" | "math" | "str" | "time" | "process"));
+                            | "shell" | "regex" | "math" | "sys" | "str" | "time" | "process"));
                     // Plan 514 W1 (洞 B): 同理跳过用户类型接收者——类型自有
                     // 方法名 `set`(99_idiom2/m09 Holder.set)须直通,不得重映射
                     // 为 HashMap::insert(Plan 393 E1 append 守卫同型)。

@@ -138,6 +138,7 @@ log = { workspace = true }
 urlencoding = { workspace = true }
 # Plan 199 Phase 7: Colored output for debugger
 colored = { workspace = true }
+sysinfo = { workspace = true }
 
 # Plan 154/341: HTTP client — blocking (Plan 154) + async + stream (Plan 341 异步客户端/SSE)
 # Plan 391 (W4): +brotli response decompression.

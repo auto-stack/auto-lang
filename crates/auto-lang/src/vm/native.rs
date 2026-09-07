@@ -1151,6 +1151,208 @@ pub fn shim_file_basename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     Ok(())
 }
 
+// ── Plan 541: System Monitor Natives (auto.sys.*) ───────────────────────────
+
+pub fn shim_sys_cpu_usage(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::cpu_usage();
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_cpu_count(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::cpu_count();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_cpu_core_usage(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let idx = pop_arg_i32(task) as usize;
+    let val = crate::libs::sys::cpu_core_usage(idx);
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_cpu_brand(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let brand = crate::libs::sys::cpu_brand();
+    let idx = vm.add_string(brand.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_mem_total_mb(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::mem_total_mb();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_mem_used_mb(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::mem_used_mb();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_net_sent_kbs(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::net_sent_kbs();
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_net_recv_kbs(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::net_recv_kbs();
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_os_name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::os_name();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_os_version(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::os_version();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_kernel_version(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::kernel_version();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_hostname(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::hostname();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_uptime_s(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::uptime_s();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_kill(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let pid = pop_arg_i32(task);
+    let ok = crate::libs::sys::kill(pid);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+pub fn shim_sys_processes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use auto_val::Value;
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::types::ListData;
+
+    let procs = crate::libs::sys::processes();
+    let mut list: ListData<Value> = ListData::new();
+
+    let field_names = vec![
+        "pid".to_string(),
+        "name".to_string(),
+        "cpu".to_string(),
+        "mem_mb".to_string(),
+        "disk_kbs".to_string(),
+        "net_kbs".to_string(),
+        "status".to_string(),
+        "user".to_string(),
+    ];
+
+    for p in procs {
+        let fields = vec![
+            Value::Int(p.pid),
+            Value::Str(p.name.into()),
+            Value::Double(p.cpu),
+            Value::Int(p.mem_mb),
+            Value::Double(p.disk_kbs),
+            Value::Double(p.net_kbs),
+            Value::Str(p.status.into()),
+            Value::Str(p.user.into()),
+        ];
+        let inst = GenericInstanceData::new_with_names(
+            "ProcInfo".to_string(),
+            fields,
+            field_names.clone(),
+        );
+        let inst_id = vm.insert_heap_object(inst);
+        vm.rc_retain_id(inst_id as u64);
+        list.push(Value::VmRef(auto_val::VmRef { id: inst_id as usize }));
+    }
+
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+pub fn shim_sys_disks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use auto_val::Value;
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::types::ListData;
+
+    let disks = crate::libs::sys::disks();
+    let mut list: ListData<Value> = ListData::new();
+
+    let field_names = vec![
+        "name".to_string(),
+        "mount".to_string(),
+        "total_mb".to_string(),
+        "avail_mb".to_string(),
+    ];
+
+    for d in disks {
+        let fields = vec![
+            Value::Str(d.name.into()),
+            Value::Str(d.mount.into()),
+            Value::Int(d.total_mb),
+            Value::Int(d.avail_mb),
+        ];
+        let inst = GenericInstanceData::new_with_names(
+            "DiskInfo".to_string(),
+            fields,
+            field_names.clone(),
+        );
+        let inst_id = vm.insert_heap_object(inst);
+        vm.rc_retain_id(inst_id as u64);
+        list.push(Value::VmRef(auto_val::VmRef { id: inst_id as usize }));
+    }
+
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+pub fn shim_sys_users(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use auto_val::Value;
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::types::ListData;
+
+    let users = crate::libs::sys::users();
+    let mut list: ListData<Value> = ListData::new();
+
+    let field_names = vec!["name".to_string()];
+
+    for u in users {
+        let fields = vec![Value::Str(u.name.into())];
+        let inst = GenericInstanceData::new_with_names(
+            "UserInfo".to_string(),
+            fields,
+            field_names.clone(),
+        );
+        let inst_id = vm.insert_heap_object(inst);
+        vm.rc_retain_id(inst_id as u64);
+        list.push(Value::VmRef(auto_val::VmRef { id: inst_id as usize }));
+    }
+
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
 // Feature-off stubs: same signatures, clear runtime error.
 #[cfg(not(feature = "code-editor"))]
 pub fn shim_code_editor_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

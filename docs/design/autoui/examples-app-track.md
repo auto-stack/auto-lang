@@ -60,9 +60,7 @@
 | 流媒体视频门户 | 019-video-app | ✅ 有 demo，Bilibili/YouTube 风格 |
 | 视频播放器 (本地/系统) | 030-video-player | ✅ [Plan 542] 原生极简播放器 (VLC/PotPlayer 风格) |
 | 图片查看器 (本地/系统) | 031-image-viewer | ◐ [Plan 547] 三运行形态 ImageSurface 与后端媒体管线 |
-| 时钟(世界钟/闹钟/计时) | 012-stopwatch | ◐ 原地升级为 clock suite,不占新号 |
-| 系统监视器 | 025-dashboard | 🆕 §5 |
-| 文件管理器 | 027-file-manager | 🆕 §5 |
+| 系统监视器 | 025-sys-monitor | ✅ [Plan 541] 任务管理器式系统监视器（真 sysinfo 后端，前身 025-dashboard） |
 | 启动器 | 028-launcher | 🆕 §5 |
 | 图片查看器 | 029-photo-gallery | ✅ [Plan 537] macOS 相册风图库 |
 | 邮件 | 034-email | 🆕 规划中 |
@@ -74,9 +72,7 @@
 
 | 编号 | 应用 | 钉住的平台缺口 | 成本 | 依赖 |
 |---|---|---|---|---|
-| 024 | **charts** 图表工坊 | 模型驱动数据系列、hover/tooltip 交互、**vm 端自绘图表**(矢量) | 中 | 官方 chart 组件库（[437](../plans/437-024-charts.md) Phase 0–2 前置：现状仅 vue 端、无正式组件声明） |
-| 025 | **dashboard** 系统监视器 | charts 组合 + KPI + 轮询刷新(.Tick) + 响应式布局 | 低 | 024 |
-| 026 | **database** SQLite 客户端 | DataTable 深水区(虚拟滚动/分页/排序/筛选)、**Tree 缺口**、SQL 编辑器(复用 code_editor)、rusqlite 后端 a2r 大结果集 | 高,分三阶段(只读浏览→SQL console→写操作) | — |
+| 025 | **sys-monitor** 系统监视器 | Win11 任务管理器式 4 页 + 4 实时面积图 + 进程管理与二次确认 + sysinfo 后端 | 中 | [Plan 541]（前身 438-dashboard） |
 | 027 | **file-manager** 文件管理器 | Tree 导航、列表/网格切换、右键菜单(Plan 422 已解锁)、内联重命名、fs 后端 | 中 | — |
 | 029 | **photo-gallery** 图库 | 图片解码缓存管线、zoom/pan 手势、全屏、缩略图网格（[Plan 537]） | 中 | — |
 | 030 | **video-player** 原生视频播放器 | 沉浸式大视口画布、自动渐隐 OSD 悬浮控制条、交互式寻道、多档倍速、可折叠播放队列、双端媒体引擎（[Plan 542] 对标 VLC/PotPlayer/IINA） | 中 | — |
