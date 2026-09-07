@@ -5312,164 +5312,164 @@ function Oi() {
 //#region src/AutoPlaygroundFull.vue
 var ki = /* @__PURE__ */ l({
 	__name: "AutoPlaygroundFull",
-	setup(n) {
-		let { source: r, stdout: o, stderr: s, resultCode: l, timeMs: u, bytecode: d, bytecodeMeta: f, isLoading: m, activeTab: h, transpiledCode: b, transFiles: x, selectedTransFile: S, projectFiles: T, activeFile: E, highlightedOutputLines: D, highlightedSourceLine: k, mappedSourceFiles: A, run: j, transpile: M, runCode: N, selectTransFile: P, selectFile: F, loadExample: I, highlightOutputLine: L, share: R, shareToast: z } = Ei(), B = Di(), V = Oi(), H = y([]), U = y("editor"), W = y("rust"), G = t(() => V.isActive.value ? V.currentState.value : B.state.value), K = t(() => V.isActive.value ? V.bytecode.value : B.bytecode.value), q = t(() => V.isActive.value ? V.meta.value : B.meta.value), ee = t(() => U.value === "run" ? d.value : K.value), te = t(() => {
+	setup(n, { expose: r }) {
+		let { source: o, stdout: s, stderr: l, resultCode: u, timeMs: d, bytecode: f, bytecodeMeta: m, isLoading: h, activeTab: b, transpiledCode: x, transFiles: S, selectedTransFile: T, projectFiles: E, activeFile: D, highlightedOutputLines: k, highlightedSourceLine: A, mappedSourceFiles: j, run: M, transpile: N, runCode: P, selectTransFile: F, selectFile: I, loadExample: L, highlightOutputLine: R, share: z, shareToast: B } = Ei(), V = Di(), H = Oi(), U = y([]), W = y("editor"), G = y("rust"), K = t(() => H.isActive.value ? H.currentState.value : V.state.value), q = t(() => H.isActive.value ? H.bytecode.value : V.bytecode.value), ee = t(() => H.isActive.value ? H.meta.value : V.meta.value), te = t(() => W.value === "run" ? f.value : q.value), ne = t(() => {
 			let e = {};
-			for (let t of ee.value) t.line !== void 0 && (e[t.line] || (e[t.line] = []), e[t.line].push(t.offset));
+			for (let t of te.value) t.line !== void 0 && (e[t.line] || (e[t.line] = []), e[t.line].push(t.offset));
 			return e;
-		}), ne = t(() => {
+		}), re = t(() => {
 			let e = {};
-			for (let t of ee.value) t.line !== void 0 && (e[t.offset] = t.line);
+			for (let t of te.value) t.line !== void 0 && (e[t.offset] = t.line);
 			return e;
-		}), re = y(null), J = t(() => k.value ? te.value[k.value] : void 0), ie = t(() => re.value ? te.value[re.value] : void 0);
-		function Y(e) {
-			k.value = e;
-		}
+		}), J = y(null), ie = t(() => A.value ? ne.value[A.value] : void 0), Y = t(() => J.value ? ne.value[J.value] : void 0);
 		function X(e) {
-			re.value = e;
+			A.value = e;
 		}
-		function Z() {
-			re.value = null;
+		function Z(e) {
+			J.value = e;
 		}
-		O(() => B.state.value, (e) => {
-			e?.status === "finished" && (o.value = e.stdout || "", l.value = e.result || "", s.value = e.stderr || "");
-		}), O(() => B.isDebugging.value, (e) => {
-			!e && U.value === "debug" && B.state.value?.status !== "finished" && (U.value = "editor");
-		}), O(() => V.isActive.value, (e) => {
-			!e && U.value === "replay" && (U.value = "editor");
+		function ae() {
+			J.value = null;
+		}
+		O(() => V.state.value, (e) => {
+			e?.status === "finished" && (s.value = e.stdout || "", u.value = e.result || "", l.value = e.stderr || "");
+		}), O(() => V.isDebugging.value, (e) => {
+			!e && W.value === "debug" && V.state.value?.status !== "finished" && (W.value = "editor");
+		}), O(() => H.isActive.value, (e) => {
+			!e && W.value === "replay" && (W.value = "editor");
 		});
-		async function ae() {
-			U.value = "run", o.value = "", s.value = "", l.value = "", await j();
-		}
 		async function oe() {
-			U.value = "trans", await M(W.value), h.value = W.value;
+			W.value = "run", s.value = "", l.value = "", u.value = "", await M();
 		}
-		async function se(e) {
-			await N(e);
+		async function se() {
+			W.value = "trans", await N(G.value), b.value = G.value;
 		}
-		function ce() {
-			B.isDebugging.value || (U.value = "debug", V.stop(), B.connect(r.value, H.value));
+		async function ce(e) {
+			await P(e);
 		}
 		function Q() {
-			B.isRecording.value ? B.stopRecording() : B.startRecording(r.value, H.value);
+			V.isDebugging.value || (W.value = "debug", H.stop(), V.connect(o.value, U.value));
 		}
-		function le(e) {
-			B.sendCommand(e);
+		function le() {
+			V.isRecording.value ? V.stopRecording() : V.startRecording(o.value, U.value);
 		}
 		function ue(e) {
-			let t = ne.value[e];
-			t && Y(t);
+			V.sendCommand(e);
 		}
 		function de(e) {
-			H.value = e, B.setBreakpoints(e);
+			let t = re.value[e];
+			t && X(t);
 		}
-		async function fe() {
+		function fe(e) {
+			U.value = e, V.setBreakpoints(e);
+		}
+		async function pe() {
 			let e = document.createElement("input");
 			e.type = "file", e.accept = ".autoreplay,.json", e.onchange = async () => {
 				let t = e.files?.[0];
 				if (t) try {
 					let e = await t.text(), n = JSON.parse(e);
-					B.stop(), V.load(n), U.value = "replay";
+					V.stop(), H.load(n), W.value = "replay";
 				} catch (e) {
 					alert("Failed to load replay file: " + e.message);
 				}
 			}, e.click();
 		}
-		function pe(e) {
-			I(e), U.value = "editor";
-		}
 		function me(e) {
-			if (V.isActive.value) {
+			L(e), W.value = "editor";
+		}
+		function he(e) {
+			if (H.isActive.value) {
 				switch (e.key) {
 					case "ArrowRight":
-						e.preventDefault(), V.stepForward();
+						e.preventDefault(), H.stepForward();
 						break;
 					case "ArrowLeft":
-						e.preventDefault(), V.stepBackward();
+						e.preventDefault(), H.stepBackward();
 						break;
 					case " ":
-						e.preventDefault(), V.isPlaying.value ? V.pause() : V.play();
+						e.preventDefault(), H.isPlaying.value ? H.pause() : H.play();
 						break;
 				}
 				return;
 			}
-			if (B.isDebugging.value) switch (e.key) {
+			if (V.isDebugging.value) switch (e.key) {
 				case "F5":
-					e.preventDefault(), le(e.shiftKey ? "stop" : "continue");
+					e.preventDefault(), ue(e.shiftKey ? "stop" : "continue");
 					break;
 				case "F10":
-					e.preventDefault(), le("step_over");
+					e.preventDefault(), ue("step_over");
 					break;
 				case "F11":
-					e.preventDefault(), le(e.shiftKey ? "step_out" : "step");
+					e.preventDefault(), ue(e.shiftKey ? "step_out" : "step");
 					break;
 			}
 		}
 		return g(() => {
-			window.addEventListener("keydown", me), window.__loadReplayForTest__ = (e) => {
-				V.load(e), U.value = "replay";
+			window.addEventListener("keydown", he), window.__loadReplayForTest__ = (e) => {
+				H.load(e), W.value = "replay";
 			};
 		}), _(() => {
-			window.removeEventListener("keydown", me);
-		}), (t, n) => (v(), i(e, null, [c(bi, {
-			source: w(r),
-			"is-loading": w(m),
-			mode: U.value,
-			"trans-target": W.value,
-			"onUpdate:transTarget": n[0] ||= (e) => W.value = e,
-			stdout: w(o),
-			stderr: w(s),
-			"result-code": w(l),
-			"time-ms": w(u),
-			"transpiled-code": w(b),
-			"trans-files": w(x),
-			"selected-trans-file": w(S),
-			"project-files": w(T),
-			"active-file": w(E),
-			"mapped-source-files": w(A),
-			"highlight-lines": w(D),
-			"on-run": ae,
-			"on-trans": oe,
-			"on-run-code": se,
-			"on-debug": ce,
-			"on-select-trans-file": w(P),
-			"on-output-line-click": w(L),
-			"is-debugging": w(B).isDebugging.value,
-			"is-paused": w(B).state.value?.status === "paused",
-			"is-recording": w(B).isRecording.value,
-			"has-recording": !!w(B).recording.value,
-			bytecode: ee.value,
-			"bytecode-meta": U.value === "run" ? w(f) : q.value,
-			"debug-state": G.value,
-			"current-source-line": re.value,
-			"highlighted-offsets": ie.value,
-			"selected-offsets": J.value,
-			"selected-source-line": w(k),
-			breakpoints: H.value,
-			"current-debug-line": G.value?.line ?? null,
-			"is-replay-mode": w(V).isActive.value,
-			"replay-current-index": w(V).currentIndex.value,
-			"replay-total-frames": w(V).totalFrames.value,
-			"is-replay-playing": w(V).isPlaying.value,
-			"onUpdate:source": n[1] ||= (e) => r.value = e,
-			onLoadExample: pe,
-			onSelectFile: w(F),
-			onShare: w(R),
-			onDebugCommand: le,
-			onToggleRecord: Q,
-			onExportRecording: w(B).exportRecording,
-			onLineClick: Y,
-			"on-highlight-line": X,
-			"on-clear-highlight": Z,
-			onOffsetClick: ue,
-			onBreakpointsChange: de,
-			onLoadReplay: fe,
-			onReplayPlay: w(V).play,
-			onReplayPause: w(V).pause,
-			onReplayStepForward: w(V).stepForward,
-			onReplayStepBackward: w(V).stepBackward,
-			onReplaySeek: w(V).seek
-		}, null, 8, /* @__PURE__ */ "source.is-loading.mode.trans-target.stdout.stderr.result-code.time-ms.transpiled-code.trans-files.selected-trans-file.project-files.active-file.mapped-source-files.highlight-lines.on-select-trans-file.on-output-line-click.is-debugging.is-paused.is-recording.has-recording.bytecode.bytecode-meta.debug-state.current-source-line.highlighted-offsets.selected-offsets.selected-source-line.breakpoints.current-debug-line.is-replay-mode.replay-current-index.replay-total-frames.is-replay-playing.onSelectFile.onShare.onExportRecording.onReplayPlay.onReplayPause.onReplayStepForward.onReplayStepBackward.onReplaySeek".split(".")), a("div", { class: p(["toast", { visible: w(z).visible }]) }, C(w(z).message), 3)], 64));
+			window.removeEventListener("keydown", he);
+		}), r({ loadExample: me }), (t, n) => (v(), i(e, null, [c(bi, {
+			source: w(o),
+			"is-loading": w(h),
+			mode: W.value,
+			"trans-target": G.value,
+			"onUpdate:transTarget": n[0] ||= (e) => G.value = e,
+			stdout: w(s),
+			stderr: w(l),
+			"result-code": w(u),
+			"time-ms": w(d),
+			"transpiled-code": w(x),
+			"trans-files": w(S),
+			"selected-trans-file": w(T),
+			"project-files": w(E),
+			"active-file": w(D),
+			"mapped-source-files": w(j),
+			"highlight-lines": w(k),
+			"on-run": oe,
+			"on-trans": se,
+			"on-run-code": ce,
+			"on-debug": Q,
+			"on-select-trans-file": w(F),
+			"on-output-line-click": w(R),
+			"is-debugging": w(V).isDebugging.value,
+			"is-paused": w(V).state.value?.status === "paused",
+			"is-recording": w(V).isRecording.value,
+			"has-recording": !!w(V).recording.value,
+			bytecode: te.value,
+			"bytecode-meta": W.value === "run" ? w(m) : ee.value,
+			"debug-state": K.value,
+			"current-source-line": J.value,
+			"highlighted-offsets": Y.value,
+			"selected-offsets": ie.value,
+			"selected-source-line": w(A),
+			breakpoints: U.value,
+			"current-debug-line": K.value?.line ?? null,
+			"is-replay-mode": w(H).isActive.value,
+			"replay-current-index": w(H).currentIndex.value,
+			"replay-total-frames": w(H).totalFrames.value,
+			"is-replay-playing": w(H).isPlaying.value,
+			"onUpdate:source": n[1] ||= (e) => o.value = e,
+			onLoadExample: me,
+			onSelectFile: w(I),
+			onShare: w(z),
+			onDebugCommand: ue,
+			onToggleRecord: le,
+			onExportRecording: w(V).exportRecording,
+			onLineClick: X,
+			"on-highlight-line": Z,
+			"on-clear-highlight": ae,
+			onOffsetClick: de,
+			onBreakpointsChange: fe,
+			onLoadReplay: pe,
+			onReplayPlay: w(H).play,
+			onReplayPause: w(H).pause,
+			onReplayStepForward: w(H).stepForward,
+			onReplayStepBackward: w(H).stepBackward,
+			onReplaySeek: w(H).seek
+		}, null, 8, /* @__PURE__ */ "source.is-loading.mode.trans-target.stdout.stderr.result-code.time-ms.transpiled-code.trans-files.selected-trans-file.project-files.active-file.mapped-source-files.highlight-lines.on-select-trans-file.on-output-line-click.is-debugging.is-paused.is-recording.has-recording.bytecode.bytecode-meta.debug-state.current-source-line.highlighted-offsets.selected-offsets.selected-source-line.breakpoints.current-debug-line.is-replay-mode.replay-current-index.replay-total-frames.is-replay-playing.onSelectFile.onShare.onExportRecording.onReplayPlay.onReplayPause.onReplayStepForward.onReplayStepBackward.onReplaySeek".split(".")), a("div", { class: p(["toast", { visible: w(B).visible }]) }, C(w(B).message), 3)], 64));
 	}
 }), Ai = { class: "nx-sidebar" }, ji = { class: "nx-search" }, Mi = ["value"], Ni = { class: "nx-tree" }, Pi = ["onClick"], Fi = ["title"], Ii = { class: "nx-count" }, Li = { class: "nx-notes" }, Ri = ["title", "onClick"], zi = {
 	key: 0,
