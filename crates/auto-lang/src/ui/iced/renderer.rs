@@ -10951,6 +10951,9 @@ pub struct DesktopOptions {
     /// T7：应用注册表目录（扫描 `*/pac.at` → LaunchApp 目标）。None =
     /// 不装载注册表（LaunchApp 回 toast "registry unavailable"）。
     pub apps_dir: Option<std::path::PathBuf>,
+    /// Stage B P-7：shell pack 目录显式覆盖（沿 `apps_dir` 先例；Design 01
+    /// §4-P7）。None = 缺省解析序（env → 兄弟 → 主检出 → 内嵌 pin 快照）。
+    pub shell_pack: Option<std::path::PathBuf>,
     /// Stage B P-3：extra 根显式覆盖（沿 `apps_dir` 先例；用户裁定
     /// 2026-09-07 仅 API 层不加 CLI flag）。None = 缺省探测
     /// （`app_registry::host_extra_roots`：storage + `../auto-os-config/auto`
@@ -11019,6 +11022,10 @@ fn run_session(
     mode: RunMode,
     opts: DesktopOptions,
 ) -> AppResult<String> {
+    // Stage B P-7：宿主显式 shell pack 注入（OnceLock 首值胜；后续幂等）。
+    if let Some(pack_dir) = &opts.shell_pack {
+        crate::ui::shell::set_shell_pack_override(pack_dir.clone());
+    }
     // PLAN-575 D1 挂点②：main 装配处（run_session 唯一管线，I3）装全局
     // panic 审计 hook——只追加日志，不改 panic 语义（G3 零行为变更）。
     crate::vm::ffi::stdlib::install_exit_audit_panic_hook();
