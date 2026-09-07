@@ -34,17 +34,18 @@ PLAN-552 语义缺省 `desktop_visible=true`（opt-out），无需 pac `desktop:
 两分逻辑、`extra_roots_from`/`desktop_extra_app_roots` 的 env 覆盖语义
 （`AUTO_DESKTOP_APPS_EXTRA` 设置时整体替换缺省，保持不变）。
 
-**与 PLAN-579（auto-os 立项）的对齐**（2026-09-07 追加）：579 裁定
-auto-lang=语言/框架根、auto-os=产品根（伞形）、真实 app 走独立仓，但其
-Stage A 只建伞形骨架+首个 app 仓，**明确不迁移桌面 shell（Stage B 另行
-立项）**——578 的落点（双轨注册表装配）在 Stage B 前仍是桌面唯一消费面，
-照常执行、即刻生效。双轨画廊探测统一按**主根（apps_dir）兄弟锚定**
-（§详细设计 1/§3）：Stage B 宿主迁 auto-os 后，apps_dir 按 579 AGENTS.md
-跨仓解析序约定（`AUTO_LANG_ROOT` → 兄弟 `../auto-lang` → 主检出）仍指
-auto-lang `examples/ui`，画廊条目自动跟随，578 代码随 shell 迁移原样
-带走。画廊与 examples/ui 同属 **auto-ui 项目**资产（因 cargo 管理约束
-现居 auto-lang；未来随 auto-ui 栈拆仓迁出——方式待定，用户举例 git
-submodule；见 §详细设计 6/待澄清③）。
+**与 PLAN-579（auto-os 立项）的对齐**（2026-09-07 追加，同日二次修订）：
+579 裁定 auto-lang=语言/框架根、auto-os=产品根（伞形）、真实 app 走独立
+仓；其 Stage A 只建伞形骨架+首个 app 仓，桌面 shell 迁移=Stage B（另行
+立项）。**执行时序（用户裁定）：579 → Stage B（新虚拟桌面可用）→ 578
+延期执行**——本计划不先行落地现行桌面，落点=届时桌面宿主（Stage B
+迁移后的注册表装配处），执行前按届时代码位置重锚文件路径（设计不变，
+仅重锚；见 §详细设计 6）。双轨画廊探测统一按**主根（apps_dir）兄弟
+锚定**（§详细设计 1/§3）：届时 apps_dir 按 579 AGENTS.md 跨仓解析序
+约定（`AUTO_LANG_ROOT` → 兄弟 `../auto-lang` → 主检出）仍指 auto-lang
+`examples/ui`，画廊条目自动跟随。画廊与 examples/ui 同属 **auto-ui
+项目**资产（因 cargo 管理约束现居 auto-lang；未来随 auto-ui 栈拆仓迁出
+——方式待定，用户举例 git submodule；见 §详细设计 6/待澄清③）。
 
 ## 目标
 
@@ -204,12 +205,16 @@ fn desktop_extra_app_roots(root_dir: &Path, apps_dir: &Path) -> Vec<(String, Pat
 
 ### 6. 与 PLAN-579（auto-os 立项）的关系与迁移姿态
 
-- **时序**：579 Stage A 对 auto-lang 零代码改动（其边界声明），与本计划
-  无依赖，可并行执行。
-- **落点有效性**：桌面 shell 迁移是 579 Stage B（另行立项，前置=在途
-  525/526 折叠等）——在此之前 578 的双轨注册表装配是桌面唯一消费面，
-  578 即刻生效、非过渡性浪费（Stage B 是代码搬迁，注册逻辑与画廊探测
-  随迁）。
+- **时序**（用户裁定 2026-09-07 二次修订：**延期执行**）：579 →
+  Stage B（新虚拟桌面可用）→ 578。本计划不先行落地现行桌面——现行桌面
+  有生之年无画廊（非回归：画廊从未上过现行桌面），换取避免迁移动窗口内
+  双轨双冒烟、以及 Stage B 搬迁改写丢线的风险。579 Stage A 对 auto-lang
+  零代码改动（其边界声明），与本计划无机制依赖。
+- **落点=届时宿主**：执行时桌面注册表装配代码位于 Stage B 迁移后的宿主
+  仓——**设计/锚定不变，文件路径与接线点按届时代码重锚**（执行前刷新
+  本计划 T2-T6 的路径/行号引用，机械工作）。锚定不变式保证重锚可行：
+  apps_dir 兄弟探测 + 579 解析序指向 auto-lang `examples/ui`，画廊条目
+  自动跟随主根。
 - **迁移零适配**：双轨画廊探测统一 apps_dir 兄弟锚定（§1/§3）。Stage B
   后宿主在 auto-os，apps_dir 按 579 AGENTS.md 跨仓解析序约定（env
   AUTO_LANG_ROOT → 兄弟 ../auto-lang → D:/autostack/auto-lang 主检出）
@@ -319,5 +324,6 @@ vue.rs 同文件 tests mod）：
    后二者分置两树才需 storage `shell.apps.extra_dirs` 补注册（机制已备）。
    **时序裁定**（用户 2026-09-07，已同步登记 PLAN-579 待澄清⑥）：
    auto-ui 迁移讨论的前置 = ①虚拟桌面建仓结束（579 Stage B）+ ②新虚拟
-   桌面跑起来 + ③能够展示两个 gallery；满足后独立立项讨论，578 的机制
-   在该时点前已稳定服务现行桌面、在该时点后零返工跟随迁置。
+   桌面跑起来 + ③能够展示两个 gallery——其中③由本计划在新桌面交付
+   （执行链：579 → Stage B → **578** → auto-ui 独立讨论），满足后独立
+   立项讨论，届时零返工跟随迁置。
