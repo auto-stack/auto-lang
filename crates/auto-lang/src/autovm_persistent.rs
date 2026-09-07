@@ -769,7 +769,12 @@ impl AutovmReplSession {
 
         // Update VM's flash and strings
         self.vm.flash = Arc::new(flash);
-        self.vm.strings = Arc::new(std::sync::RwLock::new(codegen.strings.clone()));
+        // Plan 585: 池替换必须走 load_strings——重建 pool_state 并把 flash 常量区
+        // [0, n) 标记 pinned（rc.rs §Phase 2 不变量:字节码立即数只引用 pinned 条
+        // 目）。此前裸赋值绕过 pinned,常量被 rc 计数,首轮 ADD 释放即墓碑+槽位
+        // 复用,次轮 LOAD_STR 立即数读到跨代内容（下游 ash stale-copy 数据损坏,
+        // examples_parity::positional_arg_passes_to_system 红,池日志实锤）。
+        self.vm.load_strings(codegen.strings.clone());
 
         // Plan 197 Task 9: Sync generic registry to VM for runtime field name lookup
         self.vm.generic_registry = codegen.generic_registry.clone();
@@ -1184,6 +1189,108 @@ pub struct AutovmReplStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ========================================================================
+    // Plan 585: persistent session 字符串池 pinned 不变量。
+    //
+    // 真因:run_inner 步骤 8 裸赋值 vm.strings 绕过 load_strings,flash 常量区
+    // [0, n) 未标 pinned——常量被 rc 计数,首轮 ADD 释放即墓碑+槽位复用,次轮
+    // LOAD_STR 立即数读到跨代内容(下游 ash stale-copy 数据损坏,
+    // examples_parity::positional_arg_passes_to_system 红,池日志
+    // scratch/p585/ashrun/pool.log 实证交叉污染链)。
+    // ========================================================================
+
+    /// 测试 ShellHost:按命令内容返回固定结果(模拟 ash 的 PowerShell 桥)。
+    struct ParityHost;
+
+    impl crate::host::ShellHost for ParityHost {
+        fn system(&self, cmd: &str) -> String {
+            if cmd.contains("*.tmp") {
+                "./x.tmp\n".to_string()
+            } else if cmd.contains("*.bak") {
+                "./y.bak\n".to_string()
+            } else {
+                String::new()
+            }
+        }
+        fn system_status(&self) -> i32 { 0 }
+        fn export(&self, _key: &str, _val: &str) {}
+        fn exit(&self, _code: i32) {}
+        fn exit_requested(&self) -> bool { false }
+        fn requested_exit_code(&self) -> i32 { 0 }
+    }
+
+    /// T1 会话级 repro(下游 examples_parity 同形):循环内 system() + 拼接链 +
+    /// trim + found 累加,每轮内容必须完整——修复前第 2 轮起命令串被上一代
+    /// 内容污染,产出丢失。
+    #[test]
+    fn plan585_loop_concat_system_strings_repl_parity() {
+        let mut session = AutovmReplSession::new();
+        session.vm.set_host(std::sync::Arc::new(ParityHost));
+        let script = r#"fn main() {
+    var d = system("echo dir").trim()
+    if d.len() == 0 { d = "." }
+    var patterns = ["*.tmp", "*.bak", "*.log"]
+    var found = ""
+    for p in patterns {
+        var r = system("find " + d + " -maxdepth 1 -name " + p + " -type f")
+        if r.trim().len() > 0 { found = found + r.trim() + "\n" }
+    }
+    found
+}
+main()
+"#;
+        let result = session.run(script);
+        assert!(result.is_ok(), "script should run: {:?}", result.err());
+        assert_eq!(
+            session.format_last_result().as_deref(),
+            Some("./x.tmp\n./y.bak\n"),
+            "每轮 system() 结果必须完整进入 found——污染即丢轮"
+        );
+    }
+
+    /// T2 pin 不变量配平(583 风格):跑过含常量 + 循环拼接 churn 的脚本后,
+    /// flash 常量区每个条目必须恒 pinned(pool_count==u32::MAX)、非墓碑、
+    /// 内容不变,且池记账无多扣款。
+    #[test]
+    fn plan585_repl_constants_pinned_after_run() {
+        let mut session = AutovmReplSession::new();
+        let script = r#"var patterns = ["*.tmp", "*.bak", "*.log"]
+var found = ""
+for p in patterns {
+    var r = "res " + p + " \n "
+    if r.trim().len() > 0 { found = found + r.trim() + "|" }
+}
+found
+"#;
+        let result = session.run(script);
+        assert!(result.is_ok(), "script should run: {:?}", result.err());
+
+        let n_constants = session
+            .codegen
+            .as_ref()
+            .map(|c| c.strings.len())
+            .unwrap_or(0);
+        assert!(n_constants > 0, "script must contribute flash constants");
+        for i in 0..n_constants {
+            assert_eq!(
+                session.vm.pool_count(i),
+                u32::MAX,
+                "flash 常量 idx {} 必须 pinned(计为 u32::MAX)——unpinned 即裸换池回归",
+                i
+            );
+            assert!(
+                !session.vm.pool_is_tombstone(i),
+                "flash 常量 idx {} 不得被墓碑化(释放+槽位复用 = stale-copy 源)",
+                i
+            );
+        }
+        let health = session.vm.pool_health();
+        assert_eq!(
+            health.underflow_events, 0,
+            "池记账必须自持(无多扣款下溢)"
+        );
+    }
 
     #[test]
     fn test_autovm_session_create() {
