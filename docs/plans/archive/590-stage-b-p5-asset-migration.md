@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-590
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B P-5——资产搬迁本体批（台账+launcher+apps+画廊+L8 指针+行数实测）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
