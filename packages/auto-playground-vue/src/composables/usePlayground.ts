@@ -87,13 +87,14 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   // 项目型笔记文件集（Plan 582 T7；镜像 usePlaygroundFull 的 files 请求形态）。
   const projectFiles = ref<ProjectFile[]>([]);
 
-  /** 项目运行/转译请求体：files 非空时以 main.at 当前内容为 source（entry 锁定）。 */
+  /** 项目运行/转译请求体：files 非空时以 main.at（或首文件，Plan 582 parity）为 entry。 */
   function projectRequestBody(body: Record<string, unknown>) {
     if (projectDir.value) body.project_dir = projectDir.value;
     if (projectFiles.value.length > 0) {
       body.files = projectFiles.value;
       const main = projectFiles.value.find((f) => f.path === 'main.at');
       if (main) body.source = main.source;
+      body.entry = main?.path ?? projectFiles.value[0].path;
     }
     return body;
   }

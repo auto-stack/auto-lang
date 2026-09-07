@@ -3077,7 +3077,7 @@ function Nt(e = {}) {
 		if (S.value && (e.project_dir = S.value), C.value.length > 0) {
 			e.files = C.value;
 			let t = C.value.find((e) => e.path === "main.at");
-			t && (e.source = t.source);
+			t && (e.source = t.source), e.entry = t?.path ?? C.value[0].path;
 		}
 		return e;
 	}
@@ -4908,9 +4908,9 @@ function ki() {
 		if (f.value) {
 			h(), e.project_dir = f.value, e.files = p.value;
 			let t = p.value.find((e) => e.path === "main.at");
-			t && (e.source = t.source);
+			return t && (e.source = t.source), e;
 		}
-		return e;
+		return p.value.length > 0 && (h(), e.files = p.value, e.entry = p.value.find((e) => e.path === "main.at")?.path ?? (m.value || p.value[0].path)), e;
 	}
 	let v = y({}), b = y(null), x = y([]), S = y([]), C = y({
 		message: "",
@@ -5078,7 +5078,7 @@ function ki() {
 		n && (n.selectedFile = t, M());
 	}
 	function H(e) {
-		n.value = e.source, f.value = e.project_dir, p.value = e.files ?? [], m.value = e.files?.length ? "main.at" : "", r.value = "", i.value = "", a.value = "", s.value = [], b.value = null, x.value = [], S.value = [];
+		n.value = e.source, f.value = e.project_dir, p.value = e.files ?? [], m.value = e.files?.length ? e.files.find((e) => e.path === "main.at")?.path ?? e.files[0].path : "", r.value = "", i.value = "", a.value = "", s.value = [], b.value = null, x.value = [], S.value = [];
 	}
 	function U() {
 		let e = JSON.stringify({

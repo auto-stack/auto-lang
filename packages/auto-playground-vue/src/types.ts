@@ -7,6 +7,8 @@ export interface RunRequest {
   source: string;
   project_dir?: string;
   files?: ProjectFile[];
+  /** Entry path within files（files-only 物化运行用，Plan 582）；project_dir 模式忽略。 */
+  entry?: string;
 }
 
 export interface RunResponse {

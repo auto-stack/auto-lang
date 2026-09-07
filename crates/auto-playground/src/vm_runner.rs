@@ -51,6 +51,40 @@ pub fn run_source(source: &str) -> RunResult {
     }
 }
 
+/// Run a files-only project (no server-side `project_dir` — manifest notes,
+/// Plan 582): `files` are materialized at their relative paths in a temp dir,
+/// `source` is written at `entry`, and the entry path drives module resolution
+/// (`use auto.<lib>` resolves via the entry's parent dirs).
+pub fn run_files_project(
+    source: &str,
+    files: Vec<crate::project::ProjectFile>,
+) -> RunResult {
+    let start = Instant::now();
+
+    let outcome = crate::project::prepare_files_temp_dir(source, &files).and_then(|(dir, entry_path)| {
+        let run = auto_lang::run_with_capture_and_path_and_bytecode_with_meta(
+            source,
+            &entry_path.to_string_lossy(),
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok::<_, crate::error::AppError>(run)
+    });
+
+    let (result, stdout, bytecode, meta) = match outcome {
+        Ok(Ok((res, out, bc, meta))) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
+        Ok(Err(e)) => (String::new(), format!("Error: {}", e), Vec::new(), None),
+        Err(e) => (String::new(), format!("Error: {}", e), Vec::new(), None),
+    };
+
+    RunResult {
+        stdout,
+        result,
+        time_ms: start.elapsed().as_millis() as u64,
+        bytecode,
+        meta,
+    }
+}
+
 /// Run source that belongs to a project example. `project_dir` is relative to
 /// `examples/playground-demo`; the entry file is `main.at` inside that directory.
 /// When `files` is provided, the project is first materialized in a temp
