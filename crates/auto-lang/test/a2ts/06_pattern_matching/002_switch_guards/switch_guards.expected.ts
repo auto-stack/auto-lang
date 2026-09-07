@@ -1,4 +1,4 @@
-function classify(x: number): void {
+export function classify(x: number): void {
     switch (x) {
         case 0:
             console.log("zero");

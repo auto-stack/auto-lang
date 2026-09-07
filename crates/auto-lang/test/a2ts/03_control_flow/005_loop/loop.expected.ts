@@ -3,8 +3,8 @@ function main(): void {
     while (true) {
         x = x + 1;
         if (x > 5) {
-        break;
-    }
+            break;
+        }
     }
     console.log(x);
 }

@@ -2504,8 +2504,35 @@ impl RustTrans {
         }
     }
 
-    fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {
-        // Note: self, super, crate are NOT included — they are path segments
+    /// Plan 577 ② (DEBTS 016 Phase 0): is this type a Map container (native
+    /// `Map<K,V>` or the GenericInstance aliases the map-literal path accepts)?
+    fn type_is_map_like(ty: &Type) -> bool {
+        matches!(ty, Type::Map(_, _))
+            || matches!(ty, Type::GenericInstance(g)
+                if matches!(g.base_name.as_str(), "Map" | "HashMap" | "BTreeMap"))
+    }
+
+    /// Plan 577 ②: does this index receiver denote a Map? Mirrors the
+    /// `contains`→contains_key dispatch: Ident → local_var_types; field read
+    /// → any known struct field of Map type (owner often unresolvable).
+    fn recv_is_map(&self, recv: &Expr) -> bool {
+        match recv {
+            Expr::Ident(name) => self.local_var_types.get(name)
+                .map(Self::type_is_map_like)
+                .unwrap_or(false),
+            Expr::Dot(inner, field) => {
+                if matches!(inner.as_ref(), Expr::Ident(_)) {
+                    self.struct_field_types.values().any(|fields| fields.iter()
+                        .any(|(fname, fty)| fname == field && Self::type_is_map_like(fty)))
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {        // Note: self, super, crate are NOT included — they are path segments
         // that must not be escaped. "Self" (uppercase) is also not escaped
         // since it's used as a type name.
         const RUST_KEYWORDS: &[&str] = &[
@@ -2514,6 +2541,13 @@ impl RustTrans {
             "trait", "impl", "pub", "mut", "ref", "move",
             "mod", "use", "where", "as", "in", "static", "const",
             "unsafe", "extern", "dyn",
+            // Plan 577 ⑤ (DEBTS 016 Phase 0 / 022 final 行): Rust
+            // reserved-for-future words — r#-escapable in all editions;
+            // `final` was the 022 breakage (E0530). `gen` (edition-2024
+            // keyword) deliberately NOT included: emission targets edition
+            // 2021 where `gen` is a valid identifier.
+            "abstract", "become", "box", "do", "final", "macro", "override",
+            "priv", "typeof", "unsized", "virtual", "yield",
         ];
         if RUST_KEYWORDS.contains(&name) {
             std::borrow::Cow::Owned(format!("r#{}", name))
@@ -2916,11 +2950,18 @@ impl RustTrans {
                                     // non-ASCII text).
                                     if let Expr::Ident(field_name) = rhs.as_ref() {
                                         if field_name.as_str() == "length" {
+                                            // Plan 577 ④: same int-model cast
+                                            // as the Expr::Dot field form and
+                                            // the call() method form (bare
+                                            // `.len()` breaks int contexts).
+                                            let cast = !self.len_i32_cast_suppressed;
+                                            if cast { write!(out, "(")?; }
                                             if self.expr_is_string_like(lhs) {
                                                 write!(out, ".chars().count()")?;
                                             } else {
                                                 write!(out, ".len()")?;
                                             }
+                                            if cast { write!(out, " as i64)")?; }
                                             return Ok(());
                                         }
                                     }
@@ -2997,6 +3038,43 @@ impl RustTrans {
                                 write!(out, "; *{}.lock().unwrap() {} __a2r_gv; }}",
                                        static_name, op_str)?;
                                 return Ok(());
+                            }
+                        }
+
+                        // Plan 577 ② (DEBTS 016 Phase 0): `m[key] = value` on
+                        // a Map receiver is an insert (Rust maps have no
+                        // index-assign). Key/value str conversions mirror the
+                        // .insert method-call path: string-like keys get
+                        // .to_string(); values only when the Map's value type
+                        // is String.
+                        if matches!(op, Op::Asn) {
+                            if let Expr::Index(arr, idx) = lhs.as_ref() {
+                                if !matches!(idx.as_ref(), Expr::Range(_)) && self.recv_is_map(arr) {
+                                    self.expr(arr, out)?;
+                                    write!(out, ".insert(")?;
+                                    let key_is_string_like = matches!(idx.as_ref(),
+                                        Expr::Str(_) | Expr::CStr(_))
+                                        || if let Expr::Ident(n) = idx.as_ref() {
+                                            self.local_var_types.get(n)
+                                                .map(|ty| matches!(ty,
+                                                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned))
+                                                .unwrap_or(false)
+                                        } else {
+                                            false
+                                        };
+                                    self.expr(idx, out)?;
+                                    if key_is_string_like {
+                                        write!(out, ".to_string()")?;
+                                    }
+                                    write!(out, ", ")?;
+                                    let map_val_is_string = self.expr_map_value_is_string(arr);
+                                    self.expr(rhs, out)?;
+                                    if map_val_is_string {
+                                        write!(out, ".to_string()")?;
+                                    }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
                             }
                         }
 
@@ -3329,6 +3407,32 @@ impl RustTrans {
                         self.expr(idx, out)?;
                     }
                     write!(out, ").unwrap_or('\\0') as i64).to_string()")?;
+                    return Ok(());
+                }
+                // Plan 577 ② (DEBTS 016 Phase 0): map container dispatch —
+                // `m[key]` on a Map receiver indexes by key (`m[&key]`), NOT
+                // by usize (the list conversion emitted `m[(k) as usize]`,
+                // E0308/E0277). Key borrow mirrors the contains_key arg rules:
+                // str literals and &str params index directly; everything else
+                // (owned String locals, enum/int keys) takes `&`.
+                if !matches!(idx.as_ref(), Expr::Range(_)) && self.recv_is_map(arr) {
+                    self.expr(arr, out)?;
+                    write!(out, "[")?;
+                    let key_already_borrowed = matches!(idx.as_ref(),
+                        Expr::Str(_) | Expr::CStr(_))
+                        || if let Expr::Ident(n) = idx.as_ref() {
+                            self.current_fn_str_params.contains(n)
+                        } else {
+                            false
+                        };
+                    if !key_already_borrowed {
+                        write!(out, "&")?;
+                    }
+                    self.expr(idx, out)?;
+                    write!(out, "]")?;
+                    if self.assign_lhs_depth == 0 {
+                        write!(out, ".clone()")?;
+                    }
                     return Ok(());
                 }
                 self.expr(arr, out)?;
@@ -4323,12 +4427,20 @@ impl RustTrans {
                 // stay consistent with char_at/slice (byte len would
                 // mis-scan any non-ASCII text).
                 if field.as_str() == "length" {
+                    // Plan 577 ④ (DEBTS 016 Phase 0): the field form now
+                    // matches the method form's int-model cast — bare `.len()`
+                    // is usize and breaks int contexts (`h.items.length + 1`
+                    // E0308). Same wide-int suppression gate as call()
+                    // (Plan 391 D1).
+                    let cast = !self.len_i32_cast_suppressed;
+                    if cast { write!(out, "(")?; }
                     self.expr(object, out)?;
                     if self.expr_is_string_like(object) {
                         write!(out, ".chars().count()")?;
                     } else {
                         write!(out, ".len()")?;
                     }
+                    if cast { write!(out, " as i64)")?; }
                     return Ok(());
                 }
 
@@ -4485,6 +4597,11 @@ impl RustTrans {
                         if matches!(expr.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
                             self.expr(expr, out)?;
                             write!(out, ".parse::<i64>().unwrap()")?;
+                        } else if Self::expr_is_len_call(expr) {
+                            // Plan 577 ④: the .length/.len forms already carry
+                            // the int-model cast (`(x.len() as i64)`) — skip
+                            // the wrap (double `as i64` otherwise).
+                            self.expr(expr, out)?;
                         } else {
                             write!(out, "(")?;
                             self.expr(expr, out)?;
@@ -12332,7 +12449,16 @@ impl RustTrans {
                 _ => false,
             };
         }
-        false
+        // Plan 577 ④: the FIELD form `x.length` (no parens) carries the
+        // int-model cast now too — recognized so `.to(int)` skips its wrap
+        // and the wide-int binding suppression covers both forms alike.
+        match expr {
+            Expr::Dot(_, m) => matches!(m.as_str(), "len" | "length"),
+            Expr::Bina(_, op, rhs) if matches!(op, Op::Dot) => {
+                matches!(rhs.as_ref(), Expr::Ident(m) if matches!(m.as_str(), "len" | "length"))
+            }
+            _ => false,
+        }
     }
 
     // Variable declaration
@@ -12434,9 +12560,26 @@ impl RustTrans {
             _ => None,
         };
         if matches!(store.kind, StoreKind::Var | StoreKind::Let)
-            && matches!(&store.expr, Expr::Object(pairs) if !pairs.is_empty())
+            && matches!(&store.expr, Expr::Object(_))
         {
             if let Some((k_ty, v_ty)) = map_kv_types {
+                // Plan 577 ① (DEBTS 016 Phase 0): the EMPTY literal `{}` for a
+                // declared Map type emits `HashMap::new()` — the annotation
+                // carries the generics (bare `{}` is the unit type, E0308).
+                if matches!(&store.expr, Expr::Object(pairs) if pairs.is_empty()) {
+                    let mut_kw = if matches!(store.kind, StoreKind::Var)
+                        || (matches!(store.kind, StoreKind::Let)
+                            && self.mutated_let_bindings.contains(store.name.as_ref()))
+                    {
+                        "mut "
+                    } else {
+                        ""
+                    };
+                    let ty_name = self.rust_type_name(&store.ty);
+                    write!(out, "let {}{}: {} = std::collections::HashMap::new()",
+                        mut_kw, Self::rust_ident(store.name.as_str()), ty_name)?;
+                    return Ok(());
+                }
                 let k_is_str = matches!(k_ty,
                     Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit);
                 let v_is_str = matches!(v_ty,
@@ -16634,7 +16777,10 @@ impl RustTrans {
 
         let derive_attrs = match &enum_decl.kind {
             EnumKind::Scalar { repr_type: Some(_) } if payload_is_eq_safe => {
-                "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+                // Plan 577 ③ (DEBTS 016 Phase 0): +Hash — enums as HashMap
+                // keys are the map-index dispatch's natural consumer; Eq-safe
+                // payload coverage implies Hash-safe (same exclusions).
+                "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]"
             }
             EnumKind::Scalar { repr_type: Some(_) } => "#[derive(Clone, Debug, PartialEq, Copy)]",
             // Plan 447 ③-P1: plain scalars are all-unit by definition —
@@ -16642,14 +16788,14 @@ impl RustTrans {
             // (op_display(op) + binop_result(op)) are E0382 without Copy
             // (lib TokenKind/Op/OpCode are all this shape).
             EnumKind::Scalar { repr_type: None } if payload_is_eq_safe => {
-                "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+                "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]"
             }
             EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Copy, Debug, PartialEq)]",
             _ if all_variants_empty && payload_is_eq_safe => {
-                "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+                "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]"
             }
             _ if all_variants_empty => "#[derive(Clone, Copy, Debug, PartialEq)]",
-            _ if payload_is_eq_safe => "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]",
+            _ if payload_is_eq_safe => "#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]",
             _ => "#[derive(Clone, Debug, PartialEq)]",
         };
         // Plan 376: If the user supplied explicit attrs (e.g. `#[derive(Debug)]`),

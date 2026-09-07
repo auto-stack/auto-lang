@@ -1,4 +1,4 @@
-class Point {
+export class Point {
     x: number;
     y: number;
 
@@ -9,7 +9,7 @@ class Point {
 }
 
 function main(): void {
-    const p = Point(3, 4);
+    const p = new Point(3, 4);
     console.log(p.x);
     console.log(p.y);
 }

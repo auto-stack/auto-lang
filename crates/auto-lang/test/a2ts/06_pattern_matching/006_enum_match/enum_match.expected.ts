@@ -1,18 +1,18 @@
-const enum Color {
+export enum Color {
     Red,
     Green = 1,
     Blue = 2
 }
 
-function check_color(c: Color): void {
+export function check_color(c: Color): void {
     switch (c) {
-        case Color.Red():
+        case Color.Red:
             console.log("red");
             break;
-        case Color.Green():
+        case Color.Green:
             console.log("green");
             break;
-        case Color.Blue():
+        case Color.Blue:
             console.log("blue");
             break;
     }

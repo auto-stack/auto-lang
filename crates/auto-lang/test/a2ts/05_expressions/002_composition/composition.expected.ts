@@ -1,11 +1,11 @@
-class Wing {
+export class Wing {
 
     fly(): void {
         console.log("flying");
     }
 }
 
-class Duck {
+export class Duck {
 
     fly(): void {
         console.log("flying");
@@ -13,7 +13,7 @@ class Duck {
 }
 
 function main(): void {
-    const d = Duck();
+    const d = new Duck();
     d.fly();
 }
 

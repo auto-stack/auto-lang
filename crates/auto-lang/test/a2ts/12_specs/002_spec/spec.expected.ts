@@ -1,11 +1,16 @@
-class Pigeon implements Flyer {
+export interface Flyer { {
+    fly(): void;
+}
+
+
+export class Pigeon implements Flyer {
 
     fly(): void {
         console.log("Flap Flap");
     }
 }
 
-class Hawk implements Flyer {
+export class Hawk implements Flyer {
 
     fly(): void {
         console.log("Gawk! Gawk!");
@@ -15,8 +20,8 @@ class Hawk implements Flyer {
 function main(): void {
     
 
-    const b1 = Pigeon();
-    const b2 = Hawk();
+    const b1 = new Pigeon();
+    const b2 = new Hawk();
     
 
 

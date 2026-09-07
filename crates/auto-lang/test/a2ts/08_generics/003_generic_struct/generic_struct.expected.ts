@@ -1,4 +1,4 @@
-class Pair {
+export class Pair {
     first: number;
     second: number;
 
@@ -9,7 +9,7 @@ class Pair {
 }
 
 function main(): void {
-    const p = Pair(1, 2);
+    const p = new Pair(1, 2);
     console.log(p.first);
 }
 

@@ -1,0 +1,53 @@
+// PLAN-577 R1 (D1): dot-chain str fields passed to &str params — the
+// auto-down DEBTS 016 R1 family (block_model.at 21× E0308, 2026-08-25;
+// interim plans 433 A1/447/019 cleared the plain shapes — this probe
+// stress-locks the family: single field, multi-segment chain, index+field,
+// call+field, method-arg position).
+type Meta {
+    key str
+    tag str
+}
+
+type Node {
+    name str
+    meta Meta
+}
+
+fn takes(s str) {
+    print(s)
+}
+
+fn getMeta() Meta {
+    return Meta("mk", "mt")
+}
+
+fn getIdx(xs List<str>, i int) str {
+    return xs[i]
+}
+
+fn useAll(n Node, names List<str>, i int) {
+    // single field
+    takes(n.name)
+    // multi-segment dot chain
+    takes(n.meta.key)
+    takes(n.meta.tag)
+    // index + field
+    // (names[i] itself is the 019 index-arm shape)
+    takes(getIdx(names, i))
+    // call + field
+    takes(getMeta().key)
+    // concat with field (spansText loop shape from block_model)
+    var t str = ""
+    for s in names {
+        t = t + s
+    }
+    takes(t)
+    // field into a str param via method-style call on field value
+    print(n.name.length.to(int))
+}
+
+fn main() {
+    let n = Node("nn", Meta("nk", "nt"))
+    var names List<str> = ["a", "b"]
+    useAll(n, names, 1)
+}

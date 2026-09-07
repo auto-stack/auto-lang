@@ -1,4 +1,4 @@
-function check(x: number): void {
+export function check(x: number): void {
     switch (x) {
         case 1:
             console.log("one");

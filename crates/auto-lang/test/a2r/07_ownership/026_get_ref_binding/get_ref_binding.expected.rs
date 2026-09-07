@@ -7,7 +7,7 @@ pub struct TierCandidate {
     pub model: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum ModelTier {
     Fast = 0,
     Balanced = 1,

@@ -1,4 +1,4 @@
-class Calculator {
+export class Calculator {
     value: number;
 
     constructor(value: number) {
@@ -15,7 +15,7 @@ class Calculator {
 }
 
 function main(): void {
-    const calc = Calculator(0);
+    const calc = new Calculator(0);
     const sum = calc.add(5, 3);
     const product = calc.multiply(4, 7);
     console.log("Sum:", sum, "Product:", product);

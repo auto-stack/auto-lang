@@ -1,4 +1,4 @@
-function compute(): number {
+export function compute(): number {
     return 100;
 }
 

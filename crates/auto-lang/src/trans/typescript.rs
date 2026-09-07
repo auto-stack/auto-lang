@@ -12,7 +12,7 @@ use super::{Sink, Trans, ToStrError};
 use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 #[path = "ts_types.rs"]
@@ -39,6 +39,14 @@ pub struct TypeScriptTrans {
     indent: usize,
     /// Names of scalar (C-style) enums, used to emit correct patterns.
     scalar_enums: HashSet<AutoStr>,
+    /// Names of declared struct types — call sites `P(args)` emit as
+    /// `new P(args)` (Plan 577 T4a; class constructors are not callable
+    /// without `new`, TS2348 — previously papered over by gen.mjs B1).
+    pub struct_names: HashSet<AutoStr>,
+    /// Non-scalar (factory) enums' zero-payload variants — a bare reference
+    /// `Op.Nil` must emit as the factory invocation `Op.Nil()` (Plan 577 T1
+    /// rider; scalar enums' `Color.Red` stays a plain enum member access).
+    pub enum_unit_variants: HashMap<AutoStr, Vec<AutoStr>>,
     /// Counter for generating unique temporary variable names in `is` statements.
     is_counter: usize,
     /// When true, the next top-level declaration is emitted with an `export`
@@ -57,6 +65,8 @@ impl TypeScriptTrans {
             needs_print: false,
             indent: 0,
             scalar_enums: HashSet::new(),
+            struct_names: HashSet::new(),
+            enum_unit_variants: HashMap::new(),
             is_counter: 0,
             emit_export: false,
         }

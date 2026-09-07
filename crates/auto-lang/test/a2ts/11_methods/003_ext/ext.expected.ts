@@ -1,4 +1,4 @@
-class Point {
+export class Point {
     x: number;
     y: number;
 
@@ -8,15 +8,15 @@ class Point {
     }
 
     distance(other: Point): number {
-        const dx: number = this.x - other.x;
-        const dy: number = this.y - other.y;
+        const dx: number = x - other.x;
+        const dy: number = y - other.y;
         return dx * dx + dy * dy;
     }
 }
 
 function main(): void {
-    const p1 = Point(1, 2);
-    const p2 = Point(4, 6);
+    const p1 = new Point(1, 2);
+    const p2 = new Point(4, 6);
     const d = p1.distance(p2);
     console.log("Distance:", d);
 }

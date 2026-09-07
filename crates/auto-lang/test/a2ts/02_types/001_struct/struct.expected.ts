@@ -1,4 +1,4 @@
-class Point {
+export class Point {
     x: number;
     y: number;
 
@@ -8,7 +8,7 @@ class Point {
     }
 }
 
-class Circle {
+export class Circle {
     radius: number;
     border: number;
     center: Point;
@@ -21,12 +21,12 @@ class Circle {
 }
 
 function main(): void {
-    let p = Point(1, 2);
+    let p = new Point(1, 2);
     p.x = 3;
     console.log(`P: ${p.x}, ${p.y}`);
     
 
-    const circle = Circle(5, 1, new Point(50, 50));
+    const circle = new Circle(5, 1, new Point(50, 50));
     console.log(`C: ${circle.center.x}, ${circle.center.y}, ${circle.radius}`);
 }
 

@@ -1,4 +1,4 @@
-class Counter {
+export class Counter {
     count: number;
 
     constructor(count: number) {
@@ -6,12 +6,12 @@ class Counter {
     }
 
     add(n: number): void {
-        this.count = this.count + n;
+        count = count + n;
     }
 }
 
 function main(): void {
-    const c = Counter(0);
+    const c = new Counter(0);
     c.add(5);
     console.log(c.count);
 }
