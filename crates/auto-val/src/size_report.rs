@@ -7,17 +7,33 @@
 
 use std::mem::size_of;
 
+use crate::value::Value;
+
+// 载荷类型清单仅供 #[test] 的排名表使用——cfg(test) 门住，纯 lib 编译
+// （非 --tests）下 #[test] 体被剥离，顶层裸 import 会成 unused 警告。
+#[cfg(test)]
 use crate::array::Array;
+#[cfg(test)]
 use crate::cstr::CStr;
+#[cfg(test)]
 use crate::kids::Kids;
+#[cfg(test)]
 use crate::meta::{Args, ExtFn, Fn, MetaID};
+#[cfg(test)]
 use crate::node::{Instance, Node};
+#[cfg(test)]
 use crate::obj::Obj;
+#[cfg(test)]
 use crate::owned_str::Str;
+#[cfg(test)]
 use crate::pair::ValueKey;
+#[cfg(test)]
 use crate::str_slice::StrSlice;
+#[cfg(test)]
 use crate::types::Type;
-use crate::value::{Closure, FutureData, Grid, Method, Model, Value, View, Widget};
+#[cfg(test)]
+use crate::value::{Closure, FutureData, Grid, Method, Model, View, Widget};
+#[cfg(test)]
 use crate::AutoStr;
 
 /// 防回退上限（B）。Phase A（Node 装箱）落 112；Phase B 落 72；
