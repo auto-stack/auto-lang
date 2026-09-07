@@ -5,18 +5,12 @@
 // 判据:两侧 dump(Code 的 Display S-expr,见 docs/specs/aavm/m2-ast-dump-format.md)
 //       逐字符相等。Rust 侧:Parser::from(code).parse() 后 format!("{}", code);
 //       AAVM 侧:auto/lib/{token,lexer,parser}.at 的 parse_dump(source)。
+// Plan 565 L1:语料走 once-compiled runner(编译一次+File.read_text 注入,
+//       见 aavm2_corpus_runner.rs);判据断言原样保留在本闸门。
 
 use crate::error::AutoResult;
-use crate::run_with_capture;
+use crate::tests::aavm2_corpus_runner::{run_corpus_once_compiled, CorpusCase};
 use std::path::PathBuf;
-
-fn escape_for_at_literal(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
 
 /// Rust 参考侧 AST dump:parse(含 parser 内联推断,如 let 无注解时的
 /// infer_type_expr)后按 Code 的 Display 格式化 —— 与 M2 规范逐字一致。
@@ -31,29 +25,6 @@ fn corpus_dirs() -> Vec<PathBuf> {
     vec![base.join("corpus_m2"), base.join("corpus_m1")]
 }
 
-fn test_m2_corpus_file(path: &std::path::Path) -> AutoResult<()> {
-    let code = std::fs::read_to_string(path)?;
-    let expected = rust_parse_dump(&code)?;
-    // 前置拼接 AAVM v2 lib(AUTO_LIB_FILES_V2,单一事实源)
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let lib_code = crate::aavm2_lib_source(&root)?;
-    let program = format!(
-        "{}\nfn main() {{\n    print(parse_dump(\"{}\"))\n}}\n",
-        lib_code,
-        escape_for_at_literal(&code)
-    );
-    let (_r, stdout) = run_with_capture(&program)?;
-    assert_eq!(
-        stdout.trim_end(),
-        expected.trim_end(),
-        "M2 AST-dump mismatch for {}\n--- rust ---\n{}\n--- aavm ---\n{}",
-        path.display(),
-        expected,
-        stdout
-    );
-    Ok(())
-}
-
 #[test]
 #[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
 fn test_aavm2_m2_parser_corpus() {
@@ -63,7 +34,7 @@ fn test_aavm2_m2_parser_corpus() {
     if !crate::tests::heavy_gate::heavy_gate("test_aavm2_m2_parser_corpus") {
         return;
     }
-    let mut checked = 0;
+    let mut cases: Vec<CorpusCase> = Vec::new();
     for dir in corpus_dirs() {
         let mut entries: Vec<_> = std::fs::read_dir(&dir)
             .unwrap_or_else(|e| panic!("corpus dir {}: {e}", dir.display()))
@@ -74,11 +45,26 @@ fn test_aavm2_m2_parser_corpus() {
         entries.sort();
         assert!(!entries.is_empty(), "no corpus files under {}", dir.display());
         for p in entries {
-            test_m2_corpus_file(&p).unwrap();
-            checked += 1;
+            let code = std::fs::read_to_string(&p).unwrap();
+            cases.push(CorpusCase { path: p, code });
         }
     }
-    eprintln!("M2 corpus: {checked} files, AST dumps identical");
+    let outs = run_corpus_once_compiled("m2", "parse_dump", &cases)
+        .unwrap_or_else(|e| panic!("M2 corpus runner: {e}"));
+    let mut checked = 0;
+    for (case, stdout) in cases.iter().zip(&outs) {
+        let expected = rust_parse_dump(&case.code).unwrap();
+        assert_eq!(
+            stdout.trim_end(),
+            expected.trim_end(),
+            "M2 AST-dump mismatch for {}\n--- rust ---\n{}\n--- aavm ---\n{}",
+            case.path.display(),
+            expected,
+            stdout
+        );
+        checked += 1;
+    }
+    eprintln!("M2 corpus: {checked} files, AST dumps identical (once-compiled runner)");
 }
 
 /// 诊断用:打印 Rust 参考侧对语料的 dump(--nocapture)。

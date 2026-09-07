@@ -31,6 +31,9 @@ mod list_growth_tests;
 mod list_tests; // Comprehensive List operation tests (Plan 051)
 mod may_tests;
 mod mem_tests;
+// Plan 565 P0: mem-profile 归因报告（#[ignore] 诊断，仅 mem-profile feature）
+#[cfg(feature = "mem-profile")]
+mod mem_profile_report_tests;
 mod memory_quick_test;
 mod memory_tests;
 mod ownership_tests;
@@ -71,6 +74,8 @@ mod aavm_runner_tests;
 mod heavy_gate;
 #[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
+#[cfg(feature = "test-aavm")] // Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
+mod aavm2_corpus_runner;
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
 mod aavm2_a2r; // Plan 447 部分② Phase 7: AA2R is 发射对齐主 a2r 闸门
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档(原 test-vm-files)
