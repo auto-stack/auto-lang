@@ -306,6 +306,11 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown);
 });
+
+// 暴露给宿主（Plan 582 T14：后端 frontend IDE 模式切换——NotesExplorer ide-mode → loadExample）。
+defineExpose({
+  loadExample: onLoadExample,
+});
 </script>
 
 <style>
