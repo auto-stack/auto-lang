@@ -22,3 +22,4 @@ bun.lockb
 # Playwright
 test-results/
 playwright-report/
+public/playground-data/

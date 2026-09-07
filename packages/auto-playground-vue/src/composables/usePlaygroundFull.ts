@@ -76,8 +76,10 @@ export function usePlaygroundFull() {
     if (file) source.value = file.source;
   }
 
-  // Request body for run/transpile: for project examples the entry source is
-  // main.at's (possibly edited) content plus the full edited file set.
+  // Request body for run/transpile: project files ride along whenever present —
+  // with `project_dir` (playground-demo) they overlay the server copy; without
+  // one (manifest notes, Plan 582) the backend materializes them in a temp dir
+  // and resolves modules relative to `entry` (main.at or the active/first file).
   function projectRequestBody(body: Record<string, unknown>) {
     if (projectDir.value) {
       syncActiveBuffer();
@@ -85,6 +87,13 @@ export function usePlaygroundFull() {
       body.files = projectFiles.value;
       const main = projectFiles.value.find((f) => f.path === 'main.at');
       if (main) body.source = main.source;
+      return body;
+    }
+    if (projectFiles.value.length > 0) {
+      syncActiveBuffer();
+      body.files = projectFiles.value;
+      const main = projectFiles.value.find((f) => f.path === 'main.at');
+      body.entry = main?.path ?? (activeFile.value || projectFiles.value[0].path);
     }
     return body;
   }
@@ -359,7 +368,10 @@ export function usePlaygroundFull() {
     source.value = payload.source;
     projectDir.value = payload.project_dir;
     projectFiles.value = payload.files ?? [];
-    activeFile.value = payload.files?.length ? 'main.at' : '';
+    // entry 优先 main.at；无 main.at 的多文件笔记（parity）取首文件（Plan 582）。
+    activeFile.value = payload.files?.length
+      ? payload.files.find((f) => f.path === 'main.at')?.path ?? payload.files[0].path
+      : '';
     stdout.value = '';
     stderr.value = '';
     resultCode.value = '';

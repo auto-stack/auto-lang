@@ -20,3 +20,7 @@ public/playground-data/
 # Dependencies
 node_modules/
 bun.lock
+
+# Playwright artifacts
+test-results/
+playwright-report/

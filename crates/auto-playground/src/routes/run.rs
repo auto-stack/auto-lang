@@ -9,6 +9,9 @@ pub struct RunRequest {
     pub source: String,
     pub project_dir: Option<String>,
     pub files: Option<Vec<ProjectFile>>,
+    /// Entry path within `files` for files-only projects (Plan 582); ignored
+    /// when `project_dir` is set (those always run `main.at`).
+    pub entry: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -26,7 +29,14 @@ pub async fn run_handler(
     let result = tokio::task::spawn_blocking(move || {
         match req.project_dir {
             Some(dir) => vm_runner::run_project_source(&req.source, &dir, req.files),
-            None => vm_runner::run_source(&req.source),
+            // Files-only projects (manifest notes): materialize and run from
+            // the temp root (entry main.at); module resolution via source_dirs.
+            None => match req.files {
+                Some(files) if !files.is_empty() => {
+                    vm_runner::run_files_project(&req.source, files)
+                }
+                _ => vm_runner::run_source(&req.source),
+            },
         }
     })
     .await

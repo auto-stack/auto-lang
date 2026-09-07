@@ -2,44 +2,29 @@
   <div class="playground">
     <header class="toolbar">
       <div class="toolbar-left">
-        <h1 class="title">Auto Playground</h1>
-        <ExampleSelector @select="onLoadExample" />
+        <template v-if="noteMeta">
+          <!-- 示例名即链接（外链 icon 提示可点），路径收进 tooltip（Plan 582 复审修正·紧凑标题栏） -->
+          <a
+            class="title note-link"
+            :href="`${(noteMeta.repoBase ?? 'https://github.com/auto-stack/auto-lang').replace(/\/$/, '')}/blob/master/${noteMeta.sourcePath}`"
+            target="_blank"
+            rel="noopener"
+            :title="noteMeta.sourcePath"
+          >
+            {{ noteMeta.title }}
+            <svg class="ext-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+          <span class="note-badge" :class="`t-${noteMeta.sourceType}`">{{ noteMeta.sourceType }}</span>
+        </template>
+        <h1 v-else class="title">Auto Playground</h1>
       </div>
       <div class="toolbar-right">
-        <button
-          v-if="!isDebugging && !isReplayMode"
-          class="toolbar-btn load-replay-btn"
-          @click="$emit('loadReplay')"
-          title="Load Replay File"
-        >
-          <span class="icon">📂</span>
-          <span class="label">Load Replay</span>
-        </button>
-        <button class="toolbar-btn share-btn" @click="$emit('share')" title="Copy shareable link">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-            <polyline points="16 6 12 2 8 6"/>
-            <line x1="12" y1="2" x2="12" y2="15"/>
-          </svg>
-          Share
-        </button>
-        <button
-          class="toolbar-btn debug-btn"
-          :class="{ active: isDebugging, exit: isDebugging }"
-          @click="isDebugging ? $emit('debugCommand', 'stop') : props.onDebug()"
-          :disabled="isLoading || isReplayMode"
-          :title="isDebugging ? 'Stop Debugging (Shift+F5)' : 'Start Debugging'"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a10 10 0 0 1 10 10"/>
-            <path d="M12 2a10 10 0 0 0-10 10"/>
-            <path d="M12 12l4-4"/>
-            <path d="M12 12l-4-4"/>
-            <path d="M12 12l4 4"/>
-            <path d="M12 12l-4 4"/>
-          </svg>
-          {{ isDebugging ? 'Exit Debug' : 'Debug' }}
-        </button>
+        <!-- Load Replay 功能未完善，暂隐藏（loadReplay emit 链路与 __loadReplayForTest__ 钩子保留）。
+             顺序（用户裁定）：Run → Trans → Debug → Share。 -->
         <button
           v-if="!isDebugging"
           class="toolbar-btn run-btn"
@@ -82,6 +67,31 @@
             <span class="trans-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
           </div>
         </div>
+        <button
+          class="toolbar-btn debug-btn"
+          :class="{ active: isDebugging, exit: isDebugging }"
+          @click="isDebugging ? $emit('debugCommand', 'stop') : props.onDebug()"
+          :disabled="isLoading || isReplayMode"
+          :title="isDebugging ? 'Stop Debugging (Shift+F5)' : 'Start Debugging'"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10"/>
+            <path d="M12 2a10 10 0 0 0-10 10"/>
+            <path d="M12 12l4-4"/>
+            <path d="M12 12l-4-4"/>
+            <path d="M12 12l4 4"/>
+            <path d="M12 12l-4 4"/>
+          </svg>
+          {{ isDebugging ? 'Exit Debug' : 'Debug' }}
+        </button>
+        <button class="toolbar-btn share-btn" @click="$emit('share')" title="Copy shareable link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+          Share
+        </button>
       </div>
     </header>
 
@@ -210,7 +220,6 @@ import CodeEditor from './CodeEditor.vue';
 import CodePreview from './CodePreview.vue';
 import BytecodePanel from './BytecodePanel.vue';
 import ConsoleOutput from './ConsoleOutput.vue';
-import ExampleSelector from './ExampleSelector.vue';
 import DebugToolbar from './DebugToolbar.vue';
 import ReplayToolbar from './ReplayToolbar.vue';
 import DebugAuxPanel from './DebugAuxPanel.vue';
@@ -222,6 +231,8 @@ const props = defineProps<{
   source: string;
   isLoading: boolean;
   mode: PlaygroundMode;
+  /** 当前笔记元信息（后端壳注入；有值时标题栏以笔记题为题+badge+来源 chip，Plan 582 复审修正）。 */
+  noteMeta?: { title: string; sourcePath: string; sourceType: string; repoBase?: string } | null;
   transTarget: OutputTab;
   stdout: string;
   stderr: string;
@@ -391,10 +402,6 @@ const outputTitle = computed(() => {
 function onTrans() {
   props.onTrans();
 }
-
-function onLoadExample(payload: { source: string; project_dir?: string; files?: ProjectFile[] }) {
-  emit('loadExample', payload);
-}
 </script>
 
 <style scoped>
@@ -429,6 +436,56 @@ function onLoadExample(payload: { source: string; project_dir?: string; files?: 
   font-weight: 600;
   margin: 0;
   color: #fff;
+}
+
+/* 笔记元信息（noteMeta 注入时，Plan 582 复审修正） */
+.note-badge {
+  font-size: 0.68rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 0.1rem 0.5rem;
+  border-radius: 9px;
+  border: 1px solid #45475a;
+  color: #a6adc8;
+  background: #181825;
+  flex-shrink: 0;
+}
+
+.note-badge.t-vm-golden {
+  color: #f9e2af;
+  border-color: #f9e2af66;
+}
+
+.note-badge.t-aavm-corpus {
+  color: #a5b4fc;
+  border-color: #6366f166;
+}
+
+.note-badge.t-book {
+  color: #a6e3a1;
+  border-color: #27c93f55;
+}
+
+/* 示例名即链接（noteMeta 注入时，Plan 582 复审修正·紧凑标题栏） */
+.note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #cdd6f4;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.note-link:hover {
+  color: #a5b4fc;
+}
+
+.note-link .ext-icon {
+  color: #6c7086;
+  flex-shrink: 0;
+}
+
+.note-link:hover .ext-icon {
+  color: #a5b4fc;
 }
 .toolbar-btn {
   display: inline-flex;

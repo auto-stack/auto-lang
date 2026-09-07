@@ -10,6 +10,16 @@
           :api-base="apiBase || '/api'"
           @select="onLoadExample"
         />
+        <span
+          v-if="ideMode !== null"
+          class="ide-entry"
+          :title="ideMode ? '切换到全功能 IDE（文件树/调试/回放）' : 'IDE 模式仅在后端自服务页可用——本地运行 cargo run -p auto-playground 后访问'"
+        >
+          <button class="ide-btn" :disabled="!ideMode" @click="emit('ide-mode')">
+            <AppWindow :size="14" />
+            在 IDE 中打开
+          </button>
+        </span>
       </div>
       <div class="toolbar-right">
         <select
@@ -25,10 +35,18 @@
           <option value="typescript">→ TypeScript</option>
           <option value="abt">→ ABT</option>
         </select>
-        <button v-if="!isDebugging" class="run-btn" @click="runAction" :disabled="isLoading">
-          <Play v-if="!isLoading" :size="14" />
+        <button
+          v-if="!isDebugging"
+          class="run-btn"
+          :class="{ down: backendDown }"
+          @click="runAction"
+          :disabled="isLoading || backendDown"
+          :title="backendDown ? '后端离线——本地启动：cargo run -p auto-playground' : undefined"
+        >
+          <WifiOff v-if="backendDown" :size="14" />
+          <Play v-else-if="!isLoading" :size="14" />
           <Loader2 v-else :size="14" class="spin" />
-          {{ isLoading ? 'Running...' : 'Run' }}
+          {{ backendDown ? '后端离线' : isLoading ? 'Running...' : 'Run' }}
         </button>
         <template v-else-if="toolbarOn.debug">
           <div class="debug-controls">
@@ -77,6 +95,19 @@
       </div>
     </div>
     <div class="card-body">
+      <div v-if="fileTabs.length > 1" class="file-tabs">
+        <button
+          v-for="f in fileTabs"
+          :key="f.path"
+          class="file-tab"
+          :class="{ active: f.path === activeFile, entry: f.path === ENTRY_FILE }"
+          :title="f.path === ENTRY_FILE ? '入口文件（entry 锁定）' : f.path"
+          @click="onSelectFile(f.path)"
+        >
+          <Lock v-if="f.path === ENTRY_FILE" :size="10" />
+          <span>{{ f.path }}</span>
+        </button>
+      </div>
       <SnippetRunner
         ref="runner"
         :code="code"
@@ -119,8 +150,32 @@
               </button>
             </div>
             <div class="output-content">
+              <div v-if="backendDown" class="card-backend-down">
+                <WifiOff :size="16" class="cbd-icon" />
+                <p class="cbd-title">后端未启动——运行与转译暂不可用</p>
+                <p class="cbd-line">笔记浏览与代码编辑不受影响。本地启动后端：</p>
+                <pre class="cbd-cmd"><code>cargo run -p auto-playground</code></pre>
+                <p class="cbd-line">
+                  或参考
+                  <a class="cbd-link" href="/playground#backend">部署说明</a>
+                  将后端与本站同域部署。
+                </p>
+                <div class="cbd-actions">
+                  <button class="cbd-retry" @click="onRetryBackend">
+                    <RefreshCw :size="13" /> 重试连接
+                  </button>
+                </div>
+              </div>
+              <ExpectedOutputPanel
+                v-else-if="displayTab === 'Expected'"
+                :expected="expectedOutput ?? ''"
+                :actual="stdout ?? ''"
+                :actual-result="resultCode ?? ''"
+                :expected-kind="expectedKind"
+                :has-run="hasRun"
+              />
               <ConsoleOutput
-                v-if="displayTab === 'Output'"
+                v-else-if="displayTab === 'Output'"
                 :stdout="stdout ?? ''"
                 :stderr="stderr ?? ''"
                 :result="resultCode ?? ''"
@@ -185,13 +240,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward } from 'lucide-vue-next'
+import { ref, watch, computed, onMounted } from 'vue'
+import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward, Lock, AppWindow, WifiOff, RefreshCw } from 'lucide-vue-next'
 import SnippetRunner from './SnippetRunner.vue'
 import BytecodePanel from './BytecodePanel.vue'
 import CodePreview from './CodePreview.vue'
 import ConsoleOutput from './ConsoleOutput.vue'
 import ExampleSelector from './ExampleSelector.vue'
+import ExpectedOutputPanel from './ExpectedOutputPanel.vue'
 import FileTree from './FileTree.vue'
 import type { OutputTab, PlaygroundCardToolbar } from '../types'
 
@@ -204,6 +260,16 @@ const props = withDefaults(defineProps<{
   height?: string
   /** manifest 笔记 id（582 Notes Explorer 用；本期仅预留存值）。 */
   noteId?: string
+  /** 期望输出（vm-golden 笔记 .expected.out）；非空时输出区加"期望输出"对照 tab。 */
+  expectedOutput?: string | null
+  /** 期望语义（P581-D3）：'stdout'（默认）|'result'——对照通道分派。 */
+  expectedKind?: 'stdout' | 'result' | null
+  /** 项目型笔记文件集（kind=project）；>1 文件时呈文件 tab（entry 锁 main.at）。 */
+  files?: { path: string; content: string }[] | null
+  /** 项目目录（相对服务端 examples/playground-demo）；运行走 files 形态。 */
+  projectDir?: string | null
+  /** IDE 模式入口：true=可用（点击发 ide-mode）；false=禁用+提示；null=不渲染（默认）。 */
+  ideMode?: boolean | null
   /** 工具栏项开关（默认全开）。 */
   toolbar?: { transpile?: boolean; share?: boolean; debug?: boolean; live?: boolean }
   /** 是否渲染 ExampleSelector（默认 false；旧 AutoPlayground 常驻行为需显式选入）。 */
@@ -215,7 +281,16 @@ const props = withDefaults(defineProps<{
   height: '480px',
   toolbar: () => ({}),
   exampleSelector: false,
+  expectedOutput: null,
+  expectedKind: 'stdout',
+  files: null,
+  projectDir: null,
+  ideMode: null,
 })
+
+const emit = defineEmits<{
+  'ide-mode': []
+}>()
 
 const DEFAULT_CODE = `fn main() {
     let message = "Hello from Auto!"
@@ -251,15 +326,23 @@ const highlightedOutputLines = computed(() => runner.value?.highlightedOutputLin
 const liveCompile = computed(() => runner.value?.liveCompile ?? false)
 const breakpoints = computed(() => runner.value?.breakpoints ?? [])
 const shareToast = computed(() => runner.value?.shareToast)
+const backendDown = computed(() => runner.value?.backendDown ?? false)
 
 const displayTab = ref<EmbedTab>('Output')
 const targetLang = ref<'run' | Exclude<OutputTab, 'bytecode'>>(props.target)
 const copied = ref(false)
+// 本卡片实例是否已执行过运行（期望输出对照三态依据；卡片按 noteId 重挂载自动复位）。
+const hasRun = ref(false)
 
-const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'abt', 'Bytecode'] as const
-type EmbedTab = typeof tabs[number]
+type EmbedTab = 'Expected' | 'Output' | 'rust' | 'c' | 'python' | 'typescript' | 'abt' | 'Bytecode'
+
+const tabs = computed<EmbedTab[]>(() => {
+  const base: EmbedTab[] = ['Output', 'rust', 'c', 'python', 'typescript', 'abt', 'Bytecode']
+  return props.expectedOutput ? ['Expected', ...base] : base
+})
 
 const tabLabels: Record<EmbedTab, string> = {
+  Expected: '期望输出',
   Output: 'Output',
   rust: 'Rust',
   c: 'C',
@@ -283,14 +366,55 @@ const showTransFileTree = computed(() => {
 async function runAction() {
   const r = runner.value
   if (!r) return
+  syncProjectRun(r)
   if (targetLang.value === 'run') {
     await r.run()
-    displayTab.value = 'Output'
+    hasRun.value = true
+    // 有期望输出的笔记：运行后直接呈对照（Playground 设计 §6.3）。
+    displayTab.value = props.expectedOutput ? 'Expected' : 'Output'
   } else {
     r.switchTab(targetLang.value)
     displayTab.value = targetLang.value
   }
 }
+
+// ── 项目型笔记文件 tab（Plan 582 T7）：多文件切换编辑，运行走 files 形态 ──
+
+const ENTRY_FILE = 'main.at'
+
+const activeFile = ref(ENTRY_FILE)
+const fileBuffers = ref(new Map<string, string>())
+
+const fileTabs = computed(() => (props.files ?? []).map((f) => ({ path: f.path })))
+
+function syncActiveBuffer() {
+  const r = runner.value
+  if (!r) return
+  fileBuffers.value.set(activeFile.value, r.source)
+}
+
+function onSelectFile(path: string) {
+  if (path === activeFile.value) return
+  syncActiveBuffer()
+  activeFile.value = path
+  const r = runner.value
+  if (r) r.source = fileBuffers.value.get(path) ?? ''
+}
+
+function syncProjectRun(r: NonNullable<typeof runner.value>) {
+  if (!props.files || props.files.length === 0) return
+  syncActiveBuffer()
+  r.projectFiles = [...fileBuffers.value.entries()].map(([path, source]) => ({ path, source }))
+  r.projectDir = props.projectDir ?? undefined
+}
+
+onMounted(() => {
+  if (!props.files || props.files.length === 0) return
+  const map = new Map<string, string>()
+  for (const f of props.files) map.set(f.path, f.content)
+  fileBuffers.value = map
+  activeFile.value = map.has(ENTRY_FILE) ? ENTRY_FILE : props.files[0].path
+})
 
 watch(targetLang, (lang) => {
   if (lang !== 'run' && liveCompile.value) {
@@ -301,7 +425,7 @@ watch(targetLang, (lang) => {
 
 function onSwitchTab(tab: EmbedTab) {
   displayTab.value = tab
-  if (tab !== 'Output' && tab !== 'Bytecode') {
+  if (tab !== 'Output' && tab !== 'Bytecode' && tab !== 'Expected') {
     targetLang.value = tab
     runner.value?.switchTab(tab)
   } else if (tab === 'Output') {
@@ -362,6 +486,15 @@ function onBreakpointsChange(lines: number[]) {
 function onBytecodeOffsetClick(_offset: number) {
   // Could cross-highlight source line from bytecode offset
 }
+
+async function onRetryBackend() {
+  await runner.value?.retryBackend()
+}
+
+// 暴露给宿主（NotesExplorer 键盘 Ctrl+Enter 转发）。
+defineExpose({
+  run: runAction,
+})
 </script>
 
 <style scoped>
@@ -408,6 +541,78 @@ function onBytecodeOffsetClick(_offset: number) {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
+  flex-direction: column;
+}
+
+.file-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0.25rem 0.5rem 0;
+  background: #181825;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+
+.file-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #313244;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: #11111b;
+  color: #6c7086;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.file-tab:hover {
+  color: #cdd6f4;
+}
+
+.file-tab.active {
+  background: #1e1e1e;
+  color: #cdd6f4;
+}
+
+.file-tab.entry {
+  color: #a6e3a1;
+}
+
+.file-tab.entry.active {
+  color: #a6e3a1;
+}
+
+.ide-entry {
+  display: inline-flex;
+}
+
+.ide-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  background: transparent;
+  color: #a6adc8;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.ide-btn:hover:not(:disabled) {
+  color: #cdd6f4;
+  border-color: #6366f1;
+}
+
+.ide-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .target-select {
@@ -461,6 +666,72 @@ function onBytecodeOffsetClick(_offset: number) {
 .run-btn:disabled, .debug-start-btn:disabled, .stop-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.run-btn.down {
+  background: #45475a;
+  color: #f9e2af;
+}
+
+/* 无后端降级卡（输出区，Plan 582 T9） */
+.card-backend-down {
+  padding: 1.5rem 1.75rem;
+  font-size: 0.8rem;
+  color: #a6adc8;
+}
+
+.cbd-icon {
+  color: #f9e2af;
+  margin-bottom: 0.4rem;
+}
+
+.cbd-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f9e2af;
+}
+
+.cbd-line {
+  margin: 0.25rem 0;
+}
+
+.cbd-cmd {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 6px;
+}
+
+.cbd-cmd code {
+  font-family: 'JetBrains Mono', monospace;
+  color: #cdd6f4;
+}
+
+.cbd-link {
+  color: #89b4fa;
+}
+
+.cbd-actions {
+  margin-top: 0.75rem;
+}
+
+.cbd-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  background: #313244;
+  color: #cdd6f4;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.cbd-retry:hover {
+  border-color: #6366f1;
 }
 
 .debug-controls {

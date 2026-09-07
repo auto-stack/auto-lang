@@ -7,6 +7,8 @@ export interface RunRequest {
   source: string;
   project_dir?: string;
   files?: ProjectFile[];
+  /** Entry path within files（files-only 物化运行用，Plan 582）；project_dir 模式忽略。 */
+  entry?: string;
 }
 
 export interface RunResponse {
@@ -90,8 +92,16 @@ export interface PlaygroundCardToolbar {
 }
 
 export interface PlaygroundCardProps extends SnippetRunnerProps {
-  /** manifest 笔记 id（582 Notes Explorer 用；本期仅预留透传）。 */
+  /** manifest 笔记 id（Notes Explorer 用）。 */
   noteId?: string;
+  /** 期望输出（vm-golden 笔记）；非空时输出区加"期望输出"对照 tab（Plan 582）。 */
+  expectedOutput?: string | null;
+  /** 项目型笔记文件集（kind=project）；>1 文件时呈文件 tab，entry 锁 main.at（Plan 582）。 */
+  files?: NoteFile[] | null;
+  /** 项目目录（相对服务端 examples/playground-demo）；运行走 files 形态（Plan 582）。 */
+  projectDir?: string | null;
+  /** IDE 模式入口：true=可用；false=禁用+提示；null=不渲染（Plan 582）。 */
+  ideMode?: boolean | null;
   /** 工具栏项开关（默认全开）。 */
   toolbar?: PlaygroundCardToolbar;
   /** 是否渲染 ExampleSelector（默认 false；旧 AutoPlayground 常驻行为需显式选入）。 */
@@ -121,6 +131,8 @@ export interface NoteMeta {
   files: NoteFile[] | null;
   /** 仅 vm-golden（.expected.out 内容）。 */
   expectedOutput: string | null;
+  /** 期望语义判别（P581-D3）：'stdout'=对照 RunResponse.stdout；'result'=对照终值；null=无期望。 */
+  expectedKind?: 'stdout' | 'result' | null;
   description: string | null;
   tags: string[];
 }

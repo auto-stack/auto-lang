@@ -29,6 +29,8 @@ const DEMO_DIR = path.join(REPO_ROOT, 'examples/playground-demo')
 const BOOKS_DIR = path.join(REPO_ROOT, 'website/books')
 const OUT_DIR = path.join(REPO_ROOT, 'website/public/playground-data')
 const OUT_FILE = path.join(OUT_DIR, 'notes.json')
+// 第二输出（Plan 582 T12）：后端 /api/examples 单一事实源——examples.rs 启动探测读取。
+const OUT_FILE_BACKEND = path.join(REPO_ROOT, 'crates/auto-playground/notes.json')
 
 // ── 通用工具 ──────────────────────────────────────────────────────────
 
@@ -175,6 +177,10 @@ function collectVmGolden() {
         code,
         files: null,
         expectedOutput,
+        // P581-D3 双语义判别：.expected.out=stdout 语义 / .expected.result=终值语义。
+        // 对照 UI 据此选实际值通道（stdout vs RunResponse.result），否则 result 语义
+        // 笔记（183 条）必假阳性。
+        expectedKind: expectedPath.endsWith('.expected.out') ? 'stdout' : 'result',
         description: null,
         tags: tagsFromCase(noteName),
       })
@@ -214,6 +220,7 @@ function collectDemo() {
       code,
       files: null,
       expectedOutput: null,
+      expectedKind: null,
       description: null,
       tags: tagsFromCase(stem),
     })
@@ -243,6 +250,7 @@ function collectDemo() {
       code: null,
       files,
       expectedOutput: null,
+      expectedKind: null,
       description: null,
       tags: tagsFromCase(entry.name),
     })
@@ -299,6 +307,7 @@ function collectAavm() {
         files: null,
         // 设计 §5.2：expectedOutput 仅 vm-golden（corpus_a2r 的 .expected.out 不入）。
         expectedOutput: null,
+        expectedKind: null,
         description: null,
         tags: parts.filter((p) => p !== '.').map((p) => p.toLowerCase()),
       })
@@ -373,6 +382,7 @@ function collectBooks() {
           code,
           files: null,
           expectedOutput: null,
+          expectedKind: null,
           description: null,
           tags: ['book', bookName],
         })
@@ -385,10 +395,82 @@ function collectBooks() {
   return groups
 }
 
+// ── parity（Rust Cookbook/Python/C consumer 等多语言 parity 语料；Plan 581 T1 后置、582 复审修正落地）──
+//
+// 结构：parity/libs/<family>/<lib>/auto/<lib>.at（库，无 main）+ tests/auto/*.at（多文件 import）；
+// python 家族为单文件 tests/auto/<lib>.as（AutoScript，运行需 --features python）。
+// 全部 51 条 standalone=false（lib import 或 FFI 外部依赖），本迭代可浏览、Run 如实报依赖错误。
+
+const PARITY_FAMILIES = [
+  { dir: 'rust', id: 'parity-rust', title: 'Rust（Rust Cookbook）', order: 500 },
+  { dir: 'python', id: 'parity-python', title: 'Python', order: 501 },
+  { dir: 'lang', id: 'parity-lang', title: 'Language', order: 502 },
+  { dir: 'consumer', id: 'parity-consumer', title: 'Consumer（C 库）', order: 503 },
+  { dir: 'framework', id: 'parity-framework', title: 'Framework', order: 504 },
+]
+
+const PARITY_DIR = path.join(REPO_ROOT, 'parity/libs')
+
+function collectParity() {
+  const groups = []
+  for (const fam of PARITY_FAMILIES) {
+    const famDir = path.join(PARITY_DIR, fam.dir)
+    const libs = listDir(famDir)
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort((a, b) => a.localeCompare(b))
+    const notes = []
+    for (const lib of libs) {
+      const libDir = path.join(famDir, lib)
+      const testsDir = path.join(libDir, 'tests', 'auto')
+      const ext = fam.dir === 'python' ? '.as' : '.at'
+      const testFiles = listDir(testsDir)
+        .filter((e) => e.isFile() && e.name.endsWith(ext))
+        .map((e) => e.name)
+        .sort((a, b) => a.localeCompare(b))
+      for (const testName of testFiles) {
+        const testPath = path.join(testsDir, testName)
+        const content = readIfExists(testPath)
+        if (content === null) continue
+        const stem = testName.slice(0, -ext.length)
+        const isPython = fam.dir === 'python'
+        // 多文件族 files = [测试, 库]（lib-root 相对路径）；python 单文件无 files。
+        const libFile = path.join(libDir, 'auto', `${lib}.at`)
+        const libContent = isPython ? null : readIfExists(libFile)
+        const files = isPython
+          ? null
+          : [
+              { path: `tests/auto/${testName}`, content },
+              ...(libContent !== null ? [{ path: `auto/${lib}.at`, content: libContent }] : []),
+            ]
+        notes.push({
+          id: `${fam.id}/${lib}-${stem}`,
+          title: isPython ? lib : `${lib} · ${displayFromStem(stem)}`,
+          sourceType: 'parity',
+          sourcePath: relRoot(testPath),
+          kind: isPython ? 'single' : 'project',
+          // 全部有外部依赖（python FFI / lib import），Run 需对应后端能力——本迭代可浏览。
+          standalone: false,
+          code: isPython ? content : null,
+          files,
+          expectedOutput: null,
+          expectedKind: null,
+          description: null,
+          tags: ['parity', fam.dir, lib],
+        })
+      }
+    }
+    if (notes.length === 0) continue
+    notes.sort((a, b) => a.id.localeCompare(b.id))
+    groups.push({ id: fam.id, title: fam.title, order: fam.order, source: relRoot(PARITY_DIR), notes })
+  }
+  return groups
+}
+
 // ── manifest 组装（确定性：groups 按 order/id 排序、notes 按 id 排序、不写时间戳）──
 
 function buildManifest() {
-  const groups = [...collectVmGolden(), ...collectAavm(), ...collectBooks(), ...collectDemo()]
+  const groups = [...collectVmGolden(), ...collectAavm(), ...collectBooks(), ...collectDemo(), ...collectParity()]
   for (const g of groups) g.notes.sort((a, b) => a.id.localeCompare(b.id))
   groups.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
   return { version: 1, groups }
@@ -429,18 +511,27 @@ function runCheck() {
   if (bookCount === 0 && first.groups.some((g) => g.id.startsWith('book-'))) {
     failures.push('book 组存在但 0 笔记')
   }
+  const parityCount = countByPrefix(first, 'parity-')
+  if (parityCount < 51) failures.push(`parity ${parityCount} < 51`)
+  const parityRust = countByPrefix(first, 'parity-rust')
+  const parityPython = countByPrefix(first, 'parity-python')
+  if (parityRust < 13) failures.push(`parity-rust ${parityRust} < 13`)
+  if (parityPython < 20) failures.push(`parity-python ${parityPython} < 20`)
   if (failures.length > 0) {
     console.error(`[build-playground-notes] --check FAILED:\n  - ${failures.join('\n  - ')}`)
     process.exit(1)
   }
   console.log(
-    `[build-playground-notes] --check OK: vm=${vmNotes.length} aavm=${aavmCount} demo=${demoNotes.length}(project=${demoProjects}) book=${bookCount}${bookCount === 0 ? '（未物化，跳过）' : ''}`
+    `[build-playground-notes] --check OK: vm=${vmNotes.length} aavm=${aavmCount} demo=${demoNotes.length}(project=${demoProjects}) book=${bookCount}${bookCount === 0 ? '（未物化，跳过）' : ''} parity=${parityCount}`
   )
 }
 
 function writeManifest(manifest) {
+  const json = JSON.stringify(manifest, null, 2) + '\n'
   fs.mkdirSync(OUT_DIR, { recursive: true })
-  fs.writeFileSync(OUT_FILE, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+  fs.writeFileSync(OUT_FILE, json, 'utf8')
+  fs.mkdirSync(path.dirname(OUT_FILE_BACKEND), { recursive: true })
+  fs.writeFileSync(OUT_FILE_BACKEND, json, 'utf8')
 }
 
 if (process.argv.includes('--check')) {
@@ -448,7 +539,10 @@ if (process.argv.includes('--check')) {
 } else {
   const manifest = buildManifest()
   writeManifest(manifest)
-  const lines = [`manifest → ${relRoot(OUT_FILE)}`]
+  const lines = [
+    `manifest → ${relRoot(OUT_FILE)}`,
+    `manifest → ${relRoot(OUT_FILE_BACKEND)}（后端 /api/examples 事实源）`,
+  ]
   for (const g of manifest.groups) lines.push(`  ${g.id.padEnd(22)} ${String(g.notes.length).padStart(4)}  ${g.title}`)
   lines.push(
     `vm total: ${countByPrefix(manifest, 'vm-')}, aavm total: ${countByPrefix(manifest, 'aavm-')}, book total: ${countByPrefix(manifest, 'book-')}, demo total: ${countByPrefix(manifest, 'demo')}`

@@ -1,5 +1,5 @@
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::project::ProjectFile;
@@ -24,7 +24,107 @@ pub async fn examples_handler() -> Json<ExamplesResponse> {
     })
 }
 
+// ── Notes manifest 单一事实源（Plan 582 T13；schema v1 见 scripts/build-playground-notes.mjs）──
+//
+// 启动时探测 CARGO_MANIFEST_DIR/notes.json（构建期产物，gitignore）：存在则解析
+// 映射为现有 Example 响应（schema 不变，兼容 ExampleSelector/Full）；缺失或解析
+// 失败回退现有目录扫描。选择文件探测而非 include_str!：生成时序灵活、二进制不背书。
+
+#[derive(Deserialize)]
+struct NotesManifest {
+    #[allow(dead_code)] // version 字段仅校验存在性，不参与映射
+    version: serde_json::Value,
+    groups: Vec<NoteGroup>,
+}
+
+#[derive(Deserialize)]
+struct NoteGroup {
+    notes: Vec<NoteMetaEntry>,
+}
+
+#[derive(Deserialize)]
+struct NoteMetaEntry {
+    title: String,
+    #[serde(rename = "sourceType")]
+    _source_type: String,
+    #[serde(rename = "sourcePath")]
+    source_path: String,
+    kind: String,
+    code: Option<String>,
+    files: Option<Vec<ManifestFile>>,
+}
+
+#[derive(Deserialize)]
+struct ManifestFile {
+    path: String,
+    content: String,
+}
+
 fn load_examples() -> Vec<Example> {
+    match load_from_manifest() {
+        Some(examples) => examples,
+        None => load_from_dir_scan(),
+    }
+}
+
+fn load_from_manifest() -> Option<Vec<Example>> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("notes.json");
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let manifest: NotesManifest = match serde_json::from_str(&raw) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("notes.json 解析失败（{}），回退目录扫描", e);
+            return None;
+        }
+    };
+    let mut out = Vec::new();
+    for group in &manifest.groups {
+        for note in &group.notes {
+            let files: Vec<ProjectFile> = note
+                .files
+                .iter()
+                .flatten()
+                .map(|f| ProjectFile { path: f.path.clone(), source: f.content.clone() })
+                .collect();
+            // entry 恒为 main.at 内容（kind=project 时 code 为 null）；parity 等无 main.at
+            // 的 project 笔记回退首文件（与前端 cardCode/loadNote 回退规则一致）。
+            let source = note
+                .code
+                .clone()
+                .or_else(|| files.iter().find(|f| f.path == "main.at").map(|f| f.source.clone()))
+                .or_else(|| files.first().map(|f| f.source.clone()))
+                .unwrap_or_default();
+            if source.is_empty() {
+                continue;
+            }
+            let is_project = note.kind == "project";
+            // 项目目录相对 examples/playground-demo（服务端物化基座）；其余来源无服务端目录。
+            let project_dir = if is_project {
+                note.source_path
+                    .strip_prefix("examples/playground-demo/")
+                    .and_then(|rest| rest.strip_suffix("/main.at"))
+                    .map(str::to_string)
+            } else {
+                None
+            };
+            out.push(Example {
+                name: note.title.clone(),
+                source,
+                example_type: if is_project { "project".into() } else { "single".into() },
+                project_dir,
+                files: if is_project { Some(files) } else { None },
+            });
+        }
+    }
+    if out.is_empty() {
+        tracing::warn!("notes.json 存在但 0 条笔记，回退目录扫描");
+        return None;
+    }
+    tracing::info!("/api/examples 读 notes.json（{} 条，单一事实源）", out.len());
+    Some(out)
+}
+
+fn load_from_dir_scan() -> Vec<Example> {
     let examples_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())

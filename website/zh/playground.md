@@ -3,23 +3,18 @@ layout: page
 sidebar: false
 ---
 
-<script setup>
-import { ref } from 'vue'
-const isLoading = ref(true)
-</script>
-
 <div class="playground-page">
   <div class="playground-header">
     <h1>Playground</h1>
-    <p>在浏览器中编写、运行和转译 Auto 代码。需要运行 playground 后端服务器。</p>
+    <p>浏览仓内语料笔记——VM 金样、书页围栏、Demo 示例；运行与转译需本地后端。</p>
   </div>
 
-  <AutoPlayground api-url="" height="700px" />
+  <NotesExplorer />
 
-  <div class="playground-note">
+  <div id="backend" class="playground-note">
     <p>
       <strong>需要后端服务器？</strong>
-      Playground 需要运行 Auto playground 服务器。你可以在本地启动：
+      浏览与编辑笔记无需后端。要运行或转译代码，可在本地启动 playground 服务器：
     </p>
     <pre><code>cargo run -p auto-playground</code></pre>
     <p>

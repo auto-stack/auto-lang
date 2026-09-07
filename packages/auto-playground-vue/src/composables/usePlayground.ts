@@ -1,5 +1,5 @@
 import { ref, watch, computed } from 'vue';
-import type { RunResponse, TransResponse, OutputTab, SourceMapEntry, TransFile, DebugState, DebugCommand, BytecodeLine } from '../types';
+import type { RunResponse, TransResponse, OutputTab, SourceMapEntry, TransFile, DebugState, DebugCommand, BytecodeLine, ProjectFile } from '../types';
 import { runTypeScript } from '../utils/tsRunner';
 
 const DEBOUNCE_MS = 500;
@@ -67,10 +67,37 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   const timeMs = ref(0);
   const bytecode = ref<BytecodeLine[]>([]);
   const isLoading = ref(false);
+  // ── 后端探测（Plan 582 T9）：请求网络失败置位；成功响应/探测清除 ──
+  const backendDown = ref(false);
+
+  /** 手动重试：探测 /api/examples（任意 HTTP 响应=后端在位；网络异常=仍离线）。 */
+  async function retryBackend() {
+    try {
+      await fetch(`${API_BASE}/examples`, { method: 'GET' });
+      backendDown.value = false;
+    } catch {
+      backendDown.value = true;
+    }
+    return !backendDown.value;
+  }
   const activeTab = ref<OutputTab>(saved.activeTab ?? 'rust');
   const transpileTarget = ref('');
   const liveCompile = ref(saved.liveCompile ?? true);
   const projectDir = ref<string | undefined>(saved.projectDir);
+  // 项目型笔记文件集（Plan 582 T7；镜像 usePlaygroundFull 的 files 请求形态）。
+  const projectFiles = ref<ProjectFile[]>([]);
+
+  /** 项目运行/转译请求体：files 非空时以 main.at（或首文件，Plan 582 parity）为 entry。 */
+  function projectRequestBody(body: Record<string, unknown>) {
+    if (projectDir.value) body.project_dir = projectDir.value;
+    if (projectFiles.value.length > 0) {
+      body.files = projectFiles.value;
+      const main = projectFiles.value.find((f) => f.path === 'main.at');
+      if (main) body.source = main.source;
+      body.entry = main?.path ?? projectFiles.value[0].path;
+    }
+    return body;
+  }
 
   interface OutputLocation {
     outputFile: string;
@@ -206,16 +233,14 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     bytecode.value = [];
 
     try {
-      const body: Record<string, unknown> = { source: source.value };
-      if (projectDir.value) {
-        body.project_dir = projectDir.value;
-      }
+      const body: Record<string, unknown> = projectRequestBody({ source: source.value });
       const res = await fetch(`${API_BASE}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data: RunResponse = await res.json();
+      backendDown.value = false;
       stdout.value = data.stdout || '';
       stderr.value = data.stderr || '';
       timeMs.value = data.time_ms || 0;
@@ -224,6 +249,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
         resultCode.value = data.result;
       }
     } catch (e: any) {
+      backendDown.value = true;
       stderr.value = `Network error: ${e.message}`;
     } finally {
       isLoading.value = false;
@@ -258,6 +284,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
           body: JSON.stringify({ language, code }),
         });
         const data: RunResponse = await res.json();
+        backendDown.value = false;
         stdout.value = data.stdout || '';
         stderr.value = data.stderr || '';
         timeMs.value = data.time_ms || 0;
@@ -266,6 +293,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
         }
       }
     } catch (e: any) {
+      backendDown.value = true;
       stderr.value = `Network error: ${e.message}`;
     } finally {
       isLoading.value = false;
@@ -275,16 +303,14 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   async function transpile(target: string) {
     isLoading.value = true;
     try {
-      const body: Record<string, unknown> = { source: source.value, target };
-      if (projectDir.value) {
-        body.project_dir = projectDir.value;
-      }
+      const body: Record<string, unknown> = projectRequestBody({ source: source.value, target });
       const res = await fetch(`${API_BASE}/trans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data: TransResponse = await res.json();
+      backendDown.value = false;
       const files = data.files ?? [];
       const fileSourceMaps: Record<string, SourceMapEntry[]> = {};
       for (const f of files) {
@@ -299,6 +325,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       };
       refreshOutputHighlight();
     } catch (e: any) {
+      backendDown.value = true;
       transpileTarget.value = target;
       transCache.value[target] = {
         files: [{ path: 'error.txt', code: `Error: ${e.message}` }],
@@ -329,9 +356,10 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
     refreshOutputHighlight();
   }
 
-  function loadExample(payload: { source: string; project_dir?: string }) {
+  function loadExample(payload: { source: string; project_dir?: string; files?: ProjectFile[] }) {
     source.value = payload.source;
     projectDir.value = payload.project_dir;
+    projectFiles.value = payload.files ?? [];
     stdout.value = '';
     stderr.value = '';
     resultCode.value = '';
@@ -407,10 +435,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       const results = await Promise.all(
         targets.map(async (target) => {
           try {
-            const body: Record<string, unknown> = { source: source.value, target };
-            if (projectDir.value) {
-              body.project_dir = projectDir.value;
-            }
+            const body: Record<string, unknown> = projectRequestBody({ source: source.value, target });
             const res = await fetch(`${API_BASE}/trans`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -543,7 +568,8 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
 
   return {
     source, stdout, stderr, resultCode, timeMs, runBytecode: bytecode, isLoading,
-    activeTab, transpiledCode, transpileTarget, liveCompile, projectDir,
+    activeTab, transpiledCode, transpileTarget, liveCompile, projectDir, projectFiles,
+    backendDown, retryBackend,
     transFiles, selectedTransFile,
     highlightedSourceLine, highlightedOutputLines, highlightedOutputFiles,
     shareToast,

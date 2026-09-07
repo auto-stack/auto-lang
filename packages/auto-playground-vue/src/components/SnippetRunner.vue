@@ -5,11 +5,19 @@
     :style="containerStyle"
   >
     <div v-if="actionBar" class="snippet-actionbar">
-      <button class="run-action" :class="{ busy: isLoading }" :title="actionTitle" @click="triggerAction">
-        <Play v-if="!isLoading" :size="13" />
+      <button
+        class="run-action"
+        :class="{ busy: isLoading, down: backendDown }"
+        :title="backendDown ? '后端离线——见下方引导' : actionTitle"
+        :disabled="backendDown"
+        @click="triggerAction"
+      >
+        <WifiOff v-if="backendDown" :size="13" />
+        <Play v-else-if="!isLoading" :size="13" />
         <Loader2 v-else :size="13" class="spin" />
       </button>
-      <span v-if="target !== 'run'" class="target-hint">→ {{ targetLabel }}</span>
+      <span v-if="backendDown" class="down-hint">后端离线</span>
+      <span v-else-if="target !== 'run'" class="target-hint">→ {{ targetLabel }}</span>
       <span class="spacer"></span>
       <button
         class="output-toggle"
@@ -33,12 +41,24 @@
     </div>
     <div v-if="outputOpen || fill" class="snippet-output">
       <slot name="output">
-        <!-- 无后端报错提示（临时态，582 换统一降级卡） -->
-        <div v-if="noBackend" class="no-backend-hint">
-          后端不可用——本地启动：<code>cargo run -p auto-playground</code>
+        <!-- 无后端降级引导卡（Plan 582 T9；浏览/编辑不受影响） -->
+        <div v-if="backendDown" class="backend-down-card">
+          <WifiOff :size="16" class="bd-icon" />
+          <p class="bd-title">后端未启动——运行与转译暂不可用</p>
+          <p class="bd-line">笔记浏览与代码编辑不受影响。本地启动后端：</p>
+          <pre class="bd-cmd"><code>cargo run -p auto-playground</code></pre>
+          <p class="bd-line">或参考部署说明将后端与本站同域部署。</p>
+          <div class="bd-actions">
+            <button class="bd-retry" @click="onRetryBackend">
+              <RefreshCw :size="13" /> 重试连接
+            </button>
+            <a class="bd-link" href="/playground#backend" title="部署说明见 Playground 页底部">
+              部署说明
+            </a>
+          </div>
         </div>
         <ConsoleOutput
-          v-if="target === 'run'"
+          v-else-if="target === 'run'"
           :stdout="stdout"
           :stderr="stderr"
           :result="resultCode"
@@ -51,8 +71,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { Play, Loader2, ChevronDown } from 'lucide-vue-next'
+import { ref, computed, onMounted, watch } from 'vue'
+import { Play, Loader2, ChevronDown, WifiOff, RefreshCw } from 'lucide-vue-next'
 import CodeEditor from './CodeEditor.vue'
 import CodePreview from './CodePreview.vue'
 import ConsoleOutput from './ConsoleOutput.vue'
@@ -111,6 +131,7 @@ const {
   transpiledCode, liveCompile, transFiles, selectedTransFile,
   highlightedOutputLines, shareToast,
   debugState, bytecode, breakpoints, isDebugging,
+  projectDir, projectFiles, backendDown, retryBackend,
   run, switchTab, selectTransFile, loadExample, share,
   highlightOutputLine, transpile,
   debugStart, debugSetBreakpoints, debugCommand, debugStop,
@@ -134,7 +155,15 @@ const actionTitle = computed(() =>
   props.target === 'run' ? 'Run (Ctrl+Enter)' : `Transpile to ${targetLabel.value}`,
 )
 
-const noBackend = computed(() => stderr.value.startsWith('Network error'))
+// 后端离线：输出区自动展开呈降级引导卡（Plan 582 T9）。
+watch(backendDown, (down) => {
+  if (down) outputOpen.value = true
+})
+
+async function onRetryBackend() {
+  const ok = await retryBackend()
+  if (ok) outputOpen.value = false
+}
 
 // height='auto'：按代码行数推导编辑器高（钳制在 80px–480px）；fill/显式值走 flex/容器高。
 const editorStyle = computed(() => {
@@ -177,6 +206,7 @@ defineExpose({
   transpiledCode, liveCompile, transFiles, selectedTransFile,
   highlightedOutputLines, shareToast,
   debugState, bytecode, breakpoints, isDebugging,
+  projectDir, projectFiles, backendDown, retryBackend,
   run, switchTab, selectTransFile, loadExample, share,
   highlightOutputLine, transpile,
   debugStart, debugSetBreakpoints, debugCommand, debugStop,
@@ -281,6 +311,16 @@ defineExpose({
   cursor: wait;
 }
 
+.run-action.down {
+  background: #45475a;
+  cursor: not-allowed;
+}
+
+.down-hint {
+  font-size: 0.7rem;
+  color: #f9e2af;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -340,16 +380,68 @@ defineExpose({
   flex-shrink: 0;
 }
 
-.no-backend-hint {
-  padding: 6px 12px;
-  font-size: 0.75rem;
-  color: #f9e2af;
-  background: #f9e2af14;
-  border-bottom: 1px solid #313244;
+/* 无后端降级引导卡（Plan 582 T9）。 */
+.backend-down-card {
+  padding: 1.25rem 1.5rem;
+  font-size: 0.8rem;
+  color: #a6adc8;
 }
 
-.no-backend-hint code {
+.bd-icon {
+  color: #f9e2af;
+  margin-bottom: 0.4rem;
+}
+
+.bd-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f9e2af;
+}
+
+.bd-line {
+  margin: 0.25rem 0;
+}
+
+.bd-cmd {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 6px;
+}
+
+.bd-cmd code {
   font-family: 'JetBrains Mono', monospace;
   color: #cdd6f4;
+}
+
+.bd-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.bd-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  background: #313244;
+  color: #cdd6f4;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.bd-retry:hover {
+  border-color: #6366f1;
+}
+
+.bd-link {
+  color: #89b4fa;
+  font-size: 0.78rem;
 }
 </style>
