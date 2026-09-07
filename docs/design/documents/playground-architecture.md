@@ -271,4 +271,49 @@ manifest `kind=project` 的笔记，PlaygroundCard 内以文件 tab 呈现（ent
 - **agent debug 嵌入**：`agent_debug` WS 会话经 SnippetRunner 暴露给文档读者；
 - **UI 示例联动**：画廊（Plan 578 轨）成型后，UI 型示例经画廊展示、playground 仅链入；
 - **期望输出批量校验前端化**：笔记站"运行全部 vm-golden"按钮，作为 CI golden 回归的可视化镜像；
-- **多语言书深链**：书内块运行结果回链笔记站对应笔记（双向导航）。
+- **多语言书深链**：书内块运行结果回链笔记站对应笔记（双向导航）；
+- **AutoUI 双端化迁移**：整个 Playground 前端由手写 Vue 迁为 Auto 语言组件（见 §12，2026-09-07 用户裁定）。
+
+## 12. AutoUI 迁移路线（Vue 手写 → Auto 语言双端化，2026-09-07 用户裁定入档）
+
+### 12.1 现状定位
+
+Playground 前端（`packages/auto-playground-vue`）是**手写 Vue 3 + TypeScript** 应用
+（CodeMirror 6 编辑器、lucide 图标、自研浮动滚动条），仅含 Web 渲染路径。两个宿主——
+VitePress 网站（`/playground`、书页 AutoFence）与 Rust 后端自服务页——都是浏览器形态。
+与 `examples/ui/*` 的 AutoUI 应用不同，它**没有 .at 组件源、不经 VM/编译器管线、无
+iced 桌面臂**：改一处 UI 要动 TS/Vue 手写代码，且无法出现在 AutoShell 桌面策展集。
+
+### 12.2 目标形态
+
+迁移为 AutoUI 项目（Auto 语言复刻现有 Vue 组件），获得与 015-notes 等示例同等的
+双端能力：Web 臂（a2r→Vue 发射）+ 桌面臂（VM/iced），并进入 examples/ui 应用矩阵
+（AppViewport 内嵌范式，Plan 549）与桌面策展（Plan 552）。
+
+### 12.3 复刻清单与依赖映射（组件 → Auto 侧既有地基）
+
+| Vue 组件 | Auto 侧对应地基 | 缺口 |
+|---|---|---|
+| NotesSidebar（树/搜索/三级归类） | 标准组件树（sidebar 族 Plan 548、scroll_area、input） | 无硬缺口 |
+| PlaygroundCard / IDE 布局（PlaygroundLayout） | ica 组件编排 + tabs/toolbar 既有词汇 | IDE 工具栏调试态按钮组需逐件映射 |
+| CodeEditor（CodeMirror 6） | `auto.code_editor` 原生族（natives 2910-2932：text/cursor/find/fold/undo/断点交互面） | 断点 gutter/行高亮与 CM6 行为对齐需逐项核 |
+| ConsoleOutput / ExpectedOutputPanel | 文本渲染 + 列表着色（rich text/风格化 span 既有） | 行级 diff ±高亮为纯展示逻辑，迁移直译 |
+| BytecodePanel（反汇编/偏移点击） | 列表 + 锚点事件（桌面侧 VM 实时反汇编 Plan 330 已有同构面） | 低 |
+| useNotes/usePlayground 数据层 | manifest 是静态 JSON（双端通用）；运行/转译走 `auto.http.*` 原生族打 `/api/run|trans` | 桌面端默认打本机 3030（后端同机时零配置） |
+
+### 12.4 增量路线（建议三期）
+
+1. **W1 笔记站双端化**：NotesSidebar + 笔记浏览 + SnippetRunner（run 单动作）复刻为
+   `.at` 组件——015-notes 形态单页应用，桌面可开、Web 可内嵌；expectedKind 对照面板随行；
+2. **W2 编辑与项目型笔记**：code_editor 深化（多文件 tab/文件树）+ 项目 files 形态运行；
+3. **W3 IDE 层**：调试工具栏/Bytecode 面板/回放（Replay）——依赖 330 调试器与回放格式的
+   iced 侧成熟度，最后迁移；迁移完成后 Vue 包降级为 Web 发射目标的兼容层直至退役。
+
+### 12.5 边界与风险
+
+- **CodeMirror 等价性**是最大风险项：断点交互、行高亮、滚动同步在 iced 侧由
+  code_editor 原生族承载，能力清单需在 W2 立项时逐项对表（缺项先进 Vue 兼容层）；
+- manifest/notes.json 与后端 API 契约不受迁移影响（纯前端换骨）；
+- 网站宿主（VitePress 全局组件 + 书页 AutoFence）在 W1 后切到 AutoUI Web 臂产物，
+  切换前 Vue 版继续服务；
+- 本期（Plan 582）不迁移——设计入档 + KNOWN-DEBT 登记（P582-D4），独立立项执行。
