@@ -13,7 +13,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [playground-vue, website, auto-playground]   # specs 路径
 current_step: 0
-total_steps: 10
+total_steps: 16
 ---
 
 # [PLAN-582] Notes Explorer 笔记站 + 宿主合一 + 电子书 Run 嵌入（Playground 设计 · Plan B）
@@ -47,13 +47,20 @@ total_steps: 10
 - §8 部署合一：三个消费方同一组件族——VitePress `/playground`、后端 `frontend/`（宿主组件从 `AutoPlaygroundFull` 换 `NotesExplorer`，保留"IDE 模式"切换）、`/api/examples` 读 manifest。
 - 单一事实源：`scripts/build-playground-notes.mjs` 增加第二输出 `crates/auto-playground/notes.json`（gitignore，构建期产物）；`examples.rs` 启动时存在即读、缺失回退现有目录扫描。
 
+## 技术栈
+
+- **组件**：Vue 3.5 + TypeScript（复用 581 的 SnippetRunner/PlaygroundCard/usePlayground）；lucide-vue-next。
+- **构建/类型门禁**：vite 8 + `vue-tsc -b`（packages）；VitePress 1.6（website，主题层 `enhanceApp`/markdown 钩子）。
+- **后端局部改动**：Rust（axum routes，serde_json 反序列化 manifest），门禁 `cargo check -p auto-playground`（不触 `crates/auto-lang`，禁跑 cargo t/tf/tv/tb）。
+- **e2e**：Playwright 1.59（website 现有 `npm run test:e2e` 体系）。
+
 ## 需求分析与背景调查
 
 （取材 [docs/specs/overview.md](../specs/overview.md) 与模块 specs）
 
 - **[playground-vue](../specs/playground-vue/project.md)**（active）：581 后已有 SnippetRunner/PlaygroundCard 三层；本计划在其上加 NotesExplorer 与 ExpectedOutputPanel，`lang/` CodeMirror 支持复用。
 - **[auto-playground](../specs/auto-playground/project.md)**（active）：`routes/examples.rs` 现扫 `examples/playground-demo/`；本计划改读 manifest（`Example` 响应结构不变）。`frontend/` 现渲染 `AutoPlaygroundFull`，换宿主 NotesExplorer。构建同步：`scripts/build-playground.mjs` 构建后同步 `frontend/dist` 与 `website/public/playground`——website 分支本期删除。
-- **[website](../specs/website/project.md)**（active）：VitePress 站，`playground.md`（EN/ZH）现内嵌 `<AutoPlayground>`；主题在 `website/.vitepress/theme/`（现有组件 AIHero/UIGallery 等，无围栏后处理）；e2e 走 Playwright（`npm run test:e2e`）。books 为 `prepare-content.js` 从外仓 `../book` 物化的 gitignore 生成物。
+- **[website](../specs/website/project.md)**（active）：VitePress 站，`playground.md`（EN/ZH）现内嵌 `<AutoPlayground>`；主题在 `website/.vitepress/theme/`（现有组件 AIHero/UIGallery 等，无围栏后处理）；e2e 走 Playwright（`npm run test:e2e`）。books 为 `prepare-content.js` 从外仓 `../book`（autostack/book）物化的 gitignore 生成物。
 - 历史：两入口并存源于 `95089c156`（全量 SPA 部署 website）+ `ebc43e7ac`（iframe 换内联组件但旧页未退役），Playground 设计 §1.1。
 
 ## 详细设计
@@ -93,7 +100,7 @@ PlaygroundCard 内文件 tab（entry 锁 `main.at`，多文件可切换编辑，
 - 组件：`cd packages/auto-playground-vue && npm run build`。
 - website：`cd website && npm run build`（EN/ZH 全量）+ `npm run dev` 手动冒烟（树/搜索/深链/书页 Run/降级态）。
 - e2e（Playwright，最小集）：`/playground` 渲染 ≥4 分组、笔记点击出卡片；books 页 Run 按钮存在；无后端降级态可见。后端相关断言仅在本地起服时执行（CI 跳过）。
-- 后端：`cargo run -p auto-playground` + `curl -s http://127.0.0.1:<port>/api/examples | jq '.examples | length'` 与 manifest 计数一致。
+- 后端：`cargo run -p auto-playground` + `curl -s http://127.0.0.1:<port>/api/examples | jq '.examples | length'` 与 manifest 计数一致（端口以 `main.rs` 实际配置为准）。
 
 ## 验收标准
 
@@ -109,54 +116,84 @@ PlaygroundCard 内文件 tab（entry 锁 `main.at`，多文件可切换编辑，
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- **T1 useNotes composable**
+- **T1 useNotes：加载与索引**
   文件：`packages/auto-playground-vue/src/composables/useNotes.ts`（新建）
-  操作：manifest 加载/扁平索引/搜索/加载错误态（详细设计 §1）。
+  操作：`fetchNotes(base)` 加载 manifest → `groups`/`flatNotes`/`byId` 索引 + 加载/错误态。
+  验证：`cd packages/auto-playground-vue && npx vue-tsc -b && echo OK`。
+
+- **T2 useNotes：搜索**
+  文件：`packages/auto-playground-vue/src/composables/useNotes.ts`
+  操作：`search(q)`——标题+tags `includes` 匹配，返回命中笔记列表（分组归属保留）。
+  验证：`cd packages/auto-playground-vue && npx vue-tsc -b && echo OK`。
+
+- **T3 NotesExplorer：布局骨架**
+  文件：`packages/auto-playground-vue/src/components/NotesExplorer.vue`（新建；侧栏可拆 `NotesSidebar.vue`）
+  操作：左栏分组树（折叠/计数徽章）+ 右栏笔记头（标题/来源 chip→GitHub 链接/类型徽章/说明折叠）+ PlaygroundCard 挂载；CSS 用 VitePress 变量 + fallback token。
   验证：`cd packages/auto-playground-vue && npm run build`。
 
-- **T2 NotesExplorer 组件**
-  文件：`packages/auto-playground-vue/src/components/NotesExplorer.vue`（新建，可拆 `NotesSidebar.vue`）
-  操作：布局/深链/键盘导航/VitePress 变量+fallback token（详细设计 §2）。
+- **T4 NotesExplorer：深链与键盘**
+  文件：`packages/auto-playground-vue/src/components/NotesExplorer.vue`
+  操作：`#/notes/<id>` 读写（hashchange 监听，不触发 VitePress 路由）；↑/↓ 切换当前笔记、Ctrl+Enter 触发运行（事件转发 PlaygroundCard）。
+  验证：`cd packages/auto-playground-vue && npm run build`；`npm run dev` 冒烟（改 hash 定位、键盘切换）。
+
+- **T5 ExpectedOutputPanel 组件**
+  文件：`packages/auto-playground-vue/src/components/ExpectedOutputPanel.vue`（新建）
+  操作：三态（未运行/✓ 一致/✗ 差异行级高亮）；比对规则=trim 行尾空白+末尾空行后逐行精确比对。
   验证：`cd packages/auto-playground-vue && npm run build`。
 
-- **T3 期望输出对照**
-  文件：`packages/auto-playground-vue/src/components/ExpectedOutputPanel.vue`（新建）、`PlaygroundCard.vue`（接 tab）
-  操作：三态对照 + 行级高亮（详细设计 §3）。
-  验证：`cd packages/auto-playground-vue && npm run build`；本地起后端后 `/playground` 打开 `01_basics` 任意笔记冒烟 ✓/✗ 两态。
+- **T6 PlaygroundCard 接期望输出 tab**
+  文件：`packages/auto-playground-vue/src/components/PlaygroundCard.vue`
+  操作：note.expectedOutput 非空时输出区加"期望输出"tab 挂 ExpectedOutputPanel（实际 stdout 来自 usePlayground 状态）。
+  验证：`cd packages/auto-playground-vue && npm run build`；本地起后端 + dev，打开 `01_basics` 任意 vm-golden 笔记冒烟 ✓/✗ 两态。
 
-- **T4 项目型笔记与 IDE 模式入口**
+- **T7 项目型笔记文件 tab**
+  文件：`packages/auto-playground-vue/src/components/PlaygroundCard.vue`
+  操作：kind=project 时文件 tab（entry 锁 `main.at`、多文件切换编辑）；运行请求构造复用 `usePlaygroundFull` 的 files 形态。
+  验证：`cd packages/auto-playground-vue && npm run build`；笔记站（或 dev 页）打开 `demo/09-multi-module` 冒烟多文件运行。
+
+- **T8 "在 IDE 中打开"切换入口**
   文件：`packages/auto-playground-vue/src/components/PlaygroundCard.vue`、`NotesExplorer.vue`
-  操作：kind=project 文件 tab（entry `main.at`，复用 usePlaygroundFull 项目运行请求构造）+ "在 IDE 中打开"切换（详细设计 §4；SPA 宿主渲染 Full，VitePress 宿主无后端禁用）。
-  验证：`cd packages/auto-playground-vue && npm run build`；笔记站打开 `demo/09-multi-module` 冒烟多文件运行。
+  操作：按钮触发 `ide-mode` 事件；SPA 宿主（后端 frontend）渲染 `AutoPlaygroundFull` 并 loadExample 对应笔记；VitePress 宿主无后端时禁用+提示。
+  验证：`cd packages/auto-playground-vue && npm run build`。
 
-- **T5 无后端降级态**
-  文件：`packages/auto-playground-vue/src/composables/usePlayground.ts`、`SnippetRunner.vue`、`PlaygroundCard.vue`
-  操作：backendDown 探测 + 动作位引导卡（详细设计 §7）。
-  验证：`cd website && npm run build && npx vitepress preview --port 4173 &` 后浏览器开 `/playground`（无后端）确认浏览完整、Run 位引导。
+- **T9 无后端降级态**
+  文件：`packages/auto-playground-vue/src/composables/usePlayground.ts`、`components/SnippetRunner.vue`、`components/PlaygroundCard.vue`
+  操作：首个请求失败置 `backendDown`（可重试）；动作位降级为引导卡（`cargo run -p auto-playground` + 部署说明锚点）。
+  验证：`cd packages/auto-playground-vue && npm run build`；`cd website && npx vitepress preview --port 4173 &` 后浏览器开 `/playground`（无后端）确认浏览完整、Run 位引导。
 
-- **T6 website /playground 改造**
-  文件：`website/playground.md`、`website/zh/playground.md`、`website/.vitepress/theme/index.ts`（如需注册）
+- **T10 website /playground 改造**
+  文件：`website/playground.md`、`website/zh/playground.md`、`website/.vitepress/theme/index.ts`（如需注册全局组件）
   操作：内嵌 `<NotesExplorer />` 替换 `<AutoPlayground />`，保留头部与后端引导块；EN/ZH 同步。
-  验证：`cd website && npm run build`；dev 冒烟（树/搜索/深链）。
+  验证：`cd website && npm run build`；`npm run dev` 冒烟（树/搜索/深链）。
 
-- **T7 旧静态页退役**
+- **T11 旧静态页退役**
   文件：`scripts/build-playground.mjs`、`website/public/playground/`（清空）、`website/public/playground/index.html`（新重定向页）
-  操作：mjs 删除 website 同步分支（保留后端 dist 分支）；public/playground 清空后提交仅含 meta-refresh → `/playground` 的 index.html（vitepress 构建 dist/playground 时覆盖合并该静态页）。
-  验证：`cd website && npm run build && grep -i "refresh" public/playground/index.html .vitepress/dist/playground/index.html`。
+  操作：mjs 删除 website 同步分支（保留后端 dist 分支）；public/playground 清空后提交仅含 meta-refresh → `/playground` 的 index.html。
+  验证：`cd website && npm run build && grep -i refresh .vitepress/dist/playground/index.html public/playground/index.html`。
 
-- **T8 /api/examples 单一事实源**
-  文件：`crates/auto-playground/src/routes/examples.rs`、`scripts/build-playground-notes.mjs`（增第二输出）、`crates/auto-playground/.gitignore`（新增 notes.json 条目）
-  操作：manifest→Example 映射（schema 兼容）+ 文件探测回退（详细设计 §5）。
-  验证：`node scripts/build-playground-notes.mjs && cargo check -p auto-playground`；起服 `curl -s http://127.0.0.1:8080/api/examples | jq '.examples | length'`（端口以 main.rs 实际配置为准）。
+- **T12 manifest 第二输出**
+  文件：`scripts/build-playground-notes.mjs`、`crates/auto-playground/.gitignore`（无则新建）
+  操作：脚本增加输出 `crates/auto-playground/notes.json`（同内容）；gitignore 加 `notes.json`。
+  验证：`node scripts/build-playground-notes.mjs && cmp website/public/playground-data/notes.json crates/auto-playground/notes.json && echo SYNCED`。
 
-- **T9 电子书围栏 Run**
+- **T13 /api/examples 读 manifest**
+  文件：`crates/auto-playground/src/routes/examples.rs`
+  操作：启动探测 `CARGO_MANIFEST_DIR/notes.json`，存在→serde 反序列化并映射为现有 `Example` 响应（schema 兼容）；缺失→现有目录扫描回退。
+  验证：`cargo check -p auto-playground`；起服 `curl -s http://127.0.0.1:<port>/api/examples | jq '.examples | length'` 与 manifest 笔记总数一致；删 notes.json 重启后回退可用。
+
+- **T14 后端 frontend 换宿主**
+  文件：`crates/auto-playground/frontend/src/App.vue`
+  操作：默认渲染 `NotesExplorer`，顶部"IDE 模式"切换渲染 `AutoPlaygroundFull`（接 T8 事件）；`build-playground.mjs` 后端 dist 同步分支保持。
+  验证：`cd crates/auto-playground/frontend && npm run build`；`cargo run -p auto-playground` 打开页面冒烟（笔记站 + IDE 切换 + 项目笔记运行）。
+
+- **T15 电子书围栏 Run**
   文件：`website/.vitepress/theme/components/AutoFence.vue`（新建）、`website/.vitepress/theme/index.ts`
-  操作：lang=auto 围栏包裹（▶ Run/收起/锁提示，详细设计 §6）。
-  验证：`cd website && npm run build`；dev 打开 `website/books/rust/ch01-getting-started.md` 对应页面冒烟（Run 展开运行；`.cn` 版同验一页）。
+  操作：lang=auto 围栏包裹组件（▶ Run/展开 SnippetRunner autorun/收起还原/`import` 锁提示+链接笔记站）；theme 接线 markdown fence 渲染。
+  验证：`cd website && npm run build`；`npm run dev` 打开 rust 书 `ch01-getting-started` 对应页面冒烟（Run 展开运行；`.cn` 版同验一页）。
 
-- **T10 e2e 最小集与验收清单**
-  文件：`website/tests/`（新增 playground-notes.spec.ts，命名随现有惯例）
-  操作：三条断言（分组渲染/笔记点击出卡片/降级态可见；后端相关仅本地起服时启用）；逐条跑"验收标准"1–8 并记录。
+- **T16 e2e 最小集与验收清单**
+  文件：`website/tests/`（新增 playground-notes spec，命名随现有惯例）
+  操作：三条断言（分组渲染 ≥4/笔记点击出卡片/无后端降级态可见；后端相关仅本地起服启用）；逐条跑"验收标准"1–8 并记录。
   验证：`cd website && npm run test:e2e -- playground-notes`（本地无后端路径）+ 验收清单全绿。
 
 ## 复审记录
@@ -165,6 +202,6 @@ PlaygroundCard 内文件 tab（entry 锁 `main.at`，多文件可切换编辑，
 
 ## 待澄清事项
 
-- **② "在 IDE 中打开"的 VitePress 宿主形态**（T4 落地时定）：无后端时禁用+提示是底线方案；若后端与 website 同域部署则可直接链后端 UI。
+- **② "在 IDE 中打开"的 VitePress 宿主形态**（T8 落地时定）：无后端时禁用+提示是底线方案；若后端与 website 同域部署则可直接链后端 UI。
 - **电子书围栏 ↔ manifest 笔记互链**（Playground 设计 §11 演进项）：本期不做，仅锁提示链接到笔记站。
-- **`/playground/` 旧 URL 的外部引用**（部署历史链接）：重定向页兜底；若 GitHub Pages 路由行为异常改 `_redirects`/404 兜底（T7 验证时裁定）。
+- **`/playground/` 旧 URL 的外部引用**（部署历史链接）：重定向页兜底；若 GitHub Pages 路由行为异常改 `_redirects`/404 兜底（T11 验证时裁定）。
