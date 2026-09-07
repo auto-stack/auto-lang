@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-585
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-repl-stringpool-pin
 author: []
 created_at: 2026-09-07
@@ -8,7 +8,10 @@ updated_at: 2026-09-07
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: [P585-1 根因归档(persistent session 裸换池绕过 pinned 不变量), P585-2 修复(load_strings 收口+池不变量), P585-3 测试(会话级 repro+pin 配平+语料)]
+new_spec_components:
+  - "P585-1: 根因归档——persistent session 裸换池绕过 pinned 不变量（reports 归因链:ash 池日志 #2-#59 常量 FREE/槽位复用/立即数跨代读 + 会话级 repro 污染签名同构实证）"
+  - "P585-2: 架构——run_inner 步骤 8 池替换收口 load_strings（pool_state 重建 + flash 常量区 [0,n) pinned + dedup 种子重建,rc.rs §Phase 2 不变量恢复）"
+  - "P585-3: 测试——会话级 repro（ParityHost+循环 system 拼接）+ pin 不变量配平（常量区恒 u32::MAX/非墓碑/无 underflow）+ 语料 018_loop_concat_churn"
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]
@@ -177,7 +180,42 @@ self.vm.flash = Arc::new(flash);
 
 ## 复审记录
 
-（review 阶段填写）
+- 复审：ZCode（/auto-plan:review），2026-09-07。
+- **逐条复核（verify, don't trust——worktree 829a15852 重跑）**：
+  - **C1 PASS**：plan585_loop_concat_system_strings_repl_parity 修复前红（红相实录：
+    `Some("./x.tmp\n./y.bak./x.tmp\n./y.bak")` + `[P583] retain-after-free on pool
+    idx 7`，污染签名与下游 `'*.bak./x.tmp'` 同构），修复后绿（主检出+worktree 双侧
+    复跑 2 passed）。
+  - **C2 PASS**：plan585_repl_constants_pinned_after_run 修复前红（idx 0
+    `pool_count=0` ≠ u32::MAX，伴生 `[P053-8] phantom freelist entry dropped:
+    slot 4 (rc=4294967295)` 下溢幻影），修复后绿。
+  - **C3 PASS**：语料 018_loop_concat_churn 入库且 tv 档通过；`cargo tv
+    --no-fail-fast` 3614/3615、`cargo tf --no-fail-fast` 3473/3474，唯一红均为
+    `ui_gen::vue::test_charts_gallery_compiles`（charts 预存基线，583 merge 记录
+    在案），零新增红。
+  - **C4 PASS**：下游 auto-shell `cargo test -p ash --test examples_parity
+    positional_arg_passes_to_system` 转绿（修复前 left=["x.tmp"] vs
+    right=["x.tmp","y.bak"]）；probe.ash 三轮输出完整（`iter *.bak => [./y.bak]`
+    恢复）；`P419_POOL_LOG=1` 复跑 P583 横幅计数 0。
+  - **C5 PASS**：`cargo check -p auto-lang` 对 autovm_persistent.rs 零 warning
+    （既存 warning 族 grep 实证与本文件无涉）；scratch/p585 探针全部未入库
+    （untracked）。
+- **遗漏/延后/workaround 扫描**：
+  - 遗漏：无——全仓裸 `vm.strings` 赋值仅此一处（复审重 grep：唯一写点
+    engine.rs:805 load_strings 本体），无同族漏网。
+  - 延后：无新延后。观察项入债：CALL_SPEC 字符串方法臂（trim/len 族）接收者
+    pop-不-release 份额泄漏（安全向，585 池日志实证），已落
+    KNOWN-DEBT-AND-RISKS.md「585 观察」条目；非本缺陷成因（先在、正交），修复
+    未依赖它。
+  - Workaround：无——根因单点修复，P583 复活护栏原样保留（下游横幅归零即修
+    复证据，非闭嘴）。
+- **流程偏差（在案）**：折回先于 review——T6 下游验收要求 ash（path 依赖指向
+  master 主检出）复跑，故 merge 先行；worktree 分支 829a15852 与 master merge
+  6c86af135 内容同源（--no-ff 单提交），tv/tf 在分支尖执行、plan585 双测两侧
+  各自复跑，证据链不受影响。
+- **spec-impact**：new_spec_components 三条（P585-1/2/3）；supersedes/touched_goals
+  不适用留空；affects: [auto-lang/vm]。
+- **裁定：PASS → status: reviewed**，无阻塞债。
 
 ## 待澄清事项
 

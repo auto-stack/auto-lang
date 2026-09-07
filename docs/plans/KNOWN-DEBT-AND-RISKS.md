@@ -136,8 +136,8 @@
 | 365 | W4 真实 D-Bus adapter | `LinuxNotificationsPort` 的 D-Bus signal handler 集成是 TODO（FreeDesktop Notifications 是 push API，需 COSMIC notification-daemon 组件驱动）。`LinuxPowerPort` 已实现 UPower 查询但未在 WSL2 验证。 | `auto-cosmic/ports-linux/src/linux.rs` |
 | 365 | gpui Image/Grid placeholder | gpui 后端的 `View::Image` 渲染为 `[img: src]` 文本占位符，`View::Grid` 做行列分解但无原生 GPUI grid 支持。功能可用但不完整。 | `ui/gpui/auto_render.rs` + `ui/gpui/renderer.rs` |
 | 365 | HostBackend Send bound | `HostBackend::run` 要求 `C::Msg: Send`（iced 的约束传播到方法级）。headless/gpui 本不需要 Send，但 GUI 消息类型按惯例都是 Send，实际无影响。 | `ui/host.rs` |
-| 391 | trait impl 语法 | Auto 不支持 `impl Trait for Type` 语法（D6 仅提供清晰错误："Auto does not support trait impl syntax... Use a static fn/ext method"）。是语言设计决议，非缺陷——用 `ext Type for Spec` 表达外部 trait 实现。 | `parser.rs:4578-4585` |
 | 346/317 | e2e 端口竞态 | test-http-e2e 串行套件：先行的 detached server 线程可能迟到 auto-start，读到进程级 AUTO_HTTP_PORT（彼时已属于后续测试）并用陈旧路由表抢占其端口（偶发 404/10048，受害者随负载轮转，e2e 单测均过）。缓解：受影响测试命名排序靠前 + CI --retries；根治需 per-server 传端口而非进程级 env。 | `vm/ffi/http_server.rs` http_e2e::start_server + AUTO_HTTP_PORT |
+| 541 | 边界: 025-sys-monitor 范围与 VM 行 hover 缺口 | ①非目标四项（进程树嵌套折叠/单网卡适配器下拉/硬件温度风扇/跨平台字段微异）由 sysinfo 兜底；②VM/Iced 轨表格行无 CSS hover（025 沿袭既有设计决策，以点击选中整行 `bg-accent` 高亮交互）；③轮询失败 UX（后端离线时顶栏红点提示 + 离线文字徽标，数据冻结保留上一次样本不回零）。 | `examples/ui/025-sys-monitor/SPEC.md` §5 + `docs/plans/541-025-sys-monitor.md` |
 | 317 | serve_async 生命周期 | `serve_async` 无受控 shutdown（tokio::spawn_local 泄漏），高负载下 3 个 SSE e2e 测试偶发 flaky，靠 nextest `--retries 2` 缓解。已明确留作独立 follow-up（候选：serve_async 生命周期管理计划）。 | `vm/ffi/http_server.rs:1152 serve_async` |
 | 411 | 绕道/已知限制 | 🟡 | vue codegen 三处 gap 属性分支(vue.rs 5277/7072/7119,含无 gap 默认 gap-4 兜底)与 VM view_builder 八处 gap 提取保留未拆——显式向后兼容决议;validator 属性白名单未加,防 AI 再写 gap 属性的防线缺失 | 拆除需按 411 §4 方案迁移存量 + 双端回归;当前渲染正确 | `ui_gen/vue.rs` + `ui/aura_view_builder.rs` | 2026-08-22 |
 | 411 | 已知限制 | 🟢 | Inter 与 vue 并排字形截图人工核对未执行(服务端由 038/013 实机回归覆盖,emoji/中文回退正常) | 视觉确认项,无功能影响 | 411 P1-C | 2026-08-22 |
@@ -235,6 +235,7 @@
 | 446-R3 | regen store_import_prefix 未暴露 CLI（低优先） | 下游 vue 轨需改 store 导入前缀（撞名规避）时，codegen 无 CLI 开关，只能 regen 部署侧 sed——暴露 `--store-import-prefix` 类参数即可退役下游 sed。 | `ui_gen` CLI/regen 入口;docs/plans/reports/446-downstream-settlement.md §三 G1 |
 | 446-R4 | VM state 投影对象数组显示 `[<vmref>]` | e2e/快照 state 对数组只投影 vmref 占位（内容不可见），下游门禁被迫改快照口径断言实体名——做对象列表摘要投影（如 `[{id,name},…]` 截断）可回收下游断言强度。 | VM state 投影（autoui_snapshot/state dump）;docs/plans/reports/446-downstream-settlement.md §六 |
 | 449 | VM 字节码越界读 bug | store handler + `code_editor_set_text`(疑及同族 set 类内建)编译路径产出越界读,根因在 handler_codegen/vm codegen 对 store decl 的合成;041 目前以根 handler 规避,值得专项修复。 | `vm/handler_codegen.rs` + 041 |
+| 585 观察 | CALL_SPEC 字符串方法臂接收者份额泄漏（安全向） | `trim`/`trimEnd`/`len`/`is_empty` 等臂 `for _ in 0..=arg_count { pop_nv() }` 弹出接收者不 `rc_release`——接收者池份额每次方法调用泄一份（泄漏向,安全:条目永活不 UAF）。585 池日志实证（idx 4 `./x.tmp` 凭泄漏份额跨迭代存活）。低危:churn 场景池峰值缓涨;收口=各臂弹出后补 `self.rc_release(receiver_nv)`（对齐 567 T01 先读后放纪律）。 | `vm/engine.rs` CALL_SPEC 字符串方法臂（:6901-6934 等） |
 
 ---
 
@@ -1747,3 +1748,10 @@ active/onclick VM 实证随之可补。
   shell.at 是重度 .at 逻辑代码=该形态高密度用户——**Stage B 搬迁回归（P-5）
   前修复比回归中踩雷便宜**（建议非硬前置，§7 P-4 批）。同台账残留②
   JsonValue 元素 str 方法分派 None（kanban 已物化规避，579 台账在案）。
+- **P582-D4 Playground 前端 Vue→AutoUI 迁移（设计已入档，独立立项）**：
+  `packages/auto-playground-vue` 为手写 Vue 3+TS（CodeMirror/lucide），仅 Web 渲染
+  路径，无 .at 组件源/VM 管线/iced 桌面臂——不能像 examples/ui 应用一样双端显示。
+  用户裁定（2026-09-07）未来迁移为 AutoUI 项目双端化。设计全文见
+  `docs/design/documents/playground-architecture.md` §12（复刻清单/依赖映射/
+  三期增量路线 W1 笔记站→W2 编辑器→W3 IDE 层；最大风险项=CodeMirror 等价性，
+  iced 侧由 auto.code_editor 原生族 2910-2932 承载需逐项对表）。本期不执行。
