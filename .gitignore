@@ -179,3 +179,8 @@ examples/**/am.at
 .agents/skills/auto-plan-work/
 .agents/skills/auto-plan-review/
 .agents/skills/auto-plan-merge/
+
+# cargo 探针构建目录（worktree-less probe builds，可再生；先例 target-412/）
+target-*/
+# scratch=工作证据区（不入库；有价值者经 docs/reports|scripts/repro|test 升格，见 2026-09-07 三分归位）
+scratch/

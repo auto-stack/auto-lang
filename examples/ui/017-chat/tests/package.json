@@ -1,0 +1,10 @@
+{
+  "name": "chat-tests", "version": "1.0.0", "private": true,
+  "description": "Plan musk-022 acceptance tests for 017-chat (SSE multi-event)",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui"
+  },
+  "devDependencies": { "@playwright/test": "^1.48.0" }
+}
