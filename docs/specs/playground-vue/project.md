@@ -37,3 +37,5 @@ graph LR
 | components | 编辑器/控制台/字节码/调试/回放/文件树等面板 | active |
 | composables | usePlayground / useDebugger / useReplayPlayer 等 | active |
 | lang | CodeMirror 6 语言支持（auto / abt）、暗色模式 | active |
+
+> **Plan 582（2026-09-07，archived）**：新增 NotesExplorer/NotesSidebar/ExpectedOutputPanel 组件族与 useNotes composable；PlaygroundCard 扩展 expectedOutput（expectedKind stdout|result 分派，P581-D3 清偿）/files 文件 tab/ideMode；usePlayground 增 projectRequestBody files 形态与 backendDown/retryBackend；AutoPlaygroundFull 增 noteMeta/defineExpose(loadExample)；深链 #/notes/<id>、↑↓ Ctrl+Enter、ScrollArea 品牌行等详见 archive/582「用户裁定变更全录」。

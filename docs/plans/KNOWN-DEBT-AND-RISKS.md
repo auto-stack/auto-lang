@@ -1697,11 +1697,12 @@ active/onclick VM 实证随之可补。
   优先、.expected.result（终值,184 条）回退；manifest v1 未携带判别字段，
   582 期望输出对照 UI 需按 sourcePath 后缀分派（.result 对照 RunResponse.result、
   .out 对照 stdout），否则差异高亮会误报。
-- **P581-D4 parity 收录后置 + --check 未接 CI**：parity 31/31 测试依赖多文件
-  import 解析，收录需"平铺+import 改写"源变换（可行性已实验验证，映射方案见
-  scratch/p581/parity-survey.md），随 582 落地；--check 目前无自动执行面
-  （计划裁定 deploy workflow 零改动、manifest 不提交故磁盘 diff 无意义）——
-  若需 CI 防采集回归，可在 book 物化后的 workflow 步骤内追加 --check 调用。
+- **P581-D4 parity 收录后置 + --check 未接 CI**：【部分清偿，Plan 582（2026-09-07）】
+  parity 51 条已入 manifest（五家族：rust 13/python 20/lang 8/consumer 9/framework 1，
+  sourceType=parity，standalone=false；--check 已加 parity≥51/rust≥13/python≥20 基线）；
+  python 单文件 Run 需后端 --features python、.at 多文件族已经 files-only 物化运行打通
+  （base64·Decode 10 ok 实证）——网络类 3 条本身应失败。【余留】--check 仍未接 CI
+  （可挂 book 物化后的 workflow 步骤）；python FFI 后端特性未启用。
 - **P582-D1 spa-routes e2e 5 失败 master 预存红（/ui/* 资产标题漂移）**：
   `website/public/ui/gallery/index.html` 等旧 SPA 资产 `<title>` 为 "widgets-gallery"
   等，断言期望 "Auto Language - Components"（master 复现同红，2026-09-07）——

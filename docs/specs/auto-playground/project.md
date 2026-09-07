@@ -45,3 +45,5 @@ graph LR
 | notebook | 单元格交互执行 | active |
 | project | playground 工程/文件管理 | active |
 | frontend | Vue3 + Vite SPA（playwright e2e） | active |
+
+> **Plan 582（2026-09-07，archived）**：/api/examples 读 notes.json 单一事实源（三路回退；entry files[0] 回退保 api=manifest=1332 不变量）；frontend 壳单模式化（侧栏导航+直嵌 IDE，noteMeta 入标题栏）；files-only 物化运行（parity 多文件可 Run，base64·Decode 10 ok 实证）；宿主 e2e 19 条。

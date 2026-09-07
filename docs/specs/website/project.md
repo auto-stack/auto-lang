@@ -45,3 +45,5 @@ graph LR
 | public/playground-data | Notes manifest 确定性生成物（notes.json，gitignore；Plan 581） | active |
 | scripts | prepare-content 等内容预处理脚本（末段接线 manifest 生成） | active |
 | tests | Playwright e2e | active |
+
+> **Plan 582（2026-09-07，archived）**：/playground（EN/ZH）换 Notes Explorer；旧 /playground/ SPA 退役为 meta-refresh 重定向；prepare-content 裸尖括号通用转义器（P581-D1 清偿）；AutoFence 书页围栏 ▶ Run（§12 迁移路线同期入档）；playground-notes e2e + playwright.config。
