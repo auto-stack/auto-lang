@@ -63,6 +63,68 @@ export interface ExamplesResponse {
 
 export type OutputTab = 'rust' | 'c' | 'python' | 'typescript' | 'abt' | 'bytecode';
 
+// ── Playground 分层组件契约（Playground 设计 §4；Plan 581）──
+
+/** SnippetRunner / PlaygroundCard 的运行目标（'run'=VM 执行，其余=转译目标）。 */
+export type PlaygroundTarget = 'run' | Exclude<OutputTab, 'bytecode'>;
+
+export interface SnippetRunnerProps {
+  /** 初始代码（必填）。 */
+  code: string;
+  /** 后端地址；'' = 同源 /api。 */
+  apiBase?: string;
+  /** 挂载即运行。 */
+  autorun?: boolean;
+  /** 首选动作（默认 'run'）。 */
+  target?: PlaygroundTarget;
+  /** 容器高；'auto' = 按行数。 */
+  height?: string;
+}
+
+/** PlaygroundCard 工具栏开关（默认全开）。 */
+export interface PlaygroundCardToolbar {
+  transpile?: boolean;
+  share?: boolean;
+  debug?: boolean;
+  live?: boolean;
+}
+
+export interface PlaygroundCardProps extends SnippetRunnerProps {
+  /** manifest 笔记 id（582 Notes Explorer 用；本期仅预留透传）。 */
+  noteId?: string;
+  /** 工具栏项开关（默认全开）。 */
+  toolbar?: PlaygroundCardToolbar;
+  /** 是否渲染 ExampleSelector（默认 false；旧 AutoPlayground 常驻行为需显式选入）。 */
+  exampleSelector?: boolean;
+}
+
+// ── Notes manifest（notes.json schema v1，Playground 设计 §5.2）笔记元信息 ──
+
+export type NoteSourceType = 'vm-golden' | 'aavm-corpus' | 'book' | 'demo' | 'parity';
+export type NoteKind = 'single' | 'project' | 'fence';
+
+export interface NoteFile {
+  path: string;
+  content: string;
+}
+
+/** manifest 单条笔记（582 Notes Explorer 复用）。 */
+export interface NoteMeta {
+  id: string;
+  title: string;
+  sourceType: NoteSourceType;
+  sourcePath: string;
+  kind: NoteKind;
+  standalone: boolean;
+  /** kind=project 时为 null，文件见 files。 */
+  code: string | null;
+  files: NoteFile[] | null;
+  /** 仅 vm-golden（.expected.out 内容）。 */
+  expectedOutput: string | null;
+  description: string | null;
+  tags: string[];
+}
+
 // Debug types
 export interface BytecodeLine {
   offset: number;

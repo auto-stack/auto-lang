@@ -7,6 +7,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import { spawnSync } from 'child_process'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -1123,6 +1124,16 @@ function main() {
   writeSidebarConfig('docs-zh', docsSidebarZh)
   writeSidebarConfig('books-en', booksSidebarEn)
   writeSidebarConfig('books-zh', booksSidebarZh)
+
+  // Plan 581: books/docs 物化完成后生成 Playground Notes manifest（dev/build/deploy
+  // 三态自动触发——本脚本位于三者构建链最前端）。book 仓缺失时采集脚本内部跳过
+  // books 源并打 warning，不失败；manifest 为 gitignore 生成物，每次重建。
+  console.log('\nGenerating playground notes manifest...')
+  const notesScript = path.join(REPO_ROOT, 'scripts', 'build-playground-notes.mjs')
+  const notesResult = spawnSync(process.execPath, [notesScript], { stdio: 'inherit' })
+  if (notesResult.status !== 0) {
+    console.warn('  playground notes manifest generation FAILED')
+  }
 
   console.log('\nDone!')
 }

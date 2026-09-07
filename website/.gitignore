@@ -10,6 +10,9 @@ zh/books/
 .vitepress/config/sidebar-books-en.ts
 .vitepress/config/sidebar-books-zh.ts
 
+# Playground Notes manifest (Plan 581: build-time generated, deterministic)
+public/playground-data/
+
 # VitePress build output
 .vitepress/dist
 .vitepress/cache
