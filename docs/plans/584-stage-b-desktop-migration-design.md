@@ -247,6 +247,15 @@ Category A 门禁：**严禁 `cargo t` / `docs_gen`**。验证手段全为文档
 
 ## 复审记录
 
+**执行后修订（2026-09-07，用户二次裁定，复审前入档）**：shell 四件处置由
+「留架 + Stage C 候选」翻转为「随迁（P-7 shell pack 路径化批次，前置 P-3）」。
+依据：①桌面程序自身架构裁定（Design 23 R1 宿主=内核/shell=用户态）本就把
+shell 划在产品侧；②引用面实测远小于设计期预估——四 const 在 shell.rs 之外
+仅 7 处（iced/renderer.rs ×6 + ui_gen/vue.rs ×1），DesktopOptions 已有
+apps_dir 先例（renderer.rs:10948）。Design 01 已按修订（§1 裁定链+A4 行/
+§2-L2 pin 快照/§4 增 P7 节/§6 增 V9/§7 增 P-7 行）。**C2 验收口径随之回到
+「shell 四件在列」（以 §1-A4 + §4-P7 落实，物理迁移在 P-7 批次兑现）。**
+
 ## 待澄清事项
 
 - **#1 随迁计划编号策略**：auto-os plans 自 001 起号，随迁七项（535/554/556/557/558/
