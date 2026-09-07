@@ -1,14 +1,14 @@
 /**
- * Build the Auto Playground frontend and sync the output to both:
+ * Build the Auto Playground frontend and sync the output to:
  *   - crates/auto-playground/frontend/dist   (served by the Rust backend)
- *   - website/public/playground              (deployed as a standalone page)
  *
- * This ensures the backend-served playground and the website playground are
- * always built from the same source and stay in sync.
+ * The website-side copy (website/public/playground) was retired in Plan 582:
+ * /playground is now the VitePress Notes Explorer page, and the old SPA path
+ * serves only a meta-refresh redirect (website/public/playground/index.html).
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,7 +18,6 @@ const root = resolve(__dirname, '..');
 
 const frontendDir = join(root, 'crates', 'auto-playground', 'frontend');
 const backendDistDir = join(frontendDir, 'dist');
-const websitePlaygroundDir = join(root, 'website', 'public', 'playground');
 
 function run(cmd, args, cwd) {
   const isWindows = process.platform === 'win32';
@@ -52,28 +51,6 @@ function detectPackageManager(cwd) {
   return 'npm';
 }
 
-function cleanDir(dir) {
-  if (!existsSync(dir)) return;
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    rmSync(full, { recursive: true, force: true });
-  }
-}
-
-function copyDir(src, dst) {
-  mkdirSync(dst, { recursive: true });
-  for (const entry of readdirSync(src)) {
-    const srcPath = join(src, entry);
-    const dstPath = join(dst, entry);
-    const stat = statSync(srcPath);
-    if (stat.isDirectory()) {
-      copyDir(srcPath, dstPath);
-    } else {
-      copyFileSync(srcPath, dstPath);
-    }
-  }
-}
-
 const pm = detectPackageManager(frontendDir);
 
 // 1. Build the frontend
@@ -84,10 +61,5 @@ if (!existsSync(backendDistDir)) {
   process.exit(1);
 }
 
-// 2. Sync to website/public/playground
-cleanDir(websitePlaygroundDir);
-copyDir(backendDistDir, websitePlaygroundDir);
-
-console.log(`\nSynced playground build to:`);
+console.log(`\nPlayground frontend built to:`);
 console.log(`  - ${relative(root, backendDistDir)}`);
-console.log(`  - ${relative(root, websitePlaygroundDir)}`);
