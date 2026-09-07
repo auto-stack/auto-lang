@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-541
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived
 feature_name: 025-sys-monitor——dashboard 升级真后端任务管理器
 author: [zhaopuming]
 created_at: 2026-09-04
@@ -9,7 +9,7 @@ updated_at: 2026-09-07
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: []
-touched_goals: ["GOAL-UI-PARITY", "GOAL-SYS-MONITOR"]
+touched_goals: ["GOAL-007", "GOAL-010"]
 
 affects: [examples/ui/025-sys-monitor, crates/auto-lang/src/libs/sys.rs, crates/a2r-std/src/sys.rs]
 current_step: 20
