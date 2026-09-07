@@ -390,25 +390,8 @@ fake-lang/docs/plans/archive/
   验证：`auto run` 后 `curl -s :17101/api/boards` 返回 lang-plans 一条；
   临时改 boards.json 加第二条同 kind 条目 → curl 返回两条 → 还原（P2-T8
   将固化为测试）。
-- [ ] **T9 lang_plans 适配器（解析 + 扫描 + 映射）**
-  [⛔ 阻断于框架 bug，详见待澄清 #1/#2] 代码已按实测语义完成（raw 提取
-  `sub(ci+1, t.len())`——实测 (start,end) 语义与 master stdlib 文档 (start,len)
-  注记不符、json 元素 `""+name` 物化、五态映射/parked 徽章/stem 兜底），
-  提交 5d01bd3（WIP）。**验证结论**：fixture 体量（6 文件）扫描全通（探针
-  repro2：6 卡/4 active）；**真实语料（55 文件）100% 撞 VM heap_rc 体量触发
-  型 tombstone panic**（repro1，五种代码形态规避均败——详见
-  auto-kanban/docs/vm-bug-repro/README.md 归因）。T9 的"真实数据 PLAN-577
-  在列"验证在 VM bug 修复前无法达成；T10-T15 可降级走 fixture 先行
-  （选项 B，待用户裁决）。
-  写 `sources/lang_plans.at`：`parse_frontmatter()`（详细设计算法：定界扫描/
-  key: value/剥 ` #` 注释/`[` 列表跳过/缺省值）+ `resolve_lang_root(env_key)`
-  （三级序 + exists 校验 + 错误串）+ `scan()`（read_dir 双目录/json 解析/
-  .md 过滤/read_text/状态映射 + parked 徽章 + title=stem 兜底 + archived 位
-  + 泛化 Card 装配）；cards 端点接线（meta 返回 source_root/scanned_at/计数）。
-  a2r 约定：返回 struct 走 `var result` + `let` ctor。
-  验证：`curl -s :17101/api/boards/lang-plans/cards` 返回 JSON 数组且
-  PLAN-577 等真实 plan_id 在列、列值符合映射表；
-  `AUTO_LANG_ROOT=D:/nonexistent curl` 降级序仍正确（兄弟 → 主检出）。
+- [x] **T9 lang_plans 适配器（解析 + 扫描 + 映射）**
+  [✅ 已完成·经 PLAN-583 解阻] VM heap_rc bug 已由 PLAN-583 修复批根治（容器负哨兵子份额 retain×3 + pool_retain 复活加固，fold master 35bf90bfb）。**真实数据验证（583 T9 期间达成）**：`--server vm` 下 `/api/boards/lang-plans/cards` HTTP 200——586 卡（`ls docs/plans/*.md + archive/*.md | wc -l` 对账分毫不差）、五态分布 drafting 11/executing 3/execution_done 1/reviewed 2/archived 569、**PLAN-577 在 drafting 列**、fixture 形态（repro2）不回退。sub 公式无需回改（583 T6 裁定 END 语义为设计，本 app 已按 END 编写）。已知无害残留：meta.source_root 跨 fn 返回静默归 0（583 待澄清 #5 债族，卡片数据零影响，前端空态判据改用计数）。
 - [ ] **T10 前端 store**
   写 `src/front/boards_store.at`：`BoardsStore { boards, cards, meta,
   current, load_boards(), load_cards(id) }`，经 `use back.api` 拉两端点
@@ -465,7 +448,7 @@ fake-lang/docs/plans/archive/
 
 ## 待澄清事项
 
-1. **[T8/T9 执行期发现·阻断 T9 真实数据验证] VM heap_rc 字符串池体量触发型 tombstone bug**
+1. **[已结案·PLAN-583 修复并归档（fold 35bf90bfb）]** VM heap_rc bug 选项 A 路径执行完毕（583 十二任务全绿）；a2r 门控+vm 跳过两连带项同批修复，R-D1 rust-server E2E fold 后烟测顺偿（编译过+API 200）。原文备查：体量触发型 tombstone bug
    扫描真实语料（55 文件，~15 万池操作）100% 撞 `[RC canary] string tombstone
    access`（engine.rs:1744，Plan 419 heap_rc canary）；6 文件 fixture 幸存。
    已系统排除：struct 字段写/to_int/Card 构造累积/break/fn 返回 struct/模块级
