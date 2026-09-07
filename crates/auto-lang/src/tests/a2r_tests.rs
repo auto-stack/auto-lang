@@ -487,18 +487,17 @@ enum CacheEvent {
 
 
 /// PLAN-009 T8: at-gen 转译产物再生成入口(见 auto-term at-gen/README.md
-/// 「转译再生成规程」;in-process API,CLI trans 挂起——待澄清9)。
-/// PLAN-010 执行期指向 .wt/auto-010/auto-term 工作树(fold 前须改回主检出
-/// 路径——009 merge 前置同款约定)。
+/// 「转译再生成规程」;in-process API)。PLAN-010 T3 后 CLI trans 已恢复,
+/// 该入口退居等价备用路径。
 #[test]
 fn temp_plan009_t8_transpile_at_app() {
     let src = read_to_string(
-        "D:/autostack/.wt/auto-010/auto-term/at/autoterm.at",
+        "D:/autostack/auto-term/at/autoterm.at",
     )
     .unwrap();
     let mut rcode = transpile_rust("autoterm", &src).unwrap();
     std::fs::write(
-        "D:/autostack/.wt/auto-010/auto-term/at-gen/src/app_logic.rs",
+        "D:/autostack/auto-term/at-gen/src/app_logic.rs",
         rcode.done().unwrap(),
     )
     .unwrap();
