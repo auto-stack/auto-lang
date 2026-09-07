@@ -4535,7 +4535,7 @@ var Pt = {
 }), [["__scopeId", "data-v-ee14fb49"]]), $r = { class: "playground" }, ei = { class: "toolbar" }, ti = { class: "toolbar-left" }, ni = ["href", "title"], ri = {
 	key: 1,
 	class: "title"
-}, ii = { class: "toolbar-right" }, ai = ["disabled", "title"], oi = ["disabled"], si = ["disabled"], ci = ["disabled"], li = { class: "trans-current" }, ui = { class: "workspace" }, di = { class: "main-row" }, fi = { class: "pane-header" }, pi = { key: 0 }, mi = { key: 1 }, hi = {
+}, ii = { class: "toolbar-right" }, ai = ["disabled"], oi = ["disabled"], si = ["disabled"], ci = { class: "trans-current" }, li = ["disabled", "title"], ui = { class: "workspace" }, di = { class: "main-row" }, fi = { class: "pane-header" }, pi = { key: 0 }, mi = { key: 1 }, hi = {
 	key: 0,
 	class: "active-file-name"
 }, gi = { class: "pane-body" }, _i = {
@@ -4691,11 +4691,58 @@ var Pt = {
 					y2: "3"
 				})
 			], -1)], 8, ni), a("span", { class: p(["note-badge", `t-${l.noteMeta.sourceType}`]) }, C(l.noteMeta.sourceType), 3)], 64)) : (v(), i("h1", ri, "Auto Playground"))]), a("div", ii, [
+				l.isDebugging ? r("", !0) : (v(), i("button", {
+					key: 0,
+					class: "toolbar-btn run-btn",
+					onClick: u[0] ||= (...e) => d.onRun && d.onRun(...e),
+					disabled: l.isLoading || l.isReplayMode
+				}, C(l.isLoading ? "Running..." : "Run (Ctrl+Enter)"), 9, ai)),
+				l.isDebugging ? r("", !0) : (v(), i("div", {
+					key: 1,
+					class: p(["trans-split-btn", { disabled: l.isLoading || l.isReplayMode }]),
+					title: "Transpile to target language"
+				}, [a("button", {
+					class: "trans-main",
+					onClick: u[1] ||= (...e) => d.onTrans && d.onTrans(...e),
+					disabled: l.isLoading || l.isReplayMode
+				}, " Trans ", 8, oi), a("div", {
+					ref_key: "transDropdownEl",
+					ref: b,
+					class: "trans-dropdown",
+					style: m({ width: x.value })
+				}, [
+					A(a("select", {
+						"onUpdate:modelValue": u[2] ||= (e) => h.value = e,
+						class: "trans-select",
+						disabled: l.isLoading || l.isDebugging || l.isReplayMode,
+						onChange: z
+					}, [...u[21] ||= [o("<option value=\"rust\" data-v-e26a1b49>Rust</option><option value=\"c\" data-v-e26a1b49>C</option><option value=\"python\" data-v-e26a1b49>Python</option><option value=\"typescript\" data-v-e26a1b49>TypeScript</option><option value=\"abt\" data-v-e26a1b49>ABT</option>", 5)]], 40, si), [[E, h.value]]),
+					a("span", ci, C(_.value), 1),
+					u[22] ||= a("span", { class: "trans-arrow" }, [a("svg", {
+						width: "12",
+						height: "12",
+						viewBox: "0 0 24 24",
+						fill: "none",
+						stroke: "currentColor",
+						"stroke-width": "2.5",
+						"stroke-linecap": "round",
+						"stroke-linejoin": "round"
+					}, [a("polyline", { points: "6 9 12 15 18 9" })])], -1)
+				], 4)], 2)),
+				a("button", {
+					class: p(["toolbar-btn debug-btn", {
+						active: l.isDebugging,
+						exit: l.isDebugging
+					}]),
+					onClick: u[3] ||= (e) => l.isDebugging ? t.$emit("debugCommand", "stop") : d.onDebug(),
+					disabled: l.isLoading || l.isReplayMode,
+					title: l.isDebugging ? "Stop Debugging (Shift+F5)" : "Start Debugging"
+				}, [u[23] ||= o("<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-v-e26a1b49><path d=\"M12 2a10 10 0 0 1 10 10\" data-v-e26a1b49></path><path d=\"M12 2a10 10 0 0 0-10 10\" data-v-e26a1b49></path><path d=\"M12 12l4-4\" data-v-e26a1b49></path><path d=\"M12 12l-4-4\" data-v-e26a1b49></path><path d=\"M12 12l4 4\" data-v-e26a1b49></path><path d=\"M12 12l-4 4\" data-v-e26a1b49></path></svg>", 1), s(" " + C(l.isDebugging ? "Exit Debug" : "Debug"), 1)], 10, li),
 				a("button", {
 					class: "toolbar-btn share-btn",
-					onClick: u[0] ||= (e) => t.$emit("share"),
+					onClick: u[4] ||= (e) => t.$emit("share"),
 					title: "Copy shareable link"
-				}, [...u[21] ||= [a("svg", {
+				}, [...u[24] ||= [a("svg", {
 					width: "14",
 					height: "14",
 					viewBox: "0 0 24 24",
@@ -4713,54 +4760,7 @@ var Pt = {
 						x2: "12",
 						y2: "15"
 					})
-				], -1), s(" Share ", -1)]]),
-				a("button", {
-					class: p(["toolbar-btn debug-btn", {
-						active: l.isDebugging,
-						exit: l.isDebugging
-					}]),
-					onClick: u[1] ||= (e) => l.isDebugging ? t.$emit("debugCommand", "stop") : d.onDebug(),
-					disabled: l.isLoading || l.isReplayMode,
-					title: l.isDebugging ? "Stop Debugging (Shift+F5)" : "Start Debugging"
-				}, [u[22] ||= o("<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-v-00a69a09><path d=\"M12 2a10 10 0 0 1 10 10\" data-v-00a69a09></path><path d=\"M12 2a10 10 0 0 0-10 10\" data-v-00a69a09></path><path d=\"M12 12l4-4\" data-v-00a69a09></path><path d=\"M12 12l-4-4\" data-v-00a69a09></path><path d=\"M12 12l4 4\" data-v-00a69a09></path><path d=\"M12 12l-4 4\" data-v-00a69a09></path></svg>", 1), s(" " + C(l.isDebugging ? "Exit Debug" : "Debug"), 1)], 10, ai),
-				l.isDebugging ? r("", !0) : (v(), i("button", {
-					key: 0,
-					class: "toolbar-btn run-btn",
-					onClick: u[2] ||= (...e) => d.onRun && d.onRun(...e),
-					disabled: l.isLoading || l.isReplayMode
-				}, C(l.isLoading ? "Running..." : "Run (Ctrl+Enter)"), 9, oi)),
-				l.isDebugging ? r("", !0) : (v(), i("div", {
-					key: 1,
-					class: p(["trans-split-btn", { disabled: l.isLoading || l.isReplayMode }]),
-					title: "Transpile to target language"
-				}, [a("button", {
-					class: "trans-main",
-					onClick: u[3] ||= (...e) => d.onTrans && d.onTrans(...e),
-					disabled: l.isLoading || l.isReplayMode
-				}, " Trans ", 8, si), a("div", {
-					ref_key: "transDropdownEl",
-					ref: b,
-					class: "trans-dropdown",
-					style: m({ width: x.value })
-				}, [
-					A(a("select", {
-						"onUpdate:modelValue": u[4] ||= (e) => h.value = e,
-						class: "trans-select",
-						disabled: l.isLoading || l.isDebugging || l.isReplayMode,
-						onChange: z
-					}, [...u[23] ||= [o("<option value=\"rust\" data-v-00a69a09>Rust</option><option value=\"c\" data-v-00a69a09>C</option><option value=\"python\" data-v-00a69a09>Python</option><option value=\"typescript\" data-v-00a69a09>TypeScript</option><option value=\"abt\" data-v-00a69a09>ABT</option>", 5)]], 40, ci), [[E, h.value]]),
-					a("span", li, C(_.value), 1),
-					u[24] ||= a("span", { class: "trans-arrow" }, [a("svg", {
-						width: "12",
-						height: "12",
-						viewBox: "0 0 24 24",
-						fill: "none",
-						stroke: "currentColor",
-						"stroke-width": "2.5",
-						"stroke-linecap": "round",
-						"stroke-linejoin": "round"
-					}, [a("polyline", { points: "6 9 12 15 18 9" })])], -1)
-				], 4)], 2))
+				], -1), s(" Share ", -1)]])
 			])]),
 			l.isDebugging || l.hasRecording ? (v(), n(yr, {
 				key: 0,
@@ -4873,7 +4873,7 @@ var Pt = {
 			}, null, 8, ["state"])) : r("", !0)])])) : r("", !0)])
 		]));
 	}
-}), [["__scopeId", "data-v-00a69a09"]]), wi = "/api", Ti = "auto-playground:state", Ei = "// Welcome to Auto Playground!\nfn add(a int, b int) int {\n    a + b\n}\n\nlet result = add(3, 4)\nprint(result)";
+}), [["__scopeId", "data-v-e26a1b49"]]), wi = "/api", Ti = "auto-playground:state", Ei = "// Welcome to Auto Playground!\nfn add(a int, b int) int {\n    a + b\n}\n\nlet result = add(3, 4)\nprint(result)";
 function Di() {
 	let e = window.location.hash;
 	if (e.startsWith("#share=")) try {

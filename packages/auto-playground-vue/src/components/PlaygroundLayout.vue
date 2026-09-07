@@ -23,32 +23,8 @@
         <h1 v-else class="title">Auto Playground</h1>
       </div>
       <div class="toolbar-right">
-        <!-- Load Replay 功能未完善，暂隐藏（loadReplay emit 链路与 __loadReplayForTest__ 钩子保留） -->
-        <button class="toolbar-btn share-btn" @click="$emit('share')" title="Copy shareable link">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-            <polyline points="16 6 12 2 8 6"/>
-            <line x1="12" y1="2" x2="12" y2="15"/>
-          </svg>
-          Share
-        </button>
-        <button
-          class="toolbar-btn debug-btn"
-          :class="{ active: isDebugging, exit: isDebugging }"
-          @click="isDebugging ? $emit('debugCommand', 'stop') : props.onDebug()"
-          :disabled="isLoading || isReplayMode"
-          :title="isDebugging ? 'Stop Debugging (Shift+F5)' : 'Start Debugging'"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a10 10 0 0 1 10 10"/>
-            <path d="M12 2a10 10 0 0 0-10 10"/>
-            <path d="M12 12l4-4"/>
-            <path d="M12 12l-4-4"/>
-            <path d="M12 12l4 4"/>
-            <path d="M12 12l-4 4"/>
-          </svg>
-          {{ isDebugging ? 'Exit Debug' : 'Debug' }}
-        </button>
+        <!-- Load Replay 功能未完善，暂隐藏（loadReplay emit 链路与 __loadReplayForTest__ 钩子保留）。
+             顺序（用户裁定）：Run → Trans → Debug → Share。 -->
         <button
           v-if="!isDebugging"
           class="toolbar-btn run-btn"
@@ -91,6 +67,31 @@
             <span class="trans-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
           </div>
         </div>
+        <button
+          class="toolbar-btn debug-btn"
+          :class="{ active: isDebugging, exit: isDebugging }"
+          @click="isDebugging ? $emit('debugCommand', 'stop') : props.onDebug()"
+          :disabled="isLoading || isReplayMode"
+          :title="isDebugging ? 'Stop Debugging (Shift+F5)' : 'Start Debugging'"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10"/>
+            <path d="M12 2a10 10 0 0 0-10 10"/>
+            <path d="M12 12l4-4"/>
+            <path d="M12 12l-4-4"/>
+            <path d="M12 12l4 4"/>
+            <path d="M12 12l-4 4"/>
+          </svg>
+          {{ isDebugging ? 'Exit Debug' : 'Debug' }}
+        </button>
+        <button class="toolbar-btn share-btn" @click="$emit('share')" title="Copy shareable link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+          Share
+        </button>
       </div>
     </header>
 
