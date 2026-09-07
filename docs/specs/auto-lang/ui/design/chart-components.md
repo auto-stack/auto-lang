@@ -5,7 +5,10 @@
 > 官方 Auto 实现的 chart 组件族——几何逻辑全在 Auto（"引擎给笔，Auto 持笔"），
 > 渲染端 v1 = SVG 子树直通（vue 轨 442 A4 直通臂 / VM 轨 svgdoc 通道），
 > v2 canvas Program 桥接后置。载体：`examples/widgets-gallery/src/front/components/
-> {line,bar,area,donut}_chart.at`（widget 名去 Auto 前缀，见"命名与退役"）。
+> {line,bar,area,donut}_chart.at`（widget 名去 Auto 前缀，见"命名与退役"）——
+> **PLAN-590（Stage B P-5）后画廊迁 auto-os 顶层，载体现址
+> `auto-os/widgets-gallery/src/front/components/`**（框架测试语料锚经
+> `resolve_os_top_dir` 解析序定位）。
 
 > **plan-563 修订（2026-09-07）**：canvas v2 桥接已由 PLAN-563 落地（§7/§104/§177 的「后置」
 > 表述作废）——形态自「Auto 图元列表→iced canvas」修订为「scene 前缀双表契约→vue/iced

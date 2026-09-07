@@ -15,8 +15,13 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-fn gallery_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/widgets-gallery/src")
+/// PLAN-590(Stage B P-5):widgets-gallery 物理迁 auto-os 顶层,语料锚改经
+/// `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 → 主检出);
+/// 未解析(solo 检出)→ None,golden 主体 SKIP(不炸)。
+fn gallery_dir() -> Option<PathBuf> {
+    let sibling_base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    auto_lang::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+        .map(|g| g.join("src"))
 }
 
 fn collect_at_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -135,8 +140,15 @@ fn assert_ui_imports_resolve(full_text: &str) {
 
 #[test]
 fn gallery_vue_golden() {
+    let Some(gallery) = gallery_dir() else {
+        eprintln!(
+            "gallery_vue_golden: SKIPPED — auto-os/widgets-gallery 未解析\
+             (solo 检出;设 AUTO_OS_ROOT 或并置 auto-os 兄弟检出可启用)"
+        );
+        return;
+    };
     let mut files: Vec<PathBuf> = Vec::new();
-    collect_at_files(&gallery_dir(), &mut files);
+    collect_at_files(&gallery, &mut files);
     files.sort();
     assert!(!files.is_empty(), "gallery .at 源未找到");
 
@@ -148,7 +160,7 @@ fn gallery_vue_golden() {
     let mut full_text = String::new();
     for f in &files {
         let rel = f
-            .strip_prefix(gallery_dir())
+            .strip_prefix(&gallery)
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");

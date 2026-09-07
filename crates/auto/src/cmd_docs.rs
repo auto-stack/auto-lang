@@ -3,7 +3,9 @@
 //! `auto docs gen` 再生成两份产物(等价于测试内 DOCS_GEN_UPDATE /
 //! KITCHEN_SINK_UPDATE 环境变量路径,走同一库实现 ui_gen::docs_gen):
 //! - docs/components/core.md —— 核心组件参考
-//! - examples/widgets-gallery/src/front/pages/kitchen-sink.at —— demo 页
+//! - kitchen-sink.at —— demo 页(PLAN-590:widgets-gallery 迁 auto-os 顶层,
+//!   落点经 `resolve_os_top_dir` 解析序定位——env AUTO_OS_ROOT → 兄弟 →
+//!   主检出;CWD 相对旧路径已随迁移失效,不再写本仓)
 //!
 //! 生成后请复核 diff;kitchen-sink 变更需同步重采样 gallery golden。
 
@@ -35,13 +37,27 @@ pub fn run(action: DocsAction) -> Result<()> {
                 written.push(path.to_string());
             }
             if want("kitchen-sink") || want("kitchen_sink") {
-                let path = "examples/widgets-gallery/src/front/pages/kitchen-sink.at";
+                // PLAN-590:画廊已迁 auto-os 顶层——落点经解析序定位,未解析
+                // (solo 检出)即报错引导,不落回 CWD 相对旧路径(避免在本仓
+                // 复活已迁目录)。
+                let gallery = auto_lang::os_paths::resolve_os_top_dir(
+                    std::path::Path::new(".."),
+                    "widgets-gallery",
+                )
+                .ok_or_else(|| {
+                    miette::miette!(
+                        "auto-os/widgets-gallery 未解析(solo 检出)——设 AUTO_OS_ROOT \
+                         或并置 auto-os 兄弟检出后重试;kitchen-sink 落画廊仓,不写本仓"
+                    )
+                })?;
+                let path = gallery.join("src/front/pages/kitchen-sink.at");
                 let text = auto_lang::ui_gen::docs_gen::generate_kitchen_sink();
-                std::fs::create_dir_all("examples/widgets-gallery/src/front/pages")
+                std::fs::create_dir_all(path.parent().unwrap())
                     .map_err(|e| miette::miette!("create pages dir: {e}"))?;
-                std::fs::write(path, text)
-                    .map_err(|e| miette::miette!("write {path}: {e}"))?;
-                written.push(path.to_string());
+                let path_display = path.display().to_string();
+                std::fs::write(&path, text)
+                    .map_err(|e| miette::miette!("write {path_display}: {e}"))?;
+                written.push(path_display);
             }
             if written.is_empty() {
                 return Err(miette::miette!(

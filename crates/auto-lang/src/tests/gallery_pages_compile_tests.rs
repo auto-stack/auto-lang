@@ -8,13 +8,19 @@
 //!
 //! 冒烟口径与 vue serve 完全一致(cmd_vue.rs Phase 3):逐页调
 //! `ui_build_shadcn_with_widgets`,要求 Ok 且产出非空 SFC。
+//!
+//! PLAN-590(Stage B P-5):widgets-gallery 物理迁 auto-os 顶层,语料锚改经
+//! `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 → 主检出);
+//! auto-os 缺席的 solo 检出 SKIP 不红(门禁在有 auto-os 的开发/CI 形态生效)。
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn front_pages_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/widgets-gallery/src/front/pages")
+fn front_pages_dir() -> Option<PathBuf> {
+    // 基准 = 仓根父目录(其 auto-os 子目录 = 兄弟候选;主检出兜底见 resolver)
+    let sibling_base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    crate::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+        .map(|g| g.join("src/front/pages"))
 }
 
 fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -36,7 +42,13 @@ fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
 /// 跳页 + router 悬空(整站 500)。附文件名便于定位。
 #[test]
 fn widgets_gallery_all_front_pages_compile() {
-    let dir = front_pages_dir();
+    let Some(dir) = front_pages_dir() else {
+        eprintln!(
+            "gallery_pages_compile: SKIPPED — auto-os/widgets-gallery 未解析 \
+             (solo 检出;设 AUTO_OS_ROOT 或并置 auto-os 兄弟检出可启用)"
+        );
+        return;
+    };
     let mut pages = Vec::new();
     collect_pages(&dir, &mut pages);
     assert!(

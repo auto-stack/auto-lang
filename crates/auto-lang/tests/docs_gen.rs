@@ -24,6 +24,17 @@ fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+/// PLAN-590(Stage B P-5):widgets-gallery 物理迁 auto-os 顶层,pages 语料
+/// 锚改经 `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 → 主检出)。
+/// solo 检出(未解析)→ None,依赖画廊的围栏整体 SKIP(不炸;有 auto-os 的
+/// 开发/CI 形态围栏全程生效)。
+fn gallery_pages_dir() -> Option<PathBuf> {
+    // 基准 = 仓根父目录(其 auto-os 子目录 = 兄弟候选;主检出兜底见 resolver)
+    let sibling_base = repo_root().join("..");
+    auto_lang::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+        .map(|g| g.join("src/front/pages"))
+}
+
 fn fold(s: &str) -> String {
     s.chars()
         .filter(|c| *c != '-' && *c != '_')
@@ -145,7 +156,7 @@ const DOC_TODO_BASELINE: &[&str] = &[
 ];
 
 fn gallery_page_folds() -> BTreeSet<String> {
-    let dir = repo_root().join("examples/widgets-gallery/src/front/pages");
+    let Some(dir) = gallery_pages_dir() else { return BTreeSet::new() };
     let mut out = BTreeSet::new();
     if let Ok(rd) = fs::read_dir(&dir) {
         for e in rd.flatten() {
@@ -164,6 +175,13 @@ fn gallery_page_folds() -> BTreeSet<String> {
 
 #[test]
 fn docs_coverage_fence() {
+    let Some(_pages_dir) = gallery_pages_dir() else {
+        eprintln!(
+            "docs_coverage_fence: SKIPPED — auto-os/widgets-gallery 未解析\
+             (solo 检出;设 AUTO_OS_ROOT 或并置 auto-os 兄弟检出可启用)"
+        );
+        return;
+    };
     let elems = load_elements();
     let mut subwidget_folds: BTreeSet<String> = BTreeSet::new();
     for e in &elems {
@@ -251,7 +269,12 @@ fn page_prop_names(src: &str) -> Vec<String> {
 fn gallery_properties_conform_to_schema() {
     use auto_lang::aura::default_schema_cached;
     let schema = default_schema_cached().expect("schema");
-    let dir = repo_root().join("examples/widgets-gallery/src/front/pages");
+    let Some(dir) = gallery_pages_dir() else {
+        eprintln!(
+            "gallery_properties_conform_to_schema: SKIPPED — auto-os/widgets-gallery 未解析(solo 检出)"
+        );
+        return;
+    };
     let mut violations: Vec<String> = Vec::new();
 
     for e in fs::read_dir(&dir).expect("pages dir").flatten() {
@@ -302,6 +325,13 @@ fn gallery_properties_conform_to_schema() {
 
 #[test]
 fn core_reference_in_sync() {
+    let Some(_pages_dir) = gallery_pages_dir() else {
+        eprintln!(
+            "core_reference_in_sync: SKIPPED — auto-os/widgets-gallery 未解析\
+             (demo 链接语料缺席无法对拍;solo 检出)"
+        );
+        return;
+    };
     let path = repo_root().join("docs/components/core.md");
     let generated = generate_core_reference(&repo_root());
     if std::env::var("DOCS_GEN_UPDATE").is_ok() {
@@ -328,7 +358,12 @@ fn core_reference_in_sync() {
 
 #[test]
 fn kitchen_sink_page_in_sync() {
-    let path = repo_root().join("examples/widgets-gallery/src/front/pages/kitchen-sink.at");
+    let Some(path) = gallery_pages_dir().map(|d| d.join("kitchen-sink.at")) else {
+        eprintln!(
+            "kitchen_sink_page_in_sync: SKIPPED — auto-os/widgets-gallery 未解析(solo 检出)"
+        );
+        return;
+    };
     let generated = generate_kitchen_sink();
     if std::env::var("KITCHEN_SINK_UPDATE").is_ok() {
         fs::write(&path, &generated).expect("write kitchen-sink.at");

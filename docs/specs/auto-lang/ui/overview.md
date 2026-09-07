@@ -2,6 +2,14 @@
 
 > **Status**: active（主战场：vue 轨 codegen 成熟化 + VM 轨视觉 parity + 虚拟桌面线推进中）
 > 最近刷新：2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
+>
+> **资产位置注记（PLAN-590，Stage B P-5，2026-09-07）**：桌面域资产已随迁
+> auto-os——`ui-gallery`/`widgets-gallery` 在 **auto-os 顶层**（框架侧
+> schema_drift/docs_gen/gallery_golden 等语料锚改 `resolve_os_top_dir`
+> 解析序定位）；`025-sys-monitor`/`028-launcher`/`038-minesweeper` 与
+> `common/settings` 在 **auto-os/apps/**。本页历史段落中的
+> `examples/ui-gallery`、`examples/widgets-gallery` 表述为落成时位置，
+> 现状以本注记为准（去向详表 `docs/plans/INDEX.md`）。
 
 ## 职责
 

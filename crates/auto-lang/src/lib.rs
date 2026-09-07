@@ -77,6 +77,9 @@ pub mod aura;
 pub mod a2ui;
 // Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
 pub mod ui_gen;
+// Stage B P-5（PLAN-590）：跨仓解析序定位 auto-os 侧资产（无 feature 门——
+// ui_gen/docs 管线与 CLI 的无 ui 构建形态也要消费）。
+pub mod os_paths;
 // Plan 152: Server-Sent Events (SSE) 解析
 pub mod sse;
 // Plan 114: Hybrid Routing (Convention + Config)

@@ -5377,6 +5377,16 @@ fn gallery_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
     if default.is_dir() {
         return Ok(default);
     }
+    // PLAN-590(Stage B P-5):ui-gallery 物理迁 auto-os 顶层后,收割对象
+    //(框架示例 examples/ui)在 auto-lang——按解析序家族补兄弟探测
+    // `../auto-lang/examples/ui`(env 上面已覆盖;教学 demo 留架为画廊语料,
+    // Design 01 §1-B)。旧仓内两臂保留(向后兼容零变化)。
+    if let Some(parent) = root_dir.parent() {
+        let sibling_lang_ui = parent.join("auto-lang").join("examples").join("ui");
+        if sibling_lang_ui.is_dir() {
+            return Ok(sibling_lang_ui);
+        }
+    }
     Err(format!(
         "Gallery mode needs an apps directory: set AUTO_GALLERY_APPS or ensure examples/ui exists near {}",
         root_dir.display()

@@ -72,6 +72,11 @@ fn build_gallery_page(page_file: &str, widget_name: &str) -> Option<View<Dynamic
             .filter(|p| p.exists()),
         Some(std::path::PathBuf::from(format!("examples/widgets-gallery/src/front/pages/{}", page_file)))
             .filter(|p| p.exists()),
+        // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
+        crate::plan370_test_support::locate_gallery_file(
+            "widgets-gallery",
+            &format!("src/front/pages/{page_file}"),
+        ),
     ];
     let path = candidates.into_iter().flatten().next()?;
     let code = std::fs::read_to_string(&path).ok()?;
@@ -189,7 +194,15 @@ fn plan412_layout_pages_generate_vue_sfc() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
-    let base = manifest.join("../../examples/widgets-gallery/src/front/pages");
+    let base = if let Some(g) = crate::os_paths::resolve_os_top_dir(
+        &manifest.join("../../.."),
+        "widgets-gallery",
+    ) {
+        // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
+        g.join("src/front/pages")
+    } else {
+        manifest.join("../../examples/widgets-gallery/src/front/pages")
+    };
     let base = if base.exists() { base } else { std::path::PathBuf::from("examples/widgets-gallery/src/front/pages") };
     if !base.exists() {
         eprintln!("plan412: SKIPPED — pages dir not found");
@@ -455,6 +468,11 @@ fn plan412_routes_registered() {
             .filter(|p| p.exists()),
         Some(std::path::PathBuf::from("examples/widgets-gallery/src/front/app.at"))
             .filter(|p| p.exists()),
+        // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
+        crate::plan370_test_support::locate_gallery_file(
+            "widgets-gallery",
+            "src/front/app.at",
+        ),
     ];
     let Some(path) = candidates.into_iter().flatten().next() else {
         eprintln!("plan412: SKIPPED — widgets-gallery app.at not found");

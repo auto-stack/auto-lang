@@ -111,6 +111,11 @@ fn build_gallery_page(page_file: &str, widget_name: &str) -> Option<View<Dynamic
             .filter(|p| p.exists()),
         Some(std::path::PathBuf::from(format!("examples/widgets-gallery/src/front/pages/{}", page_file)))
             .filter(|p| p.exists()),
+        // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
+        crate::plan370_test_support::locate_gallery_file(
+            "widgets-gallery",
+            &format!("src/front/pages/{page_file}"),
+        ),
     ];
     let path = candidates.into_iter().flatten().next()?;
     let code = std::fs::read_to_string(&path).ok()?;

@@ -623,9 +623,18 @@ fn scan_vue_imports(src: &str) -> BTreeMap<String, String> {
 /// 排除语言关键字与本地 `widget` 声明(那是 Local 组件,归 P4 Registry)。
 /// 这些 tag 无任何生产表登记(走 vue fallback / ext 组件路径),按
 /// "生产代码 + examples 是事实源"原则以 unclassified 入册。
+///
+/// PLAN-590(Stage B P-5):widgets-gallery 物理迁 auto-os 顶层,语料锚改经
+/// `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 → 主检出);
+/// 未解析(solo 检出)→ None,围栏主体 SKIP(见 schema_drift_fence 首行)。
+fn gallery_dir() -> Option<PathBuf> {
+    // 基准 = 仓根父目录(其 auto-os 子目录 = 兄弟候选;主检出兜底见 resolver)
+    let sibling_base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    auto_lang::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+}
+
 fn scan_gallery_tags() -> BTreeSet<String> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/widgets-gallery/src");
+    let Some(dir) = gallery_dir() else { return BTreeSet::new() };
     let mut local: BTreeSet<String> = BTreeSet::new();
     let mut files: Vec<PathBuf> = Vec::new();
     if let Ok(rd) = fs::read_dir(&dir) {
@@ -734,9 +743,9 @@ fn scan_live_registry(src: &str) -> (BTreeSet<String>, usize, BTreeSet<String>) 
 /// Plan 435 P5b:gallery 页面 Properties 表提取(反向回填源)。
 /// 行 = 5 个 td(Property/Type/Default/Values/Description);表头行跳过。
 /// 返回 元素折叠键 → Vec<(name, type, default, one_of_values, desc)>。
+/// PLAN-590:画廊迁 auto-os 后经 gallery_dir() 解析序定位(见上)。
 fn scan_gallery_props() -> BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/widgets-gallery/src/front/pages");
+    let Some(dir) = gallery_dir().map(|g| g.join("src/front/pages")) else { return BTreeMap::new() };
     let mut out: BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>> =
         BTreeMap::new();
     let Ok(rd) = fs::read_dir(&dir) else { return out };
@@ -1601,6 +1610,16 @@ fn only_in(a: &BTreeSet<String>, b: &BTreeSet<String>) -> BTreeSet<String> {
 
 #[test]
 fn schema_drift_fence() {
+    // PLAN-590:widgets-gallery(第 10 提取源/P5b 回填源)已迁 auto-os 顶层;
+    // solo 检出(auto-os 缺席)两源皆空 → 再生成 diff 必红,故整体 SKIP。
+    // 有 auto-os(兄弟/主检出/AUTO_OS_ROOT)的形态下围栏全程生效。
+    if gallery_dir().is_none() {
+        eprintln!(
+            "schema_drift_fence: SKIPPED — auto-os/widgets-gallery 未解析\
+             (solo 检出;设 AUTO_OS_ROOT 或并置 auto-os 兄弟检出可启用)"
+        );
+        return;
+    }
     let schema_rs = read("src/aura/schema.rs");
     let vue_rs = read("src/ui_gen/vue.rs");
     let vb_rs = read("src/ui/aura_view_builder.rs");
