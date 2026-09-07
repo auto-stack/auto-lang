@@ -1,5 +1,8 @@
+/** @deprecated 兼容别名——分层拆解为 PlaygroundCard + SnippetRunner（Plan 581，Playground 设计 §4），过渡期后移除。 */
 export { default as AutoPlayground } from './AutoPlayground.vue'
 export { default as AutoPlaygroundFull } from './AutoPlaygroundFull.vue'
+export { default as SnippetRunner } from './components/SnippetRunner.vue'
+export { default as PlaygroundCard } from './components/PlaygroundCard.vue'
 export { default as CodeEditor } from './components/CodeEditor.vue'
 export { default as CodePreview } from './components/CodePreview.vue'
 export { default as BytecodePanel } from './components/BytecodePanel.vue'
