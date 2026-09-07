@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-579
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-os 立项 Stage A——伞形仓骨架 + 首个真实 app auto-kanban（配置驱动看板，v1 计划板）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -330,30 +330,35 @@ fake-lang/docs/plans/archive/
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T1 建仓 auto-os 骨架**
+- [x] **T1 建仓 auto-os 骨架**
+  [✅ 已完成] `git init -b main D:/autostack/auto-os`；README（定位/三阶段路线/目录/ Apps 表占位/关联）+ .gitignore；首提交 f05bcec（`git log --oneline` 1 行通过）。
   `git init -b main D:/autostack/auto-os`；写 `README.md`（AutoOS 产品根定位、
   Stage A/B/C 三阶段路线表、目录结构、Apps 表占位、指针到 auto-lang 为框架根）
   与 `.gitignore`（`*.log` `temp/` `scratch/`）；首提交
   `git -C D:/autostack/auto-os commit -m "init: auto-os 伞形仓骨架 (Plan 579)"`。
   验证：`git -C D:/autostack/auto-os log --oneline` ≥1 行。
-- [ ] **T2 auto-os AGENTS.md 约定**
+- [x] **T2 auto-os AGENTS.md 约定**
+  [✅ 已完成] AGENTS.md 五节（范式沿用/解析序红线/app 仓约定/伞形清单/Stage B 桌面）；`grep -c AUTO_LANG_ROOT` = 1 通过；已提交。
   写 `D:/autostack/auto-os/AGENTS.md`：auto-plan 四技能范式沿用（路径映射按
   本仓实际）、跨仓解析序（`AUTO_LANG_ROOT` env → 兄弟 `../auto-lang` →
   `D:/autostack/auto-lang` 主检出）、app 仓结构约定（pac.at + src/front +
   src/back + tests + README 五件）、wt-guard 红线引用（worktree 禁 junction、
   移除前必跑 `bash D:/autostack/wt-guard.sh`）、真实 app 端口带 17xxx 约定。
   验证：`grep -c "AUTO_LANG_ROOT" D:/autostack/auto-os/AGENTS.md` ≥1。
-- [ ] **T3 auto-os auto-plan 脚手架**
+- [x] **T3 auto-os auto-plan 脚手架**
+  [✅ 已完成] .next-id=001、new-plan.sh 拷贝并适配（master→main、lang-NNN→os-NNN 组目录两处）、specs.json 六节空数组对齐 auto-lang 结构（顶层仅 sections 键）；冒烟 `new-plan.sh smoke` 取号 001 成功后回滚；提交 71f01f8。
   `mkdir -p docs/plans .autoos`；`echo 001 > docs/plans/.next-id`；拷
   `D:/autostack/auto-lang/scripts/new-plan.sh` → `scripts/new-plan.sh` 并适配
   注释（去 lang-529 worktree 提醒的 lang 专属措辞）；写 `.autoos/specs.json`
   六节空数组（结构对齐 auto-lang 同名文件）。提交。
   验证：`bash D:/autostack/auto-os/scripts/new-plan.sh smoke && ls docs/plans/001-smoke.md`
   （成功后 `rm docs/plans/001-smoke.md`，`.next-id` 回滚 001 再一并提交脚手架）。
-- [ ] **T4 auto-os apps.manifest**
+- [x] **T4 auto-os apps.manifest**
+  [✅ 已完成] manifest（kanban/repo/17100-17101/active）JSON 解析 ok；README Apps 表 T1 已同步该行；已提交。
   写 `apps.manifest`（详细设计节 JSON，含 kanban 一行）；README Apps 表同步该行。
   验证：`python -c "import json;json.load(open('D:/autostack/auto-os/apps.manifest'));print('ok')"`。
-- [ ] **T5 建仓 auto-kanban 骨架**
+- [x] **T5 建仓 auto-kanban 骨架**
+  [✅ 已完成] `git init -b main` + README（定位/解析序/boards.json/API/测试/伞形反链）+ .gitignore + pac.at（name auto-kanban/scene ui/front_port 17100/back_port 17101）+ boards.json（lang-plans 单条）+ 目录（src/front/pages、src/back/sources、tests）；首提交 668ac9d。
   `git init -b main D:/autostack/auto-kanban`；写 `README.md`（首个真实 app
   定位：配置驱动通用只读看板、v1 计划板、数据源解析序、运行/测试方式、伞形
   归属反链）、`.gitignore`（`node_modules/ gen/ dist/ target/ *.log`）、
@@ -361,7 +366,8 @@ fake-lang/docs/plans/archive/
   `back_port: 17101`，参 022/028 字段集）、`boards.json`（详细设计节单条目）；
   建目录 `src/front/pages/ src/back/sources/ tests/`。首提交。
   验证：`git -C D:/autostack/auto-kanban log --oneline` ≥1 行。
-- [ ] **T6 仓外 CLI 可用性验证（关键前置）**
+- [x] **T6 仓外 CLI 可用性验证（关键前置）**
+  [✅ 已完成] **仓根 pac.at 形态成立**：`auto gen` 于 D:/autostack/auto-kanban 退出码 0（两次），gen/front/vue + router/index.ts（1 路由）生成——无需转 auto/ 形态分支。auto CLI = auto-lang target/debug/auto v0.4.1。副作用：`.am/` 状态目录入 .gitignore；S001 INFO（text prop schema 注记）INFO 级不阻塞，与 examples 同现象。
   在 `D:/autostack/auto-kanban` 放最小 front（hello 级 `src/front/app.at`）后跑
   `auto gen`。**分支**：成功 → 维持仓根 pac.at 形态；失败 → 迁就 auto-os-config
   先例改 `auto/pac.at` 形态（pac.at 移入 `auto/`，back 路径相应调整），并在本步
@@ -462,3 +468,8 @@ fake-lang/docs/plans/archive/
    （022 README 端口注记），以 env 覆盖同法处置并在 T16 证据行注记。
 5. **Stage B 启动条件**（非本计划）：在途 525/526 折叠 + 541/566/576/577
    落地后另行立项桌面 shell 搬迁（L2：先设计文档后拆 plan）。
+6. **auto-ui 拆仓/迁移不并入 Stage B**（用户裁定 2026-09-07）：其讨论
+   前置 = ①虚拟桌面建仓结束（Stage B 完成）+ ②新虚拟桌面跑起来 +
+   ③能够展示两个 gallery（画廊上架见 PLAN-578；UI 栈/示例/画廊同属
+   auto-ui 项目资产的归属叙述见 PLAN-578 待澄清③）。满足后**独立立项**
+   讨论，Stage B 设计不裁定 auto-ui 归属。
