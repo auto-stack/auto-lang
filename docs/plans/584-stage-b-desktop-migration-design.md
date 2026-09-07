@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-584
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B 桌面域搬迁设计文档（auto-lang → auto-os）
 author: [zhaopuming]
 created_at: 2026-09-07
@@ -8,8 +8,9 @@ updated_at: 2026-09-07
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: []        # 交付物为跨仓设计文档，归 auto-os docs/design 注册（00-intro 已登记）；本仓 specs 无新增组件，仅 KNOWN-DEBT 台账 + GOAL-010 注记
+touched_goals:                # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-010: 示例应用轨道——Stage B 搬迁定案（Design 01 跨仓：资产/留架/委托/清障/裁定/拆解，应用轨道归位 auto-os）"
 
 affects: []                   # 纯文档计划：产出在 auto-os 仓，本仓仅动 docs/plans/ 记账
 current_step: 9
@@ -255,6 +256,43 @@ shell 划在产品侧；②引用面实测远小于设计期预估——四 cons
 apps_dir 先例（renderer.rs:10948）。Design 01 已按修订（§1 裁定链+A4 行/
 §2-L2 pin 快照/§4 增 P7 节/§6 增 V9/§7 增 P-7 行）。**C2 验收口径随之回到
 「shell 四件在列」（以 §1-A4 + §4-P7 落实，物理迁移在 P-7 批次兑现）。**
+
+---
+
+**复审记录（2026-09-07，/auto-plan:review；无 worktree——Category A 执行形态
+裁定，验证于双仓主检出执行；全档零 cargo——Category A 门禁）**
+
+逐条验收重跑（不信勾选框）：
+
+- **C1 ✅** 设计文档 + 00-intro 索引在册（grep 01-stage-b 命中）；§0–§7 齐全、
+  零 TBD/TODO（grep exit=1）。**复审修正一处**：修订期补 §0 内容时残留空节头
+  重复（11/13 行双「## §0」）——复审发现并当场修复（随复审批 auto-os 提交）。
+- **C2 ✅** 源路径对账 21 条零 miss（治理资产/七计划/launcher/shell 四件 +
+  shell.rs/0xx 应用/common/manifest）；唯一 MISS=`auto-os/shell/` 为 P-7 批次
+  目标落位，非本计划交付（§1-A4 已注明批次）。shell 四件在列（二次裁定后口径）。
+- **C3 ✅** P2/P3/P7 三方案各含锚点/向后兼容/验收（grep 兼容|验收 8 处）；
+  R-D1 fold 后烟测已顺偿结论在案（证据提交 2856158e7，§4）。
+- **C4 ✅** 处置表与 11 计划 frontmatter 复测一致（541 executing / 582
+  reviewed / 七 drafting 随迁 / 545+570 留守）；用户裁定原文逐字在档（§5）。
+- **C5 ✅** KNOWN-DEBT P584-D1..D3 三条目在册（grep 命中 3），锚点与 583
+  台账 + scratch/p583 指引齐备。
+- **C6 ✅** 三笔提交（f705870fd / 5bf95f168 / 7b602ed9a）文件面仅
+  docs/plans/* + .next-id；auto-os 两笔（7cfe6da / bb98f38）仅 docs/design/*——
+  零 crates/ 触碰、零 cargo 运行。
+
+遗漏/延后/workaround 扫描：
+
+- **遗漏一处（已当场清偿）**：§0 空节在 T1–T7 执行期未填充、修订期补齐时又
+  残留重复节头——复审发现并修复，非静默，记入本记录。
+- **延后一项（用户已签）**：shell pack 路径化原列 Stage C 候选（执行期裁定），
+  用户二次裁定翻转为 P-7 入 Stage B——已按修订入档（§1/§2/§4/§6/§7 +
+  00-intro + 本计划修订注记）。
+- **workaround：无**（纯文档计划，零代码）。
+- **待澄清三项均按默认值收口**：#1 重编 os-NNN + origin 注记（=§5 迁移机制）；
+  #2 经二次裁定修正收口（`auto desktop` 子命令不存在 → 定案选项 a）；#3
+  kanban 第一验收用例（=§4-P3 在案）。无未签分支。
+
+**结论：C1–C6 全过、无阻塞债 → status: reviewed。**
 
 ## 待澄清事项
 
