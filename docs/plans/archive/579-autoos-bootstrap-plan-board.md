@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-579
-status: reviewed                   # drafting → executing → execution_done → reviewed → archived
+status: archived                   # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-os 立项 Stage A——伞形仓骨架 + 首个真实 app auto-kanban（配置驱动看板，v1 计划板）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
