@@ -4660,7 +4660,7 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
     if let Some(node_ref) = vm.get_heap_object(id) {
         let node_data = node_ref.read().unwrap();
         if let Some(node) = node_data.as_any().downcast_ref::<Node>() {
-            let result = Value::Node(extract_node_deep(vm, node, visited));
+            let result = Value::node(extract_node_deep(vm, node, visited));
             visited.remove(&id);
             return result;
         }
@@ -4713,7 +4713,7 @@ fn extract_auto_val_value(vm: &crate::vm::engine::AutoVM, val: &Value, visited: 
             }
             Value::Obj(result_obj)
         }
-        Value::Node(node) => Value::Node(extract_node_deep(vm, node, visited)),
+        Value::Node(node) => Value::node(extract_node_deep(vm, node, visited)),
         _ => val.clone(),
     }
 }

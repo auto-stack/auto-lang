@@ -101,7 +101,7 @@ impl Atom {
     /// use auto_val::{Value, Node};
     ///
     /// let node = Node::new("test");
-    /// let atom = Atom::new(Value::Node(node));
+    /// let atom = Atom::new(Value::node(node));
     /// assert!(atom.is_ok());
     ///
     /// // Invalid type
@@ -112,7 +112,7 @@ impl Atom {
         match val {
             Value::Node(n) => {
                 // Name extraction no longer needed, just return the node
-                Ok(Atom::Node(n))
+                Ok(Atom::Node(*n))
             }
             Value::Array(a) => Ok(Atom::Array(a)),
             Value::Obj(o) => Ok(Atom::Obj(o)),
@@ -234,7 +234,7 @@ impl Atom {
             match val {
                 Value::Node(n) => {
                     // Add as a kid with integer index
-                    node.add_node_kid(node.kids_len() as i32, n);
+                    node.add_node_kid(node.kids_len() as i32, *n);
                 }
                 Value::Pair(k, v) => {
                     node.set_prop(k, *v);
@@ -353,7 +353,7 @@ impl Atom {
     /// ```
     pub fn to_value(self) -> Value {
         match self {
-            Atom::Node(node) => Value::Node(node),
+            Atom::Node(node) => Value::node(node),
             Atom::Array(arr) => Value::Array(arr),
             Atom::Obj(obj) => Value::Obj(obj),
             Atom::Empty => Value::Nil,
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     fn test_new_with_node() {
         let node = Node::new("test");
-        let result = Atom::new(Value::Node(node));
+        let result = Atom::new(Value::node(node));
         assert!(result.is_ok());
         assert!(result.unwrap().is_node());
     }

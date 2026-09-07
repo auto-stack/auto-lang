@@ -164,7 +164,9 @@ pub enum Value {
     Block(Array),
     Pair(ValueKey, Box<Value>),
     Obj(Obj),
-    Node(Node),
+    /// Plan 566 Phase A: Node 装箱（Node 296B 是 Value 296B 的唯一鲸鱼；
+    /// 构造走 `Value::node()` helper，匹配经 Box 自动解引用）。
+    Node(Box<Node>),
     Range(i32, i32),
     RangeEq(i32, i32),
     Fn(Fn),
@@ -207,6 +209,11 @@ pub enum Value {
 
 // constructors
 impl Value {
+    /// Plan 566 Phase A: Node 构造 helper（收敛调用点，集中未来调整）。
+    pub fn node(n: Node) -> Self {
+        Value::Node(Box::new(n))
+    }
+
     pub fn str(text: impl Into<AutoStr>) -> Self {
         Value::Str(text.into())
     }
@@ -759,7 +766,7 @@ impl Value {
 
     pub fn to_node(self) -> Node {
         match self {
-            Value::Node(value) => value,
+            Value::Node(value) => *value,
             _ => node_nil().clone(),
         }
     }
@@ -1096,7 +1103,7 @@ impl View {
         self.nodes
             .iter()
             .find(|n| n.name == key)
-            .map(|n| Value::Node(n.clone()))
+            .map(|n| Value::node(n.clone()))
     }
 }
 
@@ -1264,7 +1271,7 @@ impl From<Obj> for Value {
 
 impl From<Node> for Value {
     fn from(node: Node) -> Value {
-        Value::Node(node)
+        Value::node(node)
     }
 }
 

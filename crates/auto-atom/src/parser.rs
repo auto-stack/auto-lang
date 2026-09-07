@@ -304,7 +304,7 @@ impl<'a> Parser<'a> {
                 let value = self.parse_value()?;
                 node.add_body_prop(key, value);
             } else if let Value::Node(child) = first {
-                node.add_kid(child);
+                node.add_kid(*child);
             } else {
                 return Err(self.error(
                     "node body entries must be either pairs (key: value) or child nodes",

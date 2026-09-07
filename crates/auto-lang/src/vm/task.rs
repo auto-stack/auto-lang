@@ -160,7 +160,7 @@ impl AccumContainer {
 
     /// Convert the container into its final Node value.
     pub fn into_value(self) -> auto_val::Value {
-        auto_val::Value::Node(self.node)
+        auto_val::Value::node(self.node)
     }
 }
 

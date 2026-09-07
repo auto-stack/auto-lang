@@ -1684,12 +1684,12 @@ impl Pac {
         for target in &self.targets {
             let node = target.to_node();
             match target.kind {
-                TargetKind::App => apps.push(Value::Node(node.clone())),
-                TargetKind::Dep => deps.push(Value::Node(node.clone())),
-                TargetKind::Device => devices.push(Value::Node(node.clone())),
-                TargetKind::Lib => libs.push(Value::Node(node.clone())),
-                TargetKind::Bag => bags.push(Value::Node(node.clone())),
-                TargetKind::Test => tests.push(Value::Node(node.clone())),
+                TargetKind::App => apps.push(Value::node(node.clone())),
+                TargetKind::Dep => deps.push(Value::node(node.clone())),
+                TargetKind::Device => devices.push(Value::node(node.clone())),
+                TargetKind::Lib => libs.push(Value::node(node.clone())),
+                TargetKind::Bag => bags.push(Value::node(node.clone())),
+                TargetKind::Test => tests.push(Value::node(node.clone())),
             }
             root.add_kid(node);
         }

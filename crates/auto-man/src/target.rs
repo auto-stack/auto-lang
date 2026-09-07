@@ -584,7 +584,7 @@ impl Target {
         let mut dep_deps = Vec::new();
         let mut dep_bags = Vec::new();
         for dep in &self.deps {
-            let dep_node = Value::Node(dep.to_node());
+            let dep_node = Value::node(dep.to_node());
             match dep.kind {
                 TargetKind::Device => dep_devices.push(dep_node.clone()),
                 TargetKind::Dep => dep_deps.push(dep_node.clone()),

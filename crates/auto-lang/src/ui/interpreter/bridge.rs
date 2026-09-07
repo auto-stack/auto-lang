@@ -229,7 +229,7 @@ impl InterpreterBridge {
             .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
 
         if let Value::Node(node) = &result {
-            Ok(node.clone())
+            Ok((**node).clone())
         } else {
             // 创建一个默认的空节点
             Ok(Node::new("div"))
