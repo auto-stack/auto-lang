@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-579
-status: execution_done            # drafting → executing → execution_done → reviewed → archived
+status: reviewed                   # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-os 立项 Stage A——伞形仓骨架 + 首个真实 app auto-kanban（配置驱动看板，v1 计划板）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -8,8 +8,8 @@ updated_at: 2026-09-07
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: [P579-1 报告(变更摘要——两轴分离+伞形+首app), P579-2 架构(伞形组织拓扑/配置驱动看板模型/解析序), P579-3 测试(四层验证设计+run.mjs 编排器), P579-4 复审记录]
+touched_goals: [GOAL-010 应用轨道——首个仓外真实 app+伞形组织根]
 
 affects: []                   # 本计划不改 auto-lang crates/ 代码；specs 沉淀目标为 auto-os 仓自身 ledger
 current_step: 18
@@ -454,6 +454,26 @@ fake-lang/docs/plans/archive/
   验证：三条 grep/status 命令输出贴入证据。
 
 ## 复审记录
+
+**复审人**：ZCode（/auto-plan:review，2026-09-07）· **形态**：无 worktree（计划内裁定，产出于两新建仓 D:/autostack/auto-os + D:/autostack/auto-kanban，复验直接对两仓与主检出）
+
+**逐条验收**（全部复审期新鲜复跑）：
+
+| 标准 | 判定 | 证据 |
+|---|---|---|
+| C1 仓骨架 | ✅ | 五件套齐；apps.manifest/specs.json 双 JSON 解析 ok；.next-id=001（冒烟回滚干净） |
+| C2 双端跑通 | ✅ | playwright 复跑 **8/8 绿（2.5s）**；VM 轨 MCP 快照证据（双板按钮+4+2 计数链）+四 PNG（复审补入库） |
+| C3 活账对账 | ✅ | 复审期新鲜跑：看板 586 == `ls docs/plans/*.md+archive` 586 分毫不差（13+573 内部自洽） |
+| C4 零侵入 | ✅ | auto-kanban/auto-os status 双零；auto-lang 变更均为他会话文件（541/582/577），本计划仅计划文件；debug grep 0；注：583 窗口 kanban-back 两度生成均即时清理（VM 模式跳过修复前） |
+| C5 互链 | ✅ | auto-os README→kanban ×2；kanban README→伞形 ×4 |
+
+**复审修正两处**（lazy-convergence 扫描抓出，当场清偿）：
+1. `.gitignore` 的 `screenshots/`（T5 骨架期写入）拦截了 T16 全部证据 PNG——补入库（5 张）。
+2. `tests/test-results/` playwright 产物误入库——出库+ignore。
+
+**登记在案（非阻断）**：source_root=0 与 m12/m16 债族（Plan 583 待澄清 #5，卡片数据零影响）；JsonValue 元素物化规避（Bug C，583 台账）；VM 轨快照时序（卡片异步二跳，以计数链+截图佐证）；无 submodule/写回——计划边界内设计裁定。
+
+**裁定**：C1-C5 全过 + 两处复审修正已清偿 → **reviewed**，可 /auto-plan:merge。
 
 ## 待澄清事项
 
