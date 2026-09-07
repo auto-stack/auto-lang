@@ -231,17 +231,18 @@ impl Builder for NinjaBuilder {
         // 获取命令模板
         let templates = CommandTemplates::new(&compiler);
 
-        // 渲染命令
+        // 渲染命令（工具路径含空格时加引号，Plan 580 缺陷#3 断裂半边；
+        // 无空格路径恒等变换，现有 build.ninja 产物逐字节不变）
         let compile_only = FlagMapper::map_compile_only(&compiler);
         let asm_cmd = templates.render_assemble(
-            as_path.to_astr().as_str(),
+            &super::runner::quote_if_spaced(as_path.to_astr().as_str()),
             &includes,
             &cflags,
             "$out",
             "$in",
         );
         let cc_cmd = templates.render_compile(
-            cc_path.to_astr().as_str(),
+            &super::runner::quote_if_spaced(cc_path.to_astr().as_str()),
             &compile_only,
             &includes,
             &defines_flags,
@@ -250,13 +251,17 @@ impl Builder for NinjaBuilder {
             "$in",
         );
         let link_cmd = templates.render_link(
-            link_path.to_astr().as_str(),
+            &super::runner::quote_if_spaced(link_path.to_astr().as_str()),
             "$out",
             "$in",
             "$ldflags",
             "$libs",
         );
-        let lib_cmd = templates.render_archive(ar_path.to_astr().as_str(), "$out", "$in");
+        let lib_cmd = templates.render_archive(
+            &super::runner::quote_if_spaced(ar_path.to_astr().as_str()),
+            "$out",
+            "$in",
+        );
 
         // 写入build.ninja头部
         self.out.write(
@@ -439,14 +444,21 @@ rule lib
         );
 
         // run ninja to build
-        let mut child = std::process::Command::new("ninja")
+        let host = super::runner::resolve_ninja_host()?;
+        let mut child = std::process::Command::new(&host.program)
             .args(["-C", build_path.to_astr().as_str()])
             .spawn()
-            .expect("Failed to spawn ninja process");
+            .map_err(|e| format!("failed to spawn {}: {}", host.program, e))?;
 
-        let status = child.wait().expect("Failed to wait for ninja process");
+        let status = child
+            .wait()
+            .map_err(|e| format!("failed to wait for {}: {}", host.program, e))?;
 
         println!("ninja build finished with status: {}", status);
+
+        if !status.success() {
+            return Err(format!("build runner {} failed: {}", host.program, status).into());
+        }
 
         println!("End of build");
         Ok(())
