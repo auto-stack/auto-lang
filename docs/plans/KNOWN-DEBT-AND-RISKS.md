@@ -1761,6 +1761,9 @@ active/onclick VM 实证随之可补。
   shell.at 是重度 .at 逻辑代码=该形态高密度用户——**Stage B 搬迁回归（P-5）
   前修复比回归中踩雷便宜**（建议非硬前置，§7 P-4 批）。同台账残留②
   JsonValue 元素 str 方法分派 None（kanban 已物化规避，579 台账在案）。
+  **✅ 残留①已结案（2026-09-07，PLAN-588 / Stage B P-4）**：根因=codegen
+  静态模块白名单缺 file（占位 receiver 漏槽垫栈），单点修+m16b 对账
+  319890==319890+corpus 三锚；残留② JsonValue str 分派另案维持。
 - **P582-D4 Playground 前端 Vue→AutoUI 迁移（设计已入档，独立立项）**：
   `packages/auto-playground-vue` 为手写 Vue 3+TS（CodeMirror/lucide），仅 Web 渲染
   路径，无 .at 组件源/VM 管线/iced 桌面臂——不能像 examples/ui 应用一样双端显示。
@@ -1768,3 +1771,12 @@ active/onclick VM 实证随之可补。
   `docs/design/documents/playground-architecture.md` §12（复刻清单/依赖映射/
   三期增量路线 W1 笔记站→W2 编辑器→W3 IDE 层；最大风险项=CodeMirror 等价性，
   iced 侧由 auto.code_editor 原生族 2910-2932 承载需逐项对表）。本期不执行。
+
+## P588 债务（vm-inline-callarg-degradation，2026-09-07 复审登记）
+
+- **P588-D1 [观察项] stdlib 模块静态白名单差集（同族占位泄漏未实证）**：
+  codegen.rs:8819 静态模块白名单现含 env/fs/json/http/url/shell/regex/host/
+  math/sys/file；stdlib/auto 尚有 char/conv/async/image/io/log/net/path/
+  process/sched/term/test/time 等未列入——若这些模块以 `mod.fn()` 形态在
+  循环内联表达式中被调用，理论上与 file 同族（占位 receiver 漏 +1 槽）。
+  未实证（现有语料零覆盖形态），证据驱动逐个补入；补入前不算回归面。
