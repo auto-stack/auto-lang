@@ -98,6 +98,8 @@ export interface PlaygroundCardProps extends SnippetRunnerProps {
   files?: NoteFile[] | null;
   /** 项目目录（相对服务端 examples/playground-demo）；运行走 files 形态（Plan 582）。 */
   projectDir?: string | null;
+  /** IDE 模式入口：true=可用；false=禁用+提示；null=不渲染（Plan 582）。 */
+  ideMode?: boolean | null;
   /** 工具栏项开关（默认全开）。 */
   toolbar?: PlaygroundCardToolbar;
   /** 是否渲染 ExampleSelector（默认 false；旧 AutoPlayground 常驻行为需显式选入）。 */

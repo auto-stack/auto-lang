@@ -49,7 +49,9 @@
           :expected-output="active.note.expectedOutput"
           :files="active.note.files"
           :project-dir="cardProjectDir"
+          :ide-mode="props.ideMode"
           height="auto"
+          @ide-mode="onIdeMode"
         />
       </article>
     </main>
@@ -72,11 +74,19 @@ const props = withDefaults(defineProps<{
   apiBase?: string
   /** 来源 chip 的仓库根（GitHub blob 链接前缀）。 */
   repoBase?: string
+  /** IDE 模式入口（SPA 宿主 true；VitePress 无后端 false→按钮禁用+提示）。 */
+  ideMode?: boolean
 }>(), {
   base: '/playground-data/notes.json',
   apiBase: '',
   repoBase: 'https://github.com/auto-stack/auto-lang',
+  ideMode: false,
 })
+
+const emit = defineEmits<{
+  /** IDE 模式切换（SPA 宿主渲染 AutoPlaygroundFull 并 loadExample 载荷）。 */
+  'ide-mode': [payload: { noteId: string; source: string; projectDir?: string; files?: { path: string; source: string }[] }]
+}>()
 
 const { groups, flatNotes, byId, isLoading, error, fetchNotes, search } = useNotes({ base: props.base })
 
@@ -131,6 +141,17 @@ const cardProjectDir = computed(() => {
 
 function onSelect(noteId: string) {
   activeId.value = noteId
+}
+
+function onIdeMode() {
+  const n = active.value?.note
+  if (!n) return
+  emit('ide-mode', {
+    noteId: n.id,
+    source: n.code ?? n.files?.find((f) => f.path === 'main.at')?.content ?? '',
+    projectDir: cardProjectDir.value ?? undefined,
+    files: n.files?.map((f) => ({ path: f.path, source: f.content })),
+  })
 }
 
 // ── 深链 #/notes/<id>（hash 变化不触发 VitePress 路由——replaceState 不派发路由事件）──

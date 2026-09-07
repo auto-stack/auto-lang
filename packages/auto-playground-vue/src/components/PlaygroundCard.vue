@@ -10,6 +10,16 @@
           :api-base="apiBase || '/api'"
           @select="onLoadExample"
         />
+        <span
+          v-if="ideMode !== null"
+          class="ide-entry"
+          :title="ideMode ? '切换到全功能 IDE（文件树/调试/回放）' : 'IDE 模式仅在后端自服务页可用——本地运行 cargo run -p auto-playground 后访问'"
+        >
+          <button class="ide-btn" :disabled="!ideMode" @click="emit('ide-mode')">
+            <AppWindow :size="14" />
+            在 IDE 中打开
+          </button>
+        </span>
       </div>
       <div class="toolbar-right">
         <select
@@ -205,7 +215,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue'
-import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward, Lock } from 'lucide-vue-next'
+import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward, Lock, AppWindow } from 'lucide-vue-next'
 import SnippetRunner from './SnippetRunner.vue'
 import BytecodePanel from './BytecodePanel.vue'
 import CodePreview from './CodePreview.vue'
@@ -230,6 +240,8 @@ const props = withDefaults(defineProps<{
   files?: { path: string; content: string }[] | null
   /** 项目目录（相对服务端 examples/playground-demo）；运行走 files 形态。 */
   projectDir?: string | null
+  /** IDE 模式入口：true=可用（点击发 ide-mode）；false=禁用+提示；null=不渲染（默认）。 */
+  ideMode?: boolean | null
   /** 工具栏项开关（默认全开）。 */
   toolbar?: { transpile?: boolean; share?: boolean; debug?: boolean; live?: boolean }
   /** 是否渲染 ExampleSelector（默认 false；旧 AutoPlayground 常驻行为需显式选入）。 */
@@ -244,7 +256,12 @@ const props = withDefaults(defineProps<{
   expectedOutput: null,
   files: null,
   projectDir: null,
+  ideMode: null,
 })
+
+const emit = defineEmits<{
+  'ide-mode': []
+}>()
 
 const DEFAULT_CODE = `fn main() {
     let message = "Hello from Auto!"
@@ -534,6 +551,34 @@ defineExpose({
 
 .file-tab.entry.active {
   color: #a6e3a1;
+}
+
+.ide-entry {
+  display: inline-flex;
+}
+
+.ide-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  background: transparent;
+  color: #a6adc8;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.ide-btn:hover:not(:disabled) {
+  color: #cdd6f4;
+  border-color: #6366f1;
+}
+
+.ide-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .target-select {
