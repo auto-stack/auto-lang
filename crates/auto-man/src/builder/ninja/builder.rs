@@ -439,14 +439,21 @@ rule lib
         );
 
         // run ninja to build
-        let mut child = std::process::Command::new("ninja")
+        let host = super::runner::resolve_ninja_host()?;
+        let mut child = std::process::Command::new(&host.program)
             .args(["-C", build_path.to_astr().as_str()])
             .spawn()
-            .expect("Failed to spawn ninja process");
+            .map_err(|e| format!("failed to spawn {}: {}", host.program, e))?;
 
-        let status = child.wait().expect("Failed to wait for ninja process");
+        let status = child
+            .wait()
+            .map_err(|e| format!("failed to wait for {}: {}", host.program, e))?;
 
         println!("ninja build finished with status: {}", status);
+
+        if !status.success() {
+            return Err(format!("build runner {} failed: {}", host.program, status).into());
+        }
 
         println!("End of build");
         Ok(())
