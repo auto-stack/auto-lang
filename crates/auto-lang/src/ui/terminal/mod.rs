@@ -39,6 +39,9 @@ use std::sync::Mutex;
 #[cfg(feature = "ui-iced")]
 pub mod iced;
 
+// Plan 583 T7: re-export 与模块声明同门——此前裸 pub use 在 ui 无 ui-iced
+// 组合下 E0432（仓外 a2r 后端 features=["ui",...] 必炸）。
+#[cfg(feature = "ui-iced")]
 pub use iced::{Terminal, TerminalState};
 
 /// Cell color — scalar mirror of the engine's ANSI color surface.

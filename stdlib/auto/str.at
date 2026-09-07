@@ -34,12 +34,16 @@ ext str {
     #[vm]
     fn lower() str
 
-    /// Get a substring of `len` characters starting at `start` (inclusive).
-    /// NOTE (plan-446 F4): semantics are (start, LEN) — NOT (start, end).
+    /// Get a substring by [start, end) character range (end exclusive).
+    /// str-parity: `.sub`/`.slice` are END-semantics (a2r s[a..b]); `.substr`
+    /// is (start, LEN) — three distinct methods, do not mix (Plan 583 T6
+    /// 文档对齐：引擎/语料/a2r 三方一直为 END 语义，旧注记 (start,LEN) 为
+    /// Plan 446 时代残文，与 native_catalog 的 auto.str.sub→1524(slice) 实现
+    /// 不符）。
     /// Indices clamp to char boundaries; out-of-range yields "".
-    /// Example: "hello".sub(1, 3)  // returns "ell"
+    /// Example: "hello".sub(1, 3)  // returns "el" (chars 1..2)
     #[vm]
-    fn sub(start int, len int) str
+    fn sub(start int, end int) str
 
     // ============================================================================
     // Search Methods

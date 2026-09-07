@@ -324,7 +324,16 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 
     println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
 
-    // Generate Rust server if back/ exists
+    // Generate Rust server if back/ exists.
+    // Plan 583 T8: --server=vm（AUTO_BACKEND_IMPL=vm）由 AutoVM HTTP 服务端
+    // 承载 API——跳过 a2r rust-server 生成。该生成会把 <app>-back/ crate 连同
+    // workspace member 注册写进共享 rust-workspace（auto-lang 仓内），仓外
+    // app 每次 `auto run --server vm` 都会污染框架仓。rust/tauri 路径不受影响。
+    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_default();
+    if backend_impl == "vm" {
+        println!("  ℹ VM server mode: skipping Rust server generation (AutoVM HTTP serves the API)");
+        return Ok(());
+    }
     let back_dir = if root_dir.join("src").join("back").exists() {
         root_dir.join("src").join("back")
     } else if root_dir.join("back").exists() {

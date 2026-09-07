@@ -230,6 +230,8 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_07_objects_009_multiple_field_mutations() { test_vm("07_objects/009_multiple_field_mutations").unwrap(); }
 
 // === 08_strings ===
+#[test] #[ignore] fn test_08_strings_016_heaprc_string_pool() { test_vm("08_strings/016_heaprc_string_pool").unwrap(); }
+#[test] #[ignore] fn test_08_strings_017_sub_semantics() { test_vm("08_strings/017_sub_semantics").unwrap(); }
 #[test] #[ignore] fn test_08_strings_001_fstr() { test_vm("08_strings/001_fstr").unwrap(); }
 #[test] #[ignore] fn test_08_strings_002_fstr_expr() { test_vm("08_strings/002_fstr_expr").unwrap(); }
 #[test] #[ignore] fn test_08_strings_003_str_index() { test_vm("08_strings/003_str_index").unwrap(); }

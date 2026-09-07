@@ -10097,6 +10097,83 @@ mod tests_add_concat_rc {
     }
 }
 
+mod tests_p583_pool_child_shares {
+    use super::*;
+    use crate::vm::ffi::VMConvertible;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_idle() -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(vec![OpCode::RET as u8]), 1024)
+    }
+
+    /// Plan 583 T4: Vec<String> 入栈必须为每个负哨兵元素建立容器子份额（+1）。
+    /// 修复前 add_string 后裸嵌哨兵：元素 rc=0，首个 GET_ELEM 的 +1 被槽位
+    /// 释放抵消归零 → FREE 清内容 → 列表悬垂（Plan 579 T9 真实语料扫描
+    /// 100% tombstone/静默空串的根因）。
+    #[test]
+    fn test_vec_string_push_child_shares() {
+        let vm = vm_idle();
+        let mut task = AutoTask::new(1, 256, 0);
+        let payload: Vec<String> = vec!["alpha".to_string(), "beta".to_string()];
+        payload.push_to_stack(&mut task, &vm).unwrap();
+
+        // 栈顶是 list id（带影子份额）；列表内每个元素各持 1 份池份额。
+        let list_nv = task.ram.pop_nv();
+        assert!(crate::vm::rc::heap_ref_id(list_nv).is_some(), "list id on stack");
+        let list_id = crate::vm::rc::heap_ref_id(list_nv).unwrap();
+        let obj = vm.get_heap_object(list_id).unwrap();
+        let sentinels: Vec<i32> = {
+            let g = obj.read().unwrap();
+            g.as_any()
+                .downcast_ref::<crate::vm::types::ListData<i32>>()
+                .unwrap()
+                .elems
+                .clone()
+        };
+        assert_eq!(sentinels.len(), 2);
+        for &sent in &sentinels {
+            assert!(sent < 0, "string sentinel encoding");
+            let idx = (-(sent) - 1) as usize;
+            assert_eq!(vm.pool_count(idx), 1, "container child share established");
+        }
+
+        // 释放列表（rc 归零 + 宽限窗收割）→ 子份额随死亡释放归零、墓碑化。
+        vm.rc_release(list_nv);
+        vm.reap_all();
+        for &sent in &sentinels {
+            let idx = (-(sent) - 1) as usize;
+            assert_eq!(vm.pool_count(idx), 0, "child share released with container death");
+            assert!(vm.pool_is_tombstone(idx), "tombstoned after release");
+        }
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0, "no over-release (paired retain/release)");
+        assert_eq!(h.phantom_drops, 0);
+    }
+
+    /// Plan 583 T4: 复活加固——墓碑槽收到 retain（陈旧拷贝症状）时必须
+    /// 摘 freelist + 清墓碑，杜绝"存活且在复用队列"的幻影条目
+    /// （P-053-8 级联腐化源）。
+    #[test]
+    fn test_pool_retain_resurrection_unfreelists() {
+        let vm = vm_idle();
+        let idx = vm.add_string(b"ghost".to_vec());
+        vm.pool_retain(idx);
+        assert_eq!(vm.pool_count(idx), 1);
+        vm.pool_release(idx); // 归零 → 墓碑 + freelist
+        assert!(vm.pool_is_tombstone(idx));
+        assert!(vm.pool_state.read().unwrap().freelist.contains(&idx));
+
+        vm.pool_retain(idx); // 陈旧拷贝到达 → 复活加固
+        assert!(!vm.pool_is_tombstone(idx), "tombstone cleared on resurrection");
+        assert!(!vm.pool_state.read().unwrap().freelist.contains(&idx), "unfreelisted");
+        assert_eq!(vm.pool_count(idx), 1);
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0);
+        assert_eq!(h.phantom_drops, 0);
+    }
+}
+
 mod tests_err_value_channel {
     use super::*;
     use crate::vm::generic_registry::GenericInstanceData;
