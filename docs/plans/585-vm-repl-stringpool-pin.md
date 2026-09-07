@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-585
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-repl-stringpool-pin
 author: []
 created_at: 2026-09-07
@@ -152,16 +152,28 @@ self.vm.flash = Arc::new(flash);
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] T1 落红：autovm_persistent.rs tests 新增 T1/T2 两单测（host shim +
-  repro 脚本 + pin 断言）,`cargo t autovm_persistent`（或按测试模块过滤）确认红,
-  红相记录（断言失败输出/横幅）。
-- [ ] T2 修复：autovm_persistent.rs:772 一行改 load_strings 收口（含注释）。
-- [ ] T3 转绿：T1/T2 单测绿；`cargo check -p auto-lang` 0 warning。
-- [ ] T4 语料：新增 test/vm/08_strings/018_loop_concat_churn（.at +
-  expected.out）。
-- [ ] T5 回归：`cargo tv` 全档对基线；fold 前 `cargo tf` 对基线。
-- [ ] T6 下游：worktree 分支折回 master 后,ash 仓复跑 examples_parity 目标测试 +
-  probe.ash,结论（绿/输出实录）记入本文件复审记录与 merge 提交信息。
+- [✅ 已完成] T1 落红：autovm_persistent.rs tests 新增 plan585_loop_concat_system_strings_repl_parity
+  （ParityHost shim + 下游同形脚本）与 plan585_repl_constants_pinned_after_run（pin 配平）；
+  `cargo test -p auto-lang --lib autovm_persistent::tests::plan585` 双红实锤——repro 红相
+  `Some("./x.tmp\n./y.bak./x.tmp\n./y.bak")`（污染签名与下游 `'*.bak./x.tmp'` 同构）+
+  `[P583] retain-after-free on pool idx 7` 横幅；配平红相 idx 0 `pool_count=0`（应
+  u32::MAX）伴生 `[P053-8] phantom freelist entry dropped: slot 4 (rc=4294967295)`
+  rc 下溢幻影条目。
+- [✅ 已完成] T2 修复：autovm_persistent.rs 裸赋值改 `self.vm.load_strings(codegen.strings.clone())`
+  （附不变量注释），单点收口。
+- [✅ 已完成] T3 转绿：plan585 双测绿；autovm_persistent 全模块 20 passed + 1 ignored
+  （预存 ignore）；`cargo check -p auto-lang` 零新增 warning（既存 warning 族与
+  autovm_persistent.rs 无涉，grep 实证）。
+- [✅ 已完成] T4 语料：test/vm/08_strings/018_loop_concat_churn/（.at + expected.out，
+  循环拼接 + trim + found 累加 churn 形态 golden）。
+- [✅ 已完成] T5 回归：`cargo tv --no-fail-fast` 3614/3615（唯一红
+  ui_gen::vue::test_charts_gallery_compiles = charts 预存基线，583 merge 记录在案）；
+  `cargo tf --no-fail-fast` 3473/3474（唯一红同上）；零新增红。
+- [✅ 已完成] T6 下游：master 折回（merge 6c86af135）后 ash 仓复跑
+  `cargo test -p ash --test examples_parity positional_arg_passes_to_system`
+  **转绿**（修复前红：ash ["x.tmp"] vs bash ["x.tmp","y.bak"]）；probe.ash 三轮
+  输出完整（`iter *.bak => [./y.bak]` 恢复，修复前该轮静默丢失）；P583 横幅
+  归零（P419_POOL_LOG=1 复跑 grep 计数 0）。
 
 ## 复审记录
 
