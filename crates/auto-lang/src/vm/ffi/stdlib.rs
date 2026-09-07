@@ -8564,6 +8564,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                                 let mut record_list: ListData<i32> = ListData::new();
                                 for field in record.iter() {
                                     let str_idx = vm.add_string(field.as_bytes().to_vec());
+                                    vm.pool_retain(str_idx); // Plan 583 T4: 容器子份额
                                     record_list.push(-(str_idx as i32) - 1); // string encoding convention
                                 }
                                 let record_id = vm.insert_heap_object(record_list);
@@ -8908,6 +8909,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     if let Some(re) = rust_obj.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
                         for mat in re.lock().unwrap().find_iter(&text) {
                             let str_idx = vm.add_string(mat.as_str().as_bytes().to_vec());
+                            vm.pool_retain(str_idx); // Plan 583 T4: 容器子份额
                             match_list.push(-(str_idx as i32) - 1); // string encoding convention
                         }
                     }

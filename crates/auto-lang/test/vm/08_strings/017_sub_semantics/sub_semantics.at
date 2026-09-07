@@ -1,0 +1,8 @@
+// 017_sub_semantics — Plan 583 T6：锁定三方法语义分界（引擎/语料/a2r 三方
+// 一致；str.at 旧 (start,LEN) 注记为残文已修）。
+// .sub/.slice = [start, end) 排他端点；.substr = (start, LEN)。
+print("hello".sub(1, 3))
+print("hello".substr(1, 3))
+print("hello".slice(1, 3))
+print("hello".sub(0, 0))
+print("hello".substr(4, 99))

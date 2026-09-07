@@ -1,0 +1,12 @@
+var total = 0
+for i in 0..2000 {
+    let lines = "alpha: one two|beta: three four|gamma: five six".split("|")
+    for line in lines {
+        let t = line.trim()
+        let ci = t.find(":")
+        if ci > 0 {
+            total = total + t.sub(ci + 1, t.len()).trim().len()
+        }
+    }
+}
+total

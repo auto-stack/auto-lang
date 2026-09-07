@@ -550,6 +550,27 @@ impl AutoVM {
 
     /// 池条目 +1(pinned 免计费)。越界索引(旧编码负数误入)跳过。
     pub fn pool_retain(&self, idx: usize) {
+        // Plan 583 T4: 复活加固——rc==0 且已墓碑化的槽位收到 retain = 存在
+        // 陈旧拷贝（漏 incref 症状）。此前只加计数：槽位"存活且仍在 freelist"
+        // （P-053-8 幻影条目注入源），且墓碑标志残留令后续 get_string 必中
+        // canary。加固：摘 freelist + 清墓碑，把级联腐化收束为单槽空内容
+        // （debug 警告可见，供上层漏 incref 追踪）。
+        {
+            let st = self.pool_state.read().unwrap();
+            if idx < st.tombstone.len() && st.tombstone[idx] {
+                drop(st);
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[P583] retain-after-free on pool idx {} — stale copy symptom; resurrecting (content was wiped)",
+                    idx
+                );
+                let mut wst = self.pool_state.write().unwrap();
+                if idx < wst.tombstone.len() && wst.tombstone[idx] {
+                    wst.tombstone[idx] = false;
+                    wst.freelist.retain(|&i| i != idx);
+                }
+            }
+        }
         let st = self.pool_state.read().unwrap();
         if idx >= st.rc.len() || st.pinned[idx] {
             if crate::pool_log_all() && idx < st.rc.len() {
@@ -560,7 +581,9 @@ impl AutoVM {
         let cur = st.rc[idx].fetch_add(1, Ordering::Relaxed);
         // Plan 423 P5 续修(诊断设施):指定索引生死链 trace。
         if crate::pool_trace_idx() == Some(idx) {
-            eprintln!("[P419POOL] retain {} (rc {} -> {})", idx, cur, cur + 1);
+            eprintln!("[P419POOL] retain {} (rc {} -> {})
+  site:
+{}", idx, cur, cur + 1, std::backtrace::Backtrace::force_capture());
         }
         if crate::pool_log_all() {
             let content = self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default();
@@ -582,7 +605,9 @@ impl AutoVM {
             }
             let cur = st.rc[idx].fetch_sub(1, Ordering::AcqRel);
             if crate::pool_trace_idx() == Some(idx) {
-                eprintln!("[P419POOL] release {} (rc {} -> {})", idx, cur, cur - 1);
+                eprintln!("[P419POOL] release {} (rc {} -> {})
+  site:
+{}", idx, cur, cur - 1, std::backtrace::Backtrace::force_capture());
             }
             // Plan 510 G3 配对审计:cur==0 说明本 release 无配对 retain
             // (多扣款)——rc 下溢回绕 0xFFFFFFFF,槽位永久坏死 + 可能点燃
@@ -631,7 +656,9 @@ impl AutoVM {
     /// 归零真释放:置墓碑、清内容、进 freelist、删 dedup 键(一键一槽不变量)。
     fn pool_free_idx(&self, idx: usize) {
         if crate::pool_trace_idx() == Some(idx) {
-            eprintln!("[P419POOL] FREE {} (tombstone + freelist)", idx);
+            eprintln!("[P419POOL] FREE {} (tombstone + freelist)
+  site:
+{}", idx, std::backtrace::Backtrace::force_capture());
         }
         let key = {
             let mut strings = self.strings.write().unwrap();

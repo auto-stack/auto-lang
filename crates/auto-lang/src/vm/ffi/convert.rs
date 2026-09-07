@@ -367,6 +367,12 @@ impl VMConvertible for Vec<String> {
         for s in self.iter() {
             // Register string in the string table
             let len = vm.add_string(s.as_bytes().to_vec());
+            // Plan 583 T4: 容器持有一份子份额（+1）——此前裸哨兵入表不 retain，
+            // 元素 rc 从 0 起：首个 GET_ELEM 的 +1 被随后的槽位释放抵消归零，
+            // FREE 清内容后列表哨兵悬垂（读回空串/墓碑 panic；Plan 579 T9
+            // 真实语料扫描 100% 复现）。死亡端 free_heap_id → child_pool_idxs
+            // → pool_release 与此处配对（types.rs ListData<i32> 已提取负哨兵）。
+            vm.pool_retain(len);
             // Encode as string index (negative i32), matching push_str_idx encoding
             list.push(-(len as i32) - 1);
         }
