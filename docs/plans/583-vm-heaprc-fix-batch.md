@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-583
-status: execution_done               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: VM heap_rc 修复批——tombstone 体量型 panic + sub 语义分裂 + terminal 门控 + vm 模式 rust-server 跳过（解 Plan 579 T9 阻断）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -8,8 +8,8 @@ updated_at: 2026-09-07
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: [P583-1 归因报告(heaprc 容器子份额缺失根因+十探针诊断链), P583-2 架构(heap_rc 容器负哨兵子份额协议补全+pool_retain 复活加固语义), P583-3 测试(配平单测×2+语料回归×2+复现器族), P583-4 复审记录]
+touched_goals: [GOAL-002 VM 稳定性/快周转, GOAL-003 三方一致(VM 正确性+sub 语义文档对齐)]
 
 affects: [auto-lang/vm, auto-lang/ui, auto-man/api_gen]
 current_step: 12
@@ -242,12 +242,33 @@ ext 方法 `"...".sub(a,b)` 在 VM 的分派路径与 `shim_str_substr` 是两�
   验证：全绿（预存红在案除外，比对 579 执行前基线记录）。
 - [x] **T12 execution_done + 交付复审**
   [✅ 已完成] frontmatter 翻 execution_done、current_step=12、全部证据回填；移交 /auto-plan:review → merge（用户预授权连续闭环）。
-  frontmatter `status: execution_done`；本文件回填全部证据；
+  frontmatter `status: reviewed`；本文件回填全部证据；
   移交 /auto-plan:review → merge（用户已授权连续闭环：579 待续行依赖
   本批落 master）。
   验证：current_step=12。
 
 ## 复审记录
+
+**复审人**：ZCode（/auto-plan:review，2026-09-07）· **worktree**：lang-583 @ dbde35d1f（单提交，+164/-8 行，12 文件）
+
+**逐条验收**（复验于 worktree 同树，tf/tv/auto-man 为本会话 T5/T10/T11 同树运行）：
+
+| 标准 | 判定 | 证据 |
+|---|---|---|
+| C1 repro1 真实语料零 panic | ✅ | 复验输出 586 卡（`ls docs/plans/*.md+archive` 对账恒等）；active 17→16 为热仓他会话翻状态，总数稳定 |
+| C2 tv+tf 全绿 | ✅ | tv 3611/3612、tf 3470/3471——唯一红 charts_gallery 为 AGENTS.md 在案预存（577 归档基线同） |
+| C3 sub 三断言 | ✅ | 语料 017（el/ell/el/越界）2/2 绿 + 复验 CLI 同值 |
+| C4 terminal 门控双组合 | ✅ | `--no-default-features --features ui` exit 0（原必 E0432）；`--features ui-iced` 零 error |
+| C5 仓外零污染+E0432 | ✅/⚠ | vm 模式实测跳过+主检出/worktree 双零 kanban 污染；rust-server E2E 因 ensure_shared_workspace 硬路由主检出源码（修复未折）顺延 fold 后烟测——**门控本身已由 C4 编译证**，登记债候选 R-D1 |
+| C6 579 回归就绪 | ✅ | 真实数据 API 200 全量出卡（T9），579 T9 阻断解除 |
+
+**遗漏/延后/workaround 扫描**：
+- 延后 1 项（C5 rust-server E2E 烟测 → fold 后），根因=共享 workspace 硬路由主检出，已登记非静默。
+- 残留债候选 2 族：①字符串跨 fn 返回特定形态静默归零（source_root=0/m12/m16，复现器 scratch/p583 留存主检出）；②JsonValue 元素 str 方法分派 None（kanban 已物化规避，579 台账在案）。均不阻本批验收。
+- 插桩保留 1 处：rc.rs P419POOL trace 站点栈（env 门控零开销，诊断设施增强，commit 注记在案）。
+- 无 TODO/未批准缩项/静默 workaround。
+
+**裁定**：6 标准 5 全过 + 1 过（带登记延后），无阻断债 → **reviewed**。
 
 ## 待澄清事项
 
