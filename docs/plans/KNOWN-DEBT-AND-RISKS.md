@@ -1676,3 +1676,27 @@ active/onclick VM 实证随之可补。
   P580 钉 rev `b1fead52`（本机对拍验证过的 commit）保证复现性；上游演进
   （行为变更/新缺失面）需人工复验更新。已知限制条目登账：未来生成端加
   `deps`/`depfile` 时需先复验 n2 支持。
+
+## P581 债务（playground-notes-foundation,2026-09-07 复审登记）
+
+- **P581-D1 website vitepress 全量 build 预存红（上游,Plan 563 引入）**：
+  `docs/components/core.md:306` 裸 `<prefix>_pts` 被 vue 编译器解析为未闭合标签
+  （报错位 328:57），源头 `crates/auto-lang/src/aura/schema.rs:2349` canvas scene
+  描述文本未转义。master 实测同红（2026-09-07 主检出复现）——非 581 引入，但
+  阻断 581 验收 2 的字面达成与未来一切 website 部署。修复需动 crates/ schema
+  描述（转义）+ core.md 再生成，超出 581"不触 crates/"红线，待用户裁定（选项
+  见 plan 581 待澄清②）。581 以 master 等红证据 + vitepress dev 实测渲染代偿。
+- **P581-D2 vitepress 宿主编译链不支持包 SFC defineProps 导入类型**：
+  compiler-sfc 两种报错形态（无 typescript 依赖 / 无 fs 选项），旧组件用内联
+  类型故从未触发。581 组件 props 已改内联类型镜像 types.ts 契约（存在契约
+  双份维护面）+ website devDependencies +typescript 护栏。包内后续新增组件若
+  直接引用 types.ts 类型作 defineProps 泛型会在 website dev/build 复现此坑。
+- **P581-D3 vm-golden expectedOutput 双语义**：配对规则为 .expected.out（stdout）
+  优先、.expected.result（终值,184 条）回退；manifest v1 未携带判别字段，
+  582 期望输出对照 UI 需按 sourcePath 后缀分派（.result 对照 RunResponse.result、
+  .out 对照 stdout），否则差异高亮会误报。
+- **P581-D4 parity 收录后置 + --check 未接 CI**：parity 31/31 测试依赖多文件
+  import 解析，收录需"平铺+import 改写"源变换（可行性已实验验证，映射方案见
+  scratch/p581/parity-survey.md），随 582 落地；--check 目前无自动执行面
+  （计划裁定 deploy workflow 零改动、manifest 不提交故磁盘 diff 无意义）——
+  若需 CI 防采集回归，可在 book 物化后的 workflow 步骤内追加 --check 调用。
