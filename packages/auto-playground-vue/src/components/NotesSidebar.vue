@@ -10,7 +10,7 @@
         @input="query = ($event.target as HTMLInputElement).value"
       />
     </div>
-    <div class="nx-tree">
+    <ScrollArea class="nx-tree">
       <section v-for="g in groups" :key="g.id" class="nx-group">
         <button class="nx-group-head" @click="toggle(g.id)">
           <ChevronRight :size="13" class="nx-chev" :class="{ open: isOpen(g.id) }" />
@@ -31,13 +31,14 @@
         </ul>
       </section>
       <p v-if="groups.length === 0" class="nx-empty">无匹配笔记</p>
-    </div>
+    </ScrollArea>
   </aside>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { Search, ChevronRight } from 'lucide-vue-next'
+import ScrollArea from './ScrollArea.vue'
 import type { NoteGroup } from '../composables/useNotes'
 
 const props = defineProps<{
@@ -96,6 +97,8 @@ watch(
   border-radius: 10px;
   background: var(--nx-bg);
   overflow: hidden;
+  /* 高度上限给内部 ScrollArea 确定的高度上下文（浮动滚动条需要）；内容少时随内容收缩。 */
+  max-height: min(76vh, 900px);
 }
 
 .nx-search {
@@ -128,8 +131,8 @@ watch(
 }
 
 .nx-tree {
-  overflow-y: auto;
-  max-height: 72vh;
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 0.35rem 0.25rem;
 }
 

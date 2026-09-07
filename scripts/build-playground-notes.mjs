@@ -177,6 +177,10 @@ function collectVmGolden() {
         code,
         files: null,
         expectedOutput,
+        // P581-D3 双语义判别：.expected.out=stdout 语义 / .expected.result=终值语义。
+        // 对照 UI 据此选实际值通道（stdout vs RunResponse.result），否则 result 语义
+        // 笔记（183 条）必假阳性。
+        expectedKind: expectedPath.endsWith('.expected.out') ? 'stdout' : 'result',
         description: null,
         tags: tagsFromCase(noteName),
       })
@@ -216,6 +220,7 @@ function collectDemo() {
       code,
       files: null,
       expectedOutput: null,
+      expectedKind: null,
       description: null,
       tags: tagsFromCase(stem),
     })
@@ -245,6 +250,7 @@ function collectDemo() {
       code: null,
       files,
       expectedOutput: null,
+      expectedKind: null,
       description: null,
       tags: tagsFromCase(entry.name),
     })
@@ -301,6 +307,7 @@ function collectAavm() {
         files: null,
         // 设计 §5.2：expectedOutput 仅 vm-golden（corpus_a2r 的 .expected.out 不入）。
         expectedOutput: null,
+        expectedKind: null,
         description: null,
         tags: parts.filter((p) => p !== '.').map((p) => p.toLowerCase()),
       })
@@ -375,6 +382,7 @@ function collectBooks() {
           code,
           files: null,
           expectedOutput: null,
+          expectedKind: null,
           description: null,
           tags: ['book', bookName],
         })

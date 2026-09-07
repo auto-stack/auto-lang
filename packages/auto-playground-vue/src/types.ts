@@ -129,6 +129,8 @@ export interface NoteMeta {
   files: NoteFile[] | null;
   /** 仅 vm-golden（.expected.out 内容）。 */
   expectedOutput: string | null;
+  /** 期望语义判别（P581-D3）：'stdout'=对照 RunResponse.stdout；'result'=对照终值；null=无期望。 */
+  expectedKind?: 'stdout' | 'result' | null;
   description: string | null;
   tags: string[];
 }

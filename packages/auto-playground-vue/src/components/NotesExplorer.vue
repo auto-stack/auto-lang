@@ -47,6 +47,7 @@
           :api-base="apiBase"
           :note-id="active.note.id"
           :expected-output="active.note.expectedOutput"
+          :expected-kind="active.note.expectedKind"
           :files="active.note.files"
           :project-dir="cardProjectDir"
           :ide-mode="props.ideMode"
@@ -263,6 +264,9 @@ onBeforeUnmount(() => {
 
 .nx-main {
   min-width: 0;
+  /* 拉伸到网格行高，笔记体随之占满——卡片下方不再露出空白。 */
+  display: flex;
+  flex-direction: column;
 }
 
 .nx-state {
@@ -300,10 +304,22 @@ onBeforeUnmount(() => {
 
 .nx-note {
   min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 卡片占满笔记体剩余高度（行高由侧栏 76vh 上限决定时消除下方空白）；
+   底边距归零——flex 拉伸后 margin 在卡外形成残白。 */
+.nx-note :deep(.playground-card) {
+  flex: 1 1 auto;
+  margin-bottom: 0;
 }
 
 .nx-note-header {
   margin-bottom: 0.75rem;
+  flex-shrink: 0;
 }
 
 .nx-title-row {
@@ -418,8 +434,8 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .notes-explorer :deep(.nx-tree) {
-    max-height: 40vh;
+  .notes-explorer :deep(.nx-sidebar) {
+    max-height: 44vh;
   }
 }
 </style>

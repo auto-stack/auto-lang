@@ -3843,6 +3843,8 @@ var Nt = {
 	props: {
 		expected: {},
 		actual: {},
+		actualResult: {},
+		expectedKind: {},
 		hasRun: { type: Boolean }
 	},
 	setup(n) {
@@ -3852,7 +3854,7 @@ var Nt = {
 			for (; t.length > 0 && t[t.length - 1] === "";) t.pop();
 			return t;
 		}
-		let l = t(() => s(o.expected)), u = t(() => s(o.actual)), d = t(() => o.hasRun ? f(l.value, u.value) ? "match" : "diff" : "pending");
+		let l = t(() => s(o.expected)), u = t(() => s(o.expectedKind === "result" ? o.actualResult ?? "" : o.actual)), d = t(() => o.hasRun ? f(l.value, u.value) ? "match" : "diff" : "pending");
 		function f(e, t) {
 			if (e.length !== t.length) return !1;
 			for (let n = 0; n < e.length; n++) if (e[n] !== t[n]) return !1;
@@ -3883,7 +3885,7 @@ var Nt = {
 			a("span", _n, C(u.value[t - 1]), 1)
 		])) : r("", !0)], 64))], 64))), 128))]))]));
 	}
-}), [["__scopeId", "data-v-49948f1e"]]), yn = ["onClick"], bn = { class: "file-name" }, xn = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}), [["__scopeId", "data-v-ea65cbec"]]), yn = ["onClick"], bn = { class: "file-name" }, xn = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "FileTree",
 	props: {
 		files: {},
@@ -3948,6 +3950,7 @@ var Nt = {
 		height: { default: "480px" },
 		noteId: {},
 		expectedOutput: { default: null },
+		expectedKind: { default: "stdout" },
 		files: { default: null },
 		projectDir: { default: null },
 		ideMode: {
@@ -4088,7 +4091,7 @@ var Nt = {
 				"onUpdate:modelValue": u[1] ||= (e) => K.value = e,
 				class: "target-select",
 				disabled: !!D.value
-			}, [...u[9] ||= [o("<option value=\"run\" data-v-cc887311>Run</option><option value=\"rust\" data-v-cc887311>→ Rust</option><option value=\"c\" data-v-cc887311>→ C</option><option value=\"python\" data-v-cc887311>→ Python</option><option value=\"typescript\" data-v-cc887311>→ TypeScript</option><option value=\"abt\" data-v-cc887311>→ ABT</option>", 6)]], 8, Dn)), [[E, K.value]]) : r("", !0),
+			}, [...u[9] ||= [o("<option value=\"run\" data-v-6b69b693>Run</option><option value=\"rust\" data-v-6b69b693>→ Rust</option><option value=\"c\" data-v-6b69b693>→ C</option><option value=\"python\" data-v-6b69b693>→ Python</option><option value=\"typescript\" data-v-6b69b693>→ TypeScript</option><option value=\"abt\" data-v-6b69b693>→ ABT</option>", 6)]], 8, Dn)), [[E, K.value]]) : r("", !0),
 			D.value ? x.value.debug ? (v(), i("div", kn, [
 				a("button", {
 					class: "debug-btn continue",
@@ -4230,10 +4233,14 @@ var Nt = {
 					key: 1,
 					expected: l.expectedOutput ?? "",
 					actual: M.value ?? "",
+					"actual-result": P.value ?? "",
+					"expected-kind": l.expectedKind,
 					"has-run": ee.value
 				}, null, 8, [
 					"expected",
 					"actual",
+					"actual-result",
+					"expected-kind",
 					"has-run"
 				])) : G.value === "Output" ? (v(), n(Tt, {
 					key: 2,
@@ -4293,7 +4300,7 @@ var Nt = {
 			"current-debug-line"
 		])])], 4), a("div", { class: p(["toast", { visible: U.value?.visible }]) }, C(U.value?.message), 3)], 64));
 	}
-}), [["__scopeId", "data-v-cc887311"]]), lr = /* @__PURE__ */ l({
+}), [["__scopeId", "data-v-6b69b693"]]), lr = /* @__PURE__ */ l({
 	__name: "AutoPlayground",
 	props: {
 		code: { default: "fn main() {\n    let message = \"Hello from Auto!\"\n    print(message)\n}" },
@@ -5471,10 +5478,10 @@ var ki = /* @__PURE__ */ l({
 			onReplaySeek: w(H).seek
 		}, null, 8, /* @__PURE__ */ "source.is-loading.mode.trans-target.stdout.stderr.result-code.time-ms.transpiled-code.trans-files.selected-trans-file.project-files.active-file.mapped-source-files.highlight-lines.on-select-trans-file.on-output-line-click.is-debugging.is-paused.is-recording.has-recording.bytecode.bytecode-meta.debug-state.current-source-line.highlighted-offsets.selected-offsets.selected-source-line.breakpoints.current-debug-line.is-replay-mode.replay-current-index.replay-total-frames.is-replay-playing.onSelectFile.onShare.onExportRecording.onReplayPlay.onReplayPause.onReplayStepForward.onReplayStepBackward.onReplaySeek".split(".")), a("div", { class: p(["toast", { visible: w(B).visible }]) }, C(w(B).message), 3)], 64));
 	}
-}), Ai = { class: "nx-sidebar" }, ji = { class: "nx-search" }, Mi = ["value"], Ni = { class: "nx-tree" }, Pi = ["onClick"], Fi = ["title"], Ii = { class: "nx-count" }, Li = { class: "nx-notes" }, Ri = ["title", "onClick"], zi = {
+}), Ai = { class: "nx-sidebar" }, ji = { class: "nx-search" }, Mi = ["value"], Ni = ["onClick"], Pi = ["title"], Fi = { class: "nx-count" }, Ii = { class: "nx-notes" }, Li = ["title", "onClick"], Ri = {
 	key: 0,
 	class: "nx-empty"
-}, Bi = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}, zi = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "NotesSidebar",
 	props: /* @__PURE__ */ d({
 		groups: {},
@@ -5513,32 +5520,35 @@ var ki = /* @__PURE__ */ l({
 			placeholder: "搜索标题或标签…",
 			value: s.value,
 			onInput: o[0] ||= (e) => s.value = e.target.value
-		}, null, 40, Mi)]), a("div", Ni, [(v(!0), i(e, null, b(t.groups, (n) => (v(), i("section", {
-			key: n.id,
-			class: "nx-group"
-		}, [a("button", {
-			class: "nx-group-head",
-			onClick: (e) => f(n.id)
-		}, [
-			c(w(he), {
-				size: 13,
-				class: p(["nx-chev", { open: d(n.id) }])
-			}, null, 8, ["class"]),
-			a("span", {
-				class: "nx-group-title",
-				title: `${n.id} · ${n.source}`
-			}, C(n.title), 9, Fi),
-			a("span", Ii, C(n.notes.length), 1)
-		], 8, Pi), A(a("ul", Li, [(v(!0), i(e, null, b(n.notes, (e) => (v(), i("li", { key: e.id }, [a("button", {
-			class: p(["nx-note-btn", { active: e.id === t.activeNoteId }]),
-			title: e.id,
-			onClick: (t) => l("select", e.id)
-		}, C(e.title), 11, Ri)]))), 128))], 512), [[D, d(n.id)]])]))), 128)), t.groups.length === 0 ? (v(), i("p", zi, "无匹配笔记")) : r("", !0)])]));
+		}, null, 40, Mi)]), c(Qe, { class: "nx-tree" }, {
+			default: k(() => [(v(!0), i(e, null, b(t.groups, (n) => (v(), i("section", {
+				key: n.id,
+				class: "nx-group"
+			}, [a("button", {
+				class: "nx-group-head",
+				onClick: (e) => f(n.id)
+			}, [
+				c(w(he), {
+					size: 13,
+					class: p(["nx-chev", { open: d(n.id) }])
+				}, null, 8, ["class"]),
+				a("span", {
+					class: "nx-group-title",
+					title: `${n.id} · ${n.source}`
+				}, C(n.title), 9, Pi),
+				a("span", Fi, C(n.notes.length), 1)
+			], 8, Ni), A(a("ul", Ii, [(v(!0), i(e, null, b(n.notes, (e) => (v(), i("li", { key: e.id }, [a("button", {
+				class: p(["nx-note-btn", { active: e.id === t.activeNoteId }]),
+				title: e.id,
+				onClick: (t) => l("select", e.id)
+			}, C(e.title), 11, Li)]))), 128))], 512), [[D, d(n.id)]])]))), 128)), t.groups.length === 0 ? (v(), i("p", Ri, "无匹配笔记")) : r("", !0)]),
+			_: 1
+		})]));
 	}
-}), [["__scopeId", "data-v-b587c4b7"]]);
+}), [["__scopeId", "data-v-c2511769"]]);
 //#endregion
 //#region src/composables/useNotes.ts
-function Vi(e = {}) {
+function Bi(e = {}) {
 	let n = e.base ?? "/playground-data/notes.json", r = S(null), i = y(!1), a = y(null), o = t(() => r.value?.groups ?? []), s = t(() => o.value.flatMap((e) => e.notes.map((t) => ({
 		note: t,
 		group: e
@@ -5578,32 +5588,32 @@ function Vi(e = {}) {
 }
 //#endregion
 //#region src/components/NotesExplorer.vue?vue&type=script&setup=true&lang.ts
-var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
+var Vi = { class: "notes-explorer" }, Hi = { class: "nx-main" }, Ui = {
 	key: 0,
 	class: "nx-state"
-}, Gi = {
+}, Wi = {
 	key: 1,
 	class: "nx-state nx-error"
-}, Ki = {
+}, Gi = {
 	key: 2,
 	class: "nx-state"
-}, qi = {
+}, Ki = {
 	key: 3,
 	class: "nx-state"
-}, Ji = {
+}, qi = {
 	key: 4,
 	class: "nx-note"
-}, Yi = { class: "nx-note-header" }, Xi = { class: "nx-title-row" }, Zi = { class: "nx-note-title" }, Qi = {
+}, Ji = { class: "nx-note-header" }, Yi = { class: "nx-title-row" }, Xi = { class: "nx-note-title" }, Zi = {
 	key: 0,
 	class: "nx-kind-chip"
-}, $i = { class: "nx-meta-row" }, ea = ["href", "title"], ta = { class: "nx-source-path" }, na = {
+}, Qi = { class: "nx-meta-row" }, $i = ["href", "title"], ea = { class: "nx-source-path" }, ta = {
 	key: 0,
 	class: "nx-standalone-warn",
 	title: "含 import/use 顶层声明，不可独立运行"
-}, ra = {
+}, na = {
 	key: 0,
 	class: "nx-desc"
-}, ia = "#/notes/", aa = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}, ra = "#/notes/", ia = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "NotesExplorer",
 	props: {
 		base: { default: "/playground-data/notes.json" },
@@ -5616,7 +5626,7 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 	},
 	emits: ["ide-mode"],
 	setup(e, { emit: o }) {
-		let l = e, u = o, { groups: d, flatNotes: f, byId: m, isLoading: _, error: b, fetchNotes: x, search: S } = Vi({ base: l.base }), T = y(""), E = y(null), D = y(null), k = t(() => E.value ? m.value.get(E.value) ?? null : null), A = t(() => {
+		let l = e, u = o, { groups: d, flatNotes: f, byId: m, isLoading: _, error: b, fetchNotes: x, search: S } = Bi({ base: l.base }), T = y(""), E = y(null), D = y(null), k = t(() => E.value ? m.value.get(E.value) ?? null : null), A = t(() => {
 			if (!T.value.trim()) return d.value;
 			let e = /* @__PURE__ */ new Map();
 			for (let { note: t, group: n } of S(T.value)) e.has(n.id) || e.set(n.id, []), e.get(n.id).push(t);
@@ -5658,7 +5668,7 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 		function R() {
 			if (typeof window > "u") return null;
 			let e = window.location.hash;
-			if (!e.startsWith(ia)) return null;
+			if (!e.startsWith(ra)) return null;
 			try {
 				return decodeURIComponent(e.slice(8));
 			} catch {
@@ -5667,7 +5677,7 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 		}
 		function z(e) {
 			if (typeof window > "u") return;
-			let t = ia + encodeURIComponent(e).replace(/%2F/gi, "/");
+			let t = ra + encodeURIComponent(e).replace(/%2F/gi, "/");
 			window.location.hash !== t && window.history.replaceState(null, "", t);
 		}
 		O(f, (e) => {
@@ -5708,7 +5718,7 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 			window.addEventListener("hashchange", B), window.addEventListener("keydown", W);
 		}), h(() => {
 			window.removeEventListener("hashchange", B), window.removeEventListener("keydown", W);
-		}), (t, o) => (v(), i("div", Hi, [c(Bi, {
+		}), (t, o) => (v(), i("div", Vi, [c(zi, {
 			class: "nx-side",
 			groups: A.value,
 			searching: !!T.value.trim(),
@@ -5721,16 +5731,16 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 			"searching",
 			"active-note-id",
 			"query"
-		]), a("main", Ui, [w(_) ? (v(), i("div", Wi, "正在加载笔记清单…")) : w(b) ? (v(), i("div", Gi, [a("p", null, "笔记清单加载失败：" + C(w(b)), 1), a("button", {
+		]), a("main", Hi, [w(_) ? (v(), i("div", Ui, "正在加载笔记清单…")) : w(b) ? (v(), i("div", Wi, [a("p", null, "笔记清单加载失败：" + C(w(b)), 1), a("button", {
 			class: "nx-retry",
 			onClick: o[1] ||= (e) => w(x)()
-		}, [c(w(Ee), { size: 13 }), o[2] ||= s(" 重试 ", -1)])])) : w(f).length === 0 ? (v(), i("div", Ki, "笔记清单为空。")) : k.value ? (v(), i("article", Ji, [a("header", Yi, [
-			a("div", Xi, [
-				a("h2", Zi, C(k.value.note.title), 1),
+		}, [c(w(Ee), { size: 13 }), o[2] ||= s(" 重试 ", -1)])])) : w(f).length === 0 ? (v(), i("div", Gi, "笔记清单为空。")) : k.value ? (v(), i("article", qi, [a("header", Ji, [
+			a("div", Yi, [
+				a("h2", Xi, C(k.value.note.title), 1),
 				a("span", { class: p(["nx-badge", `t-${k.value.note.sourceType}`]) }, C(k.value.note.sourceType), 3),
-				k.value.note.kind === "single" ? r("", !0) : (v(), i("span", Qi, C(N.value), 1))
+				k.value.note.kind === "single" ? r("", !0) : (v(), i("span", Zi, C(N.value), 1))
 			]),
-			a("div", $i, [a("a", {
+			a("div", Qi, [a("a", {
 				class: "nx-source-chip",
 				href: j.value,
 				target: "_blank",
@@ -5738,10 +5748,10 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 				title: k.value.note.sourcePath
 			}, [
 				c(w(Se), { size: 12 }),
-				a("span", ta, C(k.value.note.sourcePath), 1),
+				a("span", ea, C(k.value.note.sourcePath), 1),
 				c(w(xe), { size: 11 })
-			], 8, ea), k.value.note.standalone ? r("", !0) : (v(), i("span", na, " 依赖模块 "))]),
-			k.value.note.description ? (v(), i("details", ra, [o[3] ||= a("summary", null, "说明", -1), a("p", null, C(k.value.note.description), 1)])) : r("", !0)
+			], 8, $i), k.value.note.standalone ? r("", !0) : (v(), i("span", ta, " 依赖模块 "))]),
+			k.value.note.description ? (v(), i("details", na, [o[3] ||= a("summary", null, "说明", -1), a("p", null, C(k.value.note.description), 1)])) : r("", !0)
 		]), (v(), n(cr, {
 			ref_key: "card",
 			ref: D,
@@ -5750,6 +5760,7 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 			"api-base": e.apiBase,
 			"note-id": k.value.note.id,
 			"expected-output": k.value.note.expectedOutput,
+			"expected-kind": k.value.note.expectedKind,
 			files: k.value.note.files,
 			"project-dir": F.value,
 			"ide-mode": l.ideMode,
@@ -5760,11 +5771,12 @@ var Hi = { class: "notes-explorer" }, Ui = { class: "nx-main" }, Wi = {
 			"api-base",
 			"note-id",
 			"expected-output",
+			"expected-kind",
 			"files",
 			"project-dir",
 			"ide-mode"
-		]))])) : (v(), i("div", qi, "从左侧选择一条笔记开始浏览。"))])]));
+		]))])) : (v(), i("div", Ki, "从左侧选择一条笔记开始浏览。"))])]));
 	}
-}), [["__scopeId", "data-v-a5ca41a1"]]);
+}), [["__scopeId", "data-v-f7c62fa8"]]);
 //#endregion
-export { lr as AutoPlayground, ki as AutoPlaygroundFull, qt as BytecodePanel, Ze as CodeEditor, yt as CodePreview, Tt as ConsoleOutput, Qt as ExampleSelector, vn as ExpectedOutputPanel, aa as NotesExplorer, Bi as NotesSidebar, cr as PlaygroundCard, bi as PlaygroundLayout, Qe as ScrollArea, Bt as SnippetRunner, Re as autoLanguage, Di as useDebugger, Vi as useNotes, Mt as usePlayground, Ei as usePlaygroundFull, Oi as useReplayPlayer };
+export { lr as AutoPlayground, ki as AutoPlaygroundFull, qt as BytecodePanel, Ze as CodeEditor, yt as CodePreview, Tt as ConsoleOutput, Qt as ExampleSelector, vn as ExpectedOutputPanel, ia as NotesExplorer, zi as NotesSidebar, cr as PlaygroundCard, bi as PlaygroundLayout, Qe as ScrollArea, Bt as SnippetRunner, Re as autoLanguage, Di as useDebugger, Bi as useNotes, Mt as usePlayground, Ei as usePlaygroundFull, Oi as useReplayPlayer };

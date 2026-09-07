@@ -50,10 +50,14 @@ import { computed } from 'vue'
 import { CheckCircle2, XCircle, CircleDashed } from 'lucide-vue-next'
 
 const props = defineProps<{
-  /** 期望输出（.expected.out 内容）。 */
+  /** 期望输出（.expected.out/.expected.result 内容）。 */
   expected: string
-  /** 实际 stdout。 */
+  /** 实际 stdout（expectedKind='stdout' 时为对照通道）。 */
   actual: string
+  /** 实际终值（RunResponse.result；expectedKind='result' 时为对照通道）。 */
+  actualResult?: string
+  /** 期望语义（P581-D3）：缺省 'stdout'。 */
+  expectedKind?: 'stdout' | 'result' | null
   /** 是否已运行过（false=未运行态，展示期望）。 */
   hasRun: boolean
 }>()
@@ -66,7 +70,9 @@ function toLines(s: string): string[] {
 }
 
 const expectedLines = computed(() => toLines(props.expected))
-const actualLines = computed(() => toLines(props.actual))
+
+// 对照通道按期望语义分派（P581-D3）：result 语义对照 RunResponse.result，否则 stdout。
+const actualLines = computed(() => toLines(props.expectedKind === 'result' ? (props.actualResult ?? '') : props.actual))
 
 const status = computed(() => {
   if (!props.hasRun) return 'pending' as const

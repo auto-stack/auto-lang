@@ -170,6 +170,8 @@
                 v-else-if="displayTab === 'Expected'"
                 :expected="expectedOutput ?? ''"
                 :actual="stdout ?? ''"
+                :actual-result="resultCode ?? ''"
+                :expected-kind="expectedKind"
                 :has-run="hasRun"
               />
               <ConsoleOutput
@@ -260,6 +262,8 @@ const props = withDefaults(defineProps<{
   noteId?: string
   /** 期望输出（vm-golden 笔记 .expected.out）；非空时输出区加"期望输出"对照 tab。 */
   expectedOutput?: string | null
+  /** 期望语义（P581-D3）：'stdout'（默认）|'result'——对照通道分派。 */
+  expectedKind?: 'stdout' | 'result' | null
   /** 项目型笔记文件集（kind=project）；>1 文件时呈文件 tab（entry 锁 main.at）。 */
   files?: { path: string; content: string }[] | null
   /** 项目目录（相对服务端 examples/playground-demo）；运行走 files 形态。 */
@@ -278,6 +282,7 @@ const props = withDefaults(defineProps<{
   toolbar: () => ({}),
   exampleSelector: false,
   expectedOutput: null,
+  expectedKind: 'stdout',
   files: null,
   projectDir: null,
   ideMode: null,
