@@ -21,7 +21,7 @@ onMounted(() => {
 <HomeHero
   badge="v0.5 is now available"
   title=": AI × Lang × OS"
-  description="Auto is a full-stack application platform. Write scripts, backends, UIs, AI agents, and OS components in one language — run them on AutoVM or transpile to Rust, Python, and TypeScript."
+  description="Auto is a dynamic-meets-static, cross-ecosystem language<br>Written by AI, born for OS"
   primary-text="Get Started"
   primary-link="/docs/"
   secondary-text="Try Online"
