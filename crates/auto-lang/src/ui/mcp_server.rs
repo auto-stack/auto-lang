@@ -595,7 +595,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_action",
             "title": "Perform Action",
-            "description": "Perform an action on a UI element.\n\n## Workflow\n1. Use autoui_snapshot to find element IDs and available actions\n2. Call this with element_id, action type, and optional value\n3. Use autoui_snapshot again to verify the result\n\n## Actions\n- press: Click a button\n- type_text: Type into an input/textarea (requires 'value')\n- toggle: Toggle a checkbox\n- select_option: Select from dropdown/radio (requires 'value')\n- set_value: Adjust a slider (requires numeric 'value')\n- clear: Clear an input/textarea\n- scroll: Scroll a Scrollable to a y offset (requires numeric 'value')\n- drag: Drag a MouseArea widget via its handlers (requires 'value' = \"Widget␟Down␟Move␟Up␟x0,y0;x1,y1;...\")\n- pen: Synthesize a canvas pen stroke via onpenstart/onpenmove/onpenend handlers (requires 'value' = \"Widget␟Start␟Move␟End␟x0,y0;x1,y1;...\"; logical coords in the canvas coords extent)",
+            "description": "Perform an action on a UI element.\n\n## Workflow\n1. Use autoui_snapshot to find element IDs and available actions\n2. Call this with element_id, action type, and optional value\n3. Use autoui_snapshot again to verify the result\n\n## Actions\n- press: Click a button\n- type_text: Type into an input/textarea (requires 'value')\n- toggle: Toggle a checkbox\n- select_option: Select from dropdown/radio (requires 'value')\n- set_value: Adjust a slider (requires numeric 'value')\n- clear: Clear an input/textarea\n- scroll: Scroll a Scrollable to a y offset (requires numeric 'value')\n- drag: Drag a MouseArea widget via its handlers (requires 'value' = \"Widget␟Down␟Move␟Up␟x0,y0;x1,y1;...\")\n- pen: Synthesize a canvas pen stroke via onpenstart/onpenmove/onpenend handlers (requires 'value' = \"Widget␟Start␟Move␟End␟x0,y0;x1,y1;...\"; logical coords in the canvas coords extent)\n- key_press: Synthesize a single key press into the autodown editor shell's focused block (requires 'value' = keyspec: one of left/right/up/down/home/end/pageup/pagedown/enter/backspace/delete/escape/tab, or \"c:X\" for a single char)\n- editor_drag: Synthesize a mouse drag sequence inside the autodown editor shell (requires 'value' = \"x0,y0;x1,y1;...\" widget-local px; covers table column resize and drag-select)",
             "inputSchema": {
                 "type": "object",
                 "required": ["element_id", "action"],
@@ -606,7 +606,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear", "scroll", "drag", "pen", "resize_col"],
+                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear", "scroll", "drag", "pen", "resize_col", "key_press", "editor_drag"],
                         "description": "Action to perform"
                     },
                     "value": {
@@ -925,6 +925,28 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // PLAN-057（055 D2）: 编辑器核心只读探针（逐键/拖拽合成通道的观测面）。
+        json!({
+            "name": "autoui_editor_state",
+            "title": "Editor Core Probe",
+            "description": "Read the autodown editor shell's live core state: current text, focused block, table geometry (runtime layout — locate column boundaries before an editor_drag), and settled column-width overrides (assert drag effects). Read-only; pairs with the key_press / editor_drag actions.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["element_id"],
+                "properties": {
+                    "element_id": {
+                        "type": "string",
+                        "description": "The editor element ID (its vnode_N from autoui_snapshot)"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            }
+        }),
         // Plan 505 C: acceptance-channel desktop-surface injection.
         json!({
             "name": "autoui_desktop",
@@ -992,8 +1014,60 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_find" => tool_find(shared, args),
         "autoui_exists" => tool_exists(shared, args),
         "autoui_press_sequence" => tool_press_sequence(shared, args),
+        "autoui_editor_state" => tool_editor_state(shared, args),
         "autoui_desktop" => tool_desktop(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
+    }
+}
+
+/// PLAN-057（055 D2）: 编辑器核心只读探针。element_id（编辑壳 vnode_N）→
+/// storage key → 实时读 core：live 文本/焦点块/表格几何（渲染期布局，拖前
+/// 定位列边界用）/列宽覆盖（拖拽落定断言用）。逐键/拖拽合成通道的配套
+/// 观测面——.at state 零改动（不占声明位，ghost_* 先例的声明面绕开）。
+/// 线程安全：core 各字段 Mutex 守护，MCP 线程读与渲染线程写互斥安全；
+/// 探针轮询至读数稳定（vm-smoke 口径）。
+fn tool_editor_state(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let element_id_str = match args.get("element_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return error_result("Missing required parameter: element_id (the editor's vnode_N)"),
+    };
+    let element_id = match parse_element_id(&element_id_str) {
+        Some(id) => id,
+        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
+    };
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    {
+        let key = match resolve_editor_target(shared_handle, element_id, &element_id_str) {
+            Ok((k, _, _)) => k,
+            Err(e) => return error_result(e),
+        };
+        use crate::ui::autodown_editor as ade;
+        let sk = ade::storage_key(&key);
+        let core = ade::autodown_editor(&sk);
+        let tables: Vec<serde_json::Value> = core
+            .table_geometry_snapshot()
+            .into_iter()
+            .map(|(k, x0, y0, y1, widths)| {
+                serde_json::json!({ "key": k, "x0": x0, "y0": y0, "y1": y1, "widths": widths })
+            })
+            .collect();
+        let widths: serde_json::Map<String, serde_json::Value> = core
+            .table_widths_snapshot()
+            .into_iter()
+            .map(|(k, w)| (k.to_string(), serde_json::json!(w)))
+            .collect();
+        let payload = serde_json::json!({
+            "text": ade::autodown_editor_text(&sk).unwrap_or_default(),
+            "focus": core.focused_block(),
+            "tables": tables,
+            "col_widths": widths,
+        });
+        text_result(payload.to_string())
+    }
+    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+    {
+        let _ = element_id;
+        error_result("autoui_editor_state requires the autodown + code-editor features".to_string())
     }
 }
 
@@ -1232,6 +1306,13 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         // onpenstart/move/end 坐标实参派发）。映射 Drag 仅为枚举载体，
         // 下方前分支拦截（drag 同型）。
         "pen" => UiActionType::Drag,
+        // PLAN-057（055 D2）: key_press——编辑壳逐键合成（__mcp_key 合成
+        // 事件，core.handle_input(KeyPressed) 直调 = 真实按键同构路径）。
+        "key_press" => UiActionType::KeyPress,
+        // PLAN-057（055 D2）: editor_drag——编辑壳拖拽序列合成
+        //（__mcp_drag_ade 合成事件，MousePressed → Dragged×n → Released
+        // 逐段直调）。Keyed 存储寻址同 click。
+        "editor_drag" => UiActionType::EditorDrag,
         _ => return error_result(format!("Unknown action: '{}'", action_str)),
     };
 
@@ -1495,6 +1576,90 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         return text_result(format!(
             "Clicked {} at {} (autodown editor block focus) (status: ok)",
             element_id_str, xy
+        ));
+    }
+
+    // PLAN-057（055 D2）: key_press——编辑壳逐键合成。element_id 须为
+    // autodown_editor 的 vnode_N（同 click 寻址）；value = keyspec（13 命名
+    // 键或 "c:X" 单字符，修饰键 v1 不在词表——VM 编辑壳无快捷键消费场景）。
+    // 解析失败即报错返回，不静默。经合成事件 __mcp_key（input_value =
+    // "storage_key␟widget␟event␟keyspec"；widget/event 取编辑壳 on_change
+    // 名——text_changed 发布步需要，type_text 订阅直转同源）在 update 层
+    // core.handle_input(KeyPressed) 直调（真实按键同构路径）。
+    if action_str == "key_press" {
+        let keyspec = match value.as_ref() {
+            Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
+            _ => return error_result("Action 'key_press' requires a string 'value' = keyspec (left/right/up/down/home/end/pageup/pagedown/enter/backspace/delete/escape/tab or \"c:X\")"),
+        };
+        #[cfg(all(feature = "autodown", feature = "code-editor"))]
+        let key_ok = parse_editor_key_spec(&keyspec).is_some();
+        #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+        let key_ok = false;
+        if !key_ok {
+            return error_result(format!(
+                "Invalid keyspec '{}': expected left/right/up/down/home/end/pageup/pagedown/enter/backspace/delete/escape/tab or \"c:X\" single char",
+                keyspec
+            ));
+        }
+        let (key, widget, event) = match resolve_editor_target(shared_handle, element_id, element_id_str) {
+            Ok(t) => t,
+            Err(e) => return error_result(e),
+        };
+        let payload = editor_synthesis_payload(&key, &widget, &event, &keyspec);
+        let msg = ActionMessage {
+            target: ActionTarget::Event { widget: String::new(), event: "__mcp_key".to_string() },
+            action: UiActionType::KeyPress,
+            value: Some(payload),
+        };
+        {
+            let shared = shared_handle.lock().unwrap();
+            if let Err(e) = shared.send_action(msg) {
+                return error_result(e);
+            }
+        }
+        return text_result(format!(
+            "Key press {} on {} (editor core.handle_input, focused block) (status: ok)",
+            keyspec, element_id_str
+        ));
+    }
+
+    // PLAN-057（055 D2）: editor_drag——编辑壳拖拽序列合成。value =
+    // "x0,y0;x1,y1;..."（widget 本地 px；首点 MousePressed、中段逐点
+    // MouseDragged、末点 MouseReleased）。覆盖 055 列宽拖拽（边界命中建
+    // col_drag → 拖动写 table_widths → 松手落定）与 048 T3 拖选面。
+    if action_str == "editor_drag" {
+        let pts = match value.as_ref() {
+            Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
+            _ => return error_result("Action 'editor_drag' requires a string 'value' = \"x0,y0;x1,y1;...\" (widget-local px)"),
+        };
+        let pts_ok = !pts.is_empty()
+            && pts.split(';').all(|pair| {
+                let mut it = pair.split(',');
+                it.next().and_then(|s| s.trim().parse::<f64>().ok()).is_some()
+                    && it.next().and_then(|s| s.trim().parse::<f64>().ok()).is_some()
+            });
+        if !pts_ok {
+            return error_result("Action 'editor_drag' value must be non-empty 'x,y' float pairs joined by ';'");
+        }
+        let (key, widget, event) = match resolve_editor_target(shared_handle, element_id, element_id_str) {
+            Ok(t) => t,
+            Err(e) => return error_result(e),
+        };
+        let payload = editor_synthesis_payload(&key, &widget, &event, &pts);
+        let msg = ActionMessage {
+            target: ActionTarget::Event { widget: String::new(), event: "__mcp_drag_ade".to_string() },
+            action: UiActionType::EditorDrag,
+            value: Some(payload),
+        };
+        {
+            let shared = shared_handle.lock().unwrap();
+            if let Err(e) = shared.send_action(msg) {
+                return error_result(e);
+            }
+        }
+        return text_result(format!(
+            "Editor drag [{}] on {} (core MousePressed/Dragged/Released) (status: ok)",
+            pts, element_id_str
         ));
     }
 
@@ -2446,6 +2611,14 @@ fn execute_action_on_shared(
         UiActionType::ResizeCol => {
             return Err("Action 'resize_col' is handled before this path (Table-keyed)".to_string());
         }
+        // PLAN-057: key_press/editor_drag 同为前置分支处理的合成通道
+        //（__mcp_key/__mcp_drag_ade，编辑壳 keyed 寻址）。
+        UiActionType::KeyPress => {
+            return Err("Action 'key_press' is handled before this path (editor-keyed)".to_string());
+        }
+        UiActionType::EditorDrag => {
+            return Err("Action 'editor_drag' is handled before this path (editor-keyed)".to_string());
+        }
         UiActionType::Press => {
             if target.kind != "Button" {
                 return Err(format!("Action 'press' not valid for component type '{}'", target.kind));
@@ -2488,6 +2661,8 @@ fn execute_action_on_shared(
         UiActionType::Scroll => unreachable!("scroll handled in tool_action pre-branch"),
         UiActionType::Drag => unreachable!("drag handled in tool_action pre-branch"),
         UiActionType::ResizeCol => unreachable!("resize_col handled in tool_action pre-branch"),
+        UiActionType::KeyPress => unreachable!("key_press handled in tool_action pre-branch"),
+        UiActionType::EditorDrag => unreachable!("editor_drag handled in tool_action pre-branch"),
         UiActionType::Press => "press",
         UiActionType::TypeText => "type",
         UiActionType::Submit => "submit",
@@ -2675,6 +2850,88 @@ fn view_kind_str(view: &View<DynamicMessage>) -> &'static str {
 
 /// Execute an action on a vnode_N element: look up the VNode, find the View by
 /// path, extract the handler from the DynamicMessage, and dispatch.
+/// PLAN-057：编辑壳合成事件载荷拼装（key_press/editor_drag 共用）：
+/// "storage_key␟widget␟event␟spec"——widget/event = 编辑壳 on_change 名
+///（text_changed 发布步需要，拦截事件名占了 event 槽故随载荷传），
+/// spec = keyspec（key_press）或坐标序列（editor_drag）。
+fn editor_synthesis_payload(sk: &str, widget: &str, event: &str, spec: &str) -> String {
+    let sep = crate::ui::iced::renderer::PAYLOAD_SEP;
+    format!("{sk}{sep}{widget}{sep}{event}{sep}{spec}")
+}
+
+/// PLAN-057（055 D2）: keyspec → EditorKey 解析。v1 词表 = 13 命名键
+/// （left/right/up/down/home/end/pageup/pagedown/enter/backspace/delete/
+/// escape/tab）+ "c:X" 单字符；修饰键组合不在 v1（VM 编辑壳无快捷键
+/// 消费场景，出现消费方再扩）。解析失败返回 None（调用方报错，不静默）。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+pub fn parse_editor_key_spec(spec: &str) -> Option<crate::ui::code_editor::core::EditorKey> {
+    use crate::ui::code_editor::core::EditorKey;
+    match spec {
+        "left" => Some(EditorKey::Left),
+        "right" => Some(EditorKey::Right),
+        "up" => Some(EditorKey::Up),
+        "down" => Some(EditorKey::Down),
+        "home" => Some(EditorKey::Home),
+        "end" => Some(EditorKey::End),
+        "pageup" => Some(EditorKey::PageUp),
+        "pagedown" => Some(EditorKey::PageDown),
+        "enter" => Some(EditorKey::Enter),
+        "backspace" => Some(EditorKey::Backspace),
+        "delete" => Some(EditorKey::Delete),
+        "escape" => Some(EditorKey::Escape),
+        "tab" => Some(EditorKey::Tab),
+        _ => {
+            let c = spec.strip_prefix("c:")?;
+            let mut chars = c.chars();
+            let ch = chars.next()?;
+            // 恰一字符（"c:ab" / "c:" 拒绝）。
+            if chars.next().is_some() {
+                return None;
+            }
+            Some(EditorKey::Char(ch))
+        }
+    }
+}
+
+/// PLAN-057：编辑壳 MCP 目标解析（key_press/editor_drag 共用，click 寻址
+/// 链同源）：vnode_N → typed view 按路径 → View::AutodownEditor 的 storage
+/// key + on_change 的 (widget, event) 名（text_changed 发布步需要——
+/// extract_action_from_view "type" 同款提取；编辑壳无 on_change 时名取
+/// 空串，拦截臂跳过发布仅走 core 输入）。
+fn resolve_editor_target(
+    shared_handle: &SharedStateHandle,
+    element_id: ElementId,
+    element_id_str: &str,
+) -> Result<(String, String, String), String> {
+    let shared = shared_handle.lock().unwrap();
+    let vnode = match element_id {
+        ElementId::Vnode(v) => shared.styled_vtree.as_ref().and_then(|s| s.vtree.get(v)),
+        ElementId::Aura(_) => None,
+    };
+    let view = match shared.view.as_ref() {
+        Some(v) => v,
+        None => return Err("Action requires VM mode (typed view)".to_string()),
+    };
+    let vnode = match vnode {
+        Some(n) => n,
+        None => return Err(format!("VNode not found: {}", element_id_str)),
+    };
+    let target = match find_view_by_path(view, &vnode.path) {
+        Some(t) => t,
+        None => return Err(format!("View not found at path {:?}", vnode.path)),
+    };
+    match target {
+        View::AutodownEditor { key, on_change, .. } => {
+            let (widget, event) = on_change
+                .as_ref()
+                .and_then(|m| extract_dyn_msg(m))
+                .unwrap_or((String::new(), String::new()));
+            Ok((key.clone(), widget, event))
+        }
+        _ => Err("Action targets autodown_editor elements only".to_string()),
+    }
+}
+
 fn execute_action_vnode(
     shared: &SharedState,
     vnode_id: VNodeId,
@@ -2691,6 +2948,8 @@ fn execute_action_vnode(
         UiActionType::Scroll => unreachable!("scroll handled in tool_action pre-branch"),
         UiActionType::Drag => unreachable!("drag handled in tool_action pre-branch"),
         UiActionType::ResizeCol => unreachable!("resize_col handled in tool_action pre-branch"),
+        UiActionType::KeyPress => unreachable!("key_press handled in tool_action pre-branch"),
+        UiActionType::EditorDrag => unreachable!("editor_drag handled in tool_action pre-branch"),
         UiActionType::Press => "press",
         UiActionType::TypeText | UiActionType::Clear => "type",
         UiActionType::Submit => "submit",
@@ -3737,5 +3996,81 @@ mod tests_plan483_d4 {
             style: None,
         };
         assert_nth_input_dispatches(&view, 0, "PasswordChanged");
+    }
+}
+
+/// PLAN-057（055 D2）: key_press/editor_drag 合成通道单测——keyspec 全词表
+/// （13 命名键 + c:X）、非法输入报错臂（解析失败 = None，tool_action 侧
+/// 转错误返回不静默）、载荷拼装契约（4 段 ␟ 分隔，与拦截臂 split 对偶）。
+#[cfg(test)]
+mod tests_plan057 {
+    use super::*;
+
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    use crate::ui::code_editor::core::EditorKey;
+
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    #[test]
+    fn plan057_keyspec_named_keys_full_vocabulary() {
+        use EditorKey::*;
+        let table = [
+            ("left", Left),
+            ("right", Right),
+            ("up", Up),
+            ("down", Down),
+            ("home", Home),
+            ("end", End),
+            ("pageup", PageUp),
+            ("pagedown", PageDown),
+            ("enter", Enter),
+            ("backspace", Backspace),
+            ("delete", Delete),
+            ("escape", Escape),
+            ("tab", Tab),
+        ];
+        assert_eq!(table.len(), 13, "v1 词表 13 命名键——增键须同步工具描述");
+        for (spec, want) in table {
+            assert_eq!(
+                parse_editor_key_spec(spec),
+                Some(want.clone()),
+                "keyspec '{spec}' 应映射 {want:?}"
+            );
+        }
+    }
+
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    #[test]
+    fn plan057_keyspec_single_char() {
+        assert_eq!(parse_editor_key_spec("c:a"), Some(EditorKey::Char('a')));
+        assert_eq!(parse_editor_key_spec("c:Z"), Some(EditorKey::Char('Z')));
+        assert_eq!(parse_editor_key_spec("c:0"), Some(EditorKey::Char('0')));
+        assert_eq!(parse_editor_key_spec("c:中"), Some(EditorKey::Char('中')));
+        assert_eq!(parse_editor_key_spec("c: "), Some(EditorKey::Char(' ')));
+    }
+
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    #[test]
+    fn plan057_keyspec_rejects_invalid() {
+        // 空串 / 裸前缀 / 多字符 / 修饰键组合（v1 不在词表）/ 大小写敏感 /
+        // 未知名 → None（调用方报错返回，不静默）。
+        for bad in ["", "c:", "c:ab", "ctrl+a", "shift+left", "LEFT", "space", "nope", "c:X;extra"] {
+            assert_eq!(parse_editor_key_spec(bad), None, "keyspec '{bad}' 应拒绝");
+        }
+    }
+
+    #[test]
+    fn plan057_editor_synthesis_payload_contract() {
+        let sep = crate::ui::iced::renderer::PAYLOAD_SEP;
+        // key_press 形态：storage_key␟widget␟event␟keyspec
+        let p = editor_synthesis_payload("ade:demo", "App", "Edit", "c:h");
+        let parts: Vec<&str> = p.split(sep).collect();
+        assert_eq!(parts, vec!["ade:demo", "App", "Edit", "c:h"]);
+        // editor_drag 形态：坐标序列含 ,/; 不与 ␟ 冲突，仍是 4 段。
+        let d = editor_synthesis_payload("ade:demo", "App", "Edit", "10,20;30,20;50,20");
+        assert_eq!(d.split(sep).count(), 4);
+        assert!(d.ends_with("10,20;30,20;50,20"));
+        // 空名（编辑壳无 on_change）形态保持 4 段——拦截臂跳过发布仅走 core。
+        let n = editor_synthesis_payload("ade:demo", "", "", "enter");
+        assert_eq!(n.split(sep).count(), 4);
     }
 }
