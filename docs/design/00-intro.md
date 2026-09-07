@@ -146,7 +146,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [harmonyos-ecosystem-strategy](strategy/harmonyos-ecosystem-strategy.md) | 鸿蒙：ArkTS 主线（仓颉/ABC/机器码不做）+ OpenHarmony OS 终态方向 | 📝 Draft 骨架（2026-09-06，待扩充；a2ark rebaseline 为该线首个 plan） |
 | [mobile-jetpack-strategy](strategy/mobile-jetpack-strategy.md) | 移动：Android+iOS 统一 Jetpack Compose（不做 SwiftUI），排鸿蒙后 | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [ros2-ecosystem-strategy](strategy/ros2-ecosystem-strategy.md) | ROS2：C 消费面生态绑定包（rcl 纯 C + IDL 生成），C 轨重启触发条件之一 | 📝 Draft 骨架（2026-09-06，待扩充） |
-| [native-backend-strategy](strategy/native-backend-strategy.md) | Native 编译：终局必做的自主执行底座 + 近期开发形态逃逸（理由 e agent 集群放大/fork-rustc debug 稳定 ABI Stage 0.5/四段路线/cranelift 预裁注） | 📝 Draft→细化中（2026-09-06 立稿；2026-09-08 补开发形态分水岭，见 Design 28 关联） |
+| [native-backend-strategy](strategy/native-backend-strategy.md) | Native 编译：终局必做的自主执行底座 + 近期开发形态逃逸（理由 e agent 集群放大/fork-rustc「Versioned ABI」Stage 0.5 分期 A/B/C——命名定案规避 Stable ABI/四段路线/cranelift 预裁注） | 📝 Draft→细化中（2026-09-06 立稿；2026-09-08 补开发形态分水岭+复核定分期，见 Design 28 关联） |
 | [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR，曾用名"元宇宙/WEB3.0"）：三大市场之三，Godot/3D 引擎为入口（双形态优势 + 引擎侧静态缝合前提） | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
 

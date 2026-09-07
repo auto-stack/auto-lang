@@ -1,7 +1,9 @@
 # Native 编译战略（自主生态的终局执行底座 + 开发形态逃逸）
 
 **日期**: 2026-09-06 立稿；2026-09-08 补"理由 e + 可选粒度原则 + 四段路线 +
-Stage 0.5 fork-rustc 方案"（当日在 auto-musk 会话推导定案）
+Stage 0.5 fork-rustc 方案"（当日在 auto-musk 会话推导定案）；同日复核：Release
+全档纳入（零优化损失）、MVP 收缩、分期 A/B/C、上游"早于成熟"策略、
+**命名定案：推广用词 Versioned ABI，规避 Stable ABI**
 **状态**: Draft→细化中（**远期必做**后端选型 + **近期刚需**开发形态逃逸，双动机）
 **关联**: [ecosystem-portfolio-strategy](ecosystem-portfolio-strategy.md)（伞形总战略·寄生期
 合作层原则的终局对应面）、[c-ecosystem-strategy](c-ecosystem-strategy.md) §2（现阶段
@@ -75,7 +77,7 @@ path-指纹与 200GB 问题。三者可分别借鉴，不必整包照搬。
 | 阶段 | 内容 | 救济对象 | 见效 |
 |:---|:---|:---|:---|
 | **Stage 0**（现在） | 冻结 Rust 核心于低频变更态；新基础设施模块 .at 优先（PLAN-591 扩大 .at 可达 Rust 面）；核心 cargo 构建集中化（共享 target-dir/构建服务 + sccache），.at 增长面走解释器不过 cargo | agent 集群乘法爆炸 | 立即 |
-| **Stage 0.5**（裁决点，见 §2） | **fork-rustc："debug 稳定 ABI"发行版**——最小补丁集让 debug 档 `#[repr(Rust)]` 按 `#[repr(C)]` 布局 + 符号身份去路径化 + CAS 缓存默认化 | **存量 527K 行 Rust 核心**（不重写一行） | 月级 |
+| **Stage 0.5**（方向已确认，见 §2 分期） | **fork-rustc：「Versioned ABI」发行版**——符号身份去路径化 + ABI 键嵌入/装载校验 + CAS 缓存默认化（Release 键第一天就带，全档零优化损失）；布局 profile 为可选件 | **存量 527K 行 Rust 核心**（不重写一行） | A 期月级 |
 | **Stage 1** | cranelift dev 档后端（Rust 库形态嵌入 VM 进程，可兼 JIT tier-up；LLVM 留作后续 release 档可选件，Wasmtime 同构） | .at 增量层主权 | 月-年级 |
 | **Stage 2** | Auto 自有版本化产物格式 + 按 §0.5 键管理的 ABI + dlopen 装载——**Rust 永远不给的插件机制，.at 制品第一天就有**（两端都是我们的，兼容域我们定义） | 插件生态 + agent 制品复用 | 紧随 Stage 1 |
 | **Stage 3**（远期） | 自举收口（GOAL-017，编译器用 .at 重写，Zig 式闭环）；LLVM 仅在某 release 优化主战场成立时引入 | 终局主权 | 年级 |
@@ -86,39 +88,62 @@ path-指纹与 200GB 问题。三者可分别借鉴，不必整包照搬。
 
 ---
 
-## 2. Stage 0.5 方案明细：fork-rustc「debug 稳定 ABI」
+## 2. Stage 0.5 方案明细：fork-rustc「Versioned ABI」
 
-**核心洞察**：布局不是随机数——确定的 rustc 二进制对同定义+同配置产出确定布局
-（`-Z randomize-layout` 须显式开启恰好反证）。debug 档本就关优化，把布局稳定性的
-"永久政策承诺"（C++ 之路）降维成"每版本一个确定函数"（键即版本）——成本趋零。
-**但 ABI = 布局 + 符号 + 调用约定 + 运行时服务**，最小补丁集须覆盖：
+> **命名定案（2026-09-08，用户裁定）**：对外/上游统一用词 **Versioned ABI**
+> （版本化 ABI），**规避 "Stable ABI"**（rustc 社区负资产词，关联 C++ 式永久冻结）。
+> 叙事锚点 = "可复现制品身份 + 版本化 ABI 键"——**机制提案，非政策提案**。
 
-| # | 补丁 | 内容 | 备注 |
+**核心洞察（2026-09-08 复核后升级三点）**：
+
+1. **Release 全档零优化损失**：布局不是随机数——同一 rustc 二进制对同定义+同配置
+   产出确定布局，**含 Release 全优化档**（重排/niche/枚举打包都是确定性算法，
+   `-Z randomize-layout` 须显式开启恰好反证）。版本键管理只要求"同版本内一致"，
+   跨版本不承诺（键不同即不装载）——因此 Release 插件化不需要 debug-only 的妥协；
+2. **MVP 不含布局补丁**：开发痛（重复编译/磁盘/链接）由 P2+P6+P3 即解——用
+   **今天的 repr(Rust) 原样工作**（同版本确定性 de facto 成立）；P1（layout=C）只是
+   "偏移可静态分析"的可选便利件（探针路线在优化布局下同样可得真偏移）；
+3. 版本键化把"永久政策承诺"（C++ 之路）降维成"每版本一个确定函数"（键即版本）。
+
+**ABI = 布局 + 符号 + 调用约定 + 运行时服务**，工件清单（含分期归属）：
+
+| # | 工件 | 内容 | 期 |
+|:--|:---|:---|:--|
+| P2 | 符号身份去路径化 | `-C metadata` 强制为 (crate, version, features, fork 版本) 纯函数 | **A** |
+| P6 | ABI 键嵌入/装载校验 | 制品自报兼容域键 + 小型装载校验库（宿主键 vs 制品键，不符拒载；§0.5 六工件之 2/3）；**Release 键从第一天带** | **A** |
+| P3 | CAS 缓存默认化 | cargo 层内容寻址全局缓存 + 硬链接复用（AutoCache Plan 082 同构，可统一为 fork/Auto 双侧底座） | **A** |
+| P1 | `layout=C` profile | 声明序+C 填充布局档（与 `layout=opt` 全优化档**并存**，各自构成合法版本域；niche 关闭改类型尺寸为已知代价） | **B（可选件）** |
+| P4 | 泛型跨 dylib 约定 | comdat/弱符号导出纪律；win32 导出约定最难，或跨库调用限定非泛型面（=430 manifest 面） | C |
+| P5 | 运行时服务一致 | 同 fork 同版本天然钉死调用约定/unwind；std 共享 dylib（rustc 自建先例） | C |
+
+**分期执行**：
+
+| 期 | 内容 | 产出 | 前置 |
 |:--|:---|:---|:---|
-| P1 | `debug-layout=c` | debug 档 repr(Rust) 路由到声明序 + C 填充，关 niche | 已知代价：niche 关闭改类型尺寸（Option<&T> 8→16B），新增一类 debug/release 分歧需文档化 |
-| P2 | 符号身份去路径化 | `-C metadata` 强制为 (crate, version, features, fork 版本) 纯函数 | 与上游 reproducible-builds 利益一致，最有希望以 `-Z` flag 形式提案上游 |
-| P3 | CAS 缓存默认化 | cargo 层内容寻址全局缓存 + 硬链接复用（AutoCache Plan 082 即此形态，可统一为 fork/Auto 双侧共享底座） | 多 agent：不改代码 = 同一份共享 |
-| P4 | 泛型跨 dylib 约定 | 导出面 comdat/弱符号纪律；ELF 顺，Windows DLL 需另做导出约定；或跨库调用限定非泛型面（= 430 manifest 面） | 主环境 win32，此块工程量勿低估 |
-| P5 | 运行时服务一致 | 同 fork 同版本天然钉死调用约定/unwind；std 共享 dylib（rustc 自建先例）或纪律限定系统分配器 | |
+| **A（月级）** | P2 + P6 + P3 | agent 集群痛消解 + 版本键动态装载可用（今日 repr(Rust) 即工作） | **专职 owner 落位**（rustc 构建+rebase 不能兼职） |
+| **B** | P1 `layout=C` profile | 偏移=签名纯函数，430 探针可退役，manifest 从签名直接生成 | A |
+| **C** | P4/P5 完整插件面 | 真正的插件生态（win32 导出纪律 + std 共享 dylib） | A/B 收益实测 |
 
-**收益判定**（2026-09-08 推演）：
+**收益判定**（2026-09-08 推演，扩至 Release）：
 
-- ✅ debug 动态库随意组合装载（P1-P5 齐备后；布局补丁单独不够）；
+- ✅ **Debug/Release 双档**版本键动态装载（A 期即带键，C 期齐插件面）；
 - ✅ 依赖不变 → 缓存全命中，99% 库免重编重链，自己 crate 走 dylib 后链接趋零；
 - ✅ 多 agent 共享同一份（CAS 语义）；
-- ✅ **430 管线大幅简化：声明序布局下偏移 = 签名的纯函数，探针 crate 可退役**，
-  manifest 从签名数据直接生成——AutoVM 直调 Rust 库的原始愿景在此形态下完全兑现；
-- 🔶 插件系统**仅 debug 域成立**——release 档保留全优化，release 插件仍需显式
-  C ABI 面（430 面正好补位）。
+- ✅ B 期后 430 管线简化（偏移静态可得）——AutoVM 直调 Rust 库的原始愿景兑现；
+- ✅ **热重载两层分工**：符号级热替换（fork 产出）；带状态热重载（Auto VM 已有，
+  GOAL-002 含数据迁移）——又是互补分工。
 
-**风险清单**：fork 税（rustc 六周版次，布局/metadata 是内部常动区，rebase 永久支出；
-补丁语义稳定可缓解）；全团队+CI+agent 集群版本钉死（rust-toolchain.toml 可钉）；
-proc-macro 全生态经 fork 重编一次（缓存摊薄）；debug/release 分歧面扩大（尺寸敏感
-代码两档表现不同，需文档化该差异类别）；测试链接快很多但不为零。
+**风险清单**：fork 税（rustc 六周版次，metadata/符号区常动，rebase 永久支出；A 期
+面积已缩至最小可缓解）；全团队+CI+agent 集群版本钉死（rust-toolchain.toml 可钉）；
+proc-macro 全生态经 fork 重编一次（缓存摊薄）；B 期 niche 关闭改类型尺寸需文档化；
+**装修/盖房平衡**——fork 治存量、native 线养主权的互补格局不变，最危险的失败模式
+是 fork 太成功导致自建底座失速（五年后守着大型 fork 而非拥有一门语言）。
 
-**实施建议**：P1-P3 先行（月级），用 8-agent 场景实测磁盘/CPU 收益做 go/no-go，
-再决定 P4/P5 完整插件面；P2 同步以 `-Z` flag 提案上游——被接纳则 fork 收缩，
-不接纳则 fork 维护，两条腿不输。
+**上游策略（2026-09-08 修正：早于成熟，而非成熟后）**：P2/P6 随 A 期即以 `-Z`
+flag 提案——机制非政策（"可复现制品身份 + 版本化 ABI 键"），reproducible-builds
+天然同盟，clippy/rust-analyzer"社区先行→官方吸收"先例；**fork 的存在本身是谈判
+筹码**（需求/实现/用户三证明），上游接纳概率随成熟度单调上升，fork 面积随之收缩
+——**fork 是桥梁不是归宿**。
 
 ---
 
@@ -157,8 +182,9 @@ PyTorch 消费形成"调用面 → 自主发射面"的演进闭环（先消费 T
   构成完整产业叙事。
 - **主战场先行**：届时锁定 1–2 个硬件架构方向（如 RISC-V/Arm）做全链路打通，不铺开矩阵。
 - **触发条件（2026-09-08 重排）**：
-  - Stage 0.5（fork-rustc）：**即时可触发**——动机是当前开发效率刚需（理由 e），
-    不依赖自举或硬件立项；先做 P1-P3 最小集实测。
+  - Stage 0.5（fork-rustc / Versioned ABI）：**方向已确认，即时可启动**——动机是
+    当前开发效率刚需（理由 e），不依赖自举或硬件立项；A 期（P2+P6+P3）最小集先行
+    实测，B/C 期按收益决定。启动前置：专职 owner 落位。
   - Stage 1（cranelift dev 档）：Stage 0.5 落地后按 .at 层的编译需求触发
     （解释器性能顶点 / 需要脱离 rustc 语义的发布形态）。
   - Stage 2-3：维持原条件——① 自举收口（GOAL-017）② 一个需要 native 的主战场成立
@@ -174,5 +200,8 @@ PyTorch 消费形成"调用面 → 自主发射面"的演进闭环（先消费 T
 - [x] ~~与 AAVM 自举的关系~~（2026-09-08：先 Rust 引导（库形态），自举归 Stage 3）
 - [ ] 中间表示选择：沿用 VM bytecode 降低，还是新 IR
 - [ ] 主战场架构（RISC-V/Arm）选择的分析输入与自有硬件路线的联动
-- [ ] Stage 0.5 P1-P3 原型验证报告（8-agent 场景磁盘/CPU 实测基线与收益）
-- [ ] P2（符号去路径化）上游提案稿（-Z flag 形式，reproducible-builds 叙事）
+- [ ] Stage 0.5 A 期（P2+P6+P3）原型验证报告（8-agent 场景磁盘/CPU 实测基线与收益）
+- [ ] P2/P6 上游提案稿（**Versioned ABI 键机制**叙事——可复现制品身份，-Z flag
+      形式，reproducible-builds 同盟；机制非政策）
+- [ ] Versioned ABI 命名规范落地检查（对外文档/提案/发布说明统一用词，规避
+      "Stable ABI"）
