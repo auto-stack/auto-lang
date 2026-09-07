@@ -1212,7 +1212,7 @@ impl ToNode for Stmt {
             // Plan 124 Phase 2.3: reply statement for ask/reply RPC
             Stmt::Reply(expr) => {
                 let mut node = AutoNode::new("reply");
-                node.add_arg(auto_val::Arg::Pos(Value::Node(expr.to_node())));
+                node.add_arg(auto_val::Arg::Pos(Value::node(expr.to_node())));
                 node
             }
             // Plan 095: Compile-time execution

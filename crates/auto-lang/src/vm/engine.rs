@@ -866,7 +866,7 @@ impl AutoVM {
 
             // --- Node: register into heap_objects (Plan 390 §15 H3a) ---
             Value::Node(node) => {
-                let mut cloned = node.clone();
+                let mut cloned = (**node).clone();
                 // Recurse into props so nested VmRefs point at real heap entries.
                 let props = cloned.props_clone();
                 for (key, val) in props.iter() {
@@ -1393,7 +1393,7 @@ impl AutoVM {
                     for (k, v) in od.fields.iter() {
                         out.set(k.clone(), v.clone());
                     }
-                    return auto_val::Value::Obj(out);
+                    return auto_val::Value::Obj(Box::new(out));
                 }
                 if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
                     // CREATE_ARRAY now encodes arrays as TAG_OBJECT (H3b).
@@ -1405,7 +1405,7 @@ impl AutoVM {
                 }
                 if let Some(node) = guard.as_any().downcast_ref::<auto_val::Node>() {
                     // ACCUM_NODE pops a nested node through this path.
-                    return auto_val::Value::Node((*node).clone());
+                    return auto_val::Value::node((*node).clone());
                 }
             }
             return auto_val::Value::Nil;
@@ -1449,13 +1449,13 @@ impl AutoVM {
                 for (k, v) in od.fields.iter() {
                     out.set(k.clone(), v.clone());
                 }
-                return auto_val::Value::Obj(out);
+                return auto_val::Value::Obj(Box::new(out));
             }
             if let Some(node) = guard.as_any().downcast_ref::<auto_val::Node>() {
                 // Deep-clone the Node (props, args, AND kids). Sub-nodes are
                 // accumulated into `kids` via ACCUM_NODE (Plan 364 Step 5), so
                 // they must survive this pop to be queryable via `nodes(name)`.
-                return auto_val::Value::Node((*node).clone());
+                return auto_val::Value::node((*node).clone());
             }
         }
         if let Some(list_ref) = self.get_heap_object(id) {
@@ -2840,7 +2840,7 @@ impl AutoVM {
                     let value = self.pop_auto_value(task);
                     if let auto_val::Value::Node(node) = value {
                         if let Some(container) = task.accum_stack.last_mut() {
-                            container.add_kid(node);
+                            container.add_kid(*node);
                         } else {
                             eprintln!("WARNING: ACCUM_NODE with empty accum_stack");
                         }
@@ -2865,7 +2865,7 @@ impl AutoVM {
                 OpCode::POP_ACCUM => {
                     if let Some(container) = task.accum_stack.pop() {
                         let mut node = match container.into_value() {
-                            auto_val::Value::Node(n) => n,
+                            auto_val::Value::Node(n) => *n,
                             other => {
                                 eprintln!("WARNING: POP_ACCUM got unexpected value {:?}", other);
                                 auto_val::Node::new(auto_val::AutoStr::new())

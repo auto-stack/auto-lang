@@ -159,7 +159,7 @@ impl MessageContext {
         obj.set(AutoStr::from("trace_id"), Value::str(&self.trace_id));
         obj.set(AutoStr::from("is_ask"), Value::Bool(self.is_ask));
         obj.set(AutoStr::from("can_reply"), Value::Bool(self.can_reply()));
-        Value::Obj(obj)
+        Value::Obj(Box::new(obj))
     }
 }
 

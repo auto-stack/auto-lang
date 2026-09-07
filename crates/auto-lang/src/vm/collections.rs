@@ -365,10 +365,10 @@ pub fn hash_map_new(ctx: &mut VmContext, _capacity: Value) -> Value {
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
-            Value::Instance(Instance {
+            Value::Instance(Box::new(Instance {
                 ty: auto_val::Type::from(ty),
                 fields,
-            })
+            }))
         }
         _ => Value::Error(format!("Type HashMap not found!").into()),
     }
@@ -581,10 +581,10 @@ pub fn hash_set_new(ctx: &mut VmContext, _arg: Value) -> Value {
             let id = ctx.add_vmref(super::types::VmRefData::HashSet(set_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
-            Value::Instance(Instance {
+            Value::Instance(Box::new(Instance {
                 ty: auto_val::Type::from(ty),
                 fields,
-            })
+            }))
         }
         _ => Value::Error(format!("Type HashSet not found!").into()),
     }
@@ -733,10 +733,10 @@ pub fn vec_deque_new(ctx: &mut VmContext, _arg: Value) -> Value {
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
-            Value::Instance(Instance {
+            Value::Instance(Box::new(Instance {
                 ty: auto_val::Type::from(ty),
                 fields,
-            })
+            }))
         }
         _ => Value::Error(format!("Type VecDeque not found!").into()),
     }
@@ -960,10 +960,10 @@ pub fn btree_map_new(ctx: &mut VmContext, _arg: Value) -> Value {
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
-            Value::Instance(Instance {
+            Value::Instance(Box::new(Instance {
                 ty: auto_val::Type::from(ty),
                 fields,
-            })
+            }))
         }
         _ => Value::Error(format!("Type BTreeMap not found!").into()),
     }

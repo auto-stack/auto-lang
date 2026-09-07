@@ -187,7 +187,7 @@ impl VmInterpreter {
                                         for (key, val) in &od.fields {
                                             result_obj.set(key.clone(), val.clone());
                                         }
-                                        result = Some(Value::Obj(result_obj));
+                                        result = Some(Value::Obj(Box::new(result_obj)));
                                     } else if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
                                         let items: Vec<Value> = list.elems.iter().cloned().collect();
                                         result = Some(Value::Array(auto_val::Array::from_vec(items)));

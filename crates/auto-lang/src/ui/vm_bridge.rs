@@ -482,7 +482,7 @@ impl VmBridge {
             }
             if !field_names.iter().any(|n| n == "__route_params") {
                 field_names.push("__route_params".to_string());
-                field_values.push(auto_val::Value::Obj(auto_val::Obj::new()));
+                field_values.push(auto_val::Value::Obj(Box::new(auto_val::Obj::new())));
             }
         }
 
@@ -894,7 +894,7 @@ impl VmBridge {
                                 out.set(s.clone(), val.clone());
                             }
                         }
-                        return Value::Obj(out);
+                        return Value::Obj(Box::new(out));
                     }
                     // Plan 318: GenericInstanceData structs. List<Note>.new(
                     // [Note{...}]) stores Note instances as bare Int(heap_id)
@@ -907,7 +907,7 @@ impl VmBridge {
                                 out.set(name.clone(), val.clone());
                             }
                         }
-                        return Value::Obj(out);
+                        return Value::Obj(Box::new(out));
                     }
                 }
                 v.clone()
@@ -928,7 +928,7 @@ impl VmBridge {
                                 out.set(s.clone(), val.clone());
                             }
                         }
-                        return Value::Obj(out);
+                        return Value::Obj(Box::new(out));
                     }
                     if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
                         let mut out = auto_val::Obj::new();
@@ -937,7 +937,7 @@ impl VmBridge {
                                 out.set(name.clone(), val.clone());
                             }
                         }
-                        return Value::Obj(out);
+                        return Value::Obj(Box::new(out));
                     }
                 }
                 v.clone()
@@ -1954,7 +1954,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             for (key, val) in map {
                 obj.set(key.as_str(), json_to_value(val));
             }
-            Value::Obj(obj)
+            Value::Obj(Box::new(obj))
         }
     }
 }

@@ -27,11 +27,11 @@ mod loop_member_style_interp {
 }
 "#;
         let mut comp = crate::build_dynamic_component(src, None).expect("compile");
-        let entries = vec![auto_val::Value::Obj(auto_val::Obj::from_pairs([(
+        let entries = vec![auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([(
             "chip",
             // rounded-[10px] VM 侧无 arbitrary 半径档,块级用 rounded-xl 双端等价。
             auto_val::Value::Str("bg-[#7c9a6d21] rounded-xl".into()),
-        )]))];
+        )])))];
         let _ = comp.write_state_vec("rows", entries);
         let (view, _, _) = comp.view_with_debug_gated(false);
         let rendered = format!("{view:?}");

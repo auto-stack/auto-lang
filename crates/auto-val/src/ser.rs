@@ -329,7 +329,7 @@ impl ser::SerializeStruct for SerializeObjStruct {
         Ok(())
     }
     fn end(self) -> Result<Value, SerError> {
-        Ok(Value::Obj(self.obj))
+        Ok(Value::obj(self.obj))
     }
 }
 
@@ -366,7 +366,7 @@ impl ser::SerializeMap for SerializeObjMap {
         Ok(())
     }
     fn end(self) -> Result<Value, SerError> {
-        Ok(Value::Obj(self.obj))
+        Ok(Value::obj(self.obj))
     }
 }
 

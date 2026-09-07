@@ -19,10 +19,10 @@ pub fn open(ctx: &mut VmContext, path: Value) -> Value {
                             let id = ctx.add_vmref(super::types::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
-                            Value::Instance(Instance {
+                            Value::Instance(Box::new(Instance {
                                 ty: auto_val::Type::from(ty),
                                 fields,
-                            })
+                            }))
                         }
                         _ => Value::Error(format!("Type File not found!").into()),
                     }
@@ -41,10 +41,10 @@ pub fn open(ctx: &mut VmContext, path: Value) -> Value {
                             let id = ctx.add_vmref(super::types::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
-                            Value::Instance(Instance {
+                            Value::Instance(Box::new(Instance {
                                 ty: auto_val::Type::from(ty),
                                 fields,
-                            })
+                            }))
                         }
                         _ => Value::Error(format!("Type File not found!").into()),
                     }

@@ -316,7 +316,7 @@ mod musk_vm_track_p053_6_widget_content {
         comp.write_state_vec(
             "messages",
             vec![auto_val::Value::Obj(
-                auto_val::Obj::new().with("content", auto_val::Value::str("hello & <world>")),
+                Box::new(auto_val::Obj::new().with("content", auto_val::Value::str("hello & <world>"))),
             )],
         )
         .unwrap();
@@ -388,7 +388,7 @@ mod musk_vm_track_p053_6_widget_content {
         comp.write_state(
             "current",
             auto_val::Value::Obj(
-                auto_val::Obj::new().with("content", auto_val::Value::str("hello obj world")),
+                Box::new(auto_val::Obj::new().with("content", auto_val::Value::str("hello obj world"))),
             ),
         )
         .unwrap();
@@ -546,9 +546,9 @@ mod musk_vm_track_p053_1_widget_computed {
         .expect("component");
         let mk = |id: &str, role: &str| {
             auto_val::Value::Obj(
-                auto_val::Obj::new()
+                Box::new(auto_val::Obj::new()
                     .with("id", auto_val::Value::str(id))
-                    .with("role", auto_val::Value::str(role)),
+                    .with("role", auto_val::Value::str(role))),
             )
         };
         comp.write_state_vec(
@@ -1253,14 +1253,14 @@ mod musk_vm_track_p053_8_click_arg_drift {
             "session_list",
             vec![
                 auto_val::Value::Obj(
-                    auto_val::Obj::new()
+                    Box::new(auto_val::Obj::new()
                         .with("id", auto_val::Value::str("8f20138cab63f0c24832d3fb"))
-                        .with("name", auto_val::Value::str("你好")),
+                        .with("name", auto_val::Value::str("你好"))),
                 ),
                 auto_val::Value::Obj(
-                    auto_val::Obj::new()
+                    Box::new(auto_val::Obj::new()
                         .with("id", auto_val::Value::str("13e16478f80c91da604b87e7"))
-                        .with("name", auto_val::Value::str("alpha")),
+                        .with("name", auto_val::Value::str("alpha"))),
                 ),
             ],
         )
@@ -1326,14 +1326,14 @@ mod musk_vm_track_p053_8_corpus {
             "session_list",
             vec![
                 auto_val::Value::Obj(
-                    auto_val::Obj::new()
+                    Box::new(auto_val::Obj::new()
                         .with("id", auto_val::Value::str("8f20138cab63f0c24832d3fb"))
-                        .with("name", auto_val::Value::str("你好")),
+                        .with("name", auto_val::Value::str("你好"))),
                 ),
                 auto_val::Value::Obj(
-                    auto_val::Obj::new()
+                    Box::new(auto_val::Obj::new()
                         .with("id", auto_val::Value::str("13e16478f80c91da604b87e7"))
-                        .with("name", auto_val::Value::str("alpha")),
+                        .with("name", auto_val::Value::str("alpha"))),
                 ),
             ],
         )
@@ -1486,7 +1486,7 @@ mod musk_vm_track_p054_runtime_probe {
             .with("id", auto_val::Value::str("ws-1"))
             .with("name", auto_val::Value::str("musk-demo"))
             .with("path", auto_val::Value::str("D:\\autostack\\auto-musk"));
-        dc.write_state("current", auto_val::Value::Obj(ws))
+        dc.write_state("current", auto_val::Value::Obj(Box::new(ws)))
             .expect("write current");
         // T3 R3 勘察续：VM flash 里 computed 是否编成同名 fn + call_vm_fn 直调。
         let bridge = dc.bridge();

@@ -163,33 +163,44 @@ pub enum Value {
     Array(Array),
     Block(Array),
     Pair(ValueKey, Box<Value>),
-    Obj(Obj),
-    Node(Node),
+    /// Plan 566 Phase B: Obj 装箱（Obj 72B；232 调用点，构造走
+    /// `Value::obj()` helper，匹配经 Box 自动解引用）。
+    Obj(Box<Obj>),
+    /// Plan 566 Phase A: Node 装箱（Node 296B 是 Value 296B 的唯一鲸鱼；
+    /// 构造走 `Value::node()` helper，匹配经 Box 自动解引用）。
+    Node(Box<Node>),
     Range(i32, i32),
     RangeEq(i32, i32),
-    Fn(Fn),
-    ExtFn(ExtFn),
-    Type(Type),
+    /// Plan 566 Phase C: Fn/ExtFn/Type 装箱（Fn 72B 为 48B 终态的最后约束；
+    /// Str 40B 是地板设定者——热路径字符串不装箱，终态即 48B）。
+    Fn(Box<Fn>),
+    ExtFn(Box<ExtFn>),
+    Type(Box<Type>),
     #[default]
     Nil,
     Null,
     Lambda(AutoStr),
     Void,
-    Widget(Widget),
-    Model(Model),
-    View(View),
-    Meta(MetaID),
-    Method(Method),
-    Instance(Instance),
+    /// Plan 566 Phase B 装箱（Widget 112B/Model/View 为单点变体；
+    /// 构造走 `Value::widget()` 等 helper）。
+    Widget(Box<Widget>),
+    Model(Box<Model>),
+    View(Box<View>),
+    /// Plan 566 Phase B: MetaID 72B 装箱（11 调用点）。
+    Meta(Box<MetaID>),
+    Method(Box<Method>),
+    /// Plan 566 Phase B: Instance 96B 装箱（103 调用点）。
+    Instance(Box<Instance>),
     Args(Args),
     Ref(AutoStr),
     Error(AutoStr),
-    Grid(Grid),
+    /// Plan 566 Phase B: Grid 装箱（单点变体，计划原文成员）。
+    Grid(Box<Grid>),
     VmRef(VmRef),
     /// Reference to value stored in Universe (NEW)
     ValueRef(ValueID),
     /// Closure value: captured environment + function body (Plan 060 Phase 3)
-    Closure(Closure),
+    Closure(Box<Closure>),
     // Plan 120: Option and Result types
     /// Optional value - Some(value) or None
     /// Represents ?T type - value might not exist
@@ -202,11 +213,57 @@ pub enum Value {
     // Plan 124: Future type for async operations
     /// Future value - represents a value that will be available later
     /// ~T type - async computation that produces T
-    Future(FutureData),
+    Future(Box<FutureData>),
 }
 
 // constructors
 impl Value {
+    /// Plan 566 Phase A: Node 构造 helper（收敛调用点，集中未来调整）。
+    pub fn node(n: Node) -> Self {
+        Value::Node(Box::new(n))
+    }
+
+    /// Plan 566 Phase B: 胖变体构造 helper（同 Node 模式收敛调用点）。
+    pub fn obj(o: Obj) -> Self {
+        Value::Obj(Box::new(o))
+    }
+
+    pub fn widget(w: Widget) -> Self {
+        Value::Widget(Box::new(w))
+    }
+
+    pub fn model(m: Model) -> Self {
+        Value::Model(Box::new(m))
+    }
+
+    pub fn view(v: View) -> Self {
+        Value::View(Box::new(v))
+    }
+
+    pub fn meta(m: MetaID) -> Self {
+        Value::Meta(Box::new(m))
+    }
+
+    pub fn method(m: Method) -> Self {
+        Value::Method(Box::new(m))
+    }
+
+    pub fn instance(i: Instance) -> Self {
+        Value::Instance(Box::new(i))
+    }
+
+    pub fn closure(c: Closure) -> Self {
+        Value::Closure(Box::new(c))
+    }
+
+    pub fn grid(g: Grid) -> Self {
+        Value::Grid(Box::new(g))
+    }
+
+    pub fn future(f: FutureData) -> Self {
+        Value::Future(Box::new(f))
+    }
+
     pub fn str(text: impl Into<AutoStr>) -> Self {
         Value::Str(text.into())
     }
@@ -293,10 +350,6 @@ impl Value {
         Value::Pair(key.into(), Box::new(value.into()))
     }
 
-    pub fn obj() -> Self {
-        Value::Obj(Obj::new())
-    }
-
     pub fn repr(&self) -> AutoStr {
         match self {
             Value::Str(s) => s.clone(),
@@ -381,7 +434,7 @@ impl Value {
                 for (k, vid) in fields.iter() {
                     obj.set(k.clone(), Value::ValueRef(*vid));
                 }
-                Value::Obj(obj)
+                Value::obj(obj)
             }
             ValueData::Pair(_l, _r) => {
                 // TODO: This needs proper resolution via Universe
@@ -759,7 +812,7 @@ impl Value {
 
     pub fn to_node(self) -> Node {
         match self {
-            Value::Node(value) => value,
+            Value::Node(value) => *value,
             _ => node_nil().clone(),
         }
     }
@@ -1096,7 +1149,7 @@ impl View {
         self.nodes
             .iter()
             .find(|n| n.name == key)
-            .map(|n| Value::Node(n.clone()))
+            .map(|n| Value::node(n.clone()))
     }
 }
 
@@ -1140,7 +1193,7 @@ impl Grid {
             for (j, cell) in row.iter().enumerate() {
                 obj.set(colids[j].clone(), cell.clone());
             }
-            result.push(Value::Obj(obj));
+            result.push(Value::obj(obj));
         }
         Value::array(result)
     }
@@ -1258,13 +1311,13 @@ impl From<AutoStr> for Value {
 
 impl From<Obj> for Value {
     fn from(obj: Obj) -> Value {
-        Value::Obj(obj)
+        Value::obj(obj)
     }
 }
 
 impl From<Node> for Value {
     fn from(node: Node) -> Value {
-        Value::Node(node)
+        Value::node(node)
     }
 }
 

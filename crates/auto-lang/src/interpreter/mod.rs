@@ -363,7 +363,7 @@ mod tests {
     fn test_mold_template_for_over_node_array() {
         let mut app = auto_val::Node::new("app");
         app.id = "SCU001".into();
-        let arr = auto_val::Array::from_vec(vec![Value::Node(app)]);
+        let arr = auto_val::Array::from_vec(vec![Value::node(app)]);
         let mut interp = AutoInterpreter::new().with_fstr_note('@');
         interp.set_global("apps", Value::Array(arr));
         let tpl = "@ for app in apps {\n<project id=\"@{app.id}\" />\n@ }\n";

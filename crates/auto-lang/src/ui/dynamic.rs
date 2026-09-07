@@ -873,7 +873,7 @@ impl DynamicComponent {
             if matched {
                 let _ = self.bridge.write_state(
                     "__route_params",
-                    auto_val::Value::Obj(params),
+                    auto_val::Value::Obj(Box::new(params)),
                 );
                 return;
             }
@@ -2315,7 +2315,7 @@ mod tests {
             crate::ui::widget_registry::WidgetRegistry::new(),
             import_stmts, &std::collections::HashMap::new(), false,
         ).expect("comp");
-        let msgv = auto_val::Value::Obj(auto_val::Obj::new().with("content", auto_val::Value::str("nihao-body")));
+        let msgv = auto_val::Value::Obj(Box::new(auto_val::Obj::new().with("content", auto_val::Value::str("nihao-body"))));
         let v = comp.bridge_call_for_test("mk51e", &[msgv, auto_val::Value::Bool(false)]).expect("call");
         eprintln!("[DBG51E] mk51e -> {:?}", v);
         let rows = match &v {

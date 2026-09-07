@@ -17,7 +17,7 @@
 //! o.set("name", Value::str("coder"));
 //! o.set("tier", Value::str("max"));
 //! o.set("skills", Value::array_of(["tdd", "review"]));
-//! let v = Value::Obj(o);
+//! let v = Value::obj(o);
 //!
 //! let role: Role = v.deserialize_into().unwrap();
 //! assert_eq!(role.name, "coder");
@@ -99,7 +99,7 @@ impl crate::Node {
         // Reuse the Value::Node branch in deserialize_any, which walks props.
         // The owned Value must outlive the deserialization; bind it locally.
         // Using a HRTB on T avoids tying the output lifetime to &self.
-        let as_value = Value::Node(self.clone());
+        let as_value = Value::node(self.clone());
         T::deserialize(ValueDeserializer(&as_value))
     }
 }
@@ -568,7 +568,7 @@ mod tests {
         o.set("count", Value::Int(42));
         o.set("rate", Value::Double(1.5));
         o.set("enabled", Value::Bool(true));
-        Value::Obj(o)
+        Value::obj(o)
     }
 
     #[test]
@@ -593,7 +593,7 @@ mod tests {
         o.set("name", Value::str("coder"));
         o.set("tier", Value::str("max"));
         // budget absent
-        let r: WithOption = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithOption = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.tier.as_deref(), Some("max"));
         assert!(r.budget.is_none());
     }
@@ -603,7 +603,7 @@ mod tests {
         let mut o = Obj::new();
         o.set("name", Value::str("x"));
         o.set("tier", Value::Nil); // explicit null
-        let r: WithOption = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithOption = Value::obj(o).deserialize_into().unwrap();
         assert!(r.tier.is_none());
     }
 
@@ -621,7 +621,7 @@ mod tests {
                 values: vec![Value::str("tdd"), Value::str("review")],
             }),
         );
-        let r: WithVec = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithVec = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.skills, vec!["tdd".to_string(), "review".to_string()]);
     }
 
@@ -629,7 +629,7 @@ mod tests {
     fn empty_array_becomes_empty_vec() {
         let mut o = Obj::new();
         o.set("skills", Value::Array(Array { values: vec![] }));
-        let r: WithVec = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithVec = Value::obj(o).deserialize_into().unwrap();
         assert!(r.skills.is_empty());
     }
 
@@ -650,8 +650,8 @@ mod tests {
         inner.set("key", Value::str("v"));
         let mut o = Obj::new();
         o.set("name", Value::str("outer"));
-        o.set("inner", Value::Obj(inner));
-        let r: Nested = Value::Obj(o).deserialize_into().unwrap();
+        o.set("inner", Value::obj(inner));
+        let r: Nested = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.inner.key, "v");
     }
 
@@ -659,7 +659,7 @@ mod tests {
     fn type_mismatch_is_error() {
         let mut o = Obj::new();
         o.set("name", Value::Int(7)); // expected String
-        let r: Result<WithOption, _> = Value::Obj(o).deserialize_into();
+        let r: Result<WithOption, _> = Value::obj(o).deserialize_into();
         assert!(r.is_err());
     }
 
@@ -668,7 +668,7 @@ mod tests {
         let mut o = Obj::new();
         // name required but absent
         o.set("tier", Value::str("max"));
-        let r: Result<WithOption, _> = Value::Obj(o).deserialize_into();
+        let r: Result<WithOption, _> = Value::obj(o).deserialize_into();
         assert!(r.is_err());
     }
 
@@ -703,7 +703,7 @@ mod tests {
         let mut o = Obj::new();
         o.set("a", Value::Uint(7));
         o.set("b", Value::USize(99));
-        let r: Uints = Value::Obj(o).deserialize_into().unwrap();
+        let r: Uints = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r, Uints { a: 7, b: 99 });
     }
 
@@ -724,7 +724,7 @@ mod tests {
         }
         let mut o = Obj::new();
         o.set("kind", Value::str("file"));
-        let r: Decl = Value::Obj(o).deserialize_into().unwrap();
+        let r: Decl = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.kind, Kind::File);
     }
 
@@ -797,7 +797,7 @@ mod tests {
         for (v, expected) in cases {
             let mut o = Obj::new();
             o.set("auth", v);
-            let r: WithLenientBool = Value::Obj(o).deserialize_into().unwrap();
+            let r: WithLenientBool = Value::obj(o).deserialize_into().unwrap();
             assert_eq!(r.auth, expected, "lenient_bool mismatch");
         }
     }
@@ -805,7 +805,7 @@ mod tests {
     fn lenient_bool_rejects_garbage() {
         let mut o = Obj::new();
         o.set("auth", Value::str("maybe"));
-        let r: Result<WithLenientBool, _> = Value::Obj(o).deserialize_into();
+        let r: Result<WithLenientBool, _> = Value::obj(o).deserialize_into();
         assert!(r.is_err());
     }
 
@@ -818,12 +818,12 @@ mod tests {
     fn string_or_list_array_and_single() {
         let mut o = Obj::new();
         o.set("items", Value::Array(Array { values: vec![Value::str("a"), Value::str("b")] }));
-        let r: WithStringList = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithStringList = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.items, vec!["a".to_string(), "b".into()]);
 
         let mut o = Obj::new();
         o.set("items", Value::str("solo"));
-        let r: WithStringList = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithStringList = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.items, vec!["solo".to_string()]);
     }
 
@@ -837,16 +837,16 @@ mod tests {
         // array → Some([a,b])
         let mut o = Obj::new();
         o.set("items", Value::Array(Array { values: vec![Value::str("a"), Value::str("b")] }));
-        let r: WithOptList = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithOptList = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.items.as_deref(), Some(&["a".to_string(), "b".into()][..]));
         // single string → Some([solo])
         let mut o = Obj::new();
         o.set("items", Value::str("solo"));
-        let r: WithOptList = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithOptList = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.items.as_deref(), Some(&["solo".to_string()][..]));
         // absent field (default) → None
         let o = Obj::new();
-        let r: WithOptList = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithOptList = Value::obj(o).deserialize_into().unwrap();
         assert!(r.items.is_none());
     }
 
@@ -859,12 +859,12 @@ mod tests {
     fn nonempty_string_treats_empty_as_none() {
         let mut o = Obj::new();
         o.set("name", Value::str("x"));
-        let r: WithNonempty = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithNonempty = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.name.as_deref(), Some("x"));
 
         let mut o = Obj::new();
         o.set("name", Value::str(""));
-        let r: WithNonempty = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithNonempty = Value::obj(o).deserialize_into().unwrap();
         assert!(r.name.is_none());
     }
 
@@ -877,12 +877,12 @@ mod tests {
     fn lenient_f64_from_int_and_float() {
         let mut o = Obj::new();
         o.set("rate", Value::Int(3));
-        let r: WithLenientF64 = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithLenientF64 = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.rate, 3.0);
 
         let mut o = Obj::new();
         o.set("rate", Value::Double(2.5));
-        let r: WithLenientF64 = Value::Obj(o).deserialize_into().unwrap();
+        let r: WithLenientF64 = Value::obj(o).deserialize_into().unwrap();
         assert_eq!(r.rate, 2.5);
     }
 
@@ -895,14 +895,14 @@ mod tests {
     fn lenient_f64_opt_int_float_and_absent() {
         let mut o = Obj::new();
         o.set("rate", Value::Int(3));
-        assert_eq!(Value::Obj(o).deserialize_into::<WithOptF64>().unwrap().rate, Some(3.0));
+        assert_eq!(Value::obj(o).deserialize_into::<WithOptF64>().unwrap().rate, Some(3.0));
 
         let mut o = Obj::new();
         o.set("rate", Value::Double(2.5));
-        assert_eq!(Value::Obj(o).deserialize_into::<WithOptF64>().unwrap().rate, Some(2.5));
+        assert_eq!(Value::obj(o).deserialize_into::<WithOptF64>().unwrap().rate, Some(2.5));
 
         // absent → None
         let o = Obj::new();
-        assert_eq!(Value::Obj(o).deserialize_into::<WithOptF64>().unwrap().rate, None);
+        assert_eq!(Value::obj(o).deserialize_into::<WithOptF64>().unwrap().rate, None);
     }
 }

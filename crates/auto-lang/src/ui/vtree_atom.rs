@@ -227,7 +227,7 @@ impl VTreeAtomBuilder {
                 for (k, v) in &c.computed_style {
                     obj.set(k.clone(), Value::Str(v.clone().into()));
                 }
-                node.set_prop("style", Value::Obj(obj));
+                node.set_prop("style", Value::Obj(Box::new(obj)));
             }
             if let Some(cls) = &c.raw_class {
                 node.set_prop("class", Value::Str(cls.clone().into()));
@@ -238,7 +238,7 @@ impl VTreeAtomBuilder {
             for (ev, handler) in &c.events {
                 obj.set(ev.clone(), Value::Str(handler.clone().into()));
             }
-            node.set_prop("events", Value::Obj(obj));
+            node.set_prop("events", Value::Obj(Box::new(obj)));
         }
         if opts.include_source {
             if let Some(src) = &c.source {
@@ -251,7 +251,7 @@ impl VTreeAtomBuilder {
                     obj.set("index", Value::Int(*i as i32));
                 }
                 obj.set("value", Value::Str(value_repr.clone().into()));
-                node.set_prop("for_iter", Value::Obj(obj));
+                node.set_prop("for_iter", Value::Obj(Box::new(obj)));
             }
         }
     }
@@ -262,7 +262,7 @@ impl VTreeAtomBuilder {
         obj.set("y", Value::Float(y as f64));
         obj.set("w", Value::Float(w as f64));
         obj.set("h", Value::Float(h as f64));
-        Value::Obj(obj)
+        Value::Obj(Box::new(obj))
     }
 
     fn box_obj(bm: &BoxModel) -> Value {
@@ -280,7 +280,7 @@ impl VTreeAtomBuilder {
         obj.set("padding", Self::insets_obj(&bm.padding));
         obj.set("border", Self::insets_obj(&bm.border));
         obj.set("margin", Self::insets_obj(&bm.margin));
-        Value::Obj(obj)
+        Value::Obj(Box::new(obj))
     }
 
     fn insets_obj(e: &crate::ui::debug::EdgeInsets) -> Value {
@@ -289,7 +289,7 @@ impl VTreeAtomBuilder {
         obj.set("r", Value::Float(e.right as f64));
         obj.set("b", Value::Float(e.bottom as f64));
         obj.set("l", Value::Float(e.left as f64));
-        Value::Obj(obj)
+        Value::Obj(Box::new(obj))
     }
 }
 

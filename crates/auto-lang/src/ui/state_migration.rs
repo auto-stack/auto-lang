@@ -186,7 +186,7 @@ fn eval_default(expr: &Expr) -> Value {
             for pair in pairs {
                 obj.set(pair.key.to_astr(), eval_default(&pair.value));
             }
-            Value::Obj(obj)
+            Value::Obj(Box::new(obj))
         }
         // Complex expressions default to Nil for safety
         _ => Value::Nil,

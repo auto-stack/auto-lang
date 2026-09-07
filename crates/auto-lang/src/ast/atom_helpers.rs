@@ -25,7 +25,7 @@ impl AtomBuilder {
         for (key, value) in pairs {
             obj.set(key, value);
         }
-        Value::Obj(obj)
+        Value::Obj(Box::new(obj))
     }
 
     /// Create a key-value pair
@@ -37,67 +37,67 @@ impl AtomBuilder {
     pub fn int_node(value: i32) -> Value {
         let mut node = Node::new("int");
         node.add_arg(AutoValArg::Pos(Value::Int(value)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create an unsigned integer node
     pub fn uint_node(value: u32) -> Value {
         let mut node = Node::new("uint");
         node.add_arg(AutoValArg::Pos(Value::Uint(value)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create a float node
     pub fn float_node(value: f64) -> Value {
         let mut node = Node::new("float");
         node.add_arg(AutoValArg::Pos(Value::Float(value)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create a string node: `str("hello")`
     pub fn str_node(value: &str) -> Value {
         let mut node = Node::new("str");
         node.add_arg(AutoValArg::Pos(Value::str(value)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create a C string node
     pub fn cstr_node(value: &str) -> Value {
         let mut node = Node::new("cstr");
         node.add_arg(AutoValArg::Pos(Value::str(value)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create an identifier/name node: `name("x")`
     pub fn ident_node(name: &str) -> Value {
         let mut node = Node::new("name");
         node.add_arg(AutoValArg::Pos(Value::str(name)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create a boolean node: `bool(true)`
     pub fn bool_node(value: bool) -> Value {
         let mut node = Node::new("bool");
         node.add_arg(AutoValArg::Pos(Value::Bool(value)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create a char node
     pub fn char_node(value: char) -> Value {
         let mut node = Node::new("char");
         node.add_arg(AutoValArg::Pos(Value::Char(value)));
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create a nil/null node
     pub fn nil_node() -> Value {
         let node = Node::new("nil");
-        Value::Node(node)
+        Value::node(node)
     }
 
     /// Create a null node
     pub fn null_node() -> Value {
         let node = Node::new("null");
-        Value::Node(node)
+        Value::node(node)
     }
 }
