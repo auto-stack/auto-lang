@@ -42,8 +42,9 @@ Stage A 只建伞形骨架+首个 app 仓，**明确不迁移桌面 shell（Stag
 （§详细设计 1/§3）：Stage B 宿主迁 auto-os 后，apps_dir 按 579 AGENTS.md
 跨仓解析序约定（`AUTO_LANG_ROOT` → 兄弟 `../auto-lang` → 主检出）仍指
 auto-lang `examples/ui`，画廊条目自动跟随，578 代码随 shell 迁移原样
-带走。画廊长期归属（留 auto-lang examples vs 独立 app 仓登
-apps.manifest）不在本计划裁定，见待澄清③。
+带走。画廊与 examples/ui 同属 **auto-ui 项目**资产（因 cargo 管理约束
+现居 auto-lang；未来随 auto-ui 栈拆仓迁出——方式待定，用户举例 git
+submodule；见 §详细设计 6/待澄清③）。
 
 ## 目标
 
@@ -110,9 +111,11 @@ apps.manifest）不在本计划裁定，见待澄清③。
   零配置面。
 - **PLAN-579 组织重划**（2026-09-07 用户裁定，与本计划起草同期）：auto-lang
   =语言/框架根、auto-os=产品根（伞形组织根）、真实 app 走独立仓（首个
-  auto-plans 计划看板）；桌面 shell 迁移 = Stage B 另行立项。对本计划的
-  影响与迁移姿态见 §详细设计 6（结论：落点照常、探测锚定加固为
-  apps_dir 相对、画廊归属议题外移）。
+  auto-plans 计划看板）；桌面 shell 迁移 = Stage B 另行立项。另用户澄清
+  UI 栈/示例属 auto-ui 项目（现居 auto-lang 系 cargo 管理约束，未来拆仓
+  或以 submodule 形态迁出）。对本计划的影响与迁移姿态见 §详细设计 6
+  （结论：落点照常、探测锚定加固为 apps_dir 相对、画廊与主根同树共置
+  不变式覆盖 auto-ui 拆仓各形态）。
 - 相关 GOAL：GOAL-009（虚拟桌面与桌面 Shell）、GOAL-010（示例应用轨道）。
 
 ## 详细设计
@@ -211,11 +214,18 @@ fn desktop_extra_app_roots(root_dir: &Path, apps_dir: &Path) -> Vec<(String, Pat
   后宿主在 auto-os，apps_dir 按 579 AGENTS.md 跨仓解析序约定（env
   AUTO_LANG_ROOT → 兄弟 ../auto-lang → D:/autostack/auto-lang 主检出）
   解析回 auto-lang examples/ui——画廊条目自动跟随主根，无需改 578 代码。
-- **双画廊长期归属**（不在本计划裁定）：widgets-gallery（AutoUI 文档/
-  展示面）与 ui-gallery（示例探索）当前属框架资料（auto-lang examples）；
-  579「真实 app 独立仓」轨道若延伸到画廊，届时独立建仓 + storage
-  `shell.apps.extra_dirs` 注册（或 Stage C apps.manifest 驱动注册）——
-  578 的 extra 根机制对两种归宿同构兼容。
+- **双画廊与示例的长期归属**（用户 2026-09-07 澄清）：widgets-gallery /
+  ui-gallery 与 examples/ui 同属 **auto-ui 项目**资产——auto-ui 仓
+  （`D:/autostack/auto-ui`，2026-02 起休眠于 Plan 096 时代，末提交
+  f7d92ee）历史上即承载 UI 栈 + auto-examples；现因 Rust cargo 管理约束
+  整体居于 auto-lang。未来 auto-ui 栈拆仓迁出时（方式待定，用户举例
+  git submodule；579 Stage A 对伞形仓否决 submodule 是 auto-os 组织面
+  决策，与此处框架仓拆分不冲突——同属"按需再议"口径），示例/画廊随
+  项目迁置（去向两读见待澄清③）。578 的**锚定不变式 = 画廊与主根示例
+  同树共置**（同项目资产共进退）——无论未来整体留 auto-lang、迁 auto-ui
+  独立仓或 submodule 挂载形态，`apps_dir.parent()` 兄弟探测始终成立；
+  若拆仓后画廊与主根分置两树，以 storage `shell.apps.extra_dirs` 注册
+  画廊根即可（机制已备，零返工）。
 
 ## 测试设计
 
@@ -299,9 +309,11 @@ vue.rs 同文件 tests mod）：
    区分（本计划不做，552 语义 desktop_visible 是全局单值）。
 2. storage 开关注入测试形态（T2 测试设计 2 的两种落地）实现期定，
    语义不变。
-3. **画廊长期归属（PLAN-579 Stage B/C 议题，不在本计划裁定）**：
-   widgets-gallery / ui-gallery 是否随 579「真实 app 独立仓」轨道迁出
-   auto-lang、成为独立 app 仓并登记 auto-os `apps.manifest`——组织决策
-   归 579 后续阶段；578 的 extra 根机制对「留 examples（缺省探测命中）/
-   独立仓（storage `shell.apps.extra_dirs` 注册，或 Stage C manifest
-   驱动注册）」两种归宿同构兼容，届时零返工。
+3. **画廊与示例的迁移归宿（auto-ui 拆仓议题，不在本计划裁定）**：两画廊
+   与 examples/ui 属 auto-ui 项目资产，现居 auto-lang（cargo 管理约束）；
+   未来 auto-ui 拆仓（用户举例 submodule 形态）时"这些示例也都要挪"
+   ——用户原话"那时候这些示例也都要挪到 auto-lang 去"存在两读
+   （① 随 auto-ui 项目迁出 auto-lang；② 钉回/留在 auto-lang 本仓、仅
+   UI 栈代码迁出），以 auto-ui 拆仓立项时用户裁定为准。对 578 无机制
+   差：两读下画廊与 examples/ui 均同树共置，兄弟锚定均成立；仅当拆仓
+   后二者分置两树才需 storage `shell.apps.extra_dirs` 补注册（机制已备）。
