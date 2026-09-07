@@ -67,6 +67,19 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   const timeMs = ref(0);
   const bytecode = ref<BytecodeLine[]>([]);
   const isLoading = ref(false);
+  // ── 后端探测（Plan 582 T9）：请求网络失败置位；成功响应/探测清除 ──
+  const backendDown = ref(false);
+
+  /** 手动重试：探测 /api/examples（任意 HTTP 响应=后端在位；网络异常=仍离线）。 */
+  async function retryBackend() {
+    try {
+      await fetch(`${API_BASE}/examples`, { method: 'GET' });
+      backendDown.value = false;
+    } catch {
+      backendDown.value = true;
+    }
+    return !backendDown.value;
+  }
   const activeTab = ref<OutputTab>(saved.activeTab ?? 'rust');
   const transpileTarget = ref('');
   const liveCompile = ref(saved.liveCompile ?? true);
@@ -226,6 +239,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
         body: JSON.stringify(body),
       });
       const data: RunResponse = await res.json();
+      backendDown.value = false;
       stdout.value = data.stdout || '';
       stderr.value = data.stderr || '';
       timeMs.value = data.time_ms || 0;
@@ -234,6 +248,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
         resultCode.value = data.result;
       }
     } catch (e: any) {
+      backendDown.value = true;
       stderr.value = `Network error: ${e.message}`;
     } finally {
       isLoading.value = false;
@@ -268,6 +283,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
           body: JSON.stringify({ language, code }),
         });
         const data: RunResponse = await res.json();
+        backendDown.value = false;
         stdout.value = data.stdout || '';
         stderr.value = data.stderr || '';
         timeMs.value = data.time_ms || 0;
@@ -276,6 +292,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
         }
       }
     } catch (e: any) {
+      backendDown.value = true;
       stderr.value = `Network error: ${e.message}`;
     } finally {
       isLoading.value = false;
@@ -292,6 +309,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
         body: JSON.stringify(body),
       });
       const data: TransResponse = await res.json();
+      backendDown.value = false;
       const files = data.files ?? [];
       const fileSourceMaps: Record<string, SourceMapEntry[]> = {};
       for (const f of files) {
@@ -306,6 +324,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
       };
       refreshOutputHighlight();
     } catch (e: any) {
+      backendDown.value = true;
       transpileTarget.value = target;
       transCache.value[target] = {
         files: [{ path: 'error.txt', code: `Error: ${e.message}` }],
@@ -549,6 +568,7 @@ export function usePlayground(options: UsePlaygroundOptions = {}) {
   return {
     source, stdout, stderr, resultCode, timeMs, runBytecode: bytecode, isLoading,
     activeTab, transpiledCode, transpileTarget, liveCompile, projectDir, projectFiles,
+    backendDown, retryBackend,
     transFiles, selectedTransFile,
     highlightedSourceLine, highlightedOutputLines, highlightedOutputFiles,
     shareToast,

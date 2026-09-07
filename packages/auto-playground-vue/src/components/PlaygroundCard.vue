@@ -35,10 +35,18 @@
           <option value="typescript">→ TypeScript</option>
           <option value="abt">→ ABT</option>
         </select>
-        <button v-if="!isDebugging" class="run-btn" @click="runAction" :disabled="isLoading">
-          <Play v-if="!isLoading" :size="14" />
+        <button
+          v-if="!isDebugging"
+          class="run-btn"
+          :class="{ down: backendDown }"
+          @click="runAction"
+          :disabled="isLoading || backendDown"
+          :title="backendDown ? '后端离线——本地启动：cargo run -p auto-playground' : undefined"
+        >
+          <WifiOff v-if="backendDown" :size="14" />
+          <Play v-else-if="!isLoading" :size="14" />
           <Loader2 v-else :size="14" class="spin" />
-          {{ isLoading ? 'Running...' : 'Run' }}
+          {{ backendDown ? '后端离线' : isLoading ? 'Running...' : 'Run' }}
         </button>
         <template v-else-if="toolbarOn.debug">
           <div class="debug-controls">
@@ -142,8 +150,24 @@
               </button>
             </div>
             <div class="output-content">
+              <div v-if="backendDown" class="card-backend-down">
+                <WifiOff :size="16" class="cbd-icon" />
+                <p class="cbd-title">后端未启动——运行与转译暂不可用</p>
+                <p class="cbd-line">笔记浏览与代码编辑不受影响。本地启动后端：</p>
+                <pre class="cbd-cmd"><code>cargo run -p auto-playground</code></pre>
+                <p class="cbd-line">
+                  或参考
+                  <a class="cbd-link" href="/playground#backend">部署说明</a>
+                  将后端与本站同域部署。
+                </p>
+                <div class="cbd-actions">
+                  <button class="cbd-retry" @click="onRetryBackend">
+                    <RefreshCw :size="13" /> 重试连接
+                  </button>
+                </div>
+              </div>
               <ExpectedOutputPanel
-                v-if="displayTab === 'Expected'"
+                v-else-if="displayTab === 'Expected'"
                 :expected="expectedOutput ?? ''"
                 :actual="stdout ?? ''"
                 :has-run="hasRun"
@@ -215,7 +239,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue'
-import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward, Lock, AppWindow } from 'lucide-vue-next'
+import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward, Lock, AppWindow, WifiOff, RefreshCw } from 'lucide-vue-next'
 import SnippetRunner from './SnippetRunner.vue'
 import BytecodePanel from './BytecodePanel.vue'
 import CodePreview from './CodePreview.vue'
@@ -297,6 +321,7 @@ const highlightedOutputLines = computed(() => runner.value?.highlightedOutputLin
 const liveCompile = computed(() => runner.value?.liveCompile ?? false)
 const breakpoints = computed(() => runner.value?.breakpoints ?? [])
 const shareToast = computed(() => runner.value?.shareToast)
+const backendDown = computed(() => runner.value?.backendDown ?? false)
 
 const displayTab = ref<EmbedTab>('Output')
 const targetLang = ref<'run' | Exclude<OutputTab, 'bytecode'>>(props.target)
@@ -455,6 +480,10 @@ function onBreakpointsChange(lines: number[]) {
 
 function onBytecodeOffsetClick(_offset: number) {
   // Could cross-highlight source line from bytecode offset
+}
+
+async function onRetryBackend() {
+  await runner.value?.retryBackend()
 }
 
 // 暴露给宿主（NotesExplorer 键盘 Ctrl+Enter 转发）。
@@ -632,6 +661,72 @@ defineExpose({
 .run-btn:disabled, .debug-start-btn:disabled, .stop-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.run-btn.down {
+  background: #45475a;
+  color: #f9e2af;
+}
+
+/* 无后端降级卡（输出区，Plan 582 T9） */
+.card-backend-down {
+  padding: 1.5rem 1.75rem;
+  font-size: 0.8rem;
+  color: #a6adc8;
+}
+
+.cbd-icon {
+  color: #f9e2af;
+  margin-bottom: 0.4rem;
+}
+
+.cbd-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f9e2af;
+}
+
+.cbd-line {
+  margin: 0.25rem 0;
+}
+
+.cbd-cmd {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 6px;
+}
+
+.cbd-cmd code {
+  font-family: 'JetBrains Mono', monospace;
+  color: #cdd6f4;
+}
+
+.cbd-link {
+  color: #89b4fa;
+}
+
+.cbd-actions {
+  margin-top: 0.75rem;
+}
+
+.cbd-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  background: #313244;
+  color: #cdd6f4;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.cbd-retry:hover {
+  border-color: #6366f1;
 }
 
 .debug-controls {
