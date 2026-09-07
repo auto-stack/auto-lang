@@ -53,6 +53,9 @@ pub use path::*;
 mod emit;
 pub use emit::*;
 
+// Plan 566: Value 装箱瘦身——尺寸审计表 + 防回退断言（各阶段收紧上限）。
+mod size_report;
+
 // Plan 381: optional serde Deserialize support for Value/Node.
 #[cfg(feature = "serde")]
 mod de;
