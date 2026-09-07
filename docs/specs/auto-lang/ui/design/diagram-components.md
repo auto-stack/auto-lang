@@ -5,7 +5,8 @@
 > （2026-08-31 定稿，本文件只沉淀**已落地**的 v1 契约面）。姊妹篇
 > [chart-components.md](chart-components.md)（plan-437/484/498/499）。
 > 载体：`examples/widgets-gallery/src/front/components/flow_diagram.at`
-> + 页面 `pages/flow-diagram.at`（Diagrams 分组）。
+> + 页面 `pages/flow-diagram.at`（Diagrams 分组）——**PLAN-590 后画廊迁
+> auto-os 顶层**，现址 `auto-os/widgets-gallery/`（框架测试语料经解析序定位）。
 
 ## 范围
 

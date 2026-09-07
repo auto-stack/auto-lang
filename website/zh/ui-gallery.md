@@ -8,7 +8,7 @@
 
 ### <a id="components"></a><a href="/ui/gallery/index.html" target="_self">组件 ↗</a>
 
-47 个 shadcn-vue 组件使用 Auto 语言复刻（共 50 个路由，含 index、Grid、NavLink）。基于 Vue 3 + shadcn-vue，由 `auto build` 从 [`examples/widgets-gallery`](../../../examples/widgets-gallery) 自动生成。
+47 个 shadcn-vue 组件使用 Auto 语言复刻（共 50 个路由，含 index、Grid、NavLink）。基于 Vue 3 + shadcn-vue，由 `auto build` 从 [`auto-os/widgets-gallery`](https://github.com/auto-stack/auto-os/tree/main/widgets-gallery) 自动生成（PLAN-590：画廊源已迁 auto-os 仓）。
 
 ### <a id="blocks"></a><a href="/ui/blocks/index.html" target="_self">区块 ↗</a>
 

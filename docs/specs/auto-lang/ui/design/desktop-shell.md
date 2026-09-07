@@ -19,7 +19,7 @@ utility(alpha `/N`、arbitrary `bg-[#hex]`、rounded/shadow/hover:)。
 | 弹层 glass 三件套 | `bg-card/80 border rounded-xl shadow-xl`,菜单项 `rounded-lg hover:bg-primary/10` | `assets/desktop.at`(右键菜单)、`notification_center.at`、`switcher.at` |
 | 壁纸罩层 scrim | 图片壁纸上叠 background 语义色:light 10% / dark 35%,无 blur | `renderer.rs::desktop_wallpaper_scrim`(纯色壁纸分支不叠;vue 轨无壁纸层——P503-2) |
 | 窗口 chrome | TITLEBAR_H=36、radius=16、柔影 (0,8)/32px(light 12%/dark 40%,focused 加深)、focused 描边 1px accent/60、macOS 三色圆点 12px(red=Close;yellow/green=视觉位,P503-1)、最大化(窗矩形 ≥98% 桌面几何判定)去圆角去影 | `ui/iced/virtual_window.rs`(native 槽位换算同源常量自动跟随)+ `auto-man/assets/wm/VirtualWindow.vue` |
-| launcher 品牌色 | 每 app 6 位 hex → 图标底块 `bg-[<color>21]`(13% alpha 8 位 hex)+ 字形 `text-[<color>]`;宿主注入 `apps_colors` 平行列表(`renderer.rs::launcher_brand_color`:已知映射 + id 哈希粉彩兜底) | `examples/ui/028-launcher/src/front/app.at` |
+| launcher 品牌色 | 每 app 6 位 hex → 图标底块 `bg-[<color>21]`(13% alpha 8 位 hex)+ 字形 `text-[<color>]`;宿主注入 `apps_colors` 平行列表(`renderer.rs::launcher_brand_color`:已知映射 + id 哈希粉彩兜底) | `examples/ui/028-launcher/src/front/app.at`（PLAN-590 后迁 `auto-os/apps/028-launcher/`） |
 
 ## 引擎能力(本计划补齐)
 
