@@ -1,0 +1,23 @@
+/// VM declarations for the AutoTerm engine bridge (auto-os Plan 013).
+/// Implementations live in vm/ffi/term_engine.rs (libloading →
+/// autoterm_core.dll, in-process 003 §5 contract).
+#[vm]
+fn engine_spawn(cols int, rows int) int
+
+#[vm]
+fn engine_write_line(handle int, line str) void
+
+#[vm]
+fn engine_rows(handle int) []str
+
+#[vm]
+fn engine_resize(handle int, cols int, rows int) void
+
+#[vm]
+fn engine_interrupt(handle int) int
+
+#[vm]
+fn engine_is_exited(handle int) bool
+
+#[vm]
+fn engine_free(handle int) void

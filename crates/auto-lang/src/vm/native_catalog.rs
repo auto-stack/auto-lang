@@ -446,6 +446,14 @@ macro_rules! for_each_native {
             (2940, NATIVE_RC_LIVE, shim_rc_live, "auto.rc.live"),
             (2941, NATIVE_RC_COUNT, shim_rc_count, "auto.rc.count"),
             (2942, NATIVE_RC_ASSERT_UNIQUE, shim_rc_assert_unique, "auto.rc.assert_unique"),
+            // === auto-os Plan 013 T2: AutoTerm 引擎桥(libloading → autoterm_core.dll)===
+            (2943, NATIVE_TERM_ENGINE_SPAWN, shim_term_spawn, "auto.term.engine_spawn"),
+            (2944, NATIVE_TERM_ENGINE_WRITE_LINE, shim_term_write_line, "auto.term.engine_write_line"),
+            (2945, NATIVE_TERM_ENGINE_ROWS, shim_term_rows, "auto.term.engine_rows"),
+            (2946, NATIVE_TERM_ENGINE_RESIZE, shim_term_resize, "auto.term.engine_resize"),
+            (2947, NATIVE_TERM_ENGINE_INTERRUPT, shim_term_interrupt, "auto.term.engine_interrupt"),
+            (2948, NATIVE_TERM_ENGINE_IS_EXITED, shim_term_is_exited, "auto.term.engine_is_exited"),
+            (2949, NATIVE_TERM_ENGINE_FREE, shim_term_free, "auto.term.engine_free"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -959,6 +967,14 @@ macro_rules! for_each_bigvm_native {
             ("auto.rc.live", 2940, Int),
             ("auto.rc.count", 2941, Int),
             ("auto.rc.assert_unique", 2942, Void),
+            // === auto-os Plan 013 T2: AutoTerm 引擎桥(返回类型面)===
+            ("auto.term.engine_spawn", 2943, Int),
+            ("auto.term.engine_write_line", 2944, Void),
+            ("auto.term.engine_rows", 2945, List),
+            ("auto.term.engine_resize", 2946, Void),
+            ("auto.term.engine_interrupt", 2947, Int),
+            ("auto.term.engine_is_exited", 2948, Bool),
+            ("auto.term.engine_free", 2949, Void),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2478,6 +2494,14 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.rc.live", 2940),
     ("auto.rc.count", 2941),
     ("auto.rc.assert_unique", 2942),
+    // === auto-os Plan 013 T2: AutoTerm 引擎桥(ID 面)===
+    ("auto.term.engine_spawn", 2943),
+    ("auto.term.engine_write_line", 2944),
+    ("auto.term.engine_rows", 2945),
+    ("auto.term.engine_resize", 2946),
+    ("auto.term.engine_interrupt", 2947),
+    ("auto.term.engine_is_exited", 2948),
+    ("auto.term.engine_free", 2949),
 
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),

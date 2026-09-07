@@ -7831,6 +7831,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
         natives.register_shim_by_name("auto.image.close_session", shim_image_close_session);
         natives.register_shim_by_name("auto.image.session_stats", shim_image_session_stats);
     }
+    // auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*)注册走 native_catalog
+    // 静态表(ID 2943-2949,register_std_shims 自动绑 shim + canonical 名,
+    // PLAN-057 同款"codegen 任意时刻可解析"口径)——shim 实现在
+    // vm/ffi/term_engine.rs,此处不再手工登记。
     natives.register_shim_by_name("auto.http.response", shim_http_response);
     natives.register_shim_by_name("auto.http.response_status", shim_http_response_status);
     natives.register_shim_by_name("auto.http.response_header", shim_http_response_header);
@@ -10260,5 +10264,90 @@ mod plan536_date_format_tests {
                 "sec={s}"
             );
         }
+    }
+
+    // ── auto-os Plan 013 T2:AutoTerm 引擎 VM 绑定(auto.term.*)──────
+    //
+    // 语义对齐 auto-term at-gen src/engine.rs(句柄表 + 快照表 +
+    // engine_rows 内联 feed 全量重采);DLL 解析顺序 env → 宿主同目录
+    // (003 §5)→ exe 祖先 target/{debug,release}。DLL 缺席时 spawn
+    // 返 0(契约内失败),其余按句柄无效静默 no-op——宿主桌面不因
+    // 部署缺件崩 VM。
+
+    /// 定位 auto-term 构建产物(manifest 祖先链上的 auto-term 仓:
+    /// 组 worktree 与主检出两形态都覆盖;缺席 = 显式 skip,沿
+    /// ash_integration 惯例)。
+    fn autoterm_dll_for_test() -> Option<std::path::PathBuf> {
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest
+            .ancestors()
+            .map(|a| a.join("auto-term").join("target").join("debug").join("autoterm_core.dll"))
+            .find(|p| p.is_file())
+    }
+
+    /// 注册 → VM 内调用 → echo 往返:spawn 得非零句柄、write_line 后
+    /// rows() 快照里能收割到回显、is_exited 为假、free 收尾。
+    #[test]
+    fn term_engine_shims_echo_roundtrip() {
+        let Some(dll) = autoterm_dll_for_test() else {
+            eprintln!("[term-engine] autoterm_core.dll not found — skipping (build auto-term first)");
+            return;
+        };
+        std::env::set_var("AUTOTERM_ENGINE_DLL", &dll);
+        let (_r, out) = crate::run_with_capture(r#"
+use auto.term: engine_spawn, engine_write_line, engine_rows, engine_resize, engine_interrupt, engine_is_exited, engine_free
+fn find_marker(handle int) int {
+    var lines = Term.engine_rows(handle)
+    var count = lines.len()
+    var j = 0
+    loop {
+        if j >= count {
+            break
+        }
+        if lines.get(j).find("autoterm_vm_ok") >= 0 {
+            break
+        }
+        j = j + 1
+    }
+    return j
+}
+
+fn main() {
+    var h = Term.engine_spawn(80, 24)
+    print(h > 0)
+    Term.engine_write_line(h, "echo autoterm_vm_ok")
+    var tries = 0
+    var found = 999
+    loop {
+        if tries >= 30 {
+            break
+        }
+        found = find_marker(h)
+        if found < 24 {
+            break
+        }
+        Time.sleep_ms(100)
+        tries = tries + 1
+    }
+    print(found)
+    Term.engine_resize(h, 100, 30)
+    var lines2 = Term.engine_rows(h)
+    print(lines2.len())
+    print(Term.engine_interrupt(h) >= 0)
+    print(Term.engine_is_exited(h) == false)
+    Term.engine_free(h)
+    print("done")
+}
+"#)
+        .expect("term engine script must run");
+        let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 6, "got {lines:?}");
+        assert_eq!(lines[0], "true", "spawn non-zero");
+        let found: i32 = lines[1].parse().unwrap();
+        assert!(found >= 0 && found < 24, "echo marker found at row {found} of 24");
+        assert_eq!(lines[2], "30", "resize to 100x30");
+        assert_eq!(lines[3], "true", "interrupt ok");
+        assert_eq!(lines[4], "true", "not exited");
+        assert_eq!(lines[5], "done", "script completed");
     }
 }
