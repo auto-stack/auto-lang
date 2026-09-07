@@ -34,6 +34,9 @@ pub mod selectable_text;
 // assertions (feature `iced-layout-tests`; see layout_tests.rs header).
 #[cfg(all(test, feature = "iced-layout-tests"))]
 mod layout_tests;
+// PLAN-010 T8: terminal 组件像素级 headless 自动化(同款 iced_test 管线)。
+#[cfg(all(test, feature = "iced-layout-tests"))]
+mod terminal_pixel_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
 pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_with_title, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_iced_pixels, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text};
