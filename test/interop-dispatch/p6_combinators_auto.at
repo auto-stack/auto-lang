@@ -1,0 +1,24 @@
+// P-555-06 (T06): 组合子 Auto 值通道——list/str/map
+fn main() {
+    var xs = [10, 20, 30]
+    print(obj_len(xs))
+    print(obj_get(xs, 1))
+    obj_set(xs, 1, 99)
+    print(obj_get(xs, 1))
+    print(obj_get(xs, -1))
+    var s = "auto"
+    print(obj_len(s))
+    print(obj_type_name(xs))
+    print(obj_type_name(s))
+    print(obj_type_name(42))
+    var m = {"a": 1, "b": 2}
+    print(obj_len(m))
+    print(obj_get(m, "a"))
+    obj_set(m, "c", 3)
+    print(obj_len(m))
+    var total = 0
+    for x in obj_iter(xs) {
+        total = total + x
+    }
+    print(total)
+}

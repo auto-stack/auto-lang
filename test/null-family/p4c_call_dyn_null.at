@@ -1,0 +1,7 @@
+// P-550-04c: 动态值调用 null callee（对象字段/容器元素中转）
+fn main() {
+    var m = {"f": null}
+    var h = m["f"]
+    print("got")
+    print(h(1))
+}

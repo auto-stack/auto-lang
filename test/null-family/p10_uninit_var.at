@@ -1,0 +1,6 @@
+// P-550-10 (T02): 未初始化 var x 盘存
+fn main() {
+    var x
+    print("declared")
+    print(x)
+}

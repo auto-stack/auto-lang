@@ -1,0 +1,18 @@
+// P-555-07 (T06): 组合子 py 句柄通道——同一函数名走 ForeignObject 协议
+use.py torch: arange
+fn main() {
+    var t = arange(6)
+    print(obj_len(t))
+    print(obj_type_name(t))
+    var s = obj_call(t, "sum")
+    print(py_float(s))
+    var two = obj_get(t, "T")
+    print(obj_len(two))
+    obj_set(t, "my_note", "hi")
+    print(obj_len(obj_get(t, "my_note")))
+    var total = 0
+    var it = obj_iter(t)
+    var v = py_next(it)
+    total = total + py_float(v)
+    print(total)
+}

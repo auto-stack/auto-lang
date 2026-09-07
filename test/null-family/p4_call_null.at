@@ -1,0 +1,5 @@
+// P-550-04: null(x)（CALL callee 为 null）
+fn main() {
+    var f = null
+    print(f(1))
+}

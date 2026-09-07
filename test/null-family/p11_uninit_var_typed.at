@@ -1,0 +1,6 @@
+// P-550-11 (T02): 带类型注解的未初始化 var x: int
+fn main() {
+    var x: int
+    print("declared")
+    print(x)
+}

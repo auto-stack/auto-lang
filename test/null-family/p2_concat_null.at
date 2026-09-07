@@ -1,0 +1,6 @@
+// P-550-02: null 参与字符串拼接（539 探针 2 复跑）
+fn main() {
+    var s = "a"
+    var y = null
+    print((s + y).to(str))
+}

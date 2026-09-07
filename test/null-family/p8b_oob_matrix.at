@@ -1,0 +1,13 @@
+// P-550-08b (T05): 越界矩阵——负索引合法/越界、try-catch、str 越界（非翻转面）
+fn main() {
+    var a = [1, 2, 3]
+    print(a[-1])
+    print(a[-3])
+    try {
+        print(a[-5])
+    } catch e {
+        print(e)
+    }
+    var s = "abc"
+    print(s[1])
+}

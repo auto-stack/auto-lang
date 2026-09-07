@@ -65,7 +65,7 @@ AutoVM 对 null 家族（`null`/`nil`/`None` 三拼写）在算术、拼接、�
 
 - Rust 单测：`engine.rs tests_null_guards`（13 例——消息格式逐字断言 +
   合法路径回归，含合法 i32(-1)/i32::MIN+1 算术零误伤钉）。
-- 探针语料：`scratch/p550/p1..p16`（539 双探针复跑 + 六新探针 + 门控矩阵）。
+- 探针语料：`test/null-family/p1..p16`（539 双探针复跑 + 六新探针 + 门控矩阵）。
 - 门禁：`cargo tv`（3585）+ `cargo tt`（3772）+ py 五套件三方 64/64。
 
 ## 已知边界（债务在案 P550-D1..D7）

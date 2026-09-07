@@ -1,0 +1,4 @@
+fn main() {
+    var xs = [1, 2, 3]
+    print(obj_len(xs))
+}

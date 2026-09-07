@@ -1,0 +1,6 @@
+// P-550-08: arr[999]（GET_ELEM 越界哨兵）
+fn main() {
+    var a = [1, 2, 3]
+    print(a[999])
+    print("done")
+}

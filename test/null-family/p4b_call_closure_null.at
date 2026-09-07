@@ -1,0 +1,7 @@
+// P-550-04b: 闭包变量中转调用（绕过静态符号解析的 callee 路径）
+fn main() {
+    var f = fn(x: int) -> int { x + 1 }
+    print(f(1))
+    var g = f
+    print(g(2))
+}

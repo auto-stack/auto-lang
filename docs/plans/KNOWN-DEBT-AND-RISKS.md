@@ -26,7 +26,7 @@
 
 ## 🟡 一致性遗漏（功能正确但代码不干净）
 
-| 526 | 崩溃观察降档：未能复现（疑外部击杀，049 同族；2026-09-06 PLAN-575 归因） | 任务栏铃铛二次开合通知中心 → 桌面进程静默退出 code 1（原复现 2/2，2026-09-03/04；第二例即验收通道 handler 双调）。PLAN-575 独占环境归因未复现：退出审计三挂点（shim_process_exit/panic hook/main_return，env `AUTO_DESKTOP_EXIT_LOG`，零行为变更）在案前提下 N=20 轮二次开合（MCP bus 注入 notes_toggle×2，与真实铃铛点击同一 records→DesktopCommand::NotesToggle→toggle_notification_center 路径；逐轮 stderr handler 证据在册）20/20 进程存活零退出、审计文件零记录——该负载下"开关路径内源性退出"（Process.exit/panic/正常返回）被证伪。按 535 D 归因备注（本机并行会话 taskkill /F 强杀 ui_desktop：退出码恰 1、无输出，与静默退出同 signature），与 PLAN-049（auto-down）外部击杀定因同族。降档出口（575 待澄清①计划默认接受）：退出审计机制常驻，一轮真实复现即重启归因——审计有记录=产品缺陷分支（site 直接指认），审计零记录+进程死亡=外部击杀实锤。 | renderer.rs toggle_notification_center；stdlib.rs exit_audit（PLAN-575 T1）；scratch/p575/ledger.jsonl（575 T3）；535 D 项；049 定因记录 |
+| 526 | 崩溃观察降档：未能复现（疑外部击杀，049 同族；2026-09-06 PLAN-575 归因） | 任务栏铃铛二次开合通知中心 → 桌面进程静默退出 code 1（原复现 2/2，2026-09-03/04；第二例即验收通道 handler 双调）。PLAN-575 独占环境归因未复现：退出审计三挂点（shim_process_exit/panic hook/main_return，env `AUTO_DESKTOP_EXIT_LOG`，零行为变更）在案前提下 N=20 轮二次开合（MCP bus 注入 notes_toggle×2，与真实铃铛点击同一 records→DesktopCommand::NotesToggle→toggle_notification_center 路径；逐轮 stderr handler 证据在册）20/20 进程存活零退出、审计文件零记录——该负载下"开关路径内源性退出"（Process.exit/panic/正常返回）被证伪。按 535 D 归因备注（本机并行会话 taskkill /F 强杀 ui_desktop：退出码恰 1、无输出，与静默退出同 signature），与 PLAN-049（auto-down）外部击杀定因同族。降档出口（575 待澄清①计划默认接受）：退出审计机制常驻，一轮真实复现即重启归因——审计有记录=产品缺陷分支（site 直接指认），审计零记录+进程死亡=外部击杀实锤。 | renderer.rs toggle_notification_center；stdlib.rs exit_audit（PLAN-575 T1）；docs/reports/p575-exit-audit-ledger.jsonl（575 T3）；535 D 项；049 定因记录 |
 | 576 | v1 限度 | __emit 桥（子件体内引号 emit 派发路由）单 pending 槽——同 handler 多次 emit 末次生效；多实参只取首个位置实参（载荷单值）。computed 与 state 字段同名时 state 优先。 | `handler_codegen.rs` synthesize_emit_bridge_fn/emit_bridge_fn_name 注记；计划 576 执行注记 5 |
 | 576 | 相邻债（PLAN-051 C2② 遗留，576 复审登记） | 子件体内 `on_*` 回调剥离回放实参只支持单段 state 路径与字面量——局部变量实参无从快照（`."msg"(v)` 引号形态已由 576 T4 接通派发，`on_` 前缀裸形态仍走 C2② 文本回放）。 | `child_emit.rs` 头注 v1 限度；`handler_codegen.rs` strip_callback_calls/eval_stripped_arg（dynamic.rs） |
 | 576 | 绕道退役跟进（用户已签待澄清#2 默认） | renderer PLAN-043 T6 直写快道 + frac +1e-3（renderer.rs/aura_view_builder.rs T9）与 auto-down demo custom_scrollbar is_vm 双轨/thumb 内联——引擎侧前提已由 576 G1-G4 消除，物理退役触及 auto-down demo 实机验证，随滚动同步契约计划另行立项。 | `renderer.rs` PLAN-043 T6 块；`aura_view_builder.rs` PLAN-043 T9；auto-down demo custom_scrollbar.at |
@@ -83,7 +83,7 @@
 ## 🟢 已知限制（设计决策，非 bug）
 
 | 526 | 视觉 | window_thumbnail 快照懒捕获前显示空（fallback icon 兜底；命中预抓已在 summon 链）| 526 T18 记录（KNOWN-DEBT 候选） |
-| 572 | ✅已结算(Plan 574,2026-09-06): Windows 环境限制 aavm 进程内语料测试栈溢出族(12) | 裸 `cargo taa` 12 测试 STATUS_STACK_OVERFLOW——进程内双层解释(宿主 VM 跑 aavm.at+lib)栈需求越过 `run_autovm_capture` **硬编码 4MB 执行线程**(lib.rs:451;RUST_MIN_STACK 护栏被显式 stack_size 绕过——Plan 423 意图失效点;574 T5 探针:4MB 爆/5MB 过/8MB 2.7s,递归有限,与用例规模无关,基点同阈值);非 572 回归(两态失败集 13/13 逐名一致)。**〔2026-09-06 用户裁定→Plan 574 落地〕根因=avm+aavm/avm+aa2r 双重解释器路径非真实需求(2×2 对称性产物;真实自举=a2r 转译+编译+运行)。处置=12 测试 `#[cfg_attr(windows, ignore)]`(Windows 关闭,Linux/CI 保留全量);Windows 裸 taa 失败集 13→1(仅 charts_gallery 564-Q6 邻接);规约注记=aavm/project.md 验证矩阵节+AGENTS AAVM 档;对账表=scratch/p574/coverage-map.md。** | `scratch/p574/coverage-map.md`;572 待澄清②;Plan 574 |
+| 572 | ✅已结算(Plan 574,2026-09-06): Windows 环境限制 aavm 进程内语料测试栈溢出族(12) | 裸 `cargo taa` 12 测试 STATUS_STACK_OVERFLOW——进程内双层解释(宿主 VM 跑 aavm.at+lib)栈需求越过 `run_autovm_capture` **硬编码 4MB 执行线程**(lib.rs:451;RUST_MIN_STACK 护栏被显式 stack_size 绕过——Plan 423 意图失效点;574 T5 探针:4MB 爆/5MB 过/8MB 2.7s,递归有限,与用例规模无关,基点同阈值);非 572 回归(两态失败集 13/13 逐名一致)。**〔2026-09-06 用户裁定→Plan 574 落地〕根因=avm+aavm/avm+aa2r 双重解释器路径非真实需求(2×2 对称性产物;真实自举=a2r 转译+编译+运行)。处置=12 测试 `#[cfg_attr(windows, ignore)]`(Windows 关闭,Linux/CI 保留全量);Windows 裸 taa 失败集 13→1(仅 charts_gallery 564-Q6 邻接);规约注记=aavm/project.md 验证矩阵节+AGENTS AAVM 档;对账表=docs/reports/p574-coverage-map.md。** | `docs/reports/p574-coverage-map.md`;572 待澄清②;Plan 574 |
 | 572 | gen2 产品形态: exe² 构建输入不含 aavm.at | P532 步骤 9 的 exe²=lib 七文件+harness main(镜像⑤腿 exe¹ 形态)——aavm.at(全部内容即 CLI main)不入构建输入,否则与 harness main 重复(E0428);aavm.at 入口面由 aavm_at_mode 测试(531 形态,宿主)覆盖,exe² 的 --trans 固定点用同一 lib 拼合源(自再现闭环)。若未来需要「含 aavm.at 的 form-B exe²」(其 main 即产品 main,无 --trans),形态已验证可另立。 | `scripts/aavm_native_gen_check.sh` P572 T5b 注释;P532 步骤 9 回执 |
 | 526 | 视觉 | Popover 首次打开横向锚点偏左（任务栏菜单/icon 菜单同族；功能与消失正常，497 hover 缩略同族先例）| 526 波间回归记录（KNOWN-DEBT 候选） |
 | 540 | 兼容: 旧 storage 配置键只读回退保留一个版本 | 桌面配置单源迁至 `~/.config/autoos/apps/desktop/config.at`（8 键：dock.position/enabled/pinned、desktop.wallpaper/wallpapers_dir、appearance.theme、desktop.transparency、notes.enabled），boot 一次性迁移后旧键**不再读不再写但未删除**——按 D4 定案保留一个版本防回滚双源，下一版本随清理 plan 删键（届时旧版桌面回滚将丢设置,属预期）。 | `ui/desktop_config.rs` LEGACY_STORAGE_KEYS + `docs/plans/540-desktop-settings-osconfig-unify.md` D4 |
@@ -763,8 +763,8 @@
    Bina（→format! String）缺 .as_str()；d) Plan 376 StrSlice 误否决（仅
    str 参数应豁免）；e) 未完：`p.decl_lookup(name)` 位——另一条实参发射环
    （method_spec_flags 环，:8788+）未覆盖同款 str 强转。补丁（158 行，含
-   a–d 全部修复）存档 `scratch/p514_w3_maina2r_methodfixes.patch`；翻转
-   脚本存档 `scratch/p514_p_methodize.py`（类型体方法+全库 regex 翻转+
+   a–d 全部修复）存档 `docs/reports/p514-maina2r-methodfixes.patch`；翻转
+   脚本存档 `docs/reports/p514-p-methodize.py`（类型体方法+全库 regex 翻转+
    语句位 self. 约定需补入脚本）。W3 重启清单：套 patch→补 e) →复跑本条
    五级联验证序列（cc 编译红逐位消）→W3-12 塔顶样板验证即通。
 
@@ -886,7 +886,7 @@
 > ③ Plan 442 观察期 2026-09-03 到期——✅ 已执行（2026-09-03 当日
 > /auto-plan:review 通过：到期日实跑 PARITY_TARGET=vm parity 6/6 绿、
 > 无回滚证据，status → reviewed 待 merge 归档；债务入本簿 P442 小节）；
-> ④ `scratch/schema_drift_audit.py` 为 schema_drift 门禁脚本唯一副本（门禁
+> ④ `scripts/schema_drift_audit.py` 为 schema_drift 门禁脚本唯一副本（门禁
 > 引入 `78a9f138c`，检查已闭合在 cargo t 内）——是否 promote 至 `scripts/`
 > 正式化**候裁定**（Plan 513 待澄清②，复审落格；默认不动）。
 
@@ -1612,7 +1612,7 @@ press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划�
 （`filterDemosBy`/`getDemoTitle`/`getDemoDesc` 等 8 件）全部是 TS extern fn
 （`src/front/utils/demos.ts`），VM/iced 端无从执行——`filteredDemos` 恒空，
 侧栏列表与右栏标题/描述在 VM 上为空（Plan 573 T3 实证，master 基线同败，
-对照证据 `scratch/p573/master-baseline/`）。549 落地时即如此的预存限制，
+对照证据 `docs/reports/p573-master-baseline/`）。549 落地时即如此的预存限制，
 非 573 迁移回归。修复方向（另立小计划）：registry 元数据迁回 .at 静态表
 （或 VM 侧 extern fn 桥），迁回后 573 待澄清事项②的 menu_button for 内
 active/onclick VM 实证随之可补。

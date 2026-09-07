@@ -1,0 +1,18 @@
+// P-550-06b (T06): to(int)/to(float) null 翻案 + 合法转换回归
+fn main() {
+    var x = null
+    try {
+        print(x.to(int))
+    } catch e {
+        print(e)
+    }
+    try {
+        print(x.to(float))
+    } catch e {
+        print(e)
+    }
+    print("42".to(int) + 1)
+    print("1.5".to(float) + 0.5)
+    print(true.to(int))
+    print(3.to(str))
+}

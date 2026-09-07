@@ -1,0 +1,11 @@
+// P-550-09: try-catch 基线（现状 null+1 不抛错 → catch 不触发）
+fn main() {
+    try {
+        var x = null
+        print((x + 1).to(str))
+        print("no-throw")
+    } catch e {
+        print("caught")
+        print(e)
+    }
+}

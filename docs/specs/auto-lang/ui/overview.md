@@ -89,7 +89,7 @@ scaffold 资产的防漂移测试）+ aura_view_builder 全族构建臂（容器
 aliases/backends.iced 四表同步（baseline +52/−13，nav-item 先例）。子集外
 （rail/trigger/input/skeleton、collapsible=icon 轨道、side 放置）按设计 §3.3
 不做；widgets-gallery sidebar 页 VM 实跑与 Vue 端结构等价对拍证据
-`scratch/p561/`。
+`docs/reports/p561-sidebar-contract-evidence/`。
 
 **slot 替换（plan-476 落地）**：VM 轨 widget 插座/填充与 vue 轨语义对齐——调用位
 `slot(name:X){..}`/裸子节点渲染到子 widget outlet，父作用域求值+父事件路由+逐帧重求值；

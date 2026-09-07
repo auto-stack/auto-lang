@@ -1,0 +1,8 @@
+// P-550-05: for-in 迭代源为 null
+fn main() {
+    var xs = null
+    for x in xs {
+        print(x)
+    }
+    print("done")
+}

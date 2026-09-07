@@ -1,0 +1,7 @@
+// P-550-12b (T09): nil deprecated 警告 + 语义不变
+fn main() {
+    var x = nil
+    var y = nil
+    print(x == null)
+    print(x != y)
+}

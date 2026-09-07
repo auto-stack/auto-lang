@@ -1,0 +1,5 @@
+// P-550-01: null 参与算术（539 探针 1 复跑）
+fn main() {
+    var x = null
+    print((x + 1).to(str))
+}

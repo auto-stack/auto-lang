@@ -1,0 +1,10 @@
+// P-555-05 (T04): py 三桥端到端——setattr/len/type_name
+use.py torch: arange
+fn main() {
+    var t = arange(6)
+    print(py_len(t))
+    print(py_type_name(t))
+    py_setattr(t, "my_note", "hi")
+    print(py_len(py_getattr(t, "my_note")))
+    print(py_type_name(py_getattr(t, "my_note")))
+}

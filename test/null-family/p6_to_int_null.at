@@ -1,0 +1,5 @@
+// P-550-06: null.to(int)（TYPE_TO_I32 null 臂）
+fn main() {
+    var x = null
+    print(x.to(int))
+}

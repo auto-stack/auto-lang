@@ -1,0 +1,8 @@
+// P-550-13 (T09 基线参考): None/Some Option 构造器现状
+fn main() {
+    var o = None
+    print(o == null)
+    var s = Some(1)
+    print(s == null)
+    print(o == None)
+}

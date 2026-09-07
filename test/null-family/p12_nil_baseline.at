@@ -1,0 +1,7 @@
+// P-550-12 (T09 基线参考): nil 现状语义（算术垃圾 + null-family 判等）
+fn main() {
+    var x = nil
+    print((x + 1).to(str))
+    print(x == null)
+    print(x != null)
+}

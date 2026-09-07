@@ -1,0 +1,5 @@
+// P-550-03: null[0]（GET_ELEM 索引对象为 null）
+fn main() {
+    var x = null
+    print(x[0])
+}

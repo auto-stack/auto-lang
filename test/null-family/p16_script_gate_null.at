@@ -1,0 +1,5 @@
+// P-550-16 (T10): 无 pragma + 裸 null 字面量 → 门控警告
+fn main() {
+    var x = null
+    print(x == null)
+}

@@ -63,7 +63,7 @@ engine 热臂**（§10 裁决"架构"行：组合子分派，s2s 工具先行）
 - 单测：`tests_script_mode`（模式八格）、`tests_s2s`（改写器三件）、
   python 档 `test_w1_dispatch_bridges_registered` /
   `test_w1_foreign_object_protocol_adapter`。
-- 探针：`scratch/p555/p5-p7`（三桥端到端 / 组合子 Auto 全矩阵 /
+- 探针：`test/interop-dispatch/p5-p7`（三桥端到端 / 组合子 Auto 全矩阵 /
   组合子 py 句柄通道）。
 - 门禁基线：py 五套件三方 64/64 零回归（零行为变更红线）。
 

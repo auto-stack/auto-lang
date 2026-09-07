@@ -1,0 +1,5 @@
+// P-550-14 (T10): 无 pragma + use.py → 门控警告
+use.py math: sqrt
+fn main() {
+    print(sqrt(4.0))
+}

@@ -71,7 +71,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 
 **概念**："改 VM/编译器后的回归"（`cargo tv`，纯 .at 语料 golden）与"AAVM 自举展示"（`cargo taa`）是两个独立概念。AAVM（auto/lib/*.at 自举 + a2r.at 发射对齐）目前无实用面，平时改 VM/编译器**不需要**测 aavm（守护=CI `vm-files-ci.yml` push/PR + `cargo ta` 全量档 + fold 前裸 `taa`）。
 
-**双重解释器路径裁定（2026-09-06 用户，Plan 574 落地）**：avm+aavm / avm+aa2r 进程内双重解释路径（宿主 VM `run_with_capture` 拼 470KB lib 形态）**非真实需求**（2×2 对称性产物）；其进程内执行栈需求随 lib 规模增长，已越过 `run_autovm_capture` 硬编码 4MB 执行线程栈（探针定量 4MB 爆/5MB 过，RUST_MIN_STACK 护栏被显式 stack_size 绕过），与用例规模无关。12 个该路径语料测试已 `#[cfg_attr(windows, ignore)]`（Linux/CI 保留全量）。**新计划/新能力验收避免该路径重型化**——重型对拍一律走转译+编译+运行形态（⑤腿 compile corpus / at_mode / gen2 管道）；规约注记见 `docs/specs/aavm/project.md` 验证矩阵节，对账表 `scratch/p574/coverage-map.md`。
+**双重解释器路径裁定（2026-09-06 用户，Plan 574 落地）**：avm+aavm / avm+aa2r 进程内双重解释路径（宿主 VM `run_with_capture` 拼 470KB lib 形态）**非真实需求**（2×2 对称性产物）；其进程内执行栈需求随 lib 规模增长，已越过 `run_autovm_capture` 硬编码 4MB 执行线程栈（探针定量 4MB 爆/5MB 过，RUST_MIN_STACK 护栏被显式 stack_size 绕过），与用例规模无关。12 个该路径语料测试已 `#[cfg_attr(windows, ignore)]`（Linux/CI 保留全量）。**新计划/新能力验收避免该路径重型化**——重型对拍一律走转译+编译+运行形态（⑤腿 compile corpus / at_mode / gen2 管道）；规约注记见 `docs/specs/aavm/project.md` 验证矩阵节，对账表 `docs/reports/p574-coverage-map.md`。
 
 **触发条件（只有这些路径的改动才跑 `taa`）**：`auto/lib/*.at`、`test/vm/aavm2/**`、`parity/**`、`crates/auto-lang/src/tests/aavm2_*.rs` / `aavm_runner_tests.rs`、`lib.rs` 的 `aavm2_lib_source`/`AUTO_LIB_FILES*`。其余改动零触发。
 

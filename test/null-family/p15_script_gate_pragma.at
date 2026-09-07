@@ -1,0 +1,8 @@
+// P-550-15 (T10): #[script] pragma 豁免（use.py + null 双信号均不警告）
+#[script]
+use.py math: sqrt
+fn main() {
+    var x = null
+    print(x == null)
+    print(sqrt(4.0))
+}

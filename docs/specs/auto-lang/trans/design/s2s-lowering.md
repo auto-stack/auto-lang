@@ -64,7 +64,7 @@ AutoScript（`.as`）糖源 → 正常模式桥源的 source-to-source 改写：
 - `tests_s2s` 6 例：identity 幂等 / 规则注入即生效 / 非法源拒绝 /
   A/B 族 source-to-source / B5-B6-A5-D7 / **五套件语料 round-trip**
   （parse→emit→re-parse→emit 逐文件幂等，19 套件 .as 载体）。
-- 探针 `scratch/p560/p01-p14`；三方门禁=parity runner 双扩展名 glob。
+- 探针 `test/s2s-lowering/p01-p14`；三方门禁=parity runner 双扩展名 glob。
 
 ## Plan 567 增量契约
 

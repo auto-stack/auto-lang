@@ -1,0 +1,12 @@
+// P-560-10 (T07): @ 与 ** 糖端到端（.at 直跑即可——解析层糖）
+use.py torch: tensor
+fn main() {
+    print(py_float(2 ** 10))
+    var a = tensor([[1, 2], [3, 4]])
+    var b = tensor([[5, 6], [7, 8]])
+    var m = a @ b
+    print(py_float(py_call(m, "sum")))
+    var t = tensor([2.0])
+    var p = t ** 3
+    print(py_float(py_call(p, "sum")))
+}

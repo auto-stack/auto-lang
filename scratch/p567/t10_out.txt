@@ -1,6 +1,0 @@
-----------------------
-Running Auto scratch/p567/t10_uncaught.as 
-----------------------
-Error:   × RuntimeError("PyException ValueError: invalid literal for int() with base
-  │ 10: 'abc'") at line 5 (ip=0x002a)
-

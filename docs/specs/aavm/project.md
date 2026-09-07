@@ -137,7 +137,7 @@ use 形态,行数协议 stdin,见 auto/lib/README.md);AA2R use 发射(g18)。
 > SEMANTICALLY IDENTICAL)=**aavm 编译面与宿主全等**;③**原生自编译
 > 代际**——exe¹=a2r(lib)原生二进制跑代表集 8/8==宿主;exe²=exe¹
 > --trans(lib)→cargo 构建,二代 8/8==一代+转译固定点 PASS(≥两代
-> 一致,自举闭合;判定表 scratch/p572/gen2/native_gen_table.md);
+> 一致,自举闭合;判定表 scripts/repro/p572/gen2/native_gen_table.md);
 > ④**AA2R 自译**——434 已备+572 根修后自转译(lib 470KB 61.3s 线性)
 > 与代际管道常态可用。aavm 正式转入"用塔"阶段。转译器家族(前置=塔顶稳定运行)/P525-1
 AST 根治(触发=写回范式再痛点)/生成器与 `??` VM 臂(按需;注意 `??`
@@ -208,7 +208,7 @@ VM 侧静默空输出观察项)/OOP 完整面(远期)/532 W0 硬闸可拆补缺�
 > Linux/CI 保留全量);**新计划/新能力验收避免该路径重型化**——重型
 > 对拍一律走②/⑤腿;上节能力同步规约的"VM 闸/corpus_a2r 闸"自 574
 > 起按此口径(Linux/CI 执行,Windows 本地跳过)。对账表:
-> `scratch/p574/coverage-map.md`。
+> `docs/reports/p574-coverage-map.md`。
 
 > **〔闸门 harness once-compiled,2026-09-07,Plan 565 L1〕** M1-M4 语料
 > 闸门(lex/parse/typeinfo/codegen dump)自 565 起走 `aavm2_corpus_runner`

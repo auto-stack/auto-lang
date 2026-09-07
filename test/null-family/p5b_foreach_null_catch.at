@@ -1,0 +1,13 @@
+// P-550-05b (T04 验证): for-in null 可 try-catch 捕获
+fn main() {
+    var xs = null
+    try {
+        for x in xs {
+            print(x)
+        }
+        print("no-throw")
+    } catch e {
+        print("caught")
+        print(e)
+    }
+}

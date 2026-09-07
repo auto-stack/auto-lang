@@ -1,0 +1,6 @@
+// P-550-07: print(null) 与 null.to(str)（print/TYPE_TO_STR null 形态）
+fn main() {
+    print(null)
+    var x = null
+    print(x.to(str))
+}
