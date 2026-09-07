@@ -8526,8 +8526,17 @@ let tabs_inner = View::Row {
         let mut lines: Vec<String> = Vec::new();
         if let Some(AuraPropValue::Expr(expr)) = props.get("lines") {
             if let Some(val) = self.resolve_expr_to_value(expr, bindings) {
-                let array = val.as_array();
-                for item in array.values.iter() {
+                // OS-013 T3:state 里的 list 存为 heap ListData id(Plan 390
+                // §15 H3b)或 VmRef——裸 as_array() 一概看不见(terminal 视口
+                // 空白)。经 bridge 物化(Index 臂同族:chart props/notes[.id]
+                // 先例),再逐元素取文本。
+                let items: Vec<Value> = match val {
+                    Value::Array(arr) => arr.values,
+                    Value::Int(id) if id >= 4_000_000 => self.bridge.index_list_all(id as usize),
+                    Value::VmRef(r) => self.bridge.index_list_all(r.id),
+                    _ => Vec::new(),
+                };
+                for item in items.iter() {
                     lines.push(item.as_str().to_owned());
                 }
             }

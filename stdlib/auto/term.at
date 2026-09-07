@@ -1,0 +1,14 @@
+/// AutoTerm engine bridge (auto-term PLAN-009/010, auto-os Plan 013).
+///
+/// In-process autoterm_core.dll FFI (003 §5 host-same-dir contract; runtime
+/// resolution: AUTOTERM_ENGINE_DLL env → host exe dir → target scan).
+/// Handles are opaque non-zero ints; `rows` snapshots the viewport with an
+/// inline feed (at-gen `src/engine.rs` semantics). DLL absent ⇒ spawn
+/// returns 0 (in-contract failure); other calls no-op on stale handles.
+pub fn engine_spawn(cols int, rows int) int;
+pub fn engine_write_line(handle int, line str) void;
+pub fn engine_rows(handle int) []str;
+pub fn engine_resize(handle int, cols int, rows int) void;
+pub fn engine_interrupt(handle int) int;
+pub fn engine_is_exited(handle int) bool;
+pub fn engine_free(handle int) void;

@@ -14,6 +14,11 @@ use crate::vm::autodown_natives::{
     shim_autodown_editor_text, shim_autodown_find_block, shim_autodown_insert_template,
     shim_autodown_insert_text, shim_autodown_parse, shim_autodown_serialize, shim_autodown_text,
 };
+// auto-os Plan 013 T2: AutoTerm 引擎桥 catalog shim(auto.term.*,ID 2943-2949)。
+use crate::vm::ffi::term_engine::{
+    shim_term_free, shim_term_interrupt, shim_term_is_exited, shim_term_resize, shim_term_rows,
+    shim_term_spawn, shim_term_write_line,
+};
 
 /// Decode a tagged string index from a NanoValue popped from the stack.
 #[inline]

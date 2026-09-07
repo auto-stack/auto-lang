@@ -6174,6 +6174,25 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             }
         }
 
+        // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
+        // (Component → into_iced)与检视占位,VM 动态应用经本转换落
+        // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
+        // menu 二消息经 from_dynamic 映射;行文本原样透传(数据已在
+        // convert_terminal 物化)。
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => {
+            AbstractView::Terminal {
+                key,
+                cols,
+                rows,
+                lines,
+                scroll_offset,
+                preedit,
+                on_select: on_select.map(|m| IcedMessage::from_dynamic(&m)),
+                on_menu: on_menu.map(|m| IcedMessage::from_dynamic(&m)),
+                style,
+            }
+        }
+
         // Plan 496 M5: MouseArea 必须显式臂——此前 VM 动态路径走 `_ => Empty`
         // 兜底(484 图表族经 Rust codegen 不经本转换,故未暴露)。桌面图标
         // 双击臂依赖本臂;enter/exit/double_click 三消息递归映射。

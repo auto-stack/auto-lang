@@ -41,6 +41,8 @@ pub mod dep_methods;
 pub mod rust_stdlib;
 pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
 pub mod websocket;   // Plan 350: WebSocket client
+// auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*,libloading → autoterm_core.dll)
+pub mod term_engine;
 // Plan 442 C2: axum → AutoVM serve adapter (Router/extractor marshalling)
 pub mod axum_adapter;
 // Plan 442 C2: musk backend extern response constructors (VM-side shims)
