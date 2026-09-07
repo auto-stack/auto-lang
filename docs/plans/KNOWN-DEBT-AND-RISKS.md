@@ -1720,6 +1720,8 @@ active/onclick VM 实证随之可补。
 
 > 本区为 Stage B（桌面域搬迁 auto-lang → auto-os）设计期锚定的前置债与指引，
 > 方案定案见 auto-os `docs/design/01-stage-b-desktop-migration.md`（§4/§7）。
+> **P-5 终核（2026-09-07，PLAN-590 本体批收口）：D1/D2/D3① 三项全 ✅ 在案，
+> P584 区结案**；D3②（JsonValue 元素 str 分派 None）维持另案非 P584 前置债。
 
 - **P584-D1 Stage B 硬前置①：rust-server 产物落点硬编码框架仓**：
   `crates/auto-man/src/rust_ui.rs:1979` `ensure_shared_workspace` 内部经
