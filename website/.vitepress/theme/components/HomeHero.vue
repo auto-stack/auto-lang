@@ -12,7 +12,38 @@
       </div>
       <h1 class="title">
         <span class="gradient-text">Auto</span>
-        <span class="subtitle">{{ title }}</span>
+        <span class="subtitle"
+          ><template v-for="(part, i) in titleParts" :key="i"
+            ><svg
+              v-if="i > 0"
+              class="title-x"
+              viewBox="0 0 24 24"
+              role="img"
+              aria-label="×"
+            >
+              <defs>
+                <linearGradient
+                  :id="`auto-hero-x-grad-${i}`"
+                  x1="0"
+                  y1="0"
+                  x2="24"
+                  y2="24"
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <stop stop-color="#6366f1" />
+                  <stop offset="1" stop-color="#a855f7" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M18 6 6 18M6 6l12 12"
+                :stroke="`url(#auto-hero-x-grad-${i})`"
+                stroke-width="4.4"
+                stroke-linecap="round"
+                fill="none"
+              /> </svg
+            >{{ part }}</template
+          ></span
+        >
       </h1>
       <p class="description" v-html="description" />
       <div class="actions">
@@ -44,6 +75,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { ArrowRight, Play } from 'lucide-vue-next'
 
 interface Props {
@@ -56,7 +88,7 @@ interface Props {
   secondaryLink?: string
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   badge: 'v0.3 is now available',
   title: ': Language for AI & OS',
   description: 'A modern programming language that transpiles to C, Rust, TypeScript, and Python. Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions.',
@@ -65,6 +97,9 @@ withDefaults(defineProps<Props>(), {
   secondaryText: 'Try Online',
   secondaryLink: '/playground',
 })
+
+// 标题里的 × 渲染为渐变描边 SVG 叉(参考 Python 页样式,主色调 Auto 紫)
+const titleParts = computed(() => props.title.split('×'))
 </script>
 
 <style scoped>
@@ -164,6 +199,14 @@ withDefaults(defineProps<Props>(), {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.title-x {
+  width: 0.72em;
+  height: 0.72em;
+  display: inline-block;
+  vertical-align: 0.02em;
+  margin: 0 0.08em;
 }
 
 .description {
