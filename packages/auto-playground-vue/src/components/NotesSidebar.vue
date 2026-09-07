@@ -12,24 +12,51 @@
       />
     </div>
     <ScrollArea class="nx-tree">
-      <section v-for="g in groups" :key="g.id" class="nx-group">
-        <button class="nx-group-head" @click="toggle(g.id)">
-          <ChevronRight :size="13" class="nx-chev" :class="{ open: isOpen(g.id) }" />
-          <span class="nx-group-title" :title="`${g.id} · ${g.source}`">{{ g.title }}</span>
-          <span class="nx-count">{{ g.notes.length }}</span>
+      <section v-for="sec in sections" :key="sec.id" class="nx-group">
+        <button class="nx-group-head" @click="toggleSection(sec.id)">
+          <ChevronRight :size="13" class="nx-chev" :class="{ open: isSectionOpen(sec.id) }" />
+          <span class="nx-group-title" :title="sec.title">{{ sec.title }}</span>
+          <span class="nx-count">{{ sec.noteCount }}</span>
         </button>
-        <ul v-show="isOpen(g.id)" class="nx-notes">
-          <li v-for="n in g.notes" :key="n.id">
-            <button
-              class="nx-note-btn"
-              :class="{ active: n.id === activeNoteId }"
-              :title="n.id"
-              @click="emit('select', n.id)"
-            >
-              {{ n.title }}
-            </button>
-          </li>
-        </ul>
+        <div v-show="isSectionOpen(sec.id)" class="nx-section-body">
+          <!-- Playground Demo：单组，笔记直接展开 -->
+          <template v-if="sec.id === 'demo'">
+            <ul class="nx-notes">
+              <li v-for="n in sec.groups[0]?.notes ?? []" :key="n.id">
+                <button
+                  class="nx-note-btn"
+                  :class="{ active: n.id === activeNoteId }"
+                  :title="n.id"
+                  @click="emit('select', n.id)"
+                >
+                  {{ n.title }}
+                </button>
+              </li>
+            </ul>
+          </template>
+          <!-- 书籍示例 / 测试用例：子目录（组）层 -->
+          <template v-else>
+            <section v-for="g in sec.groups" :key="g.id" class="nx-group nx-subgroup">
+              <button class="nx-group-head" @click="toggle(g.id)" :title="`${g.id} · ${g.source}`">
+                <ChevronRight :size="13" class="nx-chev" :class="{ open: isOpen(g.id) }" />
+                <span class="nx-group-title">{{ g.title }}</span>
+                <span class="nx-count">{{ g.notes.length }}</span>
+              </button>
+              <ul v-show="isOpen(g.id)" class="nx-notes nx-notes-sub">
+                <li v-for="n in g.notes" :key="n.id">
+                  <button
+                    class="nx-note-btn"
+                    :class="{ active: n.id === activeNoteId }"
+                    :title="n.id"
+                    @click="emit('select', n.id)"
+                  >
+                    {{ n.title }}
+                  </button>
+                </li>
+              </ul>
+            </section>
+          </template>
+        </div>
       </section>
       <p v-if="groups.length === 0" class="nx-empty">无匹配笔记</p>
     </ScrollArea>
@@ -37,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Search, ChevronRight } from 'lucide-vue-next'
 import ScrollArea from './ScrollArea.vue'
 import type { NoteGroup } from '../composables/useNotes'
@@ -59,31 +86,77 @@ const emit = defineEmits<{
   select: [noteId: string]
 }>()
 
-// 默认全折叠（VSCode 资源管理器惯例）；搜索态与活动笔记所在分组强制展开。
+// ── 三级归类（用户裁定，Plan 582 复审修正）：Demo / 书籍示例 / 测试用例 ──
+// manifest 保持平铺（groups+sourceType 单一事实源不变），归类是纯展示层推导。
+
+interface TreeSection {
+  id: 'demo' | 'books' | 'tests'
+  title: string
+  groups: NoteGroup[]
+  noteCount: number
+}
+
+const sections = computed<TreeSection[]>(() => {
+  const demo = props.groups.filter((g) => g.id === 'demo')
+  const books = props.groups.filter((g) => g.id.startsWith('book-'))
+  const tests = props.groups.filter((g) => g.id !== 'demo' && !g.id.startsWith('book-'))
+  const out: TreeSection[] = []
+  const push = (id: TreeSection['id'], title: string, gs: NoteGroup[]) => {
+    if (gs.length === 0) return
+    out.push({ id, title, groups: gs, noteCount: gs.reduce((s, g) => s + g.notes.length, 0) })
+  }
+  push('demo', 'Playground Demo', demo)
+  push('books', '书籍示例', books)
+  push('tests', '测试用例', tests)
+  return out
+})
+
+// 展开态：section（第一层）与组（第二层）各自独立；搜索态强制全开。
+const openSections = ref(new Set<string>())
 const openGroups = ref(new Set<string>())
 
+function isSectionOpen(id: string): boolean {
+  return props.searching || openSections.value.has(id)
+}
+
 function isOpen(id: string): boolean {
-  if (props.searching) return true
-  return openGroups.value.has(id)
+  return props.searching || openGroups.value.has(id)
+}
+
+function toggleIn(set: Set<string>, id: string) {
+  const next = new Set(set)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return next
+}
+
+function toggleSection(id: string) {
+  openSections.value = toggleIn(openSections.value, id)
 }
 
 function toggle(id: string) {
-  const next = new Set(openGroups.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  openGroups.value = next
+  openGroups.value = toggleIn(openGroups.value, id)
 }
 
-// 活动笔记变化时确保其所在分组展开并滚动进入视野。
+function sectionOfGroup(groupId: string): string | null {
+  if (groupId === 'demo') return 'demo'
+  if (groupId.startsWith('book-')) return 'books'
+  return groupId ? 'tests' : null
+}
+
+// 活动笔记变化：展开其所属 section + 组，并滚动进入视野。
 watch(
   () => props.activeNoteId,
   (id) => {
     if (!id) return
     const group = props.groups.find((g) => g.notes.some((n) => n.id === id))
-    if (group && !openGroups.value.has(group.id)) {
-      const next = new Set(openGroups.value)
-      next.add(group.id)
-      openGroups.value = next
+    if (!group) return
+    const sectionId = sectionOfGroup(group.id)
+    if (sectionId && !openSections.value.has(sectionId)) {
+      openSections.value = toggleIn(openSections.value, sectionId)
+    }
+    if (sectionId !== 'demo' && !openGroups.value.has(group.id)) {
+      openGroups.value = toggleIn(openGroups.value, group.id)
     }
     requestAnimationFrame(() => {
       document.querySelector('.nx-note-btn.active')?.scrollIntoView({ block: 'nearest' })
@@ -206,6 +279,19 @@ watch(
   list-style: none;
   margin: 0.1rem 0 0.25rem;
   padding: 0 0 0 1.1rem;
+}
+
+/* 第二层 section 体内的子目录缩进与笔记再缩进 */
+.nx-section-body {
+  padding-left: 0.35rem;
+}
+
+.nx-subgroup > .nx-group-head {
+  padding-left: 0.9rem;
+}
+
+.nx-notes-sub {
+  padding-left: 1.7rem;
 }
 
 .nx-note-btn {
