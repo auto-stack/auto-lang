@@ -3,9 +3,12 @@
 # This workflow builds the Auto Language documentation website
 # and deploys it to GitHub Pages.
 #
-# When examples/widgets-gallery/ changes, the widgets-gallery is rebuilt with
-# the Auto pipeline (auto build → dist) and synced into website/public/ui/gallery
-# so the site serves the fresh Auto-implemented gallery at /ui/gallery/.
+# PLAN-590 (Stage B P-5): widgets-gallery 物理迁 auto-os 顶层——画廊构建
+# 段改为 checkout auto-os(auto-stack/auto-os)并从 auto-os/widgets-gallery
+# 构建(auto CLI 仍由本仓框架构建)。画廊源变更在 auto-os 仓发生,本仓
+# push 触发器看不见——手动/workflow_dispatch 的 `gallery` 输入强制重建
+# 画廊快照;auto-os 侧自动触发(repository_dispatch)随 P-6/auto-os CI 立起。
+# 构建产物同步 website/public/ui/gallery,站点在 /ui/gallery/ 服务该快照。
 
 name: Deploy Website
 
@@ -15,9 +18,13 @@ on:
     paths:
       - 'website/**'
       - 'docs/**'
-      - 'examples/widgets-gallery/**'
       - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
+    inputs:
+      gallery:
+        description: 'Rebuild the widgets-gallery snapshot from auto-os'
+        type: boolean
+        default: false
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -48,50 +55,50 @@ jobs:
           # If the book repo is private, you may need a token:
           # token: ${{ secrets.BOOK_REPO_TOKEN }}
 
+      # PLAN-590: widgets-gallery 随 Stage B P-5 迁 auto-os 顶层。
+      - name: Checkout auto-os repo
+        uses: actions/checkout@v4
+        with:
+          repository: auto-stack/auto-os
+          path: auto-os
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Detect widgets-gallery changes
-        id: gallery
-        uses: dorny/paths-filter@v3
-        with:
-          working-directory: auto-lang
-          filters: |
-            widgets_gallery:
-              - 'examples/widgets-gallery/**'
-
-      # --- widgets-gallery build (only when the gallery source changed) ---
+      # --- widgets-gallery build (PLAN-590: source now in auto-os; manual
+      #     dispatch input forces rebuild — auto-os-side auto trigger lands
+      #     with P-6 / auto-os CI) ---
       - name: Setup Node
-        if: steps.gallery.outputs.widgets_gallery == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.gallery == true
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Setup pnpm
-        if: steps.gallery.outputs.widgets_gallery == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.gallery == true
         uses: pnpm/action-setup@v4
         with:
           version: '9'
 
       - name: Setup Rust
-        if: steps.gallery.outputs.widgets_gallery == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.gallery == true
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build auto CLI
-        if: steps.gallery.outputs.widgets_gallery == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.gallery == true
         run: cargo build --release -p auto
         working-directory: auto-lang
 
       - name: Build widgets-gallery
-        if: steps.gallery.outputs.widgets_gallery == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.gallery == true
         run: |
-          ./target/release/auto build
-          rm -rf ../website/public/ui/gallery
-          mkdir -p ../website/public/ui/gallery
-          cp -r gen/front/vue/dist/* ../website/public/ui/gallery/
-        working-directory: auto-lang/examples/widgets-gallery
+          ../../auto-lang/target/release/auto build
+          rm -rf ../../auto-lang/website/public/ui/gallery
+          mkdir -p ../../auto-lang/website/public/ui/gallery
+          cp -r gen/front/vue/dist/* ../../auto-lang/website/public/ui/gallery/
+        working-directory: auto-os/widgets-gallery
         env:
           # shadcn-vue add / pnpm install run inside `auto build`
           PNPM_HOME: /home/runner/.local/share/pnpm

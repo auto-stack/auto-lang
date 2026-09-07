@@ -330,6 +330,12 @@ pub fn resolve_os_manifest_root(parent: &Path) -> Option<PathBuf> {
         .find(|root| root.join("apps.manifest").is_file())
 }
 
+/// Stage B P-5：解析序定位 auto-os 顶层随迁资产目录（画廊两件等 590 批
+/// 迁入 auto-os 顶层/`apps/` 的资产）。实现在 [`crate::os_paths`]（无
+/// feature 门——`ui_gen` docs 管线与 CLI 的无 `ui` 构建形态同源消费），
+/// 此处 re-export 维持注册表家族聚合（与 `resolve_os_manifest_root` 同址）。
+pub use crate::os_paths::resolve_os_top_dir;
+
 /// auto-os `apps.manifest` 条目（Stage B P-3 定稿 schema；宽容读取——
 /// 未知字段忽略，缺省 kind=repo / status=active，坏条目跳过不阻断启动）。
 #[derive(serde::Deserialize)]
@@ -506,9 +512,11 @@ mod tests {
         // PLAN-552：8 个测试探针迁出 examples/ui → examples/capability-tests
         //（459-dual-app 回退形态断言随之移除；无 pac.at 回退路径的覆盖由
         // scan_temp_dir_full_shape_with_new_fields 的 bare-app 臂保留）。
+        // PLAN-590（Stage B P-5）：025-sys-monitor/028-launcher/038-minesweeper
+        // 随桌面域资产迁 auto-os apps/（36→33，实测定数）。
         assert!(
-            apps.len() >= 34,
-            "examples/ui 扫描数应 ≥34（43 - 8 探针迁出，PLAN-552），实际 {}",
+            apps.len() >= 33,
+            "examples/ui 扫描数应 ≥33（36 桌面域三 app 迁出，PLAN-590），实际 {}",
             apps.len()
         );
         // 011-calculator：pac.at 形态，render=vue；Plan 504 起 title 字段
@@ -548,20 +556,20 @@ mod tests {
             "020-music-player",
             "022-kanban",
             "024-charts",
-            "025-sys-monitor",
             "026-database",
             "027-file-manager",
-            "028-launcher",
             "029-photo-gallery",
             "030-video-player",
             // PLAN-553：031-paint 上架（C 档 19→20；像素画板，desktop: true）。
             "031-paint",
-            "038-minesweeper",
             "041-auto-edit",
+            // PLAN-590（Stage B P-5）：025-sys-monitor/028-launcher/038-minesweeper
+            // 桌面域三 app 迁 auto-os apps/（C 档 20→17；auto-os 侧经
+            // extra roots 容器探测注册，不走默认注册表策展）。
         ];
         assert_eq!(
             curated, want,
-            "策展集（desktop_visible）应恰为 C 档 20 id（PLAN-552 三档清单；045 已退役；PLAN-553 增 031-paint）"
+            "策展集（desktop_visible）应恰为 C 档 17 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出）"
         );
     }
 
@@ -569,7 +577,7 @@ mod tests {
     fn render_filter_keeps_only_matching() {
         let opts = ScanOptions { render: Some("vm".to_string()) };
         let apps = scan_apps(&repo_examples_ui(), &opts);
-        assert!(!apps.is_empty(), "vm 过滤后应仍有条目（041/024/025/459 等）");
+        assert!(!apps.is_empty(), "vm 过滤后应仍有条目（041/024 等）");
         assert!(
             apps.iter().all(|a| a.render == "vm"),
             "过滤后全部条目 render == vm"

@@ -10,6 +10,17 @@
 //!
 //! 本测试锚定轨 A 的双端发射事实 + 轨 B 的可用性(对照完整)。
 
+/// PLAN-590(Stage B P-5):画廊迁 auto-os 顶层——解析序定位画廊内文件
+/// (`os_paths` 无 feature 门,本模块不挂 ui-iced);solo 检出 None,
+/// 调用方以旧仓内路径兜底(既有 SKIPPED 容错不变)。
+fn locate_gallery_file(rel: &str) -> Option<std::path::PathBuf> {
+    let sibling_base =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    crate::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+        .map(|g| g.join(rel))
+        .filter(|p| p.exists())
+}
+
 /// 与探针同源的源码(vm 轨从内联源码构建,不依赖 examples 树)。
 const PROBE_SRC: &str = r##"
 widget App {
@@ -191,8 +202,12 @@ widget W {
 fn plan502_m3_layout_geometry_e2e() {
     use std::path::PathBuf;
     let comp_src = {
-        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/widgets-gallery/src/front/components/flow_diagram.at");
+        // PLAN-590:画廊迁 auto-os 顶层——先解析序定位,旧仓内路径兜底。
+        let p = locate_gallery_file("src/front/components/flow_diagram.at")
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/widgets-gallery/src/front/components/flow_diagram.at")
+        });
         match std::fs::read_to_string(&p) {
             Ok(s) => s,
             Err(_) => {
@@ -682,8 +697,12 @@ fn plan502_m5_hover_and_labels_e2e() {
     let comps = front.join("components");
     std::fs::create_dir_all(&comps).unwrap();
     let comp_src = {
-        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/widgets-gallery/src/front/components/flow_diagram.at");
+        // PLAN-590:画廊迁 auto-os 顶层——先解析序定位,旧仓内路径兜底。
+        let p = locate_gallery_file("src/front/components/flow_diagram.at")
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/widgets-gallery/src/front/components/flow_diagram.at")
+        });
         match std::fs::read_to_string(&p) {
             Ok(s) => s,
             Err(_) => {
@@ -769,10 +788,15 @@ widget App {
 /// tooltip 锚定 / emphasis 分支全部落 SFC。
 #[test]
 fn plan502_m5_vue_emission() {
-    let path = format!(
-        "{}/../../examples/widgets-gallery/src/front/components/flow_diagram.at",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    // PLAN-590:画廊迁 auto-os 顶层——先解析序定位,旧仓内路径兜底。
+    let path = locate_gallery_file("src/front/components/flow_diagram.at")
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| {
+            format!(
+                "{}/../../examples/widgets-gallery/src/front/components/flow_diagram.at",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        });
     let opts = crate::ui_gen::ComponentGenOptions::default();
     let result = match crate::ui_gen::generate_component_from_file(std::path::Path::new(&path), opts) {
         Ok(r) => r,

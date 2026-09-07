@@ -99,19 +99,30 @@ mod vue_loop_member_class {
 /// Plan 503 M4：launcher 重写回归——真 028 app.at 经 build_dynamic_component
 /// 管线编译（include_str 只内嵌 pack,examples 的 .at 无编译门禁,语法回归
 /// 此前只能实机才发现）+ ApplyFilter/PickCat 行为断言。
+/// PLAN-590（Stage B P-5）：028-launcher 迁 auto-os/apps/——语料经解析序
+/// 定位（os_paths 家族）；solo 检出 SKIP 不炸。
 #[cfg(all(test, feature = "ui-iced"))]
 mod launcher_rewrite {
-    fn build_launcher() -> crate::ui::dynamic::DynamicComponent {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui/028-launcher/src/front/app.at");
-        let code = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("launcher app.at 可读: {e}"));
-        crate::build_dynamic_component(&code, None).expect("launcher app.at 编译")
+    fn build_launcher() -> Option<crate::ui::dynamic::DynamicComponent> {
+        let sibling_base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let path = crate::os_paths::resolve_os_top_dir(&sibling_base, "apps")
+            .map(|apps| apps.join("028-launcher/src/front/app.at"));
+        let code = match path.map(|p| std::fs::read_to_string(&p)) {
+            Some(Ok(code)) => code,
+            _ => {
+                eprintln!(
+                    "plan503 launcher_rewrite: SKIPPED — auto-os/apps/028-launcher\
+                     未解析(solo 检出;设 AUTO_OS_ROOT 或并置 auto-os 兄弟检出可启用)"
+                );
+                return None;
+            }
+        };
+        Some(crate::build_dynamic_component(&code, None).expect("launcher app.at 编译"))
     }
 
     #[test]
     fn launcher_compiles_and_renders_brand_chips() {
-        let mut comp = build_launcher();
+        let Some(mut comp) = build_launcher() else { return };
         let _ = comp.write_state("visible", auto_val::Value::str("1"));
         comp.bridge_mut()
             .call_handler("ApplyFilter", &[])
@@ -134,7 +145,7 @@ mod launcher_rewrite {
 
     #[test]
     fn launcher_pickcat_filters_results() {
-        let mut comp = build_launcher();
+        let Some(mut comp) = build_launcher() else { return };
         let _ = comp.write_state("visible", auto_val::Value::str("1"));
         comp.bridge_mut()
             .call_handler("ApplyFilter", &[])

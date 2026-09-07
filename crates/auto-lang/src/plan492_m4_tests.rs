@@ -12,13 +12,13 @@
 mod m4_pkg_compile_chain {
     use crate::plan492_tests::pkg_harness::{build_patched_gallery, render_dump};
 
-    /// 三副本组件目录(cargo 测试 cwd 在 crate 下,经 CARGO_MANIFEST_DIR 定位)。
+    /// 三副本组件目录(cargo 测试 cwd 在 crate 下,经 CARGO_MANIFEST_DIR 定位;
+    /// PLAN-590:widgets-gallery 迁 auto-os 顶层,经解析序定位,未解析跳过)。
     fn copies() -> Vec<std::path::PathBuf> {
         let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
-        [
+        let mut out: Vec<std::path::PathBuf> = [
             "../../examples/charts-gallery/src/front/components",
             "../../examples/ui/024-charts/src/front/components",
-            "../../examples/widgets-gallery/src/front/components",
         ]
         .iter()
         .map(|rel| {
@@ -29,7 +29,16 @@ mod m4_pkg_compile_chain {
                 std::path::Path::new(&manifest).join(rel)
             }
         })
-        .collect()
+        .collect();
+        if let Some(g) = crate::os_paths::resolve_os_top_dir(
+            &std::path::PathBuf::from(&manifest).join("../../.."),
+            "widgets-gallery",
+        ) {
+            out.push(g.join("src/front/components"));
+        } else {
+            eprintln!("plan492 M4: widgets-gallery copy SKIPPED — auto-os 未解析(solo 检出)");
+        }
+        out
     }
 
     /// C1 锚(无补丁基线): 三副本 Init 内原生 prop 字符串比较直接形态

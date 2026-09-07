@@ -8,9 +8,30 @@
 
 use auto_lang::ui_gen::widget::{ComponentRegistry, ComponentResolution, ComponentSource};
 
-fn gallery_components_dir() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/widgets-gallery/src/front/components")
+/// PLAN-590(Stage B P-5):widgets-gallery 迁 auto-os 顶层,components 包
+/// 目录经 `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 → 主
+/// 检出);solo 检出 → None,依赖画廊包的测试整体 SKIP(不炸)。
+fn gallery_components_dir() -> Option<std::path::PathBuf> {
+    let sibling_base =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    auto_lang::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+        .map(|g| g.join("src/front/components"))
+}
+
+/// 画廊包缺席的统一 SKIP 提示。
+macro_rules! gallery_or_skip {
+    () => {
+        match gallery_components_dir() {
+            Some(dir) => dir,
+            None => {
+                eprintln!(
+                    "component_registry: SKIPPED — auto-os/widgets-gallery 未解析\
+                     (solo 检出;设 AUTO_OS_ROOT 或并置 auto-os 兄弟检出可启用)"
+                );
+                return;
+            }
+        }
+    };
 }
 
 /// 构造一个最小 AuraWidget(名字即可;其余字段默认)。
@@ -35,12 +56,13 @@ fn minimal_widget(name: &str) -> auto_lang::aura::AuraWidget {
 
 #[test]
 fn resolution_priority_builtin_local_package() {
+    let components = gallery_or_skip!();
     let mut reg = ComponentRegistry::new();
     // Local:与内置无关的名字
     let rejected = reg.register_local(&[minimal_widget("MyLocalThing")]);
     assert!(rejected.is_empty(), "non-colliding local should register");
     // Package:官方包(gallery components)
-    reg.load_package(&gallery_components_dir(), std::path::Path::new("."))
+    reg.load_package(&components, std::path::Path::new("."))
         .expect("official package loads");
 
     // 1) 内置优先:button 是内置 tag —— 即使本地注册了 Button 也不 shadow
@@ -111,9 +133,10 @@ fn builtin_tags_cannot_be_shadowed() {
 fn official_package_bootstrap_via_unified_mechanism() {
     // 自举验收:官方包(gallery components)通过与第三方完全相同的
     // load_package 机制注册 —— 无任何官方特例。
+    let components = gallery_or_skip!();
     let mut reg = ComponentRegistry::new();
     let pkg = reg
-        .load_package(&gallery_components_dir(), std::path::Path::new("."))
+        .load_package(&components, std::path::Path::new("."))
         .expect("official package");
     assert_eq!(pkg.manifest.name, "official");
     assert_eq!(pkg.manifest.version, "0.1.0");
@@ -128,11 +151,38 @@ fn official_package_bootstrap_via_unified_mechanism() {
 #[test]
 fn e2e_use_package_generates_component() {
     // 端到端:use { package: ... } + 包组件 tag → SFC 引用生成。
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/pkg_app.at");
+    // PLAN-590:画廊迁 auto-os 顶层——fixtures/pkg_app.at 的相对 `from`
+    // 路径无法承载解析序,改为测试内物化临时 fixture 并注入解析出的
+    // components 绝对路径(solo 检出 SKIP)。
+    let components = gallery_or_skip!();
+    let from_path = components.display().to_string().replace('\\', "/");
+    let src = format!(
+        "// Plan 435 P4 e2e —— use package 引用官方 .at 组件包（PLAN-590：路径注入）\n\
+         widget PkgApp {{\n\
+         \x20   use {{ package: official from \"{from_path}\" }}\n\
+         \x20   msg {{ Go }}\n\
+         \x20   model {{ n int = 0 }}\n\
+         \x20   on {{ .Go -> {{ }} }}\n\
+         \x20   view {{\n\
+         \x20       col {{\n\
+         \x20           copy-button {{}}\n\
+         \x20           button \"native still works\" {{}}\n\
+         \x20       }}\n\
+         \x20   }}\n\
+         }}\n"
+    );
+    let fixture =
+        std::env::temp_dir().join(format!("pkg_app_p590_{}.at", std::process::id()));
+    std::fs::write(&fixture, src).expect("write temp pkg_app fixture");
     let opts = auto_lang::ui_gen::ComponentGenOptions::default();
-    let result = auto_lang::ui_gen::generate_component_from_file(&fixture, opts)
-        .expect("package app generates");
+    let result = match auto_lang::ui_gen::generate_component_from_file(&fixture, opts) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = std::fs::remove_file(&fixture);
+            panic!("package app generates: {e}");
+        }
+    };
+    let _ = std::fs::remove_file(&fixture);
     let sfc = result
         .all_widget_codes
         .iter()
@@ -208,9 +258,10 @@ fn load_package_survives_single_bad_file() {
 /// + 包内严格前缀兜底。gallery components 包:Carousel 全家、Combobox 全家。
 #[test]
 fn package_families_modeled() {
+    let components = gallery_or_skip!();
     let mut reg = ComponentRegistry::new();
     let pkg = reg
-        .load_package(&gallery_components_dir(), std::path::Path::new("."))
+        .load_package(&components, std::path::Path::new("."))
         .expect("gallery components load");
     let carousel = pkg.families.get("Carousel").expect("Carousel 家族");
     for child in ["CarouselContent", "CarouselItem", "CarouselNext", "CarouselPrevious"] {
@@ -250,9 +301,10 @@ fn desktop_registry_bridges_package_components() {
     }
 
     // ② 包组件全量对:视图 + decl 齐备
+    let components = gallery_or_skip!();
     let mut reg = ComponentRegistry::new();
     let pkg = reg
-        .load_package(&gallery_components_dir(), std::path::Path::new("."))
+        .load_package(&components, std::path::Path::new("."))
         .expect("gallery components load");
     assert!(
         pkg.full_widgets.iter().any(|(_, w)| w.name == "Carousel"),

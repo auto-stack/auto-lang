@@ -22,7 +22,23 @@ pub(crate) fn locate_app_at() -> Option<PathBuf> {
     locate_example_app_at("015-notes")
 }
 
+/// PLAN-590(Stage B P-5): locate a file inside a top-level gallery's new home
+/// (auto-os top level, via `resolve_os_top_dir`). None when unresolved (solo
+/// checkout) or the file is absent — callers degrade to SKIPPED as before.
+pub(crate) fn locate_gallery_file(gallery: &str, rel: &str) -> Option<PathBuf> {
+    let base = std::env::var("CARGO_MANIFEST_DIR").ok()?;
+    let g = crate::os_paths::resolve_os_top_dir(
+        &PathBuf::from(base).join("../../.."),
+        gallery,
+    )?;
+    let p = g.join(rel);
+    p.exists().then_some(p)
+}
+
 /// Locate any example's app.at by example dir name (e.g. "015-notes", "021-block-static").
+/// PLAN-590(Stage B P-5):顶层 examples 画廊(widgets-gallery 等)已迁 auto-os
+/// 顶层——顶层臂补 `resolve_os_top_dir` 解析序候选(env AUTO_OS_ROOT → 兄弟 →
+/// 主检出);examples/ui 臂(教学 demo 留架)不变。
 pub(crate) fn locate_example_app_at(example: &str) -> Option<PathBuf> {
     let rel = format!("examples/ui/{}/src/front/app.at", example);
     let candidates = [
@@ -37,6 +53,16 @@ pub(crate) fn locate_example_app_at(example: &str) -> Option<PathBuf> {
             .ok()
             .map(|d| PathBuf::from(d).join(format!("../../examples/{}/src/front/app.at", example))),
         Some(PathBuf::from(format!("examples/{}/src/front/app.at", example))),
+        // PLAN-590:顶层画廊迁 auto-os 顶层后的新家(解析序定位)。
+        std::env::var("CARGO_MANIFEST_DIR")
+            .ok()
+            .and_then(|d| {
+                crate::os_paths::resolve_os_top_dir(
+                    &PathBuf::from(d).join("../../.."),
+                    example,
+                )
+            })
+            .map(|g| g.join("src/front/app.at")),
     ];
     candidates.into_iter().flatten().find(|p| p.exists())
 }

@@ -6656,13 +6656,20 @@ widget App {
     /// alertdialog.at）经完整管线后，AlertdialogPage 的视图产物包含
     /// Modal Popover 构造与 w-96 面板 chrome（gallery 整仓 rust 生成因壳层
     /// 词汇存量红，页级断言为 codegen 臂的产物门禁）。
+    /// PLAN-590：画廊迁 auto-os 顶层——解析序定位（solo 检出 SKIP）。
     #[test]
     fn test_gallery_alertdialog_page_codegen_contains_modal() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/widgets-gallery/src/front/pages/alertdialog.at"
-        );
-        let src = std::fs::read_to_string(path)
+        let Some(path) = crate::os_paths::resolve_os_top_dir(
+            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+            "widgets-gallery",
+        )
+        .map(|g| g.join("src/front/pages/alertdialog.at")) else {
+            eprintln!(
+                "test_gallery_alertdialog_page: SKIPPED — auto-os/widgets-gallery 未解析(solo 检出)"
+            );
+            return;
+        };
+        let src = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read gallery page: {e}"));
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);

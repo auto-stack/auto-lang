@@ -101,17 +101,25 @@ pub fn load_elements() -> Vec<ElemInfo> {
 }
 
 /// Plan 435 P8-7(D13):gallery 页面 stem 折叠键表(fold → 页名 stem)。
-/// `root` = 仓库根(core.md 的 demo 链接以 widgets-gallery 页路由为目标)。
+/// PLAN-590(Stage B P-5):widgets-gallery 物理迁 auto-os 顶层,demo 链接
+/// 语料改经 `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 →
+/// 主检出);未解析(solo 检出)→ 空表,core.md 再生成不带 demo 链接
+/// (docs_gen 测试在该形态整体 SKIP,见 tests/docs_gen.rs 守卫)。
 pub fn gallery_page_stems(root: &std::path::Path) -> std::collections::BTreeMap<String, String> {
-    let dir = root.join("examples/widgets-gallery/src/front/pages");
+    // 基准 = 仓根父目录(其 auto-os 子目录 = 兄弟候选;主检出兜底见 resolver)
+    let sibling_base = root.join("..");
+    let dir = crate::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+        .map(|g| g.join("src/front/pages"));
     let mut out = std::collections::BTreeMap::new();
-    if let Ok(rd) = std::fs::read_dir(&dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension().map_or(false, |x| x == "at") {
-                if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
-                    if stem != "index" {
-                        out.insert(fold_str(stem), stem.to_string());
+    if let Some(dir) = dir {
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().map_or(false, |x| x == "at") {
+                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                        if stem != "index" {
+                            out.insert(fold_str(stem), stem.to_string());
+                        }
                     }
                 }
             }
