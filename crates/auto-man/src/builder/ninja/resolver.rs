@@ -332,7 +332,9 @@ mod tests {
     // （未定位到具体目录）时不做同目录探测
     #[test]
     fn msvc_sibling_tool_requires_located_compiler() {
-        assert!(CompilerResolver::msvc_sibling_tool(&AutoPath::new("cl.exe"), "link.exe").is_none());
+        assert!(
+            CompilerResolver::msvc_sibling_tool(&AutoPath::new("cl.exe"), "link.exe").is_none()
+        );
 
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("link.exe"), b"").unwrap();
