@@ -1,0 +1,20 @@
+// app.at — PLAN-058 ②-①/②-② 探针：父级经 on "update:half" 订阅子件
+// 引号 emit（demo app.at CustomScrollbar 绑定同模式先例）。
+use child58: Child58
+
+widget App {
+    msg Msg { GotHalf(f64) }
+    model {
+        var root_half f64 = -1
+    }
+    view {
+        col {
+            Child58 (raw: 240.0, on "update:half": .GotHalf($event))
+        }
+    }
+    on {
+        .GotHalf(v) -> {
+            .root_half = v
+        }
+    }
+}
