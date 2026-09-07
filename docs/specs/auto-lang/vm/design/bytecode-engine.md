@@ -29,7 +29,7 @@ ABC（AutoByteCode）指令集、编码约定、AutoVM 执行引擎、虚拟内�
 | 0x90+ | 闭包 | CLOSURE 0x90, LOAD_CAPTURED 0x92, STORE_CAPTURED 0x93, CALL_CLOSURE 0x94 |
 | 0xE0-0xFF | 扩展 | Option/Result、类型转换、RET_D（双槽返回） |
 
-编码约定：RET 为 callee-cleanup（带参数个数清栈）；跳转均为 16 位有符号相对偏移，位置无关；CALL_NAT 索引 native 函数表（design/05）。类型强转由 codegen 在混合算术时显式插入（plan-117：int/float 混合运算不加 I32_TO_F32 会把 int 位模式当 float 解释）。
+编码约定：RET 为 callee-cleanup（带参数个数清栈）；跳转均为 16 位有符号相对偏移，位置无关；CALL_NAT 索引 native 函数表（design/05）。类型强转由 codegen 在混合算术时显式插入（plan-117：int/float 混合运算不加 I32_TO_F32 会把 int 位模式当 float 解释）。运行期对偶面（plan-576）：动态来源值（handler 实参等，类型推断不可知）落多态算术/比较槽时，decode 一律 tag 驱动——ADD/SUB/MUL/DIV 的 f32×int 混算臂（`nanbox_single_to_f32`：f32 按位/int 按值）与 LT/GT/LE/GE 的 `nv_pair_is_float_numeric` 有序比较路由（双侧数值+一侧 float → `nv_as_f64` 按值比较）；纯 int/对象/字符串臂不变。修复前 TAG_F32 位型被 `decode_i32` 误读（`240.0+1 → Int(1131413505)`、`50.0>100` 恒真——DEBTS 043「VM handler 哑」家族存活根因）。EQ/NE 早已由 Plan 539 W2 的 `nv_is_numeric`/`nv_as_f64` 混合数值臂覆盖，576 补齐有序比较与算术两族。
 
 ### 内存模型（数字孪生）
 

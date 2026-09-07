@@ -18,6 +18,7 @@
 - **提取**：`extract.rs:extract_widget_from_decl` / `extract_view_tree` / `extract_store_from_decl` 把 `model`/`view` 提取为 1:1 无损 AURA 结构（`types.rs:AuraWidget`、`AuraStore`、`AuraNode`）。
 - **校验**：`schema/aura.at` 用 Auto 自身语法定义元素/prop 约束（`PropType`/`PropDef`/`ElementSchema`），`schema_loader.rs:SchemaLoader.load` 载入为 `schema.rs:AuraSchema`，供编译期校验与 LSP 补全；`suggest_similar` 支持拼写纠错。
 - **分发**：AURA 馈入目标生成器（a2vue/a2jet/a2ark/a2lvgl 规划）或 VM 渲染路径（`ui/vnode_converter.rs`）。
+- **VM handler 合成**（plan-576 语义注记）：`handler_codegen.rs` 把 widget 的 handler/computed 合成为真 VM 函数（`handler_<W>_<E>(__state, …)` / `__computed_<W>_<p>(__state)`——computed 表达式与块体两形态均合成）；体内状态引用改写集合 = state_vars ∪ computed（`COMPUTED_FN_NAMES` thread-local，裸 Ident 与 `.name`/`self.name` 形态改写为 computed 隐藏函数调用）。子件体内引号 emit `."msg"(v)` 改写为 `__emit_<W>_<msg>(__state, v)` 桥函数：体内写 `__emit_msg`/`__emit_payload` 状态对（vm_bridge 注入，`__toast` 同点），`on_with_input_for` 在 handler 返回后读出清账并经 child_emit ROUTES 走 `dispatch_parent_route`（toast/router.push 同型「handler 写状态、update 侧消费」管线；单 pending 槽/多实参取首参为 v1 限度）。派发点参数数失配（形参≠实参）log::warn + 跳过（dynamic.rs 两守卫点，未知 arity 保持 legacy）。
 
 ## 关键数据结构
 

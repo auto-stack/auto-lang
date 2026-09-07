@@ -16,7 +16,7 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| value / nano_value | 值表示（Value 枚举及紧凑变体） | active |
+| value / nano_value | 值表示（Value 枚举及紧凑变体）。plan-576 契约钉：encode→decode 位型恒等对照集（f64/f32 含整值 240.0/0.0/-0.0——tag 保真 + 0.0/-0.0 按位可分），encode/decode 纯往返不自证消费端正确性（043 期实锚在 engine 消费臂，见 auto-lang vm/bytecode-engine.md plan-576 注记） | active |
 | node | AST 节点结构 | active |
 | obj / pair | 对象与键值对结构 | active |
 | string / str_slice / owned_str / cstr | 字符串类型族（AutoStr 等） | active |

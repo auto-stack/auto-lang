@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-576
-status: reviewed
+status: archived
 feature_name: VM 引擎语义修复批（nanbox 整值 float 位型保真 + use 子件三缺口）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-06
@@ -247,7 +247,7 @@ dynamic.rs 派发点：实参数 ≠ 形参数时 log::warn 响亮输出（件�
 - **债候选登记**：KNOWN-DEBT-AND-RISKS.md 🟡 节新增 4 行（576 v1 限度 /
   576 相邻债 C2② / 576 绕道退役跟进 / 576-复审 osconfig_daemon+layout
   测试隔离防误归因）。
-- **裁定**：四条验收全 PASS、无阻塞债 → **status: reviewed**，可入
+- **裁定**：四条验收全 PASS、无阻塞债 → **status: archived**，可入
   /auto-plan:merge。
 
 ### 执行注记（/auto-plan:work 收口，供复审与 merge 参考）
