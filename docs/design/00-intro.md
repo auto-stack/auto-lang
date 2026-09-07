@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **28**），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **29**），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blocks/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -50,7 +50,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 分区 | 数量 | 内容 |
 |---|---|---|
 | 一、语言核心 | 10（01–10） | 从源码到执行的语言本体设计 |
-| 二、应用框架与生态 | 5（11–15） | Shell / 并发 / 网络 / 开发工具 / AI 基础设施 |
+| 二、应用框架与生态 | 6（11–15、28） | Shell / 并发 / 网络 / 开发工具 / AI 基础设施 / Playground 在线体验 |
 | 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blocks/`（4） |
 | 四、流程与知识体系 | 1 个域级章 + 2 个根级专题 | Knowledge Lifecycle、AutoPlan 账本、Plan+Spec v1 |
 | 五、战略路线图 `strategy/` | 13 | 生态版图伞形（三市场框架）/ Rust 脚本层 / 消费者 parity / C·Web·鸿蒙·Mobile·ROS2·Native·第三代互联网(Godot) 生态 / Python parity / Rust 库复刻 |
@@ -87,15 +87,16 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 09 | [Compiler](09-compiler.md) | AIE、AutoCache、DCE、comptime、CLI、AI 原生 |
 | 10 | [Language Syntax](10-language-syntax.md) | 点号表示法、函数、位运算、OOP、模块系统 |
 
-## 二、应用框架与生态（11–15）
+## 二、应用框架与生态（11–15、28）
 
 | # | 文档 | 主题 | 备注 |
 |---|------|------|------|
 | 11 | [Shell Tools](11-shell-tools.md) | AutoShell/ASH、coreutils、SmartCmd、管道 | 主体已迁独立仓 `../auto-shell` |
 | 12 | [Concurrency](12-concurrency.md) | Task/Msg Actor 模型、async/await、.go 运算符 | |
 | 13 | [Networking](13-networking.md) | HTTP Server 标准库、async I/O、JSON/url | |
-| 14 | [Developer Tools](14-developer-tools.md) | LSP、Web Playground、AutoLab、MCP Server | |
+| 14 | [Developer Tools](14-developer-tools.md) | LSP、Web Playground、AutoLab、MCP Server | Playground 细化归 Design 28 |
 | 15 | [AI Daemon Infrastructure](15-ai-daemon-infrastructure.md) | AutoOS 共享 LLM Harness、并发仲裁、Key Vault | 跨仓主题，实现在 auto-os 生态 |
+| 28 | [Playground Architecture](28-playground-architecture.md) | 在线体验层：三层组件（SnippetRunner/Card/IDE）、Notes manifest 管线、笔记站、电子书 Run 嵌入、双宿主合一 | 2026-09-07 立稿 |
 
 ## 三、AutoUI 与 App 生成域
 
@@ -176,6 +177,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 2026 Q1–Q2  ASH 分层架构 → LSP/MCP → 设计文档 00–15 章首次体系化(2026-06-15)
 2026 Q6–Q8  App 生成战略(16) → AutoUI 域需求设计族(17–25, 后归位 autoui/blocks)
             → 分离架构(20) → 虚拟桌面三部曲(23/24) → 范式收敛(Plan 467/468)
+2026 Q9     Playground 在线体验域(28)：三层组件 + Notes manifest + 笔记站 + 电子书嵌入
 ```
 
 ## 如何使用本目录
