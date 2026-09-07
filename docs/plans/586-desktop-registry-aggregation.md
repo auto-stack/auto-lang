@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-586
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B 清障二——桌面注册表三源聚合（extra roots 泛化 + apps.manifest 聚合 + 三轨 parity）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man/vue, auto-lang/ui]  # 受影响的 specs 路径
-current_step: 0
+current_step: 1
 total_steps: 7
 ---
 
@@ -191,15 +191,15 @@ master 基点，执行时以 grep 重新定位。worktree=
 
 ## 待澄清事项
 
-1. **manifest 读取位**：默认设计=框架侧按解析序直读（与 D1 同族机制，
-   P-7 shell pack 加载器可复用同套解析序代码）；备选=§3-a 包装侧物化
-   （wrapper 把 manifest 翻译成 env/remote-apps.json，框架零改动但每次
-   启动多一层翻译）。倾向前者（Design 01 §4-P3 方案 2 原文「按解析序
-   读本仓 apps.manifest」即框架侧口径），开工前请用户确认。
-2. **iced 轨 CLI 形态**：`ui_desktop.rs` 是否补 `--extra-apps` flag
-   （对齐 `--apps-dir` 先例）——默认只做 `DesktopOptions` API 层
-   （ui_desktop 是验收宿主示例非产品入口，最小面），flag 列可选增强。
-3. **§3-a 包装脚本归属**：Design 01 §4-P3 验收原文经包装脚本启动；本
-   计划以 env 注入等价形态承载验证（脚本本体非聚合机制的一部分）。
-   建议脚本随 P-6 开工批落地（apps/ 实存后包装才有完整意义）；若用户
-   希望 P-3 即交付脚本，执行步骤 5 前插入 auto-os 侧小任务即可。
+（2026-09-07 用户裁定，三项全取默认设计；批次排序同场裁定=保守串行
+P-3 → P-2 → P-4 → P-7 → P-5 → P-6。）
+
+1. **[已裁定] manifest 读取位 = 框架侧直读**：auto-lang 按解析序（新 env
+   `AUTO_OS_ROOT` → 兄弟 `../auto-os` → 主检出兜底）定位并解析
+   apps.manifest；repo 条目经 remote 机制注册。P-7 shell pack 加载器复用
+   同套解析序机制。
+2. **[已裁定] iced 轨 = 仅 DesktopOptions API 层**：`extra_app_roots` 字段
+   沿 `apps_dir` 先例，默认值三轨同源；不加 CLI flag（ui_desktop 为验收
+   宿主示例，保持最小面）。
+3. **[已裁定] §3-a 包装脚本随 P-6 开工批落地**：P-3 的 V5 验证以 env 注入
+   等价形态承载（判据不变：三类条目呈现 + 框架仓零回归）。
