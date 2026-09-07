@@ -332,7 +332,16 @@ pub fn family_of(kind: BlockType) -> &'static BlockFamily {
         BlockType::WikilinkBlock => &FAMILY_WIKILINK,
         BlockType::QueryBlock => &FAMILY_QUERY,
         BlockType::BlockEmbed => &FAMILY_EMBED,
-        BlockType::Mermaid => &FAMILY_MERMAID,
+        BlockType::Mermaid => {
+            // PLAN-058 T13（048 销号）：mermaid 降级臂镜像 Fence 的主题
+            // 分派——此前恒返暗档 FENCE_CHROME，浅色态整块暗盘 + zinc-400
+            // 标签近似底色实机不可见（vm-webonly-chrome.png 在案）。
+            if crate::ui::style::theme::dark_mode() {
+                &FAMILY_MERMAID
+            } else {
+                &FAMILY_MERMAID_LIGHT
+            }
+        }
         BlockType::MathBlock => &FAMILY_MATH,
     }
 }
@@ -436,6 +445,11 @@ static FAMILY_EMBED: BlockFamily = BlockFamily {
 static FAMILY_MERMAID: BlockFamily = BlockFamily {
     kind: BlockType::Mermaid,
     chrome: FENCE_CHROME,
+    body: BodyKind::Panel,
+};
+static FAMILY_MERMAID_LIGHT: BlockFamily = BlockFamily {
+    kind: BlockType::Mermaid,
+    chrome: FENCE_CHROME_LIGHT,
     body: BodyKind::Panel,
 };
 static FAMILY_MATH: BlockFamily = BlockFamily {

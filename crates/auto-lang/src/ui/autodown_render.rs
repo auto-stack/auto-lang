@@ -1506,6 +1506,31 @@ mod tests {
         assert_eq!(text_of(body), "graph TD; A-->B;");
     }
 
+    /// PLAN-058 T13（048 销号）：mermaid 降级臂浅色档——family_of(Mermaid)
+    /// 镜像 Fence 的 theme 分派后，浅色态 chrome 必须落 FENCE_CHROME_LIGHT
+    ///（此前恒暗档：浅色态整块暗盘 + zinc-400 标签不可见）。
+    #[test]
+    fn renders_degraded_mermaid_light_chrome() {
+        crate::ui::style::theme::set_dark_mode(false);
+        let doc = render_document::<()>("```mermaid\ngraph TD; A-->B;\n```\n", true);
+        let View::Column { children, .. } = doc else { panic!("col") };
+        let View::Container { child, style, .. } = &children[0] else { panic!("mermaid outer") };
+        let outer = format!("{:?}", style.as_ref().map(|s| &s.classes));
+        assert!(
+            outer.contains("BackgroundColor(Gray(50))"),
+            "light-mode mermaid outer must use the light fence chrome, got {outer}"
+        );
+        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        let View::Container { child: h, style: hs, .. } = &parts[0] else { panic!("header") };
+        let header = format!("{:?}", hs.as_ref().map(|s| &s.classes));
+        assert!(
+            header.contains("BackgroundColor(Gray(200))") && header.contains("TextColor(Gray(700))"),
+            "light-mode mermaid header must be readable (bg-gray-200 label gray-700), got {header}"
+        );
+        assert_eq!(text_of(h), "mermaid \u{00b7} web-only");
+        crate::ui::style::theme::set_dark_mode(false); // 还原默认档
+    }
+
     /// PLAN-041 T7 降级臂② + PLAN-048 T8（W5 裁定）：MathBlock——
     /// 「math · web-only」header（与 mermaid 面板族形态一致）+ mono $$
     /// 包裹（KaTeX web-only，显式豁免登记）。
