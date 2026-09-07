@@ -23,10 +23,10 @@ pub fn string_builder_new(ctx: &mut VmContext, capacity: Value) -> Value {
             let id = ctx.add_vmref(VmRefData::StringBuilder(builder_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
-            Value::Instance(Instance {
+            Value::Instance(Box::new(Instance {
                 ty: auto_val::Type::from(ty),
                 fields,
-            })
+            }))
         }
         _ => Value::Error(format!("Type StringBuilder not found!").into()),
     }

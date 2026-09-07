@@ -1393,7 +1393,7 @@ impl AutoVM {
                     for (k, v) in od.fields.iter() {
                         out.set(k.clone(), v.clone());
                     }
-                    return auto_val::Value::Obj(out);
+                    return auto_val::Value::Obj(Box::new(out));
                 }
                 if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
                     // CREATE_ARRAY now encodes arrays as TAG_OBJECT (H3b).
@@ -1449,7 +1449,7 @@ impl AutoVM {
                 for (k, v) in od.fields.iter() {
                     out.set(k.clone(), v.clone());
                 }
-                return auto_val::Value::Obj(out);
+                return auto_val::Value::Obj(Box::new(out));
             }
             if let Some(node) = guard.as_any().downcast_ref::<auto_val::Node>() {
                 // Deep-clone the Node (props, args, AND kids). Sub-nodes are

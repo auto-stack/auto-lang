@@ -368,7 +368,7 @@ mod tests {
         let mut kobj = Obj::new();
         kobj.set("port", Value::str("IAR/ARM_CM4F"));
         kobj.set("heap", Value::str("heap_4"));
-        args.set("kernel", Value::Obj(kobj));
+        args.set("kernel", Value::Obj(Box::new(kobj)));
 
         // Child config: a default `kernel` Pair (must NOT override the injected
         // arg), then a dep node whose prop reads `${kernel.port}`.

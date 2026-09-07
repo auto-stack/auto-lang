@@ -25,7 +25,7 @@ pub fn heap_new(_ctx: &mut VmContext, _args: Value) -> Value {
         fields,
     };
 
-    Value::Instance(instance)
+    Value::Instance(Box::new(instance))
 }
 
 /// Get the data pointer from Heap storage
@@ -174,7 +174,7 @@ pub fn inline_int64_new(_ctx: &mut VmContext, _args: Value) -> Value {
         fields,
     };
 
-    Value::Instance(instance)
+    Value::Instance(Box::new(instance))
 }
 
 /// Get the data pointer from InlineInt64 storage

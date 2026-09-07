@@ -115,7 +115,7 @@ impl Atom {
                 Ok(Atom::Node(*n))
             }
             Value::Array(a) => Ok(Atom::Array(a)),
-            Value::Obj(o) => Ok(Atom::Obj(o)),
+            Value::Obj(o) => Ok(Atom::Obj(*o)),
             _ => Err(AtomError::InvalidType {
                 expected: "Node, Array, or Obj".to_string(),
                 found: format!("{:?}", val),
@@ -355,7 +355,7 @@ impl Atom {
         match self {
             Atom::Node(node) => Value::node(node),
             Atom::Array(arr) => Value::Array(arr),
-            Atom::Obj(obj) => Value::Obj(obj),
+            Atom::Obj(obj) => Value::obj(obj),
             Atom::Empty => Value::Nil,
         }
     }
@@ -561,7 +561,7 @@ impl auto_val::AtomSource for Atom {
     fn to_at_source(&self) -> String {
         match self {
             Atom::Node(n) => n.to_at_source(),
-            Atom::Obj(o) => auto_val::Value::Obj(o.clone()).to_at_source(),
+            Atom::Obj(o) => auto_val::Value::obj(o.clone()).to_at_source(),
             Atom::Array(a) => auto_val::Value::Array(a.clone()).to_at_source(),
             Atom::Empty => String::new(),
         }
@@ -815,7 +815,7 @@ mod tests {
     #[test]
     fn test_new_with_obj() {
         let obj = Obj::new();
-        let result = Atom::new(Value::Obj(obj));
+        let result = Atom::new(Value::obj(obj));
         assert!(result.is_ok());
         assert!(result.unwrap().is_obj());
     }

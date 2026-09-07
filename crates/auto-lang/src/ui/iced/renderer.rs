@@ -5647,7 +5647,7 @@ fn write_table_width_state(
 ) {
     let mut obj = match component.read_state("table_widths") {
         Ok(auto_val::Value::Obj(o)) => o,
-        _ => auto_val::Obj::new(),
+        _ => Box::new(auto_val::Obj::new()),
     };
     let mut list: Vec<auto_val::Value> = match obj.get(key) {
         Some(auto_val::Value::Array(a)) => a.iter().cloned().collect(),
@@ -5735,7 +5735,7 @@ fn sync_todos_to_vm(todos: &[TodoItem], component: &mut DynamicComponent) {
         obj.set("id", auto_val::Value::Int(i as i32));
         obj.set("text", auto_val::Value::str(&t.text));
         obj.set("done", auto_val::Value::Bool(t.done));
-        auto_val::Value::Obj(obj)
+        auto_val::Value::Obj(Box::new(obj))
     }).collect();
     let _ = component.write_state("todos", auto_val::Value::Array(auto_val::Array::from(values)));
 }
@@ -6991,7 +6991,7 @@ fn json_to_auto_val(v: &serde_json::Value) -> auto_val::Value {
             for (k, val) in map {
                 obj.set(k.clone(), json_to_auto_val(val));
             }
-            auto_val::Value::Obj(obj)
+            auto_val::Value::Obj(Box::new(obj))
         }
     }
 }
@@ -7492,7 +7492,7 @@ fn update_block_in_state(
                         let text = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
                         let mut o = auto_val::Obj::new();
                         o.set("Text", auto_val::Value::str(&text));
-                        auto_val::Value::Obj(o)
+                        auto_val::Value::Obj(Box::new(o))
                     } else {
                         json_to_auto_val(output)
                     }
@@ -7500,12 +7500,12 @@ fn update_block_in_state(
                     let text = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
                     let mut o = auto_val::Obj::new();
                     o.set("Text", auto_val::Value::str(&text));
-                    auto_val::Value::Obj(o)
+                    auto_val::Value::Obj(Box::new(o))
                 };
                 let mut status = auto_val::Obj::new();
                 status.set("kind", auto_val::Value::str(&kind));
                 status.set("message", auto_val::Value::str(&message));
-                obj.set("status", auto_val::Value::Obj(status));
+                obj.set("status", auto_val::Value::Obj(Box::new(status)));
                 obj.set("output", output_obj);
                 // 2026-08-22(show 渲染成本):Code 变体把拼好的全文写入
                 // streamed_text(复用 Block 已有 str 字段,renderer↔.at 的
@@ -8788,11 +8788,11 @@ fn scan_wallpapers_dir(cfg: &crate::ui::desktop_config::DesktopConfig) -> Vec<au
                 .file_stem()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.clone());
-            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("name", auto_val::Value::Str(name.into())),
                 ("path", auto_val::Value::Str(path.clone().into())),
                 ("src", auto_val::Value::Str(path.into())),
-            ]))
+            ])))
         })
         .collect()
 }
@@ -10371,10 +10371,10 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
                 .find(|e| &e.id == id)
                 .map(|e| e.icon.clone())
                 .unwrap_or_else(|| "app-window".to_string());
-            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str(id.clone().into())),
                 ("icon", auto_val::Value::Str(icon.into())),
-            ]))
+            ])))
         })
         .collect();
     let Some(app) = state.apps.get_mut(&shell) else { return };
@@ -10494,13 +10494,13 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
                 .map(|e| e.title.clone())
                 .unwrap_or_else(|| id.clone());
             let color = crate::ui::app_registry::badge_color_for(&id);
-            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str(id.into())),
                 ("icon", auto_val::Value::Str(icon.into())),
                 ("label", auto_val::Value::Str(label.into())),
                 ("src", auto_val::Value::Str(src.into())),
                 ("color", auto_val::Value::Str(color.into())),
-            ]))
+            ])))
         })
         .collect();
     let bg = if state.desktop.desktop_wallpaper.starts_with('#') {
@@ -10584,7 +10584,7 @@ fn projection_win_entry(
         .and_then(|id| registry_entries.iter().find(|e| &e.id == id))
         .map(|e| e.icon.clone())
         .unwrap_or_else(|| "app-window".to_string());
-    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+    auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
         ("wid", auto_val::Value::Str(v.wid.0.to_string().into())),
         ("title", auto_val::Value::Str(v.title.clone().into())),
         ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
@@ -10596,7 +10596,7 @@ fn projection_win_entry(
         // Plan 505 B2 v1.5：pager 派生面——本窗是否属其分区缩略前 4
         //（"1"/""；mru/native 条目恒 ""，判据统一不缺字段）。
         ("pager", auto_val::Value::Str(pager.into())),
-    ]))
+    ])))
 }
 
 /// Plan 505 C：实机验收通道注入排空（ServiceTick 节拍，≤400ms 生效）。
@@ -10779,7 +10779,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         // Plan 515 D1：HICON 真图标（486 占位清偿）——幂等提取入缓存，
         // icon 字段有真图标时 = "hicon:<slot>"（渲染臂换 image）。
         crate::ui::iced::native_icon::ensure(id.0, slot.hwnd);
-        wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+        wins.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
             ("wid", auto_val::Value::Str(format!("N{}", id.0).into())),
             ("title", auto_val::Value::Str(slot.title_cache.clone().into())),
             ("focused", auto_val::Value::Str(String::new().into())),
@@ -10789,7 +10789,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             )),
             // v1.5：native 无分区归属，pager 恒空串（判据统一不缺字段）。
             ("pager", auto_val::Value::Str(String::new().into())),
-        ])));
+        ]))));
         fp.push_str(&format!("N{}:{},", id.0, 0));
     }
     let layout_name = match host.wm.layout {
@@ -10823,7 +10823,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     for ws in &host.wm.workspaces {
         let current = host.wm.current_workspace == ws.id;
         let label = (ws.id + 1).to_string();
-        workspaces.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+        workspaces.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(ws.id.to_string().into())),
             ("name", auto_val::Value::Str(ws.name.clone().into())),
             ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
@@ -10834,7 +10834,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
                 "more",
                 auto_val::Value::Str(ws_more.get(ws.id).cloned().unwrap_or_default().into()),
             ),
-        ])));
+        ]))));
         fp.push_str(&format!("{}:{},{};", ws.id, current as u8, label));
     }
     // Plan 478 T3 v1.1：__wm_mru 段——当前分区 MRU 序（switcher 消费，
@@ -10856,12 +10856,12 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let notes_snapshot: Vec<crate::ui::session::NotificationEntry> =
         state.desktop.notifications.borrow().clone();
     for n in &notes_snapshot {
-        notes_objs.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+        notes_objs.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(n.id.to_string().into())),
             ("kind", auto_val::Value::Str(n.kind.clone().into())),
             ("msg", auto_val::Value::Str(n.msg.clone().into())),
             ("at", auto_val::Value::Str(n.at.clone().into())),
-        ])));
+        ]))));
     }
     let notes_front = notes_snapshot
         .first()
@@ -12852,7 +12852,7 @@ fn compare_pngs(
                                 ji.set("command", auto_val::Value::str(&job_cmd));
                                 ji.set("state", auto_val::Value::str("Running"));
                                 ji.set("exit_code", auto_val::Value::Int(0));
-                                jobs_vec.push(auto_val::Value::Obj(ji));
+                                jobs_vec.push(auto_val::Value::Obj(Box::new(ji)));
                             } else {
                                 // job_done:按 id 移除(对齐 .at JobDone handler 语义)。
                                 jobs_vec.retain(|j| {
@@ -12899,11 +12899,11 @@ fn compare_pngs(
                                     let mut sep = auto_val::Obj::new();
                                     sep.set("kind", auto_val::Value::str("turn"));
                                     sep.set("text", auto_val::Value::str(&format!("── 第 {turn} 轮 ──")));
-                                    lines.push(auto_val::Value::Obj(sep));
+                                    lines.push(auto_val::Value::Obj(Box::new(sep)));
                                     let mut u = auto_val::Obj::new();
                                     u.set("kind", auto_val::Value::str("user"));
                                     u.set("text", auto_val::Value::str(&q));
-                                    lines.push(auto_val::Value::Obj(u));
+                                    lines.push(auto_val::Value::Obj(Box::new(u)));
                                     append_chat_events(&mut *state.component, lines);
                                     set_block_turn(&mut *state.component, bid, turn);
                                     *state.app.view_dirty.borrow_mut() = true;
@@ -12930,7 +12930,7 @@ fn compare_pngs(
                             ev.set("text", auto_val::Value::str(&text));
                             append_chat_events(
                                 &mut *state.component,
-                                vec![auto_val::Value::Obj(ev)],
+                                vec![auto_val::Value::Obj(Box::new(ev))],
                             );
                             *state.app.view_dirty.borrow_mut() = true;
                         }
@@ -13251,7 +13251,7 @@ fn compare_pngs(
                             let mut status = auto_val::Obj::new();
                             status.set("kind", auto_val::Value::str("Cancelled"));
                             status.set("message", auto_val::Value::str(""));
-                            obj.set("status", auto_val::Value::Obj(status));
+                            obj.set("status", auto_val::Value::Obj(Box::new(status)));
                             flipped = true;
                         }
                     }
@@ -13308,7 +13308,7 @@ fn compare_pngs(
                     block.set("id", auto_val::Value::Int(bid as i32));
                     block.set("command", auto_val::Value::str(cmd));
                     block.set("cwd", auto_val::Value::str(&cwd));
-                    block.set("status", auto_val::Value::Obj(status));
+                    block.set("status", auto_val::Value::Obj(Box::new(status)));
                     block.set("streamed_text", auto_val::Value::str(""));
                     block.set("duration_ms", auto_val::Value::Int(0));
                     block.set("output", auto_val::Value::Nil);
@@ -13322,9 +13322,9 @@ fn compare_pngs(
                     if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                         let store_pushed_this = blocks.len() > blocks_before;
                         if store_pushed_this {
-                            *blocks.last_mut().unwrap() = auto_val::Value::Obj(block);
+                            *blocks.last_mut().unwrap() = auto_val::Value::Obj(Box::new(block));
                         } else {
-                            blocks.push(auto_val::Value::Obj(block));
+                            blocks.push(auto_val::Value::Obj(Box::new(block)));
                         }
                         let _ = state.component.write_state_vec("blocks", blocks);
                     }
@@ -13427,7 +13427,7 @@ fn compare_pngs(
                         block.set("id", auto_val::Value::Int(bid as i32));
                         block.set("command", auto_val::Value::str(cmd));
                         block.set("cwd", auto_val::Value::str(&cwd));
-                        block.set("status", auto_val::Value::Obj(status));
+                        block.set("status", auto_val::Value::Obj(Box::new(status)));
                         block.set("streamed_text", auto_val::Value::str(""));
                         block.set("duration_ms", auto_val::Value::Int(0));
                         // Plan 053 后续:补齐 Block 其余字段 —— 缺 output 时
@@ -13453,16 +13453,16 @@ fn compare_pngs(
                             // 否则(历史路径/store 未推)追加。
                             let store_pushed_this = blocks.len() > blocks_before;
                             if store_pushed_this {
-                                *blocks.last_mut().unwrap() = auto_val::Value::Obj(block);
+                                *blocks.last_mut().unwrap() = auto_val::Value::Obj(Box::new(block));
                             } else {
-                                blocks.push(auto_val::Value::Obj(block));
+                                blocks.push(auto_val::Value::Obj(Box::new(block)));
                             }
                             let _ = state.component.write_state_vec("blocks", blocks);
                         } else {
                             let _ = state.component.write_state(
                                 "blocks",
                                 auto_val::Value::Array(auto_val::Array {
-                                    values: vec![auto_val::Value::Obj(block)],
+                                    values: vec![auto_val::Value::Obj(Box::new(block))],
                                 }),
                             );
                         }
@@ -13529,7 +13529,7 @@ fn compare_pngs(
                 block.set("id", auto_val::Value::Int(bid as i32));
                 block.set("command", auto_val::Value::str(&cmd));
                 block.set("cwd", auto_val::Value::str(&cwd));
-                block.set("status", auto_val::Value::Obj(status));
+                block.set("status", auto_val::Value::Obj(Box::new(status)));
                 block.set("streamed_text", auto_val::Value::str(""));
                 block.set("duration_ms", auto_val::Value::Int(0));
                 block.set("output", auto_val::Value::Nil);
@@ -13541,7 +13541,7 @@ fn compare_pngs(
                 // Plan 063 T5: chat 回合号(非 chat 块恒 0)。
                 block.set("turn", auto_val::Value::Int(0));
                 if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
-                    blocks.push(auto_val::Value::Obj(block));
+                    blocks.push(auto_val::Value::Obj(Box::new(block)));
                     let _ = state.component.write_state_vec("blocks", blocks);
                 }
                 // Plan 060(M1-T3):同上 —— 执行提交由 shell.at 的
@@ -13594,7 +13594,7 @@ fn compare_pngs(
                             let mut status = auto_val::Obj::new();
                             status.set("kind", auto_val::Value::str("Cancelled"));
                             status.set("message", auto_val::Value::str(""));
-                            obj.set("status", auto_val::Value::Obj(status));
+                            obj.set("status", auto_val::Value::Obj(Box::new(status)));
                             changed = true;
                             break;
                         }
@@ -22819,18 +22819,18 @@ mod tests {
         let _ = app.component.write_state_vec(
             "__wm_workspaces",
             vec![
-                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                     ("id", auto_val::Value::Str("0".into())),
                     ("name", auto_val::Value::Str("Desktop 1".into())),
                     ("current", auto_val::Value::Str("1".into())),
                     ("label", auto_val::Value::Str("1".into())),
-                ])),
-                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                ]))),
+                auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                     ("id", auto_val::Value::Str("1".into())),
                     ("name", auto_val::Value::Str("Desktop 2".into())),
                     ("current", auto_val::Value::Str("".into())),
                     ("label", auto_val::Value::Str("2".into())),
-                ])),
+                ]))),
             ],
         );
         app.component
@@ -22927,7 +22927,7 @@ mod tests {
             let _ = app.component.write_state_vec(
                 "__wm_wins",
                 vec![
-                    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                         ("wid", auto_val::Value::Str("1".into())),
                         ("title", auto_val::Value::Str("Alpha".into())),
                         ("focused", auto_val::Value::Str("1".into())),
@@ -22935,14 +22935,14 @@ mod tests {
                         ("app", auto_val::Value::Str("".into())),
                         ("icon", auto_val::Value::Str("app-window".into())),
                         ("native", auto_val::Value::Str("".into())),
-                    ])),
-                    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    ]))),
+                    auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                         ("wid", auto_val::Value::Str("N3".into())),
                         ("title", auto_val::Value::Str("记事本".into())),
                         ("focused", auto_val::Value::Str("".into())),
                         ("native", auto_val::Value::Str("1".into())),
                         ("icon", auto_val::Value::Str("app-window".into())),
-                    ])),
+                    ]))),
                 ],
             );
         }

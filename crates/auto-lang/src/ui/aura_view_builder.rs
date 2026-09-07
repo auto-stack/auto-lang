@@ -10803,7 +10803,7 @@ fn eval_initial_without_vm(expr: &Expr) -> Value {
             for pair in pairs {
                 obj.set(pair.key.to_astr(), eval_initial_without_vm(&pair.value));
             }
-            Value::Obj(obj)
+            Value::Obj(Box::new(obj))
         }
         _ => Value::Nil,
     }
@@ -11916,7 +11916,7 @@ mod tests {
                 auto_val::Value::Array(auto_val::Array::from_vec(vec![120.0f64, 200.0f64])),
             );
             bridge
-                .write_state("table_widths", auto_val::Value::Obj(obj))
+                .write_state("table_widths", auto_val::Value::Obj(Box::new(obj)))
                 .unwrap();
         }
 
@@ -13347,7 +13347,7 @@ mod tests {
             o.set("label", Value::str(label));
             o.set("date", Value::str(date));
             o.set("is_other_month", Value::Bool(other));
-            Value::Obj(o)
+            Value::Obj(Box::new(o))
         }
         bridge.write_state(
             "days",
@@ -13887,7 +13887,7 @@ mod tests {
         todo_obj.set("id", Value::Int(0));
         todo_obj.set("text", Value::str("Buy milk"));
         todo_obj.set("done", Value::Bool(false));
-        bindings.insert("todo".to_string(), Value::Obj(todo_obj));
+        bindings.insert("todo".to_string(), Value::Obj(Box::new(todo_obj)));
 
         // Set up state: filter = "active"
         let widget = make_test_widget("App", vec![
@@ -13940,7 +13940,7 @@ mod tests {
         todo_done.set("text", Value::str("Done item"));
         todo_done.set("done", Value::Bool(true));
         let mut bindings_done = Bindings::new();
-        bindings_done.insert("todo".to_string(), Value::Obj(todo_done));
+        bindings_done.insert("todo".to_string(), Value::Obj(Box::new(todo_done)));
 
         // Create a builder with filter="completed" state
         let widget_completed = make_test_widget("App", vec![

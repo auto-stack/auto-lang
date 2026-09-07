@@ -49,10 +49,10 @@ pub fn list_new(ctx: &mut VmContext, initial: Value) -> Value {
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
-            Value::Instance(Instance {
+            Value::Instance(Box::new(Instance {
                 ty: auto_val::Type::from(ty),
                 fields,
-            })
+            }))
         }
         _ => Value::Error(format!("Type List not found!").into()),
     }
@@ -338,10 +338,10 @@ pub fn list_iter(_ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) 
                 fields.set("list_id", Value::USize(id));
                 fields.set("index", Value::USize(0));
 
-                Value::Instance(Instance {
+                Value::Instance(Box::new(Instance {
                     ty: auto_val::Type::User("ListIter".into()),
                     fields,
-                })
+                }))
             } else {
                 Value::Nil
             }
@@ -453,10 +453,10 @@ pub fn list_iter_map(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Value
                 fields.set("func", func.clone());
                 fields.set("predicate", Value::Nil); // No predicate for direct ListIter
 
-                Value::Instance(auto_val::Instance {
+                Value::Instance(Box::new(auto_val::Instance {
                     ty: auto_val::Type::User("MapIter".into()),
                     fields,
-                })
+                }))
             } else {
                 Value::Nil
             }
@@ -617,10 +617,10 @@ pub fn list_iter_filter(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Va
                 fields.set("index", Value::USize(idx));
                 fields.set("predicate", predicate.clone());
 
-                Value::Instance(auto_val::Instance {
+                Value::Instance(Box::new(auto_val::Instance {
                     ty: auto_val::Type::User("FilterIter".into()),
                     fields,
-                })
+                }))
             } else {
                 Value::Nil
             }
@@ -1002,10 +1002,10 @@ pub fn list_iter_collect(ctx: &mut VmContext, instance: &mut Value, _args: Vec<V
             let mut fields = auto_val::Obj::new();
             fields.set("id", Value::USize(new_list_id));
 
-            return Value::Instance(auto_val::Instance {
+            return Value::Instance(Box::new(auto_val::Instance {
                 ty: auto_val::Type::User("List".into()),
                 fields,
-            });
+            }));
         }
     }
 
@@ -1035,10 +1035,10 @@ pub fn list_iter_collect(ctx: &mut VmContext, instance: &mut Value, _args: Vec<V
         let mut fields = auto_val::Obj::new();
         fields.set("id", Value::USize(new_list_id));
 
-        return Value::Instance(auto_val::Instance {
+        return Value::Instance(Box::new(auto_val::Instance {
             ty: auto_val::Type::User("List".into()),
             fields,
-        });
+        }));
     }
 
     Value::Nil
@@ -1252,10 +1252,10 @@ pub fn filter_iter_map(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Val
                 // Pass along the predicate (use Nil if None)
                 fields.set("predicate", predicate.clone().unwrap_or(Value::Nil));
 
-                Value::Instance(auto_val::Instance {
+                Value::Instance(Box::new(auto_val::Instance {
                     ty: auto_val::Type::User("MapIter".into()),
                     fields,
-                })
+                }))
             } else {
                 Value::Nil
             }
@@ -1305,10 +1305,10 @@ pub fn map_iter_filter(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Val
                 // Pass along the map function (use Nil if None)
                 fields.set("func", map_func.clone().unwrap_or(Value::Nil));
 
-                Value::Instance(auto_val::Instance {
+                Value::Instance(Box::new(auto_val::Instance {
                     ty: auto_val::Type::User("FilterIter".into()),
                     fields,
-                })
+                }))
             } else {
                 Value::Nil
             }

@@ -2702,7 +2702,7 @@ fn py_any_to_value(
             let val = py_any_to_value(&value, vm)?;
             obj.set(auto_val::ValueKey::from(key_str.as_str()), val);
         }
-        return Ok(auto_val::Value::Obj(obj));
+        return Ok(auto_val::Value::Obj(Box::new(obj)));
     }
     // Fallback: string representation
     let s = format!("{:?}", py_val);
@@ -2882,7 +2882,7 @@ mod tests {
                 auto_val::ValueKey::from("lr"),
                 auto_val::Value::Double(0.1),
             );
-            let py_val = value_to_py(&auto_val::Value::Obj(obj), py, &vm);
+            let py_val = value_to_py(&auto_val::Value::Obj(Box::new(obj)), py, &vm);
             let dict = py_val.cast::<PyDict>().unwrap();
             assert_eq!(dict.len(), 2);
             assert!(!dict

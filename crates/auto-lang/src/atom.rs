@@ -80,7 +80,7 @@ impl AtomReader {
             }
             auto_val::Value::Obj(o) => {
                 // Return the object directly
-                return Ok(Atom::Obj(o));
+                return Ok(Atom::Obj(*o));
             }
             other => Atom::new(other),
         }

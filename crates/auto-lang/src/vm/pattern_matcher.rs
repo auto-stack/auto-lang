@@ -411,7 +411,7 @@ mod tests {
         let mut obj = Obj::new();
         obj.set(AutoStr::from("__variant"), Value::str("Reset"));
 
-        let message = Value::Obj(obj);
+        let message = Value::Obj(Box::new(obj));
 
         let result = PatternMatcher::match_pattern(&pattern, &message);
         assert!(result.is_some());

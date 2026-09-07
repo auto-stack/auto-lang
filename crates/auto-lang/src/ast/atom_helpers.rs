@@ -25,7 +25,7 @@ impl AtomBuilder {
         for (key, value) in pairs {
             obj.set(key, value);
         }
-        Value::Obj(obj)
+        Value::Obj(Box::new(obj))
     }
 
     /// Create a key-value pair
