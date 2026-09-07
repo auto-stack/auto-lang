@@ -90,8 +90,14 @@ export interface PlaygroundCardToolbar {
 }
 
 export interface PlaygroundCardProps extends SnippetRunnerProps {
-  /** manifest 笔记 id（582 Notes Explorer 用；本期仅预留透传）。 */
+  /** manifest 笔记 id（Notes Explorer 用）。 */
   noteId?: string;
+  /** 期望输出（vm-golden 笔记）；非空时输出区加"期望输出"对照 tab（Plan 582）。 */
+  expectedOutput?: string | null;
+  /** 项目型笔记文件集（kind=project）；>1 文件时呈文件 tab，entry 锁 main.at（Plan 582）。 */
+  files?: NoteFile[] | null;
+  /** 项目目录（相对服务端 examples/playground-demo）；运行走 files 形态（Plan 582）。 */
+  projectDir?: string | null;
   /** 工具栏项开关（默认全开）。 */
   toolbar?: PlaygroundCardToolbar;
   /** 是否渲染 ExampleSelector（默认 false；旧 AutoPlayground 常驻行为需显式选入）。 */

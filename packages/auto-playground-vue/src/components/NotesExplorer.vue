@@ -46,6 +46,9 @@
           :code="cardCode"
           :api-base="apiBase"
           :note-id="active.note.id"
+          :expected-output="active.note.expectedOutput"
+          :files="active.note.files"
+          :project-dir="cardProjectDir"
           height="auto"
         />
       </article>
@@ -116,6 +119,14 @@ const cardCode = computed(() => {
   const n = active.value?.note
   if (!n) return ''
   return n.code ?? n.files?.find((f) => f.path === 'main.at')?.content ?? ''
+})
+
+// 项目目录（相对服务端 examples/playground-demo；运行 files 形态的物化基座）。
+const cardProjectDir = computed(() => {
+  const n = active.value?.note
+  if (!n || n.kind !== 'project' || !n.files) return null
+  const m = n.sourcePath.match(/examples\/playground-demo\/(.+)\/main\.at$/)
+  return m ? m[1] : null
 })
 
 function onSelect(noteId: string) {

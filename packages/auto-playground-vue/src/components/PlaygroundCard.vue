@@ -77,6 +77,19 @@
       </div>
     </div>
     <div class="card-body">
+      <div v-if="fileTabs.length > 1" class="file-tabs">
+        <button
+          v-for="f in fileTabs"
+          :key="f.path"
+          class="file-tab"
+          :class="{ active: f.path === activeFile, entry: f.path === ENTRY_FILE }"
+          :title="f.path === ENTRY_FILE ? '入口文件（entry 锁定）' : f.path"
+          @click="onSelectFile(f.path)"
+        >
+          <Lock v-if="f.path === ENTRY_FILE" :size="10" />
+          <span>{{ f.path }}</span>
+        </button>
+      </div>
       <SnippetRunner
         ref="runner"
         :code="code"
@@ -119,8 +132,14 @@
               </button>
             </div>
             <div class="output-content">
+              <ExpectedOutputPanel
+                v-if="displayTab === 'Expected'"
+                :expected="expectedOutput ?? ''"
+                :actual="stdout ?? ''"
+                :has-run="hasRun"
+              />
               <ConsoleOutput
-                v-if="displayTab === 'Output'"
+                v-else-if="displayTab === 'Output'"
                 :stdout="stdout ?? ''"
                 :stderr="stderr ?? ''"
                 :result="resultCode ?? ''"
@@ -185,13 +204,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward } from 'lucide-vue-next'
+import { ref, watch, computed, onMounted } from 'vue'
+import { Play, Loader2, Code2, Share2, Copy, Check, Bug, Square, ArrowDown, ArrowUp, SkipForward, Lock } from 'lucide-vue-next'
 import SnippetRunner from './SnippetRunner.vue'
 import BytecodePanel from './BytecodePanel.vue'
 import CodePreview from './CodePreview.vue'
 import ConsoleOutput from './ConsoleOutput.vue'
 import ExampleSelector from './ExampleSelector.vue'
+import ExpectedOutputPanel from './ExpectedOutputPanel.vue'
 import FileTree from './FileTree.vue'
 import type { OutputTab, PlaygroundCardToolbar } from '../types'
 
@@ -204,6 +224,12 @@ const props = withDefaults(defineProps<{
   height?: string
   /** manifest 笔记 id（582 Notes Explorer 用；本期仅预留存值）。 */
   noteId?: string
+  /** 期望输出（vm-golden 笔记 .expected.out）；非空时输出区加"期望输出"对照 tab。 */
+  expectedOutput?: string | null
+  /** 项目型笔记文件集（kind=project）；>1 文件时呈文件 tab（entry 锁 main.at）。 */
+  files?: { path: string; content: string }[] | null
+  /** 项目目录（相对服务端 examples/playground-demo）；运行走 files 形态。 */
+  projectDir?: string | null
   /** 工具栏项开关（默认全开）。 */
   toolbar?: { transpile?: boolean; share?: boolean; debug?: boolean; live?: boolean }
   /** 是否渲染 ExampleSelector（默认 false；旧 AutoPlayground 常驻行为需显式选入）。 */
@@ -215,6 +241,9 @@ const props = withDefaults(defineProps<{
   height: '480px',
   toolbar: () => ({}),
   exampleSelector: false,
+  expectedOutput: null,
+  files: null,
+  projectDir: null,
 })
 
 const DEFAULT_CODE = `fn main() {
@@ -255,11 +284,18 @@ const shareToast = computed(() => runner.value?.shareToast)
 const displayTab = ref<EmbedTab>('Output')
 const targetLang = ref<'run' | Exclude<OutputTab, 'bytecode'>>(props.target)
 const copied = ref(false)
+// 本卡片实例是否已执行过运行（期望输出对照三态依据；卡片按 noteId 重挂载自动复位）。
+const hasRun = ref(false)
 
-const tabs = ['Output', 'rust', 'c', 'python', 'typescript', 'abt', 'Bytecode'] as const
-type EmbedTab = typeof tabs[number]
+type EmbedTab = 'Expected' | 'Output' | 'rust' | 'c' | 'python' | 'typescript' | 'abt' | 'Bytecode'
+
+const tabs = computed<EmbedTab[]>(() => {
+  const base: EmbedTab[] = ['Output', 'rust', 'c', 'python', 'typescript', 'abt', 'Bytecode']
+  return props.expectedOutput ? ['Expected', ...base] : base
+})
 
 const tabLabels: Record<EmbedTab, string> = {
+  Expected: '期望输出',
   Output: 'Output',
   rust: 'Rust',
   c: 'C',
@@ -283,14 +319,55 @@ const showTransFileTree = computed(() => {
 async function runAction() {
   const r = runner.value
   if (!r) return
+  syncProjectRun(r)
   if (targetLang.value === 'run') {
     await r.run()
-    displayTab.value = 'Output'
+    hasRun.value = true
+    // 有期望输出的笔记：运行后直接呈对照（Playground 设计 §6.3）。
+    displayTab.value = props.expectedOutput ? 'Expected' : 'Output'
   } else {
     r.switchTab(targetLang.value)
     displayTab.value = targetLang.value
   }
 }
+
+// ── 项目型笔记文件 tab（Plan 582 T7）：多文件切换编辑，运行走 files 形态 ──
+
+const ENTRY_FILE = 'main.at'
+
+const activeFile = ref(ENTRY_FILE)
+const fileBuffers = ref(new Map<string, string>())
+
+const fileTabs = computed(() => (props.files ?? []).map((f) => ({ path: f.path })))
+
+function syncActiveBuffer() {
+  const r = runner.value
+  if (!r) return
+  fileBuffers.value.set(activeFile.value, r.source)
+}
+
+function onSelectFile(path: string) {
+  if (path === activeFile.value) return
+  syncActiveBuffer()
+  activeFile.value = path
+  const r = runner.value
+  if (r) r.source = fileBuffers.value.get(path) ?? ''
+}
+
+function syncProjectRun(r: NonNullable<typeof runner.value>) {
+  if (!props.files || props.files.length === 0) return
+  syncActiveBuffer()
+  r.projectFiles = [...fileBuffers.value.entries()].map(([path, source]) => ({ path, source }))
+  r.projectDir = props.projectDir ?? undefined
+}
+
+onMounted(() => {
+  if (!props.files || props.files.length === 0) return
+  const map = new Map<string, string>()
+  for (const f of props.files) map.set(f.path, f.content)
+  fileBuffers.value = map
+  activeFile.value = map.has(ENTRY_FILE) ? ENTRY_FILE : props.files[0].path
+})
 
 watch(targetLang, (lang) => {
   if (lang !== 'run' && liveCompile.value) {
@@ -301,7 +378,7 @@ watch(targetLang, (lang) => {
 
 function onSwitchTab(tab: EmbedTab) {
   displayTab.value = tab
-  if (tab !== 'Output' && tab !== 'Bytecode') {
+  if (tab !== 'Output' && tab !== 'Bytecode' && tab !== 'Expected') {
     targetLang.value = tab
     runner.value?.switchTab(tab)
   } else if (tab === 'Output') {
@@ -413,6 +490,50 @@ defineExpose({
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
+  flex-direction: column;
+}
+
+.file-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0.25rem 0.5rem 0;
+  background: #181825;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+
+.file-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #313244;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: #11111b;
+  color: #6c7086;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.file-tab:hover {
+  color: #cdd6f4;
+}
+
+.file-tab.active {
+  background: #1e1e1e;
+  color: #cdd6f4;
+}
+
+.file-tab.entry {
+  color: #a6e3a1;
+}
+
+.file-tab.entry.active {
+  color: #a6e3a1;
 }
 
 .target-select {
