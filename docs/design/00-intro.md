@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **28**），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **29**），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blocks/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -96,6 +96,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 13 | [Networking](13-networking.md) | HTTP Server 标准库、async I/O、JSON/url | |
 | 14 | [Developer Tools](14-developer-tools.md) | LSP、Web Playground、AutoLab、MCP Server | Playground 细化设计归 [documents/](documents/README.md) |
 | 15 | [AI Daemon Infrastructure](15-ai-daemon-infrastructure.md) | AutoOS 共享 LLM Harness、并发仲裁、Key Vault | 跨仓主题，实现在 auto-os 生态 |
+| 28 | [Rust Interop Architecture](28-rust-interop-architecture.md) | Auto↔Rust 互操作：类型信息生命周期铁律、三时刻能力模型、编译预言机原则、430 管线实勘、双轨迁移模式 | 2026-09-07 立档；源 musk VM 轨 JSON 桥追问的全链定案，PLAN-591 的架构依据 |
 
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。
