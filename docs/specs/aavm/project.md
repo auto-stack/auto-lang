@@ -210,6 +210,16 @@ VM 侧静默空输出观察项)/OOP 完整面(远期)/532 W0 硬闸可拆补缺�
 > 起按此口径(Linux/CI 执行,Windows 本地跳过)。对账表:
 > `scratch/p574/coverage-map.md`。
 
+> **〔闸门 harness once-compiled,2026-09-07,Plan 565 L1〕** M1-M4 语料
+> 闸门(lex/parse/typeinfo/codegen dump)自 565 起走 `aavm2_corpus_runner`
+> ——程序串闸门内恒定(语料经 `File.read_text` nat#1000 临时文件注入,
+> 路径需 .at 字面量转义,见复审补丁 941720ded)、`create_vm_from_source`
+> 编译一次、逐语料同 VM 重跑 main;判据断言原样留各闸门。时长
+> m2 147s→2.98s / m4 ~315s→秒级(CI/Linux 全量档全额受益;Windows 仍
+> 按 574 口径 ignore,显式诊断跑法 `AUTO_LANG_HEAVY_MEM=1 cargo test
+> -- --ignored`)。单测峰值不降(~790-815MB=单次编译高水位,归因与
+> 压缩属 566):权重表 `.config/test-mem-weights.md` 565 版。
+
 **单用例全闭环(理想判据,队列①落统一 runner)**:同一 .at 用例四途径
 两族产物三重对拍——①path1/path3(执行输出)互拍且等于 oracle(参考实现/
 golden);②path2/path4(Rust 译文)互拍且等于主 a2r;③**译文回链**:
