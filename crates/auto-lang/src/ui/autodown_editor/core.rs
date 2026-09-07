@@ -3508,8 +3508,14 @@ impl AutodownEditorCore {
             }
         }
 
-        // ② 右半新建缓冲（标题续行为登记余量：保持同级）。
-        let kind = self.block_kind_of(bi);
+        // ② 右半新建缓冲。PLAN-060 T2：标题尾块降级——ATX 标题是单行构造，
+        // 回车拆出的尾巴不能还是标题（对齐 auto-down block_model.at 的
+        // splitTailKind 不变式：Heading 尾块 → Paragraph；Fence 上面早退
+        // 不拆，其余类型维持继承）。行高已是 PARA 分支，降级自洽。
+        let kind = match self.block_kind_of(bi) {
+            LeafKind::Heading(_) => LeafKind::Paragraph,
+            other => other,
+        };
         let new_id = {
             let mut blocks = self.blocks.lock().unwrap();
             let id = blocks.len();
@@ -4421,6 +4427,74 @@ mod tests {
         assert_eq!(c.block_count(), 2);
         assert_eq!(c.live_text(0), "一二三");
         assert_eq!(c.live_text(1), "四五");
+    }
+
+    /// PLAN-060 T2：标题内回车——尾块降级为段落（ATX 单行不变式，对齐
+    /// auto-down block_model.at splitTailKind）。行中回车：尾巴文本随降级块
+    /// 走，左半截保持标题。
+    #[test]
+    fn enter_split_heading_tail_demotes_to_paragraph() {
+        let c = core_empty("t60a");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('#'));
+        press(c, EditorKey::Char(' '));
+        for ch in "标题".chars() {
+            press(c, EditorKey::Char(ch));
+        }
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(1));
+        press(c, EditorKey::Home);
+        press(c, EditorKey::Right); // 光标在 "标|题"
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(1));
+        assert_eq!(c.live_text(0), "标");
+        assert_eq!(c.block_kind_of(1), LeafKind::Paragraph);
+        assert_eq!(c.live_text(1), "题");
+        assert_eq!(c.focused_block(), Some(1));
+    }
+
+    /// PLAN-060 T2：标题行尾回车——空尾块降级为空段落。
+    #[test]
+    fn enter_split_heading_at_end_yields_empty_paragraph() {
+        let c = core_empty("t60b");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('#'));
+        press(c, EditorKey::Char(' '));
+        for ch in "标题".chars() {
+            press(c, EditorKey::Char(ch));
+        }
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(1));
+        assert_eq!(c.block_kind_of(1), LeafKind::Paragraph);
+        assert_eq!(c.live_text(1), "");
+        assert_eq!(c.focused_block(), Some(1));
+    }
+
+    /// PLAN-060 T3：回车后的空尾块上退格 → 合并回上一块、块数还原、
+    /// 焦点回上一块、光标落 junction（上一块末尾）。对齐网页轨空块退格
+    /// 合并语义；钉死现状行为。注：创建序 ≠ 显示序——新块 id 是 blocks
+    /// vec 追加位（2），显示位次在 1（先例 enter_at_item_end_creates_new_item
+    /// 的 Some(2) 同款）。
+    #[test]
+    fn backspace_empty_tail_merges_to_prev_end() {
+        let c = core_for("t60c", "甲块。\n\n乙块。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Enter);
+        assert_eq!(c.focused_block(), Some(2));
+        assert_eq!(c.live_text(2), "");
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.emit_document(), "甲块。\n\n乙块。");
+        assert_eq!(c.focused_block(), Some(0));
+        let offset = {
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        assert_eq!(offset, Some("甲块。".len()));
     }
 
     /// 列表项末端 Enter → 新列表项（emit 重发序号/圆点）。
