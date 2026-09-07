@@ -1,6 +1,9 @@
 <template>
   <aside class="nx-sidebar">
-    <div v-if="title" class="nx-brand">{{ title }}</div>
+    <div v-if="title" class="nx-brand">
+      <Zap :size="16" class="nx-brand-icon" />
+      <span>{{ title }}</span>
+    </div>
     <div class="nx-search">
       <Search :size="14" class="nx-search-icon" />
       <input
@@ -96,7 +99,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { Search, ChevronRight } from 'lucide-vue-next'
+import { Search, ChevronRight, Zap } from 'lucide-vue-next'
 import ScrollArea from './ScrollArea.vue'
 import type { NoteGroup } from '../composables/useNotes'
 import type { NoteMeta } from '../types'
@@ -292,12 +295,21 @@ watch(
 }
 
 .nx-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.6rem 0.7rem 0.45rem;
-  font-size: 0.9rem;
+  font-size: 1.05rem;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
-  color: var(--nx-text-1);
+  color: #818cf8;
   border-bottom: 1px solid var(--nx-border);
+  flex-shrink: 0;
+}
+
+.nx-brand-icon {
+  color: #863bff;
+  fill: #863bff;
   flex-shrink: 0;
 }
 
