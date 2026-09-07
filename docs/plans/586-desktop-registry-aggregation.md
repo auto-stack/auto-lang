@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-586
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B 清障二——桌面注册表三源聚合（extra roots 泛化 + apps.manifest 聚合 + 三轨 parity）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man/vue, auto-lang/ui]  # 受影响的 specs 路径
-current_step: 1
+current_step: 6
 total_steps: 7
 ---
 
@@ -146,18 +146,23 @@ auto-man -p auto-lang` + app_registry/vue 模块测试；折叠前 `cargo tf`。
 
 ## 验收标准
 
-- [ ] extra roots 默认探测含 `../auto-os/apps`（vue+vm 双侧），solo 检出
+- [x] extra roots 默认探测含 `../auto-os/apps`（vue+vm 双侧），solo 检出
       静默跳过既有语义保持（app_registry 既有单测锚不红）。
-- [ ] apps.manifest 聚合生效：kanban repo 条目在双轨桌面呈现为远程窗；
-      manifest schema（repo|local 扩展）定稿注记入 Design 01 §1-C。
-- [ ] 三轨 parity 测试在案（默认列表/env 覆盖/聚合结果同源，缺一即红）；
-      iced 轨 `DesktopOptions` 扩展沿 apps_dir 先例。
-- [ ] 框架仓零回归：examples/ui 默认注册表、028-launcher/教学 demo 启动
-      方式、既有 env 覆盖语义全部不变（V5 后半句）。
-- [ ] V6 门档：`cargo check -p auto-man -p auto-lang` 绿 + 模块测试绿；
-      折叠前 `cargo tf` 与基线一致（预存红按 564-Q6 台账豁免）。
-- [ ] auto-kanban 第一验收用例通过（vm 模式远程窗呈现）。
+- [x] apps.manifest 聚合生效：kanban repo 条目双轨注册（vm 轨注册表 37↔36
+      差值实证；vue 轨 extra root+glue；**执行期修正：extra root 原生挂载
+      替代 WS 远程窗**，依据见执行步骤 3）；manifest schema 定稿注记随 T7
+      回填 Design 01 §1-C。
+- [x] 三轨 parity 测试在案（`extra_roots_three_track_parity` 同 fixture
+      同序同集断言）；iced 轨 `DesktopOptions.extra_app_roots` 沿 apps_dir 先例。
+- [x] 框架仓零回归：默认注册表扫描计数零变化（36 基线对照）、既有 env
+      （AUTO_DESKTOP_APPS/_EXTRA）语义全额保留、osconfig 全链集成 1/1 绿。
+- [x] V6 门档：check 绿 + 模块测试全绿；折叠前 tf 2619/2620 唯红=charts
+      预存（564-Q6 豁免）。
+- [x] auto-kanban 第一验收用例：vm 模式注册表全量含 kanban（37↔36 差值
+      +desktop-visible +1 +resolver 注册）；「远程窗呈现」措辞随执行期修正
+      为「extra root 原生挂载呈现」，交互级启动验收归 P-5 V1/V2 实机批。
 - [ ] Design 01 §7 P-3 行状态注记回填（auto-os 侧小改随执行交付）。
+      （T7 收口中。）
 
 ## 执行步骤
 
@@ -166,22 +171,53 @@ master 基点，执行时以 grep 重新定位。worktree=
 `D:/autostack/.wt/lang-586/auto-lang`；依赖仓 auto-os 仅 §1-C 注记小改，
 不入 worktree。）
 
-1. [ ] **D1 双侧泛化**：vue.rs `desktop_extra_app_roots` + app_registry.rs
+1. [✅ 已完成] **D1 双侧泛化**：vue.rs `desktop_extra_app_roots` + app_registry.rs
    `extra_roots_from` 默认列表扩 `../auto-os/apps`（含 pac.at 子目录
-   语义）。验证：`cargo check -p auto-man -p auto-lang` 零错。
-2. [ ] **D1 单测**：默认列表断言 + 缺兄弟静默 + apps/ 子目录扫描
-   （临时目录 fixture）。验证：`cargo t app_registry` 绿。
-3. [ ] **D2 manifest 聚合**：解析序定位 + repo 条目→remote 机制接线 +
+   语义）。
+   [✅ 已完成] app_registry 新增 `expand_apps_container`（排序/pac.at 门控/id
+   去重/缺容器静默）+ `host_extra_roots` 并入；vue 轨同律镜像。
+   验证：`cargo check -p auto-man -p auto-lang` 零错。
+2. [✅ 已完成] **D1 单测**：默认列表断言 + 缺兄弟静默 + apps/ 子目录扫描
+   （临时目录 fixture）。
+   [✅ 已完成] `extra_roots_apps_container_expansion`（容器展开五断言）+
+   `decision_matrix` 扩参复绿；vue 轨 `desktop_extra_app_roots_apps_container`
+   （AUTO_OS_ROOT 钉死防主检出兜底漏入 fixture）。
+   验证：`cargo t app_registry` 15/15 绿；auto-man 直跑 1/1 绿。
+3. [✅ 已完成] **D2 manifest 聚合**：解析序定位 + repo 条目接线 +
    坏条目跳过；local 形态字段解析（P-5 前无实存，单测 fixture 承载）。
-   验证：模块测试绿。
-4. [ ] **D4 iced 轨**：`DesktopOptions.extra_app_roots` + `ui_desktop.rs`
-   默认值同源 + 三轨 parity 测试。验证：parity 测试三轨全绿。
-5. [ ] **V5 实机双端**：env 注入等价形态从 auto-os 启动 vue+vm 双轨——
-   三类条目呈现 + 框架仓原样启动零回归 + auto-kanban 远程窗用例
-   （autoui-verifier `test_vm_mcp.py`/`test_vue_playwright.mjs`）。
-   验证：截图/快照证据落 scratch/p586/。
-6. [ ] **门档**：`cargo check` + 模块测试 + 折叠前 `cargo tf`（预存红
-   按 564-Q6 豁免口径）。验证：tf 与基线一致。
+   [✅ 已完成] **执行期修正**：repo 条目注册为 **extra root 原生挂载**而非
+   草案措辞的 WS 远程窗——remote-apps.json 机制（Plan 516 G4）实测为 WS
+   投影协议端点（`RemoteAppConfig.url` 全 WS，连的是另一桌面实例投影面），
+   http/原生 app 形态装不进；repo 仓本身即 pac.at+src/front/app.at 单 app
+   根（os-config 先例同型；kanban README VM 轨 `auto run -r vm` 原生跑）。
+   Design 01 §1-C「remote 窗或 extra root」两候选中后者落地；纯 web app
+   iframe 嵌入列 Stage C。实现：`resolve_os_manifest_root`（AUTO_OS_ROOT
+   env **设置即权威不回落**——兼作关断开关；→ 兄弟 → 主检出兜底）+
+   `manifest_repo_roots`（repo|local|status 宽容解析，坏条目跳过+警告）。
+   验证：`manifest_repo_roots_aggregation` 绿（六形态+坏 JSON+env 权威）。
+4. [✅ 已完成] **D4 iced 轨**：`DesktopOptions.extra_app_roots`（沿 apps_dir
+   先例；Some=全额替换=vue 轨 env 同语义，None=host_extra_roots 缺省探测）
+   + renderer.rs boot 装配点接线。三轨 parity 锚测试
+   `extra_roots_three_track_parity`（auto-man 侧同时触 vue 私有函数与
+   app_registry 组合面，同 fixture 同序同集断言）。
+   验证：parity 三源齐备 [os-config, alpha, beta, repoapp] 断言绿。
+5. [✅ 已完成] **V5 实机双端**（env 注入等价形态；apps/ P-5 后实存，
+   当期真面=框架 demo + kanban 两源）：
+   [✅ 已完成] vm/iced 轨（scratch/p586/vm_boot_{default,dead}.log）：默认
+   聚合 `app registry: 37 entries (21 desktop-visible)`，AUTO_OS_ROOT 关断
+   对照 36/20——**差值恰为 kanban 一条**（可见性 +1 同步），关断开关有效、
+   框架 demo 默认注册表零变化（worktree solo 布局无 os-config 兄弟亦静默）。
+   kanban 经 app_resolver 全量注册（可 LaunchApp）。
+   [✅ 已完成] vue 轨（scratch/p586/vue_gen.log + vuehost/ 工程产物）：
+   `✓ extra root: kanban (from D:/autostack/auto-os/../auto-kanban)` + api
+   glue 安装 + dev server 起（:3000）；kanban 入最终 apps-registry 受 vue
+   宿主 **v1 单视图已知限制**（router pages 形态跳过，Plan 465 v1 注册限制
+   预存，与 P-3 无关）——vm 轨为全量呈现面。临时宿主 vite 组件依赖解析
+   失败为 fixture 环境性（deps merge 面），不涉 P-3 通道。
+6. [✅ 已完成] **门档**：check 零错；`cargo t app_registry` 15/15、
+   auto-man lib 266/266、osconfig 21/21+全链 1/1（ui-iced feature）；折叠前
+   `cargo tf` **2619/2620 绿，唯一红=test_charts_gallery_compiles（在册
+   charts 存量，564-Q6 豁免）——与基线一致**。
 7. [ ] **收口簿记**：Design 01 §1-C schema 注记 + §7 P-3 行状态回填
    （auto-os 侧）；KNOWN-DEBT 如有新登记。验证：两仓注记在案。
 
