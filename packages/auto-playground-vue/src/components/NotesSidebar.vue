@@ -125,7 +125,7 @@ const emit = defineEmits<{
 // manifest 保持平铺（groups+sourceType 单一事实源不变），归类是纯展示层推导。
 
 interface TreeSection {
-  id: 'demo' | 'books' | 'tests'
+  id: 'demo' | 'books' | 'tests' | 'parity'
   title: string
   groups: NoteGroup[]
   noteCount: number
@@ -136,7 +136,8 @@ const sections = computed<TreeSection[]>(() => {
   const books = props.groups
     .filter((g) => g.id.startsWith('book-'))
     .sort((a, b) => bookRank(a.id) - bookRank(b.id))
-  const tests = props.groups.filter((g) => g.id !== 'demo' && !g.id.startsWith('book-'))
+  const parity = props.groups.filter((g) => g.id.startsWith('parity-'))
+  const tests = props.groups.filter((g) => g.id !== 'demo' && !g.id.startsWith('book-') && !g.id.startsWith('parity-'))
   const out: TreeSection[] = []
   const push = (id: TreeSection['id'], title: string, gs: NoteGroup[]) => {
     if (gs.length === 0) return
@@ -145,6 +146,7 @@ const sections = computed<TreeSection[]>(() => {
   push('demo', 'Playground Demo', demo)
   push('books', '书籍示例', books)
   push('tests', '测试用例', tests)
+  push('parity', 'Parity Demo', parity)
   return out
 })
 
@@ -251,6 +253,7 @@ function toggleChapter(key: string) {
 function sectionOfGroup(groupId: string): string | null {
   if (groupId === 'demo') return 'demo'
   if (groupId.startsWith('book-')) return 'books'
+  if (groupId.startsWith('parity-')) return 'parity'
   return groupId ? 'tests' : null
 }
 

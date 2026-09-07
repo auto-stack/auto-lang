@@ -56,7 +56,7 @@ const ide = ref<{
 function loadNote(note: NoteMeta) {
   activeNote.value = note;
   ide.value?.loadExample({
-    source: note.code ?? note.files?.find((f) => f.path === 'main.at')?.content ?? '',
+    source: note.code ?? note.files?.find((f) => f.path === 'main.at')?.content ?? note.files?.[0]?.content ?? '',
     project_dir: projectDirOf(note),
     files: note.files?.map((f) => ({ path: f.path, source: f.content })),
   });

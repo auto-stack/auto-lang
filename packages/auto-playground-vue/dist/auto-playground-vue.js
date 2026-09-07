@@ -5526,15 +5526,15 @@ var Mi = /* @__PURE__ */ l({
 	emits: /* @__PURE__ */ d(["select"], ["update:query"]),
 	setup(n, { emit: o }) {
 		let s = n, l = T(n, "query"), u = o, d = t(() => {
-			let e = s.groups.filter((e) => e.id === "demo"), t = s.groups.filter((e) => e.id.startsWith("book-")).sort((e, t) => h(e.id) - h(t.id)), n = s.groups.filter((e) => e.id !== "demo" && !e.id.startsWith("book-")), r = [], i = (e, t, n) => {
-				n.length !== 0 && r.push({
+			let e = s.groups.filter((e) => e.id === "demo"), t = s.groups.filter((e) => e.id.startsWith("book-")).sort((e, t) => h(e.id) - h(t.id)), n = s.groups.filter((e) => e.id.startsWith("parity-")), r = s.groups.filter((e) => e.id !== "demo" && !e.id.startsWith("book-") && !e.id.startsWith("parity-")), i = [], a = (e, t, n) => {
+				n.length !== 0 && i.push({
 					id: e,
 					title: t,
 					groups: n,
 					noteCount: n.reduce((e, t) => e + t.notes.length, 0)
 				});
 			};
-			return i("demo", "Playground Demo", e), i("books", "书籍示例", t), i("tests", "测试用例", n), r;
+			return a("demo", "Playground Demo", e), a("books", "书籍示例", t), a("tests", "测试用例", r), a("parity", "Parity Demo", n), i;
 		}), f = [
 			"book-tapl",
 			"book-rust",
@@ -5604,7 +5604,7 @@ var Mi = /* @__PURE__ */ l({
 			M.value = I(M.value, e);
 		}
 		function B(e) {
-			return e === "demo" ? "demo" : e.startsWith("book-") ? "books" : e ? "tests" : null;
+			return e === "demo" ? "demo" : e.startsWith("book-") ? "books" : e.startsWith("parity-") ? "parity" : e ? "tests" : null;
 		}
 		return O(() => s.activeNoteId, (e) => {
 			if (!e) return;
@@ -5709,7 +5709,7 @@ var Mi = /* @__PURE__ */ l({
 			})
 		]));
 	}
-}), [["__scopeId", "data-v-f0ac0727"]]);
+}), [["__scopeId", "data-v-b7ae5e81"]]);
 //#endregion
 //#region src/composables/useNotes.ts
 function aa(e = {}) {
@@ -5807,7 +5807,7 @@ var oa = { class: "notes-explorer" }, sa = { class: "nx-main" }, ca = {
 			fence: "书页围栏"
 		}, N = t(() => M[k.value?.note.kind ?? ""] ?? k.value?.note.kind ?? ""), P = t(() => {
 			let e = k.value?.note;
-			return e ? e.code ?? e.files?.find((e) => e.path === "main.at")?.content ?? "" : "";
+			return e ? e.code ?? e.files?.find((e) => e.path === "main.at")?.content ?? e.files?.[0]?.content ?? "" : "";
 		}), F = t(() => {
 			let e = k.value?.note;
 			if (!e || e.kind !== "project" || !e.files) return null;
@@ -5941,6 +5941,6 @@ var oa = { class: "notes-explorer" }, sa = { class: "nx-main" }, ca = {
 			"ide-mode"
 		]))])) : (v(), i("div", da, "从左侧选择一条笔记开始浏览。"))])]));
 	}
-}), [["__scopeId", "data-v-73cf3f1f"]]);
+}), [["__scopeId", "data-v-1e923bab"]]);
 //#endregion
 export { ur as AutoPlayground, Mi as AutoPlaygroundFull, Jt as BytecodePanel, Qe as CodeEditor, bt as CodePreview, Et as ConsoleOutput, $t as ExampleSelector, yn as ExpectedOutputPanel, Ca as NotesExplorer, ia as NotesSidebar, lr as PlaygroundCard, Ci as PlaygroundLayout, $e as ScrollArea, Vt as SnippetRunner, ze as autoLanguage, Ai as useDebugger, aa as useNotes, Nt as usePlayground, ki as usePlaygroundFull, ji as useReplayPlayer };

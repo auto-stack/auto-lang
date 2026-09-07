@@ -86,11 +86,13 @@ fn load_from_manifest() -> Option<Vec<Example>> {
                 .flatten()
                 .map(|f| ProjectFile { path: f.path.clone(), source: f.content.clone() })
                 .collect();
-            // entry 恒为 main.at 内容（kind=project 时 code 为 null）。
+            // entry 恒为 main.at 内容（kind=project 时 code 为 null）；parity 等无 main.at
+            // 的 project 笔记回退首文件（与前端 cardCode/loadNote 回退规则一致）。
             let source = note
                 .code
                 .clone()
                 .or_else(|| files.iter().find(|f| f.path == "main.at").map(|f| f.source.clone()))
+                .or_else(|| files.first().map(|f| f.source.clone()))
                 .unwrap_or_default();
             if source.is_empty() {
                 continue;

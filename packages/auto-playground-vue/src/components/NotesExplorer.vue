@@ -125,11 +125,11 @@ const KIND_LABELS: Record<string, string> = {
 
 const kindLabel = computed(() => KIND_LABELS[active.value?.note.kind ?? ''] ?? active.value?.note.kind ?? '')
 
-// T7 接项目型文件 tab；骨架期 project 笔记以 main.at 内容起步。
+// 项目型/多文件笔记起步内容：code 优先，其次 entry main.at，末气回退首文件。
 const cardCode = computed(() => {
   const n = active.value?.note
   if (!n) return ''
-  return n.code ?? n.files?.find((f) => f.path === 'main.at')?.content ?? ''
+  return n.code ?? n.files?.find((f) => f.path === 'main.at')?.content ?? n.files?.[0]?.content ?? ''
 })
 
 // 项目目录（相对服务端 examples/playground-demo；运行 files 形态的物化基座）。
@@ -362,6 +362,11 @@ onBeforeUnmount(() => {
 .nx-badge.t-book {
   color: var(--nx-green);
   border-color: color-mix(in srgb, var(--nx-green) 40%, transparent);
+}
+
+.nx-badge.t-parity {
+  color: #89b4fa;
+  border-color: color-mix(in srgb, #89b4fa 40%, transparent);
 }
 
 .nx-kind-chip {
