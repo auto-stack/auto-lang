@@ -3,7 +3,7 @@ use crate::AutoResult;
 use log::*;
 use std::env;
 
-use super::config::{CompilerConfig, CompilerLocation, ExecutableType};
+use super::config::{CompilerConfig, CompilerKind, CompilerLocation, ExecutableType};
 
 /// 编译器路径解析器
 pub struct CompilerResolver;
@@ -16,6 +16,23 @@ impl CompilerResolver {
         config: &CompilerConfig,
         exec_type: ExecutableType,
     ) -> AutoPath {
+        // MSVC Linker/Archiver 同目录优先（Plan 580 缺陷#3）：编译器已定位到
+        // 具体目录时先查同目录 link.exe/lib.exe——VS 工具链布局
+        // （VC\Tools\MSVC\<ver>\bin\Hostx64\<arch>）下四件套同目录，避免
+        // PATH 上 Git coreutils 的 link.exe 抢先；未命中再走原探测逻辑
+        if config.kind == CompilerKind::MSVC {
+            let tool_name = match exec_type {
+                ExecutableType::Linker => Some("link.exe"),
+                ExecutableType::Archiver => Some("lib.exe"),
+                _ => None,
+            };
+            if let Some(tool_name) = tool_name {
+                let compiler = Self::resolve_executable(config, ExecutableType::Compiler);
+                if let Some(tool) = Self::msvc_sibling_tool(&compiler, tool_name) {
+                    return tool;
+                }
+            }
+        }
         match &config.location {
             CompilerLocation::Env => {
                 // 从 PATH 环境变量查找
@@ -38,6 +55,22 @@ impl CompilerResolver {
                     Self::resolve_executable(config, exec_type)
                 }
             }
+        }
+    }
+
+    /// 在编译器所在目录查 MSVC 配套工具（VS 布局下 link.exe/lib.exe 与
+    /// cl.exe 同目录）。编译器是裸名（未定位到具体目录）时返回 None。
+    fn msvc_sibling_tool(compiler_path: &AutoPath, tool_name: &str) -> Option<AutoPath> {
+        let s = compiler_path.to_astr();
+        let s = s.as_str();
+        if !s.contains('/') && !s.contains('\\') {
+            return None;
+        }
+        let candidate = compiler_path.parent().join(tool_name);
+        if candidate.exists() {
+            Some(candidate)
+        } else {
+            None
         }
     }
 
@@ -256,5 +289,56 @@ mod tests {
         info!("Available compilers: {:?}", available);
         // 至少应该有一个编译器在大多数系统上可用
         // 但在某些 CI 环境中可能没有，所以只记录结果
+    }
+
+    // 单测 4（Plan 580 T5）：MSVC Linker/Archiver 同目录优先——Env 位置下把
+    // 编译器钉到 tempdir 的绝对 cl.exe（含 link.exe/lib.exe 假文件，探测只查
+    // 存在不执行），断言 Linker/Archiver 命中同目录而非 PATH；同目录缺失
+    // link.exe 时回退 PATH 探测（结果脱离该目录）
+    #[test]
+    fn msvc_linker_archiver_prefer_compiler_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("msvc");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("cl.exe"), b"").unwrap();
+        std::fs::write(dir.join("link.exe"), b"").unwrap();
+        std::fs::write(dir.join("lib.exe"), b"").unwrap();
+        let dir_norm = dir.to_str().unwrap().replace('\\', "/");
+        let cl_abs = format!("{}/cl.exe", dir_norm);
+
+        let mut config = CompilerConfig::msvc_default();
+        config
+            .executables
+            .insert(ExecutableType::Compiler, AutoPath::new(&cl_abs));
+
+        let link = CompilerResolver::resolve_executable(&config, ExecutableType::Linker);
+        let link_norm = link.to_astr().as_str().replace('\\', "/");
+        assert!(link_norm.starts_with(&dir_norm), "linker should stay in compiler dir, got {}", link_norm);
+        assert!(link_norm.ends_with("link.exe"));
+
+        let ar = CompilerResolver::resolve_executable(&config, ExecutableType::Archiver);
+        let ar_norm = ar.to_astr().as_str().replace('\\', "/");
+        assert!(ar_norm.starts_with(&dir_norm), "archiver should stay in compiler dir, got {}", ar_norm);
+        assert!(ar_norm.ends_with("lib.exe"));
+
+        // 同目录无 link.exe → 回退 PATH 探测，结果脱离该目录
+        std::fs::remove_file(dir.join("link.exe")).unwrap();
+        let link2 = CompilerResolver::resolve_executable(&config, ExecutableType::Linker);
+        let l2_norm = link2.to_astr().as_str().replace('\\', "/");
+        assert!(!l2_norm.starts_with(&dir_norm), "linker should fall back to PATH, got {}", l2_norm);
+    }
+
+    // 单测 4b（Plan 580 T5）：同目录查工具的裸名守门——编译器是裸名
+    // （未定位到具体目录）时不做同目录探测
+    #[test]
+    fn msvc_sibling_tool_requires_located_compiler() {
+        assert!(CompilerResolver::msvc_sibling_tool(&AutoPath::new("cl.exe"), "link.exe").is_none());
+
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("link.exe"), b"").unwrap();
+        let cl = tmp.path().join("cl.exe");
+        let hit = CompilerResolver::msvc_sibling_tool(&AutoPath::new(cl.to_str().unwrap()), "link.exe")
+            .expect("sibling link.exe should hit");
+        assert!(hit.to_astr().as_str().replace('\\', "/").ends_with("link.exe"));
     }
 }
