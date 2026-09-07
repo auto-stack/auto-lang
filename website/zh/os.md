@@ -13,7 +13,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 
 <OSHero
   badge="AutoOS 架构"
-  title="：Client / Daemon OS 基础"
+  title="Client / Daemon OS 基础"
   description="AutoOS 正在演进为完整的操作系统层。Client/Daemon 架构、统一配置系统，以及两条未来路线：独立发行版与嵌入式虚拟桌面。"
   primary-text="阅读文档"
   primary-link="/zh/docs/os"

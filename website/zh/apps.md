@@ -37,7 +37,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <div class="app-header">
       <div class="app-icon">🐚</div>
       <div>
-        <h2>AutoShell</h2>
+        <h2><a href="/zh/apps/autoshell/">AutoShell</a></h2>
         <span class="app-status beta">Beta</span>
       </div>
     </div>
@@ -69,7 +69,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <div class="app-header">
       <div class="app-icon">🤖</div>
       <div>
-        <h2>AutoMusk</h2>
+        <h2><a href="/zh/apps/automusk/">AutoMusk</a></h2>
         <span class="app-status beta">Beta</span>
       </div>
     </div>
@@ -101,7 +101,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <div class="app-header">
       <div class="app-icon">📄</div>
       <div>
-        <h2>AutoDown</h2>
+        <h2><a href="/zh/apps/autodown/">AutoDown</a></h2>
         <span class="app-status alpha">Alpha</span>
       </div>
     </div>
@@ -133,7 +133,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
     <div class="app-header">
       <div class="app-icon">🎨</div>
       <div>
-        <h2>AutoUI Demos</h2>
+        <h2><a href="/zh/apps/autoui/">AutoUI Demos</a></h2>
         <span class="app-status alpha">Alpha</span>
       </div>
     </div>
@@ -209,6 +209,15 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 
 .app-icon {
   font-size: 2.5rem;
+}
+
+.app-header h2 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-header h2 a:hover {
+  color: #6366f1;
 }
 
 .app-header h2 {

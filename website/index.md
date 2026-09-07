@@ -20,6 +20,7 @@ onMounted(() => {
 
 <HomeHero
   badge="v0.5 is now available"
+  badge-link="/v05/"
   title=": AI × Lang × OS"
   description="Auto is a dynamic-meets-static, cross-ecosystem language<br>Written by AI, born for OS"
   primary-text="Get Started"

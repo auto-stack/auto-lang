@@ -6,10 +6,14 @@
       <div class="grid-pattern" />
     </div>
     <div class="hero-content">
-      <div class="badge">
+      <component
+        :is="badgeLink ? 'a' : 'div'"
+        :href="badgeLink || undefined"
+        class="badge"
+      >
         <span class="badge-dot" />
         {{ badge }}
-      </div>
+      </component>
       <h1 class="title">
         <span class="gradient-text">Auto</span>
         <span class="subtitle"
@@ -80,6 +84,7 @@ import { ArrowRight, Play } from 'lucide-vue-next'
 
 interface Props {
   badge?: string
+  badgeLink?: string
   title?: string
   description?: string
   primaryText?: string
@@ -170,6 +175,17 @@ const titleParts = computed(() => props.title.split('×'))
   font-size: 0.875rem;
   font-weight: 500;
   margin-bottom: 2rem;
+}
+
+a.badge {
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+a.badge:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px);
 }
 
 .badge-dot {

@@ -12,6 +12,7 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 
 <HomeHero
   badge="v0.5 现已发布"
+  badge-link="/zh/v05/"
   title=": AI × Lang × OS"
   description="Auto 是一门动静结合的跨生态语言<br>Auto 由 AI 编写，为 OS 而生"
   primary-text="快速开始"

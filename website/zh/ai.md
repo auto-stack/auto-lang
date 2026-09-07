@@ -13,7 +13,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 
 <AIHero
   badge="AutoAI 架构"
-  title="：Client / Daemon AI 基础设施"
+  title="Client / Daemon AI 基础设施"
   description="为所有 AutoOS 应用提供统一的 AI 基础设施。并发仲裁、API 密钥保管、模型路由与用量追踪 —— 全部通过单一 Daemon 完成。"
   primary-text="阅读文档"
   primary-link="/zh/docs/ai"

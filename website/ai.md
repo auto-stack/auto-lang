@@ -13,7 +13,7 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 
 <AIHero
   badge="AutoAI Architecture"
-  title=": Client / Daemon AI Infrastructure"
+  title="Client / Daemon AI Infrastructure"
   description="A unified AI infrastructure for all AutoOS applications. Concurrency arbitration, API key vault, model routing, and usage tracking — all through a single daemon."
   primary-text="Read the Docs"
   primary-link="/docs/ai"

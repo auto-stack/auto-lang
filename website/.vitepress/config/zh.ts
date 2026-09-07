@@ -41,6 +41,7 @@ function nav(): DefaultTheme.NavItem[] {
     {
       text: 'v0.5',
       items: [
+        { text: 'v0.5 发布专题', link: '/zh/v05/' },
         { text: 'v0.5 发布说明', link: '/zh/docs/releases/v0.5' },
         { text: 'v0.4 发布说明', link: '/zh/docs/releases/v0.4' },
         { text: 'v0.3 发布说明', link: '/zh/docs/releases/v0.3' },

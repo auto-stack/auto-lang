@@ -41,6 +41,7 @@ function nav(): DefaultTheme.NavItem[] {
     {
       text: 'v0.5',
       items: [
+        { text: 'v0.5 Release Highlights', link: '/v05/' },
         { text: 'v0.5 Release Notes', link: '/docs/releases/v0.5' },
         { text: 'v0.4 Release Notes', link: '/docs/releases/v0.4' },
         { text: 'v0.3 Release Notes', link: '/docs/releases/v0.3' },

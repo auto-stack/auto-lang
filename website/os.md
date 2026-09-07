@@ -13,7 +13,7 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 
 <OSHero
   badge="AutoOS Architecture"
-  title=": Client / Daemon OS Foundation"
+  title="Client / Daemon OS Foundation"
   description="AutoOS is evolving into a full operating system layer. Client/Daemon architecture, unified configuration, and two future paths: standalone distro and embedded virtual desktop."
   primary-text="Read the Docs"
   primary-link="/docs/os"
