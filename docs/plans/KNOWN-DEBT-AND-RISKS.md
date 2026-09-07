@@ -1701,3 +1701,49 @@ active/onclick VM 实证随之可补。
   scratch/p581/parity-survey.md），随 582 落地；--check 目前无自动执行面
   （计划裁定 deploy workflow 零改动、manifest 不提交故磁盘 diff 无意义）——
   若需 CI 防采集回归，可在 book 物化后的 workflow 步骤内追加 --check 调用。
+- **P582-D1 spa-routes e2e 5 失败 master 预存红（/ui/* 资产标题漂移）**：
+  `website/public/ui/gallery/index.html` 等旧 SPA 资产 `<title>` 为 "widgets-gallery"
+  等，断言期望 "Auto Language - Components"（master 复现同红，2026-09-07）——
+  非 582 引入（worktree diff 仅触 public/playground/）。修复方向：重生成 /ui/*
+  资产或修正 spa-routes.spec.ts 断言，单独 L0 处理。
+- **P582-D2 键盘 ↑/↓ 真实按键未经真机验证**：NotesExplorer 键盘导航经合成
+  KeyboardEvent 全链路验证（监听→切换→hash 写回）；IAB 自动化沙箱不派发真实
+  CDP 按键到页面（探针证实为环境限制非代码缺陷）。真实键盘行为留人工验收。
+- **P582-D3 后端 dist 缺失启动走 npm dev 分支**：`cargo run -p auto-playground`
+  在 frontend/dist 缺失时尝试 spawn npm dev；PATH 无 npm 的环境下降级为仅 API
+  服务（静态页 404）。正规路径=先 build（scripts/build-playground.mjs）再起服；
+  可改进为显式报错提示，暂记录。
+
+## P584 债务（stage-b-desktop-migration-design，2026-09-07 执行登记）
+
+> 本区为 Stage B（桌面域搬迁 auto-lang → auto-os）设计期锚定的前置债与指引，
+> 方案定案见 auto-os `docs/design/01-stage-b-desktop-migration.md`（§4/§7）。
+
+- **P584-D1 Stage B 硬前置①：rust-server 产物落点硬编码框架仓**：
+  `crates/auto-man/src/rust_ui.rs:1979` `ensure_shared_workspace` 内部经
+  `get_rust_workspace_dir()` 固定解析框架仓 `examples/rust-workspace/`；调用点
+  `rust_ui.rs:354`（generate_rust_ui）+ `api_gen.rs:636/752/754/3179`。仓外
+  项目走 rust 后端时产物 member 仍写框架仓（579 执行期 kanban-back 两度生成/
+  清理的根因；工作区 `examples/rust-workspace/auto-musk-back` 在飞改动同链路）。
+  583 台账 R-D1 烟测已顺偿（合并提交 2856158e7：编译过 53.2s + API 200）——
+  余债=落点归属。修法=落点解析序（`AUTO_RUST_WORKSPACE` env → 项目仓内
+  `<project>/rust-workspace/` → 框架默认，向后兼容）；执行=§7 P-2 小 plan
+  （auto-os Design 01 §4-P2）。
+- **P584-D2 Stage B 硬前置②：桌面注册表默认指向框架仓**：
+  `crates/auto-lang/examples/ui_desktop.rs:17-37` 默认注册表目录编译期
+  （CARGO_MANIFEST_DIR）锚定框架仓 `examples/ui`；`crates/auto-man/src/vue.rs:5480`
+  `desktop_apps_dir`（`AUTO_DESKTOP_APPS` env 覆盖 / 默认 `<root>/examples/ui`）
+  + `:5512` `desktop_extra_app_roots`（`AUTO_DESKTOP_APPS_EXTRA` / 默认兄弟探测
+  仅 `../auto-os-config/auto`，Plan 559 W3）。仓外 app（auto-kanban、未来
+  auto-os/apps）入桌面需三源聚合（框架 demo + auto-os apps + apps.manifest
+  repo 形态经 remote-apps.json 机制）。修法=extra roots 探测泛化 + manifest
+  聚合 + vue/vm/iced 三轨 parity；执行=§7 P-3 小 plan（Design 01 §4-P3），
+  第一验收用例 auto-kanban（583 vm 模式 586 卡对账基线）。
+- **P584-D3 VM 债族指引：字符串跨 fn 返回静默归零（搬迁回归前建议修复）**：
+  583 台账残留债候选①——`meta.source_root` 经 fn 返回字符串静默归 0，m12/m16
+  同族（CALL 结果内联作算术操作数 / 字符串跨 fn 返回特定形态；kanban 核心数据
+  不受影响）。复现器留存 `scratch/p583`（主检出）；台账原文见
+  `docs/plans/archive/583-vm-heaprc-fix-batch.md`（残留债候选节，229/267 行）。
+  shell.at 是重度 .at 逻辑代码=该形态高密度用户——**Stage B 搬迁回归（P-5）
+  前修复比回归中踩雷便宜**（建议非硬前置，§7 P-4 批）。同台账残留②
+  JsonValue 元素 str 方法分派 None（kanban 已物化规避，579 台账在案）。

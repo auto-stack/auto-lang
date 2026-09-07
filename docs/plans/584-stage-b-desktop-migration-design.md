@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-584
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B 桌面域搬迁设计文档（auto-lang → auto-os）
 author: [zhaopuming]
 created_at: 2026-09-07
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 纯文档计划：产出在 auto-os 仓，本仓仅动 docs/plans/ 记账
-current_step: 0
+current_step: 9
 total_steps: 9
 ---
 
@@ -93,7 +93,7 @@ L2「桌面域资产搬迁 auto-lang → auto-os（Stage B）」的第一步：�
 | 计划 | 域 | 实测状态 | worktree | 处置 |
 |---|---|---|---|---|
 | 541-025-sys-monitor | 桌面 | **executing** | lang-541 在飞 | **auto-lang 收口**（已动工其一） |
-| 582-playground-notes-explorer | 桌面/examples | **executing** | lang-582 在飞 | **auto-lang 收口**（已动工其二） |
+| 582-playground-notes-explorer | 桌面/examples | **executing**（T6 复测已推进至 reviewed） | lang-582 在飞 | **auto-lang 收口**（已动工其二） |
 | 535-desktop-ux-followups | 桌面 | drafting | 无 | **整体随迁 auto-os** |
 | 554-clock-app | 桌面 | drafting | 无 | **整体随迁 auto-os** |
 | 556-games-wave1 | 桌面 | drafting | 无 | **整体随迁 auto-os** |
@@ -197,30 +197,53 @@ Category A 门禁：**严禁 `cargo t` / `docs_gen`**。验证手段全为文档
 - **T1** auto-os 建设计目录骨架：创建 `D:/autostack/auto-os/docs/design/00-intro.md`
   （索引页）与 `docs/design/01-stage-b-desktop-migration.md`（§1–§7 空节架）。
   验证：`grep -c "^## " D:/autostack/auto-os/docs/design/01-stage-b-desktop-migration.md` ≥ 7。
+  [✅ 已完成] 2026-09-07 两文件落盘；grep 计 8 节头（§0–§7）≥7 通过。
 - **T2** 落 §1 资产清单：盘点并三要素落表（核心锚点：
   `crates/auto-lang/assets/{shell,desktop,switcher,notification_center}.at`、
   `examples/ui/028-launcher/`、`docs/plans/autos-desktop-program.md`、examples/ui
   0xx 逐项、`D:/autostack/auto-os/apps.manifest` 对接面）。
   验证：对文档内源路径逐条 `test -e` 对账（bash 循环零 miss）。
+  [✅ 已完成] 2026-09-07 §1 三类落表（A 治理资产×3 / B 应用轨道×5 / C manifest
+  对接面）+ shell 四件修正裁定（include_str! 内嵌证据 shell.rs:10/21/32/45）；
+  20 条源路径 test -e 对账零 miss。
 - **T3** 落 §2 留架清单：以 `docs/specs/overview.md` 仓库地图为源，列框架层不动项
   （VM/编译器/AutoUI 框架等）+ 耦合点标注。验证：`grep -n "TBD\|TODO"` 该文件零命中。
+  [✅ 已完成] 2026-09-07 §2 九组留架表（L1 宿主运行时…L9 治理体系）落表，每项
+  含留架理由+耦合点；grep TBD/TODO 零命中（exit=1）。
 - **T4** 落 §3 委托方式：写选项空间 a/b/c + 定案 + ADR 式理由（含对 028-launcher
   现有启动方式的兼容分析）。验证：节内含明确「定案」标记行。
+  [✅ 已完成] 2026-09-07 §3 落表：现状两入口（iced 示例 / `auto run --desktop`）
+  实测事实 + 选项 a/b/c + **定案 Stage B = 选项 a**（行 118）+ ADR 四理由 +
+  待澄清 #2 修正收口段。
 - **T5** 落 §4 两项清障方案：先盘点 R-D1 fold 后烟测状态（对照
   `docs/plans/archive/583-vm-heaprc-fix-batch.md` 229/262 行与 master 近期提交），
   再写方案（锚点 `rust_ui.rs:354`、`ui_desktop.rs:31-34`、`vue.rs:5480` + 兼容分析 +
   验收命令）。验证：`grep -n "ensure_shared_workspace\|apps-dir" 01-*.md` 锚点在案。
+  [✅ 已完成] 2026-09-07 §4 两节落表：P2 rust 落点（锚点 rust_ui.rs:1979+四调用点，
+  R-D1 已顺偿修正——证据 2856158e7）+ P3 注册表三源聚合（锚点 ui_desktop.rs:17-37/
+  vue.rs:5480/:5512/app_registry parity/manifest/remote-apps.json 五点）；grep
+  ensure_shared_workspace×2/apps-dir×2/AUTO_DESKTOP_APPS×4 在案（行 95-163）。
 - **T6** 落 §5 处置裁定：裁定表 + 用户裁定原文逐字 + 迁移机制（整文件迁移 + 编号
   映射建议）。验证：与本仓 `grep -m1 '^status:' docs/plans/{541,582,535,554,556,557,558,577,578,545,570}-*.md` 实测对账一致。
+  [✅ 已完成] 2026-09-07 §5 落表：裁定原文逐字 + 处置表 11 行 + 迁移机制 4 条；
+  复测发现 582 已被并行会话推进至 reviewed——表内已按复测修正（处置不变，
+  收口=merge+archive），本计划 needs-analysis 表同步注记。
 - **T7** 落 §6 验证矩阵 + §7 实施拆解：矩阵表（实机/desktop_mcp/双端基线）+ 拆解
   蓝图（排序按详细设计 §7 推荐顺序）。验证：`grep -n "TBD\|TODO"` 该文件零命中。
+  [✅ 已完成] 2026-09-07 §6 八维矩阵（V1-V8）+ §7 P-1..P-6 批次表 + Stage C
+  候选清单落表；grep TBD/TODO 零命中（exit=1），节头计数 18。
 - **T8** 本仓 KNOWN-DEBT 落账：`docs/plans/KNOWN-DEBT-AND-RISKS.md` 新增三条目
   （清障一 rust 落点 / 清障二注册表 / VM 债族指引），各含代码锚点与 583 台账 +
   `scratch/p583` 复现器指引。验证：`grep -n "rust_ui.rs:354\|source_root" docs/plans/KNOWN-DEBT-AND-RISKS.md` 命中。
+  [✅ 已完成] 2026-09-07 P584 债务区三条目落账（D1 rust 落点 / D2 注册表 /
+  D3 VM 债族指引，含 583 归档台账与 scratch/p583 指引）；grep 命中行 1725/1743。
 - **T9** 提交与收尾：auto-os 侧 main 提交设计文档（循 579 先例，
   `git -C D:/autostack/auto-os add docs/design && git commit`）；本仓 master 提交
   plan 记账与 KNOWN-DEBT。验证：`git -C D:/autostack/auto-os log --oneline -1` 见
   设计文档提交；`git -C D:/autostack/auto-lang status` 无 crates/ 改动。
+  [✅ 已完成] 2026-09-07 auto-os main 提交 `7cfe6da`（docs/design/00-intro +
+  01 两文件 271 行）；本仓 master 提交随本条落盘（仅 584 计划文件 + KNOWN-DEBT
+  两文件，git status 证明零 crates/ 触碰）。
 
 ## 复审记录
 
