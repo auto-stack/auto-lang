@@ -32,6 +32,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Stage B P-6（PLAN-009 T6 / 590-R4）：画廊语料围栏（gallery_pages_compile
+  # 等）经 resolve_os_top_dir 解析序定位 auto-os/widgets-gallery——CI 缺
+  # auto-os 时整体静默 SKIP（solo-skip 语义），checkout 兄弟仓 + env 权威臂
+  # 使围栏在 CI 激活。
+  AUTO_OS_ROOT: ${{ github.workspace }}/auto-os
 
 jobs:
   vm-files:
@@ -39,9 +44,31 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      # Stage B P-6：画廊语料仓（widgets-gallery 迁 auto-os，PLAN-590）——
+      # 语料围栏激活依赖；sparse 只读 checkout，无构建。
+      - name: Checkout auto-os (gallery corpus)
+        uses: actions/checkout@v4
+        with:
+          repository: auto-stack/auto-os
+          path: auto-os
+          sparse-checkout: |
+            widgets-gallery
       - uses: dtolnay/rust-toolchain@stable
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
+
+      - name: Gallery corpus fences active (not SKIPPED)
+        run: |
+          test -f "$AUTO_OS_ROOT/widgets-gallery/pac.at" || { echo "auto-os checkout 缺 widgets-gallery"; exit 1; }
+          echo "auto-os gallery corpus present: $AUTO_OS_ROOT/widgets-gallery"
+
+      # Stage B P-6：画廊全页编译围栏（本地 cargo t/tf 门禁面，PLAN-590 起
+      # 语料在 auto-os——CI 此前 solo-skip 静默跳过，本步骤使其在 CI 真跑；
+      # schema_drift/docs_gen 集成档仍留本地 t/tf 门禁）。
+      - name: Gallery pages compile fence (corpus from auto-os)
+        run: >
+          cargo test -p auto-lang --lib --features test-vm-files --
+          gallery_pages_compile --test-threads=1
 
       - name: aavm2 six gates (M1-M5 + milestone + compile corpus)
         # Plan 514 W2 (P511-2 口径收窄清偿): compile corpus 腿已去 ignore,
