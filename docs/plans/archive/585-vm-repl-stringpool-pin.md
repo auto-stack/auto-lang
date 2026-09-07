@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-585
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-repl-stringpool-pin
 author: []
 created_at: 2026-09-07
@@ -12,6 +12,7 @@ new_spec_components:
   - "P585-1: 根因归档——persistent session 裸换池绕过 pinned 不变量（reports 归因链:ash 池日志 #2-#59 常量 FREE/槽位复用/立即数跨代读 + 会话级 repro 污染签名同构实证）"
   - "P585-2: 架构——run_inner 步骤 8 池替换收口 load_strings（pool_state 重建 + flash 常量区 [0,n) pinned + dedup 种子重建,rc.rs §Phase 2 不变量恢复）"
   - "P585-3: 测试——会话级 repro（ParityHost+循环 system 拼接）+ pin 不变量配平（常量区恒 u32::MAX/非墓碑/无 underflow）+ 语料 018_loop_concat_churn"
+  - "P585-4: 复审记录（C1-C5 全过,下游回归结论在案）"
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]
@@ -142,13 +143,13 @@ self.vm.flash = Arc::new(flash);
 
 ## 验收标准
 
-- [ ] C1: T1 会话级 repro 单测在修复前红（污染断言失败/横幅出现）,修复后绿。
-- [ ] C2: T2 pin 不变量单测绿；修复前该测试同样红（常量被计数/墓碑化）。
-- [ ] C3: 语料 018 入库,tv 档全绿（无新红）；tf 预存红不超 583 基线。
-- [ ] C4: 下游验收——折回后 ash 仓 `cargo test -p ash --test examples_parity
+- [x] C1: T1 会话级 repro 单测在修复前红（污染断言失败/横幅出现）,修复后绿。
+- [x] C2: T2 pin 不变量单测绿；修复前该测试同样红（常量被计数/墓碑化）。
+- [x] C3: 语料 018 入库,tv 档全绿（无新红）；tf 预存红不超 583 基线。
+- [x] C4: 下游验收——折回后 ash 仓 `cargo test -p ash --test examples_parity
   positional_arg_passes_to_system` 转绿;probe.ash 三轮输出完整（iter *.bak =>
   [./y.bak] 不再丢失）。
-- [ ] C5: 无 compiler warning 新增;scratch 探针残留不入库（scratch/ 为忽略区,
+- [x] C5: 无 compiler warning 新增;scratch 探针残留不入库（scratch/ 为忽略区,
   不影响)。
 
 ## 执行步骤
