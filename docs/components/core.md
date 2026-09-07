@@ -186,7 +186,7 @@ AutoDown document renderer, read-only (plan 040 tag 主名翻转 markdown→auto
 | `placeholder_block_id` | `union: string|state_ref` | — | Ghost placeholder block id while streaming (vue arm placeholderBlockId; VM v1 ignores — PLAN-043) |
 | `placeholder_height` | `union: float|state_ref` | — | Ghost placeholder height px while streaming (vue arm placeholderHeight; VM v1 ignores — PLAN-043) |
 | `scroll_sync` | `union: bool|state_ref` | true | Auto-scroll to tail while streaming (vue arm scrollSync; VM v1 ignores — PLAN-042) |
-| `table_col_widths` | `state_ref` | — | Table column widths state: Map<tableKey str, List<px float>> keyed 't{blockHash}' (VM arm consumed since PLAN-045 — header-edge drag lands per-table key, persists across re-renders; vue arm ignores — no engine consumer) |
+| `table_col_widths` | `state_ref` | — | Table column widths state: Map&lt;tableKey str, List&lt;px float&gt;&gt; keyed 't{blockHash}' (VM arm consumed since PLAN-045 — header-edge drag lands per-table key, persists across re-renders; vue arm ignores — no engine consumer) |
 | `dark_mode` | `union: bool|state_ref` | false | Theme declaration entry (PLAN-051): palette档 for the document face (vue arm darkMode → .is-dark; VM consumes the same-named STATE via the Plan 370 D-GAP global sync, prop itself inert on the VM arm) |
 | `accent` | `union: string|state_ref` | indigo | Accent palette name (PLAN-051): indigo|coral|ocean|sage|amber (vue arm data-accent; VM document-accent consumption is a registered PARITY exemption) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
@@ -303,7 +303,7 @@ A clickable button element
 
 `builtin_widget` · `canvas` · web: `native` · iced: `full` · category: `media`
 
-State-driven drawing canvas (Plan 563). Content renders from the scene state binding - scene: .strokes binds a state PREFIX; the engine reads the parallel-string-list stroke model from <prefix>_pts (per-stroke point list \
+State-driven drawing canvas (Plan 563). Content renders from the scene state binding - scene: .strokes binds a state PREFIX; the engine reads the parallel-string-list stroke model from &lt;prefix&gt;_pts (per-stroke point list \
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -311,7 +311,7 @@ State-driven drawing canvas (Plan 563). Content renders from the scene state bin
 | `coords` | `string` | — | Logical extent \ |
 | `clear` | `string` | — | Optional background color (CSS color syntax); eraser strokes render as background-color strokes in v1 (no true compositing removal) |
 | `onpenstart` | `msg_ref` | — | Pen down on the canvas; handler receives (x, y) float logical coords |
-| `onpenmove` | `msg_ref` | — | Pen drag while pressed - dispatched only during pen-down (gating lives in the engine, <=30Hz throttled like mouse-area onmousemove); handler receives (x, y) |
+| `onpenmove` | `msg_ref` | — | Pen drag while pressed - dispatched only during pen-down (gating lives in the engine, &lt;=30Hz throttled like mouse-area onmousemove); handler receives (x, y) |
 | `onpenend` | `msg_ref` | — | Pen up or pen leaving the canvas bounds (leaving-the-bounds ends the stroke on both backends); handler receives (x, y) |
 | `class` | `union: string|class_binding` | — | CSS class(es) (size/border/rounded land on the canvas frame) |
 
@@ -704,7 +704,7 @@ Form label
 |------|------|---------|-------------|
 | `for` | `string` | — | Associated form control ID |
 | `text` | `string` | — | Label text |
-| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
+| `selectable` | `bool` | false | Opt-in selection &amp; copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
@@ -784,7 +784,7 @@ Menubar container
 
 `builtin_widget` · `mouse-area` · web: `component` · iced: `full` · category: `overlay`
 
-Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite). Plan 499: onmousemove -> logical-coordinate move stream (engine-side screen->logical conversion + <=30Hz throttle on VM arm; handler receives (x, y) float args; coords prop declares the logical extent).
+Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -&gt; mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -&gt; mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite). Plan 499: onmousemove -&gt; logical-coordinate move stream (engine-side screen-&gt;logical conversion + &lt;=30Hz throttle on VM arm; handler receives (x, y) float args; coords prop declares the logical extent).
 
 别名:`mousearea`
 
@@ -1094,7 +1094,7 @@ Text content (literal or interpolated)
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
+| `selectable` | `bool` | false | Opt-in selection &amp; copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 
 ---
 
@@ -1162,7 +1162,7 @@ Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `wid` | `string` | — | Target window id (host snapshot-cache key; native N<slot> falls back) |
+| `wid` | `string` | — | Target window id (host snapshot-cache key; native N&lt;slot&gt; falls back) |
 | `fallback_icon` | `string` | app-window | Lucide icon while no fresh snapshot (Plan 497) |
 | `class` | `union: string|class_binding` | — | Chrome classes (w-/h-/border/rounded land on the frame) |
 

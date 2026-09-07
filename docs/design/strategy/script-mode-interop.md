@@ -125,8 +125,8 @@ F1 导入（B8 补裸模块）；F2 句柄 rc（债务区非语法面）；F3 �
 > **落地现状（2026-09-05，Plan 567 T05-T10）**：上述 1-6 已全部落地——may 变体桥
 > 453/476/477/478（call/getattr/getitem/kwargs）；s2s `rule_err_propagate` 在 `.as`
 > 内自动补 `.?`（桥调用 may 化；用户函数调用点；无 use.py 文件零改写）；引擎
-> ERROR_PROPAGATE 值通道拦截（Err 遇当前帧 try → catch_pc 绑 `PyException <Type>:
-> <msg>`；null 是值不进 catch）；主边界未捕获 Err 带错退出（exit 1）。已知遗留：
+> ERROR_PROPAGATE 值通道拦截（Err 遇当前帧 try → catch_pc 绑
+> `PyException <Type>: <msg>`；null 是值不进 catch）；主边界未捕获 Err 带错退出（exit 1）。已知遗留：
 > `.?(d)` 表达式位链式消费缺陷（存量，567 待澄清⑥）。
 
 ## 5. Null 体系（定案）

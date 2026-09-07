@@ -31,6 +31,12 @@ pub struct ElemInfo {
     pub superseded_by: Option<String>,
 }
 
+/// 描述文本进 Markdown/VitePress 前的 HTML 转义——schema 描述里出现
+/// `<prefix>_pts` 这类裸尖括号会被 Vue 模板编译器当未闭合标签,整站 build 失败。
+fn esc_desc(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 pub fn prop_type_str(t: &PropType) -> String {
     match t {
         PropType::String => "string".into(),
@@ -167,7 +173,7 @@ pub fn generate_core_reference(root: &std::path::Path) -> String {
                 ));
             }
             if !e.description.is_empty() {
-                md.push_str(&format!("{}\n\n", e.description));
+                md.push_str(&format!("{}\n\n", esc_desc(&e.description)));
             }
             if !e.aliases.is_empty() {
                 md.push_str(&format!(
@@ -182,7 +188,7 @@ pub fn generate_core_reference(root: &std::path::Path) -> String {
                 for (n, ty, d, desc) in &e.props {
                     md.push_str(&format!(
                         "| `{}` | `{}` | {} | {} |\n",
-                        n, ty, d, desc
+                        n, ty, d, esc_desc(desc)
                     ));
                 }
                 md.push('\n');
