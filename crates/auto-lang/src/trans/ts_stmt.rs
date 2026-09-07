@@ -583,7 +583,7 @@ impl TypeScriptTrans {
                 sink.body.write(b"if (")?;
                 emitted_cond = true;
             } else {
-                sink.body.write(b" else if (")?;
+                sink.body.write(b"else if (")?;
             }
 
             match branch {

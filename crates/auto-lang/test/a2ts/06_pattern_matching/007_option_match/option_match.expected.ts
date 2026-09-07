@@ -7,7 +7,7 @@ function main(): void {
         const v = __auto_is_0;
         console.log("value:", v);
     }
-     else if (__auto_is_0 === null) {
+    else if (__auto_is_0 === null) {
         console.log("none");
     }
 }
