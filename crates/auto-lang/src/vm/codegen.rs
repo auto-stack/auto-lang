@@ -8816,7 +8816,15 @@ impl Codegen {
                                     // Object/Math）补入——Array.isArray 走实例路径
                                     // 时类型名 receiver 被推栈，shim 弹到字符串
                                     // 索引（实测评价值 0..N 递增=类型名池位）。
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys"
+                                    // PLAN-588（Stage B P-4，583 残留债①）：file
+                                    // 补入——file.read_text 等模块式调用走实例
+                                    // 路径时 Ident("file") 占位 const.i32 0 无人
+                                    // 消费，循环体每调用净漏 +1 槽且垫入表达式
+                                    // 栈（`a = a + f(file.read_text(p))` 的 ADD
+                                    // 吃到 [占位 0, 结果] 而非 [a, 结果]——首轮
+                                    // "正确"纯属 a=0 巧合；m12/m16/kanban
+                                    // source_root 同族）。
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys" | "file"
                                         | "Array" | "Object" | "JSON" | "Math" | "Date")
                                         || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)

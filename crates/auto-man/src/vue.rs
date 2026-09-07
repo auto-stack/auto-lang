@@ -5496,14 +5496,17 @@ fn desktop_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
     .into())
 }
 
-/// Plan 559 W3: sibling extra app roots for the desktop registry. Each entry
-/// is a single-app dir carrying its own pac.at; the registry id is the dir's
-/// own file name. `AUTO_DESKTOP_APPS_EXTRA` (a path list, `std::env::
+/// Plan 559 W3 + Stage B P-3: sibling extra app roots for the desktop registry.
+/// Each entry is a single-app dir carrying its own pac.at; the registry id is
+/// the dir's own file name. `AUTO_DESKTOP_APPS_EXTRA` (a path list, `std::env::
 /// split_paths` semantics) wins; the default probes the Plan 501 sibling
 /// `../auto-os-config/auto` relative to the project root — under the Plan 529
 /// group worktree layout (`.wt/lang-NNN/{auto-lang,auto-os-config}`) and on
-/// the default checkout alike the sibling resolves. Missing siblings are
-/// silently skipped (desktop-host must keep working in solo checkouts).
+/// the default checkout alike the sibling resolves — plus the Stage B P-3
+/// apps container `../auto-os/apps` whose every pac.at-carrying direct
+/// subdirectory expands into one local app root (id = subdirectory name).
+/// Missing siblings are silently skipped (desktop-host must keep working in
+/// solo checkouts).
 fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
     let mut out: Vec<(String, PathBuf)> = Vec::new();
     let mut push_root = |p: PathBuf, out: &mut Vec<(String, PathBuf)>| {
@@ -5526,6 +5529,40 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
         // acceptance channel key on this id on both tracks.
         if sibling.is_dir() {
             out.push(("os-config".to_string(), sibling));
+        }
+        // Stage B P-3: apps container — vm-track parity with app_registry::
+        // expand_apps_container (sorted, pac.at-gated, id-deduped, missing
+        // container silently skipped).
+        let container = parent.join("auto-os").join("apps");
+        if let Ok(rd) = fs::read_dir(&container) {
+            let mut subdirs: Vec<std::fs::DirEntry> =
+                rd.flatten().filter(|e| e.path().is_dir()).collect();
+            subdirs.sort_by_key(|e| e.file_name());
+            for entry in subdirs {
+                let dir = entry.path();
+                if !dir.join("pac.at").is_file() {
+                    continue;
+                }
+                let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+                if !out.iter().any(|(existing, _)| existing == name) {
+                    out.push((name.to_string(), dir));
+                }
+            }
+        }
+        // Stage B P-3: apps.manifest repo entries — framework-side read per
+        // the 2026-09-07 ruling; registered as extra roots (native mount),
+        // vm-track parity with app_registry::manifest_repo_roots. Env
+        // override above keeps full-replace semantics (manifest not merged).
+        if let Some(os_root) =
+            auto_lang::ui::app_registry::resolve_os_manifest_root(parent)
+        {
+            for (id, root) in auto_lang::ui::app_registry::manifest_repo_roots(&os_root) {
+                if !out.iter().any(|(existing, _)| existing == &id) {
+                    out.push((id, root));
+                }
+            }
         }
     }
     out
@@ -5858,6 +5895,108 @@ onMounted(() => {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Stage B P-3: apps 容器展开（vue 轨）——`../auto-os/apps` 下每个含
+    /// pac.at 的直接子目录 = 一个 local root（id = 子目录名，排序）；
+    /// no-pac 子目录与缺容器静默跳过；AUTO_DESKTOP_APPS_EXTRA 仍全额覆盖。
+    /// 与 app_registry::extra_roots_apps_container_expansion 同律（三轨
+    /// parity 的 vue 轨锚）。
+    #[test]
+    fn desktop_extra_app_roots_apps_container() {
+        std::env::remove_var("AUTO_DESKTOP_APPS_EXTRA");
+        // AUTO_OS_ROOT 设置即权威：钉死到空目录，阻断主检出兜底候选把真实
+        // auto-os manifest 泄入 fixture 断言（环境无关确定性）。
+        let dead = std::env::temp_dir().join(format!("auto586-dead-os-{}", std::process::id()));
+        std::fs::create_dir_all(&dead).unwrap();
+        std::env::set_var("AUTO_OS_ROOT", &dead);
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let container = tmp.path().join("auto-os").join("apps");
+        for (name, with_pac) in [("alpha", true), ("beta", true), ("no-pac", false)] {
+            let dir = container.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            if with_pac {
+                std::fs::write(dir.join("pac.at"), "name: \"x\"\n").unwrap();
+            }
+        }
+        let roots = desktop_extra_app_roots(&project);
+        assert_eq!(
+            roots,
+            vec![
+                ("alpha".to_string(), container.join("alpha")),
+                ("beta".to_string(), container.join("beta")),
+            ],
+            "pac.at 门控 + 排序；auto-os-config 缺失静默跳过"
+        );
+        // 缺容器（solo 检出）→ 空表不炸。
+        let solo = tempfile::tempdir().unwrap();
+        let project2 = solo.path().join("project");
+        std::fs::create_dir_all(&project2).unwrap();
+        assert!(desktop_extra_app_roots(&project2).is_empty());
+        std::env::remove_var("AUTO_OS_ROOT");
+        let _ = std::fs::remove_dir(&dead);
+    }
+
+    /// Stage B P-3：三轨 parity 锚——同一 fixture 布局下，vue 轨
+    /// `desktop_extra_app_roots` 与 vm/iced 轨的 app_registry 组合面
+    /// （`extra_roots_from` 探测 + `manifest_repo_roots` 聚合，
+    /// `host_extra_roots` 同组合）产出**同序同集**的 extra 根。
+    #[test]
+    fn extra_roots_three_track_parity() {
+        std::env::remove_var("AUTO_DESKTOP_APPS_EXTRA");
+        std::env::remove_var("AUTO_OS_ROOT");
+        let tmp = tempfile::tempdir().unwrap();
+        // 三源齐备布局：os-config 单根 + apps 容器两子 + manifest repo 条目。
+        let os_config = tmp.path().join("auto-os-config").join("auto");
+        std::fs::create_dir_all(&os_config).unwrap();
+        std::fs::write(os_config.join("pac.at"), "name: \"osc\"\n").unwrap();
+        let os_root = tmp.path().join("auto-os");
+        for name in ["alpha", "beta"] {
+            let dir = os_root.join("apps").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("pac.at"), "name: \"x\"\n").unwrap();
+        }
+        let fake_repo = tmp.path().join("fake-repo");
+        std::fs::create_dir_all(&fake_repo).unwrap();
+        std::fs::write(fake_repo.join("pac.at"), "name: \"fk\"\n").unwrap();
+        std::fs::write(
+            os_root.join("apps.manifest"),
+            r#"{ "apps": [ { "id": "repoapp", "repo": "../fake-repo", "kind": "repo" } ] }"#,
+        )
+        .unwrap();
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+
+        // vue 轨（探测 + 容器 + manifest 一体）。
+        let vue_roots = desktop_extra_app_roots(&project);
+        // vm/iced 轨组合面（host_extra_roots 的纯函数形态，CWD 无关重演）。
+        let front = tmp.path().join("auto-os-config").join("auto");
+        let apps = os_root.join("apps");
+        let mut vm_roots = auto_lang::ui::app_registry::extra_roots_from(None, None, &front, &apps);
+        if let Some(resolved) = auto_lang::ui::app_registry::resolve_os_manifest_root(tmp.path()) {
+            for (id, root) in auto_lang::ui::app_registry::manifest_repo_roots(&resolved) {
+                if !vm_roots.iter().any(|(existing, _)| existing == &id) {
+                    vm_roots.push((id, root));
+                }
+            }
+        }
+        assert_eq!(
+            vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vm_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            "三轨 parity：id 集（含顺序）一致"
+        );
+        assert_eq!(
+            vue_roots.iter().map(|(_, p)| p.clone()).collect::<Vec<_>>(),
+            vm_roots.iter().map(|(_, p)| p.clone()).collect::<Vec<_>>(),
+            "三轨 parity：根路径一致"
+        );
+        assert_eq!(
+            vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vec!["os-config", "alpha", "beta", "repoapp"],
+            "三源齐备：单根 + 容器两子 + manifest repo"
+        );
+    }
 
     /// PLAN-063 Phase B T14 (KD 061 D12): 嵌套冗余目录被移除;
     /// 无平铺 index.ts 时(纯 CLI 形态)不动;无嵌套时幂等。

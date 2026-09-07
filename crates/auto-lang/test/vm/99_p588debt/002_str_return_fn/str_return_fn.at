@@ -1,0 +1,19 @@
+use auto.file
+
+// PLAN-588：字符串跨 fn 返回（583 台账 meta.source_root 静默归 0 同族——
+// fn 体内的模块式 native 调用占位槽泄漏使返回值/消费点错位）。
+fn get_root() str {
+    let text str = file.read_text("test/vm/99_p588debt/002_str_return_fn/str_return_fn.at")
+    return "len:" + text.len()
+}
+
+fn main() {
+    var acc str = ""
+    var i int = 0
+    while i < 5 {
+        acc = get_root()
+        i = i + 1
+    }
+    print(acc)
+    print(acc.len() > 0)
+}

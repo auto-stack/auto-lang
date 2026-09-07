@@ -1841,8 +1841,50 @@ fn find_lang_repo_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Compute the relative path from the shared workspace dir to auto-lang crate.
-fn compute_auto_lang_rel_path(project_dir: &Path) -> String {
+/// Stage B P-2（Design 01 §4-P2）：rust 产物落点解析序——
+/// `AUTO_RUST_WORKSPACE`（env，**设置即权威**，可用于钉死落点/测试隔离）→
+/// **框架仓内项目 = 共享工作区** `examples/rust-workspace/`（既有行为零变化，
+/// P584-D1 语义保留）→ **仓外项目 = 项目仓内** `<project_dir>/rust-workspace/`
+/// （产物 member 不再落框架仓，V4 零污染）。
+pub fn resolve_rust_workspace_dir(project_dir: &Path) -> PathBuf {
+    if let Some(env) = std::env::var_os("AUTO_RUST_WORKSPACE") {
+        return PathBuf::from(env);
+    }
+    let fw_ws = get_rust_workspace_dir();
+    if let Some(fw_root) = fw_ws.parent().and_then(|examples| examples.parent()) {
+        if fw_root.join("crates").join("auto-lang").exists()
+            && path_contains(fw_root, project_dir)
+        {
+            return fw_ws;
+        }
+    }
+    project_dir.join("rust-workspace")
+}
+
+/// Windows 宽容的路径前缀判断（canonicalize 消化 `..`/盘符大小写/分隔符；
+/// 归一小写比较——NTFS 大小写不敏感。双方同源比较：任一 canonicalize 失败
+/// 则双方均退化原样，避免 verbatim `\\?\` 前缀与原始形态错配）。
+fn path_contains(root: &Path, dir: &Path) -> bool {
+    let norm_components = |p: &std::path::PathBuf| -> Vec<String> {
+        p.components()
+            .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+            .collect()
+    };
+    let prefix = |r: Vec<String>, d: Vec<String>| -> bool {
+        !r.is_empty() && d.len() >= r.len() && d[..r.len()] == r[..]
+    };
+    match (std::fs::canonicalize(root), std::fs::canonicalize(dir)) {
+        (Ok(r), Ok(d)) => prefix(norm_components(&r), norm_components(&d)),
+        _ => prefix(
+            norm_components(&root.to_path_buf()),
+            norm_components(&dir.to_path_buf()),
+        ),
+    }
+}
+
+/// Compute the relative path from the workspace dir (ws landing point) to
+/// the auto-lang crate.
+fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
     // Walk up from project_dir to find the workspace root (has crates/auto-lang).
     // Also check sibling directories at each level — auto-lang may live in a
     // sibling repo (e.g. auto-shell and auto-lang are both under autostack/).
@@ -1851,8 +1893,7 @@ fn compute_auto_lang_rel_path(project_dir: &Path) -> String {
         // Direct: this dir has crates/auto-lang
         if dir.join("crates").join("auto-lang").exists() {
             let auto_lang_abs = dir.join("crates").join("auto-lang");
-            let workspace_dir = get_rust_workspace_dir();
-            return compute_relative_path(&workspace_dir, &auto_lang_abs);
+            return compute_relative_path(ws_dir, &auto_lang_abs);
         }
         // Sibling: a sibling dir (e.g. ../auto-lang) has crates/auto-lang.
         // This covers the common layout where <project> and auto-lang are
@@ -1861,8 +1902,7 @@ fn compute_auto_lang_rel_path(project_dir: &Path) -> String {
             for sibling in ["auto-lang"] {
                 let candidate = parent.join(sibling).join("crates").join("auto-lang");
                 if candidate.exists() {
-                    let workspace_dir = get_rust_workspace_dir();
-                    return compute_relative_path(&workspace_dir, &candidate);
+                    return compute_relative_path(ws_dir, &candidate);
                 }
             }
         }
@@ -1902,14 +1942,14 @@ fn compute_relative_path(from: &Path, to: &Path) -> String {
     result.join("/").replace('\\', "/")
 }
 
-/// Compute the relative path from the shared workspace dir to the auto-lang target/ directory.
-fn compute_target_rel_path(project_dir: &Path) -> String {
+/// Compute the relative path from the workspace dir (ws landing point) to the
+/// auto-lang target/ directory.
+fn compute_target_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
     let mut dir = project_dir.to_path_buf();
     for _ in 0..10 {
         if dir.join("crates").exists() {
             let target_abs = dir.join("target");
-            let workspace_dir = get_rust_workspace_dir();
-            return compute_relative_path(&workspace_dir, &target_abs);
+            return compute_relative_path(ws_dir, &target_abs);
         }
         if !dir.pop() {
             break;
@@ -1977,7 +2017,10 @@ fn has_cargo_targets(dir: &Path) -> bool {
 ///
 /// Returns the workspace directory path.
 pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
-    let ws_dir = get_rust_workspace_dir();
+    // Stage B P-2: landing point by resolution order (env → in-framework
+    // shared ws → project-local); the rel-path anchors below are computed
+    // from this actual landing dir.
+    let ws_dir = resolve_rust_workspace_dir(project_dir);
     fs::create_dir_all(&ws_dir).ok();
 
     let ws_cargo = ws_dir.join("Cargo.toml");
@@ -2013,8 +2056,8 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
     }
     members.sort();
 
-    let auto_lang_rel = compute_auto_lang_rel_path(project_dir);
-    let target_rel = compute_target_rel_path(project_dir);
+    let auto_lang_rel = compute_auto_lang_rel_path(project_dir, &ws_dir);
+    let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
     let members_toml = members.iter()
         .map(|m| format!("    \"{}\"", m))
@@ -2073,8 +2116,10 @@ pub fn back_member_name(project_dir: &Path) -> String {
 /// Start the API backend server if a backend exists in the shared workspace.
 /// Returns the child process handle so the caller can clean it up on exit.
 pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
-    // Backend lives in the shared workspace at examples/rust-workspace/{name}-back/
-    let ws_dir = get_rust_workspace_dir();
+    // Backend lives in the resolved workspace ({name}-back/ member; Stage B P-2:
+    // in-framework = shared examples/rust-workspace, out-of-framework =
+    // project-local rust-workspace).
+    let ws_dir = resolve_rust_workspace_dir(project_dir);
     let back_name = back_member_name(project_dir);
     let api_backend_dir = ws_dir.join(&back_name);
     if !api_backend_dir.join("Cargo.toml").exists() {
@@ -2259,7 +2304,7 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
 /// `cargo build` the shared-workspace member. Mirrors `run_rust_ui`'s
 /// regeneration logic without running the app.
 pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
-    let ws_dir = get_rust_workspace_dir();
+    let ws_dir = resolve_rust_workspace_dir(project_dir);
     let member_name = front_member_name(project_dir);
     let rust_dir = ws_dir.join(&member_name);
     let (full, code) = needs_regeneration(project_dir, &rust_dir);
@@ -2293,8 +2338,8 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
 }
 
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    // Rust project now lives in the shared workspace at examples/rust-workspace/{name}/
-    let ws_dir = get_rust_workspace_dir();
+    // Rust project lives in the resolved workspace (Stage B P-2 landing order).
+    let ws_dir = resolve_rust_workspace_dir(project_dir);
     let member_name = front_member_name(project_dir);
     let rust_dir = ws_dir.join(&member_name);
     let (full, code) = needs_regeneration(project_dir, &rust_dir);
@@ -2649,6 +2694,70 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 mod tests {
     use super::*;
 
+    /// Stage B P-2：落点解析序三分支——env 权威 / 框架内项目=共享 ws（零
+    /// 变化）/ 仓外项目=project-local。框架内检测用 worktree 内真实路径
+    /// （CWD 上行探测命中本仓根），仓外用 temp 目录（必然在框架根之外）。
+    #[test]
+    fn rust_workspace_resolution_order() {
+        std::env::remove_var("AUTO_RUST_WORKSPACE");
+        // 仓外：temp 项目 → project-local。
+        let tmp = tempfile::tempdir().unwrap();
+        let out_project = tmp.path().join("auto-out-app");
+        std::fs::create_dir_all(&out_project).unwrap();
+        assert_eq!(
+            resolve_rust_workspace_dir(&out_project),
+            out_project.join("rust-workspace"),
+            "仓外项目落 project-local"
+        );
+        // 框架内：本仓（worktree）下的真实路径（包根 current_dir）→ 共享
+        // 工作区（零变化）。
+        let in_project = std::env::current_dir().unwrap();
+        assert_eq!(
+            resolve_rust_workspace_dir(&in_project),
+            get_rust_workspace_dir(),
+            "框架内项目保持共享工作区"
+        );
+        // env 设置即权威。
+        std::env::set_var("AUTO_RUST_WORKSPACE", "D:/custom-ws");
+        assert_eq!(
+            resolve_rust_workspace_dir(&out_project),
+            PathBuf::from("D:/custom-ws")
+        );
+        std::env::remove_var("AUTO_RUST_WORKSPACE");
+    }
+
+    /// Stage B P-2：仓外项目 ensure——ws 落 project-local + rel 锚点从实际
+    /// 落点计算 + **框架共享工作区 Cargo.toml 字节不变**（V4 零污染）。
+    #[test]
+    fn ensure_workspace_lands_project_local() {
+        std::env::remove_var("AUTO_RUST_WORKSPACE");
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("kanban-fake");
+        std::fs::create_dir_all(&project).unwrap();
+        let fw_ws_cargo = get_rust_workspace_dir().join("Cargo.toml");
+        let fw_before = std::fs::read_to_string(&fw_ws_cargo).ok();
+
+        let ws = ensure_shared_workspace(&project);
+        assert_eq!(ws, project.join("rust-workspace"), "落点 project-local");
+        let manifest = std::fs::read_to_string(ws.join("Cargo.toml"))
+            .expect("workspace Cargo.toml written");
+        assert!(manifest.contains("[workspace]"), "虚拟 manifest 在案");
+        // rel 锚点：从 temp 落点指向 auto-lang（temp 布局无兄弟 auto-lang，
+        // 走 fallback 字面量——断言其存在即可；真实布局由 586/583 实证覆盖）。
+        assert!(manifest.contains("auto-lang = { path = "), "path 依赖注入在案");
+        assert!(
+            std::fs::read_to_string(ws.join(".cargo").join("config.toml"))
+                .map(|c| c.contains("target-dir"))
+                .unwrap_or(false),
+            "target-dir 共享缓存在案"
+        );
+        // V4：框架共享工作区零触碰。
+        let fw_after = std::fs::read_to_string(&fw_ws_cargo).ok();
+        assert_eq!(fw_before, fw_after, "框架 ws Cargo.toml 字节不变");
+        // 幂等：二次 ensure 落点不变。
+        assert_eq!(ensure_shared_workspace(&project), ws);
+    }
+
     #[test]
     fn test_to_snake_case() {
         assert_eq!(to_snake_case("MyApp"), "my_app");
@@ -2717,6 +2826,44 @@ pub struct Timer {
             Ok(()) => println!("Generation succeeded!"),
             Err(e) => panic!("Generation failed: {}", e),
         }
+    }
+
+    /// Stage B P-2 V4：仓外项目完整生成链——member 落 project-local，框架
+    /// 共享工作区与仓内 examples 零触碰（015-notes 回归由 test_gen_015_notes_rust
+    /// 既有锚承载：框架内项目仍走共享 ws）。
+    #[test]
+    fn generate_rust_ui_out_of_repo_lands_project_local() {
+        std::env::remove_var("AUTO_RUST_WORKSPACE");
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("001-helloworld");
+        if !src.exists() {
+            eprintln!("Skipping: fixture not found at {:?}", src);
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("helloworld-out");
+        fs::create_dir_all(project.join("src").join("front")).unwrap();
+        for f in ["pac.at", "src/front/app.at"] {
+            fs::copy(src.join(f), project.join(f)).unwrap();
+        }
+        let fw_ws_cargo = get_rust_workspace_dir().join("Cargo.toml");
+        let fw_before = fs::read(&fw_ws_cargo).ok();
+
+        generate_rust_ui(&project, None, false)
+            .expect("out-of-repo generation succeeds");
+        // member 落 project-local。
+        let member = project.join("rust-workspace").join("helloworld-out");
+        assert!(
+            member.join("Cargo.toml").exists(),
+            "member lands project-local at {}",
+            member.display()
+        );
+        // V4：框架共享工作区零触碰（字节不变）。
+        assert_eq!(fw_before, fs::read(&fw_ws_cargo).ok(), "framework ws untouched");
     }
 
     #[test]

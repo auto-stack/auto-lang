@@ -761,6 +761,11 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_25_method_u64_012_list_hof_value() { test_vm("25_method_u64/012_list_hof_value").unwrap(); }
 #[test] #[ignore] fn test_99_closure_by_ref() { test_vm("99_misc/002_closure_by_ref").unwrap(); }
 
+// PLAN-588（Stage B P-4，583 残留债①）：CALL 内联实参形态跨迭代退化回归锚。
+#[test] fn test_99_p588debt_001_inline_arg_accum() { test_vm("99_p588debt/001_inline_arg_accum").unwrap(); }
+#[test] fn test_99_p588debt_002_str_return_fn() { test_vm("99_p588debt/002_str_return_fn").unwrap(); }
+#[test] fn test_99_p588debt_003_operand_shapes() { test_vm("99_p588debt/003_operand_shapes").unwrap(); }
+
 // === 26_str_method_on_heap (Plan 378 follow-up: str methods on heap strings) ===
 // str.lower() returns garbage (-2147483647) when called on a string produced
 // by split()/lines() (heap-based), while .upper() works. Literals are fine.
