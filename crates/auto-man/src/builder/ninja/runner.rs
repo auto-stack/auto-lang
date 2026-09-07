@@ -210,12 +210,14 @@ mod tests {
     }
 
     // 手动探针（--ignored 显式运行，CI 不跑）：按当前 PATH 解析宿主并打印，
-    // 供集成形态 A/B 的 resolver 级取证（PATH 无 ninja/n2 且 cargo 在时会触发
-    // 真实安装臂，只在可控环境运行）。
+    // 供集成形态 A/B/验收2/验收3 的 resolver 级取证（PATH 无 ninja/n2 且
+    // cargo 在时会触发真实安装臂，只在可控环境运行）。
     #[test]
     #[ignore = "manual probe: resolves per current PATH; may invoke cargo install"]
     fn probe_resolve_logs_host() {
-        let host = resolve_ninja_host().expect("resolve_ninja_host failed");
-        println!("resolved ninja host: {}", host.program);
+        match resolve_ninja_host() {
+            Ok(host) => println!("resolved ninja host: {}", host.program),
+            Err(e) => println!("resolve error: {}", e),
+        }
     }
 }
