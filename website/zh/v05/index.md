@@ -19,18 +19,16 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   primary-link="/zh/docs/releases/v0.5"
   secondary-text="打开 Playground"
   secondary-link="/zh/playground"
-/>
-
-<div class="stats-section">
-  <h2 class="section-title">发布规模</h2>
-  <p class="section-desc">从 v0.3 到 v0.5（2026.04 — 2026.09），Auto 平台的量化足迹。</p>
-  <div class="stats-grid">
+  hide-code
+>
+  <div class="hero-stats">
     <StatCard value="1000 亿" label="AI 研发 Token" description="由 AI 深度参与编写的平台级工程。" color="#6366f1" />
     <StatCard value="5,700+" label="Commits" description="v0.3 以来 5,711 次提交，全部经双测门禁合入。" color="#8b5cf6" />
     <StatCard value="57.8 万" label="行 Rust 代码" description="编译器、AutoVM、iced 桌面端与系统服务。" color="#14b8a6" />
     <StatCard value="13.5 万" label="行 Auto 代码" description="自举库、应用与语料 —— 平台自己的语言在生长。" color="#ec4899" />
   </div>
-</div>
+  <p class="hero-stats-note">从 v0.3 到 v0.5（2026.04 — 2026.09），Auto 平台的量化足迹。</p>
+</HomeHero>
 
 <div class="showcase-wrapper">
   <ShowcaseSection
@@ -138,6 +136,21 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 </div>
 
 <style scoped>
+.hero-stats {
+  width: min(1080px, 92vw);
+  margin-left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1rem;
+}
+
+.hero-stats-note {
+  margin: 0.75rem auto 0;
+  font-size: 0.85rem;
+  color: hsl(var(--muted-foreground));
+}
+
 .shot-stack {
   width: 100%;
   max-width: 480px;

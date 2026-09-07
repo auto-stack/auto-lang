@@ -60,7 +60,8 @@
           <Play class="icon" :size="16" />
         </a>
       </div>
-      <div class="code-window">
+      <slot />
+      <div v-if="!hideCode" class="code-window">
         <div class="code-header">
           <div class="code-dots">
             <span />
@@ -86,6 +87,7 @@ interface Props {
   badge?: string
   badgeLink?: string
   title?: string
+  hideCode?: boolean
   description?: string
   primaryText?: string
   primaryLink?: string
@@ -95,6 +97,8 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   badge: 'v0.3 is now available',
+  badgeLink: '',
+  hideCode: false,
   title: ': Language for AI & OS',
   description: 'A modern programming language that transpiles to C, Rust, TypeScript, and Python. Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions.',
   primaryText: 'Get Started',

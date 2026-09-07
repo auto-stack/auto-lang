@@ -54,24 +54,25 @@
 
 1. **Hero**（HomeHero 复用，badge="有史以来最大的一次更新"）：
    title="：v0.5 正式发布"；description 一句话定位 + 双 CTA（阅读发布说明 / 打开 Playground）。
-2. **发布规模统计带**（stats-grid，4 张 StatCard）：
-   `1000 亿` AI 研发 token · `5,700+` commits（v0.3 以来，实测 5,711）·
-   `57.8 万` 行 Rust 代码 · `13.5 万` 行 Auto 代码。
-3. **AutoOS 虚拟桌面**（ShowcaseSection + 截图/视觉）→ 段落尾部"了解 AutoOS →"（/zh/autoos/）。
-4. **四大主打应用**（4 张 FeatureCard：AutoMusk 🤖 / AutoShell 🐚 / AutoDown 📄 / AutoUI Apps 🎨，
+   **发布规模统计直接并入 Hero**（用户裁定 2026-09-07）：`hide-code` 隐藏 hello world
+   代码窗，默认插槽放 4 张 StatCard（1080px 出框横排）+ 量化足迹注解小字；
+   不设"发布规模"节标题。
+2. **AutoOS 虚拟桌面**（ShowcaseSection + 截图/视觉）→ 段落尾部"了解 AutoOS →"（/zh/autoos/）。
+3. **四大主打应用**（4 张 FeatureCard：AutoMusk 🤖 / AutoShell 🐚 / AutoDown 📄 / AutoUI Apps 🎨，
    各带一行定位语 + 链接到独立落地页）。
-5. **新版 Playground**（ShowcaseSection：Debug 支持 + 几乎全部 Auto 示例集成；
+4. **新版 Playground**（ShowcaseSection：Debug 支持 + 几乎全部 Auto 示例集成；
    统计：语料笔记规模 1280+（vm-golden 460 / aavm 158 / 书页围栏 634 / demo 28））。
-6. **语言进展**（三列）：
+5. **语言进展**（三列）：
    - Rust 生态 **Alpha**：作为 Rust 的脚本语言，支持 90%+ Rust 代码调用；
    - **自举²**：(avm, a2r) × (aavm, aa2r) 2×2 自执行矩阵（specs GOAL-017：自举达成）；
    - Python 生态 **PreAlpha**：普通 Python 脚本 + PyTorch 支持。
    - 口径注：发布说明里 Rust=Beta/Python=Alpha 是能力面分级；宣传页按用户最新口径
      取保守分级（Alpha/PreAlpha），以用户大纲为准。
-7. **v0.6 展望**（五张路线卡，按用户大纲）：
+6. **v0.6 展望**（六张路线卡，按用户大纲）：
    AutoOS（独立 Linux 发行版 / 跨平台虚拟桌面 / AutoWeb 远程桌面）、
-   AutoUI（鸿蒙 / Android+iOS via Jetpack Compose）、ROS2 生态、Godot 生态、MCU 生态。
-8. **CTA**：快速开始 / 在线体验 / GitHub。
+   AutoUI（鸿蒙 / Android+iOS via Jetpack Compose）、ROS2 生态、Godot 生态、
+   MCU 生态、AutoAI（AutoMusk Beta / AI App 通讯架构）。
+7. **CTA**：快速开始 / 在线体验 / GitHub。
 
 ## 5. 独立落地页设计
 
