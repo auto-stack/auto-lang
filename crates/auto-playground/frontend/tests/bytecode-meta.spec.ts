@@ -19,10 +19,12 @@ test.describe('Bytecode panel meta tooltips', () => {
     await page.waitForSelector('.bytecode-line', { timeout: 15000 });
   });
 
-  test('bytecode panel stretches to the right window edge', async ({ page }) => {
+  test('bytecode panel stretches to the right edge of its container', async ({ page }) => {
+    // 2026-09-07 壳改侧栏布局（Plan 582 用户裁定）：面板右缘对齐 IDE 容器（.playground）而非窗口。
     const gap = await page.evaluate(() => {
       const panel = document.querySelector('.bytecode-panel')!.getBoundingClientRect();
-      return window.innerWidth - panel.right;
+      const shell = document.querySelector('.playground')!.getBoundingClientRect();
+      return shell.right - panel.right;
     });
     expect(gap).toBeLessThanOrEqual(2);
   });

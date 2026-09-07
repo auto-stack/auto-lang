@@ -18,11 +18,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { NotesSidebar, AutoPlaygroundFull, useNotes } from 'auto-playground-vue';
 import type { NoteMeta } from 'auto-playground-vue';
 
-const { groups, flatNotes, byId, search } = useNotes();
+const { groups, byId, search } = useNotes();
 const query = ref('');
 
 // 活动笔记（侧栏点击切换；标题栏元信息 + IDE 载入）。
@@ -75,12 +75,9 @@ function onSelect(noteId: string) {
   loadNote(entry.note);
 }
 
-// manifest 到位后自动载入首条（深链/记忆状态不做——后端壳定位为浏览入口）。
-watch(() => flatNotes.value, (notes) => {
-  if (!activeNoteId.value && notes.length > 0) {
-    onSelect(notes[0]!.note.id);
-  }
-});
+// 刻意不做首条自动载入（2026-09-07 复审修正）：自动 loadExample 与页面初始交互
+// 存在覆写竞态（也会破坏 backend 宿主 e2e 对初始态的确定性假设）。
+// IDE 以持久化/默认欢迎态起步，侧栏点选显式载入。
 </script>
 
 <style scoped>

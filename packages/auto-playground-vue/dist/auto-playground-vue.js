@@ -4529,19 +4529,19 @@ var Nt = {
 			_: 1
 		}));
 	}
-}), [["__scopeId", "data-v-ee14fb49"]]), Qr = { class: "playground" }, $r = { class: "toolbar" }, ei = { class: "toolbar-left" }, ti = ["title"], ni = ["href", "title"], ri = {
+}), [["__scopeId", "data-v-ee14fb49"]]), Qr = { class: "playground" }, $r = { class: "toolbar" }, ei = { class: "toolbar-left" }, ti = ["href", "title"], ni = {
 	key: 1,
 	class: "title"
-}, ii = { class: "toolbar-right" }, ai = ["disabled", "title"], oi = ["disabled"], si = ["disabled"], ci = ["disabled"], li = { class: "trans-current" }, ui = { class: "workspace" }, di = { class: "main-row" }, fi = { class: "pane-header" }, pi = { key: 0 }, mi = { key: 1 }, hi = {
+}, ri = { class: "toolbar-right" }, ii = ["disabled", "title"], ai = ["disabled"], oi = ["disabled"], si = ["disabled"], ci = { class: "trans-current" }, li = { class: "workspace" }, ui = { class: "main-row" }, di = { class: "pane-header" }, fi = { key: 0 }, pi = { key: 1 }, mi = {
 	key: 0,
 	class: "active-file-name"
-}, gi = { class: "pane-body" }, _i = {
+}, hi = { class: "pane-body" }, gi = {
 	key: 0,
 	class: "preview-pane"
-}, vi = { class: "pane-header" }, yi = ["disabled"], bi = {
+}, _i = { class: "pane-header" }, vi = ["disabled"], yi = {
 	key: 0,
 	class: "output-pane"
-}, xi = { class: "pane-header" }, Si = { class: "output-body" }, Ci = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}, bi = { class: "pane-header" }, xi = { class: "output-body" }, Si = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "PlaygroundLayout",
 	props: {
 		source: {},
@@ -4661,35 +4661,38 @@ var Nt = {
 		function z() {
 			d.onTrans();
 		}
-		function B(e) {
-			f("loadExample", e);
-		}
 		return (t, u) => (v(), i("div", Qr, [
-			a("header", $r, [a("div", ei, [l.noteMeta ? (v(), i(e, { key: 0 }, [
-				a("h1", {
-					class: "title",
-					title: l.noteMeta.sourcePath
-				}, C(l.noteMeta.title), 9, ti),
-				a("span", { class: p(["note-badge", `t-${l.noteMeta.sourceType}`]) }, C(l.noteMeta.sourceType), 3),
-				a("a", {
-					class: "note-source-chip",
-					href: `${(l.noteMeta.repoBase ?? "https://github.com/auto-stack/auto-lang").replace(/\/$/, "")}/blob/master/${l.noteMeta.sourcePath}`,
-					target: "_blank",
-					rel: "noopener",
-					title: l.noteMeta.sourcePath
-				}, C(l.noteMeta.sourcePath), 9, ni)
-			], 64)) : (v(), i("h1", ri, "Auto Playground")), c(Qt, { onSelect: B })]), a("div", ii, [
-				!l.isDebugging && !l.isReplayMode ? (v(), i("button", {
-					key: 0,
-					class: "toolbar-btn load-replay-btn",
-					onClick: u[0] ||= (e) => t.$emit("loadReplay"),
-					title: "Load Replay File"
-				}, [...u[21] ||= [a("span", { class: "icon" }, "📂", -1), a("span", { class: "label" }, "Load Replay", -1)]])) : r("", !0),
+			a("header", $r, [a("div", ei, [l.noteMeta ? (v(), i(e, { key: 0 }, [a("a", {
+				class: "title note-link",
+				href: `${(l.noteMeta.repoBase ?? "https://github.com/auto-stack/auto-lang").replace(/\/$/, "")}/blob/master/${l.noteMeta.sourcePath}`,
+				target: "_blank",
+				rel: "noopener",
+				title: l.noteMeta.sourcePath
+			}, [s(C(l.noteMeta.title) + " ", 1), u[20] ||= a("svg", {
+				class: "ext-icon",
+				width: "12",
+				height: "12",
+				viewBox: "0 0 24 24",
+				fill: "none",
+				stroke: "currentColor",
+				"stroke-width": "2.2",
+				"stroke-linecap": "round",
+				"stroke-linejoin": "round"
+			}, [
+				a("path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }),
+				a("polyline", { points: "15 3 21 3 21 9" }),
+				a("line", {
+					x1: "10",
+					y1: "14",
+					x2: "21",
+					y2: "3"
+				})
+			], -1)], 8, ti), a("span", { class: p(["note-badge", `t-${l.noteMeta.sourceType}`]) }, C(l.noteMeta.sourceType), 3)], 64)) : (v(), i("h1", ni, "Auto Playground"))]), a("div", ri, [
 				a("button", {
 					class: "toolbar-btn share-btn",
-					onClick: u[1] ||= (e) => t.$emit("share"),
+					onClick: u[0] ||= (e) => t.$emit("share"),
 					title: "Copy shareable link"
-				}, [...u[22] ||= [a("svg", {
+				}, [...u[21] ||= [a("svg", {
 					width: "14",
 					height: "14",
 					viewBox: "0 0 24 24",
@@ -4713,38 +4716,38 @@ var Nt = {
 						active: l.isDebugging,
 						exit: l.isDebugging
 					}]),
-					onClick: u[2] ||= (e) => l.isDebugging ? t.$emit("debugCommand", "stop") : d.onDebug(),
+					onClick: u[1] ||= (e) => l.isDebugging ? t.$emit("debugCommand", "stop") : d.onDebug(),
 					disabled: l.isLoading || l.isReplayMode,
 					title: l.isDebugging ? "Stop Debugging (Shift+F5)" : "Start Debugging"
-				}, [u[23] ||= o("<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-v-6b1ae17a><path d=\"M12 2a10 10 0 0 1 10 10\" data-v-6b1ae17a></path><path d=\"M12 2a10 10 0 0 0-10 10\" data-v-6b1ae17a></path><path d=\"M12 12l4-4\" data-v-6b1ae17a></path><path d=\"M12 12l-4-4\" data-v-6b1ae17a></path><path d=\"M12 12l4 4\" data-v-6b1ae17a></path><path d=\"M12 12l-4 4\" data-v-6b1ae17a></path></svg>", 1), s(" " + C(l.isDebugging ? "Exit Debug" : "Debug"), 1)], 10, ai),
+				}, [u[22] ||= o("<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-v-00a69a09><path d=\"M12 2a10 10 0 0 1 10 10\" data-v-00a69a09></path><path d=\"M12 2a10 10 0 0 0-10 10\" data-v-00a69a09></path><path d=\"M12 12l4-4\" data-v-00a69a09></path><path d=\"M12 12l-4-4\" data-v-00a69a09></path><path d=\"M12 12l4 4\" data-v-00a69a09></path><path d=\"M12 12l-4 4\" data-v-00a69a09></path></svg>", 1), s(" " + C(l.isDebugging ? "Exit Debug" : "Debug"), 1)], 10, ii),
 				l.isDebugging ? r("", !0) : (v(), i("button", {
-					key: 1,
+					key: 0,
 					class: "toolbar-btn run-btn",
-					onClick: u[3] ||= (...e) => d.onRun && d.onRun(...e),
+					onClick: u[2] ||= (...e) => d.onRun && d.onRun(...e),
 					disabled: l.isLoading || l.isReplayMode
-				}, C(l.isLoading ? "Running..." : "Run (Ctrl+Enter)"), 9, oi)),
+				}, C(l.isLoading ? "Running..." : "Run (Ctrl+Enter)"), 9, ai)),
 				l.isDebugging ? r("", !0) : (v(), i("div", {
-					key: 2,
+					key: 1,
 					class: p(["trans-split-btn", { disabled: l.isLoading || l.isReplayMode }]),
 					title: "Transpile to target language"
 				}, [a("button", {
 					class: "trans-main",
-					onClick: u[4] ||= (...e) => d.onTrans && d.onTrans(...e),
+					onClick: u[3] ||= (...e) => d.onTrans && d.onTrans(...e),
 					disabled: l.isLoading || l.isReplayMode
-				}, " Trans ", 8, si), a("div", {
+				}, " Trans ", 8, oi), a("div", {
 					ref_key: "transDropdownEl",
 					ref: b,
 					class: "trans-dropdown",
 					style: m({ width: x.value })
 				}, [
 					A(a("select", {
-						"onUpdate:modelValue": u[5] ||= (e) => h.value = e,
+						"onUpdate:modelValue": u[4] ||= (e) => h.value = e,
 						class: "trans-select",
 						disabled: l.isLoading || l.isDebugging || l.isReplayMode,
 						onChange: z
-					}, [...u[24] ||= [o("<option value=\"rust\" data-v-6b1ae17a>Rust</option><option value=\"c\" data-v-6b1ae17a>C</option><option value=\"python\" data-v-6b1ae17a>Python</option><option value=\"typescript\" data-v-6b1ae17a>TypeScript</option><option value=\"abt\" data-v-6b1ae17a>ABT</option>", 5)]], 40, ci), [[E, h.value]]),
-					a("span", li, C(_.value), 1),
-					u[25] ||= a("span", { class: "trans-arrow" }, [a("svg", {
+					}, [...u[23] ||= [o("<option value=\"rust\" data-v-00a69a09>Rust</option><option value=\"c\" data-v-00a69a09>C</option><option value=\"python\" data-v-00a69a09>Python</option><option value=\"typescript\" data-v-00a69a09>TypeScript</option><option value=\"abt\" data-v-00a69a09>ABT</option>", 5)]], 40, si), [[E, h.value]]),
+					a("span", ci, C(_.value), 1),
+					u[24] ||= a("span", { class: "trans-arrow" }, [a("svg", {
 						width: "12",
 						height: "12",
 						viewBox: "0 0 24 24",
@@ -4761,9 +4764,9 @@ var Nt = {
 				"is-paused": l.isPaused,
 				"is-recording": l.isRecording,
 				"has-recording": l.hasRecording,
-				onCommand: u[6] ||= (e) => t.$emit("debugCommand", e),
-				onToggleRecord: u[7] ||= (e) => t.$emit("toggleRecord"),
-				onExportRecording: u[8] ||= (e) => t.$emit("exportRecording")
+				onCommand: u[5] ||= (e) => t.$emit("debugCommand", e),
+				onToggleRecord: u[6] ||= (e) => t.$emit("toggleRecord"),
+				onExportRecording: u[7] ||= (e) => t.$emit("exportRecording")
 			}, null, 8, [
 				"is-paused",
 				"is-recording",
@@ -4774,29 +4777,29 @@ var Nt = {
 				"is-playing": l.isReplayPlaying,
 				"current-index": l.replayCurrentIndex,
 				"total-frames": l.replayTotalFrames,
-				onPlay: u[9] ||= (e) => t.$emit("replayPlay"),
-				onPause: u[10] ||= (e) => t.$emit("replayPause"),
-				onStepForward: u[11] ||= (e) => t.$emit("replayStepForward"),
-				onStepBackward: u[12] ||= (e) => t.$emit("replayStepBackward"),
-				onSeek: u[13] ||= (e) => t.$emit("replaySeek", e)
+				onPlay: u[8] ||= (e) => t.$emit("replayPlay"),
+				onPause: u[9] ||= (e) => t.$emit("replayPause"),
+				onStepForward: u[10] ||= (e) => t.$emit("replayStepForward"),
+				onStepBackward: u[11] ||= (e) => t.$emit("replayStepBackward"),
+				onSeek: u[12] ||= (e) => t.$emit("replaySeek", e)
 			}, null, 8, [
 				"is-playing",
 				"current-index",
 				"total-frames"
 			])) : r("", !0),
-			a("div", ui, [a("div", di, [a("div", { class: p(["editor-pane", { "with-preview": l.mode !== "editor" }]) }, [a("div", fi, [l.isReplayMode ? (v(), i("span", pi, "Replay")) : (v(), i("span", mi, [u[26] ||= s("Auto ", -1), l.activeFile ? (v(), i("span", hi, "· " + C(l.activeFile), 1)) : r("", !0)]))]), a("div", gi, [M.value ? (v(), n(xn, {
+			a("div", li, [a("div", ui, [a("div", { class: p(["editor-pane", { "with-preview": l.mode !== "editor" }]) }, [a("div", di, [l.isReplayMode ? (v(), i("span", fi, "Replay")) : (v(), i("span", pi, [u[25] ||= s("Auto ", -1), l.activeFile ? (v(), i("span", mi, "· " + C(l.activeFile), 1)) : r("", !0)]))]), a("div", hi, [M.value ? (v(), n(xn, {
 				key: 0,
 				files: l.projectFiles,
 				selected: l.activeFile || "",
 				"mapped-files": N.value,
-				onSelect: u[14] ||= (e) => t.$emit("selectFile", e)
+				onSelect: u[13] ||= (e) => t.$emit("selectFile", e)
 			}, null, 8, [
 				"files",
 				"selected",
 				"mapped-files"
 			])) : r("", !0), c(Ze, {
 				"model-value": l.source,
-				"onUpdate:modelValue": u[15] ||= (e) => t.$emit("update:source", e),
+				"onUpdate:modelValue": u[14] ||= (e) => t.$emit("update:source", e),
 				"on-run": l.onRun,
 				"is-debugging": l.isDebugging || l.isReplayMode,
 				breakpoints: l.breakpoints,
@@ -4804,10 +4807,10 @@ var Nt = {
 				"highlighted-source-line": l.currentSourceLine,
 				"selected-source-line": l.selectedSourceLine,
 				"read-only": l.isReplayMode,
-				onLineClick: u[16] ||= (e) => t.$emit("lineClick", e),
-				onBreakpointsChange: u[17] ||= (e) => t.$emit("breakpointsChange", e),
-				onHoverLine: u[18] ||= (e) => d.onHighlightLine?.(e),
-				onHoverLineLeave: u[19] ||= (e) => d.onClearHighlight?.()
+				onLineClick: u[15] ||= (e) => t.$emit("lineClick", e),
+				onBreakpointsChange: u[16] ||= (e) => t.$emit("breakpointsChange", e),
+				onHoverLine: u[17] ||= (e) => d.onHighlightLine?.(e),
+				onHoverLineLeave: u[18] ||= (e) => d.onClearHighlight?.()
 			}, null, 8, [
 				"model-value",
 				"on-run",
@@ -4817,19 +4820,19 @@ var Nt = {
 				"highlighted-source-line",
 				"selected-source-line",
 				"read-only"
-			])])], 2), l.mode === "editor" ? r("", !0) : (v(), i("div", _i, [a("div", vi, [a("span", null, C(D.value), 1), w.value ? (v(), i("button", {
+			])])], 2), l.mode === "editor" ? r("", !0) : (v(), i("div", gi, [a("div", _i, [a("span", null, C(D.value), 1), w.value ? (v(), i("button", {
 				key: 0,
 				class: "run-code-btn",
 				disabled: l.isLoading || l.isReplayMode,
 				onClick: T
-			}, " Run " + C(_.value), 9, yi)) : r("", !0)]), a("div", { class: p(["pane-body", { "with-file-tree": j.value }]) }, [l.mode === "run" || l.mode === "debug" || l.mode === "replay" ? (v(), n(qt, {
+			}, " Run " + C(_.value), 9, vi)) : r("", !0)]), a("div", { class: p(["pane-body", { "with-file-tree": j.value }]) }, [l.mode === "run" || l.mode === "debug" || l.mode === "replay" ? (v(), n(qt, {
 				key: 0,
 				bytecode: F.value,
 				"bytecode-meta": l.bytecodeMeta,
 				"current-ip": l.debugState?.ip,
 				"selected-offsets": l.selectedOffsets,
 				"highlighted-offsets": l.highlightedOffsets,
-				onOffsetClick: u[20] ||= (e) => t.$emit("offsetClick", e)
+				onOffsetClick: u[19] ||= (e) => t.$emit("offsetClick", e)
 			}, null, 8, [
 				"bytecode",
 				"bytecode-meta",
@@ -4850,7 +4853,7 @@ var Nt = {
 				"code",
 				"language",
 				"highlight-lines"
-			])], 64)) : r("", !0)], 2)]))]), L.value ? (v(), i("div", bi, [a("div", xi, [a("span", null, C(R.value), 1)]), a("div", Si, [c(Tt, {
+			])], 64)) : r("", !0)], 2)]))]), L.value ? (v(), i("div", yi, [a("div", bi, [a("span", null, C(R.value), 1)]), a("div", xi, [c(Tt, {
 				class: "console-main",
 				stdout: l.stdout,
 				stderr: l.stderr,
@@ -4867,26 +4870,26 @@ var Nt = {
 			}, null, 8, ["state"])) : r("", !0)])])) : r("", !0)])
 		]));
 	}
-}), [["__scopeId", "data-v-6b1ae17a"]]), wi = "/api", Ti = "auto-playground:state", Ei = "// Welcome to Auto Playground!\nfn add(a int, b int) int {\n    a + b\n}\n\nlet result = add(3, 4)\nprint(result)";
-function Di() {
+}), [["__scopeId", "data-v-00a69a09"]]), Ci = "/api", wi = "auto-playground:state", Ti = "// Welcome to Auto Playground!\nfn add(a int, b int) int {\n    a + b\n}\n\nlet result = add(3, 4)\nprint(result)";
+function Ei() {
 	let e = window.location.hash;
 	if (e.startsWith("#share=")) try {
 		let t = atob(decodeURIComponent(e.slice(7))), n = JSON.parse(t);
 		if (n.source) return n;
 	} catch {}
 	try {
-		let e = localStorage.getItem(Ti);
+		let e = localStorage.getItem(wi);
 		if (e) return JSON.parse(e);
 	} catch {}
 	return {};
 }
-function Oi(e) {
+function Di(e) {
 	try {
-		localStorage.setItem(Ti, JSON.stringify(e));
+		localStorage.setItem(wi, JSON.stringify(e));
 	} catch {}
 }
-function ki() {
-	let e = Di(), n = y(e.source ?? Ei), r = y(""), i = y(""), a = y(""), o = y(0), s = y([]), c = y(null), l = y(!1), u = y(e.activeTab ?? "rust"), d = y(""), f = y(e.projectDir), p = y(e.projectFiles ?? []), m = y(e.activeFile ?? "");
+function Oi() {
+	let e = Ei(), n = y(e.source ?? Ti), r = y(""), i = y(""), a = y(""), o = y(0), s = y([]), c = y(null), l = y(!1), u = y(e.activeTab ?? "rust"), d = y(""), f = y(e.projectDir), p = y(e.projectFiles ?? []), m = y(e.activeFile ?? "");
 	function h() {
 		if (!m.value) return;
 		let e = p.value.find((e) => e.path === m.value);
@@ -4993,7 +4996,7 @@ function ki() {
 	async function L() {
 		l.value = !0, r.value = "", i.value = "", a.value = "", s.value = [], c.value = null;
 		try {
-			let e = _({ source: n.value }), t = await (await fetch(`${wi}/run`, {
+			let e = _({ source: n.value }), t = await (await fetch(`${Ci}/run`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(e)
@@ -5017,7 +5020,7 @@ function ki() {
 				let e = await kt(t);
 				r.value = e.stdout, i.value = e.stderr, o.value = 0;
 			} else {
-				let n = await (await fetch(`${wi}/run_code`, {
+				let n = await (await fetch(`${Ci}/run_code`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
@@ -5039,7 +5042,7 @@ function ki() {
 			let t = _({
 				source: n.value,
 				target: e
-			}), r = await (await fetch(`${wi}/trans`, {
+			}), r = await (await fetch(`${Ci}/trans`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(t)
@@ -5112,7 +5115,7 @@ function ki() {
 		p,
 		m
 	], ([e, t, n, r, i]) => {
-		Oi({
+		Di({
 			source: e,
 			activeTab: t,
 			projectDir: n,
@@ -5157,7 +5160,7 @@ function ki() {
 }
 //#endregion
 //#region src/composables/useDebugger.ts
-function Ai() {
+function ki() {
 	let e = y(null), n = y(!1), r = y(!1), i = y([]), a = y(null), o = y(null), s = y(null), c = y(!1), l = y(null), u = t(() => {
 		let e = {};
 		for (let t of i.value) t.line !== void 0 && (e[t.line] || (e[t.line] = []), e[t.line].push(t.offset));
@@ -5263,7 +5266,7 @@ function Ai() {
 }
 //#endregion
 //#region src/composables/useReplayPlayer.ts
-function ji() {
+function Ai() {
 	let e = y(!1), n = y(null), r = y(0), i = y(!1), a = null, o = t(() => n.value?.events ?? []), s = t(() => o.value.filter((e) => e.type === "state").map((e, t) => ({
 		...e,
 		frameIndex: t
@@ -5334,11 +5337,11 @@ function ji() {
 }
 //#endregion
 //#region src/AutoPlaygroundFull.vue
-var Mi = /* @__PURE__ */ l({
+var ji = /* @__PURE__ */ l({
 	__name: "AutoPlaygroundFull",
 	props: { noteMeta: {} },
 	setup(n, { expose: r }) {
-		let { source: o, stdout: s, stderr: l, resultCode: u, timeMs: d, bytecode: f, bytecodeMeta: m, isLoading: h, activeTab: b, transpiledCode: x, transFiles: S, selectedTransFile: T, projectFiles: E, activeFile: D, highlightedOutputLines: k, highlightedSourceLine: A, mappedSourceFiles: j, run: M, transpile: N, runCode: P, selectTransFile: F, selectFile: I, loadExample: L, highlightOutputLine: R, share: z, shareToast: B } = ki(), V = Ai(), H = ji(), U = y([]), W = y("editor"), G = y("rust"), K = t(() => H.isActive.value ? H.currentState.value : V.state.value), q = t(() => H.isActive.value ? H.bytecode.value : V.bytecode.value), ee = t(() => H.isActive.value ? H.meta.value : V.meta.value), te = t(() => W.value === "run" ? f.value : q.value), ne = t(() => {
+		let { source: o, stdout: s, stderr: l, resultCode: u, timeMs: d, bytecode: f, bytecodeMeta: m, isLoading: h, activeTab: b, transpiledCode: x, transFiles: S, selectedTransFile: T, projectFiles: E, activeFile: D, highlightedOutputLines: k, highlightedSourceLine: A, mappedSourceFiles: j, run: M, transpile: N, runCode: P, selectTransFile: F, selectFile: I, loadExample: L, highlightOutputLine: R, share: z, shareToast: B } = Oi(), V = ki(), H = Ai(), U = y([]), W = y("editor"), G = y("rust"), K = t(() => H.isActive.value ? H.currentState.value : V.state.value), q = t(() => H.isActive.value ? H.bytecode.value : V.bytecode.value), ee = t(() => H.isActive.value ? H.meta.value : V.meta.value), te = t(() => W.value === "run" ? f.value : q.value), ne = t(() => {
 			let e = {};
 			for (let t of te.value) t.line !== void 0 && (e[t.line] || (e[t.line] = []), e[t.line].push(t.offset));
 			return e;
@@ -5436,7 +5439,7 @@ var Mi = /* @__PURE__ */ l({
 			};
 		}), _(() => {
 			window.removeEventListener("keydown", he);
-		}), r({ loadExample: me }), (t, r) => (v(), i(e, null, [c(Ci, {
+		}), r({ loadExample: me }), (t, r) => (v(), i(e, null, [c(Si, {
 			"note-meta": n.noteMeta,
 			source: w(o),
 			"is-loading": w(h),
@@ -5497,16 +5500,16 @@ var Mi = /* @__PURE__ */ l({
 			onReplaySeek: w(H).seek
 		}, null, 8, /* @__PURE__ */ "note-meta.source.is-loading.mode.trans-target.stdout.stderr.result-code.time-ms.transpiled-code.trans-files.selected-trans-file.project-files.active-file.mapped-source-files.highlight-lines.on-select-trans-file.on-output-line-click.is-debugging.is-paused.is-recording.has-recording.bytecode.bytecode-meta.debug-state.current-source-line.highlighted-offsets.selected-offsets.selected-source-line.breakpoints.current-debug-line.is-replay-mode.replay-current-index.replay-total-frames.is-replay-playing.onSelectFile.onShare.onExportRecording.onReplayPlay.onReplayPause.onReplayStepForward.onReplayStepBackward.onReplaySeek".split(".")), a("div", { class: p(["toast", { visible: w(B).visible }]) }, C(w(B).message), 3)], 64));
 	}
-}), Ni = { class: "nx-sidebar" }, Pi = {
+}), Mi = { class: "nx-sidebar" }, Ni = {
 	key: 0,
 	class: "nx-brand"
-}, Fi = { class: "nx-search" }, Ii = ["value"], Li = ["onClick"], Ri = ["title"], zi = { class: "nx-count" }, Bi = { class: "nx-section-body" }, Vi = {
+}, Pi = { class: "nx-search" }, Fi = ["value"], Ii = ["onClick"], Li = ["title"], Ri = { class: "nx-count" }, zi = { class: "nx-section-body" }, Bi = {
 	key: 0,
 	class: "nx-notes"
-}, Hi = ["title", "onClick"], Ui = ["onClick", "title"], Wi = { class: "nx-group-title" }, Gi = { class: "nx-count" }, Ki = { class: "nx-notes nx-notes-sub" }, qi = ["title", "onClick"], Ji = {
+}, Vi = ["title", "onClick"], Hi = ["onClick", "title"], Ui = { class: "nx-group-title" }, Wi = { class: "nx-count" }, Gi = { class: "nx-notes nx-notes-sub" }, Ki = ["title", "onClick"], qi = {
 	key: 0,
 	class: "nx-empty"
-}, Yi = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}, Ji = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "NotesSidebar",
 	props: /* @__PURE__ */ d({
 		groups: {},
@@ -5557,9 +5560,9 @@ var Mi = /* @__PURE__ */ l({
 			n && !f.value.has(n) && (f.value = _(f.value, n)), n !== "demo" && !m.value.has(t.id) && (m.value = _(m.value, t.id)), requestAnimationFrame(() => {
 				document.querySelector(".nx-note-btn.active")?.scrollIntoView({ block: "nearest" });
 			});
-		}), (t, o) => (v(), i("aside", Ni, [
-			n.title ? (v(), i("div", Pi, C(n.title), 1)) : r("", !0),
-			a("div", Fi, [c(w(De), {
+		}), (t, o) => (v(), i("aside", Mi, [
+			n.title ? (v(), i("div", Ni, C(n.title), 1)) : r("", !0),
+			a("div", Pi, [c(w(De), {
 				size: 14,
 				class: "nx-search-icon"
 			}), a("input", {
@@ -5568,7 +5571,7 @@ var Mi = /* @__PURE__ */ l({
 				placeholder: "搜索标题或标签…",
 				value: l.value,
 				onInput: o[0] ||= (e) => l.value = e.target.value
-			}, null, 40, Ii)]),
+			}, null, 40, Fi)]),
 			c(Qe, { class: "nx-tree" }, {
 				default: k(() => [(v(!0), i(e, null, b(d.value, (t) => (v(), i("section", {
 					key: t.id,
@@ -5584,13 +5587,13 @@ var Mi = /* @__PURE__ */ l({
 					a("span", {
 						class: "nx-group-title",
 						title: t.title
-					}, C(t.title), 9, Ri),
-					a("span", zi, C(t.noteCount), 1)
-				], 8, Li), A(a("div", Bi, [t.id === "demo" ? (v(), i("ul", Vi, [(v(!0), i(e, null, b(t.groups[0]?.notes ?? [], (e) => (v(), i("li", { key: e.id }, [a("button", {
+					}, C(t.title), 9, Li),
+					a("span", Ri, C(t.noteCount), 1)
+				], 8, Ii), A(a("div", zi, [t.id === "demo" ? (v(), i("ul", Bi, [(v(!0), i(e, null, b(t.groups[0]?.notes ?? [], (e) => (v(), i("li", { key: e.id }, [a("button", {
 					class: p(["nx-note-btn", { active: e.id === n.activeNoteId }]),
 					title: e.id,
 					onClick: (t) => u("select", e.id)
-				}, C(e.title), 11, Hi)]))), 128))])) : (v(!0), i(e, { key: 1 }, b(t.groups, (t) => (v(), i("section", {
+				}, C(e.title), 11, Vi)]))), 128))])) : (v(!0), i(e, { key: 1 }, b(t.groups, (t) => (v(), i("section", {
 					key: t.id,
 					class: "nx-group nx-subgroup"
 				}, [a("button", {
@@ -5602,13 +5605,13 @@ var Mi = /* @__PURE__ */ l({
 						size: 13,
 						class: p(["nx-chev", { open: g(t.id) }])
 					}, null, 8, ["class"]),
-					a("span", Wi, C(t.title), 1),
-					a("span", Gi, C(t.notes.length), 1)
-				], 8, Ui), A(a("ul", Ki, [(v(!0), i(e, null, b(t.notes, (e) => (v(), i("li", { key: e.id }, [a("button", {
+					a("span", Ui, C(t.title), 1),
+					a("span", Wi, C(t.notes.length), 1)
+				], 8, Hi), A(a("ul", Gi, [(v(!0), i(e, null, b(t.notes, (e) => (v(), i("li", { key: e.id }, [a("button", {
 					class: p(["nx-note-btn", { active: e.id === n.activeNoteId }]),
 					title: e.id,
 					onClick: (t) => u("select", e.id)
-				}, C(e.title), 11, qi)]))), 128))], 512), [[D, g(t.id)]])]))), 128))], 512), [[D, h(t.id)]])]))), 128)), n.groups.length === 0 ? (v(), i("p", Ji, "无匹配笔记")) : r("", !0)]),
+				}, C(e.title), 11, Ki)]))), 128))], 512), [[D, g(t.id)]])]))), 128))], 512), [[D, h(t.id)]])]))), 128)), n.groups.length === 0 ? (v(), i("p", qi, "无匹配笔记")) : r("", !0)]),
 				_: 1
 			})
 		]));
@@ -5616,7 +5619,7 @@ var Mi = /* @__PURE__ */ l({
 }), [["__scopeId", "data-v-d959301e"]]);
 //#endregion
 //#region src/composables/useNotes.ts
-function Xi(e = {}) {
+function Yi(e = {}) {
 	let n = e.base ?? "/playground-data/notes.json", r = S(null), i = y(!1), a = y(null), o = t(() => r.value?.groups ?? []), s = t(() => o.value.flatMap((e) => e.notes.map((t) => ({
 		note: t,
 		group: e
@@ -5656,32 +5659,32 @@ function Xi(e = {}) {
 }
 //#endregion
 //#region src/components/NotesExplorer.vue?vue&type=script&setup=true&lang.ts
-var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
+var Xi = { class: "notes-explorer" }, Zi = { class: "nx-main" }, Qi = {
 	key: 0,
 	class: "nx-state"
-}, ea = {
+}, $i = {
 	key: 1,
 	class: "nx-state nx-error"
-}, ta = {
+}, ea = {
 	key: 2,
 	class: "nx-state"
-}, na = {
+}, ta = {
 	key: 3,
 	class: "nx-state"
-}, ra = {
+}, na = {
 	key: 4,
 	class: "nx-note"
-}, ia = { class: "nx-note-header" }, aa = { class: "nx-title-row" }, oa = { class: "nx-note-title" }, sa = {
+}, ra = { class: "nx-note-header" }, ia = { class: "nx-title-row" }, aa = { class: "nx-note-title" }, oa = {
 	key: 0,
 	class: "nx-kind-chip"
-}, ca = { class: "nx-meta-row" }, la = ["href", "title"], ua = { class: "nx-source-path" }, da = {
+}, sa = { class: "nx-meta-row" }, ca = ["href", "title"], la = { class: "nx-source-path" }, ua = {
 	key: 0,
 	class: "nx-standalone-warn",
 	title: "含 import/use 顶层声明，不可独立运行"
-}, fa = {
+}, da = {
 	key: 0,
 	class: "nx-desc"
-}, pa = "#/notes/", ma = /* @__PURE__ */ $(/* @__PURE__ */ l({
+}, fa = "#/notes/", pa = /* @__PURE__ */ $(/* @__PURE__ */ l({
 	__name: "NotesExplorer",
 	props: {
 		base: { default: "/playground-data/notes.json" },
@@ -5694,7 +5697,7 @@ var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
 	},
 	emits: ["ide-mode"],
 	setup(e, { emit: o }) {
-		let l = e, u = o, { groups: d, flatNotes: f, byId: m, isLoading: _, error: b, fetchNotes: x, search: S } = Xi({ base: l.base }), T = y(""), E = y(null), D = y(null), k = t(() => E.value ? m.value.get(E.value) ?? null : null), A = t(() => {
+		let l = e, u = o, { groups: d, flatNotes: f, byId: m, isLoading: _, error: b, fetchNotes: x, search: S } = Yi({ base: l.base }), T = y(""), E = y(null), D = y(null), k = t(() => E.value ? m.value.get(E.value) ?? null : null), A = t(() => {
 			if (!T.value.trim()) return d.value;
 			let e = /* @__PURE__ */ new Map();
 			for (let { note: t, group: n } of S(T.value)) e.has(n.id) || e.set(n.id, []), e.get(n.id).push(t);
@@ -5736,7 +5739,7 @@ var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
 		function R() {
 			if (typeof window > "u") return null;
 			let e = window.location.hash;
-			if (!e.startsWith(pa)) return null;
+			if (!e.startsWith(fa)) return null;
 			try {
 				return decodeURIComponent(e.slice(8));
 			} catch {
@@ -5745,7 +5748,7 @@ var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
 		}
 		function z(e) {
 			if (typeof window > "u") return;
-			let t = pa + encodeURIComponent(e).replace(/%2F/gi, "/");
+			let t = fa + encodeURIComponent(e).replace(/%2F/gi, "/");
 			window.location.hash !== t && window.history.replaceState(null, "", t);
 		}
 		O(f, (e) => {
@@ -5786,7 +5789,7 @@ var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
 			window.addEventListener("hashchange", B), window.addEventListener("keydown", W);
 		}), h(() => {
 			window.removeEventListener("hashchange", B), window.removeEventListener("keydown", W);
-		}), (t, o) => (v(), i("div", Zi, [c(Yi, {
+		}), (t, o) => (v(), i("div", Xi, [c(Ji, {
 			class: "nx-side",
 			groups: A.value,
 			searching: !!T.value.trim(),
@@ -5799,16 +5802,16 @@ var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
 			"searching",
 			"active-note-id",
 			"query"
-		]), a("main", Qi, [w(_) ? (v(), i("div", $i, "正在加载笔记清单…")) : w(b) ? (v(), i("div", ea, [a("p", null, "笔记清单加载失败：" + C(w(b)), 1), a("button", {
+		]), a("main", Zi, [w(_) ? (v(), i("div", Qi, "正在加载笔记清单…")) : w(b) ? (v(), i("div", $i, [a("p", null, "笔记清单加载失败：" + C(w(b)), 1), a("button", {
 			class: "nx-retry",
 			onClick: o[1] ||= (e) => w(x)()
-		}, [c(w(Ee), { size: 13 }), o[2] ||= s(" 重试 ", -1)])])) : w(f).length === 0 ? (v(), i("div", ta, "笔记清单为空。")) : k.value ? (v(), i("article", ra, [a("header", ia, [
-			a("div", aa, [
-				a("h2", oa, C(k.value.note.title), 1),
+		}, [c(w(Ee), { size: 13 }), o[2] ||= s(" 重试 ", -1)])])) : w(f).length === 0 ? (v(), i("div", ea, "笔记清单为空。")) : k.value ? (v(), i("article", na, [a("header", ra, [
+			a("div", ia, [
+				a("h2", aa, C(k.value.note.title), 1),
 				a("span", { class: p(["nx-badge", `t-${k.value.note.sourceType}`]) }, C(k.value.note.sourceType), 3),
-				k.value.note.kind === "single" ? r("", !0) : (v(), i("span", sa, C(N.value), 1))
+				k.value.note.kind === "single" ? r("", !0) : (v(), i("span", oa, C(N.value), 1))
 			]),
-			a("div", ca, [a("a", {
+			a("div", sa, [a("a", {
 				class: "nx-source-chip",
 				href: j.value,
 				target: "_blank",
@@ -5816,10 +5819,10 @@ var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
 				title: k.value.note.sourcePath
 			}, [
 				c(w(Se), { size: 12 }),
-				a("span", ua, C(k.value.note.sourcePath), 1),
+				a("span", la, C(k.value.note.sourcePath), 1),
 				c(w(xe), { size: 11 })
-			], 8, la), k.value.note.standalone ? r("", !0) : (v(), i("span", da, " 依赖模块 "))]),
-			k.value.note.description ? (v(), i("details", fa, [o[3] ||= a("summary", null, "说明", -1), a("p", null, C(k.value.note.description), 1)])) : r("", !0)
+			], 8, ca), k.value.note.standalone ? r("", !0) : (v(), i("span", ua, " 依赖模块 "))]),
+			k.value.note.description ? (v(), i("details", da, [o[3] ||= a("summary", null, "说明", -1), a("p", null, C(k.value.note.description), 1)])) : r("", !0)
 		]), (v(), n(cr, {
 			ref_key: "card",
 			ref: D,
@@ -5843,8 +5846,8 @@ var Zi = { class: "notes-explorer" }, Qi = { class: "nx-main" }, $i = {
 			"files",
 			"project-dir",
 			"ide-mode"
-		]))])) : (v(), i("div", na, "从左侧选择一条笔记开始浏览。"))])]));
+		]))])) : (v(), i("div", ta, "从左侧选择一条笔记开始浏览。"))])]));
 	}
 }), [["__scopeId", "data-v-73cf3f1f"]]);
 //#endregion
-export { lr as AutoPlayground, Mi as AutoPlaygroundFull, qt as BytecodePanel, Ze as CodeEditor, yt as CodePreview, Tt as ConsoleOutput, Qt as ExampleSelector, vn as ExpectedOutputPanel, ma as NotesExplorer, Yi as NotesSidebar, cr as PlaygroundCard, Ci as PlaygroundLayout, Qe as ScrollArea, Bt as SnippetRunner, Re as autoLanguage, Ai as useDebugger, Xi as useNotes, Mt as usePlayground, ki as usePlaygroundFull, ji as useReplayPlayer };
+export { lr as AutoPlayground, ji as AutoPlaygroundFull, qt as BytecodePanel, Ze as CodeEditor, yt as CodePreview, Tt as ConsoleOutput, Qt as ExampleSelector, vn as ExpectedOutputPanel, pa as NotesExplorer, Ji as NotesSidebar, cr as PlaygroundCard, Si as PlaygroundLayout, Qe as ScrollArea, Bt as SnippetRunner, Re as autoLanguage, ki as useDebugger, Yi as useNotes, Mt as usePlayground, Oi as usePlaygroundFull, Ai as useReplayPlayer };

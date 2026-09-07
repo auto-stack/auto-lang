@@ -3,31 +3,27 @@
     <header class="toolbar">
       <div class="toolbar-left">
         <template v-if="noteMeta">
-          <h1 class="title" :title="noteMeta.sourcePath">{{ noteMeta.title }}</h1>
-          <span class="note-badge" :class="`t-${noteMeta.sourceType}`">{{ noteMeta.sourceType }}</span>
+          <!-- 示例名即链接（外链 icon 提示可点），路径收进 tooltip（Plan 582 复审修正·紧凑标题栏） -->
           <a
-            class="note-source-chip"
+            class="title note-link"
             :href="`${(noteMeta.repoBase ?? 'https://github.com/auto-stack/auto-lang').replace(/\/$/, '')}/blob/master/${noteMeta.sourcePath}`"
             target="_blank"
             rel="noopener"
             :title="noteMeta.sourcePath"
           >
-            {{ noteMeta.sourcePath }}
+            {{ noteMeta.title }}
+            <svg class="ext-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
           </a>
+          <span class="note-badge" :class="`t-${noteMeta.sourceType}`">{{ noteMeta.sourceType }}</span>
         </template>
         <h1 v-else class="title">Auto Playground</h1>
-        <ExampleSelector @select="onLoadExample" />
       </div>
       <div class="toolbar-right">
-        <button
-          v-if="!isDebugging && !isReplayMode"
-          class="toolbar-btn load-replay-btn"
-          @click="$emit('loadReplay')"
-          title="Load Replay File"
-        >
-          <span class="icon">📂</span>
-          <span class="label">Load Replay</span>
-        </button>
+        <!-- Load Replay 功能未完善，暂隐藏（loadReplay emit 链路与 __loadReplayForTest__ 钩子保留） -->
         <button class="toolbar-btn share-btn" @click="$emit('share')" title="Copy shareable link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
@@ -223,7 +219,6 @@ import CodeEditor from './CodeEditor.vue';
 import CodePreview from './CodePreview.vue';
 import BytecodePanel from './BytecodePanel.vue';
 import ConsoleOutput from './ConsoleOutput.vue';
-import ExampleSelector from './ExampleSelector.vue';
 import DebugToolbar from './DebugToolbar.vue';
 import ReplayToolbar from './ReplayToolbar.vue';
 import DebugAuxPanel from './DebugAuxPanel.vue';
@@ -406,10 +401,6 @@ const outputTitle = computed(() => {
 function onTrans() {
   props.onTrans();
 }
-
-function onLoadExample(payload: { source: string; project_dir?: string; files?: ProjectFile[] }) {
-  emit('loadExample', payload);
-}
 </script>
 
 <style scoped>
@@ -473,27 +464,27 @@ function onLoadExample(payload: { source: string; project_dir?: string; files?: 
   border-color: #27c93f55;
 }
 
-.note-source-chip {
+/* 示例名即链接（noteMeta 注入时，Plan 582 复审修正·紧凑标题栏） */
+.note-link {
   display: inline-flex;
   align-items: center;
-  max-width: 340px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0.12rem 0.55rem;
-  border-radius: 6px;
-  border: 1px solid #45475a;
-  background: #181825;
-  color: #a6adc8;
-  font-size: 0.72rem;
-  font-family: 'JetBrains Mono', monospace;
+  gap: 0.3rem;
+  color: #cdd6f4;
   text-decoration: none;
+  transition: color 0.15s;
+}
+
+.note-link:hover {
+  color: #a5b4fc;
+}
+
+.note-link .ext-icon {
+  color: #6c7086;
   flex-shrink: 0;
 }
 
-.note-source-chip:hover {
+.note-link:hover .ext-icon {
   color: #a5b4fc;
-  border-color: #6366f1;
 }
 .toolbar-btn {
   display: inline-flex;
