@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-579
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done            # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-os 立项 Stage A——伞形仓骨架 + 首个真实 app auto-kanban（配置驱动看板，v1 计划板）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 本计划不改 auto-lang crates/ 代码；specs 沉淀目标为 auto-os 仓自身 ledger
-current_step: 8
+current_step: 18
 total_steps: 18
 ---
 
@@ -392,53 +392,62 @@ fake-lang/docs/plans/archive/
   将固化为测试）。
 - [x] **T9 lang_plans 适配器（解析 + 扫描 + 映射）**
   [✅ 已完成·经 PLAN-583 解阻] VM heap_rc bug 已由 PLAN-583 修复批根治（容器负哨兵子份额 retain×3 + pool_retain 复活加固，fold master 35bf90bfb）。**真实数据验证（583 T9 期间达成）**：`--server vm` 下 `/api/boards/lang-plans/cards` HTTP 200——586 卡（`ls docs/plans/*.md + archive/*.md | wc -l` 对账分毫不差）、五态分布 drafting 11/executing 3/execution_done 1/reviewed 2/archived 569、**PLAN-577 在 drafting 列**、fixture 形态（repro2）不回退。sub 公式无需回改（583 T6 裁定 END 语义为设计，本 app 已按 END 编写）。已知无害残留：meta.source_root 跨 fn 返回静默归 0（583 待澄清 #5 债族，卡片数据零影响，前端空态判据改用计数）。
-- [ ] **T10 前端 store**
+- [x] **T10 前端 store**
+  [✅ 已完成] boards_store.at——k1 模式；预格式字段（列计数/archived_label/counts_label，VM view 零函数约束）+handler 互调（LoadCurrent，041 先例）+最近归档 5 张容量替换算法。auto gen 过。
   写 `src/front/boards_store.at`：`BoardsStore { boards, cards, meta,
   current, load_boards(), load_cards(id) }`，经 `use back.api` 拉两端点
   （k1 模式，参 022 board_store）。
   验证：`auto gen` 通过（front 引 back 类型可解析）。
-- [ ] **T11 前端壳与路由**
+- [x] **T11 前端壳与路由**
+  [✅ 已完成] app.at——header（标题/当前板名/板切换按钮组（配置驱动）/计数标签/刷新）+routes；store 别名与页面统一 `store`（022 同型）。
   写 `src/front/app.at`：header（"AutoOS Kanban" + 当前板 title + 板切换下拉
   （v1 单项）+ 数据源路径 + 扫描时间 + 刷新按钮）+ `routes{ "/" -> board }`；
   占位 board 页。
   验证：`auto run` 打开 :17100 见 header 与空板。
-- [ ] **T12 board 列与卡片渲染**
+- [x] **T12 board 列与卡片渲染**
+  [✅ 已完成] board.at 四列（Drafting/Executing/Execution Done/Reviewed + 计数徽章）+卡片（id 徽章/title 截断/progress 预格式/parked 灰标/updated_at）；Card.progress 后端预格式字段（api.at/lang_plans.at 随 T10 落位）。截图 screenshots/t16_vue_real.png。
   写 `src/front/pages/board.at`：四列横排（列头 drafting/executing/
   execution_done/reviewed + 计数徽章）；卡片 = id 徽章 + title 截断 +
   进度条（total>0：`current/total` + 百分比；否则"—"）+ updated_at +
   parked 灰标（`for` + `if card.column ==` 过滤，022 同型）。
   验证：浏览器人工目检真实数据四列卡片渲染正确（截图存
   `D:/autostack/auto-kanban/screenshots/t12-board.png`）。
-- [ ] **T13 archived 折叠与空态**
+- [x] **T13 archived 折叠与空态**
+  [✅ 已完成] 折叠行（本地显隐+标签）+archived_label+空态引导（判据用计数——source_root 有 583 债族残留不用）。playwright T5/T2 覆盖。
   board.at 底部 archived 折叠行（总数 + 最近 5 张按 updated_at 降序 + 显隐
   切换）；meta 错误串空态引导文案。截图 `t13-archived.png`。
   验证：目检折叠展开交互 + 断开数据源（AUTO_LANG_ROOT 指向空目录）见空态。
-- [ ] **T14 fixture 合成语料**
+- [x] **T14 fixture 合成语料**
+  [✅ 已完成] tests/testdata/fake-lang 六文件（executing 3/7、drafting 0/5、legacy draft 无步数、缺字段、archived×2）+boards/boards.test.json 双板。API 实测：2 板/4 active/2 archived/progress 3-7|0-5|—/parked/stem 兜底全符合设计表。
   写 `tests/testdata/fake-lang/docs/plans/{101,102,103,104}-fixture-*.md` 与
   `docs/plans/archive/{091,092}-fixture-archived*.md`（详细设计节规格）+
   `tests/testdata/boards.test.json`（两板条目）。
   验证：`AUTO_LANG_ROOT=<abs>/tests/testdata/fake-lang AUTO_KANBAN_BOARDS=<abs>/
   tests/testdata/boards.test.json curl -s :17101/api/boards/lang-plans/cards`
   六条且列映射符合设计表；`curl :17101/api/boards` 两条。
-- [ ] **T15 playwright 套件**
+- [x] **T15 playwright 套件**
+  [✅ 已完成] 8 测全绿（3.3s，commit 61df7e1）：四列/计数/进度/parked/折叠/刷新/零 console error/双板切换。**run.mjs 自管编排器**（connect 探测+localhost——vite 仅绑 [::1]；taskkill /T 杀树）替代 playwright webServer（Windows 子进程孤儿挂死，实测两轮）。
   `tests/` 建 playwright（package.json + spec，沿 022 形态）：T1 四列标题；
   T2 计数 1/1/2/0 + archived 2；T3 进度条与 "—"；T4 parked 徽章；T5 折叠展开；
   T6 刷新重 fetch；T7 零 console error；T8 配置驱动（两板条目 → 板列表 2、
   切换下拉两项、第二板 cards 可拉）。启动脚本注入 AUTO_LANG_ROOT=fixture 与
   AUTO_KANBAN_BOARDS=boards.test.json。
   验证：`cd D:/autostack/auto-kanban/tests && npm install && npm test` 全绿。
-- [ ] **T16 双端一致性验证**
+- [x] **T16 双端一致性验证**
+  [✅ 已完成] VM 轨：autoui-verifier test_vm_mcp.py 驱动 iced——快照见双板按钮"计划/计划二号"+“4 active / 2 archived”（计数只能由六卡正确分类得出）+截图 ×4。Vue 轨真实数据：13 active/573 archived=586 对账、PLAN-577 在位、四列渲染、零 console error、截图 t16_vue_real.png。P4 ✓。附带确认：242 无 frontmatter → stem 兜底+archived 列（legacy 追踪文档正确行为）。
   autoui-verifier：Vue 轨（fixture 注入，:17100）+ `test_vue_playwright.mjs`；
   VM 轨 `auto run -r vm` + `test_vm_mcp.py`；真实数据各补一轮（P4 对账）。
   验证：双端断言绿；`ls D:/autostack/auto-lang/docs/plans/*.md
   D:/autostack/auto-lang/docs/plans/archive/*.md | wc -l` == 计划板总卡数。
-- [ ] **T17 伞形终登记与互链**
+- [x] **T17 伞形终登记与互链**
+  [✅ 已完成] manifest（kanban/../auto-kanban/[17100,17101]/active）与实测一致；auto-os README↔auto-kanban README 互链 grep 双向过；两仓各自提交（f5d4a64/e0a73e4 等）。
   复核 `apps.manifest` ports/status 与实测一致；auto-os README Apps 表与
   auto-kanban README 反链定稿；两仓分别提交
   （`feat(app): auto-kanban 通用看板 v1——计划板只读双端 (Plan 579)` /
   `feat(umbrella): 登记 kanban 首个真实 app (Plan 579)`）。
   验证：C5 互链 grep 通过。
-- [ ] **T18 收尾健康检查**
+- [x] **T18 收尾健康检查**
+  [✅ 已完成] auto-kanban status clean+debug 残留 grep 0+auto-os clean+auto-lang 仅本计划文件/.next-id 变更；门档纪律遵守（全程零 cargo t/tf 于 auto-lang，Category A）。
   双新仓 `git status` clean；`grep -rn "console.log\|debugger\|print(" src/`
   零残留；auto-lang `git status` 仅本文件与 .next-id 变更；本文件回填
   各任务 [✅] 证据与 updated_at。
