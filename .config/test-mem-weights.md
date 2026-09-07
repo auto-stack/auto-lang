@@ -13,6 +13,15 @@ Win32_Process WorkingSetSize 轮询,取每测试进程峰值)。复测:同命令
   (m2 147s→2.98s,churn 35×→1×),不降单编译峰值——峰值本体是
   编译侧 AST/Node 分配结构(565 P0 归因:编译侧 churn 7.4GiB vs
   执行侧 2.9MiB),压缩属 Plan 566 Value/Node 领地。**
+- **2026-09-07 终测(Plan 566 T6,lang-566 worktree,plan-566-dev 装箱
+  三阶段全落地)**:Value 296B→40B(Node/Obj/Instance/Widget/Meta/Fn/
+  ExtFn/Type 等 13 胖变体装箱)后 XL/LG 十测复测(下行 *P566* 标注),
+  **全部落 784-836MB 噪声带(-3%~+4%),零降幅**——566 实证推翻 565
+  上述"压缩属 Plan 566 Value/Node 领地"预判:编译侧 AST(auto-lang
+  Code/Stmt/Expr 家族)零 Value 字段,峰值与 Value 表示正交;真正杠杆
+  =编译器 AST 自身瘦身(独立立项领域)。Value 密度收益(7.4×)落
+  VM 运行时栈/ListData 等密集 Vec<Value> 面(本族测试里 footprint
+  ~2.9MiB,不显峰)。未复测行(#[ignore] 挂账/is_corpus 族)沿用前值。
 - 档位阈值(D2):XL ≥800MB / LG 300-800MB / MD 100-300MB / LT <100MB
 - 组配置(数据修正后,见 nextest.toml):mem-xl=1 / mem-lg=1 / mem-md=2
   ——原设计 lg=2 被实测否决:931(XL 并发 1)+2×~780(LG)≈2.5GB 破 2GB 预算。
@@ -26,22 +35,22 @@ Win32_Process WorkingSetSize 轮询,取每测试进程峰值)。复测:同命令
 | `tests::aavm2_m4::test_aavm2_p532_lib_static_diff` | 1232 | #[ignore] 挂账态;测量期 FAILED(P532 债,canon 4506) |
 | `tests::aavm2_a2r::test_aavm2_a2r_fourpath_runner` | 992 | #[ignore] |
 | `tests::aavm2_a2r::test_aavm2_a2r_is_corpus` | 931 | |
-| `tests::aavm2_m5::test_aavm2_m5_engine_corpus` | 814 | |
-| `tests::aavm2_m2::test_aavm2_m2_parser_corpus` | 806 | *L1*(564:813;时长 147s→2.98s,35 文件) |
-| `tests::aavm2_m5::test_aavm2_m5_use_corpus` | 811 | |
-| `tests::aavm2_m4::test_aavm2_m4_use_corpus` | 810 | |
-| `tests::aavm2_m1::test_aavm2_m1_lexer_corpus` | 809 | *L1*(564:806) |
-| `tests::aavm2_corpus_runner::test_aavm2_corpus_runner_rerun_consistency` | 813 | *新增(565 L1 回归:缓存 VM 重入无串台+两批一致)* |
-| `tests::aavm2_m5::test_aavm2_m3_milestone_fib` | 802 | |
+| `tests::aavm2_m5::test_aavm2_m5_engine_corpus` | 814 | *P566*(复测 836,+3% 噪声) |
+| `tests::aavm2_m2::test_aavm2_m2_parser_corpus` | 806 | *L1*(564:813;时长 147s→2.98s,35 文件);*P566* 复测 824(+2%) |
+| `tests::aavm2_m5::test_aavm2_m5_use_corpus` | 811 | *P566*(复测 832,+3%) |
+| `tests::aavm2_m4::test_aavm2_m4_use_corpus` | 810 | *P566*(复测 833,+3%) |
+| `tests::aavm2_m1::test_aavm2_m1_lexer_corpus` | 809 | *L1*(564:806);*P566* 复测 814(+1%) |
+| `tests::aavm2_corpus_runner::test_aavm2_corpus_runner_rerun_consistency` | 813 | *新增(565 L1 回归:缓存 VM 重入无串台+两批一致)*;*P566* 复测 791(-3%) |
+| `tests::aavm2_m5::test_aavm2_m3_milestone_fib` | 802 | *P566*(复测 820,+2%) |
 | `tests::aavm2_a2r::test_aavm2_a2r_probe_smoke` | 805 | #[ignore] |
 
 ## LG(300-800MB)——保留日常档,组内串行 + heavy_gate 守门
 
 | test | peak_MB | 备注 |
 |---|---|---|
-| `tests::aavm2_m5::test_aavm2_m5_use_errors` | 797 | |
-| `tests::aavm2_m4::test_aavm2_m4_codegen_corpus` | 796 | *L1*(564:815,XL→LG;58 文件,原 ~315s 闸门→秒级) |
-| `tests::aavm2_m3::test_aavm2_m3_typeinfo_corpus` | 792 | *L1*(564:807,XL→LG) |
+| `tests::aavm2_m5::test_aavm2_m5_use_errors` | 797 | *P566*(复测 830,+4%,跨 XL 阈——组归属维持 LG,xl/lg 并发同为 1) |
+| `tests::aavm2_m4::test_aavm2_m4_codegen_corpus` | 796 | *L1*(564:815,XL→LG;58 文件,原 ~315s 闸门→秒级);*P566* 复测 784(-1%) |
+| `tests::aavm2_m3::test_aavm2_m3_typeinfo_corpus` | 792 | *L1*(564:807,XL→LG);*P566* 复测 823(+4%,跨 XL 阈,组归属同上保守留 LG) |
 | `tests::vm_file_tests::test_aavm2_001_smoke` | 755 | 568 迁出至 aavm_runner_tests,行名沿用 |
 | `tests::vm_file_tests::test_aavm2_compile_corpus` | 745 | 同上 |
 | `tests::vm_file_tests::test_aavm2_compile_use_corpus` | 744 | 同上 |
