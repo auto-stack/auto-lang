@@ -194,6 +194,11 @@ wrapper），运行期按指纹装载**。"动态"的准确含义是运行时装
    adapter 原型）。
 
 **在途/待决**：
+- fork-rustc「debug 稳定 ABI」Stage 0.5（2026-09-08 补）：fork 补丁集让 debug 档
+  `#[repr(Rust)]` 按 `#[repr(C)]` 布局 + 符号去路径化 + CAS 缓存默认——"版本即兼容域"
+  原则的近期落地形态，直接救济存量 Rust 核心的构建痛（agent 集群放大）。若落地，
+  §4 探针层可退役（声明序布局下偏移=签名纯函数）。方案/风险/触发条件详见
+  [native-backend-strategy](strategy/native-backend-strategy.md) §1-2。
 - 反向桥（宿主→VM 调 `.at` 函数）：整个互操作面唯一无人动过的方向，解锁底层
   先迁与跨域混编——候选独立 plan。
 - 指纹钉全配置（features/依赖图）——430 补强项。
