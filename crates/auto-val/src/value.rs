@@ -171,9 +171,11 @@ pub enum Value {
     Node(Box<Node>),
     Range(i32, i32),
     RangeEq(i32, i32),
-    Fn(Fn),
-    ExtFn(ExtFn),
-    Type(Type),
+    /// Plan 566 Phase C: Fn/ExtFn/Type 装箱（Fn 72B 为 48B 终态的最后约束；
+    /// Str 40B 是地板设定者——热路径字符串不装箱，终态即 48B）。
+    Fn(Box<Fn>),
+    ExtFn(Box<ExtFn>),
+    Type(Box<Type>),
     #[default]
     Nil,
     Null,

@@ -20,9 +20,10 @@ use crate::types::Type;
 use crate::value::{Closure, FutureData, Grid, Method, Model, Value, View, Widget};
 use crate::AutoStr;
 
-/// 防回退上限（B）。Phase A（Node 装箱,实测落 112）后 128；
-/// Phase B（实测落 72）/ Phase C 后 48（Str 40B 为地板设定者——热路径不装箱）。
-const VALUE_SIZE_LIMIT: usize = 88;
+/// 防回退上限（B）。Phase A（Node 装箱）落 112；Phase B 落 72；
+/// Phase C（Fn/ExtFn/Type 装箱）终态实测 40——G1 ≤48 锁死（Str 40B 为
+/// 地板设定者，热路径字符串不装箱）。
+const VALUE_SIZE_LIMIT: usize = 48;
 
 const _: () = assert!(
     size_of::<Value>() <= VALUE_SIZE_LIMIT,
