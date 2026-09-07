@@ -22,17 +22,28 @@ total_steps: 6
 
 把 `examples/ui-gallery` 与 `examples/widgets-gallery` 两个画廊应用注册进
 虚拟桌面的**缺省**应用注册表扫描面。机制沿用 Plan 501 多根聚合的相邻仓
-探测惯用法：双轨宿主的 extra 根缺省探测各扩展两个**仓内**画廊根（VM 轨
-`apps_dir.parent()/{ui-gallery,widgets-gallery}`；Vue 轨
-`<workspace>/examples/{ui-gallery,widgets-gallery}`），外部自含根按
+探测惯用法：双轨宿主的 extra 根缺省探测各扩展两个**仓内**画廊根（双轨
+同律锚定 `apps_dir.parent()/{ui-gallery,widgets-gallery}`——主根指哪
+画廊跟哪，PLAN-579 对齐，见 §详细设计 6），外部自含根按
 PLAN-552 语义缺省 `desktop_visible=true`（opt-out），无需 pac `desktop:`
 字段即入 launcher/图标格/dock 消费面。两 pac.at 补 `title:`/`icon:`
 展示字段。VM 轨新增 `shell.apps.scan_galleries` storage 开关（缺省开，
 命名对齐既有 `shell.apps.scan_siblings`）。
 
 不动：examples/ui 主根扫描与策展恰等断言（20 id 口径）、Plan 552 boot
-两分逻辑、`extra_roots_from`/`desktop_extra_app_roots` 既有签名与 env
-覆盖语义（`AUTO_DESKTOP_APPS_EXTRA` 设置时整体替换缺省，保持不变）。
+两分逻辑、`extra_roots_from`/`desktop_extra_app_roots` 的 env 覆盖语义
+（`AUTO_DESKTOP_APPS_EXTRA` 设置时整体替换缺省，保持不变）。
+
+**与 PLAN-579（auto-os 立项）的对齐**（2026-09-07 追加）：579 裁定
+auto-lang=语言/框架根、auto-os=产品根（伞形）、真实 app 走独立仓，但其
+Stage A 只建伞形骨架+首个 app 仓，**明确不迁移桌面 shell（Stage B 另行
+立项）**——578 的落点（双轨注册表装配）在 Stage B 前仍是桌面唯一消费面，
+照常执行、即刻生效。双轨画廊探测统一按**主根（apps_dir）兄弟锚定**
+（§详细设计 1/§3）：Stage B 宿主迁 auto-os 后，apps_dir 按 579 AGENTS.md
+跨仓解析序约定（`AUTO_LANG_ROOT` → 兄弟 `../auto-lang` → 主检出）仍指
+auto-lang `examples/ui`，画廊条目自动跟随，578 代码随 shell 迁移原样
+带走。画廊长期归属（留 auto-lang examples vs 独立 app 仓登
+apps.manifest）不在本计划裁定，见待澄清③。
 
 ## 目标
 
@@ -70,7 +81,7 @@ PLAN-552 语义缺省 `desktop_visible=true`（opt-out），无需 pac `desktop:
 | 轨道 | 注册表装配点 | 画廊根来源 | 可见性 |
 |---|---|---|---|
 | VM（iced ui_desktop） | `renderer.rs` boot `aggregate_scan`（~11274） | `host_extra_roots()` + 新 `gallery_extra_roots(apps_dir)` | 552 两分：策展集含画廊（外部根 opt-out 缺省 true） |
-| Vue（desktop-host） | `vue.rs generate_desktop_host`（~3650） | `desktop_extra_app_roots(root_dir)` 缺省臂扩展 | render 过滤：ui-gallery 入、widgets-gallery 排除 |
+| Vue（desktop-host） | `vue.rs generate_desktop_host`（~3650） | `desktop_extra_app_roots(root_dir, apps_dir)` 缺省臂扩展（画廊按 **apps_dir 兄弟**锚定，579 对齐） | render 过滤：ui-gallery 入、widgets-gallery 排除 |
 
 ## 需求分析与背景调查
 （从 docs/specs/goals.md GOAL-009/010 与代码实勘取材）
@@ -97,6 +108,11 @@ PLAN-552 语义缺省 `desktop_visible=true`（opt-out），无需 pac `desktop:
   （`probe_entry` 兜底形态），`scan_app_root` 直接可用。
 - **图标格徽标色**：`badge_color_for` 按 id 哈希 8 色板（Plan 518 G4③），
   零配置面。
+- **PLAN-579 组织重划**（2026-09-07 用户裁定，与本计划起草同期）：auto-lang
+  =语言/框架根、auto-os=产品根（伞形组织根）、真实 app 走独立仓（首个
+  auto-plans 计划看板）；桌面 shell 迁移 = Stage B 另行立项。对本计划的
+  影响与迁移姿态见 §详细设计 6（结论：落点照常、探测锚定加固为
+  apps_dir 相对、画廊归属议题外移）。
 - 相关 GOAL：GOAL-009（虚拟桌面与桌面 Shell）、GOAL-010（示例应用轨道）。
 
 ## 详细设计
@@ -142,19 +158,30 @@ eprintln（`{} entries ({} desktop-visible)`）自动反映 +2/+2。
 
 ### 3. Vue 轨：`crates/auto-man/src/vue.rs` `desktop_extra_app_roots`（~5507）
 
-缺省臂（非 env 覆盖路径）os-config 探测之后追加：
+签名增参 `apps_dir`（私有 fn，单调用点 + 测试）。os-config 兄弟仓探测
+保持 root_dir 锚定不变；**画廊探测改按 apps_dir 锚定**——与 VM 轨 §1
+同律（PLAN-579 对齐：Stage B 宿主迁 auto-os 后 apps_dir 经跨仓解析序
+仍指 auto-lang examples/ui，画廊探测不随宿主搬迁失效；若锚定
+root_dir/examples/ 则宿主一搬即探测空路径）：
 
 ```rust
-for name in ["ui-gallery", "widgets-gallery"] {
-    let p = root_dir.join("examples").join(name);
-    push_root(p, &mut out);   // 既有闭包：is_dir 才入，id 取目录名
+fn desktop_extra_app_roots(root_dir: &Path, apps_dir: &Path) -> Vec<(String, PathBuf)> {
+    // …env AUTO_DESKTOP_APPS_EXTRA 覆盖臂与 os-config 兄弟探测原样（root_dir 锚定）…
+    // 缺省臂追加（PLAN-578）：主根兄弟画廊——apps_dir.parent() 锚定
+    if let Some(parent) = apps_dir.parent() {
+        for name in ["ui-gallery", "widgets-gallery"] {
+            push_root(parent.join(name), &mut out); // 既有闭包：is_dir 才入，id 取目录名
+        }
+    }
+    out
 }
 ```
 
-注意 `push_root` 入的是 `(目录名, 路径)`——id 即 `ui-gallery` /
-`widgets-gallery`，与 VM 轨一致。env `AUTO_DESKTOP_APPS_EXTRA` 覆盖
-路径**早返回不动**（整体替换语义保持）。`generate_desktop_host` 的
-render 过滤随后自然裁决：ui-gallery 入、widgets-gallery 剔除。
+调用点 `generate_desktop_host`（~3650）传 `&apps_dir`。注意 `push_root`
+入的是 `(目录名, 路径)`——id 即 `ui-gallery` / `widgets-gallery`，
+与 VM 轨一致。env `AUTO_DESKTOP_APPS_EXTRA` 覆盖路径**早返回不动**
+（整体替换语义保持）。`generate_desktop_host` 的 render 过滤随后自然
+裁决：ui-gallery 入、widgets-gallery 剔除。
 
 ### 4. pac 展示字段：两画廊 `pac.at`
 
@@ -171,6 +198,24 @@ render 过滤随后自然裁决：ui-gallery 入、widgets-gallery 剔除。
   （Plan 463 T7 panic 边界 + 占位页兜底为设计内降级）——验收只要求
   "不崩桌面"；全功能体验走 Vue 轨。
 - Vue 轨 widgets-gallery 缺席：render 声明过滤，设计行为。
+
+### 6. 与 PLAN-579（auto-os 立项）的关系与迁移姿态
+
+- **时序**：579 Stage A 对 auto-lang 零代码改动（其边界声明），与本计划
+  无依赖，可并行执行。
+- **落点有效性**：桌面 shell 迁移是 579 Stage B（另行立项，前置=在途
+  525/526 折叠等）——在此之前 578 的双轨注册表装配是桌面唯一消费面，
+  578 即刻生效、非过渡性浪费（Stage B 是代码搬迁，注册逻辑与画廊探测
+  随迁）。
+- **迁移零适配**：双轨画廊探测统一 apps_dir 兄弟锚定（§1/§3）。Stage B
+  后宿主在 auto-os，apps_dir 按 579 AGENTS.md 跨仓解析序约定（env
+  AUTO_LANG_ROOT → 兄弟 ../auto-lang → D:/autostack/auto-lang 主检出）
+  解析回 auto-lang examples/ui——画廊条目自动跟随主根，无需改 578 代码。
+- **双画廊长期归属**（不在本计划裁定）：widgets-gallery（AutoUI 文档/
+  展示面）与 ui-gallery（示例探索）当前属框架资料（auto-lang examples）；
+  579「真实 app 独立仓」轨道若延伸到画廊，届时独立建仓 + storage
+  `shell.apps.extra_dirs` 注册（或 Stage C apps.manifest 驱动注册）——
+  578 的 extra 根机制对两种归宿同构兼容。
 
 ## 测试设计
 
@@ -192,9 +237,11 @@ vue.rs 同文件 tests mod）：
    `ScanOptions{render: Some("vue")}` 下 None、default（None）下 Some
    ——钉死 Vue 轨排除/VM 轨收录的双轨语义。
 5. `desktop_extra_app_roots_default_includes_galleries`（vue.rs tests
-   mod）：tmp workspace 造 `examples/ui-gallery` 空目录，断言缺省臂
-   含该根；再造 env 覆盖臂断言 galleries 不在（整体替换语义）。
-   （env 测试需串行/隔离——参照 vue.rs 既有 env 测试的处理形态。）
+   mod）：tmp 造 `ws/examples/ui`（apps_dir）+ `ws/examples/ui-gallery`
+   空目录，断言缺省臂含该根且路径锚定 `apps_dir.parent()`——**root_dir
+   故意取独立 tmp 目录**（异根臂，钉死 579 对齐锚定不依赖 root_dir）；
+   env 覆盖臂断言 galleries 不在（整体替换语义）。（env 测试需串行/
+   隔离——参照 vue.rs 既有 env 测试的处理形态。）
 
 策展恰等断言（`scan_examples_ui_curation_set`）不改动：其只扫主根。
 
@@ -228,8 +275,9 @@ vue.rs 同文件 tests mod）：
   ~11274 处 extra 拼接 `gallery_extra_roots(apps_dir)`（§详细设计 2）。
   验证：`cargo check -p auto-lang`（零新警告）
 - [ ] **T4 Vue 轨缺省臂扩展**：`crates/auto-man/src/vue.rs`
-  `desktop_extra_app_roots` 缺省臂追加两画廊探测（§详细设计 3）+
-  测试设计 5 单测。
+  `desktop_extra_app_roots` 增 `apps_dir` 参 + 缺省臂按主根兄弟追加两
+  画廊探测（§详细设计 3，579 对齐锚定）+ 测试设计 5 单测（含 root_dir
+  异根锚定臂）。
   验证：`cargo t desktop_extra_app_roots`
 - [ ] **T5 局部门禁**：`cargo check -p auto-lang -p auto-man` +
   `cargo t app_registry` + 新增滤串复跑。
@@ -251,3 +299,9 @@ vue.rs 同文件 tests mod）：
    区分（本计划不做，552 语义 desktop_visible 是全局单值）。
 2. storage 开关注入测试形态（T2 测试设计 2 的两种落地）实现期定，
    语义不变。
+3. **画廊长期归属（PLAN-579 Stage B/C 议题，不在本计划裁定）**：
+   widgets-gallery / ui-gallery 是否随 579「真实 app 独立仓」轨道迁出
+   auto-lang、成为独立 app 仓并登记 auto-os `apps.manifest`——组织决策
+   归 579 后续阶段；578 的 extra 根机制对「留 examples（缺省探测命中）/
+   独立仓（storage `shell.apps.extra_dirs` 注册，或 Stage C manifest
+   驱动注册）」两种归宿同构兼容，届时零返工。
