@@ -29,6 +29,8 @@ const DEMO_DIR = path.join(REPO_ROOT, 'examples/playground-demo')
 const BOOKS_DIR = path.join(REPO_ROOT, 'website/books')
 const OUT_DIR = path.join(REPO_ROOT, 'website/public/playground-data')
 const OUT_FILE = path.join(OUT_DIR, 'notes.json')
+// 第二输出（Plan 582 T12）：后端 /api/examples 单一事实源——examples.rs 启动探测读取。
+const OUT_FILE_BACKEND = path.join(REPO_ROOT, 'crates/auto-playground/notes.json')
 
 // ── 通用工具 ──────────────────────────────────────────────────────────
 
@@ -439,8 +441,11 @@ function runCheck() {
 }
 
 function writeManifest(manifest) {
+  const json = JSON.stringify(manifest, null, 2) + '\n'
   fs.mkdirSync(OUT_DIR, { recursive: true })
-  fs.writeFileSync(OUT_FILE, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+  fs.writeFileSync(OUT_FILE, json, 'utf8')
+  fs.mkdirSync(path.dirname(OUT_FILE_BACKEND), { recursive: true })
+  fs.writeFileSync(OUT_FILE_BACKEND, json, 'utf8')
 }
 
 if (process.argv.includes('--check')) {
@@ -448,7 +453,10 @@ if (process.argv.includes('--check')) {
 } else {
   const manifest = buildManifest()
   writeManifest(manifest)
-  const lines = [`manifest → ${relRoot(OUT_FILE)}`]
+  const lines = [
+    `manifest → ${relRoot(OUT_FILE)}`,
+    `manifest → ${relRoot(OUT_FILE_BACKEND)}（后端 /api/examples 事实源）`,
+  ]
   for (const g of manifest.groups) lines.push(`  ${g.id.padEnd(22)} ${String(g.notes.length).padStart(4)}  ${g.title}`)
   lines.push(
     `vm total: ${countByPrefix(manifest, 'vm-')}, aavm total: ${countByPrefix(manifest, 'aavm-')}, book total: ${countByPrefix(manifest, 'book-')}, demo total: ${countByPrefix(manifest, 'demo')}`
