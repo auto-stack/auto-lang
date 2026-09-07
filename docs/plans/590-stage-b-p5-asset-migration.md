@@ -1,15 +1,22 @@
 ---
 plan_id: PLAN-590
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: Stage B P-5——资产搬迁本体批（台账+launcher+apps+画廊+L8 指针+行数实测）
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
 updated_at: 2026-09-07（execution_done：步骤 1–7 全 ✅，收口交接 review/merge）
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——资产位置注记（PLAN-590：画廊两件/apps 迁 auto-os 后的位置事实与框架消费面重锚说明）"
+  - "docs/specs/auto-lang/ui/design/chart-components.md: 修改——载体现址注记（examples/widgets-gallery → auto-os/widgets-gallery）"
+  - "docs/specs/auto-lang/ui/design/diagram-components.md: 修改——载体现址注记（同上）"
+  - "docs/specs/auto-lang/ui/design/desktop-shell.md: 修改——launcher 载体迁址注记（→ auto-os/apps/028-launcher）"
+new_spec_components:
+  - "crates/auto-lang/src/os_paths.rs: 新增——跨仓解析序定位基建（resolve_os_top_dir：AUTO_OS_ROOT env→兄弟→主检出；无 feature 门，ui_gen/CLI/测试语料锚同源消费；ui::app_registry re-export 维持家族聚合）"
+  - "docs/plans/INDEX.md: 扩展——P-5 资产去向指针表（桌面域资产随迁的框架仓侧单一指针面）"
+touched_goals:
+  - "GOAL-010: 应用轨道出 examples——Stage B P-5 兑现：025-sys-monitor/028-launcher/038-minesweeper+画廊两件+common/settings 物理迁 auto-os，框架仓引用清零（路径依赖类），examples/ui 留教学 demo 为默认注册表"
 
 affects: [auto-lang/ui, auto-man/examples]  # 受影响的 specs 路径
 current_step: 7
@@ -168,7 +175,52 @@ kitchen-sink 若含画廊页需同步；⑤scan_examples_ui ≥34 锚（42−4=3
 
 ## 复审记录
 
-（待 /auto-plan:review 填写。）
+**复审人**：ZCode（/auto-plan:review 独立复审），2026-09-07。
+**方法**：计划文件 vs worktree `plan-590-dev` 实际 diff（188D/31M/1A，
+五提交）逐项重证；全量门禁在本档重跑。
+
+### 逐项验收裁定（verify, don't trust）
+
+| # | 验收标准 | 裁定 | 复审证据 |
+|---|---|---|---|
+| 1 | 七件资产 auto-os 就位；框架仓零残留 | **过** | 7/7 pac.at/台账文件实存在案；worktree `git status` 0 行；187↔187 文件对应，blob 对账 167 全等+19 CRLF+1 改址（执行期证据复核无异议） |
+| 2 | V7 引用清零；manifest 不变量；tv/tf 基线 | **过（口径注记）** | V7 残余=合法形态定性清单在案（解析序调用/兜底臂/名称键/协议夹具/schema 漂移记录串——aura.at 15 处触碰即破 schema_drift 再生成对拍，裁定不动）；manifest `--check` OK（vm=465/aavm=158/demo=28/parity=51）；**复审档重跑 tv 3618/3619 唯红 charts；tf no-fail-fast 22 红=master b92d02316 同命令 22 红，集合全等（set-identical，本轮连执行期 clipboard flaky 亦未现）——零新增红** |
+| 3 | 桌面 boot registry 含迁移 apps | **过** | 复审档重跑 boot：`38 entries (22 desktop-visible)`=33 仓内+3 迁移 app（apps/ 容器命中）+os-config+kanban，与执行期证据一致 |
+| 4 | 台账接棒；INDEX 指针行；行数实测归档 | **过** | 台账 head 接棒注记在案；INDEX P-5 指针表在案；Design 01 §2 规模注记（tokei v15：crates/ Rust 527,646 行/code 439,453）在案 |
+| 5 | Design 01 §1-B/§7 回填；两仓提交 | **过** | auto-os `1cfe35e`（§1-B 枚举定案注记+§7 P-5 ✅+P-6 增补）；两仓提交清单见步骤 8 |
+
+### 遗漏/延后/Workaround 猎查
+
+- **遗漏**：无。测试面清单①-⑤逐项闭环（②形态变更见下）；执行期漏网锚
+  （rust.rs PLAN-533/plan492_m4/component_registry/a2ts/plan503）经全量跑
+  暴露后已收口（`5525ccd16`），终态 grep 仅余有意兜底臂与语义提及。
+- **计划文本偏离（已文档化，裁定合理）**：清单②偏好「迁移测试本体」——
+  执行裁定**改路径锚**（`os_paths::resolve_os_top_dir` 解析序）。依据：
+  auto-os 无 Rust 测试设施，本体迁移=日常门禁防线消亡（P499-6 kitchen-sink
+  事故即门禁内防线缺失所致）；计划文本本身列「或改路径锚」为合法选项。
+- **延后（在案移交，非静默）**：
+  - **P590-R1** V1/V2/V3 实机验收（五面交互/desktop_mcp 基线/双端一致性）
+    → P-6（Design 01 §1-B/§7 注记+本计划待澄清在案）。注：590 计划文本
+    的步骤与验收标准本未排入 V1/V2/V3（排入的是 boot/tv/tf/V7），此为
+    Design 01 §6 矩阵与 590 步骤面之间的批次划分缺口，移交已显式记录。
+  - **P590-R2** gallery_vue_golden master 预存基线漂移（4 页 SFC，两位置
+    dump 全等实证非迁移所致；孤儿目标不在 t/tf 门禁）→ 另案小批重采样
+    （人工复核 diff 纪律）。
+  - **P590-R3** master 预存红实测=22（台账「唯 charts/lucide」口径偏窄；
+    layout×14/plan370_015×3/plan055/desktop_protocol/plan492_m4 族）→
+    归档/修复另案。
+  - **P590-R4** solo-skip 语义：画廊语料围栏（compile/schema_drift/docs_gen
+    /golden）在 auto-os 缺席的检出形态（如无 auto-os 兄弟的 CI runner）
+    整体 SKIP——语料跨仓后的固有形态；CI 保活需 checkout auto-os（建议
+    随 P-6/auto-os CI 立起补）。
+- **Workaround**：component_registry e2e 改临时 fixture 物化+路径注入
+  （原 committed fixture 相对路径无法承载解析序）——语义保持（同 loader
+  同断言），死资产已移除；非隐藏性 workaround，注记在案。
+
+### 结论
+
+五项验收全过，无阻断债；四项 R 记录均已显式在案。**路由：`reviewed`**，
+就绪 `/auto-plan:merge`。
 
 ## 待澄清事项
 
