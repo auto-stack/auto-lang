@@ -140,7 +140,7 @@
 | automan | 核心编排：命令分发、工程上下文 | active |
 | pac | pac.at 包定义解析与模型 | active |
 | resolver | 依赖解析（ModuleResolver trait 实现） | active |
-| builder | 构建调度：cargo / ninja / tool / vue 后端 | active |
+| builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号 | active |
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
 | git / index / lock / pull | 依赖获取、注册索引、锁文件 | active |
 | scanner / target / dir / cache | 工程扫描、target 目录管理、本地缓存 | active |

@@ -1,0 +1,29 @@
+# ninja build file for unified-demo with msvc compiler
+
+# includes
+includes = 
+
+# defines
+defines = 
+
+# cflags
+cflags = /O2 /W3 /MD
+
+# rules
+rule as
+    command = ml64.exe  /O2 /W3 /MD /Fo$out $in
+    description = Assembling $in
+
+rule cc
+    command = cl.exe /c   /O2 /W3 /MD /Fo$out $in
+    description = Compiling $in
+
+rule link
+    command = C:/Program Files/Git/usr/bin/link.exe /OUT:$out $in $ldflags $libs
+    description = Linking $out
+
+rule lib
+    command = lib.exe /OUT:$out $in
+    description = Building library $out
+
+

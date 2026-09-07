@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-580
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: automan-n2-fallback
 author: [zhaopuming]
 created_at: 2026-09-07
@@ -202,7 +202,7 @@ if !status.success() {                                    // 消灭状态吞 #1
 - [x] **T7 收尾健康检查**：`cargo check -p auto-lang` 零新警告、无新增 `println!`、`cargo fmt` 涉及文件过闸；对照验收标准 1-8 逐条打勾并留证据行。
   [✅ 已完成] worktree cc96f6932：check 零错误+触及文件（runner/builder/resolver/mod）零警告（crate 级 17=预存基线）；新增生产代码零 `println!`（runner.rs 全 log:: 宏，探针测试内 println 为取证本体）；触及文件新增行全过 rustfmt（预存格式漂移不动，避免范围膨胀）；验收 1-8 全勾（见验收标准节证据行）。附注：auto-man 测试套件每次运行会副作用弄脏 examples/rust-workspace/{Cargo.toml,015-notes}（vue 测试再生成+剪缺席成员），非本计划改动，已 checkout 还原、不入分支。
 
-## T6 集成矩阵证据（2026-09-07，worktree auto.exe + PowerShell 环控；完整日志 `D:/autostack/.wt/lang-580/_probe/form-{A,B,C,D}.log`）
+## T6 集成矩阵证据（2026-09-07，worktree auto.exe + PowerShell 环控；完整日志与驱动脚本已存档 `docs/plans/evidence/580/`——form-{A,B,C,D}.log、四个 .ps1 驱动、golden/regen build.ninja、t6app 模板）
 
 - **形态 A（PATH 有 ninja）**：t6app（scene c，MSVC env）`auto build` → `[ninja] build runner: D:\soft\bin\ninja.exe`（resolver 第 2 级）；cl/link 真编译链接 3 任务 `[3/3] Linking main.exe`，exit 0。生成 build.ninja 四工具全部解析到 MSVC 同目录 `"C:/Program Files/Microsoft Visual Studio/.../bin/Hostx64/x64/{cl,ml64,link,lib}.exe"` 且加引号——**缺陷#3 两半（同目录优先+加引号）实战生效**。
 - **形态 B（剥 D:\soft\bin，n2 在）**：`build runner: C:\Users\zhaop\.cargo\bin\n2.exe`（第 3 级命中），`n2: ran 3 tasks, now up to date`，exit 0；产物 obj/exe 尺寸与 A 逐一相同（967/619/9728 字节）。跨宿主字节差异归因：cl 内嵌时间戳（ninja-vs-ninja 同秒对照亦差 1-2 字节）+ automan 既有 HashSet 扫描序（link 输入序 `main.obj util.obj` vs `util.obj main.obj` 放大 exe 字节差，与宿主无关）；echo 语料（scratch/n2_probe/probe 拷贝）同 build.ninja 背靠背直跑 ninja/n2 → main.o/util.o **逐字节 IDENTICAL**（确定性内容下宿主字节级一致，与调研期结论吻合）。
