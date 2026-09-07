@@ -2,7 +2,20 @@
   <div class="playground">
     <header class="toolbar">
       <div class="toolbar-left">
-        <h1 class="title">Auto Playground</h1>
+        <template v-if="noteMeta">
+          <h1 class="title" :title="noteMeta.sourcePath">{{ noteMeta.title }}</h1>
+          <span class="note-badge" :class="`t-${noteMeta.sourceType}`">{{ noteMeta.sourceType }}</span>
+          <a
+            class="note-source-chip"
+            :href="`${(noteMeta.repoBase ?? 'https://github.com/auto-stack/auto-lang').replace(/\/$/, '')}/blob/master/${noteMeta.sourcePath}`"
+            target="_blank"
+            rel="noopener"
+            :title="noteMeta.sourcePath"
+          >
+            {{ noteMeta.sourcePath }}
+          </a>
+        </template>
+        <h1 v-else class="title">Auto Playground</h1>
         <ExampleSelector @select="onLoadExample" />
       </div>
       <div class="toolbar-right">
@@ -222,6 +235,8 @@ const props = defineProps<{
   source: string;
   isLoading: boolean;
   mode: PlaygroundMode;
+  /** 当前笔记元信息（后端壳注入；有值时标题栏以笔记题为题+badge+来源 chip，Plan 582 复审修正）。 */
+  noteMeta?: { title: string; sourcePath: string; sourceType: string; repoBase?: string } | null;
   transTarget: OutputTab;
   stdout: string;
   stderr: string;
@@ -429,6 +444,56 @@ function onLoadExample(payload: { source: string; project_dir?: string; files?: 
   font-weight: 600;
   margin: 0;
   color: #fff;
+}
+
+/* 笔记元信息（noteMeta 注入时，Plan 582 复审修正） */
+.note-badge {
+  font-size: 0.68rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 0.1rem 0.5rem;
+  border-radius: 9px;
+  border: 1px solid #45475a;
+  color: #a6adc8;
+  background: #181825;
+  flex-shrink: 0;
+}
+
+.note-badge.t-vm-golden {
+  color: #f9e2af;
+  border-color: #f9e2af66;
+}
+
+.note-badge.t-aavm-corpus {
+  color: #a5b4fc;
+  border-color: #6366f166;
+}
+
+.note-badge.t-book {
+  color: #a6e3a1;
+  border-color: #27c93f55;
+}
+
+.note-source-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.12rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #45475a;
+  background: #181825;
+  color: #a6adc8;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.note-source-chip:hover {
+  color: #a5b4fc;
+  border-color: #6366f1;
 }
 .toolbar-btn {
   display: inline-flex;

@@ -1,5 +1,6 @@
 <template>
   <aside class="nx-sidebar">
+    <div v-if="title" class="nx-brand">{{ title }}</div>
     <div class="nx-search">
       <Search :size="14" class="nx-search-icon" />
       <input
@@ -48,6 +49,8 @@ const props = defineProps<{
   searching: boolean
   /** 当前笔记 id。 */
   activeNoteId: string | null
+  /** 品牌标题（可选；渲染在搜索框上方，后端壳注入）。 */
+  title?: string
 }>()
 
 const query = defineModel<string>('query', { default: '' })
@@ -99,6 +102,16 @@ watch(
   overflow: hidden;
   /* 高度上限给内部 ScrollArea 确定的高度上下文（浮动滚动条需要）；内容少时随内容收缩。 */
   max-height: min(76vh, 900px);
+}
+
+.nx-brand {
+  padding: 0.6rem 0.7rem 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--nx-text-1);
+  border-bottom: 1px solid var(--nx-border);
+  flex-shrink: 0;
 }
 
 .nx-search {

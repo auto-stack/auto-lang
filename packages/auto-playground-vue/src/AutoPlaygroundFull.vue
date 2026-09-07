@@ -1,5 +1,6 @@
 <template>
   <PlaygroundLayout
+    :note-meta="noteMeta"
     :source="source"
     :is-loading="isLoading"
     :mode="mode"
@@ -72,6 +73,11 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import type { DebugRecording, OutputTab, ProjectFile } from './types';
 
 type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
+
+// 当前笔记元信息（后端壳注入标题栏；内联类型镜像——compiler-sfc 不解析导入类型，P581-D2）。
+const props = defineProps<{
+  noteMeta?: { title: string; sourcePath: string; sourceType: string; repoBase?: string } | null;
+}>();
 
 const {
   source, stdout, stderr, resultCode, timeMs, bytecode: runBytecode, bytecodeMeta: runBytecodeMeta, isLoading,

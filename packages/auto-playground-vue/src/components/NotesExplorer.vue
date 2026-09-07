@@ -260,6 +260,9 @@ onBeforeUnmount(() => {
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 1rem;
   margin: 1rem 0;
+  /* 宿主给确定高度时（App 壳 100vh flex）吃满并拉伸双列到底；
+     VitePress 宿主父高 auto → 百分比解析为 auto，回退内容高度不受影响。 */
+  height: 100%;
 }
 
 .nx-main {
