@@ -84,6 +84,15 @@ jobs:
           cargo test -p auto-lang --lib --features test-vm-files --
           vm_file_tests ffi_dual --test-threads=1
 
+      # PLAN-592: dep 三轨行为对拍——VM/oracle 腿 + a2r 全量档(env 门控,
+      # CI 侧打开;冷构建 ~2-3min/腿,产物按内容 hash marker 缓存)
+      - name: dep three-leg parity (VM/oracle/a2r, PLAN-592)
+        env:
+          AUTO_LANG_DEP_PARITY_A2R: "1"
+        run: >
+          cargo test -p auto-lang --lib --features test-vm-files --
+          ffi_dep_parity_tests --test-threads=1
+
       - name: Conformance goldens
         run: >
           cargo test -p auto-lang --lib --features test-vm-files --

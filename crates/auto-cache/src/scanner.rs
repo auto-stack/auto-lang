@@ -8,9 +8,35 @@
 //   // sigs = {"from_str": FunctionShim{param_types:[CString], return_type:CString}, ...}
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::sandbox::{FunctionShim, ShimType};
+
+/// PLAN-592: 扫描 path 依赖(dep foo(path:))的源码提取公共函数签名。
+/// registry 扫描(`scan_crate_signatures`)只认 ~/.cargo/registry,路径 fixture
+/// 此前永远走不到 enrich——自由函数签名退化且丢失 &str/String owned 语义。
+pub fn scan_path_dep_signatures(
+    crate_dir: &Path,
+) -> Result<HashMap<String, FunctionShim>, String> {
+    let lib_rs = crate_dir.join("src").join("lib.rs");
+    if !lib_rs.exists() {
+        return Err(format!("lib.rs not found at {}", lib_rs.display()));
+    }
+    let source = std::fs::read_to_string(&lib_rs)
+        .map_err(|e| format!("Failed to read {}: {}", lib_rs.display(), e))?;
+    let crate_name = crate_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut result = HashMap::new();
+    scan_file_for_fns(&source, &mut result, &crate_dir.join("src"), &crate_name);
+    log::info!(
+        "syn scan (path dep): found {} pub fns in {}",
+        result.len(),
+        crate_name
+    );
+    Ok(result)
+}
 
 /// Scan a crate's source code and extract public function signatures.
 ///
@@ -244,7 +270,8 @@ fn syn_type_to_shim(ty: &syn::Type) -> ShimType {
                     "i64" | "u64" => ShimType::I64,
                     "f64" => ShimType::F64,
                     "bool" => ShimType::Bool,
-                    "String" => ShimType::CString,
+                    // 按值 String(TakeStr):生成端需 .to_string() 转移所有权(PLAN-592)
+                    "String" => ShimType::CStringOwned,
                     // Wrapper types — look at generic args
                     "Option" => shim_from_generic(&seg.arguments, true),
                     "Result" => shim_from_generic(&seg.arguments, false),

@@ -39,6 +39,11 @@ pub enum ShimType {
     Bool,
     /// Null-terminated C string (*const c_char)
     CString,
+    /// 按值 String 参数(TakeStr)。线格式与 CString 同为 's'(marshalling 一致),
+    /// 仅 wrapper 生成端区分:调用实参需 .to_string() 转移所有权(PLAN-592——
+    /// 此前 &str/String 折叠成一个码,String 参数的 wrapper 编译失败,
+    /// 自由函数在 VM 侧整体退化为 opaque 构造器回退)。
+    CStringOwned,
 }
 
 /// Source specification for a dependency crate.
@@ -88,7 +93,7 @@ impl ShimType {
             ShimType::I64 => "i64",
             ShimType::F64 => "f64",
             ShimType::Bool => "bool",
-            ShimType::CString => "*const std::os::raw::c_char",
+            ShimType::CString | ShimType::CStringOwned => "*const std::os::raw::c_char",
         }
     }
 
@@ -100,7 +105,7 @@ impl ShimType {
             ShimType::I64 => "i64",
             ShimType::F64 => "f64",
             ShimType::Bool => "bool",
-            ShimType::CString => "String",
+            ShimType::CString | ShimType::CStringOwned => "String",
         }
     }
 }
@@ -169,7 +174,7 @@ impl FunctionShim {
             ShimType::I64 => 'l',
             ShimType::F64 => 'f',
             ShimType::Bool => 'b',
-            ShimType::CString => 's',
+            ShimType::CString | ShimType::CStringOwned => 's',
         }
     }
 
@@ -609,13 +614,16 @@ impl Sandbox {
         source: &DepSource,
     ) -> Result<PathBuf> {
         // 1. Try syn scan to upgrade shims with real signatures
-        let mut effective_shims = self.enrich_shims_with_syn_scan(crate_name, shims);
+        let mut effective_shims = self.enrich_shims_with_syn_scan(crate_name, shims, source);
         self.apply_well_known_overrides(crate_name, &mut effective_shims);
 
         // 2. Check cache — include sig hash to invalidate when signatures change
         let wrapper_name = format!("{}_wrapper", crate_name.replace('-', "_"));
-        let sig_hash: String = effective_shims.iter().map(|s| s.sig_str()).collect::<Vec<_>>().join(",");
-        let cache_version = format!("v3_{}", sig_hash.len());
+        // PLAN-592 修复:版本键改为**导入自由函数数**——init 侧(lib.rs
+        // init_rust_ffi)只有函数名列表,只能推导出 count;此前用 joined
+        // sig_str 长度,两侧键算法不一致,自由函数 wrapper 永远装载不到。
+        // 已知残余风险(登记 KNOWN-DEBT):同数量换签名的陈旧复用。
+        let cache_version = format!("v3_{}", effective_shims.len());
         let output_path = self.crates_path.join(self.library_name(&wrapper_name, &cache_version));
 
         if output_path.exists() {
@@ -648,13 +656,11 @@ crate-type = ["cdylib"]
 
         // Generate lib.rs with #[no_mangle] shims
         let mut lib_rs = String::new();
-        let needs_cstring = effective_shims.iter().any(|s| {
-            s.param_types.contains(&ShimType::CString) || s.return_type == ShimType::CString
-        });
-        if needs_cstring {
-            lib_rs.push_str("use std::ffi::{CStr, CString};\n");
-            lib_rs.push_str("use std::os::raw::c_char;\n\n");
-        }
+        // PLAN-592: header 无条件发射——auto__sig_manifest 恒用 CString/c_char,
+        // 此前按 shim 是否含字符串类型条件发射,全数值签名的 wrapper(如
+        // ()→i64 的 drop_count)缺 header 编译失败。
+        lib_rs.push_str("use std::ffi::{CStr, CString};\n");
+        lib_rs.push_str("use std::os::raw::c_char;\n\n");
 
 
         for shim in &effective_shims {
@@ -726,7 +732,9 @@ crate-type = ["cdylib"]
         // Build parameter list
         let params: Vec<String> = shim.param_types.iter().enumerate().map(|(i, t)| {
             match t {
-                ShimType::CString => format!("input_{}: *const std::os::raw::c_char", i),
+                ShimType::CString | ShimType::CStringOwned => {
+                    format!("input_{}: *const std::os::raw::c_char", i)
+                }
                 _ => format!("arg_{}: {}", i, t.c_type_name()),
             }
         }).collect();
@@ -738,6 +746,10 @@ crate-type = ["cdylib"]
                 ShimType::CString => format!(
                     "unsafe {{ if input_{i}.is_null() {{ \"\" }} else {{ CStr::from_ptr(input_{i}).to_str().unwrap_or(\"\") }} }}"
                 ),
+                // 按值 String 参数:&str 解码表达式后 .to_string() 转移所有权(PLAN-592)
+                ShimType::CStringOwned => format!(
+                    "unsafe {{ if input_{i}.is_null() {{ \"\" }} else {{ CStr::from_ptr(input_{i}).to_str().unwrap_or(\"\") }} }}.to_string()"
+                ),
                 _ => format!("arg_{}", i),
             }
         }).collect();
@@ -745,13 +757,13 @@ crate-type = ["cdylib"]
 
         // Build return handling
         let (ret_annotation, body_end) = match shim.return_type {
-            ShimType::CString if shim.returns_result => (
+            ShimType::CString | ShimType::CStringOwned if shim.returns_result => (
                 " -> *const std::os::raw::c_char".to_string(),
                 format!(
                     "let _r = {crate_name}::{func}({call_args_str});\n    let _s = match _r {{ Ok(v) => v.to_string(), Err(e) => format!(\"ERROR: {{:?}}\", e) }};\n    CString::new(_s).unwrap().into_raw() as *const std::os::raw::c_char"
                 ),
             ),
-            ShimType::CString => (
+            ShimType::CString | ShimType::CStringOwned => (
                 " -> *const std::os::raw::c_char".to_string(),
                 format!(
                     "let _r = {crate_name}::{func}({call_args_str});\n    CString::new(_r.to_string()).unwrap().into_raw() as *const std::os::raw::c_char"
@@ -778,13 +790,21 @@ pub extern "C" fn {exported}({params_str}){ret_annotation} {{
 
     /// Try to enrich shims with syn-scanned signatures from the crate source.
     /// Falls back to the original shims if scanning fails.
+    /// PLAN-592: path 依赖(dep foo(path:))优先扫路径源——registry 扫描只认
+    /// ~/.cargo/registry,路径 fixture 此前永远走不到 enrich。
     fn enrich_shims_with_syn_scan(
         &self,
         crate_name: &str,
         shims: &[FunctionShim],
+        source: &DepSource,
     ) -> Vec<FunctionShim> {
         // Try syn scan
-        let scanned = match crate::scanner::scan_crate_signatures(crate_name) {
+        let scanned = if let Some(path) = &source.path {
+            crate::scanner::scan_path_dep_signatures(std::path::Path::new(path))
+        } else {
+            crate::scanner::scan_crate_signatures(crate_name)
+        };
+        let scanned = match scanned {
             Ok(sigs) => sigs,
             Err(e) => {
                 log::info!("syn scan skipped for {}: {}", crate_name, e);

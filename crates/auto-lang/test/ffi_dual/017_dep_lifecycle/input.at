@@ -1,0 +1,25 @@
+dep autolang_counter(path: "{{FFI_DUAL_DIR}}/013_dep_method/fixture/autolang_counter")
+use.rs autolang_counter::{Counter, Config, drop_count}
+
+fn main() {
+    let d = drop_count()
+    print(d)
+
+    let cfg = Config.new()
+    cfg.verbose(true)
+    print(cfg.is_verbose())
+    cfg.level(11)
+    print(cfg.level_value())
+
+    let orig str = "orig"
+    let c = Counter.new(orig)
+    let cl = c.clone_reset()
+    c.increment()
+    c.increment()
+    print(c.value())
+    print(cl.value())
+    let clone str = "clone"
+    cl.set_label(clone)
+    print(c.label())
+    print(cl.label())
+}

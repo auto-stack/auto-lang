@@ -12,7 +12,7 @@ use crate::classify::{Classified, Exceptions};
 use crate::types::*;
 use serde::{Deserialize, Serialize};
 
-pub const GENERATOR: &str = "shim-metadata v1.1 (plan-430 C1)";
+pub const GENERATOR: &str = "shim-metadata v1.2 (plan-430 C1; 592 i8/i16 cast fix)";
 pub const MANIFEST_FORMAT: u32 = 1;
 pub const CLASSIFIER_VERSION: u32 = 1;
 
@@ -521,11 +521,15 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         call_args.push(match a {
             ArgPlan::BorrowStr => format!("&__s_in({name})"),
             ArgPlan::TakeStr => format!("__s_in({name})"),
-            // 数值参数按 i64/i32/f64 宽槽传递,调用处按真实宽度收窄(u8/usize/f32 等)
+            // 数值参数按 i64/i32/f64 宽槽传递,调用处按真实宽度收窄(u8/usize/f32 等;
+            // PLAN-592 补:I8/I16 同需收窄——此前漏发 cast 使 wrapper 编译失败,
+            // 且失败在 VM 侧静默降级为 "Unknown Rust stdlib call")
             ArgPlan::ScalarI32 | ArgPlan::ScalarI64 | ArgPlan::ScalarUsize | ArgPlan::ScalarF64 | ArgPlan::ScalarBool
-                if matches!(&m.params[i], Ty::U8 | Ty::U16 | Ty::U32 | Ty::U64 | Ty::Usize | Ty::F32) =>
+                if matches!(&m.params[i], Ty::I8 | Ty::I16 | Ty::U8 | Ty::U16 | Ty::U32 | Ty::U64 | Ty::Usize | Ty::F32) =>
             {
                 let cast = match &m.params[i] {
+                    Ty::I8 => " as i8",
+                    Ty::I16 => " as i16",
                     Ty::U8 => " as u8",
                     Ty::U16 => " as u16",
                     Ty::U32 => " as u32",

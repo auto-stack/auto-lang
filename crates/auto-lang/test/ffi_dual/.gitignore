@@ -1,0 +1,7 @@
+# PLAN-592: 三轨对拍的就地构建产物(oracle/a2r 腿的 cargo target 与生成 crate)
+**/target/
+**/build_a2r/
+# golden 失败留痕
+**/.wrong.out
+# 就地构建的内容 hash marker
+**/.parity_cache_ok

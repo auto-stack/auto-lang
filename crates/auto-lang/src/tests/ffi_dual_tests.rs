@@ -10,7 +10,10 @@ use std::path::PathBuf;
 
 fn test_ffi_dual(case: &str) -> AutoResult<()> {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let src = read_to_string(d.join(format!("test/ffi_dual/{}/input.at", case)))?;
+    let mut src = read_to_string(d.join(format!("test/ffi_dual/{}/input.at", case)))?;
+    // PLAN-592: dep 路径占位符——语料文件化,VM/a2r/oracle 三腿共享同一份 input.at
+    let ffi_dual_dir = d.join("test/ffi_dual").to_string_lossy().replace('\\', "/");
+    src = src.replace("{{FFI_DUAL_DIR}}", &ffi_dual_dir);
     let expected =
         read_to_string(d.join(format!("test/ffi_dual/{}/expected_output.txt", case)))?;
 
@@ -154,6 +157,153 @@ let p = Config.parse("not-a-number")
     assert!(
         msg.contains("Config.parse") && msg.contains("invalid level"),
         "error should carry dep-side message, got: {msg}"
+    );
+}
+
+// PLAN-592 T4: dep marshalling 全矩阵(三腿共享语料 016_dep_abi_matrix)。
+// 主段走 test_ffi_dual({{FFI_DUAL_DIR}} 占位);附加段为 VM 侧特征化钉死
+// (宽槽收窄 / u64 槽不往返,不入三腿语料——a2r 腿对超范围字面量编译不过)
+// 与负面断言(arity 上限即刻可绿;未覆盖签名/未知字段在 T7/T8 收口后翻绿,TDD 先红)。
+#[test]
+fn ffi_dual_016_dep_abi_matrix() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = d
+        .join("test/ffi_dual/016_dep_abi_matrix/fixture/autolang_abi_matrix")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let matrix_src = |imports: &str, body: &str| {
+        format!(
+            r#"dep autolang_abi_matrix(path: "{fixture}")
+use.rs autolang_abi_matrix::{{{imports}}}
+{body}
+"#
+        )
+    };
+
+    // 主段:三腿共享 golden(字段访问 p.a 段在 T7 GET_FIELD 桥接落地前为已知红)
+    test_ffi_dual("016_dep_abi_matrix").unwrap();
+
+    // —— VM 特征化钉死(设计限制的行为记录,非三腿面)——
+    // 宽槽收窄:i64 槽 1000 → wrapper `as u8` → 232(Rust `as` 语义,oracle 侧
+    // 无法直写超范围字面量,故不入共享语料)
+    let narrowing = matrix_src(
+        "Num",
+        r#"let n = Num.new()
+print(n.echo_u8(1000))"#,
+    );
+    let (_, out) = crate::run_with_capture(&narrowing).expect("echo_u8 narrowing runs");
+    assert_eq!(out.trim(), "232", "wide-slot narrowing (i64→u8 `as` cast)");
+
+    // u64::MAX 经 i64 槽不往返(DIV-DEP-4 特征化:oracle=18446744073709551615,
+    // VM 槽位呈现 -1——430 协议 v1 的 i64 槽限制)
+    let u64_max = matrix_src(
+        "Num",
+        r#"let n = Num.new()
+print(n.u64_max())"#,
+    );
+    let (_, out) = crate::run_with_capture(&u64_max).expect("u64_max runs");
+    assert_eq!(out.trim(), "-1", "u64::MAX through i64 slot (DIV-DEP-4 pin)");
+
+    // —— 负面断言 ——
+    // arity 上限:接收者 + 3 参 = 4 ABI 参数 → RuntimeError(v1 supports ≤3)
+    let quad = matrix_src(
+        "Num",
+        r#"let n = Num.new()
+print(n.quad(1, 2, 3))"#,
+    );
+    let err = crate::run_with_capture(&quad).expect_err("4-ABI-param method must error");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("≤3") || msg.contains("<=3"),
+        "arity limit error should mention v1 ≤3, got: {msg}"
+    );
+
+    // 未覆盖自由函数签名:此前 warn+静默 0,T8 收口为 VMError(先红后绿)。
+    // let 绑定形态——print 参数路径会把裸 Ident 调用改写为构造器语义
+    // (登记 DIV-DEP-5),标准路径经此形态进入。
+    let uncovered = matrix_src(
+        "free_uncovered",
+        r#"let f = free_uncovered(2.5, "abcd")
+print(f)"#,
+    );
+    let err = crate::run_with_capture(&uncovered)
+        .expect_err("uncovered free-function signature must error after PLAN-592 T8");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("unsupported free-function signature"),
+        "uncovered signature error should name the policy, got: {msg}"
+    );
+
+    // 未知字段:现状静默 0,T7 收口为报错(先红后绿);正确字段 p.a 同批翻绿
+    let unknown_field = matrix_src(
+        "Pt",
+        r#"let p = Pt.new(9, "mid", -7)
+print(p.nope)"#,
+    );
+    let err = crate::run_with_capture(&unknown_field)
+        .expect_err("unknown field on dep object must error after PLAN-592 T7");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("unknown field"),
+        "unknown field error should be explicit, got: {msg}"
+    );
+}
+
+// PLAN-592 T5: dep 生命周期与 skip 面负面(三腿共享语料 017_dep_lifecycle,
+// fixture 复用 013 扩展件:drop_count 自由函数 + Drop 计数器)。
+// 正面:chain(ChainInPlace)同句柄语义、clone_reset 独立性、drop_count 基线
+// (自由函数 ()→u64 冒烟);负面:classify skip 面(Option 返回/按值 self)在 VM 侧
+// 必须显式报 "Unknown Rust stdlib call",不得静默返 0(DIV-DEP-1/2)。
+#[test]
+fn ffi_dual_017_dep_lifecycle() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    test_ffi_dual("017_dep_lifecycle").unwrap();
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = d
+        .join("test/ffi_dual/013_dep_method/fixture/autolang_counter")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let counter_src = |imports: &str, body: &str| {
+        format!(
+            r#"dep autolang_counter(path: "{fixture}")
+use.rs autolang_counter::{{{imports}}}
+{body}
+"#
+        )
+    };
+
+    // Option 返回(maybe):v1 分类跳过 → 显式 Unknown,非静默 0(DIV-DEP-1)
+    let maybe = counter_src(
+        "Counter",
+        r#"let c = Counter.new("x")
+print(c.maybe())"#,
+    );
+    let err = crate::run_with_capture(&maybe).expect_err("Option-return method is skipped in v1");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("Unknown Rust stdlib call"),
+        "skipped (Option-return) method must error explicitly, got: {msg}"
+    );
+
+    // 按值 self(bump):v1 分类跳过 → 显式 Unknown(DIV-DEP-2;move marshaller 无覆盖)
+    let bump = counter_src(
+        "Config",
+        r#"let c = Config.new()
+print(c.bump().level_value())"#,
+    );
+    let err = crate::run_with_capture(&bump).expect_err("by-value self method is skipped in v1");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("Unknown Rust stdlib call"),
+        "skipped (by-value self) method must error explicitly, got: {msg}"
     );
 }
 

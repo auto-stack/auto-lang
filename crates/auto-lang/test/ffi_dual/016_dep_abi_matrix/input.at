@@ -1,0 +1,43 @@
+dep autolang_abi_matrix(path: "{{FFI_DUAL_DIR}}/016_dep_abi_matrix/fixture/autolang_abi_matrix")
+use.rs autolang_abi_matrix::{Num, Words, Pt, free_noop, free_s, free_ll}
+
+fn main() {
+    let n = Num.new()
+    print(n.echo_i8(-128))
+    print(n.echo_i8(127))
+    print(n.echo_i16(32767))
+    print(n.echo_i32(-2000000000))
+    print(n.echo_i64(9223372036854775807))
+    print(n.echo_u8(200))
+    print(n.echo_u16(60000))
+    print(n.echo_u32(2000000000))
+    print(n.echo_u64(9223372036854775807))
+    print(n.echo_usize(123456789))
+    print(n.echo_f32(0.5))
+    print(n.echo_f64(100.25))
+    print(n.echo_bool(true))
+    print(n.echo_bool(false))
+    print(n.add2(20, 22))
+    print(n.i64_min())
+    print(n.i64_max())
+
+    let w = Words.new()
+    print(w.greet("auto"))
+    let rust_str str = "rust"
+    print(w.shout(rust_str))
+    print(w.unicode())
+    print(w.empty())
+
+    let f1 = free_noop()
+    print(f1)
+    let f2 = free_s(w.unicode())
+    print(f2)
+    let f3 = free_ll(4, 2)
+    print(f3)
+
+    let mid str = "mid"
+    let p = Pt.new(9, mid, -7)
+    print(p.a)
+    print(p.b)
+    print(p.c)
+}

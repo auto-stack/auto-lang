@@ -536,6 +536,17 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
 
     // Load compiled libraries for each crate
     for (crate_name, functions) in rust_imports {
+        // PLAN-592: 过滤类型导入(首字母大写)——类型走方法 shim 包(dispatch 3000),
+        // 不进自由函数 wrapper;不过滤会以计数错配 wrapper 版本键(v3_{count}),
+        // 并对 auto_<Type> 符号产生必败的 GetProcAddress 告警。同时去重:
+        // collect_rust_imports/resolve_uses 两阶段可能重复登记同一导入名,
+        // 计数漂移会使版本键探错 wrapper。
+        let mut seen_fns = std::collections::HashSet::new();
+        let free_fns: Vec<&String> = functions
+            .iter()
+            .filter(|f| !f.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
+            .filter(|f| seen_fns.insert((*f).clone()))
+            .collect();
         // The wrapper library name follows the sandbox naming convention
         let wrapper_name = format!("{}_wrapper", crate_name.replace('-', "_"));
 
@@ -566,8 +577,13 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                 }
             }
 
-            // Try v3 cache first (Phase 3C-v2 with sig_code), then v2, then v1
-            let sig_hash_len = functions.len();
+            // Try v3 cache first (Phase 3C-v2 with sig_code), then v2, then v1。
+            // PLAN-592 修复:版本键两侧统一为**导入自由函数数**(compile 侧
+            // shims.len(),本侧 functions.len())——此前 compile 用 joined
+            // sig_str 长度、本侧用 functions.len(),键不一致,wrapper 从未
+            // 装载成功(自由函数退化为 opaque 构造器回退)。精确探测,不做
+            // newest-mtime 扫描(多导入集变体共存时会装载错变体)。
+            let sig_hash_len = free_fns.len();
             let v3_version = format!("v3_{}", sig_hash_len);
             let v3_path = sandbox.crate_library_path(&wrapper_name, &v3_version);
             let v2_version = format!("v2_{}", sig_hash_len);
@@ -581,7 +597,7 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
             } else if v1_path.exists() {
                 (v1_path, 1)
             } else {
-                log::info!("Wrapper library not found for {} (tried v3/v2/v1)", crate_name);
+                log::info!("Wrapper library not found for {} (tried v3_{}/v2/v1)", crate_name, sig_hash_len);
                 continue;
             };
 
@@ -602,8 +618,8 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                 let parsed = crate::ffi::parse_manifest_json(manifest_json);
                 let sig_map: std::collections::HashMap<String, String> = parsed.into_iter().collect();
 
-                for func_name in functions {
-                    let (exported_name, signature) = if let Some(sig_code) = sig_map.get(func_name) {
+                for func_name in free_fns.iter() {
+                    let (exported_name, signature) = if let Some(sig_code) = sig_map.get(func_name.as_str()) {
                         let exported = crate::ffi::build_exported_name(func_name, sig_code);
                         let sig = crate::ffi::sig_code_to_signature(sig_code);
                         (exported, sig)
@@ -634,7 +650,7 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                 }
             } else {
                 // No manifest — use known_signature or default (legacy v1/v2 path)
-                for func_name in functions {
+                for func_name in free_fns.iter() {
                     let signature = crate::ffi::resolve_signature(crate_name, func_name)
                         .unwrap_or_else(|| {
                             crate::ffi::RustSignature::new()

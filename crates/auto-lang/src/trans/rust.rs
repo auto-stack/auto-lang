@@ -702,7 +702,8 @@ impl RustTrans {
             self.local_var_types.insert(name.clone(), ty.clone());
         }
         self.mutated_let_bindings.clear();
-        self.mutated_let_bindings = Self::scan_mutated_bindings(body, &self.all_mut_method_names);
+        let rust_types = self.rust_imported_type_names();
+        self.mutated_let_bindings = Self::scan_mutated_bindings(body, &self.all_mut_method_names, &rust_types);
         self.later_used_locals.clear();
         // PLAN-010 T2: per-statement later-read sets (see the field doc).
         // A None from the collector (unwalked variant) means "assume used".
@@ -13262,9 +13263,26 @@ impl RustTrans {
         found.unwrap_or(Type::Unknown)
     }
 
+    /// PLAN-592: use.rs 导入的类型名(uses 中的大写首字母项)。供
+    /// scan_mutated_bindings 的 rust 型绑定保守 mut 标记。
+    fn rust_imported_type_names(&self) -> std::collections::HashSet<AutoStr> {
+        self.uses
+            .iter()
+            .filter(|u| {
+                u.as_str()
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect()
+    }
+
     fn scan_mutated_bindings(
         body: &crate::ast::Body,
         mut_method_names: &std::collections::HashSet<AutoStr>,
+        rust_types: &std::collections::HashSet<AutoStr>,
     ) -> std::collections::HashSet<AutoStr> {
         let mut out = std::collections::HashSet::new();
         let mut methods: std::collections::HashSet<AutoStr> = mut_method_names.clone();
@@ -13273,19 +13291,81 @@ impl RustTrans {
             .iter().map(|m| AutoStr::from(*m)));
         // methods now carries the built-in mutating methods PLUS every user
         // `mut fn` name (PLAN-010 T2: `x.mutFn()` needs `let mut x`, E0596).
-        fn visit_expr(expr: &crate::ast::Expr, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>) {
+
+        // PLAN-592: rust 导入类型绑定传播——let 的 init 为 `Type.method(...)`
+        // (Type ∈ use.rs 导入)或已标记 rust 绑定的方法调用链时,该绑定视为
+        // rust 型。其后的任意方法调用保守视作 mutating:转译期无 rustdoc 元
+        // 数据,&mut self 不可知(E0596 防御优先;代价仅为产物侧 unused_mut
+        // 告警,不影响本仓警告基线)。
+        fn receiver_root(e: &crate::ast::Expr) -> Option<&crate::ast::Name> {
+            match e {
+                crate::ast::Expr::Call(c) => match c.name.as_ref() {
+                    crate::ast::Expr::Dot(obj, _) => receiver_root(obj),
+                    crate::ast::Expr::Ident(n) => Some(n),
+                    _ => None,
+                },
+                crate::ast::Expr::Ident(n) => Some(n),
+                _ => None,
+            }
+        }
+        fn collect_rust_typed(
+            stmts: &[Stmt],
+            rust_types: &std::collections::HashSet<AutoStr>,
+            rust_typed: &mut std::collections::HashSet<AutoStr>,
+        ) {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Store(s) => {
+                        if let Some(root) = receiver_root(&s.expr) {
+                            let r = root.as_str();
+                            if rust_types.contains(r) || rust_typed.contains(r) {
+                                rust_typed.insert(s.name.clone());
+                            }
+                        }
+                        if let crate::ast::Expr::Block(b) = &s.expr {
+                            collect_rust_typed(&b.stmts, rust_types, rust_typed);
+                        }
+                    }
+                    Stmt::If(i) => {
+                        for br in &i.branches {
+                            collect_rust_typed(&br.body.stmts, rust_types, rust_typed);
+                        }
+                        if let Some(e) = &i.else_ {
+                            collect_rust_typed(&e.stmts, rust_types, rust_typed);
+                        }
+                    }
+                    Stmt::For(f) => collect_rust_typed(&f.body.stmts, rust_types, rust_typed),
+                    Stmt::Block(b) => collect_rust_typed(&b.stmts, rust_types, rust_typed),
+                    Stmt::Try(t) => collect_rust_typed(&t.body.stmts, rust_types, rust_typed),
+                    _ => {}
+                }
+            }
+        }
+        let mut rust_typed: std::collections::HashSet<AutoStr> = Default::default();
+        for _ in 0..4 {
+            let before = rust_typed.len();
+            collect_rust_typed(&body.stmts, rust_types, &mut rust_typed);
+            if rust_typed.len() == before {
+                break;
+            }
+        }
+
+        fn visit_expr(expr: &crate::ast::Expr, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>, rust_typed: &std::collections::HashSet<AutoStr>) {
             // `name.push(...)` etc → name is mutated
             if let crate::ast::Expr::Call(call) = expr {
                 if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
-                    if methods.contains(method.as_str()) {
-                        if let crate::ast::Expr::Ident(name) = obj.as_ref() {
+                    if let crate::ast::Expr::Ident(name) = obj.as_ref() {
+                        // PLAN-592: rust 型绑定的任意方法调用保守视作 mutating
+                        if methods.contains(method.as_str())
+                            || rust_typed.contains(name.as_str())
+                        {
                             out.insert(name.clone());
                         }
                     }
                 }
                 // Recurse into call args
                 for arg in &call.args.args {
-                    if let crate::ast::Arg::Pos(e) = arg { visit_expr(e, out, methods); }
+                    if let crate::ast::Arg::Pos(e) = arg { visit_expr(e, out, methods, rust_typed); }
                 }
             }
             // Plan 523 H2: 赋值 place 根(任意深度)——`x = e`/`x.f = e`/
@@ -13306,22 +13386,22 @@ impl RustTrans {
                 }
             }
         }
-        fn visit_stmt(stmt: &Stmt, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>) {
+        fn visit_stmt(stmt: &Stmt, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>, rust_typed: &std::collections::HashSet<AutoStr>) {
             match stmt {
-                Stmt::Expr(expr) => visit_expr(expr, out, methods),
-                Stmt::Store(store) => visit_expr(&store.expr, out, methods),
+                Stmt::Expr(expr) => visit_expr(expr, out, methods, rust_typed),
+                Stmt::Store(store) => visit_expr(&store.expr, out, methods, rust_typed),
                 Stmt::If(if_) => {
-                    for b in &if_.branches { for s in &b.body.stmts { visit_stmt(s, out, methods); } }
-                    if let Some(e) = &if_.else_ { for s in &e.stmts { visit_stmt(s, out, methods); } }
+                    for b in &if_.branches { for s in &b.body.stmts { visit_stmt(s, out, methods, rust_typed); } }
+                    if let Some(e) = &if_.else_ { for s in &e.stmts { visit_stmt(s, out, methods, rust_typed); } }
                 }
-                Stmt::For(for_) => { for s in &for_.body.stmts { visit_stmt(s, out, methods); } }
-                Stmt::Block(b) => { for s in &b.stmts { visit_stmt(s, out, methods); } }
-                Stmt::Try(t) => { for s in &t.body.stmts { visit_stmt(s, out, methods); } }
+                Stmt::For(for_) => { for s in &for_.body.stmts { visit_stmt(s, out, methods, rust_typed); } }
+                Stmt::Block(b) => { for s in &b.stmts { visit_stmt(s, out, methods, rust_typed); } }
+                Stmt::Try(t) => { for s in &t.body.stmts { visit_stmt(s, out, methods, rust_typed); } }
                 _ => {}
             }
         }
         for stmt in &body.stmts {
-            visit_stmt(stmt, &mut out, &methods);
+            visit_stmt(stmt, &mut out, &methods, &rust_typed);
         }
         out
     }
@@ -13506,8 +13586,9 @@ impl RustTrans {
         // Plan 399 Phase 11.5: scan the fn body for `let` bindings that are
         // later mutated (push/insert/extend/assign) — those need `let mut`.
         self.mutated_let_bindings.clear();
+        let rust_types = self.rust_imported_type_names();
         self.mutated_let_bindings =
-            Self::scan_mutated_bindings(&fn_decl.body, &self.all_mut_method_names);
+            Self::scan_mutated_bindings(&fn_decl.body, &self.all_mut_method_names, &rust_types);
         // Plan 447 H5: per-function is-scrutinee use counts drive the narrow
         // `match &v` emission (>= 2 uses of the same ident only).
         self.fn_is_scrutinee_counts = Self::scan_is_scrutinee_uses(&fn_decl.body);

@@ -1,4 +1,16 @@
 //! plan-430 C2 端到端夹具 crate:分类器各规则的可调用面。
+//! PLAN-592 追加:DROPS 计数器(drop 生命周期观测面 + 自由函数 ()→u64 冒烟)。
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+/// 已析构的对象数(Counter/Config/Point 合计)——生命周期断言的确定性观测点。
+/// 注:i64 返回——212 自由函数 wrapper 的 u64↔i64 槽无收窄转换(DIV-DEP-6),
+/// u64 返回特征化由 016 的 Num.u64_max 方法路径覆盖。
+pub fn drop_count() -> i64 {
+    DROPS.load(Ordering::SeqCst) as i64
+}
 
 pub struct Counter {
     count: i64,
@@ -60,6 +72,12 @@ impl Counter {
     }
 }
 
+impl Drop for Counter {
+    fn drop(&mut self) {
+        DROPS.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 /// 自由函数:仅进 manifest 元数据(D2),代码生成走 plan-212 syn 路径
 pub fn describe(c: &Counter) -> String {
     format!("{}={}", c.label, c.count)
@@ -118,6 +136,12 @@ impl Config {
     }
 }
 
+impl Drop for Config {
+    fn drop(&mut self) {
+        DROPS.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 /// 公共字段(getter 合成)与 Display(to_string 合成)的覆盖面
 pub struct Point {
     pub x: i64,
@@ -134,5 +158,11 @@ impl Point {
 impl std::fmt::Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {}) {}", self.x, self.y, self.tag)
+    }
+}
+
+impl Drop for Point {
+    fn drop(&mut self) {
+        DROPS.fetch_add(1, Ordering::SeqCst);
     }
 }
