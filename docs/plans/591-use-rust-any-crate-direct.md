@@ -255,6 +255,15 @@ nightly 缺席自动 skip（全程离线，fixture 均为本地 path 源）。fi
    登记 KNOWN-DEBT）。
 2. **T5 原型边界**：单线程重入深度 1 的限制是否满足 musk 场景前置评估需要，
    还是需要直接上多线程泵（建议：原型先行，musk 消费评估后另立计划）。
+3. **测试编号回改（2026-09-09，PLAN-592 执行期注记）**：本计划 §测试设计中的
+   `014_dep_fields`/`015_dep_traits_generics` 与现存
+   `014_std_generated_segment`/`015_musk_backend_wave1` **撞号**；且 016/017
+   已被 PLAN-592（dep-rust-parity-matrix）占用。落地时改用 **018/019**。
+   PLAN-592 已交付可复用资产：三轨 runner `ffi_dep_parity_tests.rs`
+   （VM/a2r/oracle 对拍，`{{FFI_DUAL_DIR}}` 占位语料）、fixture 扩展件
+   （autolang_counter drop 计数）、P0 修复集（i8/i16 cast、返回符号扩展、
+   堆感知弹参、自由函数 wrapper 装载链、GET_FIELD 字段桥接、未覆盖签名
+   报错）——V1 用例应在同一 runner 上扩展而非另起炉灶。
 
 > 已裁定（2026-09-07）：~~V1 触发自动化（use.rs 自动解析 + auto.lock + 首引用
 > 阻塞回填）~~ **取消**——`dep` 声明的 version/git/path 源配置有价值，保留

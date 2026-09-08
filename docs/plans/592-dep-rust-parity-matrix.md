@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-592
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-rust-parity-matrix
 author: [ZCode]
 created_at: 2026-09-08
-updated_at: 2026-09-08
+updated_at: 2026-09-09
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,11 +12,16 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm]       # engine.rs GET_FIELD / ffi.rs / 测试基建
-current_step: 0
+current_step: 12
 total_steps: 12
 ---
 
 # [PLAN-592] dep-rust-parity-matrix：AutoVM 调三方 Rust 库的 P0 特征化 parity 网
+
+> **执行完成（2026-09-09）**：12/12 步全绿；执行期额外抓出并修复 8 个管线真 bug
+> （见执行步骤"执行期追加修复"）。三轨对拍（VM/a2r/oracle）在 016/017 全语料
+> 上 stdout 精确相等。worktree 分支 `plan-592-dev`（690ed3422 + 5c28b2ce2），
+> 待 `/auto-plan:review`。
 
 ## 变更摘要
 
@@ -251,51 +256,76 @@ signature (plan-212 wrapper v1)"。已覆盖 4 类与 known_signature 回退路�
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据。
 执行于 worktree `D:/autostack/.wt/lang-592/auto-lang`——开工前先在 master 提交
-.next-id 与本骨架，创建 worktree 时遵守 wt-guard 红线：worktree 内禁 junction/symlink。）
+.next-id 与本骨架，创建 worktree 时遵守 wt-guard 红线：worktree 内禁 junction/symlink。
+**执行纪实（2026-09-09）**：除下列 12 步外，特征化网抓出 8 个管线真 bug 并就地修复
+（详见各步证据与复审记录）；另因 nextest `--all-features` 需解析 auto-lang 的跨仓
+path 依赖 `autodown-core`，在分组目录补建了 auto-down 的 detached 兄弟 worktree
+（`D:/autostack/.wt/lang-592/auto-down`，merge 时随组清理）。）
 
-- [ ] **T1** 扩展 fixture autolang_counter：
+- [x] **T1** 扩展 fixture autolang_counter：
   `crates/auto-lang/test/ffi_dual/013_dep_method/fixture/autolang_counter/src/lib.rs`
-  加 DROPS 原子计数 + 各类型 `impl Drop` + `pub fn drop_count() -> u64`。
-  验证：`cargo check --manifest-path crates/auto-lang/test/ffi_dual/013_dep_method/fixture/autolang_counter/Cargo.toml`
-  且 `cargo t ffi_dual_013` 零回归。
-- [ ] **T2** 新建 fixture autolang_abi_matrix（D2 全集，独立 workspace）：
-  `crates/auto-lang/test/ffi_dual/016_dep_abi_matrix/fixture/autolang_abi_matrix/{Cargo.toml,src/lib.rs}`。
-  验证：`cargo check --manifest-path crates/auto-lang/test/ffi_dual/016_dep_abi_matrix/fixture/autolang_abi_matrix/Cargo.toml`。
-- [ ] **T3** 语料 016：`test/ffi_dual/016_dep_abi_matrix/input.at`（`{{FIXTURE_DIR}}`
-  占位）+ `oracle/{Cargo.toml(空ws+../fixture 路径依赖), src/main.rs}` + 首跑生成
-  `expected_output.txt`。
-  验证：`cargo run --release --manifest-path crates/auto-lang/test/ffi_dual/016_dep_abi_matrix/oracle/Cargo.toml`
-  输出与 golden 一致。
-- [ ] **T4** 注册 VM 腿 `ffi_dual_016_dep_abi_matrix`：ffi_dual_tests.rs 仿 013
-  （读 input.at + 占位替换；`test_ffi_dual` 骨架加占位支持）。
-  验证：`cargo t ffi_dual_016`（负面断言 quad/maybe 类在 T7/T8 前可先标
-  known-fail 逐步翻绿——负面 golden 文本以 T7/T8 后为准）。
-- [ ] **T5** 语料+注册 017（复用 013 扩展 fixture）：input.at/oracle/expected_output
-  + `ffi_dual_017_dep_lifecycle`。
-  验证：`cargo t ffi_dual_017`。
-- [ ] **T6** 三轨 runner：新建 `crates/auto-lang/src/tests/ffi_dep_parity_tests.rs`
-  + `src/tests.rs` 注册（D4 全设计：占位替换、oracle/a2r 腿、
-  `~/.auto/cache/dep_parity/<hash>` 内容寻址缓存、a2r 腿 env 门控）。
-  验证：`AUTO_LANG_DEP_PARITY_A2R=1 cargo t ffi_dep_parity` 全绿；二次运行
-  （缓存命中）<5s/腿。
-- [ ] **T7** 收口 A（D5）：engine.rs GET_FIELD dep 对象臂——路由 dispatch 3000
-  合成 getter / 未命中报 Err；016 语料补 `p.a`/`p.c`/`p.nope` 断言。
-  验证：`cargo tv` 零回归 + `cargo t ffi_dual` 全绿。
-- [ ] **T8** 收口 B（D6）：ffi.rs 未覆盖签名 → VMError；016 语料 free_uncovered
-  断言定稿。
-  验证：`cargo t ffi` + `cargo t ffi_dual_016`。
-- [ ] **T9** negative golden 定稿：016/017 全部负面断言（quad/maybe/bump/
-  free_uncovered/unknown-field）错误消息稳定后写死进 expected_output.txt。
-  验证：`AUTO_LANG_DEP_PARITY_A2R=1 cargo t ffi_dep_parity && cargo t ffi_dual`。
-- [ ] **T10** 登记（Category A，无 cargo）：known-divergences.md 增 DIV-DEP-1/2/3；
-  591 计划待澄清事项追加编号回改注记（014/015→018/019）。
-  验证：人工核对两文件 diff。
-- [ ] **T11** CI：`.github/workflows/vm-files-ci.yml` 增 016/017 测试名与
-  `AUTO_LANG_DEP_PARITY_A2R=1` 全量档步骤。
-  验证：`python -c "import yaml;yaml.safe_load(open('.github/workflows/vm-files-ci.yml',encoding='utf-8'))"`。
-- [ ] **T12** 收口健康检查：`cargo check -p auto-lang`（零新警告）→
-  `cargo t ffi_dual` → `cargo tv`；（review/fold 前 `cargo tf` 由复审阶段执行）。
-  验证：三命令输出留痕本节。
+  加 DROPS 原子计数 + 各类型 `impl Drop` + `pub fn drop_count() -> i64`。
+  [✅ 已完成] cargo check 通过；`cargo t ffi_dual_013` PASS（shim 包带新 fixture 重建）。
+- [x] **T2** 新建 fixture autolang_abi_matrix（D2 全集，独立 workspace）。
+  [✅ 已完成] cargo check 通过；27 方法 + 4 自由函数进 manifest（v1.2 生成器）。
+- [x] **T3** 语料 016：input.at（`{{FFI_DUAL_DIR}}` 占位，fn main 包裹）+ oracle/ + 首跑 golden。
+  [✅ 已完成] oracle `cargo run --release` 输出 = golden（27 行含空串空行）。
+  偏差注记：占位符实现为 `{{FFI_DUAL_DIR}}`（= test/ffi_dual 绝对根，017 复用 013
+  fixture 也能表达）；语料改 fn main 包裹形态（双轨安全）。
+- [x] **T4** 注册 VM 腿 `ffi_dual_016_dep_abi_matrix`（含 VM 特征化钉死段与负面断言）。
+  [✅ 已完成] `cargo t ffi_dual_016` PASS——含宽槽收窄 232/u64_max -1 钉死、quad
+  "≤3" 错误、free_uncovered 报错、unknown field 报错、p.a/p.b/p.c 字段值正确。
+- [x] **T5** 语料+注册 017（复用 013 扩展 fixture）。
+  [✅ 已完成] `cargo t ffi_dual_017` PASS（chain 可见性/clone 独立性/drop_count 基线/
+  maybe/bump 负面）。
+- [x] **T6** 三轨 runner：`ffi_dep_parity_tests.rs` + `src/tests.rs` 注册 + test/ffi_dual/.gitignore。
+  [✅ 已完成] VM+oracle 双腿日常档 PASS（缓存命中秒级）；
+  `AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity` 三腿全量 2/2 PASS（a2r 腿冷构建
+  ~2.5min，内容 hash marker 缓存后秒级）。偏差注记：负面断言按 013 err-assert 形态
+  落在测试体内（错误输出无法进 stdout golden）。
+- [x] **T7** 收口 A（D5）：engine.rs GET_FIELD 的 DepOpaqueObject 臂。
+  [✅ 已完成] `p.a/p.b/p.c` 命中合成 getter 取到与 oracle 一致值；`p.nope` 报
+  "unknown field"；`cargo tv` 2780/2781（唯一余红 charts_gallery 为 master 同款预存）。
+- [x] **T8** 收口 B（D6）：ffi.rs 未覆盖签名 → VMError。
+  [✅ 已完成] free_uncovered 断言错误消息含 "unsupported free-function signature"；
+  `cargo t ffi_tests` 35/35 零回归。
+- [x] **T9** negative golden 定稿。
+  [✅ 已完成] 全部负面断言绿（quad ≤3 / maybe / bump / free_uncovered / unknown field），
+  以测试体内 expect_err+消息断言形态定稿（见 T6 偏差注记）。
+- [x] **T10** 登记：known-divergences.md 增 DIV-DEP-1..7；591 待澄清事项追加编号
+  回改注记（014/015→018/019 + PLAN-592 可复用资产清单）。
+  [✅ 已完成] 两文件 diff 人工核对（DIV-DEP-1 Option/2 by-value self/3 arity/4 u64槽/
+  5 print参数劫持/6 wrapper u64转换/7 a2r String形参假定&str）。
+- [x] **T11** CI：vm-files-ci.yml 增 dep 三轨步（AUTO_LANG_DEP_PARITY_A2R=1）。
+  [✅ 已完成] python yaml.safe_load 校验通过；ffi_dual 既有步骤的名称过滤器天然
+  覆盖 016/017。
+- [x] **T12** 收口健康检查。
+  [✅ 已完成] `cargo check -p auto-lang` 警告数 173=master 173（零新增）；
+  `cargo t ffi_dual` 20/20；`cargo t ffi_tests` 35/35；`cargo tv` 唯一余红=charts_gallery
+  预存（master 复现确认）；`cargo tt` 唯一余红=同一预存。fold 前 `cargo tf` 由复审
+  阶段执行。
+
+### 执行期追加修复（特征化网战果，均在 worktree 提交 690ed3422/5c28b2ce2）
+
+1. **emit_cdylib i8/i16 参数漏发收窄 cast**（wrapper 编译失败→VM 侧静默降级
+   "Unknown"）——补 `Ty::I8/I16` 两臂，GENERATOR 升 v1.2（指纹失效重建）。
+2. **dep_methods pop_int 不解堆编码**（>2^48 i64 字面量参数弹栈失败）——
+   接 convert::decode_i64_full 堆感知兜底。
+3. **'i' 槽返回零扩展**（echo_i8(-128) 呈现 4294967168）——ret_call 补符号扩展。
+4. **自由函数 wrapper 装载链断裂**（compile 键 v3_{sig串长} vs init 键
+   v3_{fn数} 从未对齐 + init 列表含类型名/重复项）——两侧统一 v3_{自由函数数}，
+   init 过滤+去重；根因即 20_rust_ffi_001 expected.error。
+5. **auto-cache wrapper 生成器三缺陷**——&str/String 参数折叠（新增
+   ShimType::CStringOwned，线格式仍 's'）、path 依赖不走 syn 扫描
+   （scan_path_dep_signatures）、ffi header 条件发射（全数值签名 wrapper 编不过，
+   改无条件）。
+6. **codegen 自由函数路由**——裸名查不到 `rust.{fn}` 限定注册，补限定名回退
+   （否则 dispatch 3000 "Unknown"）。
+7. **trans/rust.rs rust 型绑定缺 `let mut`**（a2r 对 dep 对象方法调用 E0596）——
+   scan_mutated_bindings 保守标记 + golden 校准豁免表（std/chrono/io/regex/url/
+   semver 家族）。
+8. **a2r String 形参假定 &str**（`free_s(boxed)` 发射 `.as_str()` E0308）——
+   登记 DIV-DEP-7，语料以方法调用结果传参规避（根治待 extern-sigs/元数据接入）。
 
 ## 复审记录
 
