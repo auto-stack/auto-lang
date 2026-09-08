@@ -98,7 +98,7 @@ opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 
 | 009 | article-feed | 文章卡片流 | — | — | 基础 |
 | 010 | contact-form | 联系表单 + 提交反馈 | — | — | 基础 |
 | 011 | calculator | 四则计算器 | — | ✓ | 🔀 升级拆出（Plan 401） |
-| 012 | stopwatch | 秒表 + 计圈 | — | ✓ | 基础 |
+| 012 | stopwatch（**Clock**） | Clock 四 tab：秒表（真走表 Tick 250ms+5 计圈）/计时器（到零横幅）/世界时钟（8 城固定偏移）/闹钟（storage 5 槽持久化）——os-003 原地升级，id 保持 012-stopwatch | — | ✓ | ✅ [os-003](../../docs/plans/INDEX.md)（origin Plan 554；desktop_mcp 12/12） |
 | 013 | todo | TodoMVC 完整实现 | — | ✓ | ✅ 有 MCP 测试 |
 | 014 | weather | 天气仪表盘 | — | ✓ | 基础 |
 | 015 | notes | 两栏笔记（真实应用形态） | — | ✓ | ✅ Plan 354 升级 |
