@@ -13264,8 +13264,21 @@ impl RustTrans {
     }
 
     /// PLAN-592: use.rs 导入的类型名(uses 中的大写首字母项)。供
-    /// scan_mutated_bindings 的 rust 型绑定保守 mut 标记。
+    /// scan_mutated_bindings 的 rust 型绑定保守 mut 标记。std 包装器/
+    /// 智能指针族排除——它们已有专用发射路径与既有 golden 校准
+    /// (17_rust_std/003_sync:Arc 的 lock() 是 &self,保守 mut 反而错)。
     fn rust_imported_type_names(&self) -> std::collections::HashSet<AutoStr> {
+        /// 已知 &self 语义的面(方法调用不需接收者 mut)——由既有 a2r/cookbook
+        /// golden 校准(全量 golden 扫描:immutable let + 方法调用的 init 类型)
+        const STD_EXEMPT: &[&str] = &[
+            "String", "Vec", "Arc", "Mutex", "Box", "Rc", "RefCell", "OnceCell",
+            "Cell", "Duration", "Instant", "PathBuf", "Path", "Command",
+            "SystemTime", "Option", "Result", "Cow",
+            // chrono / io / regex / url / semver / num 家族(golden 校准)
+            "Utc", "Local", "DateTime", "NaiveDateTime", "NaiveDate", "NaiveTime",
+            "BufReader", "BufWriter", "Regex", "Url", "Version", "VersionReq",
+            "Complex",
+        ];
         self.uses
             .iter()
             .filter(|u| {
@@ -13274,6 +13287,7 @@ impl RustTrans {
                     .next()
                     .map(|c| c.is_uppercase())
                     .unwrap_or(false)
+                    && !STD_EXEMPT.contains(&u.as_str())
             })
             .cloned()
             .collect()
