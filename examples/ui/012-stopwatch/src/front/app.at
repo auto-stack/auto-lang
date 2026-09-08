@@ -1,70 +1,181 @@
+// 012-stopwatch → Clock 四 tab 应用（os-003 / origin PLAN-554）。
+// T2 骨架：tab 化外壳 + 秒表面板迁入 stopwatch tab；计时器/世界时钟/闹钟
+// 占位（T4-T6 落）。T1 契约：开关避名 `running`（vue 轨 watch(running) 会
+// 把 setInterval 整只门死，iced 轨无门控——双端一致取恒 tick+handler 自管）。
 widget App {
-    msg { Start, Stop, Reset, Lap }
+    msg { Start, Stop, Reset, DoLap, SelectTab(str), Tick }
 
     model {
-        var running str = "false"
+        var tab str = "stopwatch"
+        // 秒表（T1：sw_on 替代 running；差值法锚点 T3 接 Tick）
+        var sw_on str = "false"
+        var elapsed int = 0
         var time_display str = "00:00"
         var ms_display str = ".00"
-        var lap_count str = "0"
         var lap1 str = ""
         var lap2 str = ""
         var lap3 str = ""
-        var elapsed int = 0
-        var interval int = 10
+        var lap4 str = ""
+        var lap5 str = ""
+        // 计时器（T4）
+        var t_placeholder str = "00:00:00"
+        // 世界时钟（T5）
+        var w_placeholder str = "--:--"
+        // 闹钟（T6）
+        var a_placeholder str = "07:30"
+        // Tick 周期（T3 起 .Tick 接管；250ms 基准=025 先例）
+        var interval int = 250
     }
 
-    // Plan 506: 外壳改"内容即页面"（拆 center 包裹 + 删 min-h-screen 居中
-    // 外壳，循 011 样板），配合 pac `window: "fit"` 窗口随内容收缩。
     view {
         col {
-            col {
-                text .time_display {
-                    style: "text-7xl font-mono font-bold text-gray-900 tracking-wider"
+            // 标题 + 四 tab 胶囊
+            row {
+                text "Clock" {
+                    style: "text-2xl font-bold text-foreground"
                 }
-                text .ms_display {
-                    style: "text-3xl font-mono text-gray-400"
-                }
-                style: "items-center gap-1 py-12"
+                style: "items-center justify-between"
             }
             row {
-                if .running == "true" {
-                    button "Stop" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
-                    button "Lap" { onclick: .Lap, style: "px-10 py-4 bg-gray-200 text-gray-700 rounded-full text-lg font-semibold" }
-                } else {
-                    button "Start" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
+                button "秒表" {
+                    onclick: .SelectTab("stopwatch"),
+                    style: if .tab == "stopwatch" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
                 }
-                style: "gap-4 items-center"
+                button "计时器" {
+                    onclick: .SelectTab("timer"),
+                    style: if .tab == "timer" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
+                }
+                button "世界时钟" {
+                    onclick: .SelectTab("world"),
+                    style: if .tab == "world" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
+                }
+                button "闹钟" {
+                    onclick: .SelectTab("alarm"),
+                    style: if .tab == "alarm" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
+                }
+                style: "gap-2"
             }
-            col {
-                text "Laps" { style: "text-sm font-semibold text-gray-400 uppercase" }
-                text .lap1 { style: "text-gray-700 font-mono py-2" }
-                text .lap2 { style: "text-gray-700 font-mono py-2" }
-                text .lap3 { style: "text-gray-700 font-mono py-2" }
-                style: "w-full max-w-xs mt-8 gap-2 items-center"
+
+            // ---- tab 内容 ----
+            if .tab == "stopwatch" {
+                col {
+                    col {
+                        text .time_display {
+                            style: "text-7xl font-mono font-bold text-foreground tracking-wider"
+                        }
+                        text .ms_display {
+                            style: "text-3xl font-mono text-muted-foreground"
+                        }
+                        style: "items-center gap-1 py-10"
+                    }
+                    row {
+                        if .sw_on == "true" {
+                            button "停止" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
+                            button "计圈" { onclick: .DoLap, style: "px-10 py-4 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold" }
+                        } else {
+                            button "开始" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
+                        }
+                        style: "gap-4 items-center"
+                    }
+                    col {
+                        text "Laps" { style: "text-sm font-semibold text-muted-foreground uppercase" }
+                        text .lap1 { style: "text-foreground font-mono py-2" }
+                        text .lap2 { style: "text-foreground font-mono py-2" }
+                        text .lap3 { style: "text-foreground font-mono py-2" }
+                        text .lap4 { style: "text-foreground font-mono py-2" }
+                        text .lap5 { style: "text-foreground font-mono py-2" }
+                        style: "w-full max-w-xs mt-6 gap-2 items-center"
+                    }
+                    style: "items-center py-6"
+                }
             }
-            style: "max-w-md p-8 bg-white items-center"
+            if .tab == "timer" {
+                col {
+                    text .t_placeholder { style: "text-6xl font-mono font-bold text-foreground py-10" }
+                    text "计时器 · T4 落地" { style: "text-muted-foreground text-sm" }
+                    style: "items-center py-6"
+                }
+            }
+            if .tab == "world" {
+                col {
+                    text .w_placeholder { style: "text-6xl font-mono font-bold text-foreground py-10" }
+                    text "世界时钟 · T5 落地" { style: "text-muted-foreground text-sm" }
+                    style: "items-center py-6"
+                }
+            }
+            if .tab == "alarm" {
+                col {
+                    text .a_placeholder { style: "text-6xl font-mono font-bold text-foreground py-10" }
+                    text "闹钟 · T6 落地" { style: "text-muted-foreground text-sm" }
+                    style: "items-center py-6"
+                }
+            }
+
+            style: "max-w-2xl w-full p-8 gap-4 bg-background text-foreground items-stretch"
         }
     }
 
     on {
-        .Start -> { .running = "true" }
-        .Stop -> { .running = "false" }
+        .SelectTab(t) -> { .tab = t }
+        .Start -> { .sw_on = "true" }
+        .Stop -> { .sw_on = "false" }
         .Reset -> {
-            .running = "false"
-            .lap_count = "0"
+            .sw_on = "false"
             .lap1 = ""
             .lap2 = ""
             .lap3 = ""
+            .lap4 = ""
+            .lap5 = ""
             .time_display = "00:00"
             .ms_display = ".00"
             .elapsed = 0
         }
-        .Lap -> {
+        // T3 实测：消息名 `Lap` 在 VM 轨被内置动词劫持（handler 结果被自动
+        // 包上 "Lap {n}: " 前缀——.lap1 出现 "Lap 0: 00:01.25" 形态）→ 改名
+        // DoLap 规避；旧 012 的 .Lap 同病（vm 轨从未实测过计圈）。框架层
+        // 劫持面待查（os-003 执行期发现，注记在案）。
+        .DoLap -> {
+            .lap5 = .lap4
+            .lap4 = .lap3
             .lap3 = .lap2
             .lap2 = .lap1
             .lap1 = .time_display + .ms_display
-            .lap_count += 1
         }
-        .Tick -> { .elapsed += 10 }
+        // T3：累计法 v1（计划主文方案——+=250/tick，双端零原生依赖；
+        // 差值法升级条件=vue 轨 Time 桥确认，待澄清 #3 注记维持）。
+        .Tick -> {
+            if .sw_on == "true" {
+                .elapsed += 250
+                var total_cs = .elapsed / 10
+                var cc = total_cs % 100
+                var total_s = total_cs / 100
+                var ss = total_s % 60
+                var mm = total_s / 60
+                var cc_str = f"${cc}"
+                if cc < 10 { cc_str = "0" + cc_str }
+                var ss_str = f"${ss}"
+                if ss < 10 { ss_str = "0" + ss_str }
+                var mm_str = f"${mm}"
+                if mm < 10 { mm_str = "0" + mm_str }
+                .ms_display = "." + cc_str
+                .time_display = mm_str + ":" + ss_str
+            }
+        }
     }
 }
