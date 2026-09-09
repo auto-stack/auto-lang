@@ -1,0 +1,23 @@
+/// regex_real 绿面——真三方 regex 动态加载（PLAN-594）。
+dep regex(version: "1.11.3")
+use.rs regex::Regex
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn main() {
+    let re = Regex.new("\d+").unwrap()
+    let m = re.is_match("abc123")
+    if m {
+        tap_ok(1, "new_unwrap_is_match")
+    } else {
+        print("not ok 1 - new_unwrap_is_match")
+    }
+    let m2 = re.is_match("abc")
+    if m2 {
+        print("not ok 2 - is_match_negative")
+    } else {
+        tap_ok(2, "is_match_negative")
+    }
+}

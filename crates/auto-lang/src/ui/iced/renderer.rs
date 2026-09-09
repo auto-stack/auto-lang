@@ -5110,7 +5110,18 @@ fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
             _ => None,
         }
     } else if url.starts_with("http://") || url.starts_with("https://") {
-        reqwest::blocking::get(url).ok()?.bytes().ok().map(|b| b.to_vec())
+        // os-007（P534-D4）：远程图源同步抓取加 3s 超时——此前裸
+        // `reqwest::blocking::get` 在网络不可达时把渲染线程挂到 TCP
+        // 超时（bounds 不更新/截图超时/导航无响应，avatar 家族接通
+        // 网络图源后实机复现）。结果仍按 URL 缓存，阻塞每 URL 至多一次。
+        static HTTP: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+        let client = HTTP.get_or_init(|| {
+            reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(3))
+                .build()
+                .unwrap_or_default()
+        });
+        client.get(url).send().ok()?.bytes().ok().map(|b| b.to_vec())
     } else {
         // Try loading from local file path
         std::fs::read(url).ok()

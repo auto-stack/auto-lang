@@ -1,0 +1,105 @@
+{
+  "header": "windows.h",
+  "library": "kernel32",
+  "abi": "system",
+  "functions": [
+    {
+      "name": "GetCommandLineA",
+      "params": [],
+      "return_type": {
+        "kind": "CStr"
+      },
+      "variadic": false
+    },
+    {
+      "name": "FreeConsole",
+      "params": [],
+      "return_type": {
+        "kind": "Int"
+      },
+      "variadic": false
+    },
+    {
+      "name": "AttachConsole",
+      "params": [
+        {
+          "name": "dwProcessId",
+          "ty": {
+            "kind": "UInt"
+          }
+        }
+      ],
+      "return_type": {
+        "kind": "Int"
+      },
+      "variadic": false
+    },
+    {
+      "name": "SetConsoleCtrlHandler",
+      "params": [
+        {
+          "name": "handler",
+          "ty": {
+            "kind": "FnPtr",
+            "inner": {
+              "ret": {
+                "kind": "Int"
+              },
+              "params": [
+                {
+                  "kind": "UInt"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "add",
+          "ty": {
+            "kind": "Int"
+          }
+        }
+      ],
+      "return_type": {
+        "kind": "Int"
+      },
+      "variadic": false
+    },
+    {
+      "name": "GenerateConsoleCtrlEvent",
+      "params": [
+        {
+          "name": "dwCtrlEvent",
+          "ty": {
+            "kind": "UInt"
+          }
+        },
+        {
+          "name": "dwProcessGroupId",
+          "ty": {
+            "kind": "UInt"
+          }
+        }
+      ],
+      "return_type": {
+        "kind": "Int"
+      },
+      "variadic": false
+    },
+    {
+      "name": "Sleep",
+      "params": [
+        {
+          "name": "dwMilliseconds",
+          "ty": {
+            "kind": "UInt"
+          }
+        }
+      ],
+      "return_type": {
+        "kind": "Void"
+      },
+      "variadic": false
+    }
+  ]
+}

@@ -117,8 +117,10 @@ fn main() {
                 crate_name,
                 crate_version,
                 toolchain: format!("rustdoc v53 ({})", std::env::consts::OS),
+                features: Vec::new(),
             };
-            let (fp, files) = emit_cdylib::emit_pack(&meta, &dep_line, &c, &exc, &parsed.free_fns);
+            let (fp, files) =
+                emit_cdylib::emit_pack(&meta, &dep_line, &c, &exc, &parsed.free_fns, &parsed.fields, &parsed.unit_enums);
             eprintln!(
                 "fingerprint={fp} methods={} skips={} free_fns={}",
                 c.plans.len(),

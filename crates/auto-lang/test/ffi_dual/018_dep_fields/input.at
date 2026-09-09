@@ -1,0 +1,39 @@
+dep autolang_shapes(path: "{{FFI_DUAL_DIR}}/018_dep_fields/fixture/autolang_shapes")
+use.rs autolang_shapes::{Messy, Point, Outer, Shape}
+
+fn main() {
+    let m = Messy.new(42, "alpha", true)
+    let hit = m.lookup("alpha")
+    print(hit == null)
+    let miss = m.lookup("nope")
+    print(miss == null)
+
+    print(m)
+
+    let a_v = m.a
+    print(a_v)
+    print(m.b)
+    print(m.total)
+    print(m.flag)
+    m.total = 9
+    print(m.total)
+    print(m.total_snapshot())
+    m.add(5)
+    print(m.total_snapshot())
+
+    let p = Point.parse("3,4").unwrap()
+    print(p.x)
+    print(p.y)
+
+    let o = Outer.new(5, "inner-label")
+    print(o.inner.n)
+    print(o.inner.label)
+
+    let s1 = Shape.new(0, 9)
+    print(s1.is_circle())
+    let s2 = Shape.new(1, 9)
+    print(s2.is_circle())
+    print(s2.is_square())
+    let s3 = Shape.new(2, 9)
+    print(s3.is_triangle())
+}

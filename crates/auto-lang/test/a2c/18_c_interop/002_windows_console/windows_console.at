@@ -1,0 +1,9 @@
+// Plan 595 (004 §5①③): kernel32 console manifest consumption —
+// `use.c <windows.h>` registers the manifest functions for direct calls,
+// mirroring 200_auto_cffi_math. FnPtr-bearing entries (SetConsoleCtrlHandler)
+// are exercised in 003_autoterm_ctrlc.
+use.c <windows.h>
+
+fn main() {
+    Sleep(10)
+}

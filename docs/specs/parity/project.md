@@ -21,6 +21,24 @@
   py_torch_train 10 例 seed 化收敛，Plan 539）。py_list 去规避示范
   （`py_call(lst,"__len__")` ×4 → `lst.len()` 直发，PLAN-569 P539-D2
   根治起可用；其余套件 README 惯用法行已统一注记，去规避留待自然触碰）。
+- **真三方 dep 对拍线（PLAN-594）**：`libs/dep/<crate>_real/` 动态加载**真实
+  crates.io 库**（`dep crate(version: "x.y.z") + use.rs`）三轨对拍——
+  serde_json 1.0.145 / regex 1.11.3 / url 2.5.4 / semver 1.0.26 绿面语料
+  （9 case 三轨全绿）+ base64 0.22.1 **全红样本**（a2r 常量接收者启发式，
+  DIV-DEP-13）。绿面范式：构造器/自由函数后 `.unwrap()` + Auto 类型标注解
+  泛型推断（`let data Value = from_str(json).unwrap()`）+ let 绑定比较断言；
+  红面不进 TAP，登记 known-divergences DIV-DEP-8..14。phase p10
+  （`AUTO_LANG_PARITY_NET=1` 门控，parity-ci 独立 job + 产物缓存）；
+  命中率数据（25 面/绿 8/32%，591 T2 最高杠杆/T3 次之/by-value-self 零命中）
+  回填 591（reports/p594-dep-skip-hit-rate.md）。
+- **非白名单 pack 面勘测（PLAN-591）**：`libs/dep/uuid_real/`——uuid 1.24.0
+  **不在 BUILTIN_OPAQUE_CRATES**，类型面全走真编译 methods pack（594 五库
+  类型面皆 native_catalog，本库补 pack 面首个样本）。三绿：parse_str Option
+  nullable（591 T2）+ get_version_num 数值（DIV-DEP-16 修复后）+ print
+  Display（591 D2）。phase p11（`AUTO_LANG_PARITY_NET=1` 门控）。
+  **`=x.y.z` 精确 pin 纪律**（DIV-DEP-17：caret 漂移至 1.26 → API 移除 →
+  wrapper 整包失败）。红面 DIV-DEP-15（a2r parse*/nil 启发式劫持）登记不进
+  TAP；DIV-DEP-16（VM EQ 漏 TAG_I64）当场修复。
 - 不做：不修复编译器分歧本身（修复在 auto-lang）；不纳入主 workspace（独立 Cargo.toml/lock）。
 
 ## 模块架构
@@ -42,6 +60,7 @@ graph LR
 | auto-parity/main | CLI 入口 + 启动闸门接线 | active |
 | auto-parity/freshness | `--auto-binary` 绝对路径解析 + mtime 陈旧对账 + `--allow-stale` 逃生（Plan 524） | active |
 | auto-parity/runner | 三后端运行器 | active |
+| auto-parity/deps | a2r 腿 dep 语料透传：crates.io 版本 pin 解析（bare/path/git 报错明示）+ 生成 Cargo.toml 渲染（PLAN-594） | active |
 | auto-parity/compare | 输出比对 | active |
 | auto-parity/report / tap | 报告与 TAP 格式输出 | active |
 | auto-parity/aavm | AAVM 五向对比矩阵（①ref ②aavm_rust ③aavm_vm ④golden ⑤aa2r） | active |

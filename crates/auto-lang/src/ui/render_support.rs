@@ -137,10 +137,11 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["src", "alt", "width", "height", "fit"],
             "placeholder only; no actual image loading",
         ),
-        "avatar" => TagSupport::partial(
-            &["src", "alt", "size", "shape"],
-            "colored circle placeholder; most props ignored",
-        ),
+        // os-007（P534-D4）：avatar 家族——容器转换子件组合（image/fallback
+        // 臂实装），src/alt 直传 avatar-image 形态。
+        "avatar" => TagSupport::full(),
+        "avatarimage" | "avatar-image" => TagSupport::full(),
+        "avatarfallback" | "avatar-fallback" => TagSupport::full(),
 
         // ── Fallback: known AURA tags not supported by iced ──
         "grid" => TagSupport::partial(

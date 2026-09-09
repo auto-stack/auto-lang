@@ -468,6 +468,50 @@ For now, use simple types (int, str) and avoid complex data structures across FF
 2. Ensure library is compiled: `gcc -shared -o target/hal.dll target/hal.c`
 3. Check library permissions
 
+## Rust 库动态加载（dep + use.rs，PLAN-591 V1）
+
+`dep` 声明 + `use.rs` 导入后，三方 Rust crate 的类型与方法直接可用（430 管线：
+nightly rustdoc 提签名 → 分类/生成 shim 包 → cdylib → C3 指纹缓存 → 运行时装载）。
+
+```auto
+dep uuid(version: "=1.24.0")     // version 建议精确 pin（= 前缀），caret 会漂移到最新 1.x
+use.rs uuid::{Uuid}              // 花括号形态；单类型裸形态不进 dep 管线
+
+fn main() {
+    let u = Uuid.parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap()
+    print(u)                     // Display 面：impl Display 的类型 print/`to(str)` 走真 Display
+    print(u.get_version_num())   // 数值面（宽整型经 i64 槽）
+}
+```
+
+### 字段访问（V1 布局面）
+
+- pub 字段读：`obj.field` —— 标量字段按**真实布局偏移直读**（探针 crate 用
+  `offset_of!` 实测，与 wrapper 同 cdylib 编译保证同源）；String/嵌套对象字段
+  走合成 getter（clone 语义）。
+- pub 字段写：`obj.field = value` —— 仅标量字段（i*/u*/bool/f*）；写穿透到
+  cdylib 堆，Rust 侧方法读回可见。
+- **已知限制**：字段写后 Rust 侧缓存旧值不失效（单线程纪律）；别名句柄写语义
+  未定义。登记 KNOWN-DEBT（PLAN-591）。
+
+### Option/Result 返回语义（T2）
+
+- `Option<T>` 返回：`Some(x)` 压 x、`None` 压 **null**（仅串/句柄槽；标量槽
+  None→哨兵歧义，仍跳过）。判空写法 `x == null`（VM null ≡ a2r None ≡
+  oracle `is_none()` 三轨一致）；`.unwrap()` 透传可用（a2r 发射合法 Rust，
+  VM 侧 unwrap 对 dep 值恒等、None unwrap 报错）。
+- `Result<T, E>` 返回：Ok 压值；**Err 经错误通道转 VMError**（message 携带
+  E 的 Display 文本）。`.unwrap()` 范式三轨可用。
+- 参数位 `Option<T>`：V1 仅收口返回侧（参数位显式跳过）。
+
+### 已知分歧（详见 parity/docs/known-divergences.md DIV-DEP-15+）
+
+- `use.rs` 单类型无花括号形态不进 dep 管线——**一律用 `{...}` 花括号形态**。
+- 方法/字段名撞 Auto 内建名（`find`/`count` 等）会被 a2r 发射器劫持——命名避开。
+- a2r 轨 `.to(str)` 对 rust-typed 值仍发 Debug（`print` 已是 Display）——
+  断言面用 `print`/`.to_string()` 形态。
+- dep 声明 version 的 caret 语义会漂移到最新兼容版——**用 `=x.y.z` 精确 pin**。
+
 ## See Also
 
 - [Plan 081 Phase 5 Completion Summary](../plans/081-phase5-complete.md)

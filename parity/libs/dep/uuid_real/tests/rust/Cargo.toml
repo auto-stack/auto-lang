@@ -1,0 +1,10 @@
+[package]
+name = "uuid-real-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+uuid = "=1.24.0"
+
+# Standalone crate: keep out of the parity workspace.
+[workspace]

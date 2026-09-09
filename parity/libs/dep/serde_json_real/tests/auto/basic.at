@@ -1,0 +1,16 @@
+/// serde_json_real 绿面——真三方 serde_json 动态加载（PLAN-594）。
+/// 红面见 README 与 known-divergences DIV-DEP-8+；本文件只收三轨一致面。
+dep serde_json(version: "1.0.145")
+use.rs serde_json::{from_str}
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn main() {
+    let json = "{\"name\":\"auto\",\"ver\":1}"
+    let data Value = from_str(json).unwrap()
+    // 附加输出（非 TAP 行）：紧凑 JSON，三轨应逐字节一致。
+    print(data)
+    tap_ok(1, "from_str_unwrap_print")
+}

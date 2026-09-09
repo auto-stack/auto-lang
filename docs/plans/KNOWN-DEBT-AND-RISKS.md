@@ -1107,12 +1107,19 @@
   p515/p517/p509 等脚本留存可改造为通用遍历版），幂等 id 保证不重不漏。
 
 ### P530（2026-09-03，VM 双份绘制/721GB 崩溃专项——执行期登记）
-- **P530-D1 Breadcrumb 页栈溢出（存量 master 缺陷，非 530 回归）**：导航到
+- **P530-D1 Breadcrumb 页栈溢出（✅ 已偿还，os-007/PLAN-007 `889d81fb1`,
+  2026-09-09）**：导航到
   breadcrumb 页必现 `thread 'main' has overflowed its stack`，主检出
   master@96586cca 对照构建同样复现（归因实验留档 scratch/p530/）。此前被
   OBS-1 721GB 崩溃掩盖（扫描先死于 code-editor 页），B-2 修复后暴露。
-  偿还路径：breadcrumb 页视图构建递归（疑 ForLoop/嵌套 link 链）单独
-  立项 bisect，debug 构建抓栈。
+  **归因（os-007 T7 二分,与原疑 ForLoop/嵌套 link 链无关）**：路由页
+  `BreadcrumbPage` 的 demo 用 `breadcrumb-page` tag，经 widget_registry
+  折叠兜底（P435 P8-6：剥 `-`/`_`+小写）命中组件自身名 →
+  render_child_widget 无限自递归。**修法**：AuraViewBuilder 增
+  active_child_widgets 进行中集合（按分支克隆传递），双胎
+  render_child_widget 入口环守卫命中渲染 Empty（A→B→A 互递归同防）；
+  回归测试 plan577_breadcrumb_cycle（红灯 STATUS_STACK_OVERFLOW 验证在案）；
+  二分/复现留痕 auto-lang 主检出 scratch/p577/。
 - **P530-D2 图表 timer 路由切换不退订**：LineChart/DonutChart 的
   `AnimLnTick/AnimDnTick`（every_ms:33）订阅随首页卸载后仍以 30-60/s 投递
   （离页后日志持续刷 tick），`when` 门控丢弃但每条消息仍触发一次 view()
@@ -1285,15 +1292,26 @@
   node_modules/gen 产物,需 auto gen+npm install 超执行面）,观感对照降级为
   shadcn 语义描述+vue-ref 手写源语义（全对齐,截图 scratch/p534_evidence/）；
   真 vue 运行对照留待环境齐备补做（复审注意项）。
-- **P534-D4 gallery avatar 家族 VM 渲染缺口（先于 534 存量）**：
+- **P534-D4 gallery avatar 家族 VM 渲染缺口（✅ 已偿还，os-007/PLAN-007
+  `023b6a987`, 2026-09-09）**：
   `aura_view_builder.rs` convert_avatar 仅渲染裸 avatar 标签（灰圆占位）,
   avatar-image/avatar-fallback 子件整体弃置→/hovercard 页触发器 hit area
   零高、/avatar 页观感缺图。hovercard 触发器语义本身不受影响（语料工程
-  文本触发器实机 hover 进/出全通）。avatar 家族补齐另立。
-- **P534-D5 gallery 连续导航栈溢出（master 存量）**：widgets-gallery VM 模式
+  文本触发器实机 hover 进/出全通）。**偿还**：avatar 家族三臂（容器转换
+  子件/avatar-image 复用图臂/avatar-fallback 文本臂）+props 形态 desugar
+  （`avatar (src/fallback)` 对齐 vue 端 AvatarImage/AvatarFallback 展开）+
+  **零高根因修复**（centering 容器无显式宽高被 apply_container_style 设
+  Fill×Fill,shrink 上下文解析零高——对齐 vue 恒注入 w-10 h-10）+远程图源
+  同步抓取 3s 超时（原裸 blocking::get 挂死渲染线程）。实机：/avatar 两
+  40x40 圆渲染+真 hover 进/出 state 翻转不借语料工程（scratch/p577/）。
+- **P534-D5 gallery 连续导航栈溢出（✅ 已偿还,根因同 P530-D1,os-007/
+  PLAN-007 `889d81fb1`, 2026-09-09）**：widgets-gallery VM 模式
   连续 ~55 次页导航后主线程栈溢出崩退（worktree 与 master 二进制 1:1 复现,
   `attachments/534/app_stderr*.log` 同报 overflowed its stack;直接单页导航
-  正常）——疑视图重建/快照累积深度问题,与本计划无关,归因另立。
+  正常）。**归因**：非累积性深度问题——扫描序列在 ~55 次导航后首次踩中
+  breadcrumb 页,P530-D1 自名折叠递归确定性致死（与导航次数无关,直达
+  breadcrumb 同崩）。环守卫修复后全站扫描 68/68 全绿（scratch/p577/
+  fullscan_report.md）。
 - **P534-D6 hovercard 未降级裁定**：MouseArea×Popover 组合实机验证通过
   （语料工程 hover 进→开/出→关+截图）,D4 降级路径（click-toggle）未启用;
   MCP keyboard 不进 iced 原始事件流（P533-D2 同源）,overlay ESC 自动化须
@@ -1813,6 +1831,33 @@ P0 特征化网执行期发现的管线缺陷，已修复面见计划执行步�
   （方法包构建失败降级自由函数路径）无 logger 时丢弃——016 排障期曾因此盲走
   （本轮以临时 logger 定位后移除，log 的 std feature 与 test-trans 档冲突，
   set_boxed_logger 不可用）。修法=测试基建提供 feature 无关的 logger 挂钩。
+
+
+- **P591-D1 [工程债] dep 对象字段写的失效/别名语义**（2026-09-09, V1 裁定待澄清 #1）：
+  VM 侧 offset 直写穿透 cdylib 堆后，Rust 侧缓存旧值（OnceLock 类）不刷新；
+  别名句柄（多 VM 句柄指向同对象）并发写语义未定义。单线程批处理纪律下接受
+  为 V1 已知限制；多线程/失效通知归后续计划。
+- **P591-D2 [工程债] 自由函数 Result/Option 返回的 Err 通道未收口**（2026-09-09）：
+  591 T2 收口了方法 wrapper 路径（emit_cdylib fallible/nullable）；自由函数
+  路径（compile_dep 的 FunctionShim）returns_result 硬编码 false、wrapper 无
+  auto__last_error 导出、RustSignature 无 fallible 位——Result 返回的自由函数
+  wrapper 生成本身不成立。DIV-DEP-12 维持 open，根修=五层链
+  （manifest FunctionEntry→register_function_sig→RustSignature→FunctionShim→
+  generate_shim+VM 侧检查）。
+- **P591-D3 [风险] 并发测试共享 ~/.auto/sandbox 的竞态**（2026-09-09 观察）：
+  nextest 并行跑多个 dep 用例时，共享的 pack 构建目录/v3 wrapper exists-check
+  可读到半写状态（017 drop_count 间歇 Unknown，清缓存复现消失）。P592-D1 家族；
+  根修=sandbox 锁或 per-test 沙箱根。
+- **P591-D4 [a2r] 发射器内建名/字面量启发式劫持**（2026-09-09，DIV-DEP-15）：
+  方法名撞内建（find/count）被改写为内建调用；变量名 nil 被发射为 None 字面量；
+  parse* 方法名投影 Option→Result。根修=P592-D3 dep 元数据接入发射器；语料
+  纪律=避开内建名+花括号 use.rs 形态。
+- **V2 拆分去向指针（PLAN-591 r1 裁定，2026-09-09）**：T3 trait 单态转发/
+  T4 泛型实例化/T5 反向 adapter 原型 + V2-1..V2-6 用例 + fixture
+  autolang_traits 设计，全文保留于 docs/plans/591-use-rust-any-crate-direct.md
+  §2 折叠节；V1 收口后另取计划号执行（DIV-DEP-8 的 `.to(str)` a2r 半边
+  与 DIV-DEP-15 归该计划一并收口）。
+
 
 ## P593 债务（theme-registry-token-single-source，2026-09-09 执行登记）
 

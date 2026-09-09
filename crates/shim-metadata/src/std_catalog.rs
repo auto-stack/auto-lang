@@ -15,6 +15,7 @@ pub fn std_methods() -> Vec<ShimMethod> {
             ret,
             generic: false,
             fallible: false,
+            nullable: false,
             field: None,
         });
     };

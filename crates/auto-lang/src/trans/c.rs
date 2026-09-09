@@ -1640,6 +1640,31 @@ impl CTrans {
                 "int".to_string() // Default to int for now
             };
 
+            // Plan 595: forward-declare closures in the header — definitions
+            // are emitted after main, so any use inside main (callback
+            // arguments like SetConsoleCtrlHandler) is C2065 without a
+            // prototype (caught by real MSVC compile, snapshots can't see it).
+            let mut proto: Vec<u8> = Vec::new();
+            proto.extend_from_slice(return_type_str.as_bytes());
+            proto.extend_from_slice(b" ");
+            proto.extend_from_slice(closure_info.name.as_bytes());
+            proto.extend_from_slice(b"(");
+            for (i, (param_name, param_ty)) in closure_info.params.iter().enumerate() {
+                if i > 0 {
+                    proto.extend_from_slice(b", ");
+                }
+                let param_type_str = if let Some(ref ty) = param_ty {
+                    self.type_to_c(ty)
+                } else {
+                    "int".to_string()
+                };
+                proto.extend_from_slice(param_type_str.as_bytes());
+                proto.extend_from_slice(b" ");
+                proto.extend_from_slice(param_name.as_bytes());
+            }
+            proto.extend_from_slice(b");\n");
+            self.header.extend(proto);
+
             // Write function signature
             out.write_all(return_type_str.as_bytes())?;
             out.write_all(b" ")?;
@@ -4458,8 +4483,14 @@ impl Trans for CTrans {
             }
             sink.record();
             self.dedent();
-            sink.body.write(b"}\n").to()?;
+            sink.body.write(b"}\n")?;
         }
+
+        // Plan 060 (+595): generate closure definitions BEFORE header assembly
+        // — their forward declarations go into the header (closures are
+        // defined after main, so uses inside main need a prototype), and the
+        // assembly below is what flushes self.header into sink.header.
+        self.generate_closure_definitions(sink)?;
 
         // write header if header content is not empty
         if !self.header.is_empty() || !self.libs.is_empty() {
@@ -4488,9 +4519,6 @@ impl Trans for CTrans {
             // header guard end
             self.header_guard_end(&mut sink.header)?;
         }
-
-        // Plan 060: Generate closure function definitions
-        self.generate_closure_definitions(sink)?;
 
         Ok(())
     }
