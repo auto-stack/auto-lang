@@ -374,6 +374,38 @@ pub fn run_a2r(config: &RunConfig) -> Result<Vec<TapResult>, String> {
         let to_fwd = |p: &std::path::Path| {
             p.to_string_lossy().replace('\\', "/")
         };
+        // PLAN-594 D2: forward the corpus's `dep` declarations into the
+        // generated Cargo.toml. Parsed from the original .at source (the
+        // transpiler consumes `dep` lines silently, so the transpiled output
+        // never carries them). A parse/render failure fails the test with a
+        // diagnostic instead of building a crate against the wrong deps.
+        let dep_lines = match std::fs::read_to_string(&test_path) {
+            Ok(corpus_src) => match crate::deps::parse_dep_lines(&corpus_src) {
+                Ok(specs) => specs
+                    .iter()
+                    .map(crate::deps::render_cargo_line)
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                Err(e) => {
+                    all_results.push(TapResult {
+                        passed: false,
+                        number: 0,
+                        name: test_stem.clone(),
+                        diagnostics: Some(format!("dep parse failed: {}", e)),
+                    });
+                    continue;
+                }
+            },
+            Err(e) => {
+                all_results.push(TapResult {
+                    passed: false,
+                    number: 0,
+                    name: test_stem.clone(),
+                    diagnostics: Some(format!("failed to read corpus: {}", e)),
+                });
+                continue;
+            }
+        };
         let cargo_toml = format!(
             r#"[package]
 name = "{bin_name}"
@@ -398,6 +430,9 @@ tokio = {{ version = "1", features = ["rt", "macros"] }}
 # both, and the crate identifier stays `async_stream` either way.)
 async-stream = "0.3"
 futures = "0.3"
+# PLAN-594: corpus `dep` declarations (crates.io, version-pinned by the
+# corpus itself) forwarded verbatim.
+{dep_lines}
 
 [[bin]]
 name = "{bin_name}"
@@ -409,6 +444,7 @@ path = "src/main.rs"
             bin_name = bin_name,
             auto_lang = to_fwd(&auto_lang_path),
             a2r_std = to_fwd(&a2r_std_path),
+            dep_lines = dep_lines,
         );
         std::fs::write(bin_dir.join("Cargo.toml"), cargo_toml)
             .map_err(|e| e.to_string())?;

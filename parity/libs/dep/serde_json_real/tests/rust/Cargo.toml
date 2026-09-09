@@ -1,0 +1,10 @@
+[package]
+name = "serde-json-real-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1.0.145"
+
+# Standalone crate: keep out of the parity workspace.
+[workspace]

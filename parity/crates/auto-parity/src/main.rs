@@ -1,6 +1,7 @@
 mod aavm;
 mod freshness;
 mod compare;
+mod deps;
 mod report;
 mod runner;
 mod tap;
@@ -221,6 +222,17 @@ fn detect_parity_root() -> PathBuf {
 /// Run a parity check for a single library: invoke all three backends, build
 /// a per-test comparison, and print the report.
 fn run_library(config: &RunConfig) {
+    // PLAN-594 D5: real-crate dep corpora (libs/dep/<crate>_real) fetch and
+    // build third-party crates — require explicit network opt-in. Without the
+    // gate the library is skipped with a one-line hint (mirrors the a2r-leg
+    // env-gating convention from PLAN-592).
+    if is_dep_category_library(config) && !net_gate_enabled() {
+        eprintln!(
+            "[dep-parity] {} skipped (set AUTO_LANG_PARITY_NET=1)",
+            config.library
+        );
+        return;
+    }
     // Async libraries have non-deterministic completion order; sort TAP
     // output by test name before comparison.
     let mut config = config.clone();
@@ -253,6 +265,24 @@ fn run_library(config: &RunConfig) {
 /// order, so their results must be sorted by test name before comparison.
 fn is_async_library(library: &str) -> bool {
     matches!(library, "reqwest" | "tokio" | "tokio_stream")
+}
+
+/// PLAN-594: true when the library lives under the `libs/dep/` category
+/// (real-crate corpora; leaf names carry a `_real` suffix so they never
+/// shadow the flat replica libs — resolve_lib_dir matches by leaf name).
+fn is_dep_category_library(config: &RunConfig) -> bool {
+    config
+        .lib_dir()
+        .parent()
+        .and_then(|p| p.file_name())
+        .map_or(false, |c| c == "dep")
+}
+
+/// PLAN-594: the network gate for dep-category libraries. Building the VM
+/// methods pack and the a2r/oracle test crates may download third-party
+/// crates (first run only; afterwards `~/.cargo` cache serves offline).
+fn net_gate_enabled() -> bool {
+    std::env::var("AUTO_LANG_PARITY_NET").is_ok_and(|v| v == "1")
 }
 
 /// Run all three backends for a single library and build the per-test
@@ -447,6 +477,15 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // Plan 368 FU-4 (Layer 2): HTTP consumer apps. Need a live mock server
         // (parity runner auto-spawns libs/<category>/<name>/mock-server/ via MockServer).
         ("d6", &["http_client_sync", "c_http_get", "c_wget", "c_crawler"]),
+        // PLAN-594 (real-crate dep parity): AutoVM loads real crates.io
+        // libraries via `dep crate(version) + use.rs` and is compared
+        // three-way against the transpiled (a2r) and native Rust forms.
+        // Network-gated: AUTO_LANG_PARITY_NET=1 required (see run_library).
+        // base64_real is intentionally absent: it is the plan's all-red
+        // sample (VM pack face encodes green, but the a2r emitter's
+        // capitalization heuristic emits `STANDARD::encode` which cannot
+        // compile against a const receiver) — see libs/dep/base64_real.
+        ("p10", &["serde_json_real", "regex_real", "url_real", "semver_real"]),
         // Plan 369 (Python parity): three-way parity against a Python oracle
         // (AutoVM vs a2py vs native Python). The mode is auto-detected from the
         // library's `tests/python/` directory by `detect_parity_mode`.
