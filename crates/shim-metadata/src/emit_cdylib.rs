@@ -58,6 +58,10 @@ pub struct MethodEntry {
     /// Err 经 auto__last_error 通道传出 → VM 侧转 VMError(430-F)
     #[serde(default)]
     pub fallible: bool,
+    /// nullable 标记(PLAN-591 T2):原返回 Option<T>,wrapper 解 Some;
+    /// None 压 null 指针 → VM 侧压 null 值(仅 s/p 槽)
+    #[serde(default)]
+    pub nullable: bool,
     /// 该类型的析构符号(auto__drop_<Type>)
     pub drop_export: String,
 }
@@ -147,13 +151,14 @@ fn plan_sig_line(p: &MarshalPlan) -> String {
         .map(|(t, a)| format!("{}:{}", t.rust_name(), arg_char(a)))
         .collect();
     format!(
-        "m {}.{}|{:?}|{}|{:?}|f{}|c{}|fld:{:?}",
+        "m {}.{}|{:?}|{}|{:?}|f{}|n{}|c{}|fld:{:?}",
         m.type_name,
         m.method,
         m.self_kind,
         params.join(","),
         p.ret,
         p.fallible as u8,
+        p.nullable as u8,
         matches!(p.ret, RetPlan::ChainInPlace) as u8,
         m.field,
     )
@@ -301,6 +306,7 @@ pub fn emit_pack_parts(
             "ret": p.method.ret.rust_name(),
             "generic": p.method.generic,
             "fallible": p.fallible,
+            "nullable": p.nullable,
         })).collect::<Vec<_>>(),
         "free_functions": free_fns.iter().filter(|f| !f.generic).map(|f| serde_json::json!({
             "name": f.method,
@@ -593,12 +599,29 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
     // (VM 侧压回原句柄,不新建对象)。
     // fallible(unwrap_ok,430-F):原返回 Result<T,E> → 解 Ok;Err 写入错误通道
     // (auto__last_error)并返回默认值,VM 侧读通道转 VMError。
+    // nullable(PLAN-591 T2):原返回 Option<T> → 解 Some;None 返回 null 指针,
+    // VM 侧压 null 值(仅 s/p 槽,classify 守卫);与 fallible 组合为
+    // Ok(Some)/Ok(None)/Err 三臂。
     let (ret_decl, body_tail) = if matches!(p.ret, RetPlan::ChainInPlace) {
-        if p.fallible {
+        if p.fallible && p.nullable {
+            (
+                " -> *mut std::ffi::c_void".to_string(),
+                format!(
+                    "let __raw = {invocation}; match __raw {{ Ok(Some(_)) => {{ __clear_err(); arg_0 }}, Ok(None) => std::ptr::null_mut(), Err(e) => {{ __set_err(format!(\"{{e}}\")); std::ptr::null_mut() }} }}"
+                ),
+            )
+        } else if p.fallible {
             (
                 " -> *mut std::ffi::c_void".to_string(),
                 format!(
                     "let __raw = {invocation}; match __raw {{ Ok(_) => {{ __clear_err(); arg_0 }}, Err(e) => {{ __set_err(format!(\"{{e}}\")); std::ptr::null_mut() }} }}"
+                ),
+            )
+        } else if p.nullable {
+            (
+                " -> *mut std::ffi::c_void".to_string(),
+                format!(
+                    "let __raw = {invocation}; match __raw {{ Some(_) => {{ __clear_err(); arg_0 }}, None => std::ptr::null_mut() }}"
                 ),
             )
         } else {
@@ -606,6 +629,26 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
                 " -> *mut std::ffi::c_void".to_string(),
                 format!("{invocation}; arg_0"),
             )
+        }
+    } else if p.nullable {
+        let unwrap = if p.fallible {
+            format!(
+                "let __r = match {invocation} {{ Ok(Some(v)) => {{ __clear_err(); v }}, Ok(None) => return std::ptr::null_mut(), Err(e) => {{ __set_err(format!(\"{{e}}\")); return std::ptr::null_mut() }} }};"
+            )
+        } else {
+            format!(
+                "let __r = match {invocation} {{ Some(v) => {{ __clear_err(); v }}, None => return std::ptr::null_mut() }};"
+            )
+        };
+        match rc {
+            's' => (
+                " -> *mut c_char".to_string(),
+                format!("{unwrap} __s_out(__r.to_string())"),
+            ),
+            _ => (
+                " -> *mut std::ffi::c_void".to_string(),
+                format!("{unwrap} Box::into_raw(Box::new(__r)) as *mut std::ffi::c_void"),
+            ),
         }
     } else if p.fallible {
         // 解 Ok 落 __r,再按返回码走收尾表达式;Err 写错误通道并返回默认值。
@@ -716,6 +759,7 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         ret_type: ret_type_label(p),
         chain: matches!(p.ret, RetPlan::ChainInPlace),
         fallible: p.fallible,
+        nullable: p.nullable,
         drop_export: format!("auto__drop_{short}"),
     };
     (entry, src)
@@ -729,44 +773,49 @@ mod tests {
 
     fn demo_classified() -> Classified {
         let methods = vec![
-            ShimMethod {
-                type_name: "Counter".into(),
-                method: "new".into(),
-                self_kind: SelfKind::Static,
-                params: vec![Ty::StrOwned],
-                ret: Ty::OpaqueOwned("Counter".into()),
-                generic: false,
-                fallible: false,
-                field: None,
-            },
-            ShimMethod {
-                type_name: "Counter".into(),
-                method: "increment".into(),
-                self_kind: SelfKind::Write,
-                params: vec![],
-                ret: Ty::Void,
-                generic: false,
-                fallible: false,
-                field: None,
-            },
-            ShimMethod {
-                type_name: "Counter".into(),
-                method: "value".into(),
-                self_kind: SelfKind::Read,
-                params: vec![],
-                ret: Ty::I64,
-                generic: false,
-                fallible: false,
-                field: None,
-            },
+        ShimMethod {
+            type_name: "Counter".into(),
+            method: "new".into(),
+            self_kind: SelfKind::Static,
+            params: vec![Ty::StrOwned],
+            ret: Ty::OpaqueOwned("Counter".into()),
+            generic: false,
+            fallible: false,
+            nullable: false,
+            field: None,
+        },
+        ShimMethod {
+            type_name: "Counter".into(),
+            method: "increment".into(),
+            self_kind: SelfKind::Write,
+            params: vec![],
+            ret: Ty::Void,
+            generic: false,
+            fallible: false,
+            nullable: false,
+            field: None,
+        },
+        ShimMethod {
+            type_name: "Counter".into(),
+            method: "value".into(),
+            self_kind: SelfKind::Read,
+            params: vec![],
+            ret: Ty::I64,
+            generic: false,
+            fallible: false,
+            nullable: false,
+            field: None,
+        },
             ShimMethod {
                 type_name: "Counter".into(),
                 method: "maybe".into(),
                 self_kind: SelfKind::Read,
                 params: vec![],
-                ret: Ty::Opaque("Option".into()),
+                // Option<&str> 经 proj_ret 解包(PLAN-591 T2):T=Str + nullable
+                ret: Ty::Str,
                 generic: false,
                 fallible: false,
+                nullable: true,
                 field: None,
             },
             // unwrap_ok:Result<Counter, String> 已由投影解包为 Counter + fallible
@@ -778,6 +827,7 @@ mod tests {
                 ret: Ty::OpaqueOwned("Counter".into()),
                 generic: false,
                 fallible: true,
+                nullable: false,
                 field: None,
             },
         ];
@@ -787,8 +837,7 @@ mod tests {
     #[test]
     fn wrapper_exports_and_skips() {
         let c = demo_classified();
-        assert_eq!(c.plans.len(), 4, "Option 返回应跳过: {:?}", c.skips);
-        assert!(c.skips.iter().any(|s| s.method == "maybe"));
+        assert_eq!(c.plans.len(), 5, "nullable 返回应入计划(PLAN-591 T2): {:?}", c.skips);
 
         let (fp, files) = emit_pack(
             &PackMeta {
@@ -815,14 +864,21 @@ mod tests {
             .lib_rs
             .contains("Err(e) => { __set_err(format!(\"{e}\")); return std::ptr::null_mut(); }"));
         assert!(files.lib_rs.contains("fn auto__last_error()"));
+        // nullable(PLAN-591 T2):None → return null,Some 压值
+        assert!(files.lib_rs.contains(
+            "let __r = match { let __recv: &my_crate::Counter = unsafe { &*(arg_0 as *const my_crate::Counter) }; __recv.maybe() } { Some(v) => { __clear_err(); v }, None => return std::ptr::null_mut() }; __s_out(__r.to_string())"
+        ));
         assert!(files.cargo_toml.contains("[workspace]"));
         let man: ShimManifest = serde_json::from_str(&files.manifest_json).unwrap();
-        assert_eq!(man.methods.len(), 4);
+        assert_eq!(man.methods.len(), 5);
         assert_eq!(man.methods[0].params, "s");
         assert_eq!(man.methods[1].params, "p");
         assert_eq!(man.fingerprint, fp);
         let parse_entry = man.methods.iter().find(|e| e.method == "parse").unwrap();
         assert!(parse_entry.fallible);
+        let maybe_entry = man.methods.iter().find(|e| e.method == "maybe").unwrap();
+        assert!(maybe_entry.nullable, "nullable 须进 manifest 条目");
+        assert_eq!(maybe_entry.ret, "s");
     }
 
     #[test]
@@ -870,6 +926,7 @@ mod tests {
             ret: Ty::Generic("T".into()),
             generic: true,
             fallible: false,
+            nullable: false,
             field: None,
         };
         let plain_fn = ShimMethod {
@@ -880,6 +937,7 @@ mod tests {
             ret: Ty::I64,
             generic: false,
             fallible: false,
+            nullable: false,
             field: None,
         };
         let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()]);

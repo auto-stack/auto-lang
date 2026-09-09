@@ -496,12 +496,14 @@ mod tests {
                     ret: Ty::Void,
                     generic: false,
                     fallible: false,
+                    nullable: false,
                     field: None,
                 },
                 args: vec![],
                 ret: RetPlan::Void,
                 copy_result: false,
                 fallible: false,
+                nullable: false,
             }
         }
         let mut plans = vec![plan("new"), plan("newest"), plan("set"), plan("set_label")];

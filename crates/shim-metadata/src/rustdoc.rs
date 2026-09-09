@@ -73,13 +73,13 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 params.push(proj_ty(pty));
             }
         }
-        let (ret, fallible) = sig
+        let (ret, fallible, nullable) = sig
             .get("output")
             .and_then(|o| match o {
-                Value::Null => Some((Ty::Void, false)),
+                Value::Null => Some((Ty::Void, false, false)),
                 _ => Some(proj_ret(o)),
             })
-            .unwrap_or((Ty::Void, false));
+            .unwrap_or((Ty::Void, false, false));
 
         methods.push(RawMethod {
             id: item.get("id").and_then(|v| v.as_u64()).unwrap_or(u64::MAX),
@@ -88,6 +88,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
             params,
             ret,
             fallible,
+            nullable,
             generic,
         });
     }
@@ -153,6 +154,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 generic: raw.generic
                     || generic_impl_methods.get(&raw.id).copied().unwrap_or(false),
                 fallible: raw.fallible,
+                nullable: raw.nullable,
                 field: None,
             }),
             None => free.push(ShimMethod {
@@ -163,6 +165,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 ret: raw.ret,
                 generic: raw.generic,
                 fallible: raw.fallible,
+                nullable: raw.nullable,
                 field: None,
             }),
         }
@@ -227,6 +230,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                                 ret: proj,
                                 generic: false,
                                 fallible: false,
+                                nullable: false,
                                 field: Some(fname.to_string()),
                             });
                         }
@@ -248,15 +252,16 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                     let key = format!("{ty}.to_string");
                     if existing.insert(key) {
                         synthetics.push(ShimMethod {
-                            type_name: ty,
-                            method: "to_string".to_string(),
-                            self_kind: SelfKind::Read,
-                            params: vec![],
-                            ret: Ty::Str,
-                            generic: false,
-                            fallible: false,
-                            field: None,
-                        });
+                                type_name: ty,
+                                method: "to_string".to_string(),
+                                self_kind: SelfKind::Read,
+                                params: vec![],
+                                ret: Ty::Str,
+                                generic: false,
+                                fallible: false,
+                                nullable: false,
+                                field: None,
+                            });
                     }
                 }
             }
@@ -274,6 +279,7 @@ struct RawMethod {
     params: Vec<Ty>,
     ret: Ty,
     fallible: bool,
+    nullable: bool,
     generic: bool,
 }
 
@@ -379,27 +385,35 @@ fn proj_ty(ty: &Value) -> Ty {
 }
 
 /// 返回位置投影:借用的外来返回 → Opaque("&Name")(分类器跳过标记);&str → Str;
-/// `Result<T, E>` → 解包为 T 并标记 fallible(430-F unwrap_ok 策略;
-/// Option 不解包——None 语义待例外层,v1 仍跳过)。
-fn proj_ret(ty: &Value) -> (Ty, bool) {
+/// `Result<T, E>` → 解包为 T 并标记 fallible(430-F unwrap_ok 策略);
+/// `Option<T>` → 解包为 T 并标记 nullable(PLAN-591 T2:None→null,s/p 槽;
+/// 标量槽由 classify 显式跳过)。Result 与 Option 可嵌套(Option 内层再解)。
+fn proj_ret(ty: &Value) -> (Ty, bool, bool) {
     if let Some(rp) = ty.get("resolved_path") {
         let name = rp.get("path").and_then(|v| v.as_str()).unwrap_or("");
         if name == "Result" {
             if let Some(inner) = first_generic_arg(rp) {
-                let (t, _) = proj_ret(inner);
-                return (t, true);
+                let (t, f, n) = proj_ret(inner);
+                return (t, true, n);
+            }
+        }
+        if name == "Option" {
+            if let Some(inner) = first_generic_arg(rp) {
+                let (t, f, _) = proj_ret(inner);
+                return (t, f, true);
             }
         }
     }
     if let Some(br) = ty.get("borrowed_ref") {
         let inner = br.get("type").map(proj_ty).unwrap_or(Ty::Void);
         return match inner {
-            Ty::Str | Ty::StrOwned => (Ty::Str, false),
-            Ty::OpaqueOwned(n) => (Ty::Opaque(format!("&{n}")), false),
-            other => (other, false),
+            Ty::Str | Ty::StrOwned => (Ty::Str, false, false),
+            Ty::OpaqueOwned(n) => (Ty::Opaque(format!("&{n}")), false, false),
+            other => (other, false, false),
         };
     }
-    (proj_ty(ty), false)
+    let t = proj_ty(ty);
+    (t, false, false)
 }
 
 /// resolved_path 的第一个泛型实参(Result<T,E> 的 T)。

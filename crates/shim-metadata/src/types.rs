@@ -95,6 +95,9 @@ pub struct ShimMethod {
     /// 原返回是 Result<T, E>:unwrap_ok 策略——wrapper 解 Ok,
     /// Err 经 cdylib 错误通道传出,VM 侧转 VMError(430-F unwrap 策略)
     pub fallible: bool,
+    /// 原返回是 Option<T>(PLAN-591 T2):unwrap 策略——wrapper 解 Some,
+    /// None 压 null(仅 s/p 槽;标量槽哨兵歧义仍跳过,见 classify)
+    pub nullable: bool,
     /// Some(name) = 合成的公共字段 getter(F 轮解阻断:字段访问以方法面入包;
     /// 标量 Copy 直读,String/不透明字段 clone)
     pub field: Option<String>,
@@ -145,6 +148,8 @@ pub struct MarshalPlan {
     pub copy_result: bool,
     /// 原 Result 返回(wrapper 解 Ok;Err 走错误通道 → VMError)
     pub fallible: bool,
+    /// 原 Option 返回(PLAN-591 T2):wrapper 解 Some;None 压 null(s/p 槽)
+    pub nullable: bool,
 }
 
 /// 分类失败原因(→ 例外表/跳过清单)。

@@ -29,8 +29,8 @@ pub fn classify_all(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
     classify_with(methods, exc, false)
 }
 
-/// 三方 cdylib 路径:Option/Result 不能跨 ABI 装箱语义未定——
-/// Result 走 unwrap_ok(解包 + 错误通道),Option v1 跳过。
+/// 三方 cdylib 路径:Result 走 unwrap_ok(解包 + 错误通道);Option 解 Some 压值、
+/// None 压 null(PLAN-591 T2,仅 s/p 槽,标量槽哨兵歧义仍跳过)。
 pub fn classify_all_third_party(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
     classify_with(methods, exc, true)
 }
@@ -67,16 +67,9 @@ fn classify_with(methods: &[ShimMethod], exc: &Exceptions, third_party: bool) ->
             });
             continue;
         }
-        // 三方路径:Option 返回 v1 跳过(None 语义待例外层)。
-        // std 路径:Option 装箱为不透明对象(既有语义)。
-        if third_party && matches!(&m.ret, Ty::Opaque(n) | Ty::OpaqueOwned(n) if n == "Option") {
-            skips.push(Skip {
-                type_name: m.type_name.clone(),
-                method: m.method.clone(),
-                reason: "option return (None semantics pending)".into(),
-            });
-            continue;
-        }
+        // 三方路径 Option 返回不再整体跳过(PLAN-591 T2)——proj_ret 已解包为
+        // T + nullable 标记,槽位合法性(仅 s/p)在 classify_one 内守卫。
+        // std 路径:Option 装箱为不透明对象(既有语义,不受 T2 影响)。
         match classify_one(m, third_party) {
             Ok(plan) => plans.push(plan),
             Err(reason) => skips.push(Skip {
@@ -120,6 +113,11 @@ fn classify_one(m: &ShimMethod, third_party: bool) -> Result<MarshalPlan, String
             Ty::Opaque(n) if n == "i128" || n == "u128" => {
                 return Err("128-bit param unsupported".into())
             }
+            // Option 参数(PLAN-591 v1:仅收口返回侧;None→null/值→Some 的
+            // 参数构造留后续)——显式理由跳过,不再落"owned opaque param"泛化文案
+            Ty::Opaque(n) | Ty::OpaqueOwned(n) if n == "Option" => {
+                return Err("option param (plan-591 v1: return-side only)".into())
+            }
             Ty::Opaque(_) => ArgPlan::OpaqueHandle,
             // 拥有的外来类型参数:VM 侧无法构造该值,v1 跳过
             Ty::OpaqueOwned(_) => return Err("owned opaque param".into()),
@@ -140,10 +138,13 @@ fn classify_one(m: &ShimMethod, third_party: bool) -> Result<MarshalPlan, String
             RetPlan::ChainSelf
         }
         // Option/Result 返回:rustdoc 投影已把 Result<T,E> 解包为 T(m.fallible=true,
-        // wrapper 解 Ok + 错误通道);这里只会再见到 Option(三方跳过,std 装箱)
-        // 或残缺的 Result(泛型实参缺失)。
+        // wrapper 解 Ok + 错误通道)、Option<T> 解包为 T(m.nullable=true,PLAN-591 T2);
+        // 这里只会再见到残缺的 Option/Result(泛型实参缺失)——显式拒绝,防误装箱。
         Ty::Opaque(n) | Ty::OpaqueOwned(n) if n == "Result" && third_party => {
             return Err("result return without projectable Ok type".into())
+        }
+        Ty::Opaque(n) | Ty::OpaqueOwned(n) if n == "Option" && third_party => {
+            return Err("option return without projectable inner type".into())
         }
         // 借用返回(&T):wrapper 无法装箱一个引用,v1 跳过(&str 已投影为 Str 不在此列)。
         // 例外:builder 链式(&self/&mut self 返回 &Self/&mut Self)→ 原地改、压回原句柄。
@@ -159,11 +160,87 @@ fn classify_one(m: &ShimMethod, third_party: bool) -> Result<MarshalPlan, String
         Ty::Generic(_) => return Err("generic return".into()),
     };
     let copy_result = COPY_RESULT.contains(&key.as_str());
+    // PLAN-591 T2:nullable 返回仅 s/p 槽(None→null 指针无歧义);
+    // 标量槽 None→哨兵值(0/false/0.0)与合法值冲突,显式跳过留痕。
+    let nullable = m.nullable && third_party;
+    if nullable {
+        match ret {
+            RetPlan::ScalarStr | RetPlan::Opaque(_) | RetPlan::ChainSelf | RetPlan::ChainInPlace => {}
+            _ => return Err("nullable scalar return (None→sentinel ambiguity; plan-591 v1: s/p slots only)".into()),
+        }
+    }
     Ok(MarshalPlan {
         method: m.clone(),
         ret,
         args,
         copy_result,
         fallible: m.fallible && third_party,
+        nullable,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    // PLAN-591 T2:nullable 槽位守卫与 Option 参数/残缺返回的显式拒绝
+    use super::*;
+
+    fn m(method: &str, ret: Ty) -> ShimMethod {
+        ShimMethod {
+            type_name: "Widget".into(),
+            method: method.into(),
+            self_kind: SelfKind::Read,
+            params: vec![],
+            ret,
+            generic: false,
+            fallible: false,
+            nullable: false,
+            field: None,
+        }
+    }
+
+    #[test]
+    fn nullable_sp_slots_pass_scalar_rejected() {
+        let methods = vec![
+            // Option<&str> 投影形态:Str + nullable → 应入计划
+            ShimMethod { nullable: true, ret: Ty::Str, ..m("find", Ty::Str) },
+            // Option<Widget> 投影形态:OpaqueOwned + nullable → 应入计划
+            ShimMethod { nullable: true, ret: Ty::OpaqueOwned("Widget".into()), ..m("find_obj", Ty::OpaqueOwned("Widget".into())) },
+            // Option<u16> 投影形态:I32 + nullable → 哨兵歧义,须跳过
+            ShimMethod { nullable: true, ret: Ty::U16, ..m("port", Ty::U16) },
+            // Option<()> 投影形态:Void + nullable → 须跳过
+            ShimMethod { nullable: true, ret: Ty::Void, ..m("check", Ty::Void) },
+        ];
+        let c = classify_all_third_party(&methods, &Exceptions::default());
+        let planned: Vec<&str> = c.plans.iter().map(|p| p.method.method.as_str()).collect();
+        assert_eq!(planned, vec!["find", "find_obj"], "s/p 槽 nullable 应入计划");
+        assert!(c.plans.iter().all(|p| p.nullable));
+        let skipped: Vec<&str> = c.skips.iter().map(|s| s.method.as_str()).collect();
+        assert_eq!(skipped, vec!["port", "check"], "标量/void 槽 nullable 应显式跳过");
+        assert!(c.skips.iter().all(|s| s.reason.contains("sentinel ambiguity")));
+    }
+
+    #[test]
+    fn option_param_and_residual_ret_rejected() {
+        // Option 参数:显式理由(返回侧先行),不再落泛化 "owned opaque param"
+        let opt_param = ShimMethod {
+            params: vec![Ty::OpaqueOwned("Option".into())],
+            ..m("set_opt", Ty::Void)
+        };
+        let c = classify_all_third_party(&[opt_param], &Exceptions::default());
+        assert!(c.skips[0].reason.contains("option param"));
+
+        // 残缺 Option 返回(泛型实参缺失):拒绝而非误装箱
+        let residual = m("opt_bare", Ty::OpaqueOwned("Option".into()));
+        let c = classify_all_third_party(&[residual], &Exceptions::default());
+        assert!(c.skips[0].reason.contains("without projectable inner type"));
+    }
+
+    #[test]
+    fn std_path_option_still_boxes() {
+        // std 路径(第三参 false):Option 装箱语义不受 T2 影响
+        let c = classify_all(&[m("get", Ty::Opaque("Option".into()))], &Exceptions::default());
+        assert_eq!(c.plans.len(), 1);
+        assert!(!c.plans[0].nullable);
+        assert!(matches!(c.plans[0].ret, RetPlan::Opaque(_)));
+    }
 }
