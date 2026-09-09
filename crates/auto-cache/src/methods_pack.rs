@@ -106,41 +106,62 @@ impl Sandbox {
         //    `dep uuid = "1"` 这类半开区间声明升级后(1.0→1.9),声明版本串不变,
         //    若不核对则指纹永续陈旧(C3"防签名漂移"空转)。核对失败(无构建目录/
         //    cargo metadata 不可用)时按缓存接受,保持降级姿态。
+        //    PLAN-591 T1:两条新增 stale 通道——
+        //    a) manifest format 旧版(GENERATOR/FORMAT bump 后一键失效);
+        //    b) path 源的**源码内容 hash**(快路径此前只看版本号,fixture 源码
+        //    变更后陈旧 pack 永续复用——591 执行期实勘;registry 源仍走版本核对)。
         if let Some((lib, manifest_json)) = self.find_methods_pack(crate_name) {
-            let stale = match (
-                extract_crate_version(&manifest_json),
-                resolved_crate_version(
-                    &self.cargo_path(),
-                    &self.root().join("builds").join(&wrapper),
-                    crate_name,
-                ),
-            ) {
-                (Some(cached), Some(current)) if cached != current => {
-                    log::info!(
-                        "plan430: cached methods pack for {} is stale ({} -> {}), rebuilding",
-                        crate_name,
-                        cached,
-                        current
-                    );
-                    true
-                }
-                _ => false,
-            };
-            if !stale {
+            let format_stale = manifest_format(&manifest_json)
+                .map(|f| f != shim_metadata::emit_cdylib::MANIFEST_FORMAT)
+                .unwrap_or(false);
+            if format_stale {
                 log::info!(
-                    "plan430: cached methods pack for {}: {}",
-                    crate_name,
-                    lib.display()
+                    "plan430: cached methods pack for {} has old manifest format, rebuilding",
+                    crate_name
                 );
-                let fp = extract_fingerprint(&manifest_json).unwrap_or_default();
-                let (methods, skipped) = count_entries(&manifest_json);
-                return Ok(Some(MethodsPackBuilt {
-                    lib_path: lib,
-                    manifest_json,
-                    fingerprint: fp,
-                    methods,
-                    skipped,
-                }));
+            } else {
+                if path_source_is_stale(self.root(), crate_name, source) {
+                    log::info!(
+                        "plan430: cached methods pack for {} is stale (path source changed), rebuilding",
+                        crate_name
+                    );
+                } else {
+                    let stale = match (
+                        extract_crate_version(&manifest_json),
+                        resolved_crate_version(
+                            &self.cargo_path(),
+                            &self.root().join("builds").join(&wrapper),
+                            crate_name,
+                        ),
+                    ) {
+                        (Some(cached), Some(current)) if cached != current => {
+                            log::info!(
+                                "plan430: cached methods pack for {} is stale ({} -> {}), rebuilding",
+                                crate_name,
+                                cached,
+                                current
+                            );
+                            true
+                        }
+                        _ => false,
+                    };
+                    if !stale {
+                        log::info!(
+                            "plan430: cached methods pack for {}: {}",
+                            crate_name,
+                            lib.display()
+                        );
+                        let fp = extract_fingerprint(&manifest_json).unwrap_or_default();
+                        let (methods, skipped) = count_entries(&manifest_json);
+                        return Ok(Some(MethodsPackBuilt {
+                            lib_path: lib,
+                            manifest_json,
+                            fingerprint: fp,
+                            methods,
+                            skipped,
+                        }));
+                    }
+                }
             }
         }
 
@@ -213,13 +234,23 @@ impl Sandbox {
                 .or_else(|| source.version.clone())
                 .unwrap_or_else(|| "unknown".into()),
             toolchain,
+            features: source.features.clone(),
         };
         let mut plans = classified.plans.clone();
         let mut skips = classified.skips.clone();
         // 430 复审修复:剔环轮次上限(首建之外至多重试 MAX_BUILD_ATTEMPTS-1 轮)。
         let mut retries_left: u32 = MAX_BUILD_ATTEMPTS - 1;
         let (fp, files) = loop {
-            let (fp, files) = emit_pack_parts(&meta, &dep_line, &plans, &skips, &exc, &parsed.free_fns);
+            let (fp, files) = emit_pack_parts(
+                &meta,
+                &dep_line,
+                &plans,
+                &skips,
+                &exc,
+                &parsed.free_fns,
+                &parsed.fields,
+                &parsed.unit_enums,
+            );
             std::fs::write(src_dir.join("lib.rs"), &files.lib_rs)?;
 
             let out = Command::new(self.cargo_path())
@@ -271,6 +302,12 @@ impl Sandbox {
         std::fs::write(build_dir.join("manifest.json"), &files.manifest_json)?;
         std::fs::write(build_dir.join("signatures.json"), &files.signatures_json)?;
         std::fs::write(build_dir.join("rules.json"), &files.rules_json)?;
+        // PLAN-591 T1:成功构建后记录 path 源内容 hash(快路径 stale 检测用)
+        if let Some(p) = &source.path {
+            if let Some(hash) = path_source_hash(Path::new(p)) {
+                let _ = std::fs::write(build_dir.join("source_hash.txt"), hash.to_string());
+            }
+        }
 
         let target_dir = build_dir.join("target").join("release");
         let lib_file = self
@@ -382,6 +419,64 @@ fn extract_crate_version(manifest_json: &str) -> Option<String> {
         .get("crate_version")?
         .as_str()
         .map(String::from)
+}
+
+/// 从 manifest JSON 提取 format 字段(PLAN-591 T1:format bump 失效通道)。
+fn manifest_format(manifest_json: &str) -> Option<u32> {
+    serde_json::from_str::<serde_json::Value>(manifest_json)
+        .ok()?
+        .get("format")?
+        .as_u64()
+        .map(|v| v as u32)
+}
+
+/// path 源内容 hash:Cargo.toml + src/**/*.rs 文件名字节 + 内容字节,fnv1a64。
+/// 仅 path 源参与(fixtures);registry 源走版本核对,不递归 hash 全仓源码。
+fn path_source_hash(path: &Path) -> Option<u64> {
+    let mut buf: Vec<u8> = Vec::new();
+    fn walk(dir: &Path, buf: &mut Vec<u8>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let mut entries: Vec<_> = rd.filter_map(|e| e.ok()).collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().map(|n| n == "target").unwrap_or(false) {
+                    continue;
+                }
+                walk(&p, buf);
+            } else if let Ok(content) = std::fs::read(&p) {
+                buf.extend_from_slice(p.file_name().unwrap_or_default().as_encoded_bytes());
+                buf.push(0);
+                buf.extend_from_slice(&content);
+                buf.push(0);
+            }
+        }
+    }
+    buf.extend_from_slice(b"Cargo.toml\0");
+    if let Ok(t) = std::fs::read(path.join("Cargo.toml")) {
+        buf.extend_from_slice(&t);
+    }
+    walk(&path.join("src"), &mut buf);
+    if buf.len() <= b"Cargo.toml\0".len() {
+        return None; // 源目录不存在/为空:不参与 stale 判定
+    }
+    Some(shim_metadata::emit_cdylib::fnv1a64(&buf))
+}
+
+/// PLAN-591 T1:快路径的 path 源 stale 检测——当前源 hash vs 构建目录记录。
+/// 无记录/读不到 → 按"不 stale"处理(保持 430 降级姿态;registry 源恒 false)。
+fn path_source_is_stale(sandbox_root: &Path, crate_name: &str, source: &DepSource) -> bool {
+    let Some(p) = &source.path else { return false };
+    let Some(current) = path_source_hash(Path::new(p)) else { return false };
+    let recorded = sandbox_root
+        .join("builds")
+        .join(Sandbox::methods_wrapper_name(crate_name))
+        .join("source_hash.txt");
+    match std::fs::read_to_string(&recorded) {
+        Ok(s) => s.trim() != current.to_string(),
+        Err(_) => false,
+    }
 }
 
 /// 用 cargo metadata 查询构建目录中 crate **解析后的真实版本**。

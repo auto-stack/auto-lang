@@ -17,6 +17,27 @@ pub struct ParsedCrate {
     pub methods: Vec<ShimMethod>,
     /// 模块级自由函数(type_name = "" ;D2 元信息用)
     pub free_fns: Vec<ShimMethod>,
+    /// pub 结构体的 pub 字段清单(PLAN-591 T1:探针/布局指纹行输入;
+    /// 与合成 getter 同源,含未进 getter 面的非白名单类型字段)。
+    pub fields: Vec<StructField>,
+    /// pub unit-only enum 的变体清单(判别值探针输入;含数据变体的 enum 不入)。
+    pub unit_enums: Vec<UnitEnum>,
+}
+
+/// 一个 pub 结构体的 pub 字段(PLAN-591 T1)。
+#[derive(Debug, Clone)]
+pub struct StructField {
+    pub type_name: String,
+    pub name: String,
+    /// 投影类型的 Rust 名(布局 JSON 信息位;探针本体只需字段名)
+    pub ty: String,
+}
+
+/// 一个 pub unit-only enum(PLAN-591 T1 判别值探针)。
+#[derive(Debug, Clone)]
+pub struct UnitEnum {
+    pub name: String,
+    pub variants: Vec<String>,
 }
 
 /// 兼容入口:只取固有 impl 方法。
@@ -179,6 +200,9 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
     let mut existing: std::collections::HashSet<String> =
         out.iter().map(|m| format!("{}.{}", m.type_name, m.method)).collect();
     let mut synthetics: Vec<ShimMethod> = Vec::new();
+    // PLAN-591 T1:布局探针/指纹行输入——pub 字段清单与 unit-only enum 变体
+    let mut pub_fields: Vec<StructField> = Vec::new();
+    let mut unit_enums: Vec<UnitEnum> = Vec::new();
     for item in index.values() {
         let Some(inner) = item.get("inner").and_then(|v| v.as_object()) else {
             continue;
@@ -215,6 +239,13 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                             continue;
                         };
                         let proj = proj_ty(fty);
+                        // PLAN-591 T1:全量 pub 字段入清单(含未进 getter 面的
+                        // 非白名单类型字段——offset 探针只需字段名,不需类型白名单)
+                        pub_fields.push(StructField {
+                            type_name: struct_name.to_string(),
+                            name: fname.to_string(),
+                            ty: proj.rust_name(),
+                        });
                         let field_ok = proj.is_scalar()
                             || matches!(proj, Ty::Str | Ty::StrOwned | Ty::Opaque(_) | Ty::OpaqueOwned(_));
                         if !field_ok {
@@ -235,6 +266,42 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                             });
                         }
                     }
+                }
+            }
+        }
+        // PLAN-591 T1:pub unit-only enum 变体收集(判别值探针输入)。
+        // 含数据变体的 enum 不入探针(`as u64` 判别投影仅对 unit-only 合法)。
+        if vis_public {
+            if let Some(en) = inner.get("enum").and_then(|v| v.as_object()) {
+                let Some(enum_name) = item.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let Some(variant_ids) = en.get("variants").and_then(|v| v.as_array()) else {
+                    continue;
+                };
+                let mut variants = Vec::new();
+                let mut unit_only = true;
+                for vid in variant_ids {
+                    let Some(vid) = vid.as_u64() else { continue };
+                    let Some(v) = index.get(&vid.to_string()) else { continue };
+                    let Some(vname) = v.get("name").and_then(|v| v.as_str()) else { continue };
+                    let has_data = v
+                        .get("inner")
+                        .and_then(|i| i.get("variant"))
+                        .and_then(|v| v.get("kind"))
+                        .map(|k| !k.is_null())
+                        .unwrap_or(false);
+                    if has_data {
+                        unit_only = false;
+                        break;
+                    }
+                    variants.push(vname.to_string());
+                }
+                if unit_only && !variants.is_empty() {
+                    unit_enums.push(UnitEnum {
+                        name: enum_name.to_string(),
+                        variants,
+                    });
                 }
             }
         }
@@ -269,7 +336,12 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
     }
     out.extend(synthetics);
 
-    Ok(ParsedCrate { methods: out, free_fns: free })
+    Ok(ParsedCrate {
+        methods: out,
+        free_fns: free,
+        fields: pub_fields,
+        unit_enums,
+    })
 }
 
 struct RawMethod {
@@ -393,7 +465,7 @@ fn proj_ret(ty: &Value) -> (Ty, bool, bool) {
         let name = rp.get("path").and_then(|v| v.as_str()).unwrap_or("");
         if name == "Result" {
             if let Some(inner) = first_generic_arg(rp) {
-                let (t, f, n) = proj_ret(inner);
+                let (t, _, n) = proj_ret(inner);
                 return (t, true, n);
             }
         }

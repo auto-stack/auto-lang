@@ -12,8 +12,8 @@ use crate::classify::{Classified, Exceptions};
 use crate::types::*;
 use serde::{Deserialize, Serialize};
 
-pub const GENERATOR: &str = "shim-metadata v1.2 (plan-430 C1; 592 i8/i16 cast fix)";
-pub const MANIFEST_FORMAT: u32 = 1;
+pub const GENERATOR: &str = "shim-metadata v1.3 (plan-430 C1; 592 cast fix; 591 layouts v2)";
+pub const MANIFEST_FORMAT: u32 = 2;
 pub const CLASSIFIER_VERSION: u32 = 1;
 
 /// shim 包清单(运行期契约:auto-lang 按此注册 dispatch 与 marshaller)。
@@ -31,6 +31,10 @@ pub struct ShimManifest {
     /// 自由函数仅作元信息(D2:known_signature 元数据优先);
     /// 代码生成仍走 plan-212 syn 路径,避免双生成器符号冲突。
     pub functions: Vec<FunctionEntry>,
+    /// 布局段(manifest v2):emit 期空占位,装载期由 cdylib 探针导出
+    /// auto__shim_layouts 填充(见 dep_methods::register_pack)。
+    #[serde(default)]
+    pub layouts: LayoutMap,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +70,42 @@ pub struct MethodEntry {
     pub drop_export: String,
 }
 
+// =============================================================================
+// 布局段(PLAN-591 T1,manifest v2)
+// =============================================================================
+
+/// 单字段布局(探针实测;VM offset 直读直写的依据)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldLayout {
+    pub name: String,
+    pub offset: u64,
+    /// 投影类型 Rust 名(信息位)
+    pub ty: String,
+}
+
+/// unit-only enum 变体判别值(探针实测)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnumVariantLayout {
+    pub name: String,
+    pub value: u64,
+}
+
+/// 一个导出类型的布局。emit 期 manifest.json 中恒为空占位——真实值由
+/// cdylib 内嵌探针导出 `auto__shim_layouts` 在装载期提供(同 rustc 实例
+/// 编译,偏移与 wrapper 对象一致;指纹层用"字段清单行"传导变更)。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TypeLayout {
+    pub size: u64,
+    pub align: u64,
+    #[serde(default)]
+    pub fields: Vec<FieldLayout>,
+    #[serde(default)]
+    pub enum_discriminants: Vec<EnumVariantLayout>,
+}
+
+/// 布局表:短类型名 → 布局(探针 JSON 的结构)。
+pub type LayoutMap = std::collections::BTreeMap<String, TypeLayout>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionEntry {
     pub name: String,
@@ -78,6 +118,9 @@ pub struct PackMeta {
     pub crate_name: String,
     pub crate_version: String,
     pub toolchain: String,
+    /// features 组合(PLAN-591 对抗②:不同 features 即不同布局,入指纹;
+    /// 排序后拼接,组合等价不因书写序漂移)
+    pub features: Vec<String>,
 }
 
 /// 一个 shim 包的全部落盘文件。
@@ -113,10 +156,26 @@ pub fn fingerprint(meta: &PackMeta, c: &Classified, free_fns: &[ShimMethod]) -> 
 /// 430 复审修复:泛型自由函数不进指纹——它们的签名含未解决泛型,
 /// `classify_ret` 只能给出 Void 假码,指纹行反而失真;这类函数
 /// 连同 manifest 条目一并跳过(见 emit_pack_parts)。
+/// PLAN-591 T1:payload 增 features 行与**字段清单行**(pub 字段名+投影类型、
+/// unit-only enum 变体)——签名集相同而布局输入不同(字段集/特征切换)时
+/// 指纹必变,缓存拒 stale(V1-6/对抗①②的机制链)。探针**偏移值**不进指纹:
+/// 其与 wrapper 同 cdylib 编译,装载期探针导出即真值,无需指纹传递。
 pub fn fingerprint_parts(
     meta: &PackMeta,
     plans: &[MarshalPlan],
     free_fns: &[ShimMethod],
+) -> String {
+    fingerprint_parts_with(meta, plans, free_fns, &[], &[])
+}
+
+/// 全量指纹(emit_pack_parts 与检查器剔除环共用;fields/unit_enums 为
+/// PLAN-591 布局输入,空切片时与旧口径兼容)。
+pub fn fingerprint_parts_with(
+    meta: &PackMeta,
+    plans: &[MarshalPlan],
+    free_fns: &[ShimMethod],
+    fields: &[crate::rustdoc::StructField],
+    unit_enums: &[crate::rustdoc::UnitEnum],
 ) -> String {
     let mut lines: Vec<String> = plans.iter().map(plan_sig_line).collect();
     lines.extend(free_fns.iter().filter(|f| !f.generic).map(|f| {
@@ -128,15 +187,27 @@ pub fn fingerprint_parts(
             ret_char_of(&classify_ret(&f.ret))
         )
     }));
+    // 字段清单行:类型.字段|ty(排序保证字段声明序不影响指纹,字段集决定指纹)
+    lines.extend(fields.iter().map(|f| {
+        format!("fld {}.{}|{}", f.type_name, f.name, f.ty)
+    }));
+    // unit-only enum 变体行:变体集变化 → 指纹变
+    lines.extend(unit_enums.iter().map(|e| {
+        format!("enum {}|{}", e.name, e.variants.join(","))
+    }));
     lines.sort();
+    let mut features = meta.features.clone();
+    features.sort();
     let payload = format!(
-        "{}\n{}\n{}\n{}\n{}\n",
+        "{}\n{}\n{}\n{:?}\n{}\n{}\n{}\n",
         meta.toolchain,
         meta.crate_name,
         meta.crate_version,
+        features,
         GENERATOR,
-        CLASSIFIER_VERSION
-    ) + &lines.join("\n");
+        CLASSIFIER_VERSION,
+        lines.join("\n")
+    );
     format!("{:016x}", fnv1a64(payload.as_bytes()))
 }
 
@@ -203,11 +274,14 @@ pub fn emit_pack(
     c: &Classified,
     exc: &Exceptions,
     free_fns: &[ShimMethod],
+    fields: &[crate::rustdoc::StructField],
+    unit_enums: &[crate::rustdoc::UnitEnum],
 ) -> (String, PackFiles) {
-    emit_pack_parts(meta, dep_line, &c.plans, &c.skips, exc, free_fns)
+    emit_pack_parts(meta, dep_line, &c.plans, &c.skips, exc, free_fns, fields, unit_enums)
 }
 
 /// parts 版生成(供 rustc 检查器剔除环按缩减后的计划集重生成)。
+/// fields/unit_enums:PLAN-591 T1 布局探针输入(剔除环重试时传原值)。
 pub fn emit_pack_parts(
     meta: &PackMeta,
     dep_line: &str,
@@ -215,8 +289,10 @@ pub fn emit_pack_parts(
     skips: &[Skip],
     exc: &Exceptions,
     free_fns: &[ShimMethod],
+    fields: &[crate::rustdoc::StructField],
+    unit_enums: &[crate::rustdoc::UnitEnum],
 ) -> (String, PackFiles) {
-    let fp = fingerprint_parts(meta, plans, free_fns);
+    let fp = fingerprint_parts_with(meta, plans, free_fns, fields, unit_enums);
     let crate_ident = meta.crate_name.replace('-', "_");
 
     // 方法条目与 wrapper 源码
@@ -273,10 +349,16 @@ pub fn emit_pack_parts(
         generator: GENERATOR.to_string(),
         methods: entries,
         functions,
+        layouts: LayoutMap::new(),
     };
     let manifest_json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
 
-    let lib_rs = emit_lib_rs(&manifest_json, &drop_fns, &wrappers);
+    // PLAN-591 T1:探针导出生成(与 wrapper 同 cdylib 编译——同 rustc 实例,
+    // offset_of!/size_of/align_of 实测即 wrapper 对象真实布局)。装载期
+    // dep_methods::register_pack 读 auto__shim_layouts 合并进 manifest.layouts。
+    let probe_src = emit_probe(&crate_ident, fields, unit_enums);
+
+    let lib_rs = emit_lib_rs(&manifest_json, &drop_fns, &wrappers, &probe_src);
 
     let cargo_toml = format!(
         "# Generated by shim-metadata (plan-430 C1). DO NOT EDIT BY HAND.\n\
@@ -340,7 +422,7 @@ pub fn emit_pack_parts(
     )
 }
 
-fn emit_lib_rs(manifest_json: &str, drop_fns: &str, wrappers: &str) -> String {
+fn emit_lib_rs(manifest_json: &str, drop_fns: &str, wrappers: &str, probe_src: &str) -> String {
     format!(
         "// Generated by shim-metadata (plan-430 C1). DO NOT EDIT BY HAND.\n\
          // 方法 wrapper:裸指针跨 C ABI;对象所有权留在本 cdylib(VM 侧 DepOpaqueObject 持句柄)。\n\
@@ -397,6 +479,7 @@ fn emit_lib_rs(manifest_json: &str, drop_fns: &str, wrappers: &str) -> String {
          \n\
          {drop_fns}\n\
          {wrappers}\n\
+         {probe_src}\n\
          /// shim 包清单(JSON;VM 加载侧解析后注册 dispatch)\n\
          #[no_mangle]\n\
          pub extern \"C\" fn auto__shim_manifest() -> *const c_char {{\n\
@@ -406,7 +489,95 @@ fn emit_lib_rs(manifest_json: &str, drop_fns: &str, wrappers: &str) -> String {
         manifest = manifest_json,
         drop_fns = drop_fns,
         wrappers = wrappers,
+        probe_src = probe_src,
     )
+}
+
+/// PLAN-591 T1:布局探针导出生成。对 manifest 覆盖的每个有 pub 字段/变体的
+/// 类型,以 offset_of!/size_of/align_of 实测布局与 unit-only enum 判别值,
+/// 经 `auto__shim_layouts` 以 JSON 导出(装载期合并进 manifest.layouts)。
+/// 与 wrapper 同 cdylib 编译 → 同 rustc 实例 → 偏移与 wrapper 对象一致。
+/// 空输入时不生成导出(装载侧按缺省容忍,旧版行为兼容)。
+fn emit_probe(
+    crate_ident: &str,
+    fields: &[crate::rustdoc::StructField],
+    unit_enums: &[crate::rustdoc::UnitEnum],
+) -> String {
+    if fields.is_empty() && unit_enums.is_empty() {
+        return String::new();
+    }
+    // 按类型聚合字段(BTreeMap:探针 JSON 按类型名稳定排序)
+    let mut by_type: std::collections::BTreeMap<&str, Vec<&crate::rustdoc::StructField>> =
+        std::collections::BTreeMap::new();
+    for f in fields {
+        by_type.entry(f.type_name.as_str()).or_default().push(f);
+    }
+    let mut type_parts: Vec<String> = Vec::new();
+    for (ty, fs) in &by_type {
+        let full = format!("{crate_ident}::{ty}");
+        let field_parts: Vec<String> = fs
+            .iter()
+            .map(|f| {
+                format!(
+                    "{{\"name\":\"{}\",\"offset\":{{}},\"ty\":\"{}\"}}",
+                    f.name,
+                    f.ty.replace('"', "")
+                )
+            })
+            .collect();
+        let offsets: Vec<String> = fs
+            .iter()
+            .map(|f| format!("std::mem::offset_of!({full}, {}) as u64", f.name))
+            .collect();
+        let size_expr = format!("std::mem::size_of::<{full}>() as u64");
+        let align_expr = format!("std::mem::align_of::<{full}>() as u64");
+        type_parts.push(format!(
+            "\"{ty}\": {{\"size\": {}, \"align\": {}, \"fields\": [{}]}}",
+            size_expr,
+            align_expr,
+            interleave(&field_parts, &offsets),
+        ));
+    }
+    for e in unit_enums {
+        let full = format!("{crate_ident}::{}", e.name);
+        let disc_parts: Vec<String> = e
+            .variants
+            .iter()
+            .map(|v| format!("{{\"name\":\"{v}\",\"value\":{{}}}}"))
+            .collect();
+        let values: Vec<String> = e
+            .variants
+            .iter()
+            .map(|v| format!("{full}::{v} as u64"))
+            .collect();
+        type_parts.push(format!(
+            "\"{}\": {{\"size\": std::mem::size_of::<{full}>() as u64, \"align\": std::mem::align_of::<{full}>() as u64, \"fields\": [], \"enum_discriminants\": [{}]}}",
+            e.name,
+            interleave(&disc_parts, &values),
+        ));
+    }
+    let body = type_parts.join(",");
+    // body 内的 JSON 花括号进 format! 模板必须双写(此占位符已被
+    // interleave 消费,不会误伤);渲染后还原为单花括号 JSON。
+    let escaped = body.replace('{', "{{").replace('}', "}}");
+    format!(
+        "/// PLAN-591 T1: 布局探针(生成器产物;offset_of!/size_of 实测,装载期合并)。\n\
+         #[no_mangle]\n\
+         pub extern \"C\" fn auto__shim_layouts() -> *const c_char {{\n\
+         \x20   let s = CString::new(format!(r#\"{escaped}\"#)).unwrap();\n\
+         \x20   s.into_raw() as *const c_char\n\
+         }}\n"
+    )
+}
+
+/// 模板/表达式交错:模板中首个 `{{}}` 占位替换为表达式,再逗号连接。
+fn interleave(templates: &[String], exprs: &[String]) -> String {
+    templates
+        .iter()
+        .zip(exprs.iter())
+        .map(|(t, e)| t.replacen("{}", e, 1))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn emit_drop_fn(short: &str, full: &str) -> String {
@@ -844,10 +1015,13 @@ mod tests {
                 crate_name: "my_crate".into(),
                 crate_version: "0.1.0".into(),
                 toolchain: "rustc 1.90.0-nightly".into(),
+                features: Vec::new(),
             },
             "my_crate = { path = \"../my_crate\" }",
             &c,
             &Exceptions::default(),
+            &[],
+            &[],
             &[],
         );
         assert_eq!(fp.len(), 16);
@@ -888,10 +1062,11 @@ mod tests {
             crate_name: "my_crate".into(),
             crate_version: "0.1.0".into(),
             toolchain: "t".into(),
+            features: Vec::new(),
         };
         let fp1 = fingerprint(&meta, &c1, &[]);
         let fp2 = fingerprint(
-            &PackMeta { toolchain: "other".into(), ..PackMeta { crate_name: "my_crate".into(), crate_version: "0.1.0".into(), toolchain: "t".into() } },
+            &PackMeta { toolchain: "other".into(), features: Vec::new(), ..PackMeta { crate_name: "my_crate".into(), crate_version: "0.1.0".into(), toolchain: "t".into(), features: Vec::new() } },
             &c1,
             &[],
         );
@@ -917,6 +1092,7 @@ mod tests {
             crate_name: "my_crate".into(),
             crate_version: "0.1.0".into(),
             toolchain: "t".into(),
+            features: Vec::new(),
         };
         let generic_fn = ShimMethod {
             type_name: String::new(),
@@ -940,7 +1116,7 @@ mod tests {
             nullable: false,
             field: None,
         };
-        let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()]);
+        let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()], &[], &[]);
         let man: ShimManifest = serde_json::from_str(&files.manifest_json).unwrap();
         let names: Vec<&str> = man.functions.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, vec!["add_one"], "泛型自由函数必须被过滤");
@@ -963,6 +1139,63 @@ mod tests {
         let fp_p = fingerprint_parts(&meta, &c.plans, &[plain_fn]);
         assert_eq!(fp_gp, fp_p, "泛型函数不得影响指纹");
         assert_ne!(fp_none, fp_p, "非泛型函数仍应影响指纹");
+    }
+
+    #[test]
+    fn probe_generation_with_fields_and_enums() {
+        // PLAN-591 T1:探针源包含 offset_of!/size_of/align_of 实测表达式与
+        // unit-only enum 判别投影;JSON 花括号在 format! 模板中双写转义。
+        let fields = vec![
+            crate::rustdoc::StructField {
+                type_name: "Messy".into(),
+                name: "count".into(),
+                ty: "i64".into(),
+            },
+            crate::rustdoc::StructField {
+                type_name: "Messy".into(),
+                name: "tag".into(),
+                ty: "String".into(),
+            },
+        ];
+        let enums = vec![crate::rustdoc::UnitEnum {
+            name: "Kind".into(),
+            variants: vec!["Circle".into(), "Square".into()],
+        }];
+        let probe = emit_probe("my_crate", &fields, &enums);
+        assert!(probe.contains("fn auto__shim_layouts"));
+        assert!(probe.contains("std::mem::offset_of!(my_crate::Messy, count) as u64"));
+        assert!(probe.contains("std::mem::size_of::<my_crate::Messy>() as u64"));
+        assert!(probe.contains("my_crate::Kind::Circle as u64"));
+        assert!(probe.contains("{{\"name\":\"count\""));
+        // 空输入不生成导出(装载侧缺省容忍)
+        assert!(emit_probe("my_crate", &[], &[]).is_empty());
+        // 字段清单行入指纹:同签名不同字段集 → 指纹必变(V1-6/对抗①机制链)
+        let meta = PackMeta {
+            crate_name: "my_crate".into(),
+            crate_version: "0.1.0".into(),
+            toolchain: "t".into(),
+            features: Vec::new(),
+        };
+        let c = demo_classified();
+        let fp_no_fields = fingerprint_parts_with(&meta, &c.plans, &[], &[], &[]);
+        let fp_fields = fingerprint_parts_with(&meta, &c.plans, &[], &fields, &[]);
+        assert_ne!(fp_no_fields, fp_fields, "字段集变化必须改变指纹");
+        // features 入指纹:同 crate 同签名不同 features → 指纹必变(对抗②)
+        let mut meta_wide = PackMeta {
+            crate_name: "my_crate".into(),
+            crate_version: "0.1.0".into(),
+            toolchain: "t".into(),
+            features: vec!["wide".into()],
+        };
+        let fp_plain = fingerprint_parts_with(&meta, &c.plans, &[], &[], &[]);
+        let fp_wide = fingerprint_parts_with(&meta_wide, &c.plans, &[], &[], &[]);
+        assert_ne!(fp_plain, fp_wide, "features 组合必须改变指纹");
+        // features 书写序不影响指纹(组合等价)
+        meta_wide.features = vec!["wide".into(), "extra".into()];
+        let fp_ab = fingerprint_parts_with(&meta_wide, &c.plans, &[], &[], &[]);
+        meta_wide.features = vec!["extra".into(), "wide".into()];
+        let fp_ba = fingerprint_parts_with(&meta_wide, &c.plans, &[], &[], &[]);
+        assert_eq!(fp_ab, fp_ba, "features 顺序不影响指纹");
     }
 
     #[test]
