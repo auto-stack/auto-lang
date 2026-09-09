@@ -99,25 +99,15 @@ fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
     ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
-/// Accent palette (HSL triplets, aligned with Vue ACCENT_PALETTES + auto-forge).
-fn accent_hsl(name: &str) -> Option<(u16, u8, u8)> {
-    match name {
-        "indigo" => Some((239, 84, 67)),
-        // Plan 503: coral 校准至 stella-os 玫瑰粉 light #c4706a = hsl(4,43%,59%)。
-        // dark 模式走 L+10 → 69%(≈ stella dark #d4847e = hsl(4,50%,66%))。
-        "coral"  => Some((4, 43, 59)),
-        "ocean"  => Some((217, 91, 60)),
-        "sage"   => Some((160, 84, 39)),
-        "amber"  => Some((38, 92, 50)),
-        _ => None,
-    }
-}
+/// Accent palette —— PLAN-593 后单源在 registry（vue TS ACCENT_PALETTES 值
+/// 与 code_editor 派生同源互锁）；本地 `accent_hsl` 副本已删。
 
 // Plan 458: theme preference + accent preset single source. The CLI
 // (`auto run --theme/--accent`), pac.at parsing, VM env injection and the
 // vue index.html generator all validate against / read from here.
 pub const THEME_PREFS: [&str; 2] = ["dark", "light"];
-pub const ACCENT_PRESETS: [&str; 5] = ["indigo", "coral", "ocean", "sage", "amber"];
+/// PLAN-593：预设名单值源自 registry（单一事实源）。
+pub const ACCENT_PRESETS: [&str; 5] = registry::ACCENT_NAMES;
 
 /// Effective theme preference injected by `auto run` (AUTO_UI_THEME env,
 /// validated), or the built-in default "dark". Read by the vue/tauri
@@ -153,7 +143,7 @@ pub fn accent_pref_from_env() -> Option<&'static str> {
 /// generated index.css `.dark --primary`). Consumers: vue index.html inline
 /// bootstrap (Plan 458), code editors, etc.
 pub fn accent_primary_hsl(name: &str, dark: bool) -> Option<String> {
-    let (h, s, l) = accent_hsl(name)?;
+    let (h, s, l) = registry::accent_hsl(name)?;
     let l = if dark { (l + 10).min(85) } else { l };
     Some(format!("{} {}% {}%", h, s, l))
 }
@@ -161,7 +151,7 @@ pub fn accent_primary_hsl(name: &str, dark: bool) -> Option<String> {
 /// Same as `accent_primary_hsl` but as an RGB tuple for native renderers
 /// (iced window palette). Falls back to the caller on None (unknown name).
 pub fn accent_primary_rgb(name: &str, dark: bool) -> Option<(u8, u8, u8)> {
-    let (h, s, l) = accent_hsl(name)?;
+    let (h, s, l) = registry::accent_hsl(name)?;
     let l = if dark { (l + 10).min(85) } else { l };
     Some(hsl_to_rgb(h, s, l))
 }
@@ -188,88 +178,60 @@ pub fn font_stack(kind: &str) -> &'static [&'static str] {
     }
 }
 
+/// PLAN-593（Design 29 §5.4）：`Color` 枚举（VM 侧词表子集）→ registry
+/// TokenName 的投影契约——card/popover/surface 三键在 VM 投影收敛为 Card
+/// （词表全集以 registry 为准）。投影完备性由 plan593 T-c 测试钉死。
+fn color_token(color: &Color) -> Option<registry::TokenName> {
+    use registry::TokenName as T;
+    Some(match color {
+        Color::Secondary => T::Secondary,
+        Color::Background => T::Background,
+        Color::Surface => T::Card,
+        Color::Muted => T::Muted,
+        Color::Error => T::Error,
+        Color::Warning => T::Warning,
+        Color::Success => T::Success,
+        Color::Info => T::Info,
+        Color::OnPrimary => T::PrimaryForeground,
+        Color::OnSecondary => T::SecondaryForeground,
+        Color::OnDestructive => T::DestructiveForeground,
+        Color::OnBackground => T::Foreground,
+        Color::OnSurface => T::MutedForeground,
+        Color::Border => T::Border,
+        // Primary 保持运行时 accent 驱动（accent 降维为主题覆盖层属 Phase 2）；
+        // 调色板/字面量色不在语义域。
+        _ => return None,
+    })
+}
+
 /// Resolve a semantic color to RGB, considering dark mode and accent.
+/// PLAN-593 V2：静态语义色查 registry（stella 单源），零字面 RGB 臂。
 pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
     let is_dark = DARK_MODE.with(|d| d.get());
-    match color {
-        Color::Primary => {
-            // Accent-driven: look up current accent name
-            let name = ACCENT_NAME.with(|n| n.borrow().clone());
-            let (h, s, l) = accent_hsl(&name).unwrap_or((239, 84, 67));
-            // Dark mode: align to vue index.css .dark `--primary: 239 84% 77%` (L=77%)
-            let l_adjusted = if is_dark { (l + 10).min(85) } else { l };
-            Some(hsl_to_rgb(h, s, l_adjusted))
-        }
-        // PLAN-571: secondary 与 muted 分档——shadcn 默认主题原样继承的
-        // secondary==muted 在 default(variant) 落 muted 后令 default/secondary
-        // 两 variant 视觉坍缩。secondary 定为"比 muted 强一档"：
-        // dark slate-700 #334155 (215 25% 27%) / light 暖灰一档深 #e3ddd1 (40 24% 85.5%)。
-        Color::Secondary => {
-            if is_dark { Some((51, 65, 85)) } else { Some((227, 221, 209)) }
-        }
-        // Plan 448 对齐批:暗色语义色从 Tailwind gray 系改为生成端 shadcn
-        // 令牌(index.css .dark)的精确 HSL 换算值 —— 此前 VM 用 gray-900/800
-        // 近似,与 vue 产物的蓝灰调(明暗关系相反:vue 卡片亮于页面)不一致。
-        // --background: 222.2 47.4% 7% / --card: 222.2 47.4% 10%
-        // Plan 518(2026-09-02): stella 双主题重校——dark 深蓝黑面板系
-        // #141a29/--card #1a2235(原 448 shadcn 换算值微调偏蓝黑);
-        // light 从纯白/冷灰翻暖纸系(Background #f5f1e8 暖纸 / Surface
-        // #fbf8f2 卡片微浮),对齐权威参照 AUTHORITATIVE.png 暖纸桌面。
-        Color::Background => {
-            if is_dark { Some((20, 26, 41)) } else { Some((245, 241, 232)) }
-        }
-        // --card: 222.2 47.4% 10%(亮于 --background,与 vue 暗色卡片浮起方向一致)
-        // light 对齐 auto-os-config 基准 #f9f9f9(Win11 风格,2026-08-29 对拍)。
-        Color::Surface => {
-            if is_dark { Some((26, 34, 53)) } else { Some((251, 248, 242)) }
-        }
-        // --muted: 217.2 32.6% 17.5% (dark: slate-800 rgb(30, 41, 59)) / 210 40% 96.1% (light: slate-100 rgb(241, 245, 249))
-        // Plan 518 light 随暖纸系翻暖(#f0ebe2)。
-        Color::Muted => {
-            if is_dark { Some((30, 41, 59)) } else { Some((240, 235, 226)) }
-        }
-        Color::Error => Some((239, 68, 68)),
-        Color::Warning => Some((234, 179, 8)),
-        Color::Success => Some((34, 197, 94)),
-        Color::Info => Some((59, 130, 246)),
-        // Plan 455 对齐批: shadcn-vue 暗色反转主按钮前景色
-        // light: --primary-foreground = 210 40% 98% (白字)
-        // dark: --primary-foreground = 222.2 47.4% 11.2% (黑字 rgb(15, 23, 42))
-        Color::OnPrimary => {
-            if is_dark { Some((15, 23, 42)) } else { Some((248, 250, 252)) }
-        }
-        Color::OnSecondary => {
-            if is_dark { Some((248, 250, 252)) } else { Some((42, 39, 35)) }
-        }
-        Color::OnDestructive => Some((248, 250, 252)),
-        // --foreground: 210 40% 98%
-        // light 对齐 auto-os-config 基准 #1a1a1a / #616161(中灰次级文本)。
-        // Plan 518: light 随暖纸系翻墨色暖黑 #2a2723 / 暖次级 #7d776d
-        // (stella 暖纸前景,对表 AUTHORITATIVE.png)。
-        Color::OnBackground => {
-            if is_dark { Some((248, 250, 252)) } else { Some((42, 39, 35)) }
-        }
-        // --muted-foreground: 215.4 16.3% 65.1%
-        Color::OnSurface => {
-            if is_dark { Some((151, 163, 181)) } else { Some((125, 119, 109)) }
-        }
-        // --border 语义(light #e0e0e0 基准 / dark 对齐 resolve_border_rgb)
-        // Plan 518: light 暖灰 #e3ddd1 / dark 蓝黑系低对比 #283146。
-        Color::Border => {
-            if is_dark { Some((40, 49, 70)) } else { Some((227, 221, 209)) }
-        }
-        _ => None,
+    if let Color::Primary = color {
+        // Accent-driven: look up current accent name
+        let name = ACCENT_NAME.with(|n| n.borrow().clone());
+        let (h, s, l) = registry::accent_hsl(&name).unwrap_or((239, 84, 67));
+        // Dark mode: align to vue index.css .dark `--primary: 239 84% 77%` (L=77%)
+        let l_adjusted = if is_dark { (l + 10).min(85) } else { l };
+        return Some(hsl_to_rgb(h, s, l_adjusted));
     }
+    let token = color_token(color)?;
+    let stella = registry::rgb_builtin("stella")?;
+    registry::resolve_rgb(stella, token, is_dark)
 }
 
 /// Plan 411 P2-A④: vue `border-border` 语义色(shadcn --border 变量)——
-/// light `hsl(240 5.9% 90%)` ≈ zinc-200,dark `hsl(240 3.7% 15.9%)` ≈ zinc-800。
-/// 表格行分隔线等单侧描边使用。
-/// Plan 518: 随 stella 双主题翻暖灰 light #e3ddd1 / 蓝黑 dark #283146
-/// (与 `Color::Border` 保持一致,见 border_resolver_consistent_with_border_token)。
+/// PLAN-593 V2：值改查 registry（stella 表），零字面 RGB。
+/// （历史校准记录：Plan 518 暖灰 light #e3ddd1 / 蓝黑 dark #283146。）
 pub fn resolve_border_rgb() -> (u8, u8, u8) {
     let is_dark = DARK_MODE.with(|d| d.get());
-    if is_dark { (40, 49, 70) } else { (227, 221, 209) }
+    registry::resolve_rgb(
+        registry::rgb_builtin("stella").expect("内置主题 stella 恒在"),
+        registry::TokenName::Border,
+        is_dark,
+    )
+    .expect("stella Border 槽由 plan593 T-c 完备性测试钉死")
 }
 
 #[cfg(test)]
