@@ -209,9 +209,9 @@
 | 模块 | 职责 | 状态 |
 |---|---|---|
 | main | CLI 入口 | active |
-| extractor | 从 Auto AST 提取 FFI 声明 | active |
-| type_map | Auto ↔ C 类型映射 | active |
-| manifest | manifest/头文件输出模型（serde） | active |
+| extractor | 内置 manifest 数据集（标准头 + windows.h console 子集） | active |
+| type_map | Auto ↔ C 类型映射（FnPtr 组合签名，String 返回） | active |
+| manifest | manifest/头文件输出模型（serde；FnPtr + abi） | active |
 
 </details>
 
