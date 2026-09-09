@@ -11,14 +11,16 @@
 //    cargo build → 跑产物。默认关闭,CI 全量档打开(冷构建 1-2min/腿)。
 //
 // 语料:016_dep_abi_matrix(marshalling 全矩阵 + p.a 字段语法)、
-//      017_dep_lifecycle(chain/clone/自由函数)。新增语料向 CASES 登记。
+//      017_dep_lifecycle(chain/clone/自由函数)、
+//      018_dep_fields(PLAN-591:Option nullable/Result fallible/嵌套/enum 判别)。
+// 新增语料向 CASES 登记。
 
 use crate::error::AutoResult;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CASES: &[&str] = &["016_dep_abi_matrix", "017_dep_lifecycle"];
+const CASES: &[&str] = &["016_dep_abi_matrix", "017_dep_lifecycle", "018_dep_fields"];
 
 // =============================================================================
 // 公共骨架
@@ -268,4 +270,9 @@ fn dep_parity_016_dep_abi_matrix() {
 #[test]
 fn dep_parity_017_dep_lifecycle() {
     test_dep_parity("017_dep_lifecycle");
+}
+
+#[test]
+fn dep_parity_018_dep_fields() {
+    test_dep_parity("018_dep_fields");
 }

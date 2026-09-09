@@ -1585,7 +1585,19 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                             return Ok(());
                         }
                     }
-                    vm_print(vm, &format!("<obj:{}>", handle));
+                    if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                        // PLAN-591 D2(DIV-DEP-8 print 半边):dep 对象路由
+                        // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                        let short_type = dep_obj.short_type.clone();
+                        drop(guard);
+                        let text = match crate::vm::ffi::dep_methods::display_string(task, vm, handle, &short_type)? {
+                            Some(t) => t,
+                            None => format!("<obj:{}>", handle),
+                        };
+                        vm_print(vm, &text);
+                    } else {
+                        vm_print(vm, &format!("<obj:{}>", handle));
+                    }
                 }
             } else {
                 vm_print(vm, &format!("<invalid object: {}>", handle));
@@ -1706,6 +1718,16 @@ pub fn shim_print_unified(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     let guard = obj.read().unwrap();
                     if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                         vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                    } else if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                        // PLAN-591 D2(DIV-DEP-8 print 半边):dep 对象路由 shim 包
+                        // Display 合成 to_string;无 Display 面维持占位。
+                        let short_type = dep_obj.short_type.clone();
+                        drop(guard);
+                        let text = match crate::vm::ffi::dep_methods::display_string(task, vm, handle, &short_type)? {
+                            Some(t) => t,
+                            None => format!("<obj:{}>", handle),
+                        };
+                        vm_print(vm, &text);
                     } else {
                         vm_print(vm, &format!("<obj:{}>", handle));
                     }
@@ -1835,8 +1857,30 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                } else if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                    // PLAN-591 D2(DIV-DEP-8 print/write 半边):dep 对象路由
+                    // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                    let short_type = dep_obj.short_type.clone();
+                    drop(guard);
+                    let text = match crate::vm::ffi::dep_methods::display_string(task, vm, handle, &short_type)? {
+                        Some(t) => t,
+                        None => format!("<obj:{}>", handle),
+                    };
+                    vm_print(vm, &text);
                 } else {
-                    vm_print(vm, &format!("<obj:{}>", handle));
+                    if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                        // PLAN-591 D2(DIV-DEP-8 print 半边):dep 对象路由
+                        // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                        let short_type = dep_obj.short_type.clone();
+                        drop(guard);
+                        let text = match crate::vm::ffi::dep_methods::display_string(task, vm, handle, &short_type)? {
+                            Some(t) => t,
+                            None => format!("<obj:{}>", handle),
+                        };
+                        vm_print(vm, &text);
+                    } else {
+                        vm_print(vm, &format!("<obj:{}>", handle));
+                    }
                 }
             } else {
                 vm_print(vm, &format!("<invalid object: {}>", handle));
@@ -1890,6 +1934,16 @@ pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     vm_write(vm, &format_rust_stdlib_obj(rust_obj));
+                } else if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                    // PLAN-591 D2(DIV-DEP-8 print/write 半边):dep 对象路由
+                    // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                    let short_type = dep_obj.short_type.clone();
+                    drop(guard);
+                    let text = match crate::vm::ffi::dep_methods::display_string(task, vm, handle, &short_type)? {
+                        Some(t) => t,
+                        None => format!("<obj:{}>", handle),
+                    };
+                    vm_write(vm, &text);
                 } else {
                     vm_write(vm, &format!("<obj:{}>", handle));
                 }

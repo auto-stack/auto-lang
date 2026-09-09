@@ -21,6 +21,25 @@ bin 为离线 CLI。（注释中"不入 auto-lang 依赖树"的说法已过期�
 | lib | 提取 + 分类 + shim 生成（进程内 API） | active |
 | bin | 离线 CLI 入口 | active |
 
+## PLAN-591：Option nullable 语义 + manifest v2 布局段
+
+- **classify**：三方 `Option<T>` 返回解 skip → nullable（`Some` 压值 / `None`
+  压 null；仅串/句柄槽，标量槽 None→哨兵歧义显式跳过；参数位 Option 显式
+  理由跳过；残缺 Option 拒绝）。`Result` Err→错误通道为方法 wrapper 路径
+  既有能力；自由函数路径未收口（KNOWN-DEBT P591-D2）。
+- **emit_cdylib**：nullable/fallible 组合三臂（`Ok(Some)`/`Ok(None)`/`Err`）；
+  manifest v2（`MANIFEST_FORMAT: 2`，装载侧拒载旧版）新增 `layouts` 段——
+  探针导出 `auto__shim_layouts`（`offset_of!/size_of/align_of` 实测，与
+  wrapper 同 cdylib 编译=同 rustc 实例同布局）；`GENERATOR` v1.3。
+- **指纹（C3）payload 增补**：nullable 位、字段清单行（类型.字段|ty）、
+  unit-only enum 变体行、features 组合行（排序等价）——同签名集异布局/
+  异 features 必异指纹（缓存拒 stale，对抗①②机制链）。
+- **rustdoc**：收集全量 pub 字段清单与 unit-only enum 变体（探针/指纹输入；
+  深模块路径类型仅短名——误径由 methods pack 剔环类型级归因兜底）。
+
+> 来源：PLAN-591（use-rust-any-crate-direct，r1，9b3639122）； Anchor：
+> crates/shim-metadata/src/{classify,types,rustdoc,emit_cdylib}.rs。
+
 ## plans
 
 - **plan-429** aavm B1 shim inventory ✅ archived——shim 存量盘点（reports/429-b1）

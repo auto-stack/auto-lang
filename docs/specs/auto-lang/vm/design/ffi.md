@@ -37,6 +37,27 @@ native 函数注册体系、Rust/C FFI 动态加载、标准库 shim。对应代
   `VMError::FFI`（清晰报错替代 panic/静默误调）；封送循环另有同语义
   防御臂。回调消费走 a2c 后端（闭包→函数指针，Plan 060）。
 
+### dep 方法 shim 包（三方 crate 动态加载）
+
+- **装载与校验**：`dep_methods::register_pack` 解析 cdylib 内嵌
+  `auto__shim_manifest`；**manifest format 校验拒载旧版**（format bump 一键
+  失效，PLAN-591 v2）。布局探针 `auto__shim_layouts` 装载期合并（缺失容忍）。
+- **DepOpaqueObject**：cdylib 堆对象句柄（ptr + 析构符号 + lib 保活）+
+  `layout: Arc<TypeLayout>`（探针实测偏移）。
+- **字段直读直写（PLAN-591 T1）**：GET_FIELD offset 直读优先——标量字段按
+  探针偏移 `read_unaligned` 读 cdylib 堆；String/嵌套句柄等非标量落合成
+  getter 面（592 桥，clone 语义）。SET_FIELD dep 臂标量 `write_unaligned`
+  直写（写穿透 cdylib 堆，Rust 侧读回可见）。写失效/别名语义=KNOWN-DEBT
+  P591-D1（单线程纪律）。
+- **Option/Result 语义（PLAN-591 T2）**：`Option<T>` Some 压值/None 压 null
+  （s/p 槽）；`Result` Err 经 `auto__last_error` 通道转 VMError。
+  `dispatch` 的 `unwrap` 恒等桥：a2r `.unwrap()` 透传（null unwrap 报错）。
+- **Display 路由（DIV-DEP-8 print 半边）**：print/TYPE_TO_STR/write 对 dep
+  对象路由 shim 包合成 to_string（rustdoc 对 impl Display 类型合成）；
+  无 Display 面维持占位。
+- **EQ 数值谓词（DIV-DEP-16 修复）**：`nv_is_numeric`/`nv_as_f64` 补
+  TAG_I64——dep 宽整型返回与字面量相等比较此前恒 false。
+
 ### 内置服务 shim
 
 - `ffi/http_server.rs`、`ffi/websocket.rs` 把 HTTP/WebSocket 服务暴露为 native 函数（plan-312/313/349/350 系列）；任务挂起配合 `waiting_http_request_id`/`waiting_sse_stream_id`（见 concurrency.md）。

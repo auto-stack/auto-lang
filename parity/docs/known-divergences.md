@@ -532,6 +532,39 @@ docs/plans/reports/p594-dep-skip-hit-rate.md。
     use.rs 解析器后续）。
   - 状态: accepted（缓解=两行形态，见本节范式）。锚点: PLAN-594 T7 探针 b1/b2。
 
+- **DIV-DEP-15 — a2r 发射器对 `parse*` 方法名与 `nil` 变量名的启发式劫持。**
+  uuid 1.24 的 `Uuid.parse_str(s) -> Option<Uuid>`（PLAN-591 T2 已使 pack 面
+  nullable 可用）：a2r 轨把 `parse_str` 调用投影为 Result 语义（后续 `== None`
+  比较 E0308 expected Result found Option），且名为 `nil` 的 let 绑定被发射为
+  `None` 字面量（`None.is_nil()` E0599）。VM 轨（T2 语义：Some 压值/None 压
+  null）与 oracle 双侧正常。
+  - 偏差类型: 待修复（发射器需 dep 元数据区分返回 Option/Result；变量名→
+    字面量启发式需收敛；归属 P592-D3 元数据接入族）。
+  - 状态: open。缓解=语料规避（变量避开 nil/None 命名；Option None 断言面
+    留 VM+oracle 双轨、a2r 侧登记）。锚点: libs/dep/uuid_real/README
+    （PLAN-591 T9 勘测）。
+
+- **DIV-DEP-16 — VM EQ/数值谓词漏 TAG_I64 臂（已修复）。**
+  dep 方法返回的宽整型经 push_i64_vm 为 TAG_I64 编码，`nv_is_numeric` 只认
+  f64/f32/i32 → `ver == 4` 恒 false（`ver > 3` 序比较走独立臂正常）——
+  print 直出值正确但相等断言静默失败，正确性陷阱族。PLAN-591 T9 uuid
+  勘测 `get_version_num() == 4` 实勘暴露并当场修复：nv_is_numeric/nv_as_f64
+  补 is_i64 臂（engine.rs）。
+  - 偏差类型: ✅ fixed (2026-09-09, PLAN-591 T9)。锚点: libs/dep/uuid_real
+    （勘测过程探针 /tmp 序列复现已入计划执行记录）。
+
+- **DIV-DEP-17 — dep 声明 version 的 caret 语义漂移使 wrapper 编译失败。**
+  `dep uuid(version: "1.24.0")` 按 cargo caret 语义解析到最新 1.x（实勘
+  1.26.0），其 API 已移除/移动（fmt 适配器 Braced/Hyphenated 迁至深路径），
+  生成器按 rustdoc 短名发 `uuid::Braced` → E0425 整包失败；rustc 剔环从
+  stderr 提不到 `auto_` 符号 → 无法类型级剔除。
+  - 偏差类型: 部分修复——①语料纪律改为**精确 pin** `version: "=1.24.0"`
+    （dep_scanner 原样透传, cargo 精确锁版）；②methods_pack 剔环增类型级
+    归因（`crate::Type` 出现 → auto__drop_<Type> 剔除, type_names_in_crate_errors），
+    深路径类型被剔除后其余面可编译。根修=rustdoc 全路径保真（v53 深模块
+    路径，591 后续/报告在案）。
+  - 状态: accepted(缓解)+partial-fixed。锚点: libs/dep/uuid_real/README。
+
 ## Python Parity Divergences
 
 ### DIV-PY-TUPLE-1: Python tuple flattens to Auto List

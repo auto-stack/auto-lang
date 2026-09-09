@@ -486,6 +486,11 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // capitalization heuristic emits `STANDARD::encode` which cannot
         // compile against a const receiver) — see libs/dep/base64_real.
         ("p10", &["serde_json_real", "regex_real", "url_real", "semver_real"]),
+        // PLAN-591 (non-whitelist pack-face survey): uuid is NOT in
+        // BUILTIN_OPAQUE_CRATES, so its type face goes through the real
+        // compiled methods pack (594's five libs all ride native_catalog for
+        // type faces). Network-gated like p10.
+        ("p11", &["uuid_real"]),
         // Plan 369 (Python parity): three-way parity against a Python oracle
         // (AutoVM vs a2py vs native Python). The mode is auto-detected from the
         // library's `tests/python/` directory by `detect_parity_mode`.

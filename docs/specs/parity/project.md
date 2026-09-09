@@ -31,6 +31,14 @@
   （`AUTO_LANG_PARITY_NET=1` 门控，parity-ci 独立 job + 产物缓存）；
   命中率数据（25 面/绿 8/32%，591 T2 最高杠杆/T3 次之/by-value-self 零命中）
   回填 591（reports/p594-dep-skip-hit-rate.md）。
+- **非白名单 pack 面勘测（PLAN-591）**：`libs/dep/uuid_real/`——uuid 1.24.0
+  **不在 BUILTIN_OPAQUE_CRATES**，类型面全走真编译 methods pack（594 五库
+  类型面皆 native_catalog，本库补 pack 面首个样本）。三绿：parse_str Option
+  nullable（591 T2）+ get_version_num 数值（DIV-DEP-16 修复后）+ print
+  Display（591 D2）。phase p11（`AUTO_LANG_PARITY_NET=1` 门控）。
+  **`=x.y.z` 精确 pin 纪律**（DIV-DEP-17：caret 漂移至 1.26 → API 移除 →
+  wrapper 整包失败）。红面 DIV-DEP-15（a2r parse*/nil 启发式劫持）登记不进
+  TAP；DIV-DEP-16（VM EQ 漏 TAG_I64）当场修复。
 - 不做：不修复编译器分歧本身（修复在 auto-lang）；不纳入主 workspace（独立 Cargo.toml/lock）。
 
 ## 模块架构
