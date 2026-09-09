@@ -37,7 +37,9 @@
 //! **真消费**（外包 View::Scrollable：scroll_top 绑定写入臂 + onscroll
 //! 消息读出臂 + ondetailsclick 折叠回路，EDITOR-CONTRACT §11 在册）。
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use auto_val::{Op, Value};
 
@@ -138,6 +140,13 @@ pub struct AuraViewBuilder<'a> {
     /// 名字匹配后切回 `SlotFills::parent`（父作用域 builder）求值填充。
     /// None = 本层无填充（普通构建路径零变化）。
     slot_fills: Option<&'a SlotFills<'a>>,
+    /// os-007（origin PLAN-577/P530-D1 根因修复）：子件渲染进行中集合。
+    /// 未知 tag 经 widget_registry 折叠兜底（P435 P8-6：剥 `-`/`_`+小写）
+    /// 可命中组件自身名——gallery 页面 `BreadcrumbPage` 的 demo 用
+    /// `breadcrumb-page` tag，fold 后同名，无守卫时无限自递归栈溢出
+    /// （新会话直达 breadcrumb 页 100% 复现）。命中环时渲染 Empty 占位；
+    /// 集合按分支克隆传递，兄弟复用同一 widget 不受影响。
+    active_child_widgets: RefCell<HashSet<String>>,
 }
 
 /// Plan 476: widget 调用位的 slot 填充集。
@@ -263,6 +272,7 @@ impl<'a> AuraViewBuilder<'a> {
             preview_states: None,
             nav_group_states: None,
             slot_fills: None,
+            active_child_widgets: RefCell::new(HashSet::new()),
         }
     }
 
@@ -283,6 +293,7 @@ impl<'a> AuraViewBuilder<'a> {
             preview_states: None,
             nav_group_states: None,
             slot_fills: None,
+            active_child_widgets: RefCell::new(HashSet::new()),
         }
     }
 
@@ -307,6 +318,7 @@ impl<'a> AuraViewBuilder<'a> {
             preview_states: None,
             nav_group_states: None,
             slot_fills: None,
+            active_child_widgets: RefCell::new(HashSet::new()),
         }
     }
 
@@ -5523,6 +5535,10 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
+        // os-007（P530-D1）：环守卫——见 active_child_widgets 字段注记。
+        if self.active_child_widgets.borrow().contains(&child_widget.name) {
+            return View::Empty;
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
@@ -5548,6 +5564,11 @@ let tabs_inner = View::Row {
             preview_states: self.preview_states,
             nav_group_states: self.nav_group_states,
             slot_fills,
+            active_child_widgets: {
+                let mut active = self.active_child_widgets.borrow().clone();
+                active.insert(child_widget.name.clone());
+                RefCell::new(active)
+            },
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -5574,6 +5595,10 @@ let tabs_inner = View::Row {
         probe: &mut BuildProbe,
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
+        // os-007（P530-D1）：环守卫——见 active_child_widgets 字段注记。
+        if self.active_child_widgets.borrow().contains(&child_widget.name) {
+            return View::Empty;
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
@@ -5592,6 +5617,11 @@ let tabs_inner = View::Row {
             preview_states: self.preview_states,
             nav_group_states: self.nav_group_states,
             slot_fills,
+            active_child_widgets: {
+                let mut active = self.active_child_widgets.borrow().clone();
+                active.insert(child_widget.name.clone());
+                RefCell::new(active)
+            },
         };
 
         child_builder.convert_node_tracked_ctx(

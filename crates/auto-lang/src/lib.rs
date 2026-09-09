@@ -6663,6 +6663,11 @@ mod plan510_pool_tests;
 #[path = "tests/plan577_avatar_tests.rs"]
 mod plan577_avatar_tests;
 
+// os-007（origin PLAN-577/P530-D1）：widget 自名折叠环守卫回归。
+#[cfg(test)]
+#[path = "tests/plan577_breadcrumb_cycle_tests.rs"]
+mod plan577_breadcrumb_cycle_tests;
+
 // P499-6 清偿:widgets-gallery 全页可编译冒烟(lib 级,入日常门禁)。
 #[cfg(test)]
 #[path = "tests/gallery_pages_compile_tests.rs"]
