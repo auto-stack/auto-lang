@@ -219,7 +219,7 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
         return Some(hsl_to_rgb(h, s, l_adjusted));
     }
     let token = color_token(color)?;
-    let stella = registry::rgb_builtin("stella")?;
+    let stella = registry::builtin("stella")?;
     registry::resolve_rgb(stella, token, is_dark)
 }
 
@@ -229,7 +229,7 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
 pub fn resolve_border_rgb() -> (u8, u8, u8) {
     let is_dark = DARK_MODE.with(|d| d.get());
     registry::resolve_rgb(
-        registry::rgb_builtin("stella").expect("内置主题 stella 恒在"),
+        registry::builtin("stella").expect("内置主题 stella 恒在"),
         registry::TokenName::Border,
         is_dark,
     )

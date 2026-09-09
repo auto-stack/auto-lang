@@ -15565,8 +15565,8 @@ export function cn(...inputs: ClassValue[]) {
 	    /// PLAN-593 V1：色变量块整体取自 registry（zinc）单一事实源，
 	    /// 本函数零手写色值（--radius/--card-shadow 为非色 token，留脚手架）。
 	    pub fn generate_base_css() -> String {
-	        let zinc = crate::design_tokens::registry::css_builtin("zinc")
-	            .expect("内置主题 zinc 恒在（PLAN-593 registry 单源）");
+	        let zinc = crate::design_tokens::registry::builtin("zinc")
+	            .expect("内置主题 zinc 恒在（PLAN-601 registry 双面单源）");
 	        let mut css = String::new();
 	        css.push_str(r##"@tailwind base;
 @tailwind components;
@@ -15575,7 +15575,7 @@ export function cn(...inputs: ClassValue[]) {
 @layer base {
   :root {
 "##);
-	        css.push_str(zinc.light.core);
+	        css.push_str(&crate::design_tokens::registry::render_core(zinc, false));
 	        css.push_str(r##"    --radius: 0.5rem;
 
     /* Plan 360: card shadows — deeper in dark mode */
@@ -15584,7 +15584,7 @@ export function cn(...inputs: ClassValue[]) {
 
   .dark {
 "##);
-	        css.push_str(zinc.dark.core);
+	        css.push_str(&crate::design_tokens::registry::render_core(zinc, true));
 	        css.push_str(r##"
     /* Plan 360: deeper shadows in dark mode for visual depth */
     --card-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);

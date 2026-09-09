@@ -106,13 +106,21 @@ fn zero_drift_accent_presets() {
     }
 }
 
-/// T-b：`generate_base_css()` 全文金样（S5 V1 改造的逐字节零漂移证明）。
-/// 金样 = 迁移前模板逐字提取（tests/fixtures/plan593/base_css.golden）。
+/// T-b（PLAN-601 T-02 升级 value-pinned）：canonical 布局归一后，
+/// `generate_base_css()` 的「变量名→值」对与 Phase 1 逐字金样
+/// （tests/fixtures/plan593/base_css.golden，留作基线参照）逐对相等。
+fn var_pairs(css: &str) -> Vec<(String, String)> {
+    css.lines()
+        .filter_map(|l| l.trim().strip_prefix("--"))
+        .filter_map(|l| l.split_once(':'))
+        .map(|(k, v)| (k.to_string(), v.trim().trim_end_matches(';').to_string()))
+        .collect()
+}
 #[test]
-fn base_css_golden() {
-    let css = crate::ui_gen::vue::VueGenerator::generate_base_css();
-    let golden = include_str!("../tests/fixtures/plan593/base_css.golden");
-    assert_eq!(css, golden, "generate_base_css 输出与迁移前金样不一致");
+fn base_css_values_match_p1_baseline() {
+    let old = include_str!("../tests/fixtures/plan593/base_css.golden");
+    let new = crate::ui_gen::vue::VueGenerator::generate_base_css();
+    assert_eq!(var_pairs(&old), var_pairs(&new), "canonical 归一后 base_css 值对漂移");
 }
 
 // ── S8 T-c：词表封闭性/投影完备性 ─────────────────────────────────────
@@ -175,10 +183,10 @@ fn t_c_projection_complete_in_stella() {
 /// builtin 查找的未知名封闭性 + accent 名单值源委托。
 #[test]
 fn t_c_builtins_closed() {
-    assert!(registry::css_builtin("zinc").is_some());
-    assert!(registry::css_builtin("scaffold").is_some());
-    assert!(registry::css_builtin("nonsense").is_none());
-    assert!(registry::rgb_builtin("stella").is_some());
-    assert!(registry::rgb_builtin("zinc").is_none(), "zinc 无 VM 面（CSS-only）");
+    // PLAN-601 T-02 后五主题统一 builtin（双面），zinc 亦有 VM 面。
+    for name in registry::BUILTIN_NAMES {
+        assert!(registry::builtin(name).is_some(), "{name} 应在内置表");
+    }
+    assert!(registry::builtin("nonsense").is_none());
     assert_eq!(theme::ACCENT_PRESETS, registry::ACCENT_NAMES);
 }

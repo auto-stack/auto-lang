@@ -1207,8 +1207,9 @@ fn generate_app_vue(vue_code: &str) -> String {
 /// 本函数零手写色值（--radius 为非色 token，留脚手架；dark 块无 --radius 沿
 /// 原 CSS 继承语义）。sidebar 族块经 extra 槽拼接。
 fn generate_index_css() -> String {
-    let scaffold = auto_lang::ui::style::theme::registry::css_builtin("scaffold")
-        .expect("内置主题 scaffold 恒在（PLAN-593 registry 单源）");
+    use auto_lang::ui::style::theme::registry;
+    let scaffold = registry::builtin("scaffold")
+        .expect("内置主题 scaffold 恒在（PLAN-601 registry 双面单源）");
     let mut css = String::new();
     css.push_str(r##"@tailwind base;
 @tailwind components;
@@ -1217,20 +1218,20 @@ fn generate_index_css() -> String {
 @layer base {
   :root {
 "##);
-    css.push_str(scaffold.light.core);
+    css.push_str(&registry::render_core(scaffold, false));
     css.push_str(r##"
     --radius: 0.5rem;
 
 "##);
-    css.push_str(scaffold.light.extra);
+    css.push_str(&registry::render_sidebar(scaffold, false));
     css.push_str(r##"  }
 
   .dark {
 "##);
-    css.push_str(scaffold.dark.core);
+    css.push_str(&registry::render_core(scaffold, true));
     css.push_str(r##"
 "##);
-    css.push_str(scaffold.dark.extra);
+    css.push_str(&registry::render_sidebar(scaffold, true));
     css.push_str(r##"  }
 }
 
@@ -7279,16 +7280,22 @@ mod plan571_css_secondary_interlock_tests {
 }
 
 
-// ── PLAN-593: index.css 全文金样（V1 改造零漂移证明，先钉后改）────────
+// ── PLAN-593 立金样 → PLAN-601 T-02 升级 value-pinned ─────────────────
 #[cfg(test)]
 mod plan593_index_css_golden_tests {
-    /// `generate_index_css()` 输出与迁移前模板逐字提取的金样逐字节相等。
-    /// 金样 = crates/auto-man/tests/fixtures/plan593_index_css.golden
-    /// （2026-09-09 master 基线；PLAN-571 的 --secondary 分档值包含在内）。
+    /// canonical 布局归一后，「变量名→值」对与 Phase 1 逐字金样逐对相等
+    /// （金样留作基线参照：tests/fixtures/plan593_index_css.golden）。
+    fn var_pairs(css: &str) -> Vec<(String, String)> {
+        css.lines()
+            .filter_map(|l| l.trim().strip_prefix("--"))
+            .filter_map(|l| l.split_once(':'))
+            .map(|(k, v)| (k.to_string(), v.trim().trim_end_matches(';').to_string()))
+            .collect()
+    }
     #[test]
-    fn index_css_golden() {
+    fn index_css_values_match_p1_baseline() {
         let css = super::generate_index_css();
         let golden = include_str!("../tests/fixtures/plan593_index_css.golden");
-        assert_eq!(css, golden, "generate_index_css 输出与迁移前金样不一致");
+        assert_eq!(var_pairs(golden), var_pairs(&css), "canonical 归一后 index.css 值对漂移");
     }
 }
