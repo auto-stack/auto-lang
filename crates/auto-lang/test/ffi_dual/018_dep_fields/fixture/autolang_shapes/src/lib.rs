@@ -148,3 +148,23 @@ impl std::fmt::Display for Messy {
         )
     }
 }
+
+/// features 变体(对抗②):width 字段型随 features 组合切换——
+/// 同 crate 异 features → 字段型/布局不同 → 指纹必变 → 重建;
+/// 宽窄字段对同一构造实参呈现不同值(陈旧复用当场暴露)。
+pub struct FeatCfg {
+    #[cfg(not(feature = "wide"))]
+    pub width: i32,
+    #[cfg(feature = "wide")]
+    pub width: i64,
+    pub note: String,
+}
+
+impl FeatCfg {
+    pub fn new(total: i64, note: &str) -> Self {
+        Self {
+            width: total as _,
+            note: note.to_string(),
+        }
+    }
+}

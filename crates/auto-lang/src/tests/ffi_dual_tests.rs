@@ -398,3 +398,87 @@ print(p.x)"#,
     // 标量槽 nullable 显式跳过(哨兵歧义,V1 已知限制):Option<i64> 面不进包
     // (fixture 无该面;017 的 maybe(-> Option<i64>) 负面断言已覆盖同一守卫路径)
 }
+
+// PLAN-591 T8: 布局不变量对抗测试(019)。
+// 对抗①孪生 fixture:autolang_shapes_b 与 autolang_shapes 的 Messy 同类型名/
+// 同方法签名集,异字段声明序 + 异哨兵(a=9/b=13 vs a=7/b=11)——连续装载下
+// offset 直读必须各自读回各自真值;布局信息混淆(陈旧 pack 复用/layouts 串键)
+// 即当场暴露。对抗②features 变体:FeatCfg.width 字段型随 features 组合切换
+// (i32/i64),同构造实参在宽窄变体呈现不同值;指纹含 features 行(排序等价),
+// 异变体必异指纹 → 各自重建。V1-6 的同 crate 源码变更 stale 防护由
+// auto-cache source-hash 通道单测覆盖(path_source_staleness_detection)。
+#[test]
+fn ffi_dual_019_dep_layout_invariants() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let ffi = d.join("test/ffi_dual").to_string_lossy().replace('\\', "/");
+    let src_of = |dep_line: &str, imports: &str, body: &str| {
+        format!("{dep_line}\nuse.rs {imports}\nfn main() {{\n{body}\n}}\n")
+    };
+
+    // 对抗②(features):窄变体(无 features)——width: i32 对 5000000000 截断
+    let narrow = src_of(
+        &format!(
+            "dep autolang_shapes(path: \"{ffi}/018_dep_fields/fixture/autolang_shapes\")"
+        ),
+        "autolang_shapes::{FeatCfg}",
+        r#"    let f = FeatCfg.new(5000000000, "narrow")
+    print(f.width)"#,
+    );
+    let (_, out) = crate::run_with_capture(&narrow).expect("FeatCfg narrow runs");
+    assert_eq!(out.trim(), "705032704", "narrow variant: i32 wraparound pin");
+
+    // 对抗②(features):宽变体(features: ["wide"])——width: i64 全值保留。
+    // 若异 features 共用陈旧 pack(指纹未含 features),此处会拿到 705032704。
+    let wide = src_of(
+        &format!(
+            "dep autolang_shapes(path: \"{ffi}/018_dep_fields/fixture/autolang_shapes\", features: [\"wide\"])"
+        ),
+        "autolang_shapes::{FeatCfg}",
+        r#"    let f = FeatCfg.new(5000000000, "wide")
+    print(f.width)"#,
+    );
+    let (_, out) = crate::run_with_capture(&wide).expect("FeatCfg wide runs");
+    assert_eq!(out.trim(), "5000000000", "wide variant: i64 full value pin");
+
+    // 对抗①(孪生):先 _b 后 shapes 连续装载,各自读回各自哨兵。
+    // 若两 crate 的 layouts/方法面混淆,offset 直读返回对方真值。
+    let twin_b = src_of(
+        &format!(
+            "dep autolang_shapes_b(path: \"{ffi}/019_dep_layout_invariants/fixture/autolang_shapes_b\")"
+        ),
+        "autolang_shapes_b::{Messy}",
+        r#"    let m = Messy.new(1000, "beta", false)
+    print(m.a)
+    print(m.b)
+    print(m.total)
+    print(m.flag)"#,
+    );
+    let (_, out) = crate::run_with_capture(&twin_b).expect("twin _b runs");
+    assert_eq!(
+        out.trim(),
+        "9\n13\n1000\nfalse",
+        "twin _b truth (异字段序偏移正确性)"
+    );
+
+    let twin_a = src_of(
+        &format!(
+            "dep autolang_shapes(path: \"{ffi}/018_dep_fields/fixture/autolang_shapes\")"
+        ),
+        "autolang_shapes::{Messy}",
+        r#"    let m = Messy.new(1000, "alpha", true)
+    print(m.a)
+    print(m.b)
+    print(m.total)
+    print(m.flag)"#,
+    );
+    let (_, out) = crate::run_with_capture(&twin_a).expect("twin a runs");
+    assert_eq!(
+        out.trim(),
+        "7\n11\n1000\ntrue",
+        "twin a truth(与 _b 同进程先后装载,布局各归各)"
+    );
+}

@@ -61,7 +61,20 @@ impl DepSource {
     /// Generate the Cargo.toml dependency line
     pub fn to_cargo_line(&self, crate_name: &str) -> String {
         if let Some(ref path) = self.path {
-            format!(r#"{crate_name} = {{ path = "{path}" }}"#)
+            // PLAN-591 对抗②:path 源同样渲染 features——此前漏发使
+            // `dep fx(path, features: ["wide"])` 的 wrapper 实际按窄特性编译,
+            // cfg 字段变体永不生效(指纹含 features 行但产物不异)。
+            if self.features.is_empty() {
+                format!(r#"{crate_name} = {{ path = "{path}" }}"#)
+            } else {
+                let feats = self
+                    .features
+                    .iter()
+                    .map(|f| format!("\"{f}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(r#"{crate_name} = {{ path = "{path}", features = [{feats}] }}"#)
+            }
         } else if let Some(ref git) = self.git {
             let mut parts = vec![format!(r#"git = "{git}""#)];
             if let Some(ref r) = self.git_ref {

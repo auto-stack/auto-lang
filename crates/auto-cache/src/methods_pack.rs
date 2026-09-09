@@ -302,10 +302,12 @@ impl Sandbox {
         std::fs::write(build_dir.join("manifest.json"), &files.manifest_json)?;
         std::fs::write(build_dir.join("signatures.json"), &files.signatures_json)?;
         std::fs::write(build_dir.join("rules.json"), &files.rules_json)?;
-        // PLAN-591 T1:成功构建后记录 path 源内容 hash(快路径 stale 检测用)
+        // PLAN-591 T1:成功构建后记录 path 源内容 hash + features 组合
+        // (快路径 stale 检测用;features 入键=对抗②:异 features 必异记录 → 重建)
         if let Some(p) = &source.path {
             if let Some(hash) = path_source_hash(Path::new(p)) {
-                let _ = std::fs::write(build_dir.join("source_hash.txt"), hash.to_string());
+                let key = staleness_key(hash, &source.features);
+                let _ = std::fs::write(build_dir.join("source_hash.txt"), key);
             }
         }
 
@@ -469,14 +471,23 @@ fn path_source_hash(path: &Path) -> Option<u64> {
 fn path_source_is_stale(sandbox_root: &Path, crate_name: &str, source: &DepSource) -> bool {
     let Some(p) = &source.path else { return false };
     let Some(current) = path_source_hash(Path::new(p)) else { return false };
+    let key = staleness_key(current, &source.features);
     let recorded = sandbox_root
         .join("builds")
         .join(Sandbox::methods_wrapper_name(crate_name))
         .join("source_hash.txt");
     match std::fs::read_to_string(&recorded) {
-        Ok(s) => s.trim() != current.to_string(),
+        Ok(s) => s.trim() != key,
         Err(_) => false,
     }
+}
+
+/// stale 记录键:path 源内容 hash + 排序后的 features 组合(对抗②:
+/// 同源码异 features 的两次装载必须各自重建)。
+fn staleness_key(path_hash: u64, features: &[String]) -> String {
+    let mut f = features.to_vec();
+    f.sort();
+    format!("{:016x}:{}", path_hash, f.join(","))
 }
 
 /// 用 cargo metadata 查询构建目录中 crate **解析后的真实版本**。
@@ -575,6 +586,45 @@ mod tests {
             resolved_crate_version(Path::new("cargo"), &tmp, "whatever"),
             None
         );
+    }
+
+    #[test]
+    fn path_source_staleness_detection() {
+        // PLAN-591 T8(V1-6):path 源内容 hash 的 stale 检测——同 crate 源码
+        // 变更(不改签名)即判 stale;未记录(首建)不误判。
+        use std::fs;
+        let tmp = std::env::temp_dir().join("plan591_stale_probe");
+        let _ = fs::remove_dir_all(&tmp);
+        let src = tmp.join("fixture/src");
+        // 跨跑残留清理(上次运行结束态的记录会污染首断言)
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&src).unwrap();
+        fs::write(tmp.join("fixture/Cargo.toml"), "[package]
+name = \"fx\"
+").unwrap();
+        fs::write(src.join("lib.rs"), "pub struct S { pub a: i64 }
+").unwrap();
+        let root = tmp.join("sandbox");
+        let dep_source = crate::sandbox::DepSource {
+            version: None,
+            features: Vec::new(),
+            git: None,
+            git_ref: None,
+            path: Some(tmp.join("fixture").to_string_lossy().into_owned()),
+        };
+        // 首建前无记录:不误判 stale(降级姿态)
+        assert!(!super::path_source_is_stale(&root, "fx", &dep_source));
+        // 记录 hash 后:未变更 → 不 stale(记录端与比较端同用 staleness_key)
+        let hash = super::path_source_hash(Path::new(&tmp.join("fixture"))).unwrap();
+        let rec = root.join("builds").join("fx_methods_wrapper").join("source_hash.txt");
+        fs::create_dir_all(rec.parent().unwrap()).unwrap();
+        fs::write(&rec, super::staleness_key(hash, &[])).unwrap();
+        assert!(!super::path_source_is_stale(&root, "fx", &dep_source));
+        // 源码变更(加字段,签名不变)→ stale
+        fs::write(src.join("lib.rs"), "pub struct S { pub a: i64, pub b: u8 }
+").unwrap();
+        assert!(super::path_source_is_stale(&root, "fx", &dep_source), "source change must be detected as stale");
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

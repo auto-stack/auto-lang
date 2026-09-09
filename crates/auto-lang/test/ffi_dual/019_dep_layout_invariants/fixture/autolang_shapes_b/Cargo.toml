@@ -2,12 +2,8 @@
 # Option/Result 返回、enum 判别、&mut 变异。三轨(VM pack/a2r/oracle)共享。
 # 独立工作区:不加入 auto-lang 的 workspace(同 016 fixture 布局)。
 [package]
-name = "autolang_shapes"
+name = "autolang_shapes_b"
 version = "0.1.0"
 edition = "2021"
-
-[features]
-# PLAN-591 对抗②:width 字段型切换特性(依赖侧 features 请求需显式声明)
-wide = []
 
 [workspace]
