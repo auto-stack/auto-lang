@@ -136,8 +136,9 @@ render_not_in_rs	aside
 render_not_in_rs	audio
 render_not_in_rs	autodowneditor
 render_not_in_rs	avatar
+render_not_in_rs	avatar-fallback
+render_not_in_rs	avatar-image
 render_not_in_rs	btn
-render_not_in_rs	canvas
 render_not_in_rs	category-section
 render_not_in_rs	category_section
 render_not_in_rs	center
@@ -212,7 +213,6 @@ render_not_in_rs	sidebar_inset
 render_not_in_rs	sidebar_menu_action
 render_not_in_rs	sidebar_menu_badge
 render_not_in_rs	sidebar_menu_sub
-render_not_in_rs	sidebar_menu_sub_button
 render_not_in_rs	sidebar_menu_sub_item
 render_not_in_rs	sidebar_separator
 render_not_in_rs	skeleton
@@ -243,8 +243,9 @@ render_not_in_vb	accordion-item
 render_not_in_vb	accordion-trigger
 render_not_in_vb	alert
 render_not_in_vb	audio
+render_not_in_vb	avatarfallback
+render_not_in_vb	avatarimage
 render_not_in_vb	breadcrumb
-render_not_in_vb	canvas
 render_not_in_vb	card
 render_not_in_vb	category-section
 render_not_in_vb	category_section
@@ -473,6 +474,8 @@ rs_not_in_vb	autocomplete_empty
 rs_not_in_vb	autocomplete_input
 rs_not_in_vb	autocomplete_item
 rs_not_in_vb	autocomplete_list
+rs_not_in_vb	avatarfallback
+rs_not_in_vb	avatarimage
 rs_not_in_vb	blockquote
 rs_not_in_vb	breadcrumb
 rs_not_in_vb	breadcrumb_item
@@ -786,6 +789,8 @@ vb_not_in_rs	article
 vb_not_in_rs	aside
 vb_not_in_rs	autodowneditor
 vb_not_in_rs	avatar
+vb_not_in_rs	avatar-fallback
+vb_not_in_rs	avatar-image
 vb_not_in_rs	b
 vb_not_in_rs	btn
 vb_not_in_rs	center
@@ -915,7 +920,6 @@ vb_not_in_rs	sidebar_inset
 vb_not_in_rs	sidebar_menu_action
 vb_not_in_rs	sidebar_menu_badge
 vb_not_in_rs	sidebar_menu_sub
-vb_not_in_rs	sidebar_menu_sub_button
 vb_not_in_rs	sidebar_menu_sub_item
 vb_not_in_rs	sidebar_separator
 vb_not_in_rs	small
@@ -1047,7 +1051,6 @@ vue_mt0_not_in_rs	section
 vue_mt0_not_in_rs	select
 vue_mt0_not_in_rs	sidebar-menu-button
 vue_mt0_not_in_rs	sidebar-menu-sub-button
-vue_mt0_not_in_rs	sidebar_menu_sub_button
 vue_mt0_not_in_rs	slider
 vue_mt0_not_in_rs	spinner
 vue_mt0_not_in_rs	square

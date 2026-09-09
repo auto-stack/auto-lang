@@ -1,0 +1,26 @@
+/// semver_real 绿面——真三方 semver 动态加载（PLAN-594）。
+dep semver(version: "1.0.26")
+use.rs semver::Version
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn main() {
+    let v = Version.parse("1.2.3").unwrap()
+    if v.major == 1 {
+        tap_ok(1, "parse_major")
+    } else {
+        print("not ok 1 - parse_major")
+    }
+    if v.minor == 2 {
+        tap_ok(2, "parse_minor")
+    } else {
+        print("not ok 2 - parse_minor")
+    }
+    if v.patch == 3 {
+        tap_ok(3, "parse_patch")
+    } else {
+        print("not ok 3 - parse_patch")
+    }
+}

@@ -221,7 +221,7 @@ AutoDown block editor (plan 019 Phase 3 shell; @autodown/engine AutoDownEditor o
 
 ### `avatar`
 
-`builtin_widget` · `avatar` · web: `component` · iced: `partial` · category: `content`
+`builtin_widget` · `avatar` · web: `component` · iced: `full` · category: `content`
 
 [demo →](/examples/widgets-gallery/avatar)
 
@@ -296,24 +296,6 @@ A clickable button element
 | `variant` | `one_of: default|secondary|destructive|outline|ghost|link|submit` | default | Visual style variant; \\ |
 | `size` | `one_of: sm|default|lg|icon` | default | Button size |
 | `icon` | `string` | — | Icon name shown alongside the label |
-
----
-
-### `canvas`
-
-`builtin_widget` · `canvas` · web: `native` · iced: `full` · category: `media`
-
-State-driven drawing canvas (Plan 563). Content renders from the scene state binding - scene: .strokes binds a state PREFIX; the engine reads the parallel-string-list stroke model from &lt;prefix&gt;_pts (per-stroke point list \
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `scene` | `state_ref` | — | Stroke-scene state binding (list of polylines; the canvas content is fully derived from this state - render is a pure function of it) |
-| `coords` | `string` | — | Logical extent \ |
-| `clear` | `string` | — | Optional background color (CSS color syntax); eraser strokes render as background-color strokes in v1 (no true compositing removal) |
-| `onpenstart` | `msg_ref` | — | Pen down on the canvas; handler receives (x, y) float logical coords |
-| `onpenmove` | `msg_ref` | — | Pen drag while pressed - dispatched only during pen-down (gating lives in the engine, &lt;=30Hz throttled like mouse-area onmousemove); handler receives (x, y) |
-| `onpenend` | `msg_ref` | — | Pen up or pen leaving the canvas bounds (leaving-the-bounds ends the stroke on both backends); handler receives (x, y) |
-| `class` | `union: string|class_binding` | — | CSS class(es) (size/border/rounded land on the canvas frame) |
 
 ---
 
@@ -430,6 +412,112 @@ Horizontal or vertical divider line
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 | `direction` | `one_of: horizontal|vertical` | horizontal | Divider direction |
+
+---
+
+### `drawer`
+
+`builtin_widget` · `drawer` · web: `component` · iced: `unknown` · category: `overlay`
+
+[demo →](/examples/widgets-gallery/drawer)
+
+Drawer container (Vaul)
+
+别名:`Drawer`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `open` | `state_ref` | — | Open state binding |
+| `direction` | `one_of: left|right|top|bottom` | bottom | Drawer direction |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+子件:`drawer_content` `drawer_description` `drawer_footer` `drawer_header` `drawer_title` `drawer_trigger`
+
+---
+
+### `drawer_content`
+
+`builtin_widget` · `drawer_content` · web: `component` · iced: `unknown` · category: `overlay`
+
+Drawer content
+
+别名:`drawer-content` `drawercontent`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `drawer_description`
+
+`builtin_widget` · `drawer_description` · web: `component` · iced: `unknown` · category: `overlay`
+
+Drawer description
+
+别名:`drawer-description` `drawerdescription`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Description text |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `drawer_footer`
+
+`builtin_widget` · `drawer_footer` · web: `component` · iced: `unknown` · category: `overlay`
+
+Drawer footer
+
+别名:`drawer-footer` `drawerfooter`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `drawer_header`
+
+`builtin_widget` · `drawer_header` · web: `component` · iced: `unknown` · category: `overlay`
+
+Drawer header
+
+别名:`drawer-header` `drawerheader`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `drawer_title`
+
+`builtin_widget` · `drawer_title` · web: `component` · iced: `unknown` · category: `overlay`
+
+Drawer title
+
+别名:`drawer-title` `drawertitle`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Title text |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `drawer_trigger`
+
+`builtin_widget` · `drawer_trigger` · web: `component` · iced: `unknown` · category: `overlay`
+
+Drawer trigger
+
+别名:`drawer-trigger` `drawertrigger`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `as_child` | `bool` | false | Use child as trigger |
 
 ---
 
@@ -589,6 +677,55 @@ _props 待声明_
 
 ---
 
+### `hover_card`
+
+`builtin_widget` · `hover_card` · web: `component` · iced: `unknown` · category: `overlay`
+
+[demo →](/examples/widgets-gallery/hovercard)
+
+Hover card container
+
+别名:`HoverCard` `hover-card` `hovercard`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `open` | `state_ref` | — | Open state binding |
+| `open_delay` | `int` | 0 | Open delay (ms) |
+| `close_delay` | `int` | 300 | Close delay (ms) |
+
+子件:`hover_card_content` `hover_card_trigger`
+
+---
+
+### `hover_card_content`
+
+`builtin_widget` · `hover_card_content` · web: `component` · iced: `unknown` · category: `overlay`
+
+Hover card content
+
+别名:`hover-card-content` `hovercard-content` `hovercardcontent`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `side` | `one_of: top|right|bottom|left` | bottom | Content position |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `hover_card_trigger`
+
+`builtin_widget` · `hover_card_trigger` · web: `component` · iced: `unknown` · category: `overlay`
+
+Hover card trigger
+
+别名:`hover-card-trigger` `hovercard-trigger` `hovercardtrigger`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `as_child` | `bool` | false | Use child as trigger |
+
+---
+
 ### `i`
 
 `builtin_widget` · `i` · web: `none` · iced: `unknown` · category: `content`
@@ -636,23 +773,24 @@ Image display
 
 `builtin_widget` · `imagesurface` · web: `component` · iced: `full` · category: `media`
 
-Asynchronous image viewer surface
+Backend-neutral image surface (Plan 547): media ticket URI + interactive transform state; renders published renditions only (vue img + pointer synthesis / iced widget), never does file I/O or decode on the UI thread.
 
 别名:`ImageSurface` `image-surface` `image_surface`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `src` | `string` | — | Media ticket URI |
+| `src` | `string` | — | Media ticket URI (/api/__auto/media/{id}/{revision}) |
 | `alt` | `string` |  | Alt text |
 | `width` | `int` | 0 | Viewport width |
 | `height` | `int` | 0 | Viewport height |
 | `quality` | `int` | 90 | Rendition quality |
-| `fit` | `one_of: contain|width|one-to-one|free` | contain | Viewport fit policy |
-| `zoom` | `float` | 1.0 | Viewport zoom |
-| `offset_x` | `float` | 0.0 | Horizontal pan offset |
-| `offset_y` | `float` | 0.0 | Vertical pan offset |
-| `rotation` | `int` | 0 | Clockwise rotation in degrees |
-| `filter` | `string` | none | Sampling filter |
+| `fit` | `string` | contain | contain|width|one-to-one|free |
+| `zoom` | `float` | 1 | Zoom factor (0.05-64) |
+| `offset_x` | `float` | 0 | Pan offset x |
+| `offset_y` | `float` | 0 | Pan offset y |
+| `rotation` | `int` | 0 | Display rotation degrees |
+| `filter` | `string` | none | Render filter |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -806,6 +944,73 @@ Native HTML button escape (bypasses button-to-Button mapping)
 | `onclick` | `msg_ref` | — | Message to send when clicked |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 | `disabled` | `bool` | false | Whether button is disabled |
+
+---
+
+### `nav`
+
+`builtin_widget` · `nav` · web: `native` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`Nav`
+
+_props 待声明_
+
+---
+
+### `nav-group`
+
+`builtin_widget` · `nav-group` · web: `component` · iced: `full` · category: `navigation`
+
+Navigation group: label header + item column, optionally collapsible (Plan 482)
+
+别名:`NavGroup` `nav_group` `navgroup`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `string` | — | Group header label |
+| `collapsible` | `bool` | false | Header is clickable to fold/unfold (chevron indicator) |
+| `open` | `expr` | — | Fold state binding; defaults true. Unbound + collapsible uses built-in per-group state |
+| `ontoggle` | `msg_ref` | — | Message on header click (when bound); otherwise built-in state toggles |
+| `indent` | `bool` | false | Indent member items (tree feel, pl-3) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `nav-item`
+
+`builtin_widget` · `nav-item` · web: `component` · iced: `full` · category: `navigation`
+
+Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link
+
+别名:`NavItem` `nav_item` `navitem`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `to` | `string` | — | Route address (router mode): vue RouterLink updates the hash URL; VM dispatches __navigate to __current_route. Wins over onclick when both given |
+| `onclick` | `msg_ref` | — | Click message (state mode) for store-driven switching |
+| `active` | `expr` | — | Selected-state override; with to: auto-detected (exact or prefix-segment match, exact: tightens) |
+| `exact` | `bool` | false | Route auto-detection uses exact match only |
+| `icon` | `string` | — | Left icon: lucide name (svg both ends) or literal emoji text |
+| `label` | `string` | — | Primary text |
+| `desc` | `string` | — | Secondary line (two-line layout) |
+| `badge` | `string` | — | Right-side badge pill |
+| `disabled` | `bool` | false | Grayed out, not clickable |
+| `size` | `one_of: sm|md|lg` | md | md=h-9 single line; lg=py-[10px] two-line; sm=h-7 |
+| `class` | `union: string|class_binding` | — | Extra classes appended after the built-in nav-item classes (escape hatch) |
+
+---
+
+### `nav-link`
+
+`builtin_widget` · `nav-link` · web: `component` · iced: `partial` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`nav_link` `navlink`
+
+_props 待声明_
 
 ---
 
@@ -965,6 +1170,321 @@ Visual divider
 
 ---
 
+### `sheet`
+
+`builtin_widget` · `sheet` · web: `component` · iced: `fallback` · category: `overlay`
+
+[demo →](/examples/widgets-gallery/sheet)
+
+Sheet (side drawer) container
+
+别名:`Sheet`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `open` | `state_ref` | — | Open state binding |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+子件:`sheet-description` `sheet_content` `sheet_footer` `sheet_header` `sheet_title` `sheet_trigger`
+
+---
+
+### `sheet-close`
+
+`builtin_widget` · `sheet-close` · web: `none` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`sheet_close` `sheetclose`
+
+_props 待声明_
+
+---
+
+### `sheet_content`
+
+`builtin_widget` · `sheet_content` · web: `component` · iced: `unknown` · category: `overlay`
+
+Sheet content
+
+别名:`sheet-content` `sheetcontent`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `side` | `one_of: top|right|bottom|left` | right | Sheet position side |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sheet_footer`
+
+`builtin_widget` · `sheet_footer` · web: `component` · iced: `unknown` · category: `overlay`
+
+Sheet footer
+
+别名:`sheet-footer` `sheetfooter`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sheet_header`
+
+`builtin_widget` · `sheet_header` · web: `component` · iced: `unknown` · category: `overlay`
+
+Sheet header
+
+别名:`sheet-header` `sheetheader`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sheet_title`
+
+`builtin_widget` · `sheet_title` · web: `component` · iced: `unknown` · category: `overlay`
+
+Sheet title
+
+别名:`sheet-title` `sheettitle`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Title text |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sheet_trigger`
+
+`builtin_widget` · `sheet_trigger` · web: `component` · iced: `unknown` · category: `overlay`
+
+Sheet trigger
+
+别名:`sheet-trigger` `sheettrigger`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `as_child` | `bool` | false | Use child as trigger |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sidebar`
+
+`builtin_widget` · `sidebar` · web: `component` · iced: `partial` · category: `navigation`
+
+[demo →](/examples/widgets-gallery/sidebar)
+
+Sidebar container
+
+别名:`Sidebar`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `side` | `one_of: left|right` | left | Sidebar position |
+| `variant` | `one_of: sidebar|floating|inset` | sidebar | Sidebar variant |
+| `collapsible` | `one_of: offcanvas|icon|none` | offcanvas | Collapsible mode |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+子件:`sidebar-group-action` `sidebar-inset` `sidebar-menu-action` `sidebar-menu-badge` `sidebar-menu-sub` `sidebar-menu-sub-item` `sidebar-separator` `sidebar_content` `sidebar_footer` `sidebar_group` `sidebar_group_content` `sidebar_group_label` `sidebar_header` `sidebar_menu` `sidebar_menu_button` `sidebar_menu_item` `sidebar_provider` `sidebar_trigger` `sidebarinput` `sidebarmenuskeleton` `sidebarrail`
+
+---
+
+### `sidebar-group-action`
+
+`builtin_widget` · `sidebar-group-action` · web: `component` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`SidebarGroupAction` `sidebar_group_action` `sidebargroupaction`
+
+_props 待声明_
+
+---
+
+### `sidebar-inset`
+
+`builtin_widget` · `sidebar-inset` · web: `component` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`SidebarInset` `sidebar_inset` `sidebarinset`
+
+_props 待声明_
+
+---
+
+### `sidebar-menu-action`
+
+`builtin_widget` · `sidebar-menu-action` · web: `component` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`SidebarMenuAction` `sidebar_menu_action` `sidebarmenuaction`
+
+_props 待声明_
+
+---
+
+### `sidebar-menu-badge`
+
+`builtin_widget` · `sidebar-menu-badge` · web: `component` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`SidebarMenuBadge` `sidebar_menu_badge` `sidebarmenubadge`
+
+_props 待声明_
+
+---
+
+### `sidebar-menu-sub`
+
+`builtin_widget` · `sidebar-menu-sub` · web: `component` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`SidebarMenuSub` `sidebar_menu_sub` `sidebarmenusub`
+
+_props 待声明_
+
+子件:`sidebar-menu-sub-item`
+
+---
+
+### `sidebar-menu-sub-item`
+
+`builtin_widget` · `sidebar-menu-sub-item` · web: `component` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`SidebarMenuSubItem` `sidebar_menu_sub_item` `sidebarmenusubitem`
+
+_props 待声明_
+
+---
+
+### `sidebar-separator`
+
+`builtin_widget` · `sidebar-separator` · web: `component` · iced: `full` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`SidebarSeparator` `sidebar_separator` `sidebarseparator`
+
+_props 待声明_
+
+---
+
+### `sidebar_content`
+
+`builtin_widget` · `sidebar_content` · web: `component` · iced: `full` · category: `navigation`
+
+Sidebar content
+
+别名:`SidebarContent` `sidebar-content` `sidebarcontent`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sidebar_footer`
+
+`builtin_widget` · `sidebar_footer` · web: `component` · iced: `full` · category: `navigation`
+
+Sidebar footer
+
+别名:`SidebarFooter` `sidebar-footer` `sidebarfooter`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sidebar_header`
+
+`builtin_widget` · `sidebar_header` · web: `component` · iced: `full` · category: `navigation`
+
+Sidebar header
+
+别名:`SidebarHeader` `sidebar-header` `sidebarheader`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sidebar_menu`
+
+`builtin_widget` · `sidebar_menu` · web: `component` · iced: `full` · category: `navigation`
+
+Sidebar menu
+
+别名:`SidebarMenu` `sidebar-menu` `sidebarmenu`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+子件:`sidebar-menu-action` `sidebar-menu-badge` `sidebar-menu-sub` `sidebar-menu-sub-item` `sidebar_menu_button` `sidebar_menu_item` `sidebarmenuskeleton`
+
+---
+
+### `sidebar_menu_button`
+
+`builtin_widget` · `sidebar_menu_button` · web: `component` · iced: `partial` · category: `navigation`
+
+Sidebar menu button
+
+别名:`SidebarMenuButton` `sidebar-menu-button` `sidebarmenubutton`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `tooltip` | `string` | — | Tooltip text |
+| `active` | `bool` | false | Active state |
+| `text` | `string` | — | Button text |
+| `onclick` | `msg_ref` | — | Click handler |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sidebar_menu_item`
+
+`builtin_widget` · `sidebar_menu_item` · web: `component` · iced: `full` · category: `navigation`
+
+Sidebar menu item
+
+别名:`SidebarMenuItem` `sidebar-menu-item` `sidebarmenuitem`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `sidebar_menu_sub_button`
+
+`builtin_widget` · `sidebar_menu_sub_button` · web: `native` · iced: `full` · category: `navigation`
+
+Sidebar menu sub-button (nested collapsible trigger; 561 full contract)
+
+别名:`SidebarMenuSubButton` `sidebar-menu-sub-button` `sidebarmenusubbutton`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `slot`
 
 `builtin_widget` · `slot` · web: `none` · iced: `unknown` · category: `content`
@@ -1065,22 +1585,13 @@ Desktop shell taskbar (bottom bar)
 
 ### `terminal`
 
-`builtin_widget` · `terminal` · web: `unknown` · iced: `full` · category: `content`
+`builtin_widget` · `terminal` · web: `none` · iced: `full` · category: `content`
 
-PLAN-009 native terminal component (auto-term engine grid viewport: damage-gated rows, cursor shapes, selection, scroll badge, right-click menu)
+P1 extracted from production tables; props TBD
 
 别名:`Terminal`
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `key` | `string` | \ | Stable state key (registry + engine adapter session) |
-| `cols` | `int` | 80 | Grid width in cells |
-| `rows` | `int` | 24 | Grid height in cells |
-| `lines` | `string` | — | Fed grid rows (props-feed data plane, per frame) |
-| `scroll_offset` | `int` | 0 | Scrollback display offset (badge indicator) |
-| `preedit` | `string` | — | IME composition string (self-drawn overlay at cursor) |
-| `onselect` | `msg_ref` | — | Selection released; payload via terminal_selected_text(key) |
-| `oncontextmenu` | `msg_ref` | — | Menu item activated; payload via terminal_take_menu_item(key) |
+_props 待声明_
 
 ---
 
@@ -1220,6 +1731,24 @@ Block quotation
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `canvas`
+
+`native_html` · `canvas` · web: `none` · iced: `full` · category: `media`
+
+State-driven drawing canvas (Plan 563). Content renders from the scene state binding (parallel-string-list stroke model, B12-style); both backends render independently (vue &lt;canvas&gt; 2D / iced canvas::Program) sharing only the scene data contract. Pen trio fires with logical coords; leaving the bounds ends the stroke on both backends.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `scene` | `state_ref` | — | Stroke-scene state PREFIX binding (engine reads &lt;prefix&gt;_pts + &lt;prefix&gt;_meta parallel string lists) |
+| `coords` | `string` | — | Logical extent \\ |
+| `clear` | `string` | — | Optional background color (CSS hex); eraser strokes render as background-color strokes in v1 |
+| `onpenstart` | `msg_ref` | — | Pen down; handler receives (x, y) float logical coords |
+| `onpenmove` | `msg_ref` | — | Pen drag while pressed (engine-gated, &lt;=30Hz); handler receives (x, y) |
+| `onpenend` | `msg_ref` | — | Pen up or leaving the canvas bounds; handler receives (x, y) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---

@@ -15,7 +15,7 @@
 | 556-games-wave1.md | 004-games-wave1.md（origin PLAN-556） | drafting 原状 |
 | 557-tetris.md | 005-tetris.md（origin PLAN-557） | drafting 原状 |
 | 558-klondike.md | 006-klondike.md（origin PLAN-558） | drafting 原状 |
-| 577-p534-debt-batch-1.md | 007-p534-debt-batch-1.md（origin PLAN-577） | drafting 原状 |
+| 577-p534-debt-batch-1.md | 007-p534-debt-batch-1.md（origin PLAN-577） | 📦 已交付归档（2026-09-09） |
 | 578-desktop-gallery-apps.md | 008-desktop-gallery-apps.md（origin PLAN-578） | drafting 原状 |
 
 注：
