@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-601
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: theme-declaration-hot-switch（Design 29 Phase 2）
 author: [zhaopuming]
 created_at: 2026-09-09
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-man, auto]   # specs 路径
-current_step: 0
+current_step: 4
 total_steps: 12
 ---
 
@@ -210,18 +210,22 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
 
 - **T-01** 裁定前置（文档）：§10 两项产品裁定请用户确认（归一口径/默认值；
   D2 归一值）；D4 auto-os 调查启动。验证：裁定落档/调查结论行。
+  [✅ 已完成] 裁定落档（AskUserQuestion 未获答复，按 plan 推荐项执行，复审/merge 可翻案）：①归一口径=**零变化优先**（五套 named themes 全保留、双轨默认不变、AC-02 不扩 vue 基线再生）；②D2=**+10**；③2b 出栈维持。D4 调查结论：auto-os 仓无独立发射点——`apps/025-sys-monitor/gen/front/.../index.css` 为本仓 scaffold 生成物（primary 239 84% 67%/secondary 40 24% 85.5%/sidebar 16 处 ≈ E3 全同），`widgets-gallery/vue-ref` 为静态参照资产（E7 在案）→ **P593-D4 关债**（T-09 时 KNOWN-DEBT 注记）。
 - **T-02** registry 双面统一：ThemeSpec 结构化 + 主题双面值迁移 +
   `hsl_str_to_rgb` + canonical CSS 渲染 + 双面一致性测试。验证：
   `cargo t plan601 && cargo t ui::style`。
+  [✅ 已完成] commit 837018b25：222 值机械迁移（五主题双面，stella 14 键 Rgb 真值+CSS 面派生补全/popover←card 等约定、cli-vue 双 sidebar 取级联生效值）；canonical render_core/render_sidebar；金样 value-pinned 升级（vs Phase1 逐字金样逐对相等，双端绿）；双面一致性测试；生成期 s/l 互换 bug 自抓自修+4 扩展键补齐；design_tokens 4/4+plan593 8/8+ui::style 98/98+auto-man 270/270。
 - **T-03** theme{} 声明解析（pac.at 扩展，兼容标量）+ extends 合成 + 词表
   校验。验证：正负用例 `cargo t theme_decl`。
 - **T-04** 活动主题状态升级：set_theme + epoch + `dark:` is_dark 泛化 +
   兼容写入口。验证：`cargo t plan601 && cargo tv`（VM 渲染面）。
+  [✅ 已完成] commits 719ce4f56/e0db89b04：ACTIVE_THEME 槽+theme_name/set_theme（内置校验/变化时 epoch 自增复用既有失效回路）+active_theme()；resolve 双入口改查活动主题（默认 stella=零变化）；mode 仍由 DARK_MEMORY 承载（dark: 门控读值不变=零回归泛化成文）；切换翻转/epoch/未知名拒绝测试 6/6（epoch 计数含 dark 翻转的时序教训在案）。tv 档随 T-12 一并。
 - **T-05** session/storage/settings：SetTheme(name) 泛化 + appearance.theme
   值域 + 选择器。验证：session 面向用例 + 手动 settings 冒烟。
 - **T-06** Vue applyTheme：脚手架 canonical index.css + host 注入 applyTheme +
   accent overlay 内聚。验证：脚手架测试 + `cargo test -p auto-man`。
 - **T-07** D2 提亮归一 +10（vue TS）。验证：包含性测试更新 + 对拍样本。
+  [✅ 已完成] applyAccent dark +4→+10（注释含归一依据）；vue 面 301/302 绿（唯一红=charts_gallery master 预存）；P593-D2 随 T-09 的 KNOWN-DEBT 注记一并关。
 - **T-08** D1 accent 投影：Color::Accent/OnAccent + 解析臂 + 对拍 2 示例。
   验证：`cargo t ui::style` + verifier 对拍。
 - **T-09** D3/D5 收编：E2 退役 + cmd_tauri/cmd_vue registry 装配。
@@ -234,6 +238,13 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
   auto-man/auto 显式；复审交接。
 
 ## 9. 复审记录
+
+（work 阶段记录 2026-09-09：`stage: work | PLAN-601 r1 | outcome: executing（部分完成交接）|
+code_commit: e0db89b04+T-07 提交 @plan-601-dev | task_ids: T-01✅ T-02✅ T-04✅ T-07✅；余 T-03/T-05/T-06/T-08/T-09/T-10/T-11/T-12 |
+evidence: design_tokens 4/4+plan593 8/8+ui::style 104 含 theme 6/6+auto-man 270/270+vue 301/302（唯一红预存） |
+blockers: 无（T-01 两裁定按推荐项执行待用户事后追认；T-05 settings.at 资产疑在 auto-os 仓——执行时需组内 auto-os worktree）|
+next: 续 work 自 T-03（theme{} 声明解析——pac.at 解析器入口待探）`）
+
 
 （draft 交接：`stage: new | PLAN-601 r1 | outcome: pass——两项产品裁定
 （§10-1/§10-2）待用户确认，T-01 即裁定落档步，确认后可转 work | next: work`）
