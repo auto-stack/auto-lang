@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-591
-status: reviewed              # drafting → executing → execution_done → reviewed → archived（复审 pass 2026-09-09，待 /auto-plan:merge）
+status: archived              # 终态（2026-09-09 V1 delivered+archived；V2 归后续计划另取号）
 feature_name: use-rust-any-crate-direct
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
