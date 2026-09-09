@@ -387,6 +387,69 @@ bug is worked around in-source:
     三方重跑已恢复:string_utils 22/22 全绿(2026-08-22,417-D2 的
     register_import_signatures 根治了导入函数签名盲区——见 KNOWN-DEBT)。
 
+## dep FFI divergences (PLAN-592, 2026-09)
+
+430 dep 管线（`dep crate(path)` + `use.rs`）在 VM 轨的已知分歧面。测试锚点：
+`crates/auto-lang/test/ffi_dual/{016_dep_abi_matrix, 017_dep_lifecycle}` +
+三轨 runner `ffi_dep_parity_tests.rs`（VM/a2r/oracle 对拍）。执行中发现并
+已修复的面（i8/i16 参数漏发收窄 cast、i32 槽返回零扩展、>2^48 参数弹栈、
+自由函数 wrapper 键错配/装载不到、`&str`/`String` 参数折叠、GET_FIELD 静默
+0、未覆盖签名静默 0）不在此列，见 PLAN-592 复审记录。
+
+- **DIV-DEP-1 — Option 返回的方法不进 shim 包。** rustdoc 提取的签名若返回
+  `Option<T>`（三方路径），classify 跳过（None 语义 pending）。
+  - AutoVM 行为: 调用报 `Unknown Rust stdlib call`（显式错误，非静默）。
+  - a2r/Rust 行为: 正常（`Counter.maybe()` 直接可用）。
+  - 偏差类型: 待修复（PLAN-591 T2：Option→null/Some 语义收口）。
+  - 状态: open。锚点: 017 负面断言。
+
+- **DIV-DEP-2 — 按值 self（move）的方法不进 shim 包。** 句柄失效策略未定
+  （ChainInPlace 别名 × 消耗语义冲突），classify 跳过；marshaller 的 move
+  处理代码因此无 fixture 覆盖。
+  - AutoVM 行为: `Unknown Rust stdlib call`。
+  - a2r/Rust 行为: 正常。
+  - 偏差类型: 待修复（591 V2 / classify 例外层）。
+  - 状态: open。锚点: 017 负面断言。
+
+- **DIV-DEP-3 — 方法 ABI 参数上限 3（含接收者）。** v1 marshaller 为 0-3 元
+  全组合手写 match。
+  - AutoVM 行为: `RuntimeError ... v1 supports ≤3`。
+  - a2r/Rust 行为: 正常。
+  - 偏差类型: 待修复（430 后续放宽）。
+  - 状态: open。锚点: 016 `quad` 负面断言。
+
+- **DIV-DEP-4 — u64 超过 i64::MAX 经 i64 槽不往返。** 整型统一 i64 槽（规则
+  6），u64::MAX 呈现为 -1。
+  - AutoVM 行为: `-1`（016 测试体内钉死）。
+  - Rust 原生行为: `18446744073709551615`。
+  - 偏差类型: 可接受（v1 槽位设计；协议 v2 若放宽需同步翻钉）。
+  - 状态: accepted（不入三腿共享语料——a2r 腿对超范围字面量编译不过）。
+
+- **DIV-DEP-5 — print 参数位置的裸 Ident 调用被构造器语义劫持。**
+  `print(free_noop())` 中实参编译走 print 专用路径，裸 `Ident(args)` 形态
+  被按 Auto 构造器语义处理（压 `<obj:...>`），不进入标准 FFI 调用路由；
+  `let f = free_noop(); print(f)` 形态正常。
+  - AutoVM 行为: `<obj:NNNN>`（错误值，非错误）。
+  - a2r/Rust 行为: 正常。
+  - 偏差类型: 待修复（codegen print-arg 路径需先查 rust_native_map）。
+  - 状态: open。缓解: 语料统一用 let 绑定形态（016/017 现行）。
+
+- **DIV-DEP-6 — 212 自由函数 wrapper 的 u64↔i64 槽无收窄转换。** 自由函数
+  的 u64 参数/返回使 wrapper 编译失败（E0308），构建失败后自由函数整体
+  退化为 opaque 构造器回退（与 DIV-DEP-5 叠加时不可见）。
+  - 偏差类型: 待修复（wrapper 生成器补 `as` 转换；方法路径无此问题——
+    emit_cdylib 已有收窄 cast）。
+  - 状态: open。缓解: fixture 自由函数用 i64（017 `drop_count`）。
+
+- **DIV-DEP-7 — a2r 对 rust 自由函数的 String 形参假定 &str。** 单文件转译
+  无 rustdoc 元数据，str-borrow 启发式把 owned String 实参发射为
+  `.as_str()`（`free_s(boxed)` → `free_s(boxed.as_str())` → E0308）。
+  - a2r 行为: 编译失败；Rust 原生: 正常。
+  - 偏差类型: 待修复（根治 = A2R_EXTERN_SIGS 通道或 dep 元数据接入 a2r）。
+  - 状态: open。缓解: 语料以方法调用结果（String 直传）或 `let x str` 字面
+    量绑定 + 显式构造点传参（016 `free_s(w.unicode())`）。相关：a2r 对
+  rust 型绑定的 `let mut` 已由 PLAN-592 补（保守标记，代价 unused_mut 告警）。
+
 ## Python Parity Divergences
 
 ### DIV-PY-TUPLE-1: Python tuple flattens to Auto List

@@ -147,7 +147,8 @@ fn type_to_char(t: &ShimType) -> char {
         ShimType::I64 => 'l',
         ShimType::F64 => 'f',
         ShimType::Bool => 'b',
-        ShimType::CString => 's',
+        // CString/CStringOwned 线格式同 's'(仅 wrapper 生成端区分;PLAN-592)
+        ShimType::CString | ShimType::CStringOwned => 's',
     }
 }
 

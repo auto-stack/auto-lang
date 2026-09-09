@@ -1,0 +1,10 @@
+# PLAN-592 T2: dep marshalling 全矩阵夹具(430 管线字母表 v/i/l/f/b/s/p 的
+# 参数与返回覆盖面 + 宽槽收窄 + 边界值 + BorrowStr/TakeStr + arity 上限 +
+# 自由函数 plan-212 四类签名 + 未覆盖签名负面)。
+# 独立工作区:不加入 auto-lang 的 workspace。
+[package]
+name = "autolang_abi_matrix"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]

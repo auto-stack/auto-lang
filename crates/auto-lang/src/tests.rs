@@ -25,6 +25,7 @@ mod error_tests;
 mod ffi_tests;
 mod field_access_tests; // Plan 056: Field access tests
 mod ffi_dual_tests; // Plan 212 Phase 3D.1: FFI dual-test infrastructure
+mod ffi_dep_parity_tests; // PLAN-592 T6: dep 三轨行为对拍(VM/oracle/a2r)
 mod generic_spec_tests; // Plan 057: Generic spec tests
 mod trait_vm_tests; // Plan 417-E4: spec default-method inheritance
 mod list_growth_tests;

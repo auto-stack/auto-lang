@@ -799,16 +799,17 @@ impl RustFfiBridge {
                         )
                     }
 
-                    // Unsupported signature
+                    // Unsupported signature — PLAN-592 T8 收口:此前 warn 后静默
+                    // 返 0(调用方拿到 0 无法区分"函数返回 0"与"根本没调成"),
+                    // 改为显式 VMError。
                     _ => {
-                        log::warn!(
-                            "Unsupported FFI signature: {:?} -> {:?} for {}::{}",
-                            signature.params,
-                            signature.returns,
+                        return Err(VMError::RuntimeError(format!(
+                            "unsupported free-function signature (plan-212 wrapper v1): {}::{} has {:?} -> {:?}; allowed classes: ()→基元, (String)→String/Long, (Long,Long)→Long",
                             crate_name,
-                            function_name
-                        );
-                        0u64
+                            function_name,
+                            signature.params,
+                            signature.returns
+                        )));
                     }
                 }
             };

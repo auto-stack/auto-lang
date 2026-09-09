@@ -5801,6 +5801,32 @@ impl AutoVM {
                                     task.ram.push_i32(0);
                                 }
                             }
+                        } else if let Some(dep_obj) = heap_obj
+                            .as_any()
+                            .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>()
+                        {
+                            // PLAN-592 T7: dep crate 对象字段访问桥——`p.x` 路由到
+                            // shim 包合成 getter("短类型名.字段名" 在 METHODS 表,
+                            // 即 rustdoc 公共字段合成面);未命中显式报错,替代
+                            // 此前的静默 push 0(p 字段名拼错拿回 0 的正确性陷阱)。
+                            let short_type = dep_obj.short_type.clone();
+                            let full_type = dep_obj.full_type.clone();
+                            drop(heap_obj);
+                            // Plan 419: 接收者重新入栈作 self(+1;marshaller 侧
+                            // raw pop 不减,与 native_catalog 字段臂同一纪律)。
+                            self.rc_push(task, auto_val::encode_object(obj_id as u32));
+                            let hit = crate::vm::ffi::dep_methods::dispatch(
+                                &short_type,
+                                field_name.as_str(),
+                                task,
+                                self,
+                            )?;
+                            if !hit {
+                                task.ram.pop_i32();
+                                return Err(VMError::RuntimeError(format!(
+                                    "unknown field '{field_name}' on dep object {full_type} (无合成 getter:字段非 pub,或字段类型不在 标量/Str/Opaque 白名单)"
+                                )));
+                            }
                         } else {
                             // plan-022 (auto-down): `.length` on a heap LIST
                             // that arrived through an obj-typed parameter —

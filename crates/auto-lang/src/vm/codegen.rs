@@ -8547,13 +8547,21 @@ impl Codegen {
                         // native 仍按原语义被采用。
                         let has_existing = !is_type_import && !is_axum_routing_import && {
                             let reg = BIGVM_NATIVES.lock().unwrap();
-                            reg.resolve_qualified_to_canonical(name).is_some()
-                                && reg.get_id(name).is_some()
+                            // PLAN-592: dep 自由函数以 "rust.{func}" 限定名注册
+                            // (init_rust_ffi 装载 wrapper cdylib 时)——裸名查不到时
+                            // 补查限定名,否则调用退化为 dispatch 3000 的
+                            // "Unknown Rust stdlib call"(自由函数不在 METHODS 表)。
+                            (reg.resolve_qualified_to_canonical(name).is_some()
+                                && reg.get_id(name).is_some())
+                                || reg
+                                    .resolve_qualified_to_canonical(&format!("rust.{name}"))
+                                    .is_some()
                         };
                         if has_existing {
                             // Use the existing native (e.g., toml.parse, json.parse)
                             let mut reg = BIGVM_NATIVES.lock().unwrap();
                             reg.resolve_qualified(name)
+                                .or_else(|| reg.resolve_qualified(&format!("rust.{name}")))
                         } else {
                             // Route to dispatch handler for external crate calls
                             Some(NATIVE_RUST_STDLIB_DISPATCH)

@@ -359,11 +359,14 @@ macro_rules! ret_call {
                 let sym = getsym!($lib, $name, ($($t),*) -> i64);
                 let r = unsafe { sym($($a),*) };
                 check_err!($lib, $ctx, $fallible);
-                // bool 返回只保证 al 有效(高位是垃圾),必须掩码;
-                // 其余整型低位即值(x64 写 32 位寄存器零扩展)。
+                // bool 返回只保证 al 有效(高位是垃圾),必须掩码;i32 槽返回
+                // x64 写 32 位寄存器时零扩展,负数需符号扩展回 i64(PLAN-592:
+                // echo_i8(-128) 曾呈现 4294967168);i64 直传。
                 // 大整数走 heap-aware 压栈(virt_memory 48 位内联范围限制)。
                 if $ret_raw == 'b' {
                     $task.ram.push_nv(auto_val::encode_bool((r & 0xFF) != 0));
+                } else if $ret_raw == 'i' {
+                    $vm.push_i64_vm($task, r as u32 as i32 as i64);
                 } else {
                     $vm.push_i64_vm($task, r);
                 }
@@ -444,8 +447,8 @@ fn make_method_shim(
                 continue;
             }
             match cl {
-                // 布尔与整型统一 i64 槽(pop_int 按 nanbox 标签解码)
-                b'I' => cargs.push(CArg::I(pop_int(task)?)),
+                // 布尔与整型统一 i64 槽(pop_int 按 nanbox 标签 + 堆感知 BigInt 解码)
+                b'I' => cargs.push(CArg::I(pop_int(task, vm)?)),
                 b'F' => cargs.push(CArg::F(
                     f64::pop_from_stack(task, vm)
                         .map_err(|e| VMError::RuntimeError(format!("{ctx} pop: {e}")))?,
@@ -610,7 +613,10 @@ fn make_method_shim(
 }
 
 /// 整型/布尔统一按 i64 槽弹(布尔经 nv 解码)。
-fn pop_int(task: &mut AutoTask) -> Result<i64, VMError> {
+/// PLAN-592:超 48 位内联的 i64 字面量在 VM 侧装箱为 BigInt(Plan 377)——参数
+/// 方向此前只认 nanbox 标签,>2^48 直接弹栈失败。堆感知兜底走 convert 的
+/// decode_i64_full(TAG_U64/TAG_BIGINT/原始 f64 槽),非数值形态维持原报错。
+fn pop_int(task: &mut AutoTask, vm: &AutoVM) -> Result<i64, VMError> {
     let nv = task.ram.pop_nv();
     if auto_val::is_i32(nv) {
         Ok(auto_val::decode_i32(nv) as i64)
@@ -621,8 +627,13 @@ fn pop_int(task: &mut AutoTask) -> Result<i64, VMError> {
     } else if auto_val::is_null(nv) {
         Ok(0)
     } else {
-        Err(VMError::RuntimeError(
-            "plan430: expected integer/bool arg".into(),
-        ))
+        let t = auto_val::tag_of(nv);
+        if t == 9 || t == 0xA || !auto_val::is_nanboxed(nv) {
+            Ok(crate::vm::ffi::convert::decode_i64_full(vm, nv))
+        } else {
+            Err(VMError::RuntimeError(
+                "plan430: expected integer/bool arg".into(),
+            ))
+        }
     }
 }
