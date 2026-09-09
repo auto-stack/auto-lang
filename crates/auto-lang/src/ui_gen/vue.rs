@@ -15561,62 +15561,31 @@ export function cn(...inputs: ClassValue[]) {
     }
 
 	    /// Generate base CSS file with CSS variables
+	    ///
+	    /// PLAN-593 V1：色变量块整体取自 registry（zinc）单一事实源，
+	    /// 本函数零手写色值（--radius/--card-shadow 为非色 token，留脚手架）。
 	    pub fn generate_base_css() -> String {
-	        r#"@tailwind base;
+	        let zinc = crate::ui::style::theme::registry::css_builtin("zinc")
+	            .expect("内置主题 zinc 恒在（PLAN-593 registry 单源）");
+	        let mut css = String::new();
+	        css.push_str(r##"@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    /* PLAN-571: secondary 与 muted 分档（≠210 40% 96.1% 暖纸 muted）——暖灰一档深 #e3ddd1，
-       与 Rust 侧 theme.rs Color::Secondary 互锁（改任一须同步）。 */
-    --secondary: 40 24% 85.5%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+"##);
+	        css.push_str(zinc.light.core);
+	        css.push_str(r##"    --radius: 0.5rem;
 
     /* Plan 360: card shadows — deeper in dark mode */
     --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   }
 
   .dark {
-    --background: 222.2 47% 7%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 47% 11%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    /* PLAN-571: secondary 分档——slate-700 #334155（muted 保持 217.2 32.6% 17.5% 不动）。 */
-    --secondary: 215 25% 27%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-
+"##);
+	        css.push_str(zinc.dark.core);
+	        css.push_str(r##"
     /* Plan 360: deeper shadows in dark mode for visual depth */
     --card-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
   }
@@ -15657,8 +15626,9 @@ export function cn(...inputs: ClassValue[]) {
     @apply text-sm font-semibold mb-1;
   }
 }
-"#.to_string()
-    }
+"##);
+	        css
+	    }
 
     /// Generate a composable singleton `.ts` file for a shared store
     /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported

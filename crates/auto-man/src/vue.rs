@@ -1203,94 +1203,35 @@ fn generate_app_vue(vue_code: &str) -> String {
     vue_code.to_string()
 }
 
+/// PLAN-593 V1：色变量块整体取自 auto_lang registry（scaffold）单一事实源，
+/// 本函数零手写色值（--radius 为非色 token，留脚手架；dark 块无 --radius 沿
+/// 原 CSS 继承语义）。sidebar 族块经 extra 槽拼接。
 fn generate_index_css() -> String {
-    r#"@tailwind base;
+    let scaffold = auto_lang::ui::style::theme::registry::css_builtin("scaffold")
+        .expect("内置主题 scaffold 恒在（PLAN-593 registry 单源）");
+    let mut css = String::new();
+    css.push_str(r##"@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 239 84% 67%;
-    --primary-foreground: 210 40% 98%;
-
-    /* PLAN-571: secondary 与 muted 分档（≠--muted 210 40% 96.1%）——暖灰一档深 #e3ddd1，
-       与 theme.rs / ui_gen 互锁（40 24% 85.5% ≈ #e3ddd1）。 */
-    --secondary: 40 24% 85.5%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 239 84% 67%;
-
+"##);
+    css.push_str(scaffold.light.core);
+    css.push_str(r##"
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 222.2 47.4% 11.2%;
-    --sidebar-primary: 239 84% 67%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 210 40% 96.1%;
-    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
-    --sidebar-border: 214.3 31.8% 91.4%;
-    --sidebar-ring: 239 84% 67%;
-  }
+"##);
+    css.push_str(scaffold.light.extra);
+    css.push_str(r##"  }
 
   .dark {
-    --background: 222.2 47% 7%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 47% 10%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 47% 10%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 239 84% 77%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    /* PLAN-571: secondary 分档——slate-700 #334155（--muted 保持 217.2 32.6% 17.5%）。 */
-    --secondary: 215 25% 27%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 15%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 239 84% 77%;
-
-    --sidebar-background: 222.2 47% 10%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 239 84% 77%;
-    --sidebar-primary-foreground: 222.2 47.4% 11.2%;
-    --sidebar-accent: 217.2 32.6% 17.5%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 239 84% 77%;
-  }
+"##);
+    css.push_str(scaffold.dark.core);
+    css.push_str(r##"
+"##);
+    css.push_str(scaffold.dark.extra);
+    css.push_str(r##"  }
 }
 
 @layer base {
@@ -1336,7 +1277,8 @@ fn generate_index_css() -> String {
 .ash-scroll::-webkit-scrollbar-track { background: transparent; }
 .ash-scroll::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); border-radius: 9999px; }
 .ash-scroll::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground)); }
-"#.to_string()
+"##);
+    css
 }
 
 fn generate_utils_ts() -> String {
