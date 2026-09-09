@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-595
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: c-channel-pc-batch1
 author: [ZCode]
 created_at: 2026-09-09
@@ -173,3 +173,26 @@ findings: F1(info/route)auto-term 侧回执(004/DEBTS/specs.json)留工作区
 evidence: 命令与结果摘录见上(复审会话内重执行);worktree
 .wt/lang-595/auto-lang(plan-595-dev@a1626b0fb, clean, wt-guard clean) |
 next: merge
+
+---
+## 合并回执(PLAN-595:r1,2026-09-09)
+
+- stage: merge | outcome: **pass** | delivery_commit=7613e961f(merge --no-ff
+  plan-595-dev,含 8c23ffc44 规范落稿;实现 a1626b0fb 复审后零改动)
+- prepared: 复审基线 rev1/a1626b0fb/base 0b730c4a2 核验;master 前进
+  (594+os-007 merge)对复审面**零漂移**(受审文件与规范目标 add10293c..HEAD
+  无触及)——worktree 同步合并 85b1422a1,bindgen 6/6 复跑绿;规范增量三处
+  落稿与冻结 delta 一致(auto-bindgen/project.md、vm/design/ffi.md、
+  trans/overview.md)
+- landed: master 7613e961f,祖先链核验;主检出冒烟=cargo build -p auto +
+  bindgen 6/6 + a2c 套件 109 ok/基线 9 失败行不变(重建二进制后)
+- ledger_refreshed: .autoos/specs.json(gitignored 运行时投影,离线
+  read-modify-write+回读验证)P595-1..6 六节各 +1,file→archive/595-*.md;
+  无关条目保全(reports 62/goals 53/architecture 58/designs 52/tests 58/
+  reviews 76)
+- archived: docs/plans/archive/595-c-channel-pc-batch1.md(git mv)+
+  status: archived + completion_kind: delivered
+- cleaned: (待清理执行后回填)
+- 遗留移交:F1——auto-term 侧回执(004 §5①②标注/DEBTS #10/.autoos
+  D004 条目)留其工作区未提交,随用户裁定入库(该仓另有本会话设计记录
+  同批);findings F2/F3(info 级)在案不阻塞
