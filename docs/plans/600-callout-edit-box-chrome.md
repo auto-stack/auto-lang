@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-600
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: callout 编辑臂盒式 chrome 对齐只读臂（撤 3px 左条，画 kind 色盒）
 author: [zhaopuming]
 created_at: 2026-09-09
@@ -76,6 +76,14 @@ kind 色盒（矩形近似圆角——fence 盒同款绘制原语）。
 - 实机：worktree 构建 exe，demo/auto 双臂截图（编辑臂盒式 vs 只读臂盒式
   同形态），留证 PNG。
 
+## 规范增量
+
+无（空影响的书面说明）：本计划为编辑壳视觉 chrome 的单模块修正——盒形态/色
+α 已由 `callout_edit_arm_paints_kind_box`、`callout_boxes_split_across_
+containers` 与改写后的 054 契约测试钉死在 `autodown_editor::core` 内，不
+引入跨模块 spec 条目变更；`CALLOUT_CHROME`（只读臂）与 `callout_kind_rgb`
+（单源色）均无修改。后续若提取「容器 chrome 双臂同源」为模块规则，另立。
+
 ## 验收标准
 
 1. 编辑臂 callout 呈盒式（底+边框），不再出现 3px 左条；颜色取
@@ -109,5 +117,31 @@ kind 色盒（矩形近似圆角——fence 盒同款绘制原语）。
   ⊆ master e8f67b9b2 4616p/205f（差集 3 项均无关子系统并行竞争抖动，
   串行复跑全过）；vm-600-callout-box.png 双臂盒式同形态。
   blockers：无。next: review（execution_done；worktree 留存待复审/合并）。
+- stage: review | PLAN-600 | r1 | outcome: **pass** | 2026-09-09。
+  reviewed_commit：plan-600-dev 825d120fd（worktree 冻结干净 0 dirty）；
+  base_commit：auto-lang master e056d1d86（现 master 已前进至 2f68be1d6，
+  并行漂移 merge 时折回）。dependency_revisions：.wt/lang-600/auto-down
+  detached @ auto-down master b616bc2（autodown-core path 只读依赖）。
+  spec_inputs：规范增量 = 空影响 + 书面说明（视觉契约由单测钉死，无跨模块
+  条目变更），frontmatter 保持空数组。
+  独立性声明：复审在实现会话内进行，验收按工件重跑复现。
+  acceptance_results：
+  - AC-1 pass——复跑 `cargo test --lib autodown_editor::core` 78/78（含
+    callout_edit_arm_paints_kind_box：底 α0.10 宽=视口 + ≥4 边 α0.50 + 左
+    条无残留；boxes_split 双盒独立）；vm-600-callout-box.png 双臂盒式目检
+    （工件在案）。
+  - AC-2 pass——`cargo tv --no-fail-fast` 3626/3627，唯一红
+    ui_gen::vue::tests::test_charts_gallery_compiles 与 master 基线同源
+    （plan-060 登记 #4 制约红；master 同轮 3628/3629 同名单红）；054 往返
+    契约测试按新形态改写在册（有意变更，非回归）。
+  - AC-3 pass——全量 lib 差集在案（825d120fd 冻结后 SHAs 复核一致，证据
+    沿用并注记理由：wt 4617p/206f vs master e8f67b9b2 4616p/205f，3 项
+    差名均无关子系统并行抖动、串行复跑全过）。
+  findings：无阻断项。非阻断注记：①编辑臂盒为直角（矩形原语近似，fence
+  盒同款；只读臂圆角）②Details 编辑臂恒展开不在本计划范围（用户仅点名
+  callout），后续候选。
+  evidence：本计划复审记录 + worktree 冻结件 825d120fd + 
+  vm-600-callout-box.png（已入库）。
+  next: merge。
 
 ## 待澄清事项
