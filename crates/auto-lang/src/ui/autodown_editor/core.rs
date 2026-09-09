@@ -1545,6 +1545,9 @@ impl AutodownEditorCore {
         }
         let mut row_acc: Option<RowAcc> = None;
         let mut geom_acc: HashMap<u64, TableGeom> = HashMap::new();
+        // PLAN-600 T-1：callout 盒式 chrome 运行段累积器——连续 callout 叶
+        // 同段（段界=带标题行/strip 色变/中断），段闭合一次推盒。
+        let mut callout_run: Option<(u8, u8, u8, f32, f32)> = None;
         for draw in render_items.iter() {
             // 表格行结算时机：当前 item 非 cell 叶（含 Raw/防御补尾叶）时，
             // 先以表尾间距结算未闭合行。
@@ -1922,13 +1925,22 @@ impl AutodownEditorCore {
                 ));
             }
 
-            // PLAN-054 T8：callout 左条（3px，kind 配色；每叶一段——与
-            // quote 条同点扩展；条在容器内容 x 基左缘）。
+            // PLAN-600 T-1：callout 容器盒式 chrome——对齐只读臂
+            // CALLOUT_CHROME 盒形态（rounded border + kind 底）：连续
+            // callout 叶累积运行段，段界 = 带标题行（新 callout 起）或
+            // strip 色/中断变化；段闭合一次推「底 kind -500 @0.10 + 四条
+            // 1px 边 @0.50」（矩形近似圆角，fence 盒同款原语）。替代
+            // PLAN-054 T8 的 per-叶 3px 左条（引语式残段，撤）。
             if let Some((cr, cg, cb)) = at.cont_strip {
-                list.fills.push((
-                    Rect::new((at.x - CONT_PAD_X).max(0.0), y, 3.0, total_h),
-                    Rgba { r: cr as f32 / 255.0, g: cg as f32 / 255.0, b: cb as f32 / 255.0, a: 1.0 },
-                ));
+                let same_run = matches!(&callout_run, Some((r, g, b, _, _)) if (*r, *g, *b) == (cr, cg, cb));
+                if at.cont_title.is_some() || !same_run {
+                    push_callout_box(&mut list.fills, callout_run.take(), viewport_w);
+                    callout_run = Some((cr, cg, cb, y, y + total_h));
+                } else if let Some((_, _, _, _, bottom)) = &mut callout_run {
+                    *bottom = y + total_h;
+                }
+            } else {
+                push_callout_box(&mut list.fills, callout_run.take(), viewport_w);
             }
 
             if !view_inst {
@@ -1994,6 +2006,9 @@ impl AutodownEditorCore {
             // 4），顶层维持 BLOCK_GAP 8（归因 DFS 按兄弟关系补齐）。
             y += total_h + at.inner_gap;
         }
+        // PLAN-600 T-1：循环尾 flush 未闭合 callout 盒（文档以 callout
+        // 结尾时不丢）。
+        push_callout_box(&mut list.fills, callout_run.take(), viewport_w);
         // PLAN-055：循环尾未闭合表格行以表尾间距结算；几何快照整体换帧
         // （表被外部重建移除时旧快照自愈清退）。
         if let Some(ra) = row_acc.take() {
@@ -2816,6 +2831,32 @@ const CONT_PAD_X: f32 = 16.0; // callout/details 内容边距（px-4）
 const CONT_TITLE_H: f32 = 29.0; // callout 标题行高（15.2px×1.6 行盒 24.3 + 上边距 4）
 const CONT_SUMMARY_H: f32 = 29.0; // details 摘要行高（同上）
 const CONT_PAD_B_CALLOUT: f32 = 12.0; // callout 底 pad（py-3）
+
+/// PLAN-600 T-1：callout 盒式 chrome 落填充——底（kind -500 @0.10，宽=
+/// 视口宽，对齐只读 w-full）+ 四条 1px 边（@0.50，语义对齐
+/// `border-*-500/50`）。矩形近似圆角（编辑臂绘制原语为纯矩形填充，
+/// fence 盒同款）。运行段 = (rgb, top, bottom) widget 本地 px。
+fn push_callout_box(fills: &mut Vec<(Rect, Rgba)>, run: Option<(u8, u8, u8, f32, f32)>, w: f32) {
+    let Some((r, g, b, top, bottom)) = run else { return };
+    let h = (bottom - top).max(1.0);
+    let width = w.max(1.0);
+    let col = |a: f32| Rgba {
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        a,
+    };
+    fills.push((Rect::new(0.0, top, width, h), col(0.10)));
+    let px = 1.0;
+    for e in [
+        Rect::new(0.0, top, width, px),
+        Rect::new(0.0, top + h - px, width, px),
+        Rect::new(0.0, top, px, h),
+        Rect::new(width - px, top, px, h),
+    ] {
+        fills.push((e, col(0.50)));
+    }
+}
 const CONT_PAD_B_DETAILS: f32 = 8.0; // details 底 pad（py-2）
 
 /// 渲染序列项：可编辑叶 或 只读固化段（thematic break）。
@@ -4577,6 +4618,76 @@ mod tests {
         assert_eq!(c.live_text(2), "1", "r1c0 不受扰");
     }
 
+    /// PLAN-600 T-1：callout 编辑臂盒式 chrome——fills 含 kind -500 底
+    /// （α≈0.10，宽=视口宽）+ 四条 1px 边（α≈0.50）；3px 左条撤除
+    /// （无 α=1 的窄条填充残留）。
+    #[test]
+    fn callout_edit_arm_paints_kind_box() {
+        let c = core_for(
+            "t600a",
+            "$callout(type: \"info\", title: \"Info\") {
+Callout body
+}
+",
+        );
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (br, bg_, bb) = (59.0f32 / 255.0, 130.0f32 / 255.0, 246.0f32 / 255.0);
+        let is_blue = |c: Rgba, a: f32| {
+            (c.r - br).abs() < 0.01
+                && (c.g - bg_).abs() < 0.01
+                && (c.b - bb).abs() < 0.01
+                && (c.a - a).abs() < 0.01
+        };
+        let bg = frame
+            .list
+            .fills
+            .iter()
+            .find(|(_, c)| is_blue(*c, 0.10))
+            .expect("callout box bg fill");
+        assert!(bg.0.w >= 399.0, "box bg spans viewport width: {}", bg.0.w);
+        let edges = frame
+            .list
+            .fills
+            .iter()
+            .filter(|(_, c)| is_blue(*c, 0.50))
+            .count();
+        assert!(edges >= 4, "4 border strips expected, got {edges}");
+        assert!(
+            !frame
+                .list
+                .fills
+                .iter()
+                .any(|(r, c)| c.a >= 0.99 && r.w < 4.0 && is_blue(*c, 1.0)),
+            "3px left strip must be gone"
+        );
+    }
+
+    /// PLAN-600 T-1：双 callout 隔叶 → 两盒独立（段界 = 中断/标题行）。
+    #[test]
+    fn callout_boxes_split_across_containers() {
+        let c = core_for(
+            "t600b",
+            "$callout(type: \"info\", title: \"A\") {
+甲
+}
+
+段落
+
+$callout(type: \"info\", title: \"B\") {
+乙
+}
+",
+        );
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let bgs = frame
+            .list
+            .fills
+            .iter()
+            .filter(|(_, c)| c.a > 0.09 && c.a < 0.11)
+            .count();
+        assert_eq!(bgs, 2, "two independent box bgs, got {bgs}");
+    }
+
     /// 列表项末端 Enter → 新列表项（emit 重发序号/圆点）。
     #[test]
     fn enter_at_item_end_creates_new_item() {
@@ -5635,9 +5746,24 @@ fn main() { let s = \"hi\"; }
         let title = frame.list.runs.iter().find(|r| r.text.contains("Info")).expect("callout 标题行");
         assert!(title.text.starts_with('\u{2139}'), "info 图标：{:?}", title.text);
         assert!(title.color.b > title.color.r, "kind 配色（blue 族 title）");
-        // callout 左条：3px 宽 fill，色 = blue-500。
-        let strip = frame.list.fills.iter().find(|(r, _)| (r.w - 3.0).abs() < 0.5 && r.h > 20.0);
-        assert!(strip.is_some(), "callout 左条 3px fill 在册：{:?}", frame.list.fills);
+        // PLAN-600 T-1：盒式 chrome 替代左条——kind -500 底（α≈0.10，
+        // 宽=视口宽）+ 四条 1px 边（α≈0.50）。
+        let (br, bg_, bb) = (59.0f32 / 255.0, 130.0f32 / 255.0, 246.0f32 / 255.0);
+        let is_blue = |c: Rgba, a: f32| {
+            (c.r - br).abs() < 0.01
+                && (c.g - bg_).abs() < 0.01
+                && (c.b - bb).abs() < 0.01
+                && (c.a - a).abs() < 0.01
+        };
+        let box_bg = frame
+            .list
+            .fills
+            .iter()
+            .find(|(r, c)| is_blue(*c, 0.10) && r.w > 400.0)
+            .expect("callout 盒底 fill 在册（替代左条）：{:?}");
+        assert!(box_bg.0.h > 20.0, "盒底覆盖标题+正文带：{:?}", box_bg);
+        let edges = frame.list.fills.iter().filter(|(_, c)| is_blue(*c, 0.50)).count();
+        assert!(edges >= 4, "盒四边 1px fill 在册：{edges}");
         // details 摘要行。
         assert!(
             frame.list.runs.iter().any(|r| r.text.contains("\u{25B8} 展开")),
