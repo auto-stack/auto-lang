@@ -493,6 +493,16 @@ fixture 新增（放 `test/ffi_dual/018_dep_fields/fixture/`）：
   验收 AC-01..AC-08；V2 用例与 T3/T4/T5 设计文字保留于 §2 折叠节（归后续
   独立计划）。
 
+### 沉淀收据（PLAN-591:r1，2026-09-09）
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | 复审基线 9b3639122（base 18ab5d642，8 实现提交）；canonical Spec diff = SD-01..05 定稿（SD-06 撤销）；delivery_commit = 74fa22032（docs-only 后代，零代码改动核验） |
+| `landed` | master **74501fb34**（merge plan-591-dev，33 文件 +1978/-232，零冲突）；master 冒烟 ffi_dual 20/20 + dep_parity 3/3 |
+| `ledger_refreshed` | .autoos/specs.json（runtime，gitignored 不提交）六节各插入 P591-1..6，file 指向本文归档路径；读回验证 6/6 |
+| `archived` | 本文 git mv 至 docs/plans/archive/591-use-rust-any-crate-direct.md，status: archived |
+| `cleaned` | wt-guard **clean**（auto-lang + auto-down 双核验）→ worktree 已移除、分支 plan-591-dev 已删（was 74fa22032）、auto-down detached 兄弟已移除、组目录 .wt/lang-591 已清空删除 |
+
 ### 复审记录（/auto-plan:review，2026-09-09）
 
 **独立性声明**：复审在实现会话内进行——按 skill 要求从工件与复跑证据重建结论，未采信执行摘要。
