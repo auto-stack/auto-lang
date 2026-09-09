@@ -6658,6 +6658,11 @@ mod plan502_diagram_tests;
 #[path = "tests/plan510_pool_tests.rs"]
 mod plan510_pool_tests;
 
+// os-007（origin PLAN-577/P534-D4）：avatar 家族渲染探针。
+#[cfg(test)]
+#[path = "tests/plan577_avatar_tests.rs"]
+mod plan577_avatar_tests;
+
 // P499-6 清偿:widgets-gallery 全页可编译冒烟(lib 级,入日常门禁)。
 #[cfg(test)]
 #[path = "tests/gallery_pages_compile_tests.rs"]
