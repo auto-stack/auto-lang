@@ -1,0 +1,10 @@
+[package]
+name = "regex-real-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+regex = "1.11.3"
+
+# Standalone crate: keep out of the parity workspace.
+[workspace]

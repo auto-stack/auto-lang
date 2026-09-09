@@ -1,0 +1,29 @@
+/// url_real 绿面——真三方 url 动态加载（PLAN-594）。
+dep url(version: "2.5.4")
+use.rs url::Url
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn main() {
+    let u = Url.parse("https://example.com/x").unwrap()
+    let sc = u.scheme()
+    if sc == "https" {
+        tap_ok(1, "parse_scheme")
+    } else {
+        print("not ok 1 - parse_scheme")
+    }
+    let h = u.host_str().unwrap()
+    if h == "example.com" {
+        tap_ok(2, "host_str_unwrap")
+    } else {
+        print("not ok 2 - host_str_unwrap")
+    }
+    let p = u.path()
+    if p == "/x" {
+        tap_ok(3, "parse_path")
+    } else {
+        print("not ok 3 - parse_path")
+    }
+}

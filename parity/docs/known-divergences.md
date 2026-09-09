@@ -450,6 +450,88 @@ bug is worked around in-source:
     量绑定 + 显式构造点传参（016 `free_s(w.unicode())`）。相关：a2r 对
   rust 型绑定的 `let mut` 已由 PLAN-592 补（保守标记，代价 unused_mut 告警）。
 
+## Real-Crate Dep Parity Divergences（PLAN-594）
+
+以下 DIV-DEP-8..14 来自真三方 crates.io 库（serde_json/regex/base64/url/semver）
+的三轨对拍实勘（2026-09-09，PLAN-594 探针+语料证据）。与 DIV-DEP-1..3（pack
+面 classify skip）互补：本节多处涉及 **VM native 面**（五库均在
+BUILTIN_OPAQUE_CRATES，类型构造器/方法走 native_catalog 手写分发）与 a2r
+发射面的分歧，红面集合按 native/pack/a2r 三面分别成立。命中率统计见
+docs/plans/reports/p594-dep-skip-hit-rate.md。
+
+**绿面语料范式（本节反面即其边界）**：`dep crate(version: "x.y.z")` 锁精确版 +
+`use.rs`（嵌套路径用两行形态，见 DIV-DEP-14）+ 构造器/自由函数后接
+`.unwrap()`（VM native 句柄面与 a2r 发射双侧可用）+ Auto 类型标注
+`let data Value = from_str(json).unwrap()`（解 a2r 侧 FromStr 泛型推断）+
+字符串断言走 `let s = <expr>` 绑定后 `if s == ".."` 比较（规避 print 参数位
+与形参类型面）。base64 为全红样本（libs/dep/base64_real/README）。
+
+- **DIV-DEP-8 — rust 类型值的字符串化三态分歧（print 直出 vs `.to(str)`）。**
+  rust-typed 绑定（use.rs 导入类型）转文本时三轨各走各路。
+  - AutoVM 行为: `print(v)` 对 opaque 输出占位 `<semver::Version>`/`<url::Url>`；
+    `v.to(str)` 对 serde Value 输出紧凑 JSON（Display 等价）。
+  - a2r 行为: `print(v)` = Display（serde 紧凑 JSON ✓、semver "1.2.3"）；但
+    `v.to(str)` 发射 `format!("{:?}", v)` = **Debug**（serde `Object {..}`、
+    url `Url { scheme: .. }` 结构体转储）。
+  - 偏差类型: 待修复（发射器 to(str) 对 rust 型绑定应对齐 Display，或 VM 侧
+    占位改 Display；serde 的 print 直出已实证三轨逐字节一致，可作库内附加输出）。
+  - 状态: open。锚点: PLAN-594 T3 探针 u4/p3/s1；serde_json_real basic.at
+    `print(data)` 行。
+
+- **DIV-DEP-9 — Auto 类型标注 `let n i64 = from_str(..)` 的窄槽污染。**
+  VM 自由函数 wrapper 返回 String（from_str 的 unwrap+序列化面），标注 i64
+  后按槽转换取值，产出垃圾值。
+  - AutoVM 行为: `from_str("42")` 标注 i64 → `4294967295`（0xFFFFFFFF）。
+  - a2r/Rust 行为: `42`。
+  - 偏差类型: 待修复（数值型 FromStr 的 wrapper 返回码应走 i64 槽而非
+    String 序列化；归属 430 wrapper 元数据）。
+  - 状态: open。锚点: PLAN-594 T5 探针 q1。
+
+- **DIV-DEP-10 — `to_string(<原生值>)` 序列化面双断。**
+  `to_string(42).unwrap()`（serde_json 自由函数，&T: Serialize 形参）。
+  - AutoVM 行为: RuntimeError `Unknown Rust stdlib call: .to_string`
+    （wrapper 返回 String，VM native String 无该链上方法）。
+  - a2r 行为: 发射 `to_string(42)` 缺 `&` 借用 → E0308 编译失败
+    （DIV-DEP-7 借用启发式的 &T 特例未覆盖）。
+  - Rust 原生: `serde_json::to_string(&42)` = `"42"`。
+  - 偏差类型: 待修复（a2r 侧 = DIV-DEP-7 家族；VM 侧 = wrapper 签名类扩展）。
+  - 状态: open。锚点: PLAN-594 T5 探针 p1。
+
+- **DIV-DEP-11 — Option 返回值直出的文本分歧（native 面）。**
+  DIV-DEP-1 的 native 面对偶：pack 面 Option 返回根本不进包，native 面
+  Option 方法却直接返回裸值。
+  - AutoVM 行为: `print(u.host_str())` → 裸文本 `example.com`。
+  - a2r 行为: `println!("{}", u.host_str())` → `Some("example.com")`
+    （Option Display）。
+  - 偏差类型: 待修复（591 T2 Option 语义收口时需同步 native 面呈现口径）。
+  - 状态: open。锚点: PLAN-594 spike url 探针；a2r 侧为 Display 语义推定
+    （`Option<&str>: Display`）。
+
+- **DIV-DEP-12 — Result 谓词在 VM 静默取 None。**
+  `from_str(bad).is_err()`（错误路径谓词）。
+  - AutoVM 行为: 打印 `None`（谓词调用未路由，静默）。
+  - a2r/Rust 行为: `true`。
+  - 偏差类型: 待修复（native 面谓词路由缺失；与"静默 0"同族，591 T2
+    Result 语义收口范围）。
+  - 状态: open。锚点: PLAN-594 T5 探针 p2。
+
+- **DIV-DEP-13 — a2r 发射器把常量接收者当类型（`STANDARD::encode`）。**
+  `CONST.method(..)` 与 `Type.method(..)` 在 Auto 语法同形，发射器按大写
+  首字母启发式恒发射 `CONST::method`（类型关联调用），对 trait 方法常量
+  接收者（base64 `STANDARD.encode`，需 `Engine` trait in scope）编译失败。
+  - AutoVM 行为: pack 面正常（`aGVsbG8=`，真 crate 构建成功）。
+  - a2r 行为: E0224/E0599 级编译失败；小写绑定规避形态
+    （`let eng = STANDARD`）在 VM 侧取回 None、a2r 侧转译即失败——双断。
+  - 偏差类型: 待修复（发射器需 dep 元数据区分常量/类型；归属 591 V2 trait 面）。
+  - 状态: open。锚点: libs/dep/base64_real/README 探针表（PLAN-594 全红样本）。
+
+- **DIV-DEP-14 — 嵌套 brace 路径的 use.rs 不被 VM 语法面接受。**
+  `use.rs base64::{engine::general_purpose::STANDARD, Engine}` → E0099
+  （20 errors）；两行形态（每行一条完整路径）双侧可用。
+  - 偏差类型: 可接受（两行形态为现行约定；单行 brace 嵌套路径的支持归
+    use.rs 解析器后续）。
+  - 状态: accepted（缓解=两行形态，见本节范式）。锚点: PLAN-594 T7 探针 b1/b2。
+
 ## Python Parity Divergences
 
 ### DIV-PY-TUPLE-1: Python tuple flattens to Auto List
