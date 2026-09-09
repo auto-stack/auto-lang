@@ -1,0 +1,11 @@
+# PLAN-596 T-03/T-08: 020 oracle 腿——与 input.at 逐行镜像。
+# 独立工作区(空 [workspace]);路径依赖指回 fixture。
+[package]
+name = "oracle_020_dep_traits_generics"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+autolang_traits = { path = "../fixture/autolang_traits" }

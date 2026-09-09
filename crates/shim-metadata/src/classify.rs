@@ -195,6 +195,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         }
     }
 

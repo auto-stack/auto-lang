@@ -12,7 +12,8 @@ use crate::classify::{Classified, Exceptions};
 use crate::types::*;
 use serde::{Deserialize, Serialize};
 
-pub const GENERATOR: &str = "shim-metadata v1.3 (plan-430 C1; 592 cast fix; 591 layouts v2)";
+pub const GENERATOR: &str =
+    "shim-metadata v1.4 (430 C1; 592 cast fix; 591 layouts v2; 596 trait whitelist+vis)";
 pub const MANIFEST_FORMAT: u32 = 2;
 pub const CLASSIFIER_VERSION: u32 = 1;
 
@@ -650,6 +651,22 @@ fn ret_type_label(p: &MarshalPlan) -> String {
 /// 计算 MarshalPlan 的导出符号全名(与 emit_wrapper 生成的完全一致)。
 /// 430 复审修复:供 rustc 检查器剔除环做**精确**匹配——此前 auto-cache 侧用
 /// `starts_with("auto_Type_method")` 前缀匹配,`auto_Counter_newest_p_p` 会误伤 `new`。
+/// PLAN-596 T3:白名单 trait 的发射全路径(短名 → 路径)。Engine 走 base64
+/// (三方 crate;wrapper 的 Cargo.toml 已依赖该 crate)。Display/ToString 的
+/// to_string 面由 F 轮合成覆盖,不进 TRAIT_METHOD_WHITELIST,此处不列。
+const TRAIT_EMIT_PATHS: &[(&str, &str)] = &[
+    ("Clone", "std::clone::Clone"),
+    ("Engine", "base64::Engine"),
+];
+
+fn trait_emit_path(short: &str) -> &'static str {
+    TRAIT_EMIT_PATHS
+        .iter()
+        .find(|(s, _)| *s == short)
+        .map(|(_, p)| *p)
+        .unwrap_or("")
+}
+
 pub fn plan_export_symbol(p: &MarshalPlan) -> String {
     let m = &p.method;
     let mut chars = String::new();
@@ -661,10 +678,15 @@ pub fn plan_export_symbol(p: &MarshalPlan) -> String {
     }
     let rc = ret_char(&p.ret);
     // 导出符号:auto_<Type>_<method>_<params>_<ret>,无参时 params 段留空(auto_X_m__r)
+    // PLAN-596 T3:trait 转发条目插 __trait_<Trait> 段(auto_T__trait_Clone_clone_p_p)
+    let trait_seg = match &m.trait_name {
+        Some(t) => format!("__trait_{t}"),
+        None => String::new(),
+    };
     if chars.is_empty() {
-        format!("auto_{}_{}__{rc}", m.type_name, m.method)
+        format!("auto_{}{trait_seg}_{}__{rc}", m.type_name, m.method)
     } else {
-        format!("auto_{}_{}_{chars}_{rc}", m.type_name, m.method)
+        format!("auto_{}{trait_seg}_{}_{chars}_{rc}", m.type_name, m.method)
     }
 }
 
@@ -750,6 +772,20 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         };
         format!(
             "{{ let __recv: &{full} = unsafe {{ &*(arg_0 as *const {full}) }}; {access} }}"
+        )
+    } else if let Some(t) = &m.trait_name {
+        // PLAN-596 T3:白名单 trait 单态转发——`<Type as Trait>::method(__recv, args)`,
+        // 分发在 wrapper 编译期定死(无 vtable 跨界)。白名单成员均 &self 接收者。
+        let tp = trait_emit_path(t);
+        assert!(
+            !tp.is_empty(),
+            "trait {} missing in TRAIT_EMIT_PATHS",
+            t
+        );
+        format!(
+            "{{ let __recv: &{full} = unsafe {{ &*(arg_0 as *const {full}) }}; <{full} as {tp}>::{}(__recv, {}) }}",
+            m.method,
+            call_expr(&call_args)
         )
     } else {
         match m.self_kind {
@@ -963,6 +999,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         },
         ShimMethod {
             type_name: "Counter".into(),
@@ -974,6 +1011,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         },
         ShimMethod {
             type_name: "Counter".into(),
@@ -985,6 +1023,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -997,6 +1036,7 @@ mod tests {
                 fallible: false,
                 nullable: true,
                 field: None,
+                trait_name: None,
             },
             // unwrap_ok:Result<Counter, String> 已由投影解包为 Counter + fallible
             ShimMethod {
@@ -1009,6 +1049,7 @@ mod tests {
                 fallible: true,
                 nullable: false,
                 field: None,
+                trait_name: None,
             },
         ];
         classify_all_third_party(&methods, &Exceptions::default())
@@ -1113,6 +1154,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         };
         let plain_fn = ShimMethod {
             type_name: String::new(),
@@ -1124,6 +1166,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         };
         let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()], &[], &[]);
         let man: ShimManifest = serde_json::from_str(&files.manifest_json).unwrap();

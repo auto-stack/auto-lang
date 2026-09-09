@@ -307,6 +307,18 @@ print(c.bump().level_value())"#,
     );
 }
 
+// PLAN-596 T-03/T-08: 591 V2——trait 白名单转发(Clone)/既有 Display 合成/
+// V1×V2 组合(make→to_string+字段读/clone 深拷贝独立性+字段写)。
+// V2-3/V2-4(pick/pick_max 泛型 mono)与 V2-6(回调 adapter)随 T-04/T-05 增补。
+#[test]
+fn ffi_dual_020_dep_traits_generics() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    test_ffi_dual("020_dep_traits_generics").unwrap();
+}
+
 // Plan 430 复审补网:std 臂 VM 路径回归网。
 // 守护 dispatch 3000 生成段(generated_std.rs):Vec 14 臂/Duration 5 臂/
 // Instant 2 臂/PathBuf.from/String.new|from。复审发现 430 迁移 std 手写臂后,

@@ -101,6 +101,12 @@ pub struct ShimMethod {
     /// Some(name) = 合成的公共字段 getter(F 轮解阻断:字段访问以方法面入包;
     /// 标量 Copy 直读,String/不透明字段 clone)
     pub field: Option<String>,
+    /// PLAN-596 T3:Some(trait 短名) = 白名单 trait 转发条目——emit 以
+    /// `<Type as Trait>::method(recv, args)` 单态转发(编译期定死,无 vtable 跨界);
+    /// 符号 `auto_<Type>__trait_<Trait>_<method>_<sig>`。白名单按 (trait, method)
+    /// 对驱动(rustdoc.rs TRAIT_METHOD_WHITELIST);Display→to_string 由既有
+    /// F 轮合成覆盖,本字段的现役净新增面 = Clone(+Engine 待 T4 mono)。
+    pub trait_name: Option<String>,
 }
 
 /// 分类结果(规律层输出,430 §背景 6 条规则)。
