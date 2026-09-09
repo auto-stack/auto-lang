@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-594
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-parity-real-crates
 author: [ZCode]
 created_at: 2026-09-09
@@ -8,8 +8,11 @@ updated_at: 2026-09-09
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - "parity: 新增 —— libs/dep/*_real 真三方 crates.io 库三轨对拍语料集（serde_json/regex/url/semver 绿面语料+手写 oracle 同版 pin；base64 全红样本 README-only；unwrap+Auto 类型标注绿面范式；红面不进 TAP 纪律）"
+  - "parity: 新增 —— a2r 腿 dep 语料透传（auto-parity/src/deps.rs crates.io 解析器 + run_a2r Cargo.toml 渲染）+ AUTO_LANG_PARITY_NET 网络门控 + phase p10（parity-ci.yml parity-dep-real-crates job）"
+touched_goals:
+  - "GOAL-006: Consumer-mode parity 首个真三方 crates.io 库三轨对拍网落地（四库 9 case 全绿+红面 DIV-DEP-8..14 显式登记），并为 591 V1/V2 优先级提供五库 25 面命中率数据"
 
 affects: [parity]             # 改 parity 工具（独立 workspace）+ 语料 + CI；不触主仓 crates/
 current_step: 13
@@ -387,20 +390,61 @@ wt-guard。**五库语料版本一经 T5..T9 pin 即锁定，后续不得改版�
 
 ## 复审记录
 
-（/auto-plan:review 时填写；以下为 work 阶段交接记录）
+（/auto-plan:review，2026-09-09。**独立性声明**：复审在实现会话内进行——
+按 skill 要求从工件与复跑证据重建结论，未采信执行摘要。）
 
-```
-stage: work | plan_id: PLAN-594 | plan_revision: 起草稿+执行期三裁定 | outcome: pass |
-code_commit: a7facbb94 + 30befca5f + acdbfba1a（worktree plan-594-dev,基于 master 0b730c4a2） |
-task_ids: T0..T13 全部完成 |
-evidence: phase p10 四库三轨全绿（serde_json 1/1 + regex 2/2 + url 3/3 + semver 3/3,
-本地 AUTO_LANG_PARITY_NET=1 实跑）;既有库回归 p1 33/33+30/30、p2 56/56+45/45 全绿;
-cargo test -p auto-parity 44/44;DIV-DEP-8..14 七条登记;命中率报告
-docs/plans/reports/p594-dep-skip-hit-rate.md + 591 待澄清 #4 回填;
-探针残留扫描 0;不触主仓 crates/（门禁:未跑 cargo t/tf,按验收 #4） |
-blockers: 无 |
-next: /auto-plan:review（CI 网络档首跑由 GitHub Actions 侧验证,本地 yaml 已校验）
-```
+**复审基线**：plan_revision = 起草稿（0b730c4a2）+ 执行期三裁定注记；
+reviewed_commit = worktree `plan-594-dev` @ **acdbfba1a**（a7facbb94 +
+30befca5f + acdbfba1a，23 文件 +741/-2）；base = master 0b730c4a2；
+依赖修订 = 无跨仓；工作树 clean（checkout -- 复核）。
+
+### 验收标准逐条复验（verify, don't trust）
+
+| AC | 结论 | 证据 |
+|---|---|---|
+| 1 四库三轨全绿（本地档） | **pass** | 复审复跑 `AUTO_LANG_PARITY_NET=1 … phase p10`（缓存热 9s）：serde_json_real 1/1、regex_real 2/2、url_real 3/3、semver_real 3/3，零 Divergence。CI 档：parity-ci.yml job 完整+yaml 校验过；**首跑待 merge 后 push 触发**（无 workflow_dispatch，本会话不可实跑）——随 CI 自然验证，非实现缺口 |
+| 2 红面全登记 DIV-DEP-8+ 分类明确 | **pass** | known-divergences.md L469-528 七条连续编号（8..14），各含三面表现/归类/锚点；报告 25 面闭合（8 绿+10 实证红+7 推定红），推定红均标注未实钉，无静默 skip |
+| 3 报告产出+591 回填 | **pass** | docs/plans/reports/p594-dep-skip-hit-rate.md（25 面清单+三面统计+591 结论四条）；591 待澄清 #4 落 L267（master 2a828c3e4） |
+| 4 门禁按改动面 | **pass** | diff 0b730c4a2..acdbfba1a 触 crates/ 计数=0（grep 复核）→ 按计划不跑 cargo t/tf；`cargo test -p auto-parity` 44/44（复审复跑）；既有库回归 p1 33/33+30/30、p2 56/56+45/45 全绿（执行期跑，日志留痕 /tmp/p1_regression.log 摘录已入 T13）；探针残留扫描 0；fmt 裁定=新增文件 fmt-clean（deps.rs rustfmt --check 过），master 既有代码 fmt 噪音零带入（129 行重排已回退） |
+| 5 CI 网络档+缓存先行 | **pass** | parity-ci.yml `parity-dep-real-crates` job：nightly（VM pack 面）→ actions/cache（build_a2r/*/target + tests/rust/target，键挂工具+语料 hash）→ build auto → `AUTO_LANG_PARITY_NET=1 phase p10`；yaml.safe_load 通过（复审复跑） |
+
+### 遗漏 / 延后 / Workaround 扫描
+
+- **F1（低，接受）**：T13 的 parity-guide 约定节未加，dep 约定集中于
+  parity/README「The dep category」节——内容完整、避免双源，属落点收窄
+  非范围缺失。
+- **F2（低，接受）**：fmt 门禁从「-p auto-parity 干净」收窄为「新增文件
+  fmt-clean」——master parity 既有代码非 fmt-clean 为既存事实（runner.rs
+  129 行 fmt 噪音实证并回退），不为本计划偿付历史债。
+- **F3（信息）**：port()/VersionReq/bump_* 等推定红未单独实钉——报告口径
+  已显式标注「推定」，后续触碰时翻实证即可。
+- **Workaround 扫描**：unwrap+Auto 标注范式为双侧原生支持的语料形态
+  （VM native 面与 a2r 发射分别实证），非规避性补丁；fmt 噪音回退为 diff
+  纪律。无未批准的绕行。
+- **执行期裁定三项**（fmt_assist 不引入 / CI 宿主 parity-ci.yml / base64
+  全红不进 p10）均在计划待澄清 #1/#2 预授权与机制等价范围内，计划 T3/T7/
+  T12 已留痕。
+
+### 结论
+
+**全部验收标准通过（AC1 的 CI 半句随 merge 后 push 首跑），无阻塞性债务 →
+status: reviewed**。可入 `/auto-plan:merge`（worktree plan-594-dev 基于
+0b730c4a2，master 侧仅计划记账文件分叉，合并无冲突预期）。
+
+### 规范增量（spec delta，merge 时沉淀）
+
+目标 `docs/specs/parity/project.md`（active）：
+
+- **新增**：「真三方 dep 对拍线（PLAN-594）」——libs/dep/*_real 语料集
+  （serde_json 1.0.145/regex 1.11.3/url 2.5.4/semver 1.0.26 绿面 + base64
+  0.22.1 全红样本）；绿面范式（`dep crate(version: "x.y.z")` 锁精确版 +
+  构造器/自由函数后 `.unwrap()` + Auto 类型标注解泛型推断 + let 绑定比较
+  断言）；`AUTO_LANG_PARITY_NET=1` 网络门控与 phase p10（parity-ci 独立
+  job + 产物缓存）；红面纪律（不进 TAP，登记 DIV-DEP-8..14）。
+- **修改**：crates/auto-parity 职责行增「a2r 腿 dep 语料透传（deps.rs
+  crates.io 解析器）」；known-divergences 条目描述增 DIV-DEP-8..14。
+- **不做**：不修 a2r 发射器常量接收者启发式/VM String unwrap 面（591 T2/T3
+  地界，本计划仅登记）。
 
 ## 待澄清事项
 
