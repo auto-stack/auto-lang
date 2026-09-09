@@ -9,12 +9,27 @@
 use serde::{Deserialize, Serialize};
 
 /// Top-level manifest for a single C header.
+/// Calling convention annotation (Plan 595 / 004 §3.5): `"c"` = plain C ABI,
+/// `"system"` = win32 (`extern "system"`; identical to C on x64, stdcall on x86).
+/// Consumed by backend generators; the VM runtime ignores it (its shims are
+/// compiled Rust closures with the platform's native convention).
+pub const ABI_C: &str = "c";
+pub const ABI_SYSTEM: &str = "system";
+
+fn default_abi() -> String {
+    ABI_C.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CHeaderManifest {
     /// Header file name, e.g. `"string.h"`
     pub header: String,
     /// Platform library name: `"c"` on POSIX, resolved at runtime
     pub library: String,
+    /// Calling convention for this header's functions (`"c"` | `"system"`,
+    /// serde default `"c"`; win32 headers like windows.h use `"system"`)
+    #[serde(default = "default_abi")]
+    pub abi: String,
     /// Functions exported from this header
     pub functions: Vec<CFunction>,
 }
@@ -71,6 +86,14 @@ pub enum CTypeDesc {
     Ptr,
     /// Mutable pointer to a named type (e.g. `char*`)
     PtrMut,
+    /// Function pointer / callback (Plan 595 / 004 §3.5). Carries the
+    /// callback's own signature. VM runtime rejects it at registration
+    /// (callback bridges are "Impossible"-per Plan 267); a2c consumes it
+    /// natively (closures transpile to function pointers, Plan 060).
+    FnPtr {
+        ret: Box<CTypeDesc>,
+        params: Vec<CTypeDesc>,
+    },
 }
 
 impl CTypeDesc {
@@ -83,6 +106,51 @@ impl CTypeDesc {
             CTypeDesc::Float => 1,
             CTypeDesc::Double => 2,
             CTypeDesc::CStr | CTypeDesc::Ptr | CTypeDesc::PtrMut => 2,
+            CTypeDesc::FnPtr { .. } => 2,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// FnPtr round-trips through the internally-tagged serde representation
+    /// (`kind: "FnPtr"`, `inner: {ret, params}`) — the JSON shape is the
+    /// cross-backend contract (VM/a2c/a2r all read these manifests).
+    #[test]
+    fn fnptr_serde_roundtrip() {
+        let f = CFunction {
+            name: "SetConsoleCtrlHandler".into(),
+            params: vec![
+                CParam {
+                    name: "handler".into(),
+                    ty: CTypeDesc::FnPtr {
+                        ret: Box::new(CTypeDesc::Int),
+                        params: vec![CTypeDesc::UInt],
+                    },
+                },
+                CParam { name: "add".into(), ty: CTypeDesc::Int },
+            ],
+            return_type: CTypeDesc::Int,
+            variadic: false,
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        let back: CFunction = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.params[0].ty, f.params[0].ty);
+        assert!(json.contains("\"FnPtr\""), "tagged variant name: {json}");
+    }
+
+    /// Historical manifests without an `abi` field deserialize to `"c"`
+    /// (serde default) — existing c_bindings JSON stays loadable.
+    #[test]
+    fn abi_defaults_to_c_for_legacy_json() {
+        let legacy = r#"{
+            "header": "string.h", "library": "c",
+            "functions": [{"name":"strlen","params":[{"name":"s","ty":{"kind":"CStr"}}],
+                           "return_type":{"kind":"Size"},"variadic":false}]
+        }"#;
+        let m: CHeaderManifest = serde_json::from_str(legacy).unwrap();
+        assert_eq!(m.abi, ABI_C);
     }
 }

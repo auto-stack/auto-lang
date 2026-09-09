@@ -66,6 +66,21 @@ impl CFfiRuntime {
                 log::warn!("Skipping variadic C function: {}", func.name);
                 continue;
             }
+            // Plan 595 (004 §3.5): callback (FnPtr) parameters are
+            // "Impossible"-grade for the VM runtime (Plan 267: needs VM core
+            // architecture extension) — reject at registration with a clear
+            // error instead of panicking in the shim or silently miscalling.
+            // The a2c backend consumes FnPtr manifests natively (closures
+            // transpile to function pointers, Plan 060).
+            if func.params.iter().any(|p| matches!(p.ty, CTypeDesc::FnPtr { .. }))
+                || matches!(func.return_type, CTypeDesc::FnPtr { .. })
+            {
+                return Err(VMError::FFI(format!(
+                    "C-FFI VM runtime does not support callback (FnPtr) signature: {} \
+                     (Plan 267 'Impossible' grade; use the a2c backend for callbacks)",
+                    func.name
+                )));
+            }
             let native_id = self.next_id;
             if native_id >= CFFI_ID_END {
                 return Err(VMError::FFI(
@@ -190,6 +205,14 @@ fn create_c_shim(
                 CTypeDesc::Ptr | CTypeDesc::PtrMut => {
                     let ptr_val = task.ram.pop_i64();
                     args_ptr.push(ptr_val as *const ());
+                }
+                // Unreachable in practice: FnPtr manifests are rejected at
+                // registration (see load_header). Defensive, never transmute.
+                CTypeDesc::FnPtr { .. } => {
+                    return Err(VMError::FFI(
+                        "C-FFI callback (FnPtr) marshalling hit — rejected at registration?"
+                            .to_string(),
+                    ));
                 }
                 CTypeDesc::Void => {}
             }

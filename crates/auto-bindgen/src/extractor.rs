@@ -13,6 +13,7 @@ pub fn get_builtin_manifest(header: &str) -> Option<CHeaderManifest> {
         "stdio.h" | "<stdio.h>" => Some(stdio_manifest()),
         "stdlib.h" | "<stdlib.h>" => Some(stdlib_manifest()),
         "time.h" | "<time.h>" => Some(time_manifest()),
+        "windows.h" | "<windows.h>" | "kernel32" => Some(windows_console_manifest()),
         _ => None,
     }
 }
@@ -25,6 +26,7 @@ fn string_manifest() -> CHeaderManifest {
     CHeaderManifest {
         header: "string.h".into(),
         library: "c".into(),
+        abi: ABI_C.into(),
         functions: vec![
             CFunction {
                 name: "strlen".into(),
@@ -82,6 +84,7 @@ fn math_manifest() -> CHeaderManifest {
     CHeaderManifest {
         header: "math.h".into(),
         library: "m".into(),
+        abi: ABI_C.into(),
         functions: vec![
             CFunction {
                 name: "abs".into(),
@@ -151,6 +154,7 @@ fn stdio_manifest() -> CHeaderManifest {
     CHeaderManifest {
         header: "stdio.h".into(),
         library: "c".into(),
+        abi: ABI_C.into(),
         functions: vec![
             CFunction {
                 name: "puts".into(),
@@ -196,6 +200,7 @@ fn stdlib_manifest() -> CHeaderManifest {
     CHeaderManifest {
         header: "stdlib.h".into(),
         library: "c".into(),
+        abi: ABI_C.into(),
         functions: vec![
             CFunction {
                 name: "malloc".into(),
@@ -247,6 +252,7 @@ fn time_manifest() -> CHeaderManifest {
     CHeaderManifest {
         header: "time.h".into(),
         library: "c".into(),
+        abi: ABI_C.into(),
         functions: vec![
             CFunction {
                 name: "time".into(),
@@ -270,6 +276,68 @@ fn time_manifest() -> CHeaderManifest {
     }
 }
 
+/// Plan 595 (004 §5①): kernel32 console subset — the first win32 dataset
+/// and the first FnPtr callback use case. Signatures mirror auto-term
+/// `crates/autoterm-core/src/bin/autoterm-ctrlc.rs` (BOOL = int, DWORD =
+/// unsigned int); consumed by a2c for the autoterm-ctrlc replica.
+fn windows_console_manifest() -> CHeaderManifest {
+    CHeaderManifest {
+        header: "windows.h".into(),
+        library: "kernel32".into(),
+        abi: ABI_SYSTEM.into(),
+        functions: vec![
+            CFunction {
+                name: "GetCommandLineA".into(),
+                params: vec![],
+                return_type: CTypeDesc::CStr,
+                variadic: false,
+            },
+            CFunction {
+                name: "FreeConsole".into(),
+                params: vec![],
+                return_type: CTypeDesc::Int,
+                variadic: false,
+            },
+            CFunction {
+                name: "AttachConsole".into(),
+                params: vec![p("dwProcessId", CTypeDesc::UInt)],
+                return_type: CTypeDesc::Int,
+                variadic: false,
+            },
+            CFunction {
+                name: "SetConsoleCtrlHandler".into(),
+                params: vec![
+                    p(
+                        "handler",
+                        CTypeDesc::FnPtr {
+                            ret: Box::new(CTypeDesc::Int),
+                            params: vec![CTypeDesc::UInt],
+                        },
+                    ),
+                    p("add", CTypeDesc::Int),
+                ],
+                return_type: CTypeDesc::Int,
+                variadic: false,
+            },
+            CFunction {
+                name: "GenerateConsoleCtrlEvent".into(),
+                params: vec![
+                    p("dwCtrlEvent", CTypeDesc::UInt),
+                    p("dwProcessGroupId", CTypeDesc::UInt),
+                ],
+                return_type: CTypeDesc::Int,
+                variadic: false,
+            },
+            CFunction {
+                name: "Sleep".into(),
+                params: vec![p("dwMilliseconds", CTypeDesc::UInt)],
+                return_type: CTypeDesc::Void,
+                variadic: false,
+            },
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,8 +349,34 @@ mod tests {
         assert!(get_builtin_manifest("stdio.h").is_some());
         assert!(get_builtin_manifest("stdlib.h").is_some());
         assert!(get_builtin_manifest("time.h").is_some());
+        assert!(get_builtin_manifest("windows.h").is_some());
         assert!(get_builtin_manifest("<string.h>").is_some());
         assert!(get_builtin_manifest("nonexistent.h").is_none());
+    }
+
+    #[test]
+    fn test_windows_console_manifest() {
+        let m = windows_console_manifest();
+        assert_eq!(m.library, "kernel32");
+        assert_eq!(m.abi, ABI_SYSTEM);
+        assert_eq!(m.functions.len(), 6);
+        let scc = m
+            .functions
+            .iter()
+            .find(|f| f.name == "SetConsoleCtrlHandler")
+            .unwrap();
+        assert_eq!(
+            scc.params[0].ty,
+            CTypeDesc::FnPtr {
+                ret: Box::new(CTypeDesc::Int),
+                params: vec![CTypeDesc::UInt],
+            }
+        );
+        // serde round-trip keeps abi + callback signature (cross-backend JSON contract)
+        let back: CHeaderManifest =
+            serde_json::from_str(&serde_json::to_string_pretty(&m).unwrap()).unwrap();
+        assert_eq!(back.abi, ABI_SYSTEM);
+        assert_eq!(back.functions.len(), 6);
     }
 
     #[test]
