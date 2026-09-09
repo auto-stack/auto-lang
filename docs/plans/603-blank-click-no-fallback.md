@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-603
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: 空白点击撤「最近块回落」（对齐网页轨槽外无效果语义）
 author: [zhaopuming]
 created_at: 2026-09-09
