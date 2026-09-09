@@ -285,6 +285,7 @@ mod tests {
     #[test]
     fn theme_switch_flips_resolution_and_bumps_epoch() {
         assert_eq!(super::theme_name(), "stella");
+        super::set_dark_mode(false); // 先定 mode，再取 epoch 基线（dark 翻转也自增）
         let e0 = super::theme_epoch();
         assert!(!super::set_theme("nonsense"), "未知名拒绝");
         assert_eq!(super::theme_name(), "stella");
@@ -303,7 +304,7 @@ mod tests {
             Some((245, 241, 232)),
             "stella 暖纸恢复"
         );
-        assert_eq!(super::theme_epoch(), e0.wrapping_add(2));
+        assert_eq!(super::theme_epoch(), e0.wrapping_add(2), "两次主题切换各 +1（无 dark 翻转）");
         super::set_dark_mode(true); // 还原默认档，防污染其他用例
     }
 
