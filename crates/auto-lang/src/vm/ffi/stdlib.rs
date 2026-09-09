@@ -8161,15 +8161,39 @@ fn pop_rust_obj(task: &mut AutoTask, vm: &AutoVM, context: &str) -> Result<u64, 
 /// Stack layout (popped in reverse order):
 ///   ... user args ... | method: String | type_name: String
 fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // 壳(PLAN-596 T4):弹 method/type_name → 头部剥 mono 后缀走全链(裸名是
+    // std/handwritten/native_catalog/dep 裸名条目的唯一键——Red.paint__String
+    // 全链 miss 回归实证);裸名全链 miss 且原名带后缀 → 带原名再走全链一次
+    // (dep_methods 泛型实例键带后缀注册)。
     let method: String = String::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(format!("rust_stdlib_dispatch: {}", e)))?;
     let type_name: String = String::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(format!("rust_stdlib_dispatch: {}", e)))?;
+    let stripped = if method.ends_with("__i64") || method.ends_with("__String") {
+        method.split("__").next().unwrap_or(&method).to_string()
+    } else {
+        method.clone()
+    };
+    let unknown = "Unknown Rust stdlib call";
+    match shim_rust_stdlib_dispatch_inner(task, vm, &type_name, &stripped) {
+        Err(VMError::RuntimeError(msg)) if msg.starts_with(unknown) && stripped != method => {
+            shim_rust_stdlib_dispatch_inner(task, vm, &type_name, &method)
+        }
+        other => other,
+    }
+}
+
+fn shim_rust_stdlib_dispatch_inner(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    type_name: &str,
+    method: &str,
+) -> Result<(), VMError> {
 
     // Plan 430 D1: 生成段(shim-metadata)优先;命中即返回,未命中回退手写臂。
     match super::generated_std::generated_std_dispatch(
-        type_name.as_str(),
-        method.as_str(),
+        type_name,
+        method,
         task,
         vm,
     )? {
@@ -8177,7 +8201,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {}
     }
 
-    match (type_name.as_str(), method.as_str()) {
+    match (type_name, method) {
         // Plan 442 C2: axum serve adapter —— Router/MethodRouter 构建。
         // 裸 `get(h)`/`post(h)`... 以空 type_name 到达(Ident 调用);链式
         // `.post(h)` 以堆对象 tag "axum::MethodRouter"(短化后
@@ -8194,10 +8218,10 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
         ("MethodRouter", "get") | ("MethodRouter", "post") | ("MethodRouter", "put")
         | ("MethodRouter", "delete") | ("MethodRouter", "patch") => {
-            super::axum_adapter::shim_method_chain(task, vm, method.as_str())?;
+            super::axum_adapter::shim_method_chain(task, vm, method)?;
         }
         ("", "get") | ("", "post") | ("", "put") | ("", "delete") | ("", "patch") => {
-            super::axum_adapter::shim_method_bare(task, vm, method.as_str())?;
+            super::axum_adapter::shim_method_bare(task, vm, method)?;
         }
 
         // PLAN-044 (musk vm_entry): opaque AppState accessor pass-through.
@@ -8270,7 +8294,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     if let Some(dur) = rust_obj.downcast_ref::<std::time::Duration>() {
-                        let val = match method.as_str() {
+                        let val = match method {
                             "as_millis" => dur.as_millis() as i32,
                             "as_micros" => dur.as_micros() as i32,
                             "as_nanos" => dur.as_nanos() as i32,
@@ -8669,7 +8693,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         | ("Blue", "paint") | ("Cyan", "paint") | ("White", "paint") | ("Purple", "paint") => {
             let s: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("{}.paint: {}", type_name, e)))?;
-            let color = match type_name.as_str() {
+            let color = match type_name {
                 "Red" => ansi_term::Colour::Red,
                 "Green" => ansi_term::Colour::Green,
                 "Yellow" => ansi_term::Colour::Yellow,
@@ -9497,12 +9521,6 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             // dep 侧齐整字面量调用统一加后缀,非泛型方法靠此回退到裸名条目。
             if crate::vm::ffi::dep_methods::dispatch(&type_name, &method, task, vm)? {
                 return Ok(());
-            }
-            if method.contains("__") {
-                let stripped = method.split("__").next().unwrap_or(&method).to_string();
-                if crate::vm::ffi::dep_methods::dispatch(&type_name, &stripped, task, vm)? {
-                    return Ok(());
-                }
             }
             return Err(VMError::RuntimeError(format!(
                 "Unknown Rust stdlib call: {type_name}.{method}"
