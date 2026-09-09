@@ -85,19 +85,19 @@ pub struct CodeEditorTheme {
     pub syntax: SyntaxPalette,
 }
 
-/// Accent palettes (aligned with `ui/style/iced_adapter.rs` ACCENT_PALETTES,
-/// duplicated here so the core layer stays independent of the style module's
-/// iced-gated parts).
+/// Accent palette —— PLAN-593 后单源在 `ui::style::theme::registry`
+/// （vue 脚手架 TS ACCENT_PALETTES / VM resolve_semantic_rgb Primary 臂同源）。
+/// 历史注：本地表 L 分量曾与主表漂移（indigo 70↔67 / sage 45↔39 /
+/// amber 55↔50），但编辑器只消费 H/S（dark 定 L=62 / light 定 L=42），
+/// H/S 两表恒一致，故归一为输出中性；原注释指向的 iced_adapter
+/// ACCENT_PALETTES 已不存在（失锚顺修，S1 对账 E6）。
 fn accent_hsl(name: &str) -> (u16, u8, u8) {
-    match name {
-        // Plan 503: coral 校准至 stella-os 玫瑰粉(与 ui/style/theme.rs 同源)。
-        "coral" => (4, 43, 59),
-        "ocean" => (217, 91, 60),
-        "sage" => (160, 84, 45),
-        "amber" => (38, 92, 55),
-        _ => (239, 84, 70), // indigo
-    }
+    crate::design_tokens::registry::accent_hsl(name).unwrap_or((239, 84, 67))
 }
+
+/// f32 版 HSL→RGB（编辑器 0.0–1.0 色域直算）。与 ui::style::theme 的 u8 版
+/// 精度域不同（那边逐通道取整 u8），合流会引入取整差——保留本地纯数学实现，
+/// 单源约束只针对值表（accent_hsl），不针对无值的转换函数。
 
 fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (f32, f32, f32) {
     let h = h as f32 / 360.0;

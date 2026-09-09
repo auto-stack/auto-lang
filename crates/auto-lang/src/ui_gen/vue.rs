@@ -15565,7 +15565,7 @@ export function cn(...inputs: ClassValue[]) {
 	    /// PLAN-593 V1：色变量块整体取自 registry（zinc）单一事实源，
 	    /// 本函数零手写色值（--radius/--card-shadow 为非色 token，留脚手架）。
 	    pub fn generate_base_css() -> String {
-	        let zinc = crate::ui::style::theme::registry::css_builtin("zinc")
+	        let zinc = crate::design_tokens::registry::css_builtin("zinc")
 	            .expect("内置主题 zinc 恒在（PLAN-593 registry 单源）");
 	        let mut css = String::new();
 	        css.push_str(r##"@tailwind base;
@@ -16316,6 +16316,9 @@ export function cn(...inputs: ClassValue[]) {
     ///
     /// Palette values are aligned with auto-forge's useAccentColor.ts so the
     /// two products share the same visual language.
+    /// PLAN-593：5 预设 HSL 值的事实源在 `ui::style::theme::registry::accent_hsl`
+    ///（E4/E5 互锁——改值须同步本 JS 文本；dark 提亮此处 +4、Rust 侧 +10 为
+    /// S1 对账②登记的双端分叉，Phase 2 归一裁定）。
     const ACCENT_PALETTE_JS: &str = r#"
 // Plan 360: Accent color palette (aligned with auto-forge).
 // Each entry maps a name → shadcn --primary HSL triplet (space-separated).

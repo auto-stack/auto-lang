@@ -76,6 +76,7 @@ pub mod aura;
 // Plan 217: A2UI Protocol Bridge (AURA ↔ A2UI JSON)
 pub mod a2ui;
 // Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
+pub mod design_tokens;
 pub mod ui_gen;
 // Stage B P-5（PLAN-590）：跨仓解析序定位 auto-os 侧资产（无 feature 门——
 // ui_gen/docs 管线与 CLI 的无 ui 构建形态也要消费）。

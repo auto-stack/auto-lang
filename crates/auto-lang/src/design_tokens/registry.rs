@@ -1,4 +1,4 @@
-// ui/style/theme/registry.rs —— 语义 token 值的单一事实源（PLAN-593，
+// design_tokens/registry.rs —— 语义 token 值的单一事实源（PLAN-593，
 // Design 29 Phase 1）。S1 对账（见 plan 复审记录）确立的三套现行色板在此
 // 各持一份、逐字迁移（零漂移金样/期望表钉死，tests: plan593_theme_registry_tests
 // + auto-man plan593_index_css_golden_tests）：

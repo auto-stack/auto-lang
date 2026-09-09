@@ -10,7 +10,9 @@ use super::Color;
 
 /// PLAN-593（Design 29 Phase 1）：语义 token 值单一事实源——zinc/scaffold
 /// （CSS 面）与 stella（VM 面）三套色板 + accent 表 + 封闭词表。
-pub mod registry;
+/// 实体在无门的 `crate::design_tokens`（ui_gen 消费方不受 feature="ui" 门，
+/// 见该模块头注）；此处 re-export 保持 `theme::registry` 路径稳定。
+pub use crate::design_tokens::registry;
 
 // Plan 370 D-GAP-2/D-GAP-5: thread-local theme state for dark mode + accent.
 // Set by the renderer before each render pass from VmBridge state.
