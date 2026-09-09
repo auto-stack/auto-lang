@@ -1,8 +1,12 @@
 name: "stopwatch"
-version: "1.0.0"
+version: "1.1.0"
 scene: "ui"
 render: "vue"
-title: "Stopwatch"
+# os-003（origin PLAN-554）：012 原地升级 Clock 四 tab——目录名/registry id
+# 保持 012-stopwatch 稳定（recent 槽/dock pinned 不破坏）。
+title: "Clock"
+icon: "clock"
+category: "tool"
 # Plan 506: 窗口随内容自然尺寸收缩（独立 VM 窗 / 虚拟桌面窗双路径）。
 window: "fit"
 desktop: "true"

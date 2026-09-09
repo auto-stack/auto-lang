@@ -1,70 +1,453 @@
+// 012-stopwatch → Clock 四 tab 应用（os-003 / origin PLAN-554）。
+// T2 骨架：tab 化外壳 + 秒表面板迁入 stopwatch tab；计时器/世界时钟/闹钟
+// 占位（T4-T6 落）。T1 契约：开关避名 `running`（vue 轨 watch(running) 会
+// 把 setInterval 整只门死，iced 轨无门控——双端一致取恒 tick+handler 自管）。
 widget App {
-    msg { Start, Stop, Reset, Lap }
+    msg { Init, Start, Stop, Reset, DoLap, SelectTab(str), Tick,
+      SetTH(str), SetTM(str), SetTS(str), TStart, TPause, TCancel,
+      SetLocal(int), AAdd, ADel(str), DismissBanner,
+      TUpH, TDnH, TUpM, TDnM, TUpS, TDnS, AUpH, ADnH, AUpM, ADnM }
 
     model {
-        var running str = "false"
+        var tab str = "stopwatch"
+        // 秒表（T1：sw_on 替代 running；差值法锚点 T3 接 Tick）
+        var sw_on str = "false"
+        var elapsed int = 0
         var time_display str = "00:00"
         var ms_display str = ".00"
-        var lap_count str = "0"
         var lap1 str = ""
         var lap2 str = ""
         var lap3 str = ""
-        var elapsed int = 0
-        var interval int = 10
+        var lap4 str = ""
+        var lap5 str = ""
+        // 计时器（T4；步进器 int 形态——VM 状态 str .to_int() 接收者坏，
+        // 文本 input+解析留框架修后升级，执行期裁定注记）
+        var t_set_h int = 0
+        var t_set_m int = 0
+        var t_set_s int = 1
+        var t_set_disp str = "00:00:01"
+        var t_h_str str = "00"
+        var t_m_str str = "00"
+        var t_s_str str = "01"
+        var t_left int = 0            // 剩余 ms
+        var t_on str = "false"
+        var t_disp str = "00:00:01"
+        // 世界时钟（T5；固定偏移表 v1——DST 限制见计划待澄清 #2）
+        var cities []str = ["Beijing", "London", "New York", "Tokyo", "Sydney", "Paris", "Moscow", "Los Angeles"]
+        var offsets []int = [8, 0, -5, 9, 11, 1, 3, -8]
+        var w_rows []str = []
+        var w_local str = "--:--:--"
+        var local_city int = 0
+        var w_tick int = 0
+        // 闹钟（T6；storage 定长 5 槽持久化——028 惯例；步进器 int 同上）
+        var a_h int = 7
+        var a_m int = 30
+        var a_set_disp str = "07:30"
+        var a_h_str str = "07"
+        var a_m_str str = "30"
+        var alarm1 str = ""
+        var alarm2 str = ""
+        var alarm3 str = ""
+        var alarm4 str = ""
+        var alarm5 str = ""
+        var fired str = ""            // 当日已触发 "HH:MM," 累记
+        var last_day int = 0
+        // 通用覆盖横幅（空=隐藏；timer 到零/闹钟到点共用）
+        var banner str = ""
+        // Tick 周期（T3 起 .Tick 接管；250ms 基准=025 先例）
+        var interval int = 250
     }
 
-    // Plan 506: 外壳改"内容即页面"（拆 center 包裹 + 删 min-h-screen 居中
-    // 外壳，循 011 样板），配合 pac `window: "fit"` 窗口随内容收缩。
     view {
         col {
-            col {
-                text .time_display {
-                    style: "text-7xl font-mono font-bold text-gray-900 tracking-wider"
+            // 标题 + 四 tab 胶囊
+            row {
+                text "Clock" {
+                    style: "text-2xl font-bold text-foreground"
                 }
-                text .ms_display {
-                    style: "text-3xl font-mono text-gray-400"
-                }
-                style: "items-center gap-1 py-12"
+                style: "items-center justify-between"
             }
             row {
-                if .running == "true" {
-                    button "Stop" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
-                    button "Lap" { onclick: .Lap, style: "px-10 py-4 bg-gray-200 text-gray-700 rounded-full text-lg font-semibold" }
-                } else {
-                    button "Start" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
+                button "秒表" {
+                    onclick: .SelectTab("stopwatch"),
+                    style: if .tab == "stopwatch" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
                 }
-                style: "gap-4 items-center"
+                button "计时器" {
+                    onclick: .SelectTab("timer"),
+                    style: if .tab == "timer" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
+                }
+                button "世界时钟" {
+                    onclick: .SelectTab("world"),
+                    style: if .tab == "world" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
+                }
+                button "闹钟" {
+                    onclick: .SelectTab("alarm"),
+                    style: if .tab == "alarm" {
+                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                    } else {
+                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                    }
+                }
+                style: "gap-2"
             }
-            col {
-                text "Laps" { style: "text-sm font-semibold text-gray-400 uppercase" }
-                text .lap1 { style: "text-gray-700 font-mono py-2" }
-                text .lap2 { style: "text-gray-700 font-mono py-2" }
-                text .lap3 { style: "text-gray-700 font-mono py-2" }
-                style: "w-full max-w-xs mt-8 gap-2 items-center"
+
+            // 通用横幅顶栏（timer 到零/闹钟到点）：恒在结构，文本重绑驱动
+            // （VM 轨 Tick 后结构/样式 if 均不重渲染——执行期实测注记）。
+            row {
+                text .banner { style: "text-2xl font-bold text-primary" }
+                button "知道了" { onclick: .DismissBanner, style: "px-4 py-1 bg-secondary text-secondary-foreground rounded-full text-sm" }
+                style: "items-center justify-center gap-3 min-h-9"
             }
-            style: "max-w-md p-8 bg-white items-center"
+
+            // ---- tab 内容 ----
+            if .tab == "stopwatch" {
+                col {
+                    col {
+                        text .time_display {
+                            style: "text-7xl font-mono font-bold text-foreground tracking-wider"
+                        }
+                        text .ms_display {
+                            style: "text-3xl font-mono text-muted-foreground"
+                        }
+                        style: "items-center gap-1 py-10"
+                    }
+                    row {
+                        if .sw_on == "true" {
+                            button "停止" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
+                            button "计圈" { onclick: .DoLap, style: "px-10 py-4 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold" }
+                        } else {
+                            button "开始" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
+                            button "复位" { onclick: .Reset, style: "px-10 py-4 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold" }
+                        }
+                        style: "gap-4 items-center"
+                    }
+                    col {
+                        text "Laps" { style: "text-sm font-semibold text-muted-foreground uppercase" }
+                        text .lap1 { style: "text-foreground font-mono py-2" }
+                        text .lap2 { style: "text-foreground font-mono py-2" }
+                        text .lap3 { style: "text-foreground font-mono py-2" }
+                        text .lap4 { style: "text-foreground font-mono py-2" }
+                        text .lap5 { style: "text-foreground font-mono py-2" }
+                        style: "w-full max-w-xs mt-6 gap-2 items-center"
+                    }
+                    style: "items-center py-6"
+                }
+            }
+            if .tab == "timer" {
+                col {
+                    text .t_disp { style: "text-6xl font-mono font-bold text-foreground py-8" }
+                    row {
+                        col { button "时−" { onclick: .TDnH, style: "px-3 py-1 bg-secondary rounded" }
+                            text .t_h_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
+                            button "时+" { onclick: .TUpH, style: "px-3 py-1 bg-secondary rounded" }
+                            style: "items-center gap-1" }
+                        text "时" { style: "text-muted-foreground self-center" }
+                        col { button "分−" { onclick: .TDnM, style: "px-3 py-1 bg-secondary rounded" }
+                            text .t_m_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
+                            button "分+" { onclick: .TUpM, style: "px-3 py-1 bg-secondary rounded" }
+                            style: "items-center gap-1" }
+                        text "分" { style: "text-muted-foreground self-center" }
+                        col { button "秒−" { onclick: .TDnS, style: "px-3 py-1 bg-secondary rounded" }
+                            text .t_s_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
+                            button "秒+" { onclick: .TUpS, style: "px-3 py-1 bg-secondary rounded" }
+                            style: "items-center gap-1" }
+                        text "秒" { style: "text-muted-foreground self-center" }
+                        style: "gap-3"
+                    }
+                    text .t_set_disp { style: "text-muted-foreground font-mono" }
+                    row {
+                        if .t_on == "false" {
+                            button "开始" { onclick: .TStart, style: "px-8 py-3 bg-green-500 text-white rounded-full font-semibold" }
+                        } else {
+                            button "暂停" { onclick: .TPause, style: "px-8 py-3 bg-yellow-500 text-white rounded-full font-semibold" }
+                        }
+                        button "取消" { onclick: .TCancel, style: "px-8 py-3 bg-secondary text-secondary-foreground rounded-full font-semibold" }
+                        style: "gap-4"
+                    }
+                    style: "items-center py-6 gap-4"
+                }
+            }
+            if .tab == "world" {
+                col {
+                    text .w_local { style: "text-5xl font-mono font-bold text-foreground py-6" }
+                    col {
+                        for r in .w_rows {
+                            text r { style: "text-foreground font-mono py-1.5 text-lg" }
+                        }
+                        style: "gap-1 items-center"
+                    }
+                    text "点击城市设为本地（v1 固定偏移，不含夏令时）" { style: "text-muted-foreground text-xs" }
+                    style: "items-center py-6 gap-2"
+                }
+            }
+            if .tab == "alarm" {
+                col {
+                    row {
+                        col { button "时−" { onclick: .ADnH, style: "px-3 py-1 bg-secondary rounded" }
+                            text .a_h_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
+                            button "时+" { onclick: .AUpH, style: "px-3 py-1 bg-secondary rounded" }
+                            style: "items-center gap-1" }
+                        text ":" { style: "text-2xl font-mono self-center text-foreground" }
+                        col { button "分−" { onclick: .ADnM, style: "px-3 py-1 bg-secondary rounded" }
+                            text .a_m_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
+                            button "分+" { onclick: .AUpM, style: "px-3 py-1 bg-secondary rounded" }
+                            style: "items-center gap-1" }
+                        button "添加" { onclick: .AAdd, style: "ml-2 px-6 py-2 bg-primary text-primary-foreground rounded-full font-semibold" }
+                        style: "gap-3"
+                    }
+                    text .a_set_disp { style: "text-muted-foreground font-mono" }
+                    col {
+                        if .alarm1 != "" { row { text .alarm1 { style: "text-foreground font-mono py-1.5 text-lg" }
+                            button "×" { onclick: .ADel(.alarm1), style: "text-muted-foreground hover:text-destructive px-2" } } }
+                        if .alarm2 != "" { row { text .alarm2 { style: "text-foreground font-mono py-1.5 text-lg" }
+                            button "×" { onclick: .ADel(.alarm2), style: "text-muted-foreground hover:text-destructive px-2" } } }
+                        if .alarm3 != "" { row { text .alarm3 { style: "text-foreground font-mono py-1.5 text-lg" }
+                            button "×" { onclick: .ADel(.alarm3), style: "text-muted-foreground hover:text-destructive px-2" } } }
+                        if .alarm4 != "" { row { text .alarm4 { style: "text-foreground font-mono py-1.5 text-lg" }
+                            button "×" { onclick: .ADel(.alarm4), style: "text-muted-foreground hover:text-destructive px-2" } } }
+                        if .alarm5 != "" { row { text .alarm5 { style: "text-foreground font-mono py-1.5 text-lg" }
+                            button "×" { onclick: .ADel(.alarm5), style: "text-muted-foreground hover:text-destructive px-2" } } }
+                        style: "gap-1 items-center"
+                    }
+                    style: "items-center py-6 gap-4"
+                }
+            }
+
+            style: "relative max-w-2xl w-full p-8 gap-4 bg-background text-foreground items-stretch"
         }
     }
 
     on {
-        .Start -> { .running = "true" }
-        .Stop -> { .running = "false" }
+        .Init -> {
+            // T6：闹钟 5 槽 storage 恢复（028 定长槽惯例；空串=空槽）
+            .alarm1 = storage.get("clock.alarms.0")
+            .alarm2 = storage.get("clock.alarms.1")
+            .alarm3 = storage.get("clock.alarms.2")
+            .alarm4 = storage.get("clock.alarms.3")
+            .alarm5 = storage.get("clock.alarms.4")
+            .SelectTab("world")
+            .SelectTab("stopwatch")
+        }
+        .SelectTab(t) -> { .tab = t }
+        .Start -> { .sw_on = "true" }
+        .Stop -> { .sw_on = "false" }
         .Reset -> {
-            .running = "false"
-            .lap_count = "0"
+            .sw_on = "false"
             .lap1 = ""
             .lap2 = ""
             .lap3 = ""
+            .lap4 = ""
+            .lap5 = ""
             .time_display = "00:00"
             .ms_display = ".00"
             .elapsed = 0
         }
-        .Lap -> {
+        // T3 实测：消息名 `Lap` 在 VM 轨被内置动词劫持（handler 结果被自动
+        // 包上 "Lap {n}: " 前缀——.lap1 出现 "Lap 0: 00:01.25" 形态）→ 改名
+        // DoLap 规避；旧 012 的 .Lap 同病（vm 轨从未实测过计圈）。框架层
+        // 劫持面待查（os-003 执行期发现，注记在案）。
+        .DoLap -> {
+            .lap5 = .lap4
+            .lap4 = .lap3
             .lap3 = .lap2
             .lap2 = .lap1
             .lap1 = .time_display + .ms_display
-            .lap_count += 1
         }
-        .Tick -> { .elapsed += 10 }
+        // T3：累计法 v1（计划主文方案——+=250/tick，双端零原生依赖；
+        // 差值法升级条件=vue 轨 Time 桥确认，待澄清 #3 注记维持）。
+        .Tick -> {
+            if .sw_on == "true" {
+                .elapsed += 250
+                var total_cs = .elapsed / 10
+                var cc = total_cs % 100
+                var total_s = total_cs / 100
+                var ss = total_s % 60
+                var mm = total_s / 60
+                var cc_str = f"${cc}"
+                if cc < 10 { cc_str = "0" + cc_str }
+                var ss_str = f"${ss}"
+                if ss < 10 { ss_str = "0" + ss_str }
+                var mm_str = f"${mm}"
+                if mm < 10 { mm_str = "0" + mm_str }
+                .ms_display = "." + cc_str
+                .time_display = mm_str + ":" + ss_str
+            }
+
+            // ---- T4 计时器 ----
+            if .t_on == "true" {
+                if .t_left > 250 {
+                    .t_left -= 250
+                } else {
+                    .t_left = 0
+                    .t_on = "false"
+                    .banner = "⏰ 时间到！"
+                }
+                var th = .t_left / 3600000
+                var tm = (.t_left % 3600000) / 60000
+                var ts = (.t_left % 60000) / 1000
+                var th_str = f"${th}"
+                if th < 10 { th_str = "0" + th_str }
+                var tm_str = f"${tm}"
+                if tm < 10 { tm_str = "0" + tm_str }
+                var ts_str = f"${ts}"
+                if ts < 10 { ts_str = "0" + ts_str }
+                .t_disp = th_str + ":" + tm_str + ":" + ts_str
+            }
+
+            // 设定汇总行（步进器汇总显示）
+            var shh = f"${.t_set_h}"
+            if .t_set_h < 10 { shh = "0" + shh }
+            var smm = f"${.t_set_m}"
+            if .t_set_m < 10 { smm = "0" + smm }
+            var sss = f"${.t_set_s}"
+            if .t_set_s < 10 { sss = "0" + sss }
+            .t_h_str = shh
+            .t_m_str = smm
+            .t_s_str = sss
+            .t_set_disp = shh + ":" + smm + ":" + sss
+            var ahh = f"${.a_h}"
+            if .a_h < 10 { ahh = "0" + ahh }
+            var amm = f"${.a_m}"
+            if .a_m < 10 { amm = "0" + amm }
+            .a_h_str = ahh
+            .a_m_str = amm
+            .a_set_disp = ahh + ":" + amm
+
+            // ---- T5 世界时钟 + T6 闹钟比对（每 4 tick=1s）----
+            .w_tick += 1
+            if .w_tick >= 4 {
+                .w_tick = 0
+                var secs = Time.now_sec()
+                var rows []str = []
+                var idx int = 0
+                for c in .cities {
+                    var cs = secs + .offsets[idx] * 3600
+                    var ch = (cs / 3600) % 24
+                    var cm = (cs / 60) % 60
+                    var csec = cs % 60
+                    var ch_str = f"${ch}"
+                    if ch < 10 { ch_str = "0" + ch_str }
+                    var cm_str = f"${cm}"
+                    if cm < 10 { cm_str = "0" + cm_str }
+                    var csec_str = f"${csec}"
+                    if csec < 10 { csec_str = "0" + csec_str }
+                    var mark = ""
+                    if idx == .local_city { mark = " ●" }
+                    rows.push(c + "  " + ch_str + ":" + cm_str + ":" + csec_str + mark)
+                    idx += 1
+                }
+                .w_rows = rows
+                // 本地城大表
+                var ls = secs + .offsets[.local_city] * 3600
+                var lh = (ls / 3600) % 24
+                var lm = (ls / 60) % 60
+                var lsec = ls % 60
+                var lh_str = f"${lh}"
+                if lh < 10 { lh_str = "0" + lh_str }
+                var lm_str = f"${lm}"
+                if lm < 10 { lm_str = "0" + lm_str }
+                var lsec_str = f"${lsec}"
+                if lsec < 10 { lsec_str = "0" + lsec_str }
+                .w_local = lh_str + ":" + lm_str + ":" + lsec_str
+
+                // ---- T6 闹钟分钟比对（本地城时区）----
+                var day = ls / 86400
+                if day != .last_day {
+                    .last_day = day
+                    .fired = ""
+                }
+                var cur = lh_str + ":" + lm_str
+                if .alarm1 == cur && .fired.contains(cur) == false && .alarm1 != "" { .banner = "⏰ 闹钟 " + cur
+                    .fired = .fired + cur + ","
+                }
+                if .alarm2 == cur && .fired.contains(cur) == false && .alarm2 != "" { .banner = "⏰ 闹钟 " + cur
+                    .fired = .fired + cur + ","
+                }
+                if .alarm3 == cur && .fired.contains(cur) == false && .alarm3 != "" { .banner = "⏰ 闹钟 " + cur
+                    .fired = .fired + cur + ","
+                }
+                if .alarm4 == cur && .fired.contains(cur) == false && .alarm4 != "" { .banner = "⏰ 闹钟 " + cur
+                    .fired = .fired + cur + ","
+                }
+                if .alarm5 == cur && .fired.contains(cur) == false && .alarm5 != "" { .banner = "⏰ 闹钟 " + cur
+                    .fired = .fired + cur + ","
+                }
+            }
+        }
+
+        // ---- T4 handlers（步进器 0..23/0..59/0..59 边界钳制）----
+        .TUpH -> { .t_set_h = (.t_set_h + 1) % 24 }
+        .TDnH -> { .t_set_h = (.t_set_h + 23) % 24 }
+        .TUpM -> { .t_set_m = (.t_set_m + 1) % 60 }
+        .TDnM -> { .t_set_m = (.t_set_m + 59) % 60 }
+        .TUpS -> { .t_set_s = (.t_set_s + 1) % 60 }
+        .TDnS -> { .t_set_s = (.t_set_s + 59) % 60 }
+        .TStart -> {
+            .t_left = (.t_set_h * 3600 + .t_set_m * 60 + .t_set_s) * 1000
+            if .t_left > 0 { .t_on = "true" }
+        }
+        .TPause -> { .t_on = "false" }
+        .TCancel -> {
+            .t_on = "false"
+            .t_left = 0
+            .t_disp = "00:00:00"
+        }
+
+        // ---- T5/T6 handlers ----
+        .SetLocal(i) -> { .local_city = i }
+        .AUpH -> { .a_h = (.a_h + 1) % 24 }
+        .ADnH -> { .a_h = (.a_h + 23) % 24 }
+        .AUpM -> { .a_m = (.a_m + 1) % 60 }
+        .ADnM -> { .a_m = (.a_m + 59) % 60 }
+        .AAdd -> {
+            var hh_str = f"${.a_h}"
+            if .a_h < 10 { hh_str = "0" + hh_str }
+            var mm_str = f"${.a_m}"
+            if .a_m < 10 { mm_str = "0" + mm_str }
+            var t = hh_str + ":" + mm_str
+            if .alarm1 == "" { .alarm1 = t } else {
+                if .alarm2 == "" { .alarm2 = t } else {
+                    if .alarm3 == "" { .alarm3 = t } else {
+                        if .alarm4 == "" { .alarm4 = t } else {
+                            if .alarm5 == "" { .alarm5 = t }
+                        }
+                    }
+                }
+            }
+            storage.set("clock.alarms.0", .alarm1)
+            storage.set("clock.alarms.1", .alarm2)
+            storage.set("clock.alarms.2", .alarm3)
+            storage.set("clock.alarms.3", .alarm4)
+            storage.set("clock.alarms.4", .alarm5)
+        }
+        .ADel(t) -> {
+            if .alarm1 == t { .alarm1 = "" } else {
+                if .alarm2 == t { .alarm2 = "" } else {
+                    if .alarm3 == t { .alarm3 = "" } else {
+                        if .alarm4 == t { .alarm4 = "" } else {
+                            if .alarm5 == t { .alarm5 = "" }
+                        }
+                    }
+                }
+            }
+            storage.set("clock.alarms.0", .alarm1)
+            storage.set("clock.alarms.1", .alarm2)
+            storage.set("clock.alarms.2", .alarm3)
+            storage.set("clock.alarms.3", .alarm4)
+            storage.set("clock.alarms.4", .alarm5)
+        }
+        .DismissBanner -> { .banner = "" }
     }
 }

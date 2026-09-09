@@ -2144,6 +2144,22 @@ fn try_transpile_builtin_call(
                 _ => false,
             }
         }
+        // Time.now_ms()/Time.now_sec() → Date.now()（os-003 执行期补：VM 侧
+        // stdlib 实存而 vue 轨无桥——时间类 app（时钟/闹钟/倒计时族）双端
+        // 能力缺口；now_sec 取整与 VM shim 的 as i64 秒语义对齐）。
+        "Time" => {
+            match method {
+                "now_ms" => {
+                    write!(out, "Date.now()").ok();
+                    true
+                }
+                "now_sec" => {
+                    write!(out, "Math.floor(Date.now()/1000)").ok();
+                    true
+                }
+                _ => false,
+            }
+        }
         // math.random() → Math.random(); math.floor(x) → Math.floor(x)
         "math" => {
             write!(out, "Math.{}(", method).ok();
@@ -2792,6 +2808,40 @@ mod tests {
     /// Plan 041a④(musk 041 Phase 5 T21): 动态拼接 pattern 的 Regex 调用
     /// 转译为 new RegExp(<expr>) 包装(match 补 || [];replace 的 flags 在
     /// 第 4 参位)。
+    /// os-003：Time.now_ms/now_sec 的 vue 桥（时间类 app 双端能力）。
+    #[test]
+    fn time_module_bridges_to_date_now() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "fn now_secs() int {
+    return Time.now_sec()
+}
+fn stamp() int {
+    return Time.now_ms()
+}
+";
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("must parse");
+        let mut mods = Vec::new();
+        for s in &ast.stmts {
+            if let crate::ast::Stmt::Fn(f) = s {
+                mods.push(crate::aura::extract_module_fn(f).unwrap());
+            }
+        }
+        let code = crate::ui_gen::vue::VueGenerator::generate_fn_module(&mods);
+        assert!(
+            code.contains("Math.floor(Date.now()/1000)"),
+            "now_sec must bridge to floored Date.now: 
+{}",
+            code
+        );
+        assert!(
+            code.contains("Date.now()") && !code.contains("Time.now_sec") && !code.contains("Time.now_ms"),
+            "no verbatim Time.* may remain: 
+{}",
+            code
+        );
+    }
+
     #[test]
     fn t21_dynamic_regex_pattern_transpiles() {
         let session = crate::session::CompilerSession::ui();
