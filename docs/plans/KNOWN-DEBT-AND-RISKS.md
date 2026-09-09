@@ -1838,3 +1838,11 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
 - **P593-D4 [跨仓] auto-os 桌面宿主 CSS 发射点未对账**：auto-os 仓
   widgets-gallery/vue-ref 静态资产含 `--background:` 系（E7），桌面 vue 宿主若
   另有 index.css 发射点则属第四源——Phase 2 立项时跨仓对账。
+- **P593-D5 [S9 实勘补录] auto CLI 两个手写 index.css 副本未收编**：
+  `crates/auto/src/cmd_tauri.rs:745` 与 `crates/auto/src/cmd_vue.rs:1613` 各有一
+  份 `generate_index_css()`（tauri/cli-vue 脚手架真路径，各有非测试调用方
+  386/1163），色板为 zinc/scaffold 之外的独立变体（tauri≈zinc+dark bg 84% 4.9%
+  +vis-* 图表 token 族；cli-vue=radius 0.625+双 sidebar 块〔zinc 值与 indigo 值
+  并存〕）。PLAN-593 收尾期裁定不中途扩面：PLAN-571 contains 测试在守护已知
+  漂移（--secondary 分档），Phase 2 收编或直接对齐 scaffold/zinc（含产品裁定
+  何者退役）。

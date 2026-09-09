@@ -138,7 +138,7 @@ const ZINC_LIGHT: &str = r##"    --background: 0 0% 100%;
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
     /* PLAN-571: secondary 与 muted 分档（≠210 40% 96.1% 暖纸 muted）——暖灰一档深 #e3ddd1，
-       与 Rust 侧 theme.rs Color::Secondary 互锁（改任一须同步）。 */
+       值已迁入本 registry 单源（PLAN-593）；theme.rs Color::Secondary 同源查表。 */
     --secondary: 40 24% 85.5%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
