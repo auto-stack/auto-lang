@@ -1,0 +1,39 @@
+// Plan 597 (004 §5③): VM-side smoke of the engine's scalar C-FFI subset.
+// Run from this directory with the engine dll on the search path:
+//   PATH=<auto-term>/target/debug:$PATH auto engine_face_vm.at
+// Scalar face only: the four buffer/out-param symbols (row_text/row_style/
+// take_dirty_rows/cursor) are VM-marshalling-unreachable (plan SD-02).
+//
+// Witness: VFACE_OK = spawn + write_input accepted + feed_ready observed a
+// byte batch (echo roundtrip reached the emulator) + clean kill/free.
+//
+// VM script-mode findings baked into this shape (plan §9):
+// (a) C-FFI call inline in an if-CONDITION inside a while-loop hangs the VM;
+// (b) assigning the loop counter inside a nested if silently breaks control
+//     flow. Workaround: assignment-first + condition-composed loop (&&),
+//     counter only mutated at the body tail.
+use.c <engine_face.json>
+
+fn main() {
+    var h = autoterm_engine_spawn(80, 24, "cmd")
+    autoterm_engine_write_input(h, "echo VFACE_OK\r\n", 16)
+    var done = 0
+    var tries = 0
+    for tries < 100 && done == 0 {
+        var fed = autoterm_engine_feed_ready(h)
+        if fed == 1 {
+            done = 1
+        } else {
+            Time.sleep_ms(50)
+        }
+        tries = tries + 1
+    }
+    if done == 1 {
+        print("VFACE_OK")
+    } else {
+        print("FEED_TIMEOUT")
+    }
+    autoterm_engine_resize(h, 100, 30)
+    autoterm_engine_kill(h)
+    autoterm_engine_free(h)
+}

@@ -1,0 +1,67 @@
+{
+  "header": "engine_face.json",
+  "library": "autoterm_core",
+  "abi": "c",
+  "functions": [
+    {
+      "name": "autoterm_engine_spawn",
+      "params": [
+        { "name": "cols", "ty": { "kind": "Int" } },
+        { "name": "rows", "ty": { "kind": "Int" } },
+        { "name": "program", "ty": { "kind": "CStr" } }
+      ],
+      "return_type": { "kind": "Ptr" },
+      "variadic": false
+    },
+    {
+      "name": "autoterm_engine_write_input",
+      "params": [
+        { "name": "h", "ty": { "kind": "Ptr" } },
+        { "name": "bytes", "ty": { "kind": "CStr" } },
+        { "name": "len", "ty": { "kind": "Size" } }
+      ],
+      "return_type": { "kind": "Void" },
+      "variadic": false
+    },
+    {
+      "name": "autoterm_engine_feed_ready",
+      "params": [{ "name": "h", "ty": { "kind": "Ptr" } }],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "autoterm_engine_resize",
+      "params": [
+        { "name": "h", "ty": { "kind": "Ptr" } },
+        { "name": "cols", "ty": { "kind": "Int" } },
+        { "name": "rows", "ty": { "kind": "Int" } }
+      ],
+      "return_type": { "kind": "Void" },
+      "variadic": false
+    },
+    {
+      "name": "autoterm_engine_interrupt",
+      "params": [{ "name": "h", "ty": { "kind": "Ptr" } }],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "autoterm_engine_is_exited",
+      "params": [{ "name": "h", "ty": { "kind": "Ptr" } }],
+      "return_type": { "kind": "Int" },
+      "variadic": false
+    },
+    {
+      "name": "autoterm_engine_kill",
+      "params": [{ "name": "h", "ty": { "kind": "Ptr" } }],
+      "return_type": { "kind": "Void" },
+      "variadic": false
+    },
+    {
+      "name": "autoterm_engine_free",
+      "params": [{ "name": "h", "ty": { "kind": "Ptr" } }],
+      "return_type": { "kind": "Void" },
+      "variadic": false
+    }
+  ]
+}

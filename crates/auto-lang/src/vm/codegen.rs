@@ -5005,12 +5005,24 @@ impl Codegen {
             return;
         };
 
-        // Load the built-in manifest
+        // Load the manifest: built-in dataset first, then a JSON file path
+        // (Plan 597: non-builtin datasets resolve as-given/CWD-relative).
+        let clean = header.trim_start_matches('<').trim_end_matches('>');
         let manifest = match crate::vm::ffi::c_ffi::load_builtin_manifest(&header) {
             Some(m) => m,
             None => {
-                log::warn!("No C-FFI manifest found for header: {}", header);
-                return;
+                if clean.ends_with(".json") {
+                    match crate::vm::ffi::c_ffi::load_manifest_file(clean) {
+                        Some(m) => m,
+                        None => {
+                            log::warn!("No C-FFI manifest file readable: {}", clean);
+                            return;
+                        }
+                    }
+                } else {
+                    log::warn!("No C-FFI manifest found for header: {}", header);
+                    return;
+                }
             }
         };
 
