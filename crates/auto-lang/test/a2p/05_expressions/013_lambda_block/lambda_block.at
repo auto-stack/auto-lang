@@ -1,0 +1,14 @@
+// PLAN-598 T-05 (DIV-PY-CLOSURE-1 a2py facet): single-expression block
+// bodies (and bare `return e`) lower to clean lambdas — never the old
+// `lambda x: {...}` set-literal garbage. Statement blocks (bindings /
+// multiple statements) are a compile-time diagnostic.
+fn main() {
+    let f = (x int) => {
+        x * 2
+    }
+    let r = (x int) => {
+        return x + 5
+    }
+    print(f(3))
+    print(r(1))
+}

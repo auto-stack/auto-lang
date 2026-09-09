@@ -3082,6 +3082,38 @@ mod tests {
         test_a2p("16_python_std/002_method_map").unwrap();
     }
 
+    // PLAN-598 T-05 (P539-D3): compound receivers emit parenthesized —
+    // `(1 + 2).bit_length()`, never `1 + 2.bit_length()`.
+    #[test]
+    fn test_16_003_py_call_compound() {
+        test_a2p("16_python_std/003_py_call_compound").unwrap();
+    }
+
+    // PLAN-598 T-05 (DIV-PY-CLOSURE-1 a2py facet): single-expression block
+    // bodies (and bare `return e`) lower to clean lambdas.
+    #[test]
+    fn test_05_013_lambda_block() {
+        test_a2p("05_expressions/013_lambda_block").unwrap();
+    }
+
+    // PLAN-598 D2: statement-body closures (bindings / multiple statements)
+    // are an explicit diagnostic, never the old silent `lambda x: {...}` set
+    // literal.
+    #[test]
+    fn test_lambda_statement_body_diagnostic() {
+        let src = "fn main() {\n    let g = (x) => {\n        let y = x + 1\n        y * 2\n    }\n    print(g(3))\n}\n";
+        let _scope = crate::scope_manager::ScopeManager::new();
+        let mut parser = Parser::from(src);
+        let ast = parser.parse().unwrap();
+        let mut sink = Sink::new("lambda_statement_body".into());
+        let mut trans = PythonTrans::new("lambda_statement_body".into());
+        let err = trans.trans(ast, &mut sink).expect_err("must diagnose");
+        assert!(
+            err.to_string().contains("statement-body closures"),
+            "unexpected error: {err}"
+        );
+    }
+
     // Plan 283 Task 2.2: Static method decorator test
     #[test]
     fn test_11_004_static_decorator() {
