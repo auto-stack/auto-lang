@@ -192,7 +192,9 @@ next: merge
   reviews 76)
 - archived: docs/plans/archive/595-c-channel-pc-batch1.md(git mv)+
   status: archived + completion_kind: delivered
-- cleaned: (待清理执行后回填)
+- cleaned: 双 wt-guard clean(.wt/lang-595/auto-lang + auto-down)→
+  worktree remove×2 + 分支 plan-595-dev(已合,-d 安全)/plan-595-dep 删除 +
+  组目录 .wt/lang-595 空删;worktree list 复核=main+lang-593(他组未扰)
 - 遗留移交:F1——auto-term 侧回执(004 §5①②标注/DEBTS #10/.autoos
   D004 条目)留其工作区未提交,随用户裁定入库(该仓另有本会话设计记录
   同批);findings F2/F3(info 级)在案不阻塞
