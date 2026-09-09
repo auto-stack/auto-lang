@@ -1831,3 +1831,28 @@ P0 特征化网执行期发现的管线缺陷，已修复面见计划执行步�
   （方法包构建失败降级自由函数路径）无 logger 时丢弃——016 排障期曾因此盲走
   （本轮以临时 logger 定位后移除，log 的 std feature 与 test-trans 档冲突，
   set_boxed_logger 不可用）。修法=测试基建提供 feature 无关的 logger 挂钩。
+
+- **P591-D1 [工程债] dep 对象字段写的失效/别名语义**（2026-09-09, V1 裁定待澄清 #1）：
+  VM 侧 offset 直写穿透 cdylib 堆后，Rust 侧缓存旧值（OnceLock 类）不刷新；
+  别名句柄（多 VM 句柄指向同对象）并发写语义未定义。单线程批处理纪律下接受
+  为 V1 已知限制；多线程/失效通知归后续计划。
+- **P591-D2 [工程债] 自由函数 Result/Option 返回的 Err 通道未收口**（2026-09-09）：
+  591 T2 收口了方法 wrapper 路径（emit_cdylib fallible/nullable）；自由函数
+  路径（compile_dep 的 FunctionShim）returns_result 硬编码 false、wrapper 无
+  auto__last_error 导出、RustSignature 无 fallible 位——Result 返回的自由函数
+  wrapper 生成本身不成立。DIV-DEP-12 维持 open，根修=五层链
+  （manifest FunctionEntry→register_function_sig→RustSignature→FunctionShim→
+  generate_shim+VM 侧检查）。
+- **P591-D3 [风险] 并发测试共享 ~/.auto/sandbox 的竞态**（2026-09-09 观察）：
+  nextest 并行跑多个 dep 用例时，共享的 pack 构建目录/v3 wrapper exists-check
+  可读到半写状态（017 drop_count 间歇 Unknown，清缓存复现消失）。P592-D1 家族；
+  根修=sandbox 锁或 per-test 沙箱根。
+- **P591-D4 [a2r] 发射器内建名/字面量启发式劫持**（2026-09-09，DIV-DEP-15）：
+  方法名撞内建（find/count）被改写为内建调用；变量名 nil 被发射为 None 字面量；
+  parse* 方法名投影 Option→Result。根修=P592-D3 dep 元数据接入发射器；语料
+  纪律=避开内建名+花括号 use.rs 形态。
+- **V2 拆分去向指针（PLAN-591 r1 裁定，2026-09-09）**：T3 trait 单态转发/
+  T4 泛型实例化/T5 反向 adapter 原型 + V2-1..V2-6 用例 + fixture
+  autolang_traits 设计，全文保留于 docs/plans/591-use-rust-any-crate-direct.md
+  §2 折叠节；V1 收口后另取计划号执行（DIV-DEP-8 的 `.to(str)` a2r 半边
+  与 DIV-DEP-15 归该计划一并收口）。
