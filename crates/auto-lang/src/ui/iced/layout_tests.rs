@@ -488,6 +488,274 @@ fn popover_closed_hides_panel() {
     assert!(ui.find("HIDDENPANEL").is_err(), "panel content must NOT be reachable when closed");
 }
 
+// ── PLAN-002 A1: 开合翻转后首帧定位（526 KNOWN-DEBT 🟢 首开横向偏左）─────
+// 既有 popover 断言均为"首帧即 open"（Simulator 单帧静态、Cache::default
+// 起步）；真实桌面 daemon 是跨帧 Cache 传递（into_cache → build）下的
+// "曾关闭 → 首开 → 关 → 再开"。这里用 iced_test 公开的 runtime::
+// UserInterface + headless renderer 手驱帧序列，断言首开与再开定位一致。
+
+/// shell.at 任务栏条目 popover 同构：锚=h-10 w-10 图标钮、placement top、
+/// 内容=w-36 动作菜单列（聚焦/最小化/关闭族）。锚左侧垫 200px（真实
+/// 任务栏 dock 居中，锚不在视口左缘——面板 Top 悬出不触发 snap 钳制）。
+fn dock_menu_popover_view(open: bool) -> View<()> {
+    let popover = View::Popover {
+        anchor: PopoverAnchor::Widget(Box::new(View::Button {
+            label: "DOCKICON".to_string(),
+            onclick: (),
+            disabled: false,
+            style: Style::parse("h-10 w-10 px-0").ok(),
+            on_right_click: None,
+            content: None,
+        })),
+        content: Box::new(View::Column {
+            children: vec![View::Button {
+                label: "MENUITEM".to_string(),
+                onclick: (),
+                disabled: false,
+                style: Some(Style::parse("h-8 px-2 w-full text-sm").ok().unwrap()),
+                on_right_click: None,
+                content: None,
+            }],
+            spacing: 0,
+            padding: 0,
+            style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
+            onclick: None,
+        }),
+        placement: PopoverPlacement::Top,
+        open,
+        on_dismiss: None,
+    };
+    View::Row {
+        children: vec![styled_view("LEFTPAD"), popover],
+        spacing: 0,
+        padding: 0,
+        style: None,
+        onclick: None,
+    }
+}
+
+/// shell.at 真实结构：关闭帧内容=window_thumbnail（else 臂），开启帧内容=
+/// 动作菜单（win_menu 臂）——右键直开时 content 子树跨帧换型（diff 状态
+/// 重建）,首开与再开定位仍须一致。
+fn dock_swap_popover_view(open: bool) -> View<()> {
+    let thumbnail = View::WindowThumbnail {
+        wid: "424242".to_string(),
+        fallback_icon: "app-window".to_string(),
+        style: Style::parse("w-48 h-28 rounded").ok(),
+    };
+    let menu = View::Column {
+        children: vec![View::Button {
+            label: "MENUITEM".to_string(),
+            onclick: (),
+            disabled: false,
+            style: Some(Style::parse("h-8 px-2 w-full text-sm").ok().unwrap()),
+            on_right_click: None,
+            content: None,
+        }],
+        spacing: 0,
+        padding: 0,
+        style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
+        onclick: None,
+    };
+    let popover = View::Popover {
+        anchor: PopoverAnchor::Widget(Box::new(View::Button {
+            label: "DOCKICON".to_string(),
+            onclick: (),
+            disabled: false,
+            style: Style::parse("h-10 w-10 px-0").ok(),
+            on_right_click: None,
+            content: None,
+        })),
+        content: Box::new(if open { menu } else { thumbnail }),
+        placement: PopoverPlacement::Top,
+        open,
+        on_dismiss: None,
+    };
+    View::Row {
+        children: vec![styled_view("LEFTPAD"), popover],
+        spacing: 0,
+        padding: 0,
+        style: None,
+        onclick: None,
+    }
+}
+
+/// 内容换型（thumbnail→menu）后的首开定位 = 再开定位（RIGHT-CLICK 直开
+/// 路径；左缘不贴边、无 snap 钳制）。
+#[test]
+fn popover_first_open_after_content_swap_matches_second_open() {
+    use iced_test::core::renderer::Headless as _;
+    use iced_test::core::{Font, Pixels};
+    use iced_test::futures::futures::executor::block_on;
+    use iced_test::renderer::Renderer;
+    use iced_test::runtime::user_interface::Cache;
+
+    let mut renderer =
+        block_on(Renderer::new(Font::with_name("Fira Sans"), Pixels(16.0), None))
+            .expect("headless renderer");
+
+    let (cache, _anchor, _none) = flip_frame(
+        dock_swap_popover_view(false).into_iced(),
+        Cache::default(),
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    let (cache, anchor, first) = flip_frame(
+        dock_swap_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+    let (cache, _anchor, _none) = flip_frame(
+        dock_swap_popover_view(false).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    let (_cache, anchor2, second) = flip_frame(
+        dock_swap_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+
+    let (fx, _fy, _fw, _fh) = first;
+    let (sx, _sy, _sw, _sh) = second;
+    assert!(
+        (fx - sx).abs() <= 0.5,
+        "first-open panel x must equal second-open x: {first:?} vs {second:?}"
+    );
+    let anchor_center = anchor.0 + anchor.2 / 2.0;
+    let panel_center = fx + first.2 / 2.0;
+    assert!(
+        (anchor_center - panel_center).abs() <= 2.0,
+        "panel must center on anchor: anchor {anchor_center} vs panel {panel_center}"
+    );
+    let _ = anchor2;
+}
+
+/// 帧驱动：build → update（overlay 布局在 update 起点计算）→ operate 取
+/// 两个 needle 的 bounds → into_cache。复刻 daemon 每帧序列。
+fn flip_frame(
+    element: iced::Element<'static, ()>,
+    cache: iced_test::runtime::user_interface::Cache,
+    renderer: &mut iced_test::renderer::Renderer,
+    needle_a: &str,
+    needle_b: &str,
+) -> (
+    iced_test::runtime::user_interface::Cache,
+    (f32, f32, f32, f32),
+    (f32, f32, f32, f32),
+) {
+    use iced_test::core::widget::{self, operation::Outcome, Operation};
+    use iced_test::selector::Bounded;
+
+    let mut ui = iced_test::runtime::UserInterface::build(
+        element,
+        iced::Size::new(1024.0, 768.0),
+        cache,
+        renderer,
+    );
+    let _ = ui.update(
+        &[],
+        iced::mouse::Cursor::Unavailable,
+        renderer,
+        &mut iced_test::core::clipboard::Null,
+        &mut Vec::new(),
+    );
+    let grab = |ui: &mut iced_test::runtime::UserInterface<'_, (), iced::Theme, iced_test::renderer::Renderer>,
+                needle: &str,
+                renderer: &iced_test::renderer::Renderer|
+     -> (f32, f32, f32, f32) {
+        // 全限定调用 —— str 固有 find 会遮蔽 Selector::find。
+        let mut op = iced_test::selector::Selector::find(needle);
+        ui.operate(renderer, &mut widget::operation::black_box(&mut op));
+        match op.finish() {
+            Outcome::Some(Some(target)) => {
+                let b = target.bounds();
+                (b.x, b.y, b.width, b.height)
+            }
+            _ => panic!("selector {needle} not reachable"),
+        }
+    };
+    let a = grab(&mut ui, needle_a, renderer);
+    let b = grab(&mut ui, needle_b, renderer);
+    (ui.into_cache(), a, b)
+}
+
+/// 核心：曾关闭 → 首开 与 关 → 再开 的面板定位必须一致（首开不偏移），
+/// 且 Top 放置面板（按钮标签居中 → 文本中心=面板中心）对锚文字中心居中。
+#[test]
+fn popover_first_open_after_flip_matches_second_open() {
+    use iced_test::core::renderer::Headless as _;
+    use iced_test::core::{Font, Pixels};
+    use iced_test::futures::futures::executor::block_on;
+    use iced_test::renderer::Renderer;
+    use iced_test::runtime::user_interface::Cache;
+
+    let mut renderer =
+        block_on(Renderer::new(Font::with_name("Fira Sans"), Pixels(16.0), None))
+            .expect("headless renderer");
+
+    // 帧1：开机后曾处于关闭态（锚可见，面板内容树建立但未测量）。
+    let (cache, _anchor, _none) = flip_frame(
+        dock_menu_popover_view(false).into_iced(),
+        Cache::default(),
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    // 帧2：首开。
+    let (cache, anchor, first) = flip_frame(
+        dock_menu_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+    // 帧3：关。
+    let (cache, _anchor, _none) = flip_frame(
+        dock_menu_popover_view(false).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    // 帧4：再开。
+    let (_cache, anchor2, second) = flip_frame(
+        dock_menu_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+
+    let (fx, _fy, _fw, _fh) = first;
+    let (sx, _sy, _sw, _sh) = second;
+    assert!(
+        (fx - sx).abs() <= 0.5,
+        "first-open panel x must equal second-open x: {first:?} vs {second:?}"
+    );
+
+    // Top 居中：锚文字中心（按钮内居中=锚钮中心）± 面板文字中心（居中=面板中心）。
+    let anchor_center = anchor.0 + anchor.2 / 2.0;
+    let anchor_center2 = anchor2.0 + anchor2.2 / 2.0;
+    let panel_center_first = fx + first.2 / 2.0;
+    let panel_center_second = sx + second.2 / 2.0;
+    assert!(
+        (anchor_center - panel_center_first).abs() <= 2.0,
+        "first-open panel must center on anchor: anchor {anchor_center} vs panel {panel_center_first}"
+    );
+    assert!(
+        (anchor_center2 - panel_center_second).abs() <= 2.0,
+        "second-open panel must center on anchor: anchor {anchor_center2} vs panel {panel_center_second}"
+    );
+}
+
 // ── Plan 422 P1/P3: 弹层行为语义(捕获/dismiss)—— 消息级断言 ────────────
 // Simulator 的事件先派发给 overlay(UserInterface::update 语义),据此断言:
 // * 面板内点击 → 项消息发布、无 dismiss;
@@ -826,12 +1094,12 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let entries: Vec<auto_val::Value> = ["011-calculator", "013-todo", "015-notes"]
         .iter()
         .map(|id| {
-            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str((*id).into())),
                 ("icon", auto_val::Value::Str("app-window".into())),
                 ("label", auto_val::Value::Str((*id).into())),
                 ("src", auto_val::Value::Str("pinned".into())),
-            ]))
+            ])))
         })
         .collect();
     let _ = comp.write_state_vec("__desktop_icons", entries);

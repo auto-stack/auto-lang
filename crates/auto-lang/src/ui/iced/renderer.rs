@@ -4736,6 +4736,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     } else {
                         fallback_icon.clone()
                     };
+                    // PLAN-002 A2 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                    if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                        eprintln!(
+                            "[thumb-fallback] wid={wid} eff_w={eff_w:?} eff_h={eff_h:?} style={:?}",
+                            is.as_ref().map(|is| is.width.clone()),
+                        );
+                    }
                     AbstractView::Image {
                         src: format!("lucide:{icon}"),
                         style: style.clone(),
@@ -6183,6 +6190,16 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 open,
                 on_dismiss: on_dismiss.map(|m| IcedMessage::from_dynamic(&m)),
             }
+        }
+
+        // PLAN-002 A2 根因修复: window_thumbnail 纯数据变体(无消息回调)此前
+        // 掉进 `_ => Empty` 兜底——VM 模式(Vue 壳/桌面 shell 经
+        // convert_view_messages 过桥)下 dock hover 缩略整件消失,面板只剩
+        // p-1 空壳(8×8 亮点+首开定位漂移,526 KNOWN-DEBT 🟢×2 的真根因;
+        // 497 交付时只加了 into_iced 臂,本映射通道漏臂——Grid 319/menubar
+        // 422/496 MouseArea 同坑第四例)。
+        AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
+            AbstractView::WindowThumbnail { wid, fallback_icon, style }
         }
 
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
@@ -24265,6 +24282,33 @@ mod tests {
                 assert!(matches!(cells[1], AbstractView::Button { .. }));
             }
             _ => panic!("convert_view_messages dropped the Grid (hit the _ => Empty wildcard)"),
+        }
+    }
+
+    // PLAN-002 A2 regression: convert_view_messages MUST preserve WindowThumbnail.
+    // 497 added the tag to the builder + into_iced but missed THIS VM-mode
+    // message bridge — every dock hover thumbnail became Empty (the 8×8 shell
+    // speck + offset, 526 KNOWN-DEBT 🟢×2). Same class as Grid 319 / menubar
+    // 422 / 496 MouseArea; this test is the fourth fence of that ditch.
+    #[test]
+    fn test_convert_view_messages_preserves_window_thumbnail() {
+        let thumb: AbstractView<DynamicMessage> = AbstractView::WindowThumbnail {
+            wid: "2".to_string(),
+            fallback_icon: "app-window".to_string(),
+            style: crate::ui::style::Style::parse("w-48 h-28 rounded").ok(),
+        };
+
+        let converted = convert_view_messages(thumb);
+
+        match converted {
+            AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
+                assert_eq!(wid, "2");
+                assert_eq!(fallback_icon, "app-window");
+                assert!(style.is_some(), "style must survive the bridge");
+            }
+            _ => panic!(
+                "convert_view_messages dropped the WindowThumbnail (hit the _ => Empty wildcard) — dock hover thumbnail vanishes in VM mode"
+            ),
         }
     }
 

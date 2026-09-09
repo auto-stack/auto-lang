@@ -103,9 +103,10 @@ widget DesktopSurface {
                     }
                 }
             }
+            // PLAN-002：blank 菜单内容归位 popover 标签内（plain[1]=content）—
+            // 此前闭合括号错位使其成为 view 级散落子树，桌面左下角常驻渲染
+            // （T36 结构回归；实机截图在案 scratch/p002）。
             }
-        }
-            // blank 菜单内容（锚=全域，Panel snap 钳至视口内）。
             col {
                 style: "w-44 gap-1"
                 button "更换壁纸…" {
@@ -117,7 +118,8 @@ widget DesktopSurface {
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                 }
             }
-            }
+        }
+    }
     }
 
     on {

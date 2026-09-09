@@ -119,11 +119,11 @@ onMounted(() => {
             </div>
           </div>
         </div>
+        <div class="flex flex-col w-44 gap-1">
+          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-7'">更换壁纸…</Button>
+          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-8'">显示设置</Button>
+        </div>
       </Popover>
-      <div class="flex flex-col w-44 gap-1">
-        <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-7'">更换壁纸…</Button>
-        <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-8'">显示设置</Button>
-      </div>
     </div>
 
 </template>
