@@ -76,13 +76,22 @@ widget DesktopSurface {
                             // 上的 hover: 静默丢弃——526 Q9①）+ 右键挂点。
                             style: "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
                             oncontextmenu.prevent: .IconMenu(e.id)
-                            // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标本体，
-                            // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
-                            // 图标挤下且样式不符）。
-                            popover (open: .menu_id == e.id, placement: "bottom-start", ondismiss: .MenuClose, class: "p-1 border rounded bg-card") {
-                                button (icon: e.icon) {
-                                    style: "h-10 w-10 px-0 text-xl text-white rounded-xl bg-[" + e.color + "]"
-                                }
+            // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
+            // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
+            // 图标挤下且样式不符）。
+            popover (open: .menu_id == e.id, placement: "bottom-start", ondismiss: .MenuClose, class: "p-1 border rounded bg-card") {
+                // PLAN-002 N1（用户定案方案 A）：chip 降级非交互视觉件
+                // （col+icon）——原 iced Button 捕获 press 饿死祖先
+                // mouse-area 的 ondblclick（chip 上双击死区，T30 起存量；
+                // review_ue.log 实录 8 条裸 click 无 ActivateApp）。降级后
+                // 整格 80×80 统一双击+右键（Windows 惯例：图标+文字整块
+                // 可点）；视觉等价（20px glyph=原 text-xl 字号档）。
+                col {
+                    style: "h-10 w-10 items-center justify-center rounded-xl bg-[" + e.color + "]"
+                    icon (name: e.icon) {
+                        style: "w-5 h-5 text-white"
+                    }
+                }
                                 col {
                                     style: "w-44 gap-1"
                                     button "打开" {

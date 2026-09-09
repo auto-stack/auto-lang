@@ -37,6 +37,21 @@ const CORNER: f32 = 16.0;
 pub(crate) const BORDER: f32 = 1.0;
 /// Plan 503 M5：窗体圆角 8→16（stella rounded-2xl 档）。
 const WIN_RADIUS: f32 = 16.0;
+/// PLAN-002 N2：fit 窗测量期隐藏上限（ServiceTick 400ms 节拍计数）。
+/// 测量常态首帧内回执（开窗即终尺寸）；超限（app 异常、锚点恒缺席）
+/// 强制显形，退化为旧观感（初值尺寸可见），杜绝"永不显形"死窗。
+const FIT_HIDE_MAX_TICKS: u32 = 5;
+/// PLAN-002 N2：隐藏期绘制偏移（px）——远超任何宿主视口高，窗体连同
+/// 缩放把手/焦点环整体画出可视区；布局树保持原位，fit 测量锚点
+/// （客户端内容 Shrink 布局）不受影响，Stack 子树零位移（T20 diff 错位
+/// 类不触），越界层被宿主窗裁剪自然不可见、命中亦不可达。
+const FIT_HIDE_OFFSET: f32 = 100_000.0;
+
+/// PLAN-002 N2：fit 窗测量期隐藏判定（纯函数，测试靶）——测量落定前
+/// 整窗不画（用户只看到窗口以终尺寸出现，不再"先 60% 大再缩"闪变）。
+pub(crate) fn vwin_fit_hidden(fit_pending: bool, hidden_ticks: u32) -> bool {
+    fit_pending && hidden_ticks < FIT_HIDE_MAX_TICKS
+}
 
 /// PLAN-526 T25：窗体圆角分角化——顶部 WIN_RADIUS 圆角、底部方角。
 /// 根因：app 自绘背景方角且 iced 0.14 clip 为矩形（container.rs:351 仅
@@ -419,10 +434,18 @@ pub fn virtual_window_element<'a>(
     let win_stack = iced::widget::Stack::with_children(layers)
         .width(Length::Fixed(rect.width))
         .height(Length::Fixed(rect.height));
+    // PLAN-002 N2：fit 测量期隐藏——绘制位置整体越界（布局树原位不动，
+    // 锚点可测、子树零位移），`vwin_fit_hidden` 谓词见常量注。
+    let hide = vwin_fit_hidden(vwin.fit_pending.get(), vwin.fit_hidden_ticks.get());
     container(win_stack)
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding(Padding { top: rect.y, left: rect.x, right: 0.0, bottom: 0.0 })
+        .padding(Padding {
+            top: rect.y + if hide { FIT_HIDE_OFFSET } else { 0.0 },
+            left: rect.x,
+            right: 0.0,
+            bottom: 0.0,
+        })
         .align_x(Alignment::Start)
         .align_y(Alignment::Start)
         .into()
@@ -560,6 +583,22 @@ pub fn native_drag_over_element<'a>(rect: iced::Rectangle) -> Element<'a, Deskto
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-002 N2：fit 窗测量期隐藏判定——pending 且未超 tick 上限时
+    /// 隐藏（开窗即终尺寸）；超限强制显形（防测量永不回执死窗）；
+    /// 非 fit 窗恒显。
+    #[test]
+    fn vwin_fit_hidden_caps_measurement_period() {
+        // 测量常态：pending + 计数在上限内 → 隐藏。
+        assert!(vwin_fit_hidden(true, 0));
+        assert!(vwin_fit_hidden(true, FIT_HIDE_MAX_TICKS - 1));
+        // 护栏：计数达上限 → 强制显形（退化为旧观感）。
+        assert!(!vwin_fit_hidden(true, FIT_HIDE_MAX_TICKS));
+        // 测量已回执（pending 翻 false）→ 显形（终尺寸）。
+        assert!(!vwin_fit_hidden(false, 0));
+        // 非 fit 窗恒显。
+        assert!(!vwin_fit_hidden(false, u32::MAX));
+    }
 
     /// Plan 518 G6 T1 决策单测:三档 alpha 映射 + 缺席/坏值回退 off。
     /// 初值 off=0.95 / low=0.80 / high=0.62（实机调参时同步本表）。

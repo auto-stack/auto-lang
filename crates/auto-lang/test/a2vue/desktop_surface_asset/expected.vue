@@ -4,6 +4,8 @@ import { ref, onMounted } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Popover } from '@/components/ui/popover'
 
+import { Circle } from 'lucide-vue-next'
+
 
 const __desktop_cmd = ref<string>('')
 const __desktop_bg = ref<string>('')
@@ -107,11 +109,13 @@ onMounted(() => {
             <div @dblclick="ActivateApp(e.id)" v-for="e in __desktop_icons" :key="(((e as any)?.id ?? e))">
               <div class="flex flex-col w-20 h-20 items-center justify-center gap-1 hover:bg-white/10" @contextmenu.prevent="IconMenu(e.id)">
                 <Popover class="p-1 border rounded bg-card" @dismiss="MenuClose(e)" :key="'Popover-2-' + (((e as any)?.id ?? e))">
-                  <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" :key="'Button-3-' + (((e as any)?.id ?? e))" />
+                  <div :style="'h-10 w-10 items-center justify-center rounded-xl bg-[' + e.color + ']'" class="flex flex-col">
+                    <Circle class="w-5 h-5 w-5 h-5 text-white" />
+                  </div>
                   <div class="flex flex-col w-44 gap-1">
-                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-4-' + (((e as any)?.id ?? e))">打开</Button>
-                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-5-' + (((e as any)?.id ?? e))">从桌面移除</Button>
-                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-6-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
+                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">打开</Button>
+                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-4-' + (((e as any)?.id ?? e))">从桌面移除</Button>
+                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-5-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
                   </div>
                 </Popover>
                 <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
@@ -120,8 +124,8 @@ onMounted(() => {
           </div>
         </div>
         <div class="flex flex-col w-44 gap-1">
-          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-7'">更换壁纸…</Button>
-          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-8'">显示设置</Button>
+          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-6'">更换壁纸…</Button>
+          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-7'">显示设置</Button>
         </div>
       </Popover>
     </div>

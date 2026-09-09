@@ -14174,6 +14174,20 @@ fn compare_pngs(
                                 }
                             }
                         }
+                        // PLAN-002 N2：fit 窗隐藏时长计数——测量常态首帧内
+                        // 回执，此前窗体以越界偏移隐藏（vwin_fit_hidden）；
+                        // 本计数超 FIT_HIDE_MAX_TICKS 即强制显形（退化为旧
+                        // 观感），防 app 异常时测量永不回执的死窗。
+                        if state.has_fit_pending() {
+                            if let Some(host) = state.host.as_ref() {
+                                for v in host.wm.wins.values() {
+                                    if v.fit_pending.get() {
+                                        v.fit_hidden_ticks
+                                            .set(v.fit_hidden_ticks.get().saturating_add(1));
+                                    }
+                                }
+                            }
+                        }
                         // Plan 504：fit 虚拟窗触发——节拍上若有待测量窗且
                         // 单程闸空闲，发起内容测量（宿主树恒在；vwin 首帧
                         // 渲染后锚点即在，回执 __fit_measured 收缩矩形）。
