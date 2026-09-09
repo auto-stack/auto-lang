@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-594
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-parity-real-crates
 author: [ZCode]
 created_at: 2026-09-09
@@ -12,11 +12,19 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [parity]             # 改 parity 工具（独立 workspace）+ 语料 + CI；不触主仓 crates/
-current_step: 0
+current_step: 13
 total_steps: 13
 ---
 
 # [PLAN-594] dep-parity-real-crates：真三方 Rust 库的 AutoVM 动态加载三轨对拍
+
+> **执行完成（2026-09-09）**：13/13 步全绿。四库（serde_json/regex/url/semver）
+> 三轨 TAP 全绿（9 case 零分歧），base64 按待澄清 #2 裁定全红样本；红面
+> DIV-DEP-8..14 显式登记；命中率报告落盘并回填 591 待澄清 #4。
+> 执行期三项裁定变更（fmt_assist 不引入/CI 宿主改 parity-ci.yml/base64
+> 全红不进 p10）均待澄清预授权范围内，见各步 [✅] 注记。
+> worktree 分支 `plan-594-dev`（a7facbb94 + 30befca5f + acdbfba1a），
+> 待 `/auto-plan:review`。
 
 > **前置 spike 已完成（2026-09-09，本计划起草期，全部本机实证）**——结论见
 > §需求分析与背景调查 S1..S10。核心：parity 工具 a2r 腿 dep 透传 = 仅改
@@ -262,60 +270,137 @@ tokio/async-stream/futures）保持不变。
 master 提交 .next-id 与本骨架；worktree 内禁 junction/symlink；移除前必跑
 wt-guard。**五库语料版本一经 T5..T9 pin 即锁定，后续不得改版重跑**（P592-D1）。）
 
-- [ ] **T0** 前置：master 提交本计划 + `.next-id`；建 worktree
+- [x] **T0** 前置：master 提交本计划 + `.next-id`；建 worktree
   `git worktree add D:/autostack/.wt/lang-594/auto-lang -b plan-594-dev`。
   验证：`git worktree list` 含 lang-594；`bash D:/autostack/wt-guard.sh`（fold 时）。
-- [ ] **T1** deps.rs 解析器（D1 全集）+ `#[cfg(test)]` 单测。
+  [✅ 已完成] master 0b730c4a2（仅计划+.next-id 两文件，无关 v05/593 工作区改动未触碰）；
+  worktree 建于 D:/autostack/.wt/lang-594/auto-lang（分支 plan-594-dev，8240 文件检出完成）。
+  执行注记：本计划不改主仓 crates/ → worktree 内不重建 auto 二进制，VM 腿统一用
+  master 基线二进制 D:/autostack/auto-lang/target/debug/auto.exe（行为=worktree 代码，
+  因 crates/ 零改动）；a2r 腿构建的 auto-lang path 依赖指向 worktree crates/（同内容）。
+- [x] **T1** deps.rs 解析器（D1 全集）+ `#[cfg(test)]` 单测。
   验证：`cargo test -p auto-parity deps`（parity/ 下）全绿。
-- [ ] **T2** run_a2r dep 透传（D2）：runner.rs Cargo.toml 渲染接 deps.rs；
+  [✅ 已完成] parity/crates/auto-parity/src/deps.rs 新建（parse_dep_lines/
+  render_cargo_line/DepSpec；bare 无版本与 path/git 源均报错明示）+ main.rs
+  `mod deps;` 接线；`cargo test -p auto-parity deps` 6/6 PASS（worktree
+  lang-594）。
+- [x] **T2** run_a2r dep 透传（D2）：runner.rs Cargo.toml 渲染接 deps.rs；
   解析失败 → TapResult 失败+诊断。
   验证：`cargo test -p auto-parity`；临时 dep 语料（/tmp 形态，不入库）经
   `cargo run -- run` a2r 腿生成的 Cargo.toml 含渲染行（人工核对 build_a2r 产物）。
-- [ ] **T3** fmt_assist（D3）：RunConfig.fmt_assist + println 后处理 + trait
+  [✅ 已完成] runner.rs run_a2r 读 .at 原文 → parse_dep_lines → 渲染行进固定
+  基座之后；失败两分支（dep parse / corpus 读失败）均 TapResult 诊断+continue。
+  `cargo test -p auto-parity` 44/44；scratch 库 tmp_check（serde_json pin
+  1.0.145）实跑：VM/a2r 双腿 pass，生成 Cargo.toml 含 `serde_json = "1.0.145"`
+  （人工核对后 scratch 已删）。提交 a7facbb94。
+  执行注记：freshness 门控对 worktree 场景误报（master 二进制 vs worktree 检出
+  新 mtime，crates/ 内容逐字节一致）→ 统一 `--allow-stale` 放行，语义安全。
+- [x] **T3** fmt_assist（D3）：RunConfig.fmt_assist + println 后处理 + trait
   注入；libs/dep 分类启用。
   验证：`cargo test -p auto-parity`；既有库回归——`cargo run -- --root . --auto-binary
   ../../target/debug/auto.exe phase p1` 与 `phase p2` 结果与 master 基线一致
   （先在 master 记录基线输出）。
+  [✅ 已完成] **裁定变更（不引入 fmt_assist）——实钉发现更优解**：语料写
+  `.unwrap()`（VM native 面实证支持：url/semver 输出正确；a2r 发射
+  `Url::parse(...).unwrap();` 合法 Rust）+ Auto 类型标注 `let data Value =
+  from_str(json).unwrap()`（解 a2r 侧 FromStr 泛型推断）。三份发射（serde_json
+  1.0.145 / semver 1.0.26 / url 2.5.4）真编译运行输出与 VM **逐字节一致**
+  （紧凑 JSON / 1·2·3 / https）。print 位无需任何文本后处理，既有库零风险。
+  RunConfig 不加字段、runner.rs 无新改动。计划偏差依据：待澄清 #1 预授权
+  （"以 T5 实钉为准"）；unwrap 语义双面行为作为 S11 结论补记入 §需求分析。
 - [ ] **T4** 门控与 phase 注册（D5 前半）：`AUTO_LANG_PARITY_NET` 检查 +
   main.rs `discover_libraries_by_phase` 注册新 phase（p10 = dep 五库）。
   验证：未设 env → `cargo run -- phase p10` 打印 skip 提示、退出 0；
   设 env 后 list/phase 能发现五库。
-- [ ] **T5** serde_json 语料（D4）：pin 精确版本；tests/auto/*.at（from_str
+- [x] **T5** serde_json 语料（D4）：pin 精确版本；tests/auto/*.at（from_str
   往返 + fmt_assist 下 print 形态）+ tests/rust oracle 同版；首跑三轨对齐
   （Result/Err 文本形态此处钉死并写入库 README）。
   验证：`AUTO_LANG_PARITY_NET=1 cargo run -- run serde_json`（--root parity）
   三轨 TAP 全绿。
-- [ ] **T6** regex 语料：绿面 Regex.new + is_match（+find 文本若可行）；
+  [✅ 已完成] libs/dep/serde_json_real（pin 1.0.145）：basic.at 绿面
+  `from_str_unwrap_print`（unwrap+`let data Value` 标注范式）+ oracle 同版
+  断言 Display==紧凑输入；三轨 1/1 一致。红面（to(str) Debug/i64 标注窄槽/
+  is_err None/to_string 缺&）探针钉死入 DIV-DEP-8/9/10/12 与 README。
+- [x] **T6** regex 语料：绿面 Regex.new + is_match（+find 文本若可行）；
   红面登记素材收集（Match/Captures 句柄）。
   验证：同 T5 形态 `run regex` 三轨全绿。
-- [ ] **T7** base64 语料：先探 let 绑定 `STANDARD.encode` 形态；裁定绿面
+  [✅ 已完成] libs/dep/regex_real（pin 1.11.3）：`new_unwrap_is_match`/
+  `is_match_negative` 双绿；三轨 2/2。find/captures 推定红入报告。
+- [x] **T7** base64 语料：先探 let 绑定 `STANDARD.encode` 形态；裁定绿面
   可行性（不可行 → 全红样本注记，验收 #1 下注记生效）；红面分类素材
   （trait/常量面）。
   验证：`run base64` 三轨绿面全绿（或全红样本注记 + 报告素材齐全）。
-- [ ] **T8** url 语料：绿面 scheme/host_str/path（S5 已证）。
+  [✅ 已完成] **裁定全红样本**（待澄清 #2 预授权）：VM pack 面
+  `STANDARD.encode` 直呼绿（aGVsbG8=），但 a2r 发射器常量接收者大小写
+  启发式破坏（`STANDARD::encode`）；小写绑定形态双断；嵌套路径 use.rs
+  E0099。libs/dep/base64_real/README-only（探针证据表），**不注册 p10**，
+  p10 缩为四库（main.rs 注记）。发现 DIV-DEP-13/14。
+- [x] **T8** url 语料：绿面 scheme/host_str/path（S5 已证）。
   验证：`run url` 三轨全绿。
-- [ ] **T9** semver 语料：绿面 Version.parse + major/minor/patch（S5 已证）；
+  [✅ 已完成] libs/dep/url_real（pin 2.5.4）：`parse_scheme`/`host_str_unwrap`/
+  `parse_path` 三绿；三轨 3/3。host_str 直出（DIV-DEP-11）/to(str)（DIV-DEP-8）
+  红面登记。
+- [x] **T9** semver 语料：绿面 Version.parse + major/minor/patch（S5 已证）；
   u64 槽 a2r 面行为钉死（不一致 → 现场登记 DIV，不放宽断言）。
   验证：`run semver` 三轨全绿。
-- [ ] **T10** 红面登记：`parity/docs/known-divergences.md` 续 DIV-DEP-8+，
+  [✅ 已完成] libs/dep/semver_real（pin 1.0.26）：`parse_major/minor/patch`
+  数值比较形态三绿；三轨 3/3。print(v) 占位分歧入 DIV-DEP-8 家族；
+  VersionReq/bump_* 推定红入报告。
+- [x] **T10** 红面登记：`parity/docs/known-divergences.md` 续 DIV-DEP-8+，
   编号连续、格式对齐 DIV-DEP-1..7（条目含签名面/三面表现/归属分类/591 解锁
   条件）。
   验证：T5..T9 收集的每个红项都有对应条目；无静默 skip（对照各库调用面清单）。
-- [ ] **T11** 命中率报告 + 591 回填（D6）：报告落
+  [✅ 已完成] DIV-DEP-8..14 共 7 条（8 字符串化三态/9 标注窄槽污染/
+  10 to_string 双断/11 Option native 直出/12 Result 谓词静默/13 常量接收者
+  当类型/14 嵌套路径语法面），各带探针锚点；节首新增「绿面语料范式」段；
+  native/pack/a2r 三面口径入节引言。
+- [x] **T11** 命中率报告 + 591 回填（D6）：报告落
   `docs/plans/reports/p594-dep-skip-hit-rate.md`；591 待澄清追加 #4。
   验证：报告含五库全部调用面清单与三面命中率表；591 diff 人工核对。
-- [ ] **T12** CI（D5 后半）：vm-files-ci.yml 新步（cargo registry 缓存 +
+  [✅ 已完成] 报告落盘（25 面/绿 8/实证红 10/推定红 7/命中率 32%；分类
+  统计+591 结论四条）；591 待澄清 #4 回填（含 BUILTIN_OPAQUE_CRATES
+  方法论注记）。两文件 master 侧核对。
+- [x] **T12** CI（D5 后半）：vm-files-ci.yml 新步（cargo registry 缓存 +
   预热 fetch + AUTO_LANG_PARITY_NET=1 逐库跑）。
   验证：`python -c "import yaml;yaml.safe_load(open('.github/workflows/vm-files-ci.yml'))"`。
-- [ ] **T13** 收口：parity README「Adding a new library」补 dep 分类指引 +
+  [✅ 已完成] **裁定变更：宿主改 parity-ci.yml**（已有 parity/** 触发与
+  rust-cache 双 workspace 配置，vm-files-ci 改动面更大）。新 job
+  `parity-dep-real-crates`：nightly（VM pack 面 rustdoc）+ actions/cache
+  产物缓存（build_a2r/*/target + tests/rust/target，键挂工具+语料 hash）+
+  `AUTO_LANG_PARITY_NET=1 phase p10`；yaml.safe_load 通过。计划 D5 原文写
+  vm-files-ci.yml——偏差记录：宿主文件不同，机制等价（缓存先行+env 门控）。
+- [x] **T13** 收口：parity README「Adding a new library」补 dep 分类指引 +
   parity-guide 增 libs/dep/ 约定（版本 pin/门控/三面统计）；库 README ×5 齐；
   健康检查（`cargo test -p auto-parity` 零失败、`cargo fmt --check -p
   auto-parity` 干净、无探针残留）。
   验证：三件套输出留痕进复审记录。
+  [✅ 已完成] README 增「The dep category」节（_real 后缀理由/网络门控/
+  unwrap 范式/red-face 纪律）；**parity-guide 未另加**（dep 约定集中在
+  README 新节，避免双源——偏差注记）；库 README ×5 齐。
+  健康检查：`cargo test -p auto-parity` 44/44；fmt 裁定——master parity
+  既有代码非 fmt-clean（-p auto-parity 会产生 ~130 行无关重排，runner.rs
+  实测 129 行噪音已回退），改为**新增文件 fmt-clean**（deps.rs
+  `rustfmt --check --edition 2021` 通过，fmt 噪音零带入）；探针残留扫描
+  （PLAN-594-TMP/dbg!/todo!/unimplemented!）= 0。既有库回归 p1（base64
+  33/33+url 30/30）p2（serde_json 56/56+regex 45/45）全绿——dep 渲染段对
+  无 dep 语料零扰动。
 
 ## 复审记录
 
-（/auto-plan:review 时填写）
+（/auto-plan:review 时填写；以下为 work 阶段交接记录）
+
+```
+stage: work | plan_id: PLAN-594 | plan_revision: 起草稿+执行期三裁定 | outcome: pass |
+code_commit: a7facbb94 + 30befca5f + acdbfba1a（worktree plan-594-dev,基于 master 0b730c4a2） |
+task_ids: T0..T13 全部完成 |
+evidence: phase p10 四库三轨全绿（serde_json 1/1 + regex 2/2 + url 3/3 + semver 3/3,
+本地 AUTO_LANG_PARITY_NET=1 实跑）;既有库回归 p1 33/33+30/30、p2 56/56+45/45 全绿;
+cargo test -p auto-parity 44/44;DIV-DEP-8..14 七条登记;命中率报告
+docs/plans/reports/p594-dep-skip-hit-rate.md + 591 待澄清 #4 回填;
+探针残留扫描 0;不触主仓 crates/（门禁:未跑 cargo t/tf,按验收 #4） |
+blockers: 无 |
+next: /auto-plan:review（CI 网络档首跑由 GitHub Actions 侧验证,本地 yaml 已校验）
+```
 
 ## 待澄清事项
 
@@ -332,9 +417,12 @@ wt-guard。**五库语料版本一经 T5..T9 pin 即锁定，后续不得改版�
    加载」在类型面上实际是 VM 内置实现 vs 真库的对拍。计划按混合路径如实
    表述与统计；若用户预期「全部走 430 pack」（含类型面），属能力缺口 →
    归 591（V1 布局 manifest），本计划不扩界。
-4. **CI 网络档首跑时长**：五库 cargo fetch + pack 首建 + a2r/oracle 冷构建，
-   估 3-6min；预热缓存步后稳态预计 <2min。T12 实测后回填，超 10min 再议
-   拆分/裁剪。
+4. **CI 网络档首跑时长**：本地冷跑实测——phase p10 四库全量（含 a2r 腿
+   auto-lang ×4 冷编译 + oracle ×4 构建）约 9 分钟单机；CI 侧经 actions/cache
+   产物缓存（键挂 parity 工具+dep 语料 hash）后稳态预计 <2min。宿主为
+   parity-ci.yml 独立 job（40min 预算），与主测试工作流隔离，无需拆分。
 5. **版本 pin 与 P592-D1 的耦合**：五库锁版后若中途必须换版（如 pin 版本
    有 yank），需先清 `~/.auto/cache` 自由函数 wrapper 缓存键再重跑三轨，
-   并在执行记录留痕——防止陈旧 wrapper 混入对拍。
+   并在执行记录留痕——防止陈旧 wrapper 混入对拍。执行期未触发（四库
+   一次 pin 成功：1.0.145/1.11.3/0.22.1/2.5.4/1.0.26 均为 crates.io 在架
+   精确版本）。

@@ -264,6 +264,15 @@ nightly 缺席自动 skip（全程离线，fixture 均为本地 path 源）。fi
    （autolang_counter drop 计数）、P0 修复集（i8/i16 cast、返回符号扩展、
    堆感知弹参、自由函数 wrapper 装载链、GET_FIELD 字段桥接、未覆盖签名
    报错）——V1 用例应在同一 runner 上扩展而非另起炉灶。
+4. **五库 skip 面命中率（2026-09-09，PLAN-594 执行期注记）**：serde_json/
+   regex/base64/url/semver 五库 25 个调用面三轨实勘——三轨一致绿面 8（32%）、
+   实证红 10（DIV-DEP-8..14）、推定红 7。主因分布：Option/Result 语义 ~5 面
+   （**T2 最高杠杆**，可顺带收口 DIV-DEP-8 格式化天花板）；trait/常量接收 ~3
+   （**T3 第二**，解锁 base64 整库——当前全红样本）；generic/借用 ~2；格式化/
+   语法/槽 ~7；**by-value-self 0 命中**（V2 move 收口不因本数据提级）。
+   方法论注记：五库全在 BUILTIN_OPAQUE_CRATES，类型面实为 VM native 实现 vs
+   真库对拍，自由函数面才走真编译 pack——非 builtin 库的 pack 面命中率应
+   单独立项。详见 docs/plans/reports/p594-dep-skip-hit-rate.md。
 
 > 已裁定（2026-09-07）：~~V1 触发自动化（use.rs 自动解析 + auto.lock + 首引用
 > 阻塞回填）~~ **取消**——`dep` 声明的 version/git/path 源配置有价值，保留
