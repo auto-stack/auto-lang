@@ -7711,39 +7711,84 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let style = self.extract_style(props);
+        // os-007 T4（P534-D4 根因修复）：centering 容器在样式无显式宽高时
+        // 被 apply_container_style 设为 Fill×Fill，shrink 上下文（hovercard
+        // 的 Popover 锚/行内）解析为零高——534 期触发器 hit area 零高的
+        // 底层根因。对齐 vue 端 avatar 臂（w-10 h-10 rounded-full 恒注入）
+        // 补默认尺寸；显式样式已带 w-*/h-* 时不重复注入。
+        let has_size_class = |p: &Style| {
+            p.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::Width(_) | StyleClass::Height(_)))
+        };
+        let style = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                let needs_size =
+                    Style::parse(&s).map(|p| !has_size_class(&p)).unwrap_or(true);
+                let merged = if needs_size { format!("{s} w-10 h-10") } else { s };
+                Style::parse(&merged).ok()
+            })
+            .unwrap_or_else(|| Style::parse("w-10 h-10 bg-gray-300 rounded-full").ok());
 
         // os-007（P534-D4）：有子件→avatar-image/avatar-fallback 子件组合
         // （经 convert_node_with 同表分发）；无子件保持灰圆占位（回归面）。
-        let child = if children.is_empty() {
-            View::Text {
-                content: "".to_string(),
-                style: None,
-                selectable: false,
+        let child = if !children.is_empty() {
+            if children.len() == 1 {
+                self.convert_node_with(&children[0], bindings)
+            } else {
+                let views: Vec<View<DynamicMessage>> = children
+                    .iter()
+                    .map(|n| self.convert_node_with(n, bindings))
+                    .collect();
+                View::Column {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                }
             }
-        } else if children.len() == 1 {
-            self.convert_node_with(&children[0], bindings)
         } else {
-            let views: Vec<View<DynamicMessage>> = children
-                .iter()
-                .map(|n| self.convert_node_with(n, bindings))
-                .collect();
-            View::Column {
-                children: views,
-                spacing: 0,
-                padding: 0,
-                style: None,
-                onclick: None,
+            // os-007 T4：props 形态 desugar（对齐 vue 端 avatar 臂——
+            // src→AvatarImage、fallback→AvatarFallback）；两 prop 皆无
+            // 保持灰圆占位。
+            let mut views: Vec<View<DynamicMessage>> = Vec::new();
+            if let Some(src) = self
+                .extract_string_with(props, "src", bindings)
+                .filter(|s| !s.is_empty())
+            {
+                views.push(View::Image { src, style: None });
+            }
+            if let Some(fb) = self.extract_string_with(props, "fallback", bindings) {
+                views.push(View::Text {
+                    content: fb,
+                    style: None,
+                    selectable: false,
+                });
+            }
+            match views.len() {
+                0 => View::Text {
+                    content: "".to_string(),
+                    style: None,
+                    selectable: false,
+                },
+                1 => views.into_iter().next().unwrap(),
+                _ => View::Column {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                },
             }
         };
         let mut builder = View::container(child);
         builder = builder.center_x().center_y();
         if let Some(s) = style {
             builder = builder.with_style(s);
-        } else {
-            builder = builder.with_style(
-                Style::parse("bg-gray-300 rounded-full").unwrap()
-            );
         }
         builder.build()
     }

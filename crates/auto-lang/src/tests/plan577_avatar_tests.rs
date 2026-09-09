@@ -61,3 +61,31 @@ widget App {
         "无子件应保持容器占位: {rendered:.300}"
     );
 }
+
+/// os-007 T4：props 形态 desugar（对齐 vue 端 avatar 臂——gallery /avatar
+/// 页用法）：src→图节点、fallback→文本。
+#[test]
+fn avatar_props_form_desugars_like_vue() {
+    let comp = build(
+        r#"
+widget App {
+    view {
+        row {
+            avatar (src: "https://github.com/shadcn.png", alt: "@shadcn") {}
+            avatar (fallback: "CN") {}
+        }
+    }
+}
+"#,
+    );
+    let (view, _, _) = comp.view_with_debug();
+    let rendered = format!("{view:?}");
+    assert!(
+        rendered.contains("github.com/shadcn.png"),
+        "src prop 应 desugar 出图节点: {rendered:.400}"
+    );
+    assert!(
+        rendered.contains("CN"),
+        "fallback prop 应 desugar 出回退文本: {rendered:.400}"
+    );
+}
