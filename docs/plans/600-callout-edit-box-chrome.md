@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-600
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: callout 编辑臂盒式 chrome 对齐只读臂（撤 3px 左条，画 kind 色盒）
 author: [zhaopuming]
 created_at: 2026-09-09
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 2
 total_steps: 2
 ---
 
@@ -85,12 +85,29 @@ kind 色盒（矩形近似圆角——fence 盒同款绘制原语）。
 
 ## 执行步骤
 
-- [ ] T-1 实现：render_frame callout 盒式 chrome（运行段累积 + flush +
+- [✅ 已完成] T-1 实现：render_frame callout 盒式 chrome（运行段累积 + flush +
       撤左条）+ headless 单测。验证：`cargo test -p auto-lang --features
       autodown --lib autodown_editor::core` scoped 绿。
-- [ ] T-2 实机留证 + 门禁：worktree exe 双臂截图（PNG 入册）；全量 lib
+      （2026-09-09 提交 4317d7885：运行段累积器 + push_callout_box 底@0.10/
+      四边@0.50 + 撤 3px 左条；callout_edit_arm_paints_kind_box /
+      callout_boxes_split_across_containers 两新测 + 054 旧测改写新契约，
+      core::tests 78/78 绿。）
+- [✅ 已完成] T-2 实机留证 + 门禁：worktree exe 双臂截图（PNG 入册）；全量 lib
       失败名集与 master 基线逐名差集为空。
+      （2026-09-09 提交 825d120fd：vm-600-callout-box.png 双臂盒式同形态
+      实证；wt 4617p/206f vs master e8f67b9b2 4616p/205f，逐名差集 3 项均为
+      无关子系统并行竞争抖动（vm::ui_console×2 串行复跑过、
+      ui::osconfig_daemon×1 master 侧），差集口径达标。）
 
 ## 复审记录
+
+- stage: work | PLAN-600 | r1 | outcome: **pass** | 2026-09-09。
+  code_commit：plan-600-dev 4317d7885（T-1 core.rs 盒式 chrome + 单测）→
+  825d120fd（T-2 截图证据）；依赖 worktree `.wt/lang-600/auto-down`
+  （detached master 只读，autodown-core path 依赖解析）。
+  task_ids：T-1/T-2。evidence：core::tests 78/78；全量 lib wt 4617p/206f
+  ⊆ master e8f67b9b2 4616p/205f（差集 3 项均无关子系统并行竞争抖动，
+  串行复跑全过）；vm-600-callout-box.png 双臂盒式同形态。
+  blockers：无。next: review（execution_done；worktree 留存待复审/合并）。
 
 ## 待澄清事项
