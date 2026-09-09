@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-597
-status: drafting                # drafting → executing → execution_done → reviewed → archived
+status: execution_done                # drafting → executing → execution_done → reviewed → archived
 feature_name: cffi-engine-face
 author: [ZCode]
 created_at: 2026-09-09
 updated_at: 2026-09-09
 plan_revision: 1
-current_step: 0
+current_step: 7
 total_steps: 7
 
 # /auto-plan:review 结束时填写：
@@ -107,11 +107,16 @@ fn.c autoterm_engine_free(h ptr)
 feed_ready → take_dirty_rows → row_text 全行扫锚点 `CFACE_OK` →
 printf 见证行 → kill → free → exit 0/1。
 
-### T-01 链接机制（bounded，先手写最小 C 样例）
+### T-01 链接机制（结论，2026-09-09 实证）
 
-验证 MSVC 对 cdylib C 导出的链接输入形态（直接 DLL vs import lib），
-结论写回本节；构建脚本据此落 `scripts/build-engine-face-a2c.cmd`
-（DLL 解析序 + vcvars 自举，纯 ASCII）。
+- **直接 DLL 输入：不可行**——MSVC linker 报 LNK1107（文件无效/损坏，
+  0x2C0 处不可读；直接 DLL 输入是 GNU ld 特性）；
+- **import lib：零成本可行**——rust cdylib 构建已副产
+  `autoterm_core.dll.lib`（与 DLL 同目录），cl 直接链它；
+- 运行期 DLL 解析：PATH 或 exe 同目录（构建脚本拷贝 DLL 至产物目录 =
+  同目录分发契约）；
+- 证据：最小手写 C（spawn/is_exited/kill/free）经 .dll.lib 链接运行
+  `spawn=1 exited=0 LINK_OK`（tmp/p597/mini_lib.exe）。
 
 ### T-05 VM 子集口径
 
@@ -126,9 +131,24 @@ UI)→write_input→feed_ready→is_exited→kill/free。若加载面成本超�
 |---|---|---|---|
 | junction | C 对象链入 Rust 宿主（extern 声明 ~30 行手写） | 手写体驻侧车文件 | 零（原生） |
 | 降级能力 | 无（链接期定死） | 可 | 可（try-load） |
-| 缓冲出参 | ✅ C 母语 | ✅ | ❌（本计划证实） |
+| 缓冲出参 | ✅ C 母语（本计划实证：row_text/take_dirty_rows 全过） | ✅ | ❌（4 符号封送不可达，实证） |
 | 运行时依赖 | 零 | a2r-std 视用法 | VM 全量 |
 | 适配场景 | 独立驱动程序/工具 | at-gen 宿主内胶水 | VM 应用 |
+
+**裁定（T-06 产物，2026-09-09）**：
+- **独立驱动/工具（引擎会话外）** → **a2c 链入**（本计划主证：12 符号
+  全量、缓冲出参天然、零运行时依赖；唯一前置 = 引擎 ABI 头，长期应
+  由 auto-term 侧随产物分发 `autoterm_engine.h`——本计划以语料内
+  engine_abi.h 承接）；
+- **at-gen 宿主内胶水（UI 应用进程）** → **a2r+侧车**（进程内共存
+  iced/auto-lang 运行时，C 对象链入需额外 extern 面，侧车模式已有
+  A2R_EXTERN_SIGS 既有机制）；
+- **VM 应用** → 标量子集可用（本计划打通 use_scanner 潜伏缺口 +
+  3 分派臂 + JSON manifest 加载面；VFACE_OK 三连绿）；缓冲型 4 符号
+  维持不可达（封送边界，归 004⑥ a2r 生成器轨道消化）；
+- 附带产出（VM 轨存量缺陷两枚，均已实测定位+规避口径）：① if 条件位
+  内联 C-FFI 调用 + while 循环 = VM 挂起；② 循环计数器在嵌套 if 内
+  赋值 = 控制流静默断裂。两者均已写入语料头注，留 VM 轨道修。
 
 ### 规范增量
 
@@ -161,20 +181,61 @@ UI)→write_input→feed_ready→is_exited→kill/free。若加载面成本超�
 
 ## 8. 执行步骤
 
-- [ ] **T-01**（bounded investigation）链接机制验证：最小手写 C 样例
+- [x] **T-01**（bounded investigation）链接机制验证：最小手写 C 样例
   链 autoterm_core.dll（直接 DLL vs import lib），结论回填 §5；
-- [ ] **T-02** Auto 驱动源 + 12 符号 fn.c 声明快照语料（.wrong 反哺法）；
-- [ ] **T-03** 构建脚本 `scripts/build-engine-face-a2c.cmd`（DLL 解析
+- [x] **T-02** Auto 驱动源 + 12 符号 fn.c 声明快照语料（.wrong 反哺法）；
+- [x] **T-03** 构建脚本 `scripts/build-engine-face-a2c.cmd`（DLL 解析
   序 + MSVC + 布局冒烟）；
-- [ ] **T-04** 真机驱动验收（AC-01 运行取证）；
-- [ ] **T-05** VM 标量子集：加载面/冒烟 或 gap 记录（AC-03 二选一）；
-- [ ] **T-06** 路径裁定书 + 004 §5③ 回执 + DEBTS #10 增 597 条；
-- [ ] **T-07** 收口门禁：a2c 套件 + bindgen 单测 + cargo tf/tt 档
+- [x] **T-04** 真机驱动验收（AC-01 运行取证）；
+- [x] **T-05** VM 标量子集：加载面/冒烟 或 gap 记录（AC-03 二选一）；
+- [x] **T-06** 路径裁定书 + 004 §5③ 回执 + DEBTS #10 增 597 条；
+- [x] **T-07** 收口门禁：a2c 套件 + bindgen 单测 + cargo tf/tt 档
   （基线两例不变）。
 
 依赖：T-02←T-01；T-03←T-01/02；T-04←T-03；T-05 独立；T-06←T-04/05。
 
 ## 9. 复审记录
+
+stage: work | PLAN-597 | rev 1 | **pass** | code_commit=ddcf9ffb1 |
+task_ids=T-01..T-07 | evidence=见下 | blockers=无 | next=review
+
+### 执行证据(2026-09-09)
+
+- **T-01**:直接 DLL 输入 = LNK1107(实证,GNU ld 特性不适用 MSVC);
+  rustcdylib 副产 `autoterm_core.dll.lib` = 零成本 import lib;最小手写
+  C 链接运行 `spawn=1 exited=0 LINK_OK`。结论回填 §5。
+- **T-02**:快照 `18_c_interop/004_engine_face`(12 符号 fn.c 声明 +
+  驱动流:spawn→write_input(usize len)→feed_ready/take_dirty_rows 轮询
+  →row_text 扫锚点→kill/free,exit 0/1/2)。执行期两修:①a2c 未初始化
+  固定数组发射 `= NULL`(非法 C)→裸声明;②引擎无 C 头→隐式声明段
+  错误(spawn 假设返 int 截断句柄)→语料内 `engine_abi.h`(12 原型,
+  write_input len 对齐 size_t)。
+- **T-03/04**:`scripts/build-engine-face-a2c.cmd`(import lib 链接 +
+  DLL 同目录分发 + vcvars 自举);真机 **CFACE_OK / exit 0**(echo 经
+  take_dirty_rows+row_text 见证;仅良性警告 C4702)。
+- **T-05(全量冒烟支线,未降级 gap)**:①修 `use_scanner` 潜伏缺口
+  ——任何 VM 模式 `use.c`(含 `<math.h>`)都在文本扫描层被当模块
+  解析报 Module not found(Plan 216 存量断裂,实测坐实);补 .c 点式
+  分支(单测 dot_form_c_import);②`load_manifest_file` JSON 加载面 +
+  codegen `.json` 回退;③三支分派臂(([Int,Int,CStr],Ptr)/
+  ([Ptr,CStr,Size],Void)/([Ptr,Int,Int],Void));④engine_face.json
+  (8 标量符号,单测 load_manifest_file);⑤冒烟 **VFACE_OK 三连绿**
+  (spawn→write_input→feed 观察到字节批→resize→kill/free)。
+  **VM 轨两枚存量缺陷实测定位**(均已在语料头注规避):
+  D1 = if 条件位内联 C-FFI 调用 + while 循环 → VM 挂起(单发条件位
+  正常);D2 = 循环计数器在嵌套 if 内赋值 → 控制流静默断裂(后续
+  print 全失)。缓冲出参 4 符号(row_text/row_style/take_dirty_rows/
+  cursor)VM 封送不可达,实证归 004⑥。
+- **T-06**:裁定书落 §5(独立工具→a2c 链入/宿主内胶水→a2r+侧车/
+  VM 应用→标量子集);auto-term 004 §5③ 回执 + DEBTS #10 增 597 条
+  (主检出未提交批次)。
+- **T-07**:a2c 套件 **110 ok / 基线 9 失败行不变**(engine_face 绿,
+  净 +1);bindgen 6/6;cargo tf **3484/3485**(唯一失败=基线
+  vue::test_charts_gallery_compiles,595 复审已验基线固有);cargo tt
+  **3000/3001**(同上);新增单测 2 件全绿。执行中期曾现"门禁挂起"
+  ——定位为冒烟调查期孤儿 auto.exe 进程干扰(资源占用),清场后
+  22s/36s 干净收官,非代码回归。
+
 
 stage: new | PLAN-597 | rev 1 | outcome: pass | next: work
 （起草即绪：路径/命令/签名均经仓库核位；执行授权待用户指令。）
