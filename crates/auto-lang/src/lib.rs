@@ -6507,7 +6507,9 @@ mod plan449_style_parity_tests;
 
 // PLAN-593（Design 29 Phase 1）零漂移基线：语义色期望表 + base_css 金样
 // （先钉后改；S4/S5 registry 改造后同组断言即零漂移证明）。
-#[cfg(test)]
+// R1 门修正：断言面含 ui::style::theme（feature="ui" 门）——tf 档（无 ui）
+// 编译期排除，日常档 t（ui-iced ⊃ ui）全量执行。
+#[cfg(all(test, feature = "ui"))]
 mod plan593_theme_registry_tests;
 
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
