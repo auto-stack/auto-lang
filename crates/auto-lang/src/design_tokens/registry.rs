@@ -88,6 +88,10 @@ pub fn accent_hsl(name: &str) -> Option<(u16, u8, u8)> {
     }
 }
 
+/// 未知 accent 名的回退基值（= indigo）——消费方回退臂引用此常量，
+/// 函数体零字面色值（PLAN-593 R2）。
+pub const ACCENT_DEFAULT: (u16, u8, u8) = (239, 84, 67);
+
 /// accent 预设名全表（theme::ACCENT_PRESETS 的值源）。
 pub const ACCENT_NAMES: [&str; 5] = ["indigo", "coral", "ocean", "sage", "amber"];
 

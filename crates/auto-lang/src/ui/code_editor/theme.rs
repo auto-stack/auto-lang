@@ -92,7 +92,8 @@ pub struct CodeEditorTheme {
 /// H/S 两表恒一致，故归一为输出中性；原注释指向的 iced_adapter
 /// ACCENT_PALETTES 已不存在（失锚顺修，S1 对账 E6）。
 fn accent_hsl(name: &str) -> (u16, u8, u8) {
-    crate::design_tokens::registry::accent_hsl(name).unwrap_or((239, 84, 67))
+    crate::design_tokens::registry::accent_hsl(name)
+        .unwrap_or(crate::design_tokens::registry::ACCENT_DEFAULT)
 }
 
 /// f32 版 HSL→RGB（编辑器 0.0–1.0 色域直算）。与 ui::style::theme 的 u8 版

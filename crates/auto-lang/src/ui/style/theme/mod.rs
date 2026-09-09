@@ -213,7 +213,7 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
     if let Color::Primary = color {
         // Accent-driven: look up current accent name
         let name = ACCENT_NAME.with(|n| n.borrow().clone());
-        let (h, s, l) = registry::accent_hsl(&name).unwrap_or((239, 84, 67));
+        let (h, s, l) = registry::accent_hsl(&name).unwrap_or(registry::ACCENT_DEFAULT);
         // Dark mode: align to vue index.css .dark `--primary: 239 84% 77%` (L=77%)
         let l_adjusted = if is_dark { (l + 10).min(85) } else { l };
         return Some(hsl_to_rgb(h, s, l_adjusted));
