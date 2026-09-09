@@ -16317,8 +16317,8 @@ export function cn(...inputs: ClassValue[]) {
     /// Palette values are aligned with auto-forge's useAccentColor.ts so the
     /// two products share the same visual language.
     /// PLAN-593：5 预设 HSL 值的事实源在 `ui::style::theme::registry::accent_hsl`
-    ///（E4/E5 互锁——改值须同步本 JS 文本；dark 提亮此处 +4、Rust 侧 +10 为
-    /// S1 对账②登记的双端分叉，Phase 2 归一裁定）。
+    ///（E4/E5 互锁——改值须同步本 JS 文本；dark 提亮双端已归一 +10
+    /// 〔PLAN-601 D2/T-07，P593-D2 关债〕）。
     const ACCENT_PALETTE_JS: &str = r#"
 // Plan 360: Accent color palette (aligned with auto-forge).
 // Each entry maps a name → shadcn --primary HSL triplet (space-separated).
@@ -16347,11 +16347,13 @@ function applyAccent(name: string, isDark = false): void {
   const hsl = ACCENT_PALETTES[name]
   if (!hsl) return
   let finalHsl = hsl
-  // Dark mode: boost lightness ~4% for contrast against dark backgrounds.
+  // Dark mode: boost lightness for contrast against dark backgrounds.
+  // PLAN-601 D2 归一：+4 → +10（与 Rust/VM 侧 accent_primary_hsl 统一，
+  // coral 校准/stella 对齐实证为准；vue 暗色 accent 视觉微调在案）。
   if (isDark) {
     const match = hsl.match(/^(\d+\s+[\d.]+%)\s+([\d.]+)%$/)
     if (match) {
-      const boosted = Math.min(85, parseFloat(match[2]) + 4)
+      const boosted = Math.min(85, parseFloat(match[2]) + 10)
       finalHsl = match[1] + ' ' + boosted + '%'
     }
   }
