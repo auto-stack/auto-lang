@@ -7333,3 +7333,18 @@ mod plan571_css_secondary_interlock_tests {
         }
     }
 }
+
+
+// ── PLAN-593: index.css 全文金样（V1 改造零漂移证明，先钉后改）────────
+#[cfg(test)]
+mod plan593_index_css_golden_tests {
+    /// `generate_index_css()` 输出与迁移前模板逐字提取的金样逐字节相等。
+    /// 金样 = crates/auto-man/tests/fixtures/plan593_index_css.golden
+    /// （2026-09-09 master 基线；PLAN-571 的 --secondary 分档值包含在内）。
+    #[test]
+    fn index_css_golden() {
+        let css = super::generate_index_css();
+        let golden = include_str!("../tests/fixtures/plan593_index_css.golden");
+        assert_eq!(css, golden, "generate_index_css 输出与迁移前金样不一致");
+    }
+}
