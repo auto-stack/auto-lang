@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-598
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: a2py-semantic-fix-batch
 author: [ZCode]
 created_at: 2026-09-09
@@ -8,10 +8,12 @@ updated_at: 2026-09-09
 plan_revision: 1
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/auto-lang/frontend/overview.md: 修改 —— a2py 糖族恒括号纪律（py_call/py_call_may/py_getattr/py_matmul/py_getitem/py_setitem/py_call0 接收者恒括号发射）；语句体闭包：单表达式块（含裸 return e）lambda 化、含绑定/多语句块显式编译期诊断"
+  - "docs/specs/auto-lang/vm/overview.md: 修改 —— 闭包局部帧预留（compile_closure 按需插 RESERVE_STACK n_locals，原缺失致 let 读回垃圾）；collect_free_vars 块内 Stmt::Store(Let/Const) 绑定识别（原误判为捕获变量，STORE 本地/LOAD 捕获错位）"
 new_spec_components: []
 touched_goals:
-  - "GOAL-006"                # Consumer parity：py 套件语料编写体验与三轨语义面（暂定，review 定稿）
+  - "GOAL-006"                # Consumer parity：py 套件语料编写体验与三轨语义面（review 定稿）
 
 affects: [auto-lang/trans, auto-lang/vm]
 current_step: 8
@@ -287,6 +289,56 @@ DIV-PY-CLOSURE-1 拆面(句柄裸 id 面连带治愈,hd.as=15);路线图 ⑦ 核
 blockers: 无 |
 next: /auto-plan:review(fold 前 cargo tf 由 review 阶段执行)
 ```
+
+**复审（2026-09-09）。独立性声明**：实现会话内复审，按工件与复跑证据
+重建结论。
+
+**复审基线**：plan_revision=1；reviewed_commit=worktree plan-598-dev @
+**71b1962a7**（15e0d0e80 + 1bec2147b + 71b1962a7，9 文件 +236/-23）；
+base=master e8f67b9b2；工作树 clean；spec 目标文件实证存在
+（docs/specs/auto-lang/{frontend,vm}/overview.md）。
+
+### 验收标准逐条复验（verify, don't trust）
+
+| AC | 结论 | 证据 |
+|---|---|---|
+| AC-01 糖族恒括号 | **pass** | 复审复跑 d3 探针（先删产物）：`print((t + tensor([1, 1, 1])).sum())`；tt 含 golden 003 绿 |
+| AC-02 语句体闭包 a2py | **pass** | 复审复跑 f1：`lambda x: x * 2` / `lambda x: x + 5`；cl 诊断触发（grep 计数 1）；单测 test_lambda_statement_body_diagnostic PASS |
+| AC-03 语句体闭包 VM | **pass** | 复审复跑 cl.as VM 腿 = 8（非 None，未走降级路径）；f1 = 6/6 |
+| AC-04 回归零漂移 | **pass** | cargo tt 3843/3844 + cargo tv 3626/3627（唯 charts_gallery 预存红）；**cargo tf 3485/3486 唯同款预存红（复审复跑）**；p5-p9 全相位 179/179 |
+| AC-05 账面收口 | **pass** | 三文件 diff 复核（KNOWN-DEBT P539-D3 销账/DIV-PY-CLOSURE-1 拆面/路线图 ⑦ 核销，措辞与实证一致） |
+
+### 遗漏 / 延后 / Workaround 扫描
+
+- **F1（低，接受）**：单表达式块闭包实现为无括号 `lambda x: expr`（计划
+  原文 `(expr)`）——lambda 体整体即表达式，括号非必需，等价且更干净。
+- **F2（低，接受）**：T-03 轻微超时间盒（~1.2h）未走降级——根因在时间盒
+  末段定位且修复为 15 行级；待澄清 #1 的升级禁令（块求值通用语义）经探针
+  矩阵排除（fn 同形态正常，根因闭包专属：free-vars 误判 + 帧预留缺失）。
+- **F3（信息）**：T-06 验证式清零——py 套件无活跃规避点（grep 全量 + 目视
+  复核），零改动即本任务的正向完成态。
+- **F4（信息）**：T-02 审计五臂→七臂（py_matmul/py_getitem/py_setitem 同
+  族成员访问发射同病）——计划 D1 的"审计清单以 grep 为准"条款预授权。
+- **F5（信息，连带收益）**：collect_free_vars 修复连带治愈 DIV-PY-CLOSURE-1
+  原文描述的"句柄槽裸 id"面（hd.as 探针：闭包内 let + py 调用 = 15）——
+  仍 open 缩为 Python 侧回调消费模型（W3/P539-D4），账面已如实拆分。
+- **剩余已知缺口（pre-existing，代码注释在案）**：collect_free_vars 对块内
+  嵌套 If/For/Block 语句仍不遍历（本批修复前的历史行为，非本批引入）。
+- **Workaround 扫描**：无。RESERVE_STACK 镜像 fn 既有机制；恒括号为
+  Python 恒等变换。
+
+### 结论
+
+**全部验收标准通过（含 cargo tf 全量门），无阻塞性债务 → status:
+reviewed**。可入 `/auto-plan:merge`（worktree plan-598-dev 基于 e8f67b9b2，
+master 侧仅计划记账文件分叉，合并无冲突预期）。
+
+### 规范增量（spec delta，merge 时沉淀；frontmatter 已定稿）
+
+SD-01（docs/specs/auto-lang/frontend/overview.md）与 SD-02
+（docs/specs/auto-lang/vm/overview.md）的 before/after 见 §5 规范增量表，
+复审已按实际实现对齐（七臂清单、无括号 lambda 形态、RESERVE_STACK 机制、
+collect_free_vars 绑定识别）。
 
 ## 10. 待澄清事项
 
