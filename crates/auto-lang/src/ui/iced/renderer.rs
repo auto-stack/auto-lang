@@ -14495,6 +14495,17 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::App(app_id, m) => {
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1")
+                    && (m.event == "MenuClose"
+                        || m.event == "MenuOpen"
+                        || m.event.starts_with("IconMenu"))
+                {
+                    eprintln!(
+                        "[pv-update] DM::App reached daemon update: app={app_id:?} event={}",
+                        m.event
+                    );
+                }
                 // Plan 505 D（债 P488-D4）：拖出发起方锚定——DoDragDrop 在
                 // App handler dispatch 内联阻塞至完成（488 步骤 9 定案），
                 // 代际变化即本次 dispatch 发起并完成了一次拖出。
@@ -14737,6 +14748,17 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::Window(win, m) => {
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1")
+                    && (m.event == "MenuClose"
+                        || m.event == "MenuOpen"
+                        || m.event.starts_with("IconMenu"))
+                {
+                    eprintln!(
+                        "[pv-window] DM::Window reached: win={win:?} event={}",
+                        m.event
+                    );
+                }
                 // Plan 462 desktop：全局光标事件优先驱动 WM 拖拽/缩放状态机。
                 // 交互进行中消费事件（不下发 App——app 内 divider 拖拽与 WM
                 // 拖拽互斥，桌面语义下 WM 优先）。

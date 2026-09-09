@@ -234,6 +234,10 @@ where
         );
 
         let panel = if self.open {
+            // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+            if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                eprintln!("[pv-overlay] open popover registered, translation={translation:?}");
+            }
             Some(overlay::Element::new(Box::new(Panel {
                 // 坐标锚优先;widget 锚取 wrapper 自身(base 树)的绝对
                 // bounds —— overlay 层的 layout 与基础树同坐标系。
@@ -515,6 +519,10 @@ where
 
         let dismiss = |shell: &mut Shell<'_, Message>, on_dismiss: &Option<Message>| {
             if let Some(msg) = on_dismiss {
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                    eprintln!("[pv-dismiss] publishing on_dismiss");
+                }
                 shell.publish(msg.clone());
             }
         };
@@ -524,6 +532,17 @@ where
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 let over_panel = cursor.is_over(panel_bounds);
                 let over_anchor = self.at_point.is_none() && cursor.is_over(self.anchor_bounds);
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                    let cur = cursor.position();
+                    eprintln!(
+                        "[pv-panel-press] panel={panel_bounds:?} cursor={cur:?} \
+                         over_panel={over_panel} over_anchor={over_anchor} \
+                         dismiss={} captured_before={}",
+                        self.on_dismiss.is_some(),
+                        shell.is_event_captured(),
+                    );
+                }
                 if over_anchor {
                     // 锚上点击:dismiss 并捕获 —— 基础树收不到 toggle,菜单经
                     // on_dismiss 干净关闭(点触发器 = 关,menubar 语义)。
