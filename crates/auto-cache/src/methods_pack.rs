@@ -265,7 +265,17 @@ impl Sandbox {
             }
             let stderr = String::from_utf8_lossy(&out.stderr).to_string();
             let before = plans.len();
-            let offenders = offending_symbols(&stderr);
+            let mut offenders = offending_symbols(&stderr);
+            // PLAN-591 T9:类型级错误归因——深模块路径类型(uuid::fmt::Braced 族,
+            // rustdoc 只给短名 → 生成器发 crate::Type 误径)的编译错误文本里没有
+            // auto_ 符号名,但含 `crate::Type` 字样;按 crate 名前缀提取类型名,
+            // 归因到 auto__drop_<Type>(类型级剔除,与既有 drop 命中同通道)。
+            for ty in type_names_in_crate_errors(&stderr, crate_name) {
+                let sym = format!("auto__drop_{ty}");
+                if !offenders.contains(&sym) {
+                    offenders.push(sym);
+                }
+            }
             partition_out_offenders(&mut plans, &mut skips, &offenders);
             if plans.len() == before {
                 // 报错与已知符号对不上(或已无可剔)——如实失败
@@ -349,6 +359,27 @@ fn offending_symbols(stderr: &str) -> Vec<String> {
         if tok.starts_with("auto_") && !found.iter().any(|f| f == tok) {
             found.push(tok.to_string());
         }
+    }
+    found
+}
+
+/// PLAN-591 T9:从 rustc 报错文本提取 `crate_name::Type` 形态的类型名
+/// (深模块路径类型如 uuid::fmt::Braced 在生成器误径 `uuid::Braced` 下
+/// 编译失败,错误文本含 `uuid::Braced` 字样)。返回去重的类型短名列表。
+fn type_names_in_crate_errors(stderr: &str, crate_name: &str) -> Vec<String> {
+    let prefix = format!("{crate_name}::");
+    let mut found: Vec<String> = Vec::new();
+    let mut rest = stderr;
+    while let Some(pos) = rest.find(&prefix) {
+        let after = &rest[pos + prefix.len()..];
+        let ty: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !ty.is_empty() && !found.contains(&ty) {
+            found.push(ty);
+        }
+        rest = after;
     }
     found
 }

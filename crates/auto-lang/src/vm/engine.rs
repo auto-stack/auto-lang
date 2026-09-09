@@ -1534,7 +1534,10 @@ impl AutoVM {
     /// Plan 539 W2 (T19): numeric tag test for mixed-type comparisons
     /// (f64/f32/i32 — bools excluded, they have their own bit-compare).
     fn nv_is_numeric(nv: auto_val::NanoValue) -> bool {
-        auto_val::is_f64(nv) || auto_val::is_f32(nv) || auto_val::is_i32(nv)
+        // PLAN-591 T9:补 is_i64——dep 方法返回的宽整型走 push_i64_vm
+        // (TAG_I64),此前 EQ/数值谓词恒 false(uuid 勘测 get_version_num
+        // == 4 实勘暴露);GT/序比较走独立臂未受影响。
+        auto_val::is_f64(nv) || auto_val::is_f32(nv) || auto_val::is_i32(nv) || auto_val::is_i64(nv)
     }
 
     /// Plan 539 W2 (T19): widen a numeric nv to f64 for comparison.
@@ -1543,6 +1546,8 @@ impl AutoVM {
             auto_val::decode_f64(nv)
         } else if auto_val::is_f32(nv) {
             auto_val::decode_f32(nv) as f64
+        } else if auto_val::is_i64(nv) {
+            auto_val::decode_i64(nv) as f64
         } else {
             auto_val::decode_i32(nv) as f64
         }
