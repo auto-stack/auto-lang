@@ -64,6 +64,10 @@ const DOC_EXCLUDE: &[&str] = &[
     // 契约文档化于 auto-term 仓 docs/plans/009(组件真身迁移计划)+
     // kitchen-sink 生成页;kitchen-sink 的 terminal demo 即最小用法。
     "terminal",
+    // os-007（P534 滞留清偿）：全量再生成升格的 builtin 子件——文档化随
+    // 家族主页面（sidebar 页含 sub 按钮 nesting 说明；sheet 页含 close 钮）。
+    "sidebarmenusubbutton",
+    "sheetclose",
     // Plan 497:每窗口真缩略(桌面 shell 专用消费面——switcher 行/dock
     // hover/pager 分区;单 App gallery 无虚拟窗可缩略,恒 fallback 形态,
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +

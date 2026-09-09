@@ -37,7 +37,9 @@
 //! **真消费**（外包 View::Scrollable：scroll_top 绑定写入臂 + onscroll
 //! 消息读出臂 + ondetailsclick 折叠回路，EDITOR-CONTRACT §11 在册）。
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use auto_val::{Op, Value};
 
@@ -138,6 +140,13 @@ pub struct AuraViewBuilder<'a> {
     /// 名字匹配后切回 `SlotFills::parent`（父作用域 builder）求值填充。
     /// None = 本层无填充（普通构建路径零变化）。
     slot_fills: Option<&'a SlotFills<'a>>,
+    /// os-007（origin PLAN-577/P530-D1 根因修复）：子件渲染进行中集合。
+    /// 未知 tag 经 widget_registry 折叠兜底（P435 P8-6：剥 `-`/`_`+小写）
+    /// 可命中组件自身名——gallery 页面 `BreadcrumbPage` 的 demo 用
+    /// `breadcrumb-page` tag，fold 后同名，无守卫时无限自递归栈溢出
+    /// （新会话直达 breadcrumb 页 100% 复现）。命中环时渲染 Empty 占位；
+    /// 集合按分支克隆传递，兄弟复用同一 widget 不受影响。
+    active_child_widgets: RefCell<HashSet<String>>,
 }
 
 /// Plan 476: widget 调用位的 slot 填充集。
@@ -263,6 +272,7 @@ impl<'a> AuraViewBuilder<'a> {
             preview_states: None,
             nav_group_states: None,
             slot_fills: None,
+            active_child_widgets: RefCell::new(HashSet::new()),
         }
     }
 
@@ -283,6 +293,7 @@ impl<'a> AuraViewBuilder<'a> {
             preview_states: None,
             nav_group_states: None,
             slot_fills: None,
+            active_child_widgets: RefCell::new(HashSet::new()),
         }
     }
 
@@ -307,6 +318,7 @@ impl<'a> AuraViewBuilder<'a> {
             preview_states: None,
             nav_group_states: None,
             slot_fills: None,
+            active_child_widgets: RefCell::new(HashSet::new()),
         }
     }
 
@@ -1860,7 +1872,18 @@ impl<'a> AuraViewBuilder<'a> {
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "sep" | "separator" => self.convert_sep(props, bindings),
-            "avatar" => self.convert_avatar(props),
+            // os-007（origin PLAN-577/P534-D4）：avatar 家族补齐——
+            // avatar 容器转换子件；avatar-image 复用 img 图源臂；
+            // avatar-fallback 走文本臂（居中由容器注入）。
+            "avatar" => self.convert_avatar(props, children, bindings),
+            "avatar-image" => self.convert_image_or_icon(props),
+            "avatar-fallback" => self.convert_text_element(
+                "avatar-fallback",
+                props,
+                events,
+                children,
+                bindings,
+            ),
             // Plan 418 P2-3: config-driven menubar/toolbar (auto-edit.at).
             // path/probe pass through so synthesized buttons land in the
             // snapshot's event index (MCP clickability). §8.4①: probe off
@@ -3440,7 +3463,18 @@ impl<'a> AuraViewBuilder<'a> {
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "sep" | "separator" => self.convert_sep(props, bindings),
-            "avatar" => self.convert_avatar(props),
+            // os-007（origin PLAN-577/P534-D4）：avatar 家族补齐——
+            // avatar 容器转换子件；avatar-image 复用 img 图源臂；
+            // avatar-fallback 走文本臂（居中由容器注入）。
+            "avatar" => self.convert_avatar(props, children, bindings),
+            "avatar-image" => self.convert_image_or_icon(props),
+            "avatar-fallback" => self.convert_text_element(
+                "avatar-fallback",
+                props,
+                events,
+                children,
+                bindings,
+            ),
 
             // Child widget lookup or fallback
             _ => {
@@ -5501,6 +5535,14 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
+        // os-007（P530-D1）：环守卫——见 active_child_widgets 字段注记。
+        let cycling = self
+            .active_child_widgets
+            .borrow()
+            .contains(&child_widget.name);
+        if cycling {
+            return View::Empty;
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
@@ -5526,6 +5568,11 @@ let tabs_inner = View::Row {
             preview_states: self.preview_states,
             nav_group_states: self.nav_group_states,
             slot_fills,
+            active_child_widgets: {
+                let mut active = self.active_child_widgets.borrow().clone();
+                active.insert(child_widget.name.clone());
+                RefCell::new(active)
+            },
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -5552,6 +5599,14 @@ let tabs_inner = View::Row {
         probe: &mut BuildProbe,
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
+        // os-007（P530-D1）：环守卫——见 active_child_widgets 字段注记。
+        let cycling = self
+            .active_child_widgets
+            .borrow()
+            .contains(&child_widget.name);
+        if cycling {
+            return View::Empty;
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
@@ -5570,6 +5625,11 @@ let tabs_inner = View::Row {
             preview_states: self.preview_states,
             nav_group_states: self.nav_group_states,
             slot_fills,
+            active_child_widgets: {
+                let mut active = self.active_child_widgets.borrow().clone();
+                active.insert(child_widget.name.clone());
+                RefCell::new(active)
+            },
         };
 
         child_builder.convert_node_tracked_ctx(
@@ -7686,22 +7746,92 @@ let tabs_inner = View::Row {
     fn convert_avatar(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let style = self.extract_style(props);
+        // os-007 T4（P534-D4 根因修复）：centering 容器在样式无显式宽高时
+        // 被 apply_container_style 设为 Fill×Fill，shrink 上下文（hovercard
+        // 的 Popover 锚/行内）解析为零高——534 期触发器 hit area 零高的
+        // 底层根因。对齐 vue 端 avatar 臂（w-10 h-10 rounded-full 恒注入）
+        // 补默认尺寸；显式样式已带 w-*/h-* 时不重复注入。
+        let has_size_class = |p: &Style| {
+            p.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::Width(_) | StyleClass::Height(_)))
+        };
+        let style = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                let needs_size = Style::parse(&s)
+                    .map(|p| !has_size_class(&p))
+                    .unwrap_or(true);
+                let merged = if needs_size {
+                    format!("{s} w-10 h-10")
+                } else {
+                    s
+                };
+                Style::parse(&merged).ok()
+            })
+            .unwrap_or_else(|| Style::parse("w-10 h-10 bg-gray-300 rounded-full").ok());
 
-        let child = View::Text {
-            content: "".to_string(),
-            style: None,
-            selectable: false,
+        // os-007（P534-D4）：有子件→avatar-image/avatar-fallback 子件组合
+        // （经 convert_node_with 同表分发）；无子件保持灰圆占位（回归面）。
+        let child = if !children.is_empty() {
+            if children.len() == 1 {
+                self.convert_node_with(&children[0], bindings)
+            } else {
+                let views: Vec<View<DynamicMessage>> = children
+                    .iter()
+                    .map(|n| self.convert_node_with(n, bindings))
+                    .collect();
+                View::Column {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                }
+            }
+        } else {
+            // os-007 T4：props 形态 desugar（对齐 vue 端 avatar 臂——
+            // src→AvatarImage、fallback→AvatarFallback）；两 prop 皆无
+            // 保持灰圆占位。
+            let mut views: Vec<View<DynamicMessage>> = Vec::new();
+            if let Some(src) = self
+                .extract_string_with(props, "src", bindings)
+                .filter(|s| !s.is_empty())
+            {
+                views.push(View::Image { src, style: None });
+            }
+            if let Some(fb) = self.extract_string_with(props, "fallback", bindings) {
+                views.push(View::Text {
+                    content: fb,
+                    style: None,
+                    selectable: false,
+                });
+            }
+            match views.len() {
+                0 => View::Text {
+                    content: "".to_string(),
+                    style: None,
+                    selectable: false,
+                },
+                1 => views.into_iter().next().unwrap(),
+                _ => View::Column {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                },
+            }
         };
         let mut builder = View::container(child);
         builder = builder.center_x().center_y();
         if let Some(s) = style {
             builder = builder.with_style(s);
-        } else {
-            builder = builder.with_style(
-                Style::parse("bg-gray-300 rounded-full").unwrap()
-            );
         }
         builder.build()
     }
