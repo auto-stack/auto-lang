@@ -31,6 +31,11 @@ native 函数注册体系、Rust/C FFI 动态加载、标准库 shim。对应代
 - `CFfiRuntime`（ffi/c_ffi.rs:19）基于 libloading 装载动态库；`load_builtin_manifest`（c_ffi.rs:449）从 C 头文件生成绑定清单。
 - plan-216 把 auto-bindgen 接入 CLI 构建管线（4 个阶段完成）：头文件 → 绑定 → 编译 → VM 调用。
 - `ffi/convert.rs` 负责 Value ↔ C ABI 类型转换；`ffi/error.rs` 定义 FFI 错误面。
+- **FnPtr（回调）注册期拒绝（plan-595，承 Plan 267 "Impossible" 定性）**：
+  manifest 含 `CTypeDesc::FnPtr` 签名的函数（如 windows.h 的
+  SetConsoleCtrlHandler）在 `load_header` 注册期即返回
+  `VMError::FFI`（清晰报错替代 panic/静默误调）；封送循环另有同语义
+  防御臂。回调消费走 a2c 后端（闭包→函数指针，Plan 060）。
 
 ### 内置服务 shim
 

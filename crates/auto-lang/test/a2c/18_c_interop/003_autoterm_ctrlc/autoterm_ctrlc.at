@@ -1,0 +1,51 @@
+// Plan 595 (004 §5②): autoterm-ctrlc replica, a2c target.
+// Mirrors auto-term crates/autoterm-core/src/bin/autoterm-ctrlc.rs:
+//   attach to the target's console (FreeConsole → AttachConsole),
+//   immunize self (SetConsoleCtrlHandler, zero-capture closure → C function
+//   pointer, Plan 060), then dual-broadcast Break → Sleep(50) → C.
+// Contract kept = the engine path (pty.rs interrupt() spawns `<pid>` argv,
+// dual mode); manual `c|break` diagnostic variants stay Rust-only.
+// exit: 0 = broadcast ok; 2 = attach/broadcast failed; 3 = usage (no pid /
+// unparsable). argv via GetCommandLineA + strchr + atoi (all C ABI; a2c has
+// no argv runtime — win32 route keeps this replica zero-runtime).
+use.c <windows.h>
+use.c <stdlib.h>
+use.c <string.h>
+
+fn.c strchr(s cstr, ch int) ptr
+
+fn send_evt(evt uint) int {
+    if GenerateConsoleCtrlEvent(evt, 0) == 0 {
+        return 2
+    }
+    return 0
+}
+
+fn main() {
+    var cmd cstr = GetCommandLineA()
+    var sp *char = strchr(cmd, 32)
+    if sp == 0 {
+        exit(3)
+    }
+    var pid int = atoi(sp)
+    if pid == 0 {
+        exit(3)
+    }
+    FreeConsole()
+    if AttachConsole(pid) == 0 {
+        exit(2)
+    }
+    // self-immune handler: return TRUE for every control event
+    // (zero-capture closure → C function pointer, Plan 060)
+    SetConsoleCtrlHandler(evt => 1, 1)
+    // dual: Break first (lands even where C is swallowed, 26200), then C
+    var ret int = send_evt(1)
+    Sleep(50)
+    var c int = send_evt(0)
+    if ret == 0 {
+        if c != 0 {
+            ret = c
+        }
+    }
+    exit(ret)
+}

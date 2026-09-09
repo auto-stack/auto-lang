@@ -1,3 +1,5 @@
+#include "closure.h"
+
 int main(void) {
     int (*)(int, int) add = closure_0;
     int result = add(5, 3);

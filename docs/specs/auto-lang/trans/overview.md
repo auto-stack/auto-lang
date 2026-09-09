@@ -34,6 +34,12 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   出口（GIL float()/int()，撒谎注解退回 Python 行为）。a2py：may 变体
   `_auto_may` 家族反映射、with-as 规范序列回译 `with e as x:`、py_int→
   int(x)；parity runner PYTHONPATH 绝对路径注入（本地注解模块载体）。
+- a2c 闭包原型入头（plan-595）：闭包定义发射在 main 之后，其**前向
+  原型必须写入头文件**（`generate_closure_definitions` 先于 header 装配
+  执行，原型并入 `self.header`）——无原型则 main 内引用闭包为 C2065
+  （真 MSVC 编译抓出，文本快照盲区；快照语料 09_option_result/003_closure
+  与 18_c_interop/003_autoterm_ctrlc 在案）；连带语义：含闭包的程序
+  `self.header` 非空 → 生成的 .c 自 `#include "<stem>.h"`。
 - A1 `.len()` 特判（plan-569，P539-D2 根治）：py-known 接收者的方法糖
   `.len()`（无实参）不再改写 `py_call(recv, "len")`（py 无 `.len` 方法，
   恒 AttributeError）而改发 **obj_len 双通道组合子**——与 codegen
