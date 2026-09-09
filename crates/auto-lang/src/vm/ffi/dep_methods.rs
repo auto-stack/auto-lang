@@ -126,6 +126,21 @@ pub fn dispatch(
     task: &mut AutoTask,
     vm: &AutoVM,
 ) -> Result<bool, VMError> {
+    // PLAN-591 T2:.unwrap() 语义桥——unwrap 范式(594 语料惯例)要求 .at 侧
+    // `.unwrap()` 原文透传(a2r 轨发射合法 Rust);VM 侧 T2 已在调用边界解包
+    // (Some 压值/None 压 null/Err 转 VMError),unwrap 对 dep 值为透明恒等
+    // (原样弹压,不参与 RC)。null 接收者 unwrap → VMError(对齐 Option unwrap)。
+    // 已知让步:若三方类型自带真实 unwrap 固有方法,会被本桥遮蔽(dep 面)。
+    if method == "unwrap" {
+        let nv = task.ram.pop_nv();
+        if auto_val::is_null(nv) {
+            return Err(VMError::RuntimeError(format!(
+                "{type_name}.unwrap: unwrap on null (None) — PLAN-591 T2 在调用边界以 null 表达 None"
+            )));
+        }
+        task.ram.push_nv(nv);
+        return Ok(true);
+    }
     let shim = {
         let table = methods_table()
             .read()

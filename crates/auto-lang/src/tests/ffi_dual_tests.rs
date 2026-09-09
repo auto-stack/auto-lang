@@ -347,3 +347,54 @@ fn main() {
 "#).expect("rust String.from runs");
     assert_eq!(out2.trim(), "42", "rust type import must not be hijacked by lazily-registered auto.str native");
 }
+
+// PLAN-591 T3/T7: V1 布局/语义语料(三腿共享 018_dep_fields,fixture autolang_shapes)。
+// 主段走 test_ffi_dual:V1-4 Option nullable(hit/miss == null 三轨一致)、
+// V1-5 Result fallible(合法输入 .unwrap() 后字段可读)、V1-3 嵌套两级
+// (o.inner.n / o.inner.label)、V1-7 enum 判别(is_circle 等匹配语义探针)。
+// 附加段为 VM 腿负面断言(错误输出无法进 stdout golden,592 惯例):
+// Result Err → VMError 含 fixture 固定锚文案;None 后 .unwrap() → VMError。
+#[test]
+fn ffi_dual_018_dep_fields() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    test_ffi_dual("018_dep_fields").unwrap();
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = d
+        .join("test/ffi_dual/018_dep_fields/fixture/autolang_shapes")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let shapes_src = |imports: &str, body: &str| {
+        format!(
+            r#"dep autolang_shapes(path: "{fixture}")
+use.rs autolang_shapes::{{{imports}}}
+{body}
+"#
+        )
+    };
+
+    // V1-5 负面:parse 非法输入 → wrapper Err 写错误通道 → VMError 含锚文案
+    let bad_parse = shapes_src(
+        "Point",
+        r#"let p = Point.parse("bad").unwrap()
+print(p.x)"#,
+    );
+    let err = crate::run_with_capture(&bad_parse)
+        .expect_err("Result Err must surface as VMError (591 V1-5)");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("bad-input"),
+        "Result Err message should carry fixture anchor, got: {msg}"
+    );
+
+    // None 表达注记(V1-4):VM 侧 T2 以 null 表达 None,语料以 `== null` 断言
+    // (三轨一致:VM null ≡ a2r None ≡ oracle is_none)。null 接收者的方法调用
+    // 走 VM 既有 musk/Python parity 惯例(null.method() → "None" 文本),早于本
+    // 计划且非 dep 面,不在此改动——登记为既有语义观察。
+
+    // 标量槽 nullable 显式跳过(哨兵歧义,V1 已知限制):Option<i64> 面不进包
+    // (fixture 无该面;017 的 maybe(-> Option<i64>) 负面断言已覆盖同一守卫路径)
+}

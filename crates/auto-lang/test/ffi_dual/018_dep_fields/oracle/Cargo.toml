@@ -1,0 +1,11 @@
+# PLAN-591 T3: 018 三轨对拍 oracle 腿——手写 Rust 直调同一 fixture crate。
+# 独立工作区(空 [workspace])脱离 auto-lang workspace,路径依赖指回 fixture。
+[package]
+name = "oracle_018_dep_fields"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+autolang_shapes = { path = "../fixture/autolang_shapes" }
