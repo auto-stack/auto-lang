@@ -4497,6 +4497,86 @@ mod tests {
         assert_eq!(offset, Some("甲块。".len()));
     }
 
+    /// PLAN-061 T-05：文本叶块首点——光标落点击处字形（对齐网页轨
+    /// click-caret 交接语义，钉死现状行为）。两点位单调且均非行尾钳制；
+    /// 第二击前清多击节律（同步调用间隔 < CLICK_TIMING 会被判双击）。
+    #[test]
+    fn mouse_click_leaf_lands_caret_at_clicked_glyph() {
+        let c = core_for("t61a", "甲乙丙丁戊己庚辛壬癸\n");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let click = |x: f32| -> Option<usize> {
+            let _ = run_fs(|fs| {
+                c.handle_input(
+                    fs,
+                    DocInput::MousePressed { button: EditorButton::Left, x, y: rects[0].y + 4.0 },
+                    &mut NullClipboard,
+                )
+            });
+            c.click.lock().unwrap().take(); // 隔离多击节律
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        assert!(c.focused_block().is_none(), "click 前无焦点（首击语义前置）");
+        let off1 = click(20.0).unwrap_or(0);
+        assert_eq!(c.focused_block(), Some(0), "首击建焦点");
+        let off2 = click(100.0).unwrap_or(usize::MAX);
+        let len = "甲乙丙丁戊己庚辛壬癸".len();
+        assert!(off1 >= 3, "x=20 至少越过首字形：{off1}");
+        assert!(off2 > off1, "点击右移 → caret 右移：{off1} → {off2}");
+        assert!(off2 < len, "两点位均非行尾钳制：{off2}/{len}");
+    }
+
+    /// PLAN-061 T-05：容器（列表）点击归属——点第 2 项 → 焦点/键入落
+    /// 第 2 项叶。网页轨缺陷形态是「聚焦第 1 项 + 光标在其末尾」；VM 单趟
+    /// 字形命中天然归属被点中项，本测钉死。
+    #[test]
+    fn mouse_click_list_lands_on_clicked_item() {
+        let c = core_for("t61b", "- 甲项\n- 乙项\n");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: 30.0, y: rects[1].y + 4.0 },
+                &mut NullClipboard,
+            )
+        });
+        assert!(out.focus_changed, "首击建焦点：{out:?}");
+        assert_eq!(c.focused_block(), Some(1), "点第 2 项 → 聚焦第 2 项叶（非首项）");
+        press(c, EditorKey::Char('叉'));
+        assert!(c.live_text(1).contains('叉'), "键入落第 2 项：{:?}", c.live_text(1));
+        assert_eq!(c.live_text(0), "甲项", "第 1 项不受扰");
+    }
+
+    /// PLAN-061 T-05：表格点击归属——点非首列 cell（r1c1）→ 焦点/键入
+    /// 落该 cell 叶（既有 table_cell_editing_and_degraded_structure 钉死
+    /// r1c0 命中，本测补「被点中的那个 cell」归属面 + cell 内键入）。
+    #[test]
+    fn mouse_click_table_lands_on_clicked_cell() {
+        let src = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n正文段\n";
+        let c = core_for("t61c", src);
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: rects[3].x + rects[3].w - 10.0,
+                    y: rects[3].y + 4.0,
+                },
+                &mut NullClipboard,
+            )
+        });
+        assert!(out.focus_changed, "首击建焦点：{out:?}");
+        assert_eq!(c.focused_block(), Some(3), "命中 r1c1 叶（行主序叶 0..3=cells，非首个 cell）");
+        press(c, EditorKey::End);
+        press(c, EditorKey::Char('叉'));
+        assert!(c.live_text(3).contains("2叉"), "键入落 r1c1：{:?}", c.live_text(3));
+        assert_eq!(c.live_text(2), "1", "r1c0 不受扰");
+    }
+
     /// 列表项末端 Enter → 新列表项（emit 重发序号/圆点）。
     #[test]
     fn enter_at_item_end_creates_new_item() {
