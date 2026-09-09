@@ -114,3 +114,71 @@ fn base_css_golden() {
     let golden = include_str!("../tests/fixtures/plan593/base_css.golden");
     assert_eq!(css, golden, "generate_base_css 输出与迁移前金样不一致");
 }
+
+// ── S8 T-c：词表封闭性/投影完备性 ─────────────────────────────────────
+
+use crate::ui::style::theme::registry;
+
+/// 词表 31 键的 css_var 名两两互异（闭集无碰撞）。
+#[test]
+fn t_c_token_css_vars_unique() {
+    let vars = [
+        registry::TokenName::Background, registry::TokenName::Foreground,
+        registry::TokenName::Card, registry::TokenName::CardForeground,
+        registry::TokenName::Popover, registry::TokenName::PopoverForeground,
+        registry::TokenName::Primary, registry::TokenName::PrimaryForeground,
+        registry::TokenName::Secondary, registry::TokenName::SecondaryForeground,
+        registry::TokenName::Muted, registry::TokenName::MutedForeground,
+        registry::TokenName::Accent, registry::TokenName::AccentForeground,
+        registry::TokenName::Destructive, registry::TokenName::DestructiveForeground,
+        registry::TokenName::Border, registry::TokenName::Input, registry::TokenName::Ring,
+        registry::TokenName::SidebarBackground, registry::TokenName::SidebarForeground,
+        registry::TokenName::SidebarPrimary, registry::TokenName::SidebarPrimaryForeground,
+        registry::TokenName::SidebarAccent, registry::TokenName::SidebarAccentForeground,
+        registry::TokenName::SidebarBorder, registry::TokenName::SidebarRing,
+        registry::TokenName::Success, registry::TokenName::Warning,
+        registry::TokenName::Info, registry::TokenName::Error,
+    ];
+    assert_eq!(vars.len(), 31, "词表基数为 31（19 shadcn+8 sidebar+4 扩展）");
+    let mut names: Vec<&str> = vars.iter().map(|t| t.css_var()).collect();
+    names.sort_unstable();
+    let n = names.len();
+    names.dedup();
+    assert_eq!(names.len(), n, "css_var 名存在碰撞：{:?}", names);
+}
+
+/// 投影完备性（S4 color_token 契约）：全部 14 个被投影的 `Color` 语义变体
+/// 双 mode 均可解析（= stella 表覆盖投影目标集）；非语义域变体返回 None。
+#[test]
+fn t_c_projection_complete_in_stella() {
+    let projected = [
+        Color::Secondary, Color::Background, Color::Surface, Color::Muted,
+        Color::Error, Color::Warning, Color::Success, Color::Info,
+        Color::OnPrimary, Color::OnSecondary, Color::OnDestructive,
+        Color::OnBackground, Color::OnSurface, Color::Border,
+    ];
+    for dark in [false, true] {
+        theme::set_dark_mode(dark);
+        for c in &projected {
+            assert!(
+                theme::resolve_semantic_rgb(c).is_some(),
+                "投影色 {c:?} @ dark={dark} 应在 stella 表内（完备性破坏）"
+            );
+        }
+    }
+    // 非语义域：调色板/字面量变体不解析（封闭词表边界）
+    for c in [Color::Slate(500), Color::Blue(500), Color::White, Color::Black] {
+        assert_eq!(theme::resolve_semantic_rgb(&c), None, "{c:?} 不在语义域");
+    }
+}
+
+/// builtin 查找的未知名封闭性 + accent 名单值源委托。
+#[test]
+fn t_c_builtins_closed() {
+    assert!(registry::css_builtin("zinc").is_some());
+    assert!(registry::css_builtin("scaffold").is_some());
+    assert!(registry::css_builtin("nonsense").is_none());
+    assert!(registry::rgb_builtin("stella").is_some());
+    assert!(registry::rgb_builtin("zinc").is_none(), "zinc 无 VM 面（CSS-only）");
+    assert_eq!(theme::ACCENT_PRESETS, registry::ACCENT_NAMES);
+}
