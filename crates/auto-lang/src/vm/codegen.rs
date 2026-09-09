@@ -12522,14 +12522,35 @@ impl Codegen {
             }
             Expr::Block(body) => {
                 // For block expressions, exclude local variables defined in the block
-                let inner_exclude = exclude.clone();
+                // PLAN-598 T-03 (DIV-PY-CLOSURE-1 VM facet): `let` bindings
+                // (Stmt::Store with StoreKind::Let/Const) were never excluded,
+                // so a block-local name was misclassified as a captured var —
+                // the store went to the local slot but subsequent loads read
+                // the closure's (empty) capture env as garbage. Walk the
+                // initializer FIRST (its free vars belong to the enclosing
+                // scope), then bind the name for the rest of the block.
+                // Remaining gap (pre-existing): If/For/Block statements nested
+                // in a block are still not walked here.
+                let mut inner_exclude = exclude.clone();
                 for stmt in &body.stmts {
-                    if let Stmt::Expr(e) = stmt {
-                        self.collect_free_vars(e, &inner_exclude, free_vars);
-                    } else if let Stmt::Return(e) = stmt {
-                        self.collect_free_vars(e, &inner_exclude, free_vars);
+                    match stmt {
+                        Stmt::Store(store) => {
+                            self.collect_free_vars(&store.expr, &inner_exclude, free_vars);
+                            if matches!(
+                                store.kind,
+                                crate::ast::StoreKind::Let | crate::ast::StoreKind::Const
+                            ) {
+                                inner_exclude.insert(store.name.to_string());
+                            }
+                        }
+                        Stmt::Expr(e) => {
+                            self.collect_free_vars(e, &inner_exclude, free_vars);
+                        }
+                        Stmt::Return(e) => {
+                            self.collect_free_vars(e, &inner_exclude, free_vars);
+                        }
+                        _ => {}
                     }
-                    // TODO: Exclude local variable definitions from inner_exclude
                 }
             }
             Expr::If(if_expr) => {
@@ -12974,6 +12995,11 @@ impl Codegen {
         // Save old current_fn_n_args and set new value for closure
         let old_fn_n_args = self.current_fn_n_args;
         let old_fn_scope_start = self.fn_scope_start;
+        // PLAN-598 T-03 (DIV-PY-CLOSURE-1 VM facet): per-closure max_locals
+        // accounting, mirroring the per-fn reset in compile_fn — the closure's
+        // local frame size is measured in its own index space.
+        let old_max_locals = self.max_locals;
+        self.max_locals = 0;
         self.current_fn_n_args = closure.params.len();
 
         // Enter new scope for closure parameters
@@ -12985,9 +13011,45 @@ impl Codegen {
         for param in &closure.params {
             self.add_var(&param.name);
         }
+        let locals_base = self.max_locals; // = fn_scope_start + n_args
 
         // Compile closure body expression
         self.compile_expr(&closure.body)?;
+
+        // PLAN-598 T-03: closures never reserved stack for their locals — a
+        // `let` inside a closure body addressed bp-relative memory that was
+        // never allocated, reading back garbage (None/0). Fns reserve locals
+        // via FN_PROLOG + RESERVE_STACK; closures now insert RESERVE_STACK
+        // n_locals at body entry. The body (including nested closures) was
+        // just compiled at >= func_addr, so those bytes shift by 2: jump
+        // placeholders, relocs and exports created during the body compile
+        // move with it (same post-insertion dance compile_fn does).
+        let n_locals = self.max_locals.saturating_sub(locals_base);
+        if n_locals > 0 {
+            let n_locals = n_locals.min(255);
+            for idx in &mut self.jump_placeholders {
+                if *idx >= func_addr as usize {
+                    *idx += 2;
+                }
+            }
+            for reloc in &mut self.relocs {
+                if reloc.offset >= func_addr {
+                    reloc.offset += 2;
+                }
+            }
+            let shifted: Vec<(String, u32)> = self
+                .exports
+                .iter()
+                .filter(|(_, addr)| **addr >= func_addr)
+                .map(|(name, addr)| (name.clone(), addr + 2))
+                .collect();
+            for (name, addr) in shifted {
+                self.exports.insert(name, addr);
+            }
+            self.code.insert(func_addr as usize, n_locals as u8);
+            self.code.insert(func_addr as usize, OpCode::RESERVE_STACK as u8);
+        }
+        self.max_locals = old_max_locals;
 
         // Emit RET for closure
         self.emit(OpCode::RET);
