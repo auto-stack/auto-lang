@@ -62,7 +62,8 @@ widget DesktopSurface {
             // 图标网格（固定网格 v1；列数 8 起步，占位 lucide 图标——
             // pinned 条目自带注册表 icon 优先）。双击 = mouse-area
             // ondblclick（484 mouse-area + iced on_double_click）；右键 =
-            // button oncontextmenu（402 先例）。
+            // 布局件 oncontextmenu（PLAN-002 B：布局件级右键挂点，格内全域
+            // 可右键——此前挂 button 上仅图标本体命中）。
             // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
             // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
             // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
@@ -71,13 +72,15 @@ widget DesktopSurface {
                 for e in .__desktop_icons {
                     mouse-area (ondblclick: .ActivateApp(e.id)) {
                         col {
-                            style: "w-20 h-20 items-center justify-center gap-1"
+                            // PLAN-002 B pilot：布局件 hover 类消费（此前 row/col
+                            // 上的 hover: 静默丢弃——526 Q9①）+ 右键挂点。
+                            style: "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                            oncontextmenu.prevent: .IconMenu(e.id)
                             // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标本体，
                             // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
                             // 图标挤下且样式不符）。
                             popover (open: .menu_id == e.id, placement: "bottom-start", ondismiss: .MenuClose, class: "p-1 border rounded bg-card") {
                                 button (icon: e.icon) {
-                                    oncontextmenu.prevent: .IconMenu(e.id)
                                     style: "h-10 w-10 px-0 text-xl text-white rounded-xl bg-[" + e.color + "]"
                                 }
                                 col {

@@ -41,7 +41,7 @@ fn row_smoke_two_texts() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (x1, _y1, w1, _h1) = bounds_of(&mut ui, "L");
@@ -66,7 +66,7 @@ fn row_fill_child_keeps_sibling_visible() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (x, _y, w, _h) = bounds_of(&mut ui, "SURVIVOR");
@@ -155,13 +155,13 @@ fn center_column_items_center_centers_narrow_child() {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::default().add(StyleClass::ItemsCenter)),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let view = View::container(inner)
         .center_x()
@@ -196,13 +196,13 @@ fn row_ml_auto_pushes_right() {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("ml-auto").ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (lx, _ly, lw, _lh) = bounds_of(&mut ui, "LEFT");
@@ -235,7 +235,7 @@ fn nested_row_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("items-center bg-[#1C1D24]").ok().unwrap()),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let view = View::Row {
         children: vec![
@@ -245,7 +245,7 @@ fn nested_row_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (ox, _oy, ow, _oh) = bounds_of(&mut ui, "OUTER");
@@ -332,14 +332,14 @@ fn nested_row_icon_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let view = View::Row {
         children: vec![inner, icon_btn("\u{EE01}save\u{EE02}")],
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let sizes = all_button_bounds(view);
     assert!(sizes.len() >= 5, "expected rows+3 buttons in the tree: {sizes:?}");
@@ -373,7 +373,7 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None,
+                onclick: None, on_right_click: None,
                 style: None,
             }),
             placement,
@@ -383,7 +383,7 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
 }
 
@@ -420,7 +420,7 @@ fn popover_snaps_within_viewport_right_edge() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (ax, _ay, _aw, ah) = bounds_of(&mut ui, "ANCHORBTN");
@@ -446,7 +446,7 @@ fn popover_point_anchor_places_panel_at_coordinate() {
             center_x: false,
             center_y: false,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }),
         placement: PopoverPlacement::BottomStart,
         open: true,
@@ -480,7 +480,7 @@ fn popover_closed_hides_panel() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (_bx, _by, bw, bh) = bounds_of(&mut ui, "CLOSEDBTN");
@@ -519,7 +519,7 @@ fn dock_menu_popover_view(open: bool) -> View<()> {
             spacing: 0,
             padding: 0,
             style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }),
         placement: PopoverPlacement::Top,
         open,
@@ -530,7 +530,7 @@ fn dock_menu_popover_view(open: bool) -> View<()> {
         spacing: 0,
         padding: 0,
         style: None,
-        onclick: None,
+        onclick: None, on_right_click: None,
     }
 }
 
@@ -555,7 +555,7 @@ fn dock_swap_popover_view(open: bool) -> View<()> {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
-        onclick: None,
+        onclick: None, on_right_click: None,
     };
     let popover = View::Popover {
         anchor: PopoverAnchor::Widget(Box::new(View::Button {
@@ -576,7 +576,7 @@ fn dock_swap_popover_view(open: bool) -> View<()> {
         spacing: 0,
         padding: 0,
         style: None,
-        onclick: None,
+        onclick: None, on_right_click: None,
     }
 }
 
@@ -795,7 +795,7 @@ fn popover_semantics_view() -> View<PopMsg> {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }),
             placement: PopoverPlacement::BottomStart,
             open: true,
@@ -804,7 +804,7 @@ fn popover_semantics_view() -> View<PopMsg> {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
 }
 
@@ -876,7 +876,7 @@ fn popover_modal_places_panel_centered() {
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None,
+                onclick: None, on_right_click: None,
                 style: None,
             }),
             placement: PopoverPlacement::Modal,
@@ -886,7 +886,7 @@ fn popover_modal_places_panel_centered() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (px, py, pw, ph) = bounds_of(&mut ui, "MODALBODY");
@@ -969,7 +969,7 @@ fn popover_modal_view() -> View<PopMsg> {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }),
             placement: PopoverPlacement::Modal,
             open: true,
@@ -978,7 +978,7 @@ fn popover_modal_view() -> View<PopMsg> {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
 }
 
@@ -1425,6 +1425,48 @@ fn plan045_table_resize_drag_chain_publishes_on_release() {
     ui.simulate([Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))]);
     let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
     assert_eq!(msgs, vec![Plan045ResizeMsg::Resized(0, 250.0)]);
+}
+
+/// PLAN-002 B：布局件 hover 标志端到端——`build_column` 的样式闭包与
+/// `HoverArea` 共享同一 `Arc<AtomicBool>`：游标进入 bounds 置位、离开清位
+/// （视觉二选一由 renderer 单测 test_layout_style_fn_selects_hover_on_flag
+/// 覆盖，本测试锁"标志真的被 HoverArea 驱动"的机制面）。
+#[test]
+fn layout_hover_flag_tracks_cursor_over() {
+    use iced::event::Event;
+    use iced::mouse;
+    use iced::Point;
+    use std::sync::atomic::Ordering;
+
+    let style = Style::parse("w-32 h-8 bg-transparent hover:bg-primary/10").unwrap();
+    let flag = crate::ui::iced::renderer::layout_hover_flag(Some(&style))
+        .expect("hover: 类应构造标志");
+    let child: iced::Element<'static, ()> = iced::widget::text("HOVERTARGET").into();
+    let el = crate::ui::iced::renderer::build_column(
+        vec![child],
+        0,
+        0,
+        Some(&style),
+        None,
+        Some(flag.clone()),
+    );
+    let el = crate::ui::iced::renderer::wrap_layout_events(el, None, None, Some(flag.clone()));
+    let mut ui = simulator(el);
+
+    // 界外：标志保持 false。
+    ui.point_at(Point::new(500.0, 500.0));
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(500.0, 500.0) })]);
+    assert!(!flag.load(Ordering::Relaxed), "界外不应置位");
+
+    // 进入 bounds（w-32 h-8 → 左上角内 4,4）：置位。
+    ui.point_at(Point::new(4.0, 4.0));
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(4.0, 4.0) })]);
+    assert!(flag.load(Ordering::Relaxed), "游标进入 bounds 应置位");
+
+    // 离开：清位。
+    ui.point_at(Point::new(500.0, 500.0));
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(500.0, 500.0) })]);
+    assert!(!flag.load(Ordering::Relaxed), "游标离开应清位");
 }
 
 /// Plan 045 T3: 负向拖拽 clamp 到最小宽 40（vue 金标 max(40,…)）。

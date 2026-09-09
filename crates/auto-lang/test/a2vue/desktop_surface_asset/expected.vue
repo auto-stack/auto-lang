@@ -105,9 +105,9 @@ onMounted(() => {
         <div class="w-full h-full" @click="BlankPress" @contextmenu.prevent="BlankMenu">
           <div class="grid grid-cols-8 gap-2 w-full">
             <div @dblclick="ActivateApp(e.id)" v-for="e in __desktop_icons" :key="(((e as any)?.id ?? e))">
-              <div class="flex flex-col w-20 h-20 items-center justify-center gap-1">
+              <div class="flex flex-col w-20 h-20 items-center justify-center gap-1 hover:bg-white/10" @contextmenu.prevent="IconMenu(e.id)">
                 <Popover class="p-1 border rounded bg-card" @dismiss="MenuClose(e)" :key="'Popover-2-' + (((e as any)?.id ?? e))">
-                  <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" @contextmenu.prevent="IconMenu(e.id)" :key="'Button-3-' + (((e as any)?.id ?? e))" />
+                  <Button :style="'h-10 w-10 px-0 text-xl text-white rounded-xl bg-[' + e.color + ']'" :key="'Button-3-' + (((e as any)?.id ?? e))" />
                   <div class="flex flex-col w-44 gap-1">
                     <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-4-' + (((e as any)?.id ?? e))">打开</Button>
                     <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-5-' + (((e as any)?.id ?? e))">从桌面移除</Button>
