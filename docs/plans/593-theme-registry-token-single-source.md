@@ -1,15 +1,18 @@
 ---
 plan_id: PLAN-593
-status: execution_done                # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: theme-registry-token-single-source
 author: [zhaopuming]
 created_at: 2026-09-09
 updated_at: 2026-09-09
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - docs/specs/auto-lang/ui/overview.md（「样式与主题」节 theme.rs 硬编码语义色/手抄互锁现状描述——已改为 registry 单源查表）
+new_spec_components:
+  - docs/specs/auto-lang/ui/overview.md（P593 条目：design_tokens registry 单源——zinc/scaffold/stella 三套色板+accent 表+31 键封闭词表+四处置迁移+双金样零漂移）
+  - docs/specs/auto-lang/ui/overview.md（design_tokens 模块行：无门基础层，ui_gen/ui::style/code_editor 三方消费）
+touched_goals: [GOAL-007]
 
 affects: [auto-lang/ui]       # specs 路径（ui/style + ui_gen/vue + code_editor）
 current_step: 11
@@ -232,9 +235,69 @@ plan 零变化门）。
   复审记录待 `/auto-plan:review`。
   [✅ 已完成] 执行面收尾（tf 全量档移交 /auto-plan:review 门槛执行——本档为纯基建 + 测试钉面，S10 全量对比已覆盖日常档）。
 
+## 规范增量（review 定稿）
+
+- **修改** `docs/specs/auto-lang/ui/overview.md`「样式与主题」节：语义 token 值源
+  描述由「theme.rs match 臂硬编码 + 生成器手写模板互锁」改为「
+  `crates/auto-lang/src/design_tokens/registry.rs` 单源（31 键封闭词表；
+  CSS 面 zinc/scaffold 逐字块 + VM 面 stella 结构化表 + accent 表单源）」；
+  theme.rs resolve/双 CSS 生成器/code_editor 均为查表消费方。附 P593 条目
+  （零漂移双金样与期望表、S1 七发射点对账表指针、P593-D1..D5 债指针）。
+- **新增** `docs/specs/auto-lang/ui/overview.md` 模块清单 design_tokens 行
+  （无 feature 门基础层；为何不在 ui 下：ui_gen 无门消费方不能引 feature="ui"
+  实体，见模块头注）。
+- **废止**：无（theme.rs 对外 API/行为零变化；变体管道/P527 覆盖契约描述不变）。
+
 ## 复审记录
 
 （S1 对账表回填区）
+
+### R 轮复审（2026-09-09，/auto-plan:review）
+
+`stage: review | plan_id: PLAN-593 | plan_revision: cbd32111a(+R1/R2 修订) |
+outcome: pass | reviewed_commit: 9fba70de0(plan-593-dev@11 commits) |
+base_commit: 03a72b9f8 | dependency_revisions: auto-down worktree(就位未提交,零消费) |
+spec_inputs: docs/specs/auto-lang/ui/overview.md, docs/specs/goals.md GOAL-007`
+
+**独立性声明**：与执行同会话——裁定自工件重构（门禁重跑/diff 重查/函数体复检），
+未采信执行期自述。
+
+**验收逐项**（全部 pass）：
+
+| AC | 结果 | 证据 |
+|---|---|---|
+| registry 落地四份值迁入；两函数体零字面色值 | pass | diff 全量清单核（13 文件零 schema/docs_gen 触碰）；resolve_semantic_rgb 体仅余 registry 引用（R2 后回退字面量收成 ACCENT_DEFAULT 常量）；generate_base_css 体仅 --radius/--card-shadow（D3 成文豁免的非色 token） |
+| code_editor 无本地 accent 副本 | pass（附注） | 本地值表删除（grep 预设名臂 0 命中）；f32 `hsl_to_rgb` 保留——**AC 字面偏离裁定为接受**：删它必改输出精度=违零视觉超约束，AC 文义据此修正为「无本地 accent 值表副本」 |
+| T-a/b/c/d 全绿；既有钉测试不动仍绿 | pass | plan593 8/8（零漂移表×2+Primary+accent 5×2+双金样+T-c×3）；theme 既有 stella/coral/border 钉原样绿；auto-man 270/270 |
+| cargo check 零警告；cargo t 全量；fold 前 tf | pass | 新增/改动文件零警告（repo 141-238 条存量命中均无关文件）；S10 日常档 worktree 22红⊆master 22红零新增；R 轮 tf 档复跑=charts_gallery(master 预存)+kitchen_sink(环境，见 F-env) |
+| 对账表回填 | pass | 复审记录节 E1-E7+E8/E9 补录，每行 file:line |
+| P571-D1 证据门处置结论 | pass | 81 处在用实测→钉债 P593-D1（KNOWN-DEBT P593 节 D1..D5） |
+
+**发现与处置**：
+
+- **R1 [已修]** tf 档（无 ui feature）编译红：plan593 测试模块缺 cfg 门 →
+  `cfg(all(test, feature="ui"))`（commit 3d02e80ad）。执行期 S10 只跑了带
+  ui-iced 的日常档，tf 档编译面漏检——本复审第一收益。
+- **R2 [已修]** resolve_semantic_rgb 残留回退字面量 (239,84,67) →
+  `registry::ACCENT_DEFAULT` 常量（commit 9fba70de0），AC「零字面色值」收口。
+- **F-env [环境分离]** tf 轮 `docs_gen kitchen_sink_page_in_sync` worktree 红：
+  跨仓解析序读写 auto-os 主检出 `widgets-gallery/.../kitchen-sink.at`，并行会话
+  os-007（auto-os@84ff922，38→50 节，提交信息自述「lang worktree 解析序写入」）
+  在 S10 与本轮之间推进了共享态；本分支 9 提交零 schema/docs_gen 触碰（diff
+  全量清单为证），master 主检出同测绿。**非回归**；merge 到先进 master 自解。
+- **F-scope [范围偏离·已裁定]** S1 对账扩展 V1 至 auto-man（E3 真实路径）+
+  S9 补录 E8/E9 钉债不扩面——两处偏离均在执行期证据驱动并留痕（对账表「S1
+  范围裁定」），复审确认成立。
+- **债务面**：P593-D1（accent 投影坍缩→Phase 2）/D2（+4vs+10）/D3（ui_gen
+  遗留）/D4（auto-os 跨仓）/D5（auto CLI 双副本）——与验收正交，在册。
+
+**证据包**：双金样 fixtures（`crates/auto-lang/tests/fixtures/plan593/base_css.golden`
+、`crates/auto-man/tests/fixtures/plan593_index_css.golden`——先钉后改，迁移后
+逐字节相等）；零漂移期望表（`plan593_theme_registry_tests.rs`）；红名单对比
+（wt 22⊆master 22；tf 轮 1 预存+1 环境分离）；本记录内嵌命令/结果摘录。
+
+**next**: `/auto-plan:merge`（折叠前按惯例跑一次 tf 兜底；merge 后 kitchen_sink
+随 master schema 同步自解）。
 
 ### S1 色板发射点对账表（2026-09-09 实勘，worktree plan-593-dev）
 
