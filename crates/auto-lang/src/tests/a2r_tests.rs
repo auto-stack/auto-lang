@@ -69,6 +69,135 @@ fn a2r_compile_smoke_str_param_borrow() {
     assert!(status.success(), "rustc typecheck failed for {}", rs.display());
 }
 
+/// Plan 599 (004 §5④): compile-and-run gate for the four foreign-shape
+/// goldens under `test/a2r/25_foreign_types/` — the 006 S2 criterion
+/// ("语义等价 + rustc 实编 + 行为对拍", text snapshots can't see E0277-class
+/// breakage). `#[ignore]`d like the 427 smoke (shells out to rustc):
+/// `cargo test -p auto-lang --lib --features test-trans foreign_shape -- --ignored`
+///
+/// Per-case strategy:
+/// - 001: stub compiled as a lib crate named `fake_term`, product linked
+///   via `--extern` (the emitted `use fake_term::FakeTerm;` is a real use);
+/// - 002/003: inline stub prepended (bare foreign names, no use statement);
+/// - 004: pure std (T-01 A-route verdict: zero runtime deps, bare rustc).
+#[test]
+#[ignore = "shells out to rustc; on-demand compile-level guard (Plan 599)"]
+fn a2r_foreign_shape_compile_run() {
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/a2r/25_foreign_types");
+    let tmp = std::env::temp_dir().join("auto_a2r_599_gate");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let rustc = |args: &[&str]| {
+        let status = std::process::Command::new("rustc")
+            .args(args)
+            .current_dir(&tmp)
+            .status()
+            .expect("failed to spawn rustc (is a Rust toolchain on PATH?)");
+        assert!(status.success(), "rustc failed: {args:?}");
+    };
+
+    // 001 foreign generic field: stub crate + --extern link
+    let stub = d.join("001_foreign_generic_field/stub_fake_term.rs");
+    std::fs::copy(&stub, tmp.join("stub_fake_term.rs")).unwrap();
+    rustc(&[
+        "--edition=2021", "-A", "warnings", "--crate-type=lib",
+        "--crate-name=fake_term", "stub_fake_term.rs",
+        "-o", "libfake_term.rlib",
+    ]);
+    std::fs::copy(
+        d.join("001_foreign_generic_field/foreign_generic_field.expected.rs"),
+        tmp.join("case001.rs"),
+    )
+    .unwrap();
+    rustc(&[
+        "--edition=2021", "-A", "warnings",
+        "--extern", "fake_term=libfake_term.rlib",
+        "case001.rs", "-o", "case001.exe",
+    ]);
+    let out = std::process::Command::new(tmp.join("case001.exe")).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success() && stdout.contains("generic_field_ok  42"),
+        "001 witness mismatch: {stdout:?}");
+
+    // 002 foreign trait impl / 003 trait object: inline-stub prepend
+    for (case, stem, witness) in [
+        ("002_foreign_trait_impl", "foreign_trait_impl", "trait_impl_ok  3"),
+        ("003_trait_object", "trait_object", "trait_object_ok"),
+    ] {
+        let stub_inline = std::fs::read_to_string(d.join(case).join("stub_inline.rs")).unwrap();
+        let product = std::fs::read_to_string(d.join(case).join(format!("{stem}.expected.rs"))).unwrap();
+        // drop the product's `// Auto-generated` header comment; stub leads.
+        let combined = format!("{stub_inline}
+{product}");
+        let fname = format!("{stem}_combined.rs");
+        std::fs::write(tmp.join(&fname), combined).unwrap();
+        let exe = format!("{stem}_combined.exe");
+        rustc(&["--edition=2021", "-A", "warnings", &fname, "-o", &exe]);
+        let out = std::process::Command::new(tmp.join(&exe)).output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success() && stdout.contains(witness),
+            "{case} witness mismatch: {stdout:?}");
+    }
+
+    // 004 bare thread: pure std, compile product as-is
+    std::fs::copy(
+        d.join("004_bare_thread/bare_thread.expected.rs"),
+        tmp.join("case004.rs"),
+    )
+    .unwrap();
+    rustc(&["--edition=2021", "-A", "warnings", "case004.rs", "-o", "case004.exe"]);
+    let out = std::process::Command::new(tmp.join("case004.exe")).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success() && stdout.contains("bare_thread_ok  41"),
+        "004 witness mismatch: {stdout:?}");
+}
+
+/// Plan 599 (004 §5④) capstone: term.rs-subset round-trip — the a2r
+/// product (005 snapshot) vs the hand-written Rust oracle, compiled against
+/// the SAME fake_core rlib and compared black-box (stdout byte-equal).
+/// The four foreign capabilities all land in this one corpus. `#[ignore]`d
+/// like the gates above (shells out to rustc).
+#[test]
+#[ignore = "shells out to rustc; on-demand black-box parity (Plan 599)"]
+fn a2r_capstone_term_subset_parity() {
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test/a2r/25_foreign_types/005_term_session_subset");
+    let tmp = std::env::temp_dir().join("auto_a2r_599_capstone");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let run = |program: &str, args: &[&str]| {
+        let out = std::process::Command::new(program)
+            .args(args)
+            .current_dir(&tmp)
+            .output()
+            .expect("spawn failed");
+        assert!(out.status.success(), "{program} {args:?} failed:
+{}",
+            String::from_utf8_lossy(&out.stderr));
+        out
+    };
+    // shared stub crate
+    std::fs::copy(d.join("stub_fake_core.rs"), tmp.join("stub_fake_core.rs")).unwrap();
+    run("rustc", &["--edition=2021", "-A", "warnings", "--crate-type=lib",
+        "--crate-name=fake_core", "stub_fake_core.rs", "-o", "libfake_core.rlib"]);
+    // product + oracle against the same rlib
+    std::fs::copy(d.join("term_session_subset.expected.rs"), tmp.join("product.rs")).unwrap();
+    std::fs::copy(d.join("oracle.rs"), tmp.join("oracle.rs")).unwrap();
+    run("rustc", &["--edition=2021", "-A", "warnings",
+        "--extern", "fake_core=libfake_core.rlib", "product.rs", "-o", "product.exe"]);
+    run("rustc", &["--edition=2021", "-A", "warnings",
+        "--extern", "fake_core=libfake_core.rlib", "oracle.rs", "-o", "oracle.exe"]);
+    let prod = run(tmp.join("product.exe").to_str().unwrap(), &[]);
+    let oracle = run(tmp.join("oracle.exe").to_str().unwrap(), &[]);
+    assert_eq!(
+        String::from_utf8_lossy(&prod.stdout),
+        String::from_utf8_lossy(&oracle.stdout),
+        "capstone black-box parity broken"
+    );
+    assert!(String::from_utf8_lossy(&prod.stdout).contains("session_ok"),
+        "witness missing");
+}
+
 /// Run an a2r case on a dedicated large-stack thread. Same rationale as
 /// `test_cookbook_deep`: some cases (notably `~{}` async blocks containing
 /// `for`/`if` — the COSMIC `Subscription::run` shape) drive deep recursion in

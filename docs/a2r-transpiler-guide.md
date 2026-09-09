@@ -264,6 +264,21 @@ cargo test -p auto-lang test_006_struct
 - ✅ Phase 7: Standard library bindings
 - ✅ Phase 8: Testing infrastructure
 - ✅ Phase 9: Documentation
+- ✅ Plan 599 (004 §5④) foreign-shape capabilities, gated by
+  `test/a2r/25_foreign_types/` + rustc compile-and-run gates:
+  - foreign generic type fields (`FakeTerm<Listener>`; 002 gap 1.1 shape),
+  - `ext Self for ForeignTrait` (foreign trait impls),
+  - trait-object spelling `dyn Trait [+ Send [+ Sync]]` in type position
+    (fields render `Box<dyn T + Send>` verbatim; default derives are
+    SUPPRESSED for dyn fields — unconstrained foreign traits satisfy
+    neither Clone nor Debug, E0277; explicit `#[derive]` attrs passthrough),
+  - bare threads via std passthrough (`thread::spawn(move () => ..)`,
+    A-route; the spawn auto-`move` no longer double-emits with explicit
+    `move` closures),
+  - unresolved type names still pass through opaquely (F6); an opt-in
+    warning face exists behind `AUTO_WARN_UNRESOLVED_TYPES=1` (default
+    silent — full-corpus runs showed routine non-type idents reach the
+    fallback, default-on would be pure noise).
 
 ## Test Results
 
