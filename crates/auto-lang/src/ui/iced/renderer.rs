@@ -10186,7 +10186,11 @@ fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 /// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
     match state.launch_app(name) {
-        Ok(_wid) => push_notification(state, "success", &format!("已启动 {name}")),
+        // PLAN-002 N3（用户复核裁定 2026-09-09）：启动成功不再发通知——
+        // toast 层逐动态视图面各渲染一份（shell + 每 app 窗，见 412 toast
+        // 双层 Stack），启动成功弹满屏属噪音；通知中心历史/未读一并不再
+        // 入（launch 成功非常规事件）。失败臂保留（Design 24 §6.5）。
+        Ok(_wid) => {}
         Err(err) => {
             push_notification(state, "error", &err);
             // Plan 463 T7：启动失败占位页（Design 24 §6.5）——
@@ -15007,7 +15011,7 @@ fn compare_pngs(
                     let Some(view) = state.split_ref_at(app_id, host.window) else {
                         return None;
                     };
-                    Some(dynamic_view(view, is_primary))
+                    Some(dynamic_view_vwin(view, is_primary))
                 };
                 let client: iced::Element<'_, IcedMessage> = match
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
@@ -15495,6 +15499,67 @@ fn dynamic_view(
     state: crate::ui::session::SessionViewRef<'_>,
     sync_mcp: bool,
 ) -> iced::Element<'_, IcedMessage> {
+    dynamic_view_impl(state, sync_mcp, false)
+}
+
+/// PLAN-002 N5：vwin 托管 app 客户区渲染——根节点默认底角圆角（与窗框
+/// `WIN_RADIUS` 对齐；见 [`round_bottom_root_default`]）。
+fn dynamic_view_vwin(
+    state: crate::ui::session::SessionViewRef<'_>,
+    sync_mcp: bool,
+) -> iced::Element<'_, IcedMessage> {
+    dynamic_view_impl(state, sync_mcp, true)
+}
+
+/// PLAN-002 N5：vwin 托管 app 根节点默认底角圆角（纯函数，测试靶）——
+/// 根节点自带不透明底色时其方角会探出圆角窗框。根 style 已含任何
+/// radius 类（全角/方向性）= 应用作者显式声明，不干预；根无 style
+/// （透明）不探出，不处理。非容器根（text/scrollable 等）同样跳过。
+fn round_bottom_root_default<M: Clone + std::fmt::Debug>(
+    view: &mut crate::ui::view::View<M>,
+) {
+    use crate::ui::style::{RoundedSize, StyleClass};
+    let style = match view {
+        crate::ui::view::View::Column { style, .. }
+        | crate::ui::view::View::Row { style, .. }
+        | crate::ui::view::View::Container { style, .. }
+        | crate::ui::view::View::Grid { style, .. } => style,
+        _ => return,
+    };
+    let Some(s) = style else { return };
+    let has_radius = s.classes.iter().any(|c| {
+        matches!(
+            c,
+            StyleClass::Rounded
+                | StyleClass::RoundedSm
+                | StyleClass::RoundedMd
+                | StyleClass::RoundedLg
+                | StyleClass::RoundedXl
+                | StyleClass::Rounded2Xl
+                | StyleClass::Rounded3Xl
+                | StyleClass::RoundedFull
+                | StyleClass::RoundedNone
+                | StyleClass::RoundedT(_)
+                | StyleClass::RoundedB(_)
+                | StyleClass::RoundedL(_)
+                | StyleClass::RoundedR(_)
+                | StyleClass::RoundedTL(_)
+                | StyleClass::RoundedTR(_)
+                | StyleClass::RoundedBL(_)
+                | StyleClass::RoundedBR(_)
+        )
+    });
+    if !has_radius {
+        s.classes.push(StyleClass::RoundedB(Some(RoundedSize::Xxl)));
+    }
+}
+
+fn dynamic_view_impl(
+    state: crate::ui::session::SessionViewRef<'_>,
+    sync_mcp: bool,
+    round_bottom: bool,
+) -> iced::Element<'_, IcedMessage> {
+
     // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
     // `into_iced` + `wrap_debug` during this build. Plain click/hover =
     // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
@@ -15719,6 +15784,11 @@ fn dynamic_view(
         inject_todo_list(&mut view, &state.app.todos, state.component.widget_name());
         if !state.app.input_values.is_empty() {
             patch_input_values(&mut view, &state.app.input_values);
+        }
+        // PLAN-002 N5：vwin 客户区根节点默认底角圆角（convert 前作用于源
+        // 树；缓存帧继承已合并结果，app 与 flag 恒定配对无漂移）。
+        if round_bottom {
+            round_bottom_root_default(&mut view);
         }
         let converted = convert_view_messages(view);
         *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
@@ -16001,14 +16071,25 @@ fn fit_aware_root(
     fit_active: bool,
 ) -> iced::Element<'static, IcedMessage> {
     if fit_active {
-        iced::widget::scrollable(
-            container(content)
-                .width(iced::Length::Shrink)
-                .height(iced::Length::Shrink)
-                .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
+        // PLAN-002 N4（用户复核裁定 2026-09-09）：内容在放大窗内居中——
+        // 最大化/手动拉大的 fit 窗内容不再左上角沉底（512 v1 语义升级，
+        // 待澄清③就此定案）。Shrink 约束链不动：居中容器 Fill 只是
+        // 对齐包裹，锚点量到的仍是内容自然尺寸，512 S3 scrollable
+        // 测量语义零变化。
+        container(
+            scrollable(
+                container(content)
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Shrink)
+                    .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
+            )
+            .width(iced::Length::Shrink)
+            .height(iced::Length::Shrink),
         )
-        .width(iced::Length::Shrink)
-        .height(iced::Length::Shrink)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .center_x(iced::Length::Fill)
+        .center_y(iced::Length::Fill)
         .into()
     } else {
         container(content)
@@ -24564,6 +24645,63 @@ mod tests {
         // 无 hover 声明时闭包恒等 base（零行为变化）。
         let plain_fn = layout_style_fn(base_cs, None, None);
         assert_eq!(plain_fn(&theme), base_cs);
+    }
+
+    // PLAN-002 N5：vwin 客户区根节点默认底角圆角（round_bottom_root_default）。
+    #[test]
+    fn test_round_bottom_root_default_pushes_only_when_radius_absent() {
+        use crate::ui::style::{RoundedSize, StyleClass};
+        use crate::ui::style::Style;
+        use crate::ui::view::View;
+        // 无 radius 类的 col 根 → 推 rounded-b-2xl（底角 16px 与窗框对齐）。
+        let mut bare = View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("h-full bg-background").ok(),
+            onclick: None::<()>,
+            on_right_click: None,
+        };
+        round_bottom_root_default(&mut bare);
+        let View::Column { style: Some(s), .. } = &bare else {
+            panic!("col root must keep its style");
+        };
+        assert_eq!(
+            s.classes.last(),
+            Some(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
+            "无 radius 声明的根应获得默认底角"
+        );
+        // 应用作者已声明 radius（任意角）→ 不干预。
+        let mut authored = View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("rounded-xl bg-background").ok(),
+            onclick: None::<()>,
+            on_right_click: None,
+        };
+        round_bottom_root_default(&mut authored);
+        let View::Column { style: Some(s), .. } = &authored else {
+            panic!("col root must keep its style");
+        };
+        assert!(
+            !s.classes.contains(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
+            "显式 radius 声明优先，不追加默认"
+        );
+        // 根无 style（透明）与 非 style 化根（text）都不动。
+        let mut transparent = View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None::<()>,
+            on_right_click: None,
+        };
+        round_bottom_root_default(&mut transparent);
+        let View::Column { style, .. } = &transparent else {
+            panic!("variant unchanged");
+        };
+        assert!(style.is_none(), "透明根不处理");
     }
 
     // ── Shell SSE bridge (ash-gui M1) ──────────────────────────────────

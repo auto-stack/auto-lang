@@ -61,12 +61,10 @@ fn window_radius(maximized: bool) -> iced::border::Radius {
     if maximized {
         iced::border::Radius::default()
     } else {
-        iced::border::Radius {
-            top_left: WIN_RADIUS,
-            top_right: WIN_RADIUS,
-            bottom_right: 0.0,
-            bottom_left: 0.0,
-        }
+        // PLAN-002 N5（用户复核裁定 2026-09-09）：四角全圆——T25 的"底边
+        // 方角"降级撤销；内容探出由 app 根节点默认 rounded-b（renderer
+        // round_bottom_root_default）系统性收口。
+        iced::border::Radius::from(WIN_RADIUS)
     }
 }
 
@@ -324,6 +322,8 @@ pub fn virtual_window_element<'a>(
     // 仍优先（mouse_area 的 child interaction 优先于 interaction 兜底）。
     let mut client_bg = token(crate::ui::style::Color::Background);
     client_bg.a = t_alpha;
+    // PLAN-002 N5：客户区底色与窗框同步底角圆角（最大化=全屏方角）。
+    let maximized = vwin.maximized.get();
     let client_area = container(
         mouse_area(container(client).width(Length::Fill).height(Length::Fill))
             .interaction(iced::mouse::Interaction::Idle)
@@ -333,6 +333,10 @@ pub fn virtual_window_element<'a>(
     .height(Length::Fill)
     .style(move |_t| Style {
         background: Some(client_bg.into()),
+        border: Border {
+            radius: window_radius(maximized),
+            ..Default::default()
+        },
         ..Default::default()
     });
 
@@ -348,7 +352,6 @@ pub fn virtual_window_element<'a>(
     // 退役）；描边职责移交 Stack 顶层焦点环（本框只留常驻弱描边——
     // 整框 1px 会被客户区不透明底色盖住，实测只剩标题栏三边可见）。
     let accent = token(crate::ui::style::Color::Primary);
-    let maximized = vwin.maximized.get();
     let dark = crate::ui::style::theme::dark_mode();
     let (base_alpha, focus_boost): (f32, f32) = if dark { (0.40, 0.12) } else { (0.12, 0.06) };
     let shadow_alpha = if focused {
