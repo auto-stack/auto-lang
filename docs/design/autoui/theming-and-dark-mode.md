@@ -2,6 +2,15 @@
 
 > 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/theming-and-dark-mode.md`（Design 19），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 19”即指本文。
 
+> ⚠️ **取代注记（2026-09-09，Design 29）**：本文的**值层设计**（token 值的来源、
+> 格式、生命周期、主题切换机制）已由根级
+> [Design 29：AutoUI 样式抽象与主题系统](../29-autoui-style-theme-system.md)
+> 取代——本文定义了「查主题表」但未定义表本身；Design 29 以 ThemeRegistry
+> 单一值源 + partial override/extends 主题模型补齐，并新增 style recipe 组合层。
+> 仍有效的部分：§3.1 语义 token 词汇表（shadcn 命名沿用）、深浅×主题正交维度
+> 思想。已作废部分：§4.2/6.3/6.4 Jet/Ark 后端映射（后端退役）、§3.3/§7
+> 迁移计划（由 Design 29 §7 三阶段取代）。
+
 > **状态**: 设计完成，待实施
 > **日期**: 2026-07-17
 > **影响**: 所有 UI 后端（Vue / Rust / Jet / Ark）

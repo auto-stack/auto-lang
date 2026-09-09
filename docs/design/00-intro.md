@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **29**），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **30**），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blocks/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -103,12 +103,13 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 ## 三、AutoUI 与 App 生成域
 
-**域级章（仅此两篇拿号）**：
+**域级章（仅此三篇拿号）**：
 
 | # | 文档 | 主题 |
 |---|------|------|
 | 16 | [App Generation & AI Authoring](16-app-generation-and-ai-authoring.md) | Rung 1–5 分层战略、AI 生成工作流（域战略伞） |
 | 20 | [AutoUI Separation Architecture](20-autoui-separation-architecture.md) | AutoUI 分离架构：a2ui/ui_gen/host 分层（域架构锚点） |
+| 29 | [AutoUI Style & Theme System](29-autoui-style-theme-system.md) | 样式抽象与主题系统：ThemeRegistry 单一值源（partial override/extends 派生/hot-switch）+ style recipe 编译期组合宏；取代原 Design 19 值层（2026-09-09 立档） |
 
 **需求级设计子目录**（各篇头部有归位注记，保留原 Design NN 对应）：
 
@@ -185,6 +186,8 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
             → 分离架构(20) → 虚拟桌面三部曲(23/24) → 范式收敛(Plan 467/468)
 2026 Q9     documents 大模块目录建立：Playground 在线体验设计归位子目录（design 树
             「根级章=大块+模块子目录」结构化的起点，整体重组待议）
+            → 09-09 样式与主题系统立档（29：ThemeRegistry + style recipe，
+            取代原 Design 19 值层）
 ```
 
 ## 如何使用本目录

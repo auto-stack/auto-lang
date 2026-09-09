@@ -7,7 +7,7 @@
 | 文档 | 原号 | 主题 | 关联计划 |
 |---|---|---|---|
 | [shared-store](shared-store.md) | 18 | Rung 4 跨 widget/跨路由共享状态 | 351/370 |
-| [theming-and-dark-mode](theming-and-dark-mode.md) | 19 | 深浅色模式与主题色配置 | 458 |
+| [theming-and-dark-mode](theming-and-dark-mode.md) | 19 | 深浅色模式与主题色配置——**值层已被 [Design 29](../29-autoui-style-theme-system.md) 取代**（词汇表/正交维度仍有效，头部有取代注记） | 458 |
 | [examples-app-track](examples-app-track.md) | 21 | examples/ui 应用轨道与 AutoOS 默认应用矩阵 | 401–441 |
 | [base-styles-and-visual-parity](base-styles-and-visual-parity.md) | 22 | 跨后端基础样式与视觉一致性规范 | 411/455 |
 | [virtual-desktop](virtual-desktop.md) | 23 | 虚拟桌面架构（WM/多窗口/桌面会话） | 452/459/462 |
