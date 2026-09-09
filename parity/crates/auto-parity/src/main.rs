@@ -1,6 +1,7 @@
 mod aavm;
 mod freshness;
 mod compare;
+mod deps;
 mod report;
 mod runner;
 mod tap;
