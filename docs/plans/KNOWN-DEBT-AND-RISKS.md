@@ -1894,3 +1894,59 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
   并存〕）。PLAN-593 收尾期裁定不中途扩面：PLAN-571 contains 测试在守护已知
   漂移（--secondary 分档），Phase 2 收编或直接对齐 scaffold/zinc（含产品裁定
   何者退役）。
+
+---
+
+## 附录：VM 引擎缺陷现场（2026-09-09 025-sys-monitor 内存/卡顿复盘，证据齐备待修复）
+
+复现与归因工具已入仓：语料 `test/ui/probe_rc_leak/`（五拍型 timer 逐操作归因）+
+`musk_vm_track_tests.rs::probe_rc_leak_soak`（进程内 `heap_live_objects` 断言通道，
+0.14s/轮）。四个缺陷同根不同面：
+
+- **KD-VM1 [内存泄漏·高优] GenericInstance（struct 字面量）经 `List.push` 入列后
+  永久滞留**：最小复现 `probe_attribution`——`StructTick`（struct 字面量×100 →
+  本地 `[]Item` → push）40 拍 live_heap **+4000（恰 100/拍）**；对照组
+  int/string push、空列表、字面量进 var 全部 0 增长。直接后果：每 tick 重建
+  struct 列表的应用（sys-monitor 等）merged/split 模式内存线性上涨
+  （实测 55–147 MB/min，旧版更快）。指向 `CONSTRUCT_INSTANCE` 的 stake 归属
+  （`instance_stake` 取槽位疑似错位，最终 `mark_top_stake` 标到空份额）+
+  `shim_list_push`/engine "push" 臂 raw pop 不结算元素槽——修复需按 Plan 419
+  协议补全「容器写：新值转移/旧值 -1」两侧的 stake 结算。
+- **KD-VM2 [日志洪泛·已缓解] GET_FIELD 噪音臂无限 eprintln + 每命中泄漏一份
+  stake**：`engine.rs` GET_FIELD 未知编码臂每命中一行 stderr（sys-monitor
+  曾 6 分钟 344MB / 43M 行，UI 线程饿死=「未响应」）且 raw pop 的槽 stake 不
+  结算。已做环境门控（`AUTO_DEBUG_GETFIELD`）+ 臂内 `take_stake_at` 结算；
+  根修需识别 struct 元素的编码（fff2 头=TAG_STRING 负哨兵，见 KD-VM3）。
+- **KD-VM3 [编码损坏·B12 族根因] push 构建列表的 struct 元素编码坏**：
+  `List.push` 后元素 nanbox 变 `0xfff2…`（TAG_STRING 负哨兵）——handler 内
+  字段读落噪音臂返回 0/空（排序乱序、pid 全 0 的根因），view 侧读又正常
+  （launcher「view 读可用」注记同源）。字符串/int 列表不受影响。
+- **KD-VM4 [双端分叉] `.as(int)` Vue 侧编译为 `Number()` 不截断**：
+  `ui_gen/vue.rs` 仅对「int 标记操作数的 `/`、`%`」降级 `Math.trunc`，直接
+  `.as(int)` 赋值不截断——VM 侧真截断。工作法：数值展示串一律用
+  「int 部件拼串」（`${x/10}.${x%10}`），两端同净。
+
+应用侧规避（025-sys-monitor 已落地）：struct 字段读只出现在 `.procs` 快照
+for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲染前 120 行物化。
+
+
+## P596 债务（dep-rust-v2 执行期登记，2026-09-10）
+
+- **P596-D1 [指纹纪律] 提取器语义变化必须升 GENERATOR**：rustdoc 提取层
+  （可见性裁定/trait 归属/Box<Fn> 投影）变化不进签名集——两次实测陈旧缓存
+  均靠 GENERATOR 字符串变化兜底失效。规约：改 rustdoc.rs/classify 提取语义
+  必 bump GENERATOR（代码注释已钉，复审把关）。
+- **P596-D2 [DIV-DEP-19] a2r 回调实参不装箱**：`inv.apply(|x|..)` 发射裸
+  闭包（E0308 expected Box<dyn Fn>）——020 a2r 腿豁免中；根治=a2r 元数据
+  接入（与 DIV-DEP-7/15 同族，P592-D3）。
+- **P596-D3 [DIV-DEP-18] 自由函数返回自有类型被 CString 序列化**：212
+  wrapper 对未知返回 `_r.to_string()` 兜底——Display 类型造**假绿**（V2-1
+  首跑实证）；修法=opaque 返回通道或路由方法包。
+- **P596-D4 [T5 后续指针] 回调 adapter 原型边界**：Send/Sync 线律、多线程
+  泵、闭包捕获环境限制、>1 元回调签名、panic 负面语料不可构造（Auto 无
+  panic 原语；catch_unwind 已实现）——归后续计划。
+- **P596-D5 [多变量 worktree 竞态] P592-D1 再实证**：probe 多导入集变体
+  共存致覆盖扫描偶选陈旧包（清缓存即愈）；根治=wrapper 按 crate 全函数集
+  单一化（P592-D1 原案）。
+- **P596-D6 [并行 a2r 冷构建] 首跑挂死**：全量 a2r 冷构建并行竞争曾挂死
+  （单跑/缓存后全绿）；CI 首跑宜串行或预热。

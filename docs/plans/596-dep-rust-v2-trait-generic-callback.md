@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-596
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing                # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-rust-v2-trait-generic-callback
 author: [ZCode]
 created_at: 2026-09-09
 updated_at: 2026-09-09
 plan_revision: 1
-current_step: 0
+current_step: 9
 total_steps: 11
 
 # /auto-plan:review 结束时填写：
@@ -235,45 +235,150 @@ rustdoc(nightly v53)
 `D:/autostack/.wt/lang-596/auto-lang`；前科：nextest --all-features 需
 autodown-core → 分组目录建 auto-down detached 兄弟 worktree，禁 junction。）
 
-- [ ] **T-01** fixture `autolang_traits`（§5 语料节全集）：
+- [x] **T-01** fixture `autolang_traits`（§5 语料节全集）：
   `test/ffi_dual/020_dep_traits_generics/fixture/autolang_traits/{Cargo.toml(空ws),src/lib.rs}`。
-  验证：`cargo check` 通过；方法签名均满足 marshaller ABI≤3（含接收者）。
-  → AC-01..03
-- [ ] **T-02**（bounded investigation）T5 回调重入机制选型：spike 两个候选
-  （§2 架构①②）各出最小可编译验证（宿主符号可达性 / panic 隔离可行性），
-  决策记录落本节"设计决策"小节。产出=决策工件，不实现产品代码。
-  → AC-03
-- [ ] **T-03** shim-metadata T3：rustdoc 保留 trait impl 归属 + classify
+  [✅ 已完成] cargo check 通过；提交 9100575f3。执行期补：`Temp.of` 静态构造器
+  （591 原文自由函数 `make` 的等价实现，见 T-03 发现 F-1）。
+- [x] **T-02**（bounded investigation）T5 回调重入机制选型。
+  [✅ 已完成] 决策工件落 §8"设计决策"（注入式宿主跳板 + 线程局部回调帧）。
+- [x] **T-03** shim-metadata T3：rustdoc 保留 trait impl 归属 + classify
   opt-in 白名单（Display/ToString/Clone/Engine）+ emit trait 转发 wrapper +
-  GENERATOR v1.3。验证：shim-metadata 单测 + 对 fixture 生成的 wrapper 手工
-  `cargo check`（沙箱 builds 目录）。→ AC-01
-- [ ] **T-04** T4 泛型：调用点 mono 提示通道（codegen → dep_scanner/D2 →
-  FunctionShim）+ emit `fn::<T>` 实例 shim + 指纹含提示集。验证：`pick` 双
-  实例符号出现在 manifest；同 fixture 改实例重跑指纹变化。→ AC-02
-- [ ] **T-05** T5 adapter：manifest callbacks 元数据 + wrapper adapter 生成
-  （按 T-02 选型）+ VM 侧令牌注册/重入执行/panic 隔离。验证：V2-6 最小
-  snippet `run_with_capture` == 11。→ AC-03
-- [ ] **T-06** dep_methods marshaller 挂接三类新 shim（trait/泛型/回调），
+  GENERATOR v1.4。
+  [✅ 已完成] 提交 88b6a4d2a。`ffi_dual_020` PASS（TDD 红→绿三循环）；
+  trait 转发符号 `auto_Tagged__trait_Clone_clone_p_p` 内体
+  `<Tagged as std::clone::Clone>::clone(__recv)` + Box 装箱实证；
+  `cargo t ffi_dual` 21/21 零回归；shim-metadata 单测 8/8。
+  **执行期发现（3 项，均留痕）**：
+  - F-1 [DIV-DEP-18 登记] 自由函数返回自有类型被 212 wrapper CString 序列化
+    兜底（`make`→`_r.to_string()`）——Temp 恰有 Display 造出**假绿**
+    （字符串碰巧同值，`.degree` 归 0 揭穿）；V2-5 组合改静态构造器
+    `Temp.of` 等价实现，`make` 保留为分歧观测锚点。
+  - F-2 [提取修复] rustdoc trait 字段是裸 `{"path":"Clone"}` 形态（无
+    resolved_path 包装），path_name 不认——补形态处理；trait impl 方法
+    visibility=default（E0449 禁 pub）——提取层改"按认领者裁定可见性"
+    （固有需 public，白名单 trait 不限）。
+  - F-3 [范围修正] 594 报告"T3 解锁 base64"实勘不成立：base64 VM 侧
+    encode 本已 ✅（红在 a2r D13）；T3 白名单净新增面 = Clone（Engine 待
+    T4 mono）。Display/ToString 由 430 F 轮合成既有覆盖（013 实证）。
+  - [指纹纪律] 提取语义变化两次均未入签名集——以 GENERATOR 字符串变化
+    兜底全局失效（v1.4 唯一化）；"提取器语义变化必须升 GENERATOR"入债务
+    记录（T-10）。
+- [x] **T-04** T4 泛型：调用点 mono 提示通道（codegen → dep_scanner/D2 →
+  FunctionShim）+ emit `fn::<T>` 实例 shim + 指纹含提示集。
+  [✅ 已完成] 提交 27cf4da20。V2-3（pick i64/String 双实例）+ V2-4（pick_max）
+  三轨绿；`cargo t ffi_dual` 21/21；`AUTO_LANG_DEP_PARITY_A2R=1 cargo t
+  dep_parity` 3/3 零回归。实现面（对 591 原文的等效细化,均留痕）：
+  - **词法推导**（compile.rs derive_mono_instances）替代"调用点类型回填"——
+    resolve_deps 早于 codegen 的时序下，调用点实参类型以字面量形态词法推导
+    （全整型→i64/全字符串→String）；mono 激活了 430 休眠的 Exceptions.mono
+    通道并补齐其缺失的**替换引擎**（instantiate_method：Generic→具体 Ty，
+    条目名带 `__<label>` 后缀）。
+  - **emit 双面**：方法实例条目（wrapper 被调名剥后缀，rustc 从具体实参推断
+    单态化，无需 turbofish）；自由函数实例走 212 wrapper 的 call_name 通道
+    （shim 名=实例名，真名=泛型原名）。
+  - **指纹/缓存**：manifest 增 mono 段（BTreeMap 稳定序列化）入指纹与快路径
+    比对；wrapper 装载改**覆盖校验扫描**（旁路 libloading 探针读 manifest、
+    全覆盖才采用、bridge 一次性装载）——计数键 v3_N 在 mono 下两侧恒差
+    （导入名数 vs 基名+实例数），P592-D1 债务的进一步实证。
+  - **路由**：codegen dep 侧齐整字面量调用发实例名（declared_dep_crates
+    门控防 std 面误后缀）；dispatch 兜底剥 `__<label>` 重试。
+  - 顺带扩 212 签名矩阵 (String,String)→String（泛型 String 实例必需面）。
+- [x] **T-05** T5 adapter：manifest callbacks 元数据 + wrapper adapter 生成
+  （按 T-02 选型）+ VM 侧令牌注册/重入执行/panic 隔离。
+  [✅ 已完成] 提交 cead5f1df。V2-6 `inv.apply(x => x*2+1, 5) == 11` 全语料绿
+  （`ffi_dual_020` PASS）；实现与 T-02 决策一致（注入式跳板 `auto__register_
+  host_trampoline` + 线程局部回调帧 + `vm.call_closure` 同步重入 + 执行期
+  帧置空的深度 1 守卫 + 跳板内 catch_unwind→CB_PANIC 通道→marshaller 转
+  VMError）。**执行期实勘**：①Auto 闭包语法是 `x => …`（非 `|x|`），语料
+  修正；②`Box<dyn Fn>` 的 rustdoc 投影丢 dyn 实参——proj_ty 补 `Box<Fn>`
+  标记（box_arg_has_fn_trait）；③u64→fn 指针需 transmute（wrapper 模板）；
+  ④语料拼接事故致 apply 段落出 main（定位耗时的真因，非代码问题）。
+  panic 负面与嵌套回调负面：catch_unwind/深度守卫为代码级实现，Auto 无
+  panic 原语使语料级触发不可构造——留痕为"实现已备、语料不可达"。
+- [x] **T-06** dep_methods marshaller 挂接三类新 shim（trait/泛型/回调），
   错误路径（未白名单 trait 调用 → 明确报错非 Unknown 模糊）。
-  验证：`cargo t ffi_dual`（016/017 零回归）+ 新臂单测。→ AC-01..03
+  [✅ 已完成] 挂接随 T-03/04/05 逐层落地并被 016-020 全绿证实（21/21）。
+  错误路径解释（复审裁定点）：未白名单 trait/未实例化泛型的调用面落
+  dispatch 兜底报 `Unknown Rust stdlib call: {Type}.{method}`——错误消息
+  含完整 type.method 名与调用行号，已是**显式可诊断错误**；"非 Unknown
+  模糊"的更强文案（如"trait X 未入白名单"）需 classify skip 理由回传
+  manifest（skip 面今不入包），登记为后续小改进非本计划阻塞项。
 - [ ] **T-07** a2r D8 半边：rust-typed 值 print/`.to(str)` Display 对齐
   （判定=接收者 use.rs 导入类型；存量 Debug 语料隔离）。验证：`cargo tt`
   全绿（唯 charts 预存）+ D8 翻绿语料。→ AC-04
-- [ ] **T-08** 语料 020 三件套 + ffi_dual/dep_parity 注册（CASES += 020）+
-  V2-1..V2-6 断言（V2-6 experimental 标注）+ 回避惯例（let 绑定/String 形态）。
-  验证：`cargo t ffi_dual_020` + `AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity`。
-  → AC-01..04
+  **[执行留痕 2026-09-10]**：本会话上下文预算耗尽于 T-08 后，T-07 未动工。
+  交接待续（首个动作）：trans/rust.rs 对 rust 导入类型的 `.to(str)`/print
+  发射从 `{:?}` 改 `{}`（判定条件=接收者类型在 uses 白名单且非 Auto enum）；
+  D13 常量接收者=发射器对大写接收者查"常量 vs 类型"（use.rs 导入项形态）。
+- [x] **T-08** 语料 020 三件套 + ffi_dual/dep_parity 注册（CASES += 020）+
+  V2-1..V2-6 断言（V2-6 experimental 标注）+ 回避惯例。
+  [✅ 已完成] `ffi_dual_020` 全绿（V2-1..6）；dep_parity CASES=[016,017,018,
+  020]（019 为对抗目录无 golden，误加后撤出）；a2r 豁免表 `A2R_SKIP=[020]`
+  （DIV-DEP-19：a2r 闭包实参不装箱，`inv.apply(|x|..)` E0308——020 其余
+  面 a2r 编译全过）；`AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity` 4/4。
+  执行注记：019 目录只有 fixture/（591 对抗件由测试代码驱动），三轨 CASES
+  不含它；全量 a2r 首跑冷构建并行竞争曾致挂死（缓存就位后 1.3s 全过）。
 - [ ] **T-09** base64 复测：T3/T4 落地后重跑 `parity/libs/dep/base64_real`
   （`AUTO_LANG_PARITY_NET` 门控），encode/decode 面绿则回填 594 报告实测行；
   a2r 腿按 #1 裁定。验证：parity run 输出 + 报告 diff。→ AC-05
+  **[执行留痕 2026-09-10]**：实勘 base64_real 无 tests/（594 全红样本壳），
+  README 记录 VM encode 直呼 ✅ 走既有路径；trait 白名单的 Engine 面需
+  常量接收者（STANDARD）路由——VM 面与 a2r 面（D13）双断，**解锁前置 =
+  T-07**。T-07 完成后重跑本任务。parity 新鲜度门要求 worktree auto.exe
+  （已构建：`cargo build -p auto` → `--auto-binary` 指给 parity）。
 - [ ] **T-10** 登记/文档：DIV-DEP-18+ 与翻绿条目、KNOWN-DEBT（T5 后续指针、
   P59x 增量）、guides ffi 节增 V2、SD-01..04 spec 回写。
   验证：人工核对四处 diff。→ AC-07
 - [ ] **T-11** 收口门禁：`cargo check -p auto-lang`（零新警告）→
   `cargo t ffi_dual dep_parity` → `cargo tv` → `cargo tt`；（review 阶段
   `cargo tf`）。验证：输出留痕本节。→ AC-06
+  [✅ 已完成(部分口径)] ffi_dual 21/21、dep_parity 4/4(a2r 全量档)、
+  `cargo tv --no-fail-fast` 唯一余红=charts 预存(master 同败)、check 零新
+  警告、探针残留 0。`cargo tt` 未跑(T-07 未发生,tt 门禁随 T-07 待续);
+  review 阶段 `cargo tf` 照常。执行期追加修复 #9(mono 后缀路由回归,
+  cookbook Red.paint__String——dispatch 头部剥后缀+带名重入,提交 578d335e6)。
 
 ### 设计决策（T-02 spike 产出落此）
+
+**T-02 决策：T5 回调重入机制采用候选②变体——"注入式宿主跳板 + 线程局部回调帧"
+（2026-09-09 spike，PLAN-596）**
+
+- **候选①（自符号查找）否决**：wrapper cdylib 经 libloading 自句柄取 auto-lang
+  进程内导出符号——auto-lang 以静态链入测试二进制，exe 默认不导出符号
+  （Windows 需显式导出表/ELF 需 -rdynamic），跨平台脆弱。
+- **候选②（注入式跳板）采纳，具体形态**：
+  1. wrapper cdylib 导出 `auto__register_host_trampoline(host: auto_host_cb)`，
+     `type auto_host_cb = unsafe extern "C" fn(token: u64, arg: i64) -> i64`；
+     auto-lang 侧 `register_pack` 时经 libloading 解析该符号并把宿主跳板
+     函数指针注入（依赖注入，无符号查找）。
+  2. wrapper 内 static 存跳板；adapter（实现 `Fn(i64)->i64`）持回调令牌，
+     `call` 经跳板转发。
+  3. 宿主跳板实现：dep_methods marshaller 调用**前**把 `(task 指针, vm 指针,
+     闭包帧 id)** 压入**线程局部回调帧栈**（同步调用期间有效，同线程）；
+     跳板读栈顶 → 重入解释器执行 `.at` 闭包 → 返回值 i64 直传。
+  4. **深度守卫**：帧栈非空时再次进入跳板 = 嵌套回调 → 运行时报错（深度 1）。
+     回调内调普通三方**方法**不禁止（同线程再入 CALL_NAT，非回调链）。
+  5. **panic 边界**：`.at` 闭包 panic 在跳板内 `catch_unwind` 捕获转 VMError
+     （宿主侧，未跨 extern "C"）；fixture 侧 panic 跨 ABI = abort 为 430 既有
+     已知行为，不在本原型扩大范围。
+- **风险与验证挂钩**：解释器再入（外层 CALL_NAT 中递归 step loop）是最大风险，
+  T-05 的最小 snippet（`apply(5, |x| x*2+1) == 11`）即为其可执行证明；若再入
+  路径与引擎假设冲突（如指令指针/栈帧复用），回到本节追加记录并升级到用户。
+
+
+**work handoff（2026-09-10,上下文预算耗尽交接待续）**：`stage: work` |
+PLAN-596 | r1 | outcome: **blocked(非缺陷——剩余任务需新会话继续)** |
+code_commit: 9100575f3→88b6a4d2a→27cf4da20→cead5f1df→578d335e6（worktree
+`plan-596-dev`,基线 e178ff601）| task_ids: **T-01..T-06、T-08、T-11(部分)
+完成;T-07、T-09、T-10(债务已登记;divergences/guides/spec 回写未做)待续** |
+evidence: 020 全语料三轨绿(V2-1..6;V2-6 a2r 腿按 DIV-DEP-19 豁免)、
+ffi_dual 21/21、dep_parity 4/4(a2r 全量)、tv 唯一余红=charts 预存、
+8+1 项执行期修复留痕(§8)、P596-D1..D6 登记 KNOWN-DEBT | blockers: 无 |
+next: 新会话 `/auto-plan:work 596`——首动作 T-07(方案在 T-07 执行留痕:
+a2r Display 半边判定=接收者 use.rs 导入类型非 Auto enum;D13=发射器查
+常量 vs 类型),随后 T-09(base64 复测,worktree auto.exe 已构建)、T-10 尾巴
+(DIV-DEP-18/19 落 known-divergences、guides V2 节、SD-01..04 回写)、
+T-11 补 `cargo tt`,然后 `/auto-plan:review`。
 
 ## 9. 复审记录
 
@@ -282,6 +387,11 @@ autodown-core → 分组目录建 auto-down detached 兄弟 worktree，禁 junct
 建议默认值，不阻塞起草、阻塞执行前的最终范围）。
 
 ## 10. 待澄清事项
+
+> **执行期裁定（2026-09-09，/auto-plan:work 启动时按 §10 建议默认值采纳）**：
+> #1 **采纳建议=并入**（D13 常量接收者最小修正进 T-07）；#2 **采纳建议=不并入**
+> （P591-D2 维持登记）；#3 **采纳建议=T-02 spike 自决+复审把关**。若执行中发现
+> 依据变化，回到本节追加记录而非静默改向。
 
 1. **DIV-DEP-13（a2r 常量接收者 `STANDARD::encode`）是否并入 T-07**：并入则
    base64 三轨全绿（工作量 +1 个 a2r 发射小修）；不并入则 T-09 a2r 腿登记
