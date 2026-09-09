@@ -1,0 +1,7 @@
+// PLAN-598 T-05 (P539-D3): compound receivers must emit parenthesized —
+// `py_call(1 + 2, "bit_length")` → `(1 + 2).bit_length()`, never
+// `1 + 2.bit_length()` (precedence rebinds the call to the last operand).
+fn main() {
+    let n = py_call(1 + 2, "bit_length")
+    print(n)
+}
