@@ -48,17 +48,17 @@ pub struct Messy {
     pub a: u8,
     pub tag: String,
     pub b: u8,
-    pub count: i64,
+    pub total: i64,
     pub flag: bool,
 }
 
 impl Messy {
-    pub fn new(count: i64, tag: &str, flag: bool) -> Self {
+    pub fn new(total: i64, tag: &str, flag: bool) -> Self {
         Self {
             a: 7,
             tag: tag.to_string(),
             b: 11,
-            count,
+            total,
             flag,
         }
     }
@@ -75,11 +75,11 @@ impl Messy {
 
     /// &mut 变异(591 V1-2 字段写断言的 Rust 侧读回通道)。
     pub fn add(&mut self, delta: i64) {
-        self.count += delta;
+        self.total += delta;
     }
 
-    pub fn count_snapshot(&self) -> i64 {
-        self.count
+    pub fn total_snapshot(&self) -> i64 {
+        self.total
     }
 }
 
@@ -144,7 +144,7 @@ impl std::fmt::Display for Messy {
         write!(
             f,
             "Messy({}, {}, {}, {}, {})",
-            self.a, self.tag, self.b, self.count, self.flag
+            self.a, self.tag, self.b, self.total, self.flag
         )
     }
 }

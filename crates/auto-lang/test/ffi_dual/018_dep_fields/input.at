@@ -10,6 +10,17 @@ fn main() {
 
     print(m)
 
+    let a_v = m.a
+    print(a_v)
+    print(m.b)
+    print(m.total)
+    print(m.flag)
+    m.total = 9
+    print(m.total)
+    print(m.total_snapshot())
+    m.add(5)
+    print(m.total_snapshot())
+
     let p = Point.parse("3,4").unwrap()
     print(p.x)
     print(p.y)

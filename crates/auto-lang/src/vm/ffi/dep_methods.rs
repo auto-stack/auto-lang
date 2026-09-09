@@ -40,6 +40,9 @@ pub struct DepOpaqueObject {
     /// 析构符号名(auto__drop_<Type>)
     pub drop_export: String,
     pub lib: Arc<libloading::Library>,
+    /// 类型布局(PLAN-591 T1:探针实测;CALL_SPEC offset 直读直写依据;
+    /// 装载期由 auto__shim_layouts 合并,按 crate::类型 注册)
+    pub layout: Option<Arc<shim_metadata::emit_cdylib::TypeLayout>>,
 }
 
 // SAFETY: 见结构体注释。
@@ -90,6 +93,7 @@ pub fn push_dep_obj(
     lib: Arc<libloading::Library>,
 ) -> Result<(), VMError> {
     let full_type = format!("{crate_name}::{short_type}");
+    let layout = lookup_layout(crate_name, short_type);
     let obj = DepOpaqueObject {
         crate_name: crate_name.to_string(),
         short_type: short_type.to_string(),
@@ -97,9 +101,152 @@ pub fn push_dep_obj(
         ptr,
         drop_export: drop_export.to_string(),
         lib,
+        layout,
     };
     let handle = vm.insert_heap_object(obj) as u32;
     vm.rc_push(task, auto_val::encode_object(handle));
+    Ok(())
+}
+
+// =============================================================================
+// 布局注册表与 offset 直读直写(PLAN-591 T1)
+// =============================================================================
+
+fn layouts_table() -> &'static RwLock<HashMap<String, Arc<shim_metadata::emit_cdylib::TypeLayout>>> {
+    static T: OnceLock<RwLock<HashMap<String, Arc<shim_metadata::emit_cdylib::TypeLayout>>>> =
+        OnceLock::new();
+    T.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn lookup_layout(
+    crate_name: &str,
+    short_type: &str,
+) -> Option<Arc<shim_metadata::emit_cdylib::TypeLayout>> {
+    layouts_table()
+        .read()
+        .expect("plan591 layouts table poisoned")
+        .get(&format!("{crate_name}::{short_type}"))
+        .cloned()
+}
+
+/// 标量字段读值(offset 直读产物;String/嵌套句柄不在直读面,走合成 getter)。
+#[derive(Debug, Clone, Copy)]
+pub enum ScalarFieldValue {
+    I(i64),
+    F(f64),
+    B(bool),
+}
+
+/// offset 直读:layout 命中标量字段 → 按投影类型宽度读 cdylib 堆。
+/// SAFETY: ptr 指向 wrapper cdylib 堆上的 Box<T> 本体;偏移由同 rustc 实例
+/// 的 offset_of! 探针实测,读侧 read_unaligned 容忍任意对齐填充。
+pub fn read_scalar_field(
+    obj: &DepOpaqueObject,
+    field: &str,
+) -> Option<ScalarFieldValue> {
+    let layout = obj.layout.as_ref()?;
+    let f = layout.fields.iter().find(|f| f.name == field)?;
+    let base = obj.ptr as *const u8;
+    let v = unsafe {
+        match f.ty.as_str() {
+            "i8" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<i8>().read_unaligned() as i64),
+            "i16" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<i16>().read_unaligned() as i64),
+            "i32" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<i32>().read_unaligned() as i64),
+            "i64" | "isize" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<i64>().read_unaligned()),
+            "u8" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<u8>().read_unaligned() as i64),
+            "u16" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<u16>().read_unaligned() as i64),
+            "u32" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<u32>().read_unaligned() as i64),
+            "u64" | "usize" => ScalarFieldValue::I(base.add(f.offset as usize).cast::<u64>().read_unaligned() as i64),
+            "bool" => ScalarFieldValue::B(base.add(f.offset as usize).cast::<u8>().read_unaligned() != 0),
+            "f32" => ScalarFieldValue::F(base.add(f.offset as usize).cast::<f32>().read_unaligned() as f64),
+            "f64" => ScalarFieldValue::F(base.add(f.offset as usize).cast::<f64>().read_unaligned()),
+            _ => return None, // String/嵌套句柄等非标量:走合成 getter 路由
+        }
+    };
+    Some(v)
+}
+
+/// offset 直写(PLAN-591 V1-2):标量字段按 VM 值宽度写 cdylib 堆。
+/// V1 纪律:单线程批处理执行;别名/写后 Rust 侧缓存失效语义登记 KNOWN-DEBT。
+/// String/嵌套句柄不在 V1 写面(需 clone/构造语义,归后续计划)。
+pub fn write_scalar_field(
+    vm: &AutoVM,
+    obj: &DepOpaqueObject,
+    field: &str,
+    nv: auto_val::NanoValue,
+) -> Result<(), VMError> {
+    let ctx = format!("{}.{}", obj.short_type, field);
+    let Some(layout) = obj.layout.as_ref() else {
+        return Err(VMError::RuntimeError(format!(
+            "{ctx}: no layout info (manifest v2 layouts missing) — field write requires a rebuilt methods pack"
+        )));
+    };
+    let Some(f) = layout.fields.iter().find(|f| f.name == field) else {
+        return Err(VMError::RuntimeError(format!(
+            "unknown field '{field}' on dep object {} (无布局条目:非 pub 字段不可写)",
+            obj.full_type
+        )));
+    };
+    let scalar_ty = f.ty.as_str();
+    let base = obj.ptr as *mut u8;
+    unsafe {
+        match scalar_ty {
+            "bool" => {
+                let b = if auto_val::is_bool(nv) {
+                    auto_val::decode_bool(nv)
+                } else {
+                    return Err(VMError::RuntimeError(format!("{ctx}: expected bool value")));
+                };
+                base.add(f.offset as usize).cast::<u8>().write_unaligned(b as u8);
+            }
+            "f32" | "f64" => {
+                let v = if auto_val::is_f64(nv) {
+                    auto_val::decode_f64(nv)
+                } else if auto_val::is_i32(nv) {
+                    auto_val::decode_i32(nv) as f64
+                } else {
+                    return Err(VMError::RuntimeError(format!("{ctx}: expected numeric value")));
+                };
+                if scalar_ty == "f32" {
+                    base.add(f.offset as usize).cast::<f32>().write_unaligned(v as f32);
+                } else {
+                    base.add(f.offset as usize).cast::<f64>().write_unaligned(v);
+                }
+            }
+            int if int.starts_with(['i', 'u']) || int == "isize" || int == "usize" => {
+                let v = if auto_val::is_i32(nv) {
+                    auto_val::decode_i32(nv) as i64
+                } else if auto_val::is_i64(nv) {
+                    auto_val::decode_i64(nv)
+                } else if auto_val::is_bool(nv) {
+                    auto_val::decode_bool(nv) as i64
+                } else {
+                    crate::vm::ffi::convert::decode_i64_full(vm, nv)
+                };
+                let p = base.add(f.offset as usize);
+                match int {
+                    "i8" => p.cast::<i8>().write_unaligned(v as i8),
+                    "i16" => p.cast::<i16>().write_unaligned(v as i16),
+                    "i32" => p.cast::<i32>().write_unaligned(v as i32),
+                    "i64" | "isize" => p.cast::<i64>().write_unaligned(v),
+                    "u8" => p.cast::<u8>().write_unaligned(v as u8),
+                    "u16" => p.cast::<u16>().write_unaligned(v as u16),
+                    "u32" => p.cast::<u32>().write_unaligned(v as u32),
+                    "u64" | "usize" => p.cast::<u64>().write_unaligned(v as u64),
+                    other => {
+                        return Err(VMError::RuntimeError(format!(
+                            "{ctx}: unsupported integer field type '{other}'"
+                        )))
+                    }
+                }
+            }
+            other => {
+                return Err(VMError::RuntimeError(format!(
+                    "{ctx}: field type '{other}' is not in the V1 scalar write surface (String/嵌套句柄需 clone/构造语义)"
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -209,6 +356,40 @@ pub fn register_pack(crate_name: &str, lib: Arc<libloading::Library>, manifest_j
             return;
         }
     };
+
+    // PLAN-591 T1(AC-04):manifest format 装载校验拒载旧版——旧 format 的
+    // 布局段缺失,offset 语义不成立;拒载强制管线重建(format bump 通道)。
+    if manifest.format != shim_metadata::emit_cdylib::MANIFEST_FORMAT {
+        log::warn!(
+            "plan430: manifest format {} for {crate_name} unsupported (expected {}); rebuild the methods pack",
+            manifest.format,
+            shim_metadata::emit_cdylib::MANIFEST_FORMAT
+        );
+        return;
+    }
+
+    // PLAN-591 T1:布局探针装载——cdylib 内嵌 auto__shim_layouts(offset_of!/
+    // size_of 实测,同编译保证),合并进 layouts 注册表(key = crate::类型)。
+    // 导出缺失(空探针/旧包)按缺省容忍:DepOpaqueObject.layout = None。
+    type LayoutsFn = unsafe extern "C" fn() -> *const c_char;
+    if let Ok(sym) = unsafe { lib.get::<LayoutsFn>(b"auto__shim_layouts") } {
+        let ptr = unsafe { sym() };
+        if !ptr.is_null() {
+            let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+            call_free_cstring(&lib, ptr as *mut c_char);
+            match serde_json::from_str::<shim_metadata::emit_cdylib::LayoutMap>(&s) {
+                Ok(map) => {
+                    let mut table = layouts_table()
+                        .write()
+                        .expect("plan591 layouts table poisoned");
+                    for (ty, layout) in map {
+                        table.insert(format!("{crate_name}::{ty}"), Arc::new(layout));
+                    }
+                }
+                Err(e) => log::warn!("plan430: bad layouts json for {crate_name}: {e}"),
+            }
+        }
+    }
 
     // D2:自由函数签名元数据
     {

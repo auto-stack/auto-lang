@@ -5528,6 +5528,23 @@ impl AutoVM {
                                 )));
                             }
                             // Field set successfully — fall through to next instruction
+                        } else if let Some(dep) = heap_obj
+                            .as_any()
+                            .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>()
+                        {
+                            // PLAN-591 T1(V1-2): dep 对象标量字段 offset 直写——
+                            // 写穿透到 cdylib 堆本体(Rust 侧方法读回可见,V1-2)。
+                            // V1 纪律:单线程批处理执行;标量面仅此(String/嵌套
+                            // 句柄不在写面);别名/写后 Rust 侧缓存失效语义登记
+                            // KNOWN-DEBT(待澄清 #1 裁定)。写经裸指针穿透,守卫
+                            // 只护句柄元数据,持锁写与释放后写等价,无重入。
+                            crate::vm::ffi::dep_methods::write_scalar_field(
+                                self,
+                                dep,
+                                field_name.as_str(),
+                                value_nv,
+                            )?;
+                            // Field set successfully — fall through to next instruction
                         } else {
                             return Err(VMError::RuntimeError(format!(
                                 "Invalid object ID: {}",
@@ -5826,6 +5843,14 @@ impl AutoVM {
                             .as_any()
                             .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>()
                         {
+                            // PLAN-591 T1: offset 直读优先——layout 命中标量字段
+                            // 时按探针偏移读 cdylib 堆(乱序 repr(Rust) 布局的
+                            // 真读面);String/嵌套句柄等非标量落 None → 下方的
+                            // PLAN-592 T7 合成 getter 路由(clone 语义)。
+                            let scalar = crate::vm::ffi::dep_methods::read_scalar_field(
+                                dep_obj,
+                                field_name.as_str(),
+                            );
                             // PLAN-592 T7: dep crate 对象字段访问桥——`p.x` 路由到
                             // shim 包合成 getter("短类型名.字段名" 在 METHODS 表,
                             // 即 rustdoc 公共字段合成面);未命中显式报错,替代
@@ -5833,20 +5858,33 @@ impl AutoVM {
                             let short_type = dep_obj.short_type.clone();
                             let full_type = dep_obj.full_type.clone();
                             drop(heap_obj);
-                            // Plan 419: 接收者重新入栈作 self(+1;marshaller 侧
-                            // raw pop 不减,与 native_catalog 字段臂同一纪律)。
-                            self.rc_push(task, auto_val::encode_object(obj_id as u32));
-                            let hit = crate::vm::ffi::dep_methods::dispatch(
-                                &short_type,
-                                field_name.as_str(),
-                                task,
-                                self,
-                            )?;
-                            if !hit {
-                                task.ram.pop_i32();
-                                return Err(VMError::RuntimeError(format!(
-                                    "unknown field '{field_name}' on dep object {full_type} (无合成 getter:字段非 pub,或字段类型不在 标量/Str/Opaque 白名单)"
-                                )));
+                            match scalar {
+                                Some(crate::vm::ffi::dep_methods::ScalarFieldValue::I(i)) => {
+                                    self.push_i64_vm(task, i);
+                                }
+                                Some(crate::vm::ffi::dep_methods::ScalarFieldValue::F(v)) => {
+                                    task.ram.push_f64(v);
+                                }
+                                Some(crate::vm::ffi::dep_methods::ScalarFieldValue::B(b)) => {
+                                    task.ram.push_nv(auto_val::encode_bool(b));
+                                }
+                                None => {
+                                    // Plan 419: 接收者重新入栈作 self(+1;marshaller 侧
+                                    // raw pop 不减,与 native_catalog 字段臂同一纪律)。
+                                    self.rc_push(task, auto_val::encode_object(obj_id as u32));
+                                    let hit = crate::vm::ffi::dep_methods::dispatch(
+                                        &short_type,
+                                        field_name.as_str(),
+                                        task,
+                                        self,
+                                    )?;
+                                    if !hit {
+                                        task.ram.pop_i32();
+                                        return Err(VMError::RuntimeError(format!(
+                                            "unknown field '{field_name}' on dep object {full_type} (无合成 getter:字段非 pub,或字段类型不在 标量/Str/Opaque 白名单)"
+                                        )));
+                                    }
+                                }
                             }
                         } else {
                             // plan-022 (auto-down): `.length` on a heap LIST

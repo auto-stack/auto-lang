@@ -498,6 +498,11 @@ fn emit_lib_rs(manifest_json: &str, drop_fns: &str, wrappers: &str, probe_src: &
 /// 经 `auto__shim_layouts` 以 JSON 导出(装载期合并进 manifest.layouts)。
 /// 与 wrapper 同 cdylib 编译 → 同 rustc 实例 → 偏移与 wrapper 对象一致。
 /// 空输入时不生成导出(装载侧按缺省容忍,旧版行为兼容)。
+///
+/// 生成形态:wrapper 内 `auto__shim_layouts` 逐类型 format!(模板, 实参...)——
+/// 探针表达式(size_of/offset_of)是 format! **实参**,在 wrapper 编译期求值;
+/// 模板中字面 JSON 花括号按 format! 规则双写。两级引号:Level-1(本函数)字符串
+/// 字面量产出 Level-2(wrapper 源码)文本,`\\\"` 三连转义产出 Level-2 的 `\"`。
 fn emit_probe(
     crate_ident: &str,
     fields: &[crate::rustdoc::StructField],
@@ -512,72 +517,76 @@ fn emit_probe(
     for f in fields {
         by_type.entry(f.type_name.as_str()).or_default().push(f);
     }
-    let mut type_parts: Vec<String> = Vec::new();
+    let mut src = String::from(
+        "/// PLAN-591 T1: 布局探针(生成器产物;offset_of!/size_of 实测,装载期合并)。\n\
+         #[no_mangle]\n\
+         pub extern \"C\" fn auto__shim_layouts() -> *const c_char {\n\
+         \x20   let mut parts: Vec<String> = Vec::new();\n",
+    );
+    // Level-2 模板(即 wrapper format! 的第一实参文本,本函数产物中的字符):
+    //   {{\"Messy\": {{\"size\": {}, \"align\": {}, \"fields\": [{\"name\":\"a\",\"offset\": {}, \"ty\":\"u8\"}]}}
+    // Level-2 format! 渲染:{{→{、}}→}、{}→实参;\" 由 Level-2 字符串字面量层还原为 "。
+    // Level-1(本函数)产出上述字符:{{ 原样;\" 写作 \\\"(L1 转义 \\→\ 与 \"→")。
     for (ty, fs) in &by_type {
         let full = format!("{crate_ident}::{ty}");
-        let field_parts: Vec<String> = fs
-            .iter()
-            .map(|f| {
-                format!(
-                    "{{\"name\":\"{}\",\"offset\":{{}},\"ty\":\"{}\"}}",
-                    f.name,
-                    f.ty.replace('"', "")
-                )
-            })
-            .collect();
-        let offsets: Vec<String> = fs
-            .iter()
-            .map(|f| format!("std::mem::offset_of!({full}, {}) as u64", f.name))
-            .collect();
-        let size_expr = format!("std::mem::size_of::<{full}>() as u64");
-        let align_expr = format!("std::mem::align_of::<{full}>() as u64");
-        type_parts.push(format!(
-            "\"{ty}\": {{\"size\": {}, \"align\": {}, \"fields\": [{}]}}",
-            size_expr,
-            align_expr,
-            interleave(&field_parts, &offsets),
-        ));
+        let mut tmpl = String::new();
+        tmpl.push_str("\\\"");
+        tmpl.push_str(ty);
+        tmpl.push_str("\\\": {{\\\"size\\\": {}, \\\"align\\\": {}, \\\"fields\\\": [");
+        let mut args: Vec<String> = vec![
+            format!("std::mem::size_of::<{full}>() as u64"),
+            format!("std::mem::align_of::<{full}>() as u64"),
+        ];
+        for (i, f) in fs.iter().enumerate() {
+            if i > 0 {
+                tmpl.push(',');
+            }
+            tmpl.push_str("{{\\\"name\\\":\\\"");
+            tmpl.push_str(&f.name.replace(['\\', '"', '{', '}'], ""));
+            tmpl.push_str("\\\",\\\"offset\\\": {}, \\\"ty\\\":\\\"");
+            tmpl.push_str(&f.ty.replace(['\\', '"', '{', '}'], ""));
+            tmpl.push_str("\\\"}}");
+            args.push(format!("std::mem::offset_of!({full}, {}) as u64", f.name));
+        }
+        tmpl.push_str("]}}");
+        src.push_str("    parts.push(format!(\"");
+        src.push_str(&tmpl);
+        src.push_str("\", ");
+        src.push_str(&args.join(", "));
+        src.push_str("));\n");
     }
     for e in unit_enums {
         let full = format!("{crate_ident}::{}", e.name);
-        let disc_parts: Vec<String> = e
-            .variants
-            .iter()
-            .map(|v| format!("{{\"name\":\"{v}\",\"value\":{{}}}}"))
-            .collect();
-        let values: Vec<String> = e
-            .variants
-            .iter()
-            .map(|v| format!("{full}::{v} as u64"))
-            .collect();
-        type_parts.push(format!(
-            "\"{}\": {{\"size\": std::mem::size_of::<{full}>() as u64, \"align\": std::mem::align_of::<{full}>() as u64, \"fields\": [], \"enum_discriminants\": [{}]}}",
-            e.name,
-            interleave(&disc_parts, &values),
-        ));
+        let mut tmpl = String::new();
+        tmpl.push_str("\\\"");
+        tmpl.push_str(&e.name.replace(['\\', '"', '{', '}'], ""));
+        tmpl.push_str("\\\": {{\\\"size\\\": {}, \\\"align\\\": {}, \\\"fields\\\": [], \\\"enum_discriminants\\\": [");
+        let mut args: Vec<String> = vec![
+            format!("std::mem::size_of::<{full}>() as u64"),
+            format!("std::mem::align_of::<{full}>() as u64"),
+        ];
+        for (i, v) in e.variants.iter().enumerate() {
+            if i > 0 {
+                tmpl.push(',');
+            }
+            tmpl.push_str("{{\\\"name\\\":\\\"");
+            tmpl.push_str(&v.replace(['\\', '"', '{', '}'], ""));
+            tmpl.push_str("\\\",\\\"value\\\": {}}}");
+            args.push(format!("{full}::{v} as u64"));
+        }
+        tmpl.push_str("]}}");
+        src.push_str("    parts.push(format!(\"");
+        src.push_str(&tmpl);
+        src.push_str("\", ");
+        src.push_str(&args.join(", "));
+        src.push_str("));\n");
     }
-    let body = type_parts.join(",");
-    // body 内的 JSON 花括号进 format! 模板必须双写(此占位符已被
-    // interleave 消费,不会误伤);渲染后还原为单花括号 JSON。
-    let escaped = body.replace('{', "{{").replace('}', "}}");
-    format!(
-        "/// PLAN-591 T1: 布局探针(生成器产物;offset_of!/size_of 实测,装载期合并)。\n\
-         #[no_mangle]\n\
-         pub extern \"C\" fn auto__shim_layouts() -> *const c_char {{\n\
-         \x20   let s = CString::new(format!(r#\"{escaped}\"#)).unwrap();\n\
+    src.push_str(
+        "    let s = CString::new(\"{\".to_string() + &parts.join(\",\") + \"}\").unwrap();\n\
          \x20   s.into_raw() as *const c_char\n\
-         }}\n"
-    )
-}
-
-/// 模板/表达式交错:模板中首个 `{{}}` 占位替换为表达式,再逗号连接。
-fn interleave(templates: &[String], exprs: &[String]) -> String {
-    templates
-        .iter()
-        .zip(exprs.iter())
-        .map(|(t, e)| t.replacen("{}", e, 1))
-        .collect::<Vec<_>>()
-        .join(",")
+         }\n",
+    );
+    src
 }
 
 fn emit_drop_fn(short: &str, full: &str) -> String {
@@ -1166,7 +1175,8 @@ mod tests {
         assert!(probe.contains("std::mem::offset_of!(my_crate::Messy, count) as u64"));
         assert!(probe.contains("std::mem::size_of::<my_crate::Messy>() as u64"));
         assert!(probe.contains("my_crate::Kind::Circle as u64"));
-        assert!(probe.contains("{{\"name\":\"count\""));
+        // 字段槽:Level-2 文本 {{\"name\":\"count\"(format! 字面括号双写 + 引号转义)
+        assert!(probe.contains("{{\\\"name\\\":\\\"count\\\""));
         // 空输入不生成导出(装载侧缺省容忍)
         assert!(emit_probe("my_crate", &[], &[]).is_empty());
         // 字段清单行入指纹:同签名不同字段集 → 指纹必变(V1-6/对抗①机制链)

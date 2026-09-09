@@ -5,13 +5,23 @@
 use autolang_shapes::{Messy, Outer, Point, Shape};
 
 fn main() {
-    let m = Messy::new(42, "alpha", true);
+    let mut m = Messy::new(42, "alpha", true);
     let hit = m.lookup("alpha");
     println!("{}", hit.is_none());
     let miss = m.lookup("nope");
     println!("{}", miss.is_none());
 
     println!("{}", m);
+
+    println!("{}", m.a);
+    println!("{}", m.b);
+    println!("{}", m.total);
+    println!("{}", m.flag);
+    m.total = 9;
+    println!("{}", m.total);
+    println!("{}", m.total_snapshot());
+    m.add(5);
+    println!("{}", m.total_snapshot());
 
     let p = Point::parse("3,4").unwrap();
     println!("{}", p.x);
