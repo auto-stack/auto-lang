@@ -72,3 +72,27 @@
 - Python FFI 不解决 CPython 崩溃隔离（嵌入模型的已知代价，进程隔离是非目标）。
 
 > 来源: crates/auto-lang/src/ffi.rs、py_ffi.rs、py_ffi_types.rs；docs/plans/archive/081、092、094、212、214、216、222；docs/plans/300-python-ffi-runtime-maturation.md
+
+### PLAN-592 增补（2026-09-09，dep 三轨对拍 + 静默 0 收口）
+
+- **GET_FIELD 对 dep 对象桥接**：`DepOpaqueObject`（type_tag 含 `::`）的字段访问
+  `p.x` 路由到方法 shim 包合成 getter（METHODS 表 `"短类型名.字段名"`，
+  rustdoc 公共字段合成面）；未命中显式报 `unknown field ... on dep object`——
+  **替代此前的静默 push 0**（拼错字段名拿回 0 的正确性陷阱）。
+- **dep 自由函数装载链修复**：自由函数 wrapper cdylib 缓存键两侧统一为
+  `v3_{自由函数数}`（此前 compile 侧 joined sig 串长 vs init 侧函数数，
+  键不一致致 wrapper 从未装载成功——调用退化为 opaque 构造器回退）；
+  init_rust_ffi 过滤类型导入+去重；codegen 裸名查不到时补 `rust.{fn}`
+  限定名回退。
+- **未覆盖自由函数签名**：`create_rust_shim_lazy` 未命中 4 类手写签名时
+  显式 `VMError`（含符号/签名/允许类清单）——替代 warn+静默返 0。
+- **marshaller 修复**：`pop_int` 堆感知（>2^48 i64 字面量经 BigInt 装箱后
+  可弹参）；`'i'` 槽返回符号扩展（x64 零扩展写低 32 位，负数回填 i64）。
+- **emit_cdylib**（shim-metadata）：i8/i16 参数补收窄 cast（GENERATOR v1.2，
+  指纹失效重建）。
+- **验证资产**：三轨对拍 runner（ffi_dep_parity_tests：VM/a2r/oracle 同
+  path fixture，stdout 精确相等；a2r 腿 `AUTO_LANG_DEP_PARITY_A2R` 门控）
+  + 语料 016_dep_abi_matrix/017_dep_lifecycle；已知分歧面登记
+  `parity/docs/known-divergences.md` DIV-DEP-1..7，工程债 KNOWN-DEBT P592-D1..D5。
+
+> 来源: docs/plans/archive/592-dep-rust-parity-matrix.md（PLAN-592）

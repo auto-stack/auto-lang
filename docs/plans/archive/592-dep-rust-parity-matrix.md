@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-592
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-rust-parity-matrix
 author: [ZCode]
 created_at: 2026-09-08
