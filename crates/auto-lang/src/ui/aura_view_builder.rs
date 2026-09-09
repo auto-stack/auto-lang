@@ -5536,7 +5536,11 @@ let tabs_inner = View::Row {
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
         // os-007（P530-D1）：环守卫——见 active_child_widgets 字段注记。
-        if self.active_child_widgets.borrow().contains(&child_widget.name) {
+        let cycling = self
+            .active_child_widgets
+            .borrow()
+            .contains(&child_widget.name);
+        if cycling {
             return View::Empty;
         }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
@@ -5596,7 +5600,11 @@ let tabs_inner = View::Row {
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
         // os-007（P530-D1）：环守卫——见 active_child_widgets 字段注记。
-        if self.active_child_widgets.borrow().contains(&child_widget.name) {
+        let cycling = self
+            .active_child_widgets
+            .borrow()
+            .contains(&child_widget.name);
+        if cycling {
             return View::Empty;
         }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
@@ -7756,8 +7764,9 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_string_with(props, "style", bindings))
             .filter(|s| !s.is_empty())
             .map(|s| {
-                let needs_size =
-                    Style::parse(&s).map(|p| !has_size_class(&p)).unwrap_or(true);
+                let needs_size = Style::parse(&s)
+                    .map(|p| !has_size_class(&p))
+                    .unwrap_or(true);
                 let merged = if needs_size { format!("{s} w-10 h-10") } else { s };
                 Style::parse(&merged).ok()
             })
