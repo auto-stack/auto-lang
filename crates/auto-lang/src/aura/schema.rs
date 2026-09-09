@@ -958,6 +958,44 @@ impl AuraSchema {
         });
 
         // === Sheet (Side Drawer) ===
+        // os-007 P3（534 滞留清偿）：sidebar_menu_sub_button 独立立册——
+        // vue 同件（SidebarMenuButton）但 iced 档不同（561 真值：sub=full
+        // 契约 / button=partial tooltip 延后）；全量再生成的别名合并丢失该
+        // 区分，显式产物元素拆开。
+        elements.insert("sidebar_menu_sub_button", ElementDef {
+            tag: "sidebar_menu_sub_button",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Sidebar menu sub-button (nested collapsible trigger; 561 full contract)",
+        });
+
+        // os-007（origin PLAN-577/P534-D4）：avatar 家族子件入册。
+        elements.insert("avatarimage", ElementDef {
+            tag: "avatarimage",
+            category: ElementCategory::Media,
+            props: vec![
+                PropDef { name: "src", type_: PropType::String, required: false, default: None, description: "Image source URL" },
+                PropDef { name: "alt", type_: PropType::String, required: false, default: None, description: "Alt text for accessibility" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Avatar image (src-driven, reuses image arm)",
+        });
+
+        elements.insert("avatarfallback", ElementDef {
+            tag: "avatarfallback",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Fallback text content" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Avatar fallback (text shown when image absent)",
+        });
+
         elements.insert("sheet", ElementDef {
             tag: "sheet",
             category: ElementCategory::Overlay,

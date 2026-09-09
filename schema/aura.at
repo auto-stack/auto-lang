@@ -235,7 +235,7 @@ element avatar {
     category: "unknown"
     tier: "builtin_widget"
     aliases: ["Avatar"]
-    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "Avatar", import: "@/components/ui/avatar" }
     sub_widgets: ["avatarfallback", "avatarimage"]
     props: [
@@ -353,26 +353,6 @@ element code_editor {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element terminal {
-    tag: "terminal"
-    category: "unknown"
-    tier: "builtin_widget"
-    aliases: ["Terminal"]
-    backends: { web: "unknown", iced: "full", gpui: "unknown" }
-    props: [
-        { name: "key", type: "string", default: "\"term\"", description: "Stable state key (registry + engine adapter session)" }
-        { name: "cols", type: "int", default: "80", description: "Grid width in cells" }
-        { name: "rows", type: "int", default: "24", description: "Grid height in cells" }
-        { name: "lines", type: "list<string>", description: "Fed grid rows (props-feed data plane, per frame)" }
-        { name: "scroll_offset", type: "int", default: "0", description: "Scrollback display offset (badge indicator)" }
-        { name: "preedit", type: "string", description: "IME composition string (self-drawn overlay at cursor)" }
-        { name: "onselect", type: "msg_ref", description: "Selection released; payload via terminal_selected_text(key)" }
-        { name: "oncontextmenu", type: "msg_ref", description: "Menu item activated; payload via terminal_take_menu_item(key)" }
-    ]
-    allows_children: false
-    description: "PLAN-009 native terminal component (auto-term engine grid viewport: damage-gated rows, cursor shapes, selection, scroll badge, right-click menu)"
-}
-
 element col {
     tag: "col"
     category: "layout"
@@ -427,6 +407,109 @@ element divider {
     ]
     allows_children: false
     description: "Horizontal or vertical divider line"
+}
+
+element drawer {
+    tag: "drawer"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["Drawer"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "Drawer", import: "@/components/ui/drawer" }
+    sub_widgets: ["drawer_content", "drawer_description", "drawer_footer", "drawer_header", "drawer_title", "drawer_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "direction", type: "one_of:left,right,top,bottom", default: "bottom", description: "Drawer direction" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer container (Vaul)"
+}
+
+element drawer_content {
+    tag: "drawer_content"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["drawer-content", "drawercontent"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DrawerContent", import: "@/components/ui/drawer" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer content"
+}
+
+element drawer_description {
+    tag: "drawer_description"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["drawer-description", "drawerdescription"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DrawerDescription", import: "@/components/ui/drawer" }
+    props: [
+        { name: "text", type: "string", description: "Description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer description"
+}
+
+element drawer_footer {
+    tag: "drawer_footer"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["drawer-footer", "drawerfooter"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DrawerFooter", import: "@/components/ui/drawer" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer footer"
+}
+
+element drawer_header {
+    tag: "drawer_header"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["drawer-header", "drawerheader"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DrawerHeader", import: "@/components/ui/drawer" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer header"
+}
+
+element drawer_title {
+    tag: "drawer_title"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["drawer-title", "drawertitle"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DrawerTitle", import: "@/components/ui/drawer" }
+    props: [
+        { name: "text", type: "string", description: "Title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer title"
+}
+
+element drawer_trigger {
+    tag: "drawer_trigger"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["drawer-trigger", "drawertrigger"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "DrawerTrigger", import: "@/components/ui/drawer" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+    ]
+    allows_children: true
+    description: "Drawer trigger"
 }
 
 element dropdown-menu {
@@ -571,6 +654,52 @@ element header {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element hover_card {
+    tag: "hover_card"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["HoverCard", "hover-card", "hovercard"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "HoverCard", import: "@/components/ui/hover-card" }
+    sub_widgets: ["hover_card_content", "hover_card_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "open_delay", type: "int", default: "0", description: "Open delay (ms)" }
+        { name: "close_delay", type: "int", default: "300", description: "Close delay (ms)" }
+    ]
+    allows_children: true
+    description: "Hover card container"
+}
+
+element hover_card_content {
+    tag: "hover_card_content"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["hover-card-content", "hovercard-content", "hovercardcontent"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "HoverCardContent", import: "@/components/ui/hover-card" }
+    props: [
+        { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Hover card content"
+}
+
+element hover_card_trigger {
+    tag: "hover_card_trigger"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["hover-card-trigger", "hovercard-trigger", "hovercardtrigger"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "HoverCardTrigger", import: "@/components/ui/hover-card" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+    ]
+    allows_children: true
+    description: "Hover card trigger"
+}
+
 element i {
     tag: "i"
     category: "unknown"
@@ -621,21 +750,21 @@ element imagesurface {
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "ImageSurface" }
     props: [
-        { name: "src", type: "string", required: true, description: "Media ticket URI" }
+        { name: "src", type: "string", required: true, description: "Media ticket URI (/api/__auto/media/{id}/{revision})" }
         { name: "alt", type: "string", default: "", description: "Alt text" }
         { name: "width", type: "int", default: "0", description: "Viewport width" }
         { name: "height", type: "int", default: "0", description: "Viewport height" }
         { name: "quality", type: "int", default: "90", description: "Rendition quality" }
-        { name: "fit", type: "one_of:contain,width,one-to-one,free", default: "contain", description: "Viewport fit policy" }
-        { name: "zoom", type: "float", default: "1.0", description: "Viewport zoom" }
-        { name: "offset_x", type: "float", default: "0.0", description: "Horizontal pan offset" }
-        { name: "offset_y", type: "float", default: "0.0", description: "Vertical pan offset" }
-        { name: "rotation", type: "int", default: "0", description: "Clockwise rotation in degrees" }
-        { name: "filter", type: "string", default: "none", description: "Sampling filter" }
+        { name: "fit", type: "string", default: "contain", description: "contain|width|one-to-one|free" }
+        { name: "zoom", type: "float", default: "1", description: "Zoom factor (0.05-64)" }
+        { name: "offset_x", type: "float", default: "0", description: "Pan offset x" }
+        { name: "offset_y", type: "float", default: "0", description: "Pan offset y" }
+        { name: "rotation", type: "int", default: "0", description: "Display rotation degrees" }
+        { name: "filter", type: "string", default: "none", description: "Render filter" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
-    events: ["onload", "onerror", "onwheel", "onpan", "ondblclick"]
     allows_children: false
-    description: "Asynchronous image viewer surface"
+    description: "Backend-neutral image surface (Plan 547): media ticket URI + interactive transform state; renders published renditions only (vue img + pointer synthesis / iced widget), never does file I/O or decode on the UI thread."
 }
 
 element img {
@@ -791,7 +920,6 @@ element nav {
     backends: { web: "native", iced: "unknown", gpui: "unknown" }
     props: []
     allows_children: true
-    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "P1 extracted from production tables; props TBD"
 }
 
@@ -811,7 +939,6 @@ element nav-group {
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "Navigation group: label header + item column, optionally collapsible (Plan 482)"
 }
 
@@ -836,7 +963,6 @@ element nav-item {
         { name: "class", type: "union:string,class_binding", description: "Extra classes appended after the built-in nav-item classes (escape hatch)" }
     ]
     allows_children: true
-    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link"
 }
 
@@ -847,12 +973,8 @@ element nav-link {
     aliases: ["nav_link", "navlink"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "NavLink", import: "@/components/ui/nav-link" }
-    props: [
-        { name: "text", type: "one_of:href", default: "Link label text", description: "string" }
-        { name: "icon", type: "one_of:badge", default: "Lucide icon name", description: "string" }
-    ]
+    props: []
     allows_children: true
-    superseded_by: "sidebar_* family (Plan 548/561; nav family retired by Plan 562 — no new uses; implementation removal pending observation window, see docs/plans/KNOWN-DEBT-AND-RISKS.md)"
     description: "P1 extracted from production tables; props TBD"
 }
 
@@ -994,6 +1116,311 @@ element separator {
     description: "Visual divider"
 }
 
+element sheet {
+    tag: "sheet"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["Sheet"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Sheet", import: "@/components/ui/sheet" }
+    sub_widgets: ["sheet-description", "sheet_content", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet (side drawer) container"
+}
+
+element sheet-close {
+    tag: "sheet-close"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["sheet_close", "sheetclose"]
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sheet_content {
+    tag: "sheet_content"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["sheet-content", "sheetcontent"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "SheetContent", import: "@/components/ui/sheet" }
+    props: [
+        { name: "side", type: "one_of:top,right,bottom,left", default: "right", description: "Sheet position side" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet content"
+}
+
+element sheet_footer {
+    tag: "sheet_footer"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["sheet-footer", "sheetfooter"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "SheetFooter", import: "@/components/ui/sheet" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet footer"
+}
+
+element sheet_header {
+    tag: "sheet_header"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["sheet-header", "sheetheader"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "SheetHeader", import: "@/components/ui/sheet" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet header"
+}
+
+element sheet_title {
+    tag: "sheet_title"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["sheet-title", "sheettitle"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "SheetTitle", import: "@/components/ui/sheet" }
+    props: [
+        { name: "text", type: "string", description: "Title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet title"
+}
+
+element sheet_trigger {
+    tag: "sheet_trigger"
+    category: "overlay"
+    tier: "builtin_widget"
+    aliases: ["sheet-trigger", "sheettrigger"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "SheetTrigger", import: "@/components/ui/sheet" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet trigger"
+}
+
+element sidebar {
+    tag: "sidebar"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["Sidebar"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "Sidebar", import: "@/components/ui/sidebar" }
+    sub_widgets: ["sidebar-group-action", "sidebar-inset", "sidebar-menu-action", "sidebar-menu-badge", "sidebar-menu-sub", "sidebar-menu-sub-item", "sidebar-separator", "sidebar_content", "sidebar_footer", "sidebar_group", "sidebar_group_content", "sidebar_group_label", "sidebar_header", "sidebar_menu", "sidebar_menu_button", "sidebar_menu_item", "sidebar_provider", "sidebar_trigger", "sidebarinput", "sidebarmenuskeleton", "sidebarrail"]
+    props: [
+        { name: "side", type: "one_of:left,right", default: "left", description: "Sidebar position" }
+        { name: "variant", type: "one_of:sidebar,floating,inset", default: "sidebar", description: "Sidebar variant" }
+        { name: "collapsible", type: "one_of:offcanvas,icon,none", default: "offcanvas", description: "Collapsible mode" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar container"
+}
+
+element sidebar-group-action {
+    tag: "sidebar-group-action"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["SidebarGroupAction", "sidebar_group_action", "sidebargroupaction"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarGroupAction", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebar-inset {
+    tag: "sidebar-inset"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["SidebarInset", "sidebar_inset", "sidebarinset"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarInset", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebar-menu-action {
+    tag: "sidebar-menu-action"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenuAction", "sidebar_menu_action", "sidebarmenuaction"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarMenuAction", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebar-menu-badge {
+    tag: "sidebar-menu-badge"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenuBadge", "sidebar_menu_badge", "sidebarmenubadge"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarMenuBadge", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebar-menu-sub {
+    tag: "sidebar-menu-sub"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenuSub", "sidebar_menu_sub", "sidebarmenusub"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarMenuSub", import: "@/components/ui/sidebar" }
+    sub_widgets: ["sidebar-menu-sub-item"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebar-menu-sub-item {
+    tag: "sidebar-menu-sub-item"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenuSubItem", "sidebar_menu_sub_item", "sidebarmenusubitem"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarMenuSubItem", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebar-separator {
+    tag: "sidebar-separator"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["SidebarSeparator", "sidebar_separator", "sidebarseparator"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarSeparator", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebar_content {
+    tag: "sidebar_content"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["SidebarContent", "sidebar-content", "sidebarcontent"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarContent", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar content"
+}
+
+element sidebar_footer {
+    tag: "sidebar_footer"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["SidebarFooter", "sidebar-footer", "sidebarfooter"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarFooter", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar footer"
+}
+
+element sidebar_header {
+    tag: "sidebar_header"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["SidebarHeader", "sidebar-header", "sidebarheader"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarHeader", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar header"
+}
+
+element sidebar_menu {
+    tag: "sidebar_menu"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenu", "sidebar-menu", "sidebarmenu"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarMenu", import: "@/components/ui/sidebar" }
+    sub_widgets: ["sidebar-menu-action", "sidebar-menu-badge", "sidebar-menu-sub", "sidebar-menu-sub-item", "sidebar_menu_button", "sidebar_menu_item", "sidebarmenuskeleton"]
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar menu"
+}
+
+element sidebar_menu_button {
+    tag: "sidebar_menu_button"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenuButton", "sidebar-menu-button", "sidebarmenubutton"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "SidebarMenuButton", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "tooltip", type: "string", description: "Tooltip text" }
+        { name: "active", type: "bool", default: "false", description: "Active state" }
+        { name: "text", type: "string", description: "Button text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar menu button"
+}
+
+element sidebar_menu_item {
+    tag: "sidebar_menu_item"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenuItem", "sidebar-menu-item", "sidebarmenuitem"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "SidebarMenuItem", import: "@/components/ui/sidebar" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar menu item"
+}
+
+element sidebar_menu_sub_button {
+    tag: "sidebar_menu_sub_button"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["SidebarMenuSubButton", "sidebar-menu-sub-button", "sidebarmenusubbutton"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar menu sub-button (nested collapsible trigger; 561 full contract)"
+}
+
 element slot {
     tag: "slot"
     category: "content"
@@ -1088,6 +1515,17 @@ element taskbar {
     ]
     allows_children: true
     description: "Desktop shell taskbar (bottom bar)"
+}
+
+element terminal {
+    tag: "terminal"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Terminal"]
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element text {
@@ -1231,19 +1669,19 @@ element blockquote {
 element canvas {
     tag: "canvas"
     category: "media"
-    tier: "builtin_widget"
-    backends: { web: "native", iced: "full", gpui: "unknown" }
+    tier: "native_html"
+    backends: { web: "none", iced: "full", gpui: "unknown" }
     props: [
-        { name: "scene", type: "state_ref", description: "Stroke-scene state binding (list of polylines; the canvas content is fully derived from this state - render is a pure function of it)" }
-        { name: "coords", type: "string", description: "Logical extent \"WxH\" for pen-event coordinates (engine-side screen->logical conversion, mouse-area coords same form; default = raw px)" }
-        { name: "clear", type: "string", description: "Optional background color (CSS color syntax); eraser strokes render as background-color strokes in v1 (no true compositing removal)" }
-        { name: "onpenstart", type: "msg_ref", description: "Pen down on the canvas; handler receives (x, y) float logical coords" }
-        { name: "onpenmove", type: "msg_ref", description: "Pen drag while pressed - dispatched only during pen-down (gating lives in the engine, <=30Hz throttled like mouse-area onmousemove); handler receives (x, y)" }
-        { name: "onpenend", type: "msg_ref", description: "Pen up or pen leaving the canvas bounds (leaving-the-bounds ends the stroke on both backends); handler receives (x, y)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es) (size/border/rounded land on the canvas frame)" }
+        { name: "scene", type: "state_ref", description: "Stroke-scene state PREFIX binding (engine reads <prefix>_pts + <prefix>_meta parallel string lists)" }
+        { name: "coords", type: "string", description: "Logical extent \\" }
+        { name: "clear", type: "string", description: "Optional background color (CSS hex); eraser strokes render as background-color strokes in v1" }
+        { name: "onpenstart", type: "msg_ref", description: "Pen down; handler receives (x, y) float logical coords" }
+        { name: "onpenmove", type: "msg_ref", description: "Pen drag while pressed (engine-gated, <=30Hz); handler receives (x, y)" }
+        { name: "onpenend", type: "msg_ref", description: "Pen up or leaving the canvas bounds; handler receives (x, y)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: false
-    description: "State-driven drawing canvas (Plan 563). Content renders from the scene state binding - scene: .strokes binds a state PREFIX; the engine reads the parallel-string-list stroke model from <prefix>_pts (per-stroke point list \"x,y|x,y|...\") + <prefix>_meta (\"color,width,eraser\"; B12-style, defaults #111827,3,0), no imperative draw API. Scene data contract shared by both backends (each renders independently: web = native <canvas> 2D context, iced = canvas::Program Path stroke; line cap/join round on both; single-point stroke = dot of stroke width). Pen event trio onpenstart/onpenmove/onpenend fires with logical coords per coords prop; move is gated to pen-down and throttled <=30Hz. Leaving the canvas bounds ends the stroke (both backends; iced mouse events stop at bounds, vue document-mousemove bounds-check). Complements the chart/diagram family (derived geometry -> svgdoc rendering for structured graphics); canvas covers freehand strokes / high-frequency point streams. Storage persists for free (strokes are plain string state)."
+    description: "State-driven drawing canvas (Plan 563). Content renders from the scene state binding (parallel-string-list stroke model, B12-style); both backends render independently (vue <canvas> 2D / iced canvas::Program) sharing only the scene data contract. Pen trio fires with logical coords; leaving the bounds ends the stroke on both backends."
 }
 
 element circle {
@@ -2284,24 +2722,33 @@ element autocomplete_list {
 
 element avatarfallback {
     tag: "avatarfallback"
-    category: "unknown"
+    category: "typography"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["avatar-fallback"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "AvatarFallback", import: "@/components/ui/avatar" }
-    props: []
+    props: [
+        { name: "text", type: "string", description: "Fallback text content" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "Avatar fallback (text shown when image absent)"
 }
 
 element avatarimage {
     tag: "avatarimage"
-    category: "unknown"
+    category: "media"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["avatar-image"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "AvatarImage", import: "@/components/ui/avatar" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    props: [
+        { name: "src", type: "string", description: "Image source URL" }
+        { name: "alt", type: "string", description: "Alt text for accessibility" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Avatar image (src-driven, reuses image arm)"
 }
 
 element box {
@@ -3170,29 +3617,12 @@ element dialog-trigger {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element drawer {
-    tag: "drawer"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["Drawer"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "Drawer", import: "@/components/ui/drawer" }
-    sub_widgets: ["drawer_content", "drawer_description", "drawer_footer", "drawer_header", "drawer_title", "drawer_trigger"]
-    props: [
-        { name: "open", type: "state_ref", description: "Open state binding" }
-        { name: "direction", type: "one_of:left,right,top,bottom", default: "bottom", description: "Drawer direction" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Drawer container (Vaul)"
-}
-
 element drawer_close {
     tag: "drawer_close"
-    aliases: ["drawer-close", "drawerclose"]
     category: "overlay"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    aliases: ["drawer-close", "drawerclose"]
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
     props: [
         { name: "text", type: "string", description: "Close button text" }
         { name: "onclick", type: "msg_ref", description: "Click handler" }
@@ -3200,92 +3630,6 @@ element drawer_close {
     ]
     allows_children: true
     description: "Drawer close button"
-}
-
-element drawer_content {
-    tag: "drawer_content"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["drawercontent", "drawer-content"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DrawerContent", import: "@/components/ui/drawer" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Drawer content"
-}
-
-element drawer_description {
-    tag: "drawer_description"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["drawerdescription", "drawer-description"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DrawerDescription", import: "@/components/ui/drawer" }
-    props: [
-        { name: "text", type: "string", description: "Description text" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Drawer description"
-}
-
-element drawer_footer {
-    tag: "drawer_footer"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["drawerfooter", "drawer-footer"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DrawerFooter", import: "@/components/ui/drawer" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Drawer footer"
-}
-
-element drawer_header {
-    tag: "drawer_header"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["drawerheader", "drawer-header"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DrawerHeader", import: "@/components/ui/drawer" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Drawer header"
-}
-
-element drawer_title {
-    tag: "drawer_title"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["drawertitle", "drawer-title"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DrawerTitle", import: "@/components/ui/drawer" }
-    props: [
-        { name: "text", type: "string", description: "Title text" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Drawer title"
-}
-
-element drawer_trigger {
-    tag: "drawer_trigger"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["drawertrigger", "drawer-trigger"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DrawerTrigger", import: "@/components/ui/drawer" }
-    props: [
-        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
-    ]
-    allows_children: true
-    description: "Drawer trigger"
 }
 
 element dropdown {
@@ -3538,52 +3882,6 @@ element grid-item {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element hover_card {
-    tag: "hover_card"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["hovercard", "HoverCard", "hover-card"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "HoverCard", import: "@/components/ui/hover-card" }
-    sub_widgets: ["hover_card_content", "hover_card_trigger"]
-    props: [
-        { name: "open", type: "state_ref", description: "Open state binding" }
-        { name: "open_delay", type: "int", default: "0", description: "Open delay (ms)" }
-        { name: "close_delay", type: "int", default: "300", description: "Close delay (ms)" }
-    ]
-    allows_children: true
-    description: "Hover card container"
-}
-
-element hover_card_content {
-    tag: "hover_card_content"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["hovercardcontent", "hover-card-content", "hovercard-content"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "HoverCardContent", import: "@/components/ui/hover-card" }
-    props: [
-        { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Hover card content"
-}
-
-element hover_card_trigger {
-    tag: "hover_card_trigger"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["hovercardtrigger", "hover-card-trigger", "hovercard-trigger"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "HoverCardTrigger", import: "@/components/ui/hover-card" }
-    props: [
-        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
-    ]
-    allows_children: true
-    description: "Hover card trigger"
 }
 
 element input_group {
@@ -4442,460 +4740,74 @@ element selectvalue {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element sheet {
-    tag: "sheet"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["Sheet"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
-    vue: { component: "Sheet", import: "@/components/ui/sheet" }
-    sub_widgets: ["sheet_content", "sheet-close", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger", "sheetdescription"]
-    props: [
-        { name: "open", type: "state_ref", description: "Open state binding" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sheet (side drawer) container"
-}
-
-element sheet_content {
-    tag: "sheet_content"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["sheetcontent", "sheet-content"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SheetContent", import: "@/components/ui/sheet" }
-    props: [
-        { name: "side", type: "one_of:top,right,bottom,left", default: "right", description: "Sheet position side" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sheet content"
-}
-
-element sheet_footer {
-    tag: "sheet_footer"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["sheetfooter", "sheet-footer"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SheetFooter", import: "@/components/ui/sheet" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sheet footer"
-}
-
-element sheet_header {
-    tag: "sheet_header"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["sheetheader", "sheet-header"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SheetHeader", import: "@/components/ui/sheet" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sheet header"
-}
-
-element sheet_title {
-    tag: "sheet_title"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["sheettitle", "sheet-title"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SheetTitle", import: "@/components/ui/sheet" }
-    props: [
-        { name: "text", type: "string", description: "Title text" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sheet title"
-}
-
-element sheet_trigger {
-    tag: "sheet_trigger"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["sheettrigger", "sheet-trigger"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SheetTrigger", import: "@/components/ui/sheet" }
-    props: [
-        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sheet trigger"
-}
-
-element sheet-close {
-    tag: "sheet-close"
-    category: "overlay"
-    tier: "web_component"
-    aliases: ["sheet_close", "sheetclose"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: [
-        { name: "text", type: "string", description: "Close button text" }
-        { name: "onclick", type: "msg_ref", description: "Click handler" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sheet close button"
-}
-
-element sheetdescription {
-    tag: "sheetdescription"
-    aliases: ["sheet-description", "sheet_description"]
+element sheet-description {
+    tag: "sheet-description"
     category: "unknown"
     tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
+    aliases: ["sheet_description", "sheetdescription"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "SheetDescription", import: "@/components/ui/sheet" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
 
-element sidebar {
-    tag: "sidebar"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["Sidebar"]
-    backends: { web: "component", iced: "partial", gpui: "unknown" }
-    vue: { component: "Sidebar", import: "@/components/ui/sidebar" }
-    sub_widgets: ["sidebar_content", "sidebar_footer", "sidebar_group", "sidebar_header", "sidebar_input", "sidebar_menu", "sidebar_rail", "sidebar_separator"]
-    props: [
-        { name: "side", type: "one_of:left,right", default: "left", description: "Which side of the layout the sidebar is pinned to" }
-        { name: "variant", type: "one_of:sidebar,floating,inset", default: "sidebar", description: "Visual variant: plain sidebar, floating card, or inset (pairs with sidebar_inset)" }
-        { name: "collapsible", type: "one_of:offcanvas,icon,none", default: "offcanvas", description: "Collapse behavior: slide off-canvas, shrink to icon rail, or never collapse" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Composable application sidebar container (shadcn-vue Sidebar 1:1, desktop web only); root of the sidebar family, lives inside sidebar_provider"
-}
-
-element sidebar_content {
-    tag: "sidebar_content"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarContent", "sidebarcontent", "sidebar-content"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarContent", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Scrollable main region of the sidebar (flex-1, overflow-auto; overflow locked in icon-collapsed mode)"
-}
-
-element sidebar_footer {
-    tag: "sidebar_footer"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarFooter", "sidebarfooter", "sidebar-footer"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarFooter", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Bottom region of the sidebar (user card / secondary actions)"
-}
-
 element sidebar_group {
     tag: "sidebar_group"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarGroup", "sidebargroup", "sidebar-group"]
+    aliases: ["SidebarGroup", "sidebar-group", "sidebargroup"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarGroup", import: "@/components/ui/sidebar" }
-    sub_widgets: ["sidebar_group_action", "sidebar_group_content", "sidebar_group_label"]
+    sub_widgets: ["sidebar-group-action", "sidebar_group_content", "sidebar_group_label"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Labeled section that groups related menu items inside the sidebar (relative flex column, p-2)"
-}
-
-element sidebar_group_action {
-    tag: "sidebar_group_action"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarGroupAction", "sidebargroupaction", "sidebar-group-action"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarGroupAction", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "onclick", type: "msg_ref", description: "Click message (state mode)" }
-        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Icon action button anchored top-right of a sidebar group header (hidden in icon-collapsed mode)"
+    description: "Sidebar group"
 }
 
 element sidebar_group_content {
     tag: "sidebar_group_content"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarGroupContent", "sidebargroupcontent", "sidebar-group-content"]
+    aliases: ["SidebarGroupContent", "sidebar-group-content", "sidebargroupcontent"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarGroupContent", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Body of a sidebar group (w-full text-sm); holds the group's sidebar_menu"
+    description: "Sidebar group content"
 }
 
 element sidebar_group_label {
     tag: "sidebar_group_label"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarGroupLabel", "sidebargrouplabel", "sidebar-group-label"]
+    aliases: ["SidebarGroupLabel", "sidebar-group-label", "sidebargrouplabel"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarGroupLabel", import: "@/components/ui/sidebar" }
     props: [
-        { name: "text", type: "string", description: "Label text (shorthand; becomes slot content)" }
-        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism)" }
+        { name: "text", type: "string", description: "Group label text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Group header label (text-xs, fades out in icon-collapsed mode)"
-}
-
-element sidebar_header {
-    tag: "sidebar_header"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarHeader", "sidebarheader", "sidebar-header"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarHeader", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Top region of the sidebar (brand, search, workspace switcher)"
-}
-
-element sidebar_input {
-    tag: "sidebar_input"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarInput", "sidebarinput"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SidebarInput", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Search/filter input styled for the sidebar (h-8, sidebar focus ring)"
-}
-
-element sidebar_inset {
-    tag: "sidebar_inset"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarInset", "sidebarinset", "sidebar-inset"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarInset", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Main content area sibling to the sidebar (main element); picks up rounded-card styling when variant=inset"
-}
-
-element sidebar_menu {
-    tag: "sidebar_menu"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenu", "sidebarmenu", "sidebar-menu"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarMenu", import: "@/components/ui/sidebar" }
-    sub_widgets: ["sidebar_menu_action", "sidebar_menu_badge", "sidebar_menu_button", "sidebar_menu_item", "sidebar_menu_skeleton", "sidebar_menu_sub"]
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Vertical menu list (ul) of sidebar entries; direct child of sidebar_content or sidebar_group_content"
-}
-
-element sidebar_menu_action {
-    tag: "sidebar_menu_action"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuAction", "sidebarmenuaction", "sidebar-menu-action"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarMenuAction", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "onclick", type: "msg_ref", description: "Click message (state mode)" }
-        { name: "show_on_hover", type: "bool", default: "false", description: "Reveal only on hover/focus of the parent menu item" }
-        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Icon action button pinned to the right of a sidebar_menu_button (e.g. dropdown trigger; hidden in icon-collapsed mode)"
-}
-
-element sidebar_menu_badge {
-    tag: "sidebar_menu_badge"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuBadge", "sidebarmenubadge", "sidebar-menu-badge"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarMenuBadge", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Right-aligned count/label badge inside a menu item (hidden in icon-collapsed mode)"
-}
-
-element sidebar_menu_button {
-    tag: "sidebar_menu_button"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuButton", "sidebarmenubutton", "sidebar-menu-button"]
-    backends: { web: "component", iced: "partial", gpui: "unknown" }
-    vue: { component: "SidebarMenuButton", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "to", type: "string", description: "Route address: vue renders RouterLink via as-child polymorphism; auto-detects active from $route.path (exact or prefix-segment match)" }
-        { name: "active", type: "expr", description: "Selected state (maps to shadcn isActive); with to: auto-detected from route when unbound" }
-        { name: "variant", type: "one_of:default,outline", default: "default", description: "Visual variant (outline adds background, border and hover shadow)" }
-        { name: "size", type: "one_of:default,sm,lg", default: "default", description: "default=h-8 text-sm; sm=h-7 text-xs; lg=h-12 text-sm" }
-        { name: "tooltip", type: "string", description: "Tooltip text — declared; functional wiring deferred (icon-collapsed tooltip)" }
-        { name: "text", type: "string", description: "Label text (shorthand; becomes slot content)" }
-        { name: "onclick", type: "msg_ref", description: "Click message (state mode); to wins over onclick when both given" }
-        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism; used by the to route mode)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Interactive menu entry button with built-in hover/active states (shadcn-vue SidebarMenuButton); extension props to/active (Plan 548 D2) add route-aware active detection"
-}
-
-element sidebar_menu_item {
-    tag: "sidebar_menu_item"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuItem", "sidebarmenuitem", "sidebar-menu-item"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarMenuItem", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Single menu entry wrapper (li; group/menu-item peer scope for action/badge hover wiring)"
-}
-
-element sidebar_menu_skeleton {
-    tag: "sidebar_menu_skeleton"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuSkeleton", "sidebarmenuskeleton"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SidebarMenuSkeleton", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "show_icon", type: "bool", default: "false", description: "Render a leading icon placeholder block" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Loading placeholder row for a sidebar menu (randomized width between 50-90%)"
-}
-
-element sidebar_menu_sub {
-    tag: "sidebar_menu_sub"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuSub", "sidebarmenusub", "sidebar-menu-sub"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarMenuSub", import: "@/components/ui/sidebar" }
-    sub_widgets: ["sidebar_menu_sub_button", "sidebar_menu_sub_item"]
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Nested sub-menu list (indented with left border; hidden in icon-collapsed mode)"
-}
-
-element sidebar_menu_sub_button {
-    tag: "sidebar_menu_sub_button"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuSubButton", "sidebarmenusubbutton", "sidebar-menu-sub-button"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarMenuSubButton", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "to", type: "string", description: "Route address: vue renders RouterLink via as-child polymorphism; auto-detects active from $route.path (exact or prefix-segment match)" }
-        { name: "active", type: "expr", description: "Selected state (maps to shadcn isActive); with to: auto-detected from route when unbound" }
-        { name: "size", type: "one_of:sm,md", default: "md", description: "sm=text-xs; md=regular" }
-        { name: "onclick", type: "msg_ref", description: "Click message (state mode); to wins over onclick when both given" }
-        { name: "as_child", type: "bool", default: "false", description: "Render as child element via reka-ui Primitive (as-child polymorphism; used by the to route mode)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Sub-menu link/button (anchor by default, h-7); extension props to/active (Plan 548 D2) add route-aware active detection"
-}
-
-element sidebar_menu_sub_item {
-    tag: "sidebar_menu_sub_item"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarMenuSubItem", "sidebarmenusubitem", "sidebar-menu-sub-item"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarMenuSubItem", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Single sub-menu entry wrapper (li)"
+    description: "Sidebar group label"
 }
 
 element sidebar_provider {
     tag: "sidebar_provider"
     category: "navigation"
     tier: "web_component"
-    aliases: ["SidebarProvider", "sidebarprovider", "sidebar-provider"]
+    aliases: ["SidebarProvider", "sidebar-provider", "sidebarprovider"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "SidebarProvider", import: "@/components/ui/sidebar" }
-    sub_widgets: ["sidebar", "sidebar_inset", "sidebar_trigger"]
     props: [
-        { name: "default_open", type: "bool", default: "true", description: "Initial open state when uncontrolled (asset also persists to the sidebar cookie)" }
-        { name: "open", type: "expr", description: "Controlled open state (v-model:open); unbound falls back to default_open" }
-        { name: "onopenchange", type: "msg_ref", description: "Message on open-state change (update:open)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Provider owning the sidebar open/collapsed state context (useSidebar); wraps sidebar + sidebar_inset"
-}
-
-element sidebar_rail {
-    tag: "sidebar_rail"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarRail", "sidebarrail"]
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "SidebarRail", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Invisible hover handle on the sidebar edge that toggles collapse on click"
-}
-
-element sidebar_separator {
-    tag: "sidebar_separator"
-    category: "navigation"
-    tier: "web_component"
-    aliases: ["SidebarSeparator", "sidebarseparator", "sidebar-separator"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "SidebarSeparator", import: "@/components/ui/sidebar" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Horizontal divider between sidebar sections (mx-2 w-auto, sidebar-border color)"
+    description: "Sidebar provider context"
 }
 
 element sidebar_trigger {
@@ -4909,7 +4821,43 @@ element sidebar_trigger {
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: false
-    description: "Ghost icon button (PanelLeft) that toggles the sidebar open/collapsed state"
+    description: "Sidebar trigger button"
+}
+
+element sidebarinput {
+    tag: "sidebarinput"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["SidebarInput"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarInput", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebarmenuskeleton {
+    tag: "sidebarmenuskeleton"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["SidebarMenuSkeleton"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuSkeleton", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sidebarrail {
+    tag: "sidebarrail"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["SidebarRail"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarRail", import: "@/components/ui/sidebar" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element skeleton {
@@ -5484,3 +5432,4 @@ element virtual_window {
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
+
