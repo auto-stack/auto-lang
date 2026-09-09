@@ -350,13 +350,13 @@ py_torch_train 套件覆盖为金样。见 KNOWN-DEBT P539-D4。
 
 | # | 方向 | 范围 / 动机 | 前置与关联 |
 |---|------|------------|-----------|
-| ① | 中缀 `@` / `**` 运算符 | 本节 7.1/7.2 调研定案后的语法落地（纯 parser/lexer 层，语义面 539 已交付） | 7.1/7.2；独立小计划 |
+| ① | ~~中缀 `@` / `**` 运算符~~ ✅ 已交付（[Plan 560](../../plans/archive/560-script-mode-w2-sugar-batch.md) T07 C5/C6，归档在案；2026-09-09 复审核销时复跑实证）：`@` 词法消歧（`@T` 引用不动）+ `a @ b`→py_matmul(456)、`a ** b`→py_pow(473, GIL operator.pow 数字/`__pow__` 通用）——解析层直产桥调用；torch 句柄 `a @ b`=tensor(32)、原生 `2 ** 10`=1024 实测绿 | ~~7.1/7.2~~ 560 T07（语义等价分歧注记：发射从 s2s 规则前移到解析层，`@T` 类型位零影响实证） |
 | ② | `use.py` 别名/子模块语法 | 539 T08 裁定别名语法**不做**（importlib 句柄通道覆盖需求面：`use.py importlib: import_module` → 句柄 + py_getattr）；子模块项导入（`use.py torch.nn: Linear`）可用但同名项跨模块静默后者胜——别名语法消除该摩擦与静默覆盖风险 | 539 T08 四形态探针（待澄清②核销位） |
 | ③ | ~~py 返回值方法分派动态化~~ ✅ 已交付（2026-09-06, [Plan 569](../../plans/569-py-ret-dynamic-dispatch.md)）：codegen py-类型侧表+组合子双通道路由（`.len()`→obj_len/其余→obj_call），py_list 去规避示范 8/8，p5-p9 全相位零回归 | ~~P539-D2 根治：py 调用返回被 codegen 谎记类型，`.len()` 静态路由到 str.len 读垃圾~~ 已清偿（KNOWN-DEBT P539-D2 ✅）；顺登记 use.rs 同族谎言 P569-D1 |
 | ④ | Auto 原生 struct 运算符重载 | 539 dunder 路由只服务 `PyObjectHandle`；Auto 自己的 `type T` 上重载 `+ * ==` 需 trait 体系——与 Plan 525 延后的 trait/动态分发同一条语言线，宜合并立项 | 525 非目标清单；W1 dunder 路由为语义对照 |
 | ⑤ | bulk ndarray buffer 封送 | 训练批数据 Auto 侧持有时的必要件（缓冲协议/零拷贝）；539 靠"数据活 Python 侧"约定绕开，批输入规模化后绕不开 | 539 非目标清单；需求驱动 |
 | ⑥ | for-in tuple 解包 | DIV-PY-TUPLE-1：tuple→List 拍平后多变量循环解包在 a2py 侧 unpack 报错，W2 套件用单变量+索引规避；语法级解包或 Auto tuple 值类型二选一 | 539 T07 执行注记；DIV-PY-TUPLE-1 |
-| ⑦ | a2py 语义修补批 | P539-D3 复合接收者无括号（`py_call(t==t,"sum")` 优先级错）+ DIV-PY-CLOSURE-1 语句体闭包降级 set 字面量 + P539-D5 py_call_may×kwargs 组合——小项集中清偿（531 式债批） | KNOWN-DEBT P539-D3/D5 |
+| ⑦ | a2py 语义修补批 | P539-D3 复合接收者无括号（`py_call(t==t,"sum")` 优先级错）+ DIV-PY-CLOSURE-1 语句体闭包降级 set 字面量——两项集中清偿（531 式债批；~~P539-D5 py_call_may×kwargs~~ 已被 Plan 567 清偿，2026-09-09 复核更新） | KNOWN-DEBT P539-D3 + DIV-PY-CLOSURE-1 |
 | ⑧ | 条件立项 | GPU/CUDA device 路径验证专项（539 只断言确定性 CPU）；transformers/datasets 上层生态套件（沿用 461/539 三方方法论） | 需求触发 |
 
 ### 7.5 长期方向：Auto→C（libtorch）替代热路径
