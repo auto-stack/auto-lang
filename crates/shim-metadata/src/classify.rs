@@ -24,18 +24,74 @@ pub struct Classified {
     pub skips: Vec<Skip>,
 }
 
+/// PLAN-596 T4:自动 mono 实例表——方法 key "Type.method" → 实例类型标签列表
+/// ("i64"/"String")。来自 .at 调用点词法推导(auto-lang 侧传入),替换引擎把
+/// Generic(T) 实例化为具体 Ty 后走正常 classify_one;条目方法名带 "__<label>"
+/// 后缀(dispatch/注册键区分实例)。430 的 Exceptions.mono 手工通道保持不变,
+/// 本表是自动推导通道(激活"例外表未接通"遗留的另一半:替换引擎)。
+pub type MonoInstances = HashMap<String, Vec<String>>;
+
+/// 按标签实例化方法签名(参数/返回中的 Generic 全替换;当前标签集 i64/String,
+/// 由调用点字面量形态可推导的范围决定)。标签不认识 → None(调用方跳过)。
+pub fn instantiate_method(m: &ShimMethod, label: &str) -> Option<ShimMethod> {
+    let (param_ty, ret_ty) = match label {
+        "i64" => (Ty::I64, Ty::I64),
+        // 参数 String = TakeStr(所有权),返回 String = Str
+        "String" => (Ty::StrOwned, Ty::Str),
+        _ => return None,
+    };
+    let subst = |t: &Ty, param: bool| -> Ty {
+        match t {
+            Ty::Generic(_) => {
+                if param {
+                    param_ty.clone()
+                } else {
+                    ret_ty.clone()
+                }
+            }
+            other => other.clone(),
+        }
+    };
+    Some(ShimMethod {
+        type_name: m.type_name.clone(),
+        method: format!("{}__{}", m.method, label),
+        self_kind: m.self_kind.clone(),
+        params: m.params.iter().map(|t| subst(t, true)).collect(),
+        ret: subst(&m.ret, false),
+        generic: false,
+        fallible: m.fallible,
+        nullable: m.nullable,
+        field: None,
+        trait_name: None,
+    })
+}
+
 /// std 追加段路径(进程内):Option 装箱为不透明对象(E 阶段既有语义),Result 不涉及。
 pub fn classify_all(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
-    classify_with(methods, exc, false)
+    classify_with(methods, exc, false, &Default::default())
 }
 
 /// 三方 cdylib 路径:Result 走 unwrap_ok(解包 + 错误通道);Option 解 Some 压值、
 /// None 压 null(PLAN-591 T2,仅 s/p 槽,标量槽哨兵歧义仍跳过)。
 pub fn classify_all_third_party(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
-    classify_with(methods, exc, true)
+    classify_with(methods, exc, true, &Default::default())
 }
 
-fn classify_with(methods: &[ShimMethod], exc: &Exceptions, third_party: bool) -> Classified {
+/// PLAN-596 T4:带自动 mono 实例表的三方分类入口(methods_pack 调用)。
+pub fn classify_all_third_party_mono(
+    methods: &[ShimMethod],
+    exc: &Exceptions,
+    mono: &MonoInstances,
+) -> Classified {
+    classify_with(methods, exc, true, mono)
+}
+
+fn classify_with(
+    methods: &[ShimMethod],
+    exc: &Exceptions,
+    third_party: bool,
+    mono: &MonoInstances,
+) -> Classified {
     let mut plans = Vec::new();
     let mut skips = Vec::new();
     for m in methods {
@@ -47,6 +103,40 @@ fn classify_with(methods: &[ShimMethod], exc: &Exceptions, third_party: bool) ->
                 reason: format!("exception-skip: {reason}"),
             });
             continue;
+        }
+        // PLAN-596 T4:泛型方法 + 自动实例表 → 每实例一条替代条目
+        // (Generic 替换为具体 Ty 后走正常管线;未实例化的原条目不发射)。
+        if m.generic {
+            // 查找序:"Type.method" 全键 → 裸方法名(词法推导不知接收者类型,
+            // 以裸名登记;单 crate 语料下碰撞风险可忽略,注释留痕)
+            let labels = mono.get(&key).or_else(|| mono.get(&m.method));
+            if let Some(labels) = labels.filter(|l| !l.is_empty()) {
+                let mut any = false;
+                for label in labels {
+                    match instantiate_method(m, label) {
+                        Some(inst) => match classify_one(&inst, third_party) {
+                            Ok(plan) => {
+                                plans.push(plan);
+                                any = true;
+                            }
+                            Err(reason) => skips.push(Skip {
+                                type_name: inst.type_name.clone(),
+                                method: inst.method.clone(),
+                                reason: format!("mono[{label}]: {reason}"),
+                            }),
+                        },
+                        None => skips.push(Skip {
+                            type_name: m.type_name.clone(),
+                            method: m.method.clone(),
+                            reason: format!("mono[{label}]: unknown instance label"),
+                        }),
+                    }
+                }
+                if any {
+                    continue;
+                }
+                // 全部实例失败 → 落回原条目的常规 skip 路径(下方规则)
+            }
         }
         // 规则 0:泛型方法默认不可调用,例外表 mono 提示可解(标注 T->具体类型)。
         if m.generic && !exc.mono.contains_key(&key) {

@@ -9492,9 +9492,17 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 }
             }
             // Plan 430 C2: 三方 crate 方法 shim 包(dep 声明 + use.rust 导入的类型;
-            // 生成段/手写臂/native_catalog 均未命中后的最后一段)
+            // 生成段/手写臂/native_catalog 均未命中后的最后一段)。
+            // PLAN-596 T4:mono 实例后缀键 miss 时剥 "__<label>" 重试——codegen 对
+            // dep 侧齐整字面量调用统一加后缀,非泛型方法靠此回退到裸名条目。
             if crate::vm::ffi::dep_methods::dispatch(&type_name, &method, task, vm)? {
                 return Ok(());
+            }
+            if method.contains("__") {
+                let stripped = method.split("__").next().unwrap_or(&method).to_string();
+                if crate::vm::ffi::dep_methods::dispatch(&type_name, &stripped, task, vm)? {
+                    return Ok(());
+                }
             }
             return Err(VMError::RuntimeError(format!(
                 "Unknown Rust stdlib call: {type_name}.{method}"

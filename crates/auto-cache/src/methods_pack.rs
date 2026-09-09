@@ -9,7 +9,7 @@
 // 降级策略:nightly 不可用 → 返回 Ok(None),仅自由函数路径可用(现状不变)。
 
 use crate::sandbox::{DepSource, Sandbox, SandboxError};
-use shim_metadata::classify::{classify_all_third_party as classify_all, Exceptions};
+use shim_metadata::classify::{classify_all_third_party as classify_all, classify_all_third_party_mono, Exceptions, MonoInstances};
 use shim_metadata::emit_cdylib::{emit_pack_parts, PackMeta};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -89,6 +89,7 @@ impl Sandbox {
         &self,
         crate_name: &str,
         source: &DepSource,
+        mono: &MonoInstances,
     ) -> Result<Option<MethodsPackBuilt>, SandboxError> {
         if !nightly_available() {
             log::info!(
@@ -111,6 +112,28 @@ impl Sandbox {
         //    b) path 源的**源码内容 hash**(快路径此前只看版本号,fixture 源码
         //    变更后陈旧 pack 永续复用——591 执行期实勘;registry 源仍走版本核对)。
         if let Some((lib, manifest_json)) = self.find_methods_pack(crate_name) {
+            // PLAN-596 T4:mono 实例表比对——mono 变化必须重建,否则陈旧包
+            // 绕过实例化(签名集恰好同型时指纹不感知 mono 输入)。
+            let mono_stale = {
+                let cached: std::collections::BTreeMap<String, Vec<String>> =
+                    serde_json::from_str::<shim_metadata::emit_cdylib::ShimManifest>(
+                        &manifest_json,
+                    )
+                    .ok()
+                    .map(|m| m.mono)
+                    .unwrap_or_default();
+                let current: std::collections::BTreeMap<String, Vec<String>> = mono
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                cached != current
+            };
+            if mono_stale {
+                log::info!(
+                    "plan430: cached methods pack for {} is stale (mono set changed), rebuilding",
+                    crate_name
+                );
+            } else {
             let format_stale = manifest_format(&manifest_json)
                 .map(|f| f != shim_metadata::emit_cdylib::MANIFEST_FORMAT)
                 .unwrap_or(false);
@@ -164,6 +187,7 @@ impl Sandbox {
                 }
             }
         }
+        } // PLAN-596 T4 mono_stale guard
 
         // 2. wrapper 工程(独立工作区,防被宿主 repo 吸收)。
         //    先写占位 lib.rs——rustdoc 解析 manifest 需要 lib 目标存在,
@@ -209,7 +233,12 @@ impl Sandbox {
         let parsed = shim_metadata::rustdoc::parse_all(&doc)
             .map_err(|e| SandboxError::CompilationFailed(format!("rustdoc parse failed: {e}")))?;
         let exc = Exceptions::default();
-        let classified = classify_all(&parsed.methods, &exc);
+        // PLAN-596 T4:mono 空表时等价既有行为(classify_all = third_party 别名)
+        let classified = if mono.is_empty() {
+            classify_all(&parsed.methods, &exc)
+        } else {
+            classify_all_third_party_mono(&parsed.methods, &exc, mono)
+        };
 
         // 4+5. 生成 → 编译,失败时借 rustc 当检查器:从报错提取肇事符号,
         // 剔除对应方法后重试(至多 4 轮;Plan D/E 同款做法,防止个别
@@ -250,6 +279,7 @@ impl Sandbox {
                 &parsed.free_fns,
                 &parsed.fields,
                 &parsed.unit_enums,
+                mono,
             );
             std::fs::write(src_dir.join("lib.rs"), &files.lib_rs)?;
 

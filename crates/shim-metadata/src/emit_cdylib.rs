@@ -32,6 +32,10 @@ pub struct ShimManifest {
     /// 自由函数仅作元信息(D2:known_signature 元数据优先);
     /// 代码生成仍走 plan-212 syn 路径,避免双生成器符号冲突。
     pub functions: Vec<FunctionEntry>,
+    /// PLAN-596 T4:产出本包的自动 mono 实例表(BTreeMap 保序,快路径
+    /// 与调用方当前推导比对——mono 变化必须重建,否则陈旧包绕过实例化)。
+    #[serde(default)]
+    pub mono: std::collections::BTreeMap<String, Vec<String>>,
     /// 布局段(manifest v2):emit 期空占位,装载期由 cdylib 探针导出
     /// auto__shim_layouts 填充(见 dep_methods::register_pack)。
     #[serde(default)]
@@ -277,8 +281,9 @@ pub fn emit_pack(
     free_fns: &[ShimMethod],
     fields: &[crate::rustdoc::StructField],
     unit_enums: &[crate::rustdoc::UnitEnum],
+    mono: &crate::classify::MonoInstances,
 ) -> (String, PackFiles) {
-    emit_pack_parts(meta, dep_line, &c.plans, &c.skips, exc, free_fns, fields, unit_enums)
+    emit_pack_parts(meta, dep_line, &c.plans, &c.skips, exc, free_fns, fields, unit_enums, mono)
 }
 
 /// parts 版生成(供 rustc 检查器剔除环按缩减后的计划集重生成)。
@@ -292,7 +297,27 @@ pub fn emit_pack_parts(
     free_fns: &[ShimMethod],
     fields: &[crate::rustdoc::StructField],
     unit_enums: &[crate::rustdoc::UnitEnum],
+    mono: &crate::classify::MonoInstances,
 ) -> (String, PackFiles) {
+    // PLAN-596 T4:自由函数泛型实例化——mono 表命中者按标签替换为具体签名条目
+    // (name 带 "__<label>" 后缀,212 侧以 body_override 调真实泛型函数);
+    // 实例条目与原非泛型条目合并进指纹输入与 manifest(实例集变化→指纹变化)。
+    let free_fns_raw = free_fns;
+    let mut effective_free: Vec<ShimMethod> = Vec::new();
+    for f in free_fns_raw {
+        if f.generic {
+            if let Some(labels) = mono.get(&f.method).filter(|l| !l.is_empty()) {
+                for label in labels {
+                    if let Some(inst) = crate::classify::instantiate_method(f, label) {
+                        effective_free.push(inst);
+                    }
+                }
+            }
+        } else {
+            effective_free.push(f.clone());
+        }
+    }
+    let free_fns = &effective_free;
     let fp = fingerprint_parts_with(meta, plans, free_fns, fields, unit_enums);
     let crate_ident = meta.crate_name.replace('-', "_");
 
@@ -327,9 +352,9 @@ pub fn emit_pack_parts(
             ret: ret_char_of(&classify_ret(&f.ret)).to_string(),
         })
         .collect();
-    let skipped_generic_fns: Vec<&str> = free_fns
+    let skipped_generic_fns: Vec<&str> = free_fns_raw
         .iter()
-        .filter(|f| f.generic)
+        .filter(|f| f.generic && !mono.get(&f.method).is_some_and(|l| !l.is_empty()))
         .map(|f| f.method.as_str())
         .collect();
     if !skipped_generic_fns.is_empty() {
@@ -350,6 +375,10 @@ pub fn emit_pack_parts(
         generator: GENERATOR.to_string(),
         methods: entries,
         functions,
+        mono: mono
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
         layouts: LayoutMap::new(),
     };
     let manifest_json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
@@ -762,6 +791,9 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
 
     // 接收者重构 + 调用表达式
     let call_expr = |args: &[String]| -> String { args.join(", ") };
+    // PLAN-596 T4:mono 实例条目的方法名带 "__<label>" 后缀(dispatch 键用),
+    // 被调真名剥后缀(__recv.pick_max(x, y)——rustc 从具体实参推断单态化)。
+    let callee: &str = m.method.split("__").next().unwrap_or(&m.method);
     let invocation = if let Some(f) = &m.field {
         // 合成字段 getter:标量 Copy 直读;String/不透明字段 clone
         // (无 Clone 的类型由 rustc 检查器剔除环兜底)
@@ -790,21 +822,21 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
     } else {
         match m.self_kind {
         SelfKind::Static => {
-            format!("<{full}>::{}({})", m.method, call_expr(&call_args))
+            format!("<{full}>::{}({})", callee, call_expr(&call_args))
         }
         SelfKind::Read => format!(
             "{{ let __recv: &{full} = unsafe {{ &*(arg_0 as *const {full}) }}; __recv.{}({}) }}",
-            m.method,
+            callee,
             call_expr(&call_args)
         ),
         SelfKind::Write => format!(
             "{{ let __recv: &mut {full} = unsafe {{ &mut *(arg_0 as *mut {full}) }}; __recv.{}({}) }}",
-            m.method,
+            callee,
             call_expr(&call_args)
         ),
         SelfKind::Move => format!(
             "{{ let __recv = unsafe {{ Box::from_raw(arg_0 as *mut {full}) }}; (*__recv).{}({}) }}",
-            m.method,
+            callee,
             call_expr(&call_args)
         ),
         }

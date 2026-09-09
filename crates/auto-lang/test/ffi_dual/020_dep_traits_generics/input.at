@@ -1,5 +1,5 @@
 dep autolang_traits(path: "{{FFI_DUAL_DIR}}/020_dep_traits_generics/fixture/autolang_traits")
-use.rs autolang_traits::{Temp, Tagged}
+use.rs autolang_traits::{Temp, Tagged, Pair, pick}
 
 fn main() {
     let abc str = "abc"
@@ -15,4 +15,12 @@ fn main() {
     print(src.hits)
     print(cp.hits)
     print(src.tag)
+
+    let a = pick(3, 9)
+    print(a)
+    let b = pick("a", "z")
+    print(b)
+
+    let p = Pair.new(2, 7)
+    print(p.pick_max(20, 70))
 }
