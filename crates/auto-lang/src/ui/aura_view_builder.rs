@@ -7767,7 +7767,11 @@ let tabs_inner = View::Row {
                 let needs_size = Style::parse(&s)
                     .map(|p| !has_size_class(&p))
                     .unwrap_or(true);
-                let merged = if needs_size { format!("{s} w-10 h-10") } else { s };
+                let merged = if needs_size {
+                    format!("{s} w-10 h-10")
+                } else {
+                    s
+                };
                 Style::parse(&merged).ok()
             })
             .unwrap_or_else(|| Style::parse("w-10 h-10 bg-gray-300 rounded-full").ok());
