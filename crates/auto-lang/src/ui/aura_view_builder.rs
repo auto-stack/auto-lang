@@ -1860,7 +1860,18 @@ impl<'a> AuraViewBuilder<'a> {
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "sep" | "separator" => self.convert_sep(props, bindings),
-            "avatar" => self.convert_avatar(props),
+            // os-007（origin PLAN-577/P534-D4）：avatar 家族补齐——
+            // avatar 容器转换子件；avatar-image 复用 img 图源臂；
+            // avatar-fallback 走文本臂（居中由容器注入）。
+            "avatar" => self.convert_avatar(props, children, bindings),
+            "avatar-image" => self.convert_image_or_icon(props),
+            "avatar-fallback" => self.convert_text_element(
+                "avatar-fallback",
+                props,
+                events,
+                children,
+                bindings,
+            ),
             // Plan 418 P2-3: config-driven menubar/toolbar (auto-edit.at).
             // path/probe pass through so synthesized buttons land in the
             // snapshot's event index (MCP clickability). §8.4①: probe off
@@ -3440,7 +3451,18 @@ impl<'a> AuraViewBuilder<'a> {
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "sep" | "separator" => self.convert_sep(props, bindings),
-            "avatar" => self.convert_avatar(props),
+            // os-007（origin PLAN-577/P534-D4）：avatar 家族补齐——
+            // avatar 容器转换子件；avatar-image 复用 img 图源臂；
+            // avatar-fallback 走文本臂（居中由容器注入）。
+            "avatar" => self.convert_avatar(props, children, bindings),
+            "avatar-image" => self.convert_image_or_icon(props),
+            "avatar-fallback" => self.convert_text_element(
+                "avatar-fallback",
+                props,
+                events,
+                children,
+                bindings,
+            ),
 
             // Child widget lookup or fallback
             _ => {
@@ -7686,13 +7708,33 @@ let tabs_inner = View::Row {
     fn convert_avatar(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let style = self.extract_style(props);
 
-        let child = View::Text {
-            content: "".to_string(),
-            style: None,
-            selectable: false,
+        // os-007（P534-D4）：有子件→avatar-image/avatar-fallback 子件组合
+        // （经 convert_node_with 同表分发）；无子件保持灰圆占位（回归面）。
+        let child = if children.is_empty() {
+            View::Text {
+                content: "".to_string(),
+                style: None,
+                selectable: false,
+            }
+        } else if children.len() == 1 {
+            self.convert_node_with(&children[0], bindings)
+        } else {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .collect();
+            View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+            }
         };
         let mut builder = View::container(child);
         builder = builder.center_x().center_y();
