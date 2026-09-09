@@ -271,6 +271,9 @@ fn color_token(color: &Color) -> Option<registry::TokenName> {
         Color::Info => T::Info,
         Color::OnPrimary => T::PrimaryForeground,
         Color::OnSecondary => T::SecondaryForeground,
+        // PLAN-601 T-08（P593-D1）：accent 独立投影。
+        Color::Accent => T::Accent,
+        Color::OnAccent => T::AccentForeground,
         Color::OnDestructive => T::DestructiveForeground,
         Color::OnBackground => T::Foreground,
         Color::OnSurface => T::MutedForeground,

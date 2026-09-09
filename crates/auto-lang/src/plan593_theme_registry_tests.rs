@@ -106,22 +106,10 @@ fn zero_drift_accent_presets() {
     }
 }
 
-/// T-b（PLAN-601 T-02 升级 value-pinned）：canonical 布局归一后，
-/// `generate_base_css()` 的「变量名→值」对与 Phase 1 逐字金样
-/// （tests/fixtures/plan593/base_css.golden，留作基线参照）逐对相等。
-fn var_pairs(css: &str) -> Vec<(String, String)> {
-    css.lines()
-        .filter_map(|l| l.trim().strip_prefix("--"))
-        .filter_map(|l| l.split_once(':'))
-        .map(|(k, v)| (k.to_string(), v.trim().trim_end_matches(';').to_string()))
-        .collect()
-}
-#[test]
-fn base_css_values_match_p1_baseline() {
-    let old = include_str!("../tests/fixtures/plan593/base_css.golden");
-    let new = crate::ui_gen::vue::VueGenerator::generate_base_css();
-    assert_eq!(var_pairs(&old), var_pairs(&new), "canonical 归一后 base_css 值对漂移");
-}
+/// T-b：base_css 金样随 PLAN-601 T-09/D3（E2 退役）一并退役——
+/// 值基线参照 fixtures/plan593/base_css.golden 留档，zinc 主题表
+/// 存续于 registry（render_fingerprint 钉）。
+
 
 // ── S8 T-c：词表封闭性/投影完备性 ─────────────────────────────────────
 
@@ -164,6 +152,8 @@ fn t_c_projection_complete_in_stella() {
         Color::Error, Color::Warning, Color::Success, Color::Info,
         Color::OnPrimary, Color::OnSecondary, Color::OnDestructive,
         Color::OnBackground, Color::OnSurface, Color::Border,
+        // PLAN-601 T-08（P593-D1 收口）：accent 独立投影入完备集。
+        Color::Accent, Color::OnAccent,
     ];
     for dark in [false, true] {
         theme::set_dark_mode(dark);
