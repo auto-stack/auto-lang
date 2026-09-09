@@ -8,6 +8,10 @@
 
 use super::Color;
 
+/// PLAN-593（Design 29 Phase 1）：语义 token 值单一事实源——zinc/scaffold
+/// （CSS 面）与 stella（VM 面）三套色板 + accent 表 + 封闭词表。
+pub mod registry;
+
 // Plan 370 D-GAP-2/D-GAP-5: thread-local theme state for dark mode + accent.
 // Set by the renderer before each render pass from VmBridge state.
 // Plan 408: default to true because the iced window theme is hardcoded to
