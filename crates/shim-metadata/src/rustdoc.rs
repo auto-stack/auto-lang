@@ -495,6 +495,33 @@ fn upper_first(s: &str) -> String {
 }
 
 /// 参数/嵌套位置的类型投影:拥有的外来路径 → OpaqueOwned(区分借用,见 classify)。
+/// PLAN-596 T5:Box<T> 的 angle_bracketed 实参里是否 dyn_trait 含 Fn 族 trait
+/// (Fn/FnMut/FnOnce——按 trait path 前缀判定)。
+fn box_arg_has_fn_trait(rp: &Value) -> bool {
+    let args = rp
+        .get("args")
+        .and_then(|a| a.get("angle_bracketed"))
+        .and_then(|a| a.get("args"))
+        .and_then(|v| v.as_array());
+    let Some(args) = args else { return false };
+    args.iter().any(|a| {
+        a.get("type")
+            .and_then(|t| t.get("dyn_trait"))
+            .and_then(|d| d.get("traits"))
+            .and_then(|v| v.as_array())
+            .map(|ts| {
+                ts.iter().any(|t| {
+                    t.get("trait")
+                        .and_then(|tr| tr.get("path"))
+                        .and_then(|p| p.as_str())
+                        .map(|p| p == "Fn" || p == "FnMut" || p == "FnOnce")
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false)
+    })
+}
+
 fn proj_ty(ty: &Value) -> Ty {
     if let Some(p) = ty.get("primitive").and_then(|v| v.as_str()) {
         return match p {
@@ -535,6 +562,12 @@ fn proj_ty(ty: &Value) -> Ty {
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown")
             .to_string();
+        // PLAN-596 T5:Box<dyn Fn(..)>(回调形参)——angle_bracketed 实参里的
+        // dyn_trait 若含 Fn 族 trait,投影为 OpaqueOwned("Box<Fn>") 让
+        // classify 的 Callback 通道命中(名字丢实参是 v1 简化,Fn 标记除外)
+        if name == "Box" && box_arg_has_fn_trait(rp) {
+            return Ty::OpaqueOwned("Box<Fn>".into());
+        }
         return match name.as_str() {
             // 按值 String 参数:我们持有 CString 拷贝的所有权,可直接转移
             "String" => Ty::StrOwned,

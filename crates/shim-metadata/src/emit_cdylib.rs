@@ -42,6 +42,14 @@ pub struct ShimManifest {
     pub layouts: LayoutMap,
 }
 
+/// PLAN-596 T5:回调形参元数据——wrapper 侧 adapter 经注入跳板重入 VM。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallbackSpec {
+    pub param_idx: usize,
+    /// 形参签名的字母表简写(prototype 固定 "l->l")
+    pub fn_sig: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MethodEntry {
     /// 短类型名(dispatch 3000 的 key,如 "Counter")
@@ -73,6 +81,9 @@ pub struct MethodEntry {
     pub nullable: bool,
     /// 该类型的析构符号(auto__drop_<Type>)
     pub drop_export: String,
+    /// PLAN-596 T5:回调形参索引与签名(prototype:i64->i64)
+    #[serde(default)]
+    pub callbacks: Vec<CallbackSpec>,
 }
 
 // =============================================================================
@@ -324,6 +335,32 @@ pub fn emit_pack_parts(
     // 方法条目与 wrapper 源码
     let mut entries = Vec::new();
     let mut wrappers = String::new();
+    // PLAN-596 T5:回调 adapter 前置段——HostCb(令牌→注入跳板)+ 注册导出
+    let has_callback = plans
+        .iter()
+        .any(|p| p.args.iter().any(|a| matches!(a, ArgPlan::Callback)));
+    if has_callback {
+        wrappers.push_str(
+            r#"// PLAN-596 T5: callback adapter (injected host trampoline + token)
+type HostCbFn = unsafe extern "C" fn(token: u64, arg: i64) -> i64;
+static HOST_CB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[no_mangle]
+pub extern "C" fn auto__register_host_trampoline(f: HostCbFn) {
+    HOST_CB.store(f as u64, std::sync::atomic::Ordering::SeqCst);
+}
+struct HostCb { token: u64 }
+impl HostCb {
+    fn boxed(token: i64) -> Box<dyn Fn(i64) -> i64> {
+        Box::new(move |x: i64| unsafe {
+            let f = std::mem::transmute::<u64, HostCbFn>(HOST_CB.load(std::sync::atomic::Ordering::SeqCst));
+            f(token as u64, x)
+        })
+    }
+}
+
+"#,
+        );
+    }
     let mut drop_fns = String::new();
     let mut dropped_types: Vec<String> = Vec::new();
     for p in plans {
@@ -640,7 +677,9 @@ fn arg_char(a: &ArgPlan) -> char {
         ArgPlan::ScalarF64 => 'f',
         ArgPlan::ScalarBool => 'b',
         ArgPlan::SelfHandle | ArgPlan::OpaqueHandle => 'p',
-    }
+        // PLAN-596 T5:回调令牌走 i64 槽
+    crate::types::ArgPlan::Callback => 'l',
+}
 }
 
 fn ret_char(r: &RetPlan) -> char {
@@ -777,6 +816,8 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
                 };
                 format!("{name}{cast}")
             }
+            // PLAN-596 T5:回调形参——wrapper 侧包装 adapter(经注入跳板重入 VM)
+            ArgPlan::Callback => format!("HostCb::boxed({name})"),
             ArgPlan::OpaqueHandle => {
                 let arg_ty = match &m.params[i] {
                     Ty::Opaque(n) => format!("{crate_ident}::{n}"),
@@ -1009,6 +1050,13 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         fallible: p.fallible,
         nullable: p.nullable,
         drop_export: format!("auto__drop_{short}"),
+        callbacks: p
+            .args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| matches!(a, ArgPlan::Callback))
+            .map(|(i, _)| CallbackSpec { param_idx: i, fn_sig: "l->l".into() })
+            .collect(),
     };
     (entry, src)
 }

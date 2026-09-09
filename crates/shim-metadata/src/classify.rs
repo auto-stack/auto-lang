@@ -209,6 +209,12 @@ fn classify_one(m: &ShimMethod, third_party: bool) -> Result<MarshalPlan, String
                 return Err("option param (plan-591 v1: return-side only)".into())
             }
             Ty::Opaque(_) => ArgPlan::OpaqueHandle,
+            // PLAN-596 T5:Box<dyn Fn(..)> 形参 → Callback 通道(ABI 'l' 槽传
+            /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+            Ty::OpaqueOwned(n) if n.contains("Fn") => {
+                args.push(ArgPlan::Callback);
+                continue;
+            }
             // 拥有的外来类型参数:VM 侧无法构造该值,v1 跳过
             Ty::OpaqueOwned(_) => return Err("owned opaque param".into()),
             Ty::Generic(_) | Ty::SelfTy => return Err("generic/self param".into()),

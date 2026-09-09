@@ -143,6 +143,9 @@ pub enum ArgPlan {
     SelfHandle,
     /// 外来对象句柄(参数是别的 Opaque 类型)
     OpaqueHandle,
+    /// PLAN-596 T5:Box<dyn Fn> 形参——ABI 走 i64 槽传**回调令牌**(VM 闭包 id),
+    /// wrapper 侧包装 adapter 经注入跳板重入 VM 执行 .at 闭包。
+    Callback,
 }
 
 #[derive(Debug, Clone)]
