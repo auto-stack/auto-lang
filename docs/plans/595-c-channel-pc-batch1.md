@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-595
-status: execution_done               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: c-channel-pc-batch1
 author: [ZCode]
 created_at: 2026-09-09
@@ -9,6 +9,15 @@ updated_at: 2026-09-09
 affects: [auto-bindgen, auto-lang/vm ffi, auto-lang/trans c]
 current_step: 6
 total_steps: 6
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components:
+  - "auto-bindgen/project.md: 修改 —— manifest 模型增 CTypeDesc::FnPtr{ret,params} 回调变体(首个回调用例 SetConsoleCtrlHandler)与 CHeaderManifest.abi 注记(serde default "c",win32="system");extractor 增 windows.h kernel32 console 数据集 6 函数(GetCommandLineA/FreeConsole/AttachConsole/SetConsoleCtrlHandler/GenerateConsoleCtrlEvent/Sleep);type_map 两函数签名 &'static str→String(FnPtr 组合签名);c_bindings/windows.json 导出"
+  - "auto-lang/vm/design/ffi.md: 修改 —— C FFI 节补 FnPtr 语义:VM 运行期对含 FnPtr 签名的函数在 load_header 注册期即返回 VMError(Plan 267 Impossible 定性,清晰报错替代 panic/静默),封送循环防御臂同语义;回调消费走 a2c 后端(闭包→函数指针)"
+  - "auto-lang/trans/overview.md: 修改 —— a2c 闭包发射规则补:闭包定义在 main 之后发射,其原型必须写入头文件(generate_closure_definitions 先于 header 装配执行)——无原型则 main 内引用闭包为 C2065(真 MSVC 编译抓出,文本快照盲区);连带:含闭包的程序头文件非空→自 include"
+new_spec_components: []
+touched_goals:
+  - "GOAL-013: C 生态——a2c 首个真实 win32 互操作语料与产物(autoterm-ctrlc 复刻,真机门禁对拍),manifest 类型层就位(回调/ABI 注记)"
 ---
 
 # [PLAN-595] C 通道 P-C 首批:manifest 类型层扩展 + kernel32 manifest + a2c 复刻 autoterm-ctrlc 对拍
@@ -90,6 +99,16 @@ total_steps: 6
 - MSVC 经 cmd/vcvars 调用,Git Bash 不直呼 cl;
 - 本计划**不动** auto-term 代码;004⑥(a2r 生成 Rust FFI)不在本批。
 
+### 规范增量
+
+| 操作 | 目标 | 内容 |
+|---|---|---|
+| 修改 | `docs/specs/auto-bindgen/project.md` | manifest 模型:FnPtr 变体 + abi 注记;windows.h 数据集 6 函数;type_map String 化;windows.json |
+| 修改 | `docs/specs/auto-lang/vm/design/ffi.md` | C FFI 节:FnPtr 注册期明确拒绝(VMError),回调消费归 a2c |
+| 修改 | `docs/specs/auto-lang/trans/overview.md` | a2c 闭包原型入头规则(先于 header 装配;C2065 教训) |
+
+> 规范正文编辑于 merge 阶段发布(review 不动 canonical Specs/live ledger)。
+
 ## 9. 复审记录
 
 stage: work | PLAN-595 | rev 1 | pass | code_commit=a1626b0fb(plan-595-dev) |
@@ -132,3 +151,25 @@ task_ids=T1-T6 | evidence=见「执行证据」 | blockers=无 | next=review
 ## 10. 待澄清事项
 
 (无)
+
+---
+stage: review | PLAN-595 | rev 1 | **pass** | reviewed_commit=a1626b0fb |
+base=0b730c4a2 | deps: auto-down@afc1cc8(组兄 Worktree, resolution only) |
+spec_inputs: auto-bindgen/project.md、auto-lang/vm/design/ffi.md、
+auto-lang/trans/overview.md@HEAD |
+acceptance: AC1 bindgen 6/6 复验绿;AC2 a2c 套件 109 ok(基线 8 存量失败
+双验:stash 复跑+主检出旧二进制;003_closure 快照随闭包修复更新且更优);
+AC3 构建脚本复跑可重复,静态 exit=3/3、2/2;AC4 产物置换重执行 ctrl_event
+=3 passed/1 ignored(26200 ping 已知边界),Rust 产物 md5 恢复一致
+(e3923656…);AC5 双 helper 同门禁同绿+静态全同 |
+suites: cargo tf=3479/3480、tt=2995/2996、tv=2783/2784、desktop_protocol
+(ui-iced)=63/64——全部唯一失败两例均**基线固有**(主检出 0b730c4a2 复现红:
+ui_gen::vue::test_charts_gallery_compiles、desktop_protocol coverage::
+covered_elements_within_target_set),零回归归因于本计划 |
+findings: F1(info/route)auto-term 侧回执(004/DEBTS/specs.json)留工作区
+未提交,merge 时随用户裁定入库;F2(info)构建脚本硬编码 VS2022 Community
+路径,后续可 vswhere 化(非阻塞改进);F3(info)x86 stdcall 边界与 replica
+无 c|break 手动参数已在计划§9 记录 |
+evidence: 命令与结果摘录见上(复审会话内重执行);worktree
+.wt/lang-595/auto-lang(plan-595-dev@a1626b0fb, clean, wt-guard clean) |
+next: merge
