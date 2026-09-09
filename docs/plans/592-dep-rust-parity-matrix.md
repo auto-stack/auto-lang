@@ -1,15 +1,20 @@
 ---
 plan_id: PLAN-592
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-rust-parity-matrix
 author: [ZCode]
 created_at: 2026-09-08
 updated_at: 2026-09-09
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "auto-lang/runtime/design/ffi-bridges.md: 修改 —— GET_FIELD 对 DepOpaqueObject 桥接(路由合成 getter/未命中显式报错,替代静默 0);dep 自由函数装载链修复(缓存键统一 v3_{自由函数数}、init 过滤+去重、codegen rust.{fn} 限定名回退);未覆盖自由函数签名 VMError(替代 warn+0);marshaller 堆感知弹参(>2^48 i64)+i32 槽返回符号扩展"
+  - "shim-metadata/project.md: 修改 —— emit_cdylib i8/i16 参数收窄 cast 补齐,GENERATOR 升 v1.2(指纹失效重建)"
+  - "auto-cache/project.md: 修改 —— 自由函数 wrapper 生成器三修(CStringOwned 区分 &str/String 参数、path 依赖 syn 扫描 scan_path_dep_signatures、ffi use header 无条件发射)"
+new_spec_components:
+  - "auto-lang/vm: 新增 —— dep 三轨行为对拍测试基建(ffi_dep_parity_tests.rs:VM/a2r/oracle 同一 path fixture 对拍,stdout 精确相等判定,AUTO_LANG_DEP_PARITY_A2R 门控 a2r 腿,内容 hash marker 缓存)+ 语料 016_dep_abi_matrix/017_dep_lifecycle(含手写 Rust oracle 腿与 fixture autolang_abi_matrix)"
+touched_goals:
+  - "GOAL-006: 消费者 parity 首个 dep 型行为对拍资产落地——VM≡a2r≡手写 Rust 三轨同库对拍(016/017 全语料精确相等),GOAL-006 的 591 实体化主线的验证前置层"
 
 affects: [auto-lang/vm]       # engine.rs GET_FIELD / ffi.rs / 测试基建
 current_step: 12
@@ -328,6 +333,56 @@ path 依赖 `autodown-core`，在分组目录补建了 auto-down 的 detached �
    登记 DIV-DEP-7，语料以方法调用结果传参规避（根治待 extern-sigs/元数据接入）。
 
 ## 复审记录
+
+**复审人**：ZCode（/auto-plan:review，2026-09-09）
+**复审基线**：worktree `D:/autostack/.wt/lang-592/auto-lang` @ 分支 `plan-592-dev`
+（690ed3422 + 5c28b2ce2，29 文件 +1204/-148）；计划文件记账在 master
+（47343203b → 7ae60a670 → 本记录）。
+
+### 验收标准逐条复验（verify, don't trust）
+
+1. **`cargo t ffi_dual` 全绿** — PASS。20/20（含 016/017；nightly 缺席 skip
+   守卫在两测试体内确认存在）。
+2. **三腿全量对拍** — PASS。`AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity`
+   2/2（VM/a2r/oracle 三腿 stdout 与 golden 精确相等；a2r 腿冷构建 ~2.5min，
+   marker 缓存后 <5s）。
+3. **静默 0 清零** — PASS。engine.rs GET_FIELD 的 DepOpaqueObject 臂（路由
+   `dep_methods::dispatch` 合成 getter；未命中 `unknown field ... on dep object`
+   Err）经 016 断言验证：`p.a/p.b/p.c` 值 == oracle 直读、`p.nope` 报错；
+   `free_uncovered` 报 "unsupported free-function signature"（ffi.rs 收口）。
+4. **`cargo tv` 零回归 + 零新警告** — PASS。tv 2780/2781（唯一余红
+   charts_gallery **master 复现确认预存**）；`cargo check -p auto-lang`
+   警告 173=master 173。tt 亦仅同款预存红。
+5. **登记** — PASS。known-divergences DIV-DEP-1..7（超出计划的 3 条）；591
+   待澄清 #3 编号回改（014/015→018/019）+ 可复用资产清单。
+6. **CI** — PASS。vm-files-ci.yml 增 dep 三轨步（env 门控），yaml 解析通过；
+   ffi_dual 既有步骤名称过滤器天然覆盖 016/017。
+7. **全量门禁（复审专属）** — PASS。`cargo tf --no-fail-fast` 3478/3479，
+   唯一失败 = charts_gallery（预存，master 同败实证）。
+
+### 遗漏 / 延后 / Workaround 扫描
+
+- **遗漏**：无——12 任务全部有对应 diff（29 文件逐一核对）；探针残留扫描
+  （PLAN-592-TMP/eprintln 六模式）= 0；生产代码新增 eprintln 仅测试文件内。
+- **计划偏差（记录）**：emit_cdylib 修复越出"不触 shim-metadata"边界——必要
+  修复（i8/i16 漏 cast 使语料根本无法构建），无能力扩展；GENERATOR v1.2 升版
+  使全部缓存指纹失效重建（一次性成本）。
+- **语料形态规避（计划待澄清 #1 预授权）**：print 参数位置 let 绑定
+  （DIV-DEP-5）、free_s 传方法调用结果（DIV-DEP-7）、drop_count u64→i64
+  （DIV-DEP-6）、017 扁平化去别名持有（别名语义仍由 013 VM-only 内联测试
+  覆盖）。
+- **延后（计划待澄清 #2 预先声明）**：move/drop 真覆盖（classify 按值 self
+  skip 挡路，归 591 V2/例外层）。
+- **债务登记**：KNOWN-DEBT-AND-RISKS.md 新增 P592-D1..D5（wrapper 缓存键
+  弱失效+单一化、print-arg 构造器劫持根治、a2r String 形参元数据接入、
+  212 wrapper u64 收窄、测试上下文日志可见性）——均不阻塞本计划。
+
+### 结论
+
+**全部验收标准通过，无阻塞性债务 → status: reviewed**。分歧面全部显式登记
+（DIV-DEP-1..7 + P592-D1..D5），8 个管线修复经全量门禁零回归。可入
+`/auto-plan:merge`（折叠前分支基于 47343203b，master 侧仅计划记账文件分叉，
+合并无冲突；组目录内 auto-down detached 兄弟 worktree 随组清理）。
 
 ## 待澄清事项
 
