@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-600
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（PLAN-600 终态 2026-09-09）
 feature_name: callout 编辑臂盒式 chrome 对齐只读臂（撤 3px 左条，画 kind 色盒）
 author: [zhaopuming]
 created_at: 2026-09-09
