@@ -260,9 +260,9 @@ plan 零变化门）。
 | `landed` | master merge **df94a2a9c**（--no-ff，Conventional feat(ui)）；`git merge-base --is-ancestor 9fba70de0 HEAD` ✓；master 期间 +1 docs 提交 fb644a50a（plan600 簿记，零交集净合入）；合并前 tf 兜底 3484/3485（唯一红=charts_gallery 预存，kitchen_sink 随 sync 自解=F-env 兑现）；合并后 master smoke plan593 8/8+auto-man 金样绿 |
 | `ledger_refreshed` | 规范面（tracked）：ui/overview.md〔样式与主题节+P593 条目+design_tokens 模块行〕+ui/plans.md 593 行+INDEX 重生——均随 df94a2a9c 落地；台账面（runtime）：`.autoos/specs.json` P593-1..6 发布（gitignore 运行时路径，主检出原子替换+读回 6/6 验证；worktree 无该文件，投影随落地后发布——两仓一致规约） |
 | `archived` | 本文件 `docs/plans/archive/593-theme-registry-token-single-source.md`（git mv）+ `status: archived` + `completion_kind: delivered` |
-| `cleaned` | （待清拆后回填） |
+| `cleaned` | 双守卫 clean（wt-guard exit=0 ×2，reparse 扫描空）；worktree lang-593/auto-lang 移除+分支 plan-593-dev 删（tip=140ad91ea 已含于 df94a2a9c）；auto-down 兄弟 worktree 移除+分支 auto-lang-dev 删（零提交零消费）；组目录 .wt/lang-593 已除 |
 
-`stage: merge | plan_id: PLAN-593 | plan_revision: cbd32111a(+R1/R2/merge) | outcome: pass | delivery_commit: df94a2a9c | canonical_specs: docs/specs/auto-lang/ui/{overview,plans}.md + docs/specs/INDEX.md | ledger: .autoos/specs.json P593-1..6 | archive: docs/plans/archive/593-*.md | cleanup: pending`
+`stage: merge | plan_id: PLAN-593 | plan_revision: cbd32111a(+R1/R2/merge) | outcome: pass | delivery_commit: df94a2a9c | canonical_specs: docs/specs/auto-lang/ui/{overview,plans}.md + docs/specs/INDEX.md | ledger: .autoos/specs.json P593-1..6 | archive: docs/plans/archive/593-*.md | cleanup: done`
 
 ### R 轮复审（2026-09-09，/auto-plan:review）
 
