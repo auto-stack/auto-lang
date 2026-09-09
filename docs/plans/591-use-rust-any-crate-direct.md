@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-591
-status: executing              # drafting → executing → execution_done → reviewed → archived（r1 修订经用户 /auto-plan:work 确认，2026-09-09；D2 裁定按提案并入案生效）
+status: execution_done        # drafting → executing → execution_done → reviewed → archived（V1 执行完成 2026-09-09，待 /auto-plan:review）
 feature_name: use-rust-any-crate-direct
 author: [zhaopuming, ZCode]
 created_at: 2026-09-07
 updated_at: 2026-09-09（r1 修订：V1 先行拆分——T2 语义层先行 + T1 布局层；V2（T3/T4/T5）拆后续独立计划；对抗测试①②与非白名单勘测入验收；测试编号 018/019）
 plan_revision: 1
-current_step: 0
+current_step: 11
 total_steps: 11
 
 # /auto-plan:review 结束时填写（以下为 r1 起草期暂填，review 定稿）：
@@ -404,27 +404,32 @@ fixture 新增（放 `test/ffi_dual/018_dep_fields/fixture/`）：
 禁 junction/symlink，移除前必跑 wt-guard；跨仓 path 依赖 autodown-core 需解析时
 建 `D:/autostack/.wt/lang-591/auto-down` detached 兄弟 worktree（592 先例）。）
 
-- [ ] **T-00** 收口修订：用户确认本修订稿（含 D2 裁定）→ master 提交修订；
+- [x] **T-00** 收口修订：用户确认本修订稿（含 D2 裁定）→ master 提交修订；
   建 worktree `git worktree add D:/autostack/.wt/lang-591/auto-lang -b
   plan-591-dev`。验证：`git worktree list` 含 lang-591。
-- [ ] **T-01**（T2-classify）`shim-metadata/src/classify.rs` 解除三方 Option
+  [✅ 已完成] master 18ab5d642 提交修订；worktree D:/autostack/.wt/lang-591/auto-lang 建于 plan-591-dev（18ab5d642）；auto-down detached 兄弟 worktree 建于分组目录（592 先例，禁 junction）。
+- [x] **T-01**（T2-classify）`shim-metadata/src/classify.rs` 解除三方 Option
   返回 skip → nullable 计划 + `types.rs` 返回码 `?` 前缀与 fallible 传导补全
   （自由函数路径同覆盖）；`#[cfg(test)]` 单测覆盖 Option/Option&str/Result
   返回分类。验证：`cargo test -p shim-metadata` 分类单测绿 + `cargo check -p auto-lang`。
-- [ ] **T-02**（T2-wrapper/VM）`emit_cdylib.rs` nullable/fallible wrapper 发射
+  [✅ 已完成] classify.rs 解除三方 Option skip（L70-79 删除）→ nullable 守卫（仅 s/p 槽，标量/void 槽哨兵歧义显式跳过）+参数位 Option 显式理由跳过+残缺 Option 拒绝；rustdoc proj_ret 解包 Option→(T,fallible,nullable) 三元；types.rs ShimMethod/MarshalPlan 增 nullable。单测 3 新增（nullable_sp_slots/option_param/std_path 仍装箱）；shim-metadata 7/7 绿（aed0cc63a）。
+- [x] **T-02**（T2-wrapper/VM）`emit_cdylib.rs` nullable/fallible wrapper 发射
   （Some 压值/None 压 null；Ok 压值/Err 写 `auto__last_error`；参数位 Option
   内联构造）+ `dep_methods.rs` nullable 解码与错误通道转 VMError。验证：
   shim 发射单测 + 手工小 corpus 冒烟（Option/Err 面）。
-- [ ] **T-03**（T2-corpus）fixture `autolang_shapes` 建档（含 Option/Result
+  [✅ 已完成] emit_cdylib nullable wrapper（Some 压值/None 压 null，与 fallible 组合三臂 Ok(Some)/Ok(None)/Err；ChainInPlace nullable 形态）+MethodEntry.nullable+指纹行 n{} 位；dep_methods ret_call 增 $nullable 参数（86 调用点）null 返回压 encode_null。裁定：自由函数路径 Err 传导不收口（FunctionShim returns_result 硬编码 false、wrapper 无错误通道导出，五层链根修）→ 登记 KNOWN-DEBT P591-D2，DIV-DEP-12 维持。
+- [x] **T-03**（T2-corpus）fixture `autolang_shapes` 建档（含 Option/Result
   方法面）+ `test/ffi_dual/018_dep_fields/` 语料（先注册 V1-4/V1-5，占位
   `{{FFI_DUAL_DIR}}` + fn main 包裹 + `oracle/` 空 workspace 相对路径依赖）+
   `ffi_dep_parity_tests.rs` CASES 登记 018。验证：
   `cargo t ffi_dual_018` + `cargo t dep_parity_018`（VM+oracle 腿绿）。
-- [ ] **T-04**（D2 裁定执行案）若裁定并入：`trans/rust.rs` print/`.to(str)`
+  [✅ 已完成] fixture autolang_shapes + 语料 018（V1-4 hit/miss == null 三轨一致、V1-5 parse .unwrap()、V1-3 嵌套、V1-7 enum 判别）+runner/ffi_dual 注册+bad-parse 负面断言。dispatch 增 unwrap 恒等桥（a2r .unwrap() 透传）。执行勘误：find 撞 a2r 内建 str_find 改 lookup；String 形参改 &str（DIV-DEP-7 规避）；实勘发现 pack 快路径不检测源码变更（陈旧复用）→ T-05 机制化。19/19+dep_parity 3/3（9b3639122 前序 aed0/后 5c57）。
+- [x] **T-04**（D2 裁定执行案）若裁定并入：`trans/rust.rs` print/`.to(str)`
   Display 口径 + wrapper `__to_string` 最小转发 + VM print 路由；语料补
   Display 断言面。验证：`cargo tt` 零回归 + 018 新增面三轨绿。
   若裁定延后：DIV-DEP-15+ 登记落盘（归后续 T3），本步转为登记任务。
-- [ ] **T-05**（T1-probe）`emit_cdylib.rs` 探针 crate 生成（offset_of/size_of/
+  [✅ 已完成] D2 并入案执行期收窄（留痕）：VM 侧 print/TYPE_TO_STR/native 五臂对 dep 对象路由合成 to_string Display（engine.rs 占位臂+native.rs TAG_OBJECT/i32-handle/print_str/write）；018 加 print(m) Display 面（Messy(7, alpha, 11, 42, true) 三轨一致）；无 Display 面维持占位。a2r .to(str) 的 Debug 默认维持（存量 Auto enum 语料依赖+dep 值无元数据不可定向，根因 P592-D3）→ DIV-DEP-8 该半边显式登记；零 trans/rust.rs 改动、免 cargo tt（f029248e9）。tv 2784/2785 唯一余红 charts_gallery 预存。
+- [x] **T-05**（T1-probe）`emit_cdylib.rs` 探针 crate 生成（offset_of/size_of/
   align_of/enum 判别）+ `types.rs` LayoutInfo + `MANIFEST_FORMAT: 2` + 装载侧
   （`dep_methods.rs`）format 校验拒载旧版；`fingerprint_parts` payload 增布局行；
   `GENERATOR` 升 v1.3；features 自 `compile.rs` dep_features 传导进
@@ -432,31 +437,48 @@ fixture 新增（放 `test/ffi_dual/018_dep_fields/fixture/`）：
   format/GENERATOR（P592-D1 最小收口）。验证：`cargo test -p shim-metadata`
   + `cargo test -p auto-cache` + 对 fixture 产出的 manifest 含 layouts 且偏移
   单测对拍。
-- [ ] **T-06**（T1-VM）`dep_methods.rs` `DepOpaqueObject` 挂 `layout:
+  [✅ 已完成] rustdoc 收集全量 pub 字段清单+unit-only enum 变体（StructField/UnitEnum）；emit_probe 生成 auto__shim_layouts（offset_of!/size_of/align_of 实测，与 wrapper 同 cdylib=同 rustc 实例；format! 实参求值形态，两级转义定形）；MANIFEST_FORMAT 1→2+GENERATOR v1.3；指纹 payload 增 features 行（排序等价）+字段清单行+enum 变体行；auto-cache 快路径增 stale 通道：format 旧版拒用+path 源内容 hash（5c5789458）。探针生成单测+指纹对抗断言（字段集/features 入指纹、书写序等价）。
+- [x] **T-06**（T1-VM）`dep_methods.rs` `DepOpaqueObject` 挂 `layout:
   Arc<LayoutInfo>` + CALL_SPEC 属性访问 offset 直读直写（基元/串/嵌套句柄
   三分派；写限 &mut 上下文句柄；合成 getter 面保留兼容）。验证：
   `cargo tv` 零回归 + 013/016/017 零回归。
-- [ ] **T-07**（T1-corpus）018 扩展 V1-1/V1-2/V1-3/V1-7 用例（乱序读/写/
+  [✅ 已完成] dep_methods 布局注册表（auto__shim_layouts 装载合并，crate::类型 键）+register_pack format 校验拒载旧版（AC-04）+DepOpaqueObject.layout；GET_FIELD offset 直读优先（标量按探针偏移读堆，非标量落合成 getter）；SET_FIELD dep 臂标量 offset 直写（写穿透 cdylib 堆，Rust 侧读回可见）；read/write_scalar_field（read_unaligned/write_unaligned 按宽度）。（59c9e80c8）
+- [x] **T-07**（T1-corpus）018 扩展 V1-1/V1-2/V1-3/V1-7 用例（乱序读/写/
   嵌套/enum 判别）。验证：`cargo t ffi_dual_018` +
   `AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity` 三腿精确相等。
-- [ ] **T-08**（对抗语料）`autolang_shapes_b` 孪生 fixture + features cfg 变体
+  [✅ 已完成] 018 扩 V1-1 乱序字段读（探针偏移正确性由 u8/String/u8/i64/bool 交错声明放大）/V1-2 字段写（m.total=9 后 total_snapshot() 读回=9，写真达 cdylib 堆）三轨精确相等。执行勘误：字段 count 撞 a2r 内建方法劫持改 total。ffi_dual 20/20+dep_parity 3/3+tv 2785/2786（唯一余红预存）。
+- [x] **T-08**（对抗语料）`autolang_shapes_b` 孪生 fixture + features cfg 变体
   + `test/ffi_dual/019_dep_layout_invariants/` 语料（V1-6 + 对抗① + 对抗②；
   先实证 D4 注记的指纹差异来源，按实勘形态落断言）。验证：
   `cargo t ffi_dual_019`（重建/零重建与真值断言全绿）。
-- [ ] **T-09**（非白名单勘测）`parity/libs/dep/uuid_real/`（README + TAP 语料
+  [✅ 已完成] 对抗①孪生 autolang_shapes_b（同类型名/同方法签名集/异字段序+异哨兵 a=9/b=13 vs 7/11）连续装载各自真值；对抗②FeatCfg（width i32/i64 cfg 切换）宽窄各自正确——features 入 staleness 复合键+指纹 payload；V1-6=auto-cache path 源 hash 通道（path_source_staleness_detection 单测）。实勘修复三处：to_cargo_line path 分支漏渲染 features、fixture 缺 [features] 声明、staleness 单测对齐复合键。ffi_dual 20/20。（9b3639122 前序提交）
+- [x] **T-09**（非白名单勘测）`parity/libs/dep/uuid_real/`（README + TAP 语料
   2-4 条 + oracle 同版 pin 1.24.0）+ phase 注册；红面 DIV-DEP-15+ 登记。
   若判定体量超界 → 显式登记后续勘测计划并留痕（D5 硬约束）。验证：
   `cargo test -p auto-parity` + `AUTO_LANG_PARITY_NET=1` 跑 uuid_real 三轨。
-- [ ] **T-10**（文档/债务收口）Option/Result 语义进 syntax/guides + use.rs
+  [✅ 已完成] uuid_real 三轨 3/3 全绿（phase p11，AUTO_LANG_PARITY_NET 门控）：parse_str Option nullable（T2）+get_version_num 数值（DIV-DEP-16 修复后）+print Display（D2）——uuid 非 BUILTIN_OPAQUE_CRATES，类型面全走真编译 pack（594 五库皆 native 面，本库补 pack 面样本）。勘测战果：DIV-DEP-15 a2r parse*/nil 启发式劫持（登记）、DIV-DEP-16 VM EQ 漏 TAG_I64 臂（当场修复 nv_is_numeric/nv_as_f64）、DIV-DEP-17 caret 漂移+rustdoc 短名深路径误径（=精确 pin 纪律+剔环类型级归因 type_names_in_crate_errors 修复）。（9b3639122）
+- [x] **T-10**（文档/债务收口）Option/Result 语义进 syntax/guides + use.rs
   能力矩阵 V1 面 + GOAL-006 留痕；KNOWN-DEBT 登记：字段写失效语义（已知
   限制 #1）+ V2 拆分去向指针（D6）+ uuid 勘测处置 + DIV-DEP-15+ 引用。
   验证：文档 diff 人工核对。
-- [ ] **T-11**（收口健康检查）门禁按面全跑：`cargo t ffi_dual`、
+  [✅ 已完成] ffi-usage-guide 增 dep+use.rs V1 能力面节（字段读写/Option-Result 语义/unwrap 范式/已知分歧与 =pin 纪律）；KNOWN-DEBT 登记 P591-D1 字段写失效（待澄清#1 裁定落定）/P591-D2 自由函数 Err 通道（DIV-DEP-12 维持）/P591-D3 并发 sandbox 竞态/P591-D4 发射器启发式劫持/V2 拆分去向指针（9b3639122）。
+- [x] **T-11**（收口健康检查）门禁按面全跑：`cargo t ffi_dual`、
   `dep_parity`（+a2r 腿）、`cargo tv`、（若并入）`cargo tt`、
   `cargo check -p auto-lang` 零新警告、探针残留扫描（TMP/eprintln 六模式）。
   验证：输出留痕进复审记录；`cargo tf` 留给 review 阶段。
 
 ## 9. 复审记录
+
+**V1 执行完成交接（2026-09-09，/auto-plan:work）**
+
+- `stage: work` | plan_id: PLAN-591 | plan_revision: 1 | outcome: **pass**
+- `code_commit`: worktree plan-591-dev（基于 master 18ab5d642）：aed0cc63a（T1/T2 语义层）→ 5c5789458（T5 探针/manifest v2/指纹）→ 59c9e80c8（T6/T7 布局装载/offset 读写+018 扩面）→ f029248e9（T4 D2 Display 路由）→ 9b3639122（T9 uuid_real+T10 文档债务）+ T3/T8 语料提交；计划记账在 master 本文件。
+- `task_ids`: T-00..T-11 全 11/11 完成（各步证据见 §8 行内 [✅]）。
+- `evidence`（AC 对照）: AC-01 V1-1..V1-7 全绿（018/019，三轨）；AC-02 对抗①②绿（孪生真值断言+features 复合键 staleness 单测）；AC-03 018 三轨精确相等+016/017 零回归（ffi_dual 20/20、dep_parity 3/3+a2r 全量 3/3）；AC-04 manifest v2 装载拒载旧 format（register_pack 校验+快路径 stale 通道）+bump 后全量重建二次命中零重建；AC-05 ffi-usage-guide 增 V1 能力面节；AC-06 V2 去向+uuid 处置 KNOWN-DEBT 留痕（V2 折叠节+P591 指针，uuid 已完成非延后）；AC-07 DIV-DEP-15/16/17 登记（16=已修复）；AC-08 tv 2785/2786（唯一余红 charts_gallery 预存）、cargo check 零错误/警告 173=基线、探针残留 0；uuid_real 三轨 3/3（AC 外交付）。
+- `blockers`: 无。
+- `next`: review（复审阶段跑 cargo tf 兜底；worktree 保留）。
+- 执行期裁定留痕（均在 r1 授权范围内）: ①D2 并入案收窄——a2r `.to(str)` Debug 默认维持（存量语料依赖+dep 元数据缺失），DIV-DEP-8 该半边登记归 V2，VM print/.to(str) Display 路由已落地；②自由函数 Result/Option Err 通道不收口（五层链）→ KNOWN-DEBT P591-D2；③uuid 勘测完成（非延后），勘测战果三连（DIV-DEP-15/16/17，16 已修复）。
+- 硬约束核对: V2 拆分未静默丢弃（设计文字+用例表保留+KNOWN-DEBT 指针）；uuid 勘测完成且超界风险未触发。
 
 **r1 修订交接（2026-09-09，/auto-plan:new revision 模式）**
 
@@ -493,3 +515,5 @@ fixture 新增（放 `test/ffi_dual/018_dep_fields/fixture/`）：
 > 已裁定（2026-09-07）：~~V1 触发自动化（use.rs 自动解析 + auto.lock + 首引用
 > 阻塞回填）~~ **取消**——`dep` 声明的 version/git/path 源配置有价值，保留
 > 两步形态；原 V2/V3 顺位上移为 V1/V2（r1 起 V2 归后续独立计划）。
+
+  [✅ 已完成] 门禁：ffi_dual 20/20、dep_parity 3/3（VM+oracle）+a2r 全量 3/3（120s 冷构建）、tv 2785/2786（唯一余红 charts_gallery 预存，master 复现在案）、auto-cache 仅预存 test_syn_type_mapping（T-01 git stash 复现 master 同败）、cargo check 零错误+警告 173=基线 173、uuid_real 三轨 3/3、探针残留扫描=0（shim-metadata main.rs 4 处 eprintln 为 CLI 既有诊断）、工作区 clean。cargo tf 留 review 阶段；cargo tt 免跑（零 trans 改动，D2 收窄裁定）。
