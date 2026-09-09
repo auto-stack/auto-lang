@@ -86,5 +86,17 @@ PARITY #19 观察①（2026-09-09 用户裁定：对齐网页轨）：编辑壳 
   vs master 同轮 4643p/201f——差名 4 项裁定为零回归：ffi×1 并行抖动（串行过）、
   osconfig_daemon 家族 3 项为 master 基线期破损（master 串行同跑 11p/5f 同族
   红，并行会话新引入，非本计划回归）。blockers：无。next: review。
+- stage: review | PLAN-603 | r1 | outcome: **pass** | 2026-09-09。
+  reviewed_commit：plan-603-dev a4be09367（worktree 冻结干净；scoped core
+  82/82 新鲜复跑在案，SHA 未变）。独立性声明：实现会话内复审，按工件重跑
+  复现。AC 全 pass（空白点击无效果 / 块内与 cell 命中回归绿 / 单测钉死 /
+  全量 lib 基线差集口径）。基线注记：osconfig_daemon 家族为并行工作引入的
+  master 期破损（master 串行同跑 11p/5f 同族红；非本计划回归，DEBTS 候选）。
+  findings：无阻断。next: merge。
+- stage: merge | PLAN-603 | r1 | 2026-09-09 收据：prepared（立案 4d88854f6）→
+  landed（plan-603-dev a4be09367 折回 master 31c52f2bd）→ ledger_refreshed
+  （运行时台账 .autoos/specs.json gitignored，P603-1..6 六节发布 + 回读验证）
+  → archived（本件，status:archived f44027526）→ cleaned（wt-guard 双
+  worktree clean，plan-603-dev 分支删，组目录移除，list 复核零残留）。
 
 ## 待澄清事项
