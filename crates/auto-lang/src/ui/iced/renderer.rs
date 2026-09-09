@@ -9103,6 +9103,8 @@ fn execute_desktop_commands(
             DC::SetDockEnabled(on) => execute_set_dock_enabled(state, on),
             // Plan 518 G1：主题热切换（Appearance 分区 Dark Mode 钮）。
             DC::SetTheme(dark) => execute_set_theme(state, dark),
+            // PLAN-601 T-05：命名主题热切换（set_theme 未知名解析期已拒）。
+            DC::SetThemeName(name) => execute_set_theme_name(state, &name.clone()),
         }
     }
     (false, tasks)
@@ -9113,6 +9115,21 @@ fn execute_desktop_commands(
 /// （boot 读回）+ 已声明 dark_mode 的 App 状态变量同步（458 语义：运行时
 /// 变量每帧回写全局,不同步则被旧值翻回）+ 全 App view_dirty（构建期解析的
 /// 颜色需重建换色）。
+/// PLAN-601 T-05：命名主题执行体——style::theme::set_theme（THEME_EPOCH
+/// 自增 → 既有失效回路：view 重建→语义 token 重解析）+ config.theme_name
+/// 单源落盘 + 全场快照随撤 + 全 App 视图标脏（execute_set_theme 同款生效面）。
+fn execute_set_theme_name(state: &mut crate::ui::session::DesktopSession, name: &str) {
+    if !crate::ui::style::theme::set_theme(name) {
+        return; // 未知名（解析期已拒，防御双门）
+    }
+    state.desktop.config.theme_name = Some(name.to_string());
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+    crate::ui::iced::snapshot::invalidate_all();
+    for app in state.apps.values_mut() {
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
 fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool) {
     crate::ui::style::iced_adapter::set_dark_mode(dark);
     // PLAN-051 T10（DEBTS 050 处置）：桌面壳主题翻转臂与 D-GAP 值变化臂
@@ -9226,6 +9243,16 @@ fn apply_external_config_diff(
         state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
         inject_dock_pinned(state);
     }
+    if cfg.theme_name != old.theme_name {
+        // PLAN-601 T-05：boot 读回/热应用差分——THemE_EPOCH 失效回路接管换色。
+        if let Some(name) = cfg.theme_name.as_deref() {
+            crate::ui::style::theme::set_theme(name);
+        }
+        crate::ui::iced::snapshot::invalidate_all();
+        for app in state.apps.values_mut() {
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
     if cfg.dark_theme != old.dark_theme {
         // execute_set_theme 同款生效面(减 save):adapter 切换 + fence
         // 重着色(autodown 门控)+ 全场快照随撤 + 全 App view_dirty/dark_mode 回写。
@@ -9251,6 +9278,7 @@ fn apply_external_config_diff(
     state.desktop.config.transparency = cfg.transparency.clone();
     state.desktop.config.notes_enabled = cfg.notes_enabled;
     state.desktop.config.dark_theme = cfg.dark_theme;
+    state.desktop.config.theme_name = cfg.theme_name.clone();
 }
 
 /// Plan 540 T3：壁纸目录写臂——config 落盘（scan_wallpapers_dir 与缺省
