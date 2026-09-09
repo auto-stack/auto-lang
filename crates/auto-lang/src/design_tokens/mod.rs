@@ -7,3 +7,6 @@
 // `registry` 保持 `theme::registry` 路径稳定。
 
 pub mod registry;
+
+/// PLAN-601 T-03：theme{} 声明解析与 extends 合成（ComposedTheme）。
+pub mod decl;

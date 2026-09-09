@@ -122,6 +122,12 @@ pub struct Pac {
     /// kept here so unknown values can warn where context is available.
     pub theme: Option<AutoStr>,
 
+    /// PLAN-601 T-03：theme{} 块声明（extends/mode/colors；Design 29 §4.2）。
+    /// 标量 `theme: "dark"|"light"` 仍走 458 链路不动；块形态在此承载原始
+    /// 声明，消费端经 `auto_lang::design_tokens::decl::compose` 合成后
+    /// `set_theme_composed` 应用（词表/值校验在 compose 层）。
+    pub theme_decl: Option<auto_lang::design_tokens::decl::ThemeDecl>,
+
     /// Plan 458: UI accent (theme primary color) preset name, declared as
     /// `accent: "indigo" | "coral" | "ocean" | "sage" | "amber"` in pac.at.
     /// None = built-in default (indigo). `auto run --accent` wins.
@@ -300,6 +306,27 @@ impl Pac {
         let theme = config.root.get_prop("theme").to_astr();
         let theme_trimmed = theme.trim().to_lowercase();
         let theme = (!theme_trimmed.is_empty()).then(|| AutoStr::from(theme_trimmed));
+
+        // PLAN-601 T-03：theme{} 块形态（Obj）——extends/mode 标量 + colors
+        // 对象逐键。标量与块同现时块胜（块是超集形态）；解析容错（坏形态
+        // None + 用点告警），词表/值合法性由 compose 层负用例钉死。
+        let theme_decl = match config.root.get_prop("theme") {
+            Value::Obj(obj) => {
+                let extends = obj.get("extends").map(|v| v.to_astr().trim().to_string()).filter(|s| !s.is_empty());
+                let mode = obj.get("mode").map(|v| v.to_astr().trim().to_lowercase()).filter(|s| !s.is_empty());
+                let name = obj.get("name").map(|v| v.to_astr().trim().to_string()).filter(|s| !s.is_empty());
+                let colors = match obj.get("colors") {
+                    Some(Value::Obj(co)) => co
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_astr().trim().to_string()))
+                        .filter(|(_, v)| !v.is_empty())
+                        .collect::<Vec<_>>(),
+                    _ => Vec::new(),
+                };
+                Some(auto_lang::design_tokens::decl::ThemeDecl { name, extends, mode, colors })
+            }
+            _ => None,
+        };
         let accent = config.root.get_prop("accent").to_astr();
         let accent_trimmed = accent.trim().to_lowercase();
         let accent = (!accent_trimmed.is_empty()).then(|| AutoStr::from(accent_trimmed));
@@ -454,6 +481,7 @@ impl Pac {
             icon,
             category,
             theme,
+            theme_decl,
             accent,
             ui_config,
             external_backend,
@@ -1839,6 +1867,44 @@ mod tests {
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
         assert!(pac.desktop_render.is_none(), "缺席 = 缺省 auto");
+    }
+
+    /// PLAN-601 T-03：theme{} 块声明解析——extends/mode/colors + 标量兼容。
+    #[test]
+    fn test_theme_decl_block_parsing() {
+        // 块形态
+        let pac = Pac::new(AutoConfig::new(
+            "name: \"x\"
+theme: {
+    extends: \"stella\"
+    mode: \"auto\"
+    colors: {
+        primary: \"#8b5cf6\"
+        muted-foreground: \"38 7% 46%\"
+    }
+}
+",
+        ).unwrap());
+        let d = pac.theme_decl.expect("块形态应解析");
+        assert_eq!(d.extends.as_deref(), Some("stella"));
+        assert_eq!(d.mode.as_deref(), Some("auto"));
+        assert_eq!(d.colors.len(), 2, "colors 声明两键 primary/muted-foreground（迭代序不作契约）");
+        assert!(d.colors.contains(&("primary".to_string(), "#8b5cf6".to_string())));
+        assert!(d.colors.contains(&("muted-foreground".to_string(), "38 7% 46%".to_string())));
+
+        // 标量兼容：块缺席时 theme_decl=None、theme 标量照旧
+        let pac = Pac::new(AutoConfig::new("name: \"x\"
+theme: \"light\"
+").unwrap());
+        assert!(pac.theme_decl.is_none());
+        assert_eq!(pac.theme.as_deref(), Some("light"));
+
+        // 空块 = 声明存在但无覆盖（compose 层落基座）
+        let pac = Pac::new(AutoConfig::new("name: \"x\"
+theme: { }
+").unwrap());
+        let d = pac.theme_decl.expect("空块也是声明");
+        assert!(d.extends.is_none() && d.colors.is_empty());
     }
 
     /// Plan 013: pac.at `shadcn: off` toggle parsing (bareword off/on are

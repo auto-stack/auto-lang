@@ -38,6 +38,44 @@ pub enum TokenName {
 }
 
 impl TokenName {
+    /// CSS 变量名反查（封闭词表解析入口——theme{} 声明键校验消费）。
+    pub fn from_css_var(name: &str) -> Option<TokenName> {
+        Some(match name {
+            "background" => TokenName::Background,
+            "foreground" => TokenName::Foreground,
+            "card" => TokenName::Card,
+            "card-foreground" => TokenName::CardForeground,
+            "popover" => TokenName::Popover,
+            "popover-foreground" => TokenName::PopoverForeground,
+            "primary" => TokenName::Primary,
+            "primary-foreground" => TokenName::PrimaryForeground,
+            "secondary" => TokenName::Secondary,
+            "secondary-foreground" => TokenName::SecondaryForeground,
+            "muted" => TokenName::Muted,
+            "muted-foreground" => TokenName::MutedForeground,
+            "accent" => TokenName::Accent,
+            "accent-foreground" => TokenName::AccentForeground,
+            "destructive" => TokenName::Destructive,
+            "destructive-foreground" => TokenName::DestructiveForeground,
+            "border" => TokenName::Border,
+            "input" => TokenName::Input,
+            "ring" => TokenName::Ring,
+            "sidebar-background" => TokenName::SidebarBackground,
+            "sidebar-foreground" => TokenName::SidebarForeground,
+            "sidebar-primary" => TokenName::SidebarPrimary,
+            "sidebar-primary-foreground" => TokenName::SidebarPrimaryForeground,
+            "sidebar-accent" => TokenName::SidebarAccent,
+            "sidebar-accent-foreground" => TokenName::SidebarAccentForeground,
+            "sidebar-border" => TokenName::SidebarBorder,
+            "sidebar-ring" => TokenName::SidebarRing,
+            "success" => TokenName::Success,
+            "warning" => TokenName::Warning,
+            "info" => TokenName::Info,
+            "error" => TokenName::Error,
+            _ => return None,
+        })
+    }
+
     /// CSS 变量名（`--card-foreground` 形态）。
     pub fn css_var(self) -> &'static str {
         match self {
@@ -499,7 +537,7 @@ pub fn render_sidebar(theme: &ThemeSpec, is_dark: bool) -> String {
     render_tokens(theme, is_dark, &SIDEBAR_ORDER)
 }
 
-const CORE_ORDER: [TokenName; 19] = [
+pub const CORE_ORDER: [TokenName; 19] = [
     TokenName::Background, TokenName::Foreground,
     TokenName::Card, TokenName::CardForeground,
     TokenName::Popover, TokenName::PopoverForeground,
@@ -510,7 +548,7 @@ const CORE_ORDER: [TokenName; 19] = [
     TokenName::Destructive, TokenName::DestructiveForeground,
     TokenName::Border, TokenName::Input, TokenName::Ring,
 ];
-const SIDEBAR_ORDER: [TokenName; 8] = [
+pub const SIDEBAR_ORDER: [TokenName; 8] = [
     TokenName::SidebarBackground, TokenName::SidebarForeground,
     TokenName::SidebarPrimary, TokenName::SidebarPrimaryForeground,
     TokenName::SidebarAccent, TokenName::SidebarAccentForeground,
