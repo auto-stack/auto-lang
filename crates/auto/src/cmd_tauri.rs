@@ -961,7 +961,8 @@ fn generate_tauri_build_rs() -> String {
 mod plan571_css_secondary_interlock_tests {
     /// 生成的 index.css 必须携带分档后的 --secondary（light 40 24% 85.5% /
     /// dark 215 25% 27%），且不得再现 light 下与 --muted 同值的旧写法。
-    /// 与 theme.rs / ui_gen::vue / 烘焙资产四方互锁——改任一处须全链同步。
+    /// PLAN-593 后色值单源在 auto_lang::design_tokens::registry；本函数仍为
+    /// 手写副本（P593-D5 在册——tauri 脚手架路径，Phase 2 收编或对齐 scaffold）。
     #[test]
     fn index_css_secondary_is_differentiated_from_muted() {
         let css = super::generate_index_css();

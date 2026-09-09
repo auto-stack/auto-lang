@@ -1832,6 +1832,7 @@ P0 特征化网执行期发现的管线缺陷，已修复面见计划执行步�
   （本轮以临时 logger 定位后移除，log 的 std feature 与 test-trans 档冲突，
   set_boxed_logger 不可用）。修法=测试基建提供 feature 无关的 logger 挂钩。
 
+
 - **P591-D1 [工程债] dep 对象字段写的失效/别名语义**（2026-09-09, V1 裁定待澄清 #1）：
   VM 侧 offset 直写穿透 cdylib 堆后，Rust 侧缓存旧值（OnceLock 类）不刷新；
   别名句柄（多 VM 句柄指向同对象）并发写语义未定义。单线程批处理纪律下接受
@@ -1856,3 +1857,37 @@ P0 特征化网执行期发现的管线缺陷，已修复面见计划执行步�
   autolang_traits 设计，全文保留于 docs/plans/591-use-rust-any-crate-direct.md
   §2 折叠节；V1 收口后另取计划号执行（DIV-DEP-8 的 `.to(str)` a2r 半边
   与 DIV-DEP-15 归该计划一并收口）。
+
+
+## P593 债务（theme-registry-token-single-source，2026-09-09 执行登记）
+
+Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账分叉登记；已修复面
+见 plan 执行步骤（registry 落地/四处置迁移/零漂移双金样）：
+
+- **P593-D1 [一致性] shadcn `accent` token 的 VM 投影坍缩（=P571-D1 顺延）**：
+  `bg-accent`/`text-accent` class 在 VM 侧坍缩映射 `Color::Secondary`
+  （`ui/style/color.rs` "accent" 臂），而 vue 侧 `--accent` 是独立值（zinc/scaffold
+  均为 muted 系≠secondary）——双端本就分歧。PLAN-593 S7 证据门实测：`.at` 源码
+  81 处在用（bg-accent 59 + 带透明度 12 + text-accent 10，遍布 012/015/016/017/018
+  等示例），**改投影值=动现存 VM 视觉**，违反 Phase 1 零变化门——钉 Phase 2
+  （随主题切换落地一并：Color 枚举补 Accent/OnAccent 变体 + registry
+  Accent/AccentForeground 槽已在位）。
+- **P593-D2 [双端分叉] accent dark 提亮 +4 vs +10**：vue 脚手架 TS applyAccent
+  dark 提亮 `+4`（ui_gen/vue.rs ACCENT_PALETTE_JS），Rust 侧 `+10`
+  （theme::accent_primary_hsl/resolve_semantic_rgb Primary 臂）——同 accent 双端
+  暗色亮度不一致。Phase 2 归一裁定（含 zinc-vs-stella、E2/E3 模板值归一）。
+- **P593-D3 [遗留面] ui_gen generate_base_css 为测试专用**：S1 对账实勘其唯一
+  调用方是自身测试（真实 Vue 路径=auto-man generate_index_css），两模板值已分叉
+  （primary 深藏青 vs 烤入 indigo；dark card 11%↔10%、muted 17.5%↔15%）。
+  Phase 2 裁定退役或对齐 scaffold；registry 中两套（zinc/scaffold）分别保真。
+- **P593-D4 [跨仓] auto-os 桌面宿主 CSS 发射点未对账**：auto-os 仓
+  widgets-gallery/vue-ref 静态资产含 `--background:` 系（E7），桌面 vue 宿主若
+  另有 index.css 发射点则属第四源——Phase 2 立项时跨仓对账。
+- **P593-D5 [S9 实勘补录] auto CLI 两个手写 index.css 副本未收编**：
+  `crates/auto/src/cmd_tauri.rs:745` 与 `crates/auto/src/cmd_vue.rs:1613` 各有一
+  份 `generate_index_css()`（tauri/cli-vue 脚手架真路径，各有非测试调用方
+  386/1163），色板为 zinc/scaffold 之外的独立变体（tauri≈zinc+dark bg 84% 4.9%
+  +vis-* 图表 token 族；cli-vue=radius 0.625+双 sidebar 块〔zinc 值与 indigo 值
+  并存〕）。PLAN-593 收尾期裁定不中途扩面：PLAN-571 contains 测试在守护已知
+  漂移（--secondary 分档），Phase 2 收编或直接对齐 scaffold/zinc（含产品裁定
+  何者退役）。
