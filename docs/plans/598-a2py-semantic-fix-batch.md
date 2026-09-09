@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-598
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: a2py-semantic-fix-batch
 author: [ZCode]
 created_at: 2026-09-09
@@ -14,7 +14,7 @@ touched_goals:
   - "GOAL-006"                # Consumer parity：py 套件语料编写体验与三轨语义面（暂定，review 定稿）
 
 affects: [auto-lang/trans, auto-lang/vm]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -198,32 +198,95 @@ vm/overview.md 现状节，review 时按实际文档结构定稿。）
 证据。执行于 worktree `D:/autostack/.wt/lang-598/auto-lang`，开工前 master
 提交本骨架 + .next-id；worktree 禁 junction/symlink。）
 
-- [ ] **T-01** 基线：master 提交骨架；建 worktree；记录修复前基线
+- [x] **T-01** 基线：master 提交骨架；建 worktree；记录修复前基线
   （`cargo tt` 现状、a2p lambda goldens 现状、`p7 py_list` 相位快照）。
-- [ ] **T-02** P539-D3 糖族括号（D1）：trans/python.rs 五臂审计 + 统一
+  [✅ 已完成] master e8f67b9b2；worktree D:/autostack/.wt/lang-598/auto-lang
+  （plan-598-dev）；基线=cargo tt 3840/3841（唯 charts_gallery 预存红,master
+  同款）+ py_list 8/8。执行注记:①nextest 解析 autodown-core 需分组兄弟仓,
+  按分组布局补建 auto-down detached 兄弟 worktree(D:/autostack/.wt/lang-598/
+  auto-down @ b616bc2);②worktree 冷构建 auto(~3min)曾与 tt 后台任务抢锁
+  竞态一次,重跑即过。
+- [x] **T-02** P539-D3 糖族括号（D1）：trans/python.rs 五臂审计 + 统一
   `(RECV)` 发射 + 受影响 goldens 更新。验证：`cargo tt` 全绿；d3 探针
   产物核对。
-- [ ] **T-03** VM 闭包尾值（D3）：有界调查（定位块求值返回通道，写决策
+  [✅ 已完成] **审计扩容:五臂→七臂**——py_call/py_call_may/py_getattr/
+  py_matmul/py_getitem/py_setitem/py_call0(同族成员访问发射全改恒括号,
+  emit_paren_expr helper);getattr_may/getitem_may 原本安全(getattr() 调用
+  括号内/已有包裹)不改;py_callable 恒等发射不改。既有 goldens 零破坏
+  (tt 3840/3841——py 套件产物不进 tt golden,parity 比 TAP 不比文本)。
+  d3 探针:`print((t + tensor([1, 1, 1])).sum())` ✓。
+  执行注记:修复过程中发现首个 build 竞态导致探针误读旧产物一次(cl3 陈旧
+  文件事件),后续验证一律先删产物文件。
+- [x] **T-03** VM 闭包尾值（D3）：有界调查（定位块求值返回通道，写决策
   注记）→ 定点修；时间盒 1h，超限走降级路径并回填 T-07 账面。
   验证：`cargo tv` 全绿；cl.as 形态返 6。
-- [ ] **T-04** a2py 语句体闭包（D2）：Expr::Closure 块体分类 + 单表达式块
+  [✅ 已完成] **实勘扩面+双根因修复(轻微超时盒,未走降级)**:VM 缺口并非
+  "尾值传播"——追踪+探针矩阵钉死双根因:①collect_free_vars 不识别块内
+  Stmt::Store(Let) 绑定,y 被误判捕获变量,STORE 落本地槽/LOAD 走捕获环境
+  读垃圾(codegen.rs L12523 Block 臂,原代码 TODO 在案);②闭包体无局部帧
+  预留(fn 有 FN_PROLOG+RESERVE_STACK,闭包没有),let 的 bp 相对寻址落
+  未分配栈。修复=Block 臂纳入 let/Const 绑定排除(初值先走、绑定后生效)
+  + compile_closure 按需插 RESERVE_STACK n_locals(镜像 fn 的
+  max_locals reset/diff + 插入位移舞蹈:jump_placeholders/relocs/exports
+  ≥func_addr +2)。探针矩阵全绿:iso(f=8/g=8/h=8)/cl(8)/cl2(6,6)/
+  v(3,6,4,8,5,4)。cargo tv 3626/3627 唯预存红。**升级注记**:根因是
+  闭包局部槽寻址专属(非块求值通用语义),未触发待澄清 #1 的强修禁令。
+- [x] **T-04** a2py 语句体闭包（D2）：Expr::Closure 块体分类 + 单表达式块
   `(expr)` 发射 + 含语句块诊断。
   验证：`cargo tt` 全绿；cl 探针两形态产物核对。
-- [ ] **T-05** 语料：a2p lambda 块体 goldens（新/更新）+ cl/d3 探针固化。
+  [✅ 已完成] Closure 臂分类:block_single_expr 递归解包(parser 对闭包体
+  有嵌套 Block 层)——单表达式块/裸 return → `lambda x: expr`(实现取无括号
+  等价形式,计划原文 `(expr)` 的括号非必需,偏差注记);含绑定/多语句 →
+  显式诊断「a2py: statement-body closures are not supported…」。cl3 探针:
+  f=`lambda x: x * 2` ✓;cl=诊断中止且不落产物 ✓。
+- [x] **T-05** 语料：a2p lambda 块体 goldens（新/更新）+ cl/d3 探针固化。
   验证：`cargo tt` 含新 goldens 全绿。
-- [ ] **T-06** de-workaround：grep 定位 py 套件中间变量规避点，改回直写。
+  [✅ 已完成] 新语料×2:16_python_std/003_py_call_compound(括号发射 golden;
+  初版撞号 002 已改 003)+05_expressions/013_lambda_block(单表达式块/return
+  块);诊断单测 test_lambda_statement_body_diagnostic(assert 错误文案)。
+  cargo tt 3843/3844 唯预存红。提交 1bec2147b。
+- [x] **T-06** de-workaround：grep 定位 py 套件中间变量规避点，改回直写。
   验证：`parity` 下 `phase p7` + 触及套件单跑零回归。
-- [ ] **T-07** 账面收口（AC-05）：KNOWN-DEBT P539-D3 销账；
+  [✅ 已完成] **判定:零活跃规避点**——grep 全 py 套件 .as,py_call 接收者
+  均为 Ident/调用形态(本就正确);P539-D3 的中间变量规避历史未落在现行
+  套件(债条目示例出自 539 W 阶段探针)。验证式清零,证据=本条 grep
+  (configparser/train 全量目视)。零改动。
+- [x] **T-07** 账面收口（AC-05）：KNOWN-DEBT P539-D3 销账；
   known-divergences DIV-PY-CLOSURE-1 拆面更新；路线图 §7.4 ⑦ 核销。
   验证：三文件 diff 人工核对。
-- [ ] **T-08** 收口健康检查：`cargo tt` + `cargo tv` 全绿；`p5-p9` 相位
+  [✅ 已完成] KNOWN-DEBT P539-D3 销账(七臂+golden 003+零活跃规避点复核);
+  DIV-PY-CLOSURE-1 拆面:VM 面已修(双根因)+a2py 面已修+**句柄裸 id 面
+  连带治愈**(hd.as 探针:闭包内 let + py 调用 = 15 ✓——free-vars 误判正是
+  其根因;仍 open 缩为 Python 侧回调消费模型=W3/P539-D4);路线图 ⑦ 核销。
+  提交 71b1962a7。
+- [x] **T-08** 收口健康检查：`cargo tt` + `cargo tv` 全绿；`p5-p9` 相位
   回归；探针残留扫描；fold 前 `cargo tf` 留给 review 阶段。
+  验证：三件套输出留痕进复审记录。
+  [✅ 已完成] cargo tt 3843/3844 + cargo tv 3626/3627(唯 charts_gallery
+  预存红,master 同款);**p5-p9 全相位 20 套件 179/179 case 零回归**
+  (worktree 修复二进制实跑);探针残留扫描=0(PLAN598-DBG 已清,3 处
+  unimplemented! 为 master 预存);提交 71b1962a7。
 
 ## 9. 复审记录
 
 （起草交接：stage=new | plan_id=PLAN-598 | rev=1 | outcome=pass |
 next=work。范围调整留痕：DIV-PY-CLOSURE-1 实勘扩为双轨缺陷，VM let-面纳入
 本批（T-03 带时间盒与降级路径），句柄槽裸 id 面显式留 W3。）
+
+```
+stage: work | plan_id: PLAN-598 | plan_revision: 1 | outcome: pass |
+code_commit: 15e0d0e80(T2-T4) + 1bec2147b(T5) + 71b1962a7(T6-T7)
+（worktree plan-598-dev,基于 master e8f67b9b2;分组含 auto-down detached
+兄弟 worktree @ b616bc2,nextest autodown-core 解析所需） |
+task_ids: T-01..T-08 全部完成 |
+evidence: cargo tt 3843/3844 + cargo tv 3626/3627(唯 charts_gallery 预存红,
+master 同款);p5-p9 全相位 20 套件 179/179 零回归(worktree 修复二进制);
+探针矩阵 iso/cl/cl2/v/hd/f1/d3 全绿或按设计诊断;P539-D3 销账+
+DIV-PY-CLOSURE-1 拆面(句柄裸 id 面连带治愈,hd.as=15);路线图 ⑦ 核销;
+探针残留 0 |
+blockers: 无 |
+next: /auto-plan:review(fold 前 cargo tf 由 review 阶段执行)
+```
 
 ## 10. 待澄清事项
 
