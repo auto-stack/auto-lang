@@ -142,16 +142,39 @@ cargo run -- --root . --auto-binary <path-to-auto> phase p1    # by phase
 cargo run -- --root . --auto-binary <path-to-auto> all         # everything
 ```
 
-Phases (p0–p7, d1–d6) are rollout batches defined in
+Phases (p0–p7, d1–d6, p10) are rollout batches defined in
 `crates/auto-parity/src/main.rs` (`discover_libraries_by_phase`) — that table
 is the source of truth for phase membership.
+
+## The `dep` category (real-crate parity, PLAN-594)
+
+`libs/dep/<crate>_real/` corpora load **real crates.io libraries** via
+`dep crate(version: "x.y.z") + use.rs ...` and compare three-way (VM methods
+pack / a2r / hand-written Rust oracle) against the pinned upstream version.
+Leaf names carry the `_real` suffix so they never shadow the flat replica
+libs (`resolve_lib_dir` matches by leaf name). Conventions that differ from
+replica libs:
+
+- Pin an **exact** version in the corpus `dep` line and mirror it in the
+  oracle `Cargo.toml` — never re-run a corpus after changing its version
+  (stale wrapper cache, see KNOWN-DEBT P592-D1).
+- Network gate: `run_library` skips dep-category libs unless
+  `AUTO_LANG_PARITY_NET=1` (crates fetch/build happen on first run only;
+  afterwards `~/.cargo` serves offline).
+- Corpus idiom (three-leg-green, PLAN-594 T3 probes): constructor/free-fn
+  followed by `.unwrap()`, Auto type annotations for generics
+  (`let data Value = from_str(json).unwrap()`), string assertions via
+  `let s = <expr>` binding + `if s == ".."` comparison. Red faces stay out
+  of TAP corpora and are registered in `docs/known-divergences.md`
+  (DIV-DEP-8+); `base64_real` is the documented all-red sample.
 
 ## Adding a new library
 
 1. Pick the category matching the lib's parity target (or create a new
    category directory — no code changes needed). Create
    `libs/<category>/<name>/` following the self-contained layout above; the
-   leaf directory name is the library identity.
+   leaf directory name is the library identity. For real-crate dep libs use
+   the `dep` category with a `<crate>_real` leaf name (see above).
 2. Give it a `README.md` (scope, upstream version, known divergences).
 3. Optionally register it in a phase in `crates/auto-parity/src/main.rs`.
 4. Detailed conventions (TAP output format, test-crate workspace rules):

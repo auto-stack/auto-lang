@@ -100,7 +100,11 @@ pub fn parse_dep_lines(source: &str) -> Result<Vec<DepSpec>, String> {
                 let part = part.trim();
                 if let Some(v) = part.strip_prefix("version:") {
                     version = Some(unquote(v.trim()).ok_or_else(|| {
-                        format!("line {}: dep {} version must be a quoted string", idx + 1, name)
+                        format!(
+                            "line {}: dep {} version must be a quoted string",
+                            idx + 1,
+                            name
+                        )
                     })?);
                 } else if let Some(f) = part.strip_prefix("features:") {
                     features = parse_features(f.trim()).ok_or_else(|| {

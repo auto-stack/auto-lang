@@ -43,3 +43,41 @@ jobs:
         with:
           name: parity-failure
           path: parity/
+
+  parity-dep-real-crates:
+    # PLAN-594: 真三方 crates.io 库三轨对拍（libs/dep/*_real；base64 为全红
+    # 样本不注册）。网络档——AUTO_LANG_PARITY_NET=1 允许拉取/构建三方 crate
+    # （VM methods pack、a2r 测试 crate、oracle tests/rust 三处消费）。
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # VM 腿自由函数面（430/212 methods pack）依赖 nightly rustdoc。
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nparity -> parity/target"
+      # 产物缓存：a2r 测试 crate 的 target（runner 硬编码 bin_dir/target，
+      # 无法用 CARGO_TARGET_DIR 共享）与 oracle tests/rust/target。键挂
+      # parity 工具+dep 语料 hash——语料或工具不变时免付 auto-lang 冷构建。
+      - name: Restore dep-parity build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            parity/libs/dep/*/build_a2r/*/target
+            parity/libs/dep/*/tests/rust/target
+          key: parity-dep-${{ runner.os }}-${{ hashFiles('parity/crates/auto-parity/**', 'parity/libs/dep/**') }}
+      - name: Build auto binary
+        run: cargo build -p auto --release
+      - name: Run parity p10 (dep real-crate corpora, network tier)
+        working-directory: parity
+        env:
+          AUTO_LANG_PARITY_NET: "1"
+        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p10
+      - name: Upload parity artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-dep-failure
+          path: parity/
