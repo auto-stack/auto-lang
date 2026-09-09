@@ -8,6 +8,8 @@ fn main() {
     let miss = m.lookup("nope")
     print(miss == null)
 
+    print(m)
+
     let p = Point.parse("3,4").unwrap()
     print(p.x)
     print(p.y)

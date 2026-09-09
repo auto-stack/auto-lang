@@ -176,6 +176,30 @@ pub fn register_function_sig(crate_name: &str, func_name: &str, params: &str, re
         );
 }
 
+/// PLAN-591 D2(DIV-DEP-8 print 半边):dep 对象的 Display 字符串化——
+/// 经 shim 包合成 to_string(rustdoc 对 impl Display 类型合成,见 rustdoc.rs
+/// F 轮面)。无 Display 面 → Ok(None),调用方维持占位行为。
+/// RC 纪律:obj_id 以 raw push 入栈作接收者(shim 侧 raw pop,净零),不增不减。
+pub fn display_string(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    obj_id: u64,
+    short_type: &str,
+) -> Result<Option<String>, VMError> {
+    task.ram.push_nv(auto_val::encode_object(obj_id as u32));
+    let hit = dispatch(short_type, "to_string", task, vm)?;
+    if !hit {
+        return Ok(None);
+    }
+    let nv = task.ram.pop_nv();
+    if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv);
+        Ok(vm.get_string(idx).map(|b| String::from_utf8_lossy(&b).into_owned()))
+    } else {
+        Ok(None)
+    }
+}
+
 /// 加载并注册一个方法 shim 包(manifest 来自 cdylib 的 auto__shim_manifest 导出)。
 pub fn register_pack(crate_name: &str, lib: Arc<libloading::Library>, manifest_json: &str) {
     let manifest: ShimManifest = match serde_json::from_str(manifest_json) {

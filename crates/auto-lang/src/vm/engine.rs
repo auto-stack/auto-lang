@@ -3251,6 +3251,17 @@ impl AutoVM {
                                                         // RustStdlibObject — check for string-like values
                                                         if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
                                                             crate::vm::native::format_rust_stdlib_obj(rust_obj)
+                                                        } else if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                                                            // PLAN-591 D2(DIV-DEP-8 print 半边):
+                                                            // dep 对象 → shim 包 Display 合成 to_string;
+                                                            // 无 Display 面维持占位。
+                                                            let short_type = dep_obj.short_type.clone();
+                                                            let fallback = format!("<{}>", name);
+                                                            drop(guard);
+                                                            match crate::vm::ffi::dep_methods::display_string(task, self, obj_id, &short_type)? {
+                                                                Some(s) => s,
+                                                                None => fallback,
+                                                            }
                                                         } else {
                                                             format!("<{}>", name)
                                                         }
@@ -3672,6 +3683,16 @@ impl AutoVM {
                                 // Check for RustStdlibObject (e.g. semver::Version, Duration, etc.)
                                 if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
                                     crate::vm::native::format_rust_stdlib_obj(rust_obj)
+                                } else if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                                    // PLAN-591 D2(DIV-DEP-8 .to(str) VM 半边):
+                                    // dep 对象 → shim 包 Display 合成 to_string;
+                                    // 无 Display 面维持 <heap:N> 占位。注意 a2r 轨
+                                    // .to(str) 仍发 Debug(无 dep 元数据,P592-D3),
+                                    // 该形态不入三轨语料。
+                                    let short_type = dep_obj.short_type.clone();
+                                    drop(guard);
+                                    crate::vm::ffi::dep_methods::display_string(task, self, obj_id, &short_type)?
+                                        .unwrap_or_else(|| format!("<heap:{}>", value_bits))
                                 } else if let TypeTag::GenericInstance(_) = guard.type_tag() {
                                     if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                                         let type_name = self.generic_registry

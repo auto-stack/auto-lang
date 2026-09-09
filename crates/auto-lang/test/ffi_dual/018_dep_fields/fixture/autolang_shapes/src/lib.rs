@@ -135,3 +135,16 @@ impl Shape {
         matches!(self.kind, Kind::Triangle)
     }
 }
+
+/// Display(591 D2 DIV-DEP-8 print 面三轨对齐):rustdoc 据此合成 to_string
+/// 进 shim 包,VM print/.to(str) 路由该面;a2r 发射 `println!("{}", m)` 同为
+/// Display 形态;oracle 逐字镜像。
+impl std::fmt::Display for Messy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Messy({}, {}, {}, {}, {})",
+            self.a, self.tag, self.b, self.count, self.flag
+        )
+    }
+}

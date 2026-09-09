@@ -11,6 +11,8 @@ fn main() {
     let miss = m.lookup("nope");
     println!("{}", miss.is_none());
 
+    println!("{}", m);
+
     let p = Point::parse("3,4").unwrap();
     println!("{}", p.x);
     println!("{}", p.y);
