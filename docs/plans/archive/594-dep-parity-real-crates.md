@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-594
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-parity-real-crates
 author: [ZCode]
 created_at: 2026-09-09
@@ -430,6 +430,16 @@ reviewed_commit = worktree `plan-594-dev` @ **acdbfba1a**（a7facbb94 +
 **全部验收标准通过（AC1 的 CI 半句随 merge 后 push 首跑），无阻塞性债务 →
 status: reviewed**。可入 `/auto-plan:merge`（worktree plan-594-dev 基于
 0b730c4a2，master 侧仅计划记账文件分叉，合并无冲突预期）。
+
+### 沉淀收据（PLAN-594:r1，2026-09-09）
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | 复审基线 acdbfba1a（base 0b730c4a2）；spec delta = parity/project.md 新增真三方 dep 对拍线 + auto-parity/deps 模块行；账本投影目标 = .autoos/specs.json 六节 P594-1..6 |
+| `landed` | master **25581f888**（merge plan-594-dev，24 文件 +752/-2，含 delivery_commit 68614c009 docs-only 后代）+ INDEX.md 再生成提交 |
+| `ledger_refreshed` | .autoos/specs.json（runtime，gitignored 不提交）六节各插入 P594-1..6，file 指向本文归档路径；读回验证 6/6 |
+| `archived` | 本文 git mv 至 docs/plans/archive/594-dep-parity-real-crates.md，status: archived |
+| `cleaned` | wt-guard **clean**（无 reparse point）→ worktree 已移除、分支 plan-594-dev 已删（was 68614c009）、组目录 .wt/lang-594 已清空删除 |
 
 ### 规范增量（spec delta，merge 时沉淀）
 
