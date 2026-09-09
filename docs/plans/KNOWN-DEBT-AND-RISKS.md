@@ -1789,3 +1789,27 @@ active/onclick VM 实证随之可补。
   activity` 与 `manifest:030-video-player:film` 两 pac icon 名未入
   lucide_svg 命中表（master 同败实证 2026-09-07）。修法=补两 lucide_svg
   臂（需 SVG 资产面），另案小修；不阻 Stage B。
+
+## P592 债务（dep-rust-parity-matrix，2026-09-09 复审登记）
+
+P0 特征化网执行期发现的管线缺陷，已修复面见计划执行步骤；以下为**未修复登记项**
+（按可执行性排序，多数与 `parity/docs/known-divergences.md` DIV-DEP-1..7 条目互引）：
+
+- **P592-D1 [工程债] 自由函数 wrapper 缓存键弱失效**：`v3_{自由函数数}` 键在
+  **同数量换签名**时陈旧复用（compile_dep 的 exists 即命中）；且按导入集生成
+  多变体（v3_1/v3_3 共存），应改为**按 crate 全函数集单一化**（从 D2 manifest
+  全集生成 wrapper）。修法=compile_dep 以 manifest.functions 全集为 shims 来源
+  + 以全集指纹为版本键。
+- **P592-D2 [codegen] print 参数路径裸 Ident 构造器劫持**（DIV-DEP-5）：
+  `print(free_fn(...))` 的实参编译走 print 专用路径，裸 Ident 调用被构造器语义
+  处理（压 `<obj>`）而非标准 FFI 路由。修法=print-arg 编译先查 rust_native_map
+  再落构造器启发。语料现以 let 绑定规避。
+- **P592-D3 [a2r] String 形参假定 &str**（DIV-DEP-7）：单文件转译无 rustdoc
+  元数据，owned String 实参发射 `.as_str()` → E0308。根治 = A2R_EXTERN_SIGS
+  通道或 dep 元数据接入 a2r；语料以方法调用结果传参规避。
+- **P592-D4 [212 wrapper] u64↔i64 槽无收窄转换**（DIV-DEP-6）：自由函数
+  u64 参数/返回使 wrapper E0308（方法路径 emit_cdylib 已有收窄 cast 可参照）。
+- **P592-D5 [日志可见性] dep 构建失败在测试上下文不可见**：430 的 log::warn
+  （方法包构建失败降级自由函数路径）无 logger 时丢弃——016 排障期曾因此盲走
+  （本轮以临时 logger 定位后移除，log 的 std feature 与 test-trans 档冲突，
+  set_boxed_logger 不可用）。修法=测试基建提供 feature 无关的 logger 挂钩。
