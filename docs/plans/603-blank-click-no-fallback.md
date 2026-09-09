@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-603
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: 空白点击撤「最近块回落」（对齐网页轨槽外无效果语义）
 author: [zhaopuming]
 created_at: 2026-09-09
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 1
 total_steps: 1
 ---
 
@@ -70,10 +70,21 @@ PARITY #19 观察①（2026-09-09 用户裁定：对齐网页轨）：编辑壳 
 
 ## 执行步骤
 
-- [ ] T-1 实现：hit_test_strict + handle_mouse_press 换用 + 宽松口径清点
+- [✅ 已完成] T-1 实现：hit_test_strict + handle_mouse_press 换用 + 宽松口径清点
       处置 + headless 单测。验证：`cargo test -p auto-lang --features
       autodown --lib autodown_editor::core` scoped 绿。
+      （2026-09-09 提交 a4be09367：hit_test_strict 仅矩形包含，press 路径换用；
+      宽松 hit_test 留守拖选路径（handle_mouse_drag 拖穿 gap 续选邻块惯例，
+      注释定档唯一消费方）；mouse_click_blank_outside_blocks_is_noop（文末下方
+      +块间 gap 点击 focus/caret 双不变）。core::tests 82/82 绿。）
 
 ## 复审记录
+
+- stage: work | PLAN-603 | r1 | outcome: **pass** | 2026-09-09。
+  code_commit：plan-603-dev a4be09367（base 4d88854f6）。evidence：core::tests
+  82/82（含 mouse_click_blank_outside_blocks_is_noop）；全量 lib wt 4635p/205f
+  vs master 同轮 4643p/201f——差名 4 项裁定为零回归：ffi×1 并行抖动（串行过）、
+  osconfig_daemon 家族 3 项为 master 基线期破损（master 串行同跑 11p/5f 同族
+  红，并行会话新引入，非本计划回归）。blockers：无。next: review。
 
 ## 待澄清事项
