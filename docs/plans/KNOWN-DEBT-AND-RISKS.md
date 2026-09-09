@@ -1864,7 +1864,7 @@ P0 特征化网执行期发现的管线缺陷，已修复面见计划执行步�
 Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账分叉登记；已修复面
 见 plan 执行步骤（registry 落地/四处置迁移/零漂移双金样）：
 
-- **P593-D1 [一致性] shadcn `accent` token 的 VM 投影坍缩（=P571-D1 顺延）**：
+- **P593-D1 ✅ 已收口（PLAN-601 T-08，2026-09-09）** shadcn `accent` token 的 VM 投影坍缩（=P571-D1 顺延）：
   `bg-accent`/`text-accent` class 在 VM 侧坍缩映射 `Color::Secondary`
   （`ui/style/color.rs` "accent" 臂），而 vue 侧 `--accent` 是独立值（zinc/scaffold
   均为 muted 系≠secondary）——双端本就分歧。PLAN-593 S7 证据门实测：`.at` 源码
@@ -1872,18 +1872,18 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
   等示例），**改投影值=动现存 VM 视觉**，违反 Phase 1 零变化门——钉 Phase 2
   （随主题切换落地一并：Color 枚举补 Accent/OnAccent 变体 + registry
   Accent/AccentForeground 槽已在位）。
-- **P593-D2 [双端分叉] accent dark 提亮 +4 vs +10**：vue 脚手架 TS applyAccent
+- **P593-D2 ✅ 已收口（PLAN-601 T-07，2026-09-09）** accent dark 提亮 +4 vs +10：vue 脚手架 TS applyAccent
   dark 提亮 `+4`（ui_gen/vue.rs ACCENT_PALETTE_JS），Rust 侧 `+10`
   （theme::accent_primary_hsl/resolve_semantic_rgb Primary 臂）——同 accent 双端
   暗色亮度不一致。Phase 2 归一裁定（含 zinc-vs-stella、E2/E3 模板值归一）。
-- **P593-D3 [遗留面] ui_gen generate_base_css 为测试专用**：S1 对账实勘其唯一
+- **P593-D3 ✅ 已收口（PLAN-601 T-09/D3，2026-09-09）** ui_gen generate_base_css 为测试专用：S1 对账实勘其唯一
   调用方是自身测试（真实 Vue 路径=auto-man generate_index_css），两模板值已分叉
   （primary 深藏青 vs 烤入 indigo；dark card 11%↔10%、muted 17.5%↔15%）。
   Phase 2 裁定退役或对齐 scaffold；registry 中两套（zinc/scaffold）分别保真。
-- **P593-D4 [跨仓] auto-os 桌面宿主 CSS 发射点未对账**：auto-os 仓
+- **P593-D4 ✅ 已关（PLAN-601 T-01 调查结论，2026-09-09）** auto-os 桌面宿主 CSS 发射点未对账：auto-os 仓
   widgets-gallery/vue-ref 静态资产含 `--background:` 系（E7），桌面 vue 宿主若
   另有 index.css 发射点则属第四源——Phase 2 立项时跨仓对账。
-- **P593-D5 [S9 实勘补录] auto CLI 两个手写 index.css 副本未收编**：
+- **P593-D5 [进行中·PLAN-601] auto CLI 两个手写 index.css 副本未收编（T-02 已将两模板值机械迁入 registry `tauri`/`cli-vue` 主题表；生成器本体改装配=T-09 余项）**：
   `crates/auto/src/cmd_tauri.rs:745` 与 `crates/auto/src/cmd_vue.rs:1613` 各有一
   份 `generate_index_css()`（tauri/cli-vue 脚手架真路径，各有非测试调用方
   386/1163），色板为 zinc/scaffold 之外的独立变体（tauri≈zinc+dark bg 84% 4.9%
