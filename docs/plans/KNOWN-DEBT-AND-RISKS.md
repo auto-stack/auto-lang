@@ -1184,8 +1184,11 @@
   ABI × may 出口，Ok/Err 双路单测）**；s2s rule_err_propagate 在 `.as` 内
   自动 may 化（含 kwargs 形态经 codegen 路由 478）。a2py 走糖源不受影响；
   闭包降级 set 字面量子面（DIV-PY-CLOSURE-1）维持独立在案。
-- **P539-D3 a2py 复合接收者无括号**（存量）：`py_call(t == t, "sum")`
-  发射 `t == t.sum()`（优先级错）；套件用中间变量规避。
+- **~~P539-D3 a2py 复合接收者无括号~~ ✅ 已清偿（2026-09-09, Plan 598 T-02）**：
+  糖族恒括号纪律七臂（py_call/py_call_may/py_getattr/py_matmul/py_getitem/
+  py_setitem/py_call0——审计较原单点扩容；getattr_may/getitem_may 本就安全
+  不改）；a2p golden 16_python_std/003_py_call_compound 钉死。套件 grep
+  复核零活跃规避点（复合接收者中间变量规避未落在现行 .as 套件）。
 - **P539-D4 py_subclass 类派生延期（计划内预案路径）**：自定义
   nn.Module/Dataset 需 Python 侧类工厂（exec 生成类 + 方法绑回 Auto
   回调）。回调桥 T21 已通（thread-local 任务槽，map/apply_ 双探针
