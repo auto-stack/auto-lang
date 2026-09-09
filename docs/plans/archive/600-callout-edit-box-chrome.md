@@ -143,5 +143,13 @@ containers` 与改写后的 054 契约测试钉死在 `autodown_editor::core` �
   evidence：本计划复审记录 + worktree 冻结件 825d120fd + 
   vm-600-callout-box.png（已入库）。
   next: merge。
+- stage: merge | PLAN-600 | r1 | 2026-09-09 收据：prepared（立案 e056d1d86）→
+  landed（plan-600-dev 4317d7885/825d120fd 折回 master a90595424；061 测试分支
+  auto-down-dev 87e5c350f 先行折回，测试区相邻插入冲突保留两块合解 81/81 复验）
+  → ledger_refreshed（运行时台账 .autoos/specs.json gitignored，P600-1..6 六节
+  发布 + 回读验证）→ archived（本件，status:archived efae7e29c）→ cleaned
+  （wt-guard 三 worktree clean；lang-600 组 auto-down 为只读 detached 依赖随组
+  移除；plan-600-dev / auto-down-dev 分支删；组目录移除；worktree list 复核
+  零残留）。
 
 ## 待澄清事项
