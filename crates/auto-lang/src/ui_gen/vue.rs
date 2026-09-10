@@ -15560,75 +15560,6 @@ export function cn(...inputs: ClassValue[]) {
 "#.to_string()
     }
 
-	    /// Generate base CSS file with CSS variables
-	    ///
-	    /// PLAN-593 V1：色变量块整体取自 registry（zinc）单一事实源，
-	    /// 本函数零手写色值（--radius/--card-shadow 为非色 token，留脚手架）。
-	    pub fn generate_base_css() -> String {
-	        let zinc = crate::design_tokens::registry::builtin("zinc")
-	            .expect("内置主题 zinc 恒在（PLAN-601 registry 双面单源）");
-	        let mut css = String::new();
-	        css.push_str(r##"@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  :root {
-"##);
-	        css.push_str(&crate::design_tokens::registry::render_core(zinc, false));
-	        css.push_str(r##"    --radius: 0.5rem;
-
-    /* Plan 360: card shadows — deeper in dark mode */
-    --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  }
-
-  .dark {
-"##);
-	        css.push_str(&crate::design_tokens::registry::render_core(zinc, true));
-	        css.push_str(r##"
-    /* Plan 360: deeper shadows in dark mode for visual depth */
-    --card-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-  }
-}
-
-/* Plan 360: custom card shadow utility */
-@layer utilities {
-  .shadow-card {
-    box-shadow: var(--card-shadow);
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-    /* Plan 360: smooth dark mode transitions */
-    transition: background-color 0.3s ease, color 0.3s ease;
-  }
-  h1 {
-    @apply text-4xl font-bold tracking-tight text-primary mb-4;
-  }
-  h2 {
-    @apply text-3xl font-bold tracking-tight text-primary mt-8 mb-4;
-  }
-  h3 {
-    @apply text-xl font-semibold text-primary mb-3;
-  }
-  h4 {
-    @apply text-lg font-semibold mb-2;
-  }
-  h5 {
-    @apply text-base font-semibold mb-1;
-  }
-  h6 {
-    @apply text-sm font-semibold mb-1;
-  }
-}
-"##);
-	        css
-	    }
 
     /// Generate a composable singleton `.ts` file for a shared store
     /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported
@@ -18935,17 +18866,8 @@ widget W {
         assert!(utils_ts.contains("cn"));
         assert!(utils_ts.contains("clsx"));
         assert!(utils_ts.contains("tailwind-merge"));
-
-        let base_css = VueGenerator::generate_base_css();
-        assert!(base_css.contains("--background"));
-        assert!(base_css.contains("--primary"));
-        assert!(base_css.contains("h1 {"));
-        assert!(base_css.contains("@apply text-4xl font-bold tracking-tight text-primary mb-4;"));
-        assert!(base_css.contains("h2 {"));
-        assert!(base_css.contains("h3 {"));
-        assert!(base_css.contains("h4 {"));
-        assert!(base_css.contains("h5 {"));
-        assert!(base_css.contains("h6 {"));
+        // PLAN-601 T-09/D3：generate_base_css 退役（P593-D3，唯一调用方
+        // =本测试；zinc 主题表存续 design_tokens registry 作可切换内置）。
     }
 
     // ========================================
