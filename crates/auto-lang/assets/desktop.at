@@ -94,15 +94,15 @@ widget DesktopSurface {
                 }
                                 col {
                                     style: "w-44 gap-1"
-                                    button "打开" {
+                                    button (text: "打开", variant: "ghost") {
                                         onclick: .MenuOpen
                                         style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                                     }
-                                    button "从桌面移除" {
+                                    button (text: "从桌面移除", variant: "ghost") {
                                         onclick: .MenuRemove
                                         style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                                     }
-                                    button "更换壁纸…" {
+                                    button (text: "更换壁纸…", variant: "ghost") {
                                         onclick: .MenuWallpaper
                                         style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                                     }
@@ -121,11 +121,11 @@ widget DesktopSurface {
             }
             col {
                 style: "w-44 gap-1"
-                button "更换壁纸…" {
+                button (text: "更换壁纸…", variant: "ghost") {
                     onclick: .MenuWallpaperBlank
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                 }
-                button "显示设置" {
+                button (text: "显示设置", variant: "ghost") {
                     onclick: .OpenSettingsBlank
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                 }

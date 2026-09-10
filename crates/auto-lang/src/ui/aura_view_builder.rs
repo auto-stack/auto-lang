@@ -1911,7 +1911,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 422 P3: `popover` DSL 标签 —— 锚定弹层的应用侧入口
             // (contextmenu 坐标锚 / widget 锚两形态,见 convert_popover)。
             "popover" => {
-                self.convert_popover(props, children, path, id_map, probe, bindings)
+                self.convert_popover(props, events, children, path, id_map, probe, bindings)
             }
 
             // PLAN-050 T7 (C5): 图标组件臂（tracked 层镜像,见 convert_element
@@ -3030,7 +3030,7 @@ impl<'a> AuraViewBuilder<'a> {
                 let mut path = Vec::new();
                 let mut id_map = crate::ui::debug_id_map::DebugIdMap::default();
                 let mut probe = crate::ui::debug::BuildProbe::default();
-                self.convert_popover(props, children, &mut path, &mut id_map, &mut probe, bindings)
+                self.convert_popover(props, events, children, &mut path, &mut id_map, &mut probe, bindings)
             }
             // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
@@ -7390,6 +7390,7 @@ let tabs_inner = View::Row {
     fn convert_popover(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
@@ -7483,11 +7484,22 @@ let tabs_inner = View::Row {
             args: vec![Value::str(&slot_id)],
         };
 
+        // PLAN-010 N6b 根修:ondismiss 在解析层被 on* 前缀升格进 events 桶
+        // (parser.rs ViewEvent 分流),props 查不到——events 兜底基名提取,
+        // 否则合成 __popover_close 对 VM 态 popover(状态位驱动 open)是
+        // no-op,外点/Esc 关闭全失效(桌面壳 icon/blank 菜单实录)。
+        let ondismiss_handler = || {
+            self.extract_string_with(props, "ondismiss", bindings)
+                .or_else(|| {
+                    crate::aura::aura_events_get_base(events, "ondismiss")
+                        .map(|ev| ev.handler.clone())
+                })
+        };
+
         match (px, py) {
             (Some(x), Some(y)) => {
                 let open = open_prop.unwrap_or_else(self_managed_open);
-                let on_dismiss = self
-                    .extract_string_with(props, "ondismiss", bindings)
+                let on_dismiss = ondismiss_handler()
                     .map(|h| DynamicMessage::Typed {
                         widget_name: self.widget_name.clone(),
                         event_name: h.trim_start_matches('.').to_string(),
@@ -7545,8 +7557,7 @@ let tabs_inner = View::Row {
                 };
 
                 let open = open_prop.unwrap_or_else(self_managed_open);
-                let on_dismiss = Some(self
-                    .extract_string_with(props, "ondismiss", bindings)
+                let on_dismiss = Some(ondismiss_handler()
                     .map(|h| DynamicMessage::Typed {
                         widget_name: self.widget_name.clone(),
                         event_name: h.trim_start_matches('.').to_string(),

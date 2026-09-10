@@ -23994,6 +23994,147 @@ mod tests {
         }
     }
 
+    /// PLAN-010 T4 回归：desktop.at popover 的 ondismiss 必须提取自 events
+    /// 桶（parser 把 `on*` 键升格为 ViewEvent，props 恒 miss——回退
+    /// __popover_close 对 VM 态 popover 是 no-op，外点/Esc 关闭全失效）。
+    /// 断言三层：VM 视图 on_dismiss 事件名（MenuClose×4 icon + BlankClose×1
+    /// blank）、convert_view_messages 后存活（发布侧真实携带）、MenuClose
+    /// handler 闭环（menu_id 清位 = 面板内/外点/Esc 三路关闭的落点）。
+    #[test]
+    fn p010_popover_ondismiss_extracted_from_events() {
+        let _guard = t2_isolate_storage("p010-regress");
+        let mut ds = t3_session_with_shell();
+        let comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
+        ds.desktop.desktop_app = Some(ds.allocate_app(comp));
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            "014-weather,011-calculator".into(),
+        );
+        inject_desktop_surface(&mut ds);
+        let surface = ds.desktop.desktop_app.unwrap();
+        // 开 icon 菜单（menu_id 置位 → per-icon popover open）。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("IconMenu", &[auto_val::Value::str("014-weather")])
+                .expect("IconMenu handler");
+        }
+        fn walk_vm(
+            v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            dismiss: &mut Vec<Option<String>>,
+        ) {
+            use crate::ui::view::View;
+            match v {
+                View::Popover { anchor, content, on_dismiss, .. } => {
+                    dismiss.push(on_dismiss.as_ref().map(
+                        |m| match m {
+                            crate::ui::interpreter::DynamicMessage::Typed { event_name, .. } =>
+                                event_name.clone(),
+                            other => format!("{other:?}"),
+                        },
+                    ));
+                    if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                        walk_vm(w, dismiss);
+                    }
+                    walk_vm(content, dismiss);
+                }
+                View::Column { children, .. }
+                | View::Row { children, .. } => {
+                    for c in children {
+                        walk_vm(c, dismiss);
+                    }
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => walk_vm(child, dismiss),
+                View::MouseArea { content, .. } => walk_vm(content, dismiss),
+                View::Grid { cells, .. } => {
+                    for c in cells {
+                        walk_vm(c, dismiss);
+                    }
+                }
+                View::Button { content, .. } => {
+                    if let Some(c) = content {
+                        walk_vm(c, dismiss);
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn walk_iced(
+            v: &crate::ui::view::View<IcedMessage>,
+            dismiss: &mut Vec<Option<String>>,
+        ) {
+            use crate::ui::view::View;
+            match v {
+                View::Popover { anchor, content, on_dismiss, .. } => {
+                    dismiss.push(on_dismiss.as_ref().map(|m| m.event.clone()));
+                    if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                        walk_iced(w, dismiss);
+                    }
+                    walk_iced(content, dismiss);
+                }
+                View::Column { children, .. }
+                | View::Row { children, .. } => {
+                    for c in children {
+                        walk_iced(c, dismiss);
+                    }
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => walk_iced(child, dismiss),
+                View::MouseArea { content, .. } => walk_iced(content, dismiss),
+                View::Grid { cells, .. } => {
+                    for c in cells {
+                        walk_iced(c, dismiss);
+                    }
+                }
+                View::Button { content, .. } => {
+                    if let Some(c) = content {
+                        walk_iced(c, dismiss);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let app = ds.apps.get(&surface).unwrap();
+        let (view, _, _) = app.component.view_with_debug_gated(false);
+        let mut vm_names = Vec::new();
+        walk_vm(&view, &mut vm_names);
+        assert_eq!(
+            vm_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
+            4,
+            "四个 icon 菜单 popover 的 ondismiss 应提取为 MenuClose（events 桶兜底）: {vm_names:?}"
+        );
+        assert_eq!(
+            vm_names.iter().filter(|n| n.as_deref() == Some("BlankClose")).count(),
+            1,
+            "blank 菜单 popover 的 ondismiss 应提取为 BlankClose: {vm_names:?}"
+        );
+        assert!(
+            vm_names.iter().all(|n| n.as_deref() != Some("__popover_close")),
+            "不允许再落 __popover_close 回退（VM 态 popover 无此处理语义）: {vm_names:?}"
+        );
+        // 转换后存活（发布侧真实携带——popover Panel shell.publish 的消息）。
+        let converted = convert_view_messages(view);
+        let mut iced_names = Vec::new();
+        walk_iced(&converted, &mut iced_names);
+        assert_eq!(
+            iced_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
+            4,
+            "convert_view_messages 后 MenuClose ondismiss 存活"
+        );
+        // handler 闭环：MenuClose 到达即 menu_id 清位（外点/Esc 关闭落点）。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("MenuClose", &[])
+                .expect("MenuClose handler");
+        }
+        match t496_read(&ds, "menu_id") {
+            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "MenuClose → menu_id 清位"),
+            other => panic!("menu_id 异常: {other:?}"),
+        }
+    }
+
     /// T1 走查（iced 侧）：View<IcedMessage> 版（convert_view_messages 后）。
     /// Plan 498 M0: 增单击臂计数。
     fn t496_walk_iced(

@@ -165,11 +165,11 @@ widget Desktop {
                                         }
                                         col {
                                             style: "w-36 gap-1"
-                                            button "聚焦" {
+                                            button (text: "聚焦", variant: "ghost") {
                                                 onclick: .NativeFocus(w.wid)
                                                 style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
                                             }
-                                            button "关闭" {
+                                            button (text: "关闭", variant: "ghost") {
                                                 onclick: .NativeClose(w.wid)
                                                 style: "h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left"
                                             }
@@ -200,15 +200,15 @@ widget Desktop {
                                         if .win_menu == w.wid {
                                             col {
                                                 style: "w-36 gap-1"
-                                                button "聚焦" {
+                                                button (text: "聚焦", variant: "ghost") {
                                                     onclick: .WinFocus(w.wid)
                                                     style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
                                                 }
-                                                button "最小化" {
+                                                button (text: "最小化", variant: "ghost") {
                                                     onclick: .WinMin(w.wid)
                                                     style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
                                                 }
-                                                button "关闭" {
+                                                button (text: "关闭", variant: "ghost") {
                                                     onclick: .WinClose(w.wid)
                                                     style: "h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left"
                                                 }
@@ -277,11 +277,11 @@ widget Desktop {
                             text "退出 Auto 桌面？" { style: "text-sm text-foreground" }
                             row {
                                 style: "gap-2"
-                                button "取消" {
+                                button (text: "取消", variant: "ghost") {
                                     onclick: .ShutdownCancel
                                     style: "h-8 px-3 text-sm rounded-md bg-transparent text-foreground hover:bg-foreground/10"
                                 }
-                                button "退出" {
+                                button (text: "退出", variant: "primary") {
                                     onclick: .ShutdownConfirm
                                     style: "h-8 px-3 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
                                 }

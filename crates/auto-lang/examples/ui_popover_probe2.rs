@@ -8,7 +8,9 @@
 //! 运行：
 //!   cargo run --example ui_popover_probe2 --features ui-iced
 
-use auto_lang::ui::iced::renderer::IntoIcedElement;
+use auto_lang::ui::iced::renderer::{
+    IntoIcedElement, INTER_FONT, INTER_FONT_MEDIUM, INTER_FONT_REGULAR, INTER_FONT_SEMIBOLD,
+};
 use auto_lang::ui::view::{PopoverAnchor, PopoverPlacement};
 use auto_lang::ui::{Component, View};
 
@@ -112,8 +114,17 @@ fn main() -> auto_lang::ui::AppResult<()> {
     #[cfg(feature = "ui-iced")]
     {
         eprintln!("[probe-b] daemon+DM-wrapped popover probe starting");
+        // PLAN-010 T1：补桌面同款渲染接线（对齐 renderer.rs daemon 装配
+        // .font×3+.default_font+.theme），修 B 床黑屏——shadcn_theme 为
+        // 私有 fn，此处以 Theme::Dark 达"内容可见"目的（主题不参与
+        // overlay 消息路由，不影响本床判据）。
         iced::daemon(boot, update, view)
             .title("Popover Probe B - daemon+DM")
+            .font(INTER_FONT_REGULAR)
+            .font(INTER_FONT_MEDIUM)
+            .font(INTER_FONT_SEMIBOLD)
+            .default_font(INTER_FONT)
+            .theme(|_state: &Probe, _id: iced::window::Id| iced::Theme::Dark)
             .run()?;
         return Ok(());
     }

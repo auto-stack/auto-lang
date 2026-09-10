@@ -113,9 +113,9 @@ onMounted(() => {
                     <Circle class="w-5 h-5 w-5 h-5 text-white" />
                   </div>
                   <div class="flex flex-col w-44 gap-1">
-                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">打开</Button>
-                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-4-' + (((e as any)?.id ?? e))">从桌面移除</Button>
-                    <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-5-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
+                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">打开</Button>
+                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-4-' + (((e as any)?.id ?? e))">从桌面移除</Button>
+                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-5-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
                   </div>
                 </Popover>
                 <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
@@ -124,8 +124,8 @@ onMounted(() => {
           </div>
         </div>
         <div class="flex flex-col w-44 gap-1">
-          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-6'">更换壁纸…</Button>
-          <Button class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-7'">显示设置</Button>
+          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-6'">更换壁纸…</Button>
+          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-7'">显示设置</Button>
         </div>
       </Popover>
     </div>
