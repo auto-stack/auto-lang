@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-601
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: executing               # review needs_fix（R1 boot 读回）→ 修复后 re-review
 feature_name: theme-declaration-hot-switch（Design 29 Phase 2）
 author: [zhaopuming]
 created_at: 2026-09-09
@@ -10,10 +10,10 @@ plan_revision: 1
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-007]     # AutoUI 跨端视觉一致（主题/令牌面）
 
 affects: [auto-lang/ui, auto-man, auto]   # specs 路径
-current_step: 12
+current_step: 11
 total_steps: 12
 ---
 
@@ -247,7 +247,111 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
 
 ## 9. 复审记录
 
+（review 2026-09-10：`stage: review | PLAN-601 r1 | outcome: needs_fix |
+reviewed_commit: 23a5a7d501bc45c4ad847725dc94ed0d6d6bf2d5@plan-601-dev（树净）|
+base_commit: 2f68be1d6（merge-base；master 已前移至 f9a988a87——fold 阶段同步项）|
+dependency_revisions: 同仓 workspace（auto-man/auto），无跨仓依赖改动；auto-os 未触及 |
+spec_inputs: docs/specs/auto-lang/ui/overview.md（P593 条目+design_tokens 行+code_editor 行=SD-01/02/03 靶）、docs/plans/KNOWN-DEBT-AND-RISKS.md（SD-04 已随 work 落）|
+acceptance_results: AC-01 pass / AC-02 partial / AC-03 pass / AC-04 **partial→R1** / AC-05 pass / AC-06 partial(随 R2) / AC-07 pass / AC-08 pass(单测级,截图随 R2) |
+
+**findings:**
+
+- **R1【P1·AC-04·needs_fix 主因】theme_name boot 读回缺失**：持久化链只走
+  「动词臂(renderer.rs:9122 execute_set_theme_name)→落盘」与「config.at 外写
+  diff 臂(:9249, Plan 551 轮询)」；boot 期 `DesktopSession::new` 仅
+  `config: load()` 装载结构体（session.rs:386），`style::theme::set_theme`
+  无 boot 调用方（全 crate 生产调用点仅 9122/9249），且 poll 首采样
+  「只建锚不应用」（551 语义：dock/壁纸等结构化消费面成立，theme_name 需
+  ACTIVE_THEME 激活不成立）→ **主题选择重启后不存活**。运行时实机复现
+  （002-counter + `AUTOOS_DESKTOP_CONFIG` 种子 zinc/stella/scaffold×3 次
+  boot，MCP 截图 4 张字节全等=主题未应用）。修复面小：renderer 启动路径
+  补 boot 激活臂（`if let Some(name)=&cfg.theme_name { set_theme(name) }`
+  + 失败容错 + 单测）。重开 T-05。
+- **R2【P2·非缺陷·路由注记】VM 腿主题通道宿主门控**：config 轮询
+  （poll_external_config）与动词均 `is_desktop()` 门控（551 宿主中心设计
+  一致）——纯 `auto run -r vm` 运行时切主题不可达；VM 端运行时视觉验收
+  （AC-02/06/08 截图对拍）依赖 auto-os 宿主集成（与 settings 选择器 UI
+  移交件同批）。仓内证据=执行臂级单测（t3_session_with_shell 桌面态：
+  execute_set_theme_name/apply_external_config_diff 真实会话驱动）。
+- **R3【P3·预存·非本计划】vue 腿裸名包组件 SFC 缺口现场复现**：
+  006-hero-section/015-notes 生成 App.vue imports SettingsPopover.vue
+  未发射（`use settings: SettingsPopover` 包组件族,与 P601-T11 债项同族）——
+  建议 merge 时将该债项文本扩及 settings-popover 家族。
+- **R4【info】生成产物漂移副作用**：`cargo test -p auto-man` 与 `auto run`
+  会再生成 examples/rust-workspace/015-notes-back 等产物（master 同样漂移,
+  非本计划引入）——已还原；生成器金样自愈面建议独立小计划。
+
+**runtime 实机证据（vue 腿,AC-02 核心段 pass）**：006-hero-section 经本
+worktree codegen 生成+`auto run`（vite :3000），playwright boot-restore 路径
+（localStorage `auto-theme` 种子→载入,同工程零重建）：zinc→`--background
+222.2 47% 7%`、stella→`223 34% 12%`（=stella dark 真值 rgb(20,26,41)）、
+scaffold→`222.2 47% 7%`,computed 值与 registry 表逐值相符;`--primary` 恒
+indigo=accent overlay 按设计骑压;持久键各归位;截图 3 张落档（stella 与
+zinc/scaffold 像素可区分）。T-06 交付物（THEME_PALETTES 五内置/applyTheme/
+升级 watch）实证落位于真实生成产物。
+
+**门禁复核（复审重放）**：scoped 121/122（唯一红=ui::layout 基线红,与本计划
+无关）;日常档全量/tv/tf/auto-man/auto 于 work 阶段同基线重放（记录见上轮）,
+红集合对拍裁定成立。
+
+evidence: 本记录内嵌（命令+computed 值摘录）;探针截图 D:/tmp/p601_review/
+（transient,值摘录已固化于此）|
+next: work 修复 R1（范围限 boot 读回臂+单测;R2/R3 随 merge 路由,R4 建议
+独立计划）→ 修复后快速 re-review（仅 R1 面）`）
+
 ## 9. 复审记录
+
+（review 2026-09-10：`stage: review | PLAN-601 r1 | outcome: needs_fix |
+reviewed_commit: 23a5a7d501bc45c4ad847725dc94ed0d6d6bf2d5@plan-601-dev（树净）|
+base_commit: 2f68be1d6（merge-base；master 已前移至 f9a988a87——fold 阶段同步项）|
+dependency_revisions: 同仓 workspace（auto-man/auto），无跨仓依赖改动；auto-os 未触及 |
+spec_inputs: docs/specs/auto-lang/ui/overview.md（P593 条目+design_tokens 行+code_editor 行=SD-01/02/03 靶）、docs/plans/KNOWN-DEBT-AND-RISKS.md（SD-04 已随 work 落）|
+acceptance_results: AC-01 pass / AC-02 partial / AC-03 pass / AC-04 **partial→R1** / AC-05 pass / AC-06 partial(随 R2) / AC-07 pass / AC-08 pass(单测级,截图随 R2) |
+
+**findings:**
+
+- **R1【P1·AC-04·needs_fix 主因】theme_name boot 读回缺失**：持久化链只走
+  「动词臂(renderer.rs:9122 execute_set_theme_name)→落盘」与「config.at 外写
+  diff 臂(:9249, Plan 551 轮询)」；boot 期 `DesktopSession::new` 仅
+  `config: load()` 装载结构体（session.rs:386），`style::theme::set_theme`
+  无 boot 调用方（全 crate 生产调用点仅 9122/9249），且 poll 首采样
+  「只建锚不应用」（551 语义：dock/壁纸等结构化消费面成立，theme_name 需
+  ACTIVE_THEME 激活不成立）→ **主题选择重启后不存活**。运行时实机复现
+  （002-counter + `AUTOOS_DESKTOP_CONFIG` 种子 zinc/stella/scaffold×3 次
+  boot，MCP 截图 4 张字节全等=主题未应用）。修复面小：renderer 启动路径
+  补 boot 激活臂（`if let Some(name)=&cfg.theme_name { set_theme(name) }`
+  + 失败容错 + 单测）。重开 T-05。
+- **R2【P2·非缺陷·路由注记】VM 腿主题通道宿主门控**：config 轮询
+  （poll_external_config）与动词均 `is_desktop()` 门控（551 宿主中心设计
+  一致）——纯 `auto run -r vm` 运行时切主题不可达；VM 端运行时视觉验收
+  （AC-02/06/08 截图对拍）依赖 auto-os 宿主集成（与 settings 选择器 UI
+  移交件同批）。仓内证据=执行臂级单测（t3_session_with_shell 桌面态：
+  execute_set_theme_name/apply_external_config_diff 真实会话驱动）。
+- **R3【P3·预存·非本计划】vue 腿裸名包组件 SFC 缺口现场复现**：
+  006-hero-section/015-notes 生成 App.vue imports SettingsPopover.vue
+  未发射（`use settings: SettingsPopover` 包组件族,与 P601-T11 债项同族）——
+  建议 merge 时将该债项文本扩及 settings-popover 家族。
+- **R4【info】生成产物漂移副作用**：`cargo test -p auto-man` 与 `auto run`
+  会再生成 examples/rust-workspace/015-notes-back 等产物（master 同样漂移,
+  非本计划引入）——已还原；生成器金样自愈面建议独立小计划。
+
+**runtime 实机证据（vue 腿,AC-02 核心段 pass）**：006-hero-section 经本
+worktree codegen 生成+`auto run`（vite :3000），playwright boot-restore 路径
+（localStorage `auto-theme` 种子→载入,同工程零重建）：zinc→`--background
+222.2 47% 7%`、stella→`223 34% 12%`（=stella dark 真值 rgb(20,26,41)）、
+scaffold→`222.2 47% 7%`,computed 值与 registry 表逐值相符;`--primary` 恒
+indigo=accent overlay 按设计骑压;持久键各归位;截图 3 张落档（stella 与
+zinc/scaffold 像素可区分）。T-06 交付物（THEME_PALETTES 五内置/applyTheme/
+升级 watch）实证落位于真实生成产物。
+
+**门禁复核（复审重放）**：scoped 121/122（唯一红=ui::layout 基线红,与本计划
+无关）;日常档全量/tv/tf/auto-man/auto 于 work 阶段同基线重放（记录见上轮）,
+红集合对拍裁定成立。
+
+evidence: 本记录内嵌（命令+computed 值摘录）;探针截图 D:/tmp/p601_review/
+（transient,值摘录已固化于此）|
+next: work 修复 R1（范围限 boot 读回臂+单测;R2/R3 随 merge 路由,R4 建议
+独立计划）→ 修复后快速 re-review（仅 R1 面）`）
 
 （work 第三轮 2026-09-10 收口：`stage: work | PLAN-601 r1 | outcome: pass（全部 12 任务完成）→ execution_done |
 code_commit: 23a5a7d50@plan-601-dev（本轮 9e00e4cca D3 收尾 + eccdcfdbd T-06 + 55b56e56a T-09-D5 + 4c3ebb85f T-10 + 23a5a7d50 T-11）|
