@@ -76,6 +76,7 @@ pub mod aura;
 // Plan 217: A2UI Protocol Bridge (AURA ↔ A2UI JSON)
 pub mod a2ui;
 // Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
+pub mod design_tokens;
 pub mod ui_gen;
 // Stage B P-5（PLAN-590）：跨仓解析序定位 auto-os 侧资产（无 feature 门——
 // ui_gen/docs 管线与 CLI 的无 ui 构建形态也要消费）。
@@ -6503,6 +6504,13 @@ mod autodown_codegen_debts_tests;
 // 跨仓 sibling 布局;T1 映射草案逐类断言见模块头注）。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan449_style_parity_tests;
+
+// PLAN-593（Design 29 Phase 1）零漂移基线：语义色期望表 + base_css 金样
+// （先钉后改；S4/S5 registry 改造后同组断言即零漂移证明）。
+// R1 门修正：断言面含 ui::style::theme（feature="ui" 门）——tf 档（无 ui）
+// 编译期排除，日常档 t（ui-iced ⊃ ui）全量执行。
+#[cfg(all(test, feature = "ui"))]
+mod plan593_theme_registry_tests;
 
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
