@@ -4,9 +4,9 @@ status: executing                # drafting → executing → execution_done →
 feature_name: dep-rust-v2-trait-generic-callback
 author: [ZCode]
 created_at: 2026-09-09
-updated_at: 2026-09-09
+updated_at: 2026-09-10
 plan_revision: 1
-current_step: 9
+current_step: 11
 total_steps: 11
 
 # /auto-plan:review 结束时填写：
@@ -303,13 +303,31 @@ autodown-core → 分组目录建 auto-down detached 兄弟 worktree，禁 junct
   含完整 type.method 名与调用行号，已是**显式可诊断错误**；"非 Unknown
   模糊"的更强文案（如"trait X 未入白名单"）需 classify skip 理由回传
   manifest（skip 面今不入包），登记为后续小改进非本计划阻塞项。
-- [ ] **T-07** a2r D8 半边：rust-typed 值 print/`.to(str)` Display 对齐
+- [x] **T-07** a2r D8 半边：rust-typed 值 print/`.to(str)` Display 对齐
   （判定=接收者 use.rs 导入类型；存量 Debug 语料隔离）。验证：`cargo tt`
   全绿（唯 charts 预存）+ D8 翻绿语料。→ AC-04
-  **[执行留痕 2026-09-10]**：本会话上下文预算耗尽于 T-08 后，T-07 未动工。
-  交接待续（首个动作）：trans/rust.rs 对 rust 导入类型的 `.to(str)`/print
-  发射从 `{:?}` 改 `{}`（判定条件=接收者类型在 uses 白名单且非 Auto enum）；
-  D13 常量接收者=发射器对大写接收者查"常量 vs 类型"（use.rs 导入项形态）。
+  [✅ 已完成] 提交 493c43e7a。实现（对留痕方案的落地+两处执行期修正）：
+  - **a2r 半边**：`Expr::To` 字符串目标臂按 `receiver_is_dep_rust_value`
+    发 `{}`（判定=PascalCase use.rs 叶子且非本地 struct/tag/enum/union 声明；
+    Auto 类型维持 `{:?}` 兜底零回归）；store 期 dep 构造链识别
+    （`dep_ctor_type`：`Url.parse(..).unwrap()` → User(Url)）给未注解绑定
+    类型信号。
+  - **D13（澄清 #1 并入）**：SCREAMING_CASE（全大写无小写）use.rs 叶子
+    常量接收者在 `is_type` 门与 `obj_is_type_chain` 双点豁免，回落点调用
+    路径发 `STANDARD.encode(..)`（原恒 `::` E0224）。
+  - **VM 半边（执行期发现，留痕方案低估）**：实勘 print(u)/`u.to(str)` 仍
+    `<url::Url>`——591 F1 的 Display 路由只覆盖 DepOpaqueObject 与手写
+    semver 臂，native.rs `format_rust_stdlib_obj` 缺 url::Url。补
+    `Mutex<url::Url>` Display 臂（镜像 semver 臂，print 与 TYPE_TO_STR
+    两路共用此表）。semver print 面本已绿（手写臂在案）。
+  - **修正 1**：is_dep_type_name 排除全大写名（防 `STANDARD.encode(..)`
+    被误判构造链把 enc 登记成 STANDARD 类型）。
+  - **验证**：semver/url 语料各增 `display_to_str` 三轨断言 + print(v)
+    附加输出——parity p10 4/4×2；serde/regex/uuid 零回归（p10 13/13 +
+    p11 3/3）；`cargo tt` 3842/3843 唯一余红=charts 预存。
+    **golden 更新两处**（均原锁编译坏死 Rust）：004_base64（锁
+    `STANDARD::encode`）、003_semver_latest（循环 move 出 parsed 缺
+    clone——类型登记后 move 守卫正确插 `.clone()`）。
 - [x] **T-08** 语料 020 三件套 + ffi_dual/dep_parity 注册（CASES += 020）+
   V2-1..V2-6 断言（V2-6 experimental 标注）+ 回避惯例。
   [✅ 已完成] `ffi_dual_020` 全绿（V2-1..6）；dep_parity CASES=[016,017,018,
@@ -318,25 +336,42 @@ autodown-core → 分组目录建 auto-down detached 兄弟 worktree，禁 junct
   面 a2r 编译全过）；`AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity` 4/4。
   执行注记：019 目录只有 fixture/（591 对抗件由测试代码驱动），三轨 CASES
   不含它；全量 a2r 首跑冷构建并行竞争曾致挂死（缓存就位后 1.3s 全过）。
-- [ ] **T-09** base64 复测：T3/T4 落地后重跑 `parity/libs/dep/base64_real`
+- [x] **T-09** base64 复测：T3/T4 落地后重跑 `parity/libs/dep/base64_real`
   （`AUTO_LANG_PARITY_NET` 门控），encode/decode 面绿则回填 594 报告实测行；
   a2r 腿按 #1 裁定。验证：parity run 输出 + 报告 diff。→ AC-05
-  **[执行留痕 2026-09-10]**：实勘 base64_real 无 tests/（594 全红样本壳），
-  README 记录 VM encode 直呼 ✅ 走既有路径；trait 白名单的 Engine 面需
-  常量接收者（STANDARD）路由——VM 面与 a2r 面（D13）双断，**解锁前置 =
-  T-07**。T-07 完成后重跑本任务。parity 新鲜度门要求 worktree auto.exe
-  （已构建：`cargo build -p auto` → `--auto-binary` 指给 parity）。
-- [ ] **T-10** 登记/文档：DIV-DEP-18+ 与翻绿条目、KNOWN-DEBT（T5 后续指针、
+  [✅ 已完成] 提交 493c43e7a。**全红样本解禁**：tests/ 三件套新建
+  （basic.at 两面=encode 常量接收者直呼 + decode→encode 往返；oracle
+  `use base64::{engine::general_purpose::STANDARD, Engine}` 同版 pin），
+  注册进 p10（"intentionally absent" 注记退役）；parity **2/2 三轨绿**。
+  往返断言与字面量比较（`round == "aGVsbG8="`，规避 a2r 腿 `decode(enc)`
+  move 后复用 E0382——语料规避惯例族，arg 借用纪律归 DIV-DEP-7 家族）。
+  594 报告回填：行内标注三处翻绿（base64 encode/decode、url to(str)、
+  semver print）+ 文末 P596 回填节（base64 0%→50%、url 50%→67%、semver
+  40%→60%；"T3 解锁 base64"推定的实勘修正=实际解锁依赖 D13 发射器路由）。
+  残红维持：`let eng = STANDARD` 常量落绑定（双断）+ 嵌套 brace use.rs
+  （DIV-DEP-14 accepted）。
+- [x] **T-10** 登记/文档：DIV-DEP-18+ 与翻绿条目、KNOWN-DEBT（T5 后续指针、
   P59x 增量）、guides ffi 节增 V2、SD-01..04 spec 回写。
   验证：人工核对四处 diff。→ AC-07
-- [ ] **T-11** 收口门禁：`cargo check -p auto-lang`（零新警告）→
+  [✅ 已完成] 提交 493c43e7a（worktree 侧；KNOWN-DEBT 在主检出，前会话
+  8ea573e3d 已登记 P596-D1..D6）。DIV-DEP-8/13 状态翻 fixed（双半边收口
+  证据+翻绿锚点）；DIV-DEP-18（212 wrapper CString 假绿）/DIV-DEP-19
+  （a2r 回调实参不装箱）落账 known-divergences；guides ffi-usage-guide
+  增 V2 节（trait 转发/泛型实例化/常量接收者/回调原型四小节+分歧条目
+  刷新）；SD-01 ffi.md（T3/T4/T5 接口与边界+Display 路由注记）、SD-02
+  shim-metadata project.md（PLAN-596 节：classify v1.4/mono/callbacks/
+  GENERATOR 纪律）、SD-03 parity project.md（p10 面貌+回填数字）、
+  SD-04 goals.md GOAL-006 进展注记。
+- [x] **T-11** 收口门禁：`cargo check -p auto-lang`（零新警告）→
   `cargo t ffi_dual dep_parity` → `cargo tv` → `cargo tt`；（review 阶段
   `cargo tf`）。验证：输出留痕本节。→ AC-06
-  [✅ 已完成(部分口径)] ffi_dual 21/21、dep_parity 4/4(a2r 全量档)、
-  `cargo tv --no-fail-fast` 唯一余红=charts 预存(master 同败)、check 零新
-  警告、探针残留 0。`cargo tt` 未跑(T-07 未发生,tt 门禁随 T-07 待续);
-  review 阶段 `cargo tf` 照常。执行期追加修复 #9(mono 后缀路由回归,
-  cookbook Red.paint__String——dispatch 头部剥后缀+带名重入,提交 578d335e6)。
+  [✅ 已完成] 提交 493c43e7a 后全数完成：`cargo check` 零新警告
+  （trans/rust.rs 7 处警告与基线一一对应）；ffi_dual+dep_parity 25/25；
+  `cargo tt --no-fail-fast` 3842/3843 唯一余红=charts 预存（master 同败）
+  ——ffi_dual_019 全量档两轮红为负载相关间歇竞态（隔离双跑+tt 子集 21/21
+  恒绿，归因 P591-D3 共享沙箱族，019 纯 VM 腿与本计划改动无语义交集）；
+  `cargo tv --no-fail-fast` 3628/3629 唯一余红=charts 预存。review 阶段
+  `cargo tf` 照常。
 
 ### 设计决策（T-02 spike 产出落此）
 
@@ -379,6 +414,26 @@ a2r Display 半边判定=接收者 use.rs 导入类型非 Auto enum;D13=发射�
 常量 vs 类型),随后 T-09(base64 复测,worktree auto.exe 已构建)、T-10 尾巴
 (DIV-DEP-18/19 落 known-divergences、guides V2 节、SD-01..04 回写)、
 T-11 补 `cargo tt`,然后 `/auto-plan:review`。
+
+**work handoff（2026-09-10 第二会话，执行完毕）**：`stage: work` |
+PLAN-596 | r1 | outcome: **pass** |
+code_commit: …→578d335e6→**493c43e7a**（worktree `D:/autostack/.wt/lang-596/
+auto-lang`，branch `plan-596-dev`，基线 e178ff601） |
+task_ids: **T-01..T-11 全部完成（11/11）** |
+evidence: ①T-07 提交 493c43e7a（a2r Display 发射 + D13 常量接收者点调用 +
+VM url::Url Display 臂 + dep 构造链 store 期类型登记）；②T-09 base64_real
+2/2 三轨绿（全红样本解禁，p10 注册 + 594 报告回填）；③D8 翻绿语料
+semver/url display_to_str（p10 4/4×2）+ p10 13/13 + p11 3/3 零回归；
+④T-10 divergences（8/13 fixed + 18/19 新登记）/guides V2 节/SD-01..04
+四处回写；⑤T-11 门禁：check 零新警告、ffi_dual+dep_parity 25/25、
+tt 3842/3843（唯一余红=charts 预存；ffi_dual_019 全量档间歇红已归因
+P591-D3 共享沙箱竞态——隔离/子集恒绿，留痕 T-11 节）、tv 3628/3629
+（同口径）；⑥执行期 golden 更新两处（004_base64 / 003_semver_latest，
+均原锁编译坏死 Rust，详见 T-07 证据）；⑦前会话成果（V2-1..6 三轨绿、
+ffi_dual 21/21、P596-D1..D6）维持有效。
+review 阶段注意：`cargo tf` 全量门禁照常；ffi_dual_019 若在 tf 全量档
+间歇红，先按 P591-D3 隔离复跑再归因。 |
+blockers: 无 | next: `/auto-plan:review`。
 
 ## 9. 复审记录
 
