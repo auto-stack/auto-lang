@@ -26,6 +26,13 @@ C 头文件/manifest 生成器：为 Auto 的 C FFI 生成 C 头文件与绑定 
   `kernel32` 均可命中；CLI 可导出 JSON 至 `c_bindings/`。
 - 消费面：VM 运行期对 FnPtr 签名在注册期即拒绝（见
   auto-lang/vm/design/ffi.md）；a2c 原生消费（闭包→函数指针）。
+- JSON 文件加载面（Plan 597）：VM 侧 `load_manifest_file(path)`
+  （vm/ffi/c_ffi.rs）装载任意 JSON manifest 文件（非内置数据集；
+  codegen 先查内置字典，header 为 `.json` 后缀时回退文件装载，
+  `use.c "x.json"` / `use.c <x.json>` 双拼写命中）。engine 专属
+  manifest **不入内置字典**，归语料侧随用例分发（先例
+  `crates/auto-lang/test/vm_engine_face/engine_face.json`，autoterm
+  引擎 8 标量符号）。
 
 ## 模块清单
 
