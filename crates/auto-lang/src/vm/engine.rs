@@ -5596,12 +5596,20 @@ impl AutoVM {
                             // "GET_FIELD non-i32 obj_id field=length" 噪音)。
                             auto_val::decode_list(nv) as u64
                         } else {
-                            let fn_name = task.call_stack.last().map(|f| f.fn_name.clone().unwrap_or_default()).unwrap_or_default();
-                            let field_name = self.strings.read().unwrap()
-                                .get(field_idx as usize)
-                                .map(|b| String::from_utf8_lossy(b).to_string())
-                                .unwrap_or_default();
-                            eprintln!("[GET_FIELD] non-i32 obj_id: raw={:016x} field={} fn={} bp={} ip={}", nv, field_name, fn_name, task.bp, task.ip);
+                            // mem 复盘修复：该臂此前每命中一行 eprintln
+                            // （sys-monitor 曾 6 分钟 344MB 日志饿死 UI 线程）
+                            // 且不结算槽位 stake（每次命中泄漏一份 rc 份额）。
+                            // 现改为环境门控诊断 + stake 结算，与 SET_FIELD
+                            // 同款纪律。
+                            let _ = task.ram.take_stake_at(task.ram.sp);
+                            if std::env::var_os("AUTO_DEBUG_GETFIELD").is_some() {
+                                let fn_name = task.call_stack.last().map(|f| f.fn_name.clone().unwrap_or_default()).unwrap_or_default();
+                                let field_name = self.strings.read().unwrap()
+                                    .get(field_idx as usize)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                eprintln!("[GET_FIELD] non-i32 obj_id: raw={:016x} field={} fn={} bp={} ip={}", nv, field_name, fn_name, task.bp, task.ip);
+                            }
                             auto_val::decode_i32(nv) as u64
                         }
                     };
@@ -6402,7 +6410,6 @@ impl AutoVM {
                         .get(method_name_idx)
                         .map(|b| String::from_utf8_lossy(b).to_string())
                         .unwrap_or_default();
-
                     // The receiver is at stack position sp - arg_count - 1
                     // (args are on top, receiver is below them)
                     let sp = task.ram.sp;
@@ -7310,6 +7317,12 @@ impl AutoVM {
                             "push" => {
                                 // Push element to end of List (uses unified list_id above).
                                 let elem_nv = task.ram.pop_nv();
+                                // mem 复盘修复（025-sys-monitor 每tick泄漏100 obj）：
+                                // 元素 raw pop 后必须结算其槽位 stake——所有权随
+                                // 元素转移进容器（stake==id）或由容器补 retain
+                                // （raw 拷贝/无 stake）。此前既不转移也不补，
+                                // while 循环复用栈槽覆盖 stake 后，元素对象图
+                                // 永远无人释放（live_heap 每 tick 线性 +N）。
                                 let elem_val = if auto_val::is_i32(elem_nv) {
                                     auto_val::Value::Int(auto_val::decode_i32(elem_nv))
                                 } else if auto_val::is_f64(elem_nv) {
