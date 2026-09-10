@@ -1893,3 +1893,16 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
   main.rs 未挂载的死文件（571 "死文件顺手对齐防复活" 裁定延续）；tauri
   真路径经 auto-man 共享脚手架（T-02 已 registry 化），独立变体值以 registry
   `tauri`/`cli-vue` 表存续作可切换内置。
+
+- **P601-T11 [开放] SVG 图形属性 token 通道缺失（charts-gallery 主题跟随示范面受阻）**：
+  `024-charts` 图表几何经 `serialize_svg_element`（aura_view_builder，
+  Plan 442 A4 白名单）**构建期逐字序列化**，stroke/fill 只认字面 hex——
+  语义色名/`var(--*)` 双腿皆不可用（vue 腿 SVG 呈现属性同样不吃 var()，
+  需 style 属性发射臂）。PLAN-601 T-11 重估裁定：图表系列四色
+  (#2563eb/#16a34a/#d97706/#dc2626≈info/success/warning/error 语义四色)与
+  网格/轴线 chrome 色(#e2e8f0/#94a3b8/#f1f5f9/#ffffff)的 token 化需先建
+  **SVG 属性 token 替换通道**（VM: svg_attr 语义名→resolve_semantic_rgb→hex
+  序列期替换，view 重建随 epoch 刷新；vue: 语义名→style 属性 var() 发射），
+  属跨管线协议特性，非单计划任务量。附带缺口：vue 腿裸名包组件
+  （line-chart 等 484 M4 裸名原语）现发射数据绑定占位 `<div :data=...>`
+  而非 SFC 组件引用。触发条件：主题切换示范面（三主题截图对拍）立项时。

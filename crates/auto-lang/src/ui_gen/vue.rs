@@ -18857,38 +18857,41 @@ widget W {
 
     #[test]
     fn test_charts_gallery_compiles() {
-        // Integration test (Plan 484 M3): the rebuilt charts-gallery consumes
-        // the official Auto chart components via bare tags; vue gen must
-        // compile and emit the package component SFC refs (LineChart etc.),
-        // NOT the retired shadcn/unovis chart family.
+        // Integration test (Plan 484): the charts gallery consumes the
+        // official chart components via M4 bare-name primitives. PLAN-601
+        // T-11 修复预存红：fixture 随 484 M4 迁 examples/ui/024-charts（旧
+        // examples/charts-gallery 路径已不存在）；断言按现行架构改写——
+        // 裸名 chart 经包折叠生成数据绑定占位（<div :data=...>），不再是
+        // M3 时代的 PascalCase SFC 引用（vue 腿裸名组件 SFC 化=已知缺口，
+        // SVG/组件 token 通道随 P601-T11 债项跟进）。
         // 包感知入口(generate_component_from_file 链):裸名 tag 经
-        // use{package} → known_sub_widgets 折叠解析为包组件 SFC 引用。
+        // use{package} → known_sub_widgets 折叠解析。
         use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
         let result = generate_component_from_file(
-            std::path::Path::new("../../examples/charts-gallery/src/front/app.at"),
+            std::path::Path::new("../../examples/ui/024-charts/src/front/app.at"),
             ComponentGenOptions { shadcn: Some(true), ..Default::default() },
         );
         assert!(result.is_ok(), "charts gallery should compile: {:?}", result.err());
         let result = result.unwrap();
         let code = result.vue_code;
 
-        // Auto component SFC refs (package components, bare-name fold)
-        assert!(code.contains("<LineChart"), "LineChart tag missing: {code}");
-        assert!(code.contains("<BarChart"), "BarChart tag missing: {code}");
-        assert!(code.contains("<AreaChart"), "AreaChart tag missing: {code}");
-        assert!(code.contains("<DonutChart"), "DonutChart tag missing: {code}");
+        // Bare-name chart fold: data-bound placeholder per chart branch
+        assert!(code.contains(":data="), "chart data binding missing: {code}");
+        assert!(code.contains("chartType == 'line'"), "line branch missing: {code}");
+        assert!(code.contains("chartType == 'bar'"), "bar branch missing: {code}");
+        assert!(code.contains("chartType == 'area'"), "area branch missing: {code}");
+        assert!(code.contains("chartType == 'donut'"), "donut branch missing: {code}");
 
         // Retired shadcn/unovis chart family must NOT appear
         assert!(!code.contains("chart-area"), "retired chart-area scaffold leaked");
         assert!(!code.contains("unovis"), "retired @unovis dependency leaked");
         assert!(!code.contains("CurveType"), "retired CurveType mapping leaked");
 
-        // Key props are emitted
-        assert!(code.contains("monthlyRevenue"), "monthlyRevenue data binding missing");
-        assert!(code.contains(":index=\"'month'\""), "month index missing");
-        assert!(code.contains("stacked"), "stacked type missing");
-        assert!(code.contains("trafficSource"), "trafficSource binding missing");
-        assert!(code.contains("colors"), "colors binding missing");
+        // Key props of the migrated (024-charts) demo data are emitted
+        assert!(code.contains(":data=\"monthly\""), "monthly data binding missing: {code}");
+        assert!(code.contains(":index=\"'m'\""), "index prop missing: {code}");
+        assert!(code.contains("'desktop', 'mobile', 'tablet'"), "series fields missing: {code}");
+        assert!(code.contains("windowLen"), "windowLen binding missing: {code}");
     }
     #[test]
     fn test_generate_shadcn_attrs_button() {
