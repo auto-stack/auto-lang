@@ -566,6 +566,35 @@ fn render_tokens(theme: &ThemeSpec, is_dark: bool, order: &[TokenName]) -> Strin
     out
 }
 
+// ── JS 运行时值源（PLAN-601 T-06）─────────────────────────────────────
+// vue 脚手架 applyTheme 的 THEME_PALETTES 嵌入体。与 render_core/
+// render_sidebar 同取 token_lit 事实源（双面一致性测试守护），键为裸
+// token 名（写入时由 JS 侧补 `--` 前缀）。
+
+/// 单主题 light/dark 双 mode JS 对象字面量。
+pub fn render_theme_pairs_js(theme: &ThemeSpec) -> String {
+    let mode = |dark: bool| -> String {
+        let pairs: Vec<String> = palette(theme, dark)
+            .iter()
+            .map(|(tok, lit)| format!("    '{}': '{}'", tok.css_var(), lit.css_str()))
+            .collect();
+        format!("{{\n{}\n  }}", pairs.join(",\n"))
+    };
+    format!("{{ light: {}, dark: {} }}", mode(false), mode(true))
+}
+
+/// 五内置主题全集 JS 对象（`{ zinc: {light,dark}, ... }`）。
+pub fn render_theme_palettes_js() -> String {
+    let entries: Vec<String> = BUILTIN_NAMES
+        .iter()
+        .map(|name| {
+            let t = builtin(name).expect("BUILTIN_NAMES 与表互锁");
+            format!("  '{name}': {}", render_theme_pairs_js(t))
+        })
+        .collect();
+    format!("{{\n{}\n}}", entries.join(",\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -635,6 +664,22 @@ mod tests {
         // CLI 两表值指纹（T-09 装配前的值保真）
         assert!(render_core(builtin("tauri").unwrap(), false).contains("--primary: 222.2 47.4% 11.2%;"));
         assert!(render_core(builtin("cli-vue").unwrap(), false).contains("--ring: 239 84% 67%;"));
+    }
+
+    /// T-06：JS 值源发射——五主题全集可解析回每键值；zinc 无 sidebar 键、
+    /// scaffold 有；stella Rgb 键以 css_str 形态出现（与 CSS 面同源）。
+    #[test]
+    fn theme_palettes_js_shape() {
+        let js = render_theme_palettes_js();
+        for name in BUILTIN_NAMES {
+            assert!(js.contains(&format!("'{name}': {{")), "{name} 缺席");
+        }
+        assert!(js.contains("'background': '0 0% 100%'"), "zinc light 背景指纹");
+        // zinc 无 sidebar、scaffold 有（与完备性测试同口径）
+        let zinc = render_theme_pairs_js(builtin("zinc").unwrap());
+        assert!(!zinc.contains("sidebar"));
+        let scaffold = render_theme_pairs_js(builtin("scaffold").unwrap());
+        assert!(scaffold.contains("'sidebar-background':"));
     }
 
     /// accent 表基本指纹（Phase 1 承袭）。

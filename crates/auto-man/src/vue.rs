@@ -984,7 +984,11 @@ fn generate_postcss_config() -> String {
 "#.to_string()
 }
 
-fn generate_index_html(name: &str, title: Option<&str>) -> String {
+fn generate_index_html(
+    name: &str,
+    title: Option<&str>,
+    composed_theme: Option<&auto_lang::design_tokens::decl::ComposedTheme>,
+) -> String {
     // Plan 043 M5: the shadcn template ships fully-populated `.dark` tokens
     // in index.css; the handwritten ash-gui (and the shadcn default) render
     // dark. Without `class="dark"` on <html> the app falls back to the light
@@ -1031,6 +1035,33 @@ fn generate_index_html(name: &str, title: Option<&str>) -> String {
     } else {
         String::new()
     };
+    // PLAN-601 T-06: pac.at theme{} declared theme — publish the composed
+    // palette to the app runtime (merged into THEME_PALETTES by the injected
+    // theme JS) and seed the active-theme storage so the first boot renders
+    // the declared theme. The seed is write-if-unset: a user's runtime
+    // choice always wins over the declaration default.
+    let theme_bootstrap = match composed_theme {
+        Some(t) => {
+            // render_pairs_js yields "{ light: {...}, dark: {...} }"; splice
+            // the body after a name field (format owned by decl.rs).
+            let pairs = t.render_pairs_js();
+            let inner = &pairs[1..pairs.len() - 1];
+            let esc = |s: &str| s.replace('\\', "\\\\").replace('\'', "\\'");
+            let mut lines = String::from("    <script>\n");
+            lines.push_str(&format!(
+                "    window.__AUTO_COMPOSED_THEME__ = {{ name: '{}',{} }};\n",
+                esc(&t.name),
+                inner
+            ));
+            lines.push_str(&format!(
+                "    try {{ if (!localStorage.getItem('auto-theme')) localStorage.setItem('auto-theme', '{}') }} catch (e) {{}}\n",
+                esc(&t.name)
+            ));
+            lines.push_str("    </script>\n");
+            lines
+        }
+        None => String::new(),
+    };
     format!(r#"<!DOCTYPE html>
 <html lang="en"{}>
   <head>
@@ -1038,13 +1069,13 @@ fn generate_index_html(name: &str, title: Option<&str>) -> String {
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{}</title>
-{}  </head>
+{}{}  </head>
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-"#, dark_attr, title.unwrap_or(name), accent_bootstrap)
+"#, dark_attr, title.unwrap_or(name), accent_bootstrap, theme_bootstrap)
 }
 
 /// PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。此前 createI18n
@@ -1206,10 +1237,30 @@ fn generate_app_vue(vue_code: &str) -> String {
 /// PLAN-593 V1：色变量块整体取自 auto_lang registry（scaffold）单一事实源，
 /// 本函数零手写色值（--radius 为非色 token，留脚手架；dark 块无 --radius 沿
 /// 原 CSS 继承语义）。sidebar 族块经 extra 槽拼接。
-fn generate_index_css() -> String {
+/// PLAN-601 T-06：pac.at theme{} 声明合成体（Some）替换 scaffold 成双 mode
+/// 块值源——声明面消费点；None = scaffold 缺省（零变化）。
+fn generate_index_css(
+    composed: Option<&auto_lang::design_tokens::decl::ComposedTheme>,
+) -> String {
     use auto_lang::ui::style::theme::registry;
-    let scaffold = registry::builtin("scaffold")
-        .expect("内置主题 scaffold 恒在（PLAN-601 registry 双面单源）");
+    let (core_l, sb_l, core_d, sb_d) = match composed {
+        Some(t) => (
+            t.render_core(false),
+            t.render_sidebar(false),
+            t.render_core(true),
+            t.render_sidebar(true),
+        ),
+        None => {
+            let scaffold = registry::builtin("scaffold")
+                .expect("内置主题 scaffold 恒在（PLAN-601 registry 双面单源）");
+            (
+                registry::render_core(scaffold, false),
+                registry::render_sidebar(scaffold, false),
+                registry::render_core(scaffold, true),
+                registry::render_sidebar(scaffold, true),
+            )
+        }
+    };
     let mut css = String::new();
     css.push_str(r##"@tailwind base;
 @tailwind components;
@@ -1218,20 +1269,20 @@ fn generate_index_css() -> String {
 @layer base {
   :root {
 "##);
-    css.push_str(&registry::render_core(scaffold, false));
+    css.push_str(&core_l);
     css.push_str(r##"
     --radius: 0.5rem;
 
 "##);
-    css.push_str(&registry::render_sidebar(scaffold, false));
+    css.push_str(&sb_l);
     css.push_str(r##"  }
 
   .dark {
 "##);
-    css.push_str(&registry::render_core(scaffold, true));
+    css.push_str(&core_d);
     css.push_str(r##"
 "##);
-    css.push_str(&registry::render_sidebar(scaffold, true));
+    css.push_str(&sb_d);
     css.push_str(r##"  }
 }
 
@@ -1392,6 +1443,7 @@ fn write_project_files(
     style_files: &[String],
     i18n: &I18nConfig,
     locale_files: &[String],
+    composed_theme: Option<&auto_lang::design_tokens::decl::ComposedTheme>,
 ) -> Result<(), String> {
     // Plan 482: uses_autodown 的 main.ts 引 `@autodown/engine/style.css`，但
     // pac npm_deps 通常只链接 editor/core——engine 缺声明导致 vite 解析失败
@@ -1464,7 +1516,7 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write postcss.config.cjs: {}", e))?;
 
     // index.html
-    let index_html = generate_index_html(name, index_title);
+    let index_html = generate_index_html(name, index_title, composed_theme);
     fs::write(output_path.join("index.html"), index_html)
         .map_err(|e| format!("Failed to write index.html: {}", e))?;
 
@@ -1488,7 +1540,7 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write src/App.vue: {}", e))?;
 
     // src/assets/index.css
-    let index_css = generate_index_css();
+    let index_css = generate_index_css(composed_theme);
     fs::write(output_path.join("src/assets/index.css"), index_css)
         .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
 
@@ -2085,6 +2137,10 @@ pub struct VueProject {
     /// `generate_component_from_file` call and loses stores when multiple
     /// .at files are compiled in sequence).
     pub store_files: Vec<(String, String)>,
+    /// PLAN-601 T-06：pac.at `theme: {}` 声明合成体（T-03 解析 → compose）。
+    /// index.css 双 mode 块取其渲染、index.html 注入运行时种子；None =
+    /// scaffold 缺省（零变化）。compose 失败回退 None 并告警（生成不硬失败）。
+    pub theme: Option<auto_lang::design_tokens::decl::ComposedTheme>,
 }
 
 impl VueProject {
@@ -2234,10 +2290,31 @@ export default router
         }
 
         // Plan 475: Ensure declared dependencies (including local path deps) are materialized
-        if let Ok(config) = auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
-            let mut pac = crate::pac::Pac::new(config);
-            let _ = pac.resolve();
-        }
+        let composed_theme: Option<auto_lang::design_tokens::decl::ComposedTheme> =
+            match auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
+                Ok(config) => {
+                    let mut pac = crate::pac::Pac::new(config);
+                    let _ = pac.resolve();
+                    // PLAN-601 T-06: theme{} 声明 → 合成（extends 仅可引用
+                    // 内置——pac 单块解析无具名声明集）。失败回退 scaffold。
+                    pac.theme_decl.and_then(|decl| {
+                        match auto_lang::design_tokens::decl::compose(
+                            &decl,
+                            &std::collections::BTreeMap::new(),
+                        ) {
+                            Ok(t) => Some(t),
+                            Err(e) => {
+                                println!(
+                                    "{} theme{{}} 合成失败：{e} —— 回退 scaffold 缺省",
+                                    "Warn:".bright_yellow()
+                                );
+                                None
+                            }
+                        }
+                    })
+                }
+                Err(_) => None,
+            };
         let dep_front_dirs = Self::collect_dep_front_dirs(root_dir);
 
         let pac_content = fs::read_to_string(&pac_path)
@@ -2864,6 +2941,7 @@ export default router
             i18n: parse_i18n(&pac_content),
             ext_files: ext_file_set.into_iter().collect(),
             store_files: all_store_files,
+            theme: composed_theme,
         })
     }
 
@@ -3177,6 +3255,7 @@ export default router
             &style_copies,
             &self.i18n,
             &locale_copies,
+            self.theme.as_ref(),
         )?;
 
         // Generate router files if routes detected
@@ -3316,7 +3395,7 @@ export default router
         }
         let css_path = self.output_dir.join("src/assets/index.css");
         if !css_path.exists() {
-            fs::write(&css_path, generate_index_css())
+            fs::write(&css_path, generate_index_css(self.theme.as_ref()))
                 .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
         }
 
@@ -3343,6 +3422,7 @@ export default router
             &style_copies,
             &self.i18n,
             &locale_copies,
+            self.theme.as_ref(),
         )?;
 
         // Write App.vue (the root component)
@@ -3367,7 +3447,7 @@ export default router
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
 
         // Write index.css
-        let index_css_content = generate_index_css();
+        let index_css_content = generate_index_css(self.theme.as_ref());
         fs::write(assets_dir.join("index.css"), &index_css_content)
             .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
 
@@ -3427,7 +3507,7 @@ export default router
         let assets_dir = src_dir.join("assets");
         fs::create_dir_all(&assets_dir)
             .map_err(|e| format!("Failed to create src/assets: {}", e))?;
-        let index_css_content = generate_index_css();
+        let index_css_content = generate_index_css(self.theme.as_ref());
         let index_css_path = assets_dir.join("index.css");
         fs::write(&index_css_path, &index_css_content)
             .map_err(|e| format!("Failed to write src/assets/index.css: {}", e))?;
@@ -3457,7 +3537,8 @@ export default router
         // app renders light). Previously only written on the initial scaffold,
         // so a fresh index.html (or a generator fix) never took effect.
         let index_html_path = self.output_dir.join("index.html");
-        let index_html = generate_index_html(&self.name, self.index_title.as_deref());
+        let index_html =
+            generate_index_html(&self.name, self.index_title.as_deref(), self.theme.as_ref());
         fs::write(&index_html_path, &index_html)
             .map_err(|e| format!("Failed to write index.html: {}", e))?;
         println!("{}", "  ✓ Regenerated index.html".bright_green());
@@ -5009,7 +5090,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     {
         let index_html_path = project.output_dir.join("index.html");
         if index_html_path.parent().map(|p| p.exists()).unwrap_or(false) {
-            let index_html = generate_index_html(&project.name, project.index_title.as_deref());
+            let index_html = generate_index_html(
+                &project.name,
+                project.index_title.as_deref(),
+                project.theme.as_ref(),
+            );
             if let Err(e) = fs::write(&index_html_path, index_html) {
                 println!("  ⚠ index.html refresh skipped: {}", e);
             }
@@ -5029,7 +5114,7 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         }
         let index_css_path = project.output_dir.join("src/assets/index.css");
         if index_css_path.exists() {
-            if let Err(e) = fs::write(&index_css_path, generate_index_css()) {
+            if let Err(e) = fs::write(&index_css_path, generate_index_css(project.theme.as_ref())) {
                 println!("  ⚠ index.css refresh skipped: {}", e);
             }
         }
@@ -5987,9 +6072,9 @@ title: \"Auto Musk\"
         assert_eq!(parse_pac_title(pac).as_deref(), Some("Auto Musk"));
         assert_eq!(parse_pac_title("name: \"x\"
 "), None);
-        let html = generate_index_html("auto-musk", Some("Auto Musk"));
+        let html = generate_index_html("auto-musk", Some("Auto Musk"), None);
         assert!(html.contains("<title>Auto Musk</title>"));
-        let fallback = generate_index_html("auto-musk", None);
+        let fallback = generate_index_html("auto-musk", None, None);
         assert!(fallback.contains("<title>auto-musk</title>"));
     }
 
@@ -6664,6 +6749,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             ext_files: vec![],
             store_files: vec![],
             i18n: I18nConfig::default(),
+            theme: None,
         };
 
         let copied = project.copy_style_files().unwrap();
@@ -6697,6 +6783,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             ext_files: vec![],
             store_files: vec![],
             i18n: I18nConfig::default(),
+            theme: None,
         };
 
         assert!(project.copy_style_files().is_err());
@@ -6808,6 +6895,7 @@ widget App {
             ext_files: vec!["src/front/utils/greet.ts".to_string()],
             store_files: vec![],
             i18n: I18nConfig::default(),
+            theme: None,
         };
 
         let copied = project.copy_ext_files().unwrap();
@@ -6839,6 +6927,7 @@ widget App {
             ext_files: vec!["../outside/x.ts".to_string()],
             store_files: vec![],
             i18n: I18nConfig::default(),
+            theme: None,
         };
 
         let err = project.copy_ext_files().unwrap_err().to_string();
@@ -7258,7 +7347,7 @@ mod plan571_css_secondary_interlock_tests {
     /// （P593-D5 在册，Phase 2 收编）。
     #[test]
     fn index_css_secondary_is_differentiated_from_muted() {
-        let css = super::generate_index_css();
+        let css = super::generate_index_css(None);
         assert!(
             css.contains("--secondary: 40 24% 85.5%"),
             "light --secondary 应为 40 24% 85.5% (#e3ddd1 暖灰一档深)"
@@ -7294,8 +7383,72 @@ mod plan593_index_css_golden_tests {
     }
     #[test]
     fn index_css_values_match_p1_baseline() {
-        let css = super::generate_index_css();
+        let css = super::generate_index_css(None);
         let golden = include_str!("../tests/fixtures/plan593_index_css.golden");
         assert_eq!(var_pairs(golden), var_pairs(&css), "canonical 归一后 index.css 值对漂移");
+    }
+}
+
+
+// ── PLAN-601 T-06: theme{} 声明 → vue 生成面消费 ────────────────────────
+#[cfg(test)]
+mod plan601_theme_declaration_tests {
+    use auto_lang::design_tokens::decl::{compose, normalize_value, ThemeDecl};
+    use std::collections::BTreeMap;
+
+    fn decl(name: Option<&str>, extends: Option<&str>, colors: &[(&str, &str)]) -> ThemeDecl {
+        ThemeDecl {
+            name: name.map(|s| s.to_string()),
+            extends: extends.map(|s| s.to_string()),
+            mode: None,
+            colors: colors.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        }
+    }
+
+    /// 声明合成体的 index.css：覆盖键落 :root 与 .dark 双 mode 块；未覆盖
+    /// 键继承基座（stella 值经 css_str 同源渲染）；--radius 非色 token 留
+    /// 脚手架。
+    #[test]
+    fn index_css_renders_composed_theme() {
+        let d = decl(Some("app"), Some("stella"), &[("primary", "#8b5cf6")]);
+        let t = compose(&d, &BTreeMap::new()).unwrap();
+        let css = super::generate_index_css(Some(&t));
+        let primary = normalize_value("#8b5cf6").unwrap();
+        assert!(css.contains(&format!("--primary: {primary};")), "{css}");
+        // 双 mode 都吃到覆盖（compose 双 mode 同步覆盖语义）
+        let stella = auto_lang::design_tokens::registry::builtin("stella").unwrap();
+        let bg = stella
+            .light
+            .iter()
+            .find(|(tok, _)| matches!(tok, auto_lang::design_tokens::registry::TokenName::Background))
+            .unwrap()
+            .1
+            .css_str();
+        assert!(css.contains(&format!("--background: {bg};")), "未覆盖键继承基座");
+        assert!(css.contains("--radius: 0.5rem;"), "非色 token 留脚手架");
+    }
+
+    /// None = scaffold 缺省不变（T-02 金样已由 value-pinned 测试钉死，此处
+    /// 抽 scaffold 指纹防误接）。
+    #[test]
+    fn index_css_none_is_scaffold_default() {
+        let css = super::generate_index_css(None);
+        assert!(css.contains("--primary: 239 84% 67%;"), "scaffold light primary 指纹");
+    }
+
+    /// index.html 声明种子：`__AUTO_COMPOSED_THEME__` 全局 + write-if-unset
+    /// 的 auto-theme 存储种子；None 时零注入。
+    #[test]
+    fn index_html_theme_bootstrap() {
+        let d = decl(Some("brand"), Some("zinc"), &[("primary", "#ef4444")]);
+        let t = compose(&d, &BTreeMap::new()).unwrap();
+        let html = super::generate_index_html("demo", None, Some(&t));
+        assert!(html.contains("window.__AUTO_COMPOSED_THEME__ = { name: 'brand',"), "{html}");
+        assert!(html.contains("localStorage.setItem('auto-theme', 'brand')"), "{html}");
+        let red = normalize_value("#ef4444").unwrap();
+        assert!(html.contains(&format!("'primary': '{red}'")), "种子携带合成值: {html}");
+
+        let none = super::generate_index_html("demo", None, None);
+        assert!(!none.contains("__AUTO_COMPOSED_THEME__"), "缺省零注入: {none}");
     }
 }

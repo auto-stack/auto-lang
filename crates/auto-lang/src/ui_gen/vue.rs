@@ -4262,8 +4262,18 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         if self.has_accent_color {
             script.push('\n');
             script.push_str(Self::ACCENT_PALETTE_JS);
+            // PLAN-601 T-06: full named-theme runtime rides the same gate —
+            // theme switching is the whole-set generalization of accent
+            // switching (applyTheme reuses applyAccent as its overlay).
+            script.push('\n');
+            script.push_str(&Self::theme_runtime_js());
             script.push_str("\n// Restore saved accent on mount.\n");
             script.push_str("onMounted(() => {\n");
+            // PLAN-601 T-06: restore the active theme on mount (localStorage
+            // may carry a user choice or a generator-seeded declared theme).
+            // Scaffold default needs no apply — the stylesheet already is it.
+            script.push_str("  const __th = getActiveTheme()\n");
+            script.push_str("  if (__th !== 'scaffold') applyTheme(__th, document.documentElement.classList.contains('dark'))\n");
             script.push_str("  const saved = getSavedAccent()\n");
             // Plan 458: only override the CLI/env-seeded ref when a real
             // persisted choice exists (getSavedAccent returns '' otherwise).
@@ -4275,13 +4285,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // Plan 458: re-apply the accent when the theme flips at runtime —
             // applyAccent also writes the .dark-scoped --primary, which would
             // otherwise fall back to the stylesheet's default indigo.
+            // PLAN-601 T-06: the flip now re-applies the ACTIVE THEME's full
+            // set (applyTheme dark pass) — accent overlay included — so mode
+            // flips keep a non-default theme instead of regressing to the
+            // scaffold `.dark` stylesheet block.
             if self.has_dark_mode {
                 let dark_var = self
                     .dark_mode_var
                     .clone()
                     .unwrap_or_else(|| "dark_mode".to_string());
                 script.push_str(&format!(
-                    "// Plan 458: keep the accent and html dark class in sync across theme flips.\nwatch({}, (v) => {{\n  document.documentElement.classList.toggle('dark', v)\n  applyAccent(accent_color.value, v)\n}}, {{ immediate: true }})\n",
+                    "// Plan 458: keep the accent and html dark class in sync across theme flips.\nwatch({}, (v) => {{\n  document.documentElement.classList.toggle('dark', v)\n  applyTheme(getActiveTheme(), v, accent_color.value)\n}}, {{ immediate: true }})\n",
                     dark_var
                 ));
             }
@@ -16208,12 +16222,19 @@ export function cn(...inputs: ClassValue[]) {
         if has_accent {
             code.push_str("\n");
             code.push_str(Self::ACCENT_PALETTE_JS);
+            // PLAN-601 T-06: full named-theme runtime rides the same gate.
+            code.push('\n');
+            code.push_str(&Self::theme_runtime_js());
             // Module-level bootstrap: apply saved accent on first import.
             // Also sync the accent_color ref so the store reflects the
             // persisted choice (localStorage may differ from the .at default).
             code.push_str("\n// Restore saved accent on module load.\n");
+            // PLAN-601 T-06: restore the active theme first (generator-seeded
+            // declared themes / user choice); scaffold default needs no apply.
             code.push_str(
                 "(function bootstrapAccent() {\n\
+                 \x20 const __th = getActiveTheme()\n\
+                 \x20 if (__th !== 'scaffold') applyTheme(__th, document.documentElement.classList.contains('dark'))\n\
                  \x20 const saved = getSavedAccent()\n\
                  \x20 accent_color.value = saved || 'indigo'\n\
                  \x20 const isDark = document.documentElement.classList.contains('dark')\n\
@@ -16335,6 +16356,74 @@ function getAccentNames(): string[] {
   return ACCENT_NAMES
 }
 "#;
+
+    /// PLAN-601 T-06：主题热切换运行时——applyAccent 的整套泛化。
+    /// THEME_PALETTES 值源 = design_tokens registry 五内置双面（T-06 值源
+    /// 发射器，与 CSS 面同源）；pac.at theme{} 声明合成体经 auto-man 注入
+    /// `window.__AUTO_COMPOSED_THEME__` 于运行时并入。注入门控与 accent
+    /// 系统同臂（has_accent_color）——主题切换是 accent 切换的整套泛化，
+    /// 零 accent 面 app 维持零注入（零变化优先裁定）。storage 键为全局
+    /// appearance 语义（与桌面端 appearance.theme 同型）：同源 app 间共享
+    /// 用户主题偏好，属预期行为。
+    fn theme_runtime_js() -> String {
+        let palettes = crate::design_tokens::registry::render_theme_palettes_js();
+        format!(
+            r#"// PLAN-601 T-06: Named theme hot-switch runtime (applyAccent generalized
+// to the full token set). Values mirror the generated index.css registry
+// source (dual-face single source of truth).
+const THEME_PALETTES: Record<string, {{ light: Record<string, string>, dark: Record<string, string> }}> = {palettes}
+// pac.at theme{{}} declared app theme (generator-injected) joins the set.
+if ((window as any).__AUTO_COMPOSED_THEME__) {{
+  const ct = (window as any).__AUTO_COMPOSED_THEME__
+  if (ct && ct.name && ct.light && ct.dark) THEME_PALETTES[ct.name] = ct
+}}
+const THEME_STORAGE_KEY = 'auto-theme'
+
+/** Active theme: last applied choice persisted in localStorage, else the
+ *  scaffold default (matching the generated index.css :root block). */
+function getActiveTheme(): string {{
+  try {{
+    const saved = localStorage.getItem(THEME_STORAGE_KEY)
+    if (saved && THEME_PALETTES[saved]) return saved
+  }} catch {{}}
+  return 'scaffold'
+}}
+
+/** Apply a named theme by writing its FULL variable set. Light values go on
+ *  <html> inline (beats every stylesheet); when dark, the dark set is also
+ *  written on every `.dark` element (declarations beat inheritance), so a
+ *  mode flip keeps the active theme instead of falling back to the scaffold
+ *  `.dark` block. Light mode clears stale inline vars from a previous dark
+ *  write. The accent overlay runs LAST so a named --primary rides on top of
+ *  any theme (+10 dark boost inside applyAccent). Unknown names are ignored
+ *  (closed vocabulary). */
+function applyTheme(name: string, isDark = document.documentElement.classList.contains('dark'), accentName = getSavedAccent()): void {{
+  const pal = THEME_PALETTES[name]
+  if (!pal) return
+  const root = document.documentElement
+  function writeVars(el: HTMLElement, vars: Record<string, string>) {{
+    for (const k in vars) el.style.setProperty('--' + k, vars[k])
+  }}
+  writeVars(root, pal.light)
+  function applyDarkPass() {{
+    if (isDark) {{
+      document.querySelectorAll('.dark').forEach(function (el) {{ writeVars(el as HTMLElement, pal!.dark) }})
+    }} else {{
+      // Any previous full write carries --background — use it as the marker
+      // for stale inline overrides (documentElement keeps its own value).
+      document.querySelectorAll('.dark, [style*="--background"]').forEach(function (el) {{
+        if (el !== root) for (const k in pal!.light) (el as HTMLElement).style.removeProperty('--' + k)
+      }})
+    }}
+  }}
+  applyDarkPass()
+  setTimeout(applyDarkPass, 0)
+  try {{ localStorage.setItem(THEME_STORAGE_KEY, name) }} catch {{}}
+  if (accentName) applyAccent(accentName, isDark)
+}}
+"#
+        )
+    }
 
     /// Convert an initial-value AuraExpr to a JS literal (v1: simple cases).
     fn store_init_to_js(expr: &crate::ast::Expr) -> String {
@@ -25959,6 +26048,114 @@ widget ThemeApp {
             sfc.contains("accent_color = ref<string>"),
             "accent_color must be declared as a ref from the model:\n{}",
             sfc
+        );
+    }
+
+    /// PLAN-601 T-06: the widget path (accent gate) also injects the full
+    /// named-theme runtime — THEME_PALETTES (five builtins), applyTheme /
+    /// getActiveTheme, boot restore, and the mode-flip watch upgraded from
+    /// accent-only re-apply to a whole-theme re-apply (dark pass keeps a
+    /// non-default theme across `.dark` flips).
+    #[test]
+    fn test_widget_theme_runtime_injected_with_accent() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget ThemeApp {
+    msg Msg { ToggleDark }
+    model {
+        dark_mode bool = false
+        accent_color str = "indigo"
+    }
+    view { col { button "go dark" onclick: .ToggleDark } }
+    on { .ToggleDark -> { dark_mode = !dark_mode } }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("const THEME_PALETTES"),
+            "widget path must inject THEME_PALETTES:\n{}",
+            sfc
+        );
+        for name in ["zinc", "scaffold", "stella", "tauri", "cli-vue"] {
+            assert!(
+                sfc.contains(&format!("'{name}': {{")),
+                "THEME_PALETTES must carry builtin '{name}':\n{}",
+                sfc
+            );
+        }
+        assert!(
+            sfc.contains("function applyTheme") && sfc.contains("function getActiveTheme"),
+            "widget path must inject applyTheme()/getActiveTheme():\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("if (__th !== 'scaffold') applyTheme(__th,"),
+            "widget onMounted must restore the active theme:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("applyTheme(getActiveTheme(), v, accent_color.value)"),
+            "mode-flip watch must re-apply the whole active theme:\n{}",
+            sfc
+        );
+        // Accent overlay stays cohesive inside applyTheme (last write wins).
+        assert!(
+            sfc.contains("if (accentName) applyAccent(accentName, isDark)"),
+            "applyTheme must end with the accent overlay:\n{}",
+            sfc
+        );
+    }
+
+    /// PLAN-601 T-06: no accent_color state → zero theme runtime injection
+    /// (zero-change rule for apps outside the theme feature cohort).
+    #[test]
+    fn test_widget_theme_runtime_absent_without_accent() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Plain {
+    model { var count int = 0 }
+    view { col { button "inc" onclick: .inc } }
+    on { .inc -> { count += 1 } }
+}
+"#,
+        );
+        assert!(
+            !sfc.contains("THEME_PALETTES") && !sfc.contains("function applyTheme"),
+            "plain widget must not carry the theme runtime:\n{}",
+            sfc
+        );
+    }
+
+    /// PLAN-601 T-06: the store composable path injects the same runtime and
+    /// restores the active theme in its module bootstrap before the accent.
+    #[test]
+    fn test_store_composable_theme_runtime() {
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store Shell {
+    model {
+        var dark_mode bool = false
+        var accent_color str = "indigo"
+    }
+    msg Msg { ToggleDark }
+    on { .ToggleDark -> { dark_mode = !dark_mode } }
+}
+"#,
+        ));
+        assert!(
+            code.contains("const THEME_PALETTES") && code.contains("function applyTheme"),
+            "store path must inject the theme runtime:\n{}",
+            code
+        );
+        assert!(
+            code.contains("const __th = getActiveTheme()"),
+            "store bootstrap must restore the active theme:\n{}",
+            code
+        );
+        assert!(
+            code.contains("if (accentName) applyAccent(accentName, isDark)"),
+            "accent overlay must be cohesive in applyTheme:\n{}",
+            code
         );
     }
 

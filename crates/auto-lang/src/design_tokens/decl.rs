@@ -114,6 +114,21 @@ impl ComposedTheme {
     pub fn render_sidebar(&self, is_dark: bool) -> String {
         render_tokens(self.palette(is_dark), &registry::SIDEBAR_ORDER)
     }
+
+    /// JS 运行时对象字面量（vue 脚手架 `window.__AUTO_COMPOSED_THEME__`
+    /// 注入体，PLAN-601 T-06）——与 registry::render_theme_pairs_js 同形，
+    /// 声明合成体经此并入运行时 THEME_PALETTES。
+    pub fn render_pairs_js(&self) -> String {
+        let mode = |dark: bool| -> String {
+            let pairs: Vec<String> = self
+                .palette(dark)
+                .iter()
+                .map(|(t, v)| format!("    '{}': '{}'", t.css_var(), v))
+                .collect();
+            format!("{{\n{}\n  }}", pairs.join(",\n"))
+        };
+        format!("{{ light: {}, dark: {} }}", mode(false), mode(true))
+    }
 }
 
 fn render_tokens(pal: &[(TokenName, String)], order: &[TokenName]) -> String {
@@ -251,6 +266,10 @@ mod tests {
         let d = decl(Some("stella"), &[("primary", "#8b5cf6"), ("border", "40 24% 85%")]);
         let t = compose(&d, &BTreeMap::new()).unwrap();
         assert_eq!(t.name, "app");
+        // T-06：JS 对字面量形态（与 CSS 面同值源）
+        let js = t.render_pairs_js();
+        assert!(js.contains("light: {") && js.contains("dark: {"), "{js}");
+        assert!(js.contains(&format!("'primary': '{}'", normalize_value("#8b5cf6").unwrap())));
         let css_l = t.render_core(false);
         let css_d = t.render_core(true);
         let want_primary = format!("--primary: {};", normalize_value("#8b5cf6").unwrap());
