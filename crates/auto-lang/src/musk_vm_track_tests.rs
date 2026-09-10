@@ -3704,18 +3704,21 @@ mod probe_rc_leak_soak {
         let path = locate_corpus().expect("corpus");
         let mut dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
         fire(&mut dc, "LitPushTick");
-        for f in ["lenSeen", "sum"] {
-            match dc.read_state(f) {
-                Ok(v) => eprintln!("[litpush] {} = {:?}", f, v),
-                Err(e) => eprintln!("[litpush] {} ERR: {}", f, e),
-            }
-        }
+        // PLAN-604 AC-02: struct 元素经 List.push 入列后字段读往返保真
+        // (B12 族元素读损坏在语料级不复现的守护断言)。
+        assert_eq!(dc.read_state("lenSeen"), Ok(auto_val::Value::Int(100)),
+            "LitPushTick: 100 个 struct 元素必须真正入列");
+        assert_eq!(dc.read_state("sum"), Ok(auto_val::Value::Int(4950)),
+            "LitPushTick: for-each 字段读求和 0+1+..+99 必须 = 4950");
         let base = dc.heap_live_objects();
         for _ in 0..40 {
             fire(&mut dc, "LitPushTick");
         }
         let after = dc.heap_live_objects();
-        eprintln!("[litpush] growth +{}", after - base);
+        // PLAN-604 AC-01 同款容差(PLAN-062 T12 口径):列表 churn 40 拍
+        // 增量 ≤ 64(实例+列表全回收)。
+        assert!(after as i64 - base as i64 <= 64,
+            "LitPushTick 40 拍 live_heap 增量 {} > 64(RC 滞留回归)", after - base);
     }
 
     #[test]
@@ -3767,6 +3770,16 @@ mod probe_rc_leak_soak {
 
         let d_struct = growth("StructTick", 40);
         eprintln!("[verdict] struct push per-tick: {}", d_struct);
-        // 归因探针：先拿数据定位泄漏操作，硬断言待修复后补。
+        // PLAN-604 AC-01: 全路径 40 拍增量 ≤ 64(PLAN-062 T12 容差)。
+        // KD-VM1 修复前 StructTick=+4000(1:1 泄漏),对照曾全 0。
+        for (name, d) in [
+            ("ListTick", d_list),
+            ("LitTick", d_lit),
+            ("IntPushTick", d_int),
+            ("StrPushTick", d_str),
+            ("StructTick", d_struct),
+        ] {
+            assert!(d <= 64, "{} 40 拍 live_heap 增量 {} > 64(RC 滞留回归)", name, d);
+        }
     }
 }
