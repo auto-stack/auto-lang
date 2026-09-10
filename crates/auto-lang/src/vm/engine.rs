@@ -3073,6 +3073,22 @@ impl AutoVM {
                     // Stack: array_id (raw i32 for legacy arrays, TAG_OBJECT for heap lists)
                     {
                         let nv = task.ram.pop_nv();
+                        // PLAN-604 T04: 结算弹出槽份额。栈顶引用是 copy-on-load
+                        // 的暂存拷贝（rc_push +1 记影子），本 opcode 消费它——
+                        // 原实现裸 pop 不结算，+1 永久孤儿（for-in 头部
+                        // `dup; arr.len` 形态每拍漏一个列表对象，探针实测
+                        // LitPushTick +4040/40=100 实例+1 列表）。DROP:同款
+                        // 纪律——堆按影子释放，字符串按内容释放。释放后对象
+                        // 入 dying 宽限窗，本 opcode 内 heap 查找仍安全。
+                        {
+                            let stake = task.ram.take_stake_at(task.ram.sp);
+                            if stake != 0 {
+                                self.rc_release_id(stake);
+                            }
+                            if auto_val::is_string(nv) {
+                                self.rc_release(nv);
+                            }
+                        }
                         if auto_val::is_string(nv) {
                             // String .len() fallback — JS .length 语义 = 字符数
                             // （PLAN-055：此前按字节计，for-in over str 对 CJK
@@ -4332,13 +4348,20 @@ impl AutoVM {
                     // Plan 390 §15 H2: NEW_INSTANCE now pushes the id as a
                     // TAG_OBJECT-encoded value, so decode either tag form (the
                     // i32 path is retained for any legacy producer/inline test).
+                    // PLAN-062 T12: 取走弹出槽份额(随值转移到回推栈顶)。
+                    // PLAN-604 T03: 必须在 pop field_count 之后、pop instance_id
+                    // 之前取 **sp-1** 槽——此刻实例恰在栈顶(sp-1)(NEW_INSTANCE
+                    // rc_push 的份额所在;实测 sp_after_count=9、实例@8)。原实现
+                    // 在两次 pop 之后取 sp,读到的是末字段槽(影子恒 0);
+                    // 首版修复取 sp(=field_count 旧槽,亦 0)——仪器化实测后钉定
+                    // sp-1。份额失明 → struct 字面量经 push 每实例永久滞留
+                    // (025-sys-monitor 55-147MB/min 复盘主凶,探针 +100 obj/拍)。
+                    let instance_stake = task.ram.take_stake_at(task.ram.sp - 1);
                     let instance_id = {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
-                    // PLAN-062 T12: 取走弹出槽份额(随值转移到回推栈顶)。
-                    let instance_stake = task.ram.take_stake_at(task.ram.sp);
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
                         instance_id
                     );
