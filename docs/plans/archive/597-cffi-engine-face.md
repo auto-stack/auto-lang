@@ -316,7 +316,10 @@ vm/trans plans.md 597 行 + docs/specs/INDEX.md | archive_path=docs/plans/archiv
 - `archived` ✅：git mv → docs/plans/archive/597-cffi-engine-face.md +
   status: archived 终态；KNOWN-DEBT-AND-RISKS.md 增 P597 债务节
   （两枚 VM 存量缺陷 D1/D2 复审 F-1 登记）。
-- `cleaned` （清场后回填）
+- `cleaned` ✅：分支 b1fa1b7a3 全落 master（祖先链核位）→ wt-guard
+  fresh clean → worktree 已移除、plan-597-dev 已删（was b1fa1b7a3）；
+  组目录 D:/autostack/.wt/lang-597/ 因兄弟 auto-down worktree 存续保留
+  （仅空组目录才删）。
 
 ## 10. 待澄清事项
 
