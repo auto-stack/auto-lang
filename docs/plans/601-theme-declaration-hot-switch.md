@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-601
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: theme-declaration-hot-switch（Design 29 Phase 2）
 author: [zhaopuming]
 created_at: 2026-09-09
-updated_at: 2026-09-09
+updated_at: 2026-09-10
 plan_revision: 1
 
 # /auto-plan:review 结束时填写：
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-man, auto]   # specs 路径
-current_step: 7
+current_step: 12
 total_steps: 12
 ---
 
@@ -226,6 +226,7 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
   [✅ 已完成] commit 73dd39835：SetThemeName 动词（set_theme_name	<内置名>，解析臂词表门）+ renderer 执行臂（set_theme+epoch 失效+config.theme_name 落盘+快照全撤+全 App view_dirty）+ boot/热应用差分臂；desktop_config theme_name 字段往返测试 10/10；set_theme(bool) mode 链路零扰动（正交裁定）；**settings 选择器 UI 属 auto-os 资产面**（apps/common/settings）——能力层全落地，UI 控件随 auto-os 侧跟进（复审可裁移交或组内 auto-os worktree 补）。
 - **T-06** Vue applyTheme：脚手架 canonical index.css + host 注入 applyTheme +
   accent overlay 内聚。验证：脚手架测试 + `cargo test -p auto-man`。
+  [✅ 已完成] commit eccdcfdbd：registry render_theme_pairs_js/render_theme_palettes_js（五内置双面 JS 值源）+decl render_pairs_js（合成体同形）；ui_gen theme_runtime_js（applyTheme 全变量写入：html inline light + `.dark` 元素 dark 值 + 光照模式陈值清理 + accent overlay 内聚末位 + 'auto-theme' storage 持久）+ widget/store 双注入臂（同 accent 门控，零 accent 面 app 零注入）+mode 翻转 watch 升级整套重应用；auto-man theme_decl 消费（compose→index.css 双 mode 块 + index.html `__AUTO_COMPOSED_THEME__` 种子 write-if-unset）；design_tokens 9/9+vue/theme 144/144+auto-man 274/274。
 - **T-07** D2 提亮归一 +10（vue TS）。验证：包含性测试更新 + 对拍样本。
   [✅ 已完成] applyAccent dark +4→+10（注释含归一依据）；vue 面 301/302 绿（唯一红=charts_gallery master 预存）；P593-D2 随 T-09 的 KNOWN-DEBT 注记一并关。
 - **T-08** D1 accent 投影：Color::Accent/OnAccent + 解析臂 + 对拍 2 示例。
@@ -233,15 +234,27 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
   [✅ 已完成] commit fd3f7aff9：独立变体+投影臂+t_c 完备集+2；ui::style 99/99；双端截图对拍挂 review/verifier 通道（单测级投影钉死，视觉对拍属 AC-06 复审面）。
 - **T-09** D3/D5 收编：E2 退役 + cmd_tauri/cmd_vue registry 装配。
   验证：`cargo test -p auto`（plan571 互锁三处绿）。
-  [◐ 部分完成] D3 ✅（E2 函数+双测试退役，zinc 表存续 registry，vue 301/302 预存红唯一）+ 债况总更新 ✅（P593-D1/D2/D3/D4 关、D5 状态注记，commit 172a05292）；**余项 = D5 生成器本体装配**（cmd_tauri/cmd_vue 色变量块改 registry 渲染——值已在 tauri/cli-vue 表，机械装配 + plan571 contains 测试三处绿验证）。
+  [✅ 已完成] D3 commit 172a05292（债况文档）+ 9e00e4cca（函数本体+调用点测试退役补齐——172a05292 实仅含文档，代码侧遗留未提交现补）；D5 commit 55b56e56a（cmd_tauri/cmd_vue generate_index_css 色 block 改 render_core/render_sidebar registry 装配〔内置 tauri/cli-vue 双面，装配前逐值机械对拍零漂移〕；vis-*/双 sidebar 兜底/preview-code/forest-sunset-ocean/mono 留模板；plan571 contains 测试升级 registry 逐字等值断言；KNOWN-DEBT P593-D5 翻关债〔死文件防复活即同源；tauri 真路径经 auto-man 共享脚手架已 registry 化〕）。`cargo test -p auto` 11/11。
 - **T-10** V4 完整：code_editor 从 ResolvedTheme 派生。验证：
   `cargo t plan601` + 截图抽查。
+  [✅ 已完成] commit 4c3ebb85f：CodeEditorTheme::from_resolved（bg/fg 取 registry Background/Foreground u8 真值→编辑器色域映射成文）+for_builtin/for_composed 双面+active_code_theme 统一解析（缺值回退 legacy 预设）；syntax 主题键扩主题维 `autoui-{theme}-{mode}-{accent}`（五内置×双 mode×五 accent 预烘焙 + boot 期合成主题烘焙——合成体 boot 后固定先于编辑器首建）；current_theme/selectable_text 选区改活动主题口；set_theme/composed+THEME_EPOCH 失效→下帧重注册=编辑器随主题翻转；渲染契约断言随新契约更新；code_editor+highlight+theme 86/86+ui::style 99/99。截图抽查挂 review/verifier 通道。
 - **T-11** charts-gallery 硬编码色 token 化重估迁移（主题切换示范面）。
   验证：三主题截图对拍。
+  [✅ 已完成] commit 23a5a7d50：重估结论=SVG 图形属性 token 通道缺失（serialize_svg_element 构建期逐字序列化，stroke/fill 双腿均不认语义名/var()），示例色 token 化需跨管线协议特性先行——登记 **P601-T11 开放债**（含 vue 腿裸名包组件 SFC 化缺口）；任务内落地=日常档唯一预存红修复（test_charts_gallery_compiles fixture 随 484 M4 迁 examples/ui/024-charts，断言按现行裸名折叠架构改写）。三主题截图对拍随示范面立项（债项触发条件）。
 - **T-12** 门禁收口：`cargo t` 全量 + `cargo tv` + fold 前 `cargo tf` +
   auto-man/auto 显式；复审交接。
+  [✅ 已完成] 2026-09-10：日常档全量（--no-fail-fast）4726 测 4705 绿 **21 红 = master 基线 22 红 − test_charts_gallery_compiles（本计划修复），集合对拍零新增红**；`cargo tv` 3639/3639 全绿（cb_web_mime 首跑 flake 单测复跑双树绿，在案）；`cargo tf` 3495/3495 全绿；auto-man 274/274 + auto 11/11。门禁注记：`.config/nextest.toml` fail-fast 使裸 `cargo t` 在首失败二进制后取消余量（3523 not run），全量红集合裁定须 `--no-fail-fast`；`cargo test -p auto-man` 会再生成 examples/rust-workspace/015-notes 产物（master 同样漂移，非本计划引入，还原处置）。
 
 ## 9. 复审记录
+
+## 9. 复审记录
+
+（work 第三轮 2026-09-10 收口：`stage: work | PLAN-601 r1 | outcome: pass（全部 12 任务完成）→ execution_done |
+code_commit: 23a5a7d50@plan-601-dev（本轮 9e00e4cca D3 收尾 + eccdcfdbd T-06 + 55b56e56a T-09-D5 + 4c3ebb85f T-10 + 23a5a7d50 T-11）|
+task_ids: T-01..T-12 全✅（T-11 重估裁定=P601-T11 开放债登记；T-05 settings 选择器 UI=auto-os 资产面移交在案）|
+evidence: 日常档全量（--no-fail-fast）4726 测 21 红=master 基线 22 红−charts_gallery（本计划修复），集合对拍零新增红；tv 3639/3639；tf 3495/3495；auto-man 274/274；auto 11/11；design_tokens 9/9+vue/theme 144/144+code_editor 86/86+ui::style 99/99 |
+blockers: 无（复审面三件：①AC-02/06/08 双端截图对拍〔autoui-verifier 通道，T-08 先例〕；②settings 选择器 UI 移交裁定〔auto-os 侧〕；③P601-T11 SVG token 通道债触发时机〕|
+next: review`）
 
 （work 第二轮 2026-09-09 续：`stage: work | PLAN-601 r1 | executing |
 code_commit: fd3f7aff9@plan-601-dev（本轮 b5b4f60f0/73dd39835/fd3f7aff9/172a05292 + D3 退役）|
