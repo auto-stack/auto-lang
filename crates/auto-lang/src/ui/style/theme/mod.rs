@@ -50,6 +50,21 @@ pub fn theme_name() -> String {
     ACTIVE_THEME.with(|t| t.borrow().name())
 }
 
+/// PLAN-601 T-10：按语义 token 查活动主题双面值（内置表/合成体统一入口）。
+/// code_editor 编辑器色域派生消费（bg/fg 从活动主题取，切主题即翻转）。
+pub fn active_theme_rgb(token: registry::TokenName, is_dark: bool) -> Option<(u8, u8, u8)> {
+    active_theme().resolve(token, is_dark)
+}
+
+/// PLAN-601 T-10：活动合成主题（editor syntax 系统首次构建时把它烘焙进
+/// 主题集——合成主题 boot 后即固定，先于任何编辑器创建）。
+pub fn active_composed() -> Option<std::sync::Arc<crate::design_tokens::decl::ComposedTheme>> {
+    ACTIVE_THEME.with(|t| match &*t.borrow() {
+        ActiveSpec::Composed(c) => Some(c.clone()),
+        ActiveSpec::Builtin(_) => None,
+    })
+}
+
 /// 切换活动主题为内置名（未知名返回 false 且零变化）。变化时
 /// THEME_EPOCH 自增——既有失效回路（view 重建→重解析）随之生效。
 pub fn set_theme(name: &str) -> bool {
