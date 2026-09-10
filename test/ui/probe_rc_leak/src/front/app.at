@@ -2,7 +2,7 @@
 use types: Item
 
 widget App {
-    msg { StructTick, ListTick, LitTick, IntPushTick, StrPushTick, NoneTick }
+    msg { StructTick, ListTick, LitTick, IntPushTick, StrPushTick, LitPushTick, NoneTick }
     model {
         var items []Item = []
         var ints []int = []
@@ -17,6 +17,7 @@ widget App {
         LitTick (every_ms: 40)
         IntPushTick (every_ms: 40)
         StrPushTick (every_ms: 40)
+        LitPushTick (every_ms: 40)
         NoneTick (every_ms: 40)
     }
     view {
