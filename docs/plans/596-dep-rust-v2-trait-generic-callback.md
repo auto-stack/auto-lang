@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-596
-status: executing                # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-rust-v2-trait-generic-callback
 author: [ZCode]
 created_at: 2026-09-09
@@ -12,7 +12,7 @@ total_steps: 11
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-006]     # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, shim-metadata, parity]   # 详见 §5 规范增量
 ---
@@ -440,6 +440,60 @@ blockers: 无 | next: `/auto-plan:review`。
 **draft handoff（2026-09-09）**：`stage: new`，PLAN-596 r1。`outcome: pass`
 （授权范围内可执行）；`next: work`。待用户确认三项裁定（§10 #1/#2/#3，均附
 建议默认值，不阻塞起草、阻塞执行前的最终范围）。
+
+**review（2026-09-10）**：`stage: review` | PLAN-596 | r1 | outcome: **pass** |
+reviewed_commit: **493c43e7a**（worktree `D:/autostack/.wt/lang-596/auto-lang`，
+branch `plan-596-dev`，工作树干净） | base_commit: e178ff601 |
+dependency_revisions: 单仓自足（parity workspace 在仓内；无跨仓依赖） |
+spec_inputs: SD-01..04 已随 493c43e7a 落 worktree（frozen ref = 该 commit；
+ffi.md/shim-metadata/parity/goals 四文件 + known-divergences + guides）。
+
+**独立性声明**：复审与实现同会话——判定全部从工件重建（fixture/语料/测试
+源码直读 + 门禁复跑 + 编译性复现），未采信执行摘要；此为会话约束下的
+替代口径，非独立模型复审。
+
+**验收结果（AC → 证据）**：
+- **AC-01 trait 白名单 → pass**。fixture 实读：Temp 无 inherent to_string
+  （注释显式禁令）+ 手写 Clone 非 derive；020 断言九行（V2-1 "3deg"/V2-2
+  深拷贝 1|9|orig/V2-5 字段读 3）与 expected_output.txt 一致；
+  ffi_dual_020 + dep_parity 020（VM+oracle 腿）绿。
+- **AC-02 泛型实例化 → pass**。V2-3（9/z 双实例）+V2-4（70）三腿绿；mono
+  入 manifest（ShimManifest.mono BTreeMap）+ 装载快路径比对（methods_pack.rs
+  mono_stale ≠ 即重建）实证；018/019 对抗①②（features/孪生指纹新鲜度）绿。
+- **AC-03 回调原型（experimental）→ pass（带留痕偏差）**。V2-6 ==11 VM+oracle
+  绿；a2r 腿按 DIV-DEP-19 豁免（代码豁免表注释 + 账本 + P596-D2 三处留痕）；
+  panic/嵌套负面="实现已备、语料不可达"留痕（catch_unwind/深度守卫代码级）。
+- **AC-04 D8 a2r 半边 → pass**。semver/url `display_to_str` 三轨 parity
+  4/4×2（本会话复跑，绑定 493c43e7a 树）；存量 Debug 语料零回归
+  （`cargo tt` 3842/3843 唯一余红=charts 预存）。
+- **AC-05 base64 解锁 → pass**。base64_real 2/2 三轨绿（复审 spot 复跑，
+  新鲜度门通过）；594 报告回填节在案；a2r 腿随 D13 修复实跑绿（#1 裁定
+  落地）。
+- **AC-06 零回归与门禁 → pass**。`cargo tf` 3484/3485 唯一余红=charts
+  预存（AGENTS.md 基线红）；ffi_dual+dep_parity 25/25；tv/tt 同口径；
+  check 零新警告。ffi_dual_019 全量档间歇红两轮——隔离/子集恒绿，
+  归因 P591-D3 共享沙箱竞态（019 纯 VM 腿，与本计划 diff 无语义交集）。
+- **AC-07 留痕 → pass**。DIV-DEP-8/13 翻 fixed + 18/19 新登记（grep 实证）；
+  P596-D1..D6 六条 KNOWN-DEBT；guides V2 节；SD-01..04 四文件（GENERATOR
+  v1.4 串实证 emit_cdylib.rs:15）。
+
+**发现（均非阻塞）**：
+- **F-1 [证据面] 020 的 a2r 腿为 case 级豁免**：DIV-DEP-19（回调实参不装箱）
+  使 020 整 case 进 A2R_SKIP,V2-1..V2-5 的 a2r **输出等价**无当前代码级自动
+  断言。复审补证：①stale build_a2r 产物去回调面 cargo check 编译通过
+  (exit 0);②016-018 a2r 腿全量绿(同发射路径);③T-04 时代三轨绿在案。
+  改进指针:回调面拆独立语料目录,恢复 020 主面自动 a2r 腿(随 DIV-DEP-19
+  根修或独立小计划,不入本计划)。
+- **F-2 [测试面] mono 快路径比对无专用对抗测试**：AC-02"指纹随提示集变化"
+  由 methods_pack.rs mono_stale 比对实现（代码审读确认），无自动化对抗
+  用例；V1 维度（features/孪生）对抗在案。改进指针：随 P592-D1/P596-D1
+  缓存键债务统一收口。
+
+**遗漏/延后扫描**：P591-D2（Err 通道）按澄清 #2 显式不并入 ✓；DIV-DEP-15
+根修显式非目标 ✓；Send/Sync/泵=P596-D4 ✓；make 假绿锚点保留 ✓。无静默
+缩水。健康：diff 零 debug 残留、编辑区 fmt 干净、零新警告。
+
+next: **merge**（plan 状态 → reviewed；终态按 merge 流程归档）。
 
 ## 10. 待澄清事项
 
