@@ -27,6 +27,13 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-08-28）
 
+**vue as-cast 整型降级（plan-604 落地，KD-VM4 双端一致）**：view/handler 内
+`expr.as(int)`（及 i64/uint/u64/usize/byte）vue 侧降级 `Math.trunc(...)`，对齐
+VM TYPE_CAST_I32 的 Rust `f as i32` 截断语义；浮点目标 JS 原生 f64 直通，其余
+类型保持值不变。此前 `Expr::Cast` 三处 emit 无降级（handler 内落 `undefined`、
+绑定位硬错误、文本位 R046 占位符）。单测
+`ui_gen::vue::tests::test_as_cast_int_lowers_to_math_trunc`。
+
 **ui-gallery 画廊与应用内嵌架构（plan-549 落地）**：对齐 widgets-gallery 交互体验，建立 examples/ui-gallery 示例画廊应用；构建期自动扫描与元数据提炼（auto-man generate_gallery_host + demos-registry 动态装配），左栏导航聚合全部 43 个 UI 示例（分类折叠与实时过滤），右侧上部提供真实可交互的 AppViewport 沙盒视口（独立 createApp 挂载隔离、异常边界 errorHandler、状态一键重置与 Desktop 100% / 1024px / Tablet 768px / Mobile 375px 多端尺寸切换），右侧下部提供基于 AutoDown/Markdown 的教程与源码逐行剖析；形成跨目录应用沙盒化内嵌的通用规范。
 
 **029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范

@@ -1897,7 +1897,19 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
 
 ---
 
-## 附录：VM 引擎缺陷现场（2026-09-09 025-sys-monitor 内存/卡顿复盘，证据齐备待修复）
+## 附录：VM 引擎缺陷现场（2026-09-09 025-sys-monitor 内存/卡顿复盘）
+
+> **✅ KD-VM1~4 已由 PLAN-604（2026-09-10）修复销账**——定罪笔记（行号级
+> 证据+trace+仪器化数据）见 `docs/plans/604-vm-rc-lifecycle-fix.md` §9。
+> 修复面：CONSTRUCT_INSTANCE 取 `sp-1` 槽（T03）、shim_list_push 四出口
+> transfer 配平（T04）、ARRAY_LEN 收尾（T04）、GET_FIELD 门控+结算转正
+> （T01）、as-cast Math.trunc 降级（T08）。验收：probe_rc_leak_soak 5/5
+> 硬断言绿（StructTick 4000→0、LitPushTick lenSeen=100/sum=4950/growth 0）。
+> **勘误**：KD-VM3（B12 编码损坏）与 KD-VM4（Number() 不截断）的原表述均
+> 与事实不符——B12 为坏探针伪证（语料缺 LitPushTick timer 条目致 handler
+> 空跑，lenSeen==0/fff2 皆为空跑症状）；Number() 降级在仓内不存在（实际
+> 缺口=Cast 三处 emit 无降级）。协议固化见
+> `docs/specs/auto-lang/vm/overview.md` §RC 生命周期协议/§B12 编码不变量。
 
 复现与归因工具已入仓：语料 `test/ui/probe_rc_leak/`（五拍型 timer 逐操作归因）+
 `musk_vm_track_tests.rs::probe_rc_leak_soak`（进程内 `heap_live_objects` 断言通道，
