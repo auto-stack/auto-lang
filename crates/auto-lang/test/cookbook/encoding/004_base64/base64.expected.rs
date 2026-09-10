@@ -4,8 +4,8 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 fn main() {
     let original: String = "hello world".to_string();
-    let encoded = STANDARD::encode(original.as_str());
+    let encoded = STANDARD.encode(original);
     assert!(encoded == "aGVsbG8gd29ybGQ=");
-    let decoded = STANDARD::decode(encoded).unwrap();
+    let decoded = STANDARD.decode(encoded).unwrap();
     assert!((decoded.len() as i64) > 0);
 }

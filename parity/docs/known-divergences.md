@@ -475,8 +475,15 @@ docs/plans/reports/p594-dep-skip-hit-rate.md。
     url `Url { scheme: .. }` 结构体转储）。
   - 偏差类型: 待修复（发射器 to(str) 对 rust 型绑定应对齐 Display，或 VM 侧
     占位改 Display；serde 的 print 直出已实证三轨逐字节一致，可作库内附加输出）。
-  - 状态: open。锚点: PLAN-594 T3 探针 u4/p3/s1；serde_json_real basic.at
-    `print(data)` 行。
+  - 状态: ✅ **fixed**（2026-09-10, PLAN-596 T-07，双半边同收）。a2r 半边：
+    `.to(str)` 对 rust 导入类型（接收者类型在 use.rs 白名单且非本地声明）发
+    `format!("{}", v)`（Display），Auto 类型维持 Debug 兜底（存量语料零回归）；
+    un-annotated 绑定经 store 期 dep 构造链识别（`Url.parse(..).unwrap()` →
+    User(Url)）获得类型信号。VM 半边：native.rs `format_rust_stdlib_obj` 补
+    `url::Url` Display 臂（镜像 591 semver 臂），print 与 TYPE_TO_STR 两路
+    同时收口。翻绿锚点：url/semver `display_to_str`（parity p10 4/4×2）；
+    base64 语料随 T-09 新建（2/2）。
+    锚点: PLAN-594 T3 探针 u4/p3/s1；serde_json_real basic.at `print(data)` 行。
 
 - **DIV-DEP-9 — Auto 类型标注 `let n i64 = from_str(..)` 的窄槽污染。**
   VM 自由函数 wrapper 返回 String（from_str 的 unwrap+序列化面），标注 i64
@@ -523,7 +530,14 @@ docs/plans/reports/p594-dep-skip-hit-rate.md。
   - a2r 行为: E0224/E0599 级编译失败；小写绑定规避形态
     （`let eng = STANDARD`）在 VM 侧取回 None、a2r 侧转译即失败——双断。
   - 偏差类型: 待修复（发射器需 dep 元数据区分常量/类型；归属 591 V2 trait 面）。
-  - 状态: open。锚点: libs/dep/base64_real/README 探针表（PLAN-594 全红样本）。
+  - 状态: ✅ **fixed**（2026-09-10, PLAN-596 T-07）。发射器以
+    SCREAMING_CASE（全大写无小写）+ use.rs 导入叶子 + 非本地声明 判定常量
+    接收者，`is_type` 门与 obj_is_type_chain 双点豁免后回落点调用路径发
+    `STANDARD.encode(..)`（`use base64::Engine` 在 scope 时 rustc 通过）。
+    翻绿锚点：libs/dep/base64_real `encode_const_receiver`/`decode_encode_
+    roundtrip`（parity p10 2/2，PLAN-596 T-09 语料）。残留：`let eng =
+    STANDARD` 常量落绑定维持双断（语料规避，README 在案）。
+    锚点: libs/dep/base64_real/README 探针表（PLAN-594 全红样本）。
 
 - **DIV-DEP-14 — 嵌套 brace 路径的 use.rs 不被 VM 语法面接受。**
   `use.rs base64::{engine::general_purpose::STANDARD, Engine}` → E0099
@@ -564,6 +578,30 @@ docs/plans/reports/p594-dep-skip-hit-rate.md。
     深路径类型被剔除后其余面可编译。根修=rustdoc 全路径保真（v53 深模块
     路径，591 后续/报告在案）。
   - 状态: accepted(缓解)+partial-fixed。锚点: libs/dep/uuid_real/README。
+
+- **DIV-DEP-18 — 自由函数返回自有类型被 212 wrapper CString 序列化兜底（Display 假绿）。**
+  dep 自由函数声明返回自有类型（fixture `make(tag) -> Temp`）时，212 wrapper
+  对非基元返回落 CString 序列化兜底（`_r.to_string()`）：类型恰有 Display 时
+  字符串碰巧同值造**假绿**，字段读（`.degree`）归 0 揭穿。
+  - AutoVM 行为: `make("x")` 返回的"对象"实为 String 槽值；字段读得 0。
+  - a2r/Rust 行为: 真 Temp 实例，Display 文本与 VM 巧合一致、字段真值。
+  - 偏差类型: 待修复（212 返回码矩阵缺"自有类型→对象句柄"类；登记为 430
+    wrapper 元数据族后续小改进）。缓解：语料组合改静态构造器
+    （`Temp.of`，方法面自有所属类型不受此限）；`make` 保留为观测锚点不入断言。
+  - 状态: open（观测锚点维持）。锚点: PLAN-596 T-03 F-1、
+    test/ffi_dual/020 fixture autolang_traits。
+
+- **DIV-DEP-19 — a2r 轨闭包实参不装箱，三方方法回调形参 E0308。**
+  PLAN-596 T5 回调原型（`Invoker.apply(f: Box<dyn Fn(i64)->i64>, x)`）：
+  a2r 轨把 Auto 闭包 `x => x*2+1` 直译为 `|x| x*2+1`（&impl Fn 裸闭包），
+  实参位需 `Box<dyn Fn>` 时 E0308（expected Box found closure）。
+  - AutoVM 行为: ✅（回调 adapter 原型，`apply(x => x*2+1, 5) == 11`）。
+  - a2r 行为: 编译失败 E0308。
+  - 偏差类型: 待修复（a2r 发射器对回调形参缺 `Box::new(..)` 装箱；依赖
+    P592-D3 元数据通道回传 callbacks 签名）。缓解：ffi_dual 020 语料 a2r
+    腿豁免表 `A2R_SKIP=[020]`（020 其余面 a2r 编译全过）。
+  - 状态: open（原型边界内豁免）。锚点: PLAN-596 T-05/T-08、
+    crates/auto-lang/src/tests/ffi_dep_parity_tests.rs A2R_SKIP。
 
 ## Python Parity Divergences
 

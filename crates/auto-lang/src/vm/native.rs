@@ -1823,6 +1823,15 @@ pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
                 "<semver::Version>".to_string()
             }
         }
+        // PLAN-596 T-07 (DIV-DEP-8 VM 半边收口): url::Url Display 路由——
+        // print 与 TYPE_TO_STR(.to(str)) 共用本表,镜像 semver::Version 臂。
+        "url::Url" => {
+            if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                format!("{}", mutex.lock().unwrap())
+            } else {
+                "<url::Url>".to_string()
+            }
+        }
         "semver::VersionReq" => {
             if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<semver::VersionReq>>() {
                 format!("{}", mutex.lock().unwrap())

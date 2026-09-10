@@ -26,4 +26,11 @@ fn main() {
     } else {
         print("not ok 3 - parse_path")
     }
+    // DIV-DEP-8 翻绿（PLAN-596 T-07）：to(str) == 全文本三轨一致。
+    let full = u.to(str)
+    if full == "https://example.com/x" {
+        tap_ok(4, "display_to_str")
+    } else {
+        print("not ok 4 - display_to_str")
+    }
 }
