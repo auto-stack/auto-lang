@@ -3688,7 +3688,7 @@ mod probe_rc_leak_soak {
     #[test]
     fn probe_disasm() {
         let path = locate_corpus().expect("corpus");
-        let mut dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
+        let dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
         for (name, addr) in dc.debug_fn_table() {
             if name.contains("LitPushTick") {
                 eprintln!("fn {} @ {:#x}", name, addr);
