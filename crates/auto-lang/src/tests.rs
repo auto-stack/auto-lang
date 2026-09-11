@@ -4,6 +4,8 @@ mod a2c_tests;
 #[cfg(feature = "test-trans")]
 mod a2r_tests;
 #[cfg(feature = "test-trans")]
+mod a2r_c_abi_gates;
+#[cfg(feature = "test-trans")]
 mod a2ts_tests;
 // Plan 577: a2ts directed compile-level probes (.at → tsc --noEmit)
 #[cfg(feature = "test-trans")]

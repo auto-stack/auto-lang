@@ -26,7 +26,12 @@ fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
         read_to_string(exp_path.as_path())?
     };
 
-    let mut rcode = transpile_rust(&name, &src)?;
+    // Plan 610 ⑥: relative use.c JSON manifests resolve against the case dir.
+    let mut rcode = crate::trans::rust::transpile_rust_with_source_dir(
+        src_path.parent().unwrap_or(&d),
+        &name,
+        &src,
+    )?;
     let rs_code = rcode.done()?;
 
     if rs_code != expected.as_bytes() {
@@ -726,7 +731,13 @@ fn a2r_rustc_real_compile_gate() {
                                 continue;
                             }
                         };
-                        let mut rcode = match transpile_rust(&case.name, &src) {
+                        // Plan 610 ⑥: relative use.c JSON manifests resolve
+                        // against the case dir (same as test_a2r_with_base).
+                        let mut rcode = match crate::trans::rust::transpile_rust_with_source_dir(
+                            case.source_file.parent().unwrap_or(std::path::Path::new(".")),
+                            &case.name,
+                            &src,
+                        ) {
                             Ok(r) => r,
                             Err(e) => {
                                 failures.lock().unwrap().push(format!(
@@ -931,6 +942,12 @@ unexpected failures:
 #[test] fn test_26_plan577_002_r1_dot_chain() { test_a2r("26_plan577/002_r1_dot_chain").unwrap(); }
 #[test] fn test_26_plan577_003_r4_loop_move() { test_a2r("26_plan577/003_r4_loop_move").unwrap(); }
 #[test] fn test_26_plan577_004_phase0_small_fixes() { test_a2r("26_plan577/004_phase0_small_fixes").unwrap(); }
+// === 27_c_abi (Plan 610 ⑤: #[export] cdylib export face) ===
+#[test] fn test_27_c_abi_001_export_basic() { test_a2r("27_c_abi/001_export_basic").unwrap(); }
+#[test] fn test_27_c_abi_002_export_cstr() { test_a2r("27_c_abi/002_export_cstr").unwrap(); }
+#[test] fn test_27_c_abi_005_engine_face_auto() { test_a2r("27_c_abi/005_engine_face_auto").unwrap(); }
+#[test] fn test_27_c_abi_003_use_c_static() { test_a2r("27_c_abi/003_use_c_static").unwrap(); }
+#[test] fn test_27_c_abi_004_use_c_dynamic() { test_a2r("27_c_abi/004_use_c_dynamic").unwrap(); }
 #[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
 #[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
 #[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }

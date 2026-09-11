@@ -61,6 +61,17 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   至产物目录同目录分发（`scripts/build-engine-face-a2c.cmd`）。连带
   修复：未初始化固定数组发射 `= NULL`（非法 C）→ 裸声明（真 MSVC
   抓出，文本快照盲区）。
+- C ABI 双面（plan-610，004 §5⑤⑥）：a2r 补齐 C ABI 两个方向——⑤
+  `#[export]`/`#[export(system)]` 导出发射（兄弟包装模块 no_mangle
+  extern，int i64↔i32 边界 cast、cstr CString 边界、句柄/缓冲双形参
+  规则、auto_cabi_kit 生成模块收口全部 unsafe）；⑥ `use.c` 双形态
+  下降（manifest 共享 IR：S 静态 `#[link]` extern 块+安全包装 / D
+  动态 libloading，env→exe 同目录→PATH 解析序；缓冲助手 kit）。语料
+  `test/a2r/27_c_abi/` 五件 + 三道 `--ignored` 实编门；capstone 双
+  闭环：引擎 12 符号 Auto 版 cdylib 被 597 a2c 驱动器链接 CFACE_OK
+  （AC-03），⑥ 驱动同产物改链 ⑤ 产物 CFACE_OK（AC-05，Auto↔Auto
+  零手写胶水）。trampoline 选型：A 闭包直转证伪、A' 具名
+  `#[export(system)]` fn 按名传值选定（PLAN-610 §5 附录）。
 - A1 `.len()` 特判（plan-569，P539-D2 根治）：py-known 接收者的方法糖
   `.len()`（无实参）不再改写 `py_call(recv, "len")`（py 无 `.len` 方法，
   恒 AttributeError）而改发 **obj_len 双通道组合子**——与 codegen

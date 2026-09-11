@@ -1,0 +1,23 @@
+// Plan 610 ⑤ (T-02): `#[export]` with cstr params/returns. Boundary shape:
+// cstr param arrives as *const c_char (null-tolerant → "") and is converted
+// to the body's String; a cstr return hands ownership to the C caller via
+// CString::into_raw (interior NUL degrades to an empty C string — no panic
+// crosses the FFI boundary; the C side owns the free).
+#[export]
+fn dup(s cstr) cstr {
+    return f"${s}${s}"
+}
+
+#[export]
+fn greet(name cstr, times int) cstr {
+    var out = ""
+    for i in 0..times {
+        out = out + name
+    }
+    return out
+}
+
+fn main() {
+    print(dup("ab"))
+    print(greet("hi", 3))
+}

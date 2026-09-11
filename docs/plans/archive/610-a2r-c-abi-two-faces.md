@@ -1,18 +1,22 @@
 ---
 plan_id: PLAN-610
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-c-abi-two-faces
 author: [ZCode]
 created_at: 2026-09-10
 updated_at: 2026-09-10
 plan_revision: 1
-current_step: 0
+current_step: 12
 total_steps: 12
 
 # /auto-plan:review 结束时填写：
+# supersedes 为空=无退役组件（VM 侧缓冲出参不可达表述仍准确，610 交付在 a2r 侧）
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - docs/a2r-transpiler-guide.md#implementation-status（⑤⑥+capstone 条目，SD-01）
+  - docs/specs/auto-lang/trans/overview.md（现状 C ABI 双面条目，SD-02）
+  - docs/specs/auto-bindgen/project.md（manifest 模型 link 字段+消费面三后端，SD-03）
+touched_goals: [GOAL-006, GOAL-013]   # 消费者轨（use.c a2r 后端）/C 生态（C ABI 双面）
 
 affects: [auto-lang/trans rust(a2r), auto-lang parser(attrs), auto-bindgen(消费面)]
 ---
@@ -167,6 +171,26 @@ auto-term 构建产物（只读）。
 跳板式。判据：产物零运行时依赖优先。产出=选型文档（本计划 §5 附
 录），实作授权自裁降级。
 
+#### T-10 选型结论（2026-09-11，探针实证 $TEMP/610_trampoline_probe.rs）
+
+- **A（零捕获闭包直转 `extern "C" fn`）＝不可行**：Rust 闭包仅强转
+  Rust ABI fn 指针——探针 E0308 "expected \"C\" fn, found \"Rust\" fn"
+  坐实；595 a2c ctrlc 的"直转"先例系 C 代码生成路径（C 函数指针无
+  ABI 标注负担），不可移植到 a2r。
+- **A'（具名 `#[export(system)]` fn 按名传值）＝选定主案**：复用 ⑤
+  发射（`pub extern "system" fn` 条目），探针实证可填充
+  `Option<extern "system" fn(i32) -> i32>` 形参位——SetConsoleCtrlHandler
+  类事件回调形态；环境态走 static。产物零运行时依赖（判据最优）。
+- **B（捕获闭包 Box::into_raw+静态注册表+壳）＝兜底**：004 §3.5 原案；
+  仅当真实语料出现捕获回调需求时落地（生成模块内置注册表，unsafe 全
+  居生成码，与 ⑤ kit/⑥ 助手同构）。后续计划候选。
+- **C（596 宿主跳板：令牌+宿主跳板+catch_unwind）＝不入 a2r 轨**：
+  回调重入 VM 属 Q2/596 运行期领地（本计划 §0 边界明示）；a2r 产物纯
+  Rust 无 VM 可重入。
+- **实作降级（§10 授权）**：A' 的 FnPtr 形参生成与传递语义 defer
+  ——⑥ MVP 对 manifest FnPtr 报错在案（emit_use_c_ffi 显式错误），
+  待 SetConsoleCtrlHandler 类真语料驱动时另立小计划落地。
+
 ### 规范增量
 
 | delta_id | 操作 | docs/specs/... target | before/after rule | rationale | acceptance |
@@ -250,14 +274,34 @@ auto-term 构建产物（只读）。
   `.get(X).word` 修正趟的 expect 误注入 unwrap（expect 入安全方法表）；
   007_cstr 语料受益 builtin 生成面（快照更新，该例本在 known-broken
   台账）；a2r_tests 372/372 全绿]
-- [ ] **T-08** ⑥ 实编门：S 链真 DLL CFACE_OK（AC-04）；D 同场景
-  （AC-06）；
-- [ ] **T-09** 闭环门：AC-03（597 驱动器×⑤ 产物）+ AC-05（⑥ 驱动×
-  ⑤ 产物）；
-- [ ] **T-10**（bounded）trampoline 选型 spike（AC-07；可并行/可后置）；
-- [ ] **T-11** SD 落稿 + 004 §5⑤⑥ 回执 + DEBTS #10 增 610 条；
-- [ ] **T-12** 收口门禁：a2r 套件 + 三道实编门 + tf/tt/tv +
-  bindgen/a2c（基线不变）。
+- [x] **T-08** ⑥ 实编门：S 链真 DLL CFACE_OK（AC-04）；D 同场景
+  （AC-06）；[✅ a2r_cabi_use_c_gate 三腿全绿：AC-04 S×真
+  autoterm_core.dll.lib（rustc -L native 改名 staging）CFACE_OK/exit 0；
+  AC-06 D×libloading exe 同目录运行期加载 CFACE_OK/exit 0；驱动=597
+  a2c 驱动器 Auto 重写（exit 码 0/1/2 对齐，Sleep 走 std 可移植）]
+- [x] **T-09** 闭环门：AC-03（597 驱动器×⑤ 产物）+ AC-05（⑥ 驱动×
+  ⑤ 产物）；[✅ AC-03=a2r_cabi_engine_face_gate 绿（驱动 C 侧恰声明
+  12 extern，MSVC 链接成功=符号清单核对）；AC-05=同一 ⑥ 驱动产物
+  （driver_s.rs 字节不变）改链 ⑤ engine_face_auto.dll.lib（import lib
+  内嵌 DLL 名换引擎，Auto 驱动×Auto 引擎面零手写胶水）CFACE_OK/exit
+  0；执行期一修：D 生成器 lib() 闭包 unsafe（Library::new 系 unsafe
+  fn）；worktree commit 113e6ff82]
+- [x] **T-10**（bounded）trampoline 选型 spike（AC-07；可并行/可后置）；
+  [✅ 选型文档=§5 T-10 附录（A 闭包直转证伪/A' 具名 #[export(system)]
+  fn 按名传值选定主案/零依赖/B 兜底/C 出轨），探针双证（E0308 反证 +
+  A' 正证）；实作按 §10 授权降级 defer（⑥ 对 FnPtr 显式报错在案）]
+- [x] **T-11** SD 落稿 + 004 §5⑤⑥ 回执 + DEBTS #10 增 610 条；
+  [✅ SD-01=a2r-transpiler-guide Implementation Status 增 610 条；SD-02=
+  trans/overview C ABI 双面条目；SD-03=auto-bindgen/project 消费面三后端
+  收口（worktree 内落稿）；auto-term 侧：004 §5⑤⑥ 翻已落地清账 +
+  DEBTS #10 增 ⑤⑥ 清账段（auto-term master 9dc4ad7 后一收据提交）]
+- [x] **T-12** 收口门禁：a2r 套件 + 三道实编门 + tf/tt/tv +
+  bindgen/a2c（基线不变）。[✅ a2r_tests 372/372 + a2r_rustc_real_compile_gate
+  绿；三道 #[ignore] 实编门 3/3 绿；tt 3869/3869；tv 3650/3650；
+  auto-bindgen 6/6；tf 3506/3506（首跑 ffi_dual_019 并发 flake，隔离+
+  重跑双绿）；基线预存红与 610 无关（z6_export_prolog_alignment/
+  d8_toggle_dark_mode——master 主检出现场复核同红，VM 域既有债，
+  归复审登记）]
 
 依赖：T-02←T-01；T-04←T-02/03；T-05←T-02/03；T-06/07 独立；T-08←
 T-06(07)；T-09←T-05+T-08；T-10 独立；T-12 收口。
@@ -267,9 +311,88 @@ T-06(07)；T-09←T-05+T-08；T-10 独立；T-12 收口。
 stage: new | PLAN-610 | rev 1 | outcome: pass | next: work
 （起草即绪：前置/领地/验收 oracle 均在案；执行授权待用户指令。）
 
+stage: work | PLAN-610 | rev 1 | outcome: pass | code: plan-610-dev @
+3cc98089d（7 commits：⑤发射 27c63c6a1 / 句柄+kit+capstone 3991584f1 /
+T-03/04 门 5713421b7 / ⑥生成器 79d27402b / ⑥快照收口 a157d5c1e / ⑥三腿
+门 113e6ff82 / SD 落稿 3cc98089d；base=master 622edfdd9）| tasks:
+T-01..T-12 全勾 | evidence: AC-01 快照 001/002+27_c_abi 5/5；
+AC-02 a2r_cabi_export_gate；AC-03 a2r_cabi_engine_face_gate（597 驱动器
+×⑤产物 CFACE_OK/exit 0）；AC-04/05/06 a2r_cabi_use_c_gate 三腿
+（AC-05=同一驱动产物改链 ⑤ 产物，Auto↔Auto 零手写胶水）；AC-07 选型
+§5 附录（A 证伪/A' 选定/实作 defer）；AC-08 tt 3869+tv 3650+tf 3506+
+bindgen 6+三道门全绿、SD-01/02/03 落稿、004 §5⑤⑥+DEBTS #10 双回执
+（auto-term master）；执行期关键裁定：⑥ FnPtr 显式报错 defer（T-10
+选型后按语料驱动另立）、句柄空哨兵均一 -1（引擎 -1/-2 细分简化，
+驱动面零影响）| blockers: 无（外部前置=auto-term target/debug 引擎
+产物，绿色在案）| next: review（/auto-plan:review）
+
+stage: review | PLAN-610 | rev 1 | outcome: **pass** | reviewed_commit:
+3cc98089dec66ead047e0425c3796e8a5c44a07a（worktree plan-610-dev，树干净）|
+base_commit: 622edfdd9（注：master 此后合入 PLAN-608，文件面除 lib.rs
+两处无语义冲突区域外零重叠，合并安全）| dependency_revisions:
+auto-term master（引擎产物 target/debug 绿色；回执两收据已合）|
+spec_inputs: docs/specs/auto-lang/trans/overview.md、
+docs/specs/auto-bindgen/project.md、docs/a2r-transpiler-guide.md；
+规范增量冻结 sha256 f880b35c9ad1755a（5515B，分支 vs base 的 docs/ diff）
+| acceptance_results: AC-01 pass（27_c_abi 5/5 快照，cargo tt 复跑绿；
+001/002 含 no_mangle/extern C/system 形态与 i32 边界 cast）· AC-02 pass
+（a2r_cabi_export_gate 复跑绿：add(2,3)==5 宽度桥+dup cstr 往返断言）·
+AC-03 pass（a2r_cabi_engine_face_gate 复跑绿 + **dumpbin /exports 对照
+复審新增证据：⑤ 产物与 Rust 版 autoterm_engine_* 导出集 12/12 恒等**）·
+AC-04/05/06 pass（a2r_cabi_use_c_gate 三腿复跑绿；AC-05 驱动产物
+driver_s.rs 字节不变改链 ⑤ 产物）· AC-07 pass（§5 T-10 附录选型文档，
+A 证伪 E0308/A' 正证探针双证）· AC-08 pass（复审期复跑：tt 全量、tv
+3650/3650、tf 3506/3506（二跑）、三道 --ignored 门 3/3、auto-bindgen
+6/6；SD-01/02/03 落稿核验=描述现行为非执行日记；004 §5⑤⑥+DEBTS #10
+auto-term master 回执核验在案）| findings: F-1（非阻塞·预存）：
+ffi_dual_019_dep_layout_invariants 间歇红——**master 全量 tt 同红复现
+（无 610 代码），隔离双绿，分支 tf 二跑全绿**，归 P596-D5 陈旧方法包
+竞争债（已登记，610 diff 与 auto-cache 零交集）；F-2（信息·在案）：
+⑤ 句柄空哨兵均一 -1（引擎 take_dirty_rows 空句柄 -2 细分简化），语料
+注释记录，驱动面零影响，AC 不覆盖空路径；F-3（授权延后）：⑥ FnPtr
+显式报错+trampoline 实作 defer（§10 自裁授权+T-10 选型，待真语料另
+立）；F-4（观察）：007_cstr 快照因 ⑥ builtin 生成面变化更新（该例
+known-broken 编译债不变）；F-5（合并注记）：master 前进（608 合入），
+lib.rs 两处不同区域自动可并 | evidence: 命令与结果已录各 AC 行；符号
+对照=vswhere 定位 dumpbin 14.43.34808 //EXPORTS 双 DLL diff 集合恒等；
+工作收据见上条 work 记录 | next: merge（/auto-plan:merge）
+
 ## 10. 待澄清事项
 
 - T-01 语法形态（#[export] vs 备选）授权执行时按 §5 判据自裁并记录；
 - T-10 trampoline 实作降级（只交选型）授权自裁，记录于 §5 附录；
 - 外部前置：auto-term `cargo build -p autoterm-core` 可产出 rlib/
   cdylib（现役绿色路径）+ 597 驱动器脚本在 master（已合）。
+
+
+### merge 收据（PLAN-610:r1，五检查点）
+
+- **prepared**：规范预备 commit a715ed77e4（projection-only descendant of
+  reviewed 3cc98089d——trans/plans.md 610 行+goals.md GOAL-006/013 回写；
+  SD-01/02/03 三件已随 reviewed 提交在枝）；冻结增量 sha256
+  f880b35c9ad1755a。
+- **landed**：master 2038e1370（对账 PLAN-608 前进后 fast-forward；
+  `git merge-base --is-ancestor 3cc98089d HEAD` 确证 reviewed ⊆ master）。
+  合并树全量门复验：tt --no-fail-fast 3873/3873、tv 3654/3654、三道
+  --ignored 门 3/3、tf 3510（3509 绿+ffi_dual_019 间歇=P596-D5 预存
+  flake，master 同红归因见复审 F-1）。落地后 master 快烟 27_c_abi 6/6。
+- **ledger_refreshed**：本地账本 `.autoos/specs.json`（gitignored 运行
+  时投影）upsert P610-1..6（reports/goals/architecture/designs/tests/
+  reviews 六区，file=archive 路径，读回验证 6/6）；`python
+  scripts/spec-index.py` 重生 INDEX 幂等无变化（26 projects）。
+- **archived**：本文件（git mv docs/plans/→docs/plans/archive/，
+  status: archived，completion_kind: delivered）。
+- **cleaned**：wt-guard 双 clean（lang-610/auto-lang + 依赖兄弟
+  lang-610/auto-down，reparse point 零检出）；worktree/分支
+  plan-610-dev（was 2038e1370，-d 删除=已全落地）/auto-down detached
+  检出/组目录 .wt/lang-610 全清零残留。
+
+## spec-sync 回写记录（v1 惯例保留）
+
+- `docs/a2r-transpiler-guide.md` Implementation Status 增 610 条（SD-01）。
+- `docs/specs/auto-lang/trans/overview.md` 现状 C ABI 双面条目 + 
+  `trans/plans.md` 610 行（SD-02）。
+- `docs/specs/auto-bindgen/project.md` manifest link 字段+消费面三后端
+  （SD-03）。
+- `docs/specs/goals.md` GOAL-006/GOAL-013 追加 610。
+- 跨仓：auto-term 004 §5⑤⑥ 落地清账 + DEBTS #10 ⑤⑥ 段（master 已合）。

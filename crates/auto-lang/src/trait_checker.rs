@@ -419,6 +419,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
+            export_abi: None,
         }
     }
 

@@ -296,7 +296,8 @@ fn expand_apps_container(container: &Path, out: &mut Vec<(String, PathBuf)>) {
 
 /// Plan 501 + Stage B P-3：boot 期宿主包装——storage 读 + 相邻仓探测缺省根
 /// （`../auto-os-config/auto` 单根 + `../auto-os/apps` 容器）+ apps.manifest
-/// repo 条目聚合（策展意志，独立于 scan_siblings 探测开关）。
+/// repo 条目聚合（策展意志，独立于 scan_siblings 探测开关）+ PLAN-008 画廊
+/// 根探测（独立 `shell.apps.scan_galleries` 开关）。
 pub fn host_extra_roots() -> Vec<(String, PathBuf)> {
     let front = PathBuf::from("..").join("auto-os-config").join("auto");
     let apps = PathBuf::from("..").join("auto-os").join("apps");
@@ -313,7 +314,37 @@ pub fn host_extra_roots() -> Vec<(String, PathBuf)> {
             }
         }
     }
+    roots.extend(gallery_extra_roots());
     roots
+}
+
+/// PLAN-008：auto-os 顶层画廊根探测（ui-gallery / widgets-gallery）——
+/// 经 [`resolve_os_top_dir`] 解析序定位（Stage B P-5 随迁资产同族锚：
+/// AUTO_OS_ROOT env → 兄弟 → 主检出），目录缺席静默跳过（solo 检出
+/// 不炸）；storage `shell.apps.scan_galleries=false` 可整体关闭
+/// （对称 `shell.apps.scan_siblings`）。
+pub fn gallery_extra_roots() -> Vec<(String, PathBuf)> {
+    gallery_extra_roots_from(
+        crate::vm::ffi::stdlib::storage_host_read("shell.apps.scan_galleries").as_deref(),
+        Path::new(".."),
+    )
+}
+
+/// PLAN-008：画廊探测纯函数形态（storage 开关与 parent 基目录参数化，
+/// CWD 无关重演；`extra_roots_from` 同族）。按名探测，产出次序固定
+/// （ui-gallery → widgets-gallery），id = 目录名。
+pub fn gallery_extra_roots_from(
+    scan_galleries_value: Option<&str>,
+    parent: &Path,
+) -> Vec<(String, PathBuf)> {
+    if scan_galleries_value == Some("false") {
+        return Vec::new();
+    }
+    const GALLERIES: [&str; 2] = ["ui-gallery", "widgets-gallery"];
+    GALLERIES
+        .iter()
+        .filter_map(|name| resolve_os_top_dir(parent, name).map(|p| ((*name).to_string(), p)))
+        .collect()
 }
 
 /// Stage B P-3：解析序定位 auto-os 根——`AUTO_OS_ROOT` env（**设置即权威**，
@@ -536,6 +567,8 @@ mod tests {
     /// 缺省下仅显式 `desktop: "true"` 才入列）；少一个 = C 档目录掉了字段
     /// （pac 被覆写/字段误删），双向 fail。045-desktop-settings 已由
     /// Plan 551 T7 退役（cfcd534ff），C 档 20→19（计划起草时 045 尚在）。
+    /// PLAN-008：022-kanban 退策展，C 档 17→16（独立仓 auto-kanban 替位，
+    /// want 集同步——恰等特性本身即钉死退策展回归）。
     #[test]
     fn scan_examples_ui_curation_set() {
         let apps = scan_apps(&repo_examples_ui(), &ScanOptions::default());
@@ -554,7 +587,9 @@ mod tests {
             "017-chat",
             "018-book-reader",
             "020-music-player",
-            "022-kanban",
+            // PLAN-008：022-kanban 退策展——app 升格独立仓 auto-kanban
+            // （apps.manifest extra root 原生挂载）替位桌面入口（C 档
+            // 17→16）；本目录留作教学示例与收割语料，不迁不删。
             "024-charts",
             "026-database",
             "027-file-manager",
@@ -569,7 +604,7 @@ mod tests {
         ];
         assert_eq!(
             curated, want,
-            "策展集（desktop_visible）应恰为 C 档 17 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出）"
+            "策展集（desktop_visible）应恰为 C 档 16 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出/PLAN-008 022-kanban 退策展）"
         );
     }
 
@@ -908,6 +943,117 @@ mod tests {
             "缺容器仅单根探测产出"
         );
         let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    // ---- PLAN-008：auto-os 顶层画廊根探测 ----
+
+    /// 仓库材料解析基目录（auto-lang 仓根的父目录）——画廊两件自 Stage B
+    /// P-5 迁 auto-os 顶层，经 `resolve_os_top_dir` 兄弟臂命中（组 worktree
+    /// `.wt/os-NNN/{auto-lang,auto-os}` 与主检出双形态同律）。
+    fn repo_parent() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
+    }
+
+    /// PLAN-008 测试设计 1：真实仓材料门控——解析序产出恰两画廊根
+    /// （ui-gallery → widgets-gallery 固定次序，id = 目录名）。
+    #[test]
+    fn gallery_extra_roots_probes_repo_galleries() {
+        std::env::remove_var("AUTO_OS_ROOT");
+        let (Some(ui), Some(widgets)) = (
+            resolve_os_top_dir(&repo_parent(), "ui-gallery"),
+            resolve_os_top_dir(&repo_parent(), "widgets-gallery"),
+        ) else {
+            eprintln!("gallery probes: SKIPPED — auto-os 顶层画廊未解析（solo 检出）");
+            return;
+        };
+        assert_eq!(
+            gallery_extra_roots_from(None, &repo_parent()),
+            vec![
+                ("ui-gallery".to_string(), ui),
+                ("widgets-gallery".to_string(), widgets),
+            ],
+            "恰两画廊根，产出次序固定，id = 目录名"
+        );
+    }
+
+    /// PLAN-008 测试设计 2：storage 开关 `shell.apps.scan_galleries` 语义
+    /// （storage_host_read 不可注入——开关判定提为纯函数参数，形态沿
+    /// `extra_roots_from` 的 scan_siblings 参数化先例）+ env 权威臂缺席
+    /// 静默跳过。
+    #[test]
+    fn gallery_extra_roots_scan_galleries_off() {
+        std::env::remove_var("AUTO_OS_ROOT");
+        let root = std::env::temp_dir().join(format!("autoui-008-galleries-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("auto-os").join("ui-gallery")).unwrap();
+        std::fs::create_dir_all(root.join("auto-os").join("widgets-gallery")).unwrap();
+        // 缺省（None）→ 两根产出。
+        assert_eq!(gallery_extra_roots_from(None, &root).len(), 2, "缺省探测两画廊");
+        // "false" → 整体关闭。
+        assert!(gallery_extra_roots_from(Some("false"), &root).is_empty(), "开关关闭");
+        // 非 "false" 值不关（严格等值语义）。
+        assert_eq!(gallery_extra_roots_from(Some("true"), &root).len(), 2, "非 false 值不关");
+        // AUTO_OS_ROOT 指向缺席目录 = env 权威臂关断（解析序不回落）。
+        std::env::set_var("AUTO_OS_ROOT", root.join("no-such-os"));
+        assert!(
+            gallery_extra_roots_from(None, &root).is_empty(),
+            "env 指缺席目录 → 静默跳过（solo 检出不炸）"
+        );
+        std::env::remove_var("AUTO_OS_ROOT");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// PLAN-008 测试设计 3：真实画廊目录条目——外部自含根 opt-out 缺省
+    /// 可见（零 pac `desktop:` 字段即上架）+ pac 展示字段取用（T1）。
+    #[test]
+    fn scan_gallery_roots_entries_visible() {
+        std::env::remove_var("AUTO_OS_ROOT");
+        let (Some(ui), Some(widgets)) = (
+            resolve_os_top_dir(&repo_parent(), "ui-gallery"),
+            resolve_os_top_dir(&repo_parent(), "widgets-gallery"),
+        ) else {
+            eprintln!("gallery entries: SKIPPED — auto-os 顶层画廊未解析（solo 检出）");
+            return;
+        };
+        let opts = ScanOptions::default();
+        let ui_entry = scan_app_root(&ui, "ui-gallery", &opts).expect("ui-gallery 条目");
+        assert!(ui_entry.desktop_visible, "外部根缺省 desktop_visible=true（opt-out）");
+        assert_eq!(ui_entry.title, "UI Gallery", "pac title: 上架标题（PLAN-008 T1）");
+        assert_eq!(ui_entry.icon, "image", "pac icon: lucide 名（PLAN-008 T1）");
+        assert_eq!(ui_entry.render, "vue", "render 声明原样透传");
+        let w_entry =
+            scan_app_root(&widgets, "widgets-gallery", &opts).expect("widgets-gallery 条目");
+        assert!(w_entry.desktop_visible, "外部根缺省 desktop_visible=true（opt-out）");
+        assert_eq!(w_entry.title, "Widgets Gallery");
+        assert_eq!(w_entry.icon, "layout-grid");
+        assert_eq!(w_entry.render, "vm");
+    }
+
+    /// PLAN-008 测试设计 4：render 过滤双轨矩阵——widgets-gallery（vm 声明）
+    /// Vue 轨排除 / VM 轨收录；ui-gallery（vue 声明）双轨皆入。
+    #[test]
+    fn gallery_render_filter_matrix() {
+        std::env::remove_var("AUTO_OS_ROOT");
+        let (Some(ui), Some(widgets)) = (
+            resolve_os_top_dir(&repo_parent(), "ui-gallery"),
+            resolve_os_top_dir(&repo_parent(), "widgets-gallery"),
+        ) else {
+            eprintln!("gallery matrix: SKIPPED — auto-os 顶层画廊未解析（solo 检出）");
+            return;
+        };
+        let vue_opts = ScanOptions { render: Some("vue".to_string()) };
+        assert!(
+            scan_app_root(&widgets, "widgets-gallery", &vue_opts).is_none(),
+            "widgets-gallery render=vm 被 vue 过滤排除（Vue 轨设计行为）"
+        );
+        assert!(
+            scan_app_root(&widgets, "widgets-gallery", &ScanOptions::default()).is_some(),
+            "VM 轨缺省（不过滤）收录 widgets-gallery"
+        );
+        assert!(
+            scan_app_root(&ui, "ui-gallery", &vue_opts).is_some(),
+            "ui-gallery render=vue 过 vue 过滤（Vue 轨收录）"
+        );
     }
 
     #[test]

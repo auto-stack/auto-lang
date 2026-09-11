@@ -4673,20 +4673,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             // Plan 497: 每窗口真缩略渲染臂——T1 定案裁剪式整窗快照的
             // 消费端。命中进程级快照缓存 → image(Handle::from_rgba) 直绘
-            // 降采样像素；miss → 标记异步抓取（宿主 update 排空
-            // take_capture_requests，一次整窗 screenshot 服务全部请求）+
-            // 本帧 fallback lucide 图标（复用 Image 臂路径，含 native wid
-            // "N<slot>" parse 失败天然走 fallback——待澄清②）。
+            // 降采样像素；过期 → stale-while-revalidate（旧图续帧不跌
+            // fallback，request_capture 冷却去重静默重抓——hover/分区与
+            // app 切换场景「TTL 到点跳 icon」断档的根治）；真 miss →
+            // 标记异步抓取（宿主 update 排空 take_capture_requests，一次
+            // 整窗 screenshot 服务全部请求）+ 本帧 fallback lucide 图标
+            // （复用 Image 臂路径，含 native wid "N<slot>" parse 失败
+            // 天然走 fallback——待澄清②）。
             AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                 let eff_w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                 let eff_h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
-                let snap = wid
-                    .parse::<u64>()
-                    .ok()
-                    .map(crate::ui::session::Wid)
-                    .and_then(crate::ui::iced::snapshot::snapshot_window);
-                if let Some(snap) = snap {
+                let wid_opt = wid.parse::<u64>().ok().map(crate::ui::session::Wid);
+                let snap = wid_opt.and_then(crate::ui::iced::snapshot::snapshot_window_stale);
+                if let Some((snap, fresh)) = snap {
+                    if !fresh {
+                        // SWR：过期不删——旧图本帧续绘，重抓异步补。
+                        if let Some(w) = wid_opt {
+                            crate::ui::iced::snapshot::request_capture(w);
+                        }
+                    }
                     let handle =
                         iced::widget::image::Handle::from_rgba(snap.w, snap.h, snap.rgba);
                     let mut img = iced::widget::image(handle)
@@ -4728,8 +4734,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     cont.into()
                 } else {
-                    if let Some(w) = wid.parse::<u64>().ok() {
-                        crate::ui::iced::snapshot::request_capture(crate::ui::session::Wid(w));
+                    if let Some(w) = wid_opt {
+                        crate::ui::iced::snapshot::request_capture(w);
                     }
                     let icon = if fallback_icon.is_empty() {
                         "app-window".to_string()
@@ -14482,6 +14488,16 @@ fn compare_pngs(
                     // 不触发按钮。标题栏拖拽/缩放的即时置顶由 StartDrag/
                     // StartResize 臂自理（彼时命中的是 chrome，无按钮在途）。
                     WmCommand::GlobalPress => {
+                        // PLAN-526 T37 合同补线：任意全局左键按下先撤标题
+                        // 右键菜单（点外关闭——icon/任务栏/blank 菜单
+                        // popover ondismiss 的 chrome 同语义面）。落在菜单
+                        // 项上的按压同样经此关菜单，项动作消息同帧照常
+                        // 执行（订阅面原始事件与 widget 消息同帧全送达）。
+                        // 此前只有 open/TitleMenuClose 两个写点，合同注释
+                        // 在案但从未接线——菜单一旦打开仅显式命令可撤。
+                        if let Some(host) = state.host.as_mut() {
+                            host.wm.title_menu = None;
+                        }
                         let cursor = state
                             .host
                             .as_ref()

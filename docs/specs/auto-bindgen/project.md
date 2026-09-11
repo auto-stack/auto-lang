@@ -25,7 +25,13 @@ C 头文件/manifest 生成器：为 Auto 的 C FFI 生成 C 头文件与绑定 
   Sleep，library=kernel32，abi=system）——`use.c <windows.h>` 与
   `kernel32` 均可命中；CLI 可导出 JSON 至 `c_bindings/`。
 - 消费面：VM 运行期对 FnPtr 签名在注册期即拒绝（见
-  auto-lang/vm/design/ffi.md）；a2c 原生消费（闭包→函数指针）。
+  auto-lang/vm/design/ffi.md）；a2c 原生消费（闭包→函数指针）；
+  **a2r 双形态消费（Plan 610 ⑥，004 §3.5"一套语义三个 lowering"
+  收口）**——manifest 即共享 IR：`"link": "static"`（serde 默认；
+  新字段，旧 JSON 不受影响）生成 S 形态（`#[link(name)]` extern 块 +
+  安全包装），`"link": "dynamic"` 生成 D 形态（libloading，env
+  `<LIBRARY>_DLL` → exe 同目录 → 裸名解析序）；FnPtr 在 a2r 侧暂显式
+  报错（trampoline 选型 A' 待语料驱动落地，PLAN-610 §5）。
 - JSON 文件加载面（Plan 597）：VM 侧 `load_manifest_file(path)`
   （vm/ffi/c_ffi.rs）装载任意 JSON manifest 文件（非内置数据集；
   codegen 先查内置字典，header 为 `.json` 后缀时回退文件装载，
