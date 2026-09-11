@@ -3362,6 +3362,48 @@ mod tests {
     }
 
     #[test]
+    fn test_run_closure_bridged_arity_mismatch_type_error() {
+        // Plan 602 (D1) / review R-602-1: inside a live bridge window, a
+        // callback whose tuple length differs from the closure's declared
+        // n_args raises Python TypeError with expected/actual in the
+        // message — pinned before the closure body would ever run (the
+        // registered closure points at no real bytecode).
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        vm.closures.insert(
+            7,
+            crate::vm::engine::Closure {
+                func_addr: 0,
+                env: std::collections::HashMap::new(),
+                n_args: 2,
+                capture_slots: std::collections::HashMap::new(),
+                param_abs: std::collections::HashMap::new(),
+            },
+        );
+        let _bridge = BridgeGuard::enter(&mut task, &vm);
+        Python::attach(|py| {
+            // Too few: 1 element vs declared 2.
+            let one = pyo3::types::PyTuple::new(py, [41]).unwrap();
+            let err = run_closure_bridged(py, 7, &one).unwrap_err();
+            assert!(
+                err.to_string().contains("expects 2 argument(s), got 1"),
+                "arity mismatch must surface as expected/actual TypeError, got: {}",
+                err
+            );
+            // Too many: 3 elements vs declared 2.
+            let three = pyo3::types::PyTuple::new(py, [1, 2, 3]).unwrap();
+            let err = run_closure_bridged(py, 7, &three).unwrap_err();
+            assert!(err.to_string().contains("expects 2 argument(s), got 3"));
+            // The TypeError channel (not RuntimeError): the mismatch is a
+            // Python-level calling-convention error, distinct from the
+            // window guard's RuntimeError above.
+            let one = pyo3::types::PyTuple::new(py, [41]).unwrap();
+            let err = run_closure_bridged(py, 7, &one).unwrap_err();
+            assert!(err.is_instance_of::<pyo3::exceptions::PyTypeError>(py));
+        });
+    }
+
+    #[test]
     fn test_py_subclass_factory_str_and_callback_methods() {
         // Plan 602 (D2): class factory — Str methods exec inline, closure
         // ids become def-wrapped callbacks, and the class handle round-trips
