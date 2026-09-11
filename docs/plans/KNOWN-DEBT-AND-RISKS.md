@@ -1995,3 +1995,15 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   证据：同语料头注（b）/归档计划 §9 T-05。
 - 复审 F-2 观察项（非债）：`auto <script>` 尾行打印脚本尾值（runner
   基线行为，engine_face_vm.at 尾部 "false"）。
+
+## P601 债务（theme-declaration-hot-switch，2026-09-11 复审登记/609 勘验裁定）
+
+- **P601-T11 [裸名组件 SFC 化缺口] charts 裸名 tag（`line-chart` 等）发射
+  `<div :data=...>` 数据绑定占位而非组件 SFC**：vue 腿裸名组件 SFC 化=
+  已知缺口（484 M4 有意形态）。PLAN-609 T-B1 勘验裁定：与包组件 SFC 断链
+  （settings dep 死指，609 已修）**异根**——占位折叠是包感知折叠链的有意
+  分支（`test_charts_gallery_compiles` 显式断言 `:data=` 折叠与退役
+  chart-family 零泄漏），非回归，不强改。SFC 化随主题切换 SVG 属性
+  token 通道示范面另案（601 排除项原文）。回归锚：024-charts vue 面测试
+  维持绿。证据：`crates/auto-lang/src/ui_gen/vue.rs` tests
+  test_charts_gallery_compiles 注记；601 复审记录 R 系。
