@@ -67,8 +67,8 @@ Plan 419「copy-on-load 所有权协议」+ PLAN-062 T12 stake 影子账本的**
 
 - **不变量**：任一堆对象/池条目的每份 rc 份额，任一时刻恰有一个显式持有者——栈槽（`stake_shadow[slot]=id`，`rc_push*` 家族写入）、局部槽、全局表、容器元素（容器侧显式 retain）或 state_vars。影子为 0 的引用值=无主份额；RET 帧扫描、任务收尾（`rc_release_slot_range`/`rc_release_task_stack`）按**影子**释放，不按字节内容猜。
 - **NEW_INSTANCE/CONSTRUCT_INSTANCE = 恰一份栈份额 + 显式 stake**：NEW_INSTANCE `rc_push` 在实例栈顶槽记 stake；CONSTRUCT_INSTANCE 必须**在 pop field_count 之后、pop instance_id 之前取 sp-1 槽**（实例恰在栈顶）的份额，回推栈顶时随值转移（`mark_top_stake`）。plan-604 T03 定罪：原实现在两次 pop 之后取 `sp`，读到末字段槽的 0 影子，NEW_INSTANCE 份额失明成死账——struct 字面量经 List.push 每实例永久滞留（探针 +100 obj/拍；025-sys-monitor 55–147MB/min 生产曲线）。
-- **容器写 = 新值转移或补 retain；旧值 -1 级联**：`shim_list_push` 元素入列时容器显式 retain 承接所有权，元素暂存槽的 stake 同步释放（transfer 配平，四个出口统一）。plan-604 T04 定罪：CALL_SPEC→native resolve 分发路径**无** CALL_NAT 式死区结算，暂存份额曾被后续 push 清影静默丢弃。容器被覆写/丢弃时 `free_heap_id` 级联释放元素份额（既有机制，触达已验证）。
-- **消费型 raw pop 必须收尾**：opcode/shim 弹出栈顶引用值且不回推时，按 DROP 纪律结算（堆按影子释放、字符串按内容释放）。执行点=ARRAY_LEN（plan-604 T04 补——for-in 头部 `dup; arr.len` 形态每拍孤儿一份列表拷贝）、GET_FIELD 尾部 rc_release、GET_ELEM 收尾、CALL_NAT 死区、native `pop_arg_*`+`StakeGuard`。
+- **容器写 = 新值转移或补 retain；旧值 -1 级联**：`shim_list_push` 元素入列时容器显式 retain 承接所有权，元素暂存槽的 stake 同步释放（transfer 配平，四个出口统一）。plan-604 T04 定罪：CALL_SPEC→native resolve 分发路径**无** CALL_NAT 式死区结算，暂存份额曾被后续 push 清影静默丢弃。容器被覆写/丢弃时 `free_heap_id` 级联释放元素份额（既有机制，触达已验证）。**池份额口径（plan-608 SD-02）**：字符串元素入列/消费时，暂存拷贝的池份额按内容结算（池不入影子），容器份额独立保留——`ListData<i32>` 负哨兵容器的池 retain（`list_i32_elem_retain`）与暂存份额释放互不抵扣；结算归属 CALL_NAT/resolve 死区（按内容释放一次），shim 内不做池释放（双释放=下溢，plan-608 实证）。
+- **消费型 raw pop 必须收尾**：opcode/shim 弹出栈顶引用值且不回推时，按 DROP 纪律结算（堆按影子释放、字符串按内容释放）。执行点=ARRAY_LEN（plan-604 T04 补——for-in 头部 `dup; arr.len` 形态每拍孤儿一份列表拷贝）、GET_FIELD 尾部 rc_release、GET_ELEM 收尾、CALL_NAT 死区、native `pop_arg_*`+`StakeGuard`。**CALL_SPEC 分发区（plan-608 SD-01）**：①resolve→shim 臂带 CALL_NAT 同款死区（`rc_release_slot_range(sp_after, sp_before)`，plan-608 补——此前暂存池份额每调用孤儿 +1）；②内联 str/List 臂（resolve miss 落入）的消费型臂弹毕压结果前结算弹出窗口——池份额按内容结算属于消费型收尾的一部分；③内联区一批方法臂静态不可达（registry 恒先命中，§「KD-VM5」），路由守护测试钉死（`plan608_dispatch_golden_tests`）。
 
 ## B12 编码不变量（plan-604）
 
