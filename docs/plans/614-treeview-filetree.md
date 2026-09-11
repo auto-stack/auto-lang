@@ -328,6 +328,7 @@ VM 大改触发面:本计划**不改 VM/编译器**(`cargo tv` 不触发);aavm �
 - 2026-09-11 stage:new——rev1 起草交付 work。背景调查完成(管线/机制/图标/样式
   双端覆盖证据齐);唯一未证链路(payload 回调双端往返)已在 T-02 设 first-light
   验证 + 回退预案。outcome: pass(待用户确认后入 work)。
+- 2026-09-11 补充(用户反馈修复,auto-os plan-614-dev cf3a901):vue 版主内容面板无滚动条——main 缺 `display:flex`(block),高度链在 main→SidebarProvider 断裂,SidebarContent(overflow-auto) 永不触发,内容被 overflow-hidden 裁剪;shell 形态自 Plan 562 sidebar 族迁移引入,**预存缺陷非 tree 改动回归**;补 `flex flex-col` 修复(浏览器实测 scrollTop 500/原生滚动条 15px;VM 容器类无高度语义不受影响)。gallery 其它页同享此修复。
 - 2026-09-11 stage:work | plan_id: PLAN-614 | plan_revision: 1 | outcome: pass(含阻塞挂账) |
   code_commit: auto-lang plan-614-dev 7ae85051b + auto-os plan-614-dev 7e0d8a8(master a3d53cbfc 基) |
   task_ids: T-01..T-08 完成,T-09 归 review |
