@@ -132,6 +132,33 @@ next: 归档（archive/）。
 输入/过滤全链 ✓。同轮遗留：切换器缩略图遮挡伪影（W4 KNOWN-DEBT，
 非本计划范围）。
 
+### 正式复审（2026-09-11，/auto-plan:review——实现会话内复审，独立性限制声明：裁决以门禁重跑+日志/提交链工件重建）
+
+stage: review | plan_id: PLAN-613 | plan_revision: 1 | outcome: **pass** |
+reviewed_commit: auto-lang `1a6dc0a4c`（归档态 HEAD，含代码 `e3040d99a`+
+`c9e445f92`）| base_commit: `c9e445f92^` | dependency_revisions: auto-os
+master `2b9119f`（switcher/launcher .at 同批）| spec_inputs: 无规范增量
+
+acceptance_results（复跑取证）:
+- AC-1 ✓：`cargo t t2_snapshot` 5/5；用户实机打字/过滤 ✓（终验补充节）。
+- AC-2 ✓：用户实机 Ctrl+Tab 循环 ✓（"现在可以循环了"）；方向根修（T5
+  bind 退役）随归档件在构建内。
+- AC-3 ✓：用户实机空态居中 ✓。
+- AC-4 ✓：iced 档 187/188（唯一红=lucide `film` 存量）；全量档 26 失败
+  =21 定型基线全等 + 5 枚 `ffi_dep_parity`（VM/dep 域，013 零交集——
+  013 diff 仅 ui/iced+ui/dynamic；归因 592/394/610 领地，另行知会）；
+  hash-lock 四件全等。
+
+findings:
+- F-1（非阻塞，非本计划域）：`ffi_dep_parity_016/017/018/020/021` 五枚
+  失败首现于最新全量档——VM/dep 域，疑 394/610 链相关，零交集实证
+  （013 diff 无 vm/ffi 触碰）；知会 394/610 责任会话。
+- F-2：W4 遮挡/CJK IME/Ctrl+Space 冲突三项 KNOWN-DEBT 已在案（待澄清
+  ①与复审节）。
+
+next: 维持归档（archived）；F-1 知会责任会话。
+
+
 ## 待澄清事项
 
 1. W4 缩略图遮挡伪影：离屏栅格化需 compositor/框架级支持（497 T1 定案
