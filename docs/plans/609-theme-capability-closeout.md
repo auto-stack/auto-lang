@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-609
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: theme-capability-closeout（PLAN-601 后续：theme{} 双端消费对齐 + 包组件 SFC 发射修复）
 author: [zhaopuming]
 created_at: 2026-09-11
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: [GOAL-007]     # AutoUI 跨端视觉一致（主题/令牌面）
 
 affects: [auto-lang/ui, auto-man]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -136,6 +136,53 @@ Design 29 §4.5/§7。）
 3. **charts 裸名占位**：按 T-B1 结论同刀处置（若同根）；若异根（占位为
    484 M4 有意形态）则在勘验工件中裁定并留债注记，不强改。
 
+> **T-B1 勘验结论（2026-09-11 执行期追记）**
+>
+> - **发射链本体完好**：`use <pkg>: <Comp>` 的 import 发射（ui_gen/vue.rs
+>   ExtImportKind::Component 空 path 臂 → `@/components/<Sym>.vue`）、
+>   Plan 475 dep 编译循环（auto-man/vue.rs from_workspace）、写盘名
+>   （widget_name，非 pages 通道）与 import 名天然一致。
+> - **断点 = dep 源解析双路悬空**：584/590 把 `examples/ui/common/*` 七源
+>   git rm 迁 auto-os（commit 047743158 → auto-os 8a91761，落点
+>   `apps/common/settings`）后，006/010/015/016 四 pac.at 的
+>   `dep settings { path: "../common/settings" }` 全部死指：①`deps/settings`
+>   junction（gitignore，09-02 旧物）悬空被 `is_dir` 门跳过；②pac.at
+>   path 扫描 `local_path.is_dir()` 假静默跳过。SFC 无源可编而 import 照发
+>   → vite "Failed to resolve import"（601 复审实勘复现）。master 残留
+>   SettingsPopover.vue（09-02）非"发射能力证据"，而是 590 删源前的旧物。
+> - **修复形（两刀，均在本仓 auto-man，零跨仓写）**：
+>   ①`collect_dep_front_dirs` 死指回退 `resolve_dep_os_mirror`——沿
+>   `resolve_os_top_dir` 解析序（env AUTO_OS_ROOT 即权威 → 兄弟 → 主检出）
+>   在 auto-os `apps/` 下三候选探测（剥 `../` 搬迁形状 → common/<dep> →
+>   <dep>），只读不物化不建链接（Worktree 红线）；
+>   ②from_workspace import-发射/文件发射一致性守卫——App.vue 的
+>   `@/components/<X>.vue` 导入逐一比对编译集，缺者 strict 硬错/非 strict
+>   告警（CodeEditor shell 与 ui/ 深路径豁免）。
+> - **执行期新发现（根因之二，冒烟暴露）**：`run_vue_project` 冷启动
+>   `incremental_compile_changed` 无 dep 阶段（仅写 App.vue），changed>0
+>   走 `generate_scaffolding_only`（刻意保留组件目录）→ 全新检出仍无 SFC。
+>   补 **Phase 1c**（与 Phase 1b components/ 包目录 Plan 484 同疾同构）：
+>   dep .at 编译 write-if dirty/missing 直写 components/，widget 名并入
+>   sub_widget_names（与 from_workspace Phase-1 扫描同口径）。
+> - **charts 裸名裁定：异根，不改**。占位折叠为 484 M4 有意形态
+>   （test_charts_gallery_compiles 显式断言），债记 KNOWN-DEBT P601-T11
+>   （SFC 化随 SVG 属性 token 通道示范面另案）。
+
+> **T-A3 勘验结论（2026-09-11 执行期追记，§10-2 闭环）**
+>
+> 桌面宿主 launch 链第二入口勘验：`DesktopSession::launch_app` 两臂——
+> - **outproc 臂**：`spawn_outproc_child` 执行 **`auto run
+>   --autodesk-incubate`**（session.rs:2244）→ VM render app 经
+>   `run_vm_ui` → **T-A1 激活已覆盖**（子进程独立 boot，声明在其
+>   pac.at 生效）。
+> - **inproc 臂**：`build_dynamic_component` 直构组件，不经 run_vm_ui、
+>   不消费 pac theme{}。补同款激活需把 theme{} 块解析（现居 auto-man
+>   Pac，auto-lang 只持有 ThemeDecl/compose/主题运行时）引入 session
+>   域——跨 crate 解析面移动，超出本计划设计锚（§2 T-A 激活点仅锚
+>   run_vm_ui boot）；且实勘零 app 声明 theme{}，无可观察消费面。
+>   **裁定：不接线，留债**——首个桌面 inproc app 声明 theme{} 时随
+>   消费面立项（候注记于本节）。AC-01 不受影响（§10-2 明文）。
+
 ### 规范增量
 
 | delta_id | op | target | before/after | rationale | AC |
@@ -168,21 +215,46 @@ Design 29 §4.5/§7。）
 
 ## 8. 执行步骤
 
-- **T-01**（T-B1）包组件 SFC 发射链勘验：git log/代码走读定位断点
+- [x] **T-01**（T-B1）包组件 SFC 发射链勘验：git log/代码走读定位断点
   （发射函数、落盘调用、源解析），对比 09-02 生成件；产出断点结论与
   修复形裁定（追记本计划 §5）。验证：勘验工件（结论段落）。依赖：无。
-- **T-02**（T-B2）按 T-01 结论修复发射链。验证：新生成含
+  `[✅ 2026-09-11]` 断点=dep 源双路悬空（590 迁 auto-os 后 pac.at path 死
+  指+junction 悬空），发射链本体完好；结论工件见 §5 追记。证据：
+  commit 596eb30b7；047743158（590 git rm）。
+- [x] **T-02**（T-B2）按 T-01 结论修复发射链。验证：新生成含
   `components/SettingsPopover.vue`；生成面一致性测试绿。依赖：T-01。
-- **T-03**（T-B3）006-hero-section/015-notes `auto run` vue 冒烟 +
+  `[✅ 2026-09-11]` 镜像回退+一致性守卫双刀落地 auto-man/vue.rs。证据：
+  test_plan609_dead_dep_resolves_via_auto_os_mirror /
+  test_plan609_unresolved_dep_import_guard 双绿（nextest 2 passed）；
+  test_plan475 回归绿；commit 596eb30b7。
+- [x] **T-03**（T-B3）006-hero-section/015-notes `auto run` vue 冒烟 +
   charts 裸名处置落地。验证：vite 零解析错误留痕；024-charts 测试绿。
-  依赖：T-02。（AC-03/04）
-- **T-04**（T-A1）`run_vm_ui` boot 接线：theme_decl→compose→
+  依赖：T-02。（AC-03/04）`[✅ 2026-09-11]` 全新检出差温（删 gen/.auto）
+  `auto run`：006 SettingsPopover.vue 落盘且与 09-02 残留逐字节一致，
+  vite ready 零 resolve 错误，root/App.vue/组件 HTTP 探针全 200；015 三件
+  （EditorPanel/NavTree/SettingsPopover）落盘同字节一致、全 200（后端
+  panic=8080 AddrInUse 环境碰撞，非本修复面）。执行期暴露冷启动增量路径
+  无 dep 阶段——补 Phase 1c（§5 追记）。charts 裁定异根不改，债记
+  KNOWN-DEBT P601-T11；test_charts_gallery_compiles 绿。证据：
+  commit 86acdd516。
+- [x] **T-04**（T-A1）`run_vm_ui` boot 接线：theme_decl→compose→
   set_theme_composed + 容错 + 优先级成文。验证：新单测
   （声明激活/无声明零变化/坏值容错三段）。依赖：无（与 T-01..03 并行）。
-- **T-05**（T-A2）双端同源验证：声明合成体 vue 值 vs VM resolve 值逐键
+  `[✅ 2026-09-11]` `apply_pac_theme_decl` helper + run_vm_ui env 种子后
+  调用（声明只换色板槽，DARK_MODE/ACCENT_NAME 不清写）。三段单测绿：
+  vm_boot_pac_theme_decl_activates_composed / vm_boot_no_theme_decl_
+  zero_change / vm_boot_bad_theme_decl_falls_back。证据：commit 596a87141。
+- [x] **T-05**（T-A2）双端同源验证：声明合成体 vue 值 vs VM resolve 值逐键
   断言（测试或对拍工件）。验证：断言绿。依赖：T-04。（AC-02）
-- **T-06** 门禁收口：`cargo t` 全量（红集合对拍基线）+ auto-man 显式 +
-  簿记交接。依赖：T-03/T-05。（AC-05）
+  `[✅ 2026-09-11]` plan609_theme_decl_dual_face_same_source 绿：同一
+  ComposedTheme 喂 index.css 与 VM 槽，词表内键逐键断言（扩展 4 键
+  VM 面承载边界成文），VM resolve==CSS 值串解析。证据：commit 596a87141。
+- [x] **T-06** 门禁收口：`cargo t` 全量（红集合对拍基线）+ auto-man 显式 +
+  簿记交接。依赖：T-03/T-05。（AC-05）`[✅ 2026-09-11]` 日常档
+  （--no-fail-fast 全量 4746）红集合 22 条与 master 同命令逐条全等
+  （零新增红）；`cargo nextest run -p auto-man` 279/279 绿；theme 面
+  36/36 绿；fmt 漂移计数与 master 全等（零新增）。T-A3 第二入口勘验
+  闭合（§5 追记）。
 
 ## 9. 复审记录
 
@@ -191,10 +263,56 @@ Design 29 §4.5/§7。）
 bounded investigation 带决策工件 | blockers: 无 | next: work 自 T-01/T-04
 （两轨可并行）`）
 
+（work 2026-09-11：`stage: work | PLAN-609 r1 | outcome: pass | code_commit:
+596eb30b7/86acdd516/596a87141（worktree plan-609-dev，基点 1e834db38；
+auto-down 兄弟 worktree detached 1557a39 仅作构建依赖）| task_ids: T-01..06
+全闭环 | evidence: T-B 双刀（镜像回退 resolve_dep_os_mirror + 一致性守卫 +
+增量 Phase 1c）实测 006/015 全新检出 auto run vite 零解析错误、
+SettingsPopover/EditorPanel/NavTree 与 09-02 已知良好生成件逐字节一致；
+charts 异根裁定债记 KNOWN-DEBT P601-T11；T-A 三段 boot 单测 + 双端同源
+逐键对拍绿；门禁：日常档红集合 22 与 master 全等、auto-man 279/279、
+theme 面 36/36、fmt 零新增 | blockers: 无（015 后端 panic=8080 AddrInUse
+环境碰撞，非本修复面）| next: review`）
+
+（review 2026-09-11：`stage: review | PLAN-609 r1 | outcome: pass |
+reviewed_commit: 596a871417a28f0af20151e0019dc6cdcbe4f1ae（worktree 干净）
+| base_commit: 1e834db38 | dependency_revisions: auto-down detached
+1557a39（仅构建依赖，零修改）| spec_inputs:
+docs/specs/auto-lang/ui/overview.md（SD-01 落点 line196「经 auto-man
+消费（index.css+运行时种子）」、SD-02 落点 line212 关键入口 ui_gen 行，
+before 均核实）| acceptance_results: AC-01 pass（三段 boot 单测重跑绿：
+合成名上槽/resolve==合成体/mode+accent 不清写；无声明与坏 extends 负例
+绿；theme 面 36/36）| AC-02 pass（plan609_theme_decl_dual_face_same_source
+重跑绿：CSS 逐键携带+VM resolve==CSS 值串解析+覆盖键规范化落位）|
+AC-03 pass（复审重执行：006 删 gen/.auto 全新 auto run——vite ready 零
+Failed to resolve import，root/App.vue/SettingsPopover.vue 三探针 200，
+生成件与 09-02 已知良好件 diff 空；015 三组件 vite transform 全 200）|
+AC-04 pass（charts 异根裁定工件在案 §5+KNOWN-DEBT P601 债务节；
+test_charts_gallery_compiles 绿）| AC-05 pass（复审重跑双侧日常档：
+稳定红核 21 条 diff 空；两侧各现一次互异瞬时单红
+〔plan425@master / ffi_dual_019@worktree〕单跑均过不跨侧复现=资源抖动；
+另 cargo tf 复审档 3506/3506 全绿、auto-man 279/279）| findings:
+R-1 规范注记（非阻断，合并沉淀时处理）——overview.md line205-207
+P601-T11 开放债句「settings-popover 等裸名包组件 SFC 化缺口」应收窄：
+609 实证 settings-popover 断链根因=dep 源死指（本计划已收口），
+开放债仅余 charts 裸名占位（484 M4 有意形态）；R-2 观察项（非阻断）——
+运行 015 邻接测试套/冒烟会以现行 api_gen 输出重写
+examples/rust-workspace/ 入库样例（生成器与入库副本预存漂移），复审期
+已两次还原，建议后续独立小债登记 | evidence: 本记录命令与结果均为复审
+会话独立重执行；同会话复审限制已声明，以工件重建裁决 |
+supersedes_spec_components: []（两笔 SD 均为 overview.md 条目内 modify，
+无 retire/新增组件——空集说明）| new_spec_components: []（同前）|
+touched_goals: [GOAL-007] | next: merge`）
+
 ## 10. 待澄清事项
 
 1. T-B 若勘验结论指向组件源已迁 auto-os（584/590 搬迁），修复形在
    「解析序补 auto-os 源」与「本仓恢复源资产」之间择一——按 590 既有
    解析序裁定倾向前者，执行期如需跨仓改动升级为待澄清升级用户。
+   **〔已闭合 2026-09-11〕**勘验证实源迁 auto-os（§5 追记）；修复形=
+   解析序镜像回退（`resolve_dep_os_mirror`），零跨仓写，未升级。
 2. T-A 桌面宿主 launch 链若存在独立于 `run_vm_ui` 的第二入口，随勘验
    补同款激活；不影响 AC-01 判定（以 `run_vm_ui` 主路径为准）。
+   **〔已闭合 2026-09-11〕**勘验见 §5 T-A3 追记：outproc 臂经
+   `auto run`→`run_vm_ui` 已被 T-A1 覆盖；inproc 臂裁定不接线留债
+   （跨 crate 解析面移动 + 零声明消费者）。

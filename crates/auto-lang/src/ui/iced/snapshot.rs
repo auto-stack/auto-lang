@@ -13,6 +13,12 @@
 //! 访问——全局可达是窗口缩略的必要条件。新鲜度 = 召唤时即时抓取 +
 //! [`SNAPSHOT_TTL`] 短缓存 + 事件失效（relayout/close 由 renderer 调
 //! [`invalidate`]/[`invalidate_all`]）；无后台定时刷新（非目标）。
+//!
+//! 过期不删（stale-while-revalidate）：[`snapshot_window`] 维持"仅新鲜
+//! 即 Some"合同（switcher 注入面就绪标记/既有测试），渲染臂走
+//! [`snapshot_window_stale`]——过期条目续帧 + [`request_capture`] 静默
+//! 重抓，消灭「TTL 到点帧跌 fallback icon」的视觉断档（任务栏 hover /
+//! 分区与 app 切换场景缩略反复跳 icon 的根因）。
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -100,6 +106,18 @@ pub fn snapshot_window(wid: Wid) -> Option<WindowSnapshot> {
 /// 抓取回调落缓存（renderer screenshot 回调臂调用）。
 pub fn cache_put(wid: Wid, snap: WindowSnapshot) {
     cache().lock().unwrap().insert(wid, (snap, Instant::now()));
+}
+
+/// 消费口（SWR 版）：读一枚窗口缩略并附新鲜度——存在即返回（含过期
+/// 条目，不删除），`(快照, 是否 TTL 新鲜)`。渲染臂专用：新鲜直绘；
+/// 过期仍绘旧图 + [`request_capture`] 静默重抓（重抓落地 cache_put
+/// 原子覆盖，无中间空档）；"过期即 miss"合同由 [`snapshot_window`]
+/// 单独维持。
+pub fn snapshot_window_stale(wid: Wid) -> Option<(WindowSnapshot, bool)> {
+    let guard = cache().lock().unwrap();
+    guard
+        .get(&wid)
+        .map(|(snap, ts)| (snap.clone(), ts.elapsed() <= SNAPSHOT_TTL))
 }
 
 /// 事件失效：单窗内容/几何变化（relayout/dirty/close）。
@@ -364,5 +382,39 @@ mod tests {
         cache_put(wid, snap);
         invalidate_all();
         assert!(snapshot_window(wid).is_none(), "invalidate_all() 生效");
+    }
+
+    /// T2-5：SWR 读口——过期条目续存不删、新鲜度翻转；真 miss 与
+    /// invalidate 硬撤不受影响（渲染臂 stale-while-revalidate 的合同面）。
+    #[test]
+    fn t2_snapshot_stale_read_keeps_entry() {
+        let wid = Wid(97002);
+        invalidate(wid);
+        assert!(snapshot_window_stale(wid).is_none(), "空缓存 miss");
+
+        let snap = WindowSnapshot {
+            rgba: vec![9, 8, 7, 255],
+            w: 1,
+            h: 1,
+        };
+        cache_put(wid, snap.clone());
+        let (got, fresh) = snapshot_window_stale(wid).expect("TTL 内 stale 读口命中");
+        assert!(fresh, "TTL 内报新鲜");
+        assert_eq!(got.rgba, snap.rgba);
+
+        // 伪造过期：stale 读口仍返回条目且不删除，仅新鲜度翻转——
+        // 渲染臂据此续绘旧图 + request_capture 静默重抓。
+        cache().lock().unwrap().get_mut(&wid).unwrap().1 = Instant::now() - Duration::from_secs(3);
+        let (got, fresh) = snapshot_window_stale(wid).expect("过期条目 stale 读口仍命中");
+        assert!(!fresh, "TTL 过期报不新鲜");
+        assert_eq!(got.rgba, snap.rgba, "过期像素原样续供");
+        assert!(
+            cache().lock().unwrap().contains_key(&wid),
+            "stale 读口不删除条目（重抓 cache_put 原子覆盖）"
+        );
+
+        // invalidate 硬撤对 stale 读口同样生效。
+        invalidate(wid);
+        assert!(snapshot_window_stale(wid).is_none(), "invalidate(wid) 生效");
     }
 }

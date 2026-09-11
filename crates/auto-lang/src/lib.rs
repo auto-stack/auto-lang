@@ -6791,6 +6791,12 @@ mod plan502_diagram_tests;
 #[path = "tests/plan510_pool_tests.rs"]
 mod plan510_pool_tests;
 
+// PLAN-608 T05：CALL_SPEC 内联分发区不可达臂路由守护 + 未知方法兜底
+// 行为金样（registry 覆盖回退使死臂复活时先红——push 臂=UAF 面）。
+#[cfg(test)]
+#[path = "tests/plan608_dispatch_golden_tests.rs"]
+mod plan608_dispatch_golden_tests;
+
 // os-007（origin PLAN-577/P534-D4）：avatar 家族渲染探针。
 #[cfg(test)]
 #[path = "tests/plan577_avatar_tests.rs"]

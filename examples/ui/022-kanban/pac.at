@@ -6,4 +6,5 @@ title: "Kanban"
 api: "rust"
 front_port: 3022
 back_port: 8022
-desktop: "true"
+// desktop 退策展（PLAN-008）：app 已升格独立仓 auto-kanban（apps.manifest
+// extra root 原生挂载）替位桌面入口；本目录留作教学示例与收割语料，不迁不删。
