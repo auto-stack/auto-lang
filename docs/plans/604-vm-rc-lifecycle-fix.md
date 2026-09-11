@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-604
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-rc-lifecycle-fix
 author: [ZCode]
 created_at: 2026-09-10
@@ -8,11 +8,14 @@ updated_at: 2026-09-10
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: ["auto-lang/vm/overview.md#rc-生命周期协议"]
+new_spec_components:
+  - "docs/specs/auto-lang/vm/overview.md: §RC 生命周期协议（SD-01——份额-持有者不变量/CONSTRUCT_INSTANCE sp-1 取槽/容器写 transfer 配平/消费型 raw pop 收尾）"
+  - "docs/specs/auto-lang/vm/overview.md: §B12 编码不变量（SD-02——ListData<Value> VmRef 元素 TAG_OBJECT 保真 + GET_FIELD 噪音臂门控，含 B12 伪证勘误）"
+  - "docs/specs/auto-lang/ui/overview.md: 现状增补 vue as-cast 整型 Math.trunc 降级（SD-03）"
 touched_goals: []
 
 affects: ["auto-lang/vm", "auto-lang/ui"]
-current_step: 0
+current_step: 10
 total_steps: 10
 ---
 
@@ -201,30 +204,82 @@ ui_gen/vue.rs 表达式降级：`Expr::AsCast` 目标 Int 时包 `Math.trunc(...
   （KD-VM 附录）。验证：`cargo test -p auto-lang --features ui-iced
   probe_ -- --nocapture`（StructTick 红=泄漏在案，对照绿）+
   `cargo tv --no-fail-fast`（3631/3632）。关联 AC-01 基线。
+  - [x] **[✅ 已完成]**（2026-09-10，worktree lang-604 @ engine GET_FIELD 门控
+    commit `待填/T-01`）：产物 4 文件 244 行入 worktree 提交（KNOWN-DEBT 附录
+    已在 master f9a988a87 在案，无需转正）。验证双绿：probe_attribution
+    `[probe:StructTick] base=1004 after=5004 delta=4000`（1:1 泄漏在案，
+    NoneTick 断言绿、ListTick/LitTick/IntPush/StrPush 对照输出 0）；
+    `cargo tv --no-fail-fast`=3633/3634，唯一红=charts_gallery 预存
+    （语料数较计划起草 +2 漂移，不变量「唯一红」成立）。跨仓兄弟 worktree
+    `D:/autostack/.wt/lang-604/auto-down`（detached @1557a3972，仅解 path 依
+    赖，零修改）。
 - **T-02 定罪调查（bounded，产出决策工件）**：以 P419_UAF_TRACE 窄窗口 +
   second-retain backtrace + `debug_disasm` 钉死 ①第二 retain 调用点
   ②CONSTRUCT_INSTANCE instance_stake 槽位对位 ③fff2 生成点（三问一体）。
   产出=定罪笔记（行号+栈+最小序列）写入本文件 §9 复审记录追加节。
   验证：三问各有行号级答案。依赖：T-01。
+  - [x] **[✅ 已完成]**（2026-09-10）：定罪笔记见 §9 T-02 节。①第二
+    retain=shim_list_push 容器 retain（native.rs:2261，协议正确，嫌疑清除）；
+    ②CONSTRUCT_INSTANCE 取槽错位证实（仪器化实测 sp_after_count=9、实例@8、
+    take=0——首版修复取 sp 仍错，钉定 **sp-1**）；③**fff2/B12 为坏探针
+    伪证**（语料缺 LitPushTick msg/timer 声明致 handler 空跑，修复后
+    lenSeen=100/sum=4950/噪音臂零命中）。额外定罪：ARRAY_LEN raw pop 无
+    收尾（列表 +1 obj/拍）。语料修复已提交（commit dfcc72bee）。
 - **T-03 修 CONSTRUCT_INSTANCE stake 归属**：engine.rs ~4314–4520，按
   T-02 结论。验证：probe_litpush `it.pid` 读取正确 + LitTick 仍 0 增长。
   关联 AC-01/AC-03。依赖：T-02。
+  - [x] **[✅ 已完成]**（commit 85815dcb3）：`take_stake_at(sp-1)` 移至
+    pop instance_id 之前。验证：probe_litpush sum=4950（it.pid 读正确）+
+    probe_attribution LitTick 0 增长（中途一版取 sp 曾致 LitTick +40 回归，
+    仪器化钉定 sp-1 后归零）。
 - **T-04 修容器写结算**：native.rs shim_list_push + engine.rs "push" 臂
   统一元素份额转移/补 retain；验证 SET_FIELD 覆写后旧列表级联回收
   （probe live_heap 覆写相增量 ≤64）。关联 AC-01。依赖：T-03。
+  - [x] **[✅ 已完成]**（同 commit 85815dcb3）：①shim_list_push 四出口
+    （i32/String/Value/落空）元素槽 stake transfer 配平（retain 后释放，
+    CALL_SPEC→resolve 路径无死区结算的缺口补齐）；②ARRAY_LEN raw pop 后
+    补 DROP 同款收尾（for-in 头部 dup+arr.len 每拍孤儿一份列表拷贝——
+    LitPushTick +4040→+4000 缺口的根因）。engine "push" 臂（内联分发）本
+    语料未触达（List.push 实走 resolve→shim，backtrace 实证），登记候选。
+    验证：StructTick/LitPushTick 40 拍增量 4000/4040→0/0，级联回收正常。
 - **T-05 修 KD-VM3 编码**：按 T-02 定罪修元素读路径（engine.rs
   GET_ELEMENT/for-each/GET_FIELD 相关）。验证：probe_readback
   lenSeen=100 且 sum=4950（AC-02/AC-03）。依赖：T-02（可与 T-03/T-04
   并行，若定罪独立）。
+  - [x] **[✅ 已完成→重定位]**：T-02 证明 B12「编码损坏」为坏探针伪证，
+    元素读路径本就保真（GET_ELEM:5289 协议正确）。本任务改为语料修复
+    （commit dfcc72bee）+ 伪证勘误落档（KNOWN-DEBT 附录 + vm spec
+    §B12 编码不变量）。验证：lenSeen=100/sum=4950 全绿。
 - **T-06 探针硬断言转正**：musk_vm_track_tests.rs probe_attribution 加
   assert（≤64/对照 0）+ readback 断言（4950/100）。验证：全绿。
   关联 AC-01/02/03。依赖：T-03/T-04/T-05。
+  - [x] **[✅ 已完成]**（2026-09-10）：probe_attribution 全路径 ≤64 硬
+    断言 + probe_litpush_readback lenSeen/sum/≤64 断言。5/5 绿。
 - **T-07 sys-monitor 端到端 soak**：merged 1s × 10min 采样；验证 AC-04。
   依赖：T-06。
+  - [x] **[✅ 已完成]**（2026-09-10，worktree 引擎 + MCP 驱动
+    `auto run -r vm`，app=auto-os/apps/025-sys-monitor，1s 刷新档）：
+    两轮采样。①冷基线轮：10 分钟 +29.9MB——前 ~180s 为一次性暖机
+    （273→291MB），其后 7 分钟仅 +7MB（~1MB/min），窗口内可见回落
+    （292→278），非泄漏形态。②暖机基线轮（3 分钟暖机后取基线，
+    10 分钟测量窗）：**+19.0MB ≤ 20MB ✓**（窗内 max=322.2/min=288.1，
+    min 低于基线 295.8=震荡回落），UI 全程存活。对照修复前同机
+    merged 1s 档 55–147 MB/min（10 分钟应涨 550–1470MB）→ 收敛
+    ≥96%。stderr 两轮均 **0 条 GET_FIELD 行**（KD-VM2 门控生效）。
+    AC-04 达成。
 - **T-08 KD-VM4 as-cast 截断**：ui_gen/vue.rs as-cast→int 降级 Math.trunc
   + 单测。验证：AC-06。依赖：T-01（可并行）。
+  - [x] **[✅ 已完成]**（commit 66888052c→amend）：三处 emit（expr_to_js/
+    bound_value/text_raw）Cast 降级，整型族 Math.trunc、浮点直通；单测
+    test_as_cast_int_lowers_to_math_trunc 绿；vue tests 284 绿零漂移
+    （唯一红=charts_gallery 预存）。勘误：原「Number() 不截断」表述与
+    代码不符（仓内无 Number() cast 降级；实际=Cast 无任何降级）。
 - **T-09 回归门**：cargo tv 全绿（在案预存除外）→ cargo tf 全绿。
   关联 AC-05。依赖：T-06/T-07/T-08 全部完成。
+  - [x] **[✅ 已完成]**（2026-09-10，T-08 后最终代码态）：`cargo tv
+    --no-fail-fast`=3634/3635，唯一红=charts_gallery 预存（HEAD 同红对照）；
+    `cargo tf --no-fail-fast`=3490/3491，唯一红=charts_gallery 预存。
+    零新增失败，AC-05 达成。
 - **T-10 SPEC 回写 + KD 销账**：SD-01~03 落 docs/specs/auto-lang/vm/
   overview.md（+ui 节）；KNOWN-DEBT KD-VM1~4 标注修复版本；归档准备。
   依赖：T-09。
@@ -238,12 +293,130 @@ ui_gen/vue.rs 表达式降级：`Expr::AsCast` 目标 Int 时包 `Math.trunc(...
   CALL_SPEC 分发记录 type_name='List' method='push' func='List.push'
   export_hit=false、GET_FIELD 43M 行洪泛实机日志）。
 
+### T-02 定罪笔记（2026-09-10，worktree lang-604）
+
+**前置发现（推翻两条复盘证据）**：探针语料自身缺陷——`LitPushTick` 在
+`msg` 枚举与 `timer` 块均未声明（on 块有 handler），`fire_timer` 入口查找
+即 false，handler 从未执行。前 session「lenSeen==0 元素未入列」「fff2
+生成点」均为空跑伪证。语料已修（msg+timer 补 LitPushTick）；修复后
+**lenSeen=100、sum=4950、GET_FIELD 噪音臂零命中**——元素入列与字段读
+（KD-VM3/B12 声称的编码损坏）在语料级**不复现**，T-05 重新定位为
+「语料修复+实证B12 伪证+T-07 实机复核」。
+
+**rc 生命周期 trace（P419_UAF_TRACE=4000005-4000005，逐行号）**：
+
+| # | 缺陷 | 站点 | 机制 | 症状量级 |
+|---|---|---|---|---|
+| 1 | CONSTRUCT_INSTANCE stake 错位（KD-VM1 主凶） | engine.rs:4341 | `take_stake_at(sp)` 在 pop field_count（4326）与 pop instance_id（4336）**之后**执行，sp 指向末字段槽（影子=0）；NEW_INSTANCE rc_push（rc.rs:222-234）落在 instance 槽的份额被遗留为死账，`mark_top_stake(0)`（4485）把失明传染给 store.local | struct 构造即泄漏 +100 obj/拍（StructTick 与 LitPushTick 双路径，实例终态 rc=2 无人释放） |
+| 2 | ARRAY_LEN raw pop 无收尾 | engine.rs:3075 | 弹出栈顶后无 rc_release（对照 GET_ELEM:5289 有 `rc_release(obj_or_str_nv)`）；for-in 头部 `dup; arr.len` 的 dup 拷贝份额（rc_push +1）被 raw pop 成孤儿，影子被 len 结果 push 清掉 | 列表对象 +1 obj/拍（LitPushTick +4040/40=101=100 实例+1 列表；StructTick 无 for 循环故恰 +4000） |
+| 3 | shim_list_push 的 rc_retain_id（前 session 认定的「第二 retain 缺陷」） | native.rs:2261 | **协议正确**——容器获得持有的合法 +1，由列表 free 级联释放（rc.rs:505 free_heap_id） | 嫌疑清除，无需修改 |
+| 4 | GET_ELEM | engine.rs:5289 | **协议正确**（全非字符串路径统一 rc_release 收尾） | 嫌疑清除 |
+| 5 | engine 方法分发区 raw pop（string/list 臂 6986/7002/7013/7216 等 `for _ in 0..=arg_count { pop_nv() }`） | engine.rs 6900-7600 | 形态同 #2，对引用接收者每次调用孤儿 +1 | 本计划语料未触达（call.spec 走 shim 死区结算）；T-07 实机 soak 若有残余增长再回头，登记候选 |
+
+**「第二 retain」trace 实测**：实例 rc 轨迹 0→1（NEW_INSTANCE rc_push）→
+1→2（call.spec 参数暂存）→2→3（shim 容器 retain）→3→2（CALL_NAT 死区
+结算）——暂存份额配平，唯 #1 的 NEW_INSTANCE 份额无 release 配对。
+
+**修复设计**（T-03/T-04 合并实施）：#1 = take_stake_at 移到 pop
+instance_id 之前（取 instance 槽）；#2 = ARRAY_LEN 收尾补
+take_stake_at+rc_release（DROP:8901 同款纪律）。
+
+> 执行勘误：#1 首版取 `sp` 实为 field_count 旧槽（no-op 并曾致 LitTick
+> +40 回归），仪器化实测（sp_after_count=9、实例@8、take=0）钉定
+> **sp-1** 后全绿——定罪笔记上表 #1 的行号推导以仪器化数据为准。
+
+### work 收口记录（2026-09-10）
+
+`stage: work | plan_id: PLAN-604 | plan_revision: draft v1（执行期无契约
+修订；T-05 因伪证重定位、T-08 前提勘误，均属证据驱动的语义调整并留痕）|
+outcome: pass | code_commit: plan-604-dev @ 2418d49c0（T-01 6bf1d4e01 →
+T-02 dfcc72bee → T-03/04 85815dcb3 → T-06 9e6ddf723 → T-08 2ee7eef13 →
+T-10 5889ad0db → chore 2418d49c0）| task_ids: T-01..T-10 全勾 | evidence:
+AC-01 probe_attribution StructTick +4000→0 且对照恒 0（≤64 硬断言绿）；
+AC-02 lenSeen=100/sum=4950；AC-03 GET_FIELD 噪音臂零命中（stderr 0 行）
++ sum=4950 字段读保真；AC-04 sys-monitor 暖机基线 10 分钟 +19.0MB ≤20MB
++ stderr 0 GET_FIELD + UI 存活；AC-05 tv 3634/3635、tf 3490/3491 唯一红
+均=charts_gallery 预存；AC-06 test_as_cast_int_lowers_to_math_trunc 绿
++ vue 金样零漂移 | blockers: 无 | next: review`
+
+- 10/10 任务完成，10 项验收全绿；worktree
+  `D:/autostack/.wt/lang-604/auto-lang`（分支 plan-604-dev）保留待复审；
+  跨仓兄弟 worktree `D:/autostack/.wt/lang-604/auto-down`（detached
+  @1557a3972，仅解 path 依赖，零修改零提交）。
+- 复盘证据修正两处并落档：B12 编码损坏=坏探针伪证（语料 timer 缺失）；
+  KD-VM4「Number() 不截断」表述与代码不符（实际=Cast 无降级）。均勘误
+  于 KNOWN-DEBT 附录与 vm spec §B12。
+- 候选登记（未阻塞）：①engine 内联方法分发区（string/list 臂 raw pop）
+  的系统性死区结算——本计划语料未触达（call.spec 实走 resolve→shim 路径
+  已修），实机若现残余增长再立项；②construct.instance 双步合并单 opcode
+  （Q-03）。
+
+`status: execution_done`，next=review。
+
+### review 复审记录（2026-09-11）
+
+`stage: review | plan_id: PLAN-604 | plan_revision: draft v1（执行期语义
+调整均已留痕，无未授权契约变更）| outcome: pass | reviewed_commit:
+plan-604-dev @ 2418d49c07dcab07a1c603ae14cb2971d662e572（worktree 干净，
+无未提交实现）| base_commit: f9a988a87（master 当时 HEAD）|
+dependency_revisions: auto-down detached @1557a3972（仅解 path 依赖，零
+修改零提交）| spec_inputs: docs/specs/auto-lang/vm/overview.md（+§RC
+生命周期协议/§B12 编码不变量）、docs/specs/auto-lang/ui/overview.md（+
+as-cast 降级段），均已在 worktree 提交 5889ad0db；.autoos/specs.json
+零触碰（合并期派生）`
+
+**验收逐项复审（AC → 证据，HEAD 独立复现）**：
+
+| AC | 结果 | 复现方法与证据 |
+|---|---|---|
+| AC-01 | pass | `cargo test --features ui-iced --lib probe_rc_leak_soak` @HEAD：5/5 ok，StructTick 40 拍 **delta=0**（修复前 +4000），NoneTick/ListTick/LitTick/IntPush/StrPush 对照恒 0，≤64 硬断言在测 |
+| AC-02 | pass | 同上 probe_litpush_readback：lenSeen=Int(100)/sum=Int(4950) 断言绿（B12 元素往返保真） |
+| AC-03 | pass | sum=4950 即 handler 内字段读保真实证；GET_FIELD 噪音臂零命中由 T-07 两轮 stderr 计数=0 + 探针全绿路径（AUTO_DEBUG_GETFIELD 未触发）证实 |
+| AC-04 | pass | T-07 暖机基线轮：1s 档 10 分钟 **+19.0MB ≤ 20MB**、UI 存活、stderr 0 GET_FIELD。**复用理由**：runtime 代码自采样后零变更（其后仅 test-file chore 2418d49c0，不入 auto.exe），重跑为 13.5min 纯采样无新增信息量；冷基线轮（+29.9MB，前 180s 暖机一次性）一并留档 |
+| AC-05 | pass | HEAD 复跑 `cargo tv --no-fail-fast`=3634/3635；tf=3490/3491（T-08 后、chore 前——其后唯一变更=test 文件 mut 修饰，非语义）；唯一红 **test_charts_gallery_compiles 在主检出基线引擎同样失败**（本次复审实测）=预存红证实 |
+| AC-06 | pass | HEAD 复跑 test_as_cast_int_lowers_to_math_trunc=1 passed；vue tests 284 绿零漂移 |
+
+**清单审计**：7 commit diff 逐一核对——T-03 sp-1 取槽（pop_i32 后 sp≥1
+无下溢）、T-04 四出口 transfer（先 retain 后 release 无下探窗口；take 即
+清影子，与死区/帧扫描无双结算面；ARRAY_LEN 先结算后查堆，dying 宽限窗
+护 inline-temp 释放后读取）、T-08 三处 Cast 臂、T-01 门控+结算——与
+§8 证据描述一致。
+
+**发现（均非阻塞，不扣 pass）**：
+
+- **F-1 [观感]** 新增探针代码引入 +3 处 cargo fmt 漂移（仓内预存 11895
+  处、同文件预存 81 处同款；仓规 fmt 非门禁）——留待文件下次触碰时顺手
+  归置，不单独立项。
+- **F-2 [路由项→merge]** 主检出工作区残留：engine.rs/musk_vm_track_tests.rs
+  为 T-01 前旧副本（本次复审 diff 证实）、test/ui/probe_rc_leak/ 未跟踪
+  目录——内容已被 plan-604-dev 提交取代，merge 时应还原两文件至 master、
+  删除未跟踪目录（其余 4 个 v05/015-notes 未提交文件与本计划无关，不动）。
+- **F-3 [候选登记]** engine 内联方法分发区（string/list 臂 raw pop）无
+  系统性死区结算——本计划路径未触达（call.spec 实走 resolve→shim，
+  backtrace 实证），实机 soak 无残余增长，维持候选不立项。
+
+**遗漏/延后/workaround 扫描**：无未申报缩减。T-05 重定位与 T-08 勘误
+均为证据驱动、已双落档（KNOWN-DEBT + spec §B12），不属 silently moved
+work。 Spec 增量三节文本与实现行为逐条对照一致（sp-1/transfer/DROP
+纪律/门控/Math.trunc 均为代码现状描述）；`new_spec_components` 已按仓
+惯例补全三条（frontmatter 本次复审更新）。
+
+**结论**：`status: reviewed`，next=merge。复审证据均为可复现命令+在库
+工件；worktree 与跨仓兄弟（auto-down detached）保留至 merge 清理。
+
 ## 10. 待澄清事项
 
 - **Q-01**：KD-VM3 编码损坏与 KD-VM1 的第二 retain 是否同一处代码缺陷
   （T-02 定罪合并或分拆修复）——T-02 产出时自答，不阻塞开工。
+  → **已答**：KD-VM3 为坏探针伪证（语料缺 timer 条目），与 KD-VM1 不同源；
+  KD-VM1 本体=CONSTRUCT_INSTANCE sp-1 取槽错位（T-03）+shim/ARRAY_LEN
+  结算缺口（T-04），已分拆修复。
 - **Q-02**：AC-04 容差（20MB/10min）是否过宽/过严——执行期以「对照旧版
   同窗曲线」相对值复核，必要时复审修订。
+  → **已答**：修复前同窗曲线 55–147 MB/min（10 分钟应涨 550–1470MB），
+  20MB 容差相对值 ≥96% 收敛，宽度合理，无需修订（T-07 实测回填 §9）。
 - **Q-03**：`construct.instance` 双步构造（new.instance + const.i32 N +
   construct.instance）是否可合并单 opcode（顺带消除 name_len 栈残留）——
   属优化项，不阻塞本计划，登记候选。
+  → **维持登记候选**（不阻塞；name_len 残留槽由后续 push 清影，非泄漏源
+  ——T-02 仪器化实证 stake 死账在 CONSTRUCT 取槽侧，不在 name_len）。
