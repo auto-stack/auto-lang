@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-602
-status: execution_done        # drafting → executing → execution_done → reviewed → archived（R-602-1 已修，复审复核中）
+status: reviewed              # drafting → executing → execution_done → reviewed → archived（2026-09-11 复审 pass，见 §9 re-review 记录）
 feature_name: py-subclass-class-factory
 author: [ZCode]
 created_at: 2026-09-09
@@ -8,10 +8,12 @@ updated_at: 2026-09-11
 plan_revision: 2
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components: []   # 无退役组件（SD-01/02 为存量文档增节，SD-03 为策略文档）
+new_spec_components:
+  - "docs/specs/auto-lang/vm/overview.md#py-subclass-481-多参回调-abi"
+  - "docs/specs/auto-lang/frontend/overview.md#_auto_subclass-helper"
 touched_goals:
-  - "GOAL-006"                # Consumer parity：py 子类派生 = torch 全面支持的主台阶（暂定，review 定稿）
+  - "GOAL-006: Consumer-mode parity——py 子类派生工厂为 torch 消费面主台阶（602）"
 
 affects: [auto-lang/vm, auto-lang/trans, parity]
 current_step: 9
@@ -345,6 +347,27 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 （起草交接：stage=new | plan_id=PLAN-602 | rev=1 | outcome=pass |
 next=work。范围锚定：W3 类派生 MVP = bridge API + Auto 驱动循环 +
 num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
+
+**re-review 记录（2026-09-11，stage=review | plan_id=PLAN-602 |
+plan_revision=2 | outcome=pass | reviewed_commit=a51d8e0c0（worktree
+plan-602-dev，工作树干净）| base_commit=6ed8b1e33 |
+dependency_revisions=auto-down@1557a39 | spec_inputs=同前次复审
+（SD-01/SD-02 锚点已定稿入 frontmatter，SD-03 已落地）**
+
+R-602-1 复核：**关闭**。回修 diff（714fa6656..a51d8e0c0）为纯测试新增
+42 行（py_ffi.rs，生产代码与已复审基线逐字节一致）；独立复跑
+py_ffi::tests 38/38 绿，点名复跑
+test_run_closure_bridged_arity_mismatch_type_error 绿（少参/多参双
+断言 + PyTypeError 通道判别）。证据复用理由：生产代码零变化 → 前次
+tf 3516/3516、tv 3659/3659、tt 3876 唯 3 预存红、parity p5-p12 100%
+证据继续有效；新增测试仅在 --features python 编译（不在 tf 特性面），
+受影响域已全量复跑。AC-01 由 partial 转 **pass**（正路径 + 负面 arity
+均钉死）。
+
+验收终态：AC-01..AC-06 全 pass；T-01..T-10 全勾（T-10=cargo tf 全量门，
+review 阶段已复跑）。finding 台账：R-602-1 closed；§10-5 D/E 存量怪癖
+不在本计划范围（登记在案）。
+next=merge（SD-01/SD-02 随 merge 沉淀 vm/overview + frontend/overview）。
 
 **work 回修记录（2026-09-11，stage=work | plan_id=PLAN-602 | rev=2 |
 outcome=pass | code_commit=a51d8e0c0 | task_ids=T-02（R-602-1 重开面）|
