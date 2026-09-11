@@ -429,42 +429,19 @@ fn expand_string_recipe_interpolation(s: &str) -> Result<String, StyleRecipeErro
         return Ok(s.to_string());
     }
 
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.char_indices().peekable();
+    let recipes = all_style_recipes();
+    if recipes.is_empty() {
+        return Ok(s.to_string());
+    }
 
-    while let Some((i, ch)) = chars.next() {
-        if ch == '{' {
-            // Check if it's `{ident}` or `${ident}`
-            let start = i + 1;
-            let mut end = None;
-            for (j, c) in chars.by_ref() {
-                if c == '}' {
-                    end = Some(j);
-                    break;
-                }
-                if !c.is_alphanumeric() && c != '_' && c != '-' {
-                    // Not a simple identifier
-                    break;
-                }
+    let mut result = s.to_string();
+    for recipe in recipes {
+        let pat = format!("{{{}}}", recipe.name);
+        if result.contains(&pat) {
+            let expanded = expand_recipe_call(&recipe.name, &[])?;
+            if let Expr::Str(exp_str) = expanded {
+                result = result.replace(&pat, exp_str.as_str());
             }
-            if let Some(end_idx) = end {
-                let token = &s[start..end_idx];
-                if has_style_recipe(token) {
-                    let expanded = expand_recipe_call(token, &[])?;
-                    if let Expr::Str(exp_str) = expanded {
-                        result.push_str(exp_str.as_str());
-                        continue;
-                    }
-                }
-                // Not a known recipe, preserve original text
-                result.push('{');
-                result.push_str(token);
-                result.push('}');
-            } else {
-                result.push('{');
-            }
-        } else {
-            result.push(ch);
         }
     }
 
