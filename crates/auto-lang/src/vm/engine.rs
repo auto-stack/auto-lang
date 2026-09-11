@@ -2508,8 +2508,15 @@ impl AutoVM {
                         {
                             eprintln!("Task {} Error: {}", task.id, error_msg);
                         }
-                        // Plan 199: Print call stack trace on error
-                        if self.output_buffer.is_none() && !task.call_stack.is_empty() {
+                        // Plan 199: Print call stack trace on error.
+                        // PLAN-081 (R4③): ExitRequested is a cooperative
+                        // stop, not a failure — the same guard as the error
+                        // line above applies; `exit(N≠0)` used to print a
+                        // noise "Stack trace:" of <anonymous> frames.
+                        if self.output_buffer.is_none()
+                            && !matches!(e, VMError::ExitRequested(_))
+                            && !task.call_stack.is_empty()
+                        {
                             eprintln!("Stack trace:");
                             for (i, frame) in task.call_stack.iter().enumerate().rev() {
                                 let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
