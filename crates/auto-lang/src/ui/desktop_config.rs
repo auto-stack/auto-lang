@@ -57,6 +57,11 @@ pub struct DesktopConfig {
     /// 壁纸目录（"" = 未配置；env/探测回退链在 boot 侧）。
     pub wallpapers_dir: String,
     pub dark_theme: bool,
+    /// PLAN-615 T-06：主题来源——`"system"`（缺省）= 每次 load 从 OS 系统主题
+    /// 派生 `dark_theme`（设置面板 set_theme 切换即置 `"manual"` 并持久化，
+    /// 此后 OS 变化不再覆盖）；坏值回退 `"system"`。存量配置文件缺键亦按
+    /// `"system"` 处理——现机即时获得 OS 跟随语义。
+    pub theme_source: String,
     /// PLAN-601 T-05：命名主题（registry 内置名；None = 轨缺省 stella）。
     /// 与 dark_theme 正交——mode 选主题对内 light/dark，theme_name 选色板套。
     pub theme_name: Option<String>,
@@ -74,6 +79,7 @@ impl Default for DesktopConfig {
             wallpaper_path: String::new(),
             wallpapers_dir: String::new(),
             dark_theme: true,
+            theme_source: "system".to_string(),
             theme_name: None,
             transparency: "off".to_string(),
             notes_enabled: true,
@@ -138,6 +144,13 @@ pub fn parse_config(src: &str) -> DesktopConfig {
     }
     if let Some(v) = f.get("dark_theme").and_then(|v| parse_bool(v)) {
         cfg.dark_theme = v;
+    }
+    // PLAN-615 T-06：主题来源（仅收 "system"/"manual"，坏值/缺席回退 system）。
+    if let Some(v) = f.get("theme_source") {
+        let t = v.trim();
+        if t == "system" || t == "manual" {
+            cfg.theme_source = t.to_string();
+        }
     }
     // PLAN-601 T-05：命名主题（非空串才收；词表校验在应用侧 set_theme）。
     if let Some(v) = f.get("theme_name") {
@@ -228,6 +241,8 @@ pub fn serialize_config(cfg: &DesktopConfig) -> String {
         "    dark_theme : {}\n",
         if cfg.dark_theme { "true" } else { "false" }
     ));
+    // PLAN-615 T-06：主题来源恒落盘（通用编辑器展示全字段约定同先例）。
+    out.push_str(&format!("    theme_source : \"{}\"\n", cfg.theme_source));
     // PLAN-601 T-05：命名主题（None 不落盘——文件面稳定，轨缺省 stella）。
     if let Some(t) = &cfg.theme_name {
         out.push_str(&format!("    theme_name : \"{t}\"\n"));
@@ -306,13 +321,23 @@ fn csv_pinned(raw: &str) -> Vec<String> {
 }
 
 /// boot 装载：config.at 读（缺席 → 旧键迁移 + 立即落盘一次）。
+/// PLAN-615 T-06：`theme_source = "system"`（缺省，含存量文件缺键）时
+/// `dark_theme` 从 OS 系统主题派生（[`crate::ui::system_theme::
+/// system_prefers_dark`]，OS 读取失败回退文件值/内置 dark）；`"manual"`
+/// （用户经设置面板 set_theme 切过）以文件值为准。派生不回写文件——
+/// 每次 load 一致重推导，用户切换即置 manual 终结跟随。
 pub fn load() -> DesktopConfig {
     let src = desktop_config_path().and_then(|p| std::fs::read_to_string(p).ok());
-    let (cfg, migrated) = load_from(src.as_deref(), &mut |k| {
+    let (mut cfg, migrated) = load_from(src.as_deref(), &mut |k| {
         crate::vm::ffi::stdlib::storage_host_read(k)
     });
     if migrated {
         let _ = save(&cfg);
+    }
+    if cfg.theme_source == "system" {
+        if let Some(dark) = crate::ui::system_theme::system_prefers_dark() {
+            cfg.dark_theme = dark;
+        }
     }
     cfg
 }
@@ -412,6 +437,7 @@ mod tests {
             wallpaper_path: "builtin:inkwash".to_string(),
             wallpapers_dir: String::new(),
             dark_theme: false,
+            theme_source: "manual".to_string(),
             theme_name: None,
             transparency: "high".to_string(),
             notes_enabled: false,
@@ -467,6 +493,33 @@ mod tests {
         assert!(!migrated);
         assert_eq!(cfg.dock_position, "top");
         assert_eq!(cfg.dock_pinned, DesktopConfig::default().dock_pinned);
+    }
+
+
+    /// PLAN-615 T-06：theme_source 解析/序列化往返——缺席回退 system（存量
+    /// 配置文件缺键即时获得 OS 跟随语义）；坏值回退 system；manual 往返稳定。
+    #[test]
+    fn theme_source_parse_serialize_roundtrip() {
+        // 缺席 → system
+        let (back, _) = load_from(Some("desktop {
+    dark_theme : false
+}
+"), &mut |_| None);
+        assert_eq!(back.theme_source, "system");
+        // 坏值 → system
+        let src_bad = "desktop {
+    theme_source : \"auto\"
+}
+";
+        let (back_bad, _) = load_from(Some(src_bad), &mut |_| None);
+        assert_eq!(back_bad.theme_source, "system");
+        // manual 落盘且往返
+        let mut cfg = DesktopConfig::default();
+        cfg.theme_source = "manual".to_string();
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("theme_source : \"manual\""), "{ser}");
+        let (back_m, _) = load_from(Some(&ser), &mut |_| None);
+        assert_eq!(back_m.theme_source, "manual");
     }
 
     /// save_to → read → parse round-trip 走真文件系统（临时目录隔离）。

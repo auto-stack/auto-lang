@@ -9302,6 +9302,9 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
     crate::ui::autodown_editor::retheme_all_fence_buffers();
     state.desktop.config.dark_theme = dark;
+    // PLAN-615 T-06：用户显式切换即置 manual——终结 theme_source=system 的
+    // OS 跟随派生（boot/外写热应用 load() 不再覆盖此选择）。
+    state.desktop.config.theme_source = "manual".to_string();
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
     // Plan 497 G3 同款：全场快照随撤（窗口缩略按旧主题渲染）。
     crate::ui::iced::snapshot::invalidate_all();
@@ -11252,6 +11255,16 @@ fn run_session(
                 && component.read_state("dark_mode").is_ok()
             {
                 let _ = component.write_state("dark_mode", auto_val::Value::Bool(t == "dark"));
+            }
+        } else {
+            // PLAN-615 T-04：env 链（CLI > os-config > pac.at）未解析任何
+            // theme 值 → OS 系统主题回退（读取失败 None 则维持 App 内置
+            // 缺省）。桌面轨的对应链路在 desktop_config::load 的
+            // theme_source=system 派生（T-06），两轨语义对齐。
+            if let Some(dark) = crate::ui::system_theme::system_prefers_dark() {
+                if component.read_state("dark_mode").is_ok() {
+                    let _ = component.write_state("dark_mode", auto_val::Value::Bool(dark));
+                }
             }
         }
         if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
