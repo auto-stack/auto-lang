@@ -3164,6 +3164,9 @@ export default router
             );
         }
 
+        // Plan 457: Materialize bundled shadcn-vue UI components (button, etc.)
+        self.materialize_ui_components()?;
+
         // Write project files
         write_project_files(
             &self.output_dir,
