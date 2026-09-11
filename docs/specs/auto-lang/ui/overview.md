@@ -186,6 +186,25 @@ accent 投影坍缩钉 Phase 2（P593-D1）；⑤债 P593-D1..D5（accent 投影
 缺失（S10 只跑日常档的漏检面）、R2 回退字面量收口；F-env kitchen_sink 跨仓
 竞态（auto-os@84ff922 并行推进）环境分离非回归。Phase 2（主题声明与热切换）/
 Phase 3（style recipe 语言层）见 Design 29 §7。
+**601 主题声明与热切换（Design 29 Phase 2 落地，GOAL-007）**：主题从「dark/light
+二值 + accent 单槽」升级为**可命名、可派生、可热切换的整套色板**——①registry
+双面统一：五内置主题（zinc/scaffold/stella/tauri/cli-vue）结构化 `ThemeSpec`
+（`ColorLit` HSL 原文/RGB 真值同源互转），canonical CSS 渲染（金样口径升级
+value-pinned）；②声明面：pac.at `theme: { extends/mode/colors }` 块解析
+（extends 链深 ≤4 防环、本声明最后胜、mode 沿链最近声明胜，未知 token 编译期
+错误；对象冒号形态），合成体 `decl::compose` 产物 `ComposedTheme` 与 builtin
+同类型，经 auto-man 消费（index.css 双 mode 块装配 + index.html
+`__AUTO_COMPOSED_THEME__` 运行时种子 write-if-unset）；③切换面：VM
+`set_theme(name)`/`SetThemeName` 动词（ACTIVE_THEME 槽 + THEME_EPOCH 失效回路 +
+desktop_config `theme_name` 持久化 + **boot 读回激活**〔open_desktop 首帧前，
+复审 R1 补〕），vue `applyTheme` 运行时全变量写入（html inline light + `.dark`
+元素 dark 值 + 光照模式陈值清理，accent overlay 内聚末位，storage `auto-theme`
+boot 恢复），零 accent 面 app 零注入；④`dark:` 门控与 set_theme(bool) mode
+链路正交零回归；⑤accent 降维覆盖层（primary 槽，dark 提亮 +10 双端归一）；
+⑥债收口 P593-D1..D5 全关（D1 accent 独立投影——81 处使用面有意视觉对齐、
+D3 ui_gen generate_base_css 退役、D5 CLI 双副本 registry 装配）+ **P601-T11
+开放债**（SVG 图形属性 token 通道缺失——图表主题跟随示范面受阻，settings-popover
+等裸名包组件 SFC 化缺口同族并档）。settings 选择器 UI 属 auto-os 资产面移交。
 
 ## 关键入口
 
@@ -201,11 +220,16 @@ Phase 3（style recipe 语言层）见 Design 29 §7。
   **Plan 593 后语义 token 值单源于 `design_tokens/registry.rs`**——theme/ 目录模块化，
   resolve_semantic_rgb 投影查表零字面色值）·
   `design_tokens/`（**Plan 593 新增无 feature 门基础层**：registry 单一事实源——31 键封闭
-  词表〔19 shadcn+8 sidebar+4 扩展〕+ 内置 zinc/scaffold〔CSS 面逐字块〕/stella〔VM 面结构化
-  RGB〕+ accent 表单源；ui_gen〔无门〕/ui::style/code_editor 三方直达消费，theme re-export
-  保路径稳定——放 ui 外因 ui_gen 不能引 feature="ui" 实体）·
+  词表〔19 shadcn+8 sidebar+4 扩展〕；**Plan 601 后五内置主题〔zinc/scaffold/stella/
+  tauri/cli-vue〕结构化 ThemeSpec 双面**（ColorLit HSL 原文/RGB 真值同源互转，canonical
+  CSS 渲染）+ theme{} 声明合成〔decl.rs：extends 链/mode 继承/值规范化，ComposedTheme
+  与 builtin 同类型〕+ accent 表单源；ui_gen〔无门〕/ui::style/code_editor 三方直达消费，
+  theme re-export 保路径稳定——放 ui 外因 ui_gen 不能引 feature="ui" 实体）·
   `ui/action_config.rs`（actions 配置层，热重载/OS keymap/表达式条件）
-- 内建编辑器：`ui/code_editor/` · `ui/autodown_editor/` · `ui/handler_codegen.rs` · `ui/hot_reload.rs`
+- 内建编辑器：`ui/code_editor/`（**Plan 601 后编辑器主题从活动主题派生（V4 完整）**——
+  bg/fg/caret/syntax 取 registry Background/Foreground 真值入编辑器色域，syntax 主题键
+  `autoui-{theme}-{mode}-{accent}`〔内置预烘焙+boot 期合成体烘焙〕，切主题 THEME_EPOCH
+  失效翻转）· `ui/autodown_editor/` · `ui/handler_codegen.rs` · `ui/hot_reload.rs`
 - `ui/mcp_server.rs`（AutoUI MCP 调试服务）· `a2ui/schema.rs:A2UIMessage`
 
 ## 使用示例

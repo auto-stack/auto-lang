@@ -9103,6 +9103,8 @@ fn execute_desktop_commands(
             DC::SetDockEnabled(on) => execute_set_dock_enabled(state, on),
             // Plan 518 G1：主题热切换（Appearance 分区 Dark Mode 钮）。
             DC::SetTheme(dark) => execute_set_theme(state, dark),
+            // PLAN-601 T-05：命名主题热切换（set_theme 未知名解析期已拒）。
+            DC::SetThemeName(name) => execute_set_theme_name(state, &name.clone()),
         }
     }
     (false, tasks)
@@ -9113,6 +9115,21 @@ fn execute_desktop_commands(
 /// （boot 读回）+ 已声明 dark_mode 的 App 状态变量同步（458 语义：运行时
 /// 变量每帧回写全局,不同步则被旧值翻回）+ 全 App view_dirty（构建期解析的
 /// 颜色需重建换色）。
+/// PLAN-601 T-05：命名主题执行体——style::theme::set_theme（THEME_EPOCH
+/// 自增 → 既有失效回路：view 重建→语义 token 重解析）+ config.theme_name
+/// 单源落盘 + 全场快照随撤 + 全 App 视图标脏（execute_set_theme 同款生效面）。
+fn execute_set_theme_name(state: &mut crate::ui::session::DesktopSession, name: &str) {
+    if !crate::ui::style::theme::set_theme(name) {
+        return; // 未知名（解析期已拒，防御双门）
+    }
+    state.desktop.config.theme_name = Some(name.to_string());
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+    crate::ui::iced::snapshot::invalidate_all();
+    for app in state.apps.values_mut() {
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
 fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool) {
     crate::ui::style::iced_adapter::set_dark_mode(dark);
     // PLAN-051 T10（DEBTS 050 处置）：桌面壳主题翻转臂与 D-GAP 值变化臂
@@ -9226,6 +9243,16 @@ fn apply_external_config_diff(
         state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
         inject_dock_pinned(state);
     }
+    if cfg.theme_name != old.theme_name {
+        // PLAN-601 T-05：boot 读回/热应用差分——THemE_EPOCH 失效回路接管换色。
+        if let Some(name) = cfg.theme_name.as_deref() {
+            crate::ui::style::theme::set_theme(name);
+        }
+        crate::ui::iced::snapshot::invalidate_all();
+        for app in state.apps.values_mut() {
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
     if cfg.dark_theme != old.dark_theme {
         // execute_set_theme 同款生效面(减 save):adapter 切换 + fence
         // 重着色(autodown 门控)+ 全场快照随撤 + 全 App view_dirty/dark_mode 回写。
@@ -9251,6 +9278,7 @@ fn apply_external_config_diff(
     state.desktop.config.transparency = cfg.transparency.clone();
     state.desktop.config.notes_enabled = cfg.notes_enabled;
     state.desktop.config.dark_theme = cfg.dark_theme;
+    state.desktop.config.theme_name = cfg.theme_name.clone();
 }
 
 /// Plan 540 T3：壁纸目录写臂——config 落盘（scan_wallpapers_dir 与缺省
@@ -23206,6 +23234,48 @@ mod tests {
         assert_eq!(ds.desktop.config, snap, "内容相等早退(无回环)");
 
         let _ = std::fs::remove_file(&path);
+    }
+    /// PLAN-601 R1（复审）:boot 读回——config.at 持久 theme_name 在
+    /// open_desktop 激活。此前仅动词臂/外写 diff 臂会 set_theme,重启后
+    /// 主题不存活(轮询首采样只锚不应用,551 语义对结构化消费面成立、
+    /// 对需 ACTIVE_THEME 激活的主题面不成立)。未知名容错=保持缺省。
+    #[test]
+    fn desktop_boot_activates_persisted_theme_name() {
+        let _guard = t2_isolate_storage("601-boot-theme");
+        let cfg_path = crate::ui::desktop_config::desktop_config_path().unwrap();
+
+        // ① 未知名容错:set_theme 拒绝 → 保持缺省(负例先行,线程内
+        // ACTIVE_THEME 尚未被本测激活过)。
+        let mut bad = crate::ui::desktop_config::DesktopConfig::default();
+        bad.theme_name = Some("nonsense".to_string());
+        let _ = crate::ui::desktop_config::save_to(&cfg_path, &bad);
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        assert_eq!(
+            crate::ui::style::theme::theme_name(),
+            "stella",
+            "未知名拒绝保持缺省"
+        );
+
+        // ② boot:载入结构体≠激活(锚定语义,此时仍缺省);
+        // open_desktop 激活 → 主题重启存活。
+        let mut cfg = crate::ui::desktop_config::DesktopConfig::default();
+        cfg.theme_name = Some("zinc".to_string());
+        let _ = crate::ui::desktop_config::save_to(&cfg_path, &cfg);
+        let mut ds2 = crate::ui::session::DesktopSession::__test_session();
+        assert_eq!(
+            crate::ui::style::theme::theme_name(),
+            "stella",
+            "载入结构体≠激活(首采样锚定语义)"
+        );
+        ds2.open_desktop(iced::window::Id::unique());
+        assert_eq!(
+            crate::ui::style::theme::theme_name(),
+            "zinc",
+            "boot 读回激活(主题重启存活)"
+        );
+
+        let _ = std::fs::remove_file(&cfg_path);
     }
     /// Plan 487 M4 步骤1：资产 settings.at（widget Settings）装载冒烟——编译 +
     /// Init 默认（visible=0/section=dock）+ Nav 分区切换 + pinned 平行列表

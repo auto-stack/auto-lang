@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-604
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-rc-lifecycle-fix
 author: [ZCode]
 created_at: 2026-09-10
@@ -420,3 +420,14 @@ work。 Spec 增量三节文本与实现行为逐条对照一致（sp-1/transfer
   属优化项，不阻塞本计划，登记候选。
   → **维持登记候选**（不阻塞；name_len 残留槽由后续 push 清影，非泄漏源
   ——T-02 仪器化实证 stake 死账在 CONSTRUCT 取槽侧，不在 name_len）。
+
+## 11. spec-sync 回写记录
+
+- 2026-09-11（Plan 604 merge）：规范增量三节落稿——
+  `docs/specs/auto-lang/vm/overview.md` §RC 生命周期协议（SD-01）/
+  §B12 编码不变量（SD-02），`docs/specs/auto-lang/ui/overview.md`
+  as-cast 整型 Math.trunc 降级段（SD-03）——worktree 5889ad0db 随折回
+  入 master（0658a9633）；vm/ui `plans.md` 各追加 604 行 + INDEX 重生
+  （delivery 0658a9633）；KNOWN-DEBT KD-VM1~4 销账注记（同 delivery）；
+  运行时台账 `.autoos/specs.json` P604-1..6 六节投影发布并读回验证。
+- 归档：`docs/plans/archive/604-vm-rc-lifecycle-fix.md`，status: archived。
