@@ -2657,6 +2657,15 @@ impl CTrans {
                     let elem_type = &array_type.elem;
                     let len = array_type.len;
                     let elem_type_name = self.c_type_name(elem_type);
+                    // Plan 597: uninitialized fixed array emits a bare
+                    // declaration — the synthesized Nil/Null initializer
+                    // would render `T name[len] = NULL`, invalid C for
+                    // arrays (real-MSVC catch; text snapshots can't see it).
+                    if matches!(store.expr, Expr::Nil | Expr::Null) {
+                        out.write(format!("{} {}[{}]", elem_type_name, store.name, len).as_bytes())
+                            .to()?;
+                        return Ok(()); // eos() adds the final semicolon
+                    }
                     out.write(format!("{} {}[{}] = ", elem_type_name, store.name, len).as_bytes())
                         .to()?;
                 }

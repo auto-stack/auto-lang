@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-599
-status: drafting                # drafting → executing → execution_done → reviewed → archived
+status: execution_done                # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-lang-capabilities
 author: [ZCode]
 created_at: 2026-09-09
 updated_at: 2026-09-09
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 8
 
 # /auto-plan:review 结束时填写：
@@ -71,7 +71,8 @@ affects: [auto-lang/trans rust(a2r), auto-lang parser]   # 详见 §5 规范增�
 | 外来泛型字段 | type 块字段/参数/局部：`Name<Arg>` | 原样 `Name<Arg>` |
 | 外来 trait impl | `ext Self for ForeignTrait`（方法块既有） | `impl ForeignTrait for Self` |
 | trait 对象 | 类型位：`Box<dyn Trait + Send>` 等拼写 | 原样透传 |
-| 裸线程 | T-01 裁定：A=闭包加 move 发射/`std::thread` 透传；B=a2r-std `task::spawn_blocking` 包装 | 按裁定 |
+| 裸线程 | **A(裁定,实证)**:`use.rs std::thread` 透传 + `move () =>` 闭包
+  (spawn/join 实编运行 41);B 弃(引 a2r-std 运行时依赖) | `thread::spawn(move \|\| ..)` |
 
 ## 3. 技术栈
 
@@ -145,17 +146,17 @@ A（std::thread 透传 + move 闭包）：验证 a2r 闭包捕获发射可加 `m
 
 ## 8. 执行步骤
 
-- [ ] **T-01**（bounded investigation）线程通道选型 spike（A/B 判据
+- [x] **T-01**（bounded investigation）线程通道选型 spike（A/B 判据
   §5），结论回填 §2 表与 SD-02；
-- [ ] **T-02** 能力①外来泛型类型字段：parser 放行 + a2r 透传 +
+- [x] **T-02** 能力①外来泛型类型字段：parser 放行 + a2r 透传 +
   未解析名告警面 + 语料（快照+实编）；
-- [ ] **T-03** 能力②外来 trait impl：ext-for 语法面 + 发射 + 语料；
-- [ ] **T-04** 能力③trait 对象拼写：类型位放行 + 透传 + 语料；
-- [ ] **T-05** 能力④裸线程+阻塞 io：按 T-01 落地 + 语料；
-- [ ] **T-06** capstone：term.rs 子集 Auto 版 + Rust oracle + 黑盒
+- [x] **T-03** 能力②外来 trait impl：ext-for 语法面 + 发射 + 语料；
+- [x] **T-04** 能力③trait 对象拼写：类型位放行 + 透传 + 语料；
+- [x] **T-05** 能力④裸线程+阻塞 io：按 T-01 落地 + 语料；
+- [x] **T-06** capstone：term.rs 子集 Auto 版 + Rust oracle + 黑盒
   对拍 runner（语料入 test/a2r/，oracle 入 fixture）；
-- [ ] **T-07** guide/overview 落稿 + 004 §5④ 回执 + DEBTS #10 增 599 条；
-- [ ] **T-08** 收口门禁：a2r 快照全量 + cargo tt + cargo tf（基线两例
+- [x] **T-07** guide/overview 落稿 + 004 §5④ 回执 + DEBTS #10 增 599 条；
+- [x] **T-08** 收口门禁：a2r 快照全量 + cargo tt + cargo tf（基线两例
   不变）+ bindgen/a2c 套件不回归。
 
 依赖：T-02..T-04 相互独立可并行；T-05←T-01；T-06←T-02/03/04（+05 若
@@ -163,6 +164,51 @@ A（std::thread 透传 + move 闭包）：验证 a2r 闭包捕获发射可加 `m
   T-07/08 收口。
 
 ## 9. 复审记录
+
+stage: work | PLAN-599 | rev 1 | **pass** | code_commit=02ca04252 |
+task_ids=T-01..T-08 | evidence=见下 | blockers=无 | next=review
+
+### 执行证据(2026-09-10,worktree .wt/lang-599/auto-lang @ 02ca04252)
+
+- **T-01**:A 路裁定——四构件(use.rs std::thread/`::` 路径链/move 闭包/
+  spawn 自动 move)全在库;spike 实编 `thread::spawn(move ||)` 运行
+  `thread_result= 41`;顺修**双 move 缺陷**(spawn 特判自动 move 与显式
+  `move ()=>` 叠加产出 `move move ||`,两处发射点同修,单测级验证)。
+- **T-02/T-03(重大发现:能力①②既有已通)**:`FakeTerm<Chan>` 泛型字段
+  与 `ext Listener for ForeignTrait` 均原生发射正确(后续计划已清 002
+  缺口 1.1,F6 透传);本计划补语料+实编+**F6 告警面**(lookup_type 兜底
+  一次性去重 eprintln;**env 门控 AUTO_WARN_UNRESOLVED_TYPES 默认静默**
+  ——全量跑实测 50+ 名/跑含小写非类型标识('v'/'e'/'max'/…),默认开
+  会纯噪音;语义级判定需 use.rs 全局知识,记录为后续项)。
+- **T-04(真实现)**:dyn 拼写——发现 parse_type_base 已有 384 A3 单
+  trait 臂,扩展 `+ Send [+ Sync]` bounds;承载 User("dyn …") 透传
+  (384 A5 检测此前缀);**派生门控语义修订**:dyn 字段默认不派生
+  (实证:无约束 FakeMaster 连 Clone/Debug 都 E0277;384 的 Clone,Debug
+  档仅适配有超 trait 的场景;显式 #[derive] 透传可覆盖)。
+- **语料+实编门**:`25_foreign_types/` 五件快照(001 泛型字段/002 外来
+  trait impl/003 dyn/004 裸线程/005 capstone);#[ignore] 门
+  `a2r_foreign_shape_compile_run`(001 走 stub→rlib→--extern,002/003
+  内联 stub 前置,004 纯 std;witness 断言——注意 print 分隔符=双空格)
+  + `a2r_capstone_term_subset_parity`(capstone:产物 vs 手写 oracle
+  共享 fake_core rlib,**黑盒 stdout 全等**+session_ok witness)。
+- **执行期小坑**:001 初稿 E0382(listener 双 move)→双构造;005 的
+  `Box` 值位被解析为最后 use.rs crate 路径(`fake_core::Box::new`)→
+  显式 `use.rs std::boxed::Box` 规避(既有解析怪癖,语料注释在案)。
+- **T-07**:guide Implementation Status 增 Plan 599 条目;trans/overview
+  增四能力 bullet(含派生语义修订与 F6 env 门控);004 §5④ 回执 +
+  DEBTS #10 增 599 条(auto-term 主检出未提交批次)。
+- **T-08**:a2r 套件 326 ok(基线 3 失败=017 comptime CWD 敏感+两断言,
+  主检出同形);bindgen 6/6;a2c 109 ok(基线 9,本工作树基点无 597 的
+  engine_face 故 109 而非 110);cargo tf/tt 唯一失败=基线 vue
+  (fail-fast 截断运行数,单测点名复核)——零回归。
+
+### 规范增量(实际落稿)
+
+- SD-01 ✅ docs/a2r-transpiler-guide.md(Implementation Status 增 599 条)
+- SD-02 ✅ docs/specs/auto-lang/trans/overview.md(四能力 bullet)
+- SD-03 ✅ 并入 SD-02(dyn/ext-for 语法规则随 bullet 记录,无独立
+  design 文件新增)
+
 
 stage: new | PLAN-599 | rev 1 | outcome: pass | next: work
 （起草即绪：能力面/语法位/透传通道均经 002 与 rust.rs 实码核位；

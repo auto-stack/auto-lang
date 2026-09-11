@@ -1,0 +1,92 @@
+// app.at — RC 滞留归因探针 v2：单操作分相（mem 复盘）
+use types: Item
+
+widget App {
+    msg { StructTick, ListTick, LitTick, IntPushTick, StrPushTick, LitPushTick, NoneTick }
+    model {
+        var items []Item = []
+        var ints []int = []
+        var one Item = Item { pid: 0, name: "x", cpu: 0.0 }
+        var count int = 0
+        var sum int = 0
+        var lenSeen int = 0
+    }
+    timer {
+        StructTick (every_ms: 40)
+        ListTick (every_ms: 40)
+        LitTick (every_ms: 40)
+        IntPushTick (every_ms: 40)
+        StrPushTick (every_ms: 40)
+        LitPushTick (every_ms: 40)
+        NoneTick (every_ms: 40)
+    }
+    view {
+        col {
+            text f"n=${.count}"
+        }
+    }
+    on {
+        // ① struct 字面量进本地 typed 列表（不写 store）
+        .StructTick -> {
+            var fresh []Item = []
+            var i = 0
+            while i < 100 {
+                fresh.push(Item { pid: i, name: f"proc-${i}.exe", cpu: 1.5 })
+                i = i + 1
+            }
+            .count = .count + 1
+        }
+        // ② 空 typed 列表本身
+        .ListTick -> {
+            var fresh []Item = []
+            .count = .count + 1
+            if fresh.len() == 999 {
+                .count = 0
+            }
+        }
+        // ③ 单个 struct 字面量进本地 var
+        .LitTick -> {
+            var it = Item { pid: 1, name: "one", cpu: 0.5 }
+            .count = .count + it.pid
+        }
+        // ④ int 列表 push（对照：专用 opcode 路径）
+        .IntPushTick -> {
+            var fresh []int = []
+            var i = 0
+            while i < 100 {
+                fresh.push(i)
+                i = i + 1
+            }
+            .count = .count + 1
+        }
+        // ⑤ string 列表 push（对照：已证零增长）
+        .StrPushTick -> {
+            var names2 []str = []
+            var j = 0
+            while j < 100 {
+                names2.push(f"proc-${j}.exe")
+                j = j + 1
+            }
+            .count = .count + 1
+        }
+        .LitPushTick -> {
+            var fresh []Item = []
+            var i = 0
+            while i < 100 {
+                var it = Item { pid: i, name: f"p-${i}.exe", cpu: 1.5 }
+                fresh.push(it)
+                i = i + 1
+            }
+            .lenSeen = fresh.len()
+            var acc = 0
+            for q in fresh {
+                acc = acc + q.pid
+            }
+            .sum = acc
+            .count = .count + 1
+        }
+        .NoneTick -> {
+            .count = .count + 1
+        }
+    }
+}

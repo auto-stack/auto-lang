@@ -27,6 +27,13 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-08-28）
 
+**vue as-cast 整型降级（plan-604 落地，KD-VM4 双端一致）**：view/handler 内
+`expr.as(int)`（及 i64/uint/u64/usize/byte）vue 侧降级 `Math.trunc(...)`，对齐
+VM TYPE_CAST_I32 的 Rust `f as i32` 截断语义；浮点目标 JS 原生 f64 直通，其余
+类型保持值不变。此前 `Expr::Cast` 三处 emit 无降级（handler 内落 `undefined`、
+绑定位硬错误、文本位 R046 占位符）。单测
+`ui_gen::vue::tests::test_as_cast_int_lowers_to_math_trunc`。
+
 **ui-gallery 画廊与应用内嵌架构（plan-549 落地）**：对齐 widgets-gallery 交互体验，建立 examples/ui-gallery 示例画廊应用；构建期自动扫描与元数据提炼（auto-man generate_gallery_host + demos-registry 动态装配），左栏导航聚合全部 43 个 UI 示例（分类折叠与实时过滤），右侧上部提供真实可交互的 AppViewport 沙盒视口（独立 createApp 挂载隔离、异常边界 errorHandler、状态一键重置与 Desktop 100% / 1024px / Tablet 768px / Mobile 375px 多端尺寸切换），右侧下部提供基于 AutoDown/Markdown 的教程与源码逐行剖析；形成跨目录应用沙盒化内嵌的通用规范。
 
 **029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范
@@ -164,6 +171,22 @@ J1/J2 渲染器子树，批五转正中）。
 
 **552 桌面应用策展已落地（desktop 字段 opt-in + 测试探针清退）**：R10 注册表条目增 `desktop_visible`（pac `desktop:` 字段——主根 examples/ui 缺省 false=opt-in、外部自含根缺省 true=opt-out，坏值静默回退；`entry_for_dir(default_visible)`）；boot 两分——`app_resolver` 捕获全量（按名启动/自定义图标启动不受策展限制），`registry_entries`=策展过滤（launcher/图标格/dock 三消费面只见策展集，boot 日志双计数）。C 档 19 例加 `desktop: "true"`（045 已由 551 退役，20→19）；8 个测试探针（overlay-probe/p051/p493/p507/p515/p518/459-dual-app/042-two-inputs-child）迁 `examples/capability-tests/`（stage3 e2e 双根解析、ui_desktop/ui_dual_app include_str 改指、`scan_examples_ui_curation_set` 恰等断言防今后 demo 悄悄上架/掉字段）；examples/ui README 总览表增"桌面"列。债务 P552（customs 非策展 id 元数据回退 app-window/裸 id）。
 **527 VM 轨 Tailwind 全量覆盖契约**：样式子系统从「Tailwind-inspired 按需子集」升级为 **v3.4 清单驱动的全量覆盖契约**——①清单锚定：Tailwind v3.4 core 展开清单 vendor 入库（`tests/fixtures/tailwind-v34-utilities.txt` 8861 类×15 families，`tools/gen_tailwind_manifest.py` 零依赖再生）+`Style::parse_reported` 报告通道（未映射类按原文名报告，**静默丢弃通道关闭**）；②对拍审计台常驻（`tests/style_parity.rs` 已挂 `cargo t`）：白名单外零 missing + 布局/视觉/文本三家族 iced applied 门 + PARSED_ONLY_ALLOWED 豁免台账 + 覆盖率表 `docs/style-coverage.md` 同源再生（基线 applied 3807/parsed-only 276/unsupported 4778/missing 0）；③三家族补全：布局 1582/视觉 1901/文本 308 applied（SizeValue::Fraction 分数 Fill-ratio 口径、四色板 lime/violet/fuchsia/stone 补全+950 真值行、渐变三 stop+位置百分比真消费、彩色阴影、object-fit→ContentFit、全字重 9 档、leading 双轨、line-clamp；顺修 from-100 三位 hex 误吞/min-h 未知命名误落 0.0 等隐性假映射）；④Variant 管道泛化：hover/focus/active/disabled 同构（按钮状态面真消费+opacity 乘法降级）、responsive 五断点解析期按 `theme::window_width` 门控（resize→view 重建→重解析既有回路）、`dark:` 按 `theme::dark_mode` 门控——未命中态登记 variant_classes 可见不静默；⑤不做/受限台账 KNOWN-DEBT P527-1..5（永久不做族/宿主上限/分数近似口径/变体分期消费/存字段类）。复审 tf 3397/3398（唯一红=在案存量）零新增红。
+**593 语义 token 值单源化（Design 29 Phase 1，GOAL-007）**：样式值从四处置手抄
+互锁（vue.rs base_css 模板/theme.rs match 臂/code_editor accent 副本 + accent 双份）
+收敛为 **`design_tokens/registry.rs` 单一事实源**——①对账先行：七发射点实勘
+（E1-E7，含重大发现「ui_gen base_css 仅测试消费、真实 Vue 路径=auto-man
+generate_index_css」→ V1 扩双改造）；②零漂移方法论「先钉后改」：期望表
+（resolve_semantic_rgb 全语义色×双态 RGB 字面量）+ 双金样（base_css/index_css
+模板逐字提取）先行钉绿，迁移后同组断言即等价证明；③四处置迁移：V2 match 臂→
+color_token 投影+stella 查表、V1×2 色变量块→registry zinc/scaffold 装配、V4-a
+code_editor accent 表删（L 分量漂移 3 处但编辑器只消费 H/S，归一输出中性）、
+accent 表单源+ACCENT_DEFAULT 常量；④证据门裁定：`bg-accent` 81 处在用→
+accent 投影坍缩钉 Phase 2（P593-D1）；⑤债 P593-D1..D5（accent 投影/+4vs+10
+提亮分叉/ui_gen 遗留/auto-os 跨仓/auto CLI 双副本）。复审 R1 抓 tf 档 cfg 门
+缺失（S10 只跑日常档的漏检面）、R2 回退字面量收口；F-env kitchen_sink 跨仓
+竞态（auto-os@84ff922 并行推进）环境分离非回归。Phase 2（主题声明与热切换）/
+Phase 3（style recipe 语言层）见 Design 29 §7。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
@@ -174,7 +197,13 @@ J1/J2 渲染器子树，批五转正中）。
   `ui/desktop_protocol/`（路线 B 桌面协议 v1.1：五通道/传输/shm/broker/状态机）
 - 样式与主题：`ui/style/`（class/color/theme/iced/headless/gpui 适配 + **Plan 527 v3.4 清单驱动全量
   覆盖契约**——parse_reported 报告通道/对拍审计台 style_parity/Variant 管道〔hover/focus/active/
-  disabled/responsive 五断点窗口宽门控/dark 主题态门控〕，覆盖矩阵 docs/style-coverage.md）·
+  disabled/responsive 五断点窗口宽门控/dark 主题态门控〕，覆盖矩阵 docs/style-coverage.md；
+  **Plan 593 后语义 token 值单源于 `design_tokens/registry.rs`**——theme/ 目录模块化，
+  resolve_semantic_rgb 投影查表零字面色值）·
+  `design_tokens/`（**Plan 593 新增无 feature 门基础层**：registry 单一事实源——31 键封闭
+  词表〔19 shadcn+8 sidebar+4 扩展〕+ 内置 zinc/scaffold〔CSS 面逐字块〕/stella〔VM 面结构化
+  RGB〕+ accent 表单源；ui_gen〔无门〕/ui::style/code_editor 三方直达消费，theme re-export
+  保路径稳定——放 ui 外因 ui_gen 不能引 feature="ui" 实体）·
   `ui/action_config.rs`（actions 配置层，热重载/OS keymap/表达式条件）
 - 内建编辑器：`ui/code_editor/` · `ui/autodown_editor/` · `ui/handler_codegen.rs` · `ui/hot_reload.rs`
 - `ui/mcp_server.rs`（AutoUI MCP 调试服务）· `a2ui/schema.rs:A2UIMessage`

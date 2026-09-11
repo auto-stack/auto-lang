@@ -266,6 +266,33 @@ impl PythonTrans {
                     sink.body.write_all(param.name.as_bytes())?;
                 }
                 write!(sink.body, ": ")?;
+                // PLAN-598 D2 (DIV-PY-CLOSURE-1 a2py facet): Python lambdas
+                // carry a single expression. Auto block bodies used to emit
+                // `lambda x: {...}` — a set/dict literal (silently wrong for
+                // single-expression blocks, syntactically invalid for
+                // statement blocks). Classify the block (unwrapping nested
+                // statement-block layers the parser may add):
+                //   - single expression (or bare `return e`) → parenthesized
+                //     expression;
+                //   - bindings / multiple statements → explicit diagnostic
+                //     (previously silent garbage).
+                if let Expr::Block(block) = closure.body.as_ref() {
+                    let single_expr = Self::block_single_expr(&block.stmts);
+                    match single_expr {
+                        Some(e) => {
+                            self.expr(&e, sink)?;
+                            return Ok(());
+                        }
+                        None => {
+                            return Err(crate::error::AutoError::Msg(
+                                "a2py: statement-body closures are not supported — \
+                                 use an expression body, or the py_with / map \
+                                 statement lowering (PLAN-598 / DIV-PY-CLOSURE-1)"
+                                    .into(),
+                            ));
+                        }
+                    }
+                }
                 self.expr(&closure.body, sink)
             }
 
@@ -1102,7 +1129,9 @@ impl PythonTrans {
                     self.needs_may_helper = true;
                     sink.body.write(b"_auto_may(lambda: ")?;
                     if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
-                        self.expr(obj_expr, sink)?;
+                        // PLAN-598 D1: compound receivers must not rebind the
+                        // method onto the last operand.
+                        self.emit_paren_expr(obj_expr, sink)?;
                     }
                     sink.body.write(b".")?;
                     if let Some(Arg::Pos(Expr::Str(method))) = call.args.args.get(1) {
@@ -1203,7 +1232,8 @@ impl PythonTrans {
                 // avoiding the @ infix (annotation-prefix lexer territory).
                 "py_matmul" if call.args.args.len() == 2 => {
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
-                        self.expr(a, sink)?;
+                        // PLAN-598 D1: same compound-receiver paren discipline.
+                        self.emit_paren_expr(a, sink)?;
                     }
                     sink.body.write(b".matmul(")?;
                     if let Some(Arg::Pos(b)) = call.args.args.get(1) {
@@ -1215,7 +1245,8 @@ impl PythonTrans {
                 // py_getitem(obj, idx...) → obj[idx] (tuple key when 2+).
                 "py_getitem" if call.args.args.len() >= 2 => {
                     if let Some(Arg::Pos(o)) = call.args.args.first() {
-                        self.expr(o, sink)?;
+                        // PLAN-598 D1: `(a + b)[i]` must not emit as `a + b[i]`.
+                        self.emit_paren_expr(o, sink)?;
                     }
                     sink.body.write(b"[")?;
                     let mut first = true;
@@ -1233,7 +1264,8 @@ impl PythonTrans {
                 // statement context only (expression lowering is meaningless).
                 "py_setitem" if call.args.args.len() >= 3 => {
                     if let Some(Arg::Pos(o)) = call.args.args.first() {
-                        self.expr(o, sink)?;
+                        // PLAN-598 D1: same compound-receiver paren discipline.
+                        self.emit_paren_expr(o, sink)?;
                     }
                     sink.body.write(b"[")?;
                     let idx_args = call.args.args.len() - 2;
@@ -1271,7 +1303,8 @@ impl PythonTrans {
                 // py_call0(fn, args...) → fn(args...).
                 "py_call0" if !call.args.args.is_empty() => {
                     if let Some(Arg::Pos(f)) = call.args.args.first() {
-                        self.expr(f, sink)?;
+                        // PLAN-598 D1: `(a + b)(x)` must not emit as `a + b(x)`.
+                        self.emit_paren_expr(f, sink)?;
                     }
                     sink.body.write(b"(")?;
                     let mut first = true;
@@ -1292,7 +1325,9 @@ impl PythonTrans {
                     if call.args.args.len() >= 2 {
                         // Emit obj
                         if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
-                            self.expr(obj_expr, sink)?;
+                            // PLAN-598 D1 (P539-D3): `(a + b).sum()` must not
+                            // emit as `a + b.sum()`.
+                            self.emit_paren_expr(obj_expr, sink)?;
                         }
                         sink.body.write(b".")?;
                         // Emit method name (must be a string literal)
@@ -1321,7 +1356,9 @@ impl PythonTrans {
                 "py_getattr" => {
                     if call.args.args.len() == 2 {
                         if let Some(Arg::Pos(obj_expr)) = call.args.args.first() {
-                            self.expr(obj_expr, sink)?;
+                            // PLAN-598 D1: `(a + b).attr` must not emit as
+                            // `a + b.attr`.
+                            self.emit_paren_expr(obj_expr, sink)?;
                         }
                         sink.body.write(b".")?;
                         if let Some(Arg::Pos(Expr::Str(attr))) = call.args.args.get(1) {
@@ -1374,6 +1411,34 @@ impl PythonTrans {
     }
 
     /// Emit a plain function call without any builtin mapping
+    /// PLAN-598 D1 (P539-D3): emit a sugar receiver wrapped in parentheses.
+    ///
+    /// The member-access sugar arms (`py_call`/`py_call_may`/`py_getattr`/
+    /// `py_matmul`/`py_getitem`/`py_setitem`/`py_call0`) splice the receiver
+    /// expression right before a `.`/`[`/`(` — a compound receiver like
+    /// `t + tensor([1,1,1])` then rebinds the member access to the last
+    /// operand (`t + tensor(..).sum()`). Python parens are always equivalent,
+    /// so we emit them unconditionally instead of maintaining a
+    /// precedence-judgement table.
+    fn emit_paren_expr(&mut self, e: &Expr, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b"(")?;
+        self.expr(e, sink)?;
+        sink.body.write(b")")?;
+        Ok(())
+    }
+
+    /// PLAN-598 D2: a statement list lowers to a single lambda expression iff
+    /// it is exactly one expression (or one `return e`), unwrapping nested
+    /// statement-block layers the parser may add around closure bodies.
+    fn block_single_expr(stmts: &[Stmt]) -> Option<Expr> {
+        match stmts {
+            [Stmt::Expr(e)] => Some(e.clone()),
+            [Stmt::Return(e)] => Some((**e).clone()),
+            [Stmt::Block(inner)] => Self::block_single_expr(&inner.stmts),
+            _ => None,
+        }
+    }
+
     fn emit_plain_call(&mut self, call: &Call, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         let _ = out;
@@ -3015,6 +3080,38 @@ mod tests {
         // Plan 567 T14: with-as 块形态回译（parser 规范序列 → with e as x:）。
         test_a2p("567_with_as/001_with_as").unwrap();
         test_a2p("16_python_std/002_method_map").unwrap();
+    }
+
+    // PLAN-598 T-05 (P539-D3): compound receivers emit parenthesized —
+    // `(1 + 2).bit_length()`, never `1 + 2.bit_length()`.
+    #[test]
+    fn test_16_003_py_call_compound() {
+        test_a2p("16_python_std/003_py_call_compound").unwrap();
+    }
+
+    // PLAN-598 T-05 (DIV-PY-CLOSURE-1 a2py facet): single-expression block
+    // bodies (and bare `return e`) lower to clean lambdas.
+    #[test]
+    fn test_05_013_lambda_block() {
+        test_a2p("05_expressions/013_lambda_block").unwrap();
+    }
+
+    // PLAN-598 D2: statement-body closures (bindings / multiple statements)
+    // are an explicit diagnostic, never the old silent `lambda x: {...}` set
+    // literal.
+    #[test]
+    fn test_lambda_statement_body_diagnostic() {
+        let src = "fn main() {\n    let g = (x) => {\n        let y = x + 1\n        y * 2\n    }\n    print(g(3))\n}\n";
+        let _scope = crate::scope_manager::ScopeManager::new();
+        let mut parser = Parser::from(src);
+        let ast = parser.parse().unwrap();
+        let mut sink = Sink::new("lambda_statement_body".into());
+        let mut trans = PythonTrans::new("lambda_statement_body".into());
+        let err = trans.trans(ast, &mut sink).expect_err("must diagnose");
+        assert!(
+            err.to_string().contains("statement-body closures"),
+            "unexpected error: {err}"
+        );
     }
 
     // Plan 283 Task 2.2: Static method decorator test

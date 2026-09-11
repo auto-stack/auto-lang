@@ -447,6 +447,41 @@ fn create_c_shim(
                     _vm.push_i64_vm(task, r);
                     return Ok(());
                 }
+                // Plan 597 (004 §5③): autoterm engine scalar face — three
+                // signature shapes not previously reachable.
+                // --- ptr fn(int, int, cstr)  autoterm_engine_spawn ---
+                ([CTypeDesc::Int, CTypeDesc::Int, CTypeDesc::CStr], CTypeDesc::Ptr) => {
+                    let f: fn(i32, i32, *const std::ffi::c_char) -> *mut std::ffi::c_void =
+                        std::mem::transmute(fp);
+                    let r = f(
+                        args_i32.get(0).copied().unwrap_or(0),
+                        args_i32.get(1).copied().unwrap_or(0),
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                    );
+                    _vm.push_i64_vm(task, r as i64);
+                    return Ok(());
+                }
+                // --- void fn(ptr, cstr, size_t)  autoterm_engine_write_input ---
+                ([CTypeDesc::Ptr, CTypeDesc::CStr, CTypeDesc::Size], CTypeDesc::Void) => {
+                    let f: fn(*mut std::ffi::c_void, *const std::ffi::c_char, usize) =
+                        std::mem::transmute(fp);
+                    f(
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        args_i64.get(0).copied().unwrap_or(0) as usize,
+                    );
+                    return Ok(());
+                }
+                // --- void fn(ptr, int, int)  autoterm_engine_resize ---
+                ([CTypeDesc::Ptr, CTypeDesc::Int, CTypeDesc::Int], CTypeDesc::Void) => {
+                    let f: fn(*mut std::ffi::c_void, i32, i32) = std::mem::transmute(fp);
+                    f(
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                        args_i32.get(0).copied().unwrap_or(0),
+                        args_i32.get(1).copied().unwrap_or(0),
+                    );
+                    return Ok(());
+                }
                 // --- double fn(double, double)  difftime ---
                 // Already handled by the Double, Double -> Double arm above.
 
@@ -479,8 +514,29 @@ pub fn load_builtin_manifest(header: &str) -> Option<CHeaderManifest> {
     auto_bindgen::extractor::get_builtin_manifest(clean)
 }
 
+/// Plan 597 (004 §5③): load a manifest from a JSON file path (non-builtin
+/// datasets, e.g. the autoterm engine scalar subset shipped next to a
+/// fixture). Resolution is as-given (absolute or CWD-relative) — callers
+/// that need source-relative placement must resolve beforehand.
+pub fn load_manifest_file(path: &str) -> Option<CHeaderManifest> {
+    let text = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
 #[cfg(test)]
 mod tests {
+    /// Plan 597: JSON-file manifest loading (non-builtin datasets).
+    #[test]
+    fn load_manifest_file_reads_engine_subset() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/test/vm_engine_face/engine_face.json");
+        let m = load_manifest_file(path).expect("engine_face.json loads");
+        assert_eq!(m.library, "autoterm_core");
+        assert_eq!(m.functions.len(), 8);
+        assert!(m.functions.iter().any(|f| f.name == "autoterm_engine_spawn"));
+        // buffer/out-param symbols intentionally absent (VM-unreachable face)
+        assert!(!m.functions.iter().any(|f| f.name == "autoterm_engine_row_text"));
+    }
+
     use super::*;
 
     #[test]

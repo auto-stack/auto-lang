@@ -36,6 +36,17 @@ native 函数注册体系、Rust/C FFI 动态加载、标准库 shim。对应代
   SetConsoleCtrlHandler）在 `load_header` 注册期即返回
   `VMError::FFI`（清晰报错替代 panic/静默误调）；封送循环另有同语义
   防御臂。回调消费走 a2c 后端（闭包→函数指针，Plan 060）。
+- **use.c 点式形态（plan-597）**：`use.c <header>` / `use.c "file.json"`
+  由 use_scanner 识别为 C 导入（c_import），不再当模块路径解析——此前
+  任何 VM 模式 `use.c`（含 `<math.h>`）均报 Module not found
+  （Plan 216 潜伏缺口，597 实测坐实修复）。
+- **缓冲/出参型签名 = VM 封送不可达边界（plan-597，扩展 Plan 267
+  边界实证）**：数组/指针出参收集形签名（实例：autoterm 引擎
+  take_dirty_rows/row_text/row_style/cursor 4 符号——out 缓冲 + cap +
+  返回计数）无封送路径，c_ffi 不为其设分派臂；此类面走 a2c（C 母语
+  数组取址，004_engine_face 全量实证）或 004⑥ a2r 生成器轨道。
+  标量子集经 JSON manifest + 分派臂可达（fn(int,int,cstr)→ptr /
+  fn(ptr,cstr,size)→void / fn(ptr,int,int)→void；VFACE_OK 冒烟）。
 
 ### dep 方法 shim 包（三方 crate 动态加载）
 
