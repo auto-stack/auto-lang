@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-605
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: real-video-playback
 author: [Antigravity]
 created_at: 2026-09-11
 updated_at: 2026-09-11
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 
 # /auto-plan:review 结束时填写：
@@ -175,48 +175,57 @@ affects: [auto-lang/ui, examples/ui/030-video-player, examples/ui/019-video-app]
 
 ## 8. 执行步骤
 
-### T-01: 编译器支持原生 `video` / `audio` 标签
+### [x] T-01: 编译器支持原生 `video` / `audio` 标签 [✅ 已完成: commit c3895d8a9, map_tag 直通已打通并通过 unit test 与 schema_drift]
 - **文件**：`crates/auto-lang/src/ui_gen/vue.rs`
 - **操作**：在 `map_tag` 函数中添加 `video`, `audio`, `source`, `track` 的原生直通映射。
 - **验证**：`cargo check -p auto-lang`，并针对包含 `video` 的测试用例执行 `cargo test`。
 
-### T-02: 030-video-player 搭建后端与引入媒体源
+### [x] T-02: 030-video-player 搭建后端与引入媒体源 [✅ 已完成: commit 74c48779c]
 - **文件**：`examples/ui/030-video-player/pac.at`, `examples/ui/030-video-player/src/back/api.at`, `examples/ui/030-video-player/src/back/db.at`
-- **操作**：配置 `api: "rust"`, `back_port: 8330`；创建后端接口与视频种子数据（包含真实的有效视频测试流 URL / 文件路径）。
+- **操作**：配置 `api: "rust"`, `back_port: 8330`；创建后端接口与视频种子数据（包含 5 条真实的有效视频测试流 URL）。
 - **验证**：`auto run` 后访问 `http://127.0.0.1:8330/api/videos` 返回有效 JSON。
 
-### T-03: 030-video-player 前端接入真视频标签与播控联动
+### [x] T-03: 030-video-player 前端接入真视频标签与播控联动 [✅ 已完成: commit 3f8dbd325]
 - **文件**：`examples/ui/030-video-player/src/front/app.at`
-- **操作**：将渐变色占位区域改造为 `<video>` 播放视口，绑定 `src`，并与 OSD 控制条、播放列表联动；针对 VM 模式保留海报与降级保护。
-- **验证**：`auto gen` 检查生成的 SFC 包含 `<video>` 标签。
+- **操作**：将渐变色占位区域改造为 `<video>` 播放视口，绑定 `current_video_url`，并与 OSD 控制条、播放列表联动；针对 VM 模式保留海报与降级保护。
+- **验证**：Vue 生成 SFC 包含 `<video :src="current_video_url" class="...">` 标签。
 
-### T-04: 030-video-player 双端测试验证
+### [x] T-04: 030-video-player 双端测试验证 [✅ 已完成: commit d4fc28e69]
 - **文件**：`examples/ui/030-video-player/tests/smoke.spec.ts`, `examples/ui/030-video-player/tests/vm-smoke.mjs`
 - **操作**：更新 Playwright 测试增加 `<video>` 元素和真实属性断言；运行 VM MCP 冒烟测试。
-- **验证**：Playwright 测试全绿，VM 冒烟全绿。
+- **验证**：Playwright 9/9 passed 全绿，VM 冒烟 ALL PASS。
 
-### T-05: 019-video-app 后端扩充视频源与观看页升级
-- **文件**：`examples/ui/019-video-app/src/back/db.at`, `examples/ui/019-video-app/src/front/pages/watch.at`
-- **操作**：在后端 `Video` 增加 `video_url`；在观看页将占位色块替换为真实 `<video>` 播放器。
-- **验证**：`auto gen` 成功输出，Vue 前端正常载入真实视频标签。
+### [x] T-05: 019-video-app 后端扩充视频源与观看页升级 [✅ 已完成: commit 20221cb02]
+- **文件**：`examples/ui/019-video-app/src/back/api.at`, `examples/ui/019-video-app/src/back/db.at`, `examples/ui/019-video-app/src/front/pages/watch.at`
+- **操作**：在后端 `Video` 增加 `video_url: str` 并为全部 12 条种子视频填充有效 CDN 视频 URL；在观看页将占位色块替换为真实 `<video>` 播放器，绑定 `:src=".video.video_url"`；将 `back_port` 设为 `8019`（规避 Windows Hyper-V 8254-8353 端口排他区间）；`rust_ui::start_api_server` 自动同步最新后端代码。
+- **验证**：`http://127.0.0.1:8019/api/videos` 正常返回全量视频元数据及 `video_url`；`pnpm run build` 构建成功。
 
-### T-06: 019-video-app 测试验证与全局回归
-- **文件**：`examples/ui/019-video-app/tests/smoke.spec.ts`
+### [x] T-06: 019-video-app 测试验证与全局回归 [✅ 已完成: commit 20221cb02]
+- **文件**：`examples/ui/019-video-app/tests/smoke.spec.ts`, `examples/ui/019-video-app/tests/vm-smoke.mjs`
 - **操作**：运行 019 的 Playwright 10/10 冒烟套件及 VM 冒烟测试。
-- **验证**：Playwright 10/10 PASS，VM 冒烟 PASS，`cargo check -p auto-lang` clean。
+- **验证**：Playwright 10 passed (29.0s) 全绿，VM 冒烟 PASS，`cargo check -p auto-lang -p auto` 0 errors clean。
 
 ---
 
 ## 9. 复审记录
 
-- **stage**: new
+- **stage**: review
 - **plan_id**: PLAN-605
 - **revision**: 1
 - **outcome**: pass
-- **next**: work (T-01)
+- **reviewer**: Antigravity (Pair Programming Review Gate)
+- **review_checklist**:
+  - [x] **Checklist Audit**: AC-01 至 AC-06 全部 100% 达成。
+  - [x] **Workaround Elimination**: 消除死循环或 ad-hoc 轮询；消除了硬编码假播放器占位符；修正了 `pac.at` 端口冲突；优化了 `start_api_server` 后端同步机制。
+  - [x] **Quality Standards**:
+    - 030-video-player: Playwright 9/9 passed, VM smoke ALL PASS
+    - 019-video-app: Playwright 10/10 passed, VM smoke PASS
+    - 编译器与 CLI: `cargo check -p auto-lang -p auto` clean
+- **next**: merge (master)
 
 ---
 
 ## 10. 待澄清事项
 
-1. **测试视频资产体积**：为防止 git 仓库膨胀，本计划采用轻量开源的公共测试视频片段（如 Big Buck Bunny 示例 WebM/MP4）或本地微小（<500KB）测试视频，避免引入大体积多媒体文件。
+1. **测试视频资产体积**：为防止 git 仓库膨胀，本计划采用轻量开源的公共测试视频片段（如 Big Buck Bunny / Elephants Dream 等标准测试 URL），未向 git 仓库引入任何二进制媒体大文件。
+
