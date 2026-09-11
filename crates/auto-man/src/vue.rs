@@ -5549,6 +5549,11 @@ fn desktop_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
 /// the default checkout alike the sibling resolves — plus the Stage B P-3
 /// apps container `../auto-os/apps` whose every pac.at-carrying direct
 /// subdirectory expands into one local app root (id = subdirectory name).
+/// PLAN-008: the default arm further appends the two auto-os top-level
+/// gallery roots (`ui-gallery` / `widgets-gallery`) via the Stage B P-5
+/// resolution order (`app_registry::gallery_extra_roots` vm-track parity);
+/// the `AUTO_DESKTOP_APPS_EXTRA` full-replace arm doubles as this track's
+/// gallery off-switch.
 /// Missing siblings are silently skipped (desktop-host must keep working in
 /// solo checkouts).
 fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
@@ -5606,6 +5611,19 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
                 if !out.iter().any(|(existing, _)| existing == &id) {
                     out.push((id, root));
                 }
+            }
+        }
+        // PLAN-008: top-level gallery roots (ui-gallery / widgets-gallery) via
+        // the Stage B P-5 resolution order — vm-track parity with
+        // app_registry::gallery_extra_roots. The AUTO_DESKTOP_APPS_EXTRA
+        // full-replace arm above stays this track's gallery off-switch (the
+        // desktop.ps1/sh wrappers append the two roots explicitly); no
+        // separate storage gate on this track (PLAN-008 §4).
+        for (id, root) in
+            auto_lang::ui::app_registry::gallery_extra_roots_from(None, parent)
+        {
+            if !out.iter().any(|(existing, _)| existing == &id) {
+                out.push((id, root));
             }
         }
     }
@@ -6001,6 +6019,11 @@ mod tests {
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("pac.at"), "name: \"x\"\n").unwrap();
         }
+        // PLAN-008：画廊两件随迁 auto-os 顶层——fixture 同布局（resolve 只验
+        // is_dir），避免主检出兜底候选泄入真实画廊。
+        for name in ["ui-gallery", "widgets-gallery"] {
+            std::fs::create_dir_all(os_root.join(name)).unwrap();
+        }
         let fake_repo = tmp.path().join("fake-repo");
         std::fs::create_dir_all(&fake_repo).unwrap();
         std::fs::write(fake_repo.join("pac.at"), "name: \"fk\"\n").unwrap();
@@ -6025,6 +6048,7 @@ mod tests {
                 }
             }
         }
+        vm_roots.extend(auto_lang::ui::app_registry::gallery_extra_roots_from(None, tmp.path()));
         assert_eq!(
             vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
             vm_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
@@ -6037,9 +6061,50 @@ mod tests {
         );
         assert_eq!(
             vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            vec!["os-config", "alpha", "beta", "repoapp"],
-            "三源齐备：单根 + 容器两子 + manifest repo"
+            vec!["os-config", "alpha", "beta", "repoapp", "ui-gallery", "widgets-gallery"],
+            "四源齐备：单根 + 容器两子 + manifest repo + 顶层画廊两件（PLAN-008）"
         );
+    }
+
+    /// PLAN-008 测试设计 5：缺省臂画廊根——旧设计的 apps_dir 兄弟锚定随
+    /// Stage B P-5 迁址重锚为 `resolve_os_top_dir` 解析序（AUTO_OS_ROOT →
+    /// 兄弟 → 主检出）；root_dir 与 auto-os **异根**布局钉死锚定不依赖
+    /// 主根。AUTO_DESKTOP_APPS_EXTRA 全额替换语义不变（env 臂早返回，
+    /// 画廊不在——本轨画廊关断 = 该 env 整体覆盖）。
+    #[test]
+    fn desktop_extra_app_roots_default_includes_galleries() {
+        std::env::remove_var("AUTO_OS_ROOT");
+        std::env::remove_var("AUTO_DESKTOP_APPS_EXTRA");
+        let tmp = tempfile::tempdir().unwrap();
+        for name in ["ui-gallery", "widgets-gallery"] {
+            std::fs::create_dir_all(tmp.path().join("auto-os").join(name)).unwrap();
+        }
+        // fixture manifest 占位兄弟候选——阻断主检出 manifest 兜底泄入。
+        std::fs::write(
+            tmp.path().join("auto-os").join("apps.manifest"),
+            r#"{ "apps": [] }"#,
+        )
+        .unwrap();
+        // root_dir 与 auto-os 异根：兄弟臂经 root_dir.parent() 解析。
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let roots = desktop_extra_app_roots(&project);
+        assert_eq!(
+            roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vec!["ui-gallery", "widgets-gallery"],
+            "缺省臂恰两画廊根（解析序兄弟臂命中，固定次序）"
+        );
+        // env 全额替换：AUTO_DESKTOP_APPS_EXTRA 设置时画廊不在。
+        let solo = tmp.path().join("solo-app");
+        std::fs::create_dir_all(&solo).unwrap();
+        std::env::set_var("AUTO_DESKTOP_APPS_EXTRA", &solo);
+        let roots = desktop_extra_app_roots(&project);
+        assert_eq!(
+            roots,
+            vec![("solo-app".to_string(), solo)],
+            "env 臂全替换：仅注入根，画廊不并（PLAN-008 §4 vue 轨关断语义）"
+        );
+        std::env::remove_var("AUTO_DESKTOP_APPS_EXTRA");
     }
 
     /// PLAN-063 Phase B T14 (KD 061 D12): 嵌套冗余目录被移除;
