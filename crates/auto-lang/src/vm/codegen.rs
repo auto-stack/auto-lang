@@ -5402,6 +5402,8 @@ impl Codegen {
         const NATIVE_PY_RAISE: u16 = 479;
         // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
         const NATIVE_PY_INT: u16 = 480;
+        // Plan 602 (D2): py_subclass 类派生工厂。
+        const NATIVE_PY_SUBCLASS: u16 = 481;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5436,6 +5438,8 @@ impl Codegen {
                 reg.register_with_id("py.py_call_kw_may", NATIVE_PY_CALL_KW_MAY);
                 reg.register_with_id("py.py_raise", NATIVE_PY_RAISE);
                 reg.register_with_id("py.py_int", NATIVE_PY_INT);
+                // Plan 602 (D2): Python 类派生工厂。
+                reg.register_with_id("py.py_subclass", NATIVE_PY_SUBCLASS);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5489,6 +5493,8 @@ impl Codegen {
             "py_call_kw_may",
             "py_raise",
             "py_int",
+            // Plan 602 (D2): Python 类派生工厂（exec 模板 + 回调挂载，481）。
+            "py_subclass",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(

@@ -35,6 +35,11 @@ pub struct PythonTrans {
     /// form is emitted — assembles a `_auto_may` try/except helper into the
     /// module preamble (Python has no inline catch expression).
     needs_may_helper: bool,
+    /// Plan 602 (D3): set when a `py_subclass(...)` call is emitted —
+    /// assembles the `_auto_subclass` exec+setattr class factory into the
+    /// module preamble (mirrors the VM native arm; lambdas setattr as real
+    /// functions so self binds exactly like the VM track's def wrappers).
+    needs_subclass_helper: bool,
     #[allow(dead_code)]
     name: AutoStr,
 }
@@ -99,6 +104,7 @@ impl PythonTrans {
             local_var_types: HashMap::new(),
             scalar_enums: HashSet::new(),
             needs_may_helper: false,
+            needs_subclass_helper: false,
             name,
         }
     }
@@ -1222,6 +1228,25 @@ impl PythonTrans {
                 "py_int" if call.args.args.len() == 1 => {
                     sink.body.write(b"int(")?;
                     if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, sink)?;
+                    }
+                    sink.body.write(b")")?;
+                    return Ok(());
+                }
+                // Plan 602 (D3): py_subclass(name, base, methods) →
+                // _auto_subclass(...) — the exec+setattr factory mirroring
+                // the VM native. Str method values pass through as Python
+                // string literals; closure values lower to lambdas via the
+                // existing object-literal emission (the helper setattr's
+                // them as real functions — self binds like the VM track's
+                // def wrappers).
+                "py_subclass" if call.args.args.len() == 3 => {
+                    self.needs_subclass_helper = true;
+                    sink.body.write(b"_auto_subclass(")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if i > 0 {
+                            sink.body.write(b", ")?;
+                        }
                         self.arg(arg, sink)?;
                     }
                     sink.body.write(b")")?;
@@ -2526,6 +2551,32 @@ if __name__ == \"__main__\":
         return f()
     except Exception:
         return default
+
+")?;
+        }
+
+        // Plan 602 (D3): the py_subclass factory — exec a class template
+        // with indent-normalized Str methods, setattr the callable values
+        // (lambdas) as bound methods. Indent rule matches the VM native:
+        // uniform +4 per non-empty source line.
+        if self.needs_subclass_helper {
+            import_buf.write(b"def _auto_subclass(name, base, methods):
+    ns = {\"__base__\": base}
+    body = \"\"
+    cbs = {}
+    for m, v in methods.items():
+        if callable(v):
+            cbs[m] = v
+        else:
+            for ln in v.split(\"\\n\"):
+                body += (\"    \" + ln + \"\\n\") if ln.strip() else \"\\n\"
+    if body == \"\":
+        body = \"    pass\\n\"
+    exec(\"class \" + name + \"(__base__):\\n\" + body, ns)
+    cls = ns[name]
+    for m, v in cbs.items():
+        setattr(cls, m, v)
+    return cls
 
 ")?;
         }

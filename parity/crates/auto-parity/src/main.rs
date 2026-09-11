@@ -490,6 +490,11 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // compiled methods pack (594's five libs all ride native_catalog for
         // type faces). Network-gated like p10.
         ("p11", &["uuid_real"]),
+        // PLAN-602 (py class derivation factory): custom nn.Module/Dataset
+        // subclasses with Auto callback methods through the py_subclass
+        // exec factory. Seeded torch CPU; no network gating (torch env only,
+        // same as p8/p9).
+        ("p12", &["py_torch_subclass"]),
         // Plan 369 (Python parity): three-way parity against a Python oracle
         // (AutoVM vs a2py vs native Python). The mode is auto-detected from the
         // library's `tests/python/` directory by `detect_parity_mode`.
