@@ -1226,6 +1226,11 @@ pub enum DesktopCommand {
     /// 执行臂 set_dark_mode 即时生效 + storage `shell.appearance.theme`
     /// 持久化 + 全 App 视图标脏（语义 token 构建期解析，需重建换色）。
     SetTheme(bool),
+    /// PLAN-601 T-05：命名主题热切换（`set_theme_name	<内置名>`）。执行臂
+    /// style::theme::set_theme（THEME_EPOCH 失效回路）+ config.theme_name
+    /// 持久化 + 全 App 视图标脏；与 SetTheme(bool)（mode）正交。未知名
+    /// 解析期拒绝（窄值跳过，同 set_dock_* 门）。
+    SetThemeName(String),
     /// PLAN-526 T8：窗口最小化（dock 右键菜单 `win_min\t<wid>`；落
     /// `WmCommand::Minimize` 同款状态机——窗隐藏、任务栏保留）。
     MinWindow(Wid),
@@ -1384,6 +1389,10 @@ impl DesktopCommand {
                     if *dark { "dark" } else { "light" }
                 )
             }
+            // PLAN-601 T-05：命名主题动词（值域 = registry 内置五名）。
+            DesktopCommand::SetThemeName(name) => {
+                format!("set_theme_name{}{}", Self::FIELD_SEP, name)
+            }
             // Plan 540 T3：配置写动词族（值域窄——transparency 三档、
             // notes 1/0、pinned csv、wallpapers_dir 直传）。
             DesktopCommand::SetTransparency(level) => {
@@ -1509,6 +1518,10 @@ impl DesktopCommand {
                     "set_theme" => match arg {
                         "dark" => Some(DesktopCommand::SetTheme(true)),
                         "light" => Some(DesktopCommand::SetTheme(false)),
+                        // PLAN-601 T-05：内置主题名 → 命名主题动词（词表门）。
+                        _ if crate::ui::style::theme::registry::builtin(arg).is_some() => {
+                            Some(DesktopCommand::SetThemeName(arg.to_string()))
+                        }
                         _ => None,
                     },
                     // PLAN-526 T8/T14：win_min / set_wallpaper（arg 直传）。
@@ -1996,6 +2009,15 @@ impl DesktopSession {
             settings_fields: ShellFields::default(),
             desktop_fields: ShellFields::default(),
         });
+        // PLAN-601 R1（复审）：boot 读回——config.at 持久的 theme_name 在
+        // 此激活（此前只有动词臂/外写 diff 臂会 set_theme，重启后主题不
+        // 存活）。首帧前激活 = 零重建成本；未知名由 set_theme 拒绝（保持
+        // 缺省），epoch 自增走既有失效回路（此时视图未建，无重建代价）。
+        // 普通（非 desktop）app 运行不经此处——桌面单源 config 不外溢，
+        // 示例轨缺省保持零变化。
+        if let Some(name) = self.desktop.config.theme_name.as_deref() {
+            crate::ui::style::theme::set_theme(name);
+        }
     }
 
     /// desktop 模式判定（I3 配置位）。

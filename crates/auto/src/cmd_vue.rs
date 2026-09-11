@@ -1610,8 +1610,19 @@ import {0} from './components/{0}.vue'
 "#, widget_name)
 }
 
+/// PLAN-601 T-09/D5：色变量块改 registry 装配——daylight/midnight 两主题块
+/// 的核心 19 键 + sidebar 8 键取内置 cli-vue 双面 canonical 渲染（值与原手
+/// 写模板逐值全等——装配前已机械对拍零漂移）。裸 :root 的 sidebar 兜底块、
+/// forest/sunset/ocean 附加主题、.dark 类回退块、preview-*/code-* 编辑器
+/// token、vis-* 图表族与 mono 覆盖为模板资产（registry 闭集词表外），留
+/// 原文。PLAN-571 secondary 分档注释随逐字块退役（值契约由 registry 互锁
+/// 测试守护，块=产物、值=契约）。
 fn generate_index_css() -> String {
-    r#"@tailwind base;
+    use auto_lang::design_tokens::registry;
+    let cli_vue = registry::builtin("cli-vue")
+        .expect("内置主题 cli-vue 恒在（PLAN-601 registry 双面单源）");
+    let mut css = String::new();
+    css.push_str(r#"@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -1631,40 +1642,15 @@ fn generate_index_css() -> String {
   /* ===== Daylight (Default) ===== */
   [data-theme="daylight"],
   :root:not([data-theme]) {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    /* PLAN-571: secondary 与 muted 分档（≠--muted 210 40% 96.1%）——暖灰一档深 #e3ddd1，
-       与 theme.rs / ui_gen 互锁（40 24% 85.5% ≈ #e3ddd1）。 */
-    --secondary: 40 24% 85.5%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 239 84% 67%;
-    --preview-bg: 220 14% 96%;
+"#);
+    css.push_str(&registry::render_core(cli_vue, false));
+    css.push_str(r#"    --preview-bg: 220 14% 96%;
     --preview-fg: 220 9% 46%;
     --code-bg: 220 13% 9%;
     --code-fg: 210 40% 98%;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 239 84% 67%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 239 84% 67%;
-    --vis-primary-color: var(--primary);
+"#);
+    css.push_str(&registry::render_sidebar(cli_vue, false));
+    css.push_str(r#"    --vis-primary-color: var(--primary);
     --vis-secondary-color: 217 91% 60%;
     --vis-tertiary-color: 168 76% 46%;
     --vis-quaternary-color: 45 93% 48%;
@@ -1673,44 +1659,22 @@ fn generate_index_css() -> String {
 
   /* ===== Midnight ===== */
   [data-theme="midnight"] {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 13%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 239 84% 77%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 215 25% 27%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 239 84% 77%;
-    --preview-bg: 217 33% 12%;
+"#);
+    css.push_str(&registry::render_core(cli_vue, true));
+    css.push_str(r#"    --preview-bg: 217 33% 12%;
     --preview-fg: 215 20% 65%;
     --code-bg: 222 47% 7%;
     --code-fg: 210 40% 98%;
-    --sidebar-background: 222 47% 9%;
-    --sidebar-foreground: 210 40% 90%;
-    --sidebar-primary: 239 84% 77%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 217 33% 15%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 18%;
-    --sidebar-ring: 239 84% 77%;
-    --vis-primary-color: var(--primary);
+"#);
+    css.push_str(&registry::render_sidebar(cli_vue, true));
+    css.push_str(r#"    --vis-primary-color: var(--primary);
     --vis-secondary-color: 210 95% 70%;
     --vis-tertiary-color: 160 70% 55%;
     --vis-quaternary-color: 45 93% 56%;
     --vis-text-color: var(--muted-foreground);
   }
-
+"#);
+    css.push_str(r#"
   /* ===== Forest ===== */
   [data-theme="forest"] {
     --background: 100 20% 98%;
@@ -1973,9 +1937,9 @@ aside .router-link-exact-active {
   color: hsl(var(--primary));
   font-weight: 500;
 }
-"#.to_string()
+"#);
+    css
 }
-
 fn generate_utils_ts() -> String {
     r#"import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -1991,11 +1955,18 @@ export function cn(...inputs: ClassValue[]) {
 mod plan571_css_secondary_interlock_tests {
     /// 生成的 index.css 必须携带分档后的 --secondary（light 40 24% 85.5% /
     /// dark 215 25% 27%），且不得再现 light 下与 --muted 同值的旧写法。
-    /// PLAN-593 后色值单源在 auto_lang::design_tokens::registry；本函数仍为
-    /// 手写副本（P593-D5 在册——cli-vue 脚手架路径，Phase 2 收编或对齐 scaffold）。
+    /// PLAN-601 T-09/D5 后 daylight/midnight 块即 registry 装配（内置
+    /// cli-vue 双面）——本测试与 registry 渲染逐值等值断言构成双面互锁
+    /// （P593-D5 关债）。
     #[test]
     fn index_css_secondary_is_differentiated_from_muted() {
+        use auto_lang::design_tokens::registry;
         let css = super::generate_index_css();
+        let cli_vue = registry::builtin("cli-vue").unwrap();
+        assert!(css.contains(&registry::render_core(cli_vue, false)), "daylight 核心块须与 registry 渲染逐字等值");
+        assert!(css.contains(&registry::render_sidebar(cli_vue, false)), "daylight sidebar 块须与 registry 渲染逐字等值");
+        assert!(css.contains(&registry::render_core(cli_vue, true)), "midnight 核心块须与 registry 渲染逐字等值");
+        assert!(css.contains(&registry::render_sidebar(cli_vue, true)), "midnight sidebar 块须与 registry 渲染逐字等值");
         assert!(
             css.contains("--secondary: 40 24% 85.5%"),
             "light --secondary 应为 40 24% 85.5% (#e3ddd1 暖灰一档深)"

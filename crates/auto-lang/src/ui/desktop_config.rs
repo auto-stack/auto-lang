@@ -57,6 +57,9 @@ pub struct DesktopConfig {
     /// 壁纸目录（"" = 未配置；env/探测回退链在 boot 侧）。
     pub wallpapers_dir: String,
     pub dark_theme: bool,
+    /// PLAN-601 T-05：命名主题（registry 内置名；None = 轨缺省 stella）。
+    /// 与 dark_theme 正交——mode 选主题对内 light/dark，theme_name 选色板套。
+    pub theme_name: Option<String>,
     /// 虚拟窗底色透明度三档：`off` | `low` | `high`（518 G6；坏值回退 off）。
     pub transparency: String,
     pub notes_enabled: bool,
@@ -71,6 +74,7 @@ impl Default for DesktopConfig {
             wallpaper_path: String::new(),
             wallpapers_dir: String::new(),
             dark_theme: true,
+            theme_name: None,
             transparency: "off".to_string(),
             notes_enabled: true,
         }
@@ -134,6 +138,13 @@ pub fn parse_config(src: &str) -> DesktopConfig {
     }
     if let Some(v) = f.get("dark_theme").and_then(|v| parse_bool(v)) {
         cfg.dark_theme = v;
+    }
+    // PLAN-601 T-05：命名主题（非空串才收；词表校验在应用侧 set_theme）。
+    if let Some(v) = f.get("theme_name") {
+        let t = v.trim();
+        if !t.is_empty() {
+            cfg.theme_name = Some(t.to_string());
+        }
     }
     if let Some(v) = f.get("transparency") {
         if v == "off" || v == "low" || v == "high" {
@@ -217,6 +228,10 @@ pub fn serialize_config(cfg: &DesktopConfig) -> String {
         "    dark_theme : {}\n",
         if cfg.dark_theme { "true" } else { "false" }
     ));
+    // PLAN-601 T-05：命名主题（None 不落盘——文件面稳定，轨缺省 stella）。
+    if let Some(t) = &cfg.theme_name {
+        out.push_str(&format!("    theme_name : \"{t}\"\n"));
+    }
     out.push_str(&format!("    transparency : \"{}\"\n", cfg.transparency));
     out.push_str(&format!(
         "    notes_enabled : {}\n",
@@ -324,6 +339,29 @@ pub fn save_to(path: &std::path::Path, cfg: &DesktopConfig) -> std::io::Result<(
 
 #[cfg(test)]
 mod tests {
+
+    /// PLAN-601 T-05：theme_name 序列化/解析往返（None 不落盘稳定面）。
+    #[test]
+    fn theme_name_roundtrip() {
+        let mut cfg = DesktopConfig::default();
+        assert!(cfg.theme_name.is_none());
+        // None：序列化不含键
+        let ser = serialize_config(&cfg);
+        assert!(!ser.contains("theme_name"), "None 不落盘:
+{ser}");
+        // Some：落盘且往返
+        cfg.theme_name = Some("zinc".to_string());
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("theme_name : \"zinc\""), "{ser}");
+        let (back, migrated) = load_from(Some(&ser), &mut |_| None);
+        assert!(!migrated);
+        assert_eq!(back.theme_name.as_deref(), Some("zinc"));
+        // 空串 = 未配置（解析宽容）
+        let src_bad = ser.replace("theme_name : \"zinc\"", "theme_name : \"\"");
+        let (back2, _) = load_from(Some(&src_bad), &mut |_| None);
+        assert!(back2.theme_name.is_none());
+    }
+
     use super::*;
 
     /// 全字段好值：逐字段命中（含引号剥除与 CSV 拆分）。
@@ -374,6 +412,7 @@ mod tests {
             wallpaper_path: "builtin:inkwash".to_string(),
             wallpapers_dir: String::new(),
             dark_theme: false,
+            theme_name: None,
             transparency: "high".to_string(),
             notes_enabled: false,
         };
