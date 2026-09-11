@@ -396,7 +396,7 @@ impl<'a> AuraViewBuilder<'a> {
             } else if views.len() == 1 {
                 views.into_iter().next().unwrap()
             } else {
-                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
+                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
             };
         }
         // Fallback 内容（子作用域求值）
@@ -413,7 +413,7 @@ impl<'a> AuraViewBuilder<'a> {
             } else if views.len() == 1 {
                 views.into_iter().next().unwrap()
             } else {
-                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
+                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
             }
         }
     }
@@ -462,7 +462,7 @@ impl<'a> AuraViewBuilder<'a> {
         } else if views.len() == 1 {
             views.into_iter().next().unwrap()
         } else {
-            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
+            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
         }
     }
 
@@ -786,10 +786,10 @@ impl<'a> AuraViewBuilder<'a> {
                                 .collect();
                             if views.is_empty() { None }
                             else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
-                            else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }) }
+                            else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }) }
                         })
                         .collect();
-                    View::Column { children, spacing: 0, padding: 0, style: None, onclick: None }
+                    View::Column { children, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
                 };
                 let array: auto_val::Array = if has_inner_dot {
                     match self.resolve_iterable(iterable, bindings) {
@@ -869,7 +869,7 @@ impl<'a> AuraViewBuilder<'a> {
                                 spacing: 0,
                                 padding: 0,
                                 style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         })
                         }
                     })
@@ -880,7 +880,7 @@ impl<'a> AuraViewBuilder<'a> {
                     spacing: 0,
                     padding: 0,
                     style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
@@ -905,7 +905,7 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                 }
             }
@@ -949,7 +949,7 @@ impl<'a> AuraViewBuilder<'a> {
                             if matches!(v, View::Empty) { None } else { Some(v) }
                         })
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None };
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 if name == "component-card" || name == "component_card" || name == "componentcard" {
@@ -1140,7 +1140,7 @@ impl<'a> AuraViewBuilder<'a> {
                             let v = views.into_iter().next().unwrap();
                             if matches!(v, View::Empty) { None } else { Some(v) }
                         }
-                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }) }
+                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }) }
                     })
                     .collect();
                 View::Column {
@@ -1148,7 +1148,7 @@ impl<'a> AuraViewBuilder<'a> {
                     spacing: 0,
                     padding: 0,
                     style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
@@ -1187,7 +1187,7 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                 }
             }
@@ -1231,7 +1231,7 @@ impl<'a> AuraViewBuilder<'a> {
                             if matches!(v, View::Empty) { None } else { Some(v) }
                         })
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None };
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 if name == "component-card" || name == "component_card" || name == "componentcard" {
@@ -1291,22 +1291,34 @@ impl<'a> AuraViewBuilder<'a> {
     /// （沿 :2076 text onclick→Button 的事件提取先例；onclick/click 双键
     /// 收取，大小写不敏感由 aura_events_get_base 承担）。非三节点视图
     /// 静默忽略（行为持平）。
-    fn set_layout_onclick(
+    /// PLAN-002 B：同一提取点收拢 `oncontextmenu`（右键）——布局件在 Vue 轨
+    /// 早已泛映射 @contextmenu（:14470 元素级事件表），VM 此前只有 button/
+    /// mouse-area 挂点（526 Q6/Q9① 债）。
+    fn set_layout_events(
         &self,
         v: &mut View<DynamicMessage>,
         events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) {
-        let Some(event) = crate::aura::aura_events_get_base(events, "onclick")
+        let onclick = crate::aura::aura_events_get_base(events, "onclick")
             .or_else(|| crate::aura::aura_events_get_base(events, "click"))
-        else {
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_right_click = crate::aura::aura_events_get_base(events, "oncontextmenu")
+            .map(|event| self.event_to_message_with(event, bindings));
+        if onclick.is_none() && on_right_click.is_none() {
             return;
-        };
-        let msg = self.event_to_message_with(event, bindings);
+        }
         match v {
-            View::Row { onclick, .. }
-            | View::Column { onclick, .. }
-            | View::Container { onclick, .. } => *onclick = Some(msg),
+            View::Row { onclick: oc, on_right_click: rc, .. }
+            | View::Column { onclick: oc, on_right_click: rc, .. }
+            | View::Container { onclick: oc, on_right_click: rc, .. } => {
+                if let Some(msg) = onclick {
+                    *oc = Some(msg);
+                }
+                if let Some(msg) = on_right_click {
+                    *rc = Some(msg);
+                }
+            }
             _ => {}
         }
     }
@@ -1373,19 +1385,19 @@ impl<'a> AuraViewBuilder<'a> {
             // Core layout widgets — recurse children with path tracking.
             "col" | "column" => {
                 let mut v = self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings);
-                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             "row" => {
                 let mut v = self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
-                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4 登记）；row 语义
             // 水平排布,贴底锚定由宿主 shell 层装配做。镜像 untracked 同名臂。
             "taskbar" => {
                 let mut v = self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
-                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             // PLAN-530 步骤7（W12）：toggle_group VM 映射——横排连体 button
@@ -1393,7 +1405,7 @@ impl<'a> AuraViewBuilder<'a> {
             "togglegroup" | "toggle-group" | "toggle_group" => {
                 let rewritten = self.toggle_group_rewrite_children(props, children, bindings);
                 let mut v = self.convert_row_tracked_ctx(props, &rewritten, path, id_map, probe, bindings);
-                self.set_layout_onclick(&mut v, events, bindings);
+                self.set_layout_events(&mut v, events, bindings);
                 v
             }
             // 组外裸 item → 单 button（组内由重写改道,不走此臂）。
@@ -1444,7 +1456,7 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
                 }
             }
             // PLAN-534: sheet/drawer styled 子臂（镜像 dialog 同名臂）。
@@ -1467,7 +1479,7 @@ impl<'a> AuraViewBuilder<'a> {
             | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
-                self.set_layout_onclick(&mut v, events, bindings);
+                self.set_layout_events(&mut v, events, bindings);
                 v
             }
             "sheet-close" | "sheet_close" | "sheetclose"
@@ -1494,7 +1506,7 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
                 }
             }
             "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
@@ -1516,7 +1528,7 @@ impl<'a> AuraViewBuilder<'a> {
             | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
-                self.set_layout_onclick(&mut v, events, bindings);
+                self.set_layout_events(&mut v, events, bindings);
                 v
             }
             "dialog-close" | "dialog_close" | "dialogclose" => {
@@ -1557,7 +1569,7 @@ impl<'a> AuraViewBuilder<'a> {
                     height: None,
                     center_x: false,
                     center_y: false,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                     style: Style::parse("w-full h-px bg-border my-1").ok(),
                 }
             }
@@ -1592,11 +1604,11 @@ impl<'a> AuraViewBuilder<'a> {
                     let mut enriched: Vec<AuraNode> = children.to_vec();
                     enriched.push(AuraNode::Text(AuraTextContent::Literal(stripped)));
                     let mut v = self.convert_container(props, &enriched, bindings);
-                    self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                    self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                     return v;
                 }
                 let mut v = self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings);
-                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             // Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 渲染
@@ -1838,7 +1850,7 @@ impl<'a> AuraViewBuilder<'a> {
                                 center_x: false,
                                 center_y: false,
                                 style: Some(st),
-                                onclick: None,
+                                onclick: None, on_right_click: None,
                             };
                         }
                     }
@@ -1899,7 +1911,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 422 P3: `popover` DSL 标签 —— 锚定弹层的应用侧入口
             // (contextmenu 坐标锚 / widget 锚两形态,见 convert_popover)。
             "popover" => {
-                self.convert_popover(props, children, path, id_map, probe, bindings)
+                self.convert_popover(props, events, children, path, id_map, probe, bindings)
             }
 
             // PLAN-050 T7 (C5): 图标组件臂（tracked 层镜像,见 convert_element
@@ -2214,7 +2226,7 @@ impl<'a> AuraViewBuilder<'a> {
                         } else if views.len() == 1 {
                             views.into_iter().next().unwrap()
                         } else {
-                            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
+                            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
                         };
                         if matches!(cell, View::Empty) {
                             continue;
@@ -2423,14 +2435,14 @@ impl<'a> AuraViewBuilder<'a> {
                 spacing: 0,
                 padding,
                 style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
             Some(RederivedLayout::Column) => View::Column {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
             None => {
                 let child_view = if child_views.is_empty() {
@@ -2443,7 +2455,7 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                 };
                 let mut builder = View::container(child_view).padding(padding);
@@ -2503,7 +2515,7 @@ impl<'a> AuraViewBuilder<'a> {
                 spacing: 0,
                 padding: 0,
                 style: Some(Style::default().add(StyleClass::ItemsCenter)),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
         };
 
@@ -2977,12 +2989,12 @@ impl<'a> AuraViewBuilder<'a> {
             // Core layout widgets
             "col" | "column" => {
                 let mut v = self.convert_column(props, children, bindings);
-                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             "row" => {
                 let mut v = self.convert_row(props, children, bindings);
-                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4）；row 语义。
@@ -3018,7 +3030,7 @@ impl<'a> AuraViewBuilder<'a> {
                 let mut path = Vec::new();
                 let mut id_map = crate::ui::debug_id_map::DebugIdMap::default();
                 let mut probe = crate::ui::debug::BuildProbe::default();
-                self.convert_popover(props, children, &mut path, &mut id_map, &mut probe, bindings)
+                self.convert_popover(props, events, children, &mut path, &mut id_map, &mut probe, bindings)
             }
             // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
@@ -3055,7 +3067,7 @@ impl<'a> AuraViewBuilder<'a> {
             "togglegroup" | "toggle-group" | "toggle_group" => {
                 let rewritten = self.toggle_group_rewrite_children(props, children, bindings);
                 let mut v = self.convert_row(props, &rewritten, bindings);
-                self.set_layout_onclick(&mut v, events, bindings);
+                self.set_layout_events(&mut v, events, bindings);
                 v
             }
             // 组外裸 item → 单 button（组内由重写改道,不走此臂）。
@@ -3104,7 +3116,7 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
                 }
             }
             // PLAN-534: sheet/drawer styled 子臂（untracked 镜像）。
@@ -3127,7 +3139,7 @@ impl<'a> AuraViewBuilder<'a> {
             | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row(&p, children, bindings);
-                self.set_layout_onclick(&mut v, events, bindings);
+                self.set_layout_events(&mut v, events, bindings);
                 v
             }
             "sheet-close" | "sheet_close" | "sheetclose"
@@ -3152,7 +3164,7 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None },
+                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
                 }
             }
             "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
@@ -3174,7 +3186,7 @@ impl<'a> AuraViewBuilder<'a> {
             | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row(&p, children, bindings);
-                self.set_layout_onclick(&mut v, events, bindings);
+                self.set_layout_events(&mut v, events, bindings);
                 v
             }
             "dialog-close" | "dialog_close" | "dialogclose" => {
@@ -3215,7 +3227,7 @@ impl<'a> AuraViewBuilder<'a> {
                     height: None,
                     center_x: false,
                     center_y: false,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                     style: Style::parse("w-full h-px bg-border my-1").ok(),
                 }
             }
@@ -3440,11 +3452,11 @@ impl<'a> AuraViewBuilder<'a> {
                     let mut enriched: Vec<AuraNode> = children.to_vec();
                     enriched.push(AuraNode::Text(AuraTextContent::Literal(stripped)));
                     let mut v = self.convert_container(props, &enriched, bindings);
-                    self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                    self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                     return v;
                 }
                 let mut v = self.convert_container(props, children, bindings);
-                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
 
@@ -3524,7 +3536,7 @@ impl<'a> AuraViewBuilder<'a> {
                         center_x: false,
                         center_y: false,
                         style: Style::parse(&format!("h-3 w-3 rounded-full {}", dot_bg)).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     let name_view = View::Text {
                         content: name,
@@ -3544,7 +3556,7 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: Style::parse("items-center gap-2 mb-4").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     // component-cards → Grid(cols=2, gap-3)
                     // Plan 409 §10 续 10: 设 CATEGORY_COLOR 供 component-card
@@ -3580,7 +3592,7 @@ impl<'a> AuraViewBuilder<'a> {
                                 spacing: 12,
                                 padding: 0,
                                 style: Style::parse("w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         });
                         }
                         View::Column {
@@ -3588,7 +3600,7 @@ impl<'a> AuraViewBuilder<'a> {
                             spacing: 12,
                             padding: 0,
                             style: Style::parse("w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                     };
                     return View::Column {
@@ -3596,7 +3608,7 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 16,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 // Plan 409 §10 组 E: preview-card / codeblock VM 识别。vue codegen
@@ -3621,14 +3633,14 @@ impl<'a> AuraViewBuilder<'a> {
                     let inner: View<DynamicMessage> = if child_views.len() == 1 {
                         child_views.into_iter().next().unwrap()
                     } else {
-                        View::Column { children: child_views, spacing: 8, padding: 0, style: None, onclick: None }
+                        View::Column { children: child_views, spacing: 8, padding: 0, style: None, onclick: None, on_right_click: None }
                     };
                     let preview_area = View::Container {
                         child: Box::new(inner),
                         padding: 0, width: None, height: None,
                         center_x: true, center_y: true,
                         style: Style::parse("min-h-[100px] w-full p-4").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     // Plan 409 §10 续 21: 合并 Code title 行与 Auto/Vue tab 行为一行
                     // toolbar:[Auto][Vue] ... [copy][chevron](展开/收起)。代码区在
@@ -3668,13 +3680,13 @@ impl<'a> AuraViewBuilder<'a> {
                             padding: 0, width: None, height: None,
                             center_x: false, center_y: false,
                             style: Style::parse(if active { "h-[2px] w-full bg-primary" } else { "h-[2px] w-full" }).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                         View::Column {
                             children: vec![btn, underline],
                             spacing: 0, padding: 0,
                             style: Style::parse("w-[72px]").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                     };
 let tabs_inner = View::Row {
@@ -3683,7 +3695,7 @@ let tabs_inner = View::Row {
                             mk_tab("Vue", "vue", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue)),
                         ],
                         spacing: 0, padding: 0, style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     let icon_btn_style = "px-2 py-1.5 text-xs text-muted-foreground bg-transparent";
                     let copy_btn = View::Button {
@@ -3716,13 +3728,13 @@ let tabs_inner = View::Row {
                         // Plan 411: tabs 贴 toolbar 左缘(vue 无容器内边距),右侧
                         // icon 组留 pr-2 呼吸位 —— 此前容器 px-2 让 Auto 左侧多出空白。
                         style: Style::parse("pr-2").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     let toolbar = View::Row {
                         children: vec![tabs_inner, right_icons],
                         spacing: 0, padding: 0,
                         style: Style::parse("items-center justify-between border-t bg-zinc-800 w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toolbar];
                     // 展开时:代码区(按 tab 选 auto/vue)。
@@ -3736,13 +3748,13 @@ let tabs_inner = View::Row {
                             child: Box::new(code_text),
                             padding: 0, width: None, height: None, center_x: false, center_y: false,
                             style: Style::parse("p-4 bg-zinc-950 border-t w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                         col_kids.push(code_area);
                     }
                     return View::Container {
                         child: Box::new(View::Column {
-                            children: col_kids, spacing: 0, padding: 0, style: None, onclick: None,
+                            children: col_kids, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         // Plan 411: p-[1px] 模拟 CSS border-box 语义 —— iced 的
@@ -3751,7 +3763,7 @@ let tabs_inner = View::Row {
                         // 露出边框,视觉上预览区比下方窄 1px。1px 内边距让子元素
                         // 整体收进边框,两侧对齐(vue 中 border 本就在 content box 外)。
                         style: Style::parse("rounded-lg border bg-zinc-900 w-full overflow-hidden p-[1px]").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 if tag == "codeblock" || tag == "code_block" || tag == "code-block" {
@@ -3771,7 +3783,7 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("px-4 py-2 border-b bg-zinc-800 text-zinc-400").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     // Plan 442 A6: lang-<token> class carries the language to
                     // the renderer's syntect highlight path (read-only code
@@ -3791,16 +3803,16 @@ let tabs_inner = View::Row {
                         child: Box::new(code_text),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("p-4").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     return View::Container {
                         child: Box::new(View::Column {
                             children: vec![header, code_area],
-                            spacing: 0, padding: 0, style: None, onclick: None,
+                            spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-zinc-950 overflow-hidden w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 // Plan 409 §10 续 16: table → 表格(Column[Row[cells]]),对齐 vue。
@@ -3813,7 +3825,7 @@ let tabs_inner = View::Row {
                     return View::Column {
                         children: views, spacing: 0, padding: 0,
                         style: Style::parse("border rounded w-full text-sm").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 if tag == "thead" || tag == "tbody" || tag == "tfoot"
@@ -3821,13 +3833,13 @@ let tabs_inner = View::Row {
                     let views: Vec<View<DynamicMessage>> = children
                         .iter().map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty)).collect();
-                    return View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None };
+                    return View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
                 }
                 if tag == "tr" || tag == "table-row" {
                     let views: Vec<View<DynamicMessage>> = children
                         .iter().map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty)).collect();
-                    return View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None };
+                    return View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
                 }
                 if tag == "th" || tag == "td" || tag == "table-head" || tag == "table-cell" {
                     let is_head = tag == "th" || tag == "table-head";
@@ -3861,7 +3873,7 @@ let tabs_inner = View::Row {
                     let content = if child_views.len() == 1 {
                         child_views.into_iter().next().unwrap()
                     } else if child_views.len() > 1 {
-                        View::Row { children: child_views, spacing: 0, padding: 0, style: None, onclick: None }
+                        View::Row { children: child_views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
                     } else {
                         let text = self.extract_children_text(children, bindings)
                             .or_else(|| self.extract_string_with(props, "text", bindings))
@@ -3892,7 +3904,7 @@ let tabs_inner = View::Row {
                         child: Box::new(content),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse(&cell_style).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 // Plan 450 / 019 批次三: AutoDown 面板词汇 → iced 降级渲染。
@@ -3932,13 +3944,13 @@ let tabs_inner = View::Row {
                     } else if views.len() == 1 {
                         views.into_iter().next().unwrap()
                     } else {
-                        View::Column { children: views, spacing: 4, padding: 0, style: None, onclick: None }
+                        View::Column { children: views, spacing: 4, padding: 0, style: None, onclick: None, on_right_click: None }
                     };
                     return View::Container {
                         child: Box::new(inner),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 if tag == "callout" {
@@ -3964,11 +3976,11 @@ let tabs_inner = View::Row {
                         .filter(|v| !matches!(v, View::Empty)));
                     return View::Container {
                         child: Box::new(View::Column {
-                            children: kids, spacing: 8, padding: 0, style: None, onclick: None,
+                            children: kids, spacing: 8, padding: 0, style: None, onclick: None, on_right_click: None,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse(&format!("rounded-lg border {tint_cls} p-4 w-full")).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 if tag == "details" {
@@ -4006,7 +4018,7 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-card p-4 w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 if tag == "query_block" || tag == "queryblock" || tag == "query-block" {
@@ -4021,7 +4033,7 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border p-3 w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 if tag == "embed_block" || tag == "embedblock" || tag == "embed-block" {
@@ -4034,7 +4046,7 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-muted p-3 w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
@@ -4074,7 +4086,7 @@ let tabs_inner = View::Row {
                             "h-10 w-10 shrink-0 rounded-lg border {} {}",
                             border_cls, box_bg
                         )).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     // 文字列:主标题(font-medium text-sm) + 副标题(text-xs muted),换行。
                     let mut text_kids: Vec<View<DynamicMessage>> = vec![View::Text {
@@ -4094,7 +4106,7 @@ let tabs_inner = View::Row {
                         spacing: 2,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     // content: icon_box + 文字列(顶部对齐)。
                     let content = View::Row {
@@ -4102,7 +4114,7 @@ let tabs_inner = View::Row {
                         spacing: 12,
                         padding: 0,
                         style: Style::parse("items-start gap-3 w-full").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                     return View::Button {
                         disabled: false,
@@ -4145,7 +4157,7 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                 }
             }
@@ -4221,7 +4233,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }))
             }
         };
@@ -4472,7 +4484,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }))
             }
         } else {
@@ -4514,7 +4526,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(&texts_cls).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         });
             }
             if !badge.is_empty() {
@@ -4535,7 +4547,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(row_cls).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }))
             }
         };
@@ -4645,7 +4657,7 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("items-center gap-2").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         });
             let mut class = format!("{} {}", nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER);
             if let Some(user) = self
@@ -4692,7 +4704,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(&content_cls).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         });
             }
         }
@@ -4702,7 +4714,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse("flex flex-col").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -4746,7 +4758,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(nc::SEARCH_ROW).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -4783,7 +4795,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&style).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -4861,7 +4873,7 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
     }
@@ -4933,7 +4945,7 @@ let tabs_inner = View::Row {
             height: None,
             center_x: false,
             center_y: false,
-            onclick: None,
+            onclick: None, on_right_click: None,
             style: Style::parse(&format!(
                 "h-px {}",
                 crate::ui_gen::sidebar_contract::SEPARATOR
@@ -4998,7 +5010,7 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("w-full items-center").ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             })),
             onclick: crate::ui::interpreter::DynamicMessage::Typed {
                 widget_name: self.widget_name.clone(),
@@ -5034,7 +5046,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&class).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -5236,7 +5248,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse("items-center gap-2").ok(),
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }))
             }
         } else {
@@ -5262,7 +5274,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse("items-center gap-2").ok(),
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }))
             }
         };
@@ -5938,7 +5950,7 @@ let tabs_inner = View::Row {
                     let v = views.into_iter().next().unwrap();
                     if matches!(v, View::Empty) { None } else { Some(v) }
                 } else {
-                    Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None })
+                    Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None })
                 }
             })
             .collect()
@@ -6073,14 +6085,14 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding,
                 style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
             Some(RederivedLayout::Column) => View::Column {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
             None => {
                 let child_view = if child_views.is_empty() {
@@ -6093,7 +6105,7 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                 };
                 let mut builder = View::container(child_view).padding(padding);
@@ -6137,7 +6149,7 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Some(Style::default().add(StyleClass::ItemsCenter)),
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
         };
 
@@ -6394,7 +6406,7 @@ let tabs_inner = View::Row {
                 .iter()
                 .map(|n| self.convert_node_with(n, bindings))
                 .collect();
-            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
+            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
         };
 
         View::container(child).center_x().center_y().with_style(style).build()
@@ -6456,7 +6468,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let Some(cfg) = action_config() else { return empty() };
         if cfg.menus.is_empty() {
@@ -6546,7 +6558,7 @@ let tabs_inner = View::Row {
                                 padding: 0,
                                 style: Style::parse("w-full justify-between items-center gap-2 px-2")
                                     .ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                             items.push(View::Button {
                                 disabled: !enabled,
@@ -6571,7 +6583,7 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
             children.push(View::Popover {
                 anchor: PopoverAnchor::Widget(Box::new(trigger)),
@@ -6599,7 +6611,7 @@ let tabs_inner = View::Row {
             } else {
                 Style::parse(&user).ok()
             },
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -6804,7 +6816,7 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None,
+                            onclick: None, on_right_click: None,
                         },
                     }
                 }
@@ -6837,7 +6849,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(panel_chrome).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -6897,7 +6909,7 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None,
+                            onclick: None, on_right_click: None,
                         },
                     }
                 }
@@ -6931,7 +6943,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(panel_chrome).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -7024,7 +7036,7 @@ let tabs_inner = View::Row {
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None,
+                onclick: None, on_right_click: None,
                 style: Style::parse("w-8 h-1 rounded-full bg-muted").ok(),
             }),
             padding: 0,
@@ -7032,7 +7044,7 @@ let tabs_inner = View::Row {
             height: None,
             center_x: true,
             center_y: false,
-            onclick: None,
+            onclick: None, on_right_click: None,
             style: Style::parse("w-full py-2").ok(),
         }
     }
@@ -7068,7 +7080,7 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None,
+                            onclick: None, on_right_click: None,
                         },
                     }
                 }
@@ -7099,7 +7111,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -7153,7 +7165,7 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None,
+                            onclick: None, on_right_click: None,
                         },
                     }
                 }
@@ -7185,7 +7197,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -7243,7 +7255,7 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None,
+                            onclick: None, on_right_click: None,
                         },
                     }
                 };
@@ -7281,7 +7293,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -7336,7 +7348,7 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None,
+                            onclick: None, on_right_click: None,
                         },
                     }
                 };
@@ -7375,7 +7387,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -7396,6 +7408,7 @@ let tabs_inner = View::Row {
     fn convert_popover(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
@@ -7489,11 +7502,22 @@ let tabs_inner = View::Row {
             args: vec![Value::str(&slot_id)],
         };
 
+        // PLAN-010 N6b 根修:ondismiss 在解析层被 on* 前缀升格进 events 桶
+        // (parser.rs ViewEvent 分流),props 查不到——events 兜底基名提取,
+        // 否则合成 __popover_close 对 VM 态 popover(状态位驱动 open)是
+        // no-op,外点/Esc 关闭全失效(桌面壳 icon/blank 菜单实录)。
+        let ondismiss_handler = || {
+            self.extract_string_with(props, "ondismiss", bindings)
+                .or_else(|| {
+                    crate::aura::aura_events_get_base(events, "ondismiss")
+                        .map(|ev| ev.handler.clone())
+                })
+        };
+
         match (px, py) {
             (Some(x), Some(y)) => {
                 let open = open_prop.unwrap_or_else(self_managed_open);
-                let on_dismiss = self
-                    .extract_string_with(props, "ondismiss", bindings)
+                let on_dismiss = ondismiss_handler()
                     .map(|h| DynamicMessage::Typed {
                         widget_name: self.widget_name.clone(),
                         event_name: h.trim_start_matches('.').to_string(),
@@ -7506,7 +7530,7 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: panel_style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }),
                     placement,
                     open,
@@ -7546,13 +7570,12 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
                 };
 
                 let open = open_prop.unwrap_or_else(self_managed_open);
-                let on_dismiss = Some(self
-                    .extract_string_with(props, "ondismiss", bindings)
+                let on_dismiss = Some(ondismiss_handler()
                     .map(|h| DynamicMessage::Typed {
                         widget_name: self.widget_name.clone(),
                         event_name: h.trim_start_matches('.').to_string(),
@@ -7587,7 +7610,7 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: panel_style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }),
                     placement,
                     open,
@@ -7641,7 +7664,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         let Some(cfg) = action_config() else { return empty() };
 
@@ -7706,7 +7729,7 @@ let tabs_inner = View::Row {
             } else {
                 Style::parse(&user).ok()
             },
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -7756,7 +7779,7 @@ let tabs_inner = View::Row {
             center_x: true,
             center_y: true,
             style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -7809,7 +7832,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }
             }
         } else {
@@ -7842,7 +7865,7 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 },
             }
         };
@@ -8312,7 +8335,7 @@ let tabs_inner = View::Row {
                             spacing,
                             padding: 0,
                             style: layout_style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }))
                     } else {
                         Some(Box::new(View::Row {
@@ -8320,7 +8343,7 @@ let tabs_inner = View::Row {
                             spacing,
                             padding: 0,
                             style: layout_style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }))
                     }
                 }
@@ -8405,7 +8428,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 
@@ -13860,6 +13883,46 @@ mod tests {
                 }
             }
             _ => panic!("Expected View::Button"),
+        }
+    }
+
+    /// PLAN-002 B：布局件 `oncontextmenu` 提取——VM 轨此前只有 button/
+    /// mouse-area 两个右键挂点（526 Q6/Q9① 债），Vue 轨元素级 @contextmenu
+    /// 早已泛映射（vue.rs:14470）。本测试锁提取面：col 的 oncontextmenu
+    /// 落 View::Column::on_right_click，onclick 缺席时不误填。
+    #[test]
+    fn test_layout_oncontextmenu_becomes_right_click() {
+        let widget = make_test_widget("Desktop", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Desktop");
+
+        let node = AuraNode::Element {
+            span: None,
+            debug_id: None,
+            tag: "col".to_string(),
+            props: HashMap::new(),
+            events: HashMap::from([
+                ("oncontextmenu".to_string(), AuraEvent {
+                    handler: ".BlankMenu".to_string(),
+                    params: vec![],
+                }),
+            ]),
+            children: vec![],
+        };
+        let view = builder.build(&node);
+
+        match view {
+            View::Column { onclick, on_right_click, .. } => {
+                assert!(onclick.is_none(), "onclick 缺席不应被 oncontextmenu 误填");
+                match on_right_click {
+                    Some(DynamicMessage::Typed { widget_name, event_name, .. }) => {
+                        assert_eq!(widget_name, "Desktop");
+                        assert_eq!(event_name, "BlankMenu");
+                    }
+                    other => panic!("oncontextmenu 未落 on_right_click: {other:?}"),
+                }
+            }
+            _ => panic!("Expected View::Column"),
         }
     }
 

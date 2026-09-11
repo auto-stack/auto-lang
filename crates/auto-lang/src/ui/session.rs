@@ -572,6 +572,10 @@ pub struct VWinState {
     /// Plan 504：内容自适应虚拟窗（注册表条目 pac `window: "fit"` 经
     /// LaunchSpec.fit 透传）——语义同 [`WindowEntry::fit_pending`]。
     pub fit_pending: Cell<bool>,
+    /// PLAN-002 N2：fit 窗测量期隐藏计数（ServiceTick 400ms 自增）——
+    /// 与 `fit_pending` 共同决定 vwin 是否绘制越界隐藏（虚拟窗层
+    /// `vwin_fit_hidden` 谓词消费）；超 `FIT_HIDE_MAX_TICKS` 强制显形。
+    pub fit_hidden_ticks: Cell<u32>,
     /// Plan 512：fit 持久标记/用户锁定/待重测三字段——语义同
     /// [`WindowEntry`] 同名字段（用户锁定在 WM Resize 交互臂置位）。
     pub fit_enabled: Cell<bool>,
@@ -684,6 +688,7 @@ impl WmState {
                 initial_resize_done: Cell::new(false),
                 initial_focus_done: Cell::new(false),
                 fit_pending: Cell::new(false),
+                fit_hidden_ticks: Cell::new(0),
                 fit_enabled: Cell::new(false),
                 fit_user_locked: Cell::new(false),
                 fit_dirty: Cell::new(false),

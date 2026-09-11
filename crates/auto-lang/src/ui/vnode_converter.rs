@@ -652,7 +652,7 @@ mod tests {
                 spacing: 2,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             })),
         };
 
@@ -690,7 +690,7 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
 
         let tree = view_to_vtree(view);
@@ -760,7 +760,7 @@ mod tests {
             spacing: 5,
             padding: 10,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
 
         let tree = view_to_vtree(view);
@@ -789,12 +789,12 @@ mod tests {
                 spacing: 5,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }],
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
 
         let tree = view_to_vtree(view);
@@ -830,7 +830,7 @@ mod tests {
             center_x: true,
             center_y: true,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
 
         let tree = view_to_vtree(view);
@@ -1057,7 +1057,7 @@ mod tests {
                     spacing: 5,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 },
                 View::Button {
                     disabled: false,
@@ -1071,7 +1071,7 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
 
         let tree = view_to_vtree(view);
@@ -1128,7 +1128,7 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
 
         let tree = view_to_vtree(view);
@@ -1157,10 +1157,10 @@ mod tests {
                 View::Text { content: "a".into(), style: None, selectable: false },
                 View::Row { children: vec![
                     View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None, content: None, disabled: false },
-                ], spacing: 0, padding: 0, style: None, onclick: None },
+                ], spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
             ],
             spacing: 0, padding: 0, style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
         let tree = view_to_vtree_with_paths(view, |_| None);
 
@@ -1187,7 +1187,7 @@ mod tests {
         let view: View<u32> = View::Column {
             children: vec![View::Text { content: "x".into(), style: None, selectable: false }],
             spacing: 0, padding: 0, style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
         let tree = view_to_vtree_with_paths(view, |path| {
             Some(crate::ui::debug::SourceSpan {
@@ -1216,7 +1216,7 @@ mod tests {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         let t1 = view_to_vtree_with_paths(build(), |_| None);
@@ -1472,7 +1472,7 @@ mod tests_with_events {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
 
         let (vtree, router) = view_to_vtree_with_events(view);

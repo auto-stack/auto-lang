@@ -59,10 +59,14 @@ widget Desktop {
         // PLAN-526 T8：dock 条目右键菜单（win_menu 态门控 popover 内容
         // 切换——hover 缩略 / 菜单二态；条目聚焦/最小化/关闭三动作）。
         WinMenu(str),
+        // PLAN-010 N6c：菜单态关闭（icon 菜单 MenuClose 同构——popover
+        // ondismiss 专用；hover 离开不再兼清菜单，菜单项方可触及）。
+        WinMenuClose,
         // PLAN-526 T11：电源键（shutdown 确认面板三态）。
         ShutdownRequest, ShutdownCancel, ShutdownConfirm,
         // Plan 497 G5：dock/pager hover 预览（shell 内部 UI 态，非总线动词）。
-        HoverWin(str), HoverEnd, HoverWs(str), HoverWsEnd
+        // PLAN-010 N6c：HoverEnd 退役拆分——HoverLeave 只清预览态。
+        HoverWin(str), HoverLeave, HoverWs(str), HoverWsEnd
     }
 
     model {
@@ -157,7 +161,7 @@ widget Desktop {
                             // 态切换内容）。
                             if w.native == "1" {
                                 mouse-area {
-                                    popover (open: .win_menu == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
+                                    popover (open: .win_menu == w.wid, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
                                         button (text: w.title) {
                                             onclick: .NativeFocus(w.wid)
                                             oncontextmenu.prevent: .WinMenu(w.wid)
@@ -165,11 +169,11 @@ widget Desktop {
                                         }
                                         col {
                                             style: "w-36 gap-1"
-                                            button "聚焦" {
+                                            button (text: "聚焦", variant: "ghost") {
                                                 onclick: .NativeFocus(w.wid)
                                                 style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
                                             }
-                                            button "关闭" {
+                                            button (text: "关闭", variant: "ghost") {
                                                 onclick: .NativeClose(w.wid)
                                                 style: "h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left"
                                             }
@@ -190,8 +194,12 @@ widget Desktop {
                                 // 锚恒为条目按钮（plain[0]），内容（plain[1]）
                                 // 按菜单态切换缩略/三动作菜单（聚焦/最小化/
                                 // 关闭——Q5c 右键替代内嵌 ×）。
-                                mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
-                                    popover (open: .dock_hover == w.wid || .win_menu == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
+                                mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverLeave) {
+                                    // PLAN-010 N6c：预览臂加 win_menu=="" 门（菜单
+                                    // 开启期抑制 hover 预览）；ondismiss 改菜单专用
+                                    // 关闭——原 HoverEnd 兼清使菜单被 hover-leave
+                                    // 秒关（菜单项不可达，用户实测）。
+                                    popover (open: (.dock_hover == w.wid && .win_menu == "") || .win_menu == w.wid, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
                                         button (icon: w.icon) {
                                             onclick: .WinFocus(w.wid)
                                             oncontextmenu.prevent: .WinMenu(w.wid)
@@ -200,15 +208,15 @@ widget Desktop {
                                         if .win_menu == w.wid {
                                             col {
                                                 style: "w-36 gap-1"
-                                                button "聚焦" {
+                                                button (text: "聚焦", variant: "ghost") {
                                                     onclick: .WinFocus(w.wid)
                                                     style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
                                                 }
-                                                button "最小化" {
+                                                button (text: "最小化", variant: "ghost") {
                                                     onclick: .WinMin(w.wid)
                                                     style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
                                                 }
-                                                button "关闭" {
+                                                button (text: "关闭", variant: "ghost") {
                                                     onclick: .WinClose(w.wid)
                                                     style: "h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left"
                                                 }
@@ -277,11 +285,11 @@ widget Desktop {
                             text "退出 Auto 桌面？" { style: "text-sm text-foreground" }
                             row {
                                 style: "gap-2"
-                                button "取消" {
+                                button (text: "取消", variant: "ghost") {
                                     onclick: .ShutdownCancel
                                     style: "h-8 px-3 text-sm rounded-md bg-transparent text-foreground hover:bg-foreground/10"
                                 }
-                                button "退出" {
+                                button (text: "退出", variant: "primary") {
                                     onclick: .ShutdownConfirm
                                     style: "h-8 px-3 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
                                 }
@@ -411,10 +419,12 @@ widget Desktop {
         .ShutdownCancel -> { .shutdown_ask = "" }
         .ShutdownConfirm -> { .__desktop_cmd = "shutdown"; .shutdown_ask = "" }
         // Plan 497 G5：hover 预览态翻转（mouse-area enter/exit 驱动）。
-        // PLAN-526 T8：HoverEnd 兼清菜单态（popover ondismiss 单消息
-        // 复用——鼠标离条目/点面板外均收菜单）。
+        // PLAN-010 N6c：HoverEnd 退役——hover 离开只清预览态；菜单关闭
+        // 走 WinMenuClose（popover ondismiss 外点/Esc + 三动作自带清态），
+        // 与 desktop.at icon 菜单（MenuClose）完全同构。
         .HoverWin(wid) -> { .dock_hover = wid }
-        .HoverEnd -> { .dock_hover = ""; .win_menu = "" }
+        .HoverLeave -> { .dock_hover = "" }
+        .WinMenuClose -> { .win_menu = "" }
         .HoverWs(id) -> { .ws_hover = id }
         .HoverWsEnd -> { .ws_hover = "" }
     }

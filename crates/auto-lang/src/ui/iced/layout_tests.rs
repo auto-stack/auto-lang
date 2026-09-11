@@ -41,7 +41,7 @@ fn row_smoke_two_texts() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (x1, _y1, w1, _h1) = bounds_of(&mut ui, "L");
@@ -66,7 +66,7 @@ fn row_fill_child_keeps_sibling_visible() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (x, _y, w, _h) = bounds_of(&mut ui, "SURVIVOR");
@@ -155,13 +155,13 @@ fn center_column_items_center_centers_narrow_child() {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::default().add(StyleClass::ItemsCenter)),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let view = View::container(inner)
         .center_x()
@@ -196,13 +196,13 @@ fn row_ml_auto_pushes_right() {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("ml-auto").ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (lx, _ly, lw, _lh) = bounds_of(&mut ui, "LEFT");
@@ -235,7 +235,7 @@ fn nested_row_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("items-center bg-[#1C1D24]").ok().unwrap()),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let view = View::Row {
         children: vec![
@@ -245,7 +245,7 @@ fn nested_row_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (ox, _oy, ow, _oh) = bounds_of(&mut ui, "OUTER");
@@ -332,14 +332,14 @@ fn nested_row_icon_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let view = View::Row {
         children: vec![inner, icon_btn("\u{EE01}save\u{EE02}")],
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let sizes = all_button_bounds(view);
     assert!(sizes.len() >= 5, "expected rows+3 buttons in the tree: {sizes:?}");
@@ -373,7 +373,7 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None,
+                onclick: None, on_right_click: None,
                 style: None,
             }),
             placement,
@@ -383,7 +383,7 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
 }
 
@@ -420,7 +420,7 @@ fn popover_snaps_within_viewport_right_edge() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (ax, _ay, _aw, ah) = bounds_of(&mut ui, "ANCHORBTN");
@@ -446,7 +446,7 @@ fn popover_point_anchor_places_panel_at_coordinate() {
             center_x: false,
             center_y: false,
             style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }),
         placement: PopoverPlacement::BottomStart,
         open: true,
@@ -480,12 +480,280 @@ fn popover_closed_hides_panel() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (_bx, _by, bw, bh) = bounds_of(&mut ui, "CLOSEDBTN");
     assert!(bw > 0.0 && bh > 0.0, "anchor button must render when closed: {bw}x{bh}");
     assert!(ui.find("HIDDENPANEL").is_err(), "panel content must NOT be reachable when closed");
+}
+
+// ── PLAN-002 A1: 开合翻转后首帧定位（526 KNOWN-DEBT 🟢 首开横向偏左）─────
+// 既有 popover 断言均为"首帧即 open"（Simulator 单帧静态、Cache::default
+// 起步）；真实桌面 daemon 是跨帧 Cache 传递（into_cache → build）下的
+// "曾关闭 → 首开 → 关 → 再开"。这里用 iced_test 公开的 runtime::
+// UserInterface + headless renderer 手驱帧序列，断言首开与再开定位一致。
+
+/// shell.at 任务栏条目 popover 同构：锚=h-10 w-10 图标钮、placement top、
+/// 内容=w-36 动作菜单列（聚焦/最小化/关闭族）。锚左侧垫 200px（真实
+/// 任务栏 dock 居中，锚不在视口左缘——面板 Top 悬出不触发 snap 钳制）。
+fn dock_menu_popover_view(open: bool) -> View<()> {
+    let popover = View::Popover {
+        anchor: PopoverAnchor::Widget(Box::new(View::Button {
+            label: "DOCKICON".to_string(),
+            onclick: (),
+            disabled: false,
+            style: Style::parse("h-10 w-10 px-0").ok(),
+            on_right_click: None,
+            content: None,
+        })),
+        content: Box::new(View::Column {
+            children: vec![View::Button {
+                label: "MENUITEM".to_string(),
+                onclick: (),
+                disabled: false,
+                style: Some(Style::parse("h-8 px-2 w-full text-sm").ok().unwrap()),
+                on_right_click: None,
+                content: None,
+            }],
+            spacing: 0,
+            padding: 0,
+            style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
+            onclick: None, on_right_click: None,
+        }),
+        placement: PopoverPlacement::Top,
+        open,
+        on_dismiss: None,
+    };
+    View::Row {
+        children: vec![styled_view("LEFTPAD"), popover],
+        spacing: 0,
+        padding: 0,
+        style: None,
+        onclick: None, on_right_click: None,
+    }
+}
+
+/// shell.at 真实结构：关闭帧内容=window_thumbnail（else 臂），开启帧内容=
+/// 动作菜单（win_menu 臂）——右键直开时 content 子树跨帧换型（diff 状态
+/// 重建）,首开与再开定位仍须一致。
+fn dock_swap_popover_view(open: bool) -> View<()> {
+    let thumbnail = View::WindowThumbnail {
+        wid: "424242".to_string(),
+        fallback_icon: "app-window".to_string(),
+        style: Style::parse("w-48 h-28 rounded").ok(),
+    };
+    let menu = View::Column {
+        children: vec![View::Button {
+            label: "MENUITEM".to_string(),
+            onclick: (),
+            disabled: false,
+            style: Some(Style::parse("h-8 px-2 w-full text-sm").ok().unwrap()),
+            on_right_click: None,
+            content: None,
+        }],
+        spacing: 0,
+        padding: 0,
+        style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
+        onclick: None, on_right_click: None,
+    };
+    let popover = View::Popover {
+        anchor: PopoverAnchor::Widget(Box::new(View::Button {
+            label: "DOCKICON".to_string(),
+            onclick: (),
+            disabled: false,
+            style: Style::parse("h-10 w-10 px-0").ok(),
+            on_right_click: None,
+            content: None,
+        })),
+        content: Box::new(if open { menu } else { thumbnail }),
+        placement: PopoverPlacement::Top,
+        open,
+        on_dismiss: None,
+    };
+    View::Row {
+        children: vec![styled_view("LEFTPAD"), popover],
+        spacing: 0,
+        padding: 0,
+        style: None,
+        onclick: None, on_right_click: None,
+    }
+}
+
+/// 内容换型（thumbnail→menu）后的首开定位 = 再开定位（RIGHT-CLICK 直开
+/// 路径；左缘不贴边、无 snap 钳制）。
+#[test]
+fn popover_first_open_after_content_swap_matches_second_open() {
+    use iced_test::core::renderer::Headless as _;
+    use iced_test::core::{Font, Pixels};
+    use iced_test::futures::futures::executor::block_on;
+    use iced_test::renderer::Renderer;
+    use iced_test::runtime::user_interface::Cache;
+
+    let mut renderer =
+        block_on(Renderer::new(Font::with_name("Fira Sans"), Pixels(16.0), None))
+            .expect("headless renderer");
+
+    let (cache, _anchor, _none) = flip_frame(
+        dock_swap_popover_view(false).into_iced(),
+        Cache::default(),
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    let (cache, anchor, first) = flip_frame(
+        dock_swap_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+    let (cache, _anchor, _none) = flip_frame(
+        dock_swap_popover_view(false).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    let (_cache, anchor2, second) = flip_frame(
+        dock_swap_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+
+    let (fx, _fy, _fw, _fh) = first;
+    let (sx, _sy, _sw, _sh) = second;
+    assert!(
+        (fx - sx).abs() <= 0.5,
+        "first-open panel x must equal second-open x: {first:?} vs {second:?}"
+    );
+    let anchor_center = anchor.0 + anchor.2 / 2.0;
+    let panel_center = fx + first.2 / 2.0;
+    assert!(
+        (anchor_center - panel_center).abs() <= 2.0,
+        "panel must center on anchor: anchor {anchor_center} vs panel {panel_center}"
+    );
+    let _ = anchor2;
+}
+
+/// 帧驱动：build → update（overlay 布局在 update 起点计算）→ operate 取
+/// 两个 needle 的 bounds → into_cache。复刻 daemon 每帧序列。
+fn flip_frame(
+    element: iced::Element<'static, ()>,
+    cache: iced_test::runtime::user_interface::Cache,
+    renderer: &mut iced_test::renderer::Renderer,
+    needle_a: &str,
+    needle_b: &str,
+) -> (
+    iced_test::runtime::user_interface::Cache,
+    (f32, f32, f32, f32),
+    (f32, f32, f32, f32),
+) {
+    use iced_test::core::widget::{self, operation::Outcome, Operation};
+    use iced_test::selector::Bounded;
+
+    let mut ui = iced_test::runtime::UserInterface::build(
+        element,
+        iced::Size::new(1024.0, 768.0),
+        cache,
+        renderer,
+    );
+    let _ = ui.update(
+        &[],
+        iced::mouse::Cursor::Unavailable,
+        renderer,
+        &mut iced_test::core::clipboard::Null,
+        &mut Vec::new(),
+    );
+    let grab = |ui: &mut iced_test::runtime::UserInterface<'_, (), iced::Theme, iced_test::renderer::Renderer>,
+                needle: &str,
+                renderer: &iced_test::renderer::Renderer|
+     -> (f32, f32, f32, f32) {
+        // 全限定调用 —— str 固有 find 会遮蔽 Selector::find。
+        let mut op = iced_test::selector::Selector::find(needle);
+        ui.operate(renderer, &mut widget::operation::black_box(&mut op));
+        match op.finish() {
+            Outcome::Some(Some(target)) => {
+                let b = target.bounds();
+                (b.x, b.y, b.width, b.height)
+            }
+            _ => panic!("selector {needle} not reachable"),
+        }
+    };
+    let a = grab(&mut ui, needle_a, renderer);
+    let b = grab(&mut ui, needle_b, renderer);
+    (ui.into_cache(), a, b)
+}
+
+/// 核心：曾关闭 → 首开 与 关 → 再开 的面板定位必须一致（首开不偏移），
+/// 且 Top 放置面板（按钮标签居中 → 文本中心=面板中心）对锚文字中心居中。
+#[test]
+fn popover_first_open_after_flip_matches_second_open() {
+    use iced_test::core::renderer::Headless as _;
+    use iced_test::core::{Font, Pixels};
+    use iced_test::futures::futures::executor::block_on;
+    use iced_test::renderer::Renderer;
+    use iced_test::runtime::user_interface::Cache;
+
+    let mut renderer =
+        block_on(Renderer::new(Font::with_name("Fira Sans"), Pixels(16.0), None))
+            .expect("headless renderer");
+
+    // 帧1：开机后曾处于关闭态（锚可见，面板内容树建立但未测量）。
+    let (cache, _anchor, _none) = flip_frame(
+        dock_menu_popover_view(false).into_iced(),
+        Cache::default(),
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    // 帧2：首开。
+    let (cache, anchor, first) = flip_frame(
+        dock_menu_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+    // 帧3：关。
+    let (cache, _anchor, _none) = flip_frame(
+        dock_menu_popover_view(false).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "DOCKICON",
+    );
+    // 帧4：再开。
+    let (_cache, anchor2, second) = flip_frame(
+        dock_menu_popover_view(true).into_iced(),
+        cache,
+        &mut renderer,
+        "DOCKICON",
+        "MENUITEM",
+    );
+
+    let (fx, _fy, _fw, _fh) = first;
+    let (sx, _sy, _sw, _sh) = second;
+    assert!(
+        (fx - sx).abs() <= 0.5,
+        "first-open panel x must equal second-open x: {first:?} vs {second:?}"
+    );
+
+    // Top 居中：锚文字中心（按钮内居中=锚钮中心）± 面板文字中心（居中=面板中心）。
+    let anchor_center = anchor.0 + anchor.2 / 2.0;
+    let anchor_center2 = anchor2.0 + anchor2.2 / 2.0;
+    let panel_center_first = fx + first.2 / 2.0;
+    let panel_center_second = sx + second.2 / 2.0;
+    assert!(
+        (anchor_center - panel_center_first).abs() <= 2.0,
+        "first-open panel must center on anchor: anchor {anchor_center} vs panel {panel_center_first}"
+    );
+    assert!(
+        (anchor_center2 - panel_center_second).abs() <= 2.0,
+        "second-open panel must center on anchor: anchor {anchor_center2} vs panel {panel_center_second}"
+    );
 }
 
 // ── Plan 422 P1/P3: 弹层行为语义(捕获/dismiss)—— 消息级断言 ────────────
@@ -527,7 +795,7 @@ fn popover_semantics_view() -> View<PopMsg> {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }),
             placement: PopoverPlacement::BottomStart,
             open: true,
@@ -536,7 +804,7 @@ fn popover_semantics_view() -> View<PopMsg> {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
 }
 
@@ -608,7 +876,7 @@ fn popover_modal_places_panel_centered() {
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None,
+                onclick: None, on_right_click: None,
                 style: None,
             }),
             placement: PopoverPlacement::Modal,
@@ -618,7 +886,7 @@ fn popover_modal_places_panel_centered() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
     let mut ui = simulator(view.into_iced());
     let (px, py, pw, ph) = bounds_of(&mut ui, "MODALBODY");
@@ -701,7 +969,7 @@ fn popover_modal_view() -> View<PopMsg> {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }),
             placement: PopoverPlacement::Modal,
             open: true,
@@ -710,7 +978,7 @@ fn popover_modal_view() -> View<PopMsg> {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
 }
 
@@ -826,12 +1094,12 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let entries: Vec<auto_val::Value> = ["011-calculator", "013-todo", "015-notes"]
         .iter()
         .map(|id| {
-            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str((*id).into())),
                 ("icon", auto_val::Value::Str("app-window".into())),
                 ("label", auto_val::Value::Str((*id).into())),
                 ("src", auto_val::Value::Str("pinned".into())),
-            ]))
+            ])))
         })
         .collect();
     let _ = comp.write_state_vec("__desktop_icons", entries);
@@ -1157,6 +1425,48 @@ fn plan045_table_resize_drag_chain_publishes_on_release() {
     ui.simulate([Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))]);
     let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
     assert_eq!(msgs, vec![Plan045ResizeMsg::Resized(0, 250.0)]);
+}
+
+/// PLAN-002 B：布局件 hover 标志端到端——`build_column` 的样式闭包与
+/// `HoverArea` 共享同一 `Arc<AtomicBool>`：游标进入 bounds 置位、离开清位
+/// （视觉二选一由 renderer 单测 test_layout_style_fn_selects_hover_on_flag
+/// 覆盖，本测试锁"标志真的被 HoverArea 驱动"的机制面）。
+#[test]
+fn layout_hover_flag_tracks_cursor_over() {
+    use iced::event::Event;
+    use iced::mouse;
+    use iced::Point;
+    use std::sync::atomic::Ordering;
+
+    let style = Style::parse("w-32 h-8 bg-transparent hover:bg-primary/10").unwrap();
+    let flag = crate::ui::iced::renderer::layout_hover_flag(Some(&style))
+        .expect("hover: 类应构造标志");
+    let child: iced::Element<'static, ()> = iced::widget::text("HOVERTARGET").into();
+    let el = crate::ui::iced::renderer::build_column(
+        vec![child],
+        0,
+        0,
+        Some(&style),
+        None,
+        Some(flag.clone()),
+    );
+    let el = crate::ui::iced::renderer::wrap_layout_events(el, None, None, Some(flag.clone()));
+    let mut ui = simulator(el);
+
+    // 界外：标志保持 false。
+    ui.point_at(Point::new(500.0, 500.0));
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(500.0, 500.0) })]);
+    assert!(!flag.load(Ordering::Relaxed), "界外不应置位");
+
+    // 进入 bounds（w-32 h-8 → 左上角内 4,4）：置位。
+    ui.point_at(Point::new(4.0, 4.0));
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(4.0, 4.0) })]);
+    assert!(flag.load(Ordering::Relaxed), "游标进入 bounds 应置位");
+
+    // 离开：清位。
+    ui.point_at(Point::new(500.0, 500.0));
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(500.0, 500.0) })]);
+    assert!(!flag.load(Ordering::Relaxed), "游标离开应清位");
 }
 
 /// Plan 045 T3: 负向拖拽 clamp 到最小宽 40（vue 金标 max(40,…)）。

@@ -41,10 +41,18 @@ pub fn resolve_shell_pack_dir() -> Option<std::path::PathBuf> {
         let p = PathBuf::from(env);
         return p.is_dir().then_some(p);
     }
-    // crates/auto-lang → repo root（词法 .. 即可，is_dir 校验兜底）。
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    // crates/auto-lang → 组目录：ancestors 第 4 层（crates/auto-lang →
+    // crates → <repo> → <组根>）。PLAN-002 实测：原先 `join("..")..` 后再
+    // `.parent()` 的词法剥层对含 `..` 的合成路径只剥一个组件——worktree
+    // 检出（.wt/<组>/auto-lang）下第一候选永不命中，静默落到硬编码主检出，
+    // worktree 构建的桌面读的是主检出 pack（本计划 shell.at/desktop.at
+    // 改动曾在实机验证中静默失效的根因）。
+    let group_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .map(|p| p.to_path_buf());
     [
-        repo_root.parent().map(|p| p.join("auto-os").join("shell")),
+        group_dir.map(|p| p.join("auto-os").join("shell")),
         Some(PathBuf::from("D:/autostack/auto-os/shell")),
     ]
     .into_iter()

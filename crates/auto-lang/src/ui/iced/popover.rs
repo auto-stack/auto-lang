@@ -234,6 +234,10 @@ where
         );
 
         let panel = if self.open {
+            // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+            if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                eprintln!("[pv-overlay] open popover registered, translation={translation:?}");
+            }
             Some(overlay::Element::new(Box::new(Panel {
                 // 坐标锚优先;widget 锚取 wrapper 自身(base 树)的绝对
                 // bounds —— overlay 层的 layout 与基础树同坐标系。
@@ -283,6 +287,17 @@ where
     fn from(popover: Popover<'a, Message>) -> Self {
         Element::new(popover)
     }
+}
+
+/// PLAN-002 A1：空壳面板判定。content 本身 0 尺寸，或其全部子节点 0 面积
+/// （p-1 chrome 撑起的空壳：content 8×8 非零、子节点全 0——实机探针
+/// scratch/p002/popover_debug6.log 的 content=Size{8,8} 形态）。无子节点且
+/// content 非零 = 合法空面板，不判退化。
+fn panel_is_degenerate(content: Size, children: &[Size]) -> bool {
+    if content.width <= 0.0 || content.height <= 0.0 {
+        return true;
+    }
+    !children.is_empty() && children.iter().all(|s| s.width <= 0.0 || s.height <= 0.0)
 }
 
 /// open 时置顶的面板 overlay 元素。
@@ -475,8 +490,20 @@ where
         } else {
             size
         };
-        layout::Node::with_children(node_size, vec![content_layout])
-            .move_to(panel_bounds.position())
+        let node = layout::Node::with_children(node_size, vec![content_layout])
+            .move_to(panel_bounds.position());
+        // PLAN-002 A1 实机取证探针（AUTO_POPOVER_DEBUG=1 门控；定位定案后移除）。
+        if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+            let hint = self.content.as_widget().size();
+            eprintln!(
+                "[popover-debug] placement={:?} at_point={:?} anchor_bounds={:?} content={size:?} \
+                 hint={hint:?} panel={panel_bounds:?}",
+                self.placement,
+                self.at_point,
+                self.anchor_bounds,
+            );
+        }
+        node
     }
 
     fn update(
@@ -492,6 +519,10 @@ where
 
         let dismiss = |shell: &mut Shell<'_, Message>, on_dismiss: &Option<Message>| {
             if let Some(msg) = on_dismiss {
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                    eprintln!("[pv-dismiss] publishing on_dismiss");
+                }
                 shell.publish(msg.clone());
             }
         };
@@ -501,6 +532,17 @@ where
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 let over_panel = cursor.is_over(panel_bounds);
                 let over_anchor = self.at_point.is_none() && cursor.is_over(self.anchor_bounds);
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                    let cur = cursor.position();
+                    eprintln!(
+                        "[pv-panel-press] panel={panel_bounds:?} cursor={cur:?} \
+                         over_panel={over_panel} over_anchor={over_anchor} \
+                         dismiss={} captured_before={}",
+                        self.on_dismiss.is_some(),
+                        shell.is_event_captured(),
+                    );
+                }
                 if over_anchor {
                     // 锚上点击:dismiss 并捕获 —— 基础树收不到 toggle,菜单经
                     // on_dismiss 干净关闭(点触发器 = 关,menubar 语义)。
@@ -603,6 +645,18 @@ where
         }
         // chrome(bg/border/shadow)由 content 元素自带的 visual wrap 绘制。
         let content_layout = layout.children().next().expect("panel has content child");
+        // PLAN-002 A1：退化内容不绘制（空壳不闪现）。空壳面板（VM 陈旧视图
+        // 代际交付 [Empty] 子树）的可见盒来自 content 列自带的 p-1 chrome—
+        // 列本身被 padding 撑成 8×8 非零，但其全部子节点 0×0。跳绘后退化帧
+        // 整面板不可见，直至真实内容代际落地。
+        let cs = content_layout.bounds().size();
+        let child_sizes: Vec<Size> = content_layout
+            .children()
+            .map(|c| c.bounds().size())
+            .collect();
+        if panel_is_degenerate(cs, &child_sizes) {
+            return;
+        }
         self.content.as_widget().draw(
             self.tree,
             renderer,
@@ -638,5 +692,52 @@ where
     /// 高于 tooltip(默认 1.0):弹层面板盖住提示。
     fn index(&self) -> f32 {
         10.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// PLAN-002 A1：实机 8×8 空壳形态（content 被 p-1 撑成非零、子节点全 0）
+    /// 判退化——跳绘，空壳不闪现。
+    #[test]
+    fn panel_degenerate_padded_shell() {
+        assert!(panel_is_degenerate(
+            Size::new(8.0, 8.0),
+            &[Size::new(0.0, 0.0)]
+        ));
+        assert!(panel_is_degenerate(
+            Size::new(8.0, 8.0),
+            &[Size::new(0.0, 0.0), Size::new(0.0, 0.0)]
+        ));
+    }
+
+    /// content 本身 0 尺寸（无 chrome 直挂空内容）判退化。
+    #[test]
+    fn panel_degenerate_zero_content() {
+        assert!(panel_is_degenerate(Size::new(0.0, 0.0), &[]));
+        assert!(panel_is_degenerate(Size::new(0.0, 7.0), &[]));
+        assert!(panel_is_degenerate(Size::new(9.0, 0.0), &[Size::new(0.0, 0.0)]));
+    }
+
+    /// 真实内容（缩略 176×104 / 菜单列）不误判。
+    #[test]
+    fn panel_not_degenerate_for_real_content() {
+        assert!(!panel_is_degenerate(
+            Size::new(184.0, 112.0),
+            &[Size::new(176.0, 104.0)]
+        ));
+        assert!(!panel_is_degenerate(
+            Size::new(152.0, 112.0),
+            &[Size::new(144.0, 104.0)]
+        ));
+        // 无子节点且 content 非零 = 合法空面板，不判退化。
+        assert!(!panel_is_degenerate(Size::new(16.0, 16.0), &[]));
+        // 部分子节点有实面积 = 有内容，不判退化。
+        assert!(!panel_is_degenerate(
+            Size::new(184.0, 112.0),
+            &[Size::new(0.0, 0.0), Size::new(40.0, 24.0)]
+        ));
     }
 }
