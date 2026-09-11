@@ -1960,6 +1960,40 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
 应用侧规避（025-sys-monitor 已落地）：struct 字段读只出现在 `.procs` 快照
 for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲染前 120 行物化。
 
+### PLAN-608 续节（2026-09-11，vm-dispatch-settlement-pool）
+
+> **✅ KD-VM6 已由 PLAN-608 修复销账**——resolve→shim 臂补 CALL_NAT 同款
+> 死区（`rc_release_slot_range(sp_after, sp_before)`）、内联 str/List 消费型
+> 臂弹窗结算、pool_soak/专项测试红→绿实证（修复前 `List<str>.push` 与
+> `trimEnd` 各 50 调用孤儿 +50 份额，修复后 live_shares=0、underflow=0）。
+> 协议固化见 `docs/specs/auto-lang/vm/overview.md` §RC 生命周期协议
+> （SD-01 执行点清单、SD-02 池份额口径）。
+
+- **KD-VM5 [死码·移除候选·用户裁定] CALL_SPEC 内联 List 分发区不可达臂**：
+  engine.rs `type_name=="List"` 内联 match 的 push/get/pop/insert/remove/
+  sort/sort_by/reverse 等臂**静态不可达**——registry（canonical
+  "List.X"→"auto.list.X"）恒先命中同名 shim（PLAN-608 T-01 静态差集+运行期
+  trace 双证）。其中内联 "push" 臂 `list.push(elem_val)` 裸存不 retain
+  （**若路由回退复活即 UAF 面**，非单纯泄漏）；其头注释曾声称已修 stake
+  结算（与实现脱节，PLAN-608 已修正注释）。本计划不删代码（涉及 Plan
+  403/053 历史成因，删除面广）——路由守护钉死于
+  `crates/auto-lang/src/tests/plan608_dispatch_golden_tests.rs`
+  （registry 覆盖回退→测试先红）；**删除与否留用户裁定**。
+- **KD-VM6 [池份额孤儿·已修] CALL_SPEC 分发路径字符串池份额零结算**：
+  ①resolve→shim 臂：`List<str>.push` 字符串元素暂存池份额（池不入影子、
+  按内容结算）无死区结算——每调用孤儿 +1，dedup 共享条目被永久钉死无法
+  回收（StrPush 探针 heap 口径不可见）。②内联 str 臂接收者：copy-on-load
+  `rc_push` 池 +1，臂内 raw pop 无 `pool_release`——每调用孤儿 +1
+  （trimEnd/includes/indexOf/substring/char_code_at 等可达臂，tv 语料
+  trace 实证）。修复=resolve 分支补死区 + 内联消费臂弹窗结算（见上方
+  销账注）。修复过程实证：**shim 内做池释放与 CALL_NAT 死区构成双释放
+  （underflow +N/调用）——池份额结算归属死区单点，shim 不参与**（堆
+  stake 才走 shim take_stake 转移）。
+- **[域外观察·候选] CALL_SPEC opaque_native 分支（engine.rs，Regex/Url 等
+  opaque 实例方法）手动弹出接收者/实参且无结算**——与 KD-VM5/6 同族，
+  但不在 PLAN-608 授权范围（计划只覆盖内联 str/List 分发区与 resolve 路径）。
+  登记为后续计划候选，未定罪未修复。
+
 
 ## P596 债务（dep-rust-v2 执行期登记，2026-09-10）
 

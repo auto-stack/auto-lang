@@ -208,11 +208,19 @@ mod plan510 {
     /// 覆盖赋值——覆盖 add_string dedup/freelist、POP release、容器侧份额
     /// (rc.rs child_pool_idxs)、ListData<String> 读回配平。内容恒有界
     /// (长度不随轮数增长,避免 O(n²) 字节量;churn 强度由轮数承载)。
+    /// PLAN-608 T04 相位:l.push(s) 覆盖 CALL_NAT 死区结算路径;无类型
+    /// 接收者 m.push 实测同走 CALL_NAT(is_native 按方法名命中)——
+    /// CALL_SPEC→resolve 形态由专项测试 pool_settles_callspec_list_push_str
+    /// (索引接收者,trace 实证 50 CALL_SPEC)覆盖。
     async fn pool_soak_assert(iters: usize) {
         let code = format!(
             r#"
 fn tag(prefix str, i int) str {{
     f"${{prefix}}#${{i}}-tail"
+}}
+
+fn mklist() -> List<str> {{
+    List<str>.new([])
 }}
 
 fn main() int {{
@@ -221,7 +229,13 @@ fn main() int {{
         let s = tag("item", i % 512)
         acc = s
         var l List<str> = List<str>.new([s, acc])
+        l.push(tag("push", i % 512))
         acc = l.get(0)
+        if l.len() > 64 {{
+            l = List<str>.new([])
+        }}
+        var m = mklist()
+        m.push(tag("spec", i % 512))
         if i % 3 == 0 {{
             var waste str = tag("waste", i % 128)
             waste = "overwritten"
@@ -258,6 +272,9 @@ fn main() int {{
 
     /// 编译并跑一段 Auto 源码到完成,返回 (vm, stdout);跑毕做任务残余
     /// 栈释放(同 tests_rc_lifecycle::run_code_vm 口径)。
+    /// PLAN-608:收尾补 reap_all(静止点收割宽限队列,同 rc_stats 语义)——
+    /// ListData<i32> 负哨兵容器死于任务收尾时进 dying 宽限队列,不收割
+    /// 则其容器池份额残留在 live_shares 读数里(soak 终态断言失真)。
     async fn run_code_vm_checked(code: &str) -> (crate::vm::engine::AutoVM, String) {
         let (vm, stdout, entry, _result_type) =
             crate::create_vm_from_source(code).expect("compile failed");
@@ -267,8 +284,89 @@ fn main() int {{
             let mut t = arc.lock().await;
             vm.rc_release_task_stack(&mut t);
         }
+        vm.reap_all();
         vm.tasks.remove(&tid);
         let out = stdout.read().unwrap().clone();
         (vm, out)
+    }
+
+    // ====================================================================
+    // PLAN-608: CALL_SPEC 分发路径的池份额结算(KD-VM6)。
+    //
+    // 关键路径区分(T-01 实证):静态可解析的方法调用编译为 CALL_NAT
+    //(自带 rc_release_slot_range 死区结算,池按内容释放,天然配平);
+    // 只有 codegen 无法静态解析的调用形态走 CALL_SPEC——未注册方法名
+    //(trimEnd/includes/indexOf 族 → 内联臂)或索引接收者
+    //(arr[0].push → resolve→shim)。这两条路径修复前暂存份额/接收者
+    // 份额每调用孤儿 +1(live_shares 终值=调用数,red 实证 50/50)。
+    // ====================================================================
+
+    /// PLAN-608 AC-03:CALL_SPEC→resolve→shim_list_push 的字符串元素
+    /// 暂存池份额结算。索引接收者(arr[0])形态——codegen 无法静态解析
+    /// 方法目标,emit CALL_SPEC→resolve→shim_list_push(trace 实证
+    /// 50 CALL_SPEC)。修复前 resolve 分支无 CALL_NAT 式死区,每 push
+    /// 暂存池份额孤儿 +1。
+    #[tokio::test]
+    async fn pool_settles_callspec_list_push_str() {
+        let code = r#"
+fn mk() -> List<str> {
+    List<str>.new([])
+}
+fn main() int {
+    var n = 0
+    var arr List<List<str>> = List<List<str>>.new([])
+    while n < 50 {
+        arr.push(mk())
+        arr[0].push(f"item-${n % 16}")
+        n = n + 1
+    }
+    print("done")
+    0
+}
+"#;
+        let (vm, out) = run_code_vm_checked(code).await;
+        assert!(out.contains("done"), "program must complete: [{}]", out);
+        let h = vm.pool_health();
+        assert_eq!(
+            h.underflow_events, 0,
+            "结算不得引入多扣款下溢"
+        );
+        assert_eq!(
+            h.live_shares, 0,
+            "CALL_SPEC push 50 次后池份额必须配平(修复前每调用孤儿 +1): {h:?}"
+        );
+    }
+
+    /// PLAN-608 AC-04:CALL_SPEC 内联 str 臂接收者池份额结算
+    /// (未注册方法 trimEnd → resolve miss → engine.rs 内联臂,
+    /// 接收者 copy-on-load 池份额被 raw pop)。
+    #[tokio::test]
+    async fn pool_settles_callspec_str_method_recv() {
+        let code = r#"
+fn f(s str) -> str {
+    return s.trimEnd()
+}
+fn main() int {
+    var n = 0
+    var acc str = "seed"
+    while n < 50 {
+        acc = f(f"item-${n % 16}   ")
+        n = n + 1
+    }
+    print(acc)
+    0
+}
+"#;
+        let (vm, out) = run_code_vm_checked(code).await;
+        assert!(!out.is_empty(), "program must produce output: [{}]", out);
+        let h = vm.pool_health();
+        assert_eq!(
+            h.underflow_events, 0,
+            "结算不得引入多扣款下溢"
+        );
+        assert_eq!(
+            h.live_shares, 0,
+            "trimEnd 50 次调用后接收者池份额必须配平(修复前每调用孤儿 +1): {h:?}"
+        );
     }
 }
