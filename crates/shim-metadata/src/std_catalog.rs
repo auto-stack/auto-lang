@@ -17,6 +17,7 @@ pub fn std_methods() -> Vec<ShimMethod> {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         });
     };
     // ---- String(仅静态构造器;方法走引擎 str 原生路径,字符串是标量池值非堆对象) ----

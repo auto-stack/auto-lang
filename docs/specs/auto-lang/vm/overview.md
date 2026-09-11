@@ -61,6 +61,21 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
 - 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。
+## RC 生命周期协议（plan-604）
+
+Plan 419「copy-on-load 所有权协议」+ PLAN-062 T12 stake 影子账本的**结算语义**单点记载（SD-01；KD-VM1 根因即「struct 字面量经容器写的 stake 结算语义无记载」导致的实现缺口，plan-604 补全）。
+
+- **不变量**：任一堆对象/池条目的每份 rc 份额，任一时刻恰有一个显式持有者——栈槽（`stake_shadow[slot]=id`，`rc_push*` 家族写入）、局部槽、全局表、容器元素（容器侧显式 retain）或 state_vars。影子为 0 的引用值=无主份额；RET 帧扫描、任务收尾（`rc_release_slot_range`/`rc_release_task_stack`）按**影子**释放，不按字节内容猜。
+- **NEW_INSTANCE/CONSTRUCT_INSTANCE = 恰一份栈份额 + 显式 stake**：NEW_INSTANCE `rc_push` 在实例栈顶槽记 stake；CONSTRUCT_INSTANCE 必须**在 pop field_count 之后、pop instance_id 之前取 sp-1 槽**（实例恰在栈顶）的份额，回推栈顶时随值转移（`mark_top_stake`）。plan-604 T03 定罪：原实现在两次 pop 之后取 `sp`，读到末字段槽的 0 影子，NEW_INSTANCE 份额失明成死账——struct 字面量经 List.push 每实例永久滞留（探针 +100 obj/拍；025-sys-monitor 55–147MB/min 生产曲线）。
+- **容器写 = 新值转移或补 retain；旧值 -1 级联**：`shim_list_push` 元素入列时容器显式 retain 承接所有权，元素暂存槽的 stake 同步释放（transfer 配平，四个出口统一）。plan-604 T04 定罪：CALL_SPEC→native resolve 分发路径**无** CALL_NAT 式死区结算，暂存份额曾被后续 push 清影静默丢弃。容器被覆写/丢弃时 `free_heap_id` 级联释放元素份额（既有机制，触达已验证）。**池份额口径（plan-608 SD-02）**：字符串元素入列/消费时，暂存拷贝的池份额按内容结算（池不入影子），容器份额独立保留——`ListData<i32>` 负哨兵容器的池 retain（`list_i32_elem_retain`）与暂存份额释放互不抵扣；结算归属 CALL_NAT/resolve 死区（按内容释放一次），shim 内不做池释放（双释放=下溢，plan-608 实证）。
+- **消费型 raw pop 必须收尾**：opcode/shim 弹出栈顶引用值且不回推时，按 DROP 纪律结算（堆按影子释放、字符串按内容释放）。执行点=ARRAY_LEN（plan-604 T04 补——for-in 头部 `dup; arr.len` 形态每拍孤儿一份列表拷贝）、GET_FIELD 尾部 rc_release、GET_ELEM 收尾、CALL_NAT 死区、native `pop_arg_*`+`StakeGuard`。**CALL_SPEC 分发区（plan-608 SD-01）**：①resolve→shim 臂带 CALL_NAT 同款死区（`rc_release_slot_range(sp_after, sp_before)`，plan-608 补——此前暂存池份额每调用孤儿 +1）；②内联 str/List 臂（resolve miss 落入）的消费型臂弹毕压结果前结算弹出窗口——池份额按内容结算属于消费型收尾的一部分；③内联区一批方法臂静态不可达（registry 恒先命中，§「KD-VM5」），路由守护测试钉死（`plan608_dispatch_golden_tests`）。
+
+## B12 编码不变量（plan-604）
+
+- **元素编码保真（SD-02）**：`ListData<Value>` 的 VmRef 元素经迭代（GET_ELEM）/字段读（GET_FIELD）回栈必须保 TAG_OBJECT 编码；TAG_STRING 负哨兵 nanbox（`encode_string` 形态，高 16 位 `fff2`）出现在对象槽=**栈槽错位的症状**，非独立编码缺陷。plan-604 复盘定案：B12「struct 元素编码损坏」为坏探针伪证（探针语料 timer 条目缺失致 handler 空跑；语料修复后 lenSeen=100/sum=4950/GET_FIELD 噪音臂零命中）。
+- **GET_FIELD 未知编码臂（KD-VM2 收尾）**：环境门控诊断（`AUTO_DEBUG_GETFIELD`）+ 弹出槽 stake 结算；禁止无门控 eprintln（6 分钟 344MB 日志饿死 UI 线程事故在案）。
+- 回归载具：`probe_rc_leak_soak`（`cargo test --features ui-iced probe_rc_leak_soak`）——StructTick/LitPushTick 40 拍 live_heap 增量 ≤64（AC-01）、lenSeen=100/sum=4950 元素往返（AC-02/AC-03）。
+
 ## 关键入口
 
 - `crates/auto-lang/src/lib.rs:run_autovm` / `run_with_capture` — 执行入口

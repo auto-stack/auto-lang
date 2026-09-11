@@ -1,0 +1,6 @@
+// probe: struct element for RC retention attribution
+type Item {
+    pid int
+    name str
+    cpu float
+}

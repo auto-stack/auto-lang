@@ -242,6 +242,7 @@ fn extract_fn_signature(
         return_type,
         body_override: None,
         returns_result,
+        call_name: None,
     });
 }
 

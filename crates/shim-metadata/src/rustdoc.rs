@@ -69,10 +69,10 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
         let Some(name) = item.get("name").and_then(|v| v.as_str()) else {
             continue; // 匿名(impl 块等)
         };
-        // 只取公开项
-        if item.get("visibility").and_then(|v| v.as_str()) != Some("public") {
-            continue;
-        }
+        // 公开性记录(PLAN-596 T3:不再此处丢弃——trait impl 方法不允许显式
+        // pub(E0449)而报 default,由 owner 解析按认领者裁定)
+        let vis_pub =
+            item.get("visibility").and_then(|v| v.as_str()) == Some("public");
         let sig = f.get("sig").and_then(|v| v.as_object()).ok_or_else(|| "missing sig".to_string())?;
         let generic = f
             .get("generics")
@@ -111,6 +111,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
             fallible,
             nullable,
             generic,
+            vis_pub,
         });
     }
 
@@ -118,9 +119,26 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
     // v53 serde 命名:固有 impl 的归属类型在 `for` 字段(renamed `for_`)。
     // for_ 带泛型实参的 impl(如 `impl<R: Read> Reader<R>`)标记其方法 generic——
     // wrapper 无法引用裸泛型类型,v1 走"无 mono 提示跳过"。
+    // PLAN-596 T3:trait impl(trait 字段非空)不再全排除——白名单
+    // (trait, method) 对命中时产出 trait 转发条目(ShimMethod.trait_name),
+    // emit 侧以 `<Type as Trait>::method` 单态转发。
+    /// 白名单按 trait 路径**后缀**匹配(rustdoc 给全路径,如 std::clone::Clone)。
+    /// Display→to_string 由 F 轮既有合成覆盖(不进此表——blanket ToString impl
+    /// 不会以方法形态出现在类型自己的 trait impl 里);Engine 成员带泛型参数,
+    /// 由 T4 mono 提示门控(classify 规则 0 兜底 skip)。
+    const TRAIT_METHOD_WHITELIST: &[(&str, &str)] =
+        &[("Clone", "clone"), ("Engine", "encode"), ("Engine", "decode")];
+    fn trait_whitelisted(trait_path: &str, method: &str) -> Option<&'static str> {
+        TRAIT_METHOD_WHITELIST.iter().find_map(|(t, m)| {
+            let hit = trait_path == *t || trait_path.ends_with(&format!("::{t}"));
+            (hit && *m == method).then_some(*t)
+        })
+    }
     let mut impl_for: HashMap<u64, String> = HashMap::new();
     let mut impl_items: HashMap<u64, Vec<u64>> = HashMap::new();
     let mut generic_impl_methods: HashMap<u64, bool> = HashMap::new();
+    // trait impl id -> (for 类型短名, trait 全路径)
+    let mut trait_impls: HashMap<u64, (String, String)> = HashMap::new();
     for item in index.values() {
         let Some(inner) = item.get("inner").and_then(|v| v.as_object()) else {
             continue;
@@ -147,6 +165,24 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                         }
                     }
                 }
+            } else if let Some(t) = imp.get("trait") {
+                // trait impl:记录归属与 trait 全路径(方法在下方 owner 解析时
+                // 按 (trait, method) 白名单认领;未命中者的方法维持落自由函数桶
+                // 的既有行为——通常因外源参数在后续管线被剔除)
+                let for_ty = imp.get("for").or_else(|| imp.get("for_"));
+                // trait 字段是裸 {"path": "Clone", id, args} 形态(无
+                // resolved_path 包装,path_name 不认——PLAN-596 实勘),
+                // 直接取 path 串;resolved_path 形态兜底。
+                let tp_name = t
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| path_name(t));
+                if let (Some(for_ty), Some(tp)) = (for_ty, tp_name) {
+                    if let Some(n) = path_name(for_ty) {
+                        trait_impls.insert(id, (n, tp));
+                    }
+                }
             }
             if let Some(items) = imp.get("items").and_then(|v| v.as_array()) {
                 for it in items {
@@ -161,12 +197,41 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
     let mut out = Vec::new();
     let mut free = Vec::new();
     for raw in methods {
-        let owner = impl_items
+        // PLAN-596 T3 认领与可见性裁定:固有 impl 认领需 public;白名单 trait
+        // impl 认领不限可见性(trait impl 方法不允许显式 pub,E0449→rustdoc
+        // 报 default);固有私有/未白名单 trait 方法整体丢弃(维持既有语义);
+        // 未被任何 impl 认领的 public 项 → 自由函数。
+        let claimed = impl_items
             .iter()
             .find(|(_, items)| items.contains(&raw.id))
-            .and_then(|(&imp, _)| impl_for.get(&imp).cloned());
+            .map(|(&imp, _)| imp);
+        enum Owner {
+            Inherent(String),
+            Trait(String, &'static str),
+            Unowned,
+            Drop,
+        }
+        let owner = match claimed {
+            Some(imp) => {
+                if let Some(ty) = impl_for.get(&imp) {
+                    if raw.vis_pub {
+                        Owner::Inherent(ty.clone())
+                    } else {
+                        Owner::Drop
+                    }
+                } else if let Some((for_ty, trait_path)) = trait_impls.get(&imp) {
+                    match trait_whitelisted(trait_path, &raw.name) {
+                        Some(t) => Owner::Trait(for_ty.clone(), t),
+                        None => Owner::Drop,
+                    }
+                } else {
+                    Owner::Drop
+                }
+            }
+            None => Owner::Unowned,
+        };
         match owner {
-            Some(ty) => out.push(ShimMethod {
+            Owner::Inherent(ty) => out.push(ShimMethod {
                 type_name: ty,
                 method: raw.name,
                 self_kind: raw.self_kind,
@@ -177,8 +242,22 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 fallible: raw.fallible,
                 nullable: raw.nullable,
                 field: None,
+                trait_name: None,
             }),
-            None => free.push(ShimMethod {
+            Owner::Trait(ty, t) => out.push(ShimMethod {
+                type_name: ty,
+                method: raw.name,
+                self_kind: raw.self_kind,
+                params: raw.params,
+                ret: raw.ret,
+                generic: raw.generic
+                    || generic_impl_methods.get(&raw.id).copied().unwrap_or(false),
+                fallible: raw.fallible,
+                nullable: raw.nullable,
+                field: None,
+                trait_name: Some(t.to_string()),
+            }),
+            Owner::Unowned if raw.vis_pub => free.push(ShimMethod {
                 type_name: String::new(),
                 method: raw.name,
                 self_kind: SelfKind::Static,
@@ -188,7 +267,9 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 fallible: raw.fallible,
                 nullable: raw.nullable,
                 field: None,
+                trait_name: None,
             }),
+            Owner::Unowned | Owner::Drop => { /* 丢弃 */ }
         }
     }
 
@@ -263,6 +344,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                                 fallible: false,
                                 nullable: false,
                                 field: Some(fname.to_string()),
+                                trait_name: None,
                             });
                         }
                     }
@@ -328,6 +410,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                                 fallible: false,
                                 nullable: false,
                                 field: None,
+                                trait_name: None,
                             });
                     }
                 }
@@ -353,6 +436,11 @@ struct RawMethod {
     fallible: bool,
     nullable: bool,
     generic: bool,
+    /// rustdoc visibility == "public"。PLAN-596 T3:trait impl 方法不允许显式
+    /// pub(E0449),rustdoc 报 default——提取层不再按可见性丢弃,改由 owner
+    /// 解析裁定:固有 impl 认领需 public,白名单 trait 认领不限(trait 公开
+    /// 即方法可达),未认领的非 public 项不进自由函数桶。
+    vis_pub: bool,
 }
 
 fn self_kind_of(ty: &Value) -> SelfKind {
@@ -407,6 +495,33 @@ fn upper_first(s: &str) -> String {
 }
 
 /// 参数/嵌套位置的类型投影:拥有的外来路径 → OpaqueOwned(区分借用,见 classify)。
+/// PLAN-596 T5:Box<T> 的 angle_bracketed 实参里是否 dyn_trait 含 Fn 族 trait
+/// (Fn/FnMut/FnOnce——按 trait path 前缀判定)。
+fn box_arg_has_fn_trait(rp: &Value) -> bool {
+    let args = rp
+        .get("args")
+        .and_then(|a| a.get("angle_bracketed"))
+        .and_then(|a| a.get("args"))
+        .and_then(|v| v.as_array());
+    let Some(args) = args else { return false };
+    args.iter().any(|a| {
+        a.get("type")
+            .and_then(|t| t.get("dyn_trait"))
+            .and_then(|d| d.get("traits"))
+            .and_then(|v| v.as_array())
+            .map(|ts| {
+                ts.iter().any(|t| {
+                    t.get("trait")
+                        .and_then(|tr| tr.get("path"))
+                        .and_then(|p| p.as_str())
+                        .map(|p| p == "Fn" || p == "FnMut" || p == "FnOnce")
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false)
+    })
+}
+
 fn proj_ty(ty: &Value) -> Ty {
     if let Some(p) = ty.get("primitive").and_then(|v| v.as_str()) {
         return match p {
@@ -447,6 +562,12 @@ fn proj_ty(ty: &Value) -> Ty {
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown")
             .to_string();
+        // PLAN-596 T5:Box<dyn Fn(..)>(回调形参)——angle_bracketed 实参里的
+        // dyn_trait 若含 Fn 族 trait,投影为 OpaqueOwned("Box<Fn>") 让
+        // classify 的 Callback 通道命中(名字丢实参是 v1 简化,Fn 标记除外)
+        if name == "Box" && box_arg_has_fn_trait(rp) {
+            return Ty::OpaqueOwned("Box<Fn>".into());
+        }
         return match name.as_str() {
             // 按值 String 参数:我们持有 CString 拷贝的所有权,可直接转移
             "String" => Ty::StrOwned,

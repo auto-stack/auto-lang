@@ -1,0 +1,183 @@
+// Plan 610 ⑤ capstone (AC-03): the engine 12-symbol C ABI face rewritten in
+// Auto, wrapping autoterm-core's PtySession (read-only dep consumption via
+// use.rs — F-1 discipline). Semantics mirror auto-term crates/autoterm-core/
+// src/ffi.rs:
+//   - opaque Box handle (spawn → Box::into_raw, free → Box::from_raw);
+//   - snapshot state refreshed ONLY inside take_dirty_rows (damage query),
+//     row_text/row_style read the cached snapshot;
+//   - kind_color scalar = (kind × 2^24) + value: kind 1 = Named|Indexed
+//     palette (low 24 bits = index), kind 2 = packed 0xRRGGBB — Auto has no
+//     `<<` (05_expressions/011), the multiplication form is bit-identical.
+// Handle params (`*EngineFace`) are deref'd null-safely by the generated
+// wrappers (uniform -1 / no-op null sentinel — the engine's per-fn -1/-2
+// split simplified; drivers never pass null). `free` takes the raw `*void`
+// and casts (ownership transfer, no field access). C `int*` out-params are
+// modeled as `*uint` (u32 width, bit-compatible for the non-negative domain).
+use.rs std::boxed::Box
+use.rs autoterm_core::{PtySession, Damage, StyledChar}
+use.rs autoterm_core::term::Color
+
+// The blanket struct derives are suppressed (foreign PtySession is neither
+// Clone nor Debug/Eq — an explicit attr replaces the default derive set).
+#[allow(dead_code)]
+type EngineFace {
+    inner PtySession
+    snapshot List<List<StyledChar>>
+}
+
+fn kind_color_auto(c Color) uint {
+    is c {
+        Color.Named(n) -> return 16777216 + (n as uint)
+        Color.Indexed(i) -> return 16777216 + (i as uint)
+        Color.Spec(rgb) -> return 33554432 + ((rgb.r) as uint) * 65536 + ((rgb.g) as uint) * 256 + (rgb.b) as uint
+    }
+    return 0
+}
+
+fn default_cols(cols int) usize {
+    if cols <= 0 {
+        return 80
+    }
+    return (cols) as usize
+}
+
+fn default_rows(rows int) usize {
+    if rows <= 0 {
+        return 24
+    }
+    return (rows) as usize
+}
+
+#[export]
+fn autoterm_engine_spawn(cols int, rows int, program cstr) *EngineFace {
+    var prog Str = program
+    if prog == "" {
+        prog = cabi_default_shell()
+    }
+    var args List<Str> = []
+    let r = PtySession.spawn(prog, args, default_cols(cols), default_rows(rows))
+    is r {
+        Ok(session) -> {
+            let boxed = Box.new(EngineFace { inner: session, snapshot: [] })
+            return Box.into_raw(boxed)
+        }
+        Err(e) -> return cabi_null()
+    }
+    return cabi_null()
+}
+
+#[export]
+fn autoterm_engine_write_input(h *EngineFace, bytes *byte, len usize) {
+    let v = cabi_bytes_vec(bytes, (len) as int)
+    h.inner.write_input(v.as_slice())
+}
+
+#[export]
+fn autoterm_engine_feed_ready(h *EngineFace) int {
+    if h.inner.drain() {
+        return 1
+    }
+    return 0
+}
+
+#[export]
+fn autoterm_engine_take_dirty_rows(h *EngineFace, out_rows *uint, cap int) int {
+    let damage = h.inner.term.take_damage()
+    h.snapshot = h.inner.term.visible_styled_lines()
+    is damage {
+        Damage.Full -> return -1
+        Damage.Lines(lines) -> {
+            if lines.is_empty() {
+                return 0
+            }
+            let rows_count = (h.snapshot.len() as int)
+            let lim = if cap < rows_count { cap } else { rows_count }
+            let count = (lines.len() as int)
+            let n = if count < lim { count } else { lim }
+            var i = 0
+            while i < n {
+                cabi_write_u32(out_rows, i, (lines[i]) as uint)
+                i = i + 1
+            }
+            return n
+        }
+    }
+    return 0
+}
+
+#[export]
+fn autoterm_engine_row_text(h *EngineFace, row int, out_buf *byte, cap int) int {
+    if row < 0 || row >= (h.snapshot.len() as int) {
+        return -1
+    }
+    var s = ""
+    var i = 0
+    let n = h.snapshot[(row) as usize].len()
+    while i < (n as int) {
+        let sc = h.snapshot[(row) as usize][i]
+        s.push(sc.c)
+        i = i + 1
+    }
+    return (cabi_copy_cstr(out_buf, cap, s) as int)
+}
+
+#[export]
+fn autoterm_engine_row_style(h *EngineFace, row int, out *uint, cap int) int {
+    if row < 0 || row >= (h.snapshot.len() as int) {
+        return -1
+    }
+    let n = h.snapshot[(row) as usize].len()
+    let need = (n as int) * 2
+    if cap < need {
+        return -1
+    }
+    var i = 0
+    while i < (n as int) {
+        let sc = h.snapshot[(row) as usize][i]
+        cabi_write_u32(out, i * 2, kind_color_auto(sc.fg))
+        cabi_write_u32(out, i * 2 + 1, kind_color_auto(sc.bg))
+        i = i + 1
+    }
+    return need
+}
+
+#[export]
+fn autoterm_engine_cursor(h *EngineFace, out_row *uint, out_col *uint) int {
+    let cur = h.inner.term.cursor()
+    return (cabi_write_opt_tuple2_u32(cur, out_row, out_col) as int)
+}
+
+#[export]
+fn autoterm_engine_resize(h *EngineFace, cols int, rows int) {
+    h.inner.resize(default_cols(cols), default_rows(rows))
+}
+
+#[export]
+fn autoterm_engine_interrupt(h *EngineFace) int {
+    if h.inner.interrupt() {
+        return 1
+    }
+    return 0
+}
+
+#[export]
+fn autoterm_engine_is_exited(h *EngineFace) int {
+    if h.inner.exited() {
+        return 1
+    }
+    return 0
+}
+
+#[export]
+fn autoterm_engine_kill(h *EngineFace) {
+    h.inner.kill()
+}
+
+#[export]
+fn autoterm_engine_free(h *void) {
+    cabi_drop_boxed((h) as *EngineFace)
+}
+
+fn main() {
+    print("engine_face_auto: 12-symbol #[export] face")
+}

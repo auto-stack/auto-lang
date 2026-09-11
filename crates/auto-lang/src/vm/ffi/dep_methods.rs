@@ -368,6 +368,16 @@ pub fn register_pack(crate_name: &str, lib: Arc<libloading::Library>, manifest_j
         return;
     }
 
+    // PLAN-596 T5:注入宿主跳板——回调方法所在的包导出
+    // auto__register_host_trampoline(无回调面的包无此导出,缺席即跳过);
+    // 跳板经线程局部回调帧在 marshaller 调用窗口内重入解释器。
+    unsafe {
+        if let Ok(reg) = lib.get(b"auto__register_host_trampoline") {
+            let reg: libloading::Symbol<unsafe extern "C" fn(unsafe extern "C" fn(u64, i64) -> i64)> = reg;
+            reg(dep_host_trampoline);
+        }
+    }
+
     // PLAN-591 T1:布局探针装载——cdylib 内嵌 auto__shim_layouts(offset_of!/
     // size_of 实测,同编译保证),合并进 layouts 注册表(key = crate::类型)。
     // 导出缺失(空探针/旧包)按缺省容忍:DepOpaqueObject.layout = None。
@@ -663,6 +673,8 @@ fn make_method_shim(
     let nullable = entry.nullable;
     let crate_name = crate_name.to_string();
     let ctx = format!("{}.{}", entry.type_name, entry.method);
+    // PLAN-596 T5:回调形参清单(调用窗口设帧用)
+    let entry_callbacks = entry.callbacks.clone();
 
     Arc::new(move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
         // 右到左弹参;接收者(参数位 0)单独弹以记录其堆句柄(chain 压回/move 置空要用)
@@ -696,6 +708,17 @@ fn make_method_shim(
             }
         }
         cargs.reverse();
+
+        // PLAN-596 T5:回调方法——调用窗口设帧(跳板经线程局部读 task/vm),
+        // 调后清帧并检查 panic 通道(闭包 panic 被跳板 catch_unwind 捕获)。
+        let has_callbacks = !entry_callbacks.is_empty();
+        let _ = &entry_callbacks;
+        if has_callbacks {
+            CB_PANIC.with(|p| *p.borrow_mut() = None);
+            CB_FRAME.with(|f| {
+                *f.borrow_mut() = Some((task as *mut AutoTask, vm as *const AutoVM))
+            });
+        }
 
         // 调用(按元数×参数类归并;v1 支持至多 3 个 ABI 参数)
         let ai = |i: usize| -> i64 {
@@ -838,8 +861,68 @@ fn make_method_shim(
                 }
             }
         }
+        if has_callbacks {
+            CB_FRAME.with(|f| *f.borrow_mut() = None);
+            if let Some(msg) = CB_PANIC.with(|p| p.borrow_mut().take()) {
+                return Err(VMError::RuntimeError(msg));
+            }
+        }
         Ok(())
     })
+}
+
+// =============================================================================
+// PLAN-596 T5: 反向回调 adapter(原型)——宿主跳板 + 线程局部回调帧
+// =============================================================================
+
+/// 同步调用期有效的回调帧(裸指针仅在 marshaller 调用窗口内解引用;
+/// 单线程原型,深度 1)。Option 空即"不在回调窗口"。
+thread_local! {
+    static CB_FRAME: std::cell::RefCell<Option<(*mut AutoTask, *const AutoVM)>> =
+        const { std::cell::RefCell::new(None) };
+    static CB_PANIC: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// 宿主跳板:wrapper adapter 经注入指针调用——token=VM 闭包 id,
+/// 重入解释器执行 .at 闭包(单参 i64→i64),返回值直传。
+/// 深度守卫:帧非空 = 嵌套回调 → 记错误返回 0(marshaller 转 VMError)。
+unsafe extern "C" fn dep_host_trampoline(token: u64, arg: i64) -> i64 {
+    let frame = CB_FRAME.with(|f| *f.borrow());
+    let Some((task_ptr, vm_ptr)) = frame else {
+        CB_PANIC.with(|p| {
+            *p.borrow_mut() = Some("callback re-entry outside call window (depth>1 or stray)".into())
+        });
+        return 0;
+    };
+    // 深度守卫:执行期置帧为 None,回调内再调回调形参即被拒
+    CB_FRAME.with(|f| *f.borrow_mut() = None);
+    let task = unsafe { &mut *task_ptr };
+    let vm = unsafe { &*vm_ptr };
+    task.ram.push_i32(arg as i32);
+    let closure_id = token as u32;
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        vm.call_closure(task, closure_id, 1)
+    }));
+    CB_FRAME.with(|f| *f.borrow_mut() = Some((task_ptr, vm_ptr)));
+    match outcome {
+        Ok(Ok(())) => {
+            // 闭包返回值在栈顶(镜像 CALL_CLOSURE 消费约定)
+            task.ram.pop_i32() as i64
+        }
+        Ok(Err(e)) => {
+            CB_PANIC.with(|p| *p.borrow_mut() = Some(format!("callback error: {e:?}")));
+            0
+        }
+        Err(payload) => {
+            let msg = payload
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic in callback".into());
+            CB_PANIC.with(|p| *p.borrow_mut() = Some(format!("callback panicked: {msg}")));
+            0
+        }
+    }
 }
 
 /// 整型/布尔统一按 i64 槽弹(布尔经 nv 解码)。

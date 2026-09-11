@@ -8075,6 +8075,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "image" | "Image" => "img".to_string(),
             "img" | "Img" => "img".to_string(),
             "icon" | "Icon" => "span".to_string(),
+            "video" | "Video" => "video".to_string(),
+            "audio" | "Audio" => "audio".to_string(),
 
             // Utility
             "divider" | "Divider" => "hr".to_string(),
@@ -9401,6 +9403,24 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 self.drain_ctx_warnings(&ctx);
                 Ok(out)
             }
+            // PLAN-604 T08 (KD-VM4): `expr.as(Type)` 的 JS 降级——VM 侧
+            // TYPE_CAST_I32 执行 Rust `f as i32` 截断(engine.rs),此前 handler
+            // 内 as-cast 落 catch-all 产 `undefined`(双端分叉)。整型目标降级
+            // Math.trunc 对齐截断;浮点目标 JS 原生 f64 直通;其余类型与 VM
+            // codegen 一致保持值不变。
+            Expr::Cast { expr, target_type } => {
+                let mut inner = self.expr_to_js(expr)?;
+                if matches!(expr.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    inner = format!("({})", inner);
+                }
+                match target_type {
+                    crate::ast::Type::Int | crate::ast::Type::I64
+                    | crate::ast::Type::Uint | crate::ast::Type::U64
+                    | crate::ast::Type::USize | crate::ast::Type::Byte =>
+                        Ok(format!("Math.trunc({})", inner)),
+                    _ => Ok(inner),
+                }
+            }
             _ => Ok("undefined".to_string()),
         }
     }
@@ -9988,6 +10008,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     Ok(format!("{}({})", name_str, args_str.join(", ")))
                 }
             }
+            // PLAN-604 T08 (KD-VM4): 文本位 as-cast 走绑定位降级(整型
+            // Math.trunc),此前落 R046 产 `value` 占位符。
+            Expr::Cast { .. } => self.expr_to_vue_bound_value(expr),
             // Plan 492 M3 (族 B): an unsupported expression form in text
             // content used to silently emit the `value` placeholder — the
             // rendered text showed literal "value" with zero diagnostics.
@@ -10222,6 +10245,22 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             Expr::U64(n) => Ok(n.to_string()),
             Expr::Byte(n) => Ok(n.to_string()),
             Expr::Char(c) => Ok(format!("'{}'", Self::escape_js_string(&c.to_string()))),
+            // PLAN-604 T08 (KD-VM4): 绑定位 as-cast——整型目标降级
+            // Math.trunc 对齐 VM TYPE_CAST_I32 的 `f as i32` 截断语义
+            // (此前落 catch-all 硬错误 UnsupportedExpr)。
+            Expr::Cast { expr, target_type } => {
+                let mut inner = self.expr_to_vue_bound_value(expr)?;
+                if matches!(expr.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    inner = format!("({})", inner);
+                }
+                match target_type {
+                    crate::ast::Type::Int | crate::ast::Type::I64
+                    | crate::ast::Type::Uint | crate::ast::Type::U64
+                    | crate::ast::Type::USize | crate::ast::Type::Byte =>
+                        Ok(format!("Math.trunc({})", inner)),
+                    _ => Ok(inner),
+                }
+            }
             // Plan 012 P0#13 follow-up: everything else (Lambda, Closure,
             // Range, NullCoalesce, Cast, Block, patterns, ...) used to emit
             // literal `null` with no diagnostic. Reject instead; each call
@@ -13722,7 +13761,42 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         }
                     }
                 }
-                self.push_style_class(&mut attrs, props);
+                // Plan 606: fit prop -> Tailwind object-{fit} class
+                if let Some(fit_val) = props.get("fit") {
+                    let fit_str = match fit_val {
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.as_str(),
+                        _ => "",
+                    };
+                    let object_class = match fit_str {
+                        "cover" => "object-cover",
+                        "contain" => "object-contain",
+                        "fill" => "object-fill",
+                        "none" => "object-none",
+                        "scale-down" => "object-scale-down",
+                        _ => "",
+                    };
+                    if !object_class.is_empty() {
+                        let mut props_with_fit = props.clone();
+                        let existing = self.get_style_class(props).and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                            _ => None,
+                        });
+                        let combined = match existing {
+                            Some(cls) => format!("{cls} {object_class}"),
+                            None => object_class.to_string(),
+                        };
+                        props_with_fit.insert(
+                            "class".to_string(),
+                            AuraPropValue::Expr(crate::ast::Expr::Str(combined.into())),
+                        );
+                        props_with_fit.remove("style");
+                        self.push_style_class(&mut attrs, &props_with_fit);
+                    } else {
+                        self.push_style_class(&mut attrs, props);
+                    }
+                } else {
+                    self.push_style_class(&mut attrs, props);
+                }
             }
 
             // Plan 484: shadcn chart 族发射臂退役——裸名 bar-chart 等由
@@ -18312,6 +18386,36 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         assert_eq!(gen.expr_to_js(&crate::ast::Expr::Str("hello".into())).unwrap(), "'hello'");
     }
 
+    /// PLAN-604 T08 (KD-VM4/AC-06): `.as(int)` 的 vue 侧降级必须是
+    /// `Math.trunc`——VM TYPE_CAST_I32 为 Rust `f as i32` 截断
+    /// (engine.rs),双端一致。整型族全覆盖;浮点目标直通。
+    #[test]
+    fn test_as_cast_int_lowers_to_math_trunc() {
+        let gen = VueGenerator::new();
+        let cast = |t: crate::ast::Type| crate::ast::Expr::Cast {
+            expr: Box::new(crate::ast::Expr::Float(3.7, "".into())),
+            target_type: t,
+        };
+        for t in [crate::ast::Type::Int, crate::ast::Type::I64, crate::ast::Type::Uint] {
+            assert_eq!(gen.expr_to_js(&cast(t.clone())).unwrap(), "Math.trunc(3.7)",
+                "as({t}) 必须降级 Math.trunc");
+            assert_eq!(gen.expr_to_vue_bound_value(&cast(t.clone())).unwrap(), "Math.trunc(3.7)",
+                "as({t}) 绑定位必须降级 Math.trunc");
+        }
+        // 浮点目标:JS 原生 f64,直通不截断。
+        assert_eq!(gen.expr_to_js(&cast(crate::ast::Type::Double)).unwrap(), "3.7");
+        // 二元内层保持括号:Math.trunc((a / b))。
+        let bin = crate::ast::Expr::Cast {
+            expr: Box::new(crate::ast::Expr::Bina(
+                Box::new(crate::ast::Expr::Ident("a".into())),
+                auto_val::Op::Div,
+                Box::new(crate::ast::Expr::Ident("b".into())),
+            )),
+            target_type: crate::ast::Type::Int,
+        };
+        assert_eq!(gen.expr_to_js(&bin).unwrap(), "Math.trunc((a / b))");
+    }
+
     #[test]
     fn test_map_tag_native_html_passthrough() {
         // Plan 041a①: 原生语义元素不再坍缩为 div(native_select/native_button
@@ -18326,6 +18430,10 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         assert_eq!(gen.map_tag("li", false), "li");
         assert_eq!(gen.map_tag("option", false), "option");
         assert_eq!(gen.map_tag("blockquote", false), "blockquote");
+        assert_eq!(gen.map_tag("video", false), "video");
+        assert_eq!(gen.map_tag("Video", false), "video");
+        assert_eq!(gen.map_tag("audio", false), "audio");
+        assert_eq!(gen.map_tag("Audio", false), "audio");
     }
 
     #[test]

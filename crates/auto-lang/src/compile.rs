@@ -76,6 +76,106 @@ fn register_manifest_function_sigs(crate_name: &str, manifest_json: &str) {
 
 use auto_val::AutoStr;
 
+/// PLAN-596 T4:源码词法推导泛型调用点的实例标签。扫描全部 `name(...)`/
+/// `.name(...)` 调用形态,齐整字面量实参(全整型 → "i64"/全字符串 → "String")
+/// 即为该名字记一档实例。方法与自由函数共用裸名键(classify 查找序:
+/// "Type.method" 全键 → 裸名)。过推导无害:仅泛型条目消费此表;嵌套调用
+/// 实参(v1)不识别——诚实跳过。
+fn derive_mono_instances(code: &str) -> shim_metadata::classify::MonoInstances {
+    let mut out: shim_metadata::classify::MonoInstances = Default::default();
+    let bytes = code.as_bytes();
+    let mut i = 0usize;
+    while let Some(pos) = code[i..].find('(') {
+        let abs = i + pos;
+        let mut start = abs;
+        while start > 0
+            && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_')
+        {
+            start -= 1;
+        }
+        if start < abs {
+            let name = &code[start..abs];
+            let name_ok = name
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_alphabetic() || c == '_')
+                .unwrap_or(false);
+            if name_ok {
+                if let Some(end) = mono_arg_end(bytes, abs + 1) {
+                    if let Some(label) = mono_label_for_args(&code[abs + 1..end]) {
+                        out.entry(name.to_string())
+                            .or_default()
+                            .push(label.to_string());
+                    }
+                }
+            }
+        }
+        i = abs + 1;
+    }
+    for v in out.values_mut() {
+        v.sort();
+        v.dedup();
+    }
+    out
+}
+
+/// 实参区结尾(首个 0 层右括号;深嵌套含字符串内的括号 v1 不剥离——
+/// 含括号的字符串实参会被误判,兜底是该调用整体不推导,安全方向)。
+fn mono_arg_end(bytes: &[u8], from: usize) -> Option<usize> {
+    let mut depth = 1i32;
+    let mut j = from;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+fn mono_label_for_args(args: &str) -> Option<&'static str> {
+    let trimmed = args.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut all_int = true;
+    let mut all_str = true;
+    for a in trimmed.split(',') {
+        let a = a.trim();
+        if a.is_empty() {
+            return None;
+        }
+        let is_int = {
+            let body = a.strip_prefix('-').unwrap_or(a);
+            !body.is_empty() && body.chars().all(|c| c.is_ascii_digit())
+        };
+        let is_str = a.len() >= 2 && a.starts_with('"') && a.ends_with('"');
+        if !is_int {
+            all_int = false;
+        }
+        if !is_str {
+            all_str = false;
+        }
+        if !all_int && !all_str {
+            return None;
+        }
+    }
+    if all_int {
+        Some("i64")
+    } else if all_str {
+        Some("String")
+    } else {
+        None
+    }
+}
+
 use std::rc::Rc;
 
 use std::cell::RefCell;
@@ -820,15 +920,19 @@ impl CompileSession {
             use crate::ffi::resolve_signature;
             use auto_cache::sandbox::{FunctionShim, ShimType};
 
+            // PLAN-596 T4:词法推导 mono 实例表(dep crate 泛型函数/方法单态化)
+            let mono = derive_mono_instances(source);
             for (crate_name, functions) in &self.rust_imports {
                 if self.declared_crates.contains(crate_name) {
                     // Plan 430 C2: 先构建方法 shim 包(nightly rustdoc → 生成 → cdylib)。
                     // manifest 的自由函数签名同时注册为 D2 元数据;nightly 缺失时降级跳过。
                     // 失败必须留痕(430 复审修复:此前 .ok() 静默吞错,
                     // 用户只见"方法不可用"而无因)——降级走自由函数路径但不失语。
-                    match sandbox
-                        .compile_dep_methods(crate_name, &self.build_dep_source(crate_name))
-                    {
+                    match sandbox.compile_dep_methods(
+                        crate_name,
+                        &self.build_dep_source(crate_name),
+                        &mono,
+                    ) {
                         Ok(Some(built)) => {
                             register_manifest_function_sigs(crate_name, &built.manifest_json);
                         }
@@ -854,7 +958,26 @@ impl CompileSession {
                             !f.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
                         })
                         .collect();
-                    let shims: Vec<FunctionShim> = free_fns.iter().map(|func| {
+                    // PLAN-596 T4:有**实例条目**的自由函数不建 string_to_string 兜底 shim
+                    // (泛型原名无 D2 签名,兜底 shim 必编译失败,徒增剔环轮次)。
+                    // 判定依据 D2 实例签名实存,而非 mono 表覆盖——词法推导对
+                    // 非泛型函数也会收录(全字面量调用即档),mono 覆盖≠泛型。
+                    let base_fns: Vec<&String> = free_fns
+                        .iter()
+                        .filter(|f| {
+                            !mono.get(f.as_str()).is_some_and(|labels| {
+                                labels.iter().any(|l| {
+                                    resolve_signature(
+                                        crate_name,
+                                        &format!("{f}__{l}"),
+                                    )
+                                    .is_some()
+                                })
+                            })
+                        })
+                        .copied()
+                        .collect();
+                    let shims: Vec<FunctionShim> = base_fns.iter().map(|func| {
                         match resolve_signature(crate_name, func) {
                             Some(sig) => {
                                 let param_types: Vec<ShimType> = sig.params.iter().map(|t| match t {
@@ -881,11 +1004,51 @@ impl CompileSession {
                                     return_type,
                                     body_override: None,
                                     returns_result: false,
+                                    call_name: None,
                                 }
                             }
                             None => FunctionShim::string_to_string(func),
                         }
                     }).collect();
+                    // PLAN-596 T4:mono 实例 shim——D2 已注册实例签名(方法包
+                    // manifest 的实例 FunctionEntry),按实例名建 shim、call_name
+                    // 指回泛型原名(212 侧发射 crate::{原名}(args),rustc 推断单态化)
+                    let mut shims = shims;
+                    for func in &free_fns {
+                        if let Some(labels) = mono.get(func.as_str()) {
+                            for label in labels {
+                                let inst_name = format!("{func}__{label}");
+                                if let Some(sig) = resolve_signature(crate_name, &inst_name) {
+                                    let param_types: Vec<ShimType> = sig.params.iter().map(|t| match t {
+                                        crate::ffi::RustType::Void => ShimType::Void,
+                                        crate::ffi::RustType::Bool => ShimType::Bool,
+                                        crate::ffi::RustType::Int => ShimType::I32,
+                                        crate::ffi::RustType::Long => ShimType::I64,
+                                        crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
+                                        crate::ffi::RustType::String => ShimType::CStringOwned,
+                                        _ => ShimType::CString,
+                                    }).collect();
+                                    let return_type = match sig.returns {
+                                        crate::ffi::RustType::Void => ShimType::Void,
+                                        crate::ffi::RustType::Bool => ShimType::Bool,
+                                        crate::ffi::RustType::Int => ShimType::I32,
+                                        crate::ffi::RustType::Long => ShimType::I64,
+                                        crate::ffi::RustType::Float | crate::ffi::RustType::Double => ShimType::F64,
+                                        crate::ffi::RustType::String => ShimType::CString,
+                                        _ => ShimType::CString,
+                                    };
+                                    shims.push(FunctionShim {
+                                        name: inst_name,
+                                        param_types,
+                                        return_type,
+                                        body_override: None,
+                                        returns_result: false,
+                                        call_name: Some((*func).clone()),
+                                    });
+                                }
+                            }
+                        }
+                    }
 
                     let dep_source = self.build_dep_source(crate_name);
 

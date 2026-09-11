@@ -192,6 +192,11 @@ struct FnAnnotations {
     /// Plan 312: #[api(method = "GET", path = "/api/notes")] — HTTP endpoint.
     /// Parsed into ApiAttrs; propagated to Fn.api_attrs by the caller.
     api_endpoint: Option<crate::ast::ApiAttrs>,
+    /// Plan 610 ⑤: `#[export]` / `#[export(system)]` — cdylib export face
+    /// (a2r sibling-wrapper emission). Some("C") for the bare form. Shared
+    /// with GDScript var annotations (`#[export] var x` → store_attrs); fn
+    /// paths read this field, var paths read store_attrs — no interference.
+    export_abi: Option<AutoStr>,
 }
 
 
@@ -240,6 +245,10 @@ pub struct Parser<'a> {
     /// Plan 312: Pending #[api] attributes from the most recent parse_fn_annotations
     /// call, consumed by fn_decl_stmt_with_annotations when building the Fn AST.
     pending_api_attrs: Option<crate::ast::ApiAttrs>,
+    /// Plan 610 ⑤: pending `#[export]` ABI from the most recent
+    /// parse_fn_annotations call, consumed by fn_decl_stmt_with_annotations
+    /// (same pending flow as pending_api_attrs).
+    pending_export_abi: Option<AutoStr>,
     /// Plan 395: Explicit generic type args (`<T1, T2>`) parsed right before a
     /// call's `(` in expr_pratt_with_left. The `<`-intercept stores them here and
     /// the very next loop iteration's LParen arm mounts them onto the Call.
@@ -419,6 +428,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
             pending_api_attrs: None, // Plan 312
+            pending_export_abi: None, // Plan 610
             pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
@@ -493,6 +503,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
             pending_api_attrs: None, // Plan 312
+            pending_export_abi: None, // Plan 610
             pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
@@ -550,6 +561,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
             pending_api_attrs: None, // Plan 312
+            pending_export_abi: None, // Plan 610
             pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
@@ -1177,6 +1189,30 @@ impl<'a> Parser<'a> {
         }
 
         // Return Type::User with just the name so generators can use it
+        // Plan 599 (004 S5-4): F6 formalized -- when an unresolved type name
+        // is passed through as a User placeholder, emit a one-time
+        // (process-deduped) warning so typos no longer silently produce
+        // invalid target code; the passthrough semantics itself is unchanged
+        // (foreign names rely on it).
+        {
+            // Opt-in via env: full-corpus runs showed lookup_type is fed many
+            // non-type/lowercase idents and intentional foreign types alike —
+            // default-on would be pure noise. AUTO_WARN_UNRESOLVED_TYPES=1
+            // enables the one-shot deduped warning (dedupe per process).
+            if std::env::var_os("AUTO_WARN_UNRESOLVED_TYPES").is_some() {
+                static WARNED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+                    std::sync::OnceLock::new();
+                let warned = WARNED.get_or_init(Default::default);
+                if let Ok(mut set) = warned.lock() {
+                    if set.insert(name.to_string()) {
+                        eprintln!(
+                            "[type warning] unresolved type name '{}' passed through as opaque",
+                            name
+                        );
+                    }
+                }
+            }
+        }
         shared(Type::User(TypeDecl {
             consts: Vec::new(),
             name: Name::from(name),
@@ -4773,6 +4809,27 @@ fn parse_api_args(args: &str) -> (String, String) {
     (method, path)
 }
 
+/// Plan 610 ⑤: normalize `#[export(...)]` args to a Rust ABI string.
+/// collect_annotation_args yields "(system)" / "(\"system\")" / None;
+/// bare `#[export]` and "c" map to "C", "system"/"stdcall" to "system"
+/// (win32), anything else passes through verbatim (rustc validates).
+fn parse_export_abi_arg(args: Option<String>) -> AutoStr {
+    let raw = match args {
+        Some(a) => a
+            .trim_start_matches('(')
+            .trim_end_matches(')')
+            .trim()
+            .trim_matches('"')
+            .to_string(),
+        None => String::new(),
+    };
+    match raw.as_str() {
+        "" | "c" | "C" => "C".to_string().into(),
+        "system" | "stdcall" => "system".to_string().into(),
+        other => other.to_string().into(),
+    }
+}
+
 /// Helper: extract the quoted string value from `key = "value"` form.
 fn extract_quoted_value(s: &str, key: &str) -> Option<String> {
     let s = s.trim();
@@ -5054,6 +5111,7 @@ impl<'a> Parser<'a> {
                         self.next(); // skip static keyword
                     }
                     self.pending_api_attrs = ann.api_endpoint.take(); // Plan 312
+                    self.pending_export_abi = ann.export_abi.take(); // Plan 610 ⑤
                     self.fn_decl_stmt_with_annotations(
                         "",
                         ann.has_c,
@@ -8674,10 +8732,19 @@ impl<'a> Parser<'a> {
                         | "export_multiline" | "export_color_no_alpha" => {
                             let mut attr_str = annot.to_string();
                             self.next(); // skip the annotation name
-                            if let Some(args) = self.collect_annotation_args() {
-                                attr_str.push_str(&args);
+                            let args = self.collect_annotation_args();
+                            if let Some(a) = &args {
+                                attr_str.push_str(a);
                             }
                             ann.store_attrs.push(attr_str.into());
+                            // Plan 610 ⑤: fn-level `#[export]` / `#[export(system)]`
+                            // — cdylib export face. GDScript var semantics above
+                            // are untouched; fn declarations read export_abi
+                            // (fn paths never read store_attrs, var paths never
+                            // read export_abi).
+                            if annot == "export" {
+                                ann.export_abi = Some(parse_export_abi_arg(args));
+                            }
                             // Check for ] or ,
                             if self.is_kind(TokenKind::RSquare) {
                                 self.next(); // skip ]
@@ -9384,6 +9451,11 @@ impl<'a> Parser<'a> {
 
         // Plan 312: Set api_attrs from pending #[api] annotation
         fn_expr.api_attrs = self.pending_api_attrs.take();
+
+        // Plan 610 ⑤: Set export_abi from pending #[export] annotation
+        if let Some(abi) = self.pending_export_abi.take() {
+            fn_expr.export_abi = Some(abi);
+        }
 
         // Plan 364 W2: fn-level pass-through attrs (`#[tokio.main]`, dotted macros)
         fn_expr.attrs = std::mem::take(&mut self.impl_attrs);
@@ -11406,8 +11478,24 @@ impl<'a> Parser<'a> {
                 self.next(); // consume 'dyn'
                 let trait_type = self.parse_type()?;
                 // Use the trait's display name (e.g. "Client")
-                let trait_name = trait_type.unique_name().to_string();
-                let dyn_name = format!("dyn {}", trait_name);
+                let mut dyn_name = format!("dyn {}", trait_type.unique_name());
+                // Plan 599 (004 §5④): `+ Send [+ Sync]` marker-trait bounds —
+                // engine shapes need Box<dyn MasterPty + Send> (the reader-
+                // thread field spelling). Appended verbatim to the spelling.
+                while self.is_kind(TokenKind::Add) {
+                    self.next(); // consume '+'
+                    if !self.is_kind(TokenKind::Ident) {
+                        return Err(SyntaxError::Generic {
+                            message: "dyn trait object: expected trait name after '+'"
+                                .to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                    let bound = self.cur.text.clone();
+                    self.next();
+                    dyn_name.push_str(&format!(" + {}", bound));
+                }
                 Ok(Type::User(TypeDecl {
                     consts: Vec::new(),
                     name: dyn_name.into(),

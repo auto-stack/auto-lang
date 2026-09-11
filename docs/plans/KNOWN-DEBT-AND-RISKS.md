@@ -32,7 +32,7 @@
 | 576 | 绕道退役跟进（用户已签待澄清#2 默认） | renderer PLAN-043 T6 直写快道 + frac +1e-3（renderer.rs/aura_view_builder.rs T9）与 auto-down demo custom_scrollbar is_vm 双轨/thumb 内联——引擎侧前提已由 576 G1-G4 消除，物理退役触及 auto-down demo 实机验证，随滚动同步契约计划另行立项。 | `renderer.rs` PLAN-043 T6 块；`aura_view_builder.rs` PLAN-043 T9；auto-down demo custom_scrollbar.at |
 | 576 | 测试隔离（复审新发现，防误归因） | osconfig_daemon `sibling_fixture` 用固定共享临时目录且各用例以 remove_dir_all 开场——nextest 并行全量跑下跨用例竞态（tf 复审实跑 1 红，单测隔离绿；Plan 501/505 期产物，576 零触及）。ui::layout 族为本机显示几何环境红（master 复现 14，数量随会话 6↔9 浮动）——两族均非代码回归，后续计划勿误归因。 | `osconfig_daemon.rs` sibling_fixture；`ui/layout.rs`（环境依赖） |
 
-| 526 | 一致性 | 布局件级 hover/右键公共基建（wrap_layout_onclick）未做——launcher 用 button、桌面右键用 mouse-area 替代挂点，逐点特设；任意 .at 布局件要 hover/右键仍需逐个特设 | 526 待澄清③（用户核准延后，独立立项候选） |
+| 526 | 一致性 | ~~布局件级 hover/右键公共基建（wrap_layout_onclick）未做~~ **已落地（PLAN-002 B，2026-09-09）**：`wrap_layout_events` 收拢布局件三臂——onclick（490 G4）+ `oncontextmenu`（`View::Row/Column/Container::on_right_click`，aura `set_layout_events` 提取、`convert_view_messages` 显式穿透）+ `hover:` 变体类消费（新增 `hover_area.rs`：HoverArea 自持 hover 态 + 与样式闭包共享 `Arc<AtomicBool>` 标志，翻转只 request_redraw 不重建 view）。试点=launcher 网格格（既有 `hover:bg-primary/10` 生效）+ 桌面图标格（`hover:bg-white/10` + oncontextmenu 自 icon button 迁至格 col，格内全域可右键）；实机证据 scratch/p002（p002b_desktop.ps1/p002b_launcher.ps1：桌面格 hover 像素差 6054/撤除 0、label 区右键菜单、launcher 网格 7/8 候选点命中 152×95 格）。**余项（全量铺开另立）**：`View::Grid` 无事件槽、`cursor-pointer` iced 适配器 no-op、hover 文本色不级联子件、全示例 sweep（481+88 处 hover: 布局件） | `renderer.rs wrap_layout_events/layout_hover_flag/layout_style_fn`；`hover_area.rs`；`aura_view_builder.rs set_layout_events`；`auto-os/shell/desktop.at:73`；设计稿 `docs/design/autoui/layout-interaction.md` |
 | 572 | AA2R/host 发射对齐缺口: push 容器实参克隆 | AA2R push 臂克隆规则窄化为「用户 struct/enum 裸 ident」；宿主（trans/rust.rs:8659 auto-clone）对**所有非 Copy**（含 `List<T>`/Vec 容器 ident）实参克隆——AA2R 遇容器 ident 入 push 仍裸 move（语料+lib 现零形状,非阻塞;真出现时为 E0382 家族）。对齐另案小改。 | `auto/lib/a2r.at` push 臂 P572 T5b 注释 |
 | 572 | ~~at_mode b34_struct 宿主侧红~~ + 文档头过时 | **b34 红已结案(2026-09-06 独立调查,用户裁定执行):5 跑 3 态全绿不可复现**(基点 f2ae1cb29/当前 master×2/失败观测精确 lib 状态重构),判⑤腿重载构建期环境瞬态,非代码态缺陷——未复现-关闭观察。余项:at_mode 测试文件文档头 feature 标注过时(写 test-vm-files,实际门=test-aavm),Plan 574 顺手修。 | `crates/auto-lang/src/tests/aavm_at_mode_tests.rs:9`;572 待澄清④结案段 |
 
@@ -82,12 +82,16 @@
 | 561 | 工具链风险（schema 生成器非确定性） | schema/aura.at 生成器（`SCHEMA_DRIFT_GENERATE_AT=1`）对 committed 文件有既存格式漂移（master 空跑 +151/−195，411→416 元素）且逐次输出非确定（同代码两次 188721/188921 bytes，NavDestination/Swiper 规范化名随表迭代序随机）——全量重生成会裹挟无关 churn 并诱发 queue_coverage 假红；561 复审修复被迫改走定向别名路线。根治=生成器键序稳定化 + committed 文件与生成输出格式对齐（专项候选）。 | `crates/auto-lang/tests/schema_drift.rs:1822` 生成器臂；Plan 561 复审修复轮记录 |
 ## 🟢 已知限制（设计决策，非 bug）
 
-| 526 | 视觉 | window_thumbnail 快照懒捕获前显示空（fallback icon 兜底；命中预抓已在 summon 链）| 526 T18 记录（KNOWN-DEBT 候选） |
+| 526 | ✅已结算(PLAN-002,2026-09-09): window_thumbnail 懒捕获前显示空 | 真根因=convert_view_messages（VM 模式消息桥）缺 WindowThumbnail 臂——缩略节点落 `_ => Empty` 兜底,缩略在 VM 模式从未渲染过（非快照时序）,面板只剩 p-1 空壳;修复=显式臂+fence 测试（Grid 319/menubar 422/496 MouseArea 后同坑第四例）。实机:thumb-fallback 臂复活,缩略面板 200×120 整段 hover 在位 | `ui/iced/renderer.rs` convert_view_messages;scratch/p002 |
 | 572 | ✅已结算(Plan 574,2026-09-06): Windows 环境限制 aavm 进程内语料测试栈溢出族(12) | 裸 `cargo taa` 12 测试 STATUS_STACK_OVERFLOW——进程内双层解释(宿主 VM 跑 aavm.at+lib)栈需求越过 `run_autovm_capture` **硬编码 4MB 执行线程**(lib.rs:451;RUST_MIN_STACK 护栏被显式 stack_size 绕过——Plan 423 意图失效点;574 T5 探针:4MB 爆/5MB 过/8MB 2.7s,递归有限,与用例规模无关,基点同阈值);非 572 回归(两态失败集 13/13 逐名一致)。**〔2026-09-06 用户裁定→Plan 574 落地〕根因=avm+aavm/avm+aa2r 双重解释器路径非真实需求(2×2 对称性产物;真实自举=a2r 转译+编译+运行)。处置=12 测试 `#[cfg_attr(windows, ignore)]`(Windows 关闭,Linux/CI 保留全量);Windows 裸 taa 失败集 13→1(仅 charts_gallery 564-Q6 邻接);规约注记=aavm/project.md 验证矩阵节+AGENTS AAVM 档;对账表=docs/reports/p574-coverage-map.md。** | `docs/reports/p574-coverage-map.md`;572 待澄清②;Plan 574 |
 | 572 | gen2 产品形态: exe² 构建输入不含 aavm.at | P532 步骤 9 的 exe²=lib 七文件+harness main(镜像⑤腿 exe¹ 形态)——aavm.at(全部内容即 CLI main)不入构建输入,否则与 harness main 重复(E0428);aavm.at 入口面由 aavm_at_mode 测试(531 形态,宿主)覆盖,exe² 的 --trans 固定点用同一 lib 拼合源(自再现闭环)。若未来需要「含 aavm.at 的 form-B exe²」(其 main 即产品 main,无 --trans),形态已验证可另立。 | `scripts/aavm_native_gen_check.sh` P572 T5b 注释;P532 步骤 9 回执 |
-| 526 | 视觉 | Popover 首次打开横向锚点偏左（任务栏菜单/icon 菜单同族；功能与消失正常，497 hover 缩略同族先例）| 526 波间回归记录（KNOWN-DEBT 候选） |
+| 526 | ✅已结算(PLAN-002,2026-09-09): Popover 首开横向锚点偏左 | 与上条同根（空壳 8×8 面板以 0 尺寸公式定位=视觉"偏左/漂移"）;修复=①WindowThumbnail 臂（同上）②Panel 退化内容跳绘护栏（panel_is_degenerate:content 0 尺寸或子节点全 0 面积不绘制,空壳帧不可见）。实机:空壳 0 帧,首开=再开,Top/BottomStart 全对位（headless 翻转两帧断言×2 在案） | `ui/iced/popover.rs` panel_is_degenerate;`ui/iced/layout_tests.rs`;scratch/p002 |
 | 540 | 兼容: 旧 storage 配置键只读回退保留一个版本 | 桌面配置单源迁至 `~/.config/autoos/apps/desktop/config.at`（8 键：dock.position/enabled/pinned、desktop.wallpaper/wallpapers_dir、appearance.theme、desktop.transparency、notes.enabled），boot 一次性迁移后旧键**不再读不再写但未删除**——按 D4 定案保留一个版本防回滚双源，下一版本随清理 plan 删键（届时旧版桌面回滚将丢设置,属预期）。 | `ui/desktop_config.rs` LEGACY_STORAGE_KEYS + `docs/plans/540-desktop-settings-osconfig-unify.md` D4 |
 | 540 | 范围边界: shell.desktop.hidden/icons 键留 storage | 桌面图标面可见性（`shell.desktop.hidden`/`shell.desktop.icons`）不属本期 8 键单源范围，仍走 storage 直写（desktop.at 右键隐藏链）——与 config.at 并存双轨；若未来图标面配置也要进 os-config 插件体系，随通用"桌面面配置"扩展再迁。 | `assets/desktop.at:174`；`docs/plans/540-desktop-settings-osconfig-unify.md` T2 勘察注 |
+| 002 | 🟡候选: convert_view_messages D-GAP 审计尾差 8 变体 | PLAN-002 补 WindowThumbnail 臂时全量审计——Accordion/NavigationRail/Overlay/Select/Sidebar/Slider/Tabs 仍落 `_ => Empty`（其中 5 个带 fn 指针回调系 rust-mode 专属无法机械映射;Overlay/Sidebar 纯数据可补;代码注释自认"Overlay 至今仍走兜底,是已知差异"）。VM 模式若用到即整件消失,同坑第五例起。 | `ui/iced/renderer.rs` convert_view_messages 尾部注释;PLAN-002 |
+| 002 | ✅已结算(PLAN-002,2026-09-09): desktop.at blank 菜单 T36 结构回归 | 526 T36 交付时闭合括号错位——blank 菜单内容 col 成 view 级散落子树,桌面左下角常驻渲染"更换壁纸/显示设置"（非 popover 态也可见）;修复=col 归位 popover 标签内（plain[1]=content）,金样再生,a2vue/desktop_surface 测试绿。实机:boot 截图散落消失 | `assets/desktop.at`（auto-os shell/ pack 同步）;auto-lang `test/a2vue/desktop_surface_asset/expected.vue`;scratch/p002 |
+| 002 | ✅已结算(PLAN-002,2026-09-09): resolve_shell_pack_dir 组目录解析 worktree 失效 | `repo_root.parent()` 对含 `..` 的合成路径词法只剥一层——worktree 检出（.wt/<组>/auto-lang）下第一候选（<组>/auto-os/shell）永不命中,静默落到硬编码主检出 pack:worktree 构建的桌面读主检出的 shell/desktop.at,worktree 侧 .at 改动实机验证静默失效。修复=ancestors().nth(3) 直取组目录。主检出构建行为不变 | `ui/shell.rs` resolve_shell_pack_dir;scratch/p002 |
+
 | 540 | 验收余项: 实机齿轮点击链路留给复审/用户在场环节 | 真桌面（ui_desktop）齿轮→设置窗的交互实机验收在自主执行轮受阻于焦点窃取保护（用户正用机，SetForegroundWindow/SendInput 不生效且不宜强抢）——已验证替代面：桌面 boot 含 045 条目（registry 42 entries 日志）、桌面全量渲染 PrintWindow 截图、无头端到端测试（真 shell.at 齿轮→open_settings→launch-or-focus→播种→config 落盘，settings_shell_at_smoke_gear_to_panel 等 10 测）；复审批准前建议用户在场点一次齿轮 + 拖拽/× 关闭。 | `docs/plans/540-desktop-settings-osconfig-unify.md` T11；`scratch/p540_vm_desktop.png` |
 | 540 | 语义边界: daemon 直改 config.at 重启生效（无文件监视） | D1 定案桌面宿主 boot 直读 config.at（进程内 `DesktopConfig::load`）——设置窗写路径经宿主臂即时热生效 ✓，但 **auto-os-config 通用编辑器直改文件后，运行中的桌面需重启才吸收**（无 file-watch 通道）。若未来要求 daemon 编辑即时生效，需 boot 后增量 file-watch + apply 扩展（新计划立项，涉 M1 装载层改造）。 | `ui/desktop_config.rs` load()；`docs/plans/540-desktop-settings-osconfig-unify.md` D1 |
 | 540 | 清理余项: HostCtx.settings_fields 死字段 | is_settings windowless 拆借路退役（T9）后 `HostCtx.settings_fields`（ShellFields）仅构造无人读写——pub struct 字段无编译告警；下个清理批随其它 ShellFields 家族（launcher/switcher/notification 同型仍在用）一并审视。 | `ui/session.rs:1685` |
@@ -1914,6 +1918,26 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
   vite 解析断链（复审实机复现；全新 gen 需手工桩方可启动）。触发条件：
   主题切换示范面（三主题截图对拍）立项时一并收口。
 
+---
+
+## 附录：VM 引擎缺陷现场（2026-09-09 025-sys-monitor 内存/卡顿复盘）
+
+> **✅ KD-VM1~4 已由 PLAN-604（2026-09-10）修复销账**——定罪笔记（行号级
+> 证据+trace+仪器化数据）见 `docs/plans/604-vm-rc-lifecycle-fix.md` §9。
+> 修复面：CONSTRUCT_INSTANCE 取 `sp-1` 槽（T03）、shim_list_push 四出口
+> transfer 配平（T04）、ARRAY_LEN 收尾（T04）、GET_FIELD 门控+结算转正
+> （T01）、as-cast Math.trunc 降级（T08）。验收：probe_rc_leak_soak 5/5
+> 硬断言绿（StructTick 4000→0、LitPushTick lenSeen=100/sum=4950/growth 0）。
+> **勘误**：KD-VM3（B12 编码损坏）与 KD-VM4（Number() 不截断）的原表述均
+> 与事实不符——B12 为坏探针伪证（语料缺 LitPushTick timer 条目致 handler
+> 空跑，lenSeen==0/fff2 皆为空跑症状）；Number() 降级在仓内不存在（实际
+> 缺口=Cast 三处 emit 无降级）。协议固化见
+> `docs/specs/auto-lang/vm/overview.md` §RC 生命周期协议/§B12 编码不变量。
+
+复现与归因工具已入仓：语料 `test/ui/probe_rc_leak/`（五拍型 timer 逐操作归因）+
+`musk_vm_track_tests.rs::probe_rc_leak_soak`（进程内 `heap_live_objects` 断言通道，
+0.14s/轮）。四个缺陷同根不同面：
+
 - **KD-VM1 [内存泄漏·高优] GenericInstance（struct 字面量）经 `List.push` 入列后
   永久滞留**：最小复现 `probe_attribution`——`StructTick`（struct 字面量×100 →
   本地 `[]Item` → push）40 拍 live_heap **+4000（恰 100/拍）**；对照组
@@ -1939,6 +1963,40 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
 
 应用侧规避（025-sys-monitor 已落地）：struct 字段读只出现在 `.procs` 快照
 for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲染前 120 行物化。
+
+### PLAN-608 续节（2026-09-11，vm-dispatch-settlement-pool）
+
+> **✅ KD-VM6 已由 PLAN-608 修复销账**——resolve→shim 臂补 CALL_NAT 同款
+> 死区（`rc_release_slot_range(sp_after, sp_before)`）、内联 str/List 消费型
+> 臂弹窗结算、pool_soak/专项测试红→绿实证（修复前 `List<str>.push` 与
+> `trimEnd` 各 50 调用孤儿 +50 份额，修复后 live_shares=0、underflow=0）。
+> 协议固化见 `docs/specs/auto-lang/vm/overview.md` §RC 生命周期协议
+> （SD-01 执行点清单、SD-02 池份额口径）。
+
+- **KD-VM5 [死码·移除候选·用户裁定] CALL_SPEC 内联 List 分发区不可达臂**：
+  engine.rs `type_name=="List"` 内联 match 的 push/get/pop/insert/remove/
+  sort/sort_by/reverse 等臂**静态不可达**——registry（canonical
+  "List.X"→"auto.list.X"）恒先命中同名 shim（PLAN-608 T-01 静态差集+运行期
+  trace 双证）。其中内联 "push" 臂 `list.push(elem_val)` 裸存不 retain
+  （**若路由回退复活即 UAF 面**，非单纯泄漏）；其头注释曾声称已修 stake
+  结算（与实现脱节，PLAN-608 已修正注释）。本计划不删代码（涉及 Plan
+  403/053 历史成因，删除面广）——路由守护钉死于
+  `crates/auto-lang/src/tests/plan608_dispatch_golden_tests.rs`
+  （registry 覆盖回退→测试先红）；**删除与否留用户裁定**。
+- **KD-VM6 [池份额孤儿·已修] CALL_SPEC 分发路径字符串池份额零结算**：
+  ①resolve→shim 臂：`List<str>.push` 字符串元素暂存池份额（池不入影子、
+  按内容结算）无死区结算——每调用孤儿 +1，dedup 共享条目被永久钉死无法
+  回收（StrPush 探针 heap 口径不可见）。②内联 str 臂接收者：copy-on-load
+  `rc_push` 池 +1，臂内 raw pop 无 `pool_release`——每调用孤儿 +1
+  （trimEnd/includes/indexOf/substring/char_code_at 等可达臂，tv 语料
+  trace 实证）。修复=resolve 分支补死区 + 内联消费臂弹窗结算（见上方
+  销账注）。修复过程实证：**shim 内做池释放与 CALL_NAT 死区构成双释放
+  （underflow +N/调用）——池份额结算归属死区单点，shim 不参与**（堆
+  stake 才走 shim take_stake 转移）。
+- **[域外观察·候选] CALL_SPEC opaque_native 分支（engine.rs，Regex/Url 等
+  opaque 实例方法）手动弹出接收者/实参且无结算**——与 KD-VM5/6 同族，
+  但不在 PLAN-608 授权范围（计划只覆盖内联 str/List 分发区与 resolve 路径）。
+  登记为后续计划候选，未定罪未修复。
 
 
 ## P596 债务（dep-rust-v2 执行期登记，2026-09-10）
@@ -1975,3 +2033,15 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   证据：同语料头注（b）/归档计划 §9 T-05。
 - 复审 F-2 观察项（非债）：`auto <script>` 尾行打印脚本尾值（runner
   基线行为，engine_face_vm.at 尾部 "false"）。
+
+## P601 债务（theme-declaration-hot-switch，2026-09-11 复审登记/609 勘验裁定）
+
+- **P601-T11 [裸名组件 SFC 化缺口] charts 裸名 tag（`line-chart` 等）发射
+  `<div :data=...>` 数据绑定占位而非组件 SFC**：vue 腿裸名组件 SFC 化=
+  已知缺口（484 M4 有意形态）。PLAN-609 T-B1 勘验裁定：与包组件 SFC 断链
+  （settings dep 死指，609 已修）**异根**——占位折叠是包感知折叠链的有意
+  分支（`test_charts_gallery_compiles` 显式断言 `:data=` 折叠与退役
+  chart-family 零泄漏），非回归，不强改。SFC 化随主题切换 SVG 属性
+  token 通道示范面另案（601 排除项原文）。回归锚：024-charts vue 面测试
+  维持绿。证据：`crates/auto-lang/src/ui_gen/vue.rs` tests
+  test_charts_gallery_compiles 注记；601 复审记录 R 系。

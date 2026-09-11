@@ -3906,7 +3906,7 @@ mod tests_plan483_d4 {
 
     fn column(children: Vec<View<DynamicMessage>>) -> View<DynamicMessage> {
         View::Column { children, spacing: 0, padding: 0, style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
     }
 

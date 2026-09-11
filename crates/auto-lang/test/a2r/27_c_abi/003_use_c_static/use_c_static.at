@@ -1,0 +1,13 @@
+// Plan 610 ⑥ (T-06): `use.c <engine_face_full.json>` → S-form static FFI
+// face. The manifest is the shared IR (auto-bindgen): the `#[link]` extern
+// block carries the C ABI widths (int = i32); the safe wrappers carry
+// Auto-side widths (int = i64, cast at the edge); pointer/buffer helpers
+// keep every unsafe op inside the generated module. Relative manifest paths
+// resolve against this case dir (transpile_rust_with_source_dir).
+use.c <engine_face_full.json>
+
+fn main() {
+    let h = autoterm_engine_spawn(80, 24, "cmd")
+    print(cffi_handle_is_null(h))
+    autoterm_engine_free(h)
+}

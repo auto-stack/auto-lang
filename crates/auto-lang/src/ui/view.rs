@@ -465,6 +465,10 @@ pub enum View<M: Clone + Debug> {
         /// 泛映射既有；VM 转换层提取 row/col/div 的 onclick，iced 侧以
         /// mouse_area 包装发射）。None = 纯布局（缺省，行为不变）。
         onclick: Option<M>,
+        /// PLAN-002 B：布局件右键（VM/Vue parity——Vue 轨 oncontextmenu→
+        /// @contextmenu 泛映射既有，布局件在浏览器里已可右键；VM 此前只有
+        /// button/mouse-area 两个挂点）。iced 侧同 mouse_area on_right_press。
+        on_right_click: Option<M>,
     },
 
     /// Vertical layout with optional styling
@@ -475,6 +479,8 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,  // ✅ NEW: Takes priority over spacing/padding
         /// Plan 490 G4：同 [`View::Row::onclick`]。
         onclick: Option<M>,
+        /// PLAN-002 B：同 [`View::Row::on_right_click`]。
+        on_right_click: Option<M>,
     },
 
     /// Text input field with optional styling
@@ -605,6 +611,8 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,  // ✅ NEW: Takes priority over individual fields
         /// Plan 490 G4：同 [`View::Row::onclick`]（div 形态消费面）。
         onclick: Option<M>,
+        /// PLAN-002 B：同 [`View::Row::on_right_click`]（div 形态消费面）。
+        on_right_click: Option<M>,
     },
 
     /// Scrollable container for content overflow with optional styling
@@ -1279,14 +1287,14 @@ impl<M: Clone + Debug> ViewBuilder<M> {
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
             ViewBuilderKind::Column => View::Column {
                 children: self.children,
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
             ViewBuilderKind::Text => View::Text {
                 content: self.text_content,
@@ -1921,19 +1929,21 @@ impl<M: Clone + Debug> View<M> {
                 on_right_click: on_right_click.map(|rc| f(rc)),
                 disabled,
             },
-            View::Row { children, spacing, padding, style, onclick } => View::Row {
+            View::Row { children, spacing, padding, style, onclick, on_right_click } => View::Row {
                 children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,
                 padding,
                 style,
                 onclick: onclick.map(|m| f(m)),
+                on_right_click: on_right_click.map(|m| f(m)),
             },
-            View::Column { children, spacing, padding, style, onclick } => View::Column {
+            View::Column { children, spacing, padding, style, onclick, on_right_click } => View::Column {
                 children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,
                 padding,
                 style,
                 onclick: onclick.map(|m| f(m)),
+                on_right_click: on_right_click.map(|m| f(m)),
             },
             View::Grid { cols, gap, cells, style } => View::Grid {
                 cols,
@@ -2009,7 +2019,7 @@ impl<M: Clone + Debug> View<M> {
                 on_toggle: on_toggle.map(|m| f(m)),
                 style,
             },
-            View::Container { child, padding, width, height, center_x, center_y, style, onclick } => View::Container {
+            View::Container { child, padding, width, height, center_x, center_y, style, onclick, on_right_click } => View::Container {
                 child: Box::new(child.map_msg_with_arc(f)),
                 padding,
                 width,
@@ -2018,6 +2028,7 @@ impl<M: Clone + Debug> View<M> {
                 center_y,
                 style,
                 onclick: onclick.map(|m| f(m)),
+                on_right_click: on_right_click.map(|m| f(m)),
             },
             View::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
                 // Plan 043 T1: offset 透传;on_scroll 为 ScrollCallback
@@ -2813,7 +2824,7 @@ impl<M: Clone + Debug> ViewContainerBuilder<M> {
             center_x: self.center_x,
             center_y: self.center_y,
             style: self.style,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 }

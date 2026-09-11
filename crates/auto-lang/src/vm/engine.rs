@@ -3073,6 +3073,22 @@ impl AutoVM {
                     // Stack: array_id (raw i32 for legacy arrays, TAG_OBJECT for heap lists)
                     {
                         let nv = task.ram.pop_nv();
+                        // PLAN-604 T04: 结算弹出槽份额。栈顶引用是 copy-on-load
+                        // 的暂存拷贝（rc_push +1 记影子），本 opcode 消费它——
+                        // 原实现裸 pop 不结算，+1 永久孤儿（for-in 头部
+                        // `dup; arr.len` 形态每拍漏一个列表对象，探针实测
+                        // LitPushTick +4040/40=100 实例+1 列表）。DROP:同款
+                        // 纪律——堆按影子释放，字符串按内容释放。释放后对象
+                        // 入 dying 宽限窗，本 opcode 内 heap 查找仍安全。
+                        {
+                            let stake = task.ram.take_stake_at(task.ram.sp);
+                            if stake != 0 {
+                                self.rc_release_id(stake);
+                            }
+                            if auto_val::is_string(nv) {
+                                self.rc_release(nv);
+                            }
+                        }
                         if auto_val::is_string(nv) {
                             // String .len() fallback — JS .length 语义 = 字符数
                             // （PLAN-055：此前按字节计，for-in over str 对 CJK
@@ -4332,13 +4348,20 @@ impl AutoVM {
                     // Plan 390 §15 H2: NEW_INSTANCE now pushes the id as a
                     // TAG_OBJECT-encoded value, so decode either tag form (the
                     // i32 path is retained for any legacy producer/inline test).
+                    // PLAN-062 T12: 取走弹出槽份额(随值转移到回推栈顶)。
+                    // PLAN-604 T03: 必须在 pop field_count 之后、pop instance_id
+                    // 之前取 **sp-1** 槽——此刻实例恰在栈顶(sp-1)(NEW_INSTANCE
+                    // rc_push 的份额所在;实测 sp_after_count=9、实例@8)。原实现
+                    // 在两次 pop 之后取 sp,读到的是末字段槽(影子恒 0);
+                    // 首版修复取 sp(=field_count 旧槽,亦 0)——仪器化实测后钉定
+                    // sp-1。份额失明 → struct 字面量经 push 每实例永久滞留
+                    // (025-sys-monitor 55-147MB/min 复盘主凶,探针 +100 obj/拍)。
+                    let instance_stake = task.ram.take_stake_at(task.ram.sp - 1);
                     let instance_id = {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
-                    // PLAN-062 T12: 取走弹出槽份额(随值转移到回推栈顶)。
-                    let instance_stake = task.ram.take_stake_at(task.ram.sp);
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
                         instance_id
                     );
@@ -5596,12 +5619,20 @@ impl AutoVM {
                             // "GET_FIELD non-i32 obj_id field=length" 噪音)。
                             auto_val::decode_list(nv) as u64
                         } else {
-                            let fn_name = task.call_stack.last().map(|f| f.fn_name.clone().unwrap_or_default()).unwrap_or_default();
-                            let field_name = self.strings.read().unwrap()
-                                .get(field_idx as usize)
-                                .map(|b| String::from_utf8_lossy(b).to_string())
-                                .unwrap_or_default();
-                            eprintln!("[GET_FIELD] non-i32 obj_id: raw={:016x} field={} fn={} bp={} ip={}", nv, field_name, fn_name, task.bp, task.ip);
+                            // mem 复盘修复：该臂此前每命中一行 eprintln
+                            // （sys-monitor 曾 6 分钟 344MB 日志饿死 UI 线程）
+                            // 且不结算槽位 stake（每次命中泄漏一份 rc 份额）。
+                            // 现改为环境门控诊断 + stake 结算，与 SET_FIELD
+                            // 同款纪律。
+                            let _ = task.ram.take_stake_at(task.ram.sp);
+                            if std::env::var_os("AUTO_DEBUG_GETFIELD").is_some() {
+                                let fn_name = task.call_stack.last().map(|f| f.fn_name.clone().unwrap_or_default()).unwrap_or_default();
+                                let field_name = self.strings.read().unwrap()
+                                    .get(field_idx as usize)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                eprintln!("[GET_FIELD] non-i32 obj_id: raw={:016x} field={} fn={} bp={} ip={}", nv, field_name, fn_name, task.bp, task.ip);
+                            }
                             auto_val::decode_i32(nv) as u64
                         }
                     };
@@ -6402,7 +6433,6 @@ impl AutoVM {
                         .get(method_name_idx)
                         .map(|b| String::from_utf8_lossy(b).to_string())
                         .unwrap_or_default();
-
                     // The receiver is at stack position sp - arg_count - 1
                     // (args are on top, receiver is below them)
                     let sp = task.ram.sp;
@@ -6867,13 +6897,31 @@ impl AutoVM {
                         // Plan 200 Task 3.3: Fallback to native registry for type.method natives
                         // (e.g., Result.Ok.map_err -> shim_result_map_err)
                         if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                            // PLAN-608 T03（KD-VM6①）：resolve 路径补 CALL_NAT 同款
+                            // 死区结算（与 CALL_NAT 臂同构）。shim 按 CALL_NAT 约定
+                            // 消费实参/接收者并回推结果，但 CALL_NAT 的
+                            // rc_release_slot_range 死区不在本路径——字符串元素/实参
+                            // 的暂存池份额（池不入影子，按内容结算）此前每调用孤儿
+                            // +1（List<str>.push 把 dedup 共享条目永久钉死）。窗口
+                            // [sp_after, sp_before)：结果落窗口底槽，被弹槽按影子
+                            // （堆）/内容（池）释放，与 CALL_NAT 完全一致。
+                            let sp_before_shim = task.ram.sp;
                             shim(task, self)?;
+                            let sp_after_shim = task.ram.sp;
+                            if sp_after_shim < sp_before_shim {
+                                self.rc_release_slot_range(&mut task.ram, sp_after_shim, sp_before_shim);
+                            }
                         } else {
                             return Err(VMError::MissingNative(native_id));
                         }
                     } else if type_name == "str" {
                         // Inline str type method dispatch for CALL_SPEC
                         // Stack: [..., receiver(str nanbox), arg0, ..., argN-1]
+                        // PLAN-608 T02: CALL_SPEC 布局顶界。消费型臂弹毕、压结果前
+                        // 以 rc_release_slot_range 结算 [sp, spec_sp_entry) 弹出窗口
+                        // （堆按影子、池按内容——CALL_SPEC 路径无 CALL_NAT 死区，
+                        // 此前接收者/字符串实参的暂存份额每调用孤儿 +1，KD-VM6②）。
+                        let spec_sp_entry = task.ram.sp;
                         match method_name.as_str() {
                             "as_bytes" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -6884,7 +6932,7 @@ impl AutoVM {
                                 // Wrap as RustStdlibObject for FFI consumption
                                 let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Vec<u8>", bytes);
                                 let handle = self.insert_heap_object(obj) as i32;
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(handle)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_i32(handle)); }
                             }
                             // Plan 378 §10.5: 补全所有大小写别名。原表只有
                             // to_uppercase/to_lower/to_lowercase，漏了裸 upper/lower 和
@@ -6899,7 +6947,7 @@ impl AutoVM {
                                     .unwrap_or_default();
                                 let result = s.to_uppercase();
                                 let idx = self.add_string(result.into_bytes());
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push_str_idx(task, idx as usize); }
                             }
                             "lower" | "to_lower" | "to_lowercase" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -6909,7 +6957,7 @@ impl AutoVM {
                                     .unwrap_or_default();
                                 let result = s.to_lowercase();
                                 let idx = self.add_string(result.into_bytes());
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push_str_idx(task, idx as usize); }
                             }
                             "chars" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -6921,7 +6969,7 @@ impl AutoVM {
                                 let mut list: ListData<i32> = ListData::new();
                                 for ch in s.chars() { list.push(ch as i32); }
                                 let list_id = self.insert_heap_object(list);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push(task, auto_val::encode_object(list_id as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push(task, auto_val::encode_object(list_id as u32)); }
                             }
                             "graphemes" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -6937,7 +6985,7 @@ impl AutoVM {
                                 // Fallback: split by char boundaries
                                 if list.len() == 0 { for ch in s.chars() { list.push(ch as i32); } }
                                 let list_id = self.insert_heap_object(list);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push(task, auto_val::encode_object(list_id as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push(task, auto_val::encode_object(list_id as u32)); }
                             }
                             "split" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -6968,7 +7016,7 @@ impl AutoVM {
                                 drop(strings);
                                 let list_id = self.insert_heap_object(list);
                                 // Remove receiver from CALL_SPEC layout, push result
-                                { task.ram.pop_nv(); self.rc_push(task, auto_val::encode_object(list_id as u32)); }
+                                { task.ram.pop_nv(); let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push(task, auto_val::encode_object(list_id as u32)); }
                             }
                             "is_empty" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -6976,7 +7024,7 @@ impl AutoVM {
                                     .get(str_idx)
                                     .map(|b| b.is_empty())
                                     .unwrap_or(true);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(if s { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(if s { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
                             }
                             "starts_with" | "ends_with" | "contains" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -6992,7 +7040,7 @@ impl AutoVM {
                                 let result = if method_name == "starts_with" { s.starts_with(&pat) }
                                     else if method_name == "ends_with" { s.ends_with(&pat) }
                                     else { s.contains(&pat) };
-                                { task.ram.pop_nv(); task.ram.push_nv(if result { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
+                                { task.ram.pop_nv(); let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(if result { auto_val::encode_i32(1) } else { auto_val::encode_i32(0) }); }
                             }
                             "len" => {
                                 // PLAN-055: JS .length 语义 = 字符数（web a2ts
@@ -7003,7 +7051,7 @@ impl AutoVM {
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
                                     .unwrap_or(0);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_i32(len)); }
                             }
                             "trim" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -7012,7 +7060,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).trim().to_string())
                                     .unwrap_or_default();
                                 let idx = self.add_string(s.into_bytes());
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push_str_idx(task, idx as usize); }
                             }
                             // PLAN-053 P-053-6: web 生态字符串方法族（musk 消息
                             // 渲染链使用面）——此前落 _ => push null，正文链
@@ -7026,7 +7074,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).trim_end().to_string())
                                     .unwrap_or_default();
                                 let idx = self.add_string(s.into_bytes());
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push_str_idx(task, idx as usize); }
                             }
                             "includes" => {
                                 let pat_nv = if arg_count >= 1 { task.ram.pop_nv() } else { receiver_nv };
@@ -7039,7 +7087,7 @@ impl AutoVM {
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
-                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_bool(s.contains(&pat))); }
+                                { task.ram.pop_nv(); let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_bool(s.contains(&pat))); }
                             }
                             "indexOf" | "indexOf_str" | "lastIndexOf" | "last_index_of" => {
                                 let pat_nv = if arg_count >= 1 { task.ram.pop_nv() } else { receiver_nv };
@@ -7057,7 +7105,7 @@ impl AutoVM {
                                 } else {
                                     s.rfind(&pat).map(|b| b as i32).unwrap_or(-1)
                                 };
-                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_i32(found)); }
+                                { task.ram.pop_nv(); let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_i32(found)); }
                             }
                             "substring" | "substring_str" => {
                                 // JS 语义近似：(start[, end])，越界钳制，按字节
@@ -7086,7 +7134,7 @@ impl AutoVM {
                                 while ee > se && !s.is_char_boundary(ee) { ee -= 1; }
                                 let out = String::from_utf8_lossy(&bytes[se..ee]).to_string();
                                 let idx = self.add_string(out.into_bytes());
-                                { task.ram.pop_nv(); self.rc_push_str_idx(task, idx as usize); }
+                                { task.ram.pop_nv(); let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push_str_idx(task, idx as usize); }
                             }
                             "char_code_at" | "charCodeAt" => {
                                 let i = if arg_count >= 1 {
@@ -7100,7 +7148,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
                                 let code = s.chars().nth(i.max(0) as usize).map(|c| c as i32).unwrap_or(-1);
-                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_i32(code)); }
+                                { task.ram.pop_nv(); let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_i32(code)); }
                             }
                             "replace" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -7121,7 +7169,7 @@ impl AutoVM {
                                 } else { String::new() };
                                 let result = s.replace(&pat, &repl);
                                 let idx = self.add_string(result.into_bytes());
-                                { task.ram.pop_nv(); self.rc_push_str_idx(task, idx as usize); }
+                                { task.ram.pop_nv(); let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push_str_idx(task, idx as usize); }
                             }
                             "to_string" | "to_str" | "clone" => {
                                 // str.to_string() / str.to_str() / str.clone() — return self
@@ -7151,7 +7199,7 @@ impl AutoVM {
                                 } else {
                                     auto_val::decode_i32(receiver_nv)
                                 };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(result)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_i32(result)); }
                             }
                             "to_uint" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -7160,7 +7208,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).trim().to_string())
                                     .unwrap_or_default();
                                 let result = s.parse::<i64>().unwrap_or(0) as i32;
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(result)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_i32(result)); }
                             }
                             // Plan 403: str.to_float() — parse a numeric string to f64.
                             // Needed by the calculator engine (nums stored as strings,
@@ -7172,7 +7220,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).trim().to_string())
                                     .unwrap_or_default();
                                 let result = s.parse::<f64>().unwrap_or(0.0);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_f64(result)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_f64(result)); }
                             }
                             _ => {
                                 // PLAN-057 T4（等价性缺陷族⑤）：未知 str 方法兜底
@@ -7184,10 +7232,15 @@ impl AutoVM {
                                 for _ in 0..=arg_count {
                                     task.ram.pop_nv();
                                 }
+                                let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
                                 task.ram.push_nv(auto_val::encode_null());
                             }
                         }
                     } else if type_name == "List" {
+                        // PLAN-608 T02: 同 str 区——消费型臂（count|len/last/
+                        // 未知兜底）弹出窗口结算（接收者 list_id 的 copy-on-load
+                        // 堆份额按影子释放，此前裸弹每调用孤儿 +1）。
+                        let spec_sp_entry = task.ram.sp;
                         // Plan 320: receiver may be Int(heap_id) or VmRef(decode_object).
                         // Try both to get the list_id.
                         let list_id = if auto_val::is_i32(receiver_nv) {
@@ -7206,7 +7259,7 @@ impl AutoVM {
                                         list.len() as i32
                                     } else { 0 }
                                 } else { 0 };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); task.ram.push_nv(auto_val::encode_i32(len)); }
                             }
                             // Plan 403: List.last() — peek the last element without
                             // removing it (needed by the calculator's shunting-yard
@@ -7248,7 +7301,7 @@ impl AutoVM {
                                         list.elems.last().map(|&i| auto_val::encode_i32(i)).unwrap_or(auto_val::encode_null())
                                     } else { auto_val::encode_null() }
                                 } else { auto_val::encode_null() };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push(task, top_nv); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry); self.rc_push(task, top_nv); }
                             }
                             "get" => {
                                 // Pop index arg, then get element from list
@@ -7309,6 +7362,14 @@ impl AutoVM {
                             }
                             "push" => {
                                 // Push element to end of List (uses unified list_id above).
+                                // PLAN-608 T05 定罪注记：本臂**不可达**——resolve
+                                // ("List.push"→auto.list.push) 恒命中
+                                // shim_list_push（604/608 实证），下方代码是历史
+                                // 化石。注意：与旧注释所述相反，这里**从未有过**
+                                // stake 结算/容器 retain（list.push(elem_val) 裸存）
+                                // ——若 registry 覆盖回退使本臂复活，即 UAF 面
+                                // （路由守护见 tests/plan608_dispatch_golden_tests.rs；
+                                // 移除候选登记 KNOWN-DEBT KD-VM5）。
                                 let elem_nv = task.ram.pop_nv();
                                 let elem_val = if auto_val::is_i32(elem_nv) {
                                     auto_val::Value::Int(auto_val::decode_i32(elem_nv))
@@ -7534,6 +7595,7 @@ impl AutoVM {
                                     for _ in 0..=arg_count {
                                         task.ram.pop_nv();
                                     }
+                                    let sp_now = task.ram.sp; self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
                                     task.ram.push_nv(auto_val::encode_null());
                                 }
                             }

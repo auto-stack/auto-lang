@@ -20,7 +20,7 @@ use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CASES: &[&str] = &["016_dep_abi_matrix", "017_dep_lifecycle", "018_dep_fields"];
+const CASES: &[&str] = &["016_dep_abi_matrix", "017_dep_lifecycle", "018_dep_fields", "020_dep_traits_generics", "021_dep_callback"];
 
 // =============================================================================
 // 公共骨架
@@ -247,7 +247,15 @@ fn test_dep_parity(case: &str) {
         "oracle leg diverged from golden for {case}"
     );
 
-    if std::env::var("AUTO_LANG_DEP_PARITY_A2R")
+    // PLAN-596 V2-6(experimental): a2r 腿对回调实参不装箱(DIV-DEP-19——
+    // `inv.apply(|x| ..)` 发射裸闭包,E0308 expected Box<dyn Fn>;根治=a2r
+    // 元数据接入后按形参类型装箱)。复审 F-1 后豁免收窄到回调独立语料
+    // 021——020 主面(trait/泛型)恢复自动 a2r 三轨。豁免表内用例 a2r 腿
+    // 跳过,VM/oracle 照常。
+    const A2R_SKIP: &[&str] = &["021_dep_callback"];
+    if A2R_SKIP.contains(&case) {
+        eprintln!("[dep-parity] a2r leg skipped for {case} (DIV-DEP-19: closure arg unboxed)");
+    } else if std::env::var("AUTO_LANG_DEP_PARITY_A2R")
         .map(|v| v != "0")
         .unwrap_or(false)
     {
@@ -275,4 +283,15 @@ fn dep_parity_017_dep_lifecycle() {
 #[test]
 fn dep_parity_018_dep_fields() {
     test_dep_parity("018_dep_fields");
+}
+
+
+#[test]
+fn dep_parity_020_dep_traits_generics() {
+    test_dep_parity("020_dep_traits_generics");
+}
+
+#[test]
+fn dep_parity_021_dep_callback() {
+    test_dep_parity("021_dep_callback");
 }

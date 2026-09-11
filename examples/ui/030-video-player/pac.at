@@ -1,4 +1,4 @@
-// pac.at — 030-video-player（Plan 542）
+// pac.at — 030-video-player（Plan 542 & Plan 605）
 //
 // AutoOS 原生视频播放器（对标 VLC / PotPlayer / IINA / MPC-HC）。
 // 专注纯粹无干扰的大视口视频播放，自动隐匿 OSD 专业播控条、高精度进度条、
@@ -11,7 +11,9 @@ description: "AutoOS System Video Player - minimal chromeless viewport, OSD cont
 
 scene: "ui"
 render: "vue"
+api: "rust"
 front_port: 3030
+back_port: 8330
 icon: "film"
 title: "Video Player"
 category: "media"

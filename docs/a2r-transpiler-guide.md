@@ -264,6 +264,50 @@ cargo test -p auto-lang test_006_struct
 - ✅ Phase 7: Standard library bindings
 - ✅ Phase 8: Testing infrastructure
 - ✅ Phase 9: Documentation
+- ✅ Plan 599 (004 §5④) foreign-shape capabilities, gated by
+  `test/a2r/25_foreign_types/` + rustc compile-and-run gates:
+  - foreign generic type fields (`FakeTerm<Listener>`; 002 gap 1.1 shape),
+  - `ext Self for ForeignTrait` (foreign trait impls),
+  - trait-object spelling `dyn Trait [+ Send [+ Sync]]` in type position
+    (fields render `Box<dyn T + Send>` verbatim; default derives are
+    SUPPRESSED for dyn fields — unconstrained foreign traits satisfy
+    neither Clone nor Debug, E0277; explicit `#[derive]` attrs passthrough),
+  - bare threads via std passthrough (`thread::spawn(move () => ..)`,
+    A-route; the spawn auto-`move` no longer double-emits with explicit
+    `move` closures),
+  - unresolved type names still pass through opaquely (F6); an opt-in
+    warning face exists behind `AUTO_WARN_UNRESOLVED_TYPES=1` (default
+    silent — full-corpus runs showed routine non-type idents reach the
+    fallback, default-on would be pure noise).
+
+- ✅ Plan 610 (004 §5⑤⑥) C ABI two faces, gated by `test/a2r/27_c_abi/`
+  + three real-compile gates (`a2r_cabi_export_gate` /
+  `a2r_cabi_engine_face_gate` / `a2r_cabi_use_c_gate`, `--ignored`):
+  - ⑤ export face: `#[export]` / `#[export(system)]` fn → sibling wrapper
+    module (`#[unsafe(no_mangle)] pub extern "C"/"system" fn`; symbol =
+    fn name; callers untouched). Type fidelity strategy A at the boundary:
+    Auto int (i64 body) crosses as i32 with explicit casts; cstr params
+    arrive `*const c_char` (null-tolerant) and cstr returns hand ownership
+    to C via `CString::into_raw` (interior NUL degrades, no panics cross
+    FFI). `*T` with a named pointee is a HANDLE (wrapper derefs null-safely,
+    body sees `&mut T`; uniform -1 null sentinel); builtin-scalar/void
+    pointees are BUFFER pointers (raw passthrough). The generated
+    `auto_cabi_kit` module (cabi_null/default_shell/copy_cstr/write_u32/
+    write_u8/bytes_vec/opt_tuple2/drop_boxed) confines every unsafe op to
+    generated code (004 §3.5);
+  - ⑥ use.c lowering: manifest shared IR (auto-bindgen; builtin or JSON
+    resolved against the source dir). `"link": "static"` (S) generates
+    `mod <header>_c { mod ffi_raw { #[link(name)] extern } safe-wrappers
+    buffer-helpers }`; `"link": "dynamic"` (D) generates libloading
+    wrappers (OnceLock; env `<LIBRARY>_DLL` → exe same-dir → bare name).
+    Auto-side widths stay i64 with edge casts; FnPtr params/returns are an
+    explicit error pending the T-10 trampoline follow-up (A' = named
+    `#[export(system)]` fn passed by name — selection in PLAN-610 §5);
+  - capstones: the engine 12-symbol face rewritten in Auto (005 corpus)
+    builds as a cdylib against real autoterm-core and the 597 a2c driver
+    links it to CFACE_OK; the ⑥ driver's byte-identical product links the
+    REAL engine or the ⑤ product (Auto↔Auto closed loop, zero hand-written
+    glue), and the D form loads it at runtime.
 
 ## Test Results
 

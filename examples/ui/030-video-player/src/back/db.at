@@ -1,0 +1,79 @@
+// db.at — 030-video-player in-memory database service.
+
+use api: VideoTrack
+
+var tracks List<VideoTrack> = List<VideoTrack>.new([
+    VideoTrack {
+        id: 1,
+        title: "AutoOS 2026 Keynote & Intro",
+        file_name: "01_intro.mp4",
+        duration_str: "03:45",
+        duration_sec: 225,
+        resolution: "1080P",
+        codec: "H.264",
+        size_str: "48 MB",
+        bg_gradient: "from-indigo-950 via-slate-900 to-purple-950",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    },
+    VideoTrack {
+        id: 2,
+        title: "Kernel & AutoVM Architecture",
+        file_name: "02_architecture.mkv",
+        duration_str: "12:20",
+        duration_sec: 740,
+        resolution: "4K",
+        codec: "HEVC",
+        size_str: "210 MB",
+        bg_gradient: "from-blue-950 via-slate-900 to-cyan-950",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    },
+    VideoTrack {
+        id: 3,
+        title: "AutoUI Dual-Backend Engine Demo",
+        file_name: "03_ui_engine.mp4",
+        duration_str: "08:15",
+        duration_sec: 495,
+        resolution: "1080P",
+        codec: "AV1",
+        size_str: "85 MB",
+        bg_gradient: "from-emerald-950 via-slate-900 to-teal-950",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    },
+    VideoTrack {
+        id: 4,
+        title: "Fullstack Parity & Toolchain",
+        file_name: "04_workflow.webm",
+        duration_str: "05:30",
+        duration_sec: 330,
+        resolution: "1080P",
+        codec: "VP9",
+        size_str: "62 MB",
+        bg_gradient: "from-amber-950 via-slate-900 to-orange-950",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    },
+    VideoTrack {
+        id: 5,
+        title: "AutoOS Ambient Desktop Visuals",
+        file_name: "05_ambient.mp4",
+        duration_str: "01:30",
+        duration_sec: 90,
+        resolution: "720P",
+        codec: "H.264",
+        size_str: "24 MB",
+        bg_gradient: "from-rose-950 via-slate-900 to-pink-950",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    },
+])
+
+pub fn all_tracks() []VideoTrack {
+    return tracks
+}
+
+pub fn find_track(id int) ?VideoTrack {
+    for t in tracks {
+        if t.id == id {
+            return Some(t)
+        }
+    }
+    return None
+}

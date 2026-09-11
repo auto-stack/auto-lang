@@ -42,14 +42,14 @@
 | `re.find(&str) -> Option<Match>` 句柄导航 | 无 Match 面 | Option 链 | 推定红（Option 族） |
 | `captures`/`replace_all`（Cow/借用返回） | 无 | — | 推定红 |
 
-### base64 0.22.1（4 面，绿 0 → 0%，**全红样本**）
+### base64 0.22.1（4 面，绿 0 → 0%，**全红样本**；P596 翻绿见文末回填节）
 
 | 调用面 | VM-pack | a2r | 裁定 |
 |---|---|---|---|
-| `STANDARD.encode(&str) -> String`（直呼） | ✅ `aGVsbG8=` | `STANDARD::encode` 编译失败 | 实证红 DIV-DEP-13 |
-| `let eng = STANDARD` 常量落绑定 | `None` | 转译失败 | 实证红 |
+| `STANDARD.encode(&str) -> String`（直呼） | ✅ `aGVsbG8=` | ~~`STANDARD::encode` 编译失败~~ → **P596 T-07 翻绿**（点调用发射） | ~~实证红 DIV-DEP-13~~ → **三轨绿**（`encode_const_receiver`） |
+| `let eng = STANDARD` 常量落绑定 | `None` | 转译失败 | 实证红（语料规避，维持） |
 | `use.rs` 嵌套路径一行形态 | E0099 | — | 实证红 DIV-DEP-14（accepted，两行形态缓解） |
-| `STANDARD.decode -> Vec<u8>` | — | Vec 无 Display | 推定红 |
+| `STANDARD.decode -> Vec<u8>` | — | ~~Vec 无 Display~~ → **P596 T-09 翻绿**（encode 往返 String 断言） | **三轨绿**（`decode_encode_roundtrip`） |
 
 ### url 2.5.4（6 面，绿 3 → 50%）
 
@@ -60,7 +60,7 @@
 | `u.host_str().unwrap()` | ✅ | ✅ | **绿**（`host_str_unwrap`） |
 | `u.host_str()` 直出不 unwrap | 裸文本 | `Some(..)` | 实证红 DIV-DEP-11 |
 | `u.port() -> Option<u16>` | 未钉 | Option 链 | 推定红 |
-| `u.to(str)` | `<url::Url>` | Debug 转储 | 实证红 DIV-DEP-8 |
+| `u.to(str)` | ~~`<url::Url>`~~ → **P596 T-07 翻绿**（url::Url Display 臂） | ~~Debug 转储~~ → Display | ~~实证红 DIV-DEP-8~~ → **三轨绿**（`display_to_str`） |
 
 ### semver 1.0.26（5 面，绿 2 → 40%）
 
@@ -68,7 +68,7 @@
 |---|---|---|---|
 | `Version.parse` + unwrap | ✅ | ✅ | **绿** |
 | `.major/.minor/.patch -> u64`（数值比较） | ✅ | ✅ | **绿**（`parse_major/minor/patch`） |
-| `print(v)`（Display 面） | `<semver::Version>` 占位 | `"1.2.3"` | 实证红 DIV-DEP-8 家族 |
+| `print(v)`（Display 面） | ~~`<semver::Version>` 占位~~ → **P596 T-07 翻绿**（Display 路由） | `"1.2.3"` | ~~实证红 DIV-DEP-8 家族~~ → **三轨绿**（`display_to_str` + print 附加输出逐字节一致） |
 | `VersionReq`/`Comparator` 构造器面 | 未钉 | 未钉 | 推定红 |
 | `bump_*`（&mut self 变异接收者） | 无 | — | 推定红 |
 
@@ -105,3 +105,26 @@
 4. 方法论注记：五库全在 `BUILTIN_OPAQUE_CRATES`——「真三方库动态加载」在
    类型面实为 VM 内置实现 vs 真库对拍；自由函数面才走真编译 pack。后续
    非 builtin 库（非白名单 crate）的 pack 面命中率应单独立项勘测。
+
+## P596 回填（2026-09-10，PLAN-596 T-07/T-09 复测实测行）
+
+591 V2（PLAN-596）交付 T3 trait 白名单 / T4 泛型实例化 / D8-D13 发射器修复
+后，按本报告基线复测（`AUTO_LANG_PARITY_NET=1`，parity p10 全相位 + p11）：
+
+| 库 | 基线命中率（594） | 复测命中率（P596） | 翻绿面 | 证据 |
+|---|---|---|---|---|
+| serde_json | 1/6 = 17% | 1/6 = 17%（本计划未触面） | — | p10 1/1 一致（语料未扩） |
+| regex | 2/4 = 50% | 2/4 = 50% | — | p10 2/2 |
+| base64 | **0/4 = 0%（全红）** | **2/4 = 50%** | `STANDARD.encode` 直呼（DIV-DEP-13 closed）、decode→encode 往返 | p10 2/2，`libs/dep/base64_real/tests/`（T-09 新建语料） |
+| url | 3/6 = 50% | **4/6 = 67%** | `u.to(str)`（DIV-DEP-8 url 面 closed） | p10 4/4，`display_to_str` |
+| semver | 2/5 = 40% | **3/5 = 60%** | `print(v)`/`.to(str)`（DIV-DEP-8 semver 面 closed） | p10 4/4，`display_to_str` |
+| uuid（p11） | —（591 勘测） | 3/3 维持 | —（零回归） | p11 3/3 |
+
+- 修复落点：a2r 发射器 dep 值 Display 发射 + SCREAMING 常量接收者点调用
+  （DIV-DEP-13）、VM 侧 `url::Url` Display 臂（native.rs format_rust_stdlib_obj）。
+- base64 残红：`let eng = STANDARD` 常量落绑定（双断，语料规避维持）与嵌套
+  brace use.rs（DIV-DEP-14 accepted）——合计 2 面维持登记。
+- 语义注记：594 基线中"T3 解锁 base64"的推定经 T-03 实勘修正——base64 的
+  VM encode 面本已绿（native_catalog），实际解锁依赖的是**发射器常量接收者
+  路由**（DIV-DEP-13，归属 T-07），trait 白名单在该库的净新增面为 Engine
+  方法调用的编译可行性（a2r 腿）。

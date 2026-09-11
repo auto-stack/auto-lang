@@ -1,0 +1,9 @@
+# PLAN-596 复审 F-2: mono 重建对抗专用 fixture。
+# 独立 crate 名(不与 020 的 autolang_traits 共名)——并行测试下同申 methods
+# pack 缓存互不污染(P591-D3/P596-D5 竞态家族隔离)。独立工作区(空 [workspace])。
+[package]
+name = "autolang_mono_probe"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]

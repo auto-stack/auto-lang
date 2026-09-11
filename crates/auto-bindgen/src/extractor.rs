@@ -27,6 +27,7 @@ fn string_manifest() -> CHeaderManifest {
         header: "string.h".into(),
         library: "c".into(),
         abi: ABI_C.into(),
+        link: LINK_STATIC.to_string(),
         functions: vec![
             CFunction {
                 name: "strlen".into(),
@@ -85,6 +86,7 @@ fn math_manifest() -> CHeaderManifest {
         header: "math.h".into(),
         library: "m".into(),
         abi: ABI_C.into(),
+        link: LINK_STATIC.to_string(),
         functions: vec![
             CFunction {
                 name: "abs".into(),
@@ -155,6 +157,7 @@ fn stdio_manifest() -> CHeaderManifest {
         header: "stdio.h".into(),
         library: "c".into(),
         abi: ABI_C.into(),
+        link: LINK_STATIC.to_string(),
         functions: vec![
             CFunction {
                 name: "puts".into(),
@@ -201,6 +204,7 @@ fn stdlib_manifest() -> CHeaderManifest {
         header: "stdlib.h".into(),
         library: "c".into(),
         abi: ABI_C.into(),
+        link: LINK_STATIC.to_string(),
         functions: vec![
             CFunction {
                 name: "malloc".into(),
@@ -253,6 +257,7 @@ fn time_manifest() -> CHeaderManifest {
         header: "time.h".into(),
         library: "c".into(),
         abi: ABI_C.into(),
+        link: LINK_STATIC.to_string(),
         functions: vec![
             CFunction {
                 name: "time".into(),
@@ -285,6 +290,7 @@ fn windows_console_manifest() -> CHeaderManifest {
         header: "windows.h".into(),
         library: "kernel32".into(),
         abi: ABI_SYSTEM.into(),
+        link: LINK_STATIC.to_string(),
         functions: vec![
             CFunction {
                 name: "GetCommandLineA".into(),

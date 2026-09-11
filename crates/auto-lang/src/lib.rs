@@ -579,40 +579,107 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
             }
 
             // Try v3 cache first (Phase 3C-v2 with sig_code), then v2, then v1。
-            // PLAN-592 修复:版本键两侧统一为**导入自由函数数**(compile 侧
-            // shims.len(),本侧 functions.len())——此前 compile 用 joined
-            // sig_str 长度、本侧用 functions.len(),键不一致,wrapper 从未
-            // 装载成功(自由函数退化为 opaque 构造器回退)。精确探测,不做
-            // newest-mtime 扫描(多导入集变体共存时会装载错变体)。
+            // PLAN-592 修复:版本键两侧统一为**导入自由函数数**。
+            // PLAN-596 T4 再修:mono 实例使 compile 侧 shim 数(基名+实例)与本侧
+            // 导入名数恒差——计数键失效。改为**覆盖校验扫描**:v3_* 候选按
+            // mtime 降序逐个装载,读 sig manifest 校验"每个导入名有裸条目或
+            // __<label> 实例条目",全覆盖才采用(592 的错变体陷阱由覆盖校验
+            // 排除);无覆盖候选再落 v2/v1 旧键。
             let sig_hash_len = free_fns.len();
-            let v3_version = format!("v3_{}", sig_hash_len);
-            let v3_path = sandbox.crate_library_path(&wrapper_name, &v3_version);
-            let v2_version = format!("v2_{}", sig_hash_len);
-            let v2_path = sandbox.crate_library_path(&wrapper_name, &v2_version);
+            let v2_path = sandbox.crate_library_path(&wrapper_name, &format!("v2_{sig_hash_len}"));
             let v1_path = sandbox.crate_library_path(&wrapper_name, "1");
-
-            let (lib_path, cache_gen) = if v3_path.exists() {
-                (v3_path, 3)
-            } else if v2_path.exists() {
-                (v2_path, 2)
-            } else if v1_path.exists() {
-                (v1_path, 1)
+            let lib_ext = if cfg!(target_os = "windows") {
+                ".dll"
+            } else if cfg!(target_os = "macos") {
+                ".dylib"
             } else {
-                log::info!("Wrapper library not found for {} (tried v3_{}/v2/v1)", crate_name, sig_hash_len);
-                continue;
+                ".so"
+            };
+            let v3_prefix = format!("{}-v3_", wrapper_name.replace('-', "_"));
+            let mut v3_candidates: Vec<(std::path::PathBuf, std::time::SystemTime)> = Vec::new();
+            if let Ok(rd) = std::fs::read_dir(sandbox.crates_path()) {
+                for entry in rd.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if name.starts_with(&v3_prefix) && name.ends_with(lib_ext) {
+                        let mtime = entry
+                            .metadata()
+                            .and_then(|m| m.modified())
+                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                        v3_candidates.push((entry.path(), mtime));
+                    }
+                }
+            }
+            v3_candidates.sort_by(|a, b| b.1.cmp(&a.1)); // 新→旧
+
+            // 旁路校验:独立 libloading 读候选的 auto__sig_manifest(不进
+            // bridge——bridge 对同名 crate 只允许一次装载,先载后验会卡死
+            // 扫描;胜者确定后 bridge 一次性装载)。读后立即卸载候选探针。
+            let mut lib_path: Option<(std::path::PathBuf, u8)> = None;
+            let mut manifest: Option<String> = None;
+            'scan: for (cand, _) in &v3_candidates {
+                let Ok(probe) = (unsafe { libloading::Library::new(cand) }) else {
+                    continue;
+                };
+                let mjson = (|| -> Option<String> {
+                    unsafe {
+                        let sym: Result<libloading::Symbol<unsafe extern "C" fn() -> *const std::os::raw::c_char>, _> =
+                            probe.get(b"auto__sig_manifest");
+                        let f = sym.ok()?;
+                        let p = f();
+                        if p.is_null() {
+                            return None;
+                        }
+                        let c = std::ffi::CStr::from_ptr(p);
+                        Some(c.to_string_lossy().into_owned())
+                    }
+                })();
+                drop(probe);
+                let Some(mjson) = mjson else { continue };
+                let sig_map: std::collections::HashMap<String, String> =
+                    crate::ffi::parse_manifest_json(&mjson).into_iter().collect();
+                let covered = free_fns.iter().all(|f| {
+                    sig_map.contains_key(f.as_str())
+                        || sig_map.keys().any(|k| k.starts_with(&format!("{}__", f)))
+                });
+                if covered {
+                    lib_path = Some((cand.clone(), 3));
+                    manifest = Some(mjson);
+                    break 'scan;
+                }
+            }
+            let (lib_path, cache_gen) = match lib_path {
+                Some(p) => p,
+                None => {
+                    // 无覆盖的 v3 候选:退回 592 的精确计数键与 v2/v1(非 mono 场景)
+                    let v3_path =
+                        sandbox.crate_library_path(&wrapper_name, &format!("v3_{sig_hash_len}"));
+                    if v3_path.exists() {
+                        (v3_path, 3)
+                    } else if v2_path.exists() {
+                        (v2_path, 2)
+                    } else if v1_path.exists() {
+                        (v1_path, 1)
+                    } else {
+                        log::info!(
+                            "Wrapper library not found for {} (no covering v3_* candidate; tried v3_{}/v2/v1)",
+                            crate_name,
+                            sig_hash_len
+                        );
+                        continue;
+                    }
+                }
             };
 
+            // 胜者(或 fallback 精确键)交 bridge 一次性装载——旁路探针不进
+            // bridge,此处无论 manifest 是否已取到都必须装载。
             if let Err(e) = bridge.load_rust_library(&crate_name, &lib_path) {
                 log::warn!("Failed to load Rust library {} from {}: {:?}", crate_name, lib_path.display(), e);
                 continue;
             }
-
-            // Phase 3C-v2: Try to load sig manifest from the DLL
-            let manifest = if cache_gen >= 3 {
-                bridge.load_sig_manifest(&crate_name)
-            } else {
-                None
-            };
+            if cache_gen >= 3 && manifest.is_none() {
+                manifest = bridge.load_sig_manifest(&crate_name);
+            }
+            let manifest = if cache_gen >= 3 { manifest } else { None };
 
             if let Some(ref manifest_json) = manifest {
                 // Parse manifest: {"func_name":"sig_code",...}
@@ -620,6 +687,50 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                 let sig_map: std::collections::HashMap<String, String> = parsed.into_iter().collect();
 
                 for func_name in free_fns.iter() {
+                    // PLAN-596 T4:mono 实例注册——裸名无条目时枚举
+                    // "name__<label>" 实例变体逐个注册(rust.{inst},call 侧
+                    // codegen 按实参形态路由到实例名)。
+                    if !sig_map.contains_key(func_name.as_str()) {
+                        let inst_names: Vec<String> = sig_map
+                            .keys()
+                            .filter(|k| k.starts_with(&format!("{}__", func_name)))
+                            .cloned()
+                            .collect();
+                        if !inst_names.is_empty() {
+                            for inst in inst_names {
+                                let Some(sig_code) = sig_map.get(&inst) else { continue };
+                                let exported =
+                                    crate::ffi::build_exported_name(&inst, sig_code);
+                                let sig = crate::ffi::sig_code_to_signature(sig_code);
+                                match bridge.register_function_with_export(
+                                    crate_name,
+                                    &inst,
+                                    &exported,
+                                    sig.clone(),
+                                ) {
+                                    Ok(native_id) => {
+                                        log::info!(
+                                            "Registered Rust FFI (mono inst): {}::{} (native_id={}, sig={:?})",
+                                            crate_name, inst, native_id, sig
+                                        );
+                                        let qualified = format!("rust.{inst}");
+                                        if let Ok(mut registry) =
+                                            crate::vm::native_registry::BIGVM_NATIVES.lock()
+                                        {
+                                            registry.register_with_id(&qualified, native_id);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "Failed to register mono instance {}::{}: {:?}",
+                                            crate_name, inst, e
+                                        );
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                    }
                     let (exported_name, signature) = if let Some(sig_code) = sig_map.get(func_name.as_str()) {
                         let exported = crate::ffi::build_exported_name(func_name, sig_code);
                         let sig = crate::ffi::sig_code_to_signature(sig_code);
@@ -1987,7 +2098,12 @@ pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTe
     };
 
     // Transpile
-    let actual = match crate::trans::rust::transpile_rust(stem, &src) {
+    // Plan 610 ⑥: relative use.c JSON manifests resolve against the case dir.
+    let actual = match crate::trans::rust::transpile_rust_with_source_dir(
+        case.source_file.parent().unwrap_or(std::path::Path::new(".")),
+        stem,
+        &src,
+    ) {
         Ok(mut rcode) => match rcode.done() {
             Ok(bytes) => bytes.to_vec(),
             Err(e) => {
@@ -5063,6 +5179,11 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // Full transpilation via RustTrans::trans()
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::rust::RustTrans::new(fname);
+    // Plan 610 ⑥: relative `use.c "<file>.json"` manifests resolve against the
+    // transpiled file's directory.
+    trans.source_dir = std::path::Path::new(path)
+        .parent()
+        .map(|p| p.to_path_buf());
     // Plan 376U: A2R_CRATE_ROOT=1 marks this file as a crate root (lib.at /
     // */mod.at). Such files emit top-level `use` as `pub use` (re-exports) and
     // the `#![allow(...)]` crate pragma, so they can serve as an auto-generated
@@ -6519,6 +6640,10 @@ mod plan449_style_parity_tests;
 #[cfg(all(test, feature = "ui"))]
 mod plan593_theme_registry_tests;
 
+// Plan 606: Photo gallery thumbnails and fit parity test.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan606_gallery_tests;
+
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
 mod plan046_obj_natives_tests;
@@ -6672,6 +6797,12 @@ mod plan502_diagram_tests;
 #[cfg(test)]
 #[path = "tests/plan510_pool_tests.rs"]
 mod plan510_pool_tests;
+
+// PLAN-608 T05：CALL_SPEC 内联分发区不可达臂路由守护 + 未知方法兜底
+// 行为金样（registry 覆盖回退使死臂复活时先红——push 臂=UAF 面）。
+#[cfg(test)]
+#[path = "tests/plan608_dispatch_golden_tests.rs"]
+mod plan608_dispatch_golden_tests;
 
 // os-007（origin PLAN-577/P534-D4）：avatar 家族渲染探针。
 #[cfg(test)]

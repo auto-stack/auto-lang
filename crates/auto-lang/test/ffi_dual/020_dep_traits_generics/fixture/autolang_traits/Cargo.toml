@@ -1,0 +1,9 @@
+# PLAN-596 T-01: 591 V2 能力 fixture——trait 白名单转发(Display/Clone)、
+# 泛型 mono(pick/pick_max)、回调 adapter(Box<dyn Fn>)、V1×V2 组合(make)。
+# 独立工作区(空 [workspace])脱离 auto-lang workspace。
+[package]
+name = "autolang_traits"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]

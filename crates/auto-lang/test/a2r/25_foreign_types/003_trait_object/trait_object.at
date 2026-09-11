@@ -1,0 +1,13 @@
+// Plan 599 (004 §5④-3): trait-object field spelling — engine shape
+// `Box<dyn MasterPty + Send>` (portable-pty session master). `dyn Trait
+// [+ Send]` parses in type position and renders verbatim; default derives
+// are suppressed for dyn fields (foreign traits carry no supertraits).
+use.rs foreign_shape::FakeMaster
+
+type PtySession {
+    master Box<dyn FakeMaster + Send>
+}
+
+fn main() {
+    print("trait_object_ok")
+}

@@ -1,0 +1,23 @@
+// Plan 599 (004 §5④-2): impl a FOREIGN trait for an Auto type — engine shape
+// `impl EventListener for ChannelListener` (self-ignoring channel pump).
+// Foreign trait names pass through in ext-for position; `.field` self-access.
+// use.rs import = canonical foreign-name discipline AND lets the corpus
+// rustc gate's external-dep detection skip this case (bare-name pass-through
+// would read as a typo to it — review F-1).
+use.rs foreign_shape::ForeignTrait
+
+type ChannelListener {
+    count int
+}
+
+ext ChannelListener for ForeignTrait {
+    fn on_event(evt int) int {
+        return .count + evt
+    }
+}
+
+fn main() {
+    let l = ChannelListener { count: 1 }
+    let r = l.on_event(2)
+    print("trait_impl_ok ", r)
+}

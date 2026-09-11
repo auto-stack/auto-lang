@@ -2258,7 +2258,17 @@ export default router
                                     .trim_matches(|c| c == '"' || c == '\'' || c == ' ');
                                 if !p.is_empty() {
                                     let local_path = root_dir.join(p);
-                                    if local_path.is_dir() {
+                                    let resolved = if local_path.is_dir() {
+                                        Some(local_path)
+                                    } else {
+                                        // PLAN-609 T-B2：584/590 搬迁后 pac.at 的
+                                        // `path:` 死指（如 examples 侧
+                                        // `../common/settings` 七源已迁 auto-os）。
+                                        // 按 resolve_os_top_dir 解析序在 auto-os
+                                        // `apps/` 容器下回退；只读不写、不建链接。
+                                        Self::resolve_dep_os_mirror(root_dir, dep_name, p)
+                                    };
+                                    if let Some(local_path) = resolved {
                                         if local_path.join("src").join("front").is_dir() {
                                             out.push((dep_name.to_string(), local_path.join("src").join("front")));
                                         } else if local_path.join("front").is_dir() {
@@ -2280,6 +2290,36 @@ export default router
             }
         }
         out
+    }
+
+    /// PLAN-609 T-B2：pac.at dep `path:` 死指时的 auto-os 镜像回退。
+    /// 584/590 资产搬迁把 `examples/ui/common/*` 七源迁入 auto-os
+    /// `apps/common/*`，本仓旧 pac.at 的相对路径（`../common/settings`）
+    /// 随之悬空——use 引用的包组件 import 照常发射而 SFC 无源可编，
+    /// vite "Failed to resolve import" 断链（601 复审实勘）。
+    /// 解析序沿 [`auto_lang::os_paths::resolve_os_top_dir`]（env
+    /// AUTO_OS_ROOT 设置即权威 → 兄弟检出 → 主检出兜底），在 `apps/`
+    /// 容器下按序探测：搬迁形状（剥 `../` 前缀后的相对路径，如
+    /// `common/settings`）→ `common/<dep 名>` → `<dep 名>`。只读，
+    /// 不物化不建链接；全缺 → None（solo 检出静默不炸）。
+    fn resolve_dep_os_mirror(root_dir: &Path, dep_name: &str, declared: &str) -> Option<PathBuf> {
+        let parent = root_dir.parent()?;
+        let apps = auto_lang::os_paths::resolve_os_top_dir(parent, "apps")?;
+        let declared_path = Path::new(declared);
+        if declared_path.is_absolute() || declared.contains("..\\") {
+            return None;
+        }
+        let stripped = declared.trim_start_matches("./").trim_start_matches("../");
+        if stripped.contains("..") {
+            return None;
+        }
+        [
+            apps.join(stripped),
+            apps.join("common").join(dep_name),
+            apps.join(dep_name),
+        ]
+        .into_iter()
+        .find(|p| p.is_dir())
     }
 
     /// Create a new Vue project context from a workspace directory
@@ -2917,6 +2957,50 @@ export default router
             .map(|(_, _, code, _)| code.clone())
             .ok_or_else(|| "app.at not found or failed to compile".to_string())?;
 
+        // PLAN-609 T-B2: import-发射/文件发射一致性守卫——App.vue 里
+        // `@/components/<X>.vue` 的每条导入都必须有对应编译出的组件 SFC
+        // （非 pages 通道写盘名 = widget 名）。`use <pkg>: <Comp>` 的包组件
+        // 源未解析（dep 死指且无镜像）时 import 照常发射而文件缺失，
+        // vite "Failed to resolve import" 断链（601 复审实勘）——此处显式
+        // 化：strict 硬错，非 strict 告警。脚手架内置 shell（CodeEditor，
+        // Plan 413 独立写盘通道）与 ui/ 深路径不在此列。
+        {
+            let compiled: std::collections::HashSet<&str> = all_components
+                .iter()
+                .map(|(_, _, _, w)| w.as_str())
+                .collect();
+            let mut missing: Vec<String> = Vec::new();
+            let mut rest = app_vue_code.as_str();
+            while let Some(pos) = rest.find("@/components/") {
+                let after = &rest[pos + "@/components/".len()..];
+                let target = after
+                    .find(['\'', '"'])
+                    .map(|e| &after[..e])
+                    .unwrap_or_default();
+                rest = after;
+                if let Some(name) = target.strip_suffix(".vue") {
+                    if !name.contains('/')
+                        && name != "CodeEditor"
+                        && !compiled.contains(name)
+                        && !missing.iter().any(|m| m == name)
+                    {
+                        missing.push(name.to_string());
+                    }
+                }
+            }
+            if !missing.is_empty() {
+                let detail = missing.join(", ");
+                let msg = format!(
+                    "App.vue 引用的组件 SFC 未编译落盘（dep 源未解析？）：{} —— vite 将断链",
+                    detail
+                );
+                if auto_lang::ui_gen::validators::strict_enabled() {
+                    return Err(msg.into());
+                }
+                println!("{} {}", "Warning:".bright_yellow(), msg);
+            }
+        }
+
         // PLAN-037 Phase 5: pull port-file (.at fn module) web targets in.
         expand_at_module_web_imports(root_dir, &mut ext_file_set);
         // PLAN-063 Phase B T12 (KD 061 D27): ext 手写件语料并入检测。
@@ -3242,6 +3326,12 @@ export default router
                 }
             );
         }
+
+        // Plan 457: Materialize bundled shadcn-vue UI components (button, etc.)
+        self.materialize_ui_components()?;
+
+        // Generate TypeScript API client if api.at exists
+        let _ = crate::api_gen::generate_api(&self.root_dir, "vue");
 
         // Write project files
         write_project_files(
@@ -4809,6 +4899,67 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         }
     }
 
+    // Phase 1c: dep front dirs (Plan 475 通道的增量腿，PLAN-609 T-B3)——
+    // deps/*/（含 584/590 迁址后的 auto-os 镜像回退，见
+    // collect_dep_front_dirs）的组件源编译进 src/components/{WidgetName}.vue。
+    // 与 Phase 1b 同疾：`auto run` 增量路径此前没有 dep 阶段，冷检出先经
+    // incremental 写走 scaffolding-only 分支，use 引用的包组件 SFC 永不
+    // 落盘，vite "Failed to resolve import"（601 复审 006/015 实勘）。
+    // widget 名并入 sub_widget_names，与 from_workspace 的 Phase-1 扫描
+    // （scan_dirs 含 dep fronts）同口径，双路径 App.vue 发射一致。
+    for (dep_name, dep_front) in VueProject::collect_dep_front_dirs(root_dir) {
+        let mut dep_at_files: Vec<PathBuf> = Vec::new();
+        VueProject::collect_at_files_recursive(&dep_front, &mut dep_at_files);
+        dep_at_files.sort();
+        for path in dep_at_files {
+            let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if file_name == "pac.at" || file_name == "package.at" {
+                continue; // 包配置/清单，非组件源（与 from_workspace/1b 同律）
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let hash = hash_string(&content);
+            let source_changed = cache.is_dirty(&path, hash);
+            match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                Ok((vue_code, widgets, stores)) => {
+                    store_files.extend(stores);
+                    for widget_name in &widgets {
+                        sub_widget_names.push(widget_name.clone());
+                    }
+                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                        UIArtifact {
+                            source_path: path.clone(),
+                            widget_name: w.clone(),
+                            output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                            source_hash: hash,
+                            content_hash: hash_string(&vue_code),
+                            backend: UIBackend::Vue,
+                        }
+                    }).collect();
+                    let any_missing = artifacts.iter().any(|a| {
+                        !output_dir.join(&a.output_path).exists()
+                    });
+                    if source_changed || any_missing {
+                        println!("  deps/{}/{} ({})",
+                            dep_name.bright_yellow(),
+                            file_name.bright_yellow(),
+                            if source_changed { "changed" } else { "output missing" });
+                        for artifact in &artifacts {
+                            let out = output_dir.join(&artifact.output_path);
+                            fs::create_dir_all(out.parent().unwrap_or(&output_dir)).ok();
+                            fs::write(&out, &vue_code).map_err(|e| {
+                                format!("Failed to write {}: {}", out.display(), e)
+                            })?;
+                        }
+                    }
+                    cache.update(path.clone(), hash, artifacts);
+                }
+                Err(e) => handle_compile_error(&path, &e)?,
+            }
+        }
+    }
+
     // Phase 2: Check app.at for changes (with sub-widget names known)
     let app_at = front_dir.join("app.at");
     let app_output_path = output_dir.join("src").join("App.vue");
@@ -5543,6 +5694,11 @@ fn desktop_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
 /// the default checkout alike the sibling resolves — plus the Stage B P-3
 /// apps container `../auto-os/apps` whose every pac.at-carrying direct
 /// subdirectory expands into one local app root (id = subdirectory name).
+/// PLAN-008: the default arm further appends the two auto-os top-level
+/// gallery roots (`ui-gallery` / `widgets-gallery`) via the Stage B P-5
+/// resolution order (`app_registry::gallery_extra_roots` vm-track parity);
+/// the `AUTO_DESKTOP_APPS_EXTRA` full-replace arm doubles as this track's
+/// gallery off-switch.
 /// Missing siblings are silently skipped (desktop-host must keep working in
 /// solo checkouts).
 fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
@@ -5600,6 +5756,19 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
                 if !out.iter().any(|(existing, _)| existing == &id) {
                     out.push((id, root));
                 }
+            }
+        }
+        // PLAN-008: top-level gallery roots (ui-gallery / widgets-gallery) via
+        // the Stage B P-5 resolution order — vm-track parity with
+        // app_registry::gallery_extra_roots. The AUTO_DESKTOP_APPS_EXTRA
+        // full-replace arm above stays this track's gallery off-switch (the
+        // desktop.ps1/sh wrappers append the two roots explicitly); no
+        // separate storage gate on this track (PLAN-008 §4).
+        for (id, root) in
+            auto_lang::ui::app_registry::gallery_extra_roots_from(None, parent)
+        {
+            if !out.iter().any(|(existing, _)| existing == &id) {
+                out.push((id, root));
             }
         }
     }
@@ -5995,6 +6164,11 @@ mod tests {
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("pac.at"), "name: \"x\"\n").unwrap();
         }
+        // PLAN-008：画廊两件随迁 auto-os 顶层——fixture 同布局（resolve 只验
+        // is_dir），避免主检出兜底候选泄入真实画廊。
+        for name in ["ui-gallery", "widgets-gallery"] {
+            std::fs::create_dir_all(os_root.join(name)).unwrap();
+        }
         let fake_repo = tmp.path().join("fake-repo");
         std::fs::create_dir_all(&fake_repo).unwrap();
         std::fs::write(fake_repo.join("pac.at"), "name: \"fk\"\n").unwrap();
@@ -6019,6 +6193,7 @@ mod tests {
                 }
             }
         }
+        vm_roots.extend(auto_lang::ui::app_registry::gallery_extra_roots_from(None, tmp.path()));
         assert_eq!(
             vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
             vm_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
@@ -6031,9 +6206,50 @@ mod tests {
         );
         assert_eq!(
             vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            vec!["os-config", "alpha", "beta", "repoapp"],
-            "三源齐备：单根 + 容器两子 + manifest repo"
+            vec!["os-config", "alpha", "beta", "repoapp", "ui-gallery", "widgets-gallery"],
+            "四源齐备：单根 + 容器两子 + manifest repo + 顶层画廊两件（PLAN-008）"
         );
+    }
+
+    /// PLAN-008 测试设计 5：缺省臂画廊根——旧设计的 apps_dir 兄弟锚定随
+    /// Stage B P-5 迁址重锚为 `resolve_os_top_dir` 解析序（AUTO_OS_ROOT →
+    /// 兄弟 → 主检出）；root_dir 与 auto-os **异根**布局钉死锚定不依赖
+    /// 主根。AUTO_DESKTOP_APPS_EXTRA 全额替换语义不变（env 臂早返回，
+    /// 画廊不在——本轨画廊关断 = 该 env 整体覆盖）。
+    #[test]
+    fn desktop_extra_app_roots_default_includes_galleries() {
+        std::env::remove_var("AUTO_OS_ROOT");
+        std::env::remove_var("AUTO_DESKTOP_APPS_EXTRA");
+        let tmp = tempfile::tempdir().unwrap();
+        for name in ["ui-gallery", "widgets-gallery"] {
+            std::fs::create_dir_all(tmp.path().join("auto-os").join(name)).unwrap();
+        }
+        // fixture manifest 占位兄弟候选——阻断主检出 manifest 兜底泄入。
+        std::fs::write(
+            tmp.path().join("auto-os").join("apps.manifest"),
+            r#"{ "apps": [] }"#,
+        )
+        .unwrap();
+        // root_dir 与 auto-os 异根：兄弟臂经 root_dir.parent() 解析。
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let roots = desktop_extra_app_roots(&project);
+        assert_eq!(
+            roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vec!["ui-gallery", "widgets-gallery"],
+            "缺省臂恰两画廊根（解析序兄弟臂命中，固定次序）"
+        );
+        // env 全额替换：AUTO_DESKTOP_APPS_EXTRA 设置时画廊不在。
+        let solo = tmp.path().join("solo-app");
+        std::fs::create_dir_all(&solo).unwrap();
+        std::env::set_var("AUTO_DESKTOP_APPS_EXTRA", &solo);
+        let roots = desktop_extra_app_roots(&project);
+        assert_eq!(
+            roots,
+            vec![("solo-app".to_string(), solo)],
+            "env 臂全替换：仅注入根，画廊不并（PLAN-008 §4 vue 轨关断语义）"
+        );
+        std::env::remove_var("AUTO_DESKTOP_APPS_EXTRA");
     }
 
     /// PLAN-063 Phase B T14 (KD 061 D12): 嵌套冗余目录被移除;
@@ -7227,6 +7443,235 @@ widget ExampleHeader(title: str) {
         header_vue.contains("ExampleHeader"),
         "ExampleHeader.vue content:\n{header_vue}"
     );
+}
+
+
+// ---------------------------------------------------------------------------
+// PLAN-609 T-B —— 包组件 SFC 发射链：auto-os 镜像回退 + import/文件一致性守卫。
+// ---------------------------------------------------------------------------
+
+/// 584/590 搬迁后 pac.at dep 死指（`../common/settings`，源已迁 auto-os
+/// `apps/common/settings`）→ 经 resolve_os_top_dir 解析序在 auto-os `apps/`
+/// 容器下回退，SettingsPopover SFC 恢复落盘（006-hero-section 形态复刻；
+/// AUTO_OS_ROOT 设置即权威 → 主检出真实 auto-os 不泄入 fixture）。
+#[test]
+fn test_plan609_dead_dep_resolves_via_auto_os_mirror() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("pac.at"),
+        "name: \"plan609-app\"\n\ndep settings {\n    path: \"../common/settings\"\n}\n",
+    )
+    .unwrap();
+    let front = root.join("src").join("front");
+    fs::create_dir_all(&front).unwrap();
+    fs::write(
+        front.join("app.at"),
+        r#"
+use settings: SettingsPopover
+
+widget App {
+    msg { Toggle }
+    model { var open bool = false }
+    view {
+        col {
+            SettingsPopover(open: .open, on_close: .Toggle)
+        }
+    }
+    on {
+        .Toggle -> { .open = !.open }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let os_root = tmp.path().join("auto-os");
+    let settings_pkg = os_root.join("apps").join("common").join("settings");
+    fs::create_dir_all(&settings_pkg).unwrap();
+    fs::write(
+        settings_pkg.join("settings_popover.at"),
+        r#"
+widget SettingsPopover(open: bool) {
+    msg { Close }
+    view {
+        if .open {
+            col {
+                text "Settings"
+                button "x" {
+                    onclick: .Close
+                }
+            }
+        }
+    }
+    on {
+        .Close -> { print("closed") }
+    }
+}
+"#,
+    )
+    .unwrap();
+    std::env::set_var("AUTO_OS_ROOT", &os_root);
+
+    let project = crate::vue::VueProject::from_workspace(&root)
+        .expect("plan609 workspace must load via auto-os mirror");
+    project.generate().expect("plan609 generate must succeed");
+    std::env::remove_var("AUTO_OS_ROOT");
+
+    let components = root
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
+    let popover_vue = fs::read_to_string(components.join("SettingsPopover.vue"))
+        .expect("SettingsPopover.vue must be generated from auto-os mirror dep");
+    assert!(
+        popover_vue.contains("SettingsPopover"),
+        "SettingsPopover.vue content:\n{popover_vue}"
+    );
+}
+
+/// 守卫负例：dep 死指且镜像缺席（AUTO_OS_ROOT 钉到空目录 = 解析序全缺）
+/// → SettingsPopover.vue 不落盘；非 strict 下 workspace 仍可载（告警显式
+/// 点名），strict 下 from_workspace 硬错——vite 断链不再静默。
+#[test]
+fn test_plan609_unresolved_dep_import_guard() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("pac.at"),
+        "name: \"plan609-app\"\n\ndep settings {\n    path: \"../common/settings\"\n}\n",
+    )
+    .unwrap();
+    let front = root.join("src").join("front");
+    fs::create_dir_all(&front).unwrap();
+    fs::write(
+        front.join("app.at"),
+        r#"
+use settings: SettingsPopover
+
+widget App {
+    msg { Toggle }
+    model { var open bool = false }
+    view {
+        col {
+            SettingsPopover(open: .open, on_close: .Toggle)
+        }
+    }
+    on {
+        .Toggle -> { .open = !.open }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let dead = std::env::temp_dir().join(format!("auto609-dead-os-{}", std::process::id()));
+    std::fs::create_dir_all(&dead).unwrap();
+    std::env::set_var("AUTO_OS_ROOT", &dead);
+
+    let project = crate::vue::VueProject::from_workspace(&root)
+        .expect("non-strict: workspace loads with guard warning");
+    project.generate().expect("non-strict: generate succeeds");
+    let components = root
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
+    assert!(
+        !components.join("SettingsPopover.vue").exists(),
+        "missing mirror → no SFC; guard must have warned"
+    );
+
+    // strict：一致性守卫升硬错，错误信息点名缺失组件。
+    auto_lang::ui_gen::validators::set_strict(true);
+    let err = match crate::vue::VueProject::from_workspace(&root) {
+        Err(e) => e,
+        Ok(_) => panic!("strict: unresolved component import must fail the workspace"),
+    };
+    auto_lang::ui_gen::validators::set_strict(false);
+    std::env::remove_var("AUTO_OS_ROOT");
+    let _ = std::fs::remove_dir(&dead);
+    assert!(
+        err.to_string().contains("SettingsPopover"),
+        "guard error must name the missing component:\n{err}"
+    );
+}
+
+/// PLAN-609 T-A2（AC-02）：theme{} 声明合成体双端同源——同一
+/// ComposedTheme 喂 vue index.css（generate_index_css 文本）与 VM
+/// ACTIVE_THEME 槽（active_theme_rgb），逐键断言：
+/// ①CSS 文本携带合成体每个键（`--var: value;`，light+dark 全量）；
+/// ②VM 对每键的 resolve == 该键 CSS 值串的解析值（两端消费同一数值域）；
+/// ③声明覆盖键以规范化值落位（非基座原值）。
+#[test]
+fn plan609_theme_decl_dual_face_same_source() {
+    use auto_lang::design_tokens::decl;
+    use auto_lang::design_tokens::decl::ThemeDecl;
+
+    let decl = ThemeDecl {
+        name: Some("dual-src".to_string()),
+        extends: Some("stella".to_string()),
+        mode: Some("dark".to_string()),
+        colors: vec![
+            ("primary".to_string(), "#8b5cf6".to_string()),
+            ("background".to_string(), "223 34% 12%".to_string()),
+            ("muted-foreground".to_string(), "216 17% 65%".to_string()),
+        ],
+    };
+    let composed = decl::compose(&decl, &std::collections::BTreeMap::new())
+        .expect("decl compose");
+
+    // VM 面：合成体上槽（thread-local，nextest 每测独立进程隔离）。
+    assert!(
+        auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(
+            composed.clone()
+        )),
+        "合成主题上槽"
+    );
+
+    // ① vue 面：index.css 文本逐键携带——渲染词表 = core+sidebar
+    // （registry::CORE_ORDER/SIDEBAR_ORDER；AutoUI 扩展 4 键 success 等
+    // 为 VM 面承载，CSS 渲染面不含），词表内键 light+dark 全量断言。
+    let css = generate_index_css(Some(&composed));
+    let css_face = |t: auto_lang::ui::style::theme::registry::TokenName| {
+        auto_lang::ui::style::theme::registry::CORE_ORDER.contains(&t)
+            || auto_lang::ui::style::theme::registry::SIDEBAR_ORDER.contains(&t)
+    };
+    for (token, value) in composed.light.iter().chain(composed.dark.iter()) {
+        if !css_face(*token) {
+            continue;
+        }
+        let needle = format!("--{}: {};", token.css_var(), value);
+        assert!(css.contains(&needle), "index.css 缺键: {needle}");
+    }
+
+    // ③ 声明覆盖键以规范化值落位（hex → HSL 串，非基座原值）。
+    let norm = decl::normalize_value("#8b5cf6").expect("声明值合法");
+    assert!(
+        css.contains(&format!("--primary: {};", norm)),
+        "声明覆盖键规范化落位: --primary: {norm};"
+    );
+
+    // ② VM 面逐键：resolve == 该键 CSS 值串解析（两端同一数值域）。
+    for (token, css_value) in &composed.light {
+        assert_eq!(
+            auto_lang::ui::style::theme::active_theme_rgb(*token, false),
+            auto_lang::ui::style::theme::registry::hsl_str_to_rgb(css_value),
+            "light 面 {:?}: VM resolve == CSS 值串",
+            token
+        );
+    }
+    for (token, css_value) in &composed.dark {
+        assert_eq!(
+            auto_lang::ui::style::theme::active_theme_rgb(*token, true),
+            auto_lang::ui::style::theme::registry::hsl_str_to_rgb(css_value),
+            "dark 面 {:?}: VM resolve == CSS 值串",
+            token
+        );
+    }
 }
 
 

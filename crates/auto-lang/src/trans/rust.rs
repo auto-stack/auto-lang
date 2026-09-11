@@ -387,6 +387,16 @@ pub struct RustTrans {
     // When true: skip mod X; declarations, skip use crate::X::*; / use super::X::*;
     merge_mode: bool,
 
+    // Plan 610 ⑤: the pointer bridge kit (`auto_cabi_kit` module) is emitted
+    // at most once per product, ahead of the first pointer-facing #[export]
+    // wrapper.
+    cabi_kit_emitted: bool,
+
+    // Plan 610 ⑥: directory of the source file being transpiled — resolves
+    // relative `use.c "<file>.json"` manifest paths (source dir first, then
+    // CWD). None = CWD-only (legacy single-file entry).
+    pub(crate) source_dir: Option<std::path::PathBuf>,
+
     // Const names seen during Phase 2.5 pre-scan (for merge mode).
     // Used to convert SCREAMING_CASE() calls to bare const references.
     const_names: HashSet<AutoStr>,
@@ -535,6 +545,8 @@ impl RustTrans {
             emit_allow_pragma: false,
             is_crate_root: false,
             merge_mode: false,
+            cabi_kit_emitted: false, // Plan 610 
+            source_dir: None, // Plan 610 
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -632,6 +644,8 @@ impl RustTrans {
             emit_allow_pragma: false,
             is_crate_root: false,
             merge_mode: false,
+            cabi_kit_emitted: false, // Plan 610 
+            source_dir: None, // Plan 610 
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -1690,7 +1704,13 @@ impl RustTrans {
                 // **Phase 1.1: Pointer Types (test: 005_pointer)**
                 // AutoLang *T transpiles to Rust raw pointer *mut T
                 // This is for raw pointer operations like @ (address-of) and .* (dereference)
-                format!("*mut {}", self.rust_type_name(&*ptr.of.borrow()))
+                // Plan 610 ⑤⑥: `*void` (opaque handles / C void*) maps to *mut c_void —
+                // the pre-610 `*mut void` output was never valid Rust (no corpus depended).
+                if matches!(&*ptr.of.borrow(), Type::Void) {
+                    "*mut std::ffi::c_void".to_string()
+                } else {
+                    format!("*mut {}", self.rust_type_name(&*ptr.of.borrow()))
+                }
             }
             Type::Reference(inner) => {
                 // Plan 052: Reference transpiles to &T in Rust
@@ -4584,11 +4604,12 @@ impl RustTrans {
             Expr::To { expr, target_type } => {
                 match target_type {
                     Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
-                        // x.to(str) / x.to(String) → format!("{:?}", x) for struct types,
-                        // or x.to_string() for primitive types
-                        // Since we lack type inference, use format!("{:?}", x) as safe default
-                        // which works for all types that derive Debug
-                        write!(out, "format!(\"{{:?}}\", ")?;
+                        // x.to(str) / x.to(String) → Display for dep rust-typed
+                        // values (PLAN-596 T-07, DIV-DEP-8: three-way parity with
+                        // the VM leg); Auto types keep format!("{:?}", x) as the
+                        // safe default — existing corpora depend on Debug here.
+                        let fmt = if self.receiver_is_dep_rust_value(expr) { "{}" } else { "{:?}" };
+                        write!(out, "format!(\"{}\", ", fmt)?;
                         self.expr(expr, out)?;
                         write!(out, ")")?;
                     }
@@ -4623,8 +4644,10 @@ impl RustTrans {
                         // Check if target is a string-like type name (String, str, etc.)
                         let ty_name = self.rust_type_name(target_type);
                         if ty_name == "String" || ty_name == "str" || ty_name == "&str" {
-                            // x.to(String) / x.to(str) → format!("{:?}", x)
-                            write!(out, "format!(\"{{:?}}\", ")?;
+                            // x.to(String) / x.to(str) → Display for dep rust-typed
+                            // values, Debug fallback otherwise (PLAN-596 T-07, D8).
+                            let fmt = if self.receiver_is_dep_rust_value(expr) { "{}" } else { "{:?}" };
+                            write!(out, "format!(\"{}\", ", fmt)?;
                             self.expr(expr, out)?;
                             write!(out, ")")?;
                         } else {
@@ -8335,17 +8358,23 @@ impl RustTrans {
                         return Ok(());
                     }
                 }
-                let is_type = type_name
-                    .chars()
-                    .next()
-                    .map(|c| c.is_uppercase())
-                    .unwrap_or(false)
-                    || matches!(type_name.as_str(),
-                        "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
-                        | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-                        | "f32" | "f64" | "bool" | "char" | "str"
-                    )
-                    || Self::auto_type_to_rust(type_name.as_str()).is_some();
+                // PLAN-596 T-07 (DIV-DEP-13): a SCREAMING_CASE use.rs import is
+                // a const receiver (`STANDARD.encode(..)`) — a trait-method
+                // VALUE call, not a type-associated fn. Fall through to the
+                // regular method-call path, which emits `.` instead of `::`.
+                let is_const_receiver = self.is_dep_constant_name(type_name.as_str());
+                let is_type = !is_const_receiver
+                    && (type_name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                        || matches!(type_name.as_str(),
+                            "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
+                            | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+                            | "f32" | "f64" | "bool" | "char" | "str"
+                        )
+                        || Self::auto_type_to_rust(type_name.as_str()).is_some());
                 if is_type {
                     // Map Auto builtin type names to Rust equivalents
                     let rust_type_name = Self::auto_type_to_rust(type_name.as_str())
@@ -8490,9 +8519,13 @@ impl RustTrans {
                         return Ok(());
                     }
                     write!(out, "(")?;
-                    // Add `move` for thread::spawn closures (captured locals need 'static)
+                    // Add `move` for thread::spawn closures (captured locals need 'static).
+                    // Plan 599: skip when the closure already opted in via
+                    // `move (..) => ..` — emitting both produced `move move ||`.
                     if method_name == "spawn"
-                        && call.args.args.first().map_or(false, |a| matches!(a, Arg::Pos(Expr::Closure(_))))
+                        && call.args.args.first().map_or(false, |a| {
+                            matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move)
+                        })
                     {
                         write!(out, "move ")?;
                     }
@@ -8568,15 +8601,19 @@ impl RustTrans {
                     // matches a use.rust path leaf (e.g. local `sse` vs module
                     // `axum::response::sse`).
                     let is_local = name == "self" || self.local_var_types.contains_key(name);
-                    !is_local && (
-                        Self::auto_type_to_rust(name).is_some()
-                            || self.uses.iter().any(|u| {
-                                let u_str = u.as_str();
-                                u_str == name || u_str.ends_with(&format!("::{}", name))
-                            })
-                            || self.dep_crates.contains(id)
-                            || self.module_types.contains_key(name) // Plan 264
-                    )
+                    // PLAN-596 T-07 (DIV-DEP-13): const receivers (STANDARD)
+                    // call methods with `.` — only type/module chains take `::`.
+                    !is_local
+                        && !self.is_dep_constant_name(name)
+                        && (
+                            Self::auto_type_to_rust(name).is_some()
+                                || self.uses.iter().any(|u| {
+                                    let u_str = u.as_str();
+                                    u_str == name || u_str.ends_with(&format!("::{}", name))
+                                })
+                                || self.dep_crates.contains(id)
+                                || self.module_types.contains_key(name) // Plan 264
+                        )
                 }
                 Expr::Dot(il, _) => {
                     // Plan 391 §7 follow-up: a multi-segment `::` path like
@@ -8731,9 +8768,12 @@ impl RustTrans {
             // Plan 395: explicit generic type args → Rust turbofish
             self.emit_turbofish_args(call, out)?;
             write!(out, "(")?;
-            // Add `move` for thread::spawn closures (captured locals need 'static)
+            // Add `move` for thread::spawn closures (captured locals need 'static).
+            // Plan 599: skip when already `move (..) => ..` (double `move move ||`).
             if obj_is_type_chain && method_name == "spawn"
-                && call.args.args.first().map_or(false, |a| matches!(a, Arg::Pos(Expr::Closure(_))))
+                && call.args.args.first().map_or(false, |a| {
+                    matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move)
+                })
             {
                 write!(out, "move ")?;
             }
@@ -12483,6 +12523,18 @@ impl RustTrans {
         } else {
             store.ty.clone()
         };
+        // PLAN-596 T-07 (DIV-DEP-8): an un-annotated let bound from a dep
+        // ctor chain (`let u = Url.parse(..).unwrap()`) types as the dep
+        // type, so downstream `.to(str)`/print resolve Display (three-way
+        // parity) instead of staying Unknown.
+        let effective_ty = if matches!(effective_ty, Type::Unknown) {
+            match self.dep_ctor_type(&store.expr) {
+                Some(t) => Self::placeholder_user_type(t),
+                None => effective_ty,
+            }
+        } else {
+            effective_ty
+        };
         // Plan 433 A1: a prior fn-call-inferred entry (scan_call_init_bindings
         // at fn_decl) is more precise than a fresh Unknown inference — keep it.
         let keep_existing = matches!(effective_ty, Type::Unknown)
@@ -13551,10 +13603,359 @@ impl RustTrans {
         out
     }
 
+    /// Plan 610 ⑤: pointer-param classification for `#[export]` fns.
+    /// `*T` with a NAMED pointee (local/foreign struct) is a HANDLE (opaque
+    /// session): the body receives `&mut T` via a null-safe wrapper deref.
+    /// Builtin-scalar/void pointees are BUFFER pointers — passed through raw,
+    /// element access goes through the generated kit (`cabi_*` helpers).
+    /// `*void` and bare `ptr` (unresolved ident) both mean opaque `*mut c_void`
+    /// buffers here.
+    fn export_ptr_pointee_is_handle(ty: &Type) -> bool {
+        if let Type::Ptr(p) = ty {
+            match &*p.of.borrow() {
+                Type::User(usr) => usr.name.as_str() != "ptr",
+                Type::Rust(_) => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Plan 610 ⑤: the pointer bridge kit — raw-buffer/out-param access from
+    /// `#[export]` bodies is confined to this generated module (004 §3.5:
+    /// unsafe lives in generated code only; Auto bodies stay safe). Emitted
+    /// at most once per product, ahead of the first export wrapper that has
+    /// any pointer in its face.
+    fn emit_cabi_kit(&mut self, sink: &mut Sink) -> AutoResult<()> {
+        if self.cabi_kit_emitted {
+            return Ok(());
+        }
+        self.cabi_kit_emitted = true;
+        writeln!(
+            sink.body,
+r#"/// Plan 610 ⑤: pointer bridge kit — raw-buffer/out-param access from #[export]
+/// bodies is confined here (004 §3.5: unsafe lives in generated code only;
+/// Auto bodies stay safe). All writes are null-tolerant no-ops.
+mod auto_cabi_kit {{
+    /// Null pointer of the statically expected pointee type (spawn-failure paths).
+    pub fn cabi_null<T>() -> *mut T {{
+        std::ptr::null_mut()
+    }}
+
+    /// Default shell name (COMSPEC → fallback "cmd"), mirroring engine ffi.rs.
+    pub fn cabi_default_shell() -> String {{
+        std::env::var("COMSPEC").unwrap_or_else(|_| "cmd".to_owned())
+    }}
+
+    /// Copy UTF-8 bytes of `s` + NUL into `p` (≤cap). Returns total bytes incl.
+    /// NUL (truncation mirrors the engine row_text contract); null p is a
+    /// length-only probe.
+    pub fn cabi_copy_cstr(p: *mut u8, cap: i64, s: &str) -> i64 {{
+        if p.is_null() || cap <= 0 {{
+            return (s.len() + 1) as i64;
+        }}
+        let bytes = s.as_bytes();
+        let n = bytes.len().min(cap as usize - 1);
+        unsafe {{
+            let out = std::slice::from_raw_parts_mut(p, n + 1);
+            out[..n].copy_from_slice(&bytes[..n]);
+            out[n] = 0;
+        }}
+        (bytes.len() + 1) as i64
+    }}
+
+    /// Write one u32 element at `idx` (C `unsigned int`/`int` out-params — the
+    /// engine face models non-negative int outs as u32, bit-compatible).
+    pub fn cabi_write_u32(p: *mut u32, idx: i64, v: u32) {{
+        if p.is_null() {{
+            return;
+        }}
+        unsafe {{ *p.add(idx as usize) = v; }}
+    }}
+
+    /// Write one u8 element at `idx` (byte buffers).
+    pub fn cabi_write_u8(p: *mut u8, idx: i64, v: u8) {{
+        if p.is_null() {{
+            return;
+        }}
+        unsafe {{ *p.add(idx as usize) = v; }}
+    }}
+
+    /// Copy `len` bytes from a raw const buffer into an owned Vec (host→child
+    /// input path); null/empty buffer → empty Vec.
+    pub fn cabi_bytes_vec(p: *const u8, len: i64) -> Vec<u8> {{
+        if p.is_null() || len <= 0 {{
+            return Vec::new();
+        }}
+        unsafe {{ std::slice::from_raw_parts(p, len as usize).to_vec() }}
+    }}
+
+    /// Reclaim a boxed value through its raw handle (free paths); null no-op.
+    pub fn cabi_drop_boxed<T>(p: *mut T) {{
+        if p.is_null() {{
+            return;
+        }}
+        drop(unsafe {{ Box::from_raw(p) }});
+    }}
+
+    /// Bridge for `Option<(usize, usize)>` payloads (cursor): Some → write both
+    /// u32 slots, return 1; None → 0. Auto has no tuple face, so foreign
+    /// option-tuple values cross through this kit helper untouched.
+    pub fn cabi_write_opt_tuple2_u32(cur: Option<(usize, usize)>, p0: *mut u32, p1: *mut u32) -> i64 {{
+        match cur {{
+            Some((a, b)) => {{
+                cabi_write_u32(p0, 0, a as u32);
+                cabi_write_u32(p1, 0, b as u32);
+                1
+            }}
+            None => 0,
+        }}
+    }}
+}}
+pub use auto_cabi_kit::*;"#
+        )?;
+        Ok(())
+    }
+
+    /// Plan 610 ⑤: emit the C-ABI export wrapper module for an `#[export]` fn.
+    ///
+    /// Shape: `mod <name>_c_export { #[unsafe(no_mangle)] pub extern "<abi>"
+    /// fn <name>(C-ABI params) { super::<name>(boundary conversions) } }`.
+    /// The symbol equals the fn name (no_mangle ignores the module path), the
+    /// safe body below keeps its original name so every call site in the
+    /// product is untouched (zero whole-program rename mapping). Type
+    /// fidelity (strategy A, plan §2 T-01): Auto `int` crosses the boundary
+    /// as i32 with explicit `as` casts to/from the body's i64; `cstr` params
+    /// arrive as `*const c_char` (null-tolerant → "") and cstr returns hand
+    /// ownership to C via `CString::into_raw` (interior-NUL degrades to an
+    /// empty C string rather than panicking across the FFI boundary).
+    fn export_wrapper_module(
+        &mut self,
+        fn_decl: &Fn,
+        abi: &str,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
+        let unsupported = |what: &str| -> crate::AutoError {
+            crate::AutoError::Msg(format!(
+                "Plan 610 ⑤: #[export] 暂不支持 {}（fn {}）",
+                what, fn_decl.name
+            ))
+        };
+        if fn_decl.parent.is_some() {
+            return Err(unsupported("方法（仅顶层函数可导出）"));
+        }
+        if !fn_decl.type_params.is_empty() || !fn_decl.const_params.is_empty() {
+            return Err(unsupported("泛型函数"));
+        }
+        if fn_decl.is_test {
+            return Err(unsupported("#[test] 组合"));
+        }
+        if fn_decl.api_attrs.is_some() {
+            return Err(unsupported("#[api] 组合"));
+        }
+        if matches!(fn_decl.ret, Type::Handle { .. })
+            || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+        {
+            return Err(unsupported("async 返回（~T）"));
+        }
+
+        // C-ABI param types + boundary conversion. cstr params convert through
+        // a `let …_conv: String` local because the safe body's str-family
+        // params are `&str` (rust_param_type_name) — a borrow needs an owner
+        // that outlives the call. `*T` with a named pointee is a HANDLE: the
+        // wrapper takes the raw `*mut T` and derefs null-safely, passing
+        // `&mut T` to the body (see the body-side emission twin below); at
+        // most one handle param per fn (engine-face shape).
+        let mut handle_param: Option<String> = None;
+        let mut abi_params: Vec<String> = Vec::new();
+        let mut conv_prelude: Vec<String> = Vec::new();
+        let mut call_args: Vec<String> = Vec::new();
+        let mut has_any_ptr = false;
+        for param in &fn_decl.params {
+            let name = param.name.to_string();
+            if matches!(&param.ty, Type::Ptr(_)) {
+                has_any_ptr = true;
+            }
+            match &param.ty {
+                // Width bridge: C `int` (i32) ↔ Auto int (i64 body).
+                Type::Int => {
+                    abi_params.push(format!("{}: i32", name));
+                    call_args.push(format!("{} as i64", name));
+                }
+                // Borrowed C string → body's &str; null-tolerant (→ "").
+                // unsafe is scoped to CStr::from_ptr exactly (wrapper fns
+                // without cstr params emit no unsafe block at all).
+                Type::CStrLit => {
+                    abi_params
+                        .push(format!("{}: *const std::os::raw::c_char", name));
+                    conv_prelude.push(format!(
+                        "let {n}_conv: String = if {n}.is_null() {{ String::new() }} else {{ unsafe {{ std::ffi::CStr::from_ptr({n}) }}.to_string_lossy().into_owned() }};",
+                        n = name
+                    ));
+                    call_args.push(format!("&{}_conv", name));
+                }
+                // Opaque session handle → null-safe &mut deref in the wrapper;
+                // the body's param becomes `&mut <T>`.
+                Type::Ptr(_) if Self::export_ptr_pointee_is_handle(&param.ty) => {
+                    let pointee = match &param.ty {
+                        Type::Ptr(p) => self.rust_type_name(&p.of.borrow()),
+                        _ => unreachable!(),
+                    };
+                    if handle_param.is_some() {
+                        return Err(crate::AutoError::Msg(format!(
+                            "Plan 610 ⑤: #[export] fn {} 至多一个句柄形参（*T 具名指向）",
+                            fn_decl.name
+                        )));
+                    }
+                    abi_params.push(format!("{}: *mut {}", name, pointee));
+                    // Shadowed inside the Some(h) arm below.
+                    call_args.push(name.clone());
+                    handle_param = Some(name);
+                }
+                // Buffer pointers and ABI-identical scalars pass through.
+                Type::Ptr(_) => {
+                    has_any_ptr = true;
+                    let t = self.rust_type_name(&param.ty);
+                    abi_params.push(format!("{}: {}", name, t));
+                    call_args.push(name);
+                }
+                Type::I64
+                | Type::Uint
+                | Type::U64
+                | Type::USize
+                | Type::Byte
+                | Type::Bool
+                | Type::Char
+                | Type::Float
+                | Type::Double => {
+                    let t = self.rust_type_name(&param.ty);
+                    abi_params.push(format!("{}: {}", name, t));
+                    call_args.push(name);
+                }
+                other => {
+                    return Err(crate::AutoError::Msg(format!(
+                        "Plan 610 ⑤: #[export] 参数 {} 的类型 {} 暂不在 ABI 面（支持 int/i64/uint/u64/usize/byte/bool/char/float/cstr/*T）",
+                        name, other
+                    )));
+                }
+            }
+        }
+        if matches!(&fn_decl.ret, Type::Ptr(_)) {
+            has_any_ptr = true;
+        }
+        // The kit fronts every pointer-facing export (helpers + null/abort
+        // paths used by bodies); once per product, ahead of this wrapper.
+        if has_any_ptr {
+            self.emit_cabi_kit(sink)?;
+        }
+
+        // Return-position ABI type + wrapping of the body call. Handle fns
+        // wrap the call in a null-safe match (None → -1 sentinel for int
+        // returns, no-op for void — uniform simplification of the engine's
+        // per-fn -1/-2 null sentinels, documented in the corpus).
+        let handle = handle_param.as_deref();
+        let body_call = |args: &str| format!("super::{}({})", fn_decl.name, args);
+        let (abi_ret, wrap_call) = match &fn_decl.ret {
+            Type::Void => match handle {
+                Some(h) => (
+                    None,
+                    format!(
+                        "match unsafe {{ {h}.as_mut() }} {{ Some({h}) => {call}, None => () }}",
+                        h = h,
+                        call = body_call(&call_args.join(", "))
+                    ),
+                ),
+                None => (None, body_call(&call_args.join(", "))),
+            },
+            Type::Int => match handle {
+                Some(h) => (
+                    Some("i32".to_string()),
+                    format!(
+                        "match unsafe {{ {h}.as_mut() }} {{ Some({h}) => {call} as i32, None => -1 }}",
+                        h = h,
+                        call = body_call(&call_args.join(", "))
+                    ),
+                ),
+                None => (
+                    Some("i32".to_string()),
+                    format!("{} as i32", body_call(&call_args.join(", "))),
+                ),
+            },
+            // Ownership passes to the C caller (free side = C); interior NUL
+            // degrades to "" instead of panicking across the boundary.
+            Type::CStrLit => (
+                Some("*mut std::os::raw::c_char".to_string()),
+                format!(
+                    "std::ffi::CString::new({}).unwrap_or_default().into_raw()",
+                    body_call(&call_args.join(", "))
+                ),
+            ),
+            Type::Ptr(_)
+            | Type::I64
+            | Type::Uint
+            | Type::U64
+            | Type::USize
+            | Type::Byte
+            | Type::Bool
+            | Type::Char
+            | Type::Float
+            | Type::Double => (
+                Some(self.rust_type_name(&fn_decl.ret)),
+                body_call(&call_args.join(", ")),
+            ),
+            other => {
+                return Err(crate::AutoError::Msg(format!(
+                    "Plan 610 ⑤: #[export] 返回类型 {} 暂不在 ABI 面（支持 int/i64/uint/u64/usize/byte/bool/char/float/cstr/*T/void）",
+                    other
+                )));
+            }
+        };
+
+        writeln!(
+            sink.body,
+            "/// Plan 610 ⑤: C ABI export face for `{}` — the sibling wrapper bridges C widths\n/// to the safe body below; the exported symbol equals the fn name (no_mangle\n/// ignores the module path).",
+            fn_decl.name
+        )?;
+        writeln!(
+            sink.body,
+            "mod {}_c_export {{",
+            fn_decl.name
+        )?;
+        // Bring the outer scope in (handle pointee types like the session
+        // struct live outside this module).
+        writeln!(sink.body, "    use super::*;")?;
+        writeln!(sink.body, "    #[unsafe(no_mangle)]")?;
+        write!(
+            sink.body,
+            "    pub extern \"{}\" fn {}({})",
+            abi,
+            fn_decl.name,
+            abi_params.join(", ")
+        )?;
+        match &abi_ret {
+            Some(t) => writeln!(sink.body, " -> {} {{", t)?,
+            None => writeln!(sink.body, " {{")?,
+        }
+        for line in &conv_prelude {
+            writeln!(sink.body, "        {}", line)?;
+        }
+        writeln!(sink.body, "        {}", wrap_call)?;
+        writeln!(sink.body, "    }}")?;
+        writeln!(sink.body, "}}")?;
+        Ok(())
+    }
+
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
         // Skip C/VM function declarations (implemented externally)
         if matches!(fn_decl.kind, FnKind::CFunction | FnKind::VmFunction) {
             return Ok(());
+        }
+
+        // Plan 610 ⑤: `#[export]` fn — emit the cdylib wrapper module ahead of
+        // the safe body emitted below (body keeps its original name).
+        if let Some(abi) = fn_decl.export_abi.clone() {
+            self.export_wrapper_module(fn_decl, &abi, sink)?;
         }
 
         // Clear local var type cache for this function, register params
@@ -13879,7 +14280,19 @@ impl RustTrans {
             }
         } else {
             for (i, param) in fn_decl.params.iter().enumerate() {
-                if self.merge_mode && Self::is_merge_mut_type(&param.ty) {
+                // Plan 610 ⑤: export-fn HANDLE params — the sibling wrapper
+                // derefs the raw `*mut T` null-safely; the body receives
+                // `&mut T` so field/method access on the session is native.
+                if fn_decl.export_abi.is_some()
+                    && matches!(&param.ty, Type::Ptr(_))
+                    && Self::export_ptr_pointee_is_handle(&param.ty)
+                {
+                    let pointee = match &param.ty {
+                        Type::Ptr(p) => self.rust_type_name(&p.of.borrow()),
+                        _ => unreachable!(),
+                    };
+                    write!(sink.body, "{}: &mut {}", param.name, pointee)?;
+                } else if self.merge_mode && Self::is_merge_mut_type(&param.ty) {
                     write!(
                         sink.body,
                         "{}: &mut {}",
@@ -15385,6 +15798,298 @@ impl RustTrans {
         }
     }
 
+    /// Plan 610 ⑥: CTypeDesc → extern-block / Symbol-fn Rust type.
+    fn c_abi_ffi_type(ty: &auto_bindgen::manifest::CTypeDesc) -> String {
+        use auto_bindgen::manifest::CTypeDesc as T;
+        match ty {
+            T::Void => "()".to_string(),
+            T::Bool => "bool".to_string(),
+            T::Char | T::CStr => "*const std::os::raw::c_char".to_string(),
+            T::Int => "i32".to_string(),
+            T::UInt => "u32".to_string(),
+            T::Long => "i64".to_string(),
+            T::ULong => "u64".to_string(),
+            T::Size => "usize".to_string(),
+            T::Float => "f32".to_string(),
+            T::Double => "f64".to_string(),
+            T::Ptr => "*const std::os::raw::c_void".to_string(),
+            T::PtrMut => "*mut std::os::raw::c_void".to_string(),
+            T::FnPtr { .. } => "auto_bindgen_unsupported_fnptr".to_string(),
+        }
+    }
+
+    /// Plan 610 ⑥: the wrapper (Auto-side) parameter type for one manifest
+    /// param when it differs from the ffi type (Auto int is i64; the ABI edge
+    /// is i32 with a width cast at the raw call).
+    fn c_abi_wrapper_param(
+        ty: &auto_bindgen::manifest::CTypeDesc,
+    ) -> Option<&'static str> {
+        use auto_bindgen::manifest::CTypeDesc as T;
+        match ty {
+            T::Int => Some("i64"),
+            T::Float => Some("f64"),
+            T::CStr => Some("&str"),
+            _ => None,
+        }
+    }
+
+    /// Plan 610 ⑥: lower `use.c <header>` to a generated FFI face (manifest
+    /// shared IR — 004 §3.5 "one semantics, three lowerings"). S form
+    /// (default): `#[link(name)] extern "<abi>"` block + safe wrappers; D
+    /// form (manifest `"link": "dynamic"`): libloading with env
+    /// `<LIBRARY>_DLL` → exe same-dir → bare-name resolution. All unsafe
+    /// stays inside the generated module; Auto call sites use the bare
+    /// manifest function names.
+    fn emit_use_c_ffi(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
+        let raw = use_stmt.paths.first().map(|s| s.to_string()).unwrap_or_default();
+        let clean = raw
+            .trim_start_matches('<')
+            .trim_end_matches('>')
+            .trim_matches('"')
+            .to_string();
+
+        let manifest = if let Some(m) = crate::vm::ffi::c_ffi::load_builtin_manifest(&clean) {
+            Some(m)
+        } else if clean.ends_with(".json") {
+            // Plan 610 ⑥: relative manifest paths resolve against the source
+            // file's directory first, then CWD.
+            let mut loaded = None;
+            if let Some(dir) = self.source_dir.clone() {
+                let p = dir.join(&clean);
+                if p.is_file() {
+                    loaded = crate::vm::ffi::c_ffi::load_manifest_file(&p.to_string_lossy());
+                }
+            }
+            if loaded.is_none() {
+                loaded = crate::vm::ffi::c_ffi::load_manifest_file(&clean);
+            }
+            loaded
+        } else {
+            None
+        };
+        let Some(manifest) = manifest else {
+            // Unknown header — keep the pre-610 behavior (ignored import).
+            return Ok(());
+        };
+
+        for f in &manifest.functions {
+            let has_fnptr = matches!(
+                f.return_type,
+                auto_bindgen::manifest::CTypeDesc::FnPtr { .. }
+            ) || f
+                .params
+                .iter()
+                .any(|p| matches!(p.ty, auto_bindgen::manifest::CTypeDesc::FnPtr { .. }));
+            if has_fnptr {
+                return Err(crate::AutoError::Msg(format!(
+                    "Plan 610 ⑥: use.c 函数 {} 含回调 FnPtr——暂不支持（trampoline 选型见计划 §5/T-10）",
+                    f.name
+                )));
+            }
+        }
+
+        let suffix = if manifest.link == "dynamic" { "_dyn" } else { "" };
+        let module = format!(
+            "{}_c{}",
+            manifest
+                .header
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect::<String>(),
+            suffix
+        )
+        .trim_matches('_')
+        .to_string();
+        let abi = if manifest.abi == "system" { "system" } else { "C" };
+
+        writeln!(
+            out,
+            "/// Plan 610 ⑥: `use.c {}` → {} FFI face (manifest shared IR, auto-bindgen).",
+            raw,
+            if manifest.link == "dynamic" {
+                "D-form dynamic"
+            } else {
+                "S-form static"
+            }
+        )?;
+        writeln!(
+            out,
+            "/// Safe wrappers carry Auto-side widths (int = i64, cast at the ABI edge);
+/// every unsafe op stays inside this module."
+        )?;
+        writeln!(out, "mod {} {{", module)?;
+
+        let fns: Vec<&auto_bindgen::manifest::CFunction> =
+            manifest.functions.iter().filter(|f| !f.variadic).collect();
+
+        if manifest.link == "dynamic" {
+            let lib_env = format!(
+                "{}_DLL",
+                manifest
+                    .library
+                    .to_uppercase()
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+            );
+            writeln!(
+                out,
+                "    fn lib() -> &'static libloading::Library {{\n        static LIB: std::sync::OnceLock<libloading::Library> = std::sync::OnceLock::new();\n        LIB.get_or_init(|| unsafe {{\n            // Plan 610 ⑥ D form: env {env} → exe same-dir → bare name (PATH).\n            if let Ok(p) = std::env::var(\"{env}\") {{\n                if let Ok(l) = libloading::Library::new(&p) {{ return l; }}\n            }}\n            let file = if cfg!(windows) {{ \"{lib}.dll\".to_string() }} else {{ \"lib{lib}.so\".to_string() }};\n            if let Ok(exe) = std::env::current_exe() {{\n                if let Some(dir) = exe.parent() {{\n                    if let Ok(l) = libloading::Library::new(dir.join(&file)) {{ return l; }}\n                }}\n            }}\n            libloading::Library::new(&file).expect(\"failed to load library {lib} (set {env})\")\n        }})\n    }}",
+                env = lib_env,
+                lib = manifest.library
+            )?;
+        } else {
+            writeln!(out, "    mod ffi_raw {{")?;
+            writeln!(out, "        #[link(name = \"{}\")]", manifest.library)?;
+            writeln!(out, "        extern \"{}\" {{", abi)?;
+            for f in &fns {
+                let params: Vec<String> = f
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, Self::c_abi_ffi_type(&p.ty)))
+                    .collect();
+                let ret = &f.return_type;
+                if matches!(ret, auto_bindgen::manifest::CTypeDesc::Void) {
+                    writeln!(out, "            pub fn {}({});", f.name, params.join(", "))?;
+                } else {
+                    writeln!(
+                        out,
+                        "            pub fn {}({}) -> {};",
+                        f.name,
+                        params.join(", "),
+                        Self::c_abi_ffi_type(ret)
+                    )?;
+                }
+            }
+            writeln!(out, "        }}")?;
+            writeln!(out, "    }}")?;
+        }
+
+        // Safe wrappers: one per manifest fn, Auto-side widths.
+        for f in &fns {
+            let mut sig: Vec<String> = Vec::new();
+            let mut prelude: Vec<String> = Vec::new();
+            let mut args: Vec<String> = Vec::new();
+            for p in &f.params {
+                match Self::c_abi_wrapper_param(&p.ty) {
+                    Some(wt) => {
+                        sig.push(format!("{}: {}", p.name, wt));
+                        match &p.ty {
+                            auto_bindgen::manifest::CTypeDesc::CStr => {
+                                prelude.push(format!(
+                                    "let {}_c = std::ffi::CString::new({}).unwrap_or_default();",
+                                    p.name, p.name
+                                ));
+                                args.push(format!("{}_c.as_ptr()", p.name));
+                            }
+                            auto_bindgen::manifest::CTypeDesc::Int => {
+                                args.push(format!("{} as i32", p.name));
+                            }
+                            auto_bindgen::manifest::CTypeDesc::Float => {
+                                args.push(format!("{} as f32", p.name));
+                            }
+                            _ => args.push(p.name.clone()),
+                        }
+                    }
+                    None => {
+                        sig.push(format!("{}: {}", p.name, Self::c_abi_ffi_type(&p.ty)));
+                        args.push(p.name.clone());
+                    }
+                }
+            }
+            let ret = &f.return_type;
+            let ret_sig = match ret {
+                auto_bindgen::manifest::CTypeDesc::Void => None,
+                auto_bindgen::manifest::CTypeDesc::Int => Some("i64".to_string()),
+                auto_bindgen::manifest::CTypeDesc::Float => Some("f64".to_string()),
+                auto_bindgen::manifest::CTypeDesc::CStr => Some("String".to_string()),
+                other => Some(Self::c_abi_ffi_type(other)),
+            };
+            let call_args = args.join(", ");
+            let raw_call = if manifest.link == "dynamic" {
+                format!(
+                    "let sym: libloading::Symbol<unsafe extern \"{abi}\" fn({pt}) -> {rt}> = lib().get(b\"{name}\").expect(\"symbol {name} missing\");
+        sym({ca})",
+                    abi = abi,
+                    pt = f
+                        .params
+                        .iter()
+                        .map(|p| Self::c_abi_ffi_type(&p.ty))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    rt = Self::c_abi_ffi_type(ret),
+                    name = f.name,
+                    ca = call_args
+                )
+            } else {
+                format!("ffi_raw::{}({})", f.name, call_args)
+            };
+            let body_expr = match ret {
+                auto_bindgen::manifest::CTypeDesc::Void => {
+                    format!("unsafe {{\n            {}\n        }}", raw_call)
+                }
+                auto_bindgen::manifest::CTypeDesc::Int => {
+                    format!("(unsafe {{\n            {}\n        }}) as i64", raw_call)
+                }
+                auto_bindgen::manifest::CTypeDesc::Float => {
+                    format!("(unsafe {{\n            {}\n        }}) as f64", raw_call)
+                }
+                auto_bindgen::manifest::CTypeDesc::CStr => format!(
+                    "let r = unsafe {{\n            {}\n        }};
+        if r.is_null() {{ String::new() }} else {{ unsafe {{ std::ffi::CStr::from_ptr(r) }}.to_string_lossy().into_owned() }}",
+                    raw_call
+                ),
+                _ => format!("unsafe {{\n            {}\n        }}", raw_call),
+            };
+            match &ret_sig {
+                Some(rt) => writeln!(out, "    pub fn {}({}) -> {} {{", f.name, sig.join(", "), rt)?,
+                None => writeln!(out, "    pub fn {}({}) {{", f.name, sig.join(", "))?,
+            }
+            for line in &prelude {
+                writeln!(out, "        {}", line)?;
+            }
+            writeln!(out, "        {}", body_expr)?;
+            writeln!(out, "    }}")?;
+        }
+
+        // Pointer/buffer helper kit — emitted when the face has any opaque
+        // pointer params (out-param and handle shapes need them; pure-scalar
+        // faces like stdio.h stay lean). Buffers leak by design (driver
+        // scope, process lifetime).
+        let has_ptr = manifest.functions.iter().any(|f| {
+            f.params.iter().any(|p| {
+                matches!(
+                    p.ty,
+                    auto_bindgen::manifest::CTypeDesc::Ptr
+                        | auto_bindgen::manifest::CTypeDesc::PtrMut
+                )
+            })
+        });
+        if has_ptr {
+            writeln!(out, "    // Plan 610 ⑥ helper kit: pointer/buffer access from safe Auto code.")?;
+            writeln!(out, "    pub fn cffi_handle_is_null(h: *const std::os::raw::c_void) -> bool {{")?;
+            writeln!(out, "        h.is_null()")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_buf_new_u32(len: i64) -> *mut std::os::raw::c_void {{")?;
+            writeln!(out, "        if len <= 0 {{ return std::ptr::null_mut(); }}")?;
+            writeln!(out, "        Box::into_raw(vec![0u32; len as usize].into_boxed_slice()) as *mut _")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_buf_get_u32(p: *const std::os::raw::c_void, idx: i64) -> u32 {{")?;
+            writeln!(out, "        if p.is_null() {{ return 0; }}")?;
+            writeln!(out, "        unsafe {{ *(p as *const u32).add(idx as usize) }}")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_buf_new_u8(len: i64) -> *mut std::os::raw::c_void {{")?;
+            writeln!(out, "        if len <= 0 {{ return std::ptr::null_mut(); }}")?;
+            writeln!(out, "        Box::into_raw(vec![0u8; len as usize].into_boxed_slice()) as *mut _")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_cstr_read(p: *const std::os::raw::c_void) -> String {{")?;
+            writeln!(out, "        if p.is_null() {{ return String::new(); }}")?;
+            writeln!(out, "        unsafe {{ std::ffi::CStr::from_ptr(p as *const std::os::raw::c_char) }}.to_string_lossy().into_owned()")?;
+            writeln!(out, "    }}")?;
+        }
+        writeln!(out, "}}")?;
+        writeln!(out, "pub use {}::*;", module)?;
+        Ok(())
+    }
+
     fn use_stmt(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
         // Plan 417-D2: register imported fn signatures (single-file
         // mode has no project discovery — see the helper).
@@ -15585,7 +16290,11 @@ impl RustTrans {
                 }
             }
             UseKind::C => {
-                // Ignore C imports for Rust transpiler
+                // Plan 610 ⑥ (004 §3.5): C imports lower to a generated FFI
+                // face — the manifest is the shared IR (builtin extractor or
+                // JSON beside the source). Unknown headers keep the pre-610
+                // ignore behavior.
+                self.emit_use_c_ffi(use_stmt, out)?;
             }
             UseKind::Rust => {
                 // Direct Rust imports: join paths with :: to form full Rust path
@@ -15872,6 +16581,13 @@ impl RustTrans {
             }
             if has_taskref_field {
                 writeln!(sink.body, "#[derive(Debug)]")?;
+            } else if has_dyn_field {
+                // Plan 599 (004 §5④): a `dyn Trait` field only derives if the
+                // trait's supertraits provide it — for unconstrained FOREIGN
+                // traits (the engine shape, Box<dyn MasterPty + Send>) even
+                // Clone/Debug fail (E0277). Emit no default derives; explicit
+                // `#[derive(...)]` attrs passthrough covers bounded traits.
+                self.ord_restricted_names.insert(type_decl.name.clone());
             } else {
                 let mut traits = String::from("Clone, Debug");
                 if cmp & Self::D_PE != 0 {
@@ -18686,6 +19402,94 @@ impl RustTrans {
         }
     }
 
+    /// PLAN-596 T-07 (DIV-DEP-8): a use.rs-imported dep TYPE — PascalCase
+    /// name present as a use leaf, never declared locally. Local decls
+    /// (struct/tag/enum/union) always win, keeping Debug-dependent存量语料
+    /// on the `{:?}` path (AC-04 isolation arm).
+    fn is_dep_type_name(&self, name: &str) -> bool {
+        // PascalCase required: SCREAMING_CASE use.rs imports are consts
+        // (DIV-DEP-13), never types — `STANDARD.encode(..)` is a const-value
+        // method call, not a ctor chain.
+        if !name.chars().next().map_or(false, |c| c.is_uppercase())
+            || !name.chars().any(|c| c.is_ascii_lowercase())
+        {
+            return false;
+        }
+        if self.local_struct_types.contains(name)
+            || self.struct_fields.contains_key(name)
+            || self.struct_field_types.contains_key(name)
+            || self.tag_types.contains(name)
+            || self.known_enum_names.contains(name)
+            || self.union_types.contains(name)
+        {
+            return false;
+        }
+        self.uses.iter().any(|u| {
+            let u = u.as_str();
+            u == name || u.ends_with(&format!("::{}", name)) || u.contains(&format!("{{{}}}", name))
+        })
+    }
+
+    /// PLAN-596 T-07 (DIV-DEP-13): a SCREAMING_CASE use.rs import (STANDARD,
+    /// NIL, OP_XXX) is a const VALUE receiver, not a type — `CONST.method(..)`
+    /// must lower to a dot-call (trait-method consts like base64's
+    /// `STANDARD.encode` are E0224 as `CONST::method`). Rust types are
+    /// PascalCase; local declarations take precedence.
+    fn is_dep_constant_name(&self, name: &str) -> bool {
+        let has_upper = name.chars().any(|c| c.is_ascii_uppercase());
+        let no_lower = !name.chars().any(|c| c.is_ascii_lowercase());
+        has_upper
+            && no_lower
+            && !self.local_struct_types.contains(name)
+            && !self.tag_types.contains(name)
+            && !self.known_enum_names.contains(name)
+            && !self.union_types.contains(name)
+            && self.uses.iter().any(|u| {
+                let u = u.as_str();
+                u == name
+                    || u.ends_with(&format!("::{}", name))
+                    || u.contains(&format!("{{{}}}", name))
+            })
+    }
+
+    /// PLAN-596 T-07 (DIV-DEP-8): does this expression denote a rust-typed
+    /// VALUE from a dep crate (Display-stringified, three-way parity) rather
+    /// than an Auto type (Debug fallback)? Ident receivers resolve through
+    /// local_var_types (fed by dep_ctor_type at store time); inline ctor
+    /// chains (`Url.parse(..).unwrap()`) walk the chain directly.
+    fn receiver_is_dep_rust_value(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(name) => matches!(self.local_var_types.get(name),
+                Some(Type::User(td)) if self.is_dep_type_name(td.name.as_str())),
+            Expr::Call(call) => match call.name.as_ref() {
+                Expr::Dot(obj, m) if m.as_str() == "unwrap" => self.receiver_is_dep_rust_value(obj),
+                Expr::Dot(obj, _) => {
+                    matches!(obj.as_ref(), Expr::Ident(n) if self.is_dep_type_name(n))
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// PLAN-596 T-07: dep ctor chain detection for store-time typing —
+    /// `let v = Version.parse(..).unwrap()` / `let u = Url.parse(..)` yield
+    /// the dep type name, so the binding gets a User type and downstream
+    /// `.to(str)`/print resolve Display instead of the Unknown fallback.
+    fn dep_ctor_type(&self, expr: &Expr) -> Option<AutoStr> {
+        match expr {
+            Expr::Call(call) => match call.name.as_ref() {
+                Expr::Dot(obj, m) if m.as_str() == "unwrap" => self.dep_ctor_type(obj),
+                Expr::Dot(obj, _) => match obj.as_ref() {
+                    Expr::Ident(n) if self.is_dep_type_name(n) => Some(n.clone()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// Check if an expression likely produces a Debug-only type (no Display impl).
     /// Detects patterns like `.elapsed()`, `Instant::now()`, and variables named
     /// duration/elapsed/instant.
@@ -21261,7 +22065,10 @@ impl RustTrans {
         let safe_methods = ["is_some", "is_none", "unwrap", "unwrap_or",
             "unwrap_or_default", "map", "and_then", "unwrap_or_else",
             "as_ref", "as_deref", "copied", "cloned", "ok", "err",
-            "iter", "into_iter", "as_mut"];
+            "iter", "into_iter", "as_mut",
+            // Plan 610 ⑥: Option has expect too — injecting .unwrap() before
+            // it broke libloading Symbol resolution (`lib().get(b"..").expect(..)`).
+            "expect"];
         if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.(\w+)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let key = caps.get(1).unwrap().as_str();
@@ -22226,6 +23033,16 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     transpile_rust_with_siblings(name, code, None)
 }
 
+/// Plan 610 ⑥: single-file transpile with a source directory — relative
+/// `use.c "<file>.json"` manifest paths resolve against it first (then CWD).
+pub fn transpile_rust_with_source_dir(
+    source_dir: impl AsRef<std::path::Path>,
+    name: impl Into<AutoStr>,
+    code: &str,
+) -> AutoResult<Sink> {
+    transpile_rust_full(name, code, None, Some(source_dir.as_ref().to_path_buf()))
+}
+
 /// Plan 376D: Transpile with an optional sibling TypeStore.
 /// When `sibling_store` is Some, it contains type declarations from ALL sibling
 /// .at files in the same crate, enabling cross-module type inference.
@@ -22233,6 +23050,17 @@ pub fn transpile_rust_with_siblings(
     name: impl Into<AutoStr>,
     code: &str,
     sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+) -> AutoResult<Sink> {
+    transpile_rust_full(name, code, sibling_store, None)
+}
+
+/// Plan 610 ⑥: full single-file entry — sibling store plus an optional
+/// source directory (relative use.c JSON manifests resolve against it).
+pub fn transpile_rust_full(
+    name: impl Into<AutoStr>,
+    code: &str,
+    sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+    source_dir: Option<std::path::PathBuf>,
 ) -> AutoResult<Sink> {
     let name = name.into();
     let _scope = shared(crate::scope_manager::ScopeManager::new());
@@ -22269,6 +23097,7 @@ pub fn transpile_rust_with_siblings(
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
+    transpiler.source_dir = source_dir; // Plan 610 ⑥
     // Plan 433 A1: pre-register fn return types for the whole file so
     // `let x = fn()` bindings infer their type regardless of declaration
     // order (see scan_call_init_bindings).

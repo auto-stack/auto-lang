@@ -1,0 +1,20 @@
+// Plan 599 (004 §5④-1): foreign generic type fields — the engine shape
+// `Term<ChannelListener>` (002 gap 1.1) in Auto type blocks. Foreign names
+// resolve through use.rs; generic application passes through verbatim.
+use.rs fake_term::FakeTerm
+
+type ChannelListener {
+    events int
+}
+
+type TermSession {
+    term FakeTerm<ChannelListener>
+    fallback Box<ChannelListener>
+}
+
+fn main() {
+    let boxed = Box.new(ChannelListener { events: 2 })
+    let spare = Box.new(ChannelListener { events: 2 })
+    let session = TermSession { term: FakeTerm.new(boxed), fallback: spare }
+    print("generic_field_ok ", session.term.received())
+}

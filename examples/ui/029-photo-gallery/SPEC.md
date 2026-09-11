@@ -30,6 +30,7 @@
 | `p_dates` | str ×24 | "YYYY-MM-DD"（2026-05..08，两两互异） |
 | `p_keys` | int ×24 | YYYYMMDD 整数排序键（**排序不用 str 比较**——028 规避浮点/宽度差的整数判定同思路） |
 | `p_favs` | bool ×24 | 预置收藏 id 3 / 8 / 15 / 21（共 4 张） |
+| `p_thumbs` | str ×24 | 24 张主题匹配的内联 SVG Data URLs（Plan 606 缩略图增强，0ms 离线确定性渲染） |
 
 ### handler 构建的列表
 
@@ -86,14 +87,17 @@ AURA 无 stopPropagation 原语。落地：**开图点击区与收藏按钮是�
 卡片 col 内：图片区 button（开图）+ 信息行（标题 button 开图 + ♡/❤
 button 收藏）。互不嵌套，无冒泡问题。
 
-## 图片源与降级
+## 图片源与降级（Plan 606 缩略图增强）
 
-- 缩略图 `https://picsum.photos/seed/gal-{NN}/400/300`；大图
-  `https://picsum.photos/seed/gal-{NN}/1600/1200`。同 seed 同图、确定性、
-  无 API key（004 网络头像 URL 先例）。
-- VM：reqwest 阻塞下载 + Handle 缓存（renderer.rs），首开稍慢；离线时
-  首字母色块兜底。Vue：浏览器原生 `<img :src>`；离线显示 alt 文本。
-  **功能断言不依赖图片字节加载成功。**
+- **缩略图**：24 张独立主题定制的内联 SVG Data URLs（`data:image/svg+xml;utf8,...`），
+  按四大相册（自然、城市、天空、抽象）色彩与构图精细设计，0ms 秒开、零外部网络/CDN 依赖。
+  VM 端由 Iced `renderer.rs` 的 `load_image_bytes` 自动识别 `data:image/svg+xml`
+  并路由至 `get_or_create_svg_handle` 矢量栅格化；Vue 端由浏览器原生 `<img :src>` 渲染。
+- **大图查看器**：`https://picsum.photos/seed/gal-{NN}/1600/1200`。点击卡片进入大图查看器
+  加载高分辨率网络大图。
+- **缩放裁切与渲染**：缩略图网格采用 `fit: "cover"`（VM 映射至 `StyleClass::ObjectFit(Cover)`，
+  Vue 生成 `object-cover`），查看器大图采用 `fit: "contain"`（双端完美对齐）。
+- **离线降级**：缩略图完全内嵌保真 100% 离线可用；大图离线时 VM 提供首字母色块兜底，Vue 提供 alt 文本。
 
 ## 双端差异注记
 

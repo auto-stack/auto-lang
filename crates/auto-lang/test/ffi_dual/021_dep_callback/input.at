@@ -1,0 +1,13 @@
+/// PLAN-596 复审 F-1: 回调面独立语料(V2-6, experimental)。
+/// 与 020 拆分——DIV-DEP-19(a2r 闭包实参不装箱)只豁免本 case,
+/// 020 主面(trait/泛型/深拷贝/组合)恢复自动 a2r 三轨。
+/// fixture 用独立 crate(autolang_cb_probe):与 020 的 mono 推导互不影响,
+/// 防共享 pack 并行重建撕裂(land 冒烟实证,见 fixture Cargo.toml 注)。
+dep autolang_cb_probe(path: "{{FFI_DUAL_DIR}}/021_dep_callback/fixture/autolang_cb_probe")
+use.rs autolang_cb_probe::{Invoker}
+
+fn main() {
+    let inv = Invoker.new()
+    let r = inv.apply(x => x*2+1, 5)
+    print(r)
+}

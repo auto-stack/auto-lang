@@ -9,6 +9,9 @@ pub mod popover;
 // Plan 499 M2: 指针移动限频 widget(mouse-area onmousemove 臂承载,
 // 坐标换算 + ≤30Hz 限频 + 量化去重)。
 pub mod pointer_area;
+// PLAN-002 B: 布局件 hover 态 widget(row/col/div 的 `hover:` 变体类消费;
+// 共享标志 + request_redraw,无 view 重建)。
+pub mod hover_area;
 // Plan 547: native display surface backed by the shared media registry.
 pub mod image_surface;
 // Plan 563: pen 事件层 widget(canvas onpenstart/onpenmove/onpenend 承载,

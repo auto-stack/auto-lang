@@ -9,8 +9,8 @@
 # developed.
 #
 # For examples/ui sub-projects that should share dependencies, use the
-# external workspace at `D:\.auto\rust-workspace` instead of building them
-# in-place under this repo.
+# `examples/rust-workspace` workspace instead of building them in-place
+# under this repo.
 #
 # Usage: bash scripts/clean-example-targets.sh
 
@@ -21,10 +21,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Cleaning example target directories..."
 
 for d in \
+    "$REPO_ROOT"/examples/rust-workspace/target \
     "$REPO_ROOT"/examples/api-example/rust/target \
     "$REPO_ROOT"/examples/component-gallery/vue/src-tauri/target \
-    "$REPO_ROOT"/examples/unified-demo/vue/src-tauri/target \
-    "$REPO_ROOT"/examples/ui/*/gen/rust/target
+    "$REPO_ROOT"/examples/unified-demo/vue/src-tauri/target
 do
     if [ -d "$d" ]; then
         echo "  removing $d"

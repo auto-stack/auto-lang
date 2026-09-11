@@ -43,6 +43,10 @@ widget DesktopSurface {
         var __desktop_hidden str = ""
         var menu_id str = ""
         var blank_menu str = ""
+        // PLAN-012：光标坐标（宿主 __mouse_moved 臂持续写入，只写不置
+        // view_dirty；空白菜单坐标锚数据源——open 翻转重建时读取最新值）。
+        var __desktop_cursor_x float = 0.0
+        var __desktop_cursor_y float = 0.0
     }
 
     view {
@@ -51,18 +55,27 @@ widget DesktopSurface {
         // + oncontextmenu（右键空白菜单；Q6 实测桌面空白无右键闭环）。
         col {
             style: "w-full h-full p-3 ${.__desktop_bg}"
-            // PLAN-526 T36：blank 菜单 popover 化（锚=桌面全域 mouse-area，
-            // Panel snap 钳制回视口；T34：内联面板弃用——挤压布局+双菜单）。
-            popover (open: .blank_menu != "", placement: "bottom-start", ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
+            // PLAN-012：blank 菜单坐标锚（跟随右键落点）——原 widget 锚
+            //（children[0]=全屏 mouse-area）+ bottom-start 使菜单固定桌面
+            // 左下（011 复审 F-R1）。坐标 = 宿主 __mouse_moved 臂持续写入
+            // 的 __desktop_cursor_x/y（只写不置 dirty）；422 P3 坐标锚形态
+            // （027-file-manager 先例），面板内容独占 popover children。
             mouse-area (onclick: .BlankPress, oncontextmenu.prevent: .BlankMenu) {
                 style: "w-full h-full"
+            // PLAN-011 T3：mouse_area 命中带=内容盒（iced 侧 style 只落在
+            // 外层包装 container，对命中几何是 no-op）——本 mouse-area 直接
+            // 包 grid 时命中带仅图标条带高，条带以下全桌面是 BlankPress/
+            // BlankMenu 命中死区（P010-F1 根因，t1_matrix 五配置+格条带
+            // 微测实证 scratch/p011）。内容包 w-full h-full col 使命中带
+            // 随之全屏；锚件（外层包装）几何不变，popover 放置语义不变。
+            col {
+                style: "w-full h-full"
 
-
-
-            // 图标网格（固定网格 v1；列数 8 起步，占位 lucide 图标——
+                // 图标网格（固定网格 v1；列数 8 起步，占位 lucide 图标——
             // pinned 条目自带注册表 icon 优先）。双击 = mouse-area
             // ondblclick（484 mouse-area + iced on_double_click）；右键 =
-            // button oncontextmenu（402 先例）。
+            // 布局件 oncontextmenu（PLAN-002 B：布局件级右键挂点，格内全域
+            // 可右键——此前挂 button 上仅图标本体命中）。
             // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
             // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
             // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
@@ -71,26 +84,37 @@ widget DesktopSurface {
                 for e in .__desktop_icons {
                     mouse-area (ondblclick: .ActivateApp(e.id)) {
                         col {
-                            style: "w-20 h-20 items-center justify-center gap-1"
-                            // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标本体，
-                            // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
-                            // 图标挤下且样式不符）。
-                            popover (open: .menu_id == e.id, placement: "bottom-start", ondismiss: .MenuClose, class: "p-1 border rounded bg-card") {
-                                button (icon: e.icon) {
-                                    oncontextmenu.prevent: .IconMenu(e.id)
-                                    style: "h-10 w-10 px-0 text-xl text-white rounded-xl bg-[" + e.color + "]"
-                                }
+                            // PLAN-002 B pilot：布局件 hover 类消费（此前 row/col
+                            // 上的 hover: 静默丢弃——526 Q9①）+ 右键挂点。
+                            style: "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                            oncontextmenu.prevent: .IconMenu(e.id)
+            // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
+            // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
+            // 图标挤下且样式不符）。
+            popover (open: .menu_id == e.id, placement: "bottom-start", ondismiss: .MenuClose, class: "p-1 border rounded bg-card") {
+                // PLAN-002 N1（用户定案方案 A）：chip 降级非交互视觉件
+                // （col+icon）——原 iced Button 捕获 press 饿死祖先
+                // mouse-area 的 ondblclick（chip 上双击死区，T30 起存量；
+                // review_ue.log 实录 8 条裸 click 无 ActivateApp）。降级后
+                // 整格 80×80 统一双击+右键（Windows 惯例：图标+文字整块
+                // 可点）；视觉等价（20px glyph=原 text-xl 字号档）。
+                col {
+                    style: "h-10 w-10 items-center justify-center rounded-xl bg-[" + e.color + "]"
+                    icon (name: e.icon) {
+                        style: "w-5 h-5 text-white"
+                    }
+                }
                                 col {
                                     style: "w-44 gap-1"
-                                    button "打开" {
+                                    button (text: "打开", variant: "ghost") {
                                         onclick: .MenuOpen
                                         style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                                     }
-                                    button "从桌面移除" {
+                                    button (text: "从桌面移除", variant: "ghost") {
                                         onclick: .MenuRemove
                                         style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                                     }
-                                    button "更换壁纸…" {
+                                    button (text: "更换壁纸…", variant: "ghost") {
                                         onclick: .MenuWallpaper
                                         style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                                     }
@@ -103,21 +127,28 @@ widget DesktopSurface {
                     }
                 }
             }
+            // PLAN-011 T3：闭合命中带内包 col（见 mouse-area 开标签处注）。
             }
-        }
-            // blank 菜单内容（锚=全域，Panel snap 钳至视口内）。
+            // PLAN-002：blank 菜单内容归位 popover 标签内（plain[1]=content）—
+            // 此前闭合括号错位使其成为 view 级散落子树，桌面左下角常驻渲染
+            // （T36 结构回归；实机截图在案 scratch/p002）。
+            }
+            // PLAN-012：坐标锚 popover（open 驱动 + x/y 落点；坐标锚形态
+            // 无锚子件，children 全为面板内容）。
+            popover (open: .blank_menu != "", x: .__desktop_cursor_x, y: .__desktop_cursor_y, ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
             col {
                 style: "w-44 gap-1"
-                button "更换壁纸…" {
+                button (text: "更换壁纸…", variant: "ghost") {
                     onclick: .MenuWallpaperBlank
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                 }
-                button "显示设置" {
+                button (text: "显示设置", variant: "ghost") {
                     onclick: .OpenSettingsBlank
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
                 }
             }
-            }
+        }
+    }
     }
 
     on {

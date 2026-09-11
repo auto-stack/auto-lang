@@ -72,7 +72,7 @@ pub fn render_document_with<M: Clone + std::fmt::Debug + 'static>(
         spacing: 8,
         padding: 0,
         style: None,
-        onclick: None,
+        onclick: None, on_right_click: None,
     }
 }
 
@@ -97,14 +97,14 @@ fn wrap_with_ghost<M: Clone + std::fmt::Debug>(
                     center_x: false,
                     center_y: false,
                     style: Style::parse("bg-muted rounded-lg w-full").ok(),
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 },
                 block,
             ],
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
         _ => block,
     }
@@ -246,7 +246,7 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
         spacing: 8,
         padding: 0,
         style: None,
-        onclick: None,
+        onclick: None, on_right_click: None,
     }
 }
 
@@ -326,7 +326,7 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 },
             }
         })
@@ -339,7 +339,7 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
         spacing: 2,
         padding: 0,
         style: None,
-        onclick: None,
+        onclick: None, on_right_click: None,
     }
 }
 
@@ -418,7 +418,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 // （实测带高 +2px/块，两臂 pitch 累积漂移）。
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             let code = spansText(b.inlines.clone());
             // PLAN-041 T4 fence 三态统一：view/stream 正文 = 共享 buffer 绘制
@@ -463,7 +463,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -471,7 +471,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -479,7 +479,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::Blockquote => {
@@ -492,7 +492,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 4,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }
             };
             View::Container {
@@ -503,7 +503,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(family_of(BlockType::Blockquote).chrome.outer).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::ListBlock => {
@@ -548,13 +548,13 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                             spacing: 2,
                             padding: 0,
                             style: None,
-                            onclick: None,
+                            onclick: None, on_right_click: None,
                         },
                     ],
                     spacing: 2,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 });
             }
             View::Column {
@@ -562,7 +562,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 spacing: 2,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::Table => {
@@ -638,7 +638,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 spacing: 2,
                 padding: 0,
                 style: None,
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             let mut parts: Vec<View<M>> = vec![title_row];
             if !b.children.is_empty() {
@@ -647,7 +647,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 4,
                     padding: 0,
                     style: Style::parse("pt-1 w-full").ok(),
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 });
             }
             View::Container {
@@ -659,7 +659,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     // 此前在视图臂无消费面——右栏 callout 内容贴边紧凑；
                     // 家族 pad 单源落到内层列，观感与 chrome 声明一致。
                     style: Style::parse(chrome.body).ok(),
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -667,7 +667,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(&format!("{}{extra}", chrome.outer)).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::Details => {
@@ -698,6 +698,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 padding: 0,
                 style: None,
                 onclick: details_msg,
+                on_right_click: None,
             };
             let mut parts: Vec<View<M>> = vec![summary_row];
             if open && !b.children.is_empty() {
@@ -706,7 +707,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 4,
                     padding: 0,
                     style: Style::parse("pt-1 border-t w-full").ok(),
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 });
             }
             View::Container {
@@ -715,7 +716,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 4,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -723,7 +724,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::WikilinkBlock => {
@@ -751,7 +752,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::Mermaid => {
@@ -769,7 +770,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             let code_area = View::Container {
                 child: Box::new(styled_text(
@@ -782,7 +783,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -790,7 +791,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -798,7 +799,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::MathBlock => {
@@ -817,7 +818,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             let body = format!("$$\n{}\n$$", spansText(b.inlines.clone()));
             let code_area = View::Container {
@@ -828,7 +829,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -836,7 +837,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -844,7 +845,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::QueryBlock => {
@@ -864,7 +865,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -876,12 +877,12 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                         center_x: false,
                         center_y: false,
                         style: Style::parse("px-4 pt-2").ok(),
-                        onclick: None,
+                        onclick: None, on_right_click: None,
                     }, body],
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None,
+                    onclick: None, on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -889,7 +890,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None,
+                onclick: None, on_right_click: None,
             }
         }
         BlockType::ThematicBreak => View::Container {
@@ -904,7 +905,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             center_x: false,
             center_y: false,
             style: Style::parse(family_of(BlockType::ThematicBreak).chrome.outer).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         },
         // Paragraph / TableRow / TableCell（顶层不会出现）/ 未知：段落降级
         _ => render_inlines(&b.inlines),

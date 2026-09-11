@@ -2122,16 +2122,13 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
     let ws_dir = resolve_rust_workspace_dir(project_dir);
     let back_name = back_member_name(project_dir);
     let api_backend_dir = ws_dir.join(&back_name);
+    // Generate or update the Rust backend from #[api] declarations (idempotent).
+    if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
+        eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
+        return None;
+    }
     if !api_backend_dir.join("Cargo.toml").exists() {
-        // Plan musk-022: generate the Rust backend on first run when the project
-        // declares api: "rust". Previously returned None silently (no backend).
-        if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
-            eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
-            return None;
-        }
-        if !api_backend_dir.join("Cargo.toml").exists() {
-            return None;
-        }
+        return None;
     }
 
     println!();
@@ -2644,6 +2641,18 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
         }
     }
 
+    // PLAN-609 T-A1: pac.at `theme: {}` 声明色板激活（VM 腿 boot,与 vue 腿
+    // T-06 双端同源）。在 env 种子**之后**执行：声明只换 ACTIVE_THEME 色板
+    // 槽,不清写 DARK_MODE/ACCENT_NAME——优先级链
+    // CLI env > os-config/宿主 > pac.at 声明 > 内置缺省 语义成文。
+    if let Some(name) = apply_pac_theme_decl(project_dir) {
+        println!(
+            "  {} theme declaration activated: {}",
+            "✓".bright_green(),
+            name
+        );
+    }
+
     let result = auto_lang::run_file(entry.to_str().unwrap_or("src/front/app.at"));
 
     // Restore original CWD
@@ -2656,6 +2665,38 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     match result {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("VM UI error: {}", e).into()),
+    }
+}
+
+/// PLAN-609 T-A1: pac.at `theme: {}` 块声明 → 合成主题激活（VM 腿 boot）。
+/// 与 vue 腿（`vue.rs::from_workspace` T-06）同口径：pac 单块解析无具名
+/// 声明集，`extends` 仅可引用内置。声明缺席/pac.at 缺失或解析失败 →
+/// 零变化（None）；compose 失败告警回退内置缺省（vue 腿同款容错）。
+/// 激活只换 ACTIVE_THEME 槽，DARK_MODE/ACCENT_NAME 不动（调用点保证在
+/// env 种子之后）。返回激活的合成主题名（测试断言面）。
+fn apply_pac_theme_decl(project_dir: &Path) -> Option<String> {
+    let pac_path = project_dir.join("pac.at");
+    let config =
+        match auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+    let mut pac = crate::pac::Pac::new(config);
+    let _ = pac.resolve();
+    let decl = pac.theme_decl?;
+    match auto_lang::design_tokens::decl::compose(&decl, &std::collections::BTreeMap::new()) {
+        Ok(theme) => {
+            let name = theme.name.clone();
+            auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(theme));
+            Some(name)
+        }
+        Err(e) => {
+            println!(
+                "{} theme{{}} 合成失败：{e} —— 回退内置缺省",
+                "⚠".bright_yellow()
+            );
+            None
+        }
     }
 }
 
@@ -2693,6 +2734,115 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-609 T-A1 三段：①theme{} 声明经 boot 路径激活合成主题
+    /// （theme_name=声明名、resolve 走合成体、mode/accent 不被清写）；
+    /// ②无声明零变化；③坏 extends compose 失败容错回退。
+    /// ACTIVE_THEME/DARK_MODE/ACCENT_NAME 均 thread-local —— nextest
+    /// 每测独立进程天然隔离。
+    #[test]
+    fn vm_boot_pac_theme_decl_activates_composed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("p609-app");
+        std::fs::create_dir_all(project.join("src").join("front")).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "name: \"p609-app\"\ntheme: {\n    name: \"brand-x\"\n    extends: \"stella\"\n    mode: \"auto\"\n    colors: {\n        primary: \"#8b5cf6\"\n    }\n}\n",
+        )
+        .unwrap();
+
+        // ① 声明激活：合成名上槽，resolve 走合成体（VM face == 合成体 face;
+        // hex 声明经 HSL 域往返,字节保真在合成体本体断言）。
+        let activated = apply_pac_theme_decl(&project).expect("声明应激活");
+        assert_eq!(activated, "brand-x", "激活名=声明名");
+        assert_eq!(
+            auto_lang::ui::style::theme::theme_name(),
+            "brand-x",
+            "theme_name 返回合成主题名"
+        );
+        let composed = auto_lang::ui::style::theme::active_composed()
+            .expect("合成主题在 ACTIVE_THEME 槽");
+        let expected_primary = auto_lang::design_tokens::decl::normalize_value("#8b5cf6")
+            .expect("声明值合法");
+        assert!(
+            composed.light.iter().any(
+                |(t, v)| *t == auto_lang::ui::style::theme::registry::TokenName::Primary
+                    && v == &expected_primary
+            ),
+            "合成体 primary = 声明色规范化值（normalize hex→HSL 串）"
+        );
+        assert_eq!(
+            auto_lang::ui::style::theme::active_theme_rgb(
+                auto_lang::ui::style::theme::registry::TokenName::Primary,
+                false,
+            ),
+            composed.resolve_rgb(
+                auto_lang::ui::style::theme::registry::TokenName::Primary,
+                false,
+            ),
+            "VM resolve 走合成体（与合成体自身解析同值）"
+        );
+
+        // ①b 优先级成文：声明激活不清写 mode/accent（env 种子语义位不动）。
+        assert!(
+            auto_lang::ui::style::theme::dark_mode(),
+            "DARK_MODE 不被声明清写"
+        );
+        assert_eq!(
+            auto_lang::ui::style::theme::accent_name(),
+            "indigo",
+            "ACCENT_NAME 不被声明清写"
+        );
+    }
+
+    #[test]
+    fn vm_boot_no_theme_decl_zero_change() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("p609-plain");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("pac.at"), "name: \"p609-plain\"\n").unwrap();
+
+        let before = auto_lang::ui::style::theme::theme_name();
+        assert_eq!(
+            apply_pac_theme_decl(&project),
+            None,
+            "无声明 → 无激活"
+        );
+        assert_eq!(
+            auto_lang::ui::style::theme::theme_name(),
+            before,
+            "无声明零变化（内置缺省链不动）"
+        );
+
+        // pac.at 缺失同律（run_vm_ui 对独立于 pac 的路径零变化）。
+        let empty = tmp.path().join("p609-nopac");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(apply_pac_theme_decl(&empty), None, "pac.at 缺失零变化");
+    }
+
+    #[test]
+    fn vm_boot_bad_theme_decl_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("p609-bad");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "name: \"p609-bad\"\ntheme: {\n    name: \"broken\"\n    extends: \"no-such-base\"\n}\n",
+        )
+        .unwrap();
+
+        let before = auto_lang::ui::style::theme::theme_name();
+        assert_eq!(
+            apply_pac_theme_decl(&project),
+            None,
+            "compose 失败（extends 非内置）→ 不激活"
+        );
+        assert_eq!(
+            auto_lang::ui::style::theme::theme_name(),
+            before,
+            "坏声明回退内置缺省，不 panic 不换槽"
+        );
+    }
 
     /// Stage B P-2：落点解析序三分支——env 权威 / 框架内项目=共享 ws（零
     /// 变化）/ 仓外项目=project-local。框架内检测用 worktree 内真实路径

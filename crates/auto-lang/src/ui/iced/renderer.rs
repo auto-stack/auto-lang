@@ -1582,9 +1582,15 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     padding: u16,
     style: Option<&Style>,
     widget_id: Option<String>,
+    hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'static, M> {
     let iced_style = style.map(|s| IcedStyle::from_style(s));
-    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+    // PLAN-002 B：hover 变体类 → 第二套已构建样式（merged_with_variant
+    // 覆盖 base，同按钮臂语义）；无 hover 声明 = None，走原路径。
+    let hover_cs = style
+        .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
+        .map(|s| build_container_style(&IcedStyle::merged_with_variant(s, crate::ui::style::Variant::Hover)));
+    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is)) || hover_cs.is_some();
     let pd = iced_padding(padding, style);
 
     // Apply width/height/alignment to column
@@ -1720,7 +1726,7 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         if let Some(ref is) = iced_style {
             if has_visual {
                 let cs = build_container_style(is);
-                cont = cont.style(move |_| cs);
+                cont = cont.style(layout_style_fn(cs, hover_cs, hover.clone()));
             } else if let Some(bg) = is.background_color {
                 cont = cont.style(move |_| container::Style {
                     background: Some(iced::Background::Color(bg)),
@@ -1807,9 +1813,14 @@ fn apply_row_style<M: Clone + Debug + 'static>(
     padding: u16,
     style: Option<&Style>,
     widget_id: Option<String>,
+    hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'static, M> {
     let iced_style = style.map(|s| IcedStyle::from_style(s));
-    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is));
+    // PLAN-002 B：hover 变体类 → 第二套已构建样式（同 apply_column_style）。
+    let hover_cs = style
+        .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
+        .map(|s| build_container_style(&IcedStyle::merged_with_variant(s, crate::ui::style::Variant::Hover)));
+    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is)) || hover_cs.is_some();
     let pd = iced_padding(padding, style);
     let row_max_width = iced_style.as_ref().and_then(|is| is.max_width);
 
@@ -1844,7 +1855,7 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
         if let Some(ref is) = iced_style {
             let cs = build_container_style(is);
-            cont = cont.style(move |_| cs);
+            cont = cont.style(layout_style_fn(cs, hover_cs, hover.clone()));
         }
         if let Some(id) = widget_id { cont = cont.id(id); }
         cont.into()
@@ -1905,8 +1916,13 @@ fn apply_container_style<M: Clone + Debug + 'static>(
     center_y: bool,
     style: Option<&Style>,
     widget_id: Option<String>,
+    hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'static, M> {
     cont = cont.padding(iced_padding(padding, style));
+    // PLAN-002 B：hover 变体类 → 第二套已构建样式（同 apply_column_style）。
+    let hover_cs = style
+        .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
+        .map(|s| build_container_style(&IcedStyle::merged_with_variant(s, crate::ui::style::Variant::Hover)));
 
     if let Some(ref s) = style {
         let is = IcedStyle::from_style(s);
@@ -1982,9 +1998,9 @@ fn apply_container_style<M: Clone + Debug + 'static>(
         }
 
         // Visual styles (background, border, rounded, shadow)
-        if needs_visual_wrap(&is) {
+        if needs_visual_wrap(&is) || hover_cs.is_some() {
             let cs = build_container_style(&is);
-            cont = cont.style(move |_| cs);
+            cont = cont.style(layout_style_fn(cs, hover_cs, hover.clone()));
         }
     } else {
         if let Some(w) = width { if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); } }
@@ -2095,6 +2111,7 @@ fn build_row<M: Clone + Debug + 'static>(
     padding: u16,
     style: Option<&Style>,
     widget_id: Option<String>,
+    hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'static, M> {
     let eff_spacing = effective_spacing(spacing, style, true);
     let iced_style = style.map(|s| IcedStyle::from_style(s));
@@ -2130,7 +2147,7 @@ fn build_row<M: Clone + Debug + 'static>(
     if let Some(p) = trail {
         row_widget = row_widget.push(spacer(p));
     }
-    apply_side_borders(apply_row_style(row_widget, padding, style, widget_id), iced_style.as_ref())
+    apply_side_borders(apply_row_style(row_widget, padding, style, widget_id, hover), iced_style.as_ref())
 }
 
 /// Build a Column from pre-built child elements + shared `apply_column_style`.
@@ -2138,12 +2155,13 @@ fn build_row<M: Clone + Debug + 'static>(
 /// in a width-Fill container; justify-between/around/evenly get vertical
 /// Fill spacers (mirroring build_row's spacer emulation; Center/End keep the
 /// container-wrap path inside apply_column_style).
-fn build_column<M: Clone + Debug + 'static>(
+pub(crate) fn build_column<M: Clone + Debug + 'static>(
     mut children: Vec<iced::Element<'static, M>>,
     spacing: u16,
     padding: u16,
     style: Option<&Style>,
     widget_id: Option<String>,
+    hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'static, M> {
     let eff_spacing = effective_spacing(spacing, style, false);
     let iced_style = style.map(|s| IcedStyle::from_style(s));
@@ -2210,7 +2228,7 @@ fn build_column<M: Clone + Debug + 'static>(
     // 内层 col 同样携带 max-h 样式,此处再包 Fixed(N) 把 intrinsic 钉死在 N,
     // 外层 Shrink 解析为 min(N, N) = N,Shrink 封顶完全失效。max-h 现在统一由
     // build_scrollable 的 cap 分支处理(CSS max-height 语义)。
-    apply_side_borders(apply_column_style(col_widget, padding, style, widget_id), iced_style.as_ref())
+    apply_side_borders(apply_column_style(col_widget, padding, style, widget_id, hover), iced_style.as_ref())
 }
 
 /// Build a Container around a single pre-built child + shared
@@ -2224,11 +2242,12 @@ fn build_container<M: Clone + Debug + 'static>(
     center_y: bool,
     style: Option<&Style>,
     widget_id: Option<String>,
+    hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'static, M> {
     let cont = container(child);
     let iced_style = style.map(IcedStyle::from_style);
     apply_side_borders(
-        apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id),
+        apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id, hover),
         iced_style.as_ref(),
     )
 }
@@ -2696,7 +2715,7 @@ fn build_grid<M: Clone + Debug + 'static>(
 ) -> iced::Element<'static, M> {
     let cols = cols.max(1);
     if cells.is_empty() {
-        return apply_column_style(column([]), 0, style, widget_id);
+        return apply_column_style(column([]), 0, style, widget_id, None);
     }
 
     let equal_tracks = !cells.iter().any(|(_, spec)| spec.explicit_width);
@@ -2731,7 +2750,7 @@ fn build_grid<M: Clone + Debug + 'static>(
             rows.push(row_b.into());
         }
         let col_widget = column(rows).spacing(gap as f32).align_x(iced::Alignment::Center);
-        return apply_column_style(col_widget, 0, style, widget_id);
+        return apply_column_style(col_widget, 0, style, widget_id, None);
     }
 
     // Equal-track mode: CSS auto-placement via the shared pure placer.
@@ -2774,7 +2793,7 @@ fn build_grid<M: Clone + Debug + 'static>(
         rows.push(row_b.into());
     }
     let col_widget = column(rows).spacing(gap_f).align_x(iced::Alignment::Center);
-    apply_column_style(col_widget, 0, style, widget_id)
+    apply_column_style(col_widget, 0, style, widget_id, None)
 }
 
 // NOTE: Textarea shape is NOT extracted into a shared builder. iced's
@@ -2812,13 +2831,58 @@ fn build_grid<M: Clone + Debug + 'static>(
 /// 以 mouse_area 包装、on_release 发射声明消息（402 右键 / 484 hover 两
 /// mouse_area 先例同 API 形态）；检视捕获模式不包（inspect mouse_area 需
 /// 独占命中，同按钮右键守卫）；None = 原样直出零开销。
-fn wrap_layout_onclick<'a, M: Clone + 'static>(
+///
+/// PLAN-002 B：同一包装点收拢布局件三臂——onclick（左键，490 G4）+ 右键
+/// （`oncontextmenu` → mouse_area on_right_press，402/526 T10 同 API）+
+/// hover 态（`hover:` 变体类 → HoverArea + 共享标志，见 hover_area.rs）。
+/// 单个 mouse_area 承载左右两键（mouse_area 不捕获未声明事件，内层交互件
+/// 不受影响）；hover 只包 HoverArea（纯委托，不发消息不重建）。
+pub(crate) fn wrap_layout_events<'a, M: Clone + 'static>(
     el: iced::Element<'a, M>,
     onclick: Option<M>,
+    on_right_click: Option<M>,
+    hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'a, M> {
-    match onclick {
-        Some(msg) if !inspect_capture_active() => mouse_area(el).on_release(msg).into(),
-        _ => el,
+    if inspect_capture_active() {
+        return el;
+    }
+    let el: iced::Element<'a, M> = if onclick.is_some() || on_right_click.is_some() {
+        let mut ma = mouse_area(el);
+        if let Some(msg) = onclick {
+            ma = ma.on_release(msg);
+        }
+        if let Some(msg) = on_right_click {
+            ma = ma.on_right_press(msg);
+        }
+        ma.into()
+    } else {
+        el
+    };
+    match hover {
+        Some(flag) => crate::ui::iced::hover_area::HoverArea::new(el, flag).into(),
+        None => el,
+    }
+}
+
+/// PLAN-002 B：布局件 hover 标志——仅当样式声明了 `hover:` 变体类时构造
+/// （无声明 = None，零开销路径不变）。标志与样式闭包共享（apply_*_style）。
+pub(crate) fn layout_hover_flag(style: Option<&Style>) -> Option<crate::ui::iced::hover_area::HoverFlag> {
+    style
+        .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
+        .map(|_| crate::ui::iced::hover_area::HoverFlag::default())
+}
+
+/// PLAN-002 B：布局件样式闭包——base/hover 两套已构建样式按共享标志二选一
+/// （标志翻转只发 request_redraw；`hover:` 类经 merged_with_variant 覆盖
+/// base，语义同按钮臂）。无 hover 声明时等价 `move |_| base`。
+pub(crate) fn layout_style_fn(
+    base: iced::widget::container::Style,
+    hover: Option<iced::widget::container::Style>,
+    flag: Option<crate::ui::iced::hover_area::HoverFlag>,
+) -> impl Fn(&iced::Theme) -> iced::widget::container::Style + 'static {
+    move |_| match (&flag, hover) {
+        (Some(f), Some(h)) if f.load(std::sync::atomic::Ordering::Relaxed) => h,
+        _ => base,
     }
 }
 
@@ -3775,15 +3839,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Row { children, spacing, padding, style, onclick } => {
+            AbstractView::Row { children, spacing, padding, style, onclick, on_right_click } => {
                 // 轴向修正(概要页对拍,EDGE-16 家族):见 axis_fix_row_child。
                 let els: Vec<iced::Element<'static, M>> =
                     children.into_iter().map(axis_fix_row_child).map(|c| c.into_iced()).collect();
                 // Plan 490 G4：布局件点击（row/col/div onclick parity）。
-                wrap_layout_onclick(build_row(els, spacing, padding, style.as_ref(), None), onclick)
+                // PLAN-002 B：右键 + hover 同包装点（wrap_layout_events）。
+                let hover = layout_hover_flag(style.as_ref());
+                wrap_layout_events(
+                    build_row(els, spacing, padding, style.as_ref(), None, hover.clone()),
+                    onclick,
+                    on_right_click,
+                    hover,
+                )
             }
 
-            AbstractView::Column { children, spacing, padding, style, onclick } => {
+            AbstractView::Column { children, spacing, padding, style, onclick, on_right_click } => {
                 // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
                 // PLAN-050 P2 #3: mt-auto → 列内弹性占位——此前 margin 系静默
                 // 跳过,`mt-auto` 工具行（rail 底部工具栏）失去贴底语义。
@@ -3824,8 +3895,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     };
                     els.push(el);
                 }
-                // Plan 490 G4：同 Row。
-                wrap_layout_onclick(build_column(els, spacing, padding, style.as_ref(), None), onclick)
+                // Plan 490 G4：同 Row（PLAN-002 B：右键 + hover 同包装点）。
+                let hover = layout_hover_flag(style.as_ref());
+                wrap_layout_events(
+                    build_column(els, spacing, padding, style.as_ref(), None, hover.clone()),
+                    onclick,
+                    on_right_click,
+                    hover,
+                )
             }
 
             AbstractView::Input {
@@ -4122,9 +4199,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 center_y,
                 style,
                 onclick,
+                on_right_click,
             } => {
                 // Plan 490 G4：div/Container 点击（musk specs 树形态消费面）。
-                wrap_layout_onclick(
+                // PLAN-002 B：右键 + hover 同包装点。
+                let hover = layout_hover_flag(style.as_ref());
+                wrap_layout_events(
                     build_container(
                         child.into_iced(),
                         padding,
@@ -4134,8 +4214,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         center_y,
                         style.as_ref(),
                         None,
+                        hover.clone(),
                     ),
                     onclick,
+                    on_right_click,
+                    hover,
                 )
             }
 
@@ -4232,6 +4315,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     false,
                     style.as_ref(),
                     None,
+                    None,
                 )
             }
 
@@ -4281,6 +4365,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     false,
                     false,
                     style.as_ref(),
+                    None,
                     None,
                 )
             }
@@ -4673,20 +4758,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             // Plan 497: 每窗口真缩略渲染臂——T1 定案裁剪式整窗快照的
             // 消费端。命中进程级快照缓存 → image(Handle::from_rgba) 直绘
-            // 降采样像素；miss → 标记异步抓取（宿主 update 排空
-            // take_capture_requests，一次整窗 screenshot 服务全部请求）+
-            // 本帧 fallback lucide 图标（复用 Image 臂路径，含 native wid
-            // "N<slot>" parse 失败天然走 fallback——待澄清②）。
+            // 降采样像素；过期 → stale-while-revalidate（旧图续帧不跌
+            // fallback，request_capture 冷却去重静默重抓——hover/分区与
+            // app 切换场景「TTL 到点跳 icon」断档的根治）；真 miss →
+            // 标记异步抓取（宿主 update 排空 take_capture_requests，一次
+            // 整窗 screenshot 服务全部请求）+ 本帧 fallback lucide 图标
+            // （复用 Image 臂路径，含 native wid "N<slot>" parse 失败
+            // 天然走 fallback——待澄清②）。
             AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                 let eff_w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                 let eff_h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
-                let snap = wid
-                    .parse::<u64>()
-                    .ok()
-                    .map(crate::ui::session::Wid)
-                    .and_then(crate::ui::iced::snapshot::snapshot_window);
-                if let Some(snap) = snap {
+                let wid_opt = wid.parse::<u64>().ok().map(crate::ui::session::Wid);
+                let snap = wid_opt.and_then(crate::ui::iced::snapshot::snapshot_window_stale);
+                if let Some((snap, fresh)) = snap {
+                    if !fresh {
+                        // SWR：过期不删——旧图本帧续绘，重抓异步补。
+                        if let Some(w) = wid_opt {
+                            crate::ui::iced::snapshot::request_capture(w);
+                        }
+                    }
                     let handle =
                         iced::widget::image::Handle::from_rgba(snap.w, snap.h, snap.rgba);
                     let mut img = iced::widget::image(handle)
@@ -4728,14 +4819,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     cont.into()
                 } else {
-                    if let Some(w) = wid.parse::<u64>().ok() {
-                        crate::ui::iced::snapshot::request_capture(crate::ui::session::Wid(w));
+                    if let Some(w) = wid_opt {
+                        crate::ui::iced::snapshot::request_capture(w);
                     }
                     let icon = if fallback_icon.is_empty() {
                         "app-window".to_string()
                     } else {
                         fallback_icon.clone()
                     };
+                    // PLAN-002 A2 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                    if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                        eprintln!(
+                            "[thumb-fallback] wid={wid} eff_w={eff_w:?} eff_h={eff_h:?} style={:?}",
+                            is.as_ref().map(|is| is.width.clone()),
+                        );
+                    }
                     AbstractView::Image {
                         src: format!("lucide:{icon}"),
                         style: style.clone(),
@@ -4947,7 +5045,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         data
                     };
                     // Use cached handle to avoid flickering — same URL reuses the same Handle
-                    let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") {
+                    let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") || src.contains("image/svg+xml") {
                         let handle = get_or_create_svg_handle(&src, data);
                         let mut svg_widget = svg(handle);
                         if let Some(w) = eff_img_w { svg_widget = svg_widget.width(iced::Length::Fixed(w)); }
@@ -5108,6 +5206,21 @@ fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
             "ricepaper" => Some(WALLPAPER_RICEPAPER.to_vec()),
             "inkwash" => Some(WALLPAPER_INKWASH.to_vec()),
             _ => None,
+        }
+    } else if let Some(rest) = url.strip_prefix("data:") {
+        // Plan 606: Data URL support (SVG / PNG / JPEG / WEBP etc.)
+        // Format: data:[<mediatype>][;base64],<data>
+        if let Some(comma_pos) = rest.find(',') {
+            let meta = &rest[..comma_pos];
+            let payload = &rest[comma_pos + 1..];
+            if meta.contains(";base64") {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD.decode(payload.trim()).ok()
+            } else {
+                urlencoding::decode(payload).map(|s| s.into_owned().into_bytes()).ok()
+            }
+        } else {
+            None
         }
     } else if url.starts_with("http://") || url.starts_with("https://") {
         // os-007（P534-D4）：远程图源同步抓取加 3s 超时——此前裸
@@ -5771,7 +5884,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
             item.text.clone()
         };
         AbstractView::Row {
-            onclick: None,
+            onclick: None, on_right_click: None,
             children: vec![
                 AbstractView::Checkbox {
                     is_checked: item.done,
@@ -5824,7 +5937,7 @@ fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<Abstr
                                 spacing: 0,
                                 padding: 0,
                                 style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
                         }
                         return;
@@ -5893,6 +6006,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             padding,
             style,
             onclick,
+            on_right_click,
         } => AbstractView::Row {
             children: children
                 .into_iter()
@@ -5903,6 +6017,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
             // Plan 490 G4：布局件 onclick 穿透转换（DynamicMessage → IcedMessage）。
             onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
+            // PLAN-002 B：布局件右键同穿透（D-GAP 第四例教训——新字段
+            // 每条消息桥臂都必须显式接）。
+            on_right_click: on_right_click.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Column {
@@ -5911,6 +6028,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             padding,
             style,
             onclick,
+            on_right_click,
         } => AbstractView::Column {
             children: children
                 .into_iter()
@@ -5920,6 +6038,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             padding,
             style,
             onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
+            on_right_click: on_right_click.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Input {
@@ -6038,6 +6157,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             center_y,
             style,
             onclick,
+            on_right_click,
         } => AbstractView::Container {
             child: Box::new(convert_view_messages(*child)),
             padding,
@@ -6047,6 +6167,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             center_y,
             style,
             onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
+            on_right_click: on_right_click.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Scrollable {
@@ -6183,6 +6304,16 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 open,
                 on_dismiss: on_dismiss.map(|m| IcedMessage::from_dynamic(&m)),
             }
+        }
+
+        // PLAN-002 A2 根因修复: window_thumbnail 纯数据变体(无消息回调)此前
+        // 掉进 `_ => Empty` 兜底——VM 模式(Vue 壳/桌面 shell 经
+        // convert_view_messages 过桥)下 dock hover 缩略整件消失,面板只剩
+        // p-1 空壳(8×8 亮点+首开定位漂移,526 KNOWN-DEBT 🟢×2 的真根因;
+        // 497 交付时只加了 into_iced 臂,本映射通道漏臂——Grid 319/menubar
+        // 422/496 MouseArea 同坑第四例)。
+        AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
+            AbstractView::WindowThumbnail { wid, fallback_icon, style }
         }
 
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
@@ -10104,7 +10235,11 @@ fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 /// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
     match state.launch_app(name) {
-        Ok(_wid) => push_notification(state, "success", &format!("已启动 {name}")),
+        // PLAN-002 N3（用户复核裁定 2026-09-09）：启动成功不再发通知——
+        // toast 层逐动态视图面各渲染一份（shell + 每 app 窗，见 412 toast
+        // 双层 Stack），启动成功弹满屏属噪音；通知中心历史/未读一并不再
+        // 入（launch 成功非常规事件）。失败臂保留（Design 24 §6.5）。
+        Ok(_wid) => {}
         Err(err) => {
             push_notification(state, "error", &err);
             // Plan 463 T7：启动失败占位页（Design 24 §6.5）——
@@ -14092,6 +14227,20 @@ fn compare_pngs(
                                 }
                             }
                         }
+                        // PLAN-002 N2：fit 窗隐藏时长计数——测量常态首帧内
+                        // 回执，此前窗体以越界偏移隐藏（vwin_fit_hidden）；
+                        // 本计数超 FIT_HIDE_MAX_TICKS 即强制显形（退化为旧
+                        // 观感），防 app 异常时测量永不回执的死窗。
+                        if state.has_fit_pending() {
+                            if let Some(host) = state.host.as_ref() {
+                                for v in host.wm.wins.values() {
+                                    if v.fit_pending.get() {
+                                        v.fit_hidden_ticks
+                                            .set(v.fit_hidden_ticks.get().saturating_add(1));
+                                    }
+                                }
+                            }
+                        }
                         // Plan 504：fit 虚拟窗触发——节拍上若有待测量窗且
                         // 单程闸空闲，发起内容测量（宿主树恒在；vwin 首帧
                         // 渲染后锚点即在，回执 __fit_measured 收缩矩形）。
@@ -14395,6 +14544,17 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::App(app_id, m) => {
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1")
+                    && (m.event == "MenuClose"
+                        || m.event == "MenuOpen"
+                        || m.event.starts_with("IconMenu"))
+                {
+                    eprintln!(
+                        "[pv-update] DM::App reached daemon update: app={app_id:?} event={}",
+                        m.event
+                    );
+                }
                 // Plan 505 D（债 P488-D4）：拖出发起方锚定——DoDragDrop 在
                 // App handler dispatch 内联阻塞至完成（488 步骤 9 定案），
                 // 代际变化即本次 dispatch 发起并完成了一次拖出。
@@ -14467,6 +14627,16 @@ fn compare_pngs(
                     // 不触发按钮。标题栏拖拽/缩放的即时置顶由 StartDrag/
                     // StartResize 臂自理（彼时命中的是 chrome，无按钮在途）。
                     WmCommand::GlobalPress => {
+                        // PLAN-526 T37 合同补线：任意全局左键按下先撤标题
+                        // 右键菜单（点外关闭——icon/任务栏/blank 菜单
+                        // popover ondismiss 的 chrome 同语义面）。落在菜单
+                        // 项上的按压同样经此关菜单，项动作消息同帧照常
+                        // 执行（订阅面原始事件与 widget 消息同帧全送达）。
+                        // 此前只有 open/TitleMenuClose 两个写点，合同注释
+                        // 在案但从未接线——菜单一旦打开仅显式命令可撤。
+                        if let Some(host) = state.host.as_mut() {
+                            host.wm.title_menu = None;
+                        }
                         let cursor = state
                             .host
                             .as_ref()
@@ -14483,9 +14653,35 @@ fn compare_pngs(
                     // PLAN-526 T37：标题栏右键菜单开/关（chrome 自绘浮层，
                     // 见 virtual_window.rs 菜单层；任意 GlobalPress 已清）。
                     WmCommand::TitleMenuOpen(wid) => {
+                        // PLAN-012：菜单锚点随右键落点——last_cursor（host
+                        // 逻辑坐标）减窗 rect 原点得窗内坐标，经钳制纯函数
+                        // 定面板左上角（窗缘不越界，y 不高于标题条底）。
                         if let Some(host) = state.host.as_mut() {
-                            host.wm.title_menu = Some(wid);
+                            let cursor = host.wm.last_cursor.get();
+                            let rect = host
+                                .wm
+                                .wins
+                                .get(&wid)
+                                .map(|v| *v.rect.borrow())
+                                .unwrap_or(iced::Rectangle {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    width: 0.0,
+                                    height: 0.0,
+                                });
+                            let (x, y) = crate::ui::iced::virtual_window::title_menu_spot(
+                                cursor.x, cursor.y, rect.x, rect.y, rect.width, rect.height,
+                            );
+                            host.wm.title_menu =
+                                Some(crate::ui::session::TitleMenuSpot { wid, x, y });
                         }
+                        // PLAN-012：右键标题栏先聚焦置顶（`focus` = 立即
+                        // z_order 刷新）——非最前窗的菜单层在自身 vwin
+                        // Stack 内，不置顶会被前窗遮挡；右键无 in-flight
+                        // 按钮态，无 T20 press→release diff 风险，故用即时
+                        // focus 而非软聚焦（左键路径仍走 GlobalPress 软
+                        // 聚焦+release 偿还，双击首击即聚焦）。
+                        state.wm_focus(wid);
                     }
                     WmCommand::TitleMenuClose => {
                         if let Some(host) = state.host.as_mut() {
@@ -14637,6 +14833,17 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::Window(win, m) => {
+                // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
+                if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1")
+                    && (m.event == "MenuClose"
+                        || m.event == "MenuOpen"
+                        || m.event.starts_with("IconMenu"))
+                {
+                    eprintln!(
+                        "[pv-window] DM::Window reached: win={win:?} event={}",
+                        m.event
+                    );
+                }
                 // Plan 462 desktop：全局光标事件优先驱动 WM 拖拽/缩放状态机。
                 // 交互进行中消费事件（不下发 App——app 内 divider 拖拽与 WM
                 // 拖拽互斥，桌面语义下 WM 优先）。
@@ -14652,6 +14859,22 @@ fn compare_pngs(
                                 if let Some((xs, ys)) = val.split_once(',') {
                                     let x: f32 = xs.parse().unwrap_or(0.0);
                                     let y: f32 = ys.parse().unwrap_or(0.0);
+                                    // PLAN-012：光标坐标喂桌面面 VM（空白菜
+                                    // 单坐标锚数据源）——只写状态不置
+                                    // view_dirty，blank_menu open 翻转才重
+                                    // 建视图读取最新值，零逐帧重建成本。
+                                    if let Some(surface) = state.desktop.desktop_app {
+                                        if let Some(app) = state.apps.get_mut(&surface) {
+                                            let _ = app.component.write_state(
+                                                "__desktop_cursor_x",
+                                                auto_val::Value::Float(x as f64),
+                                            );
+                                            let _ = app.component.write_state(
+                                                "__desktop_cursor_y",
+                                                auto_val::Value::Float(y as f64),
+                                            );
+                                        }
+                                    }
                                     let host_size = state
                                         .host
                                         .as_ref()
@@ -14886,11 +15109,15 @@ fn compare_pngs(
                     crate::ui::iced::broker_surface::broker_client_content(state, wid)
                 {
                     let focused = host.wm.focused == Some(wid);
-                    let title_menu_open = host.wm.title_menu == Some(wid);
+                    let title_menu_pos = host
+                        .wm
+                        .title_menu
+                        .filter(|t| t.wid == wid)
+                        .map(|t| (t.x, t.y));
                     layers.push(crate::ui::iced::virtual_window::virtual_window_element(
                         vwin,
                         focused,
-                        title_menu_open,
+                        title_menu_pos,
                         crate::ui::iced::virtual_window::transparency_alpha_for(
                             &state.desktop.config.transparency,
                         ),
@@ -14911,7 +15138,7 @@ fn compare_pngs(
                     let Some(view) = state.split_ref_at(app_id, host.window) else {
                         return None;
                     };
-                    Some(dynamic_view(view, is_primary))
+                    Some(dynamic_view_vwin(view, is_primary))
                 };
                 let client: iced::Element<'_, IcedMessage> = match
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
@@ -14927,11 +15154,15 @@ fn compare_pngs(
                 };
                 let client = client.map(move |m| DM::App(app_id, m));
                 let focused = host.wm.focused == Some(wid);
-                let title_menu_open = host.wm.title_menu == Some(wid);
+                let title_menu_pos = host
+                    .wm
+                    .title_menu
+                    .filter(|t| t.wid == wid)
+                    .map(|t| (t.x, t.y));
                 layers.push(crate::ui::iced::virtual_window::virtual_window_element(
                     vwin,
                     focused,
-                    title_menu_open,
+                    title_menu_pos,
                     crate::ui::iced::virtual_window::transparency_alpha_for(
                         &state.desktop.config.transparency,
                     ),
@@ -15399,6 +15630,67 @@ fn dynamic_view(
     state: crate::ui::session::SessionViewRef<'_>,
     sync_mcp: bool,
 ) -> iced::Element<'_, IcedMessage> {
+    dynamic_view_impl(state, sync_mcp, false)
+}
+
+/// PLAN-002 N5：vwin 托管 app 客户区渲染——根节点默认底角圆角（与窗框
+/// `WIN_RADIUS` 对齐；见 [`round_bottom_root_default`]）。
+fn dynamic_view_vwin(
+    state: crate::ui::session::SessionViewRef<'_>,
+    sync_mcp: bool,
+) -> iced::Element<'_, IcedMessage> {
+    dynamic_view_impl(state, sync_mcp, true)
+}
+
+/// PLAN-002 N5：vwin 托管 app 根节点默认底角圆角（纯函数，测试靶）——
+/// 根节点自带不透明底色时其方角会探出圆角窗框。根 style 已含任何
+/// radius 类（全角/方向性）= 应用作者显式声明，不干预；根无 style
+/// （透明）不探出，不处理。非容器根（text/scrollable 等）同样跳过。
+fn round_bottom_root_default<M: Clone + std::fmt::Debug>(
+    view: &mut crate::ui::view::View<M>,
+) {
+    use crate::ui::style::{RoundedSize, StyleClass};
+    let style = match view {
+        crate::ui::view::View::Column { style, .. }
+        | crate::ui::view::View::Row { style, .. }
+        | crate::ui::view::View::Container { style, .. }
+        | crate::ui::view::View::Grid { style, .. } => style,
+        _ => return,
+    };
+    let Some(s) = style else { return };
+    let has_radius = s.classes.iter().any(|c| {
+        matches!(
+            c,
+            StyleClass::Rounded
+                | StyleClass::RoundedSm
+                | StyleClass::RoundedMd
+                | StyleClass::RoundedLg
+                | StyleClass::RoundedXl
+                | StyleClass::Rounded2Xl
+                | StyleClass::Rounded3Xl
+                | StyleClass::RoundedFull
+                | StyleClass::RoundedNone
+                | StyleClass::RoundedT(_)
+                | StyleClass::RoundedB(_)
+                | StyleClass::RoundedL(_)
+                | StyleClass::RoundedR(_)
+                | StyleClass::RoundedTL(_)
+                | StyleClass::RoundedTR(_)
+                | StyleClass::RoundedBL(_)
+                | StyleClass::RoundedBR(_)
+        )
+    });
+    if !has_radius {
+        s.classes.push(StyleClass::RoundedB(Some(RoundedSize::Xxl)));
+    }
+}
+
+fn dynamic_view_impl(
+    state: crate::ui::session::SessionViewRef<'_>,
+    sync_mcp: bool,
+    round_bottom: bool,
+) -> iced::Element<'_, IcedMessage> {
+
     // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
     // `into_iced` + `wrap_debug` during this build. Plain click/hover =
     // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
@@ -15623,6 +15915,11 @@ fn dynamic_view(
         inject_todo_list(&mut view, &state.app.todos, state.component.widget_name());
         if !state.app.input_values.is_empty() {
             patch_input_values(&mut view, &state.app.input_values);
+        }
+        // PLAN-002 N5：vwin 客户区根节点默认底角圆角（convert 前作用于源
+        // 树；缓存帧继承已合并结果，app 与 flag 恒定配对无漂移）。
+        if round_bottom {
+            round_bottom_root_default(&mut view);
         }
         let converted = convert_view_messages(view);
         *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
@@ -15905,14 +16202,25 @@ fn fit_aware_root(
     fit_active: bool,
 ) -> iced::Element<'static, IcedMessage> {
     if fit_active {
-        iced::widget::scrollable(
-            container(content)
-                .width(iced::Length::Shrink)
-                .height(iced::Length::Shrink)
-                .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
+        // PLAN-002 N4（用户复核裁定 2026-09-09）：内容在放大窗内居中——
+        // 最大化/手动拉大的 fit 窗内容不再左上角沉底（512 v1 语义升级，
+        // 待澄清③就此定案）。Shrink 约束链不动：居中容器 Fill 只是
+        // 对齐包裹，锚点量到的仍是内容自然尺寸，512 S3 scrollable
+        // 测量语义零变化。
+        container(
+            scrollable(
+                container(content)
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Shrink)
+                    .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
+            )
+            .width(iced::Length::Shrink)
+            .height(iced::Length::Shrink),
         )
-        .width(iced::Length::Shrink)
-        .height(iced::Length::Shrink)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .center_x(iced::Length::Fill)
+        .center_y(iced::Length::Fill)
         .into()
     } else {
         container(content)
@@ -18644,7 +18952,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Layout containers: recursively render children through render_dynamic_view
         // so Input/Textarea get proper IcedMessage text capture.
-        AbstractView::Column { children, spacing, padding, style, onclick } => {
+        AbstractView::Column { children, spacing, padding, style, onclick, on_right_click } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -18652,6 +18960,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
+            // PLAN-002 B：布局件 hover 标志（样式声明了 hover: 变体才构造；
+            // 与样式闭包共享，wrap 时同一实例交给 HoverArea）。
+            let hover = layout_hover_flag(style.as_ref());
 
             // PLAN-530 步骤3：仅 absolute 子脱流入叠层（Row 分支同语义）。
             // z-index-only 子保持流内——前缀 overlay 双渲染路径随 472 立场
@@ -18666,7 +18977,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     path.pop();
                 }
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-                build_column(els, spacing, padding, style.as_ref(), widget_id)
+                build_column(els, spacing, padding, style.as_ref(), widget_id, hover.clone())
             } else {
                 let mut base_els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(flow_idx.len());
                 for &i in &flow_idx {
@@ -18675,7 +18986,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     path.pop();
                 }
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-                let base = build_column(base_els, spacing, padding, style.as_ref(), widget_id);
+                let base = build_column(base_els, spacing, padding, style.as_ref(), widget_id, hover.clone());
 
                 let mut stk = iced::widget::Stack::new().push(base);
 
@@ -18701,7 +19012,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             };
             let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el };
             // Plan 490 G4：同 Row（inspect 模式自守卫不包）。
-            wrap_layout_onclick(el, onclick)
+            // PLAN-002 B：右键 + hover 同包装点。
+            wrap_layout_events(el, onclick, on_right_click, hover)
         }
 
         // Plan 422: 锚定弹层(VM 模式路径)。子路径约定(与 snapshot/vnode/
@@ -18747,7 +19059,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "popover", el, vec![], None) } else { el }
         }
 
-        AbstractView::Row { children, spacing, padding, style, onclick } => {
+        AbstractView::Row { children, spacing, padding, style, onclick, on_right_click } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -18755,6 +19067,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
+            // PLAN-002 B：布局件 hover 标志（同 Column 臂）。
+            let hover = layout_hover_flag(style.as_ref());
             // Plan 057 (2.2): absolute 子元素脱流叠层 —— 镜像 Column 分支(见
             // 上方 Plan 409 §10 续 6 注释)。ash-gui 的 ghost/高亮 overlay 是
             // `row{relative} > row{absolute inset-0}` 结构,此前 Row 分支无此
@@ -18782,7 +19096,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 path.pop();
             }
             let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-            let base = build_row(els, spacing, padding, style.as_ref(), widget_id);
+            let base = build_row(els, spacing, padding, style.as_ref(), widget_id, hover.clone());
             let el = if absolute.is_empty() {
                 base
             } else {
@@ -18807,15 +19121,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 stk.clip(clip).into()
             };
             let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el };
-            // Plan 490 G4：布局件点击（inspect 模式 wrap_layout_onclick 自守卫不包）。
-            wrap_layout_onclick(el, onclick)
+            // Plan 490 G4：布局件点击（inspect 模式 wrap_layout_events 自守卫不包）。
+            // PLAN-002 B：右键 + hover 同包装点。
+            wrap_layout_events(el, onclick, on_right_click, hover)
         }
 
-        AbstractView::Container { child, padding, width, height, center_x, center_y, style, onclick } => {
+        AbstractView::Container { child, padding, width, height, center_x, center_y, style, onclick, on_right_click } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
+            // PLAN-002 B：布局件 hover 标志（同 Column 臂）。
+            let hover = layout_hover_flag(style.as_ref());
             if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
             if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
             if center_x { dbg_props.push(("center_x".into(), "true".into())); }
@@ -18824,10 +19141,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
             let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-            let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
+            let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id, hover.clone());
             let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el };
             // Plan 490 G4：div/Container 点击（inspect 模式自守卫不包）。
-            wrap_layout_onclick(el, onclick)
+            // PLAN-002 B：右键 + hover 同包装点。
+            wrap_layout_events(el, onclick, on_right_click, hover)
         }
 
         AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
@@ -19700,7 +20018,7 @@ fn apply_highlight_mut_rec<M: Clone + Debug>(
             center_x: false,
             center_y: false,
             style: Some(rust_highlight_style()),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         *view = wrapped;
         return true;
@@ -20631,6 +20949,23 @@ mod tests {
         assert!(load_image_bytes("relative/path.png").is_none(), "ordinary file fallback remains available");
     }
 
+    #[test]
+    fn plan606_load_image_bytes_data_urls() {
+        // SVG data URL (utf8 / plain)
+        let svg_url = "data:image/svg+xml;utf8,<svg viewBox=\"0 0 10 10\"><circle cx=\"5\" cy=\"5\" r=\"4\"/></svg>";
+        let svg_bytes = load_image_bytes(svg_url).expect("SVG data URL should decode");
+        let svg_text = String::from_utf8(svg_bytes).expect("Valid utf8");
+        assert!(svg_text.contains("<svg") && svg_text.contains("circle"));
+
+        // Base64 data URL (1x1 PNG)
+        let png_b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        let png_bytes = load_image_bytes(png_b64).expect("PNG base64 data URL should decode");
+        assert_eq!(&png_bytes[0..4], &[0x89, b'P', b'N', b'G']);
+
+        // Malformed data URL without comma
+        assert!(load_image_bytes("data:no-comma").is_none());
+    }
+
     /// PLAN-530 步骤5 回归（B 内存崩塌主源）：lucide_svg 同名 icon 必须命中
     /// 去重缓存（同一 &'static str），不得每次调用 Box::leak 一份新 16×16
     /// 文档——每帧每图标 ~350B 的无界泄漏随重建频率线性增长（homepage 实测
@@ -20670,7 +21005,7 @@ mod tests {
             center_x: false,
             center_y: false,
             style: Style::parse(classes).ok(),
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         // widgets-gallery app.at 骨架同构：header(sticky z-40) / 正文 /
         // 移动底栏(fixed z-40) / 帮助浮层(absolute z-50)。
@@ -21837,11 +22172,35 @@ mod tests {
         let (p1, t1) = counts(&ds);
         assert_eq!(p1, 1, "dock hover 打开单个 popover");
         assert_eq!(t1, 2, "缩略叶集不变（open 不增建；T18 后基线 2）");
+        // PLAN-010 N6c：hover 离开只清预览态（HoverLeave，原 HoverEnd 退役）。
         {
             let app = ds.apps.get_mut(&shell).unwrap();
-            app.component.bridge_mut().call_handler("HoverEnd", &[]).expect("HoverEnd");
+            app.component.bridge_mut().call_handler("HoverLeave", &[]).expect("HoverLeave");
         }
-        assert_eq!(counts(&ds).0, 0, "HoverEnd 收起");
+        assert_eq!(counts(&ds).0, 0, "HoverLeave 收起 hover 预览");
+
+        // N6c 回归：右键开菜单（win_menu=b）→ 菜单开启期 hover 预览被
+        // win_menu 门抑制；hover 离开不再兼清菜单（原 HoverEnd 兼清使
+        // 菜单被秒关、菜单项不可达——用户实测）；WinMenuClose 单独收菜单
+        // （desktop.at icon 菜单 MenuClose 同构）。
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("WinMenu", &[auto_val::Value::str(b.0.to_string())])
+                .expect("WinMenu");
+        }
+        assert_eq!(counts(&ds).0, 1, "win_menu 开菜单（无 hover）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("HoverLeave", &[]).expect("leave during menu");
+        }
+        assert_eq!(counts(&ds).0, 1, "菜单开启期 hover 离开不收菜单（N6c）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("WinMenuClose", &[]).expect("WinMenuClose");
+        }
+        assert_eq!(counts(&ds).0, 0, "WinMenuClose 收菜单");
 
         // PLAN-526 T18：直列分区条（HoverWs/HoverWsEnd pager popover）
         // 退役——hover 面只剩 dock 条目臂，base 不回归即可。
@@ -23641,6 +24000,65 @@ mod tests {
         }
     }
 
+    /// PLAN-002 B：布局件事件面计数——(on_right_click 臂数, hover 变体类臂数)。
+    /// 布局件三节点（Row/Column/Container）的右键与 hover 类消费是 pilot 的
+    /// 断言面（desktop.at 图标格）。
+    fn t002_walk_layout_events(
+        v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+        rc: &mut usize,
+        hv: &mut usize,
+    ) {
+        use crate::ui::view::View;
+        let has_hover = |style: &Option<crate::ui::style::Style>| {
+            style
+                .as_ref()
+                .map_or(false, |s| s.has_variant(crate::ui::style::Variant::Hover))
+        };
+        match v {
+            View::Column { children, style, on_right_click, .. }
+            | View::Row { children, style, on_right_click, .. } => {
+                if on_right_click.is_some() {
+                    *rc += 1;
+                }
+                if has_hover(style) {
+                    *hv += 1;
+                }
+                for c in children {
+                    t002_walk_layout_events(c, rc, hv);
+                }
+            }
+            View::Container { child, style, on_right_click, .. } => {
+                if on_right_click.is_some() {
+                    *rc += 1;
+                }
+                if has_hover(style) {
+                    *hv += 1;
+                }
+                t002_walk_layout_events(child, rc, hv);
+            }
+            View::MouseArea { content, .. } | View::Scrollable { child: content, .. } => {
+                t002_walk_layout_events(content, rc, hv)
+            }
+            View::Popover { anchor, content, .. } => {
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    t002_walk_layout_events(w, rc, hv);
+                }
+                t002_walk_layout_events(content, rc, hv);
+            }
+            View::Button { content, .. } => {
+                if let Some(c) = content {
+                    t002_walk_layout_events(c, rc, hv);
+                }
+            }
+            View::Grid { cells, .. } => {
+                for c in cells {
+                    t002_walk_layout_events(c, rc, hv);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// T1：desktop.at 装载 + 注入 headless——条目渲染数（网格 for 展开）、
     /// 双击 mouse-area on_double_click 电路（VM 动态路径 convert_view_messages
     /// 后存活——496 补臂前落 Empty 兜底）、右键菜单出现（IconMenu → 菜单
@@ -23669,6 +24087,16 @@ mod tests {
         // PLAN-526 T10：空白点击自布局件 onclick 迁至根 mouse-area on_press
         //（兼挂 oncontextmenu 右键臂）——恰一枚 onclick 臂为预期形状。
         assert_eq!(clk, 1, "desktop.at 根 mouse-area onclick（526 T10 空白点击迁移）");
+        // PLAN-002 B pilot：图标格布局件右键挂点 + hover 变体类消费
+        //（oncontextmenu 自 button 迁至格 col；格上 hover:bg-white/10）。
+        let (mut rc, mut hv) = (0usize, 0usize);
+        {
+            let app = ds.apps.get(&surface).unwrap();
+            let (view, _, _) = app.component.view_with_debug_gated(false);
+            t002_walk_layout_events(&view, &mut rc, &mut hv);
+        }
+        assert_eq!(rc, 4, "每格一枚布局件右键臂（oncontextmenu → View::Column::on_right_click）");
+        assert_eq!(hv, 4, "每格一枚 hover: 变体类（布局件 hover 消费面）");
         assert_eq!(
             texts.iter().filter(|t| t.as_str() == "014-weather").count(),
             1,
@@ -23755,6 +24183,147 @@ mod tests {
                 assert_eq!(s.to_string(), "open_settings", "更换壁纸入口 → open_settings")
             }
             other => panic!("__desktop_cmd（wallpaper）异常: {other:?}"),
+        }
+    }
+
+    /// PLAN-010 T4 回归：desktop.at popover 的 ondismiss 必须提取自 events
+    /// 桶（parser 把 `on*` 键升格为 ViewEvent，props 恒 miss——回退
+    /// __popover_close 对 VM 态 popover 是 no-op，外点/Esc 关闭全失效）。
+    /// 断言三层：VM 视图 on_dismiss 事件名（MenuClose×4 icon + BlankClose×1
+    /// blank）、convert_view_messages 后存活（发布侧真实携带）、MenuClose
+    /// handler 闭环（menu_id 清位 = 面板内/外点/Esc 三路关闭的落点）。
+    #[test]
+    fn p010_popover_ondismiss_extracted_from_events() {
+        let _guard = t2_isolate_storage("p010-regress");
+        let mut ds = t3_session_with_shell();
+        let comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
+        ds.desktop.desktop_app = Some(ds.allocate_app(comp));
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            "014-weather,011-calculator".into(),
+        );
+        inject_desktop_surface(&mut ds);
+        let surface = ds.desktop.desktop_app.unwrap();
+        // 开 icon 菜单（menu_id 置位 → per-icon popover open）。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("IconMenu", &[auto_val::Value::str("014-weather")])
+                .expect("IconMenu handler");
+        }
+        fn walk_vm(
+            v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            dismiss: &mut Vec<Option<String>>,
+        ) {
+            use crate::ui::view::View;
+            match v {
+                View::Popover { anchor, content, on_dismiss, .. } => {
+                    dismiss.push(on_dismiss.as_ref().map(
+                        |m| match m {
+                            crate::ui::interpreter::DynamicMessage::Typed { event_name, .. } =>
+                                event_name.clone(),
+                            other => format!("{other:?}"),
+                        },
+                    ));
+                    if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                        walk_vm(w, dismiss);
+                    }
+                    walk_vm(content, dismiss);
+                }
+                View::Column { children, .. }
+                | View::Row { children, .. } => {
+                    for c in children {
+                        walk_vm(c, dismiss);
+                    }
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => walk_vm(child, dismiss),
+                View::MouseArea { content, .. } => walk_vm(content, dismiss),
+                View::Grid { cells, .. } => {
+                    for c in cells {
+                        walk_vm(c, dismiss);
+                    }
+                }
+                View::Button { content, .. } => {
+                    if let Some(c) = content {
+                        walk_vm(c, dismiss);
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn walk_iced(
+            v: &crate::ui::view::View<IcedMessage>,
+            dismiss: &mut Vec<Option<String>>,
+        ) {
+            use crate::ui::view::View;
+            match v {
+                View::Popover { anchor, content, on_dismiss, .. } => {
+                    dismiss.push(on_dismiss.as_ref().map(|m| m.event.clone()));
+                    if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                        walk_iced(w, dismiss);
+                    }
+                    walk_iced(content, dismiss);
+                }
+                View::Column { children, .. }
+                | View::Row { children, .. } => {
+                    for c in children {
+                        walk_iced(c, dismiss);
+                    }
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => walk_iced(child, dismiss),
+                View::MouseArea { content, .. } => walk_iced(content, dismiss),
+                View::Grid { cells, .. } => {
+                    for c in cells {
+                        walk_iced(c, dismiss);
+                    }
+                }
+                View::Button { content, .. } => {
+                    if let Some(c) = content {
+                        walk_iced(c, dismiss);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let app = ds.apps.get(&surface).unwrap();
+        let (view, _, _) = app.component.view_with_debug_gated(false);
+        let mut vm_names = Vec::new();
+        walk_vm(&view, &mut vm_names);
+        assert_eq!(
+            vm_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
+            4,
+            "四个 icon 菜单 popover 的 ondismiss 应提取为 MenuClose（events 桶兜底）: {vm_names:?}"
+        );
+        assert_eq!(
+            vm_names.iter().filter(|n| n.as_deref() == Some("BlankClose")).count(),
+            1,
+            "blank 菜单 popover 的 ondismiss 应提取为 BlankClose: {vm_names:?}"
+        );
+        assert!(
+            vm_names.iter().all(|n| n.as_deref() != Some("__popover_close")),
+            "不允许再落 __popover_close 回退（VM 态 popover 无此处理语义）: {vm_names:?}"
+        );
+        // 转换后存活（发布侧真实携带——popover Panel shell.publish 的消息）。
+        let converted = convert_view_messages(view);
+        let mut iced_names = Vec::new();
+        walk_iced(&converted, &mut iced_names);
+        assert_eq!(
+            iced_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
+            4,
+            "convert_view_messages 后 MenuClose ondismiss 存活"
+        );
+        // handler 闭环：MenuClose 到达即 menu_id 清位（外点/Esc 关闭落点）。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("MenuClose", &[])
+                .expect("MenuClose handler");
+        }
+        match t496_read(&ds, "menu_id") {
+            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "MenuClose → menu_id 清位"),
+            other => panic!("menu_id 异常: {other:?}"),
         }
     }
 
@@ -24071,7 +24640,7 @@ mod tests {
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         };
         apply_table_header_style(&mut v);
         match v {
@@ -24336,6 +24905,158 @@ mod tests {
             }
             _ => panic!("convert_view_messages dropped the Grid (hit the _ => Empty wildcard)"),
         }
+    }
+
+    // PLAN-002 A2 regression: convert_view_messages MUST preserve WindowThumbnail.
+    // 497 added the tag to the builder + into_iced but missed THIS VM-mode
+    // message bridge — every dock hover thumbnail became Empty (the 8×8 shell
+    // speck + offset, 526 KNOWN-DEBT 🟢×2). Same class as Grid 319 / menubar
+    // 422 / 496 MouseArea; this test is the fourth fence of that ditch.
+    #[test]
+    fn test_convert_view_messages_preserves_window_thumbnail() {
+        let thumb: AbstractView<DynamicMessage> = AbstractView::WindowThumbnail {
+            wid: "2".to_string(),
+            fallback_icon: "app-window".to_string(),
+            style: crate::ui::style::Style::parse("w-48 h-28 rounded").ok(),
+        };
+
+        let converted = convert_view_messages(thumb);
+
+        match converted {
+            AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
+                assert_eq!(wid, "2");
+                assert_eq!(fallback_icon, "app-window");
+                assert!(style.is_some(), "style must survive the bridge");
+            }
+            _ => panic!(
+                "convert_view_messages dropped the WindowThumbnail (hit the _ => Empty wildcard) — dock hover thumbnail vanishes in VM mode"
+            ),
+        }
+    }
+
+    /// PLAN-002 B：布局件右键穿透消息桥（D-GAP 第四例教训的护栏——新增
+    /// View 字段必须在 convert_view_messages 显式接；漏接即静默丢臂）。
+    #[test]
+    fn test_convert_view_messages_preserves_layout_right_click() {
+        let view: AbstractView<DynamicMessage> = AbstractView::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: crate::ui::style::Style::parse("p-2 hover:bg-primary/10").ok(),
+            onclick: None,
+            on_right_click: Some(DynamicMessage::Typed {
+                widget_name: "Desktop".to_string(),
+                event_name: "BlankMenu".to_string(),
+                args: vec![],
+            }),
+        };
+
+        let converted = convert_view_messages(view);
+
+        match converted {
+            AbstractView::Column { on_right_click, style, .. } => {
+                assert!(on_right_click.is_some(), "on_right_click must survive the bridge");
+                assert!(style.is_some(), "style must survive the bridge");
+            }
+            _ => panic!("convert_view_messages dropped the Column (hit the _ => Empty wildcard)"),
+        }
+    }
+
+    /// PLAN-002 B：hover 标志门控——只有声明 `hover:` 变体类的样式才构造
+    /// 标志（无声明走零开销原路径）。
+    #[test]
+    fn test_layout_hover_flag_only_with_hover_variant() {
+        let plain = crate::ui::style::Style::parse("w-full p-2 bg-card").ok();
+        assert!(layout_hover_flag(plain.as_ref()).is_none(), "无 hover: 类不应构造标志");
+
+        let hovered = crate::ui::style::Style::parse("w-full p-2 bg-card hover:bg-primary/10").ok();
+        assert!(layout_hover_flag(hovered.as_ref()).is_some(), "hover: 类应构造标志");
+        assert!(layout_hover_flag(None).is_none());
+    }
+
+    /// PLAN-002 B：样式闭包按标志在 base/hover 两套样式间二选一（hover 类
+    /// 经 merged_with_variant 覆盖 base——背景色是 pilot 的主消费面）。
+    #[test]
+    fn test_layout_style_fn_selects_hover_on_flag() {
+        let base_is = IcedStyle::from_style(
+            &crate::ui::style::Style::parse("w-full bg-transparent").unwrap(),
+        );
+        let hover_is = IcedStyle::merged_with_variant(
+            &crate::ui::style::Style::parse("w-full bg-transparent hover:bg-primary/10").unwrap(),
+            crate::ui::style::Variant::Hover,
+        );
+        let base_cs = build_container_style(&base_is);
+        let hover_cs = build_container_style(&hover_is);
+        assert_ne!(base_cs.background, hover_cs.background, "hover 类应改变背景");
+
+        let flag = crate::ui::iced::hover_area::HoverFlag::default();
+        let style_fn = layout_style_fn(base_cs, Some(hover_cs), Some(flag.clone()));
+        let theme = iced::Theme::Light;
+        assert_eq!(style_fn(&theme), base_cs, "标志未置位 = base");
+
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(style_fn(&theme), hover_cs, "标志置位 = hover 合并样式");
+
+        // 无 hover 声明时闭包恒等 base（零行为变化）。
+        let plain_fn = layout_style_fn(base_cs, None, None);
+        assert_eq!(plain_fn(&theme), base_cs);
+    }
+
+    // PLAN-002 N5：vwin 客户区根节点默认底角圆角（round_bottom_root_default）。
+    #[test]
+    fn test_round_bottom_root_default_pushes_only_when_radius_absent() {
+        use crate::ui::style::{RoundedSize, StyleClass};
+        use crate::ui::style::Style;
+        use crate::ui::view::View;
+        // 无 radius 类的 col 根 → 推 rounded-b-2xl（底角 16px 与窗框对齐）。
+        let mut bare = View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("h-full bg-background").ok(),
+            onclick: None::<()>,
+            on_right_click: None,
+        };
+        round_bottom_root_default(&mut bare);
+        let View::Column { style: Some(s), .. } = &bare else {
+            panic!("col root must keep its style");
+        };
+        assert_eq!(
+            s.classes.last(),
+            Some(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
+            "无 radius 声明的根应获得默认底角"
+        );
+        // 应用作者已声明 radius（任意角）→ 不干预。
+        let mut authored = View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("rounded-xl bg-background").ok(),
+            onclick: None::<()>,
+            on_right_click: None,
+        };
+        round_bottom_root_default(&mut authored);
+        let View::Column { style: Some(s), .. } = &authored else {
+            panic!("col root must keep its style");
+        };
+        assert!(
+            !s.classes.contains(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
+            "显式 radius 声明优先，不追加默认"
+        );
+        // 根无 style（透明）与 非 style 化根（text）都不动。
+        let mut transparent = View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None::<()>,
+            on_right_click: None,
+        };
+        round_bottom_root_default(&mut transparent);
+        let View::Column { style, .. } = &transparent else {
+            panic!("variant unchanged");
+        };
+        assert!(style.is_none(), "透明根不处理");
     }
 
     // ── Shell SSE bridge (ash-gui M1) ──────────────────────────────────
@@ -24666,7 +25387,7 @@ mod line_edit_tests {
             spacing: 8,
             padding: 8,
             style: None,
-            onclick: None,
+            onclick: None, on_right_click: None,
         }
     }
 

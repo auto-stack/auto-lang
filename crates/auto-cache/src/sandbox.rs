@@ -133,6 +133,10 @@ pub struct FunctionShim {
     pub body_override: Option<String>,
     /// Whether the original Rust function returns Result<T, E>
     pub returns_result: bool,
+    /// PLAN-596 T4:真实被调函数名(name 是实例名 "pick__i64",call_name 是
+    /// 泛型原名 "pick"——wrapper 发射 crate::call_name(args),实例化由 rustc
+    /// 从具体参数类型推断)。
+    pub call_name: Option<String>,
 }
 
 impl FunctionShim {
@@ -143,6 +147,7 @@ impl FunctionShim {
             return_type: ShimType::CString,
             body_override: None,
             returns_result: false,
+            call_name: None,
         }
     }
 
@@ -165,6 +170,7 @@ impl FunctionShim {
             return_type,
             body_override: None,
             returns_result: false,
+            call_name: None,
         }
     }
 
@@ -738,6 +744,8 @@ crate-type = ["cdylib"]
     /// Exported name includes sig_code: auto_{func}_{sig_code}
     fn generate_shim(&self, crate_name: &str, shim: &FunctionShim) -> String {
         let func = &shim.name;
+        // PLAN-596 T4:mono 实例条目——导出名按实例名,调用体按泛型原名
+        let callee = shim.call_name.as_deref().unwrap_or(func);
         let ret_type = shim.return_type.c_type_name();
         let sig_code = crate::sig_code::shim_to_sig_code(shim);
         let exported = crate::sig_code::build_exported_name(func, &sig_code);
@@ -773,22 +781,22 @@ crate-type = ["cdylib"]
             ShimType::CString | ShimType::CStringOwned if shim.returns_result => (
                 " -> *const std::os::raw::c_char".to_string(),
                 format!(
-                    "let _r = {crate_name}::{func}({call_args_str});\n    let _s = match _r {{ Ok(v) => v.to_string(), Err(e) => format!(\"ERROR: {{:?}}\", e) }};\n    CString::new(_s).unwrap().into_raw() as *const std::os::raw::c_char"
+                    "let _r = {crate_name}::{callee}({call_args_str});\n    let _s = match _r {{ Ok(v) => v.to_string(), Err(e) => format!(\"ERROR: {{:?}}\", e) }};\n    CString::new(_s).unwrap().into_raw() as *const std::os::raw::c_char"
                 ),
             ),
             ShimType::CString | ShimType::CStringOwned => (
                 " -> *const std::os::raw::c_char".to_string(),
                 format!(
-                    "let _r = {crate_name}::{func}({call_args_str});\n    CString::new(_r.to_string()).unwrap().into_raw() as *const std::os::raw::c_char"
+                    "let _r = {crate_name}::{callee}({call_args_str});\n    CString::new(_r.to_string()).unwrap().into_raw() as *const std::os::raw::c_char"
                 ),
             ),
             ShimType::Void => (
                 String::new(),
-                format!("{crate_name}::{func}({call_args_str});"),
+                format!("{crate_name}::{callee}({call_args_str});"),
             ),
             _ => (
                 format!(" -> {ret_type}"),
-                format!("{crate_name}::{func}({call_args_str})"),
+                format!("{crate_name}::{callee}({call_args_str})"),
             ),
         };
 

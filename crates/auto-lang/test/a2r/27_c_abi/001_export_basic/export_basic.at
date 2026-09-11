@@ -1,0 +1,19 @@
+// Plan 610 ⑤ (T-02): `#[export]` cdylib export face, MVP shape. The fn keeps
+// Auto semantics (int = i64 inside the safe body); a2r emits a sibling
+// wrapper module bridging the C ABI widths (int → i32 boundary casts, both
+// directions). The exported symbol equals the fn name (no_mangle ignores the
+// module path), and in-product callers keep calling the safe i64 body.
+#[export]
+fn add(a int, b int) int {
+    return a + b
+}
+
+#[export(system)]
+fn area(cols int, rows int) int {
+    return cols * rows
+}
+
+fn main() {
+    print(add(2, 3))
+    print(area(4, 5))
+}
