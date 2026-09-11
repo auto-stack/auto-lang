@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-609
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: theme-capability-closeout（PLAN-601 后续：theme{} 双端消费对齐 + 包组件 SFC 发射修复）
 author: [zhaopuming]
 created_at: 2026-09-11
@@ -316,3 +316,30 @@ touched_goals: [GOAL-007] | next: merge`）
    **〔已闭合 2026-09-11〕**勘验见 §5 T-A3 追记：outproc 臂经
    `auto run`→`run_vm_ui` 已被 T-A1 覆盖；inproc 臂裁定不接线留债
    （跨 crate 解析面移动 + 零声明消费者）。
+
+（merge 2026-09-11：`stage: merge | PLAN-609:r1 | outcome: pass |
+delivery_commit: 0e6f5b902（master 快进落地；worktree 分支 tip=分支实现
+596eb30b7/86acdd516/596a87141 + spec 沉淀 07e978ddd + master 双同步
+merge ba800fef8/0e6f5b902——610 并入 goals.md GOAL-007 行双追加冲突
+手工合并，609 修正至单元格内）| 检查点：
+①prepared=07e978ddd（SD-01/SD-02/R-1 回写 ui/overview.md、plans.md 追加
+609 行、goals.md GOAL-007 追加；合并基刷新：auto-man 280/280、charts 绿）；
+②landed=master@0e6f5b902（落地后主检出冒烟 auto-man 280/280 + scoped
+绿）；③ledger_refreshed=.autoos/specs.json P609-1..6 六节 published +
+读回校验（file 指本归档路径），INDEX.md 再生零变化（项目级索引无新增）；
+④archived=git mv 本文件至 docs/plans/archive/ + status: archived |
+⑤cleaned 见文末回填）`）
+
+## spec-sync 回写记录（v1 惯例）
+
+- `docs/specs/auto-lang/ui/overview.md`：601 条目②消费面改写为「双端消费」
+  ——vue 腿（index.css+运行时种子）+ VM 腿 boot `set_theme_composed` 激活
+  （env 种子后只换色板槽；优先级链 CLI>os-config>pac.at>内置）；关键入口
+  ui_gen 行补包组件落盘/import 一致性约束（resolve_dep_os_mirror+Phase 1c+
+  守卫）；P601-T11 开放债句收窄（settings-popover 断链已由 609 收口，
+  开放债仅余 SVG 属性 token 通道）。
+- `docs/specs/auto-lang/ui/plans.md`：追加 609 行。
+- `docs/specs/goals.md`：GOAL-007 行追加 609 条目。
+- `.autoos/specs.json`：P609-1..6 六节 upsert（published，file 指本归档件）。
+- `KNOWN-DEBT-AND-RISKS.md`：P601 债务节（T11 裸名 SFC 化缺口登记，
+  2026-09-11 随 work 阶段落 master）。
