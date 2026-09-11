@@ -336,6 +336,9 @@ autodown-core → 分组目录建 auto-down detached 兄弟 worktree，禁 junct
   面 a2r 编译全过）；`AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity` 4/4。
   执行注记：019 目录只有 fixture/（591 对抗件由测试代码驱动），三轨 CASES
   不含它；全量 a2r 首跑冷构建并行竞争曾致挂死（缓存就位后 1.3s 全过）。
+  [复审 F-1 追记 2026-09-10]：豁免收窄——回调面拆独立语料 `021_dep_callback`
+  （`A2R_SKIP=[021]`），020 主面恢复自动 a2r 三轨（输出等价实证：
+  A2R 全量档 5/5）；提交 47bae09a6。
 - [x] **T-09** base64 复测：T3/T4 落地后重跑 `parity/libs/dep/base64_real`
   （`AUTO_LANG_PARITY_NET` 门控），encode/decode 面绿则回填 594 报告实测行；
   a2r 腿按 #1 裁定。验证：parity run 输出 + 报告 diff。→ AC-05
@@ -494,6 +497,27 @@ ffi.md/shim-metadata/parity/goals 四文件 + known-divergences + guides）。
 缩水。健康：diff 零 debug 残留、编辑区 fmt 干净、零新警告。
 
 next: **merge**（plan 状态 → reviewed；终态按 merge 流程归档）。
+
+**re-review（2026-09-10，用户裁定当场解决 F-1/F-2）**：`stage: review` |
+PLAN-596 | r1 | outcome: **pass** | reviewed_commit: **47bae09a6**（基线不变：
+e178ff601；上轮 reviewed_commit 493c43e7a 之上纯测试/语料增量） |
+acceptance_results: 七项 AC 维持 pass,其中 **AC-02/AC-04 证据面增强**——
+- **F-1 关闭**：回调面拆 `021_dep_callback`（VM+oracle 双腿,oracle 以
+  `Box::new` 装箱镜像）;`A2R_SKIP` 收窄至 `[021]`,**020 主面(trait 转发/
+  泛型双实例/深拷贝/组合)的 a2r 输出等价由自动断言接管**——
+  `AUTO_LANG_DEP_PARITY_A2R=1 cargo t dep_parity` **5/5**（020 a2r 腿首次
+  自动跑即绿）。注:首跑冷构建并行竞争 abort 一次（P596-D6 已录家族）,
+  隔离后缓存就位 1.3s 全过,与 T-08 执行注记同象。DIV-DEP-19 缓解文本
+  已更新（豁免面收窄,分歧本体维持 open 至元数据装箱根修）。
+- **F-2 关闭**：`ffi_dual_022_mono_pack_rebuild` 对抗测试——mono 实例集
+  扩张（pick i64→i64+String）与收缩两向都必须触发 methods pack
+  quick-path `mono_stale` 重建;陈旧包复用即缺 `pick__String` shim,输出
+  钉死必红。独立 fixture `autolang_mono_probe`（独立 crate 名）防与 020
+  同申 pack 缓存并行互染（P591-D3/P596-D5 族隔离,沿 019 孪生范式）。
+- 门禁：ffi_dual+dep_parity **28/28**;A2R 档 5/5;`cargo check --tests`
+  零新警告（stash 对照基线同现）;编辑区 fmt 干净;DIV-DEP-19/账本同步。 |
+findings: 无新增（F-1/F-2 转 resolved）; blockers: 无 |
+next: **merge**。
 
 ## 10. 待澄清事项
 
