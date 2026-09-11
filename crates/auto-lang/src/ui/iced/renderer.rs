@@ -18722,11 +18722,16 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
 /// 此寻址「当前视图的首个 input」——取代共享字面量 prompt_input 的盲聚焦。
 fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widget::Id>) {
     match view {
-        AbstractView::Input { placeholder, on_change: _, on_submit: _, width, password, .. } => {
-            // PLAN-013 W2：与 overlay 渲染臂（build_input_shape 的 None 三元
-            // 组派生）同式——此前按 (widget,event) 主键派生，与 overlay 实际
-            // 渲染 Id 不一致，focus 永不落地（launcher search 打字无效根因）。
-            out.push(derive_input_id(None, placeholder, *width, *password));
+        AbstractView::Input { placeholder, on_change, on_submit, width, password, .. } => {
+            // PLAN-013 W2 修正：派生式必须与 render_dynamic_view Input 渲染
+            // 臂（18859 .id(derive_input_id(input_primary...))）严格同式——
+            // (widget,event) 主键优先、None 三元组兜底。此前误改 None 三元
+            // 组与渲染 Id 失配，focus 永不落地（用户实测聚焦丢失）。
+            let primary = on_change
+                .as_ref()
+                .map(|m| (m.widget.as_str(), m.event.as_str()))
+                .or_else(|| on_submit.as_ref().map(|m| (m.widget.as_str(), m.event.as_str())));
+            out.push(derive_input_id(primary, placeholder, *width, *password));
         }
         AbstractView::Column { children, .. } | AbstractView::Row { children, .. } | AbstractView::List { items: children, .. } => {
             for child in children {
