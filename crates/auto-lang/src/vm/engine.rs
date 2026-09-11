@@ -461,6 +461,26 @@ fn nanbox_single_to_f32(nv: auto_val::NanoValue) -> f32 {
 /// 推断不可知处）的 int 操作数按**值**转 f32，f32/f64 按 tag 解码。
 /// 盲 pop_f32 会把 int 位模式重解释成 denormal（int 80 → 1.12e-43），
 /// 与 extract_autovm_result 的 tag-first 修复同一哲学。
+/// PLAN-063 T-04b（auto-down 转介）：_D 族算术/比较的标签驱动弹栈。
+/// `pop_f64` 是严格 `decode_f64`——而 demo/iced 派发路（call_handler_for →
+/// `push_value`）对 `Value::Float` 推的是 **f32 编码槽**（`push_f32`），
+/// f64 严格解码得全零位型（恰为 int 0），f64（Type::Double）参数参与任何
+/// 二元运算/比较即坍缩为 0/恒假（实机：OnLeftScroll 比例级联、自绘滚动条
+/// Move 守卫 `.scrollHeight > .clientHeight` 全哑）。Plan 437
+/// `pop_f32_operand` 同款口径：按实际 tag 解码并归一到 f64。
+#[inline(always)]
+fn pop_f64_operand(task: &mut AutoTask) -> f64 {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_f64(nv) {
+        auto_val::decode_f64(nv)
+    } else if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv) as f64
+    } else if auto_val::is_i32(nv) {
+        auto_val::decode_i32(nv) as f64
+    } else {
+        auto_val::decode_f64(nv)
+    }
+}
 fn pop_f32_operand(task: &mut AutoTask) -> f32 {
     let nv = task.ram.pop_nv();
     if auto_val::is_f32(nv) {
@@ -6198,29 +6218,29 @@ impl AutoVM {
                 // Plan 073 Stage A: Double precision arithmetic (f64)
                 OpCode::ADD_D => {
                     null_guard_peek_pair(task, "+")?;
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_f64(a + b);
                     task.last_result_type = ResultType::Float; // Plan 403-F: mark f64 result
                 }
                 OpCode::SUB_D => {
                     null_guard_peek_pair(task, "-")?;
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_f64(a - b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::MUL_D => {
                     null_guard_peek_pair(task, "*")?;
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_f64(a * b);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::DIV_D => {
                     null_guard_peek_pair(task, "/")?;
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     if b == 0.0 {
                         return Err(VMError::DivisionByZero);
                     }
@@ -9293,33 +9313,33 @@ self.rc_release(a_nv);
 
                 // f64 comparison opcodes (Plan 377: each pops 1+1 slot, pushes 1 bool)
                 OpCode::EQ_D => {
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_nv(auto_val::encode_bool(a == b));
                 }
                 OpCode::NE_D => {
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_nv(auto_val::encode_bool(a != b));
                 }
                 OpCode::LT_D => {
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_nv(auto_val::encode_bool(a < b));
                 }
                 OpCode::GT_D => {
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_nv(auto_val::encode_bool(a > b));
                 }
                 OpCode::LE_D => {
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_nv(auto_val::encode_bool(a <= b));
                 }
                 OpCode::GE_D => {
-                    let b = task.ram.pop_f64();
-                    let a = task.ram.pop_f64();
+                    let b = pop_f64_operand(task);
+                    let a = pop_f64_operand(task);
                     task.ram.push_nv(auto_val::encode_bool(a >= b));
                 }
 
