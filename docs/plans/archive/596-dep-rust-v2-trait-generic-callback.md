@@ -548,3 +548,8 @@ Spec 差异=SD-01..04 已随交付分支在档；门禁重跑 28/28+tf 3506/3506
 docs/specs/shim-metadata/project.md、docs/specs/parity/project.md、
 docs/specs/goals.md（GOAL-006）、docs/guides/ffi-usage-guide.md、
 parity/docs/known-divergences.md（DIV-DEP-8/13 fixed+18/19）。
+**cleaned**（2026-09-11 补笔）：wt-guard 双 clean（lang-596/auto-lang 与
+兄弟依赖 lang-596/auto-down 均无 reparse point）；plan-596-dev 分支删除
+（终态 ad347eea9）；worktree 从本仓注销；auto-down detached 检出从
+auto-down 仓注销；组目录 D:/autostack/.wt/lang-596 已删（空）。五检查点
+全证据，PLAN-596 生命周期闭合。
