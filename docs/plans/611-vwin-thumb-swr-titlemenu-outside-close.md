@@ -145,16 +145,40 @@ miss / TTL 内报新鲜 / 过期续存不删且新鲜度翻转 / invalidate 硬�
 
 （待 `/auto-plan:review`；AC-3 实机三判据请复审时向报障用户索取复核结论。）
 
+### 折叠续录（2026-09-11，桌面链 os-002→010→011 落地后的定型复跑门）
+
+用户裁决全程驱动折叠序列，本计划修复随之进入定型 master：
+
+- 桌面链折叠：os-011-dev → master `d3527d811`（merge-tree 干跑零冲突；
+  renderer.rs 三方——本计划 SWR/GlobalPress、master 侧 608 CALL_SPEC、
+  链侧视图臂——自动归位）+ os-010 线独有 N6d 探针摘桃 `2204274e8`。
+- **定型复跑门（含本计划全部改动面）**：iced 档 183/184（链上测试
+  +11 全过，`dock_pager_hover_popovers` 随链更新转绿）；全量档
+  4746/4767，失败集 21=21 与折叠前基线逐一全等（全部存量）；
+  hash-lock 四件全等。**PASS**——SWR 读口/渲染臂/GlobalPress 补线在
+  折叠后语义完好（零冲突实证）。
+- 归属链的实机缺陷随折叠在本计划验证轮一并解蔽：VM 模式缩略空壳
+  （convert_view_messages 缺 WindowThumbnail 臂，PLAN-002 A1）、方角
+  （N5）、.at popover 外点失效（N6b）——即用户初报"缩略图完全不显示/
+  菜单没修/方角"的真修复在链上，本计划修的是其上的 TTL 跳变与标题
+  菜单合同，两层互补。
+- lifecycle：PLAN-010 复审 pass+归档、PLAN-011 merge 尾段收口+归档、
+  ledger P011-1/P011-R1、双仓 os-002/010/011 worktree+分支 wt-guard
+  清理——均已在案（auto-os docs/plans/archive/）。
+
 ## 待澄清事项
 
 1. **标题菜单残余缝隙**（在案不修）：Esc 不关（popover ondismiss 含 Esc）；
    右键点外不关（竞序规避，见 T3）。待实机反馈再议权重。
-2. **master 并发红：`desktop_mcp_dock_pager_hover_popovers`**——本会话工作
-   期间 master 先后落了 PLAN-608 merge（VM 分发路径）、PLAN-610、PLAN-008
-   merge（并发会话所为一一在案）；当前 HEAD 干净树该测试 6/6 稳定红
-   （`HoverEnd: HandlerNotFound`）。疑似 608 引入，而 608/610 复审档
-   （`tv`/`tf`）**不带 `ui-iced`**，盖不住 iced 桌面层——建议 608/610 责任
-   会话补跑 `cargo t iced` 定责。本计划改动与其无关（对拍全等实证）。
+2. ~~**master 并发红：`desktop_mcp_dock_pager_hover_popovers`**——疑似 608
+   引入~~ **【归因更正，2026-09-11 折叠时定案】**：真因是 **pin/测试漂移，
+   非 VM 回归**——auto-os PLAN-010 N6c（`eb88c86`）已将 shell.at 的
+   HoverEnd 退役拆分为 HoverLeave+WinMenuClose，运行时经
+   resolve_shell_pack_dir 直读 auto-os pack（新名），而 master 的内嵌 pin
+   与本测试仍是旧名——测试调用 `HoverEnd` 必然 HandlerNotFound。链折叠
+   （`39ce8d789` pin 同步+测试按新语义更新）后转绿，自愈实证。608/610
+   无责；原"其复审档不带 ui-iced 盖不住 iced 层"的流程观察仍然成立，
+   留作流程改进候选。
 3. **右键菜单机制统一**：现为「`.at` popover×5 + chrome 自绘×1」两套，行为
    语义已对齐；chrome 侧菜单再增多时立项把标题菜单 popover 化（需窗口几何
    投影进 shell.at 或协议扩展）。
