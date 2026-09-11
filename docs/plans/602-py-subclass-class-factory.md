@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-602
-status: executing              # drafting → executing → execution_done → reviewed → archived（needs_fix 回退，见 §9 R-602-1）
+status: execution_done        # drafting → executing → execution_done → reviewed → archived（R-602-1 已修，复审复核中）
 feature_name: py-subclass-class-factory
 author: [ZCode]
 created_at: 2026-09-09
@@ -14,7 +14,7 @@ touched_goals:
   - "GOAL-006"                # Consumer parity：py 子类派生 = torch 全面支持的主台阶（暂定，review 定稿）
 
 affects: [auto-lang/vm, auto-lang/trans, parity]
-current_step: 8
+current_step: 9
 total_steps: 10
 ---
 
@@ -270,10 +270,13 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
   cargo tv 3659/3659 全绿（491 skip）；cargo tt 3875/3879，4 红中
   a2r_rustc_real_compile_gate + c_abi_003/004 双轨预存红（master 对照一致），
   ffi_dual_019 并发负载抖动单跑绿；py_torch_train 快照 10/10 三轨 100%。
-- [ ] **T-02** 多参回调封送（D1）：run_closure_bridged 泛化 n 参 +
+- [x] **T-02** 多参回调封送（D1）：run_closure_bridged 泛化 n 参 +
   py_callable 单参路径回归探针。验证：`cargo tv`；单参探针绿。
-  [☐ 复审 R-602-1 重开 2026-09-11：补 arity 不匹配 TypeError 单测（其余
-  D1 面复核通过；原完成记录：）] 签名改收 &PyTuple：arity=vm.closures n_args，
+  [✅ R-602-1 修复 2026-09-11：补 arity 不匹配 TypeError 单测
+  test_run_closure_bridged_arity_mismatch_type_error（活窗口 + n_args=2
+  注册闭包，少参/多参双断言 expected/actual 文案 + PyTypeError 通道
+  判别；func_addr=0 证明检查先于闭包体执行）；py_ffi::tests 38/38。
+  commit a51d8e0c0。（原完成记录：）] 签名改收 &PyTuple：arity=vm.closures n_args，
   不匹配→PyTypeError（期望/实际入文案）；0 参不上栈直呼；逐元素 marshal
   后 call_closure(n)。py_callable 回调改传全 tuple。注：py_ffi 模块在
   python 特性门后，tv 档不编译——作用域门=--features python
@@ -342,6 +345,11 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 （起草交接：stage=new | plan_id=PLAN-602 | rev=1 | outcome=pass |
 next=work。范围锚定：W3 类派生 MVP = bridge API + Auto 驱动循环 +
 num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
+
+**work 回修记录（2026-09-11，stage=work | plan_id=PLAN-602 | rev=2 |
+outcome=pass | code_commit=a51d8e0c0 | task_ids=T-02（R-602-1 重开面）|
+evidence=py_ffi::tests 38/38（新增 arity 单测 4 断言全绿）|
+blockers=无 | next=review（复核 R-602-1 关闭即可 pass）**
 
 **review 记录（2026-09-11，stage=review | plan_id=PLAN-602 |
 plan_revision=2 | outcome=needs_fix | reviewed_commit=714fa6656（worktree
