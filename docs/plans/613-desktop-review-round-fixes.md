@@ -60,13 +60,41 @@ total_steps: 0
 
 ## 执行步骤
 
-（原子任务；完成后追加 [✅ 已完成] 证据）
-
 - T1 W3 通知中心空态居中（notification_center.at `w-full`）+ pack 同步
   [✅ 已完成]
-  证据：pack hash-lock 全等。
-- T2 W1/W2 调试实测（AUTO_DEBUG_KEYS=1 + AUTO_DEBUG_FOCUS=1 实例，
-  用户复现取日志）[⏳ 进行中]
+  证据：pack hash-lock 全等（notification_center pin `f82e733500`）。
+- T2 W1 Ctrl+Tab 循环失效根修 [✅ 已完成]
+  证据：AUTO_DEBUG_KEYS 实机日志钉死——宿主直投消息空 widget 名解析
+  `handler__Advance` 不在 exports（CALL_HANDLER_FOR_NOT_FOUND），按住
+  Ctrl 连按 Tab 的推进全部静默失败；直投改带 `widget="Switcher"` 后
+  用户实测循环恢复（方向问题→T5）。
+- T3 W2 launcher 输入三连根修 [✅ 已完成]
+  ① collect_input_ids 补 MouseArea/Popover 容器穿透臂（scrim
+  mouse-area 包裹的 input 收集恒空 registered=0——日志实证）；
+  ② 收集器派生式改 None 三元组与 overlay 渲染臂（build_input_shape）
+  严格同式——此前按 (widget,event) 主键派生与渲染 Id 不一致，focus
+  永不落地；③ DynamicComponent::on 补 input on_input 文本载荷注入
+  （声明 1 参 + 空实参 + INPUT_TEXT 非空三条件，其余调用零影响）
+  ——`.SetQ(t)` 的 t 此前恒空实参。
+- T4 render_dynamic_view 补 MouseArea 专用臂 [✅ 已完成]
+  证据：MouseArea 子树此前落 catch-all 泛型转换（on_input 接线不带
+  input_value 载荷）——launcher search 嵌套在 scrim mouse-area 内正是
+  病灶路径；专用臂 IcedMessage 递归渲染保住 on_input →
+  on_with_input_for 文本载荷。
+- T5 W1 方向根修：switcher 裸 Tab bind 退役 [✅ 已完成]
+  证据：每个 Ctrl+Tab 按键双路同投（宿主直投 +1、bind +1）= 每按推进
+  2 行，列表回绕时观感"反向循环"（用户实测）；宿主路径为唯一 Tab 处
+  理者后方向恢复向下。auto-os `switcher.at` pin 同步
+  （`bee9ea8dc8`）+ auto-os `apps/028-launcher` 三处同批
+  （grid 保留 search + SwitchMode 重聚焦 + 零结果 tag 隐藏）。
+- T6 聚焦重试机制（auto-focus 时序竞态兜底）[✅ 已完成]
+  证据：summon 尾部首拍 focus 与 overlay 入树存在竞态（用户实测"打开
+  时没有自动获得焦点"）——summon 置 pending 标记 + ServiceTick（400ms）
+  重试派生聚焦，5 轮上限自动清位。
+- T7 用户实机终验 [✅ 已完成]
+  证据：① Ctrl+Tab 循环 ✓（方向随 T5 根修恢复向下）；② launcher
+  search 聚焦+输入 ✓（用户实录"这个版本可以了！现在可以输入了"）；
+  ③ 零结果 tag 隐藏 ✓；④ 通知中心空态居中 ✓。
 
 ## 复审记录
 
