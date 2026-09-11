@@ -288,18 +288,34 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
   工厂→py_call0 实例化（__init__(k) 正常执行）→py_call forward 经桥回调
   Auto 闭包 self 句柄+5 封送 → 10+5=15。commit e1c94165f。
   执行期适配两笔（详见 §10 注记 A/B/C）。
-- [ ] **T-04** a2py 轨（D3）：_auto_subclass helper + 发射臂；探针双轨
+- [x] **T-04** a2py 轨（D3）：_auto_subclass helper + 发射臂；探针双轨
   对齐（同 corpus VM vs a2py stdout）。
   验证：`cargo tt`；探针双轨一致。
-- [ ] **T-05** 语料 py_torch_subclass（D4）：subclass.as +
+  [✅ 已完成 2026-09-11] py_subclass 发射臂（needs_subclass_helper 旗标
+  族，同 _auto_may 机制）+ helper 注入（exec+setattr 同构，缩进归一与
+  VM 臂同律：非空行统一 +4）。探针双轨 stdout 一致（ok 1）。
+  trans::python::tests 99/99。commit c78025259。
+- [x] **T-05** 语料 py_torch_subclass（D4）：subclass.as +
   test_subclass.py + README；首跑三轨对齐（golden 定稿）。
   验证：`run py_torch_subclass` 三轨全绿。
-- [ ] **T-06** 注册与审计（D5 + AC-04）：phase p12 表注册；
+  [✅ 已完成 2026-09-11] 4 案全绿：自定义 nn.Module forward 标量（seed0
+  钉值 -0.7075908780097961）/Dataset __len__+__getitem__（n 参 ABI +
+  self-only）/训练环 10 tick 收敛断言/重入 ≥3 层探针（钉值 18）。
+  `phase p12` 三轨 Consistency 4/4 (100%)。commit 06553c1d6。
+  语料侧实证的存量怪癖记 §10 注记 D/E。
+- [x] **T-06** 注册与审计（D5 + AC-04）：phase p12 表注册；
   roadmap §7.3 契约节扩写（窗口/GIL/重入深度探针/生存期审计）。
   验证：`list`/`phase p12` 发现；文档 diff 核对。
-- [ ] **T-07** 账面收口（AC-06）：KNOWN-DEBT P539-D4 销账拆面；
+  [✅ 已完成 2026-09-11] p12 表注册（main.rs，无网络门控，与 p8/p9 同
+  torch 环境）；`list` 发现 py_torch_subclass + `phase p12` 全绿双证；
+  roadmap §7.3 扩写为契约节（窗口 executable contract/多参 ABI/绑定
+  语义/重入 ≥3/生存期 VmRef 纪律）。commit 714fa6656。
+- [x] **T-07** 账面收口（AC-06）：KNOWN-DEBT P539-D4 销账拆面；
   路线图 §7.4 ⑦ 核销注记（引用本计划）；⑧ 保持条件立项。
   验证：三文件 diff 人工核对。
+  [✅ 已完成 2026-09-11] KNOWN-DEBT P539-D4 拆面销账（类工厂 ✅/多线程
+  泵 open 归长期 ⑧ 联动）；§7.4 ⑦ 核销注记 + 行尾矛盾表述清理；⑧ 保持
+  条件立项原文不动。commit 714fa6656。
 - [ ] **T-08** 回归门禁：cargo tv + tt 全绿（唯预存红）；p5-p9 + p12
   相位全绿。
   验证：门禁命令输出留痕。
