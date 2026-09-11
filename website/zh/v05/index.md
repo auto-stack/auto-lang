@@ -14,7 +14,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 <HomeHero
   badge="有史以来最大的一次更新"
   title="：v0.5 正式发布"
-  description="Auto 从一门语言成长为一个平台：AutoOS 桌面、四大旗舰应用、双生态脚本化、自举² 达成 —— 这一次，Auto 开始成为它自己。"
+  description="动静相宜、前后解耦、Language as OS —— 三个理念长成一个平台：AutoOS 桌面、四大旗舰应用、双生态脚本化、自举² 达成。这一次，Auto 开始成为它自己。"
   primary-text="阅读发布说明"
   primary-link="/zh/docs/releases/v0.5"
   secondary-text="打开 Playground"
@@ -29,6 +29,54 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   </div>
   <p class="hero-stats-note">从 v0.3 到 v0.5（2026.04 — 2026.09），Auto 平台的量化足迹。</p>
 </HomeHero>
+
+<div class="features-section">
+  <h2 class="section-title">三个设计理念</h2>
+  <p class="section-desc">动静相宜、前后解耦、Language as OS —— 本页接下来的每一个段落，都是这三句话的证据。</p>
+  <div class="philosophy-grid">
+    <article class="philosophy-card" style="--ph: #6366f1; --ph2: #38bdf8">
+      <div class="philosophy-icon">🌓</div>
+      <h3 class="philosophy-name">动静相宜</h3>
+      <p class="philosophy-en">Dynamic Dev · Static Ship</p>
+      <p class="philosophy-tagline">开发时是脚本语言，发布时是系统语言 —— 同一份源码，全生态通用。</p>
+      <p class="philosophy-text">多数语言逼你二选一：脚本语言秒级周转，却把性能留在门外；系统语言性能拉满，却让你用编译周期偿还每一次灵感。Auto 拒绝选择 —— 开发态由 AutoVM 解释执行，秒级启动、热重载、REPL 与 LSP 常伴左右；发布态，同一份源码经 a2r 转译为原生 Rust（或经 a2c 转译为 C）。而在 Auto 的整个版图里，这套动静组合是每个生态共用的设计原点 —— 不止 Rust 一家。</p>
+      <ul class="philosophy-list">
+        <li><strong>全生态动静组合</strong> —— UI 开发（VM/iced 热重载预览 ↔ 转译发布）、MCU 嵌入式（VM 即在线模拟器 ↔ a2c 交叉编译烧录）、Godot（发射 GDScript 编辑器内热改 ↔ C/Rust 静态缝合引擎）、科学计算（use.py 直调 PyTorch ↔ a2r 发布服务）——进入任何生态，两问必答：动态态怎么跑，静态态怎么发。</li>
+        <li><strong>热重载是动态态的灵魂</strong> —— 动态的含金量不止"启动快"：改代码不重启、运行状态不丢、所见即所改。AutoUI 桌面端 VM / a2r 双轨热重载，保存的瞬间就是看到的瞬间。</li>
+        <li><strong>一致性由机器守护</strong> —— parity 对拍让同一测试跑遍 AutoVM、转译 Rust、原生 Rust 三条通路，输出必须全等；20+ 三方 Rust 库复刻语料常态回归。</li>
+      </ul>
+      <div class="philosophy-proof"><code>auto run</code>（VM 直跑）↔ <code>a2r</code>（原生 Rust）· 全生态动静矩阵 · 三后端对拍</div>
+    </article>
+
+    <article class="philosophy-card" style="--ph: #14b8a6; --ph2: #6366f1">
+      <div class="philosophy-icon">🔌</div>
+      <h3 class="philosophy-name">前后解耦</h3>
+      <p class="philosophy-en">Decoupled at Every Layer</p>
+      <p class="philosophy-tagline">前端负责表达，后端负责兑现 —— 接缝清晰，两端皆可替换。</p>
+      <p class="philosophy-text">前后解耦不是 UI 的专利，而是 Auto 在每一层反复使用的架构元模式。最外层是 AutoUI：契约独立于宿主框架，同一份 .at 在 Vue、iced、ArkTS、Jetpack Compose 之间切换渲染臂。往里走，模式一路重现 —— 直到操作系统的顶层：外壳与内核，也是一对前后端。</p>
+      <ul class="philosophy-list">
+        <li><strong>OS 外壳 ↔ OS 内核，后端可切换</strong> —— Windows 上，前端是虚拟桌面，后端是 Windows 内核；未来的 AutoOS 发行版里，AutoOS 桌面与 Linux 内核直接耦合；后端还可以切换到 OpenHarmony。换内核，不换你的应用。</li>
+        <li><strong>同一模式，层层重现</strong> —— AutoUI ↔ 渲染引擎（Vue / iced / ArkTS / Jetpack）；AutoOS 应用架构：auto-ui ↔ auto-compositor（RenderQueue 共享内存无锁通讯）；AutoAI：各类 Agent 与 AI-App ↔ ai-daemon（LLM 资源统一调度）。</li>
+        <li><strong>解耦的红利：接缝两端可同栈</strong> —— AutoDown 知识库 411 个文件、3.2 万行，前端后端逻辑全 .at 单源，Web / 桌面双形态；AutoMusk 前端五视图同样单源生成，148 项对拍全等。</li>
+      </ul>
+      <div class="philosophy-proof">前端 · 接缝 · 后端 —— UI↔渲染器 / app↔compositor / Agent↔daemon / 外壳↔内核</div>
+    </article>
+
+    <article class="philosophy-card" style="--ph: #ec4899; --ph2: #a855f7">
+      <div class="philosophy-icon">🖥️</div>
+      <h3 class="philosophy-name">LAOS：语言即操作系统</h3>
+      <p class="philosophy-en">Language as OS</p>
+      <p class="philosophy-tagline">语言模拟 OS 架构，把每个 OS 模块做成语言化组件。</p>
+      <p class="philosophy-text">操作系统的三大天职 —— 共享、抽象、服务 —— 正是一门语言必须回答的三问。Auto 把答案写进语言本体：Task/Msg Actor 并发模型是调度器，view/mut/move 内存三元组是内存管理，io/net/http/fs 标准库是系统调用，多端渲染臂是外设驱动。更进一步：每个 OS 模块都有两条供给路线 —— Auto 亲手实现，或经生态桥调用现成实现 —— 按目标平台自由"装机"。</p>
+      <ul class="philosophy-list">
+        <li><strong>模块语言化，双路供给</strong> —— 跑在 Windows 上：应用与 UI 转译为 Rust/iced，内核调用 Windows 现成能力；跑进 MCU：应用与 UI 可转译为 C/LVGL，内核换成 Auto 自写的 RTOS。同一门语言，按机器"装机"。</li>
+        <li><strong>OS 的形状已经可见</strong> —— AutoOS 虚拟桌面正在运行，窗口管理器本身就是一个 AutoUI 应用（见下一节）；auto-os-config 让配置文件的形状自动长成设置中心。</li>
+        <li><strong>AI 算力按 OS 设备调度</strong> —— Client/Daemon 架构已在 AutoAI 落地：向系统要算力，而不是每个应用自建 AI 栈。</li>
+      </ul>
+      <div class="philosophy-proof">调度 · 内存 · 系统调用 · 外设 —— 件件可自实现，件件可生态桥</div>
+    </article>
+  </div>
+</div>
 
 <div class="showcase-wrapper">
   <ShowcaseSection
@@ -149,6 +197,124 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   margin: 0.75rem auto 0;
   font-size: 0.85rem;
   color: hsl(var(--muted-foreground));
+}
+
+.philosophy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.philosophy-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.75rem 1.5rem 1.5rem 1.75rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border) / 0.7);
+  background: hsl(var(--card));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.philosophy-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.1);
+}
+
+.philosophy-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--ph, #6366f1), var(--ph2, #a855f7));
+}
+
+.philosophy-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  background: color-mix(in srgb, var(--ph, #6366f1) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ph, #6366f1) 25%, transparent);
+}
+
+.philosophy-name {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+}
+
+.philosophy-en {
+  margin: -0.5rem 0 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ph, #6366f1);
+}
+
+.philosophy-tagline {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.philosophy-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: hsl(var(--muted-foreground));
+}
+
+.philosophy-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.philosophy-list li {
+  position: relative;
+  padding-left: 1.2rem;
+  font-size: 0.86rem;
+  line-height: 1.65;
+  color: hsl(var(--muted-foreground));
+}
+
+.philosophy-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ph, #6366f1);
+}
+
+.philosophy-list strong {
+  color: hsl(var(--foreground));
+}
+
+.philosophy-proof {
+  margin-top: auto;
+  padding-top: 0.9rem;
+  border-top: 1px dashed hsl(var(--border));
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.76rem;
+  color: var(--ph, #6366f1);
 }
 
 .shot-stack {
