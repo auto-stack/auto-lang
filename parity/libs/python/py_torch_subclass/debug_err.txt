@@ -1,3 +1,0 @@
-Error:   × RuntimeError("PyException TypeError: object() takes no arguments") at line
-  │ 13 (ip=0x0074)
-
