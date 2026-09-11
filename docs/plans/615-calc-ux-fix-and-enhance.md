@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-615
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # 2026-09-12 work 进入：worktree .wt/lang-615/auto-lang @ plan-615-dev（base a4faeb182）
 feature_name: calc 修复与增强——按钮居中/VM 布尔短路根修/双主题/Programmer HEX/交互批次
 author: [zcode]
 created_at: 2026-09-12
