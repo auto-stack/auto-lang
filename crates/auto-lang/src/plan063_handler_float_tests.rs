@@ -146,3 +146,28 @@ mod plan063_handler_float_arith {
         assert_eq!(v, 1.0, "a > b with a=2653.36 b=772.0 must hold");
     }
 }
+
+/// PLAN-063 T-04d：锚块判定纯函数回归锁（需编辑器双 feature）。
+#[cfg(all(test, feature = "autodown", feature = "code-editor"))]
+mod plan063_anchor_picker {
+    use crate::ui::code_editor::draw::Rect;
+
+    fn mk(y: f32, h: f32) -> Rect {
+        Rect { x: 0.0, y, w: 100.0, h }
+    }
+
+    #[test]
+    fn first_fully_visible_block_picks_anchor() {
+        let rects = [mk(0.0, 100.0), mk(100.0, 120.0), mk(220.0, 200.0)];
+        // 视口 [100, 380)：块 1 完整可见
+        assert_eq!(
+            crate::ui::autodown_editor::core::first_fully_visible_block(&rects, 100.0, 280.0),
+            Some(1)
+        );
+        // 视口 [0, 80)：无完整块 → 回退「与视口顶相交」= 块 0
+        assert_eq!(
+            crate::ui::autodown_editor::core::first_fully_visible_block(&rects, 0.0, 80.0),
+            Some(0)
+        );
+    }
+}
