@@ -1,0 +1,82 @@
+// Plan 597 (004 §5③): drive the autoterm engine's 12-symbol C ABI face
+// entirely from Auto via a2c. Signatures mirror auto-term
+// crates/autoterm-core/src/ffi.rs (opaque handle + scalars; buffers are
+// caller-allocated arrays — C mother tongue). Link form (T-01): MSVC
+// rejects a DLL as direct link input (LNK1107); rust cdylib ships an
+// import lib (autoterm_core.dll.lib) — the build script links that.
+//
+// Flow: spawn cmd → write_input "echo CFACE_OK\r\n" → poll
+// feed_ready/take_dirty_rows → row_text scan for the anchor → kill/free.
+// exit: 0 = anchor seen; 1 = spawn fail; 2 = anchor timeout.
+use.c <stdio.h>
+use.c <stdlib.h>
+use.c <string.h>
+use.c <windows.h>
+use.c "engine_abi.h"
+
+fn.c strstr(s cstr, needle cstr) ptr
+
+fn.c autoterm_engine_spawn(cols int, rows int, program cstr) ptr
+fn.c autoterm_engine_write_input(h ptr, bytes ptr, len usize)
+fn.c autoterm_engine_feed_ready(h ptr) int
+fn.c autoterm_engine_take_dirty_rows(h ptr, out_rows *int, cap int) int
+fn.c autoterm_engine_row_text(h ptr, row int, out_buf ptr, cap int) int
+fn.c autoterm_engine_row_style(h ptr, row int, out *uint, cap int) int
+fn.c autoterm_engine_cursor(h ptr, out_row *int, out_col *int) int
+fn.c autoterm_engine_resize(h ptr, cols int, rows int)
+fn.c autoterm_engine_interrupt(h ptr) int
+fn.c autoterm_engine_is_exited(h ptr) int
+fn.c autoterm_engine_kill(h ptr)
+fn.c autoterm_engine_free(h ptr)
+
+fn scan_anchor(h ptr) int {
+    var buf [256]char
+    var row = 0
+    for row < 24 {
+        if autoterm_engine_row_text(h, row, buf, 256) > 0 {
+            if strstr(buf, "CFACE_OK") != 0 {
+                return 1
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}
+
+fn main() {
+    var h ptr = autoterm_engine_spawn(80, 24, "cmd")
+    if h == 0 {
+        print("SPAWN_FAIL")
+        exit(1)
+    }
+    // "echo CFACE_OK\r\n" = 16 bytes
+    autoterm_engine_write_input(h, c"echo CFACE_OK\r\n", 16)
+    var dirty [64]int
+    var found = 0
+    var tries = 0
+    for tries < 100 {
+        if autoterm_engine_feed_ready(h) == 1 {
+            autoterm_engine_take_dirty_rows(h, dirty, 64)
+            if scan_anchor(h) == 1 {
+                found = 1
+            }
+        }
+        if found == 1 {
+            tries = 100
+        } else {
+            Sleep(50)
+        }
+        tries = tries + 1
+    }
+    if found == 1 {
+        print("CFACE_OK")
+    } else {
+        print("ANCHOR_TIMEOUT")
+    }
+    autoterm_engine_kill(h)
+    autoterm_engine_free(h)
+    if found == 1 {
+        exit(0)
+    }
+    exit(2)
+}

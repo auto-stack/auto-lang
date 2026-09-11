@@ -49,6 +49,12 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   绑定位由 with_stmt 消费；正常模式 Cast 语义零变化）；as 形态直产块形态
   `Stmt::Expr(Expr::Block)`（绑定+出口保证，躲 convert_last_block 尾块
   转换）；convert_last_block 收窄为纯 pair 块才转对象。
+- a2py 语义修补批（plan-598）：py_call 糖族**恒括号纪律**七臂
+  （py_call/py_call_may/py_getattr/py_matmul/py_getitem/py_setitem/py_call0
+  接收者恒括号发射——复合接收者原裸拼接致 `.sum()` 绑到末操作数，P539-D3
+  根治；getattr_may/getitem_may 原本安全不改）；语句体闭包分类——单表达式
+  块（含裸 `return e`）lambda 化（原 `lambda x: {...}` set/dict 字面量
+  静默错类型），含绑定/多语句块显式编译期诊断（DIV-PY-CLOSURE-1 a2py 面）。
 
 ## 关键入口
 

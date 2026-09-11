@@ -40,6 +40,15 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   （真 MSVC 编译抓出，文本快照盲区；快照语料 09_option_result/003_closure
   与 18_c_interop/003_autoterm_ctrlc 在案）；连带语义：含闭包的程序
   `self.header` 非空 → 生成的 .c 自 `#include "<stem>.h"`。
+- 引擎 12 符号面链接驱动先例（plan-597）：a2c 产物 exe 经 MSVC 独立
+  驱动 autoterm_core.dll 全程真机（`test/a2c/18_c_interop/004_engine_face/`
+  ——12 符号 fn.c 声明 + spawn→write_input→轮询 take_dirty_rows→
+  row_text 扫锚点，CFACE_OK/exit 0）。链接形态（T-01 实证）：MSVC
+  linker **拒收 DLL 直接输入**（LNK1107，GNU ld 特性）；链 rust cdylib
+  副产 import lib `<name>.dll.lib`（与 DLL 同目录）+ 构建脚本拷 DLL
+  至产物目录同目录分发（`scripts/build-engine-face-a2c.cmd`）。连带
+  修复：未初始化固定数组发射 `= NULL`（非法 C）→ 裸声明（真 MSVC
+  抓出，文本快照盲区）。
 - A1 `.len()` 特判（plan-569，P539-D2 根治）：py-known 接收者的方法糖
   `.len()`（无实参）不再改写 `py_call(recv, "len")`（py 无 `.len` 方法，
   恒 AttributeError）而改发 **obj_len 双通道组合子**——与 codegen
@@ -61,9 +70,9 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
 
 测试采用约定式发现（plan-263）：`tests/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
 通过 FFI `Test.run_*_dir` 扫描 `crates/auto-lang/test/a2{ c,r,ts,p,j,gd}/` 下的
-`.at` → `.expected.*` 对。当前规模（2026-09-07 快照，复现
-`find crates/auto-lang/test/<dir> -name "*.at" | wc -l`）：a2c 123、a2p 97、
-a2r 262、a2ts 85、a2j 10、a2gd 69 个 `.at` 用例；cookbook 163 个 `.at` 文件（plan-240）。
+`.at` → `.expected.*` 对。当前规模（2026-09-10 快照，复现
+`find crates/auto-lang/test/<dir> -name "*.at" | wc -l`）：a2c 126、a2p 99、
+a2r 267、a2ts 85、a2j 10、a2gd 69 个 `.at` 用例；cookbook 163 个 `.at` 文件（plan-240）。
 
 ## 关键入口
 

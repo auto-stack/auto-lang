@@ -49,6 +49,15 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   回归载具 `tests/plan569_py_dispatch_tests.rs` ×6 + `test/vm/99_py_dispatch/`
   ×2 + `99_script_err/05`；rust 侧同族谎言与 .as lowering 括号重绑为登记债
   P569-D1/P569-R1。
+- 闭包局部帧预留 + free-vars let 绑定识别（plan-598，DIV-PY-CLOSURE-1 VM 面
+  双根因）：`compile_closure` 按需插 `RESERVE_STACK n_locals`（max_locals
+  reset/diff 计数 + 插入位移 jump_placeholders/relocs/exports ≥func_addr——
+  镜像 fn 的 FN_PROLOG+RESERVE_STACK 机制；原缺失致闭包内 `let` 的 bp 相对
+  寻址落未分配栈，读回恒 None/0——闭包内 let 自 Plan 071 起从未工作过）；
+  `collect_free_vars` 块内 `Stmt::Store(Let/Const)` 绑定纳入 exclude（原
+  误判为捕获变量——STORE 落本地槽、LOAD 走捕获环境错位读裸 id；初值先走、
+  绑定后生效；嵌套 If/For/Block 语句仍不遍历为存量边界，注释在案）。探针
+  载具：闭包 let 块/显式 return/闭包内 py 调用（PLAN-598 cl/iso/v/hd.as）。
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
 - 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。

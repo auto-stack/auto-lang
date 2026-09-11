@@ -586,13 +586,29 @@ docs/plans/reports/p594-dep-skip-hit-rate.md。
 ### DIV-PY-CLOSURE-1: py 句柄在闭包局部/捕获中退化为裸 id
 
 - **库**: py_torch_infer（规避在案）, W2/W3 回调面（影响在案）
-- **状态**: open（存量，master 同形复现——Plan 539 W1 探针 c7）
-- **原因**: 闭包体内经 item-import CALL_PY 产生的 PyObjectHandle 存入
-  闭包局部槽后，读回退化为堆 id 裸 i32（ 报
-  ）；闭包捕获句柄同样退化。461 套件从未在闭包内调 py 故未
-  显形。规避：py_with 语句体经 codegen 内联降级（py_enter/py_exit
-  bracket，Plan 539 T14）；map/回调式消费见 W3 回调桥（新任务执行
-  模型）。
+- **状态**: ✅ 大面 fixed（2026-09-09, Plan 598 T-03/T-04；拆面记账如下）
+  - **VM 面（已修）**: 双根因——① `collect_free_vars` 不识别块内 `let`
+    绑定（Stmt::Store），闭包局部名被误判为捕获变量：STORE 落本地槽、
+    LOAD 走捕获环境读垃圾（裸 id/None）；② 闭包体无局部帧预留
+    （fn 有 FN_PROLOG+RESERVE_STACK，闭包没有），bp 相对寻址落到未分配栈。
+    修复 = 块内 let 绑定纳入 exclude + 闭包体入口按需插 RESERVE_STACK
+    n_locals（codegen.rs compile_closure / collect_free_vars）。探针：
+    闭包内 let + py 调用（hd.as → 15）、let 块尾值（cl.as → 8）、
+    显式 return（iso → 8）全绿。
+  - **a2py 面（已修）**: 语句体闭包发射 `lambda x: {...}` = set/dict
+    字面量（单表达式块静默错类型、语句块语法非法）→ 单表达式块（含裸
+    `return e`）发射 lambda 表达式；含绑定/多语句块显式编译期诊断
+    （trans/python.rs Closure 臂分类）。
+  - **仍 open（W3 地界）**: Auto 闭包经 py_callable 传入 Python 侧被
+    **Python 回调**的消费模型（map/回调桥,Plan 539 T21 单回调通道 +
+    P539-D4 类派生）——闭包从 Python 侧重入的执行模型不在本批。
+- **原因（历史）**: 闭包体内经 item-import CALL_PY 产生的 PyObjectHandle
+  存入闭包局部槽后，读回退化为堆 id 裸 i32；闭包捕获句柄同样退化。461
+  套件从未在闭包内调 py 故未显形。规避（py_with 内联降级，Plan 539 T14）
+  保留兼容。
+- **锚点**: PLAN-598 探针 cl/iso/v/hd.as；a2p goldens
+  05_expressions/013_lambda_block + 诊断单测
+  test_lambda_statement_body_diagnostic。
 
 ### DIV-PY-FLOAT-1: Python float return values are stringified
 

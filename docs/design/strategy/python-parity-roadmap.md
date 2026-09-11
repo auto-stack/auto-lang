@@ -356,7 +356,7 @@ py_torch_train 套件覆盖为金样。见 KNOWN-DEBT P539-D4。
 | ④ | Auto 原生 struct 运算符重载 | 539 dunder 路由只服务 `PyObjectHandle`；Auto 自己的 `type T` 上重载 `+ * ==` 需 trait 体系——与 Plan 525 延后的 trait/动态分发同一条语言线，宜合并立项 | 525 非目标清单；W1 dunder 路由为语义对照 |
 | ⑤ | bulk ndarray buffer 封送 | 训练批数据 Auto 侧持有时的必要件（缓冲协议/零拷贝）；539 靠"数据活 Python 侧"约定绕开，批输入规模化后绕不开 | 539 非目标清单；需求驱动 |
 | ⑥ | for-in tuple 解包 | DIV-PY-TUPLE-1：tuple→List 拍平后多变量循环解包在 a2py 侧 unpack 报错，W2 套件用单变量+索引规避；语法级解包或 Auto tuple 值类型二选一 | 539 T07 执行注记；DIV-PY-TUPLE-1 |
-| ⑦ | a2py 语义修补批 | P539-D3 复合接收者无括号（`py_call(t==t,"sum")` 优先级错）+ DIV-PY-CLOSURE-1 语句体闭包降级 set 字面量——两项集中清偿（531 式债批；~~P539-D5 py_call_may×kwargs~~ 已被 Plan 567 清偿，2026-09-09 复核更新） | KNOWN-DEBT P539-D3 + DIV-PY-CLOSURE-1 |
+| ⑦ | ~~a2py 语义修补批~~ ✅ 已交付（2026-09-09, [Plan 598](../../plans/archive/598-a2py-semantic-fix-batch.md)）：P539-D3 糖族恒括号纪律七臂（py_call/py_call_may/py_getattr/py_matmul/py_getitem/py_setitem/py_call0——审计较原清单扩容）；DIV-PY-CLOSURE-1 双面清偿（a2py 语句体闭包 set 字面量 → 单表达式块 lambda 化 + 含语句块显式诊断；**VM 侧实勘扩面**——collect_free_vars 块内 let 误判捕获 + 闭包局部帧无预留，双根因修复，闭包内 let/py 调用首次全绿）；p5-p9 全相位 179 case 零回归。句柄裸 id 面的 Python 侧回调消费模型仍归 W3（P539-D4） | KNOWN-DEBT P539-D3 ✅ + DIV-PY-CLOSURE-1 大面 ✅（拆面记账） |
 | ⑧ | 条件立项 | GPU/CUDA device 路径验证专项（539 只断言确定性 CPU）；transformers/datasets 上层生态套件（沿用 461/539 三方方法论） | 需求触发 |
 
 ### 7.5 长期方向：Auto→C（libtorch）替代热路径

@@ -1176,7 +1176,10 @@ impl AutodownEditorCore {
             return DocOutput { request_redraw: true, captured: true, ..Default::default() };
         }
         let layout = self.layout.lock().unwrap().clone();
-        let hit = hit_test(&layout, x, y);
+        // PLAN-603 T-1：点击改严格口径——块矩形外（真空白/gap）无效果，
+        // 撤「最近块回落」（PARITY #19 观察①对齐网页轨槽外无效果语义）。
+        // 拖选路径（handle_mouse_drag）保留宽松口径：拖穿 gap 续选邻块。
+        let hit = hit_test_strict(&layout, x, y);
         let Some(hit) = hit else {
             return DocOutput::default();
         };
@@ -1545,6 +1548,9 @@ impl AutodownEditorCore {
         }
         let mut row_acc: Option<RowAcc> = None;
         let mut geom_acc: HashMap<u64, TableGeom> = HashMap::new();
+        // PLAN-600 T-1：callout 盒式 chrome 运行段累积器——连续 callout 叶
+        // 同段（段界=带标题行/strip 色变/中断），段闭合一次推盒。
+        let mut callout_run: Option<(u8, u8, u8, f32, f32)> = None;
         for draw in render_items.iter() {
             // 表格行结算时机：当前 item 非 cell 叶（含 Raw/防御补尾叶）时，
             // 先以表尾间距结算未闭合行。
@@ -1922,13 +1928,22 @@ impl AutodownEditorCore {
                 ));
             }
 
-            // PLAN-054 T8：callout 左条（3px，kind 配色；每叶一段——与
-            // quote 条同点扩展；条在容器内容 x 基左缘）。
+            // PLAN-600 T-1：callout 容器盒式 chrome——对齐只读臂
+            // CALLOUT_CHROME 盒形态（rounded border + kind 底）：连续
+            // callout 叶累积运行段，段界 = 带标题行（新 callout 起）或
+            // strip 色/中断变化；段闭合一次推「底 kind -500 @0.10 + 四条
+            // 1px 边 @0.50」（矩形近似圆角，fence 盒同款原语）。替代
+            // PLAN-054 T8 的 per-叶 3px 左条（引语式残段，撤）。
             if let Some((cr, cg, cb)) = at.cont_strip {
-                list.fills.push((
-                    Rect::new((at.x - CONT_PAD_X).max(0.0), y, 3.0, total_h),
-                    Rgba { r: cr as f32 / 255.0, g: cg as f32 / 255.0, b: cb as f32 / 255.0, a: 1.0 },
-                ));
+                let same_run = matches!(&callout_run, Some((r, g, b, _, _)) if (*r, *g, *b) == (cr, cg, cb));
+                if at.cont_title.is_some() || !same_run {
+                    push_callout_box(&mut list.fills, callout_run.take(), viewport_w);
+                    callout_run = Some((cr, cg, cb, y, y + total_h));
+                } else if let Some((_, _, _, _, bottom)) = &mut callout_run {
+                    *bottom = y + total_h;
+                }
+            } else {
+                push_callout_box(&mut list.fills, callout_run.take(), viewport_w);
             }
 
             if !view_inst {
@@ -1994,6 +2009,9 @@ impl AutodownEditorCore {
             // 4），顶层维持 BLOCK_GAP 8（归因 DFS 按兄弟关系补齐）。
             y += total_h + at.inner_gap;
         }
+        // PLAN-600 T-1：循环尾 flush 未闭合 callout 盒（文档以 callout
+        // 结尾时不丢）。
+        push_callout_box(&mut list.fills, callout_run.take(), viewport_w);
         // PLAN-055：循环尾未闭合表格行以表尾间距结算；几何快照整体换帧
         // （表被外部重建移除时旧快照自愈清退）。
         if let Some(ra) = row_acc.take() {
@@ -2044,6 +2062,15 @@ impl AutodownEditorCore {
 }
 
 /// 命中测试：包含者优先，否则中心 y 最近者。
+/// PLAN-603 T-1：点击严格口径——仅矩形包含，未命中 None（无最近块
+/// 回落）。handle_mouse_press 消费；拖选路径沿用宽松 hit_test。
+fn hit_test_strict(layout: &DocLayout, x: f32, y: f32) -> Option<usize> {
+    layout.blocks.iter().position(|bl| bl.rect.contains(Pt::new(x, y)))
+}
+
+/// 宽松口径（拖选续段）：矩形包含未命中回落最近块中心 y。仅
+/// handle_mouse_drag 消费（拖穿 gap 续选邻块为通行惯例）；点击路径
+/// 已改 hit_test_strict（PLAN-603）。
 fn hit_test(layout: &DocLayout, x: f32, y: f32) -> Option<usize> {
     layout
         .blocks
@@ -2816,6 +2843,32 @@ const CONT_PAD_X: f32 = 16.0; // callout/details 内容边距（px-4）
 const CONT_TITLE_H: f32 = 29.0; // callout 标题行高（15.2px×1.6 行盒 24.3 + 上边距 4）
 const CONT_SUMMARY_H: f32 = 29.0; // details 摘要行高（同上）
 const CONT_PAD_B_CALLOUT: f32 = 12.0; // callout 底 pad（py-3）
+
+/// PLAN-600 T-1：callout 盒式 chrome 落填充——底（kind -500 @0.10，宽=
+/// 视口宽，对齐只读 w-full）+ 四条 1px 边（@0.50，语义对齐
+/// `border-*-500/50`）。矩形近似圆角（编辑臂绘制原语为纯矩形填充，
+/// fence 盒同款）。运行段 = (rgb, top, bottom) widget 本地 px。
+fn push_callout_box(fills: &mut Vec<(Rect, Rgba)>, run: Option<(u8, u8, u8, f32, f32)>, w: f32) {
+    let Some((r, g, b, top, bottom)) = run else { return };
+    let h = (bottom - top).max(1.0);
+    let width = w.max(1.0);
+    let col = |a: f32| Rgba {
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        a,
+    };
+    fills.push((Rect::new(0.0, top, width, h), col(0.10)));
+    let px = 1.0;
+    for e in [
+        Rect::new(0.0, top, width, px),
+        Rect::new(0.0, top + h - px, width, px),
+        Rect::new(0.0, top, px, h),
+        Rect::new(width - px, top, px, h),
+    ] {
+        fills.push((e, col(0.50)));
+    }
+}
 const CONT_PAD_B_DETAILS: f32 = 8.0; // details 底 pad（py-2）
 
 /// 渲染序列项：可编辑叶 或 只读固化段（thematic break）。
@@ -4497,6 +4550,210 @@ mod tests {
         assert_eq!(offset, Some("甲块。".len()));
     }
 
+    /// PLAN-061 T-05：文本叶块首点——光标落点击处字形（对齐网页轨
+    /// click-caret 交接语义，钉死现状行为）。两点位单调且均非行尾钳制；
+    /// 第二击前清多击节律（同步调用间隔 < CLICK_TIMING 会被判双击）。
+    #[test]
+    fn mouse_click_leaf_lands_caret_at_clicked_glyph() {
+        let c = core_for("t61a", "甲乙丙丁戊己庚辛壬癸\n");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let click = |x: f32| -> Option<usize> {
+            let _ = run_fs(|fs| {
+                c.handle_input(
+                    fs,
+                    DocInput::MousePressed { button: EditorButton::Left, x, y: rects[0].y + 4.0 },
+                    &mut NullClipboard,
+                )
+            });
+            c.click.lock().unwrap().take(); // 隔离多击节律
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        assert!(c.focused_block().is_none(), "click 前无焦点（首击语义前置）");
+        let off1 = click(20.0).unwrap_or(0);
+        assert_eq!(c.focused_block(), Some(0), "首击建焦点");
+        let off2 = click(100.0).unwrap_or(usize::MAX);
+        let len = "甲乙丙丁戊己庚辛壬癸".len();
+        assert!(off1 >= 3, "x=20 至少越过首字形：{off1}");
+        assert!(off2 > off1, "点击右移 → caret 右移：{off1} → {off2}");
+        assert!(off2 < len, "两点位均非行尾钳制：{off2}/{len}");
+    }
+
+    /// PLAN-061 T-05：容器（列表）点击归属——点第 2 项 → 焦点/键入落
+    /// 第 2 项叶。网页轨缺陷形态是「聚焦第 1 项 + 光标在其末尾」；VM 单趟
+    /// 字形命中天然归属被点中项，本测钉死。
+    #[test]
+    fn mouse_click_list_lands_on_clicked_item() {
+        let c = core_for("t61b", "- 甲项\n- 乙项\n");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: 30.0, y: rects[1].y + 4.0 },
+                &mut NullClipboard,
+            )
+        });
+        assert!(out.focus_changed, "首击建焦点：{out:?}");
+        assert_eq!(c.focused_block(), Some(1), "点第 2 项 → 聚焦第 2 项叶（非首项）");
+        press(c, EditorKey::Char('叉'));
+        assert!(c.live_text(1).contains('叉'), "键入落第 2 项：{:?}", c.live_text(1));
+        assert_eq!(c.live_text(0), "甲项", "第 1 项不受扰");
+    }
+
+    /// PLAN-061 T-05：表格点击归属——点非首列 cell（r1c1）→ 焦点/键入
+    /// 落该 cell 叶（既有 table_cell_editing_and_degraded_structure 钉死
+    /// r1c0 命中，本测补「被点中的那个 cell」归属面 + cell 内键入）。
+    #[test]
+    fn mouse_click_table_lands_on_clicked_cell() {
+        let src = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n正文段\n";
+        let c = core_for("t61c", src);
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: rects[3].x + rects[3].w - 10.0,
+                    y: rects[3].y + 4.0,
+                },
+                &mut NullClipboard,
+            )
+        });
+        assert!(out.focus_changed, "首击建焦点：{out:?}");
+        assert_eq!(c.focused_block(), Some(3), "命中 r1c1 叶（行主序叶 0..3=cells，非首个 cell）");
+        press(c, EditorKey::End);
+        press(c, EditorKey::Char('叉'));
+        assert!(c.live_text(3).contains("2叉"), "键入落 r1c1：{:?}", c.live_text(3));
+        assert_eq!(c.live_text(2), "1", "r1c0 不受扰");
+    }
+
+    /// PLAN-600 T-1：callout 编辑臂盒式 chrome——fills 含 kind -500 底
+    /// （α≈0.10，宽=视口宽）+ 四条 1px 边（α≈0.50）；3px 左条撤除
+    /// （无 α=1 的窄条填充残留）。
+    #[test]
+    fn callout_edit_arm_paints_kind_box() {
+        let c = core_for(
+            "t600a",
+            "$callout(type: \"info\", title: \"Info\") {
+Callout body
+}
+",
+        );
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (br, bg_, bb) = (59.0f32 / 255.0, 130.0f32 / 255.0, 246.0f32 / 255.0);
+        let is_blue = |c: Rgba, a: f32| {
+            (c.r - br).abs() < 0.01
+                && (c.g - bg_).abs() < 0.01
+                && (c.b - bb).abs() < 0.01
+                && (c.a - a).abs() < 0.01
+        };
+        let bg = frame
+            .list
+            .fills
+            .iter()
+            .find(|(_, c)| is_blue(*c, 0.10))
+            .expect("callout box bg fill");
+        assert!(bg.0.w >= 399.0, "box bg spans viewport width: {}", bg.0.w);
+        let edges = frame
+            .list
+            .fills
+            .iter()
+            .filter(|(_, c)| is_blue(*c, 0.50))
+            .count();
+        assert!(edges >= 4, "4 border strips expected, got {edges}");
+        assert!(
+            !frame
+                .list
+                .fills
+                .iter()
+                .any(|(r, c)| c.a >= 0.99 && r.w < 4.0 && is_blue(*c, 1.0)),
+            "3px left strip must be gone"
+        );
+    }
+
+    /// PLAN-600 T-1：双 callout 隔叶 → 两盒独立（段界 = 中断/标题行）。
+    #[test]
+    fn callout_boxes_split_across_containers() {
+        let c = core_for(
+            "t600b",
+            "$callout(type: \"info\", title: \"A\") {
+甲
+}
+
+段落
+
+$callout(type: \"info\", title: \"B\") {
+乙
+}
+",
+        );
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let bgs = frame
+            .list
+            .fills
+            .iter()
+            .filter(|(_, c)| c.a > 0.09 && c.a < 0.11)
+            .count();
+        assert_eq!(bgs, 2, "two independent box bgs, got {bgs}");
+    }
+
+    /// PLAN-603 T-1：空白点击无效果（撤最近块回落，对齐网页轨槽外
+    /// 无效果语义）——块矩形外点击不建焦点/不动既有 caret；块间 gap
+    /// 点击同样无效果。
+    #[test]
+    fn mouse_click_blank_outside_blocks_is_noop() {
+        let c = core_for("t603a", "甲块。
+
+乙块。
+");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let last_bottom = rects.last().map(|r| r.y + r.h).unwrap_or(0.0);
+        // 预置焦点块 0 + caret 块尾（严格口径下空白点击不得扰动）。
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        let off_before = {
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        // 文末下方（最后一块 rect 底之外）。
+        let out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: 30.0, y: last_bottom + 30.0 },
+                &mut NullClipboard,
+            )
+        });
+        assert!(!out.focus_changed && !out.cursor_changed, "空白点击无效果：{out:?}");
+        assert_eq!(c.focused_block(), Some(0), "焦点不被搬移");
+        let off_after = {
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        assert_eq!(off_before, off_after, "caret 不被搬移");
+        // 块间 gap（若布局存在间隙）：同样无效果。
+        let gap_top = rects[0].y + rects[0].h;
+        let gap_bot = rects[1].y;
+        if gap_bot - gap_top > 2.0 {
+            let out2 = run_fs(|fs| {
+                c.handle_input(
+                    fs,
+                    DocInput::MousePressed {
+                        button: EditorButton::Left,
+                        x: 30.0,
+                        y: (gap_top + gap_bot) / 2.0,
+                    },
+                    &mut NullClipboard,
+                )
+            });
+            assert!(!out2.focus_changed && !out2.cursor_changed, "gap 点击无效果：{out2:?}");
+            assert_eq!(c.focused_block(), Some(0));
+        }
+    }
+
     /// 列表项末端 Enter → 新列表项（emit 重发序号/圆点）。
     #[test]
     fn enter_at_item_end_creates_new_item() {
@@ -5555,9 +5812,24 @@ fn main() { let s = \"hi\"; }
         let title = frame.list.runs.iter().find(|r| r.text.contains("Info")).expect("callout 标题行");
         assert!(title.text.starts_with('\u{2139}'), "info 图标：{:?}", title.text);
         assert!(title.color.b > title.color.r, "kind 配色（blue 族 title）");
-        // callout 左条：3px 宽 fill，色 = blue-500。
-        let strip = frame.list.fills.iter().find(|(r, _)| (r.w - 3.0).abs() < 0.5 && r.h > 20.0);
-        assert!(strip.is_some(), "callout 左条 3px fill 在册：{:?}", frame.list.fills);
+        // PLAN-600 T-1：盒式 chrome 替代左条——kind -500 底（α≈0.10，
+        // 宽=视口宽）+ 四条 1px 边（α≈0.50）。
+        let (br, bg_, bb) = (59.0f32 / 255.0, 130.0f32 / 255.0, 246.0f32 / 255.0);
+        let is_blue = |c: Rgba, a: f32| {
+            (c.r - br).abs() < 0.01
+                && (c.g - bg_).abs() < 0.01
+                && (c.b - bb).abs() < 0.01
+                && (c.a - a).abs() < 0.01
+        };
+        let box_bg = frame
+            .list
+            .fills
+            .iter()
+            .find(|(r, c)| is_blue(*c, 0.10) && r.w > 400.0)
+            .expect("callout 盒底 fill 在册（替代左条）：{:?}");
+        assert!(box_bg.0.h > 20.0, "盒底覆盖标题+正文带：{:?}", box_bg);
+        let edges = frame.list.fills.iter().filter(|(_, c)| is_blue(*c, 0.50)).count();
+        assert!(edges >= 4, "盒四边 1px fill 在册：{edges}");
         // details 摘要行。
         assert!(
             frame.list.runs.iter().any(|r| r.text.contains("\u{25B8} 展开")),
