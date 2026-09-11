@@ -127,7 +127,7 @@ impl<'db> DepScanner<'db> {
             // Plan 096: UI scenario statements
             Stmt::WidgetDecl(_) => {}
             Stmt::StoreDecl(_) | Stmt::ViewFragmentDecl(_) => {}
-            Stmt::ActionsDecl(_) => {}
+            Stmt::ActionsDecl(_) | Stmt::StyleRecipeDecl(_) => {}
             Stmt::Try(_) => {}
             Stmt::MsgDecl(_) => {}
             Stmt::ModelBlock(_) => {}

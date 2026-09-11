@@ -4887,6 +4887,20 @@ impl<'a> Parser<'a> {
                     }
                     stmt
                 }
+                TokenKind::Ident if self.cur.text.as_str() == "style" => {
+                    if let Some(mut stmt) = self.parse_style_recipe_decl_stmt()? {
+                        if let Stmt::StyleRecipeDecl(ref mut r) = stmt {
+                            r.is_pub = true;
+                        }
+                        stmt
+                    } else {
+                        // Not a recognized pub declaration — put the token back
+                        self.lexer.push_token(self.cur.clone());
+                        self.cur = saved_cur;
+                        self.prev = saved_prev;
+                        return self.parse_stmt_inner();
+                    }
+                }
                 _ => {
                     // Not a recognized pub declaration — put the token back
                     self.lexer.push_token(self.cur.clone());
@@ -14524,6 +14538,88 @@ impl<'a> Parser<'a> {
         Ok(Some(Stmt::ActionsDecl(block)))
     }
 
+    /// PLAN-607: 顶层 `style <name> = ...` 或 `style <name>(...) = ...` 声明。
+    /// 仅在 `style` 后继 `Ident` 且接着 `=` 或 `(` 时接管；
+    /// 否则返回 None 回退表达式路径（`style = ...` 等普通表达式不受影响）。
+    pub fn parse_style_recipe_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
+        let saved_lexer = self.lexer.save_state();
+        let saved_cur = self.cur.clone();
+        let saved_prev = self.prev.clone();
+
+        self.next(); // consume "style"
+        if !self.is_kind(TokenKind::Ident) {
+            self.lexer.restore_state(saved_lexer);
+            self.cur = saved_cur;
+            self.prev = saved_prev;
+            return Ok(None);
+        }
+        let recipe_name = self.cur.text.clone();
+        self.next(); // consume recipe name
+
+        // Lookahead: after recipe name, must be '=' or '('
+        if !self.is_kind(TokenKind::Asn) && !self.is_kind(TokenKind::LParen) {
+            self.lexer.restore_state(saved_lexer);
+            self.cur = saved_cur;
+            self.prev = saved_prev;
+            return Ok(None);
+        }
+
+        // Confirmed style recipe declaration
+        let doc = self.take_docs();
+        let mut params = Vec::new();
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+            self.skip_empty_lines();
+            while !self.is_kind(TokenKind::RParen) {
+                let param_name = self.cur.text.clone();
+                self.expect(TokenKind::Ident)?;
+
+                let param_type = if self.is_kind(TokenKind::Colon) {
+                    self.next();
+                    Some(self.parse_type()?)
+                } else {
+                    None
+                };
+
+                let default_value = if self.is_kind(TokenKind::Asn) {
+                    self.next();
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+
+                params.push(crate::ast::ui::StyleRecipeParam {
+                    name: param_name.into(),
+                    param_type,
+                    default_value,
+                });
+
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    self.skip_empty_lines();
+                } else {
+                    break;
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::Asn)?;
+        self.skip_empty_lines();
+
+        let body = self.parse_expr()?;
+
+        Ok(Some(Stmt::StyleRecipeDecl(crate::ast::ui::StyleRecipeDecl {
+            name: recipe_name.into(),
+            params,
+            body,
+            is_pub: false,
+            doc,
+        })))
+    }
+
     /// Plan 051 C7: `timer { ... }` 块体。已消费 `timer` 标识符。
     ///
     /// ```auto
@@ -20544,6 +20640,66 @@ fn main() {
         );
     }
 
+    /// PLAN-607 T-01: Style Recipe declaration parsing tests (constant, parametric, composite, pub, doc, and fallback).
+    #[test]
+    fn test_style_recipe_parse() {
+        let code = r#"
+/// Base card style
+style card_base = "bg-card rounded-xl shadow-sm border border-border"
+
+style pill(bg: str = "bg-primary", fg: str = "text-primary-foreground", pad: str = "px-4 py-2") =
+    "{pad} {bg} {fg} rounded-full"
+
+style pill_danger = pill(bg: "bg-destructive", fg: "text-destructive-foreground")
+
+pub style brand_btn = "bg-brand text-white"
+
+style = 123
+"#;
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let code_ast = parser.parse().expect("should parse style recipes successfully");
+
+        // 1. card_base
+        let card_base = code_ast.stmts.iter().find_map(|s| match s {
+            Stmt::StyleRecipeDecl(r) if r.name == "card_base" => Some(r),
+            _ => None,
+        }).expect("card_base style recipe should exist");
+        assert_eq!(card_base.doc.as_deref(), Some("Base card style"));
+        assert!(!card_base.is_pub);
+        assert_eq!(card_base.params.len(), 0);
+
+        // 2. pill
+        let pill = code_ast.stmts.iter().find_map(|s| match s {
+            Stmt::StyleRecipeDecl(r) if r.name == "pill" => Some(r),
+            _ => None,
+        }).expect("pill style recipe should exist");
+        assert_eq!(pill.params.len(), 3);
+        assert_eq!(pill.params[0].name.as_str(), "bg");
+        assert!(pill.params[0].default_value.is_some());
+        assert_eq!(pill.params[1].name.as_str(), "fg");
+        assert_eq!(pill.params[2].name.as_str(), "pad");
+
+        // 3. pill_danger
+        let pill_danger = code_ast.stmts.iter().find_map(|s| match s {
+            Stmt::StyleRecipeDecl(r) if r.name == "pill_danger" => Some(r),
+            _ => None,
+        }).expect("pill_danger style recipe should exist");
+        assert_eq!(pill_danger.params.len(), 0);
+
+        // 4. brand_btn (pub)
+        let brand_btn = code_ast.stmts.iter().find_map(|s| match s {
+            Stmt::StyleRecipeDecl(r) if r.name == "brand_btn" => Some(r),
+            _ => None,
+        }).expect("brand_btn style recipe should exist");
+        assert!(brand_btn.is_pub);
+
+        // 5. style = 123 should NOT be a StyleRecipeDecl
+        let non_recipe = code_ast.stmts.iter().any(|s| match s {
+            Stmt::StyleRecipeDecl(r) if r.name == "style" => true,
+            _ => false,
+        });
+        assert!(!non_recipe, "style = 123 must not be parsed as a StyleRecipeDecl");
+    }
 
 }
 

@@ -217,6 +217,7 @@ fn stmt_kind(s: &Stmt) -> &'static str {
         Stmt::StoreDecl(_) => "StoreDecl",
         Stmt::ActionsDecl(_) => "ActionsDecl",
         Stmt::ViewFragmentDecl(_) => "ViewFragmentDecl",
+        Stmt::StyleRecipeDecl(_) => "StyleRecipeDecl",
         Stmt::MsgDecl(_) => "MsgDecl",
         Stmt::ModelBlock(_) => "ModelBlock",
         Stmt::ViewBlock(_) => "ViewBlock",
