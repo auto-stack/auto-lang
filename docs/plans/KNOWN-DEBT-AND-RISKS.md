@@ -1196,13 +1196,15 @@
   py_setitem/py_call0——审计较原单点扩容；getattr_may/getitem_may 本就安全
   不改）；a2p golden 16_python_std/003_py_call_compound 钉死。套件 grep
   复核零活跃规避点（复合接收者中间变量规避未落在现行 .as 套件）。
-- **P539-D4 py_subclass 类派生延期（计划内预案路径）**：自定义
-  nn.Module/Dataset 需 Python 侧类工厂（exec 生成类 + 方法绑回 Auto
-  回调）。回调桥 T21 已通（thread-local 任务槽，map/apply_ 双探针
-  实证：Auto 闭包经 PyCFunction::new_closure 回投当前任务），
-  但类工厂的方法绑定面 + GIL/生存期约束审查超 W3 预算。组合式
-  替代金样 = py_torch_train（Linear 裸栈 + seed 化收敛）已在案。
-  调研节落 python-parity-roadmap.md §7.3。
+- **P539-D4 py_subclass 类派生延期 ✅ 已交付（PLAN-602，2026-09-11 拆面
+  核销）**：类工厂 + 多参回调 ABI 已由 PLAN-602 交付——`py_subclass`
+  native（481，exec 类模板 + 回调 def 包装器挂载）、回调 ABI 泛化 n 参
+  （tuple 顺序封送、arity 不匹配 TypeError、self 首参句柄）、a2py
+  `_auto_subclass` 同构 helper、语料 py_torch_subclass 三轨 4/4 一致、
+  窗口/GIL/重入/生存期契约成文（python-parity-roadmap.md §7.3）。
+  **拆面记账**：多线程回调泵（DataLoader workers/Python 侧线程主动
+  回调）不在 602 范围，保持 open 归长期（roadmap §7.4 ⑧ 条件立项
+  联动）。原组合式替代金样 py_torch_train 保留为回归面。
 
 ### P569（2026-09-06，Plan 569 执行登记——P539-D2 根治顺带的同族谎言面）
 
