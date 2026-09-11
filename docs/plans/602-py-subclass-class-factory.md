@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-602
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: py-subclass-class-factory
 author: [ZCode]
 created_at: 2026-09-09
-updated_at: 2026-09-09
-plan_revision: 1
+updated_at: 2026-09-11
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -46,7 +46,7 @@ total_steps: 10
 3. **语料**：`parity/libs/python/py_torch_subclass/` 新套件（三方 parity）：
    自定义 nn.Module（Python `__init__` 建层 + Auto `forward` 回调）、
    Dataset（Auto `__len__`/`__getitem__` 回调）、Auto 驱动训练小循环；
-   新 phase `p11` 注册。
+   新 phase `p12` 注册。
 4. **审计与账面**：GIL/单线程/窗口纪律成文（回调仅在宿主 shim 窗口内
    合法——窗口外触发显式 RuntimeError，既有守卫转文档契约）；重入深度
    探针；KNOWN-DEBT P539-D4 销账拆面；路线图 §7.3/⑦/⑧ 注记更新。
@@ -201,7 +201,7 @@ def _auto_subclass(name, base, methods):
 - `tests/python/test_subclass.py`：原生 Python 同语义 oracle（同名测试）。
 - `README.md`：scope/版本/惯用法（self 首参约定、窗口纪律、num_workers=0、
   torch CPU seed 固定）。
-- 注册：`discover_libraries_by_phase` 新 phase `p11`（py_torch_subclass）；
+- 注册：`discover_libraries_by_phase` 新 phase `p12`（py_torch_subclass）；
   dashboard phases 不含（无网络门控需求，视 T-06 实测定）。
 
 ### D5 审计成文（GIL/重入/生存期）
@@ -235,7 +235,7 @@ def _auto_subclass(name, base, methods):
 | 窗口外回调负面 | VM+a2py | RuntimeError 文案断言（负面 golden） |
 | 重入深度探针 | VM | 嵌定 ≥3 层 shim 链实测（钉死记录） |
 | 既有单参回调 | parity | py_callable/map 既有探针零回归 |
-| 相位回归 | parity | p5-p9 + p11 全绿；tt/tv/tf 三档唯预存红 |
+| 相位回归 | parity | p5-p9 + p12 全绿；tt/tv/tf 三档唯预存红 |
 
 ## 7. 验收标准
 
@@ -276,13 +276,13 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 - [ ] **T-05** 语料 py_torch_subclass（D4）：subclass.as +
   test_subclass.py + README；首跑三轨对齐（golden 定稿）。
   验证：`run py_torch_subclass` 三轨全绿。
-- [ ] **T-06** 注册与审计（D5 + AC-04）：phase p11 表注册；
+- [ ] **T-06** 注册与审计（D5 + AC-04）：phase p12 表注册；
   roadmap §7.3 契约节扩写（窗口/GIL/重入深度探针/生存期审计）。
-  验证：`list`/`phase p11` 发现；文档 diff 核对。
+  验证：`list`/`phase p12` 发现；文档 diff 核对。
 - [ ] **T-07** 账面收口（AC-06）：KNOWN-DEBT P539-D4 销账拆面；
   路线图 §7.4 ⑦ 核销注记（引用本计划）；⑧ 保持条件立项。
   验证：三文件 diff 人工核对。
-- [ ] **T-08** 回归门禁：cargo tv + tt 全绿（唯预存红）；p5-p9 + p11
+- [ ] **T-08** 回归门禁：cargo tv + tt 全绿（唯预存红）；p5-p9 + p12
   相位全绿。
   验证：门禁命令输出留痕。
 - [ ] **T-09** 收口健康检查：探针残留扫描；fmt 增量干净（新代码
@@ -297,6 +297,26 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 next=work。范围锚定：W3 类派生 MVP = bridge API + Auto 驱动循环 +
 num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
 
+**执行前复审审计（2026-09-11，stage=work | rev=2 | 基线 1ed892643..master
+164 提交）**：计划起草于 2026-09-10 00:02，其后 master 前进 164 提交
+（PLAN-591/596/597/598/600/602/603/606/607/609/610/611/612 等）。逐面核对：
+
+- py_ffi.rs / trans/python.rs / parity/libs/python/ / roadmap §7.3-7.5：
+  164 提交**零触碰**，计划引用的行号与结构原样成立
+  （run_closure_bridged L2020 单参封送、BRIDGE_TASK/BridgeGuard L1970/2000、
+  nv_to_value_local L1977、`_auto_may` needs_may_helper 旗标族）。
+- py 桥计数：specs vm/overview.md 仍为 480（尾号 480=py_int），无新增
+  native——"480→481+" 前提成立。
+- KNOWN-DEBT P539-D4：条目原文未变。
+- **唯一冲突（已修正）**：相位号——PLAN-591 T9（a6dfa7e1c，2026-09-09
+  18:10，早于本计划骨架 6 小时）已注册 `p11 = uuid_real`，计划原案的
+  p11 系起草疏漏。全文改号 **p11 → p12**（p12 空闲），plan_revision
+  1→2。
+- 607/612 等近期计划均为 UI 面（iced/VM style recipes、标题菜单），与本
+  计划涉及面（py_ffi/trans/parity py 套件）零交集。
+- worktree `D:/autostack/.wt/lang-602/auto-lang` 存在但停在起草基线
+  （分支为 master 祖先，ff 快进重同步）；auto-down 兄弟仓按 T-01 重建。
+
 ## 10. 待澄清事项
 
 1. **exec 模板机械细节**：PyO3 侧 `py.run` 命名空间装配、缩进归一、
@@ -309,7 +329,7 @@ num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
    （工厂剥离首参）——选 self 句柄：Auto 侧可继续操作 Python 状态
    （nn.Linear 调用、参数读取），表达力上限高；若执行期发现句柄封送
    开销不可接受再复议（决策已定，此条留痕供 review 追认）。
-4. **p11 vs 并入 p9**：新套件注册为独立 phase p11（torch 子类专题）；
+4. **p12 vs 并入 p9**：新套件注册为独立 phase p12（torch 子类专题；原案 p11 与 PLAN-591 uuid_real 冲突，2026-09-11 执行前审计改号，见 §9 审计记录）；
    若 review 认为应并入 p9（torch 惯用法），表项迁移零成本。
 5. **a2py helper 与 VM 臂的语义漂移风险**：两侧实现需逐语义对齐
    （exec 模板/setattr 顺序/错误文案）；T-04 探针双轨对齐是闸门，
