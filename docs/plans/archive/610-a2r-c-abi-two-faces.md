@@ -382,7 +382,10 @@ lib.rs 两处不同区域自动可并 | evidence: 命令与结果已录各 AC �
   scripts/spec-index.py` 重生 INDEX 幂等无变化（26 projects）。
 - **archived**：本文件（git mv docs/plans/→docs/plans/archive/，
   status: archived，completion_kind: delivered）。
-- **cleaned**：见下。
+- **cleaned**：wt-guard 双 clean（lang-610/auto-lang + 依赖兄弟
+  lang-610/auto-down，reparse point 零检出）；worktree/分支
+  plan-610-dev（was 2038e1370，-d 删除=已全落地）/auto-down detached
+  检出/组目录 .wt/lang-610 全清零残留。
 
 ## spec-sync 回写记录（v1 惯例保留）
 
