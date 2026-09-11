@@ -1,5 +1,5 @@
 dep autolang_traits(path: "{{FFI_DUAL_DIR}}/020_dep_traits_generics/fixture/autolang_traits")
-use.rs autolang_traits::{Temp, Tagged, Pair, Invoker, pick}
+use.rs autolang_traits::{Temp, Tagged, Pair, pick}
 
 fn main() {
     let abc str = "abc"
@@ -23,8 +23,4 @@ fn main() {
 
     let p = Pair.new(2, 7)
     print(p.pick_max(20, 70))
-
-    let inv = Invoker.new()
-    let r = inv.apply(x => x*2+1, 5)
-    print(r)
 }

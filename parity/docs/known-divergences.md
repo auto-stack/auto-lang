@@ -598,10 +598,12 @@ docs/plans/reports/p594-dep-skip-hit-rate.md。
   - AutoVM 行为: ✅（回调 adapter 原型，`apply(x => x*2+1, 5) == 11`）。
   - a2r 行为: 编译失败 E0308。
   - 偏差类型: 待修复（a2r 发射器对回调形参缺 `Box::new(..)` 装箱；依赖
-    P592-D3 元数据通道回传 callbacks 签名）。缓解：ffi_dual 020 语料 a2r
-    腿豁免表 `A2R_SKIP=[020]`（020 其余面 a2r 编译全过）。
-  - 状态: open（原型边界内豁免）。锚点: PLAN-596 T-05/T-08、
-    crates/auto-lang/src/tests/ffi_dep_parity_tests.rs A2R_SKIP。
+    P592-D3 元数据通道回传 callbacks 签名）。缓解：复审 F-1（2026-09-10）
+    拆分后豁免收窄至回调独立语料 `021_dep_callback`（`A2R_SKIP=[021]`）——
+    020 主面（trait 转发/泛型双实例/深拷贝/组合）恢复自动 a2r 三轨；本面
+    VM+oracle 双腿（021 oracle 以 Box::new 装箱镜像）。
+  - 状态: open（原型边界内豁免；豁免面已收窄）。锚点: PLAN-596 T-05/T-08
+    及复审 F-1、crates/auto-lang/src/tests/ffi_dep_parity_tests.rs A2R_SKIP。
 
 ## Python Parity Divergences
 
