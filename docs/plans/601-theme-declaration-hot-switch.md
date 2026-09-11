@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-601
-status: execution_done
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived（re-review pass 2026-09-10）
 feature_name: theme-declaration-hot-switch（Design 29 Phase 2）
 author: [zhaopuming]
 created_at: 2026-09-09
