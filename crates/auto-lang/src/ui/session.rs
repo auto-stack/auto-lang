@@ -2009,6 +2009,15 @@ impl DesktopSession {
             settings_fields: ShellFields::default(),
             desktop_fields: ShellFields::default(),
         });
+        // PLAN-601 R1（复审）：boot 读回——config.at 持久的 theme_name 在
+        // 此激活（此前只有动词臂/外写 diff 臂会 set_theme，重启后主题不
+        // 存活）。首帧前激活 = 零重建成本；未知名由 set_theme 拒绝（保持
+        // 缺省），epoch 自增走既有失效回路（此时视图未建，无重建代价）。
+        // 普通（非 desktop）app 运行不经此处——桌面单源 config 不外溢，
+        // 示例轨缺省保持零变化。
+        if let Some(name) = self.desktop.config.theme_name.as_deref() {
+            crate::ui::style::theme::set_theme(name);
+        }
     }
 
     /// desktop 模式判定（I3 配置位）。
