@@ -321,11 +321,12 @@ VM `Color` 枚举 ↔ registry 词表全集的投影关系：
 - 验收：≥3 套内置主题热切换，token 化区域 100% 跟随（含编辑器高亮）；
   旧 `dark|light` 配置读回兼容；charts-gallery 硬编码色债在此背景下重估迁移。
 
-**Phase 3：style recipe（语言层）**
+**Phase 3：style recipe（语言层，✅ 已由 PLAN-607 交付）**
 - parser/AST `style` 声明块 + desugar 展开（§5.2）+ 双端展开点接线；
 - 与 448-D 数组/条件/f-string 混写回归；recipe lint（裸调色板告警）。
 - 验收：013-todo filter 按钮串 8 处→1 处、015-notes 药丸串 2 处→1 处的
   收敛示范；golden 零变化（纯重构不改视觉）。
+- 交付成果：`ast/ui.rs` `StyleRecipeDecl` AST、`design_tokens/recipe.rs` 注册/校验/展开引擎、Vue 与 VM 归一化单点 Desugar、硬编码调色板色 lint 守卫，以及 013-todo / 015-notes 示范重构。
 
 每阶段一个独立 plan（L1 体量），Phase 1 可先行合入不受后两阶段约束。
 

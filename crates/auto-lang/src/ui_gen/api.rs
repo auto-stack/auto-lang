@@ -634,6 +634,9 @@ pub fn generate_component_from_file(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
+    // PLAN-607: register and validate style recipes before extracting widget
+    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
+        .map_err(|e| e.to_string())?;
 
     // Extract widgets
     let mut widgets: Vec<crate::aura::AuraWidget> = Vec::new();

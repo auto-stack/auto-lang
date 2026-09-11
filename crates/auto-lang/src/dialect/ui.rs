@@ -28,7 +28,7 @@ impl Dialect for UiDialect {
     /// Plan 451 P3: 加 `actions`（顶层动作声明——widget 块内 actions 的
     /// 模块级形态，可拆独立文件经 use 引用到宿主）。
     fn keywords(&self) -> &'static [&'static str] {
-        &["widget", "msg", "model", "component", "actions"]
+        &["widget", "msg", "model", "component", "actions", "style"]
     }
 
     fn try_parse_stmt(&self, p: &mut Parser, kw: &str) -> AutoResult<Option<Stmt>> {
@@ -46,6 +46,11 @@ impl Dialect for UiDialect {
             // Plan 451 P3: 顶层 `actions { ... }`。仅当后继是 `{` 才接管——
             // `actions = ...` / `actions(...)` 等表达式用法回退原路径。
             "actions" => match p.parse_actions_decl_stmt()? {
+                Some(stmt) => stmt,
+                None => return Ok(None),
+            },
+            // PLAN-607: 顶层 `style <name> = ...` 或 `style <name>(...) = ...`。
+            "style" => match p.parse_style_recipe_decl_stmt()? {
                 Some(stmt) => stmt,
                 None => return Ok(None),
             },

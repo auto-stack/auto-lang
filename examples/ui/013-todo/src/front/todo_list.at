@@ -5,6 +5,10 @@
 
 use todo_store: TodoStore
 
+// PLAN-607: Declarative style recipes for filter buttons
+style filter_btn_active = "px-2 py-1 border border-red-400 rounded text-xs"
+style filter_btn_inactive = "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300"
+
 widget TodoList() {
     msg { FilterAll, FilterActive, FilterCompleted, ToggleTodo(int), DeleteTodo(int),
               StartEdit(int), CommitEdit, CancelEdit, EditInputChanged(str), ClearCompleted }
@@ -66,19 +70,19 @@ widget TodoList() {
                     row {
                         style: "flex gap-1"
                         if .filter == "all" {
-                            button "All" { onclick: .FilterAll, style: "px-2 py-1 border border-red-400 rounded text-xs" }
+                            button "All" { onclick: .FilterAll, style: filter_btn_active }
                         } else {
-                            button "All" { onclick: .FilterAll, style: "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300" }
+                            button "All" { onclick: .FilterAll, style: filter_btn_inactive }
                         }
                         if .filter == "active" {
-                            button "Active" { onclick: .FilterActive, style: "px-2 py-1 border border-red-400 rounded text-xs" }
+                            button "Active" { onclick: .FilterActive, style: filter_btn_active }
                         } else {
-                            button "Active" { onclick: .FilterActive, style: "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300" }
+                            button "Active" { onclick: .FilterActive, style: filter_btn_inactive }
                         }
                         if .filter == "completed" {
-                            button "Completed" { onclick: .FilterCompleted, style: "px-2 py-1 border border-red-400 rounded text-xs" }
+                            button "Completed" { onclick: .FilterCompleted, style: filter_btn_active }
                         } else {
-                            button "Completed" { onclick: .FilterCompleted, style: "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300" }
+                            button "Completed" { onclick: .FilterCompleted, style: filter_btn_inactive }
                         }
                     }
 

@@ -175,7 +175,7 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
 // === os ===
 #[test] fn cb_os_env_variable() { test_cookbook("os", "001_env_variable").unwrap(); }
 #[test] fn cb_os_process_continuous() { test_cookbook("os", "002_process_continuous").unwrap(); }
-#[test] fn cb_os_error_file() { test_cookbook("os", "003_error_file").unwrap(); }
+#[test] #[cfg_attr(windows, ignore = "OS-dependent")] fn cb_os_error_file() { test_cookbook("os", "003_error_file").unwrap(); }
 #[test] #[ignore = "OS-dependent"] fn cb_os_piped() { test_cookbook("os", "004_piped").unwrap(); }
 #[test] #[ignore = "OS-dependent"] fn cb_os_process_output() { test_cookbook("os", "005_process_output").unwrap(); }
 #[test] #[ignore = "OS-dependent"] fn cb_os_send_input() { test_cookbook("os", "006_send_input").unwrap(); }

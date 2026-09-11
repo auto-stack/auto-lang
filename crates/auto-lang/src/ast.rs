@@ -229,6 +229,8 @@ pub enum Stmt {
     ActionsDecl(crate::ast::ui::ActionsBlock),
     /// Plan 367 P2-3: view fragment declaration
     ViewFragmentDecl(crate::ast::ui::ViewFragmentDecl),
+    /// PLAN-607: top-level style recipe declaration (Design 29 Phase 3)
+    StyleRecipeDecl(crate::ast::ui::StyleRecipeDecl),
     MsgDecl(MsgDecl),
     ModelBlock(ModelBlock),
     ViewBlock(ViewBlock),
@@ -311,6 +313,7 @@ impl fmt::Display for Stmt {
             Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
             Stmt::StoreDecl(store) => write!(f, "(store {})", store.name),
             Stmt::ViewFragmentDecl(frag) => write!(f, "(view fn {})", frag.name),
+            Stmt::StyleRecipeDecl(recipe) => write!(f, "(style-recipe {})", recipe.name),
             Stmt::ActionsDecl(_) => write!(f, "(actions)"),
             Stmt::Try(_) => write!(f, "(try)"),
             Stmt::MsgDecl(msg) => write!(f, "(msg {} variants)", msg.variants.len()),
@@ -1178,6 +1181,11 @@ impl ToNode for Stmt {
                 node
             }
             Stmt::ActionsDecl(_) => AutoNode::new("actions"),
+            Stmt::StyleRecipeDecl(recipe) => {
+                let mut node = AutoNode::new("style-recipe");
+                node.add_arg(auto_val::Arg::Pos(Value::str(recipe.name.as_str())));
+                node
+            }
             Stmt::StoreDecl(store) => {
                 let mut node = AutoNode::new("store");
                 node.add_arg(auto_val::Arg::Pos(Value::str(store.name.as_str())));
@@ -1265,6 +1273,7 @@ impl ToAtom for Stmt {
             Stmt::WidgetDecl(widget) => format!("(widget {})", widget.name).into(),
             Stmt::StoreDecl(store) => format!("(store {})", store.name).into(),
             Stmt::ViewFragmentDecl(frag) => format!("(view fn {})", frag.name).into(),
+            Stmt::StyleRecipeDecl(recipe) => format!("(style-recipe {})", recipe.name).into(),
             Stmt::ActionsDecl(_) => "(actions)".into(),
             Stmt::Try(_) => "(try)".into(),
             Stmt::MsgDecl(msg) => format!("(msg {} variants)", msg.variants.len()).into(),

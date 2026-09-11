@@ -9077,7 +9077,13 @@ let tabs_inner = View::Row {
             Expr::Bool(b) => b.to_string(),
             // State reference: identifier whose name starts with "." (e.g. ".count").
             Expr::Ident(name) => {
-                let field_name = name.as_str().trim_start_matches('.');
+                let s = name.as_str();
+                if crate::ui::style::has_style_recipe(s) {
+                    if let Ok(desugared) = crate::ui::style::expand_recipe_call(s, &[]) {
+                        return self.resolve_expr_to_string_with(&desugared, bindings);
+                    }
+                }
+                let field_name = s.trim_start_matches('.');
                 self.read_state_as_string_with(field_name, bindings)
             }
             // Field access: object.field → Dot(object, field)
@@ -9196,6 +9202,13 @@ let tabs_inner = View::Row {
             // PLAN-050 T9 (C7): t("k")/i18n.t("k") 文本/prop 位——经查表
             // 取文案（未命中回落 key），此前无 Call 臂 → 恒空串。
             Expr::Call(call) => {
+                if let Expr::Ident(name) = call.name.as_ref() {
+                    if crate::ui::style::has_style_recipe(name.as_str()) {
+                        if let Ok(desugared) = crate::ui::style::expand_recipe_call(name.as_str(), &call.args.args) {
+                            return self.resolve_expr_to_string_with(&desugared, bindings);
+                        }
+                    }
+                }
                 if let Some(key) = call_expr_t_key(call) {
                     // PLAN-051 P2-②b: 第二实参记录字面量 → {k} 插值。
                     let params = {

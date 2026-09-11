@@ -8,6 +8,34 @@ use super::route::RoutesBlock;
 use auto_val::AutoStr;
 
 // ============================================================================
+// Style Recipe Declaration (PLAN-607: Design 29 Phase 3)
+// ============================================================================
+
+/// Top-level style recipe declaration: reusable, composable class string abstractions
+///
+/// ```auto
+/// style card_base = "bg-card rounded-xl shadow-sm border border-border"
+/// style pill(bg: str = "bg-primary", fg: str = "text-primary-foreground", pad: str = "px-4 py-2") =
+///     "{pad} {bg} {fg} rounded-full text-sm font-medium shadow-sm hover:{bg}/90 transition-colors"
+/// style pill_danger = pill(bg: "bg-destructive", fg: "text-destructive-foreground")
+/// ```
+#[derive(Debug, Clone)]
+pub struct StyleRecipeDecl {
+    pub name: Name,
+    pub params: Vec<StyleRecipeParam>,
+    pub body: Expr,
+    pub is_pub: bool,
+    pub doc: Option<AutoStr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StyleRecipeParam {
+    pub name: Name,
+    pub param_type: Option<Type>,
+    pub default_value: Option<Expr>,
+}
+
+// ============================================================================
 // Widget Declaration
 // ============================================================================
 

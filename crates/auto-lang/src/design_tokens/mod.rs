@@ -10,3 +10,7 @@ pub mod registry;
 
 /// PLAN-601 T-03：theme{} 声明解析与 extends 合成（ComposedTheme）。
 pub mod decl;
+
+/// PLAN-607: style recipe 声明注册、语义校验、脱糖展开与 lint（Design 29 Phase 3）。
+pub mod recipe;
+pub use recipe::*;

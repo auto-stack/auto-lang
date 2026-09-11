@@ -1012,7 +1012,12 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             for p in props.iter() {
                 let value = match &p.value {
                     ViewPropValue::Expr(expr) => {
-                        AuraPropValue::Expr(expr.clone())
+                        let desugared = if p.name == "style" || p.name == "class" {
+                            crate::design_tokens::recipe::desugar_style_expr(expr).unwrap_or_else(|_| expr.clone())
+                        } else {
+                            expr.clone()
+                        };
+                        AuraPropValue::Expr(desugared)
                     }
                     ViewPropValue::StyleBinding(bindings) => {
                         let aura_bindings: Vec<AuraStyleBinding> = bindings.iter()
