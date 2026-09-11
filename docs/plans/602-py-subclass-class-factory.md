@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-602
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived（needs_fix 回退，见 §9 R-602-1）
 feature_name: py-subclass-class-factory
 author: [ZCode]
 created_at: 2026-09-09
@@ -14,7 +14,7 @@ touched_goals:
   - "GOAL-006"                # Consumer parity：py 子类派生 = torch 全面支持的主台阶（暂定，review 定稿）
 
 affects: [auto-lang/vm, auto-lang/trans, parity]
-current_step: 9
+current_step: 8
 total_steps: 10
 ---
 
@@ -270,9 +270,10 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
   cargo tv 3659/3659 全绿（491 skip）；cargo tt 3875/3879，4 红中
   a2r_rustc_real_compile_gate + c_abi_003/004 双轨预存红（master 对照一致），
   ffi_dual_019 并发负载抖动单跑绿；py_torch_train 快照 10/10 三轨 100%。
-- [x] **T-02** 多参回调封送（D1）：run_closure_bridged 泛化 n 参 +
+- [ ] **T-02** 多参回调封送（D1）：run_closure_bridged 泛化 n 参 +
   py_callable 单参路径回归探针。验证：`cargo tv`；单参探针绿。
-  [✅ 已完成 2026-09-11] 签名改收 &PyTuple：arity=vm.closures n_args，
+  [☐ 复审 R-602-1 重开 2026-09-11：补 arity 不匹配 TypeError 单测（其余
+  D1 面复核通过；原完成记录：）] 签名改收 &PyTuple：arity=vm.closures n_args，
   不匹配→PyTypeError（期望/实际入文案）；0 参不上栈直呼；逐元素 marshal
   后 call_closure(n)。py_callable 回调改传全 tuple。注：py_ffi 模块在
   python 特性门后，tv 档不编译——作用域门=--features python
@@ -341,6 +342,35 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 （起草交接：stage=new | plan_id=PLAN-602 | rev=1 | outcome=pass |
 next=work。范围锚定：W3 类派生 MVP = bridge API + Auto 驱动循环 +
 num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
+
+**review 记录（2026-09-11，stage=review | plan_id=PLAN-602 |
+plan_revision=2 | outcome=needs_fix | reviewed_commit=714fa6656（worktree
+plan-602-dev，工作树干净）| base_commit=6ed8b1e33 |
+dependency_revisions=auto-down@1557a39（detached 兄弟）|
+spec_inputs=SD-01/SD-02 待 merge 沉淀（增量描述与实现核对一致），
+SD-03 已落地（roadmap §7.3 契约节，随 714fa6656）**
+
+复审独立性声明：与实现同会话，裁定基于工件重建（独立复跑门禁与语料、
+diff 逐面核对），非采信执行摘要。
+
+- AC-01 **partial**（R-602-1）：n 参正路径全钉死（语料 1/2/3 + 单测
+  37/37 + p9 零回归）；arity 不匹配 TypeError 已实现（py_ffi.rs:2061）
+  但零测试钉死——§6 测试设计第 1 行要求的断言缺失。
+- AC-02 pass：语料 1 三轨 + 工厂单测（exec/__init__/def 包装器/handle 回传）。
+- AC-03 pass：语料 2/3 三轨（__len__ 0 参 + __getitem__ n 参 + 训练环收敛）。
+- AC-04 pass（适配已核）：窗口守卫单测钉死精确文案；负面语料在嵌入式
+  模式不可构造（窗口外 Python 不运行）——§10-5A 适配成立，roadmap
+  契约节 + 重入探针（test_reentry_depth3）落地。
+- AC-05 pass：**cargo tf 3516/3516 全绿**（含 1M churn；T-10 review 门）
+  + tv 3659/3659 + tt 3876/3879 唯 3 预存红（master 对照在案）+
+  parity p5-p9+p12 全相位 100%。
+- AC-06 pass：KNOWN-DEBT P539-D4 拆面 + roadmap §7.4 ⑦ 核销 diff 逐面核对。
+
+findings：**R-602-1（severity=medium，AC-01/T-02）**——补 arity 不匹配
+TypeError 单测（BridgeGuard 窗口 + closures 注册 n_args=2 + 错参 tuple →
+断言 TypeError 含 "expects 2 argument(s)"），harness 照
+test_py_subclass_factory 现成模式。修复后 T-02 重勾、current_step 重算、
+复审复核该 finding 后方可 pass。
 
 **work 收口记录（2026-09-11，stage=work | plan_id=PLAN-602 | rev=2 |
 outcome=pass | code_commit=1281f7804（worktree plan-602-dev，基线
