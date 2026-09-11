@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-614
-status: reviewed               # R1 blocked →(用户人工测试通过+R-614-1 路由键修复 ef9cd6f4d)→ pass/reviewed,2026-09-12
+status: archived               # R1 blocked → pass/reviewed(2026-09-12)→ archived(merge 收敛完成)
 feature_name: TreeView + FileTree 组件(official 包数据轨)与 WidgetGallery 落地
 author: [zcode]
 created_at: 2026-09-11
@@ -357,6 +357,7 @@ VM 大改触发面:本计划**不改 VM/编译器**(`cargo tv` 不触发);aavm �
 
 ## 待澄清事项
 
+0. **收敛回执(PLAN-614:r2)**——prepared: reviewed 基线 auto-lang ef9cd6f4d/auto-os 24ae019,规范四件已随 worktree 提交;landed: master 合入 auto-lang(merge→6912e782f 系)/auto-os main(merge 24ae019),ancestry 核验,golden 三次基线后 master 裸跑绿(6912e782f);ledger_refreshed: .autoos/specs.json P614-1..6 六节 upsert(目标=docs/plans/archive/614-treeview-filetree.md,related PLAN-614),读回校验过;archived: git mv docs/plans/archive/ + status archived;cleaned: wt-guard 双 worktree+auto-down detached 通过后移除,分支 plan-614-dev(双仓)删除。
 1. **P614-C1(阻塞项,需决策)**:VM 轨 MCP press 子组件行崩溃(详见复审记录
    blocker 与 tree-components.md 缺陷节)。建议独立引擎计划立项(debugger 定位
    debug-id 跨帧生命周期/计算派生载荷);真实鼠标点击是否受累待人工实测。
