@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-610
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-c-abi-two-faces
 author: [ZCode]
 created_at: 2026-09-10
 updated_at: 2026-09-10
 plan_revision: 1
-current_step: 0
+current_step: 12
 total_steps: 12
 
 # /auto-plan:review 结束时填写：
@@ -291,8 +291,13 @@ auto-term 构建产物（只读）。
   trans/overview C ABI 双面条目；SD-03=auto-bindgen/project 消费面三后端
   收口（worktree 内落稿）；auto-term 侧：004 §5⑤⑥ 翻已落地清账 +
   DEBTS #10 增 ⑤⑥ 清账段（auto-term master 9dc4ad7 后一收据提交）]
-- [ ] **T-12** 收口门禁：a2r 套件 + 三道实编门 + tf/tt/tv +
-  bindgen/a2c（基线不变）。
+- [x] **T-12** 收口门禁：a2r 套件 + 三道实编门 + tf/tt/tv +
+  bindgen/a2c（基线不变）。[✅ a2r_tests 372/372 + a2r_rustc_real_compile_gate
+  绿；三道 #[ignore] 实编门 3/3 绿；tt 3869/3869；tv 3650/3650；
+  auto-bindgen 6/6；tf 3506/3506（首跑 ffi_dual_019 并发 flake，隔离+
+  重跑双绿）；基线预存红与 610 无关（z6_export_prolog_alignment/
+  d8_toggle_dark_mode——master 主检出现场复核同红，VM 域既有债，
+  归复审登记）]
 
 依赖：T-02←T-01；T-04←T-02/03；T-05←T-02/03；T-06/07 独立；T-08←
 T-06(07)；T-09←T-05+T-08；T-10 独立；T-12 收口。
@@ -301,6 +306,21 @@ T-06(07)；T-09←T-05+T-08；T-10 独立；T-12 收口。
 
 stage: new | PLAN-610 | rev 1 | outcome: pass | next: work
 （起草即绪：前置/领地/验收 oracle 均在案；执行授权待用户指令。）
+
+stage: work | PLAN-610 | rev 1 | outcome: pass | code: plan-610-dev @
+3cc98089d（7 commits：⑤发射 27c63c6a1 / 句柄+kit+capstone 3991584f1 /
+T-03/04 门 5713421b7 / ⑥生成器 79d27402b / ⑥快照收口 a157d5c1e / ⑥三腿
+门 113e6ff82 / SD 落稿 3cc98089d；base=master 622edfdd9）| tasks:
+T-01..T-12 全勾 | evidence: AC-01 快照 001/002+27_c_abi 5/5；
+AC-02 a2r_cabi_export_gate；AC-03 a2r_cabi_engine_face_gate（597 驱动器
+×⑤产物 CFACE_OK/exit 0）；AC-04/05/06 a2r_cabi_use_c_gate 三腿
+（AC-05=同一驱动产物改链 ⑤ 产物，Auto↔Auto 零手写胶水）；AC-07 选型
+§5 附录（A 证伪/A' 选定/实作 defer）；AC-08 tt 3869+tv 3650+tf 3506+
+bindgen 6+三道门全绿、SD-01/02/03 落稿、004 §5⑤⑥+DEBTS #10 双回执
+（auto-term master）；执行期关键裁定：⑥ FnPtr 显式报错 defer（T-10
+选型后按语料驱动另立）、句柄空哨兵均一 -1（引擎 -1/-2 细分简化，
+驱动面零影响）| blockers: 无（外部前置=auto-term target/debug 引擎
+产物，绿色在案）| next: review（/auto-plan:review）
 
 ## 10. 待澄清事项
 
