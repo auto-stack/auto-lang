@@ -2258,7 +2258,17 @@ export default router
                                     .trim_matches(|c| c == '"' || c == '\'' || c == ' ');
                                 if !p.is_empty() {
                                     let local_path = root_dir.join(p);
-                                    if local_path.is_dir() {
+                                    let resolved = if local_path.is_dir() {
+                                        Some(local_path)
+                                    } else {
+                                        // PLAN-609 T-B2：584/590 搬迁后 pac.at 的
+                                        // `path:` 死指（如 examples 侧
+                                        // `../common/settings` 七源已迁 auto-os）。
+                                        // 按 resolve_os_top_dir 解析序在 auto-os
+                                        // `apps/` 容器下回退；只读不写、不建链接。
+                                        Self::resolve_dep_os_mirror(root_dir, dep_name, p)
+                                    };
+                                    if let Some(local_path) = resolved {
                                         if local_path.join("src").join("front").is_dir() {
                                             out.push((dep_name.to_string(), local_path.join("src").join("front")));
                                         } else if local_path.join("front").is_dir() {
@@ -2280,6 +2290,36 @@ export default router
             }
         }
         out
+    }
+
+    /// PLAN-609 T-B2：pac.at dep `path:` 死指时的 auto-os 镜像回退。
+    /// 584/590 资产搬迁把 `examples/ui/common/*` 七源迁入 auto-os
+    /// `apps/common/*`，本仓旧 pac.at 的相对路径（`../common/settings`）
+    /// 随之悬空——use 引用的包组件 import 照常发射而 SFC 无源可编，
+    /// vite "Failed to resolve import" 断链（601 复审实勘）。
+    /// 解析序沿 [`auto_lang::os_paths::resolve_os_top_dir`]（env
+    /// AUTO_OS_ROOT 设置即权威 → 兄弟检出 → 主检出兜底），在 `apps/`
+    /// 容器下按序探测：搬迁形状（剥 `../` 前缀后的相对路径，如
+    /// `common/settings`）→ `common/<dep 名>` → `<dep 名>`。只读，
+    /// 不物化不建链接；全缺 → None（solo 检出静默不炸）。
+    fn resolve_dep_os_mirror(root_dir: &Path, dep_name: &str, declared: &str) -> Option<PathBuf> {
+        let parent = root_dir.parent()?;
+        let apps = auto_lang::os_paths::resolve_os_top_dir(parent, "apps")?;
+        let declared_path = Path::new(declared);
+        if declared_path.is_absolute() || declared.contains("..\\") {
+            return None;
+        }
+        let stripped = declared.trim_start_matches("./").trim_start_matches("../");
+        if stripped.contains("..") {
+            return None;
+        }
+        [
+            apps.join(stripped),
+            apps.join("common").join(dep_name),
+            apps.join(dep_name),
+        ]
+        .into_iter()
+        .find(|p| p.is_dir())
     }
 
     /// Create a new Vue project context from a workspace directory
@@ -2916,6 +2956,50 @@ export default router
             .find(|(_, name, _, _)| name == "app")
             .map(|(_, _, code, _)| code.clone())
             .ok_or_else(|| "app.at not found or failed to compile".to_string())?;
+
+        // PLAN-609 T-B2: import-发射/文件发射一致性守卫——App.vue 里
+        // `@/components/<X>.vue` 的每条导入都必须有对应编译出的组件 SFC
+        // （非 pages 通道写盘名 = widget 名）。`use <pkg>: <Comp>` 的包组件
+        // 源未解析（dep 死指且无镜像）时 import 照常发射而文件缺失，
+        // vite "Failed to resolve import" 断链（601 复审实勘）——此处显式
+        // 化：strict 硬错，非 strict 告警。脚手架内置 shell（CodeEditor，
+        // Plan 413 独立写盘通道）与 ui/ 深路径不在此列。
+        {
+            let compiled: std::collections::HashSet<&str> = all_components
+                .iter()
+                .map(|(_, _, _, w)| w.as_str())
+                .collect();
+            let mut missing: Vec<String> = Vec::new();
+            let mut rest = app_vue_code.as_str();
+            while let Some(pos) = rest.find("@/components/") {
+                let after = &rest[pos + "@/components/".len()..];
+                let target = after
+                    .find(['\'', '"'])
+                    .map(|e| &after[..e])
+                    .unwrap_or_default();
+                rest = after;
+                if let Some(name) = target.strip_suffix(".vue") {
+                    if !name.contains('/')
+                        && name != "CodeEditor"
+                        && !compiled.contains(name)
+                        && !missing.iter().any(|m| m == name)
+                    {
+                        missing.push(name.to_string());
+                    }
+                }
+            }
+            if !missing.is_empty() {
+                let detail = missing.join(", ");
+                let msg = format!(
+                    "App.vue 引用的组件 SFC 未编译落盘（dep 源未解析？）：{} —— vite 将断链",
+                    detail
+                );
+                if auto_lang::ui_gen::validators::strict_enabled() {
+                    return Err(msg.into());
+                }
+                println!("{} {}", "Warning:".bright_yellow(), msg);
+            }
+        }
 
         // PLAN-037 Phase 5: pull port-file (.at fn module) web targets in.
         expand_at_module_web_imports(root_dir, &mut ext_file_set);
@@ -7232,6 +7316,161 @@ widget ExampleHeader(title: str) {
     assert!(
         header_vue.contains("ExampleHeader"),
         "ExampleHeader.vue content:\n{header_vue}"
+    );
+}
+
+
+// ---------------------------------------------------------------------------
+// PLAN-609 T-B —— 包组件 SFC 发射链：auto-os 镜像回退 + import/文件一致性守卫。
+// ---------------------------------------------------------------------------
+
+/// 584/590 搬迁后 pac.at dep 死指（`../common/settings`，源已迁 auto-os
+/// `apps/common/settings`）→ 经 resolve_os_top_dir 解析序在 auto-os `apps/`
+/// 容器下回退，SettingsPopover SFC 恢复落盘（006-hero-section 形态复刻；
+/// AUTO_OS_ROOT 设置即权威 → 主检出真实 auto-os 不泄入 fixture）。
+#[test]
+fn test_plan609_dead_dep_resolves_via_auto_os_mirror() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("pac.at"),
+        "name: \"plan609-app\"\n\ndep settings {\n    path: \"../common/settings\"\n}\n",
+    )
+    .unwrap();
+    let front = root.join("src").join("front");
+    fs::create_dir_all(&front).unwrap();
+    fs::write(
+        front.join("app.at"),
+        r#"
+use settings: SettingsPopover
+
+widget App {
+    msg { Toggle }
+    model { var open bool = false }
+    view {
+        col {
+            SettingsPopover(open: .open, on_close: .Toggle)
+        }
+    }
+    on {
+        .Toggle -> { .open = !.open }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let os_root = tmp.path().join("auto-os");
+    let settings_pkg = os_root.join("apps").join("common").join("settings");
+    fs::create_dir_all(&settings_pkg).unwrap();
+    fs::write(
+        settings_pkg.join("settings_popover.at"),
+        r#"
+widget SettingsPopover(open: bool) {
+    msg { Close }
+    view {
+        if .open {
+            col {
+                text "Settings"
+                button "x" {
+                    onclick: .Close
+                }
+            }
+        }
+    }
+    on {
+        .Close -> { print("closed") }
+    }
+}
+"#,
+    )
+    .unwrap();
+    std::env::set_var("AUTO_OS_ROOT", &os_root);
+
+    let project = crate::vue::VueProject::from_workspace(&root)
+        .expect("plan609 workspace must load via auto-os mirror");
+    project.generate().expect("plan609 generate must succeed");
+    std::env::remove_var("AUTO_OS_ROOT");
+
+    let components = root
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
+    let popover_vue = fs::read_to_string(components.join("SettingsPopover.vue"))
+        .expect("SettingsPopover.vue must be generated from auto-os mirror dep");
+    assert!(
+        popover_vue.contains("SettingsPopover"),
+        "SettingsPopover.vue content:\n{popover_vue}"
+    );
+}
+
+/// 守卫负例：dep 死指且镜像缺席（AUTO_OS_ROOT 钉到空目录 = 解析序全缺）
+/// → SettingsPopover.vue 不落盘；非 strict 下 workspace 仍可载（告警显式
+/// 点名），strict 下 from_workspace 硬错——vite 断链不再静默。
+#[test]
+fn test_plan609_unresolved_dep_import_guard() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("pac.at"),
+        "name: \"plan609-app\"\n\ndep settings {\n    path: \"../common/settings\"\n}\n",
+    )
+    .unwrap();
+    let front = root.join("src").join("front");
+    fs::create_dir_all(&front).unwrap();
+    fs::write(
+        front.join("app.at"),
+        r#"
+use settings: SettingsPopover
+
+widget App {
+    msg { Toggle }
+    model { var open bool = false }
+    view {
+        col {
+            SettingsPopover(open: .open, on_close: .Toggle)
+        }
+    }
+    on {
+        .Toggle -> { .open = !.open }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let dead = std::env::temp_dir().join(format!("auto609-dead-os-{}", std::process::id()));
+    std::fs::create_dir_all(&dead).unwrap();
+    std::env::set_var("AUTO_OS_ROOT", &dead);
+
+    let project = crate::vue::VueProject::from_workspace(&root)
+        .expect("non-strict: workspace loads with guard warning");
+    project.generate().expect("non-strict: generate succeeds");
+    let components = root
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
+    assert!(
+        !components.join("SettingsPopover.vue").exists(),
+        "missing mirror → no SFC; guard must have warned"
+    );
+
+    // strict：一致性守卫升硬错，错误信息点名缺失组件。
+    auto_lang::ui_gen::validators::set_strict(true);
+    let err = match crate::vue::VueProject::from_workspace(&root) {
+        Err(e) => e,
+        Ok(_) => panic!("strict: unresolved component import must fail the workspace"),
+    };
+    auto_lang::ui_gen::validators::set_strict(false);
+    std::env::remove_var("AUTO_OS_ROOT");
+    let _ = std::fs::remove_dir(&dead);
+    assert!(
+        err.to_string().contains("SettingsPopover"),
+        "guard error must name the missing component:\n{err}"
     );
 }
 
