@@ -328,7 +328,7 @@ merge ba800fef8/0e6f5b902——610 并入 goals.md GOAL-007 行双追加冲突
 绿）；③ledger_refreshed=.autoos/specs.json P609-1..6 六节 published +
 读回校验（file 指本归档路径），INDEX.md 再生零变化（项目级索引无新增）；
 ④archived=git mv 本文件至 docs/plans/archive/ + status: archived |
-⑤cleaned 见文末回填）`）
+⑤cleaned=wt-guard 双 clean（auto-lang 与 auto-down 兄弟检出；附：pnpm 在 006 冒烟 gen 内创建的 726 个 node_modules 链接按红线以 rmdir 仅删链接本体后清屎）；worktree 两件移除、分支 plan-609-dev 删除（was 0e6f5b902）、组目录 lang-609 全清（残留空链系 orphan vite PID 9132 击杀后释放），worktree list 零 lang-609 残留）`）
 
 ## spec-sync 回写记录（v1 惯例）
 
