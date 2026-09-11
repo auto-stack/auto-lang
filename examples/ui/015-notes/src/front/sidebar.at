@@ -8,6 +8,12 @@
 use notes_store: NotesStore
 use settings: SettingsPopover
 
+// PLAN-607: Declarative style recipes for tab buttons and tag chips
+style tab_btn_active = "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm"
+style tab_btn_inactive = "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors"
+style tag_chip_active = "px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium"
+style tag_chip_inactive = "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors"
+
 // Plan 562: sidebar_menu_button based note entry — hover/active styling comes
 // from the sidebar contract; timestamp renders as a second line inside a
 // single col child (h-auto 覆盖契约 h-8，VM 端单子透传保持竖列)。
@@ -52,15 +58,15 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                 style: "gap-1 m-3 mb-2 p-1 bg-muted rounded-lg"
                 button "All" {
                     onclick: .SelectAll
-                    style: if .store.active_folder == "all" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors" }
+                    style: if .store.active_folder == "all" { tab_btn_active } else { tab_btn_inactive }
                 }
                 button "Pinned" {
                     onclick: .SelectPinned
-                    style: if .store.active_folder == "pinned" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors" }
+                    style: if .store.active_folder == "pinned" { tab_btn_active } else { tab_btn_inactive }
                 }
                 button "Recent" {
                     onclick: .SelectRecent
-                    style: if .store.active_folder == "recent" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors" }
+                    style: if .store.active_folder == "recent" { tab_btn_active } else { tab_btn_inactive }
                 }
             }
 
@@ -79,7 +85,7 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                     for t in .store.all_tags {
                         button t {
                             onclick: .SelectTag(t)
-                            style: if .store.active_tag == t { "px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium" } else { "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors" }
+                            style: if .store.active_tag == t { tag_chip_active } else { tag_chip_inactive }
                         }
                     }
                 }
