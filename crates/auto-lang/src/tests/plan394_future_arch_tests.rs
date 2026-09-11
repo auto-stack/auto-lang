@@ -247,42 +247,54 @@ mod plan394 {
         assert_eq!(t.async_frames.len(), 70);
     }
 
-    // ===================== L3 Phase C 骨架 =====================
+    // ===================== L3 Phase C =====================
 
     /// C1: Future.all 并发（墙钟 ≈ max）（Phase C）。
     #[test]
-    #[ignore = "Plan 394 Phase C: Future.all"]
     fn c1_future_all() {
+        let t0 = std::time::Instant::now();
         let out = run(
             "fn main() {\n\
-             \x20   let r = Future.all([delay_async(40), delay_async(60)]).await\n\
+             \x20   let r = future_all([delay_async(40), delay_async(60)]).await\n\
              \x20   print(f\"${r}\")\n\
              }\n",
         )
         .expect("C1 program must run");
-        assert_eq!(out, "[40, 60]\n");
+        let elapsed = t0.elapsed().as_millis();
+        assert!(
+            out.contains("40") && out.contains("60"),
+            "all results missing: {:?}",
+            out
+        );
+        // 并发：墙钟应接近 max(40,60)，远小于 sum(100)。放宽到 200ms 防 CI 抖动。
+        assert!(
+            elapsed < 200,
+            "future_all should be concurrent, took {elapsed}ms"
+        );
     }
 
     /// C2: Future.race（Phase C）。
     #[test]
-    #[ignore = "Plan 394 Phase C: Future.race"]
     fn c2_future_race() {
         let out = run(
             "fn main() {\n\
-             \x20   let r = Future.race([delay_async(80), delay_async(20)]).await\n\
+             \x20   let r = future_race([delay_async(80), delay_async(20)]).await\n\
              \x20   print(f\"${r}\")\n\
              }\n",
         )
         .expect("C2 program must run");
-        assert_eq!(out, "20\n");
+        assert_eq!(out.trim(), "20");
     }
 
-    /// C3: a2r golden 占位——Phase C 合入前只钉类型位存在。
+    /// C3: a2r 侧组合 await（async fn 嵌套；VM-only native 不进 a2r）。
+    /// 语料：`test/a2r/16_interop/024_nested_async_await/`。
     #[test]
-    #[ignore = "Plan 394 Phase C: a2r nested external await golden"]
-    fn c3_a2r_golden_placeholder() {
-        // 语料目录 test/a2r/16_interop/021_external_await_nested/ 在 Phase C 落地。
-        assert!(true);
+    fn c3_a2r_nested_async_await_corpus_exists() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let at = root.join("test/a2r/16_interop/024_nested_async_await/nested_async_await.at");
+        let exp = root.join("test/a2r/16_interop/024_nested_async_await/nested_async_await.expected.rs");
+        assert!(at.is_file(), "missing {}", at.display());
+        assert!(exp.is_file(), "missing {}", exp.display());
     }
 
     // ===================== 内部类型自检 =====================

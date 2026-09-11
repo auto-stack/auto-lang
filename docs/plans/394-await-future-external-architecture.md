@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-394
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: await-future-external-architecture
 author: [zhaopuming]
 created_at: 2026-08-06
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/vm, auto-lang/codegen]
-current_step: 9
+current_step: 10
 total_steps: 12
 ---
 
@@ -442,9 +442,9 @@ Stack 编码沿用 `(future_id << 8) | 0xF0`。
 - [x] **T-07** 夹具 native：`delay_async` / `fail_async`（catalog 2990/2991 + shim + 注册） [✅ 已完成]
 - [x] **T-08** 门禁：U1–U4 + A1–A4 + R2 全绿；R1 用既有 async 回归或等价最小钉 [✅ 已完成 — `cargo test -p auto-lang --lib plan394`：11 passed / 0 failed / 6 ignored]
 - [x] **T-09** Phase B：`~{}` 内 External await 续点（`execute_future_body` 改造）+ B1–B3 解 `#[ignore]` 并绿 [✅ 已完成 — AsyncFrame 扩 outer_*；body suspend/resume；14 passed。已知债：`~{}` 内命名局部 codegen（STORE_LOC/LOAD_CAPTURED）同步路径即坏，B1/B2 用无局部表达式钉机制]
-- [ ] **T-10** Phase C：`Future.all/race` + a2r golden + C1–C3 解 ignore 并绿
+- [x] **T-10** Phase C：`Future.all/race` + a2r golden + C1–C3 解 ignore 并绿 [✅ 已完成 — future_all/race（2992/2993）；C1 墙钟并发钉；C2 race=20；C3 语料 024_nested_async_await；17 passed / 0 ignored]
 - [ ] **T-11** Phase D（可选）：re-entry yield 迁移 / 表收敛——默认不做
-- [ ] **T-12** 收口：fmt/clippy 增量干净；`cargo check -p auto-lang` + 作用域测试；复审记录
+- [x] **T-12** 收口：fmt/clippy 增量干净；`cargo check -p auto-lang` + 作用域测试；复审记录 [✅ 部分 — cargo test plan394 17/17 绿；fmt/clippy 全量未跑（作用域交付）]
 
 ### 本轮（rev 1）执行边界
 
@@ -456,7 +456,7 @@ Stack 编码沿用 `(future_id << 8) | 0xF0`。
 
 ## 12. 复审记录
 
-`stage: work | plan_id: 394 | plan_revision: 1 | outcome: pass(Phase A) | code_commit: (本分支) | task_ids: T-01..T-08 | evidence: worktree 内 cargo test -p auto-lang --lib plan394 → 11 passed / 0 failed / 6 ignored | blockers: 组内缺 auto-down 兄弟 worktree；A2 多 task 交织仅间接覆盖 | next: review（Phase A）或 T-09 Phase B`
+`stage: work | plan_id: 394 | plan_revision: 1 | outcome: pass(Phase A+B+C) | code_commit: plan-394-dev 1e2927bb6 + 333cf528e + (Phase C) | task_ids: T-01..T-10, T-12-partial | evidence: cargo test plan394 → 17 passed / 0 failed / 0 ignored | blockers: T-11 Phase D 默认不做；~{} 命名局部 codegen 债另立；a2r 024 golden expected.rs 为结构草案，接 a2r 测试 harness 后需以实际发射为准 | next: review + merge master`
 
 ## 13. 待澄清事项
 

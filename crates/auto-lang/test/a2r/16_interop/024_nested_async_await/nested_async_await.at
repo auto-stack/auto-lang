@@ -1,0 +1,14 @@
+// Plan 394 Phase C: nested async fn .await inside ~{} (a2r structural golden).
+// VM-only natives (delay_async/future_all) are not in a2r scope; this corpus
+// pins composition of internal async fns → async move + .await.
+
+fn work(n int) ~int {
+    return n
+}
+
+fn main() {
+    let f = ~{
+        work(1).await + work(2).await
+    }
+    print(f.await)
+}

@@ -1539,6 +1539,9 @@ macro_rules! for_each_bigvm_native {
             // Plan 394 Phase A: external-future test fixtures (bare names)
             ("delay_async", 2990, Void),
             ("fail_async", 2991, Void),
+            // Plan 394 Phase C: combinators
+            ("future_all", 2992, Void),
+            ("future_race", 2993, Void),
             // === Rust stdlib dispatch (3000) ===
             ("auto.rust_stdlib.dispatch", 3000, Void),
 
@@ -2375,6 +2378,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("io.write_text_async", 2850),
     ("delay_async", 2990),
     ("fail_async", 2991),
+    ("future_all", 2992),
+    ("future_race", 2993),
     ("auto.rust_stdlib.dispatch", 3000),
     ("sleep", 1202),
     ("parse_sse", 2250),
