@@ -462,15 +462,9 @@ widget App {
         .Copy -> {
             if .mode == "programmer" {
                 let v str = pcur_fmt(.pentering, .pnum_hi, .pnum_lo, .pacc_hi, .pacc_lo, .pbase)
-                let ok = clipboard_set_text(v)
-                if !ok {
-                    .perr = "Copy failed"
-                }
+                dom.copy_text(v)
             } else {
-                let ok2 = clipboard_set_text(.display)
-                if !ok2 {
-                    .error = "Copy failed"
-                }
+                dom.copy_text(.display)
             }
         }
         // ── PLAN-615 T-08: 零参 Key 处理器族（bind 语法零参约束下的
@@ -1404,11 +1398,11 @@ fn eval_expr(input str) str {
     return "ERROR"
 }
 
-/// Pop the top operator and apply it to the top two values. Returns false on
-/// error (e.g. division by zero, or insufficient values).
-fn apply_top(nums List<str>, ops List<str>) bool {
+/// PLAN-615 T-08: Pop the top operator and apply it to the top two values.
+/// Returns "OK" / "DIV0" (除零，Equals 显具体文案) / "ERROR"（栈不足）。
+fn apply_top(nums List<str>, ops List<str>) str {
     if ops.len() == 0 || nums.len() < 2 {
-        return false
+        return "ERROR"
     }
     var op str = ops[ops.len() - 1]
     ops.pop()
