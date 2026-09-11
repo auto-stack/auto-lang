@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-614
-status: executing              # execution_done →(review R1 blocked)→ executing;P614-C1 决策后恢复
+status: reviewed               # R1 blocked →(用户人工测试通过+R-614-1 路由键修复 ef9cd6f4d)→ pass/reviewed,2026-09-12
 feature_name: TreeView + FileTree 组件(official 包数据轨)与 WidgetGallery 落地
 author: [zcode]
 created_at: 2026-09-11
@@ -352,6 +352,7 @@ VM 大改触发面:本计划**不改 VM/编译器**(`cargo tv` 不触发);aavm �
   findings: R-614-1(blocker,engine)=P614-C1 MCP press 子组件行崩溃 3/3 可复现,AC-03 行点击不可验证,真实鼠标影响面未定——需决策:人工点击判定/引擎立项/修订 AC-03;R-614-2(debt,engine)=for-in 参数列表零次迭代(while+索引纪律已入契约);R-614-3(debt,auto-man)=增量路径多-widget .at 同码写盘(ToggleItem.vue=ToggleGroup 内容实证,本计划以独立文件绕开);R-614-4(debt,vue.rs P601-T11 同族)=icon 动态名 Circle 占位+TreeIcon class 带 -icon 后缀 token(无害记录);R-614-5(observation)=master 的 golden 基线对 auto-os main 本已红(PLAN-008 等既有漂移),本次两次重基线已含复核说明;R-614-6(cosmetic)=组件通道对纯 util .at 打 No-widget Warning(预期可静默) |
   evidence: cargo tf 3516/3516 绿(review 档,含 gallery_pages);golden 二次重基线+裸跑绿(929680ac5);vue 独立复验数据(toggle/选中/滚动/图标 token/FileTree 行集);VM 复验截图 p614_review_vm_before_click.png(树完整渲染:folder-open/file-text/book-open/chevron 双态/badge v2·12/echo 2 dirs)+p614_review_vm_hover_check.png(OS 级点击未命中记录);R-614-1 复现=treeview/filetree 页 press 树行 vnode id |
   next: blocked——待决策(1)用户物理点击 VM 窗口 src 行人工判定真实鼠标路径(窗口已开,选中应见高亮+echo);(2)P614-C1 引擎立项;(3)修订 AC-03 口径。决策后恢复相应阶段 |
+- 2026-09-12 stage:review R1 收口 | outcome: **pass**(AC-01..08 全 pass) | 依据:①用户人工测试 VM 窗口树行点击确认可行(真实鼠标路径健康,AC-03 行点击场景通过);②根因定位并修复=R-614-1 路由键下划线不匹配(child_emit fold_key 剥离 `_`,ef9cd6f4d,含三形归一回归测试)——修复后 MCP press src 行派发生效(echo selected: src,进程存活),P614-C1 崩溃不再复现(与点击无效同根因同修);③门禁:tf 3516/3516 绿、golden 双次重基线裸跑绿、gallery_pages/探针绿 | R-614-1 降格=已修复关闭;R-614-2..6 维持 debt/观察项入 KNOWN-DEBT(引擎 for-in 参数迭代/多-widget 写盘/icon 占位/wording);reviewed_commit: auto-lang ef9cd6f4d + auto-os 24ae019 | next: merge |
 - 2026-09-12 修订 rev1→rev2(用户直接授权的范围追加):用户反馈滚动条三诉求(药丸圆角/平时隐藏 hover 显示/随主 accent)→ 新增 T-10+AC-08;token 决策=复用既有 --primary 语义 var(α 混合),不新增 593 封闭词表 token(滚动条为 primary 派生表面;VM 无滚动条渲染面);实现=scaffold generate_index_css 新增 .ash-scroll-fade 变体(auto-lang e7170681f)+画廊 scroller 挂类(auto-os bd5bcd6)。修订不影响 P614-C1 blocked 状态,两者并入同一次 re-review。 |
 
 ## 待澄清事项
