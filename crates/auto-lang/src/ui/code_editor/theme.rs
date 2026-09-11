@@ -130,8 +130,8 @@ fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (f32, f32, f32) {
 }
 
 impl CodeEditorTheme {
-    /// Dark preset (the AutoUI iced window is hardcoded `Theme::Dark`,
-    /// renderer.rs ~4540) with the given accent name.
+    /// Legacy dark preset (pre-T-10 hardcoded bg/fg). Kept as the fallback
+    /// palette when the active theme has no Background/Foreground values.
     pub fn dark(accent: &str) -> Self {
         let (ar, ag, ab) = {
             let (r, g, b) = hsl_to_rgb(accent_hsl(accent).0, accent_hsl(accent).1, 62);
@@ -139,35 +139,10 @@ impl CodeEditorTheme {
         };
         let bg = Rgba::rgb(0.11, 0.115, 0.14);
         let fg = Rgba::rgb(0.86, 0.87, 0.9);
-        let muted = fg.mix(bg, 0.45);
-        Self {
-            background: bg,
-            foreground: fg,
-            caret: Rgba::rgb(ar, ag, ab),
-            selection: Rgba::new(ar, ag, ab, 0.30),
-            search_match: Rgba::new(0.95, 0.8, 0.25, 0.30),
-            current_line: fg.mix(bg, 0.96),
-            // Plan 414 §5.3: gutter shares the editor background (Zed-style
-            // seamless columns; the old darker wash broke the illusion).
-            gutter_background: bg,
-            gutter_foreground: muted,
-            scrollbar: fg.mix(bg, 0.65),
-            scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.2),
-            syntax: SyntaxPalette {
-                keyword: Rgba::rgb(ar * 0.75 + 0.25, ag, ab),
-                string: Rgba::rgb(0.62, 0.8, 0.52),
-                comment: muted,
-                function: Rgba::rgb(0.55, 0.75, 0.95),
-                number: Rgba::rgb(0.92, 0.7, 0.45),
-                type_: Rgba::rgb(0.78, 0.62, 0.95),
-                constant: Rgba::rgb(0.92, 0.7, 0.45),
-                variable: fg,
-                punctuation: fg.mix(bg, 0.25),
-            },
-        }
+        dark_body(ar, ag, ab, bg, fg)
     }
 
-    /// Light preset with the given accent name.
+    /// Legacy light preset (pre-T-10 hardcoded bg/fg).
     pub fn light(accent: &str) -> Self {
         let (ar, ag, ab) = {
             let (h, s, _) = accent_hsl(accent);
@@ -176,31 +151,47 @@ impl CodeEditorTheme {
         };
         let bg = Rgba::rgb(0.985, 0.985, 0.99);
         let fg = Rgba::rgb(0.12, 0.13, 0.16);
-        let muted = fg.mix(bg, 0.45);
-        Self {
-            background: bg,
-            foreground: fg,
-            caret: Rgba::rgb(ar, ag, ab),
-            selection: Rgba::new(ar, ag, ab, 0.22),
-            search_match: Rgba::new(0.98, 0.85, 0.3, 0.38),
-            current_line: fg.mix(bg, 0.955),
-            // Plan 414 §5.3: same as dark — gutter matches the editor bg.
-            gutter_background: bg,
-            gutter_foreground: muted,
-            scrollbar: fg.mix(bg, 0.55),
-            scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.25),
-            syntax: SyntaxPalette {
-                keyword: Rgba::rgb(ar, ag, ab),
-                string: Rgba::rgb(0.2, 0.55, 0.25),
-                comment: muted,
-                function: Rgba::rgb(0.15, 0.35, 0.75),
-                number: Rgba::rgb(0.7, 0.4, 0.05),
-                type_: Rgba::rgb(0.5, 0.25, 0.7),
-                constant: Rgba::rgb(0.7, 0.4, 0.05),
-                variable: fg,
-                punctuation: fg.mix(bg, 0.2),
-            },
+        light_body(ar, ag, ab, bg, fg)
+    }
+
+    /// PLAN-601 T-10：从活动主题双面值派生（bg/fg 取 registry Background/
+    /// Foreground 真值；accent 沿用 dark 定 L=62 / light 定 L=42 约定；其余
+    /// 槽位由 bg/fg/accent 混合派生）。这就是 V4 的「编辑器色域映射」：
+    /// 语义 token 域 (u8 RGB) → 编辑器域 (f32 0.0-1.0) 的唯一入口。
+    pub fn from_resolved(dark: bool, accent: &str, bg_rgb: (u8, u8, u8), fg_rgb: (u8, u8, u8)) -> Self {
+        let l = if dark { 62 } else { 42 };
+        let (ar, ag, ab) = {
+            let (r, g, b) = hsl_to_rgb(accent_hsl(accent).0, accent_hsl(accent).1, l);
+            (r, g, b)
+        };
+        let to_f = |c: u8| c as f32 / 255.0;
+        let bg = Rgba::rgb(to_f(bg_rgb.0), to_f(bg_rgb.1), to_f(bg_rgb.2));
+        let fg = Rgba::rgb(to_f(fg_rgb.0), to_f(fg_rgb.1), to_f(fg_rgb.2));
+        if dark {
+            dark_body(ar, ag, ab, bg, fg)
+        } else {
+            light_body(ar, ag, ab, bg, fg)
         }
+    }
+
+    /// 内置主题面：从 registry ThemeSpec 取 Background/Foreground。
+    pub fn for_builtin(spec: &crate::design_tokens::registry::ThemeSpec, dark: bool, accent: &str) -> Self {
+        use crate::design_tokens::registry::{resolve_rgb, TokenName};
+        let bg = resolve_rgb(spec, TokenName::Background, dark)
+            .unwrap_or(if dark { (28, 29, 36) } else { (251, 251, 253) });
+        let fg = resolve_rgb(spec, TokenName::Foreground, dark)
+            .unwrap_or(if dark { (219, 222, 230) } else { (31, 33, 41) });
+        Self::from_resolved(dark, accent, bg, fg)
+    }
+
+    /// 合成主题面：从 decl ComposedTheme 取 Background/Foreground。
+    pub fn for_composed(spec: &crate::design_tokens::decl::ComposedTheme, dark: bool, accent: &str) -> Self {
+        use crate::design_tokens::registry::TokenName;
+        let bg = spec.resolve_rgb(TokenName::Background, dark)
+            .unwrap_or(if dark { (28, 29, 36) } else { (251, 251, 253) });
+        let fg = spec.resolve_rgb(TokenName::Foreground, dark)
+            .unwrap_or(if dark { (219, 222, 230) } else { (31, 33, 41) });
+        Self::from_resolved(dark, accent, bg, fg)
     }
 
     /// Synthesize a syntect theme carrying this palette. The theme is
@@ -286,6 +277,84 @@ impl CodeEditorTheme {
     }
 }
 
+/// Dark 槽位派生体（bg/fg 入参化后 dark/light 两预设的剩余固定派生）。
+fn dark_body(ar: f32, ag: f32, ab: f32, bg: Rgba, fg: Rgba) -> CodeEditorTheme {
+    let muted = fg.mix(bg, 0.45);
+    CodeEditorTheme {
+        background: bg,
+        foreground: fg,
+        caret: Rgba::rgb(ar, ag, ab),
+        selection: Rgba::new(ar, ag, ab, 0.30),
+        search_match: Rgba::new(0.95, 0.8, 0.25, 0.30),
+        current_line: fg.mix(bg, 0.96),
+        // Plan 414 §5.3: gutter shares the editor background (Zed-style
+        // seamless columns; the old darker wash broke the illusion).
+        gutter_background: bg,
+        gutter_foreground: muted,
+        scrollbar: fg.mix(bg, 0.65),
+        scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.2),
+        syntax: SyntaxPalette {
+            keyword: Rgba::rgb(ar * 0.75 + 0.25, ag, ab),
+            string: Rgba::rgb(0.62, 0.8, 0.52),
+            comment: muted,
+            function: Rgba::rgb(0.55, 0.75, 0.95),
+            number: Rgba::rgb(0.92, 0.7, 0.45),
+            type_: Rgba::rgb(0.78, 0.62, 0.95),
+            constant: Rgba::rgb(0.92, 0.7, 0.45),
+            variable: fg,
+            punctuation: fg.mix(bg, 0.25),
+        },
+    }
+}
+
+/// Light 槽位派生体。
+fn light_body(ar: f32, ag: f32, ab: f32, bg: Rgba, fg: Rgba) -> CodeEditorTheme {
+    let muted = fg.mix(bg, 0.45);
+    CodeEditorTheme {
+        background: bg,
+        foreground: fg,
+        caret: Rgba::rgb(ar, ag, ab),
+        selection: Rgba::new(ar, ag, ab, 0.22),
+        search_match: Rgba::new(0.98, 0.85, 0.3, 0.38),
+        current_line: fg.mix(bg, 0.955),
+        // Plan 414 §5.3: same as dark — gutter matches the editor bg.
+        gutter_background: bg,
+        gutter_foreground: muted,
+        scrollbar: fg.mix(bg, 0.55),
+        scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.25),
+        syntax: SyntaxPalette {
+            keyword: Rgba::rgb(ar, ag, ab),
+            string: Rgba::rgb(0.2, 0.55, 0.25),
+            comment: muted,
+            function: Rgba::rgb(0.15, 0.35, 0.75),
+            number: Rgba::rgb(0.7, 0.4, 0.05),
+            type_: Rgba::rgb(0.5, 0.25, 0.7),
+            constant: Rgba::rgb(0.7, 0.4, 0.05),
+            variable: fg,
+            punctuation: fg.mix(bg, 0.2),
+        },
+    }
+}
+
+/// PLAN-601 T-10：活动主题 → 编辑器色板（内置表/合成体统一；主题槽位缺值
+/// 时回退 legacy 硬编码）。set_theme/set_theme_composed 换槽 + THEME_EPOCH
+/// 失效 → 下帧 sync 重取 = 编辑器随主题翻转。
+pub fn active_code_theme(dark: bool, accent: &str) -> CodeEditorTheme {
+    use crate::design_tokens::registry::TokenName;
+    let bg = crate::ui::style::theme::active_theme_rgb(TokenName::Background, dark);
+    let fg = crate::ui::style::theme::active_theme_rgb(TokenName::Foreground, dark);
+    match (bg, fg) {
+        (Some(bg), Some(fg)) => CodeEditorTheme::from_resolved(dark, accent, bg, fg),
+        _ => {
+            if dark {
+                CodeEditorTheme::dark(accent)
+            } else {
+                CodeEditorTheme::light(accent)
+            }
+        }
+    }
+}
+
 // ─── theme source (set by the iced renderer each frame; core stays iced-free)
 
 thread_local! {
@@ -302,14 +371,13 @@ pub fn set_theme_source(dark: bool, accent: &str) {
     THEME_ACCENT.with(|a| *a.borrow_mut() = accent.to_owned());
 }
 
-/// Resolve the current theme from the semantic source.
+/// Resolve the current theme from the semantic source. PLAN-601 T-10:
+/// bg/fg/caret/syntax derive from the ACTIVE theme slot (named theme or
+/// composed declaration) — switching themes flips the editor via the
+/// THEME_EPOCH invalidation loop.
 pub fn current_theme() -> CodeEditorTheme {
     let (dark, accent) = theme_source();
-    if dark {
-        CodeEditorTheme::dark(&accent)
-    } else {
-        CodeEditorTheme::light(&accent)
-    }
+    active_code_theme(dark, &accent)
 }
 
 /// Read the semantic source (dark flag + accent name).
@@ -323,6 +391,39 @@ pub fn theme_source() -> (bool, String) {
 mod tests {
     use super::*;
     use syntect::highlighting::FontStyle;
+
+    /// PLAN-601 T-10: for_builtin maps the registry Background/Foreground
+    /// truth into the editor's 0.0-1.0 domain (V4 derivation contract).
+    #[test]
+    fn for_builtin_derives_from_registry_values() {
+        let stella = crate::design_tokens::registry::builtin("stella").unwrap();
+        let bg = crate::design_tokens::registry::resolve_rgb(
+            stella,
+            crate::design_tokens::registry::TokenName::Background,
+            true,
+        )
+        .unwrap();
+        let t = CodeEditorTheme::for_builtin(stella, true, "indigo");
+        assert_eq!(t.background.r, bg.0 as f32 / 255.0);
+        assert_eq!(t.background.g, bg.1 as f32 / 255.0);
+        assert_eq!(t.background.b, bg.2 as f32 / 255.0);
+    }
+
+    /// PLAN-601 T-10: the active resolution follows theme switches (the
+    /// editor flip contract). Thread-local slot → per-test isolated.
+    #[test]
+    fn active_code_theme_follows_theme_switch() {
+        let fg_of = |t: &CodeEditorTheme| {
+            ((t.foreground.r * 255.0).round() as i32,
+             (t.foreground.g * 255.0).round() as i32,
+             (t.foreground.b * 255.0).round() as i32)
+        };
+        crate::ui::style::theme::set_theme("zinc");
+        let zinc = active_code_theme(true, "indigo");
+        crate::ui::style::theme::set_theme("stella");
+        let stella = active_code_theme(true, "indigo");
+        assert_ne!(fg_of(&zinc), fg_of(&stella), "切主题后编辑器前景须跟随翻转");
+    }
 
     /// Comments must not request an italic face. cosmic-text filters font
     /// candidates by exact face style and no Windows CJK font ships an

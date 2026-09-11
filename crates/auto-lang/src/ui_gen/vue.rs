@@ -4262,8 +4262,18 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         if self.has_accent_color {
             script.push('\n');
             script.push_str(Self::ACCENT_PALETTE_JS);
+            // PLAN-601 T-06: full named-theme runtime rides the same gate —
+            // theme switching is the whole-set generalization of accent
+            // switching (applyTheme reuses applyAccent as its overlay).
+            script.push('\n');
+            script.push_str(&Self::theme_runtime_js());
             script.push_str("\n// Restore saved accent on mount.\n");
             script.push_str("onMounted(() => {\n");
+            // PLAN-601 T-06: restore the active theme on mount (localStorage
+            // may carry a user choice or a generator-seeded declared theme).
+            // Scaffold default needs no apply — the stylesheet already is it.
+            script.push_str("  const __th = getActiveTheme()\n");
+            script.push_str("  if (__th !== 'scaffold') applyTheme(__th, document.documentElement.classList.contains('dark'))\n");
             script.push_str("  const saved = getSavedAccent()\n");
             // Plan 458: only override the CLI/env-seeded ref when a real
             // persisted choice exists (getSavedAccent returns '' otherwise).
@@ -4275,13 +4285,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // Plan 458: re-apply the accent when the theme flips at runtime —
             // applyAccent also writes the .dark-scoped --primary, which would
             // otherwise fall back to the stylesheet's default indigo.
+            // PLAN-601 T-06: the flip now re-applies the ACTIVE THEME's full
+            // set (applyTheme dark pass) — accent overlay included — so mode
+            // flips keep a non-default theme instead of regressing to the
+            // scaffold `.dark` stylesheet block.
             if self.has_dark_mode {
                 let dark_var = self
                     .dark_mode_var
                     .clone()
                     .unwrap_or_else(|| "dark_mode".to_string());
                 script.push_str(&format!(
-                    "// Plan 458: keep the accent and html dark class in sync across theme flips.\nwatch({}, (v) => {{\n  document.documentElement.classList.toggle('dark', v)\n  applyAccent(accent_color.value, v)\n}}, {{ immediate: true }})\n",
+                    "// Plan 458: keep the accent and html dark class in sync across theme flips.\nwatch({}, (v) => {{\n  document.documentElement.classList.toggle('dark', v)\n  applyTheme(getActiveTheme(), v, accent_color.value)\n}}, {{ immediate: true }})\n",
                     dark_var
                 ));
             }
@@ -9387,6 +9401,24 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 self.drain_ctx_warnings(&ctx);
                 Ok(out)
             }
+            // PLAN-604 T08 (KD-VM4): `expr.as(Type)` 的 JS 降级——VM 侧
+            // TYPE_CAST_I32 执行 Rust `f as i32` 截断(engine.rs),此前 handler
+            // 内 as-cast 落 catch-all 产 `undefined`(双端分叉)。整型目标降级
+            // Math.trunc 对齐截断;浮点目标 JS 原生 f64 直通;其余类型与 VM
+            // codegen 一致保持值不变。
+            Expr::Cast { expr, target_type } => {
+                let mut inner = self.expr_to_js(expr)?;
+                if matches!(expr.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    inner = format!("({})", inner);
+                }
+                match target_type {
+                    crate::ast::Type::Int | crate::ast::Type::I64
+                    | crate::ast::Type::Uint | crate::ast::Type::U64
+                    | crate::ast::Type::USize | crate::ast::Type::Byte =>
+                        Ok(format!("Math.trunc({})", inner)),
+                    _ => Ok(inner),
+                }
+            }
             _ => Ok("undefined".to_string()),
         }
     }
@@ -9974,6 +10006,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     Ok(format!("{}({})", name_str, args_str.join(", ")))
                 }
             }
+            // PLAN-604 T08 (KD-VM4): 文本位 as-cast 走绑定位降级(整型
+            // Math.trunc),此前落 R046 产 `value` 占位符。
+            Expr::Cast { .. } => self.expr_to_vue_bound_value(expr),
             // Plan 492 M3 (族 B): an unsupported expression form in text
             // content used to silently emit the `value` placeholder — the
             // rendered text showed literal "value" with zero diagnostics.
@@ -10208,6 +10243,22 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             Expr::U64(n) => Ok(n.to_string()),
             Expr::Byte(n) => Ok(n.to_string()),
             Expr::Char(c) => Ok(format!("'{}'", Self::escape_js_string(&c.to_string()))),
+            // PLAN-604 T08 (KD-VM4): 绑定位 as-cast——整型目标降级
+            // Math.trunc 对齐 VM TYPE_CAST_I32 的 `f as i32` 截断语义
+            // (此前落 catch-all 硬错误 UnsupportedExpr)。
+            Expr::Cast { expr, target_type } => {
+                let mut inner = self.expr_to_vue_bound_value(expr)?;
+                if matches!(expr.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    inner = format!("({})", inner);
+                }
+                match target_type {
+                    crate::ast::Type::Int | crate::ast::Type::I64
+                    | crate::ast::Type::Uint | crate::ast::Type::U64
+                    | crate::ast::Type::USize | crate::ast::Type::Byte =>
+                        Ok(format!("Math.trunc({})", inner)),
+                    _ => Ok(inner),
+                }
+            }
             // Plan 012 P0#13 follow-up: everything else (Lambda, Closure,
             // Range, NullCoalesce, Cast, Block, patterns, ...) used to emit
             // literal `null` with no diagnostic. Reject instead; each call
@@ -15560,75 +15611,6 @@ export function cn(...inputs: ClassValue[]) {
 "#.to_string()
     }
 
-	    /// Generate base CSS file with CSS variables
-	    ///
-	    /// PLAN-593 V1：色变量块整体取自 registry（zinc）单一事实源，
-	    /// 本函数零手写色值（--radius/--card-shadow 为非色 token，留脚手架）。
-	    pub fn generate_base_css() -> String {
-	        let zinc = crate::design_tokens::registry::css_builtin("zinc")
-	            .expect("内置主题 zinc 恒在（PLAN-593 registry 单源）");
-	        let mut css = String::new();
-	        css.push_str(r##"@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  :root {
-"##);
-	        css.push_str(zinc.light.core);
-	        css.push_str(r##"    --radius: 0.5rem;
-
-    /* Plan 360: card shadows — deeper in dark mode */
-    --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  }
-
-  .dark {
-"##);
-	        css.push_str(zinc.dark.core);
-	        css.push_str(r##"
-    /* Plan 360: deeper shadows in dark mode for visual depth */
-    --card-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-  }
-}
-
-/* Plan 360: custom card shadow utility */
-@layer utilities {
-  .shadow-card {
-    box-shadow: var(--card-shadow);
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-    /* Plan 360: smooth dark mode transitions */
-    transition: background-color 0.3s ease, color 0.3s ease;
-  }
-  h1 {
-    @apply text-4xl font-bold tracking-tight text-primary mb-4;
-  }
-  h2 {
-    @apply text-3xl font-bold tracking-tight text-primary mt-8 mb-4;
-  }
-  h3 {
-    @apply text-xl font-semibold text-primary mb-3;
-  }
-  h4 {
-    @apply text-lg font-semibold mb-2;
-  }
-  h5 {
-    @apply text-base font-semibold mb-1;
-  }
-  h6 {
-    @apply text-sm font-semibold mb-1;
-  }
-}
-"##);
-	        css
-	    }
 
     /// Generate a composable singleton `.ts` file for a shared store
     /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported
@@ -16277,12 +16259,19 @@ export function cn(...inputs: ClassValue[]) {
         if has_accent {
             code.push_str("\n");
             code.push_str(Self::ACCENT_PALETTE_JS);
+            // PLAN-601 T-06: full named-theme runtime rides the same gate.
+            code.push('\n');
+            code.push_str(&Self::theme_runtime_js());
             // Module-level bootstrap: apply saved accent on first import.
             // Also sync the accent_color ref so the store reflects the
             // persisted choice (localStorage may differ from the .at default).
             code.push_str("\n// Restore saved accent on module load.\n");
+            // PLAN-601 T-06: restore the active theme first (generator-seeded
+            // declared themes / user choice); scaffold default needs no apply.
             code.push_str(
                 "(function bootstrapAccent() {\n\
+                 \x20 const __th = getActiveTheme()\n\
+                 \x20 if (__th !== 'scaffold') applyTheme(__th, document.documentElement.classList.contains('dark'))\n\
                  \x20 const saved = getSavedAccent()\n\
                  \x20 accent_color.value = saved || 'indigo'\n\
                  \x20 const isDark = document.documentElement.classList.contains('dark')\n\
@@ -16317,8 +16306,8 @@ export function cn(...inputs: ClassValue[]) {
     /// Palette values are aligned with auto-forge's useAccentColor.ts so the
     /// two products share the same visual language.
     /// PLAN-593：5 预设 HSL 值的事实源在 `ui::style::theme::registry::accent_hsl`
-    ///（E4/E5 互锁——改值须同步本 JS 文本；dark 提亮此处 +4、Rust 侧 +10 为
-    /// S1 对账②登记的双端分叉，Phase 2 归一裁定）。
+    ///（E4/E5 互锁——改值须同步本 JS 文本；dark 提亮双端已归一 +10
+    /// 〔PLAN-601 D2/T-07，P593-D2 关债〕）。
     const ACCENT_PALETTE_JS: &str = r#"
 // Plan 360: Accent color palette (aligned with auto-forge).
 // Each entry maps a name → shadcn --primary HSL triplet (space-separated).
@@ -16347,11 +16336,13 @@ function applyAccent(name: string, isDark = false): void {
   const hsl = ACCENT_PALETTES[name]
   if (!hsl) return
   let finalHsl = hsl
-  // Dark mode: boost lightness ~4% for contrast against dark backgrounds.
+  // Dark mode: boost lightness for contrast against dark backgrounds.
+  // PLAN-601 D2 归一：+4 → +10（与 Rust/VM 侧 accent_primary_hsl 统一，
+  // coral 校准/stella 对齐实证为准；vue 暗色 accent 视觉微调在案）。
   if (isDark) {
     const match = hsl.match(/^(\d+\s+[\d.]+%)\s+([\d.]+)%$/)
     if (match) {
-      const boosted = Math.min(85, parseFloat(match[2]) + 4)
+      const boosted = Math.min(85, parseFloat(match[2]) + 10)
       finalHsl = match[1] + ' ' + boosted + '%'
     }
   }
@@ -16402,6 +16393,74 @@ function getAccentNames(): string[] {
   return ACCENT_NAMES
 }
 "#;
+
+    /// PLAN-601 T-06：主题热切换运行时——applyAccent 的整套泛化。
+    /// THEME_PALETTES 值源 = design_tokens registry 五内置双面（T-06 值源
+    /// 发射器，与 CSS 面同源）；pac.at theme{} 声明合成体经 auto-man 注入
+    /// `window.__AUTO_COMPOSED_THEME__` 于运行时并入。注入门控与 accent
+    /// 系统同臂（has_accent_color）——主题切换是 accent 切换的整套泛化，
+    /// 零 accent 面 app 维持零注入（零变化优先裁定）。storage 键为全局
+    /// appearance 语义（与桌面端 appearance.theme 同型）：同源 app 间共享
+    /// 用户主题偏好，属预期行为。
+    fn theme_runtime_js() -> String {
+        let palettes = crate::design_tokens::registry::render_theme_palettes_js();
+        format!(
+            r#"// PLAN-601 T-06: Named theme hot-switch runtime (applyAccent generalized
+// to the full token set). Values mirror the generated index.css registry
+// source (dual-face single source of truth).
+const THEME_PALETTES: Record<string, {{ light: Record<string, string>, dark: Record<string, string> }}> = {palettes}
+// pac.at theme{{}} declared app theme (generator-injected) joins the set.
+if ((window as any).__AUTO_COMPOSED_THEME__) {{
+  const ct = (window as any).__AUTO_COMPOSED_THEME__
+  if (ct && ct.name && ct.light && ct.dark) THEME_PALETTES[ct.name] = ct
+}}
+const THEME_STORAGE_KEY = 'auto-theme'
+
+/** Active theme: last applied choice persisted in localStorage, else the
+ *  scaffold default (matching the generated index.css :root block). */
+function getActiveTheme(): string {{
+  try {{
+    const saved = localStorage.getItem(THEME_STORAGE_KEY)
+    if (saved && THEME_PALETTES[saved]) return saved
+  }} catch {{}}
+  return 'scaffold'
+}}
+
+/** Apply a named theme by writing its FULL variable set. Light values go on
+ *  <html> inline (beats every stylesheet); when dark, the dark set is also
+ *  written on every `.dark` element (declarations beat inheritance), so a
+ *  mode flip keeps the active theme instead of falling back to the scaffold
+ *  `.dark` block. Light mode clears stale inline vars from a previous dark
+ *  write. The accent overlay runs LAST so a named --primary rides on top of
+ *  any theme (+10 dark boost inside applyAccent). Unknown names are ignored
+ *  (closed vocabulary). */
+function applyTheme(name: string, isDark = document.documentElement.classList.contains('dark'), accentName = getSavedAccent()): void {{
+  const pal = THEME_PALETTES[name]
+  if (!pal) return
+  const root = document.documentElement
+  function writeVars(el: HTMLElement, vars: Record<string, string>) {{
+    for (const k in vars) el.style.setProperty('--' + k, vars[k])
+  }}
+  writeVars(root, pal.light)
+  function applyDarkPass() {{
+    if (isDark) {{
+      document.querySelectorAll('.dark').forEach(function (el) {{ writeVars(el as HTMLElement, pal!.dark) }})
+    }} else {{
+      // Any previous full write carries --background — use it as the marker
+      // for stale inline overrides (documentElement keeps its own value).
+      document.querySelectorAll('.dark, [style*="--background"]').forEach(function (el) {{
+        if (el !== root) for (const k in pal!.light) (el as HTMLElement).style.removeProperty('--' + k)
+      }})
+    }}
+  }}
+  applyDarkPass()
+  setTimeout(applyDarkPass, 0)
+  try {{ localStorage.setItem(THEME_STORAGE_KEY, name) }} catch {{}}
+  if (accentName) applyAccent(accentName, isDark)
+}}
+"#
+        )
+    }
 
     /// Convert an initial-value AuraExpr to a JS literal (v1: simple cases).
     fn store_init_to_js(expr: &crate::ast::Expr) -> String {
@@ -18290,6 +18349,36 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         assert_eq!(gen.expr_to_js(&crate::ast::Expr::Str("hello".into())).unwrap(), "'hello'");
     }
 
+    /// PLAN-604 T08 (KD-VM4/AC-06): `.as(int)` 的 vue 侧降级必须是
+    /// `Math.trunc`——VM TYPE_CAST_I32 为 Rust `f as i32` 截断
+    /// (engine.rs),双端一致。整型族全覆盖;浮点目标直通。
+    #[test]
+    fn test_as_cast_int_lowers_to_math_trunc() {
+        let gen = VueGenerator::new();
+        let cast = |t: crate::ast::Type| crate::ast::Expr::Cast {
+            expr: Box::new(crate::ast::Expr::Float(3.7, "".into())),
+            target_type: t,
+        };
+        for t in [crate::ast::Type::Int, crate::ast::Type::I64, crate::ast::Type::Uint] {
+            assert_eq!(gen.expr_to_js(&cast(t.clone())).unwrap(), "Math.trunc(3.7)",
+                "as({t}) 必须降级 Math.trunc");
+            assert_eq!(gen.expr_to_vue_bound_value(&cast(t.clone())).unwrap(), "Math.trunc(3.7)",
+                "as({t}) 绑定位必须降级 Math.trunc");
+        }
+        // 浮点目标:JS 原生 f64,直通不截断。
+        assert_eq!(gen.expr_to_js(&cast(crate::ast::Type::Double)).unwrap(), "3.7");
+        // 二元内层保持括号:Math.trunc((a / b))。
+        let bin = crate::ast::Expr::Cast {
+            expr: Box::new(crate::ast::Expr::Bina(
+                Box::new(crate::ast::Expr::Ident("a".into())),
+                auto_val::Op::Div,
+                Box::new(crate::ast::Expr::Ident("b".into())),
+            )),
+            target_type: crate::ast::Type::Int,
+        };
+        assert_eq!(gen.expr_to_js(&bin).unwrap(), "Math.trunc((a / b))");
+    }
+
     #[test]
     fn test_map_tag_native_html_passthrough() {
         // Plan 041a①: 原生语义元素不再坍缩为 div(native_select/native_button
@@ -18835,38 +18924,41 @@ widget W {
 
     #[test]
     fn test_charts_gallery_compiles() {
-        // Integration test (Plan 484 M3): the rebuilt charts-gallery consumes
-        // the official Auto chart components via bare tags; vue gen must
-        // compile and emit the package component SFC refs (LineChart etc.),
-        // NOT the retired shadcn/unovis chart family.
+        // Integration test (Plan 484): the charts gallery consumes the
+        // official chart components via M4 bare-name primitives. PLAN-601
+        // T-11 修复预存红：fixture 随 484 M4 迁 examples/ui/024-charts（旧
+        // examples/charts-gallery 路径已不存在）；断言按现行架构改写——
+        // 裸名 chart 经包折叠生成数据绑定占位（<div :data=...>），不再是
+        // M3 时代的 PascalCase SFC 引用（vue 腿裸名组件 SFC 化=已知缺口，
+        // SVG/组件 token 通道随 P601-T11 债项跟进）。
         // 包感知入口(generate_component_from_file 链):裸名 tag 经
-        // use{package} → known_sub_widgets 折叠解析为包组件 SFC 引用。
+        // use{package} → known_sub_widgets 折叠解析。
         use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
         let result = generate_component_from_file(
-            std::path::Path::new("../../examples/charts-gallery/src/front/app.at"),
+            std::path::Path::new("../../examples/ui/024-charts/src/front/app.at"),
             ComponentGenOptions { shadcn: Some(true), ..Default::default() },
         );
         assert!(result.is_ok(), "charts gallery should compile: {:?}", result.err());
         let result = result.unwrap();
         let code = result.vue_code;
 
-        // Auto component SFC refs (package components, bare-name fold)
-        assert!(code.contains("<LineChart"), "LineChart tag missing: {code}");
-        assert!(code.contains("<BarChart"), "BarChart tag missing: {code}");
-        assert!(code.contains("<AreaChart"), "AreaChart tag missing: {code}");
-        assert!(code.contains("<DonutChart"), "DonutChart tag missing: {code}");
+        // Bare-name chart fold: data-bound placeholder per chart branch
+        assert!(code.contains(":data="), "chart data binding missing: {code}");
+        assert!(code.contains("chartType == 'line'"), "line branch missing: {code}");
+        assert!(code.contains("chartType == 'bar'"), "bar branch missing: {code}");
+        assert!(code.contains("chartType == 'area'"), "area branch missing: {code}");
+        assert!(code.contains("chartType == 'donut'"), "donut branch missing: {code}");
 
         // Retired shadcn/unovis chart family must NOT appear
         assert!(!code.contains("chart-area"), "retired chart-area scaffold leaked");
         assert!(!code.contains("unovis"), "retired @unovis dependency leaked");
         assert!(!code.contains("CurveType"), "retired CurveType mapping leaked");
 
-        // Key props are emitted
-        assert!(code.contains("monthlyRevenue"), "monthlyRevenue data binding missing");
-        assert!(code.contains(":index=\"'month'\""), "month index missing");
-        assert!(code.contains("stacked"), "stacked type missing");
-        assert!(code.contains("trafficSource"), "trafficSource binding missing");
-        assert!(code.contains("colors"), "colors binding missing");
+        // Key props of the migrated (024-charts) demo data are emitted
+        assert!(code.contains(":data=\"monthly\""), "monthly data binding missing: {code}");
+        assert!(code.contains(":index=\"'m'\""), "index prop missing: {code}");
+        assert!(code.contains("'desktop', 'mobile', 'tablet'"), "series fields missing: {code}");
+        assert!(code.contains("windowLen"), "windowLen binding missing: {code}");
     }
     #[test]
     fn test_generate_shadcn_attrs_button() {
@@ -18933,17 +19025,8 @@ widget W {
         assert!(utils_ts.contains("cn"));
         assert!(utils_ts.contains("clsx"));
         assert!(utils_ts.contains("tailwind-merge"));
-
-        let base_css = VueGenerator::generate_base_css();
-        assert!(base_css.contains("--background"));
-        assert!(base_css.contains("--primary"));
-        assert!(base_css.contains("h1 {"));
-        assert!(base_css.contains("@apply text-4xl font-bold tracking-tight text-primary mb-4;"));
-        assert!(base_css.contains("h2 {"));
-        assert!(base_css.contains("h3 {"));
-        assert!(base_css.contains("h4 {"));
-        assert!(base_css.contains("h5 {"));
-        assert!(base_css.contains("h6 {"));
+        // PLAN-601 T-09/D3：generate_base_css 退役（P593-D3，唯一调用方
+        // =本测试；zinc 主题表存续 design_tokens registry 作可切换内置）。
     }
 
     // ========================================
@@ -26035,6 +26118,114 @@ widget ThemeApp {
             sfc.contains("accent_color = ref<string>"),
             "accent_color must be declared as a ref from the model:\n{}",
             sfc
+        );
+    }
+
+    /// PLAN-601 T-06: the widget path (accent gate) also injects the full
+    /// named-theme runtime — THEME_PALETTES (five builtins), applyTheme /
+    /// getActiveTheme, boot restore, and the mode-flip watch upgraded from
+    /// accent-only re-apply to a whole-theme re-apply (dark pass keeps a
+    /// non-default theme across `.dark` flips).
+    #[test]
+    fn test_widget_theme_runtime_injected_with_accent() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget ThemeApp {
+    msg Msg { ToggleDark }
+    model {
+        dark_mode bool = false
+        accent_color str = "indigo"
+    }
+    view { col { button "go dark" onclick: .ToggleDark } }
+    on { .ToggleDark -> { dark_mode = !dark_mode } }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("const THEME_PALETTES"),
+            "widget path must inject THEME_PALETTES:\n{}",
+            sfc
+        );
+        for name in ["zinc", "scaffold", "stella", "tauri", "cli-vue"] {
+            assert!(
+                sfc.contains(&format!("'{name}': {{")),
+                "THEME_PALETTES must carry builtin '{name}':\n{}",
+                sfc
+            );
+        }
+        assert!(
+            sfc.contains("function applyTheme") && sfc.contains("function getActiveTheme"),
+            "widget path must inject applyTheme()/getActiveTheme():\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("if (__th !== 'scaffold') applyTheme(__th,"),
+            "widget onMounted must restore the active theme:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("applyTheme(getActiveTheme(), v, accent_color.value)"),
+            "mode-flip watch must re-apply the whole active theme:\n{}",
+            sfc
+        );
+        // Accent overlay stays cohesive inside applyTheme (last write wins).
+        assert!(
+            sfc.contains("if (accentName) applyAccent(accentName, isDark)"),
+            "applyTheme must end with the accent overlay:\n{}",
+            sfc
+        );
+    }
+
+    /// PLAN-601 T-06: no accent_color state → zero theme runtime injection
+    /// (zero-change rule for apps outside the theme feature cohort).
+    #[test]
+    fn test_widget_theme_runtime_absent_without_accent() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Plain {
+    model { var count int = 0 }
+    view { col { button "inc" onclick: .inc } }
+    on { .inc -> { count += 1 } }
+}
+"#,
+        );
+        assert!(
+            !sfc.contains("THEME_PALETTES") && !sfc.contains("function applyTheme"),
+            "plain widget must not carry the theme runtime:\n{}",
+            sfc
+        );
+    }
+
+    /// PLAN-601 T-06: the store composable path injects the same runtime and
+    /// restores the active theme in its module bootstrap before the accent.
+    #[test]
+    fn test_store_composable_theme_runtime() {
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store Shell {
+    model {
+        var dark_mode bool = false
+        var accent_color str = "indigo"
+    }
+    msg Msg { ToggleDark }
+    on { .ToggleDark -> { dark_mode = !dark_mode } }
+}
+"#,
+        ));
+        assert!(
+            code.contains("const THEME_PALETTES") && code.contains("function applyTheme"),
+            "store path must inject the theme runtime:\n{}",
+            code
+        );
+        assert!(
+            code.contains("const __th = getActiveTheme()"),
+            "store bootstrap must restore the active theme:\n{}",
+            code
+        );
+        assert!(
+            code.contains("if (accentName) applyAccent(accentName, isDark)"),
+            "accent overlay must be cohesive in applyTheme:\n{}",
+            code
         );
     }
 

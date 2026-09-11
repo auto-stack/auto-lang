@@ -4584,11 +4584,12 @@ impl RustTrans {
             Expr::To { expr, target_type } => {
                 match target_type {
                     Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
-                        // x.to(str) / x.to(String) → format!("{:?}", x) for struct types,
-                        // or x.to_string() for primitive types
-                        // Since we lack type inference, use format!("{:?}", x) as safe default
-                        // which works for all types that derive Debug
-                        write!(out, "format!(\"{{:?}}\", ")?;
+                        // x.to(str) / x.to(String) → Display for dep rust-typed
+                        // values (PLAN-596 T-07, DIV-DEP-8: three-way parity with
+                        // the VM leg); Auto types keep format!("{:?}", x) as the
+                        // safe default — existing corpora depend on Debug here.
+                        let fmt = if self.receiver_is_dep_rust_value(expr) { "{}" } else { "{:?}" };
+                        write!(out, "format!(\"{}\", ", fmt)?;
                         self.expr(expr, out)?;
                         write!(out, ")")?;
                     }
@@ -4623,8 +4624,10 @@ impl RustTrans {
                         // Check if target is a string-like type name (String, str, etc.)
                         let ty_name = self.rust_type_name(target_type);
                         if ty_name == "String" || ty_name == "str" || ty_name == "&str" {
-                            // x.to(String) / x.to(str) → format!("{:?}", x)
-                            write!(out, "format!(\"{{:?}}\", ")?;
+                            // x.to(String) / x.to(str) → Display for dep rust-typed
+                            // values, Debug fallback otherwise (PLAN-596 T-07, D8).
+                            let fmt = if self.receiver_is_dep_rust_value(expr) { "{}" } else { "{:?}" };
+                            write!(out, "format!(\"{}\", ", fmt)?;
                             self.expr(expr, out)?;
                             write!(out, ")")?;
                         } else {
@@ -8335,17 +8338,23 @@ impl RustTrans {
                         return Ok(());
                     }
                 }
-                let is_type = type_name
-                    .chars()
-                    .next()
-                    .map(|c| c.is_uppercase())
-                    .unwrap_or(false)
-                    || matches!(type_name.as_str(),
-                        "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
-                        | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-                        | "f32" | "f64" | "bool" | "char" | "str"
-                    )
-                    || Self::auto_type_to_rust(type_name.as_str()).is_some();
+                // PLAN-596 T-07 (DIV-DEP-13): a SCREAMING_CASE use.rs import is
+                // a const receiver (`STANDARD.encode(..)`) — a trait-method
+                // VALUE call, not a type-associated fn. Fall through to the
+                // regular method-call path, which emits `.` instead of `::`.
+                let is_const_receiver = self.is_dep_constant_name(type_name.as_str());
+                let is_type = !is_const_receiver
+                    && (type_name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                        || matches!(type_name.as_str(),
+                            "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
+                            | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+                            | "f32" | "f64" | "bool" | "char" | "str"
+                        )
+                        || Self::auto_type_to_rust(type_name.as_str()).is_some());
                 if is_type {
                     // Map Auto builtin type names to Rust equivalents
                     let rust_type_name = Self::auto_type_to_rust(type_name.as_str())
@@ -8572,15 +8581,19 @@ impl RustTrans {
                     // matches a use.rust path leaf (e.g. local `sse` vs module
                     // `axum::response::sse`).
                     let is_local = name == "self" || self.local_var_types.contains_key(name);
-                    !is_local && (
-                        Self::auto_type_to_rust(name).is_some()
-                            || self.uses.iter().any(|u| {
-                                let u_str = u.as_str();
-                                u_str == name || u_str.ends_with(&format!("::{}", name))
-                            })
-                            || self.dep_crates.contains(id)
-                            || self.module_types.contains_key(name) // Plan 264
-                    )
+                    // PLAN-596 T-07 (DIV-DEP-13): const receivers (STANDARD)
+                    // call methods with `.` — only type/module chains take `::`.
+                    !is_local
+                        && !self.is_dep_constant_name(name)
+                        && (
+                            Self::auto_type_to_rust(name).is_some()
+                                || self.uses.iter().any(|u| {
+                                    let u_str = u.as_str();
+                                    u_str == name || u_str.ends_with(&format!("::{}", name))
+                                })
+                                || self.dep_crates.contains(id)
+                                || self.module_types.contains_key(name) // Plan 264
+                        )
                 }
                 Expr::Dot(il, _) => {
                     // Plan 391 §7 follow-up: a multi-segment `::` path like
@@ -12489,6 +12502,18 @@ impl RustTrans {
             }
         } else {
             store.ty.clone()
+        };
+        // PLAN-596 T-07 (DIV-DEP-8): an un-annotated let bound from a dep
+        // ctor chain (`let u = Url.parse(..).unwrap()`) types as the dep
+        // type, so downstream `.to(str)`/print resolve Display (three-way
+        // parity) instead of staying Unknown.
+        let effective_ty = if matches!(effective_ty, Type::Unknown) {
+            match self.dep_ctor_type(&store.expr) {
+                Some(t) => Self::placeholder_user_type(t),
+                None => effective_ty,
+            }
+        } else {
+            effective_ty
         };
         // Plan 433 A1: a prior fn-call-inferred entry (scan_call_init_bindings
         // at fn_decl) is more precise than a fresh Unknown inference — keep it.
@@ -18697,6 +18722,94 @@ impl RustTrans {
             Expr::Bool(_) | Expr::Nil | Expr::Null => false,
             // Variables, binary ops, calls, dot access, etc. may be u32/i32
             _ => true,
+        }
+    }
+
+    /// PLAN-596 T-07 (DIV-DEP-8): a use.rs-imported dep TYPE — PascalCase
+    /// name present as a use leaf, never declared locally. Local decls
+    /// (struct/tag/enum/union) always win, keeping Debug-dependent存量语料
+    /// on the `{:?}` path (AC-04 isolation arm).
+    fn is_dep_type_name(&self, name: &str) -> bool {
+        // PascalCase required: SCREAMING_CASE use.rs imports are consts
+        // (DIV-DEP-13), never types — `STANDARD.encode(..)` is a const-value
+        // method call, not a ctor chain.
+        if !name.chars().next().map_or(false, |c| c.is_uppercase())
+            || !name.chars().any(|c| c.is_ascii_lowercase())
+        {
+            return false;
+        }
+        if self.local_struct_types.contains(name)
+            || self.struct_fields.contains_key(name)
+            || self.struct_field_types.contains_key(name)
+            || self.tag_types.contains(name)
+            || self.known_enum_names.contains(name)
+            || self.union_types.contains(name)
+        {
+            return false;
+        }
+        self.uses.iter().any(|u| {
+            let u = u.as_str();
+            u == name || u.ends_with(&format!("::{}", name)) || u.contains(&format!("{{{}}}", name))
+        })
+    }
+
+    /// PLAN-596 T-07 (DIV-DEP-13): a SCREAMING_CASE use.rs import (STANDARD,
+    /// NIL, OP_XXX) is a const VALUE receiver, not a type — `CONST.method(..)`
+    /// must lower to a dot-call (trait-method consts like base64's
+    /// `STANDARD.encode` are E0224 as `CONST::method`). Rust types are
+    /// PascalCase; local declarations take precedence.
+    fn is_dep_constant_name(&self, name: &str) -> bool {
+        let has_upper = name.chars().any(|c| c.is_ascii_uppercase());
+        let no_lower = !name.chars().any(|c| c.is_ascii_lowercase());
+        has_upper
+            && no_lower
+            && !self.local_struct_types.contains(name)
+            && !self.tag_types.contains(name)
+            && !self.known_enum_names.contains(name)
+            && !self.union_types.contains(name)
+            && self.uses.iter().any(|u| {
+                let u = u.as_str();
+                u == name
+                    || u.ends_with(&format!("::{}", name))
+                    || u.contains(&format!("{{{}}}", name))
+            })
+    }
+
+    /// PLAN-596 T-07 (DIV-DEP-8): does this expression denote a rust-typed
+    /// VALUE from a dep crate (Display-stringified, three-way parity) rather
+    /// than an Auto type (Debug fallback)? Ident receivers resolve through
+    /// local_var_types (fed by dep_ctor_type at store time); inline ctor
+    /// chains (`Url.parse(..).unwrap()`) walk the chain directly.
+    fn receiver_is_dep_rust_value(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(name) => matches!(self.local_var_types.get(name),
+                Some(Type::User(td)) if self.is_dep_type_name(td.name.as_str())),
+            Expr::Call(call) => match call.name.as_ref() {
+                Expr::Dot(obj, m) if m.as_str() == "unwrap" => self.receiver_is_dep_rust_value(obj),
+                Expr::Dot(obj, _) => {
+                    matches!(obj.as_ref(), Expr::Ident(n) if self.is_dep_type_name(n))
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// PLAN-596 T-07: dep ctor chain detection for store-time typing —
+    /// `let v = Version.parse(..).unwrap()` / `let u = Url.parse(..)` yield
+    /// the dep type name, so the binding gets a User type and downstream
+    /// `.to(str)`/print resolve Display instead of the Unknown fallback.
+    fn dep_ctor_type(&self, expr: &Expr) -> Option<AutoStr> {
+        match expr {
+            Expr::Call(call) => match call.name.as_ref() {
+                Expr::Dot(obj, m) if m.as_str() == "unwrap" => self.dep_ctor_type(obj),
+                Expr::Dot(obj, _) => match obj.as_ref() {
+                    Expr::Ident(n) if self.is_dep_type_name(n) => Some(n.clone()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
         }
     }
 

@@ -1,0 +1,11 @@
+# PLAN-596 复审 F-1: 021 oracle 腿——回调面,与 input.at 逐行镜像。
+# 独立工作区(空 [workspace]);路径依赖指回 020 fixture。
+[package]
+name = "oracle_021_dep_callback"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+autolang_traits = { path = "../../020_dep_traits_generics/fixture/autolang_traits" }

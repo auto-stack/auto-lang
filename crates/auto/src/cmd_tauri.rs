@@ -742,35 +742,24 @@ import {0} from './components/{0}.vue'
 "#, widget_name)
 }
 
+/// PLAN-601 T-09/D5：色变量块改 registry 装配（内置 tauri 双面，值与原
+/// 手写模板逐值全等——装配前已机械对拍零漂移）。--radius 与 Unovis vis-*
+/// 图表变量为非色 token/模板资产，留脚手架。PLAN-571 secondary 分档注释
+/// 随逐字块退役（值契约由 registry 互锁测试守护，块=产物、值=契约）。
 fn generate_index_css() -> String {
-    r#"@tailwind base;
+    use auto_lang::design_tokens::registry;
+    let tauri = registry::builtin("tauri")
+        .expect("内置主题 tauri 恒在（PLAN-601 registry 双面单源）");
+    let mut css = String::new();
+    css.push_str(r#"@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    /* PLAN-571: secondary 与 muted 分档（≠--muted 210 40% 96.1%）——暖灰一档深 #e3ddd1，
-       与 theme.rs / ui_gen 互锁（40 24% 85.5% ≈ #e3ddd1）。 */
-    --secondary: 40 24% 85.5%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+"#);
+    css.push_str(&registry::render_core(tauri, false));
+    css.push_str(r#"    --radius: 0.5rem;
 
     /* Unovis chart theme variables */
     --vis-tooltip-background-color: none !important;
@@ -785,27 +774,9 @@ fn generate_index_css() -> String {
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    /* PLAN-571: secondary 分档——slate-700 #334155（--muted 保持 217.2 32.6% 17.5%）。 */
-    --secondary: 215 25% 27%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-  }
+"#);
+    css.push_str(&registry::render_core(tauri, true));
+    css.push_str(r#"  }
 }
 
 @layer base {
@@ -834,7 +805,8 @@ fn generate_index_css() -> String {
     @apply text-sm font-semibold mb-1;
   }
 }
-"#.to_string()
+"#.to_string());
+    css
 }
 
 fn generate_utils_ts() -> String {
@@ -961,11 +933,15 @@ fn generate_tauri_build_rs() -> String {
 mod plan571_css_secondary_interlock_tests {
     /// 生成的 index.css 必须携带分档后的 --secondary（light 40 24% 85.5% /
     /// dark 215 25% 27%），且不得再现 light 下与 --muted 同值的旧写法。
-    /// PLAN-593 后色值单源在 auto_lang::design_tokens::registry；本函数仍为
-    /// 手写副本（P593-D5 在册——tauri 脚手架路径，Phase 2 收编或对齐 scaffold）。
+    /// PLAN-601 T-09/D5 后本生成器即 registry 装配（内置 tauri 双面）——
+    /// 本测试与 registry 渲染逐值等值断言构成双面互锁（P593-D5 关债）。
     #[test]
     fn index_css_secondary_is_differentiated_from_muted() {
+        use auto_lang::design_tokens::registry;
         let css = super::generate_index_css();
+        let tauri = registry::builtin("tauri").unwrap();
+        assert!(css.contains(&registry::render_core(tauri, false)), "light 核心块须与 registry 渲染逐字等值");
+        assert!(css.contains(&registry::render_core(tauri, true)), "dark 核心块须与 registry 渲染逐字等值");
         assert!(
             css.contains("--secondary: 40 24% 85.5%"),
             "light --secondary 应为 40 24% 85.5% (#e3ddd1 暖灰一档深)"

@@ -508,9 +508,77 @@ fn main() {
 
 - `use.rs` 单类型无花括号形态不进 dep 管线——**一律用 `{...}` 花括号形态**。
 - 方法/字段名撞 Auto 内建名（`find`/`count` 等）会被 a2r 发射器劫持——命名避开。
-- a2r 轨 `.to(str)` 对 rust-typed 值仍发 Debug（`print` 已是 Display）——
-  断言面用 `print`/`.to_string()` 形态。
 - dep 声明 version 的 caret 语义会漂移到最新兼容版——**用 `=x.y.z` 精确 pin**。
+- a2r 轨闭包实参不装箱（DIV-DEP-19）——回调形参方法（`apply(f, x)`）的
+  a2r 腿暂豁免，VM/oracle 双轨可用。
+- 自由函数返回自有类型经 CString 序列化兜底（DIV-DEP-18）——用类型的
+  静态构造器方法（`Type.of(..)` 形态）替代，字段读写走方法/固有面。
+
+## V2 行为等价面（PLAN-596：trait 转发 / 泛型实例化 / 回调原型）
+
+### trait 白名单转发（T3）
+
+白名单 trait（`Display`/`ToString`/`Clone`/`base64::Engine`）的方法三轨可调，
+生成编译期定死分发的转发 wrapper：
+
+```auto
+dep semver(version: "1.0.26")
+use.rs semver::Version
+
+fn main() {
+    let v = Version.parse("1.2.3").unwrap()
+    print(v)                  // Display 转发："1.2.3"（三轨一致）
+    let sv = v.to(str)        // DIV-DEP-8 翻绿：rust 导入类型的 .to(str)
+                              // a2r 发 Display（Auto 类型仍 Debug 兜底）
+}
+```
+
+- Clone 深拷贝：`t2 = t1.clone()` 后改副本字段，原对象不变（字段写 × V1 布局面）。
+- 白名单外 trait（Serialize/PartialEq/Iterator/运算符族）调用报 Unknown
+  （含 `Type.method` 名与行号）；成员按需后扩。
+
+### 泛型实例化（T4）
+
+调用点实参可词法推导时（全整型→i64 / 全字符串→String），泛型函数/方法按
+调用点单态化，无需 turbofish：
+
+```auto
+let a = pick(3, 9)        // pick::<i64> 实例
+let b = pick("x", "z")    // pick::<String> 实例
+Pair.new(2, 7).max()      // 泛型方法同机理
+```
+
+边界：mono 实参限基元/Str/白名单句柄类型；嵌套泛型/泛型返泛型维持 skip。
+改实例集重跑会因 manifest mono 段入指纹而重建缓存（对抗陈旧）。
+
+### 常量接收者（DIV-DEP-13 翻绿形态）
+
+SCREAMING_CASE 的 use.rs 导入项（`STANDARD`/`NIL`）按常量接收者处理，
+发点调用而非 `Type::method`：
+
+```auto
+dep base64(version: "0.22.1")
+use.rs base64::engine::general_purpose::STANDARD   // 嵌套路径用单行形态
+use.rs base64::Engine                              // trait 须在 scope
+
+fn main() {
+    let enc = STANDARD.encode("hello")            // == "aGVsbG8=" 三轨绿
+    let dec = STANDARD.decode(enc).unwrap()       // 往返可用
+}
+```
+
+### 反向回调 adapter 原型（T5，experimental）
+
+rust 形参 `Box<dyn Fn(i64)->i64>` 时，VM 腿经 adapter 重入执行 Auto 闭包
+（单线程、同步、重入深度 1、panic 转 VMError）：
+
+```auto
+let inv = Invoker.new()
+inv.apply(x => x * 2 + 1, 5)   // == 11（VM/oracle 轨；a2r 腿豁免 DIV-DEP-19）
+```
+
+边界：回调内再调三方方法不支持（运行时报错非 UB）；Send/Sync/多线程泵
+归后续计划。
 
 ## See Also
 

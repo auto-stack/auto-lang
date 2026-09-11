@@ -481,11 +481,10 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // libraries via `dep crate(version) + use.rs` and is compared
         // three-way against the transpiled (a2r) and native Rust forms.
         // Network-gated: AUTO_LANG_PARITY_NET=1 required (see run_library).
-        // base64_real is intentionally absent: it is the plan's all-red
-        // sample (VM pack face encodes green, but the a2r emitter's
-        // capitalization heuristic emits `STANDARD::encode` which cannot
-        // compile against a const receiver) — see libs/dep/base64_real.
-        ("p10", &["serde_json_real", "regex_real", "url_real", "semver_real"]),
+        // PLAN-596 T-09: base64_real joined (was the plan's all-red sample —
+        // the a2r emitter emitted `STANDARD::encode` for the const receiver,
+        // fixed by DIV-DEP-13's dot-call lowering; see libs/dep/base64_real).
+        ("p10", &["serde_json_real", "regex_real", "url_real", "semver_real", "base64_real"]),
         // PLAN-591 (non-whitelist pack-face survey): uuid is NOT in
         // BUILTIN_OPAQUE_CRATES, so its type face goes through the real
         // compiled methods pack (594's five libs all ride native_catalog for

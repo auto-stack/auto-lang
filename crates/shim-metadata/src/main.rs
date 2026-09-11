@@ -120,7 +120,7 @@ fn main() {
                 features: Vec::new(),
             };
             let (fp, files) =
-                emit_cdylib::emit_pack(&meta, &dep_line, &c, &exc, &parsed.free_fns, &parsed.fields, &parsed.unit_enums);
+                emit_cdylib::emit_pack(&meta, &dep_line, &c, &exc, &parsed.free_fns, &parsed.fields, &parsed.unit_enums, &Default::default());
             eprintln!(
                 "fingerprint={fp} methods={} skips={} free_fns={}",
                 c.plans.len(),

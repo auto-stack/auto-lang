@@ -106,14 +106,10 @@ fn zero_drift_accent_presets() {
     }
 }
 
-/// T-b：`generate_base_css()` 全文金样（S5 V1 改造的逐字节零漂移证明）。
-/// 金样 = 迁移前模板逐字提取（tests/fixtures/plan593/base_css.golden）。
-#[test]
-fn base_css_golden() {
-    let css = crate::ui_gen::vue::VueGenerator::generate_base_css();
-    let golden = include_str!("../tests/fixtures/plan593/base_css.golden");
-    assert_eq!(css, golden, "generate_base_css 输出与迁移前金样不一致");
-}
+/// T-b：base_css 金样随 PLAN-601 T-09/D3（E2 退役）一并退役——
+/// 值基线参照 fixtures/plan593/base_css.golden 留档，zinc 主题表
+/// 存续于 registry（render_fingerprint 钉）。
+
 
 // ── S8 T-c：词表封闭性/投影完备性 ─────────────────────────────────────
 
@@ -156,6 +152,8 @@ fn t_c_projection_complete_in_stella() {
         Color::Error, Color::Warning, Color::Success, Color::Info,
         Color::OnPrimary, Color::OnSecondary, Color::OnDestructive,
         Color::OnBackground, Color::OnSurface, Color::Border,
+        // PLAN-601 T-08（P593-D1 收口）：accent 独立投影入完备集。
+        Color::Accent, Color::OnAccent,
     ];
     for dark in [false, true] {
         theme::set_dark_mode(dark);
@@ -175,10 +173,10 @@ fn t_c_projection_complete_in_stella() {
 /// builtin 查找的未知名封闭性 + accent 名单值源委托。
 #[test]
 fn t_c_builtins_closed() {
-    assert!(registry::css_builtin("zinc").is_some());
-    assert!(registry::css_builtin("scaffold").is_some());
-    assert!(registry::css_builtin("nonsense").is_none());
-    assert!(registry::rgb_builtin("stella").is_some());
-    assert!(registry::rgb_builtin("zinc").is_none(), "zinc 无 VM 面（CSS-only）");
+    // PLAN-601 T-02 后五主题统一 builtin（双面），zinc 亦有 VM 面。
+    for name in registry::BUILTIN_NAMES {
+        assert!(registry::builtin(name).is_some(), "{name} 应在内置表");
+    }
+    assert!(registry::builtin("nonsense").is_none());
     assert_eq!(theme::ACCENT_PRESETS, registry::ACCENT_NAMES);
 }

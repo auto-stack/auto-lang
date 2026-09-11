@@ -239,6 +239,25 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
         return None;
     }
 
+    // Plan 597 (004 §5③): 点式 C 导入 `use.c <x.h>`（dot 形态，与
+    // annotation 形态的 "c <x.h>" 分支相对）。归 VM codegen 的
+    // handle_c_import 管（注册 C-FFI shim），不是模块导入——缺此分支时
+    // 任何 VM 模式 use.c（含 <math.h>）都被当模块解析报 Module not
+    // found（Plan 216 潜伏缺口，Plan 597 实测坐实）。`use.c "x.json"`
+    // 引号形态为文件 manifest（load_manifest_file），一并放行。
+    if line.starts_with(".c ") || line.starts_with(".c\t") {
+        let rest = line[2..].trim();  // Skip ".c "
+        if rest.is_empty() {
+            return None;
+        }
+        if rest.starts_with('<') && rest.contains('>') {
+            let end = rest.find('>')?;
+            let header = &rest[1..end];
+            return Some(UseStatement::c_import(header));
+        }
+        return Some(UseStatement::c_import(rest.trim_matches('"')));
+    }
+
     // Plan 167: pub use — check for "pub " prefix
     let (line, is_pub) = if line.starts_with("pub ") {
         (&line[4..], true)
@@ -397,6 +416,25 @@ fn parse_python_import(line: &str) -> Option<UseStatement> {
 }
 #[cfg(test)]
 mod tests {
+    /// Plan 597: dot-form `use.c <x.h>` / `use.c "x.json"` must scan as a
+    /// C import (not a module path) — previously ANY VM-mode use.c failed
+    /// module resolution (latent Plan 216 breakage).
+    #[test]
+    fn dot_form_c_import_scans_as_c_import() {
+        let stmts = scan_use_statements("use.c <math.h>
+fn main() {}
+");
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].is_c_import);
+        assert_eq!(stmts[0].c_header.as_deref(), Some("math.h"));
+
+        let stmts2 = scan_use_statements("use.c \"engine_face.json\"
+");
+        assert_eq!(stmts2.len(), 1);
+        assert!(stmts2[0].is_c_import);
+        assert_eq!(stmts2[0].c_header.as_deref(), Some("engine_face.json"));
+    }
+
     use super::*;
 
     #[test]

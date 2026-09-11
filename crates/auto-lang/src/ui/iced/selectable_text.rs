@@ -528,11 +528,9 @@ pub fn selection_rects(
 /// 选区高亮色:主题 accent @ 0.25(对齐 code_editor/text_editor 选区色板)。
 fn selection_color() -> Color {
     let (dark, accent) = crate::ui::code_editor::theme::theme_source();
-    let theme = if dark {
-        crate::ui::code_editor::theme::CodeEditorTheme::dark(&accent)
-    } else {
-        crate::ui::code_editor::theme::CodeEditorTheme::light(&accent)
-    };
+    // PLAN-601 T-10: selection follows the active theme (same derivation as
+    // the code editor).
+    let theme = crate::ui::code_editor::theme::active_code_theme(dark, &accent);
     Color::from_rgba(
         theme.selection.r,
         theme.selection.g,

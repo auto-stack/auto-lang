@@ -14,6 +14,96 @@ use super::Color;
 /// 见该模块头注）；此处 re-export 保持 `theme::registry` 路径稳定。
 pub use crate::design_tokens::registry;
 
+// PLAN-601 T-04/T-03：活动主题槽——命名主题（内置名或 theme{} 合成主题）
+// 热切换。epoch 失效回路与 dark_mode 共用（THEME_EPOCH）；mode 仍由
+// DARK_MODE 承载（主题对内 light/dark 选择器，`dark:` 门控经 dark_mode()
+// 读值不变=零回归泛化）。
+pub enum ActiveSpec {
+    Builtin(&'static registry::ThemeSpec),
+    Composed(std::sync::Arc<crate::design_tokens::decl::ComposedTheme>),
+}
+
+impl ActiveSpec {
+    fn name(&self) -> String {
+        match self {
+            ActiveSpec::Builtin(t) => t.name.to_string(),
+            ActiveSpec::Composed(t) => t.name.clone(),
+        }
+    }
+    fn resolve(&self, token: registry::TokenName, is_dark: bool) -> Option<(u8, u8, u8)> {
+        match self {
+            ActiveSpec::Builtin(t) => registry::resolve_rgb(t, token, is_dark),
+            ActiveSpec::Composed(t) => t.resolve_rgb(token, is_dark),
+        }
+    }
+}
+
+thread_local! {
+    static ACTIVE_THEME: std::cell::RefCell<ActiveSpec> =
+        std::cell::RefCell::new(ActiveSpec::Builtin(
+            registry::builtin("stella").expect("stella 恒在")
+        ));
+}
+
+/// 当前活动主题名（内置名或合成主题名；缺省 "stella" = VM 轨现行）。
+pub fn theme_name() -> String {
+    ACTIVE_THEME.with(|t| t.borrow().name())
+}
+
+/// PLAN-601 T-10：按语义 token 查活动主题双面值（内置表/合成体统一入口）。
+/// code_editor 编辑器色域派生消费（bg/fg 从活动主题取，切主题即翻转）。
+pub fn active_theme_rgb(token: registry::TokenName, is_dark: bool) -> Option<(u8, u8, u8)> {
+    active_theme().resolve(token, is_dark)
+}
+
+/// PLAN-601 T-10：活动合成主题（editor syntax 系统首次构建时把它烘焙进
+/// 主题集——合成主题 boot 后即固定，先于任何编辑器创建）。
+pub fn active_composed() -> Option<std::sync::Arc<crate::design_tokens::decl::ComposedTheme>> {
+    ACTIVE_THEME.with(|t| match &*t.borrow() {
+        ActiveSpec::Composed(c) => Some(c.clone()),
+        ActiveSpec::Builtin(_) => None,
+    })
+}
+
+/// 切换活动主题为内置名（未知名返回 false 且零变化）。变化时
+/// THEME_EPOCH 自增——既有失效回路（view 重建→重解析）随之生效。
+pub fn set_theme(name: &str) -> bool {
+    let Some(spec) = registry::builtin(name) else {
+        return false;
+    };
+    set_active(ActiveSpec::Builtin(spec))
+}
+
+/// PLAN-601 T-03：应用 theme{} 合成主题（decl::compose 产物）。
+/// 返回是否发生变化（同名同值不触发 epoch）。
+pub fn set_theme_composed(theme: std::sync::Arc<crate::design_tokens::decl::ComposedTheme>) -> bool {
+    set_active(ActiveSpec::Composed(theme))
+}
+
+fn set_active(spec: ActiveSpec) -> bool {
+    let changed = ACTIVE_THEME.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.name() != spec.name() {
+            *t = spec;
+            true
+        } else {
+            false
+        }
+    });
+    if changed {
+        THEME_EPOCH.with(|e| e.set(e.get().wrapping_add(1)));
+    }
+    changed
+}
+
+/// 活动主题 spec（解析入口共用）。
+fn active_theme() -> ActiveSpec {
+    ACTIVE_THEME.with(|t| match &*t.borrow() {
+        ActiveSpec::Builtin(spec) => ActiveSpec::Builtin(spec),
+        ActiveSpec::Composed(c) => ActiveSpec::Composed(c.clone()),
+    })
+}
+
 // Plan 370 D-GAP-2/D-GAP-5: thread-local theme state for dark mode + accent.
 // Set by the renderer before each render pass from VmBridge state.
 // Plan 408: default to true because the iced window theme is hardcoded to
@@ -196,6 +286,9 @@ fn color_token(color: &Color) -> Option<registry::TokenName> {
         Color::Info => T::Info,
         Color::OnPrimary => T::PrimaryForeground,
         Color::OnSecondary => T::SecondaryForeground,
+        // PLAN-601 T-08（P593-D1）：accent 独立投影。
+        Color::Accent => T::Accent,
+        Color::OnAccent => T::AccentForeground,
         Color::OnDestructive => T::DestructiveForeground,
         Color::OnBackground => T::Foreground,
         Color::OnSurface => T::MutedForeground,
@@ -219,8 +312,7 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
         return Some(hsl_to_rgb(h, s, l_adjusted));
     }
     let token = color_token(color)?;
-    let stella = registry::rgb_builtin("stella")?;
-    registry::resolve_rgb(stella, token, is_dark)
+    active_theme().resolve(token, is_dark)
 }
 
 /// Plan 411 P2-A④: vue `border-border` 语义色(shadcn --border 变量)——
@@ -228,12 +320,9 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
 /// （历史校准记录：Plan 518 暖灰 light #e3ddd1 / 蓝黑 dark #283146。）
 pub fn resolve_border_rgb() -> (u8, u8, u8) {
     let is_dark = DARK_MODE.with(|d| d.get());
-    registry::resolve_rgb(
-        registry::rgb_builtin("stella").expect("内置主题 stella 恒在"),
-        registry::TokenName::Border,
-        is_dark,
-    )
-    .expect("stella Border 槽由 plan593 T-c 完备性测试钉死")
+    active_theme()
+        .resolve(registry::TokenName::Border, is_dark)
+        .expect("活动主题 Border 槽：builtin 由 themes_core_complete 钉死；composed 含基座全表")
 }
 
 #[cfg(test)]
@@ -245,6 +334,34 @@ mod tests {
     }
 
     /// Plan 518 T1: 双主题语义值表——light 暖纸 / dark 精修蓝黑(stella 对齐)。
+    /// PLAN-601 T-04：活动主题热切换——resolve 全翻转 + epoch 自增 +
+    /// 未知名拒绝 + 还原防污染。
+    #[test]
+    fn theme_switch_flips_resolution_and_bumps_epoch() {
+        assert_eq!(super::theme_name(), "stella");
+        super::set_dark_mode(false); // 先定 mode，再取 epoch 基线（dark 翻转也自增）
+        let e0 = super::theme_epoch();
+        assert!(!super::set_theme("nonsense"), "未知名拒绝");
+        assert_eq!(super::theme_name(), "stella");
+        assert_eq!(super::theme_epoch(), e0);
+        assert!(super::set_theme("zinc"));
+        assert_eq!(super::theme_epoch(), e0.wrapping_add(1));
+        super::set_dark_mode(false);
+        assert_eq!(
+            super::resolve_semantic_rgb(&Color::Background),
+            Some((255, 255, 255)),
+            "zinc light background = 纯白"
+        );
+        assert!(super::set_theme("stella"));
+        assert_eq!(
+            super::resolve_semantic_rgb(&Color::Background),
+            Some((245, 241, 232)),
+            "stella 暖纸恢复"
+        );
+        assert_eq!(super::theme_epoch(), e0.wrapping_add(2), "两次主题切换各 +1（无 dark 翻转）");
+        super::set_dark_mode(true); // 还原默认档，防污染其他用例
+    }
+
     #[test]
     fn stella_light_palette() {
         set_dark_mode(false);

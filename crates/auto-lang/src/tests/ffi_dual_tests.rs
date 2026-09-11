@@ -307,6 +307,75 @@ print(c.bump().level_value())"#,
     );
 }
 
+// PLAN-596 T-03/T-08: 591 V2——trait 白名单转发(Clone)/既有 Display 合成/
+// V1×V2 组合(make→to_string+字段读/clone 深拷贝独立性+字段写)。
+// V2-3/V2-4(pick/pick_max 泛型 mono)与 V2-6(回调 adapter)随 T-04/T-05 增补。
+#[test]
+fn ffi_dual_020_dep_traits_generics() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    test_ffi_dual("020_dep_traits_generics").unwrap();
+}
+
+// PLAN-596 复审 F-1: 回调面从 020 拆出为独立语料——DIV-DEP-19(a2r 闭包实参
+// 不装箱)的 case 级豁免只落本 case,020 主面(trait 转发/泛型双实例/深拷贝/
+// V1×V2 组合)恢复 dep_parity 自动 a2r 三轨。V2-6 维持 experimental 口径
+// (VM+oracle 双腿,021 oracle 以 Box::new 装箱镜像)。
+#[test]
+fn ffi_dual_021_dep_callback() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    test_ffi_dual("021_dep_callback").unwrap();
+}
+
+// PLAN-596 复审 F-2 对抗: mono 实例集变化必须触发 methods pack 重建。
+// 机制链: 推导 mono 集 ≠ 缓存 manifest.mono → methods_pack.rs mono_stale
+// 判 stale 重建(AC-02 "随提示集变化"的执行形态——指纹本体不含 mono,P592-D1
+// 同族键粒度,由装载期比对兜底)。对抗形态沿用 019 输出钉死: 若陈旧包被
+// 复用(仅 i64 实例),`pick("a","z")` 在包内既无实例条目也无基名条目
+// (mono 命中者不进 skip 面) → 派发失败非真值,当场暴露。
+// 独立 fixture autolang_mono_probe(单 pick 最小面,独立 crate 名)——防与
+// 020 语料的同申 pack 缓存在并行测试下互相重建污染(P591-D3/P596-D5 族)。
+#[test]
+fn ffi_dual_022_mono_pack_rebuild() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let ffi = d.join("test/ffi_dual").to_string_lossy().replace('\\', "/");
+    let dep_line = format!(
+        "dep autolang_mono_probe(path: \"{ffi}/022_mono_pack_rebuild_fixture/autolang_mono_probe\")"
+    );
+
+    // 段 1: 纯 i64 调用——pack 以 mono {pick:[i64]} 建,输出钉真值
+    let src_i64 = format!(
+        "{dep_line}\nuse.rs autolang_mono_probe::{{pick}}\nfn main() {{\n    let a = pick(3, 9)\n    print(a)\n}}\n"
+    );
+    let (_, out1) = crate::run_with_capture(&src_i64).expect("mono probe i64 run");
+    assert_eq!(out1.trim(), "9", "i64 instance pin");
+
+    // 段 2: 实例集扩张(+String)——quick-path 必须判 stale 重建;陈旧包复用
+    // 即 String 实例缺位,此处必红(AC-02 对抗臂)。
+    let src_both = format!(
+        "{dep_line}\nuse.rs autolang_mono_probe::{{pick}}\nfn main() {{\n    let a = pick(3, 9)\n    print(a)\n    let b = pick(\"a\", \"z\")\n    print(b)\n}}\n"
+    );
+    let (_, out2) = crate::run_with_capture(&src_both).expect("mono probe i64+String run");
+    assert_eq!(
+        out2.trim(),
+        "9\nz",
+        "instance-set expansion must rebuild the pack (stale pack lacks pick__String)"
+    );
+
+    // 段 3(收缩向): 回到纯 i64 源——收缩后仍正确(比对是集合相等而非超集)
+    let (_, out3) = crate::run_with_capture(&src_i64).expect("mono probe back to i64");
+    assert_eq!(out3.trim(), "9", "shrunk mono set still correct");
+}
+
 // Plan 430 复审补网:std 臂 VM 路径回归网。
 // 守护 dispatch 3000 生成段(generated_std.rs):Vec 14 臂/Duration 5 臂/
 // Instant 2 臂/PathBuf.from/String.new|from。复审发现 430 迁移 std 手写臂后,
@@ -482,3 +551,4 @@ fn ffi_dual_019_dep_layout_invariants() {
         "twin a truth(与 _b 同进程先后装载,布局各归各)"
     );
 }
+

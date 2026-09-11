@@ -144,16 +144,36 @@ fn build_syntax_system() -> SyntaxSystem {
         let lazy: two_face::theme::LazyThemeSet = two_face::theme::extra().into();
         lazy.into()
     };
-    // Pre-register the synthesized AutoUI themes (dark/light × accents).
-    for &accent in KNOWN_ACCENTS.iter() {
-        for &dark in [true, false].iter() {
-            let theme = if dark {
-                crate::ui::code_editor::theme::CodeEditorTheme::dark(accent)
-            } else {
-                crate::ui::code_editor::theme::CodeEditorTheme::light(accent)
-            };
-            let name = theme_name_inner(dark, accent);
-            theme_set.themes.insert(name, theme.syntax_theme());
+    // Pre-register the synthesized AutoUI themes (builtin themes × dark/light
+    // × accents). PLAN-601 T-10: every named builtin joins the baked set so
+    // switching themes re-keys without re-synthesis; composed (declared)
+    // themes register lazily via register_theme.
+    for &theme_id in crate::design_tokens::registry::BUILTIN_NAMES.iter() {
+        let spec = crate::design_tokens::registry::builtin(theme_id)
+            .expect("BUILTIN_NAMES 与表互锁");
+        for &accent in KNOWN_ACCENTS.iter() {
+            for &dark in [true, false].iter() {
+                let theme = crate::ui::code_editor::theme::CodeEditorTheme::for_builtin(
+                    spec, dark, accent,
+                );
+                let name = theme_name_inner(theme_id, dark, accent);
+                theme_set.themes.insert(name, theme.syntax_theme());
+            }
+        }
+    }
+    // PLAN-601 T-10: a composed (theme{} declared) theme active at first
+    // editor use joins the baked set under its own name. Declarations apply
+    // at boot — before any editor exists — so this covers the composed
+    // surface; runtime hot-switching is builtin-vocabulary only (T-05).
+    if let Some(composed) = crate::ui::style::theme::active_composed() {
+        for &accent in KNOWN_ACCENTS.iter() {
+            for &dark in [true, false].iter() {
+                let theme = crate::ui::code_editor::theme::CodeEditorTheme::for_composed(
+                    &composed, dark, accent,
+                );
+                let name = theme_name_inner(&composed.name, dark, accent);
+                theme_set.themes.insert(name, theme.syntax_theme());
+            }
         }
     }
     // PLAN-041 T4: autodown fence 家族 hljs 主题——autodown-core 的跨轨
@@ -170,8 +190,21 @@ fn build_syntax_system() -> SyntaxSystem {
     }
 }
 
-fn theme_name_inner(dark: bool, accent: &str) -> String {
-    format!("autoui-{}-{}", if dark { "dark" } else { "light" }, normalize_accent(accent))
+/// PLAN-601 T-10: the theme key carries the ACTIVE theme id (named builtin
+/// or composed declaration) — a theme switch produces a new key and the
+/// editor re-applies. Non-key-safe characters in composed names are
+/// flattened (key-only sanitization; the palette itself is exact).
+fn theme_name_inner(theme: &str, dark: bool, accent: &str) -> String {
+    let safe: String = theme
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    format!(
+        "autoui-{}-{}-{}",
+        safe,
+        if dark { "dark" } else { "light" },
+        normalize_accent(accent)
+    )
 }
 
 /// The process-wide syntax system (leaked, shared by every editor).
@@ -179,21 +212,23 @@ pub fn syntax_system() -> &'static SyntaxSystem {
     registry().lock().unwrap().system
 }
 
-/// Resolve the pre-registered theme by name. All AutoUI themes are baked
-/// into the (immutable, leaked) theme set at first use; unknown names fall
-/// back to the dark indigo theme.
+/// Resolve the pre-registered theme by name. All AutoUI themes (builtins +
+/// the boot-time composed theme) are baked into the (immutable, leaked)
+/// theme set at first use; unknown names fall back to the stella dark
+/// indigo theme.
 pub fn register_theme(name: &str, _theme: SynTheme) -> String {
     let reg = registry().lock().unwrap();
     if reg.system.theme_set.themes.contains_key(name) {
         name.to_owned()
     } else {
-        theme_name_inner(true, "indigo")
+        theme_name_inner("stella", true, "indigo")
     }
 }
 
-/// Stable theme name for a (dark, accent) pair — the pre-registered key.
-pub fn theme_name(dark: bool, accent: &str) -> String {
-    theme_name_inner(dark, accent)
+/// Stable theme name for a (theme, dark, accent) triple — the
+/// pre-registered key for builtins, the lazy key for composed themes.
+pub fn theme_name(theme: &str, dark: bool, accent: &str) -> String {
+    theme_name_inner(theme, dark, accent)
 }
 
 // ── PLAN-041 T4：autodown fence 家族 hljs 主题（跨轨 token 映射表消费）──
@@ -268,7 +303,8 @@ pub fn highlight_segments(
         return fallback();
     };
     let system = syntax_system();
-    let Some(theme) = system.theme_set.themes.get(&theme_name(dark, accent)) else {
+    let theme_id = crate::ui::style::theme::theme_name();
+    let Some(theme) = system.theme_set.themes.get(&theme_name(&theme_id, dark, accent)) else {
         return fallback();
     };
     let Some(syntax) = system.syntax_set.find_syntax_by_extension(ext) else {
@@ -325,17 +361,21 @@ mod tests {
 
     #[test]
     fn theme_registration_is_stable() {
-        // Pre-registered names resolve to themselves.
-        let dark = theme_name(true, "indigo");
+        // Pre-registered names resolve to themselves (all five builtins are
+        // baked per (theme, mode, accent) — PLAN-601 T-10).
+        let dark = theme_name("stella", true, "indigo");
         assert_eq!(register_theme(&dark, cosmic_text::SyntaxTheme::default()), dark);
-        // Unknown names snap to the dark indigo fallback.
+        for theme_id in crate::design_tokens::registry::BUILTIN_NAMES {
+            assert!(syntax_system().theme_set.themes.contains_key(&theme_name(theme_id, true, "indigo")));
+        }
+        // Unknown names snap to the stella dark indigo fallback.
         assert_eq!(
             register_theme("no-such-theme", cosmic_text::SyntaxTheme::default()),
-            theme_name(true, "indigo")
+            theme_name("stella", true, "indigo")
         );
         // Unknown accents normalize when building names.
-        assert_eq!(theme_name(true, "purple"), theme_name(true, "indigo"));
-        assert_ne!(theme_name(true, "coral"), theme_name(false, "coral"));
+        assert_eq!(theme_name("stella", true, "purple"), theme_name("stella", true, "indigo"));
+        assert_ne!(theme_name("stella", true, "coral"), theme_name("stella", false, "coral"));
         assert!(syntax_system().theme_set.themes.contains_key(&dark));
     }
 

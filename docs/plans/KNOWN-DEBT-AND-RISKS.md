@@ -1867,7 +1867,7 @@ P0 特征化网执行期发现的管线缺陷，已修复面见计划执行步�
 Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账分叉登记；已修复面
 见 plan 执行步骤（registry 落地/四处置迁移/零漂移双金样）：
 
-- **P593-D1 [一致性] shadcn `accent` token 的 VM 投影坍缩（=P571-D1 顺延）**：
+- **P593-D1 ✅ 已收口（PLAN-601 T-08，2026-09-09）** shadcn `accent` token 的 VM 投影坍缩（=P571-D1 顺延）：
   `bg-accent`/`text-accent` class 在 VM 侧坍缩映射 `Color::Secondary`
   （`ui/style/color.rs` "accent" 臂），而 vue 侧 `--accent` 是独立值（zinc/scaffold
   均为 muted 系≠secondary）——双端本就分歧。PLAN-593 S7 证据门实测：`.at` 源码
@@ -1875,22 +1875,123 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
   等示例），**改投影值=动现存 VM 视觉**，违反 Phase 1 零变化门——钉 Phase 2
   （随主题切换落地一并：Color 枚举补 Accent/OnAccent 变体 + registry
   Accent/AccentForeground 槽已在位）。
-- **P593-D2 [双端分叉] accent dark 提亮 +4 vs +10**：vue 脚手架 TS applyAccent
+- **P593-D2 ✅ 已收口（PLAN-601 T-07，2026-09-09）** accent dark 提亮 +4 vs +10：vue 脚手架 TS applyAccent
   dark 提亮 `+4`（ui_gen/vue.rs ACCENT_PALETTE_JS），Rust 侧 `+10`
   （theme::accent_primary_hsl/resolve_semantic_rgb Primary 臂）——同 accent 双端
   暗色亮度不一致。Phase 2 归一裁定（含 zinc-vs-stella、E2/E3 模板值归一）。
-- **P593-D3 [遗留面] ui_gen generate_base_css 为测试专用**：S1 对账实勘其唯一
+- **P593-D3 ✅ 已收口（PLAN-601 T-09/D3，2026-09-09）** ui_gen generate_base_css 为测试专用：S1 对账实勘其唯一
   调用方是自身测试（真实 Vue 路径=auto-man generate_index_css），两模板值已分叉
   （primary 深藏青 vs 烤入 indigo；dark card 11%↔10%、muted 17.5%↔15%）。
   Phase 2 裁定退役或对齐 scaffold；registry 中两套（zinc/scaffold）分别保真。
-- **P593-D4 [跨仓] auto-os 桌面宿主 CSS 发射点未对账**：auto-os 仓
+- **P593-D4 ✅ 已关（PLAN-601 T-01 调查结论，2026-09-09）** auto-os 桌面宿主 CSS 发射点未对账：auto-os 仓
   widgets-gallery/vue-ref 静态资产含 `--background:` 系（E7），桌面 vue 宿主若
   另有 index.css 发射点则属第四源——Phase 2 立项时跨仓对账。
-- **P593-D5 [S9 实勘补录] auto CLI 两个手写 index.css 副本未收编**：
-  `crates/auto/src/cmd_tauri.rs:745` 与 `crates/auto/src/cmd_vue.rs:1613` 各有一
-  份 `generate_index_css()`（tauri/cli-vue 脚手架真路径，各有非测试调用方
-  386/1163），色板为 zinc/scaffold 之外的独立变体（tauri≈zinc+dark bg 84% 4.9%
-  +vis-* 图表 token 族；cli-vue=radius 0.625+双 sidebar 块〔zinc 值与 indigo 值
-  并存〕）。PLAN-593 收尾期裁定不中途扩面：PLAN-571 contains 测试在守护已知
-  漂移（--secondary 分档），Phase 2 收编或直接对齐 scaffold/zinc（含产品裁定
-  何者退役）。
+- **P593-D5 [已关闭·PLAN-601 T-09] auto CLI 两个手写 index.css 副本已收编 registry 装配**：
+  `crates/auto/src/cmd_tauri.rs` 与 `crates/auto/src/cmd_vue.rs` 的
+  `generate_index_css()` 色变量块改为 `registry::render_core/render_sidebar`
+  装配（内置 `tauri`/`cli-vue` 双面，装配前逐值机械对拍零漂移）；vis-*/双
+  sidebar 兜底块/preview-code 编辑器 token/forest-sunset-ocean 附加主题/mono
+  覆盖为模板资产留原文（registry 闭集词表外）；PLAN-571 contains 测试升级为
+  registry 渲染逐字等值断言（防复活带旧值→防复活即同源）。文件本身仍为
+  main.rs 未挂载的死文件（571 "死文件顺手对齐防复活" 裁定延续）；tauri
+  真路径经 auto-man 共享脚手架（T-02 已 registry 化），独立变体值以 registry
+  `tauri`/`cli-vue` 表存续作可切换内置。
+
+- **P601-T11 [开放] SVG 图形属性 token 通道缺失（charts-gallery 主题跟随示范面受阻）**：
+  `024-charts` 图表几何经 `serialize_svg_element`（aura_view_builder，
+  Plan 442 A4 白名单）**构建期逐字序列化**，stroke/fill 只认字面 hex——
+  语义色名/`var(--*)` 双腿皆不可用（vue 腿 SVG 呈现属性同样不吃 var()，
+  需 style 属性发射臂）。PLAN-601 T-11 重估裁定：图表系列四色
+  (#2563eb/#16a34a/#d97706/#dc2626≈info/success/warning/error 语义四色)与
+  网格/轴线 chrome 色(#e2e8f0/#94a3b8/#f1f5f9/#ffffff)的 token 化需先建
+  **SVG 属性 token 替换通道**（VM: svg_attr 语义名→resolve_semantic_rgb→hex
+  序列期替换，view 重建随 epoch 刷新；vue: 语义名→style 属性 var() 发射），
+  属跨管线协议特性，非单计划任务量。附带缺口：vue 腿裸名包组件
+  （line-chart 等 484 M4 裸名原语）现发射数据绑定占位 `<div :data=...>`
+  而非 SFC 组件引用；**同族并档（601 复审 R3）：`use settings:
+  SettingsPopover` 包组件同缺 SFC 发射**——006-hero-section/015-notes
+  生成 App.vue imports SettingsPopover.vue 不存在，`auto run`（vue 模式）
+  vite 解析断链（复审实机复现；全新 gen 需手工桩方可启动）。触发条件：
+  主题切换示范面（三主题截图对拍）立项时一并收口。
+
+---
+
+## 附录：VM 引擎缺陷现场（2026-09-09 025-sys-monitor 内存/卡顿复盘）
+
+> **✅ KD-VM1~4 已由 PLAN-604（2026-09-10）修复销账**——定罪笔记（行号级
+> 证据+trace+仪器化数据）见 `docs/plans/604-vm-rc-lifecycle-fix.md` §9。
+> 修复面：CONSTRUCT_INSTANCE 取 `sp-1` 槽（T03）、shim_list_push 四出口
+> transfer 配平（T04）、ARRAY_LEN 收尾（T04）、GET_FIELD 门控+结算转正
+> （T01）、as-cast Math.trunc 降级（T08）。验收：probe_rc_leak_soak 5/5
+> 硬断言绿（StructTick 4000→0、LitPushTick lenSeen=100/sum=4950/growth 0）。
+> **勘误**：KD-VM3（B12 编码损坏）与 KD-VM4（Number() 不截断）的原表述均
+> 与事实不符——B12 为坏探针伪证（语料缺 LitPushTick timer 条目致 handler
+> 空跑，lenSeen==0/fff2 皆为空跑症状）；Number() 降级在仓内不存在（实际
+> 缺口=Cast 三处 emit 无降级）。协议固化见
+> `docs/specs/auto-lang/vm/overview.md` §RC 生命周期协议/§B12 编码不变量。
+
+复现与归因工具已入仓：语料 `test/ui/probe_rc_leak/`（五拍型 timer 逐操作归因）+
+`musk_vm_track_tests.rs::probe_rc_leak_soak`（进程内 `heap_live_objects` 断言通道，
+0.14s/轮）。四个缺陷同根不同面：
+
+- **KD-VM1 [内存泄漏·高优] GenericInstance（struct 字面量）经 `List.push` 入列后
+  永久滞留**：最小复现 `probe_attribution`——`StructTick`（struct 字面量×100 →
+  本地 `[]Item` → push）40 拍 live_heap **+4000（恰 100/拍）**；对照组
+  int/string push、空列表、字面量进 var 全部 0 增长。直接后果：每 tick 重建
+  struct 列表的应用（sys-monitor 等）merged/split 模式内存线性上涨
+  （实测 55–147 MB/min，旧版更快）。指向 `CONSTRUCT_INSTANCE` 的 stake 归属
+  （`instance_stake` 取槽位疑似错位，最终 `mark_top_stake` 标到空份额）+
+  `shim_list_push`/engine "push" 臂 raw pop 不结算元素槽——修复需按 Plan 419
+  协议补全「容器写：新值转移/旧值 -1」两侧的 stake 结算。
+- **KD-VM2 [日志洪泛·已缓解] GET_FIELD 噪音臂无限 eprintln + 每命中泄漏一份
+  stake**：`engine.rs` GET_FIELD 未知编码臂每命中一行 stderr（sys-monitor
+  曾 6 分钟 344MB / 43M 行，UI 线程饿死=「未响应」）且 raw pop 的槽 stake 不
+  结算。已做环境门控（`AUTO_DEBUG_GETFIELD`）+ 臂内 `take_stake_at` 结算；
+  根修需识别 struct 元素的编码（fff2 头=TAG_STRING 负哨兵，见 KD-VM3）。
+- **KD-VM3 [编码损坏·B12 族根因] push 构建列表的 struct 元素编码坏**：
+  `List.push` 后元素 nanbox 变 `0xfff2…`（TAG_STRING 负哨兵）——handler 内
+  字段读落噪音臂返回 0/空（排序乱序、pid 全 0 的根因），view 侧读又正常
+  （launcher「view 读可用」注记同源）。字符串/int 列表不受影响。
+- **KD-VM4 [双端分叉] `.as(int)` Vue 侧编译为 `Number()` 不截断**：
+  `ui_gen/vue.rs` 仅对「int 标记操作数的 `/`、`%`」降级 `Math.trunc`，直接
+  `.as(int)` 赋值不截断——VM 侧真截断。工作法：数值展示串一律用
+  「int 部件拼串」（`${x/10}.${x%10}`），两端同净。
+
+应用侧规避（025-sys-monitor 已落地）：struct 字段读只出现在 `.procs` 快照
+for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲染前 120 行物化。
+
+
+## P596 债务（dep-rust-v2 执行期登记，2026-09-10）
+
+- **P596-D1 [指纹纪律] 提取器语义变化必须升 GENERATOR**：rustdoc 提取层
+  （可见性裁定/trait 归属/Box<Fn> 投影）变化不进签名集——两次实测陈旧缓存
+  均靠 GENERATOR 字符串变化兜底失效。规约：改 rustdoc.rs/classify 提取语义
+  必 bump GENERATOR（代码注释已钉，复审把关）。
+- **P596-D2 [DIV-DEP-19] a2r 回调实参不装箱**：`inv.apply(|x|..)` 发射裸
+  闭包（E0308 expected Box<dyn Fn>）——020 a2r 腿豁免中；根治=a2r 元数据
+  接入（与 DIV-DEP-7/15 同族，P592-D3）。
+- **P596-D3 [DIV-DEP-18] 自由函数返回自有类型被 CString 序列化**：212
+  wrapper 对未知返回 `_r.to_string()` 兜底——Display 类型造**假绿**（V2-1
+  首跑实证）；修法=opaque 返回通道或路由方法包。
+- **P596-D4 [T5 后续指针] 回调 adapter 原型边界**：Send/Sync 线律、多线程
+  泵、闭包捕获环境限制、>1 元回调签名、panic 负面语料不可构造（Auto 无
+  panic 原语；catch_unwind 已实现）——归后续计划。
+- **P596-D5 [多变量 worktree 竞态] P592-D1 再实证**：probe 多导入集变体
+  共存致覆盖扫描偶选陈旧包（清缓存即愈）；根治=wrapper 按 crate 全函数集
+  单一化（P592-D1 原案）。
+- **P596-D6 [并行 a2r 冷构建] 首跑挂死**：全量 a2r 冷构建并行竞争曾挂死
+  （单跑/缓存后全绿）；CI 首跑宜串行或预热。
+
+## P597 债务（cffi-engine-face，2026-09-10 复审登记）
+
+- **P597-D1 [VM 挂起] if 条件位内联 C-FFI 调用 + while 循环 = VM 挂死**：
+  C-FFI 调用直接写在 if 条件位且该 if 位于 while 循环体内时 VM 挂起
+  （单发条件位正常）。597 引擎面冒烟实测定位，语料头注规避（赋值先行
+  +条件合成）。留 VM 轨道修。证据：`crates/auto-lang/test/vm_engine_face/
+  engine_face_vm.at` 头注（a）/归档计划 §9 T-05。
+- **P597-D2 [控制流静默断裂] 循环计数器在嵌套 if 内赋值**：循环计数器
+  的赋值发生在嵌套 if 分支内时控制流静默断裂（后续语句全不执行，无
+  报错）。同上实测定位+规避（计数器仅体尾自增）。留 VM 轨道修。
+  证据：同语料头注（b）/归档计划 §9 T-05。
+- 复审 F-2 观察项（非债）：`auto <script>` 尾行打印脚本尾值（runner
+  基线行为，engine_face_vm.at 尾部 "false"）。

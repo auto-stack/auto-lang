@@ -1,4 +1,5 @@
 /// semver_real 绿面——真三方 semver 动态加载（PLAN-594）。
+/// D8 翻绿行（PLAN-596 T-07）：print(v) 附加输出 + to(str) 三轨断言。
 dep semver(version: "1.0.26")
 use.rs semver::Version
 
@@ -22,5 +23,13 @@ fn main() {
         tap_ok(3, "parse_patch")
     } else {
         print("not ok 3 - parse_patch")
+    }
+    // DIV-DEP-8 翻绿：Display 面三轨一致（print 附加输出 + to(str) TAP 断言）。
+    print(v)
+    let sv = v.to(str)
+    if sv == "1.2.3" {
+        tap_ok(4, "display_to_str")
+    } else {
+        print("not ok 4 - display_to_str")
     }
 }

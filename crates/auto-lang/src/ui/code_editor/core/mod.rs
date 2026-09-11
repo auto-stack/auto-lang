@@ -650,16 +650,17 @@ impl CodeEditorCore {
     /// synthesized theme is registered under its stable name and the
     /// editor re-highlights.
     pub fn sync_syntax_theme(&self, dark: bool, accent: &str) {
-        let name = highlight::theme_name(dark, accent);
+        // PLAN-601 T-10: the key carries the ACTIVE theme id — switching
+        // themes (set_theme / set_theme_composed + epoch invalidation)
+        // produces a new key and the editor re-applies with theme-derived
+        // bg/fg (active_code_theme).
+        let theme_id = crate::ui::style::theme::theme_name();
+        let name = highlight::theme_name(&theme_id, dark, accent);
         let mut applied = self.applied_theme.lock().unwrap();
         if applied.as_deref() == Some(name.as_str()) {
             return;
         }
-        let theme = if dark {
-            CodeEditorTheme::dark(accent)
-        } else {
-            CodeEditorTheme::light(accent)
-        };
+        let theme = crate::ui::code_editor::theme::active_code_theme(dark, accent);
         highlight::register_theme(&name, theme.syntax_theme());
         self.editor_lock().update_theme(&name);
         *applied = Some(name);
@@ -1707,7 +1708,8 @@ pub fn code_editor_count() -> usize {
 /// Resolve the effective theme for an editor and make sure the syntect
 /// theme is registered under its stable name.
 pub fn registered_theme_name(theme: &CodeEditorTheme, dark: bool, accent: &str) -> String {
-    let name = highlight::theme_name(dark, accent);
+    let theme_id = crate::ui::style::theme::theme_name();
+    let name = highlight::theme_name(&theme_id, dark, accent);
     highlight::register_theme(&name, theme.syntax_theme())
 }
 
@@ -1791,7 +1793,12 @@ mod tests {
         assert!(list.gutter.is_some(), "gutter section must be present");
         assert!(list.caret.is_some(), "caret must be placed");
         assert!(!list.gutter.as_ref().unwrap().numbers.is_empty());
-        assert_eq!(list.background.map(|(_, c)| c), Some(super::super::theme::CodeEditorTheme::dark("indigo").background));
+        // PLAN-601 T-10: background derives from the ACTIVE theme's
+        // Background token (stella dark by default), not a hardcoded preset.
+        assert_eq!(
+            list.background.map(|(_, c)| c),
+            Some(crate::ui::code_editor::theme::active_code_theme(true, "indigo").background)
+        );
     }
 
     /// Plan 414 §4: the line-number gutter keeps at least two digit columns

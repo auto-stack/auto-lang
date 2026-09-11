@@ -3643,3 +3643,143 @@ mod musk_vm_track_p062_heap_soak {
         );
     }
 }
+
+/// mem 复盘探针（025-sys-monitor 内存线性上涨归因）：handler 每 tick
+/// 重建 struct/string 列表，live_heap 分相归因。
+/// - StructTick：struct 字面量 ×100 → 本地 []Item → store 覆写（嫌疑路径）
+/// - ListTick/LitTick/IntPushTick/StrPushTick：单操作细分归因
+/// - NoneTick：零分配对照
+#[cfg(feature = "ui-interpreter")]
+mod probe_rc_leak_soak {
+    fn locate_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/probe_rc_leak/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    fn fire(dc: &mut crate::ui::dynamic::DynamicComponent, timer: &str) {
+        dc.fire_timer("App", timer);
+    }
+
+    fn growth(timer: &str, ticks: u64) -> i64 {
+        let path = locate_corpus().expect("corpus");
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
+        for _ in 0..10 {
+            fire(&mut dc, timer);
+        }
+        let base = dc.heap_live_objects();
+        for _ in 0..ticks {
+            fire(&mut dc, timer);
+        }
+        let after = dc.heap_live_objects();
+        let delta = after as i64 - base as i64;
+        eprintln!("[probe:{}] base={} after={} delta={}", timer, base, after, delta);
+        delta
+    }
+
+    #[test]
+    fn probe_disasm() {
+        let path = locate_corpus().expect("corpus");
+        let dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
+        for (name, addr) in dc.debug_fn_table() {
+            if name.contains("LitPushTick") {
+                eprintln!("fn {} @ {:#x}", name, addr);
+                let d = dc.debug_disasm(addr as u32, 0, 150);
+                eprintln!("{}", d);
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn probe_litpush_readback() {
+        let path = locate_corpus().expect("corpus");
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
+        fire(&mut dc, "LitPushTick");
+        // PLAN-604 AC-02: struct 元素经 List.push 入列后字段读往返保真
+        // (B12 族元素读损坏在语料级不复现的守护断言)。
+        assert_eq!(dc.read_state("lenSeen"), Ok(auto_val::Value::Int(100)),
+            "LitPushTick: 100 个 struct 元素必须真正入列");
+        assert_eq!(dc.read_state("sum"), Ok(auto_val::Value::Int(4950)),
+            "LitPushTick: for-each 字段读求和 0+1+..+99 必须 = 4950");
+        let base = dc.heap_live_objects();
+        for _ in 0..40 {
+            fire(&mut dc, "LitPushTick");
+        }
+        let after = dc.heap_live_objects();
+        // PLAN-604 AC-01 同款容差(PLAN-062 T12 口径):列表 churn 40 拍
+        // 增量 ≤ 64(实例+列表全回收)。
+        assert!(after as i64 - base as i64 <= 64,
+            "LitPushTick 40 拍 live_heap 增量 {} > 64(RC 滞留回归)", after - base);
+    }
+
+    #[test]
+    fn probe_readback() {
+        let path = locate_corpus().expect("corpus");
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
+        fire(&mut dc, "StructTick");
+        for f in ["n", "sum", "lenSeen"] {
+            match dc.read_state(f) {
+                Ok(v) => eprintln!("[readback] {} = {:?}", f, v),
+                Err(e) => eprintln!("[readback] {} ERR: {}", f, e),
+            }
+        }
+    }
+
+    #[test]
+    fn probe_trace_ids() {
+        std::env::set_var("P419_UAF_TRACE", "4000100-4000105");
+        let path = locate_corpus().expect("corpus");
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path).expect("build");
+        // 预热吃掉首批 id,再锁定追踪窗口内的 10 个 tick
+        for _ in 0..3 {
+            fire(&mut dc, "StructTick");
+        }
+        let base = dc.heap_live_objects();
+        for _ in 0..10 {
+            fire(&mut dc, "StructTick");
+        }
+        let after = dc.heap_live_objects();
+        eprintln!("[trace] base={} after={} delta={}", base, after, after - base);
+    }
+
+    #[test]
+    fn probe_attribution() {
+        let d_none = growth("NoneTick", 40);
+        assert_eq!(d_none, 0, "NoneTick (no alloc) must be zero-growth");
+
+        let d_list = growth("ListTick", 40);
+        eprintln!("[verdict] empty typed list per-tick: {}", d_list);
+
+        let d_lit = growth("LitTick", 40);
+        eprintln!("[verdict] struct literal into local var per-tick: {}", d_lit);
+
+        let d_int = growth("IntPushTick", 40);
+        eprintln!("[verdict] int push per-tick: {}", d_int);
+
+        let d_str = growth("StrPushTick", 40);
+        eprintln!("[verdict] string push per-tick: {}", d_str);
+
+        let d_struct = growth("StructTick", 40);
+        eprintln!("[verdict] struct push per-tick: {}", d_struct);
+        // PLAN-604 AC-01: 全路径 40 拍增量 ≤ 64(PLAN-062 T12 容差)。
+        // KD-VM1 修复前 StructTick=+4000(1:1 泄漏),对照曾全 0。
+        for (name, d) in [
+            ("ListTick", d_list),
+            ("LitTick", d_lit),
+            ("IntPushTick", d_int),
+            ("StrPushTick", d_str),
+            ("StructTick", d_struct),
+        ] {
+            assert!(d <= 64, "{} 40 拍 live_heap 增量 {} > 64(RC 滞留回归)", name, d);
+        }
+    }
+}

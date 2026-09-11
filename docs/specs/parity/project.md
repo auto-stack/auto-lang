@@ -24,13 +24,19 @@
 - **真三方 dep 对拍线（PLAN-594）**：`libs/dep/<crate>_real/` 动态加载**真实
   crates.io 库**（`dep crate(version: "x.y.z") + use.rs`）三轨对拍——
   serde_json 1.0.145 / regex 1.11.3 / url 2.5.4 / semver 1.0.26 绿面语料
-  （9 case 三轨全绿）+ base64 0.22.1 **全红样本**（a2r 常量接收者启发式，
-  DIV-DEP-13）。绿面范式：构造器/自由函数后 `.unwrap()` + Auto 类型标注解
-  泛型推断（`let data Value = from_str(json).unwrap()`）+ let 绑定比较断言；
-  红面不进 TAP，登记 known-divergences DIV-DEP-8..14。phase p10
+  + base64 0.22.1（594 全红样本，**PLAN-596 T-09 翻绿解禁**：D13 常量
+  接收者点调用修复后 `STANDARD.encode`/decode 往返三轨绿，tests/ 2/2 入
+  p10）。绿面范式：构造器/自由函数后 `.unwrap()` + Auto 类型标注解
+  泛型推断（`let data Value = from_str(json).unwrap()`）+ let 绑定比较断言。
+  **PLAN-596 T-07 增量**：DIV-DEP-8 双半边 fixed（a2r rust 导入类型
+  `.to(str)`/print 发 Display；VM `format_rust_stdlib_obj` 补 url::Url 臂），
+  url/semver 语料各增 `display_to_str` 三轨断言（p10 4/4×2）；登记面
+  扩至 DIV-DEP-8..19（18=212 wrapper CString 兜底假绿、19=a2r 回调实参
+  不装箱豁免）。phase p10
   （`AUTO_LANG_PARITY_NET=1` 门控，parity-ci 独立 job + 产物缓存）；
   命中率数据（25 面/绿 8/32%，591 T2 最高杠杆/T3 次之/by-value-self 零命中）
-  回填 591（reports/p594-dep-skip-hit-rate.md）。
+  回填 591（reports/p594-dep-skip-hit-rate.md，文末 P596 回填节为复测实测行：
+  base64 0%→50%、url 50%→67%、semver 40%→60%）。
 - **非白名单 pack 面勘测（PLAN-591）**：`libs/dep/uuid_real/`——uuid 1.24.0
   **不在 BUILTIN_OPAQUE_CRATES**，类型面全走真编译 methods pack（594 五库
   类型面皆 native_catalog，本库补 pack 面首个样本）。三绿：parse_str Option

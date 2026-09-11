@@ -1,18 +1,18 @@
 ---
 plan_id: PLAN-597
-status: execution_done                # drafting → executing → execution_done → reviewed → archived
+status: archived                      # drafting → executing → execution_done → reviewed → archived
 feature_name: cffi-engine-face
 author: [ZCode]
 created_at: 2026-09-09
-updated_at: 2026-09-09
+updated_at: 2026-09-10
 plan_revision: 1
 current_step: 7
 total_steps: 7
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components: [docs/specs/auto-bindgen/project.md, docs/specs/auto-lang/vm/design/ffi.md, docs/specs/auto-lang/trans/overview.md]
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-006, GOAL-013]   # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-bindgen, auto-lang/vm ffi, auto-lang/trans c]   # 详见 §5 规范增量
 ---
@@ -239,6 +239,87 @@ task_ids=T-01..T-07 | evidence=见下 | blockers=无 | next=review
 
 stage: new | PLAN-597 | rev 1 | outcome: pass | next: work
 （起草即绪：路径/命令/签名均经仓库核位；执行授权待用户指令。）
+
+stage: review | PLAN-597 | rev 1 | **pass** | reviewed_commit=b400a2821 |
+base_commit=e056d1d86（merge-base master） | dependency_revisions=auto-term@ec623572
+（主检出；004/DEBTS/specs.json 回执批次未提交，work 记录已披露） |
+spec_inputs=plan §5 规范增量 rev1（SD-01/02/03，三目标文档现行文本核位：bindgen
+project.md:27 消费面行 / ffi.md:34 FnPtr 注册期拒绝行 / trans overview.md:53 a2c 行） |
+acceptance_results=AC-01..05 全 pass | findings=F-1/F-2 均记录性非阻塞 |
+evidence=见下 | next=merge
+
+### 复审证据(2026-09-10，独立复现，非采信执行摘要)
+
+- **基线**：worktree `D:/autostack/.wt/lang-597/auto-lang` 干净无脏改；
+  分支恰一提交 b400a2821（work 记录引用的 ddcf9ffb1 为前身，amend 差异
+  仅补 `test/vm_engine_face/engine_face.json` 67 行——即 T-05 声称的
+  manifest 产物，最终提交已含）。
+- **AC-01 ✅ 复现**：`scripts/build-engine-face-a2c.cmd` 重跑构建成功
+  （import lib 链接 + DLL 同目录分发；仅基线良性警告 C4702）；产物
+  engine-face-a2c.exe 两连跑均 `CFACE_OK` / exit 0。exe 由快照
+  expected.c 编译（快照被 a2c 套件字节锁）——「零手写驱动 C」口径成立；
+  engine_abi.h 为 fixture 本地 ABI 头（计划 §5 已声明承接方式）。
+- **AC-02 ✅ 复现**：套件 110 ok / 9 失败；另在合并基点 e056d1d86
+  detached 重建同跑得 **109 ok / 9 失败，失败名单与 597 分支逐行
+  IDENTICAL**（diff 空）——净 +1 = 004_engine_face 绿，零回归实证。
+- **AC-03 ✅ 复现**：VM 冒烟 `engine_face_vm.at`（engine DLL 上 PATH，
+  worktree auto.exe）打印 `VFACE_OK` exit 0；新增单测
+  load_manifest_file_reads_engine_subset / dot_form_c_import_scans_as_
+  c_import 两件绿。engine_abi.h 与 auto-term ffi.rs:48-237 十二签名
+  逐符核对一致（write_input len=size_t 对齐正确）。缓冲出参 4 符号
+  不可达口径在语料头注+manifest 单测断言（row_text 缺席）双落。
+- **AC-04 ✅ 核位**：auto-term 主检出 004 §5③ 回执（CFACE_OK/LNK1107/
+  裁定书/两枚 VM 缺陷全要点在案）+ DEBTS「③ 已落地清账(auto-lang
+  PLAN-597,2026-09-09)」条目均在。
+- **AC-05 ✅ 复现**（均 --no-fail-fast 全量）：cargo tv **3628/3629**、
+  cargo tt **3842/3843**、cargo tf **3484/3485**——三档唯一失败均为
+  基线固有 `ui_gen::vue::test_charts_gallery_compiles`（595/599 复审
+  在案），名单与 work 记录一致，零新增红。
+- **健康检查**：改动四 Rust 文件零新增警告（codegen.rs 命中的 3 处警告
+  位置 7/2611/7813 均远离本提交 hunk ~5005 行，基线存量）；diff 无
+  调试残留（仅 codegen 回退路径 log::warn!，符合既有模式）。
+- **Findings（非阻塞）**：
+  - F-1（记账）：两枚 VM 存量缺陷（D1 if 条件位内联 C-FFI+while 挂起 /
+    D2 循环计数器嵌套 if 赋值静默断流）现仅在语料头注+计划 §5 在案，
+    KNOWN-DEBT-AND-RISKS.md 尚无条目——merge 时登记债务候选。
+  - F-2（观察）：`auto <script>` 尾行打印脚本尾值（冒烟尾部 "false" =
+    run_file_with_args 尾值语义，runner 代码本提交未触及，基线行为，
+    不构成失败标记）。
+- **规范增量定稿**：supersedes=[auto-bindgen/project.md,
+  auto-lang/vm/design/ffi.md, auto-lang/trans/overview.md]（SD-01/02/03
+  三 modify）；new=[]；touched_goals=[GOAL-006（consumer-mode C 轨：
+  三方引擎 DLL 只读消费实证）, GOAL-013（C 生态 a2c 互操作先例）]。
+  plan_revision 维持 1（复审未改语义契约）。
+
+stage: merge | PLAN-597:r1 | outcome: **pass** | delivery_commit=b1fa1b7a3 |
+canonical_specs=docs/specs/auto-bindgen/project.md +
+docs/specs/auto-lang/vm/design/ffi.md + docs/specs/auto-lang/trans/overview.md |
+ledger_targets=.autoos/specs.json P597-1..6（运行时台账，gitignored）+
+vm/trans plans.md 597 行 + docs/specs/INDEX.md | archive_path=docs/plans/archive/
+597-cffi-engine-face.md | cleanup=见 checkpoints
+
+### Merge checkpoints(2026-09-10)
+
+- `prepared` ✅：reviewed 基线 b400a2821（rev1 pass 在案）；worktree 折入
+  master（598 codegen 闭包区改动，与 597 C-FFI 区不同 hunk，合并干净
+  1e1c950c6）→ delivery_commit 候选 b1fa1b7a3（纯 docs 后代：SD-01/02/03
+  三规范落稿 + vm/trans plans.md 台账行，代码/依赖与 reviewed 提交零差异）。
+- 折 master 后刷新复现全绿：单测 2/2、cargo tv 3633/3634、cargo tf
+  3489/3490（唯一红=charts 基线预存）、a2c 套件 110 ok/基线 9 名单不变。
+- `landed` ✅：`git merge plan-597-dev` 落 master（fast-forward 至
+  b1fa1b7a3）；b400a2821 在 master 祖先链核位；master 树与
+  plan-597-dev 树 diff 为空（=门禁已验字节）；spec 三文档+两 plans.md
+  行内容在 master 核位。wt-guard clean（合并前置扫描）。
+- `ledger_refreshed` ✅：.autoos/specs.json P597-1..6 六节发布（运行时
+  台账，回填归档路径）；docs/specs/INDEX.md 经 scripts/spec-index.py
+  再生成并提交。
+- `archived` ✅：git mv → docs/plans/archive/597-cffi-engine-face.md +
+  status: archived 终态；KNOWN-DEBT-AND-RISKS.md 增 P597 债务节
+  （两枚 VM 存量缺陷 D1/D2 复审 F-1 登记）。
+- `cleaned` ✅：分支 b1fa1b7a3 全落 master（祖先链核位）→ wt-guard
+  fresh clean → worktree 已移除、plan-597-dev 已删（was b1fa1b7a3）；
+  组目录 D:/autostack/.wt/lang-597/ 因兄弟 auto-down worktree 存续保留
+  （仅空组目录才删）。
 
 ## 10. 待澄清事项
 

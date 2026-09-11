@@ -12,7 +12,8 @@ use crate::classify::{Classified, Exceptions};
 use crate::types::*;
 use serde::{Deserialize, Serialize};
 
-pub const GENERATOR: &str = "shim-metadata v1.3 (plan-430 C1; 592 cast fix; 591 layouts v2)";
+pub const GENERATOR: &str =
+    "shim-metadata v1.4 (430 C1; 592 cast fix; 591 layouts v2; 596 trait whitelist+vis)";
 pub const MANIFEST_FORMAT: u32 = 2;
 pub const CLASSIFIER_VERSION: u32 = 1;
 
@@ -31,10 +32,22 @@ pub struct ShimManifest {
     /// 自由函数仅作元信息(D2:known_signature 元数据优先);
     /// 代码生成仍走 plan-212 syn 路径,避免双生成器符号冲突。
     pub functions: Vec<FunctionEntry>,
+    /// PLAN-596 T4:产出本包的自动 mono 实例表(BTreeMap 保序,快路径
+    /// 与调用方当前推导比对——mono 变化必须重建,否则陈旧包绕过实例化)。
+    #[serde(default)]
+    pub mono: std::collections::BTreeMap<String, Vec<String>>,
     /// 布局段(manifest v2):emit 期空占位,装载期由 cdylib 探针导出
     /// auto__shim_layouts 填充(见 dep_methods::register_pack)。
     #[serde(default)]
     pub layouts: LayoutMap,
+}
+
+/// PLAN-596 T5:回调形参元数据——wrapper 侧 adapter 经注入跳板重入 VM。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallbackSpec {
+    pub param_idx: usize,
+    /// 形参签名的字母表简写(prototype 固定 "l->l")
+    pub fn_sig: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +81,9 @@ pub struct MethodEntry {
     pub nullable: bool,
     /// 该类型的析构符号(auto__drop_<Type>)
     pub drop_export: String,
+    /// PLAN-596 T5:回调形参索引与签名(prototype:i64->i64)
+    #[serde(default)]
+    pub callbacks: Vec<CallbackSpec>,
 }
 
 // =============================================================================
@@ -276,8 +292,9 @@ pub fn emit_pack(
     free_fns: &[ShimMethod],
     fields: &[crate::rustdoc::StructField],
     unit_enums: &[crate::rustdoc::UnitEnum],
+    mono: &crate::classify::MonoInstances,
 ) -> (String, PackFiles) {
-    emit_pack_parts(meta, dep_line, &c.plans, &c.skips, exc, free_fns, fields, unit_enums)
+    emit_pack_parts(meta, dep_line, &c.plans, &c.skips, exc, free_fns, fields, unit_enums, mono)
 }
 
 /// parts 版生成(供 rustc 检查器剔除环按缩减后的计划集重生成)。
@@ -291,13 +308,59 @@ pub fn emit_pack_parts(
     free_fns: &[ShimMethod],
     fields: &[crate::rustdoc::StructField],
     unit_enums: &[crate::rustdoc::UnitEnum],
+    mono: &crate::classify::MonoInstances,
 ) -> (String, PackFiles) {
+    // PLAN-596 T4:自由函数泛型实例化——mono 表命中者按标签替换为具体签名条目
+    // (name 带 "__<label>" 后缀,212 侧以 body_override 调真实泛型函数);
+    // 实例条目与原非泛型条目合并进指纹输入与 manifest(实例集变化→指纹变化)。
+    let free_fns_raw = free_fns;
+    let mut effective_free: Vec<ShimMethod> = Vec::new();
+    for f in free_fns_raw {
+        if f.generic {
+            if let Some(labels) = mono.get(&f.method).filter(|l| !l.is_empty()) {
+                for label in labels {
+                    if let Some(inst) = crate::classify::instantiate_method(f, label) {
+                        effective_free.push(inst);
+                    }
+                }
+            }
+        } else {
+            effective_free.push(f.clone());
+        }
+    }
+    let free_fns = &effective_free;
     let fp = fingerprint_parts_with(meta, plans, free_fns, fields, unit_enums);
     let crate_ident = meta.crate_name.replace('-', "_");
 
     // 方法条目与 wrapper 源码
     let mut entries = Vec::new();
     let mut wrappers = String::new();
+    // PLAN-596 T5:回调 adapter 前置段——HostCb(令牌→注入跳板)+ 注册导出
+    let has_callback = plans
+        .iter()
+        .any(|p| p.args.iter().any(|a| matches!(a, ArgPlan::Callback)));
+    if has_callback {
+        wrappers.push_str(
+            r#"// PLAN-596 T5: callback adapter (injected host trampoline + token)
+type HostCbFn = unsafe extern "C" fn(token: u64, arg: i64) -> i64;
+static HOST_CB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[no_mangle]
+pub extern "C" fn auto__register_host_trampoline(f: HostCbFn) {
+    HOST_CB.store(f as u64, std::sync::atomic::Ordering::SeqCst);
+}
+struct HostCb { token: u64 }
+impl HostCb {
+    fn boxed(token: i64) -> Box<dyn Fn(i64) -> i64> {
+        Box::new(move |x: i64| unsafe {
+            let f = std::mem::transmute::<u64, HostCbFn>(HOST_CB.load(std::sync::atomic::Ordering::SeqCst));
+            f(token as u64, x)
+        })
+    }
+}
+
+"#,
+        );
+    }
     let mut drop_fns = String::new();
     let mut dropped_types: Vec<String> = Vec::new();
     for p in plans {
@@ -326,9 +389,9 @@ pub fn emit_pack_parts(
             ret: ret_char_of(&classify_ret(&f.ret)).to_string(),
         })
         .collect();
-    let skipped_generic_fns: Vec<&str> = free_fns
+    let skipped_generic_fns: Vec<&str> = free_fns_raw
         .iter()
-        .filter(|f| f.generic)
+        .filter(|f| f.generic && !mono.get(&f.method).is_some_and(|l| !l.is_empty()))
         .map(|f| f.method.as_str())
         .collect();
     if !skipped_generic_fns.is_empty() {
@@ -349,6 +412,10 @@ pub fn emit_pack_parts(
         generator: GENERATOR.to_string(),
         methods: entries,
         functions,
+        mono: mono
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
         layouts: LayoutMap::new(),
     };
     let manifest_json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
@@ -610,7 +677,9 @@ fn arg_char(a: &ArgPlan) -> char {
         ArgPlan::ScalarF64 => 'f',
         ArgPlan::ScalarBool => 'b',
         ArgPlan::SelfHandle | ArgPlan::OpaqueHandle => 'p',
-    }
+        // PLAN-596 T5:回调令牌走 i64 槽
+    crate::types::ArgPlan::Callback => 'l',
+}
 }
 
 fn ret_char(r: &RetPlan) -> char {
@@ -650,6 +719,22 @@ fn ret_type_label(p: &MarshalPlan) -> String {
 /// 计算 MarshalPlan 的导出符号全名(与 emit_wrapper 生成的完全一致)。
 /// 430 复审修复:供 rustc 检查器剔除环做**精确**匹配——此前 auto-cache 侧用
 /// `starts_with("auto_Type_method")` 前缀匹配,`auto_Counter_newest_p_p` 会误伤 `new`。
+/// PLAN-596 T3:白名单 trait 的发射全路径(短名 → 路径)。Engine 走 base64
+/// (三方 crate;wrapper 的 Cargo.toml 已依赖该 crate)。Display/ToString 的
+/// to_string 面由 F 轮合成覆盖,不进 TRAIT_METHOD_WHITELIST,此处不列。
+const TRAIT_EMIT_PATHS: &[(&str, &str)] = &[
+    ("Clone", "std::clone::Clone"),
+    ("Engine", "base64::Engine"),
+];
+
+fn trait_emit_path(short: &str) -> &'static str {
+    TRAIT_EMIT_PATHS
+        .iter()
+        .find(|(s, _)| *s == short)
+        .map(|(_, p)| *p)
+        .unwrap_or("")
+}
+
 pub fn plan_export_symbol(p: &MarshalPlan) -> String {
     let m = &p.method;
     let mut chars = String::new();
@@ -661,10 +746,15 @@ pub fn plan_export_symbol(p: &MarshalPlan) -> String {
     }
     let rc = ret_char(&p.ret);
     // 导出符号:auto_<Type>_<method>_<params>_<ret>,无参时 params 段留空(auto_X_m__r)
+    // PLAN-596 T3:trait 转发条目插 __trait_<Trait> 段(auto_T__trait_Clone_clone_p_p)
+    let trait_seg = match &m.trait_name {
+        Some(t) => format!("__trait_{t}"),
+        None => String::new(),
+    };
     if chars.is_empty() {
-        format!("auto_{}_{}__{rc}", m.type_name, m.method)
+        format!("auto_{}{trait_seg}_{}__{rc}", m.type_name, m.method)
     } else {
-        format!("auto_{}_{}_{chars}_{rc}", m.type_name, m.method)
+        format!("auto_{}{trait_seg}_{}_{chars}_{rc}", m.type_name, m.method)
     }
 }
 
@@ -726,6 +816,8 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
                 };
                 format!("{name}{cast}")
             }
+            // PLAN-596 T5:回调形参——wrapper 侧包装 adapter(经注入跳板重入 VM)
+            ArgPlan::Callback => format!("HostCb::boxed({name})"),
             ArgPlan::OpaqueHandle => {
                 let arg_ty = match &m.params[i] {
                     Ty::Opaque(n) => format!("{crate_ident}::{n}"),
@@ -740,6 +832,9 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
 
     // 接收者重构 + 调用表达式
     let call_expr = |args: &[String]| -> String { args.join(", ") };
+    // PLAN-596 T4:mono 实例条目的方法名带 "__<label>" 后缀(dispatch 键用),
+    // 被调真名剥后缀(__recv.pick_max(x, y)——rustc 从具体实参推断单态化)。
+    let callee: &str = m.method.split("__").next().unwrap_or(&m.method);
     let invocation = if let Some(f) = &m.field {
         // 合成字段 getter:标量 Copy 直读;String/不透明字段 clone
         // (无 Clone 的类型由 rustc 检查器剔除环兜底)
@@ -751,24 +846,38 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         format!(
             "{{ let __recv: &{full} = unsafe {{ &*(arg_0 as *const {full}) }}; {access} }}"
         )
+    } else if let Some(t) = &m.trait_name {
+        // PLAN-596 T3:白名单 trait 单态转发——`<Type as Trait>::method(__recv, args)`,
+        // 分发在 wrapper 编译期定死(无 vtable 跨界)。白名单成员均 &self 接收者。
+        let tp = trait_emit_path(t);
+        assert!(
+            !tp.is_empty(),
+            "trait {} missing in TRAIT_EMIT_PATHS",
+            t
+        );
+        format!(
+            "{{ let __recv: &{full} = unsafe {{ &*(arg_0 as *const {full}) }}; <{full} as {tp}>::{}(__recv, {}) }}",
+            m.method,
+            call_expr(&call_args)
+        )
     } else {
         match m.self_kind {
         SelfKind::Static => {
-            format!("<{full}>::{}({})", m.method, call_expr(&call_args))
+            format!("<{full}>::{}({})", callee, call_expr(&call_args))
         }
         SelfKind::Read => format!(
             "{{ let __recv: &{full} = unsafe {{ &*(arg_0 as *const {full}) }}; __recv.{}({}) }}",
-            m.method,
+            callee,
             call_expr(&call_args)
         ),
         SelfKind::Write => format!(
             "{{ let __recv: &mut {full} = unsafe {{ &mut *(arg_0 as *mut {full}) }}; __recv.{}({}) }}",
-            m.method,
+            callee,
             call_expr(&call_args)
         ),
         SelfKind::Move => format!(
             "{{ let __recv = unsafe {{ Box::from_raw(arg_0 as *mut {full}) }}; (*__recv).{}({}) }}",
-            m.method,
+            callee,
             call_expr(&call_args)
         ),
         }
@@ -941,6 +1050,13 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         fallible: p.fallible,
         nullable: p.nullable,
         drop_export: format!("auto__drop_{short}"),
+        callbacks: p
+            .args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| matches!(a, ArgPlan::Callback))
+            .map(|(i, _)| CallbackSpec { param_idx: i, fn_sig: "l->l".into() })
+            .collect(),
     };
     (entry, src)
 }
@@ -963,6 +1079,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         },
         ShimMethod {
             type_name: "Counter".into(),
@@ -974,6 +1091,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         },
         ShimMethod {
             type_name: "Counter".into(),
@@ -985,6 +1103,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -997,6 +1116,7 @@ mod tests {
                 fallible: false,
                 nullable: true,
                 field: None,
+                trait_name: None,
             },
             // unwrap_ok:Result<Counter, String> 已由投影解包为 Counter + fallible
             ShimMethod {
@@ -1009,6 +1129,7 @@ mod tests {
                 fallible: true,
                 nullable: false,
                 field: None,
+                trait_name: None,
             },
         ];
         classify_all_third_party(&methods, &Exceptions::default())
@@ -1113,6 +1234,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         };
         let plain_fn = ShimMethod {
             type_name: String::new(),
@@ -1124,6 +1246,7 @@ mod tests {
             fallible: false,
             nullable: false,
             field: None,
+            trait_name: None,
         };
         let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()], &[], &[]);
         let man: ShimManifest = serde_json::from_str(&files.manifest_json).unwrap();

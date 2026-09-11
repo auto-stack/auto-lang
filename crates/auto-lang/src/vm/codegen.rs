@@ -418,6 +418,10 @@ pub struct Codegen {
     /// e.g., "from_str" → ("serde_json", "serde_json::from_str")
     /// Used to emit CALL_NAT for Rust FFI functions at codegen time
     rust_native_map: HashMap<String, (String, String)>,
+    /// PLAN-596 T4:dep 声明 crate 名集合(Stmt::Dep 登记)——mono 实例
+    /// 后缀的发放条件来源(仅 dep crate 侧的调用可加 "__i64"/"__String"
+    /// 后缀;std/生成面误加会全 dispatch 链 miss)。
+    declared_dep_crates: std::collections::HashSet<String>,
 
     /// Plan 216 Phase 2: C FFI function name → native_id mapping
     /// Populated when `use c <header.h>` is encountered, by loading the manifest
@@ -605,7 +609,8 @@ impl Codegen {
             api_over_http: false, // Plan 340: VM+VM split mode HTTP rewriting
             api_funcs: HashMap::new(), // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
-            rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
+            rust_native_map: HashMap::new(),
+            declared_dep_crates: Default::default(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
@@ -975,7 +980,8 @@ impl Codegen {
             api_over_http: false, // Plan 340: VM+VM split mode HTTP rewriting
             api_funcs: HashMap::new(), // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
-            rust_native_map: HashMap::new(), // Plan 212b Task 3: Rust FFI function mappings
+            rust_native_map: HashMap::new(),
+            declared_dep_crates: Default::default(), // Plan 212b Task 3: Rust FFI function mappings
             c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
             py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
@@ -4309,6 +4315,7 @@ impl Codegen {
                 // so that e.g. `env_logger.init()` is resolved instead of
                 // erroring with "Undefined variable: env_logger"
                 let crate_name = dep.name.to_string();
+                self.declared_dep_crates.insert(crate_name.clone());
                 if !self.rust_native_map.contains_key(&crate_name) {
                     self.rust_native_map.insert(
                         crate_name.clone(),
@@ -5005,12 +5012,24 @@ impl Codegen {
             return;
         };
 
-        // Load the built-in manifest
+        // Load the manifest: built-in dataset first, then a JSON file path
+        // (Plan 597: non-builtin datasets resolve as-given/CWD-relative).
+        let clean = header.trim_start_matches('<').trim_end_matches('>');
         let manifest = match crate::vm::ffi::c_ffi::load_builtin_manifest(&header) {
             Some(m) => m,
             None => {
-                log::warn!("No C-FFI manifest found for header: {}", header);
-                return;
+                if clean.ends_with(".json") {
+                    match crate::vm::ffi::c_ffi::load_manifest_file(clean) {
+                        Some(m) => m,
+                        None => {
+                            log::warn!("No C-FFI manifest file readable: {}", clean);
+                            return;
+                        }
+                    }
+                } else {
+                    log::warn!("No C-FFI manifest found for header: {}", header);
+                    return;
+                }
             }
         };
 
@@ -5479,6 +5498,46 @@ impl Codegen {
                 self.py_return_types
                     .insert(builtin.to_string(), crate::py_ffi_types::PyType::Auto);
             }
+        }
+    }
+
+    /// PLAN-596 T4:调用点实参齐整字面量形态 → mono 实例标签
+    /// (全整型字面量 → "i64";全字符串字面量 → "String";空/混合/含非字面量 → None)。
+    fn mono_literal_label(args: &[crate::ast::Arg]) -> Option<&'static str> {
+        let mut all_int = true;
+        let mut all_str = true;
+        let mut any = false;
+        for a in args {
+            match a {
+                crate::ast::Arg::Pos(e) => {
+                    any = true;
+                    match e {
+                        Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_)
+                        | Expr::I64(_) | Expr::U64(_) | Expr::Byte(_) => all_str = false,
+                        Expr::Str(_) | Expr::CStr(_) => all_int = false,
+                        _ => return None,
+                    }
+                }
+                _ => return None,
+            }
+        }
+        if !any {
+            return None;
+        }
+        if all_int {
+            Some("i64")
+        } else if all_str {
+            Some("String")
+        } else {
+            None
+        }
+    }
+
+    /// PLAN-596 T4:类型名是否 dep 声明 crate 的面(仅 dep 侧可发 mono 后缀)。
+    fn type_is_dep_face(&self, type_name: &str) -> bool {
+        match self.rust_native_map.get(type_name) {
+            Some((crate_name, _)) => self.declared_dep_crates.contains(crate_name),
+            None => false,
         }
     }
 
@@ -8545,6 +8604,12 @@ impl Codegen {
                         // dispatch 3000 的运行期兜底链会以正确编组转到同一 native,
                         // 故未注册时恒走 dispatch。toml.parse 这类启动即注册的
                         // native 仍按原语义被采用。
+                        // PLAN-596 T4:dep crate 自由函数 + 齐整字面量实参 →
+                        // 试 mono 实例名("rust.{fn}__{label}",212 侧生成逐实例 shim)。
+                        let mono_label = self
+                            .type_is_dep_face(name)
+                            .then(|| Self::mono_literal_label(&call.args.args))
+                            .flatten();
                         let has_existing = !is_type_import && !is_axum_routing_import && {
                             let reg = BIGVM_NATIVES.lock().unwrap();
                             // PLAN-592: dep 自由函数以 "rust.{func}" 限定名注册
@@ -8556,12 +8621,25 @@ impl Codegen {
                                 || reg
                                     .resolve_qualified_to_canonical(&format!("rust.{name}"))
                                     .is_some()
+                                || mono_label
+                                    .map(|l| {
+                                        reg.resolve_qualified_to_canonical(
+                                            &format!("rust.{name}__{l}"),
+                                        )
+                                        .is_some()
+                                    })
+                                    .unwrap_or(false)
                         };
                         if has_existing {
                             // Use the existing native (e.g., toml.parse, json.parse)
                             let mut reg = BIGVM_NATIVES.lock().unwrap();
                             reg.resolve_qualified(name)
                                 .or_else(|| reg.resolve_qualified(&format!("rust.{name}")))
+                                .or_else(|| {
+                                    mono_label.and_then(|l| {
+                                        reg.resolve_qualified(&format!("rust.{name}__{l}"))
+                                    })
+                                })
                         } else {
                             // Route to dispatch handler for external crate calls
                             Some(NATIVE_RUST_STDLIB_DISPATCH)
@@ -9077,6 +9155,17 @@ impl Codegen {
                             (String::new(), String::new())
                         };
 
+                        // PLAN-596 T4:dep 侧方法 + 齐整字面量实参 → method 带
+                        // mono 实例后缀("__i64"/"__String",方法包按实例条目注册);
+                        // dispatch 兜底有剥后缀重试,非泛型方法误后缀无害(多一次 miss)。
+                        let method_str = if self.type_is_dep_face(&type_str) {
+                            match Self::mono_literal_label(&call.args.args) {
+                                Some(label) => format!("{method_str}__{label}"),
+                                None => method_str,
+                            }
+                        } else {
+                            method_str
+                        };
                         let type_bytes = type_str.as_bytes().to_vec();
                         let type_idx = self.strings.len() as u32;
                         self.strings.push(type_bytes);

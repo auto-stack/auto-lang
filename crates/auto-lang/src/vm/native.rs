@@ -1823,6 +1823,15 @@ pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
                 "<semver::Version>".to_string()
             }
         }
+        // PLAN-596 T-07 (DIV-DEP-8 VM 半边收口): url::Url Display 路由——
+        // print 与 TYPE_TO_STR(.to(str)) 共用本表,镜像 semver::Version 臂。
+        "url::Url" => {
+            if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                format!("{}", mutex.lock().unwrap())
+            } else {
+                "<url::Url>".to_string()
+            }
+        }
         "semver::VersionReq" => {
             if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<semver::VersionReq>>() {
                 format!("{}", mutex.lock().unwrap())
@@ -2185,6 +2194,13 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // 多 bump 一次是保守安全方向）。
     vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
     let elem_nv = task.ram.pop_nv();
+    // PLAN-604 T04: 取走元素槽份额。元素是 copy-on-load/构造回推的暂存
+    // 拷贝(rc_push +1 记影子);本 shim 消费它,容器所有权由分支内 retain
+    // 承接——stake 在 retain 之后释放(transfer 配平,避免 rc 短暂下探)。
+    // CALL_SPEC→resolve 分发路径无 CALL_NAT 式死区结算,此前这份份额被
+    // 后续 push 清影静默丢弃 → 元素对象图每调用孤儿一份(KD-VM1 收口
+    // 缺口,探针 StructTick +100 obj/拍)。
+    let elem_stake = task.ram.take_stake_at(task.ram.sp);
     let elem_val = if auto_val::is_i32(elem_nv) {
         Value::Int(auto_val::decode_i32(elem_nv))
     } else if auto_val::is_object(elem_nv) {
@@ -2233,6 +2249,10 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             // Plan 432 D26: 字符串负哨兵同入此契约(此前漏 retain → UAF)。
             list_i32_elem_retain(vm, stored);
             list.push(stored);
+            // PLAN-604 T04: 元素暂存份额随入容器结算(transfer 配平)。
+            if elem_stake != 0 {
+                vm.rc_release_id(elem_stake);
+            }
             task.ram.push_i32(0);
             return Ok(());
         }
@@ -2251,6 +2271,11 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 auto_val::decode_i32(elem_nv).to_string()
             };
             list.push(s);
+            // PLAN-604 T04: 元素暂存份额结算(本分支存字节拷贝,容器不持
+            // 池/堆份额;堆 stake 释放即消费配平)。
+            if elem_stake != 0 {
+                vm.rc_release_id(elem_stake);
+            }
             task.ram.push_i32(0);
             return Ok(());
         }
@@ -2264,6 +2289,11 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 _ => {}
             }
             list.push(elem_val);
+            // PLAN-604 T04: 元素暂存份额随入容器结算(transfer 配平)——
+            // 容器 retain 承接所有权,暂存拷贝的 stake 释放,rc 净变化 0。
+            if elem_stake != 0 {
+                vm.rc_release_id(elem_stake);
+            }
             task.ram.push_i32(0);
             return Ok(());
         }
@@ -2272,6 +2302,11 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects and
     // are handled by the heap path above (the legacy arrays fallback is gone).
 
+    // PLAN-604 T04: 落空分支(无 downcast 命中,元素被静默丢弃)——暂存
+    // 份额同样结算,不随丢弃孤儿化。
+    if elem_stake != 0 {
+        vm.rc_release_id(elem_stake);
+    }
     task.ram.push_i32(0);
     Ok(())
 }

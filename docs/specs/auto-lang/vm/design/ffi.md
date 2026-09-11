@@ -36,6 +36,17 @@ native 函数注册体系、Rust/C FFI 动态加载、标准库 shim。对应代
   SetConsoleCtrlHandler）在 `load_header` 注册期即返回
   `VMError::FFI`（清晰报错替代 panic/静默误调）；封送循环另有同语义
   防御臂。回调消费走 a2c 后端（闭包→函数指针，Plan 060）。
+- **use.c 点式形态（plan-597）**：`use.c <header>` / `use.c "file.json"`
+  由 use_scanner 识别为 C 导入（c_import），不再当模块路径解析——此前
+  任何 VM 模式 `use.c`（含 `<math.h>`）均报 Module not found
+  （Plan 216 潜伏缺口，597 实测坐实修复）。
+- **缓冲/出参型签名 = VM 封送不可达边界（plan-597，扩展 Plan 267
+  边界实证）**：数组/指针出参收集形签名（实例：autoterm 引擎
+  take_dirty_rows/row_text/row_style/cursor 4 符号——out 缓冲 + cap +
+  返回计数）无封送路径，c_ffi 不为其设分派臂；此类面走 a2c（C 母语
+  数组取址，004_engine_face 全量实证）或 004⑥ a2r 生成器轨道。
+  标量子集经 JSON manifest + 分派臂可达（fn(int,int,cstr)→ptr /
+  fn(ptr,cstr,size)→void / fn(ptr,int,int)→void；VFACE_OK 冒烟）。
 
 ### dep 方法 shim 包（三方 crate 动态加载）
 
@@ -54,9 +65,29 @@ native 函数注册体系、Rust/C FFI 动态加载、标准库 shim。对应代
   `dispatch` 的 `unwrap` 恒等桥：a2r `.unwrap()` 透传（null unwrap 报错）。
 - **Display 路由（DIV-DEP-8 print 半边）**：print/TYPE_TO_STR/write 对 dep
   对象路由 shim 包合成 to_string（rustdoc 对 impl Display 类型合成）；
-  无 Display 面维持占位。
+  无 Display 面维持占位。native opaque 面（RustStdlibObject）走
+  `format_rust_stdlib_obj` 手写 Display 臂（semver::Version/url::Url 等，
+  PLAN-596 T-07 补 url::Url——print 与 TYPE_TO_STR 共用此表）。
 - **EQ 数值谓词（DIV-DEP-16 修复）**：`nv_is_numeric`/`nv_as_f64` 补
   TAG_I64——dep 宽整型返回与字面量相等比较此前恒 false。
+- **trait 白名单转发（PLAN-596 T3）**：classify 对 trait impl 不再全排除——
+  opt-in 白名单（`Display`/`ToString`/`Clone`/`base64::Engine`，编译期常量
+  表 + manifest 记版本）产出 `TraitPlan`，emit 转发 wrapper
+  `auto_<Type>__trait_<Trait>_<method>_<sig>`，内体
+  `<Type as Trait>::method(recv, args)` 编译期定死分发。白名单外 trait 维持
+  排除（调用报 Unknown，含 type.method 名与行号，可诊断）。
+- **泛型实例化（PLAN-596 T4）**：rustdoc 泛型项不再无条件 skip——
+  codegen 词法推导调用点实参（全整型→i64/全字符串→String）作 mono 提示，
+  经 dep_scanner 写入 FunctionShim；emit 按替换引擎产
+  `fn::<ConcreteType>` 实例 shim（条目名带 `__<label>` 后缀，dispatch 兜底
+  剥后缀重试）。边界：mono 实参限基元/Str/白名单句柄类型；嵌套泛型维持 skip。
+  manifest 增 mono 段入指纹与快路径比对（BTreeMap 稳定序列化）。
+- **反向回调 adapter 原型（PLAN-596 T5，experimental）**：rust 形参
+  `Box<dyn Fn(i64)->i64>` 时 wrapper 产 adapter（持回调令牌 u64），经注入式
+  宿主跳板 `auto__register_host_trampoline` 重入 VM（`vm.call_closure`
+  同步重入、线程局部回调帧、深度 1 守卫、跳板内 catch_unwind→CB_PANIC→
+  VMError）。边界：单线程/同步/重入深度 1；回调内再调三方方法不支持
+  （运行时报错）；Send/Sync/多线程泵归后续（KNOWN-DEBT 指针在案）。
 
 ### 内置服务 shim
 

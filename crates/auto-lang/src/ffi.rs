@@ -769,6 +769,21 @@ impl RustFfiBridge {
                         )
                     }
 
+                    // (String, String) -> String — PLAN-596 T4:泛型 String 实例
+                    // (pick::<String> 等)与双字符串参数自由函数的最小必需面
+                    (&[RustType::String, RustType::String], RustType::String) => {
+                        let a1 = ptr_arg(&args[0]) as *const std::ffi::c_char;
+                        let a2 = ptr_arg(&args[1]) as *const std::ffi::c_char;
+                        ffi_call!(
+                            _keep_lib_alive,
+                            exported_name,
+                            extern "C" fn(*const std::ffi::c_char, *const std::ffi::c_char)
+                                -> *const std::ffi::c_char,
+                            a1,
+                            a2
+                        )
+                    }
+
                     // (String) -> Long
                     (&[RustType::String], RustType::Long) => {
                         let a1 = ptr_arg(&args[0]) as *const std::ffi::c_char;

@@ -1,0 +1,25 @@
+/// base64_real 翻绿语料——PLAN-596 T-09（PLAN-594 全红样本解禁）。
+/// 绿面 = D13 常量接收者点调用（STANDARD.encode/decode）+ Engine trait 面。
+dep base64(version: "0.22.1")
+use.rs base64::engine::general_purpose::STANDARD
+use.rs base64::Engine
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn main() {
+    let enc = STANDARD.encode("hello")
+    if enc == "aGVsbG8=" {
+        tap_ok(1, "encode_const_receiver")
+    } else {
+        print("not ok 1 - encode_const_receiver")
+    }
+    let dec = STANDARD.decode(enc).unwrap()
+    let round = STANDARD.encode(dec)
+    if round == "aGVsbG8=" {
+        tap_ok(2, "decode_encode_roundtrip")
+    } else {
+        print("not ok 2 - decode_encode_roundtrip")
+    }
+}

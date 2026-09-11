@@ -57,6 +57,8 @@ fn emit_arm(p: &MarshalPlan) -> String {
                 format!("f64::pop_from_stack(task, vm).map_err(|e| ferr(\"{ctx} pop\", e))?")
             }
             ArgPlan::ScalarBool => "task.ram.pop_nv(); bool::default() // scalar-bool".into(),
+            // PLAN-596 T5: emit.rs(C 通道)不支持回调面——占位(C 语料不会命中)
+            ArgPlan::Callback => "0i64 // callback token (C channel unsupported)".into(),
             ArgPlan::ScalarUsize => format!("i64::pop_from_stack(task, vm).map_err(|e| ferr(\"{ctx} pop\", e))? as usize"),
             ArgPlan::SelfHandle | ArgPlan::OpaqueHandle => "task.ram.pop_i32()".into(),
         };

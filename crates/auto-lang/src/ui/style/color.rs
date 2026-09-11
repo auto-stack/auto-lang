@@ -19,6 +19,11 @@ pub enum Color {
     // Text colors
     OnPrimary,
     OnSecondary,
+    /// PLAN-601 T-08（P593-D1 收口）：shadcn `accent` 交互高亮面——
+    /// 此前坍缩投影 Secondary（vue `--accent` 独立值，双端分歧），
+    /// 现为独立变体，resolve 走 registry Accent 槽（双端对齐）。
+    Accent,
+    OnAccent,
     OnBackground,
     OnSurface,
     OnDestructive,
@@ -116,9 +121,10 @@ impl Color {
             // "muted" → distinct muted surface (dark: slate-800 rgb(30, 41, 59), light: slate-100 rgb(241, 245, 249))
             "muted" => Ok(Color::Muted),
             "muted-foreground" => Ok(Color::OnSurface),
-            // "accent" → interactive highlight surface
-            "accent" => Ok(Color::Secondary),
-            "accent-foreground" => Ok(Color::OnSecondary),
+            // "accent" → interactive highlight surface（PLAN-601 T-08：独立变体，
+            // 不再坍缩 Secondary——VM 视觉向 vue --accent 值对齐，AC-06 在案）
+            "accent" => Ok(Color::Accent),
+            "accent-foreground" => Ok(Color::OnAccent),
             "primary-foreground" => Ok(Color::OnPrimary),
             "secondary-foreground" => Ok(Color::OnSecondary),
             "destructive" | "danger" | "error" => Ok(Color::Error),

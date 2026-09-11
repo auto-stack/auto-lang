@@ -1176,7 +1176,10 @@ impl AutodownEditorCore {
             return DocOutput { request_redraw: true, captured: true, ..Default::default() };
         }
         let layout = self.layout.lock().unwrap().clone();
-        let hit = hit_test(&layout, x, y);
+        // PLAN-603 T-1：点击改严格口径——块矩形外（真空白/gap）无效果，
+        // 撤「最近块回落」（PARITY #19 观察①对齐网页轨槽外无效果语义）。
+        // 拖选路径（handle_mouse_drag）保留宽松口径：拖穿 gap 续选邻块。
+        let hit = hit_test_strict(&layout, x, y);
         let Some(hit) = hit else {
             return DocOutput::default();
         };
@@ -2059,6 +2062,15 @@ impl AutodownEditorCore {
 }
 
 /// 命中测试：包含者优先，否则中心 y 最近者。
+/// PLAN-603 T-1：点击严格口径——仅矩形包含，未命中 None（无最近块
+/// 回落）。handle_mouse_press 消费；拖选路径沿用宽松 hit_test。
+fn hit_test_strict(layout: &DocLayout, x: f32, y: f32) -> Option<usize> {
+    layout.blocks.iter().position(|bl| bl.rect.contains(Pt::new(x, y)))
+}
+
+/// 宽松口径（拖选续段）：矩形包含未命中回落最近块中心 y。仅
+/// handle_mouse_drag 消费（拖穿 gap 续选邻块为通行惯例）；点击路径
+/// 已改 hit_test_strict（PLAN-603）。
 fn hit_test(layout: &DocLayout, x: f32, y: f32) -> Option<usize> {
     layout
         .blocks
@@ -4686,6 +4698,60 @@ $callout(type: \"info\", title: \"B\") {
             .filter(|(_, c)| c.a > 0.09 && c.a < 0.11)
             .count();
         assert_eq!(bgs, 2, "two independent box bgs, got {bgs}");
+    }
+
+    /// PLAN-603 T-1：空白点击无效果（撤最近块回落，对齐网页轨槽外
+    /// 无效果语义）——块矩形外点击不建焦点/不动既有 caret；块间 gap
+    /// 点击同样无效果。
+    #[test]
+    fn mouse_click_blank_outside_blocks_is_noop() {
+        let c = core_for("t603a", "甲块。
+
+乙块。
+");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let rects = c.block_rects();
+        let last_bottom = rects.last().map(|r| r.y + r.h).unwrap_or(0.0);
+        // 预置焦点块 0 + caret 块尾（严格口径下空白点击不得扰动）。
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        let off_before = {
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        // 文末下方（最后一块 rect 底之外）。
+        let out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed { button: EditorButton::Left, x: 30.0, y: last_bottom + 30.0 },
+                &mut NullClipboard,
+            )
+        });
+        assert!(!out.focus_changed && !out.cursor_changed, "空白点击无效果：{out:?}");
+        assert_eq!(c.focused_block(), Some(0), "焦点不被搬移");
+        let off_after = {
+            let blocks = c.blocks.lock().unwrap();
+            AutodownEditorCore::cursor_byte_offset(&blocks[0])
+        };
+        assert_eq!(off_before, off_after, "caret 不被搬移");
+        // 块间 gap（若布局存在间隙）：同样无效果。
+        let gap_top = rects[0].y + rects[0].h;
+        let gap_bot = rects[1].y;
+        if gap_bot - gap_top > 2.0 {
+            let out2 = run_fs(|fs| {
+                c.handle_input(
+                    fs,
+                    DocInput::MousePressed {
+                        button: EditorButton::Left,
+                        x: 30.0,
+                        y: (gap_top + gap_bot) / 2.0,
+                    },
+                    &mut NullClipboard,
+                )
+            });
+            assert!(!out2.focus_changed && !out2.cursor_changed, "gap 点击无效果：{out2:?}");
+            assert_eq!(c.focused_block(), Some(0));
+        }
     }
 
     /// 列表项末端 Enter → 新列表项（emit 重发序号/圆点）。
