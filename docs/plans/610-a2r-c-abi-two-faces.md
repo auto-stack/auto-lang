@@ -250,10 +250,18 @@ auto-term 构建产物（只读）。
   `.get(X).word` 修正趟的 expect 误注入 unwrap（expect 入安全方法表）；
   007_cstr 语料受益 builtin 生成面（快照更新，该例本在 known-broken
   台账）；a2r_tests 372/372 全绿]
-- [ ] **T-08** ⑥ 实编门：S 链真 DLL CFACE_OK（AC-04）；D 同场景
-  （AC-06）；
-- [ ] **T-09** 闭环门：AC-03（597 驱动器×⑤ 产物）+ AC-05（⑥ 驱动×
-  ⑤ 产物）；
+- [x] **T-08** ⑥ 实编门：S 链真 DLL CFACE_OK（AC-04）；D 同场景
+  （AC-06）；[✅ a2r_cabi_use_c_gate 三腿全绿：AC-04 S×真
+  autoterm_core.dll.lib（rustc -L native 改名 staging）CFACE_OK/exit 0；
+  AC-06 D×libloading exe 同目录运行期加载 CFACE_OK/exit 0；驱动=597
+  a2c 驱动器 Auto 重写（exit 码 0/1/2 对齐，Sleep 走 std 可移植）]
+- [x] **T-09** 闭环门：AC-03（597 驱动器×⑤ 产物）+ AC-05（⑥ 驱动×
+  ⑤ 产物）；[✅ AC-03=a2r_cabi_engine_face_gate 绿（驱动 C 侧恰声明
+  12 extern，MSVC 链接成功=符号清单核对）；AC-05=同一 ⑥ 驱动产物
+  （driver_s.rs 字节不变）改链 ⑤ engine_face_auto.dll.lib（import lib
+  内嵌 DLL 名换引擎，Auto 驱动×Auto 引擎面零手写胶水）CFACE_OK/exit
+  0；执行期一修：D 生成器 lib() 闭包 unsafe（Library::new 系 unsafe
+  fn）；worktree commit 113e6ff82]
 - [ ] **T-10**（bounded）trampoline 选型 spike（AC-07；可并行/可后置）；
 - [ ] **T-11** SD 落稿 + 004 §5⑤⑥ 回执 + DEBTS #10 增 610 条；
 - [ ] **T-12** 收口门禁：a2r 套件 + 三道实编门 + tf/tt/tv +
