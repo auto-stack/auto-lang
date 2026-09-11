@@ -68,7 +68,10 @@ widget NotificationCenter {
                             style: "w-full"
                             if .nrows == 0 {
                                 col {
-                                    style: "flex flex-col items-center py-8"
+                                    // PLAN-013 W3：补 w-full——容器无宽则收缩
+                                    // 到内容宽，items-center 居中退化无效
+                                    // （用户实机截图：文案贴左）。
+                                    style: "w-full flex flex-col items-center py-8"
                                     text "暂无通知" { style: "text-muted-foreground text-sm" }
                                 }
                             }
