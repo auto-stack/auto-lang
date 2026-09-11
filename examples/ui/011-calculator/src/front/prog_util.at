@@ -1,0 +1,532 @@
+// prog_util.at — PLAN-615 T-07: Programmer 模式 32 位无符号肢运算库。
+//
+// 双端纯度约束（vue TS / VM 双轨精确一致的根基）：
+// - 仅用 + - * / % 比较 与 str 拼接/slice——TS 适配器对「双双整型」的 / 与
+//   % 降级 Math.trunc（ts_adapter），与 VM 整型除/模逐位同语义；
+// - 32 位值以 16-bit 肢对 (hi, lo) 承载，恒 hi, lo < 65536；一切变量存储
+//   < 2^21、表达式中间值 < 2^48——VM `int` 状态截断 i32（2^31+ 不可存）与
+//   TS number 53-bit 精确域的共同安全区（VM 探针实测，PLAN-615 执行收据）；
+// - 禁用位运算方法（.and/.or/…）：a2ts 无映射（vue 端会断）——AND/OR/XOR
+//   以 16-bit 位循环（/p %2 提取）实现，SHL/SHR 由调用方以倍增/折半循环
+//   迭代，循环体全部肢安全。
+//
+// 运算形态：二元运算拆 lo/hi 两次调用（pop_lo / pop_hi，op 参数分派），
+// 调用方（app.at 处理器）对除零先判定（blo==0 && bhi==0 → 置错误不调）。
+
+// ── 输入解析 ──
+
+/// 数字/十六进制字符 → 数值；超基底或非法 → -1（调用方忽略该键）。
+fn pdigit_val(ch str, base int) int {
+    var v int = -1
+    if ch == "0" { v = 0 }
+    if ch == "1" { v = 1 }
+    if ch == "2" { v = 2 }
+    if ch == "3" { v = 3 }
+    if ch == "4" { v = 4 }
+    if ch == "5" { v = 5 }
+    if ch == "6" { v = 6 }
+    if ch == "7" { v = 7 }
+    if ch == "8" { v = 8 }
+    if ch == "9" { v = 9 }
+    if base == 16 {
+        if ch == "A" { v = 10 }
+        if ch == "B" { v = 11 }
+        if ch == "C" { v = 12 }
+        if ch == "D" { v = 13 }
+        if ch == "E" { v = 14 }
+        if ch == "F" { v = 15 }
+    }
+    if v >= base {
+        v = -1
+    }
+    return v
+}
+
+/// 输入推进（value*base+d）低肢——调用方随后以旧 lo 调 pdigit_new_hi。
+fn pdigit_new_lo(lo int, base int, d int) int {
+    var nl int = lo * base + d
+    var c int = nl / 65536
+    return nl - c * 65536
+}
+/// 输入推进高肢（lo 取推进前的旧值；32 位自然 wrap）。
+fn pdigit_new_hi(hi int, lo int, base int, d int) int {
+    var nl int = lo * base + d
+    var c int = nl / 65536
+    return (hi * base + c) % 65536
+}
+
+// ── 二元运算（lo/hi 两次调用形态）──
+
+/// 加法低肢 + 进位输出（进位经 pcarry 取得——两调用共用纯函数）。
+fn padd_lo(alo int, blo int) int {
+    return (alo + blo) % 65536
+}
+fn padd_hi(ahi int, bhi int, alo int, blo int) int {
+    var c int = 0
+    if alo + blo >= 65536 {
+        c = 1
+    }
+    return (ahi + bhi + c) % 65536
+}
+
+/// 减法低肢 + 借位（借位在 hi 调用内重算——alo < blo 即借位）。
+fn psub_lo(alo int, blo int) int {
+    var r int = alo - blo
+    if r < 0 {
+        r = r + 65536
+    }
+    return r
+}
+fn psub_hi(ahi int, bhi int, alo int, blo int) int {
+    var b int = 0
+    if alo < blo {
+        b = 1
+    }
+    var r int = ahi - bhi - b
+    if r < 0 {
+        r = r + 65536
+    }
+    return r
+}
+
+/// 乘法（8-bit 字节肢积：单积 ≤ 65025、字节和 ≤ 2^19——i32 严格安全；
+/// 16-bit 肢交叉积会到 2^32 溢出 VM i32 乘法，故拆至字节）。
+fn pmul_lo(ahi int, alo int, bhi int, blo int) int {
+    var a0 int = alo % 256
+    var a1 int = alo / 256
+    var a2 int = ahi % 256
+    var a3 int = ahi / 256
+    var b0 int = blo % 256
+    var b1 int = blo / 256
+    var b2 int = bhi % 256
+    var b3 int = bhi / 256
+    var s int = a0 * b0
+    var out0 int = s % 256
+    var carry int = s / 256
+    s = a1 * b0 + a0 * b1 + carry
+    var out1 int = s % 256
+    carry = s / 256
+    s = a2 * b0 + a1 * b1 + a0 * b2 + carry
+    var out2 int = s % 256
+    carry = s / 256
+    s = a3 * b0 + a2 * b1 + a1 * b2 + a0 * b3 + carry
+    return out1 * 256 + out0
+}
+fn pmul_hi(ahi int, alo int, bhi int, blo int) int {
+    var a0 int = alo % 256
+    var a1 int = alo / 256
+    var a2 int = ahi % 256
+    var a3 int = ahi / 256
+    var b0 int = blo % 256
+    var b1 int = blo / 256
+    var b2 int = bhi % 256
+    var b3 int = bhi / 256
+    var s int = a0 * b0
+    var carry int = s / 256
+    s = a1 * b0 + a0 * b1 + carry
+    carry = s / 256
+    s = a2 * b0 + a1 * b1 + a0 * b2 + carry
+    var out2 int = s % 256
+    carry = s / 256
+    s = a3 * b0 + a2 * b1 + a1 * b2 + a0 * b3 + carry
+    var out3 int = s % 256
+    return out3 * 256 + out2
+}
+
+/// 16-bit 位循环：AND / OR / XOR（p ≤ 16384，r < 65536——肢安全）。
+fn pand16(a int, b int) int {
+    var r int = 0
+    var p int = 1
+    var i int = 0
+    while i < 16 {
+        var abit int = (a / p) % 2
+        var bbit int = (b / p) % 2
+        if abit == 1 && bbit == 1 {
+            r = r + p
+        }
+        p = p * 2
+        i = i + 1
+    }
+    return r
+}
+fn por16(a int, b int) int {
+    var r int = 0
+    var p int = 1
+    var i int = 0
+    while i < 16 {
+        var abit int = (a / p) % 2
+        var bbit int = (b / p) % 2
+        if abit == 1 || bbit == 1 {
+            r = r + p
+        }
+        p = p * 2
+        i = i + 1
+    }
+    return r
+}
+fn pxor16(a int, b int) int {
+    var r int = 0
+    var p int = 1
+    var i int = 0
+    while i < 16 {
+        var abit int = (a / p) % 2
+        var bbit int = (b / p) % 2
+        if abit != bbit {
+            r = r + p
+        }
+        p = p * 2
+        i = i + 1
+    }
+    return r
+}
+
+/// 二元运算分派——低肢（op: + - * / AND OR XOR XOR SHL SHR；% 走 MOD 键）。
+/// SHL/SHR 移位量 = b 值 % 32（Windows 同语义），肢倍增/折半循环迭代。
+fn pop_lo(op str, ahi int, alo int, bhi int, blo int) int {
+    if op == "+" {
+        return padd_lo(alo, blo)
+    }
+    if op == "-" {
+        return psub_lo(alo, blo)
+    }
+    if op == "*" {
+        return pmul_lo(ahi, alo, bhi, blo)
+    }
+    if op == "/" {
+        var q int = pdiv(ahi, alo, bhi, blo, 0)
+        if q < 0 {
+            return 0
+        }
+        return q
+    }
+    if op == "MOD" {
+        var q int = pdiv(ahi, alo, bhi, blo, 0)
+        if q < 0 {
+            return 0
+        }
+        return pmod_lo(ahi, alo, bhi, blo)
+    }
+    if op == "AND" {
+        return pand16(alo, blo)
+    }
+    if op == "OR" {
+        return por16(alo, blo)
+    }
+    if op == "XOR" {
+        return pxor16(alo, blo)
+    }
+    if op == "SHL" {
+        var k int = (bhi * 65536 + blo) % 32
+        var hi int = ahi
+        var lo int = alo
+        var i int = 0
+        while i < k {
+            var rl2 int = lo * 2
+            var c int = 0
+            if rl2 >= 65536 {
+                c = 1
+                rl2 = rl2 - 65536
+            }
+            var rh2 int = hi * 2 + c
+            if rh2 >= 65536 {
+                rh2 = rh2 - 65536
+            }
+            lo = rl2
+            hi = rh2
+            i = i + 1
+        }
+        return lo
+    }
+    if op == "SHR" {
+        var k int = (bhi * 65536 + blo) % 32
+        var hi int = ahi
+        var lo int = alo
+        var i int = 0
+        while i < k {
+            var lo_top int = 0
+            if hi % 2 == 1 {
+                lo_top = 32768
+            }
+            lo = lo / 2 + lo_top
+            hi = hi / 2
+            i = i + 1
+        }
+        return lo
+    }
+    return 0
+}
+
+/// 二元运算分派——高肢（与 pop_lo 同参同 op；除法复算同循环取另一肢）。
+fn pop_hi(op str, ahi int, alo int, bhi int, blo int) int {
+    if op == "+" {
+        return padd_hi(ahi, bhi, alo, blo)
+    }
+    if op == "-" {
+        return psub_hi(ahi, bhi, alo, blo)
+    }
+    if op == "*" {
+        return pmul_hi(ahi, alo, bhi, blo)
+    }
+    if op == "/" {
+        var q int = pdiv(ahi, alo, bhi, blo, 1)
+        if q < 0 {
+            return 0
+        }
+        return q
+    }
+    if op == "MOD" {
+        var q int = pdiv(ahi, alo, bhi, blo, 0)
+        if q < 0 {
+            return 0
+        }
+        return pmod_hi(ahi, alo, bhi, blo)
+    }
+    if op == "AND" {
+        return pand16(ahi, bhi)
+    }
+    if op == "OR" {
+        return por16(ahi, bhi)
+    }
+    if op == "XOR" {
+        return pxor16(ahi, bhi)
+    }
+    if op == "SHL" {
+        var k int = (bhi * 65536 + blo) % 32
+        var hi int = ahi
+        var lo int = alo
+        var i int = 0
+        while i < k {
+            var rl2 int = lo * 2
+            var c int = 0
+            if rl2 >= 65536 {
+                c = 1
+                rl2 = rl2 - 65536
+            }
+            var rh2 int = hi * 2 + c
+            if rh2 >= 65536 {
+                rh2 = rh2 - 65536
+            }
+            lo = rl2
+            hi = rh2
+            i = i + 1
+        }
+        return hi
+    }
+    if op == "SHR" {
+        var k int = (bhi * 65536 + blo) % 32
+        var hi int = ahi
+        var lo int = alo
+        var i int = 0
+        while i < k {
+            var lo_top int = 0
+            if hi % 2 == 1 {
+                lo_top = 32768
+            }
+            lo = lo / 2 + lo_top
+            hi = hi / 2
+            i = i + 1
+        }
+        return hi
+    }
+    return 0
+}
+
+/// 32 位二进制恢复除法（MSB 先行 32 轮）。want_hi=0 返回商低肢、1 返回高肢；
+/// 除零约定返回 -1 哨兵（调用方先行判定并置错误，此为兜底）。余数可经
+/// prem 取（MOD 用）。
+fn pdiv(ahi int, alo int, bhi int, blo int, want_hi int) int {
+    if bhi == 0 && blo == 0 {
+        return -1
+    }
+    var qh int = 0
+    var ql int = 0
+    var rh int = 0
+    var rl int = 0
+    var i int = 31
+    while i >= 0 {
+        // rem = rem << 1 | 被除数位 i（肢倍增，全程 < 2^17）
+        var rl2 int = rl * 2
+        var c1 int = 0
+        if rl2 >= 65536 {
+            c1 = 1
+            rl2 = rl2 - 65536
+        }
+        var rh2 int = rh * 2 + c1
+        var b32 int = 0
+        if rh2 >= 65536 {
+            b32 = 1
+            rh2 = rh2 - 65536
+        }
+        // 取被除数位 i
+        var bit int = 0
+        if i >= 16 {
+            var p int = 1
+            var j int = 0
+            while j < i - 16 {
+                p = p * 2
+                j = j + 1
+            }
+            bit = (ahi / p) % 2
+        } else {
+            var p int = 1
+            var j int = 0
+            while j < i {
+                p = p * 2
+                j = j + 1
+            }
+            bit = (alo / p) % 2
+        }
+        rl2 = rl2 + bit
+        if rl2 >= 65536 {
+            c1 = 1
+            rl2 = rl2 - 65536
+        } else {
+            c1 = 0
+        }
+        rh2 = rh2 + c1
+        if rh2 >= 65536 {
+            b32 = 1
+            rh2 = rh2 - 65536
+        }
+        rl = rl2
+        rh = rh2
+        // 若 rem >= divisor：减除数、商位 i 置 1
+        var ge int = 0
+        if b32 == 1 {
+            ge = 1
+        }
+        if rh > bhi {
+            ge = 1
+        }
+        if rh == bhi && rl >= blo {
+            ge = 1
+        }
+        if ge == 1 {
+            // 32 位减法（借位肢内消解；b32 位被减数侧恒容纳）
+            var dl int = rl - blo
+            if dl < 0 {
+                dl = dl + 65536
+            }
+            var db int = 0
+            if rl < blo {
+                db = 1
+            }
+            var dh int = rh - bhi - db
+            if dh < 0 {
+                dh = dh + 65536
+            }
+            rl = dl
+            rh = dh
+            if i >= 16 {
+                var p int = 1
+                var j int = 0
+                while j < i - 16 {
+                    p = p * 2
+                    j = j + 1
+                }
+                qh = qh + p
+            } else {
+                var p int = 1
+                var j int = 0
+                while j < i {
+                    p = p * 2
+                    j = j + 1
+                }
+                ql = ql + p
+            }
+        }
+        i = i - 1
+    }
+    if want_hi == 1 {
+        return qh
+    }
+    return ql
+}
+
+/// 32 位取余（rem = a - (a/b)*b；rem < 除数 < 2^32，双肢承载）。
+/// 商经 pdiv 双肢取得（< 2^32 表达式域），积经 pmul 回wrap——全部既有
+/// 纯函数组合，零新增循环。
+fn pmod_lo(ahi int, alo int, bhi int, blo int) int {
+    var qh int = pdiv(ahi, alo, bhi, blo, 1)
+    var ql int = pdiv(ahi, alo, bhi, blo, 0)
+    var prl int = pmul_lo(qh, ql, bhi, blo)
+    var prh int = pmul_hi(qh, ql, bhi, blo)
+    return psub_lo(alo, prl)
+}
+fn pmod_hi(ahi int, alo int, bhi int, blo int) int {
+    var qh int = pdiv(ahi, alo, bhi, blo, 1)
+    var ql int = pdiv(ahi, alo, bhi, blo, 0)
+    var prl int = pmul_lo(qh, ql, bhi, blo)
+    var prh int = pmul_hi(qh, ql, bhi, blo)
+    return psub_hi(ahi, prh, alo, prl)
+}
+
+// ── 格式化（基底渲染）──
+
+/// 肢对 → base(2|8|10|16) 串。肢长除法：cur = r*65536 + limb < 2^20 安全。
+fn pfmt_limbs(hi int, lo int, base int) str {
+    if hi == 0 && lo == 0 {
+        return "0"
+    }
+    var out str = ""
+    var rh int = hi
+    var rl int = lo
+    var digits str = "0123456789ABCDEF"
+    while rh > 0 || rl > 0 {
+        var cur int = rh
+        var qh int = cur / base
+        var r int = cur % base
+        cur = r * 65536 + rl
+        var ql int = cur / base
+        r = cur % base
+        out = digits.slice(r, r + 1) + out
+        rh = qh
+        rl = ql
+    }
+    return out
+}
+
+// ── computed 辅助（视图侧格式化入口，双端 computed 转译）──
+
+/// 当前展示值肢（输入中= pnum，否则 acc）。
+fn pcur(entering bool, n int, a int) int {
+    if entering {
+        return n
+    }
+    return a
+}
+
+/// 当前值按基底名格式化（pbig / phex / pdec / poct / pbin computed 共用）。
+fn pcur_fmt(entering bool, nh int, nl int, ah int, al int, base str) str {
+    var b int = 10
+    if base == "HEX" {
+        b = 16
+    }
+    if base == "OCT" {
+        b = 8
+    }
+    if base == "BIN" {
+        b = 2
+    }
+    var hi int = pcur(entering, nh, ah)
+    var lo int = pcur(entering, nl, al)
+    return pfmt_limbs(hi, lo, b)
+}
+
+/// 等式行（pop 非空时 "A op B =" 形态，当前基底渲染；空 op → 空串）。
+fn pline_calc(pop str, ah int, al int, nh int, nl int, base str) str {
+    if pop == "" {
+        return ""
+    }
+    var b int = 10
+    if base == "HEX" {
+        b = 16
+    }
+    if base == "OCT" {
+        b = 8
+    }
+    if base == "BIN" {
+        b = 2
+    }
+    return pfmt_limbs(ah, al, b) + " " + pop + " " + pfmt_limbs(nh, nl, b) + " ="
+}

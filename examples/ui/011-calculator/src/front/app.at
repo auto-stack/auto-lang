@@ -13,6 +13,13 @@
 // Layout (需求 2): grid-based keypad (4-col). Multi-mode (需求 3): Basic /
 // Scientific / Programmer layouts selected by a mode switch; the scientific grid
 // adds parentheses + sin/cos/sqrt/etc; programmer adds hex/bin (display only).
+//
+// PLAN-615 T-07: Programmer 模式升格为完整 HEX 计算器——HEX/DEC/OCT/BIN 四基
+// 切换 + 随基键盘（A-F）+ 四基实时换算读出 + 位运算六键（AND/OR/XOR/NOT/SHL/
+// SHR）+ MOD。int 域即时执行（无表达式/优先级），32 位无符号 wrap；数值以
+// 16-bit 肢对存储、肢运算库见 prog_util.at（双端 TS/VM 纯整型精确一致）。
+
+use prog_util: pdigit_val, pdigit_new_lo, pdigit_new_hi, pop_lo, pop_hi, pdiv, pcur_fmt, pline_calc
 
 widget App {
     msg {
@@ -27,7 +34,15 @@ widget App {
         Dot,
         Percent,
         SciFn(str),       // sin, cos, tan, sqrt, etc. (scientific mode)
-        SetMode(str)      // "basic" | "scientific" | "programmer"
+        SetMode(str),     // "basic" | "scientific" | "programmer"
+        // PLAN-615 T-07: Programmer 模式（immediate-execution，32 位无符号域，
+        // 16-bit 肢存储——双端 TS/VM 纯整型精确一致，见文件尾肢运算库注释）。
+        PDigit(str),      // 数字/十六进制字母键（按当前 pbase 校验，非法忽略）
+        POp(str),         // 二元运算键：+ - * / % AND OR XOR SHL SHR
+        PNot,             // 一元 NOT（按位取反，立即作用于当前值）
+        PEq,              // 等号
+        PBack,            // 退格（当前输入）
+        PBase(str)        // 基底切换：HEX | DEC | OCT | BIN
     }
 
     model {
@@ -44,6 +59,35 @@ widget App {
         var error str = ""
         // Calculator mode.
         var mode str = "basic"
+
+        // ── PLAN-615 T-07: Programmer 模式状态 ──
+        // 当前基底：HEX | DEC | OCT | BIN。
+        var pbase str = "DEC"
+        // 32 位无符号累加器与当前输入，各拆 16-bit 肢（hi/lo，恒 < 65536，
+        // 双端 int 精确；肢运算库见文件尾）。why 肢：VM `int` 状态存储截断
+        // i32（2^31 以上不可存），TS number 与 VM 共同精确域为 < 2^53——
+        // 肢化后一切存储 < 2^17、一切表达式中间值 < 2^48，两端零分歧。
+        var pacc_hi int = 0
+        var pacc_lo int = 0
+        var pnum_hi int = 0
+        var pnum_lo int = 0
+        // 是否在输入数字中（false = 下一个数字键开启新输入）。
+        var pentering bool = false
+        // 待二元运算符（"" = 无）。+ - * / % AND OR XOR SHL SHR MOD
+        var pop str = ""
+        // Programmer 错误信息（除零）；空 = OK。
+        var perr str = ""
+    }
+
+    // PLAN-615 T-07: Programmer 派生显示全部走 computed（模块纯函数，双端
+    // 转译；Plan 522 范式）——处理器只写原始状态，视图零函数调用。
+    computed {
+        pbig => pcur_fmt(.pentering, .pnum_hi, .pnum_lo, .pacc_hi, .pacc_lo, .pbase)
+        phex => pcur_fmt(.pentering, .pnum_hi, .pnum_lo, .pacc_hi, .pacc_lo, "HEX")
+        pdec => pcur_fmt(.pentering, .pnum_hi, .pnum_lo, .pacc_hi, .pacc_lo, "DEC")
+        poct => pcur_fmt(.pentering, .pnum_hi, .pnum_lo, .pacc_hi, .pacc_lo, "OCT")
+        pbin => pcur_fmt(.pentering, .pnum_hi, .pnum_lo, .pacc_hi, .pacc_lo, "BIN")
+        pline => pline_calc(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo, .pbase)
     }
 
     view {
@@ -90,12 +134,23 @@ widget App {
                                 }
                             }
                         }
-                        // Expression + result
-                        text .expr_line {
-                            style: if .dark_mode {
-                                "text-sm text-zinc-400 text-right w-full truncate"
-                            } else {
-                                "text-sm text-gray-500 text-right w-full truncate"
+                        // Expression + result（programmer 模式换用 pline/pbig——
+                        // PLAN-615 T-07：int 域显示与 float 表达式引擎隔离）
+                        if .mode == "programmer" {
+                            text .pline {
+                                style: if .dark_mode {
+                                    "text-sm text-zinc-400 text-right w-full truncate"
+                                } else {
+                                    "text-sm text-gray-500 text-right w-full truncate"
+                                }
+                            }
+                        } else {
+                            text .expr_line {
+                                style: if .dark_mode {
+                                    "text-sm text-zinc-400 text-right w-full truncate"
+                                } else {
+                                    "text-sm text-gray-500 text-right w-full truncate"
+                                }
                             }
                         }
                         if .error != "" {
@@ -103,23 +158,110 @@ widget App {
                                 style: "text-2xl font-light text-red-400 text-right w-full"
                             }
                         } else {
-                            text .display {
-                                style: if .dark_mode {
-                                    "text-4xl font-light text-white text-right w-full truncate"
-                                } else {
-                                    "text-4xl font-light text-gray-900 text-right w-full truncate"
+                            if .mode == "programmer" {
+                                text .pbig {
+                                    style: if .dark_mode {
+                                        "text-4xl font-light text-white text-right w-full truncate"
+                                    } else {
+                                        "text-4xl font-light text-gray-900 text-right w-full truncate"
+                                    }
+                                }
+                            } else {
+                                text .display {
+                                    style: if .dark_mode {
+                                        "text-4xl font-light text-white text-right w-full truncate"
+                                    } else {
+                                        "text-4xl font-light text-gray-900 text-right w-full truncate"
+                                    }
                                 }
                             }
                         }
-                        // Programmer mode: base conversions (display only, int result).
+                        // PLAN-615 T-08: 复制结果（剪贴板；VM auto.clipboard
+                        // native 2926 / vue navigator.clipboard 双端）
+                        row {
+                            style: "w-full justify-end"
+                            button "⧉ 复制" {
+                                onclick: .Copy
+                                style: "px-2 py-0.5 text-xs rounded bg-transparent text-muted-foreground hover:text-foreground"
+                            }
+                        }
+                        // PLAN-615 T-07: Programmer 模式面板——基底切换 + 四基实时
+                        // 换算读出（当前基高亮；其余行可点击直切）。语义 token 类
+                        // （bg-primary/bg-muted/text-foreground…）随主题自动切换，
+                        // 与 W3 主题链（T-04/05/06）直连，零手工 dark 分支。
                         if .mode == "programmer" {
-                            if .error == "" {
-                                text f"DEC ${.display}" {
-                                    style: if .dark_mode {
-                                        "text-xs text-zinc-500 text-right w-full font-mono mt-1"
-                                    } else {
-                                        "text-xs text-gray-400 text-right w-full font-mono mt-1"
+                            if .perr == "" {
+                                row {
+                                    style: "w-full gap-1 pt-1"
+                                    button "HEX" {
+                                        onclick: .PBase("HEX")
+                                        style: if .pbase == "HEX" {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-primary text-white font-semibold"
+                                        } else {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-muted text-muted-foreground"
+                                        }
                                     }
+                                    button "DEC" {
+                                        onclick: .PBase("DEC")
+                                        style: if .pbase == "DEC" {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-primary text-white font-semibold"
+                                        } else {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-muted text-muted-foreground"
+                                        }
+                                    }
+                                    button "OCT" {
+                                        onclick: .PBase("OCT")
+                                        style: if .pbase == "OCT" {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-primary text-white font-semibold"
+                                        } else {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-muted text-muted-foreground"
+                                        }
+                                    }
+                                    button "BIN" {
+                                        onclick: .PBase("BIN")
+                                        style: if .pbase == "BIN" {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-primary text-white font-semibold"
+                                        } else {
+                                            "flex-1 px-1 py-1 text-xs rounded-md bg-muted text-muted-foreground"
+                                        }
+                                    }
+                                }
+                                button f"HEX  ${.phex}" {
+                                    onclick: .PBase("HEX")
+                                    style: if .pbase == "HEX" {
+                                        "w-full text-right text-sm font-mono text-foreground bg-transparent px-0"
+                                    } else {
+                                        "w-full text-right text-sm font-mono text-muted-foreground bg-transparent px-0"
+                                    }
+                                }
+                                button f"DEC  ${.pdec}" {
+                                    onclick: .PBase("DEC")
+                                    style: if .pbase == "DEC" {
+                                        "w-full text-right text-sm font-mono text-foreground bg-transparent px-0"
+                                    } else {
+                                        "w-full text-right text-sm font-mono text-muted-foreground bg-transparent px-0"
+                                    }
+                                }
+                                button f"OCT  ${.poct}" {
+                                    onclick: .PBase("OCT")
+                                    style: if .pbase == "OCT" {
+                                        "w-full text-right text-sm font-mono text-foreground bg-transparent px-0"
+                                    } else {
+                                        "w-full text-right text-sm font-mono text-muted-foreground bg-transparent px-0"
+                                    }
+                                }
+                                button f"BIN  ${.pbin}" {
+                                    onclick: .PBase("BIN")
+                                    style: if .pbase == "BIN" {
+                                        "w-full text-right text-sm font-mono text-foreground bg-transparent px-0"
+                                    } else {
+                                        "w-full text-right text-sm font-mono text-muted-foreground bg-transparent px-0"
+                                    }
+                                }
+                            }
+                            if .perr != "" {
+                                text .perr {
+                                    style: "text-lg font-light text-red-400 text-right w-full"
                                 }
                             }
                         }
@@ -152,8 +294,9 @@ widget App {
                         }
                     }
 
-                    // Main keypad (shared by all modes). Scientific adds ( ) in the
-                    // top row; basic/programmer keep the standard layout.
+                    // Main keypad (shared by basic/scientific; PLAN-615 T-07 起
+                    // programmer 使用专属 int 键盘，见下方 Programmer 键盘组)。
+                    if .mode != "programmer" {
                     grid {
                         grid-item { button "C"   { onclick: .Clear,         style: if .dark_mode { "w-full bg-zinc-700 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-300 text-gray-900 rounded-lg p-4 text-lg" } } }
                         grid-item { button "+/-" { onclick: .Negate,        style: if .dark_mode { "w-full bg-zinc-700 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-300 text-gray-900 rounded-lg p-4 text-lg" } } }
@@ -193,6 +336,82 @@ widget App {
                             "w-full p-2 bg-gray-200 rounded-b-2xl"
                         }
                     }
+                    }
+
+                    // ── PLAN-615 T-07: Programmer 专属键盘组（immediate-execution
+                    // int 域，32 位无符号）。全部语义 token 类随主题自动切换。
+                    if .mode == "programmer" {
+                        // 位运算排（AND OR XOR NOT / SHL SHR MOD ÷）
+                        grid {
+                            grid-item { button "AND" { onclick: .POp("AND"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "OR"  { onclick: .POp("OR"),  style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "XOR" { onclick: .POp("XOR"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "NOT" { onclick: .PNot,       style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "SHL" { onclick: .POp("SHL"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "SHR" { onclick: .POp("SHR"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "MOD" { onclick: .POp("MOD"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "÷"   { onclick: .POp("/"),   style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            cols: 4
+                            gap: 1
+                            style: if .dark_mode {
+                                "w-full px-2 pt-1 bg-zinc-800"
+                            } else {
+                                "w-full px-2 pt-1 bg-gray-200"
+                            }
+                        }
+                        // HEX 字母排（非 HEX 基底灰显，处理器端亦忽略非法键）
+                        grid {
+                            grid-item { button "A" { onclick: .PDigit("A"), style: if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono" } else { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono opacity-30" } } }
+                            grid-item { button "B" { onclick: .PDigit("B"), style: if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono" } else { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono opacity-30" } } }
+                            grid-item { button "C" { onclick: .PDigit("C"), style: if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono" } else { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono opacity-30" } } }
+                            grid-item { button "D" { onclick: .PDigit("D"), style: if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono" } else { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono opacity-30" } } }
+                            grid-item { button "E" { onclick: .PDigit("E"), style: if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono" } else { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono opacity-30" } } }
+                            grid-item { button "F" { onclick: .PDigit("F"), style: if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono" } else { "w-full bg-card text-foreground rounded-lg p-3 text-base font-mono opacity-30" } } }
+                            cols: 3
+                            gap: 1
+                            style: if .dark_mode {
+                                "w-full px-2 pt-1 bg-zinc-800"
+                            } else {
+                                "w-full px-2 pt-1 bg-gray-200"
+                            }
+                        }
+                        // 主 int 键盘（BIN 时 2-9 灰显；OCT 时 8-9 灰显——
+                        // 灰显条件用嵌套 if 表达，视图条件不用布尔算符）
+                        grid {
+                            grid-item { button "C" { onclick: .Clear,       style: "w-full bg-muted text-foreground rounded-lg p-4 text-lg" } }
+                            grid-item { button "⌫" { onclick: .PBack,       style: "w-full bg-muted text-foreground rounded-lg p-4 text-lg" } }
+                            grid-item { text ""      { style: "bg-transparent" } }
+                            grid-item { button "÷" { onclick: .POp("/"),    style: "w-full bg-primary text-white rounded-lg p-4 text-lg font-bold" } }
+
+                            grid-item { button "7" { onclick: .PDigit("7"), style: if .pbase == "BIN" { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } } }
+                            grid-item { button "8" { onclick: .PDigit("8"), style: if .pbase == "DEC" { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } else { if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } } } }
+                            grid-item { button "9" { onclick: .PDigit("9"), style: if .pbase == "DEC" { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } else { if .pbase == "HEX" { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } } } }
+                            grid-item { button "×" { onclick: .POp("*"),    style: "w-full bg-primary text-white rounded-lg p-4 text-lg font-bold" } }
+
+                            grid-item { button "4" { onclick: .PDigit("4"), style: if .pbase == "BIN" { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } } }
+                            grid-item { button "5" { onclick: .PDigit("5"), style: if .pbase == "BIN" { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } } }
+                            grid-item { button "6" { onclick: .PDigit("6"), style: if .pbase == "BIN" { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } } }
+                            grid-item { button "−" { onclick: .POp("-"),    style: "w-full bg-primary text-white rounded-lg p-4 text-lg font-bold" } }
+
+                            grid-item { button "1" { onclick: .PDigit("1"), style: "w-full bg-card text-foreground rounded-lg p-4 text-lg" } }
+                            grid-item { button "2" { onclick: .PDigit("2"), style: if .pbase == "BIN" { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } } }
+                            grid-item { button "3" { onclick: .PDigit("3"), style: if .pbase == "BIN" { "w-full bg-card text-foreground rounded-lg p-4 text-lg opacity-30" } else { "w-full bg-card text-foreground rounded-lg p-4 text-lg" } } }
+                            grid-item { button "+" { onclick: .POp("+"),    style: "w-full bg-primary text-white rounded-lg p-4 text-lg font-bold" } }
+
+                            grid-item { button "0" { onclick: .PDigit("0"), style: "w-full bg-card text-foreground rounded-lg p-4 text-lg" } }
+                            grid-item { text ""      { style: "bg-transparent" } }
+                            grid-item { text ""      { style: "bg-transparent" } }
+                            grid-item { button "="   { onclick: .PEq,       style: "w-full bg-primary text-white rounded-lg p-4 text-lg font-bold" } }
+
+                            cols: 4
+                            gap: 1
+                            style: if .dark_mode {
+                                "w-full p-2 bg-zinc-800 rounded-b-2xl"
+                            } else {
+                                "w-full p-2 bg-gray-200 rounded-b-2xl"
+                            }
+                        }
+                    }
 
                     style: if .dark_mode {
                         "w-96 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl"
@@ -206,9 +425,616 @@ widget App {
         "Enter" -> .Equals
         "Escape" -> .Clear
         "Backspace" -> .Backspace
+        // PLAN-615 T-08: 键盘直输——bind 语法零参（parser.rs parse_bind_block
+        // 仅收 .Name），模式路由在 Key 处理器内完成；HEX 字母绑双大小写。
+        "0" -> .Key0
+        "1" -> .Key1
+        "2" -> .Key2
+        "3" -> .Key3
+        "4" -> .Key4
+        "5" -> .Key5
+        "6" -> .Key6
+        "7" -> .Key7
+        "8" -> .Key8
+        "9" -> .Key9
+        "a" -> .KeyA
+        "A" -> .KeyA
+        "b" -> .KeyB
+        "B" -> .KeyB
+        "c" -> .KeyC
+        "C" -> .KeyC
+        "d" -> .KeyD
+        "D" -> .KeyD
+        "e" -> .KeyE
+        "E" -> .KeyE
+        "f" -> .KeyF
+        "F" -> .KeyF
+        "+" -> .KeyAdd
+        "-" -> .KeySub
+        "*" -> .KeyMul
+        "/" -> .KeyDiv
+        "=" -> .Equals
     }
 
     on {
+        // PLAN-615 T-08: 复制当前显示值（programmer 走 pcur_fmt 重算——
+        // computed 值不经状态通道）
+        .Copy -> {
+            if .mode == "programmer" {
+                let v str = pcur_fmt(.pentering, .pnum_hi, .pnum_lo, .pacc_hi, .pacc_lo, .pbase)
+                let ok = clipboard_set_text(v)
+                if !ok {
+                    .perr = "Copy failed"
+                }
+            } else {
+                let ok2 = clipboard_set_text(.display)
+                if !ok2 {
+                    .error = "Copy failed"
+                }
+            }
+        }
+        // ── PLAN-615 T-08: 零参 Key 处理器族（bind 语法零参约束下的
+        // 模式感知路由；肢乘加复用 prog_util.pdigit_new_lo/hi）──
+                .Key0 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("0", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "0"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key1 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("1", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "1"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key2 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("2", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "2"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key3 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("3", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "3"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key4 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("4", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "4"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key5 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("5", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "5"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key6 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("6", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "6"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key7 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("7", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "7"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key8 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("8", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "8"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .Key9 -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var d int = pdigit_val("9", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            } else {
+                .expr = .expr + "9"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .KeyA -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                var d int = pdigit_val("A", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            }
+        }
+                .KeyB -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                var d int = pdigit_val("B", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            }
+        }
+                .KeyC -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                var d int = pdigit_val("C", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            }
+        }
+                .KeyD -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                var d int = pdigit_val("D", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            }
+        }
+                .KeyE -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                var d int = pdigit_val("E", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            }
+        }
+                .KeyF -> {
+            if .mode == "programmer" {
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                var d int = pdigit_val("F", base)
+                if d >= 0 {
+                    .perr = ""
+                    if !.pentering {
+                        .pnum_hi = 0
+                        .pnum_lo = 0
+                        .pentering = true
+                    }
+                    var nl int = pdigit_new_lo(.pnum_lo, base, d)
+                    var nh int = pdigit_new_hi(.pnum_hi, .pnum_lo, base, d)
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+            }
+        }
+                .KeyAdd -> {
+            if .mode == "programmer" {
+                .perr = ""
+                if .pop != "" {
+                    if .pentering {
+                        if .pop == "/" {
+                            if .pnum_hi == 0 && .pnum_lo == 0 {
+                                .perr = "Cannot divide by zero"
+                            }
+                        }
+                        if .perr == "" {
+                            var nl int = pop_lo(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            var nh int = pop_hi(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            .pacc_lo = nl
+                            .pacc_hi = nh
+                            .pnum_lo = nl
+                            .pnum_hi = nh
+                        }
+                    }
+                } else {
+                    .pacc_hi = .pnum_hi
+                    .pacc_lo = .pnum_lo
+                }
+                .pop = "+"
+                .pentering = false
+            } else {
+                .expr = .expr + "+"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .KeySub -> {
+            if .mode == "programmer" {
+                .perr = ""
+                if .pop != "" {
+                    if .pentering {
+                        if .pop == "/" {
+                            if .pnum_hi == 0 && .pnum_lo == 0 {
+                                .perr = "Cannot divide by zero"
+                            }
+                        }
+                        if .perr == "" {
+                            var nl int = pop_lo(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            var nh int = pop_hi(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            .pacc_lo = nl
+                            .pacc_hi = nh
+                            .pnum_lo = nl
+                            .pnum_hi = nh
+                        }
+                    }
+                } else {
+                    .pacc_hi = .pnum_hi
+                    .pacc_lo = .pnum_lo
+                }
+                .pop = "-"
+                .pentering = false
+            } else {
+                .expr = .expr + "-"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .KeyMul -> {
+            if .mode == "programmer" {
+                .perr = ""
+                if .pop != "" {
+                    if .pentering {
+                        if .pop == "/" {
+                            if .pnum_hi == 0 && .pnum_lo == 0 {
+                                .perr = "Cannot divide by zero"
+                            }
+                        }
+                        if .perr == "" {
+                            var nl int = pop_lo(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            var nh int = pop_hi(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            .pacc_lo = nl
+                            .pacc_hi = nh
+                            .pnum_lo = nl
+                            .pnum_hi = nh
+                        }
+                    }
+                } else {
+                    .pacc_hi = .pnum_hi
+                    .pacc_lo = .pnum_lo
+                }
+                .pop = "*"
+                .pentering = false
+            } else {
+                .expr = .expr + "*"
+                .display = .expr
+                .error = ""
+            }
+        }
+                .KeyDiv -> {
+            if .mode == "programmer" {
+                .perr = ""
+                if .pop != "" {
+                    if .pentering {
+                        if .pop == "/" {
+                            if .pnum_hi == 0 && .pnum_lo == 0 {
+                                .perr = "Cannot divide by zero"
+                            }
+                        }
+                        if .perr == "" {
+                            var nl int = pop_lo(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            var nh int = pop_hi(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                            .pacc_lo = nl
+                            .pacc_hi = nh
+                            .pnum_lo = nl
+                            .pnum_hi = nh
+                        }
+                    }
+                } else {
+                    .pacc_hi = .pnum_hi
+                    .pacc_lo = .pnum_lo
+                }
+                .pop = "/"
+                .pentering = false
+            } else {
+                .expr = .expr + "/"
+                .display = .expr
+                .error = ""
+            }
+        }
         .SetMode(m str) -> {
             .mode = m
         }
@@ -217,6 +1043,136 @@ widget App {
             .display = "0"
             .expr_line = ""
             .error = ""
+            // PLAN-615 T-07: 同清 programmer 状态
+            .pacc_hi = 0
+            .pacc_lo = 0
+            .pnum_hi = 0
+            .pnum_lo = 0
+            .pentering = false
+            .pop = ""
+            .perr = ""
+        }
+        // ── PLAN-615 T-07: Programmer 处理器（int 域即时执行）──
+        .PBase(b str) -> {
+            .pbase = b
+            .perr = ""
+        }
+        .PDigit(ch str) -> {
+            var base int = 10
+            if .pbase == "HEX" {
+                base = 16
+            }
+            if .pbase == "OCT" {
+                base = 8
+            }
+            if .pbase == "BIN" {
+                base = 2
+            }
+            var d int = pdigit_val(ch, base)
+            if d >= 0 {
+                .perr = ""
+                if !.pentering {
+                    .pnum_hi = 0
+                    .pnum_lo = 0
+                    .pentering = true
+                }
+                // value = value * base + d（肢内乘加；全量 < 2^21 双端精确）
+                var nl int = .pnum_lo * base + d
+                var c int = nl / 65536
+                nl = nl - c * 65536
+                var nh int = (.pnum_hi * base + c) % 65536
+                .pnum_lo = nl
+                .pnum_hi = nh
+            }
+        }
+        .POp(op str) -> {
+            .perr = ""
+            if .pop != "" {
+                if .pentering {
+                    // 结算待结算运算：acc = apply(pop, acc, num)
+                    if .pop == "/" {
+                        if .pnum_hi == 0 && .pnum_lo == 0 {
+                            .perr = "Cannot divide by zero"
+                        }
+                    }
+                    if .pop == "MOD" {
+                        if .pnum_hi == 0 && .pnum_lo == 0 {
+                            .perr = "Cannot divide by zero"
+                        }
+                    }
+                    if .perr == "" {
+                        var nl int = pop_lo(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                        var nh int = pop_hi(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                        .pacc_lo = nl
+                        .pacc_hi = nh
+                        .pnum_lo = nl
+                        .pnum_hi = nh
+                    }
+                }
+            } else {
+                // 首操作数入 accumulator
+                .pacc_hi = .pnum_hi
+                .pacc_lo = .pnum_lo
+            }
+            .pop = op
+            .pentering = false
+        }
+        .PEq -> {
+            if .pop != "" {
+                if .pop == "/" {
+                    if .pnum_hi == 0 && .pnum_lo == 0 {
+                        .perr = "Cannot divide by zero"
+                    }
+                }
+                if .pop == "MOD" {
+                    if .pnum_hi == 0 && .pnum_lo == 0 {
+                        .perr = "Cannot divide by zero"
+                    }
+                }
+                if .perr == "" {
+                    var nl int = pop_lo(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                    var nh int = pop_hi(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                    .pacc_lo = nl
+                    .pacc_hi = nh
+                    .pnum_lo = nl
+                    .pnum_hi = nh
+                }
+                .pop = ""
+                .pentering = false
+            }
+        }
+        .PNot -> {
+            .perr = ""
+            // 按位取反 = 65535 - 肢（16-bit 补数，双肢合即 ~32 位值）
+            if .pentering {
+                .pnum_lo = 65535 - .pnum_lo
+                .pnum_hi = 65535 - .pnum_hi
+            } else {
+                .pacc_lo = 65535 - .pacc_lo
+                .pacc_hi = 65535 - .pacc_hi
+                .pnum_lo = .pacc_lo
+                .pnum_hi = .pacc_hi
+            }
+        }
+        .PBack -> {
+            .perr = ""
+            if .pentering {
+                // 退一位数字 = 当前输入整除基底（基底内合法数字恒可整除回退）
+                var base int = 10
+                if .pbase == "HEX" {
+                    base = 16
+                }
+                if .pbase == "OCT" {
+                    base = 8
+                }
+                if .pbase == "BIN" {
+                    base = 2
+                }
+                var nl int = pdiv(.pnum_hi, .pnum_lo, 0, base, 0)
+                var nh int = pdiv(.pnum_hi, .pnum_lo, 0, base, 1)
+                .pnum_lo = nl
+                .pnum_hi = nh
+            }
         }
         .ClearEntry -> {
             .display = "0"
@@ -268,14 +1224,45 @@ widget App {
             .error = ""
         }
         .Equals -> {
-            .expr_line = .expr + " ="
-            let result str = eval_expr(.expr)
-            if result == "ERROR" {
-                .error = "Error"
+            if .mode == "programmer" {
+                // PLAN-615 T-08: "=" 键盘绑定在 programmer 域路由到 int 求值
+                if .pop != "" {
+                    if .pop == "/" {
+                        if .pnum_hi == 0 && .pnum_lo == 0 {
+                            .perr = "Cannot divide by zero"
+                        }
+                    }
+                    if .pop == "MOD" {
+                        if .pnum_hi == 0 && .pnum_lo == 0 {
+                            .perr = "Cannot divide by zero"
+                        }
+                    }
+                    if .perr == "" {
+                        var nl int = pop_lo(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                        var nh int = pop_hi(.pop, .pacc_hi, .pacc_lo, .pnum_hi, .pnum_lo)
+                        .pacc_lo = nl
+                        .pacc_hi = nh
+                        .pnum_lo = nl
+                        .pnum_hi = nh
+                    }
+                    .pop = ""
+                    .pentering = false
+                }
             } else {
-                .display = result
-                .expr = result
-                .error = ""
+                .expr_line = .expr + " ="
+                let result str = eval_expr(.expr)
+                // PLAN-615 T-08: 错误文案细化（除零 vs 语法错误）
+                if result == "DIV0" {
+                    .error = "Cannot divide by zero"
+                } else {
+                    if result == "ERROR" {
+                        .error = "Invalid expression"
+                    } else {
+                        .display = result
+                        .expr = result
+                        .error = ""
+                    }
+                }
             }
         }
     }
@@ -302,7 +1289,7 @@ fn eval_expr(input str) str {
     var ops List<str> = []
     var i int = 0
     var n int = input.len()
-    var ok bool = true
+    var ok str = "OK"
 
     while i < n {
         var ch str = input.slice(i, i + 1)
@@ -335,8 +1322,8 @@ fn eval_expr(input str) str {
         else if ch == ")" {
             while ops.len() > 0 && ops[ops.len() - 1] != "(" {
                 ok = apply_top(nums, ops)
-                if !ok {
-                    return "ERROR"
+                if ok != "OK" {
+                    return ok
                 }
             }
             if ops.len() > 0 {
@@ -375,8 +1362,8 @@ fn eval_expr(input str) str {
                 } else {
                     while ops.len() > 0 && ops[ops.len() - 1] != "(" && prec(ops[ops.len() - 1]) >= prec(ch) {
                         ok = apply_top(nums, ops)
-                        if !ok {
-                            return "ERROR"
+                        if ok != "OK" {
+                            return ok
                         }
                     }
                     ops.push(ch)
@@ -385,8 +1372,8 @@ fn eval_expr(input str) str {
             } else {
                 while ops.len() > 0 && ops[ops.len() - 1] != "(" && prec(ops[ops.len() - 1]) >= prec(ch) {
                     ok = apply_top(nums, ops)
-                    if !ok {
-                        return "ERROR"
+                    if ok != "OK" {
+                        return ok
                     }
                 }
                 ops.push(ch)
@@ -405,8 +1392,8 @@ fn eval_expr(input str) str {
             ops.pop()
         } else {
             ok = apply_top(nums, ops)
-            if !ok {
-                return "ERROR"
+            if ok != "OK" {
+                return ok
             }
         }
     }
@@ -441,7 +1428,7 @@ fn apply_top(nums List<str>, ops List<str>) bool {
     }
     if op == "/" {
         if b == 0.0 {
-            return false
+            return "DIV0"
         }
         result = a / b
     }
@@ -452,7 +1439,7 @@ fn apply_top(nums List<str>, ops List<str>) bool {
         result = a - b * (a / b)
     }
     nums.push(result.to_string())
-    return true
+    return "OK"
 }
 
 /// Operator precedence: ^ > * / % > + -.
@@ -480,10 +1467,18 @@ fn prec(op str) int {
 
 /// Format a float for display: show integers without decimals, trim trailing zeros.
 fn fmt_num(v float) str {
-    // Plan 403-F: simplified to avoid float.to_int() (which has VM dispatch
-    // issues for f32 values). The Rust-side fmt_f64 (engine.rs to_string)
-    // already shows whole floats without a decimal part (7.0 → "7"), so a
-    // plain to_string suffices for display.
+    // PLAN-615 T-08: 浮点显示去噪——10 位小数 ε 舍入（0.1+0.2 → 0.3、
+    // 3.0000000000000004 → 3），|v| ≥ 1e6 原样 to_string。math.floor 双端
+    // 有映射（VM native 1710 / TS Math.floor）。
+    var a float = v
+    if a < 0.0 {
+        a = 0.0 - a
+    }
+    if a < 1000000.0 {
+        var scaled float = v * 10000000000.0
+        var r float = math.floor(scaled + 0.5)
+        return (r / 10000000000.0).to_string()
+    }
     return v.to_string()
 }
 

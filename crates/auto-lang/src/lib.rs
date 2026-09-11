@@ -6645,6 +6645,10 @@ mod plan593_theme_registry_tests;
 // Plan 606: Photo gallery thumbnails and fit parity test.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan606_gallery_tests;
+// PLAN-615 T-07: calc 011 Programmer HEX 首光回归（VM 侧逻辑锚）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan615_calc_prog_tests;
+
 
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]

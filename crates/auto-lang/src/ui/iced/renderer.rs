@@ -23724,8 +23724,11 @@ mod tests {
         assert!(ds.desktop.config_poll_sampled, "首采样落哨兵");
         assert!(ds.desktop.config_poll_mtime.is_none(), "文件缺席锚 None");
         // ② 外写(模拟 daemon PUT):多字段一次落盘 → 下一 tick 差异应用。
+        // PLAN-615 T-06:主题面外写须伴 theme_source="manual"——system 源
+        // (缺省)在 load() 期从 OS 派生 dark_theme,外写值会被跟随语义覆盖。
         let mut cfg = ds.desktop.config.clone();
         cfg.dark_theme = !cfg.dark_theme;
+        cfg.theme_source = "manual".to_string();
         cfg.dock_pinned = vec!["011-calculator".to_string()];
         cfg.transparency = "high".to_string();
         cfg.wallpapers_dir = r"D:\wallpapers".to_string();
