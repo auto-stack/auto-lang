@@ -86,6 +86,39 @@ as）；B=parser 增窄整型标注位。倾向 A（零语法面新增）。
 **构建 harness**：a2r 产物 → cdylib/exe 需要 cargo 小工程（`#[ignore]`
 实编门内模板生成，先例=594 parity libs rust/ 目录 + 599 三道门）。
 
+### T-01 spike 裁定（2026-09-11，结论落 §2）
+
+- **语法形态＝`#[export]`**（fn 级，可选 abi 实参 `#[export(system)]`→
+  `extern "system"`，默认 `"C"`）。与 GDScript `export*` var 注解零冲突：
+  store_attrs 仅被 var 路径消费（parser.rs:5139），fn 前的 `#[export]`
+  今日被静默忽略——复用该名，臂内增设 `ann.export_abi: Option<AutoStr>`，
+  经 `pending_api_attrs` 同款 pending 流转（parser.rs:5061→9391），AST
+  `Fn.export_abi` 新字段（None=非导出）。**不进 impl_attrs**（防 Rust
+  产物出现非法 `#[export]` attr、防其他后端误发）。
+- **类型保真＝策略 A**（包装层边界 cast，零语法面新增）。发射"原名安全
+  体 + 兄弟包装模块"双件：`mod <name>_c_export { #[unsafe(no_mangle)]
+  pub extern "<abi>" fn <name>(ABI 形参) { super::<name>(conv…) as … } }`
+  ——符号名=fn 名（no_mangle 不含模块路径），**调用方零改动**（无需
+  全程序改名映射）。
+- **ABI 类型映射**：Int→i32（内体 i64，边界 `as` 双向）；i64/u64/usize/
+  byte/bool/char/float/double 直过（uint→u32）；cstr→`*const c_char`
+  （空指针容错→""）；返回 cstr→`CString::new(…).unwrap_or_default()
+  .into_raw()`（所有权让渡 C，内嵌 NUL 降级空串不 panic——"无 panic
+  穿越 FFI"契约）；`*T`→原样 + 新修 `*void`→`*mut std::ffi::c_void`
+  （今日 `*mut void` 系坏输出，无语料依赖）；复合类型→发射期报错
+  （MVP 边界）。拒绝面：方法/泛型/async/test 与 #[export] 组合报错。
+- **⑥ 形态选择＝manifest `"link": "static"|"dynamic"`**（serde 默认
+  static）——零 Auto 语法新增；S=生成模块内 `#[link(name=<library>)]
+  extern "<abi>"` 块 + 安全包装 + `pub use <module>::*`；D=libloading
+  OnceLock，解析序 env `<LIBRARY>_DLL` → exe 同目录 → 裸名(PATH)。
+  **缓冲出参**（take_dirty_rows/row_text/row_style/cursor）由生成模块
+  内置安全助手消化（buf/ptr 读写族）——004 §3.5"所有 unsafe 居于生成
+  模块内"的落地形态；Auto 指针原语（`x.@`/`p.*`，02_types/004_pointer
+  在案）+ `*void` 修复后 ⑤⑥ 语料全程安全面可书。
+- **manifest 路径解析**：a2r 增可选 source_dir 入口
+  （`transpile_rust_in_dir`；run_a2r_file_test 传 case.dir，CLI 传文件
+  父目录），相对路径先 source_dir 再 CWD。
+
 ## 3. 技术栈
 
 trans/rust.rs（⑤发射+⑥生成器）、parser attrs、auto-bindgen manifest
@@ -172,9 +205,19 @@ auto-term 构建产物（只读）。
 
 ## 8. 执行步骤
 
-- [ ] **T-01**（bounded）⑤ 语法与类型保真 spike（attrs 链/cast 策略），
-  结论回填 §2；
-- [ ] **T-02** ⑤ 发射实现 + 快照 001/002；
+- [x] **T-01**（bounded）⑤ 语法与类型保真 spike（attrs 链/cast 策略），
+  结论回填 §2；[✅ 已完成：`#[export]`（复用 GDScript export 名，fn 路径
+  零冲突实证 parser.rs:5139 store_attrs 仅 var 消费）；策略 A（兄弟模块
+  wrapper，零调用点改动）；⑥ 形态=manifest link 字段；缓冲出参=生成模块
+  内置安全助手；manifest 路径=source_dir 入口。裁定全文 §2 T-01 节]
+- [x] **T-02** ⑤ 发射实现 + 快照 001/002；[✅ 已完成：parser `#[export]`
+  /`#[export(system)]`（FnAnnotations.export_abi + pending 流转 + Fn.export_abi
+  AST 字段）+ rust.rs 兄弟包装模块发射（unsafe 收窄于 CStr::from_ptr）+
+  `*void`→`*mut std::ffi::c_void` 修复；语料 27_c_abi/001_export_basic、
+  /002_export_cstr 快照绿（逐例 2/2 + a2r_tests 模块 369/369 +
+  a2r_rustc_real_compile_gate 绿）；执行期两修：cstr 形参系 &str（借
+  用需 `_conv` 局部持有者）、param+param 字符串拼接系 a2r 既有空白
+  （语料改 f-string）；worktree commit 73a2b7e]
 - [ ] **T-03** cdylib/exe 构建 harness（实编门内 cargo 模板）；
 - [ ] **T-04** MVP 导出面实编门（AC-02）；
 - [ ] **T-05** capstone ⑤：引擎 12 符号 Auto 版（语料 005 + dep
