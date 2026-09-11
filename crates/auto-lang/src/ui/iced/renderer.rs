@@ -8685,6 +8685,9 @@ fn summon_launcher(
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
         let _ = app.component.write_state("__focus_input", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("__focus_input_tries", auto_val::Value::Int(0));
         // 宿主写状态不触发 handler——显式重算 ranked/网格行 + 刷 view
         if let Err(err) = app.component.bridge_mut().call_handler("ApplyFilter", &[]) {
             eprintln!("[session] launcher ApplyFilter failed: {err}");
@@ -14004,26 +14007,53 @@ fn compare_pngs(
             state.component.read_state("__focus_input"),
             Ok(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         ) {
-            let focus_target = state
-                .app
-                .devtools
-                .input_ids
-                .borrow()
-                .first()
-                .cloned()
-                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
+            // PLAN-013 W2：登记表对 overlay 挂载面恒空（dynamic_view 组装
+            // 路径不产 input Id，16032 的登记写入会被空集合覆盖）——改为
+            // 消费时即时派生：同步构建当前 app 视图收集 input Id（与
+            // summon 预登记同一 derive_input_id 稳定通道），登记表只作
+            // 回退。
+            let derived = {
+                let (view, _, _) = state.component.view_with_debug_gated(false);
+                let converted = convert_view_messages(view);
+                let mut ids = Vec::new();
+                collect_input_ids(&converted, &mut ids);
+                ids.first().cloned()
+            };
+            let focus_target = derived.unwrap_or_else(|| {
+                state
+                    .app
+                    .devtools
+                    .input_ids
+                    .borrow()
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone())
+            });
             if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
-                let ids = state.app.devtools.input_ids.borrow();
                 eprintln!(
-                    "[464-FOCUS] __focus_input consumed: registered={}个 target={focus_target:?}",
-                    ids.len()
+                    "[464-FOCUS] __focus_input consumed: derived target={focus_target:?}"
                 );
             }
-            let _ = state.component.write_state("__focus_input", auto_val::Value::str(""));
-            // Plan 483: 目标 = 登记表首个 input 的唯一 Id(取代共享字面量
-            // prompt_input——多 input 视图会被一次全置焦);无 input 时退
-            // 外壳 prompt_input_id 旧语义(此时无匹配 widget,空聚焦)。
             tail_tasks.push(iced::widget::operation::focus(focus_target));
+            // PLAN-013 W2：重试上限——focus 任务与 overlay 入树存在时序
+            // 竞态（首拍可能落空），借 launcher 消息泵周期重试；5 轮后
+            // 放弃清位（期间每次 launcher 消息周期补一次聚焦）。
+            let tries = match state.component.read_state("__focus_input_tries") {
+                Ok(auto_val::Value::Int(n)) => n,
+                _ => 0,
+            };
+            if tries >= 5 {
+                let _ = state
+                    .component
+                    .write_state("__focus_input", auto_val::Value::str(""));
+                let _ = state
+                    .component
+                    .write_state("__focus_input_tries", auto_val::Value::Int(0));
+            } else {
+                let _ = state
+                    .component
+                    .write_state("__focus_input_tries", auto_val::Value::Int(tries + 1));
+            }
         }
 
         // Plan 402: pending window resize。
@@ -18692,17 +18722,28 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
 /// 此寻址「当前视图的首个 input」——取代共享字面量 prompt_input 的盲聚焦。
 fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widget::Id>) {
     match view {
-        AbstractView::Input { placeholder, on_change, on_submit, width, password, .. } => {
-            let primary = on_change
-                .as_ref()
-                .map(|m| (m.widget.as_str(), m.event.as_str()))
-                .or_else(|| on_submit.as_ref().map(|m| (m.widget.as_str(), m.event.as_str())));
-            out.push(derive_input_id(primary, placeholder, *width, *password));
+        AbstractView::Input { placeholder, on_change: _, on_submit: _, width, password, .. } => {
+            // PLAN-013 W2：与 overlay 渲染臂（build_input_shape 的 None 三元
+            // 组派生）同式——此前按 (widget,event) 主键派生，与 overlay 实际
+            // 渲染 Id 不一致，focus 永不落地（launcher search 打字无效根因）。
+            out.push(derive_input_id(None, placeholder, *width, *password));
         }
         AbstractView::Column { children, .. } | AbstractView::Row { children, .. } | AbstractView::List { items: children, .. } => {
             for child in children {
                 collect_input_ids(child, out);
             }
+        }
+        // PLAN-013 W2：MouseArea/Popover 容器穿透——launcher search input
+        // 包在 scrim mouse-area 内，缺臂使收集器永远到不了它（派生 None →
+        // 回退 prompt_input 死 Id → 不聚焦+无法输入的真根因）。
+        AbstractView::MouseArea { content, .. } => {
+            collect_input_ids(content, out);
+        }
+        AbstractView::Popover { anchor, content, .. } => {
+            if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                collect_input_ids(w, out);
+            }
+            collect_input_ids(content, out);
         }
         AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
             collect_input_ids(child, out);
@@ -19345,6 +19386,51 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
                 el
             }
+        }
+
+        // PLAN-013 W2：MouseArea 专用臂——此前落 catch-all 泛型转换，其
+        // on_input 接线不带 input_value 载荷：launcher search 等**嵌套在
+        // mouse-area 内**的 input 永远拿不到文本（.SetQ(t) 实参恒空，用户
+        // 实测"聚焦了但打不出字"）。IcedMessage 专用递归渲染保住
+        // on_input → on_with_input_for 的文本载荷。
+        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
+            let inner = render_dynamic_view(*content, debug_ctx, path);
+            let mut ma = mouse_area(inner);
+            if let Some(msg) = on_enter {
+                ma = ma.on_enter(msg);
+            }
+            if let Some(msg) = on_exit {
+                ma = ma.on_exit(msg);
+            }
+            if !inspect_capture_active() {
+                if let Some(msg) = on_double_click {
+                    ma = ma.on_double_click(msg);
+                }
+                if let Some(msg) = on_click {
+                    ma = ma.on_press(msg);
+                }
+                if let Some(msg) = on_context_menu {
+                    ma = ma.on_right_press(msg);
+                }
+                if let Some(msg) = on_release {
+                    ma = ma.on_release(msg);
+                }
+            }
+            let inner: iced::Element<'static, IcedMessage> = ma.into();
+            let wrapped: iced::Element<'static, IcedMessage> =
+                if let Some(handler) = on_move.filter(|_| !inspect_capture_active()) {
+                    let mut pa = crate::ui::iced::pointer_area::PointerArea::new(inner);
+                    if let Some((w, h)) = logical_extent {
+                        pa = pa.extent(w, h);
+                    }
+                    let f = std::sync::Arc::new(move |x: f32, y: f32| handler.call(x, y));
+                    pa.on_move(f).into()
+                } else {
+                    inner
+                };
+            let dbg_props = debug_style_props(style.as_ref());
+            let el = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, None);
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "mouse_area", el, dbg_props, style.as_ref()) } else { el }
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
