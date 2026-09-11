@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-601
-status: executing               # review needs_fix（R1 boot 读回）→ 修复后 re-review
+status: execution_done
 feature_name: theme-declaration-hot-switch（Design 29 Phase 2）
 author: [zhaopuming]
 created_at: 2026-09-09
-updated_at: 2026-09-10
+updated_at: 2026-09-11
 plan_revision: 1
 
 # /auto-plan:review 结束时填写：
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: [GOAL-007]     # AutoUI 跨端视觉一致（主题/令牌面）
 
 affects: [auto-lang/ui, auto-man, auto]   # specs 路径
-current_step: 11
+current_step: 12
 total_steps: 12
 ---
 
@@ -224,6 +224,7 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
 - **T-05** session/storage/settings：SetTheme(name) 泛化 + appearance.theme
   值域 + 选择器。验证：session 面向用例 + 手动 settings 冒烟。
   [✅ 已完成] commit 73dd39835：SetThemeName 动词（set_theme_name	<内置名>，解析臂词表门）+ renderer 执行臂（set_theme+epoch 失效+config.theme_name 落盘+快照全撤+全 App view_dirty）+ boot/热应用差分臂；desktop_config theme_name 字段往返测试 10/10；set_theme(bool) mode 链路零扰动（正交裁定）；**settings 选择器 UI 属 auto-os 资产面**（apps/common/settings）——能力层全落地，UI 控件随 auto-os 侧跟进（复审可裁移交或组内 auto-os worktree 补）。
+  **（R1 复审修复 commit fde34a1b8）**：open_desktop boot 读回激活臂，启动首帧前激活 config.at 持久 theme_name，未知名拒绝保持缺省，普通 app 零外溢；单测 desktop_boot_activates_persisted_theme_name 绿。
 - **T-06** Vue applyTheme：脚手架 canonical index.css + host 注入 applyTheme +
   accent overlay 内聚。验证：脚手架测试 + `cargo test -p auto-man`。
   [✅ 已完成] commit eccdcfdbd：registry render_theme_pairs_js/render_theme_palettes_js（五内置双面 JS 值源）+decl render_pairs_js（合成体同形）；ui_gen theme_runtime_js（applyTheme 全变量写入：html inline light + `.dark` 元素 dark 值 + 光照模式陈值清理 + accent overlay 内聚末位 + 'auto-theme' storage 持久）+ widget/store 双注入臂（同 accent 门控，零 accent 面 app 零注入）+mode 翻转 watch 升级整套重应用；auto-man theme_decl 消费（compose→index.css 双 mode 块 + index.html `__AUTO_COMPOSED_THEME__` 种子 write-if-unset）；design_tokens 9/9+vue/theme 144/144+auto-man 274/274。
@@ -246,6 +247,14 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
   [✅ 已完成] 2026-09-10：日常档全量（--no-fail-fast）4726 测 4705 绿 **21 红 = master 基线 22 红 − test_charts_gallery_compiles（本计划修复），集合对拍零新增红**；`cargo tv` 3639/3639 全绿（cb_web_mime 首跑 flake 单测复跑双树绿，在案）；`cargo tf` 3495/3495 全绿；auto-man 274/274 + auto 11/11。门禁注记：`.config/nextest.toml` fail-fast 使裸 `cargo t` 在首失败二进制后取消余量（3523 not run），全量红集合裁定须 `--no-fail-fast`；`cargo test -p auto-man` 会再生成 examples/rust-workspace/015-notes 产物（master 同样漂移，非本计划引入，还原处置）。
 
 ## 9. 复审记录
+
+（re-review 2026-09-10·R1 面：`stage: review | PLAN-601 r1 | outcome: pass → reviewed |
+reviewed_commit: fde34a1b8@plan-601-dev（基于 23a5a7d50 + R1 修复,树净）|
+R1 闭合验证:①代码审查——open_desktop 激活臂落桌面 boot 真实入口（renderer.rs:11281 生产调用方）,字段路径 desktop.config 正确,未知名容错;②`desktop_boot_activates_persisted_theme_name` 单测绿（走真实 desktop_config::load + open_desktop 生产路径,负例先行,复现并钉死原缺口场景）;③日常档全量重放 4727 测（+1 新测）,21 红集合与复审基线逐项全等,零新增 |
+AC-04 复判: pass（持久化✓+boot 读回✓〔桌面域语义,普通 app 零变化=R2 注记〕+旧值映射✓）|
+R2/R3/R4 维持路由（非阻塞）:R2 VM 视觉验收随 auto-os 宿主集成批;R3 settings-popover SFC 缺口并入 P601-T11 债项文本（merge 时）;R4 生成漂移建议独立小计划 |
+evidence: 本记录内嵌命令+结果摘录 |
+next: merge`）
 
 （review 2026-09-10：`stage: review | PLAN-601 r1 | outcome: needs_fix |
 reviewed_commit: 23a5a7d501bc45c4ad847725dc94ed0d6d6bf2d5@plan-601-dev（树净）|
@@ -300,6 +309,14 @@ next: work 修复 R1（范围限 boot 读回臂+单测;R2/R3 随 merge 路由,R4
 独立计划）→ 修复后快速 re-review（仅 R1 面）`）
 
 ## 9. 复审记录
+
+（re-review 2026-09-10·R1 面：`stage: review | PLAN-601 r1 | outcome: pass → reviewed |
+reviewed_commit: fde34a1b8@plan-601-dev（基于 23a5a7d50 + R1 修复,树净）|
+R1 闭合验证:①代码审查——open_desktop 激活臂落桌面 boot 真实入口（renderer.rs:11281 生产调用方）,字段路径 desktop.config 正确,未知名容错;②`desktop_boot_activates_persisted_theme_name` 单测绿（走真实 desktop_config::load + open_desktop 生产路径,负例先行,复现并钉死原缺口场景）;③日常档全量重放 4727 测（+1 新测）,21 红集合与复审基线逐项全等,零新增 |
+AC-04 复判: pass（持久化✓+boot 读回✓〔桌面域语义,普通 app 零变化=R2 注记〕+旧值映射✓）|
+R2/R3/R4 维持路由（非阻塞）:R2 VM 视觉验收随 auto-os 宿主集成批;R3 settings-popover SFC 缺口并入 P601-T11 债项文本（merge 时）;R4 生成漂移建议独立小计划 |
+evidence: 本记录内嵌命令+结果摘录 |
+next: merge`）
 
 （review 2026-09-10：`stage: review | PLAN-601 r1 | outcome: needs_fix |
 reviewed_commit: 23a5a7d501bc45c4ad847725dc94ed0d6d6bf2d5@plan-601-dev（树净）|
