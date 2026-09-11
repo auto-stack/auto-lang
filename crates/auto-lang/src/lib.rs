@@ -2098,7 +2098,12 @@ pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTe
     };
 
     // Transpile
-    let actual = match crate::trans::rust::transpile_rust(stem, &src) {
+    // Plan 610 ⑥: relative use.c JSON manifests resolve against the case dir.
+    let actual = match crate::trans::rust::transpile_rust_with_source_dir(
+        case.source_file.parent().unwrap_or(std::path::Path::new(".")),
+        stem,
+        &src,
+    ) {
         Ok(mut rcode) => match rcode.done() {
             Ok(bytes) => bytes.to_vec(),
             Err(e) => {
@@ -5171,6 +5176,11 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // Full transpilation via RustTrans::trans()
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::rust::RustTrans::new(fname);
+    // Plan 610 ⑥: relative `use.c "<file>.json"` manifests resolve against the
+    // transpiled file's directory.
+    trans.source_dir = std::path::Path::new(path)
+        .parent()
+        .map(|p| p.to_path_buf());
     // Plan 376U: A2R_CRATE_ROOT=1 marks this file as a crate root (lib.at /
     // */mod.at). Such files emit top-level `use` as `pub use` (re-exports) and
     // the `#![allow(...)]` crate pragma, so they can serve as an auto-generated

@@ -392,6 +392,11 @@ pub struct RustTrans {
     // wrapper.
     cabi_kit_emitted: bool,
 
+    // Plan 610 ⑥: directory of the source file being transpiled — resolves
+    // relative `use.c "<file>.json"` manifest paths (source dir first, then
+    // CWD). None = CWD-only (legacy single-file entry).
+    pub(crate) source_dir: Option<std::path::PathBuf>,
+
     // Const names seen during Phase 2.5 pre-scan (for merge mode).
     // Used to convert SCREAMING_CASE() calls to bare const references.
     const_names: HashSet<AutoStr>,
@@ -541,6 +546,7 @@ impl RustTrans {
             is_crate_root: false,
             merge_mode: false,
             cabi_kit_emitted: false, // Plan 610 
+            source_dir: None, // Plan 610 
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -639,6 +645,7 @@ impl RustTrans {
             is_crate_root: false,
             merge_mode: false,
             cabi_kit_emitted: false, // Plan 610 
+            source_dir: None, // Plan 610 
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -15791,6 +15798,298 @@ pub use auto_cabi_kit::*;"#
         }
     }
 
+    /// Plan 610 ⑥: CTypeDesc → extern-block / Symbol-fn Rust type.
+    fn c_abi_ffi_type(ty: &auto_bindgen::manifest::CTypeDesc) -> String {
+        use auto_bindgen::manifest::CTypeDesc as T;
+        match ty {
+            T::Void => "()".to_string(),
+            T::Bool => "bool".to_string(),
+            T::Char | T::CStr => "*const std::os::raw::c_char".to_string(),
+            T::Int => "i32".to_string(),
+            T::UInt => "u32".to_string(),
+            T::Long => "i64".to_string(),
+            T::ULong => "u64".to_string(),
+            T::Size => "usize".to_string(),
+            T::Float => "f32".to_string(),
+            T::Double => "f64".to_string(),
+            T::Ptr => "*const std::os::raw::c_void".to_string(),
+            T::PtrMut => "*mut std::os::raw::c_void".to_string(),
+            T::FnPtr { .. } => "auto_bindgen_unsupported_fnptr".to_string(),
+        }
+    }
+
+    /// Plan 610 ⑥: the wrapper (Auto-side) parameter type for one manifest
+    /// param when it differs from the ffi type (Auto int is i64; the ABI edge
+    /// is i32 with a width cast at the raw call).
+    fn c_abi_wrapper_param(
+        ty: &auto_bindgen::manifest::CTypeDesc,
+    ) -> Option<&'static str> {
+        use auto_bindgen::manifest::CTypeDesc as T;
+        match ty {
+            T::Int => Some("i64"),
+            T::Float => Some("f64"),
+            T::CStr => Some("&str"),
+            _ => None,
+        }
+    }
+
+    /// Plan 610 ⑥: lower `use.c <header>` to a generated FFI face (manifest
+    /// shared IR — 004 §3.5 "one semantics, three lowerings"). S form
+    /// (default): `#[link(name)] extern "<abi>"` block + safe wrappers; D
+    /// form (manifest `"link": "dynamic"`): libloading with env
+    /// `<LIBRARY>_DLL` → exe same-dir → bare-name resolution. All unsafe
+    /// stays inside the generated module; Auto call sites use the bare
+    /// manifest function names.
+    fn emit_use_c_ffi(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
+        let raw = use_stmt.paths.first().map(|s| s.to_string()).unwrap_or_default();
+        let clean = raw
+            .trim_start_matches('<')
+            .trim_end_matches('>')
+            .trim_matches('"')
+            .to_string();
+
+        let manifest = if let Some(m) = crate::vm::ffi::c_ffi::load_builtin_manifest(&clean) {
+            Some(m)
+        } else if clean.ends_with(".json") {
+            // Plan 610 ⑥: relative manifest paths resolve against the source
+            // file's directory first, then CWD.
+            let mut loaded = None;
+            if let Some(dir) = self.source_dir.clone() {
+                let p = dir.join(&clean);
+                if p.is_file() {
+                    loaded = crate::vm::ffi::c_ffi::load_manifest_file(&p.to_string_lossy());
+                }
+            }
+            if loaded.is_none() {
+                loaded = crate::vm::ffi::c_ffi::load_manifest_file(&clean);
+            }
+            loaded
+        } else {
+            None
+        };
+        let Some(manifest) = manifest else {
+            // Unknown header — keep the pre-610 behavior (ignored import).
+            return Ok(());
+        };
+
+        for f in &manifest.functions {
+            let has_fnptr = matches!(
+                f.return_type,
+                auto_bindgen::manifest::CTypeDesc::FnPtr { .. }
+            ) || f
+                .params
+                .iter()
+                .any(|p| matches!(p.ty, auto_bindgen::manifest::CTypeDesc::FnPtr { .. }));
+            if has_fnptr {
+                return Err(crate::AutoError::Msg(format!(
+                    "Plan 610 ⑥: use.c 函数 {} 含回调 FnPtr——暂不支持（trampoline 选型见计划 §5/T-10）",
+                    f.name
+                )));
+            }
+        }
+
+        let suffix = if manifest.link == "dynamic" { "_dyn" } else { "" };
+        let module = format!(
+            "{}_c{}",
+            manifest
+                .header
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect::<String>(),
+            suffix
+        )
+        .trim_matches('_')
+        .to_string();
+        let abi = if manifest.abi == "system" { "system" } else { "C" };
+
+        writeln!(
+            out,
+            "/// Plan 610 ⑥: `use.c {}` → {} FFI face (manifest shared IR, auto-bindgen).",
+            raw,
+            if manifest.link == "dynamic" {
+                "D-form dynamic"
+            } else {
+                "S-form static"
+            }
+        )?;
+        writeln!(
+            out,
+            "/// Safe wrappers carry Auto-side widths (int = i64, cast at the ABI edge);
+/// every unsafe op stays inside this module."
+        )?;
+        writeln!(out, "mod {} {{", module)?;
+
+        let fns: Vec<&auto_bindgen::manifest::CFunction> =
+            manifest.functions.iter().filter(|f| !f.variadic).collect();
+
+        if manifest.link == "dynamic" {
+            let lib_env = format!(
+                "{}_DLL",
+                manifest
+                    .library
+                    .to_uppercase()
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+            );
+            writeln!(
+                out,
+                "    fn lib() -> &'static libloading::Library {{\n        static LIB: std::sync::OnceLock<libloading::Library> = std::sync::OnceLock::new();\n        LIB.get_or_init(|| {{\n            // Plan 610 ⑥ D form: env {env} → exe same-dir → bare name (PATH).\n            if let Ok(p) = std::env::var(\"{env}\") {{\n                if let Ok(l) = libloading::Library::new(&p) {{ return l; }}\n            }}\n            let file = if cfg!(windows) {{ \"{lib}.dll\".to_string() }} else {{ \"lib{lib}.so\".to_string() }};\n            if let Ok(exe) = std::env::current_exe() {{\n                if let Some(dir) = exe.parent() {{\n                    if let Ok(l) = libloading::Library::new(dir.join(&file)) {{ return l; }}\n                }}\n            }}\n            libloading::Library::new(&file).expect(\"failed to load library {lib} (set {env})\")\n        }})\n    }}",
+                env = lib_env,
+                lib = manifest.library
+            )?;
+        } else {
+            writeln!(out, "    mod ffi_raw {{")?;
+            writeln!(out, "        #[link(name = \"{}\")]", manifest.library)?;
+            writeln!(out, "        extern \"{}\" {{", abi)?;
+            for f in &fns {
+                let params: Vec<String> = f
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, Self::c_abi_ffi_type(&p.ty)))
+                    .collect();
+                let ret = &f.return_type;
+                if matches!(ret, auto_bindgen::manifest::CTypeDesc::Void) {
+                    writeln!(out, "            pub fn {}({});", f.name, params.join(", "))?;
+                } else {
+                    writeln!(
+                        out,
+                        "            pub fn {}({}) -> {};",
+                        f.name,
+                        params.join(", "),
+                        Self::c_abi_ffi_type(ret)
+                    )?;
+                }
+            }
+            writeln!(out, "        }}")?;
+            writeln!(out, "    }}")?;
+        }
+
+        // Safe wrappers: one per manifest fn, Auto-side widths.
+        for f in &fns {
+            let mut sig: Vec<String> = Vec::new();
+            let mut prelude: Vec<String> = Vec::new();
+            let mut args: Vec<String> = Vec::new();
+            for p in &f.params {
+                match Self::c_abi_wrapper_param(&p.ty) {
+                    Some(wt) => {
+                        sig.push(format!("{}: {}", p.name, wt));
+                        match &p.ty {
+                            auto_bindgen::manifest::CTypeDesc::CStr => {
+                                prelude.push(format!(
+                                    "let {}_c = std::ffi::CString::new({}).unwrap_or_default();",
+                                    p.name, p.name
+                                ));
+                                args.push(format!("{}_c.as_ptr()", p.name));
+                            }
+                            auto_bindgen::manifest::CTypeDesc::Int => {
+                                args.push(format!("{} as i32", p.name));
+                            }
+                            auto_bindgen::manifest::CTypeDesc::Float => {
+                                args.push(format!("{} as f32", p.name));
+                            }
+                            _ => args.push(p.name.clone()),
+                        }
+                    }
+                    None => {
+                        sig.push(format!("{}: {}", p.name, Self::c_abi_ffi_type(&p.ty)));
+                        args.push(p.name.clone());
+                    }
+                }
+            }
+            let ret = &f.return_type;
+            let ret_sig = match ret {
+                auto_bindgen::manifest::CTypeDesc::Void => None,
+                auto_bindgen::manifest::CTypeDesc::Int => Some("i64".to_string()),
+                auto_bindgen::manifest::CTypeDesc::Float => Some("f64".to_string()),
+                auto_bindgen::manifest::CTypeDesc::CStr => Some("String".to_string()),
+                other => Some(Self::c_abi_ffi_type(other)),
+            };
+            let call_args = args.join(", ");
+            let raw_call = if manifest.link == "dynamic" {
+                format!(
+                    "let sym: libloading::Symbol<unsafe extern \"{abi}\" fn({pt}) -> {rt}> = lib().get(b\"{name}\").expect(\"symbol {name} missing\");
+        sym({ca})",
+                    abi = abi,
+                    pt = f
+                        .params
+                        .iter()
+                        .map(|p| Self::c_abi_ffi_type(&p.ty))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    rt = Self::c_abi_ffi_type(ret),
+                    name = f.name,
+                    ca = call_args
+                )
+            } else {
+                format!("ffi_raw::{}({})", f.name, call_args)
+            };
+            let body_expr = match ret {
+                auto_bindgen::manifest::CTypeDesc::Void => {
+                    format!("unsafe {{\n            {}\n        }}", raw_call)
+                }
+                auto_bindgen::manifest::CTypeDesc::Int => {
+                    format!("(unsafe {{\n            {}\n        }}) as i64", raw_call)
+                }
+                auto_bindgen::manifest::CTypeDesc::Float => {
+                    format!("(unsafe {{\n            {}\n        }}) as f64", raw_call)
+                }
+                auto_bindgen::manifest::CTypeDesc::CStr => format!(
+                    "let r = unsafe {{\n            {}\n        }};
+        if r.is_null() {{ String::new() }} else {{ unsafe {{ std::ffi::CStr::from_ptr(r) }}.to_string_lossy().into_owned() }}",
+                    raw_call
+                ),
+                _ => format!("unsafe {{\n            {}\n        }}", raw_call),
+            };
+            match &ret_sig {
+                Some(rt) => writeln!(out, "    pub fn {}({}) -> {} {{", f.name, sig.join(", "), rt)?,
+                None => writeln!(out, "    pub fn {}({}) {{", f.name, sig.join(", "))?,
+            }
+            for line in &prelude {
+                writeln!(out, "        {}", line)?;
+            }
+            writeln!(out, "        {}", body_expr)?;
+            writeln!(out, "    }}")?;
+        }
+
+        // Pointer/buffer helper kit — emitted when the face has any opaque
+        // pointer params (out-param and handle shapes need them; pure-scalar
+        // faces like stdio.h stay lean). Buffers leak by design (driver
+        // scope, process lifetime).
+        let has_ptr = manifest.functions.iter().any(|f| {
+            f.params.iter().any(|p| {
+                matches!(
+                    p.ty,
+                    auto_bindgen::manifest::CTypeDesc::Ptr
+                        | auto_bindgen::manifest::CTypeDesc::PtrMut
+                )
+            })
+        });
+        if has_ptr {
+            writeln!(out, "    // Plan 610 ⑥ helper kit: pointer/buffer access from safe Auto code.")?;
+            writeln!(out, "    pub fn cffi_handle_is_null(h: *const std::os::raw::c_void) -> bool {{")?;
+            writeln!(out, "        h.is_null()")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_buf_new_u32(len: i64) -> *mut std::os::raw::c_void {{")?;
+            writeln!(out, "        if len <= 0 {{ return std::ptr::null_mut(); }}")?;
+            writeln!(out, "        Box::into_raw(vec![0u32; len as usize].into_boxed_slice()) as *mut _")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_buf_get_u32(p: *const std::os::raw::c_void, idx: i64) -> u32 {{")?;
+            writeln!(out, "        if p.is_null() {{ return 0; }}")?;
+            writeln!(out, "        unsafe {{ *(p as *const u32).add(idx as usize) }}")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_buf_new_u8(len: i64) -> *mut std::os::raw::c_void {{")?;
+            writeln!(out, "        if len <= 0 {{ return std::ptr::null_mut(); }}")?;
+            writeln!(out, "        Box::into_raw(vec![0u8; len as usize].into_boxed_slice()) as *mut _")?;
+            writeln!(out, "    }}")?;
+            writeln!(out, "    pub fn cffi_cstr_read(p: *const std::os::raw::c_void) -> String {{")?;
+            writeln!(out, "        if p.is_null() {{ return String::new(); }}")?;
+            writeln!(out, "        unsafe {{ std::ffi::CStr::from_ptr(p as *const std::os::raw::c_char) }}.to_string_lossy().into_owned()")?;
+            writeln!(out, "    }}")?;
+        }
+        writeln!(out, "}}")?;
+        writeln!(out, "pub use {}::*;", module)?;
+        Ok(())
+    }
+
     fn use_stmt(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
         // Plan 417-D2: register imported fn signatures (single-file
         // mode has no project discovery — see the helper).
@@ -15991,7 +16290,11 @@ pub use auto_cabi_kit::*;"#
                 }
             }
             UseKind::C => {
-                // Ignore C imports for Rust transpiler
+                // Plan 610 ⑥ (004 §3.5): C imports lower to a generated FFI
+                // face — the manifest is the shared IR (builtin extractor or
+                // JSON beside the source). Unknown headers keep the pre-610
+                // ignore behavior.
+                self.emit_use_c_ffi(use_stmt, out)?;
             }
             UseKind::Rust => {
                 // Direct Rust imports: join paths with :: to form full Rust path
@@ -21762,7 +22065,10 @@ pub use auto_cabi_kit::*;"#
         let safe_methods = ["is_some", "is_none", "unwrap", "unwrap_or",
             "unwrap_or_default", "map", "and_then", "unwrap_or_else",
             "as_ref", "as_deref", "copied", "cloned", "ok", "err",
-            "iter", "into_iter", "as_mut"];
+            "iter", "into_iter", "as_mut",
+            // Plan 610 ⑥: Option has expect too — injecting .unwrap() before
+            // it broke libloading Symbol resolution (`lib().get(b"..").expect(..)`).
+            "expect"];
         if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.(\w+)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let key = caps.get(1).unwrap().as_str();
@@ -22727,6 +23033,16 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     transpile_rust_with_siblings(name, code, None)
 }
 
+/// Plan 610 ⑥: single-file transpile with a source directory — relative
+/// `use.c "<file>.json"` manifest paths resolve against it first (then CWD).
+pub fn transpile_rust_with_source_dir(
+    source_dir: impl AsRef<std::path::Path>,
+    name: impl Into<AutoStr>,
+    code: &str,
+) -> AutoResult<Sink> {
+    transpile_rust_full(name, code, None, Some(source_dir.as_ref().to_path_buf()))
+}
+
 /// Plan 376D: Transpile with an optional sibling TypeStore.
 /// When `sibling_store` is Some, it contains type declarations from ALL sibling
 /// .at files in the same crate, enabling cross-module type inference.
@@ -22734,6 +23050,17 @@ pub fn transpile_rust_with_siblings(
     name: impl Into<AutoStr>,
     code: &str,
     sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+) -> AutoResult<Sink> {
+    transpile_rust_full(name, code, sibling_store, None)
+}
+
+/// Plan 610 ⑥: full single-file entry — sibling store plus an optional
+/// source directory (relative use.c JSON manifests resolve against it).
+pub fn transpile_rust_full(
+    name: impl Into<AutoStr>,
+    code: &str,
+    sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+    source_dir: Option<std::path::PathBuf>,
 ) -> AutoResult<Sink> {
     let name = name.into();
     let _scope = shared(crate::scope_manager::ScopeManager::new());
@@ -22770,6 +23097,7 @@ pub fn transpile_rust_with_siblings(
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
+    transpiler.source_dir = source_dir; // Plan 610 ⑥
     // Plan 433 A1: pre-register fn return types for the whole file so
     // `let x = fn()` bindings infer their type regardless of declaration
     // order (see scan_call_init_bindings).

@@ -16,8 +16,19 @@ use serde::{Deserialize, Serialize};
 pub const ABI_C: &str = "c";
 pub const ABI_SYSTEM: &str = "system";
 
+/// Plan 610 ⑥: lowering form selection for the a2r backend — `"static"` (S
+/// form: `#[link(name)]` extern block, link-time import lib) or `"dynamic"`
+/// (D form: libloading runtime resolution). Other backends ignore it (VM
+/// always loads at runtime; a2c calls directly).
+pub const LINK_STATIC: &str = "static";
+pub const LINK_DYNAMIC: &str = "dynamic";
+
 fn default_abi() -> String {
     ABI_C.to_string()
+}
+
+fn default_link() -> String {
+    LINK_STATIC.to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +41,11 @@ pub struct CHeaderManifest {
     /// serde default `"c"`; win32 headers like windows.h use `"system"`)
     #[serde(default = "default_abi")]
     pub abi: String,
+    /// Plan 610 ⑥: a2r lowering form (`"static"` | `"dynamic"`, serde
+    /// default `"static"`). Static = `#[link(name)]` extern block; dynamic =
+    /// libloading with env → exe-dir → PATH resolution.
+    #[serde(default = "default_link")]
+    pub link: String,
     /// Functions exported from this header
     pub functions: Vec<CFunction>,
 }

@@ -1,0 +1,12 @@
+// Plan 610 ⑥ (T-07): `use.c <engine_face_full_dyn.json>` → D-form dynamic
+// FFI face. Same manifest IR with `"link": "dynamic"`: wrappers resolve
+// symbols at runtime through libloading (OnceLock-cached library), with the
+// resolution order env AUTOTERM_CORE_DLL → exe same-dir → bare name (PATH).
+// The consumer needs libloading as a dependency (real-compile gate stages it).
+use.c <engine_face_full_dyn.json>
+
+fn main() {
+    let h = autoterm_engine_spawn(80, 24, "cmd")
+    print(cffi_handle_is_null(h))
+    autoterm_engine_free(h)
+}
