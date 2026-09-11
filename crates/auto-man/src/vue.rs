@@ -1329,6 +1329,19 @@ fn generate_index_css(
 .ash-scroll::-webkit-scrollbar-track { background: transparent; }
 .ash-scroll::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); border-radius: 9999px; }
 .ash-scroll::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground)); }
+
+/* PLAN-614 T-10: 悬浮淡入变体——平时完全隐藏,hover 容器时 thumb 以主色
+   (primary)半透明浮现(accent 随主题实时跟随,不新增 593 词表 token:
+   滚动条是 primary 的派生表面),thumb 自身 hover 加深。药丸圆角同
+   .ash-scroll(9999px);Firefox 走 scrollbar-color 双值(thin 保持)。
+   用法:滚动容器挂 .ash-scroll-fade(如画廊主内容面板)。 */
+.ash-scroll-fade { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.ash-scroll-fade:hover { scrollbar-color: hsl(var(--primary) / 0.45) transparent; }
+.ash-scroll-fade::-webkit-scrollbar { width: 8px; height: 8px; }
+.ash-scroll-fade::-webkit-scrollbar-track { background: transparent; }
+.ash-scroll-fade::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 9999px; }
+.ash-scroll-fade:hover::-webkit-scrollbar-thumb { background-color: hsl(var(--primary) / 0.45); }
+.ash-scroll-fade::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--primary) / 0.7); }
 "##);
     css
 }
