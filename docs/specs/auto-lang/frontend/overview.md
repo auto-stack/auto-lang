@@ -55,6 +55,13 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   根治；getattr_may/getitem_may 原本安全不改）；语句体闭包分类——单表达式
   块（含裸 `return e`）lambda 化（原 `lambda x: {...}` set/dict 字面量
   静默错类型），含绑定/多语句块显式编译期诊断（DIV-PY-CLOSURE-1 a2py 面）。
+- py 类派生工厂 a2py 轨（plan-602）：`py_subclass` 发射臂 →
+  `_auto_subclass(name, base, methods)` + helper 注入
+  （needs_subclass_helper 旗标族，同 `_auto_may` 机制）——exec+setattr
+  同构实现：Str 值缩进归一（非空行统一 +4，与 VM 臂同律），callable 值
+  经对象字面量既有 lambda 发射、setattr 为真函数（self 绑定语义与 VM
+  def 包装器对齐）；语料 py_torch_subclass 双轨 stdout 一致（p12 三轨
+  4/4）。
 
 ## 关键入口
 
