@@ -34,6 +34,17 @@ fn transpile_at_src(name: &str, src: &str) -> String {
     String::from_utf8(bytes.to_vec()).expect("utf8 product")
 }
 
+/// Plan 610 ⑥: transpile with a source dir (relative use.c JSON manifests
+/// resolve against it), matching the corpus test path.
+fn transpile_at_src_dir(dir: &Path, name: &str, src: &str) -> String {
+    let mut sink = crate::trans::rust::transpile_rust_with_source_dir(dir, name, src)
+        .unwrap_or_else(|e| panic!("transpile {} failed: {}", name, e));
+    let bytes = sink
+        .done()
+        .unwrap_or_else(|e| panic!("transpile {} done() failed: {}", name, e));
+    String::from_utf8(bytes.to_vec()).expect("utf8 product")
+}
+
 fn write_file(path: &Path, content: &str) {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).unwrap();
@@ -190,4 +201,206 @@ fn a2r_cabi_engine_face_gate() {
     let (stdout, code) = run_capture(Command::new(&driver_exe).current_dir(driver_exe.parent().unwrap()));
     assert_eq!(code, Some(0), "driver exit code, stdout: {}", stdout);
     assert!(stdout.contains("CFACE_OK"), "CFACE_OK witness missing: {}", stdout);
+}
+
+
+/// Plan 610 ⑥ driver source (AC-04/05/06): the 597 a2c engine-face driver
+/// rewritten in Auto — spawn cmd, echo the anchor, poll feed/damage, scan
+/// row text through the generated FFI face, witness CFACE_OK. Exit codes
+/// mirror 597: 0 = anchor seen, 1 = spawn fail, 2 = anchor timeout. The
+/// manifest file name is substituted per leg (S static vs D dynamic).
+const USE_C_DRIVER_AT: &str = r##"// Plan 610 ⑥ driver (AC-04/05/06): the 597 a2c engine-face driver
+// rewritten in Auto. Sleep/exit via std (portable). Exit codes mirror 597.
+use.c <MANIFEST_NAME>
+use.rs std::process::exit
+use.rs std::thread::sleep
+use.rs std::time::Duration
+
+fn main() {
+    let h = autoterm_engine_spawn(80, 24, "cmd")
+    if cffi_handle_is_null(h) {
+        print("SPAWN_FAIL")
+        exit(1)
+    }
+    autoterm_engine_write_input(h, "echo CFACE_OK\r\n", 16)
+    var tries = 0
+    var found = false
+    while tries < 100 && !found {
+        if autoterm_engine_feed_ready(h) == 1 {
+            let dirty = cffi_buf_new_u32(64)
+            autoterm_engine_take_dirty_rows(h, dirty, 64)
+            var r = 0
+            while r < 24 {
+                let buf = cffi_buf_new_u8(256)
+                autoterm_engine_row_text(h, r, buf, 256)
+                let text = cffi_cstr_read(buf)
+                if text.contains("CFACE_OK") {
+                    found = true
+                }
+                r = r + 1
+            }
+        }
+        if !found {
+            sleep(Duration.from_millis(50))
+        }
+        tries = tries + 1
+    }
+    autoterm_engine_kill(h)
+    autoterm_engine_free(h)
+    if found {
+        print("CFACE_OK")
+        exit(0)
+    }
+    print("ANCHOR_TIMEOUT")
+    exit(2)
+}
+"##;
+
+/// Plan 610 ⑥: build the ⑤ engine-face cdylib (the 005 corpus product
+/// against the real autoterm-core) and return its dll path. Shared by the
+/// engine-face gate (AC-03) and the use_c gate's AC-05 leg.
+fn build_engine_face_cdylib() -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let corpus_at = manifest.join("test/a2r/27_c_abi/005_engine_face_auto/engine_face_auto.at");
+    let src = std::fs::read_to_string(&corpus_at)
+        .unwrap_or_else(|e| panic!("read corpus failed: {}", e));
+    let lib_rs = transpile_at_src("engine_face_auto", &src);
+
+    let stage = repo_target_dir().join("plan610/engine_face_auto");
+    write_file(
+        &stage.join("Cargo.toml"),
+        "[package]\nname = \"engine_face_auto\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\nautoterm-core = { path = \"D:/autostack/auto-term/crates/autoterm-core\" }\n\n[workspace]\n",
+    );
+    write_file(&stage.join("src/lib.rs"), &lib_rs);
+    cargo_build(&stage);
+    let dll = stage.join("target/debug/engine_face_auto.dll");
+    assert!(
+        dll.exists(),
+        "engine-face cdylib not produced: {}",
+        dll.display()
+    );
+    dll
+}
+
+/// AC-04/05/06: the ⑥ use.c driver, three link legs —
+/// - AC-04: S form (static #[link]) against the REAL autoterm_core.dll.lib;
+/// - AC-05: the SAME transpiled product relinked against the ⑤ product
+///   (engine_face_auto.dll.lib staged as autoterm_core.lib — the import
+///   lib's embedded DLL reference swaps the runtime engine). Auto driver ×
+///   Auto engine face, zero hand-written glue at either end;
+/// - AC-06: D form (libloading) loading the real DLL at runtime from the
+///   exe dir (env AUTOTERM_CORE_DLL override available).
+#[test]
+#[ignore = "shells out to cargo + rustc; on-demand use.c closed-loop gate (Plan 610)"]
+fn a2r_cabi_use_c_gate() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let stage = repo_target_dir().join("plan610/use_c_gate");
+    let engine_dll_lib = PathBuf::from(
+        "D:/autostack/auto-term/target/debug/autoterm_core.dll.lib",
+    );
+    let engine_dll = PathBuf::from("D:/autostack/auto-term/target/debug/autoterm_core.dll");
+    assert!(
+        engine_dll_lib.is_file() && engine_dll.is_file(),
+        "engine prereq missing (cargo build -p autoterm-core in auto-term): {}/{}",
+        engine_dll_lib.display(),
+        engine_dll.display()
+    );
+
+    // --- Leg 1+2 share one transpiled S-form product. ---
+    let s_dir = stage.join("s");
+    std::fs::create_dir_all(s_dir.join("lib")).unwrap();
+    std::fs::create_dir_all(stage.join("s2/lib")).unwrap();
+    std::fs::copy(
+        &manifest_dir.join("test/a2r/27_c_abi/003_use_c_static/engine_face_full.json"),
+        stage.join("engine_face_full.json"),
+    )
+    .unwrap();
+    let driver_s = USE_C_DRIVER_AT.replace("MANIFEST_NAME", "engine_face_full.json");
+    write_file(&stage.join("driver_s.at"), &driver_s);
+    let product = transpile_at_src_dir(&stage, "driver_s", &driver_s);
+    write_file(&stage.join("driver_s.rs"), &product);
+
+    // AC-04: link against the real engine (import lib renamed to the link
+    // name the S form requests; the embedded autoterm_core.dll reference
+    // makes the staged same-name DLL load at runtime).
+    std::fs::copy(&engine_dll_lib, s_dir.join("lib/autoterm_core.lib")).unwrap();
+    let link = |lib_dir: &Path, out: &str, product_path: &Path, exe_dir: &Path| {
+        let out = Command::new("rustc")
+            .args([
+                "--edition=2021",
+                "--crate-name",
+                out,
+                "-L",
+                &format!("native={}", lib_dir.display()),
+            ])
+            .arg(product_path)
+            .arg("-o")
+            .arg(exe_dir.join(format!("{}.exe", out)))
+            .output()
+            .expect("spawn rustc");
+        assert!(
+            out.status.success(),
+            "rustc link failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    link(&s_dir.join("lib"), "driver_s", &stage.join("driver_s.rs"), &s_dir);
+    std::fs::copy(&engine_dll, s_dir.join("autoterm_core.dll")).unwrap();
+    let (stdout, code) = run_capture(
+        Command::new(s_dir.join("driver_s.exe")).current_dir(&s_dir),
+    );
+    assert_eq!(code, Some(0), "AC-04 leg exit, stdout: {}", stdout);
+    assert!(stdout.contains("CFACE_OK"), "AC-04 witness missing: {}", stdout);
+
+    // AC-05: SAME product, relinked against the ⑤ product (Auto-written
+    // engine face cdylib from the 005 corpus).
+    let auto5_dll = build_engine_face_cdylib();
+    let s2 = stage.join("s2");
+    std::fs::copy(
+        auto5_dll.with_extension("dll.lib"),
+        s2.join("lib/autoterm_core.lib"),
+    )
+    .unwrap();
+    link(
+        &s2.join("lib"),
+        "driver_a5",
+        &stage.join("driver_s.rs"),
+        &s2,
+    );
+    std::fs::copy(&auto5_dll, s2.join(auto5_dll.file_name().unwrap())).unwrap();
+    let (stdout, code) = run_capture(
+        Command::new(s2.join("driver_a5.exe")).current_dir(&s2),
+    );
+    assert_eq!(code, Some(0), "AC-05 closed-loop exit, stdout: {}", stdout);
+    assert!(
+        stdout.contains("CFACE_OK"),
+        "AC-05 closed-loop witness missing: {}",
+        stdout
+    );
+
+    // --- AC-06: D form (libloading runtime resolution, exe same-dir). ---
+    let dyn_dir = stage.join("dyn");
+    std::fs::create_dir_all(dyn_dir.join("src")).unwrap();
+    std::fs::copy(
+        &manifest_dir.join("test/a2r/27_c_abi/004_use_c_dynamic/engine_face_full_dyn.json"),
+        dyn_dir.join("engine_face_full_dyn.json"),
+    )
+    .unwrap();
+    let driver_d = USE_C_DRIVER_AT.replace("MANIFEST_NAME", "engine_face_full_dyn.json");
+    let product_d = transpile_at_src_dir(&dyn_dir, "driver_d", &driver_d);
+    write_file(
+        &dyn_dir.join("Cargo.toml"),
+        "[package]\nname = \"driver_dyn\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"driver_dyn\"\npath = \"src/main.rs\"\n\n[dependencies]\nlibloading = \"0.8\"\n\n[workspace]\n",
+    );
+    write_file(&dyn_dir.join("src/main.rs"), &product_d);
+    cargo_build(&dyn_dir);
+    let exe = dyn_dir.join("target/debug/driver_dyn.exe");
+    assert!(exe.exists(), "D-form exe not produced");
+    std::fs::copy(&exe, dyn_dir.join("driver_dyn.exe")).unwrap();
+    std::fs::copy(&engine_dll, dyn_dir.join("autoterm_core.dll")).unwrap();
+    let (stdout, code) = run_capture(
+        Command::new(dyn_dir.join("driver_dyn.exe")).current_dir(&dyn_dir),
+    );
+    assert_eq!(code, Some(0), "AC-06 D-form exit, stdout: {}", stdout);
+    assert!(stdout.contains("CFACE_OK"), "AC-06 witness missing: {}", stdout);
 }

@@ -6,7 +6,7 @@
 mod engine_face_full_dyn_json_c_dyn {
     fn lib() -> &'static libloading::Library {
         static LIB: std::sync::OnceLock<libloading::Library> = std::sync::OnceLock::new();
-        LIB.get_or_init(|| {
+        LIB.get_or_init(|| unsafe {
             // Plan 610 ⑥ D form: env AUTOTERM_CORE_DLL → exe same-dir → bare name (PATH).
             if let Ok(p) = std::env::var("AUTOTERM_CORE_DLL") {
                 if let Ok(l) = libloading::Library::new(&p) { return l; }
