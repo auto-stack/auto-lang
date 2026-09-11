@@ -167,6 +167,26 @@ auto-term 构建产物（只读）。
 跳板式。判据：产物零运行时依赖优先。产出=选型文档（本计划 §5 附
 录），实作授权自裁降级。
 
+#### T-10 选型结论（2026-09-11，探针实证 $TEMP/610_trampoline_probe.rs）
+
+- **A（零捕获闭包直转 `extern "C" fn`）＝不可行**：Rust 闭包仅强转
+  Rust ABI fn 指针——探针 E0308 "expected \"C\" fn, found \"Rust\" fn"
+  坐实；595 a2c ctrlc 的"直转"先例系 C 代码生成路径（C 函数指针无
+  ABI 标注负担），不可移植到 a2r。
+- **A'（具名 `#[export(system)]` fn 按名传值）＝选定主案**：复用 ⑤
+  发射（`pub extern "system" fn` 条目），探针实证可填充
+  `Option<extern "system" fn(i32) -> i32>` 形参位——SetConsoleCtrlHandler
+  类事件回调形态；环境态走 static。产物零运行时依赖（判据最优）。
+- **B（捕获闭包 Box::into_raw+静态注册表+壳）＝兜底**：004 §3.5 原案；
+  仅当真实语料出现捕获回调需求时落地（生成模块内置注册表，unsafe 全
+  居生成码，与 ⑤ kit/⑥ 助手同构）。后续计划候选。
+- **C（596 宿主跳板：令牌+宿主跳板+catch_unwind）＝不入 a2r 轨**：
+  回调重入 VM 属 Q2/596 运行期领地（本计划 §0 边界明示）；a2r 产物纯
+  Rust 无 VM 可重入。
+- **实作降级（§10 授权）**：A' 的 FnPtr 形参生成与传递语义 defer
+  ——⑥ MVP 对 manifest FnPtr 报错在案（emit_use_c_ffi 显式错误），
+  待 SetConsoleCtrlHandler 类真语料驱动时另立小计划落地。
+
 ### 规范增量
 
 | delta_id | 操作 | docs/specs/... target | before/after rule | rationale | acceptance |
@@ -262,7 +282,10 @@ auto-term 构建产物（只读）。
   内嵌 DLL 名换引擎，Auto 驱动×Auto 引擎面零手写胶水）CFACE_OK/exit
   0；执行期一修：D 生成器 lib() 闭包 unsafe（Library::new 系 unsafe
   fn）；worktree commit 113e6ff82]
-- [ ] **T-10**（bounded）trampoline 选型 spike（AC-07；可并行/可后置）；
+- [x] **T-10**（bounded）trampoline 选型 spike（AC-07；可并行/可后置）；
+  [✅ 选型文档=§5 T-10 附录（A 闭包直转证伪/A' 具名 #[export(system)]
+  fn 按名传值选定主案/零依赖/B 兜底/C 出轨），探针双证（E0308 反证 +
+  A' 正证）；实作按 §10 授权降级 defer（⑥ 对 FnPtr 显式报错在案）]
 - [ ] **T-11** SD 落稿 + 004 §5⑤⑥ 回执 + DEBTS #10 增 610 条；
 - [ ] **T-12** 收口门禁：a2r 套件 + 三道实编门 + tf/tt/tv +
   bindgen/a2c（基线不变）。
