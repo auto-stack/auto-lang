@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-610
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-c-abi-two-faces
 author: [ZCode]
 created_at: 2026-09-10
@@ -363,3 +363,33 @@ lib.rs 两处不同区域自动可并 | evidence: 命令与结果已录各 AC �
 - T-10 trampoline 实作降级（只交选型）授权自裁，记录于 §5 附录；
 - 外部前置：auto-term `cargo build -p autoterm-core` 可产出 rlib/
   cdylib（现役绿色路径）+ 597 驱动器脚本在 master（已合）。
+
+
+### merge 收据（PLAN-610:r1，五检查点）
+
+- **prepared**：规范预备 commit a715ed77e4（projection-only descendant of
+  reviewed 3cc98089d——trans/plans.md 610 行+goals.md GOAL-006/013 回写；
+  SD-01/02/03 三件已随 reviewed 提交在枝）；冻结增量 sha256
+  f880b35c9ad1755a。
+- **landed**：master 2038e1370（对账 PLAN-608 前进后 fast-forward；
+  `git merge-base --is-ancestor 3cc98089d HEAD` 确证 reviewed ⊆ master）。
+  合并树全量门复验：tt --no-fail-fast 3873/3873、tv 3654/3654、三道
+  --ignored 门 3/3、tf 3510（3509 绿+ffi_dual_019 间歇=P596-D5 预存
+  flake，master 同红归因见复审 F-1）。落地后 master 快烟 27_c_abi 6/6。
+- **ledger_refreshed**：本地账本 `.autoos/specs.json`（gitignored 运行
+  时投影）upsert P610-1..6（reports/goals/architecture/designs/tests/
+  reviews 六区，file=archive 路径，读回验证 6/6）；`python
+  scripts/spec-index.py` 重生 INDEX 幂等无变化（26 projects）。
+- **archived**：本文件（git mv docs/plans/→docs/plans/archive/，
+  status: archived，completion_kind: delivered）。
+- **cleaned**：见下。
+
+## spec-sync 回写记录（v1 惯例保留）
+
+- `docs/a2r-transpiler-guide.md` Implementation Status 增 610 条（SD-01）。
+- `docs/specs/auto-lang/trans/overview.md` 现状 C ABI 双面条目 + 
+  `trans/plans.md` 610 行（SD-02）。
+- `docs/specs/auto-bindgen/project.md` manifest link 字段+消费面三后端
+  （SD-03）。
+- `docs/specs/goals.md` GOAL-006/GOAL-013 追加 610。
+- 跨仓：auto-term 004 §5⑤⑥ 落地清账 + DEBTS #10 ⑤⑥ 段（master 已合）。
