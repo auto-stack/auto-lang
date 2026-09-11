@@ -1772,6 +1772,11 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     }
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
+    // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
         matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });
@@ -4355,6 +4360,11 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     ctee.transform(&mut ast)?;
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
+    // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
         matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });
@@ -4577,6 +4587,11 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     ctee.transform(&mut ast)?;
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
+    // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
         matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });

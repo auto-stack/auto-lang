@@ -759,6 +759,34 @@ impl VmBridge {
 
     /// Plan 370 (Issue 2): return ALL elements of a heap array (ListData),
     /// used by `for` loops over a dotted prop path like `.note.tags`.
+    /// PLAN-013 T1: 为 props-feed 消费方(terminal)解码 List<str> 值。
+    /// 覆盖三形态:内联 Value::Array(元素为负字符串表哨兵或已解码串)、
+    /// 堆 ListData<i32>(负哨兵)、堆 ListData<Value>。负哨兵按
+    /// `-(idx)-1` 编码回读字符串表(ffi/convert.rs Vec<String> 同款)。
+    pub fn read_str_list_value(&self, val: &Value) -> Vec<String> {
+        let items: Vec<Value> = match val {
+            Value::Array(arr) => arr.values.clone(),
+            Value::Int(id) if *id >= 4_000_000 => self.index_list_all(*id as usize),
+            Value::VmRef(r) => self.index_list_all(r.id),
+            _ => Vec::new(),
+        };
+        items
+            .iter()
+            .map(|v| match v {
+                Value::Str(sv) => sv.to_string(),
+                Value::Int(n) if *n < 0 => {
+                    let idx = (-n - 1) as usize;
+                    let strings = self.vm.strings.read().unwrap();
+                    strings
+                        .get(idx)
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                        .unwrap_or_default()
+                }
+                other => other.repr().to_string(),
+            })
+            .collect()
+    }
+
     pub fn index_list_all(&self, id: usize) -> Vec<Value> {
         let r = self.vmref_to_vec(id);
         if std::env::var("AUTO_DEBUG_EMIT").is_ok() {

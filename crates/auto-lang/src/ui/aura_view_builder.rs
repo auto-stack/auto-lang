@@ -8701,15 +8701,10 @@ let tabs_inner = View::Row {
                 // §15 H3b)或 VmRef——裸 as_array() 一概看不见(terminal 视口
                 // 空白)。经 bridge 物化(Index 臂同族:chart props/notes[.id]
                 // 先例),再逐元素取文本。
-                let items: Vec<Value> = match val {
-                    Value::Array(arr) => arr.values,
-                    Value::Int(id) if id >= 4_000_000 => self.bridge.index_list_all(id as usize),
-                    Value::VmRef(r) => self.bridge.index_list_all(r.id),
-                    _ => Vec::new(),
-                };
-                for item in items.iter() {
-                    lines.push(item.as_str().to_owned());
-                }
+                // PLAN-013 T1:改经 read_str_list_value——内联 Array 的元素
+                // 可能是负字符串表哨兵(engine_rows shim 的 ListData<i32>
+                // 编码),裸 as_str() 会整屏变空串(013 at-app 实测)。
+                lines = self.bridge.read_str_list_value(&val);
             }
         }
 

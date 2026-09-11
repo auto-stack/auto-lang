@@ -454,6 +454,12 @@ pub struct Codegen {
     /// root codegen (script path compiles modules separately).
     pub(crate) vm_fn_names: std::collections::HashSet<String>,
 
+    /// PLAN-013 T1: qualifiers registered from FILE-module uses only
+    /// (`use base64: …` → "base64"). Plan 347 shadow suppression keys on
+    /// this set, not on `auto_modules` — a native-namespace use
+    /// (`use auto.term: …`) must not suppress the very native it imports.
+    file_modules: std::collections::HashSet<String>,
+
     /// Plan 212 Phase 2.2: Maps variable name → opaque crate name
     /// Tracks which variables hold opaque handles (e.g., "re" → "regex")
     /// Set when `let var = OpaqueType.new(...)` is compiled
@@ -625,6 +631,7 @@ impl Codegen {
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
+            file_modules: std::collections::HashSet::new(), // PLAN-013 T1: file-module qualifiers
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
             source_text: None, // PLAN-057 T7
@@ -997,6 +1004,7 @@ impl Codegen {
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
+            file_modules: std::collections::HashSet::new(), // PLAN-013 T1: file-module qualifiers
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
             source_text: None, // PLAN-057 T7
@@ -4897,6 +4905,12 @@ impl Codegen {
         // is a cross-module call (generates CALL with reloc "db.func").
         if !use_stmt.paths.is_empty() {
             self.auto_modules.insert(use_stmt.paths[0].to_string());
+            // PLAN-013 T1: file-module qualifier (single-path use, e.g.
+            // `use base64`) — the only shape that may shadow a native
+            // namespace of the same name at the import_scope arm.
+            if use_stmt.paths.len() == 1 {
+                self.file_modules.insert(use_stmt.paths[0].to_string());
+            }
         }
         // Plan 347: Also track the import qualifier (last path segment, e.g.
         // "base64" from `use auto.base64`) so native-opaque-module routing can
@@ -8754,7 +8768,7 @@ impl Codegen {
                             let is_user_auto_module = qualified
                                 .split('.')
                                 .next()
-                                .map(|mod_name| self.auto_modules.contains(mod_name))
+                                .map(|mod_name| self.file_modules.contains(mod_name))
                                 .unwrap_or(false);
                             if is_user_auto_module {
                                 // PLAN-013 T1: a `#[vm]` declaration (stdlib
