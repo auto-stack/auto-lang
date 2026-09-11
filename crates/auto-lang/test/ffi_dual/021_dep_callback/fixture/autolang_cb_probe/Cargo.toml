@@ -1,0 +1,12 @@
+# PLAN-596 land 期修正: 021 回调语料独立 fixture(独立 crate 名)。
+# 020/021 若共享 autolang_traits,两语料对 mono 集推导不同(021 的
+# Invoker-only 源无 pick),并行测试下互相判 mono_stale 重建同一共享 pack
+# → Windows in-use dll 无法替换 → manifest/cdylib 撕裂态(020 pick 实例
+# 静默空输出的 land 冒烟实证)。沿 019 孪生/022 隔离范式:回调面用独立
+# crate,pack 缓存互不相交。独立工作区(空 [workspace])。
+[package]
+name = "autolang_cb_probe"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]

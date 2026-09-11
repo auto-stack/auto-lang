@@ -1,6 +1,6 @@
 //! PLAN-596 复审 F-1: 021 oracle 腿——回调面,与 input.at 逐行镜像。
 
-use autolang_traits::Invoker;
+use autolang_cb_probe::Invoker;
 
 fn main() {
     let inv = Invoker::new();
