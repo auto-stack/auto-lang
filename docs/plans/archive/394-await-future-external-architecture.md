@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-394
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: archived             # drafting → executing → execution_done → reviewed → archived
 feature_name: await-future-external-architecture
 author: [zhaopuming]
 created_at: 2026-08-06
@@ -19,7 +19,8 @@ total_steps: 12
 
 # Plan 394: AWAIT_FUTURE 通用 future 架构 —— 外部异步源挂起/恢复（Plan 344 正统延续）
 
-> **状态**：`executing`（2026-09-12 用户授权启动）。原为 parked 设计储备；Plan 349 步骤 7 的
+> **状态**：`reviewed`（2026-09-12）。Phase A+B+C 已合入 master（`c5a39cced`）。
+> 原为 parked 设计储备；Plan 349 步骤 7 的
 > re-entry yield 范式已吃掉「单次 native async 不阻塞 UI」需求。本计划做**正统架构**：
 > External future + 续点/真挂起，支持 `~{}` 内嵌套 await 与后续 `Future.all/race`。
 >
@@ -456,7 +457,33 @@ Stack 编码沿用 `(future_id << 8) | 0xF0`。
 
 ## 12. 复审记录
 
-`stage: work | plan_id: 394 | plan_revision: 1 | outcome: pass(Phase A+B+C) | code_commit: plan-394-dev 1e2927bb6 + 333cf528e + (Phase C) | task_ids: T-01..T-10, T-12-partial | evidence: cargo test plan394 → 17 passed / 0 failed / 0 ignored | blockers: T-11 Phase D 默认不做；~{} 命名局部 codegen 债另立；a2r 024 golden expected.rs 为结构草案，接 a2r 测试 harness 后需以实际发射为准 | next: review + merge master`
+### Review（2026-09-12，independent pass）
+
+`stage: review | plan_id: 394 | plan_revision: 1 | outcome: pass | code_commit: master merge c5a39cced | task_ids: T-01..T-10,T-12-partial | evidence: 主检出 cargo test plan394 17/17 绿；wt-guard 扫描 lang-394/{auto-lang,auto-down} clean | blockers: 无合入阻断 | next: archive + worktree 清理`
+
+**清单审计**
+
+| 验收 | 证据 |
+|---|---|
+| Phase A 顶层 external 真挂起 | A1–A4 + U1–U4 绿；wake source 6 |
+| Phase B `~{}` 内嵌套 external await | B1/B2 表达式形态绿；AsyncFrame 续点 |
+| Phase C all/race | C1 墙钟并发 / C2 race=20 |
+| 共存不破坏 re-entry yield / 内部 `~{}` | R1/R2 绿 |
+| T-11 Phase D | 显式未做（计划默认） |
+
+**遗漏/债**
+
+1. T-11 Phase D 未做（授权边界内）
+2. `~{}` 命名局部 codegen 债（非本计划引入，§13-3）
+3. a2r `024_nested_async_await.expected.rs` 为结构草案，未接入 `test_a2r` harness
+4. A2 双 task 交织硬断言未做（§13-2）
+5. 全量 `cargo tf` / clippy 未在本 rev 跑（作用域测试已绿）
+
+**spec impact**：`supersedes_spec_components` / `new_spec_components` 无模块 spec 硬面；`touched_goals` 留空。
+
+### Work 阶段记录
+
+`stage: work | plan_id: 394 | plan_revision: 1 | outcome: pass(A+B+C) | code_commit: 1e2927bb6,333cf528e,e450c0a06 → merge c5a39cced | task_ids: T-01..T-10,T-12-partial | evidence: plan394 17 passed | blockers: merge 曾因主检出未提交副本冲突，restore 后合入 | next: archive`
 
 ## 13. 待澄清事项
 
