@@ -2050,3 +2050,32 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   token 通道示范面另案（601 排除项原文）。回归锚：024-charts vue 面测试
   维持绿。证据：`crates/auto-lang/src/ui_gen/vue.rs` tests
   test_charts_gallery_compiles 注记；601 复审记录 R 系。
+
+## P615 债务（calc-ux-fix-and-enhance，2026-09-12 work 登记待复审确认）
+
+- **P615-D1 [bind 带参消息扩展（框架级）]**：`bind { "key" -> .Handler(arg) }`
+  语法不支持——parse_bind_block 仅收 `.Name` 零参形态（parser.rs:16911），
+  AST KeyBinding 仅 (key, handler) 二元。带参键盘绑定需扩展 parser+KeyBinding
+  +aura extract+VM 动态派发（renderer IcedMessage input_value 通道）+vue
+  codegen 五面。P615 以零参 Key 处理器族 20 枚模式感知路由规避（calc 键盘
+  直输落地，`plan615_calc_prog_tests::calc_prog_key_routing_mode_aware` 守护）。
+  证据：PLAN-615 归档计划 §9 关键执行期发现 5。
+- **P615-D2 [VM handler 运行时错误不上屏]**：动态组件处理器 VM 错误仅落
+  stderr `[VM-HANDLER]` 日志（ui/dynamic.rs:1141），窗口内零反馈——calc
+  W2 症状面（等号冻结无提示）的框架级根治位。P615 应用层已有 .error/.perr
+  显式错误通道兜底；框架级「错误上屏机制」留独立计划。证据：dynamic.rs
+  1141 行；PLAN-615 §非目标。
+- **P615-D3 [ffi_dual_019_dep_layout_invariants 全档并发偶发]**：
+  dep cdylib spawn 计时敏感——`cargo tv`/`cargo tf` 全档并发下偶发红
+  （P615 执行期 2 次），隔离复跑双侧（分支/基线）3-4× 恒绿。非本计划引入
+  （基线同源）。留 flaky 排查（nextest retries 或测试内重试）。
+- **P615-D4 [VM 数值域跨端语义文档化缺口]**：实测三面——`int` 表达式乘法
+  i32 回绕（65536×65536→0）而字面量加法宽（4294967295+1=4294967296）；
+  `int` 状态/局部存储截断 i32；`u64` 局部算术全程精确但经动态组件状态管道
+  （Value::Uint→push_i32）截断。TS 端 number 统一 53-bit 精确——跨端数值
+  语义（尤其位运算与乘法）需 spec 文档化（P615 肢库以存储 <2^17 规避）。
+  证据：PLAN-615 执行期探针 tmp_int/u64 系列（已清理，结论入归档计划 §9）。
+- **P615-D5 [vue 运行时无系统主题通道]**：`prefers-color-scheme` 未接入
+  （AUTO_UI_THEME 未设时 vue 侧无 OS 回退）——VM 桌面轨已由
+  DesktopConfig.theme_source=system 派生闭环（T-06）；vue 轨首版跟随
+  pac/缺省。证据：AUTO_UI_THEME 消费面仅 cmd_tauri/cmd_vue 全局注入。

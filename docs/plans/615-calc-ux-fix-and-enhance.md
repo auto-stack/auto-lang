@@ -17,7 +17,7 @@ touched_goals:
   - "GOAL-007: AutoUI 跨端视觉一致（Vue/VM 双端 parity）——按钮居中/主题跟随/Programmer HEX 双端同源"
 
 affects: [docs/specs/auto-lang/vm, docs/specs/auto-lang/ui]
-current_step: 0
+current_step: 8
 total_steps: 9
 ---
 
@@ -276,23 +276,22 @@ a || b:  [eval a] DUP JMP_IF_NZ Lend POP [eval b] Lend OR
 
 ## 8. 执行步骤
 
-worktree：`git worktree add D:/autostack/.wt/lang-615/auto-lang -b plan-615-dev`
-（主检出先 commit `.next-id` + 本计划骨架）；计划簿记留在主检出。
+worktree：`D:/autostack/.wt/lang-615/auto-lang` @ `plan-615-dev`（base a4faeb182；
+依赖组 .wt/lang-615/auto-down detached——autodown-core path 依赖解析序要求）。
 
-| # | 任务 | 内容与落点 | 验证 | AC |
-|---|---|---|---|---|
-| T-01 | W2 短路发射 | `vm/codegen.rs` `Op::And/Op::Or` 臂改条件跳转短路形态（§详细设计），disassembly 断言 | `cargo check -p auto-lang` + `cargo t vm`（codegen 相关 filter）+ 手动 auto-vm 探针 | AC-2 |
-| T-02 | 短路语料 + calc eval 转正 + 兼容扫描 | 新增 `test/vm/99_short_circuit/` 语料族；calc eval_expr 全文语料（期望 11/11/14/3.5/ERROR）；存量 `&&`/`||` 使用点扫描报告 | `cargo tv` 全绿；扫描零急切依赖结论留档 | AC-2 |
-| T-03 | W1 按钮居中 | `ui/iced/renderer.rs` button 臂：无高度类 center_y 包装 + 行盒档位决策（双端截图对拍定档）；fit 末行裁切联验 | renderer 单测 + autoui-verifier calc 双端截图 | AC-1 |
-| T-04 | W3a 播种缺省跟随 | `ui/osconfig_apps.rs`/`session.rs` 播种链增"无显式配置→跟随桌面 cfg.dark_theme"臂；calc `pac.at` 删 `theme: "dark"`；vue 端主题落点调查（bounded，结论入计划） | osconfig 单测 + VM 窗浅色实机截图 | AC-3 |
-| T-05 | W3b SetTheme 活更新 | `ui/iced/renderer.rs execute_set_theme` 广播臂：遍历 live 组件写 `dark_mode` + 视图失效 | 单测（组件 state 断言）+ 实机切主题观察 | AC-3 |
-| T-06 | W3c OS boot 缺省 | desktop config 初始化读 Windows AppsUseLightTheme（非 Windows 回退 dark），单点 | 单测（registry mock/回退臂）+ 实机 | AC-3 |
-| T-07 | W4 Programmer HEX | app.at 重写 programmer 分支（§详细设计全量：seg/读出/随基键盘/位运算/int 求值器/OCT-BIN 格式化）；i64 divmod first-light 先行 | 双端交互脚本 + 位运算断言表 | AC-4 |
-| T-08 | P 批次 | bind 扩展/fmt_num 去噪/clipboard/错误文案（§详细设计 P1-P4） | 交互脚本 + 显示断言 | AC-5 |
-| T-09 | 终验与门禁 | 全量双端 autoui-verifier（calc 全功能矩阵）；受 W1 影响 golden 重基线清单；`cargo tv` + `cargo tf`；复审材料 | AC-6 门禁表 | AC-6 |
+| # | 任务 | 状态 | 证据（commit / 命令 / 结果） |
+|---|---|---|---|
+| T-01 | W2 短路发射 | [x] ✅ | 4653bd2dc：codegen.rs `Op::And/Or` 条件跳转短路发射（首发含多余 POP 栈失衡 bug，探针 D=0/F 挂起定界后修正——JMP_IF_Z/NZ 弹副本 LHS 本体留栈）；auto-vm 探针矩阵 8 案全过（副作用计数/索引守卫/链式/值上下文） |
+| T-02 | 短路语料+calc 转正+兼容扫描 | [x] ✅ | 4653bd2dc：语料 99_short_circuit 三件（001 短路矩阵/002 calc eval_expr 全文 2+9→11 等 8 断言/003 负索引共存）+ vm_file_tests 常驻注册 3 测；兼容扫描：存量语料 10 处 `&&` 全纯布尔零急切依赖；`cargo tv` 3679/3679 全绿 |
+| T-03 | W1 按钮居中 | [x] ✅ | 3004121eb：按钮标签三路（纯文本/hicon/lucide 图标行）行高钳 Relative(1.0)（iced 0.14 默认 1.3 额外 leading 全落字形上方=偏下根因）；显式 leading-* 优先；等价实现裁定：无高度类 center_y 包装经分析几何 no-op 不落地；新增 layout_tests 常驻断言（钳前 23.4px 红/钳后 ~18px 绿）；顺修存量 layout_tests 编译腐烂（virtual_window_element 签名漂移） |
+| T-04 | W3a 播种缺省跟随 | [x] ✅ | 949c65b3d：独立 VM 窗 env 链未解析→OS 回退播种 dark_mode；calc pac.at theme 显式键移除；vue 运行时 prefers-color-scheme 通道调查=现无，登记债务（vue 侧跟随 pac/缺省，不阻塞 VM 主诉求） |
+| T-05 | W3b SetTheme 活更新 | [x] ✅（已在案） | 经查 Plan 518 G1 已落地：execute_set_theme 全链（全局 dark/fence 重着色/config 持久化/快照撤/逐 App dark_mode 写+view_dirty）——本计划零改动，验证在案 |
+| T-06 | W3c OS boot 缺省 | [x] ✅ | 949c65b3d：ui/system_theme（Windows AppsUseLightTheme 注册表读取，reg query 子进程零 feature 耦合；本机实测 0x1=浅色）+ DesktopConfig.theme_source（system 缺省=load() 每次 OS 派生；manual=用户切换即置终结跟随；存量文件缺键按 system=现机即时跟随） |
+| T-07 | W4 Programmer HEX | [x] ✅ | 27d431891：prog_util.at 肢运算库（16-bit 肢对；VM int 乘法 i32 回绕实测→乘法拆 8-bit 字节肢积；AND/OR/XOR 位循环——a2ts 无位方法映射故全算术化；恢复除法 32 轮；Python 真值 28 案对拍全绿）+ app.at 四基 seg/四基读出/随基键盘（A-F 排、BIN-OCT 灰显）/位运算八键/错误面/等式行（computed Plan 522 范式）；plan615_calc_prog_tests 4 测首光全绿（HEX 加法/SHL31 边界/AND+NOT/除零） |
+| T-08 | P 批次 | [x] ✅ | 27d431891：bind 零参语法约束（parse_bind_block 仅收 .Name）→零参 Key 处理器族 20 枚模式感知路由（带参 bind 扩展登记 KNOWN-DEBT）+ 复制按钮（dom.copy_text 双端内建）+ fmt_num ε 去噪（math.floor 10 位舍入）+ 错误文案细化（apply_top OK/DIV0/ERROR 通道）；键路由模式感知测试（第 5 测） |
+| T-09 | 终验与门禁 | [x] ◐ | 无头门禁全绿：`cargo tv` 1912/1913（唯一红 ffi_dual_019 隔离 3× 过=并发偶发）+ `cargo t` 4779/4802（23 红逐一对拍基线 a4faeb182 全预存/环境红：layout 13+plan370 3+strips/covered/c2/lucide 4+ensure_ready 并行偶发单测过+ffi tv 偶发 1——零新增）+ `cargo tf` 2034/3533（同 ffi 偶发，隔离过）+ scoped iced 187/188（lucide 预存）+ vue 构建 vue-tsc/vite 全绿（a539f3697：apply_top bool 残留签名修复+dom.copy_text 双端内建替换）；golden 重基线=零（W1 行高钳未触发既有截图断言）；**余=用户实机双端终验**（AC-1 像素采样/AC-3 主题切换实测/AC-4 交互全矩阵——autoui-verifier 脚本在案） |
 
-依赖：T-02←T-01；T-05←T-04；T-07←T-01（programmer int 求值器内部守卫依赖短路）；
-T-08←T-07（programmer 键位）；T-09 收尾全部。
+[✅ 已完成] T-01..T-08 全部+T-09 无头门禁；计划簿记同步主检出。
 
 ## 9. 复审记录
 
@@ -300,18 +299,47 @@ T-08←T-07（programmer 键位）；T-09 收尾全部。
   四问题根因全部实证（W2 有 VM 实机复现与代码证据链；W1/W3 有渲染路径与链路缺口定位；
   W4 引擎输入盘点齐备），任务/AC/SD 对齐，路径与命令已落地核验。`next: work`。
   授权范围：auto-lang 单仓、标准 worktree 流程、无预算约束（§4）。
+- 2026-09-12 work handoff：`stage: work`，`plan_id: PLAN-615`，`plan_revision: 1`，
+  `outcome: pass`（T-01..T-08 全过+T-09 无头门禁全绿；实机双端终验移交复审阶段随验），
+  `code_commit: a539f3697`（plan-615-dev，6 commits：4653bd2dc/3004121eb/949c65b3d/
+  27d431891/0de35269f/a539f3697），`task_ids: T-01..T-08 全勾+T-09 门禁半（实机终验余）`，
+  `evidence: cargo tv 1912/1913+tf 2034/3533（唯一红 ffi_dual_019 双侧隔离 3-4× 过=
+  并发偶发）+cargo t 全档 23 红基线对拍零新增+scoped iced 187/188+vue vue-tsc/vite 全绿
+  +plan615_calc_prog_tests 5/5+layout_tests 37/37`，`blockers: 无（实机终验项见 §10）`，
+  `next: review`（复审时随做实机终验：`auto run -r vm` 与 `auto run` 双端过 AC-1/3/4
+  交互清单）。
+
+### 关键执行期发现（对 §4/§5 的修正）
+
+1. **T-05 已在案**：SetTheme 活更新广播（execute_set_theme 逐 App dark_mode 写+
+   view_dirty+快照撤）经查 Plan 518 G1 已落地——本计划验证确认，零改动。
+2. **真缺口=OS 跟随**：桌面 boot 播种亦已存在（renderer 11632 块），断链仅剩
+   `config.dark_theme` 缺省硬编码 dark + 独立窗 env 未设无回退——T-06/T-04 据此收窄，
+   引入 theme_source 字段（system/manual）使存量用户即时获得 OS 跟随。
+3. **VM int 算术宽度**：`int` 表达式乘法 i32 回绕（65536×65536→0 实测）、状态存储截断
+   i32、u64 局部算术精确——肢库据此按「存储恒 <2^17、乘法拆 8-bit 字节肢」设计。
+4. **a2ts 无位方法映射**：`.and/.shl` 等 TS 端会断（rust.rs 独有映射）——位运算全
+   算术化绕开。
+5. **bind 零参约束**：parse_bind_block 仅收 `.Name`（parser.rs:16911），带参键盘绑定
+   不可能——零参 Key 处理器族 20 枚模式感知路由替代；带参 bind 扩展登记 KNOWN-DEBT。
 
 ## 10. 待澄清事项
 
-1. **W1 行盒档位**：默认取 leading-none 等价（按钮 shrink 高度收窄 2-4px）；若对拍判定
-   既有布局漂移不可接受，回退半行距补偿方案（T-03 内决策，不影响契约）。
-2. **W1 golden 重基线**：按钮渲染框架级修复预期影响少量既有截图基线——默认接受重基线
-   （清单在 T-09 留档）；若出现大面积漂移（>10 用例），升级为用户决策点。
-3. **Vue 端系统主题**：若 vue 运行时无 `prefers-color-scheme` 通道，首版 vue 跟随 pac/缺省
-   并登记债务（VM 桌面端为主诉求，不阻塞 AC-3 的 VM 部分）。
-4. **W4 值域**：首版 32 位无符号（双端 parity 硬约束）；64 位/word-size 切换入 backlog，
-   若用户期望 64 位需另立 BigInt 面计划。
-5. **OS 主题读取面**：仅 Windows 实测；Linux/mac 回退 dark（登记，跨平台热监听 backlog）。
+1. **实机双端终验（移交复审随验）**：`auto run -r vm` 与 `auto run` 双端过一遍——
+   ①四则/括号/等号结果（AC-2 实机面）；②按钮文字居中目验（AC-1）；③系统浅色下
+   桌面与 calc 跟随 + 设置面板切换实测（AC-3）；④Programmer 四基/位运算交互
+   （AC-4）；⑤键盘直输/复制（AC-5）。无头可测面已全绿（T-09 证据）。
+2. **vue 端系统主题**：vue 运行时现无 prefers-color-scheme 通道——首版 vue 跟随
+   pac/缺省，债务登记（VM 桌面端为主诉求，不阻塞 AC-3 的 VM 部分）。
+3. **W4 值域**：首版 32 位无符号（双端 parity 硬约束）；64 位/word-size 切换入
+   backlog，若期望 64 位需另立 BigInt 面计划。
+4. **OS 主题读取面**：仅 Windows 实测（reg query）；Linux/mac 回退 dark（登记，
+   跨平台热监听 backlog）。
+5. **新增 KNOWN-DEBT 候选（复审时正式登记）**：①bind 带参消息扩展（parser+双端
+   消费面，框架级）；②VM handler 运行时错误仅 stderr 不上屏（W2 症状面的框架级
+   根治）；③ffi_dual_019_dep_layout_invariants 全档并发偶发（双侧隔离 3-4× 过，
+   dep cdylib spawn 计时敏感）；④VM `int` 乘法 i32 回绕/`u64` 局部精确但状态管道
+   i32 中心——数值域跨端语义文档化。
 
 ---
 
