@@ -213,6 +213,30 @@ Auto Flow is a planned functional programming interface built on lazy iterators.
 
 **Design decision: dot vs. pipe.** Auto uses dot-chaining (Rust/Java style) rather than a pipe operator (`|>`). Reasons: IDE auto-completion is natural after `.`, consistency with struct method calls, and a smaller symbol set. The `!` suffix handles materialization without needing a separate operator.
 
+### Declarative Style Recipes (AutoUI)
+
+In UI source files (`scene: "ui"`), style recipes can be declared at top-level alongside `widget` and `store` to encapsulate and compose CSS/Tailwind class patterns:
+
+```auto
+// 1. Constant recipe
+style card_base = "bg-card rounded-xl shadow-sm border border-border"
+
+// 2. Parameterized recipe with default arguments
+style pill(bg: str = "bg-primary", fg: str = "text-primary-foreground", pad: str = "px-4 py-2") =
+    "{pad} {bg} {fg} rounded-full text-sm font-medium shadow-sm hover:{bg}/90 transition-colors"
+
+// 3. Composite / derived recipe
+style pill_danger = pill(bg: "bg-destructive", fg: "text-destructive-foreground")
+```
+
+Recipes are consumed inside widget `style:` attributes via bare identifiers or calls, and are desugared at compile time into normalized class strings for Vue and VM runtimes:
+
+```auto
+col { style: card_base }
+button "Delete" { style: pill(bg: "bg-destructive") }
+button "Extra" { style: [pill(), "ml-2"] }
+```
+
 ## Open Questions
 
 - Should `.?`, `.*`, `.@` be parsed as special dot-notation forms, or as standalone postfix operators?

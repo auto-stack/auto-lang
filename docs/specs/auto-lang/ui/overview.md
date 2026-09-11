@@ -25,7 +25,10 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
-## 现状（2026-08-28）
+## 现状（2026-09-11）
+
+**声明式样式配方语言层（plan-607 落地，Design 29 Phase 3，GOAL-007）**：
+AutoUI 顶层引入 `style <name> = "<classes>"` 常量配方与 `style <name>(<params>...) = "<f-string>"` 参数化配方语法；在 widget 的 `style:` 属性中支持裸标识符引用、参数化调用与数组/条件/插值混用；通过在 AST → AuraNode（`aura_view_builder.rs` / `extract.rs`）单一入口处编译期 Desugar 展开为标准 class 字符串，实现 Vue 与 VM Iced 双端同源、运行时零开销、零视觉漂移；配套硬编码调色板色（如 `bg-blue-500`）lint 警告，并在 013-todo 与 015-notes 中示范重构，收敛存量重复 class 字符串。
 
 **vue as-cast 整型降级（plan-604 落地，KD-VM4 双端一致）**：view/handler 内
 `expr.as(int)`（及 i64/uint/u64/usize/byte）vue 侧降级 `Math.trunc(...)`，对齐
