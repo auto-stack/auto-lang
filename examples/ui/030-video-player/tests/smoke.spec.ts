@@ -21,6 +21,11 @@ test('T1: 初始状态加载与元数据渲染', async ({ page }) => {
   expect(body).toContain('H.264')
   expect(body).toContain('00:45')
   expect(body).toContain('03:45')
+
+  // 验证真实 <video> 标签存在且有效绑定首个测试视频源
+  const video = page.locator('video')
+  await expect(video).toBeVisible()
+  await expect(video).toHaveAttribute('src', /BigBuckBunny\.mp4/)
 })
 
 test('T2: 播放与暂停切换', async ({ page }) => {
@@ -62,6 +67,7 @@ test('T3: 步进快进快退寻道', async ({ page }) => {
 
 test('T4: 切集与切回 (Next / Prev Video)', async ({ page }) => {
   await waitForPlayer(page)
+  const video = page.locator('video')
   // 点击下一集
   const nextBtn = page.getByRole('button', { name: '⏭' }).first()
   await nextBtn.click()
@@ -73,6 +79,7 @@ test('T4: 切集与切回 (Next / Prev Video)', async ({ page }) => {
   expect(body).toContain('4K')
   expect(body).toContain('HEVC')
   expect(body).toContain('12:20')
+  await expect(video).toHaveAttribute('src', /ElephantsDream\.mp4/)
 
   // 点击上一集
   const prevBtn = page.getByRole('button', { name: '⏮' }).first()
@@ -81,6 +88,7 @@ test('T4: 切集与切回 (Next / Prev Video)', async ({ page }) => {
   body = await page.locator('body').innerText()
   expect(body).toContain('AutoOS 2026 Keynote & Intro')
   expect(body).toContain('01_intro.mp4')
+  await expect(video).toHaveAttribute('src', /BigBuckBunny\.mp4/)
 })
 
 test('T5: 音量调节与静音切换', async ({ page }) => {
@@ -113,6 +121,7 @@ test('T6: 多档倍速平滑切换', async ({ page }) => {
 
 test('T7: 播放队列抽屉与选集播放', async ({ page }) => {
   await waitForPlayer(page)
+  const video = page.locator('video')
   // 检查播放队列内包含第 3 项
   expect(await page.locator('body').innerText()).toContain('AutoUI Dual-Backend Engine Demo')
 
@@ -124,6 +133,7 @@ test('T7: 播放队列抽屉与选集播放', async ({ page }) => {
   expect(body).toContain('03_ui_engine.mp4')
   expect(body).toContain('08:15')
   expect(body).toContain('AV1')
+  await expect(video).toHaveAttribute('src', /ForBiggerBlazes\.mp4/)
 })
 
 test('T8: 媒体属性详细信息弹窗', async ({ page }) => {

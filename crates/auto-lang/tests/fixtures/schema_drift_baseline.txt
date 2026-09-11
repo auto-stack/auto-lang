@@ -937,6 +937,7 @@ vue_mt0_not_in_rs	-
 vue_mt0_not_in_rs	Article
 vue_mt0_not_in_rs	Aside
 vue_mt0_not_in_rs	AspectRatio
+vue_mt0_not_in_rs	Audio
 vue_mt0_not_in_rs	Avatar
 vue_mt0_not_in_rs	Badge
 vue_mt0_not_in_rs	Button
@@ -1005,10 +1006,12 @@ vue_mt0_not_in_rs	Tr
 vue_mt0_not_in_rs	Tree
 vue_mt0_not_in_rs	TreeItem
 vue_mt0_not_in_rs	Ul
+vue_mt0_not_in_rs	Video
 vue_mt0_not_in_rs	article
 vue_mt0_not_in_rs	aside
 vue_mt0_not_in_rs	aspect-ratio
 vue_mt0_not_in_rs	aspectratio
+vue_mt0_not_in_rs	audio
 vue_mt0_not_in_rs	avatar
 vue_mt0_not_in_rs	center
 vue_mt0_not_in_rs	circle
@@ -1068,3 +1071,4 @@ vue_mt0_not_in_rs	tree
 vue_mt0_not_in_rs	tree-item
 vue_mt0_not_in_rs	tree_item
 vue_mt0_not_in_rs	use
+vue_mt0_not_in_rs	video

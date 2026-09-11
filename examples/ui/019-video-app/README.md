@@ -20,33 +20,40 @@ A dual-backend AutoUI video application supporting both **Vue** mode (`auto run`
 
 ```
 examples/ui/019-video-app/
-├── pac.at                 # Config: scene "ui", render "vue", api "rust", ports 3019/8319
+├── pac.at                 # Config: scene "ui", render "vue", api "rust", ports 3019/8019
 ├── src/
-│   ├── back/
-│   │   ├── api.at         # Typed REST endpoints (list_videos, get_video, add_view, etc.)
-│   │   └── db.at          # In-memory database with 12 seed videos and filtering/sorting logic
-│   └── front/
-│       ├── app.at         # Router shell with left sidebar, logo, and settings popover
-│       ├── video_store.at # Global VideoStore (videos, filters, search, theme state)
-│       ├── settings.at    # SettingsPanel (Theme mode + 5 Accent colors)
-│       └── pages/
-│           ├── home.at    # Home page with search bar, chips, tabs, and video grid
-│           └── watch.at   # Watch page with video player, like button, and related list
+│   ├── front/
+│   │   ├── app.at         # Root widget with responsive layout & navigation
+│   │   ├── stores/        # Frontend state management (Vue stores)
+│   │   │   └── video.at   # Video store (active tab, selected video, search)
+│   │   ├── components/    # Reusable UI components
+│   │   │   ├── nav_header.at     # Top navbar with search & notifications
+│   │   │   ├── video_card.at     # Video card with thumbnail & meta
+│   │   │   ├── video_player.at   # Interactive player with controls
+│   │   │   ├── comment_section.at# Comments list & input form
+│   │   │   └── settings_panel.at # Slide-over settings drawer
+│   │   └── pages/
+│   │       ├── home.at    # Main feed with categories & video grid
+│   │       ├── watch.at   # Video detail page with player & recommendations
+│   │       └── profile.at # User profile & uploaded videos
+│   └── back/
+│       ├── api.at         # REST API declarations (#[api] routes)
+│       └── db.at          # In-memory database with seed data
 └── tests/
-    ├── smoke.spec.ts      # 10 Playwright E2E test cases
-    └── vm-smoke.mjs       # AutoUI MCP VM-mode smoke test
+    ├── package.json       # Playwright dependencies
+    ├── playwright.config.ts # E2E test configuration
+    ├── smoke.spec.ts      # 10 comprehensive E2E tests
+    └── vm-smoke.mjs       # Headless VM smoke test (10 assertions)
 ```
 
-## How to Run
-
-### Vue Mode (Default)
+## Running
 
 ```bash
-cd examples/ui/019-video-app
+# Standard run (Vue mode)
 auto run
-```
 
-Frontend runs on `http://localhost:3019` and backend API runs on `http://127.0.0.1:8319`.
+# Frontend runs on `http://localhost:3019` and backend API runs on `http://127.0.0.1:8019`.
+```
 
 ### VM / Iced Mode
 

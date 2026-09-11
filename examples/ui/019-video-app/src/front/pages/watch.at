@@ -50,26 +50,16 @@ widget watch {
 
                             // Player screen
                             col {
-                                class: "w-full h-72 md:h-96 rounded-2xl bg-gradient-to-br " + .video.cover_color + " items-center justify-center relative overflow-hidden shadow-xl"
-                                text "▶" { style: "text-6xl text-white/90 drop-shadow-md cursor-pointer hover:scale-110 transition-transform" }
+                                class: "w-full h-72 md:h-96 rounded-2xl bg-black items-center justify-center relative overflow-hidden shadow-xl"
 
-                                // Bottom player control bar overlay
-                                row {
-                                    style: "absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 items-center justify-between"
-                                    row {
-                                        style: "items-center gap-3 text-white text-sm"
-                                        text "▶" { style: "cursor-pointer" }
-                                        text f"00:00 / ${.video.duration}" { style: "text-xs opacity-80" }
-                                    }
-                                    row {
-                                        style: "items-center gap-3 text-white text-xs"
-                                        text "HD" { style: "px-1.5 py-0.5 bg-white/20 rounded text-[10px] font-bold" }
-                                        text "⛶" { style: "text-sm cursor-pointer" }
-                                    }
+                                video {
+                                    src: .video.video_url
+                                    controls: true
+                                    class: "w-full h-full object-contain"
                                 }
 
                                 row {
-                                    style: "absolute top-3 left-3 bg-black/40 backdrop-blur px-2.5 py-1 rounded-md"
+                                    style: "absolute top-3 left-3 bg-black/40 backdrop-blur px-2.5 py-1 rounded-md pointer-events-none"
                                     text .video.category { style: "text-xs font-semibold text-white uppercase tracking-wider" }
                                 }
                             }

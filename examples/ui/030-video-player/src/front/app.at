@@ -59,6 +59,7 @@ widget App {
         var current_id int = 1
         var current_title str = "AutoOS 2026 Keynote & Intro"
         var current_file str = "01_intro.mp4"
+        var current_video_url str = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
         var current_res str = "1080P"
         var current_codec str = "H.264"
         var current_size str = "48 MB"
@@ -106,7 +107,8 @@ widget App {
                 codec: "H.264",
                 size_str: "48 MB",
                 bg_gradient: "from-indigo-950 via-slate-900 to-purple-950",
-                badge_color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+                badge_color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
             },
             {
                 id: 2,
@@ -118,7 +120,8 @@ widget App {
                 codec: "HEVC",
                 size_str: "210 MB",
                 bg_gradient: "from-blue-950 via-slate-900 to-cyan-950",
-                badge_color: "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                badge_color: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
             },
             {
                 id: 3,
@@ -130,7 +133,8 @@ widget App {
                 codec: "AV1",
                 size_str: "85 MB",
                 bg_gradient: "from-emerald-950 via-slate-900 to-teal-950",
-                badge_color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                badge_color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
             },
             {
                 id: 4,
@@ -142,7 +146,8 @@ widget App {
                 codec: "VP9",
                 size_str: "62 MB",
                 bg_gradient: "from-amber-950 via-slate-900 to-orange-950",
-                badge_color: "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                badge_color: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
             },
             {
                 id: 5,
@@ -154,7 +159,8 @@ widget App {
                 codec: "H.264",
                 size_str: "24 MB",
                 bg_gradient: "from-rose-950 via-slate-900 to-pink-950",
-                badge_color: "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                badge_color: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
             }
         ]
     }
@@ -324,12 +330,17 @@ widget App {
 
                     // 视频主体渲染区域 (Canvas Screen Area)
                     col {
-                        class: "flex-1 w-full items-center justify-center relative overflow-hidden bg-gradient-to-br " + .current_bg
+                        class: "flex-1 w-full items-center justify-center relative overflow-hidden bg-black"
                         onclick: .TogglePlay
+
+                        video {
+                            src: .current_video_url
+                            class: if .aspect_mode == "铺满" { "w-full h-full object-cover" } else { "w-full h-full object-contain" }
+                        }
 
                         // 居中大播放状态指示器
                         col {
-                            style: "items-center justify-center gap-4 cursor-pointer hover:scale-105 transition-transform"
+                            style: "absolute items-center justify-center gap-4 pointer-events-none"
                             if .is_playing {
                                 col {
                                     style: "w-24 h-24 rounded-full bg-white/10 backdrop-blur-md border border-white/20 items-center justify-center shadow-2xl"
@@ -347,7 +358,7 @@ widget App {
 
                         // 底部快捷提示
                         row {
-                            style: "absolute bottom-3 text-[11px] text-white/50 tracking-wider font-mono select-none"
+                            style: "absolute bottom-3 text-[11px] text-white/50 tracking-wider font-mono select-none pointer-events-none"
                             text "画幅: " + .aspect_mode + " · 音频: " + .current_audio + " · 双击全屏 · 空格暂停" {}
                         }
                     }
@@ -811,6 +822,7 @@ widget App {
             if .current_id == 1 {
                 .current_title = "AutoOS 2026 Keynote & Intro"
                 .current_file = "01_intro.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
                 .current_res = "1080P"
                 .current_codec = "H.264"
                 .current_size = "48 MB"
@@ -820,6 +832,7 @@ widget App {
             } else if .current_id == 2 {
                 .current_title = "Kernel & AutoVM Architecture"
                 .current_file = "02_architecture.mkv"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
                 .current_res = "4K"
                 .current_codec = "HEVC"
                 .current_size = "210 MB"
@@ -829,6 +842,7 @@ widget App {
             } else if .current_id == 3 {
                 .current_title = "AutoUI Dual-Backend Engine Demo"
                 .current_file = "03_ui_engine.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
                 .current_res = "1080P"
                 .current_codec = "AV1"
                 .current_size = "85 MB"
@@ -838,6 +852,7 @@ widget App {
             } else if .current_id == 4 {
                 .current_title = "Fullstack Parity & Toolchain"
                 .current_file = "04_workflow.webm"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
                 .current_res = "1080P"
                 .current_codec = "VP9"
                 .current_size = "62 MB"
@@ -847,6 +862,7 @@ widget App {
             } else {
                 .current_title = "AutoOS Ambient Desktop Visuals"
                 .current_file = "05_ambient.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
                 .current_res = "720P"
                 .current_codec = "H.264"
                 .current_size = "24 MB"
@@ -871,6 +887,7 @@ widget App {
             if .current_id == 1 {
                 .current_title = "AutoOS 2026 Keynote & Intro"
                 .current_file = "01_intro.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
                 .current_res = "1080P"
                 .current_codec = "H.264"
                 .current_size = "48 MB"
@@ -880,6 +897,7 @@ widget App {
             } else if .current_id == 2 {
                 .current_title = "Kernel & AutoVM Architecture"
                 .current_file = "02_architecture.mkv"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
                 .current_res = "4K"
                 .current_codec = "HEVC"
                 .current_size = "210 MB"
@@ -889,6 +907,7 @@ widget App {
             } else if .current_id == 3 {
                 .current_title = "AutoUI Dual-Backend Engine Demo"
                 .current_file = "03_ui_engine.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
                 .current_res = "1080P"
                 .current_codec = "AV1"
                 .current_size = "85 MB"
@@ -898,6 +917,7 @@ widget App {
             } else if .current_id == 4 {
                 .current_title = "Fullstack Parity & Toolchain"
                 .current_file = "04_workflow.webm"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
                 .current_res = "1080P"
                 .current_codec = "VP9"
                 .current_size = "62 MB"
@@ -907,6 +927,7 @@ widget App {
             } else {
                 .current_title = "AutoOS Ambient Desktop Visuals"
                 .current_file = "05_ambient.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
                 .current_res = "720P"
                 .current_codec = "H.264"
                 .current_size = "24 MB"
@@ -1089,6 +1110,7 @@ widget App {
             if id == 1 {
                 .current_title = "AutoOS 2026 Keynote & Intro"
                 .current_file = "01_intro.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
                 .current_res = "1080P"
                 .current_codec = "H.264"
                 .current_size = "48 MB"
@@ -1098,6 +1120,7 @@ widget App {
             } else if id == 2 {
                 .current_title = "Kernel & AutoVM Architecture"
                 .current_file = "02_architecture.mkv"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
                 .current_res = "4K"
                 .current_codec = "HEVC"
                 .current_size = "210 MB"
@@ -1107,6 +1130,7 @@ widget App {
             } else if id == 3 {
                 .current_title = "AutoUI Dual-Backend Engine Demo"
                 .current_file = "03_ui_engine.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
                 .current_res = "1080P"
                 .current_codec = "AV1"
                 .current_size = "85 MB"
@@ -1116,6 +1140,7 @@ widget App {
             } else if id == 4 {
                 .current_title = "Fullstack Parity & Toolchain"
                 .current_file = "04_workflow.webm"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
                 .current_res = "1080P"
                 .current_codec = "VP9"
                 .current_size = "62 MB"
@@ -1125,6 +1150,7 @@ widget App {
             } else {
                 .current_title = "AutoOS Ambient Desktop Visuals"
                 .current_file = "05_ambient.mp4"
+                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
                 .current_res = "720P"
                 .current_codec = "H.264"
                 .current_size = "24 MB"
