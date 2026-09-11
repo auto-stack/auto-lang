@@ -71,9 +71,10 @@ total_steps: 0
 - T3 W2 launcher 输入三连根修 [✅ 已完成]
   ① collect_input_ids 补 MouseArea/Popover 容器穿透臂（scrim
   mouse-area 包裹的 input 收集恒空 registered=0——日志实证）；
-  ② 收集器派生式改 None 三元组与 overlay 渲染臂（build_input_shape）
-  严格同式——此前按 (widget,event) 主键派生与渲染 Id 不一致，focus
-  永不落地；③ DynamicComponent::on 补 input on_input 文本载荷注入
+  ② 收集器派生式与 overlay 渲染臂严格同式【终态修正：渲染臂
+  （render_dynamic_view Input 臂）实际按 (widget,event) 主键派生并
+  .id() 挂载——None 三元组"对齐"为误改已回退；此前收集器按
+  (widget,event) 派生本与渲染一致，真缺口是 MouseArea 容器穿透缺失】；③ DynamicComponent::on 补 input on_input 文本载荷注入
   （声明 1 参 + 空实参 + INPUT_TEXT 非空三条件，其余调用零影响）
   ——`.SetQ(t)` 的 t 此前恒空实参。
 - T4 render_dynamic_view 补 MouseArea 专用臂 [✅ 已完成]
