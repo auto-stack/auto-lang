@@ -218,8 +218,14 @@ auto-term 构建产物（只读）。
   a2r_rustc_real_compile_gate 绿）；执行期两修：cstr 形参系 &str（借
   用需 `_conv` 局部持有者）、param+param 字符串拼接系 a2r 既有空白
   （语料改 f-string）；worktree commit 27c63c6a1]
-- [ ] **T-03** cdylib/exe 构建 harness（实编门内 cargo 模板）；
-- [ ] **T-04** MVP 导出面实编门（AC-02）；
+- [x] **T-03** cdylib/exe 构建 harness（实编门内 cargo 模板）；
+  [✅ a2r_c_abi_gates.rs 模板 harness：cargo cdylib/exe 工程 staging 于
+  target/plan610（gitignore 暖缓存）+ 标准库零依赖消费端
+  （LoadLibraryA/GetProcAddress，注册表/网络免依赖）；执行期一修：
+  Sink.done() 返回产物字节（非 body 残留）——gate 首版产物空文件实证]
+- [x] **T-04** MVP 导出面实编门（AC-02）；[✅ a2r_cabi_export_gate 绿：
+  #[export] cdylib 真编 + dlopen 调用断言（add(2,3)==5 宽度桥 +
+  dup("ab")=="abab" cstr 边界）；worktree commit 5713421b7]
 - [x] **T-05** capstone ⑤：引擎 12 符号 Auto 版（语料 005 + dep
   autoterm-core 只读消费）；[✅ 已完成：005_engine_face_auto 语料快照绿
   +全量 rustc 门过；执行期五修——TermColor 系 ffi.rs 私有别名（公开路径
