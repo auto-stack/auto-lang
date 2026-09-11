@@ -4,6 +4,7 @@
 /// to the safe body below; the exported symbol equals the fn name (no_mangle
 /// ignores the module path).
 mod add_c_export {
+    use super::*;
     #[unsafe(no_mangle)]
     pub extern "C" fn add(a: i32, b: i32) -> i32 {
         super::add(a as i64, b as i64) as i32
@@ -17,6 +18,7 @@ fn add(a: i64, b: i64) -> i64 {
 /// to the safe body below; the exported symbol equals the fn name (no_mangle
 /// ignores the module path).
 mod area_c_export {
+    use super::*;
     #[unsafe(no_mangle)]
     pub extern "system" fn area(cols: i32, rows: i32) -> i32 {
         super::area(cols as i64, rows as i64) as i32

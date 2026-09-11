@@ -934,6 +934,7 @@ unexpected failures:
 // === 27_c_abi (Plan 610 ⑤: #[export] cdylib export face) ===
 #[test] fn test_27_c_abi_001_export_basic() { test_a2r("27_c_abi/001_export_basic").unwrap(); }
 #[test] fn test_27_c_abi_002_export_cstr() { test_a2r("27_c_abi/002_export_cstr").unwrap(); }
+#[test] fn test_27_c_abi_005_engine_face_auto() { test_a2r("27_c_abi/005_engine_face_auto").unwrap(); }
 #[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
 #[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
 #[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }

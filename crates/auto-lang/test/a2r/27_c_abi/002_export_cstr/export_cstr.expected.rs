@@ -4,6 +4,7 @@
 /// to the safe body below; the exported symbol equals the fn name (no_mangle
 /// ignores the module path).
 mod dup_c_export {
+    use super::*;
     #[unsafe(no_mangle)]
     pub extern "C" fn dup(s: *const std::os::raw::c_char) -> *mut std::os::raw::c_char {
         let s_conv: String = if s.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(s) }.to_string_lossy().into_owned() };
@@ -18,6 +19,7 @@ fn dup(s: &str) -> String {
 /// to the safe body below; the exported symbol equals the fn name (no_mangle
 /// ignores the module path).
 mod greet_c_export {
+    use super::*;
     #[unsafe(no_mangle)]
     pub extern "C" fn greet(name: *const std::os::raw::c_char, times: i32) -> *mut std::os::raw::c_char {
         let name_conv: String = if name.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(name) }.to_string_lossy().into_owned() };

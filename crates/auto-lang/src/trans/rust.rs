@@ -387,6 +387,11 @@ pub struct RustTrans {
     // When true: skip mod X; declarations, skip use crate::X::*; / use super::X::*;
     merge_mode: bool,
 
+    // Plan 610 ⑤: the pointer bridge kit (`auto_cabi_kit` module) is emitted
+    // at most once per product, ahead of the first pointer-facing #[export]
+    // wrapper.
+    cabi_kit_emitted: bool,
+
     // Const names seen during Phase 2.5 pre-scan (for merge mode).
     // Used to convert SCREAMING_CASE() calls to bare const references.
     const_names: HashSet<AutoStr>,
@@ -535,6 +540,7 @@ impl RustTrans {
             emit_allow_pragma: false,
             is_crate_root: false,
             merge_mode: false,
+            cabi_kit_emitted: false, // Plan 610 
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -632,6 +638,7 @@ impl RustTrans {
             emit_allow_pragma: false,
             is_crate_root: false,
             merge_mode: false,
+            cabi_kit_emitted: false, // Plan 610 
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -13589,6 +13596,121 @@ impl RustTrans {
         out
     }
 
+    /// Plan 610 ⑤: pointer-param classification for `#[export]` fns.
+    /// `*T` with a NAMED pointee (local/foreign struct) is a HANDLE (opaque
+    /// session): the body receives `&mut T` via a null-safe wrapper deref.
+    /// Builtin-scalar/void pointees are BUFFER pointers — passed through raw,
+    /// element access goes through the generated kit (`cabi_*` helpers).
+    /// `*void` and bare `ptr` (unresolved ident) both mean opaque `*mut c_void`
+    /// buffers here.
+    fn export_ptr_pointee_is_handle(ty: &Type) -> bool {
+        if let Type::Ptr(p) = ty {
+            match &*p.of.borrow() {
+                Type::User(usr) => usr.name.as_str() != "ptr",
+                Type::Rust(_) => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Plan 610 ⑤: the pointer bridge kit — raw-buffer/out-param access from
+    /// `#[export]` bodies is confined to this generated module (004 §3.5:
+    /// unsafe lives in generated code only; Auto bodies stay safe). Emitted
+    /// at most once per product, ahead of the first export wrapper that has
+    /// any pointer in its face.
+    fn emit_cabi_kit(&mut self, sink: &mut Sink) -> AutoResult<()> {
+        if self.cabi_kit_emitted {
+            return Ok(());
+        }
+        self.cabi_kit_emitted = true;
+        writeln!(
+            sink.body,
+r#"/// Plan 610 ⑤: pointer bridge kit — raw-buffer/out-param access from #[export]
+/// bodies is confined here (004 §3.5: unsafe lives in generated code only;
+/// Auto bodies stay safe). All writes are null-tolerant no-ops.
+mod auto_cabi_kit {{
+    /// Null pointer of the statically expected pointee type (spawn-failure paths).
+    pub fn cabi_null<T>() -> *mut T {{
+        std::ptr::null_mut()
+    }}
+
+    /// Default shell name (COMSPEC → fallback "cmd"), mirroring engine ffi.rs.
+    pub fn cabi_default_shell() -> String {{
+        std::env::var("COMSPEC").unwrap_or_else(|_| "cmd".to_owned())
+    }}
+
+    /// Copy UTF-8 bytes of `s` + NUL into `p` (≤cap). Returns total bytes incl.
+    /// NUL (truncation mirrors the engine row_text contract); null p is a
+    /// length-only probe.
+    pub fn cabi_copy_cstr(p: *mut u8, cap: i64, s: &str) -> i64 {{
+        if p.is_null() || cap <= 0 {{
+            return (s.len() + 1) as i64;
+        }}
+        let bytes = s.as_bytes();
+        let n = bytes.len().min(cap as usize - 1);
+        unsafe {{
+            let out = std::slice::from_raw_parts_mut(p, n + 1);
+            out[..n].copy_from_slice(&bytes[..n]);
+            out[n] = 0;
+        }}
+        (bytes.len() + 1) as i64
+    }}
+
+    /// Write one u32 element at `idx` (C `unsigned int`/`int` out-params — the
+    /// engine face models non-negative int outs as u32, bit-compatible).
+    pub fn cabi_write_u32(p: *mut u32, idx: i64, v: u32) {{
+        if p.is_null() {{
+            return;
+        }}
+        unsafe {{ *p.add(idx as usize) = v; }}
+    }}
+
+    /// Write one u8 element at `idx` (byte buffers).
+    pub fn cabi_write_u8(p: *mut u8, idx: i64, v: u8) {{
+        if p.is_null() {{
+            return;
+        }}
+        unsafe {{ *p.add(idx as usize) = v; }}
+    }}
+
+    /// Copy `len` bytes from a raw const buffer into an owned Vec (host→child
+    /// input path); null/empty buffer → empty Vec.
+    pub fn cabi_bytes_vec(p: *const u8, len: i64) -> Vec<u8> {{
+        if p.is_null() || len <= 0 {{
+            return Vec::new();
+        }}
+        unsafe {{ std::slice::from_raw_parts(p, len as usize).to_vec() }}
+    }}
+
+    /// Reclaim a boxed value through its raw handle (free paths); null no-op.
+    pub fn cabi_drop_boxed<T>(p: *mut T) {{
+        if p.is_null() {{
+            return;
+        }}
+        drop(unsafe {{ Box::from_raw(p) }});
+    }}
+
+    /// Bridge for `Option<(usize, usize)>` payloads (cursor): Some → write both
+    /// u32 slots, return 1; None → 0. Auto has no tuple face, so foreign
+    /// option-tuple values cross through this kit helper untouched.
+    pub fn cabi_write_opt_tuple2_u32(cur: Option<(usize, usize)>, p0: *mut u32, p1: *mut u32) -> i64 {{
+        match cur {{
+            Some((a, b)) => {{
+                cabi_write_u32(p0, 0, a as u32);
+                cabi_write_u32(p1, 0, b as u32);
+                1
+            }}
+            None => 0,
+        }}
+    }}
+}}
+pub use auto_cabi_kit::*;"#
+        )?;
+        Ok(())
+    }
+
     /// Plan 610 ⑤: emit the C-ABI export wrapper module for an `#[export]` fn.
     ///
     /// Shape: `mod <name>_c_export { #[unsafe(no_mangle)] pub extern "<abi>"
@@ -13634,12 +13756,20 @@ impl RustTrans {
         // C-ABI param types + boundary conversion. cstr params convert through
         // a `let …_conv: String` local because the safe body's str-family
         // params are `&str` (rust_param_type_name) — a borrow needs an owner
-        // that outlives the call.
+        // that outlives the call. `*T` with a named pointee is a HANDLE: the
+        // wrapper takes the raw `*mut T` and derefs null-safely, passing
+        // `&mut T` to the body (see the body-side emission twin below); at
+        // most one handle param per fn (engine-face shape).
+        let mut handle_param: Option<String> = None;
         let mut abi_params: Vec<String> = Vec::new();
         let mut conv_prelude: Vec<String> = Vec::new();
         let mut call_args: Vec<String> = Vec::new();
+        let mut has_any_ptr = false;
         for param in &fn_decl.params {
             let name = param.name.to_string();
+            if matches!(&param.ty, Type::Ptr(_)) {
+                has_any_ptr = true;
+            }
             match &param.ty {
                 // Width bridge: C `int` (i32) ↔ Auto int (i64 body).
                 Type::Int => {
@@ -13658,9 +13788,32 @@ impl RustTrans {
                     ));
                     call_args.push(format!("&{}_conv", name));
                 }
-                // Raw pointers and ABI-identical scalars pass through.
-                Type::Ptr(_)
-                | Type::I64
+                // Opaque session handle → null-safe &mut deref in the wrapper;
+                // the body's param becomes `&mut <T>`.
+                Type::Ptr(_) if Self::export_ptr_pointee_is_handle(&param.ty) => {
+                    let pointee = match &param.ty {
+                        Type::Ptr(p) => self.rust_type_name(&p.of.borrow()),
+                        _ => unreachable!(),
+                    };
+                    if handle_param.is_some() {
+                        return Err(crate::AutoError::Msg(format!(
+                            "Plan 610 ⑤: #[export] fn {} 至多一个句柄形参（*T 具名指向）",
+                            fn_decl.name
+                        )));
+                    }
+                    abi_params.push(format!("{}: *mut {}", name, pointee));
+                    // Shadowed inside the Some(h) arm below.
+                    call_args.push(name.clone());
+                    handle_param = Some(name);
+                }
+                // Buffer pointers and ABI-identical scalars pass through.
+                Type::Ptr(_) => {
+                    has_any_ptr = true;
+                    let t = self.rust_type_name(&param.ty);
+                    abi_params.push(format!("{}: {}", name, t));
+                    call_args.push(name);
+                }
+                Type::I64
                 | Type::Uint
                 | Type::U64
                 | Type::USize
@@ -13681,22 +13834,54 @@ impl RustTrans {
                 }
             }
         }
+        if matches!(&fn_decl.ret, Type::Ptr(_)) {
+            has_any_ptr = true;
+        }
+        // The kit fronts every pointer-facing export (helpers + null/abort
+        // paths used by bodies); once per product, ahead of this wrapper.
+        if has_any_ptr {
+            self.emit_cabi_kit(sink)?;
+        }
 
-        // Return-position ABI type + wrapping of the body call.
+        // Return-position ABI type + wrapping of the body call. Handle fns
+        // wrap the call in a null-safe match (None → -1 sentinel for int
+        // returns, no-op for void — uniform simplification of the engine's
+        // per-fn -1/-2 null sentinels, documented in the corpus).
+        let handle = handle_param.as_deref();
+        let body_call = |args: &str| format!("super::{}({})", fn_decl.name, args);
         let (abi_ret, wrap_call) = match &fn_decl.ret {
-            Type::Void => (None, format!("super::{}({})", fn_decl.name, call_args.join(", "))),
-            Type::Int => (
-                Some("i32".to_string()),
-                format!("super::{}({}) as i32", fn_decl.name, call_args.join(", ")),
-            ),
+            Type::Void => match handle {
+                Some(h) => (
+                    None,
+                    format!(
+                        "match unsafe {{ {h}.as_mut() }} {{ Some({h}) => {call}, None => () }}",
+                        h = h,
+                        call = body_call(&call_args.join(", "))
+                    ),
+                ),
+                None => (None, body_call(&call_args.join(", "))),
+            },
+            Type::Int => match handle {
+                Some(h) => (
+                    Some("i32".to_string()),
+                    format!(
+                        "match unsafe {{ {h}.as_mut() }} {{ Some({h}) => {call} as i32, None => -1 }}",
+                        h = h,
+                        call = body_call(&call_args.join(", "))
+                    ),
+                ),
+                None => (
+                    Some("i32".to_string()),
+                    format!("{} as i32", body_call(&call_args.join(", "))),
+                ),
+            },
             // Ownership passes to the C caller (free side = C); interior NUL
             // degrades to "" instead of panicking across the boundary.
             Type::CStrLit => (
                 Some("*mut std::os::raw::c_char".to_string()),
                 format!(
-                    "std::ffi::CString::new(super::{}({})).unwrap_or_default().into_raw()",
-                    fn_decl.name,
-                    call_args.join(", ")
+                    "std::ffi::CString::new({}).unwrap_or_default().into_raw()",
+                    body_call(&call_args.join(", "))
                 ),
             ),
             Type::Ptr(_)
@@ -13710,7 +13895,7 @@ impl RustTrans {
             | Type::Float
             | Type::Double => (
                 Some(self.rust_type_name(&fn_decl.ret)),
-                format!("super::{}({})", fn_decl.name, call_args.join(", ")),
+                body_call(&call_args.join(", ")),
             ),
             other => {
                 return Err(crate::AutoError::Msg(format!(
@@ -13730,6 +13915,9 @@ impl RustTrans {
             "mod {}_c_export {{",
             fn_decl.name
         )?;
+        // Bring the outer scope in (handle pointee types like the session
+        // struct live outside this module).
+        writeln!(sink.body, "    use super::*;")?;
         writeln!(sink.body, "    #[unsafe(no_mangle)]")?;
         write!(
             sink.body,
@@ -14085,7 +14273,19 @@ impl RustTrans {
             }
         } else {
             for (i, param) in fn_decl.params.iter().enumerate() {
-                if self.merge_mode && Self::is_merge_mut_type(&param.ty) {
+                // Plan 610 ⑤: export-fn HANDLE params — the sibling wrapper
+                // derefs the raw `*mut T` null-safely; the body receives
+                // `&mut T` so field/method access on the session is native.
+                if fn_decl.export_abi.is_some()
+                    && matches!(&param.ty, Type::Ptr(_))
+                    && Self::export_ptr_pointee_is_handle(&param.ty)
+                {
+                    let pointee = match &param.ty {
+                        Type::Ptr(p) => self.rust_type_name(&p.of.borrow()),
+                        _ => unreachable!(),
+                    };
+                    write!(sink.body, "{}: &mut {}", param.name, pointee)?;
+                } else if self.merge_mode && Self::is_merge_mut_type(&param.ty) {
                     write!(
                         sink.body,
                         "{}: &mut {}",
