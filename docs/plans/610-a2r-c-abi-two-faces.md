@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-610
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-c-abi-two-faces
 author: [ZCode]
 created_at: 2026-09-10
@@ -10,9 +10,13 @@ current_step: 12
 total_steps: 12
 
 # /auto-plan:review 结束时填写：
+# supersedes 为空=无退役组件（VM 侧缓冲出参不可达表述仍准确，610 交付在 a2r 侧）
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - docs/a2r-transpiler-guide.md#implementation-status（⑤⑥+capstone 条目，SD-01）
+  - docs/specs/auto-lang/trans/overview.md（现状 C ABI 双面条目，SD-02）
+  - docs/specs/auto-bindgen/project.md（manifest 模型 link 字段+消费面三后端，SD-03）
+touched_goals: [GOAL-006, GOAL-013]   # 消费者轨（use.c a2r 后端）/C 生态（C ABI 双面）
 
 affects: [auto-lang/trans rust(a2r), auto-lang parser(attrs), auto-bindgen(消费面)]
 ---
@@ -321,6 +325,37 @@ bindgen 6+三道门全绿、SD-01/02/03 落稿、004 §5⑤⑥+DEBTS #10 双回�
 选型后按语料驱动另立）、句柄空哨兵均一 -1（引擎 -1/-2 细分简化，
 驱动面零影响）| blockers: 无（外部前置=auto-term target/debug 引擎
 产物，绿色在案）| next: review（/auto-plan:review）
+
+stage: review | PLAN-610 | rev 1 | outcome: **pass** | reviewed_commit:
+3cc98089dec66ead047e0425c3796e8a5c44a07a（worktree plan-610-dev，树干净）|
+base_commit: 622edfdd9（注：master 此后合入 PLAN-608，文件面除 lib.rs
+两处无语义冲突区域外零重叠，合并安全）| dependency_revisions:
+auto-term master（引擎产物 target/debug 绿色；回执两收据已合）|
+spec_inputs: docs/specs/auto-lang/trans/overview.md、
+docs/specs/auto-bindgen/project.md、docs/a2r-transpiler-guide.md；
+规范增量冻结 sha256 f880b35c9ad1755a（5515B，分支 vs base 的 docs/ diff）
+| acceptance_results: AC-01 pass（27_c_abi 5/5 快照，cargo tt 复跑绿；
+001/002 含 no_mangle/extern C/system 形态与 i32 边界 cast）· AC-02 pass
+（a2r_cabi_export_gate 复跑绿：add(2,3)==5 宽度桥+dup cstr 往返断言）·
+AC-03 pass（a2r_cabi_engine_face_gate 复跑绿 + **dumpbin /exports 对照
+复審新增证据：⑤ 产物与 Rust 版 autoterm_engine_* 导出集 12/12 恒等**）·
+AC-04/05/06 pass（a2r_cabi_use_c_gate 三腿复跑绿；AC-05 驱动产物
+driver_s.rs 字节不变改链 ⑤ 产物）· AC-07 pass（§5 T-10 附录选型文档，
+A 证伪 E0308/A' 正证探针双证）· AC-08 pass（复审期复跑：tt 全量、tv
+3650/3650、tf 3506/3506（二跑）、三道 --ignored 门 3/3、auto-bindgen
+6/6；SD-01/02/03 落稿核验=描述现行为非执行日记；004 §5⑤⑥+DEBTS #10
+auto-term master 回执核验在案）| findings: F-1（非阻塞·预存）：
+ffi_dual_019_dep_layout_invariants 间歇红——**master 全量 tt 同红复现
+（无 610 代码），隔离双绿，分支 tf 二跑全绿**，归 P596-D5 陈旧方法包
+竞争债（已登记，610 diff 与 auto-cache 零交集）；F-2（信息·在案）：
+⑤ 句柄空哨兵均一 -1（引擎 take_dirty_rows 空句柄 -2 细分简化），语料
+注释记录，驱动面零影响，AC 不覆盖空路径；F-3（授权延后）：⑥ FnPtr
+显式报错+trampoline 实作 defer（§10 自裁授权+T-10 选型，待真语料另
+立）；F-4（观察）：007_cstr 快照因 ⑥ builtin 生成面变化更新（该例
+known-broken 编译债不变）；F-5（合并注记）：master 前进（608 合入），
+lib.rs 两处不同区域自动可并 | evidence: 命令与结果已录各 AC 行；符号
+对照=vswhere 定位 dumpbin 14.43.34808 //EXPORTS 双 DLL diff 集合恒等；
+工作收据见上条 work 记录 | next: merge（/auto-plan:merge）
 
 ## 10. 待澄清事项
 
