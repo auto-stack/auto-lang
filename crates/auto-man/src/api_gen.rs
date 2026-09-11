@@ -1384,6 +1384,69 @@ fn generate_api_rs(
     let primary_type = match primary_type_name_pub(api_module) {
         Some(t) => t,
         None => {
+            // PLAN-013 T2: 标量服务型 API(无 primary 类型)但 db 覆盖 →
+            // 委托处理器(db.rs 真实现),不再落 TODO 骨架。
+            if db_active {
+                let fns = db_fns.unwrap();
+                lines.push("// db-covered scalar service endpoints (PLAN-013 T2)".to_string());
+                for endpoint in &api_module.endpoints {
+                    lines.push("".to_string());
+                    if !fns.contains(&endpoint.fn_name) {
+                        lines.push(format!("pub async fn {}() {{", endpoint.fn_name));
+                        lines.push("    // TODO: Implement".to_string());
+                        lines.push("}".to_string());
+                        continue;
+                    }
+                    let body_params: Vec<&ApiParam> = endpoint
+                        .params
+                        .iter()
+                        .filter(|p| !endpoint.path().contains(&format!(":{}", p.name)))
+                        .collect();
+                    let (sig, call_args) = if body_params.is_empty() {
+                        (String::new(), String::new())
+                    } else {
+                        (
+                            "Json(body): Json<serde_json::Value>".to_string(),
+                            body_params
+                                .iter()
+                                .map(|p| {
+                                    let get = if p.ty.contains("int") || p.ty.contains("i64") {
+                                        format!("body[\"{}\"].as_i64().unwrap_or_default()", p.name)
+                                    } else if p.ty.contains("bool") {
+                                        format!("body[\"{}\"].as_bool().unwrap_or_default()", p.name)
+                                    } else {
+                                        format!("body[\"{}\"].as_str().unwrap_or_default()", p.name)
+                                    };
+                                    get
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        )
+                    };
+                    let ret = endpoint.return_type.trim();
+                    let (ret_clause, call_suffix) = if ret == "void" || ret.is_empty() {
+                        (" -> axum::http::StatusCode".to_string(), String::new())
+                    } else if ret.contains("[]") || ret.contains("List") {
+                        (" -> JsonResponse<Vec<String>>".to_string(), String::new())
+                    } else if ret.contains("bool") {
+                        (" -> JsonResponse<bool>".to_string(), String::new())
+                    } else if ret.contains("str") {
+                        (" -> JsonResponse<String>".to_string(), String::new())
+                    } else {
+                        (" -> JsonResponse<i64>".to_string(), String::new())
+                    };
+                    lines.push(format!("pub async fn {}({}){} {{", endpoint.fn_name, sig, ret_clause));
+                    if ret == "void" || ret.is_empty() {
+                        lines.push(format!("    crate::db::{}({});", endpoint.fn_name, call_args));
+                        lines.push("    StatusCode::OK".to_string());
+                    } else {
+                        lines.push(format!("    JsonResponse(crate::db::{}({}))", endpoint.fn_name, call_args));
+                    }
+                    lines.push("}".to_string());
+                }
+                return lines.join("
+");
+            }
             // Fallback: generate skeleton handlers
             lines.push("// No types defined, generating skeleton handlers".to_string());
             for endpoint in &api_module.endpoints {

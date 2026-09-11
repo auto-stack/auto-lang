@@ -473,6 +473,33 @@ pub fn generate_rust_ui(
         );
     }
 
+    // PLAN-013 T2: __InitLoaded 载荷类型修正——ui_gen 硬编码
+    // Vec<serde_json::Value>(JSON API 客户端世界);merged db 吸收时
+    // init fn 返回具体类型(如 Vec<String>),按 api 契约改写 msg 变体。
+    {
+        let api_module = parse_api_module(project_dir);
+        if let Some(module) = &api_module {
+            if let Some(db) = merged_db_impl(project_dir, module) {
+                if let Ok(main_content) = fs::read_to_string(&main_rs) {
+                    if let Some(init_fn) = extract_init_api_func(&main_content) {
+                        if let Some(ep) = module.endpoints.iter().find(|e| e.fn_name == init_fn) {
+                            if let Some(rust_ty) = merged_scalar_rust_ty(&ep.return_type) {
+                                let rewritten = main_content.replace(
+                                    "__InitLoaded(Vec<serde_json::Value>)",
+                                    &format!("__InitLoaded({rust_ty})"),
+                                );
+                                if rewritten != main_content {
+                                    fs::write(&main_rs, &rewritten)
+                                        .map_err(|e| format!("Failed to rewrite {}: {}", main_rs.display(), e))?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Note: no per-member .cargo/config.toml needed — the workspace-level
     // .cargo/config.toml sets target-dir for all members.
 
@@ -707,7 +734,14 @@ fn merged_db_delegate(db: &MergedDbImpl, endpoint: &auto_lang::api::ApiEndpoint)
     let args = endpoint
         .params
         .iter()
-        .map(|p| p.name.clone())
+        .map(|p| {
+            // a2r str 形参是 &str(String 按引用传);标量按值。
+            if merged_scalar_rust_ty(&p.ty) == Some("String") {
+                format!("&{}", p.name)
+            } else {
+                p.name.clone()
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ");
     let ret_clause = if ret_ty == "()" {
