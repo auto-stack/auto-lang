@@ -431,3 +431,26 @@ work。 Spec 增量三节文本与实现行为逐条对照一致（sp-1/transfer
   （delivery 0658a9633）；KNOWN-DEBT KD-VM1~4 销账注记（同 delivery）；
   运行时台账 `.autoos/specs.json` P604-1..6 六节投影发布并读回验证。
 - 归档：`docs/plans/archive/604-vm-rc-lifecycle-fix.md`，status: archived。
+
+### merge 收据（PLAN-604:r1，2026-09-11）
+
+- `prepared`：reviewed 基线 2418d49c0（worktree 干净）；master 前移对账
+  （596/601 文档 + 605/606 立案，纯文档零冲突）合并进分支（325dd9cb5）；
+  plans.md vm/ui 两行回写 + INDEX 再生 → delivery `0658a9633`（docs-only
+  后裔，实现面与 reviewed_commit 零差异）。
+- `landed`：plan-604-dev 折回 master **fast-forward @0658a9633**（11 文件
+  +413 行）；主检出 smoke probe_rc_leak_soak 5/5 绿。
+- `ledger_refreshed`：运行时台账 `.autoos/specs.json` P604-1..6 六节投影
+  发布（原子写+读回验证；gitignore 运行时件不入库，沿 P593 先例）。
+- `archived`：`docs/plans/archive/604-vm-rc-lifecycle-fix.md`，status:
+  archived（§11 spec-sync 回写记录在件）。
+- **并行协调注记**：归档期间 601 会话在主检出落地 Plan 601（70d7319d1
+  将本计划归档 rename 卷入其 commit；cccfa462f 又将该归档件误判删除）——
+  本计划以 a76fd24b8 从 70d7319d1 blob 恢复归档件（内容=reviewed 版超集），
+  交付与规范面零影响；601 分支上的 604 reviewed 态副本系其分支内对账遗留，
+  以本归档件为准。
+- `cleaned`：wt-guard 双仓 clean（auto-lang/auto-down 无 reparse point）；
+  worktree 双移除（lang-604 注册表归零）、plan-604-dev 分支删除
+  （was 0658a9633=完全合并）、组目录 `D:/autostack/.wt/lang-604` 移除。
+  主检出 F-2 残留（engine.rs/musk_vm_track_tests.rs 旧副本+未跟踪探针目录）
+  已于落地前清理（review F-2 路由项闭合）。
