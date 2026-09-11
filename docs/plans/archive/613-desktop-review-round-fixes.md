@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-613
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-review-round-fixes
 author: ["zhaopuming"]
 created_at: 2026-09-11
@@ -99,7 +99,30 @@ total_steps: 0
 
 ## 复审记录
 
-（无）
+### 复审 + 归档（2026-09-11，报障用户本人实机终验）
+
+stage: review | plan_id: PLAN-613 | plan_revision: 1 | outcome: **pass** |
+reviewed_commit: auto-lang master（W1 根修 `c9e445f92` + W2 三连根修 +
+MouseArea 专用臂 + 聚焦重试，工作树=HEAD）|
+spec_inputs: 无规范增量
+
+- **AC-1 ✓ pass（用户实机）**：launcher 打开后 search 自动聚焦 ✓；
+  打字实时过滤 ✓（用户实录"这个版本可以了！现在可以输入了"——历经
+  收集器穿透/派生同式/载荷注入/MouseArea 专用臂四连修后恢复）。
+- **AC-2 ✓ pass（用户实机）**：Ctrl+Tab 循环 ✓（"现在可以循环了"）；
+  方向经 T5 根修（switcher 裸 Tab bind 退役，双路同投消除）恢复向下，
+  日常使用复认。
+- **AC-3 ✓ pass（用户实机）**：通知中心空态"暂无通知"居中 ✓。
+- **AC-4 ✓ pass**：复跑门 iced 档 187/188（唯一红=lucide `film` 存量）+
+  全量档失败集与定型基线全等 + hash-lock 四件全等。
+
+findings: 无阻塞。遗留登记：① W4 切换器缩略图遮挡伪影（KNOWN-DEBT，
+框架级离屏栅格化前提）；② CJK/IME 输入支持专项（中文模式按键进组合、
+框架 Ime 处理待验证）；③ Ctrl+Space 召唤热键与系统 IME 切换键冲突
+（HotkeyTable storage 可配置规避，默认键是否更换待产品裁决）。
+evidence: /tmp/desk-debug*.log 调试日志系列 + 用户终验对话实录 +
+本计划 T1-T7 收据。
+next: 归档（archive/）。
 
 ## 待澄清事项
 
