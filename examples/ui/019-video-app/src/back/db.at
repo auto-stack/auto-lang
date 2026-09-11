@@ -21,6 +21,7 @@ var videos List<Video> = List<Video>.new([
         desc: "A fast-paced introduction to Rust systems programming and AutoLang fullstack UI application development.",
         followed: true,
         cover_color: "from-indigo-700 to-purple-800",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     },
     Video {
         id: 2,
@@ -35,6 +36,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Step-by-step custom water cooling loop build in a transparent dual-chamber chassis.",
         followed: false,
         cover_color: "from-emerald-700 to-teal-900",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
     },
     Video {
         id: 3,
@@ -49,6 +51,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Exploring Shinjuku and Shibuya alleyways for the best yakitori, ramen, and matcha desserts.",
         followed: true,
         cover_color: "from-rose-600 to-orange-600",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     },
     Video {
         id: 4,
@@ -63,6 +66,7 @@ var videos List<Video> = List<Video>.new([
         desc: "High altitude cinematic 4K drone timelapse over the Swiss Alps at golden hour.",
         followed: false,
         cover_color: "from-amber-600 to-rose-700",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     },
     Video {
         id: 5,
@@ -77,6 +81,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Beethoven Moonlight Sonata 3rd Movement performed on a Steinway D grand piano.",
         followed: true,
         cover_color: "from-sky-700 to-indigo-900",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     },
     Video {
         id: 6,
@@ -91,6 +96,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Raw POV action down Utah cliffs in the annual RedBull Rampage championship.",
         followed: false,
         cover_color: "from-violet-700 to-pink-800",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
     },
     Video {
         id: 7,
@@ -105,6 +111,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Architecture patterns for high-throughput microservices using asynchronous Rust.",
         followed: true,
         cover_color: "from-blue-600 to-cyan-600",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
     },
     Video {
         id: 8,
@@ -119,6 +126,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Relaxing chillhop and lo-fi hip hop rhythms to focus, study, or write clean code.",
         followed: true,
         cover_color: "from-fuchsia-600 to-pink-600",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
     },
     Video {
         id: 9,
@@ -133,6 +141,7 @@ var videos List<Video> = List<Video>.new([
         desc: "72-hour cold fermented sourdough pizza baked in a 900F outdoor wood-fired oven.",
         followed: true,
         cover_color: "from-yellow-600 to-amber-700",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
     },
     Video {
         id: 10,
@@ -147,6 +156,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Full path tracing gameplay benchmark at 4K 120FPS with DLSS 4 frame generation.",
         followed: false,
         cover_color: "from-teal-600 to-emerald-700",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     },
     Video {
         id: 11,
@@ -161,6 +171,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Chasing green and violet solar auroras across glaciers and black sand beaches.",
         followed: false,
         cover_color: "from-purple-600 to-indigo-700",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
     },
     Video {
         id: 12,
@@ -175,6 +186,7 @@ var videos List<Video> = List<Video>.new([
         desc: "Deep dive into AST transformations, bytecode generation, and VM JIT runtimes.",
         followed: true,
         cover_color: "from-red-600 to-rose-700",
+        video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4",
     },
 ])
 
@@ -240,6 +252,7 @@ pub fn add_view(id int) int {
                 desc: v.desc,
                 followed: v.followed,
                 cover_color: v.cover_color,
+                video_url: v.video_url,
             }
             new_views = updated.views
             new_videos.push(updated)
@@ -270,6 +283,7 @@ pub fn toggle_like(id int) int {
                 desc: v.desc,
                 followed: v.followed,
                 cover_color: v.cover_color,
+                video_url: v.video_url,
             }
             new_likes = updated.likes
             new_videos.push(updated)
