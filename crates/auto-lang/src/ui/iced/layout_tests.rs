@@ -1529,3 +1529,106 @@ fn plan045_table_resize_body_row_press_is_inert() {
     let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
     assert!(msgs.is_empty(), "体行按压不应触发拖拽: {msgs:?}");
 }
+
+// PLAN-010 N6d 探针：launcher 外点关闭的 mouse-area 包装是否断 Fill 宽度链
+// （实机截图：卡片贴左、scrim 只盖部分宽度）。三结构在 1280×800 下对拍
+// 卡片文本几何：(a) 裸 scrim col（N6d 前）；(b) 外层 MouseArea 包 scrim
+//（N6d 后）；(c) 外层+内层守卫双 MouseArea（N6d 完整形）。
+fn n6d_card_view(mouse_wrap_scrim: bool, guard_wrap_card: bool) -> View<()> {
+    let card = || View::Column {
+        children: vec![styled_view("N6D_CARD")],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full max-w-xl bg-card").ok(),
+        onclick: None, on_right_click: None,
+    };
+    let guard = |child: View<()>| {
+        if guard_wrap_card {
+            View::MouseArea {
+                content: Box::new(child),
+                on_enter: None, on_exit: None, on_double_click: None,
+                on_click: Some(()), on_context_menu: None, on_release: None,
+                on_move: None, logical_extent: None,
+                // N6d 修复形态：守卫容器与卡片同 footprint（宽度归守卫）。
+                style: Style::parse("w-full max-w-xl").ok(),
+            }
+        } else {
+            child
+        }
+    };
+    let scrim = View::Column {
+        children: vec![
+            View::Column {
+                children: vec![styled_view("w-full h-24")],
+                spacing: 0, padding: 0,
+                style: Style::parse("h-24 w-full").ok(),
+                onclick: None, on_right_click: None,
+            },
+            guard(card()),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full h-full flex flex-col items-center").ok(),
+        onclick: None, on_right_click: None,
+    };
+    if mouse_wrap_scrim {
+        View::MouseArea {
+            content: Box::new(scrim),
+            on_enter: None, on_exit: None, on_double_click: None,
+            on_click: Some(()), on_context_menu: None, on_release: None,
+            on_move: None, logical_extent: None, style: None,
+        }
+    } else {
+        scrim
+    }
+}
+
+fn n6d_card_bounds(
+    mouse_wrap_scrim: bool,
+    guard_wrap_card: bool,
+    renderer: &mut iced_test::renderer::Renderer,
+) -> (f32, f32, f32, f32) {
+    use iced_test::runtime::user_interface::Cache;
+    let mut ui = iced_test::runtime::UserInterface::build(
+        n6d_card_view(mouse_wrap_scrim, guard_wrap_card).into_iced(),
+        iced::Size::new(1280.0, 800.0),
+        Cache::default(),
+        renderer,
+    );
+    let _ = ui.update(
+        &[],
+        iced::mouse::Cursor::Unavailable,
+        renderer,
+        &mut iced_test::core::clipboard::Null,
+        &mut Vec::new(),
+    );
+    use iced_test::core::widget::Operation as _;
+    let mut op = iced_test::selector::Selector::find("N6D_CARD");
+    ui.operate(renderer, &mut iced_test::core::widget::operation::black_box(&mut op));
+    match iced_test::core::widget::operation::Operation::finish(&op) {
+        iced_test::core::widget::operation::Outcome::Some(Some(t)) => {
+            let b = t.bounds();
+            (b.x, b.width, b.y, b.height)
+        }
+        _ => panic!("N6D_CARD not found"),
+    }
+}
+
+#[test]
+fn n6d_launcher_mouse_area_wrap_layout_probe() {
+    use iced_test::core::renderer::Headless as _;
+    use iced_test::core::{Font, Pixels};
+    use iced_test::futures::futures::executor::block_on;
+    let mut renderer = block_on(iced_test::renderer::Renderer::new(
+        Font::with_name("Fira Sans"),
+        Pixels(16.0),
+        None,
+    ))
+    .expect("headless renderer");
+    let (x0, _w0, _, _) = n6d_card_bounds(false, false, &mut renderer);
+    assert_eq!(x0, 352.0, "(a) 裸 scrim：卡片居中 x=352（1280-576)/2");
+    let (x1, w1, _, _) = n6d_card_bounds(true, false, &mut renderer);
+    eprintln!("[n6d] (b) 外层 MouseArea: x={x1} w={w1}");
+    let (x2, w2, _, _) = n6d_card_bounds(true, true, &mut renderer);
+    eprintln!("[n6d] (c) 外层+守卫: x={x2} w={w2}");
+}
