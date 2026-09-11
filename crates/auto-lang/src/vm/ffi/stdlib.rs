@@ -1570,6 +1570,38 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
+/// Plan 394 Phase A fixture: `test.delay_async(ms) -> Future` (External).
+/// Resolves to Int(ms) after `ms` milliseconds. Pushes future_bits.
+pub fn shim_test_delay_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let ms = task.ram.pop_i32();
+    let ms = if ms < 0 { 0 } else { ms as u64 };
+    let fid = vm.register_external_future(task.id);
+    if let Some(future_arc) = vm.futures.get(&fid) {
+        let future_arc = future_arc.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+            let mut future = future_arc.write().unwrap();
+            future.result = Some(auto_val::Value::Int(ms as i32));
+            future.state = crate::vm::engine::FutureState::Ready;
+        });
+    }
+    task.ram.push_i32(AutoVM::encode_future_bits(fid));
+    Ok(())
+}
+
+/// Plan 394 Phase A fixture: `test.fail_async(msg) -> Future` (External Failed).
+pub fn shim_test_fail_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _msg: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let fid = vm.register_external_future(task.id);
+    if let Some(future_arc) = vm.futures.get(&fid) {
+        let mut future = future_arc.write().unwrap();
+        future.state = crate::vm::engine::FutureState::Failed;
+    }
+    task.ram.push_i32(AutoVM::encode_future_bits(fid));
+    Ok(())
+}
+
 /// Spawn an external process and wait for it to complete
 #[auto_macros::rust_fn("Process.spawn")]
 pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
@@ -8032,6 +8064,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("io.read_text_async", shim_io_read_text_async);
     natives.register_shim_by_name("auto.io.write_text_async", shim_io_write_text_async);
     natives.register_shim_by_name("io.write_text_async", shim_io_write_text_async);
+    // Plan 394 Phase A: external-future fixtures (bare names for codegen)
+    natives.register_shim_by_name("delay_async", shim_test_delay_async);
+    natives.register_shim_by_name("fail_async", shim_test_fail_async);
 
     // Plan 442 C2: musk backend extern response-constructor shims. The bare
     // names resolve via NATIVE_ID_MAP (native_catalog) → fixed ids here; the

@@ -1536,6 +1536,9 @@ macro_rules! for_each_bigvm_native {
             ("io.read_text_async", 2849, Void),
             ("auto.io.write_text_async", 2850, Void),
             ("io.write_text_async", 2850, Void),
+            // Plan 394 Phase A: external-future test fixtures (bare names)
+            ("delay_async", 2990, Void),
+            ("fail_async", 2991, Void),
             // === Rust stdlib dispatch (3000) ===
             ("auto.rust_stdlib.dispatch", 3000, Void),
 
@@ -2370,6 +2373,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("io.read_text_async", 2849),
     ("auto.io.write_text_async", 2850),
     ("io.write_text_async", 2850),
+    ("delay_async", 2990),
+    ("fail_async", 2991),
     ("auto.rust_stdlib.dispatch", 3000),
     ("sleep", 1202),
     ("parse_sse", 2250),

@@ -98,6 +98,24 @@ pub struct AutoTask {
     // Plan 364 Step 5: Config-mode accumulation container stack. Empty in
     // Script/Transpile modes; only PUSH_ACCUM pushes onto it.
     pub accum_stack: Vec<AccumContainer>,
+    /// Plan 394: external future this task is awaiting (top-level `.await`).
+    /// When set, run_task_loop wake source 6 polls the future registry;
+    /// on Ready/Failed the result is pushed and the field cleared.
+    pub waiting_future_id: Option<u32>,
+    /// Plan 394 Phase B: suspended `~{}` body continuations (resume_ip/bp).
+    /// Empty for Phase A top-level external await.
+    pub async_frames: Vec<AsyncFrame>,
+}
+
+/// Plan 394: continuation snapshot for a suspended async body.
+#[derive(Debug, Clone, Copy)]
+pub struct AsyncFrame {
+    /// IP of the instruction after the pending AWAIT_FUTURE.
+    pub resume_ip: usize,
+    /// Base pointer when the body was suspended.
+    pub resume_bp: usize,
+    /// External future that caused the suspend.
+    pub future_id: u32,
 }
 
 /// Plan 010 (MS3-A): An entry on the task's try/catch handler stack.
@@ -196,6 +214,8 @@ impl AutoTask {
             handler_stack: Vec::new(),
             pending_native_arg_count: 0, // Plan 369 Task 10: runtime arg count for py-FFI shims
             accum_stack: Vec::new(),
+            waiting_future_id: None,
+            async_frames: Vec::new(),
         }
     }
 }

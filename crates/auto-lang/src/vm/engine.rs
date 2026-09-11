@@ -424,6 +424,9 @@ pub struct FutureValue {
     /// variable name) and expose them to the body via LOAD_CAPTURED by
     /// installing a synthetic Closure entry before the body runs.
     pub captures: HashMap<String, auto_val::Value>,
+    /// Plan 394: Internal = `~{}` bytecode body (sync inline). External =
+    /// native-spawned async source resolved via register/resolve API.
+    pub kind: FutureKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -431,6 +434,15 @@ pub enum FutureState {
     Pending,
     Ready,
     Failed,
+}
+
+/// Plan 394: distinguishes `~{}` body futures from native external sources.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FutureKind {
+    /// Body offset points at bytecode; `execute_future_body` runs it inline.
+    Internal,
+    /// Worker thread writes `result`/`state`; AWAIT_FUTURE suspends the task.
+    External,
 }
 
 /// Convert a single-slot nanboxed value to f64 for mixed-type arithmetic.
@@ -526,6 +538,44 @@ fn nv_truthy(nv: auto_val::NanoValue) -> bool {
 }
 
 impl AutoVM {
+    /// Plan 394 Phase A: allocate an External future for a native async source.
+    pub fn register_external_future(&self, owner_task: TaskId) -> u32 {
+        let future_id = self.future_id_gen.fetch_add(1, Ordering::SeqCst);
+        let future = FutureValue {
+            body_offset: 0,
+            state: FutureState::Pending,
+            result: None,
+            owner_task_id: owner_task,
+            captures: HashMap::new(),
+            kind: FutureKind::External,
+        };
+        self.futures
+            .insert(future_id, Arc::new(RwLock::new(future)));
+        future_id
+    }
+
+    /// Plan 394 Phase A: resolve an External future from a worker thread.
+    /// Ok(v) → Ready with result; Err(_) → Failed (await yields null).
+    pub fn resolve_external_future(&self, future_id: u32, result: Result<auto_val::Value, String>) {
+        if let Some(future_arc) = self.futures.get(&future_id) {
+            let mut future = future_arc.write().unwrap();
+            match result {
+                Ok(v) => {
+                    future.result = Some(v);
+                    future.state = FutureState::Ready;
+                }
+                Err(_) => {
+                    future.state = FutureState::Failed;
+                }
+            }
+        }
+    }
+
+    /// Plan 394: encode future id onto the VM stack (`(id << 8) | 0xF0`).
+    pub fn encode_future_bits(future_id: u32) -> i32 {
+        ((future_id as i32) << 8) | 0xF0
+    }
+
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::new();
         native_interface.register_std_shims();
@@ -2427,6 +2477,45 @@ impl AutoVM {
                     } else {
                         alive_count += 1;
                         continue; // Still waiting for SSE data
+                    }
+                }
+
+                // Plan 394 Phase A: Wake source 6 — external future ready.
+                // On Ready/Failed, push the await result and clear the slot so
+                // the task resumes at the instruction after AWAIT_FUTURE.
+                if let Some(fid) = task.waiting_future_id {
+                    let ready = self
+                        .futures
+                        .get(&fid)
+                        .map(|f| {
+                            let fv = f.read().unwrap();
+                            fv.state != FutureState::Pending
+                        })
+                        .unwrap_or(true); // future gone → wake (nil fallback)
+                    if ready {
+                        if let Some(future_arc) = self.futures.get(&fid) {
+                            let future = future_arc.read().unwrap();
+                            match future.state {
+                                FutureState::Ready => {
+                                    if let Some(ref r) = future.result {
+                                        Self::push_value(&mut task, r, self);
+                                    } else {
+                                        task.ram.push_nv(auto_val::encode_null());
+                                    }
+                                }
+                                _ => {
+                                    // Failed / missing result → null (Phase A)
+                                    task.ram.push_nv(auto_val::encode_null());
+                                }
+                            }
+                        } else {
+                            task.ram.push_nv(auto_val::encode_null());
+                        }
+                        task.waiting_future_id = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting on external future
                     }
                 }
 
@@ -9572,6 +9661,7 @@ self.rc_release(a_nv);
                         result: None,
                         owner_task_id: task.id,
                         captures,
+                        kind: FutureKind::Internal,
                     };
 
                     // Store in VM's future registry
@@ -9621,6 +9711,19 @@ self.rc_release(a_nv);
                                     task.ram.push_nv(auto_val::encode_null());
                                 }
                                 FutureState::Pending => {
+                                    // Plan 394: External futures suspend the task (wake source 6)
+                                    // instead of inlining a body. future_bits already popped; the
+                                    // wake path pushes the result. Do NOT pop again on resume.
+                                    if future.kind == FutureKind::External {
+                                        vm_debug!(
+                                            "DEBUG: AWAIT_FUTURE: id={} external pending, suspend",
+                                            future_id
+                                        );
+                                        drop(future);
+                                        task.waiting_future_id = Some(future_id);
+                                        task.status = TaskStatus::Waiting("future".into());
+                                        return Ok(StepResult::Yield);
+                                    }
                                     // Plan 224: Return AwaitFuture signal for frame-level handling
                                     vm_debug!("DEBUG: AWAIT_FUTURE: id={} is pending, returning AwaitFuture signal", future_id);
                                     let body_offset = future.body_offset;
