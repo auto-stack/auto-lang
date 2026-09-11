@@ -22046,11 +22046,35 @@ mod tests {
         let (p1, t1) = counts(&ds);
         assert_eq!(p1, 1, "dock hover 打开单个 popover");
         assert_eq!(t1, 2, "缩略叶集不变（open 不增建；T18 后基线 2）");
+        // PLAN-010 N6c：hover 离开只清预览态（HoverLeave，原 HoverEnd 退役）。
         {
             let app = ds.apps.get_mut(&shell).unwrap();
-            app.component.bridge_mut().call_handler("HoverEnd", &[]).expect("HoverEnd");
+            app.component.bridge_mut().call_handler("HoverLeave", &[]).expect("HoverLeave");
         }
-        assert_eq!(counts(&ds).0, 0, "HoverEnd 收起");
+        assert_eq!(counts(&ds).0, 0, "HoverLeave 收起 hover 预览");
+
+        // N6c 回归：右键开菜单（win_menu=b）→ 菜单开启期 hover 预览被
+        // win_menu 门抑制；hover 离开不再兼清菜单（原 HoverEnd 兼清使
+        // 菜单被秒关、菜单项不可达——用户实测）；WinMenuClose 单独收菜单
+        // （desktop.at icon 菜单 MenuClose 同构）。
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("WinMenu", &[auto_val::Value::str(b.0.to_string())])
+                .expect("WinMenu");
+        }
+        assert_eq!(counts(&ds).0, 1, "win_menu 开菜单（无 hover）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("HoverLeave", &[]).expect("leave during menu");
+        }
+        assert_eq!(counts(&ds).0, 1, "菜单开启期 hover 离开不收菜单（N6c）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("WinMenuClose", &[]).expect("WinMenuClose");
+        }
+        assert_eq!(counts(&ds).0, 0, "WinMenuClose 收菜单");
 
         // PLAN-526 T18：直列分区条（HoverWs/HoverWsEnd pager popover）
         // 退役——hover 面只剩 dock 条目臂，base 不回归即可。
