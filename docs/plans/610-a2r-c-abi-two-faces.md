@@ -217,7 +217,7 @@ auto-term 构建产物（只读）。
   /002_export_cstr 快照绿（逐例 2/2 + a2r_tests 模块 369/369 +
   a2r_rustc_real_compile_gate 绿）；执行期两修：cstr 形参系 &str（借
   用需 `_conv` 局部持有者）、param+param 字符串拼接系 a2r 既有空白
-  （语料改 f-string）；worktree commit 73a2b7e]
+  （语料改 f-string）；worktree commit 27c63c6a1]
 - [ ] **T-03** cdylib/exe 构建 harness（实编门内 cargo 模板）；
 - [ ] **T-04** MVP 导出面实编门（AC-02）；
 - [ ] **T-05** capstone ⑤：引擎 12 符号 Auto 版（语料 005 + dep
