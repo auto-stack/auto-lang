@@ -8061,6 +8061,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "image" | "Image" => "img".to_string(),
             "img" | "Img" => "img".to_string(),
             "icon" | "Icon" => "span".to_string(),
+            "video" | "Video" => "video".to_string(),
+            "audio" | "Audio" => "audio".to_string(),
 
             // Utility
             "divider" | "Divider" => "hr".to_string(),
@@ -18304,6 +18306,10 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         assert_eq!(gen.map_tag("li", false), "li");
         assert_eq!(gen.map_tag("option", false), "option");
         assert_eq!(gen.map_tag("blockquote", false), "blockquote");
+        assert_eq!(gen.map_tag("video", false), "video");
+        assert_eq!(gen.map_tag("Video", false), "video");
+        assert_eq!(gen.map_tag("audio", false), "audio");
+        assert_eq!(gen.map_tag("Audio", false), "audio");
     }
 
     #[test]
