@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-614
-status: execution_done         # drafting → executing → execution_done → reviewed → archived(2026-09-11 work 交付,next=review)
+status: executing              # execution_done →(review R1 blocked)→ executing;P614-C1 决策后恢复
 feature_name: TreeView + FileTree 组件(official 包数据轨)与 WidgetGallery 落地
 author: [zcode]
 created_at: 2026-09-11
@@ -15,7 +15,7 @@ touched_goals:
   - "GOAL-007: AutoUI 跨端视觉一致(Vue/VM 双端 parity 锁定)——tree 组件族双端同源:同一 .at 组件源经 use-fn 转译(vue)/import_aliases(VM)双轨渲染,受控契约规避 VM P320 单态串扰"
 
 affects: [docs/specs/auto-lang/ui, auto-os/widgets-gallery]
-current_step: 8
+current_step: 7
 total_steps: 9
 ---
 
@@ -319,7 +319,7 @@ VM 大改触发面:本计划**不改 VM/编译器**(`cargo tv` 不触发);aavm �
 - **T-05 gallery 布线收口** [x] [✅ 已完成] app.at 路由两行+Display 侧边栏两项目(list-todo/folder 图标)+index.at 两张 component-card+计数 61→63+Display count 8→10;vue 实机侧边栏/首页卡可达。
 - **T-06 规范沉淀** [x] [✅ 已完成] tree-components.md v1(契约+VM 轨五条纪律+P614-C1 缺陷节+双端验证基线)+overview.md tree 组件族段+plans.md 614 行+INDEX 重生(26 projects);specs.json upsert 留 merge 技能(活账本在主检出)。
 - **T-07 golden 重基线 + 门禁** [x] [✅ 已完成] golden 重基线 88 文件(含 auto-os main 既有漂移——master 基线对本已红,PLAN-008 等画廊演进未重基线;新增 tree 三组件两页);裸跑双绿;收集器补跳过纯 util 模块(无 `widget ` 声明,package.at 同意图内容化);`cargo t --no-fail-fast` 失败集=master 预存红(21 共同,含 lucide manifest/plan055)±跨仓环境敏感 ffi/osconfig 摆动,零 tree/gallery 相关;p614 VM 探针测试绿(while+索引 has_id/flatten/computed 三路)。
-- **T-08 双端全量验证** [x] [✅ 已完成,含 P614-C1 阻塞记录] vue:全交互(选中/chevron 往返/Expand all 11 dirs/钳制缩进/badge,截图 p614_vue_treeview_expandall.png);VM:树行渲染+深链钳制+folder/file 图标+Expand/Collapse all(11↔0 dirs echo)+FileTree 默认展开(截图 p614_vm_treeview_expandall.png/p614_vm_filetree_select.png);**行点击 MCP press 崩溃=P614-C1**(VM 进程静默死亡,复现:treeview/filetree 页 press 树行 vnode;组件侧绕开穷尽,引擎缺陷挂账,真实鼠标点击影响面未测)。
+- **T-08 双端全量验证** [ ] [⚠ R1 重开——AC-03 行点击场景被 P614-C1 阻塞] vue 全交互 ✓(复审独立复验通过);VM 视觉/按钮级 ✓(复审复验:树行/图标/展开态渲染完整);未决:MCP press 子组件行崩溃(3/3)+OS 级合成点击注入不可达(DPI/坐标限制)→ 真实鼠标行为需人工点击判定。VM 视觉证据:p614_vm_treeview_expandall.png/p614_vm_filetree_select.png/p614_review_vm_before_click.png。
 - **T-09 独立复审(/auto-plan:review)**:AC-01..07 逐条对码核验;遗漏/绕开扫描入
   KNOWN-DEBT-AND-RISKS.md;健康检查(无警告/无 debug 残留)。
 
@@ -335,6 +335,13 @@ VM 大改触发面:本计划**不改 VM/编译器**(`cargo tv` 不触发);aavm �
   evidence: gallery_pages 编译冒烟绿(17s)/p614 VM 探针绿/golden 重基线双绿(含 auto-os 既有漂移,复核理由在 T-07)/cargo t 失败集=master 预存红±跨仓环境摆动零相关/vue 全交互+VM 视觉按钮级截图三张 |
   blockers: P614-C1=VM 轨 MCP press 子组件行(带循环变量 payload 的 onclick)进程静默崩溃(无 panic,复现步骤入契约缺陷节)——阻塞 VM 端行点击场景验收,组件侧已穷尽(FileTree 自带 handler 亦崩→非纯 emit 臂特有),需引擎侧 debugger 立项;真实鼠标点击影响面未测 |
   next: review(/auto-plan:review 独立复审;merge 时补 specs.json upsert)
+- 2026-09-11 补充(review 期间):cf3a901 滚动修复发生在 T-07 golden 基线之后→app.at 哈希漂移二次重基线(diff 仅 app.at +14B,裸跑绿;worktree 929680ac5);工作阶段 vue 端截图补档 p614_vue_treeview_expandall.png。
+
+- 2026-09-11 stage:review | plan_id: PLAN-614 | plan_revision: 1 | outcome: blocked | reviewed_commit: auto-lang 929680ac5 + auto-os cf3a901 | base_commit: auto-lang a3d53cbfc / auto-os 99b094c | dependency_revisions: auto-down detached 634f608(仅构建解析) | spec_inputs: docs/specs/auto-lang/ui/design/tree-components.md @929680ac5(评审通过,描述与现状一致;P614-C1 缺陷节+五条 VM 纪律为持久决策) |
+  acceptance_results: AC-01 pass(组件/util/schema 与设计一致,gallery_pages 在 tf 内绿)/AC-02 pass(独立浏览器复验:toggle 往返 echo 2↔1 dirs、选中回显 selected: src、滚动 scrollTop 300+15px 滚动条、FileTree 行/badge/图标 token 统计与展开态吻合(pages 收起))/AC-03 **partial**(渲染/深链/图标/按钮级 fresh 复现;行点击=MCP press 崩溃 3/3 无法按计划验证方法执行;OS 级合成点击注入不可达=DPI 虚拟化+z-order 工具限制非结论)/AC-04 pass(混合叶枝+显式 icon 优先+深链,vue level-9/bottom 与 VM 本轮截图)/AC-05 pass(首页双卡/63 徽章/Display(10)/侧边栏项)/AC-06 pass(cf3a901 后二次重基线 diff 仅 app.at +14B,裸跑绿)/AC-07 pass(规范四件+INDEX 重生+spec-index 干净) |
+  findings: R-614-1(blocker,engine)=P614-C1 MCP press 子组件行崩溃 3/3 可复现,AC-03 行点击不可验证,真实鼠标影响面未定——需决策:人工点击判定/引擎立项/修订 AC-03;R-614-2(debt,engine)=for-in 参数列表零次迭代(while+索引纪律已入契约);R-614-3(debt,auto-man)=增量路径多-widget .at 同码写盘(ToggleItem.vue=ToggleGroup 内容实证,本计划以独立文件绕开);R-614-4(debt,vue.rs P601-T11 同族)=icon 动态名 Circle 占位+TreeIcon class 带 -icon 后缀 token(无害记录);R-614-5(observation)=master 的 golden 基线对 auto-os main 本已红(PLAN-008 等既有漂移),本次两次重基线已含复核说明;R-614-6(cosmetic)=组件通道对纯 util .at 打 No-widget Warning(预期可静默) |
+  evidence: cargo tf 3516/3516 绿(review 档,含 gallery_pages);golden 二次重基线+裸跑绿(929680ac5);vue 独立复验数据(toggle/选中/滚动/图标 token/FileTree 行集);VM 复验截图 p614_review_vm_before_click.png(树完整渲染:folder-open/file-text/book-open/chevron 双态/badge v2·12/echo 2 dirs)+p614_review_vm_hover_check.png(OS 级点击未命中记录);R-614-1 复现=treeview/filetree 页 press 树行 vnode id |
+  next: blocked——待决策(1)用户物理点击 VM 窗口 src 行人工判定真实鼠标路径(窗口已开,选中应见高亮+echo);(2)P614-C1 引擎立项;(3)修订 AC-03 口径。决策后恢复相应阶段 |
 
 ## 待澄清事项
 
