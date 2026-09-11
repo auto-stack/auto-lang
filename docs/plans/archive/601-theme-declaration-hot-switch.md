@@ -255,6 +255,8 @@ canonical_spec_paths: docs/specs/auto-lang/ui/overview.md（601 条目/design_to
 consolidation note: 601 会话合并期间与并行 604 会话在主检出交叠——604 归档件曾被 cccfa462f 误删,由 604 会话 a76fd24b8 自愈;601 计划文件亦曾被 604 合并回退,本次以 2d05e84d9 内容恢复后归档（status 补正链:execution_done→reviewed→archived 全记录在案）|
 next: cleaned 后终态`）
 
+（cleaned 2026-09-10：`checkpoint: cleaned | wt-guard: clean（探针 pnpm node_modules junction 族经守护拦截→cmd rmdir 逐链接+整树不穿透清除后过闸）| worktree: D:/autostack/.wt/lang-601/auto-lang 已移除（树净,gen 缓存件同步清除）| branch: plan-601-dev 已删（was d2cb26e1a,完全包含于 master）| group dir: .wt/lang-601/ 保留（兄弟 auto-down worktree 存续）| 终态: delivered`）
+
 （re-review 2026-09-10·R1 面：`stage: review | PLAN-601 r1 | outcome: pass → reviewed |
 reviewed_commit: fde34a1b8@plan-601-dev（基于 23a5a7d50 + R1 修复,树净）|
 R1 闭合验证:①代码审查——open_desktop 激活臂落桌面 boot 真实入口（renderer.rs:11281 生产调用方）,字段路径 desktop.config 正确,未知名容错;②`desktop_boot_activates_persisted_theme_name` 单测绿（走真实 desktop_config::load + open_desktop 生产路径,负例先行,复现并钉死原缺口场景）;③日常档全量重放 4727 测（+1 新测）,21 红集合与复审基线逐项全等,零新增 |
