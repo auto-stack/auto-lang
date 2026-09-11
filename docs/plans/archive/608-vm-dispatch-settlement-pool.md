@@ -448,10 +448,16 @@ ANCESTRY-OK 实证；master 并行推进 609/610 全为文档提交，KNOWN-DEBT
 ledger: docs/specs/auto-lang/vm/plans.md 608 行（commit c783f443e）+
 INDEX 重生幂等无变化 + .autoos/specs.json P608-1..6 六 section 原子
 发布回读验证 | archive: docs/plans/archive/608-vm-dispatch-settlement-pool.md
-（git mv + status: archived）| completion_kind: delivered | cleaned: 见
-后续 cleaned 行 | 注：主检出存在并行会话脏文件（iced/renderer.rs、
+（git mv + status: archived）| completion_kind: delivered | 注：主检出存在并行会话脏文件（iced/renderer.rs、
 iced/snapshot.rs、website/v05 等 + 未跟踪 607）——非本 merge 范围，
 未纳入未丢弃，原样保留。
+
+**cleaned（2026-09-11）**：wt-guard 双 clean（auto-lang + auto-down 均
+无 reparse point）→ auto-down 依赖工作树移除（detached 未改，无分支）→
+auto-lang 工作树移除 + plan-608-dev 分支删除（was 23b16d870，已全量
+landed）→ 组目录 D:/autostack/.wt/lang-608 移除；worktree list 零 608
+残留。五检查点（prepared/landed/ledger_refreshed/archived/cleaned）
+全部闭合，merge 终态。
 
 ## 10. 待澄清事项
 
