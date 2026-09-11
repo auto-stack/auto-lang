@@ -4899,6 +4899,67 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         }
     }
 
+    // Phase 1c: dep front dirs (Plan 475 通道的增量腿，PLAN-609 T-B3)——
+    // deps/*/（含 584/590 迁址后的 auto-os 镜像回退，见
+    // collect_dep_front_dirs）的组件源编译进 src/components/{WidgetName}.vue。
+    // 与 Phase 1b 同疾：`auto run` 增量路径此前没有 dep 阶段，冷检出先经
+    // incremental 写走 scaffolding-only 分支，use 引用的包组件 SFC 永不
+    // 落盘，vite "Failed to resolve import"（601 复审 006/015 实勘）。
+    // widget 名并入 sub_widget_names，与 from_workspace 的 Phase-1 扫描
+    // （scan_dirs 含 dep fronts）同口径，双路径 App.vue 发射一致。
+    for (dep_name, dep_front) in VueProject::collect_dep_front_dirs(root_dir) {
+        let mut dep_at_files: Vec<PathBuf> = Vec::new();
+        VueProject::collect_at_files_recursive(&dep_front, &mut dep_at_files);
+        dep_at_files.sort();
+        for path in dep_at_files {
+            let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if file_name == "pac.at" || file_name == "package.at" {
+                continue; // 包配置/清单，非组件源（与 from_workspace/1b 同律）
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let hash = hash_string(&content);
+            let source_changed = cache.is_dirty(&path, hash);
+            match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                Ok((vue_code, widgets, stores)) => {
+                    store_files.extend(stores);
+                    for widget_name in &widgets {
+                        sub_widget_names.push(widget_name.clone());
+                    }
+                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                        UIArtifact {
+                            source_path: path.clone(),
+                            widget_name: w.clone(),
+                            output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                            source_hash: hash,
+                            content_hash: hash_string(&vue_code),
+                            backend: UIBackend::Vue,
+                        }
+                    }).collect();
+                    let any_missing = artifacts.iter().any(|a| {
+                        !output_dir.join(&a.output_path).exists()
+                    });
+                    if source_changed || any_missing {
+                        println!("  deps/{}/{} ({})",
+                            dep_name.bright_yellow(),
+                            file_name.bright_yellow(),
+                            if source_changed { "changed" } else { "output missing" });
+                        for artifact in &artifacts {
+                            let out = output_dir.join(&artifact.output_path);
+                            fs::create_dir_all(out.parent().unwrap_or(&output_dir)).ok();
+                            fs::write(&out, &vue_code).map_err(|e| {
+                                format!("Failed to write {}: {}", out.display(), e)
+                            })?;
+                        }
+                    }
+                    cache.update(path.clone(), hash, artifacts);
+                }
+                Err(e) => handle_compile_error(&path, &e)?,
+            }
+        }
+    }
+
     // Phase 2: Check app.at for changes (with sub-widget names known)
     let app_at = front_dir.join("app.at");
     let app_output_path = output_dir.join("src").join("App.vue");
