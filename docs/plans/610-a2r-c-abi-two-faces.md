@@ -236,8 +236,20 @@ auto-term 构建产物（只读）。
   实证**：build-engine-face-a2c.cmd 以 AUTOTERM_ENGINE_DLL 改链
   engine_face_auto.dll（⑤ 产物）→ 驱动器 CFACE_OK/exit 0 两连；
   worktree commit 3991584f1]
-- [ ] **T-06** ⑥ S 形态生成器 + 快照 003；
-- [ ] **T-07** ⑥ D 形态生成器 + 快照 004（解析序 env→同目录→PATH）；
+- [x] **T-06** ⑥ S 形态生成器 + 快照 003；[✅ use_stmt UseKind::C 臂 →
+  emit_use_c_ffi：builtin/JSON manifest（source_dir 解析序 语料目录→CWD，
+  测试/门/CLI 三入口接线）→ mod <header>_c{mod ffi_raw #[link] extern 块
+  (pub) + 安全包装(Auto 宽度 i64 边缘 cast) + 缓冲助手(handle_is_null/
+  buf_new_u32/u8/buf_get_u32/cstr_read)} + pub use；manifest 增 link 字段
+  (auto-bindgen serde 默认 static)；快照 003 绿（rustc 独立编译零错）；
+  worktree commit 79d27402b]
+- [x] **T-07** ⑥ D 形态生成器 + 快照 004（解析序 env→同目录→PATH）；
+  [✅ manifest link=dynamic → libloading OnceLock 形态（env
+  AUTOTERM_CORE_DLL → exe 同目录 → 裸名 PATH）；快照 004 绿（libloading
+  系外部依赖被全量 rustc 门正确跳过）；执行期关键修正：Plan 376 P2
+  `.get(X).word` 修正趟的 expect 误注入 unwrap（expect 入安全方法表）；
+  007_cstr 语料受益 builtin 生成面（快照更新，该例本在 known-broken
+  台账）；a2r_tests 372/372 全绿]
 - [ ] **T-08** ⑥ 实编门：S 链真 DLL CFACE_OK（AC-04）；D 同场景
   （AC-06）；
 - [ ] **T-09** 闭环门：AC-03（597 驱动器×⑤ 产物）+ AC-05（⑥ 驱动×
