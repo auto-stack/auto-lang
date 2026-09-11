@@ -72,3 +72,4 @@ bin 为离线 CLI。（注释中"不入 auto-lang 依赖树"的说法已过期�
 
 - **plan-429** aavm B1 shim inventory ✅ archived——shim 存量盘点（reports/429-b1）
 - **plan-430** dep methods 管线 ✅ archived——rustdoc→method pack 全管线（含 430-fixes 四项复审修复）
+- **plan-596** dep-rust-v2-trait-generic-callback ✅ archived——trait 白名单 classify/emit（v1.4）+泛型 mono 替换引擎+callbacks 元数据；mono 段入 manifest 与快路径覆盖校验
