@@ -13999,13 +13999,6 @@ fn compare_pngs(
             state.component.read_state("__focus_input"),
             Ok(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         ) {
-            if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
-                eprintln!("[464-FOCUS] __focus_input consumed (update_inner tail)");
-            }
-            let _ = state.component.write_state("__focus_input", auto_val::Value::str(""));
-            // Plan 483: 目标 = 登记表首个 input 的唯一 Id(取代共享字面量
-            // prompt_input——多 input 视图会被一次全置焦);无 input 时退
-            // 外壳 prompt_input_id 旧语义(此时无匹配 widget,空聚焦)。
             let focus_target = state
                 .app
                 .devtools
@@ -14014,6 +14007,17 @@ fn compare_pngs(
                 .first()
                 .cloned()
                 .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
+            if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
+                let ids = state.app.devtools.input_ids.borrow();
+                eprintln!(
+                    "[464-FOCUS] __focus_input consumed: registered={}个 target={focus_target:?}",
+                    ids.len()
+                );
+            }
+            let _ = state.component.write_state("__focus_input", auto_val::Value::str(""));
+            // Plan 483: 目标 = 登记表首个 input 的唯一 Id(取代共享字面量
+            // prompt_input——多 input 视图会被一次全置焦);无 input 时退
+            // 外壳 prompt_input_id 旧语义(此时无匹配 widget,空聚焦)。
             tail_tasks.push(iced::widget::operation::focus(focus_target));
         }
 
@@ -14449,11 +14453,32 @@ fn compare_pngs(
                     // 下一个窗口（Windows Alt-Tab 语义；RebuildMru 复位
                     // sel=0=当前窗，预选顺延一位），松开 Ctrl 提交（见
                     // __modifiers_changed 臂），按住期间再按继续推进。
+                    // PLAN-013 W1 根修：直投消息必须带 widget 名——空名
+                    // 解析 `handler__Advance` 不在 exports（实机调试日志
+                    // CALL_HANDLER_FOR_NOT_FOUND 钉死），按住 Ctrl 连按
+                    // Tab 的推进全部静默失败；箭头走 switcher 自 bind
+                    // （handler_Switcher_Advance）故有效。
                     DesktopEvent::SummonSwitcher => {
+                        // PLAN-013 W1 诊断:每按记录 visible/sel 前值——区分
+                        // 「重召唤复位」与「推进失败」两种病灶。
+                        if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+                            let dbg = state.desktop.switcher_app
+                                .and_then(|sw| state.apps.get(&sw))
+                                .and_then(|a| {
+                                    a.component.read_state("sel").ok()
+                                        .zip(a.component.read_state("visible").ok())
+                                })
+                                .map(|(sel, vis)| (sel.to_string(), vis.to_string()))
+                                .unwrap_or_else(|| ("?".into(), "?".into()));
+                            eprintln!(
+                                "[P013-W1] SummonSwitcher: visible={} sel={} (app mounted={})",
+                                dbg.1, dbg.0, state.desktop.switcher_app.is_some()
+                            );
+                        }
                         if state.switcher_visible() {
                             if let Some(sw) = state.desktop.switcher_app {
                                 let msg = IcedMessage {
-                                    widget: String::new(),
+                                    widget: "Switcher".to_string(),
                                     event: "Advance".to_string(),
                                     input_value: None,
                                 };
@@ -14463,7 +14488,7 @@ fn compare_pngs(
                         let task = summon_switcher(state);
                         if let Some(sw) = state.desktop.switcher_app {
                             let msg = IcedMessage {
-                                widget: String::new(),
+                                widget: "Switcher".to_string(),
                                 event: "Advance".to_string(),
                                 input_value: None,
                             };
