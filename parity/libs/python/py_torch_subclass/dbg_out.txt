@@ -1,3 +1,0 @@
-----------------------
-Running Auto tests/auto/subclass.as 
-----------------------

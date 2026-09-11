@@ -1,3 +1,0 @@
-Error:   × RuntimeError("py_float failed: TypeError: float() argument must be a
-  │ string or a real number, not 'NoneType'") at line 25 (ip=0x018a)
-
