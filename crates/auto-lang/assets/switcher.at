@@ -107,7 +107,10 @@ widget Switcher {
     }
 
     bind {
-        "Tab" -> .Advance
+        // PLAN-013 W1：裸 "Tab" bind 退役——宿主 Ctrl+Tab 直投 .Advance 是
+        // 唯一 Tab 推进路径；此前双路同投（宿主+bind）每次按 tab 推进 2 行
+        // （列表回绕时观感=反向循环），且空 widget 名 bind 消息解析
+        // handler__Advance 恒失败。←→/Enter/Esc bind 保留。
         "ArrowRight" -> .Advance
         "ArrowLeft" -> .Back
         "Enter" -> .Pick

@@ -8698,11 +8698,16 @@ fn summon_launcher(
     // 字面量盲聚焦，实测打字无反应）——同步构建一次 AbstractView 预登记
     // （derive_input_id 跨重建稳定，下一帧真视图同 Id 收敛）。
     let summon_target = {
-        let app = state.apps.get(&launcher).expect("launcher mounted");
+        let mut app = state.apps.get_mut(&launcher).expect("launcher mounted");
         let (view, _, _) = app.component.view_with_debug_gated(false);
         let converted = convert_view_messages(view);
         let mut ids = Vec::new();
         collect_input_ids(&converted, &mut ids);
+        // PLAN-013 W2：登记持久化——overlay 挂载面不走自身窗口渲染路径，
+        // devtools.input_ids 恒空（registered=0）→ update_inner 尾部消费
+        // 永远回退 prompt_input 死 Id → 不聚焦+无法输入。此处把同步构建
+        // 收集到的真 Id 写入 launcher 自己的登记表，消费端即命中。
+        *app.state.devtools.input_ids.borrow_mut() = ids.clone();
         ids.first().cloned()
     }
     .unwrap_or_else(|| iced::widget::Id::new("prompt_input"));
