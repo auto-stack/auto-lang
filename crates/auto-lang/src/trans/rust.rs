@@ -1690,7 +1690,13 @@ impl RustTrans {
                 // **Phase 1.1: Pointer Types (test: 005_pointer)**
                 // AutoLang *T transpiles to Rust raw pointer *mut T
                 // This is for raw pointer operations like @ (address-of) and .* (dereference)
-                format!("*mut {}", self.rust_type_name(&*ptr.of.borrow()))
+                // Plan 610 ⑤⑥: `*void` (opaque handles / C void*) maps to *mut c_void —
+                // the pre-610 `*mut void` output was never valid Rust (no corpus depended).
+                if matches!(&*ptr.of.borrow(), Type::Void) {
+                    "*mut std::ffi::c_void".to_string()
+                } else {
+                    format!("*mut {}", self.rust_type_name(&*ptr.of.borrow()))
+                }
             }
             Type::Reference(inner) => {
                 // Plan 052: Reference transpiles to &T in Rust
@@ -13583,10 +13589,178 @@ impl RustTrans {
         out
     }
 
+    /// Plan 610 ⑤: emit the C-ABI export wrapper module for an `#[export]` fn.
+    ///
+    /// Shape: `mod <name>_c_export { #[unsafe(no_mangle)] pub extern "<abi>"
+    /// fn <name>(C-ABI params) { super::<name>(boundary conversions) } }`.
+    /// The symbol equals the fn name (no_mangle ignores the module path), the
+    /// safe body below keeps its original name so every call site in the
+    /// product is untouched (zero whole-program rename mapping). Type
+    /// fidelity (strategy A, plan §2 T-01): Auto `int` crosses the boundary
+    /// as i32 with explicit `as` casts to/from the body's i64; `cstr` params
+    /// arrive as `*const c_char` (null-tolerant → "") and cstr returns hand
+    /// ownership to C via `CString::into_raw` (interior-NUL degrades to an
+    /// empty C string rather than panicking across the FFI boundary).
+    fn export_wrapper_module(
+        &mut self,
+        fn_decl: &Fn,
+        abi: &str,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
+        let unsupported = |what: &str| -> crate::AutoError {
+            crate::AutoError::Msg(format!(
+                "Plan 610 ⑤: #[export] 暂不支持 {}（fn {}）",
+                what, fn_decl.name
+            ))
+        };
+        if fn_decl.parent.is_some() {
+            return Err(unsupported("方法（仅顶层函数可导出）"));
+        }
+        if !fn_decl.type_params.is_empty() || !fn_decl.const_params.is_empty() {
+            return Err(unsupported("泛型函数"));
+        }
+        if fn_decl.is_test {
+            return Err(unsupported("#[test] 组合"));
+        }
+        if fn_decl.api_attrs.is_some() {
+            return Err(unsupported("#[api] 组合"));
+        }
+        if matches!(fn_decl.ret, Type::Handle { .. })
+            || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+        {
+            return Err(unsupported("async 返回（~T）"));
+        }
+
+        // C-ABI param types + boundary conversion. cstr params convert through
+        // a `let …_conv: String` local because the safe body's str-family
+        // params are `&str` (rust_param_type_name) — a borrow needs an owner
+        // that outlives the call.
+        let mut abi_params: Vec<String> = Vec::new();
+        let mut conv_prelude: Vec<String> = Vec::new();
+        let mut call_args: Vec<String> = Vec::new();
+        for param in &fn_decl.params {
+            let name = param.name.to_string();
+            match &param.ty {
+                // Width bridge: C `int` (i32) ↔ Auto int (i64 body).
+                Type::Int => {
+                    abi_params.push(format!("{}: i32", name));
+                    call_args.push(format!("{} as i64", name));
+                }
+                // Borrowed C string → body's &str; null-tolerant (→ "").
+                // unsafe is scoped to CStr::from_ptr exactly (wrapper fns
+                // without cstr params emit no unsafe block at all).
+                Type::CStrLit => {
+                    abi_params
+                        .push(format!("{}: *const std::os::raw::c_char", name));
+                    conv_prelude.push(format!(
+                        "let {n}_conv: String = if {n}.is_null() {{ String::new() }} else {{ unsafe {{ std::ffi::CStr::from_ptr({n}) }}.to_string_lossy().into_owned() }};",
+                        n = name
+                    ));
+                    call_args.push(format!("&{}_conv", name));
+                }
+                // Raw pointers and ABI-identical scalars pass through.
+                Type::Ptr(_)
+                | Type::I64
+                | Type::Uint
+                | Type::U64
+                | Type::USize
+                | Type::Byte
+                | Type::Bool
+                | Type::Char
+                | Type::Float
+                | Type::Double => {
+                    let t = self.rust_type_name(&param.ty);
+                    abi_params.push(format!("{}: {}", name, t));
+                    call_args.push(name);
+                }
+                other => {
+                    return Err(crate::AutoError::Msg(format!(
+                        "Plan 610 ⑤: #[export] 参数 {} 的类型 {} 暂不在 ABI 面（支持 int/i64/uint/u64/usize/byte/bool/char/float/cstr/*T）",
+                        name, other
+                    )));
+                }
+            }
+        }
+
+        // Return-position ABI type + wrapping of the body call.
+        let (abi_ret, wrap_call) = match &fn_decl.ret {
+            Type::Void => (None, format!("super::{}({})", fn_decl.name, call_args.join(", "))),
+            Type::Int => (
+                Some("i32".to_string()),
+                format!("super::{}({}) as i32", fn_decl.name, call_args.join(", ")),
+            ),
+            // Ownership passes to the C caller (free side = C); interior NUL
+            // degrades to "" instead of panicking across the boundary.
+            Type::CStrLit => (
+                Some("*mut std::os::raw::c_char".to_string()),
+                format!(
+                    "std::ffi::CString::new(super::{}({})).unwrap_or_default().into_raw()",
+                    fn_decl.name,
+                    call_args.join(", ")
+                ),
+            ),
+            Type::Ptr(_)
+            | Type::I64
+            | Type::Uint
+            | Type::U64
+            | Type::USize
+            | Type::Byte
+            | Type::Bool
+            | Type::Char
+            | Type::Float
+            | Type::Double => (
+                Some(self.rust_type_name(&fn_decl.ret)),
+                format!("super::{}({})", fn_decl.name, call_args.join(", ")),
+            ),
+            other => {
+                return Err(crate::AutoError::Msg(format!(
+                    "Plan 610 ⑤: #[export] 返回类型 {} 暂不在 ABI 面（支持 int/i64/uint/u64/usize/byte/bool/char/float/cstr/*T/void）",
+                    other
+                )));
+            }
+        };
+
+        writeln!(
+            sink.body,
+            "/// Plan 610 ⑤: C ABI export face for `{}` — the sibling wrapper bridges C widths\n/// to the safe body below; the exported symbol equals the fn name (no_mangle\n/// ignores the module path).",
+            fn_decl.name
+        )?;
+        writeln!(
+            sink.body,
+            "mod {}_c_export {{",
+            fn_decl.name
+        )?;
+        writeln!(sink.body, "    #[unsafe(no_mangle)]")?;
+        write!(
+            sink.body,
+            "    pub extern \"{}\" fn {}({})",
+            abi,
+            fn_decl.name,
+            abi_params.join(", ")
+        )?;
+        match &abi_ret {
+            Some(t) => writeln!(sink.body, " -> {} {{", t)?,
+            None => writeln!(sink.body, " {{")?,
+        }
+        for line in &conv_prelude {
+            writeln!(sink.body, "        {}", line)?;
+        }
+        writeln!(sink.body, "        {}", wrap_call)?;
+        writeln!(sink.body, "    }}")?;
+        writeln!(sink.body, "}}")?;
+        Ok(())
+    }
+
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
         // Skip C/VM function declarations (implemented externally)
         if matches!(fn_decl.kind, FnKind::CFunction | FnKind::VmFunction) {
             return Ok(());
+        }
+
+        // Plan 610 ⑤: `#[export]` fn — emit the cdylib wrapper module ahead of
+        // the safe body emitted below (body keeps its original name).
+        if let Some(abi) = fn_decl.export_abi.clone() {
+            self.export_wrapper_module(fn_decl, &abi, sink)?;
         }
 
         // Clear local var type cache for this function, register params

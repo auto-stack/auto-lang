@@ -402,6 +402,7 @@ pub(crate) fn synthesize_stub_fn(name: &str, arity: usize) -> Stmt {
         ),
         span: None,
         api_attrs: None,
+        export_abi: None,
         attrs: Vec::new(),
     };
     Stmt::Fn(f)

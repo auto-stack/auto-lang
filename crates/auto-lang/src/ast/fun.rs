@@ -41,6 +41,13 @@ pub struct Fn {
     /// Excludes `#[api]` (parsed into `api_attrs`) and `#[with(...)]`
     /// (parsed into `type_params` constraints).
     pub attrs: Vec<AutoStr>,
+    /// Plan 610 ⑤: `#[export]` cdylib export face. `Some(abi)` marks the fn
+    /// as a C-ABI export — a2r emits a sibling wrapper module
+    /// (`#[unsafe(no_mangle)] pub extern "<abi>" fn` bridging C widths to the
+    /// safe body, which keeps its original name so call sites are untouched).
+    /// None for non-exported fns. The name is shared with GDScript var
+    /// annotations (`#[export] var x`); fn paths never read store_attrs.
+    pub export_abi: Option<AutoStr>,
 }
 
 /// Plan 312: HTTP API endpoint attributes parsed from `#[api(method = "GET", path = "/api/notes/:id")]`.
@@ -73,6 +80,7 @@ impl Default for Fn {
             span: None,
             api_attrs: None,
             attrs: Vec::new(),
+            export_abi: None,
         }
     }
 }
@@ -141,6 +149,7 @@ impl Fn {
             span: None,
             api_attrs: None,
             attrs: Vec::new(),
+            export_abi: None,
         }
     }
 
@@ -165,12 +174,13 @@ impl Fn {
             is_pub: false,           // Plan 163: default private
             is_mut: false,           // Plan 163: default immutable self
             is_test: false,          // Plan 260: default non-test
-            type_params: Vec::new(), // Default to no generic parameters
+            type_params: Vec::new(), // Default to no generic type parameters
             const_params: Vec::new(),
             doc: None,
             span: None,
             api_attrs: None,
             attrs: Vec::new(),
+            export_abi: None,
         }
     }
 }

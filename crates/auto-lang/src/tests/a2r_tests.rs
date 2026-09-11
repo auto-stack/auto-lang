@@ -931,6 +931,9 @@ unexpected failures:
 #[test] fn test_26_plan577_002_r1_dot_chain() { test_a2r("26_plan577/002_r1_dot_chain").unwrap(); }
 #[test] fn test_26_plan577_003_r4_loop_move() { test_a2r("26_plan577/003_r4_loop_move").unwrap(); }
 #[test] fn test_26_plan577_004_phase0_small_fixes() { test_a2r("26_plan577/004_phase0_small_fixes").unwrap(); }
+// === 27_c_abi (Plan 610 ⑤: #[export] cdylib export face) ===
+#[test] fn test_27_c_abi_001_export_basic() { test_a2r("27_c_abi/001_export_basic").unwrap(); }
+#[test] fn test_27_c_abi_002_export_cstr() { test_a2r("27_c_abi/002_export_cstr").unwrap(); }
 #[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
 #[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
 #[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }
