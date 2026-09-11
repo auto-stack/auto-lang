@@ -119,20 +119,25 @@ fn a2r_foreign_shape_compile_run() {
     assert!(out.status.success() && stdout.contains("generic_field_ok  42"),
         "001 witness mismatch: {stdout:?}");
 
-    // 002 foreign trait impl / 003 trait object: inline-stub prepend
+    // 002 foreign trait impl / 003 trait object: shared foreign_shape stub
+    // crate + --extern (review F-1: the canonical use.rs import also lets the
+    // corpus-wide bare rustc gate skip these as external deps).
+    std::fs::copy(d.join("002_foreign_trait_impl/stub_foreign_shape.rs"),
+                  tmp.join("stub_foreign_shape.rs")).unwrap();
+    rustc(&[
+        "--edition=2021", "-A", "warnings", "--crate-type=lib",
+        "--crate-name=foreign_shape", "stub_foreign_shape.rs",
+        "-o", "libforeign_shape.rlib",
+    ]);
     for (case, stem, witness) in [
         ("002_foreign_trait_impl", "foreign_trait_impl", "trait_impl_ok  3"),
         ("003_trait_object", "trait_object", "trait_object_ok"),
     ] {
-        let stub_inline = std::fs::read_to_string(d.join(case).join("stub_inline.rs")).unwrap();
-        let product = std::fs::read_to_string(d.join(case).join(format!("{stem}.expected.rs"))).unwrap();
-        // drop the product's `// Auto-generated` header comment; stub leads.
-        let combined = format!("{stub_inline}
-{product}");
-        let fname = format!("{stem}_combined.rs");
-        std::fs::write(tmp.join(&fname), combined).unwrap();
-        let exe = format!("{stem}_combined.exe");
-        rustc(&["--edition=2021", "-A", "warnings", &fname, "-o", &exe]);
+        let fname = format!("{stem}_case.rs");
+        std::fs::copy(d.join(case).join(format!("{stem}.expected.rs")), tmp.join(&fname)).unwrap();
+        let exe = format!("{stem}_case.exe");
+        rustc(&["--edition=2021", "-A", "warnings",
+            "--extern", "foreign_shape=libforeign_shape.rlib", &fname, "-o", &exe]);
         let out = std::process::Command::new(tmp.join(&exe)).output().unwrap();
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(out.status.success() && stdout.contains(witness),
