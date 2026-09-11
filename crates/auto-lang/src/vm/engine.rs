@@ -9933,6 +9933,11 @@ self.rc_release(a_nv);
             task.saved_closure_id = Some(cid);
         }
         let result = self.execute_future_body(task, future_id, body_offset, 0, MAX_RECURSION_DEPTH);
+        // Phase B: body suspended mid-await — keep synthetic closure so resume
+        // can still LOAD_CAPTURED; caller treats waiting_future_id as Waiting.
+        if task.waiting_future_id.is_some() {
+            return Ok(());
+        }
         task.current_closure_id = saved_closure_id;
         task.saved_closure_id = saved_saved_closure_id;
         result
@@ -10008,6 +10013,10 @@ self.rc_release(a_nv);
                 FrameResult::AwaitFuture { future_id: inner_id, body_offset: inner_offset } => {
                     // Recursive await: execute inner future body
                     self.execute_future_body(task, inner_id, inner_offset, depth + 1, max_depth)?;
+                    // Plan 394 Phase B: nested body suspended on external await
+                    if task.waiting_future_id.is_some() {
+                        return Ok(());
+                    }
                     // Inner future result was pushed onto stack, continue body execution
                 }
                 FrameResult::BudgetExhausted => {
@@ -10015,7 +10024,20 @@ self.rc_release(a_nv);
                     continue;
                 }
                 FrameResult::Yielded => {
-                    // In future body context, yields are just pauses
+                    // Plan 394 Phase B: external await inside `~{}` body —
+                    // save continuation, leave IP mid-body, do NOT restore
+                    // outer saved_ip. Wake source 6 pushes the result; resume
+                    // continues from async_frames.
+                    if let Some(fid) = task.waiting_future_id {
+                        task.async_frames.push(crate::vm::task::AsyncFrame {
+                            resume_ip: task.ip,
+                            resume_bp: task.bp,
+                            future_id: fid,
+                            outer_future_id: future_id,
+                            outer_saved_ip: saved_ip,
+                        });
+                        return Ok(());
+                    }
                     continue;
                 }
                 FrameResult::Error(e) => {
@@ -10045,8 +10067,92 @@ self.rc_release(a_nv);
         Ok(())
     }
 
+    /// Plan 394 Phase B: continue a `~{}` body after an external await resume.
+    /// The wake path has already pushed the await result; IP is mid-body.
+    fn resume_suspended_body(
+        &self,
+        task: &mut AutoTask,
+        frame: crate::vm::task::AsyncFrame,
+    ) -> Result<TaskStatus, VMError> {
+        const BODY_BUDGET: u32 = 10_000;
+        let mut result_value = auto_val::Value::Int(0);
+        loop {
+            match self.execute_single_frame(task, BODY_BUDGET) {
+                FrameResult::Return => {
+                    if task.ram.sp > task.bp + 1 {
+                        let raw = task.ram.pop_nv();
+                        result_value = self.decode_tagged_nv(raw);
+                    }
+                    // Complete the outer `~{}` future
+                    if let Some(future_arc) = self.futures.get(&frame.outer_future_id) {
+                        let mut future = future_arc.write().unwrap();
+                        future.state = FutureState::Ready;
+                        future.result = Some(result_value.clone());
+                    }
+                    eprintln!(
+                        "[394] body complete outer={} result={:?} restore={:#x}",
+                        frame.outer_future_id, result_value, frame.outer_saved_ip
+                    );
+                    // Drop all continuation frames for this body; restore outer IP
+                    let mut restore_ip = frame.outer_saved_ip;
+                    // Pop every frame belonging to this body (sequential external
+                    // awaits each push one; leaving orphans re-enters resume).
+                    while let Some(f) = task.async_frames.pop() {
+                        if f.outer_future_id == frame.outer_future_id {
+                            restore_ip = f.outer_saved_ip;
+                        } else {
+                            task.async_frames.push(f);
+                            break;
+                        }
+                    }
+                    task.ip = restore_ip;
+                    Self::push_value(task, &result_value, self);
+                    return Ok(TaskStatus::Ready);
+                }
+                FrameResult::AwaitFuture {
+                    future_id: inner_id,
+                    body_offset: inner_offset,
+                } => {
+                    self.handle_await_future(task, inner_id, inner_offset)?;
+                    if task.waiting_future_id.is_some() {
+                        return Ok(TaskStatus::Waiting("future".into()));
+                    }
+                }
+                FrameResult::BudgetExhausted | FrameResult::Yielded => {
+                    if let Some(fid) = task.waiting_future_id {
+                        task.async_frames.push(crate::vm::task::AsyncFrame {
+                            resume_ip: task.ip,
+                            resume_bp: task.bp,
+                            future_id: fid,
+                            outer_future_id: frame.outer_future_id,
+                            outer_saved_ip: frame.outer_saved_ip,
+                        });
+                        return Ok(TaskStatus::Waiting("future".into()));
+                    }
+                    continue;
+                }
+                FrameResult::Error(e) => {
+                    if let Some(future_arc) = self.futures.get(&frame.outer_future_id) {
+                        future_arc.write().unwrap().state = FutureState::Failed;
+                    }
+                    task.async_frames
+                        .retain(|f| f.outer_future_id != frame.outer_future_id);
+                    task.ip = frame.outer_saved_ip;
+                    return Err(e);
+                }
+                FrameResult::Continue => unreachable!(),
+            }
+        }
+    }
+
     /// Execute a chunk of opcodes for a specific task
     fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
+        // Plan 394 Phase B: resume suspended `~{}` body (result already pushed).
+        if task.waiting_future_id.is_none() {
+            if let Some(frame) = task.async_frames.last().copied() {
+                return self.resume_suspended_body(task, frame);
+            }
+        }
         const BUDGET: u32 = 100;
         let result = self.execute_single_frame(task, BUDGET);
         match result {
@@ -10060,6 +10166,9 @@ self.rc_release(a_nv);
             }
             FrameResult::AwaitFuture { future_id, body_offset } => {
                 self.handle_await_future(task, future_id, body_offset)?;
+                if task.waiting_future_id.is_some() {
+                    return Ok(TaskStatus::Waiting("future".into()));
+                }
                 Ok(TaskStatus::Ready)
             }
             FrameResult::BudgetExhausted => Ok(TaskStatus::Ready),

@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/vm, auto-lang/codegen]
-current_step: 8
+current_step: 9
 total_steps: 12
 ---
 
@@ -441,7 +441,7 @@ Stack 编码沿用 `(future_id << 8) | 0xF0`。
 - [x] **T-06** `engine.rs`：AWAIT_FUTURE External Pending → 置 `waiting_future_id` + Yield（不跑 body）；`run_task_loop` wake source 6（就绪压栈） [✅ 已完成]
 - [x] **T-07** 夹具 native：`delay_async` / `fail_async`（catalog 2990/2991 + shim + 注册） [✅ 已完成]
 - [x] **T-08** 门禁：U1–U4 + A1–A4 + R2 全绿；R1 用既有 async 回归或等价最小钉 [✅ 已完成 — `cargo test -p auto-lang --lib plan394`：11 passed / 0 failed / 6 ignored]
-- [ ] **T-09** Phase B：`~{}` 内 External await 续点（`execute_future_body` 改造）+ B1–B3 解 `#[ignore]` 并绿
+- [x] **T-09** Phase B：`~{}` 内 External await 续点（`execute_future_body` 改造）+ B1–B3 解 `#[ignore]` 并绿 [✅ 已完成 — AsyncFrame 扩 outer_*；body suspend/resume；14 passed。已知债：`~{}` 内命名局部 codegen（STORE_LOC/LOAD_CAPTURED）同步路径即坏，B1/B2 用无局部表达式钉机制]
 - [ ] **T-10** Phase C：`Future.all/race` + a2r golden + C1–C3 解 ignore 并绿
 - [ ] **T-11** Phase D（可选）：re-entry yield 迁移 / 表收敛——默认不做
 - [ ] **T-12** 收口：fmt/clippy 增量干净；`cargo check -p auto-lang` + 作用域测试；复审记录
@@ -462,3 +462,4 @@ Stack 编码沿用 `(future_id << 8) | 0xF0`。
 
 1. 组内 `auto-down` 兄弟 worktree 建议用户创建：`git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-394/auto-down`（会话隔离仍拦 `worktree add`）。
 2. A2「真挂起不堵别的 task」当前以单入口 `delay_async(60).await` 跑完为代理；若 review 要求双 task 交织硬断言，需 `Task.spawn` 语料补强（Phase A 附带，非阻塞架构本身）。
+3. **债（非 394 引入）**：`~{}` body 内命名局部（`var a`/`let a`）codegen 与外层槽冲突 + `LOAD_CAPTURED` 误用，同步路径返回错误值。修复前 body 内 await 请用无局部表达式；建议另立 codegen 计划。

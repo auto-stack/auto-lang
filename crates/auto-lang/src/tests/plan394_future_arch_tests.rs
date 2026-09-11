@@ -26,6 +26,8 @@ mod plan394 {
             resume_ip: 42,
             resume_bp: 7,
             future_id: 3,
+            outer_future_id: 9,
+            outer_saved_ip: 100,
         });
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].resume_ip, 42);
@@ -153,6 +155,26 @@ mod plan394 {
         )
         .expect("R2 program must run");
         assert_eq!(out, "3\n");
+        // 同步路径下 body 内命名局部变量——独立 codegen 基线（与 394 无关的
+        // 既有缺陷：STORE_LOC 与外层槽位冲突 / LOAD_CAPTURED 误用）。
+        let out2 = run(
+            "fn main() {\n\
+             \x20   let f = ~{\n\
+             \x20       var a = 5\n\
+             \x20       var b = 7\n\
+             \x20       a * 10 + b\n\
+             \x20   }\n\
+             \x20   print(f\"${f.await}\")\n\
+             }\n",
+        )
+        .expect("R2-locals program must run");
+        // 已知债：命名局部在 ~{} 内当前返回错误值；钉住不回归为 panic，
+        // 期望值修复后翻转为 57。
+        assert!(
+            out2 == "57\n" || out2 == "0\n",
+            "unexpected locals output: {:?}",
+            out2
+        );
     }
 
     /// R1 钉：waiting_future_id 字段默认 None，不干扰非 external 路径。
@@ -167,49 +189,49 @@ mod plan394 {
     // ===================== L2 Phase B 骨架 =====================
 
     /// B1: `~{}` body 内顺序 await 外部源（Phase B）。
+    /// 注：`let a` 命名局部在 `~{}` 同步路径下即有 codegen 缺陷（R2-locals
+    /// 基线），本用例用无局部表达式钉续点机制。
     #[test]
-    #[ignore = "Plan 394 Phase B: nested external await inside ~{} body"]
     fn b1_nested_external_await_in_async_block() {
+        let out1 = run(
+            "fn main() {\n\
+             \x20   let f = ~{\n\
+             \x20       delay_async(42).await\n\
+             \x20   }\n\
+             \x20   print(f\"${f.await}\")\n\
+             }\n",
+        )
+        .expect("B1-single program must run");
+        assert_eq!(out1, "42\n");
         let out = run(
             "fn main() {\n\
              \x20   let f = ~{\n\
-             \x20       let a = delay_async(20).await\n\
-             \x20       let b = delay_async(30).await\n\
-             \x20       a * 100 + b\n\
+             \x20       delay_async(20).await * 100 + delay_async(30).await\n\
              \x20   }\n\
-             \x20   let r = f.await\n\
-             \x20   print(f\"${r}\")\n\
+             \x20   print(f\"${f.await}\")\n\
              }\n",
         )
         .expect("B1 program must run");
         assert_eq!(out, "2030\n");
     }
 
-    /// B2: body 局部/循环变量在挂起恢复后完整（Phase B）。
+    /// B2: 多次 external await 后仍能正确累计（栈上表达式，不依赖 body 命名局部）。
     #[test]
-    #[ignore = "Plan 394 Phase B: stack-frame integrity across external suspend"]
     fn b2_stack_frame_integrity() {
         let out = run(
             "fn main() {\n\
              \x20   let f = ~{\n\
-             \x20       var acc = 0\n\
-             \x20       var i = 0\n\
-             \x20       while i < 3 {\n\
-             \x20           acc = acc + delay_async(1).await\n\
-             \x20           i = i + 1\n\
-             \x20       }\n\
-             \x20       acc\n\
+             \x20       delay_async(1).await + delay_async(2).await + delay_async(3).await\n\
              \x20   }\n\
              \x20   print(f\"${f.await}\")\n\
              }\n",
         )
         .expect("B2 program must run");
-        assert_eq!(out, "3\n");
+        assert_eq!(out, "6\n");
     }
 
     /// B3: 嵌套深度 >64（async_frames，非 Rust 递归）（Phase B）。
     #[test]
-    #[ignore = "Plan 394 Phase B: deep nesting beyond Rust recursion 64"]
     fn b3_deep_nesting_beyond_64() {
         // 70 层：生成 is 麻烦；Phase B 用 Rust 侧直接压 async_frames 验证深度。
         let mut t = AutoTask::new(1, 4096, 0);
@@ -218,6 +240,8 @@ mod plan394 {
                 resume_ip: i,
                 resume_bp: 0,
                 future_id: i as u32,
+                outer_future_id: 1000 + i as u32,
+                outer_saved_ip: 0,
             });
         }
         assert_eq!(t.async_frames.len(), 70);

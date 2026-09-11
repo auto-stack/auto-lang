@@ -116,6 +116,10 @@ pub struct AsyncFrame {
     pub resume_bp: usize,
     /// External future that caused the suspend.
     pub future_id: u32,
+    /// The internal `~{}` future whose body is suspended.
+    pub outer_future_id: u32,
+    /// Caller IP to restore when the body completes.
+    pub outer_saved_ip: usize,
 }
 
 /// Plan 010 (MS3-A): An entry on the task's try/catch handler stack.
