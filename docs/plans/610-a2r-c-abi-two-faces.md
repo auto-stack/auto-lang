@@ -220,8 +220,16 @@ auto-term 构建产物（只读）。
   （语料改 f-string）；worktree commit 27c63c6a1]
 - [ ] **T-03** cdylib/exe 构建 harness（实编门内 cargo 模板）；
 - [ ] **T-04** MVP 导出面实编门（AC-02）；
-- [ ] **T-05** capstone ⑤：引擎 12 符号 Auto 版（语料 005 + dep
-  autoterm-core 只读消费）；
+- [x] **T-05** capstone ⑤：引擎 12 符号 Auto 版（语料 005 + dep
+  autoterm-core 只读消费）；[✅ 已完成：005_engine_face_auto 语料快照绿
+  +全量 rustc 门过；执行期五修——TermColor 系 ffi.rs 私有别名（公开路径
+  autoterm_core::term::Color）、外来非 Clone 字段压制 blanket derive
+  （显式 #[allow(dead_code)] 替换默认 derive 集）、spawn 空参须类型化
+  List<Str> 局部（AsRef 推断歧义）、free 走 kit cabi_drop_boxed
+  （from_raw unsafe 居 kit）、wrapper 模块补 use super::*；**AC-03 手动
+  实证**：build-engine-face-a2c.cmd 以 AUTOTERM_ENGINE_DLL 改链
+  engine_face_auto.dll（⑤ 产物）→ 驱动器 CFACE_OK/exit 0 两连；
+  worktree commit 3991584f1]
 - [ ] **T-06** ⑥ S 形态生成器 + 快照 003；
 - [ ] **T-07** ⑥ D 形态生成器 + 快照 004（解析序 env→同目录→PATH）；
 - [ ] **T-08** ⑥ 实编门：S 链真 DLL CFACE_OK（AC-04）；D 同场景
