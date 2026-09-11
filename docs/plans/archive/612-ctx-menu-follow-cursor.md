@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-612
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: ctx-menu-follow-cursor
 author: ["zhaopuming"]
 created_at: 2026-09-11
@@ -101,10 +101,42 @@ total_steps: 0
   `AUTO_LANG_UPDATE_GOLDEN=1` 再生后转绿；全量档 4749/4771——失败集 21=21
   与定型基线全等 + `osconfig_daemon::ensure_ready_override` 1 枚环境 flake
   （单测复跑 3/3 过，同 ffi_dual_019 在案类，非本计划引入）。
+- T8（终验加值）右键标题栏先聚焦置顶：非最前窗的菜单层被前窗遮挡
+  （用户终验发现）——`TitleMenuOpen` 臂补 `state.wm_focus(wid)`（立即
+  z_order 刷新+焦点+MRU；右键无 in-flight 按钮态，用即时 focus 而非软
+  聚焦；左键仍走 GlobalPress 软聚焦+release 偿还，双击首击即聚焦）
+  [✅ 已完成]
+  证据：iced 档 187/188 零新增。
 
 ## 复审记录
 
-（无）
+### 复审（2026-09-11，报障用户本人实机终验 + 工件复跑门）
+
+stage: review | plan_id: PLAN-612 | plan_revision: 1 | outcome: **pass** |
+reviewed_commit: auto-lang master（612 实现+置顶加值提交）| 
+spec_inputs: 无规范增量
+
+- **AC-1 ✓ pass（用户实机）**：标题栏右键菜单出现在右键落点（跟手），
+  窗缘钳制不越界。
+- **AC-2 ✓ pass（用户实机）**：桌面空白右键菜单出现在右键落点，不再
+  固定左下。
+- **AC-3 ✓ pass**：复跑门零新增（iced 187/188+p012 四测+全量 21=21 基线
+  全等+hash-lock 四件全等+金样再生绿）；用户终验确认外点/Esc 关闭、菜单
+  项动作、611 三判据（缩略稳定/切换稳定/标题菜单外点关）全部无回归。
+- **终验加值（已并入 T8）**：右键标题栏先聚焦置顶，非最前窗菜单不再被
+  前窗遮挡。
+
+findings: 无。
+evidence: 执行步骤 T1-T8 收据 + 本轮用户对话实录（终验 OK）。
+next: 归档（archive/）。
+
+### merge 回执（2026-09-11，五检查点）
+
+prepared ✓（执行态基线=折叠定型 master）| landed ✓（交付直接在 master：
+feat 提交+置顶加值提交，无分支折叠）| ledger_refreshed ✓（autos-desktop-
+program 桌面域指针无本计划行，归档即登记）| archived ✓（git mv
+docs/plans/archive/）| cleaned ✓（无专用 worktree；tmp 探针脚本与截图留
+auto-lang tmp/ 作过程证据）。
 
 ## 待澄清事项
 
