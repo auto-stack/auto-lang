@@ -34,6 +34,18 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
   出口（GIL float()/int()，撒谎注解退回 Python 行为）。a2py：may 变体
   `_auto_may` 家族反映射、with-as 规范序列回译 `with e as x:`、py_int→
   int(x)；parity runner PYTHONPATH 绝对路径注入（本地注解模块载体）。
+- a2r 外来形态四能力（plan-599，004 §5④）：外来泛型类型字段
+  （`FakeTerm<Listener>` 泛型应用透传,002 缺口 1.1 形态）/`ext Self for
+  ForeignTrait` 外来 trait impl（发射 `impl ForeignTrait for Self`）/
+  类型位 `dyn Trait [+ Send [+ Sync]]` 拼写（承载 = `Type::User("dyn …")`,
+  384 A5 派生门控的语义修订:dyn 字段默认**不派生**——无约束外来 trait 连
+  Clone/Debug 都不满足 E0277,显式 `#[derive]` 透传可覆盖）/裸线程走
+  std 透传（`thread::spawn(move () => ..)`,T-01 裁定 A 路=零运行时依赖,
+  spawn 自动 move 与显式 move 闭包不再双发）。语料 `25_foreign_types/`
+  五件 + rustc 实编运行门（四能力 witness + term.rs 子集 capstone 与手写
+  oracle 黑盒 stdout 全等,共享 fake_core stub rlib）;未解析类型名 F6
+  透传不变,告警面 env 门控 `AUTO_WARN_UNRESOLVED_TYPES=1`(默认静默,全量
+  跑实测非类型标识常规性抵达该兜底)。
 - a2c 闭包原型入头（plan-595）：闭包定义发射在 main 之后，其**前向
   原型必须写入头文件**（`generate_closure_definitions` 先于 header 装配
   执行，原型并入 `self.header`）——无原型则 main 内引用闭包为 C2065
