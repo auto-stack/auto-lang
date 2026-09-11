@@ -3474,6 +3474,9 @@ fn build_dynamic_component_inner(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
+    // PLAN-607: register and validate style recipes before extracting widget
+    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
+        .map_err(|e| e.to_string())?;
     let mut root_decl: Option<crate::ast::WidgetDecl> = None;
     let mut widget = None;
     for stmt in &ast.stmts {
@@ -5650,13 +5653,15 @@ pub fn ui_build(
     })?;
 
     // Extract AURA widgets from AST
-    // Plan 367 P2-3: register view fragments before widget extraction
     crate::aura::extract::clear_view_fragments();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
             crate::aura::extract::register_view_fragment(frag);
         }
     }
+    // PLAN-607: register and validate style recipes before extracting widget
+    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
+        .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -5765,13 +5770,15 @@ pub fn ui_build_shadcn(
     })?;
 
     // Extract AURA widgets from AST
-    // Plan 367 P2-3: register view fragments before widget extraction
     crate::aura::extract::clear_view_fragments();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
             crate::aura::extract::register_view_fragment(frag);
         }
     }
+    // PLAN-607: register and validate style recipes before extracting widget
+    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
+        .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {

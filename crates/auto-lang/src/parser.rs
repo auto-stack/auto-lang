@@ -1051,6 +1051,11 @@ impl<'a> Parser<'a> {
             return true;
         }
 
+        // PLAN-607: style recipes are valid identifiers in expressions
+        if crate::design_tokens::recipe::has_style_recipe(name) {
+            return true;
+        }
+
         // Plan 091: Removed Universe fallback
         false
     }
@@ -14609,15 +14614,22 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Asn)?;
         self.skip_empty_lines();
 
+        let prev_skip = self.skip_check;
+        self.skip_check = true;
         let body = self.parse_expr()?;
+        self.skip_check = prev_skip;
 
-        Ok(Some(Stmt::StyleRecipeDecl(crate::ast::ui::StyleRecipeDecl {
+        let decl = crate::ast::ui::StyleRecipeDecl {
             name: recipe_name.into(),
             params,
             body,
             is_pub: false,
             doc,
-        })))
+        };
+        // PLAN-607: register style recipe immediately so subsequent AST nodes recognize it
+        crate::design_tokens::recipe::register_style_recipe(&decl);
+
+        Ok(Some(Stmt::StyleRecipeDecl(decl)))
     }
 
     /// Plan 051 C7: `timer { ... }` 块体。已消费 `timer` 标识符。
