@@ -5902,6 +5902,23 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                 }
 
+                // PLAN-013 T4: terminal 最小只读视口——<pre> 等宽 + v-for 逐行,
+                // 行内容经 Vue 文本插值(HTML 自动转义,引擎输出安全)。
+                // 交互面(选中/回滚 UI/xterm.js 类)属 DEBTS 009 #4 留白,不在本臂。
+                if tag == "terminal" || tag == "Terminal" {
+                    let lines_expr = match props.get("lines") {
+                        Some(AuraPropValue::Expr(expr)) => self.expr_to_vue_bound_value(expr)?,
+                        _ => "[]".to_string(),
+                    };
+                    let mut out = String::new();
+                    out.push_str("<pre class=\"terminal-viewport\" style=\"margin:0;background:#0c0c0c;color:#cccccc;font-family:'Cascadia Mono',Consolas,monospace;font-size:13px;line-height:1.35;padding:8px;white-space:pre;overflow:auto;min-height:10em\">");
+                    out.push_str(&format!(
+                        "<span v-for=\"(line, i) in ({lines_expr})\" :key=\"i\">{{{{ line }}}}&#10;</span>"
+                    ));
+                    out.push_str("</pre>");
+                    return Ok(out);
+                }
+
                 // Check if this is a known sub-widget (custom component, not shadcn)
                 // Plan 435 P4:与 map_tag 同源的折叠桥接(kebab↔Pascal;
                 // 内置可解析的 tag 不桥接,builtin 优先)

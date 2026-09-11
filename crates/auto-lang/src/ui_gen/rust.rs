@@ -2407,6 +2407,43 @@ impl RustGenerator {
                     return format!("{}.build()", g);
                 }
 
+                // PLAN-013 T3: terminal 臂——View::Terminal 真身组件(props-feed
+                // 形态甲)直达发射。key 为状态存储键;cols/rows 字面量或 .field
+                // 绑定;lines 为 Vec<String> 表达式(识别 .field → self.field.clone())。
+                if tag == "terminal" {
+                    let key = props.get("key")
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .unwrap_or_else(|| "main".to_string());
+                    let geom = |name: &str, dft: u16| -> String {
+                        match props.get(name) {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}u16"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                            _ => format!("{dft}u16"),
+                        }
+                    };
+                    let lines = match props.get("lines") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{}.clone()", id.as_str()),
+                        Some(AuraPropValue::Expr(expr)) => {
+                            let e = self.ast_expr_to_rust(expr);
+                            if e.starts_with("self.") {
+                                format!("{}.clone()", e)
+                            } else {
+                                e
+                            }
+                        }
+                        _ => "Vec::new()".to_string(),
+                    };
+                    let scroll = match props.get("scroll_offset") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                        _ => "0u16".to_string(),
+                    };
+                    return format!(
+                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: None, style: None }}",
+                        geom("cols", 80),
+                        geom("rows", 24),
+                    );
+                }
+
                 let view_fn = self.tag_to_view_fn(tag);
 
                 // For text elements with a "text" prop and no extra styling/events,

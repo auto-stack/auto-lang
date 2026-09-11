@@ -465,7 +465,7 @@ pub fn generate_rust_ui(
     // PLAN-013 T2: pac.at rust_sidecar 供给(用户 .rs 模块 + Cargo 依赖)。
     let sidecar = crate::sidecar::load_sidecar(project_dir);
     if !sidecar.is_empty() {
-        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, output)?;
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
         println!(
             "{}",
             "  rust_sidecar applied (modules + deps)"
