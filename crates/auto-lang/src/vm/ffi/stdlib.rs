@@ -10378,4 +10378,70 @@ fn main() {
         assert_eq!(lines[4], "true", "not exited");
         assert_eq!(lines[5], "done", "script completed");
     }
+
+    /// PLAN-013 T1:裸调用面探针——`use auto.term` 导入后**不加 `Term.` 前
+    /// 缀**直接裸调七符号。at/autoterm.at 现行调用面即裸调用(a2r 侧
+    /// `use crate::term::` + 裸调用天然闭合);本测试钉住 VM 侧同形可用,
+    /// D1(单一调用面跨三后端)的 VM 臂验收锚点。
+    #[test]
+    fn term_engine_shims_bare_call_roundtrip() {
+        let Some(dll) = autoterm_dll_for_test() else {
+            eprintln!("[term-engine] autoterm_core.dll not found — skipping (build auto-term first)");
+            return;
+        };
+        std::env::set_var("AUTOTERM_ENGINE_DLL", &dll);
+        let (_r, out) = crate::run_with_capture(r#"
+use auto.term: engine_spawn, engine_write_line, engine_rows, engine_resize, engine_interrupt, engine_is_exited, engine_free
+fn main() {
+    var h = engine_spawn(80, 24)
+    print(h > 0)
+    engine_write_line(h, "echo autoterm_bare_ok")
+    var found = 999
+    var tries = 0
+    loop {
+        if tries >= 30 {
+            break
+        }
+        var lines List<str> = engine_rows(h)
+        var j = 0
+        loop {
+            if j >= lines.len() {
+                break
+            }
+            // 597 §9 缺陷规避:裸 C-FFI 调用不得内联于 if 条件位(挂起),
+            // 先赋值再比较;缺陷修复属 auto-lang 独立账。
+            var hit = lines.get(j).find("autoterm_bare_ok")
+            if hit >= 0 {
+                found = j
+                break
+            }
+            j = j + 1
+        }
+        if found < 24 {
+            break
+        }
+        Time.sleep_ms(100)
+        tries = tries + 1
+    }
+    print(found)
+    engine_resize(h, 100, 30)
+    var after List<str> = engine_rows(h)
+    print(after.len())
+    print(engine_interrupt(h) >= 0)
+    print(engine_is_exited(h) == false)
+    engine_free(h)
+    print("done")
+}
+"#)
+        .expect("term engine bare-call script must run");
+        let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 6, "got {lines:?}");
+        assert_eq!(lines[0], "true", "bare engine_spawn non-zero");
+        let found: i32 = lines[1].parse().unwrap();
+        assert!(found >= 0 && found < 24, "bare-call echo marker at row {found} of 24");
+        assert_eq!(lines[2], "30", "bare engine_resize to 100x30");
+        assert_eq!(lines[3], "true", "bare engine_interrupt ok");
+        assert_eq!(lines[4], "true", "bare engine_is_exited false");
+        assert_eq!(lines[5], "done", "bare-call script completed");
+    }
 }

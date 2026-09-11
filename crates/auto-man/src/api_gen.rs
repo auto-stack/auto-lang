@@ -351,7 +351,7 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 /// Generate Rust server code (Axum-based)
 /// Plan musk-022 CRUD 智能扩展: transpile db.at to a db.rs module via a2r.
 /// Reuses the Tauri-backend precedent (tauri_backend::transpile_at_to_rust).
-fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
+pub(crate) fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
     use auto_lang::trans::rust::transpile_rust;
     use auto_val::AutoStr;
     // Plan 399 §7: parse + transpile on a 16MB stack. db.at with deep nesting
@@ -402,7 +402,7 @@ fn qualify_a2r_std(mut code: String) -> String {
     code
 }
 
-fn post_process_db_rs(mut code: String) -> String {
+pub(crate) fn post_process_db_rs(mut code: String) -> String {
     code = qualify_a2r_std(code);
     code = code.replace("use crate::api::", "use crate::types::");
     // Strip `List<T>.new(EXPR)` -> `EXPR` (a2r leaves the wrapper; List=Vec, the
@@ -749,6 +749,14 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
+    // PLAN-013 T2: pac.at rust_sidecar 供给到 back crate(用户 .rs 模块
+    // + Cargo 依赖;at-app 的 crate::term 引擎胶水经此入位)。
+    let sidecar = crate::sidecar::load_sidecar(root_dir);
+    if !sidecar.is_empty() {
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, root_dir, &rust_dir)?;
+        println!("  ✓ rust_sidecar applied to back crate");
+    }
+
     // Update workspace members. MUST run after main.rs is written: ensure_shared_workspace
     // skips members with no src/main.rs (has_cargo_targets guard). Plan musk-022.
     let _ = crate::rust_ui::ensure_shared_workspace(root_dir);
@@ -974,7 +982,7 @@ fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
 /// Extract the set of `pub fn NAME` names from a transpiled db.rs source.
 /// Used to decide whether an HTTP handler can delegate to `db::NAME(...)`
 /// instead of the `State<Db>` CRUD template.
-fn extract_db_fn_names(db_rs: &str) -> std::collections::HashSet<String> {
+pub(crate) fn extract_db_fn_names(db_rs: &str) -> std::collections::HashSet<String> {
     use regex::Regex;
     let mut set = std::collections::HashSet::new();
     // Match `pub fn name(` at the start of a line (a2r emits this form).

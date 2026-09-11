@@ -1345,6 +1345,13 @@ async fn execute_autovm_with_path(
     }
     // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: seed the root codegen with the `#[vm]` fn names declared
+    // by dep modules (e.g. stdlib term.vm.at) — dep modules compile in their
+    // own codegen pass, so the root would otherwise never learn that an
+    // imported bare call (use auto.term: engine_spawn) targets a native.
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     // PLAN-057 T7：注入源文本——web 内建编译期门禁的 `// vm-safe-allow`
     // 行级豁免需要按 current_source_line 回读原始行。
     codegen.source_text = Some(code.to_string());

@@ -446,6 +446,14 @@ pub struct Codegen {
     /// fallback).
     auto_modules: std::collections::HashSet<String>,
 
+    /// PLAN-013 T1: names of declared `#[vm]` (body-less) functions.
+    /// A `#[vm]` fn has no bytecode body — the declaration exists only as a
+    /// native-shim signature, so a call to it must never shadow the native
+    /// it declares (see the import_scope arm in the call resolution chain).
+    /// `pub(crate)`: the compile session surfaces dep-module names to the
+    /// root codegen (script path compiles modules separately).
+    pub(crate) vm_fn_names: std::collections::HashSet<String>,
+
     /// Plan 212 Phase 2.2: Maps variable name → opaque crate name
     /// Tracks which variables hold opaque handles (e.g., "re" → "regex")
     /// Set when `let var = OpaqueType.new(...)` is compiled
@@ -616,6 +624,7 @@ impl Codegen {
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
+            vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
             source_text: None, // PLAN-057 T7
@@ -987,6 +996,7 @@ impl Codegen {
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
+            vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
             source_text: None, // PLAN-057 T7
@@ -1287,6 +1297,9 @@ impl Codegen {
                 // so the user gets a clear message instead of silent wrong behavior.
                 if matches!(fn_decl.kind, crate::ast::FnKind::VmFunction) {
                     let fn_name_str = fn_decl.name.to_string();
+                    // PLAN-013 T1: record the decl so calls can prefer the
+                    // declared native over the stub (see import_scope arm).
+                    self.vm_fn_names.insert(fn_name_str.clone());
                     vm_debug!("DEBUG: Compiling #[vm] stub for '{}' — will panic at runtime if native not found",
                         fn_name_str
                     );
@@ -8744,7 +8757,18 @@ impl Codegen {
                                 .map(|mod_name| self.auto_modules.contains(mod_name))
                                 .unwrap_or(false);
                             if is_user_auto_module {
-                                None
+                                // PLAN-013 T1: a `#[vm]` declaration (stdlib
+                                // *.vm.at shim signatures, e.g. term.vm.at via
+                                // `use auto.term: …`) has no bytecode body —
+                                // shadowing it would bind the call to the
+                                // runtime-panic stub instead of the very native
+                                // it declares. Body-ful user-library fns keep
+                                // the Plan 347 shadow priority unchanged.
+                                if self.vm_fn_names.contains(name.as_str()) {
+                                    BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
+                                } else {
+                                    None
+                                }
                             } else {
                                 BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
                             }
