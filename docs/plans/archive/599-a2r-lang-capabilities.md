@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-599
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-lang-capabilities
 author: [ZCode]
 created_at: 2026-09-09
@@ -238,3 +238,21 @@ use.rs foreign_shape 导入(外来名规范纪律)+本计划门改 rlib+--extern
 策略;F-2(info)benchmark_downcast 全量并行下抖动,隔离绿;F-3(info)
 020 为 596 在途,非本计划面 |
 evidence: 复审会话内重执行;双门+real gate 修复后全绿 | next: merge
+
+---
+## 合并回执(PLAN-599:r1,2026-09-10)
+
+- stage: merge | outcome: **pass** | delivery_commit=de4847073(merge --no-ff
+  plan-599-dev;含实现 02ca04252+F-1 修复 c44c59c52+master 同步 27d8ab0a5)
+- prepared: 复审基线 rev1/c44c59c52;master 同步零语义冲突(trans/overview
+  与 597 bullet 共存)
+- landed: master de4847073;主检出冒烟=重建后 a2r 326/3(基线三连)+real
+  gate 1 passed——main 已知绿;附带清除混入分支的 tmp_test_vm_append.txt
+  (早前被杀 tv 跑残留,经 add -A 误入)
+- ledger_refreshed: .autoos/specs.json(运行时投影,离线 RMW+回读)
+  P599-1..6 六节各 +1,file→archive/599-*.md;无关条目保全
+- archived: docs/plans/archive/599-a2r-lang-capabilities.md(git mv)+
+  status: archived + completion_kind: delivered
+- cleaned: (待清理执行后回填)
+- 移交: auto-term 侧 004 §5④ 回执已在 edfbc6a 入库(与 595/597 同批);
+  findings F2(benchmark 抖动)/F3(020=596 在途)info 级在案
